@@ -34,19 +34,21 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "log.h"
 #include "memutil.h"
 #include "net_header_parse.h"
+#include "os_nif.h"
 #include "ovsdb_utils.h"
 #include "qm_conn.h"
 #include "unit_test_utils.h"
 #include "unity.h"
 #include "upnp_curl.h"
 #include "upnp_parse.h"
+#include "json_mqtt.h"
 
 #include "pcap.c"
 
 const char *ut_name = "upnp_parse_tests";
 
 #define OTHER_CONFIG_NELEMS 4
-#define OTHER_CONFIG_NELEM_SIZE 32
+#define OTHER_CONFIG_NELEM_SIZE 64
 
 union fsm_plugin_ops p_ops;
 struct upnp_cache *g_mgr;
@@ -58,7 +60,7 @@ char g_other_configs[][2][OTHER_CONFIG_NELEMS][OTHER_CONFIG_NELEM_SIZE] =
             "mqtt_v",
         },
         {
-            "dev-test/upnp_ut_topic",
+            "dev-ut/UPnP/Devices/ut_depl/ut_node_id_1/ut_location_id",
         },
     },
 };
@@ -72,6 +74,23 @@ struct fsm_session_conf g_confs[2] =
     {
         .handler = "upnp_test_session_1",
     }
+};
+
+
+struct upnp_device_url g_upnp_data =
+{
+    .url = "http://10.1.0.48:8080/description.xml",
+    .dev_type = "ut_upnp_dev_type",
+    .friendly_name = "ut_upnp_friendly_name",
+    .manufacturer = "ut_upnp_manufacturer",
+    .manufacturer_url = "https://ut_upnp.opensync",
+    .model_desc = "ut_upnp_model_desc",
+    .model_name = "ut_upnp_model_name",
+    .model_num = "ut_upnp_model_1",
+    .model_url = "https://ut_upnp.opensync/ut_upnp_model_1",
+    .serial_num = "ut_upnp_model_1_SN",
+    .udn = "ut_upnp_udn",
+    .upc = "ut_upnp_upc"
 };
 
 
@@ -97,9 +116,17 @@ static void send_report(struct fsm_session *session, char *report)
     return;
 }
 
+static char *
+test_fsm_get_network_id(struct fsm_session *session, os_macaddr_t *mac)
+{
+    return "test_network_id";
+}
+
+
 struct fsm_session_ops g_ops =
 {
     .send_report = send_report,
+    .get_network_id = test_fsm_get_network_id,
 };
 
 
@@ -140,6 +167,8 @@ void global_test_init(void)
                                                   g_other_configs[0][1]);
         pair = ds_tree_find(session->conf->other_config, "mqtt_v");
         session->topic = pair->value;
+        session->node_id = "ut_upnp_node_id";
+        session->location_id = "ut_upnp_location_id";
     }
 }
 
@@ -253,6 +282,29 @@ void test_upnp_get_url(void)
 }
 
 
+void
+test_upnp_report(void)
+{
+    struct upnp_report to_report;
+    struct fsm_session *session;
+    char *report;
+
+    session = &g_sessions[0];
+    to_report.url = &g_upnp_data;
+    to_report.url->udev = CALLOC(1, sizeof(*to_report.url->udev));
+    os_nif_macaddr_from_str(&to_report.url->udev->device_mac, "00:01:02:03:04:05");
+    to_report.url->session = session;
+    upnp_init_elements(&g_upnp_data);
+    to_report.nelems = 11;
+    to_report.first = upnp_get_elements();
+    report = jencode_upnp_report(session, &to_report);
+    TEST_ASSERT_NOT_NULL(report);
+    session->ops.send_report(session, report);
+    FREE(to_report.url->udev);
+}
+
+
+
 int main(int argc, char *argv[])
 {
     (void)argc;
@@ -263,6 +315,7 @@ int main(int argc, char *argv[])
 
     RUN_TEST(test_load_unload_plugin);
     RUN_TEST(test_upnp_get_url);
+    RUN_TEST(test_upnp_report);
 
     return ut_fini();
 }

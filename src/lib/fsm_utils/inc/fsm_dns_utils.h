@@ -101,6 +101,7 @@ struct dns_cache_param
     int action;
     uint8_t direction;
     uint32_t ttl; /* this is the value that will actually be used */
+    char *network_id;
 };
 
 /**

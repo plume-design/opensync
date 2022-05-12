@@ -38,7 +38,7 @@ create_rad_vif_if_file="tools/device/create_radio_vif_interface.sh"
 create_inet_file="tools/device/create_inet_interface.sh"
 add_bridge_port_file="tools/device/add_bridge_port.sh"
 configure_lan_bridge_for_wan_connectivity_file="tools/device/configure_lan_bridge_for_wan_connectivity.sh"
-client_connect_file="tools/client/rpi/connect_to_wpa2.sh"
+client_connect_file="tools/client/connect_to_wpa.sh"
 client_upnp_server_file="/home/plume/upnp/upnp_server.py"
 usage() {
     cat << usage_string
@@ -77,7 +77,7 @@ Testcase procedure:
                 Run /.${client_upnp_server_file} (see ${client_upnp_server_file} -h)
     - On DEVICE: Run: ./fsm/fsm_test_upnp_plugin.sh <deviceType> <friendlyName> <manufacturer> <manufacturerURL> <modelDescription> <modelName> <modelNumber>
 Script usage example:
-    ./fsm/fsm_test_upnp_plugin.sh 'urn:plume-test:device:test:1' 'FUT test device' 'FUT testing, Inc' 'https://www.fut.com' 'FUT UPnP service' 'FUT tester' '1.0'
+    ./fsm/fsm_test_upnp_plugin.sh 'urn:fut-test:device:test:1' 'FUT test device' 'FUT testing, Inc' 'https://www.fut.com' 'FUT UPnP service' 'FUT tester' '1.0'
 usage_string
 }
 if [ -n "${1}" ]; then
@@ -122,7 +122,7 @@ client_mac="${client_mac%%,*}"
 
 # FSM logs objects in non-constant order, reason for multiple grep-s
 fsm_message_regex="$LOGREAD |
- tail -2000 |
+ tail -3000 |
  grep fsm_send_report |
  grep upnpInfo |
  grep deviceType |

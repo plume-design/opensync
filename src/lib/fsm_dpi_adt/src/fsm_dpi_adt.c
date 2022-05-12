@@ -80,7 +80,11 @@ fsm_dpi_adt_init(struct fsm_session *session)
         if (adt_session == NULL) return -1;
 
         adt_session->adt_aggr = CALLOC(1, sizeof(*aggr));
-        if (adt_session->adt_aggr == NULL) return -1;
+        if (adt_session->adt_aggr == NULL)
+        {
+            FREE(adt_session);
+            return -1;
+        }
 
         client_session->private_session = adt_session;
     }

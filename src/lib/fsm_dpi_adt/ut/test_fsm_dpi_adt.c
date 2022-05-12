@@ -45,6 +45,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "unity.h"
 #include "unity_internals.h"
 
+#define TEST_NETWORK_ID "test_network_id"
+
 static union fsm_plugin_ops g_plugin_ops =
 {
     .web_cat_ops =
@@ -56,6 +58,17 @@ static union fsm_plugin_ops g_plugin_ops =
         .dns_response = NULL,
         .gatekeeper_req = NULL,
     },
+};
+
+static char *
+test_fsm_get_network_id(struct fsm_session *session, os_macaddr_t *mac)
+{
+    return TEST_NETWORK_ID;
+}
+
+static struct fsm_session_ops g_sess_ops =
+{
+    .get_network_id = test_fsm_get_network_id,
 };
 
 static struct fsm_session g_session =
@@ -138,6 +151,9 @@ mock_ut_qm_conn_send_direct(qm_compress_t compress, char *topic,
     TEST_ASSERT_NOT_NULL(report->data[0]->device_id.data);
     os_mac2str(&report->data[0]->device_id, str_mac);
     LOGI("From protobuf: data[0], device_id=%s", str_mac);
+
+    TEST_ASSERT_EQUAL_STRING(TEST_NETWORK_ID, report->data[0]->network_zone);
+    LOGI("From protobuf: data[0], network_zone=%s", report->data[0]->network_zone);
 
     interfaces__adt__adt_report__free_unpacked(report, NULL);
 
@@ -231,6 +247,7 @@ test_fsm_dpi_adt_store(void)
 
     this_session = g_session;
     this_session.name = "dpi_adt";
+    this_session.ops = g_sess_ops;
 
     MEMZERO(acc);
 
@@ -307,6 +324,7 @@ test_fsm_dpi_adt_store_to_proto(void)
 
     this_session = g_session;
     this_session.name = "dpi_adt";
+    this_session.ops = g_sess_ops;
     this_session.p_ops = &g_plugin_ops;
     this_session.ops.get_config = mock_get_config;
 
@@ -353,6 +371,7 @@ test_fsm_dpi_adt_send_report_v4(void)
 
     this_session = g_session;
     this_session.name = "dpi_adt";
+    this_session.ops = g_sess_ops;
     this_session.p_ops = &g_plugin_ops;
     this_session.ops.get_config = mock_get_config;
 
@@ -436,6 +455,7 @@ test_fsm_dpi_adt_send_report_v6(void)
 
     this_session = g_session;
     this_session.name = "dpi_adt";
+    this_session.ops = g_sess_ops;
     this_session.p_ops = &g_plugin_ops;
     this_session.ops.get_config = mock_get_config;
 

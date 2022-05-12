@@ -210,18 +210,16 @@ bm_neighbor_get_self_neighbor(const char *_ifname, bsal_neigh_info_t *neigh)
 static uint8_t
 bm_neighbor_get_phy_type(uint8_t op_class)
 {
-    switch (op_class) {
-    case BTM_24_OP_CLASS:
+    if (ieee80211_global_op_class_is_2ghz(op_class))
         return BTM_24_PHY_TYPE;
-    case BTM_5GL_OP_CLASS: /* passthrough */
-    case BTM_L_DFS_OP_CLASS: /* passthrough */
-    case BTM_U_DFS_OP_CLASS: /* passthrough */
-    case BTM_5GU_OP_CLASS:
-        return BTM_5_PHY_TYPE;
-    case BTM_6G_OP_CLASS:
-        return BTM_HE_PHY_TYPE;
-    }
 
+    if (ieee80211_global_op_class_is_5ghz(op_class))
+        return BTM_5_PHY_TYPE;
+
+    if (ieee80211_global_op_class_is_6ghz(op_class))
+        return BTM_HE_PHY_TYPE;
+
+    LOGW("Geeting phy type failed, op_class %hhu", op_class);
     return 0;
 }
 
@@ -548,7 +546,7 @@ bm_neighbor_channel_supported_by_client(const bm_client_t *client, uint8_t chann
 }
 
 static bool
-bm_neighbor_channel_allowed(const bm_client_t *client, uint8_t channel)
+bm_neighbor_channel_allowed(const bm_client_t *client, uint8_t channel, uint8_t op_class)
 {
     bool allowed = false;
     radio_type_t radio_type;
@@ -565,17 +563,24 @@ bm_neighbor_channel_allowed(const bm_client_t *client, uint8_t channel)
            continue;
 
        radio_type = client->ifcfg[i].radio_type;
+
        switch (radio_type) {
            case RADIO_TYPE_2G:
-               if (channel <= 13)
+               if (ieee80211_global_op_class_is_2ghz(op_class) &&
+                   channel >=1 && channel <= 13)
                    allowed = true;
                break;
            case RADIO_TYPE_5G:
            case RADIO_TYPE_5GL:
            case RADIO_TYPE_5GU:
-               if (channel > 13)
+               if (ieee80211_global_op_class_is_5ghz(op_class) &&
+                   channel >=13 && channel <= 177)
                    allowed = true;
                break;
+           case RADIO_TYPE_6G:
+               if (ieee80211_global_op_class_is_6ghz(op_class) &&
+                   channel >= 1 && channel <= 233)
+                   allowed = true;
            case RADIO_TYPE_NONE:
            default:
                break;
@@ -596,7 +601,7 @@ bm_neighbor_number(bm_client_t *client)
     bm_neighbor_t *bm_neigh;
 
     ds_tree_foreach(&bm_neighbors, bm_neigh) {
-        if (!bm_neighbor_channel_allowed(client, bm_neigh->channel))
+        if (!bm_neighbor_channel_allowed(client, bm_neigh->channel, bm_neigh->neigh_report.op_class))
             continue;
         neighbors++;
     }
@@ -611,7 +616,7 @@ bm_neighbor_only_dfs_channels(bm_client_t *client)
     bool only_dfs = true;
 
     ds_tree_foreach(&bm_neighbors, bm_neigh) {
-        if (!bm_neighbor_channel_allowed(client, bm_neigh->channel))
+        if (!bm_neighbor_channel_allowed(client, bm_neigh->channel, bm_neigh->neigh_report.op_class))
             continue;
         if (bm_client_is_dfs_channel(bm_neigh->channel))
             continue;
@@ -818,17 +823,22 @@ bm_neigbour_op_class_allowed(bm_client_t *client, bm_neighbor_t *bm_neigh)
     return false;
 }
 
-static bool
-bm_client_is_6ghz_capable(bm_client_t *client)
-{
-    int i;
+static int bm_cli_neigh_better_rrm_rcpi(const void *a, const void *b) {
+    bm_rrm_neighbor_t *rrm_neigh_a;
+    bm_rrm_neighbor_t *rrm_neigh_b;
+    const bm_client_neighbor_t *cli_neigh_a = (bm_client_neighbor_t *) a;
+    const bm_client_neighbor_t *cli_neigh_b = (bm_client_neighbor_t *) b;
+    bm_neighbor_t *neigh_a = (bm_neighbor_t *) cli_neigh_a->neighbor;
+    bm_neighbor_t *neigh_b = (bm_neighbor_t *) cli_neigh_b->neighbor;
 
-    for (i = 0; i < client->op_classes.size; i++) {
-        if (ieee80211_global_op_class_is_6ghz(client->op_classes.op_class[i]))
-            return true;
-    }
-
-    return false;
+    // descending order,  push neighbors without rrm report towards the end
+    rrm_neigh_a = bm_neighbor_get_rrm_neigh(cli_neigh_a->client, (os_macaddr_t *) neigh_a->neigh_report.bssid);
+    if (!rrm_neigh_a) return 1;
+    rrm_neigh_b = bm_neighbor_get_rrm_neigh(cli_neigh_b->client, (os_macaddr_t *) neigh_b->neigh_report.bssid);
+    if (!rrm_neigh_b) return -1;
+    if (rrm_neigh_a->rcpi > rrm_neigh_b->rcpi) return -1;
+    if (rrm_neigh_a->rcpi < rrm_neigh_b->rcpi) return 1;
+    return 0;
 }
 
 bool
@@ -839,7 +849,10 @@ bm_neighbor_build_btm_neighbor_list( bm_client_t *client, bsal_btm_params_t *btm
 
     os_macaddr_t                macaddr;
     int                         max_regular_neighbors;
-    unsigned int                i;
+    unsigned int                i = 0;
+    unsigned int                cand_bm_cli_neigh_len = 256;
+    unsigned int                cand_bm_cli_neigh_size = 0;
+    bm_client_neighbor_t        cand_bm_cli_neigh_list[cand_bm_cli_neigh_len];
 
     if (WARN_ON(!client->group))
         return false;
@@ -859,7 +872,7 @@ bm_neighbor_build_btm_neighbor_list( bm_client_t *client, bsal_btm_params_t *btm
 
     btm_params->num_neigh = 0;
 
-    if (bm_client_is_6ghz_capable(client))
+    if (client->band_cap_mask & BM_CLIENT_OPCLASS_60_CAP_BIT)
         max_regular_neighbors = BSAL_MAX_TM_NEIGHBORS;
     else
         max_regular_neighbors = BSAL_MAX_TM_NEIGHBORS_LEGACY;
@@ -871,15 +884,9 @@ bm_neighbor_build_btm_neighbor_list( bm_client_t *client, bsal_btm_params_t *btm
     /* First choose neighbors using Beacon Measurement Reports (if enabled or available) */
     if (client->neighbor_list_filter_by_beacon_report ) {
         ds_tree_foreach(bm_neighbors, bm_neigh) {
-            bsal_neigh_info_t *bsal_neigh = NULL;
-
-            if (btm_params->num_neigh >= max_regular_neighbors) {
-                LOGT("Built maximum allowed neighbors");
-                break;
-            }
 
             // Include only allowed neighbors
-            if (!bm_neighbor_channel_allowed(client, bm_neigh->channel)) {
+            if (!bm_neighbor_channel_allowed(client, bm_neigh->channel, bm_neigh->neigh_report.op_class)) {
                 LOGT("Skipping neighbor = %s, channel = %hhu", bm_neigh->bssid, bm_neigh->channel);
                 continue;
             }
@@ -889,23 +896,48 @@ bm_neighbor_build_btm_neighbor_list( bm_client_t *client, bsal_btm_params_t *btm
                 continue;
             }
 
-            bsal_neigh = &btm_params->neigh[btm_params->num_neigh];
+            cand_bm_cli_neigh_list[cand_bm_cli_neigh_size].client = client;
+            cand_bm_cli_neigh_list[cand_bm_cli_neigh_size].neighbor = bm_neigh;
+            cand_bm_cli_neigh_size++;
 
-            if( !os_nif_macaddr_from_str( &macaddr, bm_neigh->bssid ) ) {
-                LOGE("Unable to parse mac address '%s'", bm_neigh->bssid);
-                return false;
+            if (cand_bm_cli_neigh_size == cand_bm_cli_neigh_len) {
+                LOGE("Candidate neighbor list length limit reached");
+                break;
             }
-
-            memcpy( bsal_neigh->bssid, (uint8_t *)&macaddr, sizeof( bsal_neigh->bssid ) );
-            bsal_neigh->channel = bm_neigh->channel;
-            bsal_neigh->bssid_info = bm_neigh->neigh_report.bssid_info;
-            bsal_neigh->op_class = bm_neigh->neigh_report.op_class;
-            bsal_neigh->phy_type = bm_neigh->neigh_report.phy_type;
-
-            btm_params->num_neigh++;
-
-            LOGT("Built neighbor: %s, channel: %hhu", bm_neigh->bssid, bm_neigh->channel);
         }
+    }
+
+    /* Sort chosen neighbors by RCPI reported by client using rrm */
+    qsort(cand_bm_cli_neigh_list, cand_bm_cli_neigh_size, sizeof(bm_client_neighbor_t), bm_cli_neigh_better_rrm_rcpi);
+
+    /* Add neighbors from list sorted by RCPI */
+    for (i=0; i<cand_bm_cli_neigh_size; i++) {
+        bm_neigh = cand_bm_cli_neigh_list[i].neighbor;
+        bsal_neigh_info_t *bsal_neigh = NULL;
+
+        if (btm_params->num_neigh >= max_regular_neighbors) {
+            LOGT("Built maximum allowed neighbors");
+            break;
+        }
+
+        bsal_neigh = &btm_params->neigh[btm_params->num_neigh];
+
+        if (!os_nif_macaddr_from_str(&macaddr, bm_neigh->bssid)) {
+            LOGE("Unable to parse mac address '%s'", bm_neigh->bssid);
+            return false;
+        }
+
+        memcpy(bsal_neigh->bssid, (uint8_t *)&macaddr, sizeof(bsal_neigh->bssid));
+        bsal_neigh->channel = bm_neigh->channel;
+        bsal_neigh->bssid_info = bm_neigh->neigh_report.bssid_info;
+        bsal_neigh->op_class = bm_neigh->neigh_report.op_class;
+        bsal_neigh->phy_type = bm_neigh->neigh_report.phy_type;
+
+        btm_params->num_neigh++;
+
+        LOGT("Built neighbor [%d] (beacon report): %s channel: %hhu bssid: %hhu op_class: %hhu phy_type: %hhu",
+              btm_params->num_neigh, bm_neigh->bssid, bm_neigh->channel, bm_neigh->neigh_report.bssid_info,
+              bm_neigh->neigh_report.op_class, bm_neigh->neigh_report.phy_type);
     }
 
     /* Fill the remaining space with other neighbors */
@@ -939,7 +971,7 @@ bm_neighbor_build_btm_neighbor_list( bm_client_t *client, bsal_btm_params_t *btm
         }
 
         // Include only allowed neighbors
-        if (!bm_neighbor_channel_allowed(client, bm_neigh->channel)) {
+        if (!bm_neighbor_channel_allowed(client, bm_neigh->channel, bm_neigh->neigh_report.op_class)) {
             LOGT("Skipping neighbor = %s, channel = %hhu", bm_neigh->bssid, bm_neigh->channel);
             continue;
         }
@@ -959,12 +991,17 @@ bm_neighbor_build_btm_neighbor_list( bm_client_t *client, bsal_btm_params_t *btm
 
         btm_params->num_neigh++;
 
-        LOGT("Built neighbor: %s, channel: %hhu", bm_neigh->bssid, bm_neigh->channel);
+        LOGT("Built neighbor [%d]: %s channel: %hhu bssid: %hhu op_class: %hhu phy_type: %hhu",
+              btm_params->num_neigh, bm_neigh->bssid, bm_neigh->channel, bm_neigh->neigh_report.bssid_info,
+              bm_neigh->neigh_report.op_class, bm_neigh->neigh_report.phy_type);
     }
 
     if (btm_params->inc_self && btm_params->num_neigh) {
+        int neigh_i = 0;
+        bool skip_self = false;
+
         for (i = 0; i < client->group->ifcfg_num; i++) {
-            if (!bm_neighbor_channel_allowed(client, client->group->ifcfg[i].self_neigh.channel))
+            if (!bm_neighbor_channel_allowed(client, client->group->ifcfg[i].self_neigh.channel, client->group->ifcfg[i].self_neigh.op_class))
                 continue;
 
             if ((unsigned int)btm_params->num_neigh >= ARRAY_SIZE(btm_params->neigh)) {
@@ -979,10 +1016,20 @@ bm_neighbor_build_btm_neighbor_list( bm_client_t *client, bsal_btm_params_t *btm
                 return false;
             }
 
-            btm_params->num_neigh++;
+            for (neigh_i = 0; neigh_i < btm_params->num_neigh; neigh_i++) {
+                const bsal_neigh_info_t *neigh = &btm_params->neigh[neigh_i];
+                if (memcmp(neigh->bssid, btm_params->neigh[btm_params->num_neigh].bssid, sizeof(neigh->bssid)) == 0) {
+                    skip_self = true;
+                    break;
+                }
+            }
+
+            if (skip_self)
+                LOGT("Client %s skip self bssid, included on the list", client->mac_addr);
+            else
+                btm_params->num_neigh++;
         }
     }
-
 
     if (btm_params->num_neigh) {
         btm_params->pref = 1;

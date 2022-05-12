@@ -1,0 +1,7 @@
+menuconfig FSM_DPI_UPNP
+        bool "Enables UPnP port forwarding monitoring"
+        depends on MANAGER_FSM
+        default y if PLATFORM_IS_NATIVE
+        default n
+        help
+            "Enables UPnP port forwarding monitoring through FSM"

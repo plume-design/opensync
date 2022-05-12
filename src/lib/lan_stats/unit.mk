@@ -44,9 +44,8 @@ ifeq ($(CONFIG_FCM_OVS_CMD),y)
 UNIT_SRC += src/lan_cmd_flows.c
 else
 UNIT_SRC += src/lan_dpctl.c
-endif
-
 OVS_PACKAGE_VERNUM:=$(shell echo $(OVS_PACKAGE_VER) | (IFS=. read A B C; echo $$(($$A*10000+$$B*100+$$C))))
+endif
 
 UNIT_CFLAGS := -I$(UNIT_PATH)/inc
 UNIT_CFLAGS += -Isrc/fcm/inc

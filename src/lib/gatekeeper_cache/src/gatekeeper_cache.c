@@ -141,6 +141,13 @@ MurmurOAAT64(uint8_t dir, uint8_t *data, size_t len)
     return h;
 }
 
+/*
+ * Using 'direction' as part of the key for the cache entry
+ * leads to some cache misses.
+ * The 'direction' is now only considered for IPv4 and IPv6,
+ * and set to GKC_FLOW_DIRECTION_INTERNAL_IGNORE for other
+ * requests (FQDN, URL, SNI and APP)
+ */
 uint64_t
 get_attr_key(struct gk_attr_cache_interface *req)
 {
@@ -149,6 +156,7 @@ get_attr_key(struct gk_attr_cache_interface *req)
     size_t data_len;
     uint8_t *data;
     uint64_t ret;
+    uint8_t dir;
 
     if (!req->attr_name && !req->ip_addr) return 0;
 
@@ -157,6 +165,8 @@ get_attr_key(struct gk_attr_cache_interface *req)
         data_len = strlen(req->attr_name);
     else
         data_len = 0;
+
+    dir = GKC_FLOW_DIRECTION_INTERNAL_IGNORE;
 
     switch (req->attribute_type)
     {
@@ -167,6 +177,7 @@ get_attr_key(struct gk_attr_cache_interface *req)
                 in4 = (struct sockaddr_in *)req->ip_addr;
                 data = (uint8_t *)&in4->sin_addr;
                 data_len = 4;
+                dir = req->direction;
             }
             break;
         case GK_CACHE_REQ_TYPE_IPV6:
@@ -176,15 +187,19 @@ get_attr_key(struct gk_attr_cache_interface *req)
                 in6 = (struct sockaddr_in6 *)req->ip_addr;
                 data = (uint8_t *)&in6->sin6_addr;
                 data_len = 16;
+                dir = req->direction;
             }
             break;
+        case GK_CACHE_REQ_TYPE_INBOUND:
+        case GK_CACHE_REQ_TYPE_OUTBOUND:
+            dir = req->direction;
         default:
             ; /* Nothing to be done */
     }
 
     if (data_len == 0) return 0;
 
-    ret = MurmurOAAT64(req->direction, data, data_len);
+    ret = MurmurOAAT64(dir, data, data_len);
 
     return ret;
 }
@@ -414,6 +429,7 @@ gkc_new_attr_entry(struct gk_attr_cache_interface *entry)
 
     /* add entry creation time and provided TTL value */
     new_attr_cache->cache_ts = now;
+    new_attr_cache->original_ts = now;
     new_attr_cache->cache_ttl = entry->cache_ttl;
 
     /* add the direction and the key */
@@ -435,6 +451,11 @@ gkc_new_attr_entry(struct gk_attr_cache_interface *entry)
     }
 
     new_attr_cache->flow_marker = entry->flow_marker;
+
+    if (entry->network_id)
+    {
+        new_attr_cache->network_id = STRDUP(entry->network_id);
+    }
 
     return new_attr_cache;
 
@@ -1000,6 +1021,7 @@ gkc_lookup_attr_tree(ds_tree_t *tree, struct gk_attr_cache_interface *req, bool 
     req->is_private_ip = attr_entry->is_private_ip;
     req->redirect_flag = attr_entry->redirect_flag;
     req->flow_marker = attr_entry->flow_marker;
+    req->network_id = attr_entry->network_id;
 
     gkc_lookup_redirect_entry(req, attr_entry);
 
@@ -1260,11 +1282,12 @@ gkc_upsert_attribute_entry(struct gk_attr_cache_interface *entry)
     }
     /* Leaving the redirecting fields alone for now */
 
-    LOGT("%s(): updating %s (attr type %d) ttl (%" PRIu64 ") to cache %s ",
+    LOGT("%s(): updating %s (attr type %d) ttl (%" PRIu64 ") (elapsed time %.1f) to cache %s ",
          __func__,
          ((entry->attr_name != NULL) ? entry->attr_name : ipstr),
          attribute_type,
          entry->cache_ttl,
+         difftime(now, attr_entry->original_ts),
          "success");
     return true;
 }
@@ -1447,50 +1470,54 @@ dump_attr_tree(ds_tree_t *tree, enum gk_cache_request_type req_type)
         switch (req_type)
         {
             case GK_CACHE_INTERNAL_TYPE_HOSTNAME:
-                LOGT("\t\t\t %s, %s, %s, %" PRId64 " , %" PRId64 " , %" PRId64 "",
+                LOGT("\t\t\t %s, %s, %s, %" PRId64 " , %" PRId64 " , %" PRId64 " network_id %s",
                      attr->host_name->name,
                      dir2str(entry->direction),
                      fsm_policy_get_action_str(entry->action),
                      attr->host_name->count_fqdn.total,
                      attr->host_name->count_host.total,
-                     attr->host_name->count_sni.total
-                    );
+                     attr->host_name->count_sni.total,
+                     entry->network_id);
                 break;
 
             case GK_CACHE_REQ_TYPE_URL:
-                LOGT("\t\t\t %s, %s, %s, %" PRId64 "",
+                LOGT("\t\t\t %s, %s, %s, %" PRId64 " network_id: %s",
                      attr->url->name,
                      dir2str(entry->direction),
                      fsm_policy_get_action_str(entry->action),
-                     attr->url->hit_count.total);
+                     attr->url->hit_count.total,
+                     entry->network_id);
                 break;
 
             case GK_CACHE_REQ_TYPE_IPV4:
                 in4 = (struct sockaddr_in *)&(attr->ipv4->ip_addr);
                 inet_ntop(AF_INET, &in4->sin_addr, ip_str, INET_ADDRSTRLEN);
-                LOGT("\t\t\t %s, %s, %s, %" PRId64 "",
+                LOGT("\t\t\t %s, %s, %s, %" PRId64 " network_id: %s",
                      ip_str,
                      dir2str(entry->direction),
                      fsm_policy_get_action_str(entry->action),
-                     attr->ipv4->hit_count.total);
+                     attr->ipv4->hit_count.total,
+                     entry->network_id);
                 break;
 
             case GK_CACHE_REQ_TYPE_IPV6:
                 in6 = (struct sockaddr_in6 *)&(attr->ipv6->ip_addr);
                 inet_ntop(AF_INET6, &in6->sin6_addr, ip_str, INET6_ADDRSTRLEN);
-                LOGT("\t\t\t %s, %s, %s, %" PRId64 "",
+                LOGT("\t\t\t %s, %s, %s, %" PRId64 " network_id: %s",
                      ip_str,
                      dir2str(entry->direction),
                      fsm_policy_get_action_str(entry->action),
-                     attr->ipv6->hit_count.total);
+                     attr->ipv6->hit_count.total,
+                     entry->network_id);
                 break;
 
             case GK_CACHE_REQ_TYPE_APP:
-                LOGT("\t\t\t %s, %s, %s, %" PRId64 "",
+                LOGT("\t\t\t %s, %s, %s, %" PRId64 " network_id: %s",
                      attr->app_name->name,
                      dir2str(entry->direction),
                      fsm_policy_get_action_str(entry->action),
-                     attr->app_name->hit_count.total);
+                     attr->app_name->hit_count.total,
+                     entry->network_id);
                 break;
 
             default:
@@ -1515,7 +1542,7 @@ dump_flow_tree(ds_tree_t *tree)
         domain = (entry->ip_version == 4 ? AF_INET : AF_INET6);
         inet_ntop(domain, entry->src_ip_addr, src_ip_str, sizeof(src_ip_str));
         inet_ntop(domain, entry->dst_ip_addr, dst_ip_str, sizeof(dst_ip_str));
-        LOGT("src ip %s, dst ip: %s sport: %d, dport: %d proto: %d action: %d, private ip: %s, hitcount: %" PRIu64 ,
+        LOGT("src ip %s, dst ip: %s sport: %d, dport: %d proto: %d action: %d, private ip: %s, hitcount: %" PRIu64 " network_id: %s",
              src_ip_str,
              dst_ip_str,
              entry->src_port,
@@ -1523,7 +1550,8 @@ dump_flow_tree(ds_tree_t *tree)
              entry->protocol,
              entry->action,
              (entry->is_private_ip ? "true" : "false"),
-             entry->hit_count.total);
+             entry->hit_count.total,
+             entry->network_id);
     }
 }
 
@@ -1550,7 +1578,6 @@ gkc_print_cache_entries(void)
             LOGT("\t %s Entries :", name);\
             dump;\
         }\
-        continue;\
     }\
 }
 

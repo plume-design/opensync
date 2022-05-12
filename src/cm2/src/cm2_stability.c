@@ -36,7 +36,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "os_time.h"
 
-#define BLOCKING_LINK_THRESHOLD            3
+#define BLOCKING_LINK_THRESHOLD            2
 #define UPLINKS_TIMER_TIMEOUT              120
 #define UNBLOCKING_LINK_THRESHOLD          100
 /* All links checking is triggered when counter
@@ -322,6 +322,7 @@ static void cm2_updating_ip(struct schema_Connection_Manager_Uplink *con,
     bool                               rc;
     bool                               is;
     bool                               ic;
+    bool                               con_ok;
 
     s_updated = false;
     ns = CM2_UPLINK_NONE;
@@ -337,24 +338,25 @@ static void cm2_updating_ip(struct schema_Connection_Manager_Uplink *con,
         is = cstate->internet_ipv4_state;
     }
 
-    if (!(opts & c)) {
-        LOGI("Ret1");
+    if (!(opts & c))
         return;
-    }
 
     rc = opts & ROUTER_CHECK;
     ic = opts & INTERNET_CHECK;
+
+    if (!rc && !ic)
+        return;
+
+    con_ok = (((ic && is) || (con->unreachable_internet_counter <= 0 && !ic)) &&
+              ((rc && rs) || (con->unreachable_router_counter <= 0 && !rc)));
+
     switch (s) {
        case CM2_UPLINK_BLOCKED:
            break;
+
         case CM2_UPLINK_NONE:
         case CM2_UPLINK_READY:
-            LOGI("Uplink not set or ready rc = %d rs = %d", rc, rs);
-
-            if (!rc && !rs && !ic && !is) {
-                LOGI("Nothing to check");
-            }
-            else if (rc == rs && ic == is) {
+            if (con_ok) {
                 s_updated = true;
                 ns = CM2_UPLINK_ACTIVE;
             }
@@ -362,40 +364,37 @@ static void cm2_updating_ip(struct schema_Connection_Manager_Uplink *con,
                 s_updated = true;
                 ns = CM2_UPLINK_INACTIVE;
             }
-
             break;
 
         case CM2_UPLINK_INACTIVE:
-            if ((rc && rs) || (ic && is)) {
+            if (con_ok) {
                 s_updated = true;
                 ns = CM2_UPLINK_ACTIVE;
-            }
-            if (con->unreachable_router_counter > BLOCKING_LINK_THRESHOLD) {
-                s_updated = true;
-                ns = CM2_UPLINK_BLOCKED;
-            }
+            } else {
+                if (con->unreachable_router_counter >= BLOCKING_LINK_THRESHOLD) {
+                    s_updated = true;
+                    ns = CM2_UPLINK_BLOCKED;
+                }
 
-            if (con->unreachable_internet_counter > BLOCKING_LINK_THRESHOLD) {
-                s_updated = true;
-                ns = CM2_UPLINK_BLOCKED;
+                if (con->unreachable_internet_counter >= BLOCKING_LINK_THRESHOLD) {
+                    s_updated = true;
+                    ns = CM2_UPLINK_BLOCKED;
+                }
             }
             break;
 
         case CM2_UPLINK_ACTIVE:
-            if ((rc && !rs) || (ic && !is)) {
+            if (!con_ok) {
                 s_updated = true;
                 ns = CM2_UPLINK_INACTIVE;
             }
             break;
 
        case CM2_UPLINK_UNBLOCKING:
-
-            if (!rc && !rs && !ic && !is) {
-                LOGW("Nothing to check during unblocking");
-            }
-            else if (rc == rs && ic == is) {
+            if (con_ok) {
                 s_updated = true;
                 ns = CM2_UPLINK_ACTIVE;
+                cm2_ovsdb_update_route_metric(con->if_name, CM2_METRIC_UPLINK_DEFAULT);
             }
             else {
                 s_updated = true;
@@ -417,6 +416,7 @@ static void cm2_updating_ip(struct schema_Connection_Manager_Uplink *con,
        cm2_ovsdb_CMU_set_ipv4(con->if_name, ns);
 }
 
+static
 void cm2_util_update_uplink_ip_state(struct schema_Connection_Manager_Uplink *con,
                                       target_connectivity_check_option_t opts,
                                       target_connectivity_check_t *cstate)
@@ -487,6 +487,7 @@ static bool cm2_connection_req_stability_process(const char *if_name,
          cstate.internet_ipv4_state | cstate.internet_ipv6_state);
 
     cm2_util_update_connectivity_failures(&con, opts, &cstate);
+    cm2_util_update_uplink_ip_state(&con, opts, &cstate);
 
     if (opts & NTP_CHECK)
         g_state.ntp_check = cstate.ntp_state;
@@ -773,6 +774,7 @@ static void cm2_connection_stability_check(void)
     uplink_i = uplinks;
     for (i = 0; i < cnts && uplink_i; i++, uplink_i++) {
         c_uplink = uplink_i->bridge_exists && uplink_i->is_used ? uplink_i->bridge : uplink_i->if_name;
+        opts |= FAST_CHECK;
         cm2_connection_req_stability_check_async(uplink_i->if_name, uplink_i->if_type, c_uplink, opts, true, false);
     }
 
@@ -783,6 +785,7 @@ static void cm2_connection_stability_check(void)
     uplink_i = uplinks;
     for (i = 0; i < cnts && uplink_i; i++, uplink_i++) {
         c_uplink = uplink_i->bridge_exists && uplink_i->is_used ? uplink_i->bridge : uplink_i->if_name;
+        opts |= FAST_CHECK;
         cm2_connection_req_stability_check_async(uplink_i->if_name, uplink_i->if_type, c_uplink, opts, true, false);
     }
 

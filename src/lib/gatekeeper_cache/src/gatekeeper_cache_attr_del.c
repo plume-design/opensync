@@ -79,6 +79,7 @@ gkc_free_attr_entry(struct attr_cache *attr_entry, enum gk_cache_request_type at
         break;
     }
     FREE(attr_entry->gk_policy);
+    FREE(attr_entry->network_id);
 }
 
 /**
@@ -117,6 +118,7 @@ free_flow_entry_members(struct ip_flow_cache *flow_entry)
     FREE(flow_entry->src_ip_addr);
     FREE(flow_entry->dst_ip_addr);
     FREE(flow_entry->gk_policy);
+    FREE(flow_entry->network_id);
 }
 
 /**
@@ -223,7 +225,7 @@ gkc_attr_ttl_expired(struct attr_cache *attr_entry)
     now = time(NULL);
 
     /* check if TTL is expired */
-    if ((now - attr_entry->cache_ts) < attr_entry->cache_ttl)
+    if ((now - attr_entry->original_ts) < attr_entry->cache_ttl)
     {
         return false;
     }

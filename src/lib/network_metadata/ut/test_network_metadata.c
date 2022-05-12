@@ -190,6 +190,7 @@ static struct flow_key * set_flow_key(int id)
     key->dport = (id == 1 ? 0 : (2000 + id));
     key->networkid = strndup("flex", sizeof("flex"));
     key->flowmarker = 150;
+    key->uplinkname = strndup("Tunnel", sizeof("Tunnel"));
 
     key->num_tags = 1;
     key->tags = CALLOC(key->num_tags, sizeof(*key->tags));
@@ -585,7 +586,8 @@ static void validate_flow_key(struct flow_key *key,
     TEST_ASSERT_EQUAL_INT(key->isparent_of_dmac, key_pb->parentofdstmac);
     TEST_ASSERT_EQUAL_STRING(key->src_ip, key_pb->srcip);
     TEST_ASSERT_EQUAL_STRING(key->dst_ip, key_pb->dstip);
-    TEST_ASSERT_EQUAL_STRING(key->networkid, key_pb->networkid);
+    TEST_ASSERT_EQUAL_STRING(key->networkid, key_pb->networkzone);
+    TEST_ASSERT_EQUAL_STRING(key->uplinkname, key_pb->uplinkname);
     validate_uint32_field((uint32_t)key->vlan_id, key_pb->vlanid,
                           key_pb->has_vlanid);
     validate_uint32_field((uint32_t)key->ethertype, key_pb->ethertype,
@@ -1593,6 +1595,9 @@ void test_serialize_flow_key_with_originator_direction(void)
         .state = test_fstate,
         .direction = 1,
         .originator = 1,
+        .networkid = NULL,
+        .uplinkname = NULL,
+        .flowmarker = 0,
     };
 
     struct flow_key *key = &test_key;
@@ -1708,12 +1713,14 @@ test_network_metadata(void)
     RUN_TEST(test_serialize_flow_key_with_originator_direction);
 }
 
+
 int main(int argc, char *argv[])
 {
+    char *filename = STRDUP(__FILE__);
     (void)argc;
     (void)argv;
 
-    ut_init(basename(__FILE__), NULL, NULL);
+    ut_init(filename, NULL, NULL);
 
     ut_setUp_tearDown(__func__, main_setUp, main_tearDown);
 
@@ -1728,5 +1735,6 @@ int main(int argc, char *argv[])
     /* Testing reports @see test_network_metadata_report.c */
     test_network_metadata_reports();
 
+    FREE(filename);
     return ut_fini();
 }

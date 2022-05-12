@@ -119,6 +119,10 @@ struct net_header_parser
     uint32_t packet_id;
     uint32_t nfq_queue_num;
     bool payload_updated;
+    uint16_t rx_vidx;
+    uint16_t tx_vidx;
+    uint16_t rx_pidx;
+    uint16_t tx_pidx;
 };
 
 

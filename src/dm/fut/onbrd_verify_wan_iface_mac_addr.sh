@@ -55,7 +55,7 @@ Testcase procedure:
                  Run: ./onbrd/onbrd_verify_wan_iface_mac_addr.sh [<WAN_INTERFACE>]
 Script usage example:
    ./onbrd/onbrd_verify_wan_iface_mac_addr.sh
-   ./onbrd/onbrd_verify_wan_iface_mac_addr.sh br-wan
+   ./onbrd/onbrd_verify_wan_iface_mac_addr.sh eth0
 usage_string
 }
 if [ -n "${1}" ]; then

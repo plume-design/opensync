@@ -54,8 +54,6 @@ struct in_key in_keys[] =
         .vlan_id = 0,
         .ethertype = 0,
         .ip_version = 0,
-        .networkid = "flex",
-        .flowmarker = 10,
     },
     {    /* 1 */
         .smac = "11:22:33:44:55:66",
@@ -63,8 +61,6 @@ struct in_key in_keys[] =
         .vlan_id = 0,
         .ethertype = 1,
         .ip_version = 0,
-        .networkid = "home",
-        .flowmarker = 20,
     },
     {   /* 2 */
 
@@ -73,8 +69,6 @@ struct in_key in_keys[] =
         .vlan_id = 1,
         .ethertype = 0x8000,
         .ip_version = 0,
-        .networkid = "home-1",
-        .flowmarker = 30,
     },
     {   /* 3 */
         .ip_version = 4,
@@ -83,6 +77,7 @@ struct in_key in_keys[] =
         .ipprotocol = 2,
         .networkid = "home-2",
         .flowmarker = 40,
+        .rx_idx = 11,
     },
     {   /* 4 */
         .ip_version = 4,
@@ -92,6 +87,7 @@ struct in_key in_keys[] =
         .sport = 36000,
         .dport = 1234,
         .networkid = "home-3",
+        .tx_idx = 11,
         .flowmarker = 50,
     },
     {   /* 5 */
@@ -106,6 +102,7 @@ struct in_key in_keys[] =
         .sport = 12345,
         .dport = 53,
         .networkid = "internet-3",
+        .rx_idx = 21,
         .flowmarker = 60,
     },
     {   /* 6 */
@@ -120,6 +117,7 @@ struct in_key in_keys[] =
         .sport = 12346,
         .dport = 53,
         .networkid = "guest-3",
+        .tx_idx = 16,
         .flowmarker = 70,
     },
     {   /* 7 */
@@ -128,8 +126,6 @@ struct in_key in_keys[] =
         .vlan_id = 100,
         .ethertype = 0,
         .ip_version = 0,
-        .networkid = "guest-2",
-        .flowmarker = 80,
     },
     {   /* 8 */
         .smac = "22:33:44:55:66:77",
@@ -137,8 +133,6 @@ struct in_key in_keys[] =
         .vlan_id = 100,
         .ethertype = 0,
         .ip_version = 0,
-        .networkid = "guest-5",
-        .flowmarker = 90,
     },
     {   /* 9 */
         .smac = "11:22:33:44:55:66",
@@ -151,6 +145,7 @@ struct in_key in_keys[] =
         .sport = 12345,
         .dport = 53,
         .networkid = "guest-6",
+        .tx_idx = 12,
         .flowmarker = 100,
     },
     {   /* 10 */
@@ -235,6 +230,7 @@ struct in_key in_keys[] =
         .dport = 42081,
         .networkid = "secure-1",
         .flowmarker = 120,
+        .rx_idx = 13,
     },
 };
 
@@ -303,9 +299,9 @@ static struct net_md_flow_key * in_key2net_md_key(struct in_key *in_key)
     key->sport = htons(in_key->sport);
     key->dport = htons(in_key->dport);
 
-    if (!in_key->networkid) in_key->networkid = "default";
-    key->networkid = strdup(in_key->networkid);
     key->flowmarker = in_key->flowmarker;
+    key->rx_idx = in_key->rx_idx;
+    key->tx_idx = in_key->tx_idx;
     return key;
 
 err_free_dst_ip:
@@ -365,7 +361,7 @@ void test_net_md_report_setup(void)
     snprintf(g_nd_test.location_id, sizeof(g_nd_test.location_id),
              "59efd33d2c93832025330a3e");
     snprintf(g_nd_test.mqtt_topic, sizeof(g_nd_test.mqtt_topic),
-             "dev-test/network_metadata/%s", g_nd_test.node_id);
+             "dev-test/IP/Flows/dog1/%s/%s", g_nd_test.node_id, g_nd_test.location_id);
     g_nd_test.node_info.node_id = g_nd_test.node_id;
     g_nd_test.node_info.location_id = g_nd_test.location_id;
     g_nd_test.initialized = true;
@@ -3138,7 +3134,8 @@ test_net_md_ufid(void)
 void
 test_network_metadata_reports(void)
 {
-    const char *this_filename = basename(__FILE__);
+    char *filename = STRDUP(__FILE__);
+    const char *this_filename = basename(filename);
     const char *old_filename = Unity.TestFile;
     UnitySetTestFile(this_filename);
 
@@ -3168,4 +3165,5 @@ test_network_metadata_reports(void)
     RUN_TEST(test_acc_flow_info_report);
     RUN_TEST(test_net_md_ufid);
     UnitySetTestFile(old_filename);
+    FREE(filename);
 }

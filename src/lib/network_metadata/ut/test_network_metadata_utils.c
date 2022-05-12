@@ -698,7 +698,8 @@ test_unit_net_md_lookup_eth_acc(void)
 void
 test_network_metadata_utils(void)
 {
-    const char *this_filename = basename(__FILE__);
+    char *filename = STRDUP(__FILE__);
+    const char *this_filename = basename(filename);
     const char *old_filename = Unity.TestFile;
     UnitySetTestFile(this_filename);
 
@@ -720,5 +721,6 @@ test_network_metadata_utils(void)
     RUN_TEST(test_unit_net_md_lookup_eth_acc);
 
     UnitySetTestFile(old_filename);
+    FREE(filename);
 }
 

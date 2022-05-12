@@ -38,7 +38,7 @@ echo "${FUT_TOPDIR}/shell/lib/sm_lib.sh sourced"
 
 ####################### SETUP SECTION - START #################################
 
-sm_log_test_pass_msg="---------------------------------- OK ----------------------------------"
+pass_msg="---------------------------------- OK ----------------------------------"
 
 ###############################################################################
 # DESCRIPTION:
@@ -78,13 +78,13 @@ sm_setup_test_environment()
 ###############################################################################
 # DESCRIPTION:
 #   Function inserts wifi stats config to Wifi_Stats_Config table.
-#   Supported radio types: 2.4G, 5GL, 5GU
+#   Supported radio bands: 2.4G, 5GL, 5GU
 #   Supported survey types: on-chan, off-chan, undefined
 #   Supported stats types: survey, neighbor
 #   Supported report type: raw
 #   Raises exception on failing to configure Wifi_Stats_Config table.
 # INPUT PARAMETER(S):
-#   $1  radio type (string, required)
+#   $1  radio band (string, required)
 #   $2  channel list (string, required)
 #   $3  stats type (string, required)
 #   $4  survey type (string, required)
@@ -103,7 +103,7 @@ insert_wifi_stats_config()
     local NARGS=7
     [ $# -ne ${NARGS} ] &&
         raise "sm_lib:insert_wifi_stats_config requires ${NARGS} input argument(s), $# given" -arg
-    sm_radio_type=$1
+    sm_radio_band=$1
     sm_channel_list=$2
     sm_stats_type=$3
     sm_survey_type=$4
@@ -118,7 +118,7 @@ insert_wifi_stats_config()
     fi
 
     insert_ovsdb_entry Wifi_Stats_Config \
-        -i radio_type "$sm_radio_type" \
+        -i radio_type "$sm_radio_band" \
         -i channel_list "$sm_channel_list" \
         -i stats_type "$sm_stats_type" \
         -i survey_type "$sm_survey_type" \
@@ -138,14 +138,14 @@ insert_wifi_stats_config()
 ###############################################################################
 # DESCRIPTION:
 #   Function checks existence of survey report log messages.
-#   Supported radio types: 2.4G, 5GL, 5GU
+#   Supported radio bands: 2.4G, 5GL, 5GU
 #   Supported survey types: on-chan, off-chan
 #   Supported log types: processing_survey, scheduled_scan, fetched_survey, sending_survey_report
 #   Raises exception on fail:
 #       - incorrect log type provided
 #       - logs not found
 # INPUT PARAMETER(S):
-#   $1  radio type (string, required)
+#   $1  radio band (string, required)
 #   $2  channel (int, required)
 #   $3  survey type (string, required)
 #   $4  log type (string, required)
@@ -161,45 +161,45 @@ check_survey_report_log()
     local NARGS=4
     [ $# -ne ${NARGS} ] &&
         raise "sm_lib:check_survey_report_log requires ${NARGS} input argument(s), $# given" -arg
-    sm_radio_type=$1
+    sm_radio_band=$1
     sm_channel=$2
     sm_survey_type=$3
     sm_log_type=$4
 
     case $sm_log_type in
-    *processing_survey*)
-        log_msg="Checking logs for survey $sm_radio_type channel $sm_channel reporting processing survey"
-        die_msg="No survey processing done on $sm_radio_type $sm_survey_type on channel $sm_channel"
-        sm_log_test_pass_msg="Survey processing done on $sm_radio_type $sm_survey_type on channel $sm_channel"
-        sm_log_grep="$LOGREAD | tail -1000 | grep -i 'Processing $sm_radio_type' | grep -i '$sm_survey_type $sm_channel'"
-        ;;
-    *scheduled_scan*)
-        log_msg="Checking logs for survey $sm_radio_type channel $sm_channel reporting scheduling survey"
-        die_msg="No survey scheduling done on $sm_radio_type $sm_survey_type on channel $sm_channel"
-        sm_log_test_pass_msg="Survey scheduling done on $sm_radio_type $sm_survey_type on channel $sm_channel"
-        sm_log_grep="$LOGREAD | tail -1000 | grep -i 'Scheduled $sm_radio_type $sm_survey_type $sm_channel scan'"
-        ;;
-    *fetched_survey*)
-        log_msg="Checking logs for survey $sm_radio_type channel $sm_channel reporting fetched survey"
-        die_msg="No survey fetching done on $sm_radio_type $sm_survey_type on channel $sm_channel"
-        sm_log_test_pass_msg="Survey fetching done on $sm_radio_type $sm_survey_type on channel $sm_channel"
-        sm_log_grep="$LOGREAD | tail -1000 | grep -i 'Fetched $sm_radio_type $sm_survey_type $sm_channel survey'"
-        ;;
-    *sending_survey_report*)
-        log_msg="Checking logs for survey $sm_radio_type channel $sm_channel reporting sending survey"
-        die_msg="No survey sending done on $sm_radio_type $sm_survey_type on channel $sm_channel"
-        sm_log_test_pass_msg="Survey sending done on $sm_radio_type $sm_survey_type on channel $sm_channel"
-        sm_log_grep="$LOGREAD | tail -1000 | grep -i 'Sending $sm_radio_type' | grep -i '$sm_survey_type $sm_channel survey report'"
-        ;;
-    *)
-        raise "FAIL: Incorrect log type provided" -l "sm_lib:check_survey_report_log" -arg
-        ;;
+        *processing_survey*)
+            log_msg="Checking logs for survey $sm_radio_band channel $sm_channel reporting processing survey"
+            die_msg="No survey processing done on $sm_radio_band $sm_survey_type on channel $sm_channel"
+            pass_msg="Survey processing done on $sm_radio_band $sm_survey_type on channel $sm_channel"
+            sm_log_grep="$LOGREAD | tail -1000 | grep -i 'Processing $sm_radio_band' | grep -i '$sm_survey_type $sm_channel'"
+            ;;
+        *scheduled_scan*)
+            log_msg="Checking logs for survey $sm_radio_band channel $sm_channel reporting scheduling survey"
+            die_msg="No survey scheduling done on $sm_radio_band $sm_survey_type on channel $sm_channel"
+            pass_msg="Survey scheduling done on $sm_radio_band $sm_survey_type on channel $sm_channel"
+            sm_log_grep="$LOGREAD | tail -1000 | grep -i 'Scheduled $sm_radio_band $sm_survey_type $sm_channel scan'"
+            ;;
+        *fetched_survey*)
+            log_msg="Checking logs for survey $sm_radio_band channel $sm_channel reporting fetched survey"
+            die_msg="No survey fetching done on $sm_radio_band $sm_survey_type on channel $sm_channel"
+            pass_msg="Survey fetching done on $sm_radio_band $sm_survey_type on channel $sm_channel"
+            sm_log_grep="$LOGREAD | tail -1000 | grep -i 'Fetched $sm_radio_band $sm_survey_type $sm_channel survey'"
+            ;;
+        *sending_survey_report*)
+            log_msg="Checking logs for survey $sm_radio_band channel $sm_channel reporting sending survey"
+            die_msg="No survey sending done on $sm_radio_band $sm_survey_type on channel $sm_channel"
+            pass_msg="Survey sending done on $sm_radio_band $sm_survey_type on channel $sm_channel"
+            sm_log_grep="$LOGREAD | tail -1000 | grep -i 'Sending $sm_radio_band' | grep -i '$sm_survey_type $sm_channel survey report'"
+            ;;
+        *)
+            raise "FAIL: Incorrect log type provided" -l "sm_lib:check_survey_report_log" -arg
+            ;;
     esac
 
     log "sm_lib:check_survey_report_log - $log_msg"
     wait_for_function_response 0 "${sm_log_grep}" &&
-        log -deb "sm_lib:check_survey_report_log - Found $sm_log_test_pass_msg - Success" ||
-        raise "FAIL: $die_msg" -l "sm_lib:check_survey_report_log - Log not found" -tc
+        log -deb "sm_lib:check_survey_report_log - $pass_msg - Success" ||
+        raise "FAIL: $die_msg" -l "sm_lib:check_survey_report_log" -tc
 
     return 0
 }
@@ -207,12 +207,12 @@ check_survey_report_log()
 ###############################################################################
 # DESCRIPTION:
 #   Function inspects existence of all survey report messages.
-#   Supported radio types: 2.4G, 5GL, 5GU
+#   Supported radio bands: 2.4G, 5GL, 5GU
 #   Supported survey types: on-chan, off-chan
 #   Supported report type: raw
 #   Raises exception if fails to empty table Wifi_Stats_Config.
 # INPUT PARAMETER(S):
-#   $1  radio type (string, required)
+#   $1  radio band (string, required)
 #   $2  channel (int, required)
 #   $3  survey type (string, required)
 #   $4  reporting interval (int, required)
@@ -229,7 +229,7 @@ inspect_survey_report()
     local NARGS=6
     [ $# -ne ${NARGS} ] &&
         raise "sm_lib:inspect_survey_report requires ${NARGS} input argument(s), $# given" -arg
-    sm_radio_type=$1
+    sm_radio_band=$1
     sm_channel=$2
     sm_survey_type=$3
     sm_reporting_interval=$4
@@ -243,7 +243,7 @@ inspect_survey_report()
         raise "FAIL: empty_ovsdb_table - Could not empty Wifi_Stats_Config" -l "sm_lib:inspect_survey_report" -oe
 
     insert_wifi_stats_config \
-        "$sm_radio_type" \
+        "$sm_radio_band" \
         "$sm_channel_list" \
         "$sm_stats_type" \
         "$sm_survey_type" \
@@ -253,10 +253,10 @@ inspect_survey_report()
             log -deb "sm_lib:inspect_survey_report - Wifi_Stats_Config inserted - Success" ||
             raise "FAIL: Could not insert Wifi_Stats_Config: insert_wifi_stats_config" -l "sm_lib:inspect_survey_report" -oe
 
-    check_survey_report_log "$sm_radio_type" "$sm_channel" "$sm_survey_type" processing_survey
-    check_survey_report_log "$sm_radio_type" "$sm_channel" "$sm_survey_type" scheduled_scan
-    check_survey_report_log "$sm_radio_type" "$sm_channel" "$sm_survey_type" fetched_survey
-    check_survey_report_log "$sm_radio_type" "$sm_channel" "$sm_survey_type" sending_survey_report
+    check_survey_report_log "$sm_radio_band" "$sm_channel" "$sm_survey_type" processing_survey
+    check_survey_report_log "$sm_radio_band" "$sm_channel" "$sm_survey_type" scheduled_scan
+    check_survey_report_log "$sm_radio_band" "$sm_channel" "$sm_survey_type" fetched_survey
+    check_survey_report_log "$sm_radio_band" "$sm_channel" "$sm_survey_type" sending_survey_report
 
     empty_ovsdb_table Wifi_Stats_Config ||
         raise "FAIL: empty_ovsdb_table - Could not empty Wifi_Stats_Config table" -l "sm_lib:inspect_survey_report" -oe
@@ -267,15 +267,15 @@ inspect_survey_report()
 ###############################################################################
 # DESCRIPTION:
 #   Function checks neighbor report log messages.
-#   Supported radio types: 2.4G, 5GL, 5GU
+#   Supported radio bands: 2.4G, 5GL, 5GU
 #   Supported survey types: on-chan, off-chan
-#   Supported log types: add_neighbor, parsed_neighbor_bssid,
+#   Supported log types: adding_neighbor, parsed_neighbor_bssid,
 #                        parsed_neighbor_ssid, sending_neighbor
 #   Raises exception on fail:
 #       - incorrect log type provided
 #       - log not found
 # INPUT PARAMETER(S):
-#   $1  radio type (string, required)
+#   $1  radio band (string, required)
 #   $2  channel (int, required)
 #   $3  survey type (string, required)
 #   $4  log type (string, required)
@@ -285,14 +285,14 @@ inspect_survey_report()
 #   0   On success.
 #   See DESCRIPTION.
 # USAGE EXAMPLE(S):
-#   check_neighbor_report_log 5GL 1 on-chan add_neighbor <neighbor MAC> <neighbor SSID>
+#   check_neighbor_report_log 5GL 1 on-chan adding_neighbor <neighbor MAC> <neighbor SSID>
 ###############################################################################
 check_neighbor_report_log()
 {
     local NARGS=6
     [ $# -ne ${NARGS} ] &&
         raise "sm_lib:check_neighbor_report_log requires ${NARGS} input argument(s), $# given" -arg
-    sm_radio_type=$1
+    sm_radio_band=$1
     sm_channel=$2
     sm_survey_type=$3
     sm_log_type=$4
@@ -300,39 +300,39 @@ check_neighbor_report_log()
     sm_neighbor_ssid=$6
 
     case $sm_log_type in
-    *add_neighbor*)
-        log_msg="Checking for $sm_radio_type neighbor adding for $sm_neighbor_mac"
-        die_msg="No neighbor $sm_neighbor_mac was added"
-        sm_log_test_pass_msg="Neighbor $sm_neighbor_mac was added"
-        sm_log_grep="$LOGREAD | tail -1000 | grep -i 'Adding $sm_radio_type' | grep -i \"$sm_survey_type neighbor {bssid='$sm_neighbor_mac' ssid='$sm_neighbor_ssid'\" | grep -i 'chan=$sm_channel'"
-        ;;
-    *parsed_neighbor_bssid*)
-        log_msg="Checking for $sm_radio_type neighbor parsing of bssid $sm_neighbor_mac"
-        die_msg="No neighbor $sm_neighbor_mac was parsed"
-        sm_log_test_pass_msg="Neighbor $sm_neighbor_mac was parsed"
-        sm_log_grep="$LOGREAD | tail -1000 | grep -i 'Parsed $sm_radio_type' | grep -i 'BSSID $sm_neighbor_mac'"
-        ;;
-    *parsed_neighbor_ssid*)
-        log_msg="Checking for $sm_radio_type neighbor parsing of ssid $sm_neighbor_ssid"
-        die_msg="No neighbor $sm_neighbor_ssid was parsed"
-        sm_log_test_pass_msg="Neighbor $sm_neighbor_ssid was parsed"
-        sm_log_grep="$LOGREAD | tail -1000 | grep -i 'Parsed $sm_radio_type' | grep -i 'SSID $sm_neighbor_ssid'"
-        ;;
-    *sending_neighbor*)
-        log_msg="Checking for $sm_radio_type neighbor sending of $sm_neighbor_mac"
-        die_msg="No neighbor $sm_neighbor_mac was sent"
-        sm_log_test_pass_msg="Neighbor $sm_neighbor_mac was sent"
-        sm_log_grep="$LOGREAD | tail -5000 | grep -i 'Sending $sm_radio_type' | grep -i \"$sm_survey_type neighbors {bssid='$sm_neighbor_mac' ssid='$sm_neighbor_ssid'\" | grep -i 'chan=$sm_channel'"
-        ;;
-    *)
-        raise "FAIL: Incorrect log type provided" -l "sm_lib:check_neighbor_report_log" -arg
-        ;;
+        *adding_neighbor*)
+            log_msg="Checking logs for $sm_radio_band neighbor adding for $sm_neighbor_mac"
+            die_msg="No neighbor $sm_neighbor_mac was added"
+            pass_msg="Neighbor $sm_neighbor_mac was added"
+            sm_log_grep="$LOGREAD | tail -1000 | grep -i 'Adding $sm_radio_band' | grep -i \"$sm_survey_type neighbor {bssid='$sm_neighbor_mac' ssid='$sm_neighbor_ssid'\" | grep -i 'chan=$sm_channel'"
+            ;;
+        *parsed_neighbor_bssid*)
+            log_msg="Checking logs for $sm_radio_band neighbor parsing of bssid $sm_neighbor_mac"
+            die_msg="No neighbor bssid $sm_neighbor_mac was parsed"
+            pass_msg="Neighbor bssid $sm_neighbor_mac was parsed"
+            sm_log_grep="$LOGREAD | tail -1000 | grep -i 'Parsed $sm_radio_band' | grep -i 'BSSID $sm_neighbor_mac'"
+            ;;
+        *parsed_neighbor_ssid*)
+            log_msg="Checking logs for $sm_radio_band neighbor parsing of ssid $sm_neighbor_ssid"
+            die_msg="No neighbor ssid $sm_neighbor_ssid was parsed"
+            pass_msg="Neighbor $ ssid sm_neighbor_ssid was parsed"
+            sm_log_grep="$LOGREAD | tail -1000 | grep -i 'Parsed $sm_radio_band' | grep -i 'SSID $sm_neighbor_ssid'"
+            ;;
+        *sending_neighbor*)
+            log_msg="Checking logs for $sm_radio_band neighbor sending of $sm_neighbor_mac"
+            die_msg="No neighbor $sm_neighbor_mac was sent"
+            pass_msg="Neighbor $sm_neighbor_mac was sent"
+            sm_log_grep="$LOGREAD | tail -5000 | grep -i 'Sending $sm_radio_band' | grep -i \"$sm_survey_type neighbors {bssid='$sm_neighbor_mac' ssid='$sm_neighbor_ssid'\" | grep -i 'chan=$sm_channel'"
+            ;;
+        *)
+            raise "FAIL: Incorrect log type provided" -l "sm_lib:check_neighbor_report_log" -arg
+            ;;
     esac
 
     log "sm_lib:check_neighbor_report_log - $log_msg"
     wait_for_function_response 0 "${sm_log_grep}" &&
-        log -deb "sm_lib:check_neighbor_report_log - Found $sm_log_test_pass_msg - Success" ||
-        raise "FAIL: $die_msg" -l "sm_lib:check_neighbor_report_log - Log not found" -tc
+        log -deb "sm_lib:check_neighbor_report_log - $pass_msg - Success" ||
+        raise "FAIL: $die_msg" -l "sm_lib:check_neighbor_report_log" -tc
 
     return 0
 }
@@ -340,12 +340,12 @@ check_neighbor_report_log()
 ###############################################################################
 # DESCRIPTION:
 #   Function checks existence of neighbor report messages.
-#   Supported radio types: 2.4G, 5GL, 5GU
+#   Supported radio bands: 2.4G, 5GL, 5GU
 #   Supported survey types: on-chan, off-chan
 #   Supported report type: raw
 #   Raises exception on fail.
 # INPUT PARAMETER(S):
-#   $1  radio type (string, required)
+#   $1  radio band (string, required)
 #   $2  channel (int, required)
 #   $3  survey type (string, required)
 #   $4  reporting interval (int, required)
@@ -364,7 +364,7 @@ inspect_neighbor_report()
     local NARGS=8
     [ $# -ne ${NARGS} ] &&
         raise "sm_lib:inspect_neighbor_report requires ${NARGS} input argument(s), $# given" -arg
-    sm_radio_type=$1
+    sm_radio_band=$1
     sm_channel=$2
     sm_survey_type=$3
     sm_reporting_interval=$4
@@ -380,7 +380,7 @@ inspect_neighbor_report()
         raise "FAIL: Could not empty Wifi_Stats_Config: empty_ovsdb_table" -l "sm_lib:inspect_neighbor_report" -oe
 
     insert_wifi_stats_config \
-        "$sm_radio_type" \
+        "$sm_radio_band" \
         "$sm_channel_list" \
         "survey" \
         "$sm_survey_type" \
@@ -391,7 +391,7 @@ inspect_neighbor_report()
             raise "FAIL: Could not insert Wifi_Stats_Config: insert_wifi_stats_config" -l "sm_lib:inspect_neighbor_report" -oe
 
     insert_wifi_stats_config \
-        "$sm_radio_type" \
+        "$sm_radio_band" \
         "$sm_channel_list" \
         "neighbor" \
         "$sm_survey_type" \
@@ -401,10 +401,10 @@ inspect_neighbor_report()
             log -deb "sm_lib:inspect_neighbor_report - Wifi_Stats_Config inserted - Success" ||
             raise "FAIL: Could not insert Wifi_Stats_Config: insert_wifi_stats_config" -l "sm_lib:inspect_neighbor_report" -oe
 
-    check_neighbor_report_log "$sm_radio_type" "$sm_channel" "$sm_survey_type" add_neighbor "$sm_neighbor_mac" "$sm_neighbor_ssid"
-    check_neighbor_report_log "$sm_radio_type" "$sm_channel" "$sm_survey_type" parsed_neighbor_bssid "$sm_neighbor_mac" "$sm_neighbor_ssid"
-    check_neighbor_report_log "$sm_radio_type" "$sm_channel" "$sm_survey_type" parsed_neighbor_ssid "$sm_neighbor_mac" "$sm_neighbor_ssid"
-    check_neighbor_report_log "$sm_radio_type" "$sm_channel" "$sm_survey_type" sending_neighbor "$sm_neighbor_mac" "$sm_neighbor_ssid"
+    check_neighbor_report_log "$sm_radio_band" "$sm_channel" "$sm_survey_type" adding_neighbor "$sm_neighbor_mac" "$sm_neighbor_ssid"
+    check_neighbor_report_log "$sm_radio_band" "$sm_channel" "$sm_survey_type" parsed_neighbor_bssid "$sm_neighbor_mac" "$sm_neighbor_ssid"
+    check_neighbor_report_log "$sm_radio_band" "$sm_channel" "$sm_survey_type" parsed_neighbor_ssid "$sm_neighbor_mac" "$sm_neighbor_ssid"
+    check_neighbor_report_log "$sm_radio_band" "$sm_channel" "$sm_survey_type" sending_neighbor "$sm_neighbor_mac" "$sm_neighbor_ssid"
 
     empty_ovsdb_table Wifi_Stats_Config ||
         raise "FAIL: empty_ovsdb_table - Could not empty Wifi_Stats_Config table" -l "sm_lib:inspect_neighbor_report" -oe
@@ -415,65 +415,64 @@ inspect_neighbor_report()
 ###############################################################################
 # DESCRIPTION:
 #   Function checks leaf report log messages.
-#   Supported radio types: 2.4G, 5GL, 5GU
-#   Supported log types: connected, client_parsing, client_update, sending.
+#   Supported radio bands: 2.4G, 5GL, 5GU
+#   Supported log types: connected, parsed, updating, sending.
 #   Raises exception on fail:
 #       - incorrect log type provided
 #       - logs not found
 # INPUT PARAMETER(S):
-#   $1  radio type (string, required)
+#   $1  radio band (string, required)
 #   $2  client mac (string, required)
 #   $3  log type (string, required)
 # RETURNS:
-#   None.
+#   0   On success.
 #   See DESCRIPTION.
 # USAGE EXAMPLE(S):
-#   check_neighbor_report_log 5GL <client MAC> connected
-#   check_neighbor_report_log 5GL <client MAC> client_parsing
+#   check_leaf_report_log 5GL <client MAC> connected
+#   check_leaf_report_log 5GL <client MAC> parsed
 ###############################################################################
 check_leaf_report_log()
 {
     local NARGS=3
     [ $# -ne ${NARGS} ] &&
         raise "sm_lib:check_leaf_report_log requires ${NARGS} input argument(s), $# given" -arg
-    sm_radio_type=$1
+    sm_radio_band=$1
     # shellcheck disable=SC2018,SC2019
-    sm_client_mac_address=$(echo "$2" | tr a-z A-Z)
+    sm_leaf_mac_address=$(echo "$2" | tr a-z A-Z)
     sm_log_type=$3
 
     case $sm_log_type in
-    *connected*)
-        log_msg="Checking logs for leaf reporting radio $sm_radio_type connection established"
-        die_msg="No client $sm_client_mac_address connected for reporting"
-        sm_log_test_pass_msg="Client $sm_client_mac_address connected for reporting"
-        sm_log_grep="$LOGREAD | tail -1000 | grep -i 'Marked $sm_radio_type' | grep -i 'client $sm_client_mac_address connected'"
-        ;;
-    *client_parsing*)
-        log_msg="Checking logs for leaf parsing $sm_client_mac_address"
-        die_msg="No client $sm_client_mac_address parsed"
-        sm_log_test_pass_msg="Client $sm_client_mac_address parsed"
-        sm_log_grep="$LOGREAD | tail -1000 | grep -i 'Parsed $sm_radio_type client MAC $sm_client_mac_address'"
-        ;;
-    *client_update*)
-        log_msg="Checking logs for leaf entry update $sm_client_mac_address"
-        die_msg="No client $sm_client_mac_address updated"
-        sm_log_test_pass_msg="Client $sm_client_mac_address updated"
-        sm_log_grep="$LOGREAD | tail -1000 | grep -i 'Updating $sm_radio_type' | grep -i 'client $sm_client_mac_address entry'"
-        ;;
-    *sending*)
-        log_msg="Checking logs for leaf $sm_client_mac_address $sm_radio_type sample sending"
-        die_msg="No client $sm_client_mac_address $sm_radio_type sample sending initiated"
-        sm_log_test_pass_msg="client $sm_client_mac_address $sm_radio_type sample sending initiated"
-        sm_log_grep="$LOGREAD | tail -1000 | grep -i 'Sending $sm_radio_type' | grep -i 'client $sm_client_mac_address stats'"
-        ;;
-    *)
-        raise "FAIL: Incorrect log type provided" -l "sm_lib:check_leaf_report_log" -arg
-        ;;
+        *connected*)
+            log_msg="Checking logs for 'Marked $sm_radio_band client $sm_leaf_mac_address connected'"
+            die_msg="Not marked $sm_radio_band client $sm_leaf_mac_address connected"
+            pass_msg="Marked $sm_radio_band client $sm_leaf_mac_address connected"
+            sm_log_grep="$LOGREAD | tail -1000 | grep -i 'Marked $sm_radio_band' | grep -i 'client $sm_leaf_mac_address connected'"
+            ;;
+        *parsed*)
+            log_msg="Checking logs for 'Parsed $sm_radio_band client MAC $sm_leaf_mac_address'"
+            die_msg="Not parsed $sm_radio_band client MAC $sm_leaf_mac_address"
+            pass_msg="Parsed $sm_radio_band client MAC $sm_leaf_mac_address"
+            sm_log_grep="$LOGREAD | tail -1000 | grep -i 'Parsed $sm_radio_band client MAC $sm_leaf_mac_address'"
+            ;;
+        *updating*)
+            log_msg="Checking logs for 'Updating $sm_radio_band client $sm_leaf_mac_address entry'"
+            die_msg="Not updating $sm_radio_band client $sm_leaf_mac_address entry"
+            pass_msg="Updating $sm_radio_band client $sm_leaf_mac_address entry"
+            sm_log_grep="$LOGREAD | tail -1000 | grep -i 'Updating $sm_radio_band' | grep -i 'client $sm_leaf_mac_address entry'"
+            ;;
+        *sending*)
+            log_msg="Checking logs for 'Sending $sm_radio_band client $sm_leaf_mac_address stats'"
+            die_msg="Not sending $sm_radio_band client $sm_leaf_mac_address stats"
+            pass_msg="Sending $sm_radio_band client $sm_leaf_mac_address stats"
+            sm_log_grep="$LOGREAD | tail -1000 | grep -i 'Sending $sm_radio_band' | grep -i 'client $sm_leaf_mac_address stats'"
+            ;;
+        *)
+            raise "FAIL: Incorrect log type provided" -l "sm_lib:check_leaf_report_log" -arg
+            ;;
     esac
-
     log "sm_lib:check_leaf_report_log - $log_msg"
     wait_for_function_response 0 "${sm_log_grep}" &&
-        log -deb "sm_lib:check_leaf_report_log - Log $sm_log_test_pass_msg found - Success" ||
+        log -deb "sm_lib:check_leaf_report_log - $pass_msg - Success" ||
         raise "FAIL: $die_msg" -l "sm_lib:check_leaf_report_log" -tc
 
     return 0
@@ -482,11 +481,11 @@ check_leaf_report_log()
 ###############################################################################
 # DESCRIPTION:
 #   Function checks existence of leaf report messages.
-#   Supported radio types: 2.4G, 5GL, 5GU
+#   Supported radio bands: 2.4G, 5GL, 5GU
 #   Supported report type: raw
 #   Raises exception on fail.
 # INPUT PARAMETER(S):
-#   $1  radio type (string, required)
+#   $1  radio band (string, required)
 #   $2  reporting interval (int, required)
 #   $3  sampling interval (int, required)
 #   $4  report type (string, required)
@@ -502,17 +501,20 @@ inspect_leaf_report()
     local NARGS=5
     [ $# -ne ${NARGS} ] &&
         raise "sm_lib:inspect_leaf_report requires ${NARGS} input argument(s), $# given" -arg
-    sm_radio_type=$1
+    sm_radio_band=$1
     sm_reporting_interval=$2
     sm_sampling_interval=$3
     sm_report_type=$4
     sm_leaf_mac=$5
+    if [[ -z $sm_leaf_mac ]]; then
+        raise "FAIL: Empty leaf MAC address" -l "sm_lib:inspect_leaf_report" -ow
+    fi
 
     empty_ovsdb_table Wifi_Stats_Config ||
         raise "FAIL: Could not empty Wifi_Stats_Config: empty_ovsdb_table" -l "sm_lib:inspect_leaf_report" -oe
 
     insert_wifi_stats_config \
-        "$sm_radio_type" \
+        "$sm_radio_band" \
         "[\"set\",[]]" \
         "survey" \
         "[\"set\",[]]" \
@@ -523,7 +525,7 @@ inspect_leaf_report()
             raise "FAIL: Could not insert Wifi_Stats_Config: insert_wifi_stats_config" -l "sm_lib:inspect_leaf_report" -oe
 
     insert_wifi_stats_config \
-        "$sm_radio_type" \
+        "$sm_radio_band" \
         "[\"set\",[]]" \
         "client" \
         "[\"set\",[]]" \
@@ -533,13 +535,15 @@ inspect_leaf_report()
             log -deb "sm_lib:inspect_leaf_report - Wifi_Stats_Config inserted - Success" ||
             raise "FAIL: Could not insert Wifi_Stats_Config: insert_wifi_stats_config" -l "sm_lib:inspect_leaf_report" -oe
 
-    check_leaf_report_log "$sm_radio_type" "$sm_leaf_mac" connected
-    check_leaf_report_log "$sm_radio_type" "$sm_leaf_mac" client_parsing
-    check_leaf_report_log "$sm_radio_type" "$sm_leaf_mac" client_update
-    check_leaf_report_log "$sm_radio_type" "$sm_leaf_mac" sending
+    check_leaf_report_log "$sm_radio_band" "$sm_leaf_mac" connected
+    check_leaf_report_log "$sm_radio_band" "$sm_leaf_mac" parsed
+    check_leaf_report_log "$sm_radio_band" "$sm_leaf_mac" updating
+    check_leaf_report_log "$sm_radio_band" "$sm_leaf_mac" sending
 
-    empty_ovsdb_table Wifi_Stats_Config ||
-        raise "FAIL: empty_ovsdb_table - Could not empty Wifi_Stats_Config table" -l "sm_lib:inspect_leaf_report" -oe
+    log "sm_lib:inspect_leaf_report - Emptying Wifi_Stats_Config table"
+    empty_ovsdb_table Wifi_Stats_Config &&
+        log -deb "sm_lib:inspect_leaf_report - Wifi_Stats_Config table emptied - Success" ||
+        raise "FAIL: Could not empty Wifi_Stats_Config table" -l "sm_lib:inspect_leaf_report" -oe
 
     return 0
 }

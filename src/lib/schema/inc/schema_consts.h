@@ -115,6 +115,10 @@ typedef enum {
 #define SCHEMA_CONSTS_SECURITY_ENCRYPT_WPA_2    "2"
 #define SCHEMA_CONSTS_SECURITY_ENCRYPT_WPA_MIX  "mixed"
 
+#define SCHEMA_CONSTS_SECURITY_PMF_DISABLED     "disabled"
+#define SCHEMA_CONSTS_SECURITY_PMF_OPTIONAL     "optional"
+#define SCHEMA_CONSTS_SECURITY_PMF_REQUIRED     "required"
+
 #define SCHEMA_CONSTS_INET_ENABLED          "enabled"
 #define SCHEMA_CONSTS_INET_DNS              "dns"
 #define SCHEMA_CONSTS_INET_DNS_PRIMARY      "primary"
@@ -131,11 +135,23 @@ typedef enum {
 #define SCHEMA_CONSTS_INET_DHCP_LEASE_TIME  "lease_time"
 #define SCHEMA_CONSTS_INET_DHCP_FORCE       "force"
 
-#define SCHEMA_CONSTS_KEY_DPP "dpp"
-#define SCHEMA_CONSTS_KEY_SAE "sae"
-#define SCHEMA_CONSTS_KEY_WPA2_PSK "wpa2-psk"
-#define SCHEMA_CONSTS_KEY_FT_WPA2_PSK "ft-wpa2-psk"
-#define SCHEMA_CONSTS_KEY_FT_SAE "ft-sae"
+#define SCHEMA_CONSTS_KEY_WPA_PSK           "wpa-psk"
+#define SCHEMA_CONSTS_KEY_WPA_PSK_SHA256    "wpa-psk-sha256"
+#define SCHEMA_CONSTS_KEY_WPA_EAP           "wpa-eap"
+#define SCHEMA_CONSTS_KEY_WPA_EAP_SHA256    "wpa-eap-sha256"
+#define SCHEMA_CONSTS_KEY_WPA_EAP_B_192     "wpa-eap-suite-b-192"
+#define SCHEMA_CONSTS_KEY_FT_SAE            "ft-sae"
+#define SCHEMA_CONSTS_KEY_FT_PSK            "ft-psk"
+#define SCHEMA_CONSTS_KEY_FT_EAP            "ft-eap"
+#define SCHEMA_CONSTS_KEY_FT_EAP_SHA384     "ft-eap-sha384"
+#define SCHEMA_CONSTS_KEY_DPP               "dpp"
+#define SCHEMA_CONSTS_KEY_SAE               "sae"
+#define SCHEMA_CONSTS_KEY_OWE               "owe"
+/* legacy and deprecated */
+#define SCHEMA_CONSTS_KEY_WPA2_PSK          "wpa2-psk"
+#define SCHEMA_CONSTS_KEY_WPA2_EAP          "wpa2-eap"
+#define SCHEMA_CONSTS_KEY_FT_WPA2_PSK       "ft-wpa2-psk"
+
 
 #define SCHEMA_CONSTS_DPP_INIT_ON_ANNOUNCE "initiate_on_announce"
 #define SCHEMA_CONSTS_DPP_INIT_NOW         "initiate_now"

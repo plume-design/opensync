@@ -41,6 +41,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "fsm_dns_utils.h"
 #include "fsm_dpi_client_plugin.h"
 #include "fsm_dpi_dns.h"
+#include "fsm_dpi_utils.h"
 #include "fsm_policy.h"
 #include "json_mqtt.h"
 #include "log.h"
@@ -52,6 +53,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "util.h"
 
 #define REDIRECT_TTL 10
+#define DNS_QTYPE_65 65
 
 /* TTL Len 4 bytes + RD length 2 bytes */
 #define DNS_TTL_START_OFFSET 6
@@ -474,14 +476,22 @@ fsm_dpi_dns_process_dns_record(struct fsm_session *session,
     mgr = fsm_dpi_dns_get_mgr();
     if (!mgr->initialized) return action;
 
+    /* Fetch information (category, etc) for this FQDN */
+    rec = &mgr->curr_rec_processed;
+
+    if (rec->resp[0].type != DNS_QTYPE_65)
+    {
+        LOGT("%s: dns qtype: %d is not 65. Already handled in DNS parser plugin",
+             __func__, rec->resp[0].type);
+        return action;
+    }
+
+    LOGT("%s: Processing dpi DNS request for %s", __func__, rec->qname);
+
     /* Interact with GK to get verdict for the name only */
     MEMZERO(info);
     rc = net_md_get_flow_info(acc, &info);
     if (!rc) return action;
-
-    /* Fetch information (category, etc) for this FQDN */
-    rec = &mgr->curr_rec_processed;
-    LOGT("%s: Processing dpi DNS request for %s", __func__, rec->qname);
 
     MEMZERO(fsm_request_param);
     fsm_request_param.session = session;
@@ -535,6 +545,7 @@ fsm_dpi_dns_process_dns_record(struct fsm_session *session,
         dns_cache_param.ttl = rec->resp[i].ttl;
         dns_cache_param.action_by_name = action;
         dns_cache_param.direction = NET_MD_ACC_OUTBOUND_DIR;
+        dns_cache_param.network_id = fsm_ops_get_network_id(session, info.local_mac);
 
         if (rec->resp[i].ip_v == 4)
         {
@@ -916,6 +927,11 @@ fsm_dpi_dns_process_attr(struct fsm_session *session, const char *attr,
             if (cmp)
             {
                 LOGD("%s: value for %s should be %s", __func__, attr, dns_attr_value);
+                goto reset_state_machine;
+            }
+            if (rec->next_state == DNS_TYPE && rec->idx == 0)
+            {
+                LOGD("%s: No A, AAAA or HTTPS for %s", __func__, rec->qname);
                 goto reset_state_machine;
             }
             if (rec->next_state != DNS_TYPE || rec->idx == 0) goto wrong_state;

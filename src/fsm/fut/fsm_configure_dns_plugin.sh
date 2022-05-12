@@ -39,8 +39,8 @@ create_rad_vif_if_file="tools/device/create_radio_vif_interface.sh"
 create_inet_file="tools/device/create_inet_interface.sh"
 add_bridge_port_file="tools/device/add_bridge_port.sh"
 configure_lan_bridge_for_wan_connectivity_file="tools/device/configure_lan_bridge_for_wan_connectivity.sh"
-client_connect_file="tools/client/rpi/connect_to_wpa2.sh"
-fsm_test_dns_file="tools/client/rpi/fsm/fsm_test_dns_plugin.sh"
+client_connect_file="tools/client/connect_to_wpa.sh"
+fsm_test_dns_file="tools/client/fsm/fsm_test_dns_plugin.sh"
 # Default of_port must be unique between fsm tests for valid testing
 of_port_default=10000
 in_port_default=10001

@@ -675,7 +675,7 @@ ipthreat_process_action(struct fsm_session *session, int action,
         net_header_logt(net_parser);
     }
 
-    fsm_dpi_set_acc_state(session, net_parser, state);
+    fsm_dpi_set_plugin_decision(session, net_parser, state);
 }
 
 
@@ -900,7 +900,7 @@ clean_policy_req:
 
 error:
     acc->flow_marker = FSM_DPI_PASSTHRU;
-    fsm_dpi_set_acc_state(session, net_parser, FSM_DPI_PASSTHRU);
+    fsm_dpi_set_plugin_decision(session, net_parser, FSM_DPI_PASSTHRU);
 }
 
 

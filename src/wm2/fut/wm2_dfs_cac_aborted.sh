@@ -42,6 +42,10 @@ usage()
 cat << usage_string
 wm2/wm2_dfs_cac_aborted.sh [-h] arguments
 Testcase info:
+    Setup:
+        - If channels provided in testcase config are not both in the 'nop_finished' or
+        'available' state, the script would find alternative channels and execute
+        with new channels. Actual used channels would be reported inside log_title.
     Problem statement (example):
         - Start on DFS channel_a and wait for CAC to complete before channel is usable
         - Radar is detected while channel_a CAC is in progress (cac = 1-10 min)
@@ -113,29 +117,44 @@ trap '
     fut_info_dump_line
 ' EXIT SIGINT SIGTERM
 
-log_title "wm2/wm2_dfs_cac_aborted.sh: WM2 test - DFC CAC Aborted '${channel_a}'->'${channel_b}'"
-
-# Echoes one of the available channels on the radio that is allowed(NOP_FINISHED) for the test.
+###############################################################################
+# DESCRIPTION:
+#   Function echoes first of the available channels on the radio that is usable
+#   (NOP_FINISHED) for the test, but will not echo the channel provided as an
+#   argument, since that channel would already be determined as usable.
+#   Raises exception if no usable channel is found.
+# INPUT PARAMETER(S):
+#   $1  Channel (int, required)
+# RETURNS:
+#   0   Channel found.
+#   See DESCRIPTION.
+# USAGE EXAMPLE(S):
+#   get_usable_channel 36
+###############################################################################
 get_usable_channel()
 {
     local NARGS=1
     [ $# -ne ${NARGS} ] &&
         raise "get_usable_channel: Requires ${NARGS} input argument(s), $# given" -arg
-
     other_chan_in_use=${1}
 
+    # Wifi_Radio_State::allowed channels list must not be empty!
     get_chan_list=$(get_ovsdb_entry_value Wifi_Radio_State allowed_channels -w if_name "$if_name" -r)
     list_of_chans=$(echo "${get_chan_list}" | cut -d '[' -f3 | cut -d ']' -f1 | sed "s/,/ /g")
     [ -z "$list_of_chans" ] &&
         raise "FAIL: Wifi_Radio_State::allowed_channels not populated" -l "wm2/wm2_dfs_cac_aborted.sh" -ds
 
+    # Get the first channel in list that has state NOP_FINISHED and
+    # is not the one provided in the argument.
     for channel in ${list_of_chans}; do
         [ "$channel" -eq "$other_chan_in_use" ] && continue
-        check_is_nop_finished "$channel" "$if_name" &&
+        check_is_nop_finished "$channel" "$if_name" >/dev/null 2>&1
+        if [ $? = 0 ]; then
             echo "$channel" && return 0
+        fi
     done
 
-    raise "No channels on radio $if_name are available for CAC abort test" -l "wm2/wm2_dfs_cac_aborted.sh" -s
+    raise "FAIL: No channels on radio $if_name are available for CAC abort test" -l "wm2/wm2_dfs_cac_aborted.sh" -s
 }
 
 # Sanity check - are channels even allowed on the radio
@@ -146,25 +165,37 @@ check_is_channel_allowed "$channel_b" "$if_name" &&
     log "wm2/wm2_dfs_cac_aborted.sh:check_is_channel_allowed - channel $channel_b is allowed on radio $if_name" ||
     raise "Channel $channel_b is not allowed on radio $if_name" -l "wm2/wm2_dfs_cac_aborted.sh" -ds
 
-# Verify configured channel_a is in nop_finished state for the test. If, not switch to new channel.
+# Verify configured channel_a is in nop_finished state for the test. If not, switch to new channel.
 chan_state=$(get_radio_channel_state "$channel_a" "$if_name")
 if [ "$chan_state" = "nop_finished" ]; then
-    log "wm2/wm2_dfs_cac_aborted.sh: check_is_nop_finished - channel $channel_a on $if_name is usable for CAC abort test."
+    log "wm2/wm2_dfs_cac_aborted.sh: Channel $channel_a on $if_name is usable for CAC abort test."
 else
-    new_channel_a=$(get_usable_channel $channel_b)
-    log "wm2/wm2_dfs_cac_aborted.sh: Channel $channel_a is in $chan_state state but expected to be in \"nop_finished\" state. So, using another channel $new_channel_a on radio $if_name"
-    channel_a=$new_channel_a
+    log "wm2/wm2_dfs_cac_aborted.sh: Channel $channel_a in '$chan_state' state, expected \"nop_finished\". Searching for alternative channel."
+    new_channel_a=$(get_usable_channel "$channel_b")
+    if [ $? = 0 ]; then
+        log "wm2/wm2_dfs_cac_aborted.sh: Alternative channel '$new_channel_a' found"
+        channel_a=$new_channel_a
+    else
+        raise "FAIL: Could not find alternative channel for CAC abort test" -l "wm2/wm2_dfs_cac_aborted.sh" -s
+    fi
 fi
 
-# Verify configured channel_b is in nop_finished state for the test. If, not switch to new channel.
+# Verify configured channel_b is in nop_finished state for the test. If not, switch to new channel.
 chan_state=$(get_radio_channel_state "$channel_b" "$if_name")
 if [ "$chan_state" = "nop_finished" ]; then
-    log "wm2/wm2_dfs_cac_aborted.sh: check_is_nop_finished - channel $channel_b on $if_name is usable for CAC abort test."
+    log "wm2/wm2_dfs_cac_aborted.sh: Channel $channel_b on $if_name is usable for CAC abort test."
 else
-    new_channel_b=$(get_usable_channel $channel_a)
-    log "wm2/wm2_dfs_cac_aborted.sh: Channel $channel_b is in $chan_state state but expected to be in \"nop_finished\" state. So, using another channel $new_channel_b on radio $if_name"
-    channel_b=$new_channel_b
+    log "wm2/wm2_dfs_cac_aborted.sh: Channel $channel_b in '$chan_state' state, expected \"nop_finished\". Searching for alternative channel."
+    new_channel_b=$(get_usable_channel "$channel_a")
+    if [ $? = 0 ]; then
+        log "wm2/wm2_dfs_cac_aborted.sh: Alternative channel '$new_channel_b' found"
+        channel_b=$new_channel_b
+    else
+        raise "FAIL: Could not find alternative channel for CAC abort test" -l "wm2/wm2_dfs_cac_aborted.sh" -s
+    fi
 fi
+
+log_title "wm2/wm2_dfs_cac_aborted.sh: WM2 test - DFC CAC Aborted - Using: '${channel_a}'->'${channel_b}'"
 
 # Testcase:
 # Configure radio, create VIF and apply channel

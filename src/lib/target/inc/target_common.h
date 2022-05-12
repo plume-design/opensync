@@ -817,6 +817,7 @@ typedef enum {
     NTP_CHECK      = 1 << 3,
     IPV4_CHECK     = 1 << 4,
     IPV6_CHECK     = 1 << 5,
+    FAST_CHECK     = 1 << 6,
 } target_connectivity_check_option_t;
 
 /**

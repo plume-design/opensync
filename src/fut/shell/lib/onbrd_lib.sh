@@ -133,24 +133,24 @@ check_number_of_radios()
 #   Function checks if inet_addr at OS - LEVEL2 is the same as
 #   in test case config.
 # INPUT PARAMETER(S):
-#   $1  Bridge interface name (string, required)
+#   $1  WAN interface name (string, required)
 #   $2  Expected WAN IP (string, required)
 # RETURNS:
 #   0   IP is as expected.
-#   1   WAN bridge has no IP assigned or IP not equal to OS LEVEL2 IP address.
+#   1   WAN interface has no IP assigned or IP not equal to OS LEVEL2 IP address.
 # USAGE EXAMPLE(S):
-#   check_wan_ip_l2 br-wan 192.168.200.10
+#   check_wan_ip_l2 eth0 192.168.200.10
 ###############################################################################
 check_wan_ip_l2()
 {
     local NARGS=2
     [ $# -ne ${NARGS} ] &&
         raise "onbrd_lib:check_wan_ip_l2 requires ${NARGS} input argument(s), $# given" -arg
-    br_wan=$1
+    wan_ifname=$1
     inet_addr_in=$2
 
     # LEVEL2
-    inet_addr=$(ifconfig "$br_wan" | grep 'inet addr' | awk '/t addr:/{gsub(/.*:/,"",$2); print $2}')
+    inet_addr=$(ifconfig "$wan_ifname" | grep 'inet addr' | awk '/t addr:/{gsub(/.*:/,"",$2); print $2}')
     if [ -z "$inet_addr" ]; then
         log -deb "onbrd_lib:check_wan_ip_l2 - inet_addr is empty"
         return 1

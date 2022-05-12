@@ -91,6 +91,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define BM_CLIENT_OPCLASS_50_CAP_BIT (1 << 2)
 #define BM_CLIENT_OPCLASS_60_CAP_BIT (1 << 3)
 
+#define BM_CLIENT_MAX_RRM_REQ_CHANNELS_LEGACY 8
+#define BM_CLIENT_MAX_RRM_REQ_CHANNELS 16
+
 /*****************************************************************************/
 
 typedef enum {

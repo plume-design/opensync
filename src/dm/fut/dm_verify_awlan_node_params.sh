@@ -49,7 +49,7 @@ Testcase procedure:
                  Run: ./dm/dm_verify_awlan_node_params.sh <alwan_field_name> <alwan_field_val>
 Script usage example:
     ./dm/dm_verify_awlan_node_params.sh vendor_factory notempty
-    ./dm/dm_verify_awlan_node_params.sh vendor_name Plume
+    ./dm/dm_verify_awlan_node_params.sh vendor_name OpenSync
 
 usage_string
 }

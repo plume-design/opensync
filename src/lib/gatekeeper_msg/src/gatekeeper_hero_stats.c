@@ -82,6 +82,7 @@ get_protobuf_direction_value(enum gkc_flow_direction dir)
         case GKC_FLOW_DIRECTION_OUTBOUND    : return GATEKEEPER__HERO_STATS__HERO_DIRECTIONS__HERO_DIR_OUTBOUND;
         case GKC_FLOW_DIRECTION_INBOUND     : return GATEKEEPER__HERO_STATS__HERO_DIRECTIONS__HERO_DIR_INBOUND;
         case GKC_FLOW_DIRECTION_LAN2LAN     : return GATEKEEPER__HERO_STATS__HERO_DIRECTIONS__HERO_DIR_LAN2LAN;
+        default                             : break;
     }
     LOGD("%s(): no such direction %d", __func__, dir);
     return GATEKEEPER__HERO_STATS__HERO_DIRECTIONS__HERO_DIR_UNSPECIFIED;
@@ -502,6 +503,14 @@ get_blank_hero_stats_attr(os_macaddr_t *device_id, struct attr_cache *entry)
         pb->policy = STRDUP("Not GK policy");
     }
     pb->last_access_ts = entry->cache_ts;
+    if (entry->network_id)
+    {
+        pb->network_zone = STRDUP(entry->network_id);
+    }
+    else
+    {
+        pb->network_zone = STRDUP("unknown");
+    }
 
     return pb;
 }
@@ -532,6 +541,14 @@ get_blank_hero_stats_flow(os_macaddr_t *device_id, struct ip_flow_cache *entry)
         pb->policy = STRDUP("Not GK policy");
     }
     pb->last_access_ts = entry->cache_ts;
+    if (entry->network_id)
+    {
+        pb->network_zone = STRDUP(entry->network_id);
+    }
+    else
+    {
+        pb->network_zone = STRDUP("unknown");
+    }
 
     return pb;
 }
@@ -565,6 +582,7 @@ free_stats(Gatekeeper__HeroStats__HeroStats *pb)
     if (pb == NULL) return;
 
     FREE(pb->policy);
+    FREE(pb->network_zone);
     if (pb->redirect != NULL) FREE(pb->redirect->ipv6.data);
     FREE(pb->redirect);
     FREE(pb->ipv4);

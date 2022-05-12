@@ -337,6 +337,9 @@ bm_client_to_bsal_conf_bs_5g(bm_client_t *client, bm_group_t *group, radio_type_
 static bool
 bm_client_to_bsal_conf_bs_6g(bm_client_t *client, bm_group_t *group, radio_type_t radio_type, bsal_client_config_t *dest)
 {
+    if (client->state == BM_CLIENT_STATE_CONNECTED) {
+        dest->rssi_low_xing = client->lwm;
+    }
     return true;
 }
 
@@ -491,12 +494,14 @@ void
 bm_client_send_rrm_req(bm_client_t *client, bm_client_rrm_req_type_t rrm_req_type, int delay)
 {
     bm_rrm_req_t *req;
-    const size_t elements_num = 8;
-    uint8_t channels[elements_num];
-    uint8_t op_classes[elements_num];
+    size_t elements_num;
+    uint8_t channels[BM_CLIENT_MAX_RRM_REQ_CHANNELS];
+    uint8_t op_classes[BM_CLIENT_MAX_RRM_REQ_CHANNELS];
     int num_channels;
     uint32_t delay_ms;
     int i;
+
+    assert(BM_CLIENT_MAX_RRM_REQ_CHANNELS > BM_CLIENT_MAX_RRM_REQ_CHANNELS_LEGACY);
 
     if (!client->connected)
         return;
@@ -506,6 +511,11 @@ bm_client_send_rrm_req(bm_client_t *client, bm_client_rrm_req_type_t rrm_req_typ
         return;
     if (!client->info->is_RRM_supported)
         return;
+
+    if (client->band_cap_mask & BM_CLIENT_OPCLASS_60_CAP_BIT)
+        elements_num = BM_CLIENT_MAX_RRM_REQ_CHANNELS;
+    else
+        elements_num = BM_CLIENT_MAX_RRM_REQ_CHANNELS_LEGACY;
 
     bm_client_reset_rrm_neighbors(client);
     num_channels = bm_neighbor_get_channels(client, rrm_req_type, channels, elements_num, 0, op_classes, elements_num);
@@ -1547,6 +1557,8 @@ bm_client_get_btm_params( struct schema_Band_Steering_Clients *bscli,
             }
 
             if (WARN_ON(!neigh->op_class) || WARN_ON(!neigh->phy_type)) {
+                LOGW("Invalid neigh params: op_class: %hhu, phy_type: %hhu",
+                     neigh->op_class, neigh->phy_type);
                 memset(neigh, 0, sizeof(*neigh));
                 btm_params->num_neigh = 0;
             }

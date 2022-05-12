@@ -37,6 +37,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "schema.h"
 #include "lte_info.h"
 #include "osn_lte_modem.h"
+#include "cm2.h"
 
 #define WAN_DEFAULT_METRIC CONFIG_MANAGER_NM_ROUTE_BASE_METRIC
 #define LTE_DEFAULT_METRIC WAN_DEFAULT_METRIC + 50
@@ -177,7 +178,7 @@ int ltem_create_lte_route_table(ltem_mgr_t *mgr);
 void ltem_create_client_table(ltem_mgr_t *mgr);
 void ltem_client_table_update(ltem_mgr_t *mgr, struct schema_DHCP_leased_IP *dhcp_lease);
 void ltem_client_table_delete(ltem_mgr_t *mgr, struct schema_DHCP_leased_IP *dhcp_lease);
-void ltem_update_wan_route(ltem_mgr_t *mgr, char *if_name, char *wan_subnet, char *wan_gw, char *netmask);
+void ltem_update_wan_route(ltem_mgr_t *mgr, struct schema_Wifi_Route_Config *route_config);
 void ltem_update_lte_route(ltem_mgr_t *mgr, char *if_name, char *lte_subnet, char *lte_gw, char *netmask);
 int ltem_add_lte_client_routes(ltem_mgr_t *mgr);
 int ltem_restore_default_client_routes(ltem_mgr_t *mgr);
@@ -202,5 +203,7 @@ int lte_serialize_report(void);
 void lte_mqtt_cleanup(void);
 int ltem_ovsdb_cmu_update_lte_priority(ltem_mgr_t *mgr, uint32_t priority);
 int ltem_update_esim(ltem_mgr_t *mgr);
+bool ltem_init_lte_modem(void);
+char *ltem_ovsdb_get_if_type(char *if_name);
 
 #endif /* LTEM_MGR_H_INCLUDED */

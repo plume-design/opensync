@@ -29,6 +29,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <time.h>
 
 #include "dns_cache.h"
+#include "fsm_dpi_utils.h"
 #include "gatekeeper_multi_curl.h"
 #include "gatekeeper_single_curl.h"
 #include "gatekeeper_cache.h"
@@ -330,6 +331,7 @@ gatekeeper_check_attr_cache(struct fsm_policy_req *req,
     struct fqdn_pending_req *fqdn_req;
     struct fsm_url_request *req_info;
     struct fsm_url_reply *url_reply;
+    struct fsm_session *session;
     char *req_type_str;
     int req_type;
     bool ret;
@@ -338,6 +340,9 @@ gatekeeper_check_attr_cache(struct fsm_policy_req *req,
     req_info = fqdn_req->req_info;
     url_reply = req_info->reply;
     req_type = req->req_type;
+
+    session = req->session;
+    if (session == NULL) return false;
 
     entry = CALLOC(1, sizeof(*entry));
     if (entry == NULL) return false;
@@ -355,6 +360,8 @@ gatekeeper_check_attr_cache(struct fsm_policy_req *req,
     entry->attribute_type = req_type;
     entry->attr_name = req->url;
     entry->direction = (acc != NULL ? acc->direction : NET_MD_ACC_UNSET_DIR);
+    entry->network_id = fsm_ops_get_network_id(req->session, req->device_id);
+
     ret = gkc_lookup_attribute_entry(entry, true);
     req_type_str = gatekeeper_req_type_to_str(req_type);
     LOGT("%s(): %s of type %s, is %s in cache",
@@ -400,6 +407,7 @@ gatekeeper_check_ipflow_cache(struct fsm_policy_req *req,
 {
     struct gkc_ip_flow_interface *flow_entry;
     struct net_md_stats_accumulator *acc;
+    struct fsm_session *session;
     struct net_md_flow_key *key;
     bool ret;
 
@@ -408,6 +416,9 @@ gatekeeper_check_ipflow_cache(struct fsm_policy_req *req,
 
     key = acc->key;
     if (key == NULL) return false;
+
+    session = req->session;
+    if (session == NULL) return false;
 
     flow_entry = CALLOC(1, sizeof(*flow_entry));
     if (flow_entry == NULL) return false;
@@ -420,6 +431,7 @@ gatekeeper_check_ipflow_cache(struct fsm_policy_req *req,
     flow_entry->dst_ip_addr = key->dst_ip;
     flow_entry->src_port = key->sport;
     flow_entry->dst_port = key->dport;
+    flow_entry->network_id = fsm_ops_get_network_id(req->session, req->device_id);
 
     ret = gkc_lookup_flow(flow_entry, true);
     if (ret == true)
@@ -571,6 +583,11 @@ gatekeeper_add_attr_cache(struct fsm_policy_req *req,
         entry->gk_policy = url_reply->reply_info.gk_info.gk_policy;
     }
 
+    if (req->network_id)
+    {
+        entry->network_id = req->network_id;
+    }
+
     /* check if fqdn redirect entries needs to be added. */
     if (req_type == GK_CACHE_REQ_TYPE_FQDN) gk_populate_redirect_entry(entry, req, policy_reply);
 
@@ -649,6 +666,11 @@ gatekeeper_add_ipflow_cache(struct fsm_policy_req *req,
     if (url_reply->reply_info.gk_info.gk_policy)
     {
         flow_entry->gk_policy = url_reply->reply_info.gk_info.gk_policy;
+    }
+
+    if (req->network_id)
+    {
+        flow_entry->network_id = req->network_id;
     }
 
     ret = gkc_add_flow_entry(flow_entry);

@@ -90,7 +90,7 @@ static int pm_write_tmp(const char *file, const char *data)
     int fp = -1;
     int rv = -1;
 
-    fp = open(file, O_WRONLY | O_CREAT | O_TRUNC);
+    fp = open(file, O_WRONLY | O_CREAT | O_TRUNC, 0644);
     if (fp < 0) {
         goto err;
     }

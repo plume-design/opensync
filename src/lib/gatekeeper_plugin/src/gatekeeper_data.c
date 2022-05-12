@@ -27,6 +27,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <regex.h>
 #include <stdbool.h>
 
+#include "fsm_dpi_utils.h"
 #include "gatekeeper_data.h"
 #include "gatekeeper_msg.h"
 #include "gatekeeper.h"
@@ -171,6 +172,21 @@ gatekeeper_req_type_to_str(int req_type)
 }
 
 
+static void
+gatekeeper_add_netid(struct gk_req_header *header, struct gk_request_data *req_data)
+{
+    struct fsm_policy_req *req;
+
+    req = req_data->req;
+    if (req == NULL) return;
+
+    header->network_id = fsm_ops_get_network_id(req_data->session, req->device_id);
+    req->network_id = header->network_id;
+
+    LOGT("%s(): set network id to '%s' in gatekeeper request", __func__, header->network_id);
+}
+
+
 /**
  * @brief allocates and fills up a gatekeeper request header
  *
@@ -196,11 +212,13 @@ gatekeeper_allocate_req_header(struct gk_request_data *req_data)
     header->dev_id = req->device_id;
     header->location_id = session->location_id;
     header->node_id = session->node_id;
+    gatekeeper_add_netid(header, req_data);
 
     if (req->policy != NULL)
     {
         header->policy_rule = req->policy->rule_name;
     }
+    LOGT("%s(): network id in gw header %s", __func__, header->network_id);
 
     return header;
 }

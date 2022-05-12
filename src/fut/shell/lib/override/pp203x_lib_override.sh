@@ -56,38 +56,6 @@ disable_watchdog()
 
 ###############################################################################
 # DESCRIPTION:
-#   Function stops healthcheck process and disables it.
-#   Checks if healthcheck already stopped, does nothing if already stopped.
-# INPUT PARAMETER(S):
-#   None.
-# RETURNS:
-#   1   healthcheck process is not stopped.
-#   0   healthcheck process is stopped.
-# USAGE EXAMPLE(S):
-#   stop_healthcheck
-###############################################################################
-stop_healthcheck()
-{
-    if [ -n "$(get_pid "healthcheck")" ]; then
-        log -deb "pp203x_lib_override:stop_healthcheck - Disabling healthcheck."
-        /etc/init.d/healthcheck stop || true
-
-        log -deb "pp203x_lib_override:stop_healthcheck - Check if healthcheck is disabled"
-        wait_for_function_response 1 "$(get_process_cmd) | grep -e 'healthcheck' | grep -v 'grep'"
-        if [ "$?" -ne 0 ]; then
-            log -deb "pp203x_lib_override:stop_healthcheck - Healthcheck is not disabled ! PID: $(get_pid "healthcheck")"
-            return 1
-        else
-            log -deb "pp203x_lib_override:stop_healthcheck - Healthcheck is disabled."
-        fi
-    else
-        log -deb "pp203x_lib_override:stop_healthcheck - Healthcheck is already disabled."
-    fi
-    return 0
-}
-
-###############################################################################
-# DESCRIPTION:
 #   Function initializes device for use in FUT.
 #   It disables watchdog to prevent the device from rebooting.
 #   It stops healthcheck service to prevent the device from rebooting.

@@ -37,3 +37,4 @@ UNIT_DEPS += src/qm/qm_conn
 UNIT_DEPS += src/lib/upnp_parse
 UNIT_DEPS += src/lib/unity
 UNIT_DEPS += src/lib/unit_test_utils
+UNIT_DEPS += src/lib/json_mqtt

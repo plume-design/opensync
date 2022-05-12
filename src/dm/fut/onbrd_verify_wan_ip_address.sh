@@ -46,9 +46,9 @@ Arguments:
     \$2 (wan_ip)            : used as WAN IP address to be checked                       : (string)(required)
 Testcase procedure:
     - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
-                 Run: ./onbrd/onbrd_verify_wan_ip_address.sh br-wan 192.168.200.10
+                 Run: ./onbrd/onbrd_verify_wan_ip_address.sh <WAN-INTERFACE> <WAN-IP>
 Script usage example:
-   ./onbrd/onbrd_verify_wan_ip_address.sh br-wan 192.168.200.10
+   ./onbrd/onbrd_verify_wan_ip_address.sh eth0 192.168.200.10
 usage_string
 }
 if [ -n "${1}" ]; then

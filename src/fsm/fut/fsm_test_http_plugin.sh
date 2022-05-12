@@ -38,8 +38,8 @@ create_rad_vif_if_file="tools/device/create_radio_vif_interface.sh"
 create_inet_file="tools/device/create_inet_interface.sh"
 add_bridge_port_file="tools/device/add_bridge_port.sh"
 configure_lan_bridge_for_wan_connectivity_file="tools/device/configure_lan_bridge_for_wan_connectivity.sh"
-client_connect_file="tools/client/rpi/connect_to_wpa2.sh"
-client_send_curl_file="tools/client/rpi/fsm/fsm_make_curl_agent_req.sh"
+client_connect_file="tools/client/connect_to_wpa.sh"
+client_send_curl_file="tools/client/fsm/fsm_make_curl_agent_req.sh"
 usage() {
     cat << usage_string
 fsm/fsm_test_http_plugin.sh [-h] arguments
@@ -106,7 +106,17 @@ client_mac=$(echo "${client_mac}" | tr a-z A-Z)
 # Use first MAC from Wifi_Associated_Clients
 client_mac="${client_mac%%,*}"
 # FSM logs objects in non-constant order, reason for multiple grep-s
-fsm_message_regex="$LOGREAD | tail -500 | grep fsm_send_report | grep locationId | grep $(get_location_id) | grep nodeId | grep $(get_node_id) | grep httpRequests | grep ${client_mac} | grep userAgent | grep ${expected_user_agent}"
+fsm_message_regex="$LOGREAD |
+ tail -3000 |
+ grep fsm_send_report |
+ grep locationId |
+ grep $(get_location_id) |
+ grep nodeId |
+ grep $(get_node_id) |
+ grep httpRequests |
+ grep ${client_mac} |
+ grep userAgent |
+ grep ${expected_user_agent}"
 wait_for_function_response 0 "${fsm_message_regex}" 5 &&
     log "fsm/fsm_test_http_plugin.sh: FSM HTTP plugin UserAgent creation message found in logs - Success" ||
     raise "FAIL: Failed to find FSM HTTP message creation in logs, regex used: ${fsm_message_regex} " -l "fsm/fsm_test_http_plugin.sh" -tc

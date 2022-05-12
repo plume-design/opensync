@@ -371,6 +371,7 @@ http_get_device(struct http_session *h_session)
     net_parser = parser->net_parser;
     eth = &net_parser->eth_header;
     hdev = CALLOC(1, sizeof(*hdev));
+    if (hdev == NULL) return hdev;
 
     memcpy(&hdev->device_mac, eth->srcmac, sizeof(os_macaddr_t));
     ds_tree_init(&hdev->reports, http_ua_cmp,
@@ -387,7 +388,7 @@ http_get_device(struct http_session *h_session)
  * @brief looks up a user agent report in the report cache of a device
  *
  * @param hdev the device context
- * @user_agent the user agent to look up
+ * @param user_agent the user agent to look up
  * @return the report context if found, NULL otherwise
  */
 struct http_parse_report *
@@ -407,7 +408,7 @@ http_lookup_report(struct http_device *hdev,
  * @brief looks up or allocate a user agent for the report cache of a device
  *
  * @param hdev the device context
- * @user_agent the user agent to look up
+ * @param user_agent the user agent to look up
  * @return the report context if found or allocated, NULL otherwise
  */
 struct http_parse_report *
@@ -422,6 +423,7 @@ http_get_report(struct http_device *hdev,
 
     tree = &hdev->reports;
     report = CALLOC(1, sizeof(struct http_parse_report));
+    if (report == NULL) return report;
 
     memcpy(report->user_agent, user_agent, MAX_ELEMENT_SIZE);
     memcpy(&report->src_mac, &hdev->device_mac, sizeof(os_macaddr_t));
@@ -521,6 +523,7 @@ http_lookup_session(struct fsm_session *session)
 
     LOGD("%s: Adding new session %s", __func__, session->name);
     h_session = CALLOC(1, sizeof(struct http_session));
+    if (h_session == NULL) return h_session;
 
     ds_tree_insert(sessions, h_session, session);
 

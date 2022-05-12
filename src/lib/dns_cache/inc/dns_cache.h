@@ -102,6 +102,7 @@ struct ip2action
     int                         action_by_name;
     int                         cache_ttl;
     time_t                      cache_ts;
+    time_t                      original_ts;
     int                         af_family;
     uint8_t                     *ip_tbl;
     uint8_t                     policy_idx;

@@ -51,7 +51,7 @@ Testcase procedure:
     - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
                  Run: ./onbrd/onbrd_set_and_verify_bridge_mode.sh <WAN-INTERFACE> <WAN-IP> <HOME-INTERFACE> <PATCH-W2H> <PATCH-H2W>
 Script usage example:
-   ./onbrd/onbrd_set_and_verify_bridge_mode.sh br-wan 192.168.200.10 br-home patch-w2h patch-h2w
+   ./onbrd/onbrd_set_and_verify_bridge_mode.sh eth0 192.168.200.10 br-home patch-w2h patch-h2w
 usage_string
 }
 

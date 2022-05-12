@@ -84,6 +84,7 @@ dpi_adt_free_datapoint_pb(Interfaces__Adt__AdtDataPoint *data_pb)
         FREE(one_kv);
     }
     FREE(data_pb->kv_pair);
+    FREE(data_pb->network_zone);
 }
 
 void
@@ -122,6 +123,7 @@ dpi_adt_free_aggr_store_record(struct fsm_dpi_adt_data_record *rec)
 
     FREE(rec->key);
     FREE(rec->value);
+    FREE(rec->network_id);
 }
 
 void
@@ -159,6 +161,7 @@ dpi_adt_store(struct fsm_session *session,
     struct net_md_stats_accumulator *acc;
     struct net_md_flow_info *info;
     char value_str[1024];
+    char *network_id;
     size_t sz;
     bool rc;
 
@@ -247,6 +250,9 @@ dpi_adt_store(struct fsm_session *session,
     new_record->value_len = strlen(new_record->value);
 
     new_record->capture_time_ms = clock_real_ms();
+
+    network_id = session->ops.get_network_id(session, info->local_mac);
+    new_record->network_id = (network_id) ? STRDUP(network_id) : STRDUP("unknown");
 
     /* The new stored record is complete */
     aggr->data[aggr->data_idx] = new_record;
@@ -403,6 +409,9 @@ dpi_adt_populate_record(Interfaces__Adt__AdtDataPoint *record_pb,
 
     record_pb->kv_pair[record_pb->n_kv_pair] = one_kv_pair_pb;
     record_pb->n_kv_pair++;
+
+    record_pb->network_zone = STRDUP(rec->network_id);
+    if (record_pb->network_zone == NULL) goto cleanup;
 
     return true;
 

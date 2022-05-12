@@ -350,7 +350,6 @@ static void cm2_extender_init_state(void) {
 
     if (cm2_connection_get_used_link(&con)) {
         LOGD("%s link %s is  already marked as used", __func__, con.if_name);
-        g_state.link.is_used = true;
         STRSCPY(g_state.link.if_name, con.if_name);
         STRSCPY(g_state.link.if_type, con.if_type);
         g_state.link.is_used = true;

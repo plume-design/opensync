@@ -33,6 +33,7 @@ source "${FUT_TOPDIR}/shell/lib/unit_lib.sh"
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
+default_device_cert_path="/var/certs/"
 usage() {
     cat << usage_string
 tools/device/fut_configure_mqtt.sh [-h] arguments
@@ -45,8 +46,9 @@ Arguments:
     \$3 (location_id) : locationId for AWLAN_Node:mqtt_headers : (string)(required)
     \$4 (node_id)     : nodeId for AWLAN_Node:mqtt_headers     : (string)(required)
     \$5 (topics)      : topics for AWLAN_Node:mqtt_settings    : (string)(required)
-    \$6 (dut_ca_path) : Path to certificates folder on DUT     : (string)(required)
+    \$6 (dut_ca_path) : Path to certificates folder on DUT     : (string)(optional)(default=${default_device_cert_path})
 Script usage example:
+    ./tools/device/fut_configure_mqtt.sh 192.168.200.1 65002 1000 100 http
     ./tools/device/fut_configure_mqtt.sh 192.168.200.1 65002 1000 100 http /var/certs/
 usage_string
 }
@@ -82,16 +84,14 @@ port=${2}
 location_id=${3}
 node_id=${4}
 topics=${5}
-dut_ca_path=${6:-FUT_TOPDIR}
-fut_ca_path="${FUT_TOPDIR}/shell/tools/device/files/fut_ca.pem"
+certs_dir=${6:-$default_device_cert_path}
+fut_server_cert_path="${FUT_TOPDIR}/shell/tools/server/certs/ca.crt"
+fut_client_cert_path="${FUT_TOPDIR}/shell/tools/server/certs/client.crt"
+fut_client_key_path="${FUT_TOPDIR}/shell/tools/server/certs/client.key"
 
-log "tools/device/fut_configure_mqtt.sh: Adding FUT cert to device"
-cat "${fut_ca_path}" >> "${dut_ca_path}/ca.pem" ||
-    raise "Failed to add FUT cert to device" -ds -l "tools/device/fut_configure_mqtt.sh"
-
-update_ovsdb_entry SSL \
-    -u ca_cert "${dut_ca_path}/ca.pem" ||
-    raise "Failed to set ca_cert in SSL table to ${dut_ca_path}/ca.pem" -l "tools/device/fut_configure_mqtt.sh" -oe
+cat "${fut_server_cert_path}" > "${certs_dir}/ca.pem"
+cat "${fut_client_cert_path}" > "${certs_dir}/client.pem"
+cat "${fut_client_key_path}" > "${certs_dir}/client_dec.key"
 
 log "tools/device/fut_configure_mqtt.sh: Configuring MQTT AWLAN_Node settings"
 update_ovsdb_entry AWLAN_Node \
@@ -105,7 +105,7 @@ killall qm &&
 
 start_specific_manager qm &&
     log "tools/device/fut_configure_mqtt.sh: QM killed" ||
-    raise "Failed to start QM manager" -ds -l "tools/device/fut_configure_mqtt.sh"
+    raise "FAIL: to start QM manager" -ds -l "tools/device/fut_configure_mqtt.sh"
 
 set_manager_log QM TRACE ||
-    raise "set_manager_log QM TRACE" -l "tools/device/fut_configure_mqtt.sh" -ds
+    raise "FAIL: set_manager_log QM TRACE" -l "tools/device/fut_configure_mqtt.sh" -ds

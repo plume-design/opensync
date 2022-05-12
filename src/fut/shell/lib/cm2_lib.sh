@@ -224,71 +224,24 @@ manipulate_iptables_protocol()
     return 0
 }
 
-###############################################################################
-# DESCRIPTION:
-#   Function manipulates traffic by source address using iptables.
-#   Adds (inserts) or removes (deletes) rules to OUTPUT chain.
-#   Can block traffic by using block option.
-#   Can unblock traffic by using unblock option.
-#   Raises exception is rule cannot be applied.
-# INPUT PARAMETER(S):
-#   $1  option, block or unblock traffic (string, required)
-#   $2  source address to be blocked (string, required)
-# RETURNS:
-#   0   On success.
-#   See DESCRIPTION.
-# USAGE EXAMPLE(S):
-#   manipulate_iptables_address block 192.168.200.10
-###############################################################################
-manipulate_iptables_address()
-{
-    local NARGS=2
-    [ $# -ne ${NARGS} ] &&
-        raise "cm2_lib:manipulate_iptables_address requires ${NARGS} input argument(s), $# given" -arg
-    option=$1
-    address=$2
-
-    log -deb "cm2_lib:manipulate_iptables_address - $option $address internet"
-
-    if [ "$option" == "block" ]; then
-        iptable_option='I'
-        exit_code=0
-    elif [ "$option" == "unblock" ]; then
-        iptable_option='D'
-        # Waiting for exit code 1 if multiple iptables rules are inserted - safer way
-        exit_code=1
-    else
-        raise "FAIL: Wrong option, given:$option, supported: block, unblock" -l "cm2_lib:manipulate_iptables_address" -arg
-    fi
-
-    $(iptables -S | grep "OUTPUT -s $address -j DROP")
-    # Add rule if not already an identical one in table, but unblock always
-    if [ "$?" -ne 0 ] || [ "$option" == "unblock" ]; then
-        wait_for_function_response $exit_code "iptables -$iptable_option OUTPUT -s $address -j DROP" &&
-            log -deb "cm2_lib:manipulate_iptables_address - internet ${option}ed - Success" ||
-            raise "FAIL: Could not $option internet" -l "cm2_lib:manipulate_iptables_address" -nf
-    else
-        log -deb "cm2_lib:manipulate_iptables_address - Add failure: Rule already in chain?"
-    fi
-
-    return 0
-}
-
 ####################### TEST CASE SECTION - STOP ##############################
 
 ###############################################################################
 # DESCRIPTION:
 #   Function clears the DNS cache.
-#   This is a stub function. Provide function for each device in overrides.
+# STUB:
+#   This function is a stub. It always raises an exception and needs
+#   a function with the same name and usage in platform or device overrides.
 # INPUT PARAMETER(S):
 #   None.
 # RETURNS:
-#   0   Always.
+#   0   If DNS cache on the device was cleared.
 # USAGE EXAMPLE(S):
 #   clear_dns_cache
 ###############################################################################
 clear_dns_cache()
 {
-    log -deb "cm2_lib:clear_dns_cache - This is a stub function. Override implementation can be provided to clear DNS cache."
-    return 0
+    log "cm2_lib:clear_dns_cache - Clearing DNS cache on the device."
+    # Provide override in platform specific file
+    raise "FAIL: This is a stub function. Override implementation needed." -l "cm2_lib:clear_dns_cache" -fc
 }

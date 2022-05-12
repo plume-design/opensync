@@ -408,6 +408,8 @@ free_flow_key(struct flow_key *key)
     FREE(key->dmac);
     FREE(key->src_ip);
     FREE(key->dst_ip);
+    FREE(key->networkid);
+    FREE(key->uplinkname);
 
     free_flow_key_tags(key);
     free_flow_key_vdr_data(key);
@@ -545,8 +547,8 @@ struct net_md_flow_key * set_net_md_flow_key(struct net_md_flow_key *lkey)
     key->fend = lkey->fend;
     key->tcp_flags = lkey->tcp_flags;
     key->icmp_type = lkey->icmp_type;
-    key->networkid = lkey->networkid;
-    key->flowmarker = lkey->flowmarker;
+    key->rx_idx = lkey->rx_idx;
+    key->tx_idx = lkey->tx_idx;
     return key;
 
 err_free_src_ip:
@@ -620,6 +622,7 @@ struct flow_key * net_md_set_flow_key(struct net_md_flow_key *key)
     fkey->protocol = key->ipprotocol;
     fkey->sport = ntohs(key->sport);
     fkey->dport = ntohs(key->dport);
+    fkey->flowmarker = key->flowmarker;
 
     /* New flow is observed */
     fkey->state.first_obs = time(NULL);
@@ -1904,6 +1907,9 @@ net_md_update_flow_key(struct net_md_aggregator *aggr,
     /* Update flow tags */
     net_md_update_flow_tags(fkey, flowkey_pb);
 
+    if (flowkey_pb->networkzone) fkey->networkid = STRDUP(flowkey_pb->networkzone);
+    if (flowkey_pb->uplinkname) fkey->uplinkname = STRDUP(flowkey_pb->uplinkname);
+
     /* Update vendor data */
     net_md_update_vendor_data(fkey, flowkey_pb);
 
@@ -2133,8 +2139,9 @@ net_md_log_key(struct net_md_flow_key *key, const char *caller)
          " dport: %d"                     \
          " direction: %s"                 \
          " origin: %s"                    \
-         " networkid: %s"                 \
-         " flowmarker: %d",               \
+         " flowmarker: %d"                \
+         " rx_if_idx: %d"                 \
+         " tx_if_idx: %d",
          FMT_os_macaddr_pt(smac),
          FMT_os_macaddr_pt(dmac),
          FMT_os_ufid_t_pt(ufid),
@@ -2150,8 +2157,9 @@ net_md_log_key(struct net_md_flow_key *key, const char *caller)
          ntohs(key->dport),
          net_md_dir_to_str(key->direction),
          net_md_origin_to_str(key->originator),
-         key->networkid,
-         key->flowmarker
+         key->flowmarker,
+         key->rx_idx,
+         key->tx_idx
         );
     if (key->fstart) LOGD(" Flow Starts");
     if (key->fend) LOGD(" Flow Ends");
@@ -2185,7 +2193,8 @@ net_md_log_fkey(struct flow_key *fkey, const char *caller)
          " direction: %s"           \
          " origin: %s"              \
          " networkid: %s"           \
-         " flowmarker: %d",         \
+         " flowmarker: %d"          \
+         " uplinkname: %s",
          fkey->smac,
          fkey->dmac,
          (fkey->isparent_of_smac ? "true" : "false"),
@@ -2201,7 +2210,8 @@ net_md_log_fkey(struct flow_key *fkey, const char *caller)
          net_md_dir_to_str(fkey->direction),
          net_md_origin_to_str(fkey->originator),
          fkey->networkid,
-         fkey->flowmarker
+         fkey->flowmarker,
+         fkey->uplinkname
         );
     LOGD(" Flow State:");
     LOGD(" First observed : %s", ctime(&fkey->state.first_obs));

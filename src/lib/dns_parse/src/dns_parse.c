@@ -23,6 +23,7 @@
 
 #include "fsm.h"
 #include "fsm_dns_utils.h"
+#include "fsm_dpi_utils.h"
 #include "fsm_policy.h"
 #include "dns_cache.h"
 #include "dns_parse.h"
@@ -639,6 +640,7 @@ process_response_ips(dns_info *dns, uint8_t *packet,
                              (uint32_t)req->rd_ttl : ip2action_cache_ttl);
                 param.direction = NET_MD_ACC_OUTBOUND_DIR;
                 param.action_by_name = policy_reply->action;
+                param.network_id = fsm_ops_get_network_id(req->fsm_context, &req->dev_id);
 
                 fsm_dns_cache_add_entry(&param);
             }
@@ -744,6 +746,8 @@ update_a_rrs(dns_info *dns, uint8_t *packet,
                     param.ipaddr = &ipaddr;
                     param.direction = NET_MD_ACC_OUTBOUND_DIR;
                     param.action_by_name = policy_reply->action;
+                    param.network_id = fsm_ops_get_network_id(req->fsm_context, &req->dev_id);
+
                     rc = fsm_dns_cache_add_redirect_entry(&param);
                     if (rc == false)
                     {
@@ -781,6 +785,8 @@ update_a_rrs(dns_info *dns, uint8_t *packet,
                     param.ipaddr = &ipaddr;
                     param.direction = NET_MD_ACC_OUTBOUND_DIR;
                     param.action_by_name = policy_reply->action;
+                    param.network_id = fsm_ops_get_network_id(req->fsm_context, &req->dev_id);
+
                     rc = fsm_dns_cache_add_redirect_entry(&param);
                     if (rc == false)
                     {

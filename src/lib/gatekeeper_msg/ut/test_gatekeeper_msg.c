@@ -55,6 +55,7 @@ struct gk_req_header g_gk_req_header =
     .node_id = "4C718002B3",
     .dev_id = &g_test_mac,
     .req_id = 1,
+    .network_id = "test_network"
 };
 
 struct test_tuple

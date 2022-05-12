@@ -61,6 +61,10 @@ fsm_nfq_net_header_parse(struct nfq_pkt_info *pkt_info, void *data)
     net_parser.packet_len = pkt_info->payload_len;
     net_parser.caplen = pkt_info->payload_len;
     net_parser.data = (uint8_t *)pkt_info->payload;
+    net_parser.rx_vidx = pkt_info->rx_vidx;
+    net_parser.tx_vidx = pkt_info->tx_vidx;
+    net_parser.rx_pidx = pkt_info->rx_pidx;
+    net_parser.tx_pidx = pkt_info->tx_pidx;
 
     net_parser.start = net_parser.data;
     net_parser.parsed = 0;
@@ -106,28 +110,15 @@ fsm_nfq_net_header_parse(struct nfq_pkt_info *pkt_info, void *data)
     }
 
     ip_protocol = net_parser.ip_protocol;
-    if (ip_protocol == IPPROTO_TCP)
-    {
-        len = net_header_parse_tcp(&net_parser);
-        if (len == 0) return;
-    }
+    if (ip_protocol == IPPROTO_TCP) len = net_header_parse_tcp(&net_parser);
+    if (ip_protocol == IPPROTO_UDP) len = net_header_parse_udp(&net_parser);
+    if (ip_protocol == IPPROTO_ICMP) len = net_header_parse_icmp(&net_parser);
+    if (ip_protocol == IPPROTO_ICMPV6) len = net_header_parse_icmp6(&net_parser);
 
-    if (ip_protocol == IPPROTO_UDP)
+    if (len == 0)
     {
-        len = net_header_parse_udp(&net_parser);
-        if (len == 0) return;
-    }
-
-    if (ip_protocol == IPPROTO_ICMP)
-    {
-        len = net_header_parse_icmp(&net_parser);
-        if (len == 0) return;
-    }
-
-    if (ip_protocol == IPPROTO_ICMPV6)
-    {
-        len = net_header_parse_icmp6(&net_parser);
-        if (len == 0) return;
+        LOGE("%s: failed to parse protocol %x", __func__, ip_protocol);
+        return;
     }
 
     session = (struct fsm_session *)data;

@@ -92,7 +92,7 @@ int fsm_set_dpi_state_timeout(
         uint32_t timeout
 );
 
-void fsm_dpi_set_acc_state(
+void fsm_dpi_set_plugin_decision(
         struct fsm_session *session,
         struct net_header_parser *net_parser,
         enum fsm_dpi_state state);
@@ -102,5 +102,13 @@ fsm_dpi_allow_flow(struct net_md_stats_accumulator *acc);
 
 void
 fsm_dpi_block_flow(struct net_md_stats_accumulator *acc);
+
+void
+fsm_dpi_set_acc_state(struct fsm_session *session,
+                      struct net_md_stats_accumulator *acc,
+                      int state);
+
+char *
+fsm_ops_get_network_id(struct fsm_session *session, os_macaddr_t *mac);
 
 #endif /* FSM_DPI_UTILS_H_INCLUDED */

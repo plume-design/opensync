@@ -112,6 +112,7 @@ static ovsdb_table_t table_Bridge;
 static ovsdb_table_t table_IP_Interface;
 static ovsdb_table_t table_IPv6_Address;
 static ovsdb_table_t table_DHCPv6_Client;
+static ovsdb_table_t table_Wifi_Route_Config;
 static ovsdb_table_t table_Wifi_Route_State;
 static ovsdb_table_t table_Node_Config;
 static ovsdb_table_t table_Node_State;
@@ -648,7 +649,7 @@ bool cm2_ovsdb_dhcpv6_enable(char *ifname)
     SCHEMA_SET_INT(dhcpv6_client.enable, true);
     SCHEMA_SET_INT(dhcpv6_client.renew, true);
     SCHEMA_SET_INT(dhcpv6_client.request_address, true);
-    SCHEMA_SET_INT(dhcpv6_client.request_prefixes, true);
+    SCHEMA_SET_INT(dhcpv6_client.request_prefixes, false);
 
     if (!ovsdb_table_upsert_where(
             &table_DHCPv6_Client,
@@ -1356,6 +1357,39 @@ bool cm2_ovsdb_disable_gw_offline_conf(void)
     return cm2_ovsdb_set_gw_offline_config(false);
 }
 
+int cm2_ovsdb_update_route_metric(const char *ifname, int metric)
+{
+    struct schema_Wifi_Route_Config rcfg;
+    int                            ret;
+
+    memset(&rcfg, 0, sizeof(rcfg));
+
+    if (strlen(ifname) == 0)
+        return -1;
+
+    LOGI("%s: Update route metric: %d", ifname, metric);
+
+    if (metric < 0)
+        return -1;
+
+    if (metric == CM2_METRIC_UPLINK_DEFAULT) {
+        rcfg.metric_exists = false;
+    } else {
+        rcfg.metric = metric;
+        rcfg.metric_exists = true;
+    }
+
+    char *filter[] = { "+",
+                       SCHEMA_COLUMN(Wifi_Route_Config, metric),
+                       NULL };
+
+    ret = ovsdb_table_update_where_f(&table_Wifi_Route_Config,
+                 ovsdb_where_simple(SCHEMA_COLUMN(Wifi_Route_Config, if_name), ifname),
+                 &rcfg, filter);
+
+    return ret;
+}
+
 static bool
 cm2_ovsdb_get_port_by_name(struct schema_Port *port, char *name)
 {
@@ -1645,7 +1679,7 @@ void cm2_connection_set_L3(struct schema_Connection_Manager_Uplink *uplink) {
 }
 
 bool cm2_connection_get_used_link(struct schema_Connection_Manager_Uplink *uplink) {
-    return ovsdb_table_select_one(&table_Connection_Manager_Uplink, SCHEMA_COLUMN(Connection_Manager_Uplink, is_used), "true", uplink);
+    return ovsdb_table_select_one_where(&table_Connection_Manager_Uplink, ovsdb_where_simple_typed("is_used", "true", OCLM_BOOL), uplink);
 }
 
 static void cm2_connection_clear_used(void)
@@ -2107,22 +2141,26 @@ static void util_update_ip_link_state(struct schema_Connection_Manager_Uplink *u
             LOGI("%s: Rollback blocked links to inactive state", uplink->if_name);
             cm2_ovsdb_CMU_set_ipv4(uplink->if_name, CM2_UPLINK_INACTIVE);
             cm2_ovsdb_CMU_set_ipv6(uplink->if_name, CM2_UPLINK_INACTIVE);
+            cm2_ovsdb_update_route_metric(uplink->if_name, CM2_METRIC_UPLINK_DEFAULT);
         }
     }
     else if (s_ipv4 == CM2_UPLINK_BLOCKED) {
         if (uplink->is_used && !cm2_ovsdb_recalc_links()) {
             LOGI("%s: Rollback blocked link to inactive state", uplink->if_name);
             cm2_ovsdb_CMU_set_ipv4(uplink->if_name, CM2_UPLINK_INACTIVE);
+            cm2_ovsdb_update_route_metric(uplink->if_name, CM2_METRIC_UPLINK_DEFAULT);
         } else {
             // SET TIMESTAMP AND TIMER
             t_now = time_monotonic() + CM2_DEFAULT_BLOCK_LINK_TIME;
             time_to_str(t_now, t_now_s, sizeof(t_now_s));
             cm2_ovsdb_CMU_set_unblock_ts(uplink->if_name, t_now_s);
+            cm2_ovsdb_update_route_metric(uplink->if_name, CM2_METRIC_UPLINK_BLOCKED);
         }
     } else if (s_ipv6 == CM2_UPLINK_BLOCKED) {
         if (uplink->is_used  && !cm2_ovsdb_recalc_links()) {
             LOGI("%s: Rollback blocked link to inactive state", uplink->if_name);
             cm2_ovsdb_CMU_set_ipv6(uplink->if_name, CM2_UPLINK_INACTIVE);
+            cm2_ovsdb_update_route_metric(uplink->if_name, CM2_METRIC_UPLINK_DEFAULT);
         } else {
             // SET TIMER
             t_now = time_monotonic() + CM2_DEFAULT_BLOCK_LINK_TIME;
@@ -3122,6 +3160,7 @@ int cm2_ovsdb_init(void)
     OVSDB_TABLE_INIT_NO_KEY(Wifi_Route_State);
     OVSDB_TABLE_INIT_NO_KEY(Node_Config);
     OVSDB_TABLE_INIT_NO_KEY(Node_State);
+    OVSDB_TABLE_INIT_NO_KEY(Wifi_Route_Config);
 
     // Initialize OVSDB monitor callbacks
     OVSDB_TABLE_MONITOR(AWLAN_Node, false);

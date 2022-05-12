@@ -121,6 +121,7 @@ message HeroStats
   HeroIpv4FlowTuple ipv4_tuple = 12;
   HeroIpv6FlowTuple ipv6_tuple = 13;
   HeroRedirect redirect = 14;
+  string network_zone = 15;
 }
 
 message HeroObservationWindow {

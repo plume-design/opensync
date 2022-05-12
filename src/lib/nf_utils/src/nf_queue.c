@@ -80,7 +80,8 @@ nf_ct_mark_str(uint8_t mark)
 static int
 nf_queue_parse_attr_cb(const struct nlattr *attr, void *data)
 {
-    const struct nlattr **tb = data;
+    struct nfq_pkt_info *pi = (struct nfq_pkt_info *)data;
+    struct nfqnl_msg_packet_hdr *ph;
     int type = mnl_attr_get_type(attr);
     int rc;
 
@@ -91,9 +92,34 @@ nf_queue_parse_attr_cb(const struct nlattr *attr, void *data)
     switch(type)
     {
     case NFQA_MARK:
+        break;
     case NFQA_IFINDEX_INDEV:
+        rc = mnl_attr_validate(attr, MNL_TYPE_U32);
+        if (rc < 0)
+        {
+            LOGE("%s: mnl_attr_validate failed", __func__);
+            return MNL_CB_ERROR;
+        }
+        pi->rx_vidx = ntohl(mnl_attr_get_u32(attr));
+        break;
     case NFQA_IFINDEX_OUTDEV:
+        rc = mnl_attr_validate(attr, MNL_TYPE_U32);
+        if (rc < 0)
+        {
+            LOGE("%s: mnl_attr_validate failed", __func__);
+            return MNL_CB_ERROR;
+        }
+        pi->tx_vidx = ntohl(mnl_attr_get_u32(attr));
+        break;
     case NFQA_IFINDEX_PHYSINDEV:
+        rc = mnl_attr_validate(attr, MNL_TYPE_U32);
+        if (rc < 0)
+        {
+            LOGE("%s: mnl_attr_validate failed", __func__);
+            return MNL_CB_ERROR;
+        }
+        pi->rx_pidx = ntohl(mnl_attr_get_u32(attr));
+        break;
     case NFQA_IFINDEX_PHYSOUTDEV:
         rc = mnl_attr_validate(attr, MNL_TYPE_U32);
         if (rc < 0)
@@ -101,6 +127,7 @@ nf_queue_parse_attr_cb(const struct nlattr *attr, void *data)
             LOGE("%s: mnl_attr_validate failed", __func__);
             return MNL_CB_ERROR;
         }
+        pi->tx_pidx = ntohl(mnl_attr_get_u32(attr));
         break;
     case NFQA_TIMESTAMP:
         rc = mnl_attr_validate2(attr, MNL_TYPE_UNSPEC,
@@ -119,12 +146,18 @@ nf_queue_parse_attr_cb(const struct nlattr *attr, void *data)
             LOGE("%s: mnl_attr_validate2 failed", __func__);
             return MNL_CB_ERROR;
         }
+        pi->hw_addr = mnl_attr_get_payload(attr);
         break;
     case NFQA_PAYLOAD:
+        pi->payload = mnl_attr_get_payload(attr);
+        pi->payload_len = mnl_attr_get_payload_len(attr);
+        break;
+    case NFQA_PACKET_HDR:
+        ph = mnl_attr_get_payload(attr);
+        pi->packet_id = ntohl(ph->packet_id);
+        pi->hw_protocol = ntohs(ph->hw_protocol);
         break;
     }
-
-    tb[type] = attr;
 
     return MNL_CB_OK;
 }
@@ -133,36 +166,18 @@ nf_queue_parse_attr_cb(const struct nlattr *attr, void *data)
 static int
 nf_queue_cb(const struct nlmsghdr *nlh, void *data)
 {
-    struct nlattr *tb[NFQA_MAX+1] = {};
     struct nfqueue_ctxt *nfq;
     struct nfq_pkt_info *pkt_info;
-    struct nfqnl_msg_packet_hdr *ph = NULL;
-    struct nfqnl_msg_packet_hw  *phw = NULL;
-    uint32_t id = 0;
     int ret;
 
     nfq = (struct nfqueue_ctxt *)data;
-    ret = mnl_attr_parse(nlh, sizeof(struct nfgenmsg), nf_queue_parse_attr_cb, tb);
-    if (ret == MNL_CB_ERROR) return MNL_CB_ERROR;
-
     pkt_info = &nfq->pkt_info;
-    if (tb[NFQA_PACKET_HDR])
-    {
-        ph = mnl_attr_get_payload(tb[NFQA_PACKET_HDR]);
-        id = ntohl(ph->packet_id);
-    }
-
-
-    if (tb[NFQA_HWADDR]) phw = mnl_attr_get_payload(tb[NFQA_HWADDR]);
+    ret = mnl_attr_parse(nlh, sizeof(struct nfgenmsg), nf_queue_parse_attr_cb, pkt_info);
+    if (ret == MNL_CB_ERROR) return MNL_CB_ERROR;
 
     /* Default mark is Inspect */
     pkt_info->flow_mark = CT_MARK_INSPECT;
-    pkt_info->packet_id = id;
     pkt_info->queue_num = nfq->queue_num;
-    pkt_info->payload = mnl_attr_get_payload(tb[NFQA_PAYLOAD]);
-    pkt_info->payload_len = mnl_attr_get_payload_len(tb[NFQA_PAYLOAD]);
-    if (phw) pkt_info->hw_addr = phw->hw_addr;
-    pkt_info->hw_protocol = ntohs(ph->hw_protocol);
 
     if (nfq->nfq_cb) nfq->nfq_cb(pkt_info, nfq->user_data);
 

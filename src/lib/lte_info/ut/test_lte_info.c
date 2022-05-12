@@ -50,8 +50,8 @@ struct lte_common_header g_common_header =
 {
     .request_id = 1,
     .if_name = "wwan0",
-    .node_id = "HC83C0005B",
-    .location_id = "59f39f5acbb22513f0ae5e17",
+    .node_id = "HC8490008E",
+    .location_id = "602e11e768b6592af397e9f2",
     .imei = "861364040104042",
     .imsi = "222013410161198",
     .reported_at = 0,
@@ -155,6 +155,46 @@ struct lte_net_neighbor_cell_info g_neigh_cells[] =
     }
 };
 
+struct lte_net_pca_info g_pca_info =
+{
+    .freq = 101,
+    .bandwidth = LTE_BANDWIDTH_20_MHZ,
+    .pcell_state = LTE_REGISTERED,
+    .pcid = 123,
+    .rsrp = -99,
+    .rsrq = -129,
+    .rssi = -69,
+    .sinr = 5,
+};
+
+struct lte_net_sca_info g_sca_info =
+{
+    .freq = 101,
+    .bandwidth = LTE_BANDWIDTH_20_MHZ,
+    .scell_state = LTE_CONFIGURERD_ACTIVATED,
+    .pcid = 222,
+    .rsrp = -110,
+    .rsrq = -101,
+    .rssi = -76,
+    .sinr = 15,
+};
+
+struct lte_pdp_ctx_dynamic_params_info g_pdp_params_info =
+{
+    .cid = 3,
+    .bearer_id = 5,
+    .apn = "VZWINTERNET",
+    .local_addr = "100.111.126.222",
+    .subnetmask = "38.0.16.16.176.43.232.65.0.0.0.34.166.143.216.1",
+    .gw_addr = "198.224.173.135",
+    .dns_prim_addr = "32.1.72.136.0.104.255.0.6.8.0.13.0.0.0.0",
+    .dns_sec_addr = "",
+    .p_cscf_prim_addr = "",
+    .p_cscf_sec_addr = "",
+    .im_cn_signalling_flag = 0,
+    .lipaindication = 0,
+};
+
 char *pb_file = "/tmp/lte_ut_proto.bin";
 
 static void
@@ -173,6 +213,7 @@ test_lte_send_report(char *topic, struct lte_info_packed_buffer *pb)
          __func__, pb->len, topic);
 
 #ifndef ARCH_X86
+    printf("%s: topic[%s]", __func__, topic);
     ret = qm_conn_send_direct(QM_REQ_COMPRESS_IF_CFG, topic,
                               pb->buf, pb->len, &res);
     if (!ret) LOGE("error sending mqtt with topic %s", topic);
@@ -302,6 +343,52 @@ test_lte_set_srv_cell(void)
 
 
 /**
+ * @brief test setting a primary carrier aggregation
+ */
+void
+test_lte_set_pca(void)
+{
+    bool ret;
+
+    g_report = CALLOC(1, sizeof(*g_report));
+    TEST_ASSERT_NOT_NULL(g_report);
+
+    ret = lte_info_set_primary_carrier_agg(&g_pca_info, g_report);
+    TEST_ASSERT_TRUE(ret);
+}
+
+/**
+ * @brief test setting a secondary carrier aggregation
+ */
+void
+test_lte_set_sca(void)
+{
+    bool ret;
+
+    g_report = CALLOC(1, sizeof(*g_report));
+    TEST_ASSERT_NOT_NULL(g_report);
+
+    ret = lte_info_set_secondary_carrier_agg(&g_sca_info, g_report);
+    TEST_ASSERT_TRUE(ret);
+}
+
+/**
+ * @brief test dynamic pdp context parameters
+ */
+void
+test_lte_pdp_ctx_dyn_info(void)
+{
+    bool ret;
+
+    g_report = CALLOC(1, sizeof(*g_report));
+    TEST_ASSERT_NOT_NULL(g_report);
+
+    ret = lte_info_set_pdp_ctx_dynamic_params(&g_pdp_params_info, g_report);
+    TEST_ASSERT_TRUE(ret);
+}
+
+
+/**
  * @brief set a full report
  */
 void
@@ -359,6 +446,13 @@ lte_ut_set_report(void)
     /* Validate the addition of the serving cell info */
     TEST_ASSERT_TRUE(ret);
     TEST_ASSERT_NOT_NULL(g_report->lte_srv_cell);
+
+    /* Add pdp context dynamic parameters */
+    ret = lte_info_set_pdp_ctx_dynamic_params(&g_pdp_params_info, g_report);
+
+    /* Validate the addition of the serving cell info */
+    TEST_ASSERT_TRUE(ret);
+    TEST_ASSERT_NOT_NULL(g_report->lte_pdp_ctx_info);
 }
 
 
@@ -415,6 +509,9 @@ main(int argc, char *argv[])
     RUN_TEST(test_lte_set_data_usage);
     RUN_TEST(test_lte_set_neigh_cell_info);
     RUN_TEST(test_lte_set_srv_cell);
+    RUN_TEST(test_lte_set_pca);
+    RUN_TEST(test_lte_set_sca);
+    RUN_TEST(test_lte_pdp_ctx_dyn_info);
     RUN_TEST(test_lte_set_report);
     RUN_TEST(test_lte_serialize_report);
 

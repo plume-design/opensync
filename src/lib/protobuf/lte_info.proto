@@ -186,6 +186,51 @@ message LteNetNeighborCellInfo {
   int32 inter_freq_srxlev = 23; // Suitable receive level for inter frequency cell
 }
 
+enum LtePcellState {
+    LTE_NO_SERVING = 0;
+    LTE_REGISTERED = 1;
+}
+
+enum LteScellState {
+    LTE_DECONFIGURED = 0;
+    LTE_CONFIGURED_DEACTIVATED = 1;
+    LTE_CONFIGURERD_ACTIVATED = 2;
+}
+
+enum LteCarrierComponent {
+    LTE_CC_UNAVAILABLE = 0;
+    LTE_PCC = 1;
+    LTE_SCC = 2;
+}
+
+message LteNetCarrierAggInfo {
+    LteCarrierComponent lte_carrier_component = 1;
+    uint32 freq = 2;
+    LteBandwidth bandwidth = 3;
+    LtePcellState pcell_state = 4;
+    LteScellState scell_state = 5;
+    uint32 pcid = 6;
+    int32 rsrp = 7;
+    int32 rsrq = 8;
+    int32 rssi = 9;
+    int32 sinr = 10;
+}
+
+message LtePDPContextInfo {
+    uint32 cid = 1;
+    uint32 bearer_id = 2;
+    string apn = 3;
+    string local_addr = 4;
+    string subnetmask = 5;
+    string gw_addr = 6;
+    string dns_prim_addr = 7;
+    string dns_sec_addr = 8;
+    string p_cscf_prim_addr = 9;
+    string p_cscf_sec_addr = 10;
+    uint32 im_cn_signalling_flag = 11;
+    uint32 lipaindication = 12;
+}
+
 // LTE info
 message LteInfoReport {
 
@@ -202,4 +247,11 @@ message LteInfoReport {
 
   // Neighbor cell info
   repeated LteNetNeighborCellInfo lte_neigh_cell_info = 5;
+
+  // Carrier aggregation
+  LteNetCarrierAggInfo lte_primary_carrier_agg_info = 6;
+  LteNetCarrierAggInfo lte_secondary_carrier_agg_info = 7;
+
+  // PDP context info
+  LtePDPContextInfo lte_pdp_context = 8;
 }

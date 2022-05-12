@@ -74,6 +74,7 @@ message AdtDataPoint
   AdtIpv4Tuple ipv4_tuple = 3;
   AdtIpv6Tuple ipv6_tuple = 4;
   repeated AdtKVPair kv_pair = 5;
+  string network_zone = 6;
 }
 
 message AdtObservationPoint {

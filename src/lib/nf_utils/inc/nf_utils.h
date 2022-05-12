@@ -99,6 +99,10 @@ struct nfq_pkt_info
     size_t             payload_len;
     void               *payload;
     int                flow_mark;
+    uint16_t           rx_vidx;
+    uint16_t           tx_vidx;
+    uint16_t           rx_pidx;
+    uint16_t           tx_pidx;
 };
 
 enum

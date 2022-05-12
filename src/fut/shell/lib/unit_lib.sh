@@ -323,7 +323,7 @@ check_pid_file()
 #   0   PID found, udhcpc service is running
 #   1   PID not found, udhcpc service is not running
 # USAGE EXAMPLE(S):
-#   check_pid_udhcp br-wan
+#   check_pid_udhcp eth0
 ###############################################################################
 check_pid_udhcp()
 {
@@ -389,7 +389,7 @@ killall_process_by_name()
 ###############################################################################
 # DESCRIPTION:
 #   Function initializes device for use in FUT.
-#   It disables watchdog to prevent the device from rebooting.
+#   It stops healthcheck service to prevent the device from rebooting.
 #   It calls a function that instructs CM to prevent the device from rebooting.
 #   It stops all managers.
 # INPUT PARAMETER(S):
@@ -401,13 +401,13 @@ killall_process_by_name()
 ###############################################################################
 device_init()
 {
-    disable_watchdog &&
-        log -deb "unit_lib:device_init - Watchdog disabled - Success" ||
-        raise "FAIL: Could not disable watchdog" -l "unit_lib:device_init" -ds
-
     stop_managers &&
         log -deb "unit_lib:device_init - Managers stopped - Success" ||
         raise "FAIL: Could not stop managers" -l "unit_lib:device_init" -ds
+
+    stop_healthcheck &&
+        log -deb "unit_lib:device_init - Healthcheck stopped - Success" ||
+        raise "FAIL: Could not stop healthcheck" -l "unit_lib:device_init" -ds
 
     disable_fatal_state_cm &&
         log -deb "unit_lib:device_init - CM fatal state disabled - Success" ||
@@ -418,47 +418,38 @@ device_init()
 
 ###############################################################################
 # DESCRIPTION:
-#   Function stops device healthcheck service, so it does not interfere with
-#   FUT test execution.
-#   This is a stub function. Provide function for each device in overrides.
+#   Function stops healthcheck process and disables it.
+#   Checks if healthcheck already stopped, does nothing if already stopped.
 # INPUT PARAMETER(S):
 #   None.
 # RETURNS:
-#   0   Always.
+#   1   healthcheck process is not stopped.
+#   0   healthcheck process is stopped.
 # USAGE EXAMPLE(S):
 #   stop_healthcheck
 ###############################################################################
 stop_healthcheck()
 {
-    log -deb "unit_lib:stop_healthcheck - This is a stub function. Override implementation needed for each model."
+    if [ -n "$(get_pid "healthcheck")" ]; then
+        log -deb "unit_lib:stop_healthcheck - Disabling healthcheck."
+        /etc/init.d/healthcheck stop || true
+
+        log -deb "unit_lib:stop_healthcheck - Check if healthcheck is disabled"
+        wait_for_function_response 1 "$(get_process_cmd) | grep -e 'healthcheck' | grep -v 'grep'"
+        if [ "$?" -ne 0 ]; then
+            log -deb "unit_lib:stop_healthcheck - Healthcheck is NOT disabled! PID: $(get_pid "healthcheck")"
+            return 1
+        else
+            log -deb "unit_lib:stop_healthcheck - Healthcheck is disabled."
+        fi
+    else
+        log -deb "unit_lib:stop_healthcheck - Healthcheck is already disabled."
+    fi
+
     return 0
 }
 
 ####################### SETUP SECTION - STOP ##################################
-
-
-####################### WATCHDOG SECTION - START ##############################
-
-###############################################################################
-# DESCRIPTION:
-#   Function disables watchdog.
-#   This is a stub function. Provide function for each device in overrides.
-# INPUT PARAMETER(S):
-#   None.
-# RETURNS:
-#   0   Always.
-# USAGE EXAMPLE(S):
-#   disable_watchdog
-###############################################################################
-disable_watchdog()
-{
-    log -deb "unit_lib:disable_watchdog - Disabling watchdog."
-    log -deb "unit_lib:disable_watchdog - This is a stub function. Override implementation needed for each model."
-    return 0
-}
-
-####################### WATCHDOG SECTION - STOP ###############################
-
 
 ####################### OpenSwitch SECTION - START ############################
 
@@ -1432,7 +1423,7 @@ insert_ovsdb_entry()
 #   1   Value is not as required within timeout.
 # USAGE EXAMPLE(S):
 #   wait_ovsdb_entry Manager -is is_connected true
-#   wait_ovsdb_entry Wifi_Inet_State -w if_name br-wan -is NAT true
+#   wait_ovsdb_entry Wifi_Inet_State -w if_name eth0 -is NAT true
 #   wait_ovsdb_entry Wifi_Radio_State -w if_name wifi0 \
 #   -is channel 1 -is ht_mode HT20 -t 60
 ###############################################################################
@@ -2085,7 +2076,7 @@ add_ovs_bridge()
 #   None.
 #   See DESCRIPTION.
 # USAGE EXAMPLE(S):
-#   add_interface_to_bridge br-wan eth0
+#   add_interface_to_bridge br-lan eth0
 ###############################################################################
 add_interface_to_bridge()
 {
@@ -2154,7 +2145,6 @@ add_bridge_port()
     if [ $? = 2 ]; then
         raise "FAIL: Bridge '${bridge_name}' does not exist" -l "unit_lib:add_bridge_port" -ds
     fi
-    ovs-vsctl list-ports "${bridge_name}" || true
     ovs-vsctl list-ports "${bridge_name}" | grep -wF "${port_name}"
     if [ $? = 0 ]; then
         log -deb "unit_lib:add_bridge_port - Port '${port_name}' already in bridge '${bridge_name}'"
@@ -2168,6 +2158,53 @@ add_bridge_port()
 
 ###############################################################################
 # DESCRIPTION:
+#   Function removes port with provided name from ovs bridge.
+#   Function uses ovs-vsctl command, different from native Linux bridge.
+#   Procedure:
+#       - check if ovs bridge exists
+#       - check if port with provided name exists on bridge
+#       - if port exist removed port
+#   Raises an exception if bridge does not exist
+#   Raises an exception if
+#       - bridge does not exist,
+#       - port cannot be removed.
+# INPUT PARAMETER(S):
+#   $1  Bridge name (string, required)
+#   $2  Port name (string, required)
+# RETURNS:
+#   0   On success.
+#   See DESCRIPTION.
+# USAGE EXAMPLE(S):
+#   remove_bridge_port br-home patch-h2w
+###############################################################################
+remove_bridge_port()
+{
+    local NARGS=2
+    [ $# -ne ${NARGS} ] &&
+        raise "unit_lib:remove_bridge_port requires ${NARGS} input argument(s), $# given" -arg
+    bridge_name=$1
+    port_name=$2
+
+    log "unit_lib:remove_bridge_port - Removing port '${port_name}' from bridge '${bridge_name}'"
+    ovs-vsctl br-exists "${bridge_name}"
+    if [ $? = 2 ]; then
+        raise "FAIL: Bridge '${bridge_name}' does not exist" -l "unit_lib:remove_bridge_port" -ds
+    fi
+    ovs-vsctl list-ports "${bridge_name}" || true
+    ovs-vsctl list-ports "${bridge_name}" | grep -wF "${port_name}"
+    if [ $? = 0 ]; then
+        log -deb "unit_lib:remove_bridge_port - Port '${port_name}' exists in bridge '${bridge_name}', removing."
+        ovs-vsctl del-port "${bridge_name}" "${port_name}" &&
+            log -deb "unit_lib:remove_bridge_port - ovs-vsctl del-port ${bridge_name} ${port_name} - Success" ||
+            raise "FAIL: Could not remove port '${port_name}' from bridge '${bridge_name}'" -l unit_lib:remove_bridge_port -ds
+    else
+        log -deb "unit_lib:remove_bridge_port - Port '${port_name}' does not exist in bridge '${bridge_name}', nothing to do."
+    fi
+    return 0
+}
+
+###############################################################################
+# DESCRIPTION:
 #   Function removes bridge from ovs.
 #   Function uses ovs-vsctl command, different from native Linux bridge.
 #   Raises an exception if bridge cannot be deleted.
@@ -2177,7 +2214,7 @@ add_bridge_port()
 #   None.
 #   See DESCRIPTION.
 # USAGE EXAMPLE(S):
-#   remove_bridge_interface br-wan
+#   remove_bridge_interface br-lan
 ###############################################################################
 remove_bridge_interface()
 {
@@ -2203,8 +2240,8 @@ remove_bridge_interface()
 #   None.
 #   See DESCRIPTION.
 # USAGE EXAMPLE(S):
-#   remove_port_from_bridge br-wan br-wan.tdns
-#   remove_port_from_bridge br-wan br-wan.thttp
+#   remove_port_from_bridge br-lan br-lan.tdns
+#   remove_port_from_bridge br-lan br-lan.thttp
 ###############################################################################
 remove_port_from_bridge()
 {
@@ -2227,7 +2264,7 @@ remove_port_from_bridge()
 
 ###############################################################################
 # DESCRIPTION:
-#   Functions sets interface to patch port.
+#   Function sets interface to patch port.
 #   Function uses ovs-vsctl command, different from native Linux bridge.
 #   Raises an exception if patch cannot be set.
 # INPUT PARAMETER(S):
@@ -2261,7 +2298,7 @@ set_interface_patch()
 
 ###############################################################################
 # DESCRIPTION:
-#   Functions sets interface option.
+#   Function sets interface option.
 #   Function uses ovs-vsctl command, different from native Linux bridge.
 #   Raises an exception on failure.
 # INPUT PARAMETER(S):
@@ -2300,7 +2337,7 @@ set_ovs_vsctl_interface_option()
 #   0   Port in bridge.
 #   1   Port is not in bridge.
 # USAGE EXAMPLE(S):
-#   check_if_port_in_bridge eth0 br-wan
+#   check_if_port_in_bridge eth0 br-lan
 ###############################################################################
 check_if_port_in_bridge()
 {
@@ -2643,4 +2680,31 @@ trigger_cloud_reboot()
     return 0
 }
 
+###############################################################################
+# DESCRIPTION:
+#   Function creates tap interface on bridge with selected Openflow port.
+#   Raises an exception if not in the path.
+# INPUT PARAMETER(S):
+#   $1  Bridge name (string, required)
+#   $2  Interface name (string, required)
+#   $3  Open flow port (string, required)
+# RETURNS:
+#   0   On success.
+# USAGE EXAMPLE(S):
+#   add_tap_interface br-home br-home.tdns 3001
+#   add_tap_interface br-home br-home.tx 401
+###############################################################################
+add_tap_interface()
+{
+    local NARGS=3
+    [ $# -ne ${NARGS} ] &&
+        raise "fsm_lib:add_tap_interface requires ${NARGS} input arguments, $# given" -arg
+    bridge=$1
+    intf=$2
+    ofport=$3
+    log -deb "fsm_lib:add_tap_interface - Generating tap interface '${intf}' on bridge '${bridge}'"
+    ovs-vsctl add-port "${bridge}" "${intf}"  \
+        -- set interface "${intf}"  type=internal \
+        -- set interface "${intf}"  ofport_request="${ofport}"
+}
 ####################### FUT CMD SECTION - STOP ################################

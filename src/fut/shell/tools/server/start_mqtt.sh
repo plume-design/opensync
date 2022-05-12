@@ -49,6 +49,9 @@ Script configures and (re)starts MQTT (mosquitto) that acts as MQTT Broker for F
 EOF
 }
 
+# Clear and or generate fut.mosquitto.log file
+echo '' > /tmp/fut.mosquitto.log
+
 ARGS=""
 # parse command line arguments
 while [[ "${1}" == -* ]]; do

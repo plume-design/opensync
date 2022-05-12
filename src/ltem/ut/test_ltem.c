@@ -158,13 +158,12 @@ ltem_ut_mgr_init(struct ev_loop *loop)
     mgr->loop = loop;
 
     lte_config = CALLOC(1, sizeof(lte_config_info_t));
-    if (lte_config == NULL) return false;
     ltem_populate_config(lte_config);
+
     lte_state = CALLOC(1, sizeof(lte_state_info_t));
-    if (lte_state == NULL) return false;
     ltem_populate_state(lte_state);
+
     lte_route = CALLOC(1, sizeof(lte_route_info_t));
-    if (lte_route == NULL) return false;
 
     mgr->lte_config_info = lte_config;
     mgr->lte_state_info = lte_state;

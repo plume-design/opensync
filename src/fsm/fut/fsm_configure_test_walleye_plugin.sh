@@ -215,11 +215,6 @@ insert_ovsdb_entry Flow_Service_Manager_Config \
         log "fsm/fsm_configure_test_walleye_plugin.sh: Ingress rule inserted - Success" ||
         raise "FAIL: Failed to insert_ovsdb_entry" -l "fsm/fsm_configure_test_walleye_plugin.sh" -oe
 
-fsm_message_regex="$LOGREAD | tail -500 | grep walleye_signature_load | grep succeeded"
-wait_for_function_response 0 "${fsm_message_regex}" 5 &&
-    log "fsm/fsm_configure_test_walleye_plugin.sh: walleye signature loaded - Success" ||
-    raise "FAIL: walleye signature not loaded" -l "fsm/fsm_configure_test_walleye_plugin.sh" -tc
-
 wait_ovsdb_entry Object_Store_State \
     -is name "app_signatures" \
     -is status "active" &&

@@ -32,7 +32,7 @@ echo "${FUT_TOPDIR}/shell/lib/um_lib.sh sourced"
 
 ####################### INFORMATION SECTION - START ###########################
 #
-#   Base library of common Upgrade Manager functions (Plume specific)
+#   Base library of common Upgrade Manager functions
 #
 ####################### INFORMATION SECTION - STOP ############################
 
@@ -211,45 +211,4 @@ get_um_code()
             raise "FAIL: Unknown upgrade_identifier {given:=$upgrade_identifier}" -l "um_lib:get_um_code" -arg
             ;;
     esac
-}
-
-###############################################################################
-# DESCRIPTION:
-#   Function displays and interprets image dowload results.
-#   Raises exception on fail.
-# INPUT PARAMETER(S):
-#   $1  exit code (int, required)
-#   $2  download start time (int, required)
-#   $3  download timeout (not used)
-# RETURNS:
-#   0   On success.
-#   See DESCRIPTION.
-# USAGE EXAMPLE(S):
-#   get_firmware_download_timer_result 0 2020.08.31-13:32:51
-#   get_firmware_download_timer_result 1 2020.08.31-13:32:51
-###############################################################################
-get_firmware_download_timer_result()
-{
-    exit_code=$1
-    start_time=$2
-
-    end_time=$(date -D "%H:%M:%S"  +"%Y.%m.%d-%H:%M:%S")
-    t1=$(date -u -d "$start_time" +"%s")
-    t2=$(date -u -d "$end_time" +"%s")
-
-    download_time=$(( t2 - t1 ))
-
-    if [ "$exit_code" -eq 0 ]; then
-        log -deb "um_lib:get_firmware_download_timer_result - FW downloaded in given download time - downloaded in $download_time seconds"
-    else
-        ${OVSH} s AWLAN_Node -w upgrade_status=="$(get_um_code "UPG_ERR_DL_FW")"
-        if [ "$?" -eq 0 ]; then
-            log -deb "um_lib:get_firmware_download_timer_result - FW downloaded was aborted after upgrade_dl_timer"
-        else
-            ${OVSH} s AWLAN_Node
-            raise "FAIL: FW download was not aborted after upgrade_dl_timer" -l "um_lib:get_firmware_download_timer_result" -tc
-        fi
-    fi
-
-    return 0
 }

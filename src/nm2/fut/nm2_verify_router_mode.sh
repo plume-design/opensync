@@ -52,10 +52,9 @@ Arguments:
     \$2 (lan_bridge)      : Interface name of LAN bridge                          : (string)(required)
 Testcase procedure:
     - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
-                 Run: ./nm2/nm2_verify_router_mode.sh <BR-WAN> <BR-HOME>
+                 Run: ./nm2/nm2_verify_router_mode.sh <WAN_IFACE> <BR-HOME>
 Script usage example:
    ./nm2/nm2_verify_router_mode.sh eth0 br-home
-   ./nm2/nm2_verify_router_mode.sh br-wan br-home
 usage_string
 }
 if [ -n "${1}" ]; then

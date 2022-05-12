@@ -368,11 +368,14 @@ fsm_dpi_register_client(struct fsm_session *dpi_plugin_session,
 {
     struct reg_client_session *new_client_session;
     struct fsm_dpi_plugin_ops *dpi_plugin_ops;
+    struct reg_client_session *one_session;
     struct fsm_dpi_plugin *dpi_plugin;
     struct dpi_client *new_client;
     struct dpi_client *one_client;
     ds_tree_t *dpi_clients;
     bool register_client;
+    size_t len;
+    int cmp;
 
     /* Validate access to the dpi plugin registration callback */
     dpi_plugin_ops = &dpi_plugin_session->p_ops->dpi_plugin_ops;
@@ -389,9 +392,9 @@ fsm_dpi_register_client(struct fsm_session *dpi_plugin_session,
     LOGT("%s: Registering %s for plugin %s", __func__, attr, dpi_client_session->name);
     one_client = ds_tree_find(dpi_clients, attr);
 
-    /* The attribute is not yet monitored by anyone, create entry */
     if (one_client == NULL)
     {
+        /* The attribute is not yet monitored by anyone, create entry */
         new_client = CALLOC(1, sizeof(*new_client));
         if (new_client == NULL) goto err_free_attr_node;
 
@@ -410,6 +413,24 @@ fsm_dpi_register_client(struct fsm_session *dpi_plugin_session,
 
         /* We need to register a callback for this attribute */
         register_client = true;
+    }
+    else
+    {
+        /*
+         * The attribute is already monitored. Make sure the same client session is
+         * not registered twice for this.
+         */
+        ds_tree_foreach(&one_client->reg_sessions, one_session)
+        {
+            len = strlen(dpi_client_session->name);
+            cmp = strncmp(dpi_client_session->name, one_session->session->name, len);
+            if (cmp == 0)
+            {
+                LOGD("%s: %s plugin is already registered for attribute %s",
+                     __func__, one_session->session->name, attr);
+                return;
+            }
+        }
     }
 
     /* New client session */

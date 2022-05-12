@@ -35,6 +35,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "log.h"
 #include "daemon.h"
 #include "execsh.h"
+#include "kconfig.h"
 
 // Enable support of multiple listener interfaces when necessary
 #ifndef MUPNP_LISTENER_MAX
@@ -263,6 +264,14 @@ static enum config_file_err create_config_file(const mupnp_server_t *self)
     }
 
     if (!is_ext) return CFERR_NO_IFC;
+
+    if (kconfig_enabled(CONFIG_FSM_DPI_UPNP))
+    {
+        /* Make it possible for to perform a "self query" */
+        /* Add this first to ensure the Presentation URL will not use the 127. address */
+        n += snprintf(fbuf + n, sizeof(fbuf) - n, "listening_ip=%s\n", "lo");
+        if ((size_t)n >= sizeof(fbuf)) return CFERR_NO_MEM;
+    }
 
     size_t i;
     for (i = 0; i < ARRAY_SIZE(self->int_ifc); ++i)

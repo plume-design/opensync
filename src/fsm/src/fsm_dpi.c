@@ -39,6 +39,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <fcntl.h>
 #include <dlfcn.h>
 #include <time.h>
+#include <net/if.h>
 
 #include "os.h"
 #include "util.h"
@@ -763,6 +764,31 @@ fsm_dpi_update_acc_key(struct net_md_stats_accumulator *acc)
     key->originator = acc->originator;
 }
 
+void
+fsm_dpi_set_lan2lan_originator(struct net_md_stats_accumulator *acc)
+{
+    struct net_md_flow_key *key;
+    bool smac_bcast;
+    bool dmac_bcast;
+
+    if (acc == NULL) return;
+
+    key = acc->key;
+    if (key == NULL) return;
+
+    smac_bcast = fsm_dpi_is_mac_bcast(key->smac);
+    dmac_bcast = fsm_dpi_is_mac_bcast(key->dmac);
+
+    if (acc->direction == NET_MD_ACC_LAN2LAN_DIR)
+    {
+        if (smac_bcast && !dmac_bcast)
+            acc->originator = NET_MD_ACC_ORIGINATOR_DST;
+        else if (!smac_bcast && dmac_bcast)
+            acc->originator = NET_MD_ACC_ORIGINATOR_SRC;
+        else
+            acc->originator = NET_MD_ACC_ORIGINATOR_SRC;
+    }
+}
 
 /**
  * @brief set accumulator flow direction based ports
@@ -805,6 +831,7 @@ fsm_dpi_set_acc_direction_on_port(struct fsm_dpi_dispatcher *dispatch,
     if (smac_found && dmac_found)
     {
         acc->direction = NET_MD_ACC_LAN2LAN_DIR;
+        fsm_dpi_set_lan2lan_originator(acc);
     }
     else if ((sport > MAX_RESERVED_PORT_NUM) &&
              (dport < NON_RESERVED_PORT_START_NUM))
@@ -847,11 +874,6 @@ fsm_dpi_set_acc_direction_on_port(struct fsm_dpi_dispatcher *dispatch,
                            NET_MD_ACC_ORIGINATOR_SRC);
     }
     else if (acc->direction == NET_MD_ACC_OUTBOUND_DIR)
-    {
-        acc->originator = (smac_found ? NET_MD_ACC_ORIGINATOR_SRC :
-                           NET_MD_ACC_ORIGINATOR_DST);
-    }
-    else if (acc->direction == NET_MD_ACC_LAN2LAN_DIR)
     {
         acc->originator = (smac_found ? NET_MD_ACC_ORIGINATOR_SRC :
                            NET_MD_ACC_ORIGINATOR_DST);
@@ -1000,6 +1022,7 @@ fsm_dpi_set_icmp_acc_direction(struct fsm_dpi_dispatcher *dispatch,
     if (smac_found && dmac_found)
     {
         acc->direction = NET_MD_ACC_LAN2LAN_DIR;
+        fsm_dpi_set_lan2lan_originator(acc);
     }
     else if (smac_found)
     {
@@ -1087,6 +1110,92 @@ fsm_dpi_mark_acc_for_report(struct net_md_aggregator *aggr,
 }
 
 
+void
+fsm_dpi_set_network_id(struct net_md_stats_accumulator *acc)
+{
+    struct net_md_flow_key *key;
+    struct flow_key *fkey;
+
+    os_macaddr_t *dev_mac;
+    char *netid;
+
+    if (acc == NULL) return;
+
+    key = acc->key;
+    if (key == NULL) return;
+
+    fkey = acc->fkey;
+    if (fkey == NULL) return;
+
+    /* get the device mac */
+    if ((acc->originator == NET_MD_ACC_ORIGINATOR_SRC &&
+         acc->direction == NET_MD_ACC_OUTBOUND_DIR) ||
+        (acc->originator == NET_MD_ACC_ORIGINATOR_DST &&
+         acc->direction == NET_MD_ACC_INBOUND_DIR))
+    {
+        dev_mac = key->smac;
+    }
+    else if ((acc->originator == NET_MD_ACC_ORIGINATOR_SRC &&
+              acc->direction == NET_MD_ACC_INBOUND_DIR) ||
+             (acc->originator == NET_MD_ACC_ORIGINATOR_DST &&
+              acc->direction == NET_MD_ACC_OUTBOUND_DIR))
+    {
+        dev_mac = key->dmac;
+    }
+    else
+    {
+        LOGD("%s: Unknown direction packets, cannot determine network id", __func__);
+        return;
+    }
+
+    netid = fsm_get_network_id(dev_mac);
+    fkey->networkid = (netid) ? STRDUP(netid) : STRDUP("unknown");
+}
+
+
+/**
+ * @brief set uplinkname for the acc.
+ *
+ * Sets the uplink name for the flow (eth0, eth1, tunnel)
+ * @param the accumulator to be tagged with an uplinkname.
+ */
+void
+fsm_dpi_set_uplink_name(struct net_md_stats_accumulator *acc)
+{
+    struct net_md_flow_key *key;
+    struct flow_key *fkey;
+    char ifname[IFNAMSIZ] = {0};
+
+    if (acc == NULL) return;
+
+    key = acc->key;
+    fkey = acc->fkey;
+
+    if ((acc->originator == NET_MD_ACC_ORIGINATOR_SRC &&
+         acc->direction == NET_MD_ACC_OUTBOUND_DIR) ||
+        (acc->originator == NET_MD_ACC_ORIGINATOR_DST &&
+         acc->direction == NET_MD_ACC_INBOUND_DIR))
+    {
+        if (key->tx_idx) if_indextoname(key->tx_idx, ifname);
+    }
+    else if ((acc->originator == NET_MD_ACC_ORIGINATOR_SRC &&
+              acc->direction == NET_MD_ACC_INBOUND_DIR) ||
+             (acc->originator == NET_MD_ACC_ORIGINATOR_DST &&
+              acc->direction == NET_MD_ACC_OUTBOUND_DIR))
+    {
+        if (key->rx_idx) if_indextoname(key->rx_idx, ifname);
+    }
+    else
+    {
+        LOGD("%s: Unknown direction packets, cannot determine network uplinkname", __func__);
+        return;
+    }
+
+    if (key->tx_idx || key->rx_idx) fkey->uplinkname = STRDUP(ifname);
+    return;
+}
+
+
 /**
  * @brief callback from the accumulator creation
  *
@@ -1100,6 +1209,9 @@ fsm_dpi_on_acc_creation(struct net_md_aggregator *aggr,
 {
     struct net_md_stats_accumulator *rev_acc;
     struct fsm_dpi_dispatcher *dispatch;
+    struct flow_key *rev_fkey;
+    struct flow_key *fkey;
+
     bool rc;
 
     if (aggr == NULL) return;
@@ -1113,12 +1225,21 @@ fsm_dpi_on_acc_creation(struct net_md_aggregator *aggr,
         acc->direction = rev_acc->direction;
         acc->originator = (rev_acc->originator == NET_MD_ACC_ORIGINATOR_SRC ?
                            NET_MD_ACC_ORIGINATOR_DST : NET_MD_ACC_ORIGINATOR_SRC);
+
+        /* update the networkid for the reverse acc */
+        rev_fkey = rev_acc->fkey;
+        fkey = acc->fkey;
+        if (fkey && rev_fkey && rev_fkey->networkid) fkey->networkid = STRDUP(rev_fkey->networkid);
         fsm_dpi_mark_acc_for_report(aggr, acc);
         return;
     }
 
     rc = fsm_dpi_set_acc_direction(dispatch, acc);
     if (!rc) return;
+
+    fsm_dpi_set_network_id(acc);
+
+    fsm_dpi_set_uplink_name(acc);
 
     fsm_dpi_mark_acc_for_report(aggr, acc);
 
@@ -1592,7 +1713,6 @@ fsm_net_parser_to_acc(struct net_header_parser *net_parser,
     key.smac = eth_hdr->srcmac;
     key.dmac = eth_hdr->dstmac;
     key.vlan_id = eth_hdr->vlan_id;
-
     ethertype = eth_hdr->ethertype;
     is_ip = ((ethertype == ETH_P_IP) || (ethertype == ETH_P_IPV6));
     if (!is_ip)
@@ -1657,6 +1777,10 @@ fsm_net_parser_to_acc(struct net_header_parser *net_parser,
         icmp6hdr = net_parser->ip_pld.icmp6hdr;
         key.icmp_type = icmp6hdr->icmp6_type;
     }
+
+    key.rx_idx = net_parser->rx_vidx;
+    key.tx_idx = net_parser->tx_vidx;
+
     acc = net_md_lookup_acc(aggr, &key);
 
     return acc;
@@ -1698,6 +1822,7 @@ fsm_dispatch_pkt(struct fsm_session *session,
     ds_tree_t *tree;
     bool excluded;
     bool included;
+    int state = 0;
     bool drop;
     bool pass;
 
@@ -1795,8 +1920,10 @@ fsm_dispatch_pkt(struct fsm_session *session,
 
     if (pass || drop) session->set_dpi_state(net_parser);
 
-    if (drop) acc->dpi_done = FSM_DPI_DROP;
-    if (pass) acc->dpi_done = FSM_DPI_PASSTHRU;
+    if (drop) state = FSM_DPI_DROP;
+    if (pass) state = FSM_DPI_PASSTHRU;
+
+    fsm_dpi_set_acc_state(session, acc, state);
 }
 
 /**

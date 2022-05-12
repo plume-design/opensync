@@ -30,7 +30,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "osa_assert.h"
 
-void osa_assert_dump(
+_Noreturn void osa_assert_dump(
         const char *cond,
         const char *func,
         const char *file,
@@ -47,4 +47,10 @@ void osa_assert_dump(
     va_end(va);
 
     raise(SIGABRT);
+
+    /*
+     * This function is specified as _Noreturn
+     * We should actually never reach this part of the code after ABRT
+     */
+    while(1);
 }

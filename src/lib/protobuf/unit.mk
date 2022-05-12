@@ -52,7 +52,7 @@ UNIT_EXPORT_LDFLAGS += -lprotobuf-c
 UNIT_CFLAGS += -I$(PROTO_INC_DIR)
 
 UNIT_CLEAN += $(PROTO_INC_DIR)/$(2).pb-c.h
-UNIT_CLEAN += $(PROTO_SRC_DIR)/$(2).pb-c.c 
+UNIT_CLEAN += $(PROTO_SRC_DIR)/$(2).pb-c.c
 
 $(PROTO_SRC_DIR)/$(2).pb-c.c: $(UNIT_PATH)/$(1)
 	$(Q)protoc-c --c_out=. --proto_path=./src/lib/protobuf/ $(1)
@@ -73,5 +73,6 @@ $(eval $(call protobuf_generate,opensync_nflog.proto,opensync_nflog))
 $(eval $(call protobuf_generate,opensync_stats.proto,opensync_stats))
 $(eval $(call protobuf_generate,time_event.proto,time_event))
 $(eval $(call protobuf_generate,adv_data_typing.proto,adv_data_typing))
+$(eval $(call protobuf_generate,upnp_portmap.proto,upnp_portmap))
 
 UNIT_EXPORT_CFLAGS += -I$(PROTO_INC_DIR)

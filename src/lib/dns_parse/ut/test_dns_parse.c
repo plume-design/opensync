@@ -47,7 +47,7 @@ struct schema_Flow_Service_Manager_Config g_confs[] =
         },
         .other_config =
         {
-            "dev-test/fsm_core_ut/topic_1", /* topic */
+            "dev-ut/DNS/Queries/ut_depl/ut_node_id_1/ut_location_id", /* topic */
             "test_dso_init",                /* plugin init routine */
             "test_provider",                /* service provider */
             "test_policy",                  /* FSM policy entry */
@@ -67,7 +67,7 @@ struct schema_Flow_Service_Manager_Config g_confs[] =
         },
         .other_config =
         {
-            "dev-test/fsm_core_ut/topic_2", /* topic */
+            "dev-ut/DNS/Queries/ut_depl/ut_node_id_1/ut_location_id", /* topic */
             "test_dso_init",                /* plugin init routine */
         },
         .other_config_len = 2,
@@ -261,6 +261,13 @@ dummy_gatekeeper_get_verdict(struct fsm_policy_req *req,
     req_info->reply->gk.category_id = 2;
 
    return true;
+}
+
+
+static char *
+test_fsm_get_network_id(struct fsm_session *session, os_macaddr_t *mac)
+{
+    return "test_network_id";
 }
 
 
@@ -1195,6 +1202,7 @@ test_reverse_lookup(void)
     FREE(net_parser);
 }
 
+
 void
 dns_parse_setUp(void)
 {
@@ -1253,6 +1261,7 @@ dns_parse_setUp(void)
     g_fsm_parser = ds_tree_find(sessions, conf->handler);
     g_fsm_parser->provider_ops = &g_plugin_ops;
     g_fsm_parser->ops.send_report = test_send_report;
+    g_fsm_parser->ops.get_network_id = test_fsm_get_network_id;
     TEST_ASSERT_NOT_NULL(g_fsm_parser);
 
     dns_mgr_init();

@@ -139,6 +139,7 @@ static inline void* memutil_inline_memndup(
     if (ptr == NULL)
     {
         osa_assert_dump("memndup() returned NULL", func, file, line, "Out of memory.");
+        return NULL;
     }
 
     return memcpy(ptr, data, n);

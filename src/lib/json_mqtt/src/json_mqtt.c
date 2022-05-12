@@ -54,6 +54,23 @@ jcheck_header_info(struct fsm_session *session)
 
 
 /**
+ * @brief get the user device's network id
+ *
+ * @param session the fsm session triggering a report
+ * @param mac the uder device mac address
+ */
+static char *
+json_mqtt_get_network_id(struct fsm_session *session, os_macaddr_t *mac)
+{
+    if (session == NULL) return NULL;
+    if (mac == NULL) return NULL;
+    if (session->ops.get_network_id == NULL) return NULL;
+
+    return session->ops.get_network_id(session, mac);
+}
+
+
+/**
  * @brief gets the current time in the cloud requested format
  *
  * @param time_str input string which will store the timestamp
@@ -139,6 +156,8 @@ json_user_agent(struct fsm_session *session,
              PRI(os_macaddr_t), FMT(os_macaddr_t, to_report->src_mac));
     str = str_mac;
     json_object_set_new(body, "deviceMac", json_string(str));
+    str = json_mqtt_get_network_id(session, &to_report->src_mac);
+    if (str != NULL) json_object_set_new(body, "networkZone", json_string(str));
     str = to_report->user_agent;
     json_object_set_new(body, "userAgent", json_string(str));
 
@@ -449,8 +468,10 @@ json_ipthreat_report(struct fsm_session *session,
              PRI(os_macaddr_t), FMT(os_macaddr_pt, mac));
     str = str_mac;
     json_object_set_new(json_report, "deviceMac", json_string(str));
-    str = url_info->url;
+    str = json_mqtt_get_network_id(session, mac);
+    if (str != NULL) json_object_set_new(json_report, "networkZone", json_string(str));
 
+    str = url_info->url;
     json_object_set_new(json_report, "classifiedBy", json_string("ip"));
     json_object_set_new(json_report, "ipAddr", json_string(str));
 
@@ -570,6 +591,10 @@ json_url_report(struct fsm_session *session,
              PRI(os_macaddr_t), FMT(os_macaddr_pt, mac));
     str = str_mac;
     json_object_set_new(body, "deviceMac", json_string(str));
+
+    str = json_mqtt_get_network_id(session, mac);
+    if (str != NULL) json_object_set_new(body, "networkZone", json_string(str));
+
     str = url_info->url;
     switch(policy_reply->req_type)
     {
@@ -804,6 +829,10 @@ json_upnp_report(struct fsm_session *session,
              PRI(os_macaddr_t), FMT(os_macaddr_pt, mac));
     str = str_mac;
     json_object_set_new(body, "deviceMac", json_string(str));
+
+    str = json_mqtt_get_network_id(session, mac);
+    if (str != NULL) json_object_set_new(body, "networkZone", json_string(str));
+
     nelems = to_report->nelems;
     elem = to_report->first;
     for (i = 0; i < nelems; i++)

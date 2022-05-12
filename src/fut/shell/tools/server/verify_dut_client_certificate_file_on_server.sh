@@ -89,17 +89,6 @@ openssl verify -verbose -CAfile $plume_ca_file $ca_file > /dev/null
     log "tools/server/verify_dut_client_certificate_file_on_server.sh: CA certificate: ${ca_cert} approved by Plume CA: $plume_ca_file" ||
     raise "tools/server/verify_dut_client_certificate_file_on_server.sh: CA Certificate: ${ca_cert} not approved by Plume CA: $plume_ca_file" -l "tools/server/verify_dut_client_certificate_file_on_server.sh" -tc
 
-openssl verify -verbose -CAfile $ca_file $cert_file > /dev/null
-[ $? -eq 0 ] &&
-    log "tools/server/verify_dut_client_certificate_file_on_server.sh: Certificate: ${client_cert} signed with Plume Approved CA: ${ca_cert}" ||
-    raise "tools/server/verify_dut_client_certificate_file_on_server.sh: Certificate: ${client_cert} is not signed by Plume Approved CA: ${ca_cert}" -l "tools/server/verify_dut_client_certificate_file_on_server.sh" -tc
-
-cert_issuer=$(openssl x509 -noout -in $cert_file  -issuer | cut -d'=' -f2-)
-ca_subject=$(openssl x509 -noout -in $ca_file  -subject | cut -d'=' -f2-)
-[ "$cert_issuer" = "$ca_subject" ] &&
-    log "tools/server/verify_dut_client_certificate_file_on_server.sh: Certificate issuer verification successful. Certificate issuer: '$cert_issuer' matches CA certificate subject: '$ca_subject'" ||
-    raise "tools/server/verify_dut_client_certificate_file_on_server.sh:  Certificate issuer: '$cert_issuer' does not match CA certificate subject DN: '$ca_subject'. Hence, certificate issuer verification failed " -l "tools/server/verify_dut_client_certificate_file_on_server.sh" -tc
-
 end_date=$(openssl x509 -enddate -noout -in $cert_file | cut -d'=' -f2-)
 openssl x509 -checkend 0 -noout -in $cert_file > /dev/null
 [ $? -eq 0 ] &&

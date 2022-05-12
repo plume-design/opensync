@@ -8,6 +8,7 @@ source "src/lib/mdnsd/kconfig/Kconfig.libs"
 source "src/lib/gatekeeper_cache/kconfig/Kconfig.libs"
 source "src/lib/gatekeeper_plugin/kconfig/Kconfig.libs"
 source "src/lib/dhcp_relay/kconfig/Kconfig.libs"
+source "src/lib/fsm_dpi_upnp/kconfig/Kconfig.libs"
 
 osource "platform/*/kconfig/Kconfig.libs"
 osource "vendor/*/kconfig/Kconfig.libs"

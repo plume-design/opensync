@@ -56,6 +56,7 @@ UNIT_EXPORT_LDFLAGS := $(UNIT_LDFLAGS)
 
 UNIT_DEPS := src/lib/log
 UNIT_DEPS += src/lib/fsm_policy
+UNIT_DEPS += src/lib/fsm_utils
 UNIT_DEPS += src/lib/gatekeeper_msg
 UNIT_DEPS += src/lib/gatekeeper_cache
 UNIT_DEPS += src/lib/network_telemetry

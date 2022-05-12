@@ -39,7 +39,7 @@ if (!(cond))                                                            \
    osa_assert_dump(#cond, __FUNCTION__, __FILE__, __LINE__, fmt);       \
 }
 
-extern void osa_assert_dump(
+extern _Noreturn void osa_assert_dump(
         const char *cond,
         const char *func,
         const char *file,

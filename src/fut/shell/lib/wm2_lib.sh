@@ -40,20 +40,22 @@ echo "${FUT_TOPDIR}/shell/lib/wm2_lib.sh sourced"
 
 ###############################################################################
 # DESCRIPTION:
-#   Function starts wireless driver on a device.
-#   This function always raises an exception, it is a stub function and needs
+#   Function starts wireless driver on the device.
+# STUB:
+#   This function is a stub. It always raises an exception and needs
 #   a function with the same name and usage in platform or device overrides.
 # INPUT PARAMETER(S):
 #   None.
 # RETURNS:
-#   See DESCRIPTION.
+#   0   Wireless driver started on device.
 # USAGE EXAMPLE(S):
 #   start_wireless_driver
 ###############################################################################
 start_wireless_driver()
 {
+    log "wm2_lib:start_wireless_driver - Starting wireless driver on device"
     # Provide override in platform specific file
-    raise "FAIL: This is a stub function. Override implementation needed for specific platforms." -l "wm2_lib:start_wireless_driver" -fc
+    raise "FAIL: This is a stub function. Override implementation needed." -l "wm2_lib:start_wireless_driver" -fc
 }
 
 ###############################################################################
@@ -152,21 +154,52 @@ vif_clean()
 
 ###############################################################################
 # DESCRIPTION:
-#   Function retrieves interface regulatory domain.
+#   Function retrieves regulatory domain of radio interface.
 # INPUT PARAMETER(S):
-#   $1  Physical Radio interface name for which to retrieve regulatory domain
+#   $1  Radio interface name  (string, required)
 # ECHOES:
-#   US
+#   Radio interface regulatory domain - defaults to US
 # NOTE:
-#   This is a stub function. Provide function for each device in overrides.
-#   Function should echo interface regulatory domain
+#   Function first checks Wifi_Radio_State interface 'country' field, if not
+#   populated checks Wifi_Radio_State 'hw_params' and looks for 'reg_domain'
 # USAGE EXAMPLE(S):
 #   get_iface_regulatory_domain wifi0
 ###############################################################################
 get_iface_regulatory_domain()
 {
-    log -deb "wm2_lib:get_iface_regulatory_domain - This is a stub function. Override implementation needed for each model. Defaulting to US!"
-    echo 'US' && return 0
+    local NARGS=1
+    [ $# -ne ${NARGS} ] &&
+        raise "wm2_lib:get_iface_regulatory_domain requires ${NARGS} input argument(s), $# given" -arg
+    if_name="${1}"
+    country_found=1
+    country=$(get_ovsdb_entry_value Wifi_Radio_State country -w if_name "${if_name}")
+    if [ "${country}" == "[\"set\",[]]" ]; then
+        log -deb "wm2_lib:get_iface_regulatory_domain - Country is not set in Wifi_Radio_State."
+        hw_params_reg_domain=$(get_ovsdb_entry_value Wifi_Radio_State hw_params -w if_name "${if_name}" -json_value reg_domain)
+        log -deb "wm2_lib:get_iface_regulatory_domain - Trying to acquire country region trough hw_params: ${hw_params_reg_domain}"
+        # 58 (3a hex) US | 55 (37 hex) EU
+        if [ ${?} == 0 ]; then
+            if [ ${hw_params_reg_domain} == '"58"' ]; then
+                country='US'
+            elif [ ${hw_params_reg_domain} == '"55"' ]; then
+                country='EU'
+            else
+                log -deb "wm2_lib:get_iface_regulatory_domain - Failed to retrieve device regulatory domain. Defaulting to US regulatory rules!"
+                country='US'
+            fi
+        else
+            log -deb "wm2_lib:get_iface_regulatory_domain - Failed to retrieve device regulatory domain. Defaulting to US regulatory rules!"
+            country='US'
+        fi
+        country_found=0
+    else
+        country_found=0
+    fi
+    if [ "${country_found}" == 1 ]; then
+        log -deb "wm2_lib:get_iface_regulatory_domain - Failed to retrieve device regulatory domain. Defaulting to US regulatory rules!"
+        country='US'
+    fi
+    echo "${country}"
 }
 
 ###############################################################################
@@ -192,7 +225,6 @@ get_iface_regulatory_domain()
 #   - WEATHER : 600s
 # - Testcase configuration using HT160 mode:
 #   - Such testcases require different handling due to HT160 possibly encompassing DFS and non DFS channels
-#   - Refer to the relevant device override shell scripts for device specific handling of testcases using HT160
 # USAGE EXAMPLE(S):
 #   validate_cac wifi0
 ###############################################################################
@@ -201,7 +233,7 @@ validate_cac()
     # First validate presence of regulatory.txt file
     regulatory_file_path="${FUT_TOPDIR}/shell/config/regulatory.txt"
     if [ ! -f "${regulatory_file_path}" ]; then
-        log -deb "Regulatory file ${regulatory_file_path} does not exist, nothing to do."
+        log -deb "wm2_lib:validate_cac - Regulatory file ${regulatory_file_path} does not exist, nothing to do."
         return 0
     fi
 
@@ -246,7 +278,12 @@ validate_cac()
     reg_dfs_weather_match=$(cat "${regulatory_file_path}" | grep -i "${state_country}_dfs_weather_${state_freq_band}_${state_ht_mode}")
     check_weather=$(contains_element "${state_channel}" ${reg_dfs_weather_match})
 
-    if [ "${check_standard}" == 0 ]; then
+    if [ ${state_ht_mode} = "HT160" ]; then
+        cac_time=60
+        HT160_match=0
+        non_dfs_channel_list="36 40 44 48"
+        standard_dfs_channel_list="52 56 60 64"
+    elif [ "${check_standard}" == 0 ]; then
         # channel_type='standard-dfs'
         cac_time=60
     elif [ "${check_weather}" == 0 ]; then
@@ -275,19 +312,38 @@ validate_cac()
     if [ "${vif_found}" == 1 ]; then
         raise "FAIL: Radio interfaces is not associated to any AP enabled VIF" -l "wm2_lib:validate_cac" -ds
     fi
-    wait_for_function_output "cac_completed" "get_radio_channel_state ${state_channel} ${if_name}" ${cac_time} &&
-        log -deb "wm2_lib:wait_for_cac_complete - Channel state went to cac_completed. Channel available" ||
-        log -err "FAIL: Channel CAC was not completed in given CAC time (${cac_time}s)." -l "wm2_lib:wait_for_cac_complete"
 
-    log -deb "wm2_lib:validate_cac - Checking interface ${if_name} channel ${state_channel} status"
-    channel_status="$(get_radio_channel_state "${state_channel}" "${if_name}")"
-    log -deb "wm2_lib:validate_cac - Channel status is: ${channel_status}"
-    if [ "${channel_status}" == 'cac_completed' ]; then
-        log -deb "wm2_lib:validate_cac -  CAC completed for channel ${state_channel} - Success"
+    # HT160 spans the entire radio band, therefore all channels need to be checked i.e. non DFS channel state must
+    # be allowed and DFS channel state must be cac_completed
+    if [ "${HT160_match}" == 0 ]; then
+        for channel in $non_dfs_channel_list
+        do
+            wait_for_function_output "allowed" "get_radio_channel_state ${channel} ${if_name}" &&
+                log -deb "wm2_lib:validate_cac - Channel ${channel} is not DFS nor WEATHER channel so CAC wait is not required." ||
+                log -err "FAIL: Channel CAC was not completed." -l "wm2_lib:validate_cac"
+        done
+        for channel in $standard_dfs_channel_list
+        do
+            wait_for_function_output "cac_completed" "get_radio_channel_state ${channel} ${if_name}" ${cac_time} &&
+                log -deb "wm2_lib:validate_cac - Channel state went to cac_completed. Channel available" ||
+                log -err "FAIL: Channel CAC was not completed in given CAC time (${cac_time}s)." -l "wm2_lib:validate_cac"
+        done
         return 0
-    else
-        print_tables Wifi_Radio_State || true
-        raise "FAIL: CAC was not completed for channel ${state_channel}" -l "wm2_lib/validate_cac" -ds
+    elif [ "${check_standard}" == 0 ] || [ "${check_weather}" == 0 ]; then
+        wait_for_function_output "cac_completed" "get_radio_channel_state ${state_channel} ${if_name}" ${cac_time} &&
+            log -deb "wm2_lib:validate_cac - Channel state went to cac_completed. Channel available" ||
+            log -err "FAIL: Channel CAC was not completed in given CAC time (${cac_time}s)." -l "wm2_lib:validate_cac"
+
+        log -deb "wm2_lib:validate_cac - Checking interface ${if_name} channel ${state_channel} status"
+        channel_status="$(get_radio_channel_state "${state_channel}" "${if_name}")"
+        log -deb "wm2_lib:validate_cac - Channel status is: ${channel_status}"
+        if [ "${channel_status}" == 'cac_completed' ]; then
+            log -deb "wm2_lib:validate_cac -  CAC completed for channel ${state_channel} - Success"
+            return 0
+        else
+            print_tables Wifi_Radio_State || true
+            raise "FAIL: CAC was not completed for channel ${state_channel}" -l "wm2_lib:validate_cac" -ds
+        fi
     fi
 }
 
@@ -1267,12 +1323,13 @@ check_channel_at_os_level()
 ###############################################################################
 # DESCRIPTION:
 #   Function returns channel set at OS - LEVEL2.
-#   This function always raises an exception, it is a stub function and needs
+# STUB:
+#   This function is a stub. It always raises an exception and needs
 #   a function with the same name and usage in platform or device overrides.
 # INPUT PARAMETER(S):
 #   $1  VIF interface name (string, required)
 # RETURNS:
-#   See DESCRIPTION.
+#   Echoes channel set for interface
 # USAGE EXAMPLE(S):
 #   get_channel_from_os home-ap-24
 ###############################################################################
@@ -1283,9 +1340,9 @@ get_channel_from_os()
         raise "wm2_lib:get_channel_from_os requires ${NARGS} input argument(s), $# given" -arg
     wm2_vif_if_name=$1
 
-    log -deb "wm2_lib:get_channel_from_os - Getting channel from OS - LEVEL2"
+    log "wm2_lib:get_channel_from_os - Getting channel from OS - LEVEL2"
     # Provide override in platform specific file
-    raise "FAIL: This is a stub function. Override implementation needed for specific platforms." -l "wm2_lib:get_channel_from_os" -fc
+    raise "FAIL: This is a stub function. Override implementation needed." -l "wm2_lib:get_channel_from_os" -fc
 }
 
 ###############################################################################
@@ -1324,14 +1381,16 @@ check_ht_mode_at_os_level()
 
 ###############################################################################
 # DESCRIPTION:
-#   Function checks if Beacon interval is applied at OS - LEVEL2.
-#   This function always raises an exception, it is a stub function and needs
+#   Function checks if beacon interval is applied at OS - LEVEL2.
+#   Function raises an exception if beacon interval is not applied.
+# STUB:
+#   This function is a stub. It always raises an exception and needs
 #   a function with the same name and usage in platform or device overrides.
 # INPUT PARAMETER(S):
 #   $1  Beacon interval (int, required)
 #   $2  VIF interface name (string, required)
 # RETURNS:
-#   See DESCRIPTION.
+#   0   Beacon interval on system matches expected value
 # USAGE EXAMPLE(S):
 #   check_beacon_interval_at_os_level 600 home-ap-U50
 ###############################################################################
@@ -1340,13 +1399,12 @@ check_beacon_interval_at_os_level()
     local NARGS=2
     [ $# -ne ${NARGS} ] &&
         raise "wm2_lib:check_beacon_interval_at_os_level requires ${NARGS} input argument(s), $# given" -arg
-    # shellcheck disable=SC2034
     wm2_bcn_int=$1
     wm2_vif_if_name=$2
 
     log -deb "wm2_lib:check_beacon_interval_at_os_level - Checking Beacon interval for interface '$wm2_vif_if_name' at OS - LEVEL2"
     # Provide override in platform specific file
-    raise "FAIL: This is a stub function. Override implementation needed for specific platforms." -l "wm2_lib:check_beacon_interval_at_os_level" -fc
+    raise "FAIL: This is a stub function. Override implementation needed." -l "wm2_lib:check_beacon_interval_at_os_level" -fc
 }
 
 ###############################################################################
@@ -1394,29 +1452,29 @@ check_radio_mimo_config()
 
 ###############################################################################
 # DESCRIPTION:
-#   Function checks if Tx Chainmask is applied at OS - LEVEL2.
-#   This function always raises an exception, it is a stub function and needs
+#   Function checks if the radio TX chainmask is applied at OS - LEVEL2.
+# STUB:
+#   This function is a stub. It always raises an exception and needs
 #   a function with the same name and usage in platform or device overrides.
 # INPUT PARAMETER(S):
-#   $1  Tx Chainmask (int, required)
-#   $2  Interface name (string, required)
+#   $1  Radio TX Chainmask (int, required)
+#   $2  Radio interface name (string, required)
 # RETURNS:
-#   See DESCRIPTION.
+#   0   Radio TX Chainmask on system matches expected value.
 # USAGE EXAMPLE(S):
-#   check_tx_chainmask_at_os_level 3 home-ap-U50
+#   check_tx_chainmask_at_os_level 3 IF_NAME
 ###############################################################################
 check_tx_chainmask_at_os_level()
 {
     local NARGS=2
     [ $# -ne ${NARGS} ] &&
         raise "wm2_lib:check_tx_chainmask_at_os_level requires ${NARGS} input argument(s), $# given" -arg
-    # shellcheck disable=SC2034
     wm2_tx_chainmask=$1
     wm2_if_name=$2
 
-    log -deb "wm2_lib:check_tx_chainmask_at_os_level - Checking Tx Chainmask for interface '$wm2_if_name' at OS - LEVEL2"
+    log "wm2_lib:check_tx_chainmask_at_os_level - Checking Radio TX Chainmask for interface '$wm2_if_name' at OS - LEVEL2"
     # Provide override in platform specific file
-    raise "FAIL: This is a stub function. Override implementation needed for specific platforms." -l "wm2_lib:check_tx_chainmask_at_os_level" -fc
+    raise "FAIL: This is a stub function. Override implementation needed." -l "wm2_lib:check_tx_chainmask_at_os_level" -fc
 }
 
 ###############################################################################
@@ -1455,13 +1513,14 @@ check_tx_power_at_os_level()
 
 ###############################################################################
 # DESCRIPTION:
-#   Function returns Tx Power set at OS - LEVEL2.
-#   This function always raises an exception, it is a stub function and needs
+#   Function returns Radio TX Power set at OS - LEVEL2.
+# STUB:
+#   This function is a stub. It always raises an exception and needs
 #   a function with the same name and usage in platform or device overrides.
 # INPUT PARAMETER(S):
 #   $1  VIF interface name (string, required)
 # RETURNS:
-#   See DESCRIPTION.
+#   Echoes Radio TX Power set for interface
 # USAGE EXAMPLE(S):
 #   get_tx_power_from_os home-ap-24
 ###############################################################################
@@ -1472,48 +1531,22 @@ get_tx_power_from_os()
         raise "wm2_lib:get_tx_power_from_os requires ${NARGS} input argument(s), $# given" -arg
     wm2_vif_if_name=$1
 
-    log -deb "wm2_lib:check_ht_mode_at_os_level - Getting Tx Power for interface '$wm2_vif_if_name' at OS - LEVEL2"
+    log "wm2_lib:check_ht_mode_at_os_level - Getting Radio TX Power for interface '$wm2_vif_if_name' at OS - LEVEL2"
     # Provide override in platform specific file
-    raise "FAIL: This is a stub function. Override implementation needed for specific platforms." -l "wm2_lib:get_tx_power_from_os" -fc
-}
-
-###############################################################################
-# DESCRIPTION:
-#   Function checks if country is applied at OS - LEVEL2.
-#   This function always raises an exception, it is a stub function and needs
-#   a function with the same name and usage in platform or device overrides.
-# INPUT PARAMETER(S):
-#   $1  Country (string, required)
-#   $2  Interface name (string, required)
-# RETURNS:
-#   See DESCRIPTION.
-# USAGE EXAMPLE(S):
-#   check_country_at_os_level US wifi0
-###############################################################################
-check_country_at_os_level()
-{
-    local NARGS=2
-    [ $# -ne ${NARGS} ] &&
-        raise "wm2_lib:check_country_at_os_level requires ${NARGS} input argument(s), $# given" -arg
-    # shellcheck disable=SC2034
-    wm2_country=$1
-    wm2_if_name=$2
-
-    log -deb "wm2_lib:check_country_at_os_level - Checking 'country' for '$wm2_if_name' at OS - LEVEL2"
-    # Provide override in platform specific file
-    raise "FAIL: This is a stub function. Override implementation needed for specific platforms." -l "wm2_lib:check_country_at_os_level" -fc
+    raise "FAIL: This is a stub function. Override implementation needed." -l "wm2_lib:get_tx_power_from_os" -fc
 }
 
 ###############################################################################
 # DESCRIPTION:
 #   Function returns HT mode set at OS - LEVEL2.
-#   This function always raises an exception, it is a stub function and needs
+# STUB:
+#   This function is a stub. It always raises an exception and needs
 #   a function with the same name and usage in platform or device overrides.
 # INPUT PARAMETER(S):
-#   $1  vif_if_name (string, required)
+#   $1  VIF interface name (string, required)
 #   $2  channel (int, not used, but still required, do not optimize)
 # RETURNS:
-#   See DESCRIPTION.
+#   Echoes HT mode set for interface
 # USAGE EXAMPLE(S):
 #   get_ht_mode_from_os home-ap-24 1
 ###############################################################################
@@ -1525,9 +1558,9 @@ get_ht_mode_from_os()
     wm2_vif_if_name=$1
     wm2_channel=$2
 
-    log -deb "wm2_lib:check_ht_mode_at_os_level - Getting HT mode for channel '$wm2_channel' at OS - LEVEL2"
+    log "wm2_lib:check_ht_mode_at_os_level - Getting HT mode for channel '$wm2_channel' at OS - LEVEL2"
     # Provide override in platform specific file
-    raise "FAIL: This is a stub function. Override implementation needed for specific platforms." -l "wm2_lib:get_ht_mode_from_os" -fc
+    raise "FAIL: This is a stub function. Override implementation needed." -l "wm2_lib:get_ht_mode_from_os" -fc
 }
 
 ###############################################################################
@@ -1780,41 +1813,17 @@ check_is_nop_finished()
 
 ###############################################################################
 # DESCRIPTION:
-#   Function simulates DFS (Dynamic Frequency Shift) radar event on interface.
-#   This function always raises an exception, it is a stub function and needs
+#   Function checks for CSA (Channel Switch Announcement) message on the leaf
+#   device, sent by the GW upon channel change.
+# STUB:
+#   This function is a stub. It always raises an exception and needs
 #   a function with the same name and usage in platform or device overrides.
-# INPUT PARAMETER(S):
-#   $1  channel (int, required)
-# RETURNS:
-#   See DESCRIPTION.
-# USAGE EXAMPLE(S):
-#   simulate_dfs_radar <IF_NAME>
-###############################################################################
-simulate_dfs_radar()
-{
-    local NARGS=1
-    [ $# -ne ${NARGS} ] &&
-        raise "wm2_lib:simulate_dfs_radar requires ${NARGS} input argument(s), $# given" -arg
-    wm2_if_name=$1
-
-    log -deb "wm2_lib:simulate_dfs_radar - Triggering DFS radar event on '${wm2_if_name}'"
-    # Provide override in platform specific file
-    raise "FAIL: This is a stub function. Override implementation needed for specific platforms." -l "wm2_lib:simulate_dfs_radar" -fc
-}
-
-###############################################################################
-# DESCRIPTION:
-#   Function checks for CSA(Channel Switch Announcement) msg on the LEAF device
-#   sent by GW on channel change.
 # INPUT PARAMETER(S):
 #   $1  MAC address of GW (string, required)
 #   $2  CSA channel GW switches to (int, required)
-#   $3  HT mode of the channel (string, required)
+#   $3  HT mode (channel bandwidth) (string, required)
 # RETURNS:
-#   None.
-# NOTE:
-#   This is a stub function. It always returns an error (exit 1).
-#   Provide library override function for each platform.
+#   0   CSA message is found in device logs.
 # USAGE EXAMPLE(S):
 #   check_sta_send_csa_message 1A:2B:3C:4D:5E:6F 6 HT20
 ###############################################################################
@@ -1827,9 +1836,11 @@ check_sta_send_csa_message()
     gw_csa_channel=$2
     ht_mode=$3
 
+    log -deb "wm2_lib:check_sta_send_csa_message - Checking CSA message in device logs, MAC '$gw_vif_mac', channel '$gw_csa_channel', ht_mode '$ht_mode' at OS - LEVEL2"
     # Provide override in platform specific file
-    raise "FAIL: This is a stub function. Override implementation needed for specific platforms." -l "wm2_lib:check_sta_send_csa_message" -fc
+    raise "FAIL: This is a stub function. Override implementation needed." -l "wm2_lib:check_sta_send_csa_message" -fc
 }
+
 ###################### RADIO SECTION - STOP ###################################
 
 ###################### STATION SECTION - START ################################
@@ -1854,62 +1865,6 @@ remove_sta_connections()
         raise "FAIL: Could not remove STA connections" -l "wm2_lib:remove_sta_connections" -oe
 
     return 0
-}
-
-###############################################################################
-# DESCRIPTION:
-#   Function removes all STA interfaces, except explicitly provided one.
-#   Waits timeout time for interfaces to be removed.
-#   Waits for system to react, or timeouts with error.
-#   Raises an exception if interfaces are not removed.
-# INPUT PARAMETER(S):
-#   $1  Wait timeout in seconds (int, optional, default=DEFAULT_WAIT_TIME)
-#   $2  STA interface name, interface to keep from removing (string, optional)
-# RETURNS:
-#   0   On success.
-#   See DESCRIPTION.
-# USAGE EXAMPLE(S):
-#   remove_sta_interfaces_exclude 60
-###############################################################################
-remove_sta_interfaces_exclude()
-{
-    local wait_timeout=${1:-$DEFAULT_WAIT_TIME}
-    local wm2_sta_if_name=$2
-    local retval=1
-
-    if [ -n "${wm2_sta_if_name}" ]; then
-        log -deb "wm2_lib:remove_sta_interfaces_exclude - Removing STA interfaces except '${wm2_sta_if_name}'"
-        ovs_cmd="-w mode==sta -w if_name!=${wm2_sta_if_name}"
-    else
-        log -deb "wm2_lib:remove_sta_interfaces_exclude - Removing all STA interfaces"
-        ovs_cmd="-w mode==sta"
-    fi
-
-    # shellcheck disable=SC2086
-    ${OVSH} d Wifi_VIF_Config ${ovs_cmd} &&
-        log -deb "wm2_lib:remove_sta_interfaces_exclude - Removed STA interfaces from Wifi_VIF_Config - Success" ||
-        raise "FAIL: Could not remove STA interfaces from Wifi_VIF_Config" -l "wm2_lib:remove_sta_interfaces_exclude" -oe
-
-    # Verifying Wifi_VIF_Config reflected to Wifi_VIF_State
-    wait_time=0
-    while [ $wait_time -le "$wait_timeout" ]; do
-        wait_time=$((wait_time+1))
-        log -deb "wm2_lib:remove_sta_interfaces_exclude - Waiting Wifi_VIF_Config is reflected to Wifi_VIF_State, retry: $wait_time"
-        # shellcheck disable=SC2086
-        table_select=$(${OVSH} s Wifi_VIF_State ${ovs_cmd}) || true
-        if [ -z "$table_select" ]; then
-            retval=0
-            break
-        fi
-        sleep 1
-    done
-
-    if [ $retval = 0 ]; then
-        log -deb "wm2_lib:remove_sta_interfaces_exclude - Removed STA interfaces from Wifi_VIF_State table - Success"
-        return $retval
-    else
-        raise "FAIL: Could not remove STA interfaces from Wifi_VIF_State table" -l "wm2_lib:remove_sta_interfaces_exclude" -oe
-    fi
 }
 
 ############################################ STATION SECTION - STOP ####################################################

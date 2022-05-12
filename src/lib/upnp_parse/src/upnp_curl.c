@@ -60,6 +60,13 @@ static struct upnp_key_val elements[NUM_OF_ELEMENTS] =
 void timer_cb(EV_P_ struct ev_timer *w, int revents);
 
 
+struct upnp_key_val *
+upnp_get_elements(void)
+{
+    return elements;
+}
+
+
 int
 multi_timer_cb(CURLM *multi, long timeout_ms,
                struct upnp_curl *mgr)
@@ -116,7 +123,7 @@ mcode_or_die(const char *where, CURLMcode code)
 
 
 void
-init_elements(struct upnp_device_url *url)
+upnp_init_elements(struct upnp_device_url *url)
 {
     elements[0].value = url->dev_type;
     elements[1].value = url->friendly_name;
@@ -151,7 +158,7 @@ upnp_scan_data(struct conn_info *conn)
         goto fail;
     }
 
-    init_elements(url);
+    upnp_init_elements(url);
     for (i = 0; i < NUM_OF_ELEMENTS; i++)
     {
         if (strlen(elements[i].key) == 0)

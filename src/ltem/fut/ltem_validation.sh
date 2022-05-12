@@ -54,10 +54,9 @@ Arguments:
 
 Testcase procedure:
     - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
-                 Run: ./ltem/ltem_validation.sh lte_if_name if_type access_point_name has_l2 has_l3 metric
+                 Run: ./ltem/ltem_validation.sh <lte_if_name> <if_type> <access_point_name> <has_l2> <has_l3> <metric> <route_tool_path>
 Script usage example:
     ./ltem/ltem_validation.sh wwan0 lte data.icore.name true true 100 /sbin/route
-    ./ltem/ltem_validation.sh wwan0 lte data.icore.name true false 100 /sbin/route
 usage_string
 }
 if [ -n "${1}" ]; then
@@ -81,7 +80,7 @@ has_l2=${4}
 has_l3=${5}
 metric=${6}
 route_tool_path=${7}
-LTE_ROUTE_TIMEOUT=30
+LTE_ROUTE_TIMEOUT=60
 
 # Execute on EXIT signal.
 trap '
@@ -136,8 +135,8 @@ wait_ovsdb_entry Wifi_Inet_State -w if_name "$lte_if_name" \
         raise "FAIL: Expected entry is not present of $lte_if_name interface in Wifi_Inet_State" -l "ltem/ltem_validation.sh" -tc
 
 wait_for_function_response 0 "check_default_lte_route_gw $lte_if_name $metric $route_tool_path" $LTE_ROUTE_TIMEOUT &&
-    log "ltem/ltem_validation - Lte interface was added to route table - Success" ||
-    raise "FAIL: Lte interface was not added to route table" -l "ltem/ltem_validation" -tc
+    log "ltem/ltem_validation - Lte interface with metric $metric was added to route table - Success" ||
+    raise "FAIL: Lte interface with metric $metric was not found in route table" -l "ltem/ltem_validation" -tc
 
 log "ltem/ltem_validation.sh: Setting 'force_use_lte' for $lte_if_name to 'false'"
 update_ovsdb_entry Lte_Config -w if_name "$lte_if_name" -u force_use_lte false &&

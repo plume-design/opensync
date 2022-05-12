@@ -87,6 +87,7 @@ struct flow_key
     struct net_md_stats_accumulator *acc;
     char *networkid; /* networkid of device */
     uint32_t flowmarker; /* ct_mark */
+    char *uplinkname; /* uplink interface of this flow */
     int log;
 };
 

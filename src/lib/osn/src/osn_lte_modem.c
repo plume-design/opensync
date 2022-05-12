@@ -240,6 +240,31 @@ osn_lte_save_neigh_cell_inter(lte_neigh_cell_inter_t *neigh_cell_inter, osn_lte_
 
 }
 
+int
+osn_lte_parse_dynamic_pdp_context_info(char *buf, lte_pdp_ctx_dynamic_param_info_t *pdp_dyn_ctx)
+{
+    return 0;
+}
+
+void
+osn_lte_save_dynamic_pdp_context_info(lte_pdp_ctx_dynamic_param_info_t *pdp_ctx, osn_lte_modem_info_t *modem_info)
+{
+    return;
+}
+
+int
+osn_lte_parse_ca_info(char *buf, lte_ca_info_t *pcc_info, lte_ca_info_t *scc_info)
+{
+    return 0;
+}
+
+
+int
+osn_lte_save_ca_info(lte_ca_info_t *pca_info, lte_ca_info_t *sca_info, osn_lte_modem_info_t *modem_info)
+{
+    return 0;
+}
+
 void
 osn_lte_set_bands(char *bands)
 {
@@ -299,10 +324,10 @@ osn_lte_read_modem(void)
 {
     return 0;
 }
-void
+int
 osn_lte_read_pdp_context(void)
 {
-    return;
+    return 0;
 }
 bool
 osn_lte_set_pdp_context_params(lte_pdp_context_params param_type, char *val)

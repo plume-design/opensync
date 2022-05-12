@@ -234,6 +234,10 @@ ipv6_parse(uint32_t pos, struct pcap_pkthdr *header,
             /* IP fragment. */
             next_hdr = packet[pos];
             frag = MALLOC(sizeof(ip_fragment));
+            if (frag == NULL)
+            {
+                *p_packet = NULL; return 0;
+            }
             /* Get the offset of the data for this fragment. */
             frag->start = (packet[pos+2] << 8) + (packet[pos+3] & 0xf4);
             frag->islast = !(packet[pos+3] & 0x01);
@@ -252,6 +256,7 @@ ipv6_parse(uint32_t pos, struct pcap_pkthdr *header,
             break;
         default:
             LOGD("Unsupported IPv6 proto(%u)", next_hdr);
+            FREE(frag);
             *p_packet = NULL; return 0;
         }
     }
@@ -269,6 +274,11 @@ ipv6_parse(uint32_t pos, struct pcap_pkthdr *header,
         frag->end = frag->start + ip->length;
         frag->next = frag->child = NULL;
         frag->data = MALLOC(sizeof(uint8_t) * ip->length);
+        if (frag->data == NULL)
+        {
+            FREE(frag);
+            *p_packet = NULL; return 0;
+        }
         memcpy(frag->data, packet+pos, ip->length);
         /*
          * Add the fragment to the list.

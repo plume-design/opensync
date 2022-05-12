@@ -54,6 +54,7 @@ struct hapd {
     void (*wps_disable)(struct hapd *hapd);
     void (*wpa_key_mismatch)(struct hapd *hapd, const char *mac);
     struct ctrl ctrl;
+    bool legacy_controller;
 };
 
 struct hapd *hapd_lookup(const char *bss);

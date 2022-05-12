@@ -76,6 +76,7 @@ UNIT_FILE += othr_setup.sh
 UNIT_FILE += othr_cleanup.sh
 UNIT_FILE += othr_connect_wifi_client_to_ap_freeze.sh
 UNIT_FILE += othr_connect_wifi_client_to_ap_unfreeze.sh
+UNIT_FILE += othr_verify_eth_client_connection.sh
 UNIT_FILE += othr_verify_eth_lan_iface_wifi_master_state.sh
 UNIT_FILE += othr_verify_eth_wan_iface_wifi_master_state.sh
 UNIT_FILE += othr_verify_gre_iface_wifi_master_state.sh

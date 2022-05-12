@@ -200,7 +200,7 @@ This is a simple example of the `libstam` usage. It is used throughout
 this README as reference.
 
     #include <stdio.h>
-    #include <readline/readline.h>
+    #include <editline/readline.h>
 
     /*
      * Define the state machine name; the name will be prepended to the
@@ -358,7 +358,7 @@ this README as reference.
         }
     }
 
-_Warning: libreadline is required for the example to compile._
+_Warning: libedit is required for the example to compile._
 
 ## Code generation
 STAM comes with optional code generator capable of genertaing C source code for state machines defined in DOT format. Here's sample executable unit called `foo` showing how to integrate STAM + code generation with OpenSync build system.

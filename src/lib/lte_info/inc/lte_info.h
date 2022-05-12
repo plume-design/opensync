@@ -220,6 +220,64 @@ struct lte_net_neighbor_cell_info
     int32_t inter_freq_srxlev;
 };
 
+enum lte_carrier_component {
+    LTE_CC_UNAVAILABLE = INTERFACES__LTE_INFO__LTE_CARRIER_COMPONENT__LTE_CC_UNAVAILABLE,
+    LTE_PCC = INTERFACES__LTE_INFO__LTE_CARRIER_COMPONENT__LTE_PCC,
+    LTE_SCC = INTERFACES__LTE_INFO__LTE_CARRIER_COMPONENT__LTE_SCC,
+};
+
+enum lte_pcell_state {
+    LTE_NO_SERVING = INTERFACES__LTE_INFO__LTE_PCELL_STATE__LTE_NO_SERVING,
+    LTE_REGISTERED = INTERFACES__LTE_INFO__LTE_PCELL_STATE__LTE_REGISTERED,
+};
+
+enum lte_scell_state {
+    LTE_DECONFIGURED = INTERFACES__LTE_INFO__LTE_SCELL_STATE__LTE_DECONFIGURED,
+    LTE_CONFIGURED_DEACTIVATED = INTERFACES__LTE_INFO__LTE_SCELL_STATE__LTE_CONFIGURED_DEACTIVATED,
+    LTE_CONFIGURERD_ACTIVATED = INTERFACES__LTE_INFO__LTE_SCELL_STATE__LTE_CONFIGURERD_ACTIVATED,
+};
+
+struct lte_net_pca_info
+{
+    enum lte_carrier_component lcc;
+    uint32_t freq;
+    enum lte_bandwidth bandwidth;
+    enum lte_pcell_state pcell_state;
+    uint32_t pcid;
+    int32_t rsrp;
+    int32_t rsrq;
+    int32_t rssi;
+    int32_t sinr;
+};
+
+struct lte_net_sca_info
+{
+    enum lte_carrier_component lcc;
+    uint32_t freq;
+    enum lte_bandwidth bandwidth;
+    enum lte_scell_state scell_state;
+    uint32_t pcid;
+    int32_t rsrp;
+    int32_t rsrq;
+    int32_t rssi;
+    int32_t sinr;
+};
+
+struct lte_pdp_ctx_dynamic_params_info
+{
+    uint32_t cid;
+    uint32_t bearer_id;
+    char    *apn;
+    char    *local_addr;
+    char    *subnetmask;
+    char    *gw_addr;
+    char    *dns_prim_addr;
+    char    *dns_sec_addr;
+    char    *p_cscf_prim_addr;
+    char    *p_cscf_sec_addr;
+    uint32_t im_cn_signalling_flag;
+    uint32_t lipaindication;
+};
 
 /**
  * LTE info report
@@ -233,6 +291,9 @@ struct lte_info_report
     size_t n_neigh_cells;
     size_t cur_neigh_cell_idx;
     struct lte_net_neighbor_cell_info **lte_neigh_cell_info;
+    struct lte_net_pca_info *lte_pca_info;
+    struct lte_net_sca_info *lte_sca_info;
+    struct lte_pdp_ctx_dynamic_params_info *lte_pdp_ctx_info;
 };
 
 
@@ -387,6 +448,77 @@ lte_info_set_serving_cell(struct lte_net_serving_cell_info *source,
  */
 void
 lte_info_free_serving_cell(struct lte_info_report *report);
+
+/**
+ * @brief set primary carrier aggregation info
+ *
+ * @param pca_info the carrier aggregation info to copy
+ * @param report the report to update
+ * @return true if the info was copied, false otherwise
+ *
+ * Note: the destination is freed on error
+ */
+bool
+lte_info_set_primary_carrier_agg(struct lte_net_pca_info *source,
+                                 struct lte_info_report *report);
+
+/**
+ * @brief free pca info
+ *
+ * @param report the report
+ */
+void
+lte_info_free_pca_info(struct lte_info_report *report);
+
+/**
+ * @brief set secondary carrier aggregation info
+ *
+ * @param sca_info the carrier aggregation info to copy
+ * @param report the report to update
+ * @return true if the info was copied, false otherwise
+ *
+ * Note: the destination is freed on error
+ */
+bool
+lte_info_set_secondary_carrier_agg(struct lte_net_sca_info *source,
+                                   struct lte_info_report *report);
+
+/**
+ * @brief free sca info
+ *
+ * @param report the report
+ */
+void
+lte_info_free_sca_info(struct lte_info_report *report);
+
+
+/**
+ * @brief  set dynamic pdp ctx info
+ *
+ * @param report the report to update
+ */
+int
+lte_set_pdp_context_dynamic_info(struct lte_info_report *lte_report);
+
+
+/**
+ * @brief  sets to the report dynamic pdp ctx info
+ *
+ * @param sca_info the carrier aggregation info to copy
+ * @param report the report to update
+ * @return true if the info was copied, false otherwise
+ */
+bool
+lte_info_set_pdp_ctx_dynamic_params(struct lte_pdp_ctx_dynamic_params_info *source,
+                                        struct lte_info_report *report);
+
+/**
+ * @brief free dynamic pdp ctx info
+ *
+ * @param report the report
+ */
+void
+lte_info_free_pdp_ctx_info(struct lte_info_report *report);
 
 
 /**

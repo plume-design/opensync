@@ -32,8 +32,8 @@ UNIT_TYPE := FUT
 UNIT_DIR := shell/lib
 
 UNIT_FILE := base_lib.sh
-UNIT_FILE += brix_lib.sh
 UNIT_FILE += brv_lib.sh
+UNIT_FILE += client_lib.sh
 UNIT_FILE += cm2_lib.sh
 UNIT_FILE += dm_lib.sh
 UNIT_FILE += fsm_lib.sh

@@ -44,6 +44,7 @@ UNIT_SRC += src/ltem_esim.c
 UNIT_CFLAGS := -I$(UNIT_PATH)/inc
 UNIT_CFLAGS += -Isrc/lib/lte_info/inc
 UNIT_CFLAGS += -Isrc/lib/osn/inc
+UNIT_CFLAGS += -Isrc/cm2/src
 
 UNIT_LDFLAGS := -lev -ljansson
 
@@ -65,3 +66,4 @@ UNIT_DEPS += src/lib/nf_utils
 UNIT_DEPS += src/lib/neigh_table
 UNIT_DEPS += src/lib/lte_info
 UNIT_DEPS += src/lib/osn
+

@@ -76,11 +76,14 @@ time_ref=$1
 time_accuracy=$2
 
 # Timestamps in human readable format
-time_ref_str=$(date -d @"${time_ref}")
-time_now_str=$(date -d @"${time_now}")
+time_ref_str=$(date -D @"${time_ref}")
+time_now_str=$(date -D @"${time_now}")
+
+time_ref_timestamp=$(date -D "${time_ref_str}" +%s)
+time_now_timestamp=$(date -D "${time_now_str}" +%s)
 
 # Calculate time difference and ensure absolute value
-time_diff=$(( time_ref - time_now ))
+time_diff=$(( time_ref_timestamp - time_now_timestamp ))
 if [ $time_diff -lt 0 ]; then
     time_diff=$(( -time_diff ))
 fi
@@ -89,6 +92,7 @@ log "onbrd/onbrd_verify_dut_system_time_accuracy.sh: Checking time ${time_now_st
 if [ $time_diff -le "$time_accuracy" ]; then
     log "onbrd/onbrd_verify_dut_system_time_accuracy.sh: Time difference ${time_diff}s is within ${time_accuracy}s - Success"
 else
+    log -err "onbrd/onbrd_verify_dut_system_time_accuracy.sh:\nDevice time: ${time_now_str} -> ${time_now_timestamp}\nReference time: ${time_ref_str} -> ${time_ref_timestamp}"
     raise "FAIL: Time difference ${time_diff}s is NOT within ${time_accuracy}s" -l "onbrd/onbrd_verify_dut_system_time_accuracy.sh" -tc
 fi
 

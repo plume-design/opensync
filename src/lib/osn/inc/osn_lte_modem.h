@@ -216,6 +216,25 @@ typedef struct lte_neigh_cell_inter // at+neigh_cell
 // [+QENG: "neighbourcell","LTE",<earfcn>,<cellid>,<rsrp>,<rsrq>,<s_rxlev>
 //TBD
 
+
+
+// +QCAINFO: "PCC",<freq>,<bandwidth>,<band>,<pcell_state>,<PCID >,<RSRP>,<RSRQ>,<RSSI>,<SINR>
+// +QCAINFO: "SCC",<freq>,<bandwidth>,<band>,<scell_s tate>,<PCID>,<RSRP>,<RSRQ>,<RSSI>,<SINR>
+typedef struct lte_ca_info // at+cainfo
+{
+    char cmd[C_AT_CMD_LONGEST_RESP];
+    char ca_type[C_AT_CMD_RESP];
+    char earfcn[C_AT_CMD_RESP];
+    char bandwidth[C_AT_CMD_RESP];
+    char band[C_AT_CMD_RESP];
+    char p_s_cell_state[C_AT_CMD_RESP];
+    char pcid[C_AT_CMD_RESP];
+    char rsrp[C_AT_CMD_RESP];
+    char rsrq[C_AT_CMD_RESP];
+    char rssi[C_AT_CMD_RESP];
+    char sinr[C_AT_CMD_RESP];
+} lte_ca_info_t;
+
 typedef struct lte_net_info_
 {
     enum lte_net_reg_status net_status;
@@ -322,6 +341,33 @@ typedef struct lte_band_info_
     char lte_band_val[C_AT_CMD_LONG_RESP];
 } lte_band_info_t;
 
+typedef struct lte_pca_info_
+{
+    enum lte_carrier_component lcc;
+    uint32_t freq;
+    enum lte_bandwidth bandwidth;
+    uint32_t band;
+    enum lte_pcell_state pcell_state;
+    uint32_t pcid;
+    int32_t rsrp;
+    int32_t rsrq;
+    int32_t rssi;
+    int32_t sinr;
+} lte_pca_info_t;
+
+typedef struct lte_sca_info_
+{
+    enum lte_carrier_component lcc;
+    uint32_t freq;
+    enum lte_bandwidth bandwidth;
+    uint32_t band;
+    enum lte_scell_state scell_state;
+    uint32_t pcid;
+    int32_t rsrp;
+    int32_t rsrq;
+    int32_t rssi;
+    int32_t sinr;
+} lte_sca_info_t;
 
 /* Modem PDP context parameters */
 typedef enum lte_pdp_context_params_
@@ -358,6 +404,22 @@ typedef struct  lte_pdp_context_
     bool valid;
 } lte_pdp_context_t;
 
+typedef struct lte_pdp_ctx_dynamic_param_
+{
+    uint32_t cid;
+    uint32_t bearer_id;
+    char apn[C_AT_CMD_LONG_RESP];
+    char local_addr[C_AT_CMD_LONG_RESP];
+    char subnetmask[C_AT_CMD_LONG_RESP];
+    char gw_addr[C_AT_CMD_LONG_RESP];
+    char dns_prim_addr[C_AT_CMD_LONG_RESP];
+    char dns_sec_addr[C_AT_CMD_LONG_RESP];
+    char p_cscf_prim_addr[C_AT_CMD_LONG_RESP];
+    char p_cscf_sec_addr[C_AT_CMD_LONG_RESP];
+    uint32_t im_cn_signalling_flag;
+    uint32_t lipaindication;
+} lte_pdp_ctx_dynamic_param_info_t;
+
 typedef struct osn_lte_modem_info_
 {
     bool modem_present;
@@ -384,6 +446,9 @@ typedef struct osn_lte_modem_info_
     enum lte_sim_type sim_type;
     uint32_t active_simcard_slot;
     char lte_band_val[C_AT_CMD_LONG_RESP];
+    lte_pca_info_t pca_info;
+    lte_sca_info_t sca_info;
+    lte_pdp_ctx_dynamic_param_info_t pdp_ctx_info;
 } osn_lte_modem_info_t;
 
 int osn_lte_parse_chip_info(char *buf, lte_chip_info_t *chip_info);
@@ -428,12 +493,14 @@ void osn_lte_set_sim_slot(uint32_t slot);
 void osn_lte_set_qmi_mode(void);
 void osn_lte_enable_sim_detect(void);
 void osn_lte_set_bands(char *bands);
-void osn_lte_read_pdp_context(void);
+int osn_lte_read_pdp_context(void);
 int osn_lte_parse_pdp_context(char *buf, lte_pdp_context_t *pdp_ctxt);
 bool osn_lte_set_pdp_context_params(lte_pdp_context_params param_type, char *val);
 bool osn_lte_set_ue_data_centric(void);
 void osn_lte_reset_modem(void);
 int osn_lte_parse_at_cops(char *resp);
 void osn_lte_start_vendor_daemon(int source);
+int osn_lte_parse_ca_info(char *buf, lte_ca_info_t *pcc_info, lte_ca_info_t *scc_info);
+int osn_lte_save_ca_info(lte_ca_info_t *pca_info, lte_ca_info_t *sca_info, osn_lte_modem_info_t *modem_info);
 
 #endif /* OSN_LTE_MODEM_H_INCLUDED */

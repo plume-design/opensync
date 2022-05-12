@@ -54,7 +54,6 @@ lte_info_set_net_info(struct lte_net_info *source, struct lte_info_report *repor
     if (report->lte_net_info != NULL) return false;
 
     report->lte_net_info = CALLOC(1, sizeof(*lte_net_info));
-    if (report->lte_net_info == NULL) goto error;
 
     lte_net_info = report->lte_net_info;
     lte_net_info->net_status = source->net_status;
@@ -68,7 +67,6 @@ lte_info_set_net_info(struct lte_net_info *source, struct lte_info_report *repor
     lte_net_info->active_sim_slot = source->active_sim_slot;
     lte_net_info->rssi = source->rssi;
     lte_net_info->ber = source->ber;
-
     return true;
 
 error:
@@ -109,21 +107,13 @@ lte_info_allocate_report(size_t n_neighbors)
     struct lte_info_report *report;
 
     report = CALLOC(1, sizeof(*report));
-    if (report == NULL) return NULL;
 
-    report->lte_neigh_cell_info = CALLOC(n_neighbors,
-                                         sizeof(*report->lte_neigh_cell_info));
+    report->lte_neigh_cell_info = CALLOC(n_neighbors, sizeof(*report->lte_neigh_cell_info));
 
-    if (report->lte_neigh_cell_info == NULL) goto error;
     report->n_neigh_cells = n_neighbors;
 
     return report;
-
-error:
-    lte_info_free_report(report);
-    return NULL;
 }
-
 
 /**
  * @brief: free a report structure
@@ -151,6 +141,7 @@ lte_info_free_report(struct lte_info_report *report)
 
     FREE(report->lte_neigh_cell_info);
 
+    lte_info_free_pdp_ctx_info(report);
     FREE(report);
 }
 
@@ -175,7 +166,6 @@ lte_info_set_common_header(struct lte_common_header *source,
     if (report->header != NULL) return false;
 
     report->header = CALLOC(1, sizeof(*header));
-    if (report->header == NULL) return false;
 
     header = report->header;
     header->request_id = source->request_id;
@@ -254,7 +244,6 @@ lte_info_set_data_usage(struct lte_data_usage *source,
     if (report->lte_data_usage != NULL) return false;
 
     report->lte_data_usage = CALLOC(1, sizeof(*data_usage));
-    if (report->lte_data_usage == NULL) goto error;
 
     data_usage = report->lte_data_usage;
     data_usage->rx_bytes = source->rx_bytes;
@@ -264,10 +253,6 @@ lte_info_set_data_usage(struct lte_data_usage *source,
     data_usage->failover_count = source->failover_count;
 
     return true;
-
-error:
-    lte_info_free_report(report);
-    return false;
 }
 
 /**
@@ -312,7 +297,6 @@ lte_info_add_neigh_cell_info(struct lte_net_neighbor_cell_info *cell_info,
     if (idx == report->n_neigh_cells) return false;
 
     cell = CALLOC(1, sizeof(*cell));
-    if (cell == NULL) return false;
 
     ret = lte_info_set_neigh_cell_info(cell_info, cell);
     if (!ret) goto error;
@@ -411,7 +395,6 @@ lte_info_set_serving_cell(struct lte_net_serving_cell_info *source,
     if (report->lte_srv_cell != NULL) return false;
 
     report->lte_srv_cell = CALLOC(1, sizeof(*cell));
-    if (report->lte_srv_cell == NULL) goto error;
 
     cell = report->lte_srv_cell;
 
@@ -433,10 +416,6 @@ lte_info_set_serving_cell(struct lte_net_serving_cell_info *source,
     cell->srxlev = source->srxlev;
 
     return true;
-
-error:
-    lte_info_free_report(report);
-    return false;
 }
 
 
@@ -460,6 +439,205 @@ lte_info_free_serving_cell(struct lte_info_report *report)
 }
 
 /**
+ * @brief set primary carrier aggregation info
+ *
+ * @param pca_info the carrier aggregation info to copy
+ * @param report the report to update
+ * @return true if the info was copied, false otherwise
+ *
+ * Note: the destination is freed on error
+ */
+bool
+lte_info_set_primary_carrier_agg(struct lte_net_pca_info *source,
+                                 struct lte_info_report *report)
+{
+    struct lte_net_pca_info *pca;
+
+    if (source == NULL) return false;
+    if (report == NULL) return false;
+
+    /* Bail if the pca structure was already allocated */
+    if (report->lte_pca_info != NULL) return false;
+
+    report->lte_pca_info = CALLOC(1, sizeof(*pca));
+
+    pca = report->lte_pca_info;
+
+    pca->lcc = source->lcc;
+    pca->freq = source->freq;
+    pca->bandwidth = source->bandwidth;
+    pca->pcell_state = source->pcell_state;
+    pca->pcid = source->pcid;
+    pca->rsrp = source->rsrp;
+    pca->rsrq = source->rsrq;
+    pca->rssi = source->rssi;
+    pca->sinr = source->sinr;
+
+    return true;
+
+}
+
+
+/**
+ * @brief free pca info
+ *
+ * @param report the report
+ */
+void
+lte_info_free_pca_info(struct lte_info_report *report)
+{
+    struct lte_net_pca_info *pca;
+
+    if (report == NULL) return;
+
+    pca = report->lte_pca_info;
+    if (pca == NULL) return;
+
+    FREE(pca);
+    report->lte_pca_info = NULL;
+}
+
+/**
+ * @brief set secondary carrier aggregation info
+ *
+ * @param sca_info the carrier aggregation info to copy
+ * @param report the report to update
+ * @return true if the info was copied, false otherwise
+ *
+ * Note: the destination is freed on error
+ */
+bool
+lte_info_set_secondary_carrier_agg(struct lte_net_sca_info *source,
+                                   struct lte_info_report *report)
+{
+    struct lte_net_sca_info *sca;
+
+    if (source == NULL) return false;
+    if (report == NULL) return false;
+
+    /* Bail if the pca structure was already allocated */
+    if (report->lte_sca_info != NULL) return false;
+
+    report->lte_sca_info = CALLOC(1, sizeof(*sca));
+
+    sca = report->lte_sca_info;
+
+    sca->lcc = source->lcc;
+    sca->freq = source->freq;
+    sca->bandwidth = source->bandwidth;
+    sca->scell_state = source->scell_state;
+    sca->pcid = source->pcid;
+    sca->rsrp = source->rsrp;
+    sca->rsrq = source->rsrq;
+    sca->rssi = source->rssi;
+    sca->sinr = source->sinr;
+
+    return true;
+}
+
+
+/**
+ * @brief free sca info
+ *
+ * @param report the report
+ */
+void
+lte_info_free_sca_info(struct lte_info_report *report)
+{
+    struct lte_net_sca_info *sca;
+
+    if (report == NULL) return;
+
+    sca = report->lte_sca_info;
+    if (sca == NULL) return;
+
+    FREE(sca);
+    report->lte_sca_info = NULL;
+}
+
+
+
+/**
+ * @brief set pdp context dynamic parameter info
+ *
+ * @param ppdc_info the carrier aggregation info to copy
+ * @param report the report to update
+ * @return true if the info was copied, false otherwise
+ *
+ * Note: the destination is freed on error
+ */
+bool
+lte_info_set_pdp_ctx_dynamic_params(struct lte_pdp_ctx_dynamic_params_info *source,
+                                    struct lte_info_report *report)
+{
+    struct lte_pdp_ctx_dynamic_params_info *pdp_ctx_params;
+    int ret;
+
+    if (source == NULL) return false;
+    if (report == NULL) return false;
+
+    /* Bail if the pca structure was already allocated */
+    if (report->lte_pdp_ctx_info != NULL) return false;
+
+    report->lte_pdp_ctx_info = CALLOC(1, sizeof(*pdp_ctx_params));
+
+    pdp_ctx_params = report->lte_pdp_ctx_info;
+
+    pdp_ctx_params->cid = source->cid;
+    pdp_ctx_params->bearer_id = source->bearer_id;
+
+    // expected info, bail out when it is not available
+    ret = lte_info_set_string(source->apn, &pdp_ctx_params->apn);
+    if (!ret) goto error;
+    ret = lte_info_set_string(source->local_addr, &pdp_ctx_params->local_addr);
+    if (!ret) goto error;
+
+    // some of the mobile operators may not implement always all the following field
+    lte_info_set_string(source->subnetmask, &pdp_ctx_params->subnetmask);
+    lte_info_set_string(source->gw_addr, &pdp_ctx_params->gw_addr);
+    lte_info_set_string(source->dns_prim_addr, &pdp_ctx_params->dns_prim_addr);
+    lte_info_set_string(source->dns_sec_addr, &pdp_ctx_params->dns_sec_addr);
+    lte_info_set_string(source->p_cscf_prim_addr, &pdp_ctx_params->p_cscf_prim_addr);
+    lte_info_set_string(source->p_cscf_sec_addr, &pdp_ctx_params->p_cscf_sec_addr);
+    pdp_ctx_params->im_cn_signalling_flag = source->im_cn_signalling_flag;
+    pdp_ctx_params->lipaindication = source->lipaindication;
+
+    return true;
+
+error:
+    lte_info_free_report(report);
+    return false;
+}
+
+/**
+ * @brief free cgcontrdp info
+ *
+ * @param report the report
+ */
+void
+lte_info_free_pdp_ctx_info(struct lte_info_report *report)
+{
+    struct lte_pdp_ctx_dynamic_params_info *pdp_ctx;
+
+    if (report == NULL) return;
+
+    pdp_ctx = report->lte_pdp_ctx_info;
+    if (pdp_ctx == NULL) return;
+
+    FREE(pdp_ctx->apn);
+    FREE(pdp_ctx->local_addr);
+    FREE(pdp_ctx->subnetmask);
+    FREE(pdp_ctx->gw_addr);
+    FREE(pdp_ctx->dns_prim_addr);
+    FREE(pdp_ctx->dns_sec_addr);
+    FREE(pdp_ctx->p_cscf_prim_addr);
+    FREE(pdp_ctx->p_cscf_sec_addr);
+
+    FREE(pdp_ctx);
+    report->lte_pdp_ctx_info = NULL;
+}
+
+/**
  * @brief set the common header of a report
  *
  * @param report the report to update
@@ -479,7 +657,6 @@ lte_info_set_pb_common_header(struct lte_info_report *report)
     if (header == NULL) return NULL;
 
     pb = CALLOC(1, sizeof(*pb));
-    if (pb == NULL) return NULL;
 
     /* Initialize the protobuf structure */
     interfaces__lte_info__lte_common_header__init(pb);
@@ -518,7 +695,6 @@ lte_info_set_lte_net_info(struct lte_info_report *report)
 
     /* Allocate the signal quality mesage */
     pb = CALLOC(1, sizeof(*pb));
-    if (pb == NULL) return NULL;
 
     /* Initialize the message */
     interfaces__lte_info__lte_net_info__init(pb);
@@ -556,7 +732,6 @@ lte_info_set_lte_data_usage(struct lte_info_report *report)
 
     /* Allocate the signal quality mesage */
     pb = CALLOC(1, sizeof(*pb));
-    if (pb == NULL) return NULL;
 
     /* Initialize the message */
     interfaces__lte_info__lte_data_usage__init(pb);
@@ -590,7 +765,6 @@ lte_info_set_srv_cell(struct lte_info_report *report)
 
     /* Allocate the signal quality mesage */
     pb = CALLOC(1, sizeof(*pb));
-    if (pb == NULL) return NULL;
 
     /* Initialize the message */
     interfaces__lte_info__lte_net_serving_cell_info__init(pb);
@@ -672,7 +846,6 @@ lte_info_set_pb_neighbor(struct lte_net_neighbor_cell_info *neighbor)
 
     /* Allocate the message */
     pb  = CALLOC(1, sizeof(*pb));
-    if (pb == NULL) return NULL;
 
     /* Initialize the message */
     interfaces__lte_info__lte_net_neighbor_cell_info__init(pb);
@@ -736,7 +909,6 @@ lte_info_set_pb_neighbors(struct lte_info_report *report)
 
     neighbors_pb_tbl = CALLOC(report->n_neigh_cells,
                               sizeof(*neighbors_pb_tbl));
-    if (neighbors_pb_tbl == NULL) return NULL;
 
     neighbors = report->lte_neigh_cell_info;
     neighbors_pb = neighbors_pb_tbl;
@@ -763,6 +935,124 @@ error:
     return NULL;
 }
 
+
+static Interfaces__LteInfo__LteNetCarrierAggInfo *
+lte_info_set_pb_primary_carrier_agg(struct lte_info_report *report)
+{
+    Interfaces__LteInfo__LteNetCarrierAggInfo *pb;
+    struct lte_net_pca_info *pca;
+
+    if (report == NULL) return NULL;
+
+    pca = report->lte_pca_info;
+    if (pca == NULL) return NULL;
+
+    /* Allocate the signal quality mesage */
+    pb = CALLOC(1, sizeof(*pb));
+
+    /* Initialize the message */
+    interfaces__lte_info__lte_net_carrier_agg_info__init(pb);
+
+    /* Assign the message fields */
+    pb->lte_carrier_component = (Interfaces__LteInfo__LteCarrierComponent)pca->lcc;
+    pb->freq = pca->freq;
+    pb->bandwidth = (Interfaces__LteInfo__LteBandwidth)pca->bandwidth;
+    pb->pcell_state = (Interfaces__LteInfo__LtePcellState)pca->pcell_state;
+    pb->pcid = pca->pcid;
+    pb->rsrp = pca->rsrp;
+    pb->rsrq = pca->rsrq;
+    pb->rssi = pca->rssi;
+    pb->sinr = pca->sinr;
+
+    return pb;
+}
+
+
+static void
+lte_info_free_pb_primary_carrier_agg(Interfaces__LteInfo__LteNetCarrierAggInfo *pb)
+{
+    FREE(pb);
+}
+
+static Interfaces__LteInfo__LteNetCarrierAggInfo *
+lte_info_set_pb_secondary_carrier_agg(struct lte_info_report *report)
+{
+    Interfaces__LteInfo__LteNetCarrierAggInfo *pb;
+    struct lte_net_sca_info *sca;
+
+    if (report == NULL) return NULL;
+
+    sca = report->lte_sca_info;
+    if (sca == NULL) return NULL;
+
+    /* Allocate the signal quality mesage */
+    pb = CALLOC(1, sizeof(*pb));
+
+    /* Initialize the message */
+    interfaces__lte_info__lte_net_carrier_agg_info__init(pb);
+
+    /* Assign the message fields */
+    pb->lte_carrier_component = (Interfaces__LteInfo__LteCarrierComponent)sca->lcc;
+    pb->freq = sca->freq;
+    pb->bandwidth = (Interfaces__LteInfo__LteBandwidth)sca->bandwidth;
+    pb->scell_state = (Interfaces__LteInfo__LteScellState)sca->scell_state;
+    pb->pcid = sca->pcid;
+    pb->rsrp = sca->rsrp;
+    pb->rsrq = sca->rsrq;
+    pb->rssi = sca->rssi;
+    pb->sinr = sca->sinr;
+
+    return pb;
+}
+
+
+static void
+lte_info_free_pb_secondary_carrier_agg(Interfaces__LteInfo__LteNetCarrierAggInfo *pb)
+{
+    FREE(pb);
+}
+
+
+static Interfaces__LteInfo__LtePDPContextInfo *
+lte_info_set_pb_pdp_ctx_param(struct lte_info_report *report)
+{
+    Interfaces__LteInfo__LtePDPContextInfo *pb;
+    struct lte_pdp_ctx_dynamic_params_info *pdp_ctx;
+
+    if (report == NULL) return NULL;
+
+    pdp_ctx = report->lte_pdp_ctx_info;
+    if (pdp_ctx == NULL) return NULL;
+
+    /* Allocate the signal quality mesage */
+    pb = CALLOC(1, sizeof(*pb));
+
+    /* Initialize the message */
+    interfaces__lte_info__lte_pdpcontext_info__init(pb);
+
+    /* Assign the message fields */
+    pb->cid = pdp_ctx->cid;
+    pb->bearer_id = pdp_ctx->bearer_id;
+    pb->apn = pdp_ctx->apn;
+    pb->local_addr = pdp_ctx->local_addr;
+    pb->subnetmask = pdp_ctx->subnetmask;
+    pb->gw_addr = pdp_ctx->gw_addr;
+    pb->dns_prim_addr = pdp_ctx->dns_prim_addr;
+    pb->dns_sec_addr = pdp_ctx->dns_sec_addr;
+    pb->p_cscf_prim_addr = pdp_ctx->p_cscf_prim_addr;
+    pb->p_cscf_sec_addr = pdp_ctx->p_cscf_sec_addr;;
+    pb->im_cn_signalling_flag = pdp_ctx->im_cn_signalling_flag;;
+    pb->lipaindication = pdp_ctx->lipaindication;
+
+    return pb;
+}
+
+
+static void
+lte_info_free_pb_pdp_ctx_param(Interfaces__LteInfo__LtePDPContextInfo *pb)
+{
+    FREE(pb);
+}
 
 /**
  * @brief Free a lte info report protobuf structure.
@@ -796,6 +1086,16 @@ lte_info_free_pb_report(Interfaces__LteInfo__LteInfoReport *pb)
     }
 
     FREE(pb->lte_neigh_cell_info);
+
+    /* Free the primary carrier aggregation info */
+    lte_info_free_pb_primary_carrier_agg(pb->lte_primary_carrier_agg_info);
+
+    /* Free the secondary carrier aggregation info */
+    lte_info_free_pb_secondary_carrier_agg(pb->lte_secondary_carrier_agg_info);
+
+    /* Free the pdp context info */
+    lte_info_free_pb_pdp_ctx_param(pb->lte_pdp_context);
+
     FREE(pb);
 }
 
@@ -806,7 +1106,6 @@ lte_info_set_pb_report(struct lte_info_report *report)
 
     /* Allocate the protobuf structure */
     pb = CALLOC(1, sizeof(*pb));
-    if (pb == NULL) return NULL;
 
     /* Initialize the protobuf structure */
     interfaces__lte_info__lte_info_report__init(pb);
@@ -830,6 +1129,15 @@ lte_info_set_pb_report(struct lte_info_report *report)
         if (pb->lte_neigh_cell_info == NULL) goto error;
     }
     pb->n_lte_neigh_cell_info = report->n_neigh_cells;
+
+    /* Add the primary carrier component info */
+    pb->lte_primary_carrier_agg_info = lte_info_set_pb_primary_carrier_agg(report);
+
+    /* Add the secondary carrier component info */
+    pb->lte_secondary_carrier_agg_info = lte_info_set_pb_secondary_carrier_agg(report);
+
+    /* Add pdp context dynamic parameters */
+    pb->lte_pdp_context = lte_info_set_pb_pdp_ctx_param(report);
 
     return pb;
 
@@ -862,7 +1170,6 @@ serialize_lte_info(struct lte_info_report *report)
 
     /* Allocate serialization output structure */
     serialized = CALLOC(1, sizeof(*serialized));
-    if (serialized == NULL) return NULL;
 
     pb = lte_info_set_pb_report(report);
     if (pb == NULL) goto error;
@@ -873,7 +1180,6 @@ serialize_lte_info(struct lte_info_report *report)
 
     /* Allocate space for the serialized buffer */
     buf = MALLOC(len);
-    if (buf == NULL) goto error;
 
     serialized->len = interfaces__lte_info__lte_info_report__pack(pb, buf);
     serialized->buf = buf;

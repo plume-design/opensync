@@ -45,6 +45,7 @@ UNIT_SRC += ../src/ltem_esim.c
 UNIT_CFLAGS := -Isrc/ltem/inc
 UNIT_CFLAGS += -Isrc/lib/lte_info/inc
 UNIT_CFLAGS += -Isrc/lib/osn/inc
+UNIT_CFLAGS += -Isrc/cm2/src
 
 UNIT_LDFLAGS := -lev -ljansson
 

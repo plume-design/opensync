@@ -542,6 +542,7 @@ test_add_gk_cache(void)
 
     LOGI("starting test: %s ...", __func__);
 
+    /* This is an FQDN, do direction won't matter */
     entry = entry1;
     entry->direction = GKC_FLOW_DIRECTION_OUTBOUND;
     ret = gkc_add_attribute_entry(entry);
@@ -551,7 +552,7 @@ test_add_gk_cache(void)
     entry->cache_key = 0;
     entry->direction = GKC_FLOW_DIRECTION_INBOUND;
     ret = gkc_add_attribute_entry(entry);
-    TEST_ASSERT_TRUE(ret);
+    TEST_ASSERT_FALSE(ret);
 
     entry = entry2;
     FREE(entry->device_mac);
@@ -844,10 +845,9 @@ test_counters(void)
 }
 
 void
-test_duplicate_entries(void)
+test_duplicate_entries_fqdn(void)
 {
     struct gk_attr_cache_interface *entry;
-    struct attr_cache *cached_entry;
     uint64_t count;
     bool ret;
 
@@ -867,30 +867,49 @@ test_duplicate_entries(void)
     count = gk_get_device_count();
     TEST_ASSERT_EQUAL_INT(1, count);
 
-    /* This case will fall in the "aggregated" hostname entry. */
-    entry->attribute_type = GK_CACHE_REQ_TYPE_HOST;
+    count = gk_get_cache_count();
+    TEST_ASSERT_EQUAL_INT(1, count);
+
+    LOGI("ending test: %s", __func__);
+}
+
+void
+test_duplicate_entries_ipv4(void)
+{
+    struct gk_attr_cache_interface *entry;
+    struct attr_cache *cached_entry;
+    uint64_t count;
+    bool ret;
+
+    LOGI("starting test: %s ...", __func__);
+
+    entry = entry9;
+
+    /* entries should be added only once */
+    ret = gkc_add_attribute_entry(entry);
+    TEST_ASSERT_TRUE(ret);
+    count = gk_get_device_count();
+    TEST_ASSERT_EQUAL_INT(1, count);
+
+    /* This will count as a cache hit ! */
     ret = gkc_add_attribute_entry(entry);
     TEST_ASSERT_FALSE(ret);
-    cached_entry = gkc_fetch_attribute_entry(entry);
-    TEST_ASSERT_EQUAL_INT(2, cached_entry->attr.host_name->count_fqdn.total);
-    TEST_ASSERT_EQUAL_INT(1, cached_entry->attr.host_name->count_host.total);
+    count = gk_get_device_count();
+    TEST_ASSERT_EQUAL_INT(1, count);
 
-    /* Change the direction, and insert again. */
-    entry->direction = GKC_FLOW_DIRECTION_INBOUND;
-    /* We are re-using the entry, so don't forget to recompute the key */
+    /* This will count as a cache miss ! */
+    entry->direction = NET_MD_ACC_OUTBOUND_DIR;
     entry->cache_key = 0;
-
-    /* this entry does not exist in the cache */
-    cached_entry = gkc_fetch_attribute_entry(entry);
-    TEST_ASSERT_NULL(cached_entry);
-
     ret = gkc_add_attribute_entry(entry);
-    TEST_ASSERT_TRUE(ret); /* because it is a new entry */
+    TEST_ASSERT_TRUE(ret);
+    count = gk_get_device_count();
+    TEST_ASSERT_EQUAL_INT(1, count);
 
     cached_entry = gkc_fetch_attribute_entry(entry);
-    /* the counters should no longer collide */
-    TEST_ASSERT_EQUAL_INT(0, cached_entry->attr.host_name->count_fqdn.total);
-    TEST_ASSERT_EQUAL_INT(1, cached_entry->attr.host_name->count_host.total);
+    TEST_ASSERT_EQUAL_INT(1, cached_entry->attr.ipv4->hit_count.total);
+
+    count = gk_get_cache_count();
+    TEST_ASSERT_EQUAL_INT(2, count);
 
     LOGI("ending test: %s", __func__);
 }
@@ -1448,6 +1467,7 @@ test_ipv4_upsert(void)
     entry.action = FSM_BLOCK;
     entry.direction = NET_MD_ACC_OUTBOUND_DIR;
     entry.gk_policy = STRDUP("gk_ut_block");
+    entry.network_id = "home--1";
     entry.ip_addr = sockaddr_storage_create(AF_INET, ipv4);
 
     /* Fist validate that the entry is not yet cached */
@@ -1486,14 +1506,72 @@ test_ipv4_upsert(void)
     ret = sockaddr_storage_equals(entry.ip_addr, &out2->attr.ipv4->ip_addr);
     TEST_ASSERT_TRUE(ret);
 
+    gkc_print_cache_entries();
+
     ret = gkc_del_attribute(&entry);
     TEST_ASSERT_TRUE(ret);
+
+    gkc_print_cache_entries();
 
     FREE(entry.ip_addr);
     FREE(entry.gk_policy);
     FREE(entry.device_mac);
 
     LOGI("ending test: %s", __func__);
+}
+
+void
+test_flow_entry_removed_from_cache_after_ttl_expires(void)
+{
+    struct gk_attr_cache_interface entry;
+    struct attr_cache *out1;
+    struct attr_cache *out2;
+    char *ipv4 = "1.2.3.4";
+    bool ret;
+
+    LOGI("starting test: %s ...", __func__);
+
+    MEMZERO(entry);
+    entry.action = FSM_BLOCK;
+    entry.device_mac = str2os_mac("AA:AA:AA:AA:AA:01");
+    entry.attribute_type = GK_CACHE_REQ_TYPE_IPV4;
+    entry.cache_ttl = 10;
+    entry.action = FSM_BLOCK;
+    entry.direction = NET_MD_ACC_OUTBOUND_DIR;
+    entry.gk_policy = STRDUP("gk_ut_block");
+    entry.ip_addr = sockaddr_storage_create(AF_INET, ipv4);
+
+    /* Fist validate that the entry is not yet cached */
+    out1 = gkc_fetch_attribute_entry(&entry);
+    TEST_ASSERT_NULL(out1);
+
+    /* add the entry */
+    ret = gkc_upsert_attribute_entry(&entry);
+    TEST_ASSERT_TRUE(ret);
+
+    /* TTL was set to 10 secs, entry should be found */
+    sleep(7);
+    gkc_ttl_cleanup();
+    out2 = gkc_fetch_attribute_entry(&entry);
+    TEST_ASSERT_NOT_NULL(out2);
+
+    /* upsert operation should not refresh TTL */
+    ret = gkc_upsert_attribute_entry(&entry);
+    TEST_ASSERT_TRUE(ret);
+    sleep(5);
+
+    /* since TTL is not refreshed, the entry should be removed
+     * because of expired TTL */
+    gkc_ttl_cleanup();
+    out2 = gkc_fetch_attribute_entry(&entry);
+    TEST_ASSERT_NULL(out2);
+
+    FREE(entry.ip_addr);
+    FREE(entry.gk_policy);
+    FREE(entry.device_mac);
+
+    LOGI("ending test: %s", __func__);
+
 }
 
 void
@@ -1515,6 +1593,7 @@ test_ipv6_upsert(void)
     entry.action = FSM_BLOCK;
     entry.direction = NET_MD_ACC_OUTBOUND_DIR;
     entry.gk_policy = STRDUP("gk_ut_block");
+    entry.network_id = "home--2";
     entry.ip_addr = sockaddr_storage_create(AF_INET6, ipv6);
 
     /* Fist validate that the entry is not yet cached */
@@ -1553,8 +1632,12 @@ test_ipv6_upsert(void)
     ret = sockaddr_storage_equals(entry.ip_addr, &out2->attr.ipv6->ip_addr);
     TEST_ASSERT_TRUE(ret);
 
+    gkc_print_cache_entries();
+
     ret = gkc_del_attribute(&entry);
     TEST_ASSERT_TRUE(ret);
+
+    gkc_print_cache_entries();
 
     FREE(entry.ip_addr);
     FREE(entry.gk_policy);
@@ -1745,6 +1828,124 @@ test_ipv6_upsert_action_by_name(void)
     LOGI("ending test: %s", __func__);
 }
 
+void
+test_attr_entry_network_id(void)
+{
+    struct gk_attr_cache_interface *entry;
+    struct attr_cache *cached_entry;
+    bool ret;
+
+    LOGI("starting test: %s ...", __func__);
+
+    entry = entry6;
+    ret = gkc_add_attribute_entry(entry);
+    TEST_ASSERT_TRUE(ret);
+
+    ret = gkc_lookup_attribute_entry(entry, false);
+    TEST_ASSERT_TRUE(ret);
+    gkc_print_cache_entries();
+
+    cached_entry = gkc_fetch_attribute_entry(entry);
+    TEST_ASSERT_NOT_NULL(cached_entry);
+
+    TEST_ASSERT_EQUAL_STRING(entry->network_id, cached_entry->network_id);
+
+    entry = entry7;
+    ret = gkc_add_attribute_entry(entry);
+    TEST_ASSERT_TRUE(ret);
+
+    ret = gkc_lookup_attribute_entry(entry, false);
+    TEST_ASSERT_TRUE(ret);
+    gkc_print_cache_entries();
+
+    cached_entry = gkc_fetch_attribute_entry(entry);
+    TEST_ASSERT_NOT_NULL(cached_entry);
+
+    TEST_ASSERT_EQUAL_STRING(entry->network_id, cached_entry->network_id);
+
+    entry = entry6;
+    ret = gkc_del_attribute(entry);
+    TEST_ASSERT_TRUE(ret);
+
+    ret = gkc_lookup_attribute_entry(entry, false);
+    TEST_ASSERT_FALSE(ret);
+
+    entry = entry8;
+    ret = gkc_add_attribute_entry(entry);
+    TEST_ASSERT_TRUE(ret);
+
+    ret = gkc_lookup_attribute_entry(entry, false);
+    TEST_ASSERT_TRUE(ret);
+    gkc_print_cache_entries();
+
+    cached_entry = gkc_fetch_attribute_entry(entry);
+    TEST_ASSERT_NOT_NULL(cached_entry);
+
+    TEST_ASSERT_EQUAL_STRING(entry->network_id, cached_entry->network_id);
+
+    entry = entry7;
+    ret = gkc_del_attribute(entry);
+    TEST_ASSERT_TRUE(ret);
+
+    ret = gkc_lookup_attribute_entry(entry, false);
+    TEST_ASSERT_FALSE(ret);
+
+    entry = entry8;
+    ret = gkc_del_attribute(entry);
+    TEST_ASSERT_TRUE(ret);
+
+    ret = gkc_lookup_attribute_entry(entry, false);
+    TEST_ASSERT_FALSE(ret);
+
+    LOGI("ending test: %s", __func__);
+}
+
+void
+test_flow_entry_network_id(void)
+{
+    struct gkc_ip_flow_interface *flow_entry;
+    bool ret = false;
+
+    LOGI("starting test: %s ...", __func__);
+
+    flow_entry = flow_entry6;
+    ret = gkc_add_flow_entry(flow_entry);
+    TEST_ASSERT_TRUE(ret);
+
+    ret = gkc_lookup_flow(flow_entry, false);
+    TEST_ASSERT_TRUE(ret);
+
+    flow_entry = flow_entry7;
+    ret = gkc_add_flow_entry(flow_entry);
+    TEST_ASSERT_TRUE(ret);
+
+    ret = gkc_lookup_flow(flow_entry, false);
+    TEST_ASSERT_TRUE(ret);
+
+    flow_entry = flow_entry6;
+    ret = gkc_del_flow(flow_entry);
+    TEST_ASSERT_TRUE(ret);
+
+    ret = gkc_lookup_flow(flow_entry, false);
+    TEST_ASSERT_FALSE(ret);
+
+    flow_entry = flow_entry8;
+    ret = gkc_add_flow_entry(flow_entry);
+    TEST_ASSERT_TRUE(ret);
+
+    ret = gkc_lookup_flow(flow_entry, false);
+    TEST_ASSERT_TRUE(ret);
+
+    flow_entry = flow_entry7;
+    ret = gkc_del_flow(flow_entry);
+    TEST_ASSERT_TRUE(ret);
+
+    flow_entry = flow_entry8;
+    ret = gkc_del_flow(flow_entry);
+    TEST_ASSERT_TRUE(ret);
+
+    LOGI("ending test: %s", __func__);
+}
 
 void
 run_gk_cache(void)
@@ -1771,7 +1972,8 @@ run_gk_cache(void)
     RUN_TEST(test_fqdn_redirect_entry);
 
     RUN_TEST(test_counters);
-    RUN_TEST(test_duplicate_entries);
+    RUN_TEST(test_duplicate_entries_fqdn);
+    RUN_TEST(test_duplicate_entries_ipv4);
     RUN_TEST(test_max_attr_entries);
     RUN_TEST(test_max_flow_entries);
     RUN_TEST(test_host_entry_in_fqdn);
@@ -1786,7 +1988,10 @@ run_gk_cache(void)
     RUN_TEST(test_gkc_private_ipv6_attr_entry);
     RUN_TEST(test_gkc_private_ip_flow_entry);
     RUN_TEST(test_ipv4_upsert);
+    RUN_TEST(test_flow_entry_removed_from_cache_after_ttl_expires);
     RUN_TEST(test_ipv6_upsert);
     RUN_TEST(test_ipv4_upsert_action_by_name);
     RUN_TEST(test_ipv6_upsert_action_by_name);
+    RUN_TEST(test_attr_entry_network_id);
+    RUN_TEST(test_flow_entry_network_id);
 }

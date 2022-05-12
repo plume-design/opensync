@@ -108,36 +108,6 @@ check_cmd()
 
 ###############################################################################
 # DESCRIPTION:
-#   Function creates tap interface on bridge with selected Openflow port.
-#   Raises an exception if not in the path.
-# INPUT PARAMETER(S):
-#   $1  Bridge name (string, required)
-#   $2  Interface name (string, required)
-#   $3  Open flow port (string, required)
-# RETURNS:
-#   0   On success.
-# USAGE EXAMPLE(S):
-#   gen_tap_cmd br-home br-home.tdns 3001
-#   gen_tap_cmd br-home br-home.tx 401
-###############################################################################
-gen_tap_cmd()
-{
-    local NARGS=3
-    [ $# -ne ${NARGS} ] &&
-        raise "fsm_lib:gen_tap_cmd requires ${NARGS} input arguments, $# given" -arg
-    bridge=$1
-    intf=$2
-    ofport=$3
-
-    log -deb "fsm_lib:gen_tap_cmd - Generating tap interface '${intf}' on bridge '${bridge}'"
-
-    ovs-vsctl add-port "${bridge}" "${intf}"  \
-        -- set interface "${intf}"  type=internal \
-        -- set interface "${intf}"  ofport_request="${ofport}"
-}
-
-###############################################################################
-# DESCRIPTION:
 #   Function brings up tap interface.
 # INPUT PARAMETER(S):
 #   $1  Interface name (string, required)

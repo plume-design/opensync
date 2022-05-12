@@ -477,7 +477,8 @@ wpas_conf_gen_cred_config_networks(struct wpas *wpas,
                                    const struct schema_Wifi_Credential_Config *cconfs,
                                    size_t n_cconfs,
                                    char **buf,
-                                   size_t *len)
+                                   size_t *len,
+                                   bool radio_6g)
 {
     const char *wpa_passphrase;
     const char *wpa_pairwise;
@@ -511,14 +512,14 @@ wpas_conf_gen_cred_config_networks(struct wpas *wpas,
         csnprintf(buf, len, "\tfreq_list=%s\n", dfs_allowed ? "" : freqlist);
         csnprintf(buf, len, "\tssid=\"%s\"\n", cconfs->ssid);
         csnprintf(buf, len, "\tpsk=\"%s\"\n", wpa_passphrase);
-        csnprintf(buf, len, "\tkey_mgmt=%s\n", wpa_key_mgmt);
+        csnprintf(buf, len, "\tkey_mgmt=%s\n", radio_6g ? "SAE" : wpa_key_mgmt);
         csnprintf(buf, len, "\tpairwise=%s\n", wpa_pairwise);
         csnprintf(buf, len, "\tproto=%s\n", wpa_proto);
         csnprintf(buf, len, "\t%s", wpas->respect_multi_ap ? "" : "#");
         csnprintf(buf, len, "multi_ap_backhaul_sta=%d\n", wpas_map_str2int(vconf));
         csnprintf(buf, len, "\t%s", strlen(vconf->parent) > 0 ? "" : "#");
         csnprintf(buf, len, "bssid=%s\n", vconf->parent);
-        csnprintf(buf, len, "\t#ieee80211w=\n");
+        csnprintf(buf, len, "\tieee80211w=%s\n", radio_6g ? "2" : "0");
         csnprintf(buf, len, "}\n");
     }
 
@@ -538,6 +539,7 @@ wpas_conf_gen(struct wpas *wpas,
     size_t len = sizeof(wpas->conf);
     char *buf = wpas->conf;
     bool ok;
+    bool radio_6g;
 
     memset(wpas->conf, 0, sizeof(wpas->conf));
 
@@ -550,7 +552,9 @@ wpas_conf_gen(struct wpas *wpas,
     csnprintf(&buf, &len, "scan_cur_freq=%d\n", vconf->parent_exists && strlen(vconf->parent) > 0);
     csnprintf(&buf, &len, "#bridge=%s\n", vconf->bridge_exists ? vconf->bridge : "");
 
-    if (!strcmp(rconf->freq_band, SCHEMA_CONSTS_RADIO_TYPE_STR_6G)) {
+    radio_6g = !strcmp(rconf->freq_band, SCHEMA_CONSTS_RADIO_TYPE_STR_6G);
+
+    if (radio_6g) {
         csnprintf(&buf, &len, "sae_pwe=2\n");
     }
 
@@ -564,7 +568,7 @@ wpas_conf_gen(struct wpas *wpas,
     else if (vconf->security_len > 0 && vconf->ssid_exists && strlen(wpa_passphrase) > 0)
         ok = wpas_conf_gen_vif_network_legacy(wpas, vconf, &buf, &len);
     else
-        ok = wpas_conf_gen_cred_config_networks(wpas, vconf, cconfs, n_cconfs, &buf, &len);
+        ok = wpas_conf_gen_cred_config_networks(wpas, vconf, cconfs, n_cconfs, &buf, &len, radio_6g);
 
     return ok ? 0 : -1;
 }

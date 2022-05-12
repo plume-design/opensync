@@ -41,6 +41,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "os_types.h"
 #include "ovsdb_utils.h"
 #include "schema.h"
+#include "ovsdb_update.h"
 
 /* These are the type provided in rts_subscribe() callback. */
 #define RTS_TYPE_NUMBER 1
@@ -99,6 +100,9 @@ struct fsm_session_ops
 
     /* Update policy client */
     void (*update_client)(struct fsm_session *, struct policy_table *);
+
+    /* Get client device's network ID */
+    char * (*get_network_id)(struct fsm_session *, os_macaddr_t *mac);
 };
 
 
@@ -413,6 +417,7 @@ struct fsm_mgr
     bool (*init_plugin)(struct fsm_session *); /* DSO plugin init */
     int (*get_br)(char *if_name, char *bridge, size_t len); /* get lan bridge */
     bool (*update_session_tap)(struct fsm_session *); /* session tap update */
+    ds_tree_t network_id_table;
 };
 
 
@@ -854,7 +859,14 @@ fsm_process_provider(struct fsm_session *session);
 void
 fsm_set_object_state(struct fsm_session *session, struct fsm_object *object);
 
+
 void
 fsm_get_node_config(struct schema_Node_Config *node_cfg);
+
+
+void
+callback_Network_Zone(ovsdb_update_monitor_t *mon,
+                      struct schema_Network_Zone *old_rec,
+                      struct schema_Network_Zone *node_cfg);
 
 #endif /* FSM_H_INCLUDED */

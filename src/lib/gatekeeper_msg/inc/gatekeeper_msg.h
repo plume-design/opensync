@@ -52,6 +52,7 @@ struct gk_req_header
     char *node_id;
     char *location_id;
     char *policy_rule;
+    char *network_id;
 };
 
 

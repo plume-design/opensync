@@ -39,6 +39,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "memutil.h"
 #include "network_metadata_report.h"
 #include "os.h"
+#include "os_time.h"
 #include "os_types.h"
 #include "policy_tags.h"
 #include "util.h"
@@ -282,11 +283,16 @@ void
 fsm_dpi_client_periodic(struct fsm_session *session)
 {
     time_t now;
+    char time_str[TIME_STR_SZ];
 
     if (fsm_dpi_client_periodic_check(session))
     {
         now = time(NULL);
-        LOGD("%s: Triggers at %ld", __func__, now);
+        if (!time_to_str(now, time_str, TIME_STR_SZ))
+        {
+            snprintf(time_str, TIME_STR_SZ, "TIME_ERR");
+        }
+        LOGD("%s: Triggers at %s", __func__, time_str);
     }
 }
 

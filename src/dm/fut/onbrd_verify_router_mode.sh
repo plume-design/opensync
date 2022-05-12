@@ -49,10 +49,9 @@ Arguments:
     \$4 (dhcp_end_pool)   : End of DHCP pool in Wifi_Inet_Config                  : (string)(required)
 Testcase procedure:
     - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
-                 Run: ./onbrd/onbrd_verify_router_mode.sh <BR-WAN> <BR-HOME> <START-POOL> <END-POOL>
+                 Run: ./onbrd/onbrd_verify_router_mode.sh <WAN-IFACE> <BR-HOME> <START-POOL> <END-POOL>
 Script usage example:
    ./onbrd/onbrd_verify_router_mode.sh eth0 br-home 10.10.10.20 10.10.10.50
-   ./onbrd/onbrd_verify_router_mode.sh br-wan br-home 10.10.10.20 10.10.10.50
 usage_string
 }
 if [ -n "${1}" ]; then

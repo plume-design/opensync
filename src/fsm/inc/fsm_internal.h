@@ -71,6 +71,13 @@ struct fsm_dpi_client_tags
     ds_tree_node_t next;
 };
 
+struct network_id
+{
+    char *network_id;           /* Network id name */
+    struct str_set *nw_tags;    /* Openflow tags list */
+    ds_tree_node_t next;
+};
+
 /**
  * @brief returns the tapping mode for a session
  *
@@ -285,5 +292,19 @@ fsm_print_one_dpi_client(struct dpi_client* client);
 void
 fsm_print_dpi_clients(ds_tree_t *tree);
 
+char *
+fsm_get_network_id(os_macaddr_t *mac);
+
+void
+fsm_add_network_id(struct schema_Network_Zone *config);
+
+void
+fsm_del_network_id(struct schema_Network_Zone *config);
+
+void
+fsm_modify_network_id(struct schema_Network_Zone *config);
+
+void
+free_network_id_node(struct network_id *netid);
 
 #endif /* FSM_INTERNAL_H_INCLUDED */

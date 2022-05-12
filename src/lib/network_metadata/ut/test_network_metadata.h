@@ -62,6 +62,8 @@ struct in_key
     uint16_t dport;
     char *networkid;
     uint32_t flowmarker;
+    uint16_t rx_idx;
+    uint16_t tx_idx;
 };
 
 struct test_network_data_report

@@ -292,6 +292,7 @@ gk_set_pb_common_req(struct gk_req_header *header)
     pb->node_id = header->node_id;
     pb->location_id = header->location_id;
     pb->policy_rule = header->policy_rule;
+    pb->network_id = header->network_id;
 
     return pb;
 }

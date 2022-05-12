@@ -161,15 +161,13 @@ ltem_revert_failover(ltem_mgr_t *mgr)
 static void
 ltem_handle_wan_state_change(ltem_mgr_t *mgr)
 {
-    int res = 0;
-
     switch (mgr->wan_state) {
     case LTEM_WAN_STATE_UNKNOWN:
         break;
     case LTEM_WAN_STATE_DOWN:
         if (!mgr || !mgr->lte_config_info || !mgr->lte_config_info->manager_enable)
         {
-            LOGI("%s: %s, manager_enable=false", __func__, ltem_get_wan_state_name(mgr->wan_state));
+            LOGD("%s: %s, manager_enable=false", __func__, ltem_get_wan_state_name(mgr->wan_state));
             break;
         }
         if (mgr->lte_state == LTEM_LTE_STATE_UP && mgr->lte_config_info->lte_failover_enable)
@@ -186,7 +184,8 @@ ltem_handle_wan_state_change(ltem_mgr_t *mgr)
     default:
         break;
     }
-    LOGI("%s: state: %s, res %d", __func__, ltem_get_wan_state_name(mgr->wan_state), res);
+    LOGI("%s: wan_state: %s, lte_state[%s] failover_enable[%d]", __func__,
+         ltem_get_wan_state_name(mgr->wan_state), ltem_get_lte_state_name(mgr->lte_state), mgr->lte_config_info->lte_failover_enable);
 }
 
 /**
@@ -242,7 +241,7 @@ ltem_handle_lte_state_change(ltem_mgr_t *mgr)
                 break;
             }
 
-            LOGI("%s: wan_state[%s], lte_failover_enable[%d], force_use_lte[%d]",
+            LOGD("%s: wan_state[%s], lte_failover_enable[%d], force_use_lte[%d]",
                  __func__, ltem_get_wan_state_name(mgr->wan_state), mgr->lte_config_info->lte_failover_enable, mgr->lte_config_info->force_use_lte);
 
             if (mgr->wan_state == LTEM_WAN_STATE_UP && (mgr->lte_config_info->lte_failover_enable && mgr->lte_config_info->force_use_lte))
@@ -263,6 +262,28 @@ ltem_handle_lte_state_change(ltem_mgr_t *mgr)
         break;
     }
     LOGI("%s: state: %s, res %d", __func__, ltem_get_lte_state_name(mgr->lte_state), res);
+}
+
+/**
+ * @brief Init the LTE modem and start the LTE daemon
+ */
+bool
+ltem_init_lte_modem(void)
+{
+    int ret;
+
+    osn_lte_set_qmi_mode();
+    osn_lte_enable_sim_detect();
+    ret = osn_lte_read_pdp_context();
+    if (ret) return false;
+    ret = osn_lte_set_pdp_context_params(PDP_CTXT_PDP_TYPE, PDP_TYPE_IPV4);
+    ret |= osn_lte_set_ue_data_centric();
+    if (ret)
+    {
+        osn_lte_reset_modem();
+    }
+    osn_lte_start_vendor_daemon(SOURCE_AT_CMD);
+    return true;
 }
 
 /**

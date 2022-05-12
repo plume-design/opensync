@@ -138,4 +138,10 @@ upnp_curl_exit(void);
 void
 new_conn(struct upnp_device_url *url);
 
+void
+upnp_init_elements(struct upnp_device_url *url);
+
+struct upnp_key_val *
+upnp_get_elements(void);
+
 #endif /* UPNP_CURL_H_INCLUDED */

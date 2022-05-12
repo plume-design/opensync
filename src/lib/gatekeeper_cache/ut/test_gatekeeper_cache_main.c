@@ -33,6 +33,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "log.h"
 #include "memutil.h"
 #include "network_metadata_utils.h"
+#include "sockaddr_storage.h"
 #include "target.h"
 #include "unity.h"
 
@@ -46,8 +47,11 @@ size_t OVER_MAX_CACHE_ENTRIES;
 struct sample_attribute_entries *test_attr_entries;
 struct sample_flow_entries *test_flow_entries;
 
-struct gk_attr_cache_interface *entry1, *entry2, *entry3, *entry4, *entry5;
-struct gkc_ip_flow_interface *flow_entry1, *flow_entry2, *flow_entry3, *flow_entry4, *flow_entry5;
+struct gk_attr_cache_interface *entry1, *entry2, *entry3, *entry4;
+struct gk_attr_cache_interface *entry5, *entry6, *entry7, *entry8;
+struct gk_attr_cache_interface *entry9;
+struct gkc_ip_flow_interface *flow_entry1, *flow_entry2, *flow_entry3, *flow_entry4;
+struct gkc_ip_flow_interface *flow_entry5, *flow_entry6, *flow_entry7, *flow_entry8;
 
 char *g_genmac_filename = "./data/genmac.txt";
 
@@ -136,6 +140,42 @@ create_default_attr_entries(void)
     entry5->cache_ttl = 1000;
     entry5->action = FSM_BLOCK;
     entry5->attr_name = strdup("testapp");
+
+    entry6 = CALLOC(1, sizeof(*entry6));
+    entry6->action = 1;
+    entry6->device_mac = str2os_mac("AA:AA:AA:AA:AA:06");
+    entry6->attribute_type = GK_CACHE_REQ_TYPE_FQDN;
+    entry6->cache_ttl = 1000;
+    entry6->action = FSM_ALLOW;
+    entry6->attr_name = strdup("www.entr6.com");
+    entry6->network_id = "home--1";
+
+    entry7 = CALLOC(1, sizeof(*entry7));
+    entry7->action = 1;
+    entry7->device_mac = str2os_mac("AA:AA:AA:AA:AA:06");
+    entry7->attribute_type = GK_CACHE_REQ_TYPE_APP;
+    entry7->cache_ttl = 1000;
+    entry7->action = FSM_BLOCK;
+    entry7->attr_name = strdup("testapp1");
+    entry7->network_id = "home--2";
+
+    entry8 = CALLOC(1, sizeof(*entry8));
+    entry8->action = 1;
+    entry8->device_mac = str2os_mac("AA:AA:AA:AA:AA:06");
+    entry8->attribute_type = GK_CACHE_REQ_TYPE_URL;
+    entry8->cache_ttl = 1000;
+    entry8->action = FSM_ALLOW;
+    entry8->attr_name = strdup("https://www.google.com");
+    entry8->network_id = "home--3";
+
+    entry9 = CALLOC(1, sizeof(*entry5));
+    entry9->action = 1;
+    entry9->device_mac = str2os_mac("AA:AA:AA:AA:AA:04");
+    entry9->attribute_type = GK_CACHE_REQ_TYPE_IPV4;
+    entry9->cache_ttl = 1000;
+    entry9->action = FSM_BLOCK;
+    entry9->ip_addr = sockaddr_storage_create(AF_INET, "127.0.0.1");
+    entry9->direction = NET_MD_ACC_INBOUND_DIR;
 }
 
 static void
@@ -212,7 +252,47 @@ create_default_flow_entries(void)
     flow_entry5->src_ip_addr = CALLOC(1, sizeof(struct in6_addr));
     inet_pton(AF_INET, "10.2.2.1", flow_entry5->src_ip_addr);
 
+    flow_entry6 = CALLOC(1, sizeof(*flow_entry6));
+    flow_entry6->device_mac = str2os_mac("AA:AA:AA:AA:AA:06");
+    flow_entry6->direction = GKC_FLOW_DIRECTION_INBOUND;
+    flow_entry6->src_port = 22;
+    flow_entry6->dst_port = 3333;
+    flow_entry6->ip_version = 4;
+    flow_entry6->protocol = 16;
+    flow_entry6->cache_ttl = 1000;
+    flow_entry6->dst_ip_addr = CALLOC(1, sizeof(struct in6_addr));
+    inet_pton(AF_INET, "2.2.2.2", flow_entry6->dst_ip_addr);
+    flow_entry6->src_ip_addr = CALLOC(1, sizeof(struct in6_addr));
+    inet_pton(AF_INET, "10.2.2.1", flow_entry6->src_ip_addr);
+    flow_entry6->network_id = "home--1";
 
+    flow_entry7 = CALLOC(1, sizeof(*flow_entry7));
+    flow_entry7->device_mac = str2os_mac("AA:AA:AA:AA:AA:07");
+    flow_entry7->direction = GKC_FLOW_DIRECTION_OUTBOUND;
+    flow_entry7->src_port = 22;
+    flow_entry7->dst_port = 3333;
+    flow_entry7->ip_version = 4;
+    flow_entry7->protocol = 16;
+    flow_entry7->cache_ttl = 1000;
+    flow_entry7->dst_ip_addr = CALLOC(1, sizeof(struct in6_addr));
+    inet_pton(AF_INET, "2.2.2.2", flow_entry7->dst_ip_addr);
+    flow_entry7->src_ip_addr = CALLOC(1, sizeof(struct in6_addr));
+    inet_pton(AF_INET, "10.2.2.1", flow_entry7->src_ip_addr);
+    flow_entry7->network_id = "home--2";
+
+    flow_entry8 = CALLOC(1, sizeof(*flow_entry8));
+    flow_entry8->device_mac = str2os_mac("AA:AA:AA:AA:AA:08");
+    flow_entry8->direction = GKC_FLOW_DIRECTION_INBOUND;
+    flow_entry8->src_port = 22;
+    flow_entry8->dst_port = 3333;
+    flow_entry8->ip_version = 4;
+    flow_entry8->protocol = 16;
+    flow_entry8->cache_ttl = 1000;
+    flow_entry8->dst_ip_addr = CALLOC(1, sizeof(struct in6_addr));
+    inet_pton(AF_INET, "2.2.2.2", flow_entry8->dst_ip_addr);
+    flow_entry8->src_ip_addr = CALLOC(1, sizeof(struct in6_addr));
+    inet_pton(AF_INET, "10.2.2.1", flow_entry8->src_ip_addr);
+    flow_entry8->network_id = "home--3";
 }
 
 void
@@ -248,6 +328,9 @@ del_default_flow_entries(void)
     free_flow_interface(flow_entry3);
     free_flow_interface(flow_entry4);
     free_flow_interface(flow_entry5);
+    free_flow_interface(flow_entry6);
+    free_flow_interface(flow_entry7);
+    free_flow_interface(flow_entry8);
 }
 
 void
@@ -258,6 +341,7 @@ free_cache_interface(struct gk_attr_cache_interface *entry)
     FREE(entry->device_mac);
     FREE(entry->attr_name);
     FREE(entry->fqdn_redirect);
+    FREE(entry->ip_addr);
     FREE(entry);
 }
 
@@ -269,6 +353,10 @@ del_default_attr_entries(void)
     free_cache_interface(entry3);
     free_cache_interface(entry4);
     free_cache_interface(entry5);
+    free_cache_interface(entry6);
+    free_cache_interface(entry7);
+    free_cache_interface(entry8);
+    free_cache_interface(entry9);
 }
 
 void

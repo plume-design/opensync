@@ -52,17 +52,12 @@ ut_setup_test_environment()
 {
     log -deb "ut_lib:ut_setup_test_environment - Running UT setup"
 
-    stop_healthcheck &&
-        log -deb "ut_lib:ut_setup_test_environment - healtcheck disabled - Success" ||
-        raise "FAIL: stop_healthcheck - Failed to stop health check" -l "ut_lib:ut_setup_test_environment" -ds
+    device_init &&
+        log -deb "ut_lib:ut_setup_test_environment - Device initialized - Success" ||
+        raise "FAIL: device_init - Could not initialize device" -l "ut_lib:ut_setup_test_environment" -ds
 
-    disable_fatal_state_cm &&
-        log -deb "ut_lib:ut_setup_test_environment - CM fatal state disabled - Success" ||
-        raise "FAIL: disable_fatal_state_cm - Failed to disable CM fatal state" -l "ut_lib:ut_setup_test_environment" -ds
-
-    # Ignoring failures
-    /etc/init.d/manager restart ||
-        true
+    restart_managers
+    log -deb "ut_lib:ut_setup_test_environment - Executed restart_managers, exit code: $?"
 
     log -deb "ut_lib:ut_setup_test_environment - UT setup - end"
 

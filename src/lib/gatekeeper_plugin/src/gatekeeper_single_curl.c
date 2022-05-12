@@ -784,11 +784,13 @@ gk_send_ecurl_request(struct fsm_session *session,
     struct fsm_url_reply *url_reply;
     struct fsm_url_stats *stats;
     struct gk_curl_data chunk;
+    uint32_t category_id;
     long response_code;
-    int gk_response = GK_LOOKUP_SUCCESS;
+    int gk_response;
     CURLcode res;
     bool ret;
 
+    gk_response = GK_LOOKUP_SUCCESS;
     policy_req = gk_verdict->policy_req;
     fqdn_req = policy_req->fqdn_req;
     policy_reply->provider = session->provider;
@@ -836,11 +838,14 @@ gk_send_ecurl_request(struct fsm_session *session,
     }
 
     ret = gk_process_curl_response(&chunk, gk_verdict, policy_reply);
-    if (ret == false) gk_response = GK_SERVICE_ERROR;
+    category_id = url_reply->reply_info.gk_info.category_id;
 
-    /* if the curl reponse was successful and reply processing failed
-     * treate it as service failures.
+    /* Even though curl response was successful,
+     * if reply processing failed or
+     * if category id received from gatekeeper is zero (0)
+     * treat each one as gatekeeper service failure.
      */
+    if (category_id == 0 || ret == false) gk_response = GK_SERVICE_ERROR;
     if (gk_response == GK_SERVICE_ERROR) gk_update_categorization_count(fsm_gk_session);
 
     /* update uncategorized counter (reply with category-id 15) */

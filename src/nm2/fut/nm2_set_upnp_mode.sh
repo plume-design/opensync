@@ -50,10 +50,9 @@ Arguments:
     \$3 (lan_ip_addr)     : IP address to be assigned on LAN interface            : (string)(required)
 Testcase procedure:
     - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
-                 Run: ./nm2/nm2_set_upnp_mode.sh <BR-WAN> <BR-HOME> <IP-ADDR>
+                 Run: ./nm2/nm2_set_upnp_mode.sh <WAN_IFACE> <BR-HOME> <IP-ADDR>
 Script usage example:
    ./nm2/nm2_set_upnp_mode.sh eth0 br-home 10.10.10.30
-   ./nm2/nm2_set_upnp_mode.sh br-wan br-home 10.10.10.30
 usage_string
 }
 if [ -n "${1}" ]; then

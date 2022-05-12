@@ -383,7 +383,7 @@ gk_process_response(struct gk_conn_info *conn)
         return false;
     }
 
-    /* get the curl data for this reponse */
+    /* get the curl data for this response */
     mcurl_data = gk_lookup_curl_data(gk_session, unpacked_data);
     if (mcurl_data == NULL || mcurl_data->gk_verdict == NULL)
     {
@@ -472,8 +472,8 @@ check_multi_info(struct gk_curl_multi_info *mcurl_info)
         {
             /* process response received from gatekeeper service */
             ret = gk_process_response(conn);
-            /* if the curl reponse was successful and reply processing failed
-             * treate it as service failures.
+            /* if the curl response was successful and reply processing failed
+             * treat it as service failure.
              */
             if (!ret) gk_update_categorization_count(conn->context);
         }

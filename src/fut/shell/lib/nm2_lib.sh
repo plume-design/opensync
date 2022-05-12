@@ -108,7 +108,6 @@ nm_setup_test_environment()
 #   0   On success.
 #   See DESCRIPTION.
 # USAGE EXAMPLE(S):
-#   create_inet_entry -if_name "br-wan" -if_type "vif"
 #   create_inet_entry -if_name "eth1" -if_type "eth" -enabled "true"
 ###############################################################################
 create_inet_entry()
@@ -149,6 +148,14 @@ create_inet_entry()
                 shift
                 ;;
             -dhcp_sniff)
+                add_cfg_args="${add_cfg_args} ${replace} ${option#?} ${1}"
+                shift
+                ;;
+            -no_flood)
+                add_cfg_args="${add_cfg_args} ${replace} ${option#?} ${1}"
+                shift
+                ;;
+            -collect_stats)
                 add_cfg_args="${add_cfg_args} ${replace} ${option#?} ${1}"
                 shift
                 ;;
@@ -516,43 +523,6 @@ force_delete_ip_port_forward_raise()
 
 ###############################################################################
 # DESCRIPTION:
-# INPUT PARAMETER(S):
-#   $1  Internal interface name (string, required)
-#   $2  External interface name (string, required)
-# RETURNS:
-#   0   On success.
-# USAGE EXAMPLE(S):
-#   N/A
-###############################################################################
-check_upnp_configuration_valid()
-{
-    local NARGS=2
-    [ $# -ne ${NARGS} ] &&
-        raise "nm2_lib:check_upnp_configuration_valid requires ${NARGS} input argument(s), $# given" -arg
-    nm2_internal_if=$1
-    nm2_external_if=$2
-
-    log -deb "nm2_lib:check_upnp_configuration_valid - LEVEL2 - Checking if '$nm2_internal_if' set as internal interface"
-    $(cat /var/miniupnpd/miniupnpd.conf | grep "listening_ip=$nm2_internal_if")
-    if [ "$?" -eq 0 ]; then
-        log -deb "nm2_lib:check_upnp_configuration_valid - UPnP configuration VALID for internal interface '$nm2_internal_if' - Success"
-    else
-        raise "FAIL: UPnP configuration not valid for internal interface '$nm2_internal_if'" -l "nm2_lib:check_upnp_configuration_valid" -tc
-    fi
-
-    log -deb "nm2_lib:check_upnp_configuration_valid - LEVEL2 - Checking if '$nm2_external_if' set as external interface"
-    $(cat /var/miniupnpd/miniupnpd.conf | grep "ext_ifname=$nm2_external_if")
-    if [ "$?" -eq 0 ]; then
-        log -deb "nm2_lib:check_upnp_configuration_valid - UPnP configuration valid for external interface '$nm2_external_if' - Success"
-    else
-        raise "FAIL: UPnP configuration not valid for external interface '$nm2_external_if'" -l "nm2_lib:check_upnp_configuration_valid" -tc
-    fi
-
-    return 0
-}
-
-###############################################################################
-# DESCRIPTION:
 #   Function checks if NAT is enabled for interface at OS - LEVEL2.
 #   Uses iptables tool.
 # INPUT PARAMETER(S):
@@ -773,21 +743,29 @@ check_interface_exists()
     fi
 }
 
-#########################################################################################################
+###############################################################################
 # DESCRIPTION:
-#   Function checks vlan interface existence at OS level - LEVEL2.
+#   Function checks if vlan interface exists at OS level - LEVEL2.
+# STUB:
+#   This function is a stub. It always raises an exception and needs
+#   a function with the same name and usage in platform or device overrides.
 # INPUT PARAMETER(S):
-#   $1  parent_ifname (required)
-#   $2  vlan_id (required)
+#   $1  Parent interface name (string, required)
+#   $2  VLAN ID (int, required)
 # RETURNS:
 #   0   vlan interface exists on system.
-#   Stub function always fails.
-# NOTE:
-#   This is a stub function. Provide function for each platform in overrides.
 # USAGE EXAMPLE(S):
 #  check_vlan_iface eth0 100
-#########################################################################################################
+###############################################################################
 check_vlan_iface()
 {
-    raise "FAIL: This is a stub function. Override implementation needed for each platform." -l "nm2_lib:check_vlan_iface" -ds
+    local NARGS=2
+    [ $# -ne ${NARGS} ] &&
+        raise "nm2_lib:check_vlan_iface requires ${NARGS} input argument(s), $# given" -arg
+    parent_ifname=$1
+    vlan_id=$2
+
+    log "nm2_lib:check_vlan_iface - Checking vlan interface at OS - LEVEL2"
+    # Provide override in platform specific file
+    raise "FAIL: This is a stub function. Override implementation needed for each platform." -l "nm2_lib:check_vlan_iface" -fc
 }

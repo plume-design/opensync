@@ -259,6 +259,89 @@ lte_set_neigh_cell_intra_info(struct lte_info_report *lte_report)
     return 0;
 }
 
+
+/**
+ * @brief Set carrier aggregation info to the report
+ */
+int
+lte_set_carrier_agg_info(struct lte_info_report *lte_report)
+{
+    bool ret;
+    ltem_mgr_t *mgr = ltem_get_mgr();
+    lte_pca_info_t *lte_pca;
+    lte_sca_info_t *lte_sca;
+
+    struct lte_net_pca_info pca_info;
+    struct lte_net_sca_info sca_info;
+
+    MEMZERO(pca_info);
+    MEMZERO(sca_info);
+    lte_pca  = &mgr->modem_info->pca_info;
+    lte_sca  = &mgr->modem_info->sca_info;
+
+    pca_info.lcc = lte_pca->lcc;
+    pca_info.freq = lte_pca->freq;
+    pca_info.bandwidth = lte_pca->bandwidth;
+    pca_info.pcell_state = lte_pca->pcell_state;
+    pca_info.pcid = lte_pca->pcid;
+    pca_info.rsrp = lte_pca->rsrp;
+    pca_info.rsrq = lte_pca->rsrq;
+    pca_info.rssi = lte_pca->rssi;
+    pca_info.sinr = lte_pca->sinr;
+    sca_info.lcc = lte_sca->lcc;
+    sca_info.freq = lte_sca->freq;
+    sca_info.bandwidth = lte_sca->bandwidth;
+    sca_info.scell_state = lte_sca->scell_state;
+    sca_info.pcid = lte_sca->pcid;
+    sca_info.rsrp = lte_sca->rsrp;
+    sca_info.rsrq = lte_sca->rsrq;
+    sca_info.rssi = lte_sca->rssi;
+    sca_info.sinr = lte_sca->sinr;
+
+    ret = lte_info_set_primary_carrier_agg(&pca_info, lte_report);
+    if (!ret) return -1;
+    ret = lte_info_set_secondary_carrier_agg(&sca_info, lte_report);
+    if (!ret) return -1;
+
+    return 0;
+}
+
+
+/**
+ * @brief Set dynamic pdp context parameters info
+ */
+int
+lte_set_pdp_context_dynamic_info(struct lte_info_report *lte_report)
+{
+
+    ltem_mgr_t *mgr = ltem_get_mgr();
+    lte_pdp_ctx_dynamic_param_info_t *pdp_modem_source;
+
+    int ret;
+    struct lte_pdp_ctx_dynamic_params_info pdp_ctx_report;
+
+    MEMZERO(pdp_ctx_report);
+    pdp_modem_source = &mgr->modem_info->pdp_ctx_info;
+    pdp_ctx_report.cid = pdp_modem_source->cid;
+    pdp_ctx_report.bearer_id = pdp_modem_source->bearer_id;
+    pdp_ctx_report.apn = pdp_modem_source->apn;
+    pdp_ctx_report.local_addr = pdp_modem_source->local_addr;
+    pdp_ctx_report.subnetmask = pdp_modem_source->subnetmask;
+    pdp_ctx_report.gw_addr = pdp_modem_source->gw_addr;
+    pdp_ctx_report.dns_prim_addr =  pdp_modem_source->dns_prim_addr;
+    pdp_ctx_report.dns_sec_addr = pdp_modem_source->dns_sec_addr;
+    pdp_ctx_report.p_cscf_prim_addr =  pdp_modem_source->p_cscf_prim_addr;
+    pdp_ctx_report.im_cn_signalling_flag = pdp_modem_source->im_cn_signalling_flag;
+    pdp_ctx_report.lipaindication = pdp_modem_source->lipaindication;
+
+    ret = lte_info_set_pdp_ctx_dynamic_params(&pdp_ctx_report, lte_report);
+    if (!ret) return -1;
+
+    return 0;
+
+}
+
+
 /**
  * @brief Check the modem status
  */
@@ -342,6 +425,16 @@ lte_set_report(void)
     res = lte_set_neigh_cell_intra_info(lte_report);
     if (res) LOGE("Failed to set neighbor cell");
 
+
+    /* Add carrier aggregation info */
+    res = lte_set_carrier_agg_info(lte_report);
+    if (res) {
+        LOGE("Failed to set carrier aggregation info");
+        return res;
+    }
+    /* Add pdp context dynamic parameters info */
+    res = lte_set_pdp_context_dynamic_info(lte_report);
+    if (res) LOGE("Failed to set carrier aggregation info");
     return res;
 }
 

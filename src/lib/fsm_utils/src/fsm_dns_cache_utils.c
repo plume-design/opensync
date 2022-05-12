@@ -171,6 +171,8 @@ add_redirect_entry_gkc(struct dns_cache_param *param)
     gkc_entry.confidence_level = 0;
     gkc_entry.categorized = FSM_FQDN_CAT_SUCCESS;
     gkc_entry.is_private_ip = false;
+    gkc_entry.network_id = param->network_id;
+
     rc = gkc_upsert_attribute_entry(&gkc_entry);
     if (!rc)
     {
@@ -332,6 +334,7 @@ add_entry_gkc(struct dns_cache_param *param)
     gkc_entry.direction = param->direction;
     gkc_entry.action_by_name = get_fsm_action(param->action_by_name);
     gkc_entry.action = get_fsm_action(param->action);
+    gkc_entry.network_id = param->network_id;
 
     if (LOG_SEVERITY_ENABLED(LOG_SEVERITY_DEBUG))
     {

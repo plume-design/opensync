@@ -142,6 +142,7 @@ ut_qm_conn_send_direct(qm_compress_t compress, char *topic,
         TEST_ASSERT_NOT_NULL(hs);
 
         os_mac2str(&hs->device_id, str_mac);
+        LOGI("From protobuf: window[0] network_id=%s", hs->network_zone);
         LOGI("From protobuf: window[0], stats[%zu], device_id=%s", j, str_mac);
     }
 
@@ -172,6 +173,7 @@ create_default_attr_entries(void)
     entry[1]->action = FSM_ALLOW;
     entry[1]->attr_name = STRDUP("www.entr2.com");
     entry[1]->direction = GKC_FLOW_DIRECTION_OUTBOUND;
+    entry[1]->network_id = "home--1";
 
     entry[2] = CALLOC(1, sizeof(*entry[2]));
     entry[2]->action = 1;
@@ -180,6 +182,7 @@ create_default_attr_entries(void)
     entry[2]->cache_ttl = 1000;
     entry[2]->action = FSM_REDIRECT;
     entry[2]->ip_addr = sockaddr_storage_create(AF_INET, "1.2.3.4");
+    entry[2]->network_id = "home--2";
 
     entry[3] = CALLOC(1, sizeof(*entry[3]));
     entry[3]->action = 1;
@@ -257,6 +260,7 @@ create_default_flow_entries(void)
     inet_pton(AF_INET6, "0:0:0:0:0:FFFF:204.152.189.116", flow_entry[2]->src_ip_addr);
     flow_entry[2]->dst_ip_addr = CALLOC(1, sizeof(struct in6_addr));
     inet_pton(AF_INET6, "1:0:0:0:0:0:0:8", flow_entry[2]->dst_ip_addr);
+    flow_entry[2]->network_id = "home--1";
 
     flow_entry[3] = CALLOC(1, sizeof(*flow_entry[3]));
     flow_entry[3]->device_mac = str2os_mac("AA:AA:AA:AA:AA:03");
@@ -269,6 +273,7 @@ create_default_flow_entries(void)
     inet_pton(AF_INET, "1.2.3.4", flow_entry[3]->src_ip_addr);
     flow_entry[3]->dst_ip_addr = CALLOC(1, sizeof(struct in6_addr));
     inet_pton(AF_INET, "10.12.14.13", flow_entry[3]->dst_ip_addr);
+    flow_entry[3]->network_id = "home--2";
 }
 
 void
@@ -513,7 +518,7 @@ test_gk_serialize_cache_add_entries(void)
     /* use a fairly small size so we have more than one record per
      * report sent and a few files for the records in the cache
      */
-    gkhc_set_max_record_size(aggr, 200);
+    gkhc_set_max_record_size(aggr, 210);
     gkhc_set_records_per_report(aggr, 2);
     gkhc_set_number_obs_windows(aggr, 3);
     gkhc_init_aggregator(aggr, &g_session);

@@ -57,6 +57,7 @@ struct fsm_dpi_adt_data_record
     char *value;
     size_t value_len;
     uint32_t transport;
+    char *network_id;
 };
 
 struct fsm_dpi_adt_report_aggregator

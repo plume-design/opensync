@@ -576,6 +576,30 @@ net_header_log(int log_level, struct net_header_parser *parser)
     FREE(buf);
 }
 
+char *
+dir2str(uint8_t direction)
+{
+    switch (direction)
+    {
+        case NET_MD_ACC_INBOUND_DIR     : return "inbound";
+        case NET_MD_ACC_OUTBOUND_DIR    : return "outbound";
+        case NET_MD_ACC_LAN2LAN_DIR     : return "lan2lan";
+        case NET_MD_ACC_UNSET_DIR       :
+        default:                          return "unspecified";
+    }
+}
+
+char *
+orig2str(uint8_t originator)
+{
+    switch (originator)
+    {
+        case NET_MD_ACC_ORIGINATOR_SRC      : return "source";
+        case NET_MD_ACC_ORIGINATOR_DST      : return "destination";
+        case NET_MD_ACC_UNKNOWN_ORIGINATOR  :
+        default:                              return "unspecified";
+    }
+}
 
 /**
  * @brief fills the given string with the network header content
@@ -675,8 +699,8 @@ net_header_fill_buf(char *buf, size_t len, struct net_header_parser *parser)
     acc = parser->acc;
     if (acc != NULL)
     {
-        snprintf(flow_pres, sizeof(flow_pres), ", FLOW: direction: %u, "
-                 "originator: %u", acc->direction, acc->originator);
+        snprintf(flow_pres, sizeof(flow_pres), ", FLOW: direction: %s, "
+                 "originator: %s", dir2str(acc->direction), orig2str(acc->originator));
     }
 
     snprintf(buf, len, "%s%s%s%s", eth_pres, ip_pres, tpt_pres, flow_pres);

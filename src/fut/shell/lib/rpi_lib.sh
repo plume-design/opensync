@@ -153,7 +153,7 @@ start_fut_mqtt()
         raise "FAIL: Failed to create cert dir!" -l "rpi_lib:start_fut_mqtt" -ds
 
     log -deb "rpi_lib:start_fut_mqtt - Copy mosquitto certificates"
-    sudo cp "${FUT_TOPDIR}/shell/tools/server/files"/{fut_controller.pem,plume_ca_chain.pem} "${cert_dir}" ||
+    sudo cp "${FUT_TOPDIR}/shell/tools/server/certs"/{ca.crt,server.crt,server.key} "${cert_dir}" ||
         raise "FAIL: Certificates not present!" -l "rpi_lib:start_fut_mqtt" -ds
 
     log -deb "rpi_lib:start_fut_mqtt - Start mosquitto service"
@@ -469,44 +469,6 @@ address_internet_check()
     else
         return 1
     fi
-}
-
-###############################################################################
-# DESCRIPTION:
-#   Function manipulates port number on the destination IP by adding or removing
-#   DROP rule. Traffic can be blocked or unblocked on that specific port.
-#   Dies if cannot manipulate traffic.
-# INPUT PARAMETER(S):
-#   $1  IP address of device on which port number needs to be blocked (string, required)
-#   $2  Port number to manipulate (string, required)
-#   $3  Action, supported block, unblock (string, required)
-#   $4  sudo command (string, optional, defaults to sudo)
-# RETURNS:
-#   0   On success.
-#   See DESCRIPTION.
-# USAGE EXAMPLE(S):
-#   port_number_manipulation 192.168.200.10 443 block
-#   port_number_manipulation 192.168.200.10 443 unblock
-###############################################################################
-port_number_manipulation()
-{
-    NARGS_MIN=3
-    NARGS_MAX=4
-    [ $# -ge ${NARGS_MIN} ] && [ $# -le ${NARGS_MAX} ] ||
-        raise "rpi_lib:address_internet_check requires ${NARGS_MIN}-${NARGS_MAX} input arguments, $# given" -arg
-    local ip_address=${1}
-    local port_num=${2}
-    local action=${3}
-    local sudo_cmd=${4:-"sudo"}
-
-    [ $action == "block" ] && type_arg="-I" || type_arg="-D"
-    [ $action == "block" ] && type_ec=0 || type_ec=1
-
-    wait_for_function_response "$type_ec" "${sudo_cmd} ${iptables_cmd} $type_arg FORWARD -p tcp -d ${ip_address} --sport ${port_num} -j DROP" &&
-        log -deb "rpi_lib:address_internet_check - Port number '$port_num' ${action}ed on IP '${ip_address}' - Success" ||
-        raise "FAIL: Could not ${action} port number '$port_num'" -l "rpi_lib:port_number_manipulation" -tc
-
-    return 0
 }
 
 ###############################################################################

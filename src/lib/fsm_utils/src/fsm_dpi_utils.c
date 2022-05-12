@@ -364,7 +364,7 @@ int fsm_set_dpi_state_timeout(
     return (ret0 + ret1);
 }
 
-void fsm_dpi_set_acc_state(
+void fsm_dpi_set_plugin_decision(
         struct fsm_session *session,
         struct net_header_parser *net_parser,
         enum fsm_dpi_state state)
@@ -383,6 +383,42 @@ void fsm_dpi_set_acc_state(
     if (info == NULL) return;
 
     info->decision = state;
+}
+
+/**
+ * @brief sets the state of the accumulator when plugin
+ *        decides to take action on the flow.  If reverse
+ *        flow accumulator is present, apply the same state
+ *        and flow_marker value to it, so that dpi processing
+ *        is not required
+ *
+ * @param session the dpi plugin session
+ * @param acc the accumulator to set the state
+ * @param state state to be set for the accumulator
+ */
+void
+fsm_dpi_set_acc_state(struct fsm_session *session, struct net_md_stats_accumulator *acc, int state)
+{
+    struct net_md_stats_accumulator *rev_acc;
+    struct fsm_dpi_dispatcher *dispatch;
+    union fsm_dpi_context *dpi_context;
+
+    if (session == NULL || acc == NULL) return;
+
+    acc->dpi_done = state;
+
+    dpi_context = session->dpi;
+    if (dpi_context == NULL) return;
+
+    dispatch = &dpi_context->dispatch;
+
+    rev_acc = net_md_lookup_reverse_acc(dispatch->aggr, acc);
+    if (rev_acc == NULL) return;
+
+    rev_acc->dpi_done = acc->dpi_done;
+    rev_acc->flow_marker = acc->flow_marker;
+
+    return;
 }
 
 void
@@ -438,5 +474,26 @@ fsm_dpi_allow_flow(struct net_md_stats_accumulator *acc)
     fsm_set_ip_dpi_state(NULL, key->dst_ip, key->src_ip,
                          key->dport, key->sport,
                          key->ipprotocol, af, FSM_DPI_PASSTHRU);
+}
+
+/**
+ * @brief get the user device's network id
+ *
+ * @param session the fsm session triggering a report
+ * @param mac the uder device mac address
+ */
+char *
+fsm_ops_get_network_id(struct fsm_session *session, os_macaddr_t *mac)
+{
+    char *network_id;
+
+    if (session == NULL) return NULL;
+    if (mac == NULL) return NULL;
+    if (session->ops.get_network_id == NULL) return NULL;
+
+    network_id = session->ops.get_network_id(session, mac);
+    if (network_id == NULL) network_id = "unknown";
+
+    return network_id;
 }
 

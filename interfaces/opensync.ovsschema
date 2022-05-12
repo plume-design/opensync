@@ -1,7 +1,7 @@
 {
   "name": "Open_vSwitch",
-  "version": "7.11.319",
-  "cksum": "1402357208 266673",
+  "version": "7.11.317",
+  "cksum": "3035145672 279900",
   "tables": {
     "AWLAN_Node": {
       "columns": {
@@ -314,7 +314,8 @@
                   "softwds",
                   "tap",
                   "lte",
-                  "tunnel"
+                  "tunnel",
+                  "unmanaged"
                 ]
               ]
             }
@@ -464,7 +465,8 @@
                   "softwds",
                   "tap",
                   "vlan",
-                  "lte"
+                  "lte",
+                  "unmanaged"
                 ]
               ]
             }
@@ -661,7 +663,8 @@
                   "softwds",
                   "tap",
                   "lte",
-                  "tunnel"
+                  "tunnel",
+                  "unmanaged"
                 ]
               ]
             }
@@ -1076,7 +1079,8 @@
                   "softwds",
                   "tap",
                   "lte",
-                  "tunnel"
+                  "tunnel",
+                  "unmanaged"
                 ]
               ]
             }
@@ -2084,6 +2088,106 @@
       },
       "isRoot": true
     },
+    "RADIUS": {
+      "columns": {
+        "name": {
+          "type": {
+            "key": {
+              "type": "string"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "ip_addr": {
+          "type": {
+            "key": {
+              "type": "string"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "port": {
+          "type": {
+            "key": {
+              "type": "integer"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "secret": {
+          "type": {
+            "key": {
+              "type": "string"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "type": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "A",
+                  "AA"
+                ]
+              ]
+            }
+          }
+        },
+        "retry_interval_sec": {
+          "type": {
+            "key": {
+              "type": "integer"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "interim_interval_sec": {
+          "type": {
+            "key": {
+              "type": "integer"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "stats_interval_sec": {
+          "type": {
+            "key": {
+              "type": "integer"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "healthcheck_interval_sec": {
+          "type": {
+            "key": {
+              "type": "integer"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "healthy": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            },
+            "min": 0,
+            "max": 1
+          }
+        }
+      },
+      "isRoot": true
+    },
     "Wifi_VIF_Config": {
       "columns": {
         "if_name": {
@@ -2399,7 +2503,60 @@
             }
           }
         },
+        "pmf": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "disabled",
+                  "optional",
+                  "required"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
         "wpa": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "wpa_pairwise_tkip": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "wpa_pairwise_ccmp":  {
+          "type": {
+            "key": {
+              "type": "boolean"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "rsn_pairwise_tkip": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "rsn_pairwise_ccmp": {
           "type": {
             "key": {
               "type": "boolean"
@@ -2420,8 +2577,15 @@
                   "wpa2-psk",
                   "wpa2-eap",
                   "sae",
+                  "wpa-psk-sha256",
+                  "wpa-eap",
+                  "wpa-eap-sha256",
+                  "wpa-eap-suite-b-192",
                   "ft-wpa2-psk",
-                  "ft-sae"
+                  "ft-sae",
+                  "ft-psk",
+                  "ft-eap",
+                  "ft-eap-sha384"
                 ]
               ]
             },
@@ -2470,6 +2634,50 @@
             },
             "min": 0,
             "max": 1
+          }
+        },
+        "primary_radius": {
+          "type": {
+            "key": {
+              "type": "uuid",
+              "refTable": "RADIUS",
+              "refType": "weak"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "secondary_radius": {
+          "type": {
+            "key": {
+              "type": "uuid",
+              "refTable": "RADIUS",
+              "refType": "weak"
+            },
+            "min": 0,
+            "max": 8
+          }
+        },
+        "primary_accounting": {
+          "type": {
+            "key": {
+              "type": "uuid",
+              "refTable": "RADIUS",
+              "refType": "weak"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "secondary_accounting": {
+          "type": {
+            "key": {
+              "type": "uuid",
+              "refTable": "RADIUS",
+              "refType": "weak"
+            },
+            "min": 0,
+            "max": 8
           }
         },
         "default_oftag": {
@@ -2927,7 +3135,60 @@
             }
           }
         },
+        "pmf": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "disabled",
+                  "optional",
+                  "required"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
         "wpa": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "wpa_pairwise_tkip": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "wpa_pairwise_ccmp":  {
+          "type": {
+            "key": {
+              "type": "boolean"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "rsn_pairwise_tkip": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "rsn_pairwise_ccmp": {
           "type": {
             "key": {
               "type": "boolean"
@@ -2948,8 +3209,15 @@
                   "wpa2-psk",
                   "wpa2-eap",
                   "sae",
+                  "wpa-psk-sha256",
+                  "wpa-eap",
+                  "wpa-eap-sha256",
+                  "wpa-eap-suite-b-192",
                   "ft-wpa2-psk",
-                  "ft-sae"
+                  "ft-sae",
+                  "ft-psk",
+                  "ft-eap",
+                  "ft-eap-sha384"
                 ]
               ]
             },
@@ -2990,6 +3258,50 @@
             },
             "min": 0,
             "max": 1
+          }
+        },
+        "primary_radius": {
+          "type": {
+            "key": {
+              "type": "uuid",
+              "refTable": "RADIUS",
+              "refType": "weak"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "secondary_radius": {
+          "type": {
+            "key": {
+              "type": "uuid",
+              "refTable": "RADIUS",
+              "refType": "weak"
+            },
+            "min": 0,
+            "max": 8
+          }
+        },
+        "primary_accounting": {
+          "type": {
+            "key": {
+              "type": "uuid",
+              "refTable": "RADIUS",
+              "refType": "weak"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "secondary_accounting": {
+          "type": {
+            "key": {
+              "type": "uuid",
+              "refTable": "RADIUS",
+              "refType": "weak"
+            },
+            "min": 0,
+            "max": 8
           }
         },
         "dpp_connector": {
@@ -10618,6 +10930,17 @@
               "type": "boolean"
             }
           }
+        },
+        "pdp_context_id": {
+          "type": {
+            "key": {
+              "type": "integer",
+              "minInteger": 1,
+              "maxInteger": 64
+            },
+            "min": 0,
+            "max": 64
+          }
         }
       },
       "isRoot": true
@@ -10913,6 +11236,28 @@
             },
             "min": 0,
             "max": 1
+          }
+        },
+        "modem_firmware_version": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 0,
+              "maxLength": 255
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "pdp_context_id": {
+          "type": {
+            "key": {
+              "type": "integer",
+              "minInteger": 1,
+              "maxInteger": 64
+            },
+            "min": 0,
+            "max": 64
           }
         }
       },
@@ -11289,16 +11634,6 @@
             "max": 1
           }
         },
-        "ipsec_tunnel_cfg": {
-          "type": {
-            "key": {
-              "type": "uuid",
-              "refTable": "IPSec_Config"
-            },
-            "min": 0,
-            "max": 1
-          }
-        },
         "healthcheck_enable": {
           "type": {
             "key": {
@@ -11358,6 +11693,15 @@
     },
     "IPSec_Config": {
       "columns": {
+        "tunnel_name": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          }
+        },
         "remote_endpoint_id": {
           "type": {
             "key": {
@@ -11444,7 +11788,7 @@
             "max": 8
           }
         },
-        "auth_mode": {
+        "local_auth_mode": {
           "type": {
             "key": {
               "type": "string",
@@ -11452,15 +11796,126 @@
                 "set",
                 [
                   "psk",
-                  "cert"
+                  "pubkey",
+                  "xauth",
+                  "eap-mschapv2"
                 ]
               ]
             },
-            "min": 1,
+            "min": 0,
+            "max": 1
+          }
+        },
+        "remote_auth_mode": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "psk",
+                  "pubkey",
+                  "xauth",
+                  "eap-mschapv2"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "local_auth_mode2": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "psk",
+                  "pubkey",
+                  "xauth",
+                  "eap-mschapv2"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "remote_auth_mode2": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "psk",
+                  "pubkey",
+                  "xauth",
+                  "eap-mschapv2"
+                ]
+              ]
+            },
+            "min": 0,
             "max": 1
           }
         },
         "psk": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "xauth_user": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "xauth_pass": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "eap_id": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "eap_secret": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "eap_identity": {
           "type": {
             "key": {
               "type": "string",
@@ -11505,6 +11960,15 @@
           }
         },
         "ike_lifetime": {
+          "type": {
+            "key": {
+              "type": "integer"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "lifetime": {
           "type": {
             "key": {
               "type": "integer"
@@ -11645,6 +12109,15 @@
           }
         },
         "dpd_timeout": {
+          "type": {
+            "key": {
+              "type": "integer"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "mark": {
           "type": {
             "key": {
               "type": "integer"
@@ -11665,18 +12138,16 @@
       "isRoot": true
     },
     "IPSec_State": {
-      "columns": {      
-        "ipsec_config": {
+      "columns": {
+        "tunnel_name": {
           "type": {
             "key": {
-              "type": "uuid",
-              "refTable": "IPSec_Config",
-              "refType": "weak"
-            },
-            "min": 0,
-            "max": 1
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
           }
-        },            
+        },
         "remote_endpoint_id": {
           "type": {
             "key": {
@@ -11763,7 +12234,7 @@
             "max": 8
           }
         },
-        "auth_mode": {
+        "local_auth_mode": {
           "type": {
             "key": {
               "type": "string",
@@ -11771,11 +12242,133 @@
                 "set",
                 [
                   "psk",
-                  "cert"
+                  "pubkey",
+                  "xauth",
+                  "eap-mschapv2"
                 ]
               ]
             },
-            "min": 1,
+            "min": 0,
+            "max": 1
+          }
+        },
+        "remote_auth_mode": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "psk",
+                  "pubkey",
+                  "xauth",
+                  "eap-mschapv2"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "local_auth_mode2": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "psk",
+                  "pubkey",
+                  "xauth",
+                  "eap-mschapv2"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "remote_auth_mode2": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "psk",
+                  "pubkey",
+                  "xauth",
+                  "eap-mschapv2"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "psk": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "xauth_user": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "xauth_pass": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "eap_id": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "eap_secret": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "eap_identity": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "min": 0,
             "max": 1
           }
         },
@@ -11813,6 +12406,15 @@
           }
         },
         "ike_lifetime": {
+          "type": {
+            "key": {
+              "type": "integer"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "lifetime": {
           "type": {
             "key": {
               "type": "integer"
@@ -11960,10 +12562,19 @@
             "min": 0,
             "max": 1
           }
+        },
+        "mark": {
+          "type": {
+            "key": {
+              "type": "integer"
+            },
+            "min": 0,
+            "max": 1
+          }
         }
       },
       "isRoot": true
-    },    
+    },
     "Tunnel_Interface": {
       "columns": {
         "if_name": {

@@ -53,6 +53,181 @@ static const struct fsm_tap_type
     }
 };
 
+void
+free_network_id_node(struct network_id *netid)
+{
+    FREE(netid->network_id);
+    free_str_set(netid->nw_tags);
+    FREE(netid);
+}
+
+static bool
+fsm_find_mac_in_tag(char *mac_str, char *tag)
+{
+    bool rc;
+    int ret;
+
+    LOGT("%s(): searching in %s for mac %s", __func__, tag, mac_str);
+
+    if (tag == NULL) return false;
+    if (mac_str == NULL) return false;
+
+    rc = om_tag_in(mac_str, tag);
+    if (rc) return true;
+
+    ret = strncmp(mac_str, tag, strlen(mac_str));
+    return (ret == 0);
+}
+
+char *
+fsm_get_network_id(os_macaddr_t *device)
+{
+    char mac_str[OS_MACSTR_SZ];
+    struct network_id *netid;
+    struct fsm_mgr *mgr;
+    bool found;
+    size_t i;
+
+    if (device == NULL) return NULL;
+
+    snprintf(mac_str, sizeof(mac_str), PRI_os_macaddr_lower_t, FMT_os_macaddr_pt(device));
+
+    LOGT("%s(): get network id for %s", __func__, mac_str);
+
+    mgr = fsm_get_mgr();
+    netid = ds_tree_head(&mgr->network_id_table);
+    while (netid != NULL)
+    {
+        /* loop through each of tags searching for the device */
+        for (i = 0; i < netid->nw_tags->nelems; i++)
+        {
+            found = fsm_find_mac_in_tag(mac_str, netid->nw_tags->array[i]);
+            /* if found, device belongs to this network id */
+            if (found) return netid->network_id;
+        }
+        netid = ds_tree_next(&mgr->network_id_table, netid);
+    }
+
+    return NULL;
+}
+
+struct network_id *
+fsm_alloc_nid_node(struct schema_Network_Zone *config)
+{
+    struct network_id *nid;
+
+    if (config == NULL) return NULL;
+
+    nid = CALLOC(1, sizeof(struct network_id));
+    if (nid == NULL) return NULL;
+
+    nid->network_id = STRDUP(config->name);
+    if (nid->network_id == NULL) goto free_nid;
+
+    nid->nw_tags = schema2str_set(sizeof(config->macs[0]),
+                                  config->macs_len,
+                                  config->macs);
+    return nid;
+
+free_nid:
+    FREE(nid);
+
+    return NULL;
+}
+
+static struct network_id *
+fsm_get_netid_node(struct schema_Network_Zone *config)
+{
+    struct fsm_mgr *mgr;
+
+    if (config == NULL) return NULL;
+
+    mgr = fsm_get_mgr();
+
+    return ds_tree_find(&mgr->network_id_table, config->name);
+}
+
+void
+update_network_id(struct network_id *nid, struct schema_Network_Zone *config)
+{
+    struct network_id *new_nid;
+    struct fsm_mgr *mgr;
+
+    mgr = fsm_get_mgr();
+
+    /* delete existing entries */
+    ds_tree_remove(&mgr->network_id_table, nid);
+    free_network_id_node(nid);
+
+    /* create new entry */
+    new_nid = fsm_alloc_nid_node(config);
+    if (new_nid == NULL) return;
+
+    ds_tree_insert(&mgr->network_id_table, new_nid, new_nid->network_id);
+}
+
+void
+fsm_modify_network_id(struct schema_Network_Zone *config)
+{
+    struct network_id *nid;
+
+    nid = fsm_get_netid_node(config);
+    if (nid == NULL)
+    {
+        LOGT("%s(): network id %s not found, not updating", __func__, config->name);
+        return;
+    }
+
+    LOGT("%s(): updating network id %s", __func__, config->name);
+    update_network_id(nid, config);
+}
+
+void
+fsm_del_network_id(struct schema_Network_Zone *config)
+{
+    struct network_id *nid;
+    struct fsm_mgr *mgr;
+
+    mgr = fsm_get_mgr();
+
+    nid = fsm_get_netid_node(config);
+    if (nid == NULL)
+    {
+        LOGT("%s(): %s cannot be deleted, not found in table", __func__, config->name);
+        return;
+    }
+
+    LOGT("%s(): deleting %s", __func__, config->name);
+    ds_tree_remove(&mgr->network_id_table, nid);
+    free_network_id_node(nid);
+}
+
+void
+fsm_add_network_id(struct schema_Network_Zone *config)
+{
+    struct network_id *nid;
+    struct fsm_mgr *mgr;
+
+    mgr = fsm_get_mgr();
+
+    if (config == NULL) return;
+
+    /* check if node already added */
+    nid = fsm_get_netid_node(config);
+    if (nid != NULL) return;
+
+    /* create new node and add to tree */
+    nid = fsm_alloc_nid_node(config);
+    if (nid == NULL) return;
+
+    ds_tree_insert(&mgr->network_id_table, nid, nid->network_id);
+
+    return;
+
+free_nid:
+    FREE(nid);
+}
+
 /**
  * @brief sets the session type based on the conf_type
  *

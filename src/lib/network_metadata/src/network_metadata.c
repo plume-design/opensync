@@ -1002,8 +1002,11 @@ static Traffic__FlowKey *set_flow_key(struct flow_key *key)
     set_uint32((uint32_t)key->direction, &pb->direction, &pb->has_direction);
     set_uint32((uint32_t)key->originator, &pb->originator, &pb->has_originator);
 
-    ret = str_duplicate(key->networkid, &pb->networkid);
+    ret = str_duplicate(key->networkid, &pb->networkzone);
     if (!ret) goto err_free_dstip;
+
+    ret = str_duplicate(key->uplinkname, &pb->uplinkname);
+    if (!ret) goto err_free_nwid;
 
     set_uint32((uint32_t)key->flowmarker, &pb->flowmarker, &pb->has_flowmarker);
     pb->flowstate = set_pb_flowstate(&key->state);
@@ -1046,6 +1049,9 @@ err_free_flow_tags:
     }
     FREE(pb->flowtags);
 
+err_free_nwid:
+    FREE(pb->networkzone);
+
 err_free_dstip:
     FREE(pb->dstip);
 
@@ -1084,6 +1090,7 @@ static void free_pb_flowkey(Traffic__FlowKey *pb)
     FREE(pb->dstmac);
     FREE(pb->srcip);
     FREE(pb->dstip);
+    FREE(pb->networkzone);
 
     for (i = 0; i < pb->n_flowtags; i++)
     {

@@ -85,9 +85,9 @@ log_title "fsm/fsm_create_tap_interface.sh: FSM test - Create tap interface - $t
 
 # Generate tap interface
 log "fsm/fsm_create_tap_interface.sh: Generate tap interface '$tap_if'"
-wait_for_function_response 0 "gen_tap_cmd $lan_bridge_if $tap_if $of_port" &&
-    log "fsm/fsm_create_tap_interface.sh: gen_tap_cmd - interfce '$tap_if' created on '$lan_bridge_if'- Success" ||
-    raise "FAIL: gen_tap_cmd - interface '$tap_if' not created" -l "fsm/fsm_create_tap_interface.sh" -tc
+wait_for_function_response 0 "add_tap_interface $lan_bridge_if $tap_if $of_port" &&
+    log "fsm/fsm_create_tap_interface.sh: add_tap_interface - interfce '$tap_if' created on '$lan_bridge_if'- Success" ||
+    raise "FAIL: add_tap_interface - interface '$tap_if' not created" -l "fsm/fsm_create_tap_interface.sh" -tc
 
 # Bring up tap interface DNS
 wait_for_function_response 0 "tap_up_cmd $tap_if" &&

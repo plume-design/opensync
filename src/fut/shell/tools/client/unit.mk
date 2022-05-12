@@ -32,3 +32,8 @@ UNIT_TYPE := FUT
 UNIT_DIR := shell/tools/client/
 
 UNIT_FILE := connect_to_wpa.sh
+UNIT_FILE += check_internet_traffic.sh
+UNIT_FILE += get_client_mac.sh
+UNIT_FILE += reboot_client.sh
+UNIT_FILE += run_upnp_client.sh
+UNIT_FILE += stop_upnp_client.sh

@@ -68,8 +68,9 @@ struct net_md_flow_key
     uint16_t direction;   /* flow direction */
     uint16_t originator;  /* flow originator */
     uint8_t icmp_type;
-    char *networkid;    /* network id of device */
     uint32_t flowmarker;  /* ct_mark */
+    uint16_t rx_idx;
+    uint16_t tx_idx;
 };
 
 

@@ -39,9 +39,11 @@ usage()
 cat << usage_string
 wm2/wm2_set_radio_vif_configs.sh [-h] arguments
 Description:
-    - Script tries to delete chosen VIF_CONFIGS. This is relation field so when deleted, changes should not be propagated to
-      *_State tables. If interface is not UP it brings up the interface, and tries to delete VIF_CONFIGS. After that,
-      it executes several checks to see if relation is really working.
+    - Script first checks if inputted channels are different from each other. Script then tries to delete chosen VIF_CONFIGS.
+      This is relation field so when deleted, changes should not be propagated to *_State tables. If interface is not UP
+      it brings up the interface, and tries to delete VIF_CONFIGS and checks that nothing was changed in *_State table.
+      After that, it creates new VIF_CONFIGS to see if relation is really working and new changes was correctly propagated
+      to *_State tables.
 Arguments:
     -h  show this help message
     \$1  (radio_idx)      : Wifi_VIF_Config::vif_radio_idx                    : (int)(required)
@@ -95,6 +97,13 @@ trap '
 
 log_title "wm2/wm2_set_radio_vif_configs.sh: WM2 test - Testing Wifi_Radio_Config vif_configs"
 
+log "wm2/wm2_set_radio_vif_configs.sh: Check if input channels are different from each other"
+if [ "$channel" != "$custom_channel" ]; then
+  log "wm2/wm2_set_radio_vif_configs.sh: channel: $channel is different from custom_channel: $custom_channel - Success"
+else
+  raise "FAIL: channel: $channel is the same as custom_channel: $custom_channel"
+fi
+
 log "wm2/wm2_set_radio_vif_configs.sh: Checking if Radio/VIF states are valid for test"
 check_radio_vif_state \
     -if_name "$if_name" \
@@ -130,26 +139,27 @@ check_radio_vif_state \
 log "wm2/wm2_set_radio_vif_configs.sh: Save Wifi_Radio_Config::vif_configs field for later use"
 original_vif_configs=$(get_ovsdb_entry_value Wifi_Radio_Config vif_configs -w if_name "$if_name" -r)
 
-log "wm2/wm2_set_radio_vif_configs.sh: Deleting Wifi_Radio_Config::vif_configs"
+log "wm2/wm2_set_radio_vif_configs.sh: TEST1 - DELETE Wifi_Radio_Config::vif_configs"
 update_ovsdb_entry Wifi_Radio_Config -w if_name "$if_name" -u vif_configs "[\"set\",[]]" &&
     log "wm2/wm2_set_radio_vif_configs.sh: Wifi_Radio_Config::vif_configs deleted - Success" ||
     raise "FAIL: Failed to update Wifi_Radio_Config::vif_configs is not '[\"set\",[]]'" -l "wm2/wm2_set_radio_vif_configs.sh" -oe
 
-log "wm2/wm2_set_radio_vif_configs.sh: TEST1 - Update Wifi_Radio_Config::channel $custom_channel - there should be no changes in Wifi_VIF_State"
+log "wm2/wm2_set_radio_vif_configs.sh: TEST1 - UPDATE Wifi_Radio_Config::channel with $custom_channel"
 update_ovsdb_entry Wifi_Radio_Config -w if_name "$if_name" -u channel "$custom_channel" &&
-    log "wm2/wm2_set_radio_vif_configs.sh: update_ovsdb_entry - Wifi_Radio_Config::channel is $custom_channel - Success" ||
+    log "wm2/wm2_set_radio_vif_configs.sh: update_ovsdb_entry - Wifi_Radio_Config::channel set to $custom_channel - Success" ||
     raise "FAIL: update_ovsdb_entry - Wifi_Radio_Config::channel is not $custom_channel" -l "wm2/wm2_set_radio_vif_configs.sh" -oe
 
+log "wm2/wm2_set_radio_vif_configs.sh: TEST1 - CHECK is Wifi_Radio_Config::channel changed to $custom_channel - should not be"
 wait_ovsdb_entry Wifi_VIF_State -w if_name "$vif_if_name" -is channel "$custom_channel" -ec &&
     log "wm2/wm2_set_radio_vif_configs.sh: Wifi_VIF_State was not updated - channel $custom_channel - PASS1" ||
     raise "FAIL1: Wifi_VIF_State was updated without Wifi_Radio_Config::vif_configs relation - channel $custom_channel" -l "wm2/wm2_set_radio_vif_configs.sh" -tc
 
-log "wm2/wm2_set_radio_vif_configs.sh: TEST2 - Insert Wifi_Radio_Config::vif_configs $original_vif_configs back into Wifi_Radio_Config"
+log "wm2/wm2_set_radio_vif_configs.sh: TEST2 - INSERT $original_vif_configs back into Wifi_Radio_Config::vif_configs"
 update_ovsdb_entry Wifi_Radio_Config -w if_name "$if_name" -u vif_configs "$original_vif_configs" &&
     log "wm2/wm2_set_radio_vif_configs.sh: Wifi_Radio_Config::vif_configs inserted - vif_configs $original_vif_configs - Success" ||
     raise "FAIL: Failed to update Wifi_Radio_Config for Wifi_Radio_Config::vif_configs is not $original_vif_configs" -l "wm2/wm2_set_radio_vif_configs.sh" -oe
 
-log "wm2/wm2_set_radio_vif_configs.sh: TEST 2 - Checking is Wifi_VIF_State::channel $custom_channel updated in Wifi_VIF_State"
+log "wm2/wm2_set_radio_vif_configs.sh: TEST 2 - CHECK is Wifi_VIF_State::channel updated to $custom_channel - should be"
 wait_ovsdb_entry Wifi_VIF_State -w if_name "$vif_if_name" -is channel "$custom_channel" &&
     log "wm2/wm2_set_radio_vif_configs.sh: Channel updated - $custom_channel - Success" ||
     raise "FAIL: Failed to update Wifi_VIF_State for channel $custom_channel" -l "wm2/wm2_set_radio_vif_configs.sh" -tc

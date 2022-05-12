@@ -319,6 +319,7 @@ dummy_gatekeeper_get_verdict(struct fsm_policy_req *req,
     struct fsm_url_stats *stats;
     struct ev_loop *loop;
     bool ret = true;
+    bool incache;
     int gk_response;
     bool use_mcurl;
 
@@ -345,8 +346,8 @@ dummy_gatekeeper_get_verdict(struct fsm_policy_req *req,
     stats = &fsm_gk_session->health_stats;
     offline = &fsm_gk_session->gk_offline;
 
-    ret = gk_check_policy_in_cache(req, policy_reply);
-    if (ret == true)
+    incache = gk_check_policy_in_cache(req, policy_reply);
+    if (incache == true)
     {
         stats->cache_hits++;
         LOGN("%s found in cache, return action %d from cache", req->url, policy_reply->action);

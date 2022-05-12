@@ -102,10 +102,11 @@ union attribute_type
 /* enum for flow direction */
 enum gkc_flow_direction
 {
-    GKC_FLOW_DIRECTION_UNSPECIFIED = NET_MD_ACC_UNSET_DIR,
-    GKC_FLOW_DIRECTION_OUTBOUND    = NET_MD_ACC_OUTBOUND_DIR,
-    GKC_FLOW_DIRECTION_INBOUND     = NET_MD_ACC_INBOUND_DIR,
-    GKC_FLOW_DIRECTION_LAN2LAN     = NET_MD_ACC_LAN2LAN_DIR,
+    GKC_FLOW_DIRECTION_UNSPECIFIED     = NET_MD_ACC_UNSET_DIR,
+    GKC_FLOW_DIRECTION_OUTBOUND        = NET_MD_ACC_OUTBOUND_DIR,
+    GKC_FLOW_DIRECTION_INBOUND         = NET_MD_ACC_INBOUND_DIR,
+    GKC_FLOW_DIRECTION_LAN2LAN         = NET_MD_ACC_LAN2LAN_DIR,
+    GKC_FLOW_DIRECTION_INTERNAL_IGNORE,
 };
 
 /**
@@ -142,7 +143,8 @@ struct attr_cache
 {
     union attribute_type    attr;             /* attribute type */
     int                     cache_ttl;        /* TLL value for this entry */
-    time_t                  cache_ts;         /* time when the entry was added */
+    time_t                  cache_ts;         /* refresh timestamp when cache is hit */
+    time_t                  original_ts;      /* time when the entry was added */
     int                     action;           /* action specified : Allow or block */
     char                   *gk_policy;        /* gatekeeper rule string */
     uint32_t                category_id;      /* category plume id */
@@ -155,6 +157,7 @@ struct attr_cache
     bool                    redirect_flag;
     ds_tree_node_t          attr_tnode;
     uint32_t                flow_marker;
+    char                    *network_id;
 };
 
 /**
@@ -175,9 +178,11 @@ struct ip_flow_cache
     char *gk_policy;            /* gatekeeper rule string */
     uint32_t category_id;       /* category plume id */
     uint32_t confidence_level;  /* risk/confidence level */
-    time_t cache_ts;            /* time when the entry was added */
+    time_t cache_ts;            /* refresh timestamp when cache is hit */
+    time_t original_ts;         /* time when the entry was added */
     struct counter_s hit_count; /* number of times lookup is performed */
     bool is_private_ip;
+    char *network_id;
     ds_tree_node_t ipflow_tnode;
 };
 
@@ -256,6 +261,7 @@ struct gk_attr_cache_interface
     bool redirect_flag;
     int  action_by_name;
     uint32_t flow_marker;             /* conntrack mark for the flow */
+    char *network_id;
 };
 
 /**
@@ -285,6 +291,7 @@ struct gkc_ip_flow_interface
     uint64_t cache_ttl;        /* TTL value that should be set */
     bool is_private_ip;
     bool redirect_flag;
+    char *network_id;
 };
 
 struct gk_cache_mgr *

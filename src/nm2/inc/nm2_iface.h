@@ -50,6 +50,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "inet_vlan.h"
 #include "inet_pppoe.h"
 #include "inet_lte.h"
+#include "inet_unmanaged.h"
 
 /* Debounce timer for interface configuration commit */
 #define NM2_IFACE_APPLY_TIMER 0.3
@@ -96,6 +97,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
     M(NM2_IFTYPE_PPPOE,     "pppoe")    \
     M(NM2_IFTYPE_LTE,       "lte")      \
     M(NM2_IFTYPE_TUNNEL,    "tunnel")   \
+    M(NM2_IFTYPE_UNMANAGED, "unmanaged")\
     M(NM2_IFTYPE_MAX,       NULL)
 
 

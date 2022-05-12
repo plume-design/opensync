@@ -301,6 +301,7 @@ struct fsm_policy_req
     int action;
     int policy_index;
     bool report;
+    char *network_id;
 };
 
 

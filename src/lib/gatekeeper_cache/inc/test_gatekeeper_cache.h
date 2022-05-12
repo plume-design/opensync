@@ -67,9 +67,11 @@ struct sample_flow_entries
 extern struct sample_attribute_entries *test_attr_entries;
 extern struct sample_flow_entries *test_flow_entries;
 
-extern struct gk_attr_cache_interface *entry1, *entry2, *entry3, *entry4, *entry5;
-extern struct gkc_ip_flow_interface *flow_entry1, *flow_entry2, *flow_entry3,
-    *flow_entry4, *flow_entry5;
+extern struct gk_attr_cache_interface *entry1, *entry2, *entry3, *entry4;
+extern struct gk_attr_cache_interface *entry5, *entry6, *entry7, *entry8;
+extern struct gk_attr_cache_interface *entry9;
+extern struct gkc_ip_flow_interface *flow_entry1, *flow_entry2, *flow_entry3, *flow_entry4;
+extern struct gkc_ip_flow_interface *flow_entry5, *flow_entry6, *flow_entry7, *flow_entry8;
 
 void free_flow_interface(struct gkc_ip_flow_interface *entry);
 

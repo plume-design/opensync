@@ -92,7 +92,7 @@ trap '
     fut_info_dump_line
 ' EXIT SIGINT SIGTERM
 
-log_title "wm2/wm2_set_radio_tx_power.sh: WM2 test - Testing Wifi_Radio_Config field tx_power - '${tx_power}'"
+log_title "wm2/wm2_set_radio_tx_power.sh: WM2 test - Testing OVSDB and LEVEL2 - Tx_power - '${tx_power}'"
 
 log "wm2/wm2_set_radio_tx_power.sh: Checking if Radio/VIF states are valid for test"
 check_radio_vif_state \

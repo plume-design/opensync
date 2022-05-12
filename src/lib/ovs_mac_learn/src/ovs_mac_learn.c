@@ -719,6 +719,7 @@ void iface_mon_fn(ovsdb_update_monitor_t *self)
                     pjerr))
             {
                 LOG(ERR, "OVSMAC: Error parsing new interface entry: %s", pjerr);
+                FREE(ifn);
                 return;
             }
 

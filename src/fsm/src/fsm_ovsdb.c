@@ -70,6 +70,7 @@ static ovsdb_table_t table_Flow_Service_Manager_Config;
 static ovsdb_table_t table_Openflow_Tag;
 static ovsdb_table_t table_Openflow_Local_Tag;
 static ovsdb_table_t table_Openflow_Tag_Group;
+static ovsdb_table_t table_Network_Zone;
 static ovsdb_table_t table_Node_Config;
 static ovsdb_table_t table_Node_State;
 
@@ -207,10 +208,32 @@ fsm_init_mgr(struct ev_loop *loop)
     ds_tree_init(&mgr->dpi_client_tags_tree, (ds_key_cmp_t *) strcmp,
                  struct fsm_dpi_client_tags, next);
 
+    /* initialize network id tree */
+    ds_tree_init(&mgr->network_id_table, (ds_key_cmp_t *) strcmp,
+                 struct network_id, next);
+
     /* register for tag update callback */
     fsm_tag_update_init();
 }
 
+/**
+ * @brief free network id table entries
+ */
+static void
+free_network_id_table(ds_tree_t *nid_tree)
+{
+    struct network_id *next_netid;
+    struct network_id *cur_netid;
+
+    cur_netid = ds_tree_head(nid_tree);
+    while (cur_netid != NULL)
+    {
+        next_netid = ds_tree_next(nid_tree, cur_netid);
+        ds_tree_remove(nid_tree, cur_netid);
+        free_network_id_node(cur_netid);
+        cur_netid = next_netid;
+    }
+}
 
 /**
  * @brief fsm manager reset routine
@@ -237,6 +260,7 @@ fsm_reset_mgr(void)
         session = next;
     }
     free_str_tree(mgr->mqtt_headers);
+    free_network_id_table(&mgr->network_id_table);
 }
 
 
@@ -831,6 +855,21 @@ fsm_send_pb_report(struct fsm_session *session, char *topic,
 
 
 /**
+ * @brief retrieve the network ID associated to the device id
+ *
+ * @param session the fsm session requesting the network ID
+ * @param the client device's mac address
+ */
+static char *
+fsm_session_get_network_id(struct fsm_session *session, os_macaddr_t *mac)
+{
+    if (session == NULL) return NULL;
+
+    return fsm_get_network_id(mac);
+}
+
+
+/**
  * @brief allocates a FSM session
  *
  * @param conf pointer to a ovsdb record
@@ -871,6 +910,7 @@ fsm_alloc_session(struct schema_Flow_Service_Manager_Config *conf)
     session->ops.latest_obj_cb = fsm_oms_get_highest_version;
     session->ops.last_active_obj_cb = fsm_oms_get_last_active_version;
     session->ops.update_client = fsm_update_client;
+    session->ops.get_network_id = fsm_session_get_network_id;
 
     ret = fsm_session_update(session, conf);
     if (!ret) goto err_free_plugin_ops;
@@ -1428,6 +1468,20 @@ callback_Node_Config(ovsdb_update_monitor_t *mon,
 
 
 /**
+ * @brief registered callback for Network_Zone events
+ */
+void
+callback_Network_Zone(ovsdb_update_monitor_t *mon,
+                      struct schema_Network_Zone *old,
+                      struct schema_Network_Zone *new)
+{
+    if (mon->mon_type == OVSDB_UPDATE_NEW) fsm_add_network_id(new);
+    if (mon->mon_type == OVSDB_UPDATE_DEL) fsm_del_network_id(old);
+    if (mon->mon_type == OVSDB_UPDATE_MODIFY) fsm_modify_network_id(new);
+}
+
+
+/**
  * @brief register ovsdb callback events
  */
 int
@@ -1445,6 +1499,7 @@ fsm_ovsdb_init(void)
     OVSDB_TABLE_INIT_NO_KEY(Openflow_Tag_Group);
     OVSDB_TABLE_INIT_NO_KEY(Node_Config);
     OVSDB_TABLE_INIT_NO_KEY(Node_State);
+    OVSDB_TABLE_INIT_NO_KEY(Network_Zone);
 
     // Initialize OVSDB monitor callbacks
     OVSDB_TABLE_MONITOR(AWLAN_Node, false);
@@ -1453,6 +1508,7 @@ fsm_ovsdb_init(void)
     OVSDB_TABLE_MONITOR(Openflow_Local_Tag, false);
     OVSDB_TABLE_MONITOR(Openflow_Tag_Group, false);
     OVSDB_TABLE_MONITOR(Node_Config, false);
+    OVSDB_TABLE_MONITOR(Network_Zone, false);
 
     // Initialize the plugin loader routine
     mgr = fsm_get_mgr();
