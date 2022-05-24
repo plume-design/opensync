@@ -555,10 +555,11 @@ gatekeeper_add_attr_cache(struct fsm_policy_req *req,
     if (req_type == GK_CACHE_REQ_TYPE_FQDN) gk_populate_redirect_entry(entry, req, policy_reply);
 
     ret = gkc_add_attribute_entry(entry);
-    LOGT("%s(): adding %s (attr type %d) to cache %s ",
+    LOGT("%s(): adding %s (attr type %d) ttl (%" PRIu64 ") to cache %s ",
          __func__,
          req->url,
          req_type,
+         entry->cache_ttl,
          (ret == true) ? "success" : "failed");
 
     FREE(entry->fqdn_redirect);

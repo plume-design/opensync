@@ -630,6 +630,7 @@ void
 ipthreat_update_cache(struct fsm_policy_req *policy_request,
                       struct fsm_policy_reply *policy_reply)
 {
+    struct net_md_stats_accumulator *acc;
     struct fqdn_pending_req *pending_req;
     struct ip2action_req cache_req;
     size_t index;
@@ -645,6 +646,7 @@ ipthreat_update_cache(struct fsm_policy_req *policy_request,
 
     LOGT("%s(): updating cache for %s", __func__, policy_request->url);
 
+    acc = policy_request->acc;
     cache_req.device_mac = policy_request->device_id;
     cache_req.ip_addr = policy_request->ip_addr;
     cache_req.cache_ttl = ipthreat_get_ttl(policy_request, policy_reply);
@@ -653,6 +655,7 @@ ipthreat_update_cache(struct fsm_policy_req *policy_request,
     cache_req.service_id = pending_req->req_info->reply->service_id;
     cache_req.nelems = pending_req->req_info->reply->nelems;
     cache_req.cat_unknown_to_service = policy_reply->cat_unknown_to_service;
+    cache_req.direction = (acc != NULL ? acc->direction : NET_MD_ACC_UNSET_DIR);
 
     for (index = 0; index < pending_req->req_info->reply->nelems; ++index)
     {

@@ -156,6 +156,8 @@ struct fsm_dpi_plugin_ops
                          struct net_md_stats_accumulator *acc);
     void (*register_clients)(struct fsm_session *);
     void (*unregister_clients)(struct fsm_session *);
+    void (*mark_flow)(struct fsm_session *, struct net_md_stats_accumulator *);
+    void (*dpi_free_resources)(struct fsm_session *);
 };
 
 

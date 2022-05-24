@@ -52,6 +52,12 @@ dns_add()
     echo "$@" >> "${resolv}.$$"
 }
 
+# Filter input and show only unique lines
+unique()
+{
+    awk '!($0 in uniqa) { print($0); uniqa[$0]=1 }'
+}
+
 dns_apply()
 {
     local iface="$1" ; shift
@@ -61,7 +67,10 @@ dns_apply()
         mv -f "${resolv}.$$" "${resolv}"
     }
 
-    find "${DNS_TMP}" -name '*.resolv' -exec cat {} \; > "${RESOLV_FILE}.$$"
+    # Run all entries in the various resolv files through `unique` so duplicate
+    # lines are filtered out. Some setups don't work well with repeated
+    # nameserver entries.
+    find "${DNS_TMP}" -name '*.resolv' -exec cat {} \; | unique > "${RESOLV_FILE}.$$"
 
     # The timeouts need to be shorter than FSM resolving thread,
     # otherwise connectivity issues may be encountered

@@ -38,6 +38,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "os_types.h"
 #include "dns_cache.h"
 #include "memutil.h"
+#include "network_metadata_report.h"
 
 #define GATEKEEPER  "gatekeeper"
 #define WEBPULSE    "webpulse"
@@ -66,6 +67,7 @@ dns_cache_ip2action_cmp(void *_a, void *_b)
     uint8_t *i_b;
     int fdiff;
     int idiff;
+    int ddiff;
     size_t i;
     int mac_cmp;
 
@@ -90,7 +92,31 @@ dns_cache_ip2action_cmp(void *_a, void *_b)
         i_b++;
     }
 
+    /* Compare direction */
+    ddiff = (a->direction - b->direction);
+    if (ddiff != 0) return ddiff;
+
     return 0;
+}
+
+/**
+ *  @brief pretty print the direction
+ *
+ * @param direction
+ *
+ * @return matching string description
+ */
+static const char *
+dir2str(uint8_t direction)
+{
+    switch (direction)
+    {
+	case NET_MD_ACC_INBOUND_DIR     : return "inbound";
+	case NET_MD_ACC_OUTBOUND_DIR    : return "outbound";
+	case NET_MD_ACC_LAN2LAN_DIR     : return "lan2lan";
+	case NET_MD_ACC_UNSET_DIR       :
+	default:                          return "unset";
+    }
 }
 
 static void
@@ -114,9 +140,10 @@ print_dns_cache_entry(struct ip2action *i2a)
     pmac = (i2a->device_mac != NULL) ? i2a->device_mac : &nullmac;
     LOGD("ip %s, mac "PRI_os_macaddr_lower_t
          " action: %d action_by_name: %d ttl: %d policy_idx: %d service_id: %d redirect flag: %d"
-         " unknown_cat: %d", ipstr, FMT_os_macaddr_pt(pmac),
+         " unknown_cat: %d direction: %s", ipstr, FMT_os_macaddr_pt(pmac),
          i2a->action, i2a->action_by_name, i2a->cache_ttl, i2a->policy_idx,
-         i2a->service_id, i2a->redirect_flag, i2a->cat_unknown_to_service);
+         i2a->service_id, i2a->redirect_flag, i2a->cat_unknown_to_service,
+	 dir2str(i2a->direction));
 
     if (i2a->service_id == IP2ACTION_WP_SVC)
     {
@@ -397,6 +424,7 @@ dns_cache_lookup_ip2action(struct ip2action_req *req)
     i2a_lkp.ip_addr = req->ip_addr;
     dns_cache_set_ip(&i2a_lkp);
     i2a_lkp.device_mac = req->device_mac;
+    i2a_lkp.direction = req->direction;
 
     i2a = ds_tree_find(&mgr->ip2a_tree, &i2a_lkp);
     if (i2a != NULL) return i2a;
@@ -416,7 +444,13 @@ bool
 dns_cache_set_wb_cache_entry(struct ip2action_wb_info *i2a_cache_wb,
                              struct ip2action_wb_info *to_add_cache_wb)
 {
-    if (!to_add_cache_wb->risk_level) return false;
+    if (!to_add_cache_wb->risk_level)
+    {
+        LOGD("%s: Categorization: risk level = %d",
+             __func__, to_add_cache_wb->risk_level);
+        return false;
+    }
+
     i2a_cache_wb->risk_level = to_add_cache_wb->risk_level;
 
     return true;
@@ -437,10 +471,22 @@ dns_cache_set_bc_cache_entry(struct ip2action_bc_info *i2a_cache_bc,
 {
     size_t index;
 
-    if (!to_add_cache_bc->reputation) return false;
+    if (!to_add_cache_bc->reputation)
+    {
+        LOGD("%s: Categorization: reputation = %d",
+             __func__, to_add_cache_bc->reputation);
+        return false;
+    }
+
     i2a_cache_bc->reputation = to_add_cache_bc->reputation;
 
-    if (!nelems) return false;
+    if (!nelems)
+    {
+        LOGD("%s: Categorization: number of elements = %d",
+             __func__, nelems);
+        return false;
+    }
+
     for (index = 0; index < nelems; index++)
     {
         i2a_cache_bc->confidence_levels[index] =
@@ -640,6 +686,7 @@ dns_cache_alloc_ip2action(struct ip2action_req  *to_add)
     i2a->redirect_flag = to_add->redirect_flag;
     i2a->nelems = to_add->nelems;
     i2a->cat_unknown_to_service = to_add->cat_unknown_to_service;
+    i2a->direction = to_add->direction;
 
     for (index = 0; index < to_add->nelems; ++index)
     {

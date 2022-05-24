@@ -369,6 +369,7 @@ static void cm2_compute_backoff(void)
         goto set_backoff;
     }
     int ret = read(fd, &backoff, sizeof(backoff));
+    close(fd);
     if (ret <= 0) {
         LOGE("Error reading /dev/urandom");
         goto set_backoff;
@@ -997,12 +998,12 @@ start:
             if (cm2_state_changed())
             {
                 // quiesce ovsdb-server, wait for timeout
-                cm2_stability_update_interval(g_state.loop, true);
                 cm2_ovsdb_set_Manager_target("");
                 g_state.disconnects += 1;
                 cm2_set_ble_state(false, BLE_ONBOARDING_STATUS_CLOUD_OK);
 
                 if (cm2_is_extender()) {
+                    cm2_stability_update_interval(g_state.loop, true);
                     cm2_ovsdb_connection_update_unreachable_cloud_counter(g_state.link.if_name,
                                                                           g_state.disconnects);
                 }

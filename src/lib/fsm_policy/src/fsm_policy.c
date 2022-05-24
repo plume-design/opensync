@@ -962,6 +962,7 @@ bool risk_level_compare(struct fsm_url_reply *reply,
 bool
 fsm_dns_cache_lookup(struct fsm_policy_req *req, struct fsm_policy_reply *policy_reply)
 {
+    struct net_md_stats_accumulator *acc;
     struct ip2action_req  lkp_req;
     struct fsm_url_reply *reply;
     int req_type;
@@ -978,10 +979,13 @@ fsm_dns_cache_lookup(struct fsm_policy_req *req, struct fsm_policy_reply *policy
     /* Bail if the request is already from the cache */
     if (policy_reply->from_cache) return true;
 
+    acc = req->acc;
+
     /* look up the dns cache */
     memset(&lkp_req, 0, sizeof(lkp_req));
     lkp_req.device_mac = req->device_id;
     lkp_req.ip_addr = req->ip_addr;
+    lkp_req.direction = (acc != NULL ? acc->direction : NET_MD_ACC_UNSET_DIR);
     rc = dns_cache_ip2action_lookup(&lkp_req);
 
     /* bail if the dns cache lookup failed */

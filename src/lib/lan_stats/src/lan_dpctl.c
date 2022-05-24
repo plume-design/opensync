@@ -53,7 +53,7 @@ get_portno_names(struct dpif *dpif, const struct dpctl_params *dpctl_p)
     return portno_names;
 }
 
-#if OVS_PACKAGE_VERNUM == OVS_VERSION_2_11_1
+#if OVS_PACKAGE_VERNUM >= OVS_VERSION_2_11_1
 static void
 format_flow(struct ds *ds, const struct dpif_flow *f, struct hmap *ports,
                  struct dpctl_params *dpctl_p)
@@ -116,7 +116,7 @@ dpctl_free_portno_names(struct hmap *portno_names)
 }
 
 
-#if OVS_PACKAGE_VERNUM == OVS_VERSION_2_11_1
+#if OVS_PACKAGE_VERNUM >= OVS_VERSION_2_11_1
 static void
 enable_all_dump_types(struct dump_types *dump_types)
 {
@@ -192,7 +192,7 @@ determine_dpif_flow_dump_types(struct dump_types *dump_types,
 static int
 dump_flows(lan_stats_instance_t *lan_stats_instance, struct dpctl_params *dpctl_p)
 {
-#if OVS_PACKAGE_VERNUM == OVS_VERSION_2_11_1
+#if OVS_PACKAGE_VERNUM >= OVS_VERSION_2_11_1
     struct dpif_flow_dump_types dpif_dump_types;
     struct dump_types dump_types;
     char *types_list = NULL;
@@ -224,7 +224,7 @@ dump_flows(lan_stats_instance_t *lan_stats_instance, struct dpctl_params *dpctl_
         goto out_portfree;
     }
 
-#if OVS_PACKAGE_VERNUM == OVS_VERSION_2_11_1
+#if OVS_PACKAGE_VERNUM >= OVS_VERSION_2_11_1
     memset(&dump_types, 0, sizeof (dump_types));
     error = populate_dump_types(types_list, &dump_types, dpctl_p);
     if (error)
@@ -234,7 +234,7 @@ dump_flows(lan_stats_instance_t *lan_stats_instance, struct dpctl_params *dpctl_
     determine_dpif_flow_dump_types(&dump_types, &dpif_dump_types);
 #endif
 
-#if OVS_PACKAGE_VERNUM == OVS_VERSION_2_11_1
+#if OVS_PACKAGE_VERNUM >= OVS_VERSION_2_11_1
     flow_dump = dpif_flow_dump_create(dpif, false, &dpif_dump_types);
 #elif OVS_PACKAGE_VERNUM == OVS_VERSION_2_8_7
     flow_dump = dpif_flow_dump_create(dpif, false,  "dpctl");
@@ -246,7 +246,7 @@ dump_flows(lan_stats_instance_t *lan_stats_instance, struct dpctl_params *dpctl_
     memset(&f, 0, sizeof(f));
     while (dpif_flow_dump_next(dump_thread, &f, 1))
     {
-#if OVS_PACKAGE_VERNUM == OVS_VERSION_2_11_1
+#if OVS_PACKAGE_VERNUM >= OVS_VERSION_2_11_1
         format_flow(&ds, &f, portno_names, dpctl_p);
 #elif OVS_PACKAGE_VERNUM == OVS_VERSION_2_8_7
         format_flow(&ds, &f, portno_names, type, dpctl_p);
@@ -267,7 +267,7 @@ dump_flows(lan_stats_instance_t *lan_stats_instance, struct dpctl_params *dpctl_
 
     ds_destroy(&ds);
 
-#if OVS_PACKAGE_VERNUM == OVS_VERSION_2_11_1
+#if OVS_PACKAGE_VERNUM >= OVS_VERSION_2_11_1
 out_typefree:
     FREE(types_list);
 #endif

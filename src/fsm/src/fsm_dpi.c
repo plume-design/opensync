@@ -61,6 +61,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "kconfig.h"
 #include "memutil.h"
 
+#define  MAX_RESERVED_PORT_NUM 1023
+#define  NON_RESERVED_PORT_START_NUM MAX_RESERVED_PORT_NUM + 1
+#define  DHCP_SERVER_PORT_NUM 67
+#define  DHCP_CLIENT_PORT_NUM 68
+
 static struct imc_context g_imc_client =
 {
     .initialized = false,
@@ -356,6 +361,7 @@ fsm_init_dpi_plugin(struct fsm_session *session)
     ops->notify_client = fsm_dpi_call_client;
     ops->register_clients = fsm_dpi_register_clients;
     ops->unregister_clients = fsm_dpi_unregister_clients;
+    ops->mark_flow = fsm_dpi_mark_for_report;
 
     return true;
 }
@@ -737,8 +743,6 @@ fsm_dpi_update_acc_key(struct net_md_stats_accumulator *acc)
 }
 
 
-#define  MAX_RESERVED_PORT_NUM       1023
-#define  NON_RESERVED_PORT_START_NUM MAX_RESERVED_PORT_NUM + 1
 /**
  * @brief set accumulator flow direction based ports
  *
@@ -784,6 +788,22 @@ fsm_dpi_set_acc_direction_on_port(struct fsm_dpi_dispatcher *dispatch,
     {
         acc->direction = (smac_found ? NET_MD_ACC_INBOUND_DIR :
                           NET_MD_ACC_OUTBOUND_DIR);
+    }
+    else if ((sport < NON_RESERVED_PORT_START_NUM) &&
+             (dport < NON_RESERVED_PORT_START_NUM))
+    {
+        /* DHCP flow direction */
+        if ((sport == DHCP_SERVER_PORT_NUM && dport == DHCP_CLIENT_PORT_NUM) ||
+            (sport == DHCP_CLIENT_PORT_NUM && dport == DHCP_SERVER_PORT_NUM))
+        {
+            acc->direction = NET_MD_ACC_OUTBOUND_DIR;
+        }
+        else
+        {
+            /* Ports are reserved, set direction based on smac */
+            acc->direction = (smac_found ? NET_MD_ACC_OUTBOUND_DIR :
+                              NET_MD_ACC_INBOUND_DIR);
+        }
     }
     else
     {
@@ -1202,6 +1222,40 @@ error:
 
 
 /**
+ * @brief free the dpi resources of every plugin
+ *
+ * @param session the session to free
+ */
+void
+fsm_free_dpi_plugins_resources(struct fsm_session *session)
+{
+    struct fsm_dpi_plugin_ops *dpi_plugin_ops;
+    struct fsm_dpi_dispatcher *dispatch;
+    union fsm_dpi_context *dpi_context;
+    struct fsm_dpi_plugin *dpi_plugin;
+    struct fsm_dpi_plugin *next;
+    ds_tree_t *dpi_sessions;
+
+    dpi_context = session->dpi;
+    if (dpi_context == NULL) return;
+
+    dispatch = &dpi_context->dispatch;
+    dpi_sessions = &dispatch->plugin_sessions;
+    dpi_plugin = ds_tree_head(dpi_sessions);
+    while (dpi_plugin != NULL)
+    {
+        dpi_plugin_ops = &dpi_plugin->session->p_ops->dpi_plugin_ops;
+        if (dpi_plugin_ops->dpi_free_resources != NULL)
+        {
+            dpi_plugin_ops->dpi_free_resources(dpi_plugin->session);
+        }
+        next = ds_tree_next(dpi_sessions, dpi_plugin);
+        dpi_plugin = next;
+    }
+}
+
+
+/**
  * @brief free the dpi resources of a dispatcher plugin
  *
  * @param session the session to free
@@ -1425,7 +1479,8 @@ fsm_free_dpi_context(struct fsm_session *session)
 
     if (session->type == FSM_DPI_DISPATCH)
     {
-       fsm_free_dpi_dispatcher(session);
+        fsm_free_dpi_plugins_resources(session);
+        fsm_free_dpi_dispatcher(session);
     }
     else if (session->type == FSM_DPI_PLUGIN)
     {
@@ -1493,7 +1548,9 @@ fsm_net_parser_to_acc(struct net_header_parser *net_parser,
     struct net_md_stats_accumulator *acc;
     struct eth_header *eth_hdr;
     struct net_md_flow_key key;
+    uint16_t ethertype;
     bool is_fragment;
+    bool is_ip;
 
     eth_hdr = &net_parser->eth_header;
 
@@ -1501,8 +1558,17 @@ fsm_net_parser_to_acc(struct net_header_parser *net_parser,
     key.smac = eth_hdr->srcmac;
     key.dmac = eth_hdr->dstmac;
     key.vlan_id = eth_hdr->vlan_id;
-    key.ethertype = eth_hdr->ethertype;
 
+    ethertype = eth_hdr->ethertype;
+    is_ip = ((ethertype == ETH_P_IP) || (ethertype == ETH_P_IPV6));
+    if (!is_ip)
+    {
+        LOGD("%s: ethertype: %d is other than IPv4 & IPv6."
+              "Ignoring packet for dpi inspection", __func__, ethertype);
+	return NULL;
+    }
+
+    key.ethertype = ethertype;
     key.ip_version = net_parser->ip_version;
     if (net_parser->ip_version == 4)
     {

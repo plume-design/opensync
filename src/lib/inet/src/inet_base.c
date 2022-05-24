@@ -1865,12 +1865,6 @@ bool inet_base_dhcp_server_commit(inet_base_t *self, bool start)
         self->in_dhcps = NULL;
     }
 
-    if (!start)
-    {
-        TELOG_STEP("DHCP4_SERVER", self->inet.in_ifname, "stop", NULL);
-        return true;
-    }
-
     /*
      * Create new DHCPv4 object
      */
@@ -1932,6 +1926,12 @@ bool inet_base_dhcp_server_commit(inet_base_t *self, bool start)
                     FMT_osn_ip_addr(rn->rn_ipaddr),
                     rn->rn_hostname == NULL ? "(null)" : rn->rn_hostname);
         }
+    }
+
+    if (!start)
+    {
+        TELOG_STEP("DHCP4_SERVER", self->inet.in_ifname, "stop", NULL);
+        return true;
     }
 
     /* Apply configuration */

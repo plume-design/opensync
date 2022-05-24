@@ -98,6 +98,7 @@ test_redirected_flow_v6(void)
     ip_cache_req->cache_ttl = 500;
     ip_cache_req->redirect_flag = true;
     ip_cache_req->service_id = IP2ACTION_GK_SVC;
+    ip_cache_req->direction = NET_MD_ACC_OUTBOUND_DIR;
 
     rc = dns_cache_add_entry(ip_cache_req);
     TEST_ASSERT_TRUE(rc);
@@ -122,6 +123,7 @@ test_redirected_flow_v6(void)
     rc = inet_pton(AF_INET6, "403:201:606:606:606:606:606:606", info.remote_ip);
     TEST_ASSERT_EQUAL_INT(1, rc);
     info.ip_version = 6;
+    info.direction = NET_MD_ACC_OUTBOUND_DIR;
 
     attr = "http.host";
     /* ip address present in cache */

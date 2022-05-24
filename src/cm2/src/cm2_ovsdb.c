@@ -515,7 +515,7 @@ bool cm2_ovsdb_dhcpv6_enable(char *ifname)
     SCHEMA_SET_INT(dhcpv6_client.enable, true);
     SCHEMA_SET_INT(dhcpv6_client.renew, true);
     SCHEMA_SET_INT(dhcpv6_client.request_address, true);
-    SCHEMA_SET_INT(dhcpv6_client.request_prefixes, true);
+    SCHEMA_SET_INT(dhcpv6_client.request_prefixes, false);
 
     if (!ovsdb_table_upsert_where(
             &table_DHCPv6_Client,
@@ -950,6 +950,7 @@ cm2_ovsdb_util_handle_master_sta_port_state(struct schema_Wifi_Master_State *mas
 {
     cm2_ip ipv4;
     int    ret;
+    char *uplink_removed = NULL;
 
     if (port_state) {
         ret = cm2_ovsdb_set_Wifi_Inet_Config_interface_enabled(true, master->if_name);
@@ -959,22 +960,22 @@ cm2_ovsdb_util_handle_master_sta_port_state(struct schema_Wifi_Master_State *mas
         if (!wds)
             cm2_util_set_dhcp_ipv4_cfg_from_master(master, true);
     } else {
-        if (g_state.link.is_used && g_state.link.is_bridge) {
-            bool br_update = true;
-
+        if (g_state.link.is_used  && cm2_is_wifi_type(g_state.link.if_type)) {
             if (!strcmp(g_state.link.if_name, master->if_name) && !strcmp(master->if_type, VIF_TYPE_NAME)) {
                 /* WDS link lost */
-                cm2_ovsdb_connection_remove_uplink(master->if_name);
-            } else if (!strcmp(g_state.link.if_name, gre_ifname) && !strcmp(master->if_type, GRE_TYPE_NAME)) {
+                uplink_removed = master->if_name;
+            } else if (!strcmp(g_state.link.if_name, gre_ifname)) {
                 /* GRE link lost */
-                cm2_ovsdb_connection_remove_uplink(gre_ifname);
-            } else {
-                br_update = false;
+                uplink_removed = gre_ifname;
             }
+        }
 
-            if (br_update)
+        if (uplink_removed != NULL) {
+            if (g_state.link.is_bridge) {
                 cm2_update_bridge_cfg(g_state.link.bridge_name, g_state.link.if_name, false,
                                       CM2_PAR_NOT_SET, true);
+            }
+            cm2_ovsdb_connection_remove_uplink(uplink_removed);
         }
 
         ret = cm2_util_get_ip_inet_state_cfg(master->if_name, &ipv4);

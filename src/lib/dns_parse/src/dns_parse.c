@@ -805,6 +805,7 @@ process_response_ips(dns_info *dns, uint8_t *packet,
                 ip_cache_req.service_id = req->req_info->reply->service_id;
                 ip_cache_req.nelems = req->req_info->reply->nelems;
                 ip_cache_req.cat_unknown_to_service = policy_reply->cat_unknown_to_service;
+                ip_cache_req.direction = NET_MD_ACC_OUTBOUND_DIR;
                 for (index = 0; index < req->req_info->reply->nelems; ++index)
                 {
                     ip_cache_req.categories[index] =
@@ -1169,6 +1170,7 @@ dns_cache_add_redirect_entry(struct fqdn_pending_req *req,
     ip_cache_req.service_id = req->req_info->reply->service_id;
     ip_cache_req.action = FSM_ALLOW;
     ip_cache_req.redirect_flag = true;
+    ip_cache_req.direction = NET_MD_ACC_OUTBOUND_DIR;
 
     /* set required values for adding to cache */
     if (ip_cache_req.service_id == IP2ACTION_BC_SVC)
@@ -2399,7 +2401,14 @@ fsm_update_gk_reporting(struct fqdn_pending_req *req,
     /* gk has already taken the action to report, no need to check
      * further.
      */
-    if (policy_reply->to_report == true) return;
+    if (policy_reply->to_report == true)
+    {
+        if (policy_reply->rule_name == NULL)
+        {
+            policy_reply->rule_name = STRDUP(preq->rule_name);
+        }
+        return;
+    }
 
     /* if policy does not ask for logging, just return */
     if (preq->report == false) return;

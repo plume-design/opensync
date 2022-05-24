@@ -943,7 +943,8 @@ bm_kick_check_sticky_kick(bm_client_t *client)
      */
     time_t now;
 
-    if (client->pref_5g_allowed == BM_CLIENT_PREF_5G_ALLOWED_ALWAYS) {
+    if (client->pref_5g_allowed == BM_CLIENT_PREF_5G_ALLOWED_ALWAYS ||
+        client->pref_6g_allowed == BM_CLIENT_PREF_6G_ALLOWED_ALWAYS) {
         if (!bm_neighbor_number(client)) {
             /*
              * Empty neighbor table and we always prefer bs_allowed, this mean one

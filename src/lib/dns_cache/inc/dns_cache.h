@@ -110,6 +110,7 @@ struct ip2action
     bool                        redirect_flag;
     uint8_t                     categories[URL_REPORT_MAX_ELEMS];
     bool                        cat_unknown_to_service;
+    uint8_t                     direction;
     union
     {
         struct ip2action_bc_info bc_info;
@@ -137,6 +138,7 @@ struct ip2action_req
     uint8_t                  categories[URL_REPORT_MAX_ELEMS];
     bool                     cat_unknown_to_service;
     int                      (*set_ttl)(void);
+    uint8_t                  direction;
     union
     {
         struct ip2action_bc_info bc_info;

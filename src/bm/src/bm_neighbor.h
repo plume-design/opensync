@@ -52,6 +52,11 @@ typedef struct {
     ds_tree_node_t      dst_node;
 } bm_neighbor_t;
 
+typedef struct {
+    bm_client_t *client;
+    bm_neighbor_t *neighbor;
+} bm_client_neighbor_t;
+
 /*****************************************************************************/
 
 extern bool     bm_neighbor_init( void );

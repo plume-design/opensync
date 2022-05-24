@@ -662,9 +662,9 @@ json_t * ovsdb_tran_cond_single_json(
 }
 
 json_t * ovsdb_tran_cond_single(
-        char * column,
+        const char * column,
         ovsdb_func_t func,
-        char * value)
+        const char * value)
 {
     return ovsdb_tran_cond_single_json(column, func, json_string(value));
 }

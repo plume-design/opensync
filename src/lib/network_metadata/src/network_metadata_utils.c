@@ -643,6 +643,8 @@ void net_md_free_acc(struct net_md_stats_accumulator *acc)
     free_flow_key(acc->fkey);
     FREE(acc->fkey);
     if (acc->free_plugins != NULL) acc->free_plugins(acc);
+    // dpi_plugins tree for the acc is set to NULL.
+    acc->dpi_plugins = NULL;
 }
 
 
@@ -980,6 +982,9 @@ bool net_md_add_sample_to_window(struct net_md_aggregator *aggr,
     struct flow_key *fkey;
     size_t stats_idx;
     bool filter_add;
+    struct flow_counters *to;
+    struct flow_counters *from;
+
 
     window = net_md_active_window(aggr);
     if (window == NULL) return false;
@@ -1021,7 +1026,13 @@ bool net_md_add_sample_to_window(struct net_md_aggregator *aggr,
     stats->key = acc->fkey;
     stats->key->direction = acc->direction;
     stats->key->originator = acc->originator;
-    *stats->counters = acc->report_counters;
+
+    to = stats->counters;
+    from = &acc->report_counters;
+
+    to->packets_count = from->packets_count;
+    to->bytes_count = from->bytes_count;
+    to->payload_bytes_count = from->payload_bytes_count;
 
     aggr->stats_cur_idx++;
     aggr->total_report_flows++;
@@ -1097,15 +1108,10 @@ void net_md_update_eth_acc(struct net_md_stats_accumulator *eth_acc,
 {
     struct flow_counters *from, *to;
 
-    from = &acc->counters;
-    to = &eth_acc->counters;
+    from = &acc->report_counters;
+    to = &eth_acc->report_counters;
     to->bytes_count += from->bytes_count;
     to->packets_count += from->packets_count;
-
-    /* Don't count twice the previously reported counters */
-    from = &acc->first_counters;
-    to->bytes_count -= from->bytes_count;
-    to->packets_count -= from->packets_count;
 }
 
 
@@ -1119,6 +1125,9 @@ void net_md_report_eth_acc(struct net_md_aggregator *aggr,
     eth_acc = eth_pair->mac_stats;
     tree = &eth_pair->ethertype_flows;
     flow = ds_tree_head(tree);
+
+    memset(&eth_acc->report_counters,
+           0, sizeof(eth_acc->report_counters));
 
     while (flow != NULL)
     {
@@ -1138,8 +1147,8 @@ void net_md_report_eth_acc(struct net_md_aggregator *aggr,
         if (active_flow)
         {
             eth_acc->state = ACC_STATE_WINDOW_ACTIVE;
-            net_md_update_eth_acc(eth_acc, acc);
             net_md_close_counters(aggr, acc);
+            net_md_update_eth_acc(eth_acc, acc);
             if (aggr->report_all_samples) net_md_add_sample_to_window(aggr, acc);
             acc->state = ACC_STATE_WINDOW_RESET;
         }
@@ -1173,7 +1182,6 @@ void net_md_report_eth_acc(struct net_md_aggregator *aggr,
 
     if (eth_acc->state == ACC_STATE_WINDOW_ACTIVE)
     {
-        net_md_close_counters(aggr, eth_acc);
         net_md_add_sample_to_window(aggr, eth_acc);
         eth_acc->state = ACC_STATE_WINDOW_RESET;
     }

@@ -43,6 +43,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ds_tree.h"
 #include "fsm_policy.h"
 #include "memutil.h"
+#include "network_metadata_report.h"
 
 const char *test_name = "dns_cache_tests";
 
@@ -1870,6 +1871,79 @@ void test_dns_cache_action_by_name(void)
     TEST_ASSERT_TRUE(rc_lookup);
     TEST_ASSERT_EQUAL_INT(FSM_BLOCK, key.action_by_name);
     TEST_ASSERT_EQUAL_INT(FSM_BLOCK, key.action);
+
+    LOGI("\n******************** %s: completed ****************\n", __func__);
+}
+
+void test_dns_cache_direction(void)
+{
+    struct ip2action_req *entry = NULL;
+    uint32_t v4udstip6 = htonl(0x04030206);
+    struct ip2action_req  key;
+    struct sockaddr_storage ip;
+    os_macaddr_t mac;
+    bool rc_lookup;
+    bool rc_add;
+    int nelem;
+
+    LOGI("\n******************** %s: starting ****************\n", __func__);
+
+    /* Add the ip2action entry */
+    entry = entry6;
+   entry->direction = NET_MD_ACC_OUTBOUND_DIR;
+    rc_add = dns_cache_add_entry(entry);
+    TEST_ASSERT_TRUE(rc_add);
+
+    nelem = dns_cache_get_size();
+    TEST_ASSERT_EQUAL_INT(nelem, 1);
+
+    memset(&key, 0, sizeof(struct ip2action_req));
+    util_populate_sockaddr(AF_INET, &v4udstip6, &ip);
+    key.ip_addr = &ip;
+    mac.addr[0] = 0xaa;
+    mac.addr[1] = 0xaa;
+    mac.addr[2] = 0xaa;
+    mac.addr[3] = 0xaa;
+    mac.addr[4] = 0xaa;
+    mac.addr[5] = 0x06;
+    key.device_mac = &mac;
+
+    rc_lookup = dns_cache_ip2action_lookup(&key);
+    TEST_ASSERT_FALSE(rc_lookup);
+
+    key.direction = NET_MD_ACC_INBOUND_DIR;
+    rc_lookup = dns_cache_ip2action_lookup(&key);
+    TEST_ASSERT_FALSE(rc_lookup);
+
+    /* Add the ip2action entry */
+    entry = entry6;
+    entry->direction = NET_MD_ACC_INBOUND_DIR;
+    rc_add = dns_cache_add_entry(entry);
+    TEST_ASSERT_TRUE(rc_add);
+    nelem = dns_cache_get_size();
+    TEST_ASSERT_EQUAL_INT(nelem, 2);
+
+    key.direction = NET_MD_ACC_OUTBOUND_DIR;
+    rc_lookup = dns_cache_ip2action_lookup(&key);
+    /* Validate lookup to the dns_cache entry */
+    TEST_ASSERT_TRUE(rc_lookup);
+
+    key.direction = NET_MD_ACC_INBOUND_DIR;
+    rc_lookup = dns_cache_ip2action_lookup(&key);
+    /* Validate lookup to the dns_cache entry */
+    TEST_ASSERT_TRUE(rc_lookup);
+
+    print_dns_cache();
+
+    dns_cache_del_entry(entry);
+    entry->direction = NET_MD_ACC_OUTBOUND_DIR;
+    nelem = dns_cache_get_size();
+    TEST_ASSERT_EQUAL_INT(nelem, 1);
+    dns_cache_del_entry(entry);
+    nelem = dns_cache_get_size();
+    TEST_ASSERT_EQUAL_INT(nelem, 0);
+
+    LOGI("\n******************** %s: completed ****************\n", __func__);
 }
 
 void test_events(void)
@@ -1902,6 +1976,7 @@ int main(int argc, char *argv[])
     RUN_TEST(test_gk_dns_cache);
     RUN_TEST(test_dns_cache_entries);
     RUN_TEST(test_dns_cache_action_by_name);
+    RUN_TEST(test_dns_cache_direction);
     RUN_TEST(test_dns_cache_disable);
 
     dns_cache_global_test_teardown();

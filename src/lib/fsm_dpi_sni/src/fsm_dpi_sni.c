@@ -662,6 +662,7 @@ is_redirected_flow(struct net_md_flow_info *info, const char *attr)
 
     dpi_parse_populate_sockaddr(af, info->remote_ip, &ip);
     lkp_req.ip_addr = &ip;
+    lkp_req.direction = info->direction;
 
     rc = dns_cache_ip2action_lookup(&lkp_req);
     LOGD("%s(): cache lookup returned %d, redirect flag: %d",

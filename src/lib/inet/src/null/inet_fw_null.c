@@ -29,20 +29,20 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 struct __inet_fw
 {
+    bool                        fw_nat_enabled;
 };
-
-static inet_fw_t g_inet_fw;
 
 inet_fw_t *inet_fw_new(const char *ifname)
 {
     LOG(NOTICE, "inet_fw: %s: not using OpenSync Firewall on this platform.", ifname);
+    inet_fw_t *self = CALLOC(sizeof(inet_fw_t), sizeof(*self));
 
-    return &g_inet_fw;
+    return self;
 }
 
 bool inet_fw_del(inet_fw_t *self)
 {
-    (void)self;
+    FREE(self);
     return true;
 }
 
@@ -60,16 +60,15 @@ bool inet_fw_stop(inet_fw_t *self)
 
 bool inet_fw_nat_set(inet_fw_t *self, bool enable)
 {
-    (void)self;
-    (void)enable;
+    self->fw_nat_enabled = enable;
 
     return true;
 }
 
 bool inet_fw_state_get(inet_fw_t *self, bool *nat_enabled)
 {
-    (void)self;
-    *nat_enabled = false;
+    *nat_enabled = self->fw_nat_enabled;
+
     return true;
 }
 

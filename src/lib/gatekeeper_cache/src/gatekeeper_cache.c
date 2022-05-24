@@ -1166,9 +1166,27 @@ bool
 gkc_upsert_attribute_entry(struct gk_attr_cache_interface *entry)
 {
     enum gk_cache_request_type attribute_type;
+    char  ipstr[INET6_ADDRSTRLEN] = { 0 };
+    struct sockaddr_in6 *addr_v6;
+    struct sockaddr_in *addr_v4;
     struct attr_cache *attr_entry;
     time_t now;
     bool rc;
+
+    attribute_type = entry->attribute_type;
+    if (entry->attr_name == NULL)
+    {
+        if (attribute_type == GK_CACHE_REQ_TYPE_IPV4)
+        {
+            addr_v4 = (struct sockaddr_in *)entry->ip_addr;
+            inet_ntop(AF_INET, &addr_v4->sin_addr, ipstr, sizeof(ipstr));
+        }
+        else if (attribute_type == GK_CACHE_REQ_TYPE_IPV6)
+        {
+            addr_v6 = (struct sockaddr_in6 *)entry->ip_addr;
+            inet_ntop(AF_INET6, &addr_v6->sin6_addr, ipstr, sizeof(ipstr));
+        }
+    }
 
     /* Fetch the cache entry */
     attr_entry = gkc_fetch_attribute_entry(entry);
@@ -1179,13 +1197,18 @@ gkc_upsert_attribute_entry(struct gk_attr_cache_interface *entry)
         {
             LOGD("%s: Couldn't add ip entry to gatekeeper cache.", __func__);
         }
+        LOGT("%s(): adding %s (attr type %d) ttl (%" PRIu64 ") to cache %s ",
+             __func__,
+             ((entry->attr_name != NULL) ? entry->attr_name : ipstr),
+             attribute_type,
+             entry->cache_ttl,
+             (rc == true) ? "success" : "failed");
         return rc;
     }
 
     /* Update the entry */
     if (entry->action_by_name != FSM_ACTION_NONE)
     {
-        attribute_type = entry->attribute_type;
         if (attribute_type == GK_CACHE_REQ_TYPE_IPV4)
         {
             attr_entry->attr.ipv4->action_by_name = entry->action_by_name;
@@ -1226,6 +1249,12 @@ gkc_upsert_attribute_entry(struct gk_attr_cache_interface *entry)
     }
     /* Leaving the redirecting fields alone for now */
 
+    LOGT("%s(): updating %s (attr type %d) ttl (%" PRIu64 ") to cache %s ",
+         __func__,
+         ((entry->attr_name != NULL) ? entry->attr_name : ipstr),
+         attribute_type,
+         entry->cache_ttl,
+         "success");
     return true;
 }
 

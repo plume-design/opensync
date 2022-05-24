@@ -59,9 +59,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 /*
  * During testing it was noticed that some clients tend to get confused when
  * BTM requests have more than three neighbors. Moreover, some drivers only
- * handle neighbor lists with up to three entries.
+ * handle neighbor lists with up to three entries. For 6GHz clients decided
+ * to increase the limitation.
  */
-#define BSAL_MAX_TM_NEIGHBORS   3
+#define BSAL_MAX_TM_NEIGHBORS_LEGACY 3
+#define BSAL_MAX_TM_NEIGHBORS        8
 #define BSAL_MAX_ASSOC_IES_LEN  1024
 
 #define BSAL_MAX_ACTION_FRAME_LEN 1024

@@ -27,6 +27,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "bm.h"
 #include "util.h"
 #include "bm_ieee80211.h"
+#include "bm_util_opclass.h"
 
 static void
 bm_action_frame_radio_measurement_report(bm_client_t *client,
@@ -61,9 +62,9 @@ bm_action_frame_radio_measurement_report(bm_client_t *client,
             }
 
             /* Check if "channel" is a valid operating channel */
-            if (!unii_5g_chan2list(beacon_report->channel, 20)) {
-                LOGI("%s ignore beacon report due to invalid 20 MHz channel: %d", client->mac_addr,
-                     beacon_report->channel);
+            if (!ieee80211_global_op_class_is_channel_supported(beacon_report->op_class, beacon_report->channel)) {
+                LOGI("%s ignore beacon report due to op_class and channel mismatch: [%d/%d]", client->mac_addr,
+                     beacon_report->op_class, beacon_report->channel);
                 bm_client_ignore_beacon_measurement_reports(client);
                 return;
             }
@@ -282,6 +283,29 @@ bm_ie_supported_channels(bm_client_t *client, const uint8_t *ie, size_t len)
     }
 }
 
+static void
+bm_ie_parse_supported_op_classes(bm_client_t *client, const uint8_t *ie, size_t len)
+{
+    unsigned int i;
+
+    if (WARN_ON(len == 0))
+        return;
+
+    memset(&client->op_classes, 0, sizeof(client->op_classes));
+
+    if (len > BM_CLIENT_MAX_OP_CLASSES) {
+        LOGW("%s Size of operating classes more than expected (%d): %d",
+             client->mac_addr, len, BM_CLIENT_MAX_OP_CLASSES);
+        client->op_classes.size = BM_CLIENT_MAX_OP_CLASSES;
+    } else {
+        client->op_classes.size = len;
+    }
+
+    for (i = 0; i < client->op_classes.size; i++) {
+        client->op_classes.op_class[i] = ie[i];
+    }
+}
+
 void
 bm_client_parse_assoc_ies(bm_client_t *client, const uint8_t *ies, size_t ies_len)
 {
@@ -296,6 +320,7 @@ bm_client_parse_assoc_ies(bm_client_t *client, const uint8_t *ies, size_t ies_le
                 break;
             case WLAN_EID_SUPPORTED_OPERATING_CLASSES:
                 LOGD("WLAN_EID_SUPPORTED_OPERATING_CLASSES");
+                bm_ie_parse_supported_op_classes(client, elem->data, elem->datalen);
                 break;
             default:
                 break;

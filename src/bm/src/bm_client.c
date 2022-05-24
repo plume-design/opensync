@@ -50,6 +50,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "const.h"
 #include "util.h"
 #include "memutil.h"
+#include "bm_util_opclass.h"
 
 
 /*****************************************************************************/
@@ -334,6 +335,9 @@ bm_client_to_bsal_conf_bs_5g(bm_client_t *client, bm_group_t *group, radio_type_
 static bool
 bm_client_to_bsal_conf_bs_6g(bm_client_t *client, bm_group_t *group, radio_type_t radio_type, bsal_client_config_t *dest)
 {
+    if (client->state == BM_CLIENT_STATE_CONNECTED) {
+        dest->rssi_low_xing = client->lwm;
+    }
     return true;
 }
 
@@ -488,12 +492,14 @@ void
 bm_client_send_rrm_req(bm_client_t *client, bm_client_rrm_req_type_t rrm_req_type, int delay)
 {
     bm_rrm_req_t *req;
-    const size_t elements_num = 8;
-    uint8_t channels[elements_num];
-    uint8_t op_classes[elements_num];
+    size_t elements_num;
+    uint8_t channels[BM_CLIENT_MAX_RRM_REQ_CHANNELS];
+    uint8_t op_classes[BM_CLIENT_MAX_RRM_REQ_CHANNELS];
     int num_channels;
     uint32_t delay_ms;
     int i;
+
+    assert(BM_CLIENT_MAX_RRM_REQ_CHANNELS > BM_CLIENT_MAX_RRM_REQ_CHANNELS_LEGACY);
 
     if (!client->connected)
         return;
@@ -504,10 +510,16 @@ bm_client_send_rrm_req(bm_client_t *client, bm_client_rrm_req_type_t rrm_req_typ
     if (!client->info->is_RRM_supported)
         return;
 
+    if (client->band_cap_mask & BM_CLIENT_OPCLASS_60_CAP_BIT)
+        elements_num = BM_CLIENT_MAX_RRM_REQ_CHANNELS;
+    else
+        elements_num = BM_CLIENT_MAX_RRM_REQ_CHANNELS_LEGACY;
+
     bm_client_reset_rrm_neighbors(client);
     num_channels = bm_neighbor_get_channels(client, rrm_req_type, channels, elements_num, 0, op_classes, elements_num);
 
     for (i = 0; i < num_channels; i++) {
+        int opc;
         if (bm_client_is_dfs_channel(channels[i])) {
             if (!client->info->rrm_caps.bcn_rpt_passive) {
                 LOGD("%s skip rrm_req while DFS and !rrm_passive", client->mac_addr);
@@ -536,7 +548,9 @@ bm_client_send_rrm_req(bm_client_t *client, bm_client_rrm_req_type_t rrm_req_typ
         req->rrm_params.meas_dur = BM_CLIENT_RRM_ACTIVE_MEASUREMENT_DURATION;
 
         req->rrm_params.channel = channels[i];
-        req->rrm_params.op_class = op_classes[i];
+        /* Downgrade oplcass to 20 MHz */
+        opc = ieee80211_global_op_class_to_20mhz_op_class(op_classes[i], channels[i]);
+        req->rrm_params.op_class = opc ?: op_classes[i];
 
         if (bm_client_is_dfs_channel(channels[i])) {
             req->rrm_params.meas_mode = 0;
@@ -630,7 +644,7 @@ static void bm_client_report_caps(bm_client_t *client, const char *ifname, bsal_
     event.data.connect.is_RRM_supported = info->is_RRM_supported;
     event.data.connect.band_cap_2G = info->band_cap_2G | client->band_cap_2G;
     event.data.connect.band_cap_5G = info->band_cap_5G | client->band_cap_5G;
-    event.data.connect.band_cap_6G = info->band_cap_5G | client->band_cap_6G;
+    event.data.connect.band_cap_6G = info->band_cap_6G | client->band_cap_6G;
     event.data.connect.assoc_ies_len = info->assoc_ies_len <= ARRAY_SIZE(event.data.connect.assoc_ies)
                                      ? info->assoc_ies_len
                                      : ARRAY_SIZE(event.data.connect.assoc_ies);
@@ -721,6 +735,44 @@ static void bm_client_caps_recalc(bm_client_t *client, const char *ifname, bsal_
     bm_client_record_client_caps(client, ifname, info);
 }
 
+static void bm_client_set_band_caps_mask(bm_client_t *client)
+{
+    int i;
+    int mask = 0;
+    char *str = NULL;
+
+    for (i = 0; i < client->op_classes.size; i++) {
+        const uint8_t op_c = client->op_classes.op_class[i];
+
+        str = strgrow(&str, "%hhu ", op_c);
+        if (ieee80211_global_op_class_is_2ghz(op_c))
+            mask |= BM_CLIENT_OPCLASS_24_CAP_BIT;
+
+        if (ieee80211_global_op_class_is_5ghz(op_c))
+            mask |= BM_CLIENT_OPCLASS_50_CAP_BIT;
+
+        if (ieee80211_global_op_class_is_6ghz(op_c))
+            mask |= BM_CLIENT_OPCLASS_60_CAP_BIT;
+    }
+
+    LOGI("Client %s supported opclass: %s", client->mac_addr, str ?: "none");
+    FREE(str);
+
+    if (mask == 0) {
+        LOGI("Client %s no capab based on opclasses", client->mac_addr);
+        if (client->band_cap_6G)
+            mask |= BM_CLIENT_OPCLASS_60_CAP_BIT;
+
+        if (client->band_cap_5G)
+            mask |= BM_CLIENT_OPCLASS_50_CAP_BIT;
+
+        if (client->band_cap_2G)
+            mask |= BM_CLIENT_OPCLASS_24_CAP_BIT;
+    }
+
+    client->band_cap_mask = mask;
+}
+
 void bm_client_check_connected(bm_client_t *client, bm_group_t *group, const char *ifname)
 {
     bsal_client_info_t          info;
@@ -760,6 +812,9 @@ void bm_client_check_connected(bm_client_t *client, bm_group_t *group, const cha
 
     /* Recalc client capabilities */
     bm_client_caps_recalc(client, ifname, &info);
+
+    /* Set client capabilities based on supported Operating Classes */
+    bm_client_set_band_caps_mask(client);
 
     bm_kick_cancel_btm_retry_task( client );
     bm_client_preassoc_backoff_recalc(group, client, ifname);
@@ -1483,13 +1538,28 @@ bm_client_get_btm_params( struct schema_Band_Steering_Clients *bscli,
 
         if (neigh->channel && type == BM_CLIENT_BTM_PARAMS_SC) {
             /* It's impossible to infer these correctly due to 6GHz channel
-             * numbering overlapping with 2.4G and 5G
+             * numbering overlapping with 2.4G and 5G.  Try to inherit info from
+             * neighbor table
              */
-            WARN_ON(!neigh->op_class);
-            WARN_ON(!neigh->phy_type);
+            if (!neigh->op_class || !neigh->phy_type) {
+                bm_neighbor_t *np;
 
-            memset(neigh, 0, sizeof(*neigh));
-            btm_params->num_neigh = 0;
+                if ((np = bm_neighbor_find_by_macstr(mac_str))) {
+                    LOGI("bm_client_get_btm_params [SC]: Inheriting BSSID %s " \
+                         "op_class/phy_type from neighbors table", mac_str);
+                    if (!neigh->op_class)
+                        neigh->op_class = np->neigh_report.op_class;
+                    if (!neigh->phy_type)
+                        neigh->phy_type = np->neigh_report.phy_type;
+                }
+            }
+
+            if (WARN_ON(!neigh->op_class) || WARN_ON(!neigh->phy_type)) {
+                LOGW("Invalid neigh params: op_class: %hhu, phy_type: %hhu",
+                     neigh->op_class, neigh->phy_type);
+                memset(neigh, 0, sizeof(*neigh));
+                btm_params->num_neigh = 0;
+            }
         }
     }
 
@@ -1620,7 +1690,7 @@ bm_client_from_ovsdb(struct schema_Band_Steering_Clients *bscli, bm_client_t *cl
     client->max_rejects_period = -1;
     client->pref_5g_pre_assoc_block_timeout_msecs = -1;
 
-    if (client->pref_5g_allowed == BM_CLIENT_PREF_5G_ALLOWED_ALWAYS) {
+    if (client->pref_5g_allowed != BM_CLIENT_PREF_5G_ALLOWED_NEVER) {
         if (bscli->max_rejects > 0 &&
             bscli->rejects_tmout_secs > 0 &&
             (!bscli->pref_5g_pre_assoc_block_timeout_msecs_exists || bscli->pref_5g_pre_assoc_block_timeout_msecs == 0))
@@ -2653,15 +2723,31 @@ bm_client_rejected(bm_client_t *client, bsal_event_t *event)
         return;
     }
 
-    switch (client->pref_5g_pre_assoc_block_policy) {
-        case BM_CLIENT_PREF_5G_PRE_ASSOC_BLOCK_POLICY_TIMER:
+    switch (bm_group_find_radio_type_by_ifname(event->ifname)) {
+        case RADIO_TYPE_2G:
+            switch (client->pref_5g_pre_assoc_block_policy) {
+                case BM_CLIENT_PREF_5G_PRE_ASSOC_BLOCK_POLICY_TIMER:
+                    bm_client_rejected_timer(client, event);
+                    break;
+                case BM_CLIENT_PREF_5G_PRE_ASSOC_BLOCK_POLICY_COUNTER:
+                case BM_CLIENT_PREF_5G_PRE_ASSOC_BLOCK_POLICY_UNDEFINED:
+                    bm_client_rejected_counter(client, event);
+                    break;
+            }
+            break;
+        case RADIO_TYPE_5G:
+        case RADIO_TYPE_5GL:
+        case RADIO_TYPE_5GU:
             bm_client_rejected_timer(client, event);
             break;
-        case BM_CLIENT_PREF_5G_PRE_ASSOC_BLOCK_POLICY_COUNTER:
-            bm_client_rejected_counter(client, event);
+        case RADIO_TYPE_6G:
+            LOGW("%s: probe or auth req was rejection is not expected on 6G band",
+                 client->mac_addr);
             break;
-        case BM_CLIENT_PREF_5G_PRE_ASSOC_BLOCK_POLICY_UNDEFINED:
-            LOGE("Client %s - undefined pre-assoc pref 5g pre-assoc block policy", client->mac_addr);
+        case RADIO_TYPE_NONE:
+            LOGW("%s: probe or auth req was rejection reported on unknown radio type",
+                 client->mac_addr);
+            break;
     }
 }
 

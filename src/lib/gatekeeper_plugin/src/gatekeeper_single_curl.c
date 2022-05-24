@@ -163,18 +163,33 @@ static void
 gk_set_report_info(struct fsm_url_reply *url_reply,
                    Gatekeeper__Southbound__V1__GatekeeperCommonReply *header)
 {
+    char *policy_name;
+
+    if (header->policy == NULL)
+    {
+        policy_name = STRDUP("NULL_PTR");
+    }
+    else if (strcmp("NULL", header->policy) == 0 && url_reply->reply_info.gk_info.gk_policy != NULL)
+    {
+        policy_name = STRDUP(url_reply->reply_info.gk_info.gk_policy);
+    }
+    else
+    {
+        policy_name = STRDUP(header->policy);
+    }
+
     LOGT("%s() received category id: %d, confidence level %d policy '%s'",
          __func__,
          header->category_id,
          header->confidence_level,
-         header->policy);
+         policy_name);
+
 
     url_reply->reply_info.gk_info.category_id = header->category_id;
     url_reply->reply_info.gk_info.confidence_level = header->confidence_level;
-    if (header->policy == NULL) return;
 
-    /* No action taken if STRDUP() fails */
-    url_reply->reply_info.gk_info.gk_policy = STRDUP(header->policy);
+    FREE(url_reply->reply_info.gk_info.gk_policy);
+    url_reply->reply_info.gk_info.gk_policy = policy_name;
 }
 
 /**
@@ -320,6 +335,20 @@ gk_set_policy(Gatekeeper__Southbound__V1__GatekeeperReply *response,
 
     policy_reply->action = gk_get_fsm_action(header);
     policy_reply->cache_ttl = header->ttl;
+
+    if (policy_reply->rule_name == NULL)
+    {
+        if (policy_req->rule_name)
+        {
+            LOGD("%s: Setting policy_reply to %s", __func__, policy_req->rule_name);
+            policy_reply->rule_name = STRDUP(policy_req->rule_name);
+        }
+        else
+        {
+            LOGD("%s: policy request rule name is NULL", __func__);
+        }
+    }
+
     gk_set_report_info(url_reply, header);
 
     return true;

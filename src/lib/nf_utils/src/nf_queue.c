@@ -40,6 +40,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <linux/netfilter/nfnetlink.h>
 #include <linux/netfilter/nfnetlink_queue.h>
 #include <linux/netfilter/nfnetlink_conntrack.h>
+#include <linux/netfilter/nf_conntrack_common.h>
 
 #include "log.h"
 #include "neigh_table.h"
@@ -256,20 +257,27 @@ nf_queue_send_verdict(struct nlmsghdr *nlh,
         case NF_UTIL_NFQ_ACCEPT:
                 LOGT("%s: Setting mark 2, no more packets needed.",__func__);
                 mark = 2;
-                vhdr->verdict = htonl(NF_ACCEPT);
                 break;
         case NF_UTIL_NFQ_INSPECT:
                 LOGT("%s: Continue inspection, need more packets.",__func__);
-                vhdr->verdict = htonl(NF_ACCEPT);
                 break;
         case NF_UTIL_NFQ_DROP:
-                LOGT("%s: Setting mark to 3, drop packets",__func__);
+                LOGT("%s: Setting mark to 3.",__func__);
                 mark = 3;
-                vhdr->verdict = htonl(NF_DROP);
                 break;
     }
 
+    /*
+    * We always pass verdict as accept,
+    * however we just mark the conntrack entry
+    * either to 2 or 3.This will make sure that the conntrack
+    * entry is active and OVS can take
+    * the appropriate action.
+    */
+    vhdr->verdict = htonl(NF_ACCEPT);
+
     mnl_attr_put(nlh, NFQA_VERDICT_HDR, sizeof(struct nfqnl_msg_verdict_hdr), vhdr);
+
 
     if (mark == 2 || mark == 3)
     {

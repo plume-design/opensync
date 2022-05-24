@@ -1425,6 +1425,7 @@ void test_ipthreat_multiple_provider_check(void)
     ip2a_req->nelems              = 1;
     ip2a_req->categories[0]       = 7;
     ip2a_req->cache_wb.risk_level = 7;
+    ip2a_req->direction = NET_MD_ACC_OUTBOUND_DIR;
     v4dstip = htonl(0x01020304);
     in4addr = (struct sockaddr_in *)ip2a_req->ip_addr;
     in4addr->sin_family = AF_INET;
@@ -1565,6 +1566,7 @@ void test_ipthreat_multiple_provider_block(void)
     ip2a_req->nelems              = 1;
     ip2a_req->categories[0]       = 7;
     ip2a_req->cache_wb.risk_level = 7;
+    ip2a_req->direction = NET_MD_ACC_OUTBOUND_DIR;
     v4dstip = htonl(0x01020304);
     in4addr = (struct sockaddr_in *)ip2a_req->ip_addr;
     in4addr->sin_family = AF_INET;

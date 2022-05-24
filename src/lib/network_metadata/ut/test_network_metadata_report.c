@@ -935,10 +935,10 @@ void test_ethernet_aggregate_two_keys(void)
 
     /*
      * Second report counters, absolute mode.
-     * Received a total of 50000 bytes for key 0, 30000 bytes for key 1.
+     * Received a total of 50000 bytes for key 0.
      */
-    counters[4].bytes_count = 80000;
-    counters[4].packets_count = 800;
+    counters[4].bytes_count = 50000;
+    counters[4].packets_count = 500;
 
     /*
      * First report counters, relative mode.
@@ -2982,6 +2982,7 @@ test_network_metadata_reports(void)
     // RUN_TEST(test_add_2_samples_all_keys);
     RUN_TEST(test_ethernet_aggregate_one_key);
     RUN_TEST(test_ethernet_aggregate_two_keys);
+
     RUN_TEST(test_large_loop);
     RUN_TEST(test_add_remove_flows);
     RUN_TEST(test_multiple_windows);

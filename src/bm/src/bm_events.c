@@ -707,13 +707,20 @@ bm_events_handle_rssi_xing_bs(bm_client_t *client, bsal_event_t *event)
         }
     }
     else if (event->data.rssi_change.low_xing == BSAL_RSSI_LOWER) {
+        bm_client_rrm_req_type_t rrm_rtype;
         stats->rssi.lower++;
         if (client->lwm > 0 && event->data.rssi_change.rssi <= client->lwm) {
             client->xing_bs_rssi = event->data.rssi_change.rssi;
-
             if (client->send_rrm_after_xing && client->info->rrm_caps.bcn_rpt_active) {
-                /* Do it fast, scan only current channel */
-                bm_client_send_rrm_req(client, BM_CLIENT_RRM_5G_ONLY, 0);
+                if ((client->band_cap_mask & BM_CLIENT_OPCLASS_50_CAP_BIT) &&
+                    (client->band_cap_mask & BM_CLIENT_OPCLASS_60_CAP_BIT))
+                    rrm_rtype = BM_CLIENT_RRM_5_6G_ONLY;
+                else if (client->band_cap_mask & BM_CLIENT_OPCLASS_60_CAP_BIT)
+                    rrm_rtype = BM_CLIENT_RRM_6G_ONLY;
+                else
+                    rrm_rtype = BM_CLIENT_RRM_5G_ONLY;
+
+                bm_client_send_rrm_req(client, rrm_rtype, 0);
                 delay = 1;
             }
 

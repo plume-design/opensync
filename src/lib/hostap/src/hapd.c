@@ -630,15 +630,36 @@ static const char *
 hapd_ht_caps(const struct schema_Wifi_Radio_Config *rconf)
 {
     if (!rconf->ht_mode_exists) return "";
-    if (!strcmp(rconf->ht_mode, "HT20")) {
+
+    if (!strcmp(rconf->ht_mode, "HT20"))
         return "[HT20]";
-    } else if (!strcmp(rconf->ht_mode, "HT40") ||
-               !strcmp(rconf->ht_mode, "HT80") ||
-               !strcmp(rconf->ht_mode, "HT160")) {
+
+    if (strcmp(rconf->ht_mode, "HT40") &&
+            strcmp(rconf->ht_mode, "HT80") &&
+            strcmp(rconf->ht_mode, "HT160")) {
+        LOGT("%s: %s is incorrect htmode", __func__, rconf->ht_mode);
+        return "";
+    }
+
+    if (!strcmp(rconf->freq_band, SCHEMA_CONSTS_RADIO_TYPE_STR_2G)) {
         switch (rconf->channel) {
             case 0:
                 return "[HT40+] [HT40-]";
             case 1 ... 7:
+                return "[HT40+]";
+            case 8 ... 13:
+                return "[HT40-]";
+            default:
+                LOG(TRACE,
+                    "%s: %d is not a valid channel",
+                    rconf->if_name, rconf->channel);
+        }
+    } else if (!strcmp(rconf->freq_band, SCHEMA_CONSTS_RADIO_TYPE_STR_5G) ||
+            !strcmp(rconf->freq_band, SCHEMA_CONSTS_RADIO_TYPE_STR_5GL) ||
+            !strcmp(rconf->freq_band, SCHEMA_CONSTS_RADIO_TYPE_STR_5GU)) {
+        switch (rconf->channel) {
+            case 0:
+                return "[HT40+] [HT40-]";
             case 36:
             case 44:
             case 52:
@@ -652,7 +673,6 @@ hapd_ht_caps(const struct schema_Wifi_Radio_Config *rconf)
             case 149:
             case 157:
                 return "[HT40+]";
-            case 8 ... 13:
             case 40:
             case 48:
             case 56:
@@ -670,16 +690,22 @@ hapd_ht_caps(const struct schema_Wifi_Radio_Config *rconf)
                 LOG(TRACE,
                     "%s: %d is not a valid channel",
                     rconf->if_name, rconf->channel);
-                return "";
+        }
+    } else if (!strcmp(rconf->freq_band, SCHEMA_CONSTS_RADIO_TYPE_STR_6G)) {
+        if (!strcmp(rconf->ht_mode, "HT40")) {
+            switch ((rconf->channel / 4) % 2) {
+                case 0:
+                    return "[HT40+]";
+                case 1:
+                    return "[HT40-]";
+            }
         }
     }
-
-    LOGT("%s: %s is incorrect htmode", __func__, rconf->ht_mode);
     return "";
 }
 
 static int
-hapd_vht_oper_chwidth(const struct schema_Wifi_Radio_Config *rconf)
+hapd_util_get_oper_chwidth(const struct schema_Wifi_Radio_Config *rconf)
 {
     if (!rconf->ht_mode_exists) return 0;
     if (!strcmp(rconf->ht_mode, "HT20") ||
@@ -695,7 +721,7 @@ hapd_vht_oper_chwidth(const struct schema_Wifi_Radio_Config *rconf)
 }
 
 static int
-hapd_vht_oper_centr_freq_idx(const struct schema_Wifi_Radio_Config *rconf)
+hapd_util_get_oper_centr_freq_idx(const struct schema_Wifi_Radio_Config *rconf)
 {
     const int width = atoi(strlen(rconf->ht_mode) > 2 ? rconf->ht_mode + 2 : "20");
     const int *chans;
@@ -706,6 +732,9 @@ hapd_vht_oper_centr_freq_idx(const struct schema_Wifi_Radio_Config *rconf)
         chans = unii_6g_chan2list(rconf->channel, width);
     else
         chans = unii_5g_chan2list(rconf->channel, width);
+
+    if (WARN_ON(!chans))
+        return 0;
 
     while (*chans) {
         sum += *chans;
@@ -1005,6 +1034,10 @@ hapd_conf_gen(struct hapd *hapd,
     csnprintf(&buf, &len, "send_probe_response=%d\n", hapd->skip_probe_response ? 0 : 1);
     csnprintf(&buf, &len, "%s", hapd->ieee80211n ? "" : "#");
     csnprintf(&buf, &len, "ieee80211n=%d\n", hapd_11n_enabled(rconf));
+    /* Hostapd supports 11ac VHT features on 2.4GHz although it is vendor specific.
+     * Depending on driver capabilities, VHT configurations can be enabled for 2.4GHz.
+     * ieee80211ac can be disabled in target layer in case of hostapd issues on 2.4GHz.
+     */
     csnprintf(&buf, &len, "%s", hapd->ieee80211ac ? "" : "#");
     csnprintf(&buf, &len, "ieee80211ac=%d\n", hapd_11ac_enabled(rconf));
     csnprintf(&buf, &len, "%s", hapd->ieee80211ax ? "" : "#");
@@ -1012,12 +1045,17 @@ hapd_conf_gen(struct hapd *hapd,
     csnprintf(&buf, &len, "%s", vconf->dpp_cc_exists ? "" : "#");
     csnprintf(&buf, &len, "dpp_configurator_connectivity=%d\n", vconf->dpp_cc ? 1 : 0);
 
-    if (hapd->ieee80211ac && hapd_11ac_enabled(rconf)) {
-        if (strcmp(rconf->freq_band, "2.4G")) {
-            csnprintf(&buf, &len, "vht_oper_chwidth=%d\n",
-                      hapd_vht_oper_chwidth(rconf));
+    if (strcmp(rconf->freq_band, SCHEMA_CONSTS_RADIO_TYPE_STR_2G)) {
+        if (hapd->ieee80211ax && hapd_11ax_enabled(rconf)) {
+            csnprintf(&buf, &len, "he_oper_chwidth=%d\n", hapd_util_get_oper_chwidth(rconf));
+            csnprintf(&buf, &len, "he_oper_centr_freq_seg0_idx=%d\n",
+                      hapd_util_get_oper_centr_freq_idx(rconf));
+        }
+        if (hapd->ieee80211ac && hapd_11ac_enabled(rconf) &&
+            (strcmp(rconf->freq_band, SCHEMA_CONSTS_RADIO_TYPE_STR_6G))) {
+            csnprintf(&buf, &len, "vht_oper_chwidth=%d\n", hapd_util_get_oper_chwidth(rconf));
             csnprintf(&buf, &len, "vht_oper_centr_freq_seg0_idx=%d\n",
-                      hapd_vht_oper_centr_freq_idx(rconf));
+                      hapd_util_get_oper_centr_freq_idx(rconf));
         }
     }
 
@@ -1116,12 +1154,11 @@ hapd_bss_get_security(struct schema_Wifi_VIF_State *vstate,
     bool dpp = false;
 
     while ((conf_key = strsep(&conf_keys, " "))) {
-        if (strcmp(conf_key, "WPA-PSK") == 0 && (conf_wpa & 1)) {
-            wpa_psk = true;
-            continue;
-        }
-        if (strcmp(conf_key, "WPA-PSK") == 0 && (conf_wpa & 2)) {
-            wpa2_psk = true;
+        if (strcmp(conf_key, "WPA-PSK") == 0) {
+            if (conf_wpa & 1)
+                wpa_psk = true;
+            if (conf_wpa & 2)
+                wpa2_psk = true;
             continue;
         }
         if (strcmp(conf_key, "WPA-EAP") == 0) {

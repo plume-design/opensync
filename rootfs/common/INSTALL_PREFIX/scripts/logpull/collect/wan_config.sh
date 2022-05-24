@@ -1,3 +1,5 @@
+#!/bin/sh
+
 # Copyright (c) 2015, Plume Design Inc. All rights reserved.
 # 
 # Redistribution and use in source and binary forms, with or without
@@ -22,29 +24,17 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-###############################################################################
 #
-# DNS Cache library
+# Collect WAN config info
 #
-###############################################################################
-UNIT_NAME := dns_cache
+. "$LOGPULL_LIB"
 
-UNIT_DISABLE:= $(if $(CONFIG_LIBDNS_CACHE),n,y)
+collect_wan_config()
+{
+    collect_cmd $CONFIG_TARGET_PATH_TOOLS/osps -p get local_config wan
 
-UNIT_TYPE := LIB
-UNIT_DIR := lib
+    #collecting the files present pstore
+    collect_file $CONFIG_PSFS_PRESERVE_DIR/local_config
+}
 
-UNIT_SRC := src/dns_cache.c
-
-UNIT_CFLAGS := -I$(UNIT_PATH)/inc
-UNIT_CFLAGS += -I$(TOP_DIR)/src/lib/common/inc
-UNIT_CFLAGS += -Isrc/lib/fsm_policy/inc
-UNIT_CFLAGS += -Isrc/lib/network_metadata/inc
-UNIT_CFLAGS += -Isrc/lib/ustack/inc
-
-UNIT_EXPORT_CFLAGS := $(UNIT_CFLAGS)
-UNIT_EXPORT_LDFLAGS := $(UNIT_LDFLAGS)
-
-UNIT_DEPS += src/lib/log
-UNIT_DEPS += src/lib/ds
-UNIT_DEPS += src/lib/ovsdb
+collect_wan_config
