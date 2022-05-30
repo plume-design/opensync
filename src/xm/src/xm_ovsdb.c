@@ -59,6 +59,8 @@ ovsdb_table_t table_AWLAN_Node;
 ovsdb_table_t table_Wifi_Radio_Config;
 ovsdb_table_t table_Wifi_VIF_Config;
 ovsdb_table_t table_Wifi_Inet_Config;
+ovsdb_table_t table_DHCP_reserved_IP;
+ovsdb_table_t table_IP_Port_Forward;
 
 static bool g_xm_init = false;
 
@@ -332,6 +334,60 @@ static void callback_Wifi_Inet_Config(
     connector_sync_inet(iconf);
 }
 
+static void callback_DHCP_reserved_IP(
+        ovsdb_update_monitor_t          *mon,
+        struct schema_DHCP_reserved_IP  *old_rec,
+        struct schema_DHCP_reserved_IP  *rip,
+        ovsdb_cache_row_t *row)
+{
+    INIT_DONE()
+    switch (mon->mon_type) {
+        case OVSDB_UPDATE_ERROR:
+            LOGW("OVSDB: Exchange DHCP reservation %s error: %d", rip->hw_addr, mon->mon_type);
+            break;
+        case OVSDB_UPDATE_NEW:
+            LOGD("OVSDB: Add DHCP reservation for the client %s", rip->hw_addr);
+            connector_dhcp_reservation_add(rip);
+            break;
+         case OVSDB_UPDATE_MODIFY:
+            LOGD("OVSDB: Modify DHCP reservation for the client %s", rip->hw_addr);
+            connector_dhcp_reservation_modify(rip);
+            break;
+        case OVSDB_UPDATE_DEL:
+            LOGD("OVSDB: Delete DHCP reservation for the client %s", rip->hw_addr);
+            connector_dhcp_reservation_del(rip);
+        default:
+            break;
+    }
+}
+
+static void callback_IP_Port_Forward(
+        ovsdb_update_monitor_t         *mon,
+        struct schema_IP_Port_Forward  *old_rec,
+        struct schema_IP_Port_Forward  *pschema,
+        ovsdb_cache_row_t *row)
+{
+    INIT_DONE()
+    switch (mon->mon_type) {
+        case OVSDB_UPDATE_ERROR:
+            LOGW("OVSDB: Exchange IP port forward %s error: %d", pschema->src_ifname, mon->mon_type);
+            break;
+        case OVSDB_UPDATE_NEW:
+            LOGD("OVSDB: Add IP port forward for the client %s ", pschema->src_ifname);
+            connector_portforward_add(pschema);
+            break;
+         case OVSDB_UPDATE_MODIFY:
+            LOGD("OVSDB: Modify IP port forward for the client %s ", pschema->src_ifname);
+            connector_portforward_modify(pschema);
+            break;
+        case OVSDB_UPDATE_DEL:
+            LOGD("OVSDB: Add IP port forward for the client %s ", pschema->src_ifname);
+            connector_portforward_del(pschema);
+            break;
+        default:
+            break;
+    }
+}
 
 /******************************************************************************
  *  Callback Table
@@ -363,6 +419,8 @@ bool xm_ovsdb_init(struct ev_loop *loop)
 
     // Initialize OVSDB tables
     OVSDB_TABLE_INIT_NO_KEY(AWLAN_Node);
+    OVSDB_TABLE_INIT_NO_KEY(DHCP_reserved_IP);
+    OVSDB_TABLE_INIT_NO_KEY(IP_Port_Forward);
     OVSDB_TABLE_INIT(Wifi_Radio_Config, if_name);
     OVSDB_TABLE_INIT(Wifi_VIF_Config, if_name);
     OVSDB_TABLE_INIT(Wifi_Inet_Config, if_name);
@@ -378,6 +436,8 @@ bool xm_ovsdb_init(struct ev_loop *loop)
     OVSDB_CACHE_MONITOR(Wifi_Radio_Config, true);
     OVSDB_CACHE_MONITOR(Wifi_VIF_Config, true);
     OVSDB_CACHE_MONITOR(Wifi_Inet_Config, true);
+    OVSDB_CACHE_MONITOR(DHCP_reserved_IP, false);
+    OVSDB_CACHE_MONITOR(IP_Port_Forward, false);
 
     g_xm_init = true;
 

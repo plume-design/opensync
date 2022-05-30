@@ -1639,7 +1639,17 @@ dns_handler(struct fsm_session *session, struct net_header_parser *net_header)
     qnext = dns.queries;
     for (i = 0; i < dns.qdcount; i++)
     {
-        if ((qnext->type == 0x1) || (qnext->type == 0x1c))
+        bool process;
+
+        process = ((qnext->type == 0x1) || (qnext->type == 0x1c));
+        if (process)
+        {
+            process &= (qnext->name != NULL);
+            if (process) process &= (qnext->name[0] != '\0');
+            if (!process) LOGD("%s: empty url for req id %d", __func__, dns.id);
+        }
+
+        if (process)
         {
             STRSCPY(req_info->url, qnext->name);
             LOGT("%s: url: %s", __func__, req_info->url);

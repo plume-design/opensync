@@ -653,8 +653,8 @@ int fw_portforward_cmp(void *_a, void *_b)
 {
     int rc;
 
-    struct inet_portforward *a = _a;
-    struct inet_portforward *b = _b;
+    const struct inet_portforward *a = _a;
+    const struct inet_portforward *b = _b;
 
     rc = osn_ip_addr_cmp(&a->pf_dst_ipaddr, &b->pf_dst_ipaddr);
     if (rc != 0) return rc;
