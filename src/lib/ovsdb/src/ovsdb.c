@@ -48,7 +48,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #define MODULE_ID LOG_MODULE_ID_OVSDB
 
-#define MAX_BUFFER_SIZE     (256*1024)
+#define MAX_BUFFER_SIZE     (1024*1024)
 #define CHUNK_SIZE          (8*1024)
 // typically ovs messages are below 4k, occasionally they are 6k, rarely more than 8k
 

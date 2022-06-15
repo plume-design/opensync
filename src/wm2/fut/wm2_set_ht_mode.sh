@@ -35,7 +35,7 @@ source "${FUT_TOPDIR}/shell/lib/wm2_lib.sh"
 
 manager_setup_file="wm2/wm2_setup.sh"
 # Wait for channel to change, not necessarily become usable (CAC for DFS)
-channel_change_timeout=60
+default_channel_change_timeout=60
 
 usage()
 {
@@ -74,7 +74,7 @@ if [ -n "${1}" ]; then
 fi
 
 NARGS=9
-[ $# -ne ${NARGS} ] && usage && raise "Requires '${NARGS}' input argument(s)" -l "wm2/wm2_set_ht_mode.sh" -arg
+[ $# -lt ${NARGS} ] && usage && raise "Requires '${NARGS}' input argument(s)" -l "wm2/wm2_set_ht_mode.sh" -arg
 if_name=${1}
 vif_if_name=${2}
 vif_radio_idx=${3}
@@ -84,11 +84,13 @@ channel=${6}
 ht_mode=${7}
 hw_mode=${8}
 mode=${9}
+channel_change_timeout=${10:-${default_channel_change_timeout}}
 
 trap '
     fut_info_dump_line
     print_tables Wifi_Radio_Config Wifi_Radio_State
     print_tables Wifi_VIF_Config Wifi_VIF_State
+    check_restore_ovsdb_server
     fut_info_dump_line
 ' EXIT SIGINT SIGTERM
 

@@ -133,6 +133,24 @@ menu "Common"
                 source "kconfig/Kconfig.osn.mapt_backend"
             endchoice
 
+            menu "Virtual Private Networks"
+                choice
+                    prompt "VPN"
+                    default OSN_BACKEND_VPN_LINUX
+                    source "kconfig/Kconfig.osn.vpn_backend"
+                endchoice
+                choice
+                    prompt "IPsec"
+                    default OSN_BACKEND_IPSEC_LINUX_STRONGSWAN
+                    source "kconfig/Kconfig.osn.ipsec_backend"
+                endchoice
+                choice
+                    prompt "Tunnel Interface"
+                    default OSN_BACKEND_TUNNEL_IFACE_LINUX
+                    source "kconfig/Kconfig.osn.tunnif_backend"
+                endchoice
+            endmenu
+
             source "kconfig/Kconfig.osn"
         endmenu
 

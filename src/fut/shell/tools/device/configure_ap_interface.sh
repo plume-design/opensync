@@ -61,6 +61,7 @@ trap '
 fut_ec=$?
 fut_info_dump_line
 print_tables Wifi_Radio_Config Wifi_Radio_State Wifi_VIF_Config Wifi_VIF_State Wifi_Inet_Config Wifi_Inet_State || true
+check_restore_ovsdb_server
 fut_info_dump_line
 exit $fut_ec
 ' EXIT SIGINT SIGTERM

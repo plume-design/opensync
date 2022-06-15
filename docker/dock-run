@@ -20,6 +20,7 @@ usage()
 usage: [ENVOPT] $0 [OPTIONS] [COMMAND] [ARGS]
 ENVOPT:
 DOCK_OPT=... : additional docker options
+DOCK_RUN_MOUNT_OPTS=... : additional docker bind mount path
 OPTIONS:
     --root
         run as root instead of user (this also skips mounting of home, passwd,...)
@@ -225,7 +226,6 @@ run_docker()
         -v"$HOME:$HOME"
         -v"$MPWDF":/etc/passwd
         -v"$MGRPF":/etc/group
-        -v/etc/ssl:/etc/ssl
     )
 
     [ "${ROOT:-no}" = "no" ] && {
@@ -243,6 +243,8 @@ run_docker()
     ARGS+=(-w"$PWD")
 
     ARGS+=($DOCK_OPT)
+
+    ARGS+=($DOCK_RUN_MOUNT_OPTS)
 
     ARGS+=("$TAG")
 

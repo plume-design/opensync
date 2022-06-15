@@ -79,6 +79,7 @@ fut_ec=$?
 fut_info_dump_line
 if [ $fut_ec -ne 0 ]; then 
     print_tables Port Bridge Wifi_Route_State
+    check_restore_ovsdb_server
 fi
 fut_info_dump_line
 exit $fut_ec

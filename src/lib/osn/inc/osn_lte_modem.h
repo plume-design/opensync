@@ -40,6 +40,27 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define C_AT_CMD_LONGEST_RESP 64
 
 #define SOURCE_AT_CMD 1
+
+typedef struct _gen_resp_
+{
+    char resp1[C_AT_CMD_LONG_RESP];
+    char resp2[C_AT_CMD_LONG_RESP];
+    char resp3[C_AT_CMD_LONG_RESP];
+    char resp4[C_AT_CMD_LONG_RESP];
+    char resp5[C_AT_CMD_LONG_RESP];
+    char resp6[C_AT_CMD_LONG_RESP];
+    char resp7[C_AT_CMD_LONG_RESP];
+    char resp8[C_AT_CMD_LONG_RESP];
+    char resp9[C_AT_CMD_LONG_RESP];
+    char resp10[C_AT_CMD_LONG_RESP];
+    char resp11[C_AT_CMD_LONG_RESP];
+} gen_resp_tokens;
+
+/* Keep the MAX_RESP_TOKENS in sync with
+ * gen_resp_token structure elements
+ */
+#define MAX_RESP_TOKENS  11
+
 typedef struct lte_chip_info_ // ati
 {
     char cmd[C_AT_CMD_RESP];
@@ -72,6 +93,16 @@ typedef struct lte_iccid_ // at+qccid
     char cmd[C_AT_CMD_RESP];
     char iccid[C_AT_CMD_LONG_RESP];
 } lte_iccid_t;
+
+#define AT_GMR_CMD "at+qgmr"
+#define MAX_GMR_TOKENS 3
+
+// Ref: 3GPP TS 27.007
+typedef struct lte_gmr_ // at+qgmr
+{
+    char cmd[C_AT_CMD_RESP];
+    char gmr[C_AT_CMD_LONG_RESP];
+} lte_gmr_t;
 
 typedef struct lte_reg_status_ // at+creg
 {
@@ -449,6 +480,7 @@ typedef struct osn_lte_modem_info_
     lte_pca_info_t pca_info;
     lte_sca_info_t sca_info;
     lte_pdp_ctx_dynamic_param_info_t pdp_ctx_info;
+    char modem_fw_ver[C_AT_CMD_LONGEST_RESP];
 } osn_lte_modem_info_t;
 
 int osn_lte_parse_chip_info(char *buf, lte_chip_info_t *chip_info);
@@ -502,5 +534,8 @@ int osn_lte_parse_at_cops(char *resp);
 void osn_lte_start_vendor_daemon(int source);
 int osn_lte_parse_ca_info(char *buf, lte_ca_info_t *pcc_info, lte_ca_info_t *scc_info);
 int osn_lte_save_ca_info(lte_ca_info_t *pca_info, lte_ca_info_t *sca_info, osn_lte_modem_info_t *modem_info);
+void osn_lte_stop_vendor_daemon(void);
+int osn_lte_parse_fw_ver(char *buf, lte_gmr_t *lte_gmr);
+int osn_lte_save_fw_ver(lte_gmr_t *lte_gmr, osn_lte_modem_info_t *modem_info);
 
 #endif /* OSN_LTE_MODEM_H_INCLUDED */

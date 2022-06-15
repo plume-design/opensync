@@ -102,6 +102,15 @@ UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_IGMP_LINUX),src/osn_igmp_linux.c)
 UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_MLD_NULL),src/osn_mld_null.c)
 UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_MLD_LINUX),src/osn_mld_linux.c)
 
+UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_VPN_LINUX),src/osn_vpn_linux.c)
+UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_VPN_NULL),src/osn_vpn_null.c)
+
+UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_IPSEC_LINUX_STRONGSWAN),src/osn_ipsec_strongswan.c)
+UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_IPSEC_NULL),src/osn_ipsec_null.c)
+
+UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_TUNNEL_IFACE_LINUX),src/osn_tunnel_iface_linux.c)
+UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_TUNNEL_IFACE_NULL),src/osn_tunnel_iface_null.c)
+
 ifdef CONFIG_OSN_LINUX_ENABLED
 UNIT_CFLAGS += -I$(UNIT_PATH)/src/linux
 
@@ -127,6 +136,8 @@ UNIT_SRC += $(if $(CONFIG_OSN_LINUX_LTE),src/linux/lnx_lte.c)
 UNIT_SRC += $(if $(CONFIG_OSN_LINUX_IGMP),src/linux/lnx_igmp.c)
 UNIT_SRC += $(if $(CONFIG_OSN_LINUX_MLD),src/linux/lnx_mld.c)
 UNIT_SRC += $(if $(or $(CONFIG_OSN_LINUX_IGMP),$(CONFIG_OSN_LINUX_MLD)),src/linux/lnx_mcast_bridge.c)
+UNIT_SRC += $(if $(CONFIG_OSN_VPN_IPSEC),src/linux/strongswan.c)
+UNIT_SRC += $(if $(CONFIG_OSN_LINUX_TUNNEL_IFACE),src/linux/lnx_tunnel_iface.c)
 UNIT_SRC += src/linux/udhcp_const.c
 
 ifeq ($(CONFIG_OSN_LINUX_ROUTE_LIBNL3),y)

@@ -31,6 +31,6 @@ UNIT_TYPE := FUT
 # Output directory
 UNIT_DIR := shell/tools/server/um
 
-UNIT_FILE := um_create_corrupt_image_file.sh
-UNIT_FILE += um_create_corrupt_md5_file.sh
-UNIT_FILE += um_create_md5_file.sh
+UNIT_FILE := create_corrupt_image_file.sh
+UNIT_FILE += create_corrupt_md5_file.sh
+UNIT_FILE += create_md5_file.sh

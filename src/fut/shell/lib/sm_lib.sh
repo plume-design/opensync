@@ -101,8 +101,8 @@ sm_setup_test_environment()
 insert_wifi_stats_config()
 {
     local NARGS=7
-    [ $# -ne ${NARGS} ] &&
-        raise "sm_lib:insert_wifi_stats_config requires ${NARGS} input argument(s), $# given" -arg
+    [ $# -lt ${NARGS} ] &&
+        raise "sm_lib:insert_wifi_stats_config requires at least ${NARGS} input argument(s), $# given" -arg
     sm_radio_band=$1
     sm_channel_list=$2
     sm_stats_type=$3
@@ -110,6 +110,7 @@ insert_wifi_stats_config()
     sm_reporting_interval=$5
     sm_sampling_interval=$6
     sm_report_type=$7
+    sm_survey_interval=${8:-'["set",[]]'}
 
     log "sm_lib:insert_wifi_stats_config - Inserting configuration to Wifi_Stats_Config "
 
@@ -124,7 +125,8 @@ insert_wifi_stats_config()
         -i survey_type "$sm_survey_type" \
         -i reporting_interval "$sm_reporting_interval" \
         -i sampling_interval "$sm_sampling_interval" \
-        -i report_type "$sm_report_type" &&
+        -i report_type "$sm_report_type" \
+        -i survey_interval_ms "$sm_survey_interval" &&
             log -deb "sm_lib:insert_wifi_stats_config - Configuration inserted to Wifi_Stats_Config table - Success" ||
             raise "FAIL: insert_ovsdb_entry - Could not insert to Wifi_Stats_Config" -l "sm_lib:insert_wifi_stats_config" -oe
 
@@ -226,7 +228,7 @@ check_survey_report_log()
 ###############################################################################
 inspect_survey_report()
 {
-    local NARGS=6
+    local NARGS=7
     [ $# -ne ${NARGS} ] &&
         raise "sm_lib:inspect_survey_report requires ${NARGS} input argument(s), $# given" -arg
     sm_radio_band=$1
@@ -235,6 +237,7 @@ inspect_survey_report()
     sm_reporting_interval=$4
     sm_sampling_interval=$5
     sm_report_type=$6
+    sm_survey_interval=$7
     sm_stats_type="survey"
 
     sm_channel_list="[\"set\",[$sm_channel]]"
@@ -249,7 +252,8 @@ inspect_survey_report()
         "$sm_survey_type" \
         "$sm_reporting_interval" \
         "$sm_sampling_interval" \
-        "$sm_report_type" &&
+        "$sm_report_type" \
+        "$sm_survey_interval" &&
             log -deb "sm_lib:inspect_survey_report - Wifi_Stats_Config inserted - Success" ||
             raise "FAIL: Could not insert Wifi_Stats_Config: insert_wifi_stats_config" -l "sm_lib:inspect_survey_report" -oe
 

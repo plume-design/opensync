@@ -39,7 +39,7 @@ create_inet_file="tools/device/create_inet_interface.sh"
 add_bridge_port_file="tools/device/add_bridge_port.sh"
 configure_lan_bridge_for_wan_connectivity_file="tools/device/configure_lan_bridge_for_wan_connectivity.sh"
 client_connect_file="tools/client/connect_to_wpa.sh"
-client_send_curl_file="tools/client/fsm/fsm_make_curl_agent_req.sh"
+client_send_curl_file="tools/client/fsm/make_curl_agent_req.sh"
 usage() {
     cat << usage_string
 fsm/fsm_test_http_plugin.sh [-h] arguments
@@ -89,6 +89,7 @@ fi
 trap '
 fut_info_dump_line
 print_tables Wifi_Associated_Clients
+check_restore_ovsdb_server
 fut_info_dump_line
 ' EXIT SIGINT SIGTERM
 

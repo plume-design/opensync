@@ -86,6 +86,7 @@ trap '
 fut_info_dump_line
 print_tables AWLAN_Node Manager
 check_restore_management_access || true
+check_restore_ovsdb_server
 fut_info_dump_line
 ' EXIT SIGINT SIGTERM
 

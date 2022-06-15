@@ -70,6 +70,14 @@ struct fsm_dpi_sni_cache
     ds_tree_t fsm_sessions;
 };
 
+struct fsm_dpi_sni_redirect_flow_request
+{
+    struct net_md_stats_accumulator *acc;
+    struct fsm_session *session;
+    struct net_md_flow_info *info;
+    char *attribute_value;
+    int req_type;
+};
 
 /**
  * @brief session initialization entry point
@@ -163,8 +171,11 @@ void fsm_dpi_sni_set_ttl(struct fsm_session *session, time_t ttl);
 int dpi_sni_get_req_type(const char *attr);
 int dpi_sni_policy_req(struct fsm_request_args *request_args, char *attr_value);
 bool dpi_sni_is_redirected_flow(struct net_md_flow_info *info);
+bool dpi_sni_is_redirected_attr(struct fsm_dpi_sni_redirect_flow_request *param);
 struct fsm_policy_reply *dpi_sni_create_reply(struct fsm_request_args *request_args);
 struct fsm_policy_req *dpi_sni_create_request(struct fsm_request_args *request_args, char *attr_value);
 
+bool
+dpi_sni_fetch_fqdn_from_url_attr(char *attribute_name, char *fqdn);
 
 #endif /* FSM_DPI_SNI_H_INCLUDED */

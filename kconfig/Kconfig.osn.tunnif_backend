@@ -1,0 +1,10 @@
+#
+# core tunnel interface backends
+#
+source "src/lib/osn/kconfig/Kconfig.osn.tunnif_backend"
+
+#
+# platform/vendor tunnel interface backends, if any
+#
+osource "platform/*/kconfig/Kconfig.osn.tunnif_backend"
+osource "vendor/*/kconfig/Kconfig.osn.tunnif_backend"

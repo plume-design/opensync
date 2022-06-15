@@ -95,6 +95,46 @@ get_process_cmd()
 
 ###############################################################################
 # DESCRIPTION:
+#   Function checks if ovsdb-server is running, if not, it will put device into initial state
+#    - Check is done with checking of PID of ovsdb-server
+#    - If PID is not found, function runs device_init and restart_managers
+# INPUT PARAMETER(S):
+#   None.
+# RETURNS:
+#   0   If ovsdb-server is running
+#   1   If ovsdb-server was not running and managers were restarted - OVSDBServerCrashed exception is raised
+#   1   If function failed to retrieve PID of ovsdb-server
+# RAISES:
+# USAGE EXAMPLE(S):
+#   check_restore_ovsdb_server
+###############################################################################
+check_restore_ovsdb_server()
+{
+    log -deb "unit_lib:check_restore_ovsdb_server - Checking if ovsdb-server is running"
+    res=$($(get_process_cmd) | grep "ovsdb-server" | grep -v "grep" | awk '{ print $1 }')
+    if [ "$?" != 0 ]; then
+        log -err "unit_lib:check_restore_ovsdb_server - Acquire of PID for ovsdb-server failed to execute"
+        return 1
+    fi
+    if [ -z "${res}" ]; then
+        # Re-init device before raising exception
+        device_init &&
+            log -deb "unit_lib:check_restore_ovsdb_server - Device initialized - Success" ||
+            log -err "unit_lib:check_restore_ovsdb_server - device_init - Could not initialize device"
+
+        start_openswitch &&
+            log -deb "unit_lib:check_restore_ovsdb_server - OpenvSwitch started - Success" ||
+            log -err "unit_lib:check_restore_ovsdb_server - start_openswitch - Could not start OpenvSwitch"
+        restart_managers
+        log -deb "unit_lib:check_restore_ovsdb_server - Executed restart_managers, exit code: $?"
+        raise "CRITICAL: ovsdb-server crashed" -l "unit_lib:check_restore_ovsdb_server" -osc
+    else
+        log -dev "unit_lib:check_restore_ovsdb_server - ovsdb-server is running"
+    fi
+}
+
+###############################################################################
+# DESCRIPTION:
 #   Function echoes single quoted input argument. Used for ovsh tool.
 #   It is imperative that this function does not log or echo anything, as its main
 #   functionality is to echo and the value being used upstream.
@@ -1618,6 +1658,11 @@ wait_for_function_response()
 #   Raises an exception if times out.
 #   Supported expected values are "empty", "notempty" or custom.
 # INPUT PARAMETER(S):
+#   (optional) $1 = -of : If first arguments is equal to -of (one-of)
+#     Script will wait for one of values given in the wait for output value
+#       Example:
+#         wait_for_function_output "value1 value2 value3" "echo value3" 30 1
+#         Script will wait for one of values (split with space!) value1, value2 or value3
 #   $1  wait for output value (int, required)
 #   $2  function call, function returning value (string, required)
 #   $3  retry count, number of iterations to stop checks
@@ -1633,11 +1678,16 @@ wait_for_function_response()
 wait_for_function_output()
 {
     NARGS_MIN=2
-    NARGS_MAX=4
+    NARGS_MAX=5
     [ $# -ge ${NARGS_MIN} ] && [ $# -le ${NARGS_MAX} ] ||
         raise "unit_lib:wait_for_function_output requires ${NARGS_MIN}-${NARGS_MAX} input arguments, $# given" -arg
-    local wait_for_value=$1
-    local function_to_wait_for=$2
+    local one_of_values="false"
+    if [ "${1}" == "-of" ]; then
+        one_of_values="true"
+        shift
+    fi
+    local wait_for_value=${1}
+    local function_to_wait_for=${2}
     local retry_count=${3:-$DEFAULT_WAIT_TIME}
     local retry_sleep=${4:-1}
     local fn_exec_cnt=0
@@ -1666,11 +1716,15 @@ wait_for_function_output()
                     break
             fi
         else
-            [ "$res" = "$wait_for_value" ] && return 0
+            if [ "${one_of_values}" == "true" ]; then
+                for wait_value in ${wait_for_value}; do
+                    [ "$res" == "$wait_value" ] && return 0
+                done
+            else
+                [ "$res" == "$wait_for_value" ] && return 0
+            fi
         fi
-
         log -deb "unit_lib:wait_for_function_output - Function retry ${fn_exec_cnt} output: ${res}"
-
         sleep "${retry_sleep}"
     done
 

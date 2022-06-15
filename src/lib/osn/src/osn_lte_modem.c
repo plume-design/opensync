@@ -163,6 +163,18 @@ osn_lte_parse_sig_qual(char *buf, lte_sig_qual_t *sig_qual)
 }
 
 int
+osn_lte_parse_gmr(char *buf, lte_gmr_t *gmr)
+{
+    return 0;
+}
+
+int
+osn_lte_save_gmr(lte_gmr_t *gmr, osn_lte_modem_info_t *modem_info)
+{
+    return 0;
+}
+
+int
 osn_lte_save_sig_qual(lte_sig_qual_t *sig_qual, osn_lte_modem_info_t *modem_info)
 {
     return 0;
@@ -346,6 +358,11 @@ osn_lte_set_ue_data_centric(void)
 }
 void
 osn_lte_start_vendor_daemon(int source)
+{
+    return;
+}
+void
+osn_lte_stop_vendor_daemon(void)
 {
     return;
 }

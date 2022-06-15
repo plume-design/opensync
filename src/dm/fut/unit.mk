@@ -40,8 +40,6 @@ UNIT_FILE += brv_ovs_check_version.sh
 
 # DM specific FUTs
 UNIT_FILE += dm_setup.sh
-UNIT_FILE += dm_get_count_reboot_status.sh
-UNIT_FILE += dm_reboot_dut_w_reason.sh
 UNIT_FILE += dm_verify_awlan_node_params.sh
 UNIT_FILE += dm_verify_count_reboot_status.sh
 UNIT_FILE += dm_verify_counter_inc_reboot_status.sh

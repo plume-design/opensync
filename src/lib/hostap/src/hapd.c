@@ -133,6 +133,50 @@ hapd_lookup_unused(void)
     return NULL;
 }
 
+void
+hapd_lookup_radius(struct hapd *hapd,
+                   struct schema_RADIUS *radius_list,
+                   int max_radius_num,
+                   int *num_radius_list)
+{
+    const char *mib = HAPD_CLI(hapd, "mib");
+    const char *token = mib;
+    struct schema_RADIUS *ptr = radius_list;
+
+    if (!token)
+        return;
+
+    while ((token = strstr(token, "radiusAuthServerAddress"))) {
+        const char *ip = ini_geta(token, "radiusAuthServerAddress");
+        const int port = atoi(ini_geta(token, "radiusAuthClientServerPortNumber"));
+
+        if ((*num_radius_list) >= max_radius_num) goto trunc;
+
+        STRSCPY_WARN(ptr->ip_addr, ip);
+        ptr->port = port;
+        STRSCPY_WARN(ptr->type, "AA");
+
+        ptr++; (*num_radius_list)++; token++;
+    }
+
+    token = mib;
+    while ((token = strstr(token, "radiusAccServerAddress"))) {
+        const char *ip = ini_geta(token, "radiusAccServerAddress");
+        const int port = atoi(ini_geta(token, "radiusAccClientServerPortNumber"));
+
+        if ((*num_radius_list) >= max_radius_num) goto trunc;
+
+        STRSCPY_WARN(ptr->ip_addr, ip);
+        ptr->port = port;
+        STRSCPY_WARN(ptr->type, "A");
+
+        ptr++; (*num_radius_list)++; token++;
+    }
+trunc:
+    LOGW("%s: the list of RADIUS servers truncated. Device supports max %d servers",
+            __func__, max_radius_num);
+}
+
 static void
 hapd_ctrl_cb(struct ctrl *ctrl, int level, const char *buf, size_t len)
 {
@@ -243,6 +287,54 @@ hapd_ctrl_cb(struct ctrl *ctrl, int level, const char *buf, size_t len)
 
     if (!strcmp(event, EV(WPS_EVENT_ENROLLEE_SEEN))) {
         LOGD("%s: event: <%d> %s", ctrl->bss, level, buf);
+        return;
+    }
+
+    if (!strcmp(event, EV(DFS_EVENT_CAC_START))) {
+        LOGI("%s: dfs event - cac started", hapd->ctrl.bss);
+        if (hapd->dfs_event_cac_start)
+            hapd->dfs_event_cac_start(hapd, args);
+
+        return;
+    }
+
+    if (!strcmp(event, EV(DFS_EVENT_CAC_COMPLETED))) {
+        LOGI("%s: dfs event - cac completed", hapd->ctrl.bss);
+        if (hapd->dfs_event_cac_completed)
+            hapd->dfs_event_cac_completed(hapd, args);
+
+        return;
+    }
+
+    if (!strcmp(event, EV(DFS_EVENT_RADAR_DETECTED))) {
+        LOGI("%s: dfs event - radar detected", hapd->ctrl.bss);
+        if (hapd->dfs_event_radar_detected)
+            hapd->dfs_event_radar_detected(hapd, args);
+
+        return;
+    }
+
+    if (!strcmp(event, EV(DFS_EVENT_NOP_FINISHED))) {
+        LOGI("%s: dfs event - nop finished", hapd->ctrl.bss);
+        if (hapd->dfs_event_nop_finished)
+            hapd->dfs_event_nop_finished(hapd, args);
+
+        return;
+    }
+
+    if (!strcmp(event, EV(DFS_EVENT_PRE_CAC_EXPIRED))) {
+        LOGI("%s: dfs event - pre cac expired", hapd->ctrl.bss);
+        if (hapd->dfs_event_pre_cac_expired)
+            hapd->dfs_event_pre_cac_expired(hapd, args);
+
+        return;
+    }
+
+    if (!strcmp(event, EV(AP_CSA_FINISHED))) {
+        LOGI("%s: ap csa event", hapd->ctrl.bss);
+        if (hapd->ap_csa_finished)
+            hapd->ap_csa_finished(hapd, args);
+
         return;
     }
 
@@ -908,42 +1000,6 @@ hapd_conf_gen_security_legacy(struct hapd *hapd,
     return hapd_conf_gen_psk(hapd, vconf);
 }
 
-/* Protected Management Frames */
-enum hapd_conf_pmf {
-    HAPD_CONF_PMF_DISABLED = 0,
-    HAPD_CONF_PMF_OPTIONAL = 1,
-    HAPD_CONF_PMF_REQUIRED = 2
-};
-
-/* WPA mode as defined in hostapd.conf */
-enum hapd_conf_wpa {
-    HAPD_CONF_WPA_OPEN = 0,
-    HAPD_CONF_WPA_WPA  = 1,
-    HAPD_CONF_WPA_RSN  = 2
-};
-
-/* Key Management Algorithm */
-enum hapd_conf_key_mgmt {
-    HAPD_CONF_KEY_MGMT_WPA_PSK,
-    HAPD_CONF_KEY_MGMT_WPA_PSK_SHA256,
-    HAPD_CONF_KEY_MGMT_WPA_EAP,
-    HAPD_CONF_KEY_MGMT_WPA_EAP_SHA256,
-    HAPD_CONF_KEY_MGMT_WPA_EAP_B192,
-    HAPD_CONF_KEY_MGMT_FT_SAE,
-    HAPD_CONF_KEY_MGMT_FT_PSK,
-    HAPD_CONF_KEY_MGMT_FT_EAP,
-    HAPD_CONF_KEY_MGMT_FT_EAP_SHA384,
-    HAPD_CONF_KEY_MGMT_DPP,
-    HAPD_CONF_KEY_MGMT_SAE,
-    HAPD_CONF_KEY_MGMT_OWE,
-    /* legacy and deprecated */
-    HAPD_CONF_KEY_MGMT_WPA2_PSK,
-    HAPD_CONF_KEY_MGMT_WPA_PSK_LEGACY,
-    HAPD_CONF_KEY_MGMT_WPA2_EAP,
-    HAPD_CONF_KEY_MGMT_FT_WPA2_PSK,
-    HAPD_CONF_KEY_MGMT_UNKNOWN
-};
-
 struct vif_security_config {
     bool wpa_tkip;
     bool wpa_ccmp;
@@ -956,72 +1012,12 @@ struct vif_security_config {
     bool dpp;
     bool suiteb;
     bool wps;
-    bool legacy;
-    enum hapd_conf_wpa wpa;
-    enum hapd_conf_pmf pmf;
+    enum hostap_conf_wpa wpa;
+    enum hostap_conf_pmf pmf;
     char wpa_pairwise[64];
     char rsn_pairwise[64];
     char wpa_key_mgmt[128];
 };
-
-static enum hapd_conf_key_mgmt
-hapd_conf_wpa_key_mgmt_to_mode(const char *key_mgmt)
-{
-    if (!strcmp(key_mgmt, SCHEMA_CONSTS_KEY_DPP))            return HAPD_CONF_KEY_MGMT_DPP;
-    if (!strcmp(key_mgmt, SCHEMA_CONSTS_KEY_SAE))            return HAPD_CONF_KEY_MGMT_SAE;
-    if (!strcmp(key_mgmt, SCHEMA_CONSTS_KEY_OWE))            return HAPD_CONF_KEY_MGMT_OWE;
-    if (!strcmp(key_mgmt, SCHEMA_CONSTS_KEY_WPA_PSK))        return HAPD_CONF_KEY_MGMT_WPA_PSK;
-    if (!strcmp(key_mgmt, SCHEMA_CONSTS_KEY_WPA_PSK_SHA256)) return HAPD_CONF_KEY_MGMT_WPA_PSK_SHA256;
-    if (!strcmp(key_mgmt, SCHEMA_CONSTS_KEY_WPA_EAP))        return HAPD_CONF_KEY_MGMT_WPA_EAP;
-    if (!strcmp(key_mgmt, SCHEMA_CONSTS_KEY_WPA_EAP_SHA256)) return HAPD_CONF_KEY_MGMT_WPA_EAP_SHA256;
-    if (!strcmp(key_mgmt, SCHEMA_CONSTS_KEY_WPA_EAP_B_192))  return HAPD_CONF_KEY_MGMT_WPA_EAP_B192;
-    if (!strcmp(key_mgmt, SCHEMA_CONSTS_KEY_FT_SAE))         return HAPD_CONF_KEY_MGMT_FT_SAE;
-    if (!strcmp(key_mgmt, SCHEMA_CONSTS_KEY_FT_PSK))         return HAPD_CONF_KEY_MGMT_FT_PSK;
-    if (!strcmp(key_mgmt, SCHEMA_CONSTS_KEY_FT_EAP))         return HAPD_CONF_KEY_MGMT_FT_EAP;
-    if (!strcmp(key_mgmt, SCHEMA_CONSTS_KEY_FT_EAP_SHA384))  return HAPD_CONF_KEY_MGMT_FT_EAP_SHA384;
-    /* legacy and deprecated */
-    if (!strcmp(key_mgmt, SCHEMA_CONSTS_KEY_WPA2_PSK))       return HAPD_CONF_KEY_MGMT_WPA2_PSK;
-    if (!strcmp(key_mgmt, SCHEMA_CONSTS_KEY_WPA2_EAP))       return HAPD_CONF_KEY_MGMT_WPA2_EAP;
-    if (!strcmp(key_mgmt, SCHEMA_CONSTS_KEY_FT_WPA2_PSK))    return HAPD_CONF_KEY_MGMT_FT_WPA2_PSK;
-
-    LOGE("%s: wpa_key_mgmt '%s' not recognized", __func__, key_mgmt);
-    return HAPD_CONF_KEY_MGMT_UNKNOWN;
-}
-
-static enum hapd_conf_pmf
-hapd_conf_pmf_schema_to_enum(const char* pmf)
-{
-    if (!strcmp(pmf, SCHEMA_CONSTS_SECURITY_PMF_DISABLED)) return HAPD_CONF_PMF_DISABLED;
-    if (!strcmp(pmf, SCHEMA_CONSTS_SECURITY_PMF_OPTIONAL)) return HAPD_CONF_PMF_OPTIONAL;
-    if (!strcmp(pmf, SCHEMA_CONSTS_SECURITY_PMF_REQUIRED)) return HAPD_CONF_PMF_REQUIRED;
-
-    LOGE("%s: Unknown PMF parameter value: %s. Fallback to 'optional'", __func__, pmf);
-    return HAPD_CONF_PMF_OPTIONAL;
-}
-
-static const char*
-hapd_conf_pmf_enum_to_schema(enum hapd_conf_pmf pmf)
-{
-    switch (pmf) {
-        case HAPD_CONF_PMF_DISABLED: return SCHEMA_CONSTS_SECURITY_PMF_DISABLED;
-        case HAPD_CONF_PMF_OPTIONAL: return SCHEMA_CONSTS_SECURITY_PMF_OPTIONAL;
-        case HAPD_CONF_PMF_REQUIRED: return SCHEMA_CONSTS_SECURITY_PMF_REQUIRED;
-    }
-    LOGE("%s: PMF value %d not recognized", __func__, pmf);
-    return SCHEMA_CONSTS_SECURITY_PMF_DISABLED;
-}
-
-static bool
-hapd_conf_is_pairwise_supported(const struct schema_Wifi_VIF_Config *vconf)
-{
-    if (vconf->wpa_pairwise_tkip_exists || vconf->wpa_pairwise_ccmp_exists ||
-        vconf->rsn_pairwise_tkip_exists || vconf->rsn_pairwise_ccmp_exists)
-        return true;
-
-    /* None of the newly introduced fields are available
-     * - controller must be at an old version */
-    return false;
-}
 
 static int
 hapd_conf_fill_security(struct hapd *hapd,
@@ -1031,122 +1027,119 @@ hapd_conf_fill_security(struct hapd *hapd,
     char *p_wpa_key_mgmt = conf->wpa_key_mgmt;
     size_t wpa_key_mgmt_len = sizeof(conf->wpa_key_mgmt);
     const char *key_mgmt;
+    bool legacy = false;
     int mode, i;
 
     for (i = 0; i < vconf->wpa_key_mgmt_len; i++)
     {
         key_mgmt = vconf->wpa_key_mgmt[i];
-        mode = hapd_conf_wpa_key_mgmt_to_mode(key_mgmt);
+        mode = util_vif_wpa_key_mgmt_to_enum(key_mgmt);
 
         /* resolve ambiguity of WPA_PSK in old/new controller */
-        if (mode == HAPD_CONF_KEY_MGMT_WPA_PSK && !hapd_conf_is_pairwise_supported(vconf)) {
-           mode = HAPD_CONF_KEY_MGMT_WPA_PSK_LEGACY;
+        if (mode == HOSTAP_CONF_KEY_MGMT_WPA_PSK && !util_vif_pairwise_supported(vconf)) {
+            mode = HOSTAP_CONF_KEY_MGMT_WPA_PSK_LEGACY;
         }
 
         switch (mode) {
-            case HAPD_CONF_KEY_MGMT_WPA2_PSK:
+            case HOSTAP_CONF_KEY_MGMT_WPA2_PSK:
                 /* deprecated */
+                legacy = true;
                 conf->psk = true;
-                conf->legacy = true;
                 conf->rsn_ccmp = true;
-                conf->wpa |= HAPD_CONF_WPA_RSN;
-                STRSCAT(conf->rsn_pairwise, "CCMP ");
+                conf->wpa |= HOSTAP_CONF_WPA_RSN;
                 csnprintf(&p_wpa_key_mgmt, &wpa_key_mgmt_len, "WPA-PSK ");
                 break;
-            case HAPD_CONF_KEY_MGMT_WPA_PSK_LEGACY:
+            case HOSTAP_CONF_KEY_MGMT_WPA_PSK_LEGACY:
                 /* deprecated */
-                /* This case HAPD_CONF_KEY_MGMT_is matched when old controller is detected.
+                /* This case HOSTAP_CONF_KEY_MGMT_is matched when old controller is detected.
                  * Option 'wpa-psk' used by old controller means WPA1/TKIP */
+                legacy = true;
                 conf->psk = true;
-                conf->legacy = true;
                 conf->wpa_tkip = true;
-                conf->wpa |= HAPD_CONF_WPA_WPA;
-                STRSCAT(conf->wpa_pairwise, "TKIP ");
+                conf->wpa |= HOSTAP_CONF_WPA_WPA;
                 csnprintf(&p_wpa_key_mgmt, &wpa_key_mgmt_len, "WPA-PSK ");
                 break;
-            case HAPD_CONF_KEY_MGMT_WPA2_EAP:
+            case HOSTAP_CONF_KEY_MGMT_WPA2_EAP:
                 /* deprecated */
+                legacy = true;
                 conf->eap = true;
-                conf->legacy = true;
                 conf->rsn_ccmp = true;
-                conf->wpa |= HAPD_CONF_WPA_RSN;
-                STRSCAT(conf->rsn_pairwise, "CCMP ");
+                conf->wpa |= HOSTAP_CONF_WPA_RSN;
                 csnprintf(&p_wpa_key_mgmt, &wpa_key_mgmt_len, "WPA-EAP ");
                 break;
-            case HAPD_CONF_KEY_MGMT_FT_WPA2_PSK:
+            case HOSTAP_CONF_KEY_MGMT_FT_WPA2_PSK:
                 /* deprecated */
+                legacy = true;
                 conf->ft = true;
                 conf->psk = true;
-                conf->legacy = true;
                 conf->rsn_ccmp = true;
-                conf->wpa |= HAPD_CONF_WPA_RSN;
-                STRSCAT(conf->rsn_pairwise, "CCMP ");
+                conf->wpa |= HOSTAP_CONF_WPA_RSN;
                 csnprintf(&p_wpa_key_mgmt, &wpa_key_mgmt_len, "FT-PSK ");
                 break;
-            case HAPD_CONF_KEY_MGMT_WPA_PSK:
+            case HOSTAP_CONF_KEY_MGMT_WPA_PSK:
                 /* This case of WPA_PSK only matches when using 'new controller'
                  * (having fields xxx_pairwise_xxxx) */
                 conf->psk = true;
                 csnprintf(&p_wpa_key_mgmt, &wpa_key_mgmt_len, "WPA-PSK ");
                 break;
-            case HAPD_CONF_KEY_MGMT_WPA_PSK_SHA256:
+            case HOSTAP_CONF_KEY_MGMT_WPA_PSK_SHA256:
                 conf->psk = true;
                 csnprintf(&p_wpa_key_mgmt, &wpa_key_mgmt_len, "WPA-PSK-SHA256 ");
                 break;
-            case HAPD_CONF_KEY_MGMT_WPA_EAP:
+            case HOSTAP_CONF_KEY_MGMT_WPA_EAP:
                 conf->eap = true;
                 csnprintf(&p_wpa_key_mgmt, &wpa_key_mgmt_len, "WPA-EAP ");
                 break;
-            case HAPD_CONF_KEY_MGMT_WPA_EAP_SHA256:
+            case HOSTAP_CONF_KEY_MGMT_WPA_EAP_SHA256:
                 conf->eap = true;
                 csnprintf(&p_wpa_key_mgmt, &wpa_key_mgmt_len, "WPA-EAP-SHA256 ");
                 break;
-            case HAPD_CONF_KEY_MGMT_WPA_EAP_B192:
+            case HOSTAP_CONF_KEY_MGMT_WPA_EAP_B_192:
                 conf->eap = true;
                 conf->suiteb = true;
                 csnprintf(&p_wpa_key_mgmt, &wpa_key_mgmt_len, "WPA-EAP-SUITE-B-192 ");
                 break;
-            case HAPD_CONF_KEY_MGMT_FT_PSK:
+            case HOSTAP_CONF_KEY_MGMT_FT_PSK:
                 conf->ft = true;
                 conf->psk = true;
                 csnprintf(&p_wpa_key_mgmt, &wpa_key_mgmt_len, "FT-PSK ");
                 break;
-            case HAPD_CONF_KEY_MGMT_FT_EAP:
+            case HOSTAP_CONF_KEY_MGMT_FT_EAP:
                 conf->ft = true;
                 conf->eap = true;
                 csnprintf(&p_wpa_key_mgmt, &wpa_key_mgmt_len, "FT-EAP ");
                 break;
-            case HAPD_CONF_KEY_MGMT_FT_EAP_SHA384:
+            case HOSTAP_CONF_KEY_MGMT_FT_EAP_SHA384:
                 conf->ft = true;
                 conf->eap = true;
                 csnprintf(&p_wpa_key_mgmt, &wpa_key_mgmt_len, "FT-EAP-SHA384 ");
                 break;
-            case HAPD_CONF_KEY_MGMT_FT_SAE:
+            case HOSTAP_CONF_KEY_MGMT_FT_SAE:
                 conf->ft = true;
                 conf->sae = true;
                 csnprintf(&p_wpa_key_mgmt, &wpa_key_mgmt_len, "FT-SAE ");
                 break;
-            case HAPD_CONF_KEY_MGMT_DPP:
+            case HOSTAP_CONF_KEY_MGMT_DPP:
                 conf->dpp = true;
                 csnprintf(&p_wpa_key_mgmt, &wpa_key_mgmt_len, "DPP ");
                 break;
-            case HAPD_CONF_KEY_MGMT_SAE:
+            case HOSTAP_CONF_KEY_MGMT_SAE:
                 conf->sae = true;
                 csnprintf(&p_wpa_key_mgmt, &wpa_key_mgmt_len, "SAE ");
                 break;
-            case HAPD_CONF_KEY_MGMT_UNKNOWN:
+            case HOSTAP_CONF_KEY_MGMT_UNKNOWN:
                 LOGE("%s: Error while parsing wpa_key_mgmt.", __func__);
                 return -1;
         }
     }
+    conf->wps = vconf->wps;
+
     /* Combination of legacy and non-legacy options is invalid.
      * The controller can either be old (using only legacy) or
      * new (using only non-legacy modes) */
-    conf->wps = vconf->wps;
-
-    if (conf->legacy) {
-        if (conf->sae || conf->dpp) conf->pmf = HAPD_CONF_PMF_REQUIRED;
-        if (conf->pmf && conf->psk) conf->pmf = HAPD_CONF_PMF_OPTIONAL;
+    if (legacy) {
+        if (conf->sae || conf->dpp) conf->pmf = HOSTAP_CONF_PMF_REQUIRED;
+        if (conf->pmf && conf->psk) conf->pmf = HOSTAP_CONF_PMF_OPTIONAL;
 
         /* To properly report state tables the code needs to store information
          * if legacy controller is used in an object accessible from functions
@@ -1156,24 +1149,14 @@ hapd_conf_fill_security(struct hapd *hapd,
         return 0;
     }
 
-    conf->wpa |= (vconf->wpa_pairwise_tkip ? HAPD_CONF_WPA_WPA : 0);
-    conf->wpa |= (vconf->wpa_pairwise_ccmp ? HAPD_CONF_WPA_WPA : 0);
-    conf->wpa |= (vconf->rsn_pairwise_tkip ? HAPD_CONF_WPA_RSN : 0);
-    conf->wpa |= (vconf->rsn_pairwise_ccmp ? HAPD_CONF_WPA_RSN : 0);
-    /* check schema wpa option for an OPEN network */
-    conf->wpa = (vconf->wpa ? conf->wpa : HAPD_CONF_WPA_OPEN);
+    conf->wpa = util_vif_get_wpa(vconf);
 
     conf->wpa_tkip = vconf->wpa_pairwise_tkip;
     conf->wpa_ccmp = vconf->wpa_pairwise_ccmp;
     conf->rsn_tkip = vconf->rsn_pairwise_tkip;
     conf->rsn_ccmp = vconf->rsn_pairwise_ccmp;
 
-    if (conf->wpa_tkip) STRSCAT(conf->wpa_pairwise, "TKIP ");
-    if (conf->wpa_ccmp) STRSCAT(conf->wpa_pairwise, "CCMP ");
-    if (conf->rsn_tkip) STRSCAT(conf->rsn_pairwise, "TKIP ");
-    if (conf->rsn_ccmp) STRSCAT(conf->rsn_pairwise, "CCMP ");
-
-    conf->pmf = hapd_conf_pmf_schema_to_enum(vconf->pmf);
+    conf->pmf = util_vif_pmf_schema_to_enum(vconf->pmf);
 
     return 0;
 }
@@ -1188,19 +1171,27 @@ hapd_conf_validate_config(struct hapd *hapd,
         conf->wps = false;
     }
 
-    if (!vconf->wpa && vconf->wps) {
+    if (!conf->wpa && conf->wps) {
         LOGW("%s: Disabling WPS because OPEN mode is enabled", vconf->if_name);
         conf->wps = false;
     }
 
-    if (vconf->wps && !kconfig_enabled(CONFIG_HOSTAP_PSK_FILE_WPS)) {
+    if (conf->wps && !kconfig_enabled(CONFIG_HOSTAP_PSK_FILE_WPS)) {
         LOGW("%s: Disabling WPS. Not supporting PSK file", vconf->if_name);
         conf->wps = false;
     }
 
     if (conf->sae && !conf->pmf) {
         LOGW("%s: Setting PMF to 'optional' as required by SAE", vconf->if_name);
-        conf->pmf = HAPD_CONF_PMF_OPTIONAL;
+        conf->pmf = HOSTAP_CONF_PMF_OPTIONAL;
+    }
+
+    if (conf->sae && (conf->wpa_tkip || conf->wpa_ccmp || conf->rsn_tkip)) {
+        LOGW("%s: SAE cannot coexist with WPA1 and/or TKIP. Disabling WPA1/TKIP", vconf->if_name);
+        conf->wpa_tkip = false;
+        conf->wpa_ccmp = false;
+        conf->rsn_tkip = false;
+        conf->wpa = HOSTAP_CONF_WPA_RSN;
     }
 }
 
@@ -1208,8 +1199,11 @@ static int
 hapd_conf_gen_security_new(struct hapd *hapd,
                            char *buf,
                            size_t *len,
-                           const struct schema_Wifi_VIF_Config *vconf)
+                           const struct schema_Wifi_VIF_Config *vconf,
+                           const struct schema_RADIUS *radius_list,
+                           const int num_radius_list)
 {
+    int i;
     struct vif_security_config conf;
     memset(&conf, 0, sizeof(struct vif_security_config));
 
@@ -1219,21 +1213,42 @@ hapd_conf_gen_security_new(struct hapd *hapd,
     HAPD_CONF_APPEND(buf, len, "wpa=%d\n", conf.wpa);
     HAPD_CONF_APPEND(buf, len, "auth_algs=%d\n", 1);
 
+    if (conf.wpa_tkip) STRSCAT(conf.wpa_pairwise, "TKIP ");
+    if (conf.wpa_ccmp) STRSCAT(conf.wpa_pairwise, "CCMP ");
+    if (conf.rsn_tkip) STRSCAT(conf.rsn_pairwise, "TKIP ");
+    if (conf.rsn_ccmp) STRSCAT(conf.rsn_pairwise, "CCMP ");
+
     HAPD_CONF_APPEND_STR_NE(buf, len, "wpa_key_mgmt=%s\n", conf.wpa_key_mgmt);
     HAPD_CONF_APPEND_STR_NE(buf, len, "wpa_pairwise=%s\n", conf.wpa_pairwise);
     HAPD_CONF_APPEND_STR_NE(buf, len, "rsn_pairwise=%s\n", conf.rsn_pairwise);
     HAPD_CONF_APPEND_STR_NE(buf, len, "wpa_psk_file=%s\n", hapd->pskspath);
 
     if (conf.eap) {
-        if (vconf->radius_srv_addr_exists && vconf->radius_srv_port_exists && vconf->radius_srv_secret_exists) {
-            HAPD_CONF_APPEND(buf, len, "ieee8021x=%s\n", "1");
-            HAPD_CONF_APPEND(buf, len, "own_ip_addr=%s\n", "127.0.0.1");
+        HAPD_CONF_APPEND(buf, len, "ieee8021x=%s\n", "1");
+        HAPD_CONF_APPEND(buf, len, "own_ip_addr=%s\n", "127.0.0.1");
+        for (i = 0; i < num_radius_list; i++)
+        {
+            if (!strcmp(radius_list->type, "AA")) {
+                HAPD_CONF_APPEND(buf, len, "auth_server_addr=%s\n", radius_list->ip_addr);
+                HAPD_CONF_APPEND(buf, len, "auth_server_port=%d\n", radius_list->port);
+                HAPD_CONF_APPEND(buf, len, "auth_server_shared_secret=%s\n", radius_list->secret);
+            }
+            if (!strcmp(radius_list->type, "A")) {
+                HAPD_CONF_APPEND(buf, len, "acct_server_addr=%s\n", radius_list->ip_addr);
+                HAPD_CONF_APPEND(buf, len, "acct_server_port=%d\n", radius_list->port);
+                HAPD_CONF_APPEND(buf, len, "acct_server_shared_secret=%s\n", radius_list->secret);
+            }
+            radius_list++;
+        }
+        /* Take legacy RADIUS configuration. In case of radius_list
+         * being empty this becomes primary server. One of secondary
+         * servers otherwise */
+        if (vconf->radius_srv_addr_exists &&
+            vconf->radius_srv_port_exists &&
+            vconf->radius_srv_secret_exists) {
             HAPD_CONF_APPEND(buf, len, "auth_server_addr=%s\n", vconf->radius_srv_addr);
             HAPD_CONF_APPEND(buf, len, "auth_server_port=%d\n", vconf->radius_srv_port);
             HAPD_CONF_APPEND(buf, len, "auth_server_shared_secret=%s\n", vconf->radius_srv_secret);
-        } else {
-            LOGE("%s: Bad EAP configuration. Missing RADIUS details", vconf->if_name);
-            goto err;
         }
     }
 
@@ -1248,7 +1263,7 @@ hapd_conf_gen_security_new(struct hapd *hapd,
 
     if (conf.ft) {
         HAPD_CONF_APPEND(buf, len, "nas_identifier=%s\n", hapd_util_ft_nas_id());
-        HAPD_CONF_APPEND(buf, len, "reassociacion_deadline=%d\n", hapd_util_ft_reassoc_deadline_tu());
+        HAPD_CONF_APPEND(buf, len, "reassociation_deadline=%d\n", hapd_util_ft_reassoc_deadline_tu());
         HAPD_CONF_APPEND(buf, len, "mobility_domain=%04x\n", hapd_util_ft_md(vconf));
         HAPD_CONF_APPEND(buf, len, "ft_over_ds=%d\n", 0);
         HAPD_CONF_APPEND(buf, len, "ft_psk_generate_local=%d\n", 1);
@@ -1395,6 +1410,20 @@ hapd_conf_gen(struct hapd *hapd,
               const struct schema_Wifi_Radio_Config *rconf,
               const struct schema_Wifi_VIF_Config *vconf)
 {
+    /* For backwards compatibility resolve hapd_conf_gen
+     * as the call to new hapd_conf_gen2 ignoring two last
+     * parameters for RADIUS configuration
+     */
+    return hapd_conf_gen2(hapd, rconf, vconf, NULL, 0);
+}
+
+int
+hapd_conf_gen2(struct hapd *hapd,
+               const struct schema_Wifi_Radio_Config *rconf,
+               const struct schema_Wifi_VIF_Config *vconf,
+               const struct schema_RADIUS *radius_list,
+               const int num_radius_list)
+{
     size_t len = sizeof(hapd->conf);
     char *buf = hapd->conf;
     int closed;
@@ -1431,6 +1460,9 @@ hapd_conf_gen(struct hapd *hapd,
     csnprintf(&buf, &len, "ieee80211ac=%d\n", hapd_11ac_enabled(rconf));
     csnprintf(&buf, &len, "%s", hapd->ieee80211ax ? "" : "#");
     csnprintf(&buf, &len, "ieee80211ax=%d\n", hapd_11ax_enabled(rconf));
+    if (hapd->use_driver_iface_addr == true) {
+        csnprintf(&buf, &len, "use_driver_iface_addr=1\n");
+    }
     csnprintf(&buf, &len, "%s", vconf->dpp_cc_exists ? "" : "#");
     csnprintf(&buf, &len, "dpp_configurator_connectivity=%d\n", vconf->dpp_cc ? 1 : 0);
 
@@ -1484,9 +1516,9 @@ hapd_conf_gen(struct hapd *hapd,
         csnprintf(&buf, &len, "wpa_group_rekey=%d\n", vconf->group_rekey);
 
     if (vconf->wpa_exists) {
-        if (hapd_conf_is_pairwise_supported(vconf)) {
+        if (util_vif_pairwise_supported(vconf)) {
             hapd->legacy_controller = false;
-            return hapd_conf_gen_security_new(hapd, buf, &len, vconf);
+            return hapd_conf_gen_security_new(hapd, buf, &len, vconf, radius_list, num_radius_list);
         } else {
             hapd->legacy_controller = true;
             return hapd_conf_gen_security(hapd, buf, &len, vconf);
@@ -1620,7 +1652,7 @@ hapd_bss_get_security_new(struct schema_Wifi_VIF_State *vstate,
     SCHEMA_SET_BOOL(vstate->wpa_pairwise_ccmp, (strstr(wpa_pairwise, "CCMP") != NULL) ? true : false);
     SCHEMA_SET_BOOL(vstate->rsn_pairwise_tkip, (strstr(rsn_pairwise, "TKIP") != NULL) ? true : false);
     SCHEMA_SET_BOOL(vstate->rsn_pairwise_ccmp, (strstr(rsn_pairwise, "CCMP") != NULL) ? true : false);
-    SCHEMA_SET_STR(vstate->pmf, hapd_conf_pmf_enum_to_schema(pmf));
+    SCHEMA_SET_STR(vstate->pmf, util_vif_pmf_enum_to_schema(pmf));
     if (mib_radius_srv_addr) SCHEMA_SET_STR(vstate->radius_srv_addr, mib_radius_srv_addr);
     if (mib_radius_srv_port) SCHEMA_SET_INT(vstate->radius_srv_port, atoi(mib_radius_srv_port));
     if ((p = ini_geta(conf, "dpp_connector"))) SCHEMA_SET_STR(vstate->dpp_connector, p);
@@ -1858,9 +1890,16 @@ hapd_sta_iter(struct hapd *hapd,
 static int
 hapd_ctrl_add(struct hapd *hapd)
 {
-    const char *arg = F("bss_config=%s:%s", hapd->ctrl.bss, hapd->confpath);
+    const char *arg;
     int err = 0;
+
     /* FIXME: check if I can use hapd->phy instead od hapd->bss above on qca */
+    if (hapd->group_by_phy_name == 1) {
+        arg = F("bss_config=%s:%s", hapd->phy, hapd->confpath);
+    } else {
+        arg = F("bss_config=%s:%s", hapd->ctrl.bss, hapd->confpath);
+    }
+
     LOGI("%s: adding", hapd->ctrl.bss);
     err |= strcmp("OK", HAPD_GLOB_CLI("raw", "ADD", arg) ?: "");
     err |= strcmp("OK", HAPD_CLI(hapd, "log_level", "DEBUG") ?: "");

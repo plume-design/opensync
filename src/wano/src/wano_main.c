@@ -73,29 +73,38 @@ static wano_ppline_event_fn_t wano_builtin_ppline_event_fn;
  */
 void wano_start_builtin_ifaces(void)
 {
-    char iflist[] = CONFIG_MANAGER_WANO_IFACE_LIST;
+    char *if_type;
+    char *if_name;
+    char *iflist;
     char *pif;
-    char *psave;
     int ii;
 
-    /* Split interface string and calculate its length */
+    /* Scan the interface string and calculate the interface list length */
+    iflist = (char[]){ CONFIG_MANAGER_WANO_IFACE_LIST };
     wano_builtin_len = 0;
-    for (pif = strtok_r(iflist, " ", &psave);
-            pif != NULL;
-            pif = strtok_r(NULL, " ", &psave))
+    while ((pif = strsep(&iflist, " ")) != NULL)
     {
+        if (*pif == '\0') continue;
         wano_builtin_len++;
     }
-
     wano_builtin_list = CALLOC(wano_builtin_len, sizeof(wano_builtin_list[0]));
 
-    pif = iflist;
-    for (ii = 0; ii < wano_builtin_len; ii++)
+    /* Scan the interface string again and populate the built-in interface list */
+    iflist = (char[]){ CONFIG_MANAGER_WANO_IFACE_LIST };
+    ii = 0;
+    while ((pif = strsep(&iflist, " ")) != NULL)
     {
+        if_name = strsep(&pif, ":");
+        if_type = strsep(&pif, ":");
+
+        if (if_name == NULL || if_name[0] == '\0') continue;
+        /* The default interface type is eth */
+        if (if_type == NULL || if_type[0] == '\0') if_type = "eth";
+
         /* Add plug-in pipeline to interface  */
-        if (!wano_ppline_init(&wano_builtin_list[ii].wb_ppline, pif, "eth", 0))
+        if (!wano_ppline_init(&wano_builtin_list[ii].wb_ppline, if_name, if_type, 0))
         {
-            LOG(ERR, "wano: %s: Error starting plug-in interface on built-in interface.", pif);
+            LOG(ERR, "wano: %s: Error starting plug-in interface on built-in interface.", if_name);
             continue;
         }
 
@@ -111,11 +120,16 @@ void wano_start_builtin_ifaces(void)
                 &wano_builtin_list[ii].wb_ppline_event,
                 &wano_builtin_list[ii].wb_ppline);
 
-        LOG(NOTICE, "wano: %s: Started plug-in pipeline on built-in interface.", pif);
-
-        /* Move to next interface */
-        pif += strlen(pif) + 1;
+        LOG(NOTICE, "wano: %s: Started plug-in pipeline on built-in interface.", if_name);
+        ii++;
     }
+
+    /*
+     * ii != wano_builtin_len if, for some reason, some pipelines failed to
+     * initialize where ii contains the number of successfully initialized
+     * pipeliens
+     */
+    wano_builtin_len = ii;
 }
 
 void wano_builtin_ppline_event_fn(wano_ppline_event_t *event, enum wano_ppline_status status)

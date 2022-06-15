@@ -58,6 +58,7 @@ fut_info_dump_line
 if [ $fut_ec -ne 0 ]; then
     cat /var/run/osp_reboot_reason
 fi
+check_restore_ovsdb_server
 fut_info_dump_line
 exit $fut_ec
 ' EXIT SIGINT SIGTERM

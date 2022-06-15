@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/usr/bin/env bash
 
 # Copyright (c) 2015, Plume Design Inc. All rights reserved.
 # 
@@ -25,53 +25,50 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
+current_dir=$(dirname "$(realpath "$BASH_SOURCE")")
+fut_topdir="$(realpath "$current_dir"/../../..)"
+
 # FUT environment loading
-# shellcheck disable=SC1091
-source /tmp/fut-base/shell/config/default_shell.sh &> /dev/null
+source "${fut_topdir}"/config/default_shell.sh
+# Ignore errors for fut_set_env.sh sourcing
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh &> /dev/null
-source "${FUT_TOPDIR}/shell/lib/unit_lib.sh" &> /dev/null
-[ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" &> /dev/null
-[ -n "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" &> /dev/null
+source "${fut_topdir}"/lib/unit_lib.sh
 
-manager_setup_file="dm/dm_setup.sh"
-usage()
-{
-cat << usage_string
-dm/dm_get_count_reboot_status.sh [-h] arguments
+usage() {
+    cat << usage_string
+tools/client/fsm/make_curl_agent_req.sh [-h] arguments
 Description:
-    Echoes recent 'count' field in the Reboot_Status table.
-
+    - Script makes curl request to url with specified user_agent
 Arguments:
     -h  show this help message
-Testcase procedure:
-    - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
-                 Run: ./dm/dm_get_count_reboot_status.sh
+    \$1 (namespace_enter_cmd) : Command to enter interface namespace : (string)(required)
+    \$2 (user_agent)          : User agent to pass with curl request : (string)(required)
+    \$3 (url)                 : URL to make curl request             : (string)(required)
 Script usage example:
-   ./dm/dm_get_count_reboot_status.sh
+   ./tools/client/fsm/make_curl_agent_req.sh "custom_user_agent_name" "www.google.com"
 usage_string
 }
 if [ -n "${1}" ]; then
     case "${1}" in
-        help | \
-        --help | \
-        -h)
-            usage && exit 1
-            ;;
-        *)
-            ;;
+    help | \
+    --help | \
+    -h)
+        usage && exit 1
+        ;;
+    *)
+        ;;
     esac
 fi
+NARGS=3
+[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "tools/client/fsm/make_curl_agent_req.sh" -arg
 
-check_kconfig_option "CONFIG_OSP_REBOOT_PSTORE" "y" &> /dev/null ||
-    raise "CONFIG_OSP_REBOOT_PSTORE != y - Testcase not applicable REBOOT PERSISTENT STORAGE not supported" -l "dm/dm_get_count_reboot_status.sh" -s
+namespace_enter_cmd=$1
+user_agent=$2
+url=$3
 
-reboot_count_array=$(${OVSH} s Reboot_Status count -r)
-
-recent_reboot_count=0
-for reboot_count in $reboot_count_array; do
-    if [ $reboot_count -gt $recent_reboot_count ]; then
-        recent_reboot_count=$reboot_count
-    fi
-done
-
-echo "${recent_reboot_count}"
+${namespace_enter_cmd} -c "curl -S -s --output /dev/null -A '${user_agent}' '${url}'" || $(exit 1)
+if [[ "$?" != 0 ]];then
+    raise "Failed to make curl request to ${url} with user_agent ${user_agent}" -l "tools/client/fsm/make_curl_agent_req.sh"
+else
+    log "tools/client/fsm/make_curl_agent_req.sh: curl request made to ${url} with user_agent ${user_agent}"
+fi

@@ -166,12 +166,13 @@ fsm_dpi_sni_process_attr(struct fsm_session *session, const char *attr,
                          uint8_t type, uint16_t length, const void *value,
                          struct fsm_dpi_plugin_client_pkt_info *pkt_info)
 {
+    struct fsm_dpi_sni_redirect_flow_request request;
     struct net_md_stats_accumulator *acc;
     struct fsm_request_args request_args;
     struct net_md_flow_info info;
+    char val[length+1];
     int request_type;
     int action;
-    char *val;
     bool rc;
 
     if (pkt_info == NULL) return FSM_DPI_IGNORED;
@@ -200,19 +201,15 @@ fsm_dpi_sni_process_attr(struct fsm_session *session, const char *attr,
     rc = net_md_get_flow_info(acc, &info);
     if (!rc) goto out;
 
-    rc = dpi_sni_is_redirected_flow(&info);
-    if (rc == true)
-    {
-        LOGD("%s: redirected flow detected", __func__);
-        goto out;
-    }
-
     request_type = dpi_sni_get_req_type(attr);
+
     if (request_type == FSM_UNKNOWN_REQ_TYPE)
     {
         LOGE("%s: unknown attribute %s", __func__, attr);
         return FSM_DPI_PASSTHRU;
     }
+
+    STRSCPY(val, value);
 
     MEMZERO(request_args);
     request_args.session = session;
@@ -220,9 +217,25 @@ fsm_dpi_sni_process_attr(struct fsm_session *session, const char *attr,
     request_args.acc = acc;
     request_args.request_type = request_type;
 
-    val = STRNDUP((char *)value, length);
     action = dpi_sni_policy_req(&request_args, val);
-    FREE(val);
+
+    if (action == FSM_DPI_PASSTHRU) goto out;
+
+    /* Check for redirected flow. Overwrite the action for the redirected flow */
+    MEMZERO(request);
+    request.acc = acc;
+    request.session = session;
+    request.info = &info;
+    request.attribute_value = val;
+    request.req_type = request_type;
+
+    rc = dpi_sni_is_redirected_attr(&request);
+
+    if (rc == true)
+    {
+        LOGD("%s: redirected flow detected", __func__);
+        action = FSM_DPI_PASSTHRU;
+    }
 
 out:
     return action;

@@ -46,7 +46,7 @@ of_port_default=10000
 in_port_default=10001
 usage() {
     cat <<usage_string
-fsm/fsm_configure_dns_plugin.sh [-h] arguments
+tools/device/configure_dns_plugin.sh [-h] arguments
 Description:
     - Script configures interfaces FSM settings for DNS blocking rules
 Arguments:
@@ -73,14 +73,14 @@ Testcase procedure:
             Update Inet entry for home bridge interface for dhcpd (br-home)
                 Run: ./${create_inet_file} (see ${create_inet_file} -h)
             Configure FSM for DNS plugin test
-                Run: ./fsm/fsm_configure_dns_plugin.sh <LAN-BRIDGE-IF> <FSM-URL-BLOCK> <FSM-URL-REDIRECT>
+                Run: ./tools/device/configure_dns_plugin.sh <LAN-BRIDGE-IF> <FSM-URL-BLOCK> <FSM-URL-REDIRECT>
    - On Client:
                  Run: /.${client_connect_file} (see ${client_connect_file} -h)
                  Run: /.${fsm_test_dns_file} (see ${fsm_test_dns_file} -h)
 Script usage example:
-    ./fsm/fsm_configure_dns_plugin.sh br-home google.com 1.2.3.4 /usr/opensync/lib/libfsm_dns.so /usr/opensync/lib/libfsm_wcnull.so
-    ./fsm/fsm_configure_dns_plugin.sh br-home playboy.com 4.5.6.7 /usr/opensync/lib/libfsm_dns.so /usr/opensync/lib/libfsm_wcnull.so 3002
-    ./fsm/fsm_configure_dns_plugin.sh br-home playboy.com 4.5.6.7 /usr/opensync/lib/libfsm_dns.so /usr/opensync/lib/libfsm_wcnull.so 3002 406
+    ./tools/device/configure_dns_plugin.sh br-home google.com 1.2.3.4 /usr/opensync/lib/libfsm_dns.so /usr/opensync/lib/libfsm_wcnull.so
+    ./tools/device/configure_dns_plugin.sh br-home playboy.com 4.5.6.7 /usr/opensync/lib/libfsm_dns.so /usr/opensync/lib/libfsm_wcnull.so 3002
+    ./tools/device/configure_dns_plugin.sh br-home playboy.com 4.5.6.7 /usr/opensync/lib/libfsm_dns.so /usr/opensync/lib/libfsm_wcnull.so 3002 406
 usage_string
 }
 if [ -n "${1}" ]; then
@@ -99,6 +99,7 @@ trap '
 fut_info_dump_line
 print_tables Wifi_Associated_Clients Openflow_Config
 print_tables Flow_Service_Manager_Config FSM_Policy
+check_restore_ovsdb_server
 fut_info_dump_line
 ' EXIT SIGINT SIGTERM
 
@@ -116,16 +117,16 @@ in_port=${7:-${in_port_default}}
 
 client_mac=$(get_ovsdb_entry_value Wifi_Associated_Clients mac)
 if [ -z "${client_mac}" ]; then
-    raise "FAIL: Could not acquire Client MAC address from Wifi_Associated_Clients, is client connected?" -l "fsm/fsm_configure_dns_plugin.sh"
+    raise "FAIL: Could not acquire Client MAC address from Wifi_Associated_Clients, is client connected?" -l "tools/device/configure_dns_plugin.sh"
 fi
 # Use first MAC from Wifi_Associated_Clients
 client_mac="${client_mac%%,*}"
 tap_tdns_if="${lan_bridge_if}.tdns"
 tap_tx_if="${lan_bridge_if}.tx"
 
-log_title "fsm/fsm_configure_dns_plugin.sh: FSM test - Configuring DNS plugin required for FSM testing"
+log_title "tools/device/configure_dns_plugin.sh: FSM test - Configuring DNS plugin required for FSM testing"
 
-log "fsm/fsm_configure_dns_plugin.sh: Configuring TAP interfaces required for FSM testing"
+log "fsm/configure_dns_plugin.sh: Configuring TAP interfaces required for FSM testing"
 add_bridge_port "${lan_bridge_if}" "${tap_tdns_if}"
 set_ovs_vsctl_interface_option "${tap_tdns_if}" "type" "internal"
 set_ovs_vsctl_interface_option "${tap_tdns_if}" "ofport_request" "${of_port}"
@@ -137,8 +138,8 @@ create_inet_entry \
     -dhcp_sniff "false" \
     -network true \
     -enabled true &&
-        log "fsm/fsm_configure_dns_plugin.sh: Interface ${tap_tdns_if} created - Success" ||
-        raise "FAIL: Failed to create interface ${tap_tdns_if}" -l "fsm/fsm_configure_dns_plugin.sh" -ds
+        log "tools/device/configure_dns_plugin.sh: Interface ${tap_tdns_if} created - Success" ||
+        raise "FAIL: Failed to create interface ${tap_tdns_if}" -l "tools/device/configure_dns_plugin.sh" -ds
 
 add_bridge_port "${lan_bridge_if}" "${tap_tx_if}"
 set_ovs_vsctl_interface_option "${tap_tx_if}" "type" "internal"
@@ -151,10 +152,10 @@ create_inet_entry \
     -dhcp_sniff "false" \
     -network true \
     -enabled true &&
-        log "fsm/fsm_configure_dns_plugin.sh: Interface ${tap_tx_if} created - Success" ||
-        raise "FAIL: Failed to create interface ${tap_tx_if}" -l "fsm/fsm_configure_dns_plugin.sh" -ds
+        log "tools/device/configure_dns_plugin.sh: Interface ${tap_tx_if} created - Success" ||
+        raise "FAIL: Failed to create interface ${tap_tx_if}" -l "tools/device/configure_dns_plugin.sh" -ds
 
-log "fsm/fsm_configure_dns_plugin.sh: Cleaning FSM OVSDB Config tables"
+log "tools/device/configure_dns_plugin.sh: Cleaning FSM OVSDB Config tables"
 empty_ovsdb_table Openflow_Config
 empty_ovsdb_table Flow_Service_Manager_Config
 empty_ovsdb_table FSM_Policy
@@ -167,8 +168,8 @@ insert_ovsdb_entry Openflow_Config \
     -i priority 200 \
     -i bridge "${lan_bridge_if}" \
     -i action "normal,output:${of_port}" &&
-        log "fsm/fsm_configure_dns_plugin.sh: Ingress rule inserted - Success" ||
-        raise "FAIL: Failed to insert_ovsdb_entry" -l "fsm/fsm_configure_dns_plugin.sh" -oe
+        log "tools/device/configure_dns_plugin.sh: Ingress rule inserted - Success" ||
+        raise "FAIL: Failed to insert_ovsdb_entry" -l "tools/device/configure_dns_plugin.sh" -oe
 
 insert_ovsdb_entry Openflow_Config \
     -i token "dev_flow_dns_res" \
@@ -177,8 +178,8 @@ insert_ovsdb_entry Openflow_Config \
     -i priority 200 \
     -i bridge "${lan_bridge_if}" \
     -i action "output:${of_port}" &&
-        log "fsm/fsm_configure_dns_plugin.sh: Ingress rule inserted - Success" ||
-        raise "FAIL: Failed to insert_ovsdb_entry" -l "fsm/fsm_configure_dns_plugin.sh" -oe
+        log "tools/device/configure_dns_plugin.sh: Ingress rule inserted - Success" ||
+        raise "FAIL: Failed to insert_ovsdb_entry" -l "tools/device/configure_dns_plugin.sh" -oe
 
 insert_ovsdb_entry Openflow_Config \
     -i action "normal" \
@@ -187,16 +188,16 @@ insert_ovsdb_entry Openflow_Config \
     -i rule "in_port=${in_port}" \
     -i table 0 \
     -i token "dev_flow_dns_tx" &&
-        log "fsm/fsm_configure_dns_plugin.sh: Ingress rule inserted - Success" ||
-        raise "FAIL: Failed to insert_ovsdb_entry" -l "fsm/fsm_configure_dns_plugin.sh" -oe
+        log "tools/device/configure_dns_plugin.sh: Ingress rule inserted - Success" ||
+        raise "FAIL: Failed to insert_ovsdb_entry" -l "tools/device/configure_dns_plugin.sh" -oe
 
 insert_ovsdb_entry Flow_Service_Manager_Config \
     -i handler dev_wc_null \
     -i plugin "${wc_plugin}" \
     -i type web_cat_provider \
     -i other_config '["map",[["dso_init","fsm_wc_null_plugin_init"]]]' &&
-        log "fsm/fsm_configure_dns_plugin.sh: Ingress rule inserted - Success" ||
-        raise "FAIL: Failed to insert_ovsdb_entry" -l "fsm/fsm_configure_dns_plugin.sh" -oe
+        log "tools/device/configure_dns_plugin.sh: Ingress rule inserted - Success" ||
+        raise "FAIL: Failed to insert_ovsdb_entry" -l "tools/device/configure_dns_plugin.sh" -oe
 
 ${OVSH} i Flow_Service_Manager_Config \
     if_name:="${tap_tdns_if}" \
@@ -205,8 +206,8 @@ ${OVSH} i Flow_Service_Manager_Config \
     handler:=dev_dns \
     type:=parser \
     plugin:="${fsm_plugin}" &&
-        log "fsm/fsm_configure_dns_plugin.sh: Flow_Service_Manager_Config entry added - Success" ||
-        raise "FAIL: Failed to insert Flow_Service_Manager_Config entry" -l "fsm/fsm_configure_dns_plugin.sh" -oe
+        log "tools/device/configure_dns_plugin.sh: Flow_Service_Manager_Config entry added - Success" ||
+        raise "FAIL: Failed to insert Flow_Service_Manager_Config entry" -l "tools/device/configure_dns_plugin.sh" -oe
 
 insert_ovsdb_entry FSM_Policy \
     -i policy dev_dns_policy \
@@ -217,5 +218,5 @@ insert_ovsdb_entry FSM_Policy \
     -i redirect "A-${fsm_url_redirect}" \
     -i fqdns "${fsm_url_block}" \
     -i fqdn_op sfr_in &&
-        log "fsm/fsm_configure_dns_plugin.sh: Ingress rule inserted - Success" ||
-        raise "FAIL: Failed to insert_ovsdb_entry" -l "fsm/fsm_configure_dns_plugin.sh" -oe
+        log "tools/device/configure_dns_plugin.sh: Ingress rule inserted - Success" ||
+        raise "FAIL: Failed to insert_ovsdb_entry" -l "tools/device/configure_dns_plugin.sh" -oe

@@ -78,6 +78,7 @@ trap '
 fut_info_dump_line
 check_pid_udhcp $wan_iface
 print_tables Wifi_Inet_State
+check_restore_ovsdb_server
 fut_info_dump_line
 ' EXIT SIGINT SIGTERM
 

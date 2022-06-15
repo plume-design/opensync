@@ -90,6 +90,7 @@ print_tables Wifi_Associated_Clients
 print_tables Openflow_Config Openflow_State
 print_tables Flow_Service_Manager_Config FSM_Policy
 print_tables IPv6_Neighbors
+check_restore_ovsdb_server
 fut_info_dump_line
 ' EXIT SIGINT SIGTERM
 

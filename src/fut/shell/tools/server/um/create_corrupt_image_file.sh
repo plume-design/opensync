@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/usr/bin/env bash
 
 # Copyright (c) 2015, Plume Design Inc. All rights reserved.
 # 
@@ -25,35 +25,30 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-# FUT environment loading
-# shellcheck disable=SC1091
-source /tmp/fut-base/shell/config/default_shell.sh
-[ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
-source "${FUT_TOPDIR}/shell/lib/dm_lib.sh"
-[ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
-[ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
+current_dir=$(dirname "$(realpath "$BASH_SOURCE")")
+fut_topdir="$(realpath "$current_dir"/../../..)"
 
-dm_setup_file="dm/dm_setup.sh"
+# FUT environment loading
+source "${fut_topdir}"/config/default_shell.sh
+# Ignore errors for fut_set_env.sh sourcing
+[ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh &> /dev/null
+source "$fut_topdir/lib/rpi_lib.sh"
+
 usage()
 {
 cat << usage_string
-dm/dm_reboot_dut_w_reason.sh [-h]
+tools/server/um/create_corrupt_image_file.sh [-h] arguments
 Description:
-    Script reboots device in a configured manner:
-      - USER intervention and
-      - CLOUD reboot currently supported.
+    - Creates corrupted FW image from clean image
 Arguments:
     -h  show this help message
-    \$1 (reboot_reason) : Reboot trigger type     : (string)(required)
-Testcase procedure:
-    - On DEVICE: Run: ./${dm_setup_file} (see ${dm_setup_file} -h)
-    - On DEVICE: Run: ./dm/dm_reboot_dut_w_reason.sh <REBOOT_REASON>
+    \$1 (um_fw_path) : path to clean FW which to create corrupted copy : (string)(required)
 Script usage example:
-    ./dm/dm_reboot_dut_w_reason.sh USER
-    ./dm/dm_reboot_dut_w_reason.sh CLOUD
+   ./tools/server/um/create_corrupt_image_file.sh /tmp/clean_device_fw.img
+Result:
+    - Creates corrupted FW image with 'corrupt_' prefix in name (example corrupt_clean_device_fw.img)
 usage_string
 }
-
 if [ -n "${1}" ]; then
     case "${1}" in
         help | \
@@ -66,28 +61,11 @@ if [ -n "${1}" ]; then
     esac
 fi
 
-check_kconfig_option "CONFIG_OSP_REBOOT_PSTORE" "y" ||
-    raise "CONFIG_OSP_REBOOT_PSTORE != y - Testcase not applicable REBOOT PERSISTENT STORAGE not supported" -l "dm/dm_reboot_dut_w_reason.sh" -s
-
 NARGS=1
-[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "dm/dm_reboot_dut_w_reason.sh" -arg
-# Fill variables with provided arguments.
-reboot_reason=$1
+[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "tools/server/um/create_corrupt_image_file.sh" -arg
+um_fw_path=$1
 
-log_title "dm/dm_reboot_dut_w_reason.sh: DM test - Reboot DUT with reason - $reboot_reason"
-
-log "dm/dm_reboot_dut_w_reason.sh - Simulating $reboot_reason reboot"
-case "$reboot_reason" in
-    "USER")
-        reboot
-    ;;
-    "CLOUD")
-        trigger_cloud_reboot
-        print_tables Wifi_Test_Config
-    ;;
-    *)
-        raise "FAIL: Unknown reason to check: $reboot_reason" -l "dm/dm_reboot_dut_w_reason.sh" -arg
-    ;;
-esac
-
-pass
+log "tools/server/um/um_create_corrupt_image.sh - Creating $um_fw_path"
+um_create_corrupt_image "$um_fw_path"
+    log -deb "tools/server/um/um_create_corrupt_image.sh - Image corrupted - Success" ||
+    raise "FAIL: Could not corrupt image" -l "tools/server/um/um_create_corrupt_image.sh" -ds

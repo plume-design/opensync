@@ -335,6 +335,97 @@ bool wm2_dummy_target_vif_config_set2(const struct schema_Wifi_VIF_Config *vconf
     return true;
 }
 
+bool wm2_dummy_target_vif_config_set3(const struct schema_Wifi_VIF_Config *vconf,
+                                      const struct schema_Wifi_Radio_Config *rconf,
+                                      const struct schema_Wifi_Credential_Config *cconfs,
+                                      const struct schema_Wifi_VIF_Config_flags *changed,
+                                      const struct schema_RADIUS *radius_list,
+                                      int num_radius_list,
+                                      int num_cconfs)
+{
+    struct schema_Wifi_VIF_State vstate = {0};
+
+    LOGI("vif: %s: configuring", vconf->if_name);
+
+#define CPY_INT(n) SCHEMA_CPY_INT(vstate.n, vconf->n)
+#define CPY_STR(n) SCHEMA_CPY_STR(vstate.n, vconf->n)
+#define CPY_SET(n) SCHEMA_FIELD_COPY_SET(vconf, &vstate, n)
+#define CPY_MAP(n) SCHEMA_FIELD_COPY_MAP(vconf, &vstate, n)
+#define CPY_UUID(n) _CPY_UUID(vstate.n, vconf->n)
+#define _CPY_UUID(dst, src)                 \
+    do {                                    \
+        STRSCPY((dst.uuid), (src.uuid));    \
+        dst##_exists  = src##_exists;       \
+        dst##_present = true;               \
+    } while (0)
+
+#define CPY_LIST_UUID(n) _CPY_LIST_UUID(vstate.n, vconf->n)
+#define _CPY_LIST_UUID(dst, src)                    \
+    do {                                            \
+        int _i;                                     \
+        for (_i=0; _i<src##_len; _i++) {            \
+            STRSCPY(dst[_i].uuid, src[_i].uuid);    \
+        }                                           \
+        dst##_len = src##_len;                      \
+        dst##_present = src##_present;              \
+    } while(0)
+
+    vstate._partial_update = true;
+
+    SCHEMA_SET_INT(vstate.channel, rconf->channel ?: 1);
+    SCHEMA_SET_STR(vstate.mac, "00:11:22:33:44:55"); // FIXME
+    CPY_INT(ap_bridge);
+    CPY_INT(btm);
+    CPY_INT(dynamic_beacon);
+    CPY_INT(enabled);
+    CPY_INT(ft_mobility_domain);
+    CPY_INT(ft_psk);
+    CPY_INT(group_rekey);
+    CPY_INT(mcast2ucast);
+    CPY_INT(radius_srv_port);
+    CPY_INT(rrm);
+    CPY_INT(wpa);
+    CPY_INT(wps);
+    CPY_INT(wps_pbc);
+    CPY_STR(bridge);
+    CPY_STR(dpp_connector);
+    CPY_STR(dpp_csign_hex);
+    CPY_STR(dpp_netaccesskey_hex);
+    CPY_STR(if_name);
+    CPY_STR(min_hw_mode);
+    CPY_STR(mode);
+    CPY_STR(multi_ap);
+    CPY_STR(parent);
+    CPY_STR(radius_srv_addr);
+    CPY_STR(radius_srv_secret);
+    CPY_UUID(primary_radius);
+    CPY_UUID(primary_accounting);
+    CPY_LIST_UUID(secondary_radius);
+    CPY_LIST_UUID(secondary_accounting);
+    CPY_STR(ssid);
+    CPY_STR(ssid_broadcast);
+    CPY_STR(wps_pbc_key_id);
+    CPY_SET(mac_list);
+    CPY_SET(wpa_key_mgmt);
+    CPY_MAP(security);
+    CPY_MAP(wpa_psks);
+#undef CPY_INT
+#undef CPY_STR
+#undef CPY_UUID
+#undef _CPY_UUID
+#undef CPY_LIST_UUID
+#undef _CPY_LIST_UUID
+
+    g_ops->op_vstate(&vstate, rconf->if_name);
+
+    return true;
+}
+
+bool wm2_dummy_target_vif_config_set3_supported(void)
+{
+    return atoi(file_geta(F("vif_config_set3")) ?: "0");
+}
+
 bool wm2_dummy_target_dpp_supported(void)
 {
     return atoi(file_geta(F("dpp_supported")) ?: "1");

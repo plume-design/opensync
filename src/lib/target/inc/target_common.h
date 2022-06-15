@@ -180,6 +180,13 @@ struct target_radio_ops {
      *  by op_client() calls) or when a vif is deconfigured abruptly */
     void (*op_flush_clients)(const char *vif);
 
+    /** target calls this whenever it wants to resolve radius servers
+     *  returned by 'mib' hostap command to UUIDs to be put into
+     *  Wifi_VIF_State table */
+    void (*op_radius_state)(const struct schema_RADIUS *radiuses,
+                            int num,
+                            const char *vif);
+
     /** target shall call this whenever chirping packets are received */
     void (*op_dpp_announcement)(const struct target_dpp_chirp_obj *c);
 
@@ -313,6 +320,53 @@ bool target_vif_config_set2(const struct schema_Wifi_VIF_Config *vconf,
                             const struct schema_Wifi_Credential_Config *cconfs,
                             const struct schema_Wifi_VIF_Config_flags *changed,
                             int num_cconfs);
+
+/**
+ * @brief Apply the configuration for the vif interface
+ *
+ * Function enhanced with RADIUS table handling. This allows
+ * hapd.c to parse VIF to RADIUS table bindings.
+ *
+ * @param vconf complete desired vif config
+ * @param rconf complete desired radio config
+ * @param cconfs complete desired vif credential config, used for
+ * extender mode to provide multiple network for sta vif
+ * @param changed list of fields from vconf that are out of sync with
+ * state
+ * @param radius_list containing all matching RADIUS table entries
+ * @param num_radius_list - number of entries in radius_list
+ * @param num_cconfs number of cconfs entries
+ * @return true on success, false means the call will be retried later
+ */
+bool target_vif_config_set3(const struct schema_Wifi_VIF_Config *vconf,
+                            const struct schema_Wifi_Radio_Config *rconf,
+                            const struct schema_Wifi_Credential_Config *cconfs,
+                            const struct schema_Wifi_VIF_Config_flags *changed,
+                            const struct schema_RADIUS *radius_list,
+                            int num_radius_list,
+                            int num_cconfs);
+
+/**
+ * @brief Interrogate target if v3 version vif_config_set
+ * is supported. This means that RADIUS table can be passed
+ * to hapd.c for evaluation.
+ *
+ * @return true if target_vif_config_set3 is implemented.
+ */
+bool target_vif_config_set3_supported(void);
+
+/**
+ * @brief Remove station from driver
+ *
+ * Get rid of station reference from driver by trying issuing a deauth.
+ * Note that this does not mean that deauth frame will be sent,
+ * that is the case only when station is still associated.
+ *
+ * @param ifname interface name
+ * @param mac_addr station mac address
+ * @return true on success
+ */
+bool target_vif_sta_remove(const char *ifname, const uint8_t *mac_addr);
 
 /**
  * @brief Get state of vif interface

@@ -869,4 +869,7 @@ callback_Network_Zone(ovsdb_update_monitor_t *mon,
                       struct schema_Network_Zone *old_rec,
                       struct schema_Network_Zone *node_cfg);
 
+void
+fsm_set_session_ops(struct fsm_session *session);
+
 #endif /* FSM_H_INCLUDED */

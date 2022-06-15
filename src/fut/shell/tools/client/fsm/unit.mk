@@ -32,4 +32,4 @@ UNIT_TYPE := FUT
 UNIT_DIR := shell/tools/client/fsm
 
 UNIT_FILE := fsm_test_dns_plugin.sh
-UNIT_FILE += fsm_make_curl_agent_req.sh
+UNIT_FILE += make_curl_agent_req.sh

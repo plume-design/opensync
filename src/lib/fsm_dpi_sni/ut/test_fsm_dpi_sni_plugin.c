@@ -52,6 +52,115 @@ os_macaddr_t g_src_mac =
     .addr = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06 },
 };
 
+extern int fsm_session_cmp(void *a, void *b);
+
+static struct fsm_session_conf global_confs[1] =
+{
+    /* entry 0 */
+    {
+        .handler = "gatekeeper_session",
+    }
+};
+
+static struct fsm_session global_sessions[] =
+{
+    {
+        .type = FSM_WEB_CAT,
+        .conf = &global_confs[0],
+    },
+};
+
+struct schema_FSM_Policy spolicies[] =
+{
+    { /* entry 0 */
+        .policy_exists = true,
+        .policy = "gatekeeper_p",
+        .name = "fqdn_in",
+        .mac_op_exists = true,
+        .mac_op = "out",
+        .macs_len = 3,
+        .macs =
+        {
+            "00:00:00:00:00:00",
+            "11:22:33:44:55:66",
+            "22:33:44:55:66:77"
+        },
+        .idx = 0,
+        .fqdn_op_exists = true,
+        .fqdn_op = "in",
+        .fqdns_len = 7,
+        .fqdns =
+        {
+            "www.cnn.com",
+            "www.google.com",
+            "test-host.com",
+            "signal",
+            "localhost",
+            "www.whitehouse.info",
+            "adult.com",
+        },
+        .fqdncat_op_exists = false,
+        .risk_op_exists = false,
+        .ipaddr_op_exists = false,
+        .ipaddrs_len = 0,
+        .action_exists = true,
+        .action = "gatekeeper",
+        .other_config_len = 2,
+        .other_config_keys = {"tagv4_name", "tagv6_name",},
+        .other_config = { "my_v4_tag", "my_v6_tag"},
+    },
+};
+
+bool
+dummy_gatekeeper_get_verdict(struct fsm_policy_req *req,
+                             struct fsm_policy_reply *policy_reply)
+{
+    struct fqdn_pending_req *fqdn_req;
+    struct fsm_url_request *req_info;
+    struct fsm_url_reply *url_reply;
+
+    fqdn_req = req->fqdn_req;
+    req_info = fqdn_req->req_info;
+
+    url_reply = CALLOC(1, sizeof(*url_reply));
+
+    req_info->reply = url_reply;
+
+    url_reply->service_id = URL_GK_SVC;
+
+    policy_reply->categorized = FSM_FQDN_CAT_SUCCESS;
+
+    if (strcmp(req_info->url, "adult.com") == 0)
+    {
+        policy_reply->action = FSM_REDIRECT;
+        policy_reply->redirect = true;
+        STRSCPY(policy_reply->redirects[0], "A-18.204.152.241");
+        STRSCPY(policy_reply->redirects[1], "4A-1:2::3");
+    }
+    else
+    {
+        policy_reply->action = FSM_ALLOW;
+    }
+
+    req_info->reply->gk.gk_policy = strdup("gk_policy");
+    req_info->reply->gk.confidence_level = 90;
+    req_info->reply->gk.category_id = 2;
+
+    return true;
+}
+
+union fsm_plugin_ops p_ops;
+
+struct fsm_web_cat_ops g_plugin_ops1 =
+{
+    .categories_check = NULL,
+    .risk_level_check = NULL,
+    .cat2str = NULL,
+    .get_stats = NULL,
+    .dns_response = NULL,
+    .gatekeeper_req = dummy_gatekeeper_get_verdict,
+};
+
 void
 test_redirected_flow_v6(void)
 {
@@ -280,6 +389,212 @@ test_redirected_flow_gatekeeper_cache(void)
     TEST_ASSERT_TRUE(ret);
 }
 
+static char *
+test_session_name(struct fsm_policy_client *client)
+{
+    if (client->name != NULL) return client->name;
+
+    return "gatekeeper_p";
+}
+
+void
+test_redirected_flow_attr(void)
+{
+    struct fsm_dpi_sni_redirect_flow_request request;
+    struct net_md_stats_accumulator acc;
+    struct schema_FSM_Policy *spolicy;
+    struct fsm_policy_client *client;
+    struct fsm_policy_session *mgr;
+    struct net_md_flow_info info;
+    struct fsm_session *session;
+    struct policy_table *table;
+    struct net_md_flow_key key;
+    struct fsm_policy *fpolicy;
+    char val[255];
+    bool rc;
+
+
+    session = &global_sessions[0];
+    session->conf = &global_confs[0];
+    session->provider_ops = &g_plugin_ops1;
+    session->p_ops = &p_ops;
+    session->name = global_confs[0].handler;
+    session->service = session;
+
+    memset(&acc, 0, sizeof(acc));
+    memset(&key, 0, sizeof(key));
+
+    acc.key = &key;
+    acc.direction = NET_MD_ACC_OUTBOUND_DIR;
+    acc.originator = NET_MD_ACC_ORIGINATOR_SRC;
+    key.ip_version = 4;
+    key.smac = &g_src_mac;
+    key.dst_ip = CALLOC(1, 4);
+    inet_pton(AF_INET, "18.204.152.241", key.dst_ip);
+
+    MEMZERO(info);
+    rc = net_md_get_flow_info(&acc, &info);
+
+    strcpy(val, "http://adult.com/show");
+    request.acc = &acc;
+    request.session = session;
+    request.info = &info;
+    request.attribute_value = val;
+    request.req_type = FSM_URL_REQ;
+
+    mgr = fsm_policy_get_mgr();
+    if (!mgr->initialized) fsm_init_manager();
+
+    /* add fsm policy */
+    spolicy = &spolicies[0];
+    fsm_add_policy(spolicy);
+    fpolicy = fsm_policy_lookup(spolicy);
+
+    TEST_ASSERT_NOT_NULL(fpolicy);
+
+    /* Validate rule name */
+    TEST_ASSERT_EQUAL_STRING(spolicy->name, fpolicy->rule_name);
+
+    mgr = fsm_policy_get_mgr();
+    table = ds_tree_find(&mgr->policy_tables, spolicy->policy);
+    TEST_ASSERT_NOT_NULL(table);
+
+    client = &session->policy_client;
+    client->session = session;
+    client->update_client = NULL;
+    client->session_name = test_session_name;
+    client->name = "gatekeeper_p";
+    fsm_policy_register_client(&session->policy_client);
+
+    rc = dpi_sni_is_redirected_attr(&request);
+    TEST_ASSERT_TRUE(rc);
+
+    fsm_policy_deregister_client(client);
+    TEST_ASSERT_NULL(client->table);
+
+    FREE(info.remote_ip);
+}
+
+void
+test_redirected_flow_attr_v6(void)
+{
+    struct fsm_dpi_sni_redirect_flow_request request;
+    struct net_md_stats_accumulator acc;
+    struct schema_FSM_Policy *spolicy;
+    struct fsm_policy_client *client;
+    struct fsm_policy_session *mgr;
+    struct net_md_flow_info info;
+    struct fsm_session *session;
+    struct net_md_flow_key key;
+    struct policy_table *table;
+    struct fsm_policy *fpolicy;
+    char val[255];
+    bool rc;
+
+
+    session = &global_sessions[0];
+    session->conf = &global_confs[0];
+    session->provider_ops = &g_plugin_ops1;
+    session->p_ops = &p_ops;
+    session->name = global_confs[0].handler;
+    session->service = session;
+
+    memset(&acc, 0, sizeof(acc));
+    memset(&key, 0, sizeof(key));
+
+    acc.key = &key;
+    acc.direction = NET_MD_ACC_OUTBOUND_DIR;
+    acc.originator = NET_MD_ACC_ORIGINATOR_SRC;
+    key.ip_version = 6;
+    key.smac = &g_src_mac;
+    key.dst_ip = CALLOC(1, 16);
+    inet_pton(AF_INET6, "1:2::3", key.dst_ip);
+
+    MEMZERO(info);
+    rc = net_md_get_flow_info(&acc, &info);
+
+    strcpy(val, "http://adult.com/show");
+    request.acc = &acc;
+    request.session = session;
+    request.info = &info;
+    request.attribute_value = val;
+    request.req_type = FSM_URL_REQ;
+
+    mgr = fsm_policy_get_mgr();
+    if (!mgr->initialized) fsm_init_manager();
+
+    /* add fsm policy */
+    spolicy = &spolicies[0];
+    fsm_add_policy(spolicy);
+    fpolicy = fsm_policy_lookup(spolicy);
+
+    TEST_ASSERT_NOT_NULL(fpolicy);
+
+    /* Validate rule name */
+    TEST_ASSERT_EQUAL_STRING(spolicy->name, fpolicy->rule_name);
+
+    mgr = fsm_policy_get_mgr();
+    table = ds_tree_find(&mgr->policy_tables, spolicy->policy);
+    TEST_ASSERT_NOT_NULL(table);
+
+    client = &session->policy_client;
+    client->session = session;
+    client->update_client = NULL;
+    client->session_name = test_session_name;
+    client->name = "gatekeeper_p";
+    fsm_policy_register_client(&session->policy_client);
+
+    rc = dpi_sni_is_redirected_attr(&request);
+    TEST_ASSERT_TRUE(rc);
+
+    fsm_policy_deregister_client(client);
+    TEST_ASSERT_NULL(client->table);
+
+    FREE(info.remote_ip);
+}
+
+void
+test_url_to_fqdn_regex_extract(void)
+{
+    char fqdn_val[C_FQDN_LEN];
+    char *attribute_name;
+    bool rc;
+
+    attribute_name  = "http://adult.com";
+    rc = dpi_sni_fetch_fqdn_from_url_attr(attribute_name, fqdn_val);
+    if (rc) TEST_ASSERT_EQUAL_STRING("adult.com", fqdn_val);
+
+    MEMZERO(fqdn_val);
+    attribute_name  = "http://pornhub.com/show";
+    rc = dpi_sni_fetch_fqdn_from_url_attr(attribute_name, fqdn_val);
+    if (rc) TEST_ASSERT_EQUAL_STRING("pornhub.com", fqdn_val);
+
+    MEMZERO(fqdn_val);
+    attribute_name  = "http://google.com";
+    rc = dpi_sni_fetch_fqdn_from_url_attr(attribute_name, fqdn_val);
+    if (rc) TEST_ASSERT_EQUAL_STRING("google.com", fqdn_val);
+
+    MEMZERO(fqdn_val);
+    attribute_name  = "http://cplusplus.com";
+    rc = dpi_sni_fetch_fqdn_from_url_attr(attribute_name, fqdn_val);
+    if (rc) TEST_ASSERT_EQUAL_STRING("cplusplus.com", fqdn_val);
+
+    MEMZERO(fqdn_val);
+    attribute_name  = "http://www.soccer.com/show";
+    rc = dpi_sni_fetch_fqdn_from_url_attr(attribute_name, fqdn_val);
+    if (rc) TEST_ASSERT_EQUAL_STRING("www.soccer.com", fqdn_val);
+
+    MEMZERO(fqdn_val);
+    attribute_name  = "http://xadultadult.com";
+    rc = dpi_sni_fetch_fqdn_from_url_attr(attribute_name, fqdn_val);
+    if (rc) TEST_ASSERT_EQUAL_STRING("xadultadult.com", fqdn_val);
+
+    MEMZERO(fqdn_val);
+    attribute_name  = "http://liberation.fr";
+    rc = dpi_sni_fetch_fqdn_from_url_attr(attribute_name, fqdn_val);
+    if (rc) TEST_ASSERT_EQUAL_STRING("liberation.fr", fqdn_val);
+}
+
 void
 test_redirected_flow(void)
 {
@@ -330,4 +645,7 @@ run_test_plugin(void)
     RUN_TEST(test_redirected_flow);
     RUN_TEST(test_redirected_flow_gatekeeper_cache);
     RUN_TEST(test_redirected_flow_v6);
+    RUN_TEST(test_redirected_flow_attr);
+    RUN_TEST(test_redirected_flow_attr_v6);
+    RUN_TEST(test_url_to_fqdn_regex_extract);
 }

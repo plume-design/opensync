@@ -299,6 +299,8 @@ ltem_ovsdb_create_lte_state(ltem_mgr_t *mgr)
 
     SCHEMA_SET_STR(lte_state.lte_bands_enable, modem_info->lte_band_val);
 
+    SCHEMA_SET_STR(lte_state.modem_firmware_version, modem_info->modem_fw_ver);
+
     if (!ovsdb_table_insert(&table_Lte_State, &lte_state))
     {
         LOG(ERR, "%s: Error Inserting Lte_State", __func__);
@@ -482,7 +484,6 @@ ltem_ovsdb_cmu_update_lte(ltem_mgr_t *mgr)
                        SCHEMA_COLUMN(Connection_Manager_Uplink, priority),
                        NULL };
     const char *if_name;
-    char *null_inet_addr = "0.0.0.0";
     int res;
 
     if_name = mgr->lte_config_info->if_name;
@@ -505,12 +506,7 @@ ltem_ovsdb_cmu_update_lte(ltem_mgr_t *mgr)
     LOGD("%s: update %s LTE CM settings", __func__, if_name);
     cm_conf._partial_update = true;
     SCHEMA_SET_INT(cm_conf.has_L2, true);
-    SCHEMA_SET_INT(cm_conf.has_L3, false);
-    res = strncmp(mgr->lte_route->lte_ip_addr, null_inet_addr, strlen(mgr->lte_route->lte_ip_addr));
-    if (res)
-    {
-        SCHEMA_SET_INT(cm_conf.has_L3, true);
-    }
+    SCHEMA_SET_INT(cm_conf.has_L3, mgr->lte_route->has_L3);
     SCHEMA_SET_INT(cm_conf.priority, LTE_CMU_DEFAULT_PRIORITY);
 
     res = ovsdb_table_update_where_f(&table_Connection_Manager_Uplink,
@@ -530,8 +526,7 @@ ltem_ovsdb_cmu_insert_lte(ltem_mgr_t *mgr)
     struct schema_Connection_Manager_Uplink cm_conf;
     char *if_type = LTE_TYPE_NAME;
     const char *if_name;
-    char *null_inet_addr = "0.0.0.0";
-    int rc, res;
+    int rc;
 
     MEMZERO(cm_conf);
 
@@ -556,12 +551,7 @@ ltem_ovsdb_cmu_insert_lte(ltem_mgr_t *mgr)
     SCHEMA_SET_STR(cm_conf.if_name, if_name);
     SCHEMA_SET_STR(cm_conf.if_type, if_type);
     SCHEMA_SET_INT(cm_conf.has_L2, true);
-    SCHEMA_SET_INT(cm_conf.has_L3, false);
-    res = strncmp(mgr->lte_route->lte_ip_addr, null_inet_addr, strlen(mgr->lte_route->lte_ip_addr));
-    if (res)
-    {
-        SCHEMA_SET_INT(cm_conf.has_L3, true);
-    }
+    SCHEMA_SET_INT(cm_conf.has_L3, mgr->lte_route->has_L3);
     SCHEMA_SET_INT(cm_conf.priority, 2);
     if (!ovsdb_table_insert(&table_Connection_Manager_Uplink, &cm_conf))
     {
@@ -581,9 +571,10 @@ ltem_ovsdb_cmu_disable_lte(ltem_mgr_t *mgr)
                        SCHEMA_COLUMN(Connection_Manager_Uplink, has_L3),
                        SCHEMA_COLUMN(Connection_Manager_Uplink, priority),
                        NULL };
-    const char *if_name = LTE_TYPE_NAME;
+    const char *if_name;
     int res;
 
+    if_name = mgr->lte_config_info->if_name;
     res = ovsdb_table_select_one(&table_Connection_Manager_Uplink,
                                  SCHEMA_COLUMN(Connection_Manager_Uplink, if_name), if_name, &cm_conf);
     if (!res)
@@ -610,6 +601,35 @@ ltem_ovsdb_cmu_disable_lte(ltem_mgr_t *mgr)
         LOGW("%s: Update %s CM table failed", __func__, if_name);
         return -1;
     }
+    return 0;
+}
+
+int
+ltem_ovsdb_check_l3_state(ltem_mgr_t *mgr)
+{
+    struct schema_Wifi_Route_Config route_config;
+    const char *if_name;
+    char *null_gateway = "0.0.0.0";
+    int res;
+
+    if (mgr->lte_route->has_L3) return 0;
+
+    if_name = mgr->lte_config_info->if_name;
+
+    res = ovsdb_table_select_one(&table_Wifi_Route_Config,
+                                 SCHEMA_COLUMN(Wifi_Route_Config, if_name), if_name, &route_config);
+    if (!res)
+    {
+        LOGI("%s: %s not found in Wifi_Route_Config", __func__, if_name);
+        return -1;
+    }
+
+    res = strncmp(route_config.gateway, null_gateway, strlen(route_config.gateway));
+    if (res)
+    {
+        ltem_set_lte_state(LTEM_LTE_STATE_UP);
+    }
+
     return 0;
 }
 
@@ -735,12 +755,13 @@ ltem_wifi_inet_os_persist_update(bool persist_state, char *if_name)
     struct schema_Wifi_Inet_Config icfg;
     int ret;
 
+    LOGI("%s: persist_state[%d] if_name[%s]", __func__, persist_state, if_name);
     ret = ovsdb_table_select_one(&table_Wifi_Inet_Config,
                 SCHEMA_COLUMN(Wifi_Inet_Config, if_name), if_name, &icfg);
 
     if (!ret)
     {
-        LOGE("%s: %s: Failed to get interface config", __func__, if_name);
+        LOGI("%s: %s: Failed to get interface config", __func__, if_name);
         return false;
     }
 
@@ -780,6 +801,7 @@ ltem_lte_config_os_persist_update(bool persist_state, char *if_name)
     struct schema_Lte_Config lte_cfg;
     int ret;
 
+    LOGI("%s: persist_state[%d] if_name[%s]", __func__, persist_state, if_name);
     ret = ovsdb_table_select_one(&table_Lte_Config,
                 SCHEMA_COLUMN(Lte_Config, if_name), if_name, &lte_cfg);
 
@@ -861,11 +883,10 @@ ltem_update_enable_persist(bool persist_state, char *if_name)
 {
     /* Update enable_persist field in Lte_state table only when Lte_config and
        Wifi_Init_config updates  successfully */
-    if ( ltem_wifi_inet_os_persist_update(persist_state, if_name) &&
-         ltem_lte_config_os_persist_update(persist_state, if_name) )
-    {
-            ltem_lte_state_update_persist(persist_state, if_name);
-    }
+    if (!ltem_wifi_inet_os_persist_update(persist_state, if_name)) return;
+    if (!ltem_lte_config_os_persist_update(persist_state, if_name)) return;
+
+    ltem_lte_state_update_persist(persist_state, if_name);
 }
 
 void
@@ -916,7 +937,11 @@ callback_Lte_Config(ovsdb_update_monitor_t *mon,
         case OVSDB_UPDATE_MODIFY:
             ltem_ovsdb_update_lte_state(mgr);
             if (old_lte_conf->manager_enable && !lte_conf->manager_enable) return;
-            if (old_lte_conf->modem_enable && !lte_conf->modem_enable) return;
+            if (old_lte_conf->modem_enable && !lte_conf->modem_enable)
+            {
+                ltem_fini_lte_modem();
+                return;
+            }
             LOGD("%s mon_type = OVSDB_UPDATE_MODIFY", __func__);
             /* A NULL APN is valid */
             LOGI("%s: APN[%s]", __func__, lte_conf->apn);
@@ -971,8 +996,10 @@ callback_Lte_Config(ovsdb_update_monitor_t *mon,
 
             break;
         case OVSDB_UPDATE_DEL:
-            LOGD("%s mon_type = OVSDB_UPDATE_DEL", __func__);
+            LOGI("%s mon_type = OVSDB_UPDATE_DEL, LTEM_LTE_STATE_DOWN", __func__);
             ltem_set_lte_state(LTEM_LTE_STATE_DOWN);
+            ltem_fini_lte_modem();
+
             break;
     }
 }
@@ -1017,9 +1044,14 @@ ltem_handle_nm_update_wwan0(struct schema_Wifi_Inet_State *old_inet_state,
     res = strncmp(inet_state->inet_addr, null_inet_addr, strlen(inet_state->inet_addr));
     if (!res)
     {
+        LOGI("%s: wwan0 IP address[%s], setting LTEM_LTE_STATE_DOWN", __func__, inet_state->inet_addr);
         ltem_set_lte_state(LTEM_LTE_STATE_DOWN);
     }
-
+    else
+    {
+        LOGI("%s: wwan0 IP address[%s], setting LTEM_LTE_STATE_UP", __func__, inet_state->inet_addr);
+        ltem_set_lte_state(LTEM_LTE_STATE_UP);
+    }
 }
 
 void
@@ -1039,7 +1071,7 @@ callback_Wifi_Inet_State(ovsdb_update_monitor_t *mon,
             rc = strncmp(old_inet_state->if_type, LTE_TYPE_NAME, strlen(old_inet_state->if_type));
             if (!rc)
             {
-                LOGI("%s: OVSDB_UDATE_DEL: %s", __func__, old_inet_state->if_name);
+                LOGI("%s: OVSDB_UDATE_DEL: %s, LTEM_LTE_STATE_DOWN", __func__, old_inet_state->if_name);
                 ltem_set_lte_state(LTEM_LTE_STATE_DOWN);
             }
             break;
@@ -1142,6 +1174,7 @@ ltem_handle_lte_rc_update(struct schema_Wifi_Route_Config *old_route_config, str
     res = strncmp(route_config->gateway, null_gateway, strlen(route_config->gateway));
     if (res)
     {
+        LOGI("%s: GW[%s], LTEM_LTE_STATE_UP", __func__, route_config->gateway);
         ltem_set_lte_state(LTEM_LTE_STATE_UP);
     }
 }

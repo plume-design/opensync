@@ -32,43 +32,41 @@ fut_topdir="$(realpath "$current_dir"/../../..)"
 source "${fut_topdir}"/config/default_shell.sh
 # Ignore errors for fut_set_env.sh sourcing
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh &> /dev/null
-source "${fut_topdir}"/lib/unit_lib.sh
+source "$fut_topdir/lib/rpi_lib.sh"
 
-usage() {
-    cat << usage_string
-tools/client/fsm/fsm_make_curl_agent_req.sh [-h] arguments
+usage()
+{
+cat << usage_string
+tools/server/um/create_corrupt_md5_file.sh [-h] arguments
 Description:
-    - Script makes curl request to url with specified user_agent
+    - Creates corrupted MD5 file of FW image
 Arguments:
     -h  show this help message
-    \$1 (namespace_enter_cmd) : Command to enter interface namespace : (string)(required)
-    \$2 (user_agent)          : User agent to pass with curl request : (string)(required)
-    \$3 (url)                 : URL to make curl request             : (string)(required)
+    \$1 (um_fw_path) : path to clean FW which to create corrupted copy : (string)(required)
 Script usage example:
-   ./tools/client/fsm/fsm_make_curl_agent_req.sh "custom_user_agent_name" "www.google.com"
+   ./tools/server/um/create_corrupt_md5_file.sh /tmp/clean_device_fw.img
+Result:
+    - Creates corrupted MD5 sum of image (example clean_device_fw.img.md5)
 usage_string
 }
 if [ -n "${1}" ]; then
     case "${1}" in
-    help | \
-    --help | \
-    -h)
-        usage && exit 1
-        ;;
-    *)
-        ;;
+        help | \
+        --help | \
+        -h)
+            usage && exit 1
+            ;;
+        *)
+            ;;
     esac
 fi
-NARGS=3
-[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "tools/client/fsm/fsm_make_curl_agent_req.sh" -arg
 
-namespace_enter_cmd=$1
-user_agent=$2
-url=$3
+NARGS=1
+[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "tools/server/um/create_corrupt_md5_file.sh" -arg
+um_fw_path=$1
 
-${namespace_enter_cmd} -c "curl -S -s --output /dev/null -A '${user_agent}' '${url}'" || $(exit 1)
-if [[ "$?" != 0 ]];then
-    raise "Failed to make curl request to ${url} with user_agent ${user_agent}" -l "tools/client/fsm/fsm_make_curl_agent_req.sh"
-else
-    log "tools/client/fsm/fsm_make_curl_agent_req.sh: curl request made to ${url} with user_agent ${user_agent}"
-fi
+log "tools/server/um/create_corrupt_md5_file.sh - Creating $um_fw_path.md5"
+create_corrupt_md5_file "$um_fw_path" &&
+    log -deb "tools/server/um/create_corrupt_md5_file.sh - Created md5 file - Success" ||
+    raise "FAIL: Could not create md5 file" -l "tools/server/um/create_corrupt_md5_file.sh" -ds
+

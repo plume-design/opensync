@@ -62,7 +62,7 @@ struct fsm_session_ops g_ops =
 };
 
 struct gk_attr_cache_interface **entry;
-size_t num_attr_entries = 6;
+size_t num_attr_entries = 8;
 struct gkc_ip_flow_interface **flow_entry;
 size_t num_flow_entries = 4;
 
@@ -143,6 +143,7 @@ ut_qm_conn_send_direct(qm_compress_t compress, char *topic,
 
         os_mac2str(&hs->device_id, str_mac);
         LOGI("From protobuf: window[0] network_id=%s", hs->network_zone);
+        LOGI("From protobuf: window[0], stats[%zu], action: %d", j, hs->action);
         LOGI("From protobuf: window[0], stats[%zu], device_id=%s", j, str_mac);
     }
 
@@ -210,6 +211,22 @@ create_default_attr_entries(void)
     entry[5]->action = FSM_FORWARD;
     entry[5]->attr_name = STRDUP("10.1.2.3");
     entry[5]->ip_addr = sockaddr_storage_create(AF_INET, "10.1.2.3");
+
+    entry[6] = CALLOC(1, sizeof(*entry[6]));
+    entry[6]->device_mac = str2os_mac("AA:AA:AA:AA:AA:06");
+    entry[6]->attribute_type = GK_CACHE_REQ_TYPE_IPV4;
+    entry[6]->cache_ttl = 1000;
+    entry[6]->action_by_name = FSM_REDIRECT;
+    entry[6]->ip_addr = sockaddr_storage_create(AF_INET, "1.2.3.6");
+    entry[6]->direction = GKC_FLOW_DIRECTION_OUTBOUND;
+
+    entry[7] = CALLOC(1, sizeof(*entry[7]));
+    entry[7]->device_mac = str2os_mac("AA:AA:AA:AA:AA:07");
+    entry[7]->attribute_type = GK_CACHE_REQ_TYPE_IPV6;
+    entry[7]->cache_ttl = 1000;
+    entry[7]->action_by_name = FSM_BLOCK;
+    entry[7]->ip_addr = sockaddr_storage_create(AF_INET6, "0:0:0:0:0:FFFF:204.152.189.117");
+    entry[7]->direction = GKC_FLOW_DIRECTION_INBOUND;
 }
 
 static void
@@ -720,6 +737,42 @@ test_gk_serialize_cache_redirect_ip_entries(void)
     gkhc_release_aggregator(aggr);
 }
 
+void
+test_gk_serialize_cache_action_by_name_entries(void)
+{
+    struct gkc_report_aggregator *aggr;
+    int num_sent_reports;
+
+    aggr = gkhc_get_aggregator();
+
+    gk_cache_init();
+
+    /* use a fairly small size so we have more than one record per
+     * report sent and a few files for the records in the cache
+     */
+    gkhc_set_max_record_size(aggr, 200);
+    gkhc_set_records_per_report(aggr, 2);
+    gkhc_set_number_obs_windows(aggr, 3);
+    gkhc_init_aggregator(aggr, &g_session);
+    /* attach a "fake" sender */
+    aggr->send_report = ut_qm_conn_send_direct;
+
+    gkhc_activate_window(aggr);
+
+    /* populate a bunch of entries in the cache */
+    gkc_add_attribute_entry(entry[6]);
+
+    /* populate a bunch of entries in the cache */
+    gkc_add_attribute_entry(entry[7]);
+
+    LOGI("Sleep 2 seconds to create an observation window");
+    sleep(2);
+
+    gkhc_close_window(aggr);
+
+    num_sent_reports = gkhc_build_and_send_report(aggr, "mqtt_channel_name");
+    TEST_ASSERT_NOT_EQUAL_INT(0, num_sent_reports);
+}
 
 void
 run_test_gatekeeper_hero_stats(void)
@@ -741,6 +794,7 @@ run_test_gatekeeper_hero_stats(void)
     RUN_TEST(test_gk_serialize_cache_add_entries);
     RUN_TEST(test_gk_serialize_cache_redirect_cname_entries);
     RUN_TEST(test_gk_serialize_cache_redirect_ip_entries);
+    RUN_TEST(test_gk_serialize_cache_action_by_name_entries);
 
     ut_setUp_tearDown(NULL, NULL, NULL);
 }

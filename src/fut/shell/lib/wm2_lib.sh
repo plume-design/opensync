@@ -205,6 +205,8 @@ get_iface_regulatory_domain()
 ###############################################################################
 # DESCRIPTION:
 #   Function validates that CAC was completed in set CAC time for specific channel which is set in Wifi_Radio_State
+#     Function is also aware of channel width and it checks CAC for all required channels in given range.
+#     For example, if we set channel 52 with HT40, then CAC will be checked for channel 52 and channel 56 as well
 # INPUT PARAMETER(S):
 #   $1  Physical Radio interface name for which to validate CAC if needed
 # RETURNS:
@@ -223,8 +225,10 @@ get_iface_regulatory_domain()
 #   - NON-DFS : 0s (CAC is not required for NON-DFS channels)
 #   - DFS     : 60s
 #   - WEATHER : 600s
-# - Testcase configuration using HT160 mode:
-#   - Such testcases require different handling due to HT160 possibly encompassing DFS and non DFS channels
+# - WM reconfiguration time is hardcoded to 30s
+# - CAC is validated for all channels in given channel width HT40, HT80 or HT160
+# DEPENDENCY:
+# - Function is dependent on FUT generated regulatory.txt file config
 # USAGE EXAMPLE(S):
 #   validate_cac wifi0
 ###############################################################################
@@ -242,6 +246,8 @@ validate_cac()
         raise "wm2_lib:validate_cac requires ${NARGS} input argument(s), $# given" -arg
     # shellcheck disable=SC2034
     if_name="${1}"
+    # WM reconfiguration time - used to wait from nop_finished to cac_started channel status
+    wm_reconfiguration_time=30
     # Check if Radio interface is associated to VIF ap
     vif_states=$(get_ovsdb_entry_value Wifi_Radio_State vif_states -w if_name "${if_name}")
     if [ "${vif_states}" == "[\"set\",[]]" ]; then
@@ -259,12 +265,16 @@ validate_cac()
         log -deb "wm2_lib:validate_cac - ht_mode is not set in Wifi_Radio_State, nothing to do."
         return 0
     fi
-    state_freq_band=$(get_ovsdb_entry_value Wifi_Radio_State freq_band -w if_name "${if_name}" | tr '[A-Z]' '[a-z]')
+    state_freq_band=$(get_ovsdb_entry_value Wifi_Radio_State freq_band -w if_name "${if_name}" | tr '[A-Z]' '[a-z]' | tr -d '.')
     if [ "${state_freq_band}" == "[\"set\",[]]" ]; then
         log -deb "wm2_lib:validate_cac - freq_band is not set in Wifi_Radio_State, nothing to do."
         return 0
     fi
-
+    # Disable CAC check for 2.4g
+    if [ "${state_freq_band}" == "24g" ]; then
+        log -deb "wm2_lib:validate_cac - freq_band is 24g, nothing to do."
+        return 0
+    fi
     # Retrieve device regulatory domain
     state_country=$(get_iface_regulatory_domain "${if_name}")
     echo "${state_country}"
@@ -278,19 +288,9 @@ validate_cac()
     reg_dfs_weather_match=$(cat "${regulatory_file_path}" | grep -i "${state_country}_dfs_weather_${state_freq_band}_${state_ht_mode}")
     check_weather=$(contains_element "${state_channel}" ${reg_dfs_weather_match})
 
-    if [ ${state_ht_mode} = "HT160" ]; then
-        cac_time=60
-        HT160_match=0
-        non_dfs_channel_list="36 40 44 48"
-        standard_dfs_channel_list="52 56 60 64"
-    elif [ "${check_standard}" == 0 ]; then
-        # channel_type='standard-dfs'
-        cac_time=60
-    elif [ "${check_weather}" == 0 ]; then
-        # channel_type='weather-dfs'
-        cac_time=600
-    else
-        log -deb "wm2_lib:validate_cac - Channel ${state_channel} is not DFS nor WEATHER channel so CAC wait is not required."
+    # If HT mode is HT20 and channel is not dfs nor weather, skip next steps to preserve time.
+    if [ "${check_standard}" != "0" ] && [ "${check_weather}" != "0" ] && [ "${state_ht_mode}" == "HT20" ]; then
+        log -deb "wm2_lib:validate_cac - Channel ${state_channel} (HT20) is not DFS nor WEATHER channel so CAC wait is not required."
         return 0
     fi
 
@@ -313,38 +313,159 @@ validate_cac()
         raise "FAIL: Radio interfaces is not associated to any AP enabled VIF" -l "wm2_lib:validate_cac" -ds
     fi
 
-    # HT160 spans the entire radio band, therefore all channels need to be checked i.e. non DFS channel state must
-    # be allowed and DFS channel state must be cac_completed
-    if [ "${HT160_match}" == 0 ]; then
-        for channel in $non_dfs_channel_list
-        do
-            wait_for_function_output "allowed" "get_radio_channel_state ${channel} ${if_name}" &&
-                log -deb "wm2_lib:validate_cac - Channel ${channel} is not DFS nor WEATHER channel so CAC wait is not required." ||
-                log -err "FAIL: Channel CAC was not completed." -l "wm2_lib:validate_cac"
-        done
-        for channel in $standard_dfs_channel_list
-        do
-            wait_for_function_output "cac_completed" "get_radio_channel_state ${channel} ${if_name}" ${cac_time} &&
-                log -deb "wm2_lib:validate_cac - Channel state went to cac_completed. Channel available" ||
-                log -err "FAIL: Channel CAC was not completed in given CAC time (${cac_time}s)." -l "wm2_lib:validate_cac"
-        done
-        return 0
-    elif [ "${check_standard}" == 0 ] || [ "${check_weather}" == 0 ]; then
-        wait_for_function_output "cac_completed" "get_radio_channel_state ${state_channel} ${if_name}" ${cac_time} &&
-            log -deb "wm2_lib:validate_cac - Channel state went to cac_completed. Channel available" ||
-            log -err "FAIL: Channel CAC was not completed in given CAC time (${cac_time}s)." -l "wm2_lib:validate_cac"
-
-        log -deb "wm2_lib:validate_cac - Checking interface ${if_name} channel ${state_channel} status"
-        channel_status="$(get_radio_channel_state "${state_channel}" "${if_name}")"
-        log -deb "wm2_lib:validate_cac - Channel status is: ${channel_status}"
-        if [ "${channel_status}" == 'cac_completed' ]; then
-            log -deb "wm2_lib:validate_cac -  CAC completed for channel ${state_channel} - Success"
-            return 0
+    log -deb "wm2_lib:validate_cac - Acquiring channels to validate CAC for ${state_channel} in range of ${state_ht_mode}"
+    channels_to_check=""
+    lower_limit="0"
+    upper_limit="300"
+    # If HT20, we do not need to wait for any other channel except the one given
+    if [ "${state_ht_mode}" == "HT20" ]; then
+        channels_to_check="${state_channel}"
+    else
+        # Retrieve channel placement for given channel width
+        lower_placement_match=$(cat "${regulatory_file_path}" | grep -i "CHAN_PLACE_${state_freq_band}_${state_ht_mode}_LOWER")
+        check_is_lower=$(contains_element "${state_channel}" ${lower_placement_match})
+        upper_placement_match=$(cat "${regulatory_file_path}" | grep -i "CHAN_PLACE_${state_freq_band}_${state_ht_mode}_UPPER")
+        check_is_upper=$(contains_element "${state_channel}" ${upper_placement_match})
+        if [ "${check_is_lower}" == "0" ]; then
+            chan_placement="LOWER"
+            chan_placement_invert="UPPER"
+        elif [ "${check_is_upper}" == "0" ]; then
+            chan_placement="UPPER"
+            chan_placement_invert="LOWER"
         else
-            print_tables Wifi_Radio_State || true
-            raise "FAIL: CAC was not completed for channel ${state_channel}" -l "wm2_lib:validate_cac" -ds
+            chan_placement="MIDDLE"
+        fi
+        log -deb "wm2_lib:validate_cac - Channel ${state_channel} placement in range ${state_ht_mode} is ${chan_placement}"
+        if [ "${chan_placement}" != "MIDDLE" ]; then
+            chan_placement_match=$(cat "${regulatory_file_path}" | grep -i "CHAN_PLACE_${state_freq_band}_${state_ht_mode}_${chan_placement}")
+            placement_index=$(get_index_in_list "${state_channel}" ${chan_placement_match})
+            if [ "$?" != "0" ]; then
+                raise "Failed to retrieve placement of ${state_channel} in ${chan_placement_match}" -l "lib/wm2_lib::validate_cac" -tc
+            fi
+            log -deb "wm2_lib:validate_cac - Placement index is ${placement_index} of ${state_channel} in ${chan_placement_match}"
+            chan_placement_match_invert=$(cat "${regulatory_file_path}" | grep -i "CHAN_PLACE_${state_freq_band}_${state_ht_mode}_${chan_placement_invert}")
+            invert_channel=$(get_by_index_from_list "${placement_index}" ${chan_placement_match_invert})
+            if [ "$?" != "0" ]; then
+                raise "Failed to retrieve invert placement of ${placement_index} in ${chan_placement_match_invert}" -l "lib/wm2_lib::validate_cac" -tc
+            fi
+            log -deb "wm2_lib:validate_cac - Channel ${state_channel} invert ${chan_placement_invert} channel is ${invert_channel}"
+        fi
+        # If channel placement is LOWER, we need to traverse all channels until first UPPER channel for given HT range
+        if [ "${chan_placement}" == "LOWER" ]; then
+            channels_to_check="${state_channel}"
+            next_channel="${state_channel}"
+            while [ "${next_channel}" != "${invert_channel}" ] && [ "${next_channel}" -lt "${upper_limit}" ]; do
+                next_channel=$((next_channel + 4))
+                channels_to_check="${channels_to_check} ${next_channel}"
+            done
+        # If channel placement is UPPER, we need to traverse all channels until first LOWER channel for given HT range
+        elif [ "${chan_placement}" == "UPPER" ]; then
+            prev_channel="${state_channel}"
+            while [ "${prev_channel}" != "${invert_channel}" ] && [ "${prev_channel}" -gt "${lower_limit}" ]; do
+                prev_channel=$((prev_channel - 4))
+                channels_to_check="${channels_to_check} ${prev_channel}"
+            done
+            channels_to_check="${channels_to_check} ${state_channel}"
+        else
+            # Channel placement is in the MIDDLE of the range
+            # We need to acquire previous lower channels, and next upper channels
+            # For example, in HT80 channel 108 is in the middle, his LOWER channel is 100, and his upper channel is 112
+            # We need to get all channels, since we are in the MIDDLE of the range, we will first find range LOWER channel
+            # And traverse to range UPPER channel - identical as in chan_placement==LOWER condition
+            chan_placement_match=$(cat "${regulatory_file_path}" | grep -i "CHAN_PLACE_${state_freq_band}_${state_ht_mode}_LOWER")
+            chan_placement_match_invert=$(cat "${regulatory_file_path}" | grep -i "CHAN_PLACE_${state_freq_band}_${state_ht_mode}_UPPER")
+            for check_channel in ${chan_placement_match}; do
+                lower_channel="${state_channel}"
+                # Only channels lower than the current state channel can be their lower channel
+                if [ "${check_channel}" -lt "${state_channel}" ]; then
+                    chan_num_in_range="1"
+                    case ${state_ht_mode} in
+                        "HT40")
+                            chan_num_in_range="1 2"
+                            ;;
+                        "HT80")
+                            chan_num_in_range="1 2 3 4"
+                            ;;
+                        "HT160")
+                            chan_num_in_range="1 2 3 4 5 6 7 8"
+                            ;;
+                    esac
+                    for i in ${chan_num_in_range}; do
+                        lower_channel=$((lower_channel - 4))
+                        [ "${check_channel}" == "${lower_channel}" ] && break
+                    done
+                    [ "${check_channel}" == "${lower_channel}" ] && break
+                fi
+            done
+            log -deb "wm2_lib::validate_cac - Lower channel for ${state_channel} in ${state_ht_mode} is ${lower_channel}"
+            lower_placement_index=$(get_index_in_list "${lower_channel}" ${chan_placement_match})
+            if [ "$?" != "0" ]; then
+                raise "Failed to retrieve lower placement of ${lower_channel} in ${chan_placement_match}" -l "lib/wm2_lib::validate_cac" -tc
+            fi
+            upper_channel=$(get_by_index_from_list "${lower_placement_index}" ${chan_placement_match_invert})
+            log -deb "wm2_lib::validate_cac - Upper channel for ${state_channel} in ${state_ht_mode} is ${upper_channel}"
+            channels_to_check="${lower_channel}"
+            next_channel="${lower_channel}"
+            while [ "${next_channel}" != "${upper_channel}" ] && [ "${next_channel}" -lt "${upper_limit}" ]; do
+                next_channel=$((next_channel + 4))
+                channels_to_check="${channels_to_check} ${next_channel}"
+            done
         fi
     fi
+    log -deb "wm2_lib:validate_cac - Acquiring channels to validate CAC for ${state_channel} in range of ${state_ht_mode} are ${channels_to_check}"
+    # shellcheck disable=SC1073
+    for check_channel in ${channels_to_check}; do
+        check_standard=$(contains_element "${check_channel}" ${reg_dfs_standard_match})
+        check_weather=$(contains_element "${check_channel}" ${reg_dfs_weather_match})
+        if [ "${check_standard}" == "0" ]; then
+            cac_time=60
+            cac_state="cac_completed"
+            log -deb "wm2_lib:validate_cac - Channel ${check_channel} is standard DFS channel - CAC time ${cac_time}s"
+        elif [ "${check_weather}" == "0" ]; then
+            cac_time=600
+            cac_state="cac_completed"
+            log -deb "wm2_lib:validate_cac - Channel ${check_channel} is weather DFS channel - CAC time ${cac_time}s"
+        else
+            cac_time=1
+            cac_state="allowed"
+            log -deb "wm2_lib:validate_cac - Channel ${check_channel} is standard channel - CAC time 1s"
+        fi
+        wait_for_function_output -of "${cac_state} nop_finished nop_started" "get_radio_channel_state ${check_channel} ${if_name}" ${cac_time} &&
+            log -deb "wm2_lib:validate_cac - Channel state went to ${cac_state}. Channel available" ||
+            log -err "wm2_lib:validate_cac - Channel state did not went to ${cac_state}. Channel unavailable"
+
+        log -deb "wm2_lib:validate_cac - Checking interface ${if_name} channel ${check_channel} status"
+        channel_status="$(get_radio_channel_state "${check_channel}" "${if_name}")"
+        log -deb "wm2_lib:validate_cac - Channel status is: ${channel_status}"
+        if [ "${channel_status}" == "${cac_state}" ]; then
+            log -deb "wm2_lib:validate_cac - Channel ${check_channel} available - Success"
+        elif [ "${channel_status}" == "nop_finished" ]; then
+            log -deb "wm2_lib:validate_cac - Channel ${check_channel} started recalculation, channel status is nop_finished - Success"
+            log -deb "wm2_lib:validate_cac - Waiting channel ${check_channel} status cac_started - Success"
+            # WM recalculation time is 30s
+            wait_for_function_output "cac_started" "get_radio_channel_state ${check_channel} ${if_name}" "${wm_reconfiguration_time}" &&
+                log -deb "wm2_lib:validate_cac - Channel state went to cac_started. Channel CAC started" ||
+                log -err "wm2_lib:validate_cac - Channel state did not went to cac_started. Channel CAC did not start, checking if nop_finished" -l "wm2_lib:validate_cac" -ds
+            channel_status="$(get_radio_channel_state "${check_channel}" "${if_name}")"
+            log -deb "wm2_lib:validate_cac - Channel state is ${channel_status}. Waiting for cac_completed"
+            wait_for_function_output "${cac_state}" "get_radio_channel_state ${check_channel} ${if_name}" ${cac_time} &&
+                log -deb "wm2_lib:validate_cac - Channel state went to ${cac_state}. Channel available" ||
+                log -err "wm2_lib:validate_cac - Channel state did not went to ${cac_state}. Channel unavailable"
+            channel_status="$(get_radio_channel_state "${check_channel}" "${if_name}")"
+            if [ "${channel_status}" == "cac_completed" ]; then
+                log -deb "wm2_lib:validate_cac - Channel state is ${cac_state}. Channel available"
+            elif [ "${channel_status}" == "nop_finished" ]; then
+                raise "FAIL: Channel state is nop_finished. Channel is not cac_completed" -l "wm2_lib:validate_cac" -ds
+            else
+                raise "FAIL: Channel is unavailable. Channel state is ${channel_status}" -l "wm2_lib:validate_cac" -ds
+            fi
+        elif [ "${channel_status}" == "nop_started" ]; then
+            raise "SKIP: Channel ${check_channel} NOP time started, channel  unavailable" -l "wm2_lib:validate_cac" -s
+        else
+            print_tables Wifi_Radio_State || true
+            raise "FAIL: Channel ${check_channel} is not available or ready for use" -l "wm2_lib:validate_cac" -ds
+        fi
+    done
 }
 
 ###############################################################################
@@ -1596,7 +1717,7 @@ get_radio_channel_state()
         return 1
 
     state_raw=$(get_ovsdb_entry_value Wifi_Radio_State channels -w if_name "$wm2_radio_if_name" -r | tr ']' '\n' | grep "$wm2_channel")
-    state="$(echo "${state_raw##*state}" | tr -d ' \":}')"
+    state="$(echo "${state_raw##*state}" | tr -d ' \":}' | tr -d ' ')"
     if [ "$state" == "allowed" ]; then
         echo "allowed"
     elif [ "$state" == "nop_finished" ]; then
@@ -1607,7 +1728,7 @@ get_radio_channel_state()
         echo "nop_started"
     else
         # Undocumented state, return 1
-        echo "${state_raw##*state}" | tr -d '\":}'
+        echo "${state_raw##*state}" | tr -d '\":}' | tr -d ' '
         return 1
     fi
 
@@ -1774,17 +1895,17 @@ check_is_cac_started()
 
 ###############################################################################
 # DESCRIPTION:
-#   Function checks if NOP (No Occupancy Period) on selected channel and
-#   interface is finished, indicating the period of 30 minutes since weather
-#   radar signal on channel in question has passed, making channel immediately
-#   usable.
-#   State is established by inspecting the Wifi_Radio_State table.
-#   Raises exception if NOP not finished.
+#   Function checks if NOP (No Occupancy Period) on the desired interface for
+#   the channel in question is not in effect. This means that there are no
+#   active radar events detected and the channel is eligible to start CAC
+#   (channel availability check).
+#   The information is parsed from the Wifi_Radio_State table.
 # INPUT PARAMETER(S):
 #   $1  Channel (int, required)
 #   $2  Interface name (string, required)
 # RETURNS:
-#   0   NOP finished for channel or channel is already allowed.
+#   0   channel status is "nop_finished"
+#   1   channel status is not "nop_finished"
 #   See DESCRIPTION.
 # USAGE EXAMPLE(S):
 #   check_is_nop_finished 120 wifi2
@@ -1801,14 +1922,9 @@ check_is_nop_finished()
     if ${OVSH} s Wifi_Radio_State channels -w if_name=="$wm2_if_name" -r | grep -F '["'$wm2_channel'","{\"state\": \"nop_finished\"}"]'; then
         log -deb "wm2_lib:check_is_nop_finished - NOP finished on channel '$wm2_channel'"
         return 0
-    elif
-        ${OVSH} s Wifi_Radio_State channels -w if_name=="$wm2_if_name" -r | grep -F '["'$wm2_channel'","{\"state\":\"allowed\"}"]'; then
-        log -deb "wm2_lib:check_is_nop_finished - Channel '$wm2_channel' is allowed"
-        return 0
     fi
 
-    ${OVSH} s Wifi_Radio_State channels -w if_name=="$wm2_if_name" || true
-    raise "FAIL: NOP is not finished on channel '$wm2_channel'" -l "wm2_lib:check_is_nop_finished" -tc
+    return 1
 }
 
 ###############################################################################

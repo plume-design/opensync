@@ -135,8 +135,12 @@ wm2_l2uf_pcap_recv(u_char *user,
     LOGI("l2uf: received: if_name=%s sa=%s%s",
          i->if_name, mac_str,
          i->passive ? " (passive; no disconnect)" : "");
-    if (i->passive == false)
-        WARN_ON(target_bsal_client_disconnect(i->if_name, eth->sa, type, reason) < 0);
+    if (i->passive == false) {
+        if (!target_vif_sta_remove(i->if_name, eth->sa)) {
+            LOGI("l2uf: fall back to old way of station removal");
+            WARN_ON(target_bsal_client_disconnect(i->if_name, eth->sa, type, reason) < 0);
+        }
+    }
 }
 
 static void

@@ -37,6 +37,7 @@ extern ovsdb_table_t table_Wifi_VIF_State;
 extern ovsdb_table_t table_Wifi_Credential_Config;
 extern ovsdb_table_t table_Wifi_Associated_Clients;
 extern ovsdb_table_t table_Openflow_Tag;
+extern ovsdb_table_t table_RADIUS;
 
 int     wm2_radio_init(void);
 void    wm2_radio_delayed_soon(void);

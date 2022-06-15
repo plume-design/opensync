@@ -73,6 +73,13 @@ NARGS=2
 manager=${1}
 kconfig_val=${2}
 
+trap '
+fut_info_dump_line
+print_tables Node_Services
+check_restore_ovsdb_server
+fut_info_dump_line
+' EXIT SIGINT SIGTERM
+
 log_title "dm/dm_verify_enable_node_services.sh: DM test - Verify status of each manager against 'enable' field value in the 'Node_Services' table."
 
 print_tables Node_Services

@@ -52,11 +52,12 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 // a smaller queue size - only to merge multiple stats to single report
 // 30 is requierd for mqttsim --rpm 2 to work properly
 #define DPP_MAX_QUEUE_DEPTH (30)
-#define DPP_MAX_QUEUE_SIZE_BYTES (512*1024) // 512 KB
 #else
 #define DPP_MAX_QUEUE_DEPTH (200)
-#define DPP_MAX_QUEUE_SIZE_BYTES (2*1024*1024) // 2 MB
 #endif
+// In case a lot (>=150) of clients are connected, the queue needs a
+// large buffer to hold all of data. 3 MB is enough for now.
+#define DPP_MAX_QUEUE_SIZE_BYTES (3*1024*1024) // 3 MB
 
 #define STATS_MQTT_BUF_SZ        (128*1024)    // 128 KB
 // AWS IOT Message Size Limit = 128KB

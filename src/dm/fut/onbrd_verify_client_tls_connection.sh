@@ -98,6 +98,7 @@ trap '
     [ -n "${m_inactivity_probe_org}" ] && update_ovsdb_entry Manager -u inactivity_probe "${m_inactivity_probe_org}" || true
     [ -n "${m_min_backoff_org}" ] && update_ovsdb_entry AWLAN_Node -u min_backoff "${m_min_backoff_org}" || true
     [ -n "${m_max_backoff_org}" ] && update_ovsdb_entry AWLAN_Node -u max_backoff "${m_max_backoff_org}" || true
+    check_restore_ovsdb_server
     fut_info_dump_line
 ' EXIT SIGINT SIGTERM
 

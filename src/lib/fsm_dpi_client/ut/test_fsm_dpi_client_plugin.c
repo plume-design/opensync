@@ -33,11 +33,67 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "fsm.h"
 #include "fsm_dpi_client_plugin.h"
 #include "os.h"
+#include "network_metadata_utils.h"
+#include "policy_tags.h"
 #include "unity.h"
 #include "unity_internals.h"
 
 static struct fsm_session session;
 static union fsm_plugin_ops p_ops;
+
+struct schema_Openflow_Tag g_tags[] =
+{
+    {
+        .name_exists = true,
+        .name = "included",
+        .device_value_len = 1,
+        .device_value =
+        {
+            "11:11:11:11:11:11",
+        },
+        .cloud_value_len = 1,
+        .cloud_value =
+        {
+            "11:11:11:11:11:11",
+        },
+    },
+    {
+        .name_exists = true,
+        .name = "excluded",
+        .device_value_len = 1,
+        .device_value =
+        {
+            "22:22:22:22:22:22",
+        },
+        .cloud_value_len = 1,
+        .cloud_value =
+        {
+            "22:22:22:22:22:22",
+        },
+    },
+};
+
+struct schema_Openflow_Tag_Group g_tag_groups[] =
+{
+    {
+        .name_exists = true,
+        .name = "include_group_tag",
+        .tags_len = 1,
+        .tags =
+        {
+            "included",
+        }
+    },
+    {
+        .name_exists = true,
+        .name = "exclude_group_tag",
+        .tags_len = 1,
+        .tags =
+        {
+            "excluded",
+        }
+    },
+};
 
 static char *get_config(struct fsm_session *session, char *key)
 {
@@ -45,6 +101,24 @@ static char *get_config(struct fsm_session *session, char *key)
 
     if (strcmp(key, "included_devices") == 0) return "included";
     if (strcmp(key, "excluded_devices") == 0) return "excluded";
+    return "";
+}
+
+static char *get_config_tag(struct fsm_session *session, char *key)
+{
+    (void)session;
+
+    if (strcmp(key, "included_devices") == 0) return "${included}";
+    if (strcmp(key, "excluded_devices") == 0) return "${excluded}";
+    return "";
+}
+
+static char *get_config_group_tag(struct fsm_session *session, char *key)
+{
+    (void)session;
+
+    if (strcmp(key, "included_devices") == 0) return "$[include_group_tag]";
+    if (strcmp(key, "excluded_devices") == 0) return "$[exclude_group_tag]";
     return "";
 }
 
@@ -220,10 +294,165 @@ test_process_attr(void)
 }
 
 void
+test_process_attr_include_exclude_list(void)
+{
+    struct fsm_dpi_plugin_client_pkt_info pkt_info;
+    struct fsm_dpi_client_session u_session;
+    struct net_md_stats_accumulator acc;
+    const char a_string[] = "STRING\0\0";
+    struct net_md_flow_key acc_key;
+    os_macaddr_t mac_n;
+    size_t num_c;
+    size_t i;
+    int ret;
+
+    /* initialize tags */
+    num_c = sizeof(g_tags) / sizeof(*g_tags);
+    for (i = 0; i < num_c; i++)
+    {
+        ret = om_tag_add_from_schema(&g_tags[i]);
+        TEST_ASSERT_TRUE(ret);
+    }
+
+    MEMZERO(session);
+    session.node_id = "NODE_ID";
+    session.location_id = "LOCATION_ID";
+    session.name = "Walleye";
+    session.ops.get_config = get_config_tag;
+    session.p_ops = &p_ops;
+    session.handler_ctxt = &session;
+    ret = fsm_dpi_client_init(&session);
+    session.handler_ctxt = &u_session;
+    fsm_dpi_client_update(&session);
+    TEST_ASSERT_EQUAL_INT(0, ret);
+
+
+    MEMZERO(acc);
+    acc.originator = NET_MD_ACC_ORIGINATOR_SRC;
+    acc.direction = NET_MD_ACC_OUTBOUND_DIR;
+
+    /* verify include tag */
+    ret = str2os_mac_ref("11:11:11:11:11:11", &mac_n);
+    TEST_ASSERT_TRUE(ret);
+    acc_key.smac = &mac_n;
+    acc.key = &acc_key;
+    pkt_info.acc = &acc;
+
+    ret = fsm_dpi_client_process_attr(&session, "ATTR", RTS_TYPE_STRING, strlen(a_string), a_string, &pkt_info);
+    TEST_ASSERT_EQUAL_INT(FSM_DPI_INSPECT, ret);
+
+    /* verify exclude tag */
+    ret = str2os_mac_ref("22:22:22:22:22:22", &mac_n);
+    TEST_ASSERT_TRUE(ret);
+    acc_key.smac = &mac_n;
+    acc.key = &acc_key;
+
+    ret = fsm_dpi_client_process_attr(&session, "ATTR", RTS_TYPE_STRING, strlen(a_string), a_string, &pkt_info);
+    TEST_ASSERT_EQUAL_INT(FSM_DPI_IGNORED, ret);
+
+    /* remove tags */
+    for (i = 0; i < num_c; i++)
+    {
+        ret = om_tag_remove_from_schema(&g_tags[i]);
+        TEST_ASSERT_TRUE(ret);
+    }
+
+    fsm_dpi_client_exit(&session);
+}
+
+void
+test_process_attr_group_include_exclude_list(void)
+{
+    struct fsm_dpi_plugin_client_pkt_info pkt_info;
+    struct fsm_dpi_client_session u_session;
+    struct net_md_stats_accumulator acc;
+    const char a_string[] = "STRING\0\0";
+    struct net_md_flow_key acc_key;
+    os_macaddr_t mac_n;
+    size_t num_c;
+    size_t i;
+    int ret;
+
+    /* initialize tags */
+    num_c = sizeof(g_tags) / sizeof(*g_tags);
+    for (i = 0; i < num_c; i++)
+    {
+        ret = om_tag_add_from_schema(&g_tags[i]);
+        TEST_ASSERT_TRUE(ret);
+    }
+
+    /* initialize group tags */
+    num_c = sizeof(g_tag_groups) / sizeof(*g_tag_groups);
+    for (i = 0; i < num_c; i++)
+    {
+        ret = om_tag_group_add_from_schema(&g_tag_groups[i]);
+        TEST_ASSERT_TRUE(ret);
+    }
+
+    MEMZERO(session);
+    session.node_id = "NODE_ID";
+    session.location_id = "LOCATION_ID";
+    session.name = "Walleye";
+    session.ops.get_config = get_config_group_tag;
+    session.p_ops = &p_ops;
+    session.handler_ctxt = &session;
+    ret = fsm_dpi_client_init(&session);
+    session.handler_ctxt = &u_session;
+    fsm_dpi_client_update(&session);
+    TEST_ASSERT_EQUAL_INT(0, ret);
+
+
+    MEMZERO(acc);
+    acc.originator = NET_MD_ACC_ORIGINATOR_SRC;
+    acc.direction = NET_MD_ACC_OUTBOUND_DIR;
+
+    /* verify include tag */
+    ret = str2os_mac_ref("11:11:11:11:11:11", &mac_n);
+    TEST_ASSERT_TRUE(ret);
+    acc_key.smac = &mac_n;
+    acc.key = &acc_key;
+    pkt_info.acc = &acc;
+
+    ret = fsm_dpi_client_process_attr(&session, "ATTR", RTS_TYPE_STRING, strlen(a_string), a_string, &pkt_info);
+    TEST_ASSERT_EQUAL_INT(FSM_DPI_INSPECT, ret);
+
+    /* verify exclude tag */
+    ret = str2os_mac_ref("22:22:22:22:22:22", &mac_n);
+    TEST_ASSERT_TRUE(ret);
+    acc_key.smac = &mac_n;
+    acc.key = &acc_key;
+
+    ret = fsm_dpi_client_process_attr(&session, "ATTR", RTS_TYPE_STRING, strlen(a_string), a_string, &pkt_info);
+    TEST_ASSERT_EQUAL_INT(FSM_DPI_IGNORED, ret);
+
+    num_c = sizeof(g_tags) / sizeof(*g_tags);
+
+    /* remove tags */
+    for (i = 0; i < num_c; i++)
+    {
+        ret = om_tag_remove_from_schema(&g_tags[i]);
+        TEST_ASSERT_TRUE(ret);
+    }
+
+    num_c = sizeof(g_tag_groups) / sizeof(*g_tag_groups);
+
+    /* remove group tags */
+    for (i = 0; i < num_c; i++)
+    {
+        ret = om_tag_group_remove_from_schema(&g_tag_groups[i]);
+        TEST_ASSERT_TRUE(ret);
+    }
+
+    fsm_dpi_client_exit(&session);
+}
+
+void
 run_test_fsm_dpi_client_plugin(void)
 {
     RUN_TEST(test_init_exit);
     RUN_TEST(test_update);
     RUN_TEST(test_periodic);
     RUN_TEST(test_process_attr);
+    RUN_TEST(test_process_attr_include_exclude_list);
+    RUN_TEST(test_process_attr_group_include_exclude_list);
 }

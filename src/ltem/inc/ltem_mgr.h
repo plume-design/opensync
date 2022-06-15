@@ -116,6 +116,7 @@ typedef struct lte_route_info_
     char lte_dns1[C_IPV6ADDR_LEN];
     char lte_dns2[C_IPV6ADDR_LEN];
     uint32_t wan_priority;
+    bool has_L3;
 } lte_route_info_t;
 
 struct client_entry
@@ -139,6 +140,7 @@ typedef struct ltem_mgr_
     time_t periodic_ts;          // periodic timestamp
     time_t mqtt_periodic_ts;     // periodic timestamp for MQTT reports
     time_t state_periodic_ts;    // periodic timestamp for Lte State updates
+    time_t l3_state_periodic_ts; // periodic timestamp for L3 state check
     time_t init_time;            // init time
     char pid[16];                // manager's pid
     struct sysinfo sysinfo;      /* system information */
@@ -205,5 +207,7 @@ int ltem_ovsdb_cmu_update_lte_priority(ltem_mgr_t *mgr, uint32_t priority);
 int ltem_update_esim(ltem_mgr_t *mgr);
 bool ltem_init_lte_modem(void);
 char *ltem_ovsdb_get_if_type(char *if_name);
+void ltem_fini_lte_modem(void);
+int ltem_ovsdb_check_l3_state(ltem_mgr_t *mgr);
 
 #endif /* LTEM_MGR_H_INCLUDED */

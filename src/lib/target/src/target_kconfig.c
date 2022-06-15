@@ -387,9 +387,10 @@ util_ping_cmd(const char *ipstr, const char *ifname, bool ipv6, bool timeout)
         Wparam_p = "";
     }
 
-    snprintf(cmd, sizeof(cmd), "ping %s %s -I %s -s %d -c %d -w %d %s >/dev/null 2>&1",
-             ipv6_s, ipstr, ifname,
-             DEFAULT_PING_PACKET_SIZE, DEFAULT_PING_PACKET_CNT, DEFAULT_PING_DEADLINE, Wparam_p);
+    snprintf(cmd, sizeof(cmd), "ping %s -I %s -s %d -c %d -w %d %s %s >/dev/null 2>&1",
+             ipv6_s, ifname,
+             DEFAULT_PING_PACKET_SIZE, DEFAULT_PING_PACKET_CNT, DEFAULT_PING_DEADLINE,
+             Wparam_p, ipstr);
 
     rc = util_system_cmd(cmd);
     LOGD("Ping %s result %d (cmd=%s)", ipstr, rc, cmd);
@@ -616,43 +617,6 @@ util_connectivity_wifi_link_check(const char *gre_ifname)
 }
 
 static bool
-util_get_ipv6_global_interface(char *ifn, int ifn_size)
-{
-    FILE *f1;
-    char line[128];
-    bool retval;
-    char cmd[128];
-
-    f1 = NULL;
-    retval = false;
-
-    snprintf(cmd, sizeof(cmd), "ip -6 route show default | awk '$2 != \"from\" {print $5}'");
-    f1 = popen(cmd, "r");
-    if (!f1) {
-        LOGE("Failed to get ipv6 route info");
-        goto done;
-    }
-
-    if (fgets(line, sizeof(line), f1) == NULL) {
-        LOGD("IPv6 default route not available");
-        goto done;
-    }
-
-    while(line[strlen(line)-1] == '\r' || line[strlen(line)-1] == '\n') {
-        line[strlen(line)-1] = '\0';
-    }
-
-    retval = true;
-    strscpy(ifn, line, ifn_size);
-done:
-    if (f1 != NULL)
-        pclose(f1);
-
-    return retval;
-}
-
-
-static bool
 util_connectivity_router_ipv4_check(const char *ifname, bool cfast)
 {
     struct in_addr r_addr;
@@ -719,8 +683,6 @@ util_connectivity_internet_ipv4_check(const char *ifname, bool cfast) {
 
 static bool
 util_connectivity_internet_ipv6_check(const char *ifname, bool cfast) {
-    char  ipv6_addr[256];
-    char  ipv6_if[126];
     bool  ret;
     int   cnt_addr;
     int   tries;
@@ -729,12 +691,6 @@ util_connectivity_internet_ipv6_check(const char *ifname, bool cfast) {
     cnt_addr = util_connectivity_get_inet_addr_cnt(util_connectivity_check_inet_addrs);
     tries = DEFAULT_INTERNET_CNT_CHECK;
     ret = false;
-
-    ret = util_get_ipv6_global_interface(ipv6_if, sizeof(ipv6_if));
-    if (!ret) {
-        LOGI("IPv6 global interface not available");
-        return false;
-    }
 
     while (tries--) {
         r1 = os_random() % cnt_addr;
@@ -746,8 +702,7 @@ util_connectivity_internet_ipv6_check(const char *ifname, bool cfast) {
         if (!ret) {
             cnt_addr = util_connectivity_get_inet_addr_cnt(util_connectivity_check_inet_ipv6_addrs);
             r2 = os_random() % cnt_addr;
-            snprintf(ipv6_addr, sizeof(ipv6_addr), "%s%%%s", util_connectivity_check_inet_ipv6_addrs[r2], ipv6_if);
-            ret = util_ping_cmd(ipv6_addr, ifname, true, cfast);
+            ret = util_ping_cmd(util_connectivity_check_inet_ipv6_addrs[r2], ifname, true, cfast);
             if (!ret)
                 LOGI("Internet IPv6 checking failed, dns1: %s, dns2: %s",
                      util_connectivity_check_inet_addrs[r1], util_connectivity_check_inet_ipv6_addrs[r2]);

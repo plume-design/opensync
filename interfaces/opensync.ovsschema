@@ -1,7 +1,7 @@
 {
   "name": "Open_vSwitch",
-  "version": "7.11.317",
-  "cksum": "3035145672 279900",
+  "version": "7.11.320",
+  "cksum": "2581933246 282276",
   "tables": {
     "AWLAN_Node": {
       "columns": {
@@ -6135,7 +6135,115 @@
             "min": 0,
             "max": 1
           }
-	}
+        },
+        "externalIP": {
+          "type": {
+            "key": {
+              "type": "string"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "is_vpn": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "mac_addr": {
+          "type": {
+            "key": {
+              "type": "string"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "interface_name": {
+          "type": {
+            "key": {
+              "type": "string"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "packet_loss": {
+          "type": {
+            "key": {
+              "type": "real"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "result_id": {
+          "type": {
+            "key": {
+              "type": "string"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "persisted": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "country": {
+          "type": {
+            "key": {
+              "type": "string"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "server_host": {
+          "type": {
+            "key": {
+              "type": "string"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "server_location": {
+          "type": {
+            "key": {
+              "type": "string"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "server_id": {
+          "type": {
+            "key": {
+              "type": "string"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "server_port": {
+          "type": {
+            "key": {
+              "type": "integer"
+            },
+            "min": 0,
+            "max": 1
+          }
+        }
       },
       "isRoot": true
     },
@@ -11670,6 +11778,17 @@
             "max": 1
           }
         },
+        "healthcheck_src": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 49
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
         "healthcheck_status": {
           "type": {
             "key": {
@@ -12621,7 +12740,7 @@
             "key": {
               "type": "string",
               "minLength": 1,
-              "maxLength": 49
+              "maxLength": 256
             },
             "min": 0,
             "max": 1

@@ -17,6 +17,11 @@ if MANAGER_WANO
         help
             Space separated interface list that will be used for WAN probing.
 
+            Optionally an interface type can be specified by appending the
+            ":type" string to the interface name. If the type is not specified,
+            `eth` is assumed. Currently the only supported types are `eth` and
+            `unmanaged`.
+
     config MANAGER_WANO_PLUGIN_TIMEOUT
         int "WAN plug-in link probing timeout"
         default 15
@@ -105,4 +110,11 @@ if MANAGER_WANO
 
             If another DHCP packet type is received, or another host sends any
             type of DHCP packet, this number is ignored.
+
+    config MANAGER_WANO_PLUGIN_CMTS
+        bool "WANO CMTS plugin"
+        default n
+        help
+            WANO cmts plug-in for reporting configured link by the CMTS.
+
 endif

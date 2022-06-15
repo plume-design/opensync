@@ -82,6 +82,7 @@ trap '
     cat $log_state_file
     print_tables AW_Debug
     empty_ovsdb_table AW_Debug
+    check_restore_ovsdb_server
     fut_info_dump_line
 ' EXIT SIGINT SIGTERM
 

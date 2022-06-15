@@ -419,6 +419,56 @@ enum osn_ip6_addr_type osn_ip6_addr_type(osn_ip6_addr_t *ip6)
     return OSN_IP6_ADDR_INVALID;
 }
 
+int osn_ipany_addr_cmp(const void *_a, const void *_b)
+{
+    const osn_ipany_addr_t *a = _a;
+    const osn_ipany_addr_t *b = _b;
+
+    if (a->addr_type != b->addr_type)
+    {
+        if (a->addr_type == AF_INET)
+        {
+            return -1;
+        }
+        else
+        {
+            return 1;
+        }
+    }
+    if (a->addr_type == AF_INET)
+        return osn_ip_addr_cmp(_a, _b);
+    else
+        return osn_ip6_addr_cmp(_a, _b);
+}
+
+bool osn_ipany_addr_from_str(osn_ipany_addr_t *out, const char *str)
+{
+    if (osn_ip_addr_from_str(&out->addr.ip4, str))
+    {
+        out->addr_type = AF_INET;
+        return true;
+    }
+
+    if (osn_ip6_addr_from_str(&out->addr.ip6, str))
+    {
+        out->addr_type = AF_INET6;
+        return true;
+    }
+    return false;
+}
+
+char *__FMT_osn_ipany_addr(char *buf, size_t sz, const osn_ipany_addr_t *addr)
+{
+    if (addr->addr_type == AF_INET)
+    {
+        return __FMT_osn_ip_addr(buf, sz, &addr->addr.ip4);
+    }
+    else
+    {
+        /* If not AF_INET assume AF_INET6, as there are only two options */
+        return __FMT_osn_ip6_addr(buf, sz, &addr->addr.ip6);
+    }
+}
 
 /*
  * ===========================================================================

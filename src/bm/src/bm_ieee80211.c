@@ -294,7 +294,7 @@ bm_ie_parse_supported_op_classes(bm_client_t *client, const uint8_t *ie, size_t 
     memset(&client->op_classes, 0, sizeof(client->op_classes));
 
     if (len > BM_CLIENT_MAX_OP_CLASSES) {
-        LOGW("%s Size of operating classes more than expected (%d): %d",
+        LOGW("%s Size of operating classes more than expected (%zu): %d",
              client->mac_addr, len, BM_CLIENT_MAX_OP_CLASSES);
         client->op_classes.size = BM_CLIENT_MAX_OP_CLASSES;
     } else {

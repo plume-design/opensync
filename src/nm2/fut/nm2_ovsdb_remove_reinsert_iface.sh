@@ -79,6 +79,7 @@ trap '
     print_tables Wifi_Inet_Config Wifi_Inet_State
     reset_inet_entry $if_name || true
     check_restore_management_access || true
+    check_restore_ovsdb_server
     fut_info_dump_line
 ' EXIT SIGINT SIGTERM
 

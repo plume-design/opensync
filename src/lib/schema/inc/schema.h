@@ -133,6 +133,14 @@ SCHEMA_LISTX(_SCHEMA_COL_DECL)
             FIELD##_present = true; \
         } while (0)
 
+#define SCHEMA_APPEND_UUID(FIELD, VALUE) \
+        do { \
+            if (WARN_ON((size_t)FIELD##_len >= ARRAY_SIZE(FIELD))) break; \
+            STRSCPY(FIELD[FIELD##_len].uuid, VALUE); \
+            FIELD##_present = true; \
+            FIELD##_len++; \
+        } while (0)
+
 #define SCHEMA_KEY_VAL_APPEND_INT(FIELD, KEY, VALUE) \
         do { \
             if (WARN_ON((size_t)FIELD##_len >= ARRAY_SIZE(FIELD))) break; \

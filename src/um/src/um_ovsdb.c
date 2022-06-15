@@ -313,7 +313,7 @@ static void callback_AWLAN_Node(
         struct schema_AWLAN_Node *awlan_node)
 {
     LOG(DEBUG, "Firmware url %s: %s",    awlan_node->firmware_url_changed     ? "changed" : "same", awlan_node->firmware_url);
-    LOG(DEBUG, "Firmware pass %s: %s",   awlan_node->firmware_pass_changed    ? "changed" : "same", awlan_node->firmware_pass);
+    LOG(DEBUG, "Firmware pass %s: [REMOVED]",   awlan_node->firmware_pass_changed    ? "changed" : "same");
     LOG(DEBUG, "Upgrade timer %s: %d",    awlan_node->upgrade_timer_changed    ? "changed" : "same", awlan_node->upgrade_timer);
     LOG(DEBUG, "Upgrade dl timer %s: %d", awlan_node->upgrade_dl_timer_changed ? "changed" : "same", awlan_node->upgrade_dl_timer);
 

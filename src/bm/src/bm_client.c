@@ -592,6 +592,11 @@ bm_client_update_rrm_neighbors(void)
     }
 }
 
+static bool bm_client_is_cap_6G(bm_client_t *client)
+{
+    return client->band_cap_6G | (client->band_cap_mask & BM_CLIENT_OPCLASS_60_CAP_BIT);
+}
+
 static void
 bm_client_print_client_caps( bm_client_t *client )
 {
@@ -603,7 +608,7 @@ bm_client_print_client_caps( bm_client_t *client )
     LOGD( " isRRMSupported        : %s", client->info->is_RRM_supported ? "Yes":"No" );
     LOGD( " Supports 2G           : %s", client->info->band_cap_2G ? "Yes":"No" );
     LOGD( " Supports 5G           : %s", client->info->band_cap_5G ? "Yes":"No" );
-    LOGD( " Supports 6G           : %s", client->info->band_cap_6G ? "Yes":"No" );
+    LOGD( " Supports 6G           : %s", bm_client_is_cap_6G(client) ? "Yes":"No" );
 
     LOGD( "   ~~~Datarate Information~~~    " );
     LOGD( " Max Channel Width     : %hhu", client->info->datarate_info.max_chwidth );
@@ -646,7 +651,7 @@ static void bm_client_report_caps(bm_client_t *client, const char *ifname, bsal_
     event.data.connect.is_RRM_supported = info->is_RRM_supported;
     event.data.connect.band_cap_2G = info->band_cap_2G | client->band_cap_2G;
     event.data.connect.band_cap_5G = info->band_cap_5G | client->band_cap_5G;
-    event.data.connect.band_cap_6G = info->band_cap_6G | client->band_cap_6G;
+    event.data.connect.band_cap_6G = info->band_cap_6G | bm_client_is_cap_6G(client);
     event.data.connect.assoc_ies_len = info->assoc_ies_len <= ARRAY_SIZE(event.data.connect.assoc_ies)
                                      ? info->assoc_ies_len
                                      : ARRAY_SIZE(event.data.connect.assoc_ies);
@@ -812,11 +817,11 @@ void bm_client_check_connected(bm_client_t *client, bm_group_t *group, const cha
     /* Check assoc IEs */
     bm_client_parse_assoc_ies(client, info.assoc_ies, info.assoc_ies_len);
 
-    /* Recalc client capabilities */
-    bm_client_caps_recalc(client, ifname, &info);
-
     /* Set client capabilities based on supported Operating Classes */
     bm_client_set_band_caps_mask(client);
+
+    /* Recalc client capabilities */
+    bm_client_caps_recalc(client, ifname, &info);
 
     bm_kick_cancel_btm_retry_task( client );
     bm_client_preassoc_backoff_recalc(group, client, ifname);

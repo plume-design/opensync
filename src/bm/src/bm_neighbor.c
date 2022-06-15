@@ -128,16 +128,6 @@ bm_neighbor_get_radio_type(const struct schema_Wifi_VIF_Neighbors *neigh)
     if (bm_group_find_by_ifname(neigh->if_name))
         return bm_group_find_radio_type_by_ifname(neigh->if_name);
 
-    /*
-     * If there's no VIF called "neigh->ifname" it's most probably the case
-     * when pod has 5 GHz VAP on 5GU, but controller filled WIF_VIF_Neighbors
-     * with 5GL VAP name. In such case infer radio type from channel.
-     *
-     * Check at least whether channel can be a valid 5 GHz band channel.
-     */
-    if (neigh->channel >= 36 && neigh->channel <= 181)
-        return RADIO_TYPE_5G;
-
     LOGW("%s: Cannot infer radio type for vifname", neigh->if_name);
     return RADIO_TYPE_NONE;
 }
@@ -363,6 +353,7 @@ bm_neighbor_ovsdb_update_cb( ovsdb_update_monitor_t *self )
     struct schema_Wifi_VIF_Neighbors    nconf;
     pjs_errmsg_t                        perr;
     bm_neighbor_t                       *neigh;
+    bool                                overwrite = false;
 
     switch( self->mon_type )
     {
@@ -374,18 +365,28 @@ bm_neighbor_ovsdb_update_cb( ovsdb_update_monitor_t *self )
                 return;
             }
 
-            if ((neigh = bm_neighbor_find_by_macstr(nconf.bssid))) {
-                LOGE("Ignoring duplicate neighbor '%s' (orig uuid=%s, new uuid=%s)",
-                      neigh->bssid, neigh->uuid, nconf._uuid.uuid);
-                return;
-            }
+            /* Workaround for duplicated BSSID.
+             * Whenever insert comes before delete for the same BSSID
+             * - e.g. due to both operations being contained
+             * in a single transaction - an already existing neighbor
+             * will be overwritten including its uuid.
+             * The following delete will trigger a warning since
+             * old bssid is not present anymore.
+             */
 
-            neigh = CALLOC( 1, sizeof( *neigh ) );
+            if ((neigh = bm_neighbor_find_by_macstr(nconf.bssid))) {
+                ds_tree_remove(&bm_neighbors, neigh);
+                overwrite = true;
+            } else {
+                neigh = CALLOC(1, sizeof(*neigh));
+            }
             STRSCPY(neigh->uuid, nconf._uuid.uuid);
 
-            if( !bm_neighbor_from_ovsdb( &nconf, neigh ) ) {
-                LOGE( "Failed to convert row to neighbor info (uuid=%s)", neigh->uuid );
-                FREE( neigh );
+            if (!bm_neighbor_from_ovsdb(&nconf, neigh)) {
+                LOGE("Failed to convert row to neighbor info (uuid=%s) (insert-overwrite=%s)", neigh->uuid, overwrite ? "true" : "false");
+                if (overwrite)
+                    bm_neighbor_remove_neighbor(&neigh->neigh_report);
+                FREE(neigh);
                 return;
             }
 
@@ -431,7 +432,7 @@ bm_neighbor_ovsdb_update_cb( ovsdb_update_monitor_t *self )
         case OVSDB_UPDATE_DEL:
         {
             if( !( neigh = bm_neighbor_find_by_uuid( self->mon_uuid ))) {
-                LOGE( "Unable to find neighbor for delete with uuid=%s", self->mon_uuid );
+                LOGW( "Unable to find neighbor for delete with uuid=%s", self->mon_uuid );
                 return;
             }
 
@@ -592,6 +593,21 @@ bm_neighbor_channel_allowed(const bm_client_t *client, uint8_t channel, uint8_t 
 
     LOGD("%s %d channel allowed %d", client->mac_addr, channel, allowed);
     return allowed;
+}
+
+static bool
+bm_neighbor_in_clients_group(const bm_neighbor_t *neighbor, const bm_client_t *client)
+{
+    unsigned int i;
+
+    if (!client->group) return false;
+
+    for (i=0; i<client->group->ifcfg_num; i++) {
+        if (!strcmp(neighbor->ifname, client->group->ifcfg[i].ifname)) {
+            return true;
+        }
+    }
+    return false;
 }
 
 unsigned int
@@ -804,6 +820,10 @@ bm_neigbour_op_class_allowed(bm_client_t *client, bm_neighbor_t *bm_neigh)
     if (client->op_classes.size == 0) {
         LOGD("%s: client %s has nos no op_classes, accepting unconditionally",
               bm_neigh->bssid, client->mac_addr);
+
+        if (ieee80211_global_op_class_is_6ghz(op_class))
+            return (client->band_cap_mask & BM_CLIENT_OPCLASS_60_CAP_BIT);
+
         return true;
     }
 
@@ -896,6 +916,12 @@ bm_neighbor_build_btm_neighbor_list( bm_client_t *client, bsal_btm_params_t *btm
                 continue;
             }
 
+            // Filter out neighbors not in a group
+            if (!bm_neighbor_in_clients_group(bm_neigh, client)) {
+                LOGT("Skipping neighbor = %s, ifname = %s", bm_neigh->bssid, bm_neigh->ifname);
+                continue;
+            }
+
             cand_bm_cli_neigh_list[cand_bm_cli_neigh_size].client = client;
             cand_bm_cli_neigh_list[cand_bm_cli_neigh_size].neighbor = bm_neigh;
             cand_bm_cli_neigh_size++;
@@ -978,6 +1004,12 @@ bm_neighbor_build_btm_neighbor_list( bm_client_t *client, bsal_btm_params_t *btm
 
         if (!bm_neigbour_op_class_allowed(client, bm_neigh)) {
             LOGT("Skipping neighbor = %s due too op_class mismatch", bm_neigh->bssid);
+            continue;
+        }
+
+        // Filter out neighbors not in a group
+        if (!bm_neighbor_in_clients_group(bm_neigh, client)) {
+            LOGT("Skipping neighbor = %s, ifname = %s", bm_neigh->bssid, bm_neigh->ifname);
             continue;
         }
 

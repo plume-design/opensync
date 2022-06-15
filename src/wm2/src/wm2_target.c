@@ -66,16 +66,20 @@ wm2_target_radio_config_set2(const struct schema_Wifi_Radio_Config *rconf,
 }
 
 bool
-wm2_target_vif_config_set2(const struct schema_Wifi_VIF_Config *vconf,
+wm2_target_vif_config_set3(const struct schema_Wifi_VIF_Config *vconf,
                            const struct schema_Wifi_Radio_Config *rconf,
                            const struct schema_Wifi_Credential_Config *cconfs,
                            const struct schema_Wifi_VIF_Config_flags *vchanged,
+                           const struct schema_RADIUS *radius_list,
+                           int num_radius_list,
                            int num_cconfs)
 {
     if (wm2_dummy_target_desired())
-        return wm2_dummy_target_vif_config_set2(vconf, rconf, cconfs, vchanged, num_cconfs);
+        return wm2_dummy_target_vif_config_set3(vconf, rconf, cconfs, vchanged,
+                                                radius_list, num_radius_list, num_cconfs);
 
-    return target_vif_config_set2(vconf, rconf, cconfs, vchanged, num_cconfs);
+    return target_vif_config_set3(vconf, rconf, cconfs, vchanged,
+                                  radius_list, num_radius_list, num_cconfs);
 }
 
 bool

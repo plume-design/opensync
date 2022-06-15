@@ -38,7 +38,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #define BLOCKING_LINK_THRESHOLD            2
 #define UPLINKS_TIMER_TIMEOUT              120
-#define UNBLOCKING_LINK_THRESHOLD          100
 /* All links checking is triggered when counter
  * achieve UPLINKS_CHECKING_ALL_THRESHOLD value.
  * Interval of counter incremental based on
@@ -54,15 +53,11 @@ typedef struct {
     ev_child                           cw;
     target_connectivity_check_option_t opts;
     char                               uname[C_IFNAME_LEN];
+    char                               utype[IFTYPE_SIZE];
     char                               clink[C_IFNAME_LEN];
     bool                               db_update;
     bool                               repeat;
 } async_check_t;
-
-static int  ipv4_i_fail = 0;
-static int  ipv6_i_fail = 0;
-static int  ipv4_r_fail = 0;
-static int  ipv6_r_fail = 0;
 
 static const char* cm2_util_bool2str(bool v)
 {
@@ -142,7 +137,6 @@ void cm2_restore_switch_cfg_params(int counter, int thresh, cm2_restore_con_t *r
 {
     *ropt |= 1 << CM2_RESTORE_SWITCH_FIX_PORT_MAP;
 
-
     if (counter % thresh == 0) {
         *ropt |=  (1 << CM2_RESTORE_SWITCH_DUMP_DATA);
         if (!cm2_util_skip_restore_switch_fix_auton())
@@ -213,99 +207,40 @@ static void cm2_stability_handle_fatal_state(int counter)
     }
 }
 
-target_connectivity_check_option_t
-cm2_util_add_ip_opts(target_connectivity_check_option_t opts)
-{
-    if (!g_state.link.ipv4.blocked && g_state.link.ipv4.is_ip)
-        opts |= IPV4_CHECK;
-
-    if (!g_state.link.ipv6.blocked && g_state.link.ipv6.is_ip)
-        opts |= IPV6_CHECK;
-
-    return opts;
-}
-
 static void
-cm2_util_update_connectivity_failures(struct schema_Connection_Manager_Uplink *con,
-                                      target_connectivity_check_option_t opts,
-                                      target_connectivity_check_t *cstate)
+cm2_util_set_ip_opts(const char *uname, const char *utype,
+                     target_connectivity_check_option_t *opts)
 {
-    if (!g_state.link.ipv4.is_ip ||
-        (g_state.link.ipv4.blocked && !g_state.link.ipv6.is_ip)) {
-        ipv4_r_fail = 0;
-        ipv4_i_fail = 0;
-        g_state.link.ipv4.blocked = false;
-    }
+    cm2_uplink_state_t ipv4, ipv6;
+    bool               ret;
 
-    if (!g_state.link.ipv6.is_ip ||
-        (g_state.link.ipv6.blocked && !g_state.link.ipv4.is_ip)) {
-        ipv6_r_fail = 0;
-        ipv6_i_fail = 0;
-        g_state.link.ipv6.blocked = false;
-    }
-
-    if (g_state.link.ipv4.blocked) {
-        if (ipv4_r_fail > 0)
-            ipv4_r_fail++;
-        if (ipv4_i_fail > 0)
-            ipv4_i_fail++;
-    }
- 
-    if (g_state.link.ipv6.blocked) {
-        if (ipv6_r_fail > 0)
-            ipv6_r_fail++;
-        if (ipv6_i_fail > 0)
-            ipv6_i_fail++;
-    }
-
-    if (!(g_state.link.ipv4.is_ip && g_state.link.ipv6.is_ip))
+    ret = cm2_ovsdb_CMU_get_ip_state(uname, &ipv4, &ipv6);
+    if (!ret) {
+        LOGW("%s: IP state not available", uname);
         return;
-
-    if ((opts & ROUTER_CHECK) && (opts & IPV4_CHECK))
-        ipv4_r_fail = cstate->router_ipv4_state ? 0 : ipv4_r_fail + 1;
-
-    if ((opts & ROUTER_CHECK) && (opts & IPV6_CHECK))
-        ipv6_r_fail = cstate->router_ipv6_state ? 0 : ipv6_r_fail + 1;
-
-    if ((opts & INTERNET_CHECK) && (opts & IPV4_CHECK))
-        ipv4_i_fail = cstate->internet_ipv4_state ? 0 : ipv4_i_fail + 1;
-
-    if ((opts & INTERNET_CHECK) && (opts & IPV6_CHECK))
-        ipv6_i_fail = cstate->internet_ipv6_state ? 0 : ipv6_i_fail + 1;
-
-    if (ipv4_r_fail == BLOCKING_LINK_THRESHOLD || ipv4_i_fail == BLOCKING_LINK_THRESHOLD) {
-        LOGI("Blocking invalid ipv4 link");
-        g_state.link.ipv4.blocked = true;
     }
 
-    if (ipv6_r_fail == BLOCKING_LINK_THRESHOLD || ipv6_i_fail == BLOCKING_LINK_THRESHOLD) {
-        LOGI("Blocking invalid ipv6 link");
-        g_state.link.ipv6.blocked = true;
+    if (ipv4 == CM2_UPLINK_UNBLOCKING ||
+        ipv6 == CM2_UPLINK_UNBLOCKING)
+        *opts |= ROUTER_CHECK | INTERNET_CHECK;
+
+    if (ipv4 != CM2_UPLINK_BLOCKED &&
+        ipv4 != CM2_UPLINK_NONE) {
+        *opts |= IPV4_CHECK;
+    } else {
+        *opts &= ~IPV4_CHECK;
     }
 
-    if (g_state.link.ipv4.blocked)
-        LOGI("IPv4 link blocked, left to unblock: router %d/%d Internet: %d/%d",
-             ipv4_r_fail, UNBLOCKING_LINK_THRESHOLD, ipv4_i_fail, UNBLOCKING_LINK_THRESHOLD);
-
-    if (g_state.link.ipv6.blocked)
-        LOGI("IPv6 link blocked, left to unblock: router %d/%d Internet: %d/%d",
-             ipv6_r_fail, UNBLOCKING_LINK_THRESHOLD, ipv6_i_fail, UNBLOCKING_LINK_THRESHOLD);
-
-    if (g_state.link.ipv4.blocked && g_state.link.ipv6.blocked) {
-        LOGI("IPv4 and IPv6 blocked, connectivity issue on both uplinks, unblocking...");
-        g_state.link.ipv4.blocked = false;
-        g_state.link.ipv6.blocked = false;
-    }
-    if (ipv4_r_fail == UNBLOCKING_LINK_THRESHOLD || ipv4_i_fail == UNBLOCKING_LINK_THRESHOLD) {
-        ipv4_r_fail = 0;
-        ipv4_i_fail = 0;
-        g_state.link.ipv4.blocked = false;
+    if (ipv6 != CM2_UPLINK_BLOCKED &&
+        ipv6 != CM2_UPLINK_NONE) {
+        *opts |= IPV6_CHECK;
+    } else {
+        *opts &= ~IPV6_CHECK;
     }
 
-    if (ipv6_r_fail == UNBLOCKING_LINK_THRESHOLD || ipv6_i_fail == UNBLOCKING_LINK_THRESHOLD) {
-        ipv6_r_fail = 0;
-        ipv6_i_fail = 0;
-        g_state.link.ipv6.blocked = false;
+    /* Skip Router checking for LTE interfaces */
+    if (cm2_is_lte_type(utype)) {
+        *opts &= ~ROUTER_CHECK;
     }
 }
 
@@ -331,11 +266,16 @@ static void cm2_updating_ip(struct schema_Connection_Manager_Uplink *con,
         c = IPV6_CHECK;
         rs = cstate->router_ipv6_state;
         is = cstate->internet_ipv6_state;
+        if (con->is_used)
+            g_state.link.ipv6.blocked = false;
+
     }
     else {
         c = IPV4_CHECK;
         rs = cstate->router_ipv4_state;
         is = cstate->internet_ipv4_state;
+        if (con->is_used)
+            g_state.link.ipv4.blocked = false;
     }
 
     if (!(opts & c))
@@ -347,11 +287,19 @@ static void cm2_updating_ip(struct schema_Connection_Manager_Uplink *con,
     if (!rc && !ic)
         return;
 
-    con_ok = (((ic && is) || (con->unreachable_internet_counter <= 0 && !ic)) &&
-              ((rc && rs) || (con->unreachable_router_counter <= 0 && !rc)));
+    con_ok = ((((ic && is) || (con->unreachable_internet_counter <= 0 && !ic)) &&
+              ((rc && rs) || (con->unreachable_router_counter <= 0 && !rc))) ||
+              (con->is_used && g_state.connected && ((ipv6 && g_state.ipv6_manager_con) || (!ipv6 && !g_state.ipv6_manager_con))));
 
     switch (s) {
        case CM2_UPLINK_BLOCKED:
+           if (con->is_used) {
+               if (ipv6)
+                   g_state.link.ipv6.blocked = true;
+               else
+                   g_state.link.ipv4.blocked = true;
+           }
+
            break;
 
         case CM2_UPLINK_NONE:
@@ -395,8 +343,7 @@ static void cm2_updating_ip(struct schema_Connection_Manager_Uplink *con,
                 s_updated = true;
                 ns = CM2_UPLINK_ACTIVE;
                 cm2_ovsdb_update_route_metric(con->if_name, CM2_METRIC_UPLINK_DEFAULT);
-            }
-            else {
+            } else {
                 s_updated = true;
                 ns = CM2_UPLINK_BLOCKED;
             }
@@ -486,7 +433,6 @@ static bool cm2_connection_req_stability_process(const char *if_name,
          cstate.link_state, cstate.router_ipv4_state | cstate.router_ipv6_state,
          cstate.internet_ipv4_state | cstate.internet_ipv6_state);
 
-    cm2_util_update_connectivity_failures(&con, opts, &cstate);
     cm2_util_update_uplink_ip_state(&con, opts, &cstate);
 
     if (opts & NTP_CHECK)
@@ -539,7 +485,8 @@ static bool cm2_connection_req_stability_process(const char *if_name,
     }
     if (opts & ROUTER_CHECK) {
         counter = 0;
-        if (!cstate.router_ipv4_state && !cstate.router_ipv6_state) {
+        if (((opts & IPV4_CHECK) && (!cstate.router_ipv4_state)) ||
+            ((opts & IPV6_CHECK) && (!cstate.router_ipv6_state))) {
             counter =  con.unreachable_router_counter < 0 ? 1 : con.unreachable_router_counter + 1;
             LOGI("Detected broken Router. Counter = %d", counter);
             cm2_restore_switch_cfg_params(counter, CONFIG_CM2_STABILITY_THRESH_ROUTER + 2, &ropt);
@@ -573,7 +520,8 @@ static bool cm2_connection_req_stability_process(const char *if_name,
     }
     if (opts & INTERNET_CHECK) {
         counter = 0;
-        if (!cstate.internet_ipv4_state && !cstate.internet_ipv6_state) {
+        if (((opts & IPV4_CHECK) && (!cstate.internet_ipv4_state)) ||
+            ((opts & IPV6_CHECK) && (!cstate.internet_ipv6_state))) {
             counter = con.unreachable_internet_counter < 0 ? 1 : con.unreachable_internet_counter + 1;
             LOGI("Detected broken Internet. Counter = %d", counter);
             cm2_restore_switch_cfg_params(counter, CONFIG_CM2_STABILITY_THRESH_INTERNET + 2, &ropt);
@@ -597,16 +545,6 @@ static bool cm2_connection_req_stability_process(const char *if_name,
     return status;
 }
 
-static
-void cm2_util_update_opts_for_iftype(const char *iftype,
-                                     target_connectivity_check_option_t *opts)
-{
-    /* Skip Router checking for LTE interfaces */
-    if (cm2_is_lte_type(iftype)) {
-        *opts &= ~ROUTER_CHECK;
-    }
-}
-
 bool cm2_connection_req_stability_check(const char *uname,
                                         const char *utype,
                                         const char *clink,
@@ -619,7 +557,7 @@ bool cm2_connection_req_stability_check(const char *uname,
     if (!cm2_is_extender())
         return true;
 
-    cm2_util_update_opts_for_iftype(utype, &opts);
+    cm2_util_set_ip_opts(uname, utype, &opts);
     /* Ping WDT before run connectivity check */
     WARN_ON(!target_device_wdt_ping());
     ok = target_device_connectivity_check(clink, &cstate, opts);
@@ -660,6 +598,7 @@ void cm2_util_req_stability_cb(struct ev_loop *loop, ev_child *w, int revents);
 
 static
 void cm2_util_req_stability_check_recalc(const char *uname,
+                                         const char *utype,
                                          const char *clink,
                                          target_connectivity_check_option_t opts,
                                          bool db_update,
@@ -681,6 +620,7 @@ void cm2_util_req_stability_check_recalc(const char *uname,
 
     if (pid == 0) {
         target_connectivity_check_t cstate = {0};
+        cm2_util_set_ip_opts(uname, utype, &opts);
         bool ok = target_device_connectivity_check(clink, &cstate, opts);
         int mask = cm2_util_cstate2mask(ok, &cstate);
         exit(mask);
@@ -690,6 +630,7 @@ void cm2_util_req_stability_check_recalc(const char *uname,
     async_check_t *async_check = (async_check_t *) MALLOC(sizeof(async_check_t));
     memset(async_check, 0, sizeof(async_check_t));
     STRSCPY(async_check->uname, uname);
+    STRSCPY(async_check->utype, utype);
     STRSCPY(async_check->clink, clink);
     async_check->opts = opts;
     async_check->repeat = repeat;
@@ -729,7 +670,11 @@ void cm2_util_req_stability_cb(EV_P_ ev_child *w, int revents)
 
     cm2_connection_req_stability_process(async_check->uname, opts, db_update, ok, &cstate);
     if (repeat && !ok) {
-        cm2_util_req_stability_check_recalc(async_check->uname, async_check->clink, opts, db_update, repeat);
+        if (!g_state.connected && !db_update)
+            db_update = true;
+
+        cm2_util_req_stability_check_recalc(async_check->uname, async_check->utype,
+                                            async_check->clink, opts, db_update, repeat);
         return;
     }
     FREE(async_check);
@@ -745,8 +690,7 @@ void cm2_connection_req_stability_check_async(const char *uname,
     if (!cm2_is_extender())
         return;
 
-    opts = cm2_util_add_ip_opts(opts);
-    cm2_util_update_opts_for_iftype(utype, &opts);
+    cm2_util_set_ip_opts(uname, utype, &opts);
 
     LOGI("%s: stability for %s: scheduling 0x%02x %supdate%s",
          uname,
@@ -755,7 +699,7 @@ void cm2_connection_req_stability_check_async(const char *uname,
          db_update ? "" : "no",
          repeat ? " recurring" : "");
 
-    cm2_util_req_stability_check_recalc(uname, clink, opts, db_update, repeat);
+    cm2_util_req_stability_check_recalc(uname, utype, clink, opts, db_update, repeat);
 }
 
 static void cm2_connection_stability_check(void)

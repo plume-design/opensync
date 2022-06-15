@@ -80,6 +80,7 @@ log_title "lm/lm_trigger_cloud_logpull.sh: LM test - Verify Cloud trigered logpu
 trap '
     fut_info_dump_line
     print_tables AW_Debug AW_LM_Config
+    check_restore_ovsdb_server
     fut_info_dump_line
 ' EXIT SIGINT SIGTERM
 

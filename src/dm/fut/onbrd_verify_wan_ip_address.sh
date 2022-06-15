@@ -66,6 +66,7 @@ fi
 trap '
 fut_info_dump_line
 print_tables Wifi_Inet_State
+check_restore_ovsdb_server
 ifconfig "$wan_interface"
 fut_info_dump_line
 ' EXIT SIGINT SIGTERM

@@ -36,7 +36,7 @@ source "${FUT_TOPDIR}/shell/lib/um_lib.sh"
 manager_setup_file="um/um_setup.sh"
 um_resource_path="resource/um/"
 um_image_name_default="um_incorrect_fw_pass_fw"
-um_create_md5_file_path="tools/server/um/um_create_md5_file.sh"
+create_md5_file_path="tools/server/um/create_md5_file.sh"
 usage()
 {
 cat << usage_string
@@ -51,7 +51,7 @@ Arguments:
 Testcase procedure:
     - On RPI SERVER: Prepare clean FW (.img) in ${um_resource_path}
                      Duplicate image with different name (example. ${um_image_name_default}.img) (cp <CLEAN-IMG> <NEW-IMG>)
-                     Create MD5 sum for image (example. ${um_image_name_default}.img.md5) (see ${um_create_md5_file_path} -h)
+                     Create MD5 sum for image (example. ${um_image_name_default}.img.md5) (see ${create_md5_file_path} -h)
     - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
                  Run: ./um/um_set_invalid_firmware_pass.sh <FW-PATH> <FW-URL> <FW-PASS>
 Script usage example:
@@ -79,6 +79,7 @@ trap '
     fut_info_dump_line
     print_tables AWLAN_Node
     reset_um_triggers $fw_path || true
+    check_restore_ovsdb_server
     fut_info_dump_line
 ' EXIT SIGINT SIGTERM
 

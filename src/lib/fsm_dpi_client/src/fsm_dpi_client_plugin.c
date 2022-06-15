@@ -416,7 +416,7 @@ fsm_dpi_client_process_attr(struct fsm_session *session, const char *attr,
         }
     }
 
-    return FSM_DPI_PASSTHRU;
+    return FSM_DPI_INSPECT;
 }
 
 /**

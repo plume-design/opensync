@@ -59,6 +59,12 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #define WM2_RECALC_DELAY_SECONDS            30
 #define WM2_DFS_FALLBACK_GRACE_PERIOD_SECONDS 10
+/* Support of more than 3 servers per VIF require extending
+ * buffer used to print out MIB in hostapd. Otherwise State
+ * don't report full list of configured RADIUS servers */
+#define WM2_AUTH_RADIUS_SUPPORTED_NUM 3
+#define WM2_ACC_RADIUS_SUPPORTED_NUM 3
+#define WM2_RADIUS_SUPPORTED_NUM (WM2_AUTH_RADIUS_SUPPORTED_NUM + WM2_ACC_RADIUS_SUPPORTED_NUM)
 #define REQUIRE(ctx, cond) if (!(cond)) { LOGW("%s: %s: failed check: %s", ctx, __func__, #cond); return; }
 #define OVERRIDE(ctx, lv, rv) if (lv != rv) { lv = rv; LOGW("%s: overriding '%s' - this is target impl bug", ctx, #lv); }
 #define bitcount __builtin_popcount
@@ -91,6 +97,7 @@ ovsdb_table_t table_Wifi_Credential_Config;
 ovsdb_table_t table_Wifi_Associated_Clients;
 ovsdb_table_t table_Wifi_Master_State;
 ovsdb_table_t table_Openflow_Tag;
+ovsdb_table_t table_RADIUS;
 
 static ds_dlist_t delayed_list = DS_DLIST_INIT(struct wm2_delayed, list);
 
@@ -791,6 +798,87 @@ wm2_cconf_get(const struct schema_Wifi_VIF_Config *vconf,
     return n;
 }
 
+static int
+wm2_append_radius_by_uuid(const struct schema_Wifi_VIF_Config *vconf,
+                          struct schema_RADIUS *radius_list,
+                          const char *uuid)
+{
+    json_t *where;
+
+    if (!(where = ovsdb_where_uuid("_uuid", uuid)))
+        return 1;
+
+    if (!ovsdb_table_select_one_where(&table_RADIUS, where, radius_list)) {
+        LOGW("%s: failed to retrieve RADIUS with UUID %s",
+             vconf->if_name, uuid);
+        return 1;
+    }
+    return 0;
+}
+
+static int
+wm2_radius_get(const struct schema_Wifi_VIF_Config *vconf,
+               struct schema_RADIUS *radius_list,
+               int size)
+{
+    int i, n = 0;
+
+    memset(radius_list, 0, sizeof(*radius_list) * size);
+
+    if (!vconf->primary_radius_exists) {
+        LOGD("%s: primary RADIUS does not exist. "
+             "Skip RADIUS configuration", vconf->if_name);
+        return 0;
+    }
+
+    /* primary RADIUS server */
+    if (wm2_append_radius_by_uuid(vconf, radius_list, vconf->primary_radius.uuid)) {
+        LOGW("%s: resolving primary RADIUS server failed", vconf->if_name);
+        return 0;
+    }
+    radius_list++, size--, n++;
+
+    /* secondary RADIUS servers (list) */
+    for (i = 0; i < vconf->secondary_radius_len && size > 0; i++) {
+        if (wm2_append_radius_by_uuid(vconf, radius_list, vconf->secondary_radius[i].uuid))
+            continue;
+        radius_list++, size--, n++;
+    }
+
+    if (!vconf->primary_accounting_exists) {
+        LOGI("%s: accounting RADIUS servers not configured", vconf->if_name);
+        return n;
+    }
+
+    if (size < 1)
+        goto trunc;
+
+    /* primary RADIUS accounting server */
+    if (wm2_append_radius_by_uuid(vconf, radius_list, vconf->primary_accounting.uuid)) {
+        LOGW("%s: resolving primary RADIUS accounting server failed",
+                vconf->if_name);
+    }
+    radius_list++, size--, n++;
+
+    /* secondary RADIUS accounting servers (list) */
+    for (i = 0; i < vconf->secondary_accounting_len && size > 0; i++) {
+        if (wm2_append_radius_by_uuid(vconf, radius_list, vconf->secondary_accounting[i].uuid))
+            continue;
+        radius_list++, size--, n++;
+    }
+
+trunc:
+    if (size == 0 && (n < (2 + vconf->secondary_radius_len
+                             + vconf->secondary_accounting_len))) {
+        LOGW("%s: radius list truncated to %d entries, "
+             "please adjust the size at compile time!",
+             vconf->if_name, n);
+    }
+
+    return n;
+}
+
+
 static bool
 wm2_vstate_sta_is_connected(const char *ifname)
 {
@@ -956,6 +1044,8 @@ wm2_vconf_recalc(const char *ifname, bool force)
     struct schema_Wifi_VIF_State vstate;
     struct schema_Wifi_Credential_Config cconfs[8];
     struct schema_Wifi_VIF_Config_flags vchanged;
+    struct schema_RADIUS radius_list[WM2_RADIUS_SUPPORTED_NUM];
+    int num_radius_list;
     int num_cconfs;
     bool dpp_enabled;
     bool want;
@@ -1055,6 +1145,7 @@ wm2_vconf_recalc(const char *ifname, bool force)
 #endif
 
     num_cconfs = wm2_cconf_get(&vconf, cconfs, sizeof(cconfs)/sizeof(cconfs[0]));
+    num_radius_list = wm2_radius_get(&vconf, radius_list, sizeof(radius_list)/sizeof(radius_list[0]));
 
     if (has && strlen(SCHEMA_KEY_VAL(vconf.security, "key")) < 8 && !vconf.wpa_exists && !strcmp(vconf.mode, "sta")) {
         LOGD("%s: overriding 'ssid' and 'security' for onboarding", ifname);
@@ -1129,7 +1220,8 @@ wm2_vconf_recalc(const char *ifname, bool force)
     if (wm2_vconf_is_sta_changing_parent(&vconf, &vchanged, &vstate, num_cconfs))
         TELOG_STA_ROAM(&vconf, num_cconfs);
 
-    if (!wm2_target_vif_config_set2(&vconf, &rconf, cconfs, &vchanged, num_cconfs)) {
+    if (!wm2_target_vif_config_set3(&vconf, &rconf, cconfs, &vchanged,
+                                    radius_list, num_radius_list, num_cconfs)) {
         LOGW("%s: failed to configure, will retry later", ifname);
         wm2_delayed_recalc(wm2_vconf_recalc, ifname);
         return;
@@ -1687,6 +1779,93 @@ wm2_op_flush_clients(const char *vif)
     wm2_clients_update_per_vif(NULL, 0, vif);
 }
 
+static bool
+wm2_resolve_radius_uuid_from_params(ovs_uuid_t *uuid,
+                                    const char *ip,
+                                    const int port,
+                                    const char *type)
+{
+    int n;
+    json_t *where;
+    struct schema_RADIUS *radius_p, *radius_i;
+
+    if ((where = ovsdb_where_simple(SCHEMA_COLUMN(RADIUS, ip_addr), ip))) {
+        if ((radius_p = ovsdb_table_select_where(&table_RADIUS, where, &n))) {
+            for (radius_i = radius_p; n>0; n--, radius_i++) {
+                if (radius_i->port == port && !strcmp(radius_i->type, type)) {
+                    STRSCPY_WARN(uuid->uuid, radius_i->_uuid.uuid);
+                    FREE(radius_p);
+                    return true;
+                }
+            }
+            FREE(radius_p);
+        }
+    }
+    return false;
+}
+
+void
+wm2_op_radius_state(const struct schema_RADIUS *radius_list,
+                    int num,
+                    const char *vif)
+{
+    struct schema_Wifi_VIF_State vstate;
+    int i, n_auth = 0, n_acc = 0;
+    json_t *where;
+    ovs_uuid_t uuid;
+
+    if (!vif || (strlen(vif) == 0) || (num == 0))
+        return;
+
+    if (!(where = ovsdb_where_simple(SCHEMA_COLUMN(Wifi_VIF_State, if_name), vif)))
+        return;
+
+    if (!ovsdb_table_select_one_where(&table_Wifi_VIF_State,
+                                      where,
+                                      &vstate)) {
+        LOGW("%s: interface %s not found in OVSDB table", __func__, vif);
+        return;
+    }
+
+    for (i = 0; (i<num) && (i<WM2_RADIUS_SUPPORTED_NUM); i++) {
+        if (wm2_resolve_radius_uuid_from_params(&uuid,
+                                                radius_list[i].ip_addr,
+                                                radius_list[i].port,
+                                                radius_list[i].type)) {
+            /* To enter this section a requirement is put, that the RADIUS
+             * table entry must exist. This can be a faulty assumption on
+             * 3rd party gateways. Therefore this section needs slight
+             * redesign in the future, before releasing official OS to the
+             * public, so that non-existing, but configured, RADIUSes are
+             * handled properly. */
+            if ((!strcmp(radius_list[i].type, "AA")) &&
+                (n_auth < WM2_AUTH_RADIUS_SUPPORTED_NUM)) {
+                if (n_auth == 0) {
+                    SCHEMA_SET_UUID(vstate.primary_radius, uuid.uuid);
+                    n_auth++;
+                    continue;
+                }
+                SCHEMA_APPEND_UUID(vstate.secondary_radius, uuid.uuid);
+                n_auth++;
+            }
+
+            if ((!strcmp(radius_list[i].type, "A")) &&
+                (n_acc < WM2_ACC_RADIUS_SUPPORTED_NUM)) {
+                if (n_acc == 0) {
+                    SCHEMA_SET_UUID(vstate.primary_accounting, uuid.uuid);
+                    n_acc++;
+                    continue;
+                }
+                SCHEMA_APPEND_UUID(vstate.secondary_accounting, uuid.uuid);
+                n_acc++;
+            }
+        }
+    }
+
+    if (n_auth || n_acc)
+        WARN_ON(!ovsdb_table_update(&table_Wifi_VIF_State, &vstate));
+}
+
 static const struct target_radio_ops rops = {
     .op_vconf = wm2_op_vconf,
     .op_rconf = wm2_op_rconf,
@@ -1695,6 +1874,7 @@ static const struct target_radio_ops rops = {
     .op_client = wm2_op_client,
     .op_clients = wm2_op_clients,
     .op_flush_clients = wm2_op_flush_clients,
+    .op_radius_state = wm2_op_radius_state,
     .op_dpp_announcement = wm2_dpp_op_announcement,
     .op_dpp_conf_enrollee = wm2_dpp_op_conf_enrollee,
     .op_dpp_conf_network = wm2_dpp_op_conf_network,
@@ -1719,6 +1899,38 @@ callback_Wifi_VIF_Config(
 {
     LOGD("%s: ovsdb updated", vconf->if_name);
     wm2_vconf_recalc(vconf->if_name, false);
+}
+
+static void
+callback_RADIUS(
+        ovsdb_update_monitor_t  *mon,
+        struct schema_RADIUS    *old_radconf,
+        struct schema_RADIUS    *radconf)
+{
+    struct schema_Wifi_VIF_Config *vconf;
+    void *buf;
+    int n, i;
+
+    LOGD("%s: radius ovsdb updated", radconf->name);
+    // Resolve which VIF to recalculate based on UUID of changed RADIUS entry
+    if ((buf = ovsdb_table_select_where(&table_Wifi_VIF_Config, NULL, &n))) {
+        for (n--; n>=0; n--) {
+            vconf = buf + (n * sizeof(*vconf));
+            /* primary server */
+            if (vconf->primary_radius_exists &&
+                !strcmp(vconf->primary_radius.uuid,
+                        radconf->_uuid.uuid)) {
+                wm2_vconf_recalc(vconf->if_name, false);
+            }
+            /* secondary servers */
+            for (i = vconf->secondary_radius_len; i>0; i--) {
+                if (!strcmp(vconf->secondary_radius[i].uuid,
+                            radconf->_uuid.uuid)) {
+                    wm2_vconf_recalc(vconf->if_name, false);
+                }
+            }
+        }
+    }
 }
 
 static void
@@ -1775,6 +1987,7 @@ wm2_radio_init_kickoff(void)
         ovsdb_table_delete_where(&table_Wifi_Radio_State, json_array());
         ovsdb_table_delete_where(&table_Wifi_VIF_Config, json_array());
         ovsdb_table_delete_where(&table_Wifi_VIF_State, json_array());
+        ovsdb_table_delete_where(&table_RADIUS, json_array());
         if (!wm2_target_radio_config_init2()) {
             LOGE("Failed to initialize radio");
             return -1;
@@ -1839,6 +2052,7 @@ wm2_radio_init(void)
     OVSDB_TABLE_INIT(Wifi_Associated_Clients, _uuid);
     OVSDB_TABLE_INIT(Wifi_Master_State, if_name);
     OVSDB_TABLE_INIT(Openflow_Tag, name);
+    OVSDB_TABLE_INIT(RADIUS, _uuid);
 
     wm2_dpp_init();
 
@@ -1850,6 +2064,7 @@ wm2_radio_init(void)
     // Initialize OVSDB monitor callbacks
     OVSDB_TABLE_MONITOR(Wifi_Radio_Config, true);
     OVSDB_TABLE_MONITOR(Wifi_VIF_Config, true);
+    OVSDB_TABLE_MONITOR(RADIUS, true);
 
     return 0;
 }

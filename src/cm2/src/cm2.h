@@ -392,6 +392,7 @@ bool cm2_ovsdb_set_Wifi_Inet_Config_interface_enabled(bool state, char *ifname);
 bool cm2_ovsdb_connection_update_bridge_state(char *if_name, const char *bridge);
 int cm2_ovsdb_CMU_set_ipv4(const char *if_name, cm2_uplink_state_t state);
 int cm2_ovsdb_CMU_set_ipv6(const char *if_name, cm2_uplink_state_t state);
+bool cm2_ovsdb_CMU_get_ip_state(const char *if_name, cm2_uplink_state_t *ipv4, cm2_uplink_state_t *ipv6);
 cm2_uplink_state_t cm2_get_uplink_state_from_str(const char *uplink_state);
 int cm2_ovsdb_update_route_metric(const char *ifname, int metric);
 

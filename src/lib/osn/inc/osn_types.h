@@ -378,8 +378,93 @@ int osn_ip6_addr_nolft_cmp(const void *_a, const void *_b);
  */
 enum osn_ip6_addr_type osn_ip6_addr_type(osn_ip6_addr_t *ip6);
 
+/**< @copydoc FMT_osn_ip6_addr */
 
 /** @} OSN_COMMON_osn_ip6_addr_t */
+
+/**
+ * @defgroup OSN_COMMON_osn_ipany_addr_t osn_ipany_addr_t
+ *
+ * ipany (IPv4 or IPv6) address utility functions
+ *
+ * @{
+ */
+
+/**
+ * IPv4 or IPv6 address.
+ */
+typedef struct osn_ipany_addr
+{
+    int addr_type;            /** AF_INET or AF_INET6 */
+    union
+    {
+        osn_ip_addr_t  ip4;   /** IPv4 address */
+        osn_ip6_addr_t ip6;   /** IPv6 address */
+    } addr;
+} osn_ipany_addr_t;
+
+/**
+ * Maximum length of an osn_ipany_addr_t address structure when expressed as
+ * a string, including the terminating \0
+ */
+#define OSN_IPANY_ADDR_LEN    OSN_IP6_ADDR_LEN
+
+/**
+ * Comparator for @ref osn_ipany_addr_t structures.
+ *
+ * @param[in]   a  First osn_ipany_addr_t to compare
+ * @param[in]   b  Second osn_ipany_addr_t to compare
+ *
+ * @return
+ * This function returns an integer less than, equal to, or greater than zero
+ * if @p a is found, respectively, to be less than, to match, or be
+ * greater than @p b.
+ */
+int osn_ipany_addr_cmp(const void *_a, const void *_b);
+
+/**
+ * Initialize an osn_ipany_addr_t from a string.
+ *
+ * This function first attempts to parse an IPv4 address string. If it
+ * succeeds, it sets the osn_ipany_addr_t->addr_type to AF_INET and returns true.
+ *
+ * Otherwise it then attempts to parse an IPv6 address string. If it succeeds,
+ * it sets the osn_ipany_addr_t->addr_type to AF_INET6 and returns true.
+ *
+ * Otherwise it returns false.
+ *
+ * See @ref osn_ip_addr_from_str() and @ref osn_ip6_addr_from_str() for
+ * documentation on what counts as a valid IPv4 or IPv6 address string.
+ *
+ * @param[out]   out  Output osn_ipany_addr_t structure
+ * @param[in]    str  Input string
+ *
+ * @return true on success
+ */
+bool osn_ipany_addr_from_str(osn_ipany_addr_t *out, const char *str);
+
+/**
+ * Macro helpers for printf() formatting. The PRI_ macro can be used in
+ * conjunction with the FMT_ macro to print osn_ipany_addr_t (IPv4|IPv6 addresses).
+ *
+ * Examples:
+ *
+ * @code
+ * osn_ipany_addr_t my_ipaddr;
+ *
+ * printf("Hello. The IP address is: "PRI_osn_ipany_addr"\n", FMT_osn_ipany_addr(my_ipaddr));
+ * @endcode
+ */
+#define PRI_osn_ipany_addr        "%s"
+
+/**
+ * Macro helper for printf() formatting. See @ref PRI_osn_ipany_addr for more
+ * info.
+ */
+#define FMT_osn_ipany_addr(x)     (__FMT_osn_ipany_addr((char[OSN_IPANY_ADDR_LEN]){0}, OSN_IPANY_ADDR_LEN, &x))
+char* __FMT_osn_ipany_addr(char *buf, size_t sz, const osn_ipany_addr_t *addr);
+
+/** @} OSN_COMMON_osn_ipany_addr_t */
 
 /*
  * ===========================================================================

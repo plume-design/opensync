@@ -1,0 +1,11 @@
+config OSN_BACKEND_TUNNEL_IFACE_NULL
+    bool "Null"
+    help
+        Use dummy implementation of tunnel interface
+
+config OSN_BACKEND_TUNNEL_IFACE_LINUX
+    bool "Linux"
+    select OSN_LINUX_ENABLED
+    select OSN_LINUX_TUNNEL_IFACE
+    help
+        Use the Linux tunnel interface backend provided by OpenSync

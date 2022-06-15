@@ -68,6 +68,7 @@ print_tables Wifi_Inet_Config Wifi_Inet_State
 print_tables Wifi_VIF_Config Wifi_VIF_State
 print_tables DHCP_leased_IP
 ovs-vsctl show
+check_restore_ovsdb_server
 fut_info_dump_line
 ' EXIT SIGINT SIGTERM
 

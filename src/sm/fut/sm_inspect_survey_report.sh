@@ -43,12 +43,13 @@ Description:
     - Script configures SM survey reporting and inspects the logs, fails otherwise
 Arguments:
     -h  show this help message
-    \$1 (radio_type)         : used as radio_type in Wifi_Inet_Config table         : (string)(required)
-    \$2 (channel)            : used as channel in Wifi_Inet_Config table            : (string)(required)
-    \$3 (survey_type)        : used as survey_type in Wifi_Inet_Config table        : (string)(required)
-    \$4 (reporting_interval) : used as reporting_interval in Wifi_Inet_Config table : (string)(required)
-    \$5 (sampling_interval)  : used as sampling_interval in Wifi_Inet_Config table  : (string)(required)
-    \$6 (report_type)        : used as report_type in Wifi_Inet_Config table        : (string)(required)
+    \$1 (radio_type)         : used as radio_type in Wifi_Stats_Config table         : (string)(required)
+    \$2 (channel)            : used as channel in Wifi_Stats_Config table            : (string)(required)
+    \$3 (survey_type)        : used as survey_type in Wifi_Stats_Config table        : (string)(required)
+    \$4 (reporting_interval) : used as reporting_interval in Wifi_Stats_Config table : (string)(required)
+    \$5 (sampling_interval)  : used as sampling_interval in Wifi_Stats_Config table  : (string)(required)
+    \$6 (report_type)        : used as report_type in Wifi_Stats_Config table        : (string)(required)
+    \$7 (survey_interval)    : used as survey_interval_ms in Wifi_Stats_Config table : (string)(required)
 Testcase procedure:
     - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
                  Create required Radio-VIF interface settings (see ${radio_vif_create_path} -h)
@@ -70,12 +71,13 @@ if [ -n "${1}" ]; then
 fi
 NARGS=6
 [ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "sm/sm_inspect_survey_report.sh" -arg
-sm_radio_type=$1
-sm_channel=$2
-sm_survey_type=$3
-sm_reporting_interval=$4
-sm_sampling_interval=$5
-sm_report_type=$6
+sm_radio_type=${1}
+sm_channel=${2}
+sm_survey_type=${3}
+sm_reporting_interval=${4}
+sm_sampling_interval=${5}
+sm_report_type=${6}
+sm_survey_interval=${7}
 
 
 log_title "sm/sm_inspect_survey_report.sh: SM test - Inspect survey report for $sm_radio_type"
@@ -87,7 +89,8 @@ inspect_survey_report \
     "$sm_survey_type" \
     "$sm_reporting_interval" \
     "$sm_sampling_interval" \
-    "$sm_report_type" ||
+    "$sm_report_type" \
+    "$sm_survey_interval" ||
         raise "FAIL: inspect_survey_report - $sm_survey_type logs not found for radio $sm_radio_type" -l "sm/sm_inspect_survey_report.sh" -tc
 
 pass

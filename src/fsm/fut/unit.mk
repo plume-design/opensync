@@ -33,12 +33,8 @@ UNIT_DIR := shell/tests/fsm
 
 UNIT_FILE := fsm_setup.sh
 UNIT_FILE += fsm_cleanup.sh
-UNIT_FILE += fsm_check_lib_plugin.sh
 UNIT_FILE += fsm_configure_fsm_tables.sh
 UNIT_FILE += fsm_configure_of_rules.sh
-UNIT_FILE += fsm_configure_dns_plugin.sh
-UNIT_FILE += fsm_configure_http_plugin.sh
-UNIT_FILE += fsm_configure_upnp_plugin.sh
 UNIT_FILE += fsm_configure_test_ndp_plugin.sh
 UNIT_FILE += fsm_configure_test_walleye_plugin.sh
 UNIT_FILE += fsm_create_tap_interface.sh

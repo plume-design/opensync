@@ -761,6 +761,12 @@ serialize_ipv4_tree(ds_tree_t *tree, os_macaddr_t *device_id, struct gkc_report_
             FREE(new_pb);
             continue;
         }
+
+        if (entry->action == FSM_ACTION_NONE)
+        {
+            new_pb->action = get_protobuf_action_value(attr->action_by_name);
+        }
+
         gatekeeper__hero_stats__hero_ipv4__init(new_pb->ipv4);
 
         /*
@@ -809,6 +815,12 @@ serialize_ipv6_tree(ds_tree_t *tree, os_macaddr_t *device_id, struct gkc_report_
             FREE(new_pb);
             continue;
         }
+
+        if (entry->action == FSM_ACTION_NONE)
+        {
+            new_pb->action = get_protobuf_action_value(attr->action_by_name);
+        }
+
         gatekeeper__hero_stats__hero_ipv6__init(new_pb->ipv6);
 
         in6 = (struct sockaddr_in6 *)&(attr->ip_addr);

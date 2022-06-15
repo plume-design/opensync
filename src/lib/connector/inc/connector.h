@@ -145,4 +145,66 @@ bool connector_sync_vif(const struct schema_Wifi_VIF_Config *vconf);
  */
 bool connector_sync_inet(const struct schema_Wifi_Inet_Config *iconf);
 
+/**
+ * @brief Add DHCP reservation in external DB
+ *
+ * @description Table schema_DHCP_reserved_IP in OVSDB has new entry,
+ *              update info in external database
+ * @param[in] rip - DHCP reservation row
+ * @return success of synchronization
+ */
+bool connector_dhcp_reservation_add(const struct schema_DHCP_reserved_IP *rip);
+
+/**
+ * @brief Modify DHCP reservation in external DB
+ *
+ * @description Table schema_DHCP_reserved_IP in OVSDB has new entry,
+ *              update info in external database
+ * @param[in] rip - DHCP reservation row
+ * @return success of synchronization
+ */
+bool connector_dhcp_reservation_modify(const struct schema_DHCP_reserved_IP *rip);
+
+/**
+ * @brief Delete DHCP reservation in external DB
+ *
+ * @description Table schema_DHCP_reserved_IP in OVSDB entry was deleted,
+ *              update info in external database
+ * @param[in] rip - DHCP reservation row
+ * @return success of synchronization
+ */
+bool connector_dhcp_reservation_del(const struct schema_DHCP_reserved_IP *rip);
+
+/**
+ * @brief Add port forward in external DB
+ *
+ * @description Table schema_IP_Port_Forward in OVSDB entry was added,
+ *              update info in external database
+ * @param[in] pschema - IP port reservation row
+ *
+ * @retun success of synchronization
+ */
+bool connector_portforward_add(const struct schema_IP_Port_Forward *pschema);
+
+/**
+ * @brief Modify port forward in external DB
+ *
+ * @description Table schema_IP_Port_Forward in OVSDB entry was added,
+ *              update info in external database
+ * @param[in] pschema - IP port reservation row
+ *
+ * @retun success of synchronization
+ */
+bool connector_portforward_modify(const struct schema_IP_Port_Forward *pschema);
+
+/**
+ * @brief Delete port forward in external DB
+ *
+ * @description Table schema_IP_Port_Forward in OVSDB entry was added,
+ *              update info in external database
+ * @param[in] pschema - IP port reservation row
+ *
+ * @retun success of synchronization
+ */
+bool connector_portforward_del(const struct schema_IP_Port_Forward *pschema);
 #endif /* CONNECTOR_H_INCLUDED */

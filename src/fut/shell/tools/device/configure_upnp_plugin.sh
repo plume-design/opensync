@@ -35,20 +35,20 @@ source "${FUT_TOPDIR}/shell/lib/nm2_lib.sh"
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
 # Default of_port must be unique between fsm tests for valid testing
-of_port_default=10002
+of_port_default=10005
 usage() {
     cat << usage_string
-fsm/fsm_configure_http_plugin.sh [-h] arguments
+tools/device/configure_upnp_plugin.sh [-h] arguments
 Description:
-    - Script configures interfaces FSM settings for HTTP blocking rules
+    - Script configures interfaces FSM settings for UPNP plugin testing
 Arguments:
     -h  show this help message
     \$1 (lan_bridge_if)    : Interface name used for LAN bridge        : (string)(required)
     \$2 (fsm_plugin)       : Path to FSM plugin under test             : (string)(required)
     \$3 (of_port)          : FSM out/of port                           : (int)(optional)     : (default:${of_port_default})
 Script usage example:
-    ./fsm/fsm_configure_http_plugin.sh br-home /usr/opensync/lib/libfsm_http.so
-    ./fsm/fsm_configure_http_plugin.sh br-home /usr/opensync/lib/libfsm_http.so 3002
+    ./tools/device/configure_upnp_plugin.sh br-home /usr/opensync/lib/libfsm_upnp.so
+    ./tools/device/configure_upnp_plugin.sh br-home /usr/opensync/lib/libfsm_upnp.so 5002
 usage_string
 }
 if [ -n "${1}" ]; then
@@ -65,8 +65,16 @@ fi
 
 trap '
 fut_info_dump_line
-print_tables Wifi_Associated_Clients Openflow_Config
-print_tables Flow_Service_Manager_Config FSM_Policy
+print_tables Wifi_Inet_Config Wifi_Inet_State
+print_tables Wifi_VIF_Config Wifi_VIF_State
+print_tables Wifi_Radio_Config Wifi_Radio_State
+print_tables Openflow_Config Openflow_State
+print_tables Flow_Service_Manager_Config
+print_tables FSM_Policy
+print_tables Wifi_Master_State
+print_tables Object_Store_State
+ovs-vsctl show
+check_restore_ovsdb_server
 fut_info_dump_line
 ' EXIT SIGINT SIGTERM
 
@@ -80,50 +88,50 @@ of_port=${3:-${of_port_default}}
 
 client_mac=$(get_ovsdb_entry_value Wifi_Associated_Clients mac)
 if [ -z "${client_mac}" ]; then
-    raise "FAIL: Could not acquire Client MAC address from Wifi_Associated_Clients, is client connected?" -l "fsm/fsm_configure_http_plugin.sh"
+    raise "FAIL: Could not acquire Client MAC address from Wifi_Associated_Clients, is client connected?" -l "tools/device/configure_upnp_plugin.sh"
 fi
 # Use first MAC from Wifi_Associated_Clients
 client_mac="${client_mac%%,*}"
-tap_http_if="${lan_bridge_if}.thttp"
+tap_upnp_if="${lan_bridge_if}.tupnp"
 
-log_title "fsm/fsm_configure_http_plugin.sh: FSM test - Configure http plugin"
+log_title "tools/device/configure_upnp_plugin.sh: FSM test - Configure UPnP plugin"
 
-log "fsm/fsm_configure_http_plugin.sh: Configuring TAP interfaces required for FSM testing"
-add_bridge_port "${lan_bridge_if}" "${tap_http_if}"
-set_ovs_vsctl_interface_option "${tap_http_if}" "type" "internal"
-set_ovs_vsctl_interface_option "${tap_http_if}" "ofport_request" "${of_port}"
+log "tools/device/configure_upnp_plugin.sh: Configuring TAP interfaces required for FSM testing"
+add_bridge_port "${lan_bridge_if}" "${tap_upnp_if}"
+set_ovs_vsctl_interface_option "${tap_upnp_if}" "type" "internal"
+set_ovs_vsctl_interface_option "${tap_upnp_if}" "ofport_request" "${of_port}"
 create_inet_entry \
-    -if_name "${tap_http_if}" \
+    -if_name "${tap_upnp_if}" \
     -if_type "tap" \
     -ip_assign_scheme "none" \
     -dhcp_sniff "false" \
     -network true \
     -enabled true &&
-        log "fsm/fsm_configure_http_plugin.sh: Interface ${tap_http_if} created - Success" ||
-        raise "FAIL: Failed to create interface ${tap_http_if}" -l "fsm/fsm_configure_http_plugin.sh" -ds
+        log "tools/device/configure_upnp_plugin.sh: Interface ${tap_upnp_if} created - Success" ||
+        raise "FAIL: Failed to create interface ${tap_upnp_if}" -l "tools/device/configure_upnp_plugin.sh" -ds
 
-log "fsm/fsm_configure_http_plugin.sh: Cleaning FSM OVSDB Config tables"
+log "tools/device/configure_upnp_plugin.sh: Cleaning FSM OVSDB Config tables"
 empty_ovsdb_table Openflow_Config
 empty_ovsdb_table Flow_Service_Manager_Config
 empty_ovsdb_table FSM_Policy
 
-# Insert egress rule to Openflow_Config
+# Insert rule to Openflow_Config
 insert_ovsdb_entry Openflow_Config \
-    -i token "dev_flow_http_out" \
+    -i token "dev_flow_upnp_out" \
     -i table 0 \
-    -i rule "dl_src=${client_mac},tcp,tcp_dst=80" \
+    -i rule "dl_src=${client_mac},udp,udp_dst=1900" \
     -i priority 200 \
     -i bridge "${lan_bridge_if}" \
     -i action "normal,output:${of_port}" &&
-        log "fsm/fsm_configure_http_plugin.sh: Ingress rule inserted - Success" ||
-        raise "FAIL: Failed to insert_ovsdb_entry" -l "fsm/fsm_configure_http_plugin.sh" -oe
+        log "tools/device/configure_upnp_plugin.sh: insert_ovsdb_entry - Ingress rule inserted to Openflow_Config - Success" ||
+        raise "FAIL: insert_ovsdb_entry - Failed to insert ingress rule to Openflow_Config" -l "tools/device/configure_upnp_plugin.sh" -oe
 
-mqtt_value="dev-test/dev_http/$(get_node_id)/$(get_location_id)"
+mqtt_value="dev-test/dev_upnp/$(get_node_id)/$(get_location_id)"
 insert_ovsdb_entry Flow_Service_Manager_Config \
-    -i if_name "${tap_http_if}" \
-    -i handler "dev_http" \
-    -i pkt_capt_filter 'tcp' \
+    -i if_name "${tap_upnp_if}" \
+    -i handler "dev_upnp" \
+    -i pkt_capt_filter 'udp' \
     -i plugin "${fsm_plugin}" \
-    -i other_config '["map",[["mqtt_v","'"${mqtt_value}"'"],["dso_init","http_plugin_init"]]]' &&
-        log "fsm/fsm_configure_http_plugin.sh: Flow_Service_Manager_Config entry added - Success" ||
-        raise "FAIL: Failed to insert Flow_Service_Manager_Config entry" -l "fsm/fsm_configure_http_plugin.sh" -oe
+    -i other_config '["map",[["mqtt_v","'"${mqtt_value}"'"],["dso_init","upnp_plugin_init"]]]' &&
+        log "tools/device/configure_upnp_plugin.sh: insert_ovsdb_entry - MQTT config inserted to Flow_Service_Manager_Config - Success" ||
+        raise "FAIL: insert_ovsdb_entry - Failed to insert MQTT config to Flow_Service_Manager_Config" -l "tools/device/configure_upnp_plugin.sh" -oe

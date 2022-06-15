@@ -1,0 +1,13 @@
+config OSN_BACKEND_IPSEC_NULL
+    bool "Null"
+    help
+        Use dummy implementation of IPsec
+
+config OSN_BACKEND_IPSEC_LINUX_STRONGSWAN
+    bool "Linux"
+    select OSN_LINUX_ENABLED
+    select OSN_VPN
+    select OSN_VPN_IPSEC
+    select OSN_LINUX_TUNNEL_IFACE
+    help
+        Use the Linux strongSwan IPsec backend provided by OpenSync

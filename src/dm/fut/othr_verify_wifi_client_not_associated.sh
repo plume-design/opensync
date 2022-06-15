@@ -69,6 +69,7 @@ print_tables Wifi_Associated_Clients
 print_tables Wifi_Radio_State
 print_tables Wifi_VIF_State
 print_tables Wifi_Inet_State
+check_restore_ovsdb_server
 fut_info_dump_line
 ' EXIT SIGINT SIGTERM
 

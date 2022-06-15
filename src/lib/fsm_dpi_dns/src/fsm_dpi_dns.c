@@ -278,26 +278,6 @@ fsm_dpi_dns_free_reply(struct fsm_policy_reply *reply)
     fsm_policy_free_reply(reply);
 }
 
-const char * const redirect_prefix[] =
-{
-    [IPv4_REDIRECT] = "A-",
-    [IPv6_REDIRECT] = "4A-",
-    [FQDN_REDIRECT] = "C-",
-};
-
-static char *
-check_redirect(char *redirect, int id)
-{
-    const char *cmp = redirect_prefix[id];
-
-    LOGT("%s: redirect: %s", __func__, redirect);
-    if (strncmp(redirect, cmp, strlen(cmp)) == 0)
-    {
-        return redirect + strlen(cmp);
-    }
-    return NULL;
-}
-
 /**
  * @brief update dns response ips
  *
@@ -342,12 +322,12 @@ fsm_dpi_dns_update_response_ips(struct net_header_parser *net_header,
         uint8_t *p_ttl = packet + parsed + (rec->resp[i].offset - DNS_TTL_START_OFFSET);
         if (rec->resp[i].ip_v == 4)
         {
-            char *ipv4_addr = check_redirect(policy_reply->redirects[0],
-                                             IPv4_REDIRECT);
+            char *ipv4_addr = fsm_dns_check_redirect(policy_reply->redirects[0],
+                                                     IPv4_REDIRECT);
             if (ipv4_addr == NULL)
             {
-                ipv4_addr = check_redirect(policy_reply->redirects[1],
-                                           IPv4_REDIRECT);
+                ipv4_addr = fsm_dns_check_redirect(policy_reply->redirects[1],
+                                                   IPv4_REDIRECT);
             }
             if (ipv4_addr != NULL)
             {
@@ -359,12 +339,12 @@ fsm_dpi_dns_update_response_ips(struct net_header_parser *net_header,
         }
         if (rec->resp[i].ip_v == 6)
         {
-            char *ipv6_addr = check_redirect(policy_reply->redirects[0],
-                                             IPv6_REDIRECT);
+            char *ipv6_addr = fsm_dns_check_redirect(policy_reply->redirects[0],
+                                                     IPv6_REDIRECT);
             if (ipv6_addr == NULL)
             {
-                ipv6_addr = check_redirect(policy_reply->redirects[1],
-                                           IPv6_REDIRECT);
+                ipv6_addr = fsm_dns_check_redirect(policy_reply->redirects[1],
+                                                   IPv6_REDIRECT);
             }
             if (ipv6_addr != NULL)
             {
@@ -574,7 +554,7 @@ fsm_dpi_dns_process_dns_record(struct fsm_session *session,
     if (policy_reply->action == FSM_UPDATE_TAG)
     {
         /* Update Tag if we are interested in the IPs returned. */
-        dns_tag_param.dev_id = &fsm_request_param.fqdn_req->dev_id;
+        dns_tag_param.dev_id = fsm_request_param.device_id;
         dns_tag_param.policy_reply = policy_reply;
         dns_tag_param.dns_response = &dns_response;
         MEMZERO(dns_response);

@@ -86,6 +86,7 @@ LTE_ROUTE_TIMEOUT=60
 trap '
 fut_info_dump_line
 print_tables Lte_Config Lte_State Connection_Manager_Uplink Wifi_Inet_State
+check_restore_ovsdb_server
 fut_info_dump_line
 ' EXIT SIGINT SIGTERM
 

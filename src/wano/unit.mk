@@ -92,3 +92,8 @@ endif
 ifeq ($(CONFIG_MANAGER_WANO_PLUGIN_ETHCLIENT),y)
 UNIT_SRC += src/wanp_ethclient.c
 endif
+
+ifeq ($(CONFIG_MANAGER_WANO_PLUGIN_CMTS),y)
+UNIT_SRC += src/wanp_cmts.c
+$(eval $(call stam_generate,src/wanp_cmts.dot))
+endif

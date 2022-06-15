@@ -73,6 +73,7 @@ onboard_type=${3}
 trap '
     fut_info_dump_line
     print_tables Wifi_Credential_Config
+    check_restore_ovsdb_server
     fut_info_dump_line
 ' EXIT SIGINT SIGTERM
 

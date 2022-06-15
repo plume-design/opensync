@@ -80,6 +80,7 @@ fut_ec=$?
 fut_info_dump_line
 if [ $fut_ec -ne 0 ]; then 
     print_tables WAN_Config Connection_Manager_Uplink Wifi_Inet_Config Wifi_Inet_State
+    check_restore_ovsdb_server
 fi
 fut_info_dump_line
 exit $fut_ec

@@ -67,6 +67,7 @@ fut_info_dump_line
 print_tables SSL Manager Connection_Manager_Uplink
 ifconfig eth0
 check_restore_management_access || true
+check_restore_ovsdb_server
 fut_info_dump_line
 ' EXIT SIGINT SIGTERM
 

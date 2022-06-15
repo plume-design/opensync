@@ -76,6 +76,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define PS_KEY_IGMP_CONFIG          "igmp_config"
 #define PS_KEY_MLD_CONFIG           "mld_config"
 #define PS_KEY_ROUTE_CONFIG         "route_config"
+#define PS_KEY_PORT_MCAST           "port_mcast"
+#define PS_KEY_PORT_LANBR           "port_lanbridge"
+#define PS_KEY_PORT_FRONTHAULS      "port_fronthauls"
 
 #define PS_KEY_OFFLINE_CFG          KEY_OFFLINE_CFG
 
@@ -115,6 +118,9 @@ struct gw_offline_cfg
     json_t *igmp_config;
     json_t *mld_config;
     json_t *route_config;
+    json_t *port_mcast;
+    json_t *port_lanbridge;
+    json_t *port_fronthauls;
 };
 
 enum gw_offline_stat
@@ -147,6 +153,7 @@ static ovsdb_table_t table_IP_Interface;
 static ovsdb_table_t table_IGMP_Config;
 static ovsdb_table_t table_MLD_Config;
 static ovsdb_table_t table_Wifi_Route_Config;
+static ovsdb_table_t table_Port;
 
 static ev_timer timeout_no_cfg_change;
 static ev_timer debounce_dco;
@@ -217,6 +224,9 @@ static void gw_offline_cfg_release(struct gw_offline_cfg *cfg)
     json_decref(cfg->igmp_config);
     json_decref(cfg->mld_config);
     json_decref(cfg->route_config);
+    json_decref(cfg->port_mcast);
+    json_decref(cfg->port_lanbridge);
+    json_decref(cfg->port_fronthauls);
 
     memset(cfg, 0, sizeof(*cfg));
 }
@@ -237,6 +247,9 @@ static void gw_offline_cfg_delete_special_keys(struct gw_offline_cfg *cfg)
     delete_special_ovsdb_keys(cfg->igmp_config);
     delete_special_ovsdb_keys(cfg->mld_config);
     delete_special_ovsdb_keys(cfg->route_config);
+    delete_special_ovsdb_keys(cfg->port_mcast);
+    delete_special_ovsdb_keys(cfg->port_lanbridge);
+    delete_special_ovsdb_keys(cfg->port_fronthauls);
 }
 
 /* Determine if the saved config is "bridge config": */
@@ -456,6 +469,14 @@ static void callback_Wifi_Route_Config(
     on_configuration_updated();
 }
 
+static void callback_Port(
+        ovsdb_update_monitor_t *mon,
+        struct schema_Port *old_rec,
+        struct schema_Port *config)
+{
+    on_configuration_updated();
+}
+
 static bool gw_offline_enable_cfg_mon()
 {
     static bool inited;
@@ -481,6 +502,8 @@ static bool gw_offline_enable_cfg_mon()
     OVSDB_TABLE_MONITOR(IGMP_Config, true);
     OVSDB_TABLE_MONITOR(MLD_Config, true);
     OVSDB_TABLE_MONITOR(Wifi_Route_Config, true);
+
+    OVSDB_TABLE_MONITOR(Port, true);
 
     ev_timer_init(&timeout_no_cfg_change, on_timeout_cfg_no_change, TIMEOUT_NO_CFG_CHANGE, 0.0);
 
@@ -964,6 +987,8 @@ void pm_gw_offline_init(void *data)
     OVSDB_TABLE_INIT_NO_KEY(MLD_Config);
     OVSDB_TABLE_INIT_NO_KEY(Wifi_Route_Config);
 
+    OVSDB_TABLE_INIT(Port, name);
+
     // Always install Node_Config monitor, other monitors installed when enabled.
     OVSDB_TABLE_MONITOR(Node_Config, true);
 
@@ -1169,6 +1194,30 @@ static bool gw_offline_cfg_ps_store(const struct gw_offline_cfg *cfg)
         cfg_cache.route_config = json_incref(cfg->route_config);
     } else LOG(DEBUG, "offline_cfg: route_config: cached==stored. Skipped storing.");
 
+    if (!json_equal(cfg->port_mcast, cfg_cache.port_mcast))
+    {
+        rv = gw_offline_ps_store(PS_KEY_PORT_MCAST, cfg->port_mcast);
+        if (!rv) goto exit;
+        json_decref(cfg_cache.port_mcast);
+        cfg_cache.port_mcast = json_incref(cfg->port_mcast);
+    } else LOG(DEBUG, "offline_cfg: port_mcast: cached==stored. Skipped storing.");
+
+    if (!json_equal(cfg->port_lanbridge, cfg_cache.port_lanbridge))
+    {
+        rv = gw_offline_ps_store(PS_KEY_PORT_LANBR, cfg->port_lanbridge);
+        if (!rv) goto exit;
+        json_decref(cfg_cache.port_lanbridge);
+        cfg_cache.port_lanbridge = json_incref(cfg->port_lanbridge);
+    } else LOG(DEBUG, "offline_cfg: port_lanbridge: cached==stored. Skipped storing.");
+
+    if (!json_equal(cfg->port_fronthauls, cfg_cache.port_fronthauls))
+    {
+        rv = gw_offline_ps_store(PS_KEY_PORT_FRONTHAULS, cfg->port_fronthauls);
+        if (!rv) goto exit;
+        json_decref(cfg_cache.port_fronthauls);
+        cfg_cache.port_fronthauls = json_incref(cfg->port_fronthauls);
+    } else LOG(DEBUG, "offline_cfg: port_fronthauls: cached==stored. Skipped storing.");
+
 exit:
     return rv;
 }
@@ -1310,6 +1359,21 @@ static bool gw_offline_cfg_ps_load(struct gw_offline_cfg *cfg)
     json_decref(cfg_cache.route_config);
     cfg_cache.route_config = json_incref(cfg->route_config);
 
+    rv = gw_offline_ps_load(PS_KEY_PORT_MCAST, &cfg->port_mcast);
+    if (!rv) goto exit;
+    json_decref(cfg_cache.port_mcast);
+    cfg_cache.port_mcast = json_incref(cfg->port_mcast);
+
+    rv = gw_offline_ps_load(PS_KEY_PORT_LANBR, &cfg->port_lanbridge);
+    if (!rv) goto exit;
+    json_decref(cfg_cache.port_lanbridge);
+    cfg_cache.port_lanbridge = json_incref(cfg->port_lanbridge);
+
+    rv = gw_offline_ps_load(PS_KEY_PORT_FRONTHAULS, &cfg->port_fronthauls);
+    if (!rv) goto exit;
+    json_decref(cfg_cache.port_fronthauls);
+    cfg_cache.port_fronthauls = json_incref(cfg->port_fronthauls);
+
 exit:
     return rv;
 }
@@ -1419,6 +1483,179 @@ static bool gw_offline_cfg_ipv6_read(struct gw_offline_cfg *cfg)
     }
 
     return true;
+}
+
+/*
+ * Read some fields of the Port table for some of the interfaces:
+ *  - fronthauls
+ *  - mcast interface
+ *  - LAN_BRIDGE interface
+ */
+static bool gw_offline_cfg_port_table_read(struct gw_offline_cfg *cfg)
+{
+    char *filter_columns[] = { "+",
+                                SCHEMA_COLUMN(Port, tag),
+                                SCHEMA_COLUMN(Port, other_config),
+                                SCHEMA_COLUMN(Port, name),
+                                NULL };
+    const char *mcast_intf;
+    json_t *json_res;
+    json_t *row;
+    size_t index;
+
+    /* All fronthauls: obtain Port(tag, other_config): */
+    cfg->port_fronthauls = json_array();
+    json_array_foreach(cfg->vif_config, index, row)
+    {
+        const char *if_name = json_string_value(json_object_get(row, "if_name"));
+
+        json_res = ovsdb_sync_select_where2(SCHEMA_TABLE(Port),
+                       ovsdb_where_simple(SCHEMA_COLUMN(Port, name), if_name));
+        if (json_res == NULL || json_array_size(json_res) > 1)
+        {
+            LOG(ERR, "offline_cfg: Error selecting from Port table for %s", if_name);
+            return false;
+        }
+
+        ovsdb_table_filter_row(json_array_get(json_res, 0), filter_columns);
+        json_array_append(cfg->port_fronthauls, json_array_get(json_res, 0));
+        json_decref(json_res);
+    }
+
+    /* mcast interface: obtain Port(tag, other_config) */
+    mcast_intf = util_get_mcast_intf(cfg);
+    if (mcast_intf != NULL)
+    {
+        json_res = ovsdb_sync_select_where2(SCHEMA_TABLE(Port),
+                       ovsdb_where_simple(SCHEMA_COLUMN(Port, name), mcast_intf));
+        if (json_res == NULL || json_array_size(json_res) > 1)
+        {
+            LOG(ERR, "offline_cfg: Error selecting from Port table for: %s", mcast_intf);
+            return false;
+        }
+        /* Note: if mcast interface is not in OVS bridge LAN_BRIDGE (e.g. with
+         * routed services), the JSON here will be an empty JSON array and that
+         * is what we save. */
+        ovsdb_table_filter_row(json_array_get(json_res, 0), filter_columns);
+        cfg->port_mcast = json_res;
+    }
+
+    /* LAN_BRIDGE interface: obtain Port(tag, other_config): */
+    json_res = ovsdb_sync_select_where2(SCHEMA_TABLE(Port),
+                   ovsdb_where_simple(SCHEMA_COLUMN(Port, name), LAN_BRIDGE));
+    if (json_res == NULL || json_array_size(json_res) > 1)
+    {
+        LOG(ERR, "offline_cfg: Error selecting from Port table");
+        return false;
+    }
+
+    ovsdb_table_filter_row(json_array_get(json_res, 0), filter_columns);
+    cfg->port_lanbridge = json_res;
+
+    return true;
+}
+
+/*
+ * Add the specified interface to OVS bridge LAN_BRIDGE.
+ *
+ * If the interface is already in the LAN_BRIDGE no action is taken.
+ */
+static bool util_interface_add_to_lanbridge(const char *interface)
+{
+    char cmd[C_MAXPATH_LEN];
+    bool rc;
+
+    snprintf(cmd, sizeof(cmd),
+             "ovs-vsctl list-ports %s | grep %s || ovs-vsctl add-port %s %s",
+             LAN_BRIDGE, interface, LAN_BRIDGE, interface);
+
+    rc = cmd_log(cmd);
+    return (rc == 0);
+}
+
+/*
+ * Restore a Port row.
+ *
+ * @param[in]  port_row  the saved JSON (having fields that we are saving/restoring)
+ *                       for this Port. The 'name' field must be present as it
+ *                       identifies for which interface we're restoring the
+ *                       Port row.
+ */
+static bool util_restore_port_row(json_t *port_row)
+{
+    const char *name = NULL;
+    bool rv = false;
+
+    name = json_string_value(json_object_get(port_row, SCHEMA_COLUMN(Port, name)));
+    if (name == NULL)
+    {
+        LOG(ERR, "offline_cfg: Unexpected: No name field in saved Port row JSON");
+        return false;
+    }
+
+    /* 'name' is immutable in the schema, must not be part of update */
+    name = strdup(name);
+    json_object_del(port_row, SCHEMA_COLUMN(Port, name));
+
+    /* First, make sure the interface is added to OVS bridge LAN_BRIDGE: */
+    if (!util_interface_add_to_lanbridge(name))
+    {
+        LOG(ERR, "offline_cfg: Error adding %s to OVS bridge %s", name, LAN_BRIDGE);
+        goto out;
+    }
+    LOG(INFO, "offline_cfg: %s in OVS bridge %s", name, LAN_BRIDGE);
+
+    /* Then update the specific Port table settings: */
+    if (ovsdb_sync_update(
+            SCHEMA_TABLE(Port),
+            SCHEMA_COLUMN(Port, name),
+            name,
+            json_incref(port_row)) != 1)
+    {
+        LOG(ERR, "offline_cfg: Error updating Port table for: %s", name);
+        goto out;
+    }
+
+    LOG(DEBUG, "offline_cfg: Updated Port for: %s", name);
+    rv = true;
+out:
+    free((void *)name);
+    return rv;
+}
+
+/*
+ * According to saved config add the following interfaces to OVS bridge
+ * LAN_BRIDGE, if necessary, and restore some of their Port table fields
+ * (namely tag and other_config):
+ * - all fronthauls (VIFs where bridge==br-home)
+ * - mcast interface
+ * - lanbridge interface
+ */
+static bool gw_offline_cfg_port_table_write(const struct gw_offline_cfg *cfg)
+{
+    json_t *row;
+    size_t index;
+    bool rv = true;
+
+    /* Restore all fronthauls Port config: */
+    json_array_foreach(cfg->port_fronthauls, index, row)
+    {
+        rv &= util_restore_port_row(row);
+    }
+
+    /* Restore mcast interface Port config: */
+    if (json_array_size(cfg->port_mcast) == 1)
+    {
+        rv &= util_restore_port_row(json_array_get(cfg->port_mcast, 0));
+    }
+
+    /* Restore lanbridge interface Port config: */
+    if (json_array_size(cfg->port_lanbridge) == 1)
+    {
+        rv &= util_restore_port_row(json_array_get(cfg->port_lanbridge, 0));
+    }
+
+    return rv;
 }
 
 /* Read the current subset of OVSDB config. */
@@ -1614,6 +1851,12 @@ static bool gw_offline_cfg_ovsdb_read(struct gw_offline_cfg *cfg)
     {
         LOG(DEBUG, "offline_cfg: Wifi_Route_Config: No rows or error");
         cfg->route_config = json_array();
+    }
+
+    /* Read and save some rows and some fields of Port table: */
+    if (!gw_offline_cfg_port_table_read(cfg))
+    {
+        LOG(WARN, "offline_cfg: Failed obtaining Port table config");
     }
 
     return true;
@@ -2303,14 +2546,7 @@ static bool gw_offline_cfg_ovsdb_apply(const struct gw_offline_cfg *cfg)
     /* Create VIF interfaces... */
     json_array_foreach(cfg->vif_config, index, row)
     {
-        char cmd_vif_to_br[1024];
         const char *if_name = json_string_value(json_object_get(row, "if_name"));
-
-        /* json object might get modified later, localy remember this if_name
-         * and already construct a shell command to be used later: */
-        snprintf(cmd_vif_to_br, sizeof(cmd_vif_to_br),
-                 "ovs-vsctl list-ports %s | grep %s || ovs-vsctl add-port %s %s",
-                 LAN_BRIDGE, if_name, LAN_BRIDGE, if_name);
 
         /* Insert a row for this VIF: */
         if (ovsdb_sync_insert("Wifi_VIF_Config", json_incref(row), &uuid))
@@ -2319,13 +2555,6 @@ static bool gw_offline_cfg_ovsdb_apply(const struct gw_offline_cfg *cfg)
             const char *radio_if_name = json_string_value(json_array_get(cfg->radio_if_names, index));
             LOG(DEBUG, "offline_cfg:   if_name=%s is at radio_if_name=%s", if_name, radio_if_name);
             ovsdb_add_uuid_to_radio_config(radio_if_name, uuid);
-
-            /* Add this home VIF interface to lan bridge: */
-            rc = cmd_log(cmd_vif_to_br);
-            if (rc == 0)
-                LOG(INFO, "offline_cfg: ovs-vsctl: added %s to %s", if_name, LAN_BRIDGE);
-            else
-                LOG(ERR, "offline_cfg: ovs-vsctl: Error adding %s to %s", if_name, LAN_BRIDGE);
         }
         else
         {
@@ -2393,6 +2622,9 @@ static bool gw_offline_cfg_ovsdb_apply(const struct gw_offline_cfg *cfg)
             return false;
         }
     }
+
+    /* Restore some Port table fields (add interfaces to LAN_BRIDGE, if needed): */
+    gw_offline_cfg_port_table_write(cfg);
 
     /* Configure Wifi_Route_Config: */
     rc = ovsdb_sync_delete_where(SCHEMA_TABLE(Wifi_Route_Config), NULL);

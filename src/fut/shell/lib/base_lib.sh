@@ -120,6 +120,11 @@ raise()
                 exception_name="NativeFunction"
                 exception_type="FAIL"
                 ;;
+            # Use for detection of down-ed / crashed ovsdb-server
+            -osc)
+                exception_name="OVSDBServerCrashed"
+                exception_type="FAIL"
+                ;;
             # Use for testcase failures
             -tc)
                 exception_name="TestFailure"
@@ -223,7 +228,8 @@ log()
     return $exit_code
 }
 
-contains_element () {
+contains_element()
+{
     local match="$1"
     shift
     while [ -n "${1}" ]; do
@@ -232,4 +238,34 @@ contains_element () {
         shift
     done
     echo 1 && return 1
+}
+
+get_index_in_list()
+{
+    local index_for="$1"
+    shift
+    index=0
+    values="$@"
+    while [ -n "${1}" ]; do
+        value="${1}"
+        [ "${value}" == "${index_for}" ] && echo $index && return 0
+        index=$((index + 1))
+        shift
+    done
+    return 1
+}
+
+get_by_index_from_list()
+{
+    local index="$1"
+    shift
+    check_index=0
+    values="$@"
+    while [ -n "${1}" ]; do
+        value="${1}"
+        [ "${check_index}" == "${index}" ] && echo "$value" && return 0
+        check_index=$((check_index+1))
+        shift
+    done
+    return 1
 }

@@ -25,6 +25,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 #include <errno.h>
+#include <regex.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <string.h>
@@ -41,6 +42,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "log.h"
 #include "memutil.h"
 #include "network_metadata_report.h"
+#include "os_regex.h"
 #include "sockaddr_storage.h"
 #include "util.h"
 
@@ -207,11 +209,17 @@ free_policy_reply:
 }
 
 static void
-dpi_sni_free_memory(struct fsm_policy_req *policy_request,
-                    struct fsm_policy_reply *policy_reply)
+dpi_sni_free_policy_request(struct fsm_policy_req *policy_request)
 {
     FREE(policy_request->url);
     fsm_policy_free_request(policy_request);
+}
+
+static void
+dpi_sni_free_memory(struct fsm_policy_req *policy_request,
+                    struct fsm_policy_reply *policy_reply)
+{
+    dpi_sni_free_policy_request(policy_request);
     fsm_policy_free_reply(policy_reply);
 }
 
@@ -247,6 +255,9 @@ dpi_sni_process_report(struct fsm_policy_req *policy_request,
                        struct fsm_policy_reply *policy_reply)
 {
     struct fqdn_pending_req *pending_req;
+
+    /* Do not send the report for the redirected IP(policy page) requests */
+    if (policy_request->req_type == FSM_FQDN_REQ) return;
 
     pending_req = policy_request->fqdn_req;
 
@@ -298,8 +309,6 @@ dpi_sni_process_verdict(struct fsm_policy_req *policy_request,
     LOGT("%s: processing dpi sni verdict with action '%s'", __func__, action_str);
 
     dpi_sni_process_report(policy_request, policy_reply);
-
-    dpi_sni_free_memory(policy_request, policy_reply);
 }
 
 /**
@@ -342,12 +351,195 @@ dpi_sni_policy_req(struct fsm_request_args *request_args, char *attr_value)
 
     action = (action == FSM_BLOCK ? FSM_DPI_DROP : FSM_DPI_PASSTHRU);
 
+    /* Cleanup */
+    dpi_sni_free_memory(policy_request, policy_reply);
+
     return action;
 
 clean_policy_req:
     fsm_policy_free_request(policy_request);
 error:
     return FSM_DPI_PASSTHRU;
+}
+
+bool
+dpi_sni_fetch_fqdn_from_url_attr(char *attribute_name, char *fqdn)
+{
+    /*
+     * http.url of the following format:
+     *
+     * http://host/path
+     *
+     * "host" will be extracted from the above format as a FQDN.
+     * Note : No FQDN sanitation is performed
+     */
+    char *pattern = "http://";
+    char *pattern_start;
+    char *pattern_end;
+    int pattern_len = 0;
+    char *found;
+
+    if (attribute_name == NULL) return false;
+
+    found = strstr(attribute_name, pattern);
+
+    if (found == NULL) return false;
+
+    pattern_start = found + strlen(pattern);
+
+    pattern_end = strchr(pattern_start, '/');
+
+    if (pattern_end == NULL)
+    {
+        strcpy(fqdn, pattern_start);
+        return true;
+    }
+
+    pattern_len = pattern_end - pattern_start;
+
+    strncpy(fqdn, pattern_start, pattern_len);
+    fqdn[pattern_len + 1] = '\0';
+
+    return true;
+}
+
+bool
+dpi_sni_is_flow_redirected(struct net_md_flow_info *info,
+                           struct fsm_policy_reply *policy_reply)
+{
+    char remote_ip_str[128] = { 0 };
+    char *ipv4_addr;
+    char *ipv6_addr;
+    int ret;
+    int af;
+
+    af = info->ip_version == 4 ? AF_INET : AF_INET6;
+    inet_ntop(af, info->remote_ip, remote_ip_str, sizeof(remote_ip_str));
+
+    if (af == AF_INET)
+    {
+        ipv4_addr = fsm_dns_check_redirect(policy_reply->redirects[0],
+                                           IPv4_REDIRECT);
+        if (ipv4_addr == NULL)
+        {
+            ipv4_addr = fsm_dns_check_redirect(policy_reply->redirects[1],
+                                               IPv4_REDIRECT);
+        }
+        if (ipv4_addr != NULL)
+        {
+            ret = strcmp(ipv4_addr, remote_ip_str);
+            if (!ret) return true;
+        }
+    }
+    else
+    {
+        ipv6_addr = fsm_dns_check_redirect(policy_reply->redirects[0],
+                                           IPv6_REDIRECT);
+        if (ipv6_addr == NULL)
+        {
+            ipv6_addr = fsm_dns_check_redirect(policy_reply->redirects[1],
+                                               IPv6_REDIRECT);
+        }
+        if (ipv6_addr != NULL)
+        {
+            ret = strcmp(ipv6_addr, remote_ip_str);
+            if (!ret) return true;
+        }
+    }
+
+    return false;
+}
+
+
+bool dpi_sni_is_redirected_attr(struct fsm_dpi_sni_redirect_flow_request *param)
+{
+    struct fsm_policy_reply *policy_reply;
+    struct fsm_policy_req *policy_request;
+    struct net_md_stats_accumulator *acc;
+    struct fsm_request_args req_args;
+    struct net_md_flow_info *info;
+    struct fsm_session *session;
+    char fqdn_value[C_FQDN_LEN];
+    char *attr_value;
+    int request_type;
+    bool  redirect;
+    bool rc;
+
+    redirect = false;
+    info = param->info;
+    attr_value = param->attribute_value;
+    request_type = param->req_type;
+    session = param->session;
+    acc = param->acc;
+
+    if (info == NULL || info->local_mac == NULL || info->remote_ip == NULL)
+    {
+        return redirect;
+    }
+
+    MEMZERO(fqdn_value);
+    switch (request_type)
+    {
+        case FSM_HOST_REQ:
+        {
+            STRSCPY(fqdn_value, attr_value);
+            break;
+        }
+
+        case FSM_URL_REQ:
+        {
+            rc = dpi_sni_fetch_fqdn_from_url_attr(attr_value, fqdn_value);
+            if (rc == false) return redirect;
+            break;
+        }
+
+        case FSM_APP_REQ:
+        case FSM_SNI_REQ:
+        default:
+            return redirect;
+    }
+
+    MEMZERO(req_args);
+    req_args.session = session;
+    req_args.device_id = info->local_mac;
+    req_args.acc = acc;
+    req_args.request_type = FSM_FQDN_REQ;
+
+    policy_request = dpi_sni_create_request(&req_args, fqdn_value);
+    if (policy_request == NULL)
+    {
+        LOGD("%s: failed to create dpi sni policy request", __func__);
+        return redirect;
+    }
+
+    policy_reply = dpi_sni_create_reply(&req_args);
+    if (policy_reply == NULL)
+    {
+        LOGD("%s: failed to initialize dpi sni reply", __func__);
+        goto clean_policy_req;
+    }
+
+    LOGT("%s: allocated policy_request == %p, policy_reply == %p",
+         __func__,
+         policy_request,
+         policy_reply);
+
+    fsm_apply_policies(policy_request, policy_reply);
+
+    if (policy_reply->redirect)
+    {
+        redirect = dpi_sni_is_flow_redirected(info, policy_reply);
+    }
+
+    /* Cleanup */
+    dpi_sni_free_memory(policy_request, policy_reply);
+
+    return redirect;
+
+clean_policy_req:
+    dpi_sni_free_policy_request(policy_request);
+
+    return redirect;
 }
 
 bool
@@ -424,6 +616,7 @@ dpi_sni_is_redirected_flow(struct net_md_flow_info *info)
 
     return true;
 }
+
 
 /**
  * @brief looks up a session

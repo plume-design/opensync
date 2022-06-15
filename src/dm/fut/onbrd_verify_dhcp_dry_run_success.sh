@@ -68,6 +68,7 @@ fut_info_dump_line
 print_tables Connection_Manager_Uplink
 set_interface_up "$if_name" || true
 check_restore_management_access || true
+check_restore_ovsdb_server
 fut_info_dump_line
 ' EXIT SIGINT SIGTERM
 

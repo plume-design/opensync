@@ -16,6 +16,7 @@ menuconfig OSN_LINUX_ENABLED
             - VLAN support (via iproute2)
             - QoS support (via tc)
             - LTE support (via quectel)
+            - IPsec support (via strongSwan)
 
 if OSN_LINUX_ENABLED
     config OSN_LINUX_NETIF
@@ -354,7 +355,7 @@ if OSN_LINUX_ENABLED
             required for LTE switchover and other functionalities that may
             require to change the route metrics dynamically.
 
-            This affects submodules stuch as Static IPv4, DHCPv4 and PPPoE
+            This affects submodules such as Static IPv4, DHCPv4 and PPPoE
             clients.
 
     config OSN_LINUX_IGMP
@@ -368,6 +369,116 @@ if OSN_LINUX_ENABLED
         default y
         help
             MLD support uses OVS to configure MLD
+
+    menuconfig OSN_VPN
+        bool "OpenSync Virtual Private Networks support"
+        default y
+        help
+            OpenSync Virtual Private Networks support
+
+        if OSN_VPN
+            config OSN_VPN_IPSEC
+            bool "OpenSync IPsec VPN support"
+            default y
+            help
+                OpenSync IPsec VPN support
+
+           if OSN_VPN_IPSEC
+               config OSN_IPSEC_CONF_FILE_PATH
+                   string "Path to the ipsec.conf file"
+                   default "/etc/ipsec.conf"
+                   help
+                       Full path to the ipsec.conf file used by strongSwan
+
+               config OSN_IPSEC_SECRETS_FILE_PATH
+                   string "Path to the ipsec.secrets file"
+                   default "/etc/ipsec.secrets"
+                   help
+                       Full path to the ipsec.secrets file used by strongSwan
+
+               config OSN_IPSEC_CHARON_CONF_FILE_PATH
+                   string "Path to the charon.conf file"
+                   default "/etc/strongswan.d/charon.conf"
+                   help
+                       Full path to the charon.conf file used by strongSwan
+
+               config OSN_IPSEC_BIN_PATH
+                   string "Path to the strongSwan ipsec script"
+                   default "/sbin/ipsec"
+                   help
+                       Full path to the strongSwan ipsec script
+
+               config OSN_IPSEC_STARTER_PATH
+                   string "Path to the strongSwan starter binary"
+                   default "/libexec/ipsec/starter"
+                   help
+                       Full path to the strongSwan ipsec starter binary
+
+               config OSN_IPSEC_DAEMON_PID_PATH
+                   string "Path to the strongSwan daemon pid file"
+                   default "/var/run/starter.charon.pid"
+                   help
+                       Full path to the strongSwan daemon (starter/charon) pid file path.
+                       This is necessary to terminate any stale instances of the
+                       strongSwan daemon(s), for instance after a restart. This
+                       would typically need to be set to the starter pid path as
+                       terminating starter would terminate charon daemon as well.
+
+               config OSN_IPSEC_TMPFS_CONF_FILE_PATH
+                   string "Temporary ipsec.conf file path"
+                   default "/var/etc/ipsec.conf"
+                   help
+                       Full path to the ipsec.conf file in tmpfs written to by OpenSync
+
+               config OSN_IPSEC_TMPFS_SECRETS_FILE_PATH
+                   string "Temporary ipsec.secrets file path"
+                   default "/var/etc/ipsec.secrets"
+                   help
+                       Full path to the ipsec.secrets file in tmpfs written to by OpenSync
+
+               config OSN_IPSEC_TMPFS_CHARON_CONF_FILE_PATH
+                   string "Temporary charon.conf file path"
+                   default "/var/etc/strongswan.d/charon.conf"
+                   help
+                       Full path to the charon.conf file in tmpfs written to by OpenSync
+
+               config OSN_IPSEC_TMPFS_STATUS_DIR
+                   string "OpenSync ipsec status directory"
+                   default "/var/run/ipsec"
+                   help
+                       Full path to the OpenSync ipsec status directory in tmpfs.
+                       This path is written to by OpenSync updown script and
+                       read by OpenSync IPsec OSN layer.
+
+               config OSN_IPSEC_DISABLE_POLICY_IFACE_LIST
+                   string "System interfaces for which to disable IPsec policy"
+                   default ""
+                   help
+                       A list of system interfaces for which to disable IPsec policy
+                       via /proc/sys interface. This may be needed on some platforms
+                       for route-based IPsec configurations to function properly or
+                       optimally.
+
+           endif
+        endif
+
+        config OSN_LINUX_TUNNEL_IFACE
+            bool "Linux tunnel interface support"
+            default y
+            help
+                Linux tunnel interface support
+
+           if OSN_LINUX_TUNNEL_IFACE
+
+               config OSN_TUNNEL_IFACE_ROUTE_BASED_TWEAKS
+               bool "Tunnel interface route-based tweaks"
+               default y
+               help
+                   Apply a few /proc/sys settings to tunnel interfaces created
+                   that may be needed for route-based tunnels to function
+                   properly or optimally.
+
+           endif
 
 endif
 

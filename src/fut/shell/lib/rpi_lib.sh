@@ -257,22 +257,22 @@ um_encrypt_image()
 #   0   On success.
 #   See DESCRIPTION.
 # USAGE EXAMPLE(S):
-#   um_create_md5_file /tmp/clean_device_fw.img
+#   create_md5_file /tmp/clean_device_fw.img
 ###############################################################################
-um_create_md5_file()
+create_md5_file()
 {
     local NARGS=1
     [ $# -ne ${NARGS} ] &&
-        raise "rpi_lib:um_create_md5_file requires ${NARGS} input argument(s), $# given" -arg
+        raise "rpi_lib:create_md5_file requires ${NARGS} input argument(s), $# given" -arg
     um_file_path=$1
 
     um_fw_name=${um_file_path##*/}
     um_file_cd_path=${um_file_path//"$um_fw_name"/""}
 
-    log "rpi_lib:um_create_md5_file - Creating md5 sum file of file $um_file_path"
+    log "rpi_lib:create_md5_file - Creating md5 sum file of file $um_file_path"
     cd "$um_file_cd_path" && md5sum "$um_fw_name" > "$um_fw_name.md5" &&
-        log -deb "rpi_lib:um_create_md5_file - md5 sum file created - Success" ||
-        raise "FAIL: Could not create md5 sum file" -l "rpi_lib:um_create_md5_file" -ds
+        log -deb "rpi_lib:create_md5_file - md5 sum file created - Success" ||
+        raise "FAIL: Could not create md5 sum file" -l "rpi_lib:create_md5_file" -ds
 
     return 0
 }
@@ -287,13 +287,13 @@ um_create_md5_file()
 #   0   On success.
 #   See DESCRIPTION.
 # USAGE EXAMPLE(S):
-#   um_create_corrupt_md5_file /tmp/clean_device_fw.img
+#   create_corrupt_md5_file /tmp/clean_device_fw.img
 ###############################################################################
-um_create_corrupt_md5_file()
+create_corrupt_md5_file()
 {
     local NARGS=1
     [ $# -ne ${NARGS} ] &&
-        raise "rpi_lib:um_create_corrupt_md5_file requires ${NARGS} input argument(s), $# given" -arg
+        raise "rpi_lib:create_corrupt_md5_file requires ${NARGS} input argument(s), $# given" -arg
     um_file_path=$1
 
     um_fw_name=${um_file_path##*/}
@@ -301,10 +301,10 @@ um_create_corrupt_md5_file()
     um_md5_name="$um_file_cd_path/${um_fw_name}.md5"
     um_hash_only="$(cd "$um_file_cd_path" && md5sum "$um_fw_name" | cut -d' ' -f1)"
 
-    log "rpi_lib:um_create_corrupt_md5_file - Creating $um_file_path.md5"
+    log "rpi_lib:create_corrupt_md5_file - Creating $um_file_path.md5"
     echo "${um_hash_only:16:16}${um_hash_only:0:16}  ${um_fw_name}" > "$um_md5_name" &&
-        log -deb "rpi_lib:um_create_corrupt_md5_file - Created '$um_md5_name' - Success" ||
-        raise "FAIL: Could not create '$um_md5_name'" -l "rpi_lib:um_create_corrupt_md5_file" -ds
+        log -deb "rpi_lib:create_corrupt_md5_file - Created '$um_md5_name' - Success" ||
+        raise "FAIL: Could not create '$um_md5_name'" -l "rpi_lib:create_corrupt_md5_file" -ds
 
     return 0
 }

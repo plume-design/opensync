@@ -226,6 +226,7 @@ ltem_handle_lte_state_change(ltem_mgr_t *mgr)
     case LTEM_LTE_STATE_INIT:
         break;
     case LTEM_LTE_STATE_UP:
+        mgr->lte_route->has_L3 = true;
         res = ltem_ovsdb_cmu_insert_lte(mgr);
         if (res)
         {
@@ -252,9 +253,10 @@ ltem_handle_lte_state_change(ltem_mgr_t *mgr)
         }
         break;
     case LTEM_LTE_STATE_DOWN:
+        mgr->lte_route->has_L3 = false;
+        ltem_ovsdb_cmu_disable_lte(mgr);
         if (mgr->lte_state_info->lte_failover_active)
         {
-            ltem_ovsdb_cmu_disable_lte(mgr);
             ltem_revert_failover(mgr);
         }
         break;
@@ -309,4 +311,13 @@ ltem_set_lte_state(enum ltem_lte_state lte_state) {
     ltem_handle_lte_state_change(mgr);
 
     return;
+}
+
+/**
+ * @brief stop the LTE daemon
+ */
+void
+ltem_fini_lte_modem(void)
+{
+    osn_lte_stop_vendor_daemon();
 }

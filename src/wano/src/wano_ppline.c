@@ -105,6 +105,7 @@ static wano_connmgr_uplink_event_fn_t wano_ppline_cmu_event_fn;
 static wano_ovs_port_event_fn_t wano_ppline_ovs_port_event_fn;
 static void wano_ppline_check_freeze(wano_ppline_t *wpl);
 static void wano_ppline_reset_ipv6(wano_ppline_t *self);
+static void wano_ppline_map_iftype(const char *in_iftype, char *out_iftype);
 
 bool wano_ppline_init(
         wano_ppline_t *self,
@@ -574,6 +575,7 @@ void wano_ppline_status_async_fn(struct ev_loop *loop, ev_async *ev, int revent)
     (void)loop;
     (void)revent;
 
+    char if_type[32] = {0};
     struct wano_ppline_plugin *wpp = CONTAINER_OF(ev, struct wano_ppline_plugin, wpp_status_async);
     wano_ppline_t *self = wpp->wpp_ppline;
 
@@ -610,9 +612,10 @@ void wano_ppline_status_async_fn(struct ev_loop *loop, ev_async *ev, int revent)
             }
             else
             {
+                wano_ppline_map_iftype(self->wpl_iftype, if_type);
                 if (!WANO_CONNMGR_UPLINK_UPDATE(
                             self->wpl_ifname,
-                            .if_type = self->wpl_iftype,
+                            .if_type = if_type,
                             .has_L2 = WANO_TRI_TRUE,
                             .has_L3 = WANO_TRI_TRUE))
                 {
@@ -759,14 +762,22 @@ void wano_ppline_retry_timer_fn(struct ev_loop *loop, ev_timer *w, int revent)
     wano_ppline_state_do(&self->wpl_state, wano_ppline_do_IDLE_TIMEOUT, NULL);
 }
 
+/*
+ * Reset IPv6 settings. Delete any static, DHCPv6 client/server and Route
+ * Advertising configuration. Do not delete the row in IP_Interface as it holds
+ * a strong reference to QoS configuration which we *need* to retain
+ * (Interface_QoS and Interface_Queue).
+ */
 void wano_ppline_reset_ipv6(wano_ppline_t *self)
 {
+    struct schema_IP_Interface ip_interface;
     ovsdb_table_t table_IP_Interface;
     ovsdb_table_t table_DHCPv6_Client;
     ovsdb_table_t table_DHCPv6_Server;
     ovsdb_table_t table_IPv6_RouteAdv;
-
-    struct schema_IP_Interface ip_interface;
+    ovsdb_table_t table_IPv6_Address;
+    int ii;
+    int rc;
 
     OVSDB_TABLE_INIT(IP_Interface, _uuid);
     OVSDB_TABLE_INIT(DHCPv6_Client, _uuid);
@@ -783,7 +794,64 @@ void wano_ppline_reset_ipv6(wano_ppline_t *self)
     ovsdb_table_delete_where(&table_DHCPv6_Client, ovsdb_where_uuid("ip_interface", ip_interface._uuid.uuid));
     ovsdb_table_delete_where(&table_DHCPv6_Server, ovsdb_where_uuid("interface", ip_interface._uuid.uuid));
     ovsdb_table_delete_where(&table_IPv6_RouteAdv, ovsdb_where_uuid("interface", ip_interface._uuid.uuid));
-    ovsdb_table_delete_where(&table_IP_Interface, ovsdb_where_uuid("_uuid", ip_interface._uuid.uuid));
+
+    /* Delete non-autoconfigured IPv6 addresses */
+    for (ii = 0; ii < ip_interface.ipv6_addr_len; ii++)
+    {
+        struct schema_IPv6_Address *addr;
+        int addr_cnt;
+
+        addr = ovsdb_table_select_where(&table_IPv6_Address, ovsdb_where_uuid("_uuid", ip_interface.ipv6_addr[ii].uuid), &addr_cnt);
+        if (addr == NULL || addr_cnt < 1)
+        {
+            continue;
+        }
+
+        if (strcmp(addr->origin, "auto_configured") == 0) continue;
+
+        rc = ovsdb_table_delete_where_with_parent(
+                &table_IPv6_Address,
+                ovsdb_where_uuid("_uuid", addr->_uuid.uuid),
+                SCHEMA_TABLE(IP_Interface),
+                ovsdb_where_uuid("_uuid", ip_interface._uuid.uuid),
+                SCHEMA_COLUMN(IP_Interface, ipv6_addr));
+        if (rc <= 0)
+        {
+            LOG(WARN, "wano: %s: Error deleting IPv6_Address uuid=%s",
+                    self->wpl_ifname,
+                    addr->_uuid.uuid);
+        }
+    }
+
+    /* Delete IPv6_Prefixes */
+    struct schema_IP_Interface ip_noprefix;
+
+    memset(&ip_noprefix, 0, sizeof(ip_noprefix));
+    ip_noprefix._partial_update = true;
+    SCHEMA_UNSET_MAP(ip_noprefix.ipv6_prefix);
+
+    rc = ovsdb_table_update_where(
+            &table_IP_Interface,
+            ovsdb_where_uuid("_uuid", ip_interface._uuid.uuid),
+            &ip_noprefix);
+    if (rc <= 0)
+    {
+        LOG(WARN, "wano: %s: Error clearing ipv6_prefix list from IP_Interface where uuid=%s",
+                self->wpl_ifname,
+                ip_interface._uuid.uuid);
+    }
+}
+
+void wano_ppline_map_iftype(const char *in_iftype, char *out_iftype)
+{
+    if (strcmp(in_iftype, "unmanaged") == 0)
+    {
+        strcpy(out_iftype, "eth");
+    }
+    else
+    {
+        strcpy(out_iftype, in_iftype);
+    }
 }
 
 /*
@@ -798,6 +866,7 @@ enum wano_ppline_state wano_ppline_state_INIT(
 {
     (void)action;
     (void)data;
+    char if_type[32] = {0};
 
     wano_ppline_t *self = CONTAINER_OF(state, wano_ppline_t, wpl_state);
 
@@ -814,9 +883,11 @@ enum wano_ppline_state wano_ppline_state_INIT(
 
     self->wpl_immediate_timeout = clock_mono_double() + CONFIG_MANAGER_WANO_PLUGIN_IMMEDIATE_TIMEOUT;
 
+    wano_ppline_map_iftype(self->wpl_iftype, if_type);
+
     if (!WANO_CONNMGR_UPLINK_UPDATE(
                 self->wpl_ifname,
-                .if_type = self->wpl_iftype,
+                .if_type = if_type,
                 .has_L2 = WANO_TRI_FALSE))
     {
         LOG(WARN, "wano: %s: Error updating Connection_Manager_Uplink (iftype = %s, has_L2 = false)",
@@ -991,7 +1062,8 @@ enum wano_ppline_state wano_ppline_state_IF_IPV4_RESET(
 
         case wano_ppline_do_INET_STATE_UPDATE:
             if (strcmp(is->is_ip_assign_scheme, "none") != 0) break;
-            if (osn_ip_addr_cmp(&is->is_ipaddr, &OSN_IP_ADDR_INIT) != 0) break;
+            if (osn_ip_addr_cmp(&is->is_ipaddr, &OSN_IP_ADDR_INIT) != 0
+                && strcmp(self->wpl_iftype, "unmanaged") != 0) break;
 
             self->wpl_plugin_imask &= ~WANO_PLUGIN_MASK_IPV4;
             return wano_ppline_IF_IPV6_RESET;

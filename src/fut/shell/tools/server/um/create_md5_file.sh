@@ -37,16 +37,16 @@ source "$fut_topdir/lib/rpi_lib.sh"
 usage()
 {
 cat << usage_string
-tools/server/um/um_create_corrupt_image_file.sh [-h] arguments
+tools/server/um/create_md5_file.sh [-h] arguments
 Description:
-    - Creates corrupted FW image from clean image
+    - Creates MD5 file of FW image
 Arguments:
     -h  show this help message
     \$1 (um_fw_path) : path to clean FW which to create corrupted copy : (string)(required)
 Script usage example:
-   ./tools/server/um/um_create_corrupt_image_file.sh /tmp/clean_device_fw.img
+   ./tools/server/um/create_md5_file.sh /tmp/clean_device_fw.img
 Result:
-    - Creates corrupted FW image with 'corrupt_' prefix in name (example corrupt_clean_device_fw.img)
+    - Creates MD5 file for FW image (example clean_device_fw.img.md5)
 usage_string
 }
 if [ -n "${1}" ]; then
@@ -62,10 +62,10 @@ if [ -n "${1}" ]; then
 fi
 
 NARGS=1
-[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "tools/server/um/um_create_corrupt_image_file.sh" -arg
+[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "tools/server/um/create_md5_file.sh" -arg
 um_fw_path=$1
 
-log "tools/server/um/um_create_corrupt_image.sh - Creating $um_fw_path"
-um_create_corrupt_image "$um_fw_path"
-    log -deb "tools/server/um/um_create_corrupt_image.sh - Image corrupted - Success" ||
-    raise "FAIL: Could not corrupt image" -l "tools/server/um/um_create_corrupt_image.sh" -ds
+log "tools/server/um/create_md5_file.sh - Creating md5 sum file of file $um_fw_path"
+create_md5_file "$um_fw_path" &&
+    log -deb "tools/server/um/create_md5_file.sh - md5 sum file created - Success" ||
+    raise "FAIL: Could not create md5 sum file" -l "tools/server/um/create_md5_file.sh" -ds

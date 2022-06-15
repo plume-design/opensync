@@ -37,6 +37,7 @@ cm_setup_file="cm2/cm2_setup.sh"
 iface_down_bits=01
 iface_up_bits=75
 if_default="eth0"
+if_type_default="eth"
 usage()
 {
 cat << usage_string
@@ -75,12 +76,14 @@ check_kconfig_option "TARGET_CAP_EXTENDER" "y" ||
 NARGS=1
 [ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "cm2/cm2_ble_status_interface_down.sh" -arg
 if_name=${1:-${if_default}}
+if_type=${2:-${if_type_default}}
 
 trap '
 fut_info_dump_line
 print_tables AW_Bluetooth_Config
 ifconfig $if_name up || true
 check_restore_management_access || true
+check_restore_ovsdb_server
 fut_info_dump_line
 ' EXIT SIGINT SIGTERM
 
@@ -109,6 +112,11 @@ log "cm2/cm2_ble_status_interface_down.sh: Bringing back interface $if_name"
 ifconfig "$if_name" up &&
     log "cm2/cm2_ble_status_interface_down.sh: Interface $if_name is up - Success" ||
     raise "FAIL: Could not bring up interface $if_name" -l "cm2/cm2_ble_status_interface_down.sh" -ds
+
+get_if_fn_type="check_${if_type}_interface_state_is_up"
+wait_for_function_response 0 "$get_if_fn_type $if_name " &&
+    log "cm2/cm2_ble_status_interface_down.sh: Interface $if_name is UP - Success" ||
+    raise "FAIL: Interface $if_name is DOWN, should be UP" -l "cm2/cm2_ble_status_interface_down.sh" -ds
 
 log "cm2/cm2_ble_status_interface_down.sh: Checking AW_Bluetooth_Config::payload for $iface_up_bits:00:00:00:00:00"
 wait_ovsdb_entry AW_Bluetooth_Config -is payload "$iface_up_bits:00:00:00:00:00" &&

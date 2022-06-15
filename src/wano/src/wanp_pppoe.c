@@ -196,7 +196,8 @@ enum wanp_pppoe_state wanp_pppoe_state_WAIT_IP(
             if (!WANO_INET_CONFIG_UPDATE(
                     wpoe->wpoe_ppp_ifname,
                     .enabled = WANO_TRI_TRUE,
-                    .network = WANO_TRI_TRUE))
+                    .network = WANO_TRI_TRUE,
+                    .nat = WANO_TRI_TRUE))
             {
                 LOG(WARN, "wanp_pppoe: %s: Error re-eanbling PPPoE interface %s.",
                         wpoe->wpoe_handle.wh_ifname,

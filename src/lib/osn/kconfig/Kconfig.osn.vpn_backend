@@ -1,0 +1,11 @@
+config OSN_BACKEND_VPN_NULL
+    bool "Null"
+    help
+        Use dummy implementation of VPN
+
+config OSN_BACKEND_VPN_LINUX
+    bool "Linux"
+    select OSN_LINUX_ENABLED
+    select OSN_VPN
+    help
+        Use the Linux VPN backend provided by OpenSync

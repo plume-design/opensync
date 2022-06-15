@@ -74,6 +74,7 @@ trap '
 fut_info_dump_line
 get_radio_mac_from_system "$wan_interface"
 print_tables Connection_Manager_Uplink Wifi_Inet_State
+check_restore_ovsdb_server
 fut_info_dump_line
 ' EXIT SIGINT SIGTERM
 

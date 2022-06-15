@@ -189,6 +189,13 @@ bool target_radio_config_set2(const struct schema_Wifi_Radio_Config *rconf,
 }
 #endif
 
+#ifndef IMPL_target_vif_sta_remove
+bool target_vif_sta_remove(const char *ifname, const uint8_t *mac_addr)
+{
+    return false;
+}
+#endif
+
 #ifndef IMPL_target_radio_state_get
 bool target_radio_state_get(char *ifname, struct schema_Wifi_Radio_State *rstate)
 {
@@ -215,6 +222,23 @@ const char *target_wan_interface_name()
 /******************************************************************************
  * VIF
  *****************************************************************************/
+
+#ifndef IMPL_target_vif_config_set3
+bool target_vif_config_set3(const struct schema_Wifi_VIF_Config *vconf,
+                            const struct schema_Wifi_Radio_Config *rconf,
+                            const struct schema_Wifi_Credential_Config *cconfs,
+                            const struct schema_Wifi_VIF_Config_flags *changed,
+                            const struct schema_RADIUS *radius_list,
+                            int num_radius_list,
+                            int num_cconfs)
+{
+    (void) radius_list;
+    (void) num_radius_list;
+    /* If set3 not implemented - redirect call to target's set2 ignoring
+     * additional RADIUS parameters */
+    return target_vif_config_set2(vconf, rconf, cconfs, changed, num_cconfs);
+}
+#endif
 
 #ifndef IMPL_target_vif_config_set2
 bool target_vif_config_set2(const struct schema_Wifi_VIF_Config *vconf,

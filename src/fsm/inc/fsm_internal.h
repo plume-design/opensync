@@ -307,4 +307,18 @@ fsm_modify_network_id(struct schema_Network_Zone *config);
 void
 free_network_id_node(struct network_id *netid);
 
+/**
+ * @brief check if a packet should be processed
+ *
+ * @param the parsed info for the current packet
+ * @param included_targets tag representing the included targets
+ * @param excluded_targets tag representing the excluded targets
+ *
+ * check if a packet should be procesed based on its the source and destination
+ */
+bool
+fsm_dpi_should_process(struct net_header_parser *net_parser,
+                       char *included_targets,
+                       char *excluded_targets);
+
 #endif /* FSM_INTERNAL_H_INCLUDED */

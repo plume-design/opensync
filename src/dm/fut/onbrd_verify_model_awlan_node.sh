@@ -68,6 +68,7 @@ expected_model=$1
 trap '
 fut_info_dump_line
 print_tables AWLAN_Node
+check_restore_ovsdb_server
 fut_info_dump_line
 ' EXIT SIGINT SIGTERM
 

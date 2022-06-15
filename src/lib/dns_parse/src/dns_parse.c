@@ -666,24 +666,6 @@ dns_forward(struct dns_session *dns_session, dns_info *dns,
     }
 }
 
-static char redirect_prefix[RD_SZ][4] =
-{
-    "A-", "4A-", "C-"
-};
-
-static char *
-check_redirect(char *redirect, int id)
-{
-    char *cmp = redirect_prefix[id];
-
-    LOGT("%s: redirect: %s", __func__, redirect);
-    if (strncmp(redirect, cmp, strlen(cmp)) == 0)
-    {
-        return redirect + strlen(cmp);
-    }
-    return NULL;
-}
-
 
 static bool
 update_a_rrs(dns_info *dns, uint8_t *packet,
@@ -691,13 +673,9 @@ update_a_rrs(dns_info *dns, uint8_t *packet,
              struct fsm_policy_reply *policy_reply)
 {
     dns_rr *answer = dns->answers;
-    struct sockaddr_storage ipaddr;
-    struct dns_cache_param param;
     bool updated = false;
     int qtype = -1;
     int i = 0;
-    void *ip;
-    bool rc;
 
     if (dns->queries == NULL)
     {
@@ -722,37 +700,22 @@ update_a_rrs(dns_info *dns, uint8_t *packet,
                  __func__, qtype, answer->data);
             if (qtype == ns_t_a)  /* IPv4 redirect */
             {
-                char *ipv4_addr = check_redirect(policy_reply->redirects[0],
-                                                 IPv4_REDIRECT);
+                char *ipv4_addr = fsm_dns_check_redirect(policy_reply->redirects[0],
+                                                         IPv4_REDIRECT);
                 if (ipv4_addr == NULL)
                 {
-                    ipv4_addr = check_redirect(policy_reply->redirects[1],
-                                               IPv4_REDIRECT);
+                    ipv4_addr = fsm_dns_check_redirect(policy_reply->redirects[1],
+                                                       IPv4_REDIRECT);
                 }
                 if (ipv4_addr != NULL)
                 {
-                    inet_pton(AF_INET, ipv4_addr,
-                              packet + answer->type_pos + 10);
-                    ip = packet + answer->type_pos + 10;
+                    inet_pton(AF_INET, ipv4_addr, packet + answer->type_pos + 10);
+
                     if (req->rd_ttl != -1)
                     {
                         *(uint32_t *)(p_ttl) = htonl(req->rd_ttl);
                     }
-                    /* Add the redirected IP to cache */
-                    LOGT("%s(): adding redirected IP %s to cache", __func__, ipv4_addr);
-                    sockaddr_storage_populate(AF_INET, ip, &ipaddr);
 
-                    param.req = req;
-                    param.ipaddr = &ipaddr;
-                    param.direction = NET_MD_ACC_OUTBOUND_DIR;
-                    param.action_by_name = policy_reply->action;
-                    param.network_id = fsm_ops_get_network_id(req->fsm_context, &req->dev_id);
-
-                    rc = fsm_dns_cache_add_redirect_entry(&param);
-                    if (rc == false)
-                    {
-                        LOGD("%s(): failed to add %s to cache", __func__, ipv4_addr);
-                    }
                     updated |= true;
                 }
             }
@@ -760,38 +723,23 @@ update_a_rrs(dns_info *dns, uint8_t *packet,
             {
                 LOGT("%s: IPv6 record, rdlength == %d",
                      __func__, answer->rdlength);
-                char *ipv6_addr = check_redirect(policy_reply->redirects[0],
-                                                 IPv6_REDIRECT);
+                char *ipv6_addr = fsm_dns_check_redirect(policy_reply->redirects[0],
+                                                         IPv6_REDIRECT);
                 if (ipv6_addr == NULL)
                 {
-                    ipv6_addr = check_redirect(policy_reply->redirects[1],
-                                               IPv6_REDIRECT);
+                    ipv6_addr = fsm_dns_check_redirect(policy_reply->redirects[1],
+                                                       IPv6_REDIRECT);
                 }
                 if (ipv6_addr != NULL)
                 {
-                    inet_pton(AF_INET6, ipv6_addr,
-                              packet + answer->type_pos + 10);
-                    ip = packet + answer->type_pos + 10;
+                    inet_pton(AF_INET6, ipv6_addr, packet + answer->type_pos + 10);
+
                     if (req->rd_ttl != -1)
                     {
                         *(uint32_t *)(p_ttl) = htonl(req->rd_ttl);
                     }
+
                     updated |= true;
-
-                    LOGT("%s(): adding redirected IPv6 %s to cache", __func__, ipv6_addr);
-                    sockaddr_storage_populate(AF_INET6, ip, &ipaddr);
-
-                    param.req = req;
-                    param.ipaddr = &ipaddr;
-                    param.direction = NET_MD_ACC_OUTBOUND_DIR;
-                    param.action_by_name = policy_reply->action;
-                    param.network_id = fsm_ops_get_network_id(req->fsm_context, &req->dev_id);
-
-                    rc = fsm_dns_cache_add_redirect_entry(&param);
-                    if (rc == false)
-                    {
-                        LOGD("%s(): failed to add IPv6 addr %s to cache", __func__, ipv6_addr);
-                    }
                 }
             }
         }
@@ -1154,7 +1102,17 @@ dns_handler(struct fsm_session *session, struct net_header_parser *net_header)
     qnext = dns.queries;
     for (i = 0; i < dns.qdcount; i++)
     {
-        if ((qnext->type == 0x1) || (qnext->type == 0x1c))
+        bool process;
+
+        process = ((qnext->type == 0x1) || (qnext->type == 0x1c));
+        if (process)
+        {
+            process &= (qnext->name != NULL);
+            if (process) process &= (qnext->name[0] != '\0');
+            if (!process) LOGD("%s: empty url for req id %d", __func__, dns.id);
+        }
+
+        if (process)
         {
             STRSCPY(req_info->url, qnext->name);
             LOGT("%s: url: %s", __func__, req_info->url);

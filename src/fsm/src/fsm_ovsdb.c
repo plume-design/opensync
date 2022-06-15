@@ -869,6 +869,23 @@ fsm_session_get_network_id(struct fsm_session *session, os_macaddr_t *mac)
 }
 
 
+void
+fsm_set_session_ops(struct fsm_session *session)
+{
+
+    if (session == NULL) return;
+
+    session->ops.send_report = fsm_send_report;
+    session->ops.send_pb_report = fsm_send_pb_report;
+    session->ops.get_config = fsm_get_other_config_val;
+    session->ops.state_cb = fsm_set_object_state;
+    session->ops.latest_obj_cb = fsm_oms_get_highest_version;
+    session->ops.last_active_obj_cb = fsm_oms_get_last_active_version;
+    session->ops.update_client = fsm_update_client;
+    session->ops.get_network_id = fsm_session_get_network_id;
+}
+
+
 /**
  * @brief allocates a FSM session
  *
@@ -903,14 +920,7 @@ fsm_alloc_session(struct schema_Flow_Service_Manager_Config *conf)
     session->loop = mgr->loop;
     session->flood_tap = false;
 
-    session->ops.send_report = fsm_send_report;
-    session->ops.send_pb_report = fsm_send_pb_report;
-    session->ops.get_config = fsm_get_other_config_val;
-    session->ops.state_cb = fsm_set_object_state;
-    session->ops.latest_obj_cb = fsm_oms_get_highest_version;
-    session->ops.last_active_obj_cb = fsm_oms_get_last_active_version;
-    session->ops.update_client = fsm_update_client;
-    session->ops.get_network_id = fsm_session_get_network_id;
+    fsm_set_session_ops(session);
 
     ret = fsm_session_update(session, conf);
     if (!ret) goto err_free_plugin_ops;
@@ -1024,7 +1034,11 @@ fsm_add_session(struct schema_Flow_Service_Manager_Config *conf)
     sessions = fsm_get_sessions();
     session = ds_tree_find(sessions, conf->handler);
 
-    if (session != NULL) return;
+    if (session != NULL)
+    {
+        if (session->type == FSM_WEB_CAT) fsm_modify_session(conf);
+        return;
+    }
 
     /* Allocate a new session, insert it to the sessions tree */
     session = fsm_alloc_session(conf);
@@ -1057,6 +1071,7 @@ fsm_add_session(struct schema_Flow_Service_Manager_Config *conf)
     fsm_policy_register_client(&session->policy_client);
 
     fsm_walk_sessions_tree();
+
     return;
 
 err_free_session:

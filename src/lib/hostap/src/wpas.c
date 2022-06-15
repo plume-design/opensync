@@ -324,6 +324,12 @@ wpas_util_get_wpa_proto(const struct schema_Wifi_VIF_Config *vconf,
     if (!vconf->wpa)
         return;
 
+    if (util_vif_pairwise_supported(vconf)) {
+        if ( (vconf->wpa_pairwise_tkip_exists ? vconf->wpa_pairwise_tkip : false) ||
+             (vconf->wpa_pairwise_ccmp_exists ? vconf->wpa_pairwise_ccmp : false) )
+            csnprintf(&buf, &len, "WPA ");
+    }
+
     csnprintf(&buf, &len, "RSN");
 
     WARN_ON(len == 1); /* likely buf was truncated */
@@ -332,9 +338,11 @@ wpas_util_get_wpa_proto(const struct schema_Wifi_VIF_Config *vconf,
 static bool
 wpas_util_validate_key_mgmt(const struct schema_Wifi_VIF_Config *vconf)
 {
-    /* At the moment STA supports solely WPA2-PSK and/or SAE */
-
-    const char *valid_key_mgmts[] = { "wpa2-psk", "sae", "dpp" };
+    /* wpa-psk is used only by controllers aware of xxx_pairwise_xxxx fields */
+    const char *valid_key_mgmts[] = { SCHEMA_CONSTS_KEY_WPA_PSK,
+                                      SCHEMA_CONSTS_KEY_WPA2_PSK,
+                                      SCHEMA_CONSTS_KEY_SAE,
+                                      SCHEMA_CONSTS_KEY_DPP };
     size_t j;
     int i;
 
@@ -368,6 +376,7 @@ wpas_conf_gen_vif_network(struct wpas *wpas,
     bool dfs_allowed;
     char freqlist[512];
     bool freqlist_valid;
+    bool legacy;
     bool psk;
 
     if (!vconf->wpa) {
@@ -392,6 +401,7 @@ wpas_conf_gen_vif_network(struct wpas *wpas,
     freqlist_valid = wpas_conf_gen_freqlist(wpas, freqlist, sizeof(freqlist));
     dfs_allowed = (vconf->parent_exists && strlen(vconf->parent) > 0);
     psk = strstr(wpa_key_mgmt, "-PSK") || strstr(wpa_key_mgmt, "SAE");
+    legacy = !util_vif_pairwise_supported(vconf);
 
     csnprintf(buf, len, "network={\n");
     csnprintf(buf, len, "\tdisabled=%c\n", dfs_allowed || freqlist_valid ? '0' : '1');
@@ -402,6 +412,7 @@ wpas_conf_gen_vif_network(struct wpas *wpas,
     csnprintf(buf, len, "\tssid=\"%s\"\n", vconf->ssid);
     csnprintf(buf, len, "\t%s", psk ? "" : "#");
     csnprintf(buf, len, "psk=\"%s\"\n", wpa_passphrase);
+    csnprintf(buf, len, "%s", legacy ? "" : "\t#pairwise_marker=0\n");
     csnprintf(buf, len, "\tkey_mgmt=%s\n", wpa_key_mgmt);
     csnprintf(buf, len, "\tpairwise=%s\n", wpa_pairwise);
     csnprintf(buf, len, "\tproto=%s\n", wpa_proto);
@@ -658,16 +669,24 @@ wpas_bss_get_network_security(struct schema_Wifi_VIF_State *vstate,
                               const char *network)
 {
     const char *key_mgmt = ini_geta(network, "key_mgmt") ?: "";
-    const bool wpa2_psk = strstr(key_mgmt, "WPA-PSK") != NULL;
+    const bool wpa_psk = (strstr(key_mgmt, "WPA-PSK") != NULL);
     const bool sae = strstr(key_mgmt, "SAE") != NULL;
     const bool dpp = strstr(key_mgmt, "DPP") != NULL;
     char *psk = ini_geta(network, "psk") ?: "";
     char *dpp_conn = ini_geta(network, "dpp_connector") ?: "";
     char *dpp_key = ini_geta(network, "dpp_netaccesskey") ?: "";
     char *dpp_csign = ini_geta(network, "dpp_csign") ?: "";
+    char *pairwise = ini_geta(network, "pairwise") ?: "";
+    char *proto = ini_geta(network, "proto") ?: "";
+    const bool tkip = (strstr(pairwise, "TKIP") != NULL);
+    const bool ccmp = (strstr(pairwise, "CCMP") != NULL);
+    const bool proto_wpa = (strstr(proto, "WPA") != NULL);
+    const bool proto_rsn = (strstr(proto, "RSN") != NULL);
+    const char *pmf = ini_geta(network, "ieee80211w");
+    const char *pairwise_marker = ini_geta(network, "#pairwise_marker");
     int wpa;
 
-    if (!sae && !wpa2_psk && !dpp) {
+    if (!sae && !wpa_psk && !dpp) {
         LOGW("%s: Cannot fill Wifi_VIF_State, unknown sta key mgmt: %s",
              vstate->if_name, key_mgmt);
         return;
@@ -685,16 +704,29 @@ wpas_bss_get_network_security(struct schema_Wifi_VIF_State *vstate,
         if (strlen(dpp_conn) > 0) dpp_conn[strlen(dpp_conn)-1] = 0;
     }
 
-    wpa = wpa2_psk || sae || dpp;
+    wpa = wpa_psk || sae || dpp;
 
     SCHEMA_SET_INT(vstate->wpa, wpa);
-    if (wpa2_psk) SCHEMA_VAL_APPEND(vstate->wpa_key_mgmt, "wpa2-psk");
-    if (sae) SCHEMA_VAL_APPEND(vstate->wpa_key_mgmt, "sae");
-    if (dpp) SCHEMA_VAL_APPEND(vstate->wpa_key_mgmt, "dpp");
+    if (wpa_psk) {
+        if (pairwise_marker != NULL) {
+            /* Pairwise marker was set on config generation. Interpret
+             * WPA-PSK key management accordingly (to wpa-psk) here */
+            SCHEMA_VAL_APPEND(vstate->wpa_key_mgmt, SCHEMA_CONSTS_KEY_WPA_PSK);
+        } else {
+            SCHEMA_VAL_APPEND(vstate->wpa_key_mgmt, SCHEMA_CONSTS_KEY_WPA2_PSK);
+        }
+    }
+    if (sae) SCHEMA_VAL_APPEND(vstate->wpa_key_mgmt, SCHEMA_CONSTS_KEY_SAE);
+    if (dpp) SCHEMA_VAL_APPEND(vstate->wpa_key_mgmt, SCHEMA_CONSTS_KEY_DPP);
     if (psk) SCHEMA_VAL_APPEND(vstate->wpa_psks, psk);
     if (dpp_conn) SCHEMA_SET_STR(vstate->dpp_connector, dpp_conn);
     if (dpp_key) SCHEMA_SET_STR(vstate->dpp_netaccesskey_hex, dpp_key);
     if (dpp_csign) SCHEMA_SET_STR(vstate->dpp_csign_hex, dpp_csign);
+    if (pmf) SCHEMA_SET_STR(vstate->pmf, util_vif_pmf_enum_to_schema(atoi(pmf)));
+    SCHEMA_SET_BOOL(vstate->wpa_pairwise_tkip, (proto_wpa && tkip));
+    SCHEMA_SET_BOOL(vstate->wpa_pairwise_ccmp, (proto_wpa && ccmp));
+    SCHEMA_SET_BOOL(vstate->rsn_pairwise_tkip, (proto_rsn && tkip));
+    SCHEMA_SET_BOOL(vstate->rsn_pairwise_ccmp, (proto_rsn && ccmp));
 }
 
 static void

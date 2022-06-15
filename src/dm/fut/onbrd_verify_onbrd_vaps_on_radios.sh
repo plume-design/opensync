@@ -67,6 +67,7 @@ fi
 trap '
 fut_info_dump_line
 print_tables Wifi_VIF_State
+check_restore_ovsdb_server
 fut_info_dump_line
 ' EXIT SIGINT SIGTERM
 

@@ -1391,6 +1391,24 @@ const int *unii_6g_chan2list(int chan, int width)
     return NULL;
 }
 
+int unii_5g_centerfreq(const char *ht_mode, const int channel)
+{
+    const int width = atoi(strlen(ht_mode) > 2 ? ht_mode + 2 : "20");
+    const int *chans = unii_5g_chan2list(channel, width);
+    int sum = 0;
+    int cnt = 0;
+
+    if (!chans)
+        return 0;
+
+    while (*chans) {
+        sum += *chans;
+        cnt++;
+        chans++;
+    }
+    return sum / cnt;
+}
+
 int bin2hex(const unsigned char *in, size_t in_size, char *out, size_t out_size)
 {
     unsigned int i;

@@ -27,6 +27,42 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifndef INTERNAL_UTIL_H_INCLUDED
 #define INTERNAL_UTIL_H_INCLUDED
 
+/* Protected Management Frames */
+enum hostap_conf_pmf {
+    HOSTAP_CONF_PMF_DISABLED = 0,
+    HOSTAP_CONF_PMF_OPTIONAL = 1,
+    HOSTAP_CONF_PMF_REQUIRED = 2
+};
+
+/* WPA mode as defined in hostapd.conf */
+enum hostap_conf_wpa {
+    HOSTAP_CONF_WPA_OPEN = 0,
+    HOSTAP_CONF_WPA_WPA  = 1,
+    HOSTAP_CONF_WPA_RSN  = 2
+};
+
+/* Key Management Algorithm */
+enum hostap_conf_key_mgmt {
+    HOSTAP_CONF_KEY_MGMT_WPA_PSK,
+    HOSTAP_CONF_KEY_MGMT_WPA_PSK_SHA256,
+    HOSTAP_CONF_KEY_MGMT_WPA_EAP,
+    HOSTAP_CONF_KEY_MGMT_WPA_EAP_SHA256,
+    HOSTAP_CONF_KEY_MGMT_WPA_EAP_B_192,
+    HOSTAP_CONF_KEY_MGMT_FT_SAE,
+    HOSTAP_CONF_KEY_MGMT_FT_PSK,
+    HOSTAP_CONF_KEY_MGMT_FT_EAP,
+    HOSTAP_CONF_KEY_MGMT_FT_EAP_SHA384,
+    HOSTAP_CONF_KEY_MGMT_DPP,
+    HOSTAP_CONF_KEY_MGMT_SAE,
+    HOSTAP_CONF_KEY_MGMT_OWE,
+    /* legacy and deprecated */
+    HOSTAP_CONF_KEY_MGMT_WPA2_PSK,
+    HOSTAP_CONF_KEY_MGMT_WPA_PSK_LEGACY,
+    HOSTAP_CONF_KEY_MGMT_WPA2_EAP,
+    HOSTAP_CONF_KEY_MGMT_FT_WPA2_PSK,
+    HOSTAP_CONF_KEY_MGMT_UNKNOWN
+};
+
 bool
 util_vif_wpa_key_mgmt_partial_match(const struct schema_Wifi_VIF_Config *vconf,
                                     const char *key_mgmt);
@@ -40,14 +76,30 @@ util_vif_get_wpa_pairwise(const struct schema_Wifi_VIF_Config *vconf,
                           char *buf,
                           size_t len);
 
+bool
+util_vif_pairwise_supported(const struct schema_Wifi_VIF_Config *vconf);
+
 void
 util_vif_get_wpa_key_mgmt(const struct schema_Wifi_VIF_Config *vconf,
                           char *buf,
                           size_t len);
 
+int
+util_vif_get_wpa(const struct schema_Wifi_VIF_Config *vconf);
+
 void
 util_vif_get_ieee80211w(const struct schema_Wifi_VIF_Config *vconf,
                         char *buf,
                         size_t len);
+
+/* Type conversion helpers. schema->internal, internal->schema */
+enum hostap_conf_pmf
+util_vif_pmf_schema_to_enum(const char* pmf);
+
+const char*
+util_vif_pmf_enum_to_schema(enum hostap_conf_pmf pmf);
+
+enum hostap_conf_key_mgmt
+util_vif_wpa_key_mgmt_to_enum(const char *key_mgmt);
 
 #endif /* INTERNAL_UTIL_H_INCLUDED */

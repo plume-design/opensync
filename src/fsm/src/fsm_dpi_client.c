@@ -24,6 +24,8 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+#include <stdlib.h>
+#include <stddef.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <string.h>
@@ -701,6 +703,17 @@ fsm_dpi_action_weight[] =
 };
 
 
+static char *
+fsm_dpi_action_str[] =
+{
+    [FSM_DPI_CLEAR] = "FSM_DPI_CLEAR",
+    [FSM_DPI_IGNORED] = "FSM_DPI_IGNORED",
+    [FSM_DPI_PASSTHRU] = "FSM_DPI_PASSTHRU",
+    [FSM_DPI_INSPECT] = "FSM_DPI_INSPECT",
+    [FSM_DPI_DROP] = "FSM_DPI_DROP",
+};
+
+
 /**
  * @brief call back registered client(s)
  *
@@ -724,7 +737,7 @@ fsm_dpi_call_client(struct fsm_session *dpi_plugin_session, const char *attr,
     int rc;
 
     /* This is the default behavior */
-    ret = FSM_DPI_IGNORED;
+    ret = FSM_DPI_INSPECT;
     weight = fsm_dpi_action_weight[ret];
 
     /* look up the client sessions */
@@ -751,8 +764,9 @@ fsm_dpi_call_client(struct fsm_session *dpi_plugin_session, const char *attr,
         if ((rc < 0) || (rc >= weight_max_idx)) continue;
         if (fsm_dpi_action_weight[rc] > weight)
         {
-            LOGD("%s: Return value already set to %d before %s. Now %d",
-                    __func__, ret, dpi_client_session->name, rc);
+            LOGD("%s: Return value already set to %s before %s. Now %s",
+                 __func__, fsm_dpi_action_str[ret], dpi_client_session->name,
+                 fsm_dpi_action_str[rc]);
             weight = fsm_dpi_action_weight[rc];
             ret = rc;
         }

@@ -96,13 +96,13 @@ check_beacon_interval_at_os_level()
     # Get radio interface from VIF interface
     case "$wm2_vif_if_name" in
         "home-ap-24")
-            if_name=wlan1
+            if_name=phy1
         ;;
         "home-ap-l50")
-            if_name=wlan2
+            if_name=phy2
         ;;
         "home-ap-u50")
-            if_name=wlan0
+            if_name=phy0
         ;;
         *)
             raise "FAIL: Incorrect home-ap provided" -l "mr8300_ext_lib_override:check_beacon_interval_at_os_level" -arg
@@ -113,7 +113,7 @@ check_beacon_interval_at_os_level()
     beacon_interval=0
 
     log "mr8300_ext_lib_override:check_beacon_interval_at_os_level - Checking Beacon interval at OS - LEVEL2"
-    beacon_interval=$("hostapd_cli -p /var/run/hostapd-${if_name} -i $wm2_vif_if_name status | grep beacon_int | awk -F '=' '{print $2}'")
+    beacon_interval=$(hostapd_cli -p /var/run/hostapd-${if_name} -i $wm2_vif_if_name status | grep beacon_int | awk -F '=' '{print $2}')
     [ $beacon_interval -eq $wm2_bcn_int ] &&
         log -deb "mr8300_ext_lib_override:check_beacon_interval_at_os_level - Beacon interval '$wm2_bcn_int' for '$wm2_vif_if_name' is set at OS - LEVEL2 - Success" ||
         raise "FAIL: Beacon interval '$wm2_bcn_int' for '$wm2_vif_if_name' is not set at OS - LEVEL2" -l "mr8300_ext_lib_override:check_beacon_interval_at_os_level" -tc

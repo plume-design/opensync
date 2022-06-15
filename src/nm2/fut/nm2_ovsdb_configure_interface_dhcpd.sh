@@ -88,6 +88,7 @@ trap '
     reset_inet_entry $if_name || true
     [ "$if_type" == "vif" ] && vif_clean
     check_restore_management_access || true
+    check_restore_ovsdb_server
     fut_info_dump_line
 ' EXIT SIGINT SIGTERM
 
@@ -144,6 +145,12 @@ update_ovsdb_entry Wifi_Inet_Config -w if_name "$if_name" -u enabled true &&
 wait_ovsdb_entry Wifi_Inet_State -w if_name "$if_name" -is enabled true &&
     log "nm2/nm2_ovsdb_configure_interface_dhcpd.sh: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State for $if_name - Success" ||
     raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State - $if_name" -l "nm2/nm2_ovsdb_configure_interface_dhcpd.sh" -tc
+
+log "nm2/nm2_ovsdb_configure_interface_dhcpd.sh: Check if interface is UP - $if_name"
+get_if_fn_type="check_${if_type}_interface_state_is_up"
+wait_for_function_response 0 "$get_if_fn_type $if_name " &&
+    log "nm2/nm2_ovsdb_configure_interface_dhcpd.sh: Interface $if_name is UP - Success" ||
+    raise "FAIL: Interface $if_name is DOWN, should be UP" -l "nm2/nm2_ovsdb_configure_interface_dhcpd.sh" -ds
 
 log "nm2/nm2_ovsdb_configure_interface_dhcpd.sh: LEVEL2 - Checking DHCP configuration for $if_name"
 wait_for_function_response 0 "check_dhcp_from_dnsmasq_conf $if_name $start_pool $end_pool" &&

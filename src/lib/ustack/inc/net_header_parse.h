@@ -461,4 +461,12 @@ net_header_fill_trace_buf(char *buf, size_t len,
     }
 }
 
+/**
+ * @brief check if the packet is multicast
+ *
+ * @param parser the parsed data container
+ */
+bool
+net_header_is_mcast(struct net_header_parser *header);
+
 #endif /* NET_HEADER_PARSE_H_INCLUDED */

@@ -35,3 +35,5 @@ UNIT_FILE := bcm947622dvt_lib_override.sh
 UNIT_FILE += mr8300_ext_lib_override.sh
 UNIT_FILE += pp203x_lib_override.sh
 UNIT_FILE += pp403z_lib_override.sh
+UNIT_FILE += pp443z_lib_override.sh
+UNIT_FILE += pp603x_lib_override.sh

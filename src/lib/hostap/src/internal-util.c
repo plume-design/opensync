@@ -63,11 +63,21 @@ util_vif_get_wpa_pairwise(const struct schema_Wifi_VIF_Config *vconf,
                           char *buf,
                           size_t len)
 {
+    bool tkip = false, ccmp = false;
     memset(buf, 0, len);
 
     if (!vconf->wpa)
         return;
 
+    if (util_vif_pairwise_supported(vconf)) {
+        /* Pairwise supported - resolve what is given */
+        if (vconf->wpa_pairwise_tkip) { csnprintf(&buf, &len, "TKIP "); tkip = true; }
+        if (vconf->wpa_pairwise_ccmp) { csnprintf(&buf, &len, "CCMP "); ccmp = true; }
+        if (vconf->rsn_pairwise_tkip && !tkip) csnprintf(&buf, &len, "TKIP ");
+        if (vconf->rsn_pairwise_ccmp && !ccmp) csnprintf(&buf, &len, "CCMP ");
+        return;
+    }
+    /* 'Old' controller - no support for xxx_pairwise_xxxx */
     if (util_vif_wpa_key_mgmt_partial_match(vconf, "wpa-"))
         csnprintf(&buf, &len, "TKIP ");
     if (util_vif_wpa_key_mgmt_partial_match(vconf, "wpa2-") ||
@@ -76,6 +86,18 @@ util_vif_get_wpa_pairwise(const struct schema_Wifi_VIF_Config *vconf,
         csnprintf(&buf, &len, "CCMP ");
 
     WARN_ON(len == 1); /* likely buf was truncated */
+}
+
+bool
+util_vif_pairwise_supported(const struct schema_Wifi_VIF_Config *vconf)
+{
+    if (vconf->wpa_pairwise_tkip_exists || vconf->wpa_pairwise_ccmp_exists ||
+        vconf->rsn_pairwise_tkip_exists || vconf->rsn_pairwise_ccmp_exists)
+        return true;
+
+    /* None of the newly introduced fields are available
+     * - controller must be an old version */
+    return false;
 }
 
 void
@@ -88,15 +110,54 @@ util_vif_get_wpa_key_mgmt(const struct schema_Wifi_VIF_Config *vconf,
     if (!vconf->wpa)
         return;
 
-    if (util_vif_wpa_key_mgmt_exact_match(vconf, "wpa-psk")) csnprintf(&buf, &len, "WPA-PSK ");
-    if (util_vif_wpa_key_mgmt_exact_match(vconf, "wpa2-psk")) csnprintf(&buf, &len, "WPA-PSK ");
-    if (util_vif_wpa_key_mgmt_partial_match(vconf, "wpa2-eap")) csnprintf(&buf, &len, "WPA-EAP ");
-    if (util_vif_wpa_key_mgmt_exact_match(vconf, "sae")) csnprintf(&buf, &len, "SAE ");
-    if (util_vif_wpa_key_mgmt_partial_match(vconf, SCHEMA_CONSTS_KEY_FT_WPA2_PSK)) csnprintf(&buf, &len, "FT-PSK ");
-    if (util_vif_wpa_key_mgmt_partial_match(vconf, SCHEMA_CONSTS_KEY_FT_SAE)) csnprintf(&buf, &len, "FT-SAE ");
-    if (util_vif_wpa_key_mgmt_partial_match(vconf, "dpp")) csnprintf(&buf, &len, "DPP ");
+    /* despite ambiguity in WPA/RSN, wpa-psk always resolves to WPA-PSK */
+    if (util_vif_wpa_key_mgmt_exact_match(vconf, SCHEMA_CONSTS_KEY_WPA_PSK))
+        csnprintf(&buf, &len, "WPA-PSK ");
+    if (util_vif_wpa_key_mgmt_exact_match(vconf, SCHEMA_CONSTS_KEY_WPA_PSK_SHA256))
+        csnprintf(&buf, &len, "WPA-PSK-SHA256 ");
+    if (util_vif_wpa_key_mgmt_exact_match(vconf, SCHEMA_CONSTS_KEY_WPA_EAP))
+        csnprintf(&buf, &len, "WPA-EAP ");
+    if (util_vif_wpa_key_mgmt_exact_match(vconf, SCHEMA_CONSTS_KEY_WPA_EAP_SHA256))
+        csnprintf(&buf, &len, "WPA-EAP-SHA256 ");
+    if (util_vif_wpa_key_mgmt_exact_match(vconf, SCHEMA_CONSTS_KEY_WPA_EAP_B_192))
+        csnprintf(&buf, &len, "WPA-EAP-B-192 ");
+    if (util_vif_wpa_key_mgmt_exact_match(vconf, SCHEMA_CONSTS_KEY_FT_SAE))
+        csnprintf(&buf, &len, "FT-SAE ");
+    if (util_vif_wpa_key_mgmt_exact_match(vconf, SCHEMA_CONSTS_KEY_FT_PSK))
+        csnprintf(&buf, &len, "FT-PSK ");
+    if (util_vif_wpa_key_mgmt_exact_match(vconf, SCHEMA_CONSTS_KEY_FT_EAP))
+        csnprintf(&buf, &len, "FT-EAP ");
+    if (util_vif_wpa_key_mgmt_exact_match(vconf, SCHEMA_CONSTS_KEY_FT_EAP_SHA384))
+        csnprintf(&buf, &len, "FT-EAP-SHA384 ");
+    if (util_vif_wpa_key_mgmt_exact_match(vconf, SCHEMA_CONSTS_KEY_DPP))
+        csnprintf(&buf, &len, "DPP ");
+    if (util_vif_wpa_key_mgmt_exact_match(vconf, SCHEMA_CONSTS_KEY_SAE))
+        csnprintf(&buf, &len, "SAE ");
+    if (util_vif_wpa_key_mgmt_exact_match(vconf, SCHEMA_CONSTS_KEY_OWE))
+        csnprintf(&buf, &len, "OWE ");
+    /* legacy and deprecated */
+    if (util_vif_wpa_key_mgmt_exact_match(vconf, SCHEMA_CONSTS_KEY_WPA2_PSK))
+        csnprintf(&buf, &len, "WPA-PSK ");
+    if (util_vif_wpa_key_mgmt_exact_match(vconf, SCHEMA_CONSTS_KEY_WPA2_EAP))
+        csnprintf(&buf, &len, "WPA-EAP ");
+    if (util_vif_wpa_key_mgmt_exact_match(vconf, SCHEMA_CONSTS_KEY_FT_WPA2_PSK))
+        csnprintf(&buf, &len, "FT-PSK ");
 
     WARN_ON(len == 1); /* likely buf was truncated */
+}
+
+int
+util_vif_get_wpa(const struct schema_Wifi_VIF_Config *vconf)
+{
+    int val;
+    val  = (vconf->wpa_pairwise_tkip ? HOSTAP_CONF_WPA_WPA : 0);
+    val |= (vconf->wpa_pairwise_ccmp ? HOSTAP_CONF_WPA_WPA : 0);
+    val |= (vconf->rsn_pairwise_tkip ? HOSTAP_CONF_WPA_RSN : 0);
+    val |= (vconf->rsn_pairwise_ccmp ? HOSTAP_CONF_WPA_RSN : 0);
+    /* check schema wpa option for an OPEN network */
+    val = (vconf->wpa ? val : HOSTAP_CONF_WPA_OPEN);
+
+    return val;
 }
 
 void
@@ -111,6 +172,11 @@ util_vif_get_ieee80211w(const struct schema_Wifi_VIF_Config *vconf,
 
     memset(buf, 0, len);
 
+    if (vconf->pmf_exists) {
+        csnprintf(&buf, &len, "%i", util_vif_pmf_schema_to_enum(vconf->pmf));
+        return;
+    }
+
     if (!vconf->wpa)
         return;
 
@@ -123,4 +189,53 @@ util_vif_get_ieee80211w(const struct schema_Wifi_VIF_Config *vconf,
     /* For non-SAE configs leave ieee80211w empty ("") */
 
     WARN_ON(len == 1); /* likely buf was truncated */
+}
+
+/* type conversion helpers */
+
+enum hostap_conf_pmf
+util_vif_pmf_schema_to_enum(const char* pmf)
+{
+    if (!strcmp(pmf, SCHEMA_CONSTS_SECURITY_PMF_DISABLED)) return HOSTAP_CONF_PMF_DISABLED;
+    if (!strcmp(pmf, SCHEMA_CONSTS_SECURITY_PMF_OPTIONAL)) return HOSTAP_CONF_PMF_OPTIONAL;
+    if (!strcmp(pmf, SCHEMA_CONSTS_SECURITY_PMF_REQUIRED)) return HOSTAP_CONF_PMF_REQUIRED;
+
+    LOGE("%s: Unknown PMF parameter value: %s. Fallback to 'optional'", __func__, pmf);
+    return HOSTAP_CONF_PMF_OPTIONAL;
+}
+
+const char*
+util_vif_pmf_enum_to_schema(enum hostap_conf_pmf pmf)
+{
+    switch (pmf) {
+        case HOSTAP_CONF_PMF_DISABLED: return SCHEMA_CONSTS_SECURITY_PMF_DISABLED;
+        case HOSTAP_CONF_PMF_OPTIONAL: return SCHEMA_CONSTS_SECURITY_PMF_OPTIONAL;
+        case HOSTAP_CONF_PMF_REQUIRED: return SCHEMA_CONSTS_SECURITY_PMF_REQUIRED;
+    }
+    LOGE("%s: PMF value %d not recognized!", __func__, pmf);
+    return SCHEMA_CONSTS_SECURITY_PMF_DISABLED;
+}
+
+enum hostap_conf_key_mgmt
+util_vif_wpa_key_mgmt_to_enum(const char *key_mgmt)
+{
+    if (!strcmp(key_mgmt, SCHEMA_CONSTS_KEY_WPA_PSK))        return HOSTAP_CONF_KEY_MGMT_WPA_PSK;
+    if (!strcmp(key_mgmt, SCHEMA_CONSTS_KEY_WPA_PSK_SHA256)) return HOSTAP_CONF_KEY_MGMT_WPA_PSK_SHA256;
+    if (!strcmp(key_mgmt, SCHEMA_CONSTS_KEY_WPA_EAP))        return HOSTAP_CONF_KEY_MGMT_WPA_EAP;
+    if (!strcmp(key_mgmt, SCHEMA_CONSTS_KEY_WPA_EAP_SHA256)) return HOSTAP_CONF_KEY_MGMT_WPA_EAP_SHA256;
+    if (!strcmp(key_mgmt, SCHEMA_CONSTS_KEY_WPA_EAP_B_192))  return HOSTAP_CONF_KEY_MGMT_WPA_EAP_B_192;
+    if (!strcmp(key_mgmt, SCHEMA_CONSTS_KEY_FT_SAE))         return HOSTAP_CONF_KEY_MGMT_FT_SAE;
+    if (!strcmp(key_mgmt, SCHEMA_CONSTS_KEY_FT_PSK))         return HOSTAP_CONF_KEY_MGMT_FT_PSK;
+    if (!strcmp(key_mgmt, SCHEMA_CONSTS_KEY_FT_EAP))         return HOSTAP_CONF_KEY_MGMT_FT_EAP;
+    if (!strcmp(key_mgmt, SCHEMA_CONSTS_KEY_FT_EAP_SHA384))  return HOSTAP_CONF_KEY_MGMT_FT_EAP_SHA384;
+    if (!strcmp(key_mgmt, SCHEMA_CONSTS_KEY_DPP))            return HOSTAP_CONF_KEY_MGMT_DPP;
+    if (!strcmp(key_mgmt, SCHEMA_CONSTS_KEY_SAE))            return HOSTAP_CONF_KEY_MGMT_SAE;
+    if (!strcmp(key_mgmt, SCHEMA_CONSTS_KEY_OWE))            return HOSTAP_CONF_KEY_MGMT_OWE;
+    /* legacy and deprecated */
+    if (!strcmp(key_mgmt, SCHEMA_CONSTS_KEY_WPA2_PSK))       return HOSTAP_CONF_KEY_MGMT_WPA2_PSK;
+    if (!strcmp(key_mgmt, SCHEMA_CONSTS_KEY_WPA2_EAP))       return HOSTAP_CONF_KEY_MGMT_WPA2_EAP;
+    if (!strcmp(key_mgmt, SCHEMA_CONSTS_KEY_FT_WPA2_PSK))    return HOSTAP_CONF_KEY_MGMT_FT_WPA2_PSK;
+
+    LOGE("%s: wpa_key_mgmt '%s' not recognized!", __func__, key_mgmt);
+    return HOSTAP_CONF_KEY_MGMT_UNKNOWN;
 }

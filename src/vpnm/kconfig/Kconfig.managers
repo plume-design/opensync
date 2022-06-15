@@ -1,0 +1,12 @@
+menuconfig MANAGER_VPNM
+    bool "Virtual Private Network Manager (VPNM)"
+    default n
+    help
+        Enable Virtual Private Network Manager (VPNM)
+
+    config MANAGER_VPNM_CFG
+        depends on MANAGER_VPNM
+        string "VPNM Startup configuration"
+        default "vpnm;true"
+        help
+            Virtual Private Network Manager startup configuration

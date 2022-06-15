@@ -58,31 +58,35 @@ struct schema_Openflow_Tag g_tags[] =
             "00:25:90:87:17:5c",
             "00:25:90:87:17:5b",
             "44:32:c8:80:00:7c",
-	    "50:6a:03:ba:67:fb",
-	},
-        .cloud_value_len = 3,
+            "50:6a:03:ba:67:fb",
+        },
+        .cloud_value_len = 4,
         .cloud_value =
         {
             "13:13:13:13:13:13",
             "14:14:14:14:14:14",
             "15:15:15:15:15:15",
+            "00:e1:03:00:16:80",
         },
     },
     {
         .name_exists = true,
         .name = "tag_2",
-        .device_value_len = 2,
+        .device_value_len = 3,
         .device_value =
         {
             "21:21:21:21:21:21",
             "22:22:22:22:22:22",
+            "a0:ce:c8:d6:66:7f",
         },
-        .cloud_value_len = 3,
+        .cloud_value_len = 5,
         .cloud_value =
         {
             "23:23:23:23:23:23",
             "24:24:24:24:24:24",
             "25:25:25:25:25:25",
+            "00:e1:03:00:16:81",
+            "60:b4:f7:fc:33:8c",
         },
     },
     {
@@ -479,12 +483,12 @@ struct schema_Flow_Service_Manager_Config g_confs[] =
         {
             "test_18_dso_init",             /* plugin init routine */
             "${@tag_1}",
-            "${@tag_1}",
+            "${@tag_2}",
         },
         .other_config_len = 3,
     },
 
-    /* dpi dispatch plugin, idx: 19 */
+    /* dpi plugin, idx: 19 */
     {
         .handler = "fsm_session_test_19",
         .plugin = "plugin_19",
@@ -500,6 +504,108 @@ struct schema_Flow_Service_Manager_Config g_confs[] =
             "dev-test/IP/Flows/ut/0/15",    /* topic */
             "test_16_dso_init",             /* plugin init routine */
             "fsm_session_test_18",          /* dpi dispatcher */
+        },
+        .other_config_len = 3,
+    },
+
+    /* web categorization plugin, idx: 20 */
+    {
+        .handler = "test_provider",
+        .plugin = "test_provider",
+        .type = "web_cat_provider",
+        .other_config_keys =
+        {
+            "mqtt_v",                       /* topic */
+            "dso_init",                     /* plugin init routine */
+            "wc_health_stats_topic",
+            "wc_hero_stats_topic",
+            "wc_health_stats_interval_secs",
+            "wc_hero_stats_interval_secs",
+        },
+        .other_config =
+        {
+            "dev-test/IP/Flows/ut/0/20",      /* topic */
+            "test_dso_init",                /* plugin init routine */
+            "WC/Stats/Health/dog1/620ac9f536d2348e7eb6788a/AAAAAAAAA",
+            "WC/Stats/Hero/dog1/620ac9f536d2348e7eb6788a/AAAAAAAAA",
+            "900",
+            "900",
+        },
+        .other_config_len = 5,
+    },
+    /* dpi dispatch plugin, idx: 21 */
+    {
+        .handler = "fsm_session_test_21",
+        .plugin = "plugin_21",
+        .type = "dpi_dispatcher",
+        .other_config_keys =
+        {
+            "dso_init",                     /* plugin init routine */
+            "included_devices",
+            "excluded_devices",
+        },
+        .other_config =
+        {
+            "test_10_dso_init",             /* plugin init routine */
+            "${tag_1}",
+            "${tag_2}",
+        },
+        .other_config_len = 3,
+    },
+    /* dpi dispatch plugin, idx: 22 */
+    {
+        .handler = "fsm_session_test_22",
+        .plugin = "plugin_21",
+        .type = "dpi_plugin",
+        .other_config_keys =
+        {
+            "mqtt_v",                       /* topic */
+            "dso_init",                     /* plugin init routine */
+            "dpi_dispatcher",               /* dpi dispatcher */
+            "targeted_devices",
+        },
+        .other_config =
+        {
+            "dev-test/IP/Flows/ut/0/11",    /* topic */
+            "test_10_dso_init",            /* plugin init routine */
+            "fsm_session_test_10",         /* dpi dispatcher */
+            "tag1",
+        },
+        .other_config_len = 4,
+    },
+    /* dpi dispatch plugin, idx: 23 */
+    {
+        .handler = "fsm_session_test_23",
+        .plugin = "plugin_23",
+        .type = "dpi_dispatcher",
+        .other_config_keys =
+        {
+            "dso_init",                     /* plugin init routine */
+            "included_devices",
+        },
+        .other_config =
+        {
+            "test_23_dso_init",             /* plugin init routine */
+            "${tag_2}",
+        },
+        .other_config_len = 2,
+    },
+    /* dpi plugin, idx: 14 */
+    {
+        .handler = "fsm_session_test_24",
+        .plugin = "plugin_24",
+        .type = "dpi_plugin",
+        .other_config_keys =
+        {
+            "mqtt_v",                       /* topic */
+            "dso_init",                     /* plugin init routine */
+            "dpi_dispatcher",               /* dpi dispatcher */
+        },
+        .other_config =
+        {
+            "dev-test/IP/Flows/ut/0/24",    /* topic */
+            "test_24_dso_init",             /* plugin init routine */
+            "fsm_session_test_23",          /* dpi dispatcher */
         },
         .other_config_len = 3,
     },
@@ -1962,7 +2068,6 @@ test_8_dpi_dispatcher_udp_non_reserved(void)
     struct fsm_dpi_plugin *plugin_lookup;
     struct net_header_parser *net_parser;
     struct fsm_parser_ops *dispatch_ops;
-    struct fsm_dpi_flow_info *info;
     struct fsm_session *dispatcher;
     struct net_md_aggregator *aggr;
     struct fsm_session *plugin;
@@ -2041,6 +2146,7 @@ test_8_dpi_dispatcher_udp_non_reserved(void)
     TEST_ASSERT_TRUE(ret);
 
     /* UDP PKT SRC MAC is known. ports are non reserved */
+    MEMZERO(dpi_dispatcher->net_parser);
     UT_CREATE_PCAP_PAYLOAD(pkt1, net_parser);
     len = net_header_parse(net_parser);
     TEST_ASSERT_TRUE(len != 0);
@@ -2066,6 +2172,7 @@ test_8_dpi_dispatcher_udp_non_reserved(void)
     TEST_ASSERT_TRUE(ret);
 
     /* UDP Unknown macs and ports are non reserved */
+    MEMZERO(dpi_dispatcher->net_parser);
     UT_CREATE_PCAP_PAYLOAD(pkt18, net_parser);
     len = net_header_parse(net_parser);
     TEST_ASSERT_TRUE(len != 0);
@@ -2073,18 +2180,8 @@ test_8_dpi_dispatcher_udp_non_reserved(void)
     /* Call the dispatcher's packet handler */
     dispatch_ops->handler(dispatcher, net_parser);
 
-    /* Validate that an accumulator was created */
-    TEST_ASSERT_NOT_NULL(net_parser->acc);
-
-    /* Validate the originator is set to default or not */
-    originator = net_parser->acc->originator;
-    TEST_ASSERT_EQUAL_INT(originator, NET_MD_ACC_UNKNOWN_ORIGINATOR);
-
-    /* Validate the direction of flow is set to unknown or not */
-    direction = net_parser->acc->direction;
-    TEST_ASSERT_EQUAL_INT(direction, NET_MD_ACC_UNSET_DIR);
-
-    net_parser->acc->report = true;
+    /* Validate that no accumulator was created */
+    TEST_ASSERT_NULL(net_parser->acc);
 
     /* Close the flows observation window */
     net_md_close_active_window(aggr);
@@ -2095,8 +2192,6 @@ test_8_dpi_dispatcher_udp_non_reserved(void)
     /* Remove the dpi plugin session */
     conf = &g_confs[11];
     fsm_delete_session(conf);
-    info = ds_tree_find(net_parser->acc->dpi_plugins, plugin);
-    TEST_ASSERT_NULL(info);
 }
 
 /**
@@ -2763,14 +2858,11 @@ test_10_dpi_dispatcher_included_excluded_devices(void)
     struct fsm_dpi_plugin *plugin_lookup;
     struct net_header_parser *net_parser;
     struct fsm_parser_ops *dispatch_ops;
-    struct fsm_dpi_flow_info *info;
     struct fsm_session *dispatcher;
     struct net_md_aggregator *aggr;
     struct fsm_session *plugin;
     ds_tree_t *dpi_plugins;
     ds_tree_t *sessions;
-    uint16_t originator;
-    uint16_t direction;
     char *mqtt_topic;
     size_t len;
     bool ret;
@@ -2817,32 +2909,16 @@ test_10_dpi_dispatcher_included_excluded_devices(void)
     UT_CREATE_PCAP_PAYLOAD(pkt858, net_parser);
     len = net_header_parse(net_parser);
     TEST_ASSERT_TRUE(len != 0);
+    net_header_logi(net_parser);
 
     /* Call the dispatcher's packet handler */
     dispatch_ops = &dispatcher->p_ops->parser_ops;
     TEST_ASSERT_NOT_NULL(dispatch_ops->handler);
     dispatch_ops->handler(dispatcher, net_parser);
 
-    /* Validate that an accumulator was created */
-    TEST_ASSERT_NOT_NULL(net_parser->acc);
-
-    /* Validate that the accumulator has plugins recorded */
-    TEST_ASSERT_NOT_NULL(net_parser->acc->dpi_plugins);
-
-    /* Validate that the accumulator is aware of the plugin */
-    info = ds_tree_find(net_parser->acc->dpi_plugins, plugin);
-    TEST_ASSERT_NOT_NULL(info);
-    TEST_ASSERT_TRUE(info->session == plugin);
-
-    /* Validate the originator for syn packet */
-    originator = net_parser->acc->originator;
-    TEST_ASSERT_EQUAL_INT(originator, NET_MD_ACC_ORIGINATOR_SRC);
-
-    /* Validate the direction of flow for SYN packet */
-    direction = net_parser->acc->direction;
-    TEST_ASSERT_EQUAL_INT(direction, NET_MD_ACC_INBOUND_DIR);
-
-    net_parser->acc->report = true;
+    /* source mac is in the excluded devcies */
+    /* Validate that an accumulator not was created */
+    TEST_ASSERT_NULL(net_parser->acc);
 
     /* Close the flows observation window */
     net_md_close_active_window(aggr);
@@ -2854,8 +2930,6 @@ test_10_dpi_dispatcher_included_excluded_devices(void)
     /* Remove the dpi plugin session */
     conf = &g_confs[19];
     fsm_delete_session(conf);
-    info = ds_tree_find(net_parser->acc->dpi_plugins, plugin);
-    TEST_ASSERT_NULL(info);
 }
 
 
@@ -2933,6 +3007,7 @@ test_11_dpi_dispatcher_reserved_port_originator(void)
     UT_CREATE_PCAP_PAYLOAD(pkt200, net_parser);
     len = net_header_parse(net_parser);
     TEST_ASSERT_TRUE(len != 0);
+    net_header_logi(net_parser);
 
     /* Call the dispatcher's packet handler */
     dispatch_ops = &dispatcher->p_ops->parser_ops;
@@ -3163,6 +3238,7 @@ test_12_dpi_dispatcher_icmp_req_reply(void)
     UT_CREATE_PCAP_PAYLOAD(pkt183, net_parser);
     len = net_header_parse(net_parser);
     TEST_ASSERT_TRUE(len != 0);
+    net_header_logi(net_parser);
 
     /* Call the dispatcher's packet handler */
     dispatch_ops = &dispatcher->p_ops->parser_ops;
@@ -3204,9 +3280,11 @@ test_12_dpi_dispatcher_icmp_req_reply(void)
     TEST_ASSERT_TRUE(ret);
 
     /* ICMP Reply Packet */
+    MEMZERO(dpi_dispatcher->net_parser);
     UT_CREATE_PCAP_PAYLOAD(pkt184, net_parser);
     len = net_header_parse(net_parser);
     TEST_ASSERT_TRUE(len != 0);
+    net_header_logi(net_parser);
 
     /* Call the dispatcher's packet handler */
     dispatch_ops = &dispatcher->p_ops->parser_ops;
@@ -3804,7 +3882,7 @@ test_dpi_dispatcher_dns_request(void)
     bool ret;
 
     /* Add a dpi plugin session */
-    conf = &g_confs[19];
+    conf = &g_confs[24];
     fsm_add_session(conf);
     sessions = fsm_get_sessions();
     plugin = ds_tree_find(sessions, conf->handler);
@@ -3814,7 +3892,7 @@ test_dpi_dispatcher_dns_request(void)
     LOGI("DPI Plugin is success ");
 
     /* Add a dpi dispatcher session */
-    conf = &g_confs[18];
+    conf = &g_confs[23];
     fsm_add_session(conf);
     dispatcher = ds_tree_find(sessions, conf->handler);
     TEST_ASSERT_NOT_NULL(dispatcher);
@@ -3844,6 +3922,7 @@ test_dpi_dispatcher_dns_request(void)
     UT_CREATE_PCAP_PAYLOAD(pkt46, net_parser);
     len = net_header_parse(net_parser);
     TEST_ASSERT_TRUE(len != 0);
+    net_header_logi(net_parser);
 
     /* Call the dispatcher's packet handler */
     dispatch_ops = &dispatcher->p_ops->parser_ops;
@@ -3881,7 +3960,7 @@ test_dpi_dispatcher_dns_request(void)
     TEST_ASSERT_TRUE(ret);
 
     /* Remove the dpi plugin session */
-    conf = &g_confs[19];
+    conf = &g_confs[24];
     fsm_delete_session(conf);
     info = ds_tree_find(net_parser->acc->dpi_plugins, plugin);
     TEST_ASSERT_NULL(info);
@@ -3921,7 +4000,7 @@ test_dpi_dispatcher_dns_response(void)
     bool ret;
 
     /* Add a dpi plugin session */
-    conf = &g_confs[19];
+    conf = &g_confs[24];
     fsm_add_session(conf);
     sessions = fsm_get_sessions();
     plugin = ds_tree_find(sessions, conf->handler);
@@ -3931,7 +4010,7 @@ test_dpi_dispatcher_dns_response(void)
     LOGI("DPI Plugin is success ");
 
     /* Add a dpi dispatcher session */
-    conf = &g_confs[18];
+    conf = &g_confs[23];
     fsm_add_session(conf);
     dispatcher = ds_tree_find(sessions, conf->handler);
     TEST_ASSERT_NOT_NULL(dispatcher);
@@ -3961,6 +4040,7 @@ test_dpi_dispatcher_dns_response(void)
     UT_CREATE_PCAP_PAYLOAD(pkt47, net_parser);
     len = net_header_parse(net_parser);
     TEST_ASSERT_TRUE(len != 0);
+    net_header_logi(net_parser);
 
     /* Call the dispatcher's packet handler */
     dispatch_ops = &dispatcher->p_ops->parser_ops;
@@ -3998,7 +4078,7 @@ test_dpi_dispatcher_dns_response(void)
     TEST_ASSERT_TRUE(ret);
 
     /* Remove the dpi plugin session */
-    conf = &g_confs[19];
+    conf = &g_confs[24];
     fsm_delete_session(conf);
     info = ds_tree_find(net_parser->acc->dpi_plugins, plugin);
     TEST_ASSERT_NULL(info);
@@ -4040,7 +4120,7 @@ test_dpi_dispatcher_tcp_http_req_response(void)
     bool ret;
 
     /* Add a dpi plugin session */
-    conf = &g_confs[19];
+    conf = &g_confs[24];
     fsm_add_session(conf);
     sessions = fsm_get_sessions();
     plugin = ds_tree_find(sessions, conf->handler);
@@ -4050,7 +4130,7 @@ test_dpi_dispatcher_tcp_http_req_response(void)
     LOGI("DPI Plugin is success ");
 
     /* Add a dpi dispatcher session */
-    conf = &g_confs[18];
+    conf = &g_confs[23];
     fsm_add_session(conf);
     dispatcher = ds_tree_find(sessions, conf->handler);
     TEST_ASSERT_NOT_NULL(dispatcher);
@@ -4080,6 +4160,7 @@ test_dpi_dispatcher_tcp_http_req_response(void)
     UT_CREATE_PCAP_PAYLOAD(pkt3502, net_parser);
     len = net_header_parse(net_parser);
     TEST_ASSERT_TRUE(len != 0);
+    net_header_logi(net_parser);
 
     /* Call the dispatcher's packet handler */
     dispatch_ops = &dispatcher->p_ops->parser_ops;
@@ -4120,6 +4201,7 @@ test_dpi_dispatcher_tcp_http_req_response(void)
     ret = aggr->send_report(aggr, mqtt_topic);
     TEST_ASSERT_TRUE(ret);
 
+    MEMZERO(dpi_dispatcher->net_parser);
     UT_CREATE_PCAP_PAYLOAD(pkt3501, net_parser);
     len = net_header_parse(net_parser);
     TEST_ASSERT_TRUE(len != 0);
@@ -4164,7 +4246,7 @@ test_dpi_dispatcher_tcp_http_req_response(void)
     TEST_ASSERT_TRUE(ret);
 
     /* Remove the dpi plugin session */
-    conf = &g_confs[19];
+    conf = &g_confs[24];
     fsm_delete_session(conf);
     info = ds_tree_find(net_parser->acc->dpi_plugins, plugin);
     TEST_ASSERT_NULL(info);
@@ -4206,7 +4288,7 @@ test_dpi_dispatcher_tcp_https_req_response(void)
     bool ret;
 
     /* Add a dpi plugin session */
-    conf = &g_confs[19];
+    conf = &g_confs[24];
     fsm_add_session(conf);
     sessions = fsm_get_sessions();
     plugin = ds_tree_find(sessions, conf->handler);
@@ -4216,7 +4298,7 @@ test_dpi_dispatcher_tcp_https_req_response(void)
     LOGI("DPI Plugin is success ");
 
     /* Add a dpi dispatcher session */
-    conf = &g_confs[18];
+    conf = &g_confs[23];
     fsm_add_session(conf);
     dispatcher = ds_tree_find(sessions, conf->handler);
     TEST_ASSERT_NOT_NULL(dispatcher);
@@ -4286,6 +4368,7 @@ test_dpi_dispatcher_tcp_https_req_response(void)
     ret = aggr->send_report(aggr, mqtt_topic);
     TEST_ASSERT_TRUE(ret);
 
+    MEMZERO(dpi_dispatcher->net_parser);
     UT_CREATE_PCAP_PAYLOAD(pkt443, net_parser);
     len = net_header_parse(net_parser);
     TEST_ASSERT_TRUE(len != 0);
@@ -4330,7 +4413,7 @@ test_dpi_dispatcher_tcp_https_req_response(void)
     TEST_ASSERT_TRUE(ret);
 
     /* Remove the dpi plugin session */
-    conf = &g_confs[19];
+    conf = &g_confs[24];
     fsm_delete_session(conf);
     info = ds_tree_find(net_parser->acc->dpi_plugins, plugin);
     TEST_ASSERT_NULL(info);
@@ -4372,7 +4455,7 @@ test_dpi_dispatcher_udp_https_req_response(void)
     bool ret;
 
     /* Add a dpi plugin session */
-    conf = &g_confs[19];
+    conf = &g_confs[24];
     fsm_add_session(conf);
     sessions = fsm_get_sessions();
     plugin = ds_tree_find(sessions, conf->handler);
@@ -4382,7 +4465,7 @@ test_dpi_dispatcher_udp_https_req_response(void)
     LOGI("DPI Plugin is success ");
 
     /* Add a dpi dispatcher session */
-    conf = &g_confs[18];
+    conf = &g_confs[23];
     fsm_add_session(conf);
     dispatcher = ds_tree_find(sessions, conf->handler);
     TEST_ASSERT_NOT_NULL(dispatcher);
@@ -4452,6 +4535,7 @@ test_dpi_dispatcher_udp_https_req_response(void)
     ret = aggr->send_report(aggr, mqtt_topic);
     TEST_ASSERT_TRUE(ret);
 
+    MEMZERO(dpi_dispatcher->net_parser);
     UT_CREATE_PCAP_PAYLOAD(pkt668, net_parser);
     len = net_header_parse(net_parser);
     TEST_ASSERT_TRUE(len != 0);
@@ -4496,7 +4580,7 @@ test_dpi_dispatcher_udp_https_req_response(void)
     TEST_ASSERT_TRUE(ret);
 
     /* Remove the dpi plugin session */
-    conf = &g_confs[19];
+    conf = &g_confs[24];
     fsm_delete_session(conf);
     info = ds_tree_find(net_parser->acc->dpi_plugins, plugin);
     TEST_ASSERT_NULL(info);
@@ -4831,6 +4915,198 @@ test_dpi_dispatcher_no_ip_pkt(void)
 }
 
 
+/**
+ * @brief parser_webcat session
+ *
+ * The parser plugin is registered first.
+ * it adds webcat plugin if it is not added
+ * Add webcat plugin as new plugin
+ * Verify webcat plugin is updated or not.
+ */
+void
+test_parser_webcat_session(void)
+{
+    struct schema_Flow_Service_Manager_Config *conf;
+    struct fsm_session *session;
+    char *health_stats_topic;
+    char *hero_stats_topic;
+    ds_tree_t *sessions;
+    char *service_name;
+    char *topic;
+    bool ret;
+
+    /* Add a session with an explicit provider */
+    conf = &g_confs[1];
+    fsm_add_session(conf);
+    sessions = fsm_get_sessions();
+    session = ds_tree_find(sessions, conf->handler);
+    TEST_ASSERT_NOT_NULL(session);
+
+    /* Create the related service provider */
+    ret = fsm_dup_web_cat_session(session);
+    TEST_ASSERT_TRUE(ret);
+
+    service_name = session->ops.get_config(session, "provider");
+    TEST_ASSERT_NOT_NULL(service_name);
+    session = ds_tree_find(sessions, service_name);
+    TEST_ASSERT_NOT_NULL(session);
+    TEST_ASSERT_EQUAL_INT(FSM_WEB_CAT, session->type);
+    TEST_ASSERT_EQUAL_STRING(CONFIG_INSTALL_PREFIX"/lib/libfsm_test_provider.so",
+                             session->dso);
+    topic = session->ops.get_config(session, "mqtt_v");
+    health_stats_topic = session->ops.get_config(session, "wc_health_stats_topic");
+    TEST_ASSERT_NULL(health_stats_topic);
+    hero_stats_topic = session->ops.get_config(session, "wc_hero_stats_topic");
+    TEST_ASSERT_NULL(hero_stats_topic);
+    LOGI("%s: service provider mqtt: %s health_stats_topic: %s hero_stats_topic: %s", __func__, topic, health_stats_topic, hero_stats_topic);
+
+    /* Add same webcat session as new plugin */
+    conf = &g_confs[20];
+    fsm_add_session(conf);
+    sessions = fsm_get_sessions();
+    session = ds_tree_find(sessions, conf->handler);
+    TEST_ASSERT_NOT_NULL(session);
+    TEST_ASSERT_EQUAL_INT(FSM_WEB_CAT, session->type);
+    TEST_ASSERT_EQUAL_STRING(CONFIG_INSTALL_PREFIX"/lib/libfsm_test_provider.so",
+                             session->dso);
+    topic = session->ops.get_config(session, "mqtt_v");
+    health_stats_topic = session->ops.get_config(session, "wc_health_stats_topic");
+    TEST_ASSERT_NOT_NULL(health_stats_topic);
+    hero_stats_topic = session->ops.get_config(session, "wc_hero_stats_topic");
+    TEST_ASSERT_NOT_NULL(hero_stats_topic);
+    LOGI("%s: updated service provider mqtt: %s health_stats_topic: %s hero_stats_topic: %s", __func__, topic, health_stats_topic, hero_stats_topic);
+}
+
+
+/**
+ * @brief webcat_parser session
+ *
+ * Register webcat plugin.
+ * Register parser plugin.
+ * Verify webcat plugin is updated or not.
+ */
+void
+test_webcat_parser_session(void)
+{
+    struct schema_Flow_Service_Manager_Config *conf;
+    struct fsm_session *session;
+    char *health_stats_topic;
+    char *hero_stats_topic;
+    ds_tree_t *sessions;
+    char *service_name;
+    char *topic;
+    bool ret;
+
+    /* Add webcat session */
+    conf = &g_confs[20];
+    fsm_add_session(conf);
+    sessions = fsm_get_sessions();
+    session = ds_tree_find(sessions, conf->handler);
+    TEST_ASSERT_NOT_NULL(session);
+    TEST_ASSERT_EQUAL_INT(FSM_WEB_CAT, session->type);
+    topic = session->ops.get_config(session, "mqtt_v");
+    health_stats_topic = session->ops.get_config(session, "wc_health_stats_topic");
+    TEST_ASSERT_NOT_NULL(health_stats_topic);
+    hero_stats_topic = session->ops.get_config(session, "wc_hero_stats_topic");
+    TEST_ASSERT_NOT_NULL(hero_stats_topic);
+    LOGI("%s: webcat session mqtt: %s health_stats_topic: %s hero_stats_topic: %s", __func__, topic, health_stats_topic, hero_stats_topic);
+
+    /* Add a session with an explicit provider */
+    conf = &g_confs[1];
+    fsm_add_session(conf);
+    sessions = fsm_get_sessions();
+    session = ds_tree_find(sessions, conf->handler);
+    TEST_ASSERT_NOT_NULL(session);
+
+    /* Create the related service provider */
+    ret = fsm_dup_web_cat_session(session);
+    TEST_ASSERT_TRUE(ret);
+
+    service_name = session->ops.get_config(session, "provider");
+    TEST_ASSERT_NOT_NULL(service_name);
+    session = ds_tree_find(sessions, service_name);
+    TEST_ASSERT_NOT_NULL(session);
+    TEST_ASSERT_EQUAL_INT(FSM_WEB_CAT, session->type);
+    topic = session->ops.get_config(session, "mqtt_v");
+    health_stats_topic = session->ops.get_config(session, "wc_health_stats_topic");
+    TEST_ASSERT_NOT_NULL(health_stats_topic);
+    hero_stats_topic = session->ops.get_config(session, "wc_hero_stats_topic");
+    TEST_ASSERT_NOT_NULL(hero_stats_topic);
+    LOGI("%s: service provider mqtt: %s health_stats_topic: %s hero_stats_topic: %s", __func__, topic, health_stats_topic, hero_stats_topic);
+}
+
+
+/**
+ * @brief test the dispatcher include exclude settings
+ */
+void
+test_dispatcher_device_process(void)
+{
+    struct schema_Flow_Service_Manager_Config *conf;
+    union fsm_dpi_context *dispatcher_dpi_context;
+    struct fsm_dpi_dispatcher *dpi_dispatcher;
+    struct net_header_parser *net_parser;
+    struct fsm_session *session;
+    ds_tree_t *sessions;
+    bool process;
+    size_t len;
+    int rc;
+
+    /* Add a dpi dispatcher session */
+    conf = &g_confs[21];
+    fsm_add_session(conf);
+    sessions = fsm_get_sessions();
+    session = ds_tree_find(sessions, conf->handler);
+    TEST_ASSERT_NOT_NULL(session);
+
+    dispatcher_dpi_context = session->dpi;
+    TEST_ASSERT_NOT_NULL(dispatcher_dpi_context);
+
+    dpi_dispatcher = &dispatcher_dpi_context->dispatch;
+    net_parser = &dpi_dispatcher->net_parser;
+
+    TEST_ASSERT_NOT_NULL(net_parser);
+    /* The packet is multicast, the source mac is part of included devices */
+    UT_CREATE_PCAP_PAYLOAD(pkt11055, net_parser);
+    len = net_header_parse(net_parser);
+    TEST_ASSERT_TRUE(len != 0);
+    net_header_logi(net_parser);
+
+    /* Validate the included/excluded devices tag settings */
+    rc = strncmp(dpi_dispatcher->included_devices, "${tag_1}", strlen("${tag_1}"));
+    TEST_ASSERT_EQUAL(0, rc);
+
+    rc = strncmp(dpi_dispatcher->excluded_devices, "${tag_2}", strlen("${tag_2}"));
+    TEST_ASSERT_EQUAL(0, rc);
+
+    /* The source mac is part of tag_1, destination mac is multicast */
+
+    /* smac is included devices, expect processing */
+    process = fsm_dpi_should_process(net_parser, "${tag_1}", "${tag_2}");
+    TEST_ASSERT_TRUE(process);
+
+    /* No included devices, smac not in excluded devices. Expect processing */
+    process = fsm_dpi_should_process(net_parser, NULL, "${tag_2}");
+    TEST_ASSERT_TRUE(process);
+
+    /* No excluded devices, smac in included devices. Expect processing */
+    process = fsm_dpi_should_process(net_parser, "${tag_1}", NULL);
+    TEST_ASSERT_TRUE(process);
+
+    /* source mac part of excluded targets. Do not expect processing */
+    process = fsm_dpi_should_process(net_parser, "${tag_2}", "${tag_1}");
+    TEST_ASSERT_FALSE(process);
+
+    /* No included devices, source mac part of excluded targets. Do not expect processing */
+    process = fsm_dpi_should_process(net_parser, NULL, "${tag_1}");
+    TEST_ASSERT_FALSE(process);
+
+    /* No excluded devices, smac not in included devices. Do not expect processing */
+    process = fsm_dpi_should_process(net_parser, "${tag_2}", NULL);
+    TEST_ASSERT_FALSE(process);
+}
+
+
 int
 main(int argc, char *argv[])
 {
@@ -4876,15 +5152,18 @@ main(int argc, char *argv[])
     RUN_TEST(test_dpi_dispatcher_udp_reserved);
     RUN_TEST(test_dpi_dispatcher_dns_request);
     RUN_TEST(test_dpi_dispatcher_dns_response);
+
     RUN_TEST(test_dpi_dispatcher_tcp_http_req_response);
     RUN_TEST(test_dpi_dispatcher_tcp_https_req_response);
     RUN_TEST(test_dpi_dispatcher_udp_https_req_response);
     RUN_TEST(test_dpi_dispatcher_udp_dhcp_discover);
     RUN_TEST(test_dpi_dispatcher_udp_dhcp_offer);
     RUN_TEST(test_dpi_dispatcher_no_ip_pkt);
-
     RUN_TEST(test_fsm_tap_type_from_str);
     RUN_TEST(test_dpi_dispatch_delete);
+    RUN_TEST(test_parser_webcat_session);
+    RUN_TEST(test_webcat_parser_session);
+    RUN_TEST(test_dispatcher_device_process);
 
     run_test_fsm_ovsdb();
 
