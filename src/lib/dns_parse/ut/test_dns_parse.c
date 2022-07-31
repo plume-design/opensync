@@ -288,6 +288,12 @@ int g_ipv4_cnt;
 struct dns_cache *g_dns_mgr;
 struct fsm_mgr *g_fsm_mgr;
 
+void
+test_dummy_dns_forward(struct dns_session *dns_session, dns_info *dns_info,
+                       uint8_t *buf, int len)
+{
+    LOGI("%s: here", __func__);
+}
 
 void
 test_dns_forward(struct dns_session *dns_session, dns_info *dns_info,
@@ -1202,6 +1208,41 @@ test_reverse_lookup(void)
     FREE(net_parser);
 }
 
+/**
+ * @brief test type A dns query and response
+ */
+void
+test_kconfig_query_response(void)
+{
+    struct net_header_parser *net_parser;
+    struct dns_session *dns_session;
+    size_t len;
+
+    dns_session = dns_lookup_session(g_fsm_parser);
+    TEST_ASSERT_NOT_NULL(dns_session);
+
+#define CONFIG_FSM_DPI_DNS 1
+    g_dns_mgr->dispatcher_tap_type = 2;
+    g_dns_mgr->forward = test_dummy_dns_forward;
+
+    net_parser = CALLOC(1, sizeof(*net_parser));
+
+    /* Process query */
+    UT_CREATE_PCAP_PAYLOAD(pkt46, net_parser);
+    len = net_header_parse(net_parser);
+    TEST_ASSERT_TRUE(len != 0);
+    dns_handler(g_fsm_parser, net_parser);
+
+    /* Process response */
+    memset(net_parser, 0, sizeof(*net_parser));
+    UT_CREATE_PCAP_PAYLOAD(pkt47, net_parser);
+    len = net_header_parse(net_parser);
+    TEST_ASSERT_TRUE(len != 0);
+    dns_handler(g_fsm_parser, net_parser);
+
+    FREE(net_parser);
+#undef CONFIG_FSM_DPI_DNS
+}
 
 void
 dns_parse_setUp(void)
@@ -1359,6 +1400,7 @@ main(int argc, char *argv[])
     RUN_TEST(test_update_v6_tag_generation_ip_expiration);
     RUN_TEST(test_gk_dns_cache);
     RUN_TEST(test_reverse_lookup);
+    RUN_TEST(test_kconfig_query_response);
 
     return ut_fini();
 }

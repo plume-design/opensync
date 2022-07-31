@@ -1,7 +1,7 @@
 {
   "name": "Open_vSwitch",
-  "version": "7.11.320",
-  "cksum": "2581933246 282276",
+  "version": "7.11.322",
+  "cksum": "4213777102 285807",
   "tables": {
     "AWLAN_Node": {
       "columns": {
@@ -824,7 +824,7 @@
             "value": {
               "type": "string",
               "minLength": 1,
-              "maxLength": 256
+              "maxLength": 2048
             },
             "min": 0,
             "max": "unlimited"
@@ -1231,7 +1231,7 @@
             "value": {
               "type": "string",
               "minLength": 1,
-              "maxLength": 256
+              "maxLength": 2048
             },
             "min": 0,
             "max": "unlimited"
@@ -2421,6 +2421,71 @@
             "max": 1
           }
         },
+        "ft_over_ds": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "ft_pmk_r0_key_lifetime_sec": {
+          "type": {
+            "key": {
+              "type": "integer"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "ft_pmk_r1_max_key_lifetime_sec": {
+          "type": {
+            "key": {
+              "type": "integer"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "ft_pmk_r1_push": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "ft_psk_generate_local": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "nas_identifier": {
+          "type": {
+            "key": {
+              "type": "string"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "ft_encr_key": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 64,
+              "maxLength": 64
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
         "rrm": {
           "type": {
             "key": {
@@ -3038,6 +3103,71 @@
           "type": {
             "key": {
               "type": "integer"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "ft_over_ds": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "ft_pmk_r0_key_lifetime_sec": {
+          "type": {
+            "key": {
+              "type": "integer"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "ft_pmk_r1_max_key_lifetime_sec": {
+          "type": {
+            "key": {
+              "type": "integer"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "ft_pmk_r1_push": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "ft_psk_generate_local": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "nas_identifier": {
+          "type": {
+            "key": {
+              "type": "string"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "ft_encr_key": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 64,
+              "maxLength": 64
             },
             "min": 0,
             "max": 1
@@ -7628,6 +7758,35 @@
                 "type": {
                     "key": {
                         "type": "integer"
+                    },
+                    "min": 0,
+                    "max": 1
+                }
+            },
+            "ft_enabled": {
+                "type": {
+                    "key": {
+                        "type": "boolean"
+                    },
+                    "min": 0,
+                    "max": 1
+                }
+            },
+            "nas_identifier": {
+                "type": {
+                    "key": {
+                        "type": "string"
+                    },
+                    "min": 0,
+                    "max": 1
+                }
+            },
+            "ft_encr_key": {
+                "type": {
+                    "key": {
+                        "type": "string",
+                        "minLength": 64,
+                        "maxLength": 64
                     },
                     "min": 0,
                     "max": 1

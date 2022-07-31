@@ -98,6 +98,7 @@ typedef struct lte_state_info_
     bool esim_download_in_progress;
     bool esim_download_complete;
     char esim_active_profile[32];
+    bool lte_force_allow;
 } lte_state_info_t;
 
 typedef struct lte_route_info_

@@ -191,7 +191,7 @@ bool osp_upg_dl(char *url, uint32_t timeout, osp_upg_cb dl_cb)
     }
 
     /* Start CRC/MD5 file download, if enabled */
-    if (kconfig_enabled(OSP_UPG_CRC_NONE))
+    if (kconfig_enabled(CONFIG_OSP_UPG_CRC_NONE))
     {
         g_osp_upg_gen_crc_download_complete = true;
         g_osp_upg_gen_crc_download_status = OSP_DL_OK;

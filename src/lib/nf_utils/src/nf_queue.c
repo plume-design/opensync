@@ -672,14 +672,8 @@ nf_queue_update_payload(uint32_t packet_id, uint32_t queue_num)
     return true;
 }
 
-int nf_queue_set_dpi_state(struct net_header_parser *net_hdr)
+int nf_queue_set_dpi_mark(struct net_header_parser *net_hdr, int mark)
 {
-    struct net_md_stats_accumulator *acc;
-    int mark = CT_MARK_INSPECT;
-
-    acc = net_hdr->acc;
-    if (acc) mark = acc->flow_marker;
-
     nf_queue_set_ct_mark(net_hdr->packet_id, mark, net_hdr->nfq_queue_num);
     return 0;
 }

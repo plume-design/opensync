@@ -311,6 +311,19 @@ dpi_sni_process_verdict(struct fsm_policy_req *policy_request,
     dpi_sni_process_report(policy_request, policy_reply);
 }
 
+static void
+dpi_sni_set_flow_marker(struct fsm_request_args *request_args,
+                        struct fsm_policy_reply *policy_reply)
+{
+    struct net_md_stats_accumulator *acc;
+
+    acc = request_args->acc;
+    if (acc == NULL) return;
+
+    acc->flow_marker = policy_reply->flow_marker;
+    LOGT("%s(): set flow_marker to %d", __func__, acc->flow_marker);
+}
+
 /**
  * @brief request an action from the policy engine
  *
@@ -348,6 +361,7 @@ dpi_sni_policy_req(struct fsm_request_args *request_args, char *attr_value)
 
     /* process the input request */
     action = dpi_sni_process_request(policy_request, policy_reply);
+    dpi_sni_set_flow_marker(request_args, policy_reply);
 
     action = (action == FSM_BLOCK ? FSM_DPI_DROP : FSM_DPI_PASSTHRU);
 

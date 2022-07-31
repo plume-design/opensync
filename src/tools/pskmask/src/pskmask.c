@@ -38,6 +38,7 @@ static char psks[MAX_PSK_CNT][MAX_PSK_LEN+1];
 static int psk_count;
 static ovsdb_table_t table_Wifi_VIF_Config;
 static ovsdb_table_t table_Wifi_Credential_Config;
+static ovsdb_table_t table_IPSec_Config;
 
 static bool append_psks_if_unique(const char *newstr)
 {
@@ -104,13 +105,25 @@ static void fetch_ovsdb_psks(void)
     }
     free(buf2);
 
+    n = 0;
+    struct schema_IPSec_Config *buf3 = ovsdb_table_select_where(&table_IPSec_Config, NULL, &n);
+    if (n == 0) printf("No PSKs found in IPSec_Config\n");
+    for (record=0; record<n; record++)
+    {
+        if (buf3[record].psk_exists)
+        {
+            append_psks_if_unique(buf3[record].psk);
+        }
+    }
+    free(buf3);
+
     qsort(psks, psk_count, MAX_PSK_LEN+1, strlencmp);
 }
 
 static void print_usage(void)
 {
     fprintf(stderr, 
-         "Pskmask WiFi password masking utility\n"
+         "Pskmask password masking utility\n"
          "This tool fetches PreShared Keys from OVSDB and\n"
          "masks every occurence inside of provided files.\n"
          "If file is a symlink, it gets replaced by masked\n"
@@ -221,6 +234,7 @@ int main(int argc, char **argv)
 
     OVSDB_TABLE_INIT(Wifi_VIF_Config, if_name);
     OVSDB_TABLE_INIT(Wifi_Credential_Config, _uuid);
+    OVSDB_TABLE_INIT(IPSec_Config, tunnel_name);
 
     /* Part 1 - gather psks */
     fetch_ovsdb_psks();

@@ -1805,32 +1805,22 @@ fsm_dpi_should_process_mac(os_macaddr_t *mac,
     is_unicast = ((mac->addr[0] & 0x1) == 0x0);
     if (!is_unicast) return false;
 
-    /* Check if the source or dest device is an excluded target */
-    if (excluded_targets == NULL)
-    {
-        excluded = false;
-    }
-    else
-    {
-        excluded = fsm_dpi_find_mac_in_val(mac, excluded_targets);
-    }
-
-    /* If excluded we are done */
-    if (excluded) return false;
-
-    /* The mac is not excluded. Check if it is explicitly included */
-    /* No explicit target means include */
-    if (included_targets == NULL)
-    {
-        included = true;
-    }
-    else
+    /* Check if the mac is explicitly included */
+    if (included_targets != NULL)
     {
         included = fsm_dpi_find_mac_in_val(mac, included_targets);
+        return included;
     }
 
-    /* The packet should be processed if included or not excluded */
-    return included;
+    /* The mac is not explicitly included, check if it is explicitly excluded */
+    if (excluded_targets != NULL)
+    {
+        excluded = !fsm_dpi_find_mac_in_val(mac, excluded_targets);
+        return excluded;
+    }
+
+    /* The mac is not explicitly included nor explicitly excluded, process it */
+    return true;
 }
 
 
@@ -1892,11 +1882,12 @@ fsm_dispatch_pkt(struct fsm_session *session,
     struct fsm_dpi_flow_info *info;
     struct fsm_session *dpi_plugin;
     struct fsm_dpi_plugin *plugin;
+    int state = FSM_DPI_CLEAR;
     ds_tree_t *tree;
-    int state = 0;
     bool process;
     bool drop;
     bool pass;
+    int mark;
 
     acc = net_parser->acc;
 
@@ -1904,7 +1895,8 @@ fsm_dispatch_pkt(struct fsm_session *session,
 
     if (acc->dpi_done != 0)
     {
-        session->set_dpi_state(net_parser);
+        mark = fsm_dpi_get_mark(net_parser->acc, acc->dpi_done);
+        session->set_dpi_mark(net_parser, mark);
         return;
     }
 
@@ -1965,12 +1957,16 @@ fsm_dispatch_pkt(struct fsm_session *session,
         fsm_forward_pkt(session, net_parser);
     }
 
-    if (pass || drop) session->set_dpi_state(net_parser);
-
     if (drop) state = FSM_DPI_DROP;
     if (pass) state = FSM_DPI_PASSTHRU;
 
-    fsm_dpi_set_acc_state(session, acc, state);
+    acc->dpi_done = state;
+
+    if (pass || drop)
+    {
+        mark = fsm_dpi_get_mark(net_parser->acc, acc->dpi_done);
+        session->set_dpi_mark(net_parser, mark);
+    }
 }
 
 /**

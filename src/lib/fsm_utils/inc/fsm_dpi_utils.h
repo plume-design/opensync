@@ -81,8 +81,9 @@ int fsm_set_icmp_dpi_state_timeout(
 /**
  * @brief FSM DPI APIs using pcap data
  */
-int fsm_set_dpi_state(
-        struct net_header_parser *net_hdr
+int fsm_set_dpi_mark(
+        struct net_header_parser *net_hdr,
+        int mark
 );
 
 int fsm_set_dpi_state_timeout(
@@ -103,12 +104,10 @@ fsm_dpi_allow_flow(struct net_md_stats_accumulator *acc);
 void
 fsm_dpi_block_flow(struct net_md_stats_accumulator *acc);
 
-void
-fsm_dpi_set_acc_state(struct fsm_session *session,
-                      struct net_md_stats_accumulator *acc,
-                      int state);
-
 char *
 fsm_ops_get_network_id(struct fsm_session *session, os_macaddr_t *mac);
+
+int
+fsm_dpi_get_mark(struct net_md_stats_accumulator *acc, int action);
 
 #endif /* FSM_DPI_UTILS_H_INCLUDED */

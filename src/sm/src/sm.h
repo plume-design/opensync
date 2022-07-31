@@ -255,6 +255,31 @@ bool sm_scan_schedule_stop (
         radio_scan_type_t           scan_type);
 
 /******************************************************************************
+ *  Health heck schedule definitions
+ *****************************************************************************/
+
+typedef void (*sm_healthcheck_update_cb_t) (const char* ip, uint16_t port, bool healthy);
+
+void sm_healthcheck_schedule_init(sm_healthcheck_update_cb_t update_cb);
+void sm_healthcheck_stop_all(void);
+
+// update or add a radius server
+void sm_healthcheck_schedule_update(
+        uint32_t                    timeout,
+        char                       *server,
+        char                       *secret,
+        uint16_t                    port,
+        bool                        healthy);
+
+void sm_healthcheck_set_health_cache(const char* ip, uint16_t port, bool healthy);
+
+// remove radius server
+void sm_healthcheck_remove(const char* ip, uint16_t port);
+
+// callback for updating ovsdb
+void update_RADIUS_health(const char* ip, uint16_t port, bool healthy);
+
+/******************************************************************************
  *  OVSDB WRAPPER definitions
  *****************************************************************************/
 /*
@@ -376,4 +401,7 @@ void sm_backend_report_stop(
         sm_report_type_t            report_type,
         const sm_stats_request_t   *request);
 
+bool sm_get_networkid_for_client(
+        mac_address_t              *mac,
+        network_id_t               *networkid);
 #endif /* SM_H_INCLUDED */

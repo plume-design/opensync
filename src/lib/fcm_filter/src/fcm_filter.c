@@ -386,7 +386,7 @@ int fcm_dport_in_set(struct fcm_filter_rule *rule, fcm_filter_l3_info_t *l3_info
         }
         else if (rule->dst_port[i].port_min == l3_info->dport) return FCM_DEFAULT_TRUE;
     }
-    return FCM_DEFAULT_TRUE;
+    return FCM_DEFAULT_FALSE;
 }
 
 static
@@ -421,7 +421,7 @@ int fcm_proto_in_set(struct fcm_filter_rule *rule, fcm_filter_l3_info_t *l3_info
         if (rule->proto->array[i] == l3_info->l4_proto) return FCM_DEFAULT_TRUE;
     }
 
-    return FCM_DEFAULT_TRUE;
+    return FCM_DEFAULT_FALSE;
 }
 
 static
@@ -776,6 +776,10 @@ void fcm_apply_filter(struct fcm_session *session, struct fcm_filter_req *req)
         }
 
         if (LOG_SEVERITY_ENABLED(LOG_SEVERITY_TRACE))
+        {
+            LOGT("%s: fcm_filter: rule success %s", __func__, allow ? "YES" : "NO");
+        }
+
         action_op = fcm_action_filter(&rule->filter_rule);
 
         if (allow) goto tuple_out;

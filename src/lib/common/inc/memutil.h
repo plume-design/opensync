@@ -32,6 +32,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "osa_assert.h"
 
 #define MEMUTIL_MAGIC       0xdeadbeef
+#define IS_NULL_PTR(ptr)    ((ptr == NULL) || (ptr == (void *)MEMUTIL_MAGIC))
 
 /*
  * ===========================================================================

@@ -44,9 +44,13 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ovsdb_update.h"
 #include "ovsdb_table.h"
 #include "ovsdb_sync.h"
+#include "ovsdb_utils.h"
 #include "schema.h"
 #include "schema_consts.h"
+#include "policy_tags.h"
 #include "memutil.h"
+
+#include "dpp_client.h"
 
 #include "sm.h"
 
@@ -97,6 +101,27 @@ DS_TREE_INIT(
         (ds_key_cmp_t*)strcmp,
         sm_stats_config_t,
         node);
+
+ovsdb_table_t table_RADIUS;
+
+static ovsdb_table_t table_Openflow_Tag;
+static ovsdb_table_t table_Openflow_Local_Tag;
+static ovsdb_table_t table_Openflow_Tag_Group;
+static ovsdb_table_t table_Network_Zone;
+
+struct network_id
+{
+    char *network_id;           /* Network id name */
+    struct str_set *nw_tags;    /* Openflow tags list */
+    int priority;               /* Network id priority */
+    ds_tree_node_t next;
+};
+
+static ds_tree_t g_network_id_table =
+DS_TREE_INIT(
+        (ds_key_cmp_t *) strcmp,
+        struct network_id,
+        next);
 
 /******************************************************************************
  *                          AWLAN CONFIG
@@ -917,6 +942,345 @@ sm_cmu_get_type_for_used_link(char *iftype, size_t size)
 
 #endif /* CONFIG_SM_UPLINK_STATS */
 
+static void
+callback_RADIUS(
+        ovsdb_update_monitor_t  *mon,
+        struct schema_RADIUS    *old_radconf,
+        struct schema_RADIUS    *radconf)
+{
+    switch (mon->mon_type) {
+        default:
+        case OVSDB_UPDATE_ERROR:
+            LOGD("%s: OVSDB update error: %d", __func__, mon->mon_type);
+            return;
+
+        case OVSDB_UPDATE_DEL:
+            LOGD("removing server (row removed) %s:%d", radconf->ip_addr, radconf->port);
+            sm_healthcheck_remove(radconf->ip_addr, radconf->port);
+            break;
+
+        case OVSDB_UPDATE_NEW:
+        case OVSDB_UPDATE_MODIFY:
+            // ip and/or port updated in place, remove old server and add new
+            if (old_radconf->ip_addr_present || old_radconf->port_present) {
+                sm_healthcheck_remove(old_radconf->ip_addr_present ? old_radconf->ip_addr : radconf->ip_addr,
+                    old_radconf->port_present ? old_radconf->port : radconf->port);
+                sm_healthcheck_schedule_update(
+                    radconf->healthcheck_interval_sec,
+                    radconf->ip_addr,
+                    radconf->secret,
+                    radconf->port,
+                    radconf->healthy);
+            } else if (radconf->healthcheck_interval_sec == 0) {
+                // stop healthcheck for this server and remove it from list,
+                // no point in keeping it in process memory
+                LOGD("removing server %s:%d", radconf->ip_addr, radconf->port);
+                sm_healthcheck_remove(radconf->ip_addr, radconf->port);
+            } else {
+                // if healthy field changed, silently update just that and carry on
+                // as it might be us who did the change
+                if (radconf->healthy_changed &&
+                    !radconf->ip_addr_changed &&
+                    !radconf->port_changed &&
+                    !radconf->secret_changed &&
+                    !radconf->healthcheck_interval_sec_changed) {
+                    LOGD("updating health %s:%d %d", radconf->ip_addr, radconf->port, radconf->healthy);
+                    sm_healthcheck_set_health_cache(radconf->ip_addr, radconf->port, radconf->healthy);
+                } else {
+                    LOGD("updating server %s:%d %d", radconf->ip_addr, radconf->port, mon->mon_type == OVSDB_UPDATE_NEW);
+                    sm_healthcheck_schedule_update(
+                        radconf->healthcheck_interval_sec,
+                        radconf->ip_addr,
+                        radconf->secret,
+                        radconf->port,
+                        radconf->healthy_exists ? radconf->healthy : true);
+                }
+            }
+            break;
+    }
+}
+
+// go through Network_Zone, expand tags from OpenFlow_Tag_Group and extract tags from OpenFlow_Tag
+// and see to which Network_Zone particular client belongs by finding its macaddrs in macaddrs
+// assigned to those tags
+static
+bool sm_find_mac_in_tag(char *mac_str, char *tag)
+{
+    bool rc;
+    int ret;
+
+    if (tag == NULL) return false;
+    if (mac_str == NULL) return false;
+
+    rc = om_tag_in(mac_str, tag);
+    if (rc) return true;
+
+    ret = strncmp(mac_str, tag, strlen(mac_str));
+    return (ret == 0);
+}
+
+bool sm_get_networkid_for_client(
+        mac_address_t              *mac,
+        network_id_t               *networkid)
+{
+    char mac_str[OS_MACSTR_SZ];
+    struct network_id *netid;
+    size_t i;
+    int last_prio = -1;
+    bool found;
+
+    if (mac == NULL) return false;
+
+    snprintf(mac_str, sizeof(mac_str), PRI_os_macaddr_lower_t, MAC_ADDRESS_PRINT(*mac));
+
+    LOGT("%s: get network id for %s", __func__, mac_str);
+
+    netid = ds_tree_head(&g_network_id_table);
+
+    while (netid != NULL) {
+
+        /* loop through each of tags searching for the device */
+        for (i = 0; i < netid->nw_tags->nelems; i++) {
+            // ignore this network id if its priority is lower than
+            // currently found one
+            if (netid->priority >= last_prio) {
+                found = sm_find_mac_in_tag(mac_str, netid->nw_tags->array[i]);
+                /* if found, device belongs to this network id */
+                if (found) {
+                    memmove((void*)networkid, (void*)netid->network_id,
+                        MIN(sizeof(*networkid), strlen(netid->network_id) + 1));
+                    last_prio = netid->priority;
+                }
+            }
+        }
+
+        netid = ds_tree_next(&g_network_id_table, netid);
+    }
+
+    // if we found networkid for that client, last_prio will be >= 0
+    // FIXME: cache for client->networkid map?
+    return last_prio >= 0;
+}
+
+static
+struct network_id * sm_alloc_nid_node(struct schema_Network_Zone *config)
+{
+    struct network_id *nid;
+
+    if (config == NULL) return NULL;
+
+    nid = CALLOC(1, sizeof(struct network_id));
+    nid->network_id = STRDUP(config->name);
+    nid->nw_tags = schema2str_set(sizeof(config->macs[0]),
+                                  config->macs_len,
+                                  config->macs);
+    nid->priority = config->priority;
+
+    return nid;
+}
+
+static
+struct network_id * sm_get_netid_node(struct schema_Network_Zone *config)
+{
+    if (config == NULL) return NULL;
+
+    return ds_tree_find(&g_network_id_table, config->name);
+}
+
+static
+void sm_free_network_id_node(struct network_id *netid)
+{
+    FREE(netid->network_id);
+    free_str_set(netid->nw_tags);
+    FREE(netid);
+}
+
+static
+void update_network_id(struct network_id *nid, struct schema_Network_Zone *config)
+{
+    struct network_id *new_nid;
+
+    /* delete existing entries */
+    ds_tree_remove(&g_network_id_table, nid);
+    sm_free_network_id_node(nid);
+
+    /* create new entry */
+    new_nid = sm_alloc_nid_node(config);
+    if (new_nid == NULL) return;
+
+    ds_tree_insert(&g_network_id_table, new_nid, new_nid->network_id);
+}
+
+static
+void sm_modify_network_id(struct schema_Network_Zone *config)
+{
+    struct network_id *nid;
+
+    nid = sm_get_netid_node(config);
+    if (nid == NULL) {
+        LOGT("%s(): network id %s not found, not updating", __func__, config->name);
+        return;
+    }
+
+    LOGT("%s(): updating network id %s", __func__, config->name);
+    update_network_id(nid, config);
+}
+
+static
+void sm_del_network_id(struct schema_Network_Zone *config)
+{
+    struct network_id *nid;
+
+    nid = sm_get_netid_node(config);
+    if (nid == NULL) {
+        LOGT("%s(): %s cannot be deleted, not found in table", __func__, config->name);
+        return;
+    }
+
+    LOGT("%s(): deleting %s", __func__, config->name);
+    ds_tree_remove(&g_network_id_table, nid);
+    sm_free_network_id_node(nid);
+}
+
+static
+void sm_add_network_id(struct schema_Network_Zone *config)
+{
+    struct network_id *nid;
+
+    if (config == NULL) return;
+
+    /* check if node already added */
+    nid = sm_get_netid_node(config);
+    if (nid != NULL) return;
+
+    /* create new node and add to tree */
+    nid = sm_alloc_nid_node(config);
+    if (nid == NULL) return;
+
+    ds_tree_insert(&g_network_id_table, nid, nid->network_id);
+
+    return;
+
+free_nid:
+    FREE(nid);
+}
+
+static
+void callback_Openflow_Local_Tag(ovsdb_update_monitor_t *mon,
+                            struct schema_Openflow_Local_Tag *old_rec,
+                            struct schema_Openflow_Local_Tag *tag)
+{
+    switch (mon->mon_type) {
+        case OVSDB_UPDATE_NEW:
+            om_local_tag_add_from_schema(tag);
+            break;
+        case OVSDB_UPDATE_DEL:
+            om_local_tag_remove_from_schema(tag);
+            break;
+        case OVSDB_UPDATE_MODIFY:
+            om_local_tag_update_from_schema(tag);
+            break;
+        case OVSDB_UPDATE_ERROR:
+            LOGE("%s: OVSDB error", __func__);
+            break;
+    }
+}
+
+static
+void callback_Openflow_Tag(ovsdb_update_monitor_t *mon,
+                      struct schema_Openflow_Tag *old_rec,
+                      struct schema_Openflow_Tag *tag)
+{
+    switch (mon->mon_type) {
+        case OVSDB_UPDATE_NEW:
+            om_tag_add_from_schema(tag);
+            break;
+        case OVSDB_UPDATE_DEL:
+            om_tag_remove_from_schema(tag);
+            break;
+        case OVSDB_UPDATE_MODIFY:
+            om_tag_update_from_schema(tag);
+            break;
+        case OVSDB_UPDATE_ERROR:
+            LOGE("%s: OVSDB error", __func__);
+            break;
+    }
+}
+
+static
+void callback_Openflow_Tag_Group(ovsdb_update_monitor_t *mon,
+                            struct schema_Openflow_Tag_Group *old_rec,
+                            struct schema_Openflow_Tag_Group *tag)
+{
+    switch (mon->mon_type) {
+        case OVSDB_UPDATE_NEW:
+            om_tag_group_add_from_schema(tag);
+            break;
+        case OVSDB_UPDATE_DEL:
+            om_tag_group_remove_from_schema(tag);
+            break;
+        case OVSDB_UPDATE_MODIFY:
+            om_tag_group_update_from_schema(tag);
+            break;
+        case OVSDB_UPDATE_ERROR:
+            LOGE("%s: OVSDB error", __func__);
+            break;
+    }
+}
+
+static
+void callback_Network_Zone(ovsdb_update_monitor_t *mon,
+                            struct schema_Network_Zone *old_rec,
+                            struct schema_Network_Zone *zone)
+{
+    switch (mon->mon_type) {
+        case OVSDB_UPDATE_NEW:
+            sm_add_network_id(zone);
+            break;
+        case OVSDB_UPDATE_DEL:
+            sm_del_network_id(old_rec);
+            break;
+        case OVSDB_UPDATE_MODIFY:
+            sm_modify_network_id(zone);
+            break;
+        case OVSDB_UPDATE_ERROR:
+            LOGE("%s: OVSDB error", __func__);
+            break;
+    }
+}
+
+void update_RADIUS_health(const char* ip, uint16_t port, bool healthy)
+{
+    struct schema_RADIUS RADIUS = {0};
+    json_t* where, *inner_where;
+    uint32_t lport = (uint32_t)port;
+
+    RADIUS._partial_update = true;
+    SCHEMA_SET_BOOL(RADIUS.healthy, healthy);
+
+    inner_where = ovsdb_where_simple_typed(SCHEMA_COLUMN(RADIUS, port), &lport, OCLM_INT);
+
+    if (!inner_where)
+        goto oom;
+
+    where = ovsdb_where_multi(ovsdb_where_simple(SCHEMA_COLUMN(RADIUS, ip_addr), ip),
+        inner_where, NULL);
+
+    if (!where)
+        goto oom;
+
+    if (!ovsdb_table_update_where(&table_RADIUS, where, &RADIUS)) {
+        LOGE("%s: error updating healthiness for %s:%d", __func__, ip, port);
+    } else {
+        LOGD("%s: updated RADIUS %s:%d health, new val: %d", __func__, ip, port, healthy);
+    }
+
+    return;
+
+oom:
+    LOGE("%s: failed to construct WHERE statement", __func__);
+}
+
 /******************************************************************************
  *  PUBLIC API definitions
  *****************************************************************************/
@@ -977,6 +1341,21 @@ int sm_setup_monitor(void)
         return -1;
     }
 
+    /* Monitor RADIUS table */
+    OVSDB_TABLE_INIT_NO_KEY(RADIUS);
+    OVSDB_TABLE_MONITOR(RADIUS, false);
+
+    /* Monitor Openflow tag tables */
+    OVSDB_TABLE_INIT_NO_KEY(Openflow_Tag);
+    OVSDB_TABLE_INIT_NO_KEY(Openflow_Local_Tag);
+    OVSDB_TABLE_INIT_NO_KEY(Openflow_Tag_Group);
+    OVSDB_TABLE_INIT_NO_KEY(Network_Zone);
+
+    OVSDB_TABLE_MONITOR(Openflow_Tag, false);
+    OVSDB_TABLE_MONITOR(Openflow_Local_Tag, false);
+    OVSDB_TABLE_MONITOR(Openflow_Tag_Group, false);
+    OVSDB_TABLE_MONITOR(Network_Zone, false);
+
     return 0;
 }
 
@@ -1009,4 +1388,3 @@ void sm_vif_whitelist_get(char **mac_list, uint16_t *mac_size, uint16_t *mac_qty
         }
     }
 }
-

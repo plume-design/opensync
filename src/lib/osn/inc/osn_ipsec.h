@@ -524,7 +524,13 @@ bool osn_ipsec_role_set(osn_ipsec_t *self, enum osn_ipsec_role role);
 bool osn_ipsec_mode_set(osn_ipsec_t *self, enum osn_ipsec_mode mode);
 
 /**
- * Set cipher suites for IKE Phase 1.
+ * Set algorithms for building a cipher suite for IKE Phase 1.
+ *
+ * In IKEv2 multiple algorithms may be included.
+ *
+ * @note The parameters have _set prefix, however the order of the algorithms in
+ *       arrays may be important, i.e. in fact these are lists. Depending on
+ *       the backend implementation the order may be taken into account.
  *
  * @param[in] self             A valid @ref osn_ipsec_t object
  * @param[in] enc_set          List of Encryption Algorithms for IKE Phase 1
@@ -546,7 +552,11 @@ bool osn_ipsec_ike_cipher_suite_set(
         enum osn_ipsec_dh_group *dh_set, int dh_set_len);
 
 /**
- * Set cipher suites for Phase 2 ESP tunnel.
+ * Set algorithms for building a cipher suite for Phase 2 ESP tunnel.
+ *
+ * @note The parameters have _set prefix, however the order of the algorithms in
+ *       arrays may be important, i.e. in fact these are lists. Depending on
+ *       the backend implementation the order may be taken into account.
  *
  * @param[in] self             A valid @ref osn_ipsec_t object
  * @param[in] enc_set          List of Encryption Algorithms for Phase 2 ESP tunnel

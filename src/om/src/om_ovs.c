@@ -28,6 +28,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * Openflow Manager - openflow rules processing
  */
 
+#define  _GNU_SOURCE
 #include <stdio.h>
 #include <stdbool.h>
 
@@ -36,6 +37,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "log.h"
 #include "target.h"
 #include "om.h"
+#include "util.h"
 
 /*****************************************************************************/
 #define MODULE_ID LOG_MODULE_ID_MAIN
@@ -43,46 +45,44 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 bool om_add_flow(const char *token, const struct schema_Openflow_Config *ofconf)
 {
-    char    flow_entry[512];
-    bool    success = false;
+    const char *ovs_ofctl_prog = "ovs-ofctl";
+    const char *ovs_ofctl_cmd  = "add-flow";
+    char *flow_entry = strfmta("table=%d,priority=%d%s%s,actions=%s",
+                               ofconf->table,
+                               ofconf->priority,
+                               strlen(ofconf->rule) > 0 ? "," : "",
+                               ofconf->rule,
+                               ofconf->action);
 
-    snprintf(flow_entry, sizeof( flow_entry ),
-             "ovs-ofctl add-flow %s \"table=%d,priority=%d%s%s,actions=%s\"",
-             ofconf->bridge, ofconf->table, ofconf->priority,
-             strlen(ofconf->rule) > 0 ? "," : "",
-             ofconf->rule, ofconf->action );
-
-    // Execute ovs-ofctl to add the flow
-    // cmd_log returns 0 on success
-    success = (cmd_log(flow_entry) == 0);
-    if(!success) {
-        LOGE("Flow entry add failed: %s", flow_entry);
+    LOGI("Flow entry add: %s %s %s %s", ovs_ofctl_prog, ovs_ofctl_cmd, ofconf->bridge, flow_entry);
+    if (strexa(ovs_ofctl_prog, ovs_ofctl_cmd, ofconf->bridge, flow_entry) == NULL) {
+        LOGE("Flow entry add failed: %s %s %s %s", ovs_ofctl_prog, ovs_ofctl_cmd, ofconf->bridge, flow_entry);
+        return false;
     }
 
     target_om_hook(TARGET_OM_POST_ADD, ofconf->rule); 
 
-    return success;
+    return true;
 }
 
 bool om_del_flow(const char *token, const struct schema_Openflow_Config *ofconf)
 {
-    char    flow_entry[512];
-    bool    success = false;
+    const char *ovs_ofctl_prog = "ovs-ofctl";
+    const char *ovs_ofctl_cmd  = "del-flows";
+    char *flow_entry = strfmta("table=%d,priority=%d%s%s",
+                               ofconf->table,
+                               ofconf->priority,
+                               strlen(ofconf->rule) > 0 ? "," : "",
+                               ofconf->rule);
+    char *strict_param = "--strict";
 
-    snprintf( flow_entry, sizeof( flow_entry ),
-              "ovs-ofctl del-flows %s \"table=%d,priority=%d%s%s\" --strict",
-              ofconf->bridge, ofconf->table, ofconf->priority,
-              strlen( ofconf->rule ) > 0 ? "," : "",
-              ofconf->rule );
-
-    // Execute ovs-ofctl to del the flow
-    // cmd_log returns 0 on success
-    success = (cmd_log(flow_entry) == 0);
-    if(!success) {
-        LOGE("Flow entry del failed: %s", flow_entry);
+    LOGI("Flow entry del: %s %s %s %s %s", ovs_ofctl_prog, ovs_ofctl_cmd, ofconf->bridge, flow_entry, strict_param);
+    if (strexa(ovs_ofctl_prog, ovs_ofctl_cmd, ofconf->bridge, flow_entry, strict_param) == NULL) {
+        LOGE("Flow entry del failed: %s %s %s %s %s", ovs_ofctl_prog, ovs_ofctl_cmd, ofconf->bridge, flow_entry, strict_param);
+        return false;
     }
 
     target_om_hook(TARGET_OM_POST_DEL, ofconf->rule);
 
-    return success;
+    return true;
 }

@@ -44,6 +44,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "fsm_dpi_utils.h"
 #include "fsm_policy.h"
 #include "json_mqtt.h"
+#include "kconfig.h"
 #include "log.h"
 #include "memutil.h"
 #include "net_header_parse.h"
@@ -459,10 +460,11 @@ fsm_dpi_dns_process_dns_record(struct fsm_session *session,
     /* Fetch information (category, etc) for this FQDN */
     rec = &mgr->curr_rec_processed;
 
-    if (rec->resp[0].type != DNS_QTYPE_65)
+    rc = (mgr->identical_plugin_enabled);
+    rc &= (!kconfig_enabled(CONFIG_FSM_DPI_DNS));
+    if (rc)
     {
-        LOGT("%s: dns qtype: %d is not 65. Already handled in DNS parser plugin",
-             __func__, rec->resp[0].type);
+        LOGT("%s: dns_parse is enabled returning...", __func__);
         return action;
     }
 
@@ -576,6 +578,12 @@ fsm_dpi_dns_process_dns_record(struct fsm_session *session,
         action = FSM_DPI_PASSTHRU;
     }
 
+
+    if (net_parser != NULL)
+    {
+        net_parser->payload_updated = true;
+    }
+
     /* Cleanup */
     fsm_dpi_dns_free_reply(policy_reply);
     fsm_dpi_dns_free_request(policy_request);
@@ -601,6 +609,17 @@ dns_session_cmp(const void *a, const void *b)
     return 1;
 }
 
+void
+fsm_dpi_dns_identical_plugin_status(struct fsm_session *session, bool status)
+{
+    struct dpi_dns_client *mgr;
+
+    mgr = fsm_dpi_dns_get_mgr();
+    mgr->identical_plugin_enabled = status;
+    LOGT("%s: identical plugin enabled : %s", __func__, status ? "true" : "false");
+}
+
+
 /**
  * @brief session initialization entry point
  *
@@ -616,6 +635,7 @@ fsm_dpi_dns_init(struct fsm_session *session)
     struct fsm_dpi_plugin_client_ops *client_ops;
     struct dns_session *dns_session;
     struct dpi_dns_client *mgr;
+    char *provider;
     int ret;
 
     /* Initialize generic client */
@@ -626,6 +646,8 @@ fsm_dpi_dns_init(struct fsm_session *session)
     session->ops.update = fsm_dpi_dns_update;
     session->ops.periodic = fsm_dpi_dns_periodic;
     session->ops.exit = fsm_dpi_dns_exit;
+    session->ops.notify_identical_sessions = fsm_dpi_dns_identical_plugin_status;
+    session->plugin_id = FSM_DPI_DNS_PLUGIN;
 
     /* Set the plugin specific ops */
     client_ops = &session->p_ops->dpi_plugin_client_ops;
@@ -649,7 +671,11 @@ fsm_dpi_dns_init(struct fsm_session *session)
         return -1;
     }
 
-    dns_session->service_provider = IP2ACTION_GK_SVC;
+    provider = session->ops.get_config(session, "provider_plugin");
+    if (provider != NULL)
+    {
+        dns_session->service_provider = dns_cache_get_service_provider(provider);
+    }
     mgr->update_tag = fsm_dns_update_tag;
 
     return 0;

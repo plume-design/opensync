@@ -103,6 +103,12 @@ struct fsm_session_ops
 
     /* Get client device's network ID */
     char * (*get_network_id)(struct fsm_session *, os_macaddr_t *mac);
+
+    /* notify dispatcher tap_type */
+    void (*notify_dispatcher_tap_type)(struct fsm_session *, uint32_t);
+
+    /* notify if identical session loaded/unloaded */
+    void (*notify_identical_sessions)(struct fsm_session *, bool);
 };
 
 
@@ -260,6 +266,23 @@ enum
     FSM_DPI_PLUGIN_CLIENT,
 };
 
+enum fsm_plugin_id
+{
+    FSM_UNKNOWN_PLUGIN = 0,
+    FSM_DNS_PLUGIN = 1,
+    FSM_DPI_DNS_PLUGIN = 1,
+    FSM_MDNS_PLUGIN,
+    FSM_NDP_PLUGIN,
+    FSM_HTTP_PLUGIN,
+    FSM_IPTHREAT_PLUGIN,
+    FSM_DPI_SNI_PLUGIN,
+    FSM_DPI_ADT_PLUGIN,
+    FSM_DPI_APP_PLUGIN,
+    FSM_WALLEYE_PLUGIN,
+    FSM_GATEKEEPER_PLUGIN,
+    FSM_BC_PLUGIN,
+    FSM_WP_PLUGIN,
+};
 
 struct fsm_type
 {
@@ -386,12 +409,13 @@ struct fsm_session
     char bridge[64];                 /* underlying bridge name */
     char tx_intf[64];                /* plugin's TX interface */
     union fsm_dpi_context *dpi;      /* fsm dpi context */
-    int (*set_dpi_state)(struct net_header_parser *net_hdr);
+    int (*set_dpi_mark)(struct net_header_parser *net_hdr, int mark);
     char *provider;
     struct fsm_policy_client policy_client;
     struct fsm_session *provider_plugin;
     struct fsm_web_cat_ops *provider_ops;
     struct fsm_forward_context forward_ctx;
+    enum fsm_plugin_id plugin_id;
 };
 
 

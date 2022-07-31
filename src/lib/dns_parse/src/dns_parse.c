@@ -11,6 +11,7 @@
 #include <linux/if_packet.h>
 #include <netinet/in.h>
 
+#include "kconfig.h"
 #include "log.h"
 #include "const.h"
 #include "network.h"
@@ -45,6 +46,7 @@ void print_packet(uint32_t, uint8_t *, uint32_t, uint32_t, u_int);
 static struct dns_cache cache_mgr =
 {
     .initialized = false,
+    .dispatcher_tap_type = FSM_TAP_NONE,
 };
 
 struct dns_cache *dns_get_mgr(void)
@@ -419,6 +421,25 @@ dns_mgr_init(void)
     mgr->initialized = true;
 }
 
+void
+dns_dispatcher_tap_update(struct fsm_session *session, uint32_t tap_type)
+{
+    struct dns_cache *mgr;
+
+    mgr = dns_get_mgr();
+    mgr->dispatcher_tap_type = tap_type;
+    LOGT("%s: tap_type: %d", __func__, tap_type);
+}
+
+void
+dns_identical_plugin_status(struct fsm_session *session, bool status)
+{
+    struct dns_cache *mgr;
+
+    mgr = dns_get_mgr();
+    mgr->identical_plugin_enabled = status;
+    LOGT("%s: identical plugin enabled : %s", __func__, status ? "true" : "false");
+}
 
 int
 dns_plugin_init(struct fsm_session *session)
@@ -448,8 +469,11 @@ dns_plugin_init(struct fsm_session *session)
 
     session->ops.update = dns_parse_update;
     session->ops.periodic = dns_periodic;
+    session->ops.notify_dispatcher_tap_type = dns_dispatcher_tap_update;
+    session->ops.notify_identical_sessions = dns_identical_plugin_status;
     session->handler_ctxt = dns_session;
     session->ops.exit = dns_plugin_exit;
+    session->plugin_id = FSM_DNS_PLUGIN;
 
     /* Set the plugin specific ops */
     parser_ops = &session->p_ops->parser_ops;
@@ -475,7 +499,6 @@ dns_plugin_init(struct fsm_session *session)
     cache_init.dns_cache_source = MODULE_DNS_PARSE;
     cache_init.service_provider = dns_session->service_provider;
     dns_cache_init(&cache_init);
-
     ds_tree_init(&dns_session->session_devices, dns_dev_id_cmp,
                  struct dns_device, device_node);
 
@@ -964,19 +987,21 @@ set_provider_ops(struct dns_session *dns_session,
 void
 dns_handler(struct fsm_session *session, struct net_header_parser *net_header)
 {
-    struct dns_session *dns_session;
-    eth_info *eth;
-    dns_question *qnext;
-    os_macaddr_t *mac = NULL;
     struct fsm_url_request *req_info = NULL;
+    struct fsm_policy_reply *policy_reply;
+    struct fqdn_pending_req *req = NULL;
+    struct dns_session *dns_session;
+    struct dns_device *ds = NULL;
+    struct pcap_pkthdr header;
+    os_macaddr_t *mac = NULL;
+    struct dns_cache *mgr;
+    dns_info dns = { 0 };
+    dns_question *qnext;
+    uint8_t * packet;
+    eth_info *eth;
     int cnt = 0;
     int pos, i;
-    dns_info dns = { 0 };
-    struct dns_device *ds = NULL;
-    struct fqdn_pending_req *req = NULL;
-    struct fsm_policy_reply *policy_reply;
-    struct pcap_pkthdr header;
-    uint8_t * packet;
+    bool rc;
 
     dns_session = (struct dns_session *)session->handler_ctxt;
     eth = &dns_session->eth_hdr;
@@ -1027,6 +1052,28 @@ dns_handler(struct fsm_session *session, struct net_header_parser *net_header)
 
     dns_session->data_offset = pos;
     pos = dns_parse(pos, &header, packet, &dns, dns_session, !FORCE);
+
+    mgr = dns_get_mgr();
+    rc = (mgr->identical_plugin_enabled);
+    rc &= (kconfig_enabled(CONFIG_FSM_DPI_DNS));
+    if (rc)
+    {
+        rc = (mgr->dispatcher_tap_type & FSM_TAP_NFQ);
+        rc &= (dns.qr == 1);
+        if (rc)
+        {
+            dns_session->last_byte_pos = pos;
+            mgr->forward(dns_session, &dns, packet, header.caplen);
+        }
+        else
+        {
+            LOGT("%s: dpi_dns is enabled returning...", __func__);
+        }
+
+        free_rrs(&dns_session->ip, &dns_session->udp, &dns, &header);
+        return;
+    }
+
     if (dns.qdcount == 0)
     {
         LOGD("%s: dropping packet with no question", __func__);

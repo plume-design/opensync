@@ -655,11 +655,13 @@ net_header_fill_buf(char *buf, size_t len, struct net_header_parser *parser)
     char ip_src[INET6_ADDRSTRLEN];
     char ip_dst[INET6_ADDRSTRLEN];
     struct eth_header *eth;
+    uint8_t has_src_mac;
+    uint8_t has_dst_mac;
     char flow_pres[256];
     char eth_pres[256];
     char tpt_pres[256];
+    uint8_t eth_switch;
     bool has_ip;
-    bool has_eth;
 
     eth = net_header_get_eth(parser);
     memset(eth_pres, 0, sizeof(eth_pres));
@@ -669,17 +671,43 @@ net_header_fill_buf(char *buf, size_t len, struct net_header_parser *parser)
     memset(buf, 0, len);
 
     /* Prepare ethernet presentation */
-    has_eth = eth->srcmac ? true : false;
-    has_eth &= eth->dstmac ? true : false;
-    if (has_eth)
+    has_src_mac = eth->srcmac ? 1 : 0;
+    has_dst_mac = eth->dstmac ? 2 : 0;
+    eth_switch = (has_src_mac | has_dst_mac);
+    switch (eth_switch)
     {
-        snprintf(eth_pres, sizeof(eth_pres),
-                 "ETH: src: " PRI_os_macaddr_lower_t
-                 ", dst: " PRI_os_macaddr_lower_t
-                 ", ethertype 0x%X, vlan id %u",
-                 FMT_os_macaddr_pt(eth->srcmac),
-                 FMT_os_macaddr_pt(eth->dstmac),
-                 net_header_get_ethertype(parser), eth->vlan_id);
+        case 3:
+            snprintf(eth_pres, sizeof(eth_pres),
+                     "ETH: src: " PRI_os_macaddr_lower_t
+                     ", dst: " PRI_os_macaddr_lower_t
+                     ", ethertype 0x%X, vlan id %u",
+                     FMT_os_macaddr_pt(eth->srcmac),
+                     FMT_os_macaddr_pt(eth->dstmac),
+                     net_header_get_ethertype(parser), eth->vlan_id);
+            break;
+
+        case 2:
+            snprintf(eth_pres, sizeof(eth_pres),
+                     "ETH: src not set"
+                     ", dst: " PRI_os_macaddr_lower_t
+                     ", ethertype 0x%X, vlan id %u",
+                     FMT_os_macaddr_pt(eth->dstmac),
+                     net_header_get_ethertype(parser), eth->vlan_id);
+            break;
+
+        case 1:
+            snprintf(eth_pres, sizeof(eth_pres),
+                     "ETH: src: " PRI_os_macaddr_lower_t
+                     ", dst not set"
+                     ", ethertype 0x%X, vlan id %u",
+                     FMT_os_macaddr_pt(eth->srcmac),
+                     net_header_get_ethertype(parser), eth->vlan_id);
+            break;
+
+        case 0:
+            snprintf(eth_pres, sizeof(eth_pres),
+                     "ETH: N/A");
+            break;
     }
 
     /* Prepare ip presentation */
@@ -738,6 +766,11 @@ net_header_fill_buf(char *buf, size_t len, struct net_header_parser *parser)
         snprintf(flow_pres, sizeof(flow_pres), ", FLOW: direction: %s, "
                  "originator: %s, tap : %s", dir2str(acc->direction),
                  orig2str(acc->originator),
+                 net_header_tap2str(parser));
+    }
+    else
+    {
+        snprintf(flow_pres, sizeof(flow_pres), ", tap : %s",
                  net_header_tap2str(parser));
     }
 
@@ -802,7 +835,7 @@ net_header_is_mac_mcast(os_macaddr_t *mac, int ethertype)
     rc = true;
     for (i = 0; i < limit; i++)
     {
-        rc &= (mac->addr[i] == mcast_mac->addr[i]);
+        if (mac->addr[i] != mcast_mac->addr[i]) return false;
     }
     return rc;
 }

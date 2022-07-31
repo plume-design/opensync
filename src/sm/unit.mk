@@ -42,6 +42,7 @@ UNIT_SRC     += src/sm_device_report.c
 UNIT_SRC     += src/sm_survey_report.c
 UNIT_SRC     += src/sm_radio_config.c
 UNIT_SRC     += src/sm_scan_schedule.c
+UNIT_SRC     += src/sm_healthcheck_schedule.c
 UNIT_SRC     += src/sm_rssi_report.c
 UNIT_SRC     += src/sm_common.c
 UNIT_SRC     += src/sm_backend.c
@@ -63,9 +64,11 @@ UNIT_LDFLAGS += -lz
 UNIT_DEPS    := src/lib/ovsdb
 UNIT_DEPS    += src/lib/pjs
 UNIT_DEPS    += src/lib/schema
+UNIT_DEPS    += src/lib/policy_tags
 UNIT_DEPS    += src/lib/datapipeline
 UNIT_DEPS    += src/lib/target
 UNIT_DEPS    += src/lib/module
+UNIT_DEPS    += src/lib/execsh
 UNIT_DEPS    += $(if $(CONFIG_SM_BACKEND_HAPD),src/lib/hostap,)
 
 ifeq ($(CONFIG_MANAGER_QM),y)

@@ -32,7 +32,7 @@ route_default_flush()
         --where dest_addr=="0.0.0.0" \
         --where dest_mask=="0.0.0.0"
 {%- else %}
-    [ ! -e "/sys/class/net/$1" ] || ip route flush default dev "$ifname"
+    [ ! -e "/sys/class/net/$1" ] || ip route flush 0.0.0.0/0 dev "$ifname"
 {%- endif %}
 }
 

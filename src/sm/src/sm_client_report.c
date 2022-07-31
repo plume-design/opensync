@@ -859,6 +859,15 @@ bool sm_client_report_send(
                 record_entry,
                 report_entry);
 
+        /* Figure out client network id before sending report) */
+        if (!sm_get_networkid_for_client(&report_entry->info.mac, &report_entry->info.networkid)) {
+            LOGI("Failed to get network ID for %s client "PRI_os_macaddr_lower_t,
+                    radio_get_name_from_cfg(radio_cfg_ctx), MAC_ADDRESS_PRINT(report_entry->info.mac));
+        } else {
+            LOGT("Network id for client "PRI_os_macaddr_lower_t" is %s",
+                    MAC_ADDRESS_PRINT(report_entry->info.mac), report_entry->info.networkid);
+        }
+
         ds_dlist_insert_tail(report_list, report_entry);
     }
 

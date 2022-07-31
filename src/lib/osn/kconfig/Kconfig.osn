@@ -402,6 +402,12 @@ if OSN_LINUX_ENABLED
                    help
                        Full path to the charon.conf file used by strongSwan
 
+               config OSN_IPSEC_RESOLVE_CONF_FILE_PATH
+                   string "Path to the resolve.conf file"
+                   default "/etc/strongswan.d/charon/resolve.conf"
+                   help
+                       Full path to the strongSwan resolve plugin configuration file.
+
                config OSN_IPSEC_BIN_PATH
                    string "Path to the strongSwan ipsec script"
                    default "/sbin/ipsec"
@@ -442,6 +448,12 @@ if OSN_LINUX_ENABLED
                    help
                        Full path to the charon.conf file in tmpfs written to by OpenSync
 
+               config OSN_IPSEC_TMPFS_RESOLVE_CONF_FILE_PATH
+                   string "Temporary resolve.conf file path"
+                   default "/var/etc/strongswan.d/charon/resolve.conf"
+                   help
+                       Full path to the resolve.conf file in tmpfs written to by OpenSync
+
                config OSN_IPSEC_TMPFS_STATUS_DIR
                    string "OpenSync ipsec status directory"
                    default "/var/run/ipsec"
@@ -458,6 +470,45 @@ if OSN_LINUX_ENABLED
                        via /proc/sys interface. This may be needed on some platforms
                        for route-based IPsec configurations to function properly or
                        optimally.
+
+               config OSN_IPSEC_SUPPORTED_CIPHERS_ENC
+                   string "Supported encryption algorithm list"
+                   default "aes256,aes192,aes128,3des"
+                   help
+                       A comma-separated list of supported encryption algorithms.
+                       OpenSync will allow configuring a subset of these.
+                       The possible values are as defined in the OVSDB schema for
+                       IPSec_Config. The order may be important for IPsec implementations
+                       and configurations where it is possible to configure more then
+                       one algorithm in a proposal and where the order is taken into account.
+                       The suggested order is strongest ciphers first.
+                       A target may override this list with a smaller subset.
+
+               config OSN_IPSEC_SUPPORTED_CIPHERS_AUTH
+                   string "Supported authentication algorithm list"
+                   default "sha256,sha1,md5"
+                   help
+                       A comma-separated list of supported authentication algorithms.
+                       OpenSync will allow configuring a subset of these.
+                       The possible values are as defined in the OVSDB schema for
+                       IPSec_Config. The order may be important for IPsec implementations
+                       and configurations where it is possible to configure more then
+                       one algorithm in a proposal and where the order is taken into account.
+                       The suggested order is strongest ciphers first.
+                       A target may override this list with a smaller subset.
+
+               config OSN_IPSEC_SUPPORTED_CIPHERS_DH
+                   string "Supported Diffie-Hellman groups list"
+                   default "14,5,2,1"
+                   help
+                       A comma-separated list of supported Diffie-Hellman groups.
+                       OpenSync will allow configuring a subset of these.
+                       The possible values are as defined in the OVSDB schema for
+                       IPSec_Config. The order may be important for IPsec implementations
+                       and configurations where it is possible to configure more then
+                       one algorithm in a proposal and where the order is taken into account.
+                       The suggested order is strongest ciphers first.
+                       A target may override this list with a smaller subset.
 
            endif
         endif

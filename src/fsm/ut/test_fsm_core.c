@@ -46,6 +46,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 const char *ut_name = "fsm_core_tests";
 
 struct fsm_mgr *g_mgr;
+uint32_t g_dispatch_tap_type;
+bool g_identical_plugin_enabled = false;
+bool g_identical_plugin_enabled1 = false;
 
 struct schema_Openflow_Tag g_tags[] =
 {
@@ -243,12 +246,14 @@ struct schema_Flow_Service_Manager_Config g_confs[] =
         .other_config_keys =
         {
             "dso_init",                     /* plugin init routine */
+            "tap_type",
         },
         .other_config =
         {
             "test_6_dso_init",              /* plugin init routine */
+            "fsm_tap_nfqueues",
         },
-        .other_config_len = 1,
+        .other_config_len = 2,
     },
 
     /* dpi plugin, idx: 7 */
@@ -609,6 +614,44 @@ struct schema_Flow_Service_Manager_Config g_confs[] =
         },
         .other_config_len = 3,
     },
+    /* dpi plugin, idx: 15 */
+    {
+        .handler = "fsm_session_test_25",
+        .plugin = "plugin_25",
+        .type = "dpi_plugin",
+        .other_config_keys =
+        {
+            "mqtt_v",                       /* topic */
+            "dso_init",                     /* plugin init routine */
+            "dpi_dispatcher",               /* dpi dispatcher */
+        },
+        .other_config =
+        {
+            "dev-test/IP/Flows/ut/0/25",    /* topic */
+            "test_25_dso_init",             /* plugin init routine */
+            "fsm_session_test_23",          /* dpi dispatcher */
+        },
+        .other_config_len = 3,
+    },
+    /* dpi plugin, idx: 16 */
+    {
+        .handler = "fsm_session_test_26",
+        .plugin = "plugin_26",
+        .type = "dpi_plugin",
+        .other_config_keys =
+        {
+            "mqtt_v",                       /* topic */
+            "dso_init",                     /* plugin init routine */
+            "dpi_dispatcher",               /* dpi dispatcher */
+        },
+        .other_config =
+        {
+            "dev-test/IP/Flows/ut/0/26",    /* topic */
+            "test_26_dso_init",             /* plugin init routine */
+            "fsm_session_test_23",          /* dpi dispatcher */
+        },
+        .other_config_len = 3,
+    },
 };
 
 /**
@@ -712,6 +755,22 @@ test_notify_client(struct fsm_session *client, char *attribute, char *value)
          client->name, attribute);
 }
 
+void
+test_fsm_notify_dispatcher_tap_type(struct fsm_session *session, uint32_t tap_type)
+{
+    LOGI("%s: tap_type: %d", __func__, tap_type);
+    g_dispatch_tap_type = tap_type;
+}
+
+int
+test_7_dso_init(struct fsm_session *session)
+{
+    session->ops.notify_dispatcher_tap_type = test_fsm_notify_dispatcher_tap_type;
+    LOGI("%s: here  for session %s", __func__, session->name);
+    return 0;
+}
+
+
 
 int
 test_13_dso_init(struct fsm_session *session)
@@ -753,6 +812,37 @@ test_14_dso_init(struct fsm_session *session)
     return 0;
 }
 
+void
+test_fsm_notify_identical_plugin_status(struct fsm_session *session, bool status)
+{
+    g_identical_plugin_enabled = status;
+    LOGN("%s: identical plugin enabled : %s", __func__, status ? "true" : "false");
+}
+
+int
+test_25_dso_init(struct fsm_session *session)
+{
+    session->ops.notify_identical_sessions = test_fsm_notify_identical_plugin_status;
+    session->plugin_id = FSM_DNS_PLUGIN;
+    LOGI("%s: here  for session %s", __func__, session->name);
+    return 0;
+}
+
+void
+test_fsm_notify_identical_plugin_status1(struct fsm_session *session, bool status)
+{
+    g_identical_plugin_enabled1 = status;
+    LOGN("%s: identical plugin enabled : %s", __func__, status ? "true" : "false");
+}
+
+int
+test_26_dso_init(struct fsm_session *session)
+{
+    session->ops.notify_identical_sessions = test_fsm_notify_identical_plugin_status1;
+    session->plugin_id = FSM_DPI_DNS_PLUGIN;
+    LOGI("%s: here  for session %s", __func__, session->name);
+    return 0;
+}
 
 typedef int (*dso_init)(struct fsm_session *session);
 
@@ -767,12 +857,24 @@ struct ut_dso_init
 } g_dso_inits[] =
 {
     {
+        .fname = "test_7_dso_init",
+        .fn = test_7_dso_init,
+    },
+    {
         .fname = "test_13_dso_init",
         .fn = test_13_dso_init,
     },
     {
         .fname = "test_14_dso_init",
         .fn = test_14_dso_init,
+    },
+    {
+        .fname = "test_25_dso_init",
+        .fn = test_25_dso_init,
+    },
+    {
+        .fname = "test_26_dso_init",
+        .fn = test_26_dso_init,
     },
 };
 
@@ -816,7 +918,7 @@ test_init_plugin_fail(struct fsm_session *session)
 
 
 static int
-test_set_dpi_state(struct net_header_parser *net_hdr)
+test_set_dpi_mark(struct net_header_parser *net_hdr, int mark)
 {
     return 1;
 }
@@ -850,7 +952,7 @@ test_update_session_tap(struct fsm_session *session)
 {
     /* update session tap type */
     session->tap_type = fsm_session_tap_mode(session);
-    session->set_dpi_state = test_set_dpi_state;
+    session->set_dpi_mark = test_set_dpi_mark;
     return true;
 }
 
@@ -863,6 +965,9 @@ fsm_core_setUp(void)
     size_t i;
     bool ret;
 
+    g_dispatch_tap_type = 0;
+    g_identical_plugin_enabled = false;
+    g_identical_plugin_enabled1 = false;
     fsm_init_mgr(NULL);
     g_mgr->init_plugin = test_init_plugin;
     g_mgr->get_br = test_get_br;
@@ -906,6 +1011,9 @@ fsm_core_tearDown(void)
     size_t i;
     bool ret;
 
+    g_dispatch_tap_type = 0;
+    g_identical_plugin_enabled = false;
+    g_identical_plugin_enabled1 = false;
     len = ARRAY_SIZE(g_tags);
     for (i = 0; i < len; i++)
     {
@@ -5107,6 +5215,162 @@ test_dispatcher_device_process(void)
 }
 
 
+/**
+ * @brief validate dpi_dispatch tap_type notification in dpi_plugin
+ *
+ * The dpi dispatch plugin is registered first.
+ * The dpi plugin is registered thereafter.
+ */
+void
+test_notify_dispatcher_tap_type(void)
+{
+    struct schema_Flow_Service_Manager_Config *conf;
+    union fsm_dpi_context *dispatcher_dpi_context;
+    union fsm_dpi_context *plugin_dpi_context;
+    struct fsm_dpi_plugin *plugin_lookup;
+    struct fsm_session *dispatcher;
+    struct fsm_session *plugin;
+    ds_tree_t *dpi_plugins;
+    ds_tree_t *sessions;
+
+    /* Add a dpi dispatcher session */
+    conf = &g_confs[6];
+    fsm_add_session(conf);
+    sessions = fsm_get_sessions();
+    dispatcher = ds_tree_find(sessions, conf->handler);
+    TEST_ASSERT_NOT_NULL(dispatcher);
+    TEST_ASSERT_TRUE(fsm_is_dpi(dispatcher));
+
+    /* Add a dpi plugin session */
+    conf = &g_confs[7];
+    fsm_add_session(conf);
+    plugin = ds_tree_find(sessions, conf->handler);
+    TEST_ASSERT_NOT_NULL(plugin);
+    TEST_ASSERT_TRUE(fsm_is_dpi(plugin));
+
+    /* Validate that the dpi plugin is registered to the dispatcher */
+    dispatcher_dpi_context = dispatcher->dpi;
+    TEST_ASSERT_NOT_NULL(dispatcher_dpi_context);
+    plugin_dpi_context = plugin->dpi;
+    TEST_ASSERT_NOT_NULL(plugin_dpi_context);
+    dpi_plugins = &dispatcher_dpi_context->dispatch.plugin_sessions;
+    plugin_lookup = ds_tree_find(dpi_plugins, plugin->name);
+    TEST_ASSERT_NOT_NULL(plugin_lookup);
+    TEST_ASSERT_TRUE(plugin_lookup->session == plugin);
+    TEST_ASSERT_TRUE(plugin_lookup->bound);
+
+    /* validate dpi_plugin tap type */
+    TEST_ASSERT_EQUAL_INT(g_dispatch_tap_type, 2);
+}
+
+
+/**
+ * @brief validate dpi_dispatch tap_type notification in dpi_plugin
+ *
+ * The dpi plugin is registered first.
+ * The dpi dispatch plugin is registered thereafter.
+ */
+void
+test_1_notify_dispatcher_tap_type(void)
+{
+    struct schema_Flow_Service_Manager_Config *conf;
+    union fsm_dpi_context *dispatcher_dpi_context;
+    union fsm_dpi_context *plugin_dpi_context;
+    struct fsm_dpi_plugin *plugin_lookup;
+    struct fsm_session *dispatcher;
+    struct fsm_session *plugin;
+    ds_tree_t *dpi_plugins;
+    ds_tree_t *sessions;
+
+    /* Add a dpi plugin session */
+    conf = &g_confs[7];
+    fsm_add_session(conf);
+    sessions = fsm_get_sessions();
+    plugin = ds_tree_find(sessions, conf->handler);
+    TEST_ASSERT_NOT_NULL(plugin);
+    TEST_ASSERT_TRUE(fsm_is_dpi(plugin));
+
+    /* validate dpi_plugin tap type */
+    TEST_ASSERT_EQUAL_INT(g_dispatch_tap_type, 0);
+
+    /* Add a dpi dispatcher session */
+    conf = &g_confs[6];
+    fsm_add_session(conf);
+    dispatcher = ds_tree_find(sessions, conf->handler);
+    TEST_ASSERT_NOT_NULL(dispatcher);
+    TEST_ASSERT_TRUE(fsm_is_dpi(dispatcher));
+
+    /* Validate that the dpi plugin is registered to the dispatcher */
+    dispatcher_dpi_context = dispatcher->dpi;
+    TEST_ASSERT_NOT_NULL(dispatcher_dpi_context);
+    plugin_dpi_context = plugin->dpi;
+    TEST_ASSERT_NOT_NULL(plugin_dpi_context);
+    dpi_plugins = &dispatcher_dpi_context->dispatch.plugin_sessions;
+    plugin_lookup = ds_tree_find(dpi_plugins, plugin->name);
+    TEST_ASSERT_NOT_NULL(plugin_lookup);
+    TEST_ASSERT_TRUE(plugin_lookup->session == plugin);
+    TEST_ASSERT_TRUE(plugin_lookup->bound);
+
+    /* validate dpi_plugin tap type */
+    TEST_ASSERT_EQUAL_INT(g_dispatch_tap_type, 2);
+}
+
+
+/**
+ * @brief validate identical plugin info
+ *
+ * Register dns_plugin.
+ * Register dpi_dns_plugin.
+ * Verify identical plugin status.
+ * Unregister dpi_dns plugin
+ * Verify identical plugin status.
+ */
+void
+test_notify_identical_plugin(void)
+{
+    struct schema_Flow_Service_Manager_Config *conf;
+    struct fsm_session *plugin;
+    ds_tree_t *sessions;
+
+    /* Add a dns plugin */
+    conf = &g_confs[25];
+    fsm_add_session(conf);
+    sessions = fsm_get_sessions();
+    plugin = ds_tree_find(sessions, conf->handler);
+    TEST_ASSERT_NOT_NULL(plugin);
+    TEST_ASSERT_TRUE(fsm_is_dpi(plugin));
+
+    /* validate identifical_plugin_enabled or not */
+    TEST_ASSERT_FALSE(g_identical_plugin_enabled);
+
+    /* Add a dpi_dns plugin */
+    conf = &g_confs[26];
+    fsm_add_session(conf);
+    sessions = fsm_get_sessions();
+    plugin = ds_tree_find(sessions, conf->handler);
+    TEST_ASSERT_NOT_NULL(plugin);
+    TEST_ASSERT_TRUE(fsm_is_dpi(plugin));
+
+    /* validate identifical_plugin_enabled or not in dns_session */
+    TEST_ASSERT_TRUE(g_identical_plugin_enabled);
+
+    /* validate identifical_plugin_enabled or not in dpi_dns session */
+    TEST_ASSERT_TRUE(g_identical_plugin_enabled1);
+
+    /* Remove the dns plugin */
+    conf = &g_confs[25];
+    fsm_delete_session(conf);
+    plugin = ds_tree_find(sessions, conf->handler);
+    TEST_ASSERT_NULL(plugin);
+
+    /* validate identifical_plugin_enabled or not */
+    TEST_ASSERT_FALSE(g_identical_plugin_enabled);
+
+    /* validate identifical_plugin_enabled or not */
+    TEST_ASSERT_FALSE(g_identical_plugin_enabled1);
+}
+
+
 int
 main(int argc, char *argv[])
 {
@@ -5164,6 +5428,9 @@ main(int argc, char *argv[])
     RUN_TEST(test_parser_webcat_session);
     RUN_TEST(test_webcat_parser_session);
     RUN_TEST(test_dispatcher_device_process);
+    RUN_TEST(test_notify_dispatcher_tap_type);
+    RUN_TEST(test_1_notify_dispatcher_tap_type);
+    RUN_TEST(test_notify_identical_plugin);
 
     run_test_fsm_ovsdb();
 

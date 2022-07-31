@@ -125,6 +125,8 @@ int main (int argc, char **argv)
         return -1;
     }
 
+    sm_healthcheck_schedule_init(&update_RADIUS_health);
+
     // Connect to ovsdb
     if (!ovsdb_init_loop(loop, "SM")) {
         LOGE("Initializing SM "
@@ -142,6 +144,8 @@ int main (int argc, char **argv)
     ev_run(EV_DEFAULT, 0);
 
     target_close(TARGET_INIT_MGR_SM, loop);
+
+    sm_healthcheck_stop_all();
 
     if (!ovsdb_stop_loop(loop)) {
         LOGE("Stopping SM "

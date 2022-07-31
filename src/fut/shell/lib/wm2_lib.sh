@@ -565,10 +565,26 @@ configure_radio_interface()
 
     # Validate action configure Radio
     func_params=${radio_args//${replace}/-is}
+
+    # Check nop_started
+    channel_status="$(get_radio_channel_state "${channel}" "${radio_if_name}")"
+    if [ "${channel_status}" == "nop_started" ]; then
+        raise "SKIP: Channel ${check_channel} NOP time started, channel  unavailable" -l "wm2_lib:create_radio_vif_interface" -s
+    fi
     # shellcheck disable=SC2086
     wait_ovsdb_entry Wifi_Radio_State -w if_name "$radio_if_name" $func_params ${timeout} &&
-        log -deb "wm2_lib:configure_radio_interface - wait_ovsdb_entry Wifi_Radio_State -w if_name $radio_if_name $func_params - Success" ||
-        raise "FAIL: wait_ovsdb_entry Wifi_Radio_State -w if_name $radio_if_name $func_params" -l "wm2_lib:configure_radio_interface" -ow
+        if_created="true" ||
+        if_created="false"
+
+    if [ "${if_created}" == "true" ]; then
+        log -deb "wm2_lib:create_radio_vif_interface - Wifi_Radio_Config reflected to Wifi_Radio_State - Success"
+    else
+        channel_status="$(get_radio_channel_state "${channel}" "${radio_if_name}")"
+        if [ "${channel_status}" == "nop_started" ]; then
+            raise "SKIP: Channel ${check_channel} NOP time started, channel  unavailable" -l "wm2_lib:create_radio_vif_interface" -s
+        fi
+        raise "FAIL: Could not reflect Wifi_Radio_Config to Wifi_Radio_State" -l "wm2_lib:create_radio_vif_interface" -ow
+    fi
 
     if [ "${disable_cac}" == "false" ]; then
         # Even if the channel is set in Wifi_Radio_State, it is not
@@ -1230,12 +1246,25 @@ create_radio_vif_interface()
     if [ "$wm2_mode" = "sta" ]; then
         func_params="${radio_args//$replace/-is}"
     fi
-
+    # Check nop_started
+    channel_status="$(get_radio_channel_state "${channel}" "${wm2_if_name}")"
+    if [ "${channel_status}" == "nop_started" ]; then
+        raise "SKIP: Channel ${check_channel} NOP time started, channel  unavailable" -l "wm2_lib:create_radio_vif_interface" -s
+    fi
     # shellcheck disable=SC2086
     wait_ovsdb_entry Wifi_Radio_State -w if_name "$wm2_if_name" $func_params ${channel_change_timeout} &&
-        log -deb "wm2_lib:create_radio_vif_interface - Wifi_Radio_Config reflected to Wifi_Radio_State - Success" ||
-        raise "FAIL: Could not reflect Wifi_Radio_Config to Wifi_Radio_State" -l "wm2_lib:create_radio_vif_interface" -ow
+      if_created="true" ||
+      if_created="false"
 
+    if [ "${if_created}" == "true" ]; then
+        log -deb "wm2_lib:create_radio_vif_interface - Wifi_Radio_Config reflected to Wifi_Radio_State - Success"
+    else
+        channel_status="$(get_radio_channel_state "${channel}" "${wm2_if_name}")"
+        if [ "${channel_status}" == "nop_started" ]; then
+            raise "SKIP: Channel ${check_channel} NOP time started, channel  unavailable" -l "wm2_lib:create_radio_vif_interface" -s
+        fi
+        raise "FAIL: Could not reflect Wifi_Radio_Config to Wifi_Radio_State" -l "wm2_lib:create_radio_vif_interface" -ow
+    fi
     if [ "${disable_cac}" == "false" ]; then
         # Even if the channel is set in Wifi_Radio_State, it is not
         # necessarily available for immediate use if CAC is in progress.

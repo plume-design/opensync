@@ -236,7 +236,6 @@ intf_stats_add_to_list(char *intf_name, char *role)
 
     STRSCPY(intf->ifname, intf_name);
     if (role)   STRSCPY(intf->role, role);
-    else        STRSCPY(intf->role, "default");
 
     ds_dlist_insert_tail(&cloud_intf_list, intf);
     LOGI("Monitoring interface '%s'", intf->ifname);
@@ -312,17 +311,15 @@ intf_stats_get_role(intf_stats_t *intf)
         return false;
     }
 
-    if ((!inet.role_exists) || (strlen(inet.role) == 0))
+    if ((inet.role_exists) && (strlen(inet.role) != 0))
     {
-            LOGN("Role not set for interface '%s', setting 'default'", intf->ifname);
-            STRSCPY(intf->role, "default");
+        LOGI("Interface '%s' has role: '%s'", intf->ifname, inet.role);
+        STRSCPY(intf->role, inet.role);
     }
     else
     {
-            LOGI("Interface '%s' has role: '%s'", intf->ifname, inet.role);
-            STRSCPY(intf->role, inet.role);
+        LOGN("Role not set for interface '%s'", intf->ifname);
     }
-
 
     json_decref(jrow);
     return true;
@@ -340,8 +337,7 @@ intf_stats_get_intf_roles(void)
     {
         if (!intf_stats_get_role(intf))
         {
-            LOGN("Couldn't get role for interface '%s', setting 'default'", intf->ifname);
-            STRSCPY(intf->role, "default");
+            LOGN("Couldn't get role for interface '%s'", intf->ifname);
         }
     }
 
@@ -442,8 +438,10 @@ intf_stats_inet_config_ovsdb_update_cb(ovsdb_update_monitor_t *self)
             }
 
             /* Just the role is updated, note the change */
-            if ((!inet.role_exists) || (strlen(inet.role) == 0))    STRSCPY(intf->role, "default");
-            else                                                    STRSCPY(intf->role, inet.role);
+            if ((inet.role_exists) && (strlen(inet.role) != 0))
+            {
+                STRSCPY(intf->role, inet.role);
+            }
 
             break;
         }

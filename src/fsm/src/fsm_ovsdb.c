@@ -1069,6 +1069,8 @@ fsm_add_session(struct schema_Flow_Service_Manager_Config *conf)
     client->update_client = fsm_update_client;
     client->session_name = fsm_get_session_name;
     fsm_policy_register_client(&session->policy_client);
+    fsm_notify_identical_sessions(session, true);
+    fsm_notify_dispatcher_tap_type(session);
 
     fsm_walk_sessions_tree();
 
@@ -1106,6 +1108,7 @@ fsm_delete_session(struct schema_Flow_Service_Manager_Config *conf)
 
     fsm_policy_deregister_client(&session->policy_client);
     ds_tree_remove(sessions, session);
+    fsm_notify_identical_sessions(session, false);
     fsm_free_session(session);
     fsm_walk_sessions_tree();
 }
@@ -1129,6 +1132,8 @@ fsm_modify_session(struct schema_Flow_Service_Manager_Config *conf)
 
     fsm_session_update(session, conf);
     if (session->ops.update != NULL) session->ops.update(session);
+
+    fsm_notify_dispatcher_tap_type(session);
 }
 
 

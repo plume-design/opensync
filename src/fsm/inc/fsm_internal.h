@@ -307,6 +307,12 @@ fsm_modify_network_id(struct schema_Network_Zone *config);
 void
 free_network_id_node(struct network_id *netid);
 
+void
+fsm_notify_dispatcher_tap_type(struct fsm_session *session);
+
+void
+fsm_notify_identical_sessions(struct fsm_session *session, bool);
+
 /**
  * @brief check if a packet should be processed
  *

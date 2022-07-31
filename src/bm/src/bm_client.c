@@ -1561,6 +1561,11 @@ bm_client_get_btm_params( struct schema_Band_Steering_Clients *bscli,
                 }
             }
 
+            if (neigh->op_class && !neigh->phy_type) {
+                LOGI("Calculating phy_type based on op_class: %hhu", neigh->op_class);
+                neigh->phy_type = bm_neighbor_get_phy_type(neigh->op_class);
+            }
+
             if (WARN_ON(!neigh->op_class) || WARN_ON(!neigh->phy_type)) {
                 LOGW("Invalid neigh params: op_class: %hhu, phy_type: %hhu",
                      neigh->op_class, neigh->phy_type);

@@ -116,9 +116,18 @@ typedef struct
     dns_rr * additional;
 } dns_info;
 
+enum
+{
+    FSM_TAP_NONE = 0x00,
+    FSM_TAP_PCAP = 0x01,
+    FSM_TAP_NFQ  = 0x02,
+    FSM_TAP_RAW  = 0x04,
+};
 
 struct dns_cache
 {
+    uint32_t dispatcher_tap_type;
+    bool identical_plugin_enabled;
     bool initialized;
     ds_tree_t fsm_sessions;
     int req_cache_ttl;

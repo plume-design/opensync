@@ -252,6 +252,7 @@ struct fsm_policy_reply
     char *log_action;    /* action to log mqtt report */
     int rd_ttl;          /* redirected response's ttl */
     int cache_ttl;       /* ttl value for cache */
+    int flow_marker;      /* flow marker */
     int categorized;     /* categorization status */
     int log;             /* log policy */
     char *policy;        /* the last matching policy */

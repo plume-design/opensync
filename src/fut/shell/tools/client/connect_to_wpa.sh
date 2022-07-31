@@ -51,7 +51,6 @@ Arguments:
     \$8 (enable_dhcp)         : Wait for IP address from DHCP after connect             : (string)(option)   : (default:true)
     \$9 (check_internet_ip)   : Check internet access on specific IP, ('false' to skip) : (string)(option)   : (default:8.8.8.8)
     \$10 (dns_ip)             : Default DNS nameserver                                  : (string)(option)   : (default:8.8.8.8)
-    \$11 (gateway_ip)         : Default gateway IP address                              : (string)(option)   : (default:192.168.200.1)
 Dependency:
   - route -n and iwconfig tool
 Script usage example:
@@ -83,7 +82,6 @@ psk=${7}
 enable_dhcp=${8:-true}
 check_internet_ip=${9:-"8.8.8.8"}
 dns_ip=${10:-"8.8.8.8"}
-gateway_ip=${11:-"192.168.200.1"}
 wlan_namespace_cmd="ip netns exec ${wlan_namespace} bash"
 wpa_supp_base_name=${wpa_supp_cfg_path%%".conf"}
 
@@ -147,59 +145,22 @@ restart_dhclient()
     ${wlan_namespace_cmd} -c "${cmd}" &&
         log "tools/client/connect_to_wpa.sh: CMD: ${cmd} - OK" ||
         log "tools/client/connect_to_wpa.sh: CMD: ${cmd} - FAIL"
-    cmd="timeout 20 dhclient -4 -pf /var/run/dhclient.${wlan_name}.pid -lf /var/lib/dhcp/dhclient.${wlan_name}.leases -I -df /var/lib/dhcp/dhclient6.${wlan_name}.leases ${wlan_name}"
+    cmd="timeout 30 dhclient -4 -pf /var/run/dhclient.${wlan_name}.pid -lf /var/lib/dhcp/dhclient.${wlan_name}.leases -I -df /var/lib/dhcp/dhclient6.${wlan_name}.leases ${wlan_name}"
     ${wlan_namespace_cmd} -c "${cmd}" &&
         log "tools/client/connect_to_wpa.sh: CMD: ${cmd} - #1 - OK" ||
         log "tools/client/connect_to_wpa.sh: CMD: ${cmd} - #1 - FAIL"
     return $?
 }
 
-###############################################################################
-# DESCRIPTION:
-#   Function manually manipulates route table for wlan0 to bypass bug in
-#   dhclient restart procedure where dhclient does not populate route table
-#   which results in network being unreachable
-# INPUT PARAMETER(S):
-#   $1 Gateway IP address of connected network on wlan0
-# RETURNS:
-#   0     On success.
-#   not 0 On failure.
-# USAGE EXAMPLE(S):
-#   manual_route_set 192.168.200.1
-###############################################################################
-manual_route_set()
-{
-    gateway_ip_r=${1}
-    # Remove any old route
-    cmd="ip route del default"
-    ${wlan_namespace_cmd} -c "${cmd}" &&
-        log "tools/client/connect_to_wpa.sh: CMD: ${cmd} - #1 - OK" ||
-        log "tools/client/connect_to_wpa.sh: CMD: ${cmd} - #1 - FAIL"
-    cmd="ip route del ${gateway_ip_r}"
-    ${wlan_namespace_cmd} -c "${cmd}" &&
-        log "tools/client/connect_to_wpa.sh: CMD: ${cmd} - #1 - OK" ||
-        log "tools/client/connect_to_wpa.sh: CMD: ${cmd} - #1 - FAIL"
-    # Not required to be ${gateway_ip_r}
-    cmd="ip route del 192.168.200.0/24"
-    ${wlan_namespace_cmd} -c "${cmd}" &&
-        log "tools/client/connect_to_wpa.sh: CMD: ${cmd} - #1 - OK" ||
-        log "tools/client/connect_to_wpa.sh: CMD: ${cmd} - #1 - FAIL"
-    sleep 1
-    # Add default route ${gateway_ip_r}
-    cmd="ip route add ${gateway_ip_r} dev wlan0"
-    ${wlan_namespace_cmd} -c "${cmd}" &&
-        log "tools/client/connect_to_wpa.sh: CMD: ${cmd} - #1 - OK" ||
-        log "tools/client/connect_to_wpa.sh: CMD: ${cmd} - #1 - FAIL"
-    cmd="ip route add default via ${gateway_ip_r}"
-    ${wlan_namespace_cmd} -c "${cmd}" &&
-        log "tools/client/connect_to_wpa.sh: CMD: ${cmd} - #1 - OK" ||
-        log "tools/client/connect_to_wpa.sh: CMD: ${cmd} - #1 - FAIL"
-    sleep 1
-    ${wlan_namespace_cmd} -c "route"
-}
-
 connect_to_wpa()
 {
+    # Check if wpa_supplicant is running - force kill
+    wpa_supp_pids=$(${wlan_namespace_cmd} -c "pidof wpa_supplicant")
+    if [[ -n "${wpa_supp_pids}" ]]; then
+        log "tools/client/connect_to_wpa.sh Killing wpa_supplicant_pids: kill ${wpa_supp_pids}"
+        ${wlan_namespace_cmd} -c "kill ${wpa_supp_pids}"
+    fi
+
     log "tools/client/connect_to_wpa.sh Removing old /tmp/wpa_supplicant_${wlan_name}* files"
     ${wlan_namespace_cmd} -c "rm -rf \"/tmp/wpa_supplicant_${wlan_name}*\"" || true
 
@@ -211,27 +172,29 @@ connect_to_wpa()
         log "tools/client/connect_to_wpa.sh Failed while bringing interface ${wlan_name} down - maybe already down?"
     fi
 
-    # Check if wpa_supplicant is running - force kill
-    wpa_supp_pids=$(${wlan_namespace_cmd} -c "pidof wpa_supplicant")
-    if [[ -n "${wpa_supp_pids}" ]]; then
-        log "tools/client/connect_to_wpa.sh Killing wpa_supplicant_pids: kill ${wpa_supp_pids}"
-        ${wlan_namespace_cmd} -c "kill ${wpa_supp_pids}"
-    fi
-
     log "tools/client/connect_to_wpa.sh Bringing $wlan_name down: ifconfig down"
     ${wlan_namespace_cmd} -c "ifconfig ${wlan_name} down"
     sleep 3
     log "tools/client/connect_to_wpa.sh Bringing $wlan_name up: ifconfig up"
     ${wlan_namespace_cmd} -c "ifconfig ${wlan_name} up"
     sleep 3
+
+    wait_for_function_response 0 "${wlan_namespace_cmd} -c \"ifconfig ${wlan_name} 2>/dev/null | grep \"flags=\" | grep UP\"" &&
+        log "tools/client/connect_to_wpa.sh: Interface '${wlan_name}' is UP - Success" ||
+        raise "FAIL: Interface '${wlan_name}' is DOWN, should be UP" -l "tools/client/connect_to_wpa.sh" -ds
+
     wpa_cmd="wpa_supplicant -D nl80211,wext -i ${wlan_name} -c ${wpa_supp_cfg_path} -P ${wpa_supp_base_name}.pid -f /tmp/wpa_supplicant_${wlan_name}.log -t -B -d"
     log "tools/client/connect_to_wpa.sh: Starting ${wpa_cmd}"
     ${wlan_namespace_cmd} -c "${wpa_cmd}"
     sleep 3
-    if [[ "$enable_dhcp" == true ]]; then
+    wait_for_function_response 0 "${wlan_namespace_cmd} -c \"iwconfig ${wlan_name} | grep $ssid\"" "${connect_check_timeout}"
+    is_connected="$?"
+    if [ "$enable_dhcp" == true ] && [ "$is_connected" -eq 0 ]; then
         restart_dhclient
         sleep 1
     fi
+
+    return $is_connected
 }
 
 create_wpa_supplicant_config()
@@ -273,7 +236,8 @@ EOF
 connected=false
 connect_retry_max=3
 connect_retry_count=1
-connect_check_timeout=10
+connect_check_timeout=60
+ping_timeout=30
 
 while [ "${connected}" == false ] && [ "${connect_retry_count}" -le "${connect_retry_max}" ]; do
     log "tools/client/connect_to_wpa.sh: Starting connection to network - #${connect_retry_count}"
@@ -284,23 +248,19 @@ while [ "${connected}" == false ] && [ "${connect_retry_count}" -le "${connect_r
     create_wpa_supplicant_config
     sleep 1
     connect_to_wpa
-    sleep 1
-    log "tools/client/connect_to_wpa.sh: Checking if $wlan_name is connected to network: $ssid"
-    wait_for_function_response 0 "${wlan_namespace_cmd} -c \"iwconfig ${wlan_name} | grep $ssid\"" "${connect_check_timeout}"
     if [ "$?" -ne 0 ]; then
         log -wrn "tools/client/connect_to_wpa.sh: Interface $wlan_name not connected to $ssid"
         ${wlan_namespace_cmd} -c "iwconfig"
     else
         if [ "${check_internet_ip}" != false ]; then
             sleep 2
-            wait_for_function_response 0 "${wlan_namespace_cmd} -c \"ping -c 3 ${check_internet_ip}\"" "${connect_check_timeout}"
+            wait_for_function_response 0 "${wlan_namespace_cmd} -c \"ping -c 3 ${check_internet_ip}\"" "${ping_timeout}"
             internet_check="$?"
             if [ "$internet_check" != 0 ]; then
                 log "tools/client/connect_to_wpa.sh: Could not ping internet ${check_internet_ip}"
-                log "tools/client/connect_to_wpa.sh: Trying manually setting routes"
+                log "tools/client/connect_to_wpa.sh: Restarting dhclient"
                 restart_dhclient
-                manual_route_set "${gateway_ip}"
-                wait_for_function_response 0 "${wlan_namespace_cmd} -c \"ping -c 3 ${check_internet_ip}\"" "${connect_check_timeout}"
+                wait_for_function_response 0 "${wlan_namespace_cmd} -c \"ping -c 3 ${check_internet_ip}\"" "${ping_timeout}"
                 internet_check="$?"
                 if [ "$internet_check" != 0 ]; then
                     log "tools/client/connect_to_wpa.sh: Dumping routes"

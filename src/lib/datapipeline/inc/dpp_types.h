@@ -52,6 +52,9 @@ typedef char ifname_t[RADIO_IFNAME_LEN];
 #define RADIO_ESSID_LEN 128
 typedef char radio_essid_t[RADIO_ESSID_LEN + 1];
 
+#define NETWORK_ID_LEN 20
+typedef char network_id_t[NETWORK_ID_LEN + 1];
+
 #define RADIO_MAX_BIT_RATES             15
 #define RADIO_COUNTRY_CODE_LEN          8
 #define RADIO_NAME_LEN                  32

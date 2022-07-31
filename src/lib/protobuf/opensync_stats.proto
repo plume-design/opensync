@@ -254,6 +254,7 @@ message Client {
     repeated TxStats    tx_stats            = 11;
     repeated TidStats   tid_stats           = 12;
     optional uint32     uapsd               = 13;
+    optional string     network_id          = 14;
 }
 
 message ClientReport {

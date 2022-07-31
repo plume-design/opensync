@@ -93,6 +93,7 @@ struct dpi_dns_client
 {
     bool initialized;
     ds_tree_t fsm_sessions;
+    bool identical_plugin_enabled;
     struct dns_record curr_rec_processed;
     void (*update_tag)(struct fsm_dns_update_tag_param *);
 };

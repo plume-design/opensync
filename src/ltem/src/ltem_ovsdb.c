@@ -898,12 +898,16 @@ callback_Lte_Config(ovsdb_update_monitor_t *mon,
     lte_config_info_t *conf;
     int rc;
 
-    LOGD("%s: if_name=%s, enable=%d, lte_failover_enable=%d, ipv4_enable=%d, ipv6_enable=%d,"
-         " force_use_lte=%d active_simcard_slot=%d, modem_enable=%d, report_interval=%d,"
+    LOGI("%s: if_name=%s, enable=%d, lte_failover_enable=%d, ipv4_enable=%d, ipv6_enable=%d,"
+         " force_use_lte=%d, enable_persist=%d, lte_force_allow=%d, active_simcard_slot=%d, modem_enable=%d, report_interval=%d,"
          " apn=%s, lte_bands=%s, enable_persist=%d, esim_activation_code=%s",
          __func__, lte_conf->if_name, lte_conf->manager_enable, lte_conf->lte_failover_enable, lte_conf->ipv4_enable,
-         lte_conf->ipv6_enable, lte_conf->force_use_lte, lte_conf->active_simcard_slot, lte_conf->modem_enable,
-         lte_conf->report_interval, lte_conf->apn, lte_conf->lte_bands_enable, lte_conf->enable_persist, lte_conf->esim_activation_code);
+         lte_conf->ipv6_enable, lte_conf->force_use_lte, lte_conf->enable_persist, mgr->lte_state_info->lte_force_allow,
+         lte_conf->active_simcard_slot, lte_conf->modem_enable, lte_conf->report_interval, lte_conf->apn,
+         lte_conf->lte_bands_enable, lte_conf->enable_persist, lte_conf->esim_activation_code);
+
+    conf = mgr->lte_config_info;
+    if (!conf) return;
 
     if (mon->mon_type != OVSDB_UPDATE_ERROR)
     {
@@ -957,22 +961,37 @@ callback_Lte_Config(ovsdb_update_monitor_t *mon,
             {
                 ltem_ovsdb_cmu_disable_lte(mgr);
             }
-            if (lte_conf->force_use_lte && lte_conf->lte_failover_enable)
+            if (lte_conf->lte_failover_enable && conf->force_use_lte)
             {
-                ltem_set_wan_state(LTEM_WAN_STATE_DOWN);
+                if (!lte_conf->enable_persist)
+                {
+                    ltem_set_wan_state(LTEM_WAN_STATE_DOWN);
+                }
+                else if (mgr->lte_state_info->lte_force_allow)
+                {
+                    ltem_set_wan_state(LTEM_WAN_STATE_DOWN);
+                }
             }
-            else if (old_lte_conf->force_use_lte && !lte_conf->force_use_lte)
+            else if (old_lte_conf->force_use_lte && !conf->force_use_lte)
             {
                 LOGI("%s: force_lte[%d]", __func__, lte_conf->force_use_lte);
                 ltem_set_wan_state(LTEM_WAN_STATE_UP);
             }
             /* Try to catch a user error where force_lte is enabled and active and they disable LTE */
-            else if (lte_conf->force_use_lte && !lte_conf->lte_failover_enable)
+            else if (conf->force_use_lte && !lte_conf->lte_failover_enable)
             {
                 LOGI("%s: lte_failover_enable[%d], force_lte[%d]",
                      __func__, lte_conf->lte_failover_enable, lte_conf->force_use_lte);
                 ltem_set_wan_state(LTEM_WAN_STATE_UP);
             }
+
+            /*
+             * We have to wait for a callback triggered by the cloud before we
+             * allow force LTE when persist is set
+             */
+            mgr->lte_state_info->lte_force_allow = true;
+            LOGI("%s: lte_force_allow[%d]", __func__, mgr->lte_state_info->lte_force_allow);
+
             if (lte_conf->enable_persist != old_lte_conf->enable_persist)
             {
                 LOGI("%s: enable_persist[%d]", __func__, lte_conf->enable_persist);
@@ -983,8 +1002,6 @@ callback_Lte_Config(ovsdb_update_monitor_t *mon,
                 rc = strncmp(lte_conf->esim_activation_code, old_lte_conf->esim_activation_code, sizeof(lte_conf->esim_activation_code));
                 if (rc) /* New activation code */
                 {
-                    conf = mgr->lte_config_info;
-                    if (!conf) return;
                     STRSCPY(conf->esim_activation_code, lte_conf->esim_activation_code);
                     rc = ltem_update_esim(mgr);
                     if (rc)

@@ -66,6 +66,11 @@ static ds_tree_t vpnm_ipsec_list = DS_TREE_INIT(ds_str_cmp, struct vpnm_ipsec, v
 
 static const osn_ipany_addr_t IP4_ANY = { .addr_type = AF_INET, .addr.ip4 = OSN_IP_ADDR_INIT };
 
+/* OpenSync/target supported ciphers lists (initialized from Kconfig): */
+static enum osn_ipsec_enc       supported_enc_list[OSN_CIPHER_SUITE_MAX+1];
+static enum osn_ipsec_auth      supported_auth_list[OSN_CIPHER_SUITE_MAX+1];
+static enum osn_ipsec_dh_group  supported_dh_list[OSN_CIPHER_SUITE_MAX+1];
+
 static bool vpnm_ipsec_config_set(
         struct vpnm_ipsec *vpn_ipsec,
         ovsdb_update_monitor_t *mon,
@@ -267,6 +272,193 @@ static int util_dh_array_from_schemastr(
     return i;
 }
 
+/* Initialize a supported cipher list from Kconfig */
+static bool _util_supported_ciphers_init(
+        int *supported_list,
+        int (*str_to_enum_func)(const char *),
+        const char *kconfig_list)
+{
+    char kconfig_list_buf[C_MAXPATH_LEN];
+    char *tok_cipher;
+    int cipher;
+    int i;
+
+    i = 0;
+    supported_list[0] = OSN_IPSEC_ENC_NOT_SET;
+
+    STRSCPY(kconfig_list_buf, kconfig_list);
+
+    tok_cipher = strtok(kconfig_list_buf, ",");
+    while (tok_cipher != NULL && i < OSN_CIPHER_SUITE_MAX)
+    {
+        cipher = str_to_enum_func(tok_cipher);
+        if (cipher == OSN_IPSEC_ENC_NOT_SET)
+        {
+            LOG(ERR, "vpnm_ipsec: Invalid cipher string in Kconfig: %s", tok_cipher);
+            return false;
+        }
+
+        supported_list[i++] = cipher;
+
+        tok_cipher = strtok(NULL, ",");
+    }
+    supported_list[i] = OSN_IPSEC_ENC_NOT_SET;
+
+    return true;
+}
+
+/* Initialize supported encryption algorithms from Kconfig */
+static bool util_supported_ciphers_init_enc()
+{
+    return _util_supported_ciphers_init(
+            (int *)supported_enc_list,
+            (int (*)(const char *))util_enc_from_schemastr,
+            CONFIG_OSN_IPSEC_SUPPORTED_CIPHERS_ENC);
+}
+
+/* Initialize supported authentication algorithms from Kconfig */
+static bool util_supported_ciphers_init_auth()
+{
+    return _util_supported_ciphers_init(
+            (int *)supported_auth_list,
+            (int (*)(const char *))util_auth_from_schemastr,
+            CONFIG_OSN_IPSEC_SUPPORTED_CIPHERS_AUTH);
+}
+
+/* Initialize supported Diffie-Hellman groups from Kconfig */
+static bool util_supported_ciphers_init_dh()
+{
+    return _util_supported_ciphers_init(
+            (int *)supported_dh_list,
+            (int (*)(const char *))util_dh_from_schemastr,
+            CONFIG_OSN_IPSEC_SUPPORTED_CIPHERS_DH);
+}
+
+/* Initialize all supported IPsec ciphers from Kconfig */
+static bool vpnm_ipsec_supported_ciphers_init()
+{
+    if (!util_supported_ciphers_init_enc()
+            || !util_supported_ciphers_init_auth()
+            || !util_supported_ciphers_init_dh())
+    {
+        return false;
+    }
+    return true;
+}
+
+static bool _util_is_alg_in_set(int *set, int set_len, int alg)
+{
+    int i;
+
+    for (i = 0; i < set_len; i++)
+    {
+        if (set[i] == alg)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+#define IS_ALG_IN_SET(set, set_len, alg) \
+    _util_is_alg_in_set((int *)set, (int)set_len, (int)alg)
+
+/*
+ * Filter ciphers in 'cipher_list': Keep only ciphers that are also in the
+ * 'supported_ciphers_list'. Additionally, the filtered ciphers list will
+ * have ciphers in the same order as in the 'supported_ciphers_list'.
+ * - cipher_list and cipher_list_len [in/out]
+ *   (regardless of cipher_list_len the cipher_list array must have allocated
+ *    space for at least OSN_CIPHER_SUITE_MAX elements)
+ * - supported_cipher_list [in]
+ */
+static void _util_filter_supported_ciphers(
+        int *ciphers_list,
+        int *ciphers_list_len,
+        int *supported_ciphers_list)
+{
+    int filtered_list[OSN_CIPHER_SUITE_MAX];
+    int filtered_list_len = 0;
+    int cipher;
+    int i, j;
+
+    /*
+     * From the Kconfig-defined 'supported_ciphers_list' take those ciphers that
+     * are in the configured 'ciphers_list' (and maintain the Kconfig-defined
+     * order of ciphers). Special case: if the configured 'cipher_list_len' is
+     * 0, then we unconditionally take all the ciphers from the 'supported_ciphers_list'.
+     */
+    j = 0;
+    for (i = 0; i < OSN_CIPHER_SUITE_MAX && supported_ciphers_list[i] != OSN_IPSEC_ENC_NOT_SET; i++)
+    {
+        cipher = supported_ciphers_list[i];
+
+        if (*ciphers_list_len == 0 || IS_ALG_IN_SET(ciphers_list, *ciphers_list_len, cipher))
+        {
+            filtered_list[j++] = cipher;
+            filtered_list_len = j;
+        }
+    }
+
+    /* Copy the filtered list to the input list (effectively filtering the input list): */
+    for (i = 0; i < OSN_CIPHER_SUITE_MAX && i < filtered_list_len; i++)
+    {
+        ciphers_list[i] = filtered_list[i];
+    }
+    *ciphers_list_len = filtered_list_len;
+}
+
+/* Filter encryption algorithms according to Kconfig defined supported
+ * encryption algorithms list. */
+static void util_filter_supported_ciphers_enc(
+        enum osn_ipsec_enc *enc_list,
+        int *enc_list_len)
+{
+    TRACE();
+
+    _util_filter_supported_ciphers((int *)enc_list, enc_list_len, (int *)supported_enc_list);
+
+    if (*enc_list_len == 0)
+    {
+        LOG(WARN, "vpnm_ipsec: filter enc: The resulting list of ciphers empty. "
+                "None of the configured encryption algorithms on the list of supported?");
+    }
+}
+
+/* Filter authentication algorithms according to Kconfig defined supported
+ * authentication algorithms list. */
+static void util_filter_supported_ciphers_auth(
+        enum osn_ipsec_auth *auth_list,
+        int *auth_list_len)
+{
+    TRACE();
+
+    _util_filter_supported_ciphers((int *)auth_list, auth_list_len, (int *)supported_auth_list);
+
+    if (*auth_list_len == 0)
+    {
+        LOG(WARN, "vpnm_ipsec: filter auth: The resulting list of ciphers empty. "
+                "None of the configured authentication algorithms on the list of supported?");
+    }
+}
+
+/* Filter Diffie-Hellman groups according to Kconfig defined supported
+ * Diffie-Hellman groups list. */
+static void util_filter_supported_ciphers_dh(
+        enum osn_ipsec_dh_group *dh_list,
+        int *dh_list_len)
+{
+    TRACE();
+
+    _util_filter_supported_ciphers((int *)dh_list, dh_list_len, (int *)supported_dh_list);
+
+    if (*dh_list_len == 0)
+    {
+        LOG(WARN, "vpnm_ipsec: filter dh: The resulting list of ciphers empty. "
+                "None of the configured Diffie-Hellman groups on the list of supported?");
+    }
+}
+
 /*
  * Set IPsec config from OVSDB schema to OSN IPsec layer.
  *
@@ -418,12 +610,22 @@ static bool vpnm_ipsec_config_set(
     auth_len = util_auth_array_from_schemastr(auth_list, OSN_CIPHER_SUITE_MAX, new->ike_auth_suite, new->ike_auth_suite_len);
     dh_len = util_dh_array_from_schemastr(dh_list, OSN_CIPHER_SUITE_MAX, new->ike_dh_groups, new->ike_dh_groups_len);
 
+    /* Before setting, filter-out any unsupported ciphers: */
+    util_filter_supported_ciphers_enc(enc_list, &enc_len);
+    util_filter_supported_ciphers_auth(auth_list, &auth_len);
+    util_filter_supported_ciphers_dh(dh_list, &dh_len);
+
     rv &= osn_ipsec_ike_cipher_suite_set(vpn_ipsec->vi_ipsec, enc_list, enc_len, auth_list, auth_len, dh_list, dh_len);
 
     /* ESP enc/auth/dh: */
     enc_len = util_enc_array_from_schemastr(enc_list, OSN_CIPHER_SUITE_MAX, new->esp_enc_suite, new->esp_enc_suite_len);
     auth_len = util_auth_array_from_schemastr(auth_list, OSN_CIPHER_SUITE_MAX, new->esp_auth_suite, new->esp_auth_suite_len);
     dh_len = util_dh_array_from_schemastr(dh_list, OSN_CIPHER_SUITE_MAX, new->esp_dh_groups, new->esp_dh_groups_len);
+
+    /* Before setting, filter-out any unsupported ciphers: */
+    util_filter_supported_ciphers_enc(enc_list, &enc_len);
+    util_filter_supported_ciphers_auth(auth_list, &auth_len);
+    util_filter_supported_ciphers_dh(dh_list, &dh_len);
 
     rv &= osn_ipsec_esp_cipher_suite_set(vpn_ipsec->vi_ipsec, enc_list, enc_len, auth_list, auth_len, dh_list, dh_len);
 
@@ -833,6 +1035,12 @@ bool vpnm_ipsec_init(void)
     OVSDB_TABLE_INIT(IPSec_State, tunnel_name);
 
     OVSDB_TABLE_MONITOR(IPSec_Config, false);
+
+    if (!vpnm_ipsec_supported_ciphers_init())
+    {
+        LOG(ERR, "vpnm_ipsec: Error initializing supported ciphers from Kconfig.");
+        return false;
+    }
 
     return true;
 }

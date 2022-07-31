@@ -180,7 +180,7 @@ struct nfqueue_ctxt
     ds_tree_node_t  nfq_tnode;
 };
 
-int nf_queue_set_dpi_state(struct net_header_parser *net_hdr);
+int nf_queue_set_dpi_mark(struct net_header_parser *net_hdr, int mark);
 
 bool nf_queue_init();
 

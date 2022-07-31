@@ -649,7 +649,6 @@ ipthreat_process_action(struct fsm_session *session, int action,
     acc = net_parser->acc;
 
     state = (action == FSM_BLOCK ? FSM_DPI_DROP : FSM_DPI_PASSTHRU);
-    acc->flow_marker = state;
 
     LOGT("%s(): ipthreat policy received action %s", __func__,
          fsm_policy_get_action_str(action));
@@ -899,7 +898,6 @@ clean_policy_req:
     fsm_policy_free_request(policy_request);
 
 error:
-    acc->flow_marker = FSM_DPI_PASSTHRU;
     fsm_dpi_set_plugin_decision(session, net_parser, FSM_DPI_PASSTHRU);
 }
 

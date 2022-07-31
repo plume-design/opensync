@@ -315,15 +315,11 @@ int fsm_set_icmp_dpi_state_timeout(
     return (ret0 + ret1);
 }
 
-
 // APIs using net_header_parser
-int fsm_set_dpi_state(struct net_header_parser *net_hdr)
+int fsm_set_dpi_mark(struct net_header_parser *net_hdr, int mark)
 {
-    uint32_t mark = CT_MARK_INSPECT;
     int ret0;
     int ret1;
-
-    if (net_hdr->acc) mark = net_hdr->acc->flow_marker;
 
     ret0 = nf_ct_set_flow_mark(net_hdr, mark, 0);
     /*
@@ -385,42 +381,6 @@ void fsm_dpi_set_plugin_decision(
     info->decision = state;
 }
 
-/**
- * @brief sets the state of the accumulator when plugin
- *        decides to take action on the flow.  If reverse
- *        flow accumulator is present, apply the same state
- *        and flow_marker value to it, so that dpi processing
- *        is not required
- *
- * @param session the dpi plugin session
- * @param acc the accumulator to set the state
- * @param state state to be set for the accumulator
- */
-void
-fsm_dpi_set_acc_state(struct fsm_session *session, struct net_md_stats_accumulator *acc, int state)
-{
-    struct net_md_stats_accumulator *rev_acc;
-    struct fsm_dpi_dispatcher *dispatch;
-    union fsm_dpi_context *dpi_context;
-
-    if (session == NULL || acc == NULL) return;
-
-    acc->dpi_done = state;
-
-    dpi_context = session->dpi;
-    if (dpi_context == NULL) return;
-
-    dispatch = &dpi_context->dispatch;
-
-    rev_acc = net_md_lookup_reverse_acc(dispatch->aggr, acc);
-    if (rev_acc == NULL) return;
-
-    rev_acc->dpi_done = acc->dpi_done;
-    rev_acc->flow_marker = acc->flow_marker;
-
-    return;
-}
-
 void
 fsm_dpi_block_flow(struct net_md_stats_accumulator *acc)
 {
@@ -474,6 +434,29 @@ fsm_dpi_allow_flow(struct net_md_stats_accumulator *acc)
     fsm_set_ip_dpi_state(NULL, key->dst_ip, key->src_ip,
                          key->dport, key->sport,
                          key->ipprotocol, af, FSM_DPI_PASSTHRU);
+}
+
+/**
+ * @brief determine the mark value to be used for contrack based on action.
+ *
+ * @param acc accumulator of the flow
+ * @param action verdict received for this flow
+ */
+int
+fsm_dpi_get_mark(struct net_md_stats_accumulator *acc, int action)
+{
+    int mark = CT_MARK_INSPECT;
+    int mark_set;
+
+    if (action == FSM_DPI_DROP) mark = CT_MARK_DROP;
+    else if (action == FSM_DPI_PASSTHRU) mark = CT_MARK_ACCEPT;
+
+    mark_set = (action == FSM_DPI_PASSTHRU);
+    mark_set &= (acc->flow_marker != 0);
+
+    if (mark_set) mark = acc->flow_marker;
+
+    return mark;
 }
 
 /**

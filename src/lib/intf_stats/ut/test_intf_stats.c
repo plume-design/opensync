@@ -294,7 +294,7 @@ static void
 validate_intf_stats(intf_stats_t *intf, Interfaces__IntfStats__IntfStats *stats_pb)
 {
     TEST_ASSERT_EQUAL_STRING(intf->ifname, stats_pb->if_name);
-    TEST_ASSERT_EQUAL_STRING(intf->role  , stats_pb->role  );
+    TEST_ASSERT_EQUAL_STRING(intf->role  , stats_pb->role);
 
     TEST_ASSERT_EQUAL_UINT(intf->tx_bytes, stats_pb->tx_bytes);
     TEST_ASSERT_EQUAL_UINT(intf->rx_bytes, stats_pb->rx_bytes);
@@ -752,8 +752,23 @@ intf_stats_test_setup_window(intf_stats_window_t *window)
 
     ds_dlist_insert_tail(window_intf_list, intf_entry);
 
+    /* Allocate second interface */
+    intf_entry = intf_stats_intf_alloc();
+    TEST_ASSERT_NOT_NULL(intf_entry);
+
+    /* Fill up the interface entry */
+    STRSCPY(intf_entry->ifname, "test_intf3");
+
+    intf_entry->tx_bytes = 3000;
+    intf_entry->rx_bytes = 3000;
+
+    intf_entry->tx_packets = 300;
+    intf_entry->rx_packets = 300;
+
+    ds_dlist_insert_tail(window_intf_list, intf_entry);
+
     /* Fill up the remaining window details */
-    window->num_intfs  = 2;
+    window->num_intfs  = 3;
 
     return;
 }

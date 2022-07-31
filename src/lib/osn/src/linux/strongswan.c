@@ -260,8 +260,13 @@ static bool util_cfg_write_cipher_suite(
     int j;
 
     if (enc_set_len == 0 && auth_set_len == 0 && dh_group_set_len == 0)
+    {
+        /* If no algorithms are configured, make this an invalid config: */
+        fprintf(f, "    %s=!\n", cfg_key);
         return true;
+    }
 
+    /* Build a cipher suite string: */
     fprintf(f, "    %s=", cfg_key);
 
     j = 0;
@@ -283,6 +288,11 @@ static bool util_cfg_write_cipher_suite(
             fprintf(f, "-");
         fprintf(f, "%s", util_dh_to_str(dh_group_set[i]));
     }
+
+    /*
+     * An '!' restricts to the configured cipher suite, otherwise strongSwan
+     * adds its extensive default proposal.
+     */
     fprintf(f, "!");
     fprintf(f, "\n");
 
@@ -577,6 +587,7 @@ static bool strongswan_init_charon_conf(void)
         "    install_virtual_ip = no\n"
         "}\n";
     FILE *f;
+    bool rv = true;
 
     f = fopen(CONFIG_OSN_IPSEC_TMPFS_CHARON_CONF_FILE_PATH, "w");
     if (f == NULL)
@@ -588,9 +599,37 @@ static bool strongswan_init_charon_conf(void)
     if (fwrite(charon_config, strlen(charon_config), 1, f) != 1)
     {
         LOG(ERR, "strongswan: Error writing to file %s", CONFIG_OSN_IPSEC_TMPFS_CHARON_CONF_FILE_PATH);
+        rv = false;
     }
     fclose(f);
-    return true;
+    return rv;
+}
+
+static bool strongswan_init_resolve_conf(void)
+{
+    const char *resolve_config =
+        "# Options for the resolve plugin.\n"
+        "resolve {\n"
+        "    # We do not want the plugin to load:\n"
+        "    load = no\n"
+        "}\n";
+    FILE *f;
+    bool rv = true;
+
+    f = fopen(CONFIG_OSN_IPSEC_TMPFS_RESOLVE_CONF_FILE_PATH, "w");
+    if (f == NULL)
+    {
+        LOG(ERR, "strongswan: Error opening file %s: %s", CONFIG_OSN_IPSEC_TMPFS_RESOLVE_CONF_FILE_PATH, strerror(errno));
+        return false;
+    }
+
+    if (fwrite(resolve_config, strlen(resolve_config), 1, f) != 1)
+    {
+        LOG(ERR, "strongswan: Error writing to file %s", CONFIG_OSN_IPSEC_TMPFS_RESOLVE_CONF_FILE_PATH);
+        rv = false;
+    }
+    fclose(f);
+    return rv;
 }
 
 static bool strongswan_config_files_init(void)
@@ -601,6 +640,7 @@ static bool strongswan_config_files_init(void)
     rv &= util_unlink_file(CONFIG_OSN_IPSEC_CONF_FILE_PATH);
     rv &= util_unlink_file(CONFIG_OSN_IPSEC_SECRETS_FILE_PATH);
     rv &= util_unlink_file(CONFIG_OSN_IPSEC_CHARON_CONF_FILE_PATH);
+    rv &= util_unlink_file(CONFIG_OSN_IPSEC_RESOLVE_CONF_FILE_PATH);
     if (!rv)
     {
         return false;
@@ -612,6 +652,7 @@ static bool strongswan_config_files_init(void)
     rv &= util_symlink(CONFIG_OSN_IPSEC_TMPFS_CONF_FILE_PATH, CONFIG_OSN_IPSEC_CONF_FILE_PATH);
     rv &= util_symlink(CONFIG_OSN_IPSEC_TMPFS_SECRETS_FILE_PATH, CONFIG_OSN_IPSEC_SECRETS_FILE_PATH);
     rv &= util_symlink(CONFIG_OSN_IPSEC_TMPFS_CHARON_CONF_FILE_PATH, CONFIG_OSN_IPSEC_CHARON_CONF_FILE_PATH);
+    rv &= util_symlink(CONFIG_OSN_IPSEC_TMPFS_RESOLVE_CONF_FILE_PATH, CONFIG_OSN_IPSEC_RESOLVE_CONF_FILE_PATH);
     if (!rv)
     {
         return false;
@@ -623,12 +664,16 @@ static bool strongswan_config_files_init(void)
     rv &= util_create_parent_dirs(CONFIG_OSN_IPSEC_TMPFS_CONF_FILE_PATH);
     rv &= util_create_parent_dirs(CONFIG_OSN_IPSEC_TMPFS_SECRETS_FILE_PATH);
     rv &= util_create_parent_dirs(CONFIG_OSN_IPSEC_TMPFS_CHARON_CONF_FILE_PATH);
+    rv &= util_create_parent_dirs(CONFIG_OSN_IPSEC_TMPFS_RESOLVE_CONF_FILE_PATH);
 
     /* Create OSN ipsec status dir (where updown script will create status files): */
     rv &= util_create_parent_dirs(CONFIG_OSN_IPSEC_TMPFS_STATUS_DIR"/");
 
     /* Finally, create charon.conf file with the configuration we need: */
     rv &= strongswan_init_charon_conf();
+
+    /* Create strongSwan resolve plugin configuration file with the configuration we need: */
+    rv &= strongswan_init_resolve_conf();
 
     return rv;
 }

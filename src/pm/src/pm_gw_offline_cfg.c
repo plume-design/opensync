@@ -644,8 +644,8 @@ static bool gw_offline_openflow_set_offline_mode(bool offline_mode)
     else
     {
         /* and outside offline mode it should be empty */
-        json_t *device_value = json_pack("{ s : s, s : s }",
-                "name", "offline_mode", "device_value", "[\"set\",[]]");
+        json_t *device_value = json_pack("{ s : s, s : o }",
+                "name", "offline_mode", "device_value", json_pack("[ s ,[]]", "set"));
 
         ovsdb_sync_upsert(SCHEMA_TABLE(Openflow_Tag), SCHEMA_COLUMN(Openflow_Tag, name),
                 "offline_mode", device_value, NULL);

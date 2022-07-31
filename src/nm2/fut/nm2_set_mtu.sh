@@ -101,7 +101,9 @@ else
         -enabled true \
         -network true \
         -ip_assign_scheme static \
-        -if_type "$if_type" &&
+        -if_type "$if_type" \
+        -inet_addr "10.10.10.30" \
+        -netmask "255.255.255.0" &&
             log "nm2/nm2_set_mtu.sh: Interface $if_name created - Success" ||
             raise "FAIL: Failed to create $if_name interface" -l "nm2/nm2_set_mtu.sh" -ds
 fi

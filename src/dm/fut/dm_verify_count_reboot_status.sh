@@ -74,6 +74,10 @@ fut_info_dump_line
 
 log_title "dm/dm_verify_count_reboot_status.sh: DM test - Verify 'count' field value in Reboot_Status table is greater than or equals to one."
 
+check_ovsdb_table_exist Reboot_Status &&
+    log "dm/dm_verify_count_reboot_status.sh: Reboot_Status table exists in ovsdb - Success" ||
+    raise "FAIL: Reboot_Status table does not exist in ovsdb" -l "dm/dm_verify_count_reboot_status.sh" -s
+
 print_tables Reboot_Status
 
 reboot_count_array=$(get_ovsdb_entry_value Reboot_Status count)
