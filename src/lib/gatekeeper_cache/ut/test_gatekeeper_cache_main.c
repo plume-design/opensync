@@ -48,6 +48,8 @@ struct sample_flow_entries *test_flow_entries;
 struct gk_attr_cache_interface *entry1, *entry2, *entry3, *entry4, *entry5;
 struct gkc_ip_flow_interface *flow_entry1, *flow_entry2, *flow_entry3, *flow_entry4, *flow_entry5;
 
+char *g_genmac_filename = "./data/genmac.txt";
+
 void
 populate_sample_attribute_entries(void)
 {
@@ -55,8 +57,7 @@ populate_sample_attribute_entries(void)
     char line[1024];
     size_t i = 0;
 
-    /* move genmac.txt file to /tmp/ */
-    fp = fopen("/tmp/genmac.txt", "r");
+    fp = fopen(g_genmac_filename, "r");
     if (fp == NULL)
     {
         printf("fopen failed !!\n");
@@ -294,10 +295,11 @@ main(int argc, char *argv[])
      * This is a requirement: Do NOT proceed if the file is missing.
      * File presence will not be tested any further.
      */
-    ret = access("/tmp/genmac.txt", F_OK);
+    chdir(dirname(argv[0]));
+    ret = access(g_genmac_filename, F_OK);
     if (ret != 0)
     {
-        LOGW("In %s requires /tmp/genmac.txt", basename(__FILE__));
+        LOGW("In %s requires %s", basename(__FILE__), g_genmac_filename);
         exit(1);
     }
 

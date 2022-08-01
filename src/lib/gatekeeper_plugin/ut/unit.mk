@@ -22,26 +22,23 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-UNIT_DISABLE := $(if $(CONFIG_MANAGER_FCM),n,y)
-UNIT_NAME := test_lan_stats
+UNIT_DISABLE := $(if $(CONFIG_MANAGER_FSM),n,y)
+
+UNIT_NAME := test_gatekeeper_plugin
 
 UNIT_TYPE := TEST_BIN
 
-UNIT_SRC := test_lan_stats.c
+UNIT_SRC := test_fsm_gk_main.c
+UNIT_SRC += test_fsm_gk.c
+UNIT_SRC += test_fsm_gk_fct.c
 
-UNIT_CFLAGS := -Isrc/fcm/inc
-
-ifneq ($(CONFIG_FCM_OVS_CMD),y)
-UNIT_LDFLAGS := -lopenvswitch
-endif
-UNIT_EXPORT_LDFLAGS := $(UNIT_LDFLAGS)
-
-UNIT_DEPS := src/lib/lan_stats
-UNIT_DEPS += src/lib/const
-UNIT_DEPS += src/lib/log
-UNIT_DEPS += src/lib/ovsdb
-UNIT_DEPS += src/lib/network_metadata
-UNIT_DEPS += src/lib/fcm_filter
+UNIT_DEPS := src/lib/log
+UNIT_DEPS += src/lib/common
+UNIT_DEPS += src/lib/json_util
+UNIT_DEPS += src/qm/qm_conn
+UNIT_DEPS += src/lib/gatekeeper_plugin
+UNIT_DEPS += src/lib/gatekeeper_cache
+UNIT_DEPS += src/lib/fsm_dpi_sni
 UNIT_DEPS += src/lib/unity
 
-# data/stats*.txt are copied automatically
+# data/cacert.pem copied automatically

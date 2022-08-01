@@ -50,9 +50,4 @@ UNIT_DEPS += src/lib/gatekeeper_msg
 UNIT_DEPS += src/lib/fsm_policy
 UNIT_DEPS += src/lib/network_metadata
 
-# Ensure the required file is copied in its correct location
-$(UNIT_BUILD)/.target: /tmp/genmac.txt
-/tmp/genmac.txt: $(UNIT_PATH)/genmac.txt FORCE_GENMACK
-	${NQ} " $(call color_copy,copy)    [$(call COLOR_BOLD,genmac.txt)] -> $@"
-	${Q} cp $< $@
-FORCE_GENMACK:
+# data/genmac.txt is copied automatically
