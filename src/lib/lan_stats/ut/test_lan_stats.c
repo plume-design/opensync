@@ -47,6 +47,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "fcm_priv.h"
 #include "fcm_mgr.h"
 #include "policy_tags.h"
+#include "unit_test_utils.h"
 
 const char *test_name = "fcm_lan_stats_tests";
 
@@ -323,7 +324,7 @@ test_emit_report(struct net_md_aggregator *aggr, char *topic)
 
 
 void
-setUp(void)
+lan_stats_setUp(void)
 {
     ds_tree_t *other_config = NULL;
     fcm_collector_t *collector;
@@ -368,7 +369,7 @@ setUp(void)
 }
 
 void
-tearDown(void)
+lan_stats_tearDown(void)
 {
     fcm_collector_t *collector = NULL;
     ds_tree_t *other_config;
@@ -1107,10 +1108,9 @@ main(int argc, char *argv[])
     (void)argc;
     (void)argv;
 
-    target_log_open("TEST", LOG_OPEN_STDOUT);
-    log_severity_set(LOG_SEVERITY_TRACE);
+    ut_init(test_name, test_lan_stats_global_setup, NULL);
 
-    UnityBegin(test_name);
+    ut_setUp_tearDown(test_name, lan_stats_setUp, lan_stats_tearDown);
 
     size_t i;
     int ret;
@@ -1125,11 +1125,9 @@ main(int argc, char *argv[])
         if (ret != 0)
         {   
             LOGI("%s file is missing", g_default_dpctl_f[i]);
-            return UNITY_END();
+            return ut_fini();
         }
     }
-
-    test_lan_stats_global_setup();
 
     RUN_TEST(test_active_session);
     RUN_TEST(test_max_session);
@@ -1145,5 +1143,5 @@ main(int argc, char *argv[])
     RUN_TEST(test_flow_packets_bytes);
     lan_stats_exit_mgr();
 
-    return UNITY_END();
+    return ut_fini();
 }

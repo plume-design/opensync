@@ -24,15 +24,27 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <stdbool.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <string.h>
+#include <sys/socket.h>
 
 #include "fsm.h"
 #include "fsm_dpi_dns.h"
+#include "fsm_dns_utils.h"
+#include "fsm_policy.h"
+#include "log.h"
+#include "memutil.h"
+#include "net_header_parse.h"
+#include "network_metadata_report.h"
 #include "pcap.c"
 #include "os.h"
 #include "unity.h"
-#include "unity_internals.h"
+#include "unit_test_utils.h"
+#include "util.h"
 
 static union fsm_plugin_ops g_plugin_ops =
 {
@@ -47,11 +59,20 @@ static union fsm_plugin_ops g_plugin_ops =
     },
 };
 
+static struct fsm_session_conf global_confs[1] =
+{
+    /* entry 0 */
+    {
+        .handler = "gatekeeper_session",
+    }
+};
+
 static struct fsm_session g_session =
 {
     .node_id = "NODE_ID",
     .location_id = "LOCATION_ID",
     .topic = "ADT_TOPIC",
+    .conf = &global_confs[0],
 };
 
 struct schema_Openflow_Tag g_tags[] =
@@ -75,6 +96,59 @@ struct schema_Openflow_Local_Tag g_ltags[] =
     }
 };
 
+struct schema_FSM_Policy spolicies[] =
+{
+    { /* entry 0 */
+        .policy_exists = true,
+        .policy = "gatekeeper_p",
+        .name = "fqdn_in",
+        .mac_op_exists = true,
+        .mac_op = "out",
+        .macs_len = 3,
+        .macs =
+        {
+            "00:00:00:00:00:00",
+            "11:22:33:44:55:66",
+            "22:33:44:55:66:77"
+        },
+        .idx = 0,
+        .fqdn_op_exists = true,
+        .fqdn_op = "in",
+        .fqdns_len = 1,
+        .fqdns =
+        {
+            "google.com",
+        },
+        .fqdncat_op_exists = false,
+        .risk_op_exists = false,
+        .ipaddr_op_exists = false,
+        .ipaddrs_len = 0,
+        .action_exists = true,
+        .action = "update_tag",
+        .other_config_len = 2,
+        .other_config_keys = {"tagv4_name", "tagv6_name",},
+        .other_config = { "${@regular_tag_1}", "${@regular_tag_1}"},
+    },
+};
+
+struct fsm_web_cat_ops g_plugin_ops1 =
+{
+    .categories_check = NULL,
+    .risk_level_check = NULL,
+    .cat2str = NULL,
+    .get_stats = NULL,
+    .dns_response = NULL,
+    .gatekeeper_req = NULL,
+};
+
+static char *
+test_session_name(struct fsm_policy_client *client)
+{
+    if (client->name != NULL) return client->name;
+
+    return "gatekeeper_p";
+}
+
 char *begin = "begin";
 char *dns_qname = "dns.qname";
 char *dns_type = "dns.type";
@@ -93,61 +167,6 @@ int64_t ttl = 300;
 int64_t offset_v4 = 100;
 int64_t offset_v6 = 300;
 
-/**
- * @brief Converts a bytes array in a hex dump file wireshark can import.
- *
- * Dumps the array in a file that can then be imported by wireshark.
- * The file can also be translated to a pcap file using the text2pcap command.
- * Useful to visualize the packet content.
- */
-void create_hex_dump(const char *fname, const uint8_t *buf, size_t len)
-{
-    int line_number = 0;
-    bool new_line = true;
-    size_t i;
-    FILE *f;
-
-    f = fopen(fname, "w+");
-
-    if (f == NULL) return;
-
-    for (i = 0; i < len; i++)
-    {
-        new_line = (i == 0 ? true : ((i % 8) == 0));
-        if (new_line)
-        {
-            if (line_number) fprintf(f, "\n");
-            fprintf(f, "%06x", line_number);
-            line_number += 8;
-        }
-        fprintf(f, " %02x", buf[i]);
-    }
-    fprintf(f, "\n");
-    fclose(f);
-
-    return;
-}
-
-
-/**
- * @brief Convenient wrapper
- *
- * Dumps the packet content in /tmp/<tests_name>_<pkt name>.txtpcap
- * for wireshark consumption and sets g_parser data fields.
- * @params pkt the C structure containing an exported packet capture
- */
-#define PREPARE_UT(pkt, parser)                                 \
-    {                                                           \
-        char fname[128];                                        \
-        size_t len = sizeof(pkt);                               \
-                                                                \
-        snprintf(fname, sizeof(fname), "/tmp/%s_%s.txtpcap",    \
-                 "test_dpi_dns_test", #pkt);                    \
-        create_hex_dump(fname, pkt, len);                       \
-        parser->packet_len = len;                               \
-        parser->caplen = len;                                   \
-        parser->data = (uint8_t *)pkt;                          \
-    }
 
 static char *
 mock_get_config(struct fsm_session *session, char *key)
@@ -931,6 +950,8 @@ test_fsm_dpi_dns_update_response_ips(void)
     uint8_t type = 1;
     size_t idx = 0;
 
+    ut_prepare_pcap(__func__);
+
     mgr = fsm_dpi_dns_get_mgr();
     if (!mgr->initialized)
         mgr->initialized = true;
@@ -948,7 +969,7 @@ test_fsm_dpi_dns_update_response_ips(void)
     STRSCPY(policy_reply.redirects[0], buf);
 
     net_parser = CALLOC(1, sizeof(*net_parser));
-    PREPARE_UT(pkt12, net_parser);
+    UT_CREATE_PCAP_PAYLOAD(pkt12, net_parser);
     len = net_header_parse(net_parser);
     TEST_ASSERT_TRUE(len != 0);
 
@@ -972,6 +993,100 @@ test_fsm_dpi_dns_update_response_ips(void)
 
     FREE(net_parser);
     FREE(acc.key);
+
+    ut_cleanup_pcap();
+}
+
+void
+test_fsm_dpi_dns_process_dns_record_dns_tag(void)
+{
+    struct fsm_policy_session *policy_mgr;
+    struct net_header_parser *net_parser;
+    struct net_md_stats_accumulator acc;
+    struct schema_FSM_Policy *spolicy;
+    struct fsm_policy_client *client;
+    struct fsm_session *session;
+    struct policy_table *table;
+    struct net_md_flow_key key;
+    struct fsm_policy *fpolicy;
+    os_macaddr_t mac_n;
+    bool rc;
+    int i;
+
+    /* register session */
+    session = &g_session;
+    session->conf = &global_confs[0];
+    session->name = global_confs[0].handler;
+    session->provider_ops = &g_plugin_ops1;
+    session->service = session;
+
+    policy_mgr = fsm_policy_get_mgr();
+    if (!policy_mgr->initialized) fsm_init_manager();
+
+    /* add fsm policy */
+    spolicy = &spolicies[0];
+    fsm_add_policy(spolicy);
+    fpolicy = fsm_policy_lookup(spolicy);
+    TEST_ASSERT_NOT_NULL(fpolicy);
+
+    /* Validate rule name */
+    TEST_ASSERT_EQUAL_STRING(spolicy->name, fpolicy->rule_name);
+
+    table = ds_tree_find(&policy_mgr->policy_tables, spolicy->policy);
+    TEST_ASSERT_NOT_NULL(table);
+
+    /* register client */
+    client = &session->policy_client;
+    client->session = session;
+    client->update_client = NULL;
+    client->session_name = test_session_name;
+    client->name = "gatekeeper_p";
+    fsm_policy_register_client(&session->policy_client);
+
+    memset(&acc, 0, sizeof(acc));
+    memset(&key, 0, sizeof(key));
+
+    acc.key = &key;
+    rc = str2os_mac_ref("11:11:11:11:11:11", &mac_n);
+    TEST_ASSERT_TRUE(rc);
+    key.ip_version = 4;
+    key.smac = &mac_n;
+    key.ipprotocol = IPPROTO_UDP;
+    acc.originator = NET_MD_ACC_ORIGINATOR_SRC;
+    acc.direction = NET_MD_ACC_OUTBOUND_DIR;
+
+    /* dns record details */
+    struct dpi_dns_client *mgr;
+    char qname[] = "google.com";
+    void *value = "d83ac2ae";
+    uint8_t ip_version = 4;
+    uint16_t length = 4;
+    uint16_t offset = 40;
+    uint16_t ttl = 109;
+    uint8_t type = 65;
+    size_t idx = 0;
+
+    mgr = fsm_dpi_dns_get_mgr();
+    if (!mgr->initialized) mgr->initialized = true;
+
+    /* add update tag callback */
+    mgr->update_tag = fsm_dns_update_tag;
+
+    for (i = 0; i < 8; i++)
+    {
+        uint32_t addr;
+        addr = htonl(i);
+
+        value = &addr;
+        idx = i;
+
+        populate_dns_record(qname, idx, type, ip_version, ttl, value, length, offset);
+    }
+
+    net_parser = NULL;
+    fsm_dpi_dns_process_dns_record(session, &acc, net_parser);
+
+    fsm_policy_deregister_client(client);
 }
 
 void
@@ -993,4 +1108,5 @@ run_test_dns(void)
     RUN_TEST(test_fsm_dpi_dns_update_v6_tag_duplicates);
     RUN_TEST(test_fsm_dpi_dns_update_v4_tag_ip_expiration);
     RUN_TEST(test_fsm_dpi_dns_update_v6_tag_ip_expiration);
+    RUN_TEST(test_fsm_dpi_dns_process_dns_record_dns_tag);
 }

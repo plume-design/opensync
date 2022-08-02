@@ -37,6 +37,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "unity.h"
 
 #include "test_gatekeeper_cache.h"
+#include "unit_test_utils.h"
 
 const char *test_name = "gk_cache_tests";
 
@@ -215,7 +216,7 @@ create_default_flow_entries(void)
 }
 
 void
-setUp(void)
+gatekeeper_cache_setUp(void)
 {
     OVER_MAX_CACHE_ENTRIES = gk_cache_get_size() + 1;
     test_attr_entries = CALLOC(OVER_MAX_CACHE_ENTRIES, sizeof(*test_attr_entries));
@@ -271,7 +272,7 @@ del_default_attr_entries(void)
 }
 
 void
-tearDown(void)
+gatekeeper_cache_tearDown(void)
 {
     gk_cache_cleanup();
     del_default_attr_entries();
@@ -288,8 +289,9 @@ main(int argc, char *argv[])
     (void)argc;
     (void)argv;
 
-    target_log_open("TEST", LOG_OPEN_STDOUT);
-    log_severity_set(LOG_SEVERITY_TRACE);
+    ut_init(test_name, NULL, NULL);
+
+    ut_setUp_tearDown(test_name, gatekeeper_cache_setUp, gatekeeper_cache_tearDown);
 
     /*
      * This is a requirement: Do NOT proceed if the file is missing.
@@ -303,11 +305,9 @@ main(int argc, char *argv[])
         exit(1);
     }
 
-    UnityBegin(test_name);
-
     run_gk_cache();
     run_gk_cache_cmp();
     run_gk_cache_flush();
 
-    return UNITY_END();
+    return ut_fini();
 }

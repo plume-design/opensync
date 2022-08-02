@@ -63,9 +63,6 @@ void lnx_lte_ip6_control(const char *ifname, int cmd)
 
 bool lnx_lte_init(lnx_lte_t *self, const char *ifname)
 {
-    bool res;
-    bool started;
-
     memset(self, 0, sizeof(*self));
 
     LOGI("%s: New LTE %s", __func__, ifname);
@@ -76,31 +73,8 @@ bool lnx_lte_init(lnx_lte_t *self, const char *ifname)
     }
     /* Disable IPv6 support for LTE interface*/
     lnx_lte_ip6_control(ifname, 1);
-    /*
-     * Launch the quectel daemon to make an LTE 'call'
-     */
-    res = daemon_init(&self->ll_lted, "/usr/opensync/tools/quectel-CM", DAEMON_LOG_ALL);
-    if (!res)
-    {
-        LOG(ERR, "lte: %s: Unable to initialize lte daemon object.", ifname);
-        return false;
-    }
-
-    LOGI("%s: start LTE daemon", __func__);
-    if (!daemon_is_started(&self->ll_lted, &started) || started)
-    {
-        daemon_stop(&self->ll_lted);
-        LOGI("%s: stop LTE daemon", __func__);
-    }
-
-    if (!daemon_restart_set(&self->ll_lted, true, 3.0, 10))
-    {
-        LOG(WARN, "lte %s: Error enabling daemon auto-restart", ifname);
-    }
-
     self->ll_applied = true;
-
-    return daemon_start(&self->ll_lted);
+    return true;
 }
 
 bool lnx_lte_fini(lnx_lte_t *self)

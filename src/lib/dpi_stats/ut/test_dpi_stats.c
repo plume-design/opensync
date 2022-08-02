@@ -35,6 +35,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "unity.h"
 #include "target.h"
 #include "qm_conn.h"
+#include "unit_test_utils.h"
 
 const char *test_name = "test_dpi_stats";
 
@@ -67,26 +68,6 @@ test_dpi_stats_send_report(char *topic, struct dpi_stats_packed_buffer *pb)
 
     return;
 }
-
-/**
- * @brief called by the Unity framework before every single test
- */
-void
-setUp(void)
-{
-    return;
-}
-
-
-/**
- * @brief called by the Unity framework after every single test
- */
-void
-tearDown(void)
-{
-    return;
-}
-
 
 void
 test_dpi_stats_serialize_report(void)
@@ -130,14 +111,12 @@ test_lte_set_mqtt_topic(void)
 int
 main(int argc, char *argv[])
 {
-    /* Set the logs to stdout */
-    target_log_open("TEST", LOG_OPEN_STDOUT);
-    log_severity_set(LOG_SEVERITY_TRACE);
+    ut_init(test_name, NULL, NULL);
 
-    UnityBegin(test_name);
+    ut_setUp_tearDown(test_name, NULL, NULL);
 
     RUN_TEST(test_lte_set_mqtt_topic);
     RUN_TEST(test_dpi_stats_serialize_report);
 
-    return UNITY_END();
+    return ut_fini();
 }

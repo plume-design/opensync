@@ -52,6 +52,11 @@ typedef struct {
     ds_tree_node_t      dst_node;
 } bm_neighbor_t;
 
+typedef struct {
+    bm_client_t *client;
+    bm_neighbor_t *neighbor;
+} bm_client_neighbor_t;
+
 /*****************************************************************************/
 
 extern bool     bm_neighbor_init( void );
@@ -75,5 +80,6 @@ bool bm_neighbor_only_dfs_channels(bm_client_t *client);
 
 bool bm_neighbor_is_our_bssid(const bm_client_t *client, const unsigned char *bssid);
 int bm_neighbor_get_channels(bm_client_t *client, bm_client_rrm_req_type_t rrm_req_type, uint8_t *channels, int channels_size, int self_first, uint8_t *op_classes, int op_classes_size);
+uint8_t bm_neighbor_get_phy_type(uint8_t op_class);
 
 #endif /* BM_NEIGHBOR_H_INCLUDED */

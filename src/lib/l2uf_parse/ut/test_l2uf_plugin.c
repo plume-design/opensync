@@ -24,21 +24,26 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#include <stdio.h>
-#include <stdlib.h>
 #include <stdbool.h>
+#include <stdint.h>
+#include <stdio.h>
 #include <string.h>
 
-#include "l2uf_parse.h"
+#include "const.h"
+#include "fsm.h"
 #include "json_util.h"
+#include "l2uf_parse.h"
 #include "log.h"
-#include "qm_conn.h"
-#include "target.h"
-#include "unity.h"
-#include "pcap.c"
 #include "memutil.h"
+#include "net_header_parse.h"
+#include "ovsdb_utils.h"
+#include "qm_conn.h"
+#include "unit_test_utils.h"
+#include "unity.h"
 
-const char *test_name = "l2uf_plugin_tests";
+#include "pcap.c"
+
+const char *ut_name = "l2uf_plugin_tests";
 
 #define OTHER_CONFIG_NELEMS 4
 #define OTHER_CONFIG_NELEM_SIZE 128
@@ -135,77 +140,20 @@ struct fsm_session_ops g_ops =
 
 struct l2uf_cache *g_mgr;
 
-/**
- * @brief Converts a bytes array in a hex dump file wireshark can import.
- *
- * Dumps the array in a file that can then be imported by wireshark.
- * The file can also be translated to a pcap file using the text2pcap command.
- * Useful to visualize the packet content.
- * @param fname the file recipient of the hex dump
- * @param buf the buffer to dump
- * @param length the length of the buffer to dump
- */
-void
-create_hex_dump(const char *fname, const uint8_t *buf, size_t len)
-{
-    int line_number = 0;
-    bool new_line = true;
-    size_t i;
-    FILE *f;
-
-    f = fopen(fname, "w+");
-
-    if (f == NULL) return;
-
-    for (i = 0; i < len; i++)
-    {
-	 new_line = (i == 0 ? true : ((i % 8) == 0));
-	 if (new_line)
-	 {
-	      if (line_number) fprintf(f, "\n");
-	      fprintf(f, "%06x", line_number);
-	      line_number += 8;
-	 }
-         fprintf(f, " %02x", buf[i]);
-    }
-    fprintf(f, "\n");
-    fclose(f);
-
-    return;
-}
 
 
 char *g_location_id = "foo";
 char *g_node_id = "bar";
 
-/**
- * @brief Convenient wrapper
- *
- * Dumps the packet content in /tmp/<tests_name>_<pkt name>.txtpcap
- * for wireshark consumption and sets the given parser's data fields.
- * @param pkt the C structure containing an exported packet capture
- * @param parser theparser structure to set
- */
-#define PREPARE_UT(pkt, parser)                                 \
-    {                                                           \
-        char fname[128];                                        \
-        size_t len = sizeof(pkt);                               \
-                                                                \
-        snprintf(fname, sizeof(fname), "/tmp/%s_%s.txtpcap",    \
-                 test_name, #pkt);                              \
-        create_hex_dump(fname, pkt, len);                       \
-        parser->packet_len = len;                               \
-        parser->data = (uint8_t *)pkt;                          \
-    }
-
 void global_test_init(void)
 {
-    size_t n_sessions, i;
+    size_t n_sessions;
+    size_t i;
 
     g_mgr = NULL;
-    n_sessions = sizeof(g_sessions) / sizeof(struct fsm_session);
 
     /* Reset sessions, register them to the plugin */
+    n_sessions = ARRAY_SIZE(g_sessions);
     for (i = 0; i < n_sessions; i++)
     {
         struct fsm_session *session = &g_sessions[i];
@@ -223,18 +171,19 @@ void global_test_init(void)
         pair = ds_tree_find(session->conf->other_config, "mqtt_v");
         session->topic = pair->value;
         session->location_id = g_location_id;
-        session->node_id = g_location_id;
+        session->node_id = g_node_id;
     }
 }
 
 void global_test_exit(void)
 {
-    size_t n_sessions, i;
+    size_t n_sessions;
+    size_t i;
 
     g_mgr = NULL;
-    n_sessions = sizeof(g_sessions) / sizeof(struct fsm_session);
 
     /* Reset sessions, register them to the plugin */
+    n_sessions = ARRAY_SIZE(g_sessions);
     for (i = 0; i < n_sessions; i++)
     {
         struct fsm_session *session = &g_sessions[i];
@@ -246,14 +195,16 @@ void global_test_exit(void)
 /**
  * @brief called by the Unity framework before every single test
  */
-void setUp(void)
+void
+l2uf_plugin_setUp(void)
 {
-    size_t n_sessions, i;
+    size_t n_sessions;
+    size_t i;
 
     g_mgr = NULL;
-    n_sessions = sizeof(g_sessions) / sizeof(struct fsm_session);
 
     /* Reset sessions, register them to the plugin */
+    n_sessions = ARRAY_SIZE(g_sessions);
     for (i = 0; i < n_sessions; i++)
     {
         struct fsm_session *session = &g_sessions[i];
@@ -268,13 +219,14 @@ void setUp(void)
 /**
  * @brief called by the Unity framework after every single test
  */
-void tearDown(void)
+void
+l2uf_plugin_tearDown(void)
 {
-    size_t n_sessions, i;
-
-    n_sessions = sizeof(g_sessions) / sizeof(struct fsm_session);
+    size_t n_sessions;
+    size_t i;
 
     /* Reset sessions, unregister them */
+    n_sessions = ARRAY_SIZE(g_sessions);
     for (i = 0; i < n_sessions; i++)
     {
         struct fsm_session *session = &g_sessions[i];
@@ -329,6 +281,8 @@ void test_process_msg(void)
     uint16_t ethertype;
     size_t len;
 
+    ut_prepare_pcap(__func__);
+
     /* Select the first active session */
     session = &g_sessions[0];
     l_session = l2uf_lookup_session(session);
@@ -337,7 +291,7 @@ void test_process_msg(void)
     parser = &l_session->parser;
     net_parser = CALLOC(1, sizeof(*net_parser));
     parser->net_parser = net_parser;
-    PREPARE_UT(pkt45, net_parser);
+    UT_CREATE_PCAP_PAYLOAD(pkt45, net_parser);
     len = net_header_parse(net_parser);
     TEST_ASSERT_TRUE(len != 0);
     len = l2uf_parse_message(parser);
@@ -347,23 +301,21 @@ void test_process_msg(void)
     TEST_ASSERT_EQUAL_INT(8, ethertype);
     l2uf_process_message(l_session);
     FREE(net_parser);
+
+    ut_cleanup_pcap();
 }
 
 int main(int argc, char *argv[])
 {
-    /* Set the logs to stdout */
-    target_log_open("TEST", LOG_OPEN_STDOUT);
-    log_severity_set(LOG_SEVERITY_TRACE);
+    (void)argc;
+    (void)argv;
 
-    UnityBegin(test_name);
-
-    global_test_init();
+    ut_init(ut_name, global_test_init, global_test_exit);
+    ut_setUp_tearDown(ut_name, l2uf_plugin_setUp, l2uf_plugin_tearDown);
 
     RUN_TEST(test_no_session);
     RUN_TEST(test_load_unload_plugin);
     RUN_TEST(test_process_msg);
 
-    global_test_exit();
-
-    return UNITY_END();
+    return ut_fini();
 }

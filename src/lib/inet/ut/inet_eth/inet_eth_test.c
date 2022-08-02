@@ -29,15 +29,15 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "inet_eth.h"
 
 #include "../tests_common.c"
+#include "unit_test_utils.h"
+
+char *test_name = "test_inet_eth";
 
 /*
  * ===========================================================================
  *  INET ETH
  * ===========================================================================
  */
-
-void setUp() {}
-void tearDown() {}
 
 void test_inet_eth_network(void)
 {
@@ -317,6 +317,10 @@ int main(int argc, char *argv[])
     (void)argc;
     (void)argv;
 
+    ut_init(test_name, NULL, NULL);
+
+    ut_setUp_tearDown(test_name, NULL, NULL);
+
     if (!parse_opts(argc, argv))
     {
         return false;
@@ -325,9 +329,7 @@ int main(int argc, char *argv[])
     if (opt_verbose)
         log_open("INET_ETH_TEST", LOG_OPEN_STDOUT);
 
-    UNITY_BEGIN();
-
     run_test_inet_eth();
 
-    return UNITY_END();
+    return ut_fini();
 }

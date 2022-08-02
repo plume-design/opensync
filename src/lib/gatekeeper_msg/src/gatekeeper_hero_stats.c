@@ -69,6 +69,7 @@ get_protobuf_direction_value(enum gkc_flow_direction dir)
         case GKC_FLOW_DIRECTION_OUTBOUND    : return GATEKEEPER__HERO_STATS__HERO_DIRECTIONS__HERO_DIR_OUTBOUND;
         case GKC_FLOW_DIRECTION_INBOUND     : return GATEKEEPER__HERO_STATS__HERO_DIRECTIONS__HERO_DIR_INBOUND;
         case GKC_FLOW_DIRECTION_LAN2LAN     : return GATEKEEPER__HERO_STATS__HERO_DIRECTIONS__HERO_DIR_LAN2LAN;
+        default                             : break;
     }
     LOGD("%s(): no such direction %d", __func__, dir);
     return GATEKEEPER__HERO_STATS__HERO_DIRECTIONS__HERO_DIR_UNSPECIFIED;
@@ -730,6 +731,12 @@ serialize_ipv4_tree(ds_tree_t *tree, os_macaddr_t *device_id, struct gkc_report_
             FREE(new_pb);
             continue;
         }
+
+        if (entry->action == FSM_ACTION_NONE)
+        {
+            new_pb->action = get_protobuf_action_value(attr->action_by_name);
+        }
+
         gatekeeper__hero_stats__hero_ipv4__init(new_pb->ipv4);
 
         /*
@@ -778,6 +785,12 @@ serialize_ipv6_tree(ds_tree_t *tree, os_macaddr_t *device_id, struct gkc_report_
             FREE(new_pb);
             continue;
         }
+
+        if (entry->action == FSM_ACTION_NONE)
+        {
+            new_pb->action = get_protobuf_action_value(attr->action_by_name);
+        }
+
         gatekeeper__hero_stats__hero_ipv6__init(new_pb->ipv6);
 
         in6 = (struct sockaddr_in6 *)&(attr->ip_addr);

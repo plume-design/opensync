@@ -63,6 +63,7 @@ gkc_new_flow_entry(struct gkc_ip_flow_interface *req)
 
     memcpy(flow_entry->dst_ip_addr, req->dst_ip_addr, ip_len);
 
+    flow_entry->original_ts  = time(NULL);
     flow_entry->cache_ts  = time(NULL);
     flow_entry->cache_ttl = req->cache_ttl;
     flow_entry->src_port  = req->src_port;

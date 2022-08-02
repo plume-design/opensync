@@ -25,90 +25,41 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 #include <arpa/inet.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <stdbool.h>
-#include <string.h>
-#include <netinet/ip_icmp.h>
+#include <net/if_arp.h>
 #include <netinet/icmp6.h>
+#include <netinet/if_ether.h>
+#include <netinet/in.h>
+#include <netinet/ip.h>
+#include <netinet/ip_icmp.h>
+#include <string.h>
+#include <sys/socket.h>
+
 #include "log.h"
 #include "net_header_parse.h"
-#include "target.h"
+#include "network_metadata_report.h"
+#include "unit_test_utils.h"
 #include "unity.h"
 
 #include "pcap.c"
 
+const char *ut_name = "ustack_tests";
+
 struct net_header_parser g_parser;
-const char *test_name = "ustack_tests";
 
 #define NET_HDR_BUFF_SIZE 128 + (2 * INET6_ADDRSTRLEN + 128) + 256
 
 static char log_buf[NET_HDR_BUFF_SIZE] = { 0 };
 
-/**
- * @brief Converts a bytes array in a hex dump file wireshark can import.
- *
- * Dumps the array in a file that can then be imported by wireshark.
- * Useful to visualize the packet content.
- */
-void create_hex_dump(const char *fname, const uint8_t *buf, size_t len)
-{
-    int line_number = 0;
-    bool new_line = true;
-    size_t i;
-    FILE *f;
-
-    f = fopen(fname, "w+");
-
-    if (f == NULL) return;
-
-    for (i = 0; i < len; i++)
-    {
-	 new_line = (i == 0 ? true : ((i % 8) == 0));
-	 if (new_line)
-	 {
-	      if (line_number) fprintf(f, "\n");
-	      fprintf(f, "%06x", line_number);
-	      line_number += 8;
-	 }
-         fprintf(f, " %02x", buf[i]);
-    }
-    fprintf(f, "\n");
-    fclose(f);
-
-    return;
-}
-
-/**
- * @brief Convenient wrapper
- *
- * Dumps the packet content in /tmp/ustack_tests_<pkt name> for
- * wireshark consumption and sets g_parser data fields.
- * @params pkt the C structure containing an exported packet capture
- */
-#define PREPARE_UT(pkt)                                         \
-    {                                                           \
-        char fname[128];                                        \
-        size_t len = sizeof(pkt);                               \
-                                                                \
-        snprintf(fname, sizeof(fname), "/tmp/%s_%s.txtpcap",    \
-                 test_name, #pkt);                              \
-        create_hex_dump(fname, pkt, len);                       \
-        g_parser.packet_len = len;                              \
-        g_parser.data = (uint8_t *)pkt;                         \
-    }
-
-
-void setUp(void)
+void ustack_setUp(void)
 {
     memset(&g_parser, 0, sizeof(g_parser));
-    return;
+    ut_prepare_pcap(Unity.CurrentTestName);
 }
 
-void tearDown(void)
+void ustack_tearDown(void)
 {
+    ut_cleanup_pcap();
     memset(&g_parser, 0, sizeof(g_parser));
-    return;
 }
 
 /**
@@ -125,7 +76,7 @@ void test_icmpv6_pcap_parse(void)
     struct icmp6_hdr *icmphdr;
     size_t len;
 
-    PREPARE_UT(pkt16574);
+    UT_CREATE_PCAP_PAYLOAD(pkt16574, &g_parser);
     parser = &g_parser;
 
     /* Validate parsing success */
@@ -166,7 +117,7 @@ void test_tcp_ipv4(void)
     char *expected_data = "Bonjour\n";
     char data[strlen(expected_data) + 1];
 
-    PREPARE_UT(pkt16608);
+    UT_CREATE_PCAP_PAYLOAD(pkt16608, &g_parser);
     parser = &g_parser;
 
     /* Validate parsing success */
@@ -206,8 +157,8 @@ void test_tcp_ipv6(void)
     char *expected_data = "Bonjour\n";
     char data[strlen(expected_data) + 1];
 
+    UT_CREATE_PCAP_PAYLOAD(pkt1200, &g_parser);
     parser = &g_parser;
-    PREPARE_UT(pkt1200);
 
     /* Validate parsing success */
     len = net_header_parse(parser);
@@ -246,8 +197,8 @@ void test_udp_ipv4(void)
     char *expected_data = "Bonjour\n";
     char data[strlen(expected_data) + 1];
 
+    UT_CREATE_PCAP_PAYLOAD(pkt9568, &g_parser);
     parser = &g_parser;
-    PREPARE_UT(pkt9568);
 
     /* Validate parsing success */
     len = net_header_parse(parser);
@@ -285,8 +236,8 @@ void test_arp_request(void)
     int ethertype;
     size_t len;
 
+    UT_CREATE_PCAP_PAYLOAD(pkt12176, &g_parser);
     parser = &g_parser;
-    PREPARE_UT(pkt12176);
 
     /* Validate parsing success */
     len = net_header_parse(parser);
@@ -322,8 +273,8 @@ void test_icmp4_request(void)
     struct in_addr dst_addr;
     struct icmphdr *icmp_hdr;
 
+    UT_CREATE_PCAP_PAYLOAD(pkt244, &g_parser);
     parser = &g_parser;
-    PREPARE_UT(pkt244);
 
     /* Validate parsing success */
     len = net_header_parse(parser);
@@ -368,8 +319,8 @@ void test_icmp4_reply(void)
     struct in_addr dst_addr;
     struct icmphdr *icmp_hdr;
 
+    UT_CREATE_PCAP_PAYLOAD(pkt245, &g_parser);
     parser = &g_parser;
-    PREPARE_UT(pkt245);
 
     /* Validate parsing success */
     len = net_header_parse(parser);
@@ -411,8 +362,8 @@ void test_udp_ipv4_no_data(void)
     struct iphdr *ip_hdr;
     size_t len;
 
+    UT_CREATE_PCAP_PAYLOAD(pkt_udp_no_data, &g_parser);
     parser = &g_parser;
-    PREPARE_UT(pkt_udp_no_data);
 
     /* Validate parsing success */
     len = net_header_parse(parser);
@@ -448,7 +399,7 @@ void test_flow_details(void)
     size_t len;
 
     /* IPv6 Packet parse */
-    PREPARE_UT(pkt16574);
+    UT_CREATE_PCAP_PAYLOAD(pkt16574, &g_parser);
     parser = &g_parser;
 
     /* Validate parsing success */
@@ -470,7 +421,7 @@ void test_flow_details(void)
 
     /* IPv4 Packet parse */
     memset(&g_parser, 0, sizeof(g_parser));
-    PREPARE_UT(pkt16608);
+    UT_CREATE_PCAP_PAYLOAD(pkt16608, &g_parser);
     parser = &g_parser;
 
     /* Validate parsing success */
@@ -488,8 +439,8 @@ void test_flow_details(void)
 
     /* UDP Packet parse */
     memset(&g_parser, 0, sizeof(g_parser));
+    UT_CREATE_PCAP_PAYLOAD(pkt_udp_no_data, &g_parser);
     parser = &g_parser;
-    PREPARE_UT(pkt_udp_no_data);
 
     /* Validate parsing success */
     len = net_header_parse(parser);
@@ -505,15 +456,15 @@ void test_flow_details(void)
          net_header_fill_info_buf(log_buf, NET_HDR_BUFF_SIZE, parser));
 }
 
-int main(int argc, char *argv[])
+int
+main(int argc, char *argv[])
 {
     (void)argc;
     (void)argv;
 
-    target_log_open("TEST", LOG_OPEN_STDOUT);
-    log_severity_set(LOG_SEVERITY_INFO);
+    ut_init(ut_name, NULL, NULL);
+    ut_setUp_tearDown(ut_name, ustack_setUp, ustack_tearDown);
 
-    UnityBegin(test_name);
     RUN_TEST(test_tcp_ipv4);
     RUN_TEST(test_tcp_ipv6);
     RUN_TEST(test_udp_ipv4);
@@ -524,5 +475,5 @@ int main(int argc, char *argv[])
     RUN_TEST(test_udp_ipv4_no_data);
     RUN_TEST(test_flow_details);
 
-    return UNITY_END();
+    return ut_fini();
 }

@@ -383,6 +383,9 @@ bool wano_wan_status_update(enum wano_wan_config_type type, int64_t priority)
         case WC_TYPE_STATIC_IPV4:
             typestr = "static_ipv4";
             break;
+
+        case WC_TYPE_DHCP:
+            typestr = "dhcp";
     }
 
     where = ovsdb_where_multi(
@@ -581,6 +584,10 @@ bool wano_wan_config_from_schema(struct wano_wan_config *wc, struct schema_WAN_C
         wc->wc_type_static_ipv4.wc_gateway = gateway;
         wc->wc_type_static_ipv4.wc_primary_dns = primary_dns;
         wc->wc_type_static_ipv4.wc_secondary_dns = secondary_dns;
+    }
+    else if (strcmp(schema->type, "dhcp") == 0)
+    {
+        wc->wc_type = WC_TYPE_DHCP;
     }
     else
     {

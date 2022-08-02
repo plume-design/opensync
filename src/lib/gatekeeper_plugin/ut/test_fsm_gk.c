@@ -52,6 +52,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "gatekeeper_data.h"
 
 #include "test_gatekeeper_plugin.h"
+#include "unit_test_utils.h"
 
 #define OTHER_CONFIG_NELEMS 3
 #define OTHER_CONFIG_NELEM_SIZE 128
@@ -2145,18 +2146,12 @@ test_mcurl_config(void)
 void
 run_test_fsm_gk(void)
 {
-    void (*prev_setUp)(void);
-    void (*prev_tearDown)(void);
     bool ret;
 
     ret = check_connection();
     if (ret == true) g_is_connected = true;
 
-    /* swap the setup/teardown routines */
-    prev_setUp = g_setUp;
-    prev_tearDown = g_tearDown;
-    g_setUp = main_setUp;
-    g_tearDown = main_tearDown;
+    ut_setUp_tearDown(__func__, main_setUp, main_tearDown);
 
     RUN_TEST(test_curl_multi);
     RUN_TEST(test_curl_fqdn);
@@ -2186,7 +2181,5 @@ run_test_fsm_gk(void)
     RUN_TEST(test_mcurl_connection_timeout);
     RUN_TEST(test_cname_redirect);
 
-    /* restore the setup/teardown routines */
-    g_setUp = prev_setUp;
-    g_tearDown = prev_tearDown;
+    ut_setUp_tearDown(NULL, NULL, NULL);
 }

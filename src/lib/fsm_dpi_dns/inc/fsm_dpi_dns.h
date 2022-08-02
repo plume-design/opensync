@@ -93,6 +93,7 @@ struct dpi_dns_client
 {
     bool initialized;
     ds_tree_t fsm_sessions;
+    bool identical_plugin_enabled;
     struct dns_record curr_rec_processed;
     void (*update_tag)(struct fsm_dns_update_tag_param *);
 };
@@ -179,5 +180,17 @@ fsm_dpi_dns_populate_response_ips(struct dns_response_s *dns_resp_ips);
  */
 void
 fsm_dpi_dns_free_dns_response_ips(struct dns_response_s *dns_response);
+
+/**
+ * @brief process dns record
+ *
+ * @param session the fsm session
+ * @param acc the flow
+ * @param net_parser the packet container
+ */
+int
+fsm_dpi_dns_process_dns_record(struct fsm_session *session,
+                               struct net_md_stats_accumulator *acc,
+                               struct net_header_parser *net_parser);
 
 #endif /* FSM_DPI_DNS_H_INCLUDED */

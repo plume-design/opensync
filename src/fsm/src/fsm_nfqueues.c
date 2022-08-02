@@ -93,15 +93,9 @@ fsm_nfq_net_header_parse(struct nfq_pkt_info *pkt_info, void *data)
         domain = AF_INET6;
     }
 
-    /* fetch ethernet header details using neigh table lookup */
-    if (!pkt_info->hw_addr)
+    rc_lookup = neigh_table_lookup_af(domain, src_ip, &src_mac);
+    if (rc_lookup)
     {
-        rc_lookup = neigh_table_lookup_af(domain, src_ip, &src_mac);
-        if (rc_lookup) net_parser.eth_header.srcmac = &src_mac;
-    }
-    else
-    {
-        memcpy(&src_mac, pkt_info->hw_addr, sizeof(os_macaddr_t));
         net_parser.eth_header.srcmac = &src_mac;
     }
 

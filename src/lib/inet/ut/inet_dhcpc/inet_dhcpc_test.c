@@ -27,9 +27,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "../tests_common.c"
 
 #include "osn_dhcp.h"
+#include "unit_test_utils.h"
 
-void setUp() {}
-void tearDown() {}
+char *test_name = "udhcpc_test";
 
 void test_udhcpc(void)
 {
@@ -383,6 +383,10 @@ int main(int argc, char *argv[])
     (void)argc;
     (void)argv;
 
+    ut_init(test_name, NULL, NULL);
+
+    ut_setUp_tearDown(test_name, NULL, NULL);
+
     if (!parse_opts(argc, argv))
     {
         return false;
@@ -391,9 +395,7 @@ int main(int argc, char *argv[])
     if (opt_verbose)
         log_open("UDHCPC_TEST", LOG_OPEN_STDOUT);
 
-    UNITY_BEGIN();
-
     run_test_udhcpc();
 
-    return UNITY_END();
+    return ut_fini();
 }

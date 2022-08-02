@@ -12,10 +12,18 @@ config HOSTAP_TIMEOUT_T_SWITCH
 
 config HOSTAP_PSK_FILE_WPS
     bool "use PSKs from wpa_psk_file for WPS sessions"
-    default n
+    default y
     help
-        This feature requires a patch on hostapd. We introduced new tag "wps" to PSK
-        file. That tag is used for marking PSKs usable in WPS sessions. By default
-        hostapd doesn't recognize this tag.
+        We introduced new tag "wps" to PSK file. That tag is used
+        for marking PSKs usable in WPS sessions.
 
-        Enable this only on platforms using patched hostap.
+        This feature is dependent on the below upstream hostap commit
+        which recognizes this tag.
+
+            commit fde8e7946304569292c5d520d76371291cc4f88c
+            Author: Tomasz Jankowski tomasz.jankowski@plume.com
+            Date: Mon Feb 10 12:49:33 2020 +0100
+
+            WPS: Make it possible to use PSKs loaded from the PSK file.
+
+        Enable this only on platforms using hostap patched with above commit.

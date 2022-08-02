@@ -33,6 +33,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "target.h"
 #include "unity.h"
 #include "log.h"
+#include "unit_test_utils.h"
 
 // Include the file to be unit tested
 #include "nm2_mac_tags.c"
@@ -47,8 +48,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define ADD_MAC_LEARN_TBL(A) MAC_LEARN_TBL_IN_CMD A
 #define DEL_MAC_LEARN_TBL(A) MAC_LEARN_TBL_DEL_CMD A
 
-void setUp() {}
-void tearDown() {}
+char *test_name = "nm2_mac_tags_tests";
 
 static void unit_test_init(void)
 {
@@ -145,12 +145,13 @@ int main(void)
 {
     //struct ev_loop *loop = EV_DEFAULT;
 
-    target_log_open("TEST", 0);
-    log_severity_set(LOG_SEVERITY_DEBUG);
-    UnityBegin("nm2_mac_tags_tests");
+    ut_init(test_name, NULL, NULL);
+
+    ut_setUp_tearDown(test_name, NULL, NULL);
+
     unit_test_init();
     RUN_TEST(test_create_oftag);
     RUN_TEST(test_set_eth_devices);
     RUN_TEST(test_unset_eth_devices);
-    return UNITY_END();
+    return ut_fini();
 }

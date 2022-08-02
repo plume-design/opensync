@@ -110,7 +110,7 @@ gen_fsmc_cmd() {
                                 ["policy_table","${policy_name}"],
                                 ["flow_attributes","${attrs_tag}"],
                                 ["dpi_plugin","${dpi_plugin}"],
-                                ["dso_init","dpi_sni_plugin_init"],
+                                ["dso_init","fsm_dpi_sni_init"],
                                 ["mqtt_v","${mqtt_v}"]
                                ]]
          }
@@ -188,7 +188,7 @@ attrs_tag=${ATTRS_TAG:-'${dev_dpi_attrs}'}
 dpi_plugin=${DPI_PLUGIN}
 policy_name=${POLICY_TABLE:-dev_brightcloud}
 provider_plugin=${PROVIDER_PLUGIN:-brightcloud}
-fsm_handler=dev_dpi_sni
+fsm_handler=dev_fsm_dpi_sni
 
 # Validate the command argument
 if [ -z ${cmd} ]; then

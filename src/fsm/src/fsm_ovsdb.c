@@ -634,24 +634,36 @@ bool
 fsm_parse_dso(struct fsm_session *session)
 {
     char *plugin;
+    char dso[256] = { 0 };
 
-    plugin = session->conf->plugin;
-    if (plugin != NULL)
+    session->dso = NULL;
+
+    if (session->conf && session->conf->plugin)
     {
-        LOGI("%s: plugin: %s", __func__, plugin);
-        session->dso = STRDUP(plugin);
+        plugin = session->conf->plugin;
+        LOGD("%s: plugin: %s", __func__, plugin);
+        if (*plugin == '/')
+        {
+            session->dso = STRDUP(plugin);
+        }
+        else
+        {
+            snprintf(dso, sizeof(dso), CONFIG_INSTALL_PREFIX"/%s", plugin);
+            session->dso = STRDUP(dso);
+        }
     }
     else
     {
-        char *dir = CONFIG_INSTALL_PREFIX"/lib";
-        char dso[256];
-
-        memset(dso, 0, sizeof(dso));
-        snprintf(dso, sizeof(dso), "%s/libfsm_%s.so", dir, session->name);
-        session->dso = STRDUP(dso);
+        LOGD("%s: plugin: No explicit plugin DSO. Infering from name: %s",
+             __func__, session->name);
+        if (session->name)
+        {
+            snprintf(dso, sizeof(dso), CONFIG_INSTALL_PREFIX"/lib/libfsm_%s.so", session->name);
+            session->dso = STRDUP(dso);
+        }
     }
 
-    LOGT("%s: session %s set dso path to %s", __func__,
+    LOGD("%s: session %s set dso path to %s", __func__,
          session->name, session->dso != NULL ? session->dso : "None");
 
     return (session->dso != NULL ? true : false);
@@ -817,6 +829,20 @@ fsm_send_pb_report(struct fsm_session *session, char *topic,
     if (ret) session->report_count++;
 }
 
+void
+fsm_set_session_ops(struct fsm_session *session)
+{
+
+    if (session == NULL) return;
+
+    session->ops.send_report = fsm_send_report;
+    session->ops.send_pb_report = fsm_send_pb_report;
+    session->ops.get_config = fsm_get_other_config_val;
+    session->ops.state_cb = fsm_set_object_state;
+    session->ops.latest_obj_cb = fsm_oms_get_highest_version;
+    session->ops.last_active_obj_cb = fsm_oms_get_last_active_version;
+    session->ops.update_client = fsm_update_client;
+}
 
 /**
  * @brief allocates a FSM session
@@ -852,13 +878,7 @@ fsm_alloc_session(struct schema_Flow_Service_Manager_Config *conf)
     session->loop = mgr->loop;
     session->flood_tap = false;
 
-    session->ops.send_report = fsm_send_report;
-    session->ops.send_pb_report = fsm_send_pb_report;
-    session->ops.get_config = fsm_get_other_config_val;
-    session->ops.state_cb = fsm_set_object_state;
-    session->ops.latest_obj_cb = fsm_oms_get_highest_version;
-    session->ops.last_active_obj_cb = fsm_oms_get_last_active_version;
-    session->ops.update_client = fsm_update_client;
+    fsm_set_session_ops(session);
 
     ret = fsm_session_update(session, conf);
     if (!ret) goto err_free_plugin_ops;
@@ -972,7 +992,11 @@ fsm_add_session(struct schema_Flow_Service_Manager_Config *conf)
     sessions = fsm_get_sessions();
     session = ds_tree_find(sessions, conf->handler);
 
-    if (session != NULL) return;
+    if (session != NULL)
+    {
+        if (session->type == FSM_WEB_CAT) fsm_modify_session(conf);
+        return;
+    }
 
     /* Allocate a new session, insert it to the sessions tree */
     session = fsm_alloc_session(conf);
@@ -1003,8 +1027,11 @@ fsm_add_session(struct schema_Flow_Service_Manager_Config *conf)
     client->update_client = fsm_update_client;
     client->session_name = fsm_get_session_name;
     fsm_policy_register_client(&session->policy_client);
+    fsm_notify_identical_sessions(session, true);
+    fsm_notify_dispatcher_tap_type(session);
 
     fsm_walk_sessions_tree();
+
     return;
 
 err_free_session:
@@ -1039,6 +1066,7 @@ fsm_delete_session(struct schema_Flow_Service_Manager_Config *conf)
 
     fsm_policy_deregister_client(&session->policy_client);
     ds_tree_remove(sessions, session);
+    fsm_notify_identical_sessions(session, false);
     fsm_free_session(session);
     fsm_walk_sessions_tree();
 }
@@ -1062,6 +1090,8 @@ fsm_modify_session(struct schema_Flow_Service_Manager_Config *conf)
 
     fsm_session_update(session, conf);
     if (session->ops.update != NULL) session->ops.update(session);
+
+    fsm_notify_dispatcher_tap_type(session);
 }
 
 

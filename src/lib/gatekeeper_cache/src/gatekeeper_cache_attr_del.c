@@ -223,7 +223,7 @@ gkc_attr_ttl_expired(struct attr_cache *attr_entry)
     now = time(NULL);
 
     /* check if TTL is expired */
-    if ((now - attr_entry->cache_ts) < attr_entry->cache_ttl)
+    if ((now - attr_entry->original_ts) < attr_entry->cache_ttl)
     {
         return false;
     }

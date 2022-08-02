@@ -50,6 +50,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "const.h"
 #include "util.h"
 #include "memutil.h"
+#include "bm_util_opclass.h"
 
 
 /*****************************************************************************/
@@ -285,6 +286,7 @@ bm_client_to_bsal_conf_bs_2g(bm_client_t *client, bm_group_t *group, radio_type_
 
         dest->rssi_auth_lwm         = 0;
         dest->auth_reject_reason    = 0;
+        dest->rssi_busy_override_xing = client->bowm;
     }
     else {
         /* Don't block client */
@@ -311,6 +313,7 @@ static bool
 bm_client_to_bsal_conf_bs_5g(bm_client_t *client, bm_group_t *group, radio_type_t radio_type, bsal_client_config_t *dest)
 {
     dest->rssi_low_xing = client->lwm == BM_KICK_MAGIC_NUMBER ? 0 : client->lwm;
+    dest->rssi_busy_override_xing = client->bowm;
 
     if (client->state != BM_CLIENT_STATE_BACKOFF) {
         if (client->pref_6g_allowed == BM_CLIENT_PREF_6G_ALLOWED_ALWAYS) {
@@ -334,6 +337,9 @@ bm_client_to_bsal_conf_bs_5g(bm_client_t *client, bm_group_t *group, radio_type_
 static bool
 bm_client_to_bsal_conf_bs_6g(bm_client_t *client, bm_group_t *group, radio_type_t radio_type, bsal_client_config_t *dest)
 {
+    if (client->state == BM_CLIENT_STATE_CONNECTED) {
+        dest->rssi_low_xing = client->lwm;
+    }
     return true;
 }
 
@@ -366,9 +372,9 @@ bm_client_to_bsal_conf_bs(bm_client_t *client, bm_group_t *group, radio_type_t r
         return false;
     }
 
-    LOGD("bs %s radio_type %d (probe %d-%d, auth %d-%d, xing %d-%d", client->mac_addr, radio_type,
+    LOGD("bs %s radio_type %d (probe %d-%d, auth %d-%d, xing %d-%d-%d", client->mac_addr, radio_type,
          dest->rssi_probe_lwm, dest->rssi_probe_hwm, dest->rssi_auth_lwm, dest->rssi_auth_hwm,
-         dest->rssi_low_xing, dest->rssi_high_xing);
+         dest->rssi_busy_override_xing, dest->rssi_low_xing, dest->rssi_high_xing);
 
     return true;
 }
@@ -488,12 +494,14 @@ void
 bm_client_send_rrm_req(bm_client_t *client, bm_client_rrm_req_type_t rrm_req_type, int delay)
 {
     bm_rrm_req_t *req;
-    const size_t elements_num = 8;
-    uint8_t channels[elements_num];
-    uint8_t op_classes[elements_num];
+    size_t elements_num;
+    uint8_t channels[BM_CLIENT_MAX_RRM_REQ_CHANNELS];
+    uint8_t op_classes[BM_CLIENT_MAX_RRM_REQ_CHANNELS];
     int num_channels;
     uint32_t delay_ms;
     int i;
+
+    assert(BM_CLIENT_MAX_RRM_REQ_CHANNELS > BM_CLIENT_MAX_RRM_REQ_CHANNELS_LEGACY);
 
     if (!client->connected)
         return;
@@ -504,10 +512,16 @@ bm_client_send_rrm_req(bm_client_t *client, bm_client_rrm_req_type_t rrm_req_typ
     if (!client->info->is_RRM_supported)
         return;
 
+    if (client->band_cap_mask & BM_CLIENT_OPCLASS_60_CAP_BIT)
+        elements_num = BM_CLIENT_MAX_RRM_REQ_CHANNELS;
+    else
+        elements_num = BM_CLIENT_MAX_RRM_REQ_CHANNELS_LEGACY;
+
     bm_client_reset_rrm_neighbors(client);
     num_channels = bm_neighbor_get_channels(client, rrm_req_type, channels, elements_num, 0, op_classes, elements_num);
 
     for (i = 0; i < num_channels; i++) {
+        int opc;
         if (bm_client_is_dfs_channel(channels[i])) {
             if (!client->info->rrm_caps.bcn_rpt_passive) {
                 LOGD("%s skip rrm_req while DFS and !rrm_passive", client->mac_addr);
@@ -536,7 +550,9 @@ bm_client_send_rrm_req(bm_client_t *client, bm_client_rrm_req_type_t rrm_req_typ
         req->rrm_params.meas_dur = BM_CLIENT_RRM_ACTIVE_MEASUREMENT_DURATION;
 
         req->rrm_params.channel = channels[i];
-        req->rrm_params.op_class = op_classes[i];
+        /* Downgrade oplcass to 20 MHz */
+        opc = ieee80211_global_op_class_to_20mhz_op_class(op_classes[i], channels[i]);
+        req->rrm_params.op_class = opc ?: op_classes[i];
 
         if (bm_client_is_dfs_channel(channels[i])) {
             req->rrm_params.meas_mode = 0;
@@ -576,6 +592,11 @@ bm_client_update_rrm_neighbors(void)
     }
 }
 
+static bool bm_client_is_cap_6G(bm_client_t *client)
+{
+    return client->band_cap_6G | (client->band_cap_mask & BM_CLIENT_OPCLASS_60_CAP_BIT);
+}
+
 static void
 bm_client_print_client_caps( bm_client_t *client )
 {
@@ -587,7 +608,7 @@ bm_client_print_client_caps( bm_client_t *client )
     LOGD( " isRRMSupported        : %s", client->info->is_RRM_supported ? "Yes":"No" );
     LOGD( " Supports 2G           : %s", client->info->band_cap_2G ? "Yes":"No" );
     LOGD( " Supports 5G           : %s", client->info->band_cap_5G ? "Yes":"No" );
-    LOGD( " Supports 6G           : %s", client->info->band_cap_6G ? "Yes":"No" );
+    LOGD( " Supports 6G           : %s", bm_client_is_cap_6G(client) ? "Yes":"No" );
 
     LOGD( "   ~~~Datarate Information~~~    " );
     LOGD( " Max Channel Width     : %hhu", client->info->datarate_info.max_chwidth );
@@ -630,7 +651,7 @@ static void bm_client_report_caps(bm_client_t *client, const char *ifname, bsal_
     event.data.connect.is_RRM_supported = info->is_RRM_supported;
     event.data.connect.band_cap_2G = info->band_cap_2G | client->band_cap_2G;
     event.data.connect.band_cap_5G = info->band_cap_5G | client->band_cap_5G;
-    event.data.connect.band_cap_6G = info->band_cap_6G | client->band_cap_6G;
+    event.data.connect.band_cap_6G = info->band_cap_6G | bm_client_is_cap_6G(client);
     event.data.connect.assoc_ies_len = info->assoc_ies_len <= ARRAY_SIZE(event.data.connect.assoc_ies)
                                      ? info->assoc_ies_len
                                      : ARRAY_SIZE(event.data.connect.assoc_ies);
@@ -721,6 +742,44 @@ static void bm_client_caps_recalc(bm_client_t *client, const char *ifname, bsal_
     bm_client_record_client_caps(client, ifname, info);
 }
 
+static void bm_client_set_band_caps_mask(bm_client_t *client)
+{
+    int i;
+    int mask = 0;
+    char *str = NULL;
+
+    for (i = 0; i < client->op_classes.size; i++) {
+        const uint8_t op_c = client->op_classes.op_class[i];
+
+        str = strgrow(&str, "%hhu ", op_c);
+        if (ieee80211_global_op_class_is_2ghz(op_c))
+            mask |= BM_CLIENT_OPCLASS_24_CAP_BIT;
+
+        if (ieee80211_global_op_class_is_5ghz(op_c))
+            mask |= BM_CLIENT_OPCLASS_50_CAP_BIT;
+
+        if (ieee80211_global_op_class_is_6ghz(op_c))
+            mask |= BM_CLIENT_OPCLASS_60_CAP_BIT;
+    }
+
+    LOGI("Client %s supported opclass: %s", client->mac_addr, str ?: "none");
+    FREE(str);
+
+    if (mask == 0) {
+        LOGI("Client %s no capab based on opclasses", client->mac_addr);
+        if (client->band_cap_6G)
+            mask |= BM_CLIENT_OPCLASS_60_CAP_BIT;
+
+        if (client->band_cap_5G)
+            mask |= BM_CLIENT_OPCLASS_50_CAP_BIT;
+
+        if (client->band_cap_2G)
+            mask |= BM_CLIENT_OPCLASS_24_CAP_BIT;
+    }
+
+    client->band_cap_mask = mask;
+}
+
 void bm_client_check_connected(bm_client_t *client, bm_group_t *group, const char *ifname)
 {
     bsal_client_info_t          info;
@@ -757,6 +816,9 @@ void bm_client_check_connected(bm_client_t *client, bm_group_t *group, const cha
 
     /* Check assoc IEs */
     bm_client_parse_assoc_ies(client, info.assoc_ies, info.assoc_ies_len);
+
+    /* Set client capabilities based on supported Operating Classes */
+    bm_client_set_band_caps_mask(client);
 
     /* Recalc client capabilities */
     bm_client_caps_recalc(client, ifname, &info);
@@ -825,7 +887,7 @@ bm_client_add_to_group(bm_client_t *client, bm_group_t *group)
              group->ifcfg[i].bsal.ifname,
              cli_conf.rssi_probe_lwm, cli_conf.rssi_probe_hwm,
              cli_conf.rssi_auth_lwm, cli_conf.rssi_auth_hwm,
-             cli_conf.rssi_inact_xing, cli_conf.rssi_low_xing, cli_conf.rssi_high_xing);
+             cli_conf.rssi_busy_override_xing, cli_conf.rssi_low_xing, cli_conf.rssi_high_xing);
 
 
         bm_client_check_connected(client, group, group->ifcfg[i].ifname);
@@ -1483,13 +1545,33 @@ bm_client_get_btm_params( struct schema_Band_Steering_Clients *bscli,
 
         if (neigh->channel && type == BM_CLIENT_BTM_PARAMS_SC) {
             /* It's impossible to infer these correctly due to 6GHz channel
-             * numbering overlapping with 2.4G and 5G
+             * numbering overlapping with 2.4G and 5G.  Try to inherit info from
+             * neighbor table
              */
-            WARN_ON(!neigh->op_class);
-            WARN_ON(!neigh->phy_type);
+            if (!neigh->op_class || !neigh->phy_type) {
+                bm_neighbor_t *np;
 
-            memset(neigh, 0, sizeof(*neigh));
-            btm_params->num_neigh = 0;
+                if ((np = bm_neighbor_find_by_macstr(mac_str))) {
+                    LOGI("bm_client_get_btm_params [SC]: Inheriting BSSID %s " \
+                         "op_class/phy_type from neighbors table", mac_str);
+                    if (!neigh->op_class)
+                        neigh->op_class = np->neigh_report.op_class;
+                    if (!neigh->phy_type)
+                        neigh->phy_type = np->neigh_report.phy_type;
+                }
+            }
+
+            if (neigh->op_class && !neigh->phy_type) {
+                LOGI("Calculating phy_type based on op_class: %hhu", neigh->op_class);
+                neigh->phy_type = bm_neighbor_get_phy_type(neigh->op_class);
+            }
+
+            if (WARN_ON(!neigh->op_class) || WARN_ON(!neigh->phy_type)) {
+                LOGW("Invalid neigh params: op_class: %hhu, phy_type: %hhu",
+                     neigh->op_class, neigh->phy_type);
+                memset(neigh, 0, sizeof(*neigh));
+                btm_params->num_neigh = 0;
+            }
         }
     }
 
@@ -1773,6 +1855,12 @@ bm_client_from_ovsdb(struct schema_Band_Steering_Clients *bscli, bm_client_t *cl
         client->neighbor_list_filter_by_beacon_report = true;
     } else {
         client->neighbor_list_filter_by_beacon_report = bscli->neighbor_list_filter_by_beacon_report;
+    }
+
+    if (!bscli->bottom_lwm_exists) {
+        client->bowm = 0;
+    } else {
+        client->bowm = bscli->bottom_lwm;
     }
 
     return true;
@@ -2678,7 +2766,7 @@ bm_client_rejected(bm_client_t *client, bsal_event_t *event)
                  client->mac_addr);
             break;
         case RADIO_TYPE_NONE:
-            LOGW("%s: probe or auth req was rejection reported on unknow radio type",
+            LOGW("%s: probe or auth req was rejection reported on unknown radio type",
                  client->mac_addr);
             break;
     }
@@ -3509,10 +3597,13 @@ static void
 bm_client_xing_recalc(bm_client_t *client, bsal_client_info_t *info)
 {
     bm_client_ifcfg_t *ifcfg;
+    bsal_rssi_change_t new_xing_busy_override;
     bsal_rssi_change_t new_xing_low;
     bsal_rssi_change_t new_xing_high;
+    bsal_rssi_change_t prev_xing_busy_override;
     bsal_rssi_change_t prev_xing_low;
     bsal_rssi_change_t prev_xing_high;
+    uint8_t xing_busy_override;
     uint8_t xing_lwm, xing_hwm;
     bsal_event_t event;
     uint8_t new_snr;
@@ -3525,26 +3616,36 @@ bm_client_xing_recalc(bm_client_t *client, bsal_client_info_t *info)
     new_snr = info->snr;
     prev_snr = client->prev_xing_snr;
 
+    xing_busy_override = ifcfg->conf.rssi_busy_override_xing;
     xing_lwm = ifcfg->conf.rssi_low_xing;
     xing_hwm = ifcfg->conf.rssi_high_xing ;
 
+    new_xing_busy_override = bm_client_recalc_rssi_change(new_snr, xing_busy_override);
     new_xing_low = bm_client_recalc_rssi_change(new_snr, xing_lwm);
     new_xing_high = bm_client_recalc_rssi_change(new_snr, xing_hwm);
+    prev_xing_busy_override = bm_client_recalc_rssi_change(prev_snr, xing_busy_override);
     prev_xing_low = bm_client_recalc_rssi_change(prev_snr, xing_lwm);
     prev_xing_high = bm_client_recalc_rssi_change(prev_snr, xing_hwm);
 
-    LOGD("%s new_snr %u old_snr %u lwm %u hwm %u low %d->%d high %d->%d",
-         client->mac_addr, new_snr, prev_snr, xing_lwm, xing_hwm,
+    LOGD("%s new_snr %u old_snr %u busy_override %u lwm %u hwm %u busy_override %d->%d low %d->%d high %d->%d",
+         client->mac_addr, new_snr, prev_snr, xing_busy_override, xing_lwm, xing_hwm,
+         prev_xing_busy_override, new_xing_busy_override,
          prev_xing_low, new_xing_low,
          prev_xing_high, new_xing_high);
 
-    if (new_xing_low == prev_xing_low &&
+    if (new_xing_busy_override == prev_xing_busy_override &&
+        new_xing_low == prev_xing_low &&
         new_xing_high == prev_xing_high)
         return;
 
     memset(&event, 0, sizeof(event));
     STRSCPY(event.ifname, client->ifname);
     event.data.rssi_change.rssi = new_snr;
+
+    if (new_xing_busy_override == prev_xing_busy_override)
+        event.data.rssi_change.busy_override_xing = BSAL_RSSI_UNCHANGED;
+    else
+        event.data.rssi_change.busy_override_xing = new_xing_busy_override;
 
     if (new_xing_low == prev_xing_low)
         event.data.rssi_change.low_xing = BSAL_RSSI_UNCHANGED;
@@ -3558,6 +3659,7 @@ bm_client_xing_recalc(bm_client_t *client, bsal_client_info_t *info)
 
     /* While we don't know prev_snr we don't know xing */
     if (!prev_snr) {
+        event.data.rssi_change.busy_override_xing = BSAL_RSSI_UNCHANGED;
         event.data.rssi_change.low_xing = BSAL_RSSI_UNCHANGED;
         event.data.rssi_change.high_xing = BSAL_RSSI_UNCHANGED;
     }

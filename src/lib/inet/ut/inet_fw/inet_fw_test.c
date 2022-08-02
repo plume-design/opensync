@@ -27,11 +27,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "../tests_common.c"
 
 #include "inet_fw.h"
+#include "unit_test_utils.h"
 
 #define EXIT_OK(status) (WIFEXITED(status) && WEXITSTATUS(status) == 0)
 
-void setUp() {}
-void tearDown() {}
+char *test_name = "test_fw";
 
 #if 0
 procfs_entry_t *procfs_find_upnp(void)
@@ -385,6 +385,10 @@ int main(int argc, char *argv[])
     (void)argc;
     (void)argv;
 
+    ut_init(test_name, NULL, NULL);
+
+    ut_setUp_tearDown(test_name, NULL, NULL);
+
     if (!parse_opts(argc, argv))
     {
         return false;
@@ -393,9 +397,7 @@ int main(int argc, char *argv[])
     if (opt_verbose)
         log_open("FW_TEST", LOG_OPEN_STDOUT);
 
-    UNITY_BEGIN();
-
     run_test_udhcpc();
 
-    return UNITY_END();
+    return ut_fini();
 }

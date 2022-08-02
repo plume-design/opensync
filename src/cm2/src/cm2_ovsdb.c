@@ -112,6 +112,7 @@ ovsdb_table_t table_Bridge;
 ovsdb_table_t table_IP_Interface;
 ovsdb_table_t table_IPv6_Address;
 ovsdb_table_t table_DHCPv6_Client;
+static ovsdb_table_t table_Wifi_Route_Config;
 ovsdb_table_t table_Wifi_Route_State;
 ovsdb_table_t table_Node_Config;
 ovsdb_table_t table_Node_State;
@@ -484,6 +485,22 @@ int cm2_ovsdb_CMU_set_ipv6(const char *if_name, cm2_uplink_state_t state) {
                                       &con, filter);
 }
 
+bool cm2_ovsdb_CMU_get_ip_state(const char *if_name, cm2_uplink_state_t *ipv4, cm2_uplink_state_t *ipv6) {
+    struct schema_Connection_Manager_Uplink con;
+
+    memset(&con, 0, sizeof(con));
+
+    if (!ovsdb_table_select_one(&table_Connection_Manager_Uplink, "if_name", if_name, &con)) {
+        LOGI("%s Interface not available", if_name);
+        return false;
+    }
+
+    *ipv4 = cm2_get_uplink_state_from_str(con.ipv4);
+    *ipv6 = cm2_get_uplink_state_from_str(con.ipv6);
+
+    return true;
+}
+
 static
 int cm2_ovsdb_CMU_set_unblock_ts(const char *if_name, const char *ts) {
     struct schema_Connection_Manager_Uplink con;
@@ -648,7 +665,7 @@ bool cm2_ovsdb_dhcpv6_enable(char *ifname)
     SCHEMA_SET_INT(dhcpv6_client.enable, true);
     SCHEMA_SET_INT(dhcpv6_client.renew, true);
     SCHEMA_SET_INT(dhcpv6_client.request_address, true);
-    SCHEMA_SET_INT(dhcpv6_client.request_prefixes, true);
+    SCHEMA_SET_INT(dhcpv6_client.request_prefixes, false);
 
     if (!ovsdb_table_upsert_where(
             &table_DHCPv6_Client,
@@ -697,16 +714,31 @@ bool cm2_ovsdb_set_dhcpv6_client(char *ifname, bool enable)
 
 int cm2_update_main_link_ip(cm2_main_link_t *link)
 {
-    char *uplink;
+    cm2_uplink_state_t ipv4, ipv6;
+    char               *uplink;
+    bool               ret;
+
+    ret = cm2_ovsdb_CMU_get_ip_state(g_state.link.if_name, &ipv4, &ipv6);
+    if (!ret) {
+        LOGW("%s: IP state not available", g_state.link.if_name);
+        return -1;
+    }
+
+    g_state.link.ipv4.blocked = ipv4 == CM2_UPLINK_BLOCKED;
+    g_state.link.ipv6.blocked = ipv6 == CM2_UPLINK_BLOCKED;
 
     uplink = cm2_get_uplink_name();
-    if (cm2_ovsdb_is_ipv6_global_link(uplink)) {
+    if (cm2_ovsdb_is_ipv6_global_link(uplink) &&
+        !g_state.link.ipv6.blocked) {
         link->ipv6.is_ip = true;
         link->ipv6.assign_scheme = CM2_IPV6_DHCP;
         return 0;
     }
 
-    return cm2_util_get_ip_inet_state_cfg(uplink, &link->ipv4);
+    if (!g_state.link.ipv4.blocked)
+       return cm2_util_get_ip_inet_state_cfg(uplink, &link->ipv4);
+
+    return -1;
 }
 
 static int
@@ -875,11 +907,11 @@ cm2_ovsdb_refresh_dhcp(char *if_name)
 
     LOGI("%s: Trigger refresh dhcp", if_name);
 
-    if (g_state.link.ipv6.assign_scheme == CM2_IPV6_DHCP) {
+    if (g_state.link.ipv6.assign_scheme == CM2_IPV6_DHCP && !g_state.link.ipv6.blocked) {
         cm2_ovsdb_set_dhcpv6_client(if_name, false);
         cm2_ovsdb_set_dhcpv6_client(if_name, true);
     }
-    else {
+    else if (!g_state.link.ipv4.blocked) {
         MEMZERO(mstate);
 
         ret = ovsdb_table_select_one(&table_Wifi_Master_State,
@@ -1073,6 +1105,7 @@ cm2_ovsdb_util_handle_master_sta_port_state(struct schema_Wifi_Master_State *mas
 {
     cm2_ip ipv4;
     int    ret;
+    char *uplink_removed = NULL;
 
     if (port_state) {
         ret = cm2_ovsdb_set_Wifi_Inet_Config_interface_enabled(true, master->if_name);
@@ -1082,22 +1115,22 @@ cm2_ovsdb_util_handle_master_sta_port_state(struct schema_Wifi_Master_State *mas
         if (!wds)
             cm2_util_set_dhcp_ipv4_cfg_from_master(master, true);
     } else {
-        if (g_state.link.is_used && g_state.link.is_bridge) {
-            bool br_update = true;
-
+        if (g_state.link.is_used  && cm2_is_wifi_type(g_state.link.if_type)) {
             if (!strcmp(g_state.link.if_name, master->if_name) && !strcmp(master->if_type, VIF_TYPE_NAME)) {
                 /* WDS link lost */
-                cm2_ovsdb_connection_remove_uplink(master->if_name);
-            } else if (!strcmp(g_state.link.if_name, gre_ifname) && !strcmp(master->if_type, GRE_TYPE_NAME)) {
+                uplink_removed = master->if_name;
+            } else if (!strcmp(g_state.link.if_name, gre_ifname)) {
                 /* GRE link lost */
-                cm2_ovsdb_connection_remove_uplink(gre_ifname);
-            } else {
-                br_update = false;
+                uplink_removed = gre_ifname;
             }
+        }
 
-            if (br_update)
+        if (uplink_removed != NULL) {
+            if (g_state.link.is_bridge) {
                 cm2_update_bridge_cfg(g_state.link.bridge_name, g_state.link.if_name, false,
                                       CM2_PAR_NOT_SET, true);
+            }
+            cm2_ovsdb_connection_remove_uplink(uplink_removed);
         }
 
         ret = cm2_util_get_ip_inet_state_cfg(master->if_name, &ipv4);
@@ -1353,6 +1386,39 @@ bool cm2_ovsdb_enable_gw_offline_conf(void)
 bool cm2_ovsdb_disable_gw_offline_conf(void)
 {
     return cm2_ovsdb_set_gw_offline_config(false);
+}
+
+int cm2_ovsdb_update_route_metric(const char *ifname, int metric)
+{
+    struct schema_Wifi_Route_Config rcfg;
+    int                            ret;
+
+    memset(&rcfg, 0, sizeof(rcfg));
+
+    if (strlen(ifname) == 0)
+        return -1;
+
+    LOGI("%s: Update route metric: %d", ifname, metric);
+
+    if (metric < 0)
+        return -1;
+
+    if (metric == CM2_METRIC_UPLINK_DEFAULT) {
+        rcfg.metric_exists = false;
+    } else {
+        rcfg.metric = metric;
+        rcfg.metric_exists = true;
+    }
+
+    char *filter[] = { "+",
+                       SCHEMA_COLUMN(Wifi_Route_Config, metric),
+                       NULL };
+
+    ret = ovsdb_table_update_where_f(&table_Wifi_Route_Config,
+                 ovsdb_where_simple(SCHEMA_COLUMN(Wifi_Route_Config, if_name), ifname),
+                 &rcfg, filter);
+
+    return ret;
 }
 
 static bool
@@ -1684,7 +1750,7 @@ void cm2_connection_set_L3(struct schema_Connection_Manager_Uplink *uplink) {
 }
 
 bool cm2_connection_get_used_link(struct schema_Connection_Manager_Uplink *uplink) {
-    return ovsdb_table_select_one(&table_Connection_Manager_Uplink, SCHEMA_COLUMN(Connection_Manager_Uplink, is_used), "true", uplink);
+    return ovsdb_table_select_one_where(&table_Connection_Manager_Uplink, ovsdb_where_simple_typed("is_used", "true", OCLM_BOOL), uplink);
 }
 
 static void cm2_connection_clear_used(void)
@@ -1799,6 +1865,18 @@ void cm2_check_master_state_links(void) {
     FREE(link_p);
 }
 
+
+static void cm2_util_set_default_block_ts(const char *if_name)
+{
+    char               t_now_s[128];
+    time_t             t_now;
+
+    // SET TIMESTAMP AND TIMER
+    t_now = time_monotonic() + CM2_DEFAULT_BLOCK_LINK_TIME;
+    time_to_str(t_now, t_now_s, sizeof(t_now_s));
+    cm2_ovsdb_CMU_set_unblock_ts(if_name, t_now_s);
+}
+
 bool cm2_ovsdb_recalc_links(void) {
     struct schema_Connection_Manager_Uplink *uplink_p;
     struct schema_Connection_Manager_Uplink *uplink_i;
@@ -1827,11 +1905,13 @@ bool cm2_ovsdb_recalc_links(void) {
             if (uplink_i->unblock_ts_exists) {
 
                 if (s_ipv4 != CM2_UPLINK_BLOCKED && s_ipv6 != CM2_UPLINK_BLOCKED) {
-                    LOGI("Not blocked, cleanup"); //Needed?
+                    LOGW("%s: Timer unblock_ts activated but links are unblocked", uplink_i->if_name);
+                    cm2_ovsdb_CMU_set_unblock_ts(uplink_i->if_name, NULL);
                 }
 
                 time_from_str(&t, uplink_i->unblock_ts);
                 if (t - t_now <= 0) {
+                    LOGI("%s: unblock_ts expired", uplink_i->if_name);
                     if (s_ipv4 == CM2_UPLINK_BLOCKED)
                         cm2_ovsdb_CMU_set_ipv4(uplink_i->if_name, CM2_UPLINK_UNBLOCKING);
 
@@ -1843,6 +1923,10 @@ bool cm2_ovsdb_recalc_links(void) {
                     else if (t < t_new)
                         t_new = t - t_now;
                 }
+            } else if (s_ipv4 == CM2_UPLINK_BLOCKED || s_ipv6 == CM2_UPLINK_BLOCKED) {
+                t_new = CM2_DEFAULT_BLOCK_LINK_TIME;
+                LOGI("Set default time for blocked link"); //TODO
+                cm2_util_set_default_block_ts(uplink_i->if_name);
             }
 
             if (t_new) {
@@ -1862,12 +1946,17 @@ bool cm2_ovsdb_recalc_links(void) {
                 uplink = uplink_i;
             }
         }
-        if (uplink && !uplink->is_used) {
+        if (uplink) {
             ret = true;
-            g_state.link.blocked = true;
-            cm2_connection_set_is_used(uplink);
-        }
+            if (!uplink->is_used) {
+                g_state.link.blocked = true;
+                cm2_connection_set_is_used(uplink);
 
+            } else {
+               g_state.link.ipv6.blocked = s_ipv6 == CM2_UPLINK_BLOCKED;
+               g_state.link.ipv4.blocked = s_ipv4 == CM2_UPLINK_BLOCKED;
+            }
+        }
         free(uplink_p);
     }
     return ret;
@@ -2196,11 +2285,9 @@ cm2_util_handling_loop_state(struct schema_Connection_Manager_Uplink *uplink)
     return;
 }
 
-static void util_update_ip_link_state(struct schema_Connection_Manager_Uplink *uplink) {
+static void cm2_util_update_ip_link_state(struct schema_Connection_Manager_Uplink *uplink) {
     cm2_uplink_state_t s_ipv4;
     cm2_uplink_state_t s_ipv6;
-    char               t_now_s[128];
-    time_t             t_now;
 
     s_ipv4 = util_ip_to_state(uplink, false);
     s_ipv6 = util_ip_to_state(uplink, true);
@@ -2210,35 +2297,41 @@ static void util_update_ip_link_state(struct schema_Connection_Manager_Uplink *u
             LOGI("%s: Rollback blocked links to inactive state", uplink->if_name);
             cm2_ovsdb_CMU_set_ipv4(uplink->if_name, CM2_UPLINK_INACTIVE);
             cm2_ovsdb_CMU_set_ipv6(uplink->if_name, CM2_UPLINK_INACTIVE);
+            cm2_ovsdb_update_route_metric(uplink->if_name, CM2_METRIC_UPLINK_DEFAULT);
         }
+        else {
+            cm2_util_set_default_block_ts(uplink->if_name);
+        }
+        return;
     }
-    else if (s_ipv4 == CM2_UPLINK_BLOCKED) {
+
+
+    if (uplink->ipv4_changed && s_ipv4 == CM2_UPLINK_BLOCKED) {
         if (uplink->is_used && !cm2_ovsdb_recalc_links()) {
-            LOGI("%s: Rollback blocked link to inactive state", uplink->if_name);
+            LOGI("%s: Rollback blocked IPv4 link to inactive state", uplink->if_name);
             cm2_ovsdb_CMU_set_ipv4(uplink->if_name, CM2_UPLINK_INACTIVE);
+            cm2_ovsdb_update_route_metric(uplink->if_name, CM2_METRIC_UPLINK_DEFAULT);
         } else {
-            // SET TIMESTAMP AND TIMER
-            t_now = time_monotonic() + CM2_DEFAULT_BLOCK_LINK_TIME;
-            time_to_str(t_now, t_now_s, sizeof(t_now_s));
-            cm2_ovsdb_CMU_set_unblock_ts(uplink->if_name, t_now_s);
+            cm2_ovsdb_update_route_metric(uplink->if_name, CM2_METRIC_UPLINK_BLOCKED);
+            cm2_util_set_default_block_ts(uplink->if_name);
         }
-    } else if (s_ipv6 == CM2_UPLINK_BLOCKED) {
+    } else if (uplink->ipv6_changed && s_ipv6 == CM2_UPLINK_BLOCKED) {
         if (uplink->is_used  && !cm2_ovsdb_recalc_links()) {
             LOGI("%s: Rollback blocked link to inactive state", uplink->if_name);
             cm2_ovsdb_CMU_set_ipv6(uplink->if_name, CM2_UPLINK_INACTIVE);
+            cm2_ovsdb_update_route_metric(uplink->if_name, CM2_METRIC_UPLINK_DEFAULT);
         } else {
-            // SET TIMER
-            t_now = time_monotonic() + CM2_DEFAULT_BLOCK_LINK_TIME;
-            time_to_str(t_now, t_now_s, sizeof(t_now_s));
-            cm2_ovsdb_CMU_set_unblock_ts(uplink->if_name, t_now_s);
+            cm2_util_set_default_block_ts(uplink->if_name);
        }
-   } else if (s_ipv4 == CM2_UPLINK_UNBLOCKING || s_ipv6 == CM2_UPLINK_UNBLOCKING) {
-       LOGI("Unblocking link, clean unblock_ts");
-       cm2_ovsdb_CMU_set_unblock_ts(uplink->if_name, NULL);
-   } else if ((s_ipv4 == CM2_UPLINK_ACTIVE && uplink->ipv4_changed) ||
-              (s_ipv6 == CM2_UPLINK_ACTIVE && uplink->ipv6_changed)) {
-       cm2_ovsdb_recalc_links();
-   }
+    } else if (s_ipv4 == CM2_UPLINK_UNBLOCKING || s_ipv6 == CM2_UPLINK_UNBLOCKING) {
+        LOGI("%s: Unblocking link", uplink->if_name);
+        cm2_ovsdb_CMU_set_unblock_ts(uplink->if_name, NULL);
+        cm2_ovsdb_connection_update_unreachable_router_counter(uplink->if_name, 0);
+        cm2_ovsdb_connection_update_unreachable_internet_counter(uplink->if_name, 0);
+    } else if ((s_ipv4 == CM2_UPLINK_ACTIVE && uplink->ipv4_changed) ||
+               (s_ipv6 == CM2_UPLINK_ACTIVE && uplink->ipv6_changed)) {
+        cm2_ovsdb_recalc_links();
+    }
 }
 
 static void cm2_update_unblock_ts(struct schema_Connection_Manager_Uplink *uplink) {
@@ -2354,11 +2447,11 @@ cm2_Connection_Manager_Uplink_handle_update(
         LOGN("%s: Uplink table: detected ip change = ipv4: %s ipv6: %s",
              uplink->if_name, uplink->ipv4_exists ? uplink->ipv4 : "none",
              uplink->ipv6_exists ? uplink->ipv6 : "none");
-        util_update_ip_link_state(uplink);
+        cm2_util_update_ip_link_state(uplink);
     }
 
     if (ovsdb_update_changed(mon, SCHEMA_COLUMN(Connection_Manager_Uplink, unblock_ts))) {
-        LOGN("%s: Uplink table: detected blocked_ts change = %s", uplink->if_name, uplink->unblock_ts);
+        LOGN("%s: Uplink table: detected unblock_ts change = %s", uplink->if_name, uplink->unblock_ts);
         cm2_update_unblock_ts(uplink);
     }
 
@@ -3225,6 +3318,7 @@ int cm2_ovsdb_init(void)
     OVSDB_TABLE_INIT_NO_KEY(Wifi_Route_State);
     OVSDB_TABLE_INIT_NO_KEY(Node_Config);
     OVSDB_TABLE_INIT_NO_KEY(Node_State);
+    OVSDB_TABLE_INIT_NO_KEY(Wifi_Route_Config);
 
     // Initialize OVSDB monitor callbacks
     OVSDB_TABLE_MONITOR(AWLAN_Node, false);
@@ -3232,12 +3326,12 @@ int cm2_ovsdb_init(void)
     // Callback for EXTENDER
     if (cm2_is_extender()) {
         OVSDB_TABLE_MONITOR(Wifi_Master_State, false);
-        OVSDB_TABLE_MONITOR(Connection_Manager_Uplink, false);
-        OVSDB_TABLE_MONITOR(Wifi_Inet_State, false);
         OVSDB_TABLE_MONITOR(Bridge, false);
-        OVSDB_TABLE_MONITOR(IP_Interface, false);
         OVSDB_TABLE_MONITOR(Wifi_Route_State, false);
     }
+    OVSDB_TABLE_MONITOR(Connection_Manager_Uplink, false);
+    OVSDB_TABLE_MONITOR(Wifi_Inet_State, false);
+    OVSDB_TABLE_MONITOR(IP_Interface, false);
 
     char *filter[] = {"-", "_version", SCHEMA_COLUMN(Manager, status), NULL};
     OVSDB_TABLE_MONITOR_F(Manager, filter);

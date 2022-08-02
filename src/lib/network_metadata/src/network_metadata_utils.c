@@ -666,6 +666,8 @@ void net_md_free_acc(struct net_md_stats_accumulator *acc)
     free_flow_key(acc->fkey);
     FREE(acc->fkey);
     if (acc->free_plugins != NULL) acc->free_plugins(acc);
+    // dpi_plugins tree for the acc is set to NULL.
+    acc->dpi_plugins = NULL;
 }
 
 

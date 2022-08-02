@@ -99,6 +99,12 @@ struct fsm_session_ops
 
     /* Update policy client */
     void (*update_client)(struct fsm_session *, struct policy_table *);
+
+    /* notify dispatcher tap_type */
+    void (*notify_dispatcher_tap_type)(struct fsm_session *, uint32_t);
+
+    /* notify if identical session loaded/unloaded */
+    void (*notify_identical_sessions)(struct fsm_session *, bool);
 };
 
 
@@ -176,6 +182,7 @@ struct fsm_dpi_plugin_ops
     void (*register_clients)(struct fsm_session *);
     void (*unregister_clients)(struct fsm_session *);
     void (*mark_flow)(struct fsm_session *, struct net_md_stats_accumulator *);
+    void (*dpi_free_resources)(struct fsm_session *);
 };
 
 
@@ -253,6 +260,25 @@ enum
     FSM_DPI_DISPATCH,
     FSM_DPI_PLUGIN,
     FSM_DPI_PLUGIN_CLIENT,
+};
+
+
+enum fsm_plugin_id
+{
+    FSM_UNKNOWN_PLUGIN = 0,
+    FSM_DNS_PLUGIN = 1,
+    FSM_DPI_DNS_PLUGIN = 1,
+    FSM_MDNS_PLUGIN,
+    FSM_NDP_PLUGIN,
+    FSM_HTTP_PLUGIN,
+    FSM_IPTHREAT_PLUGIN,
+    FSM_DPI_SNI_PLUGIN,
+    FSM_DPI_ADT_PLUGIN,
+    FSM_DPI_APP_PLUGIN,
+    FSM_WALLEYE_PLUGIN,
+    FSM_GATEKEEPER_PLUGIN,
+    FSM_BC_PLUGIN,
+    FSM_WP_PLUGIN,
 };
 
 
@@ -386,6 +412,7 @@ struct fsm_session
     struct fsm_session *provider_plugin;
     struct fsm_web_cat_ops *provider_ops;
     struct fsm_forward_context forward_ctx;
+    enum fsm_plugin_id plugin_id;
 };
 
 
@@ -856,5 +883,8 @@ fsm_set_object_state(struct fsm_session *session, struct fsm_object *object);
 
 void
 fsm_get_node_config(struct schema_Node_Config *node_cfg);
+
+void
+fsm_set_session_ops(struct fsm_session *session);
 
 #endif /* FSM_H_INCLUDED */

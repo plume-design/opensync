@@ -432,6 +432,7 @@ struct fsm_request_args
     struct fsm_session *session;
     struct fqdn_pending_req *fqdn_req;
     struct net_md_stats_accumulator *acc;
+    int policy_action;
 };
 
 void fsm_init_manager(void);
@@ -474,4 +475,15 @@ void fsm_policy_free_url(struct fqdn_pending_req* pending_req);
 int gk_reply_type(struct fsm_policy_req *policy_request);
 void process_gk_response_cb(struct fsm_policy_req *policy_request,
                        struct fsm_policy_reply *policy_reply);
+
+/**
+ * @brief helper api to extract redirect ip from policy_reply redirects array.
+ *
+ * @param redirect redirect_prefix + redirect ip
+ *
+ * @return redirect ip.
+ */
+char *
+fsm_dns_check_redirect(char *redirect, int id);
+
 #endif /* FSM_POLICY_H_INCLUDED */

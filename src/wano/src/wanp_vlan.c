@@ -224,6 +224,7 @@ enum wanp_vlan_state wanp_vlan_state_IF_CREATE(
                     .vlan_id = self->wvl_wan_config.wc_type_vlan.wc_vlanid,
                     .network = WANO_TRI_TRUE,
                     .enabled = WANO_TRI_TRUE,
+                    .nat = WANO_TRI_TRUE,
                     .ip_assign_scheme = "none"))
             {
                 LOG(ERR, "wanp_vlan: %s: Error creating VLAN interface %s.",

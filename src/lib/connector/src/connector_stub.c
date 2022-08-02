@@ -104,3 +104,51 @@ bool connector_sync_inet(const struct schema_Wifi_Inet_Config *iconf)
     return true;
 }
 #endif
+
+#ifndef IMPL_connector_dhcp_reservation_add
+bool connector_dhcp_reservation_add(const struct schema_DHCP_reserved_IP *rip)
+{
+    /* Handle new reservation add */
+    return true;
+}
+#endif
+
+#ifndef IMPL_connector_dhcp_reservation_modify
+bool connector_dhcp_reservation_modify(const struct schema_DHCP_reserved_IP *rip)
+{
+    /* Handle reservation modify */
+    return true;
+}
+#endif
+
+#ifndef IMPL_connector_dhcp_reservation_del
+bool connector_dhcp_reservation_del(const struct schema_DHCP_reserved_IP *rip)
+{
+    /* Handle reservation delete */
+    return true;
+}
+#endif
+
+#ifndef IMPL_connector_portforward_add
+bool connector_portforward_add(const struct schema_IP_Port_Forward *pschema)
+{
+    /* Handle new portforward add */
+    return true;
+}
+#endif
+
+#ifndef IMPL_connector_portforward_modify
+bool connector_portforward_modify(const struct schema_IP_Port_Forward *pschema)
+{
+    /* Handle portforward modify */
+    return true;
+}
+#endif
+
+#ifndef IMPL_connector_portforward_del
+bool connector_portforward_del(const struct schema_IP_Port_Forward *pschema)
+{
+    /* Handle portforward delete */
+    return true;
+}
+#endif

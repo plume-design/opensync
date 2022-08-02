@@ -41,6 +41,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define LTEM_TIMER_INTERVAL   1
 #define LTEM_STATE_UPDATE_INTERVAL 60
 #define LTEM_MQTT_INTERVAL     60 * 15
+#define LTEM_L3_CHECK_INTERVAL 30
 
 static void
 ltem_mqtt_periodic(time_t now, ltem_mgr_t *mgr)
@@ -72,6 +73,19 @@ ltem_state_periodic(time_t now, ltem_mgr_t *mgr)
     mgr->state_periodic_ts = now;
 }
 
+static void
+ltem_check_l3_state(time_t now, ltem_mgr_t *mgr)
+{
+    time_t elapsed;
+
+    LOGD("%s: modem_present[%d]", __func__, mgr->modem_info->modem_present);
+    elapsed = now - mgr->l3_state_periodic_ts;
+    if (elapsed < LTEM_L3_CHECK_INTERVAL) return;
+
+    ltem_ovsdb_check_l3_state(mgr);
+    mgr->l3_state_periodic_ts = now;
+}
+
 /**
  * @brief periodic routine.
  */
@@ -93,9 +107,12 @@ ltem_event_cb(struct ev_loop *loop, ev_timer *watcher, int revents)
 
     if ((now - mgr->periodic_ts) < LTEM_TIMER_INTERVAL) return;
 
+    if (mgr->lte_state != LTEM_LTE_STATE_UP) return;
+
     ltem_mqtt_periodic(now, mgr);
     ltem_state_periodic(now, mgr);
-
+    ltem_check_l3_state(now, mgr);
+    
     if (mgr->wan_state != LTEM_WAN_STATE_UNKNOWN && mgr->lte_state == LTEM_LTE_STATE_UP)
     {
         if (mgr->lte_state_info->lte_failover_active)

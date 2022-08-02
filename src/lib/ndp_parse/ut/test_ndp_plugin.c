@@ -24,29 +24,40 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#include <netinet/icmp6.h>
 #include <netdb.h>
-#include <stdio.h>
-#include <stdlib.h>
+#include <netinet/in.h>
+#include <netinet/if_ether.h>
 #include <stdbool.h>
+#include <stdint.h>
+#include <stdio.h>
 #include <string.h>
 #include <sys/socket.h>
 
-#include "neigh_table.h"
-#include "ndp_parse.h"
+#include "const.h"
+#include "fsm.h"
 #include "json_util.h"
 #include "log.h"
 #include "memutil.h"
-#include "sockaddr_storage.h"
+#include "ndp_parse.h"
+#include "neigh_table.h"
+#include "net_header_parse.h"
+#include "os_types.h"
+#include "ovsdb_utils.h"
 #include "qm_conn.h"
-#include "target.h"
+#include "unit_test_utils.h"
 #include "unity.h"
+
 #include "pcap.c"
 
-const char *test_name = "ndp_plugin_tests";
+const char *ut_name = "ndp_plugin_tests";
 
 #define OTHER_CONFIG_NELEMS 4
 #define OTHER_CONFIG_NELEM_SIZE 128
+
+union fsm_plugin_ops p_ops;
+struct ndp_cache *g_mgr;
+char *g_location_id = "foo";
+char *g_node_id = "bar";
 
 char g_other_configs[][2][OTHER_CONFIG_NELEMS][OTHER_CONFIG_NELEM_SIZE] =
 {
@@ -83,9 +94,6 @@ struct fsm_session_conf g_confs[2] =
         .if_name = "ndp_ut_intf_1",
     }
 };
-
-
-union fsm_plugin_ops p_ops;
 
 
 struct fsm_session g_sessions[2] =
@@ -146,72 +154,6 @@ struct fsm_session_ops g_ops =
 };
 
 
-struct ndp_cache *g_mgr;
-
-/**
- * @brief Converts a bytes array in a hex dump file wireshark can import.
- *
- * Dumps the array in a file that can then be imported by wireshark.
- * The file can also be translated to a pcap file using the text2pcap command.
- * Useful to visualize the packet content.
- * @param fname the file recipient of the hex dump
- * @param buf the buffer to dump
- * @param length the length of the buffer to dump
- */
-void
-create_hex_dump(const char *fname, const uint8_t *buf, size_t len)
-{
-    int line_number = 0;
-    bool new_line = true;
-    size_t i;
-    FILE *f;
-
-    f = fopen(fname, "w+");
-
-    if (f == NULL) return;
-
-    for (i = 0; i < len; i++)
-    {
-        new_line = (i == 0 ? true : ((i % 8) == 0));
-        if (new_line)
-        {
-            if (line_number) fprintf(f, "\n");
-            fprintf(f, "%06x", line_number);
-            line_number += 8;
-        }
-        fprintf(f, " %02x", buf[i]);
-    }
-    fprintf(f, "\n");
-    fclose(f);
-
-    return;
-}
-
-
-char *g_location_id = "foo";
-char *g_node_id = "bar";
-
-/**
- * @brief Convenient wrapper
- *
- * Dumps the packet content in /tmp/<tests_name>_<pkt name>.txtpcap
- * for wireshark consumption and sets the given parser's data fields.
- * @param pkt the C structure containing an exported packet capture
- * @param parser the parser structure to set
- */
-#define PREPARE_UT(pkt, parser)                                 \
-    {                                                           \
-        char fname[128];                                        \
-        size_t len = sizeof(pkt);                               \
-                                                                \
-        snprintf(fname, sizeof(fname), "/tmp/%s_%s.txtpcap",    \
-                 test_name, #pkt);                              \
-        create_hex_dump(fname, pkt, len);                       \
-        parser->packet_len = len;                               \
-        parser->data = (uint8_t *)pkt;                          \
-    }
-
-
 void
 global_test_init(void)
 {
@@ -238,7 +180,7 @@ global_test_init(void)
         pair = ds_tree_find(session->conf->other_config, "mqtt_v");
         session->topic = pair->value;
         session->location_id = g_location_id;
-        session->node_id = g_location_id;
+        session->node_id = g_node_id;
     }
 }
 
@@ -263,17 +205,18 @@ global_test_exit(void)
  * @brief called by the Unity framework before every single test
  */
 void
-setUp(void)
+ndp_plugin_setUp(void)
 {
 #ifdef ARCH_X86
     struct neigh_table_mgr *neigh_mgr;
 #endif
-    size_t n_sessions, i;
+    size_t n_sessions;
+    size_t i;
 
     g_mgr = NULL;
-    n_sessions = sizeof(g_sessions) / sizeof(struct fsm_session);
 
     /* Reset sessions, register them to the plugin */
+    n_sessions = ARRAY_SIZE(g_sessions);
     for (i = 0; i < n_sessions; i++)
     {
         struct fsm_session *session = &g_sessions[i];
@@ -289,20 +232,20 @@ setUp(void)
     neigh_mgr->update_ovsdb_tables = NULL;
 #endif
 
-    return;
+    ut_prepare_pcap(Unity.CurrentTestName);
 }
 
 /**
  * @brief called by the Unity framework after every single test
  */
 void
-tearDown(void)
+ndp_plugin_tearDown(void)
 {
-    size_t n_sessions, i;
-
-    n_sessions = sizeof(g_sessions) / sizeof(struct fsm_session);
+    size_t n_sessions;
+    size_t i;
 
     /* Reset sessions, unregister them */
+    n_sessions = ARRAY_SIZE(g_sessions);
     for (i = 0; i < n_sessions; i++)
     {
         struct fsm_session *session = &g_sessions[i];
@@ -312,7 +255,7 @@ tearDown(void)
     g_mgr = NULL;
     neigh_table_cleanup();
 
-    return;
+    ut_cleanup_pcap();
 }
 
 
@@ -415,7 +358,6 @@ void test_arp_req(void)
     struct ndp_session *n_session;
     struct fsm_session *session;
     struct ndp_parser *parser;
-
     size_t len;
     bool ret;
 
@@ -428,7 +370,7 @@ void test_arp_req(void)
     net_parser = CALLOC(1, sizeof(*net_parser));
     TEST_ASSERT_NOT_NULL(net_parser);
     parser->net_parser = net_parser;
-    PREPARE_UT(pkt134, net_parser);
+    UT_CREATE_PCAP_PAYLOAD(pkt134, net_parser);
     len = net_header_parse(net_parser);
     TEST_ASSERT_TRUE(len != 0);
 
@@ -468,7 +410,7 @@ void test_arp_reply(void)
     net_parser = CALLOC(1, sizeof(*net_parser));
     TEST_ASSERT_NOT_NULL(net_parser);
     parser->net_parser = net_parser;
-    PREPARE_UT(pkt135, net_parser);
+    UT_CREATE_PCAP_PAYLOAD(pkt135, net_parser);
     len = net_header_parse(net_parser);
     TEST_ASSERT_TRUE(len != 0);
 
@@ -508,7 +450,7 @@ void test_gratuitous_arp_reply(void)
     net_parser = CALLOC(1, sizeof(*net_parser));
     TEST_ASSERT_NOT_NULL(net_parser);
     parser->net_parser = net_parser;
-    PREPARE_UT(pkt42, net_parser);
+    UT_CREATE_PCAP_PAYLOAD(pkt42, net_parser);
     len = net_header_parse(net_parser);
     TEST_ASSERT_TRUE(len != 0);
 
@@ -553,7 +495,7 @@ void test_ip_mac_mapping(void)
     net_parser = CALLOC(1, sizeof(*net_parser));
     TEST_ASSERT_NOT_NULL(net_parser);
     parser->net_parser = net_parser;
-    PREPARE_UT(pkt134, net_parser);
+    UT_CREATE_PCAP_PAYLOAD(pkt134, net_parser);
     len = net_header_parse(net_parser);
     TEST_ASSERT_TRUE(len != 0);
 
@@ -606,7 +548,7 @@ test_solicitation_msg(void)
     net_parser = CALLOC(1, sizeof(*net_parser));
     TEST_ASSERT_NOT_NULL(net_parser);
     parser->net_parser = net_parser;
-    PREPARE_UT(pkt3, net_parser);
+    UT_CREATE_PCAP_PAYLOAD(pkt3, net_parser);
     len = net_header_parse(net_parser);
     TEST_ASSERT_TRUE(len != 0);
 
@@ -651,7 +593,7 @@ test_advertizment_msg(void)
     net_parser = CALLOC(1, sizeof(*net_parser));
     TEST_ASSERT_NOT_NULL(net_parser);
     parser->net_parser = net_parser;
-    PREPARE_UT(pkt4, net_parser);
+    UT_CREATE_PCAP_PAYLOAD(pkt4, net_parser);
     len = net_header_parse(net_parser);
     TEST_ASSERT_TRUE(len != 0);
     len = ndp_parse_message(parser);
@@ -697,7 +639,7 @@ test_advertizment_msg_v2(void)
     net_parser = CALLOC(1, sizeof(*net_parser));
     TEST_ASSERT_NOT_NULL(net_parser);
     parser->net_parser = net_parser;
-    PREPARE_UT(pkt6578, net_parser);
+    UT_CREATE_PCAP_PAYLOAD(pkt6578, net_parser);
     len = net_header_parse(net_parser);
     TEST_ASSERT_TRUE(len != 0);
     len = ndp_parse_message(parser);
@@ -721,13 +663,11 @@ test_advertizment_msg_v2(void)
 int
 main(int argc, char *argv[])
 {
-    /* Set the logs to stdout */
-    target_log_open("TEST", LOG_OPEN_STDOUT);
-    log_severity_set(LOG_SEVERITY_TRACE);
+    (void)argc;
+    (void)argv;
 
-    UnityBegin(test_name);
-
-    global_test_init();
+    ut_init(ut_name, global_test_init, global_test_exit);
+    ut_setUp_tearDown(ut_name, ndp_plugin_setUp, ndp_plugin_tearDown);
 
     RUN_TEST(test_no_session);
     RUN_TEST(test_load_unload_plugin);
@@ -739,7 +679,5 @@ main(int argc, char *argv[])
     RUN_TEST(test_advertizment_msg);
     RUN_TEST(test_advertizment_msg_v2);
 
-    global_test_exit();
-
-    return UNITY_END();
+    return ut_fini();
 }

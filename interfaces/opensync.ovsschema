@@ -1,7 +1,7 @@
 {
   "name": "Open_vSwitch",
-  "version": "7.11.306",
-  "cksum": "3210424133 248696",
+  "version": "7.11.311",
+  "cksum": "1815753971 248822",
   "tables": {
     "AWLAN_Node": {
       "columns": {
@@ -6428,6 +6428,14 @@
                     "min": 0,
                     "max": 1
                 }
+            },
+            "bottom_lwm": {
+                "type": {
+                    "key": {
+                        "type": "integer",
+                        "minInteger": 0
+                    }
+                }
             }
         },
         "isRoot": true
@@ -7144,23 +7152,6 @@
                     "max": 1
                 }
             },
-            "freq_band": {
-              "type": {
-                "key": {
-                  "type": "string",
-                  "enum": [
-                    "set",
-                    [
-                      "2.4G",
-                      "5G",
-                      "6G"
-                    ]
-                  ]
-                },
-                "min": 0,
-                "max": 1
-              }
-            },
             "ht_mode": {
                 "type": {
                     "key": {
@@ -7178,6 +7169,17 @@
                         "HT80+80"
                         ]
                         ]
+                    },
+                    "min": 0,
+                    "max": 1
+                }
+            },
+            "op_class": {
+                "type": {
+                    "key": {
+                        "type": "integer",
+                        "minInteger": 0,
+                        "maxInteger": 255
                     },
                     "min": 0,
                     "max": 1

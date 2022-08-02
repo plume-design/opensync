@@ -46,7 +46,8 @@ enum wano_wan_config_type
 {
     WC_TYPE_PPPOE,
     WC_TYPE_VLAN,
-    WC_TYPE_STATIC_IPV4
+    WC_TYPE_STATIC_IPV4,
+    WC_TYPE_DHCP
 };
 
 struct wano_wan_config_pppoe

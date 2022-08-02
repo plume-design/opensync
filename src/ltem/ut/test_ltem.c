@@ -39,6 +39,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "target.h"
 #include "unity.h"
 #include "osn_lte_modem.h"
+#include "unit_test_utils.h"
 
 static ltem_mgr_t ltem_mgr;
 
@@ -114,18 +115,6 @@ struct schema_AWLAN_Node g_node_conf_old[] =
     },
 };
 
-void
-setUp(void)
-{
-    return;
-}
-
-void
-tearDown(void)
-{
-    return;
-}
-
 ltem_mgr_t *
 ltem_get_mgr(void)
 {
@@ -171,17 +160,27 @@ ltem_ut_mgr_init(struct ev_loop *loop)
     lte_config = CALLOC(1, sizeof(lte_config_info_t));
     if (lte_config == NULL) return false;
     ltem_populate_config(lte_config);
+
     lte_state = CALLOC(1, sizeof(lte_state_info_t));
-    if (lte_state == NULL) return false;
+    if (lte_state == NULL) goto err_lte_state;
     ltem_populate_state(lte_state);
+
     lte_route = CALLOC(1, sizeof(lte_route_info_t));
-    if (lte_route == NULL) return false;
+    if (lte_route == NULL) goto err_lte_route;
 
     mgr->lte_config_info = lte_config;
     mgr->lte_state_info = lte_state;
     mgr->lte_route = lte_route;
 
     return true;
+
+err_lte_route:
+    FREE(lte_state);
+
+err_lte_state:
+    FREE(lte_config);
+
+    return false;
 }
 
 int
@@ -468,7 +467,9 @@ main(int argc, char **argv)
     struct ev_loop *loop = EV_DEFAULT;
     bool rc;
 
-    UnityBegin(test_name);
+    ut_init(test_name, NULL, NULL);
+
+    ut_setUp_tearDown(test_name, NULL, NULL);
 
     ltem_set_lte_state(LTEM_LTE_STATE_INIT);
 
@@ -487,7 +488,7 @@ main(int argc, char **argv)
     FREE(mgr->lte_state_info);
     FREE(mgr->lte_route);
 
-    return UNITY_END();
+    return ut_fini();
 }
 
 

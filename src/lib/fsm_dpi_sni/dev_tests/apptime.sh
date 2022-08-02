@@ -71,7 +71,7 @@ gen_fsmc_cmd() {
                                 [
                                     ["flow_attributes","${attrs_tag}"],
                                     ["dpi_plugin","${dpi_plugin}"],
-                                    ["dso_init","dpi_sni_plugin_init"],
+                                    ["dso_init","fsm_dpi_sni_init"],
                                     ["mqtt_v","${mqtt_v}"],
                                     ["excluded_devices","${x_devs}"]
                                ]]
@@ -121,7 +121,7 @@ cmd=${CMD}
 attrs_tag=${ATTRS_TAG:-'${dev_app_attrs}'}
 dpi_plugin=${DPI_PLUGIN:-walleye_dpi}
 policy_name=dev_app
-fsm_handler=dev_dpi_app
+fsm_handler=dev_fsm_dpi_app
 x_devs='${dev_x}'
 
 # Validate the command argument

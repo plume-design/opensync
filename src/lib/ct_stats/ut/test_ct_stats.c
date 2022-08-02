@@ -43,6 +43,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "neigh_table.h"
 #include "memutil.h"
 #include "network_metadata_report.h"
+#include "unit_test_utils.h"
 
 struct mnl_buf
 {
@@ -146,7 +147,7 @@ fcm_collect_plugin_t g_collector_tbl[3] =
 };
 
 void
-setUp(void)
+ct_stats_setUp(void)
 {
     struct net_md_aggregator *aggr;
     flow_stats_t *ct_stats;
@@ -183,7 +184,7 @@ setUp(void)
 
 
 void
-tearDown(void)
+ct_stats_tearDown(void)
 {
     size_t num_c;
     size_t i;
@@ -600,10 +601,10 @@ main(int argc, char *argv[])
     (void)argc;
     (void)argv;
 
-    target_log_open("TEST", LOG_OPEN_STDOUT);
-    log_severity_set(LOG_SEVERITY_DEBUG);
+    ut_init(test_name, NULL, NULL);
 
-    UnityBegin(test_name);
+    ut_setUp_tearDown(test_name, ct_stats_setUp, ct_stats_tearDown);
+
     RUN_TEST(test_process_v4);
     RUN_TEST(test_process_v6);
     RUN_TEST(test_process_v4_zones);
@@ -616,5 +617,5 @@ main(int argc, char *argv[])
 
     ct_stats_exit_mgr();
 
-    return UNITY_END();
+    return ut_fini();
 }

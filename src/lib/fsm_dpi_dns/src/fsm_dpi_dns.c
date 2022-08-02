@@ -44,6 +44,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "fsm_policy.h"
 #include "json_mqtt.h"
 #include "log.h"
+#include "kconfig.h"
 #include "memutil.h"
 #include "net_header_parse.h"
 #include "network_metadata_report.h"
@@ -52,6 +53,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "util.h"
 
 #define REDIRECT_TTL 10
+#define DNS_QTYPE_65 65
 
 /* TTL Len 4 bytes + RD length 2 bytes */
 #define DNS_TTL_START_OFFSET 6
@@ -276,26 +278,6 @@ fsm_dpi_dns_free_reply(struct fsm_policy_reply *reply)
     fsm_policy_free_reply(reply);
 }
 
-const char * const redirect_prefix[] =
-{
-    [IPv4_REDIRECT] = "A-",
-    [IPv6_REDIRECT] = "4A-",
-    [FQDN_REDIRECT] = "C-",
-};
-
-static char *
-check_redirect(char *redirect, int id)
-{
-    const char *cmp = redirect_prefix[id];
-
-    LOGT("%s: redirect: %s", __func__, redirect);
-    if (strncmp(redirect, cmp, strlen(cmp)) == 0)
-    {
-        return redirect + strlen(cmp);
-    }
-    return NULL;
-}
-
 /**
  * @brief update dns response ips
  *
@@ -340,12 +322,12 @@ fsm_dpi_dns_update_response_ips(struct net_header_parser *net_header,
         uint8_t *p_ttl = packet + parsed + (rec->resp[i].offset - DNS_TTL_START_OFFSET);
         if (rec->resp[i].ip_v == 4)
         {
-            char *ipv4_addr = check_redirect(policy_reply->redirects[0],
-                                             IPv4_REDIRECT);
+            char *ipv4_addr = fsm_dns_check_redirect(policy_reply->redirects[0],
+                                                     IPv4_REDIRECT);
             if (ipv4_addr == NULL)
             {
-                ipv4_addr = check_redirect(policy_reply->redirects[1],
-                                           IPv4_REDIRECT);
+                ipv4_addr = fsm_dns_check_redirect(policy_reply->redirects[1],
+                                                   IPv4_REDIRECT);
             }
             if (ipv4_addr != NULL)
             {
@@ -357,12 +339,12 @@ fsm_dpi_dns_update_response_ips(struct net_header_parser *net_header,
         }
         if (rec->resp[i].ip_v == 6)
         {
-            char *ipv6_addr = check_redirect(policy_reply->redirects[0],
-                                             IPv6_REDIRECT);
+            char *ipv6_addr = fsm_dns_check_redirect(policy_reply->redirects[0],
+                                                     IPv6_REDIRECT);
             if (ipv6_addr == NULL)
             {
-                ipv6_addr = check_redirect(policy_reply->redirects[1],
-                                           IPv6_REDIRECT);
+                ipv6_addr = fsm_dns_check_redirect(policy_reply->redirects[1],
+                                                   IPv6_REDIRECT);
             }
             if (ipv6_addr != NULL)
             {
@@ -474,14 +456,23 @@ fsm_dpi_dns_process_dns_record(struct fsm_session *session,
     mgr = fsm_dpi_dns_get_mgr();
     if (!mgr->initialized) return action;
 
+    /* Fetch information (category, etc) for this FQDN */
+    rec = &mgr->curr_rec_processed;
+
+    rc = (mgr->identical_plugin_enabled);
+    rc &= (!kconfig_enabled(CONFIG_FSM_DPI_DNS));
+    if (rc)
+    {
+        LOGT("%s: dns_parse is enabled returning...", __func__);
+        return action;
+    }
+
+    LOGT("%s: Processing dpi DNS request for %s", __func__, rec->qname);
+
     /* Interact with GK to get verdict for the name only */
     MEMZERO(info);
     rc = net_md_get_flow_info(acc, &info);
     if (!rc) return action;
-
-    /* Fetch information (category, etc) for this FQDN */
-    rec = &mgr->curr_rec_processed;
-    LOGT("%s: Processing dpi DNS request for %s", __func__, rec->qname);
 
     MEMZERO(fsm_request_param);
     fsm_request_param.session = session;
@@ -553,8 +544,6 @@ fsm_dpi_dns_process_dns_record(struct fsm_session *session,
         sockaddr_storage_populate(af, rec->resp[i].address, &ipaddr);
         dns_cache_param.ipaddr = &ipaddr;
 
-        fsm_dns_cache_add_entry(&dns_cache_param);
-
         rc = fsm_dns_cache_add_entry(&dns_cache_param);
         if (!rc)
         {
@@ -565,7 +554,7 @@ fsm_dpi_dns_process_dns_record(struct fsm_session *session,
     if (policy_reply->action == FSM_UPDATE_TAG)
     {
         /* Update Tag if we are interested in the IPs returned. */
-        dns_tag_param.dev_id = &fsm_request_param.fqdn_req->dev_id;
+        dns_tag_param.dev_id = fsm_request_param.device_id;
         dns_tag_param.policy_reply = policy_reply;
         dns_tag_param.dns_response = &dns_response;
         MEMZERO(dns_response);
@@ -585,6 +574,11 @@ fsm_dpi_dns_process_dns_record(struct fsm_session *session,
             LOGD("%s: Failed to update response ips", __func__);
         }
         action = FSM_DPI_PASSTHRU;
+    }
+
+    if (net_parser != NULL)
+    {
+        net_parser->payload_updated = true;
     }
 
     /* Cleanup */
@@ -612,6 +606,17 @@ dns_session_cmp(const void *a, const void *b)
     return 1;
 }
 
+void
+fsm_dpi_dns_identical_plugin_status(struct fsm_session *session, bool status)
+{
+    struct dpi_dns_client *mgr;
+
+    mgr = fsm_dpi_dns_get_mgr();
+    mgr->identical_plugin_enabled = status;
+    LOGT("%s: identical plugin enabled : %s", __func__, status ? "true" : "false");
+}
+
+
 /**
  * @brief session initialization entry point
  *
@@ -627,6 +632,7 @@ fsm_dpi_dns_init(struct fsm_session *session)
     struct fsm_dpi_plugin_client_ops *client_ops;
     struct dns_session *dns_session;
     struct dpi_dns_client *mgr;
+    char *provider;
     int ret;
 
     /* Initialize generic client */
@@ -637,6 +643,8 @@ fsm_dpi_dns_init(struct fsm_session *session)
     session->ops.update = fsm_dpi_dns_update;
     session->ops.periodic = fsm_dpi_dns_periodic;
     session->ops.exit = fsm_dpi_dns_exit;
+    session->ops.notify_identical_sessions = fsm_dpi_dns_identical_plugin_status;
+    session->plugin_id = FSM_DPI_DNS_PLUGIN;
 
     /* Set the plugin specific ops */
     client_ops = &session->p_ops->dpi_plugin_client_ops;
@@ -660,11 +668,26 @@ fsm_dpi_dns_init(struct fsm_session *session)
         return -1;
     }
 
-    dns_session->service_provider = IP2ACTION_GK_SVC;
+    provider = session->ops.get_config(session, "provider_plugin");
+    if (provider != NULL)
+    {
+        dns_session->service_provider = dns_cache_get_service_provider(provider);
+    }
     mgr->update_tag = fsm_dns_update_tag;
 
     return 0;
 }
+
+
+/*
+ * Provided for compatibility
+ */
+int
+dpi_dns_plugin_init(struct fsm_session *session)
+{
+    return fsm_dpi_dns_init(session);
+}
+
 
 void
 fsm_dpi_dns_exit(struct fsm_session *session)
@@ -734,6 +757,12 @@ fsm_dpi_dns_process_attr(struct fsm_session *session, const char *attr,
     /* Process the generic part (e.g., logging, include, exclude lists) */
     action = fsm_dpi_client_process_attr(session, attr, type, length, value, pkt_info);
     if (action == FSM_DPI_IGNORED) return action;
+
+    /*
+     * The combo (device, attribute) is to be processed, but no service provided
+     * Pass through.
+     */
+    if (session->service == NULL) return FSM_DPI_PASSTHRU;
 
     action = FSM_DPI_IGNORED;
 
@@ -901,6 +930,11 @@ fsm_dpi_dns_process_attr(struct fsm_session *session, const char *attr,
             if (cmp)
             {
                 LOGD("%s: value for %s should be %s", __func__, attr, dns_attr_value);
+                goto reset_state_machine;
+            }
+            if (rec->next_state == DNS_TYPE && rec->idx == 0)
+            {
+                LOGD("%s: No A, AAAA or HTTPS for %s", __func__, rec->qname);
                 goto reset_state_machine;
             }
             if (rec->next_state != DNS_TYPE || rec->idx == 0) goto wrong_state;

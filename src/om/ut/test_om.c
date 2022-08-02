@@ -36,21 +36,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "target.h"
 #include "unity.h"
 #include "schema.h"
-
+#include "unit_test_utils.h"
 
 const char *test_name = "om_tests";
 static struct tag_mgr tag_mgr;
-
-void setUp(void)
-{
-    // pass
-}
-
-void tearDown(void)
-{
-    // pass
-}
-
 
 static int
 get_range_rules_len(ds_list_t *range_rules)
@@ -254,19 +243,18 @@ int main(int argc, char *argv[])
     (void)argc;
     (void)argv;
 
-    target_log_open("TEST", LOG_OPEN_STDOUT);
-    log_severity_set(LOG_SEVERITY_TRACE);
+    ut_init(test_name, NULL, NULL);
+
+    ut_setUp_tearDown(test_name, NULL, NULL);
 
     memset(&tag_mgr, 0, sizeof(tag_mgr));
     tag_mgr.service_tag_update = om_template_tag_update;
     om_tag_init(&tag_mgr);
     
-    UnityBegin(test_name);
-
     RUN_TEST(test_linked_list_operations);
     RUN_TEST(test_generate_port_range_rules);
     RUN_TEST(test_generate_ipv4_range_rules);
     RUN_TEST(test_generate_ipv6_range_rules);
 
-    return UNITY_END();
+    return ut_fini();
 }

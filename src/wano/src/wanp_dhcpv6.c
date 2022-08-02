@@ -201,13 +201,23 @@ bool wanp_dhcpv6_ovsdb_enable(struct wanp_dhcpv6 *self)
 {
     struct schema_IP_Interface ip_interface;
     struct schema_DHCPv6_Client dhcpv6_client;
+    int selcount;
 
+    selcount = ovsdb_table_select_one(&table_IP_Interface, "name", self->wd6_handle.wh_ifname, &ip_interface);
     memset(&ip_interface, 0, sizeof(ip_interface));
     ip_interface._partial_update = true;
-    SCHEMA_SET_STR(ip_interface.name, self->wd6_handle.wh_ifname);
     SCHEMA_SET_STR(ip_interface.if_name, self->wd6_handle.wh_ifname);
     SCHEMA_SET_STR(ip_interface.status, "up");
     SCHEMA_SET_INT(ip_interface.enable, true);
+    if (selcount <= 0)
+    {
+        /*
+         * The `name` field is immutable which will cause upserts to will fail
+         * on existing rows so include it only if a row for the interface
+         * doesn't exist
+         */
+        SCHEMA_SET_STR(ip_interface.name, self->wd6_handle.wh_ifname);
+    }
 
     if (!ovsdb_table_upsert_simple(
             &table_IP_Interface,
@@ -256,12 +266,6 @@ void wanp_dhcpv6_ovsdb_reset(struct wanp_dhcpv6 *self)
     if (ovsdb_table_delete_where(&table_DHCPv6_Client, ovsdb_where_uuid("ip_interface", ip_interface._uuid.uuid)) < 0)
     {
         LOG(WARN, "wanp_dhcpv6: %s: Error deleting DHCPv6_Client row.",
-                self->wd6_handle.wh_ifname);
-    }
-
-    if (ovsdb_table_delete_where(&table_IP_Interface, ovsdb_where_uuid("_uuid", ip_interface._uuid.uuid)) < 0)
-    {
-        LOG(WARN, "wanp_dhcpv6: %s: Error deleting IP_Interface row.",
                 self->wd6_handle.wh_ifname);
     }
 }

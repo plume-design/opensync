@@ -126,7 +126,8 @@ ltem_client_table_update(ltem_mgr_t *mgr, struct schema_DHCP_leased_IP *dhcp_lea
         return;
     }
 
-    LOGI("%s: hostname or inet_addr are NULL", __func__);
+    LOGD("%s: hostname or inet_addr are NULL", __func__);
+    FREE(new_entry);
 }
 
 void
@@ -142,7 +143,7 @@ ltem_client_table_delete(ltem_mgr_t *mgr, struct schema_DHCP_leased_IP *dhcp_lea
         entry = ds_tree_find(&mgr->client_table, &to_del);
         if (!entry) return;
 
-        LOGI("%s: Delete client entry %s:%s", __func__, dhcp_lease->hostname, dhcp_lease->inet_addr);
+        LOGD("%s: Delete client entry %s:%s", __func__, dhcp_lease->hostname, dhcp_lease->inet_addr);
         ds_tree_remove(&mgr->client_table, entry);
         FREE(entry);
         return;
@@ -163,19 +164,30 @@ ltem_update_lte_route(ltem_mgr_t *mgr, char *if_name, char *lte_subnet, char *lt
     STRSCPY(mgr->lte_route->lte_gw, lte_gw);
     STRSCPY(mgr->lte_route->lte_netmask, lte_netmask);
     mgr->lte_route->lte_metric = LTE_DEFAULT_METRIC;
-    LOGI("%s: lte_if_name[%s], lte_subnet[%s], lte_gw[%s] lte_netmask[%s], metric[%d]", __func__, if_name,
+    LOGI("%s: lte_if_name[%s], lte_subnet[%s], lte_gw[%s] lte_netmask[%s], lte_metric[%d]", __func__, if_name,
          lte_subnet, lte_gw, lte_netmask, mgr->lte_route->lte_metric);
 }
 
 void
-ltem_update_wan_route(ltem_mgr_t *mgr, char *if_name, char *wan_subnet, char *wan_gw, char *wan_netmask)
+ltem_update_wan_route(ltem_mgr_t *mgr, struct schema_Wifi_Route_Config *rc)
 {
-    LOGI("%s: wan_if_name[%s], wan_subnet[%s], wan_gw[%s]", __func__, if_name, wan_subnet, wan_gw);
-    STRSCPY(mgr->lte_route->wan_if_name, if_name);
-    STRSCPY(mgr->lte_route->wan_subnet, wan_subnet);
-    STRSCPY(mgr->lte_route->wan_gw, wan_gw);
-    STRSCPY(mgr->lte_route->wan_netmask, wan_netmask);
-    mgr->lte_route->wan_metric = WAN_DEFAULT_METRIC;
+    lte_route_info_t *lte_route = mgr->lte_route;
+
+    LOGI("%s: wan_if_name[%s], wan_subnet[%s], wan_gw[%s], wan_metric[%d], lte_metric[%d]",
+         __func__, rc->if_name, rc->dest_addr, rc->gateway, rc->metric, lte_route->lte_metric);
+    STRSCPY(lte_route->wan_if_name, rc->if_name);
+    STRSCPY(lte_route->wan_subnet, rc->dest_addr);
+    STRSCPY(lte_route->wan_gw, rc->gateway);
+    STRSCPY(lte_route->wan_netmask, rc->dest_mask);
+    lte_route->wan_metric = rc->metric;
+    if (lte_route->wan_metric > lte_route->lte_metric)
+    {
+        ltem_set_wan_state(LTEM_WAN_STATE_DOWN);
+    }
+    else
+    {
+        ltem_set_wan_state(LTEM_WAN_STATE_UP);
+    }
 }
 
 /*
@@ -252,6 +264,9 @@ int
 ltem_force_lte_route(ltem_mgr_t *mgr)
 {
     lte_route_info_t *route;
+    uint32_t wan_priority;
+    uint32_t new_lte_priority;
+    char cmd[256];
     int res;
 
     route = mgr->lte_route;
@@ -260,6 +275,15 @@ ltem_force_lte_route(ltem_mgr_t *mgr)
     if (route->wan_gw[0])
     {
         LOGI("%s: if_name[%s]", __func__, route->wan_if_name);
+        /*
+         * This is an ugly hack until the ookla speed test is fixed to use the LTE
+         * interface (wwan0) when we force switch to LTE. The ookla default is
+         * to use V6, which in the force switch case, still points at the ethernet
+         * WAN interface.
+         */
+        snprintf(cmd, sizeof(cmd), "ifconfig %s down", route->wan_if_name);
+        return (ltem_route_exec_cmd(cmd));
+
         route->wan_metric = WAN_L3_FAIL_METRIC;
         /*
          * Route updates are now handled by NM via the Wifi_Route_Config table.
@@ -270,7 +294,11 @@ ltem_force_lte_route(ltem_mgr_t *mgr)
             LOGI("%s: ltem_ovsdb_update_wifi_route_config_metric() failed for [%s]", __func__, route->wan_if_name);
             return res;
         }
-        return ltem_ovsdb_cmu_update_lte_priority(mgr, (route->wan_priority + LTE_CMU_DEFAULT_PRIORITY));
+        wan_priority = ltem_ovsdb_cmu_get_wan_priority(mgr);
+        route->wan_priority = wan_priority;
+        new_lte_priority = route->wan_priority + LTE_CMU_DEFAULT_PRIORITY;
+        LOGD("%s: wan_priority[%d], LTE_CMU_DEFAULT_PRIORITY[%d]", __func__, route->wan_priority, LTE_CMU_DEFAULT_PRIORITY);
+        return ltem_ovsdb_cmu_update_lte_priority(mgr, new_lte_priority);
     }
 
     return 0;
@@ -281,6 +309,7 @@ ltem_restore_default_wan_route(ltem_mgr_t *mgr)
 {
     lte_route_info_t *route;
     int res;
+    char cmd[256];
 
     route = mgr->lte_route;
     if (!route) return -1;
@@ -288,6 +317,15 @@ ltem_restore_default_wan_route(ltem_mgr_t *mgr)
     if (route->wan_gw[0])
     {
         LOGI("%s: if_name[%s]", __func__, route->wan_if_name);
+        /*
+         * This is an ugly hack until the ookla speed test is fixed to use the LTE
+         * interface (wwan0) when we force switch to LTE. The ookla default is
+         * to use V6, which in the force switch case, still points at the ethernet
+         * WAN interface.
+         */
+        snprintf(cmd, sizeof(cmd), "ifconfig %s up", route->wan_if_name);
+        return (ltem_route_exec_cmd(cmd));
+
         route->wan_metric = WAN_DEFAULT_METRIC;
         /*
          * Route updates are now handled by NM via the Wifi_Route_Config table.

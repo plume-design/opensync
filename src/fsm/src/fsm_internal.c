@@ -286,3 +286,125 @@ fsm_wrap_init_plugin(struct fsm_session *session)
 
     return ret;
 }
+
+/**
+ * @brief notify tap type to all fsm_sessions
+ *
+ * @param session dispatcher session
+ * @param tap_type dispatcher tap_type
+ */
+void
+notify_dispatcher_tap_type(struct fsm_session *session, uint32_t tap_type)
+{
+    struct fsm_session *plugin;
+    ds_tree_t *sessions;
+
+    if (session->type != FSM_DPI_DISPATCH) return;
+
+    sessions = fsm_get_sessions();
+    if (sessions == NULL) return;
+
+    plugin = ds_tree_head(sessions);
+    while (plugin != NULL)
+    {
+        if (plugin->ops.notify_dispatcher_tap_type != NULL)
+        {
+            plugin->ops.notify_dispatcher_tap_type(plugin, tap_type);
+        }
+        plugin = ds_tree_next(sessions, plugin);
+    }
+}
+
+/**
+ * @brief notify tap type to fsm session
+ *
+ * @param session the fsm session involved
+ */
+void
+fsm_notify_dispatcher_tap_type(struct fsm_session *session)
+{
+    struct fsm_session *plugin;
+    ds_tree_t *sessions;
+    uint32_t tap_type;
+
+    /* Added/updated session is dpi_dispatch */
+    if (session->type == FSM_DPI_DISPATCH)
+    {
+        tap_type = fsm_tap_type(session);
+        notify_dispatcher_tap_type(session, tap_type);
+        return;
+    }
+
+    sessions = fsm_get_sessions();
+    if (sessions == NULL) return;
+
+    plugin = ds_tree_head(sessions);
+    while (plugin != NULL)
+    {
+        if (plugin->type == FSM_DPI_DISPATCH) break;
+        plugin = ds_tree_next(sessions, plugin);
+    }
+
+    /* dpi_dispatch session is not added */
+    if (plugin == NULL) return;
+
+    tap_type = fsm_tap_type(plugin);
+
+    if (session->ops.notify_dispatcher_tap_type != NULL)
+    {
+        session->ops.notify_dispatcher_tap_type(session, tap_type);
+    }
+}
+
+/**
++ * @brief notify identical sessions
++ *
++ * @param session the fsm session involved
++ */
+void
+fsm_notify_identical_sessions(struct fsm_session *session, bool enabled)
+{
+    enum fsm_plugin_id plugin_id;
+    struct fsm_session *plugin;
+    ds_tree_t *sessions;
+    bool status;
+    int rc;
+
+    plugin_id = session->plugin_id;
+
+    status = (plugin_id == FSM_DNS_PLUGIN);
+    status |= (plugin_id == FSM_DPI_DNS_PLUGIN);
+    if (!status) return;
+
+    sessions = fsm_get_sessions();
+    if (sessions == NULL) return;
+
+    status = false;
+    plugin = ds_tree_head(sessions);
+    while (plugin != NULL)
+    {
+        if (plugin->plugin_id == plugin_id)
+        {
+	    /* same session has been inserted to fsm_sessions tree.
+	     * Ignore if same session is found */
+            rc = strcmp(plugin->name, session->name);
+            if (rc != 0)
+            {
+                if (plugin->ops.notify_identical_sessions != NULL)
+                {
+                    plugin->ops.notify_identical_sessions(plugin, enabled);
+                    status = true;
+                }
+            }
+        }
+        plugin = ds_tree_next(sessions, plugin);
+    }
+
+    if (status)
+    {
+        if (session->ops.notify_identical_sessions != NULL)
+        {
+            session->ops.notify_identical_sessions(session, enabled);
+        }
+    }
+}

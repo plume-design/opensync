@@ -759,14 +759,22 @@ void wano_ppline_retry_timer_fn(struct ev_loop *loop, ev_timer *w, int revent)
     wano_ppline_state_do(&self->wpl_state, wano_ppline_do_IDLE_TIMEOUT, NULL);
 }
 
+/*
+ * Reset IPv6 settings. Delete any static, DHCPv6 client/server and Route
+ * Advertising configuration. Do not delete the row in IP_Interface as it holds
+ * a strong reference to QoS configuration which we *need* to retain
+ * (Interface_QoS and Interface_Queue).
+ */
 void wano_ppline_reset_ipv6(wano_ppline_t *self)
 {
+    struct schema_IP_Interface ip_interface;
     ovsdb_table_t table_IP_Interface;
     ovsdb_table_t table_DHCPv6_Client;
     ovsdb_table_t table_DHCPv6_Server;
     ovsdb_table_t table_IPv6_RouteAdv;
-
-    struct schema_IP_Interface ip_interface;
+    ovsdb_table_t table_IPv6_Address;
+    int ii;
+    int rc;
 
     OVSDB_TABLE_INIT(IP_Interface, _uuid);
     OVSDB_TABLE_INIT(DHCPv6_Client, _uuid);
@@ -783,7 +791,52 @@ void wano_ppline_reset_ipv6(wano_ppline_t *self)
     ovsdb_table_delete_where(&table_DHCPv6_Client, ovsdb_where_uuid("ip_interface", ip_interface._uuid.uuid));
     ovsdb_table_delete_where(&table_DHCPv6_Server, ovsdb_where_uuid("interface", ip_interface._uuid.uuid));
     ovsdb_table_delete_where(&table_IPv6_RouteAdv, ovsdb_where_uuid("interface", ip_interface._uuid.uuid));
-    ovsdb_table_delete_where(&table_IP_Interface, ovsdb_where_uuid("_uuid", ip_interface._uuid.uuid));
+
+    /* Delete non-autoconfigured IPv6 addresses */
+    for (ii = 0; ii < ip_interface.ipv6_addr_len; ii++)
+    {
+        struct schema_IPv6_Address *addr;
+        int addr_cnt;
+
+        addr = ovsdb_table_select_where(&table_IPv6_Address, ovsdb_where_uuid("_uuid", ip_interface.ipv6_addr[ii].uuid), &addr_cnt);
+        if (addr == NULL || addr_cnt < 1)
+        {
+            continue;
+        }
+
+        if (strcmp(addr->origin, "auto_configured") == 0) continue;
+
+        rc = ovsdb_table_delete_where_with_parent(
+                &table_IPv6_Address,
+                ovsdb_where_uuid("_uuid", addr->_uuid.uuid),
+                SCHEMA_TABLE(IP_Interface),
+                ovsdb_where_uuid("_uuid", ip_interface._uuid.uuid),
+                SCHEMA_COLUMN(IP_Interface, ipv6_addr));
+        if (rc <= 0)
+        {
+            LOG(WARN, "wano: %s: Error deleting IPv6_Address uuid=%s",
+                    self->wpl_ifname,
+                    addr->_uuid.uuid);
+        }
+    }
+
+    /* Delete IPv6_Prefixes */
+    struct schema_IP_Interface ip_noprefix;
+
+    memset(&ip_noprefix, 0, sizeof(ip_noprefix));
+    ip_noprefix._partial_update = true;
+    SCHEMA_UNSET_MAP(ip_noprefix.ipv6_prefix);
+
+    rc = ovsdb_table_update_where(
+            &table_IP_Interface,
+            ovsdb_where_uuid("_uuid", ip_interface._uuid.uuid),
+            &ip_noprefix);
+    if (rc <= 0)
+    {
+        LOG(WARN, "wano: %s: Error clearing ipv6_prefix list from IP_Interface where uuid=%s",
+                self->wpl_ifname,
+                ip_interface._uuid.uuid);
+    }
 }
 
 /*

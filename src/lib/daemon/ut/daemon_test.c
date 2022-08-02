@@ -34,13 +34,12 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "log.h"
 #include "unity.h"
 #include "daemon.h"
+#include "unit_test_utils.h"
 
 #define PR(...) do { if (opt_verbose) LOG(INFO, __VA_ARGS__); } while (0)
 
 int opt_verbose = 0;
-
-void setUp() {}
-void tearDown() {}
+char *test_name = "daemon_test";
 
 bool parse_opts(int argc, char *argv[])
 {
@@ -442,6 +441,10 @@ int main(int argc, char *argv[])
     (void)argc;
     (void)argv;
 
+    ut_init(test_name, NULL, NULL);
+
+    ut_setUp_tearDown(test_name, NULL, NULL);
+
     if (!parse_opts(argc, argv))
     {
         return false;
@@ -450,9 +453,7 @@ int main(int argc, char *argv[])
     if (opt_verbose)
         log_open("DAEMON_TEST", LOG_OPEN_STDOUT);
 
-    UNITY_BEGIN();
-
     run_test_daemon();
 
-    return UNITY_END();
+    return ut_fini();
 }

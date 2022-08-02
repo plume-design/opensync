@@ -43,6 +43,7 @@ UNIT_SRC += src/bm_stats.c
 UNIT_SRC += src/bm_stats_rssi.c
 UNIT_SRC += src/bm_neighbor.c
 UNIT_SRC += src/bm_ieee80211.c
+UNIT_SRC += src/bm_util_opclass.c
 
 UNIT_DEPS += src/lib/ds
 UNIT_DEPS += src/lib/common

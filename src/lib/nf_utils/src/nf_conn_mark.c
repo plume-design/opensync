@@ -82,13 +82,14 @@ static void read_mnl_socket_cbk(struct ev_loop *loop, struct ev_io *watcher,
                          int revents)
 {
     char rcv_buf[MNL_SOCKET_BUFFER_SIZE];
-    int ret = 0, portid = 0;
+    int portid = 0;
+    int ret = 0;
+
     if (EV_ERROR & revents)
     {
         LOGE("%s: Invalid mnl socket event", __func__);
         return;
     }
-    LOGD("%s: MNL socket read callback", __func__);
     ret = mnl_socket_recvfrom(nf_ct.mnl, rcv_buf, sizeof(rcv_buf));
     if (ret == -1)
     {
@@ -97,7 +98,6 @@ static void read_mnl_socket_cbk(struct ev_loop *loop, struct ev_io *watcher,
     }
 
     portid = mnl_socket_get_portid(nf_ct.mnl);
-    LOGD("%s: MNL ACK message received", __func__);
 
     ret = mnl_cb_run2(rcv_buf, ret, 0, portid,
                       NULL, NULL, cb_ctl_array,
@@ -404,8 +404,6 @@ static struct nlmsghdr * nf_build_ip_nl_msg(
     uint16_t src_port = 0;
     uint16_t dst_port = 0;
 
-    LOGT("%s: Building nlmsg", __func__);
-
     nlh = nf_build_nl_msg_hdr(buf,
                               (NFNL_SUBSYS_CTNETLINK << 8) | IPCTNL_MSG_CT_NEW,
                               NLM_F_CREATE | NLM_F_REQUEST | NLM_F_ACK, family);
@@ -422,10 +420,8 @@ static struct nlmsghdr * nf_build_ip_nl_msg(
             memcpy(&daddr4, dst_ip, IPV4_ADDR_LEN);
 
         nest = mnl_attr_nest_start(nlh, CTA_TUPLE_ORIG);
-        LOGT("%s: Building nlmsg origin ipv4", __func__);
         build_ip_tuple_v4(nlh, saddr4, daddr4, src_port, dst_port, proto);
         mnl_attr_nest_end(nlh, nest);
-        LOGT("%s: Building nlmsg reply ipv4", __func__);
         nest = mnl_attr_nest_start(nlh, CTA_TUPLE_REPLY);
         build_ip_tuple_v4(nlh, daddr4, saddr4, dst_port, src_port, proto);
         mnl_attr_nest_end(nlh, nest);
@@ -434,11 +430,9 @@ static struct nlmsghdr * nf_build_ip_nl_msg(
     {
         src_ip = &addr->src_ip.ipv6.s6_addr;
         dst_ip = &addr->dst_ip.ipv6.s6_addr;
-        LOGT("%s: Building nlmsg origin ipv6", __func__);
         nest = mnl_attr_nest_start(nlh, CTA_TUPLE_ORIG);
         build_ip_tuple_v6(nlh, src_ip, dst_ip, src_port, dst_port, proto);
         mnl_attr_nest_end(nlh, nest);
-        LOGT("%s: Building nlmsg reply ipv6", __func__);
         nest = mnl_attr_nest_start(nlh, CTA_TUPLE_REPLY);
         build_ip_tuple_v6(nlh, dst_ip, src_ip, dst_port, src_port, proto);
         mnl_attr_nest_end(nlh, nest);
@@ -562,8 +556,6 @@ static struct nlmsghdr * nf_build_ip_nl_msg_alt(
     uint32_t *saddr4 = NULL;
     uint32_t *daddr4 = NULL;
 
-    LOGT("%s: Building nlmsg", __func__);
-
     nlh = nf_build_nl_msg_hdr(buf,
                               (NFNL_SUBSYS_CTNETLINK << 8) | IPCTNL_MSG_CT_NEW,
                               NLM_F_CREATE | NLM_F_REQUEST | NLM_F_ACK, family);
@@ -574,12 +566,10 @@ static struct nlmsghdr * nf_build_ip_nl_msg_alt(
         if (dst_ip) daddr4 = dst_ip;
 
         nest = mnl_attr_nest_start(nlh, CTA_TUPLE_ORIG);
-        LOGT("%s: Building nlmsg origin ipv4", __func__);
         build_ip_tuple_v4(nlh, *saddr4, *daddr4, src_port, dst_port, proto);
         mnl_attr_nest_end(nlh, nest);
         if (build_reply)
         {
-            LOGT("%s: Building nlmsg reply ipv4", __func__);
             nest = mnl_attr_nest_start(nlh, CTA_TUPLE_REPLY);
             build_ip_tuple_v4(nlh, *daddr4, *saddr4,
                               dst_port, src_port, proto);
@@ -588,13 +578,11 @@ static struct nlmsghdr * nf_build_ip_nl_msg_alt(
     }
     else if (family == AF_INET6)
     {
-        LOGT("%s: Building nlmsg origin ipv6", __func__);
         nest = mnl_attr_nest_start(nlh, CTA_TUPLE_ORIG);
         build_ip_tuple_v6(nlh, src_ip, dst_ip, src_port, dst_port, proto);
         mnl_attr_nest_end(nlh, nest);
         if (build_reply)
         {
-            LOGT("%s: Building nlmsg reply ipv6", __func__);
             nest = mnl_attr_nest_start(nlh, CTA_TUPLE_REPLY);
             build_ip_tuple_v6(nlh, dst_ip, src_ip, dst_port, src_port, proto);
             mnl_attr_nest_end(nlh, nest);
@@ -625,8 +613,6 @@ static struct nlmsghdr * nf_build_icmp_nl_msg_alt(
     uint32_t *saddr4 = NULL;
     uint32_t *daddr4 = NULL;
 
-    LOGT("%s: Building nlmsg", __func__);
-
     nlh = nf_build_nl_msg_hdr(buf,
                               (NFNL_SUBSYS_CTNETLINK << 8) | IPCTNL_MSG_CT_NEW,
                               NLM_F_CREATE | NLM_F_REQUEST | NLM_F_ACK, family);
@@ -636,12 +622,10 @@ static struct nlmsghdr * nf_build_icmp_nl_msg_alt(
         if (dst_ip) daddr4 = dst_ip;
 
         nest = mnl_attr_nest_start(nlh, CTA_TUPLE_ORIG);
-        LOGT("%s: Building nlmsg origin icmpv4", __func__);
         build_icmp_params_v4(nlh, *saddr4, *daddr4, id, type, code, proto);
         mnl_attr_nest_end(nlh, nest);
         if ((type == ICMP_ECHO_REQUEST) && build_reply)
         {
-            LOGT("%s: Building nlmsg reply icmpv4", __func__);
             nest = mnl_attr_nest_start(nlh, CTA_TUPLE_REPLY);
             build_icmp_params_v4(nlh, *daddr4, *saddr4, id, 0, 0, proto);
             mnl_attr_nest_end(nlh, nest);
@@ -649,13 +633,11 @@ static struct nlmsghdr * nf_build_icmp_nl_msg_alt(
     }
     else if (family == AF_INET6)
     {
-        LOGT("%s: Building nlmsg origin icmpv6", __func__);
         nest = mnl_attr_nest_start(nlh, CTA_TUPLE_ORIG);
         build_icmp_params_v6(nlh, src_ip, dst_ip, id, type, code, proto);
         mnl_attr_nest_end(nlh, nest);
         if ((type == ICMP_ECHO_REQUEST) && build_reply)
         {
-            LOGT("%s: Building nlmsg reply icmpv6", __func__);
             nest = mnl_attr_nest_start(nlh, CTA_TUPLE_REPLY);
             build_icmp_params_v6(nlh, dst_ip, src_ip, id, 0, 0, proto);
             mnl_attr_nest_end(nlh, nest);

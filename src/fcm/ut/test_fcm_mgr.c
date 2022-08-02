@@ -37,6 +37,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "fcm_priv.h"
 #include "fcm_mgr.h"
 #include "fcm_filter.h"
+#include "unit_test_utils.h"
 
 #define FCM_MAX_MEM   CONFIG_FCM_MEM_MAX * 1024
 
@@ -153,9 +154,6 @@ static struct schema_FCM_Report_Config test_report[] =
         .report_filter = "test_report_filter",
     }
 };
-
-void setUp() {}
-void tearDown() {}
 
 /*
  *Dummy Upsert function - perform decref on 'where'
@@ -316,10 +314,9 @@ int main(int argc, char *argv[])
     (void)argc;
     (void)argv;
 
-    target_log_open("TEST", 0);
-    log_severity_set(LOG_SEVERITY_DEBUG);
+    ut_init(test_name, NULL, NULL);
 
-    UnityBegin(test_name);
+    ut_setUp_tearDown(test_name, NULL, NULL);
 
     fcm_test_init();
     RUN_TEST(test_add_collect_config);
@@ -335,5 +332,5 @@ int main(int argc, char *argv[])
     RUN_TEST(test_null_report_filter_client);
     RUN_TEST(test_collect_report_filter_client);
 
-    return UNITY_END();
+    return ut_fini();
 }

@@ -24,26 +24,27 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#include <sys/socket.h>
+#include <arpa/inet.h>
+#include <netdb.h>
+#include <stdbool.h>
 #include <stdlib.h>
 #include <stdio.h>
-#include <stdbool.h>
 #include <string.h>
 #include <sys/socket.h>
-#include <netdb.h>
 
 #include "dns_cache.h"
 #include "fsm.h"
+#include "fsm_policy.h"
 #include "log.h"
+#include "memutil.h"
 #include "network_metadata_report.h"
 #include "os.h"
 #include "os_types.h"
-#include "fsm_policy.h"
+#include "policy_tags.h"
+#include "schema.h"
 #include "target.h"
 #include "unity.h"
-#include "schema.h"
-#include "policy_tags.h"
-#include "memutil.h"
+#include "unit_test_utils.h"
 
 const char *test_name = "fsm_policy_tests";
 
@@ -352,7 +353,7 @@ struct schema_FSM_Policy spolicies[] =
 };
 
 
-void setUp(void)
+void fsm_policy_setUp(void)
 {
     struct fsm_policy_session *mgr;
     size_t len;
@@ -374,7 +375,7 @@ void setUp(void)
 }
 
 
-void tearDown(void)
+void fsm_policy_tearDown(void)
 {
     struct policy_table *table, *t_to_remove;
     struct fsm_policy *fpolicy, *p_to_remove;
@@ -1827,10 +1828,9 @@ int main(int argc, char *argv[])
     (void)argc;
     (void)argv;
 
-    target_log_open("TEST", LOG_OPEN_STDOUT);
-    log_severity_set(LOG_SEVERITY_TRACE);
+    ut_init(test_name, NULL, NULL);
 
-    UnityBegin(test_name);
+    ut_setUp_tearDown(test_name, fsm_policy_setUp, fsm_policy_tearDown);
 
     RUN_TEST(test_add_spolicy0);
     RUN_TEST(test_update_spolicy0);
@@ -1852,5 +1852,5 @@ int main(int argc, char *argv[])
     RUN_TEST(test_set_log_action);
     RUN_TEST(test_ipthreat_multiple_provider_block);
 
-    return UNITY_END();
+    return ut_fini();
 }

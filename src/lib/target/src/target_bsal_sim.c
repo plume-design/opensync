@@ -374,6 +374,9 @@ handle_rssi_xing(const char *msg)
         else if (strcmp(k, "low_xing") == 0) {
             xing_event->low_xing = bsal_rssi_change_from_str(v);
         }
+        else if (strcmp(k, "busy_override_xing") == 0) {
+            xing_event->busy_override_xing = bsal_rssi_change_from_str(v);
+        }
         else {
             LOGE("BSAL: Unknown RSSI_XING argument: '%s'", k);
             exit(1);
@@ -597,6 +600,7 @@ target_bsal_client_add(const char *ifname, const uint8_t *mac_addr,
         "rssi_inact_xing=%d\n" \
         "rssi_high_xing=%d\n" \
         "rssi_low_xing=%d\n" \
+        "rssi_busy_override_xing=%d\n" \
         "auth_reject_reason=%d",
         FMT(os_macaddr_t, hwaddr),
         ifname,
@@ -608,6 +612,7 @@ target_bsal_client_add(const char *ifname, const uint8_t *mac_addr,
         conf->rssi_inact_xing,
         conf->rssi_high_xing,
         conf->rssi_low_xing,
+        conf->rssi_busy_override_xing,
         conf->auth_reject_reason);
 
     ret = mq_send(g_bsal_out, buf, strlen(buf), 0);
@@ -642,6 +647,7 @@ target_bsal_client_update(const char *ifname, const uint8_t *mac_addr,
         "rssi_inact_xing=%d\n" \
         "rssi_high_xing=%d\n" \
         "rssi_low_xing=%d\n" \
+        "rssi_busy_override_xing=%d\n" \
         "auth_reject_reason=%d",
         FMT(os_macaddr_t, hwaddr),
         ifname,
@@ -653,6 +659,7 @@ target_bsal_client_update(const char *ifname, const uint8_t *mac_addr,
         conf->rssi_inact_xing,
         conf->rssi_high_xing,
         conf->rssi_low_xing,
+        conf->rssi_busy_override_xing,
         conf->auth_reject_reason);
 
     ret = mq_send(g_bsal_out, buf, strlen(buf), 0);

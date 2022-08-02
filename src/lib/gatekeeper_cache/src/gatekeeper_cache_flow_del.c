@@ -157,7 +157,7 @@ gkc_flow_ttl_expired(struct ip_flow_cache *flow_entry)
     now = time(NULL);
 
     /* check if TTL is expired */
-    if ((now - flow_entry->cache_ts) < flow_entry->cache_ttl) return false;
+    if ((now - flow_entry->original_ts) < flow_entry->cache_ttl) return false;
 
     return true;
 }

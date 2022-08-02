@@ -33,3 +33,4 @@ UNIT_DEPS += src/lib/target
 UNIT_DEPS += src/lib/common
 UNIT_DEPS += src/lib/schema
 UNIT_DEPS += src/lib/unity
+UNIT_DEPS += src/lib/unit_test_utils

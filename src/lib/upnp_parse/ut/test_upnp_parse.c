@@ -24,23 +24,32 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#include <stdio.h>
-#include <stdlib.h>
 #include <stdbool.h>
+#include <stdio.h>
 #include <string.h>
 
-#include "upnp_parse.h"
+#include "const.h"
+#include "fsm.h"
 #include "json_util.h"
 #include "log.h"
-#include "qm_conn.h"
-#include "target.h"
-#include "unity.h"
 #include "memutil.h"
+#include "net_header_parse.h"
+#include "ovsdb_utils.h"
+#include "qm_conn.h"
+#include "unit_test_utils.h"
+#include "unity.h"
+#include "upnp_curl.h"
+#include "upnp_parse.h"
 
 #include "pcap.c"
 
+const char *ut_name = "upnp_parse_tests";
+
 #define OTHER_CONFIG_NELEMS 4
 #define OTHER_CONFIG_NELEM_SIZE 32
+
+union fsm_plugin_ops p_ops;
+struct upnp_cache *g_mgr;
 
 char g_other_configs[][2][OTHER_CONFIG_NELEMS][OTHER_CONFIG_NELEM_SIZE] =
 {
@@ -93,7 +102,6 @@ struct fsm_session_ops g_ops =
     .send_report = send_report,
 };
 
-union fsm_plugin_ops p_ops;
 
 struct fsm_session g_sessions[2] =
 {
@@ -106,64 +114,6 @@ struct fsm_session g_sessions[2] =
         .conf = &g_confs[1],
     }
 };
-
-
-struct upnp_cache *g_mgr;
-const char *test_name = "upnp_tests";
-
-/**
- * @brief Converts a bytes array in a hex dump file wireshark can import.
- *
- * Dumps the array in a file that can then be imported by wireshark.
- * The file can also be translated to a pcap file using the text2pcap command.
- * Useful to visualize the packet content.
- */
-void create_hex_dump(const char *fname, const uint8_t *buf, size_t len)
-{
-    int line_number = 0;
-    bool new_line = true;
-    size_t i;
-    FILE *f;
-
-    f = fopen(fname, "w+");
-
-    if (f == NULL) return;
-
-    for (i = 0; i < len; i++)
-    {
-	 new_line = (i == 0 ? true : ((i % 8) == 0));
-	 if (new_line)
-	 {
-	      if (line_number) fprintf(f, "\n");
-	      fprintf(f, "%06x", line_number);
-	      line_number += 8;
-	 }
-         fprintf(f, " %02x", buf[i]);
-    }
-    fprintf(f, "\n");
-    fclose(f);
-
-    return;
-}
-
-/**
- * @brief Convenient wrapper
- *
- * Dumps the packet content in tmp/<tests_name>_<pkt name>.txtpcap
- * for wireshark consumption and sets g_parser data fields.
- * @params pkt the C structure containing an exported packet capture
- */
-#define PREPARE_UT(pkt, parser)                                 \
-    {                                                           \
-        char fname[128];                                        \
-        size_t len = sizeof(pkt);                               \
-                                                                \
-        snprintf(fname, sizeof(fname), "/tmp/%s_%s.txtpcap",    \
-                 test_name, #pkt);                              \
-        create_hex_dump(fname, pkt, len);                       \
-        parser->packet_len = len;                               \
-        parser->data = (uint8_t *)pkt;                          \
-    }
 
 
 void global_test_init(void)
@@ -209,12 +159,14 @@ void global_test_exit(void)
     }
 }
 
-void setUp(void)
+void
+upnp_setUp(void)
 {
-    size_t n_sessions, i;
+    size_t n_sessions;
+    size_t i;
 
     g_mgr = NULL;
-    n_sessions = sizeof(g_sessions) / sizeof(struct fsm_session);
+    n_sessions = ARRAY_SIZE(g_sessions);
 
     /* Reset sessions, register them to the plugin */
     for (i = 0; i < n_sessions; i++)
@@ -230,11 +182,13 @@ void setUp(void)
     return;
 }
 
-void tearDown(void)
+void
+upnp_tearDown(void)
 {
-    size_t n_sessions, i;
+    size_t n_sessions;
+    size_t i;
 
-    n_sessions = sizeof(g_sessions) / sizeof(struct fsm_session);
+    n_sessions = ARRAY_SIZE(g_sessions);
 
     /* Reset sessions, unregister them */
     for (i = 0; i < n_sessions; i++)
@@ -273,6 +227,8 @@ void test_upnp_get_url(void)
     char *expected_url = "http://10.1.0.48:8080/description.xml";
     size_t len;
 
+    ut_prepare_pcap(__func__);
+
     session = &g_sessions[0];
     u_session = upnp_lookup_session(session);
     TEST_ASSERT_NOT_NULL(u_session);
@@ -280,7 +236,8 @@ void test_upnp_get_url(void)
     parser = &u_session->parser;
     net_parser = CALLOC(1, sizeof(*net_parser));
     parser->net_parser = net_parser;
-    PREPARE_UT(pkt322, net_parser);
+    UT_CREATE_PCAP_PAYLOAD(pkt322, net_parser);
+
     len = net_header_parse(net_parser);
     TEST_ASSERT_TRUE(len != 0);
     len = upnp_parse_message(parser);
@@ -290,6 +247,8 @@ void test_upnp_get_url(void)
     url = upnp_get_url(u_session);
     TEST_ASSERT_NOT_NULL(url);
     TEST_ASSERT_EQUAL_STRING(expected_url, url->url);
+
+    ut_cleanup_pcap();
     FREE(net_parser);
 }
 
@@ -299,17 +258,11 @@ int main(int argc, char *argv[])
     (void)argc;
     (void)argv;
 
-    target_log_open("TEST", LOG_OPEN_STDOUT);
-    log_severity_set(LOG_SEVERITY_TRACE);
-
-    UnityBegin(test_name);
-
-    global_test_init();
+    ut_init(ut_name, global_test_init, global_test_exit);
+    ut_setUp_tearDown(ut_name, upnp_setUp, upnp_tearDown);
 
     RUN_TEST(test_load_unload_plugin);
     RUN_TEST(test_upnp_get_url);
 
-    global_test_exit();
-
-    return UNITY_END();
+    return ut_fini();
 }

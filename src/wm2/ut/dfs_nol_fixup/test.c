@@ -39,7 +39,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 /* unit */
 #include <wm2.h>
 
+#include "unit_test_utils.h"
+
 static int test_i;
+char *test_name = "dfs_nol_test";
 
 static struct params {
     int cchan;
@@ -72,16 +75,6 @@ static struct params {
     { 108, "HT80", 136, "HT80", { 132, 136, 140 }, { 108 }, 136, "HT40" },
     { 108, "HT80", 132, "HT20", { 132, 140 }, { 108 }, 132, "HT20" },
 };
-
-void
-setUp(void)
-{
-}
-
-void
-tearDown(void)
-{
-}
 
 static void
 test_one(const struct params *p)
@@ -127,14 +120,14 @@ main(int argc, const char **argv)
 {
     size_t i;
 
-    target_log_open("TEST", LOG_OPEN_STDOUT);
-    log_severity_set(LOG_SEVERITY_TRACE);
+    ut_init(test_name, NULL, NULL);
 
-    UnityBegin("dfs nol test");
+    ut_setUp_tearDown(test_name, NULL, NULL);
+
     for (i = 0; i < ARRAY_SIZE(params); i++) {
         test_i = i;
         RUN_TEST(test_one_unity);
     }
 
-    return UNITY_END();
+    return ut_fini();
 }

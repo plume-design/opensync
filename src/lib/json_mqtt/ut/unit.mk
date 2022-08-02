@@ -37,3 +37,4 @@ UNIT_DEPS += src/lib/target
 UNIT_DEPS += src/lib/json_util
 
 UNIT_DEPS += src/lib/json_mqtt
+UNIT_DEPS += src/lib/unit_test_utils

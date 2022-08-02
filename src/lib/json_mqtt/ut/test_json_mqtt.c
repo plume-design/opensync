@@ -33,17 +33,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "json_util.h"
 
 #include "json_mqtt.h"
+#include "unit_test_utils.h"
 
 extern char *version;
 char *test_name = "test_json_mqtt";
-
-void
-setUp(void)
-{}
-
-void
-tearDown(void)
-{}
 
 /* Expose function to UT */
 void
@@ -705,11 +698,9 @@ test_jencode_dhcp_report(void)
 int
 main(int argc, char *argv[])
 {
-    /* Set the logs to stdout */
-    target_log_open(test_name, LOG_OPEN_STDOUT);
-    log_severity_set(LOG_SEVERITY_TRACE);
+    ut_init(test_name, NULL, NULL);
 
-    UnityBegin(test_name);
+    ut_setUp_tearDown(test_name, NULL, NULL);
 
     RUN_TEST(test_jencode_header);
     RUN_TEST(test_jencode_user_agent);
@@ -718,5 +709,5 @@ main(int argc, char *argv[])
     RUN_TEST(test_jencode_upnp_report);
     RUN_TEST(test_jencode_dhcp_report);
 
-    return UNITY_END();
+    return ut_fini();
 }

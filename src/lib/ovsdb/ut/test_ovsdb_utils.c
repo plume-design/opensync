@@ -28,7 +28,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "log.h"
 #include "target.h"
 #include "unity.h"
-
+#include "unit_test_utils.h"
 
 const char *test_name = "fsm_utils_tests";
 
@@ -84,26 +84,6 @@ int int_arrays[][4] =
         31,
     },
 };
-
-/**
- * @brief setUp() is called by the Unity framework before each test
- */
-void
-setUp(void)
-{
-    return;
-}
-
-
-/**
- * @brief tearDown() is called by the Unity framework after each test
- */
-void
-tearDown(void)
-{
-    return;
-}
-
 
 /**
  * @brief test schema2str_set
@@ -261,15 +241,14 @@ int main(int argc, char *argv[])
     (void)argc;
     (void)argv;
 
-    target_log_open("TEST", LOG_OPEN_STDOUT);
-    log_severity_set(LOG_SEVERITY_INFO);
+    ut_init(test_name, NULL, NULL);
 
-    UnityBegin(test_name);
+    ut_setUp_tearDown(test_name, NULL, NULL);
 
     RUN_TEST(test_schema2str_set);
     RUN_TEST(test_schema2tree);
     RUN_TEST(test_schema2int_set);
     RUN_TEST(test_schema2itree);
 
-    return UNITY_END();
+    return ut_fini();
 }

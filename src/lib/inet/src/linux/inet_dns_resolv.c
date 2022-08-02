@@ -382,6 +382,11 @@ exit:
     {
         if (retval)
         {
+            if (chmod(presolv, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH) != 0)
+            {
+                LOG(WARN, "inet_dns: Error changing permission of %s", presolv);
+            }
+
             if (rename(presolv, CONFIG_INET_RESOLVCONF_PATH) != 0)
             {
                 LOG(ERR, "inet_dns: Error renaming file %s -> %s: %s",

@@ -635,27 +635,6 @@ fsm_dpi_find_mac_in_val(os_macaddr_t *mac, char *val)
 
 
 /**
- * @brief check if any mac of a ethernet header matches a given tag
- *
- * @param the mac address to check
- * @param val an opensync tag name or the string representation of a mac address
- * @return true if the mac matches the value, false otherwise
- */
-static bool
-fsm_dpi_find_macs_in_val(struct eth_header *eth_hdr, char *val)
-{
-    bool rc;
-
-    if (val == NULL) return false;
-
-    rc = fsm_dpi_find_mac_in_val(eth_hdr->srcmac, val);
-    rc |= fsm_dpi_find_mac_in_val(eth_hdr->dstmac, val);
-
-    return rc;
-}
-
-
-/**
  * @brief check if mac matches a given tag
  *
  * @param the mac address to check
@@ -763,6 +742,31 @@ fsm_dpi_update_acc_key(struct net_md_stats_accumulator *acc)
     key->originator = acc->originator;
 }
 
+void
+fsm_dpi_set_lan2lan_originator(struct net_md_stats_accumulator *acc)
+{
+    struct net_md_flow_key *key;
+    bool smac_bcast;
+    bool dmac_bcast;
+
+    if (acc == NULL) return;
+
+    key = acc->key;
+    if (key == NULL) return;
+
+    smac_bcast = fsm_dpi_is_mac_bcast(key->smac);
+    dmac_bcast = fsm_dpi_is_mac_bcast(key->dmac);
+
+    if (acc->direction == NET_MD_ACC_LAN2LAN_DIR)
+    {
+        if (smac_bcast && !dmac_bcast)
+            acc->originator = NET_MD_ACC_ORIGINATOR_DST;
+        else if (!smac_bcast && dmac_bcast)
+            acc->originator = NET_MD_ACC_ORIGINATOR_SRC;
+        else
+            acc->originator = NET_MD_ACC_ORIGINATOR_SRC;
+    }
+}
 
 /**
  * @brief set accumulator flow direction based ports
@@ -805,6 +809,7 @@ fsm_dpi_set_acc_direction_on_port(struct fsm_dpi_dispatcher *dispatch,
     if (smac_found && dmac_found)
     {
         acc->direction = NET_MD_ACC_LAN2LAN_DIR;
+        fsm_dpi_set_lan2lan_originator(acc);
     }
     else if ((sport > MAX_RESERVED_PORT_NUM) &&
              (dport < NON_RESERVED_PORT_START_NUM))
@@ -847,11 +852,6 @@ fsm_dpi_set_acc_direction_on_port(struct fsm_dpi_dispatcher *dispatch,
                            NET_MD_ACC_ORIGINATOR_SRC);
     }
     else if (acc->direction == NET_MD_ACC_OUTBOUND_DIR)
-    {
-        acc->originator = (smac_found ? NET_MD_ACC_ORIGINATOR_SRC :
-                           NET_MD_ACC_ORIGINATOR_DST);
-    }
-    else if (acc->direction == NET_MD_ACC_LAN2LAN_DIR)
     {
         acc->originator = (smac_found ? NET_MD_ACC_ORIGINATOR_SRC :
                            NET_MD_ACC_ORIGINATOR_DST);
@@ -1000,6 +1000,7 @@ fsm_dpi_set_icmp_acc_direction(struct fsm_dpi_dispatcher *dispatch,
     if (smac_found && dmac_found)
     {
         acc->direction = NET_MD_ACC_LAN2LAN_DIR;
+        fsm_dpi_set_lan2lan_originator(acc);
     }
     else if (smac_found)
     {
@@ -1256,6 +1257,40 @@ error:
 
 
 /**
+ * @brief free the dpi resources of every plugin
+ *
+ * @param session the session to free
+ */
+void
+fsm_free_dpi_plugins_resources(struct fsm_session *session)
+{
+    struct fsm_dpi_plugin_ops *dpi_plugin_ops;
+    struct fsm_dpi_dispatcher *dispatch;
+    union fsm_dpi_context *dpi_context;
+    struct fsm_dpi_plugin *dpi_plugin;
+    struct fsm_dpi_plugin *next;
+    ds_tree_t *dpi_sessions;
+
+    dpi_context = session->dpi;
+    if (dpi_context == NULL) return;
+
+    dispatch = &dpi_context->dispatch;
+    dpi_sessions = &dispatch->plugin_sessions;
+    dpi_plugin = ds_tree_head(dpi_sessions);
+    while (dpi_plugin != NULL)
+    {
+        dpi_plugin_ops = &dpi_plugin->session->p_ops->dpi_plugin_ops;
+        if (dpi_plugin_ops->dpi_free_resources != NULL)
+        {
+            dpi_plugin_ops->dpi_free_resources(dpi_plugin->session);
+        }
+        next = ds_tree_next(dpi_sessions, dpi_plugin);
+        dpi_plugin = next;
+    }
+}
+
+
+/**
  * @brief free the dpi resources of a dispatcher plugin
  *
  * @param session the session to free
@@ -1479,7 +1514,8 @@ fsm_free_dpi_context(struct fsm_session *session)
 
     if (session->type == FSM_DPI_DISPATCH)
     {
-       fsm_free_dpi_dispatcher(session);
+        fsm_free_dpi_plugins_resources(session);
+        fsm_free_dpi_dispatcher(session);
     }
     else if (session->type == FSM_DPI_PLUGIN)
     {
@@ -1547,7 +1583,9 @@ fsm_net_parser_to_acc(struct net_header_parser *net_parser,
     struct net_md_stats_accumulator *acc;
     struct eth_header *eth_hdr;
     struct net_md_flow_key key;
+    uint16_t ethertype;
     bool is_fragment;
+    bool is_ip;
 
     eth_hdr = &net_parser->eth_header;
 
@@ -1555,8 +1593,17 @@ fsm_net_parser_to_acc(struct net_header_parser *net_parser,
     key.smac = eth_hdr->srcmac;
     key.dmac = eth_hdr->dstmac;
     key.vlan_id = eth_hdr->vlan_id;
-    key.ethertype = eth_hdr->ethertype;
 
+    ethertype = eth_hdr->ethertype;
+    is_ip = ((ethertype == ETH_P_IP) || (ethertype == ETH_P_IPV6));
+    if (!is_ip)
+    {
+        LOGD("%s: ethertype: %d is other than IPv4 & IPv6."
+              "Ignoring packet for dpi inspection", __func__, ethertype);
+	return NULL;
+    }
+
+    key.ethertype = ethertype;
     key.ip_version = net_parser->ip_version;
     if (net_parser->ip_version == 4)
     {
@@ -1630,6 +1677,91 @@ fsm_dpi_mark_for_report(struct fsm_session *session,
     fsm_dpi_mark_acc_for_report(acc->aggr, acc);
 }
 
+
+/**
+ * @brief check if a mac should be processed
+ *
+ * @param the mac to check
+ * @param included_targets tag representing the included targets
+ * @param excluded_targets tag representing the excluded targets
+ *
+ * check if a packet should be processed based on its the source and destination
+ */
+bool
+fsm_dpi_should_process_mac(os_macaddr_t *mac,
+                           char *included_targets,
+                           char *excluded_targets)
+{
+    bool is_unicast;
+    bool excluded;
+    bool included;
+
+    /* Sanity check */
+    if (mac == NULL) return false;
+
+    /* Do not process broadcast/multicast addresses */
+    is_unicast = ((mac->addr[0] & 0x1) == 0x0);
+    if (!is_unicast) return false;
+
+    /* Check if the mac is explicitly included */
+    if (included_targets != NULL)
+    {
+        included = fsm_dpi_find_mac_in_val(mac, included_targets);
+        return included;
+    }
+
+    /* The mac is not explicitly included, check if it is explicitly excluded */
+    if (excluded_targets != NULL)
+    {
+        excluded = !fsm_dpi_find_mac_in_val(mac, excluded_targets);
+        return excluded;
+    }
+
+    /* The mac is not explictly included nor explicitly excluded. Process. */
+    return true;
+}
+
+
+/**
+ * @brief check if a packet should be processed
+ *
+ * @param the parsed info for the current packet
+ * @param included_targets tag representing the included targets
+ * @param excluded_targets tag representing the excluded targets
+ *
+ * check if a packet should be procesed based on its the source and destination
+ * Both source and destination macs are checked for processing.
+ * If one of the mac is to be processed, the packet is processed regardless of
+ * the processing status of the second mac.
+ * For example, a DNS reply may come from a source to be excluded, to a destination
+ * to be included. Such a packet needs to be processed.
+ */
+bool
+fsm_dpi_should_process(struct net_header_parser *net_parser,
+                       char *included_targets,
+                       char *excluded_targets)
+{
+    struct eth_header *eth_hdr;
+    bool process;
+
+    /* safety check */
+    if (net_parser == NULL) return false;
+
+    /* Access the ethernet header */
+    eth_hdr = &net_parser->eth_header;
+
+    /* Check the source mac */
+    process = fsm_dpi_should_process_mac(eth_hdr->srcmac,
+                                         included_targets, excluded_targets);
+
+    /* Check the destination mac */
+    process |= fsm_dpi_should_process_mac(eth_hdr->dstmac,
+                                          included_targets, excluded_targets);
+
+    return process;
+}
+
+
 /**
  * @brief dipatches a received packet to the dpi plugin handlers
  *
@@ -1643,20 +1775,16 @@ fsm_dispatch_pkt(struct fsm_session *session,
                  struct net_header_parser *net_parser)
 {
     union fsm_dpi_context *plugin_dpi_context;
-    struct net_md_stats_accumulator *acc;
     struct fsm_dpi_plugin_ops *dpi_plugin_ops;
+    struct net_md_stats_accumulator *acc;
     struct fsm_dpi_flow_info *info;
     struct fsm_session *dpi_plugin;
     struct fsm_dpi_plugin *plugin;
-    struct eth_header *eth_hdr;
     struct fsm_mgr *mgr;
     ds_tree_t *tree;
-    bool excluded;
-    bool included;
+    bool process;
     bool drop;
     bool pass;
-
-    eth_hdr = &net_parser->eth_header;
 
     acc = net_parser->acc;
 
@@ -1696,33 +1824,10 @@ fsm_dispatch_pkt(struct fsm_session *session,
         plugin_dpi_context = dpi_plugin->dpi;
         plugin = &plugin_dpi_context->plugin;
 
-        /* Check if the source or dest device is an excluded target */
-        if (plugin->excluded_targets == NULL)
-        {
-            excluded = false;
-        }
-        else
-        {
-            excluded = fsm_dpi_find_macs_in_val(eth_hdr,
-                                                plugin->excluded_targets);
-        }
-        if (excluded)
-        {
-            info = ds_tree_next(tree, info);
-            continue;
-        }
-
-        /* Check if the source or dest device is a target */
-        /* No explicit target means include */
-        if (plugin->targets == NULL)
-        {
-            included = true;
-        }
-        else
-        {
-            included = fsm_dpi_find_macs_in_val(eth_hdr, plugin->targets);
-        }
-        if (!included)
+        process = fsm_dpi_should_process(net_parser,
+                                         plugin->targets,
+                                         plugin->excluded_targets);
+        if (!process)
         {
             info = ds_tree_next(tree, info);
             continue;
@@ -1823,23 +1928,22 @@ fsm_dpi_handler(struct fsm_session *session,
     struct fsm_dpi_dispatcher *dispatch;
     union fsm_dpi_context *dpi_context;
     struct flow_counters counters;
-    struct eth_header *eth_hdr;
     size_t payload_len;
-    bool filter;
+    bool process;
 
     dpi_context = session->dpi;
     if (dpi_context == NULL) return;
 
     dispatch = &dpi_context->dispatch;
-
-    if (session->tap_type & FSM_TAP_NFQ)
+    process = fsm_dpi_should_process(net_parser,
+                                     dispatch->included_devices,
+                                     dispatch->excluded_devices);
+    if (!process)
     {
-        eth_hdr = &net_parser->eth_header;
-        if ((eth_hdr->srcmac) && (eth_hdr->dstmac))
-        {
-            /* nullify the src mac for Inbound packets */
-            eth_hdr->srcmac = NULL;
-        }
+        LOGT("%s: not processing the following flow: ", __func__);
+        net_header_logt(net_parser);
+
+        return;
     }
 
     acc = fsm_net_parser_to_acc(net_parser, dispatch->aggr);
@@ -1854,8 +1958,8 @@ fsm_dpi_handler(struct fsm_session *session,
     fsm_dpi_alloc_flow_context(session, acc);
     net_parser->acc = acc;
 
-    filter = fsm_dpi_filter_packet(net_parser);
-    if (!filter) return;
+    process = fsm_dpi_filter_packet(net_parser);
+    if (!process) return;
 
     fsm_dispatch_pkt(session, net_parser);
 }

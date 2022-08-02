@@ -41,17 +41,19 @@ else
 endif
 
 UNIT_SRC := src/fsm_dpi_sni.c
-UNIT_SRC += src/fsm_dpi_adt.c
-UNIT_SRC += src/fsm_dpi_dns.c
+UNIT_SRC += src/dpi_sni.c
 
 UNIT_CFLAGS := -I$(UNIT_PATH)/inc
-UNIT_CFLAGS += -Isrc/fsm/inc
+
+# This is REQUIRED so we can find libfsm_dpi_client.so
+UNIT_LDFLAGS += -Wl,-rpath=$(INSTALL_PREFIX)/$(UNIT_DIR)
 
 UNIT_EXPORT_CFLAGS := $(UNIT_CFLAGS)
 UNIT_EXPORT_LDFLAGS := -ljansson
 
 UNIT_DEPS := src/lib/const
 UNIT_DEPS += src/lib/dns_cache
+UNIT_DEPS += src/lib/fsm_dpi_client
 UNIT_DEPS += src/lib/fsm_policy
 UNIT_DEPS += src/lib/fsm_utils
 UNIT_DEPS += src/lib/gatekeeper_cache

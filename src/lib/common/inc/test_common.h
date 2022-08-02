@@ -27,9 +27,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifndef TEST_COMMON_H
 #define TEST_COMMON_H
 
-extern void (*g_setUp)(void);
-extern void (*g_tearDown)(void);
-
 extern void run_test_sockaddr_storage(void);
 
 #endif /* TEST_COMMON_H */

@@ -24,54 +24,40 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#include "dns_cache.h"
-#include "log.h"
-#include "target.h"
+#define _GNU_SOURCE
+
+#include <arpa/inet.h>
+#include <stdbool.h>
+
+#include "memutil.h"
+#include "os.h"
 #include "unity.h"
-#include "unity_internals.h"
 
-char *test_name = "fsm_dpi_sni_plugin_tests";
-
-/**
- * @brief called by the Unity framework before every single test
- */
 void
-setUp(void)
+test_strexa_stdin(void)
 {
-    struct dns_cache_settings cache_init;
-
-    cache_init.dns_cache_source = MODULE_DNS_PARSE;
-    cache_init.service_provider = IP2ACTION_WP_SVC;
-    dns_cache_init(&cache_init);
+    const char *buf = strexa("sh", "-c", "readlink -f /proc/self/fd/0");
+    TEST_ASSERT_EQUAL_STRING(buf, "/dev/null");
 }
 
-/**
- * @brief called by the Unity framework after every single test
- */
 void
-tearDown(void)
+test_strexa_stdout(void)
 {
-    dns_cache_cleanup_mgr();
+    const char *buf = strexa("sh", "-c", "readlink -f /proc/self/fd/1");
+    TEST_ASSERT(strstr(buf, "pipe") != NULL);
 }
 
-
-extern void run_test_plugin(void);
-extern void run_test_functions(void);
-
-int
-main(int argc, char *argv[])
+void
+test_strexa_stderr(void)
 {
-    (void)argc;
-    (void)argv;
+    const char *buf = strexa("sh", "-c", "readlink -f /proc/self/fd/2");
+    TEST_ASSERT_EQUAL_STRING(buf, "/dev/null");
+}
 
-    /* Set the logs to stdout */
-    target_log_open(test_name, LOG_OPEN_STDOUT);
-    log_severity_set(LOG_SEVERITY_TRACE);
-
-    UnityBegin(test_name);
-
-    run_test_plugin();
-    run_test_functions();
-
-    return UNITY_END();
+void
+run_test_strexa(void)
+{
+    RUN_TEST(test_strexa_stdin);
+    RUN_TEST(test_strexa_stdout);
+    RUN_TEST(test_strexa_stderr);
 }

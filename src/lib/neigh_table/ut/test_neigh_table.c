@@ -47,6 +47,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "sockaddr_storage.h"
 
 #include "test_neigh_table.h"
+#include "unit_test_utils.h"
 
 // v4 entries.
 struct neighbour_entry *entry1;
@@ -1920,15 +1921,8 @@ test_process_link_event(void)
 void
 run_test_neigh_table(void)
 {
-    void (*prev_setUp)(void);
-    void (*prev_tearDown)(void);
+    ut_setUp_tearDown(__func__, neigh_table_setUp, neigh_table_tearDown);
 
-    /* swap the setup/teardown routines */
-    prev_setUp    = g_setUp;
-    prev_tearDown = g_tearDown;
-    g_setUp = neigh_table_setUp;
-    g_tearDown = neigh_table_tearDown;
-    
     neigh_global_test_setup();
 
     RUN_TEST(test_add_neigh_entry);
@@ -1944,6 +1938,5 @@ run_test_neigh_table(void)
 
     neigh_global_test_teardown();
 
-    g_setUp = prev_setUp;
-    g_tearDown = prev_tearDown;
+    ut_setUp_tearDown(NULL, NULL, NULL);
 }

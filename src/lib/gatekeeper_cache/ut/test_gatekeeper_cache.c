@@ -1499,6 +1499,60 @@ test_ipv4_upsert(void)
 }
 
 void
+test_flow_entry_removed_from_cache_after_ttl_expires(void)
+{
+    struct gk_attr_cache_interface entry;
+    struct attr_cache *out1;
+    struct attr_cache *out2;
+    char *ipv4 = "1.2.3.4";
+    bool ret;
+
+    LOGI("starting test: %s ...", __func__);
+
+    MEMZERO(entry);
+    entry.action = FSM_BLOCK;
+    entry.device_mac = str2os_mac("AA:AA:AA:AA:AA:01");
+    entry.attribute_type = GK_CACHE_REQ_TYPE_IPV4;
+    entry.cache_ttl = 10;
+    entry.action = FSM_BLOCK;
+    entry.direction = NET_MD_ACC_OUTBOUND_DIR;
+    entry.gk_policy = STRDUP("gk_ut_block");
+    entry.ip_addr = sockaddr_storage_create(AF_INET, ipv4);
+
+    /* Fist validate that the entry is not yet cached */
+    out1 = gkc_fetch_attribute_entry(&entry);
+    TEST_ASSERT_NULL(out1);
+
+    /* add the entry */
+    ret = gkc_upsert_attribute_entry(&entry);
+    TEST_ASSERT_TRUE(ret);
+
+    /* TTL was set to 10 secs, entry should be found */
+    sleep(7);
+    gkc_ttl_cleanup();
+    out2 = gkc_fetch_attribute_entry(&entry);
+    TEST_ASSERT_NOT_NULL(out2);
+
+    /* upsert operation should not refresh TTL */
+    ret = gkc_upsert_attribute_entry(&entry);
+    TEST_ASSERT_TRUE(ret);
+    sleep(5);
+
+    /* since TTL is not refreshed, the entry should be removed
+     * because of expired TTL */
+    gkc_ttl_cleanup();
+    out2 = gkc_fetch_attribute_entry(&entry);
+    TEST_ASSERT_NULL(out2);
+
+    FREE(entry.ip_addr);
+    FREE(entry.gk_policy);
+    FREE(entry.device_mac);
+
+    LOGI("ending test: %s", __func__);
+
+}
+
+void
 test_ipv6_upsert(void)
 {
     struct gk_attr_cache_interface entry;
@@ -1788,6 +1842,7 @@ run_gk_cache(void)
     RUN_TEST(test_gkc_private_ipv6_attr_entry);
     RUN_TEST(test_gkc_private_ip_flow_entry);
     RUN_TEST(test_ipv4_upsert);
+    RUN_TEST(test_flow_entry_removed_from_cache_after_ttl_expires);
     RUN_TEST(test_ipv6_upsert);
     RUN_TEST(test_ipv4_upsert_action_by_name);
     RUN_TEST(test_ipv6_upsert_action_by_name);

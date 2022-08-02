@@ -256,32 +256,31 @@ nf_queue_send_verdict(struct nfqnl_msg_verdict_hdr *vhdr,
         case NF_UTIL_NFQ_ACCEPT:
                 LOGT("%s: Setting mark 2, no more packets needed.",__func__);
                 mark = 2;
-                vhdr->verdict = htonl(NF_ACCEPT);
                 break;
         case NF_UTIL_NFQ_INSPECT:
                 LOGT("%s: Continue inspection, need more packets.",__func__);
-                vhdr->verdict = htonl(NF_ACCEPT);
                 break;
         case NF_UTIL_NFQ_DROP:
-                LOGT("%s: Setting mark to 3, drop packets",__func__);
+                LOGT("%s: Setting mark to 3.",__func__);
                 mark = 3;
-                vhdr->verdict = htonl(NF_DROP);
                 break;
     }
+
+    /*
+    * We always pass verdict as accept,
+    * however we just mark the conntrack entry
+    * either to 2 or 3.This will make sure that the conntrack
+    * entry is active and OVS can take
+    * the appropriate action.
+    */
+    vhdr->verdict = htonl(NF_ACCEPT);
 
     mnl_attr_put(nfq->nlh, NFQA_VERDICT_HDR, sizeof(struct nfqnl_msg_verdict_hdr), vhdr);
 
-    if (mark == 2)
+    if (mark == 2 || mark == 3)
     {
         nest = mnl_attr_nest_start(nfq->nlh, NFQA_CT);
         mnl_attr_put_u32(nfq->nlh, CTA_MARK, htonl(mark));
-        mnl_attr_nest_end(nfq->nlh, nest);
-    }
-    else if (mark == 3)
-    {
-        nest = mnl_attr_nest_start(nfq->nlh, NFQA_CT);
-        mnl_attr_put_u32(nfq->nlh, CTA_MARK, htonl(mark));
-        mnl_attr_put_u32(nfq->nlh, CTA_STATUS, htonl(IPS_CONFIRMED));
         mnl_attr_nest_end(nfq->nlh, nest);
     }
 

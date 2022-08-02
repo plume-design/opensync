@@ -50,3 +50,4 @@ UNIT_DEPS += src/lib/ovsdb
 UNIT_DEPS += src/lib/common
 UNIT_DEPS += src/lib/osp
 UNIT_DEPS += src/lib/protobuf
+UNIT_DEPS += src/lib/network_metadata

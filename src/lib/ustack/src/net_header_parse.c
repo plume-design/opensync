@@ -576,6 +576,65 @@ net_header_log(int log_level, struct net_header_parser *parser)
     FREE(buf);
 }
 
+char *
+dir2str(uint8_t direction)
+{
+    switch (direction)
+    {
+        case NET_MD_ACC_INBOUND_DIR     : return "inbound";
+        case NET_MD_ACC_OUTBOUND_DIR    : return "outbound";
+        case NET_MD_ACC_LAN2LAN_DIR     : return "lan2lan";
+        case NET_MD_ACC_UNSET_DIR       :
+        default:                          return "unspecified";
+    }
+}
+
+char *
+orig2str(uint8_t originator)
+{
+    switch (originator)
+    {
+        case NET_MD_ACC_ORIGINATOR_SRC      : return "source";
+        case NET_MD_ACC_ORIGINATOR_DST      : return "destination";
+        case NET_MD_ACC_UNKNOWN_ORIGINATOR  :
+        default:                              return "unspecified";
+    }
+}
+
+static char *
+net_header_tap2str(struct net_header_parser *parser)
+{
+    char *ret;
+
+    ret = "invalid";
+
+    if (parser == NULL) return "header NULL";
+    switch(parser->source)
+    {
+        case PKT_SOURCE_NONE:
+        {
+            ret = "none";
+            break;
+        }
+        case PKT_SOURCE_PCAP:
+        {
+            ret = "pcap";
+            break;
+        }
+        case PKT_SOURCE_NFQ:
+        {
+            ret = "nfqueue";
+            break;
+        }
+        default:
+        {
+            ret = "invalid";
+            break;
+        }
+    }
+    return ret;
+};
+
 
 /**
  * @brief fills the given string with the network header content
@@ -595,11 +654,13 @@ net_header_fill_buf(char *buf, size_t len, struct net_header_parser *parser)
     char ip_src[INET6_ADDRSTRLEN];
     char ip_dst[INET6_ADDRSTRLEN];
     struct eth_header *eth;
+    uint8_t has_src_mac;
+    uint8_t has_dst_mac;
     char flow_pres[256];
     char eth_pres[256];
     char tpt_pres[256];
+    uint8_t eth_switch;
     bool has_ip;
-    bool has_eth;
 
     eth = net_header_get_eth(parser);
     memset(eth_pres, 0, sizeof(eth_pres));
@@ -609,17 +670,43 @@ net_header_fill_buf(char *buf, size_t len, struct net_header_parser *parser)
     memset(buf, 0, len);
 
     /* Prepare ethernet presentation */
-    has_eth = eth->srcmac ? true : false;
-    has_eth &= eth->dstmac ? true : false;
-    if (has_eth)
+    has_src_mac = eth->srcmac ? 1 : 0;
+    has_dst_mac = eth->dstmac ? 2 : 0;
+    eth_switch = (has_src_mac | has_dst_mac);
+    switch (eth_switch)
     {
-        snprintf(eth_pres, sizeof(eth_pres),
-                 "ETH: src: " PRI_os_macaddr_lower_t
-                 ", dst: " PRI_os_macaddr_lower_t
-                 ", ethertype 0x%X, vlan id %u",
-                 FMT_os_macaddr_pt(eth->srcmac),
-                 FMT_os_macaddr_pt(eth->dstmac),
-                 net_header_get_ethertype(parser), eth->vlan_id);
+        case 3:
+            snprintf(eth_pres, sizeof(eth_pres),
+                     "ETH: src: " PRI_os_macaddr_lower_t
+                     ", dst: " PRI_os_macaddr_lower_t
+                     ", ethertype 0x%X, vlan id %u",
+                     FMT_os_macaddr_pt(eth->srcmac),
+                     FMT_os_macaddr_pt(eth->dstmac),
+                     net_header_get_ethertype(parser), eth->vlan_id);
+            break;
+
+        case 2:
+            snprintf(eth_pres, sizeof(eth_pres),
+                     "ETH: src not set"
+                     ", dst: " PRI_os_macaddr_lower_t
+                     ", ethertype 0x%X, vlan id %u",
+                     FMT_os_macaddr_pt(eth->dstmac),
+                     net_header_get_ethertype(parser), eth->vlan_id);
+            break;
+
+        case 1:
+            snprintf(eth_pres, sizeof(eth_pres),
+                     "ETH: src: " PRI_os_macaddr_lower_t
+                     ", dst not set"
+                     ", ethertype 0x%X, vlan id %u",
+                     FMT_os_macaddr_pt(eth->srcmac),
+                     net_header_get_ethertype(parser), eth->vlan_id);
+            break;
+
+        case 0:
+            snprintf(eth_pres, sizeof(eth_pres),
+                     "ETH: N/A");
+            break;
     }
 
     /* Prepare ip presentation */
@@ -675,11 +762,106 @@ net_header_fill_buf(char *buf, size_t len, struct net_header_parser *parser)
     acc = parser->acc;
     if (acc != NULL)
     {
-        snprintf(flow_pres, sizeof(flow_pres), ", FLOW: direction: %u, "
-                 "originator: %u", acc->direction, acc->originator);
+        snprintf(flow_pres, sizeof(flow_pres), ", FLOW: direction: %s, "
+                 "originator: %s, tap : %s", dir2str(acc->direction),
+                 orig2str(acc->originator),
+                 net_header_tap2str(parser));
+    }
+    else
+    {
+        snprintf(flow_pres, sizeof(flow_pres), ", tap : %s",
+                 net_header_tap2str(parser));
     }
 
     snprintf(buf, len, "%s%s%s%s", eth_pres, ip_pres, tpt_pres, flow_pres);
 
     return buf;
+}
+
+static os_macaddr_t ipv4_mcast_mac =
+{
+    .addr =
+    {
+        [0] = 0x01,
+        [1] = 0x00,
+        [2] = 0x5e,
+        [3] = 0x00,
+        [4] = 0x00,
+        [5] = 0x00,
+    }
+};
+
+static os_macaddr_t ipv6_mcast_mac =
+{
+    .addr =
+    {
+        [0] = 0x33,
+        [1] = 0x33,
+        [2] = 0x00,
+        [3] = 0x00,
+        [4] = 0x00,
+        [5] = 0x00,
+    }
+};
+
+static bool
+net_header_is_mac_mcast(os_macaddr_t *mac, int ethertype)
+{
+    os_macaddr_t *mcast_mac;
+    size_t limit;
+    size_t i;
+    bool rc;
+
+    if (mac == NULL) return false;
+
+    limit = 0;
+    mcast_mac = NULL;
+    if (ethertype == ETH_P_IP)
+    {
+        limit = 3;
+        mcast_mac = &ipv4_mcast_mac;
+    }
+    else if (ethertype == ETH_P_IPV6)
+    {
+        limit = 2;
+        mcast_mac = &ipv6_mcast_mac;
+    }
+    else return false;
+    rc = true;
+
+    for (i = 0; i < limit; i++)
+    {
+        if (mac->addr[i] != mcast_mac->addr[i]) return false;
+    }
+    return rc;
+}
+
+bool
+net_header_is_mcast(struct net_header_parser *header)
+{
+    struct eth_header *eth;
+    os_macaddr_t *mac;
+    int ethertype;
+    bool rc;
+
+    if (header == NULL) return false;
+
+    ethertype = net_header_get_ethertype(header);
+    if ((ethertype != ETH_P_IP) && (ethertype != ETH_P_IPV6)) return false;
+
+    /* Get the ethernet header */
+    eth = net_header_get_eth(header);
+    if (eth == NULL) return false;
+
+    /* Check the source mac address */
+    mac = eth->srcmac;
+    if (mac == NULL) return false;
+    rc = net_header_is_mac_mcast(mac, ethertype);
+
+    /* Check the destination mac address */
+    mac = eth->dstmac;
+    if (mac == NULL) return false;
+    rc |= net_header_is_mac_mcast(mac, ethertype);
+
+    return rc;
 }

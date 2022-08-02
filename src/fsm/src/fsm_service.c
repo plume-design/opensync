@@ -200,8 +200,7 @@ fsm_dup_web_cat_session(struct fsm_session *session)
 
     service->type = FSM_WEB_CAT;
 
-    service->ops.send_report = fsm_send_report;
-    service->ops.get_config = fsm_get_other_config_val;
+    fsm_set_session_ops(service);
 
     plugin_ops = CALLOC(1, sizeof(*plugin_ops));
     if (plugin_ops == NULL) goto err_free_name;

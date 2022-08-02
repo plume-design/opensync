@@ -39,25 +39,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "qm_conn.h"
 
 #include "test_network_metadata.h"
-
-/*
- * Allow for different kinds of setups from one RUN_TEST() to another.
- * This avoids creating things that may not be used all the time.
- */
-void (*g_setUp)(void)    = NULL;
-void (*g_tearDown)(void) = NULL;
-
-void setUp(void)
-{
-    if (g_setUp != NULL)
-        (*g_setUp)();
-}
-
-void tearDown()
-{
-    if (g_tearDown != NULL)
-        (*g_tearDown)();
-}
+#include "unit_test_utils.h"
 
 /**
  * brief global variable initialized in @see main_setUp()
@@ -1726,19 +1708,14 @@ int main(int argc, char *argv[])
     (void)argc;
     (void)argv;
 
-    target_log_open("network_metadata", LOG_OPEN_STDOUT);
-    log_severity_set(LOG_SEVERITY_DEBUG);
+    ut_init(basename(__FILE__), NULL, NULL);
 
-    UnityBegin(basename(__FILE__));
+    ut_setUp_tearDown(__func__, main_setUp, main_tearDown);
 
     /* Testing net_md_utils @see test_network_metadata_utils.c
      * No global setUp()/tearDown() required for this.
      */
     test_network_metadata_utils();
-
-    /* Enable setUp()/tearDown() for the rest of the tests */
-    g_setUp = main_setUp;
-    g_tearDown = main_tearDown;
 
     /* Protobuf serialization testing @see above */
     test_network_metadata();
@@ -1746,5 +1723,5 @@ int main(int argc, char *argv[])
     /* Testing reports @see test_network_metadata_report.c */
     test_network_metadata_reports();
 
-    return UNITY_END();
+    return ut_fini();
 }

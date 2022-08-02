@@ -48,6 +48,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "bm.h"
 #include "memutil.h"
+#include "bm_util_opclass.h"
 
 /*****************************************************************************/
 
@@ -62,9 +63,6 @@ static ds_tree_t                bm_neighbors = DS_TREE_INIT( ds_int_cmp,
 
 static void
 bm_neighbor_add_to_group_by_ifname(const bm_group_t *group, const char *ifname, bool bs_allowed_only);
-
-static uint8_t
-bm_neighbor_get_phy_type(uint8_t op_class);
 
 static c_item_t map_ovsdb_chanwidth[] = {
     C_ITEM_STR( RADIO_CHAN_WIDTH_20MHZ,         "HT20" ),
@@ -127,16 +125,6 @@ bm_neighbor_get_radio_type(const struct schema_Wifi_VIF_Neighbors *neigh)
     if (bm_group_find_by_ifname(neigh->if_name))
         return bm_group_find_radio_type_by_ifname(neigh->if_name);
 
-    /*
-     * If there's no VIF called "neigh->ifname" it's most probably the case
-     * when pod has 5 GHz VAP on 5GU, but controller filled WIF_VIF_Neighbors
-     * with 5GL VAP name. In such case infer radio type from channel.
-     *
-     * Check at least whether channel can be a valid 5 GHz band channel.
-     */
-    if (neigh->channel >= 36 && neigh->channel <= 181)
-        return RADIO_TYPE_5G;
-
     LOGW("%s: Cannot infer radio type for vifname", neigh->if_name);
     return RADIO_TYPE_NONE;
 }
@@ -194,7 +182,7 @@ bm_neighbor_get_self_neighbor(const char *_ifname, bsal_neigh_info_t *neigh)
         return false;
     }
 
-    LOGT( "Got self channel: %d and self bssid: %s", vif.channel, vif.mac );
+    LOGT( "Got self channel: %d, bssid: %s ifname: %s", vif.channel, vif.mac, _ifname);
     memcpy( neigh->bssid, (uint8_t *)&macaddr, sizeof( neigh->bssid ) );
 
     // Assume the default BSSID_INFO
@@ -206,21 +194,19 @@ bm_neighbor_get_self_neighbor(const char *_ifname, bsal_neigh_info_t *neigh)
     return true;
 }
 
-static uint8_t
+uint8_t
 bm_neighbor_get_phy_type(uint8_t op_class)
 {
-    switch (op_class) {
-    case BTM_24_OP_CLASS:
+    if (ieee80211_global_op_class_is_2ghz(op_class))
         return BTM_24_PHY_TYPE;
-    case BTM_5GL_OP_CLASS: /* passthrough */
-    case BTM_L_DFS_OP_CLASS: /* passthrough */
-    case BTM_U_DFS_OP_CLASS: /* passthrough */
-    case BTM_5GU_OP_CLASS:
-        return BTM_5_PHY_TYPE;
-    case BTM_6G_OP_CLASS:
-        return BTM_HE_PHY_TYPE;
-    }
 
+    if (ieee80211_global_op_class_is_5ghz(op_class))
+        return BTM_5_PHY_TYPE;
+
+    if (ieee80211_global_op_class_is_6ghz(op_class))
+        return BTM_HE_PHY_TYPE;
+
+    LOGW("Geeting phy type failed, op_class %hhu", op_class);
     return 0;
 }
 
@@ -297,7 +283,11 @@ bm_neighbor_from_ovsdb( struct schema_Wifi_VIF_Neighbors *nconf, bm_neighbor_t *
     neigh->neigh_report.bssid_info = BTM_DEFAULT_NEIGH_BSS_INFO;
     neigh->neigh_report.channel = nconf->channel;
 
-    neigh->neigh_report.op_class = bm_neighbor_get_op_class(nconf->channel, rtype);
+    if (nconf->op_class_exists) {
+        neigh->neigh_report.op_class = nconf->op_class;
+    } else {
+        neigh->neigh_report.op_class = bm_neighbor_get_op_class(nconf->channel, rtype);
+    }
     neigh->neigh_report.phy_type = bm_neighbor_get_phy_type(neigh->neigh_report.op_class);
 
     return true;
@@ -360,6 +350,7 @@ bm_neighbor_ovsdb_update_cb( ovsdb_update_monitor_t *self )
     struct schema_Wifi_VIF_Neighbors    nconf;
     pjs_errmsg_t                        perr;
     bm_neighbor_t                       *neigh;
+    bool                                overwrite = false;
 
     switch( self->mon_type )
     {
@@ -371,18 +362,28 @@ bm_neighbor_ovsdb_update_cb( ovsdb_update_monitor_t *self )
                 return;
             }
 
-            if ((neigh = bm_neighbor_find_by_macstr(nconf.bssid))) {
-                LOGE("Ignoring duplicate neighbor '%s' (orig uuid=%s, new uuid=%s)",
-                      neigh->bssid, neigh->uuid, nconf._uuid.uuid);
-                return;
-            }
+            /* Workaround for duplicated BSSID.
+             * Whenever insert comes before delete for the same BSSID
+             * - e.g. due to both operations being contained
+             * in a single transaction - an already existing neighbor
+             * will be overwritten including its uuid.
+             * The following delete will trigger a warning since
+             * old bssid is not present anymore.
+             */
 
-            neigh = CALLOC( 1, sizeof( *neigh ) );
+            if ((neigh = bm_neighbor_find_by_macstr(nconf.bssid))) {
+                ds_tree_remove(&bm_neighbors, neigh);
+                overwrite = true;
+            } else {
+                neigh = CALLOC( 1, sizeof( *neigh ) );
+            }
             STRSCPY(neigh->uuid, nconf._uuid.uuid);
 
-            if( !bm_neighbor_from_ovsdb( &nconf, neigh ) ) {
-                LOGE( "Failed to convert row to neighbor info (uuid=%s)", neigh->uuid );
-                FREE( neigh );
+            if (!bm_neighbor_from_ovsdb(&nconf, neigh)) {
+                LOGE( "Failed to convert row to neighbor info (uuid=%s) (insert-overwrite=%s)", neigh->uuid, overwrite ? "true" : "false");
+                if (overwrite)
+                    bm_neighbor_remove_neighbor(&neigh->neigh_report);
+                FREE(neigh);
                 return;
             }
 
@@ -428,7 +429,7 @@ bm_neighbor_ovsdb_update_cb( ovsdb_update_monitor_t *self )
         case OVSDB_UPDATE_DEL:
         {
             if( !( neigh = bm_neighbor_find_by_uuid( self->mon_uuid ))) {
-                LOGE( "Unable to find neighbor for delete with uuid=%s", self->mon_uuid );
+                LOGW( "Unable to find neighbor for delete with uuid=%s", self->mon_uuid );
                 return;
             }
 
@@ -543,7 +544,7 @@ bm_neighbor_channel_supported_by_client(const bm_client_t *client, uint8_t chann
 }
 
 static bool
-bm_neighbor_channel_allowed(const bm_client_t *client, uint8_t channel)
+bm_neighbor_channel_allowed(const bm_client_t *client, uint8_t channel, uint8_t op_class)
 {
     bool allowed = false;
     radio_type_t radio_type;
@@ -560,17 +561,24 @@ bm_neighbor_channel_allowed(const bm_client_t *client, uint8_t channel)
            continue;
 
        radio_type = client->ifcfg[i].radio_type;
+
        switch (radio_type) {
            case RADIO_TYPE_2G:
-               if (channel <= 13)
+               if (ieee80211_global_op_class_is_2ghz(op_class) &&
+                   channel >=1 && channel <= 13)
                    allowed = true;
                break;
            case RADIO_TYPE_5G:
            case RADIO_TYPE_5GL:
            case RADIO_TYPE_5GU:
-               if (channel > 13)
+               if (ieee80211_global_op_class_is_5ghz(op_class) &&
+                   channel >=13 && channel <= 177)
                    allowed = true;
                break;
+           case RADIO_TYPE_6G:
+               if (ieee80211_global_op_class_is_6ghz(op_class) &&
+                   channel >= 1 && channel <= 233)
+                   allowed = true;
            case RADIO_TYPE_NONE:
            default:
                break;
@@ -584,6 +592,21 @@ bm_neighbor_channel_allowed(const bm_client_t *client, uint8_t channel)
     return allowed;
 }
 
+static bool
+bm_neighbor_in_group(const bm_neighbor_t *neighbor, const bm_group_t *group)
+{
+    unsigned int i;
+
+    if (!group) return false;
+
+    for (i = 0; i < group->ifcfg_num; i++) {
+        if(!strcmp(neighbor->ifname, group->ifcfg[i].ifname)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 unsigned int
 bm_neighbor_number(bm_client_t *client)
 {
@@ -591,7 +614,7 @@ bm_neighbor_number(bm_client_t *client)
     bm_neighbor_t *bm_neigh;
 
     ds_tree_foreach(&bm_neighbors, bm_neigh) {
-        if (!bm_neighbor_channel_allowed(client, bm_neigh->channel))
+        if (!bm_neighbor_channel_allowed(client, bm_neigh->channel, bm_neigh->neigh_report.op_class))
             continue;
         neighbors++;
     }
@@ -606,7 +629,7 @@ bm_neighbor_only_dfs_channels(bm_client_t *client)
     bool only_dfs = true;
 
     ds_tree_foreach(&bm_neighbors, bm_neigh) {
-        if (!bm_neighbor_channel_allowed(client, bm_neigh->channel))
+        if (!bm_neighbor_channel_allowed(client, bm_neigh->channel, bm_neigh->neigh_report.op_class))
             continue;
         if (bm_client_is_dfs_channel(bm_neigh->channel))
             continue;
@@ -678,7 +701,6 @@ bool
 bm_neighbor_get_self_btm_values(bsal_btm_params_t *btm_params,
                                 bm_client_t *client, bool bs_allowed)
 {
-    bool res = false;
     unsigned int i;
 
     btm_params->num_neigh = 0;
@@ -688,7 +710,16 @@ bm_neighbor_get_self_btm_values(bsal_btm_params_t *btm_params,
             continue;
         }
 
-        res = res || _bm_neighbor_get_self_btm_values(btm_params, client->ifcfg[i].ifname);
+        if (client->group != client->ifcfg[i].group) {
+            continue;
+        }
+
+        if (client->ifcfg[i].radio_type == RADIO_TYPE_6G &&
+            !(client->band_cap_mask & BM_CLIENT_OPCLASS_60_CAP_BIT)) {
+            continue;
+        }
+
+        _bm_neighbor_get_self_btm_values(btm_params, client->ifcfg[i].ifname);
    }
 
    if (btm_params->num_neigh) {
@@ -698,7 +729,7 @@ bm_neighbor_get_self_btm_values(bsal_btm_params_t *btm_params,
        btm_params->pref = 0;
    }
 
-   return res;
+   return btm_params->num_neigh > 0;
 }
 
 bm_rrm_neighbor_t *
@@ -765,6 +796,12 @@ bm_neighbor_better(bm_client_t *client, bm_neighbor_t *bm_neigh)
         return false;
     }
 
+    if ((unsigned int) (now - rrm_neigh->time) > client->rrm_age_time) {
+        LOGD("%s rrm results too old, don't use them %u", client->mac_addr,
+             (unsigned int) (now - rrm_neigh->time));
+        return false;
+    }
+
     /* Finally compare rcpi */
     if (rrm_neigh->rcpi < rrm_self_neigh->rcpi + 2 * client->rrm_better_factor) {
         LOGD("[%s]: neigh %s self %u neigh %u worst rcpi", client->mac_addr, bm_neigh->bssid, rrm_self_neigh->rcpi, rrm_neigh->rcpi);
@@ -772,6 +809,63 @@ bm_neighbor_better(bm_client_t *client, bm_neighbor_t *bm_neigh)
     }
 
     return true;
+}
+
+static bool
+bm_neigbour_op_class_allowed(bm_client_t *client, bm_neighbor_t *bm_neigh)
+{
+    int i;
+    const uint8_t op_class = bm_neigh->neigh_report.op_class;
+
+    if (!op_class) {
+        LOGW("%s op class not defined", bm_neigh->bssid);
+        return false;
+    }
+
+    LOGD("Client '%s' checking supported op classes", client->mac_addr);
+
+    if (client->op_classes.size == 0) {
+        LOGD("%s: client %s has nos no op_classes, accepting unconditionally",
+              bm_neigh->bssid, client->mac_addr);
+
+        if (ieee80211_global_op_class_is_6ghz(op_class))
+            return (client->band_cap_mask & BM_CLIENT_OPCLASS_60_CAP_BIT);
+
+        return true;
+    }
+
+    for (i = 0; i < client->op_classes.size; i++) {
+        const uint8_t op_c = client->op_classes.op_class[i];
+
+        if (ieee80211_global_op_class_is_contained_in(op_class, op_c))
+            return true;
+
+        if (ieee80211_global_op_class_is_contained_in(op_c, op_class))
+            return true;
+
+        if (op_c == op_class)
+            return true;
+    }
+
+    return false;
+}
+
+static int bm_cli_neigh_better_rrm_rcpi(const void *a, const void *b) {
+    bm_rrm_neighbor_t *rrm_neigh_a;
+    bm_rrm_neighbor_t *rrm_neigh_b;
+    const bm_client_neighbor_t *cli_neigh_a = (bm_client_neighbor_t *) a;
+    const bm_client_neighbor_t *cli_neigh_b = (bm_client_neighbor_t *) b;
+    bm_neighbor_t *neigh_a = (bm_neighbor_t *) cli_neigh_a->neighbor;
+    bm_neighbor_t *neigh_b = (bm_neighbor_t *) cli_neigh_b->neighbor;
+
+    // descending order,  push neighbors without rrm report towards the end
+    rrm_neigh_a = bm_neighbor_get_rrm_neigh(cli_neigh_a->client, (os_macaddr_t *) neigh_a->neigh_report.bssid);
+    if (!rrm_neigh_a) return 1;
+    rrm_neigh_b = bm_neighbor_get_rrm_neigh(cli_neigh_b->client, (os_macaddr_t *) neigh_b->neigh_report.bssid);
+    if (!rrm_neigh_b) return -1;
+    if (rrm_neigh_a->rcpi > rrm_neigh_b->rcpi) return -1;
+    if (rrm_neigh_a->rcpi < rrm_neigh_b->rcpi) return 1;
+    return 0;
 }
 
 bool
@@ -782,7 +876,11 @@ bm_neighbor_build_btm_neighbor_list( bm_client_t *client, bsal_btm_params_t *btm
 
     os_macaddr_t                macaddr;
     int                         max_regular_neighbors;
-    unsigned int                i;
+    int                         max_self_neighbors;
+    unsigned int                i = 0;
+    unsigned int                cand_bm_cli_neigh_len = 256;
+    unsigned int                cand_bm_cli_neigh_size = 0;
+    bm_client_neighbor_t        cand_bm_cli_neigh_list[cand_bm_cli_neigh_len];
 
     if (WARN_ON(!client->group))
         return false;
@@ -801,24 +899,26 @@ bm_neighbor_build_btm_neighbor_list( bm_client_t *client, bsal_btm_params_t *btm
     }
 
     btm_params->num_neigh = 0;
-    if (btm_params->inc_self)
-        /* Leave place for self neighbor */
-        max_regular_neighbors = BSAL_MAX_TM_NEIGHBORS - 1;
-    else
+
+    if (client->band_cap_mask & BM_CLIENT_OPCLASS_60_CAP_BIT) {
         max_regular_neighbors = BSAL_MAX_TM_NEIGHBORS;
+        max_self_neighbors = 2;
+    }
+    else {
+        max_regular_neighbors = BSAL_MAX_TM_NEIGHBORS_LEGACY;
+        max_self_neighbors = 1;
+    }
+
+    if (btm_params->inc_self)
+        /* Leave place for self neighbors */
+        max_regular_neighbors -= max_self_neighbors;
 
     /* First choose neighbors using Beacon Measurement Reports (if enabled or available) */
     if (client->neighbor_list_filter_by_beacon_report ) {
         ds_tree_foreach(bm_neighbors, bm_neigh) {
-            bsal_neigh_info_t *bsal_neigh = NULL;
-
-            if (btm_params->num_neigh >= max_regular_neighbors) {
-                LOGT("Built maximum allowed neighbors");
-                break;
-            }
 
             // Include only allowed neighbors
-            if (!bm_neighbor_channel_allowed(client, bm_neigh->channel)) {
+            if (!bm_neighbor_channel_allowed(client, bm_neigh->channel, bm_neigh->neigh_report.op_class)) {
                 LOGT("Skipping neighbor = %s, channel = %hhu", bm_neigh->bssid, bm_neigh->channel);
                 continue;
             }
@@ -828,23 +928,54 @@ bm_neighbor_build_btm_neighbor_list( bm_client_t *client, bsal_btm_params_t *btm
                 continue;
             }
 
-            bsal_neigh = &btm_params->neigh[btm_params->num_neigh];
-
-            if( !os_nif_macaddr_from_str( &macaddr, bm_neigh->bssid ) ) {
-                LOGE("Unable to parse mac address '%s'", bm_neigh->bssid);
-                return false;
+            // Filter out neighbors not in a group
+            if (!bm_neighbor_in_group(bm_neigh, client->group)) {
+                LOGT("Skipping neighbor = %s, ifname = %s", bm_neigh->bssid, bm_neigh->ifname);
+                continue;
             }
 
-            memcpy( bsal_neigh->bssid, (uint8_t *)&macaddr, sizeof( bsal_neigh->bssid ) );
-            bsal_neigh->channel = bm_neigh->channel;
-            bsal_neigh->bssid_info = bm_neigh->neigh_report.bssid_info;
-            bsal_neigh->op_class = bm_neigh->neigh_report.op_class;
-            bsal_neigh->phy_type = bm_neigh->neigh_report.phy_type;
+            cand_bm_cli_neigh_list[cand_bm_cli_neigh_size].client = client;
+            cand_bm_cli_neigh_list[cand_bm_cli_neigh_size].neighbor = bm_neigh;
+            cand_bm_cli_neigh_size++;
 
-            btm_params->num_neigh++;
-
-            LOGT("Built neighbor: %s, channel: %hhu", bm_neigh->bssid, bm_neigh->channel);
+            if (cand_bm_cli_neigh_size == cand_bm_cli_neigh_len) {
+                LOGE("Candidate neighbor list length limit reached");
+                break;
+            }
         }
+    }
+
+    /* Sort chosen neighbors by RCPI reported by client using rrm */
+    qsort(cand_bm_cli_neigh_list, cand_bm_cli_neigh_size, sizeof(bm_client_neighbor_t), bm_cli_neigh_better_rrm_rcpi);
+
+    /* Add neighbors from list sorted by RCPI */
+    for (i=0; i<cand_bm_cli_neigh_size; i++) {
+        bm_neigh = cand_bm_cli_neigh_list[i].neighbor;
+        bsal_neigh_info_t *bsal_neigh = NULL;
+
+        if (btm_params->num_neigh >= max_regular_neighbors) {
+            LOGT("Built maximum allowed neighbors");
+            break;
+        }
+
+        bsal_neigh = &btm_params->neigh[btm_params->num_neigh];
+
+        if (!os_nif_macaddr_from_str(&macaddr, bm_neigh->bssid)) {
+            LOGE("Unable to parse mac address '%s'", bm_neigh->bssid);
+            return false;
+        }
+
+        memcpy(bsal_neigh->bssid, (uint8_t *)&macaddr, sizeof(bsal_neigh->bssid));
+        bsal_neigh->channel = bm_neigh->channel;
+        bsal_neigh->bssid_info = bm_neigh->neigh_report.bssid_info;
+        bsal_neigh->op_class = bm_neigh->neigh_report.op_class;
+        bsal_neigh->phy_type = bm_neigh->neigh_report.phy_type;
+
+        btm_params->num_neigh++;
+
+        LOGT("Built neighbor [%d] (beacon report): %s channel: %hhu bssid: %hhu op_class: %hhu phy_type: %hhu",
+              btm_params->num_neigh, bm_neigh->bssid, bm_neigh->channel, bm_neigh->neigh_report.bssid_info,
+              bm_neigh->neigh_report.op_class, bm_neigh->neigh_report.phy_type);
     }
 
     /* Fill the remaining space with other neighbors */
@@ -878,8 +1009,19 @@ bm_neighbor_build_btm_neighbor_list( bm_client_t *client, bsal_btm_params_t *btm
         }
 
         // Include only allowed neighbors
-        if (!bm_neighbor_channel_allowed(client, bm_neigh->channel)) {
+        if (!bm_neighbor_channel_allowed(client, bm_neigh->channel, bm_neigh->neigh_report.op_class)) {
             LOGT("Skipping neighbor = %s, channel = %hhu", bm_neigh->bssid, bm_neigh->channel);
+            continue;
+        }
+
+        if (!bm_neigbour_op_class_allowed(client, bm_neigh)) {
+            LOGT("Skipping neighbor = %s due too op_class mismatch", bm_neigh->bssid);
+            continue;
+        }
+
+        // Filter out neighbors not in a group
+        if (!bm_neighbor_in_group(bm_neigh, client->group)) {
+            LOGT("Skipping neighbor = %s, ifname = %s", bm_neigh->bssid, bm_neigh->ifname);
             continue;
         }
 
@@ -893,18 +1035,28 @@ bm_neighbor_build_btm_neighbor_list( bm_client_t *client, bsal_btm_params_t *btm
 
         btm_params->num_neigh++;
 
-        LOGT("Built neighbor: %s, channel: %hhu", bm_neigh->bssid, bm_neigh->channel);
+        LOGT("Built neighbor [%d]: %s channel: %hhu bssid: %hhu op_class: %hhu phy_type: %hhu",
+              btm_params->num_neigh, bm_neigh->bssid, bm_neigh->channel, bm_neigh->neigh_report.bssid_info,
+              bm_neigh->neigh_report.op_class, bm_neigh->neigh_report.phy_type);
     }
 
     if (btm_params->inc_self && btm_params->num_neigh) {
+        int neigh_i = 0;
+        bool skip_self = false;
+
         for (i = 0; i < client->group->ifcfg_num; i++) {
-            if (!bm_neighbor_channel_allowed(client, client->group->ifcfg[i].self_neigh.channel))
+            if (!bm_neighbor_channel_allowed(client, client->group->ifcfg[i].self_neigh.channel, client->group->ifcfg[i].self_neigh.op_class))
                 continue;
 
-            if ((unsigned int)btm_params->num_neigh >= ARRAY_SIZE(btm_params->neigh)) {
-                LOGI("%s client %s no space left for self bssid", __func__, client->mac_addr);
+            if (btm_params->num_neigh > max_regular_neighbors + max_self_neighbors) {
+                LOGI("%s client %s unable to add all self BSSIDs", __func__, client->mac_addr);
                 break;
             }
+
+            /* Skip 6GHz self neighbor for clients without 6GHz capability */
+            if (ieee80211_global_op_class_is_6ghz(client->group->ifcfg[i].self_neigh.op_class) &&
+                !(client->band_cap_mask & BM_CLIENT_OPCLASS_60_CAP_BIT))
+                continue;
 
             if (!bm_neighbor_get_self_neighbor(client->group->ifcfg[i].bsal.ifname,
                 &btm_params->neigh[btm_params->num_neigh])) {
@@ -913,10 +1065,20 @@ bm_neighbor_build_btm_neighbor_list( bm_client_t *client, bsal_btm_params_t *btm
                 return false;
             }
 
-            btm_params->num_neigh++;
+            for (neigh_i = 0; neigh_i < btm_params->num_neigh; neigh_i++) {
+                const bsal_neigh_info_t *neigh = &btm_params->neigh[neigh_i];
+                if (memcmp(neigh->bssid, btm_params->neigh[btm_params->num_neigh].bssid, sizeof(neigh->bssid)) == 0) {
+                    skip_self = true;
+                    break;
+                }
+            }
+
+            if (skip_self)
+                LOGT("Client %s skip self bssid, included on the list", client->mac_addr);
+            else
+                btm_params->num_neigh++;
         }
     }
-
 
     if (btm_params->num_neigh) {
         btm_params->pref = 1;
@@ -942,6 +1104,8 @@ bm_neighbor_add_to_group_by_ifname(const bm_group_t *group, const char *ifname, 
     ds_tree_foreach(&bm_neighbors, neigh) {
         if (!bm_neighbor_channel_bs_allowed(group, neigh->channel))
             continue;
+        if (!bm_neighbor_in_group(neigh, group))
+            continue;
         if (target_bsal_rrm_set_neighbor(ifname, &neigh->neigh_report))
             LOGW("%s: set_neigh: %s failed", ifname, neigh->bssid);
     }
@@ -960,6 +1124,8 @@ bm_neighbor_add_to_group_by_ifname(const bm_group_t *group, const char *ifname, 
     /* Now add !bs_allowed neighbors */
     ds_tree_foreach(&bm_neighbors, neigh) {
         if (bm_neighbor_channel_bs_allowed(group, neigh->channel))
+            continue;
+        if (!bm_neighbor_in_group(neigh, group))
             continue;
         if (target_bsal_rrm_set_neighbor(ifname, &neigh->neigh_report))
             LOGW("%s: set_neigh: %s failed", ifname, neigh->bssid);
@@ -1086,29 +1252,30 @@ bm_neighbor_get_channels(bm_client_t *client, bm_client_rrm_req_type_t rrm_req_t
         channel = neigh->neigh_report.channel;
         op_class = neigh->neigh_report.op_class;
 
-        if (rrm_req_type == BM_CLIENT_RRM_2G_ONLY) {
-            if (channel > 13 && op_class == BTM_24_OP_CLASS)
+        if (rrm_req_type == BM_CLIENT_RRM_2G_ONLY &&
+            !ieee80211_global_op_class_is_2ghz(op_class))
                 continue;
-        }
 
-        if (rrm_req_type == BM_CLIENT_RRM_5G_ONLY) {
-            if ((channel < 36 || channel > 48) && op_class == BTM_5GL_OP_CLASS)
+        if (rrm_req_type == BM_CLIENT_RRM_5G_ONLY &&
+            !ieee80211_global_op_class_is_5ghz(op_class))
                 continue;
-            if ((channel < 52 || channel > 64) && op_class == BTM_L_DFS_OP_CLASS)
-                continue;
-            if ((channel < 100 || channel > 140) && op_class == BTM_U_DFS_OP_CLASS)
-                continue;
-            if ((channel < 149 || channel > 169) && op_class == BTM_5GU_OP_CLASS)
-                continue;
-        }
 
-        if (rrm_req_type == BM_CLIENT_RRM_6G_ONLY) {
-            if (channel > 233 && op_class == BTM_6G_OP_CLASS)
+        if (rrm_req_type == BM_CLIENT_RRM_6G_ONLY &&
+            !ieee80211_global_op_class_is_6ghz(op_class))
                 continue;
-        }
+
+        if (rrm_req_type == BM_CLIENT_RRM_5_6G_ONLY &&
+            !ieee80211_global_op_class_is_5ghz(op_class) &&
+            !ieee80211_global_op_class_is_6ghz(op_class))
+                continue;
 
         if (rrm_req_type == BM_CLIENT_RRM_OWN_CHANNEL_ONLY) {
-            if (self_op_class != op_class || client->self_neigh.channel != channel)
+            if (!ieee80211_global_op_class_is_contained_in(op_class, self_op_class) || client->self_neigh.channel != channel)
+                continue;
+        }
+
+        if (!ieee80211_global_op_class_is_channel_supported(op_class, channel)) {
+            LOGW("Channel %d is not supported for the opclass: %d", channel, op_class);
                 continue;
         }
 

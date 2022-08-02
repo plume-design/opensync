@@ -39,3 +39,4 @@ UNIT_SRC := inet_dns_test.c
 UNIT_DEPS += src/lib/inet
 UNIT_DEPS += src/lib/procfs
 UNIT_DEPS += src/lib/unity
+UNIT_DEPS += src/lib/unit_test_utils

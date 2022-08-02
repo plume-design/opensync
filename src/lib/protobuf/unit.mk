@@ -54,7 +54,7 @@ UNIT_CLEAN += $(PROTO_INC_DIR)/$(2).pb-c.h
 UNIT_CLEAN += $(PROTO_SRC_DIR)/$(2).pb-c.c 
 
 $(PROTO_SRC_DIR)/$(2).pb-c.c: $(UNIT_PATH)/$(1)
-	$(Q)/usr/bin/protoc-c --c_out=. --proto_path=./src/lib/protobuf/ $(1)
+	$(Q)protoc-c --c_out=. --proto_path=./src/lib/protobuf/ $(1)
 	$(Q)mv $(2).pb-c.c $(PROTO_SRC_DIR)
 	$(Q)mv $(2).pb-c.h $(PROTO_INC_DIR)
 endef

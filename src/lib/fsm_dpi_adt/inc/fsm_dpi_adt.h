@@ -52,11 +52,11 @@ struct fsm_dpi_adt_packed_buffer
 struct fsm_dpi_adt_data_record
 {
     struct net_md_flow_info info;
-    uint32_t transport;
-    time_t capture_time;
+    uint64_t capture_time_ms;
     char *key;
     char *value;
     size_t value_len;
+    uint32_t transport;
 };
 
 struct fsm_dpi_adt_report_aggregator

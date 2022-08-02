@@ -38,3 +38,4 @@ UNIT_SRC := daemon_test.c
 # Other units that this unit may depend on
 UNIT_DEPS := src/lib/inet
 UNIT_DEPS += src/lib/unity
+UNIT_DEPS += src/lib/unit_test_utils

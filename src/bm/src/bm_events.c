@@ -409,9 +409,10 @@ bm_events_handle_event(bsal_event_t *event)
         if (WARN_ON(!stats))
             break;
 
-        LOGT("[%s] %s: BSAL_EVENT_RSSI_XING %s, RSSI=%2u, low xing=%s, high xing=%s, inact xing=%s",
+        LOGT("[%s] %s: BSAL_EVENT_RSSI_XING %s, RSSI=%2u, busy_override xing=%s low xing=%s, high xing=%s inact xing=%s",
                             bandstr, ifname, client->mac_addr,
                             event->data.rssi_change.rssi,
+                            c_get_str_by_key(map_bsal_rssi_changes, event->data.rssi_change.busy_override_xing),
                             c_get_str_by_key(map_bsal_rssi_changes, event->data.rssi_change.low_xing),
                             c_get_str_by_key(map_bsal_rssi_changes, event->data.rssi_change.high_xing),
                             c_get_str_by_key(map_bsal_rssi_changes, event->data.rssi_change.inact_xing));
@@ -621,17 +622,17 @@ bm_events_xing_bs_sticky_task(void *arg)
         }
 
         if (info.snr > 0 && info.snr > client->lwm) {
-            LOGI("[%s]: xing_bs '%s' snr %u higher %u skip sticky task", client->ifname, client->mac_addr,
-                 info.snr, client->lwm);
+            LOGI("[%s]: xing_bs '%s' snr %u higher (%u,%u) skip sticky task", client->ifname, client->mac_addr,
+                 info.snr, client->bowm, client->lwm);
             return;
         }
 
-        LOGD("[%s]: xing_bs '%s' sticky task, kick still required (%u %u)", client->ifname, client->mac_addr,
-             info.snr, client->lwm);
+        LOGD("[%s]: xing_bs '%s' sticky task, kick still required snr %u < (%u,%u)", client->ifname,
+             client->mac_addr, info.snr, client->bowm, client->lwm);
     }
 
     /* Finally issue kick */
-    if (bm_events_kick_client_upon_idle(client)) {
+    if (info.snr >= client->bowm && bm_events_kick_client_upon_idle(client)) {
         client->kick_info.kick_pending = true;
         client->kick_info.kick_type    = BM_STICKY_KICK;
         client->kick_info.rssi         = client->xing_bs_rssi;
@@ -639,7 +640,8 @@ bm_events_xing_bs_sticky_task(void *arg)
         LOGN("[%s]: xing_bs '%s' is ACTIVE, handling LOW_RSSI_XING upon idle",
              client->ifname, client->mac_addr );
     } else {
-        LOGN("[%s]: xing_bs '%s' handling LOW_RSSI_XING (STICKY)", client->ifname, client->mac_addr);
+        LOGN("[%s]: xing_bs '%s' handling %s (STICKY)", client->ifname, client->mac_addr,
+             info.snr < client->bowm ? "BUSY_OVERRIDE_RSSI_XING" : "LOW_RSSI_XING");
         client->cancel_btm = false;
         bm_kick(client, BM_STICKY_KICK, client->xing_bs_rssi);
     }
@@ -673,8 +675,8 @@ bm_events_handle_rssi_xing_bs(bm_client_t *client, bsal_event_t *event)
     if (WARN_ON(!stats))
         return;
 
-    LOGI("[%s]: xing_bs '%s' snr %d (%d,%d)", event->ifname, client->mac_addr, event->data.rssi_change.rssi,
-         event->data.rssi_change.low_xing, event->data.rssi_change.high_xing);
+    LOGI("[%s]: xing_bs '%s' snr %d (%d,%d,%d)", event->ifname, client->mac_addr, event->data.rssi_change.rssi,
+         event->data.rssi_change.busy_override_xing, event->data.rssi_change.low_xing, event->data.rssi_change.high_xing);
 
     if (client->backoff && !client->steer_during_backoff) {
         LOGI("[%s]: xing_bs '%s' skip XING event, don't steer during pre-assoc backoff ", event->ifname, client->mac_addr);
@@ -706,14 +708,35 @@ bm_events_handle_rssi_xing_bs(bm_client_t *client, bsal_event_t *event)
             }
         }
     }
+    else if (event->data.rssi_change.busy_override_xing == BSAL_RSSI_LOWER) {
+        if (client->info && !client->info->is_BTM_supported && !client->info->is_RRM_supported) {
+            /* Kick only non-11kv STAs */
+            LOGN("[%s]: xing_bs '%s' handling BUSY_OVERRIDE_RSSI_XING), issue sticky kick",
+                 event->ifname, client->mac_addr);
+
+            client->xing_bs_rssi = event->data.rssi_change.rssi;
+            bm_events_xing_bs_sticky_req(client, 0);
+        }
+        else {
+            LOGN("[%s]: xing_bs '%s' ignore BUSY_OVERRIDE_RSSI_XING, client is 11kv capable",
+                 event->ifname, client->mac_addr);
+        }
+    }
     else if (event->data.rssi_change.low_xing == BSAL_RSSI_LOWER) {
+        bm_client_rrm_req_type_t rrm_rtype;
         stats->rssi.lower++;
         if (client->lwm > 0 && event->data.rssi_change.rssi <= client->lwm) {
             client->xing_bs_rssi = event->data.rssi_change.rssi;
-
             if (client->send_rrm_after_xing && client->info->rrm_caps.bcn_rpt_active) {
-                /* Do it fast, scan only current channel */
-                bm_client_send_rrm_req(client, BM_CLIENT_RRM_5G_ONLY, 0);
+                if ((client->band_cap_mask & BM_CLIENT_OPCLASS_50_CAP_BIT) &&
+                    (client->band_cap_mask & BM_CLIENT_OPCLASS_60_CAP_BIT))
+                    rrm_rtype = BM_CLIENT_RRM_5_6G_ONLY;
+                else if (client->band_cap_mask & BM_CLIENT_OPCLASS_60_CAP_BIT)
+                    rrm_rtype = BM_CLIENT_RRM_6G_ONLY;
+                else
+                    rrm_rtype = BM_CLIENT_RRM_5G_ONLY;
+
+                bm_client_send_rrm_req(client, rrm_rtype, 0);
                 delay = 1;
             }
 

@@ -369,6 +369,7 @@ static void cm2_compute_backoff(void)
         goto set_backoff;
     }
     int ret = read(fd, &backoff, sizeof(backoff));
+    close(fd);
     if (ret <= 0) {
         LOGE("Error reading /dev/urandom");
         goto set_backoff;
@@ -388,7 +389,6 @@ static void cm2_extender_init_state(void) {
 
     if (cm2_connection_get_used_link(&con)) {
         LOGD("%s link %s is  already marked as used", __func__, con.if_name);
-        g_state.link.is_used = true;
         STRSCPY(g_state.link.if_name, con.if_name);
         STRSCPY(g_state.link.if_type, con.if_type);
         g_state.link.is_used = true;
@@ -747,7 +747,6 @@ start:
             WARN_ON(cm2_update_main_link_ip(&g_state.link) < 0);
             if (!g_state.link.ipv4.blocked && g_state.link.ipv4.is_ip) {
                 opts = IPV4_CHECK;
-                opts |= cm2_is_lte_type(g_state.link.if_type) ? INTERNET_CHECK : ROUTER_CHECK;
                 ipv4 = cm2_connection_req_stability_check(g_state.link.if_name, g_state.link.if_type, uplink, opts, true);
                 LOGI("ipv4: %d", ipv4);
             }
@@ -755,7 +754,7 @@ start:
             if (!g_state.link.ipv6.blocked && g_state.link.ipv6.is_ip) {
                 opts = IPV6_CHECK | ROUTER_CHECK;
                 ipv6 = cm2_connection_req_stability_check(g_state.link.if_name, g_state.link.if_type, uplink, opts, true);
-                LOGI("Ipv6: %d", ipv4);
+                LOGI("Ipv6: %d", ipv6);
             }
 
             if (g_state.link.ipv4.is_ip || g_state.link.ipv6.is_ip) {
@@ -913,7 +912,7 @@ start:
                 if (cm2_is_extender()) {
                     WARN_ON(cm2_update_main_link_ip(&g_state.link) < 0);
                     opts = LINK_CHECK | ROUTER_CHECK | INTERNET_CHECK;
-                    cm2_connection_req_stability_check_async(g_state.link.if_name, g_state.link.if_type, uplink, opts, false, true);
+                    cm2_connection_req_stability_check_async(g_state.link.if_name, g_state.link.if_type, uplink, opts, true, true);
                 }
 
                 if (!cm2_write_current_target_addr())
@@ -934,7 +933,7 @@ start:
                 if (cm2_is_extender()) {
                     WARN_ON(cm2_update_main_link_ip(&g_state.link) < 0);
                     opts = LINK_CHECK | ROUTER_CHECK | INTERNET_CHECK;
-                    cm2_connection_req_stability_check_async(g_state.link.if_name, g_state.link.if_type, uplink, opts, false, true);
+                    cm2_connection_req_stability_check_async(g_state.link.if_name, g_state.link.if_type, uplink, opts, true, true);
                 }
 
                 // timeout - write next address
@@ -957,8 +956,15 @@ start:
             if (cm2_state_changed()) // first iteration
             {
                 g_state.connected = false;
-                cm2_ovsdb_set_Manager_target("");
-                cm2_write_current_target_addr();
+                if ((g_state.ipv6_manager_con && g_state.link.ipv6.blocked) ||
+                    (!g_state.ipv6_manager_con && g_state.link.ipv4.blocked)) {
+                     g_state.fast_backoff = false;
+                     cm2_restart_ovs_connection(false);
+                }
+                else {
+                    cm2_ovsdb_set_Manager_target("");
+                    cm2_write_current_target_addr();
+                }
             }
 
             if (g_state.connected)
@@ -1013,13 +1019,18 @@ start:
         case CM2_STATE_QUIESCE_OVS:
             if (cm2_state_changed())
             {
+                if (cm2_is_extender()) {
+                    WARN_ON(cm2_update_main_link_ip(&g_state.link) < 0);
+                    opts = LINK_CHECK | ROUTER_CHECK | INTERNET_CHECK;
+                    cm2_connection_req_stability_check_async(g_state.link.if_name, g_state.link.if_type, uplink, opts, true, true);
+                }
                 // quiesce ovsdb-server, wait for timeout
-                cm2_stability_update_interval(g_state.loop, true);
                 cm2_ovsdb_set_Manager_target("");
                 g_state.disconnects += 1;
                 cm2_set_ble_state(false, BLE_ONBOARDING_STATUS_CLOUD_OK);
 
                 if (cm2_is_extender()) {
+                    cm2_stability_update_interval(g_state.loop, true);
                     cm2_ovsdb_connection_update_unreachable_cloud_counter(g_state.link.if_name,
                                                                           g_state.disconnects);
                 }

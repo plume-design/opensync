@@ -40,3 +40,4 @@ UNIT_SRC := test.c
 UNIT_DEPS := src/lib/json_util
 UNIT_DEPS += src/lib/log
 UNIT_DEPS += src/lib/unity
+UNIT_DEPS += src/lib/unit_test_utils

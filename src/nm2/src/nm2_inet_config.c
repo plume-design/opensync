@@ -272,12 +272,41 @@ static void nm2_inet_dhcp_req_options_set(
         const struct schema_Wifi_Inet_Config *iconf)
 {
     size_t n;
+    int ii;
     dhcp_options_t *opts = piface->if_dhcp_req_options;
 
-    // clear old requested options before reconfiguration
+    /*
+     * Compare current and previous options
+     */
     for (n = 0; n < opts->length; n++)
     {
-        (void)inet_dhcpc_option_request(piface->if_inet, (enum osn_dhcp_option)opts->option_id[n], false);
+        for (ii = 0; ii < iconf->dhcp_req_len; ii++)
+        {
+            if (iconf->dhcp_req[ii] == opts->option_id[n])
+                break;
+        }
+
+        /* Option not found */
+        if (ii >= iconf->dhcp_req_len) break;
+    }
+
+    /*
+     * Deleting all old options always triggers unwanted reconfiguration events.
+     *
+     * The logic here is that if all old options are present in the new set,
+     * there's no need to clear all old options. This skips a full reconfiguration
+     * event in the case that the two sets are the same.
+     *
+     * If the input array is empty, either we're using the previous or the
+     * default options. In any case, there's nothing to delete.
+     */
+    if (n < opts->length && iconf->dhcp_req_len > 0)
+    {
+        // clear old requested options before reconfiguration
+        for (n = 0; n < opts->length; n++)
+        {
+            (void)inet_dhcpc_option_request(piface->if_inet, (enum osn_dhcp_option)opts->option_id[n], false);
+        }
     }
 
     if (iconf->dhcp_req_len > 0)
@@ -287,7 +316,7 @@ static void nm2_inet_dhcp_req_options_set(
 
         opts = CALLOC(1, sizeof(*opts) +
             iconf->dhcp_req_len * sizeof(opts->option_id[0]));
-        
+
         opts->length = (size_t)iconf->dhcp_req_len;
 
         for (n = 0; n < opts->length; n++)
@@ -301,7 +330,7 @@ static void nm2_inet_dhcp_req_options_set(
     {
         opts = piface->if_dhcp_req_options;
     }
-    
+
     for (n = 0; n < opts->length; n++)
     {
         (void)inet_dhcpc_option_request(piface->if_inet, (enum osn_dhcp_option)opts->option_id[n], true);

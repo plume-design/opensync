@@ -285,5 +285,25 @@ fsm_print_one_dpi_client(struct dpi_client* client);
 void
 fsm_print_dpi_clients(ds_tree_t *tree);
 
+void
+fsm_notify_dispatcher_tap_type(struct fsm_session *session);
+
+void
+fsm_notify_identical_sessions(struct fsm_session *session, bool);
+
+
+/**
+ * @brief check if a packet should be processed
+ *
+ * @param the parsed info for the current packet
+ * @param included_targets tag representing the included targets
+ * @param excluded_targets tag representing the excluded targets
+ *
+ * check if a packet should be procesed based on its the source and destination
+ */
+bool
+fsm_dpi_should_process(struct net_header_parser *net_parser,
+                       char *included_targets,
+                       char *excluded_targets);
 
 #endif /* FSM_INTERNAL_H_INCLUDED */

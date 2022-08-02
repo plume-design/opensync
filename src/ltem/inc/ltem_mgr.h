@@ -37,6 +37,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "schema.h"
 #include "lte_info.h"
 #include "osn_lte_modem.h"
+#include "cm2.h"
 
 #define WAN_DEFAULT_METRIC CONFIG_MANAGER_NM_ROUTE_BASE_METRIC
 #define LTE_DEFAULT_METRIC WAN_DEFAULT_METRIC + 50
@@ -79,19 +80,21 @@ typedef struct lte_config_info_
     uint32_t active_simcard_slot;
     bool modem_enable;
     uint32_t report_interval;
-    char apn[32];
+    char apn[64];
     char lte_bands[32];
     bool enable_persist;
 } lte_config_info_t;
 
 typedef struct lte_state_info_
 {
+    bool lte_failover_force;
     bool lte_failover_active;
     time_t lte_failover_start;
     time_t lte_failover_end;
     uint32_t lte_failover_count;
     uint64_t lte_bands;
     bool enable_persist;
+    bool lte_force_allow;
 } lte_state_info_t;
 
 typedef struct lte_route_info_
@@ -110,6 +113,7 @@ typedef struct lte_route_info_
     char lte_dns1[C_IPV6ADDR_LEN];
     char lte_dns2[C_IPV6ADDR_LEN];
     uint32_t wan_priority;
+    bool has_L3;
 } lte_route_info_t;
 
 struct client_entry
@@ -133,6 +137,7 @@ typedef struct ltem_mgr_
     time_t periodic_ts;          // periodic timestamp
     time_t mqtt_periodic_ts;     // periodic timestamp for MQTT reports
     time_t state_periodic_ts;    // periodic timestamp for Lte State updates
+    time_t l3_state_periodic_ts; // periodic timestamp for L3 state check
     time_t init_time;            // init time
     char pid[16];                // manager's pid
     struct sysinfo sysinfo;      /* system information */
@@ -172,7 +177,7 @@ int ltem_create_lte_route_table(ltem_mgr_t *mgr);
 void ltem_create_client_table(ltem_mgr_t *mgr);
 void ltem_client_table_update(ltem_mgr_t *mgr, struct schema_DHCP_leased_IP *dhcp_lease);
 void ltem_client_table_delete(ltem_mgr_t *mgr, struct schema_DHCP_leased_IP *dhcp_lease);
-void ltem_update_wan_route(ltem_mgr_t *mgr, char *if_name, char *wan_subnet, char *wan_gw, char *netmask);
+void ltem_update_wan_route(ltem_mgr_t *mgr, struct schema_Wifi_Route_Config *route_config);
 void ltem_update_lte_route(ltem_mgr_t *mgr, char *if_name, char *lte_subnet, char *lte_gw, char *netmask);
 int ltem_add_lte_client_routes(ltem_mgr_t *mgr);
 int ltem_restore_default_client_routes(ltem_mgr_t *mgr);
@@ -183,6 +188,7 @@ int ltem_ovsdb_cmu_insert_lte(ltem_mgr_t *mgr);
 int ltem_ovsdb_cmu_update_lte(ltem_mgr_t *mgr);
 int ltem_ovsdb_cmu_disable_lte(ltem_mgr_t *mgr);
 void ltem_ovsdb_cmu_check_lte(ltem_mgr_t *mgr);
+uint32_t ltem_ovsdb_cmu_get_wan_priority(ltem_mgr_t *mgr);
 int ltem_ovsdb_wifi_inet_create_config(ltem_mgr_t *mgr);
 int ltem_ovsdb_lte_create_config(ltem_mgr_t *mgr);
 void ltem_ovsdb_update_awlan_node(struct schema_AWLAN_Node *new);
@@ -195,5 +201,9 @@ int ltem_ovsdb_update_lte_state(ltem_mgr_t *mgr);
 int lte_serialize_report(void);
 void lte_mqtt_cleanup(void);
 int ltem_ovsdb_cmu_update_lte_priority(ltem_mgr_t *mgr, uint32_t priority);
+char *ltem_ovsdb_get_if_type(char *if_name);
+bool ltem_init_lte_modem(void);
+int ltem_ovsdb_check_l3_state(ltem_mgr_t *mgr);
+void ltem_fini_lte_modem(void);
 
 #endif /* LTEM_MGR_H_INCLUDED */

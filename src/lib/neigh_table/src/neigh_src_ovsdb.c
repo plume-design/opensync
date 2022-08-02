@@ -478,8 +478,10 @@ neigh_table_add_v4_entry(struct schema_IPv4_Neighbors *neigh)
 {
     struct neighbour_entry entry;
     os_macaddr_t mac;
+    char if_name[32];
     uint8_t addr[4];
     bool update;
+    time_t now;
     bool rc;
     int ret;
 
@@ -495,6 +497,10 @@ neigh_table_add_v4_entry(struct schema_IPv4_Neighbors *neigh)
     entry.source = OVSDB_ARP;
     hwaddr_aton(neigh->hwaddr, mac.addr);
     entry.mac = &mac;
+    STRSCPY(if_name, neigh->if_name);
+    entry.ifname = if_name;
+    now = time(NULL);
+    entry.cache_valid_ts = now;
 
     update = neigh->hwaddr_changed;
     update |= neigh->source_changed;
@@ -509,6 +515,7 @@ neigh_table_add_v4_entry(struct schema_IPv4_Neighbors *neigh)
         rc = neigh_table_add_to_cache(&entry);
         if (!rc) LOGD("%s: cache addition failed", __func__);
     }
+
 }
 
 /**
@@ -605,7 +612,9 @@ neigh_table_add_v6_entry(struct schema_IPv6_Neighbors *neigh)
     struct neighbour_entry entry;
     os_macaddr_t mac;
     uint8_t addr[16];
+    char if_name[32];
     bool update;
+    time_t now;
     bool rc;
     int ret;
 
@@ -621,6 +630,10 @@ neigh_table_add_v6_entry(struct schema_IPv6_Neighbors *neigh)
     entry.source = OVSDB_NDP;
     hwaddr_aton(neigh->hwaddr, mac.addr);
     entry.mac = &mac;
+    STRSCPY(if_name, neigh->if_name);
+    entry.ifname = if_name;
+    now = time(NULL);
+    entry.cache_valid_ts = now;
 
     update = neigh->hwaddr_changed;
     update |= neigh->if_name_changed;

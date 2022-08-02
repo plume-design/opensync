@@ -1,20 +1,31 @@
-#include <stdio.h>
-#include <stdlib.h>
+#include <arpa/inet.h>
+#include <netinet/in.h>
 #include <stdbool.h>
+#include <stdint.h>
+#include <stdio.h>
 #include <string.h>
+#include <sys/socket.h>
 
+#include "const.h"
 #include "dns_parse.h"
+#include "ds_tree.h"
+#include "fsm.h"
 #include "fsm_dns_utils.h"
 #include "fsm_policy.h"
 #include "json_util.h"
 #include "log.h"
-#include "qm_conn.h"
-#include "target.h"
-#include "unity.h"
 #include "memutil.h"
+#include "net_header_parse.h"
+#include "os.h"
 #include "policy_tags.h"
+#include "qm_conn.h"
+#include "unit_test_utils.h"
+#include "unity.h"
+#include "util.h"
+
 #include "pcap.c"
 
+const char *ut_name = "dns_parse_tests";
 
 /**
  * @brief a set of sessions as delivered by the ovsdb API
@@ -270,64 +281,12 @@ int g_ipv4_cnt;
 struct dns_cache *g_dns_mgr;
 struct fsm_mgr *g_fsm_mgr;
 
-const char *test_name = "dns_tests";
-
-/**
- * @brief Converts a bytes array in a hex dump file wireshark can import.
- *
- * Dumps the array in a file that can then be imported by wireshark.
- * The file can also be translated to a pcap file using the text2pcap command.
- * Useful to visualize the packet content.
- */
-void create_hex_dump(const char *fname, const uint8_t *buf, size_t len)
+void
+test_dummy_dns_forward(struct dns_session *dns_session, dns_info *dns_info,
+                       uint8_t *buf, int len)
 {
-    int line_number = 0;
-    bool new_line = true;
-    size_t i;
-    FILE *f;
-
-    f = fopen(fname, "w+");
-
-    if (f == NULL) return;
-
-    for (i = 0; i < len; i++)
-    {
-	 new_line = (i == 0 ? true : ((i % 8) == 0));
-	 if (new_line)
-	 {
-	      if (line_number) fprintf(f, "\n");
-	      fprintf(f, "%06x", line_number);
-	      line_number += 8;
-	 }
-         fprintf(f, " %02x", buf[i]);
-    }
-    fprintf(f, "\n");
-    fclose(f);
-
-    return;
+    LOGI("%s: here", __func__);
 }
-
-/**
- * @brief Convenient wrapper
- *
- * Dumps the packet content in /tmp/<tests_name>_<pkt name>.txtpcap
- * for wireshark consumption and sets g_parser data fields.
- * @params pkt the C structure containing an exported packet capture
- */
-#define PREPARE_UT(pkt, parser)                                 \
-    {                                                           \
-        char fname[128];                                        \
-        size_t len = sizeof(pkt);                               \
-                                                                \
-        snprintf(fname, sizeof(fname), "/tmp/%s_%s.txtpcap",    \
-                 test_name, #pkt);                              \
-        create_hex_dump(fname, pkt, len);                       \
-        parser->packet_len = len;                               \
-        parser->caplen = len;                                   \
-        parser->data = (uint8_t *)pkt;                          \
-    }
-
-
 
 void
 test_dns_forward(struct dns_session *dns_session, dns_info *dns_info,
@@ -360,134 +319,6 @@ test_set_fwd_context(struct fsm_session *session)
 }
 
 
-void setUp(void)
-{
-    struct schema_Flow_Service_Manager_Config *conf;
-    struct schema_FSM_Policy *spolicy;
-    struct fsm_policy_session *mgr;
-    ds_tree_t *sessions;
-    size_t nelems;
-    bool ret;
-    size_t i;
-
-    fsm_init_mgr(NULL);
-    g_fsm_mgr->init_plugin = test_init_plugin;
-    g_fsm_mgr->update_session_tap = test_update_tap;
-    g_fsm_mgr->get_br = test_get_br;
-
-    mgr = fsm_policy_get_mgr();
-    if (!mgr->initialized) fsm_init_manager();
-
-    nelems = (sizeof(g_spolicies) / sizeof(g_spolicies[0]));
-    for (i = 0; i < nelems; i++)
-    {
-        spolicy = &g_spolicies[i];
-
-        fsm_add_policy(spolicy);
-    }
-
-    nelems = (sizeof(g_confs) / sizeof(g_confs[0]));
-    for (i = 0; i < nelems; i++)
-    {
-        struct schema_Flow_Service_Manager_Config *conf;
-
-        conf = &g_confs[i];
-        memset(conf->if_name, 0, sizeof(conf->if_name));
-    }
-
-    nelems = sizeof(g_tags) / sizeof(*g_tags);
-    for (i = 0; i < nelems; i++)
-    {
-        ret = om_tag_add_from_schema(&g_tags[i]);
-        TEST_ASSERT_TRUE(ret);
-    }
-
-    nelems = sizeof(g_ltags) / sizeof(*g_ltags);
-    for (i = 0; i < nelems; i++)
-    {
-        ret = om_local_tag_add_from_schema(&g_ltags[i]);
-        TEST_ASSERT_TRUE(ret);
-    }
-
-    fsm_get_awlan_headers(&g_awlan_nodes[0]);
-
-    conf = &g_confs[0];
-    fsm_add_session(conf);
-    sessions = fsm_get_sessions();
-    g_fsm_parser = ds_tree_find(sessions, conf->handler);
-    g_fsm_parser->provider_ops = &g_plugin_ops;
-    g_fsm_parser->ops.send_report = test_send_report;
-    TEST_ASSERT_NOT_NULL(g_fsm_parser);
-
-    dns_mgr_init();
-    g_dns_mgr = dns_get_mgr();
-    g_dns_mgr->set_forward_context = test_set_fwd_context;
-    g_dns_mgr->forward = test_dns_forward;
-    g_dns_mgr->update_tag = fsm_dns_update_tag;
-    g_dns_mgr->policy_init = test_dns_policy_init;
-
-    dns_plugin_init(g_fsm_parser);
-
-    g_ipv4_cnt = 0;
-
-    return;
-}
-
-
-void tearDown(void)
-{
-    struct fsm_policy_session *policy_mgr = fsm_policy_get_mgr();
-    struct policy_table *table, *t_to_remove;
-    struct fsm_policy *fpolicy, *p_to_remove;
-    ds_tree_t *tables_tree, *policies_tree;
-    size_t nelems;
-    size_t i;
-    bool ret;
-
-    dns_plugin_exit(g_fsm_parser);
-
-    nelems = sizeof(g_tags) / sizeof(*g_tags);
-    for (i = 0; i < nelems; i++)
-    {
-        ret = om_tag_remove_from_schema(&g_tags[i]);
-        TEST_ASSERT_TRUE(ret);
-    }
-
-    nelems = sizeof(g_ltags) / sizeof(*g_ltags);
-    for (i = 0; i < nelems; i++)
-    {
-        ret = om_local_tag_remove_from_schema(&g_ltags[i]);
-        TEST_ASSERT_TRUE(ret);
-    }
-
-    fsm_reset_mgr();
-
-    /* Clean up policies */
-    tables_tree = &policy_mgr->policy_tables;
-    table = ds_tree_head(tables_tree);
-    while (table != NULL)
-    {
-        policies_tree = &table->policies;
-        fpolicy = ds_tree_head(policies_tree);
-        while (fpolicy != NULL)
-        {
-            p_to_remove = fpolicy;
-            fpolicy = ds_tree_next(policies_tree, fpolicy);
-            fsm_free_policy(p_to_remove);
-        }
-        t_to_remove = table;
-        table = ds_tree_next(tables_tree, table);
-        ds_tree_remove(tables_tree, t_to_remove);
-        FREE(t_to_remove);
-    }
-
-    g_dns_mgr = NULL;
-
-    g_fsm_mgr->init_plugin = NULL;
-    return;
-}
-
-
 /**
  * @brief test plugin init()/exit() sequence
  *
@@ -515,7 +346,7 @@ test_type_A_query(void)
     TEST_ASSERT_NOT_NULL(dns_session);
 
     net_parser = CALLOC(1, sizeof(*net_parser));
-    PREPARE_UT(pkt46, net_parser);
+    UT_CREATE_PCAP_PAYLOAD(pkt46, net_parser);
     len = net_header_parse(net_parser);
     TEST_ASSERT_TRUE(len != 0);
     dns_handler(g_fsm_parser, net_parser);
@@ -538,7 +369,7 @@ test_type_PTR_query(void)
     TEST_ASSERT_NOT_NULL(dns_session);
 
     net_parser = CALLOC(1, sizeof(*net_parser));
-    PREPARE_UT(pkt806, net_parser);
+    UT_CREATE_PCAP_PAYLOAD(pkt806, net_parser);
     len = net_header_parse(net_parser);
     TEST_ASSERT_TRUE(len != 0);
     dns_handler(g_fsm_parser, net_parser);
@@ -565,7 +396,7 @@ test_type_A_query_response(void)
     net_parser = CALLOC(1, sizeof(*net_parser));
 
     /* Process query */
-    PREPARE_UT(pkt46, net_parser);
+    UT_CREATE_PCAP_PAYLOAD(pkt46, net_parser);
     len = net_header_parse(net_parser);
     TEST_ASSERT_TRUE(len != 0);
     dns_handler(g_fsm_parser, net_parser);
@@ -578,7 +409,7 @@ test_type_A_query_response(void)
 
     /* Process response */
     memset(net_parser, 0, sizeof(*net_parser));
-    PREPARE_UT(pkt47, net_parser);
+    UT_CREATE_PCAP_PAYLOAD(pkt47, net_parser);
     len = net_header_parse(net_parser);
     TEST_ASSERT_TRUE(len != 0);
     dns_handler(g_fsm_parser, net_parser);
@@ -620,7 +451,7 @@ test_type_A_query_response_update_tag(void)
     net_parser = CALLOC(1, sizeof(*net_parser));
 
     /* Process query */
-    PREPARE_UT(pkt46, net_parser);
+    UT_CREATE_PCAP_PAYLOAD(pkt46, net_parser);
     len = net_header_parse(net_parser);
     TEST_ASSERT_TRUE(len != 0);
     dns_handler(g_fsm_parser, net_parser);
@@ -633,7 +464,7 @@ test_type_A_query_response_update_tag(void)
 
     /* Process response */
     memset(net_parser, 0, sizeof(*net_parser));
-    PREPARE_UT(pkt47, net_parser);
+    UT_CREATE_PCAP_PAYLOAD(pkt47, net_parser);
     len = net_header_parse(net_parser);
     TEST_ASSERT_TRUE(len != 0);
     dns_handler(g_fsm_parser, net_parser);
@@ -660,7 +491,7 @@ test_type_A_duplicate_query_response(void)
     net_parser = CALLOC(1, sizeof(*net_parser));
 
     /* Process query */
-    PREPARE_UT(pkt46, net_parser);
+    UT_CREATE_PCAP_PAYLOAD(pkt46, net_parser);
     len = net_header_parse(net_parser);
     TEST_ASSERT_TRUE(len != 0);
     dns_handler(g_fsm_parser, net_parser);
@@ -676,7 +507,7 @@ test_type_A_duplicate_query_response(void)
 
     /* Process response */
     memset(net_parser, 0, sizeof(*net_parser));
-    PREPARE_UT(pkt47, net_parser);
+    UT_CREATE_PCAP_PAYLOAD(pkt47, net_parser);
     len = net_header_parse(net_parser);
     TEST_ASSERT_TRUE(len != 0);
     dns_handler(g_fsm_parser, net_parser);
@@ -708,7 +539,7 @@ test_type_A_duplicate_query_duplicate_response(void)
     net_parser = CALLOC(1, sizeof(*net_parser));
 
     /* Process query */
-    PREPARE_UT(pkt46, net_parser);
+    UT_CREATE_PCAP_PAYLOAD(pkt46, net_parser);
     len = net_header_parse(net_parser);
     TEST_ASSERT_TRUE(len != 0);
     dns_handler(g_fsm_parser, net_parser);
@@ -724,7 +555,7 @@ test_type_A_duplicate_query_duplicate_response(void)
 
     /* Process response */
     memset(net_parser, 0, sizeof(*net_parser));
-    PREPARE_UT(pkt47, net_parser);
+    UT_CREATE_PCAP_PAYLOAD(pkt47, net_parser);
     len = net_header_parse(net_parser);
     TEST_ASSERT_TRUE(len != 0);
     dns_handler(g_fsm_parser, net_parser);
@@ -1290,7 +1121,7 @@ test_gk_dns_cache(void)
     net_parser = CALLOC(1, sizeof(*net_parser));
 
     /* Process query */
-    PREPARE_UT(pkt46, net_parser);
+    UT_CREATE_PCAP_PAYLOAD(pkt46, net_parser);
     len = net_header_parse(net_parser);
     TEST_ASSERT_TRUE(len != 0);
     dns_handler(g_fsm_parser, net_parser);
@@ -1303,7 +1134,7 @@ test_gk_dns_cache(void)
 
     /* Process response */
     memset(net_parser, 0, sizeof(*net_parser));
-    PREPARE_UT(pkt47, net_parser);
+    UT_CREATE_PCAP_PAYLOAD(pkt47, net_parser);
     len = net_header_parse(net_parser);
     TEST_ASSERT_TRUE(len != 0);
     dns_handler(g_fsm_parser, net_parser);
@@ -1346,7 +1177,7 @@ test_reverse_lookup(void)
     net_parser = CALLOC(1, sizeof(*net_parser));
 
     /* Process query */
-    PREPARE_UT(pkt1, net_parser);
+    UT_CREATE_PCAP_PAYLOAD(pkt1, net_parser);
     len = net_header_parse(net_parser);
     TEST_ASSERT_TRUE(len != 0);
     dns_handler(g_fsm_parser, net_parser);
@@ -1359,7 +1190,7 @@ test_reverse_lookup(void)
 
     /* Process response */
     memset(net_parser, 0, sizeof(*net_parser));
-    PREPARE_UT(pkt2, net_parser);
+    UT_CREATE_PCAP_PAYLOAD(pkt2, net_parser);
     len = net_header_parse(net_parser);
     TEST_ASSERT_TRUE(len != 0);
     dns_handler(g_fsm_parser, net_parser);
@@ -1370,19 +1201,181 @@ test_reverse_lookup(void)
     FREE(net_parser);
 }
 
+/**
+ * @brief test type A dns query and response
+ */
+void
+test_kconfig_query_response(void)
+{
+    struct net_header_parser *net_parser;
+    struct dns_session *dns_session;
+    size_t len;
 
+    dns_session = dns_lookup_session(g_fsm_parser);
+    TEST_ASSERT_NOT_NULL(dns_session);
 
-int main(int argc, char *argv[])
+#define CONFIG_FSM_DPI_DNS 1
+    g_dns_mgr->dispatcher_tap_type = 2;
+    g_dns_mgr->forward = test_dummy_dns_forward;
+
+    net_parser = CALLOC(1, sizeof(*net_parser));
+
+    /* Process query */
+    UT_CREATE_PCAP_PAYLOAD(pkt46, net_parser);
+    len = net_header_parse(net_parser);
+    TEST_ASSERT_TRUE(len != 0);
+    dns_handler(g_fsm_parser, net_parser);
+
+    /* Process response */
+    memset(net_parser, 0, sizeof(*net_parser));
+    UT_CREATE_PCAP_PAYLOAD(pkt47, net_parser);
+    len = net_header_parse(net_parser);
+    TEST_ASSERT_TRUE(len != 0);
+    dns_handler(g_fsm_parser, net_parser);
+
+    FREE(net_parser);
+#undef CONFIG_FSM_DPI_DNS
+}
+
+void
+dns_parse_setUp(void)
+{
+    struct schema_Flow_Service_Manager_Config *conf;
+    struct schema_FSM_Policy *spolicy;
+    struct fsm_policy_session *mgr;
+    ds_tree_t *sessions;
+    size_t nelems;
+    bool ret;
+    size_t i;
+
+    fsm_init_mgr(NULL);
+    g_fsm_mgr->init_plugin = test_init_plugin;
+    g_fsm_mgr->update_session_tap = test_update_tap;
+    g_fsm_mgr->get_br = test_get_br;
+
+    mgr = fsm_policy_get_mgr();
+    if (!mgr->initialized) fsm_init_manager();
+
+    nelems = ARRAY_SIZE(g_spolicies);
+    for (i = 0; i < nelems; i++)
+    {
+        spolicy = &g_spolicies[i];
+
+        fsm_add_policy(spolicy);
+    }
+
+    nelems = ARRAY_SIZE(g_confs);
+    for (i = 0; i < nelems; i++)
+    {
+        struct schema_Flow_Service_Manager_Config *conf;
+
+        conf = &g_confs[i];
+        MEMZERO(conf->if_name);
+    }
+
+    nelems = ARRAY_SIZE(g_tags);
+    for (i = 0; i < nelems; i++)
+    {
+        ret = om_tag_add_from_schema(&g_tags[i]);
+        TEST_ASSERT_TRUE(ret);
+    }
+
+    nelems = ARRAY_SIZE(g_ltags);
+    for (i = 0; i < nelems; i++)
+    {
+        ret = om_local_tag_add_from_schema(&g_ltags[i]);
+        TEST_ASSERT_TRUE(ret);
+    }
+
+    fsm_get_awlan_headers(&g_awlan_nodes[0]);
+
+    conf = &g_confs[0];
+    fsm_add_session(conf);
+    sessions = fsm_get_sessions();
+    g_fsm_parser = ds_tree_find(sessions, conf->handler);
+    g_fsm_parser->provider_ops = &g_plugin_ops;
+    g_fsm_parser->ops.send_report = test_send_report;
+    TEST_ASSERT_NOT_NULL(g_fsm_parser);
+
+    dns_mgr_init();
+    g_dns_mgr = dns_get_mgr();
+    g_dns_mgr->set_forward_context = test_set_fwd_context;
+    g_dns_mgr->forward = test_dns_forward;
+    g_dns_mgr->update_tag = fsm_dns_update_tag;
+    g_dns_mgr->policy_init = test_dns_policy_init;
+
+    dns_plugin_init(g_fsm_parser);
+
+    g_ipv4_cnt = 0;
+
+    ut_prepare_pcap(Unity.CurrentTestName);
+}
+
+void
+dns_parse_tearDown(void)
+{
+    struct fsm_policy_session *policy_mgr = fsm_policy_get_mgr();
+    struct policy_table *table, *t_to_remove;
+    struct fsm_policy *fpolicy, *p_to_remove;
+    ds_tree_t *tables_tree, *policies_tree;
+    size_t nelems;
+    size_t i;
+    bool ret;
+
+    dns_plugin_exit(g_fsm_parser);
+
+    nelems = ARRAY_SIZE(g_tags);
+    for (i = 0; i < nelems; i++)
+    {
+        ret = om_tag_remove_from_schema(&g_tags[i]);
+        TEST_ASSERT_TRUE(ret);
+    }
+
+    nelems = ARRAY_SIZE(g_ltags);
+    for (i = 0; i < nelems; i++)
+    {
+        ret = om_local_tag_remove_from_schema(&g_ltags[i]);
+        TEST_ASSERT_TRUE(ret);
+    }
+
+    fsm_reset_mgr();
+
+    /* Clean up policies */
+    tables_tree = &policy_mgr->policy_tables;
+    table = ds_tree_head(tables_tree);
+    while (table != NULL)
+    {
+        policies_tree = &table->policies;
+        fpolicy = ds_tree_head(policies_tree);
+        while (fpolicy != NULL)
+        {
+            p_to_remove = fpolicy;
+            fpolicy = ds_tree_next(policies_tree, fpolicy);
+            fsm_free_policy(p_to_remove);
+        }
+        t_to_remove = table;
+        table = ds_tree_next(tables_tree, table);
+        ds_tree_remove(tables_tree, t_to_remove);
+        FREE(t_to_remove);
+    }
+
+    g_dns_mgr = NULL;
+
+    g_fsm_mgr->init_plugin = NULL;
+
+    ut_cleanup_pcap();
+}
+
+int
+main(int argc, char *argv[])
 {
     (void)argc;
     (void)argv;
 
+    ut_init(ut_name, NULL, NULL);
+    ut_setUp_tearDown(ut_name, dns_parse_setUp, dns_parse_tearDown);
+
     g_fsm_mgr = fsm_get_mgr();
-
-    target_log_open("TEST", LOG_OPEN_STDOUT);
-    log_severity_set(LOG_SEVERITY_TRACE);
-
-    UnityBegin(test_name);
 
     RUN_TEST(test_load_unload_plugin);
     RUN_TEST(test_type_A_query);
@@ -1399,6 +1392,7 @@ int main(int argc, char *argv[])
     RUN_TEST(test_update_v6_tag_generation_ip_expiration);
     RUN_TEST(test_gk_dns_cache);
     RUN_TEST(test_reverse_lookup);
+    RUN_TEST(test_kconfig_query_response);
 
-    return UNITY_END();
+    return ut_fini();
 }

@@ -29,6 +29,7 @@ UNIT_NAME := test_fsm_core
 UNIT_TYPE := TEST_BIN
 
 UNIT_SRC := test_fsm_core.c
+UNIT_SRC += test_fsm_ovsdb.c
 UNIT_SRC += ../src/fsm_ovsdb.c
 UNIT_SRC += ../src/fsm_event.c
 UNIT_SRC += ../src/fsm_service.c
@@ -58,3 +59,4 @@ UNIT_DEPS += src/lib/network_metadata
 UNIT_DEPS += src/lib/oms
 UNIT_DEPS += src/lib/neigh_table
 UNIT_DEPS += src/lib/gatekeeper_cache
+UNIT_DEPS += src/lib/unit_test_utils

@@ -370,7 +370,13 @@ bool
 dns_cache_set_wb_cache_entry(struct ip2action_wb_info *i2a_cache_wb,
                              struct ip2action_wb_info *to_add_cache_wb)
 {
-    if (!to_add_cache_wb->risk_level) return false;
+    if (!to_add_cache_wb->risk_level)
+    {
+        LOGD("%s: Categorization: risk level = %d",
+             __func__, to_add_cache_wb->risk_level);
+        return false;
+    }
+
     i2a_cache_wb->risk_level = to_add_cache_wb->risk_level;
 
     return true;
@@ -391,10 +397,22 @@ dns_cache_set_bc_cache_entry(struct ip2action_bc_info *i2a_cache_bc,
 {
     size_t index;
 
-    if (!to_add_cache_bc->reputation) return false;
+    if (!to_add_cache_bc->reputation)
+    {
+        LOGD("%s: Categorization: reputation = %d",
+             __func__, to_add_cache_bc->reputation);
+        return false;
+    }
+
     i2a_cache_bc->reputation = to_add_cache_bc->reputation;
 
-    if (!nelems) return false;
+    if (!nelems)
+    {
+        LOGD("%s: Categorization: number of elements = %d",
+             __func__, nelems);
+        return false;
+    }
+
     for (index = 0; index < nelems; index++)
     {
         i2a_cache_bc->confidence_levels[index] =
@@ -589,6 +607,7 @@ dns_cache_alloc_ip2action(struct ip2action_req  *to_add)
 
     i2a->cache_ttl  = to_add->cache_ttl;
     i2a->cache_ts  = time(NULL);
+    i2a->original_ts = time(NULL);
     i2a->policy_idx = to_add->policy_idx;
     i2a->service_id = to_add->service_id;
     i2a->redirect_flag = to_add->redirect_flag;
@@ -723,7 +742,7 @@ dns_cache_ttl_cleanup(void)
     i2a = ds_tree_head(tree);
     while (i2a != NULL)
     {
-        if ((now - i2a->cache_ts) < i2a->cache_ttl)
+        if ((now - i2a->original_ts) < i2a->cache_ttl)
         {
             i2a = ds_tree_next(tree, i2a);
             continue;

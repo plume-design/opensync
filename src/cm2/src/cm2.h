@@ -54,6 +54,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define CM2_WAN_BRIDGE_NAME ""
 #endif /* CONFIG_TARGET_USE_WAN_BRIDGE */
 
+#define CM2_METRIC_UPLINK_BLOCKED  999
+#define CM2_METRIC_UPLINK_DEFAULT    0
+
 typedef enum
 {
     CM2_STATE_INIT,
@@ -339,7 +342,9 @@ bool cm2_ovsdb_set_Wifi_Inet_Config_interface_enabled(bool state, char *ifname);
 bool cm2_ovsdb_connection_update_bridge_state(char *if_name, const char *bridge);
 int cm2_ovsdb_CMU_set_ipv4(const char *if_name, cm2_uplink_state_t state);
 int cm2_ovsdb_CMU_set_ipv6(const char *if_name, cm2_uplink_state_t state);
+bool cm2_ovsdb_CMU_get_ip_state(const char *if_name, cm2_uplink_state_t *ipv4, cm2_uplink_state_t *ipv6);
 cm2_uplink_state_t cm2_get_uplink_state_from_str(const char *uplink_state);
+int cm2_ovsdb_update_route_metric(const char *ifname, int metric);
 
 #ifdef CONFIG_CM2_USE_EXTRA_DEBUGS
 void cm2_ovsdb_dump_debug_data(void);

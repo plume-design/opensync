@@ -35,4 +35,4 @@ UNIT_DEPS += src/lib/common
 UNIT_DEPS += src/lib/json_util
 UNIT_DEPS += src/lib/unity
 UNIT_DEPS += src/lib/dhcp_parse
-UNIT_DEPS += src/lib/unity
+UNIT_DEPS += src/lib/unit_test_utils

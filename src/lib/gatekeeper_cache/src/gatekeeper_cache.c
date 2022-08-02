@@ -141,6 +141,13 @@ MurmurOAAT64(uint8_t dir, uint8_t *data, size_t len)
     return h;
 }
 
+/*
+ * Using 'direction' as part of the key for the cache entry
+ * leads to some cache misses.
+ * The 'direction' is now only considered for IPv4 and IPv6,
+ * and set to GKC_FLOW_DIRECTION_INTERNAL_IGNORE for other
+ * requests (FQDN, URL, SNI and APP)
+ */
 uint64_t
 get_attr_key(struct gk_attr_cache_interface *req)
 {
@@ -149,6 +156,7 @@ get_attr_key(struct gk_attr_cache_interface *req)
     size_t data_len;
     uint8_t *data;
     uint64_t ret;
+    uint8_t dir;
 
     if (!req->attr_name && !req->ip_addr) return 0;
 
@@ -157,6 +165,8 @@ get_attr_key(struct gk_attr_cache_interface *req)
         data_len = strlen(req->attr_name);
     else
         data_len = 0;
+
+    dir = GKC_FLOW_DIRECTION_INTERNAL_IGNORE;
 
     switch (req->attribute_type)
     {
@@ -167,6 +177,7 @@ get_attr_key(struct gk_attr_cache_interface *req)
                 in4 = (struct sockaddr_in *)req->ip_addr;
                 data = (uint8_t *)&in4->sin_addr;
                 data_len = 4;
+                dir = req->direction;
             }
             break;
         case GK_CACHE_REQ_TYPE_IPV6:
@@ -176,15 +187,19 @@ get_attr_key(struct gk_attr_cache_interface *req)
                 in6 = (struct sockaddr_in6 *)req->ip_addr;
                 data = (uint8_t *)&in6->sin6_addr;
                 data_len = 16;
+                dir = req->direction;
             }
             break;
+        case GK_CACHE_REQ_TYPE_INBOUND:
+        case GK_CACHE_REQ_TYPE_OUTBOUND:
+            dir = req->direction;
         default:
             ; /* Nothing to be done */
     }
 
     if (data_len == 0) return 0;
 
-    ret = MurmurOAAT64(req->direction, data, data_len);
+    ret = MurmurOAAT64(dir, data, data_len);
 
     return ret;
 }
@@ -414,6 +429,7 @@ gkc_new_attr_entry(struct gk_attr_cache_interface *entry)
 
     /* add entry creation time and provided TTL value */
     new_attr_cache->cache_ts = now;
+    new_attr_cache->original_ts = now;
     new_attr_cache->cache_ttl = entry->cache_ttl;
 
     /* add the direction and the key */
@@ -1257,11 +1273,12 @@ gkc_upsert_attribute_entry(struct gk_attr_cache_interface *entry)
     }
     /* Leaving the redirecting fields alone for now */
 
-    LOGT("%s(): updating %s (attr type %d) ttl (%" PRIu64 ") to cache %s ",
+    LOGT("%s(): updating %s (attr type %d) ttl (%" PRIu64 ") (elapsed time %.1f) to cache %s ",
          __func__,
          ((entry->attr_name != NULL) ? entry->attr_name : ipstr),
          attribute_type,
          entry->cache_ttl,
+         difftime(now, attr_entry->original_ts),
          "success");
     return true;
 }

@@ -31,23 +31,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "unity.h"
 
 #include "test_neigh_table.h"
+#include "unit_test_utils.h"
 
 char *test_name = "test_neigh_table";
-
-void (*g_setUp)(void) = NULL;
-void (*g_tearDown)(void) = NULL;
-
-void
-setUp(void)
-{
-    if (g_setUp) g_setUp();
-}
-
-void
-tearDown(void)
-{
-    if (g_tearDown) g_tearDown();
-}
 
 int
 main(int argc, char *argv[])
@@ -55,13 +41,12 @@ main(int argc, char *argv[])
     (void)argc;
     (void)argv;
 
-    target_log_open(test_name, LOG_OPEN_STDOUT);
-    log_severity_set(LOG_SEVERITY_TRACE);
+    ut_init(test_name, NULL, NULL);
 
-    UnityBegin(test_name);
+    ut_setUp_tearDown(test_name, NULL, NULL);
 
     run_test_neigh_table();
     run_test_neigh_intf();
 
-    return UNITY_END();
+    return ut_fini();
 }

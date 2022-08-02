@@ -290,7 +290,9 @@ mdns_plugin_process_message(struct mdns_session *m_session)
 
     struct sockaddr_storage ss;
     unsigned char *data;
+    uint16_t mdns_default_port;
     struct message m;
+    bool is_ip;
     bool ret;
     int rc = 0;
 
@@ -306,20 +308,17 @@ mdns_plugin_process_message(struct mdns_session *m_session)
     /* Some basic validation */
     /* Check ethertype */
     ethertype = net_header_get_ethertype(net_parser);
-    if (ethertype != ETH_P_IP) return;
+    is_ip = ((ethertype == ETH_P_IP) || (ethertype == ETH_P_IPV6));
+    if (!is_ip) return;
 
     /* Check for UDP protocol */
     ip_protocol = net_parser->ip_protocol;
     if (ip_protocol != IPPROTO_UDP) return;
 
-    /* Check the UDP src and dst ports */
+    /* Check the UDP src and dst ports (both need to be 5353) */
     hdr = net_parser->ip_pld.udphdr;
-    if ((ntohs(hdr->source) != 5353 || ntohs(hdr->dest) != 5353))
-    {
-        LOGT("%s: UDP src/dst port mismatch, src port: %d, dst port: %d",
-                            __func__, ntohs(hdr->source), ntohs(hdr->dest));
-        return;
-    }
+    mdns_default_port = htons(5353);
+    if (!(hdr->source == mdns_default_port && hdr->dest == mdns_default_port)) return;
 
     /* check src ip same as POD ip */
     net_header_srcip_str(net_parser, ip_src_str, sizeof(ip_src_str));

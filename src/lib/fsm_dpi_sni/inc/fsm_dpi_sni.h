@@ -37,15 +37,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "network_metadata_report.h"
 
 
-typedef enum
-{
-    FSM_SESSION_TYPE_UNSPECIFIED = 0,
-    FSM_SESSION_TYPE_SNI,
-    FSM_SESSION_TYPE_ADT,
-    FSM_SESSION_TYPE_DNS,
-    FSM_SESSION_TYPE_APP,
-} fsm_dpi_session_type_t;
-
 /**
  * @brief a session, instance of processing state and routines.
  *
@@ -59,7 +50,6 @@ typedef enum
 struct fsm_dpi_sni_session
 {
     struct fsm_session *session;
-    fsm_dpi_session_type_t session_type;
     bool initialized;
     time_t timestamp;
     char *included_devices;
@@ -80,15 +70,14 @@ struct fsm_dpi_sni_cache
     ds_tree_t fsm_sessions;
 };
 
-
-/**
- * @brief periodic routine
- *
- * @param session the fsm session keying the fsm_dpi_sni session to process
- */
-void
-fsm_dpi_sni_plugin_periodic(struct fsm_session *session);
-
+struct fsm_dpi_sni_redirect_flow_request
+{
+    struct net_md_stats_accumulator *acc;
+    struct fsm_session *session;
+    struct net_md_flow_info *info;
+    char *attribute_value;
+    int req_type;
+};
 
 /**
  * @brief session initialization entry point
@@ -98,17 +87,16 @@ fsm_dpi_sni_plugin_periodic(struct fsm_session *session);
  * @param session pointer provided by fsm
  */
 int
-dpi_sni_plugin_init(struct fsm_session *session);
-
+fsm_dpi_sni_init(struct fsm_session *session);
 
 /**
- * @brief update routine
+ * @brief session initialization entry point
  *
- * @param session the fsm session keying the fsm_dpi_sni session to update
+ * This is provided to maintain compatibility with older
+ * configurations
  */
-void
-fsm_dpi_sni_plugin_update(struct fsm_session *session);
-
+int
+dpi_sni_plugin_init(struct fsm_session *session);
 
 /**
  * @brief session exit point
@@ -117,8 +105,38 @@ fsm_dpi_sni_plugin_update(struct fsm_session *session);
  * @param session pointer provided by fsm
  */
 void
-fsm_dpi_sni_plugin_exit(struct fsm_session *session);
+fsm_dpi_sni_exit(struct fsm_session *session);
 
+/**
+ * @brief update routine
+ *
+ * @param session the fsm session keying the fsm_dpi_sni session to update
+ */
+void
+fsm_dpi_sni_update(struct fsm_session *session);
+
+/**
+ * @brief periodic routine
+ *
+ * @param session the fsm session keying the fsm_dpi_sni session to process
+ */
+void
+fsm_dpi_sni_periodic(struct fsm_session *session);
+
+/**
+ * @brief process an SNI flow attribute specifically
+ *
+ * @param session the fsm session
+ * @param attr the attribute flow
+ * @param type the value type (RTS_TYPE_BINARY, RTS_TYPE_STRING or RTS_TYPE_NUMBER)
+ * @param length the length in bytes of the value
+ * @param value the value itself
+ * @param packet_info packet details (acc, net_parser)
+ */
+int
+fsm_dpi_sni_process_attr(struct fsm_session *session, const char *attr,
+                         uint8_t type, uint16_t length, const void *value,
+                         struct fsm_dpi_plugin_client_pkt_info *pkt_info);
 
 /**
  * @brief looks up a session
@@ -130,7 +148,6 @@ fsm_dpi_sni_plugin_exit(struct fsm_session *session);
 struct fsm_dpi_sni_session *
 fsm_dpi_sni_lookup_session(struct fsm_session *session);
 
-
 /**
  * @brief Frees a fsm_dpi_sni session
  *
@@ -138,7 +155,6 @@ fsm_dpi_sni_lookup_session(struct fsm_session *session);
  */
 void
 fsm_dpi_sni_free_session(struct fsm_dpi_sni_session *u_session);
-
 
 /**
  * @brief deletes a session
@@ -148,51 +164,18 @@ fsm_dpi_sni_free_session(struct fsm_dpi_sni_session *u_session);
 void
 fsm_dpi_sni_delete_session(struct fsm_session *session);
 
+struct fsm_dpi_sni_cache *fsm_dpi_sni_get_mgr(void);
 
-/**
- * @brief process a flow attribute (shared processing of `include`, `exclude`,
- *        as well as initial parameter checks)
- *
- * @param session the fsm session
- * @param attr the attribute flow
- * @param type the value type (RTS_BINARY, RTS_STRING or RTS_NUMBER)
- * @param length the length in bytes of the value
- * @param value the value itself
- * @param packet_info packet details (acc, net_parser)
- */
-int
-fsm_dpi_generic_process_attr(struct fsm_session *session, const char *attr,
-                             uint8_t type, uint16_t length, const void *value,
-                             struct fsm_dpi_plugin_client_pkt_info *pkt_info);
+void fsm_dpi_sni_set_ttl(struct fsm_session *session, time_t ttl);
 
-/**
- * @brief process an SNI flow attribute specifically
- *
- * @param session the fsm session
- * @param attr the attribute flow
- * @param type the value type (RTS_BINARY, RTS_STRING or RTS_NUMBER)
- * @param length the length in bytes of the value
- * @param value the value itself
- * @param packet_info packet details (acc, net_parser)
- */
-int
-fsm_dpi_sni_process_attr(struct fsm_session *session, const char *attr,
-                         uint8_t type, uint16_t length, const void *value,
-                         struct fsm_dpi_plugin_client_pkt_info *pkt_info);
-
-struct fsm_dpi_sni_cache *
-fsm_dpi_sni_get_mgr(void);
-
-void
-fsm_dpi_sni_set_ttl(time_t t);
+int dpi_sni_get_req_type(const char *attr);
+int dpi_sni_policy_req(struct fsm_request_args *request_args, char *attr_value);
+bool dpi_sni_is_redirected_flow(struct net_md_flow_info *info);
+bool dpi_sni_is_redirected_attr(struct fsm_dpi_sni_redirect_flow_request *param);
+struct fsm_policy_reply *dpi_sni_create_reply(struct fsm_request_args *request_args);
+struct fsm_policy_req *dpi_sni_create_request(struct fsm_request_args *request_args, char *attr_value);
 
 bool
-is_redirected_flow(struct net_md_flow_info *info, const char *attr);
-
-struct fsm_policy_reply *
-fsm_dpi_sni_create_reply(struct fsm_request_args *request_args);
-
-struct fsm_policy_req *
-fsm_dpi_sni_create_request(struct fsm_request_args *request_args, char *attr_value);
+dpi_sni_fetch_fqdn_from_url_attr(char *attribute_name, char *fqdn);
 
 #endif /* FSM_DPI_SNI_H_INCLUDED */

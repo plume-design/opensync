@@ -43,5 +43,6 @@ UNIT_DEPS += src/lib/ovsdb
 UNIT_DEPS += src/lib/network_metadata
 UNIT_DEPS += src/lib/fcm_filter
 UNIT_DEPS += src/lib/unity
+UNIT_DEPS += src/lib/unit_test_utils
 
 # data/stats*.txt are copied automatically

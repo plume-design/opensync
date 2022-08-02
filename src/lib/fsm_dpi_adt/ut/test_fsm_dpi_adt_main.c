@@ -29,6 +29,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "target.h"
 #include "unity.h"
 #include "unity_internals.h"
+#include "unit_test_utils.h"
 
 char *test_name = "fsm_dpi_adt_plugin_tests";
 
@@ -36,7 +37,7 @@ char *test_name = "fsm_dpi_adt_plugin_tests";
  * @brief called by the Unity framework before every single test
  */
 void
-setUp(void)
+fsm_dpi_adt_setUp(void)
 {
     struct dns_cache_settings cache_init;
 
@@ -49,7 +50,7 @@ setUp(void)
  * @brief called by the Unity framework after every single test
  */
 void
-tearDown(void)
+fsm_dpi_adt_tearDown(void)
 {
     dns_cache_cleanup_mgr();
 }
@@ -63,13 +64,11 @@ main(int argc, char *argv[])
     (void)argc;
     (void)argv;
 
-    /* Set the logs to stdout */
-    target_log_open(test_name, LOG_OPEN_STDOUT);
-    log_severity_set(LOG_SEVERITY_TRACE);
+    ut_init(test_name, NULL, NULL);
 
-    UnityBegin(test_name);
+    ut_setUp_tearDown(test_name, fsm_dpi_adt_setUp, fsm_dpi_adt_tearDown);
 
     run_test_adt();
 
-    return UNITY_END();
+    return ut_fini();
 }

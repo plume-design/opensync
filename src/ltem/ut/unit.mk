@@ -44,6 +44,7 @@ UNIT_SRC += ../src/ltem_mqtt.c
 UNIT_CFLAGS := -Isrc/ltem/inc
 UNIT_CFLAGS += -Isrc/lib/lte_info/inc
 UNIT_CFLAGS += -Isrc/lib/osn/inc
+UNIT_CFLAGS += -Isrc/cm2/src
 
 UNIT_LDFLAGS := -lev -ljansson
 
@@ -68,3 +69,4 @@ UNIT_DEPS += src/lib/osa
 UNIT_DEPS += src/lib/target
 UNIT_DEPS += src/lib/unity
 UNIT_DEPS += src/lib/osn
+UNIT_DEPS += src/lib/unit_test_utils

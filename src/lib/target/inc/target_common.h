@@ -315,6 +315,19 @@ bool target_vif_config_set2(const struct schema_Wifi_VIF_Config *vconf,
                             int num_cconfs);
 
 /**
+ * @brief Remove station from driver
+ *
+ * Get rid of station reference from driver by trying issuing a deauth.
+ * Note that this does not mean that deauth frame will be sent,
+ * that is the case only when station is still associated.
+ *
+ * @param ifname interface name
+ * @param mac_addr station mac address
+ * @return true on success
+ */
+bool target_vif_sta_remove(const char *ifname, const uint8_t *mac_addr);
+
+/**
  * @brief Get state of vif interface
  *
  * This function is used to retrieve the current state of a vif interface
@@ -817,6 +830,7 @@ typedef enum {
     NTP_CHECK      = 1 << 3,
     IPV4_CHECK     = 1 << 4,
     IPV6_CHECK     = 1 << 5,
+    FAST_CHECK     = 1 << 6,
 } target_connectivity_check_option_t;
 
 /**

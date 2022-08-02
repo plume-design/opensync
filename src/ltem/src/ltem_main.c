@@ -76,7 +76,6 @@ ltem_init_mgr(struct ev_loop *loop)
     lte_config_info_t *lte_config;
     lte_state_info_t *lte_state;
     lte_route_info_t *lte_route;
-    bool ret;
 
     ltem_mgr_t *mgr = ltem_get_mgr();
 
@@ -84,26 +83,27 @@ ltem_init_mgr(struct ev_loop *loop)
 
     lte_config = CALLOC(1, sizeof(lte_config_info_t));
     if (lte_config == NULL) return false;
+
     lte_state = CALLOC(1, sizeof(lte_state_info_t));
-    if (lte_state == NULL) return false;
+    if (lte_state == NULL) goto err_lte_state;
+
     lte_route = CALLOC(1, sizeof(lte_route_info_t));
-    if (lte_route == NULL) return false;
+    if (lte_route == NULL) goto err_lte_route;
 
     mgr->lte_config_info = lte_config;
     mgr->lte_state_info = lte_state;
     mgr->lte_route = lte_route;
     mgr->modem_info = osn_get_modem_info();
 
-    osn_lte_set_qmi_mode();
-    osn_lte_enable_sim_detect();
-    osn_lte_read_pdp_context();
-    ret = osn_lte_set_pdp_context_params(PDP_CTXT_PDP_TYPE, PDP_TYPE_IPV4);
-    ret |= osn_lte_set_ue_data_centric();
-    if (ret)
-    {
-        osn_lte_reset_modem();
-    }
     return true;
+
+err_lte_route:
+    FREE(lte_state);
+
+err_lte_state:
+    FREE(lte_config);
+
+    return false;
 }
 
 /**
@@ -162,7 +162,7 @@ int main(int argc, char **argv)
     ltem_event_init();
 
     // Connect to OVSDB
-    LOGI("ovsdb_init_loop");
+    LOGD("ovsdb_init_loop");
     if (!ovsdb_init_loop(loop, "LTEM"))
     {
         LOGE("Initializing LTEM "
@@ -171,7 +171,7 @@ int main(int argc, char **argv)
     }
 
     // Register to relevant OVSDB tables events
-    LOGI("ovsdb_init_loop");
+    LOGD("ovsdb_init_loop");
     if (ltem_ovsdb_init())
     {
         LOGE("Initializing LTEM "
@@ -183,7 +183,7 @@ int main(int argc, char **argv)
     LOGD("ltem_create_client_table");
     ltem_create_client_table(mgr);
 
-    LOGI("%s: state=%s", __func__, ltem_get_lte_state_name(mgr->lte_state));
+    LOGD("%s: state=%s", __func__, ltem_get_lte_state_name(mgr->lte_state));
 
     // Start the event loop
     ev_run(loop, 0);

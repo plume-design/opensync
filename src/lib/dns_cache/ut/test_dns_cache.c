@@ -45,6 +45,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "memutil.h"
 #include "network_metadata_report.h"
 #include "sockaddr_storage.h"
+#include "unit_test_utils.h"
 
 const char *test_name = "dns_cache_tests";
 
@@ -125,7 +126,7 @@ void dns_cache_global_test_teardown(void)
     dns_cache_cleanup_mgr();
 }
 
-void setUp(void)
+void dns_cache_setUp(void)
 {
     uint32_t v4dstip1 = htonl(0x04030201);
     uint32_t v4dstip2 = htonl(0x04030202);
@@ -365,7 +366,7 @@ void free_dns_cache_entry(struct ip2action_req *req)
     FREE(req);
 }
 
-void tearDown(void)
+void dns_cache_tearDown(void)
 {
     dns_cache_cleanup();
 
@@ -1944,11 +1945,9 @@ int main(int argc, char *argv[])
     (void)argc;
     (void)argv;
 
-    target_log_open("TEST", LOG_OPEN_STDOUT);
-    log_severity_set(LOG_SEVERITY_TRACE);
-    UnityBegin(test_name);
+    ut_init(test_name, dns_cache_global_test_setup, dns_cache_global_test_teardown);
 
-    dns_cache_global_test_setup();
+    ut_setUp_tearDown(test_name, dns_cache_setUp, dns_cache_tearDown);
 
     RUN_TEST(test_dns_cache_hit_count);
     RUN_TEST(test_add_dns_cache);
@@ -1963,6 +1962,5 @@ int main(int argc, char *argv[])
     RUN_TEST(test_dns_cache_direction);
     RUN_TEST(test_dns_cache_disable);
 
-    dns_cache_global_test_teardown();
-    return UNITY_END();
+    return ut_fini();
 }

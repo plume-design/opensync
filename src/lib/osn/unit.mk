@@ -91,6 +91,7 @@ UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_MAPT_CERNET),src/osn_mapt_cernet.c)
 UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_LTE_NULL),src/osn_lte_null.c)
 UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_LTE_LINUX),src/osn_lte_linux.c)
 UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_LTE_LINUX),src/osn_lte_modem.c)
+UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_LTE_LINUX),src/osn_lte_esim.c)
 
 UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_NFLOG_NULL),src/osn_nflog_null.c)
 UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_NFLOG_LINUX),src/osn_nflog_linux.c)

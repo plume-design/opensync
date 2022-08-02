@@ -299,10 +299,10 @@ osn_lte_read_modem(void)
 {
     return 0;
 }
-void
+int
 osn_lte_read_pdp_context(void)
 {
-    return;
+    return 0;
 }
 bool
 osn_lte_set_pdp_context_params(lte_pdp_context_params param_type, char *val)
@@ -318,4 +318,14 @@ bool
 osn_lte_set_ue_data_centric(void)
 {
     return true;
+}
+void
+osn_lte_start_vendor_daemon(int source)
+{
+    return;
+}
+void
+osn_lte_stop_vendor_daemon(void)
+{
+    return;
 }

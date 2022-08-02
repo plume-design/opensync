@@ -39,6 +39,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "fcm_filter.h"
 #include "network_metadata.h"
+#include "unit_test_utils.h"
 
 extern void callback_FCM_Filter(ovsdb_update_monitor_t *mon,
                                 struct schema_FCM_Filter *old_rec,
@@ -449,7 +450,7 @@ ovsdb_update_monitor_t g_mon;
 static void ut_ovsdb_init(void) {}
 static void ut_ovsdb_exit(void) {}
 
-void setUp(void)
+void fcm_filter_setUp(void)
 {
     struct fcm_filter_mgr *mgr;
 
@@ -471,7 +472,7 @@ void setUp(void)
 }
 
 
-void tearDown(void)
+void fcm_filter_tearDown(void)
 {
     fcm_filter_cleanup();
 
@@ -1236,10 +1237,10 @@ int main(int argc, char *argv[])
     (void)argc;
     (void)argv;
 
-    target_log_open("TEST", LOG_OPEN_STDOUT);
-    log_severity_set(LOG_SEVERITY_INFO);
+    ut_init(test_name, NULL, NULL);
 
-    UnityBegin(test_name);
+    ut_setUp_tearDown(test_name, fcm_filter_setUp, fcm_filter_tearDown);
+
     RUN_TEST(test_fcm_filter_init_deinit);
     RUN_TEST(test_add_sfilter);
     RUN_TEST(test_add_sfilter1);
@@ -1259,6 +1260,6 @@ int main(int argc, char *argv[])
     RUN_TEST(test_fcm_apply_filter_check_7tuple_apply);
     RUN_TEST(test_fcm_apply_filter_check_l2_apply);
 
-    return UNITY_END();
+    return ut_fini();
 }
 

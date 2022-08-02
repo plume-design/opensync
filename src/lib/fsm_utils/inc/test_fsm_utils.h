@@ -27,9 +27,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifndef TEST_FSM_UTILS_H
 #define TEST_FSM_UTILS_H
 
-extern void (*g_setUp)(void);
-extern void (*g_tearDown)(void);
-
 extern void run_test_fsm_utils(void);
 extern void run_test_fsm_csum_utils(void);
 

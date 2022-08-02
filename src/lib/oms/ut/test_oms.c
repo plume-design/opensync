@@ -43,8 +43,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "schema.h"
 #include "target.h"
 #include "unity.h"
-
-
+#include "unit_test_utils.h"
 
 const char *test_name = "oms_tests";
 
@@ -278,17 +277,6 @@ oms_global_test_teardown(void)
 {
     g_test_mgr.has_ovsdb = false;
 }
-
-
-void
-setUp(void)
-{}
-
-
-void
-tearDown(void)
-{}
-
 
 void
 test_ovsdb_add_config(void)
@@ -824,12 +812,9 @@ main(int argc, char *argv[])
     (void)argc;
     (void)argv;
 
-    target_log_open("TEST", LOG_OPEN_STDOUT);
-    log_severity_set(LOG_SEVERITY_TRACE);
+    ut_init(test_name, oms_global_test_setup, oms_global_test_teardown);
 
-    UnityBegin(test_name);
-
-    oms_global_test_setup();
+    ut_setUp_tearDown(test_name, NULL, NULL);
 
     RUN_TEST(test_ovsdb_add_config);
     RUN_TEST(test_ovsdb_add_state);
@@ -838,7 +823,5 @@ main(int argc, char *argv[])
     RUN_TEST(test_serialize_report);
     RUN_TEST(test_events);
 
-    oms_global_test_teardown();
-
-    return UNITY_END();
+    return ut_fini();
 }

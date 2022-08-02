@@ -34,20 +34,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "log.h"
 #include "unity.h"
 #include "schema.h"
+#include "unit_test_utils.h"
 
 static const char *test_name = "schema_subset_tests";
-
-void
-setUp(void)
-{
-    return;
-}
-
-void
-tearDown(void)
-{
-    return;
-}
 
 #define SIZE 32
 #define LIST(_var, ...) char _var[][SIZE] = { __VA_ARGS__ }
@@ -76,10 +65,10 @@ DEF_TEST(test_7, true,  (), ("a"))
 int
 main(int argc, char *argv[])
 {
-    target_log_open("TEST", LOG_OPEN_STDOUT);
-    log_severity_set(LOG_SEVERITY_TRACE);
+    ut_init(test_name, NULL, NULL);
 
-    UnityBegin(test_name);
+    ut_setUp_tearDown(test_name, NULL, NULL);
+
     RUN_TEST(test_1);
     RUN_TEST(test_2);
     RUN_TEST(test_3);
@@ -88,5 +77,5 @@ main(int argc, char *argv[])
     RUN_TEST(test_6);
     RUN_TEST(test_7);
 
-    return UNITY_END();
+    return ut_fini();
 }
