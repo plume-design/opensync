@@ -160,6 +160,7 @@ struct fsm_dpi_plugin_client_pkt_info
 {
     struct net_md_stats_accumulator *acc;
     struct net_header_parser *parser;
+    bool tag_flow;
 };
 
 

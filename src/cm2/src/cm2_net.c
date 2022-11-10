@@ -299,7 +299,7 @@ cm2_delayed_eth_update_cb(struct ev_loop *loop, ev_timer *timer, int revents)
     p = (void *)timer;
     LOGI("%s: delayed eth update cb", p->if_name);
     ev_timer_stop(EV_DEFAULT, &p->timer);
-    cm2_ovsdb_connection_update_loop_state(p->if_name, false);
+    cm2_ovsdb_connection_update_loop_state(p->if_name, CM2_PAR_FALSE);
     FREE(p);
 }
 
@@ -314,7 +314,10 @@ void cm2_delayed_eth_update(char *if_name, int timeout)
     }
 
     p = MALLOC(sizeof(*p));
-    cm2_ovsdb_connection_update_loop_state(if_name, true);
+    /* Avoid duplicate trigger of loop state changed */
+    if (con.loop != true) {
+        cm2_ovsdb_connection_update_loop_state(if_name, CM2_PAR_TRUE);
+    }
     STRSCPY(p->if_name, if_name);
     ev_timer_init(&p->timer, cm2_delayed_eth_update_cb, timeout, 0);
     ev_timer_start(EV_DEFAULT, &p->timer);

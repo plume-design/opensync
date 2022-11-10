@@ -486,7 +486,8 @@ static bool cm2_connection_req_stability_process(const char *if_name,
     if (opts & ROUTER_CHECK) {
         counter = 0;
         if (((opts & IPV4_CHECK) && (!cstate.router_ipv4_state)) ||
-            ((opts & IPV6_CHECK) && (!cstate.router_ipv6_state))) {
+            ((opts & IPV6_CHECK) && (!cstate.router_ipv6_state)) ||
+            (!(opts & IPV4_CHECK) && !(opts & IPV6_CHECK))) {
             counter =  con.unreachable_router_counter < 0 ? 1 : con.unreachable_router_counter + 1;
             LOGI("Detected broken Router. Counter = %d", counter);
             cm2_restore_switch_cfg_params(counter, CONFIG_CM2_STABILITY_THRESH_ROUTER + 2, &ropt);
@@ -521,7 +522,8 @@ static bool cm2_connection_req_stability_process(const char *if_name,
     if (opts & INTERNET_CHECK) {
         counter = 0;
         if (((opts & IPV4_CHECK) && (!cstate.internet_ipv4_state)) ||
-            ((opts & IPV6_CHECK) && (!cstate.internet_ipv6_state))) {
+            ((opts & IPV6_CHECK) && (!cstate.internet_ipv6_state)) ||
+            (!(opts & IPV4_CHECK) && !(opts & IPV6_CHECK))) {
             counter = con.unreachable_internet_counter < 0 ? 1 : con.unreachable_internet_counter + 1;
             LOGI("Detected broken Internet. Counter = %d", counter);
             cm2_restore_switch_cfg_params(counter, CONFIG_CM2_STABILITY_THRESH_INTERNET + 2, &ropt);

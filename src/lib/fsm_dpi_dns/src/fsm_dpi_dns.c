@@ -278,6 +278,26 @@ fsm_dpi_dns_free_reply(struct fsm_policy_reply *reply)
     fsm_policy_free_reply(reply);
 }
 
+void
+fsm_dpi_dns_update_csum(struct net_header_parser *net_parser)
+{
+    struct udphdr *udp_hdr;
+    uint8_t *packet;
+    uint16_t csum;
+
+    /* update check sum */
+    packet = (uint8_t *)net_parser->start;
+    udp_hdr = net_parser->ip_pld.udphdr;
+    if (net_parser->ip_version == 4) udp_hdr->check = 0;
+    else if (net_parser->ip_version == 6)
+    {
+        /* IPv6 */
+        csum = fsm_compute_udp_checksum(packet, net_parser);
+        udp_hdr->check = csum;
+    }
+    net_parser->payload_updated = true;
+}
+
 /**
  * @brief update dns response ips
  *
@@ -293,11 +313,9 @@ fsm_dpi_dns_update_response_ips(struct net_header_parser *net_header,
     struct net_md_flow_key *key;
     struct dpi_dns_client *mgr;
     struct dns_record *rec;
-    struct udphdr *udp_hdr;
-    uint8_t * packet;
+    uint8_t *packet;
     bool is_updated;
     size_t parsed;
-    uint16_t csum;
     size_t i;
 
     is_updated = false;
@@ -354,20 +372,6 @@ fsm_dpi_dns_update_response_ips(struct net_header_parser *net_header,
                 is_updated = true;
             }
         }
-    }
-
-    /* update check sum */
-    if (is_updated)
-    {
-        udp_hdr = net_header->ip_pld.udphdr;
-        if (net_header->ip_version == 4) udp_hdr->check = 0;
-        else if (net_header->ip_version == 6)
-        {
-            /* IPv6 */
-            csum = fsm_compute_udp_checksum(packet, net_header);
-            udp_hdr->check = htons(csum);
-        }
-        net_header->payload_updated = true;
     }
 
     return is_updated;
@@ -430,6 +434,22 @@ fsm_dpi_dns_populate_response_ips(struct dns_response_s *dns_resp_ips)
     }
 }
 
+bool
+is_record_to_process()
+{
+    struct dpi_dns_client *mgr;
+    struct dns_record *rec;
+    bool rc;
+
+    mgr = fsm_dpi_dns_get_mgr();
+    rc = (mgr->identical_plugin_enabled);
+    if (!rc) return true;
+
+    rec = &mgr->curr_rec_processed;
+    rc = (rec->resp[0].type == DNS_QTYPE_65);
+    return rc;
+}
+
 int
 fsm_dpi_dns_process_dns_record(struct fsm_session *session,
                                struct net_md_stats_accumulator *acc,
@@ -459,15 +479,14 @@ fsm_dpi_dns_process_dns_record(struct fsm_session *session,
     /* Fetch information (category, etc) for this FQDN */
     rec = &mgr->curr_rec_processed;
 
-    rc = (mgr->identical_plugin_enabled);
-    rc &= (!kconfig_enabled(CONFIG_FSM_DPI_DNS));
-    if (rc)
+    rc = is_record_to_process();
+    if (!rc)
     {
-        LOGT("%s: dns_parse is enabled returning...", __func__);
+        LOGT("%s: query type: %d dns_parse is enabled returning...", __func__, rec->resp[0].type);
         return action;
     }
 
-    LOGT("%s: Processing dpi DNS request for %s", __func__, rec->qname);
+    LOGT("%s: Processing dpi DNS request for %s with %zd answers", __func__, rec->qname, rec->idx);
 
     /* Interact with GK to get verdict for the name only */
     MEMZERO(info);
@@ -495,6 +514,19 @@ fsm_dpi_dns_process_dns_record(struct fsm_session *session,
     }
 
     action = fsm_apply_policies(policy_request, policy_reply);
+
+    /*
+     * We can have responses without `answers`.
+     * Skip updating the information for the IPs.
+     * The actual action returned in this case must be fully over-written,
+     * since we want to _always_ finsih processing of DNS transaction.
+     */
+    if (rec->idx == 0)
+    {
+        LOGT("%s: No answer to process.", __func__);
+        action = FSM_DPI_PASSTHRU;
+        goto no_answer;
+    }
 
     /* Now assign the gathered information to the IPs in the cache */
     for (i = 0; i < rec->idx; i++)
@@ -576,9 +608,11 @@ fsm_dpi_dns_process_dns_record(struct fsm_session *session,
         action = FSM_DPI_PASSTHRU;
     }
 
+no_answer:
     if (net_parser != NULL)
     {
-        net_parser->payload_updated = true;
+        /* update check sum */
+        fsm_dpi_dns_update_csum(net_parser);
     }
 
     /* Cleanup */
@@ -935,9 +969,8 @@ fsm_dpi_dns_process_attr(struct fsm_session *session, const char *attr,
             if (rec->next_state == DNS_TYPE && rec->idx == 0)
             {
                 LOGD("%s: No A, AAAA or HTTPS for %s", __func__, rec->qname);
-                goto reset_state_machine;
             }
-            if (rec->next_state != DNS_TYPE || rec->idx == 0) goto wrong_state;
+            if (rec->next_state != DNS_TYPE) goto wrong_state;
 
             rec->next_state = BEGIN_DNS;
 

@@ -416,6 +416,7 @@ fsm_dpi_client_process_attr(struct fsm_session *session, const char *attr,
         }
     }
 
+    pkt_info->tag_flow = true;
     return FSM_DPI_INSPECT;
 }
 

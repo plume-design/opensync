@@ -37,6 +37,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "log.h"
 #include "net_header_parse.h"
 
+#include "unit_test_utils.h"
 #include "fsm_csum_utils.h"
 
 struct net_header_parser    net_parser;
@@ -71,9 +72,11 @@ test_udp_csum_calculation(void)
 {
     size_t      len = 0;
     uint16_t    csum = 0;
+    uint16_t    expected_csum = ntohs(0x1ba1);
 
     memset(&net_parser, 0, sizeof(struct net_header_parser));
 
+    UT_CREATE_PCAP_PAYLOAD(pkt51, &net_parser);
     len = sizeof(pkt51);
     TEST_ASSERT_TRUE(len != 0);
 
@@ -84,7 +87,7 @@ test_udp_csum_calculation(void)
     TEST_ASSERT_TRUE(len != 0);
 
     csum = fsm_compute_udp_checksum(pkt51, &net_parser);
-    TEST_ASSERT_EQUAL_INT16(65535, csum);
+    TEST_ASSERT_EQUAL_INT16(expected_csum, csum);
 }
 
 void

@@ -61,19 +61,20 @@ fsm_compute_pseudo_iph_checksum(uint8_t *packet, struct net_header_parser *net_p
 
         for (i = 0; i < 8; i++)
         {
-            sum += htons(*ip_addr++);
+            sum += *ip_addr++;
         }
 
         ip_addr = (uint16_t *)ip_hdr->ip6_dst.s6_addr16;
         for (i = 0; i < 8; i++)
         {
-            sum += htons(*ip_addr++);
+            sum += *ip_addr++;
         }
     }
 
-    sum += IPPROTO_UDP;
-    sum += udp_len;
+    sum += htons(IPPROTO_UDP);
+    sum += htons(udp_len);
 
+    udp_hdr->check = 0;
     return sum;
 }
 
@@ -93,13 +94,13 @@ fsm_compute_udp_checksum(uint8_t *packet, struct net_header_parser *net_parser)
     sum = fsm_compute_pseudo_iph_checksum(packet, net_parser);
     while (udp_len > 1)
     {
-        sum += htons(*udp_hdr_pos++);
+        sum += *udp_hdr_pos++;
         udp_len -= 2;
     }
 
     if(udp_len > 0)
     {
-        sum += htons(*udp_hdr_pos & htons(0xff00));
+        sum += *udp_hdr_pos & htons(0xff00);
     }
 
     while (sum >> 16)

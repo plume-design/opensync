@@ -459,11 +459,6 @@ void cm2_trigger_restart_managers(void) {
         goto restart;
     }
 
-    if (cm2_ovsdb_recalc_links()) {
-        skip_restart = true;
-        goto restart;
-    }
-
     if (cm2_is_config_via_ble_enabled() &&
         g_state.dev_type == CM2_DEVICE_NONE) {
         LOGI("Enable two way mode communication, skip restart managers");

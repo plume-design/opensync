@@ -324,7 +324,7 @@ bool cm2_ovsdb_recalc_links(void);
 void cm2_ovsdb_connection_update_ble_phy_link(void);
 bool cm2_ovsdb_update_Port_tag(const char *ifname, int tag, bool set);
 bool cm2_ovsdb_update_Port_trunks(const char *ifname, int *trunks, int num_trunks);
-bool cm2_ovsdb_connection_update_loop_state(const char *if_name, bool state);
+bool cm2_ovsdb_connection_update_loop_state(const char *if_name, cm2_par_state_t s);
 bool cm2_ovsdb_WiFi_Inet_State_is_ip(const char *if_name);
 void cm2_ovsdb_connection_clean_link_counters(char *if_name);
 bool cm2_ovsdb_validate_bridge_port_conf(char *bname, char *pname);

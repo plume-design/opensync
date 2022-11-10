@@ -711,7 +711,7 @@ ltem_ovsdb_get_if_type(char *if_name)
  * @return true when wifi_inet_config ovsdb table updated successfully
  *         false otherwise
  */
-static bool
+static void
 ltem_wifi_inet_os_persist_update(bool persist_state, char *if_name)
 {
     struct schema_Wifi_Inet_Config icfg;
@@ -720,14 +720,15 @@ ltem_wifi_inet_os_persist_update(bool persist_state, char *if_name)
     LOGI("%s: persist_state[%d] if_name[%s]", __func__, persist_state, if_name);
     ret = ovsdb_table_select_one(&table_Wifi_Inet_Config,
                 SCHEMA_COLUMN(Wifi_Inet_Config, if_name), if_name, &icfg);
+
     if (!ret)
     {
-       LOGI("%s: %s: Failed to get interface config", __func__, if_name);
-       return false;
+        LOGI("%s: %s: Failed to get interface config", __func__, if_name);
+        return;
     }
 
     /* return true if os_persist is already set, update otherwise */
-    if (icfg.os_persist == persist_state) return true;
+    if (icfg.os_persist == persist_state) return;
 
     MEMZERO(icfg);
     char *filter[] = { "+",
@@ -741,10 +742,8 @@ ltem_wifi_inet_os_persist_update(bool persist_state, char *if_name)
     if (!ret)
     {
         LOGE("%s: %s: Failed to update interface config", __func__, if_name);
-        return false;
     }
 
-    return true;
 }
 
 /**
@@ -756,7 +755,7 @@ ltem_wifi_inet_os_persist_update(bool persist_state, char *if_name)
  * @return true when lte_config ovsdb table updated successfully
  *         false otherwise
  */
-static bool
+static void
 ltem_lte_config_os_persist_update(bool persist_state, char *if_name)
 {
     struct schema_Lte_Config lte_cfg;
@@ -769,11 +768,11 @@ ltem_lte_config_os_persist_update(bool persist_state, char *if_name)
     if (!ret)
     {
         LOGE("%s: %s: Failed to get interface config", __func__, if_name);
-        return false;
+        return;
     }
 
     /* return true if os_persist is already set, update otherwise */
-    if (lte_cfg.os_persist == persist_state) return true;
+    if (lte_cfg.os_persist == persist_state) return;
 
     /* update the os_persist field */
     MEMZERO(lte_cfg);
@@ -788,10 +787,9 @@ ltem_lte_config_os_persist_update(bool persist_state, char *if_name)
     if (!ret)
     {
         LOGE("%s: %s: Failed to update interface config", __func__, if_name);
-        return false;
+        return;
     }
 
-    return true;
 }
 
 /**
@@ -842,12 +840,14 @@ ltem_lte_state_update_persist(bool state, char *if_name)
 static void
 ltem_update_enable_persist(bool persist_state, char *if_name)
 {
-    /* Update enable_persist field in Lte_state table only when Lte_config and
-       Wifi_Init_config updates  successfully */
-    if (!ltem_wifi_inet_os_persist_update(persist_state, if_name)) return;
-    if (!ltem_lte_config_os_persist_update(persist_state, if_name)) return;
+
+    /* NOC expects  enable_persist to be present in Lte_State table before
+       Wifi_Inet_Config table is pushed. The sequence here updates first Lte_State table */
 
     ltem_lte_state_update_persist(persist_state, if_name);
+    ltem_lte_config_os_persist_update(persist_state, if_name);
+    ltem_wifi_inet_os_persist_update(persist_state, if_name);
+
 }
 
 void
