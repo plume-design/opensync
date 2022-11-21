@@ -60,37 +60,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 static char tag_marker[2] = "${";
 static char gtag_marker[2] = "$[";
-const struct fsm_action
-{
-    int fsm_action;
-    char *fsm_str_action;
-} action_map[] =
-{
-    {
-        .fsm_action = FSM_ACTION_NONE,
-        .fsm_str_action = "none",
-    },
-    {
-        .fsm_action = FSM_BLOCK,
-        .fsm_str_action = "blocked",
-    },
-    {
-        .fsm_action = FSM_ALLOW,
-        .fsm_str_action = "allowed",
-    },
-    {
-        .fsm_action = FSM_OBSERVED,
-        .fsm_str_action = "observed",
-    },
-    {
-        .fsm_action = FSM_NO_MATCH,
-        .fsm_str_action = "not matched",
-    },
-    {
-        .fsm_action = FSM_REDIRECT,
-        .fsm_str_action = "blocked",
-    }
-};
 
 const char * const fsm_action_str[] =
 {
@@ -616,28 +585,36 @@ static bool fsm_ip_check(struct fsm_policy_req *req,
  * @param req fsm policy request
  * @param policy_reply fsm policy reply
  */
-static char *
+static void
 set_log_action(struct fsm_policy_req *req,
+               struct fsm_policy *p,
                struct fsm_policy_reply *policy_reply)
 {
     struct fqdn_pending_req *pending_req;
     struct fsm_url_request *url_info;
     struct fsm_url_reply *cat_reply;
-    char *log_action;
-    size_t nelems;
-    size_t i = 0;
+    int action;
 
-    nelems = ARRAY_SIZE(action_map);
     if (policy_reply->categorized != FSM_FQDN_CAT_FAILED)
     {
-        for (i = 0; i < nelems; i++)
+        if (policy_reply->action == FSM_BLOCK ||
+            policy_reply->action == FSM_REDIRECT)
         {
-            if (policy_reply->action == action_map[i].fsm_action)
-            {
-                log_action = action_map[i].fsm_str_action;
-                return log_action;
-            }
+            action = policy_reply->action;
+            policy_reply->log_action = (char *)fsm_policy_get_action_str(action);
+            return;
         }
+
+        if (req->action == FSM_OBSERVED)
+        {
+            action = req->action;
+            policy_reply->log_action = (char *)fsm_policy_get_action_str(action);
+            return;
+        }
+
+        action = policy_reply->action;
+        policy_reply->log_action = (char *)fsm_policy_get_action_str(action);
+        return;
     }
 
     pending_req = req->fqdn_req;
@@ -647,13 +624,12 @@ set_log_action(struct fsm_policy_req *req,
      /* cache lookup error */
     if (!cat_reply || cat_reply->lookup_status)
     {
-        log_action = cache_lookup_failure;
-        return log_action;
+        policy_reply->log_action = cache_lookup_failure;
+        return;
     }
 
     /* remote lookup error */
-    log_action = remote_lookup_failure;
-    return log_action;
+    policy_reply->log_action = remote_lookup_failure;
 }
 
 /**
@@ -1456,6 +1432,7 @@ int fsm_apply_policies(struct fsm_policy_req *req,
         set_tag_update(req, p, policy_reply);
         set_excluded_devices_tag(req, p, policy_reply);
         set_action(req, p, policy_reply);
+        set_log_action(req, p, policy_reply);
         set_policy_record(req, p, policy_reply);
         set_policy_redirects(req, p, policy_reply);
     }
@@ -1466,7 +1443,6 @@ int fsm_apply_policies(struct fsm_policy_req *req,
         policy_reply->log = FSM_REPORT_NONE;
     }
 
-    policy_reply->log_action = set_log_action(req, policy_reply);
     /* policy reply struct will be freed if policy_reply->policy_response is invoked
      * so copying to local variable for returning */
     action = policy_reply->action;
