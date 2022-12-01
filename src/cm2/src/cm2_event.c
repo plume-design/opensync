@@ -103,6 +103,7 @@ Note-1: the wait for re-connect back to same manager addr because
 #include "ds.h"
 #include "json_util.h"
 #include "cm2.h"
+#include "cm2_stability.h"
 #include "target.h"
 #include "telog.h"
 
@@ -121,7 +122,7 @@ Note-1: the wait for re-connect back to same manager addr because
 #define CM2_STABLE_PERIOD               300 // 5 min
 #define CM2_RESOLVE_RETRY_THRESHOLD     10
 #define CM2_GW_OFFLINE_RETRY_THRESHOLD  3
-#define CM2_GW_SKIP_RESTART_THRESHOLD   360
+#define CM2_GW_SKIP_RESTART_TIMEOUT     86400 // 1 hour
 
 // state info
 #define CM2_STATE_DIR  "/tmp/opensync/"
@@ -420,11 +421,6 @@ void cm2_trigger_restart_managers(void) {
         goto restart;
     }
 
-    if (cm2_ovsdb_recalc_links()) {
-        skip_restart = true;
-        goto restart;
-    }
-
     if (cm2_is_config_via_ble_enabled() &&
         g_state.dev_type == CM2_DEVICE_NONE) {
         LOGI("Enable two way mode communication, skip restart managers");
@@ -438,13 +434,20 @@ void cm2_trigger_restart_managers(void) {
 
         /* When device operates in Router mode, restart managers is skipped
          * due to keep LAN connectivity.
-         * Two methods to help restore connection are triggered,
-         * refresh dhcp or restart interface.
+         * Methods of restoring connection are triggered (see cm2_restore_method in cm2.h)
         */
-        if (g_state.cnts.skip_restart % 2)
+        switch (g_state.restore_method)
+        {
+        case CM2_RESTORE_REFRESH_DHCP:
             cm2_ovsdb_refresh_dhcp(g_state.link.if_name);
-        else
+            break;
+        case CM2_RESTORE_RESTART_INTERFACE:
             cm2_restart_iface(g_state.link.if_name);
+            break;
+        default:
+            LOGW("Unsupported restore connection method: %d", g_state.restore_method);
+            break;
+        }
 
         goto restart;
     }
@@ -457,11 +460,15 @@ void cm2_trigger_restart_managers(void) {
 
 restart:
     cm2_ovsdb_dump_debug_data();
+
+    // Move to the next restore method in the list
+    g_state.restore_method = (g_state.restore_method + 1) % CM2_RESTORE_NUM;
+
+    int delta = cm2_get_restart_time();
     if (skip_restart &&
-        g_state.cnts.skip_restart++ < CM2_GW_SKIP_RESTART_THRESHOLD) {
-        LOGI("Device type: %d, Skip restart managers [%d/%d]",
-             g_state.dev_type, g_state.cnts.skip_restart,
-             CM2_GW_SKIP_RESTART_THRESHOLD);
+        delta < CM2_GW_SKIP_RESTART_TIMEOUT) {
+        LOGI("Device type: %d, Skip restart managers[%d secs]",
+             g_state.dev_type, delta);
         cm2_reset_time();
         return;
     }
@@ -707,7 +714,7 @@ start:
             }
             WARN_ON(cm2_update_main_link_ip(&g_state.link) < 0);
             if (!g_state.link.ipv4.blocked && g_state.link.ipv4.is_ip) {
-                opts = IPV4_CHECK;
+                opts = IPV4_CHECK | ROUTER_CHECK;
                 ipv4 = cm2_connection_req_stability_check(g_state.link.if_name, g_state.link.if_type, uplink, opts, true);
                 LOGI("ipv4: %d", ipv4);
             }
@@ -784,7 +791,7 @@ start:
                 if (cm2_is_extender()) {
                     WARN_ON(cm2_update_main_link_ip(&g_state.link) < 0);
                     opts = LINK_CHECK | ROUTER_CHECK | INTERNET_CHECK;
-                    cm2_connection_req_stability_check_async(g_state.link.if_name, g_state.link.if_type, uplink, opts, false, true);
+                    cm2_connection_req_stability_check_async(g_state.link.if_name, g_state.link.if_type, uplink, opts, true, true);
                 }
 
                 if (g_state.link.ipv4.resolve_retry ||
@@ -946,8 +953,8 @@ start:
                     cm2_connection_req_stability_check_async(g_state.link.if_name, g_state.link.if_type, uplink, opts, true, false);
                     cm2_set_ble_state(true, BLE_ONBOARDING_STATUS_CLOUD_OK);
                     cm2_update_device_type(g_state.link.if_type);
-                    g_state.cnts.skip_restart = 0;
                     g_state.cnts.ovs_con = 0;
+                    g_state.restore_method = CM2_RESTORE_REFRESH_DHCP;
                     g_state.run_stability = true;
                     cm2_stability_update_interval(g_state.loop, false);
                     cm2_ovsdb_connection_update_unreachable_cloud_counter(g_state.link.if_name, 0);

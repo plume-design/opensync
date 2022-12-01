@@ -33,7 +33,21 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "test_fsm_utils.h"
 #include "unit_test_utils.h"
 
-char *test_name = "test_fsm_utils";
+char *ut_name = "test_fsm_utils";
+
+void
+fsm_utils_setUp(void)
+{
+    ut_prepare_pcap(Unity.CurrentTestName);
+}
+
+
+void
+fsm_utils_tearDown(void)
+{
+    ut_cleanup_pcap();
+}
+
 
 int
 main(int argc, char *argv[])
@@ -41,10 +55,9 @@ main(int argc, char *argv[])
     (void)argc;
     (void)argv;
 
-    ut_init(test_name, NULL, NULL);
-
-    ut_setUp_tearDown(test_name, NULL, NULL);
-
+    ut_init(ut_name, NULL, NULL);
+    ut_keep_temp_folder(true);
+    ut_setUp_tearDown(ut_name, fsm_utils_setUp, fsm_utils_tearDown);
     run_test_fsm_csum_utils();
 
     return ut_fini();

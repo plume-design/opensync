@@ -439,6 +439,7 @@ bool inet_eth_mtu_start(inet_eth_t *self, bool enable)
 bool inet_eth_service_commit(inet_base_t *super, enum inet_base_services srv, bool enable)
 {
     inet_eth_t *self = (inet_eth_t *)super;
+    bool rv;
 
     LOG(INFO, "inet_eth: %s: Service %s -> %s.",
             self->inet.in_ifname,
@@ -461,7 +462,17 @@ bool inet_eth_service_commit(inet_base_t *super, enum inet_base_services srv, bo
             return inet_eth_scheme_none_start(self, enable);
 
         case INET_BASE_SCHEME_STATIC:
-            return inet_eth_scheme_static_start(self, enable);
+            rv = inet_eth_scheme_static_start(self, enable);
+
+            if (!enable)
+            {
+                /* When deleting an IP address or flushing all IP addresses,
+                 * kernel may/will flush static routes. We need to reapply any
+                 * static routes configured by OpenSync at this point.
+                 */
+                inet_routes_reapply(super->in_routes_set);
+            }
+            return rv;
 
         case INET_BASE_MTU:
             return inet_eth_mtu_start(self, enable);

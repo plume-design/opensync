@@ -64,37 +64,55 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define CONFIG_HAPD_MAX_BSS 48 // FIXME: kconfig
 #define CONFIG_HAPD_RELOAD_STOP_START 1
 
+#define HAPD_DEFAULT_FT_KEY "8261b033613b35b373761cbde421250e67cd21d44737fe5e5deed61869b4b397"
+
 #define HAPD_SOCK_PATH(dphy, dvif) F("/var/run/hostapd-%s/%s", dphy, dvif)
 #define HAPD_SOCK_DIR(dphy) F("/var/run/hostapd-%s", dphy)
 #define HAPD_CONF_PATH(dvif) F("/var/run/hostapd-%s.config", dvif)
 #define HAPD_PSKS_PATH(dvif) F("/var/run/hostapd-%s.pskfile", dvif)
+#define HAPD_RXKH_PATH(dvif) F("/var/run/hostapd-%s.rxkh", dvif)
 #define HAPD_GLOB_CLI(...) E(CMD_TIMEOUT("wpa_cli", "-p", "", "-g", "/var/run/hostapd/global", ## __VA_ARGS__))
 #define HAPD_CLI(hapd, ...) E(CMD_TIMEOUT("hostapd_cli", "-p", hapd->ctrl.sockdir, "-i", hapd->ctrl.bss, ## __VA_ARGS__))
 #define EV(x) strchomp(strdupa(x), " ")
 
-#define HAPD_CONF_APPEND(buf, len, ...) do{ \
+#define HAPD_CONF_APPEND(buf, len, ...) do { \
     csnprintf(&(buf), len, __VA_ARGS__); \
-}while(0)
+} while (0)
 
-/* Append line to config file. Comment out if schema value does not exist */
-#define HAPD_CONF_APPEND_STR_IF_EXISTS(buf, len, FMT, val) do{ \
+/* Append line to config file if string 'exists'. Otherwise comment out. */
+#define HAPD_CONF_APPEND_STR_IF_EXISTS(buf, len, FMT, val) do { \
     csnprintf(&(buf), len, "%s", (val ## _exists) ? "" : "#"); \
     csnprintf(&(buf), len, FMT,  (val ## _exists) ? val : ""); \
-}while(0)
+} while (0)
 
-/* Append config option if not empty. Otherwise comment out. */
-#define HAPD_CONF_APPEND_STR_NE(buf, len, FMT, val) do{ \
+/* Append config option if string is not empty. Otherwise comment out. */
+#define HAPD_CONF_APPEND_STR_NE(buf, len, FMT, val) do { \
     csnprintf(&(buf), len, "%s", strlen(val) > 0 ? "" : "#"); \
     csnprintf(&(buf), len, FMT,  strlen(val) > 0 ? val : ""); \
-}while(0)
+} while (0)
 
-/* Append config option if int value '..._exists' in OVSDB schema  */
-#define HAPD_CONF_APPEND_INT_IF_EXISTS(buf, len, FMT, val) do{ \
+/* Append config option if int 'exists'. Otherwise comment out. */
+#define HAPD_CONF_APPEND_INT_IF_EXISTS(buf, len, FMT, val) do { \
     csnprintf(&(buf), len, "%s", (val ## _exists == true) ? "" : "#"); \
     csnprintf(&(buf), len, FMT,  (val ## _exists == true) ? val : 0); \
-}while(0)
+} while (0)
+
+/* Append config option if int 'exists'. Otherwise comment out. */
+#define HAPD_CONF_APPEND_WITH_DEFAULT(buf, len, FMT, val, def) do { \
+    csnprintf(&(buf), len, FMT, (val ## _exists == true) ? val : def); \
+} while (0)
 
 #define MODULE_ID LOG_MODULE_ID_HAPD
+
+/* Some Operating Systems, including at least some
+ * Windows revisions at the time of writing, are known
+ * to show up a WPS-PIN entry in the UI instead of
+ * WPA-PSK/SAE passphrase entry when selecting a network.
+ * This was confusing to users. One way to prevent that
+ * is to use a very specific device_type string that gets
+ * advertised through WPS IE.
+ */
+#define WPS_DEVICE_TYPE_STR "6-0050F204-1"
 
 static struct hapd g_hapd[CONFIG_HAPD_MAX_BSS];
 
@@ -172,9 +190,48 @@ hapd_lookup_radius(struct hapd *hapd,
 
         ptr++; (*num_radius_list)++; token++;
     }
+    return;
 trunc:
     LOGW("%s: the list of RADIUS servers truncated. Device supports max %d servers",
             __func__, max_radius_num);
+}
+
+void
+hapd_lookup_nbors(struct hapd *hapd,
+                  struct schema_Wifi_VIF_Neighbors *nbors_list,
+                  int max_nbors_num,
+                  int *num_nbors_list)
+{
+    const char *rxkhs = HAPD_CLI(hapd, "get_rxkhs");
+    const char *token = rxkhs;
+    struct schema_Wifi_VIF_Neighbors *nbor = nbors_list;
+    char *bssid;
+    char *nas_id;
+    char *encr_key;
+    *num_nbors_list = 0;
+
+    if (!token)
+        return;
+
+    while ((token = strstr(token, "r0kh"))) {
+        /* r0kh=AB:CD:EF:12:34:56 plumewifiAB1 862abc...df662 */
+        char *line = ini_geta(token, "r0kh");
+        bssid = strsep(&line, " ");
+        nas_id = strsep(&line, " ");
+        encr_key = strsep(&line, "");
+
+        if ((*num_nbors_list) >= max_nbors_num) goto trunc;
+
+        STRSCPY_WARN(nbor->bssid, str_tolower(bssid));
+        STRSCPY_WARN(nbor->nas_identifier, nas_id);
+        STRSCPY_WARN(nbor->ft_encr_key, encr_key);
+
+        nbor++; (*num_nbors_list)++; token++;
+    }
+    return;
+trunc:
+    LOGW("%s: the list of Neighbors reported by hostapd truncated. Max supported: %d",
+            __func__, max_nbors_num);
 }
 
 static void
@@ -352,10 +409,28 @@ hapd_init(struct hapd *hapd, const char *phy, const char *bss)
     STRSCPY_WARN(hapd->ctrl.sockpath, HAPD_SOCK_PATH(phy, bss));
     STRSCPY_WARN(hapd->confpath, HAPD_CONF_PATH(bss));
     STRSCPY_WARN(hapd->pskspath, HAPD_PSKS_PATH(bss));
+    STRSCPY_WARN(hapd->rxkhpath, HAPD_RXKH_PATH(bss));
     STRSCPY_WARN(hapd->phy, phy);
     hapd->ctrl.cb = hapd_ctrl_cb;
     hapd->ctrl.hapd = hapd;
     hapd->legacy_controller = false;
+    hapd->group_by_phy_name = false;
+    hapd->use_driver_iface_addr = false;
+    /* Vendor specific flag to enable loopback socket for passing
+     * FT RRB frames. Set by the target layer if hostapd implements
+     * this feature. If not set when required, FT Action Frames
+     * used in FT over-the-DS won't be handled by the driver and
+     * FT over-the-DS will timeout */
+    hapd->use_driver_rrb_lo = false;
+    /* FIXME in current implementation it is assumed, that
+     * target that implements rxkh_file in hostapd will set
+     * this feature flag when initializing hapd structure.
+     * Much better approach would be to figure it out in
+     * runtime. Maybe by analyzing 'hostapd_cli help' output */
+    hapd->use_rxkh_file = false;
+    /* FIXME same as above */
+    hapd->use_reload_rxkhs = false;
+
     return hapd;
 }
 
@@ -429,6 +504,12 @@ hapd_util_ft_nas_id(void)
      * hostapd will not start and we could see such message:
      * FT (IEEE 802.11r) requires nas_identifier to be
      * configured as a 1..48 octet string
+     */
+    /* FIXME Watch out! having the same nas_identifier for
+     * many NASes in the ESS will not work as expected. STA
+     * will advertise R0KH-ID and the new AP will recognize
+     * it as itself. It obvioussly is not the owner of R0 key
+     * so the whole exchange will fail.
      */
     return "plumewifi";
 }
@@ -820,6 +901,23 @@ hapd_ht_caps(const struct schema_Wifi_Radio_Config *rconf)
 }
 
 static int
+hapd_op_class_6ghz_from_ht_mode(const char *ht_mode)
+{
+    int op_code = 0;
+
+    if (!strcmp(ht_mode, "HT20"))
+        op_code = 131;
+    else if (!strcmp(ht_mode, "HT40"))
+        op_code = 132;
+    else if (!strcmp(ht_mode, "HT80"))
+        op_code = 133;
+    else if (!strcmp(ht_mode, "HT160"))
+        op_code = 134;
+
+    return op_code;
+}
+
+static int
 hapd_util_get_oper_chwidth(const struct schema_Wifi_Radio_Config *rconf)
 {
     if (!rconf->ht_mode_exists) return 0;
@@ -839,24 +937,23 @@ static int
 hapd_util_get_oper_centr_freq_idx(const struct schema_Wifi_Radio_Config *rconf)
 {
     const int width = atoi(strlen(rconf->ht_mode) > 2 ? rconf->ht_mode + 2 : "20");
-    const int *chans;
-    int sum = 0;
-    int cnt = 0;
+    const int *chans = NULL;
+
+    if (!rconf->freq_band_exists || !rconf->channel_exists)
+        return 0;
 
     if (!strcmp(rconf->freq_band, SCHEMA_CONSTS_RADIO_TYPE_STR_6G))
         chans = unii_6g_chan2list(rconf->channel, width);
-    else
+
+    if ((!strcmp(rconf->freq_band, SCHEMA_CONSTS_RADIO_TYPE_STR_5G))
+        || (!strcmp(rconf->freq_band, SCHEMA_CONSTS_RADIO_TYPE_STR_5GL))
+        || (!strcmp(rconf->freq_band, SCHEMA_CONSTS_RADIO_TYPE_STR_5GU)))
         chans = unii_5g_chan2list(rconf->channel, width);
 
     if (WARN_ON(!chans))
         return 0;
 
-    while (*chans) {
-        sum += *chans;
-        cnt++;
-        chans++;
-    }
-    return sum / cnt;
+    return chanlist_to_center(chans);
 }
 
 int
@@ -992,6 +1089,7 @@ hapd_conf_gen_security_legacy(struct hapd *hapd,
         csnprintf(&buf, len, "wps_state=%d\n", vconf->wps ? 2 : 0);
         csnprintf(&buf, len, "eap_server=%d\n", vconf->wps ? 1 : 0);
         csnprintf(&buf, len, "config_methods=virtual_push_button\n");
+        csnprintf(&buf, len, "device_type=%s\n", WPS_DEVICE_TYPE_STR);
         csnprintf(&buf, len, "pbc_in_m1=1\n");
     }
 
@@ -1200,12 +1298,18 @@ hapd_conf_gen_security_new(struct hapd *hapd,
                            char *buf,
                            size_t *len,
                            const struct schema_Wifi_VIF_Config *vconf,
+                           const struct schema_Wifi_VIF_Neighbors *nbors_list,
                            const struct schema_RADIUS *radius_list,
-                           const int num_radius_list)
+                           const int num_nbors_list,
+                           const int num_radius_list,
+                           const char *bssid)
 {
     int i;
+    char *rxkh_buf = hapd->rxkh;
+    size_t rxkh_len = sizeof(hapd->rxkh);;
     struct vif_security_config conf;
     memset(&conf, 0, sizeof(struct vif_security_config));
+    memset(rxkh_buf, 0, sizeof(hapd->rxkh));
 
     hapd_conf_fill_security(hapd, &conf, vconf);
     hapd_conf_validate_config(hapd, &conf, vconf);
@@ -1262,17 +1366,44 @@ hapd_conf_gen_security_new(struct hapd *hapd,
     }
 
     if (conf.ft) {
-        HAPD_CONF_APPEND(buf, len, "nas_identifier=%s\n", hapd_util_ft_nas_id());
-        HAPD_CONF_APPEND(buf, len, "reassociation_deadline=%d\n", hapd_util_ft_reassoc_deadline_tu());
-        HAPD_CONF_APPEND(buf, len, "mobility_domain=%04x\n", hapd_util_ft_md(vconf));
-        HAPD_CONF_APPEND(buf, len, "ft_over_ds=%d\n", 0);
-        HAPD_CONF_APPEND(buf, len, "ft_psk_generate_local=%d\n", 1);
+        HAPD_CONF_APPEND_WITH_DEFAULT(buf, len, "nas_identifier=%s\n", vconf->nas_identifier, bssid);
+        HAPD_CONF_APPEND_WITH_DEFAULT(buf, len, "mobility_domain=%04x\n", vconf->ft_mobility_domain, 0xddf7);
+        HAPD_CONF_APPEND(buf, len, "ft_psk_generate_local=1\n");
+    }
+
+    if (conf.ft && conf.eap) {
+        HAPD_CONF_APPEND_WITH_DEFAULT(buf, len, "ft_over_ds=%d\n", vconf->ft_over_ds, 1);
+        HAPD_CONF_APPEND_WITH_DEFAULT(buf, len, "pmk_r1_push=%d\n", vconf->ft_pmk_r1_push, 0);
+        HAPD_CONF_APPEND_WITH_DEFAULT(buf, len, "ft_r0_key_lifetime=%d\n", vconf->ft_pmk_r0_key_lifetime_sec, 1209600);
+        HAPD_CONF_APPEND_WITH_DEFAULT(buf, len, "r1_max_key_lifetime=%d\n", vconf->ft_pmk_r1_max_key_lifetime_sec, 86400);
+
+        /* R0KHs */
+        for (i = 0; i < num_nbors_list; i++) {
+            HAPD_CONF_APPEND(rxkh_buf, &rxkh_len, "r0kh=%s ", nbors_list[i].bssid);
+            HAPD_CONF_APPEND_WITH_DEFAULT(rxkh_buf, &rxkh_len, "%s " , nbors_list[i].nas_identifier, nbors_list[i].bssid);
+            HAPD_CONF_APPEND_WITH_DEFAULT(rxkh_buf, &rxkh_len, "%s\n", nbors_list[i].ft_encr_key, HAPD_DEFAULT_FT_KEY);
+        }
+        /* R1KHs */
+        for (i = 0; i < num_nbors_list; i++) {
+            HAPD_CONF_APPEND(rxkh_buf, &rxkh_len, "r1kh=%s %s ",  nbors_list[i].bssid, nbors_list[i].bssid);
+            HAPD_CONF_APPEND_WITH_DEFAULT(rxkh_buf, &rxkh_len, "%s\n", nbors_list[i].ft_encr_key, HAPD_DEFAULT_FT_KEY);
+        }
+
+        if (hapd->use_rxkh_file) {
+            HAPD_CONF_APPEND(buf, len, "rxkh_file=%s\n", hapd->rxkhpath);
+        } else {
+            HAPD_CONF_APPEND(buf, len, "%s", rxkh_buf);
+        }
+
+        if (hapd->use_driver_rrb_lo)
+            HAPD_CONF_APPEND(buf, len, "ft_rrb_lo_sock=1\n");
     }
 
     if (conf.wps) {
         HAPD_CONF_APPEND(buf, len, "wps_state=%d\n", 2);
         HAPD_CONF_APPEND(buf, len, "eap_server=%d\n", 1);
         HAPD_CONF_APPEND(buf, len, "config_methods=virtual_push_button\n");
+        HAPD_CONF_APPEND(buf, len, "device_type=%s\n", WPS_DEVICE_TYPE_STR);
         HAPD_CONF_APPEND(buf, len, "pbc_in_m1=%d\n", 1);
     }
 
@@ -1295,7 +1426,8 @@ static int
 hapd_conf_gen_security(struct hapd *hapd,
                        char *buf,
                        size_t *len,
-                       const struct schema_Wifi_VIF_Config *vconf)
+                       const struct schema_Wifi_VIF_Config *vconf,
+                       const char *bssid)
 {
     const char *sae_psk = "";
     const char *sae_opt_present = "#";
@@ -1365,7 +1497,7 @@ hapd_conf_gen_security(struct hapd *hapd,
     csnprintf(&buf, len, "auth_server_shared_secret=%s\n",
               vconf->radius_srv_secret_exists ? vconf->radius_srv_secret : "");
     csnprintf(&buf, len, "%sieee80211w=%s\n", ieee80211w_present, ieee80211w);
-    csnprintf(&buf, len, "%snas_identifier=%s\n", ft_opt_present, hapd_util_ft_nas_id());
+    csnprintf(&buf, len, "%snas_identifier=%s\n", ft_opt_present, bssid);
     csnprintf(&buf, len, "%sreassociation_deadline=%d\n", ft_opt_present,
               hapd_util_ft_reassoc_deadline_tu());
     csnprintf(&buf, len, "%smobility_domain=%04x\n", ft_opt_present, hapd_util_ft_md(vconf));
@@ -1377,6 +1509,7 @@ hapd_conf_gen_security(struct hapd *hapd,
     csnprintf(&buf, len, "%swps_state=%d\n", wps_opt_present, vconf->wps ? 2 : 0);
     csnprintf(&buf, len, "%seap_server=%d\n", wps_opt_present, vconf->wps ? 1 : 0);
     csnprintf(&buf, len, "%sconfig_methods=virtual_push_button\n", wps_opt_present);
+    csnprintf(&buf, len, "%sdevice_type=%s\n", wps_opt_present, WPS_DEVICE_TYPE_STR);
     csnprintf(&buf, len, "%spbc_in_m1=1\n", wps_opt_present);
 
     if (vconf->dpp_connector_exists)
@@ -1411,28 +1544,36 @@ hapd_conf_gen(struct hapd *hapd,
               const struct schema_Wifi_VIF_Config *vconf)
 {
     /* For backwards compatibility resolve hapd_conf_gen
-     * as the call to new hapd_conf_gen2 ignoring two last
+     * as the call to new hapd_conf_gen2 ignoring some
      * parameters for RADIUS configuration
      */
-    return hapd_conf_gen2(hapd, rconf, vconf, NULL, 0);
+    return hapd_conf_gen2(hapd, rconf, vconf, NULL, NULL, 0, 0, NULL);
 }
 
 int
 hapd_conf_gen2(struct hapd *hapd,
                const struct schema_Wifi_Radio_Config *rconf,
                const struct schema_Wifi_VIF_Config *vconf,
+               const struct schema_Wifi_VIF_Neighbors *nbors_list,
                const struct schema_RADIUS *radius_list,
-               const int num_radius_list)
+               const int num_nbors_list,
+               const int num_radius_list,
+               const char *bssid)
 {
     size_t len = sizeof(hapd->conf);
     char *buf = hapd->conf;
+    char low_bssid[] = "00:00:00:00:00:00";
     int closed;
 
     memset(buf, 0, len);
     memset(hapd->psks, 0, sizeof(hapd->psks));
+    memset(hapd->rxkh, 0, sizeof(hapd->rxkh));
 
     if (!vconf->enabled)
         return 0;
+
+    if (bssid != NULL)
+        STRSCPY_WARN(low_bssid, bssid);
 
     closed = !strcmp(vconf->ssid_broadcast, "enabled") ? 0 :
              !strcmp(vconf->ssid_broadcast, "disabled") ? 1 : 0;
@@ -1481,7 +1622,8 @@ hapd_conf_gen2(struct hapd *hapd,
     }
 
     if (!strcmp(rconf->freq_band, SCHEMA_CONSTS_RADIO_TYPE_STR_6G)) {
-        csnprintf(&buf, &len, "op_class=131\n");
+        const int op_class = hapd_op_class_6ghz_from_ht_mode(rconf->ht_mode);
+        csnprintf(&buf, &len, "op_class=%d\n", op_class);
         csnprintf(&buf, &len, "sae_pwe=2\n");
     }
 
@@ -1518,10 +1660,14 @@ hapd_conf_gen2(struct hapd *hapd,
     if (vconf->wpa_exists) {
         if (util_vif_pairwise_supported(vconf)) {
             hapd->legacy_controller = false;
-            return hapd_conf_gen_security_new(hapd, buf, &len, vconf, radius_list, num_radius_list);
+            return hapd_conf_gen_security_new(hapd, buf, &len,
+                    vconf, nbors_list, radius_list,
+                    num_nbors_list, num_radius_list,
+                    str_tolower(low_bssid));
         } else {
             hapd->legacy_controller = true;
-            return hapd_conf_gen_security(hapd, buf, &len, vconf);
+            return hapd_conf_gen_security(hapd, buf, &len, vconf,
+                                          str_tolower(low_bssid));
         }
     } else {
         hapd->legacy_controller = true;
@@ -1640,6 +1786,19 @@ hapd_bss_get_security_new(struct schema_Wifi_VIF_State *vstate,
     const char *rsn_pairwise = ini_geta(status, "rsn_pairwise_cipher") ?: "";
     const int conf_wpa = atoi(ini_geta(status, "wpa") ?: "0");
     const int pmf = atoi(ini_geta(conf, "ieee80211w") ?: "0");
+
+    /*
+     * Hostapd do not expose any status interface to get below data
+     * Report what's configured in config file in vstate. Omit key.
+     */
+    struct hapd *hapd = hapd_lookup(vstate->if_name);
+    const int ft_over_ds = atoi(ini_geta(hapd->conf, "ft_over_ds") ?: "0");
+    const int ft_pmk_r0_key_lifetime_sec = atoi(ini_geta(hapd->conf, "ft_r0_key_lifetime") ?: "0");
+    const int ft_pmk_r1_max_key_lifetime_sec = atoi(ini_geta(hapd->conf, "r1_max_key_lifetime") ?: "0");
+    const int ft_pmk_r1_push = atoi(ini_geta(hapd->conf, "pmk_r1_push") ?: "0");
+    const int ft_psk_generate_local = atoi(ini_geta(hapd->conf, "ft_psk_generate_local") ?: "0");
+    const char *nas_identifier = ini_geta(hapd->conf, "nas_identifier");
+
     char *conf_key;
     const char *p;
 
@@ -1653,6 +1812,13 @@ hapd_bss_get_security_new(struct schema_Wifi_VIF_State *vstate,
     SCHEMA_SET_BOOL(vstate->rsn_pairwise_tkip, (strstr(rsn_pairwise, "TKIP") != NULL) ? true : false);
     SCHEMA_SET_BOOL(vstate->rsn_pairwise_ccmp, (strstr(rsn_pairwise, "CCMP") != NULL) ? true : false);
     SCHEMA_SET_STR(vstate->pmf, util_vif_pmf_enum_to_schema(pmf));
+
+    SCHEMA_SET_BOOL(vstate->ft_over_ds, (ft_over_ds != 0) ? true : false);
+    SCHEMA_SET_INT(vstate->ft_pmk_r0_key_lifetime_sec, ft_pmk_r0_key_lifetime_sec);
+    SCHEMA_SET_INT(vstate->ft_pmk_r1_max_key_lifetime_sec, ft_pmk_r1_max_key_lifetime_sec);
+    SCHEMA_SET_BOOL(vstate->ft_pmk_r1_push, (ft_pmk_r1_push != 0) ? true : false);
+    SCHEMA_SET_BOOL(vstate->ft_psk_generate_local, (ft_psk_generate_local != 0) ? true : false);
+    if (nas_identifier) SCHEMA_SET_STR(vstate->nas_identifier, nas_identifier);
     if (mib_radius_srv_addr) SCHEMA_SET_STR(vstate->radius_srv_addr, mib_radius_srv_addr);
     if (mib_radius_srv_port) SCHEMA_SET_INT(vstate->radius_srv_port, atoi(mib_radius_srv_port));
     if ((p = ini_geta(conf, "dpp_connector"))) SCHEMA_SET_STR(vstate->dpp_connector, p);
@@ -1921,6 +2087,13 @@ hapd_ctrl_reload_psk(struct hapd *hapd)
 }
 
 static int
+hapd_ctrl_reload_rxkhs(struct hapd *hapd)
+{
+    LOGI("%s: reloading rxkh: %s", hapd->ctrl.bss, hapd->rxkhpath);
+    return strcmp("OK", HAPD_CLI(hapd, "reload_rxkhs") ?: "");
+}
+
+static int
 hapd_ctrl_reload(struct hapd *hapd)
 {
     int err = 0;
@@ -1966,7 +2139,9 @@ hapd_conf_strip(char *buf, bool running)
         if (!running || (strstr(line, "channel=") != line
                 && strstr(line, "ht_capab=") != line
                 && strstr(line, "vht_oper_chwidth=") != line
-                && strstr(line, "vht_oper_centr_freq_seg0_idx=") != line))
+                && strstr(line, "vht_oper_centr_freq_seg0_idx=") != line
+                && strstr(line, "r0kh=") != line
+                && strstr(line, "r1kh=") != line))
             csnprintf(&ptr, &len, "%s\n", line);
     strscpy(buf, tmp, buf_size); /* its guaranteed to fit */
     return buf;
@@ -1980,25 +2155,61 @@ hapd_conf_changed(const char *a, const char *b, bool running)
     return strcmp(x, y);
 }
 
+static char *
+hapd_conf_rxkh_strip(char *buf)
+{
+    const size_t buf_size = strlen(buf) + 1;
+    size_t len = buf_size;
+    char *lines = buf;
+    char tmp[buf_size];
+    char *ptr = tmp;
+    char *line;
+    *tmp = 0;
+
+    while ((line = strsep(&lines, "\n")))
+        if (strstr(line, "r0kh=") == line ||
+            strstr(line, "r1kh=") == line)
+            csnprintf(&ptr, &len, "%s\n", line);
+    strscpy(buf, tmp, buf_size); /* its guaranteed to fit */
+    return buf;
+}
+
+static int
+hapd_conf_rxkh_changed(const char *a, const char *b)
+{
+    const char *x = hapd_conf_rxkh_strip(strdupa(a));
+    const char *y = hapd_conf_rxkh_strip(strdupa(b));
+    return strcmp(x, y);
+}
+
 int
 hapd_conf_apply(struct hapd *hapd)
 {
     const char *oldconf = R(hapd->confpath) ?: "";
     const char *oldpsks = R(hapd->pskspath) ?: "";
+    const char *oldrxkh = R(hapd->rxkhpath) ?: oldconf;
     bool running = ctrl_running(&hapd->ctrl);
     int changed_conf = hapd_conf_changed(oldconf, hapd->conf, running);
     int changed_psks = strcmp(oldpsks, hapd->psks);
+    int changed_rxkh = hapd_conf_rxkh_changed(oldrxkh, hapd->rxkh);
     int add = !ctrl_running(&hapd->ctrl) && hapd_configured(hapd);
     int reload = ctrl_running(&hapd->ctrl) && hapd_configured(hapd);
-    int reload_all = reload && changed_conf;
+    int reload_all = reload && (changed_conf ||
+                               (!hapd->use_reload_rxkhs &&
+                                changed_rxkh));
     int reload_psk = reload && changed_psks && !reload_all;
+    int reload_rxkh = reload && changed_rxkh && !reload_all &&
+                      hapd->use_reload_rxkhs;
+    int write_rxkhfile = changed_rxkh && hapd->use_rxkh_file;
     int del = ctrl_running(&hapd->ctrl) && !hapd_configured(hapd);
     int err = 0;
 
+    if (write_rxkhfile) WARN_ON(W(hapd->rxkhpath, hapd->rxkh) < 0);
     if (changed_conf) WARN_ON(W(hapd->confpath, hapd->conf) < 0);
     if (changed_psks) WARN_ON(W(hapd->pskspath, hapd->psks) < 0);
     if (add) err |= WARN_ON(W(hapd->pskspath, hapd->psks) < 0);
     if (add) err |= WARN_ON(hapd_ctrl_add(hapd));
+    if (reload_rxkh) err |= WARN_ON(hapd_ctrl_reload_rxkhs(hapd));
     if (reload_psk) err |= WARN_ON(hapd_ctrl_reload_psk(hapd));
     if (reload_all) err |= WARN_ON(hapd_ctrl_reload(hapd));
     if (del) err |= WARN_ON(hapd_ctrl_remove(hapd));

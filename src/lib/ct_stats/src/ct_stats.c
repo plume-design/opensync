@@ -72,34 +72,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define ZONE_2      (USHRT_MAX -1)
 
 /**
- * IMC server used for fsm -> fcm flow tags communication
- */
-static struct imc_context g_imc_server =
-{
-    .initialized = false,
-    .endpoint = "ipc:///tmp/imc_fsm2fcm",
-};
-
-static struct unix_context g_unix_server =
-{
-    .initialized = false,
-    .endpoint = "/tmp/unix_fsm2fcm",
-};
-
-/**
- * IMC server used for fsm -> fcm app list communication
- */
-static struct imc_context g_imc_app_server =
-{
-    .initialized = false,
-    .endpoint = "ipc:///tmp/imc_fsm2fcm_app",
-};
-
-
-/**
  * IMC shared library context, when loaded through dlopen()
  */
-static struct imc_dso g_imc_context = { 0 };
+static struct imc_dso g_imc_context;
 
 static int flow_cmp(const void *a, const void *b);
 
@@ -271,38 +246,18 @@ ct_stats_load_imc(void)
  * @param recv_cb the ct_stats handler for the data received from fsm
  */
 static int
-ct_stats_init_server(struct imc_context *server, struct ev_loop *loop,
+ct_stats_init_server(struct imc_dso *imc, struct ev_loop *loop,
                      imc_recv recv_cb)
 {
     int ret;
 
-    if (g_imc_context.init_server == NULL) return 0;
+    if (imc->imc_init_server == NULL) return 0;
 
-    ret = g_imc_context.init_server(server, loop, recv_cb);
-
-    return ret;
-}
-
-
-/**
- * @brief starts the fsm -> fcm Unix socket IMC server
- *
- * @param server the imc context of the server
- * @param loop the FCM manager's ev loop
- * @param recv_cb the ct_stats handler for the data received from fsm
- */
-static int
-ct_stats_unix_server(struct unix_context *server, struct ev_loop *loop,
-                     imc_recv recv_cb)
-{
-    int ret;
-
-    if (g_imc_context.init_unix_server == NULL) return 0;
-
-    ret = g_imc_context.init_unix_server(server, loop, recv_cb);
+    ret = imc->imc_init_server(imc, loop, recv_cb);
 
     return ret;
 }
+
 
 /**
  * @brief stops imc_server
@@ -310,25 +265,13 @@ ct_stats_unix_server(struct unix_context *server, struct ev_loop *loop,
  * @param server the imc context of the server
  */
 void
-ct_stats_terminate_server(struct imc_context *server)
+ct_stats_terminate_server(struct imc_dso *imc)
 {
-    if (g_imc_context.terminate_server == NULL) return;
+    if (imc->imc_terminate_server == NULL) return;
 
-    g_imc_context.terminate_server(server);
+    imc->imc_terminate_server(imc);
 }
 
-/**
- * @brief stops the fsm -> fcm Unix socket IMC server
- *
- * @param server the imc context of the server
- */
-void
-ct_stats_terminate_unix_server(struct unix_context *server)
-{
-    if (g_imc_context.terminate_unix_server == NULL) return;
-
-    g_imc_context.terminate_unix_server(server);
-}
 
 /**
  * Singleton tracking the plugin state
@@ -338,7 +281,6 @@ static flow_stats_mgr_t g_ct_stats =
     .initialized = false,
 };
 
-static char *g_appname;
 
 /**
  * @brief compare sessions
@@ -1498,27 +1440,6 @@ ct_stats_block_flow(struct net_md_stats_accumulator *acc)
 }
 
 
-bool
-ct_stats_process_acc(struct net_md_stats_accumulator *acc)
-{
-    struct flow_tags *ftag;
-    struct flow_key *fkey;
-    size_t i;
-    int rc;
-
-    if (acc->fkey == NULL) return true;
-    fkey = acc->fkey;
-
-    for (i = 0; i < fkey->num_tags; i++)
-    {
-        ftag = fkey->tags[i];
-        rc = strcmp(ftag->app_name, g_appname);
-        if (rc == 0) ct_stats_block_flow(acc);
-    }
-    return true;
-}
-
-
 /**
  * @brief collector filter callback processing flows pushed from fsm
  *
@@ -1584,13 +1505,30 @@ ct_stats_on_acc_report(struct net_md_aggregator *aggr,
                        struct net_md_stats_accumulator *acc)
 {
     struct net_md_stats_accumulator *rev_acc;
+    struct flow_key *rev_fkey;
+    struct flow_key *fkey;
 
     if (aggr == NULL) return;
-
-    if (acc->direction != NET_MD_ACC_UNSET_DIR) return;
+    if (acc == NULL) return;
 
     rev_acc = net_md_lookup_reverse_acc(aggr, acc);
-    if ((rev_acc != NULL) && (rev_acc->direction != NET_MD_ACC_UNSET_DIR))
+    if (rev_acc == NULL) return;
+
+    /* update the networkid */
+    fkey = acc->fkey;
+    if (fkey && (fkey->networkid == NULL))
+    {
+        rev_fkey = rev_acc->fkey;
+        if (rev_fkey && rev_fkey->networkid)
+        {
+            fkey->networkid = STRDUP(rev_fkey->networkid);
+        }
+    }
+
+    /* update the direction */
+    if (acc->direction != NET_MD_ACC_UNSET_DIR) return;
+
+    if (rev_acc->direction != NET_MD_ACC_UNSET_DIR)
     {
         acc->direction = rev_acc->direction;
         acc->originator = (rev_acc->originator == NET_MD_ACC_ORIGINATOR_SRC ?
@@ -1649,7 +1587,6 @@ ct_stats_alloc_aggr(flow_stats_t *ct_stats)
         LOGD("%s: Aggregator allocation failed", __func__);
         return -1;
     }
-    aggr->process = ct_stats_process_acc;
 
     ct_stats->aggr = aggr;
     collector->plugin_ctx = ct_stats;
@@ -1901,46 +1838,12 @@ proto_recv_cb(void *data, size_t len)
 
 
 /**
- * @brief imc callback processing the app name received from fsm
- *
- * @param data a pointer to the string
- * @param len the protobuf length
- */
-static void
-app_recv_cb(void *data, size_t len)
-{
-    flow_stats_t *ct_stats;
-    char *str;
-
-    ct_stats = ct_stats_get_active_instance();
-    if (ct_stats == NULL)
-    {
-        LOGD("%s: No active instance", __func__);
-        return;
-    }
-
-    str = CALLOC(1, len + 1);
-    if (str == NULL) goto err;
-
-    strscpy(str, (char *)data, len + 1);
-    LOGI("%s: received app name %s", __func__, str);
-    g_appname = str;
-    net_md_process_aggr(ct_stats->aggr);
-    FREE(str);
-
-err:
-    g_appname = NULL;
-}
-
-
-/**
  * @brief starts the imc server receiving flow info from fsm
  */
 int
 ct_stats_imc_init(void)
 {
-    struct unix_context *unix_server;
-    struct imc_context *server;
+    struct imc_dso *imc;
     struct ev_loop *loop;
     bool ret;
     int rc;
@@ -1948,40 +1851,18 @@ ct_stats_imc_init(void)
     ret = ct_stats_load_imc();
     if (!ret) goto err_init_imc;
 
-
-    if (kconfig_enabled(CONFIG_FCM_ZMQ_IMC))
-    {
-        /* Start the server */
-        server = &g_imc_server;
-        loop = g_ct_stats.loop;
-        server->ztype = IMC_PULL;
-        rc = ct_stats_init_server(server, loop, proto_recv_cb);
-        if (rc != 0) goto err_init_imc;
-
-        server->initialized = true;
-    }
-    else
-    {
-        unix_server = &g_unix_server;
-        loop = g_ct_stats.loop;
-        rc = ct_stats_unix_server(unix_server, loop, proto_recv_cb);
-        if (rc != 0)
-        {
-            LOGE("%s : failed to init unix server", __func__);
-            goto err_init_imc;
-        }
-        unix_server->initialized = true;
-    }
-
-    server = &g_imc_app_server;
-
-    /* Start the server */
-    server->ztype = IMC_PULL;
+    imc = &g_imc_context;
     loop = g_ct_stats.loop;
-    rc = ct_stats_init_server(server, loop, app_recv_cb);
-    if (rc != 0) goto err_init_imc;
 
-    server->initialized = true;
+    rc = ct_stats_init_server(imc, loop, proto_recv_cb);
+    if (rc != 0)
+    {
+        LOGE("%s: failed to init imc server", __func__);
+        goto err_init_imc;
+
+    }
+
+    imc->initialized = true;
 
     return 0;
 
@@ -1996,27 +1877,10 @@ err_init_imc:
 void
 ct_stats_imc_exit(void)
 {
-    struct unix_context *unix_server;
-    struct imc_context *server;
+    struct imc_dso *imc;
 
-    /* stop fsm -> fcm IMC server */
-    if (kconfig_enabled(CONFIG_FCM_ZMQ_IMC))
-    {
-        server = &g_imc_server;
-        ct_stats_terminate_server(server);
-        server->initialized = false;
-    }
-    else
-    {
-        unix_server = &g_unix_server;
-        ct_stats_terminate_unix_server(unix_server);
-        unix_server->initialized = false;
-    }
-
-    /* stop app server */
-    server = &g_imc_app_server;
-    ct_stats_terminate_server(server);
-    server->initialized = false;
+    imc = &g_imc_context;
+    ct_stats_terminate_server(imc);
 }
 
 /**

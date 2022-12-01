@@ -40,11 +40,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ds_list.h"
 
 /**
- * Derived from https://github.com/pijyoi/zmq_libev,
- * distributed under a MIT license
- */
-
-/**
  * @brief Receive callback provided by the manager
  *
  */
@@ -60,48 +55,40 @@ typedef void (*imc_ev_cbfn)(struct ev_loop *, struct imc_context *, int);
 
 typedef void (*imc_free_sndmsg)(void *, void *);
 
-typedef int (*init_client)(struct imc_context *, imc_free_sndmsg, void *);
-typedef void (*terminate_client)(struct imc_context *);
-typedef int (*client_send)(struct imc_context *, void *, size_t , int);
-
-typedef int (*init_server)(struct imc_context *, struct ev_loop *, imc_recv);
-typedef void (*terminate_server)(struct imc_context *);
-
-typedef int  (*add_sockopt)(struct imc_context *, struct imc_sockoption *);
-typedef void (*init_context)(struct imc_context *);
-typedef void (*reset_context)(struct imc_context *);
-
-typedef int (*init_unix_client)(struct unix_context *);
-typedef void (*terminate_unix_client)(struct unix_context *);
-typedef int (*client_unix_send)(struct unix_context *, void *, size_t , int);
-typedef int (*init_unix_server)(struct unix_context *, struct ev_loop *, unix_recv);
-typedef void (*terminate_unix_server)(struct unix_context *);
+typedef int (*imc_init_client)(struct imc_dso *, imc_free_sndmsg free_snd_msg, void *free_msg_hint);
+typedef void (*imc_terminate_client)(struct imc_dso *);
+typedef int (*imc_client_send)(struct imc_dso *, void *, size_t , int);
+typedef int (*imc_init_server)(struct imc_dso *, struct ev_loop *, unix_recv);
+typedef void (*imc_terminate_server)(struct imc_dso *);
+typedef void (*imc_config_client_endpoint)(struct imc_dso *, char *endpoint);
 
 typedef void (*init)(struct imc_dso *);
 
 struct imc_dso
 {
+    union
+    {
+        struct imc_context *imc_zmq;
+        struct unix_context *imc_socket;
+    };
+
+    bool initialized;
+    uint64_t io_success_cnt;
+    uint64_t io_failure_cnt;
+    imc_free_sndmsg imc_free_sndmsg;
+    void *free_msg_hint;
+
     void *handle;
 
     init init;
 
-    init_client init_client;
-    terminate_client terminate_client;
-    client_send client_send;
+    imc_config_client_endpoint imc_config_client_endpoint;
+    imc_init_client imc_init_client;
+    imc_client_send imc_client_send;
+    imc_terminate_client imc_terminate_client;
 
-    init_server init_server;
-    terminate_server terminate_server;
-
-    init_context init_context;
-    reset_context reset_context;
-    add_sockopt add_sockopt;
-
-    init_unix_client init_unix_client;
-    client_unix_send client_unix_send;
-    terminate_unix_client terminate_unix_client;
-
-    init_unix_server init_unix_server;
-    terminate_unix_server terminate_unix_server;
+    imc_init_server imc_init_server;
+    imc_terminate_server imc_terminate_server;
 };
 
 
@@ -127,8 +114,6 @@ struct imc_context
     char *endpoint;
     imc_recv recv_fn;
     imc_ev_cbfn imc_ev_cb;
-    imc_free_sndmsg imc_free_sndmsg;
-    void *free_msg_hint;
     void *zctx;
     void *zsock;
     int ztype;
@@ -137,7 +122,6 @@ struct imc_context
     ev_check w_check;
     ev_idle w_idle;
     ev_io w_io;
-    bool initialized;
     ds_list_t options;
     uint64_t io_success_cnt;
     uint64_t io_failure_cnt;
@@ -150,169 +134,10 @@ struct unix_context
     void *data;
     unix_recv recv_fn;
     char *endpoint;
-    bool initialized;
     int sock_fd;
-    uint64_t io_success_cnt;
-    uint64_t io_failure_cnt;
     ev_io w_io;
     int events;
 };
-
-#if defined(CONFIG_TARGET_IMC)
-
-#include <zmq.h>
-enum
-{
-    IMC_PULL = ZMQ_PULL,
-    IMC_PUSH = ZMQ_PUSH,
-    IMC_DONTWAIT = ZMQ_DONTWAIT,
-    IMC_SNDHWM = ZMQ_SNDHWM,
-    IMC_RCVHWM = ZMQ_RCVHWM,
-    IMC_LINGER = ZMQ_LINGER,
-};
-
-
-/**
- * @brief initializes an imc context
- *
- * @param context the imc context
- */
-void
-imc_init_context(struct imc_context *context);
-
-
-/**
- * @brief resets an imc context
- *
- * @param context the imc context
- * @param frees non network resources of the imc context
- */
-void
-imc_reset_context(struct imc_context *context);
-
-
-/**
- * @brief add a socket to the imc context
- * @param context the imc context
- * @param the option container
- *
- * Memory usage: The option container is duplicated and
- * the duplicate is stored in the context.
- * This routine ought to be called brior to calling either
- * @see imc_init_server or @see imc_init_client for the options to take effect.
- * Call the routine for each option you wish to set.
- */
-int
-imc_add_sockopt(struct imc_context *context, struct imc_sockoption *option);
-
-
-/**
- * @brief initiates a imc server
- *
- * @param server the server context
- * @param loop the ev loop
- * @param recv_cb user provided data processing routine
- */
-int
-imc_init_server(struct imc_context *server, struct ev_loop *loop,
-                imc_recv recv_cb);
-
-/**
- * @brief initiates a unix server
- *
- * @param server the server context
- * @param loop the ev loop
- * @param recv_cb user provided data processing routine
- */
-int
-unix_init_server(struct unix_context *server, struct ev_loop *loop,
-                unix_recv recv_cb);
-
-/**
- * @brief terminates a imc server
- *
- * @param server the server to terminate
- */
-void
-imc_terminate_server(struct imc_context *server);
-
-
-/**
- * @brief terminates a unix server
- *
- * @param server the server to terminate
- */
-void
-unix_terminate_server(struct unix_context *server);
-
-/**
- * @brief initiates a imc client and connects to a server
- *
- * @param endpoint the client context
- */
-int
-imc_init_client(struct imc_context *client, imc_free_sndmsg free_msg,
-                void *free_msg_hint);
-
-
-/**
- * @brief initiates a unix client and connects to a server
- *
- * @param endpoint the client context
- */
-int
-unix_init_client(struct unix_context *client);
-
-
-/**
- * @brief initiates a imc client and connects to a server
- *
- * @param endpoint the client end point
- * @param free_snd_msg callback routine freeing the transmitted message
- * @param free_msg_hint argument passed to the free_snd_msg() callback
- *
- * Please refer to zmq_msg_send() documentation for further details.
- */
-void
-imc_terminate_client(struct imc_context *client);
-
-
-/**
- * @brief terminates a unix client and connected to a server
- *
- * @param endpoint the client context
- */
-void
-unix_terminate_client(struct unix_context *client);
-
-
-/**
- * @brief send data to a imc server
- *
- * @param context the socket context
- * @param buf the buffer to send
- * @param len the buffer size
- * @flags the transmit flags
- */
-int
-imc_send(struct imc_context *context, void *buf, size_t buflen, int flags);
-
-
-/**
- * @brief send data to a unix server
- *
- * @param context the socket context
- * @param buf the buffer to send
- * @param len the buffer size
- * @flags the transmit flags
- */
-int
-unix_send(struct unix_context *context, void *buf, size_t buflen, int flags);
-
-void
-imc_init_dso(struct imc_dso *dso);
-
-#else /* CONFIG_TARGET_IMC */
 
 enum
 {
@@ -324,84 +149,33 @@ enum
     IMC_LINGER,
 };
 
-
 static inline int
-imc_init_context(struct imc_context *context)
+dummy_imc_init_client(struct imc_dso *imc, imc_free_sndmsg free_snd_msg,
+                      void *free_msg_hint)
 {
     return 0;
 }
-
-
-static inline int
-imc_add_sockopt(struct imc_context *context, struct imc_sockoption *option)
-{
-    return 0;
-}
-
-
-static inline int
-imc_init_server(struct imc_context *server, struct ev_loop *loop,
-                imc_recv recv_cb)
-{
-    return 0;
-}
-
-
-static inline int
-unix_init_server(struct unix_context *server, struct ev_loop *loop,
-                 unix_recv recv_cb)
-{
-    return 0;
-}
-
 
 static inline void
-imc_terminate_server(struct imc_context *server) {}
-
-
-static inline void
-unix_terminate_server(struct unix_context *server) {}
-
+dummy_imc_terminate_client(struct imc_dso *imc) {}
 
 static inline int
-imc_init_client(struct imc_context *client, imc_free_sndmsg free_snd_msg,
-                void *free_msg_int)
+dummy_imc_init_server(struct imc_dso *imc, struct ev_loop *loop,
+                      unix_recv recv_cb)
 {
     return 0;
 }
 
+static inline void
+dummy_imc_terminate_server(struct imc_dso *imc) {}
 
 static inline int
-unix_init_client(struct unix_context *client)
+dummy_imc_send(struct imc_dso *imc, void *buf, size_t buflen, int flags)
 {
     return 0;
 }
 
-
 static inline void
-imc_terminate_client(struct imc_context *client) {}
+dummy_imc_config_client_endpoint(struct imc_dso *imc, char *endpoint) {};
 
-
-static inline void
-unix_terminate_client(struct unix_context *client) {}
-
-
-static inline int
-imc_send(struct imc_context *context, void *buf, size_t buflen, int flags)
-{
-    return 0;
-}
-
-
-static inline int
-unix_send(struct unix_context *context, void *buf, size_t buflen, int flags)
-{
-    return 0;
-}
-
-
-static inline void
-imc_init_dso(struct imc_dso *dso) {}
-
-#endif /* CONFIG_TARGET_IMC */
 #endif /* IMC_H_INCLUDED */

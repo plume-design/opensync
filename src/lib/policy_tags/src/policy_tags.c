@@ -471,3 +471,113 @@ void
 om_tag_init(struct tag_mgr *mgr) {
     memcpy(&my_mgr_s, mgr, sizeof(my_mgr_s));
 }
+
+/***********************
+ * standard callbacks
+ ***********************/
+
+static
+void om_callback_Openflow_Tag(ovsdb_update_monitor_t *mon,
+                      struct schema_Openflow_Tag *old_rec,
+                      struct schema_Openflow_Tag *tag)
+{
+    switch (mon->mon_type) {
+        case OVSDB_UPDATE_NEW:
+            if (!om_tag_add_from_schema(tag)) {
+                LOGE("%s: failed to add new tag", __func__);
+            };
+            break;
+        case OVSDB_UPDATE_DEL:
+            if (!om_tag_remove_from_schema(old_rec)) {
+                LOGE("%s: failed to remove tag", __func__);
+            };
+            break;
+        case OVSDB_UPDATE_MODIFY:
+            if (!om_tag_update_from_schema(tag)) {
+                LOGE("%s: failed to update tag", __func__);
+            }
+            break;
+        case OVSDB_UPDATE_ERROR:
+            LOGE("%s: OVSDB update error", __func__);
+            break;
+        default:
+            LOGE("%s: unknown OVSDB event type %d", __func__, mon->mon_type);
+            break;
+    }
+}
+
+static
+void om_callback_Openflow_Local_Tag(ovsdb_update_monitor_t *mon,
+                            struct schema_Openflow_Local_Tag *old_rec,
+                            struct schema_Openflow_Local_Tag *tag)
+{
+    switch (mon->mon_type) {
+        case OVSDB_UPDATE_NEW:
+            if (!om_local_tag_add_from_schema(tag)) {
+                LOGE("%s: failed to add new local tag", __func__);
+            };
+            break;
+        case OVSDB_UPDATE_DEL:
+            if (!om_local_tag_remove_from_schema(old_rec)) {
+                LOGE("%s: failed to remove local tag", __func__);
+            };
+            break;
+        case OVSDB_UPDATE_MODIFY:
+            if (!om_local_tag_update_from_schema(tag)) {
+                LOGE("%s: failed to update local tag", __func__);
+            }
+            break;
+        case OVSDB_UPDATE_ERROR:
+            LOGE("%s: OVSDB update error", __func__);
+            break;
+        default:
+            LOGE("%s: unknown OVSDB event type %d", __func__, mon->mon_type);
+            break;
+    }
+}
+
+static
+void om_callback_Openflow_Tag_Group(ovsdb_update_monitor_t *mon,
+                            struct schema_Openflow_Tag_Group *old_rec,
+                            struct schema_Openflow_Tag_Group *tag)
+{
+    switch (mon->mon_type) {
+        case OVSDB_UPDATE_NEW:
+            if (!om_tag_group_add_from_schema(tag)) {
+                LOGE("%s: failed to add new tag group", __func__);
+            }
+            break;
+        case OVSDB_UPDATE_DEL:
+            if (!om_tag_group_remove_from_schema(old_rec)) {
+                LOGE("%s: failed to delete tag group", __func__);
+            }
+            break;
+        case OVSDB_UPDATE_MODIFY:
+            if (!om_tag_group_update_from_schema(tag)) {
+                LOGE("%s: failed to modify tag group", __func__);
+            }
+            break;
+        case OVSDB_UPDATE_ERROR:
+            LOGE("%s: OVSDB update error", __func__);
+            break;
+        default:
+            LOGE("%s: unknown OVSDB event type %d", __func__, mon->mon_type);
+            break;
+    }
+}
+
+void om_standard_callback_openflow_tag(ovsdb_table_t *openflow_table)
+{
+    ovsdb_table_monitor(openflow_table, table_cb_cast_Openflow_Tag(om_callback_Openflow_Tag), false);
+}
+
+void om_standard_callback_openflow_local_tag(ovsdb_table_t *openflow_table)
+{
+    ovsdb_table_monitor(openflow_table, table_cb_cast_Openflow_Local_Tag(om_callback_Openflow_Local_Tag), false);
+}
+
+void om_standard_callback_openflow_tag_group(ovsdb_table_t *openflow_table)
+{
+    ovsdb_table_monitor(openflow_table, table_cb_cast_Openflow_Tag_Group(om_callback_Openflow_Tag_Group), false);
+}
+

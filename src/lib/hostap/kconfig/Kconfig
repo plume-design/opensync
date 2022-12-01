@@ -27,3 +27,15 @@ config HOSTAP_PSK_FILE_WPS
             WPS: Make it possible to use PSKs loaded from the PSK file.
 
         Enable this only on platforms using hostap patched with above commit.
+
+config HOSTAP_WPA_SUPPLICANT_GLOBAL_PATH
+    string "WPA supplicant global path"
+    default "/var/run/wpa_supplicantglobal"
+    help
+        Specify WPA supplicant global path, which depends on wpad.init in hostapd package.
+
+        In openwrt hostapd opensource community, it is set as /var/run/wpa_supplicant/global by default.
+        https://github.com/openwrt/openwrt/blob/master/package/network/services/hostapd/files/wpad.init#L30
+
+        As WPA supplicant global path might be customized in wpad.init by SDK, it is suggeested to make it
+        configurable by opensync kconfig to match the customized path.

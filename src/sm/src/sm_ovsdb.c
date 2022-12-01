@@ -1166,69 +1166,6 @@ free_nid:
 }
 
 static
-void callback_Openflow_Local_Tag(ovsdb_update_monitor_t *mon,
-                            struct schema_Openflow_Local_Tag *old_rec,
-                            struct schema_Openflow_Local_Tag *tag)
-{
-    switch (mon->mon_type) {
-        case OVSDB_UPDATE_NEW:
-            om_local_tag_add_from_schema(tag);
-            break;
-        case OVSDB_UPDATE_DEL:
-            om_local_tag_remove_from_schema(tag);
-            break;
-        case OVSDB_UPDATE_MODIFY:
-            om_local_tag_update_from_schema(tag);
-            break;
-        case OVSDB_UPDATE_ERROR:
-            LOGE("%s: OVSDB error", __func__);
-            break;
-    }
-}
-
-static
-void callback_Openflow_Tag(ovsdb_update_monitor_t *mon,
-                      struct schema_Openflow_Tag *old_rec,
-                      struct schema_Openflow_Tag *tag)
-{
-    switch (mon->mon_type) {
-        case OVSDB_UPDATE_NEW:
-            om_tag_add_from_schema(tag);
-            break;
-        case OVSDB_UPDATE_DEL:
-            om_tag_remove_from_schema(tag);
-            break;
-        case OVSDB_UPDATE_MODIFY:
-            om_tag_update_from_schema(tag);
-            break;
-        case OVSDB_UPDATE_ERROR:
-            LOGE("%s: OVSDB error", __func__);
-            break;
-    }
-}
-
-static
-void callback_Openflow_Tag_Group(ovsdb_update_monitor_t *mon,
-                            struct schema_Openflow_Tag_Group *old_rec,
-                            struct schema_Openflow_Tag_Group *tag)
-{
-    switch (mon->mon_type) {
-        case OVSDB_UPDATE_NEW:
-            om_tag_group_add_from_schema(tag);
-            break;
-        case OVSDB_UPDATE_DEL:
-            om_tag_group_remove_from_schema(tag);
-            break;
-        case OVSDB_UPDATE_MODIFY:
-            om_tag_group_update_from_schema(tag);
-            break;
-        case OVSDB_UPDATE_ERROR:
-            LOGE("%s: OVSDB error", __func__);
-            break;
-    }
-}
-
-static
 void callback_Network_Zone(ovsdb_update_monitor_t *mon,
                             struct schema_Network_Zone *old_rec,
                             struct schema_Network_Zone *zone)
@@ -1351,9 +1288,9 @@ int sm_setup_monitor(void)
     OVSDB_TABLE_INIT_NO_KEY(Openflow_Tag_Group);
     OVSDB_TABLE_INIT_NO_KEY(Network_Zone);
 
-    OVSDB_TABLE_MONITOR(Openflow_Tag, false);
-    OVSDB_TABLE_MONITOR(Openflow_Local_Tag, false);
-    OVSDB_TABLE_MONITOR(Openflow_Tag_Group, false);
+    om_standard_callback_openflow_tag(&table_Openflow_Tag);
+    om_standard_callback_openflow_local_tag(&table_Openflow_Local_Tag);
+    om_standard_callback_openflow_tag_group(&table_Openflow_Tag_Group);
     OVSDB_TABLE_MONITOR(Network_Zone, false);
 
     return 0;

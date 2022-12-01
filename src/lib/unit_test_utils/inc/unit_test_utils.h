@@ -100,4 +100,8 @@ void ut_init(const char *ut_name, void (*global_ut_init)(void), void (*global_ut
  */
 int ut_fini(void);
 
+/*
+ * @brief check if ovsdb-server and ovsh are available on the platform
+ */
+bool unit_test_check_ovs(void);
 #endif /* UNIT_TEST_UTILS_H_INCLUDED */

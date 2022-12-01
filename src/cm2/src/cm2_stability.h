@@ -47,4 +47,6 @@ void cm2_restore_switch_cfg_params(int counter, int thresh, cm2_restore_con_t *r
 void cm2_restore_switch_cfg(cm2_restore_con_t opt);
 #endif
 
+int cm2_get_restart_time(void);
+
 #endif /* CM2_STABILITY_H_INCLUDED */

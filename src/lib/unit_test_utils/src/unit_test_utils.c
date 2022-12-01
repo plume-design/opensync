@@ -368,3 +368,39 @@ ut_init(const char *ut_name, void (*global_ut_init)(void), void (*global_ut_exit
 
     UnityBegin(g_ut_name);
 }
+
+
+#define TEST_BUF_LEN 1024
+
+bool
+unit_test_check_ovs(void)
+{
+    char buf[TEST_BUF_LEN];
+    size_t len;
+    int rc;
+
+    /* Start testing the presence of ovsh */
+    memset(buf, 0, sizeof(buf));
+    rc = cmd_buf("which ovsh", buf, (size_t)TEST_BUF_LEN);
+    len = strlen(buf);
+    if (len == 0)
+    {
+        LOGI("%s: No ovsh found", __func__);
+        return false;
+    }
+    LOGI("%s: ovsh found at %s", __func__, buf);
+
+    /* Check the output of ovsh */
+    rc = system("ovsh i Node_Config key:=foo module:=foo value:=foo");
+    if (rc != 0)
+    {
+        LOGI("%s: ovsh command failed", __func__);
+        return false;
+    }
+    LOGI("%s: ovsh command succeeded", __func__);
+
+    /* Clean up */
+    rc = system("ovsh d Node_Config -w key==foo");
+    return true;
+}
+

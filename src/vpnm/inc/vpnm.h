@@ -120,7 +120,7 @@ void vpnm_tunnel_status_update(const char *tunnel_name, enum osn_vpn_conn_state 
  * @param[in]  addr_family         The requested address family: AF_INET for
  *                                 IPv4 or AF_INET6 for IPv6.
  *
- * @return   true on success i.e. if DNS resolution was successsful and at
+ * @return   true on success i.e. if DNS resolution was successful and at
  *           least one IP address of the requested address family was on the
  *           resolve list.
  */

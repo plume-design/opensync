@@ -199,27 +199,69 @@ test_fsm_dpi_sni_init_exit(void)
 void
 test_fsm_dpi_sni_process_attr_wrong_type(void)
 {
+    struct fsm_dpi_plugin_client_pkt_info pkt_info;
+    struct fsm_session parent_session;
+    struct net_header_parser net_parser;
+    struct net_md_stats_accumulator acc;
+    struct dns_session u_session;
+    struct net_md_flow_key key;
+    struct fsm_session session;
     int ret;
 
-    ret = fsm_dpi_dns_process_attr(NULL, begin, RTS_TYPE_NUMBER, sizeof(type), &type, NULL);
-    TEST_ASSERT_EQUAL_INT(FSM_DPI_IGNORED, ret);
-    ret = fsm_dpi_dns_process_attr(NULL, begin, RTS_TYPE_STRING, strlen(fqdn), fqdn, NULL);
-    TEST_ASSERT_EQUAL_INT(FSM_DPI_IGNORED, ret);
-
-    ret = fsm_dpi_dns_process_attr(NULL, end, RTS_TYPE_NUMBER, sizeof(type), &type, NULL);
-    TEST_ASSERT_EQUAL_INT(FSM_DPI_IGNORED, ret);
-    ret = fsm_dpi_dns_process_attr(NULL, end, RTS_TYPE_STRING, strlen(fqdn), fqdn, NULL);
+    /* corner cases */
+    ret = fsm_dpi_dns_process_attr(NULL, NULL, 0, 0, NULL, NULL);
     TEST_ASSERT_EQUAL_INT(FSM_DPI_IGNORED, ret);
 
-    ret = fsm_dpi_dns_process_attr(NULL, dns_qname, RTS_TYPE_NUMBER, sizeof(type), &type, NULL);
+    /* Start populating the different parameters and check along the way */
+    MEMZERO(acc);
+    pkt_info.acc = &acc;
+    acc.originator = NET_MD_ACC_UNKNOWN_ORIGINATOR;
+    ret = fsm_dpi_dns_process_attr(NULL, NULL, 0, 0, NULL, &pkt_info);
     TEST_ASSERT_EQUAL_INT(FSM_DPI_IGNORED, ret);
-    ret = fsm_dpi_dns_process_attr(NULL, dns_a, RTS_TYPE_NUMBER, sizeof(type), &type, NULL);
+
+    acc.originator = NET_MD_ACC_ORIGINATOR_SRC;
+    ret = fsm_dpi_dns_process_attr(NULL, NULL, 0, 0, NULL, &pkt_info);
     TEST_ASSERT_EQUAL_INT(FSM_DPI_IGNORED, ret);
-    ret = fsm_dpi_dns_process_attr(NULL, dns_aaaa, RTS_TYPE_NUMBER, sizeof(type), &type, NULL);
+
+    acc.key = NULL;
+    ret = fsm_dpi_dns_process_attr(NULL, NULL, 0, 0, NULL, &pkt_info);
     TEST_ASSERT_EQUAL_INT(FSM_DPI_IGNORED, ret);
-    ret = fsm_dpi_dns_process_attr(NULL, dns_type, RTS_TYPE_STRING, strlen(fqdn), fqdn, NULL);
+
+    MEMZERO(key);
+    acc.key = &key;
+    MEMZERO(session);
+    ret = fsm_dpi_dns_process_attr(&session, NULL, 0, 0, NULL, &pkt_info);
     TEST_ASSERT_EQUAL_INT(FSM_DPI_IGNORED, ret);
-    ret = fsm_dpi_dns_process_attr(NULL, dns_ttl, RTS_TYPE_STRING, strlen(fqdn), fqdn, NULL);
+
+    MEMZERO(net_parser);
+    pkt_info.parser = &net_parser;
+    MEMZERO(parent_session);
+    session.service = &parent_session;
+    session.handler_ctxt = &u_session;
+
+    ret = fsm_dpi_dns_process_attr(&session, NULL, 0, 0, NULL, &pkt_info);
+    TEST_ASSERT_EQUAL_INT(FSM_DPI_IGNORED, ret);
+
+    /* At this point everything is set up to check on the fields */
+    ret = fsm_dpi_dns_process_attr(&session, begin, RTS_TYPE_NUMBER, sizeof(type), &type, &pkt_info);
+    TEST_ASSERT_EQUAL_INT(FSM_DPI_IGNORED, ret);
+    ret = fsm_dpi_dns_process_attr(&session, begin, RTS_TYPE_STRING, strlen(fqdn), fqdn, &pkt_info);
+    TEST_ASSERT_EQUAL_INT(FSM_DPI_IGNORED, ret);
+
+    ret = fsm_dpi_dns_process_attr(&session, end, RTS_TYPE_NUMBER, sizeof(type), &type, &pkt_info);
+    TEST_ASSERT_EQUAL_INT(FSM_DPI_IGNORED, ret);
+    ret = fsm_dpi_dns_process_attr(&session, end, RTS_TYPE_STRING, strlen(fqdn), fqdn, &pkt_info);
+    TEST_ASSERT_EQUAL_INT(FSM_DPI_IGNORED, ret);
+
+    ret = fsm_dpi_dns_process_attr(&session, dns_qname, RTS_TYPE_NUMBER, sizeof(type), &type, &pkt_info);
+    TEST_ASSERT_EQUAL_INT(FSM_DPI_IGNORED, ret);
+    ret = fsm_dpi_dns_process_attr(&session, dns_a, RTS_TYPE_NUMBER, sizeof(type), &type, &pkt_info);
+    TEST_ASSERT_EQUAL_INT(FSM_DPI_IGNORED, ret);
+    ret = fsm_dpi_dns_process_attr(&session, dns_aaaa, RTS_TYPE_NUMBER, sizeof(type), &type, &pkt_info);
+    TEST_ASSERT_EQUAL_INT(FSM_DPI_IGNORED, ret);
+    ret = fsm_dpi_dns_process_attr(&session, dns_type, RTS_TYPE_STRING, strlen(fqdn), fqdn, &pkt_info);
+    TEST_ASSERT_EQUAL_INT(FSM_DPI_IGNORED, ret);
+    ret = fsm_dpi_dns_process_attr(&session, dns_ttl, RTS_TYPE_STRING, strlen(fqdn), fqdn, &pkt_info);
     TEST_ASSERT_EQUAL_INT(FSM_DPI_IGNORED, ret);
 
 }
@@ -334,6 +376,19 @@ test_fsm_dpi_dns_process_attr_incomplete_response(void)
     ret = fsm_dpi_dns_process_attr(NULL, dns_qname, RTS_TYPE_STRING, strlen(fqdn), fqdn, NULL);
     TEST_ASSERT_EQUAL_INT(FSM_DPI_IGNORED, ret);
     ret = fsm_dpi_dns_process_attr(NULL, dns_ttl, RTS_TYPE_NUMBER, sizeof(ttl), &ttl, NULL);
+    TEST_ASSERT_EQUAL_INT(FSM_DPI_IGNORED, ret);
+    ret = fsm_dpi_dns_process_attr(NULL, end, RTS_TYPE_STRING, 3, "dns", NULL);
+    TEST_ASSERT_EQUAL_INT(FSM_DPI_IGNORED, ret);
+}
+
+void
+test_fsm_dpi_dns_process_attr_no_answer(void)
+{
+    int ret;
+
+    ret = fsm_dpi_dns_process_attr(NULL, begin, RTS_TYPE_STRING, 3, "dns", NULL);
+    TEST_ASSERT_EQUAL_INT(FSM_DPI_IGNORED, ret);
+    ret = fsm_dpi_dns_process_attr(NULL, dns_qname, RTS_TYPE_STRING, strlen(fqdn), fqdn, NULL);
     TEST_ASSERT_EQUAL_INT(FSM_DPI_IGNORED, ret);
     ret = fsm_dpi_dns_process_attr(NULL, end, RTS_TYPE_STRING, 3, "dns", NULL);
     TEST_ASSERT_EQUAL_INT(FSM_DPI_IGNORED, ret);
@@ -925,6 +980,7 @@ test_fsm_dpi_dns_update_v6_tag_ip_expiration(void)
     fsm_dpi_dns_free_dns_response_ips(&dns_response);
     FREE(local_tag);
 }
+
 void
 test_fsm_dpi_dns_update_response_ips(void)
 {
@@ -1101,6 +1157,7 @@ run_test_dns(void)
     RUN_TEST(test_fsm_dpi_dns_process_attr_no_response);
     RUN_TEST(test_fsm_dpi_dns_process_attr_no_qname);
     RUN_TEST(test_fsm_dpi_dns_process_attr_incomplete_response);
+    RUN_TEST(test_fsm_dpi_dns_process_attr_no_answer);
     RUN_TEST(test_fsm_dpi_dns_update_response_ips);
     RUN_TEST(test_fsm_dpi_dns_update_v4_tag_generation);
     RUN_TEST(test_fsm_dpi_dns_update_v6_tag_generation);

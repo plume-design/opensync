@@ -184,6 +184,16 @@ bool nm2_route_cfg_parse(struct nm2_route_cfg *rt, const struct schema_Wifi_Rout
     rt->rc_ifname = STRDUP(schema->if_name);
     memcpy(&rt->rc_uuid, &schema->_uuid, sizeof(rt->rc_uuid));
 
+    if (schema->pref_src_exists)
+    {
+        if (!osn_ip_addr_from_str(&rt->rc_route.pref_src, schema->pref_src))
+        {
+            LOG(ERR, "route_cfg: Invalid preferred source IP address: %s", schema->pref_src);
+            return false;
+        }
+        rt->rc_route.pref_src_set = true;
+    }
+
     return true;
 }
 

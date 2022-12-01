@@ -164,6 +164,7 @@ struct fsm_dpi_plugin_client_pkt_info
 {
     struct net_md_stats_accumulator *acc;
     struct net_header_parser *parser;
+    bool tag_flow;
 };
 
 
@@ -441,7 +442,6 @@ struct fsm_mgr
     bool (*init_plugin)(struct fsm_session *); /* DSO plugin init */
     int (*get_br)(char *if_name, char *bridge, size_t len); /* get lan bridge */
     bool (*update_session_tap)(struct fsm_session *); /* session tap update */
-    ds_tree_t network_id_table;
 };
 
 
@@ -887,11 +887,6 @@ fsm_set_object_state(struct fsm_session *session, struct fsm_object *object);
 void
 fsm_get_node_config(struct schema_Node_Config *node_cfg);
 
-
-void
-callback_Network_Zone(ovsdb_update_monitor_t *mon,
-                      struct schema_Network_Zone *old_rec,
-                      struct schema_Network_Zone *node_cfg);
 
 void
 fsm_set_session_ops(struct fsm_session *session);

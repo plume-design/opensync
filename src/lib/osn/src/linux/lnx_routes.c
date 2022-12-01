@@ -151,7 +151,24 @@ static int route_add_next_hop(struct rtnl_route *route, const char *dev, const c
     return err;
 }
 
-static struct rtnl_route *nl_create_route(int protocol, const char *dst, const char *dev, const char *gw, int metric)
+static int route_add_pref_src(struct rtnl_route *route, const char *pref_src)
+{
+    struct nl_addr *addr = addr_parse(pref_src, rtnl_route_get_family(route));
+    if (addr == NULL) return -1;
+
+    int err = rtnl_route_set_pref_src(route, addr);
+
+    nl_addr_put(addr);
+    return err < 0 ? err : 0;
+}
+
+static struct rtnl_route *nl_create_route(
+        int protocol,
+        const char *dst,
+        const char *dev,
+        const char *gw,
+        int metric,
+        const char *pref_src)
 {
     struct rtnl_route *route = rtnl_route_alloc();
     if (!route) return NULL;
@@ -170,6 +187,12 @@ static struct rtnl_route *nl_create_route(int protocol, const char *dst, const c
     {
         rtnl_route_set_priority(route, (uint32_t)metric);
     }
+
+    if (pref_src != NULL)
+    {
+        if (route_add_pref_src(route, pref_src) != 0) goto err;
+    }
+
     return route;
 
 err:
@@ -210,7 +233,8 @@ static bool route_action(osn_route4_cfg_t *self, const osn_route4_t *route, bool
         FMT_osn_ip_addr(route->dest),
         self->if_name,
         route->gw_valid ? FMT_osn_ip_addr(route->gw) : NULL,
-        route->metric);
+        route->metric,
+        route->pref_src_set ? FMT_osn_ip_addr(route->pref_src) : NULL);
 
     if (!nlrt)
     {

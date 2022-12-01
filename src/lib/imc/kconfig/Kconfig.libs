@@ -1,0 +1,13 @@
+menu "IMC Configuration"
+    config IMC_ZMQ
+        bool "use zeromq as the transport between process communication"
+        default n
+        help
+            Enable support to enable URL endpoints based on attribute type
+
+    config IMC_SOCKETS
+        bool "use unix sockets as the transport between process communication"
+        default y
+        help
+            Enable multi curl support for Gatekeeper to send non blocking requests
+endmenu

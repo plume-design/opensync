@@ -53,83 +53,7 @@ struct ovsdb_table table_Wifi_Inet_Config;
 
 static ds_tree_t nfm_interface_role_list = DS_TREE_INIT(ds_str_cmp, struct nfm_interface_role, ir_tnode);
 
-static void callback_Openflow_Tag(ovsdb_update_monitor_t *mon, struct schema_Openflow_Tag *old,
-		struct schema_Openflow_Tag *record)
-{
-	bool errcode = true;
-
-	if (!mon) {
-		LOGE("Tag OVSDB event: invalid parameter");
-		return;
-	}
-
-	switch (mon->mon_type) {
-	case OVSDB_UPDATE_NEW:
-		errcode = om_tag_add_from_schema(record);
-		if (!errcode) {
-			LOGE("Tag OVSDB event: new tag failed");
-		}
-		break;
-
-	case OVSDB_UPDATE_DEL:
-		errcode = om_tag_remove_from_schema(old);
-		if (!errcode) {
-			LOGE("Tag OVSDB event: delete tag failed");
-		}
-		break;
-
-	case OVSDB_UPDATE_MODIFY:
-		errcode = om_tag_update_from_schema(record);
-		if (!errcode) {
-			LOGE("Tag OVSDB event: modify tag failed");
-		}
-		break;
-
-	default:
-		LOGE("Tag OVSDB event: unknown type %d", mon->mon_type);
-		break;
-	}
-}
-
-static void callback_Openflow_Tag_Group(ovsdb_update_monitor_t *mon, struct schema_Openflow_Tag_Group *old,
-		struct schema_Openflow_Tag_Group *record)
-{
-	bool errcode = true;
-
-	if (!mon) {
-		LOGE("Group OVSDB event: invalid parameter");
-		return;
-	}
-
-	switch (mon->mon_type) {
-	case OVSDB_UPDATE_NEW:
-		errcode = om_tag_group_add_from_schema(record);
-		if (!errcode) {
-			LOGE("Group OVSDB event: new group failed");
-		}
-		break;
-
-	case OVSDB_UPDATE_DEL:
-		errcode = om_tag_group_remove_from_schema(old);
-		if (!errcode) {
-			LOGE("Group OVSDB event: delete group failed");
-		}
-		break;
-
-	case OVSDB_UPDATE_MODIFY:
-		errcode = om_tag_group_update_from_schema(record);
-		if (!errcode) {
-			LOGE("Group OVSDB event: modify group failed");
-		}
-		break;
-
-	default:
-		LOGE("Group OVSDB event: unknown type %d", mon->mon_type);
-		break;
-	}
-}
-
-static void callback_Netfilter(ovsdb_update_monitor_t *mon, struct schema_Netfilter *old,
+void callback_Netfilter(ovsdb_update_monitor_t *mon, struct schema_Netfilter *old,
 		struct schema_Netfilter *record)
 {
 	bool errcode = true;
@@ -272,8 +196,8 @@ bool nfm_ovsdb_init(void)
     OVSDB_TABLE_INIT(Openflow_Tag_Group, name);
     OVSDB_TABLE_INIT(Netfilter, name);
     OVSDB_TABLE_INIT(Wifi_Inet_Config, if_name);
-    OVSDB_TABLE_MONITOR(Openflow_Tag, false);
-    OVSDB_TABLE_MONITOR(Openflow_Tag_Group, false);
+    om_standard_callback_openflow_tag(&table_Openflow_Tag);
+    om_standard_callback_openflow_tag_group(&table_Openflow_Tag_Group);
     OVSDB_TABLE_MONITOR(Netfilter, false);
     OVSDB_TABLE_MONITOR(Wifi_Inet_Config, false);
     return true;

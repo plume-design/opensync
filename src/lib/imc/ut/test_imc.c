@@ -27,15 +27,21 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <ev.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <zmq.h>
 
-#include "imc.h"
 #include "log.h"
 #include "os.h"
 #include "target.h"
 #include "unity.h"
 #include "memutil.h"
 #include "unit_test_utils.h"
+
+#if defined(CONFIG_IMC_ZMQ)
+#include "imc_zmq.h"
+#elif defined(CONFIG_IMC_SOCKETS)
+#include "imc_sockets.h"
+#else
+#include "imc.h"
+#endif
 
 const char *test_name = "icm_tests";
 
@@ -46,6 +52,7 @@ struct test_imc_timers
     ev_timer finish_timeout;
 };
 
+
 struct test_mgr
 {
     struct ev_loop *loop;
@@ -54,8 +61,8 @@ struct test_mgr
     int64_t val;
     struct test_imc_timers basic_send_receive;
     struct test_imc_timers repeated_send;
-    struct imc_context *client;
-    struct imc_context *server;
+    struct imc_dso *imc_server_context;
+    struct imc_dso *imc_client_context;
     char *endpoint;
     size_t send_size;
     int repeat_limit;
@@ -65,6 +72,9 @@ struct test_mgr
 } g_test_mgr;
 
 
+/**
+ * @brief breaks the ev loop to terminate a test
+ */
 /**
  * @brief breaks the ev loop to terminate a test
  */
@@ -112,63 +122,68 @@ static void free_send_msg(void *data, void *hint)
     FREE(data);
 }
 
-
 /**
- * @brief allocate imc client and imc server
+ * @brief allocate imc client
  */
 void
-allocate_sender_and_receiver(void)
+allocate_sender(void)
 {
-    struct imc_context *client;
-    struct imc_context *server;
+    struct imc_dso *client_context;
+
+    /* Initialize the client */
+    client_context = CALLOC(1, sizeof(*client_context));
+    g_test_mgr.imc_client_context = client_context;
+}
+
+/**
+ * @brief allocate imc server
+ */
+void
+allocate_receiver(void)
+{
+    struct imc_dso *server_context;
 
     /* Initialize the server */
-    server = CALLOC(1, sizeof(*server));
-
-    server->ztype = ZMQ_PULL;
-    server->endpoint = strdup(g_test_mgr.endpoint);
-    TEST_ASSERT_NOT_NULL(server->endpoint);
-
-    g_test_mgr.server = server;
-    imc_init_context(server);
-
-    /* Start the client */
-    client = CALLOC(1, sizeof(*client));
-
-    client->ztype = ZMQ_PUSH;
-    client->endpoint = strdup(g_test_mgr.endpoint);
-    TEST_ASSERT_NOT_NULL(client->endpoint);
-
-    g_test_mgr.client = client;
-    imc_init_context(client);
+    server_context = CALLOC(1, sizeof(*server_context));
+    g_test_mgr.imc_server_context = server_context;
 }
 
 
 /**
- * @brief free imc client and imc server
+ * @brief free imc client
  */
 void
-free_sender_and_receiver(void)
+free_sender(void)
 {
-    struct imc_context *client;
-    struct imc_context *server;
+    struct imc_dso *client;
 
-    client = g_test_mgr.client;
-    imc_reset_context(client);
-    FREE(client->endpoint);
+    client = g_test_mgr.imc_client_context;
     FREE(client);
-    g_test_mgr.client = NULL;
+    g_test_mgr.imc_client_context = NULL;
+}
 
-    server = g_test_mgr.server;
-    imc_reset_context(server);
-    FREE(server->endpoint);
+/**
+ * @brief free imc server
+ */
+void
+free_receiver(void)
+{
+    struct imc_dso *server;
+
+    server = g_test_mgr.imc_server_context;
     FREE(server);
-    g_test_mgr.server = NULL;
+    g_test_mgr.imc_server_context = NULL;
+}
 
+/**
+ * @brief free endpoint
+ */
+void
+free_endpoint()
+{
     FREE(g_test_mgr.endpoint);
     g_test_mgr.endpoint = NULL;
 }
-
 
 /**
  * @brief user (ie manager) provided routine to process a received buffer.
@@ -186,24 +201,32 @@ test_basic_recv_cb(void *data, size_t len)
     LOGI("\n***** %s: done\n", __func__);
 }
 
-
 static void
 start_basic_test_timeout_cb(EV_P_ ev_timer *w, int revents)
 {
+    struct imc_dso *imc_server;
+    struct imc_dso *imc_client;
     int rc;
 
     LOGI("\n\n\n\n ***** %s: entering\n", __func__);
-    g_test_mgr.endpoint = w->data;
-    LOGI("%s: end point: %s", __func__, g_test_mgr.endpoint);
 
-    allocate_sender_and_receiver();
+    allocate_receiver();
 
+    imc_init_dso(g_test_mgr.imc_server_context);
     /* Start server */
-    rc = imc_init_server(g_test_mgr.server, loop, test_basic_recv_cb);
+    imc_server = g_test_mgr.imc_server_context;
+    rc = imc_server->imc_init_server(imc_server, loop, test_basic_recv_cb);
+
     TEST_ASSERT_EQUAL_INT(0, rc);
 
+    allocate_sender();
+
+    imc_init_dso(g_test_mgr.imc_client_context);
+
     /* Start client */
-    rc = imc_init_client(g_test_mgr.client, free_send_msg, NULL);
+    imc_client = g_test_mgr.imc_client_context;
+    rc = imc_client->imc_init_client(imc_client, free_send_msg, NULL);
+
     TEST_ASSERT_EQUAL_INT(0, rc);
     LOGI("\n***** %s: done\n", __func__);
 }
@@ -218,6 +241,7 @@ start_basic_test_timeout_cb(EV_P_ ev_timer *w, int revents)
 static void
 basic_send_timeout_cb(EV_P_ ev_timer *w, int revents)
 {
+    struct imc_dso *imc_client;
     int64_t *data;
     int rc;
 
@@ -225,7 +249,8 @@ basic_send_timeout_cb(EV_P_ ev_timer *w, int revents)
     data = MALLOC(sizeof(*data));
     *(int64_t *)data = g_test_mgr.val;
 
-    rc = imc_send(g_test_mgr.client, data, sizeof(data), IMC_DONTWAIT);
+    imc_client = g_test_mgr.imc_client_context;
+    rc = imc_client->imc_client_send(imc_client, data, sizeof(data), IMC_DONTWAIT);
     TEST_ASSERT_EQUAL_INT(0, rc);
     LOGI("\n***** %s: done\n", __func__);
 }
@@ -234,14 +259,20 @@ basic_send_timeout_cb(EV_P_ ev_timer *w, int revents)
 static void
 finish_basic_test_timeout_cb(EV_P_ ev_timer *w, int revents)
 {
+    struct imc_dso *imc_server;
+    struct imc_dso *imc_client;
+
     LOGI("\n\n\n\n ***** %s: entering\n", __func__);
     /* Terminate the client */
-    imc_terminate_client(g_test_mgr.client);
+    imc_client = g_test_mgr.imc_client_context;
+    imc_client->imc_terminate_client(imc_client);
 
     /* Terminate the server */
-    imc_terminate_server(g_test_mgr.server);
+    imc_server = g_test_mgr.imc_server_context;
+    imc_server->imc_terminate_server(imc_server);
 
-    free_sender_and_receiver();
+    free_sender();
+    free_receiver();
     LOGI("\n***** %s: done\n", __func__);
 }
 
@@ -251,18 +282,15 @@ setup_basic_send_receive(void)
 {
     struct test_imc_timers *t;
     struct ev_loop *loop;
-    char *endpoint;
 
     t = &g_test_mgr.basic_send_receive;
     loop = g_test_mgr.loop;
-
-    endpoint = strdup("ipc:///tmp/basic_test_imc");
 
     /* Arm the send execution timer */
     ev_timer_init(&t->start_timeout,
                   start_basic_test_timeout_cb,
                   ++g_test_mgr.timeout, 0);
-    t->start_timeout.data = endpoint;
+    t->start_timeout.data = NULL;
 
     /* Arm the test execution timer */
     ev_timer_init(&t->test_timeout,
@@ -285,36 +313,23 @@ setup_basic_send_receive(void)
 static void
 start_repeated_send_timeout_cb(EV_P_ ev_timer *w, int revents)
 {
-    struct imc_sockoption opt;
-    int opt_value;
+    struct imc_dso *imc_client;
     int rc;
 
     LOGI("\n\n\n\n ***** %s: entering\n", __func__);
 
-    g_test_mgr.endpoint = w->data;
-    LOGI("%s: end point: %s", __func__, g_test_mgr.endpoint);
-
     /* allocate end points */
-    allocate_sender_and_receiver();
+    allocate_sender();
 
-    /* Set the send threshold option */
-    opt.option_name = IMC_SNDHWM;
-    opt_value = g_test_mgr.sndhwm;
-    opt.value = &opt_value;
-    opt.len = sizeof(opt_value);
-    rc = imc_add_sockopt(g_test_mgr.client, &opt);
-    TEST_ASSERT_EQUAL_INT(0, rc);
-
-    /* Set the linger option */
-    opt_value = 0;
-    opt.option_name = IMC_LINGER;
-    opt.value = &opt_value;
-    opt.len = sizeof(opt_value);
-    rc = imc_add_sockopt(g_test_mgr.client, &opt);
-    TEST_ASSERT_EQUAL_INT(0, rc);
+    imc_init_dso(g_test_mgr.imc_client_context);
 
     /* Start client */
-    rc = imc_init_client(g_test_mgr.client, free_send_msg, NULL);
+    imc_client = g_test_mgr.imc_client_context;
+
+    /* Configure client endpoint */
+    imc_client->imc_config_client_endpoint(imc_client, g_test_mgr.endpoint);
+
+    rc = imc_client->imc_init_client(imc_client, free_send_msg, NULL);
     TEST_ASSERT_EQUAL_INT(0, rc);
 
     LOGI("\n***** %s: done\n", __func__);
@@ -330,6 +345,7 @@ start_repeated_send_timeout_cb(EV_P_ ev_timer *w, int revents)
 static void
 repeated_send_timeout_cb(EV_P_ ev_timer *w, int revents)
 {
+    struct imc_dso *imc_client;
     int expected;
     uint8_t *buf;
     size_t size;
@@ -342,10 +358,11 @@ repeated_send_timeout_cb(EV_P_ ev_timer *w, int revents)
 
     buf = CALLOC(1, size);
     memset(buf, 1, size);
-    rc = imc_send(g_test_mgr.client, buf, size, IMC_DONTWAIT);
+    imc_client = g_test_mgr.imc_client_context;
+    rc = imc_client->imc_client_send(imc_client, buf, size, IMC_DONTWAIT);
     TEST_ASSERT_EQUAL_INT(expected, rc);
 
-    // if (rc != 0) FREE(buf);
+    //if (rc != 0) FREE(buf);
 
     g_test_mgr.repeat++;
     if (g_test_mgr.repeat_cnt < g_test_mgr.repeat_limit)
@@ -360,11 +377,14 @@ repeated_send_timeout_cb(EV_P_ ev_timer *w, int revents)
 static void
 finish_repeated_test_timeout_cb(EV_P_ ev_timer *w, int revents)
 {
+    struct imc_dso *imc_client;
     LOGI("\n\n\n\n ***** %s: entering\n", __func__);
     /* Terminate the client */
-    imc_terminate_client(g_test_mgr.client);
+    imc_client = g_test_mgr.imc_client_context;
+    imc_client->imc_terminate_client(imc_client);
 
-    free_sender_and_receiver();
+    free_sender();
+    free_endpoint();
     LOGI("\n***** %s: done\n", __func__);
 }
 
@@ -375,6 +395,7 @@ finish_repeated_test_timeout_cb(EV_P_ ev_timer *w, int revents)
 void
 setup_repeated_send(size_t send_size, int sndhwm, int repeat)
 {
+    //struct imc_context *client;
     struct test_imc_timers *t;
     struct ev_loop *loop;
     char *endpoint;
@@ -384,7 +405,9 @@ setup_repeated_send(size_t send_size, int sndhwm, int repeat)
     t = &g_test_mgr.repeated_send;
     loop = g_test_mgr.loop;
 
-    endpoint = strdup("ipc:///tmp/basic_test_imc2");
+    endpoint = strdup("ipc:///tmp/basic_test_imc");
+
+    g_test_mgr.endpoint = endpoint;
 
     /* Arm the send execution timer */
     ev_timer_init(&t->start_timeout,
@@ -417,7 +440,7 @@ setup_repeated_send(size_t send_size, int sndhwm, int repeat)
 void test_events(void)
 {
     setup_basic_send_receive();
-    setup_repeated_send(4096, 5, 10);
+    setup_repeated_send(4096, 10, 20);
 
     /* Set overall test duration */
      test_imc_ev_setup(g_test_mgr.timeout);

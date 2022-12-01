@@ -40,6 +40,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <dlfcn.h>
 #include <time.h>
 #include <net/if.h>
+#include <netinet/in.h>
 
 #include "os.h"
 #include "util.h"
@@ -65,24 +66,41 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "kconfig.h"
 #include "memutil.h"
 
-#define  MAX_RESERVED_PORT_NUM 1023
-#define  NON_RESERVED_PORT_START_NUM MAX_RESERVED_PORT_NUM + 1
-#define  DHCP_SERVER_PORT_NUM 67
-#define  DHCP_CLIENT_PORT_NUM 68
+#define MAX_RESERVED_PORT_NUM 1023
+#define NON_RESERVED_PORT_START_NUM MAX_RESERVED_PORT_NUM + 1
+#define DHCP_SERVER_PORT_NUM 67
+#define DHCP_CLIENT_PORT_NUM 68
 
-static struct imc_context g_imc_client =
+static struct imc_dso g_imc_context;
+
+
+bool
+fsm_is_dns(struct net_header_parser *net_parser)
 {
-    .initialized = false,
-    .endpoint = "ipc:///tmp/imc_fsm2fcm",
-};
+    struct udphdr *udph;
 
-static struct unix_context g_unix_client =
-{
-    .initialized = false,
-    .endpoint = "/tmp/unix_fsm2fcm",
-};
+    if (net_parser == NULL) return false;
+    if (net_parser->ip_protocol != IPPROTO_UDP) return false;
 
-static struct imc_dso g_imc_context = { 0 };
+    udph = net_parser->ip_pld.udphdr;
+    return ((ntohs(udph->source) == 53) || (ntohs(udph->dest) == 53));
+}
+
+
+#define FSM_TRACK_DNS(net_parser, plugin)                           \
+    {                                                               \
+        uint8_t qr;                                                 \
+        bool is_dns = fsm_is_dns(net_parser);                       \
+        if (is_dns)                                                 \
+        {                                                           \
+            qr = *(uint8_t *)(net_parser->data + 2);                \
+            qr = (qr & (1 << 7)) >> 7;                              \
+            LOGT("%s:%d: %s DNS %s id 0x%x", __func__, __LINE__,    \
+                 plugin, (qr ? "reply" : "request"),                \
+                 ntohs(*(uint16_t *)(net_parser->data)));           \
+        }                                                           \
+    }
+
 
 static bool
 fsm_dpi_load_imc(void)
@@ -121,69 +139,22 @@ fsm_dpi_load_imc(void)
 
 
 static int
-fsm_dpi_init_client(struct imc_context *client, imc_free_sndmsg free_cb,
+fsm_dpi_init_client(struct imc_dso *imc, imc_free_sndmsg free_cb,
                     void *hint)
 {
-    struct imc_sockoption opt;
-    int opt_value;
     int ret;
 
-    if (kconfig_enabled(CONFIG_FSM_ZMQ_IMC))
+    if (imc->imc_init_client == NULL)
     {
-        if (g_imc_context.init_client == NULL)
-        {
-            client->imc_free_sndmsg = free_cb;
-            return 0;
-        }
-
-        /* initialize context */
-        g_imc_context.init_context(client);
-
-        /* Set the send threshold option */
-        opt.option_name = IMC_SNDHWM;
-        opt_value = 10; /* Allow 10 pending messages */
-        opt.value = &opt_value;
-        opt.len = sizeof(opt_value);
-        ret = g_imc_context.add_sockopt(client, &opt);
-        if (ret)
-        {
-            LOGI("%s: setting ICM_SNDHWM option failed", __func__);
-            return -1;
-        }
-
-        /* Set the linger option */
-        opt.option_name = IMC_LINGER;
-        opt_value = 0; /* Free all pending messages immediately on close */
-        opt.value = &opt_value;
-        opt.len = sizeof(opt_value);
-        ret = g_imc_context.add_sockopt(client, &opt);
-        if (ret)
-        {
-            LOGD("%s: setting ICM_LINGER option failed", __func__);
-            return -1;
-        }
-
-        /* Start the client */
-        ret = g_imc_context.init_client(client, free_cb, hint);
-        if (ret)
-        {
-            LOGD("%s: init_client() failed", __func__);
-        }
+        imc->imc_free_sndmsg = free_cb;
+        return 0;
     }
-    else
-    {
-        if (g_imc_context.init_unix_client == NULL)
-        {
-            return 0;
-        }
 
-        struct unix_context *unix_client;
-        unix_client = &g_unix_client;
-        ret = g_imc_context.init_unix_client(unix_client);
-        if (ret)
-        {
-            LOGD("%s: unix_init_client() failed", __func__);
-        }
+    ret = imc->imc_init_client(imc, free_cb, hint);
+
+    if (ret)
+    {
+        LOGD("%s: IMC init client failed", __func__);
     }
 
     return ret;
@@ -191,36 +162,28 @@ fsm_dpi_init_client(struct imc_context *client, imc_free_sndmsg free_cb,
 
 
 static void
-fsm_dpi_terminate_client(struct imc_context *client)
+fsm_dpi_terminate_client(struct imc_dso *imc)
 {
-    if (kconfig_enabled(CONFIG_FSM_ZMQ_IMC))
-    {
-        if (g_imc_context.terminate_client == NULL) return;
-        g_imc_context.terminate_client(client);
-        g_imc_context.reset_context(client);
-    }
-    else
-    {
-        if (g_imc_context.terminate_unix_client == NULL) return;
-        g_imc_context.terminate_unix_client(&g_unix_client);
-    }
+    if (imc->imc_terminate_client == NULL) return;
+
+    imc->imc_terminate_client(imc);
 }
 
 
 static int
-fsm_dpi_client_send(struct imc_context *client, void *data,
+fsm_dpi_client_send(struct imc_dso *imc, void *data,
                     size_t len, int flags)
 {
     int rc;
 
-    if (g_imc_context.client_send == NULL)
+    if (imc->imc_client_send == NULL)
     {
-        client->imc_free_sndmsg(data, client->free_msg_hint);
+        imc->imc_free_sndmsg(data, imc->free_msg_hint);
 
         return 0;
     }
 
-    rc = g_imc_context.client_send(client, data, len, flags);
+    rc = imc->imc_client_send(imc, data, len, flags);
 
     return rc;
 }
@@ -238,26 +201,17 @@ fsm_dpi_send_report(struct fsm_session *session)
 {
     struct fsm_dpi_dispatcher *dispatch;
     union fsm_dpi_context *dpi_context;
-    struct unix_context *unix_client;
     struct net_md_aggregator *aggr;
-    struct imc_context *client;
     struct packed_buffer *pb;
+    struct imc_dso *imc;
     char *mqtt_topic;
     int rc;
 
     dpi_context = session->dpi;
     if (dpi_context == NULL) return -1;
+    imc = &g_imc_context;
 
-    if (kconfig_enabled(CONFIG_FSM_ZMQ_IMC))
-    {
-        client = &g_imc_client;
-        if (!client->initialized) return -1;
-    }
-    else
-    {
-        unix_client = &g_unix_client;
-        if (!unix_client->initialized) return -1;
-    }
+    if (!imc->initialized) return -1;
 
     dispatch = &dpi_context->dispatch;
     aggr = dispatch->aggr;
@@ -280,33 +234,16 @@ fsm_dpi_send_report(struct fsm_session *session)
     mqtt_topic = session->ops.get_config(session, "mqtt_v");
     session->ops.send_pb_report(session, mqtt_topic, pb->buf, pb->len);
 
-    if (kconfig_enabled(CONFIG_FSM_ZMQ_IMC))
+    /* Beware, sending the pb through imc will schedule its freeing */
+    rc = fsm_dpi_client_send(imc, pb->buf, pb->len, IMC_DONTWAIT);
+    if (rc != 0)
     {
-        /* Beware, sending the pb through imc will schedule its freeing */
-        rc = fsm_dpi_client_send(client, pb->buf, pb->len, IMC_DONTWAIT);
-        if (rc != 0)
-        {
-            LOGD("%s: could not send message", __func__);
-            client->io_failure_cnt++;
-            rc = -1;
-            goto err_send;
-        }
-        client->io_success_cnt++;
+        LOGD("%s: could not send message", __func__);
+        imc->io_failure_cnt++;
+        rc = -1;
+        goto err_send;
     }
-    else
-    {
-        unix_client = &g_unix_client;
-        /* Beware, sending the pb through client will schedule its freeing */
-        rc = g_imc_context.client_unix_send(unix_client, pb->buf, pb->len, 0);
-        if (rc != 0)
-        {
-            LOGD("%s : unix socket send failure", __func__);
-            unix_client->io_failure_cnt++;
-            rc = -1;
-            goto err_send;
-        }
-        unix_client->io_success_cnt++;
-    }
+    imc->io_success_cnt++;
 
 err_send:
     FREE(pb);
@@ -1283,9 +1220,9 @@ fsm_init_dpi_dispatcher(struct fsm_session *session)
     struct fsm_dpi_dispatcher *dispatch;
     union fsm_dpi_context *dpi_context;
     struct net_md_aggregator *aggr;
-    struct imc_context *client;
     struct node_info node_info;
     ds_tree_t *dpi_sessions;
+    struct imc_dso *imc;
     struct fsm_mgr *mgr;
     bool ret;
     int rc;
@@ -1330,9 +1267,8 @@ fsm_init_dpi_dispatcher(struct fsm_session *session)
     ret = fsm_dpi_load_imc();
     if (!ret) goto error;
 
-    client = &g_imc_client;
-    client->ztype = IMC_PUSH;
-    rc = fsm_dpi_init_client(client, free_send_msg, NULL);
+    imc = &g_imc_context;
+    rc = fsm_dpi_init_client(imc, free_send_msg, NULL);
     if (rc)
     {
         LOGD("%s: could not initiate client", __func__);
@@ -1403,6 +1339,7 @@ fsm_free_dpi_dispatcher(struct fsm_session *session)
     struct dpi_node *remove;
     ds_tree_t *dpi_sessions;
     struct dpi_node *next;
+    struct imc_dso *imc;
 
     dpi_context = session->dpi;
     if (dpi_context == NULL) return;
@@ -1420,7 +1357,8 @@ fsm_free_dpi_dispatcher(struct fsm_session *session)
     net_md_free_aggregator(dispatch->aggr);
     FREE(dispatch->aggr);
 
-    fsm_dpi_terminate_client(&g_imc_client);
+    imc = &g_imc_context;
+    fsm_dpi_terminate_client(imc);
 }
 
 
@@ -1599,6 +1537,7 @@ err_free_dpi_context:
 }
 
 
+
 /**
  * @brief released the dpi reources of a dpi session
  *
@@ -1748,6 +1687,7 @@ fsm_net_parser_to_acc(struct net_header_parser *net_parser,
 
         icmphdr = net_parser->ip_pld.icmphdr;
         key.icmp_type = icmphdr->type;
+        key.icmp_idt = icmphdr->un.echo.id;
     }
     else if (key.ipprotocol == IPPROTO_ICMPV6)
     {
@@ -1755,6 +1695,7 @@ fsm_net_parser_to_acc(struct net_header_parser *net_parser,
 
         icmp6hdr = net_parser->ip_pld.icmp6hdr;
         key.icmp_type = icmp6hdr->icmp6_type;
+        key.icmp_idt = icmp6hdr->icmp6_dataun.icmp6_un_data16[0];
     }
 
     key.rx_idx = net_parser->rx_vidx;
@@ -1895,6 +1836,7 @@ fsm_dispatch_pkt(struct fsm_session *session,
 
     if (acc->dpi_done != 0)
     {
+        FSM_TRACK_DNS(net_parser, session->name);
         mark = fsm_dpi_get_mark(net_parser->acc, acc->dpi_done);
         session->set_dpi_mark(net_parser, mark);
         return;
@@ -1920,6 +1862,8 @@ fsm_dispatch_pkt(struct fsm_session *session,
                                          plugin->excluded_targets);
         if (!process)
         {
+            FSM_TRACK_DNS(net_parser, dpi_plugin->name);
+
             info = ds_tree_next(tree, info);
             continue;
         }
@@ -1943,6 +1887,8 @@ fsm_dispatch_pkt(struct fsm_session *session,
                 info = ds_tree_next(tree, info);
                 continue;
             }
+            FSM_TRACK_DNS(net_parser, dpi_plugin->name);
+
             dpi_plugin_ops->handler(dpi_plugin, net_parser);
         }
 
@@ -1954,6 +1900,7 @@ fsm_dispatch_pkt(struct fsm_session *session,
 
     if (net_parser->payload_updated)
     {
+        FSM_TRACK_DNS(net_parser, session->name);
         fsm_forward_pkt(session, net_parser);
     }
 
@@ -2017,6 +1964,7 @@ fsm_dpi_handler(struct fsm_session *session,
     process = fsm_dpi_should_process(net_parser,
                                      dispatch->included_devices,
                                      dispatch->excluded_devices);
+    FSM_TRACK_DNS(net_parser, session->name);
     if (!process)
     {
         LOGT("%s: not processing the following flow: ", __func__);
@@ -2137,12 +2085,14 @@ fsm_dpi_periodic(struct fsm_session *session)
     struct flow_window **windows;
     struct flow_window *window;
     struct flow_report *report;
+    struct imc_dso *imc;
     time_t now;
     int rc;
 
     dpi_context = session->dpi;
     if (dpi_context == NULL) return;
 
+    imc = &g_imc_context;
     dispatch = &dpi_context->dispatch;
     aggr = dispatch->aggr;
     if (aggr == NULL) return;
@@ -2162,18 +2112,10 @@ fsm_dpi_periodic(struct fsm_session *session)
              __func__, session->name, aggr->total_flows, aggr->held_flows,
              window->num_stats);
 
-        if (kconfig_enabled(CONFIG_FSM_ZMQ_IMC))
-        {
-            LOGI("%s: imc: io successes: %" PRIu64
-                 ", io failures: %" PRIu64, __func__,
-                 g_imc_client.io_success_cnt, g_imc_client.io_failure_cnt);
-        }
-        else
-        {
-            LOGI("%s: unix_ipc: io successes: %" PRIu64
-                 ", io failures: %" PRIu64, __func__,
-                 g_unix_client.io_success_cnt, g_unix_client.io_failure_cnt);
-        }
+        LOGI("%s: unix_ipc: io successes: %" PRIu64
+             ", io failures: %" PRIu64, __func__,
+             imc->io_success_cnt, imc->io_failure_cnt);
+
         dispatch->periodic_ts = now;
     }
 

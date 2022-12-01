@@ -35,6 +35,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "log.h"
 #include "os_nif.h"
 #include "target.h"
+#include "execsh.h"
 
 #if defined(CONFIG_TARGET_CAP_GATEWAY) || defined(CONFIG_TARGET_CAP_EXTENDER)
 int target_device_capabilities_get()
@@ -144,13 +145,32 @@ bool target_device_restart_managers()
 #endif
 
 #if defined(CONFIG_TARGET_LOGPULL_REMOTE)
+// Asynchronous execution callback for the `logpull.sh` script
+static void target_log_pull_ext_execsh_fn(execsh_async_t *esa, int exit_status)
+{
+    execsh_async_stop(esa);
+
+    if (exit_status) {
+        LOG(ERR, "logpull.sh script failed: %d", exit_status);
+    } else {
+        LOG(INFO, "logpull.sh completed");
+    }
+}
+
 bool target_log_pull_ext(
         const char *upload_location,
         const char *upload_token,
         const char *upload_method)
 {
+    static execsh_async_t execsh_ctx = { .esa_running = false };
     char shell_cmd[1024+sizeof(((struct schema_AW_LM_Config *)0)->upload_location)];
     int n;
+
+    if (execsh_ctx.esa_running)
+    {
+        LOG(INFO, "logpull script is already running: pid=%d", execsh_ctx.esa_child_pid);
+        return false;
+    }
 
     n = snprintf(shell_cmd, sizeof(shell_cmd),
             "sh %s/logpull/logpull.sh --remote"
@@ -168,8 +188,10 @@ bool target_log_pull_ext(
         return false;
     }
 
-    // On success we return true
-    return !cmd_log(shell_cmd);
+    // Execution of the log-pull procedure can take a long time - perform it in
+    // a separate process to avoid blocking other PM operations (especially TM).
+    execsh_async_init(&execsh_ctx, target_log_pull_ext_execsh_fn);
+    return execsh_async_start(&execsh_ctx, shell_cmd) > 0;
 }
 
 bool target_log_pull(const char *upload_location, const char *upload_token)

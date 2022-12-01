@@ -207,8 +207,8 @@ void lte_mqtt_cleanup(void);
 int ltem_ovsdb_cmu_update_lte_priority(ltem_mgr_t *mgr, uint32_t priority);
 int ltem_update_esim(ltem_mgr_t *mgr);
 bool ltem_init_lte_modem(void);
-char *ltem_ovsdb_get_if_type(char *if_name);
 void ltem_fini_lte_modem(void);
+char *ltem_ovsdb_get_if_type(char *if_name);
 int ltem_ovsdb_check_l3_state(ltem_mgr_t *mgr);
 
 #endif /* LTEM_MGR_H_INCLUDED */

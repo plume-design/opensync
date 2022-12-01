@@ -526,7 +526,8 @@ bm_events_handle_event(bsal_event_t *event)
             if (WARN_ON(!stats))
                 break;
 
-            if( client->cs_reject_detection == BM_CLIENT_REJECT_AUTH_BLOCKED &&
+            if  ((client->reject_detection == BM_CLIENT_REJECT_AUTH_BLOCKED ||
+                client->cs_reject_detection == BM_CLIENT_REJECT_AUTH_BLOCKED) &&
                 event->data.auth_fail.bs_blocked == 1 ) {
                 bm_client_rejected( client, event );
                 bm_stats_add_event_to_report( client, event, AUTH_BLOCK, false );
@@ -554,7 +555,9 @@ bm_events_handle_event(bsal_event_t *event)
             }
 
             if (client->steering_state != BM_CLIENT_CLIENT_STEERING) {
+                if (event->data.auth_fail.bs_blocked == 1) {
                     bm_client_rejected(client, event);
+                }
             }
         }
         break;

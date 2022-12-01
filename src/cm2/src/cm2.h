@@ -193,13 +193,19 @@ typedef enum
     CM2_DEVICE_LEAF,
 } cm2_dev_type;
 
+typedef enum
+{
+    CM2_RESTORE_REFRESH_DHCP,
+    CM2_RESTORE_RESTART_INTERFACE,
+    CM2_RESTORE_NUM,
+} cm2_restore_method;
+
 typedef struct
 {
     int   ovs_resolve;
     int   ovs_resolve_fail;
     int   ovs_con;
     int   gw_offline;
-    int   skip_restart;
 } cm2_retries_cnt;
 
 typedef struct
@@ -221,42 +227,44 @@ typedef struct
 
 typedef struct
 {
-    cm2_state_e       state;
-    cm2_reason_e      reason;
-    cm2_dest_e        dest;
-    bool              state_changed;
-    bool              connected; /* Device connected to the Controller */
-    bool              is_con_stable; /* Connection marked as stable */
-    bool              ipv6_manager_con; /* Device connected to the Controller using IPv6 */
-    time_t            timestamp;
-    int               disconnects; /* Number of disconnects */
-    cm2_addr_t        addr_redirector;
-    cm2_addr_t        addr_manager;
-    ev_timer          timer;
-    ev_timer          wdt_timer;
-    ev_timer          stability_timer;
-    ev_timer          uplinks_timer;
-    bool              run_stability;
-    int               stability_cnts;
-    ev_child          stability_child;
-    cm2_main_link_t   link;
-    cm2_main_link_t   old_link;
-    uint8_t           ble_status;
-    bool              ntp_check;
-    struct ev_loop    *loop;
+    cm2_state_e        state;
+    cm2_reason_e       reason;
+    cm2_dest_e         dest;
+    bool               state_changed;
+    bool               connected; /* Device connected to the Controller */
+    bool               is_con_stable; /* Connection marked as stable */
+    bool               ipv6_manager_con; /* Device connected to the Controller using IPv6 */
+    time_t             timestamp;
+    time_t             restart_timestamp;
+    int                disconnects; /* Number of disconnects */
+    cm2_addr_t         addr_redirector;
+    cm2_addr_t         addr_manager;
+    ev_timer           timer;
+    ev_timer           wdt_timer;
+    ev_timer           stability_timer;
+    ev_timer           uplinks_timer;
+    bool               run_stability;
+    int                stability_cnts;
+    ev_child           stability_child;
+    cm2_main_link_t    link;
+    cm2_main_link_t    old_link;
+    uint8_t            ble_status;
+    bool               ntp_check;
+    struct ev_loop     *loop;
 #ifdef CONFIG_LIBEVX_USE_CARES
     struct evx_ares   eares;
 #endif
-    bool              have_manager;
-    bool              have_awlan;
-    int               min_backoff;
-    int               max_backoff;
-    bool              fast_backoff;
-    int               target_type;
-    bool              fast_reconnect;
-    bool              resolve_retry;
-    cm2_retries_cnt   cnts;
-    cm2_dev_type      dev_type;
+    bool               have_manager;
+    bool               have_awlan;
+    int                min_backoff;
+    int                max_backoff;
+    bool               fast_backoff;
+    int                target_type;
+    bool               fast_reconnect;
+    bool               resolve_retry;
+    cm2_retries_cnt    cnts;
+    cm2_dev_type       dev_type;
+    cm2_restore_method restore_method;
 } cm2_state_t;
 
 extern cm2_state_t g_state;
@@ -320,6 +328,11 @@ static inline int  cm2_ovsdb_ble_set_connectable(bool state)
 
 #else /* CONFIG_CM2_BT_BEACON_HANDLER (else) */
 
+static inline int  cm2_ovsdb_ble_set_connectable(bool state)
+{
+    return 0;
+}
+
 static inline void cm2_ble_onboarding_apply_config(void)
 {
 }
@@ -374,7 +387,7 @@ bool cm2_ovsdb_is_port_name(char *port_name);
 bool cm2_ovsdb_recalc_links(void);
 bool cm2_ovsdb_update_Port_tag(const char *ifname, int tag, bool set);
 bool cm2_ovsdb_update_Port_trunks(const char *ifname, int *trunks, int num_trunks);
-bool cm2_ovsdb_connection_update_loop_state(const char *if_name, bool state);
+bool cm2_ovsdb_connection_update_loop_state(const char *if_name, cm2_par_state_t s);
 bool cm2_ovsdb_WiFi_Inet_State_is_ip(const char *if_name);
 void cm2_ovsdb_connection_clean_link_counters(char *if_name);
 bool cm2_ovsdb_validate_bridge_port_conf(char *bname, char *pname);

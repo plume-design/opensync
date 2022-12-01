@@ -148,6 +148,11 @@ int net_md_5tuple_cmp(const void *a, const void *b)
 
     /* Compare destination ports */
     cmp = (int)(key_a->dport) - (int)(key_b->dport);
+    if (cmp != 0) return cmp;
+
+    /* Compare icmp */
+    cmp = (int)(key_a->icmp_idt) - (int)(key_b->icmp_idt);
+
     return cmp;
 }
 
@@ -547,6 +552,7 @@ struct net_md_flow_key * set_net_md_flow_key(struct net_md_flow_key *lkey)
     key->fend = lkey->fend;
     key->tcp_flags = lkey->tcp_flags;
     key->icmp_type = lkey->icmp_type;
+    key->icmp_idt = lkey->icmp_idt;
     key->rx_idx = lkey->rx_idx;
     key->tx_idx = lkey->tx_idx;
     return key;

@@ -1391,10 +1391,8 @@ const int *unii_6g_chan2list(int chan, int width)
     return NULL;
 }
 
-int unii_5g_centerfreq(const char *ht_mode, const int channel)
+int chanlist_to_center(const int *chans)
 {
-    const int width = atoi(strlen(ht_mode) > 2 ? ht_mode + 2 : "20");
-    const int *chans = unii_5g_chan2list(channel, width);
     int sum = 0;
     int cnt = 0;
 
@@ -1406,6 +1404,10 @@ int unii_5g_centerfreq(const char *ht_mode, const int channel)
         cnt++;
         chans++;
     }
+
+    if (WARN_ON(cnt == 0))
+        return 0;
+
     return sum / cnt;
 }
 

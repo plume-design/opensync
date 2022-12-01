@@ -34,8 +34,10 @@ struct hapd {
     char driver[32]; /* eg. nl80211, wext, ... */
     char pskspath[PATH_MAX];
     char confpath[PATH_MAX];
+    char rxkhpath[PATH_MAX];
     char conf[4096];
     char psks[4096];
+    char rxkh[4096];
     char country[3];
     int respect_multi_ap;
     int skip_probe_response;
@@ -63,6 +65,9 @@ struct hapd {
     bool legacy_controller;
     bool group_by_phy_name;
     bool use_driver_iface_addr;
+    bool use_driver_rrb_lo;
+    bool use_reload_rxkhs;
+    bool use_rxkh_file;
 };
 
 struct hapd *hapd_lookup(const char *bss);
@@ -71,6 +76,10 @@ void hapd_lookup_radius(struct hapd *hapd,
                         struct schema_RADIUS *radius_list,
                         int max_radius_num,
                         int *num_radius_list);
+void hapd_lookup_nbors(struct hapd *hapd,
+                       struct schema_Wifi_VIF_Neighbors *nbors_list,
+                       int max_nbors_num,
+                       int *num_nbors_list);
 void hapd_destroy(struct hapd *hapd);
 void hapd_release(struct hapd *hapd);
 int hapd_conf_gen(struct hapd *hapd,
@@ -79,8 +88,11 @@ int hapd_conf_gen(struct hapd *hapd,
 int hapd_conf_gen2(struct hapd *hapd,
                    const struct schema_Wifi_Radio_Config *rconf,
                    const struct schema_Wifi_VIF_Config *vconf,
+                   const struct schema_Wifi_VIF_Neighbors *nbors,
                    const struct schema_RADIUS *radius_list,
-                   const int num_radius_list);
+                   const int num_nbors_list,
+                   const int num_radius_list,
+                   const char *bssid);
 int hapd_conf_apply(struct hapd *hapd);
 int hapd_bss_get(struct hapd *hapd,
                  struct schema_Wifi_VIF_State *vstate);

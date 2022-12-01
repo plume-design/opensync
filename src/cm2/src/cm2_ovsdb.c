@@ -52,6 +52,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "cm2.h"
 #include "kconfig.h"
 #include "os_time.h"
+#include "os_random.h"
 
 #include <arpa/inet.h>
 
@@ -90,7 +91,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define CM2_DEFAULT_L_PRI_LTE            2
 #define CM2_DEFAULT_L_PRI_LOW            1
 
-#define CM2_DEFAULT_BLOCK_LINK_TIME      60
+#define CM2_DEFAULT_BLOCK_LINK_TIME      30
+#define CM2_DEFAULT_RANDOM_BACKOFF_LOWER 30
+#define CM2_DEFAULT_RANDOM_BACKOFF_UPPER 60
 
 static
 bool cm2_ovsdb_connection_remove_uplink(char *if_name);
@@ -522,7 +525,8 @@ int cm2_ovsdb_CMU_set_unblock_ts(const char *if_name, const char *ts) {
 }
 
 static void
-cm2_util_set_local_ip_cfg(struct schema_Wifi_Inet_State *istate, cm2_ip *ip)
+cm2_util_set_local_ip_cfg(struct schema_Wifi_Inet_State *istate, cm2_ip *ip,
+                          const char *if_name)
 {
     cm2_uplink_state_t s;
 
@@ -547,13 +551,11 @@ cm2_util_set_local_ip_cfg(struct schema_Wifi_Inet_State *istate, cm2_ip *ip)
 
     LOGI("Setting ipv4: %s %d", istate->if_name, ip->is_ip);
     s = ip->is_ip ? CM2_UPLINK_READY : CM2_UPLINK_NONE;
-
-    if (cm2_util_is_supported_main_link(istate->if_name, istate->if_type))
-        cm2_ovsdb_CMU_set_ipv4(g_state.link.if_name, s); //TODO BRIDGE -> check
+    cm2_ovsdb_CMU_set_ipv4(if_name, s);
 }
 
 static int
-cm2_util_get_ip_inet_state_cfg(char *if_name, cm2_ip *ip)
+cm2_util_get_ip_inet_state_cfg(const char *uplink, cm2_ip *ip, const char *if_name)
 {
     struct schema_Wifi_Inet_State istate;
     int                           ret;
@@ -561,14 +563,14 @@ cm2_util_get_ip_inet_state_cfg(char *if_name, cm2_ip *ip)
     MEMZERO(istate);
 
     ret = ovsdb_table_select_one(&table_Wifi_Inet_State,
-                SCHEMA_COLUMN(Wifi_Inet_Config, if_name), if_name, &istate);
+                SCHEMA_COLUMN(Wifi_Inet_Config, if_name), uplink, &istate);
     if (!ret) {
-        LOGI("%s: %s: Failed to get Wifi_Inet_State item", __func__, if_name);
+        LOGI("%s: %s: Failed to get Wifi_Inet_State item", __func__, uplink);
         return -1;
     }
 
-    LOGI("%s IP address info: inet_addr = %s assign_scheme = %s", if_name, istate.inet_addr, istate.ip_assign_scheme);
-    cm2_util_set_local_ip_cfg(&istate, ip);
+    LOGI("%s IP address info: inet_addr = %s assign_scheme = %s", uplink, istate.inet_addr, istate.ip_assign_scheme);
+    cm2_util_set_local_ip_cfg(&istate, ip, if_name);
 
     return 0;
 }
@@ -736,7 +738,7 @@ int cm2_update_main_link_ip(cm2_main_link_t *link)
     }
 
     if (!g_state.link.ipv4.blocked)
-        return cm2_util_get_ip_inet_state_cfg(uplink, &link->ipv4);
+        return cm2_util_get_ip_inet_state_cfg(uplink, &link->ipv4, link->if_name);
 
     return -1;
 }
@@ -1132,7 +1134,7 @@ cm2_ovsdb_util_handle_master_sta_port_state(struct schema_Wifi_Master_State *mas
             cm2_ovsdb_connection_remove_uplink(uplink_removed);
         }
 
-        ret = cm2_util_get_ip_inet_state_cfg(master->if_name, &ipv4);
+        ret = cm2_util_get_ip_inet_state_cfg(master->if_name, &ipv4, g_state.link.if_name);
         if (!ret && ipv4.assign_scheme != CM2_IP_STATIC)
             cm2_ovsdb_remove_Wifi_Inet_Config(gre_ifname, true);
     }
@@ -1513,14 +1515,17 @@ cm2_ovsdb_connection_update_bridge_state(char *if_name, const char *bridge)
 }
 
 bool
-cm2_ovsdb_connection_update_loop_state(const char *if_name, bool state)
+cm2_ovsdb_connection_update_loop_state(const char *if_name, cm2_par_state_t state)
 {
     struct schema_Connection_Manager_Uplink con;
     char *filter[] = { "+", SCHEMA_COLUMN(Connection_Manager_Uplink, loop), NULL };
     int ret;
 
     memset(&con, 0, sizeof(con));
-    SCHEMA_SET_BOOL(con.loop, state);
+
+    con.loop_exists = state == CM2_PAR_NOT_SET ? false : true;
+    if (con.loop_exists)
+        SCHEMA_SET_BOOL(con.loop, state == CM2_PAR_TRUE ? true : false);
 
     ret = ovsdb_table_update_where_f(&table_Connection_Manager_Uplink,
                                      ovsdb_where_simple(SCHEMA_COLUMN(Connection_Manager_Uplink, if_name), if_name),
@@ -1824,16 +1829,28 @@ void cm2_check_master_state_links(void) {
     FREE(link_p);
 }
 
-
-static void cm2_util_set_default_block_ts(const char *if_name)
+/**
+ * \fn static time_t cm2_util_set_default_block_ts(const char *if_name)
+ * \brief Set the default block timestamp (CM2_DEFAULT_BLOCK_LINK_TIME +
+ *        random backoff range between CM2_DEFAULT_RANDOM_BACKOFF_LOWER
+ *        and CM2_DEFAULT_RANDOM_BACKOFF_UPPER) in OVS with the given
+ *        interface
+ * \param if_name Interface name
+ * \return Block time period
+ */
+static time_t cm2_util_set_default_block_ts(const char *if_name)
 {
     char               t_now_s[128];
-    time_t             t_now;
+    time_t             t_now, t_new;
 
     // SET TIMESTAMP AND TIMER
-    t_now = time_monotonic() + CM2_DEFAULT_BLOCK_LINK_TIME;
+    t_new = CM2_DEFAULT_BLOCK_LINK_TIME
+          + os_random_range(CM2_DEFAULT_RANDOM_BACKOFF_LOWER
+                          , CM2_DEFAULT_RANDOM_BACKOFF_UPPER);
+    t_now = time_monotonic() + t_new;
     time_to_str(t_now, t_now_s, sizeof(t_now_s));
     cm2_ovsdb_CMU_set_unblock_ts(if_name, t_now_s);
+    return t_new;
 }
 
 bool cm2_ovsdb_recalc_links(void) {
@@ -1877,15 +1894,12 @@ bool cm2_ovsdb_recalc_links(void) {
                     if (s_ipv6 == CM2_UPLINK_BLOCKED)
                         cm2_ovsdb_CMU_set_ipv6(uplink_i->if_name, CM2_UPLINK_UNBLOCKING);
                 } else {
-                    if (!t_new)
-                        t_new = t - t_now;
-                    else if (t < t_new)
+                    if (!t_new || t < (t_now + t_new))
                         t_new = t - t_now;
                 }
             } else if (s_ipv4 == CM2_UPLINK_BLOCKED || s_ipv6 == CM2_UPLINK_BLOCKED) {
-                t_new = CM2_DEFAULT_BLOCK_LINK_TIME;
                 LOGI("Set default time for blocked link");
-                cm2_util_set_default_block_ts(uplink_i->if_name);
+                t_new = cm2_util_set_default_block_ts(uplink_i->if_name);
             }
 
             if (t_new) {
@@ -1915,6 +1929,11 @@ bool cm2_ovsdb_recalc_links(void) {
                g_state.link.ipv6.blocked = s_ipv6 == CM2_UPLINK_BLOCKED;
                g_state.link.ipv4.blocked = s_ipv4 == CM2_UPLINK_BLOCKED;
             }
+
+            LOGD("%s Used uplink state ipv4: %s ipv6: %s",
+                 uplink->if_name,
+                 cm2_get_uplink_str_from_state(s_ipv4),
+                 cm2_get_uplink_str_from_state(s_ipv6));
         }
         free(uplink_p);
     }
@@ -2161,9 +2180,23 @@ cm2_util_handling_loop_state(struct schema_Connection_Manager_Uplink *uplink)
     if (!cm2_is_eth_type(uplink->if_type))
         return;
 
+    if (!g_state.link.is_used) {
+        if (uplink->loop_exists && uplink->loop) {
+            cm2_delayed_eth_update(uplink->if_name, CONFIG_CM2_ETHERNET_SHORT_DELAY);
+        }
+        return;
+    }
+
+    if (cm2_is_lte_type(g_state.link.if_type) &&
+        !strcmp(uplink->if_name, CONFIG_CM2_ETH_WAN_INTERFACE_NAME)) {
+        cm2_ovsdb_connection_update_loop_state(uplink->if_name, CM2_PAR_TRUE);
+        cm2_delayed_eth_update(uplink->if_name, CONFIG_CM2_ETHERNET_LONG_DELAY);
+        return;
+    }
+
     delayed_update = uplink->has_L2_exists && uplink->has_L2 &&
                      uplink->has_L3_exists && !uplink->has_L3 &&
-                     g_state.link.is_used &&
+                     uplink->loop_exists && uplink->loop &&
                      cm2_is_wifi_type(g_state.link.if_type);
 
     if (delayed_update) {
@@ -2174,8 +2207,8 @@ cm2_util_handling_loop_state(struct schema_Connection_Manager_Uplink *uplink)
         return;
     }
 
-    if (uplink->loop_exists && uplink->loop)
-        cm2_ovsdb_connection_update_loop_state(uplink->if_name, false);
+    if (!uplink->loop_exists || uplink->loop)
+        cm2_ovsdb_connection_update_loop_state(uplink->if_name, CM2_PAR_FALSE);
 
     return;
 }
@@ -2263,8 +2296,7 @@ cm2_Connection_Manager_Uplink_handle_update(
     }
     if (ovsdb_update_changed(mon, SCHEMA_COLUMN(Connection_Manager_Uplink, loop))) {
         LOGN("%s: Uplink table: detected loop change = %d", uplink->if_name, uplink->loop);
-        if (!cm2_is_wan_link_management() &&
-            uplink->loop_exists && uplink->loop && uplink->loop)
+        if (!cm2_is_wan_link_management())
             cm2_util_handling_loop_state(uplink);
     }
 
@@ -2532,11 +2564,12 @@ void callback_Wifi_Inet_State(ovsdb_update_monitor_t *mon,
                     break;
                 }
 
+                cm2_util_set_local_ip_cfg(inet_state, &g_state.link.ipv4, g_state.link.if_name);
+
                 if (cm2_is_wifi_type(inet_state->if_type))
                     break;
 
                 cm2_util_set_dhcp_ipv4_cfg_from_inet(inet_state, false);
-                cm2_util_set_local_ip_cfg(inet_state, &g_state.link.ipv4);
             }
 
             if (ovsdb_update_changed(mon, SCHEMA_COLUMN(Wifi_Inet_State, dhcpc)))
@@ -2589,7 +2622,7 @@ static void cm2_reconfigure_ethernet_states(bool blocked)
 
         if (!blocked) {
             LOGI("%s: disable loop on ethernet port", uplink->if_name);
-            cm2_ovsdb_connection_update_loop_state(uplink->if_name, false);
+            cm2_ovsdb_connection_update_loop_state(uplink->if_name, CM2_PAR_FALSE);
             continue;
         }
 

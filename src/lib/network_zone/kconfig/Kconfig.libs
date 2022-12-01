@@ -1,0 +1,5 @@
+menuconfig LIB_NETWORK_ZONE
+    bool "Enables network zone management"
+        default y
+        help
+            N/A

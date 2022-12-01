@@ -277,7 +277,7 @@ bm_client_to_bsal_conf_bs_2g(bm_client_t *client, bm_group_t *group, radio_type_
 
         if( client->pre_assoc_auth_block ) {
             LOGT( "Client '%s': Blocking auth requests for"
-                  " pre-assocation band steering", client->mac_addr );
+                  " pre-assocation 2.4 GHz band steering", client->mac_addr );
             // This value should always mirror dest->rssi_probe_hwm
             dest->rssi_auth_hwm     = dest->rssi_probe_hwm;
         } else {
@@ -319,10 +319,16 @@ bm_client_to_bsal_conf_bs_5g(bm_client_t *client, bm_group_t *group, radio_type_
         if (client->pref_6g_allowed == BM_CLIENT_PREF_6G_ALLOWED_ALWAYS) {
             dest->rssi_probe_hwm = BM_CLIENT_MIN_HWM;
             dest->rssi_probe_lwm = 0;
-            dest->rssi_auth_hwm = BM_CLIENT_MIN_HWM;
-            dest->rssi_auth_lwm = 0;
             dest->rssi_high_xing = client->hwm;
-        }
+            dest->rssi_auth_lwm = 0;
+         }
+         if (client->pre_assoc_auth_block) {
+             LOGT("Client '%s': Blocking auth requests for"
+                  " pre-assocation 5 GHz band steering", client->mac_addr);
+             dest->rssi_auth_hwm = dest->rssi_probe_hwm;;
+         } else {
+             dest->rssi_auth_hwm = 0;
+         }
     }
     else {
         if (client->steer_during_backoff) {
@@ -592,9 +598,19 @@ bm_client_update_rrm_neighbors(void)
     }
 }
 
-static bool bm_client_is_cap_6G(bm_client_t *client)
+static bool bm_client_is_cap_2G(const bm_client_t *client)
 {
-    return client->band_cap_6G | (client->band_cap_mask & BM_CLIENT_OPCLASS_60_CAP_BIT);
+    return client->band_cap_2G || (client->band_cap_mask & BM_CLIENT_OPCLASS_24_CAP_BIT);
+}
+
+static bool bm_client_is_cap_5G(const bm_client_t *client)
+{
+    return client->band_cap_5G || (client->band_cap_mask & BM_CLIENT_OPCLASS_50_CAP_BIT);
+}
+
+static bool bm_client_is_cap_6G(const bm_client_t *client)
+{
+    return client->band_cap_6G || (client->band_cap_mask & BM_CLIENT_OPCLASS_60_CAP_BIT);
 }
 
 static void
@@ -606,8 +622,8 @@ bm_client_print_client_caps( bm_client_t *client )
     LOGD( " ~~~ Client '%s' ~~~", client->mac_addr );
     LOGD( " isBTMSupported        : %s", client->info->is_BTM_supported ? "Yes":"No" );
     LOGD( " isRRMSupported        : %s", client->info->is_RRM_supported ? "Yes":"No" );
-    LOGD( " Supports 2G           : %s", client->info->band_cap_2G ? "Yes":"No" );
-    LOGD( " Supports 5G           : %s", client->info->band_cap_5G ? "Yes":"No" );
+    LOGD( " Supports 2G           : %s", bm_client_is_cap_2G(client) ? "Yes":"No" );
+    LOGD( " Supports 5G           : %s", bm_client_is_cap_5G(client) ? "Yes":"No" );
     LOGD( " Supports 6G           : %s", bm_client_is_cap_6G(client) ? "Yes":"No" );
 
     LOGD( "   ~~~Datarate Information~~~    " );
@@ -649,8 +665,8 @@ static void bm_client_report_caps(bm_client_t *client, const char *ifname, bsal_
 
     event.data.connect.is_BTM_supported = info->is_BTM_supported;
     event.data.connect.is_RRM_supported = info->is_RRM_supported;
-    event.data.connect.band_cap_2G = info->band_cap_2G | client->band_cap_2G;
-    event.data.connect.band_cap_5G = info->band_cap_5G | client->band_cap_5G;
+    event.data.connect.band_cap_2G = info->band_cap_2G | bm_client_is_cap_2G(client);
+    event.data.connect.band_cap_5G = info->band_cap_5G | bm_client_is_cap_5G(client);
     event.data.connect.band_cap_6G = info->band_cap_6G | bm_client_is_cap_6G(client);
     event.data.connect.assoc_ies_len = info->assoc_ies_len <= ARRAY_SIZE(event.data.connect.assoc_ies)
                                      ? info->assoc_ies_len
@@ -2303,7 +2319,11 @@ bm_client_state_change(bm_client_t *client, bm_client_state_t state, bool force)
         {
             case BM_CLIENT_STATE_CONNECTED:
             {
-                bm_client_backoff(client, false);
+                // If the client has connected during backoff, only disable band
+                // steering immediately if the client connects on 5GHz.
+                if (bm_client_bs_ifname_allowed(client, client->ifname)) {
+                    bm_client_backoff(client, false);
+                }
                 break;
             }
 

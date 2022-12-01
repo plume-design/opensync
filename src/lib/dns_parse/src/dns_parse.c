@@ -34,6 +34,7 @@
 #include "ovsdb_sync.h"
 
 #define IP2ACTION_MIN_TTL (6*60*60)
+#define DNS_QTYPE_65 65
 
 void handler(uint8_t *, const struct pcap_pkthdr *, const uint8_t *);
 void dns_rr_free(dns_rr *);
@@ -983,6 +984,22 @@ set_provider_ops(struct dns_session *dns_session,
     policy_reply->gatekeeper_req = session->provider_ops->gatekeeper_req;
 }
 
+bool
+is_packet_to_process(dns_question *qnext)
+{
+    struct dns_cache *mgr;
+    bool rc;
+
+    /* Safety check */
+    if (qnext == NULL) return false;
+
+    mgr = dns_get_mgr();
+    rc = (mgr->identical_plugin_enabled);
+    if (!rc) return true;
+
+    rc = (qnext->type != DNS_QTYPE_65);
+    return rc;
+}
 
 void
 dns_handler(struct fsm_session *session, struct net_header_parser *net_header)
@@ -1053,10 +1070,10 @@ dns_handler(struct fsm_session *session, struct net_header_parser *net_header)
     dns_session->data_offset = pos;
     pos = dns_parse(pos, &header, packet, &dns, dns_session, !FORCE);
 
+    qnext = dns.queries;
     mgr = dns_get_mgr();
-    rc = (mgr->identical_plugin_enabled);
-    rc &= (kconfig_enabled(CONFIG_FSM_DPI_DNS));
-    if (rc)
+    rc = is_packet_to_process(qnext);
+    if (!rc)
     {
         rc = (mgr->dispatcher_tap_type & FSM_TAP_NFQ);
         rc &= (dns.qr == 1);
@@ -1067,7 +1084,8 @@ dns_handler(struct fsm_session *session, struct net_header_parser *net_header)
         }
         else
         {
-            LOGT("%s: dpi_dns is enabled returning...", __func__);
+            LOGT("%s: query type: %d dpi_dns is enabled returning...", __func__,
+                 qnext == NULL ? -1 : qnext->type);
         }
 
         free_rrs(&dns_session->ip, &dns_session->udp, &dns, &header);
@@ -1088,7 +1106,6 @@ dns_handler(struct fsm_session *session, struct net_header_parser *net_header)
         return;
     }
 
-    qnext = dns.queries;
     mac = (dns.qr == 0 ? &eth->srcmac : &eth->dstmac);
 
     LOGD("%s: looking up device " PRI_os_macaddr_lower_t,

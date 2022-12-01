@@ -83,7 +83,7 @@ static bool dm_mod_sipalg_activate(struct dm_mod *mod_nat, bool enable)
     }
     else
     {
-        dm_mod_update_state(&sipalg->sip_mod,false);
+        dm_mod_update_state(&sipalg->sip_mod, false);
         return false;
     }
 }

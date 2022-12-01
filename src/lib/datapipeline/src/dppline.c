@@ -1152,6 +1152,7 @@ static void dppline_add_stat_client(Sts__Report *r, dppline_stats_t *s)
     for (i = 0; i < client->qty; i++)
     {
         dpp_client_record_t *rec = &client->list[i].rec;
+        int network_id_len;
         dr = sr->client_list[i] = MALLOC(sizeof(**sr->client_list));
         size += sizeof(**sr->client_list);
         sts__client__init(dr);
@@ -1162,6 +1163,12 @@ static void dppline_add_stat_client(Sts__Report *r, dppline_stats_t *s)
 
         dr->ssid = strdup(rec->info.essid);
         size += strlen(rec->info.essid) + 1;
+
+        network_id_len = strlen(rec->info.networkid);
+        if (network_id_len) {
+            dr->network_id = strdup(rec->info.networkid);
+            size += network_id_len + 1;
+        }
 
         dr->connected = rec->is_connected;
         dr->connect_count = rec->connected;

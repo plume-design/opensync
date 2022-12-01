@@ -652,16 +652,16 @@ void sm_client_report_stats_calculate_average (
         dpp_client_stats_t         *record,
         dpp_client_stats_t         *report)
 {
-    report->rate_rx = weight_avg(report->frames_tx,
-                                 record->frames_tx,
+    report->rate_rx = weight_avg(report->frames_rx,
+                                 record->frames_rx,
                                  report->rate_rx,
                                  record->rate_rx);
     report->rate_tx = weight_avg(report->frames_tx,
                                  record->frames_tx,
                                  report->rate_tx,
                                  record->rate_tx);
-    report->rssi = weight_avg(report->frames_tx,
-                              record->frames_tx,
+    report->rssi = weight_avg(report->frames_rx,
+                              record->frames_rx,
                               report->rssi,
                               record->rssi);
 

@@ -54,6 +54,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "util.h"
 
 #define REDIRECT_TTL 10
+#define DNS_QTYPE_A 1
+#define DNS_QTYPE_AAAA 28
 #define DNS_QTYPE_65 65
 
 /* TTL Len 4 bytes + RD length 2 bytes */
@@ -157,6 +159,54 @@ fsm_dpi_dns_send_report(struct fsm_policy_req *policy_request,
     session->ops.send_report(session, report);
 }
 
+
+/**
+ * @brief: In case of gatekeeper policy, check if event
+ * reporting is required. Gatekeeper policy triggers
+ * reporting only for BLOCKED and REDIRECT action.
+ * But if reporing is required for other action, then
+ * reporting flag is set and the policy name is updated.
+ */
+static void
+fsm_update_gk_reporting(struct fsm_policy_req *preq,
+                        struct fsm_policy_reply *policy_reply)
+{
+    struct fsm_policy *fsm_policy;
+
+    fsm_policy = preq->policy;
+    if (fsm_policy == NULL) return;
+
+    if (fsm_policy->action != FSM_GATEKEEPER_REQ) return;
+
+    LOGT("%s(): checking if policy reporting is required.", __func__);
+    /* gk has already taken the action to report, no need to check
+     * further.
+     */
+    if (policy_reply->to_report == true)
+    {
+        if (policy_reply->rule_name == NULL)
+        {
+            policy_reply->rule_name = STRDUP(preq->rule_name);
+        }
+        return;
+    }
+
+    /* if policy does not ask for logging, just return */
+    if (preq->report == false) return;
+
+    /* policy is set to log (example logMacs), we need
+     * to send the report, also overwrite policy name
+     * from gatekeeper policy (gk_all) to the policy that Requires
+     * logging
+     */
+    LOGT("%s(): setting reporting and updating policy name", __func__);
+    policy_reply->to_report = true;
+    FREE(policy_reply->rule_name);
+    policy_reply->rule_name = STRDUP(preq->rule_name);
+    policy_reply->action = preq->action;
+    policy_reply->policy_idx = preq->policy_index;
+}
+
 static void
 fsm_dpi_dns_process_verdict(struct fsm_policy_req *policy_request,
                             struct fsm_policy_reply *policy_reply)
@@ -197,6 +247,8 @@ fsm_dpi_dns_process_verdict(struct fsm_policy_req *policy_request,
 
     pending_req->rd_ttl = policy_reply->rd_ttl;
 
+    fsm_update_gk_reporting(policy_request, policy_reply);
+
     fsm_dpi_dns_send_report(policy_request, policy_reply);
 }
 
@@ -236,6 +288,7 @@ free_policy_req:
 void
 fsm_dpi_dns_free_request(struct fsm_policy_req *request)
 {
+    fsm_dpi_dns_free_dns_response_ips(&request->fqdn_req->dns_response);
     FREE(request->url);
     fsm_policy_free_request(request);
 }
@@ -279,6 +332,26 @@ fsm_dpi_dns_free_reply(struct fsm_policy_reply *reply)
     fsm_policy_free_reply(reply);
 }
 
+void
+fsm_dpi_dns_update_csum(struct net_header_parser *net_parser)
+{
+    struct udphdr *udp_hdr;
+    uint8_t *packet;
+    uint16_t csum;
+
+    /* update check sum */
+    packet = (uint8_t *)net_parser->start;
+    udp_hdr = net_parser->ip_pld.udphdr;
+    if (net_parser->ip_version == 4) udp_hdr->check = 0;
+    else if (net_parser->ip_version == 6)
+    {
+        /* IPv6 */
+        csum = fsm_compute_udp_checksum(packet, net_parser);
+        udp_hdr->check = csum;
+    }
+    net_parser->payload_updated = true;
+}
+
 /**
  * @brief update dns response ips
  *
@@ -294,11 +367,9 @@ fsm_dpi_dns_update_response_ips(struct net_header_parser *net_header,
     struct net_md_flow_key *key;
     struct dpi_dns_client *mgr;
     struct dns_record *rec;
-    struct udphdr *udp_hdr;
-    uint8_t * packet;
+    uint8_t *packet;
     bool is_updated;
     size_t parsed;
-    uint16_t csum;
     size_t i;
 
     is_updated = false;
@@ -355,20 +426,6 @@ fsm_dpi_dns_update_response_ips(struct net_header_parser *net_header,
                 is_updated = true;
             }
         }
-    }
-
-    /* update check sum */
-    if (is_updated)
-    {
-        udp_hdr = net_header->ip_pld.udphdr;
-        if (net_header->ip_version == 4) udp_hdr->check = 0;
-        else if (net_header->ip_version == 6)
-        {
-            /* IPv6 */
-            csum = fsm_compute_udp_checksum(packet, net_header);
-            udp_hdr->check = htons(csum);
-        }
-        net_header->payload_updated = true;
     }
 
     return is_updated;
@@ -431,6 +488,42 @@ fsm_dpi_dns_populate_response_ips(struct dns_response_s *dns_resp_ips)
     }
 }
 
+bool
+is_record_to_process()
+{
+    struct dpi_dns_client *mgr;
+    struct dns_record *rec;
+    bool rc;
+
+    mgr = fsm_dpi_dns_get_mgr();
+    rc = (mgr->identical_plugin_enabled);
+    if (!rc) return true;
+
+    rec = &mgr->curr_rec_processed;
+    rc = (rec->resp[0].type == DNS_QTYPE_65);
+    return rc;
+}
+
+bool
+is_valid_qtype(uint8_t qtype)
+{
+    bool rc;
+
+    rc = false;
+    switch (qtype)
+    {
+        case DNS_QTYPE_A:
+        case DNS_QTYPE_AAAA:
+        case DNS_QTYPE_65:
+            rc = true;
+            break;
+
+        default:
+            break;
+    }
+    return rc;
+}
+
 int
 fsm_dpi_dns_process_dns_record(struct fsm_session *session,
                                struct net_md_stats_accumulator *acc,
@@ -442,11 +535,12 @@ fsm_dpi_dns_process_dns_record(struct fsm_session *session,
     struct fsm_policy_req *policy_request;
     struct fsm_policy_reply *policy_reply;
     char str_addr[INET6_ADDRSTRLEN + 1];
-    struct dns_response_s dns_response;
+    struct fqdn_pending_req *fqdn_req;
     struct sockaddr_storage ipaddr;
     struct net_md_flow_info info;
     struct dpi_dns_client *mgr;
     struct dns_record *rec;
+    uint8_t qtype;
     int action;
     size_t i;
     bool rc;
@@ -460,15 +554,23 @@ fsm_dpi_dns_process_dns_record(struct fsm_session *session,
     /* Fetch information (category, etc) for this FQDN */
     rec = &mgr->curr_rec_processed;
 
-    rc = (mgr->identical_plugin_enabled);
-    rc &= (!kconfig_enabled(CONFIG_FSM_DPI_DNS));
-    if (rc)
+    rc = is_record_to_process();
+    if (!rc)
     {
-        LOGT("%s: dns_parse is enabled returning...", __func__);
+        LOGT("%s: query type: %d dns_parse is enabled returning...", __func__, rec->resp[0].type);
         return action;
     }
 
-    LOGT("%s: Processing dpi DNS request for %s", __func__, rec->qname);
+    qtype = rec->resp[0].type;
+    rc = is_valid_qtype(qtype);
+    if (!rc)
+    {
+        LOGT("%s: not processing query type: %d ", __func__, rec->resp[0].type);
+        return action;
+    }
+
+
+    LOGT("%s: Processing dpi DNS request for %s with %zd answers", __func__, rec->qname, rec->idx);
 
     /* Interact with GK to get verdict for the name only */
     MEMZERO(info);
@@ -495,7 +597,27 @@ fsm_dpi_dns_process_dns_record(struct fsm_session *session,
         return action;
     }
 
+    /* Populate the IPs in the FQDN request */
+    fqdn_req = policy_request->fqdn_req;
+    fsm_dpi_dns_populate_response_ips(&fqdn_req->dns_response);
+
     action = fsm_apply_policies(policy_request, policy_reply);
+
+    LOGT("%s: dpi_dns policy received action: %s", __func__,
+         fsm_policy_get_action_str(action));
+
+    /*
+     * We can have responses without `answers`.
+     * Skip updating the information for the IPs.
+     * The actual action returned in this case must be fully over-written,
+     * since we want to _always_ finsih processing of DNS transaction.
+     */
+    if (rec->idx == 0)
+    {
+        LOGT("%s: No answer to process.", __func__);
+        action = FSM_DPI_PASSTHRU;
+        goto no_answer;
+    }
 
     /* Now assign the gathered information to the IPs in the cache */
     for (i = 0; i < rec->idx; i++)
@@ -558,30 +680,30 @@ fsm_dpi_dns_process_dns_record(struct fsm_session *session,
         /* Update Tag if we are interested in the IPs returned. */
         dns_tag_param.dev_id = fsm_request_param.device_id;
         dns_tag_param.policy_reply = policy_reply;
-        dns_tag_param.dns_response = &dns_response;
-        MEMZERO(dns_response);
-        fsm_dpi_dns_populate_response_ips(&dns_response);
-        if (dns_response.ipv4_cnt || dns_response.ipv6_cnt)
+        dns_tag_param.dns_response = &fqdn_req->dns_response;
+        if (dns_tag_param.dns_response->ipv4_cnt || dns_tag_param.dns_response->ipv6_cnt)
         {
             mgr->update_tag(&dns_tag_param);
         }
-        fsm_dpi_dns_free_dns_response_ips(&dns_response);
     }
 
-    if (action == FSM_REDIRECT)
+    if ((action == FSM_REDIRECT) || (action == FSM_BLOCK))
     {
         rc = fsm_dpi_dns_update_response_ips(net_parser, acc, policy_reply);
         if (!rc)
         {
             LOGD("%s: Failed to update response ips", __func__);
         }
-        action = FSM_DPI_PASSTHRU;
     }
 
+    /* Allow dns responses */
+    action = FSM_DPI_PASSTHRU;
 
+no_answer:
     if (net_parser != NULL)
     {
-        net_parser->payload_updated = true;
+        /* update check sum */
+        fsm_dpi_dns_update_csum(net_parser);
     }
 
     /* Cleanup */
@@ -856,18 +978,22 @@ fsm_dpi_dns_process_attr(struct fsm_session *session, const char *attr,
 
         case DNS_A:
         {
+            char ipv4_addr[INET_ADDRSTRLEN];
+            const char *res;
+
             if (type != RTS_TYPE_BINARY)
             {
                 LOGD("%s: value for %s should be a binary array", __func__, attr);
                 goto reset_state_machine;
             }
             if (rec->next_state != IP_ADDRESS) goto wrong_state;
-
             rec->next_state = DNS_A_OFFSET;
             rec->resp[rec->idx].ip_v = 4;
             memcpy(rec->resp[rec->idx].address, value, length);
+            res = inet_ntop(AF_INET, value, ipv4_addr, INET_ADDRSTRLEN);
             LOGT("%s: copied %s - next is %s",
-                 __func__, dns_state_str[curr_state], dns_state_str[rec->next_state]);
+                 __func__, (res != NULL ? ipv4_addr : dns_state_str[curr_state]),
+                            dns_state_str[rec->next_state]);
             break;
         }
 
@@ -890,6 +1016,9 @@ fsm_dpi_dns_process_attr(struct fsm_session *session, const char *attr,
 
         case DNS_AAAA:
         {
+            char ipv6_addr[INET6_ADDRSTRLEN];
+            const char *res;
+
             if (type != RTS_TYPE_BINARY)
             {
                 LOGD("%s: value for %s should be a binary array", __func__, attr);
@@ -900,8 +1029,10 @@ fsm_dpi_dns_process_attr(struct fsm_session *session, const char *attr,
             rec->next_state = DNS_AAAA_OFFSET;
             rec->resp[rec->idx].ip_v = 6;
             memcpy(rec->resp[rec->idx].address, value, length);
+            res = inet_ntop(AF_INET6, value, ipv6_addr, INET6_ADDRSTRLEN);
             LOGT("%s: copied %s - next is %s",
-                 __func__, dns_state_str[curr_state], dns_state_str[rec->next_state]);
+                 __func__, (res != NULL ? ipv6_addr : dns_state_str[curr_state]),
+                 dns_state_str[rec->next_state]);
             break;
         }
 
@@ -938,9 +1069,8 @@ fsm_dpi_dns_process_attr(struct fsm_session *session, const char *attr,
             if (rec->next_state == DNS_TYPE && rec->idx == 0)
             {
                 LOGD("%s: No A, AAAA or HTTPS for %s", __func__, rec->qname);
-                goto reset_state_machine;
             }
-            if (rec->next_state != DNS_TYPE || rec->idx == 0) goto wrong_state;
+            if (rec->next_state != DNS_TYPE) goto wrong_state;
 
             rec->next_state = BEGIN_DNS;
 

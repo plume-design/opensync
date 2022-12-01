@@ -140,7 +140,7 @@ ltem_update_conf(struct schema_Lte_Config *lte_conf)
     }
     else
     {
-        LOGI("%s: APN[%s]", __func__, lte_conf->apn);
+        LOGI("%s: current APN[%s], new APN[%s]", __func__, conf->apn, lte_conf->apn);
         STRSCPY(conf->apn, lte_conf->apn);
     }
     STRSCPY(conf->lte_bands, lte_conf->lte_bands_enable);
@@ -749,7 +749,7 @@ ltem_ovsdb_get_if_type(char *if_name)
  * @return true when wifi_inet_config ovsdb table updated successfully
  *         false otherwise
  */
-static bool
+static void
 ltem_wifi_inet_os_persist_update(bool persist_state, char *if_name)
 {
     struct schema_Wifi_Inet_Config icfg;
@@ -762,11 +762,11 @@ ltem_wifi_inet_os_persist_update(bool persist_state, char *if_name)
     if (!ret)
     {
         LOGI("%s: %s: Failed to get interface config", __func__, if_name);
-        return false;
+        return;
     }
 
     /* return true if os_persist is already set, update otherwise */
-    if (icfg.os_persist == persist_state) return true;
+    if (icfg.os_persist == persist_state) return;
 
     MEMZERO(icfg);
     char *filter[] = { "+",
@@ -780,10 +780,8 @@ ltem_wifi_inet_os_persist_update(bool persist_state, char *if_name)
     if (!ret)
     {
         LOGE("%s: %s: Failed to update interface config", __func__, if_name);
-        return false;
     }
 
-    return true;
 }
 
 /**
@@ -795,7 +793,7 @@ ltem_wifi_inet_os_persist_update(bool persist_state, char *if_name)
  * @return true when lte_config ovsdb table updated successfully
  *         false otherwise
  */
-static bool
+static void
 ltem_lte_config_os_persist_update(bool persist_state, char *if_name)
 {
     struct schema_Lte_Config lte_cfg;
@@ -808,11 +806,11 @@ ltem_lte_config_os_persist_update(bool persist_state, char *if_name)
     if (!ret)
     {
         LOGE("%s: %s: Failed to get interface config", __func__, if_name);
-        return false;
+        return;
     }
 
     /* return true if os_persist is already set, update otherwise */
-    if (lte_cfg.os_persist == persist_state) return true;
+    if (lte_cfg.os_persist == persist_state) return;
 
     /* update the os_persist field */
     MEMZERO(lte_cfg);
@@ -827,10 +825,9 @@ ltem_lte_config_os_persist_update(bool persist_state, char *if_name)
     if (!ret)
     {
         LOGE("%s: %s: Failed to update interface config", __func__, if_name);
-        return false;
+        return;
     }
 
-    return true;
 }
 
 /**
@@ -881,12 +878,14 @@ ltem_lte_state_update_persist(bool state, char *if_name)
 static void
 ltem_update_enable_persist(bool persist_state, char *if_name)
 {
-    /* Update enable_persist field in Lte_state table only when Lte_config and
-       Wifi_Init_config updates  successfully */
-    if (!ltem_wifi_inet_os_persist_update(persist_state, if_name)) return;
-    if (!ltem_lte_config_os_persist_update(persist_state, if_name)) return;
+
+    /* NOC expects  enable_persist to be present in Lte_State table before
+       Wifi_Inet_Config table is pushed. The sequence here updates first Lte_State table */
 
     ltem_lte_state_update_persist(persist_state, if_name);
+    ltem_lte_config_os_persist_update(persist_state, if_name);
+    ltem_wifi_inet_os_persist_update(persist_state, if_name);
+
 }
 
 void
@@ -949,8 +948,17 @@ callback_Lte_Config(ovsdb_update_monitor_t *mon,
             LOGD("%s mon_type = OVSDB_UPDATE_MODIFY", __func__);
             /* A NULL APN is valid */
             LOGI("%s: APN[%s]", __func__, lte_conf->apn);
-            osn_lte_set_pdp_context_params(PDP_CTXT_APN, lte_conf->apn);
-            osn_lte_set_sim_slot(lte_conf->active_simcard_slot);
+            rc = strncmp(old_lte_conf->apn, lte_conf->apn, sizeof(lte_conf->apn));
+            if (rc)
+            {
+                LOGI("%s: new APN[%s]", __func__, lte_conf->apn);
+                osn_lte_set_pdp_context_params(PDP_CTXT_APN, lte_conf->apn);
+            }
+
+            if (old_lte_conf->active_simcard_slot != lte_conf->active_simcard_slot)
+            {
+                osn_lte_set_sim_slot(lte_conf->active_simcard_slot);
+            }
 
             rc = strncmp(lte_conf->lte_bands_enable, "", strlen(lte_conf->lte_bands_enable));
             if (rc)

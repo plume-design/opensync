@@ -98,6 +98,12 @@ static int build_ip_route_cmd(char *dst, size_t dst_size, const char *action, co
     {
         n += snprintf(dst + n, dst_size - n, " metric %d", route->metric);
     }
+
+    if (route->pref_src_set)
+    {
+        n += snprintf(dst + n, dst_size - n, " src %s", FMT_osn_ip_addr(route->pref_src));
+    }
+
     return n;
 }
 

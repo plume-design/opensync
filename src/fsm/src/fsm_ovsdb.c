@@ -62,6 +62,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "gatekeeper_cache.h"
 #include "dns_cache.h"
 #include "memutil.h"
+#include "network_zone.h"
 
 #define MODULE_ID LOG_MODULE_ID_OVSDB
 
@@ -70,7 +71,6 @@ static ovsdb_table_t table_Flow_Service_Manager_Config;
 static ovsdb_table_t table_Openflow_Tag;
 static ovsdb_table_t table_Openflow_Local_Tag;
 static ovsdb_table_t table_Openflow_Tag_Group;
-static ovsdb_table_t table_Network_Zone;
 static ovsdb_table_t table_Node_Config;
 static ovsdb_table_t table_Node_State;
 
@@ -139,6 +139,7 @@ fsm_tag_update_cb(om_tag_t *tag,
                   struct ds_tree *added,
                   struct ds_tree *updated)
 {
+    network_zone_tag_update_cb(tag, removed, added, updated);
     fsm_process_tag_update(tag, removed, added, updated);
     return true;
 }
@@ -208,32 +209,10 @@ fsm_init_mgr(struct ev_loop *loop)
     ds_tree_init(&mgr->dpi_client_tags_tree, (ds_key_cmp_t *) strcmp,
                  struct fsm_dpi_client_tags, next);
 
-    /* initialize network id tree */
-    ds_tree_init(&mgr->network_id_table, (ds_key_cmp_t *) strcmp,
-                 struct network_id, next);
-
     /* register for tag update callback */
     fsm_tag_update_init();
 }
 
-/**
- * @brief free network id table entries
- */
-static void
-free_network_id_table(ds_tree_t *nid_tree)
-{
-    struct network_id *next_netid;
-    struct network_id *cur_netid;
-
-    cur_netid = ds_tree_head(nid_tree);
-    while (cur_netid != NULL)
-    {
-        next_netid = ds_tree_next(nid_tree, cur_netid);
-        ds_tree_remove(nid_tree, cur_netid);
-        free_network_id_node(cur_netid);
-        cur_netid = next_netid;
-    }
-}
 
 /**
  * @brief fsm manager reset routine
@@ -260,7 +239,6 @@ fsm_reset_mgr(void)
         session = next;
     }
     free_str_tree(mgr->mqtt_headers);
-    free_network_id_table(&mgr->network_id_table);
 }
 
 
@@ -1270,73 +1248,6 @@ callback_AWLAN_Node(ovsdb_update_monitor_t *mon,
     if (mon->mon_type == OVSDB_UPDATE_MODIFY) fsm_get_awlan_headers(awlan);
 }
 
-
-/**
- * @brief registered callback for Openflow_Local_Tag events
- */
-static void
-callback_Openflow_Local_Tag(ovsdb_update_monitor_t *mon,
-                            struct schema_Openflow_Local_Tag *old_rec,
-                            struct schema_Openflow_Local_Tag *tag)
-{
-    if (mon->mon_type == OVSDB_UPDATE_NEW) {
-        om_local_tag_add_from_schema(tag);
-    }
-
-    if (mon->mon_type == OVSDB_UPDATE_DEL) {
-        om_local_tag_remove_from_schema(tag);
-    }
-
-    if (mon->mon_type == OVSDB_UPDATE_MODIFY) {
-        om_local_tag_update_from_schema(tag);
-    }
-}
-
-
-
-/**
- * @brief registered callback for Openflow_Tag events
- */
-static void
-callback_Openflow_Tag(ovsdb_update_monitor_t *mon,
-                      struct schema_Openflow_Tag *old_rec,
-                      struct schema_Openflow_Tag *tag)
-{
-    if (mon->mon_type == OVSDB_UPDATE_NEW) {
-        om_tag_add_from_schema(tag);
-    }
-
-    if (mon->mon_type == OVSDB_UPDATE_DEL) {
-        om_tag_remove_from_schema(old_rec);
-    }
-
-    if (mon->mon_type == OVSDB_UPDATE_MODIFY) {
-        om_tag_update_from_schema(tag);
-    }
-}
-
-
-/**
- * @brief registered callback for Openflow_Tag_Group events
- */
-static void
-callback_Openflow_Tag_Group(ovsdb_update_monitor_t *mon,
-                            struct schema_Openflow_Tag_Group *old_rec,
-                            struct schema_Openflow_Tag_Group *tag)
-{
-    if (mon->mon_type == OVSDB_UPDATE_NEW) {
-        om_tag_group_add_from_schema(tag);
-    }
-
-    if (mon->mon_type == OVSDB_UPDATE_DEL) {
-        om_tag_group_remove_from_schema(old_rec);
-    }
-
-    if (mon->mon_type == OVSDB_UPDATE_MODIFY) {
-        om_tag_group_update_from_schema(tag);
-    }
-}
-
 /**
  * @brief Upserts the Node_State ovsdb table entry for fsm's max mem limit
  *
@@ -1488,20 +1399,6 @@ callback_Node_Config(ovsdb_update_monitor_t *mon,
 
 
 /**
- * @brief registered callback for Network_Zone events
- */
-void
-callback_Network_Zone(ovsdb_update_monitor_t *mon,
-                      struct schema_Network_Zone *old,
-                      struct schema_Network_Zone *new)
-{
-    if (mon->mon_type == OVSDB_UPDATE_NEW) fsm_add_network_id(new);
-    if (mon->mon_type == OVSDB_UPDATE_DEL) fsm_del_network_id(old);
-    if (mon->mon_type == OVSDB_UPDATE_MODIFY) fsm_modify_network_id(new);
-}
-
-
-/**
  * @brief register ovsdb callback events
  */
 int
@@ -1519,16 +1416,14 @@ fsm_ovsdb_init(void)
     OVSDB_TABLE_INIT_NO_KEY(Openflow_Tag_Group);
     OVSDB_TABLE_INIT_NO_KEY(Node_Config);
     OVSDB_TABLE_INIT_NO_KEY(Node_State);
-    OVSDB_TABLE_INIT_NO_KEY(Network_Zone);
 
     // Initialize OVSDB monitor callbacks
     OVSDB_TABLE_MONITOR(AWLAN_Node, false);
     OVSDB_TABLE_MONITOR(Flow_Service_Manager_Config, false);
-    OVSDB_TABLE_MONITOR(Openflow_Tag, false);
-    OVSDB_TABLE_MONITOR(Openflow_Local_Tag, false);
-    OVSDB_TABLE_MONITOR(Openflow_Tag_Group, false);
+    om_standard_callback_openflow_tag(&table_Openflow_Tag);
+    om_standard_callback_openflow_local_tag(&table_Openflow_Local_Tag);
+    om_standard_callback_openflow_tag_group(&table_Openflow_Tag_Group);
     OVSDB_TABLE_MONITOR(Node_Config, false);
-    OVSDB_TABLE_MONITOR(Network_Zone, false);
 
     // Initialize the plugin loader routine
     mgr = fsm_get_mgr();
@@ -1536,6 +1431,7 @@ fsm_ovsdb_init(void)
     mgr->get_br = get_home_bridge;
     mgr->update_session_tap = fsm_update_session_tap;
     fsm_policy_init();
+    network_zone_init();
 
     // Advertize default memory limit usage
     snprintf(str_value, sizeof(str_value), "%" PRIu64 " kB", mgr->max_mem);

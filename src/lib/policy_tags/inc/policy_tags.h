@@ -33,6 +33,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "os.h"
 #include "ovsdb.h"
+#include "ovsdb_table.h"
 #include "ovsdb_update.h"
 #include "schema.h"
 #include "log.h"
@@ -223,5 +224,24 @@ om_tag_in(char *value, char *tag_name);
  */
 om_tag_t *
 om_tag_find(char *tag_name);
+
+/**
+ * @brief registers standard callback for OpenFlow_Tag table monitor
+ *
+ * Use this if you don't need to do anything more fancy.
+ */
+void om_standard_callback_openflow_tag(ovsdb_table_t *openflow_table);
+/**
+ * @brief registers standard callback for OpenFlow_Local_Tag table monitor
+ *
+ * Use this if you don't need to do anything more fancy.
+ */
+void om_standard_callback_openflow_local_tag(ovsdb_table_t *openflow_table);
+/**
+ * @brief registers standard callback for OpenFlow_Tag_Group table monitor
+ *
+ * Use this if you don't need to do anything more fancy.
+ */
+void om_standard_callback_openflow_tag_group(ovsdb_table_t *openflow_table);
 
 #endif /* POLICY_TAGS_H_INCLUDED */

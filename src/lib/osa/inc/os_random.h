@@ -36,4 +36,18 @@ os_random(void)
     return random();
 }
 
+static inline long int
+os_random_range(long int lower, long int upper)
+{
+    long int temp;
+    /* Swap lower and upper */
+    if (lower > upper) {
+        temp = lower;
+        lower = upper;
+        upper = temp;
+    }
+    os_random_seed(NULL);
+    return (random() % (upper - lower + 1)) + lower;
+}
+
 #endif /* OS_RANDOM_H_INCLUDED */

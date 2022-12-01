@@ -248,5 +248,15 @@ void json_memdbg_get_stats(size_t *total, size_t *count)
         *count = 0;
 }
 
+void json_memdbg_free(void *p)
+{
+    if (p == NULL)
+    {
+        LOG(ERR, "MEMDBG: attempted to free NULL pointer");
+        return;
+    }
+
+    FREE(p);
+}
 #endif
 

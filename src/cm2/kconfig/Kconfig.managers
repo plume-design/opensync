@@ -19,6 +19,12 @@ if MANAGER_CM
         help
             Use Wifi_Master_State table to manage WAN links
 
+    config CM2_ETH_WAN_INTERFACE_NAME
+        string "Use specific interface as WAN LINK"
+        default "UNDEFINED"
+        help
+            Use defined interface name as WAN link, used when have LTE backup enabled
+
     config CM2_USE_WIFI_BAND_PRIORITY
         bool "Set default uplink priority based on radio band"
         default n

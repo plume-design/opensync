@@ -484,48 +484,6 @@ callback_FCM_Filter(ovsdb_update_monitor_t *mon,
     }
 }
 
-void
-callback_Openflow_Tag(ovsdb_update_monitor_t *mon,
-                      struct schema_Openflow_Tag *old_rec,
-                      struct schema_Openflow_Tag *tag)
-{
-    if (mon->mon_type == OVSDB_UPDATE_NEW)
-    {
-        om_tag_add_from_schema(tag);
-    }
-
-    if (mon->mon_type == OVSDB_UPDATE_DEL)
-    {
-        om_tag_remove_from_schema(old_rec);
-    }
-
-    if (mon->mon_type == OVSDB_UPDATE_MODIFY)
-    {
-        om_tag_update_from_schema(tag);
-    }
-}
-
-void
-callback_Openflow_Tag_Group(ovsdb_update_monitor_t *mon,
-                            struct schema_Openflow_Tag_Group *old_rec,
-                            struct schema_Openflow_Tag_Group *tag)
-{
-    if (mon->mon_type == OVSDB_UPDATE_NEW)
-    {
-        om_tag_group_add_from_schema(tag);
-    }
-
-    if (mon->mon_type == OVSDB_UPDATE_DEL)
-    {
-        om_tag_group_remove_from_schema(old_rec);
-    }
-
-    if (mon->mon_type == OVSDB_UPDATE_MODIFY)
-    {
-        om_tag_group_update_from_schema(tag);
-    }
-}
-
 int
 table_name_compare(const void *a, const void *b)
 {
@@ -543,8 +501,8 @@ fcm_filter_ovsdb_init(void)
     OVSDB_TABLE_INIT_NO_KEY(Openflow_Tag_Group);
 
     OVSDB_TABLE_MONITOR(FCM_Filter, false);
-    OVSDB_TABLE_MONITOR(Openflow_Tag, false);
-    OVSDB_TABLE_MONITOR(Openflow_Tag_Group, false);
+    om_standard_callback_openflow_tag(&table_Openflow_Tag);
+    om_standard_callback_openflow_tag_group(&table_Openflow_Tag_Group);
 }
 
 void

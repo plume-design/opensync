@@ -228,14 +228,19 @@ bool target_vif_config_set3(const struct schema_Wifi_VIF_Config *vconf,
                             const struct schema_Wifi_Radio_Config *rconf,
                             const struct schema_Wifi_Credential_Config *cconfs,
                             const struct schema_Wifi_VIF_Config_flags *changed,
+                            const struct schema_Wifi_VIF_Neighbors *nbors_list,
                             const struct schema_RADIUS *radius_list,
-                            int num_radius_list,
-                            int num_cconfs)
+                            int num_cconfs,
+                            int num_nbors_list,
+                            int num_radius_list)
 {
+    (void) nbors_list;
     (void) radius_list;
+    (void) num_nbors_list;
     (void) num_radius_list;
-    /* If set3 not implemented - redirect call to target's set2 ignoring
-     * additional RADIUS parameters */
+
+    LOG_ONCE(NOTICE, "Target does not implement target_vif_config_set3. "
+                     "WPA2/3-Enterprise and Fast Transition won't work");
     return target_vif_config_set2(vconf, rconf, cconfs, changed, num_cconfs);
 }
 #endif

@@ -64,6 +64,16 @@ static const char* cm2_util_bool2str(bool v)
    return v ? "yes" : "no";
 }
 
+static void cm2_reset_restart_time(void)
+{
+    g_state.restart_timestamp = time_monotonic();
+}
+
+int cm2_get_restart_time(void)
+{
+    return time_monotonic() - g_state.restart_timestamp;
+}
+
 bool cm2_vtag_stability_check(void) {
     cm2_vtag_t *vtag = &g_state.link.vtag;
 
@@ -200,6 +210,11 @@ static void cm2_restore_connection(cm2_restore_con_t opt)
 
 static void cm2_stability_handle_fatal_state(int counter)
 {
+    // Resetting the restart timer when the counter starts incrementing
+    if (counter == 0) {
+        cm2_reset_restart_time();
+    }
+
     if (counter + 1 > CONFIG_CM2_STABILITY_THRESH_FATAL) {
         LOGW("Restart managers due to exceeding the threshold for fatal failures");
         cm2_tcpdump_stop(g_state.link.if_name);
@@ -237,6 +252,10 @@ cm2_util_set_ip_opts(const char *uname, const char *utype,
     } else {
         *opts &= ~IPV6_CHECK;
     }
+
+    if (ipv4 == CM2_UPLINK_INACTIVE ||
+        ipv6 == CM2_UPLINK_INACTIVE)
+        *opts |= FAST_CHECK;
 
     /* Skip Router checking for LTE interfaces */
     if (cm2_is_lte_type(utype)) {
@@ -486,7 +505,8 @@ static bool cm2_connection_req_stability_process(const char *if_name,
     if (opts & ROUTER_CHECK) {
         counter = 0;
         if (((opts & IPV4_CHECK) && (!cstate.router_ipv4_state)) ||
-            ((opts & IPV6_CHECK) && (!cstate.router_ipv6_state))) {
+            ((opts & IPV6_CHECK) && (!cstate.router_ipv6_state)) ||
+            (!(opts & IPV4_CHECK) && !(opts & IPV6_CHECK))) {
             counter =  con.unreachable_router_counter < 0 ? 1 : con.unreachable_router_counter + 1;
             LOGI("Detected broken Router. Counter = %d", counter);
             cm2_restore_switch_cfg_params(counter, CONFIG_CM2_STABILITY_THRESH_ROUTER + 2, &ropt);
@@ -521,7 +541,8 @@ static bool cm2_connection_req_stability_process(const char *if_name,
     if (opts & INTERNET_CHECK) {
         counter = 0;
         if (((opts & IPV4_CHECK) && (!cstate.internet_ipv4_state)) ||
-            ((opts & IPV6_CHECK) && (!cstate.internet_ipv6_state))) {
+            ((opts & IPV6_CHECK) && (!cstate.internet_ipv6_state)) ||
+            (!(opts & IPV4_CHECK) && !(opts & IPV6_CHECK))) {
             counter = con.unreachable_internet_counter < 0 ? 1 : con.unreachable_internet_counter + 1;
             LOGI("Detected broken Internet. Counter = %d", counter);
             cm2_restore_switch_cfg_params(counter, CONFIG_CM2_STABILITY_THRESH_INTERNET + 2, &ropt);
@@ -611,7 +632,7 @@ void cm2_util_req_stability_check_recalc(const char *uname,
         LOGD("stability: nothing to do anymore");
         return;
     }
-
+    cm2_util_set_ip_opts(uname, utype, &opts);
     pid = fork();
     if (pid < 0) {
         LOGW("stability: failed to fork() stability checks: %d", errno);
@@ -620,7 +641,6 @@ void cm2_util_req_stability_check_recalc(const char *uname,
 
     if (pid == 0) {
         target_connectivity_check_t cstate = {0};
-        cm2_util_set_ip_opts(uname, utype, &opts);
         bool ok = target_device_connectivity_check(clink, &cstate, opts);
         int mask = cm2_util_cstate2mask(ok, &cstate);
         exit(mask);
@@ -670,8 +690,10 @@ void cm2_util_req_stability_cb(EV_P_ ev_child *w, int revents)
 
     cm2_connection_req_stability_process(async_check->uname, opts, db_update, ok, &cstate);
     if (repeat && !ok) {
-        if (!g_state.connected && !db_update)
+        if (!g_state.connected) {
             db_update = true;
+            opts |= FAST_CHECK;
+        }
 
         cm2_util_req_stability_check_recalc(async_check->uname, async_check->utype,
                                             async_check->clink, opts, db_update, repeat);
@@ -736,10 +758,11 @@ static void cm2_connection_stability_check(void)
     if (uplinks)
         FREE(uplinks);
 
+    cnts = cm2_ovsdb_get_connection_uplinks(&uplinks, CM2_CONNECTION_REQ_ALL_ACTIVE_UPLINKS);
+
     if (g_state.stability_cnts > UPLINKS_CHECKING_ALL_THRESHOLD) {
         g_state.stability_cnts = 0;
         LOGI("Checking all links, p = %p", uplinks);
-        cnts = cm2_ovsdb_get_connection_uplinks(&uplinks, CM2_CONNECTION_REQ_ALL_ACTIVE_UPLINKS);
         uplink_i = uplinks;
         for (i = 0; i < cnts && uplink_i; i++, uplink_i++) {
             LOGI("Checking active link: %s", uplink_i->if_name);
@@ -760,6 +783,8 @@ static void cm2_connection_stability_check(void)
 
         if (g_state.connected)
             opts &= ~INTERNET_CHECK;
+        else if (cnts > 1)
+            opts |= FAST_CHECK;
 
         cm2_connection_req_stability_check_async(g_state.link.if_name, g_state.link.if_type, c_uplink, opts, true, false);
     }

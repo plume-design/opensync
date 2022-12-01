@@ -124,7 +124,9 @@ upnp_portmap_alloc_portmap(struct mapped_port_t *port)
 
     pb->duration = port->duration;
     if (pb->duration == 0)
-        pb->duration = -1; /* This represent "forever" */
+    {
+        pb->duration = -1;  /* -1 == "forever" */
+    }
 
     return pb;
 }

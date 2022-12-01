@@ -25,10 +25,16 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 /**
- * The code must be compiled with: -fasynchronous-unwind-tables -rdynamic to get the full benefits
- * of the backtrace library
+ * This library is GCC specific.
  *
- * This library is a GCC specific.
+ * To get the full benefits of the backtrace library, the code must be
+ * compiled with the following flags: `-fasynchronous-unwind-tables -rdynamic`
+ *
+ * Depending on optimization settings (and compiler version), option
+ * `-fomit-frame-pointer` may get set by default, which also affects stack
+ * dumps, potentially making them useless (be it in the backtrace library,
+ * or when examining coredump files). This can be reverted by explicitly
+ * adding flag `-fno-omit-frame-pointer`.
  */
 
 /* Need this to get dladdr() */

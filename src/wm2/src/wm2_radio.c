@@ -59,12 +59,22 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #define WM2_RECALC_DELAY_SECONDS            30
 #define WM2_DFS_FALLBACK_GRACE_PERIOD_SECONDS 10
+#define WM2_MAX_BSSID_LEN 18
+#define WM2_MAX_NAS_ID_LEN 49
+#define WM2_MAX_FT_KEY_LEN 65
+#define WM2_MAX_IP_ADDR_LEN 40
+#define WM2_MAX_RADIUS_SECRET_LEN 128
+#define WM2_MAX_RADIUS_KEY_LEN (WM2_MAX_IP_ADDR_LEN + 8)
+#define WM2_MAX_NBORS_KEY_LEN (WM2_MAX_BSSID_LEN + 4)
+#define WM2_DEFAULT_FT_KEY "8261b033613b35b373761cbde421250e67cd21d44737fe5e5deed61869b4b397"
+
 /* Support of more than 3 servers per VIF require extending
  * buffer used to print out MIB in hostapd. Otherwise State
  * don't report full list of configured RADIUS servers */
 #define WM2_AUTH_RADIUS_SUPPORTED_NUM 3
 #define WM2_ACC_RADIUS_SUPPORTED_NUM 3
 #define WM2_RADIUS_SUPPORTED_NUM (WM2_AUTH_RADIUS_SUPPORTED_NUM + WM2_ACC_RADIUS_SUPPORTED_NUM)
+#define WM2_FT_NEIGHBORS_SUPPORTED_NUM 24
 #define REQUIRE(ctx, cond) if (!(cond)) { LOGW("%s: %s: failed check: %s", ctx, __func__, #cond); return; }
 #define OVERRIDE(ctx, lv, rv) if (lv != rv) { lv = rv; LOGW("%s: overriding '%s' - this is target impl bug", ctx, #lv); }
 #define bitcount __builtin_popcount
@@ -89,10 +99,59 @@ struct wm2_delayed {
     char workname[256];
 };
 
+enum wm2_aux_type {
+    WM2_AUX_NEIGHBOR_CONFIG  = 0,
+    WM2_AUX_NEIGHBOR_STATE,
+    WM2_AUX_RADIUS_CONFIG,
+    WM2_AUX_RADIUS_STATE
+};
+
+struct wm2_aux_confstate {
+    char ifname[32];
+    enum wm2_aux_type type;
+    struct ds_tree_node node;
+    struct ds_tree tree;
+};
+
+enum wm2_nbors_type {
+    WM2_NBOR_R0KH = 0,
+    WM2_NBOR_R1KH
+};
+
+struct wm2_nbors_confstate {
+    char bssid[WM2_MAX_BSSID_LEN];
+    char nas_id[WM2_MAX_NAS_ID_LEN];
+    char ft_key[WM2_MAX_FT_KEY_LEN];
+    enum wm2_nbors_type type;
+    struct ds_tree_node node;
+};
+
+enum wm2_radius_type {
+    WM2_RADIUS_TYPE_A = 0,
+    WM2_RADIUS_TYPE_AA,
+    WM2_RADIUS_TYPE_UNKNOWN
+};
+
+struct wm2_radius_confstate {
+    char ip[WM2_MAX_IP_ADDR_LEN];
+    int port;
+    char secret[WM2_MAX_RADIUS_SECRET_LEN];
+    enum wm2_radius_type type;
+    struct ds_tree_node node;
+};
+
+static struct ds_tree g_aux[] = {
+    [WM2_AUX_NEIGHBOR_CONFIG] = DS_TREE_INIT(ds_str_cmp, struct wm2_aux_confstate, node),
+    [WM2_AUX_NEIGHBOR_STATE] = DS_TREE_INIT(ds_str_cmp, struct wm2_aux_confstate, node),
+    [WM2_AUX_RADIUS_CONFIG] = DS_TREE_INIT(ds_str_cmp, struct wm2_aux_confstate, node),
+    [WM2_AUX_RADIUS_STATE] = DS_TREE_INIT(ds_str_cmp, struct wm2_aux_confstate, node)
+};
+
 ovsdb_table_t table_Wifi_Radio_Config;
 ovsdb_table_t table_Wifi_Radio_State;
 ovsdb_table_t table_Wifi_VIF_Config;
 ovsdb_table_t table_Wifi_VIF_State;
+ovsdb_table_t table_Wifi_VIF_Neighbors;
 ovsdb_table_t table_Wifi_Credential_Config;
 ovsdb_table_t table_Wifi_Associated_Clients;
 ovsdb_table_t table_Wifi_Master_State;
@@ -571,8 +630,6 @@ wm2_vconf_changed(const struct schema_Wifi_VIF_Config *conf,
     CMP(CHANGED_INT, vif_radio_idx);
     CMP(CHANGED_INT, uapsd_enable);
     CMP(CHANGED_INT, group_rekey);
-    CMP(CHANGED_INT, ft_psk);
-    CMP(CHANGED_INT, ft_mobility_domain);
     CMP(CHANGED_INT, vlan_id);
     CMP(CHANGED_INT, wds);
     CMP(CHANGED_INT, rrm);
@@ -595,6 +652,10 @@ wm2_vconf_changed(const struct schema_Wifi_VIF_Config *conf,
     CMP(CHANGED_INT, wps_pbc);
     CMP(CHANGED_STR, wps_pbc_key_id);
     CMP(CHANGED_INT, wpa);
+    CMP(CHANGED_INT, wpa_pairwise_tkip);
+    CMP(CHANGED_INT, wpa_pairwise_ccmp);
+    CMP(CHANGED_INT, rsn_pairwise_tkip);
+    CMP(CHANGED_INT, rsn_pairwise_ccmp);
     /* The way wpa_key_mgmt is checked depends on VIF mode (STA or AP) */
     if (strcmp(conf->mode, "sta") == 0 && strcmp(conf->mode, state->mode) == 0)
         CMP(CHANGED_SUBSET, wpa_key_mgmt);
@@ -610,6 +671,16 @@ wm2_vconf_changed(const struct schema_Wifi_VIF_Config *conf,
     CMP(CHANGED_INT, min_rssi);
     CMP(CHANGED_INT, max_sta);
     CMP(CHANGED_STR, airtime_precedence);
+    CMP(CHANGED_STR, pmf);
+    CMP(CHANGED_INT, ft_psk);
+    CMP(CHANGED_INT, ft_mobility_domain);
+    CMP(CHANGED_INT, ft_over_ds);
+    CMP(CHANGED_INT, ft_pmk_r0_key_lifetime_sec);
+    CMP(CHANGED_INT, ft_pmk_r1_max_key_lifetime_sec);
+    CMP(CHANGED_INT, ft_pmk_r1_push);
+    CMP(CHANGED_INT, ft_psk_generate_local);
+    CMP(CHANGED_STR, nas_identifier);
+
     if (changed)
         LOGD("%s: changed (forced=%d)", conf->if_name, changedf->_uuid);
 
@@ -816,38 +887,251 @@ wm2_append_radius_by_uuid(const struct schema_Wifi_VIF_Config *vconf,
     return 0;
 }
 
+static bool
+wm2_vconf_key_mgmt_contains(const struct schema_Wifi_VIF_Config *vconf,
+                            const char *key_mgmt_part)
+{
+    int n = vconf->wpa_key_mgmt_len;
+
+    for (n--; n>=0; n--) {
+        if (strstr(vconf->wpa_key_mgmt[n], key_mgmt_part))
+            return true;
+    }
+    return false;
+}
+
+static enum wm2_radius_type
+wm2_radius_str2type(const char *str_type)
+{
+    if (!strcmp(str_type, "AA"))
+        return WM2_RADIUS_TYPE_AA;
+    if (!strcmp(str_type, "A"))
+        return WM2_RADIUS_TYPE_A;
+    return WM2_RADIUS_TYPE_UNKNOWN;
+}
+
+static int
+wm2_aux_radius_confstate_cmp(const void *a, const void *b)
+{
+    int ret;
+    const struct wm2_radius_confstate *ra = a;
+    const struct wm2_radius_confstate *rb = b;
+
+    if ((ret = ra->type - rb->type)    != 0) return ret;
+    if ((ret = strcmp(ra->ip, rb->ip)) != 0) return ret;
+    if ((ret = ra->port - rb->port)    != 0) return ret;
+    return strcmp(ra->secret, rb->secret);
+}
+
+static int
+wm2_aux_nbors_confstate_cmp(const void *a, const void *b)
+{
+    int ret;
+    const struct wm2_nbors_confstate *na = a;
+    const struct wm2_nbors_confstate *nb = b;
+
+    if ((ret = na->type - nb->type)              != 0) return ret;
+    if ((ret = strcasecmp(na->bssid, nb->bssid)) != 0) return ret;
+    if ((ret = strcmp(na->nas_id, nb->nas_id))   != 0) return ret;
+    return strcmp(na->ft_key, nb->ft_key);
+}
+
+static struct wm2_aux_confstate *
+wm2_aux_confstate_create(const char *ifname,
+                         enum wm2_aux_type type)
+{
+    struct wm2_aux_confstate *ptr;
+
+    ptr = CALLOC(1, sizeof(*ptr));
+    STRSCPY_WARN(ptr->ifname, ifname);
+    ptr->type = type;
+
+    switch (ptr->type) {
+        case WM2_AUX_NEIGHBOR_CONFIG:
+        case WM2_AUX_NEIGHBOR_STATE:
+            ds_tree_init(&ptr->tree, wm2_aux_nbors_confstate_cmp,
+                         struct wm2_nbors_confstate, node);
+            break;
+        case WM2_AUX_RADIUS_CONFIG:
+        case WM2_AUX_RADIUS_STATE:
+            ds_tree_init(&ptr->tree, wm2_aux_radius_confstate_cmp,
+                         struct wm2_radius_confstate, node);
+            break;
+    }
+    ds_tree_insert(&g_aux[type], ptr, ptr->ifname);
+    LOGD("%s: created aux config/state tree (%d)", ifname, type);
+
+    return ptr;
+}
+
+static void
+wm2_aux_confstate_subtree_free(struct wm2_aux_confstate *cs)
+{
+    void *ptr;
+
+    while ((ptr = ds_tree_remove_head(&cs->tree)) != NULL)
+        FREE(ptr);
+}
+
+static void
+wm2_aux_confstate_gc_spec(enum wm2_aux_type type)
+{
+    struct wm2_aux_confstate *cs;
+    struct wm2_aux_confstate *tmp;
+    struct ds_tree *tree = &g_aux[type];
+
+    ds_tree_foreach_safe(tree, cs, tmp) {
+        if (ds_tree_is_empty(&cs->tree)) {
+            ds_tree_remove(tree, cs);
+            FREE(cs);
+        }
+    }
+}
+
+static void
+wm2_aux_confstate_gc(void)
+{
+    wm2_aux_confstate_gc_spec(WM2_AUX_NEIGHBOR_CONFIG);
+    wm2_aux_confstate_gc_spec(WM2_AUX_NEIGHBOR_STATE);
+    wm2_aux_confstate_gc_spec(WM2_AUX_RADIUS_CONFIG);
+    wm2_aux_confstate_gc_spec(WM2_AUX_RADIUS_STATE);
+}
+
+static struct wm2_aux_confstate *
+wm2_aux_confstate_lookup(const char *ifname,
+                         enum wm2_aux_type type)
+{
+    struct wm2_aux_confstate *i;
+
+    if ((i = ds_tree_find(&g_aux[type], ifname)) != NULL)
+        return i;
+
+    return wm2_aux_confstate_create(ifname, type);
+
+}
+
+static void
+wm2_aux_radius_confstate_add(struct ds_tree *tree,
+                             const char *ip,
+                             const int port,
+                             const char *secret,
+                             enum wm2_radius_type type)
+{
+    struct wm2_radius_confstate *rad;
+
+    rad = CALLOC(1, sizeof(*rad));
+    STRSCPY_WARN(rad->ip, ip);
+    STRSCPY_WARN(rad->secret, secret);
+    rad->port = port;
+    rad->type = type;
+
+    ds_tree_insert(tree, rad, rad);
+}
+
+static void
+wm2_aux_nbors_confstate_add(struct ds_tree *tree,
+                            const char *bssid,
+                            const char *nas_id,
+                            const char *ft_key,
+                            enum wm2_nbors_type type)
+{
+    struct wm2_nbors_confstate *nbor;
+
+    nbor = CALLOC(1, sizeof(*nbor));
+    STRSCPY_WARN(nbor->bssid, bssid);
+    STRSCPY_WARN(nbor->nas_id, nas_id);
+    STRSCPY_WARN(nbor->ft_key, ft_key);
+    nbor->type = type;
+
+    ds_tree_insert(tree, nbor, nbor);
+}
+
+static bool
+wm2_radius_config_changed(const char *ifname)
+{
+    struct wm2_aux_confstate *a, *b;
+    struct wm2_radius_confstate *ra, *rb;
+
+    /* Lookup will always return non-NULL */
+    a = wm2_aux_confstate_lookup(ifname, WM2_AUX_RADIUS_CONFIG);
+    b = wm2_aux_confstate_lookup(ifname, WM2_AUX_RADIUS_STATE);
+
+    ds_tree_foreach(&a->tree, ra) {
+        if (!ds_tree_find(&b->tree, ra))
+            return true;
+    }
+    ds_tree_foreach(&b->tree, rb) {
+        if (!ds_tree_find(&a->tree, rb))
+            return true;
+    }
+    return false;
+}
+
+static bool
+wm2_nbors_config_changed(const char *ifname)
+{
+    struct wm2_aux_confstate *a, *b;
+    struct wm2_nbors_confstate *na, *nb;
+
+    /* Lookup will always return non-NULL */
+    a = wm2_aux_confstate_lookup(ifname, WM2_AUX_NEIGHBOR_CONFIG);
+    b = wm2_aux_confstate_lookup(ifname, WM2_AUX_NEIGHBOR_STATE);
+
+    ds_tree_foreach(&a->tree, na) {
+        if (!ds_tree_find(&b->tree, na))
+            return true;
+    }
+    ds_tree_foreach(&b->tree, nb) {
+        if (!ds_tree_find(&a->tree, nb))
+            return true;
+    }
+    return false;
+}
+
 static int
 wm2_radius_get(const struct schema_Wifi_VIF_Config *vconf,
                struct schema_RADIUS *radius_list,
                int size)
 {
-    int i, n = 0;
+    int i;
+    int n = 0;
+    struct wm2_aux_confstate *config;
+    struct ds_tree *tree;
 
     memset(radius_list, 0, sizeof(*radius_list) * size);
 
     if (!vconf->primary_radius_exists) {
         LOGD("%s: primary RADIUS does not exist. "
-             "Skip RADIUS configuration", vconf->if_name);
+             "skip RADIUS configuration", vconf->if_name);
         return 0;
     }
+
+    config = wm2_aux_confstate_lookup(vconf->if_name, WM2_AUX_RADIUS_CONFIG);
+    tree = &config->tree;
+    wm2_aux_confstate_subtree_free(config);
 
     /* primary RADIUS server */
     if (wm2_append_radius_by_uuid(vconf, radius_list, vconf->primary_radius.uuid)) {
         LOGW("%s: resolving primary RADIUS server failed", vconf->if_name);
-        return 0;
+        goto trunc;
     }
+
+    wm2_aux_radius_confstate_add(tree, radius_list->ip_addr, radius_list->port,
+                                 radius_list->secret, wm2_radius_str2type(radius_list->type));
     radius_list++, size--, n++;
 
     /* secondary RADIUS servers (list) */
     for (i = 0; i < vconf->secondary_radius_len && size > 0; i++) {
         if (wm2_append_radius_by_uuid(vconf, radius_list, vconf->secondary_radius[i].uuid))
             continue;
+        wm2_aux_radius_confstate_add(tree, radius_list->ip_addr, radius_list->port,
+                                     radius_list->secret, wm2_radius_str2type(radius_list->type));
         radius_list++, size--, n++;
     }
 
     if (!vconf->primary_accounting_exists) {
         LOGI("%s: accounting RADIUS servers not configured", vconf->if_name);
-        return n;
+        goto trunc;
     }
 
     if (size < 1)
@@ -858,12 +1142,16 @@ wm2_radius_get(const struct schema_Wifi_VIF_Config *vconf,
         LOGW("%s: resolving primary RADIUS accounting server failed",
                 vconf->if_name);
     }
+    wm2_aux_radius_confstate_add(tree, radius_list->ip_addr, radius_list->port,
+                                 radius_list->secret, wm2_radius_str2type(radius_list->type));
     radius_list++, size--, n++;
 
     /* secondary RADIUS accounting servers (list) */
     for (i = 0; i < vconf->secondary_accounting_len && size > 0; i++) {
         if (wm2_append_radius_by_uuid(vconf, radius_list, vconf->secondary_accounting[i].uuid))
             continue;
+        wm2_aux_radius_confstate_add(tree, radius_list->ip_addr, radius_list->port,
+                                     radius_list->secret, wm2_radius_str2type(radius_list->type));
         radius_list++, size--, n++;
     }
 
@@ -878,6 +1166,73 @@ trunc:
     return n;
 }
 
+static int
+wm2_neighbors_get(struct schema_Wifi_VIF_Config *vconf,
+                  struct schema_Wifi_VIF_Neighbors *nbors_list,
+                  int max_size)
+{
+    struct schema_Wifi_VIF_Neighbors *ovs_nbors;
+    struct schema_Wifi_VIF_Neighbors *nbor;
+    struct schema_Wifi_VIF_State *vifstate;
+    struct wm2_aux_confstate *config;
+    struct ds_tree *tree;
+    int n, count = 0;
+    json_t *where;
+
+    /* Skip configuring Neighbors on non-ft enabled interfaces */
+    if (!wm2_vconf_key_mgmt_contains(vconf, "ft-"))
+        return 0;
+
+    memset(nbors_list, 0, sizeof(*nbors_list) * max_size);
+    config = wm2_aux_confstate_lookup(vconf->if_name, WM2_AUX_NEIGHBOR_CONFIG);
+    tree = &config->tree;
+    wm2_aux_confstate_subtree_free(config);
+
+    if ((ovs_nbors = ovsdb_table_select_where(&table_Wifi_VIF_Neighbors, NULL, &n))) {
+        for (nbor = ovs_nbors; n > 0 && count < max_size; n--, nbor++) {
+            /* The current implementation assumes controller is not aware of the new
+             * 'ft_enabled' field in VIF_Neighbors table. It then adds all neighboring
+             * access points to the RxKH list. When controller implements this feature
+             * the list of RxKHs will be limitted to only required APs */
+            if ((nbor->ft_enabled_exists && nbor->ft_enabled == true) ||
+                !nbor->ft_enabled_exists) {
+                memcpy(nbors_list, nbor, sizeof(*nbor));
+                wm2_aux_nbors_confstate_add(tree, nbor->bssid, nbor->nas_identifier_exists ?
+                                            nbor->nas_identifier : nbor->bssid, nbor->ft_encr_key_exists ?
+                                            nbor->ft_encr_key : WM2_DEFAULT_FT_KEY, WM2_NBOR_R0KH);
+
+                /* Put duplicated entries for R1KHs. nas_identifier is obsolete. */
+                wm2_aux_nbors_confstate_add(tree, nbor->bssid, nbor->bssid, nbor->ft_encr_key_exists ?
+                                            nbor->ft_encr_key : WM2_DEFAULT_FT_KEY, WM2_NBOR_R1KH);
+                nbors_list++; count++;
+            }
+        }
+        FREE(ovs_nbors);
+    }
+
+    /* Add local interfaces, even 'this' */
+    if ((where = ovsdb_where_simple(SCHEMA_COLUMN(Wifi_VIF_State, ssid), vconf->ssid))) {
+        if ((vifstate = ovsdb_table_select_where(&table_Wifi_VIF_State, where, &n))) {
+            for (n--; n>=0 && count<max_size; n--) {
+                SCHEMA_SET_STR(nbors_list->bssid, vifstate[n].mac);
+                SCHEMA_SET_STR(nbors_list->nas_identifier, vifstate[n].nas_identifier_exists ?
+                               vifstate[n].nas_identifier : vifstate[n].mac);
+                SCHEMA_SET_STR(nbors_list->ft_encr_key, vifstate[n].ft_encr_key_exists ?
+                               vifstate[n].ft_encr_key : WM2_DEFAULT_FT_KEY);
+
+                wm2_aux_nbors_confstate_add(tree, nbors_list->bssid, nbors_list->nas_identifier,
+                                            nbors_list->ft_encr_key, WM2_NBOR_R0KH);
+                /* Put duplicated entries for R1KHs */
+                wm2_aux_nbors_confstate_add(tree, nbors_list->bssid, nbors_list->bssid,
+                                            nbors_list->ft_encr_key, WM2_NBOR_R1KH);
+                nbors_list++, count++;
+            }
+            FREE(vifstate);
+        }
+    }
+
+    return count;
+}
 
 static bool
 wm2_vstate_sta_is_connected(const char *ifname)
@@ -1044,9 +1399,14 @@ wm2_vconf_recalc(const char *ifname, bool force)
     struct schema_Wifi_VIF_State vstate;
     struct schema_Wifi_Credential_Config cconfs[8];
     struct schema_Wifi_VIF_Config_flags vchanged;
+    struct schema_Wifi_VIF_Neighbors nbors_list[WM2_FT_NEIGHBORS_SUPPORTED_NUM];
     struct schema_RADIUS radius_list[WM2_RADIUS_SUPPORTED_NUM];
-    int num_radius_list;
     int num_cconfs;
+    int num_nbors_list = 0;
+    int num_radius_list = 0;
+    bool changed = false;
+    bool ft_enabled;
+    bool eap_enabled;
     bool dpp_enabled;
     bool want;
     bool has;
@@ -1144,8 +1504,15 @@ wm2_vconf_recalc(const char *ifname, bool force)
     }
 #endif
 
+    wm2_aux_confstate_gc();
+
     num_cconfs = wm2_cconf_get(&vconf, cconfs, sizeof(cconfs)/sizeof(cconfs[0]));
-    num_radius_list = wm2_radius_get(&vconf, radius_list, sizeof(radius_list)/sizeof(radius_list[0]));
+
+    if ((ft_enabled = wm2_vconf_key_mgmt_contains(&vconf, "ft-")))
+        num_nbors_list = wm2_neighbors_get(&vconf, nbors_list, ARRAY_SIZE(nbors_list));
+
+    if ((eap_enabled = wm2_vconf_key_mgmt_contains(&vconf, "-eap")))
+        num_radius_list = wm2_radius_get(&vconf, radius_list, ARRAY_SIZE(radius_list));
 
     if (has && strlen(SCHEMA_KEY_VAL(vconf.security, "key")) < 8 && !vconf.wpa_exists && !strcmp(vconf.mode, "sta")) {
         LOGD("%s: overriding 'ssid' and 'security' for onboarding", ifname);
@@ -1192,7 +1559,13 @@ wm2_vconf_recalc(const char *ifname, bool force)
         return;
     }
 
-    if (!wm2_vconf_changed(&vconf, &vstate, &vchanged) && !force)
+    /* Compare config with state to see if vif requires recalc */
+    changed |= wm2_vconf_changed(&vconf, &vstate, &vchanged);
+    changed |= (eap_enabled && wm2_radius_config_changed(ifname));
+    changed |= (ft_enabled && wm2_nbors_config_changed(ifname));
+    changed |= force;
+    /* In case nothing has changed - simply return */
+    if (changed == false)
         return;
 
     wm2_rconf_recalc_fixup_channel(&rconf, &rstate);
@@ -1221,7 +1594,8 @@ wm2_vconf_recalc(const char *ifname, bool force)
         TELOG_STA_ROAM(&vconf, num_cconfs);
 
     if (!wm2_target_vif_config_set3(&vconf, &rconf, cconfs, &vchanged,
-                                    radius_list, num_radius_list, num_cconfs)) {
+                                    nbors_list, radius_list, num_cconfs,
+                                    num_nbors_list, num_radius_list)) {
         LOGW("%s: failed to configure, will retry later", ifname);
         wm2_delayed_recalc(wm2_vconf_recalc, ifname);
         return;
@@ -1306,80 +1680,129 @@ wm2_rconf_init_del(struct schema_Wifi_Radio_Config *rconf, const char *ifname)
     rconf->enabled_exists = true;
 }
 
+static int
+wm2_rstate_clip_chwidth(const struct schema_Wifi_Radio_State *rstate,
+                        int channel,
+                        const char *ht_mode)
+{
+    const char *width_str = strpbrk(ht_mode, "1234567890");
+    int orig_width = atoi(width_str);
+    int width = orig_width;
+    int i;
+
+    LOGD("%s: dfs: nol: clipping: %d %s -> %d %s",
+         rstate->if_name,
+         rstate->channel, rstate->ht_mode,
+         channel, ht_mode);
+
+    for (;;) {
+        const int *chans = unii_5g_chan2list(channel, width);
+        if (chans == NULL) {
+            LOGI("%s: dfs: nol: %d %s: cannot be used at any width",
+                 rstate->if_name, channel, ht_mode);
+            return 0;
+        }
+
+        bool usable = true;
+        int j;
+        for (i = 0; chans[i]; i++) {
+            for (j = 0; j < rstate->channels_len; j++) {
+                if (atoi(rstate->channels_keys[j]) == chans[i]) break;
+            }
+            const bool found = (j < rstate->channels_len);
+            const bool blocked = found && (strstr(rstate->channels[j], "nop_started") != NULL);
+
+            if (found == false) {
+                LOGI("%s: dfs: nol: %d %s: at HT%d: channel: %d not supported",
+                     rstate->if_name, channel, ht_mode, width, chans[i]);
+                usable = false;
+                break;
+            }
+
+            if (blocked == true) {
+                LOGI("%s: dfs: nol: %d %s: at HT%d: channel %d: radar blocked",
+                     rstate->if_name, channel, ht_mode, width, chans[i]);
+                usable = false;
+                break;
+            }
+        }
+
+        if (usable == true) {
+            break;
+        }
+
+        LOGD("%s: dfs: nol: %d %s: considering HT%d",
+             rstate->if_name, channel, ht_mode, width);
+
+        width /= 2;
+    }
+
+    if (width < orig_width) {
+        LOGI("%s: dfs: nol: %d %s: downgraded to HT%d",
+             rstate->if_name, channel, ht_mode, width);
+    }
+
+    return width;
+}
+
 void
 wm2_rconf_recalc_fixup_nop_channel(struct schema_Wifi_Radio_Config *rconf,
                                    const struct schema_Wifi_Radio_State *rstate)
 {
-    struct schema_Wifi_Radio_Config_flags rchanged;
-    const char *width_str = strpbrk(rconf->ht_mode, "1234567890");
-    const int *chans;
-    int width;
-    int i;
-    int j;
+    const char *band_5g = SCHEMA_CONSTS_RADIO_TYPE_STR_5G;
+    const char *band_5gl = SCHEMA_CONSTS_RADIO_TYPE_STR_5GL;
+    const char *band_5gu = SCHEMA_CONSTS_RADIO_TYPE_STR_5GU;
+    const bool is_5ghz = (strcmp(rconf->freq_band, band_5g) == 0)
+                      || (strcmp(rconf->freq_band, band_5gl) == 0)
+                      || (strcmp(rconf->freq_band, band_5gu) == 0);
+    const bool is_not_5ghz = !is_5ghz;
+
+    /* FIXME: This function could be extended to support
+     * other bands as well to simply handle "unsupported
+     * channels". That'll require wm2_rstate_clip_chwidth()
+     * to fix call to unii_5g_chan2list().
+     */
+    if (is_not_5ghz)
+        return;
 
     if (rstate->channels_len == 0)
         return;
-    /* After RADAR hit channel is not available because of NOP */
-    if (!rconf->channel_exists)
-        return;
-    if (!rstate->channel_exists)
-        return;
-    if (!wm2_rconf_changed(rconf, rstate, &rchanged))
-        return;
-    if (!rchanged.channel)
+
+    const char *desired_ht_mode = rconf->ht_mode_exists
+                                ? rconf->ht_mode
+                                : (rstate->ht_mode_exists
+                                   ? rstate->ht_mode
+                                   : NULL);
+    const bool no_desired_ht_mode = (desired_ht_mode == NULL);
+    if (no_desired_ht_mode)
         return;
 
-    for (i = 0; i < rstate->channels_len; i++) {
-        if (strstr(rstate->channels[i], "nop_started") == NULL)
-            continue;
-
-        width = atoi(width_str);
-        while ((chans = unii_5g_chan2list(rconf->channel, width)) != NULL) {
-            for (j = 0; chans[j]; j++)
-                if (atoi(rstate->channels_keys[i]) == chans[j])
-                    break;
-
-            if (chans[j] == 0)
-                break;
-
-            LOGD("%s: dfs: nol: channel %d unavailable for %d HT%d",
-                 rconf->if_name, chans[j], rconf->channel, width);
-            width /= 2;
+    if (rconf->channel_exists) {
+        const int new_width = wm2_rstate_clip_chwidth(rstate, rconf->channel, desired_ht_mode);
+        if (new_width > 0) {
+            const char *ht_mode = strfmta("HT%d", new_width);
+            SCHEMA_SET_STR(rconf->ht_mode, ht_mode);
+            return;
         }
-
-        if (chans) {
-            LOGI("%s: dfs: nol: downgrading ht_mode %s -> HT%d",
-                 rconf->if_name, rconf->ht_mode, width);
-            STRSCPY_WARN(rconf->ht_mode, strfmta("HT%d", width));
-            break;
-        }
-
-        LOGI("%s: dfs: nol: ignoring channel %d, staying on %d %s",
-             rconf->if_name, rconf->channel, rstate->channel, rstate->ht_mode);
-        rconf->channel = rstate->channel;
-        STRSCPY_WARN(rconf->ht_mode, rstate->ht_mode);
-        break;
     }
 
-    width = atoi(width_str);
-    while ((chans = unii_5g_chan2list(rconf->channel, width)) != NULL) {
-        for (i = 0; chans[i]; i++) {
-            for (j = 0; j < rstate->channels_len; j++)
-                if (atoi(rstate->channels_keys[j]) == chans[i])
-                    break;
-
-            if (j == rstate->channels_len)  /* 20 MHz hunk unavailable */
-                break;
+    if (rstate->channel_exists) {
+        const int new_width = wm2_rstate_clip_chwidth(rstate, rstate->channel, desired_ht_mode);
+        if (new_width > 0) {
+            const char *ht_mode = strfmta("HT%d", new_width);
+            LOGI("%s: dfs: nol: staying on current channel: %d %s",
+                 rstate->if_name,
+                 rstate->channel,
+                 ht_mode);
+            SCHEMA_SET_INT(rconf->channel, rstate->channel);
+            SCHEMA_SET_STR(rconf->ht_mode, ht_mode);
+            return;
         }
-
-        if (chans[i] == 0)  /* all 20 MHz hunks available */
-            break;
-
-        LOGI("%s: dfs: nol: channel %d HT%d unavailable, downgrading to HT%d",
-                rconf->if_name, rconf->channel, width, width / 2);
-        width /= 2;
-        STRSCPY_WARN(rconf->ht_mode, strfmta("HT%d", width));
     }
+
+    LOGI("%s: dfs: nol: no channel available", rstate->if_name);
+    SCHEMA_CPY_INT(rconf->channel, rstate->channel);
+    SCHEMA_CPY_STR(rconf->ht_mode, rstate->ht_mode);
 }
 
 static void
@@ -1810,9 +2233,12 @@ wm2_op_radius_state(const struct schema_RADIUS *radius_list,
                     const char *vif)
 {
     struct schema_Wifi_VIF_State vstate;
+    struct wm2_aux_confstate *state;
+    struct ds_tree *tree;
+    enum wm2_radius_type type;
     int i, n_auth = 0, n_acc = 0;
-    json_t *where;
     ovs_uuid_t uuid;
+    json_t *where;
 
     if (!vif || (strlen(vif) == 0) || (num == 0))
         return;
@@ -1827,18 +2253,26 @@ wm2_op_radius_state(const struct schema_RADIUS *radius_list,
         return;
     }
 
+    state = wm2_aux_confstate_lookup(vif, WM2_AUX_RADIUS_STATE);
+    tree = &state->tree;
+    wm2_aux_confstate_subtree_free(state);
+
     for (i = 0; (i<num) && (i<WM2_RADIUS_SUPPORTED_NUM); i++) {
+        /* Add all returned radiuses to state table, even ones not
+         * resolved in ovsdb. (especially those). type field is
+         * required if cloud wants to change places of secondary
+         * and primary servers */
+        type = wm2_radius_str2type(radius_list[i].type);
+        wm2_aux_radius_confstate_add(tree,
+                                     radius_list[i].ip_addr,
+                                     radius_list[i].port,
+                                     radius_list[i].secret,
+                                     type);
         if (wm2_resolve_radius_uuid_from_params(&uuid,
                                                 radius_list[i].ip_addr,
                                                 radius_list[i].port,
                                                 radius_list[i].type)) {
-            /* To enter this section a requirement is put, that the RADIUS
-             * table entry must exist. This can be a faulty assumption on
-             * 3rd party gateways. Therefore this section needs slight
-             * redesign in the future, before releasing official OS to the
-             * public, so that non-existing, but configured, RADIUSes are
-             * handled properly. */
-            if ((!strcmp(radius_list[i].type, "AA")) &&
+            if ((type == WM2_RADIUS_TYPE_AA) &&
                 (n_auth < WM2_AUTH_RADIUS_SUPPORTED_NUM)) {
                 if (n_auth == 0) {
                     SCHEMA_SET_UUID(vstate.primary_radius, uuid.uuid);
@@ -1849,7 +2283,7 @@ wm2_op_radius_state(const struct schema_RADIUS *radius_list,
                 n_auth++;
             }
 
-            if ((!strcmp(radius_list[i].type, "A")) &&
+            if ((type == WM2_RADIUS_TYPE_A) &&
                 (n_acc < WM2_ACC_RADIUS_SUPPORTED_NUM)) {
                 if (n_acc == 0) {
                     SCHEMA_SET_UUID(vstate.primary_accounting, uuid.uuid);
@@ -1866,6 +2300,35 @@ wm2_op_radius_state(const struct schema_RADIUS *radius_list,
         WARN_ON(!ovsdb_table_update(&table_Wifi_VIF_State, &vstate));
 }
 
+void
+wm2_op_nbors_state(const struct schema_Wifi_VIF_Neighbors *nbors_list,
+                   int num_nbors_list,
+                   const char *vif)
+{
+    int i;
+    struct wm2_aux_confstate *state;
+    struct ds_tree *tree;
+
+    if (num_nbors_list == 0)
+        return;
+
+    state = wm2_aux_confstate_lookup(vif, WM2_AUX_NEIGHBOR_STATE);
+    tree = &state->tree;
+    wm2_aux_confstate_subtree_free(state);
+
+    for (i = 0; i<num_nbors_list && i<WM2_FT_NEIGHBORS_SUPPORTED_NUM; i++) {
+        wm2_aux_nbors_confstate_add(tree, nbors_list[i].bssid,
+                                    nbors_list[i].nas_identifier,
+                                    nbors_list[i].ft_encr_key,
+                                    WM2_NBOR_R0KH);
+
+        wm2_aux_nbors_confstate_add(tree, nbors_list[i].bssid,
+                                    nbors_list[i].bssid,
+                                    nbors_list[i].ft_encr_key,
+                                    WM2_NBOR_R1KH);
+    }
+}
+
 static const struct target_radio_ops rops = {
     .op_vconf = wm2_op_vconf,
     .op_rconf = wm2_op_rconf,
@@ -1875,6 +2338,7 @@ static const struct target_radio_ops rops = {
     .op_clients = wm2_op_clients,
     .op_flush_clients = wm2_op_flush_clients,
     .op_radius_state = wm2_op_radius_state,
+    .op_nbors_state = wm2_op_nbors_state,
     .op_dpp_announcement = wm2_dpp_op_announcement,
     .op_dpp_conf_enrollee = wm2_dpp_op_conf_enrollee,
     .op_dpp_conf_network = wm2_dpp_op_conf_network,
@@ -1899,6 +2363,41 @@ callback_Wifi_VIF_Config(
 {
     LOGD("%s: ovsdb updated", vconf->if_name);
     wm2_vconf_recalc(vconf->if_name, false);
+}
+
+/* Forward declaration */
+static void
+wm2_radio_config_bump(void);
+
+static void
+callback_Wifi_VIF_Neighbors(
+        ovsdb_update_monitor_t *mon,
+        struct schema_Wifi_VIF_Neighbors *old_rec,
+        struct schema_Wifi_VIF_Neighbors *nbors)
+{
+    struct schema_Wifi_VIF_Config *ovs_vconfs;
+    struct schema_Wifi_VIF_Config *vconf;
+    int n;
+
+    switch (mon->mon_type) {
+        default:
+        case OVSDB_UPDATE_ERROR:
+            LOGW("%s: mon upd error: %d", __func__, mon->mon_type);
+            return;
+        case OVSDB_UPDATE_DEL:
+        case OVSDB_UPDATE_NEW:
+        case OVSDB_UPDATE_MODIFY:
+            if ((ovs_vconfs = ovsdb_table_select_where(&table_Wifi_VIF_Config, NULL, &n))) {
+                for (vconf = ovs_vconfs; vconf && n > 0; vconf++, n-- ) {
+                    if (wm2_vconf_key_mgmt_contains(vconf, "ft-")) {
+                        LOGD("Interface to update Neighbors: %s", vconf->if_name);
+                        wm2_vconf_recalc(vconf->if_name, false);
+                    }
+                }
+                FREE(ovs_vconfs);
+            }
+            break;
+    }
 }
 
 static void
@@ -1987,6 +2486,7 @@ wm2_radio_init_kickoff(void)
         ovsdb_table_delete_where(&table_Wifi_Radio_State, json_array());
         ovsdb_table_delete_where(&table_Wifi_VIF_Config, json_array());
         ovsdb_table_delete_where(&table_Wifi_VIF_State, json_array());
+        ovsdb_table_delete_where(&table_Wifi_VIF_Neighbors, json_array());
         ovsdb_table_delete_where(&table_RADIUS, json_array());
         if (!wm2_target_radio_config_init2()) {
             LOGE("Failed to initialize radio");
@@ -2050,6 +2550,7 @@ wm2_radio_init(void)
     OVSDB_TABLE_INIT(Wifi_VIF_State, if_name);
     OVSDB_TABLE_INIT(Wifi_Credential_Config, _uuid);
     OVSDB_TABLE_INIT(Wifi_Associated_Clients, _uuid);
+    OVSDB_TABLE_INIT(Wifi_VIF_Neighbors, _uuid);
     OVSDB_TABLE_INIT(Wifi_Master_State, if_name);
     OVSDB_TABLE_INIT(Openflow_Tag, name);
     OVSDB_TABLE_INIT(RADIUS, _uuid);
@@ -2065,6 +2566,7 @@ wm2_radio_init(void)
     OVSDB_TABLE_MONITOR(Wifi_Radio_Config, true);
     OVSDB_TABLE_MONITOR(Wifi_VIF_Config, true);
     OVSDB_TABLE_MONITOR(RADIUS, true);
+    OVSDB_TABLE_MONITOR(Wifi_VIF_Neighbors, true);
 
     return 0;
 }

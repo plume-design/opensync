@@ -41,9 +41,11 @@ bool wm2_dummy_target_vif_config_set3(const struct schema_Wifi_VIF_Config *vconf
                                       const struct schema_Wifi_Radio_Config *rconf,
                                       const struct schema_Wifi_Credential_Config *cconfs,
                                       const struct schema_Wifi_VIF_Config_flags *changed,
+                                      const struct schema_Wifi_VIF_Neighbors *nbors_list,
                                       const struct schema_RADIUS *radius_list,
-                                      int num_radius_list,
-                                      int num_cconfs);
+                                      int num_cconfs,
+                                      int num_nbors_list,
+                                      int num_radius_list);
 bool wm2_dummy_target_dpp_supported(void);
 bool wm2_dummy_target_dpp_config_set(const struct schema_DPP_Config **config);
 bool wm2_dummy_target_dpp_key_get(struct target_dpp_key *key);

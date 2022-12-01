@@ -25,7 +25,7 @@
 # FIXME: Normally one expects headers go to $(PREFIX)/include, eg.
 # /usr/include or /usr/local/include. The current $(INSTALL_PREFIX) defaults to
 # /usr/opensync which would place headers in an awkward place as far as most
-# packaging systems are concerned causing all sorts of unwanted behaviours
+# packaging systems are concerned causing all sorts of unwanted behaviors
 # (like storing headers files on an embedded target rootfs image). This is
 # hardcoding /usr as a prefix for now. Once a standard approach using PREFIX /
 # DESTDIR is worked in or header categories in unit definitions become well

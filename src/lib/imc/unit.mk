@@ -40,11 +40,13 @@ else
 endif
 
 UNIT_SRC := src/imc.c
+$(eval $(if $(CONFIG_IMC_ZMQ),      UNIT_SRC += src/imc_zmq.c))
+$(eval $(if $(CONFIG_IMC_SOCKETS),  UNIT_SRC += src/imc_sockets.c))
 
 UNIT_CFLAGS := -I$(UNIT_PATH)/inc
 
-UNIT_LDFLAGS := -lev -lzmq
-
+UNIT_LDFLAGS := -lev
+$(eval $(if $(CONFIG_IMC_ZMQ),      UNIT_LDFLAGS += -lzmq))
 UNIT_EXPORT_CFLAGS := $(UNIT_CFLAGS)
 UNIT_EXPORT_LDFLAGS := $(UNIT_LDFLAGS)
 

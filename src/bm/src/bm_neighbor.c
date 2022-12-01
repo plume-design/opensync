@@ -125,6 +125,16 @@ bm_neighbor_get_radio_type(const struct schema_Wifi_VIF_Neighbors *neigh)
     if (bm_group_find_by_ifname(neigh->if_name))
         return bm_group_find_radio_type_by_ifname(neigh->if_name);
 
+    /*
+     * If there's no VIF called "neigh->ifname" it's most probably the case
+     * when pod has 5 GHz VAP on 5GU, but controller filled WIF_VIF_Neighbors
+     * with 5GL VAP name. In such case infer radio type from channel.
+     *
+     * Check at least whether channel can be a valid 5 GHz band channel.
+     */
+    if (neigh->channel >= 36 && neigh->channel <= 181)
+        return RADIO_TYPE_5G;
+
     LOGW("%s: Cannot infer radio type for vifname", neigh->if_name);
     return RADIO_TYPE_NONE;
 }

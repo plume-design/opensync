@@ -30,3 +30,4 @@ UNIT_DEPS += src/lib/fsm_policy
 UNIT_DEPS += src/lib/oms
 UNIT_DEPS += src/lib/gatekeeper_cache
 UNIT_DEPS += src/lib/unit_test_utils
+UNIT_DEPS += src/lib/network_zone

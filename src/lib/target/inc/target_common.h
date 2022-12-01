@@ -187,6 +187,14 @@ struct target_radio_ops {
                             int num,
                             const char *vif);
 
+    /** target calls this whenever it wants to notify WM about
+     *  configured neighboring APs. This is used to keep track
+     *  of the 'state' to be compared with 'config' for stateless
+     *  Neighbors table */
+    void (*op_nbors_state)(const struct schema_Wifi_VIF_Neighbors *neighbors,
+                           int num,
+                           const char *vif);
+
     /** target shall call this whenever chirping packets are received */
     void (*op_dpp_announcement)(const struct target_dpp_chirp_obj *c);
 
@@ -333,18 +341,22 @@ bool target_vif_config_set2(const struct schema_Wifi_VIF_Config *vconf,
  * extender mode to provide multiple network for sta vif
  * @param changed list of fields from vconf that are out of sync with
  * state
+ * @param nbors_list neighboring APs for FT rxkh definitions
  * @param radius_list containing all matching RADIUS table entries
- * @param num_radius_list - number of entries in radius_list
  * @param num_cconfs number of cconfs entries
+ * @param num_nbors_list number of entries in nbors_list
+ * @param num_radius_list number of entries in radius_list
  * @return true on success, false means the call will be retried later
  */
 bool target_vif_config_set3(const struct schema_Wifi_VIF_Config *vconf,
                             const struct schema_Wifi_Radio_Config *rconf,
                             const struct schema_Wifi_Credential_Config *cconfs,
                             const struct schema_Wifi_VIF_Config_flags *changed,
+                            const struct schema_Wifi_VIF_Neighbors *nbors_list,
                             const struct schema_RADIUS *radius_list,
-                            int num_radius_list,
-                            int num_cconfs);
+                            int num_cconfs,
+                            int num_nbors_list,
+                            int num_radius_list);
 
 /**
  * @brief Interrogate target if v3 version vif_config_set

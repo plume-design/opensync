@@ -115,8 +115,11 @@ void execsh_async_set(
  *
  * Note: It is safe to reuse the execsh_async_t object from inside the exit
  * handler.
+ *
+ * This function returns PID of a child process if it was started or was
+ * already running, or -1 if the process failed to start.
  */
-void execsh_async_start_a(
+pid_t execsh_async_start_a(
         execsh_async_t *esa,
         const char *script,
         const char *argv[])
@@ -135,7 +138,7 @@ void execsh_async_start_a(
     if (esa->esa_running)
     {
         LOG(WARN, "execsh_async: Attempting to start an already started process.");
-        return;
+        return esa->esa_child_pid;
     }
 
     esa->esa_exit_code = -1;
@@ -274,6 +277,8 @@ exit:
     }
 
     FREE(args);
+
+    return esa->esa_running ? esa->esa_child_pid : -1;
 }
 
 /*

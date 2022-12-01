@@ -168,6 +168,12 @@ typedef enum log_sink_e
 #define LOG(level, ...) \
     mlog(LOG_SEVERITY_##level, MODULE_ID, __VA_ARGS__)
 
+#define LOG_ONCE(level, ...) \
+({ \
+    static bool done__; const bool once__ = !done__; done__ = true; \
+    if (once__) LOG(level, __VA_ARGS__); \
+})
+
 #define LOG_SEVERITY(level, ...) \
     mlog(level, MODULE_ID,  __VA_ARGS__)
 

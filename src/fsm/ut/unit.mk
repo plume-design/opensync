@@ -60,3 +60,4 @@ UNIT_DEPS += src/lib/oms
 UNIT_DEPS += src/lib/neigh_table
 UNIT_DEPS += src/lib/gatekeeper_cache
 UNIT_DEPS += src/lib/unit_test_utils
+UNIT_DEPS += src/lib/network_zone

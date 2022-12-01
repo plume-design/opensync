@@ -121,8 +121,11 @@ void execsh_async_set(
 /*
  * Start the script specified in `script` with the variable arguments in `vargs`
  * as its parameters.
+ *
+ * This function returns PID of a child process if it was started or was already
+ * running, or -1 if the process failed to start.
  */
-void execsh_async_start_a(
+pid_t execsh_async_start_a(
         execsh_async_t *esa,
         const char *script,
         const char *argv[]);

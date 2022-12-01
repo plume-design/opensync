@@ -47,6 +47,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <arpa/inet.h>
 
 #define MODULE_ID LOG_MODULE_ID_MAIN
+#define SM_MAX_SECRET_LEN           65
 #define RADCLIENT_COMMAND           "echo \"Message-Authenticator = 0x00\" | radclient  %s:%d status %s"
 
 struct sm_healthcheck_schedule_ctx
@@ -54,9 +55,9 @@ struct sm_healthcheck_schedule_ctx
     uint32_t                     interval;                  // healthcheck interval in seconds
     char                         server[INET6_ADDRSTRLEN];  // server IP
     uint16_t                     port;                      // server port
-    char                         secret[32];                // server secret
     ev_timer                     schedule_timer;            // timer for auto execution
     execsh_async_t               radclient_execsh;          // execsh struct for async exec of radclient
+    char                         secret[SM_MAX_SECRET_LEN]; // server secret
     bool                         last_healthy;              // cache value so we don't do dead ovsdb updates
     bool                         use_cache;                 // use cache for health value
     ds_list_t                    node;
@@ -182,8 +183,8 @@ void sm_healthcheck_update_server(
     uint16_t                    port,
     bool                        healthy)
 {
-    STRSCPY(ctx->server, server);
-    STRSCPY(ctx->secret, secret);
+    STRSCPY_WARN(ctx->server, server);
+    STRSCPY_WARN(ctx->secret, secret);
     ctx->interval = timeout;
     ctx->port = port;
     ctx->last_healthy = healthy;

@@ -78,6 +78,8 @@ typedef struct osn_route4
     bool gw_valid;      //< gateway validity flag
     osn_ip_addr_t gw;   //< gateway addr (optional)
     int metric;         //< route metric or -1 when not specified
+    osn_ip_addr_t pref_src;  //< preferred source address
+    bool pref_src_set;       //< is preferred source address set
 
 } osn_route4_t;
 
@@ -93,6 +95,8 @@ typedef struct osn_route4
     .gw_valid = false,                      \
     .gw = OSN_IP_ADDR_INIT,                 \
     .metric = -1,                           \
+    .pref_src = OSN_IP_ADDR_INIT,           \
+    .pref_src_set = false,                  \
 }
 
 

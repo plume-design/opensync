@@ -66,7 +66,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define WPAS_SOCK_PATH(dphy, dvif) F("/var/run/wpa_supplicant-%s/%s", dphy, dvif)
 #define WPAS_SOCK_DIR(dphy) F("/var/run/wpa_supplicant-%s", dphy)
 #define WPAS_CONF_PATH(dvif) F("/var/run/wpa_supplicant-%s.config", dvif)
-#define WPAS_GLOB_CLI(...) E(CMD_TIMEOUT("wpa_cli", "-g", "/var/run/wpa_supplicantglobal", ## __VA_ARGS__))
+#define WPAS_GLOB_CLI(...) E(CMD_TIMEOUT("wpa_cli", "-p", "", "-g", CONFIG_HOSTAP_WPA_SUPPLICANT_GLOBAL_PATH, ## __VA_ARGS__))
 #define WPAS_CLI(wpas, ...) E(CMD_TIMEOUT("wpa_cli", "-p", wpas->ctrl.sockdir, "-i", wpas->ctrl.bss, ## __VA_ARGS__))
 #define EV(x) strchomp(strdupa(x), " ")
 

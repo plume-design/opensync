@@ -1,7 +1,7 @@
 {
   "name": "Open_vSwitch",
-  "version": "7.11.322",
-  "cksum": "4213777102 285807",
+  "version": "7.11.324",
+  "cksum": "829027187 286279",
   "tables": {
     "AWLAN_Node": {
       "columns": {
@@ -1375,6 +1375,17 @@
             "min": 0,
             "max": 1
           }
+        },
+        "pref_src": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 7,
+              "maxLength": 15
+            },
+            "min": 0,
+            "max": 1
+          }
         }
       },
       "isRoot": true,
@@ -1433,6 +1444,17 @@
               "type": "string",
               "minLength": 12,
               "maxLength": 17
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "pref_src": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 7,
+              "maxLength": 15
             },
             "min": 0,
             "max": 1
@@ -9847,7 +9869,7 @@
           "type": {
             "key": {
               "type": "string",
-              "maxLength": 20
+              "maxLength": 32
             },
             "min": 0,
             "max": 8
@@ -9999,7 +10021,7 @@
           "type": {
             "key": {
               "type": "string",
-              "maxLength": 50
+              "maxLength": 92
             },
             "min": 0,
             "max": 8
