@@ -74,6 +74,9 @@ collect_linux()
     collect_cmd conntrack -L
 
     collect_cmd $CONFIG_INSTALL_PREFIX/scripts/proc_mem.sh
+
+    collect_cmd lsof
+    collect_file /proc/sys/fs/file-nr
 }
 
 collect_ethernet()

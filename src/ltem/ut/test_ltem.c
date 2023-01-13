@@ -122,6 +122,14 @@ ltem_get_mgr(void)
 }
 
 void
+ltem_setup_modem_info(osn_lte_modem_info_t *modem_info)
+{
+    strcpy(modem_info->iccid, "80000000000000000003");
+    strcpy(modem_info->imei, "860000000000012");
+    strcpy(modem_info->imsi, "120000000000111");
+}
+
+void
 ltem_populate_config(lte_config_info_t *lte_config)
 {
     STRSCPY(lte_config->if_name, "wwan0");
@@ -154,7 +162,7 @@ ltem_ut_mgr_init(struct ev_loop *loop)
 
     ltem_mgr_t *mgr = ltem_get_mgr();
     mgr->modem_info = osn_get_modem_info();
-
+    ltem_setup_modem_info(mgr->modem_info);
     mgr->loop = loop;
 
     lte_config = CALLOC(1, sizeof(lte_config_info_t));

@@ -40,6 +40,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define C_AT_CMD_LONGEST_RESP 64
 
 #define SOURCE_AT_CMD 1
+
 typedef struct lte_chip_info_ // ati
 {
     char cmd[C_AT_CMD_RESP];
@@ -110,7 +111,7 @@ typedef struct lte_operator_ // at+cops
 } lte_operator_t;
 
 /*
-char *at_srv_cell="at+qeng=\"servingcell\"\r\r\n+QENG: 
+char *at_srv_cell="at+qeng=\"servingcell\"\r\r\n+QENG:
 \"servingcell\",\"NOCONN\",\"LTE\",\"FDD\",310,410,A1FBF0A,310,800,2,5,5,8B1E,-115,-14,-80,10,8\r\n\r\nOK\r\n";
 +QENG: "servingcell",<state>,"LTE",<is_tdd>,<mcc>,<mnc>,<cellid>,<pcid>,<earfcn>,<freq_band_ind>,<ul_bandwidth>,<dl_bandwidth>,<tac>,<rsrp>,<rsrq>,<rssi>,<sinr>,<srxlev>
 */
@@ -384,6 +385,8 @@ typedef struct osn_lte_modem_info_
     enum lte_sim_type sim_type;
     uint32_t active_simcard_slot;
     char lte_band_val[C_AT_CMD_LONG_RESP];
+    uint64_t last_healthcheck_success;
+    uint64_t healthcheck_failures;
 } osn_lte_modem_info_t;
 
 int osn_lte_parse_chip_info(char *buf, lte_chip_info_t *chip_info);
@@ -436,5 +439,6 @@ void osn_lte_reset_modem(void);
 int osn_lte_parse_at_cops(char *resp);
 void osn_lte_start_vendor_daemon(int source);
 void osn_lte_stop_vendor_daemon(void);
+void osn_lte_dump_modem_info();
 
 #endif /* OSN_LTE_MODEM_H_INCLUDED */

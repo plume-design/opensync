@@ -1,7 +1,7 @@
 {
   "name": "Open_vSwitch",
-  "version": "7.11.311",
-  "cksum": "1815753971 248822",
+  "version": "7.11.312",
+  "cksum": "3982979519 248822",
   "tables": {
     "AWLAN_Node": {
       "columns": {
@@ -9249,7 +9249,7 @@
           "type": {
             "key": {
               "type": "string",
-              "maxLength": 20
+              "maxLength": 32
             },
             "min": 0,
             "max": 8
@@ -9401,7 +9401,7 @@
           "type": {
             "key": {
               "type": "string",
-              "maxLength": 50
+              "maxLength": 92
             },
             "min": 0,
             "max": 8

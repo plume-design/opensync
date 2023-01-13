@@ -133,14 +133,16 @@ typedef struct ltem_handlers_
 typedef struct ltem_mgr_
 {
     struct ev_loop *loop;
-    ev_timer timer;              // manager's event timer
-    time_t periodic_ts;          // periodic timestamp
-    time_t mqtt_periodic_ts;     // periodic timestamp for MQTT reports
-    time_t state_periodic_ts;    // periodic timestamp for Lte State updates
-    time_t l3_state_periodic_ts; // periodic timestamp for L3 state check
-    time_t init_time;            // init time
-    char pid[16];                // manager's pid
-    struct sysinfo sysinfo;      /* system information */
+    ev_timer timer;               /* manager's event timer */
+    time_t periodic_ts;           /* periodic timestamp */
+    time_t mqtt_periodic_ts;      /* periodic timestamp for MQTT reports */
+    time_t state_periodic_ts;     /* periodic timestamp for Lte State updates */
+    time_t l3_state_periodic_ts;  /* periodic timestamp for L3 state check */
+    time_t lte_log_modem_info_ts; /* periodic timestamp for logging modem info */
+    time_t lte_healthcheck_ts;    /* periodic timestamp for LTE healthcheck */
+    time_t init_time;             /* init time */
+    char pid[16];                 /* manager's pid */
+    struct sysinfo sysinfo;       /* system information */
     enum ltem_wan_state wan_state;
     enum ltem_lte_state lte_state;
     int lte_init_fd[2];
@@ -187,7 +189,6 @@ int ltem_restore_resolv_conf(ltem_mgr_t *mgr);
 int ltem_ovsdb_cmu_insert_lte(ltem_mgr_t *mgr);
 int ltem_ovsdb_cmu_update_lte(ltem_mgr_t *mgr);
 int ltem_ovsdb_cmu_disable_lte(ltem_mgr_t *mgr);
-void ltem_ovsdb_cmu_check_lte(ltem_mgr_t *mgr);
 uint32_t ltem_ovsdb_cmu_get_wan_priority(ltem_mgr_t *mgr);
 int ltem_ovsdb_wifi_inet_create_config(ltem_mgr_t *mgr);
 int ltem_ovsdb_lte_create_config(ltem_mgr_t *mgr);
@@ -203,7 +204,8 @@ void lte_mqtt_cleanup(void);
 int ltem_ovsdb_cmu_update_lte_priority(ltem_mgr_t *mgr, uint32_t priority);
 char *ltem_ovsdb_get_if_type(char *if_name);
 bool ltem_init_lte_modem(void);
-int ltem_ovsdb_check_l3_state(ltem_mgr_t *mgr);
 void ltem_fini_lte_modem(void);
+int ltem_ovsdb_check_l3_state(ltem_mgr_t *mgr);
+int ltem_dns_connect_check(char *if_name);
 
 #endif /* LTEM_MGR_H_INCLUDED */

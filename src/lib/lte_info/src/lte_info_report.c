@@ -68,6 +68,8 @@ lte_info_set_net_info(struct lte_net_info *source, struct lte_info_report *repor
     lte_net_info->active_sim_slot = source->active_sim_slot;
     lte_net_info->rssi = source->rssi;
     lte_net_info->ber = source->ber;
+    lte_net_info->last_healthcheck_success = source->last_healthcheck_success;
+    lte_net_info->healthcheck_failures = source->healthcheck_failures;
 
     return true;
 
@@ -532,6 +534,8 @@ lte_info_set_lte_net_info(struct lte_info_report *report)
     pb->ber = lte_net_info->ber;
     pb->sim_type = (Interfaces__LteInfo__LteSimType)lte_net_info->sim_type;
     pb->sim_status = (Interfaces__LteInfo__LteSimStatus)lte_net_info->sim_status;
+    pb->last_healthcheck_success = lte_net_info->last_healthcheck_success;
+    pb->healthcheck_failures = lte_net_info->healthcheck_failures;
 
     return pb;
 }

@@ -483,6 +483,12 @@ void cm2_trigger_restart_managers(void) {
         goto restart;
     }
 
+    if (cm2_ovsdb_recalc_links(true)) {
+        skip_restart = true;
+        LOGI("Trying to use another uplink, skip restart managers");
+        goto restart;
+    }
+
     if (cm2_enable_gw_offline()) {
         skip_restart = true;
         LOGI("GW offline enabled, skip restart managers");
@@ -628,10 +634,16 @@ start:
             cm2_restore_bridge_config();
 
             if (g_state.link.is_bridge) {
+                if (cm2_is_wifi_type(g_state.link.if_type)) {
+                    cm2_ovsdb_set_dhcp_client(g_state.link.bridge_name, true);
+                    cm2_ovsdb_set_dhcpv6_client(g_state.link.bridge_name, true);
+                } else {
+                    cm2_ovsdb_inherit_ip_bridge_conf(g_state.link.if_name, g_state.link.bridge_name);
+                }
                 cm2_update_bridge_cfg(g_state.link.bridge_name, g_state.link.if_name, true,
-                                      CM2_PAR_FALSE, true);
+                                      CM2_PAR_FALSE);
             } else {
-                cm2_ovsdb_set_default_wan_bridge( g_state.link.if_name,  g_state.link.if_type);
+                cm2_ovsdb_set_default_wan_bridge(g_state.link.if_name, g_state.link.if_type);
             }
 
             cm2_ovsdb_connection_clean_link_counters(g_state.link.if_name);

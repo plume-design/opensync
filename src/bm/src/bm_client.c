@@ -594,7 +594,7 @@ bm_client_update_rrm_neighbors(void)
 
 static bool bm_client_is_cap_6G(bm_client_t *client)
 {
-    return client->band_cap_6G | (client->band_cap_mask & BM_CLIENT_OPCLASS_60_CAP_BIT);
+    return client->band_cap_6G || (client->band_cap_mask & BM_CLIENT_OPCLASS_60_CAP_BIT);
 }
 
 static void

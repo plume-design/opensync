@@ -140,7 +140,7 @@ ltem_update_conf(struct schema_Lte_Config *lte_conf)
     }
     else
     {
-        LOGI("%s: APN[%s]", __func__, lte_conf->apn);
+        LOGI("%s: current APN[%s], new APN[%s]", __func__, conf->apn, lte_conf->apn);
         STRSCPY(conf->apn, lte_conf->apn);
     }
     STRSCPY(conf->lte_bands, lte_conf->lte_bands_enable);
@@ -583,6 +583,12 @@ ltem_ovsdb_check_l3_state(ltem_mgr_t *mgr)
     if (!res)
     {
         LOGI("%s: %s not found in Wifi_Route_Config", __func__, if_name);
+        if (mgr->lte_state == LTEM_LTE_STATE_UP)
+        {
+            LOGI("%s: Set lte_state to DOWN", __func__);
+            ltem_set_lte_state(LTEM_LTE_STATE_DOWN);
+        }
+
         return -1;
     }
 
@@ -657,24 +663,6 @@ ltem_ovsdb_cmu_update_lte_priority(ltem_mgr_t *mgr, uint32_t priority)
 
     LOGD("%s: Set CMU %s priority=%d", __func__, if_name, priority);
     return 0;
-}
-
-void
-ltem_ovsdb_cmu_check_lte (ltem_mgr_t *mgr)
-{
-    int ret;
-    struct schema_Connection_Manager_Uplink uplink;
-
-    ret = ovsdb_table_select_one(&table_Connection_Manager_Uplink,
-                                 SCHEMA_COLUMN(Connection_Manager_Uplink, if_name), mgr->lte_config_info->if_name, &uplink);
-    if (!ret)
-    {
-        LOGI("%s: %s not found in Connection_Manager_Uplink", __func__, mgr->lte_config_info->if_name);
-        return;
-    }
-
-    LOGD("%s: if_name=%s, if_type=%s, has_L2=%d, has_L3=%d, priority=%d",
-         __func__, uplink.if_name, uplink.if_type, uplink.has_L2, uplink.has_L3, uplink.priority);
 }
 
 /**
@@ -906,8 +894,17 @@ callback_Lte_Config(ovsdb_update_monitor_t *mon,
             LOGD("%s mon_type = OVSDB_UPDATE_MODIFY", __func__);
             /* A NULL APN is valid */
             LOGI("%s: APN[%s]", __func__, lte_conf->apn);
-            osn_lte_set_pdp_context_params(PDP_CTXT_APN, lte_conf->apn);
-            osn_lte_set_sim_slot(lte_conf->active_simcard_slot);
+            rc = strncmp(old_lte_conf->apn, lte_conf->apn, sizeof(lte_conf->apn));
+            if (rc)
+            {
+                LOGI("%s: new APN[%s]", __func__, lte_conf->apn);
+                osn_lte_set_pdp_context_params(PDP_CTXT_APN, lte_conf->apn);
+            }
+
+            if (old_lte_conf->active_simcard_slot != lte_conf->active_simcard_slot)
+            {
+                osn_lte_set_sim_slot(lte_conf->active_simcard_slot);
+            }
 
             rc = strncmp(lte_conf->lte_bands_enable, "", strlen(lte_conf->lte_bands_enable));
             if (rc)
@@ -1004,13 +1001,19 @@ ltem_handle_nm_update_wwan0(struct schema_Wifi_Inet_State *old_inet_state,
     res = strncmp(inet_state->inet_addr, null_inet_addr, strlen(inet_state->inet_addr));
     if (!res)
     {
-        LOGI("%s: wwan0 IP address[%s], setting LTEM_LTE_STATE_DOWN", __func__, inet_state->inet_addr);
-        ltem_set_lte_state(LTEM_LTE_STATE_DOWN);
+        if (mgr->lte_state != LTEM_LTE_STATE_DOWN)
+        {
+            ltem_set_lte_state(LTEM_LTE_STATE_DOWN);
+            LOGI("%s: wwan0 IP address[%s], setting LTEM_LTE_STATE_DOWN", __func__, inet_state->inet_addr);
+        }
     }
     else
     {
-        LOGI("%s: wwan0 IP address[%s], setting LTEM_LTE_STATE_UP", __func__, inet_state->inet_addr);
-        ltem_set_lte_state(LTEM_LTE_STATE_UP);
+        if (mgr->lte_state != LTEM_LTE_STATE_UP)
+        {
+            ltem_set_lte_state(LTEM_LTE_STATE_UP);
+            LOGI("%s: wwan0 IP address[%s], setting LTEM_LTE_STATE_UP", __func__, inet_state->inet_addr);
+        }
     }
 }
 
@@ -1111,7 +1114,6 @@ ltem_handle_wan_rc_update(struct schema_Wifi_Route_Config *old_route_config, str
     if (res == 0)
     {
         ltem_update_wan_route(mgr, route_config);
-        ltem_set_wan_state(LTEM_WAN_STATE_UP);
     }
 }
 

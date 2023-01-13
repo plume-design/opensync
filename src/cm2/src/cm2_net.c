@@ -120,7 +120,7 @@ static int cm2_ovs_insert_port_into_bridge(char *bridge, char *port, bool add)
 }
 
 void cm2_update_bridge_cfg(char *bridge, char *port, bool brop,
-                           cm2_par_state_t mstate, bool dhcp_update)
+                           cm2_par_state_t mstate)
 {
     bool macrep;
     int  r;
@@ -138,12 +138,6 @@ void cm2_update_bridge_cfg(char *bridge, char *port, bool brop,
     if (!r)
         LOGI("Failed to update port %s in %s [state = %d]",
              port, bridge, brop);
-
-    /* Update dhcp client on bridge */
-    if (dhcp_update) {
-        cm2_ovsdb_set_dhcp_client(bridge, brop);
-        cm2_ovsdb_set_dhcpv6_client(bridge, brop);
-    }
 }
 
 /**

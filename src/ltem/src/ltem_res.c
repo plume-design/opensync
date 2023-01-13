@@ -28,6 +28,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <string.h>
 #include <resolv.h>
 #include <netinet/in.h>
+#include <net/if.h>
+#include <sys/ioctl.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netdb.h>
@@ -41,6 +43,30 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "network_metadata.h"  // network metadata API
 
 #include "ltem_mgr.h"
+
+char *dns_server_list[] =
+{
+    "8.8.8.8",
+    "9.9.9.9",
+    "208.67.222.222",
+    "1.1.1.1",
+    "185.228.168.9",
+    "76.76.19.19",
+    "94.140.14.14",
+    "84.200.69.80",
+    "8.26.56.26",
+    "205.171.3.65",
+    "195.46.39.39",
+    "216.146.35.35",
+    "77.88.8.8",
+    "74.82.42.42",
+    "64.6.64.6",
+    "76.76.2.0",
+};
+
+#define dns_server_list_size (sizeof(dns_server_list)/ sizeof(char *))
+
+int next_dns_server;
 
 int
 ltem_check_dns(char *server, char *hostname)
@@ -78,4 +104,63 @@ ltem_check_dns(char *server, char *hostname)
     }
 
     return rc;
+}
+
+static const char *
+ltem_get_next_dns_server(void)
+{
+    char *server;
+
+    server = dns_server_list[next_dns_server++];
+    if (next_dns_server == dns_server_list_size)
+    {
+        next_dns_server = 0;
+    }
+
+    return server;
+}
+
+int
+ltem_dns_connect_check(char *if_name)
+{
+    int res;
+    int s;
+    const char *dns_server;
+    struct sockaddr_in addr;
+    struct ifreq ifr;
+
+    s = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    memset(&addr, 0, sizeof(addr));
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(53);
+    dns_server = ltem_get_next_dns_server();
+    if (dns_server == NULL)
+    {
+        LOGI("%s: NULL dns_server", __func__);
+        return -1;
+    }
+    inet_aton(dns_server, &addr.sin_addr);
+
+    memset(&ifr, 0, sizeof(ifr));
+    memcpy(ifr.ifr_name, if_name, sizeof(ifr.ifr_name));
+    res = setsockopt(s, SOL_SOCKET, SO_BINDTODEVICE, (void *)&ifr, sizeof(ifr));
+    if (res)
+    {
+        LOGI("%s: setsockopt failed: res=%d, err=%s", __func__, res, strerror(errno));
+        close(s);
+        return -1;
+    }
+
+    res = connect(s, (struct sockaddr *)&addr, sizeof(addr));
+    if (res)
+    {
+        LOGI("%s: connect to %s failed: res=%d, err=%s", __func__, dns_server, res, strerror(errno));
+        close(s);
+        return -1;
+    }
+
+    sleep(1);
+    close(s);
+
+    return 0;
 }
