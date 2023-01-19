@@ -75,6 +75,8 @@ message LteNetInfo {
   uint32 active_sim_slot = 8;
   int32 rssi = 9;
   int32 ber = 10;
+  uint64 last_healthcheck_success = 13; // Unix time in seconds
+  uint64 healthcheck_failures = 14;
 }
 
 // LTE data usage

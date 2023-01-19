@@ -253,6 +253,11 @@ cm2_util_set_ip_opts(const char *uname, const char *utype,
         *opts &= ~IPV6_CHECK;
     }
 
+    if (!(*opts & IPV4_CHECK) && !(*opts & IPV6_CHECK)) {
+        LOGI("Unexpected configuration of IP, force use IPv4");
+        *opts |= IPV4_CHECK;
+    }
+
     if (ipv4 == CM2_UPLINK_INACTIVE ||
         ipv6 == CM2_UPLINK_INACTIVE)
         *opts |= FAST_CHECK;
@@ -663,6 +668,48 @@ void cm2_util_req_stability_check_recalc(const char *uname,
 }
 
 static
+bool cm2_check_uplink_state(const char *if_name, const char *up_name)
+{
+    struct schema_Connection_Manager_Uplink con;
+    bool blocked_ipv4;
+    bool blocked_ipv6;
+
+    memset(&con, 0, sizeof(con));
+    blocked_ipv4 = false;
+    blocked_ipv6 = false;
+
+    if (!cm2_ovsdb_connection_get_connection_by_ifname(if_name, &con)) {
+        LOGI("%s does not exist on uplinks list", if_name);
+        return false;
+    }
+
+    if ((con.ipv4_exists && cm2_get_uplink_state_from_str(con.ipv4) == CM2_UPLINK_BLOCKED) ||
+         !con.ipv4_exists)
+        blocked_ipv4 = true;
+
+    if ((con.ipv6_exists && cm2_get_uplink_state_from_str(con.ipv6) == CM2_UPLINK_BLOCKED) ||
+         !con.ipv6_exists)
+        blocked_ipv6 = true;
+
+    if (blocked_ipv4 && blocked_ipv6) {
+        LOGI("IP on uplink not available");
+        return false;
+    }
+
+    if (con.bridge_exists && strcmp(up_name, con.bridge) != 0) {
+        LOGI("Mismatch between uplink: %s and bridge name: %s", up_name, con.bridge);
+        return false;
+    }
+
+    if (!con.bridge_exists && strcmp(if_name, up_name) != 0) {
+        LOGI("Mismatch between uplink: %s and ifname: %s", up_name, if_name);
+        return false;
+    }
+
+    return true;
+}
+
+static
 void cm2_util_req_stability_cb(EV_P_ ev_child *w, int revents)
 {
     target_connectivity_check_t cstate = {0};
@@ -687,6 +734,13 @@ void cm2_util_req_stability_cb(EV_P_ ev_child *w, int revents)
          w->rpid);
 
     ev_child_stop(EV_A_ w);
+
+    /* Check if link is still up to date, if not stop repeating */
+    if (!cm2_check_uplink_state(async_check->uname, async_check->clink) && !ok) {
+        LOGI("Force clean repeat and update state");
+        repeat = false;
+        db_update = false;
+    }
 
     cm2_connection_req_stability_process(async_check->uname, opts, db_update, ok, &cstate);
     if (repeat && !ok) {
@@ -841,7 +895,7 @@ void cm2_update_links_cb(struct ev_loop *loop, ev_timer *watcher, int revents)
     (void)watcher;
     (void)revents;
 
-    cm2_ovsdb_recalc_links();
+    cm2_ovsdb_recalc_links(false);
 }
 
 void cm2_update_uplinks_init(struct ev_loop *loop)

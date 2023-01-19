@@ -42,6 +42,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define LTEM_STATE_UPDATE_INTERVAL 60
 #define LTEM_MQTT_INTERVAL     60 * 15
 #define LTEM_L3_CHECK_INTERVAL 30
+#define LTEM_MODEM_INFO_INTERVAL 60 * 5
+#define LTEM_LTE_HEALTHCHECK_INTERVAL 60 * 10
 
 static void
 ltem_mqtt_periodic(time_t now, ltem_mgr_t *mgr)
@@ -64,7 +66,6 @@ ltem_state_periodic(time_t now, ltem_mgr_t *mgr)
 {
     time_t elapsed;
 
-    LOGD("%s: modem_present[%d]", __func__, mgr->modem_info->modem_present);
     elapsed = now - mgr->state_periodic_ts;
     if (elapsed < LTEM_STATE_UPDATE_INTERVAL) return;
 
@@ -78,12 +79,71 @@ ltem_check_l3_state(time_t now, ltem_mgr_t *mgr)
 {
     time_t elapsed;
 
-    LOGD("%s: modem_present[%d]", __func__, mgr->modem_info->modem_present);
     elapsed = now - mgr->l3_state_periodic_ts;
     if (elapsed < LTEM_L3_CHECK_INTERVAL) return;
 
     ltem_ovsdb_check_l3_state(mgr);
     mgr->l3_state_periodic_ts = now;
+}
+
+static void
+ltem_log_modem_info(time_t now, ltem_mgr_t *mgr)
+{
+    time_t elapsed;
+
+    elapsed = now - mgr->lte_log_modem_info_ts;
+    if (elapsed < LTEM_MODEM_INFO_INTERVAL) return;
+
+    osn_lte_dump_modem_info();
+    mgr->lte_log_modem_info_ts = now;
+}
+
+static void
+ltem_lte_healthcheck(time_t now, ltem_mgr_t *mgr)
+{
+    time_t elapsed;
+    int res;
+    lte_serving_cell_info_t *srv_cell;
+
+    srv_cell = &mgr->modem_info->srv_cell;
+
+    elapsed = now - mgr->lte_healthcheck_ts;
+    if (elapsed < LTEM_LTE_HEALTHCHECK_INTERVAL) return;
+
+    if (mgr->lte_config_info->if_name[0] == '\0') return;
+
+    res = ltem_dns_connect_check(mgr->lte_config_info->if_name);
+    if (res)
+    {
+        mgr->modem_info->healthcheck_failures++;
+        LOGI("%s: Failed", __func__);
+    }
+    else
+    {
+        mgr->modem_info->last_healthcheck_success = now;
+        LOGI("%s: Success", __func__);
+    }
+
+    if (srv_cell->state == LTE_SERVING_CELL_NOCONN && srv_cell->mode == LTE_CELL_MODE_LTE)
+    {
+        LOGT("%s: lte_state[LTE_SERVING_CELL_NOCONN] lte_mode[LTE_CELL_MODE_LTE]", __func__);
+    }
+    else
+    {
+        LOGI("%s: lte_state[%d], lte_mode[%d]", __func__, srv_cell->state, srv_cell->mode);
+        if (mgr->lte_state == LTEM_LTE_STATE_UP)
+        {
+            ltem_set_lte_state(LTEM_LTE_STATE_DOWN);
+        }
+    }
+
+    if (mgr->lte_state != LTEM_LTE_STATE_UP)
+    {
+        osn_lte_reset_modem();
+        LOGT("%s: lte_state[%s]", __func__, ltem_get_lte_state_name(mgr->lte_state));
+    }
+
+    mgr->lte_healthcheck_ts = now;
 }
 
 /**
@@ -107,19 +167,12 @@ ltem_event_cb(struct ev_loop *loop, ev_timer *watcher, int revents)
 
     if ((now - mgr->periodic_ts) < LTEM_TIMER_INTERVAL) return;
 
-    if (mgr->lte_state != LTEM_LTE_STATE_UP) return;
-
+    LOGD("%s: modem_present[%d]", __func__, mgr->modem_info->modem_present);
     ltem_mqtt_periodic(now, mgr);
     ltem_state_periodic(now, mgr);
     ltem_check_l3_state(now, mgr);
-
-    if (mgr->wan_state != LTEM_WAN_STATE_UNKNOWN && mgr->lte_state == LTEM_LTE_STATE_UP)
-    {
-        if (mgr->lte_state_info->lte_failover_active)
-        {
-            ltem_ovsdb_cmu_check_lte(mgr);
-        }
-    }
+    ltem_log_modem_info(now, mgr);
+    ltem_lte_healthcheck(now, mgr);
 
     mgr->periodic_ts = now;
 }

@@ -69,6 +69,8 @@ struct lte_net_info g_lte_net_info =
     .active_sim_slot = 1,
     .rssi = -71,
     .ber = 99,
+    .last_healthcheck_success = 123456789,
+    .healthcheck_failures = 1,
 };
 
 struct lte_data_usage g_lte_data_usage =

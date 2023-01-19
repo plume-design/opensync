@@ -277,13 +277,18 @@ ltem_init_lte_modem(void)
     osn_lte_set_qmi_mode();
     osn_lte_enable_sim_detect();
     ret = osn_lte_read_pdp_context();
-    if (ret) return false;
+    if (ret)
+    {
+        LOGI("%s: osn_lte_read_pdp_context: Failed", __func__);
+        return false;
+    }
     ret = osn_lte_set_pdp_context_params(PDP_CTXT_PDP_TYPE, PDP_TYPE_IPV4);
     ret |= osn_lte_set_ue_data_centric();
     if (ret)
     {
         osn_lte_reset_modem();
     }
+    LOGI("%s: osn_lte_start_vendor_daemon", __func__);
     osn_lte_start_vendor_daemon(SOURCE_AT_CMD);
     return true;
 }

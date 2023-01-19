@@ -588,9 +588,10 @@ bool sm_survey_report_send(
             goto exit;
     }
 
-    LOGI("Sending %s %s survey report at '%s'",
+    LOGI("Sending %s %s %d survey report at '%s'",
          radio_get_name_from_cfg(radio_cfg_ctx),
          radio_get_scan_name_from_type(scan_type),
+         survey_ctx->chan_list.chan_list[survey_ctx->chan_list.chan_index],
          sm_timestamp_ms_to_date(report_ctx->timestamp_ms));
 
     /* Send records to MQTT FIFO (Skip empty reports) */

@@ -98,32 +98,29 @@ mdns_records_find_client_by_ip_str(ds_tree_t *clients, char *ip)
 }
 
 static bool
-mdns_records_check_duplicate(ds_tree_t *clients, const struct resource *r)
+mdns_records_check_duplicate(mdns_client_t *client, const struct resource *r)
 {
     struct resource     *res          = NULL;
     mdns_records_t      *rec          = NULL;
-    mdns_client_t       *client       = NULL;
     mdns_records_list_t *records_list = NULL;
     ds_dlist_iter_t     rec_iter;
 
-    if (!clients) return false;
+    if (!client) return false;
 
-    ds_tree_foreach(clients, client)
+    // iterate through each record
+    records_list = &client->records_list;
+    for ( rec = ds_dlist_ifirst(&rec_iter, records_list);
+          rec != NULL;
+          rec = ds_dlist_inext(&rec_iter) )
     {
-        records_list = &client->records_list;
-        for ( rec = ds_dlist_ifirst(&rec_iter, records_list);
-                rec != NULL;
-                rec = ds_dlist_inext(&rec_iter))
+        res = &rec->resource;
+        // check if the resource record's name and type match
+        if ((!strcmp(res->name, r->name)) && (res->type == r->type))
         {
-            res = &rec->resource;
-            if ((!strcmp(res->name, r->name)) && (res->type == r->type))
-            {
-                /* Similar record already exists, re-set the ttl and stored_ts */
-                res->ttl = r->ttl;
-                rec->stored_ts = time(NULL);
-
-                return true;
-            }
+            // reset the time to live and the stored timestamp
+            res->ttl = r->ttl;
+            rec->stored_ts = time(NULL);
+            return true;
         }
     }
 
@@ -287,7 +284,7 @@ mdns_records_print_client_records(mdns_client_t *client)
 
 
     LOGT("--------------------------------------------------------------------------------------------------");
-    LOGT("\t \t Printing all records for client '%s'", client->mac_str);
+    LOGT("\t \t Printing all records for mac:%s ip:%s", client->mac_str, client->ip_str);
     LOGT("--------------------------------------------------------------------------------------------------");
 
     records_list = &client->records_list;
@@ -653,7 +650,7 @@ mdns_records_clean_stale_records(void)
             cmp_rec = now - rec->stored_ts;
             if (cmp_rec >= res->ttl)
             {
-                LOGT("%s: Client '%s': Deleting stale RR:'%s'", __func__, client->mac_str, res->name);
+                LOGT("%s: client:%s name:%s type:%d deleting stale record", __func__, client->ip_str, res->name, res->type);
                 mdns_records_free_resource(res);
 
                 ds_dlist_iremove(&rec_iter);
@@ -667,7 +664,7 @@ mdns_records_clean_stale_records(void)
 
         if (client->num_records == 0)
         {
-            LOGD("%s: Client '%s' has no RR left, deleting client", __func__, client->mac_str);
+            LOGD("%s: client:%s has no records, deleting client", __func__, client->ip_str);
             ds_tree_iremove(&client_iter);
             FREE(client);
             client = NULL;
@@ -709,7 +706,7 @@ mdns_records_store_record(const struct resource *r, void *data, struct sockaddr_
             break;
     }
 
-    LOGT("%s: Source IP %s", __func__, ip);
+    LOGT("%s: client:%s", __func__, ip);
 
     client = mdns_records_find_client_by_ip_str(clients, ip);
     if (!client)
@@ -717,27 +714,26 @@ mdns_records_store_record(const struct resource *r, void *data, struct sockaddr_
         client = mdns_records_alloc_client(ip);
         if (!client)
         {
-            LOGE("%s: Failed to alloc memory for client '%s'", __func__, ip);
+            LOGE("%s: client:%s failed to alloc memory for client", __func__, ip);
             return;
         }
 
         sockaddr_storage_copy(from, &client->from);
 
         ds_tree_insert(clients, client, client->ip_str);
-        LOGI("%s: Added MDNS client with IP '%s'", __func__, client->ip_str);
+        LOGI("%s: client:%s client added", __func__, client->ip_str);
     }
 
     /* Get the client's records_list */
     records_list = &client->records_list;
 
     /* Check for duplicates */
-    ret = mdns_records_check_duplicate(clients, r);
+    ret = mdns_records_check_duplicate(client, r);
     if (ret)
     {
         /* Similar record already exists,  ttl and stored_ts were reset
            in mdns_records_check_duplicate. So just bail out  */
-        LOGT("%s: Client '%s' has existing record of type '%d' and"
-             " name '%s'", __func__, client->ip_str, r->type, r->name);
+        LOGT("%s: client:%s name:%s type:%d record exists", __func__, client->ip_str, r->name, r->type);
         return;
     }
 
@@ -745,7 +741,7 @@ mdns_records_store_record(const struct resource *r, void *data, struct sockaddr_
     rec = mdns_records_alloc_record();
     if (!rec)
     {
-        LOGE("%s: Failed to allocate record entry for client '%s'", __func__, client->ip_str);
+        LOGE("%s: client:%s failed to allocate record entry", __func__, client->ip_str);
         return;
     }
 
@@ -759,7 +755,7 @@ mdns_records_store_record(const struct resource *r, void *data, struct sockaddr_
     ds_dlist_insert_tail(records_list, rec);
     client->num_records++;
 
-    LOGI("%s: Adding resource record type '%s' for client '%s'", __func__, resource->name, client->ip_str);
+    LOGI("%s: client:%s name:%s type:%d record added", __func__, client->ip_str, resource->name, resource->type);
 
     return;
 }

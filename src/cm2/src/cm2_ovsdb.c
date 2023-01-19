@@ -1128,8 +1128,10 @@ cm2_ovsdb_util_handle_master_sta_port_state(struct schema_Wifi_Master_State *mas
 
         if (uplink_removed != NULL) {
             if (g_state.link.is_bridge) {
+                cm2_ovsdb_set_dhcp_client(g_state.link.bridge_name, false);
+                cm2_ovsdb_set_dhcpv6_client(g_state.link.bridge_name, false);
                 cm2_update_bridge_cfg(g_state.link.bridge_name, g_state.link.if_name, false,
-                                      CM2_PAR_NOT_SET, true);
+                                      CM2_PAR_NOT_SET);
             }
             cm2_ovsdb_connection_remove_uplink(uplink_removed);
         }
@@ -1705,7 +1707,7 @@ void cm2_connection_set_L3(struct schema_Connection_Manager_Uplink *uplink) {
 
     if (cm2_is_eth_type(uplink->if_type))
         cm2_update_bridge_cfg(CONFIG_TARGET_LAN_BRIDGE_NAME, uplink->if_name, false,
-                              CM2_PAR_FALSE, false);
+                              CM2_PAR_FALSE);
 
     if (cm2_util_block_udhcpc_on_gre(uplink->if_name, uplink->if_type))
         cm2_util_skip_gre_configuration(uplink->if_name);
@@ -1731,10 +1733,16 @@ static void cm2_connection_clear_used(void)
         }
 
         if (g_state.link.is_bridge) {
-            cm2_ovsdb_set_dhcpv6_client(g_state.link.bridge_name, false);
-            macrep = cm2_is_eth_type(g_state.link.if_type) ? CM2_PAR_TRUE : CM2_PAR_NOT_SET;
+            if (cm2_is_eth_type(g_state.link.if_type)) {
+                macrep = CM2_PAR_TRUE;
+                WARN_ON(cm2_ovsdb_inherit_ip_bridge_conf(g_state.link.bridge_name, g_state.link.if_name));
+            } else {
+                macrep = CM2_PAR_NOT_SET;
+                cm2_ovsdb_set_dhcp_client(g_state.link.bridge_name, false);
+                cm2_ovsdb_set_dhcpv6_client(g_state.link.bridge_name, false);
+            }
             cm2_update_bridge_cfg(g_state.link.bridge_name, g_state.link.if_name, false,
-                                  macrep, true);
+                                  macrep);
         }
 
         ret = cm2_ovsdb_connection_update_used_state(g_state.link.if_name, false);
@@ -1853,7 +1861,7 @@ static time_t cm2_util_set_default_block_ts(const char *if_name)
     return t_new;
 }
 
-bool cm2_ovsdb_recalc_links(void) {
+bool cm2_ovsdb_recalc_links(bool block_current) {
     struct schema_Connection_Manager_Uplink *uplink_p;
     struct schema_Connection_Manager_Uplink *uplink_i;
     struct schema_Connection_Manager_Uplink *uplink;
@@ -1907,12 +1915,26 @@ bool cm2_ovsdb_recalc_links(void) {
                 cm2_update_uplinks_set_interval(g_state.loop, (int) t_new + 2);
             }
 
-            if ((s_ipv6 == CM2_UPLINK_BLOCKED && (s_ipv4 != CM2_UPLINK_ACTIVE && s_ipv4 != CM2_UPLINK_READY)) ||
-                (s_ipv4 == CM2_UPLINK_BLOCKED && (s_ipv6 != CM2_UPLINK_ACTIVE && s_ipv6 != CM2_UPLINK_READY))) {
+            LOGI("Uplink %s ipv4: %s ipv6: %s", uplink_i->if_name,
+                 cm2_get_uplink_str_from_state(s_ipv4),
+                 cm2_get_uplink_str_from_state(s_ipv6));
+
+            if (block_current && uplink_i->is_used) {
+                if (s_ipv4 != CM2_UPLINK_NONE && s_ipv4 != CM2_UPLINK_UNBLOCKING)
+                    cm2_ovsdb_CMU_set_ipv4(uplink_i->if_name, CM2_UPLINK_BLOCKED);
+                if (s_ipv6 != CM2_UPLINK_NONE && s_ipv6 != CM2_UPLINK_UNBLOCKING)
+                    cm2_ovsdb_CMU_set_ipv6(uplink_i->if_name, CM2_UPLINK_BLOCKED);
+
                 continue;
             }
 
-            LOGI("Uplink %s", uplink_i->if_name);
+            if (((s_ipv6 == CM2_UPLINK_INACTIVE || s_ipv6 == CM2_UPLINK_BLOCKED) &&
+                 (s_ipv4 != CM2_UPLINK_ACTIVE && s_ipv4 != CM2_UPLINK_READY)) ||
+                ((s_ipv4 == CM2_UPLINK_INACTIVE || s_ipv4 == CM2_UPLINK_BLOCKED) &&
+                 (s_ipv6 != CM2_UPLINK_ACTIVE && s_ipv6 != CM2_UPLINK_READY))) {
+                continue;
+            }
+
             if (uplink == NULL) {
                 uplink = uplink_i;
             } else if (uplink_i->priority > uplink->priority) {
@@ -1942,7 +1964,7 @@ bool cm2_ovsdb_recalc_links(void) {
 
 static
 void cm2_connection_recalculate_used_link(void) {
-    if (!cm2_ovsdb_recalc_links())
+    if (!cm2_ovsdb_recalc_links(false))
         cm2_check_master_state_links();
 }
 
@@ -2045,6 +2067,25 @@ void callback_Wifi_Master_State(ovsdb_update_monitor_t *mon,
         LOGD("%s dhcpc changed not handled", __func__);
 }
 
+int
+cm2_ovsdb_inherit_ip_bridge_conf(char *up_src, char *up_dst)
+{
+    int     ret;
+
+    LOGI("Updating bridge configuration: %s -> %s", up_src, up_dst);
+    ret = cm2_ovsdb_copy_dhcp_ipv4_configuration(up_src, up_dst);
+    if (ret < 0) {
+        LOGI("%s: Failed to update IPv4 configuration from %s to %s", __func__,
+             up_src, up_dst);
+        return -1;
+    }
+
+    cm2_ovsdb_set_dhcpv6_client(up_src, false);
+    cm2_ovsdb_set_dhcpv6_client(up_dst, true);
+
+    return 0;
+}
+
 static void
 cm2_util_set_not_used_link(void)
 {
@@ -2081,48 +2122,28 @@ void cm2_util_sync_limp_state(char *br, char *port, bool state)
     }
 }
 
-static int
-cm2_util_update_bridge_conf(char *up_src, char *up_dst, char *up_raw, cm2_par_state_t macrep)
-{
-    int     ret;
-
-    LOGI("Updating bridge configuration: %s -> %s", up_src, up_dst);
-    ret = cm2_ovsdb_copy_dhcp_ipv4_configuration(up_src, up_dst);
-    if (ret < 0) {
-        LOGI("%s: Failed to update IPv4 configuration from %s to %s", __func__,
-             up_src, up_dst);
-        return -1;
-    }
-
-    cm2_ovsdb_set_dhcpv6_client(up_src, false);
-
-    /* Put main raw interface into dest uplink */
-    if (up_raw)
-        cm2_update_bridge_cfg(up_dst, up_raw, true, macrep, true);
-
-    cm2_ovsdb_set_dhcpv6_client(g_state.link.bridge_name, true);
-
-    return 0;
-}
-
 static void
 cm2_util_update_bridge_handle(
         struct schema_Connection_Manager_Uplink *old_uplink,
         struct schema_Connection_Manager_Uplink *uplink)
 {
     cm2_par_state_t   macrep;
-    char              s_uplink[64];
-    char              d_uplink[64];
-    char              r_uplink[64];
-    char              *r_p;
 
     if (!cm2_util_get_link_is_used(uplink)) {
         LOGI("%s: bridge [%s] updated for not main link", uplink->if_name, uplink->bridge);
         return;
     }
 
-    r_p = NULL;
     macrep = cm2_is_eth_type(uplink->if_type) ? CM2_PAR_FALSE : CM2_PAR_NOT_SET;
+
+    if (uplink->bridge_exists && old_uplink->bridge_exists &&
+        strcmp(uplink->bridge, old_uplink->bridge) == 0)
+        return;
+
+    if (old_uplink->bridge_exists) {
+        /* Remove uplink from previous bridge */
+        cm2_update_bridge_cfg(old_uplink->bridge, uplink->if_name, false, macrep);
+    }
 
     /* Main uplink in bridge */
     if (uplink->bridge_exists) {
@@ -2131,32 +2152,25 @@ cm2_util_update_bridge_handle(
         cm2_util_sync_limp_state(uplink->bridge, uplink->if_name, true);
 
         if (old_uplink->bridge_exists) {
-            /* Uplink in the same bridge */
-            if (strcmp(uplink->bridge, old_uplink->bridge) == 0)
-                return;
-
-            STRSCPY(s_uplink, old_uplink->bridge);
-            STRSCPY(d_uplink, uplink->bridge);
-            STRSCPY(r_uplink, uplink->if_name);
-            /* Remove uplink from previous bridge */
-            cm2_update_bridge_cfg(s_uplink, r_uplink, false, macrep, true);
+            /* Inherit IP configuration from old bridge */
+            WARN_ON(cm2_ovsdb_inherit_ip_bridge_conf(old_uplink->bridge, uplink->bridge));
+            /* Add new uplink to new bridge */
+            cm2_update_bridge_cfg(uplink->bridge, uplink->if_name, true, macrep);
        } else {
-            /* New bridge configuration */
-            STRSCPY(s_uplink, uplink->if_name);
-            STRSCPY(d_uplink, uplink->bridge);
-            STRSCPY(r_uplink, uplink->if_name);
+            /* Inherit IP configuration from interface */
+            WARN_ON(cm2_ovsdb_inherit_ip_bridge_conf(uplink->if_name, uplink->bridge));
+            /* Add new uplink to new bridge */
+            cm2_update_bridge_cfg(uplink->bridge, uplink->if_name, true, macrep);
        }
-       r_p = r_uplink;
     } else {
         g_state.link.is_bridge = false;
         cm2_util_sync_limp_state(uplink->bridge, uplink->if_name, false);
-        STRSCPY(s_uplink, old_uplink->bridge);
-        STRSCPY(d_uplink, uplink->if_name);
-        /* Remove uplink from previous bridge */
-        cm2_update_bridge_cfg(s_uplink, d_uplink, false, macrep, true);
-    }
 
-    WARN_ON(cm2_util_update_bridge_conf(s_uplink, d_uplink, r_p, macrep));
+        if (old_uplink->bridge_exists) {
+            /* Inherit IP configuration from old bridge */
+            WARN_ON(cm2_ovsdb_inherit_ip_bridge_conf(old_uplink->bridge, uplink->if_name));
+        }
+    }
 }
 
 static bool
@@ -2221,7 +2235,7 @@ static void cm2_util_update_ip_link_state(struct schema_Connection_Manager_Uplin
     s_ipv6 = util_ip_to_state(uplink, true);
 
     if (s_ipv4 == CM2_UPLINK_BLOCKED && s_ipv6 == CM2_UPLINK_BLOCKED) {
-        if (uplink->is_used && !cm2_ovsdb_recalc_links()) {
+        if (uplink->is_used && !cm2_ovsdb_recalc_links(false)) {
             LOGI("%s: Rollback blocked links to inactive state", uplink->if_name);
             cm2_ovsdb_CMU_set_ipv4(uplink->if_name, CM2_UPLINK_INACTIVE);
             cm2_ovsdb_CMU_set_ipv6(uplink->if_name, CM2_UPLINK_INACTIVE);
@@ -2234,7 +2248,7 @@ static void cm2_util_update_ip_link_state(struct schema_Connection_Manager_Uplin
 
 
     if (uplink->ipv4_changed && s_ipv4 == CM2_UPLINK_BLOCKED) {
-        if (uplink->is_used && !cm2_ovsdb_recalc_links()) {
+        if (uplink->is_used && !cm2_ovsdb_recalc_links(false)) {
             LOGI("%s: Rollback blocked IPv4 link to inactive state", uplink->if_name);
             cm2_ovsdb_CMU_set_ipv4(uplink->if_name, CM2_UPLINK_INACTIVE);
             cm2_ovsdb_update_route_metric(uplink->if_name, CM2_METRIC_UPLINK_DEFAULT);
@@ -2243,7 +2257,7 @@ static void cm2_util_update_ip_link_state(struct schema_Connection_Manager_Uplin
             cm2_util_set_default_block_ts(uplink->if_name);
         }
     } else if (uplink->ipv6_changed && s_ipv6 == CM2_UPLINK_BLOCKED) {
-        if (uplink->is_used  && !cm2_ovsdb_recalc_links()) {
+        if (uplink->is_used  && !cm2_ovsdb_recalc_links(false)) {
             LOGI("%s: Rollback blocked link to inactive state", uplink->if_name);
             cm2_ovsdb_CMU_set_ipv6(uplink->if_name, CM2_UPLINK_INACTIVE);
             cm2_ovsdb_update_route_metric(uplink->if_name, CM2_METRIC_UPLINK_DEFAULT);
@@ -2257,7 +2271,7 @@ static void cm2_util_update_ip_link_state(struct schema_Connection_Manager_Uplin
         cm2_ovsdb_connection_update_unreachable_internet_counter(uplink->if_name, 0);
     } else if ((s_ipv4 == CM2_UPLINK_ACTIVE && uplink->ipv4_changed) ||
                (s_ipv6 == CM2_UPLINK_ACTIVE && uplink->ipv6_changed)) {
-        cm2_ovsdb_recalc_links();
+        cm2_ovsdb_recalc_links(false);
     }
 }
 
@@ -2265,7 +2279,7 @@ static void cm2_update_unblock_ts(struct schema_Connection_Manager_Uplink *uplin
     if (!uplink->unblock_ts_exists)
         return;
 
-    cm2_ovsdb_recalc_links();
+    cm2_ovsdb_recalc_links(false);
 }
 
 static void
@@ -2321,9 +2335,13 @@ cm2_Connection_Manager_Uplink_handle_update(
             if (!uplink->has_L2) {
                 cm2_dhcpc_stop_dryrun(uplink->if_name);
 
-                if (cm2_is_eth_type(uplink->if_type))
+                if (cm2_is_eth_type(uplink->if_type)) {
+                    if (uplink->bridge_exists) {
+                        WARN_ON(cm2_ovsdb_inherit_ip_bridge_conf(uplink->bridge, uplink->if_name));
+                    }
                     cm2_update_bridge_cfg(CONFIG_TARGET_LAN_BRIDGE_NAME, uplink->if_name, false,
-                                          CM2_PAR_FALSE, false);
+                                          CM2_PAR_FALSE);
+                }
 
                 if (cm2_util_get_link_is_used(uplink)) {
                     reconfigure = true;
@@ -2447,7 +2465,7 @@ void callback_Connection_Manager_Uplink(ovsdb_update_monitor_t *mon,
 
             if (cm2_is_eth_type(uplink->if_type))
                 cm2_update_bridge_cfg(CONFIG_TARGET_LAN_BRIDGE_NAME, uplink->if_name, false,
-                                      CM2_PAR_FALSE, false);
+                                      CM2_PAR_FALSE);
             break;
         case OVSDB_UPDATE_NEW:
         case OVSDB_UPDATE_MODIFY:

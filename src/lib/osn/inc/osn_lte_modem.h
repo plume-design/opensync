@@ -41,25 +41,14 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #define SOURCE_AT_CMD 1
 
+// Max tokens to be acquired while parsing AT response buffer
+#define MAX_RESP_TOKENS  25
+
 typedef struct _gen_resp_
 {
-    char resp1[C_AT_CMD_LONG_RESP];
-    char resp2[C_AT_CMD_LONG_RESP];
-    char resp3[C_AT_CMD_LONG_RESP];
-    char resp4[C_AT_CMD_LONG_RESP];
-    char resp5[C_AT_CMD_LONG_RESP];
-    char resp6[C_AT_CMD_LONG_RESP];
-    char resp7[C_AT_CMD_LONG_RESP];
-    char resp8[C_AT_CMD_LONG_RESP];
-    char resp9[C_AT_CMD_LONG_RESP];
-    char resp10[C_AT_CMD_LONG_RESP];
-    char resp11[C_AT_CMD_LONG_RESP];
+    char resp[C_AT_CMD_LONG_RESP];
 } gen_resp_tokens;
 
-/* Keep the MAX_RESP_TOKENS in sync with
- * gen_resp_token structure elements
- */
-#define MAX_RESP_TOKENS  11
 
 typedef struct lte_chip_info_ // ati
 {
@@ -95,9 +84,14 @@ typedef struct lte_iccid_ // at+qccid
 } lte_iccid_t;
 
 #define AT_GMR_CMD "at+qgmr"
-#define MAX_GMR_TOKENS 3
+#define MAX_GMR_TOKENS 2
 
 // Ref: 3GPP TS 27.007
+typedef enum _qgmr_id
+{
+    SW_VER = 1,
+} qgmr_id;
+
 typedef struct lte_gmr_ // at+qgmr
 {
     char cmd[C_AT_CMD_RESP];
@@ -481,6 +475,8 @@ typedef struct osn_lte_modem_info_
     lte_sca_info_t sca_info;
     lte_pdp_ctx_dynamic_param_info_t pdp_ctx_info;
     char modem_fw_ver[C_AT_CMD_LONGEST_RESP];
+    uint64_t last_healthcheck_success;
+    uint64_t healthcheck_failures;
 } osn_lte_modem_info_t;
 
 int osn_lte_parse_chip_info(char *buf, lte_chip_info_t *chip_info);
@@ -537,5 +533,6 @@ int osn_lte_save_ca_info(lte_ca_info_t *pca_info, lte_ca_info_t *sca_info, osn_l
 void osn_lte_stop_vendor_daemon(void);
 int osn_lte_parse_fw_ver(char *buf, lte_gmr_t *lte_gmr);
 int osn_lte_save_fw_ver(lte_gmr_t *lte_gmr, osn_lte_modem_info_t *modem_info);
+void osn_lte_dump_modem_info();
 
 #endif /* OSN_LTE_MODEM_H_INCLUDED */

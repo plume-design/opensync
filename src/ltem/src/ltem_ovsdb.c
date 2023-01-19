@@ -299,7 +299,10 @@ ltem_ovsdb_create_lte_state(ltem_mgr_t *mgr)
 
     SCHEMA_SET_STR(lte_state.lte_bands_enable, modem_info->lte_band_val);
 
-    SCHEMA_SET_STR(lte_state.modem_firmware_version, modem_info->modem_fw_ver);
+    if (strlen(modem_info->modem_fw_ver))
+    {
+        SCHEMA_SET_STR(lte_state.modem_firmware_version, modem_info->modem_fw_ver);
+    }
 
     if (!ovsdb_table_insert(&table_Lte_State, &lte_state))
     {
@@ -621,6 +624,12 @@ ltem_ovsdb_check_l3_state(ltem_mgr_t *mgr)
     if (!res)
     {
         LOGI("%s: %s not found in Wifi_Route_Config", __func__, if_name);
+        if (mgr->lte_state == LTEM_LTE_STATE_UP)
+        {
+            LOGI("%s: Set lte_state to DOWN", __func__);
+            ltem_set_lte_state(LTEM_LTE_STATE_DOWN);
+        }
+
         return -1;
     }
 
@@ -695,24 +704,6 @@ ltem_ovsdb_cmu_update_lte_priority(ltem_mgr_t *mgr, uint32_t priority)
 
     LOGD("%s: Set CMU %s priority=%d", __func__, if_name, priority);
     return 0;
-}
-
-void
-ltem_ovsdb_cmu_check_lte (ltem_mgr_t *mgr)
-{
-    int ret;
-    struct schema_Connection_Manager_Uplink uplink;
-
-    ret = ovsdb_table_select_one(&table_Connection_Manager_Uplink,
-                                 SCHEMA_COLUMN(Connection_Manager_Uplink, if_name), mgr->lte_config_info->if_name, &uplink);
-    if (!ret)
-    {
-        LOGI("%s: %s not found in Connection_Manager_Uplink", __func__, mgr->lte_config_info->if_name);
-        return;
-    }
-
-    LOGD("%s: if_name=%s, if_type=%s, has_L2=%d, has_L3=%d, priority=%d",
-         __func__, uplink.if_name, uplink.if_type, uplink.has_L2, uplink.has_L3, uplink.priority);
 }
 
 /**
@@ -1069,13 +1060,19 @@ ltem_handle_nm_update_wwan0(struct schema_Wifi_Inet_State *old_inet_state,
     res = strncmp(inet_state->inet_addr, null_inet_addr, strlen(inet_state->inet_addr));
     if (!res)
     {
-        LOGI("%s: wwan0 IP address[%s], setting LTEM_LTE_STATE_DOWN", __func__, inet_state->inet_addr);
-        ltem_set_lte_state(LTEM_LTE_STATE_DOWN);
+        if (mgr->lte_state != LTEM_LTE_STATE_DOWN)
+        {
+            ltem_set_lte_state(LTEM_LTE_STATE_DOWN);
+            LOGI("%s: wwan0 IP address[%s], setting LTEM_LTE_STATE_DOWN", __func__, inet_state->inet_addr);
+        }
     }
     else
     {
-        LOGI("%s: wwan0 IP address[%s], setting LTEM_LTE_STATE_UP", __func__, inet_state->inet_addr);
-        ltem_set_lte_state(LTEM_LTE_STATE_UP);
+        if (mgr->lte_state != LTEM_LTE_STATE_UP)
+        {
+            ltem_set_lte_state(LTEM_LTE_STATE_UP);
+            LOGI("%s: wwan0 IP address[%s], setting LTEM_LTE_STATE_UP", __func__, inet_state->inet_addr);
+        }
     }
 }
 
@@ -1176,7 +1173,6 @@ ltem_handle_wan_rc_update(struct schema_Wifi_Route_Config *old_route_config, str
     if (res == 0)
     {
         ltem_update_wan_route(mgr, route_config);
-        ltem_set_wan_state(LTEM_WAN_STATE_UP);
     }
 }
 

@@ -94,6 +94,8 @@ struct lte_net_info
     uint32_t active_sim_slot;
     int32_t rssi;
     int32_t ber;
+    uint64_t last_healthcheck_success;
+    uint64_t healthcheck_failures;
 };
 
 /**

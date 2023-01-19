@@ -133,6 +133,8 @@ lte_set_net_info(struct lte_info_report *lte_report)
     net_info.sim_type = mgr->modem_info->sim_type;
     net_info.sim_status = mgr->modem_info->sim_status;
     net_info.active_sim_slot = mgr->modem_info->active_simcard_slot;
+    net_info.last_healthcheck_success = mgr->modem_info->last_healthcheck_success;
+    net_info.healthcheck_failures = mgr->modem_info->healthcheck_failures;
 
     ret = lte_info_set_net_info(&net_info, lte_report);
     if (!ret) return -1;
@@ -201,7 +203,7 @@ lte_set_serving_cell(struct lte_info_report *lte_report)
         LOGI("%s: state=LTE_SERVING_CELL_SEARCH", __func__);
     }
 
-    if (srv_cell->state == LTE_SERVING_CELL_LIMSERV) /* No LTE */
+    if (srv_cell->state == LTE_SERVING_CELL_LIMSERV) /* No data connection, camping on a cell */
     {
         LOGI("%s: state=LTE_SERVING_CELL_LIMSERV", __func__);
     }
@@ -481,9 +483,16 @@ ltem_build_mqtt_report(time_t now)
     int res;
 
     res = osn_lte_read_modem();
-    if (res < 0) return res;
+    if (res < 0)
+    {
+        LOGW("%s: osn_lte_read_modem() failed", __func__);
+    }
 
     res = lte_serialize_report();
+    if (res)
+    {
+        LOGW("%s: lte_serialize_report: failed", __func__);
+    }
 
     lte_mqtt_cleanup();
 

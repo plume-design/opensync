@@ -384,7 +384,7 @@ bool cm2_ovsdb_connection_update_unreachable_cloud_counter(const char *if_name, 
 bool cm2_ovsdb_connection_update_unreachable_internet_counter(const char *if_name, int counter);
 
 bool cm2_ovsdb_is_port_name(char *port_name);
-bool cm2_ovsdb_recalc_links(void);
+bool cm2_ovsdb_recalc_links(bool block_current);
 bool cm2_ovsdb_update_Port_tag(const char *ifname, int tag, bool set);
 bool cm2_ovsdb_update_Port_trunks(const char *ifname, int *trunks, int num_trunks);
 bool cm2_ovsdb_connection_update_loop_state(const char *if_name, cm2_par_state_t s);
@@ -416,6 +416,7 @@ static inline void cm2_ovsdb_dump_debug_data(void)
 {
 }
 #endif
+int cm2_ovsdb_inherit_ip_bridge_conf(char *up_src, char *up_dst);
 
 // addr resolve
 cm2_addr_t* cm2_get_addr(cm2_dest_e dest);
@@ -560,7 +561,7 @@ static inline bool cm2_is_config_via_ble_enabled(void)
 
 // net
 void cm2_update_bridge_cfg(char *bridge, char *port, bool brop,
-                           cm2_par_state_t state, bool dhcp_update);
+                           cm2_par_state_t state);
 void cm2_dhcpc_start_dryrun(char* ifname, char *iftype, int cnt);
 void cm2_dhcpc_stop_dryrun(char* ifname);
 bool cm2_is_eth_type(const char *if_type);
