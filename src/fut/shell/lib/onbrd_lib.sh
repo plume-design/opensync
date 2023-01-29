@@ -146,11 +146,11 @@ check_wan_ip_l2()
     local NARGS=2
     [ $# -ne ${NARGS} ] &&
         raise "onbrd_lib:check_wan_ip_l2 requires ${NARGS} input argument(s), $# given" -arg
-    wan_ifname=$1
+    wan_if_name=$1
     inet_addr_in=$2
 
     # LEVEL2
-    inet_addr=$(ifconfig "$wan_ifname" | grep 'inet addr' | awk '/t addr:/{gsub(/.*:/,"",$2); print $2}')
+    inet_addr=$(ifconfig "$wan_if_name" | grep 'inet addr' | awk '/t addr:/{gsub(/.*:/,"",$2); print $2}')
     if [ -z "$inet_addr" ]; then
         log -deb "onbrd_lib:check_wan_ip_l2 - inet_addr is empty"
         return 1
@@ -167,102 +167,24 @@ check_wan_ip_l2()
 
 ###############################################################################
 # DESCRIPTION:
-#   Function creates patch interface on bridge.
-# INPUT PARAMETER(S):
-#   $1  Bridge name (string, required)
-#   $2  Patch interface name (string, required)
-#   $3  Patch interface name (string, required)
-# RETURNS:
-#   0   On success.
-# USAGE EXAMPLE(S):
-#   create_patch_interface br-wan patch-w2h patch-h2w
-###############################################################################
-create_patch_interface()
-{
-    local NARGS=3
-    [ $# -ne ${NARGS} ] &&
-        raise "onbrd_lib:create_patch_interface requires ${NARGS} input argument(s), $# given" -arg
-    br_wan=$1
-    patch_w2h=$2
-    patch_h2w=$3
-
-    num1=$(ovs-vsctl show | grep "$patch_w2h" | grep Interface | awk '{print $2}' | wc -l)
-    if [ "$num1" -gt 0 ]; then
-        # Add WAN-to-HOME patch port
-        log -deb "onbrd_lib:create_patch_interface - '$patch_w2h' patch exists"
-    else
-        # Add WAN-to-HOME patch port
-        log -deb "onbrd_lib:create_patch_interface - Adding '$patch_w2h' to patch port"
-        add_bridge_port "$br_wan" "$patch_w2h"
-        set_interface_patch "$br_wan" "$patch_w2h" "$patch_h2w"
-    fi
-
-    num2=$(ovs-vsctl show | grep "$patch_h2w" | grep Interface | awk '{print $2}' | wc -l)
-    if [ "$num2" -gt 0 ]; then
-        # Add HOME-to-WAN patch port
-        log -deb "onbrd_lib:create_patch_interface - '$patch_h2w' patch exists"
-    else
-        # Add HOME-to-WAN patch port
-        log -deb "onbrd_lib:create_patch_interface - Adding '$patch_h2w' to patch port"
-        add_bridge_port "$br_wan" "$patch_h2w"
-        set_interface_patch "$br_wan" "$patch_h2w" "$patch_w2h"
-    fi
-
-    ovs-vsctl show
-
-    return 0
-}
-
-###############################################################################
-# DESCRIPTION:
-#   Function checks if patch exists.
-#   Function uses ovs-vsctl command, different from native Linux bridge.
-# INPUT PARAMETER(S):
-#   $1  patch name (string, required)
-# RETURNS:
-#   0   Patch exists.
-#   1   Patch does not exist.
-# USAGE EXAMPLE(S):
-#   check_if_patch_exists patch-h2w
-#   check_if_patch_exists patch-w2h
-###############################################################################
-check_if_patch_exists()
-{
-    local NARGS=1
-    [ $# -ne ${NARGS} ] &&
-        raise "onbrd_lib:check_if_patch_exists requires ${NARGS} input argument(s), $# given" -arg
-    patch=$1
-
-    num=$(ovs-vsctl show | grep "$patch" | grep Interface | awk '{print $2}' | wc -l)
-    if [ "$num" -gt 0 ]; then
-        log -deb "onbrd_lib:check_if_patch_exists - '$patch' interface exists"
-        return 0
-    else
-        log -deb "onbrd_lib:check_if_patch_exists - '$patch' interface does not exist"
-        return 1
-    fi
-}
-
-###############################################################################
-# DESCRIPTION:
 #   Function checks if provided firmware version string is a valid pattern.
 #   Raises an exception if firmware version string has invalid pattern.
 # FIELDS OF INTEREST:
 #             (optional) build description
-#             (optional) nano version    |
+#            (optional) version patch    |
 #        (required) minor version   |    |
 #                               |   |    |
 #   For the FW version string 2.0.2.0-70-gae540fd-dev-academy
 #                             |   |   |
 #      (required) major version   |   |
-#          (optional) micro version   |
+#       (optional) version revision   |
 #               (optional) build number
 # INPUT PARAMETER(S):
 #   $1  FW version (string, required)
 # RETURNS:
 #   0   Firmware version string is valid
 #   See DESCRIPTION.
-#   Function will send an exit singnal upon error, use subprocess to avoid this
+#   Function will send an exit signal upon error, use subprocess to avoid this
 # USAGE EXAMPLE(S):
 #   check_fw_pattern 3.0.0-29-g100a068-dev-debug
 #   check_fw_pattern 2.0.2.0-70-gae540fd-dev-academy
@@ -306,8 +228,8 @@ check_fw_pattern()
     ### Split by delimiter '.' to get version segments
     ver_major="$(echo "$fw_segment_0" | cut -d'.' -f1)"
     ver_minor="$(echo "$fw_segment_0" | cut -d'.' -f2)"
-    ver_micro="$(echo "$fw_segment_0" | cut -d'.' -f3)"
-    ver_nano="$(echo "$fw_segment_0" | cut -d'.' -f4)"
+    ver_revision="$(echo "$fw_segment_0" | cut -d'.' -f3)"
+    ver_patch="$(echo "$fw_segment_0" | cut -d'.' -f4)"
     ver_overflow="$(echo "$fw_segment_0" | cut -d'.' -f5-)"
     # Allow 2 to 4 elements, else fail
     [ -n "${ver_major}" ] ||
@@ -321,13 +243,13 @@ check_fw_pattern()
         raise "FAIL: Major version '${ver_major}' must contain 1-3 numerals, not ${#ver_major}" -l "onbrd_lib:check_fw_pattern"
     [ ${#ver_minor} -ge 1 ] && [ ${#ver_minor} -le 3 ] ||
         raise "FAIL: Minor version '${ver_minor}' must contain 1-3 numerals, not ${#ver_minor}" -l "onbrd_lib:check_fw_pattern"
-    if [ -n "${ver_micro}" ]; then
-        [ ${#ver_micro} -ge 1 ] && [ ${#ver_micro} -le 3 ] ||
-            raise "FAIL: Micro version '${ver_micro}' must contain 1-3 numerals, not ${#ver_micro}" -l "onbrd_lib:check_fw_pattern"
+    if [ -n "${ver_revision}" ]; then
+        [ ${#ver_revision} -ge 1 ] && [ ${#ver_revision} -le 3 ] ||
+            raise "FAIL: Micro version '${ver_revision}' must contain 1-3 numerals, not ${#ver_revision}" -l "onbrd_lib:check_fw_pattern"
     fi
-    if [ -n "${ver_nano}" ]; then
-        [ ${#ver_nano} -ge 1 ] && [ ${#ver_nano} -le 3 ] ||
-            raise "FAIL: Nano version '${ver_nano}' must contain 1-3 numerals, not ${#ver_nano}" -l "onbrd_lib:check_fw_pattern"
+    if [ -n "${ver_patch}" ]; then
+        [ ${#ver_patch} -ge 1 ] && [ ${#ver_patch} -le 3 ] ||
+            raise "FAIL: Nano version '${ver_patch}' must contain 1-3 numerals, not ${#ver_patch}" -l "onbrd_lib:check_fw_pattern"
     fi
 
     return 0
@@ -369,6 +291,108 @@ check_certificate_cn()
     echo "WAN eth port MAC address: $wan_eth_mac"
 
     return 0
+}
+
+##################################################################################
+# DESCRIPTION:
+#   Function validates the 'id' field of the AWLAN_Node table and raises an
+#   exception if
+#   1. length of 'id' > 81 characters
+#   2. id pattern contains invalid characters.
+#   Note that Node ID should also pass below rules but FUT does not verify this:
+#   1. Node ID should be unique across all devices.
+#   2. Node ID has to match either of Serial Number or MAC address of the device,
+#       BLE and QR code.
+#   3. ID length cannot be greater than 12 characters for devices claimed via BLE.
+#       FUT just throws warning if length exceeds 12 characters in any case.
+# INPUT PARAMETER(S):
+#   $1  Node ID (string, required)
+#   $2  MAC address of the device (string, required)
+#   $3  Serial number of the device (string, required)
+# RETURNS:
+#   0   Node ID string is valid
+#   See DESCRIPTION.
+# USAGE EXAMPLE(S):
+#   check_id_pattern A12B34CD5678 11:22:33:44:55:66 A12B34CD5678
+###################################################################################
+check_id_pattern()
+{
+    local NARGS=3
+    [ $# -ne ${NARGS} ] &&
+        raise "onbrd_lib:check_id_pattern requires ${NARGS} input argument(s), $# given" -arg
+    node_id=${1}
+    mac_addr=${2}
+    serial_num=${3}
+
+    [ -n "${node_id}" ] ||
+        raise "FAIL: Node ID string is empty!" -l "onbrd_lib:check_id_pattern"
+
+    # If not empty, must not exceed 81 chars
+    [ ${#node_id} -gt 81 ] &&
+        raise "FAIL: Length of Node ID '${node_id}' is invalid" -l "onbrd_lib:check_id_pattern"
+    # Length must not exceed 12 chars for devices claimed via bluetooth
+    [ ${#node_id} -gt 12 ] &&
+        log -wrn "onbrd_lib:check_id_pattern - Node ID '${node_id}' can not be used for device claims via bluetooth"
+
+    # Allowed alphanumerics, colon and underscore characters.
+    echo ${node_id} | grep -E "[A-Za-z0-9:_]" ||
+        raise "FAIL: Node ID '${node_id}' contains invalid characters!" -l "onbrd_lib:check_id_pattern"
+
+    # Logged if Node ID matches MAC address or Serial Number.
+    [ "${node_id}" == "${mac_addr}" ] &&
+        log -deb "onbrd_lib:check_id_pattern - Node ID '${node_id}' matches MAC address of the device"
+    [ "${node_id}" == "${serial_num}" ] &&
+        log -deb "onbrd_lib:check_id_pattern - Node ID '${node_id}' matches serial number of the device"
+
+    return 0
+}
+
+###############################################################################
+# DESCRIPTION:
+#   Function verifies the validity of the client certificate by checking on
+#   the signature and other parameters.
+#   Raises exception if one of the following fails:
+#       i. Client certificate format is invalid(Not PEM format)
+#       ii. If CA certificate is not approved by Plume CA
+#       iii. If certificate is not signed by the CA and/or
+#            validity expired.
+# INPUT PARAMETER(S):
+#   $1  client certificate (string, required)
+#   $2  CA certificate used to validate client certificate (string, required)
+#   $3  Plume CA (string, required)
+# RETURNS:
+#   See DESCRIPTION
+# USAGE EXAMPLE(S):
+#   verify_client_certificate_file client.pem ca.pem ca_chain.pem
+###############################################################################
+verify_client_certificate_file()
+{
+    local NARGS=3
+    [ $# -ne ${NARGS} ] &&
+        raise "onbrd_lib:verify_client_certificate_file requires ${NARGS} input argument(s), $# given" -arg
+    client_cert=${1}
+    ca_cert=${2}
+    plume_ca=${3}
+
+    cert_file="${FUT_TOPDIR}/${client_cert}"
+    ca_file="${FUT_TOPDIR}/${ca_cert}"
+    plume_ca_file="${FUT_TOPDIR}/shell/tools/server/files/${plume_ca}"
+
+    openssl x509 -in $cert_file -noout > /dev/null
+    [ $? -eq 0 ] &&
+        log "onbrd_lib:verify_client_certificate_file - Certificate ${client_cert} is in valid PEM format" ||
+        raise "FAIL: Certificate ${client_cert} format is not valid. Expected format of the certificate is PEM!" -l "onbrd_lib:verify_client_certificate_file" -tc
+
+    openssl verify -verbose -CAfile $plume_ca_file $ca_file > /dev/null
+    [ $? -eq 0 ] &&
+        log "onbrd_lib:verify_client_certificate_file - CA certificate: ${ca_cert} approved by Plume CA: $plume_ca_file" ||
+        raise "FAIL: CA Certificate: ${ca_cert} not approved by Plume CA: $plume_ca_file" -l "onbrd_lib:verify_client_certificate_file" -tc
+
+    end_date=$(openssl x509 -enddate -noout -in $cert_file | cut -d'=' -f2-)
+    openssl x509 -checkend 0 -noout -in $cert_file > /dev/null
+    [ $? -eq 0 ] &&
+        log "onbrd_lib:verify_client_certificate_file - Certificate ${client_cert} is not expired, valid until $end_date" ||
+        raise "FAIL: Certificate ${client_cert} has expired on $end_date" -l "onbrd_lib:verify_client_certificate_file" -tc
 }
 
 ####################### TEST CASE SECTION - STOP ##############################

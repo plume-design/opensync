@@ -149,8 +149,8 @@ ctrl_cleanup(void)
     const char *fmt = "wpa_ctrl_%d-%d";
     const char *procdir = "/proc";
     const char *sockdir = "/tmp";
-    char unlinkpath[128];
-    char procpath[128];
+    char unlinkpath[512];
+    char procpath[512];
     struct dirent *d;
     DIR *dir;
     int counter;

@@ -26,14 +26,16 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <stdbool.h>
 
-#include "unity.h"
+#include "dhcp_parse.h"
+#include "http_parse.h"
+#include "json_mqtt.h"
+#include "json_util.h"
 #include "log.h"
 #include "memutil.h"
 #include "target.h"
-#include "json_util.h"
-
-#include "json_mqtt.h"
 #include "unit_test_utils.h"
+#include "unity.h"
+#include "upnp_parse.h"
 
 extern char *version;
 char *test_name = "test_json_mqtt";

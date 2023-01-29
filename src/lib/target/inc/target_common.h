@@ -218,6 +218,23 @@ struct target_radio_ops {
      *  This shall not be called from within target_dpp_config_set() itself.
      */
     void (*op_dpp_conf_failed)(void);
+
+    /** target shall call this whenever a STA interface receives a CSA
+     *  intention from the parent AP. The intention can be either
+     *  Action Frame with CSA, or Beacon with CSA IE countdown. It is
+     *  safe to call this multiple number of times as Beacon CSA IE
+     *  countdown goes down. Target must check if this function is
+     *  NULL. If it's NULL then it must not be called. To denote 80+80
+     *  MHz operation use chan_width_mhz=8080.
+     *  When this is not NULL the target implementation shall no
+     *  longer perform any implicit CSA between PHYs. It may, but does
+     *  not need to, still perform inheritence of CSA from STA to AP
+     *  interfaces.
+     */
+    void (*op_csa_rx)(const char *phy_name,
+                      const char *vif_name,
+                      int chan_pri_freq_mhz,
+                      int chan_width_mhz);
 };
 
 /**

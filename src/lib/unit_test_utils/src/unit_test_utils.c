@@ -46,7 +46,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "unity.h"
 
 char g_parent_tmp_folder[PATH_MAX] = { 0 };
-char g_pcap_tmp_folder[PATH_MAX] = { 0 };
+char g_pcap_tmp_folder[PATH_MAX+128] = { 0 };
 bool g_keep_tmp_folder = false;
 void (*g_tearDown)(void) = NULL;
 void (*g_setUp)(void) = NULL;
@@ -246,7 +246,7 @@ create_hex_dump(const char *fname, const uint8_t *buf, size_t len)
 void
 ut_create_pcap_payload(const char *pkt_name, const uint8_t pkt[], size_t len, struct net_header_parser *parser)
 {
-    char fname[1024];
+    char fname[PATH_MAX+256];
 
     if (*g_pcap_tmp_folder == '\0') return;
 

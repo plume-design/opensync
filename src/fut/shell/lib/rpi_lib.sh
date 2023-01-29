@@ -79,6 +79,7 @@ dpkg_is_package_installed()
 start_cloud_simulation()
 {
     local cert_dir="/etc/haproxy/certs/fut/"
+    local ca_certificate_path="${FUT_TOPDIR}/shell/tools/server/files/ca_chain.pem"
     log -deb "rpi_lib:start_cloud_simulation - Check if haproxy package is installed"
     dpkg_is_package_installed "haproxy" ||
         raise "FAIL: haproxy not installed" -l "rpi_lib:start_cloud_simulation" -ds
@@ -89,16 +90,24 @@ start_cloud_simulation()
     log -deb "rpi_lib:start_cloud_simulation - Copy haproxy configuration file and certificates"
     sudo cp "${FUT_TOPDIR}/shell/tools/server/files"/haproxy.cfg /etc/haproxy/haproxy.cfg ||
         raise "FAIL: Config file not present!" -l "rpi_lib:start_cloud_simulation" -ds
-    sudo cp "${FUT_TOPDIR}/shell/tools/server/files"/{fut_controller.pem,plume_ca_chain.pem} "${cert_dir}" ||
+    sudo cp "${FUT_TOPDIR}/shell/tools/server/certs"/{server.pem,server.key,ca.pem} "${cert_dir}" ||
         raise "FAIL: Certificates not present!" -l "rpi_lib:start_cloud_simulation" -ds
-
+    # Combine FUT ca.pem with ca_chain.pem
+    sudo bash -c "cat ${ca_certificate_path} >> ${cert_dir}/ca.pem" ||
+        raise "FAIL: Failed to combine ca.pem with ca_chain.pem" -l "rpi_lib:start_cloud_simulation" -ds
+    log -deb "rpi_lib:start_cloud_simulation - Inserting server.key into server.pem since haproxy requires it"
+    sudo bash -c "cat ${cert_dir}/server.key >> ${cert_dir}/server.pem" ||
+        raise "FAIL: Failed to insert server.key into server.pem" -l "rpi_lib:start_cloud_simulation" -ds
+    cur_user="$(id -u):$(id -g)"
+    sudo chown -R ${cur_user} "${cert_dir}" ||
+        raise "FAIL: Could not set certificate ownership to ${cur_user}!" -l "rpi_lib:start_cloud_simulation" -ds
     log -deb "rpi_lib:start_cloud_simulation - Restart haproxy service"
     sudo service haproxy restart ||
         raise "FAIL: haproxy not started" -l "rpi_lib:start_cloud_simulation" -ds
     log -deb "rpi_lib:start_cloud_simulation - haproxy service running"
 
     log -deb "rpi_lib:start_cloud_simulation - Starting Cloud listener - logging path /tmp/cloud_listener.log"
-    "${FUT_TOPDIR}"/framework/tools/cloud_listener.py -v > /dev/null 2>&1 &
+    "${FUT_TOPDIR}"/framework/tools/cloud_listener.py --verbose &> /tmp/cloud_listener.log &
     log -deb "rpi_lib:start_cloud_simulation - Cloud listener started" && exit 0
 }
 
@@ -121,9 +130,10 @@ stop_cloud_simulation()
     sudo service haproxy stop
     sudo systemctl is-active --quiet haproxy &&
         raise "FAIL: haproxy not stopped" -l "rpi_lib:stop_cloud_simulation" -ds
+    kill $(ps aux | grep "haproxy" | grep -v "grep" | awk '{print $2}') > /dev/null 2>&1 &
     log -deb "rpi_lib:stop_cloud_simulation - haproxy service stopped"
     log -deb "rpi_lib:stop_cloud_simulation - Stop Cloud listener"
-    kill $(pgrep cloud_listener) > /dev/null 2>&1 &
+    kill $(ps aux | grep "cloud_listener" | grep -v "grep" | awk '{print $2}') > /dev/null 2>&1 &
     log -deb "rpi_lib:stop_cloud_simulation - Cloud listener stopped"
 }
 
@@ -153,8 +163,12 @@ start_fut_mqtt()
         raise "FAIL: Failed to create cert dir!" -l "rpi_lib:start_fut_mqtt" -ds
 
     log -deb "rpi_lib:start_fut_mqtt - Copy mosquitto certificates"
-    sudo cp "${FUT_TOPDIR}/shell/tools/server/certs"/{ca.crt,server.crt,server.key} "${cert_dir}" ||
+    sudo cp "${FUT_TOPDIR}/shell/tools/server/certs"/{ca.pem,server.pem,server.key} "${cert_dir}" ||
         raise "FAIL: Certificates not present!" -l "rpi_lib:start_fut_mqtt" -ds
+
+    cur_user="$(id -u):$(id -g)"
+    sudo chown -R ${cur_user} "${cert_dir}" ||
+        raise "FAIL: Failed to set permission for certificates!" -l "rpi_lib:start_fut_mqtt" -ds
 
     log -deb "rpi_lib:start_fut_mqtt - Start mosquitto service"
     /usr/sbin/mosquitto -c "${mqtt_conf_file}" -d ||
@@ -179,7 +193,7 @@ stop_fut_mqtt()
 {
     log -deb "rpi_lib:stop_fut_mqtt - Stopping MQTT daemon"
     # shellcheck disable=SC2046
-    sudo kill $(pgrep mosquitto) &&
+    sudo kill $(ps aux | grep "mosquitto" | grep -v "grep" | awk '{print $2}') &&
         log -deb "rpi_lib:stop_fut_mqtt - mosquitto service stopped" ||
         log -deb "rpi_lib:stop_fut_mqtt - mosquitto service not running"
 }
@@ -616,6 +630,85 @@ check_traffic_iperf3_client()
         raise "FAIL: Traffic failed to reach WAN IP of the DUT: ${ip_address}:${port}" -l "rpi_lib:check_traffic_iperf3_client" -tc
     fi
 
+    return 0
+}
+
+#################################################################################
+# DESCRIPTION:
+#   Function runs iperf3 server on the host. Server exits after serving one
+#   client at a time('-1' option). This function depends on usage of iperf3 tool.
+#   Raises exception if iperf3 fails to start.
+# INPUT PARAMETER(S):
+#   None.
+# RETURNS:
+#   Returns 0 on success.
+# USAGE EXAMPLE(S):
+#  run_iperf3_server
+##################################################################################
+run_iperf3_server()
+{
+    iperf3 -s -1 -D &&
+        log -deb "rpi_lib:run_iperf3_server: Running iperf3 server on the device - Success" ||
+        raise "FAIL: iperf3 failed to run on the device" -l "rpi_lib:run_iperf3_server" -tc
+
+    return 0
+}
+
+#################################################################################
+# DESCRIPTION:
+#   Function generates self-signed certificate files which will be used for
+#       simulated FUT Cloud connection and MQTT broker connection
+# INPUT PARAMETER(S):
+#   - None
+# RETURNS:
+#   0   Certificates generated successfully
+# USAGE EXAMPLE(S):
+#  generate_fut_self_signed_certificates
+##################################################################################
+generate_fut_self_signed_certificates()
+{
+    local NARGS=0
+    [ $# -ne ${NARGS} ] &&
+        raise "rpi_lib:generate_fut_self_signed_certificates does not require any input argument(s), $# given" -arg
+    local certificate_path="${FUT_TOPDIR}/shell/tools/server/certs"
+    local certificate_subjects_ca="/C=US/ST=FUT/L=FUT/O=FUT/CN=*.opensync.io:ca"
+    local certificate_subjects_server="/C=US/ST=FUT/L=FUT/O=FUT/CN=*.opensync.io"
+    log -deb "rpi_lib:generate_fut_self_signed_certificates - Removing any existing certificates in ${certificate_path}"
+    if [ -d "${certificate_path}" ]; then
+        rm ${certificate_path}/* &&
+            log -deb "rpi_lib:generate_fut_self_signed_certificates - Certificate removed successfully"
+    else
+        log -deb "rpi_lib:generate_fut_self_signed_certificates - ${certificate_path} does not exists, creating folder"
+        mkdir -p "${certificate_path}" &&
+            log -deb "rpi_lib:generate_fut_self_signed_certificates - ${certificate_path} folder created" ||
+            raise "FAIL: Failed to create folder ${certificate_path}" -l "rpi_lib:generate_fut_self_signed_certificates"
+    fi
+    cmd="openssl genrsa -out ${certificate_path}/ca.key 2048"
+    log -deb "rpi_lib:generate_fut_self_signed_certificates: Executing ${cmd}"
+    ${cmd} ||
+        raise "FAIL: Failed to execute: ${cmd}" -l "rpi_lib:generate_fut_self_signed_certificates"
+    cmd="openssl req -new -x509 -days 2 -key ${certificate_path}/ca.key -out ${certificate_path}/ca.pem -subj ${certificate_subjects_ca}"
+    log -deb "rpi_lib:generate_fut_self_signed_certificates: Executing ${cmd}"
+    ${cmd} ||
+        raise "FAIL: Failed to execute: ${cmd}" -l "rpi_lib:generate_fut_self_signed_certificates"
+    cmd="openssl genrsa -out ${certificate_path}/server.key 2048"
+    log -deb "rpi_lib:generate_fut_self_signed_certificates: Executing ${cmd}"
+    ${cmd} ||
+        raise "FAIL: Failed to execute: ${cmd}" -l "rpi_lib:generate_fut_self_signed_certificates"
+    cmd="openssl req -new -out ${certificate_path}/server.csr -key ${certificate_path}/server.key -subj ${certificate_subjects_server}"
+    log -deb "rpi_lib:generate_fut_self_signed_certificates: Executing ${cmd}"
+    ${cmd} ||
+        raise "FAIL: Failed to execute: ${cmd}" -l "rpi_lib:generate_fut_self_signed_certificates"
+    cmd="openssl x509 -req -in ${certificate_path}/server.csr -CA ${certificate_path}/ca.pem -CAkey ${certificate_path}/ca.key -CAcreateserial -out ${certificate_path}/server.pem -days 2"
+    log -deb "rpi_lib:generate_fut_self_signed_certificates: Executing ${cmd}"
+    ${cmd} ||
+        raise "FAIL: Failed to execute: ${cmd}" -l "rpi_lib:generate_fut_self_signed_certificates"
+    log -deb "rpi_lib:generate_fut_self_signed_certificates: Verifying certificates ${certificate_path}"
+    cmd="openssl verify -verbose -CAfile ${certificate_path}/ca.pem ${certificate_path}/server.pem"
+    ${cmd} ||
+        raise "FAIL: Failed to execute: ${cmd}" -l "rpi_lib:generate_fut_self_signed_certificates"
+    log -deb "rpi_lib:generate_fut_self_signed_certificates: Printing contents of ${certificate_path}"
+    tail ${certificate_path}/* || true
     return 0
 }
 

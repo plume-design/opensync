@@ -35,6 +35,7 @@ UNIT_TYPE := BIN
 UNIT_SRC += src/psm_main.c
 UNIT_SRC += src/psm_ovsdb_row.c
 UNIT_SRC += src/psm_ovsdb_schema.c
+UNIT_SRC += src/psm_erase.c
 
 UNIT_CFLAGS += -I$(UNIT_PATH)/src
 
@@ -45,3 +46,4 @@ UNIT_DEPS += src/lib/evx
 UNIT_DEPS += src/lib/json_util
 UNIT_DEPS += src/lib/ovsdb
 UNIT_DEPS += src/lib/target
+UNIT_DEPS += src/lib/ps_mgmt

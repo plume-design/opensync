@@ -1,0 +1,8 @@
+menu "libff: Feature Flag (FF) configuration"
+    config FF_DYNAMIC_PROVIDERS_PATH
+        string "Path to a directory containing dynamic providers"
+        default "$(INSTALL_PREFIX)/lib"
+        help
+            Libraries from this path with name matching pattern "libff_provider_*"
+            will be automatically loaded as Feature Flag providers.
+endmenu

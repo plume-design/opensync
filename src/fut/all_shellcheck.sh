@@ -80,4 +80,6 @@ if [ "$check" = "lib" ] || [ "$check" = "all" ]; then
     shellcheck --exclude=$excludes ./../fut/shell/lib/unit_lib.sh
     shellcheck --exclude=$excludes ./../fut/shell/lib/ut_lib.sh
     shellcheck --exclude=$excludes ./../fut/shell/lib/wm2_lib.sh
+    shellcheck --exclude=$excludes ./../fut/shell/lib/vpnm_lib.sh
+    shellcheck --exclude=$excludes ./../fut/shell/lib/pm_lib.sh
 fi

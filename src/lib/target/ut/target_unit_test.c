@@ -32,6 +32,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <errno.h>
 
 #include "header.h"
+#include "kconfig.h"
 
 /*! \brief
  * Function to test the following:
@@ -283,64 +284,6 @@ void test_target_unmap_ifname_exists(char *map_name)
     ret = target_unmap_ifname_exists(map_name);
     test_target_map_init();
     TEST_ASSERT_FALSE_MESSAGE(ret, "Failed, to check map_name, because map is closed");
-
-}//END OF FUNCTION
-
-/*! \brief
- * Function to generate fake data for bluetooth configuration and sends it out
- * It can be called from any where
- *
- * @param[out] pass (if would able to do malloc and generate data) fail otherwise
- */
-struct schema_AW_Bluetooth_Config* get_broadcast_info()
-{
-    struct schema_AW_Bluetooth_Config *config = NULL;
-    config = (struct schema_AW_Bluetooth_Config *)malloc(sizeof (struct schema_AW_Bluetooth_Config));
-    if (!config) {
-        LOGI("Failed to malloc");
-        return NULL;
-    }
-    memset(config, '0', sizeof(struct schema_AW_Bluetooth_Config));
-    STRSCPY(config->_uuid.uuid, "unit-test");
-    config->_uuid_present = true;
-    config->_uuid_present = true;
-    STRSCPY(config->mode, "off");
-    config->interval_millis = 30;
-    return config;
-
-}//END OF FUNCTION
-
-/*! \brief
- * Function to test target_ble_broadcast_start, which will start the broadcasting
- * of bluetooth if it was off.
- *
- * @param[out] pass (if able to start bluetooth broadcasting) fail otherwise
- */
-void test_target_ble_broadcast_start()
-{
-    /*setup*/
-    struct schema_AW_Bluetooth_Config *config = NULL;
-    config = get_broadcast_info();
-    if (config && strcmp(config->mode, "off")) {
-            bool ret = target_ble_broadcast_start(config);
-        TEST_ASSERT_FALSE_MESSAGE(!ret, "Failed, to start bluetooth");
-    }
-    /*teardown*/
-    if(config)
-        free(config);
-
-}//END OF FUNCTION
-
-/*! \brief
- * Function to test target_ble_broadcast_stop, which stops the broadcasting
- * of bluetooth if it was on
- *
- * @param[out] pass (if stopped bluetooth) fail otherwise
- */
-void test_target_ble_broadcast_stop()
-{
-    int ret = target_ble_broadcast_stop();
-    TEST_ASSERT_FALSE_MESSAGE(!ret, "Failed to execute pluble command");
 
 }//END OF FUNCTION
 
@@ -598,6 +541,11 @@ void test_target_stats_capacity_get()
     target_capacity_data_t  *results;
     radio_entry_t  radio_cfg_ctx;
     bool ret;
+
+    if (!kconfig_enabled(CONFIG_SM_CAPACITY_QUEUE_STATS)) {
+        TEST_IGNORE_MESSAGE("Capacity stats are disabled");
+        return;
+    }
 
     results = malloc(sizeof(*results));
     memset(results, 0, sizeof(*results));

@@ -40,12 +40,11 @@ usage()
 cat << usage_string
 sm/sm_cleanup.sh [-h] arguments
 Description:
-    - Script removes interface from Wifi_VIF_Config.
+    - Script removes the Wifi_Stats_Config table.
 Arguments:
     -h : show this help message
-    \$1 (if_name)    : used for interface name  : (string)(required)
 Script usage example:
-    ./sm/sm_cleanup.sh home-ap-l50
+    ./sm/sm_cleanup.sh
 usage_string
 }
 if [ -n "${1}" ]; then
@@ -60,22 +59,16 @@ if [ -n "${1}" ]; then
     esac
 fi
 
-NARGS=1
-[ $# -ne ${NARGS} ] && usage && raise "Requires exactly '${NARGS}' input argument(s)" -l "sm/sm_cleanup.sh" -arg
-if_name=${1}
 
-log "sm/sm_cleanup.sh: Clean up interface ${if_name} from Wifi_VIF_Config"
-remove_ovsdb_entry Wifi_VIF_Config -w if_name "${if_name}" &&
-    log "sm/sm_cleanup.sh: OVSDB entry from Wifi_VIF_Config removed for $if_name - Success" ||
-    log -err "sm/sm_cleanup.sh: Failed to remove OVSDB entry from Wifi_VIF_Config for $if_name"
+log "sm/sm_cleanup.sh: Removing the Wifi_Stats_Config table"
+remove_ovsdb_entry Wifi_Stats_Config &&
+    log "sm/sm_cleanup.sh: Wifi_Stats_Config table removed - Success" ||
+    log -err "sm/sm_cleanup.sh: Failed to remove the Wifi_Stats_Config table"
 
-wait_ovsdb_entry_remove Wifi_VIF_State -w if_name "${if_name}" &&
-    log "sm/sm_cleanup.sh: OVSDB entry from Wifi_VIF_State removed for $if_name - Success" ||
-    log -err "sm/sm_cleanup.sh: Failed to remove OVSDB entry from Wifi_VIF_State for $if_name"
+wait_ovsdb_entry_remove Wifi_Stats_Config &&
+    log "sm/sm_cleanup.sh: Wifi_Stats_Config table removed - Success" ||
+    log -err "sm/sm_cleanup.sh: Failed to remove the Wifi_Stats_Config table"
 
-print_tables Wifi_Inet_Config
-print_tables Wifi_Inet_State
-print_tables Wifi_VIF_Config
-print_tables Wifi_VIF_State
+print_tables Wifi_Stats_Config
 
 pass

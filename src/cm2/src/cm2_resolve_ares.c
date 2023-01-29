@@ -67,6 +67,27 @@ cm2_util_free_addr_list(cm2_addr_list *list)
     }
 }
 
+static char*
+addr_family_to_str(int family)
+{
+    char *str = "Unknown";
+
+    switch (family)
+    {
+        case AF_INET:
+            str = "AF_INET";
+            break;
+        case AF_INET6:
+            str = "AF_INET6";
+            break;
+        default:
+            LOGI("%s(): Invalid family: %d", __func__, family);
+            break;
+    }
+
+    return str;
+}
+
 void cm2_free_addr_list(cm2_addr_t *addr)
 {
     cm2_util_free_addr_list(&addr->ipv6_addr_list);
@@ -88,8 +109,9 @@ cm2_ares_host_cb(void *arg, int status, int timeouts, struct hostent *hostent)
 
     switch(status) {
         case ARES_SUCCESS:
-            LOGI("ares: got address of host %s, req_type: %d, h addr type = %d timeouts: %d\n",
-                 hostent->h_name, addr->req_addr_type, hostent->h_addrtype, timeouts);
+            LOGI("ares: got address of host %s, req_type: %s, h addr type = %s timeouts: %d\n",
+                 hostent->h_name, addr_family_to_str(addr->req_addr_type),
+                 addr_family_to_str(hostent->h_addrtype), timeouts);
 
             if (addr->req_addr_type != hostent->h_addrtype)
                 return;
@@ -97,7 +119,7 @@ cm2_ares_host_cb(void *arg, int status, int timeouts, struct hostent *hostent)
             for (i = 0; hostent->h_addr_list[i]; ++i)
             {
                 inet_ntop(hostent->h_addrtype, hostent->h_addr_list[i], buf, INET6_ADDRSTRLEN);
-                LOGI("Addr%d:[%d] %s\n", i, hostent->h_addrtype, buf);
+                LOGI("Addr%d:[%s] %s\n", i, addr_family_to_str(hostent->h_addrtype), buf);
             }
 
             cnt = i;
@@ -207,8 +229,8 @@ void cm2_resolve_timeout(void)
 static bool
 cm2_validate_target_addr(cm2_addr_list *list, int addr_type)
 {
-    LOGT("type: %d, ipv4.blocked = %d ipv6.blocked = %d ipv4.is_ip = %d, ipv6.is_ip = %d",
-          addr_type, g_state.link.ipv4.blocked, g_state.link.ipv6.blocked,
+    LOGT("type: %s, ipv4.blocked = %d ipv6.blocked = %d ipv4.is_ip = %d, ipv6.is_ip = %d",
+          addr_family_to_str(addr_type), g_state.link.ipv4.blocked, g_state.link.ipv6.blocked,
           g_state.link.ipv4.is_ip, g_state.link.ipv6.is_ip);
 
     if (addr_type == AF_INET && (!g_state.link.ipv4.is_ip || g_state.link.ipv4.blocked)) {
@@ -227,18 +249,19 @@ cm2_validate_target_addr(cm2_addr_list *list, int addr_type)
     }
 
     if (!list->h_addr_list) {
-        LOGI("Ares: Addr Type: %d, Empty addr list", addr_type);
+        LOGI("Ares: Addr Type: %s, Empty addr list", addr_family_to_str(addr_type));
         return false;
     }
 
     if (!list->h_addr_list[list->h_cur_idx]) {
-        LOGI("Ares: Addr Type: %d. Empty addr for current index: %d",
-             addr_type, list->h_cur_idx);
+        LOGI("Ares: Addr Type: %s. Empty addr for current index: %d",
+             addr_family_to_str(addr_type), list->h_cur_idx);
         return false;
     }
 
     if (list->h_addrtype != addr_type) {
-        LOGI("Address type mismatch: %d, %d", list->h_addrtype, addr_type);
+        LOGI("Address type mismatch: %s, %s",
+             addr_family_to_str(list->h_addrtype), addr_family_to_str(addr_type));
         return false;
     }
 

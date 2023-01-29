@@ -121,10 +121,10 @@ tap_up_cmd()
     local NARGS=1
     [ $# -ne ${NARGS} ] &&
         raise "fsm_lib:tap_up_cmd requires ${NARGS} input arguments, $# given" -arg
-    intf=$1
+    iface=$1
 
-    log -deb "fsm_lib:tap_up_cmd - Bringing tap interface '${intf}' up"
-    ip link set "${intf}" up
+    log -deb "fsm_lib:tap_up_cmd - Bringing tap interface '${iface}' up"
+    ip link set "${iface}" up
 }
 
 ###############################################################################
@@ -145,9 +145,13 @@ gen_no_flood_cmd()
     [ $# -ne ${NARGS} ] &&
         raise "fsm_lib:gen_no_flood_cmd requires ${NARGS} input arguments, $# given" -arg
     bridge=$1
-    intf=$2
+    iface=$2
 
-    log -deb "fsm_lib:gen_no_flood_cmd: Mark interface '${intf}' as 'no-flood'"
+    log -deb "fsm_lib:gen_no_flood_cmd: Mark interface '${iface}' as 'no-flood'"
 
-    ovs-ofctl mod-port "${bridge}" "${intf}" no-flood
+    if linux_native_bridge_enabled; then
+        ip link set "$iface" type bridge_slave flood "off"
+    else
+        ovs-ofctl mod-port "${bridge}" "${iface}" no-flood
+    fi
 }

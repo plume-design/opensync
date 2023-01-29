@@ -43,6 +43,7 @@ enum {
     FSM_OBSERVED,
     FSM_NO_MATCH,
     FSM_REDIRECT,
+    FSM_REDIRECT_ALLOW,
     FSM_FORWARD,
     FSM_UPDATE_TAG,
     FSM_GATEKEEPER_REQ,
@@ -131,6 +132,10 @@ enum {
 enum {
     FSM_INLINE_REPLY = 0,
     FSM_ASYNC_REPLY,
+};
+
+enum fsm_supported_features {
+	FSM_CNAME_FEATURE = (1 << 0),
 };
 
 struct dns_device
@@ -303,6 +308,7 @@ struct fsm_policy_req
     int policy_index;
     bool report;
     char *network_id;
+    uint64_t supported_features;
 };
 
 

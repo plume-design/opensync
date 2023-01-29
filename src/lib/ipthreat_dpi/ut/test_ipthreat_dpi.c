@@ -437,9 +437,6 @@ void ipthreat_dpi_setUp(void)
     memset(&g_v4_outbound_key, 0, sizeof(g_v4_outbound_key));
     memset(&outbound_eth_header, 0, sizeof(outbound_eth_header));
 
-    outbound_eth_header.srcmac = &g_src_mac;
-    outbound_eth_header.dstmac = &g_dst_mac;
-    outbound_eth_header.ethertype = 0x0800;
     g_v4_outbound_key.src_ip = CALLOC(1, 4);
     rc = inet_pton(AF_INET, g_v4_tuple.src_ip, g_v4_outbound_key.src_ip);
     TEST_ASSERT_EQUAL_INT(1, rc);
@@ -452,6 +449,8 @@ void ipthreat_dpi_setUp(void)
     g_v4_outbound_key.ipprotocol = g_v4_tuple.transport;
     g_v4_outbound_key.sport = htons(g_v4_tuple.src_port);
     g_v4_outbound_key.dport = htons(g_v4_tuple.dst_port);
+    g_v4_outbound_key.smac = &g_src_mac;
+    g_v4_outbound_key.dmac = &g_dst_mac;
 
     g_v4_outbound_acc.key = &g_v4_outbound_key;
     g_v4_outbound_acc.direction = g_v4_tuple.direction;
@@ -462,9 +461,6 @@ void ipthreat_dpi_setUp(void)
     memset(&g_v4_inbound_key, 0, sizeof(g_v4_inbound_key));
     memset(&inbound_eth_header, 0, sizeof(inbound_eth_header));
 
-    inbound_eth_header.srcmac = &g_dst_mac;
-    inbound_eth_header.dstmac = &g_src_mac;
-    inbound_eth_header.ethertype = 0x0800;
     g_v4_inbound_key.src_ip = CALLOC(1, 4);
     rc = inet_pton(AF_INET, g_v4_inbound_tuple.src_ip, g_v4_inbound_key.src_ip);
     TEST_ASSERT_EQUAL_INT(1, rc);
@@ -477,6 +473,8 @@ void ipthreat_dpi_setUp(void)
     g_v4_inbound_key.ipprotocol = g_v4_inbound_tuple.transport;
     g_v4_inbound_key.sport = htons(g_v4_inbound_tuple.src_port);
     g_v4_inbound_key.dport = htons(g_v4_inbound_tuple.dst_port);
+    g_v4_inbound_key.dmac = &g_src_mac;
+    g_v4_inbound_key.smac = &g_dst_mac;
 
     g_v4_inbound_acc.key = &g_v4_inbound_key;
     g_v4_inbound_acc.direction = g_v4_inbound_tuple.direction;
@@ -487,9 +485,6 @@ void ipthreat_dpi_setUp(void)
     memset(&g_v6_outbound_key, 0, sizeof(g_v6_outbound_key));
     memset(&outbound_eth6_header, 0, sizeof(outbound_eth6_header));
 
-    outbound_eth6_header.srcmac = &g_src_mac;
-    outbound_eth6_header.dstmac = &g_dst_mac;
-    outbound_eth6_header.ethertype = 0x086DD;
     g_v6_outbound_key.src_ip = CALLOC(1, 16);
     rc = inet_pton(AF_INET6, g_v6_tuple.src_ip, g_v6_outbound_key.src_ip);
     TEST_ASSERT_EQUAL_INT(1, rc);
@@ -502,6 +497,8 @@ void ipthreat_dpi_setUp(void)
     g_v6_outbound_key.ipprotocol = g_v6_tuple.transport;
     g_v6_outbound_key.sport = htons(g_v6_tuple.src_port);
     g_v6_outbound_key.dport = htons(g_v6_tuple.dst_port);
+    g_v6_outbound_key.dmac = &g_dst_mac;
+    g_v6_outbound_key.smac = &g_src_mac;    
 
     g_v6_outbound_acc.key = &g_v6_outbound_key;
     g_v6_outbound_acc.direction = g_v6_tuple.direction;
@@ -512,9 +509,6 @@ void ipthreat_dpi_setUp(void)
     memset(&g_v6_inbound_key, 0, sizeof(g_v6_inbound_key));
     memset(&inbound_eth6_header, 0, sizeof(inbound_eth6_header));
 
-    inbound_eth6_header.srcmac = &g_dst_mac;
-    inbound_eth6_header.dstmac = &g_src_mac;
-    inbound_eth6_header.ethertype = 0x086DD;
     g_v6_inbound_key.src_ip = CALLOC(1, 16);
     rc = inet_pton(AF_INET6, g_v6_inbound_tuple.src_ip, g_v6_inbound_key.src_ip);
     TEST_ASSERT_EQUAL_INT(1, rc);
@@ -527,6 +521,8 @@ void ipthreat_dpi_setUp(void)
     g_v6_inbound_key.ipprotocol = g_v6_inbound_tuple.transport;
     g_v6_inbound_key.sport = htons(g_v6_inbound_tuple.src_port);
     g_v6_inbound_key.dport = htons(g_v6_inbound_tuple.dst_port);
+    g_v6_inbound_key.dmac = &g_src_mac;
+    g_v6_inbound_key.smac = &g_dst_mac;
 
     g_v6_inbound_acc.key = &g_v6_inbound_key;
     g_v6_inbound_acc.direction = g_v6_inbound_tuple.direction;

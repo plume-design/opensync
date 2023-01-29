@@ -44,6 +44,7 @@
 #include "os_backtrace.h"
 #include "json_util.h"
 #include "ovsdb.h"
+#include "kconfig.h"
 #include <ev.h>
 
 #define MODULE_ID LOG_MODULE_ID_MAIN
@@ -59,11 +60,15 @@ static void nfm_init(struct ev_loop *loop)
 	nfm_ovsdb_init();
 	nfm_ipset_init();
 	nfm_objm_init();
+    if (kconfig_enabled(CONFIG_TARGET_ENABLE_EBTABLES))
+	  nfm_osfw_eb_init(loop);
 }
 
 static void nfm_fini(void)
 {
 	nfm_osfw_fini();
+    if (kconfig_enabled(CONFIG_TARGET_ENABLE_EBTABLES))
+	  nfm_osfw_eb_fini();
 }
 
 int main(int argc, char **argv)

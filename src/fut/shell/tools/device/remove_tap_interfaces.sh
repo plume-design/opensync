@@ -72,7 +72,7 @@ fi
 NARGS=1
 [ $# -lt ${NARGS} ] && raise "Requires at least '${NARGS}' input argument(s)" -arg
 lan_bridge_if_name=${1}
-tap_interface_list="mdns ndp dns dpi upnp l2uf tx dhcp http"
+tap_interface_list="mdns ndp dns dpi upnp l2uf tx dhcp http devdpi"
 
 for tap_name in $tap_interface_list; do
     tap_if_name="${lan_bridge_if_name}.${tap_name}"

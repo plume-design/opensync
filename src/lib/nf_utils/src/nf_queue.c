@@ -36,6 +36,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <sys/socket.h>
 #include <netdb.h>
 #include <netinet/in.h>
+#include <netinet/if_ether.h>
 #include <linux/netfilter.h>
 #include <linux/netfilter/nfnetlink.h>
 #include <linux/netfilter/nfnetlink_queue.h>
@@ -283,20 +284,39 @@ nf_queue_send_verdict(struct nfqnl_msg_verdict_hdr *vhdr,
 
 
     /*
-    * We always pass verdict as accept,
+    * We pretty much always pass verdict as accept,
     * however we just mark the conntrack entry
     * either to 2 or 3.This will make sure that the conntrack
     * entry is active and OVS can take
     * the appropriate action.
+    * One exception: the caller explicitly requests to set
+    * the packet verdict only, and not mark the flow.
     */
-    vhdr->verdict = htonl(NF_ACCEPT);
+    if (pkt_info->mark_policy & PKT_VERDICT_ONLY)
+    {
+        if (pkt_info->flow_mark == CT_MARK_DROP)
+        {
+            vhdr->verdict = htonl(NF_DROP);
+        }
+        else
+        {
+            vhdr->verdict = htonl(NF_ACCEPT);
+        }
+    }
+    else
+    {
+        vhdr->verdict = htonl(NF_ACCEPT);
+    }
 
     mnl_attr_put(nfq->nlh, NFQA_VERDICT_HDR, sizeof(struct nfqnl_msg_verdict_hdr), vhdr);
 
-    LOGT("%s(): conntrack mark set to %s", __func__, nf_ct_mark_str(pkt_info->flow_mark));
-    nest = mnl_attr_nest_start(nfq->nlh, NFQA_CT);
-    mnl_attr_put_u32(nfq->nlh, CTA_MARK, htonl(pkt_info->flow_mark));
-    mnl_attr_nest_end(nfq->nlh, nest);
+    if (!(pkt_info->mark_policy & PKT_VERDICT_ONLY))
+    {
+        LOGT("%s(): conntrack mark set to %s", __func__, nf_ct_mark_str(pkt_info->flow_mark));
+        nest = mnl_attr_nest_start(nfq->nlh, NFQA_CT);
+        mnl_attr_put_u32(nfq->nlh, CTA_MARK, htonl(pkt_info->flow_mark));
+        mnl_attr_nest_end(nfq->nlh, nest);
+    }
 
     ret = mnl_socket_sendto(nfq->nfq_mnl, nfq->nlh, nfq->nlh->nlmsg_len);
     if (ret == -1)
@@ -615,7 +635,8 @@ nf_queue_exit(void)
  * mark 3 - BLOCK
  */
 bool
-nf_queue_set_ct_mark(uint32_t packet_id, int mark, uint32_t queue_num)
+nf_queue_set_ct_mark(uint32_t packet_id, struct dpi_mark_policy *mark_policy,
+                     uint32_t queue_num)
 {
     struct nf_queue_context  *ctxt;
     struct nfq_pkt_info *pkt_info;
@@ -625,6 +646,8 @@ nf_queue_set_ct_mark(uint32_t packet_id, int mark, uint32_t queue_num)
     ctxt = nf_queue_get_context();
     if (ctxt->initialized == false) return false;
 
+    if (mark_policy == NULL) return false;
+
     memset(&nfq_lkp, 0, sizeof(struct nfqueue_ctxt));
     nfq_lkp.queue_num = queue_num;
     nfq = ds_tree_find(&ctxt->nfq_tree, &nfq_lkp);
@@ -633,7 +656,8 @@ nf_queue_set_ct_mark(uint32_t packet_id, int mark, uint32_t queue_num)
     pkt_info = &nfq->pkt_info;
     if (pkt_info->packet_id != packet_id) return false;
 
-    pkt_info->flow_mark = mark;
+    pkt_info->flow_mark = mark_policy->flow_mark;
+    pkt_info->mark_policy = mark_policy->mark_policy;
 
     LOGD("%s: Setting flow_mark for packet_id[%d] of queue[%d] to %d",
          __func__, packet_id, queue_num, pkt_info->flow_mark);
@@ -672,8 +696,18 @@ nf_queue_update_payload(uint32_t packet_id, uint32_t queue_num)
     return true;
 }
 
-int nf_queue_set_dpi_mark(struct net_header_parser *net_hdr, int mark)
+int
+nf_queue_set_dpi_mark(struct net_header_parser *net_hdr,
+                      struct dpi_mark_policy *mark_policy)
 {
-    nf_queue_set_ct_mark(net_hdr->packet_id, mark, net_hdr->nfq_queue_num);
-    return 0;
+    struct eth_header *eth_hdr;
+    unsigned int type;
+    bool res;
+
+    eth_hdr = &net_hdr->eth_header;
+    type = eth_hdr->ethertype;
+
+    if (type != ETH_P_IP && type != ETH_P_IPV6) return 0;
+    res = nf_queue_set_ct_mark(net_hdr->packet_id, mark_policy, net_hdr->nfq_queue_num);
+    return (res == true) ? 0 : -1;
 }

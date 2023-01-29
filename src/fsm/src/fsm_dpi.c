@@ -65,6 +65,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "nf_utils.h"
 #include "kconfig.h"
 #include "memutil.h"
+#include "hw_acc.h"
 
 #define MAX_RESERVED_PORT_NUM 1023
 #define NON_RESERVED_PORT_START_NUM MAX_RESERVED_PORT_NUM + 1
@@ -429,6 +430,7 @@ fsm_dpi_add_plugin_to_tree(struct fsm_session *session,
     }
 }
 
+
 /**
  * @brief add a plugin's pointer to current flows
  *
@@ -470,12 +472,20 @@ fsm_dpi_del_plugin_from_tree(struct fsm_session *session,
     while (flow != NULL)
     {
         acc = flow->tuple_stats;
-        dpi_flow_info = ds_tree_find(acc->dpi_plugins, session);
-        if (dpi_flow_info != NULL)
+        if (acc->dpi_plugins == NULL)
         {
-            ds_tree_remove(acc->dpi_plugins, dpi_flow_info);
-            FREE(dpi_flow_info);
+            flow = ds_tree_next(tree, flow);
+            continue;
         }
+        dpi_flow_info = ds_tree_find(acc->dpi_plugins, session);
+        if (dpi_flow_info == NULL)
+        {
+            flow = ds_tree_next(tree, flow);
+            continue;
+        }
+
+        ds_tree_remove(acc->dpi_plugins, dpi_flow_info);
+        FREE(dpi_flow_info);
         flow = ds_tree_next(tree, flow);
     }
 }
@@ -818,7 +828,6 @@ fsm_dpi_set_tcp_acc_direction(struct fsm_dpi_dispatcher *dispatch,
     key = acc->key;
     if (key == NULL) return false;
 
-    if (key->ipprotocol != IPPROTO_TCP) return false;
 
     smac_found = fsm_dpi_find_mac(key->smac, dispatch);
     dmac_found = fsm_dpi_find_mac(key->dmac, dispatch);
@@ -893,7 +902,6 @@ fsm_dpi_set_udp_acc_direction(struct fsm_dpi_dispatcher *dispatch,
     key = acc->key;
     if (key == NULL) return false;
 
-    if (key->ipprotocol != IPPROTO_UDP) return false;
 
     fsm_dpi_set_acc_direction_on_port(dispatch, acc);
     fsm_dpi_update_acc_key(acc);
@@ -917,7 +925,6 @@ fsm_dpi_set_icmp_acc_direction(struct fsm_dpi_dispatcher *dispatch,
     bool smac_found;
     bool dmac_found;
     uint8_t ipproto;
-    bool is_icmp;
 
     if (dispatch == NULL) return false;
     if (acc == NULL) return false;
@@ -926,9 +933,6 @@ fsm_dpi_set_icmp_acc_direction(struct fsm_dpi_dispatcher *dispatch,
     if (key == NULL) return false;
 
     ipproto = key->ipprotocol;
-    is_icmp = (ipproto == IPPROTO_ICMP);
-    is_icmp |= (ipproto == IPPROTO_ICMPV6);
-    if (!is_icmp) return false;
 
     smac_found = fsm_dpi_find_mac(key->smac, dispatch);
     dmac_found = fsm_dpi_find_mac(key->dmac, dispatch);
@@ -980,6 +984,27 @@ fsm_dpi_set_icmp_acc_direction(struct fsm_dpi_dispatcher *dispatch,
 
 
 /**
+ * @brief set ARP accumulator flow direction
+ *
+ * Sets the accumulator direction (outbound, inbound, undetermined)
+ * @param aggr the aggregator the accumulator belongs
+ * @param the accumulator to be tagged with a direction
+ */
+bool
+fsm_dpi_set_arp_acc_direction(struct fsm_dpi_dispatcher *dispatch,
+                               struct net_md_stats_accumulator *acc)
+{
+    if (dispatch == NULL) return false;
+    if (acc == NULL) return false;
+
+    acc->direction = NET_MD_ACC_LAN2LAN_DIR;
+    fsm_dpi_set_lan2lan_originator(acc);
+    return (acc->direction != NET_MD_ACC_UNSET_DIR);
+}
+
+
+
+/**
  * @brief set the accumulator flow direction
  *
  * Sets the accumulator direction (outbound, inbound, undetermined)
@@ -991,17 +1016,30 @@ bool
 fsm_dpi_set_acc_direction(struct fsm_dpi_dispatcher *dispatch,
                           struct net_md_stats_accumulator *acc)
 {
-    bool rc;
+    struct net_md_flow_key *key;
 
-    rc = fsm_dpi_set_tcp_acc_direction(dispatch, acc);
-    if (rc) return rc;
+    if (acc == NULL) return false;
 
-    rc = fsm_dpi_set_udp_acc_direction(dispatch, acc);
-    if (rc) return rc;
+    key = acc->key;
+    if (key == NULL) return false;
 
-    rc = fsm_dpi_set_icmp_acc_direction(dispatch, acc);
 
-    return rc;
+    if (key->ipprotocol == IPPROTO_TCP) return fsm_dpi_set_tcp_acc_direction(dispatch, acc);
+
+    if (key->ipprotocol == IPPROTO_UDP) return fsm_dpi_set_udp_acc_direction(dispatch, acc);
+
+    if (key->ipprotocol == IPPROTO_ICMP ||
+        key->ipprotocol == IPPROTO_ICMPV6)
+    {
+        return fsm_dpi_set_icmp_acc_direction(dispatch, acc);
+    }
+
+    if (key->ethertype == ETH_P_ARP)
+    {
+        return fsm_dpi_set_arp_acc_direction(dispatch, acc);
+    }
+
+    return false;
 }
 
 
@@ -1136,6 +1174,17 @@ fsm_dpi_on_acc_creation(struct net_md_aggregator *aggr,
     if (acc->direction != NET_MD_ACC_UNSET_DIR) return;
 
     rev_acc = net_md_lookup_reverse_acc(aggr, acc);
+    if (rev_acc != NULL)
+    {
+        acc->rev_acc = rev_acc;
+        acc->flags |= NET_MD_ACC_SECOND_LEG;
+        rev_acc->rev_acc = acc;
+    }
+    else
+    {
+        acc->flags |= NET_MD_ACC_FIRST_LEG;
+    }
+
     if ((rev_acc != NULL) && (rev_acc->direction != NET_MD_ACC_UNSET_DIR))
     {
         acc->direction = rev_acc->direction;
@@ -1171,28 +1220,6 @@ fsm_dpi_on_acc_creation(struct net_md_aggregator *aggr,
 
 
 /**
- * @brief check for UDP flow with no data
- *
- * @param acc the accumulator to check
- */
-static void
-fsm_dpi_check_udp_no_data(struct net_md_stats_accumulator *acc)
-{
-    struct net_md_flow_key *key;
-
-    if (acc->counters.payload_bytes_count != 0) return;
-
-    key = acc->key;
-    if (key == NULL) return;
-
-    if (key->ipprotocol != IPPROTO_UDP) return;
-    LOGI("%s: destroying UDP flow with no payload", __func__);
-
-    net_md_log_acc(acc, __func__);
-}
-
-
-/**
  * @brief callback to the accumulaor destruction
  *
  * Called on the destruction of an accumulator
@@ -1203,7 +1230,16 @@ void
 fsm_dpi_on_acc_destruction(struct net_md_aggregator *aggr,
                            struct net_md_stats_accumulator *acc)
 {
-    fsm_dpi_check_udp_no_data(acc);
+    struct net_md_stats_accumulator *rev_acc;
+
+    rev_acc = acc->rev_acc;
+
+    /* Clean up rev_acc's dereference */
+    if (rev_acc != NULL)
+    {
+        rev_acc->rev_acc = NULL;
+    }
+    acc->rev_acc = NULL;
 }
 
 
@@ -1607,6 +1643,77 @@ fsm_dpi_is_ip_fragment(struct net_header_parser *net_parser)
 }
 
 
+static bool
+fsm_set_ip_tuple_key(struct net_header_parser *net_parser,
+                     struct net_md_flow_key *key)
+{
+    bool is_fragment;
+
+    key->ip_version = net_parser->ip_version;
+    if (net_parser->ip_version == 4)
+    {
+        struct iphdr * iphdr;
+
+        iphdr = net_header_get_ipv4_hdr(net_parser);
+        key->src_ip = (uint8_t *)(&iphdr->saddr);
+        key->dst_ip = (uint8_t *)(&iphdr->daddr);
+
+        is_fragment = fsm_dpi_is_ip_fragment(net_parser);
+        if (is_fragment) return false;
+    }
+    else if (net_parser->ip_version == 6)
+    {
+        struct ip6_hdr *ip6hdr;
+
+        ip6hdr = net_header_get_ipv6_hdr(net_parser);
+        key->src_ip = (uint8_t *)(&ip6hdr->ip6_src.s6_addr);
+        key->dst_ip = (uint8_t *)(&ip6hdr->ip6_dst.s6_addr);
+    }
+
+    key->ipprotocol = net_parser->ip_protocol;
+    if (key->ipprotocol == IPPROTO_UDP)
+    {
+        struct udphdr *udphdr;
+
+        udphdr = net_parser->ip_pld.udphdr;
+        key->sport = udphdr->source;
+        key->dport = udphdr->dest;
+    }
+    else if (key->ipprotocol == IPPROTO_TCP)
+    {
+        struct tcphdr *tcphdr;
+
+        tcphdr = net_parser->ip_pld.tcphdr;
+        key->sport = tcphdr->source;
+        key->dport = tcphdr->dest;
+        key->tcp_flags |= (tcphdr->syn ? FSM_TCP_SYN : 0);
+        key->tcp_flags |= (tcphdr->ack ? FSM_TCP_ACK : 0);
+    }
+    else if (key->ipprotocol == IPPROTO_ICMP)
+    {
+        struct icmphdr *icmphdr;
+
+        icmphdr = net_parser->ip_pld.icmphdr;
+        key->icmp_type = icmphdr->type;
+        key->icmp_idt = icmphdr->un.echo.id;
+    }
+    else if (key->ipprotocol == IPPROTO_ICMPV6)
+    {
+        struct icmp6_hdr *icmp6hdr;
+
+        icmp6hdr = net_parser->ip_pld.icmp6hdr;
+        key->icmp_type = icmp6hdr->icmp6_type;
+        key->icmp_idt = icmp6hdr->icmp6_dataun.icmp6_un_data16[0];
+    }
+
+    key->rx_idx = net_parser->rx_vidx;
+    key->tx_idx = net_parser->tx_vidx;
+    key->flags |= NET_MD_ACC_FIVE_TUPLE;
+
+    return true;
+}
+
+
 /**
  * @brief retrieves the flow accumulator from a parsed packet
  *
@@ -1618,12 +1725,13 @@ struct net_md_stats_accumulator *
 fsm_net_parser_to_acc(struct net_header_parser *net_parser,
                       struct net_md_aggregator *aggr)
 {
+    struct net_md_stats_accumulator *rev_acc;
     struct net_md_stats_accumulator *acc;
     struct eth_header *eth_hdr;
     struct net_md_flow_key key;
     uint16_t ethertype;
-    bool is_fragment;
     bool is_ip;
+    bool ret;
 
     eth_hdr = &net_parser->eth_header;
 
@@ -1632,76 +1740,31 @@ fsm_net_parser_to_acc(struct net_header_parser *net_parser,
     key.dmac = eth_hdr->dstmac;
     key.vlan_id = eth_hdr->vlan_id;
     ethertype = eth_hdr->ethertype;
+    key.ethertype = ethertype;
     is_ip = ((ethertype == ETH_P_IP) || (ethertype == ETH_P_IPV6));
     if (!is_ip)
     {
-        LOGD("%s: ethertype: %d is other than IPv4 & IPv6."
-              "Ignoring packet for dpi inspection", __func__, ethertype);
-	return NULL;
+        key.flags |= NET_MD_ACC_ETH;
     }
-
-    key.ethertype = ethertype;
-    key.ip_version = net_parser->ip_version;
-    if (net_parser->ip_version == 4)
+    else
     {
-        struct iphdr * iphdr;
-
-        iphdr = net_header_get_ipv4_hdr(net_parser);
-        key.src_ip = (uint8_t *)(&iphdr->saddr);
-        key.dst_ip = (uint8_t *)(&iphdr->daddr);
-
-        is_fragment = fsm_dpi_is_ip_fragment(net_parser);
-        if (is_fragment) return NULL;
+        ret = fsm_set_ip_tuple_key(net_parser, &key);
+        if (!ret) return NULL;
     }
-    else if (net_parser->ip_version == 6)
-    {
-        struct ip6_hdr *ip6hdr;
-
-        ip6hdr = net_header_get_ipv6_hdr(net_parser);
-        key.src_ip = (uint8_t *)(&ip6hdr->ip6_src.s6_addr);
-        key.dst_ip = (uint8_t *)(&ip6hdr->ip6_dst.s6_addr);
-    }
-
-    key.ipprotocol = net_parser->ip_protocol;
-    if (key.ipprotocol == IPPROTO_UDP)
-    {
-        struct udphdr *udphdr;
-
-        udphdr = net_parser->ip_pld.udphdr;
-        key.sport = udphdr->source;
-        key.dport = udphdr->dest;
-    }
-    else if (key.ipprotocol == IPPROTO_TCP)
-    {
-        struct tcphdr *tcphdr;
-
-        tcphdr = net_parser->ip_pld.tcphdr;
-        key.sport = tcphdr->source;
-        key.dport = tcphdr->dest;
-        key.tcp_flags |= (tcphdr->syn ? FSM_TCP_SYN : 0);
-        key.tcp_flags |= (tcphdr->ack ? FSM_TCP_ACK : 0);
-    }
-    else if (key.ipprotocol == IPPROTO_ICMP)
-    {
-        struct icmphdr *icmphdr;
-
-        icmphdr = net_parser->ip_pld.icmphdr;
-        key.icmp_type = icmphdr->type;
-        key.icmp_idt = icmphdr->un.echo.id;
-    }
-    else if (key.ipprotocol == IPPROTO_ICMPV6)
-    {
-        struct icmp6_hdr *icmp6hdr;
-
-        icmp6hdr = net_parser->ip_pld.icmp6hdr;
-        key.icmp_type = icmp6hdr->icmp6_type;
-        key.icmp_idt = icmp6hdr->icmp6_dataun.icmp6_un_data16[0];
-    }
-
-    key.rx_idx = net_parser->rx_vidx;
-    key.tx_idx = net_parser->tx_vidx;
 
     acc = net_md_lookup_acc(aggr, &key);
+    if (acc == NULL)
+    {
+        return NULL;
+    }
+
+    if (acc->flags & NET_MD_ACC_FIRST_LEG) return acc;
+
+    rev_acc = acc->rev_acc;
+    if ((acc->flags & NET_MD_ACC_SECOND_LEG) && (rev_acc != NULL))
+    {
+        return rev_acc;
+    }
 
     return acc;
 }
@@ -1804,13 +1867,67 @@ fsm_dpi_should_process(struct net_header_parser *net_parser,
     return process;
 }
 
+int
+flush_accel_flows(struct net_header_parser *net_parser, int mark)
+{
+    struct net_md_stats_accumulator *acc = NULL;
+    struct net_md_flow_info info;
+    MEMZERO(info);
+    struct hw_acc_flush_flow_t flow;
+    MEMZERO(flow);
+    bool rc;
+
+    LOGD("%s: done setting new mark to CT: %d", __func__, mark);
+
+    acc = net_parser->acc;
+    if (acc == NULL)
+    {
+        LOGD("%s: No stats_accumulator data", __func__);
+        return -1;
+    }
+
+    rc = net_md_get_flow_info(acc, &info);
+    if ((rc == false) || (info.local_mac == NULL))
+    {
+        LOGD("%s: No flow_info data, rc: %d or missing srcmac: %p", __func__, rc, info.local_mac);
+        return -1;
+    }
+
+
+    flow.actions = HW_ACC_FLUSH_ACTION_5_TUPLE;
+    flow.protocol = info.ipprotocol;
+    flow.ip_version = info.ip_version;
+
+    /**
+     * LAN -> WAN always full, direction does not matter
+     * WAN -> LAN omitted if in router mode
+     */
+    flow.src_port = ntohs(info.local_port);
+    if(info.local_ip)  { memcpy(flow.src_ip, info.local_ip, 4); }
+    if(info.local_mac) { memcpy(flow.src_mac, info.local_mac, 6); }
+
+
+    flow.dst_port = ntohs(info.remote_port);
+    if(info.remote_ip)  { memcpy(flow.dst_ip, info.remote_ip, 4); }
+    if(info.remote_mac) { memcpy(flow.dst_mac, info.remote_mac, 6); }
+
+    rc = hw_acc_flush(&flow);
+    if (rc == false)
+    {
+        LOGD("%s: flush failed: %d", __func__, rc);
+        return -1;
+    }
+
+    return 0;
+}
+
 
 /**
- * @brief dipatches a received packet to the dpi plugin handlers
+ * @brief dispatches a received packet to the dpi plugin handlers
  *
  * Check the overall state of the flow:
  * - if marked as passthrough or blocker, do not dispatch the packet
- * - otherwise, dispatch the packet to plgins willing to inspect it.
+ * - otherwise, dispatch the packet to plugins willing to inspect it.
  * @param net_parser the parsed info for the current packet
  */
 static void
@@ -1820,6 +1937,7 @@ fsm_dispatch_pkt(struct fsm_session *session,
     union fsm_dpi_context *plugin_dpi_context;
     struct fsm_dpi_plugin_ops *dpi_plugin_ops;
     struct net_md_stats_accumulator *acc;
+    struct dpi_mark_policy mark_policy;
     struct fsm_dpi_flow_info *info;
     struct fsm_session *dpi_plugin;
     struct fsm_dpi_plugin *plugin;
@@ -1829,6 +1947,7 @@ fsm_dispatch_pkt(struct fsm_session *session,
     bool drop;
     bool pass;
     int mark;
+    int err;
 
     acc = net_parser->acc;
 
@@ -1836,9 +1955,44 @@ fsm_dispatch_pkt(struct fsm_session *session,
 
     if (acc->dpi_done != 0)
     {
+        bool ct_mark_flow;
+
+        ct_mark_flow = true;
+
+        memset(&mark_policy, 0, sizeof(mark_policy));
         FSM_TRACK_DNS(net_parser, session->name);
         mark = fsm_dpi_get_mark(net_parser->acc, acc->dpi_done);
-        session->set_dpi_mark(net_parser, mark);
+
+        /*
+         * Ideally, we would like to set the ct_mark (and flush accelerated data-path)
+         * only once per flow/ct_mark change.
+         * In testing we noticed that sometimes ct_mark won't get set on 1st try
+         * (API only reports if command was sent to ct) successfully, not if ct_mark was actually set).
+         * So until we figure out why and fix that, we still need to push the ct_mark multiple times.
+         *
+         * It is important we fix this eventually. This commented code is left as a reminder of that.
+         */
+         // ct_mark_flow = (mark_policy.flow_mark != mark);
+
+        mark_policy.flow_mark = mark;
+        if (!ct_mark_flow)
+        {
+            mark_policy.mark_policy = PKT_VERDICT_ONLY;
+        }
+
+        err = session->set_dpi_mark(net_parser, &mark_policy);
+        if (err != 0)
+        {
+            LOGD("%s: Setting ct_mark failed (1)", __func__);
+            return;
+        }
+
+        if ((ct_mark_flow) && (mark > 2))
+        {
+            flush_accel_flows(net_parser, mark);
+            acc->mark_done = mark;
+        }
+
         return;
     }
 
@@ -1912,9 +2066,28 @@ fsm_dispatch_pkt(struct fsm_session *session,
     if (pass || drop)
     {
         mark = fsm_dpi_get_mark(net_parser->acc, acc->dpi_done);
-        session->set_dpi_mark(net_parser, mark);
+        memset(&mark_policy, 0, sizeof(mark_policy));
+        mark_policy.flow_mark = mark;
+        err = session->set_dpi_mark(net_parser, &mark_policy);
+        if (err != 0)
+        {
+            LOGD("%s: Setting ct_mark failed (2)", __func__);
+        }
+        else
+        {
+            acc->mark_done = mark;
+            if (mark > 2)
+            {
+                flush_accel_flows(net_parser, mark);
+            }
+        }
+    }
+    else
+    {
+        acc->mark_done = FSM_DPI_INSPECT;
     }
 }
+
 
 /**
  * @brief filter packets not worth presenting to the dpi plugins
@@ -2073,7 +2246,7 @@ fsm_dpi_alloc_flow_context(struct fsm_session *session,
 /**
  * @brief routine periodically called
  *
- * Periodically walks the ggregator and removes the outdated flows
+ * Periodically walks the aggregator and removes the outdated flows
  * @param session the dpi dispatcher session
  */
 void

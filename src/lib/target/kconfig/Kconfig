@@ -61,12 +61,29 @@ menu "Target paths"
         help
             This file inhibits the manager restart action -- use for testing only.
 
-    config TARGET_PATH_PRIVKEY
-        string "Path to private key used to authenticate with cloud"
-        default "/var/certs/client_dec.key"
-        help
-            Full file path to private key used to authenticate with cloud.
+    config TARGET_PATH_CERT
+        string "Path to the certificate files used to authenticate with cloud"
+        default "/var/certs"
 
+    config TARGET_PATH_CERT_CA
+        string "Filename of the CA certificate used to authenticate with cloud"
+        default "ca.pem"
+
+    config TARGET_PATH_PRIV_CERT
+        string "Filename of my certificate used to authenticate with cloud"
+        default "client.pem"
+
+    config TARGET_PATH_PRIV_KEY
+        string "Filename of my private key used to authenticate with cloud"
+        default "client_dec.key"
+
+    config TARGET_OPENSYNC_CAFILE
+        string "Filename of CA certificate used by OpenSync features such as logpull."
+        default "opensync_ca.pem"
+
+    config TARGET_PATH_OVSDB_SOCK
+        string "Path to OVSDB socket"
+        default "/var/run/db.sock"
 endmenu
 
 menuconfig TARGET_ETH_LIST
@@ -162,12 +179,6 @@ config TARGET_LOGPULL_REMOTE
     help
         This option enables support for remote logpulls in
         OpenSync target layer and logpull.sh.
-
-config TARGET_OPENSYNC_CAFILE
-    string "OpenSync CA certificate file"
-    default "$(OPENSYNC_DIR)/certs/opensync_ca.pem"
-    help
-        Full file path to CA certificate used by OpenSync features such as logpull.
 
 config TARGET_WATCHDOG
     bool "Device has a watchdog"

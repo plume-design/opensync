@@ -1,0 +1,126 @@
+if OSN_BACKEND_FW_EBTABLES_FULL
+    comment "ebtables full options"
+    menu "Default ebtables Policy"
+        comment "FILTER Table"
+        choice
+            prompt "INPUT"
+            default OSN_FW_EBTABLES_POLICY_FILTER_INPUT_ACCEPT
+
+            config OSN_FW_EBTABLES_POLICY_FILTER_INPUT_ACCEPT
+                bool "Accept"
+
+            config OSN_FW_EBTABLES_POLICY_FILTER_INPUT_CONTINUE
+                bool "Continue"
+
+            config OSN_FW_EBTABLES_POLICY_FILTER_INPUT_RETURN
+                bool "Return"
+
+            config OSN_FW_EBTABLES_POLICY_FILTER_INPUT_DROP
+                bool "Drop"
+        endchoice
+
+        choice
+            prompt "OUTPUT"
+            default OSN_FW_EBTABLES_POLICY_FILTER_OUTPUT_ACCEPT
+
+            config OSN_FW_EBTABLES_POLICY_FILTER_OUTPUT_ACCEPT
+                bool "Accept"
+
+            config OSN_FW_EBTABLES_POLICY_FILTER_OUTPUT_CONTINUE
+                bool "Continue"
+
+            config OSN_FW_EBTABLES_POLICY_FILTER_OUTPUT_RETURN
+                bool "Return"
+
+            config OSN_FW_EBTABLES_POLICY_FILTER_OUTPUT_DROP
+                bool "Drop"
+        endchoice
+
+        choice
+            prompt "FORWARD"
+            default OSN_FW_EBTABLES_POLICY_FILTER_FORWARD_ACCEPT
+
+            config OSN_FW_EBTABLES_POLICY_FILTER_FORWARD_ACCEPT
+                bool "Accept"
+
+            config OSN_FW_EBTABLES_POLICY_FILTER_FORWARD_CONTINUE
+                bool "Continue"
+
+            config OSN_FW_EBTABLES_POLICY_FILTER_FORWARD_RETURN
+                bool "Return"
+
+            config OSN_FW_EBTABLES_POLICY_FILTER_FORWARD_DROP
+                bool "Drop"
+        endchoice
+
+        comment "NAT Table"
+        choice
+            prompt "PREROUTING"
+            default OSN_FW_EBTABLES_POLICY_NAT_PREROUTING_ACCEPT
+
+            config OSN_FW_EBTABLES_POLICY_NAT_PREROUTING_ACCEPT
+                bool "Accept"
+
+            config OSN_FW_EBTABLES_POLICY_NAT_PREROUTING_CONTINUE
+                bool "Continue"
+
+            config OSN_FW_EBTABLES_POLICY_NAT_PREROUTING_RETURN
+                bool "Return"
+
+            config OSN_FW_EBTABLES_POLICY_NAT_PREROUTING_DROP
+                bool "Drop"
+        endchoice
+
+        choice
+            prompt "OUTPUT"
+            default OSN_FW_EBTABLES_POLICY_NAT_OUTPUT_ACCEPT
+
+            config OSN_FW_EBTABLES_POLICY_NAT_OUTPUT_ACCEPT
+                bool "Accept"
+
+            config OSN_FW_EBTABLES_POLICY_NAT_OUTPUT_CONTINUE
+                bool "Continue"
+
+            config OSN_FW_EBTABLES_POLICY_NAT_OUTPUT_RETURN
+                bool "Return"
+
+            config OSN_FW_EBTABLES_POLICY_NAT_OUTPUT_DROP
+                bool "Drop"
+        endchoice
+
+        choice
+            prompt "POSTROUTING"
+            default OSN_FW_EBTABLES_POLICY_NAT_POSTROUTING_ACCEPT
+
+            config OSN_FW_EBTABLES_POLICY_NAT_POSTROUTING_ACCEPT
+                bool "Accept"
+
+            config OSN_FW_EBTABLES_POLICY_NAT_POSTROUTING_CONTINUE
+                bool "Continue"
+
+            config OSN_FW_EBTABLES_POLICY_NAT_POSTROUTING_RETURN
+                bool "Return"
+
+            config OSN_FW_EBTABLES_POLICY_NAT_POSTROUTING_DROP
+                bool "Drop"
+        endchoice
+
+        comment "BROUTE Table"
+        choice
+            prompt "BROUTING"
+            default OSN_FW_EBTABLES_POLICY_BROUTE_BROUTING_ACCEPT
+
+            config OSN_FW_EBTABLES_POLICY_BROUTE_BROUTING_ACCEPT
+                bool "Accept"
+
+            config OSN_FW_EBTABLES_POLICY_BROUTE_BROUTING_RETURN
+                bool "Return"
+
+            config OSN_FW_EBTABLES_POLICY_BROUTE_BROUTING_CONTINUE
+                bool "Continue"
+
+            config OSN_FW_EBTABLES_POLICY_BROUTE_BROUTING_DROP
+                bool "Drop"
+        endchoice
+    endmenu
+endif

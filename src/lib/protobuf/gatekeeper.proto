@@ -34,6 +34,7 @@ message GatekeeperCommonRequest {
     string location_id = 4;
     string policy_rule = 5;
     string network_id = 6;
+    uint64 supported_features = 7;
 }
 
 // DNS gatekeeper request
@@ -152,6 +153,7 @@ enum GatekeeperAction {
     GATEKEEPER_ACTION_ACCEPT = 1;
     GATEKEEPER_ACTION_BLOCK = 2;
     GATEKEEPER_ACTION_REDIRECT = 3;
+    GATEKEEPER_ACTION_REDIRECT_ALLOW = 4;
 }
 
 // Gatekeeper Reply common fields

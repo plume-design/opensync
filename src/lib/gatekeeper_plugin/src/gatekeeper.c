@@ -51,6 +51,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define GK_NOT_RATED 15
 #define GK_UNRATED_TTL (60*60*24)
 #define GK_MULTI_CURL_REQ_TIMEOUT 120
+#define GK_REDIRECT_TTL 10
 
 static ovsdb_table_t table_SSL;
 
@@ -311,6 +312,10 @@ gk_update_redirect_from_cache(struct fsm_policy_req *req,
 
     policy_reply->redirect = entry->fqdn_redirect->redirect;
     policy_reply->rd_ttl   = entry->fqdn_redirect->redirect_ttl;
+    if (entry->fqdn_redirect->redirect_cname)
+    {
+        STRSCPY(policy_reply->redirect_cname, entry->fqdn_redirect->redirect_cname);
+    }
 
     STRSCPY(policy_reply->redirects[0], entry->fqdn_redirect->redirect_ips[0]);
     STRSCPY(policy_reply->redirects[1], entry->fqdn_redirect->redirect_ips[1]);
@@ -390,6 +395,7 @@ gatekeeper_check_attr_cache(struct fsm_policy_req *req,
     }
 
     FREE(entry->gk_policy);
+    if (entry->fqdn_redirect) FREE(entry->fqdn_redirect->redirect_cname);
     FREE(entry->fqdn_redirect);
     FREE(entry);
     return ret;
@@ -512,7 +518,6 @@ gk_populate_redirect_entry(struct gk_attr_cache_interface *entry,
              __func__,
              redirect_entry->redirect,
              redirect_entry->redirect_cname);
-        return;
     }
 
     if (strlen(policy_reply->redirects[0]) != 0)
@@ -682,8 +687,8 @@ gatekeeper_add_ipflow_cache(struct fsm_policy_req *req,
     return ret;
 }
 
-void
-gk_fsm_adjust_ttl(struct fsm_policy_req *req, struct fsm_policy_reply *policy_reply)
+static void
+gk_fsm_adjust_cache_ttl(struct fsm_policy_req *req, struct fsm_policy_reply *policy_reply)
 {
     struct fqdn_pending_req *fqdn_req;
     struct fsm_url_request *req_info;
@@ -712,6 +717,22 @@ gk_fsm_adjust_ttl(struct fsm_policy_req *req, struct fsm_policy_reply *policy_re
 }
 
 /**
+ * @brief Adjust redirect TTL value based on redirect
+ * action.
+ *
+ * @param policy_reply FSM policy_reply
+ * @return None
+ */
+static void
+gk_fsm_adjust_rd_ttl(struct fsm_policy_reply *policy_reply)
+{
+    if (policy_reply->action == FSM_REDIRECT) policy_reply->rd_ttl = GK_REDIRECT_TTL;
+    if (policy_reply->action == FSM_REDIRECT_ALLOW) policy_reply->rd_ttl = policy_reply->cache_ttl;
+
+    LOGT("%s(): set redirect TTL value to %d", __func__, policy_reply->rd_ttl);
+}
+
+/**
  * @brief Add entry to the cache based on request type.
  *
  * @param req: the request being processed
@@ -721,14 +742,18 @@ bool
 gk_add_policy_to_cache(struct fsm_policy_req *req, struct fsm_policy_reply *policy_reply)
 {
     struct gk_cache_mgr *cache_mgr;
-    int req_type;
+    bool redirect_reply;
     bool ret = false;
+    int req_type;
 
     cache_mgr = gk_cache_get_mgr();
     if (!cache_mgr->initialized) return false;
 
+    redirect_reply = gk_is_redirect_reply(req->req_type, policy_reply->action);
+    if (redirect_reply) gk_fsm_adjust_rd_ttl(policy_reply);
+
     /* Overwrite TTL to large value for local ip and set fqdn flag */
-    gk_fsm_adjust_ttl(req, policy_reply);
+    gk_fsm_adjust_cache_ttl(req, policy_reply);
 
     req_type = fsm_policy_get_req_type(req);
     if (req_type >= FSM_FQDN_REQ && req_type <= FSM_APP_REQ)

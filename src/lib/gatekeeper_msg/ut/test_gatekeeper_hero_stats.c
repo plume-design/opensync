@@ -643,6 +643,7 @@ test_gk_serialize_cache_redirect_cname_entries(void)
     aggr->send_report = ut_qm_conn_send_direct;
 
     gkhc_activate_window(aggr);
+    entry[1]->action = FSM_REDIRECT_ALLOW;
     entry[1]->fqdn_redirect = CALLOC(1, sizeof(struct fqdn_redirect_s));
     entry[1]->fqdn_redirect->redirect = true;
     entry[1]->fqdn_redirect->redirect_cname = "safesearch.com";

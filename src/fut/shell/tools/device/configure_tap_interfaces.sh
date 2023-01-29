@@ -86,7 +86,7 @@ for tap_name in $tap_interface_list; do
             of_port_request=202
             ;;
         dpi)
-            of_port_request=206
+            of_port_request=20001
             ;;
         upnp)
             of_port_request=205

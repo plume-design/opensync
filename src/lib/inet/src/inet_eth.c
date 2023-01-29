@@ -44,6 +44,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "inet.h"
 #include "inet_base.h"
 #include "inet_eth.h"
+#include "kconfig.h"
 
 /*
  * ===========================================================================
@@ -65,10 +66,18 @@ static bool inet_eth_network_start(inet_eth_t *self, bool enable);
 /*
  * Command for enabling the "no-flood" option for OVS interfaces
  */
+#if defined(CONFIG_TARGET_USE_NATIVE_BRIDGE)
+static char inet_eth_ovs_noflood_cmd[] = _S(
+        ifname="$1";
+        flood="$2";
+        ip link set "$ifname" type bridge_slave flood "$flood");
+#else
 static char inet_eth_ovs_noflood_cmd[] = _S(
         ifname="$1";
         flood="$2";
         bridge=$(ovs-vsctl port-to-br "$ifname") && ovs-ofctl mod-port "$bridge" "$ifname" "$flood");
+
+#endif
 
 /*
  * ===========================================================================
@@ -392,11 +401,22 @@ bool inet_eth_mtu_start(inet_eth_t *self, bool enable)
     {
         int rc;
 
-        rc = execsh_log(
-                LOG_SEVERITY_INFO,
-                inet_eth_ovs_noflood_cmd,
-                self->inet.in_ifname,
-                self->in_noflood ? "no-flood" : "flood");
+        if (kconfig_enabled(CONFIG_TARGET_USE_NATIVE_BRIDGE))
+        {
+            rc = execsh_log(
+                    LOG_SEVERITY_INFO,
+                    inet_eth_ovs_noflood_cmd,
+                    self->inet.in_ifname,
+                    self->in_noflood ? "on" : "off");
+        }
+        else
+        {
+            rc = execsh_log(
+                    LOG_SEVERITY_INFO,
+                    inet_eth_ovs_noflood_cmd,
+                    self->inet.in_ifname,
+                    self->in_noflood ? "no-flood" : "flood");
+        }
         if (rc != 0)
         {
             LOG(WARN, "inet_eth: %s: Error setting no-flood.",
@@ -502,6 +522,8 @@ void inet_eth_netif_status_fn(osn_netif_t *netif, struct osn_netif_status *statu
         self->base.in_state.in_port_status = status->ns_carrier;
         self->base.in_state.in_mtu = status->ns_mtu;
         self->base.in_state.in_macaddr = status->ns_hwaddr;
+        self->base.in_state.in_speed = status->ns_speed;
+        self->base.in_state.in_duplex = status->ns_duplex;
     }
     else
     {

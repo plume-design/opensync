@@ -37,23 +37,25 @@ logpull_remote()
     LOGPULL_REMOTE_TOKEN="$2"
     LOGPULL_REMOTE_TYPE="$3"
 
-    mv $LOGPULL_ARCHIVE "$LOGPULL_REMOTE_TOKEN"
+    (cd /tmp/logpull && mv $LOGPULL_ARCHIVE $LOGPULL_REMOTE_TOKEN)
+
+    OPENSYNC_CAFILE_FULL_PATH="$CONFIG_TARGET_PATH_CERT/$CONFIG_TARGET_OPENSYNC_CAFILE"
 
     # Upload archive to remote location
     case "$LOGPULL_REMOTE_TYPE" in
         lm | lm-awlan)
-            curl \
+            (cd /tmp/logpull && curl \
                 --verbose \
-                --cacert $CONFIG_TARGET_OPENSYNC_CAFILE \
+                --cacert $OPENSYNC_CAFILE_FULL_PATH \
                 --form filename=@$LOGPULL_REMOTE_TOKEN \
-                $LOGPULL_REMOTE_URL
+                $LOGPULL_REMOTE_URL)
             ;;
         lm-s3-presigned)
-            curl \
+            (cd /tmp/logpull && curl \
                 --verbose \
-                --cacert $CONFIG_TARGET_OPENSYNC_CAFILE \
+                --cacert $OPENSYNC_CAFILE_FULL_PATH \
                 -X PUT --upload-file $LOGPULL_REMOTE_TOKEN \
-                $LOGPULL_REMOTE_URL
+                $LOGPULL_REMOTE_URL)
             ;;
         *)
             loge "invalid logpull remote method"
@@ -70,7 +72,7 @@ logpull_remote()
     fi
 
     # Cleanup
-    rm $LOGPULL_REMOTE_TOKEN
+    (cd /tmp/logpull && rm $LOGPULL_REMOTE_TOKEN)
 }
 
 logpull_remote "$@"

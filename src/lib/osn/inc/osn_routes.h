@@ -28,6 +28,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define OSN_ROUTES_H_INCLUDED
 
 #include <stdbool.h>
+#include <stdint.h>
 
 #include "osn_types.h"
 
@@ -80,7 +81,9 @@ typedef struct osn_route4
     int metric;         //< route metric or -1 when not specified
     osn_ip_addr_t pref_src;  //< preferred source address
     bool pref_src_set;       //< is preferred source address set
-
+    uint32_t table;     /** routing table ID or 0 if not set in which
+                          * case the main routing table is assumed.
+                          */
 } osn_route4_t;
 
 /**
@@ -97,6 +100,7 @@ typedef struct osn_route4
     .metric = -1,                           \
     .pref_src = OSN_IP_ADDR_INIT,           \
     .pref_src_set = false,                  \
+    .table = 0                              \
 }
 
 

@@ -200,11 +200,25 @@ ovsdb_col_t;
 #define OMT_ALL         (OMT_INITIAL | OMT_INSERT | OMT_DELETE | OMT_MODIFY)
 
 /* API */
+typedef void ovsdb_ready_fn_t(void *priv);
 bool ovsdb_init_loop(struct ev_loop *loop, const char *name);
 bool ovsdb_init(const char *name);
 bool ovsdb_ready(const char *name);
 bool ovsdb_stop_loop(struct ev_loop *loop);
 bool ovsdb_stop(void);
+
+/*
+ * If the ovsdb resource is ready (connected) the fn
+ * argument will be called before returning the flow to the
+ * called.
+ *
+ * Otherwise, the fn function will be called later when
+ * someone succesfully completes ovsdb_init().
+ *
+ * The fn_priv serves the purpose of passing a context the
+ * caller may want to operate on when readiness is reported.
+ */
+void ovsdb_when_ready(ovsdb_ready_fn_t *fn, void *priv);
 
 /*
  * This function allows user to send 'raw' json request

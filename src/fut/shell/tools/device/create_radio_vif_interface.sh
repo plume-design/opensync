@@ -53,7 +53,6 @@ Arguments:
     -mode             : Wifi_VIF_Config::mode                      : (string)(optional)
     -ssid             : Wifi_VIF_Config::ssid                      : (string)(optional)
     -ssid_broadcast   : Wifi_VIF_Config::ssid_broadcast            : (string)(optional)
-    -security         : Wifi_VIF_Config::security                  : (string)(optional)
     -parent           : Wifi_VIF_Config::parent                    : (string)(optional)
     -mac_list         : Wifi_VIF_Config::mac_list                  : (string)(optional)
     -mac_list_type    : Wifi_VIF_Config::mac_list_type             : (string)(optional)
@@ -64,13 +63,19 @@ Arguments:
     -bridge           : Wifi_VIF_Config::bridge                    : (string)(optional)
     -dynamic_beacon   : Wifi_VIF_Config::dynamic_beacon            : (string)(optional)
     -vlan_id          : Wifi_VIF_Config::vlan_id                   : (string)(optional)
+    -default_oftag    : Wifi_VIF_Config::default_oftag             : (string)(optional)
+    -radius_srv_addr  : Wifi_VIF_Config::radius_srv_addr           : (string)(optional)
+    -radius_srv_secret: Wifi_VIF_Config::radius_srv_secret         : (string)(optional)
+    -wifi_security_type : 'wpa' if wpa fields are used or 'legacy' if security fields are used: (string)(required)
+Wifi Security arguments(choose one or the other):
+    If 'wifi_security_type' == 'wpa' (preferred)
     -wpa              : Wifi_VIF_Config::wpa                       : (string)(optional)
     -wpa_key_mgmt     : Wifi_VIF_Config::wpa_key_mgmt              : (string)(optional)
     -wpa_psks         : Wifi_VIF_Config::wpa_psks                  : (string)(optional)
     -wpa_oftags       : Wifi_VIF_Config::wpa_oftags                : (string)(optional)
-    -default_oftag    : Wifi_VIF_Config::default_oftag             : (string)(optional)
-    -radius_srv_addr  : Wifi_VIF_Config::radius_srv_addr           : (string)(optional)
-    -radius_srv_secret: Wifi_VIF_Config::radius_srv_secret         : (string)(optional)
+        (OR)
+    If 'wifi_security_type' == 'legacy' (deprecated)
+    -security         : Wifi_VIF_Config::security                  : (string)(optional)
 Script usage example:
    ./tools/device/create_radio_vif_interface.sh -if_name wifi0 -enabled false -network false
    ./tools/device/create_radio_vif_interface.sh -if_name wifi0 -vif_if_name home-ap-24 -enabled true -network true -ht_mode HT40 -channel 6 -ssid test_ssid_name

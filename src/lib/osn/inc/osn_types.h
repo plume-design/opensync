@@ -556,6 +556,29 @@ int osn_mac_addr_cmp(const void *_a, const void *_b);
 
 /** @} OSN_COMMON_osn_mac_addr_t */
 
+/**
+ * @defgroup OSN_COMMON_osn_duplex_mode_t osn_duplex_mode_t
+ *
+ * Link duplex mode types and associated defines.
+ *
+ * @{
+ */
+
+/**
+ * Link duplex mode type. Used for reporting the negotiated duplex mode of a link.
+ */
+typedef enum osn_duplex
+{
+    OSN_DUPLEX_FULL,
+    OSN_DUPLEX_HALF,
+    OSN_DUPLEX_UNKNOWN,
+} osn_duplex_t;
+
+#define OSN_NETIF_DUPLEX_INIT (OSN_DUPLEX_UNKNOWN)
+#define OSN_NETIF_SPEED_INIT (-1)
+
+/** @} OSN_COMMON_osn_duplex_mode_t */
+
 /** @} OSN_COMMON */
 
 /** @} OSN */

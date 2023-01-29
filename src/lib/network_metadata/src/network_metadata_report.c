@@ -70,8 +70,8 @@ void net_md_free_aggregator(struct net_md_aggregator *aggr)
  * @brief allocates a stats aggregator
  *
  * @param info pointer to the node info
- * @param num_windows the maxium number of windows the report will contain
- * @param acc_ttl how long an incative accumulator should be kept around
+ * @param num_windows the maximum number of windows the report will contain
+ * @param acc_ttl how long an inactive accumulator should be kept around
  * @param report_type absolute or relative
  * @return a pointer to an aggregator if the allocation succeeded,
  *         NULL otherwise.

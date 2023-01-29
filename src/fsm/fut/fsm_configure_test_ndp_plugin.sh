@@ -49,8 +49,10 @@ Description:
     - Requires 'ping6' tool be present on the system
 Arguments:
     -h  show this help message
-    \$1 (lan_bridge_if)    : Interface name used for LAN bridge        : (string)(required)
-    \$2 (of_port)          : FSM out/of port                           : (int)(optional)     : (default:${of_port_default})
+    \$1 (lan_bridge_if_name)  : Interface name used for LAN bridge      : (string)(required)
+    \$2 (fsm_plugin)          : Path to FSM plugin under test             : (string)(required)
+    \$3 (mqtt_topic)          : Value of MQTT topic                       : (string)(required)
+    \$4 (client_mac)          : Connected client MAC address              : (string)(required)
 Testcase procedure:
     - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
             Create Radio/VIF interface
@@ -66,10 +68,9 @@ Testcase procedure:
             Update Inet entry for home bridge interface for dhcpd (br-home)
                 Run: ./${create_inet_file} (see ${create_inet_file} -h)
             Test FSM for NDP plugin test
-                Run: ./fsm/fsm_configure_test_ndp_plugin.sh <LAN-BRIDGE-IF>
+                Run: ./fsm/fsm_configure_test_ndp_plugin.sh <LAN-BRIDGE-IF> <FSM-PLUGIN> <MQTT-TOPIC> <CLIENT-MAC>
 Script usage example:
-    ./fsm/fsm_configure_test_ndp_plugin.sh br-home
-    ./fsm/fsm_configure_test_ndp_plugin.sh br-home 3002
+    ./fsm/fsm_configure_test_ndp_plugin.sh br-home /usr/opensync/lib/libfsm_ndp.so fsm_mqtt_topic ff:ff:ff:ff:ff
 usage_string
 }
 if [ -n "${1}" ]; then
@@ -95,48 +96,37 @@ fut_info_dump_line
 ' EXIT SIGINT SIGTERM
 
 # INPUT ARGUMENTS:
-NARGS=1
-[ $# -lt ${NARGS} ] && raise "Requires at least '${NARGS}' input argument(s)" -arg
+NARGS=4
+[ $# -lt ${NARGS} ] && raise "Requires exactly '${NARGS}' input argument(s)" -arg
 # Input arguments specific to GW, required:
-lan_bridge_if=${1}
-of_port=${2:-${of_port_default}}
+lan_bridge_if_name=${1}
+fsm_plugin=${2}
+mqtt_topic=${3}
+client_mac=${4}
 
-client_mac=$(get_ovsdb_entry_value Wifi_Associated_Clients mac)
-if [ -z "${client_mac}" ]; then
-    raise "Couldn't acquire Client mac address from Wifi_Associated_Clients, is client connected?" -l "fsm/fsm_configure_test_ndp_plugin.sh"
-fi
-# Use first MAC from Wifi_Associated_Clients
-client_mac="${client_mac%%,*}"
-tap_ndp_if="${lan_bridge_if}.tndp"
+tap_ndp_if="${lan_bridge_if_name}.ndp"
+of_port=$(ovs-vsctl get Interface "${tap_ndp_if}" ofport)
 
 log_title "fsm/fsm_configure_test_ndp_plugin.sh: FSM test - Configure ndp plugin"
-
-log "fsm/fsm_configure_test_ndp_plugin.sh: Configuring TAP interfaces required for FSM testing"
-add_bridge_port "${lan_bridge_if}" "${tap_ndp_if}"
-set_ovs_vsctl_interface_option "${tap_ndp_if}" "type" "internal"
-set_ovs_vsctl_interface_option "${tap_ndp_if}" "ofport_request" "${of_port}"
-create_inet_entry \
-    -if_name "${tap_ndp_if}" \
-    -if_type "tap" \
-    -ip_assign_scheme "none" \
-    -dhcp_sniff "false" \
-    -network true \
-    -enabled true &&
-        log "fsm/fsm_configure_test_ndp_plugin.sh: Interface ${tap_ndp_if} created - Success" ||
-        raise "FAIL: Failed to create interface ${tap_ndp_if}" -l "fsm/fsm_configure_test_ndp_plugin.sh" -ds
 
 log "fsm/fsm_configure_test_ndp_plugin.sh: Cleaning FSM OVSDB Config tables"
 empty_ovsdb_table Openflow_Config
 empty_ovsdb_table Flow_Service_Manager_Config
 empty_ovsdb_table FSM_Policy
+empty_ovsdb_table Openflow_Tag
+
+log "tools/device/configure_http_plugin.sh: Adding tags to Openflow_Tag"
+insert_ovsdb_entry Openflow_Tag \
+    -i name "client_mac" \
+    -i cloud_value '["set",["'${client_mac}'"]]'
 
 # Insert egress rule to Openflow_Config
 insert_ovsdb_entry Openflow_Config \
     -i token "dev_flow_ndp_out" \
     -i table 0 \
-    -i rule "dl_dst=${client_mac},ipv6,nw_proto=58" \
+    -i rule 'dl_dst=${client_mac},ipv6,nw_proto=58' \
     -i priority 200 \
-    -i bridge "${lan_bridge_if}" \
+    -i bridge "${lan_bridge_if_name}" \
     -i action "normal,output:${of_port}" &&
         log "fsm/fsm_configure_test_ndp_plugin.sh: Egress rule inserted - Success" ||
         raise "FAIL: Failed to insert_ovsdb_entry" -l "fsm/fsm_configure_test_ndp_plugin.sh" -oe
@@ -145,9 +135,9 @@ insert_ovsdb_entry Openflow_Config \
 insert_ovsdb_entry Openflow_Config \
     -i token "dev_flow_ndp_in" \
     -i table 0 \
-    -i rule "dl_src=${client_mac},ipv6,nw_proto=58" \
+    -i rule 'dl_src=${client_mac},ipv6,nw_proto=58' \
     -i priority 200 \
-    -i bridge "${lan_bridge_if}" \
+    -i bridge "${lan_bridge_if_name}" \
     -i action "normal,output:${of_port}" &&
         log "fsm/fsm_configure_test_ndp_plugin.sh: Ingress rule inserted - Success" ||
         raise "FAIL: Failed to insert_ovsdb_entry" -l "fsm/fsm_configure_test_ndp_plugin.sh" -oe
@@ -155,8 +145,8 @@ insert_ovsdb_entry Openflow_Config \
 insert_ovsdb_entry Flow_Service_Manager_Config \
     -i if_name "${tap_ndp_if}" \
     -i handler "dev_ndp" \
-    -i plugin '/usr/opensync/lib/libfsm_ndp.so' \
-    -i other_config '["map",[["dso_init","ndp_plugin_init"]]]' &&
+    -i plugin "${fsm_plugin}" \
+    -i other_config '["map",[["mqtt_v","'"${mqtt_topic}"'"],["dso_init","ndp_plugin_init"]]]' &&
         log "fsm/fsm_configure_test_ndp_plugin.sh: Flow_Service_Manager_Config entry added - Success" ||
         raise "FAIL: Failed to insert Flow_Service_Manager_Config entry" -l "fsm/fsm_configure_test_ndp_plugin.sh" -oe
 

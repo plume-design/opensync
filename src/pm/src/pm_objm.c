@@ -449,6 +449,7 @@ static int install_integrated_objects(char *path)
     char info_path[128];
     char *line = NULL;
     size_t len = 0;
+    char format[32];
 
     LOG(DEBUG, "objm: Checking %s for pre-integrated objects", path);
     udir = opendir(path);
@@ -472,7 +473,7 @@ static int install_integrated_objects(char *path)
                 name_buf = strdup(next_file->d_name);
 
                 // Open info file of the package
-                sprintf(info_path, "%s/%s", path, name_buf);
+                snprintf(info_path, sizeof(info_path), "%s/%s", path, name_buf);
                 FREE(name_buf);
                 LOG(DEBUG, "objm: Reading info file %s", info_path);
                 fd = fopen(info_path, "r");
@@ -482,16 +483,23 @@ static int install_integrated_objects(char *path)
                     continue;
                 }
 
+                // On first iteration line == NULL and len = 0, which will cause getline()
+                // to allocate a buffer. On every subsequent call, getline() will reuse
+                // that buffer, but in case the buffer is too small (as indicated by len),
+                // it will call realloc() and update len accordingly. Thus, line only needs
+                // to be freed once, at the end of the outermost while block.
                 while (getline(&line, &len, fd) != -1)
                 {
                     if (strstr(line, "name") != NULL)
                     {
-                        sscanf(line, "name:%s", file_ctx.name);
+                        snprintf(format, sizeof(format), "name:%%%ds", (int)(sizeof(file_ctx.name) - 1));
+                        sscanf(line, format, file_ctx.name);
                     }
 
                     if (strstr(line, "version") != NULL)
                     {
-                        sscanf(line, "version:%s", file_ctx.version);
+                        snprintf(format, sizeof(format), "version:%%%ds", (int)(sizeof(file_ctx.version) - 1));
+                        sscanf(line, format, file_ctx.version);
                     }
                 }
                 fclose(fd);
@@ -507,6 +515,7 @@ static int install_integrated_objects(char *path)
                 obj_count++;
             }
         }
+        FREE(line);
         closedir(udir);
     }
     return obj_count;
@@ -602,12 +611,12 @@ static void start_download(struct schema_Object_Store_Config *new)
     if (query_str != NULL)
     {
         /* generate full file path dir + file name up to questionmark (?) */
-        sprintf(d_ctx->dl_path, "%s/%.*s", CONFIG_PM_OBJM_DOWNLOAD_DIR, (query_str - filename), filename);
+        snprintf(d_ctx->dl_path, sizeof(d_ctx->dl_path), "%s/%.*s", CONFIG_PM_OBJM_DOWNLOAD_DIR, (query_str - filename), filename);
     }
     else
     {
         /* generate full file path, dir + file name */
-        sprintf(d_ctx->dl_path, "%s/%s", CONFIG_PM_OBJM_DOWNLOAD_DIR, filename);
+        snprintf(d_ctx->dl_path, sizeof(d_ctx->dl_path), "%s/%s", CONFIG_PM_OBJM_DOWNLOAD_DIR, filename);
     }
     STRSCPY_WARN(d_ctx->status, PM_OBJS_DOWNLOAD_STARTED);
 

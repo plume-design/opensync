@@ -44,7 +44,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "log.h"
 #include "util.h"
 
-#define GK_CNAME_REDIRECT_TTL (1*60*60)
 
 /**
  * @brief set callback for writing received data,
@@ -186,7 +185,6 @@ gk_force_redirect_cname(char * redirect_cname,
     }
 
     policy_reply->redirect = true;
-    policy_reply->rd_ttl = GK_CNAME_REDIRECT_TTL;
     snprintf(policy_reply->redirect_cname, sizeof(policy_reply->redirect_cname),
              "C-%s", redirect_cname);
     LOGT("%s: cname: %s redirect IPv4 IP: %s, IPv6 IP: %s",
@@ -201,13 +199,31 @@ error:
    return status;
 }
 
+/**
+ * @brief checks if the gatekeeper service provided
+ * a redirect reply.
+ *
+ * @param req_type request type sent to gatekeeper
+ * @param action action returned from gatekeeper
+ * @return true if the reply action is redirect else
+ * false
+ */
+bool
+gk_is_redirect_reply(int req_type, int action)
+{
+    bool rd_reply;
+
+    rd_reply = (req_type == FSM_FQDN_REQ);
+    rd_reply &= (action == FSM_REDIRECT || action == FSM_REDIRECT_ALLOW);
+
+    return rd_reply;
+}
+
 void
 gk_set_redirect(struct fsm_gk_verdict *gk_verdict,
                 Gatekeeper__Southbound__V1__GatekeeperFqdnReply *reply_fqdn)
 {
     Gatekeeper__Southbound__V1__GatekeeperFqdnRedirectReply *fqdn_redirect;
-    Gatekeeper__Southbound__V1__GatekeeperCommonReply *header;
-    Gatekeeper__Southbound__V1__GatekeeperAction gk_action;
     char ipv6_str[INET6_ADDRSTRLEN] = { '\0' };
     char ipv4_str[INET_ADDRSTRLEN]  = { '\0' };
     struct fsm_policy_reply *policy_reply;
@@ -219,19 +235,11 @@ gk_set_redirect(struct fsm_gk_verdict *gk_verdict,
     bool status;
     time_t now;
 
-    header        = reply_fqdn->header;
-    gk_action     = header->action;
     fqdn_redirect = reply_fqdn->redirect;
     policy_reply  = gk_verdict->policy_reply;
     gk_session    = gk_verdict->gk_session_context;
 
     policy_reply->redirect = false;
-
-    if (gk_action
-        != GATEKEEPER__SOUTHBOUND__V1__GATEKEEPER_ACTION__GATEKEEPER_ACTION_REDIRECT)
-        return;
-
-    policy_reply->rd_ttl = 10;
 
     cname_redirect = (fqdn_redirect->redirect_cname != NULL);
     if (cname_redirect) cname_redirect &= (strlen(fqdn_redirect->redirect_cname) != 0);
@@ -313,6 +321,10 @@ gk_get_fsm_action(Gatekeeper__Southbound__V1__GatekeeperCommonReply *header)
             action = FSM_REDIRECT;
             break;
 
+        case GATEKEEPER__SOUTHBOUND__V1__GATEKEEPER_ACTION__GATEKEEPER_ACTION_REDIRECT_ALLOW:
+            action = FSM_REDIRECT_ALLOW;
+            break;
+
         default:
             action = FSM_ACTION_NONE;
     }
@@ -375,6 +387,7 @@ gk_set_policy(Gatekeeper__Southbound__V1__GatekeeperReply *response,
     struct fsm_policy_req *policy_req;
     struct fsm_url_request *req_info;
     struct fsm_url_reply *url_reply;
+    bool redirect_reply;
     int req_type;
 
     policy_reply = gk_verdict->policy_reply;
@@ -394,7 +407,6 @@ gk_set_policy(Gatekeeper__Southbound__V1__GatekeeperReply *response,
             if (response->reply_fqdn != NULL)
             {
                 header = response->reply_fqdn->header;
-                gk_set_redirect(gk_verdict, response->reply_fqdn);
             }
             else
             {
@@ -498,6 +510,9 @@ gk_set_policy(Gatekeeper__Southbound__V1__GatekeeperReply *response,
     if (header == NULL) return false;
 
     policy_reply->action = gk_get_fsm_action(header);
+    redirect_reply = gk_is_redirect_reply(req_type, policy_reply->action);
+    if (redirect_reply) gk_set_redirect(gk_verdict, response->reply_fqdn);
+
     LOGT("%s: received flow_marker from gatekeeper %d", __func__, header->flow_marker);
     policy_reply->flow_marker = header->flow_marker;
     policy_reply->cache_ttl = header->ttl;

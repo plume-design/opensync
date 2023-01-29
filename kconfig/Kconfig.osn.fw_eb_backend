@@ -1,0 +1,23 @@
+config OSN_BACKEND_FW_EBTABLES_FULL
+    bool "ebtables full"
+    help
+        Use the ebtables full backend.
+
+        This implementation uses the ebtables-restore command to apply firewall
+        rules and fully takes control over system firewall configuration. This
+        means that any rules that were not applied via this API will be
+        destroyed. This allows for tighter control of firewall rules and
+        guarantees atomicity.
+
+config OSN_BACKEND_FW_EBTABLES_THIN
+    bool "ebtables thin"
+    help
+        Use the ebtables thin backend.
+
+        As opposed to the full implementation, the thin implementation uses the
+        standard `ebtables` command to manipulate firewall rules. It works on a
+        ebtables chain scope, meaning that it does not touch tables or chains
+        that are not referenced in the Netfilter table.
+
+        Use this option when you just want NFM to manage selected chains instead
+        of the global firewall configuration.

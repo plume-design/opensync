@@ -84,6 +84,8 @@ struct __inet_state
     osn_ip_addr_t           in_bcaddr;
     osn_ip_addr_t           in_gateway;
     osn_mac_addr_t          in_macaddr;
+    int                     in_speed;
+    osn_duplex_t            in_duplex;
 };
 
 #define INET_STATE_INIT (inet_state_t)  \
@@ -93,6 +95,8 @@ struct __inet_state
     .in_bcaddr = OSN_IP_ADDR_INIT,      \
     .in_gateway = OSN_IP_ADDR_INIT,     \
     .in_macaddr = OSN_MAC_ADDR_INIT,    \
+    .in_speed = OSN_NETIF_SPEED_INIT,   \
+    .in_duplex = OSN_NETIF_DUPLEX_INIT, \
 }
 
 typedef struct __inet inet_t;
@@ -310,6 +314,12 @@ struct __inet
     /* Interface status change notification registration method */
     bool        (*in_state_notify_fn)(inet_t *self, inet_state_fn_t *fn);
 
+    /* create Bridge Port */
+    bool (*in_bridge_port_set_fn)(inet_t *self, inet_t *port_inet, bool add);
+
+    /* create Bridge */
+    bool (*in_bridge_set_fn)(inet_t *self, const char *brname, bool add);
+
     /*
      * ===========================================================================
      *  IPv6 support
@@ -491,6 +501,20 @@ static inline bool inet_credential_set(
     }
 
     return self->in_credential_set_fn(self, username, password);
+}
+
+static inline bool inet_br_port_set(inet_t *self, inet_t* port_inet, bool add)
+{
+    if (self->in_bridge_port_set_fn == NULL) return false;
+
+    return self->in_bridge_port_set_fn(self, port_inet, add);
+}
+
+static inline bool inet_br_set(inet_t *self, const char *brname, bool add)
+{
+    if (self->in_bridge_set_fn == NULL) return false;
+
+    return self->in_bridge_set_fn(self, brname, add);
 }
 
 static inline bool inet_assign_scheme_set(inet_t *self, enum inet_assign_scheme scheme)
@@ -714,7 +738,6 @@ static inline bool inet_vlan_egress_qos_map_set(inet_t *self, const char *qos_ma
 {
     return (self->in_vlan_egress_qos_map_set_fn == NULL) ? false : self->in_vlan_egress_qos_map_set_fn(self, qos_map);
 }
-
 
 /*
  * DHCP sniffing - @p func will be called each time a DHCP packet is sniffed

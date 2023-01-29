@@ -98,6 +98,7 @@ const char * const fsm_action_str[] =
     [FSM_OBSERVED] = "observed",
     [FSM_NO_MATCH] = "not matched",
     [FSM_REDIRECT] = "blocked",
+    [FSM_REDIRECT_ALLOW] = "redirect",
     [FSM_FORWARD] = "forward",
     [FSM_UPDATE_TAG] = "update tag",
     [FSM_GATEKEEPER_REQ] = "gk req",
@@ -627,7 +628,8 @@ set_log_action(struct fsm_policy_req *req,
     if (policy_reply->categorized != FSM_FQDN_CAT_FAILED)
     {
         if (policy_reply->action == FSM_BLOCK ||
-            policy_reply->action == FSM_REDIRECT)
+            policy_reply->action == FSM_REDIRECT ||
+            policy_reply->action == FSM_REDIRECT_ALLOW)
         {
             action = policy_reply->action;
             policy_reply->log_action = (char *)fsm_policy_get_action_str(action);
@@ -1170,6 +1172,13 @@ int
 fsm_policy_initialize_pending_req(struct fqdn_pending_req *pending_req,
                                   struct fsm_request_args *request_args)
 {
+    if (request_args->device_id == NULL)
+    {
+        LOGE("%s(): Error: device_id not set", __func__);
+        net_md_log_acc(request_args->acc, __func__);
+        return -1;
+    }
+
     pending_req->fsm_context = request_args->session;
     memcpy(&pending_req->dev_id, request_args->device_id, sizeof(pending_req->dev_id));
     pending_req->acc = request_args->acc;
@@ -1178,6 +1187,12 @@ fsm_policy_initialize_pending_req(struct fqdn_pending_req *pending_req,
     if (pending_req->req_info == NULL) return -1;
 
     return 0;
+}
+
+static void
+fsm_set_supported_feature(struct fsm_policy_req *policy_request, int feature)
+{
+    policy_request->supported_features |= feature;
 }
 
 struct fsm_policy_req *
@@ -1190,7 +1205,6 @@ fsm_policy_initialize_request(struct fsm_request_args *request_args)
     int ret;
 
     if (request_args == NULL) return NULL;
-
 
     policy_request = CALLOC(1, sizeof(*policy_request));
     if (policy_request == NULL) return NULL;
@@ -1217,6 +1231,7 @@ fsm_policy_initialize_request(struct fsm_request_args *request_args)
     policy_request->ip_addr = ip_addr;
 
     policy_request->session = request_args->session;
+    fsm_set_supported_feature(policy_request, FSM_CNAME_FEATURE);
 
     policy_request->acc = request_args->acc;
 

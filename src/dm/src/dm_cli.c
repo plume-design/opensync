@@ -44,6 +44,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define DM_CLI_SHOW_INFO_MANUFACTURER   "manufacturer"
 #define DM_CLI_SHOW_INFO_FACTORY        "factory"
 #define DM_CLI_SHOW_INFO_MFG_DATE       "manufacturer_date"
+#define DM_CLI_SHOW_OVS_VERSION         "ovs-version"
 
 
 static int dm_cli_show_info(char *opt)
@@ -95,6 +96,10 @@ static int dm_cli_show_info(char *opt)
     {
         printf(DM_CLI_SHOW_INFO_MFG_DATE"=%s\n", osp_unit_mfg_date_get(buf, buflen) ? buf : "?");
     }
+    if (!opt || !strcmp(opt, DM_CLI_SHOW_OVS_VERSION))
+    {
+        printf(DM_CLI_SHOW_OVS_VERSION"=%s\n", osp_unit_ovs_version_get(buf, buflen) ? buf : "?");
+    }
 
     return DM_CLI_DONE;
 }
@@ -108,6 +113,11 @@ static bool dm_cli_help()
     printf("  -v, --verbose       increase verbosity\n");
     printf("  -i, --show-info [field name]\n");
     printf("                      display basic device info\n");
+    printf("  -k, --stop-all      kill the managers\n");
+    printf("  -k -e, --stop-all --except [manager_1,manager_2,...,manager_n]\n");
+    printf("                      list of except killing managers\n");
+    printf("                      ex: --stop-all --except cm,nm,fsm\n");
+    printf("                      ex: -k -e cm,nm\n");
     return DM_CLI_DONE;
 }
 
@@ -116,18 +126,24 @@ static bool dm_cli_help()
  */
 bool dm_cli(int argc, char *argv[], log_severity_t *log_severity)
 {
+
     int opt;
     int verbose = 0;
+    bool stop_all = false;
+    bool except = false;
+    char *except_mgr_list = NULL;
     bool done = DM_CLI_CONTINUE;
     struct option long_options[] =
     {
         { .name = "help",          .has_arg = no_argument,       .val = 'h', },
         { .name = "verbose",       .has_arg = no_argument,       .val = 'v', },
         { .name = "show-info",     .has_arg = optional_argument, .val = 'i', },
-        { NULL, 0, 0, 0 },
+        { .name = "stop-all",      .has_arg = optional_argument, .val = 'k', },
+        { .name = "except",        .has_arg = optional_argument, .val = 'e', },
+        { NULL, 0, 0, 0},
     };
 
-    while ((opt = getopt_long(argc, argv, "hvi::", long_options, NULL)) != -1)
+    while ((opt = getopt_long(argc, argv, "hvike::", long_options, NULL)) != -1)
     {
         switch (opt)
         {
@@ -143,12 +159,29 @@ bool dm_cli(int argc, char *argv[], log_severity_t *log_severity)
                 break;
             case 'i':
                 return dm_cli_show_info(optind < argc ? argv[optind] : NULL);
+            case 'k':
+                stop_all = true;
+                break;
+            case 'e' :
+                except = true;
+                except_mgr_list = argv[optind];
+                break;
             case '?':
             case 'h':
             default:
                 return dm_cli_help();
         }
-     }
+    }
+
+    if (stop_all)
+    {
+        return dm_manager_stop_all(except_mgr_list);
+    }
+
+    if (except && !stop_all)
+    {
+        return dm_cli_help();
+    }
 
     return done;
 }

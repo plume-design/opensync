@@ -172,6 +172,8 @@ struct supp_chan {
 #define WLAN_EID_SUPPORTED_CHANNELS 36
 #define WLAN_EID_MEASURE_REPORT 39
 #define WLAN_EID_SUPPORTED_OPERATING_CLASSES 59
+#define WLAN_EID_NEIGHBOR_REPORT 52
+#define WLAN_SEID_CANDIDATE_PREFERENCE 3
 
 /* IEEE Std 802.11-2016, 9.4.2.22 - Measurement Report element */
 struct rrm_measurement_report_element {
@@ -181,6 +183,25 @@ struct rrm_measurement_report_element {
         u8 mode; /* Measurement Report Mode */
         u8 type; /* Measurement Type */
         u8 variable[0]; /* Measurement Report */
+} STRUCT_PACKED;
+
+/* IEEE Std 802.11-2020, 9.4.2.36 - Neighbor Report element */
+struct neighbor_report_element {
+        u8 eid; /* Element ID */
+        u8 len; /* Length */
+        u8 bssid[ETH_ALEN]; /* BSSID */
+        u8 bssid_info[4]; /* BSSID Information */
+        u8 op_class; /* Operating Class */
+        u8 channel; /* Channel Number */
+        u8 phy_type; /* Phy Type */
+        u8 variable[0]; /* Optional Subelements */
+} STRUCT_PACKED;
+
+/* IEEE Std 802.11-2020, 9.4.2.36 - BSS Transition Candidate Preference subelement */
+struct neighbor_preference_subelement {
+        u8 eid; /* Element ID */
+        u8 len; /* Length */
+        u8 preference; /* Preference */
 } STRUCT_PACKED;
 
 /* IEEE Std 802.11-2016, Figure 9-192 - Measurement Report Mode field */

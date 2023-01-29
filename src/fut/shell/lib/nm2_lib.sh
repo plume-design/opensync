@@ -122,7 +122,7 @@ create_inet_entry()
         shift
         case "${option}" in
             -if_name)
-                nm2_if_name="${1}"
+                if_name="${1}"
                 args="${args} ${replace} ${option#?} ${1}"
                 shift
                 ;;
@@ -183,7 +183,7 @@ create_inet_entry()
     done
 
     # Make sure if_name parameter is set
-    [ -z "${nm2_if_name}" ] &&
+    [ -z "${if_name}" ] &&
         raise "FAIL: Interface name argument empty" -l "nm2_lib:create_inet_entry" -arg
 
     if [ -n "${broadcast_n}" ] && [ -n "${inet_addr_n}" ] && [ -n "${netmask}" ] && [ -n "${subnet}" ]; then
@@ -199,7 +199,7 @@ create_inet_entry()
     fi
 
     # Check if entry for given interface already exists, and if exists perform update action instead of insert
-    check_ovsdb_entry Wifi_Inet_Config -w if_name "${nm2_if_name}"
+    check_ovsdb_entry Wifi_Inet_Config -w if_name "${if_name}"
     if [ $? -eq 0 ]; then
         log -deb "nm2_lib:create_inet_entry - Updating existing interface in Wifi_Inet_Config"
         function_to_call="update_ovsdb_entry"
@@ -214,16 +214,16 @@ create_inet_entry()
     func_params=${args//$replace/$function_arg}
     func_params_add=${add_cfg_args//$replace/$function_arg}
     # shellcheck disable=SC2086
-    $function_to_call Wifi_Inet_Config -w if_name "$nm2_if_name" $func_params $func_params_add &&
-        log -deb "nm2_lib:create_inet_entry - $function_to_call Wifi_Inet_Config -w if_name $nm2_if_name $func_params $func_params_add - Success" ||
-        raise "FAIL: $function_to_call Wifi_Inet_Config -w if_name $nm2_if_name $func_params $func_params_add" -l "nm2_lib:create_inet_entry" -oe
+    $function_to_call Wifi_Inet_Config -w if_name "$if_name" $func_params $func_params_add &&
+        log -deb "nm2_lib:create_inet_entry - $function_to_call Wifi_Inet_Config -w if_name $if_name $func_params $func_params_add - Success" ||
+        raise "FAIL: $function_to_call Wifi_Inet_Config -w if_name $if_name $func_params $func_params_add" -l "nm2_lib:create_inet_entry" -oe
 
     # Validate action insert/update
     func_params=${args//$replace/-is}
     # shellcheck disable=SC2086
-    wait_ovsdb_entry Wifi_Inet_State -w if_name "$nm2_if_name" $func_params &&
-        log -deb "nm2_lib:create_inet_entry - wait_ovsdb_entry Wifi_Inet_State -w if_name $nm2_if_name $func_params - Success" ||
-        raise "FAIL: wait_ovsdb_entry Wifi_Inet_State -w if_name $nm2_if_name $func_params" -l "nm2_lib:create_inet_entry" -ow
+    wait_ovsdb_entry Wifi_Inet_State -w if_name "$if_name" $func_params &&
+        log -deb "nm2_lib:create_inet_entry - wait_ovsdb_entry Wifi_Inet_State -w if_name $if_name $func_params - Success" ||
+        raise "FAIL: wait_ovsdb_entry Wifi_Inet_State -w if_name $if_name $func_params" -l "nm2_lib:create_inet_entry" -ow
 
     return 0
 }
@@ -247,10 +247,10 @@ reset_inet_entry()
     local NARGS=1
     [ $# -ne ${NARGS} ] &&
         raise "nm2_lib:reset_inet_entry requires ${NARGS} input argument(s), $# given" -arg
-    nm2_if_name=$1
+    if_name=$1
 
-    log -deb "nm2_lib:reset_inet_entry - Setting Wifi_Inet_Config for $nm2_if_name to default values"
-    update_ovsdb_entry Wifi_Inet_Config -w if_name "$nm2_if_name" \
+    log -deb "nm2_lib:reset_inet_entry - Setting Wifi_Inet_Config for $if_name to default values"
+    update_ovsdb_entry Wifi_Inet_Config -w if_name "$if_name" \
         -u NAT "false" \
         -u broadcast "[\"set\",[]]" \
         -u dhcpd "[\"map\",[]]" \
@@ -295,21 +295,21 @@ delete_inet_interface()
     local NARGS=1
     [ $# -ne ${NARGS} ] &&
         raise "nm2_lib:delete_inet_interface requires ${NARGS} input argument(s), $# given" -arg
-    nm2_if_name=$1
+    if_name=$1
 
-    log -deb "nm2_lib:delete_inet_interface - Removing interface '$nm2_if_name'"
+    log -deb "nm2_lib:delete_inet_interface - Removing interface '$if_name'"
 
-    remove_ovsdb_entry Wifi_Inet_Config -w if_name "$nm2_if_name" ||
+    remove_ovsdb_entry Wifi_Inet_Config -w if_name "$if_name" ||
         raise "FAIL: Could not remove Wifi_Inet_Config::if_name" -l "nm2_lib:delete_inet_interface" -oe
 
-    wait_ovsdb_entry_remove Wifi_Inet_State -w if_name "$nm2_if_name" ||
+    wait_ovsdb_entry_remove Wifi_Inet_State -w if_name "$if_name" ||
         raise "FAIL: Could not remove Wifi_Inet_State::if_name" -l "nm2_lib:delete_inet_interface" -ow
 
-    wait_for_function_response 1 "ip link show $nm2_if_name" &&
-        log -deb "nm2_lib:delete_inet_interface - LEVEL2: Interface $nm2_if_name removed - Success" ||
-        force_purge_interface_raise "$nm2_if_name"
+    wait_for_function_response 1 "ip link show $if_name" &&
+        log -deb "nm2_lib:delete_inet_interface - LEVEL2: Interface $if_name removed - Success" ||
+        force_purge_interface_raise "$if_name"
 
-    log -deb "nm2_lib:delete_inet_interface - Interface '$nm2_if_name' deleted from ovsdb and OS - LEVEL2"
+    log -deb "nm2_lib:delete_inet_interface - Interface '$if_name' deleted from ovsdb and OS - LEVEL2"
 
     return 0
 }
@@ -330,14 +330,14 @@ force_purge_interface_raise()
     local NARGS=1
     [ $# -ne ${NARGS} ] &&
         raise "nm2_lib:force_purge_interface_raise requires ${NARGS} input argument(s), $# given" -arg
-    nm2_if_name=$1
+    if_name=$1
 
     log -deb "nm2_lib:force_purge_interface_raise - Interface force removal"
-    ip link delete "$nm2_if_name" || true
+    ip link delete "$if_name" || true
 
-    wait_for_function_response 1 "ip link show $nm2_if_name" &&
-        raise "FAIL: Interface '$nm2_if_name' removed forcefully" -l "nm2_lib:force_purge_interface_raise" -tc ||
-        raise "FAIL: Interface still present, could not delete interface '$nm2_if_name'" -l "nm2_lib:force_purge_interface_raise" -tc
+    wait_for_function_response 1 "ip link show $if_name" &&
+        raise "FAIL: Interface '$if_name' removed forcefully" -l "nm2_lib:force_purge_interface_raise" -tc ||
+        raise "FAIL: Interface still present, could not delete interface '$if_name'" -l "nm2_lib:force_purge_interface_raise" -tc
 }
 
 ###############################################################################
@@ -362,32 +362,32 @@ configure_dhcp_server_on_interface()
     NARGS_MAX=3
     [ $# -eq ${NARGS_MIN} ] || [ $# -eq ${NARGS_MAX} ] ||
         raise "nm2_lib:configure_dhcp_server_on_interface requires ${NARGS_MIN} or ${NARGS_MAX} input arguments, $# given" -arg
-    nm2_if_name=$1
-    nm2_start_pool=$2
-    nm2_end_pool=$3
+    if_name=$1
+    start_pool=$2
+    end_pool=$3
 
-    if [ -z "$nm2_start_pool" ] && [ -z "$nm2_end_pool" ]; then
+    if [ -z "$start_pool" ] && [ -z "$end_pool" ]; then
         # One or both arguments are missing.
-        nm2_dhcpd=''
+        dhcpd=''
     else
-        nm2_dhcpd='["start","'$nm2_start_pool'"],["stop","'$nm2_end_pool'"]'
+        dhcpd='["start","'$start_pool'"],["stop","'$end_pool'"]'
     fi
 
-    log -deb "nm2_lib:configure_dhcp_server_on_interface - Configuring DHCP server on interface '$nm2_if_name'"
+    log -deb "nm2_lib:configure_dhcp_server_on_interface - Configuring DHCP server on interface '$if_name'"
 
-    update_ovsdb_entry Wifi_Inet_Config -w if_name "$nm2_if_name" \
+    update_ovsdb_entry Wifi_Inet_Config -w if_name "$if_name" \
         -u enabled true \
         -u network true \
-        -u dhcpd '["map",['$nm2_dhcpd']]' ||
+        -u dhcpd '["map",['$dhcpd']]' ||
             raise "FAIL: Could not update Wifi_Inet_Config" -l "nm2_lib:configure_dhcp_server_on_interface" -oe
 
-    wait_ovsdb_entry Wifi_Inet_State -w if_name "$nm2_if_name" \
+    wait_ovsdb_entry Wifi_Inet_State -w if_name "$if_name" \
         -is enabled true \
         -is network true \
-        -is dhcpd '["map",['$nm2_dhcpd']]' ||
+        -is dhcpd '["map",['$dhcpd']]' ||
             raise "FAIL: Wifi_Inet_Config not reflected to Wifi_Inet_State" -l "nm2_lib:configure_dhcp_server_on_interface" -ow
 
-    log -deb "nm2_lib:configure_dhcp_server_on_interface - DHCP server created on interface '$nm2_if_name' - Success"
+    log -deb "nm2_lib:configure_dhcp_server_on_interface - DHCP server created on interface '$if_name' - Success"
 
     return 0
 }
@@ -414,31 +414,31 @@ configure_custom_dns_on_interface()
     NARGS_MAX=3
     [ $# -eq ${NARGS_MIN} ] || [ $# -eq ${NARGS_MAX} ] ||
         raise "nm2_lib:configure_custom_dns_on_interface requires ${NARGS_MIN} or ${NARGS_MAX} input arguments, $# given" -arg
-    nm2_if_name=$1
-    nm2_primary_dns=$2
-    nm2_secondary_dns=$3
+    if_name=$1
+    primary_dns=$2
+    secondary_dns=$3
 
-    nm2_dns='["map",[["primary","'$nm2_primary_dns'"],["secondary","'$nm2_secondary_dns'"]]]'
-    if [ -z "$nm2_primary_dns" ] && [ -z "$nm2_secondary_dns" ]; then
-        nm2_dns=''
+    dns='["map",[["primary","'$primary_dns'"],["secondary","'$secondary_dns'"]]]'
+    if [ -z "$primary_dns" ] && [ -z "$secondary_dns" ]; then
+        dns=''
     fi
 
-    log -deb "nm2_lib:configure_custom_dns_on_interface - Creating DNS on interface '$nm2_if_name'"
+    log -deb "nm2_lib:configure_custom_dns_on_interface - Creating DNS on interface '$if_name'"
 
-    update_ovsdb_entry Wifi_Inet_Config -w if_name "$nm2_if_name" \
+    update_ovsdb_entry Wifi_Inet_Config -w if_name "$if_name" \
         -u enabled true \
         -u network true \
         -u ip_assign_scheme static \
-        -u dns $nm2_dns ||
+        -u dns $dns ||
             raise "FAIL: Could not update Wifi_Inet_Config" -l "nm2_lib:configure_custom_dns_on_interface" -oe
 
-    wait_ovsdb_entry Wifi_Inet_State -w if_name "$nm2_if_name" \
+    wait_ovsdb_entry Wifi_Inet_State -w if_name "$if_name" \
         -is enabled true \
         -is network true \
-        -is dns $nm2_dns ||
+        -is dns $dns ||
             raise "FAIL: Wifi_Inet_Config not reflected to Wifi_Inet_State" -l "nm2_lib:configure_custom_dns_on_interface" -ow
 
-    log -deb "nm2_lib:configure_custom_dns_on_interface - DNS created on interface '$nm2_if_name' - Success"
+    log -deb "nm2_lib:configure_custom_dns_on_interface - DNS created on interface '$if_name' - Success"
 
     return 0
 }
@@ -464,23 +464,23 @@ set_ip_port_forwarding()
     local NARGS=5
     [ $# -ne ${NARGS} ] &&
         raise "nm2_lib:set_ip_port_forwarding requires ${NARGS} input argument(s), $# given" -arg
-    nm2_src_ifname=$1
-    nm2_src_port=$2
-    nm2_dst_ipaddr=$3
-    nm2_dst_port=$4
-    nm2_protocol=$5
+    src_ifname=$1
+    src_port=$2
+    dst_ipaddr=$3
+    dst_port=$4
+    protocol=$5
 
-    log -deb "nm2_lib:set_ip_port_forwarding - Creating port forward on interface '$nm2_src_ifname'"
+    log -deb "nm2_lib:set_ip_port_forwarding - Creating port forward on interface '$src_ifname'"
 
     insert_ovsdb_entry IP_Port_Forward \
-        -i dst_ipaddr "$nm2_dst_ipaddr" \
-        -i dst_port "$nm2_dst_port" \
-        -i src_port "$nm2_src_port" \
-        -i protocol "$nm2_protocol" \
-        -i src_ifname "$nm2_src_ifname" ||
+        -i dst_ipaddr "$dst_ipaddr" \
+        -i dst_port "$dst_port" \
+        -i src_port "$src_port" \
+        -i protocol "$protocol" \
+        -i src_ifname "$src_ifname" ||
             raise "FAIL: Could not insert entry to IP_Port_Forward table" -l "nm2_lib:set_ip_port_forwarding" -oe
 
-    log -deb "nm2_lib:set_ip_port_forwarding - Port forward created on interface '$nm2_src_ifname' - Success"
+    log -deb "nm2_lib:set_ip_port_forwarding - Port forward created on interface '$src_ifname' - Success"
 
     return 0
 }
@@ -504,19 +504,19 @@ force_delete_ip_port_forward_raise()
     local NARGS=3
     [ $# -ne ${NARGS} ] &&
         raise "nm2_lib:force_delete_ip_port_forward_raise requires ${NARGS} input argument(s), $# given" -arg
-    nm2_if_name=$1
-    nm2_ip_table_type=$2
-    nm2_ip_port_forward_ip=$3
+    if_name=$1
+    ip_table_type=$2
+    ip_port_forward_ip=$3
 
     log -deb "nm2_lib:force_delete_ip_port_forward_raise - iptables not empty. Force delete"
 
-    nm2_port_forward_line_number=$(iptables -t nat --list -v --line-number | tr -s ' ' | grep "$nm2_ip_table_type" | grep "$nm2_if_name" | grep  "$nm2_ip_port_forward_ip" | cut -d ' ' -f1)
-    if [ -z "$nm2_port_forward_line_number" ]; then
+    port_forward_line_number=$(iptables -t nat --list -v --line-number | tr -s ' ' | grep "$ip_table_type" | grep "$if_name" | grep  "$ip_port_forward_ip" | cut -d ' ' -f1)
+    if [ -z "$port_forward_line_number" ]; then
         log -deb "nm2_lib:force_delete_ip_port_forward_raise - Could not get iptables line number, skipping..."
         return 0
     fi
 
-    wait_for_function_response 0 "iptables -t nat -D $nm2_ip_table_type $nm2_port_forward_line_number" &&
+    wait_for_function_response 0 "iptables -t nat -D $ip_table_type $port_forward_line_number" &&
         raise "FAIL: IP port forward forcefully removed from iptables" -l "nm2_lib:force_delete_ip_port_forward_raise" -tc ||
         raise "FAIL: Could not to remove IP port forward from iptables" -l "nm2_lib:force_delete_ip_port_forward_raise" -tc
 }
@@ -706,9 +706,9 @@ check_resolv_conf()
     local NARGS=1
     [ $# -ne ${NARGS} ] &&
         raise "nm2_lib:check_resolv_conf requires ${NARGS} input argument(s), $# given" -arg
-    nm2_primary_dns=$1
+    primary_dns=$1
 
-    cat /tmp/resolv.conf | grep "nameserver $nm2_primary_dns" &&
+    cat /tmp/resolv.conf | grep "nameserver $primary_dns" &&
         return 0 ||
         return 1
 }
@@ -768,4 +768,259 @@ check_vlan_iface()
     log "nm2_lib:check_vlan_iface - Checking vlan interface at OS - LEVEL2"
     # Provide override in platform specific file
     raise "FAIL: This is a stub function. Override implementation needed for each platform." -l "nm2_lib:check_vlan_iface" -fc
+}
+
+
+###############################################################################
+# DESCRIPTION:
+#   Function creates the configuration required for adding bridge
+#   to Open_vSwitch table.
+#   This function is used as a helper function to add the bridge.
+# INPUT PARAMETER(S):
+#   $1  Bridge name (string, required)
+# RETURNS:
+#   NONE
+# USAGE EXAMPLE(S):
+#   ovs_gen_bridge_config br-home
+###############################################################################
+ovs_gen_bridge_config()
+{
+    bridge=$1
+    cat <<EOF
+[
+    "Open_vSwitch",
+    {
+        "op" : "insert",
+        "table" : "Bridge",
+        "uuid-name": "newBridge",
+        "row": {
+            "datapath_id": "00026df9edfc63",
+            "name": "${bridge}"
+        }
+    },
+    {
+        "op" : "mutate",
+        "table" : "Open_vSwitch",
+        "where" : [["cur_cfg", "==", 0]],
+        "mutations": [["bridges", "insert", ["set", [["named-uuid", "newBridge"]]]]]
+    }
+]
+EOF
+}
+
+###############################################################################
+# DESCRIPTION:
+#   Function creates the OVS bridge by creating an entry in Open_vSwitch and Bridge
+#   table
+# INPUT PARAMETER(S):
+#   $1  bridge name (string, required)
+# RETURNS:
+#   0
+# USAGE EXAMPLE(S):
+#   ovs_create_bridge br-home
+###############################################################################
+ovs_create_bridge()
+{
+    local NARGS=1
+    [ $# -ne ${NARGS} ] &&
+        raise "nm2_lib.sh:ovs_create_bridge requires ${NARGS} input argument(s), $# given" -arg
+    bridge=$1
+
+    ovs_gen_bridge_config "$bridge" | xargs -0 ovsdb-client transact
+}
+
+###############################################################################
+# DESCRIPTION:
+#   Function deletes the given bridge from Open_vSwitch and Bridge table.
+# INPUT PARAMETER(S):
+#   $1  bridge name (string, required)
+# RETURNS:
+#   0
+# USAGE EXAMPLE(S):
+#   ovs_delete_bridge br-home
+###############################################################################
+ovs_delete_bridge()
+{
+    local NARGS=1
+    [ $# -ne ${NARGS} ] &&
+        raise "nm2_lib.sh:ovs_delete_bridge requires ${NARGS} input argument(s), $# given" -arg
+    bridge=$1
+
+    bridge_uuid=$(${OVSH} -rU s Bridge _uuid -w name=="${bridge}")
+    log "nm2_lib:ovs_delete_bridge Removing Bridge ${bridge} from Open_vSwitch table"
+    ${OVSH} u Open_vSwitch bridges:del:'["set", ['"${bridge_uuid}"']]'
+
+    log "nm2_lib:ovs_delete_bridge Removing ${bridge} from Bridge table"
+    ${OVSH} d Bridge -w name=="${bridge}"
+}
+
+###############################################################################
+# DESCRIPTION:
+#   Function checks if the Traffic Control rule of the given type (ingress or egress)
+#   is configured on the device - LEVEL2. Linux TC command should be available on
+# . the device.
+# INPUT PARAMETER(S):
+#   $1  interface name (string, required)
+#   $2  expected value to check (string, required)
+#   $3  rule type whether ingress or egres (string, required)
+# RETURNS:
+#   0   if the Traffic Control rule is configured on the device
+# USAGE EXAMPLE(S):
+#  nb_is_tc_rule_configured "br-home" "8080" "ingress"
+###############################################################################
+nb_is_tc_rule_configured()
+{
+    ifname=$1
+    expected_str=$2
+    rule_type=$3
+
+    local NARGS=3
+    [ $# -ne ${NARGS} ] &&
+        raise "nm2_lib:nb_is_tc_rule_configured requires ${NARGS} input argument(s), $# given" -arg
+
+    log "nm2_lib:nb_is_tc_rule_configured - Checking if $rule_type Traffic Control rule is applied on the device - LEVEL2"
+
+    if [ $rule_type = "ingress" ]; then
+        cmd="tc filter show dev ${ifname} parent ffff: | grep \"${expected_str}\" "
+    else
+        cmd="tc filter show dev ${ifname} | grep \"${expected_str}\" "
+    fi
+    log "nm2_lib:nb_is_tc_rule_configured - Executing ${cmd}"
+    wait_for_function_response 0 "${cmd}" 10 &&
+        log -deb "nm2_lib:nb_is_tc_rule_configured -$rule_type Traffic Control rule is applied on the device - Success" ||
+        raise "FAIL: $rule_type Traffic Control rule is not applied on the device" -l "nm2_lib:nb_is_tc_rule_configured" -ds
+
+    return 0
+}
+
+###############################################################################
+# DESCRIPTION:
+#   When the device runs in Linux Native Bridge configuration, the function
+#   parses the other_config in the Ports table for hairpin configuration and
+#   returns the hairpin configuration.
+# INPUT PARAMETER(S):
+#   $1  interface name (string, required)
+# RETURNS:
+#   hairpin configuration
+# USAGE EXAMPLE(S):
+#   nb_get_current_hairpin_mode br-home.dns
+###############################################################################
+nb_get_current_hairpin_mode()
+{
+    local NARGS=1
+    [ $# -ne ${NARGS} ] &&
+        raise "nm2_lib.sh:nb_get_current_hairpin_mode requires ${NARGS} input argument(s), $# given" -arg
+
+    ifname=$1
+    ${OVSH} -M s Port -w name=="$ifname" other_config | \
+        awk -F'"' '{for (i=1;i<NF;i++) {if ($(i)=="hairpin_mode"){print $(i+2)}}}'
+}
+
+###############################################################################
+# DESCRIPTION:
+#   Function checks if the hairpin configuration is present for the interface.
+#   If configured, the hairpin configuration is removed from Ports table.
+# INPUT PARAMETER(S):
+#   $1  interface name (string, required)
+# RETURNS:
+#   None
+# USAGE EXAMPLE(S):
+#   nb_del_hairpin_config_if_present br-home.dns
+###############################################################################
+nb_del_hairpin_config_if_present()
+{
+    local NARGS=1
+    [ $# -ne ${NARGS} ] &&
+        raise "nm2_lib.sh:nb_del_hairpin_config_if_present requires ${NARGS} input argument(s), $# given" -arg
+
+    ifname=$1
+    curr_hairpin_mode=$(nb_get_current_hairpin_mode "$ifname")
+    log -deb "curr_hairpin_mode: $curr_hairpin_mode"
+
+    # remove hairpin mode if present
+    if [ -n "${curr_hairpin_mode}" ]; then
+        ${OVSH} -v U Port -w name=="$ifname" other_config:del:"[\"map\",[[\"hairpin_mode\", \"${curr_hairpin_mode}\"]]]"
+    fi
+}
+
+###############################################################################
+# DESCRIPTION:
+#   Function enables/disables hairpin mode on the interface.
+# INPUT PARAMETER(S):
+#   $1 interface name (string, required)
+#   $2 "on/off" (string, required)
+# RETURNS:
+#   0 - hairpin configuration is successful
+#   1 - when hairpin configuration fails
+# USAGE EXAMPLE(S):
+#   nb_configure_hairpin br-home.dns "on"
+#   nb_configure_hairpin br-home.dns "off"
+###############################################################################
+nb_configure_hairpin()
+{
+    local NARGS=2
+    [ $# -ne ${NARGS} ] &&
+        raise "nm2_lib:nb_configure_hairpin requires ${NARGS} input argument(s), $# given" -arg
+
+    ifname=$1
+    hairpin=$2
+
+    port=$(${OVSH} s Port -w name=="$ifname" -r | wc -l)
+    if [ "${port}" -ne 0 ]; then
+        # delete existing hairpin configuration if present
+        nb_del_hairpin_config_if_present "$ifname"
+        log -deb "nm2_lib:nb_configure_hairpin - configuring hairpin '$hairpin' on interface '$ifname'"
+        ${OVSH} U Port -w name=="$ifname" other_config:ins:"[\"map\",[[\"hairpin_mode\", \"${hairpin}\"]]]"
+    fi
+
+    sleep 2
+    # verify if the configuration is applied
+    hairpin_config=$(nb_get_current_hairpin_mode "$ifname")
+    log -deb "nm2_lib:nb_configure_hairpin - hairpin configuration is $hairpin_config "
+    if [ -z "${hairpin_config}" ]; then
+        log -deb "nm2_lib:nb_configure_hairpin - Failed to configure hairpin mode on interface '$ifname'"
+        return 1
+    else
+        log -deb "nm2_lib:nb_configure_hairpin - Configured hairpin mode on interface '$ifname' - Success"
+        return 0
+    fi
+}
+
+###############################################################################
+# DESCRIPTION:
+#   Function checks if the Traffic Control rule of the given type (ingress or egress)
+#   is removed from the device - LEVEL2. Linux TC command should be available on
+# . the device.
+# INPUT PARAMETER(S):
+#   $1  interface name (string, required)
+#   $2  expected value to check (string, required)
+#   $3  rule type whether ingress or egres (string, required)
+# RETURNS:
+#   0   if the Traffic Control rule is removed from the device
+# USAGE EXAMPLE(S):
+#  nb_is_tc_rule_removed "br-home" "8080" "ingress"
+###############################################################################
+nb_is_tc_rule_removed()
+{
+    ifname=$1
+    expected_str=$2
+    rule_type=$3
+
+    local NARGS=3
+    [ $# -ne ${NARGS} ] &&
+        raise "nm2_lib:nb_is_tc_rule_removed requires ${NARGS} input argument(s), $# given" -arg
+
+    log "nm2_lib:nb_is_tc_rule_removed - Checking if $rule_type Traffic Control rule is removed from the device - LEVEL2"
+
+    if [ $rule_type = "ingress" ]; then
+        cmd="tc filter show dev ${ifname} parent ffff: | grep \"${expected_str}\" "
+    else
+        cmd="tc filter show dev ${ifname} | grep \"${expected_str}\" "
+    fi
+    log "nm2_lib:nb_is_tc_rule_removed - Executing ${cmd}"
+    wait_for_function_response 1 "${cmd}" 10 &&
+        log -deb "nm2_lib:nb_is_tc_rule_removed -$rule_type Traffic Control rule is removed from the device - Success" ||
+        raise "FAIL: $rule_type Traffic Control rule is not removed from the device" -l "nm2_lib:nb_is_tc_rule_configured" -ds
+
+    return 0
 }

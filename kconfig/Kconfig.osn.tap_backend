@@ -1,0 +1,11 @@
+#
+# OpenSync core TAP interface backend
+#
+source "src/lib/osn/kconfig/Kconfig.osn.tap_backend"
+
+#
+# Platform/vendor TAP interface backends
+#
+osource "platform/*/kconfig/Kconfig.osn.tap_backend"
+osource "vendor/*/kconfig/Kconfig.osn.tap_backend"
+

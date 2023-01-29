@@ -32,32 +32,21 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <unistd.h>
 #include <regex.h>
 
+#include "kconfig.h"
 #include "log.h"
 #include "util.h"
 #include "memutil.h"
 #include "os_util.h"
 #include "os_regex.h"
 #include "evx.h"
+#include "ds.h"
 
 #include "lnx_route.h"
+#include "lnx_route_state.h"
 
 /* Debounce period - 100ms */
 #define LNX_ROUTE_POLL_DEBOUNCE_MS 100
-#define LNX_ROUTE_PROC_NET_ROUTE   "/proc/net/route"
 #define LNX_ROUTE_PROC_NET_ARP     "/proc/net/arp"
-
-static const char lnx_route_regex[] = "^"
-        RE_GROUP(RE_IFNAME) RE_SPACE    /* Interface name */
-        RE_GROUP(RE_XIPADDR) RE_SPACE   /* Destination */
-        RE_GROUP(RE_XIPADDR) RE_SPACE   /* Gateway */
-        RE_GROUP(RE_NUM) RE_SPACE       /* Flags -- skip */
-        RE_NUM RE_SPACE                 /* RefCnt -- skip */
-        RE_NUM RE_SPACE                 /* "Use" */
-        RE_GROUP(RE_NUM) RE_SPACE       /* Metric */
-        RE_GROUP(RE_XIPADDR) RE_SPACE   /* Netmask */
-        RE_NUM RE_SPACE                 /* MTU */
-        RE_NUM RE_SPACE                 /* Window */
-        RE_NUM;                         /* IRTT */
 
 static const char lnx_route_arp_regex[] = "^"
     RE_GROUP(RE_IPADDR) RE_SPACE        /* IP address */
@@ -97,7 +86,7 @@ struct lnx_route_arp_cache
 /*
  * Private functions
  */
-static void lnx_route_netlink_poll(lnx_netlink_t *nl, uint64_t event, const char *ifname);
+static void lnx_route_netlink_event_cb(lnx_netlink_t *nl, uint64_t event, const char *ifname);
 static void lnx_route_poll(void);
 static void lnx_route_cache_reset(void);
 static void lnx_route_cache_update(const char *ifname, struct osn_route_status *rts);
@@ -106,11 +95,14 @@ static void lnx_route_cache_free(lnx_route_t *rt, struct lnx_route_state_cache *
 static void lnx_route_arp_refresh(void);
 static ds_key_cmp_t lnx_route_state_cmp;
 static ds_key_cmp_t lnx_route_arp_cmp;
-static bool route_osn_ip_addr_from_hexstr(osn_ip_addr_t *ip, const char *str);
+static void lnx_route_state_poll_ev(struct ev_loop *loop, struct ev_debounce *ev, int revent);
 
 /* Global list of route objects, the primary key is the interface name */
 static ds_tree_t lnx_route_list = DS_TREE_INIT(ds_str_cmp, lnx_route_t, rt_tnode);
 static ds_tree_t lnx_route_arp_cache = DS_TREE_INIT(lnx_route_arp_cmp, struct lnx_route_arp_cache, arp_tnode);
+
+/* Global EV debounce object for route polling */
+static ev_debounce  lnx_ev_debounce;
 
 /*
  * ===========================================================================
@@ -123,6 +115,8 @@ static ds_tree_t lnx_route_arp_cache = DS_TREE_INIT(lnx_route_arp_cmp, struct ln
  */
 bool lnx_route_init(lnx_route_t *self, const char *ifname)
 {
+    static bool debounce_inited = false;
+
     if (strscpy(self->rt_ifname, ifname, sizeof(self->rt_ifname)) < 0)
     {
         LOG(ERR, "route: %s: Interface name too long.", ifname);
@@ -135,11 +129,24 @@ bool lnx_route_init(lnx_route_t *self, const char *ifname)
     /* Add this instance to the global list */
     ds_tree_insert(&lnx_route_list, self, self->rt_ifname);
 
-    lnx_netlink_init(&self->rt_nl, lnx_route_netlink_poll);
+    lnx_netlink_init(&self->rt_nl, lnx_route_netlink_event_cb);
     lnx_netlink_set_ifname(&self->rt_nl, self->rt_ifname);
     lnx_netlink_set_events(&self->rt_nl, LNX_NETLINK_IP4ROUTE | LNX_NETLINK_IP4NEIGH);
     lnx_netlink_start(&self->rt_nl);
 
+    /* Initialize debouncing for route state polling (to poll only once if
+     * multiple subsequent route state updades triggered in short time frame): */
+    if (!debounce_inited)
+    {
+        ev_debounce_init(
+                &lnx_ev_debounce,
+                lnx_route_state_poll_ev,
+                LNX_ROUTE_POLL_DEBOUNCE_MS/1000);
+
+        debounce_inited = true;
+    }
+
+    /* Initial poll: */
     lnx_route_poll();
 
     return self;
@@ -167,6 +174,11 @@ bool lnx_route_fini(lnx_route_t *self)
 
     ds_tree_remove(&lnx_route_list, self);
 
+    if (ds_tree_len(&lnx_route_list) == 0)
+    {
+        ev_debounce_stop(EV_DEFAULT, &lnx_ev_debounce);
+    }
+
     return true;
 }
 
@@ -186,165 +198,52 @@ bool lnx_route_status_notify(lnx_route_t *self, lnx_route_status_fn_t *func)
  *  Private functions
  * ===========================================================================
  */
+
+/* In the EV debounce event we do the actual routes polling. */
+static void lnx_route_state_poll_ev(struct ev_loop *loop, struct ev_debounce *ev, int revent)
+{
+    static lnx_route_state_t *route_state;
+
+    if (route_state == NULL)
+    {
+        /* Get lnx route state object. */
+        route_state = lnx_route_state_new(lnx_route_cache_update);
+    }
+
+    /* Refresh ARP cache */
+    lnx_route_arp_refresh();
+
+    /* Invalidate currently cached route entries: */
+    lnx_route_cache_reset();
+
+    /* Poll for route states. Existing routes present in our cache will be simply
+     * flaged as valid again and no further action taken. New routes will be
+     * added into the cache and reported upstream via notification callback. */
+    lnx_route_state_poll(route_state);
+
+    /* Flush stale entries. Routes that have been deleted from the system will
+     * have the validity flag set to false at this point and for those we delete
+     * the cached entry and send a delete notification callback upstream. */
+    lnx_route_cache_flush();
+}
+
 /*
- * Global route initialization.
+ * Netlink event callback. Called when there's a route state change on the system.
  *
- * Since we're using Linux specifics to parse the routing table (/proc/net/route) we
- * might as well use netlink sockets to improve performance a bit.
- *
- * Netlink is used for route state change notifications. The netlink protocol itself
- * is used as it is a beast of its own -- netlink messages are just used as a trigger
- * for the actual polling of the /proc/net/route file.
+ * In the netlink event callback we trigger the actual polling of routes.
  */
-void lnx_route_netlink_poll(lnx_netlink_t *nl, uint64_t event, const char *ifname)
+void lnx_route_netlink_event_cb(lnx_netlink_t *nl, uint64_t event, const char *ifname)
 {
     (void)nl;
     (void)event;
     (void)ifname;
 
-    /* Trigger polling */
     lnx_route_poll();
-}
-
-bool route_osn_ip_addr_from_hexstr(osn_ip_addr_t *ip, const char *str)
-{
-    char s_addr[OSN_IP_ADDR_LEN];
-    long l_addr;
-
-    if (!os_strtoul((char *)str, &l_addr, 16))
-    {
-        return false;
-    }
-
-    l_addr = ntohl(l_addr);
-
-    snprintf(s_addr, sizeof(s_addr), "%ld.%ld.%ld.%ld",
-            (l_addr >> 24) & 0xFF,
-            (l_addr >> 16) & 0xFF,
-            (l_addr >> 8) & 0xFF,
-            (l_addr >> 0) & 0xFF);
-
-    /*
-     * This route has a gateway, parse the IP and try to resolve the MAC address
-     */
-    return osn_ip_addr_from_str(ip, s_addr);
 }
 
 void lnx_route_poll(void)
 {
-    FILE *frt = NULL;
-
-    char buf[256];
-    regex_t re_route;
-
-    LOG(DEBUG, "route: Poll.");
-
-    /*
-     * Refresh ARP cache
-     */
-    lnx_route_arp_refresh();
-
-    /* Compile the regex */
-    if (regcomp(&re_route, lnx_route_regex, REG_EXTENDED) != 0)
-    {
-        LOG(ERR, "route: Error compiling regex: %s", lnx_route_regex);
-        return;
-    }
-
-    frt = fopen(LNX_ROUTE_PROC_NET_ROUTE, "r");
-    if (frt == NULL)
-    {
-        LOG(WARN, "route: Error opening %s", LNX_ROUTE_PROC_NET_ROUTE);
-        goto error;
-    }
-
-    /* Skip the header */
-    if (fgets(buf, sizeof(buf), frt) == NULL)
-    {
-        LOG(NOTICE, "route: Premature end of %s", LNX_ROUTE_PROC_NET_ROUTE);
-        goto error;
-    }
-
-    lnx_route_cache_reset();
-
-    while (fgets(buf, sizeof(buf), frt) != NULL)
-    {
-        regmatch_t rem[16];
-        char r_ifname[C_IFNAME_LEN];
-        char r_dest[9];
-        char r_gateway[9];
-        char r_flags[9];
-        char r_metric[6];
-        char r_mask[9];
-        long flags;
-        long metric;
-
-        struct osn_route_status rts = OSN_ROUTE_STATUS_INIT;
-
-        if (regexec(&re_route, buf, ARRAY_LEN(rem), rem, 0) != 0)
-        {
-            LOG(WARN, "route: Regular expression exec fail on string: %s", buf);
-            continue;
-        }
-
-        os_reg_match_cpy(r_ifname, sizeof(r_ifname), buf, rem[1]);
-        os_reg_match_cpy(r_dest, sizeof(r_dest), buf, rem[2]);
-        os_reg_match_cpy(r_gateway, sizeof(r_gateway), buf, rem[3]);
-        os_reg_match_cpy(r_flags, sizeof(r_flags), buf, rem[4]);
-        os_reg_match_cpy(r_metric, sizeof(r_metric), buf, rem[5]);
-        os_reg_match_cpy(r_mask, sizeof(r_mask), buf, rem[6]);
-
-        if (!route_osn_ip_addr_from_hexstr(&rts.rts_route.dest, r_dest))
-        {
-            LOG(ERR, "route: Invalid destination address: %s -- %s", r_dest, buf);
-            continue;
-        }
-
-        osn_ip_addr_t mask;
-        if (!route_osn_ip_addr_from_hexstr(&mask, r_mask))
-        {
-            LOG(ERR, "route: Invalid netmask address: %s -- %s", r_mask, buf);
-            continue;
-        }
-        rts.rts_route.dest.ia_prefix = osn_ip_addr_to_prefix(&mask);
-
-        if (!os_strtoul(r_flags, &flags, 0))
-        {
-            LOG(ERR, "route: Flags are invalid: %s -- %s", r_flags, buf);
-            continue;
-        }
-
-        if (!os_strtoul(r_metric, &metric, 0))
-        {
-            LOG(ERR, "route: Metric is invalid: %s -- %s", r_metric, buf);
-            continue;
-        }
-        rts.rts_route.metric = (int)metric;
-
-        if (flags & RTF_GATEWAY)
-        {
-            /*
-             * This route has a gateway, parse the IP and try to resolve the MAC address
-             */
-            rts.rts_route.gw_valid = route_osn_ip_addr_from_hexstr(&rts.rts_route.gw, r_gateway);
-            if (!rts.rts_route.gw_valid)
-            {
-                LOG(ERR, "route: Invalid gateway address %s.", r_gateway);
-                continue;
-            }
-        }
-
-        lnx_route_cache_update(r_ifname, &rts);
-    }
-
-    /* Flush stale entries */
-    lnx_route_cache_flush();
-
-error:
-    regfree(&re_route);
-    if (frt != NULL) fclose(frt);
-
-    return;
+    ev_debounce_start(EV_DEFAULT, &lnx_ev_debounce);
 }
 
 /*
@@ -368,8 +267,10 @@ void lnx_route_cache_reset(void)
 }
 
 /*
- * Find the osn_route object by @p ifname and update its route state cache
- * If the route state is a new entry, emit a callback
+ * Find the osn_route object by @p ifname and update its route state cache.
+ * If the route state is a new entry, emit a callback.
+ *
+ * If the route has a GW, lookup its MAC address in our ARP cache.
  */
 void lnx_route_cache_update(const char *ifname, struct osn_route_status *rts)
 {
@@ -380,10 +281,12 @@ void lnx_route_cache_update(const char *ifname, struct osn_route_status *rts)
     if (rt == NULL)
     {
         /* No lnx_route object, skip this entry */
-        LOG(DEBUG, "route: %s: No match: "PRI_osn_ip_addr" -> "PRI_osn_ip_addr,
+        LOG(DEBUG, "route: %s: No match: "PRI_osn_ip_addr" -> "PRI_osn_ip_addr" (table=%u, metric=%d)",
                 ifname,
                 FMT_osn_ip_addr(rts->rts_route.dest),
-                FMT_osn_ip_addr(rts->rts_route.gw));
+                FMT_osn_ip_addr(rts->rts_route.gw),
+                rts->rts_route.table,
+                rts->rts_route.metric);
         return;
     }
 
@@ -397,10 +300,12 @@ void lnx_route_cache_update(const char *ifname, struct osn_route_status *rts)
         memcpy(&rsc->rsc_state, rts, sizeof(rsc->rsc_state));
         ds_tree_insert(&rt->rt_cache, rsc, &rsc->rsc_state);
 
-        LOG(DEBUG, "route: %s: New: "PRI_osn_ip_addr" -> "PRI_osn_ip_addr,
+        LOG(DEBUG, "route: %s: New: "PRI_osn_ip_addr" -> "PRI_osn_ip_addr" (table=%u, metric=%d)",
                 ifname,
                 FMT_osn_ip_addr(rsc->rsc_state.rts_route.dest),
-                FMT_osn_ip_addr(rsc->rsc_state.rts_route.gw));
+                FMT_osn_ip_addr(rsc->rsc_state.rts_route.gw),
+                rts->rts_route.table,
+                rts->rts_route.metric);
 
         notify = true;
     }
@@ -425,10 +330,12 @@ void lnx_route_cache_update(const char *ifname, struct osn_route_status *rts)
 
     if (osn_mac_addr_cmp(&rsc->rsc_state.rts_gw_hwaddr, &gwaddr) != 0)
     {
-        LOG(DEBUG, "route: %s: ARP: "PRI_osn_ip_addr" -> "PRI_osn_ip_addr" |----> "PRI_osn_mac_addr" -> "PRI_osn_mac_addr,
+        LOG(DEBUG, "route: %s: ARP: "PRI_osn_ip_addr" -> "PRI_osn_ip_addr" (table=%u, metric=%d) |----> "PRI_osn_mac_addr" -> "PRI_osn_mac_addr,
                 ifname,
                 FMT_osn_ip_addr(rsc->rsc_state.rts_route.dest),
                 FMT_osn_ip_addr(rsc->rsc_state.rts_route.gw),
+                rts->rts_route.table,
+                rts->rts_route.metric,
                 FMT_osn_mac_addr(rsc->rsc_state.rts_gw_hwaddr),
                 FMT_osn_mac_addr(gwaddr));
 
@@ -445,10 +352,12 @@ void lnx_route_cache_update(const char *ifname, struct osn_route_status *rts)
 
 static void lnx_route_cache_free(lnx_route_t *rt, struct lnx_route_state_cache *rsc)
 {
-    LOG(DEBUG, "route: %s: Del: "PRI_osn_ip_addr" -> "PRI_osn_ip_addr,
+    LOG(DEBUG, "route: %s: Del: "PRI_osn_ip_addr" -> "PRI_osn_ip_addr" (table=%u, metric=%d)",
             rt->rt_ifname,
             FMT_osn_ip_addr(rsc->rsc_state.rts_route.dest),
-            FMT_osn_ip_addr(rsc->rsc_state.rts_route.gw));
+            FMT_osn_ip_addr(rsc->rsc_state.rts_route.gw),
+            rsc->rsc_state.rts_route.table,
+            rsc->rsc_state.rts_route.metric);
 
     /* Send delete notifications */
     if (rt->rt_fn != NULL)
@@ -600,7 +509,8 @@ error:
     regfree(&re_arp);
 }
 
-/* Index osn_route_state by ip/mask and gateway ip address */
+/* Index osn_route_state by ip/mask and gateway ip address as well as
+ * routing table ID and metric. */
 int lnx_route_state_cmp(const void *_a, const void *_b)
 {
     int rc;
@@ -608,10 +518,22 @@ int lnx_route_state_cmp(const void *_a, const void *_b)
     const struct osn_route_status *a = _a;
     const struct osn_route_status *b = _b;
 
+    if (a->rts_route.table < b->rts_route.table)
+    {
+        return -1;
+    }
+    else if (a->rts_route.table > b->rts_route.table)
+    {
+        return 1;
+    }
+
     rc = osn_ip_addr_cmp(&a->rts_route.dest, &b->rts_route.dest);
     if (rc != 0) return rc;
 
     rc = osn_ip_addr_cmp(&a->rts_route.gw, &b->rts_route.gw);
+    if (rc != 0) return rc;
+
+    rc = a->rts_route.metric - b->rts_route.metric;
     if (rc != 0) return rc;
 
     return 0;

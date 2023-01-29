@@ -94,6 +94,8 @@ struct lte_net_info
     uint32_t active_sim_slot;
     int32_t rssi;
     int32_t ber;
+    int32_t rsrp;
+    int32_t sinr;
     uint64_t last_healthcheck_success;
     uint64_t healthcheck_failures;
 };
@@ -121,6 +123,14 @@ enum lte_serving_cell_state {
     LTE_SERVING_CELL_CONNECT = INTERFACES__LTE_INFO__LTE_SERVING_CELL_STATE__LTE_SERVING_CELL_CONNECT,
 };
 
+enum cellular_serving_cell_state {
+    CELLULAR_SERVING_CELL_UNSPECIFIED = INTERFACES__LTE_INFO__CELLULAR_SERVING_CELL_STATE__CELLULAR_SERVING_CELL_UNSPECIFIED,
+    CELLULAR_SERVING_CELL_SEARCH = INTERFACES__LTE_INFO__CELLULAR_SERVING_CELL_STATE__CELLULAR_SERVING_CELL_SEARCH,
+    CELLULAR_SERVING_CELL_LIMSERV = INTERFACES__LTE_INFO__CELLULAR_SERVING_CELL_STATE__CELLULAR_SERVING_CELL_LIMSERV,
+    CELLULAR_SERVING_CELL_NOCONN = INTERFACES__LTE_INFO__CELLULAR_SERVING_CELL_STATE__CELLULAR_SERVING_CELL_NOCONN,
+    CELLULAR_SERVING_CELL_CONNECT = INTERFACES__LTE_INFO__CELLULAR_SERVING_CELL_STATE__CELLULAR_SERVING_CELL_CONNECT,
+};
+
 /**
  * Cell mode
  */
@@ -130,6 +140,14 @@ enum lte_cell_mode {
     LTE_CELL_MODE_WCDMA = INTERFACES__LTE_INFO__LTE_CELL_MODE__LTE_CELL_MODE_WCDMA,
 };
 
+enum cellular_mode {
+    CELLULAR_CELL_MODE_UNSPECIFIED = INTERFACES__LTE_INFO__CELLULAR_MODE__CELLULAR_MODE_UNSPECIFIED,
+    CELLULAR_CELL_MODE_NR5G_SA = INTERFACES__LTE_INFO__CELLULAR_MODE__CELLULAR_MODE_NR5G_SA,
+    CELLULAR_CELL_MODE_NR5G_ENDC = INTERFACES__LTE_INFO__CELLULAR_MODE__CELLULAR_MODE_NR5G_ENDC,
+    CELLULAR_CELL_MODE_LTE = INTERFACES__LTE_INFO__CELLULAR_MODE__CELLULAR_MODE_LTE,
+    CELLULAR_CELL_MODE_WCDMA = INTERFACES__LTE_INFO__CELLULAR_MODE__CELLULAR_MODE_WCDMA,
+};
+
 /**
  * fdd_tdd_mode
  */
@@ -137,6 +155,24 @@ enum lte_fdd_tdd_mode {
     LTE_MODE_UNSPECIFIED = INTERFACES__LTE_INFO__LTE_FDD_TDD_MODE__LTE_MODE_UNSPECIFIED,
     LTE_MODE_FDD = INTERFACES__LTE_INFO__LTE_FDD_TDD_MODE__LTE_MODE_FDD,
     LTE_MODE_TDD = INTERFACES__LTE_INFO__LTE_FDD_TDD_MODE__LTE_MODE_TDD,
+};
+
+enum cellular_fdd_tdd_mode {
+    CELLULAR_MODE_UNSPECIFIED = INTERFACES__LTE_INFO__CELLULAR_FDD_TDD_MODE__CELLULAR_DUPLEX_UNSPECIFIED,
+    CELLULAR_MODE_FDD = INTERFACES__LTE_INFO__CELLULAR_FDD_TDD_MODE__CELLULAR_DUPLEX_FDD,
+    CELLULAR_MODE_TDD = INTERFACES__LTE_INFO__CELLULAR_FDD_TDD_MODE__CELLULAR_DUPLEX_TDD,
+};
+
+/**
+ * NR sub-carrier space
+ */
+enum nr_scs {
+    NR_SCS_UNSPECIFIED = INTERFACES__LTE_INFO__NR_SCS__SCS_UNSPECIFIED,
+    NR_SCS_15_KHZ = INTERFACES__LTE_INFO__NR_SCS__SCS_15_KHZ,
+    NR_SCS_30_KHZ = INTERFACES__LTE_INFO__NR_SCS__SCS_30_KHZ,
+    NR_SCS_60_KHZ = INTERFACES__LTE_INFO__NR_SCS__SCS_60_KHZ,
+    NR_SCS_120_KHZ = INTERFACES__LTE_INFO__NR_SCS__SCS_120_KHZ,
+    NR_SCS_240_KHZ = INTERFACES__LTE_INFO__NR_SCS__SCS_240_KHZ,
 };
 
 /**
@@ -150,6 +186,23 @@ enum lte_bandwidth {
     LTE_BANDWIDTH_10_MHZ = INTERFACES__LTE_INFO__LTE_BANDWIDTH__LTE_BANDWIDTH_10_MHZ,
     LTE_BANDWIDTH_15_MHZ = INTERFACES__LTE_INFO__LTE_BANDWIDTH__LTE_BANDWIDTH_15_MHZ,
     LTE_BANDWIDTH_20_MHZ = INTERFACES__LTE_INFO__LTE_BANDWIDTH__LTE_BANDWIDTH_20_MHZ,
+};
+
+enum nr_dl_bandwidth {
+    NR_DL_BANDWIDTH_UNSPECIFIED = INTERFACES__LTE_INFO__NR_DL_BANDWIDTH__BW_UNSPECIFIED,
+    NR_DL_BANDWIDTH_5_MHZ = INTERFACES__LTE_INFO__NR_DL_BANDWIDTH__BW_5_MHZ,
+    NR_DL_BANDWIDTH_10_MHZ = INTERFACES__LTE_INFO__NR_DL_BANDWIDTH__BW_10_MHZ,
+    NR_DL_BANDWIDTH_15_MHZ = INTERFACES__LTE_INFO__NR_DL_BANDWIDTH__BW_15_MHZ,
+    NR_DL_BANDWIDTH_20_MHZ = INTERFACES__LTE_INFO__NR_DL_BANDWIDTH__BW_20_MHZ,
+    NR_DL_BANDWIDTH_25_MHZ = INTERFACES__LTE_INFO__NR_DL_BANDWIDTH__BW_25_MHZ,
+    NR_DL_BANDWIDTH_30_MHZ = INTERFACES__LTE_INFO__NR_DL_BANDWIDTH__BW_30_MHZ,
+    NR_DL_BANDWIDTH_40_MHZ = INTERFACES__LTE_INFO__NR_DL_BANDWIDTH__BW_40_MHZ,
+    NR_DL_BANDWIDTH_50_MHZ = INTERFACES__LTE_INFO__NR_DL_BANDWIDTH__BW_50_MHZ,
+    NR_DL_BANDWIDTH_60_MHZ = INTERFACES__LTE_INFO__NR_DL_BANDWIDTH__BW_60_MHZ,
+    NR_DL_BANDWIDTH_80_MHZ = INTERFACES__LTE_INFO__NR_DL_BANDWIDTH__BW_80_MHZ,
+    NR_DL_BANDWIDTH_90_MHZ = INTERFACES__LTE_INFO__NR_DL_BANDWIDTH__BW_90_MHZ,
+    NR_DL_BANDWIDTH_100_MHZ = INTERFACES__LTE_INFO__NR_DL_BANDWIDTH__BW_100_MHZ,
+    NR_DL_BANDWIDTH_400_MHZ = INTERFACES__LTE_INFO__NR_DL_BANDWIDTH__BW_400_MHZ,
 };
 
 struct lte_net_serving_cell_info
@@ -172,6 +225,60 @@ struct lte_net_serving_cell_info
     uint32_t srxlev;
 };
 
+struct cellular_nr5g_sa_net_serving_cell_info
+{
+    enum cellular_serving_cell_state state;
+    enum cellular_mode mode;
+    enum cellular_fdd_tdd_mode fdd_tdd_mode;
+    uint32_t mcc;
+    uint32_t mnc;
+    uint32_t cellid;
+    uint32_t pcid;
+    uint32_t tac;
+    uint32_t arfcn;
+    uint32_t band;
+    enum nr_dl_bandwidth bandwidth;
+    int32_t rsrp;
+    int32_t rsrq;
+    uint32_t sinr;
+    enum nr_scs scs;
+    uint32_t srxlev;
+};
+
+struct cellular_nr5g_nsa_net_serving_cell_info
+{
+    enum cellular_serving_cell_state lte_state;
+    enum cellular_mode lte_mode;
+    enum cellular_fdd_tdd_mode lte_fdd_tdd_mode;
+    uint32_t lte_mcc;
+    uint32_t lte_mnc;
+    uint32_t lte_cellid;
+    uint32_t lte_pcid;
+    uint32_t lte_earfcn;
+    uint32_t lte_freq_band_ind;
+    enum lte_bandwidth lte_ul_bandwidth;
+    enum lte_bandwidth lte_dl_bandwidth;
+    uint32_t lte_tac;
+    int32_t lte_rsrp;
+    int32_t lte_rsrq;
+    int32_t lte_rssi;
+    uint32_t lte_sinr;
+    uint32_t lte_cqi;
+    uint32_t lte_tx_power;
+    uint32_t lte_srxlev;
+    /* 5GNR-NSA `*/
+    enum cellular_mode nr5g_nsa_mode;
+    uint32_t nr5g_nsa_mcc;
+    uint32_t nr5g_nsa_mnc;
+    uint32_t nr5g_nsa_pcid;
+    int32_t nr5g_nsa_rsrp;
+    int32_t nr5g_nsa_sinr;
+    int32_t nr5g_nsa_rsrq;
+    uint32_t nr5g_nsa_arfcn;
+    uint32_t nr5g_nsa_band;
+    enum nr_dl_bandwidth nr5g_nsa_dl_bandwidth;
+    enum nr_scs nr5g_nsa_scs;
+};
 
 /**
  * NeighborCell freq mode
@@ -296,8 +403,9 @@ struct lte_info_report
     struct lte_net_pca_info *lte_pca_info;
     struct lte_net_sca_info *lte_sca_info;
     struct lte_pdp_ctx_dynamic_params_info *lte_pdp_ctx_info;
+    struct cellular_nr5g_sa_net_serving_cell_info *nr5g_sa_srv_cell;
+    struct cellular_nr5g_nsa_net_serving_cell_info *nr5g_nsa_srv_cell;
 };
-
 
 /**
  * @brief Copy a string, returning success or failure
@@ -522,6 +630,44 @@ lte_info_set_pdp_ctx_dynamic_params(struct lte_pdp_ctx_dynamic_params_info *sour
 void
 lte_info_free_pdp_ctx_info(struct lte_info_report *report);
 
+/**
+ * @brief  sets to the report nr5g sa info
+ *
+ * @param source nr5g sa info to copy
+ * @param report the report to update
+ * @return true if the info was copied, false otherwise
+ */
+bool
+cellular_info_set_nr5g_sa_srv_cell(struct cellular_nr5g_sa_net_serving_cell_info *source,
+                                        struct lte_info_report *report);
+
+
+/**
+ * @brief free cellular nr 5g info
+ *
+ * @param report the report
+ */
+void
+cellular_info_free_nr5g_sa_serving_cell(struct lte_info_report *report);
+
+/**
+ * @brief  sets to the report nr5g nsa info
+ *
+ * @param source nr5g nsa info to copy
+ * @param report the report to update
+ * @return true if the info was copied, false otherwise
+ */
+bool
+cellular_info_set_nr5g_nsa_srv_cell(struct cellular_nr5g_nsa_net_serving_cell_info *source,
+                                        struct lte_info_report *report);
+
+/**
+ * @brief free cellular nr 5g info
+ *
+ * @param report the report
+ */
+void
+cellular_info_free_nr5g_nsa_serving_cell(struct lte_info_report *report);
 
 /**
  * @brief Container of protobuf serialization output

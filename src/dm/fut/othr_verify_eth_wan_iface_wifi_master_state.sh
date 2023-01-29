@@ -40,13 +40,13 @@ usage()
 cat << usage_string
 othr/othr_verify_eth_wan_iface_wifi_master_state.sh [-h] arguments
 Description:
-    - Verify Wifi_Master_State table exists and has eth wan interface populated.
+    - Verify Wifi_Master_State table exists and has if_name field populated.
 Arguments:
     -h  show this help message
-    \$1 (eth_wan_interface)     : eth_wan_interface to be checked : (string)(required)
+    \$1 (eth_wan_if_name)     : Ethernet WAN interface to be checked : (string)(required)
 Testcase procedure:
     - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
-                 Run: ./othr/othr_verify_eth_wan_iface_wifi_master_state.sh <ETH_WAN_INTERFACE>
+                 Run: ./othr/othr_verify_eth_wan_iface_wifi_master_state.sh <ETH_WAN_IF_NAME>
 Script usage example:
    ./othr/othr_verify_eth_wan_iface_wifi_master_state.sh eth0
 usage_string
@@ -72,10 +72,9 @@ fut_info_dump_line
 
 NARGS=1
 [ $# -ne ${NARGS} ] && usage && raise "Requires '${NARGS}' input argument(s)" -l "othr/othr_verify_eth_wan_iface_wifi_master_state.sh" -arg
+eth_wan_if_name=${1}
 
-eth_wan_interface=${1}
-
-log_title "othr/othr_verify_eth_wan_iface_wifi_master_state.sh: ONBRD test - Verify Wifi_Master_State table exists and has eth wan interface '$eth_wan_interface' populated"
+log_title "othr/othr_verify_eth_wan_iface_wifi_master_state.sh: ONBRD test - Verify Wifi_Master_State table exists and has eth wan interface '$eth_wan_if_name' populated"
 
 ${OVSH} s Wifi_Master_State
 if [ $? -eq 0 ]; then
@@ -84,11 +83,11 @@ else
     raise "FAIL: Wifi_Master_State table does not exist" -l "othr/othr_verify_eth_wan_iface_wifi_master_state.sh" -tc
 fi
 
-check_ovsdb_entry Wifi_Master_State -w if_name $eth_wan_interface
+check_ovsdb_entry Wifi_Master_State -w if_name $eth_wan_if_name
 if [ $? -eq 0 ]; then
-    log "othr/othr_verify_eth_wan_iface_wifi_master_state.sh: Wifi_Master_State populated with eth wan interface '$eth_wan_interface' - Success"
+    log "othr/othr_verify_eth_wan_iface_wifi_master_state.sh: Wifi_Master_State populated with eth wan interface '$eth_wan_if_name' - Success"
 else
-    raise "FAIL: Wifi_Master_State not populated with eth wan interface '$eth_wan_interface'" -l "othr/othr_verify_eth_wan_iface_wifi_master_state.sh" -tc
+    raise "FAIL: Wifi_Master_State not populated with eth wan interface '$eth_wan_if_name'" -l "othr/othr_verify_eth_wan_iface_wifi_master_state.sh" -tc
 fi
 
 pass

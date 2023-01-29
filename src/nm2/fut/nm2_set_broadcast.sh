@@ -53,6 +53,7 @@ Script usage example:
    ./nm2/nm2_set_broadcast.sh wifi0 vif 10.0.0.10
 usage_string
 }
+
 if [ -n "${1}" ]; then
     case "${1}" in
         help | \
@@ -64,6 +65,7 @@ if [ -n "${1}" ]; then
             ;;
     esac
 fi
+
 NARGS=3
 [ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "nm2/nm2_set_broadcast.sh" -arg
 if_name=$1
@@ -102,10 +104,12 @@ wait_ovsdb_entry Wifi_Inet_State -w if_name "$if_name" -is broadcast "$broadcast
     log "nm2/nm2_set_broadcast.sh: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State::broadcast is '$broadcast' - Success" ||
     raise "wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State::broadcast is not '$broadcast'" -l "nm2/nm2_set_broadcast.sh" -tc
 
-log "nm2/nm2_set_broadcast.sh: Check if BROADCAST was properly applied to $if_name - LEVEL2"
-wait_for_function_response 0 "check_interface_broadcast_set_on_system $if_name | grep -q \"$broadcast\"" &&
-    log "nm2/nm2_set_broadcast.sh: LEVEL2 - BROADCAST applied to ifconfig - broadcast is $broadcast - Success" ||
-    raise "FAIL: LEVEL2 - Failed to apply BROADCAST to ifconfig - broadcast is not $broadcast" -l "nm2/nm2_set_broadcast.sh" -tc
+if [ $FUT_SKIP_L2 != 'true' ]; then
+    log "nm2/nm2_set_broadcast.sh: Check if BROADCAST was properly applied to $if_name - LEVEL2"
+    wait_for_function_response 0 "check_interface_broadcast_set_on_system $if_name | grep -q \"$broadcast\"" &&
+        log "nm2/nm2_set_broadcast.sh: LEVEL2 - BROADCAST applied to ifconfig - broadcast is $broadcast - Success" ||
+        raise "FAIL: LEVEL2 - Failed to apply BROADCAST to ifconfig - broadcast is not $broadcast" -l "nm2/nm2_set_broadcast.sh" -tc
+fi
 
 log "nm2/nm2_set_broadcast.sh: Removing broadcast from Wifi_Inet_Config for $if_name"
 update_ovsdb_entry Wifi_Inet_Config -w if_name "$if_name" \
@@ -120,9 +124,11 @@ wait_ovsdb_entry Wifi_Inet_State -w if_name "$if_name" \
         log "nm2/nm2_set_broadcast.sh: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State::broadcast is '0.0.0.0' - Success" ||
         raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State::broadcast is not '0.0.0.0'" -l "nm2/nm2_set_broadcast.sh" -tc
 
-log "nm2/nm2_set_broadcast.sh: Checking if BROADCAST was properly removed for $if_name - LEVEL2"
-wait_for_function_response 1 "check_interface_broadcast_set_on_system $if_name | grep -q \"$broadcast\"" &&
-    log "nm2/nm2_set_broadcast.sh: LEVEL2 - BROADCAST removed from ifconfig for interface $if_name - Success" ||
-    raise "FAIL: LEVEL2 - Failed to remove BROADCAST from ifconfig for interface $if_name" -l "nm2/nm2_set_broadcast.sh" -tc
+if [ $FUT_SKIP_L2 != 'true' ]; then
+    log "nm2/nm2_set_broadcast.sh: Checking if BROADCAST was properly removed for $if_name - LEVEL2"
+    wait_for_function_response 1 "check_interface_broadcast_set_on_system $if_name | grep -q \"$broadcast\"" &&
+        log "nm2/nm2_set_broadcast.sh: LEVEL2 - BROADCAST removed from ifconfig for interface $if_name - Success" ||
+        raise "FAIL: LEVEL2 - Failed to remove BROADCAST from ifconfig for interface $if_name" -l "nm2/nm2_set_broadcast.sh" -tc
+fi
 
 pass

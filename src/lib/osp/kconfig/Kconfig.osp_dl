@@ -17,15 +17,6 @@ if OSP_DL_CURL
 
                 Use 0 to disable periodic progress reports.
 
-        config OSP_DL_CURL_CERT_AUTHORITY_FILE
-            string "Certificate authority file"
-            default "$(INSTALL_PREFIX)/certs/auth.pem"
-            help
-                Path to the certificate authority file.
-
-                This corresponds to the -ca curl option. Use an empty string to
-                use system's default.
-
         config OSP_DL_CURL_ALLOW_UNTRUSTED_CONNECTIONS
             bool "Allow untrusted HTTPS connections"
             default n

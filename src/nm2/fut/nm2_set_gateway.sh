@@ -109,11 +109,13 @@ wait_ovsdb_entry Wifi_Inet_State -w if_name "$if_name" -is gateway "$gateway" &&
     log "nm2/nm2_set_gateway.sh: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State::gateway is $gateway - Success" ||
     raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State::gateway is $gateway" -l "nm2/nm2_set_gateway.sh" -tc
 
-gateway_check_cmd="ip route show default | grep -q $gateway' .* '$if_name"
-log "nm2/nm2_set_gateway.sh: Checking ifconfig for applied gateway for interface $if_name - LEVEL2"
-wait_for_function_response 0 "$gateway_check_cmd" &&
-    log "nm2/nm2_set_gateway.sh: LEVEL2 - Gateway $gateway applied to system for interface $if_name - Success" ||
-    raise "FAIL: LEVEL2 - Failed to apply gateway $gateway to System for interface $if_name" -l "nm2/nm2_set_gateway.sh" -tc
+if [ $FUT_SKIP_L2 != 'true' ]; then
+    gateway_check_cmd="ip route show default | grep -q $gateway' .* '$if_name"
+    log "nm2/nm2_set_gateway.sh: Checking ifconfig for applied gateway for interface $if_name - LEVEL2"
+    wait_for_function_response 0 "$gateway_check_cmd" &&
+        log "nm2/nm2_set_gateway.sh: LEVEL2 - Gateway $gateway applied to system for interface $if_name - Success" ||
+        raise "FAIL: LEVEL2 - Failed to apply gateway $gateway to System for interface $if_name" -l "nm2/nm2_set_gateway.sh" -tc
+fi
 
 log "nm2/nm2_set_gateway.sh: Removing GATEWAY $gateway for $if_name"
 update_ovsdb_entry Wifi_Inet_Config -w if_name "$if_name" -u gateway "[\"set\",[]]" -u ip_assign_scheme none &&
@@ -135,9 +137,11 @@ else
         raise "FAIL: wait_for_function_response - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State::gateway is not 'empty'" -l "nm2/nm2_set_gateway.sh" -tc
 fi
 
-log "nm2/nm2_set_gateway.sh: Checking ifconfig for removed gateway - LEVEL2"
-wait_for_function_response 1 "$gateway_check_cmd" &&
-    log "nm2/nm2_set_gateway.sh: LEVEL2 - Gateway $gateway removed from system for interface $if_name - Success" ||
-    raise "FAIL: LEVEL2 - Failed to remove gateway $gateway from system for interface $if_name" -l "nm2/nm2_set_gateway.sh" -tc
+if [ $FUT_SKIP_L2 != 'true' ]; then
+    log "nm2/nm2_set_gateway.sh: Checking ifconfig for removed gateway - LEVEL2"
+    wait_for_function_response 1 "$gateway_check_cmd" &&
+        log "nm2/nm2_set_gateway.sh: LEVEL2 - Gateway $gateway removed from system for interface $if_name - Success" ||
+        raise "FAIL: LEVEL2 - Failed to remove gateway $gateway from system for interface $if_name" -l "nm2/nm2_set_gateway.sh" -tc
+fi
 
 pass

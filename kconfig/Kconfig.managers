@@ -26,6 +26,8 @@ source "src/ltem/kconfig/Kconfig.managers"
 source "src/psm/kconfig/Kconfig.managers"
 source "src/pwm/kconfig/Kconfig.managers"
 source "src/vpnm/kconfig/Kconfig.managers"
+source "src/owm/kconfig/Kconfig.managers"
+source "src/blem/kconfig/Kconfig.managers"
 
 #
 # Include platform/vendor managers

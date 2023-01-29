@@ -34,6 +34,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "memutil.h"
 
+#define IGNORE_VALUE(a) do { (void)(a); } while (0)
+
 #ifndef MIN
 #define MIN(a,b) \
     ({ __typeof__ (a) _a = (a); \
@@ -113,7 +115,7 @@ bool parse_uri(char *uri, char *proto, size_t proto_size, char *host, size_t hos
 #endif
 
 #define STRSCPY(dest, src)  strscpy(ASSERT_ARRAY(dest), (src), sizeof(dest))
-#define STRSCPY_WARN(dest, src) WARN_ON(STRSCPY((dest), (src)) < 0)
+#define STRSCPY_WARN(dest, src) IGNORE_VALUE(WARN_ON(STRSCPY((dest), (src)) < 0))
 ssize_t strscpy(char *dest, const char *src, size_t size);
 #define STRSCPY_LEN(dest, src, len)  strscpy_len(ASSERT_ARRAY(dest), (src), sizeof(dest), len)
 ssize_t strscpy_len(char *dest, const char *src, size_t size, ssize_t src_len);

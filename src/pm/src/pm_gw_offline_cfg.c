@@ -42,6 +42,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "osp_ps.h"
 #include "os.h"
 #include "memutil.h"
+#include "kconfig.h"
 
 
 #define KEY_OFFLINE_CFG             "gw_offline_cfg"
@@ -534,9 +535,14 @@ static bool insert_port_into_bridge(char *bridge, char *port)
 {
     char command[512];
 
-    snprintf(command, sizeof(command),
-             "ovs-vsctl list-ports %s | grep %s || ovs-vsctl add-port %s %s",
-             LAN_BRIDGE, port, LAN_BRIDGE, port);
+    if(kconfig_enabled(CONFIG_TARGET_USE_NATIVE_BRIDGE))
+        snprintf(command, sizeof(command),
+                 "brctl show %s | grep %s || brctl addif %s %s",
+                 LAN_BRIDGE, port, LAN_BRIDGE, port);
+    else
+        snprintf(command, sizeof(command),
+                 "ovs-vsctl list-ports %s | grep %s || ovs-vsctl add-port %s %s",
+                 LAN_BRIDGE, port, LAN_BRIDGE, port);
 
     LOG(DEBUG, "offline_cfg: Insert port into bridge, running cmd: %s", command);
     return (cmd_log(command) == 0);
@@ -1408,35 +1414,8 @@ exit:
 
 static bool gw_offline_ps_erase(void)
 {
-    osp_ps_t *ps;
-    bool rv = false;
-
-    ps = osp_ps_open(PS_STORE_GW_OFFLINE, OSP_PS_RDWR);
-    if (ps == NULL)
-    {
-        LOG(ERR, "offline_cfg: Error opening %s persistent store.", PS_STORE_GW_OFFLINE);
-        goto exit;
-    }
-    LOG(DEBUG, "offline_cfg: Persistent store %s opened", PS_STORE_GW_OFFLINE);
-
-    if (!osp_ps_erase(ps))
-    {
-        LOG(ERR, "offline_cfg: Error erasing %s persistent store.", PS_STORE_GW_OFFLINE);
-        goto exit;
-    }
-    LOG(DEBUG, "offline_cfg: Persistent store %s: ERASED.", PS_STORE_GW_OFFLINE);
-
-    if (!osp_ps_sync(ps))
-    {
-        LOG(ERR, "offline_cfg: Error syncing %s persistent store.", PS_STORE_GW_OFFLINE);
-        goto exit;
-    }
-    LOG(DEBUG, "offline_cfg: Persistent store %s: synced.", PS_STORE_GW_OFFLINE);
-
-    rv = true;
-exit:
-    if (ps != NULL) osp_ps_close(ps);
-    return rv;
+    LOG(INFO, "offline_cfg: Erasing persistent store: %s", PS_STORE_GW_OFFLINE);
+    return osp_ps_erase_store_name(PS_STORE_GW_OFFLINE, 0);
 }
 
 static const char *util_get_mcast_intf(const struct gw_offline_cfg *cfg)
@@ -1642,10 +1621,16 @@ static bool util_interface_add_to_lanbridge(const char *interface)
     char cmd[C_MAXPATH_LEN];
     bool rc;
 
-    snprintf(cmd, sizeof(cmd),
-             "ovs-vsctl list-ports %s | grep %s || ovs-vsctl add-port %s %s",
-             LAN_BRIDGE, interface, LAN_BRIDGE, interface);
 
+
+    if(kconfig_enabled(CONFIG_TARGET_USE_NATIVE_BRIDGE))
+        snprintf(cmd, sizeof(cmd),
+                 "brctl show %s | grep %s || brctl addif %s %s",
+                 LAN_BRIDGE, interface, LAN_BRIDGE, interface);
+    else
+        snprintf(cmd, sizeof(cmd),
+                 "ovs-vsctl list-ports %s | grep %s || ovs-vsctl add-port %s %s",
+                 LAN_BRIDGE, interface, LAN_BRIDGE, interface);
     rc = cmd_log(cmd);
     return (rc == 0);
 }

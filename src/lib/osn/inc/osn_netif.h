@@ -89,6 +89,9 @@ struct osn_netif_status
     bool                ns_up;          /**< True if interface is UP */
     bool                ns_carrier;     /**< True if carrier was detected (RUNNING) */
     int                 ns_mtu;         /**< MTU */
+    int                 ns_speed;       /**< Link speed */
+    int                 ns_index;       /**< Index */
+    osn_duplex_t        ns_duplex;      /**< Duplex mode */
 };
 
 /**

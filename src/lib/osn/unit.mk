@@ -75,12 +75,16 @@ UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_PPPOE_LINUX),src/osn_pppoe_linux.c)
 UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_VLAN_NULL),src/osn_vlan_null.c)
 UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_VLAN_LINUX),src/osn_vlan_linux.c)
 
+UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_TAP_NULL),src/osn_tap_null.c)
+UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_TAP_INTERFACE),src/osn_tap_linux.c)
+
 UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_QOS_NULL),src/osn_qos_null.c)
 UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_QOS_LINUX),src/osn_qos_linux.c)
 
 UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_FW_NULL),src/osn_fw_null.c)
 UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_FW_IPTABLES_FULL),src/osn_fw_iptables_full.c)
 UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_FW_IPTABLES_THIN),src/osn_fw_iptables_thin.c)
+UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_FW_EBTABLES_FULL),src/osn_fw_ebtables_full.c)
 
 UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_IPSET_NULL),src/osn_ipset_null.c)
 UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_IPSET_LINUX),src/osn_ipset_linux.c)
@@ -111,6 +115,13 @@ UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_IPSEC_NULL),src/osn_ipsec_null.c)
 UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_TUNNEL_IFACE_LINUX),src/osn_tunnel_iface_linux.c)
 UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_TUNNEL_IFACE_NULL),src/osn_tunnel_iface_null.c)
 
+UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_TC_LINUX),src/osn_tc_linux.c)
+UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_BRIDGING_NULL),src/osn_bridge_null.c)
+UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_LINUX_BRIDGING),src/osn_bridge_linux.c)
+
+UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_ROUTE_RULE_LINUX),src/osn_route_rule_linux.c)
+UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_ROUTE_RULE_NULL),src/osn_route_rule_null.c)
+
 ifdef CONFIG_OSN_LINUX_ENABLED
 UNIT_CFLAGS += -I$(UNIT_PATH)/src/linux
 
@@ -123,6 +134,8 @@ UNIT_SRC += $(if $(CONFIG_OSN_LINUX_NETLINK),src/linux/lnx_netlink.c)
 UNIT_SRC += $(if $(CONFIG_OSN_LINUX_ROUTE),src/linux/lnx_route.c)
 UNIT_SRC += $(if $(CONFIG_OSN_LINUX_ROUTE_LIBNL3),src/linux/lnx_routes.c)
 UNIT_SRC += $(if $(CONFIG_OSN_LINUX_ROUTE_IP),src/linux/lnx_route_config.c)
+UNIT_SRC += $(if $(CONFIG_OSN_LINUX_ROUTE_STATE_LIBNL3),src/linux/lnx_route_state_nl.c)
+UNIT_SRC += $(if $(CONFIG_OSN_LINUX_ROUTE_STATE_PROC),src/linux/lnx_route_state_proc.c)
 UNIT_SRC += $(if $(CONFIG_OSN_MINIUPNPD),src/linux/mupnp_server.c)
 UNIT_SRC += $(if $(CONFIG_OSN_MINIUPNPD),src/linux/mupnp_cfg_iptv.c)
 UNIT_SRC += $(if $(CONFIG_OSN_MINIUPNPD),src/linux/mupnp_cfg_wan.c)
@@ -131,6 +144,10 @@ UNIT_SRC += $(if $(CONFIG_OSN_UDHCPC),src/linux/udhcp_client.c)
 UNIT_SRC += $(if $(CONFIG_OSN_LINUX_IPSET),src/linux/lnx_ipset.c)
 UNIT_SRC += $(if $(CONFIG_OSN_LINUX_PPPOE),src/linux/lnx_pppoe.c)
 UNIT_SRC += $(if $(CONFIG_OSN_LINUX_VLAN),src/linux/lnx_vlan.c)
+
+
+UNIT_SRC += $(if $(CONFIG_OSN_LINUX_BRIDGING),src/linux/lnx_bridge.c)
+UNIT_SRC += $(if $(CONFIG_OSN_LINUX_TAPIF),src/linux/lnx_tap.c)
 UNIT_SRC += $(if $(CONFIG_OSN_LINUX_QOS),src/linux/lnx_qos.c)
 UNIT_SRC += $(if $(CONFIG_OSN_LINUX_LTE),src/linux/lnx_lte.c)
 UNIT_SRC += $(if $(CONFIG_OSN_LINUX_IGMP),src/linux/lnx_igmp.c)
@@ -139,6 +156,8 @@ UNIT_SRC += $(if $(or $(CONFIG_OSN_LINUX_IGMP),$(CONFIG_OSN_LINUX_MLD)),src/linu
 UNIT_SRC += $(if $(CONFIG_OSN_VPN_IPSEC),src/linux/strongswan.c)
 UNIT_SRC += $(if $(CONFIG_OSN_LINUX_TUNNEL_IFACE),src/linux/lnx_tunnel_iface.c)
 UNIT_SRC += src/linux/udhcp_const.c
+UNIT_SRC += $(if $(CONFIG_OSN_LINUX_TC),src/linux/lnx_tc.c)
+UNIT_SRC += $(if $(CONFIG_OSN_LINUX_ROUTE_RULE_IP),src/linux/lnx_route_rule_iproute.c)
 
 ifeq ($(CONFIG_OSN_LINUX_ROUTE_LIBNL3),y)
 UNIT_CFLAGS += $(LIBNL3_HEADERS)

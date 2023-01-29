@@ -38,6 +38,8 @@ export FUT_UM_LIB_SRC=false
 export FUT_UNIT_LIB_SRC=false
 export FUT_UT_LIB_SRC=false
 export FUT_WM2_LIB_SRC=false
+export FUT_VPNM_LIB_SRC=false
+export FUT_PM_LIB_SRC=false
 
 # Export FUT required env vars if not already set
 [ -z "$FUT_TOPDIR" ] && export FUT_TOPDIR="/tmp/fut-base"

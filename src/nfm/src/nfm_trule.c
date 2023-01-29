@@ -31,6 +31,7 @@
 
 #include "log.h"
 #include "util.h"
+#include "nfm_rule.h"
 #include "nfm_trule.h"
 #include "nfm_chain.h"
 #include "nfm_ovsdb.h"
@@ -40,6 +41,8 @@
 #include <string.h>
 #include <stdio.h>
 #include "memutil.h"
+
+#include "kconfig.h"
 
 #define MODULE_ID LOG_MODULE_ID_MAIN
 
@@ -491,7 +494,8 @@ static bool nfm_trule_get_ref_chain(struct nfm_trule *self)
 {
 	bool errcode = true;
 
-	if (nfm_osfw_is_inet4(self->conf.protocol)) {
+	if (kconfig_enabled(CONFIG_TARGET_ENABLE_EBTABLES) &&
+        nfm_osfw_is_inet4(self->conf.protocol)) {
 		errcode = nfm_chain_get_ref(AF_INET, self->conf.table, self->conf.chain);
 		if (!errcode) {
 			LOGE("[%s] Start Nefilter template rule: get reference on %s inet chain failed",
@@ -525,6 +529,24 @@ static bool nfm_trule_get_ref_chain(struct nfm_trule *self)
 			return false;
 		}
 		self->flags |= NFM_FLAG_TRULE_TARGET6_REFERENCED;
+	}
+
+	if (nfm_osfw_is_eth(self->conf.protocol)) {
+		errcode = nfm_chain_get_ref(AF_BRIDGE, self->conf.table, self->conf.chain);
+		if (!errcode) {
+			LOGE("[%s] Start Nefilter template rule: get reference on %s ebtable chain failed",
+					self->conf.name, self->conf.chain);
+			return false;
+		}
+		self->flags |= NFM_FLAG_TRULE_CHAIN_ETH_REFERENCED;
+
+		errcode = nfm_chain_get_ref(AF_BRIDGE, self->conf.table, self->conf.target);
+		if (!errcode) {
+			LOGE("[%s] Start Nefilter template rule: get reference on %s ebtable target failed",
+					self->conf.name, self->conf.target);
+			return false;
+		}
+		self->flags |= NFM_FLAG_TRULE_TARGET_ETH_REFERENCED;
 	}
 	return true;
 }
@@ -834,15 +856,22 @@ bool nfm_trule_modify(const struct schema_Netfilter *conf)
 	if (!nfm_trule_is_conf_modified(conf)) {
 		return true;
 	}
-	errcode = nfm_trule_del(conf);
-	if (!errcode) {
+	if (!(nfm_trule_del(conf)) && !(nfm_rule_del(conf))) {
 		LOGE("[%s] Modify Netfilter template rule: delete template rule failed", conf->name);
 		return false;
 	}
-	errcode = nfm_trule_new(conf);
-	if (!errcode) {
-		LOGE("[%s] Modify Netfilter template rule: new template rule failed", conf->name);
-		return false;
+	if (nfm_trule_is_template(conf)) {
+		errcode = nfm_trule_new(conf);
+		if (!errcode) {
+			LOGE("[%s] Modify Netfilter template rule: new template rule failed", conf->name);
+			return false;
+		}
+	} else {
+		errcode = nfm_rule_new(conf);
+		if (!errcode) {
+			LOGE("[%s] Modify Netfilter rule: new rule failed", conf->name);
+			return false;
+		}
 	}
 	return true;
 }

@@ -299,7 +299,7 @@ static void vpn_healthcheck_execsh_fn(execsh_async_t *esa, int exit_status)
 /* Healthcheck timer -- called every healthcheck interval seconds */
 static void healthcheck_timer_cb(struct ev_loop *loop, ev_timer *watcher, int revents)
 {
-    char vpn_healthcheck_ping_cmd[C_MAXPATH_LEN];
+    char vpn_healthcheck_ping_cmd[C_MAXPATH_LEN+128];
     char ping_src_str[C_MAXPATH_LEN];
     osn_vpn_t *self = CONTAINER_OF(watcher, osn_vpn_t, ov_healthc_timer);
 

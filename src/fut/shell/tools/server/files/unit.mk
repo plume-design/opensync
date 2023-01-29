@@ -31,10 +31,7 @@ UNIT_TYPE := FUT
 # Output directory
 UNIT_DIR := shell/tools/server/files
 
-UNIT_FILE := fut_controller.pem
-UNIT_FILE += fut_mqtt.conf
+UNIT_FILE := fut_mqtt.conf
 UNIT_FILE += fw_patterns
+UNIT_FILE += ca_chain.pem
 UNIT_FILE += haproxy.cfg
-UNIT_FILE += plume_ca_chain.pem
-UNIT_FILE += fut_mqtt.conf
-UNIT_FILE += fw_patterns

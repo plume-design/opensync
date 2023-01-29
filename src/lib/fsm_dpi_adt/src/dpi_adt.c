@@ -39,6 +39,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "log.h"
 #include "memutil.h"
 #include "network_metadata_report.h"
+#include "fsm_dpi_adt_cache.h"
 #include "os.h"
 #include "os_time.h"
 #include "os_types.h"
@@ -160,6 +161,7 @@ dpi_adt_store(struct fsm_session *session,
     struct fsm_dpi_adt_session *adt_session;
     struct net_md_stats_accumulator *acc;
     struct net_md_flow_info *info;
+    bool found;
     char value_str[1024];
     char *network_id;
     size_t sz;
@@ -254,11 +256,25 @@ dpi_adt_store(struct fsm_session *session,
     network_id = session->ops.get_network_id(session, info->local_mac);
     new_record->network_id = (network_id) ? STRDUP(network_id) : STRDUP("unknown");
 
+    found = fsm_dpi_adt_cache_lookup(info->local_mac, new_record->key, new_record->value);
+    if (found)
+    {
+        LOGT("%s(): dev: " PRI_os_macaddr_lower_t
+             " key: %s, value %s present in cache, not sending report",
+             __func__, FMT_os_macaddr_pt(info->local_mac), new_record->key, new_record->value);
+        goto free_record;
+    }
+
+    fsm_dpi_adt_add_to_cache(info->local_mac, new_record->key, new_record->value);
+
     /* The new stored record is complete */
     aggr->data[aggr->data_idx] = new_record;
     aggr->data_idx++;
 
     return true;
+
+free_record:
+    if (new_record) FREE(new_record->network_id);
 
 cleanup:
     LOGT("%s: Cannot store record", __func__);

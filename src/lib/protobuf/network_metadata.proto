@@ -43,6 +43,10 @@ message VendorData {
     repeated VendorData_KVPair vendorKVPair                                 = 2;
 }
 
+message DataReportTag {
+    repeated string features                                                = 1;
+}
+
 message FlowTags {
     optional string vendor                                                  = 1;
     optional string appName                                                 = 2;
@@ -94,6 +98,7 @@ message FlowKey {
       optional string networkZone                                           = 17;
       optional uint32 flowMarker                                            = 18;
       optional string uplinkName                                            = 19;
+      repeated DataReportTag dataReportTag                                  = 20;
 }
 
 message FlowCounters {

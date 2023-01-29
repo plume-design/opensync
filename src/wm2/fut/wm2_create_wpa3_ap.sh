@@ -96,7 +96,7 @@ trap '
 log_title "wm2/wm2_create_wpa3_ap.sh: WM2 test - Testing WPA3 AP creation - interface $radio_if_name - channel $channel"
 
 log "wm2/wm2_create_wpa3_ap.sh: Cleaning VIF_Config"
-vif_clean
+vif_reset
 
 log "wm2/wm2_create_wpa3_ap.sh: Creating VIF interface"
 create_radio_vif_interface \
@@ -105,6 +105,7 @@ create_radio_vif_interface \
     -vif_radio_idx "$vif_radio_idx" \
     -ssid "$ssid" \
     -ssid_broadcast "$ssid_broadcast" \
+    -wifi_security_type "wpa" \
     -wpa "true" \
     -wpa_key_mgmt "sae" \
     -wpa_psks "$wpa_psks" \

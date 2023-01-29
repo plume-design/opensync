@@ -45,10 +45,10 @@ Pre-requirements:
     - LEAF device associated to DUT
 Arguments:
     -h : show this help message
-    \$1 (bhaul_ap_if_name) : used for bhaul ap interface name : (string)(required)
-    \$2 (leaf_radio_mac)   : used for LEAF radio mac          : (string)(required)
-    \$3 (gre_mtu)          : used for GRE MTU                 : (string)(required)
-    \$4 (lan_bridge)       : used for LAN bridge name         : (string)(required)
+    \$1 (bhaul_ap_if_name)    : used for bhaul ap interface name : (string)(required)
+    \$2 (leaf_radio_mac)      : used for LEAF radio mac          : (string)(required)
+    \$3 (gre_mtu)             : used for GRE MTU                 : (string)(required)
+    \$4 (lan_bridge_if_name)  : used for LAN bridge name         : (string)(required)
 Testcase procedure (FUT scripts call only)(example):
     # Initial DUT and REF setup
     # On DUT: ./fut-base/shell//tests/dm/othr_setup.sh wifi0 wifi1 wifi2
@@ -61,7 +61,7 @@ Testcase procedure (FUT scripts call only)(example):
     # On DUT: ./fut-base/shell//tools/device/check_wan_connectivity.sh
 
     # Configure DUT bhaul-ap
-    # On DUT: ./fut-base/shell//tools/device/vif_clean.sh 180
+    # On DUT: ./fut-base/shell//tools/device/vif_reset.sh
     # On DUT: ./fut-base/shell//tools/device/create_inet_interface.sh  -if_name br-home -if_type bridge -enabled true -network true -NAT false -ip_assign_scheme dhcp
     # On DUT: ./fut-base/shell//tools/device/configure_lan_bridge_for_wan_connectivity.sh  eth0 br-wan br-home 1500
     # On DUT: ./fut-base/shell//tools/device/create_radio_vif_interface.sh  -if_name wifi0 -vif_if_name bhaul-ap-24 -vif_radio_idx 1 \
@@ -101,7 +101,7 @@ fut_info_dump_line
 print_tables Wifi_Inet_Config Wifi_Inet_State
 print_tables Wifi_VIF_Config Wifi_VIF_State
 print_tables DHCP_leased_IP
-ovs-vsctl show
+show_bridge_details
 check_restore_ovsdb_server
 fut_info_dump_line
 ' EXIT SIGINT SIGTERM
@@ -111,7 +111,7 @@ NARGS=4
 bhaul_ap_if_name=${1}
 leaf_radio_mac=${2}
 gre_mtu=${3}
-lan_bridge=${4}
+lan_bridge_if_name=${4}
 
 bhaul_ip_assign_scheme="none"
 associate_retry_count="6"
@@ -153,6 +153,6 @@ wait_for_function_exit_code 0 "check_vif_interface_state_is_up ${gre_name}" "${a
     raise "FAIL: Interface ${gre_name} is not up on system" -l "tools/device/configure_gre_tunnel_gw.sh" -ds
 
 log "tools/device/configure_gre_tunnel_gw.sh: Put GW GRE interface into LAN bridge"
-add_bridge_port "${lan_bridge}" "${gre_name}"
+add_bridge_port "${lan_bridge_if_name}" "${gre_name}"
 
 pass

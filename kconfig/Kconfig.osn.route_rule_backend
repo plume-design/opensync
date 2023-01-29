@@ -1,0 +1,10 @@
+#
+# OpenSync core policy routing rules backend
+#
+source "src/lib/osn/kconfig/Kconfig.osn.route_rule_backend"
+
+#
+# Platform/vendor policy routing rules backend, if any
+#
+osource "platform/*/kconfig/Kconfig.osn.route_rule_backend"
+osource "vendor/*/kconfig/Kconfig.osn.route_rule_backend"

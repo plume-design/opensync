@@ -577,6 +577,11 @@ bm_events_handle_event(bsal_event_t *event)
         bm_stats_add_event_to_report(client, event, CLIENT_BTM_STATUS, false);
         break;
 
+    case BSAL_EVENT_SOCKET_OVERRUN:
+        LOGE("Event overrun. Cannot recover easily. Exiting and forcing a restart. ");
+        ev_break(EV_DEFAULT_ EVBREAK_ALL);
+        break;
+
     default:
         LOGW("[%s] Unhandled event type %u", bandstr, event->type);
         break;

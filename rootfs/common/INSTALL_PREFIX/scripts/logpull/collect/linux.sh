@@ -52,7 +52,11 @@ collect_linux()
     collect_cmd ip6tables -L -v -n
     collect_cmd ip6tables -t nat -L -v -n
     collect_cmd ip6tables -t mangle -L -v -n
-    collect_cmd iwconfig
+
+    if ( which iwconfig > /dev/null ); then
+        collect_cmd iwconfig
+    fi
+
     collect_cmd lsmod
     collect_cmd mpstat -A -I ALL
     collect_cmd pidstat -Ir -T ALL

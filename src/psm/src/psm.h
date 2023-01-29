@@ -53,4 +53,6 @@ bool psm_ovsdb_row_update(const char *table, json_t *row);
 bool psm_ovsdb_row_delete(const char *table, json_t *row);
 bool psm_ovsdb_row_restore(void);
 
+void psm_erase_config_init(void);
+
 #endif /* PSM_H_INCLUDED */

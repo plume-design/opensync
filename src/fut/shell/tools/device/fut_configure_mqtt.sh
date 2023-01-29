@@ -33,7 +33,6 @@ source "${FUT_TOPDIR}/shell/lib/unit_lib.sh"
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
-default_device_cert_path="/var/certs/"
 usage() {
     cat << usage_string
 tools/device/fut_configure_mqtt.sh [-h] arguments
@@ -46,10 +45,8 @@ Arguments:
     \$3 (location_id) : locationId for AWLAN_Node:mqtt_headers : (string)(required)
     \$4 (node_id)     : nodeId for AWLAN_Node:mqtt_headers     : (string)(required)
     \$5 (topics)      : topics for AWLAN_Node:mqtt_settings    : (string)(required)
-    \$6 (dut_ca_path) : Path to certificates folder on DUT     : (string)(optional)(default=${default_device_cert_path})
 Script usage example:
     ./tools/device/fut_configure_mqtt.sh 192.168.200.1 65002 1000 100 http
-    ./tools/device/fut_configure_mqtt.sh 192.168.200.1 65002 1000 100 http /var/certs/
 usage_string
 }
 
@@ -78,25 +75,21 @@ fi
 
 # INPUT ARGUMENTS:
 NARGS=5
-[ $# -lt ${NARGS} ] && raise "Requires at least '${NARGS}' input argument(s)" -arg
+[ $# -ne ${NARGS} ] && raise "Requires at least '${NARGS}' input argument(s)" -arg
 # Input arguments specific to GW, required:
 hostname=${1}
 port=${2}
 location_id=${3}
 node_id=${4}
 topics=${5}
-certs_dir=${6:-$default_device_cert_path}
-fut_server_cert_path="${FUT_TOPDIR}/shell/tools/server/certs/ca.crt"
-fut_client_cert_path="${FUT_TOPDIR}/shell/tools/server/certs/client.crt"
-fut_client_key_path="${FUT_TOPDIR}/shell/tools/server/certs/client.key"
+ca_cert_path=$(get_ovsdb_entry_value SSL ca_cert)
+fut_server_cert_path="${FUT_TOPDIR}/shell/tools/server/certs/ca.pem"
 
-cat "${fut_server_cert_path}" > "${certs_dir}/ca.pem"
-cat "${fut_client_cert_path}" > "${certs_dir}/client.pem"
-cat "${fut_client_key_path}" > "${certs_dir}/client_dec.key"
+cat "${fut_server_cert_path}" > "${ca_cert_path}"
 
 log "tools/device/fut_configure_mqtt.sh: Configuring MQTT AWLAN_Node settings"
 update_ovsdb_entry AWLAN_Node \
-    -u mqtt_settings '["map",[["broker","'"${hostname}"'"],["compress","none"],["port","'"${port}"'"],["topics","'"${topics}"'"]]]' \
+    -u mqtt_settings '["map",[["broker","'"${hostname}"'"],["compress","zlib"],["port","'"${port}"'"],["topics","'"${topics}"'"]]]' \
     -u mqtt_headers '["map",[["locationId","'"${location_id}"'"],["nodeId","'"${node_id}"'"]]]'
 
 log "tools/device/fut_configure_mqtt.sh: Restarting QM manager to instantly reconnects"

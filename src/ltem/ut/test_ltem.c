@@ -162,7 +162,9 @@ ltem_ut_mgr_init(struct ev_loop *loop)
 
     ltem_mgr_t *mgr = ltem_get_mgr();
     mgr->modem_info = osn_get_modem_info();
+
     ltem_setup_modem_info(mgr->modem_info);
+
     mgr->loop = loop;
 
     lte_config = CALLOC(1, sizeof(lte_config_info_t));
@@ -237,6 +239,7 @@ ut_lte_read_modem(void)
     lte_srv_cell_t srv_cell;
     lte_srv_cell_wcdma_t srv_cell_wcdma;
     lte_neigh_cell_intra_t neigh_cell_intra;
+    gen_resp_tokens resp_tokens[MAX_RESP_TOKENS];
 
     modem_info = osn_get_modem_info();
     res = ut_check_modem_status();
@@ -352,6 +355,16 @@ ut_lte_read_modem(void)
         LOGE("osn_lte_parse_operator:failed");
     }
     osn_lte_save_operator(&operator, modem_info);
+
+    char *nr_5g_sa_srv_cell_cmd = "nr_5g_sa_at+qeng=\\\"servingcell\\\"";
+    at_resp = lte_ut_run_microcom_cmd(nr_5g_sa_srv_cell_cmd);
+    if (!at_resp) return -1;
+    res = osn_gen_parser_sa(at_resp, resp_tokens);
+    if (res != 0)
+    {
+        LOGE("osn_lte_parse_s5g_sa_erving_cell:failed");
+    }
+    osn_nr5g_save_serving_cell_5g_sa(resp_tokens);
 
     char *srv_cell_cmd = "at+qeng=\\\"servingcell\\\"";
     at_resp = lte_ut_run_microcom_cmd(srv_cell_cmd);

@@ -33,6 +33,7 @@ UNIT_DIR := shell/tests/nm2
 
 UNIT_FILE := nm2_setup.sh
 UNIT_FILE += nm2_configure_nonexistent_iface.sh
+UNIT_FILE += nm2_configure_verify_native_tap_interface.sh
 UNIT_FILE += nm2_enable_disable_iface_network.sh
 UNIT_FILE += nm2_ovsdb_configure_interface_dhcpd.sh
 UNIT_FILE += nm2_ovsdb_ip_port_forward.sh
@@ -46,5 +47,8 @@ UNIT_FILE += nm2_set_mtu.sh
 UNIT_FILE += nm2_set_nat.sh
 UNIT_FILE += nm2_set_netmask.sh
 UNIT_FILE += nm2_set_upnp_mode.sh
+UNIT_FILE += nm2_verify_linux_traffic_control_rules.sh
+UNIT_FILE += nm2_verify_linux_traffic_control_template_rules.sh
+UNIT_FILE += nm2_verify_native_bridge.sh
 UNIT_FILE += nm2_verify_router_mode.sh
 UNIT_FILE += nm2_vlan_interface.sh

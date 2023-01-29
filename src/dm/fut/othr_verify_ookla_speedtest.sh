@@ -73,7 +73,6 @@ trap '
 
 NARGS=1
 [ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "othr/othr_verify_ookla_speedtest.sh" -arg
-
 testid=${1}
 
 log_title "othr/othr_verify_ookla_speedtest.sh: OTHR test - Verify Ookla Speedtest"

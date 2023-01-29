@@ -1,0 +1,11 @@
+#
+# OpenSync core network TC backend
+#
+source "src/lib/osn/kconfig/Kconfig.osn.tc_backend"
+
+#
+# Platform/vendor TC backends
+#
+osource "platform/*/kconfig/Kconfig.osn.tc_backend"
+osource "vendor/*/kconfig/Kconfig.osn.tc_backend"
+

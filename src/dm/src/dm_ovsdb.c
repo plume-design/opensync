@@ -343,6 +343,10 @@ static void fill_entity_data(struct schema_AWLAN_Node *s_awlan_node)
     if (osp_unit_mfg_date_get(buff, sizeof(buff)) == true)
         SCHEMA_SET_STR(s_awlan_node->vendor_mfg_date, buff);
 
+    /* ovs version */
+    if (osp_unit_ovs_version_get(buff, sizeof(buff)) == true)
+        SCHEMA_SET_STR(s_awlan_node->ovs_version, buff);
+
     LOG(NOTICE, "Device entity {serial=%s id=%s version=%s platform=%s sku=%s}",
             s_awlan_node->serial_number,
             s_awlan_node->id,
@@ -411,6 +415,7 @@ bool act_update_entity (void)
                                  "vendor_manufacturer",
                                  "vendor_factory",
                                  "vendor_mfg_date",
+                                 "ovs_version",
                                  NULL)
                              );
 

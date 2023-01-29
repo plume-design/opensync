@@ -26,8 +26,11 @@
 
 # {# jinja-parse #}
 
+DEFAULT_SUCCESS_INTERVAL=1  # dnscheck once per 1 minutes
+DEFAULT_FAIL_INTERVAL=1     # dnscheck once per 1 minute after 1st failure
 LOG_MODULE="DNS"
 RESOLV_CONF="/etc/resolv.conf"
+TMP_COUNTER="/tmp/dnscheck_counter"
 LOOKUP_HOST={{CONTROLLER_ADDR.split(':')[1]}}
 DNS_SERVERS="209.244.0.3 64.6.64.6 84.200.69.80"
 PLOOKUP=$CONFIG_TARGET_PATH_TOOLS/plookup
@@ -94,6 +97,35 @@ check_dns_servers()
     fi
 }
 
+# Read the counter from tmp file if present, otherwise initial it with 0
+if [ ! -f $TMP_COUNTER ]; then
+    echo "0">$TMP_COUNTER;
+fi
+dnscheck_counter=$(($(cat $TMP_COUNTER) + 1))
+echo $dnscheck_counter > $TMP_COUNTER
+
+# Read the configurations and decide on an interval
+success_interval=$($OVSH s Node_Config -w module==healthcheck -w key==dnscheck_success_interval value -r)
+if [ -z "$success_interval" ]; then
+    success_interval=$DEFAULT_SUCCESS_INTERVAL
+fi
+
+fail_interval=$DEFAULT_FAIL_INTERVAL
+
+if [ $_hc_failcnt -eq 0 ]; then
+    dnscheck_interval=$success_interval
+else
+    dnscheck_interval=$fail_interval
+fi
+
+# Skip DNS check until the interval is reached (slept for $interval minutes)
+log_info "DNS check counter $dnscheck_counter/$dnscheck_interval reached"
+if [ ! $dnscheck_counter -ge $dnscheck_interval ]; then
+    log_info "Skipping DNS check"
+    Healthcheck_Pass
+fi
+log_info "Running DNS check"
+echo "0">$TMP_COUNTER;
 
 # Check only device in Gateway mode
 WAN_TYPES="eth"

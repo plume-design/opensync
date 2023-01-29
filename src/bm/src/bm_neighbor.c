@@ -298,7 +298,12 @@ bm_neighbor_from_ovsdb( struct schema_Wifi_VIF_Neighbors *nconf, bm_neighbor_t *
     } else {
         neigh->neigh_report.op_class = bm_neighbor_get_op_class(nconf->channel, rtype);
     }
-    neigh->neigh_report.phy_type = bm_neighbor_get_phy_type(neigh->neigh_report.op_class);
+
+    if (nconf->phy_type_exists) {
+        neigh->neigh_report.phy_type = nconf->phy_type;
+    } else {
+        neigh->neigh_report.phy_type = bm_neighbor_get_phy_type(neigh->neigh_report.op_class);
+    }
 
     return true;
 }
@@ -691,9 +696,9 @@ bm_neighbor_channel_bs_allowed(const bm_group_t *group, uint8_t channel)
 
 /* BSS TM */
 static bool
-_bm_neighbor_get_self_btm_values(bsal_btm_params_t *btm_params, const char *ifname)
+_bm_neighbor_get_self_btm_values(const bm_client_t *client, bsal_btm_params_t *btm_params, const char *ifname)
 {
-    if ((unsigned int) btm_params->num_neigh >= ARRAY_SIZE(btm_params->neigh)) {
+    if ((unsigned int) btm_params->num_neigh >= bm_client_get_btm_max_neighbors(client)) {
         LOGW("%s we exceend neigh array size %d", ifname, btm_params->num_neigh);
         return false;
     }
@@ -729,7 +734,7 @@ bm_neighbor_get_self_btm_values(bsal_btm_params_t *btm_params,
             continue;
         }
 
-        _bm_neighbor_get_self_btm_values(btm_params, client->ifcfg[i].ifname);
+        _bm_neighbor_get_self_btm_values(client, btm_params, client->ifcfg[i].ifname);
    }
 
    if (btm_params->num_neigh) {
@@ -860,7 +865,9 @@ bm_neigbour_op_class_allowed(bm_client_t *client, bm_neighbor_t *bm_neigh)
     return false;
 }
 
-static int bm_cli_neigh_better_rrm_rcpi(const void *a, const void *b) {
+static int
+bm_cli_neigh_better_rrm_rcpi(const void *a, const void *b)
+{
     bm_rrm_neighbor_t *rrm_neigh_a;
     bm_rrm_neighbor_t *rrm_neigh_b;
     const bm_client_neighbor_t *cli_neigh_a = (bm_client_neighbor_t *) a;
@@ -868,14 +875,105 @@ static int bm_cli_neigh_better_rrm_rcpi(const void *a, const void *b) {
     bm_neighbor_t *neigh_a = (bm_neighbor_t *) cli_neigh_a->neighbor;
     bm_neighbor_t *neigh_b = (bm_neighbor_t *) cli_neigh_b->neighbor;
 
-    // descending order,  push neighbors without rrm report towards the end
-    rrm_neigh_a = bm_neighbor_get_rrm_neigh(cli_neigh_a->client, (os_macaddr_t *) neigh_a->neigh_report.bssid);
+    /* Descending order, push neighbors without rrm report towards the end */
+    rrm_neigh_a = bm_neighbor_get_rrm_neigh(cli_neigh_a->client,
+                                            (os_macaddr_t *) neigh_a->neigh_report.bssid);
     if (!rrm_neigh_a) return 1;
-    rrm_neigh_b = bm_neighbor_get_rrm_neigh(cli_neigh_b->client, (os_macaddr_t *) neigh_b->neigh_report.bssid);
+
+    rrm_neigh_b = bm_neighbor_get_rrm_neigh(cli_neigh_b->client,
+                                            (os_macaddr_t *) neigh_b->neigh_report.bssid);
     if (!rrm_neigh_b) return -1;
+
     if (rrm_neigh_a->rcpi > rrm_neigh_b->rcpi) return -1;
     if (rrm_neigh_a->rcpi < rrm_neigh_b->rcpi) return 1;
+
     return 0;
+}
+
+static int
+bm_neighbor_retry_neigh_better_preference(const void *a, const void *b)
+{
+    const bm_client_btm_retry_neigh_t *retry_neigh_a = a;
+    const bm_client_btm_retry_neigh_t *retry_neigh_b = b;
+
+    /* descending order, higher number is preferred over lower number */
+    if (retry_neigh_a->preference > retry_neigh_b->preference) return -1;
+    if (retry_neigh_a->preference < retry_neigh_b->preference) return 1;
+    return 0;
+}
+
+static void
+bm_neighbor_build_btm_add_retry_neighbors(bm_client_t *client,
+                                          bsal_btm_params_t *btm_params,
+                                          const int max_regular_neighbors)
+{
+    bsal_neigh_info_t *bsal_neigh;
+    bm_neighbor_t *bm_neigh;
+    bm_client_btm_retry_neigh_t *btm_retry_neighbor;
+    char mac_str[OS_MACSTR_SZ];
+    unsigned int i;
+
+    /* Sort retry neighbors by preference */
+    qsort(client->btm_retry_neighbors,
+          client->btm_retry_neighbors_len,
+          sizeof(bm_client_btm_retry_neigh_t),
+          bm_neighbor_retry_neigh_better_preference);
+
+    /* Add retry neighbors provided in BTM response */
+    for (i = 0; i < client->btm_retry_neighbors_len; i++) {
+
+        btm_retry_neighbor = &client->btm_retry_neighbors[i];
+        if (WARN_ON(os_nif_macaddr_to_str(&btm_retry_neighbor->bssid,
+                                          mac_str,
+                                          PRI_os_macaddr_lower_t) == false)) {
+            LOGT("Could not convert BTM retry neighbor's bssid to str");
+            continue;
+        }
+
+        LOGT("Considering retry neighbor, bssid = %s", mac_str);
+
+        bm_neigh = bm_neighbor_find_by_macstr(mac_str);
+        if (bm_neigh == NULL) {
+            LOGT("BTM retry neighbor not in neighbor list, bssid = %s", mac_str);
+            continue;
+        }
+
+        if (bm_neighbor_in_group(bm_neigh, client->group) == false) {
+            LOGT("BTM retry neighbor not in group, bssid = %s, ifname = %s", bm_neigh->bssid, bm_neigh->ifname);
+            continue;
+        }
+
+        if (btm_params->num_neigh >= max_regular_neighbors) {
+            LOGT("Built maximum allowed neighbors when adding BTM retry neighbors");
+            break;
+        }
+
+        if (btm_retry_neighbor->preference == 0) {
+            LOGI("BTM retry neighbor provided preference 0 for bssid = %s ifname = %s "
+                 "(BTM response preference value 0 is reserved)",
+                 bm_neigh->bssid,
+                 bm_neigh->ifname);
+            continue;
+        }
+
+        bsal_neigh = &btm_params->neigh[btm_params->num_neigh];
+
+        memcpy(bsal_neigh->bssid, &btm_retry_neighbor->bssid, sizeof(bsal_neigh->bssid));
+        bsal_neigh->channel = bm_neigh->channel;
+        bsal_neigh->bssid_info = bm_neigh->neigh_report.bssid_info;
+        bsal_neigh->op_class = bm_neigh->neigh_report.op_class;
+        bsal_neigh->phy_type = bm_neigh->neigh_report.phy_type;
+
+        btm_params->num_neigh++;
+
+        LOGT("Built neighbor [%d] (btm response provided list): "PRI_os_macaddr_lower_t
+             " channel: %hhu op_class: %hhu phy_type: %hhu",
+             btm_params->num_neigh,
+             FMT_os_macaddr_pt((os_macaddr_t *)bsal_neigh->bssid),
+             bsal_neigh->channel,
+             bsal_neigh->op_class,
+             bsal_neigh->phy_type);
+    }
 }
 
 bool
@@ -910,19 +1008,36 @@ bm_neighbor_build_btm_neighbor_list( bm_client_t *client, bsal_btm_params_t *btm
 
     btm_params->num_neigh = 0;
 
+    if (client->btm_max_neighbors < 1) {
+        LOGI("BTM neighbors not generated due to btm_max_neighbors=%zu", client->btm_max_neighbors);
+        return false;
+    }
+
+    max_regular_neighbors = client->btm_max_neighbors;
+
     if (client->band_cap_mask & BM_CLIENT_OPCLASS_60_CAP_BIT) {
-        max_regular_neighbors = BSAL_MAX_TM_NEIGHBORS;
+        if (max_regular_neighbors < 2) {
+            LOGE("Number of neighbors too small for 6GHz capable client!");
+            return false;
+        }
         max_self_neighbors = 2;
     } else {
-        max_regular_neighbors = BSAL_MAX_TM_NEIGHBORS_LEGACY;
         max_self_neighbors = 1;
     }
 
-    if (btm_params->inc_self)
-        /* Leave place for self neighbors */
+    if (btm_params->inc_self) {
+        /* Leave place for self neighbor */
+        assert(max_regular_neighbors >= max_self_neighbors);
         max_regular_neighbors -= max_self_neighbors;
+    }
 
-    /* First choose neighbors using Beacon Measurement Reports (if enabled or available) */
+    if (client->neighbor_list_filter_by_btm_status) {
+        LOGI("Looking up retry neighbors");
+        bm_neighbor_build_btm_add_retry_neighbors(client, btm_params, max_regular_neighbors);
+    }
+    /* Remove entries from retry neighbors */
+    client->btm_retry_neighbors_len = 0;
+
     if (client->neighbor_list_filter_by_beacon_report ) {
         ds_tree_foreach(bm_neighbors, bm_neigh) {
 
@@ -955,7 +1070,10 @@ bm_neighbor_build_btm_neighbor_list( bm_client_t *client, bsal_btm_params_t *btm
     }
 
     /* Sort chosen neighbors by RCPI reported by client using rrm */
-    qsort(cand_bm_cli_neigh_list, cand_bm_cli_neigh_size, sizeof(bm_client_neighbor_t), bm_cli_neigh_better_rrm_rcpi);
+    qsort(cand_bm_cli_neigh_list,
+          cand_bm_cli_neigh_size,
+          sizeof(bm_client_neighbor_t),
+          bm_cli_neigh_better_rrm_rcpi);
 
     /* Add neighbors from list sorted by RCPI */
     for (i=0; i<cand_bm_cli_neigh_size; i++) {
@@ -996,6 +1114,11 @@ bm_neighbor_build_btm_neighbor_list( bm_client_t *client, bsal_btm_params_t *btm
         if (btm_params->num_neigh >= max_regular_neighbors) {
             LOGT("Built maximum allowed neighbors");
             break;
+        }
+
+        if (btm_params->neigh == NULL) {
+            LOGE("Buffer btm_params->neigh not initialized!");
+            return false;
         }
 
         if (!os_nif_macaddr_from_str(&macaddr, bm_neigh->bssid)) {
@@ -1058,7 +1181,7 @@ bm_neighbor_build_btm_neighbor_list( bm_client_t *client, bsal_btm_params_t *btm
                 continue;
 
             if (btm_params->num_neigh > max_regular_neighbors + max_self_neighbors) {
-                LOGI("%s client %s unable to add all self BSSIDs", __func__, client->mac_addr);
+                LOGI("%s client %s no space left for self bssid", __func__, client->mac_addr);
                 break;
             }
 

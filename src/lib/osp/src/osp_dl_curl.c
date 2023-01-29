@@ -49,6 +49,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "util.h"
 #include "osp_dl.h"
 #include "util.h"
+#include "target.h"
 
 #define MODULE_ID LOG_MODULE_ID_COMMON
 
@@ -727,11 +728,10 @@ CURL *osp_dl_curl_get_handle(struct osp_dl_curl *dc, const char *url)
                 curl_easy_strerror(rc));
         goto error;
     }
-
     /* Set the certificate authority file */
-    if (CONFIG_OSP_DL_CURL_CERT_AUTHORITY_FILE[0] != '\0')
+    if(access(target_opensync_ca_filename(), F_OK) != 0 )
     {
-        rc = curl_easy_setopt(curl, CURLOPT_CAINFO, CONFIG_OSP_DL_CURL_CERT_AUTHORITY_FILE);
+        rc = curl_easy_setopt(curl, CURLOPT_CAINFO, target_opensync_ca_filename());
         if (rc != CURLE_OK)
         {
             LOG(ERR, "curl[%jd]: Error setting the CA file: %s",

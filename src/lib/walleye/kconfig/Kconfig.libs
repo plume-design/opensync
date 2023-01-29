@@ -1,0 +1,13 @@
+menuconfig WALLEYE_DPI_ENGINE
+    bool "Walleye DPI engine support"
+    default y
+    depends on MANAGER_FSM
+    help
+        Enable Walleye DPI engine support for FSM
+
+    config WALLEYE_DPI_ENGINE_SANDBOX_SIZE
+        int "Walleye DPI engine sandbox memory size in MB"
+        default 2
+        help
+            The Walleye DPI engine provisions the memory amount it will need to parse
+            presented flows.

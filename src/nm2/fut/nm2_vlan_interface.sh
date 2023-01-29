@@ -68,6 +68,10 @@ check_kconfig_option "CONFIG_OSN_LINUX_VLAN" "y" &&
     log "nm2/nm2_vlan_interface.sh: CONFIG_OSN_LINUX_VLAN==y - VLAN is enabled on this device" ||
     raise "CONFIG_OSN_LINUX_VLAN != y - VLAN is disabled on this device" -l "nm2/nm2_vlan_interface.sh" -s
 
+if [ $FUT_SKIP_L2 == 'true' ]; then
+    raise "Flag to skip LEVEL2 testcases enabled, skipping execution." -l "nm2/nm2_vlan_interface.sh" -s
+fi
+
 NARGS=2
 [ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "nm2/nm2_vlan_interface.sh" -arg
 # Fill variables with provided arguments or defaults.
@@ -102,10 +106,10 @@ create_inet_entry \
         log "nm2/nm2_vlan_interface.sh: Interface $if_name created - Success" ||
         raise "FAIL: Failed to create $if_name interface" -l "nm2/nm2_vlan_interface.sh" -ds
 
-log "nm2/nm2_vlan_interface.sh: Check is interface $if_name up - LEVEL2"
-wait_for_function_response 0 "check_eth_interface_state_is_up $if_name" &&
-    log "nm2/nm2_vlan_interface.sh: wait_for_function_response - Interface $if_name is UP - Success" ||
-    raise "FAIL: wait_for_function_response - Interface $if_name is DOWN" -l "nm2/nm2_vlan_interface.sh" -ds
+    log "nm2/nm2_vlan_interface.sh: Check is interface $if_name up - LEVEL2"
+    wait_for_function_response 0 "check_eth_interface_state_is_up $if_name" &&
+        log "nm2/nm2_vlan_interface.sh: wait_for_function_response - Interface $if_name is UP - Success" ||
+        raise "FAIL: wait_for_function_response - Interface $if_name is DOWN" -l "nm2/nm2_vlan_interface.sh" -ds
 
 log "nm2/nm2_vlan_interface.sh: Check if VLAN interface $if_name exists at OS level - LEVEL2"
 check_vlan_iface "$parent_ifname" "$vlan_id" &&

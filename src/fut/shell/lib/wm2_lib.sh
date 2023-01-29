@@ -27,7 +27,7 @@
 
 # Include basic environment config
 export FUT_WM2_LIB_SRC=true
-[ "${FUT_UNIT_LIB_SRC}" != true ] && source "${FUT_TOPDIR}/shell/lib/unit_lib.sh"
+[ "${FUT_UNIT_LIB_SRC}" != true ] && source "${FUT_TOPDIR}/shell/lib/unit_lib.sh" && source "${FUT_TOPDIR}/shell/lib/nm2_lib.sh"
 echo "${FUT_TOPDIR}/shell/lib/wm2_lib.sh sourced"
 
 ####################### INFORMATION SECTION - START ###########################
@@ -148,6 +148,47 @@ vif_clean()
         raise "FAIL: wait_for_empty_ovsdb_table - Could not empty Wifi_VIF_State table" -l "wm2_lib:vif_clean" -ow
 }
 
+###############################################################################
+# DESCRIPTION:
+#   Function resets VIF STA interfaces and removes all VIF AP interfaces from
+#   the Wifi_VIF_Config table and waits for Wifi_VIF_State table to reflect.
+#   Raises exception on failure.
+# INPUT PARAMETER(S):
+#   None.
+# RETURNS:
+#   0 On Success.
+#   See DESCRIPTION.
+# USAGE EXAMPLE(S):
+#   vif_reset
+###############################################################################
+vif_reset()
+{
+    log -deb "wm2_lib:vif_reset - Resetting VIF interfaces"
+
+    # Resets all STA VIF interfaces
+    sta_iface_list=$(get_ovsdb_entry_value Wifi_VIF_Config if_name -w mode sta)
+    for sta_iface in $sta_iface_list; do
+        reset_sta_interface $sta_iface ||
+            raise "FAIL: reset_sta_interface - Could not reset STA interfaces in Wifi_VIF_Config table" -l "wm2_lib:vif_reset" -oe
+    done
+
+    # Removes all AP VIF interfaces
+    ap_iface_list=$(get_ovsdb_entry_value Wifi_VIF_Config if_name -w mode ap)
+    for ap_iface in $ap_iface_list; do
+        remove_ovsdb_entry Wifi_VIF_Config -w if_name $ap_iface ||
+            raise "FAIL: remove_ovsdb_entry - Could not remove interface '$ap_iface' from Wifi_VIF_Config table" -l "wm2_lib:vif_reset" -oe
+        wait_ovsdb_entry_remove Wifi_VIF_State -w if_name $ap_iface ||
+            raise "FAIL: wait_ovsdb_entry_remove - Could not reflect Wifi_VIF_Config to Wifi_VIF_State for '$ap_iface'" -l "wm2_lib:vif_reset" -oe
+        remove_ovsdb_entry Wifi_Inet_Config -w if_name $ap_iface ||
+            raise "FAIL: remove_ovsdb_entry - Could not remove Wifi_Inet_Config entry for '$ap_iface' STA interface" -l "wm2_lib:vif_reset" -oe
+        wait_ovsdb_entry_remove Wifi_Inet_Config -w if_name $ap_iface ||
+            raise "FAIL: wait_ovsdb_entry_remove - Could not reflect Wifi_Inet_Config to Wifi_Inet_State for '$ap_iface' STA interface" -l "wm2_lib:vif_reset" -oe
+    done
+
+    log -deb "wm2_lib:vif_reset- VIF interfaces reset - Success"
+    return 0
+}
+
 ####################### VIF SECTION - STOP ####################################
 
 ###################### RADIO SECTION - START ##################################
@@ -171,6 +212,7 @@ get_iface_regulatory_domain()
     [ $# -ne ${NARGS} ] &&
         raise "wm2_lib:get_iface_regulatory_domain requires ${NARGS} input argument(s), $# given" -arg
     if_name="${1}"
+
     country_found=1
     country=$(get_ovsdb_entry_value Wifi_Radio_State country -w if_name "${if_name}")
     if [ "${country}" == "[\"set\",[]]" ]; then
@@ -200,6 +242,145 @@ get_iface_regulatory_domain()
         country='US'
     fi
     echo "${country}"
+}
+
+get_channels_to_check_for_cac()
+{
+    # First validate presence of regulatory.txt file
+    regulatory_file_path="${FUT_TOPDIR}/shell/config/regulatory.txt"
+    if [ ! -f "${regulatory_file_path}" ]; then
+        log -deb "wm2_lib:get_channels_to_check_for_cac - Regulatory file ${regulatory_file_path} does not exist, nothing to do."
+        return 0
+    fi
+
+    local NARGS=1
+    [ $# -ne ${NARGS} ] &&
+        raise "wm2_lib:get_channels_to_check_for_cac requires ${NARGS} input argument(s), $# given" -arg
+    # shellcheck disable=SC2034
+    if_name="${1}"
+
+    # Check if channel is set in Wifi_Radio_State
+    state_channel=$(get_ovsdb_entry_value Wifi_Radio_State channel -w if_name "${if_name}")
+    if [ "${state_channel}" == "[\"set\",[]]" ]; then
+        log -deb "wm2_lib:get_channels_to_check_for_cac - Channel is not set in Wifi_Radio_State, nothing to do."
+        return 0
+    fi
+    state_ht_mode=$(get_ovsdb_entry_value Wifi_Radio_State ht_mode -w if_name "${if_name}")
+    if [ "${state_ht_mode}" == "[\"set\",[]]" ]; then
+        log -deb "wm2_lib:get_channels_to_check_for_cac - ht_mode is not set in Wifi_Radio_State, nothing to do."
+        return 0
+    fi
+    state_freq_band=$(get_ovsdb_entry_value Wifi_Radio_State freq_band -w if_name "${if_name}" | tr '[A-Z]' '[a-z]' | tr -d '.')
+    if [ "${state_freq_band}" == "[\"set\",[]]" ]; then
+        log -deb "wm2_lib:get_channels_to_check_for_cac - freq_band is not set in Wifi_Radio_State, nothing to do."
+        return 0
+    fi
+
+    # Retrieve device regulatory domain
+    state_country=$(get_iface_regulatory_domain "${if_name}")
+    echo "${state_country}"
+    state_country=$(echo "${state_country}" | tail -1)
+
+    log -deb "wm2_lib:get_channels_to_check_for_cac - Acquiring channels to validate CAC for ${state_channel} in range of ${state_ht_mode}"
+    channels_to_check=""
+    lower_limit="0"
+    upper_limit="300"
+    # If HT20, we do not need to wait for any other channel except the one given
+    if [ "${state_ht_mode}" == "HT20" ]; then
+        channels_to_check="${state_channel}"
+    else
+        # Retrieve channel placement for given channel width
+        lower_placement_match=$(cat "${regulatory_file_path}" | grep -i "CHAN_PLACE_${state_freq_band}_${state_ht_mode}_LOWER")
+        check_is_lower=$(contains_element "${state_channel}" ${lower_placement_match})
+        upper_placement_match=$(cat "${regulatory_file_path}" | grep -i "CHAN_PLACE_${state_freq_band}_${state_ht_mode}_UPPER")
+        check_is_upper=$(contains_element "${state_channel}" ${upper_placement_match})
+        if [ "${check_is_lower}" == "0" ]; then
+            chan_placement="LOWER"
+            chan_placement_invert="UPPER"
+        elif [ "${check_is_upper}" == "0" ]; then
+            chan_placement="UPPER"
+            chan_placement_invert="LOWER"
+        else
+            chan_placement="MIDDLE"
+        fi
+        log -deb "wm2_lib:get_channels_to_check_for_cac - Channel ${state_channel} placement in range ${state_ht_mode} is ${chan_placement}"
+        if [ "${chan_placement}" != "MIDDLE" ]; then
+            chan_placement_match=$(cat "${regulatory_file_path}" | grep -i "CHAN_PLACE_${state_freq_band}_${state_ht_mode}_${chan_placement}")
+            placement_index=$(get_index_in_list "${state_channel}" ${chan_placement_match})
+            if [ "$?" != "0" ]; then
+                raise "Failed to retrieve placement of ${state_channel} in ${chan_placement_match}" -l "lib/wm2_lib::get_channels_to_check_for_cac" -tc
+            fi
+            log -deb "wm2_lib:get_channels_to_check_for_cac - Placement index is ${placement_index} of ${state_channel} in ${chan_placement_match}"
+            chan_placement_match_invert=$(cat "${regulatory_file_path}" | grep -i "CHAN_PLACE_${state_freq_band}_${state_ht_mode}_${chan_placement_invert}")
+            invert_channel=$(get_by_index_from_list "${placement_index}" ${chan_placement_match_invert})
+            if [ "$?" != "0" ]; then
+                raise "Failed to retrieve invert placement of ${placement_index} in ${chan_placement_match_invert}" -l "lib/wm2_lib::get_channels_to_check_for_cac" -tc
+            fi
+            log -deb "wm2_lib:get_channels_to_check_for_cac - Channel ${state_channel} invert ${chan_placement_invert} channel is ${invert_channel}"
+        fi
+        # If channel placement is LOWER, we need to traverse all channels until first UPPER channel for given HT range
+        if [ "${chan_placement}" == "LOWER" ]; then
+            channels_to_check="${state_channel}"
+            next_channel="${state_channel}"
+            while [ "${next_channel}" != "${invert_channel}" ] && [ "${next_channel}" -lt "${upper_limit}" ]; do
+                next_channel=$((next_channel + 4))
+                channels_to_check="${channels_to_check} ${next_channel}"
+            done
+        # If channel placement is UPPER, we need to traverse all channels until first LOWER channel for given HT range
+        elif [ "${chan_placement}" == "UPPER" ]; then
+            prev_channel="${state_channel}"
+            while [ "${prev_channel}" != "${invert_channel}" ] && [ "${prev_channel}" -gt "${lower_limit}" ]; do
+                prev_channel=$((prev_channel - 4))
+                channels_to_check="${channels_to_check} ${prev_channel}"
+            done
+            channels_to_check="${channels_to_check} ${state_channel}"
+        else
+            # Channel placement is in the MIDDLE of the range
+            # We need to acquire previous lower channels, and next upper channels
+            # For example, in HT80 channel 108 is in the middle, his LOWER channel is 100, and his upper channel is 112
+            # We need to get all channels, since we are in the MIDDLE of the range, we will first find range LOWER channel
+            # And traverse to range UPPER channel - identical as in chan_placement==LOWER condition
+            chan_placement_match=$(cat "${regulatory_file_path}" | grep -i "CHAN_PLACE_${state_freq_band}_${state_ht_mode}_LOWER")
+            chan_placement_match_invert=$(cat "${regulatory_file_path}" | grep -i "CHAN_PLACE_${state_freq_band}_${state_ht_mode}_UPPER")
+            for check_channel in ${chan_placement_match}; do
+                lower_channel="${state_channel}"
+                # Only channels lower than the current state channel can be their lower channel
+                if [ "${check_channel}" -lt "${state_channel}" ]; then
+                    chan_num_in_range="1"
+                    case ${state_ht_mode} in
+                        "HT40")
+                            chan_num_in_range="1 2"
+                            ;;
+                        "HT80")
+                            chan_num_in_range="1 2 3 4"
+                            ;;
+                        "HT160")
+                            chan_num_in_range="1 2 3 4 5 6 7 8"
+                            ;;
+                    esac
+                    for i in ${chan_num_in_range}; do
+                        lower_channel=$((lower_channel - 4))
+                        [ "${check_channel}" == "${lower_channel}" ] && break
+                    done
+                    [ "${check_channel}" == "${lower_channel}" ] && break
+                fi
+            done
+            log -deb "wm2_lib::get_channels_to_check_for_cac - Lower channel for ${state_channel} in ${state_ht_mode} is ${lower_channel}"
+            lower_placement_index=$(get_index_in_list "${lower_channel}" ${chan_placement_match})
+            if [ "$?" != "0" ]; then
+                raise "Failed to retrieve lower placement of ${lower_channel} in ${chan_placement_match}" -l "lib/wm2_lib::get_channels_to_check_for_cac" -tc
+            fi
+            upper_channel=$(get_by_index_from_list "${lower_placement_index}" ${chan_placement_match_invert})
+            log -deb "wm2_lib::get_channels_to_check_for_cac - Upper channel for ${state_channel} in ${state_ht_mode} is ${upper_channel}"
+            channels_to_check="${lower_channel}"
+            next_channel="${lower_channel}"
+            while [ "${next_channel}" != "${upper_channel}" ] && [ "${next_channel}" -lt "${upper_limit}" ]; do
+                next_channel=$((next_channel + 4))
+                channels_to_check="${channels_to_check} ${next_channel}"
+            done
+        fi
+    fi
+    echo "${channels_to_check}"
 }
 
 ###############################################################################
@@ -246,6 +427,7 @@ validate_cac()
         raise "wm2_lib:validate_cac requires ${NARGS} input argument(s), $# given" -arg
     # shellcheck disable=SC2034
     if_name="${1}"
+
     # WM reconfiguration time - used to wait from nop_finished to cac_started channel status
     wm_reconfiguration_time=30
     # Check if Radio interface is associated to VIF ap
@@ -313,105 +495,8 @@ validate_cac()
         raise "FAIL: Radio interfaces is not associated to any AP enabled VIF" -l "wm2_lib:validate_cac" -ds
     fi
 
-    log -deb "wm2_lib:validate_cac - Acquiring channels to validate CAC for ${state_channel} in range of ${state_ht_mode}"
-    channels_to_check=""
-    lower_limit="0"
-    upper_limit="300"
-    # If HT20, we do not need to wait for any other channel except the one given
-    if [ "${state_ht_mode}" == "HT20" ]; then
-        channels_to_check="${state_channel}"
-    else
-        # Retrieve channel placement for given channel width
-        lower_placement_match=$(cat "${regulatory_file_path}" | grep -i "CHAN_PLACE_${state_freq_band}_${state_ht_mode}_LOWER")
-        check_is_lower=$(contains_element "${state_channel}" ${lower_placement_match})
-        upper_placement_match=$(cat "${regulatory_file_path}" | grep -i "CHAN_PLACE_${state_freq_band}_${state_ht_mode}_UPPER")
-        check_is_upper=$(contains_element "${state_channel}" ${upper_placement_match})
-        if [ "${check_is_lower}" == "0" ]; then
-            chan_placement="LOWER"
-            chan_placement_invert="UPPER"
-        elif [ "${check_is_upper}" == "0" ]; then
-            chan_placement="UPPER"
-            chan_placement_invert="LOWER"
-        else
-            chan_placement="MIDDLE"
-        fi
-        log -deb "wm2_lib:validate_cac - Channel ${state_channel} placement in range ${state_ht_mode} is ${chan_placement}"
-        if [ "${chan_placement}" != "MIDDLE" ]; then
-            chan_placement_match=$(cat "${regulatory_file_path}" | grep -i "CHAN_PLACE_${state_freq_band}_${state_ht_mode}_${chan_placement}")
-            placement_index=$(get_index_in_list "${state_channel}" ${chan_placement_match})
-            if [ "$?" != "0" ]; then
-                raise "Failed to retrieve placement of ${state_channel} in ${chan_placement_match}" -l "lib/wm2_lib::validate_cac" -tc
-            fi
-            log -deb "wm2_lib:validate_cac - Placement index is ${placement_index} of ${state_channel} in ${chan_placement_match}"
-            chan_placement_match_invert=$(cat "${regulatory_file_path}" | grep -i "CHAN_PLACE_${state_freq_band}_${state_ht_mode}_${chan_placement_invert}")
-            invert_channel=$(get_by_index_from_list "${placement_index}" ${chan_placement_match_invert})
-            if [ "$?" != "0" ]; then
-                raise "Failed to retrieve invert placement of ${placement_index} in ${chan_placement_match_invert}" -l "lib/wm2_lib::validate_cac" -tc
-            fi
-            log -deb "wm2_lib:validate_cac - Channel ${state_channel} invert ${chan_placement_invert} channel is ${invert_channel}"
-        fi
-        # If channel placement is LOWER, we need to traverse all channels until first UPPER channel for given HT range
-        if [ "${chan_placement}" == "LOWER" ]; then
-            channels_to_check="${state_channel}"
-            next_channel="${state_channel}"
-            while [ "${next_channel}" != "${invert_channel}" ] && [ "${next_channel}" -lt "${upper_limit}" ]; do
-                next_channel=$((next_channel + 4))
-                channels_to_check="${channels_to_check} ${next_channel}"
-            done
-        # If channel placement is UPPER, we need to traverse all channels until first LOWER channel for given HT range
-        elif [ "${chan_placement}" == "UPPER" ]; then
-            prev_channel="${state_channel}"
-            while [ "${prev_channel}" != "${invert_channel}" ] && [ "${prev_channel}" -gt "${lower_limit}" ]; do
-                prev_channel=$((prev_channel - 4))
-                channels_to_check="${channels_to_check} ${prev_channel}"
-            done
-            channels_to_check="${channels_to_check} ${state_channel}"
-        else
-            # Channel placement is in the MIDDLE of the range
-            # We need to acquire previous lower channels, and next upper channels
-            # For example, in HT80 channel 108 is in the middle, his LOWER channel is 100, and his upper channel is 112
-            # We need to get all channels, since we are in the MIDDLE of the range, we will first find range LOWER channel
-            # And traverse to range UPPER channel - identical as in chan_placement==LOWER condition
-            chan_placement_match=$(cat "${regulatory_file_path}" | grep -i "CHAN_PLACE_${state_freq_band}_${state_ht_mode}_LOWER")
-            chan_placement_match_invert=$(cat "${regulatory_file_path}" | grep -i "CHAN_PLACE_${state_freq_band}_${state_ht_mode}_UPPER")
-            for check_channel in ${chan_placement_match}; do
-                lower_channel="${state_channel}"
-                # Only channels lower than the current state channel can be their lower channel
-                if [ "${check_channel}" -lt "${state_channel}" ]; then
-                    chan_num_in_range="1"
-                    case ${state_ht_mode} in
-                        "HT40")
-                            chan_num_in_range="1 2"
-                            ;;
-                        "HT80")
-                            chan_num_in_range="1 2 3 4"
-                            ;;
-                        "HT160")
-                            chan_num_in_range="1 2 3 4 5 6 7 8"
-                            ;;
-                    esac
-                    for i in ${chan_num_in_range}; do
-                        lower_channel=$((lower_channel - 4))
-                        [ "${check_channel}" == "${lower_channel}" ] && break
-                    done
-                    [ "${check_channel}" == "${lower_channel}" ] && break
-                fi
-            done
-            log -deb "wm2_lib::validate_cac - Lower channel for ${state_channel} in ${state_ht_mode} is ${lower_channel}"
-            lower_placement_index=$(get_index_in_list "${lower_channel}" ${chan_placement_match})
-            if [ "$?" != "0" ]; then
-                raise "Failed to retrieve lower placement of ${lower_channel} in ${chan_placement_match}" -l "lib/wm2_lib::validate_cac" -tc
-            fi
-            upper_channel=$(get_by_index_from_list "${lower_placement_index}" ${chan_placement_match_invert})
-            log -deb "wm2_lib::validate_cac - Upper channel for ${state_channel} in ${state_ht_mode} is ${upper_channel}"
-            channels_to_check="${lower_channel}"
-            next_channel="${lower_channel}"
-            while [ "${next_channel}" != "${upper_channel}" ] && [ "${next_channel}" -lt "${upper_limit}" ]; do
-                next_channel=$((next_channel + 4))
-                channels_to_check="${channels_to_check} ${next_channel}"
-            done
-        fi
-    fi
+    channels_to_check=$(get_channels_to_check_for_cac "${if_name}" | tail -1)
+
     log -deb "wm2_lib:validate_cac - Acquiring channels to validate CAC for ${state_channel} in range of ${state_ht_mode} are ${channels_to_check}"
     # shellcheck disable=SC1073
     for check_channel in ${channels_to_check}; do
@@ -589,7 +674,7 @@ configure_radio_interface()
     if [ "${disable_cac}" == "false" ]; then
         # Even if the channel is set in Wifi_Radio_State, it is not
         # necessarily available for immediate use if CAC is in progress.
-        validate_cac "${wm2_if_name}" &&
+        validate_cac "${radio_if_name}" &&
             log "wm2_lib:configure_radio_interface - CAC time elapsed or not needed" ||
             raise "FAIL: CAC failed. Channel is not usable" -l "wm2_lib:configure_radio_interface" -ds
     else
@@ -616,16 +701,37 @@ configure_radio_interface()
 #   -mac_list '["set",["aa:bb:cc:dd:ee:ff"]]' \
 #   -mac_list_type whitelist \
 #   -mode ap \
-#   -security '["map",[["encryption","WPA-PSK"],["key","PSK"],["mode","2"]]]' \
 #   -ssid bhaul_ssid \
 #   -ssid_broadcast "disabled" \
 #   -vif_radio_idx 1 \
 #   -enabled true
+# Wifi Security arguments(choose one or the other):
+#   If 'wifi_security_type' == 'wpa' (preferred)
+#   -wifi_security_type wpa \
+#   -wpa "true" \
+#   -wpa_key_mgmt "wpa-psk" \
+#   -wpa_psks '["map",[["key","FutTestPSK"]]]' \
+#   -wpa_oftags '["map",[["key","home--1"]]]' \
+#   (OR)
+#   If 'wifi_security_type' == 'legacy' (deprecated)
+#   -wifi_security_type legacy \
+#   -security '["map",[["encryption","WPA-PSK"],["key","PSK"],["mode","2"]]]' \
 # Backhaul configuration on leaf node:
 #   create_vif_interface \
 #   -if_name bhaul-sta-l50 \
-#   -security '["map",[["encryption","WPA-PSK"],["key","PSK"],["mode","2"]]]' \
+#   -wifi_security_type legacy \
 #   -ssid bhaul_ssid
+# Wifi Security arguments(choose one or the other):
+#   If 'wifi_security_type' == 'wpa' (preferred)
+#   -wifi_security_type wpa \
+#   -wpa "true" \
+#   -wpa_key_mgmt "wpa-psk" \
+#   -wpa_psks '["map",[["key","FutTestPSK"]]]' \
+#   -wpa_oftags '["map",[["key","home--1"]]]' \
+#   (OR)
+#   If 'wifi_security_type' == 'legacy' (deprecated)
+#   -wifi_security_type legacy \
+#   -security '["map",[["encryption","WPA-PSK"],["key","PSK"],["mode","2"]]]' \
 ###############################################################################
 create_vif_interface()
 {
@@ -655,14 +761,29 @@ create_vif_interface()
             -parent | \
             -ssid_broadcast | \
             -vif_radio_idx | \
-            -vlan_id | \
+            -vlan_id)
+                vif_args_c="${vif_args_c} ${replace} ${option#?} $(single_quote_arg "$1")"
+                shift
+                ;;
+            -wifi_security_type)
+                wifi_security_type=${1}
+                shift
+                ;;
             -wpa_oftags)
+                [ "${wifi_security_type}" != "wpa" ] && raise "FAIL: Incorrect combination of WPA and legacy wifi security type provided" -l "wm2_lib:create_vif_interface" -arg
                 vif_args_c="${vif_args_c} ${replace} ${option#?} $(single_quote_arg "$1")"
                 shift
                 ;;
             -wpa | \
             -wpa_key_mgmt | \
             -wpa_psks)
+                [ "${wifi_security_type}" != "wpa" ] && raise "FAIL: Incorrect combination of WPA and legacy wifi security type provided" -l "wm2_lib:create_vif_interface" -arg
+                vif_args_c="${vif_args_c} ${replace} ${option#?} $(single_quote_arg "$1")"
+                vif_args_w="${vif_args_w} ${replace} ${option#?} $(single_quote_arg "$1")"
+                shift
+                ;;
+            -security)
+                [ "${wifi_security_type}" != "legacy" ] && raise "FAIL: Incorrect combination of WPA and legacy wifi security type provided" -l "wm2_lib:create_vif_interface" -arg
                 vif_args_c="${vif_args_c} ${replace} ${option#?} $(single_quote_arg "$1")"
                 vif_args_w="${vif_args_w} ${replace} ${option#?} $(single_quote_arg "$1")"
                 shift
@@ -678,14 +799,9 @@ create_vif_interface()
                 shift
                 ;;
             -mode)
-                wm2_mode=${1}
+                mode=${1}
                 vif_args_c="${vif_args_c} ${replace} ${option#?} ${1}"
                 vif_args_w="${vif_args_w} ${replace} ${option#?} ${1}"
-                shift
-                ;;
-            -security)
-                vif_args_c="${vif_args_c} ${replace} ${option#?} $(single_quote_arg "$1")"
-                vif_args_w="${vif_args_w} ${replace} ${option#?} $(single_quote_arg "$1")"
                 shift
                 ;;
             -credential_configs)
@@ -698,7 +814,7 @@ create_vif_interface()
         esac
     done
 
-    [ "$wm2_mode" = "sta" ] &&
+    [ "$mode" = "sta" ] &&
         remove_sta_connections "$vif_if_name"
 
     [ -z "${vif_if_name}" ] &&
@@ -762,6 +878,7 @@ reset_sta_interface()
         raise "wm2_lib:reset_sta_interface requires ${NARGS} input argument(s), $# given" -arg
     # shellcheck disable=SC2034
     if_name=${1}
+
     log -deb "wm2_lib:reset_sta_interface - Resetting STA ${if_name} interface"
     update_ovsdb_entry Wifi_VIF_Config -w if_name "${if_name}" -w mode "sta" \
         -u credential_configs "[\"set\",[]]" \
@@ -818,6 +935,7 @@ reset_sta_interface()
 # Backhaul configuration on leaf node:
 #   configure_sta_interface \
 #   -if_name bhaul-sta-l50 \
+#   -wifi_security_type legacy \
 #   -security '["map",[["encryption","WPA-PSK"],["key","PSK"],["mode","2"]]]' \
 #   -ssid bhaul_ssid
 ###############################################################################
@@ -847,21 +965,6 @@ configure_sta_interface()
                 vif_args_c="${vif_args_c} ${replace} ${option#?} $(single_quote_arg "$1")"
                 shift
                 ;;
-            -wpa_oftags)
-                vif_args_c="${vif_args_c} ${replace} ${option#?} $(single_quote_arg "$1")"
-                shift
-                ;;
-            -wpa_key_mgmt | \
-            -wpa)
-                vif_args_c="${vif_args_c} ${replace} ${option#?} $(single_quote_arg "$1")"
-                is_wpa="true"
-                shift
-                ;;
-            -wpa_psks)
-                vif_args_c="${vif_args_c} ${replace} ${option#?} $(single_quote_arg "$1")"
-                vif_args_w="${vif_args_w} ${replace} ${option#?} $(single_quote_arg "$1")"
-                shift
-                ;;
             -channel)
                 vif_args_w="${vif_args_w} ${replace} ${option#?} ${1}"
                 shift
@@ -871,13 +974,6 @@ configure_sta_interface()
                 wcc_args_c="${wcc_args_c} ${replace} ${option#?} $(single_quote_arg "$1")"
                 vif_args_w="${vif_args_w} ${replace} ${option#?} $(single_quote_arg "$1")"
                 ssid="${1}"
-                shift
-                ;;
-            -security)
-                security_args_c="${security_args_c} ${replace} ${option#?} $(single_quote_arg "$1")"
-                wcc_args_c="${wcc_args_c} ${replace} ${option#?} $(single_quote_arg "$1")"
-                security_args_w="${security_args_w} ${replace} ${option#?} $(single_quote_arg "$1")"
-                security="${1}"
                 shift
                 ;;
             -onboard_type)
@@ -892,6 +988,36 @@ configure_sta_interface()
                 ;;
             -use_security)
                 use_security="true"
+                ;;
+            -wifi_security_type)
+                wifi_security_type=${1}
+                shift
+                ;;
+            -wpa_oftags)
+                [ "${wifi_security_type}" != "wpa" ] && raise "FAIL: Incorrect combination of WPA and legacy wifi security type provided" -l "wm2_lib:configure_sta_interface" -arg
+                vif_args_c="${vif_args_c} ${replace} ${option#?} $(single_quote_arg "$1")"
+                shift
+                ;;
+            -wpa_key_mgmt | \
+            -wpa)
+                [ "${wifi_security_type}" != "wpa" ] && raise "FAIL: Incorrect combination of WPA and legacy wifi security type provided" -l "wm2_lib:configure_sta_interface" -arg
+                vif_args_c="${vif_args_c} ${replace} ${option#?} $(single_quote_arg "$1")"
+                is_wpa="true"
+                shift
+                ;;
+            -wpa_psks)
+                [ "${wifi_security_type}" != "wpa" ] && raise "FAIL: Incorrect combination of WPA and legacy wifi security type provided" -l "wm2_lib:configure_sta_interface" -arg
+                vif_args_c="${vif_args_c} ${replace} ${option#?} $(single_quote_arg "$1")"
+                vif_args_w="${vif_args_w} ${replace} ${option#?} $(single_quote_arg "$1")"
+                shift
+                ;;
+            -security)
+                [ "${wifi_security_type}" != "legacy" ] && raise "FAIL: Incorrect combination of WPA and legacy wifi security type provided" -l "wm2_lib:configure_sta_interface" -arg
+                security_args_c="${security_args_c} ${replace} ${option#?} $(single_quote_arg "$1")"
+                wcc_args_c="${wcc_args_c} ${replace} ${option#?} $(single_quote_arg "$1")"
+                security_args_w="${security_args_w} ${replace} ${option#?} $(single_quote_arg "$1")"
+                security="${1}"
+                shift
                 ;;
             *)
                 raise "FAIL: Wrong option provided: $option" -l "wm2_lib:configure_sta_interface" -arg
@@ -1038,6 +1164,7 @@ configure_sta_interface()
 #       -channel 165 \
 #       -channel_mode manual \
 #       -ssid FutTestSSID \
+#       -wifi_security_type legacy \
 #       -security '["map",[["encryption","WPA-PSK"],["key","FutTestPSK"],["mode","2"]]]' \
 #       -enabled true
 #       -ht_mode HT20 \
@@ -1071,10 +1198,6 @@ create_radio_vif_interface()
                 ;;
             -default_oftag | \
             -dpp_cc | \
-            -wpa_oftags)
-                vif_args_c="${vif_args_c} ${replace} ${option#?} $(single_quote_arg "$1")"
-                shift
-                ;;
             -vif_radio_idx | \
             -ssid_broadcast | \
             -parent | \
@@ -1083,10 +1206,7 @@ create_radio_vif_interface()
             -bridge | \
             -vlan_id | \
             -radius_srv_secret | \
-            -radius_srv_addr | \
-            -wpa | \
-            -wpa_key_mgmt | \
-            -wpa_psks)
+            -radius_srv_addr)
                 vif_args_c="${vif_args_c} ${replace} ${option#?} $(single_quote_arg "$1")"
                 vif_args_w="${vif_args_w} ${replace} ${option#?} $(single_quote_arg "$1")"
                 shift
@@ -1110,15 +1230,33 @@ create_radio_vif_interface()
                 vif_args_w="$vif_args_w $replace ap_bridge $1"
                 shift
                 ;;
+            -wifi_security_type)
+                wifi_security_type=${1}
+                shift
+                ;;
             -security)
+                [ "${wifi_security_type}" != "legacy" ] && raise "FAIL: Incorrect combination of WPA and legacy wifi security type provided" -l "wm2_lib:create_radio_vif_interface" -arg
                 vif_args_c="$vif_args_c $replace security $(single_quote_arg "$1")"
                 vif_args_w="$vif_args_w $replace security $(single_quote_arg "$1")"
+                shift
+                ;;
+            -wpa_oftags)
+                [ "${wifi_security_type}" != "wpa" ] && raise "FAIL: Incorrect combination of WPA and legacy wifi security type provided" -l "wm2_lib:create_radio_vif_interface" -arg
+                vif_args_c="${vif_args_c} ${replace} ${option#?} $(single_quote_arg "$1")"
+                shift
+                ;;
+            -wpa | \
+            -wpa_key_mgmt | \
+            -wpa_psks)
+                [ "${wifi_security_type}" != "wpa" ] && raise "FAIL: Incorrect combination of WPA and legacy wifi security type provided" -l "wm2_lib:create_radio_vif_interface" -arg
+                vif_args_c="${vif_args_c} ${replace} ${option#?} $(single_quote_arg "$1")"
+                vif_args_w="${vif_args_w} ${replace} ${option#?} $(single_quote_arg "$1")"
                 shift
                 ;;
             -mode)
                 vif_args_c="$vif_args_c $replace mode $1"
                 vif_args_w="$vif_args_w $replace mode $1"
-                wm2_mode=$1
+                mode=$1
                 shift
                 ;;
             -enabled)
@@ -1140,13 +1278,13 @@ create_radio_vif_interface()
                 ;;
             -if_name)
                 radio_args="$radio_args $replace if_name $1"
-                wm2_if_name=$1
+                if_name=$1
                 shift
                 ;;
             -vif_if_name)
                 vif_args_c="$vif_args_c $replace if_name $1"
                 vif_args_w="$vif_args_w $replace if_name $1"
-                wm2_vif_if_name=$1
+                vif_if_name=$1
                 shift
                 ;;
             -timeout)
@@ -1163,34 +1301,34 @@ create_radio_vif_interface()
     done
 
     # Mandatory parameters
-    [ -z "${wm2_if_name}" ] &&
+    [ -z "${if_name}" ] &&
         raise "FAIL: 'if_name' argument empty" -l "wm2_lib:create_radio_vif_interface" -arg
-    [ -z "${wm2_vif_if_name}" ] &&
+    [ -z "${vif_if_name}" ] &&
         raise "FAIL: 'vif_if_name' argument empty" -l "wm2_lib:create_radio_vif_interface" -arg
     [ -z "${channel}" ] &&
         raise "FAIL: 'channel' argument empty" -l "wm2_lib:create_radio_vif_interface" -arg
 
     # Only check if channel is allowed, need not be ready for immediate use
-    check_is_channel_allowed "$channel" "$wm2_if_name" &&
-        log -deb "wm2_lib:create_radio_vif_interface - Channel '$channel' is allowed on interface '$wm2_if_name'" ||
-        raise "FAIL: Channel '$channel' is not allowed on interface '$wm2_if_name'" -l "wm2_lib:create_radio_vif_interface" -ds
+    check_is_channel_allowed "$channel" "$if_name" &&
+        log -deb "wm2_lib:create_radio_vif_interface - Channel '$channel' is allowed on interface '$if_name'" ||
+        raise "FAIL: Channel '$channel' is not allowed on interface '$if_name'" -l "wm2_lib:create_radio_vif_interface" -ds
 
     log -deb "wm2_lib:create_radio_vif_interface - Bringing up radio/VIF interface"
 
     func_params="${radio_args//$replace/-u} ${radio_ht_mode//$replace/-u}"
     # shellcheck disable=SC2086
-    update_ovsdb_entry Wifi_Radio_Config -w if_name "$wm2_if_name" $func_params &&
+    update_ovsdb_entry Wifi_Radio_Config -w if_name "$if_name" $func_params &&
         log -deb "wm2_lib:create_radio_vif_interface - Table Wifi_Radio_Config updated - Success" ||
         raise "FAIL: Could not update Wifi_Radio_Config table" -l "wm2_lib:create_radio_vif_interface" -tc
 
-    if [ "$wm2_mode" = "sta" ]; then
-        remove_sta_connections "$wm2_vif_if_name"
+    if [ "$mode" = "sta" ]; then
+        remove_sta_connections "$vif_if_name"
     fi
 
     function_to_call="insert_ovsdb_entry"
     function_arg="-i"
 
-    ${OVSH} s Wifi_VIF_Config -w if_name=="$wm2_vif_if_name" &&
+    ${OVSH} s Wifi_VIF_Config -w if_name=="$vif_if_name" &&
         update=0 ||
         update=1
     if [ "$update" -eq 0 ]; then
@@ -1201,36 +1339,36 @@ create_radio_vif_interface()
 
     func_params=${vif_args_c//$replace/$function_arg}
     # shellcheck disable=SC2086
-    eval $function_to_call Wifi_VIF_Config -w if_name "$wm2_vif_if_name" $func_params &&
+    eval $function_to_call Wifi_VIF_Config -w if_name "$vif_if_name" $func_params &&
         log -deb "wm2_lib:create_radio_vif_interface - $function_to_call Wifi_VIF_Config - Success" ||
         raise "FAIL: Could not $function_to_call to Wifi_VIF_Config" -l "wm2_lib:create_radio_vif_interface" -fc
 
     # Associate VIF and radio interfaces
-    wm2_uuids=$(get_ovsdb_entry_value Wifi_VIF_Config _uuid -w if_name "$wm2_vif_if_name") ||
-        raise "FAIL: Could not get _uuid for '$wm2_vif_if_name' from Wifi_VIF_Config: get_ovsdb_entry_value" -l "wm2_lib:create_radio_vif_interface" -oe
+    uuids=$(get_ovsdb_entry_value Wifi_VIF_Config _uuid -w if_name "$vif_if_name") ||
+        raise "FAIL: Could not get _uuid for '$vif_if_name' from Wifi_VIF_Config: get_ovsdb_entry_value" -l "wm2_lib:create_radio_vif_interface" -oe
 
-    wm2_vif_configs_set="[\"set\",[[\"uuid\",\"$wm2_uuids\"]]]"
+    vif_configs_set="[\"set\",[[\"uuid\",\"$uuids\"]]]"
 
     func_params=${radio_args//$replace/-u}
     # shellcheck disable=SC2086
-    update_ovsdb_entry Wifi_Radio_Config -w if_name "$wm2_if_name" $func_params \
-        -u vif_configs "$wm2_vif_configs_set" &&
+    update_ovsdb_entry Wifi_Radio_Config -w if_name "$if_name" $func_params \
+        -u vif_configs "$vif_configs_set" &&
             log -deb "wm2_lib:create_radio_vif_interface - Table Wifi_Radio_Config updated - Success" ||
             raise "FAIL: Could not update table Wifi_Radio_Config" -l "wm2_lib:create_radio_vif_interface" -oe
 
     # shellcheck disable=SC2086
     func_params=${vif_args_w//$replace/-is}
-    eval wait_ovsdb_entry Wifi_VIF_State -w if_name "$wm2_vif_if_name" $func_params ${channel_change_timeout} &&
+    eval wait_ovsdb_entry Wifi_VIF_State -w if_name "$vif_if_name" $func_params ${channel_change_timeout} &&
         log -deb "wm2_lib:create_radio_vif_interface - Wifi_VIF_Config reflected to Wifi_VIF_State - Success" ||
         raise "FAIL: Could not reflect Wifi_VIF_Config to Wifi_VIF_State" -l "wm2_lib:create_radio_vif_interface" -ow
 
-    if [ "$wm2_mode" = "sta" ]; then
-        wait_for_function_response "notempty" "get_ovsdb_entry_value Wifi_VIF_State parent -w if_name $wm2_vif_if_name" &&
+    if [ "$mode" = "sta" ]; then
+        wait_for_function_response "notempty" "get_ovsdb_entry_value Wifi_VIF_State parent -w if_name $vif_if_name" &&
             parent_mac=0 ||
             parent_mac=1
         if [ "$parent_mac" -eq 0 ]; then
-            parent_mac=$(get_ovsdb_entry_value Wifi_VIF_State parent -w if_name "$wm2_vif_if_name")
-            update_ovsdb_entry Wifi_VIF_Config -w if_name "$wm2_vif_if_name" \
+            parent_mac=$(get_ovsdb_entry_value Wifi_VIF_State parent -w if_name "$vif_if_name")
+            update_ovsdb_entry Wifi_VIF_Config -w if_name "$vif_if_name" \
                 -u parent "$parent_mac" &&
                     log -deb "wm2_lib:create_radio_vif_interface - VIF_State parent was associated" ||
                     log -deb "wm2_lib:create_radio_vif_interface - VIF_State parent was not associated"
@@ -1243,23 +1381,23 @@ create_radio_vif_interface()
 
     func_params="${radio_args//$replace/-is} ${radio_ht_mode//$replace/-is}"
 
-    if [ "$wm2_mode" = "sta" ]; then
+    if [ "$mode" = "sta" ]; then
         func_params="${radio_args//$replace/-is}"
     fi
     # Check nop_started
-    channel_status="$(get_radio_channel_state "${channel}" "${wm2_if_name}")"
+    channel_status="$(get_radio_channel_state "${channel}" "${if_name}")"
     if [ "${channel_status}" == "nop_started" ]; then
         raise "SKIP: Channel ${check_channel} NOP time started, channel  unavailable" -l "wm2_lib:create_radio_vif_interface" -s
     fi
     # shellcheck disable=SC2086
-    wait_ovsdb_entry Wifi_Radio_State -w if_name "$wm2_if_name" $func_params ${channel_change_timeout} &&
+    wait_ovsdb_entry Wifi_Radio_State -w if_name "$if_name" $func_params ${channel_change_timeout} &&
       if_created="true" ||
       if_created="false"
 
     if [ "${if_created}" == "true" ]; then
         log -deb "wm2_lib:create_radio_vif_interface - Wifi_Radio_Config reflected to Wifi_Radio_State - Success"
     else
-        channel_status="$(get_radio_channel_state "${channel}" "${wm2_if_name}")"
+        channel_status="$(get_radio_channel_state "${channel}" "${if_name}")"
         if [ "${channel_status}" == "nop_started" ]; then
             raise "SKIP: Channel ${check_channel} NOP time started, channel  unavailable" -l "wm2_lib:create_radio_vif_interface" -s
         fi
@@ -1268,7 +1406,7 @@ create_radio_vif_interface()
     if [ "${disable_cac}" == "false" ]; then
         # Even if the channel is set in Wifi_Radio_State, it is not
         # necessarily available for immediate use if CAC is in progress.
-        validate_cac "${wm2_if_name}" &&
+        validate_cac "${if_name}" &&
             log "wm2_lib:create_radio_vif_interface - CAC time elapsed or not needed" ||
             raise "FAIL: CAC failed. Channel is not usable" -l "wm2_lib:create_radio_vif_interface" -ds
     else
@@ -1307,11 +1445,11 @@ remove_vif_interface()
         shift
         case "$option" in
             -if_name)
-                wm2_if_name=$1
+                if_name=$1
                 shift
                 ;;
             -vif_if_name)
-                wm2_vif_if_name=$1
+                vif_if_name=$1
                 shift
                 ;;
             *)
@@ -1320,21 +1458,21 @@ remove_vif_interface()
         esac
     done
 
-    [ -z "${wm2_if_name}" ] &&
+    [ -z "${if_name}" ] &&
         raise "FAIL: 'if_name' argument empty" -l "wm2_lib:remove_vif_interface" -arg
-    [ -z "${wm2_vif_if_name}" ] &&
+    [ -z "${vif_if_name}" ] &&
         raise "FAIL: 'vif_if_name' argument empty" -l "wm2_lib:remove_vif_interface" -arg
 
     log -deb "wm2_lib:remove_vif_interface - Removing VIF interface"
 
     # shellcheck disable=SC2086
-    remove_ovsdb_entry Wifi_VIF_Config -w if_name "$wm2_vif_if_name" &&
-        log -deb "wm2_lib:remove_vif_interface - Entry '$wm2_vif_if_name' removed from table Wifi_VIF_Config - Success" ||
-        raise "FAIL: Could not remove entry '$wm2_vif_if_name' from table Wifi_VIF_Config" -l "wm2_lib:remove_vif_interface" -fc
+    remove_ovsdb_entry Wifi_VIF_Config -w if_name "$vif_if_name" &&
+        log -deb "wm2_lib:remove_vif_interface - Entry '$vif_if_name' removed from table Wifi_VIF_Config - Success" ||
+        raise "FAIL: Could not remove entry '$vif_if_name' from table Wifi_VIF_Config" -l "wm2_lib:remove_vif_interface" -fc
     # shellcheck disable=SC2086
-    wait_ovsdb_entry_remove Wifi_VIF_State -w if_name "$wm2_vif_if_name" &&
-        log -deb "wm2_lib:remove_vif_interface - Wifi_VIF_Config reflected to Wifi_VIF_State for '$wm2_vif_if_name' - Success" ||
-        raise "FAIL: Could not reflect Wifi_VIF_Config to Wifi_VIF_State for '$wm2_vif_if_name'" -l "wm2_lib:remove_vif_interface" -ow
+    wait_ovsdb_entry_remove Wifi_VIF_State -w if_name "$vif_if_name" &&
+        log -deb "wm2_lib:remove_vif_interface - Wifi_VIF_Config reflected to Wifi_VIF_State for '$vif_if_name' - Success" ||
+        raise "FAIL: Could not reflect Wifi_VIF_Config to Wifi_VIF_State for '$vif_if_name'" -l "wm2_lib:remove_vif_interface" -ow
 
     log -deb "wm2_lib:remove_vif_interface - Wireless interface deleted from Wifi_VIF_State"
 
@@ -1366,7 +1504,7 @@ check_radio_vif_state()
                 ;;
             -vif_if_name)
                 vif_args="$vif_args $replace if_name $1"
-                wm2_vif_if_name=$1
+                vif_if_name=$1
                 shift
                 ;;
             -vif_radio_idx)
@@ -1458,14 +1596,14 @@ check_channel_at_os_level()
     [ $# -ne ${NARGS} ] &&
         raise "wm2_lib:check_channel_at_os_level requires ${NARGS} input argument(s), $# given" -arg
     # shellcheck disable=SC2034
-    wm2_channel=$1
+    channel=$1
     # shellcheck disable=SC2034
-    wm2_vif_if_name=$2
+    vif_if_name=$2
 
-    log -deb "wm2_lib:check_channel_at_os_level - Checking channel '$wm2_channel' at OS - LEVEL2"
-    wait_for_function_output $wm2_channel "get_channel_from_os $wm2_vif_if_name" &&
-        log -deb "wm2_lib:check_channel_at_os_level - channel '$wm2_channel' is set at OS - LEVEL2 - Success" ||
-        raise "FAIL: channel '$wm2_channel' is not set at OS - LEVEL2" -l "wm2_lib:check_channel_at_os_level" -tc
+    log -deb "wm2_lib:check_channel_at_os_level - Checking channel '$channel' at OS - LEVEL2"
+    wait_for_function_output $channel "get_channel_from_os $vif_if_name" &&
+        log -deb "wm2_lib:check_channel_at_os_level - channel '$channel' is set at OS - LEVEL2 - Success" ||
+        raise "FAIL: channel '$channel' is not set at OS - LEVEL2" -l "wm2_lib:check_channel_at_os_level" -tc
 
     return 0
 }
@@ -1488,11 +1626,32 @@ get_channel_from_os()
     local NARGS=1
     [ $# -ne ${NARGS} ] &&
         raise "wm2_lib:get_channel_from_os requires ${NARGS} input argument(s), $# given" -arg
-    wm2_vif_if_name=$1
+    vif_if_name=$1
 
     log "wm2_lib:get_channel_from_os - Getting channel from OS - LEVEL2"
     # Provide override in platform specific file
     raise "FAIL: This is a stub function. Override implementation needed." -l "wm2_lib:get_channel_from_os" -fc
+}
+
+###############################################################################
+# DESCRIPTION:
+#  Function returns interface MAC address at OS - LEVEL2.
+# INPUT PARAMETER(S):
+#  $1  VIF interface name (string, required)
+# RETURNS:
+#  Echoes MAC address for interface
+# USAGE EXAMPLE(S):
+#   get_mac_from_os wifi0
+###############################################################################
+get_mac_from_os()
+{
+    local NARGS=1
+    [ $# -ne ${NARGS} ] &&
+        raise "wm2_lib:get_mac_from_os requires ${NARGS} input argument(s), $# given" -arg
+    if_name=$1
+
+    mac_address=$(ip -o link show dev "$if_name" | awk '{print $(NF-2)}')
+    echo "$mac_address"
 }
 
 ###############################################################################
@@ -1517,14 +1676,14 @@ check_ht_mode_at_os_level()
     [ $# -ne ${NARGS} ] &&
         raise "wm2_lib:check_ht_mode_at_os_level requires ${NARGS} input argument(s), $# given" -arg
     # shellcheck disable=SC2034
-    wm2_ht_mode=$1
-    wm2_vif_if_name=$2
-    wm2_channel=$3
+    ht_mode=$1
+    vif_if_name=$2
+    channel=$3
 
-    log -deb "wm2_lib:check_ht_mode_at_os_level - Checking HT mode for channel '$wm2_channel' at OS - LEVEL2"
-    wait_for_function_output "$wm2_ht_mode" "get_ht_mode_from_os $wm2_vif_if_name $wm2_channel" &&
-        log -deb "wm2_lib:check_ht_mode_at_os_level - HT Mode '$wm2_ht_mode' set at OS - LEVEL2 - Success" ||
-        raise "FAIL: HT Mode '$wm2_ht_mode' is not set at OS - LEVEL2" -l "wm2_lib:check_ht_mode_at_os_level" -tc
+    log -deb "wm2_lib:check_ht_mode_at_os_level - Checking HT mode for channel '$channel' at OS - LEVEL2"
+    wait_for_function_output "$ht_mode" "get_ht_mode_from_os $vif_if_name $channel" &&
+        log -deb "wm2_lib:check_ht_mode_at_os_level - HT Mode '$ht_mode' set at OS - LEVEL2 - Success" ||
+        raise "FAIL: HT Mode '$ht_mode' is not set at OS - LEVEL2" -l "wm2_lib:check_ht_mode_at_os_level" -tc
 
     return 0
 }
@@ -1549,10 +1708,10 @@ check_beacon_interval_at_os_level()
     local NARGS=2
     [ $# -ne ${NARGS} ] &&
         raise "wm2_lib:check_beacon_interval_at_os_level requires ${NARGS} input argument(s), $# given" -arg
-    wm2_bcn_int=$1
-    wm2_vif_if_name=$2
+    bcn_int=$1
+    vif_if_name=$2
 
-    log -deb "wm2_lib:check_beacon_interval_at_os_level - Checking Beacon interval for interface '$wm2_vif_if_name' at OS - LEVEL2"
+    log -deb "wm2_lib:check_beacon_interval_at_os_level - Checking Beacon interval for interface '$vif_if_name' at OS - LEVEL2"
     # Provide override in platform specific file
     raise "FAIL: This is a stub function. Override implementation needed." -l "wm2_lib:check_beacon_interval_at_os_level" -fc
 }
@@ -1569,19 +1728,19 @@ check_radio_mimo_config()
     local NARGS=2
     [ $# -ne ${NARGS} ] &&
         raise "wm2_lib:check_radio_mimo_config requires ${NARGS} input argument(s), $# given" -arg
-    wm2_tx_chainmask_max_value=$1
-    wm2_if_name=$2
+    tx_chainmask_max_value=$1
+    if_name=$2
 
-    update_ovsdb_entry Wifi_Radio_Config -w if_name "$wm2_if_name" \
+    update_ovsdb_entry Wifi_Radio_Config -w if_name "$if_name" \
         -u tx_chainmask 0 ||
             raise "update_ovsdb_entry" -l "wm2_lib:check_radio_mimo_config" -tc
 
-    wait_ovsdb_entry Wifi_Radio_State -w if_name "$wm2_if_name" \
-        -is tx_chainmask "$wm2_tx_chainmask_max_value" &&
-            log -deb "wm2_lib:check_radio_mimo_config - Max Tx Chainmask value is '$wm2_tx_chainmask_max_value'" ||
-            raise "FAIL: '$wm2_tx_chainmask_max_value' is not valid for this radio MIMO" -l "wm2_lib:check_radio_mimo_config" -tc
+    wait_ovsdb_entry Wifi_Radio_State -w if_name "$if_name" \
+        -is tx_chainmask "$tx_chainmask_max_value" &&
+            log -deb "wm2_lib:check_radio_mimo_config - Max Tx Chainmask value is '$tx_chainmask_max_value'" ||
+            raise "FAIL: '$tx_chainmask_max_value' is not valid for this radio MIMO" -l "wm2_lib:check_radio_mimo_config" -tc
 
-    mimo=$(get_ovsdb_entry_value Wifi_Radio_State tx_chainmask -w if_name "$wm2_if_name")
+    mimo=$(get_ovsdb_entry_value Wifi_Radio_State tx_chainmask -w if_name "$if_name")
     case "$mimo" in
         3)
             log -deb "wm2_lib:check_radio_mimo_config - Radio MIMO config is 2x2"
@@ -1619,10 +1778,10 @@ check_tx_chainmask_at_os_level()
     local NARGS=2
     [ $# -ne ${NARGS} ] &&
         raise "wm2_lib:check_tx_chainmask_at_os_level requires ${NARGS} input argument(s), $# given" -arg
-    wm2_tx_chainmask=$1
-    wm2_if_name=$2
+    tx_chainmask=$1
+    if_name=$2
 
-    log "wm2_lib:check_tx_chainmask_at_os_level - Checking Radio TX Chainmask for interface '$wm2_if_name' at OS - LEVEL2"
+    log "wm2_lib:check_tx_chainmask_at_os_level - Checking Radio TX Chainmask for interface '$if_name' at OS - LEVEL2"
     # Provide override in platform specific file
     raise "FAIL: This is a stub function. Override implementation needed." -l "wm2_lib:check_tx_chainmask_at_os_level" -fc
 }
@@ -1648,16 +1807,16 @@ check_tx_power_at_os_level()
     [ $# -ne ${NARGS} ] &&
         raise "wm2_lib:check_tx_power_at_os_level requires ${NARGS} input argument(s), $# given" -arg
     # shellcheck disable=SC2034
-    wm2_tx_power=$1
+    tx_power=$1
     # shellcheck disable=SC2034
-    wm2_vif_if_name=$2
+    vif_if_name=$2
     # shellcheck disable=SC2034
-    wm2_radio_if_name=$3
+    if_name=$3
 
-    log -deb "wm2_lib:check_tx_power_at_os_level - Checking Tx Power for interface '$wm2_radio_if_name' at OS - LEVEL2"
-    wait_for_function_output $wm2_tx_power "get_tx_power_from_os $wm2_vif_if_name" &&
-        log -deb "wm2_lib:check_tx_power_at_os_level - Tx Power '$wm2_tx_power' is set at OS - LEVEL2 - Success" ||
-        raise "FAIL: Tx Power '$wm2_tx_power' is not set at OS - LEVEL2" -l "wm2_lib:check_tx_power_at_os_level" -tc
+    log -deb "wm2_lib:check_tx_power_at_os_level - Checking Tx Power for interface '$if_name' at OS - LEVEL2"
+    wait_for_function_output $tx_power "get_tx_power_from_os $vif_if_name" &&
+        log -deb "wm2_lib:check_tx_power_at_os_level - Tx Power '$tx_power' is set at OS - LEVEL2 - Success" ||
+        raise "FAIL: Tx Power '$tx_power' is not set at OS - LEVEL2" -l "wm2_lib:check_tx_power_at_os_level" -tc
     return 0
 }
 
@@ -1679,9 +1838,9 @@ get_tx_power_from_os()
     local NARGS=1
     [ $# -ne ${NARGS} ] &&
         raise "wm2_lib:get_tx_power_from_os requires ${NARGS} input argument(s), $# given" -arg
-    wm2_vif_if_name=$1
+    vif_if_name=$1
 
-    log "wm2_lib:check_ht_mode_at_os_level - Getting Radio TX Power for interface '$wm2_vif_if_name' at OS - LEVEL2"
+    log "wm2_lib:check_ht_mode_at_os_level - Getting Radio TX Power for interface '$vif_if_name' at OS - LEVEL2"
     # Provide override in platform specific file
     raise "FAIL: This is a stub function. Override implementation needed." -l "wm2_lib:get_tx_power_from_os" -fc
 }
@@ -1705,10 +1864,10 @@ get_ht_mode_from_os()
     local NARGS=2
     [ $# -ne ${NARGS} ] &&
         raise "wm2_lib:get_ht_mode_from_os requires ${NARGS} input argument(s), $# given" -arg
-    wm2_vif_if_name=$1
-    wm2_channel=$2
+    vif_if_name=$1
+    channel=$2
 
-    log "wm2_lib:check_ht_mode_at_os_level - Getting HT mode for channel '$wm2_channel' at OS - LEVEL2"
+    log "wm2_lib:check_ht_mode_at_os_level - Getting HT mode for channel '$channel' at OS - LEVEL2"
     # Provide override in platform specific file
     raise "FAIL: This is a stub function. Override implementation needed." -l "wm2_lib:get_ht_mode_from_os" -fc
 }
@@ -1737,15 +1896,15 @@ get_radio_channel_state()
     local NARGS=2
     [ $# -ne ${NARGS} ] &&
         raise "wm2_lib:get_radio_channel_state requires ${NARGS} input argument(s), $# given" -arg
-    wm2_channel=$1
-    wm2_radio_if_name=$2
+    channel=$1
+    if_name=$2
 
     # Ensure channel is allowed.
     # Redirect output to ensure clean echo to stdout
-    check_is_channel_allowed "$wm2_channel" "$wm2_radio_if_name" >/dev/null 2>&1 ||
+    check_is_channel_allowed "$channel" "$if_name" >/dev/null 2>&1 ||
         return 1
 
-    state_raw=$(get_ovsdb_entry_value Wifi_Radio_State channels -w if_name "$wm2_radio_if_name" -r | tr ']' '\n' | grep "$wm2_channel")
+    state_raw=$(get_ovsdb_entry_value Wifi_Radio_State channels -w if_name "$if_name" -r | tr ']' '\n' | grep "$channel")
     state="$(echo "${state_raw##*state}" | tr -d ' \":}' | tr -d ' ')"
     if [ "$state" == "allowed" ]; then
         echo "allowed"
@@ -1762,6 +1921,19 @@ get_radio_channel_state()
     fi
 
     return 0
+}
+
+get_allowed_channels_for_interface()
+{
+    local NARGS=1
+    [ $# -ne ${NARGS} ] &&
+        raise "wm2_lib:check_is_channel_allowed requires ${NARGS} input argument(s), $# given" -arg
+    if_name=$1
+
+    allowed_channels=$(get_ovsdb_entry_value Wifi_Radio_State allowed_channels -w if_name "$if_name" -r)
+    channels=$(echo ${allowed_channels} | sed 's/\[/ /g; s/\]/ /g; s/,/ /g;')
+    clear_channels=${channels/\"set\"/}
+    echo ${clear_channels}
 }
 
 ###############################################################################
@@ -1785,26 +1957,101 @@ check_is_channel_allowed()
     local NARGS=2
     [ $# -ne ${NARGS} ] &&
         raise "wm2_lib:check_is_channel_allowed requires ${NARGS} input argument(s), $# given" -arg
-    wm2_channel=$1
-    wm2_radio_if_name=$2
+    channel=$1
+    if_name=$2
 
     log -deb "wm2_lib:check_is_channel_allowed - Waiting for Wifi_Radio_State::allowed_channels to be populated"
-    wait_for_function_response 'notempty' "get_ovsdb_entry_value Wifi_Radio_State allowed_channels -w if_name ${wm2_radio_if_name}" &&
+    wait_for_function_response 'notempty' "get_ovsdb_entry_value Wifi_Radio_State allowed_channels -w if_name ${if_name}" &&
         log -deb "wm2_lib:check_is_channel_allowed - Wifi_Radio_State::allowed_channels populated - Success" ||
         raise "FAIL: Wifi_Radio_State::allowed_channels not populated" -l "wm2_lib:check_is_channel_allowed" -ds
 
-    log -deb "wm2_lib:check_is_channel_allowed - Checking if channel '$wm2_channel' is allowed for '$wm2_radio_if_name'"
-    allowed_channels=$(get_ovsdb_entry_value Wifi_Radio_State allowed_channels -w if_name "$wm2_radio_if_name" -r)
+    log -deb "wm2_lib:check_is_channel_allowed - Checking if channel '$channel' is allowed for '$if_name'"
+    allowed_channels=$(get_ovsdb_entry_value Wifi_Radio_State allowed_channels -w if_name "$if_name" -r)
     if [ -z "${allowed_channels}" ]; then
         ${OVSH} s Wifi_Radio_State
-        raise "FAIL: Wifi_Radio_State::allowed_channels for '$wm2_radio_if_name' is empty" -l "wm2_lib:check_is_channel_allowed" -ds
+        raise "FAIL: Wifi_Radio_State::allowed_channels for '$if_name' is empty" -l "wm2_lib:check_is_channel_allowed" -ds
     fi
     log -deb "wm2_lib:check_is_channel_allowed - allowed_channels: ${allowed_channels}"
-    contains_element "${wm2_channel}" $(echo ${allowed_channels} | sed 's/\[/ /g; s/\]/ /g; s/,/ /g;') &&
-        log -deb "wm2_lib:check_is_channel_allowed - Channel '$wm2_channel' is allowed on radio '$wm2_radio_if_name' - Success" ||
-        raise "FAIL: Wifi_Radio_State::allowed_channels for '$wm2_radio_if_name' does not contain '$wm2_channel'" -l "wm2_lib:check_is_channel_allowed" -ds
+    contains_element "${channel}" $(echo ${allowed_channels} | sed 's/\[/ /g; s/\]/ /g; s/,/ /g;') &&
+        log -deb "wm2_lib:check_is_channel_allowed - Channel '$channel' is allowed on radio '$if_name' - Success" ||
+        raise "FAIL: Wifi_Radio_State::allowed_channels for '$if_name' does not contain '$channel'" -l "wm2_lib:check_is_channel_allowed" -ds
 
     return 0
+}
+
+validate_pre_cac_behaviour()
+{
+    # First validate presence of regulatory.txt file
+    regulatory_file_path="${FUT_TOPDIR}/shell/config/regulatory.txt"
+    if [ ! -f "${regulatory_file_path}" ]; then
+        log -deb "wm2_lib:validate_pre_cac_behaviour - Regulatory file ${regulatory_file_path} does not exist, nothing to do."
+        return 0
+    fi
+
+    local NARGS=2
+    [ $# -ne ${NARGS} ] &&
+        raise "wm2_lib:validate_pre_cac_behaviour requires ${NARGS} input argument(s), $# given" -arg
+    if_name=$1
+    reg_domain=$2
+
+    state_ht_mode=$(get_ovsdb_entry_value Wifi_Radio_State ht_mode -w if_name "${if_name}")
+    if [ "${state_ht_mode}" == "[\"set\",[]]" ]; then
+        log -deb "wm2_lib:validate_pre_cac_behaviour - ht_mode is not set in Wifi_Radio_State, nothing to do."
+        return 0
+    fi
+    state_freq_band=$(get_ovsdb_entry_value Wifi_Radio_State freq_band -w if_name "${if_name}" | tr '[A-Z]' '[a-z]' | tr -d '.')
+    if [ "${state_freq_band}" == "[\"set\",[]]" ]; then
+        log -deb "wm2_lib:validate_pre_cac_behaviour - freq_band is not set in Wifi_Radio_State, nothing to do."
+        return 0
+    fi
+
+    reg_dfs_standard_match=$(cat "${regulatory_file_path}" | grep -i "${reg_domain}_dfs_standard_${state_freq_band}_${state_ht_mode}")
+    reg_dfs_weather_match=$(cat "${regulatory_file_path}" | grep -i "${reg_domain}_dfs_weather_${state_freq_band}_${state_ht_mode}")
+    cac_channels=$(get_channels_to_check_for_cac "${if_name}" | tail -1)
+
+    if [ -z "${cac_channels}" ]; then
+        log -deb "wm2_lib:validate_pre_cac_behaviour - No channels to do CAC on. Nothing to do."
+        return 0
+    fi
+
+    for check_channel in ${cac_channels}; do
+        check_standard=$(contains_element "${check_channel}" ${reg_dfs_standard_match})
+        check_weather=$(contains_element "${check_channel}" ${reg_dfs_weather_match})
+        check_cac_state="cac_completed"
+        if [ "${check_weather}" != "0" ] && [ "${check_standard}" != "0" ]; then
+            check_cac_state="allowed"
+        fi
+        wait_for_function_output "${check_cac_state}" "get_radio_channel_state ${check_channel} ${if_name}" 60 &&
+            log -deb "wm2_lib:validate_pre_cac_behaviour - Channel state is cac_completed. Channel available" ||
+            raise "Channel state did is not cac_completed" -l "wm2_lib:validate_pre_cac_behaviour" -tc
+    done
+
+    # Acquire all allowed channels for interface and validate pre-CAC
+    allowed_channels=$(get_allowed_channels_for_interface "${if_name}")
+    for allowed_channel in ${allowed_channels}; do
+        contains_element "${allowed_channel}" ${cac_channels} && continue
+        # pre-CAC is disabled for US reg domain, any channels outside ch range should not be in cac_completed
+        if [ "${reg_domain}" == 'US' ]; then
+            wait_for_function_output -of "nop_finished nop_started allowed" "get_radio_channel_state ${allowed_channel} ${if_name}" 60
+            al_ch_check=$?
+            ch_state=$(get_radio_channel_state ${allowed_channel} ${if_name})
+            if [ "${al_ch_check}" == "0" ]; then
+                log -deb "wm2_lib:validate_pre_cac_behaviour - Channel ${allowed_channel} state is ${ch_state}"
+            else
+                raise "Channel ${allowed_channel} state is ${ch_state}. It should not be since pre-CAC is disabled." -l "wm2_lib:validate_pre_cac_behaviour" -tc
+            fi
+        else
+            wait_for_function_output -of "cac_completed cac_started nop_finished nop_started allowed" "get_radio_channel_state ${allowed_channel} ${if_name}" 60
+            al_ch_check=$?
+            ch_state=$(get_radio_channel_state ${allowed_channel} ${if_name})
+            ch_in_cac=$(contains_element "${ch_state}" "cac_completed cac_started")
+            if [ "${ch_in_cac}" == "0" ]; then
+                log -deb "wm2_lib:validate_pre_cac_behaviour - Channel ${allowed_channel} state is ${ch_state}. PRE-CAC is working."
+            else
+                log -deb "wm2_lib:validate_pre_cac_behaviour - Channel ${allowed_channel} state is ${ch_state}."
+            fi
+        fi
+    done
 }
 
 ###############################################################################
@@ -1828,15 +2075,15 @@ check_radar_event_on_channel()
     local NARGS=2
     [ $# -ne ${NARGS} ] &&
         raise "wm2_lib:check_radar_event_on_channel requires ${NARGS} input argument(s), $# given" -arg
-    wm2_channel=$1
-    wm2_radio_if_name=$2
+    channel=$1
+    if_name=$2
 
-    check_is_channel_allowed "$wm2_channel" "$wm2_radio_if_name" ||
-        raise "FAIL: Channel '$wm2_channel' is not allowed on radio '$wm2_radio_if_name'" -l "wm2_lib:check_radar_event_on_channel" -ds
+    check_is_channel_allowed "$channel" "$if_name" ||
+        raise "FAIL: Channel '$channel' is not allowed on radio '$if_name'" -l "wm2_lib:check_radar_event_on_channel" -ds
 
-    log -deb "wm2_lib:check_radar_event_on_channel - Checking radar events on channel '$wm2_channel'"
-    if [ "$(get_radio_channel_state "$wm2_channel" "$wm2_radio_if_name")" == "nop_started" ]; then
-        raise "FAIL: Radar event detected on channel '$wm2_channel'" -f "wm2_lib:check_radar_event_on_channel" -ds
+    log -deb "wm2_lib:check_radar_event_on_channel - Checking radar events on channel '$channel'"
+    if [ "$(get_radio_channel_state "$channel" "$if_name")" == "nop_started" ]; then
+        raise "FAIL: Radar event detected on channel '$channel'" -f "wm2_lib:check_radar_event_on_channel" -ds
     fi
 
     return 0
@@ -1862,30 +2109,30 @@ check_is_channel_ready_for_use()
     local NARGS=2
     [ $# -ne ${NARGS} ] &&
         raise "wm2_lib:check_is_channel_ready_for_use requires ${NARGS} input argument(s), $# given" -arg
-    wm2_channel=$1
-    wm2_if_name=$2
+    channel=$1
+    if_name=$2
     is_empty=false
 
-    log -deb "wm2_lib:check_is_channel_ready_for_use - Checking if channel '$wm2_channel' is ready for immediate use"
-    wait_for_function_response "notempty" "get_ovsdb_entry_value Wifi_Radio_State channels -w if_name $wm2_radio_if_name" || is_empty=true
+    log -deb "wm2_lib:check_is_channel_ready_for_use - Checking if channel '$channel' is ready for immediate use"
+    wait_for_function_response "notempty" "get_ovsdb_entry_value Wifi_Radio_State channels -w if_name $if_name" || is_empty=true
 
     if [ "$is_empty" = "true" ]; then
         log -deb "wm2_lib:check_is_channel_ready_for_use - Table Wifi_Radio_State dump"
         ${OVSH} s Wifi_Radio_State || true
-        raise "FAIL: Wifi_Radio_State::channels is empty for '$wm2_radio_if_name'" -l "wm2_lib:check_is_channel_ready_for_use" -ds
+        raise "FAIL: Wifi_Radio_State::channels is empty for '$if_name'" -l "wm2_lib:check_is_channel_ready_for_use" -ds
     fi
 
-    check_is_channel_allowed "$wm2_channel" "$wm2_if_name" &&
-        log -deb "wm2_lib:check_is_channel_ready_for_use - channel $wm2_channel is allowed on radio $wm2_radio_if_name" ||
-        raise "FAIL: Channel $wm2_channel is not allowed on radio $wm2_radio_if_name" -l "wm2_lib:check_is_channel_ready_for_use" -ds
+    check_is_channel_allowed "$channel" "$if_name" &&
+        log -deb "wm2_lib:check_is_channel_ready_for_use - channel $channel is allowed on radio $if_name" ||
+        raise "FAIL: Channel $channel is not allowed on radio $if_name" -l "wm2_lib:check_is_channel_ready_for_use" -ds
 
-    state="$(get_radio_channel_state "$wm2_channel" "$wm2_radio_if_name")"
+    state="$(get_radio_channel_state "$channel" "$if_name")"
     if [ "$state" == "cac_completed" ] || [ "$state" == "allowed" ]; then
-        log -deb "wm2_lib:check_is_channel_ready_for_use - Channel '$wm2_channel' is ready for use - $state"
+        log -deb "wm2_lib:check_is_channel_ready_for_use - Channel '$channel' is ready for use - $state"
         return 0
     fi
 
-    log -deb "wm2_lib:check_is_channel_ready_for_use - Channel '$wm2_channel' is not ready for use: $state"
+    log -deb "wm2_lib:check_is_channel_ready_for_use - Channel '$channel' is not ready for use: $state"
     return 1
 }
 
@@ -1910,15 +2157,15 @@ check_is_cac_started()
     local NARGS=2
     [ $# -ne ${NARGS} ] &&
         raise "wm2_lib:check_is_cac_started requires ${NARGS} input argument(s), $# given" -arg
-    wm2_channel=$1
-    wm2_if_name=$2
+    channel=$1
+    if_name=$2
 
-    log -deb "wm2_lib:check_is_cac_started - Checking if CAC is started on channel $wm2_channel"
-    if ${OVSH} s Wifi_Radio_State channels -w if_name=="$wm2_if_name" -r | grep -F '["'$wm2_channel'","{\"state\": \"cac_started\"}"]'; then
-        log -deb "wm2_lib:check_is_cac_started - CAC started on channel '$wm2_channel'"
+    log -deb "wm2_lib:check_is_cac_started - Checking if CAC is started on channel $channel"
+    if ${OVSH} s Wifi_Radio_State channels -w if_name=="$if_name" -r | grep -F '["'$channel'","{\"state\": \"cac_started\"}"]'; then
+        log -deb "wm2_lib:check_is_cac_started - CAC started on channel '$channel'"
         return 0
     fi
-    log -err "wm2_lib:check_is_cac_started - CAC is not started on channel '$wm2_channel'"
+    log -err "wm2_lib:check_is_cac_started - CAC is not started on channel '$channel'"
     return 1
 }
 
@@ -1944,12 +2191,10 @@ check_is_nop_finished()
     local NARGS=2
     [ $# -ne ${NARGS} ] &&
         raise "wm2_lib:check_is_nop_finished requires ${NARGS} input argument(s), $# given" -arg
-    wm2_channel=$1
-    wm2_if_name=$2
+    channel=$1
+    if_name=$2
 
-    log -deb "wm2_lib:check_is_nop_finished - Checking if NOP finished on channel '$wm2_channel'"
-    if ${OVSH} s Wifi_Radio_State channels -w if_name=="$wm2_if_name" -r | grep -F '["'$wm2_channel'","{\"state\": \"nop_finished\"}"]'; then
-        log -deb "wm2_lib:check_is_nop_finished - NOP finished on channel '$wm2_channel'"
+    if ${OVSH} s Wifi_Radio_State channels -w if_name=="$if_name" -r | grep -F '["'$channel'","{\"state\": \"nop_finished\"}"]'; then
         return 0
     fi
 
@@ -1986,6 +2231,31 @@ check_sta_send_csa_message()
     raise "FAIL: This is a stub function. Override implementation needed." -l "wm2_lib:check_sta_send_csa_message" -fc
 }
 
+###############################################################################
+# DESCRIPTION:
+#   Function echoes chainmask of the radio.
+#   This function actually echoes chainmask without performing
+#   any action on the received value. An override function can
+#   be implemented for any target to change this behavior.
+# INPUT PARAMETER(S):
+#   $1  chainmask of the radio (int, required)
+#   $2  Frequency band of the radio interface (string, required)
+# ECHOES:
+#   chainmask of the radio.
+# USAGE EXAMPLE(S):
+#   get_actual_chainmask 15 5GU
+###############################################################################
+get_actual_chainmask()
+{
+    local NARGS=2
+    [ $# -lt ${NARGS} ] &&
+        raise "Requires at least '${NARGS}' input argument(s)" -arg
+    chainmask=${1}
+    freq_band=${2}
+
+    echo "${chainmask}"
+}
+
 ###################### RADIO SECTION - STOP ###################################
 
 ###################### STATION SECTION - START ################################
@@ -2001,15 +2271,73 @@ remove_sta_connections()
     local NARGS=1
     [ $# -ne ${NARGS} ] &&
         raise "wm2_lib:remove_sta_connections requires ${NARGS} input argument(s), $# given" -arg
-    wm2_sta_if_name=$1
+    sta_if_name=$1
 
     log -deb "[DEPRECATED] - Function wm2_lib:remove_sta_connections is deprecated in favor of remove_sta_interfaces_exclude"
-    log -deb "wm2_lib:remove_sta_connections - Removing STA connections except $wm2_sta_if_name"
-    ${OVSH} d Wifi_VIF_Config -w if_name!="$wm2_sta_if_name" -w mode==sta &&
-        log -deb "wm2_lib:remove_sta_connections - STA connections except '$wm2_sta_if_name' removed - Success" ||
+    log -deb "wm2_lib:remove_sta_connections - Removing STA connections except $sta_if_name"
+    ${OVSH} d Wifi_VIF_Config -w if_name!="$sta_if_name" -w mode==sta &&
+        log -deb "wm2_lib:remove_sta_connections - STA connections except '$sta_if_name' removed - Success" ||
         raise "FAIL: Could not remove STA connections" -l "wm2_lib:remove_sta_connections" -oe
 
     return 0
 }
 
 ############################################ STATION SECTION - STOP ####################################################
+
+###################### TESTCASE SECTION - START ################################
+
+###############################################################################
+# DESCRIPTION:
+#   Function takes interface as input, to see if channel is even supported
+#   Takes desired channel as input, to check if its in NOP_FINISHED state.
+#   If it is, echo this channel, as the desired one fits the criteria.
+#   If not, take the excluded channel as input, to filter out of the available channels.
+#   Find the first alternative, that is in NOP_FINISHED state and echoes the same.
+#   Raises exception:
+#       1. If channel is not allowed on the selected radio.
+#       2. If no alternate channels in NOP_FINISHED state are found.
+#
+# INPUT PARAMETER(S):
+#   $1  Radio interface (string, required)
+#   $2  Channel (int, required)
+#   $3  Alternative channel if first is unusable (int, required)
+# RETURNS:
+#   See DESCRIPTION.
+# USAGE EXAMPLE(S):
+#   verify_channel_is_in_nop_finished wifi2 120 124
+###############################################################################
+verify_channel_is_in_nop_finished()
+{
+    local NARGS=3
+    [ $# -ne ${NARGS} ] &&
+        raise "wm2_lib:verify_channel_is_in_nop_finished requires ${NARGS} input argument(s), $# given" -arg
+    if_name=${1}
+    channel_1=${2}
+    channel_2=${3}
+
+    # Sanity check - are channels even allowed on the radio
+    check_is_channel_allowed "$channel_1" "$if_name" >/dev/null 2>&1 ||
+        raise "Channel $channel_1 is not allowed on radio $if_name" -l "wm2_lib:verify_channel_is_in_nop_finished" -ds
+
+    # Echo channel_1 if it is in nop_finished state for the test.
+    check_is_nop_finished "$channel_1" "$if_name" >/dev/null 2>&1
+    [ $? = 0 ] && echo "${channel_1}" && return
+
+    # If channel_1 is not in nop_finished state, iterate for new channel. If not found raise the exception
+    get_chan_list=$(get_ovsdb_entry_value Wifi_Radio_State allowed_channels -w if_name "$if_name" -r)
+    list_of_chans=$(echo "${get_chan_list}" | cut -d '[' -f3 | cut -d ']' -f1 | sed "s/,/ /g")
+    [ -z "$list_of_chans" ] &&
+        raise "FAIL: Wifi_Radio_State::allowed_channels not populated" -l "wm2_lib:verify_channel_is_in_nop_finished" -ds
+
+    # Get the first channel in list that has state NOP_FINISHED and
+    # is not the one provided in the argument.
+    for channel in ${list_of_chans}; do
+        [ "$channel" -eq "$channel_2" ] && continue
+        check_is_nop_finished "$channel" "$if_name" >/dev/null 2>&1
+        [ $? = 0 ] && echo "$channel" && return
+    done
+
+    raise "FAIL: Could not find alternative channel in NOP_FINISHED state" -l "wm2_lib:verify_channel_is_in_nop_finished" -s
+}
+
+###################### TESTCASE SECTION - STOP ################################

@@ -29,13 +29,16 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "net/if.h"
 
-#define TARGET_CERT_PATH            "/var/certs"
-#define TARGET_OVSDB_SOCK_PATH      "/var/run/db.sock"
 #define TARGET_LOGREAD_FILENAME     "messages"
 
 typedef void target_client_record_t;
 
-typedef void target_survey_record_t;
+typedef struct {
+    struct {
+        int chan;
+    } info;
+    struct ds_dlist_node node;
+} target_survey_record_t;
 
 typedef void target_capacity_data_t;
 

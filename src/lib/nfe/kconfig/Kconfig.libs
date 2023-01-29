@@ -1,0 +1,6 @@
+menuconfig WALLEYE_NFE_RELEASE_BUILD
+    bool "Walleye NFE library release mode"
+    default y
+    depends on MANAGER_FSM
+    help
+        The Walleye NFE library will be built in release mode

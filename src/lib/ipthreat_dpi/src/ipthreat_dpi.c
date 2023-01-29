@@ -769,91 +769,53 @@ ipthreat_dpi_process_message(struct ipthreat_dpi_session *ds_session)
     struct net_header_parser *net_parser;
     struct ipthreat_dpi_parser *parser;
     struct fsm_policy_req *policy_request;
+    struct net_md_flow_info info;
     struct fsm_session *session;
     struct policy_table *table;
-    struct eth_header *eth_hdr;
-    struct net_md_flow_key key;
-    struct iphdr *iphdr;
-    struct ip6_hdr *ip6hdr;
     struct sockaddr_storage  ip_addr;
     os_macaddr_t             *dev_mac;
     struct fsm_request_args request_args;
     struct fsm_policy_reply *policy_reply;
-    uint8_t *ip = NULL;
     int request_type;
     char *provider;
     int action;
+    bool rc;
 
     session = ds_session->session;
     parser = &ds_session->parser;
     net_parser = parser->net_parser;
-    eth_hdr = &net_parser->eth_header;
     acc = net_parser->acc;
+
+    if (acc->direction == NET_MD_ACC_LAN2LAN_DIR)
+    {
+        LOGD("%s: Ignoring lan2lan direction packets.",__func__);
+        return;
+    }
 
     table = ipthreat_dpi_get_policy_table(ds_session, acc);
     if (table == NULL)
     {
-        LOGD("%s: Ignoring unknown/lan2lan direction packets : returning",__func__);
+        LOGD("%s: Policy not found",__func__);
+        return;
+    }
+
+    MEMZERO(info);
+    rc = net_md_get_flow_info(acc, &info);
+    if (!rc)
+    {
+        LOGT("%s(): Failed to find flow information", __func__);
         return;
     }
 
     memset(&request_args, 0, sizeof(request_args));
-    memset(&key, 0, sizeof(key));
-    if (eth_hdr->srcmac)
-    {
-        key.smac = eth_hdr->srcmac;
-    }
+    dev_mac = info.local_mac;
 
-    if (eth_hdr->dstmac)
-    {
-        key.dmac = eth_hdr->dstmac;
-    }
-
-    key.vlan_id = eth_hdr->vlan_id;
-    key.ethertype = eth_hdr->ethertype;
-
-    key.ip_version = net_parser->ip_version;
-
-    if (key.ip_version == 4) iphdr = net_header_get_ipv4_hdr(net_parser);
-    if (key.ip_version == 6) ip6hdr = net_header_get_ipv6_hdr(net_parser);
-
-    if ((acc->originator == NET_MD_ACC_ORIGINATOR_SRC &&
-        acc->direction == NET_MD_ACC_OUTBOUND_DIR) ||
-        (acc->originator == NET_MD_ACC_ORIGINATOR_DST &&
-         acc->direction == NET_MD_ACC_INBOUND_DIR))
-    {
-        dev_mac = key.smac;
-        if (key.ip_version == 4) ip = (uint8_t *)(&iphdr->daddr);
-        if (key.ip_version == 6) ip = (uint8_t *)(&ip6hdr->ip6_dst.s6_addr);
-    }
-    else if ((acc->originator == NET_MD_ACC_ORIGINATOR_SRC &&
-             acc->direction == NET_MD_ACC_INBOUND_DIR) ||
-             (acc->originator == NET_MD_ACC_ORIGINATOR_DST &&
-             acc->direction == NET_MD_ACC_OUTBOUND_DIR))
-    {
-        dev_mac = key.dmac;
-        if (key.ip_version == 4) ip = (uint8_t *)(&iphdr->saddr);
-        if (key.ip_version == 6) ip = (uint8_t *)(&ip6hdr->ip6_src.s6_addr);
-    }
-    else
-    {
-        LOGD("%s: Ignoring unknown/lan2lan direction packets.",__func__);
-        return;
-    }
-
-    sockaddr_storage_populate(key.ip_version == 4 ? AF_INET : AF_INET6, ip, &ip_addr);
+    sockaddr_storage_populate(info.ip_version == 4 ? AF_INET : AF_INET6, info.remote_ip, &ip_addr);
 
     provider = ipthreat_get_provider(session);
     if (provider == NULL)
     {
         LOGD("%s(): ipthreat provider is NULL", __func__);
-        goto error;
-    }
-
-    /* set the action as pass-through in case on invalid acc value */
-    if (acc == NULL || acc->key == NULL || acc->key->ip_version == 0)
-    {
-        LOGD("%s(): invalid accumulator value", __func__);
         goto error;
     }
 
@@ -892,7 +854,6 @@ ipthreat_dpi_process_message(struct ipthreat_dpi_session *ds_session)
     ipthreat_process_action(session, action, net_parser);
 
     return;
-
 
 clean_policy_req:
     fsm_policy_free_request(policy_request);

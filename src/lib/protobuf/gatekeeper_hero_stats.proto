@@ -96,6 +96,7 @@ enum HeroActions {
   HERO_ACTION_BLOCK = 2;
   HERO_ACTION_REDIRECT = 3;
   HERO_ACTION_FORWARD = 4;
+  HERO_ACTION_REDIRECT_ALLOW = 5;
 }
 
 enum HeroDirections {

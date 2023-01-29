@@ -1,0 +1,82 @@
+#!/bin/sh -ave
+
+. ./common || return 1
+. ./case-post-assoc-btm-response-code-6_vars || return 1
+
+add_neighbor() {
+	$dut_ap_a <<. || return $?
+		ovsh i Wifi_VIF_Neighbors \
+			bssid:=$1 \
+			channel:=36 \
+			ht_mode:=HT40 \
+			if_name:=wlan1 \
+			priority:=0
+.
+}
+
+sta_include_retry_neigh() {
+	$dut_ap_a <<. || return $?
+	ovsh u Band_Steering_Clients \
+	-w mac==$1 \
+	neighbor_list_filter_by_btm_status:=true
+.
+}
+
+clear_events() {
+	while :
+	do
+		timeout 1 bsal_sim read /dut_ap_a_bsal_out || break
+	done
+}
+
+receive_btm_response() {
+	bssid="100000000000"
+	client_sta_mac="200000000000"
+
+	# less preferred
+	neigh_1_mac_semicolon="de:ad:be:ef:fe:ed"
+	neigh_1_mac=$(echo $neigh_1_mac_semicolon | tr -d ':')
+	neigh_1_preference_subelem="030101"
+	neigh_1_elem="3410${neigh_1_mac}00000010003200${neigh_1_preference_subelem}"
+
+	# more preferred
+	neigh_2_mac_semicolon="de:af:ca:fe:fe:ed"
+	neigh_2_mac=$(echo $neigh_2_mac_semicolon | tr -d ':')
+	neigh_2_preference_subelem="03010a"
+	neigh_2_elem="3410${neigh_2_mac}00000010003200${neigh_2_preference_subelem}"
+
+	wnm_action_frame="d0003c00${bssid}${client_sta_mac}${bssid}10690a08010600${neigh_1_elem}${neigh_2_elem}"
+
+	prepare_dut dut_ap_a || return 1
+	add_sta dut_ap_a || return 1
+	sta_include_retry_neigh "20:00:00:00:00:00"
+
+	add_neighbor $neigh_1_mac_semicolon
+	add_neighbor $neigh_2_mac_semicolon
+	add_neighbor $neigh_3_mac_semicolon
+	add_neighbor $neigh_4_mac_semicolon
+	clear_events
+
+	# Connect at 2.4 GHz and set RRM, BTM capabilities
+	bsal_sim write /dut_ap_a_bsal_in "UPDATE_CLIENT mac=20:00:00:00:00:00 btm=true rrm=true rrm_beacon_passive_mes=true rrm_beacon_active_mes=true rrm_beacon_table_mes=true \
+									  assoc_ies=000e6a616e75737a2d66742d74657374010802040b160c12182432043048606c2102001430140100000fac040100000fac040100000fac0200007f0b04004a0201000040000020460570000000003b155151525354737475767778797a7b7c7d7e7f808182dd070050f202000100" || return 1
+	bsal_sim write /dut_ap_a_bsal_in "CONNECT mac=20:00:00:00:00:00 if_name=wlan0" || return 1
+	sleep 1
+
+	# Receive WNM BTM Response status code 6
+	bsal_sim write /dut_ap_a_bsal_in "RECEIVE_ACTION if_name=wlan0 data=$wnm_action_frame" || return 1
+	sleep 1
+
+	# Trigger BTM Request
+	bsal_sim write /dut_ap_a_bsal_in "RSSI_XING mac=20:00:00:00:00:00 if_name=wlan0 snr=25" || return 1
+	sleep 1
+
+	bsal_sim write /dut_ap_a_bsal_in "RSSI_XING mac=20:00:00:00:00:00 if_name=wlan0 snr=2 low_xing=lower" || return 1
+	clear_events
+	sleep 2
+
+	diff_vars "$ref_btm_req" "$(timeout 1 bsal_sim read /dut_ap_a_bsal_out)" || return 1
+
+}
+
+step receive_btm_response

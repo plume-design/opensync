@@ -53,6 +53,7 @@ struct gk_req_header
     char *location_id;
     char *policy_rule;
     char *network_id;
+    uint64_t supported_features;
 };
 
 

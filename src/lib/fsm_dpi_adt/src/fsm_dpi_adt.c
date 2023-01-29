@@ -34,9 +34,20 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "log.h"
 #include "memutil.h"
 #include "network_metadata_report.h"
+#include "fsm_dpi_adt_cache.h"
 #include "qm_conn.h"
 
 static size_t FSM_DPI_ADT_MAX_DATAPOINTS = 10;
+
+static struct fsm_dpi_adt_cache adt_cache_mgr = {
+    .counter = 0,
+};
+
+struct fsm_dpi_adt_cache *
+fsm_dpi_adt_get_cache_mgr(void)
+{
+    return &adt_cache_mgr;
+}
 
 /**
  * @brief session initialization entry point
@@ -107,6 +118,9 @@ fsm_dpi_adt_init(struct fsm_session *session)
     aggr->send_report = qm_conn_send_direct;
 
     aggr->initialized = true;
+
+    /* initialize ADT cache */
+    fsm_dpi_adt_init_cache();
 
     LOGD("%s: Added session %s", __func__, session->name);
 
@@ -186,6 +200,8 @@ fsm_dpi_adt_periodic(struct fsm_session *session)
     need_periodic = fsm_dpi_client_periodic_check(session);
 
     if (!need_periodic) return;
+
+    fsm_dpi_adt_remove_expired_entries();
 
     /* Since we are sending reports without buffering, this should be a no-op */
     dpi_adt_send_report(session);

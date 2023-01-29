@@ -51,6 +51,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "inet_pppoe.h"
 #include "inet_lte.h"
 #include "inet_unmanaged.h"
+#include "inet_tap.h"
+
 
 /* Debounce timer for interface configuration commit */
 #define NM2_IFACE_APPLY_TIMER 0.3

@@ -44,6 +44,8 @@
 #define NFM_FLAG_TRULE_CHAIN6_REFERENCED (1 << 3)
 #define NFM_FLAG_TRULE_TARGET4_REFERENCED (1 << 4)
 #define NFM_FLAG_TRULE_TARGET6_REFERENCED (1 << 5)
+#define NFM_FLAG_TRULE_TARGET_ETH_REFERENCED (1 << 6)
+#define NFM_FLAG_TRULE_CHAIN_ETH_REFERENCED (1 << 7)
 
 struct nfm_trule {
 	struct ds_tree_node elt;

@@ -1,3 +1,4 @@
+#!/bin/sh
 
 # Copyright (c) 2015, Plume Design Inc. All rights reserved.
 # 
@@ -23,6 +24,9 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+# {# jinja-parse #}
+
+{%- if not CONFIG_TARGET_USE_NATIVE_BRIDGE %}
 # Stop cloud connection
 echo "Removing manager"
 ovs-vsctl del-manager
@@ -32,6 +36,43 @@ for BRIDGE in $(ovs-vsctl list-br); do
     ovs-vsctl del-br $BRIDGE
     echo "Removing $BRIDGE"
 done
+{%- else %}
+# Stop cloud connection
+echo "Removing manager"
+ovsdb-client transact '
+["Open_vSwitch", {
+    "op": "delete",
+    "table": "Manager",
+    "where": []
+}, {
+    "op" : "update",
+    "table" : "Open_vSwitch",
+    "where" : [],
+    "row": {
+        "manager_options": ["set",[]]
+    }
+}]'
+
+# Remove bridge interfaces from the system
+for BRIDGE in $(brctl show | awk 'FNR != 1 {print $1}'); do
+    ovsdb-client transact '
+    ["Open_vSwitch", {
+        "op":  "delete",
+        "table": "Bridge",
+        "where": [
+            ["name", "==", "'$BRIDGE'"]
+        ]
+    }, {
+        "op" : "update",
+        "table" : "Open_vSwitch",
+        "where" : [],
+        "row": {
+            "bridges": ["set",[]]
+        }
+     }]'
+done
+echo "Removing $BRIDGE"
+{%- endif %}
 
 # Stop openvswitch
 /etc/init.d/openvswitch stop

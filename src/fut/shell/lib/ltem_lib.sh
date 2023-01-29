@@ -43,8 +43,8 @@ echo "${FUT_TOPDIR}/shell/lib/ltem_lib.sh sourced"
 #   Function prepares device for LTEM tests.
 #   Raises exception on fail.
 # INPUT PARAMETER(S):
-#   $1  lte_if_name: LTE interface name (string, required)
-#   $2  access_point_name: access point name of the SIM card used (string, required)
+#   $1  if_name: LTE interface name (string, required)
+#   $2  apn: access point name of the SIM card used (string, required)
 #   $3  os_persist: os_persist (bool, required)
 # RETURNS:
 #   0   On success.
@@ -58,8 +58,8 @@ ltem_setup_test_environment()
     local NARGS=3
     [ $# -ne ${NARGS} ] &&
         raise "ltem_lib:ltem_setup_test_environment requires ${NARGS} input argument(s), $# given" -arg
-    lte_if_name=${1}
-    access_point_name=${2}
+    if_name=${1}
+    apn=${2}
     os_persist=${3}
 
     log -deb "ltem_lib:ltem_setup_test_environment - Running LTEM setup"
@@ -79,37 +79,37 @@ ltem_setup_test_environment()
         log -deb "ltem_lib:ltem_setup_test_environment - Lte_Config table exists in OVSDB - Success" ||
         raise "FAIL: Lte_Config table does not exist in OVSDB" -l "ltem_lib:ltem_setup_test_environment" -s
 
-    check_field=$(${OVSH} s Lte_Config -w if_name==$lte_if_name)
+    check_field=$(${OVSH} s Lte_Config -w if_name==$if_name)
     if [ -z "$check_field" ]; then
-        insert_ovsdb_entry Lte_Config -w if_name "$lte_if_name" -i if_name "$lte_if_name" \
+        insert_ovsdb_entry Lte_Config -w if_name "$if_name" -i if_name "$if_name" \
             -i manager_enable "true" \
             -i lte_failover_enable "true" \
             -i ipv4_enable "true" \
             -i modem_enable "true" \
             -i force_use_lte "false" \
-            -i apn "$access_point_name" \
+            -i apn "$apn" \
             -i report_interval "60" \
             -i active_simcard_slot "0" \
             -i os_persist "$os_persist" &&
-                log -deb "ltem_lib:ltem_setup_test_environment - Lte_Config::lte interface $lte_if_name was inserted - Success" ||
-                raise "FAIL: Lte_Config::lte interface $lte_if_name is not inserted" -l "ltem_lib:ltem_setup_test_environment" -ds
+                log -deb "ltem_lib:ltem_setup_test_environment - Lte_Config::lte interface $if_name was inserted - Success" ||
+                raise "FAIL: Lte_Config::lte interface $if_name is not inserted" -l "ltem_lib:ltem_setup_test_environment" -ds
     else
-        log -deb "ltem_lib:ltem_setup_test_environment - Entry for $lte_if_name in Lte_Config already exists, skipping..."
+        log -deb "ltem_lib:ltem_setup_test_environment - Entry for $if_name in Lte_Config already exists, skipping..."
     fi
 
-    check_field=$(${OVSH} s Wifi_Inet_Config -w if_name==$lte_if_name)
+    check_field=$(${OVSH} s Wifi_Inet_Config -w if_name==$if_name)
     if [ -z "$check_field" ]; then
-        insert_ovsdb_entry Wifi_Inet_Config -w if_name "$lte_if_name" -i if_name "$lte_if_name" \
+        insert_ovsdb_entry Wifi_Inet_Config -w if_name "$if_name" -i if_name "$if_name" \
             -i if_type "lte" \
             -i ip_assign_scheme "dhcp" \
             -i enabled "true" \
             -i network "true" \
             -i NAT "true" \
             -i os_persist "$os_persist" &&
-                log -deb "ltem_lib:ltem_setup_test_environment - Insert entry for $lte_if_name interface in Wifi_Inet_Config - Success" ||
-                raise "FAIL: Insert was not done for the entry of $lte_if_name interface in Wifi_Inet_Config " -l "ltem_lib:ltem_setup_test_environment" -ds
+                log -deb "ltem_lib:ltem_setup_test_environment - Insert entry for $if_name interface in Wifi_Inet_Config - Success" ||
+                raise "FAIL: Insert was not done for the entry of $if_name interface in Wifi_Inet_Config " -l "ltem_lib:ltem_setup_test_environment" -ds
     else
-        log -deb "ltem_lib:ltem_setup_test_environment - Entry for $lte_if_name in Wifi_Inet_Config already exists, skipping..."
+        log -deb "ltem_lib:ltem_setup_test_environment - Entry for $if_name in Wifi_Inet_Config already exists, skipping..."
     fi
 
     log -deb "ltem_lib:ltem_setup_test_environment - LTEM setup - end"

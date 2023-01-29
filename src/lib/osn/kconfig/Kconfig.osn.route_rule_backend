@@ -1,0 +1,11 @@
+config OSN_BACKEND_ROUTE_RULE_NULL
+    bool "Null"
+    help
+        Use dummy implementation of policy route rule
+
+config OSN_BACKEND_ROUTE_RULE_LINUX
+    bool "Linux"
+    select OSN_LINUX_ENABLED
+    select OSN_LINUX_ROUTE_RULE
+    help
+        Use the Linux backend implementation for policy routing rules provided by OpenSync

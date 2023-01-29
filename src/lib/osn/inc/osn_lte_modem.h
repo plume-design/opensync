@@ -41,7 +41,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #define SOURCE_AT_CMD 1
 
-// Max tokens to be acquired while parsing AT response buffer
+/* Max tokens to be acquired while parsing AT response buffer */
 #define MAX_RESP_TOKENS  25
 
 typedef struct _gen_resp_
@@ -50,7 +50,11 @@ typedef struct _gen_resp_
 } gen_resp_tokens;
 
 
-typedef struct lte_chip_info_ // ati
+/* Count is based on the response elements from the cell module */
+#define MAX_5G_TYPE_DETECT 4
+#define MAX_5G_SA_TOKENS   19
+
+typedef struct lte_chip_info_   /* ati */
 {
     char cmd[C_AT_CMD_RESP];
     char vendor[C_AT_CMD_RESP];
@@ -58,61 +62,61 @@ typedef struct lte_chip_info_ // ati
     char full_model[C_AT_CMD_LONG_RESP];
 } lte_chip_info_t;
 
-typedef struct lte_sim_insertion_status_ // at+qsimstat
+typedef struct lte_sim_insertion_status_   /* at+qsimstat */
 {
     char cmd[C_AT_CMD_RESP];
     bool enabled;
     bool inserted;
 } lte_sim_insertion_status_t;
 
-typedef struct lte_imei_ // at+gsn
+typedef struct lte_imei_   /* at+gsn */
 {
     char cmd[C_AT_CMD_RESP];
     char imei[C_AT_CMD_RESP];
 } lte_imei_t;
 
-typedef struct lte_imsi_ // at+cimi
+typedef struct lte_imsi_   /* at+cimi */
 {
     char cmd[C_AT_CMD_RESP];
     char imsi[C_AT_CMD_RESP];
 } lte_imsi_t;
 
-typedef struct lte_iccid_ // at+qccid
+typedef struct lte_iccid_   /* at+qccid */
 {
     char cmd[C_AT_CMD_RESP];
     char iccid[C_AT_CMD_LONG_RESP];
 } lte_iccid_t;
 
-#define AT_GMR_CMD "at+qgmr"
+#define CELL_GMR_CMD "at+qgmr"
 #define MAX_GMR_TOKENS 2
 
-// Ref: 3GPP TS 27.007
+/* Ref: 3GPP TS 27.007 */
 typedef enum _qgmr_id
 {
     SW_VER = 1,
 } qgmr_id;
 
-typedef struct lte_gmr_ // at+qgmr
+typedef struct lte_gmr_   /* at+qgmr */
 {
     char cmd[C_AT_CMD_RESP];
     char gmr[C_AT_CMD_LONG_RESP];
 } lte_gmr_t;
 
-typedef struct lte_reg_status_ // at+creg
+typedef struct lte_reg_status_   /* at+creg */
 {
     char cmd[C_AT_CMD_RESP];
     char net_reg_code[C_AT_CMD_RESP];
     char net_reg_status[C_AT_CMD_RESP];
 } lte_reg_status_t;
 
-typedef struct lte_sig_qual_ // at+csq
+typedef struct lte_sig_qual_   /* at+csq */
 {
     char cmd[C_AT_CMD_RESP];
     char rssi_index[C_AT_CMD_RESP];
     char ber[C_AT_CMD_RESP];
 } lte_sig_qual_t;
 
-typedef struct lte_byte_counts_ // at+qgdcnt
+typedef struct lte_byte_counts_   /* at+qgdcnt */
 {
     char cmd[C_AT_CMD_RESP];
     char tx_bytes[C_AT_CMD_RESP];
@@ -125,7 +129,7 @@ typedef struct lte_sim_slot_
     char slot[C_AT_CMD_RESP];
 } lte_sim_slot_t;
 
-typedef struct lte_operator_ // at+cops
+typedef struct lte_operator_   /* at+cops */
 {
     char cmd[C_AT_CMD_RESP];
     char mode[C_AT_CMD_RESP];
@@ -134,12 +138,79 @@ typedef struct lte_operator_ // at+cops
     char act[C_AT_CMD_RESP];
 } lte_operator_t;
 
+#define AT_CMD_SINR "at+qsinr?"
+#define AT_CMD_QSRP "at+qrsrp"
+#define MAX_SINR_RSRP_TOKENS 7
+
+typedef enum _sinr_rsrp_id
+{
+    PRX = 2,
+    DRX = 3,
+    RX2 = 4,
+    RX3 = 5,
+    MODE = 6,
+} sinr_rsrp_id;
+
+typedef struct cellular_sinr_rsrp_   /* at+qgmr */
+{
+    char cmd[C_AT_CMD_RESP];
+    int32_t prx;
+    int32_t drx;
+    int32_t rx2;
+    int32_t rx3;
+    char mode[C_AT_CMD_RESP];
+} cellular_sinr_rsrp_t;
+
+typedef enum _serv_cell
+{
+    SERV_CELL_CELL_TYPE = 2,
+    SERV_CELL_STATE,
+    SERV_CELL_MODE,
+    SERV_CELL_DUPLEX,
+    SERV_CELL_MCC,
+    SERV_CELL_MNC,
+    SERV_CELL_CELLID,
+    SERV_CELL_PCID,
+    SERV_CELL_TAC,
+    SERV_CELL_ARFCN,
+    SERV_CELL_BAND,
+    SERV_CELL_NR_DL,
+    SERV_CELL_RSRP,
+    SERV_CELL_RSRQ,
+    SERV_CELL_SINR,
+    SERV_CELL_TX_PWR,
+    SERV_CELL_SRXLEV,
+} serv_cell;
+
+/* NR5G serving cell example
+  +QENG: "servingcell",<state>,"NR5G-SA",<duplex_mod e>,<MCC>,<MNC>,<cellID>,<PCID>,<TAC>,<ARFCN>,<ba nd>,<NR_DL_bandwidth>,<RSRP>,<RSRQ>,<SINR>,<tx_ power>,<srxlev> */
+typedef struct nr5g_serving_cell_sa_
+{
+    char cell_type[C_AT_CMD_RESP];
+    char state[C_AT_CMD_RESP];
+    char mode[C_AT_CMD_RESP];
+    char duplex_mode[C_AT_CMD_RESP];
+    char mcc[C_AT_CMD_RESP];
+    char mnc[C_AT_CMD_RESP];
+    char cellid[C_AT_CMD_RESP];
+    char pcid[C_AT_CMD_RESP];
+    char tac[C_AT_CMD_RESP];
+    char arfcn[C_AT_CMD_RESP];
+    char band[C_AT_CMD_RESP];
+    char nr_dl_bandwidth[C_AT_CMD_RESP];
+    char rsrp[C_AT_CMD_RESP];
+    char rsrq[C_AT_CMD_RESP];
+    char sinr[C_AT_CMD_RESP];
+    char scs[C_AT_CMD_RESP];
+    char srxlev[C_AT_CMD_RESP];
+} nr5g_serving_cell_sa;
+
 /*
 char *at_srv_cell="at+qeng=\"servingcell\"\r\r\n+QENG: 
 \"servingcell\",\"NOCONN\",\"LTE\",\"FDD\",310,410,A1FBF0A,310,800,2,5,5,8B1E,-115,-14,-80,10,8\r\n\r\nOK\r\n";
 +QENG: "servingcell",<state>,"LTE",<is_tdd>,<mcc>,<mnc>,<cellid>,<pcid>,<earfcn>,<freq_band_ind>,<ul_bandwidth>,<dl_bandwidth>,<tac>,<rsrp>,<rsrq>,<rssi>,<sinr>,<srxlev>
 */
-typedef struct lte_srv_cell_ // at+srv_cell
+typedef struct lte_srv_cell_   /* at+srv_cell */
 {
     char cmd[C_AT_CMD_LONGEST_RESP];
     char cell_type[C_AT_CMD_RESP];
@@ -166,7 +237,7 @@ typedef struct lte_srv_cell_ // at+srv_cell
  * +QENG: "servingcell",<state> ,"WCDMA",<mcc>,<mnc>,<lac>,<cellid>,<uarfcn>,<psc>,<rac>,<rscp>,<ecio>,<phych>,<sf>,<slot>,<speech_code>,<comMod>
  * +QENG: "servingcell","NOCONN","WCDMA",310,  410,  DEA6, 2883C,   4385,     84,   254, -98,   -7,    -,      -,   -,      -,           -
  */
-typedef struct lte_srv_cell_wcdma //at_srv_cell
+typedef struct lte_srv_cell_wcdma   /* at_srv_cell */
 {
     char cmd[C_AT_CMD_LONGEST_RESP];
     char cell_type[C_AT_CMD_RESP];
@@ -189,8 +260,7 @@ typedef struct lte_srv_cell_wcdma //at_srv_cell
     char com_mod[C_AT_CMD_RESP];
 } lte_srv_cell_wcdma_t;
 
-// [+QENG:"neighbourcell intra","LTE",<earfcn>,<pcid>,<rsrq>,<rsrp>,<rssi>,<sinr>,<srxlev>,<cell_resel_priority>,<s_non_intra_search>,<thresh_serving_low>,<s_intra_search>
-/*
+/* [+QENG:"neighbourcell intra","LTE",<earfcn>,<pcid>,<rsrq>,<rsrp>,<rssi>,<sinr>,<srxlev>,<cell_resel_priority>,<s_non_intra_search>,<thresh_serving_low>,<s_intra_search>
 char *at_neigh_cell=
 1. "at+qeng=\"neighbourcell\"\r\r\n+QENG:(sp)
 2. \"neighbourcell intra\",\"LTE\",800,310,-14,-115,-80,0,8,4,10,2,62\r\n
@@ -199,7 +269,7 @@ char *at_neigh_cell=
 5. +QENG: \"neighbourcell\",\"WCDMA\",512,6,14,62,-,-,-,-\r\n
 6. +QENG: \"neighbourcell\",\"WCDMA\",4385,0,14,62,84,-1030,-110,15\r\n\r\nOK\r\n";
 */
-typedef struct lte_neigh_cell_intra // at+neigh_cell
+typedef struct lte_neigh_cell_intra   /* at+neigh_cell */
 {
     char cmd[C_AT_CMD_LONGEST_RESP];
     char cell_type[C_AT_CMD_LONG_RESP];
@@ -218,8 +288,8 @@ typedef struct lte_neigh_cell_intra // at+neigh_cell
     char s_intra_search[C_AT_CMD_RESP];
 } lte_neigh_cell_intra_t;
 
-// [+QENG: "neighbourcell inter","LTE",<earfcn>,<pcid>,<rsrq>,<rsrp>,<rssi>,<sinr>,<srxlev>,<cell_resel_priority>,<threshX_low>,<threshX_high>
-typedef struct lte_neigh_cell_inter // at+neigh_cell
+/* [+QENG: "neighbourcell inter","LTE",<earfcn>,<pcid>,<rsrq>,<rsrp>,<rssi>,<sinr>,<srxlev>,<cell_resel_priority>,<threshX_low>,<threshX_high> */
+typedef struct lte_neigh_cell_inter   /* at+neigh_cell */
 {
     char cmd[C_AT_CMD_LONGEST_RESP];
     char cell_type[C_AT_CMD_LONG_RESP];
@@ -237,15 +307,14 @@ typedef struct lte_neigh_cell_inter // at+neigh_cell
     char thresh_x_high[C_AT_CMD_RESP];
 } lte_neigh_cell_inter_t;
 
-// [+QENG:"neighbourcell","WCDMA",<uarfcn>,<cell_resel_priority>,<thresh_Xhigh>,<thresh_Xlow>,<psc>,<rscp><ecno>,<srxlev>
-// [+QENG: "neighbourcell","LTE",<earfcn>,<cellid>,<rsrp>,<rsrq>,<s_rxlev>
-//TBD
+/* [+QENG:"neighbourcell","WCDMA",<uarfcn>,<cell_resel_priority>,<thresh_Xhigh>,<thresh_Xlow>,<psc>,<rscp><ecno>,<srxlev>
+ [+QENG: "neighbourcell","LTE",<earfcn>,<cellid>,<rsrp>,<rsrq>,<s_rxlev>
 
+ +QCAINFO: "PCC",<freq>,<bandwidth>,<band>,<pcell_state>,<PCID >,<RSRP>,<RSRQ>,<RSSI>,<SINR>
+ +QCAINFO: "SCC",<freq>,<bandwidth>,<band>,<scell_s tate>,<PCID>,<RSRP>,<RSRQ>,<RSSI>,<SINR> */
 
+typedef struct lte_ca_info   /* at+cainfo */
 
-// +QCAINFO: "PCC",<freq>,<bandwidth>,<band>,<pcell_state>,<PCID >,<RSRP>,<RSRQ>,<RSSI>,<SINR>
-// +QCAINFO: "SCC",<freq>,<bandwidth>,<band>,<scell_s tate>,<PCID>,<RSRP>,<RSRQ>,<RSSI>,<SINR>
-typedef struct lte_ca_info // at+cainfo
 {
     char cmd[C_AT_CMD_LONGEST_RESP];
     char ca_type[C_AT_CMD_RESP];
@@ -288,6 +357,92 @@ enum lte_access_tech
     LTE_ACT_UTRAN_HSDPA_HSUPA = 6,
     LTE_ACT_EUTRAN = 7,
 };
+
+typedef enum _nr_types
+{
+    NR5G_SA = 0,
+    NR5G_ENDC,
+    NR5G_LTE,
+    NR5G_WCDMA,
+    NR5G_UNKNOWN,
+} nr_types;
+
+typedef enum _mod_ids
+{
+    MODULE_EM06 = 0,
+    MODULE_RM5X,
+    MODULE_UNKNOWN,
+} mod_ids;
+
+typedef struct cellular_nr5g_sa_net_serving_cell_info_
+{
+    enum cellular_serving_cell_state state;
+    enum cellular_mode mode;
+    enum cellular_fdd_tdd_mode fdd_tdd_mode;
+    uint32_t mcc;
+    uint32_t mnc;
+    uint32_t cellid;
+    uint32_t pcid;
+    uint32_t tac;
+    uint32_t arfcn;
+    uint32_t band;
+    enum nr_dl_bandwidth bandwidth;
+    int32_t rsrp;
+    int32_t rsrq;
+    uint32_t sinr;
+    enum nr_scs scs;
+    uint32_t srxlev;
+} cellular_nr5g_sa_net_serving_cell_info_t;
+
+/* 5GNR-ENDC mode */
+/*
+ *
+ * +QENG: "servingcell",<state>
++QENG: "LTE",<is_tdd>,<MCC>,<MNC>,<cellID>,<PCI
+D>,<earfcn>,<freq_band_ind>,<UL_bandwidth>,<DL_ban
+dwidth>,<TAC>,<RSRP>,<RSRQ>,<RSSI>,<SINR>,<CQI>,
+<tx_power>,<srxlev>
++QENG: "NR5G-NSA",<MCC>,<MNC>,<PCID>,<RSRP>,<
+SINR>,<RSRQ>,<ARFCN>,<band>,<NR_DL_bandwidth>,
+<scs>
+ *
+ *
+ * */
+typedef struct cellular_nr5g_nsa_net_serving_cell_info_
+{
+    /* LTE */
+    enum cellular_serving_cell_state lte_state;
+    enum cellular_mode lte_mode;
+    enum cellular_fdd_tdd_mode lte_fdd_tdd_mode;
+    uint32_t lte_mcc;
+    uint32_t lte_mnc;
+    uint32_t lte_cellid;
+    uint32_t lte_pcid;
+    uint32_t lte_earfcn;
+    uint32_t lte_freq_band_ind;
+    enum lte_bandwidth lte_ul_bandwidth;
+    enum lte_bandwidth lte_dl_bandwidth;
+    uint32_t lte_tac;
+    int32_t lte_rsrp;
+    int32_t lte_rsrq;
+    int32_t lte_rssi;
+    uint32_t lte_sinr;
+    uint32_t lte_cqi;
+    uint32_t lte_tx_power;
+    uint32_t lte_srxlev;
+    /* 5GNR-NSA `*/
+    enum cellular_mode nr5g_nsa_mode;
+    uint32_t nr5g_nsa_mcc;
+    uint32_t nr5g_nsa_mnc;
+    uint32_t nr5g_nsa_pcid;
+    int32_t nr5g_nsa_rsrp;
+    int32_t nr5g_nsa_sinr;
+    int32_t nr5g_nsa_rsrq;
+    uint32_t nr5g_nsa_arfcn;
+    uint32_t nr5g_nsa_band;
+    enum nr_dl_bandwidth nr5g_nsa_dl_bandwidth;
+    enum nr_scs nr5g_nsa_scs;
+} cellular_nr5g_nsa_net_serving_cell_info_t;
 
 typedef struct lte_serving_cell_info_
 {
@@ -458,11 +613,15 @@ typedef struct osn_lte_modem_info_
     enum lte_net_reg_status reg_status;
     int32_t rssi;
     int32_t ber;
+    int32_t rsrp;
+    int32_t sinr;
     uint64_t tx_bytes;
     uint64_t rx_bytes;
     enum lte_sim_slot slot;
     char operator[C_AT_CMD_LONG_RESP];
     enum lte_access_tech act;
+    cellular_nr5g_sa_net_serving_cell_info_t nr5g_serv_cell_sa;
+    cellular_nr5g_nsa_net_serving_cell_info_t nr5g_serv_cell_nsa;
     lte_serving_cell_info_t srv_cell;
     lte_serving_cell_wcdma_info_t srv_cell_wcdma;
     lte_neighbor_cell_intra_info_t neigh_cell_intra;
@@ -533,6 +692,12 @@ int osn_lte_save_ca_info(lte_ca_info_t *pca_info, lte_ca_info_t *sca_info, osn_l
 void osn_lte_stop_vendor_daemon(void);
 int osn_lte_parse_fw_ver(char *buf, lte_gmr_t *lte_gmr);
 int osn_lte_save_fw_ver(lte_gmr_t *lte_gmr, osn_lte_modem_info_t *modem_info);
+int osn_gen_parser_sa(char *modem_resp, gen_resp_tokens *resp_tokens);
+void osn_nr5g_save_serving_cell_5g_sa(gen_resp_tokens *resp_tokens);
+int osn_get_module_id(void);
+int osn_parse_sinr_rsrp(char *buf, cellular_sinr_rsrp_t *net_response);
+int osn_cellular_save_sinr(cellular_sinr_rsrp_t *net_resp, osn_lte_modem_info_t *modem_info);
+int osn_cellular_save_qsrp(cellular_sinr_rsrp_t *net_resp, osn_lte_modem_info_t *modem_info);
 void osn_lte_dump_modem_info();
 
 #endif /* OSN_LTE_MODEM_H_INCLUDED */

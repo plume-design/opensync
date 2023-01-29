@@ -48,6 +48,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "fcm_mgr.h"
 #include "fcm_filter.h"
 #include "memutil.h"
+#include "data_report_tags.h"
 
 static fcm_mgr_t fcm_mgr;
 
@@ -75,7 +76,7 @@ static char * fcm_get_other_config_val(ds_tree_t *other_config, char *key)
 static void fcm_get_plugin_configs(fcm_collector_t *collector,
                                    struct schema_FCM_Collector_Config *conf)
 {
-    char plugin_path[FCM_DSO_PATH_LEN] = {'\0'};
+    char plugin_path[2048] = {'\0'};
     char *init_fn;
     char *path;
     char *dso;

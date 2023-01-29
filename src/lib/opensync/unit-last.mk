@@ -62,6 +62,12 @@ LIB_FILES := $(foreach LIB,$(UNIT_DEPS),$(UNIT_FILES_$(LIB)))
 
 UNIT_LDFLAGS := -Wl,--whole-archive $(LIB_FILES) -Wl,--no-whole-archive
 
+# By default rpath libraries cannot be overridden through
+# LD_LIBRARY_PATH. To ease development and testing change
+# that so LD_LIBRARY_PATH can override the absolute rpath
+# paths. All modern standard C libraries support this.
+UNIT_BIN_LDFLAGS += -Wl,--enable-new-dtags
+
 UNIT_BIN_LDFLAGS += -Wl,-rpath=$(INSTALL_PREFIX)/$(UNIT_DIR) -lopensync
 
 UNIT_BIN_LDFLAGS += $(foreach DEP,$(sort $(UNIT_DEPS)),$(LDFLAGS_$(DEP)))

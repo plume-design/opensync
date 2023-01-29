@@ -293,6 +293,7 @@ gk_set_pb_common_req(struct gk_req_header *header)
     pb->location_id = header->location_id;
     pb->policy_rule = header->policy_rule;
     pb->network_id = header->network_id;
+    pb->supported_features = header->supported_features;
 
     return pb;
 }

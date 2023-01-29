@@ -114,10 +114,12 @@ wait_ovsdb_entry Wifi_Inet_State -w if_name "$if_name" -is NAT "$NAT" &&
     log "nm2/nm2_set_nat.sh: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State::NAT is $NAT - Success" ||
     raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State::NAT is not $NAT" -l "nm2/nm2_set_nat.sh" -tc
 
-log "nm2/nm2_set_nat.sh: Checking state of NAT for $if_name (must be ON) - LEVEL2"
-wait_for_function_response 0 "check_interface_nat_enabled $if_name" &&
-    log "nm2/nm2_set_nat.sh: LEVEL2 - NAT applied to iptables for interface $if_name - Success" ||
-    raise "FAIL: LEVEL2 - Failed to apply NAT to iptables for interface $if_name" -l "nm2/nm2_set_nat.sh" -tc
+if [ $FUT_SKIP_L2 != 'true' ]; then
+    log "nm2/nm2_set_nat.sh: Checking state of NAT for $if_name (must be ON) - LEVEL2"
+    wait_for_function_response 0 "check_interface_nat_enabled $if_name" &&
+        log "nm2/nm2_set_nat.sh: LEVEL2 - NAT applied to iptables for interface $if_name - Success" ||
+        raise "FAIL: LEVEL2 - Failed to apply NAT to iptables for interface $if_name" -l "nm2/nm2_set_nat.sh" -tc
+fi
 
 log "nm2/nm2_set_nat.sh: Disabling NAT for $if_name"
 update_ovsdb_entry Wifi_Inet_Config -w if_name "$if_name" -u NAT false &&
@@ -128,9 +130,11 @@ wait_ovsdb_entry Wifi_Inet_State -w if_name "$if_name" -is NAT false &&
     log "nm2/nm2_set_nat.sh: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State::NAT is 'false' - Success" ||
     raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State::NAT is not 'false'" -l "nm2/nm2_set_nat.sh" -tc
 
-log "nm2/nm2_set_nat.sh: Checking state of NAT for $if_name (must be OFF) - LEVEL2"
-wait_for_function_response 1 "check_interface_nat_enabled $if_name" &&
-    log "nm2/nm2_set_nat.sh: LEVEL2 - NAT removed from iptables for interface $if_name - Success" ||
-    raise "FAIL: LEVEL2 - Failed to remove NAT from iptables for interface $if_name" -l "nm2/nm2_set_nat.sh" -tc
+if [ $FUT_SKIP_L2 != 'true' ]; then
+    log "nm2/nm2_set_nat.sh: Checking state of NAT for $if_name (must be OFF) - LEVEL2"
+    wait_for_function_response 1 "check_interface_nat_enabled $if_name" &&
+        log "nm2/nm2_set_nat.sh: LEVEL2 - NAT removed from iptables for interface $if_name - Success" ||
+        raise "FAIL: LEVEL2 - Failed to remove NAT from iptables for interface $if_name" -l "nm2/nm2_set_nat.sh" -tc
+fi
 
 pass

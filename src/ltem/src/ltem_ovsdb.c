@@ -133,16 +133,6 @@ ltem_update_conf(struct schema_Lte_Config *lte_conf)
         mgr->mqtt_interval = conf->report_interval = lte_conf->report_interval;
     }
     LOGD("%s: report_interval[%d]", __func__, conf->report_interval);
-    if (lte_conf->apn[0] == 0)
-    {
-        LOGI("%s: APN Empty/NULL", __func__);
-        MEMZERO(conf->apn);
-    }
-    else
-    {
-        LOGI("%s: current APN[%s], new APN[%s]", __func__, conf->apn, lte_conf->apn);
-        STRSCPY(conf->apn, lte_conf->apn);
-    }
     STRSCPY(conf->lte_bands, lte_conf->lte_bands_enable);
     STRSCPY(conf->esim_activation_code, lte_conf->esim_activation_code);
 
@@ -297,6 +287,7 @@ ltem_ovsdb_create_lte_state(ltem_mgr_t *mgr)
     }
     SCHEMA_SET_STR(lte_state.lte_net_mode, net_mode);
 
+    MEMZERO(modem_info->lte_band_val);
     SCHEMA_SET_STR(lte_state.lte_bands_enable, modem_info->lte_band_val);
 
     if (strlen(modem_info->modem_fw_ver))
@@ -464,6 +455,7 @@ ltem_ovsdb_update_lte_state(ltem_mgr_t *mgr)
     }
     SCHEMA_SET_STR(lte_state.lte_net_mode, net_mode);
 
+    MEMZERO(modem_info->lte_band_val);
     SCHEMA_SET_STR(lte_state.lte_bands_enable, modem_info->lte_band_val);
 
     res = ovsdb_table_update_where_f(&table_Lte_State,
@@ -506,7 +498,7 @@ ltem_ovsdb_cmu_update_lte(ltem_mgr_t *mgr)
 
     MEMZERO(cm_conf);
 
-    LOGD("%s: update %s LTE CM settings", __func__, if_name);
+    LOGI("%s: update %s LTE CM settings", __func__, if_name);
     cm_conf._partial_update = true;
     SCHEMA_SET_INT(cm_conf.has_L2, true);
     SCHEMA_SET_INT(cm_conf.has_L3, mgr->lte_route->has_L3);
@@ -689,7 +681,7 @@ ltem_ovsdb_cmu_update_lte_priority(ltem_mgr_t *mgr, uint32_t priority)
 
     MEMZERO(cm_conf);
 
-    LOGD("%s: update %s LTE CM settings", __func__, if_name);
+    LOGI("%s: update %s LTE CM settings, priority[%d]", __func__, if_name, priority);
     cm_conf._partial_update = true;
     SCHEMA_SET_INT(cm_conf.priority, priority);
 
@@ -927,7 +919,6 @@ callback_Lte_Config(ovsdb_update_monitor_t *mon,
             LOGW("%s: mon upd error: OVSDB_UPDATE_ERROR", __func__);
             return;
         case OVSDB_UPDATE_NEW:
-            LOGD("%s mon_type = OVSDB_UPDATE_NEW", __func__);
         case OVSDB_UPDATE_MODIFY:
             ltem_ovsdb_update_lte_state(mgr);
             if (old_lte_conf->manager_enable && !lte_conf->manager_enable) return;
@@ -936,14 +927,27 @@ callback_Lte_Config(ovsdb_update_monitor_t *mon,
                 ltem_fini_lte_modem();
                 return;
             }
-            LOGD("%s mon_type = OVSDB_UPDATE_MODIFY", __func__);
+            LOGD("%s mon_type = %s", __func__,
+                 mon->mon_type == OVSDB_UPDATE_MODIFY ? "OVSDB_UPDATE_MODIFY" : "OVSDB_UPDATE_NEW");
+
             /* A NULL APN is valid */
-            LOGI("%s: APN[%s]", __func__, lte_conf->apn);
-            rc = strncmp(old_lte_conf->apn, lte_conf->apn, sizeof(lte_conf->apn));
+            LOGI("%s: old APN[%s], new APN[%s]", __func__, conf->apn, lte_conf->apn);
+            rc = strncmp(conf->apn, lte_conf->apn, sizeof(lte_conf->apn));
             if (rc)
             {
-                LOGI("%s: new APN[%s]", __func__, lte_conf->apn);
-                osn_lte_set_pdp_context_params(PDP_CTXT_APN, lte_conf->apn);
+                LOGI("%s: setting new APN[%s]", __func__, lte_conf->apn);
+                if (lte_conf->apn[0] == 0)
+                {
+                    LOGI("%s: APN Empty/NULL", __func__);
+                    MEMZERO(conf->apn);
+                }
+                else
+                {
+                    LOGI("%s: current APN[%s], new APN[%s]", __func__, conf->apn, lte_conf->apn);
+                    STRSCPY(conf->apn, lte_conf->apn);
+                }
+
+                osn_lte_set_pdp_context_params(PDP_CTXT_APN, conf->apn);
             }
 
             if (old_lte_conf->active_simcard_slot != lte_conf->active_simcard_slot)
@@ -1047,7 +1051,7 @@ ltem_handle_nm_update_wwan0(struct schema_Wifi_Inet_State *old_inet_state,
     ltem_mgr_t *mgr = ltem_get_mgr();
     int res;
 
-    LOGD("%s: old: if_name=%s, enabled=%d inet_addr=%s, new: if_name=%s, enabled=%d, inet_addr=%s",
+    LOGI("%s: old: if_name=%s, enabled=%d inet_addr=%s, new: if_name=%s, enabled=%d, inet_addr=%s",
          __func__, old_inet_state->if_name, old_inet_state->enabled, old_inet_state->inet_addr, inet_state->if_name, inet_state->enabled, inet_state->inet_addr);
     if (!mgr->lte_route)
     {
@@ -1062,16 +1066,16 @@ ltem_handle_nm_update_wwan0(struct schema_Wifi_Inet_State *old_inet_state,
     {
         if (mgr->lte_state != LTEM_LTE_STATE_DOWN)
         {
-            ltem_set_lte_state(LTEM_LTE_STATE_DOWN);
             LOGI("%s: wwan0 IP address[%s], setting LTEM_LTE_STATE_DOWN", __func__, inet_state->inet_addr);
+            ltem_set_lte_state(LTEM_LTE_STATE_DOWN);
         }
     }
     else
     {
         if (mgr->lte_state != LTEM_LTE_STATE_UP)
         {
-            ltem_set_lte_state(LTEM_LTE_STATE_UP);
             LOGI("%s: wwan0 IP address[%s], setting LTEM_LTE_STATE_UP", __func__, inet_state->inet_addr);
+            ltem_set_lte_state(LTEM_LTE_STATE_UP);
         }
     }
 }
@@ -1100,7 +1104,11 @@ callback_Wifi_Inet_State(ovsdb_update_monitor_t *mon,
         case OVSDB_UPDATE_NEW:
         case OVSDB_UPDATE_MODIFY:
             rc = strncmp(inet_state->if_type, LTE_TYPE_NAME, strlen(inet_state->if_type));
-            if (!rc) ltem_handle_nm_update_wwan0(old_inet_state, inet_state);
+            if (!rc)
+            {
+                LOGI("%s: OVSDB_UPDATE_MODIFY", __func__);
+                ltem_handle_nm_update_wwan0(old_inet_state, inet_state);
+            }
 
             break;
     }
@@ -1273,7 +1281,7 @@ ltem_ovsdb_update_wifi_route_config_metric(ltem_mgr_t *mgr, char *if_name, uint3
     }
 
 
-    LOGD("%s: update %s Wifi_Route_Config settings: subnet[%s], netmask[%s] gw[%s], metric[%d]",
+    LOGI("%s: update %s Wifi_Route_Config settings: subnet[%s], netmask[%s] gw[%s], metric[%d]",
          __func__, route_config.if_name, route_config.dest_addr, route_config.dest_mask, route_config.gateway, metric);
 
     route_config._partial_update = true;

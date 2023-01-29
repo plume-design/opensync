@@ -617,3 +617,16 @@ int ds_str_cmp(const void *a, const void *b)
 {
     return strcmp((const char *)a, (const char *)b);
 }
+
+/**
+ * Unsigned 32-bit integer comparator
+ */
+int
+ds_u32_cmp(const void *_a, const void *_b)
+{
+    const uint32_t *a = _a;
+    const uint32_t *b = _b;
+    if (*a < *b) return -1;
+    if (*a > *b) return 1;
+    return 0;
+}

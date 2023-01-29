@@ -298,6 +298,7 @@ typedef enum
     STS_REPORT_DEVICE,
     STS_REPORT_RSSI,
     STS_REPORT_CLIENT_AUTH_FAILS,
+    STS_REPORT_RADIUS,
     STS_REPORT_MAX,
     STS_REPORT_ERROR = STS_REPORT_MAX
 } sm_report_type_t;
@@ -369,6 +370,53 @@ void sm_client_auth_fails_report_stop(
     const sm_stats_request_t       *request);
 void sm_client_auth_fails_report(
     const sm_client_auth_fails_report_t* report);
+
+bool sm_client_auth_fails_bss_priv_init(void **priv,
+            const char *radio_name, const char *vif_name);
+void sm_client_auth_fails_bss_priv_free(void *priv);
+bool sm_client_auth_fails_collect_data(void *priv);
+bool sm_client_auth_fails_implementation_not_null(void);
+
+sm_client_auth_fails_client_t * sm_client_auth_fails_get_client(
+    const char *bss, const char *mac);
+
+/******************************************************************************
+ *  RADIUS STATS definitions
+ *****************************************************************************/
+
+/* Defined in dpp_radius_stats.h */
+typedef dpp_radius_stats_rec_t sm_radius_stats_t;
+
+typedef struct {
+    sm_radius_stats_t **data;
+    size_t count;
+} sm_radius_stats_report_t;
+
+void sm_radius_stats_report_start(
+    const sm_stats_request_t       *request);
+void sm_radius_stats_report_update(
+    const sm_stats_request_t       *request);
+void sm_radius_stats_report_stop(
+    const sm_stats_request_t       *request);
+void sm_radius_stats_report(
+    const sm_radius_stats_report_t* report);
+
+/* Implementation layer shall implement sm_radius_collect_data */
+unsigned int sm_radius_collect_data (const char *vif_name);
+
+/* The implementation of sm_radius_collect_data shall call sm_radius_new_stats_object
+ * to obtain an instance of the object it must populate (with the exception of the
+ * metadata, like vif_name and vif_role).
+ */
+sm_radius_stats_t* sm_radius_new_stats_object (const char *vifname);
+
+/* If data is successfully obtained it shall the implementation shall call
+ * sm_radius_add_stats_object, if failure occurrs after new stats object was
+ * acquired, it shall call sm_radius_del_stats_object, passing the received
+ * stats object pointer to any of the two.
+ */
+void sm_radius_del_stats_object (sm_radius_stats_t *stats);
+void sm_radius_add_stats_object (sm_radius_stats_t *stats);
 
 /******************************************************************************
  *  BACKEND support definitions

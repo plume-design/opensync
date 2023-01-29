@@ -58,7 +58,7 @@ Testcase procedure:
     - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
                  Run: ./um/um_set_upgrade_dl_timer_abort.sh <FW-PATH> <FW-URL> <UPGRADE_DL_TIMER>
 Script usage example:
-   ./um/um_set_upgrade_dl_timer_abort.sh /tmp/pfirmware http://192.168.4.1:8000/fut-base/resource/um/${um_image_name_default}.img 5
+   ./um/um_set_upgrade_dl_timer_abort.sh /tmp/pfirmware http://fut.opensync.io:8000/fut-base/resource/um/${um_image_name_default}.img 5
 usage_string
 }
 if [ -n "${1}" ]; then

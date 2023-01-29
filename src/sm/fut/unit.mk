@@ -33,6 +33,3 @@ UNIT_DIR := shell/tests/sm
 
 UNIT_FILE := sm_setup.sh
 UNIT_FILE += sm_cleanup.sh
-UNIT_FILE += sm_inspect_leaf_report.sh
-UNIT_FILE += sm_inspect_neighbor_report.sh
-UNIT_FILE += sm_inspect_survey_report.sh

@@ -65,6 +65,22 @@ get_managers_script()
 
 ###############################################################################
 # DESCRIPTION:
+#   Function checks if the device is running in Native Linux Bridge configuration.
+# INPUT PARAMETER(S):
+#   None.
+# RETURNS:
+#   0 - CONFIG_TARGET_USE_NATIVE_BRIDGE is enabled
+#   1 - CONFIG_TARGET_USE_NATIVE_BRIDGE is disabled or not set
+# USAGE EXAMPLE(S):
+#   linux_native_bridge_enabled
+###############################################################################
+linux_native_bridge_enabled()
+{
+    check_kconfig_option "CONFIG_TARGET_USE_NATIVE_BRIDGE" "y"
+}
+
+###############################################################################
+# DESCRIPTION:
 #   Function returns filename of the script manipulating openvswitch.
 # INPUT PARAMETER(S):
 #   None.
@@ -198,6 +214,29 @@ get_radio_mac_from_ovsdb()
     # No logging, this function echoes the requested value to caller!
     ${OVSH} s Wifi_Radio_State -w ${where_clause} mac -r
     return $?
+
+}
+
+###############################################################################
+# DESCRIPTION:
+#   Function validate the format of MAC address and
+#   returns 0 (true) it MAC is valid or 1 (false) if not.
+# INPUT PARAMETER(S):
+#   $1 MAC address
+# RETURNS:
+#   O (true) or 1 (false)
+# USAGE EXAMPLES(S):
+#   validate_mac "e8:9f:80:ad:68:73"
+###############################################################################
+validate_mac()
+{
+    local NARGS=1
+    [ $# -ne ${NARGS} ] &&
+        raise "unit_lib:validate_mac requires ${NARGS} input argument(s), $# given" -arg
+    mac_address=$1
+
+    # No logging, this function echoes the requested value to caller!
+    echo "$mac_address" | grep -Eq '^([a-fA-F0-9]{2}:){5}[a-fA-F0-9]{2}$' && return 0 || return 1
 }
 
 ###############################################################################
@@ -287,6 +326,40 @@ start_udhcpc()
     fi
 
     return 0
+}
+
+###############################################################################
+# DESCRIPTION:
+#   Function checks if device supports WPA3
+# INPUT PARAMETER(S):
+#   None.
+# RETURNS:
+#   1   Always.
+# NOTE:
+#   This is a stub function. Provide function for each device in overrides.
+#   Defaults to 1 WPA3 incompatible
+# USAGE EXAMPLE(S):
+#   check_wpa3_compatibility
+###############################################################################
+check_wpa3_compatibility()
+{
+    log -deb "unit_lib:check_wpa3_compatibility - This is STUB function, provide override for device. Default to WPA3 incompatible"
+    return 1
+}
+
+###############################################################################
+# DESCRIPTION:
+#   Function will shows the  bridge information and its attached ports.
+# INPUT PARAMETER(S):
+#   None
+# RETURNS:
+#   See DESCRIPTION.
+# USAGE EXAMPLES(S):
+#   show_bridge_details
+###############################################################################
+show_bridge_details()
+{
+    linux_native_bridge_enabled && brctl show || ovs-vsctl show
 }
 
 ####################### UTILITY SECTION - STOP ################################
@@ -493,6 +566,242 @@ stop_healthcheck()
 
 ####################### OpenSwitch SECTION - START ############################
 
+
+####################### Native Linux Bridge SECTION - START ############################
+
+###############################################################################
+# DESCRIPTION:
+#   Function starts ovsdb-server when running in linux native bridge configuration.
+#   First it checks if ovsdb-server is already running. If running returns 0.
+#   Otherwise starts ovsdb-server and checks if started and
+#   raises exception if it did not start.
+#   Checks if pidof of ovsdb-server is running by getting its PID.
+#   Raises exception if ovsdb-server is not started.
+# INPUT PARAMETER(S):
+#   None.
+# RETURNS:
+#   0   If ovsdb-server is running.
+#   See DESCRIPTION.
+# USAGE EXAMPLE(S):
+#   nb_start_ovsdb_server
+###############################################################################
+nb_start_ovsdb_server()
+{
+    log -deb "unit_lib:nb_start_ovsdb_server - Starting Open ovsdb-server"
+
+    # shellcheck disable=SC2034,2091
+    ovs_run=$($(get_process_cmd)  | grep -v "grep" | grep "ovsdb-server" | wc -l)
+    if [ "${ovs_run}" -ne 0 ]; then
+        log -deb "unit_lib:nb_start_ovsdb_server - ovsdb-server already running"
+        return 0
+    fi
+
+    OPENVSWITCH_SCRIPT=$(get_openvswitch_script)
+    ${OPENVSWITCH_SCRIPT} start ||
+        raise "FAIL: Issue during ovsdb-server start" -l "unit_lib:nb_start_ovsdb_server" -ds
+
+    wait_for_function_response 0 "pidof ovsdb-server" &&
+        log -deb "unit_lib:nb_start_ovsdb_server - ovsdb-server running - Success" ||
+        raise "FAIL: Could not start ovsdb-server" -l "unit_lib:nb_start_ovsdb_server" -ds
+
+    sleep 1
+    return 0
+}
+
+###############################################################################
+# DESCRIPTION:
+#   Function creates the configuration for adding port to the bridge.  This
+#   function is used as a helper function to add port to the bridge.
+# INPUT PARAMETER(S):
+#   $1  Bridge name (string, required)
+#   $2  Port name (string, required)
+# RETURNS:
+#   NONE
+# USAGE EXAMPLE(S):
+#   nb_gen_add_port_to_br_config br-home br-home.dns
+###############################################################################
+nb_gen_add_port_to_br_config()
+{
+    bridge=$1
+    port=$2
+    cat <<EOF
+    [
+        "Open_vSwitch",
+        {
+            "op": "insert",
+            "table": "Interface",
+            "row": {
+                "name": "${port}",
+                "type": "internal",
+                "ofport_request": 401
+            },
+            "uuid-name": "iface"
+        },
+        {
+            "op": "insert",
+            "table": "Port",
+            "row": {
+                "name": "${port}",
+                "interfaces": ["set", [["named-uuid","iface"]]]
+            },
+            "uuid-name": "port"
+        },
+        {
+            "op": "mutate",
+            "table": "Bridge",
+            "where": [["name", "==", "${bridge}" ]],
+            "mutations": [["ports", "insert", ["set", [["named-uuid", "port"]]]]]
+        }
+    ]
+EOF
+}
+
+###############################################################################
+# DESCRIPTION:
+#   Function adds port with provided name to native bridge.
+#   Procedure:
+#       - check if native bridge exists
+#       - check if port with provided name already exists on bridge
+#       - if port does not exist add port
+#   Raises an exception if bridge does not exists, port already in bridge ...
+#   Raises an exception if
+#       - bridge does not exist,
+#       - port cannot be added.
+# INPUT PARAMETER(S):
+#   $1  Bridge name (string, required)
+#   $2  Port name (string, required)
+# RETURNS:
+#   0   On success.
+#   See DESCRIPTION.
+# USAGE EXAMPLE(S):
+#   add_bridge_port_native br-home patch-h2w
+###############################################################################
+nb_add_bridge_port()
+{
+    local NARGS=2
+    [ $# -ne ${NARGS} ] &&
+        raise "unit_lib:nb_add_bridge_port requires ${NARGS} input argument(s), $# given" -arg
+    bridge=$1
+    port_name=$2
+
+    log "unit_lib:nb_add_bridge_port - checking if '${bridge}' bridge is configured"
+    ${OVSH} s Bridge name | grep -w "${bridge}" &&
+        log -deb "unit_lib:nb_add_bridge_port - ${bridge} bridge is configured - Success" ||
+        raise "FAIL: Bridge '${bridge}' does not exist" -l "unit_lib:nb_add_bridge_port" -ds
+
+    log "unit_lib:nb_add_bridge_port - checking if port '${port_name}' is configured to '${bridge}' bridge"
+    brctl show "${bridge}" | grep -w "${port_name}"
+    if [ $? = 0 ]; then
+        log -deb "unit_lib:nb_add_bridge_port - Port '${port_name}' already in bridge '${bridge}'"
+        return 0
+    fi
+
+    log "unit_lib:nb_add_bridge_port - adding '${port_name}' to Port, Interface and Bridge table"
+    nb_gen_add_port_to_br_config "${bridge}" "${port_name}" | xargs -0 ovsdb-client transact &&
+        log -deb "unit_lib:nb_add_bridge_port - adding '${port_name}' to Port, Interface and Bridge table - Success" ||
+        raise "FAIL: Could not add port '${port_name}' to bridge '${bridge}'" -l "unit_lib:nb_add_bridge_port" -ds
+
+    check_field=$(${OVSH} s Wifi_Inet_Config -w if_name=="$port_name")
+    if [ -z "$check_field" ]; then
+        insert_ovsdb_entry Wifi_Inet_Config -w if_name "$port_name" -i if_name "$port_name" \
+            -i if_type "tap" \
+            -i enabled "true" \
+            -i network "true" \
+            -i collect_stats "false" \
+            -i no_flood "true" &&
+                log -deb "unit_lib:nb_add_bridge_port - Insert entry for $port_name interface in Wifi_Inet_Config - Success" ||
+                raise "FAIL: Insert was not done for the entry of $port_name interface in Wifi_Inet_Config " -l "unit_lib:nb_add_bridge_port" -ds
+    else
+        log -deb "unit_lib:nb_add_bridge_port - Entry for $port_name in Wifi_Inet_Config already exists, skipping..."
+    fi
+
+    sleep 5
+
+    check_if_port_in_bridge "${port_name}" "${bridge}"
+    if [ $? = 0 ]; then
+        log -deb "unit_lib:nb_add_bridge_port - adding port $port_name to $bridge - Success"
+    else
+        raise "FAIL: Could not add port '${port_name}' to bridge '${bridge_name}'" -l unit_lib:nb_add_bridge_port -ds
+    fi
+    return 0
+}
+
+###############################################################################
+# DESCRIPTION:
+#   Function removes port from native bridge
+# INPUT PARAMETER(S):
+#   $1  Bridge name (string, required)
+#   $2  Port name (string, required)
+# RETURNS:
+#   0 on success.
+#   1 on failure
+# USAGE EXAMPLE(S):
+#   nb_remove_port_from_bridge br-wan br-wan.tdns
+#   nb_remove_port_from_bridge br-wan br-wan.thttp
+###############################################################################
+nb_remove_port_from_bridge()
+{
+    local NARGS=2
+    [ $# -ne ${NARGS} ] &&
+        raise "unit_lib:nb_remove_port_from_bridge requires ${NARGS} input argument(s)" -arg
+
+    br_name=$1
+    port_name=$2
+
+    check_if_port_in_bridge "$port_name" "$br_name"
+    if [ $? != 0 ]; then
+        log -wrn "unit_lib:nb_remove_port_from_bridge - Port '$port_name' does not exist in bridge $br_name"
+        return 0
+    fi
+
+    log -deb "unit_lib:nb_remove_port_from_bridge - Port $port_name exists in bridge $br_name - Removing"
+    port_uuid=$(${OVSH} s Port -w name=="${port_name}" -c -r _uuid)
+    log -deb "unit_lib:nb_remove_port_from_bridge - Port_uuid $port_uuid"
+
+    ${OVSH} u Bridge -w name=="${br_name}" ports:del:'["set", ['"${port_uuid}"']]'
+    if [ $? = 0 ]; then
+        log -deb "unit_lib:nb_remove_port_from_bridge - ovsdb-client delete $port_name from $br_name - Success"
+        return 0
+    else
+        log -deb "unit_lib:nb_remove_port_from_bridge - ovsdb-client delete $port_name from $br_name - Failed"
+        return 1
+    fi
+}
+
+###############################################################################
+# DESCRIPTION:
+#   Functions sets interface option when device is in Native Bridge Configuration
+#   Raises an exception on failure.
+# INPUT PARAMETER(S):
+#   $1  Interface name (string, required)
+#   $2  Option (string, required)
+#   $3  Value (string, required)
+# RETURNS:
+#   None.
+#   See DESCRIPTION.
+# USAGE EXAMPLE(S):
+#   nb_set_interface_option br-home.tdns type internal
+#   nb_set_interface_option br-home.tdns ofport_request 3001
+###############################################################################
+nb_set_interface_option()
+{
+    local NARGS=3
+    [ $# -ne ${NARGS} ] &&
+        raise "unit_lib:nb_set_interface_option requires ${NARGS} input argument(s), $# given" -arg
+    if_name=$1
+    option=$2
+    value=$3
+
+    log "unit_lib:nb_set_interface_option: updating Interface ${if_name} table with $option = ${value}"
+
+    update_ovsdb_entry Interface -w name "$if_name" -u "$option" "$value" &&
+        log "unit_lib:nb_set_interface_option: updating Interface ${if_name} table with $option = ${value} - Success" ||
+        raise "FAIL: nb_set_interface_option - Failed to update Interface table with ${option} = ${value}" -l "unit_lib:nb_set_interface_option" -oe
+
+}
+
+####################### Native Linux Bridge SECTION - END ############################
+
 ###############################################################################
 # DESCRIPTION:
 #   Function starts openvswitch and ovsdb-server.
@@ -508,32 +817,58 @@ stop_healthcheck()
 #   0   If openvswitch initially started.
 #   See DESCRIPTION.
 # USAGE EXAMPLE(S):
-#   start_openswitch
+#   ovs_start_openswitch
 ###############################################################################
-start_openswitch()
+ovs_start_openswitch()
 {
-    log -deb "unit_lib:start_openswitch - Starting Open vSwitch"
+    log -deb "unit_lib:ovs_start_openswitch - Starting Open vSwitch"
 
     # shellcheck disable=SC2034,2091
     ovs_run=$($(get_process_cmd)  | grep -v "grep" | grep "ovs-vswitchd")
     if [ "$?" -eq 0 ]; then
-        log -deb "unit_lib:start_openswitch - Open vSwitch already running"
+        log -deb "unit_lib:ovs_start_openswitch - Open vSwitch already running"
         return 0
     fi
 
     OPENVSWITCH_SCRIPT=$(get_openvswitch_script)
     ${OPENVSWITCH_SCRIPT} start ||
-        raise "FAIL: Issue during Open vSwitch start" -l "unit_lib:start_openswitch" -ds
+        raise "FAIL: Issue during Open vSwitch start" -l "unit_lib:ovs_start_openswitch" -ds
 
     wait_for_function_response 0 "pidof ovs-vswitchd" &&
-        log -deb "unit_lib:start_openswitch - ovs-vswitchd running - Success" ||
-        raise "FAIL: Could not start ovs-vswitchd" -l "unit_lib:start_openswitch" -ds
+        log -deb "unit_lib:ovs_start_openswitch - ovs-vswitchd running - Success" ||
+        raise "FAIL: Could not start ovs-vswitchd" -l "unit_lib:ovs_start_openswitch" -ds
 
     wait_for_function_response 0 "pidof ovsdb-server" &&
-        log -deb "unit_lib:start_openswitch - ovsdb-server running - Success" ||
-        raise "FAIL: Could not start ovsdb-server" -l "unit_lib:start_openswitch" -ds
+        log -deb "unit_lib:ovs_start_openswitch - ovsdb-server running - Success" ||
+        raise "FAIL: Could not start ovsdb-server" -l "unit_lib:ovs_start_openswitch" -ds
 
     sleep 1
+
+    return 0
+}
+
+###############################################################################
+# DESCRIPTION:
+#   Function starts openvswitch and ovsdb-server if running in ovs bridge mode
+#   Function starts ovsdb-server if running in native bridge mode
+#   raises exception if it fails to start
+# INPUT PARAMETER(S):
+#   None.
+# RETURNS:
+#   0   If openvswitch initially started.
+#   See DESCRIPTION.
+# USAGE EXAMPLE(S):
+#   start_openswitch
+###############################################################################
+start_openswitch()
+{
+    log -deb "unit_lib:start_openswitch - Starting Open Switch"
+
+    if linux_native_bridge_enabled; then
+        nb_start_ovsdb_server
+    else
+        ovs_start_openswitch
+    fi
 
     return 0
 }
@@ -1393,7 +1728,7 @@ insert_ovsdb_entry()
         shift
         case "$option" in
             -i)
-                echo ${2} | grep -e "[ \"]" -e '\\' &&
+                echo ${2} | grep -e "[ \"]" -e '\\' -e '(' &&
                     insert_string="${insert_string} "${1}"${insert_method}"$(single_quote_arg "${2}") ||
                     insert_string="${insert_string} "${1}"${insert_method}"${2}
                 insert_method=":="
@@ -1552,7 +1887,7 @@ wait_ovsdb_entry()
     if [ "$wait_entry_final_ec" -eq "$expected_ec" ]; then
         log -deb "unit_lib:wait_ovsdb_entry - $wait_entry_equal_command - Success"
         # shellcheck disable=SC2086
-        ${OVSH} s "$ovsdb_table" $conditions_string || log -err "unit_lib:wait_ovsdb_entry: Failed to select entry: ${OVSH} s $ovsdb_table $conditions_string"
+        eval "${OVSH} s ${ovsdb_table} ${conditions_string}" || log -err "unit_lib:wait_ovsdb_entry: Failed to select entry: ${OVSH} s $ovsdb_table $conditions_string"
         return 0
     else
         log -deb "unit_lib:wait_ovsdb_entry - FAIL: Table $ovsdb_table"
@@ -2071,21 +2406,21 @@ add_ovs_bridge()
     NARGS_MAX=3
     [ $# -ge ${NARGS_MIN} ] && [ $# -le ${NARGS_MAX} ] ||
         raise "unit_lib:add_ovs_bridge requires ${NARGS_MIN}-${NARGS_MAX} input arguments" -arg
-    bridge_name=$1
+    bridge=$1
     hwaddr=$2
-    bridge_mtu=$3
+    mtu=$3
 
-    if [ -z "${bridge_name}" ]; then
-        raise "FAIL: First input argument 'bridge_name' is empty" -l "unit_lib:add_ovs_bridge" -arg
+    if [ -z "${bridge}" ]; then
+        raise "FAIL: First input argument 'bridge' is empty" -l "unit_lib:add_ovs_bridge" -arg
     fi
-    log -deb "unit_lib:add_ovs_bridge - Add bridge '${bridge_name}'"
-    ovs-vsctl br-exists "${bridge_name}"
+    log -deb "unit_lib:add_ovs_bridge - Add bridge '${bridge}'"
+    ovs-vsctl br-exists "${bridge}"
     if [ $? = 2 ]; then
-        ovs-vsctl add-br "${bridge_name}" &&
-            log -deb "unit_lib:add_ovs_bridge - ovs-vsctl add-br ${bridge_name} - Success" ||
-            raise "FAIL: Could not add bridge '${bridge_name}' to ovs-vsctl" -l "unit_lib:add_ovs_bridge" -ds
+        ovs-vsctl add-br "${bridge}" &&
+            log -deb "unit_lib:add_ovs_bridge - ovs-vsctl add-br ${bridge} - Success" ||
+            raise "FAIL: Could not add bridge '${bridge}' to ovs-vsctl" -l "unit_lib:add_ovs_bridge" -ds
     else
-        log -deb "unit_lib:add_ovs_bridge - Bridge '${bridge_name}' already exists"
+        log -deb "unit_lib:add_ovs_bridge - Bridge '${bridge}' already exists"
     fi
 
     # Set hwaddr if provided
@@ -2093,19 +2428,19 @@ add_ovs_bridge()
         return 0
     else
         log -deb "unit_lib:add_ovs_bridge - Set bridge hwaddr to '${hwaddr}'"
-        ovs-vsctl set bridge "${bridge_name}" other-config:hwaddr="${hwaddr}" &&
+        ovs-vsctl set bridge "${bridge}" other-config:hwaddr="${hwaddr}" &&
             log -deb "unit_lib:add_ovs_bridge - Set bridge hwaddr - Success" ||
-            raise "FAIL: Could not set hwaddr to bridge '${bridge_name}'" -l "unit_lib:add_ovs_bridge" -ds
+            raise "FAIL: Could not set hwaddr to bridge '${bridge}'" -l "unit_lib:add_ovs_bridge" -ds
     fi
 
     # Set mtu if provided
-    if [ -z "${bridge_mtu}" ]; then
+    if [ -z "${mtu}" ]; then
         return 0
     else
-        log -deb "unit_lib:add_ovs_bridge - Set bridge mtu ${bridge_mtu}"
-        ovs-vsctl set int "${bridge_name}" mtu_request="${bridge_mtu}" &&
+        log -deb "unit_lib:add_ovs_bridge - Set bridge mtu ${mtu}"
+        ovs-vsctl set int "${bridge}" mtu_request="${mtu}" &&
             log -deb "unit_lib:add_ovs_bridge - Set bridge MTU - Success" ||
-            raise "FAIL: Could not set MTU to bridge '${bridge_name}'" -l "unit_lib:add_ovs_bridge" -ds
+            raise "FAIL: Could not set MTU to bridge '${bridge}'" -l "unit_lib:add_ovs_bridge" -ds
     fi
 
     return 0
@@ -2137,32 +2472,77 @@ add_interface_to_bridge()
     local NARGS=2
     [ $# -ne ${NARGS} ] &&
         raise "unit_lib:add_interface_to_bridge requires ${NARGS} input argument(s), $# given" -arg
-    br_name=$1
-    br_if_name=$2
+    bridge=$1
+    if_name=$2
 
-    log "unit_lib:add_interface_to_bridge - Adding $br_name - $br_if_name"
+    log "unit_lib:add_interface_to_bridge - Adding $bridge - $if_name"
 
-    ovs-vsctl br-exists "$br_name"
+    ovs-vsctl br-exists "$bridge"
     if [ "$?" = 2 ]; then
-        ovs-vsctl add-br "$br_name" &&
-            log -deb "unit_lib:add_interface_to_bridge - ovs-vsctl add-br $br_name - Success" ||
-            raise "FAIL: ovs-vsctl add-br $br_name" -l "unit_lib:add_interface_to_bridge" -ds
+        ovs-vsctl add-br "$bridge" &&
+            log -deb "unit_lib:add_interface_to_bridge - ovs-vsctl add-br $bridge - Success" ||
+            raise "FAIL: ovs-vsctl add-br $bridge" -l "unit_lib:add_interface_to_bridge" -ds
     else
-        log -deb "unit_lib:add_interface_to_bridge - Bridge '$br_name' already exists"
+        log -deb "unit_lib:add_interface_to_bridge - Bridge '$bridge' already exists"
         return 0
     fi
 
-    br_mac=$(get_radio_mac_from_system "$br_if_name") &&
-        log -deb "unit_lib:add_interface_to_bridge - get_radio_mac_from_system $br_if_name - Success" ||
-        raise "FAIL: Could not get interface $br_if_name MAC address" -l "unit_lib:add_interface_to_bridge" -ds
+    mac=$(get_radio_mac_from_system "$if_name") &&
+        log -deb "unit_lib:add_interface_to_bridge - get_radio_mac_from_system $if_name - Success" ||
+        raise "FAIL: Could not get interface $if_name MAC address" -l "unit_lib:add_interface_to_bridge" -ds
 
-    ovs-vsctl set bridge "$br_name" other-config:hwaddr="$br_mac" &&
-        log -deb "unit_lib:add_interface_to_bridge - ovs-vsctl set bridge $br_name other-config:hwaddr=$br_mac - Success" ||
-        raise "FAIL: Could not set to bridge $br_name other-config:hwaddr=$br_mac to ovs-vsctl" -l "unit_lib:add_interface_to_bridge" -ds
+    ovs-vsctl set bridge "$bridge" other-config:hwaddr="$mac" &&
+        log -deb "unit_lib:add_interface_to_bridge - ovs-vsctl set bridge $bridge other-config:hwaddr=$mac - Success" ||
+        raise "FAIL: Could not set to bridge $bridge other-config:hwaddr=$mac to ovs-vsctl" -l "unit_lib:add_interface_to_bridge" -ds
 
-    ovs-vsctl set int "$br_name" mtu_request=1500 &&
-        log -deb "unit_lib:add_interface_to_bridge - ovs-vsctl set int $br_name mtu_request=1500 - Success" ||
-        raise "FAIL: ovs-vsctl set int $br_name mtu_request=1500 - Could not set to bridge '$br_name'" -l "unit_lib:add_interface_to_bridge" -ds
+    ovs-vsctl set int "$bridge" mtu_request=1500 &&
+        log -deb "unit_lib:add_interface_to_bridge - ovs-vsctl set int $bridge mtu_request=1500 - Success" ||
+        raise "FAIL: ovs-vsctl set int $bridge mtu_request=1500 - Could not set to bridge '$bridge'" -l "unit_lib:add_interface_to_bridge" -ds
+}
+
+###############################################################################
+# DESCRIPTION:
+#   Function adds port with provided name to ovs bridge.
+#   Function uses ovs-vsctl command, different from native Linux bridge.
+#   Procedure:
+#       - check if ovs bridge exists
+#       - check if port with provided name already exists on bridge
+#       - if port does not exist add port
+#   Raises an exception if bridge does not exists, port already in bridge ...
+#   Raises an exception if
+#       - bridge does not exist,
+#       - port cannot be added.
+# INPUT PARAMETER(S):
+#   $1  Bridge name (string, required)
+#   $2  Port name (string, required)
+# RETURNS:
+#   0   On success.
+#   See DESCRIPTION.
+# USAGE EXAMPLE(S):
+#   add_bridge_port br-home patch-h2w
+###############################################################################
+ovs_add_bridge_port()
+{
+    local NARGS=2
+    [ $# -ne ${NARGS} ] &&
+        raise "unit_lib:ovs_add_bridge_port requires ${NARGS} input argument(s), $# given" -arg
+    bridge=$1
+    port_name=$2
+
+    log "unit_lib:ovs_add_bridge_port - Adding port '${port_name}' to bridge '${bridge}'"
+    ovs-vsctl br-exists "${bridge}"
+    if [ $? = 2 ]; then
+        raise "FAIL: Bridge '${bridge}' does not exist" -l "unit_lib:ovs_add_bridge_port" -ds
+    fi
+    ovs-vsctl list-ports "${bridge}" | grep -wF "${port_name}"
+    if [ $? = 0 ]; then
+        log -deb "unit_lib:ovs_add_bridge_port - Port '${port_name}' already in bridge '${bridge}'"
+        return 0
+    else
+        ovs-vsctl add-port "${bridge}" "${port_name}" &&
+            log -deb "unit_lib:ovs_add_bridge_port - ovs-vsctl add-port ${bridge} ${port_name} - Success" ||
+            raise "FAIL: Could not add port '${port_name}' to bridge '${bridge}'" -l unit_lib:ovs_add_bridge_port -ds
+    fi
 }
 
 ###############################################################################
@@ -2194,20 +2574,13 @@ add_bridge_port()
     bridge_name=$1
     port_name=$2
 
-    log "unit_lib:add_bridge_port - Adding port '${port_name}' to bridge '${bridge_name}'"
-    ovs-vsctl br-exists "${bridge_name}"
-    if [ $? = 2 ]; then
-        raise "FAIL: Bridge '${bridge_name}' does not exist" -l "unit_lib:add_bridge_port" -ds
-    fi
-    ovs-vsctl list-ports "${bridge_name}" | grep -wF "${port_name}"
-    if [ $? = 0 ]; then
-        log -deb "unit_lib:add_bridge_port - Port '${port_name}' already in bridge '${bridge_name}'"
-        return 0
+    if linux_native_bridge_enabled; then
+        nb_add_bridge_port "${bridge_name}" "${port_name}"
     else
-        ovs-vsctl add-port "${bridge_name}" "${port_name}" &&
-            log -deb "unit_lib:add_bridge_port - ovs-vsctl add-port ${bridge_name} ${port_name} - Success" ||
-            raise "FAIL: Could not add port '${port_name}' to bridge '${bridge_name}'" -l unit_lib:add_bridge_port -ds
+        ovs_add_bridge_port "${bridge_name}" "${port_name}"
     fi
+
+    return 0
 }
 
 ###############################################################################
@@ -2229,6 +2602,52 @@ add_bridge_port()
 #   0   On success.
 #   See DESCRIPTION.
 # USAGE EXAMPLE(S):
+#   ovs_remove_bridge_port br-home patch-h2w
+###############################################################################
+ovs_remove_bridge_port()
+{
+    local NARGS=2
+    [ $# -ne ${NARGS} ] &&
+        raise "unit_lib:ovs_remove_bridge_port requires ${NARGS} input argument(s), $# given" -arg
+    bridge=$1
+    port_name=$2
+
+    log "unit_lib:ovs_remove_bridge_port - Removing port '${port_name}' from bridge '${bridge}'"
+    ovs-vsctl br-exists "${bridge}"
+    if [ $? = 2 ]; then
+        raise "FAIL: Bridge '${bridge}' does not exist" -l "unit_lib:ovs_remove_bridge_port" -ds
+    fi
+    ovs-vsctl list-ports "${bridge}" || true
+    ovs-vsctl list-ports "${bridge}" | grep -wF "${port_name}"
+    if [ $? = 0 ]; then
+        log -deb "unit_lib:ovs_remove_bridge_port - Port '${port_name}' exists in bridge '${bridge}', removing."
+        ovs-vsctl del-port "${bridge}" "${port_name}" &&
+            log -deb "unit_lib:ovs_remove_bridge_port - ovs-vsctl del-port ${bridge} ${port_name} - Success" ||
+            raise "FAIL: Could not remove port '${port_name}' from bridge '${bridge}'" -l unit_lib:ovs_remove_bridge_port -ds
+    else
+        log -deb "unit_lib:ovs_remove_bridge_port - Port '${port_name}' does not exist in bridge '${bridge}', nothing to do."
+    fi
+    return 0
+}
+
+###############################################################################
+# DESCRIPTION:
+#   Function removes port with provided name from the network bridge.
+#   Procedure:
+#       - check if bridge exists
+#       - check if port with provided name exists on bridge
+#       - if port exist removed port
+#   Raises an exception if bridge does not exist
+#   Raises an exception if
+#       - bridge does not exist,
+#       - port cannot be removed.
+# INPUT PARAMETER(S):
+#   $1  Bridge name (string, required)
+#   $2  Port name (string, required)
+# RETURNS:
+#   0   On success.
+#   See DESCRIPTION.
+# USAGE EXAMPLE(S):
 #   remove_bridge_port br-home patch-h2w
 ###############################################################################
 remove_bridge_port()
@@ -2236,25 +2655,14 @@ remove_bridge_port()
     local NARGS=2
     [ $# -ne ${NARGS} ] &&
         raise "unit_lib:remove_bridge_port requires ${NARGS} input argument(s), $# given" -arg
-    bridge_name=$1
+    bridge=$1
     port_name=$2
 
-    log "unit_lib:remove_bridge_port - Removing port '${port_name}' from bridge '${bridge_name}'"
-    ovs-vsctl br-exists "${bridge_name}"
-    if [ $? = 2 ]; then
-        raise "FAIL: Bridge '${bridge_name}' does not exist" -l "unit_lib:remove_bridge_port" -ds
-    fi
-    ovs-vsctl list-ports "${bridge_name}" || true
-    ovs-vsctl list-ports "${bridge_name}" | grep -wF "${port_name}"
-    if [ $? = 0 ]; then
-        log -deb "unit_lib:remove_bridge_port - Port '${port_name}' exists in bridge '${bridge_name}', removing."
-        ovs-vsctl del-port "${bridge_name}" "${port_name}" &&
-            log -deb "unit_lib:remove_bridge_port - ovs-vsctl del-port ${bridge_name} ${port_name} - Success" ||
-            raise "FAIL: Could not remove port '${port_name}' from bridge '${bridge_name}'" -l unit_lib:remove_bridge_port -ds
+    if linux_native_bridge_enabled; then
+        nb_remove_port_from_bridge "${bridge}" "${port_name}"
     else
-        log -deb "unit_lib:remove_bridge_port - Port '${port_name}' does not exist in bridge '${bridge_name}', nothing to do."
+        ovs_remove_bridge_port "${bridge}" "${port_name}"
     fi
-    return 0
 }
 
 ###############################################################################
@@ -2275,17 +2683,52 @@ remove_bridge_interface()
     local NARGS=1
     [ $# -ne ${NARGS} ] &&
         raise "unit_lib:remove_bridge_interface requires ${NARGS} input argument(s), $# given" -arg
-    br_name=$1
+    bridge=$1
 
-    ovs-vsctl del-br "$br_name" &&
-        log -deb "unit_lib:remove_bridge_interface - ovs-vsctl del-br $br_name - Success" ||
-        raise "FAIL: Could not remove bridge '$br_name' from ovs-vsctl" -l "unit_lib:remove_bridge_interface" -ds
+    ovs-vsctl del-br "$bridge" &&
+        log -deb "unit_lib:remove_bridge_interface - ovs-vsctl del-br $bridge - Success" ||
+        raise "FAIL: Could not remove bridge '$bridge' from ovs-vsctl" -l "unit_lib:remove_bridge_interface" -ds
 }
 
 ###############################################################################
 # DESCRIPTION:
 #   Function removes port from bridge in ovs switch.
 #   Function uses ovs-vsctl command, different from native Linux bridge.
+#   Raises an exception if port cannot be deleted.
+# INPUT PARAMETER(S):
+#   $1  Bridge name (string, required)
+#   $2  Port name (string, required)
+# RETURNS:
+#   None.
+#   See DESCRIPTION.
+# USAGE EXAMPLE(S):
+#   ovs_remove_port_from_bridge br-lan br-lan.tdns
+#   ovs_remove_port_from_bridge br-lan br-lan.thttp
+###############################################################################
+ovs_remove_port_from_bridge()
+{
+    local NARGS=2
+    [ $# -ne ${NARGS} ] &&
+        raise "unit_lib:ovs_remove_port_from_bridge requires ${NARGS} input argument(s)" -arg
+    bridge=$1
+    port_name=$2
+
+    log -wrn "unit_lib:ovs_remove_port_from_bridge removing Port '$port_name' from bridge $bridge"
+
+    res=$(check_if_port_in_bridge "$port_name" "$bridge")
+    if [ "$res" = 0 ]; then
+        log -deb "unit_lib:ovs_remove_port_from_bridge - Port $port_name exists in bridge $bridge - Removing"
+        ovs-vsctl del-port "$bridge" "$port_name" &&
+            log -deb "unit_lib:ovs_remove_port_from_bridge - ovs-vsctl del-port $bridge $port_name - Success" ||
+            raise "Failed: ovs-vsctl del-port $bridge $port_name" -l "unit_lib:ovs_remove_port_from_bridge" -ds
+    else
+        log -wrn "unit_lib:ovs_remove_port_from_bridge - Port '$port_name' does not exist in bridge $bridge"
+    fi
+}
+
+###############################################################################
+# DESCRIPTION:
+#   Function removes port from network bridge.
 #   Raises an exception if port cannot be deleted.
 # INPUT PARAMETER(S):
 #   $1  Bridge name (string, required)
@@ -2302,17 +2745,15 @@ remove_port_from_bridge()
     local NARGS=2
     [ $# -ne ${NARGS} ] &&
         raise "unit_lib:remove_port_from_bridge requires ${NARGS} input argument(s)" -arg
-    br_name=$1
+    bridge=$1
     port_name=$2
 
-    res=$(check_if_port_in_bridge "$port_name" "$br_name")
-    if [ "$res" = 0 ]; then
-        log -deb "unit_lib:remove_port_from_bridge - Port $port_name exists in bridge $br_name - Removing..."
-        ovs-vsctl del-port "$br_name" "$port_name" &&
-            log -deb "unit_lib:remove_port_from_bridge - ovs-vsctl del-port $br_name $port_name - Success" ||
-            raise "Failed: ovs-vsctl del-port $br_name $port_name" -l "unit_lib:remove_port_from_bridge" -ds
+    log -wrn "unit_lib:remove_port_from_bridge removing Port '$port_name' from bridge $bridge"
+
+    if linux_native_bridge_enabled; then
+        nb_remove_port_from_bridge "$bridge" "$port_name"
     else
-        log -wrn "unit_lib:remove_port_from_bridge - Port '$port_name' does not exist in bridge $br_name"
+        ovs_remove_port_from_bridge "$bridge" "$port_name"
     fi
 }
 
@@ -2382,6 +2823,38 @@ set_ovs_vsctl_interface_option()
 
 ###############################################################################
 # DESCRIPTION:
+#   Function sets interface option.
+#   Raises an exception on failure.
+# INPUT PARAMETER(S):
+#   $1  Interface name (string, required)
+#   $2  Option (string, required)
+#   $3  Value (string, required)
+# RETURNS:
+#   None.
+#   See DESCRIPTION.
+# USAGE EXAMPLE(S):
+#   set_interface_option br-home.tdns type internal
+#   set_interface_option br-home.tdns ofport_request 3001
+###############################################################################
+set_interface_option()
+{
+    local NARGS=3
+    [ $# -ne ${NARGS} ] &&
+        raise "unit_lib:set_interface_option requires ${NARGS} input argument(s), $# given" -arg
+    if_name=$1
+    option=$2
+    value=$3
+
+    if linux_native_bridge_enabled; then
+        nb_set_interface_option "$if_name" "$option" "$value"
+    else
+        set_ovs_vsctl_interface_option "$if_name" "$option" "$value"
+    fi
+
+}
+
+###############################################################################
+# DESCRIPTION:
 #   Function checks if port is in bridge.
 #   Function uses ovs-vsctl command, different from native Linux bridge.
 # INPUT PARAMETER(S):
@@ -2399,14 +2872,18 @@ check_if_port_in_bridge()
     [ $# -ne ${NARGS} ] &&
         raise "unit_lib:check_if_port_in_bridge requires ${NARGS} input argument(s), $# given" -arg
     port_name=$1
-    br_name=$2
+    bridge=$2
 
-    ovs-vsctl list-ports "$br_name" | grep "$port_name"
+    if linux_native_bridge_enabled; then
+        brctl show ${bridge} | grep -wF "${port_name}"
+    else
+        ovs-vsctl list-ports "$bridge" | grep -wF "$port_name"
+    fi
     if [ "$?" = 0 ]; then
-        log -deb "unit_lib:check_if_port_in_bridge - Port '$port_name' exists on bridge '$br_name'"
+        log -deb "unit_lib:check_if_port_in_bridge - Port '$port_name' exists on bridge '$bridge'"
         return 0
     else
-        log -deb "unit_lib:check_if_port_in_bridge - Port '$port_name' does not exist on bridge '$br_name'"
+        log -deb "unit_lib:check_if_port_in_bridge - Port '$port_name' does not exist on bridge '$bridge'"
         return 1
     fi
 }
@@ -2441,10 +2918,10 @@ check_if_port_in_bridge()
 ###############################################################################
 connect_to_fut_cloud()
 {
-    target="192.168.200.1"
+    target="fut.opensync.io"
     port=65000
-    cert_dir="$FUT_TOPDIR/shell/tools/device/files"
-    ca_fname="fut_ca.pem"
+    server_cert_dir="${FUT_TOPDIR}/shell/tools/server/certs"
+    cert_dir="/var/certs"
     inactivity_probe=30000
 
     while [ -n "$1" ]; do
@@ -2463,10 +2940,6 @@ connect_to_fut_cloud()
                 cert_dir="${1}"
                 shift
                 ;;
-            -ca)
-                ca_fname="${1}"
-                shift
-                ;;
             -ip)
                 inactivity_probe="${1}000"
                 shift
@@ -2475,22 +2948,20 @@ connect_to_fut_cloud()
               ;;
         esac
     done
-
     log -deb "unit_lib:connect_to_fut_cloud - Configure certificates, check if file exists"
-    test -f "$cert_dir/$ca_fname" ||
-        raise "FAIL: File $cert_dir/$ca_fname not found" -l "unit_lib:connect_to_fut_cloud" -ds
-
-    update_ovsdb_entry SSL -u ca_cert "$cert_dir/$ca_fname"
-        log -deb "unit_lib:connect_to_fut_cloud - SSL ca_cert set to $cert_dir/$ca_fname - Success" ||
-        raise "FAIL: SSL ca_cert not set to $cert_dir/$ca_fname" -l "unit_lib:connect_to_fut_cloud" -ds
+    fut_server_cert_path="${server_cert_dir}/ca.pem"
+    log -deb "unit_lib:connect_to_fut_cloud - Setting ${fut_server_cert_path} to ${cert_dir}/ca.pem"
+    cat "${fut_server_cert_path}" > "${cert_dir}/ca.pem"  &&
+        log -deb "unit_lib:connect_to_fut_cloud - Certificate ca.pem loaded - Success" ||
+        raise "FAIL: Failed to load Certificate ca.pem" -l "unit_lib:connect_to_fut_cloud" -ds
 
     # Remove redirector, to not interfere with the flow
-    update_ovsdb_entry AWLAN_Node -u redirector_addr ''
+    update_ovsdb_entry AWLAN_Node -u redirector_addr '' &&
         log -deb "unit_lib:connect_to_fut_cloud - AWLAN_Node redirector_addr set to '' - Success" ||
         raise "FAIL: AWLAN_Node::redirector_addr not set to ''" -l "unit_lib:connect_to_fut_cloud" -ds
 
     # Remove manager_addr, to not interfere with the flow
-    update_ovsdb_entry AWLAN_Node -u manager_addr ''
+    update_ovsdb_entry AWLAN_Node -u manager_addr '' &&
         log -deb "unit_lib:connect_to_fut_cloud - AWLAN_Node manager_addr set to '' - Success" ||
         raise "FAIL: AWLAN_Node::manager_addr not set to ''" -l "unit_lib:connect_to_fut_cloud" -ds
 
@@ -2510,13 +2981,11 @@ connect_to_fut_cloud()
         raise "FAIL: AWLAN_Node::max_backoff not set to 9" -l "unit_lib:connect_to_fut_cloud" -ds
 
     # Clear Manager::target before starting
-    update_ovsdb_entry Manager -u target ''
+    update_ovsdb_entry Manager -u target '' &&
         log -deb "unit_lib:connect_to_fut_cloud - Manager target set to '' - Success" ||
         raise "FAIL: Manager::target not set to ''" -l "unit_lib:connect_to_fut_cloud" -ds
-
     # Wait for CM to settle
     sleep 2
-
     update_ovsdb_entry AWLAN_Node -u redirector_addr "ssl:$target:$port" &&
         log -deb "unit_lib:connect_to_fut_cloud - AWLAN_Node redirector_addr set to ssl:$target:$port - Success" ||
         raise "FAIL: AWLAN_Node::redirector_addr not set to ssl:$target:$port" -l "unit_lib:connect_to_fut_cloud" -ds
@@ -2728,7 +3197,8 @@ set_dir_to_writable()
 ###############################################################################
 trigger_cloud_reboot()
 {
-    params='["map",[["arg","5"],["path","/usr/plume/bin/delayed-reboot"]]]'
+    opensync_path="${1}"
+    params="[\"map\",[[\"arg\",\"5\"],[\"path\",\"${opensync_path}/bin/delayed-reboot\"]]]"
     insert_ovsdb_entry Wifi_Test_Config -i params "$params" -i test_id reboot
 
     return 0
@@ -2754,11 +3224,14 @@ add_tap_interface()
     [ $# -ne ${NARGS} ] &&
         raise "fsm_lib:add_tap_interface requires ${NARGS} input arguments, $# given" -arg
     bridge=$1
-    intf=$2
+    iface=$2
     ofport=$3
-    log -deb "fsm_lib:add_tap_interface - Generating tap interface '${intf}' on bridge '${bridge}'"
-    ovs-vsctl add-port "${bridge}" "${intf}"  \
-        -- set interface "${intf}"  type=internal \
-        -- set interface "${intf}"  ofport_request="${ofport}"
+
+    log -deb "fsm_lib:add_tap_interface - Generating tap interface '${iface}' on bridge '${bridge}'"
+
+    add_bridge_port "${bridge}" "${iface}"
+    set_interface_option "${iface}"  "type" "internal"
+    set_interface_option "${iface}"  "ofport_request" "${ofport}"
+
 }
 ####################### FUT CMD SECTION - STOP ################################

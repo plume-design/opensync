@@ -509,7 +509,7 @@ int nf_ct_set_mark(nf_flow_t *flow)
         return -1;
     res = mnl_socket_sendto(nf_ct.mnl, nlh, nlh->nlmsg_len);
     LOGD("%s: nlh->nlmsg_len = %d res = %d\n", __func__, nlh->nlmsg_len, res);
-    return res;
+    return (res == (int)nlh->nlmsg_len) ? 0 : -1;
 }
 
 int nf_ct_set_mark_timeout(nf_flow_t *flow, uint32_t timeout)
@@ -639,7 +639,7 @@ static struct nlmsghdr * nf_build_icmp_nl_msg_alt(
         if ((type == ICMP_ECHO_REQUEST) && build_reply)
         {
             nest = mnl_attr_nest_start(nlh, CTA_TUPLE_REPLY);
-            build_icmp_params_v6(nlh, dst_ip, src_ip, id, 0, 0, proto);
+            build_icmp_params_v6(nlh, dst_ip, src_ip, id, type, code, proto);
             mnl_attr_nest_end(nlh, nest);
         }
     }
@@ -724,7 +724,7 @@ int nf_ct_set_flow_mark(struct net_header_parser *net_pkt, uint32_t mark, uint16
         case IPPROTO_ICMPV6:
             /* icmpv6 hdr present in payload of ipv6 */
             icmpv6hdr = (struct icmp6_hdr *)(net_pkt->ip_pld.icmp6hdr);
-            id = ICMP6_ECHO_REQUEST;
+            id   = icmpv6hdr->icmp6_dataun.icmp6_un_data16[0];
             type = icmpv6hdr->icmp6_type;
             code = icmpv6hdr->icmp6_code;
         break;
@@ -766,7 +766,7 @@ int nf_ct_set_flow_mark(struct net_header_parser *net_pkt, uint32_t mark, uint16
     if (nlh == NULL) return -1;
     res = mnl_socket_sendto(nf_ct.mnl, nlh, nlh->nlmsg_len);
     LOGD("%s: nlh->nlmsg_len = %d res = %d\n", __func__, nlh->nlmsg_len, res);
-    return res;
+    return (res == (int)nlh->nlmsg_len) ? 0 : -1;
 }
 
 

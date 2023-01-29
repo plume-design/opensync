@@ -326,7 +326,7 @@ void ovsdb_cache_update_cb(ovsdb_update_monitor_t *self)
 
     if (table->cache_callback) table->cache_callback(self, old_record, row->record, row);
 
-    LOG(INFO, "<<< DONE: MON upd: %s table: %s row: %s ver: %s",
+    LOG(DEBUG, "<<< DONE: MON upd: %s table: %s row: %s ver: %s",
         typestr, table->table_name, mon_uuid, row->record + table->version_offset);
 
     return;

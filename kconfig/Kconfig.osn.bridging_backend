@@ -1,0 +1,11 @@
+#
+# OpenSync core network Bridge backend
+#
+source "src/lib/osn/kconfig/Kconfig.osn.bridging_backend"
+
+#
+# Platform/vendor Bridge backends
+#
+osource "platform/*/kconfig/Kconfig.osn.bridging_backend"
+osource "vendor/*/kconfig/Kconfig.osn.bridging_backend"
+

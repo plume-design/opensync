@@ -84,6 +84,10 @@ trap '
 
 log_title "nm2/nm2_set_dns.sh: NM2 test - Testing table Wifi_Inet_Config field dns"
 
+if [ $FUT_SKIP_L2 == 'true' ]; then
+    raise "Flag to skip LEVEL2 testcases enabled, skipping execution." -l "nm2/nm2_set_dns.sh" -s
+fi
+
 log "nm2/nm2_set_dns.sh: Creating Wifi_Inet_Config entries for interface '$if_name'"
 create_inet_entry \
     -if_name "$if_name" \

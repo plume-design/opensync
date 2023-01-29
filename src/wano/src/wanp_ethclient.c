@@ -48,6 +48,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ovsdb_sync.h"
 #include "ovsdb_table.h"
 #include "schema.h"
+#include "kconfig.h"
 
 #include "wano.h"
 
@@ -875,18 +876,47 @@ void wanp_ethclient_module_start(void *data)
         ip link set "$if_ethc" up
     );
 
+    static char ethclient_native_tap_create[] = SHELL
+    (
+        if_brlan="$1";
+        if_ethc="$2";
+
+        [ -e "/sys/class/net/$if_ethc" ] && exit 0;
+
+        ip link add "$if_ethc" type dummy
+        ip link set "$if_ethc" up
+        brctl addif "$if_brlan" "$if_ethc"
+
+    );
+
     /*
      * Create the packet re-injection interface.
      */
-    if (EXECSH_LOG(
-                DEBUG,
-                ethclient_tap_create,
-                CONFIG_TARGET_LAN_BRIDGE_NAME,
-                WANP_ETHCLIENT_INJECT_IF) != 0)
+    if (!kconfig_enabled(CONFIG_TARGET_USE_NATIVE_BRIDGE))
     {
-        LOG(ERR, "eth_client: Error creating injection interface '%s'. Ethernet client detection will not be available.",
-                WANP_ETHCLIENT_INJECT_IF);
-        return;
+        if (EXECSH_LOG(
+                   DEBUG,
+                   ethclient_tap_create,
+                   CONFIG_TARGET_LAN_BRIDGE_NAME,
+                   WANP_ETHCLIENT_INJECT_IF) != 0)
+        {
+            LOG(ERR, "eth_client: Error creating injection interface '%s'. Ethernet client detection will not be available.",
+                    WANP_ETHCLIENT_INJECT_IF);
+            return;
+        }
+    }
+    else
+    {
+       if (EXECSH_LOG(
+                   DEBUG,
+                   ethclient_native_tap_create,
+                   CONFIG_TARGET_LAN_BRIDGE_NAME,
+                   WANP_ETHCLIENT_INJECT_IF) != 0)
+        {
+            LOG(ERR, "eth_client: Error creating injection interface '%s'. Ethernet client detection will not be available.",
+                    WANP_ETHCLIENT_INJECT_IF);
+            return;
+        }
     }
 
     wano_plugin_register(&wanp_ethclient_module);

@@ -552,7 +552,7 @@ static inline bool cm2_is_wan_link_management(void)
 
 static inline bool cm2_is_config_via_ble_enabled(void)
 {
-#ifdef CONFIG_PLUME_CONFIG_VIA_BLE_ENABLED
+#ifdef CONFIG_BLEM_CONFIG_VIA_BLE_ENABLED
     return true;
 #else
     return false;

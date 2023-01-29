@@ -75,6 +75,8 @@ message LteNetInfo {
   uint32 active_sim_slot = 8;
   int32 rssi = 9;
   int32 ber = 10;
+  int32 rsrp = 11;
+  int32 sinr = 12;
   uint64 last_healthcheck_success = 13; // Unix time in seconds
   uint64 healthcheck_failures = 14;
 }
@@ -89,7 +91,15 @@ message LteDataUsage {
 }
 
 // Serving Cell State
-enum LteServingCellState {
+enum  CellularServingCellState {
+  CELLULAR_SERVING_CELL_UNSPECIFIED = 0;
+  CELLULAR_SERVING_CELL_SEARCH = 1; // UE is searching but could not (yet) find a suitable 3G/4G cell.
+  CELLULAR_SERVING_CELL_LIMSERV = 2; // UE is camping on a cell but has not registered on the network.
+  CELLULAR_SERVING_CELL_NOCONN = 3; // UE is camping on a cell and has registered on the network, and it is in idle mode.
+  CELLULAR_SERVING_CELL_CONNECT = 4; // UE is camping on a cell and has registered on the network, and a call is in progress.
+}
+
+enum  LteServingCellState {
   LTE_SERVING_CELL_UNSPECIFIED = 0;
   LTE_SERVING_CELL_SEARCH = 1; // UE is searching but could not (yet) find a suitable 3G/4G cell.
   LTE_SERVING_CELL_LIMSERV = 2; // UE is camping on a cell but has not registered on the network.
@@ -98,6 +108,14 @@ enum LteServingCellState {
 }
 
 // cell mode
+enum CellularMode {
+  CELLULAR_MODE_UNSPECIFIED = 0;
+  CELLULAR_MODE_NR5G_SA = 1;
+  CELLULAR_MODE_NR5G_ENDC = 2;
+  CELLULAR_MODE_LTE = 3;
+  CELLULAR_MODE_WCDMA = 4;
+}
+
 enum LteCellMode {
   LTE_CELL_MODE_UNSPECIFIED = 0;
   LTE_CELL_MODE_LTE = 1;
@@ -105,6 +123,12 @@ enum LteCellMode {
 }
 
 // is_tdd
+enum  CellularFddTddMode {
+  CELLULAR_DUPLEX_UNSPECIFIED = 0;
+  CELLULAR_DUPLEX_FDD = 1;
+  CELLULAR_DUPLEX_TDD = 2;
+}
+
 enum LteFddTddMode {
   LTE_MODE_UNSPECIFIED = 0;
   LTE_MODE_FDD = 1;
@@ -121,6 +145,33 @@ enum LteBandwidth {
   LTE_BANDWIDTH_15_MHZ = 5;
   LTE_BANDWIDTH_20_MHZ = 6;
 }
+
+enum NrDlBandwidth {
+    BW_UNSPECIFIED = 0;
+    BW_5_MHZ  = 1;
+    BW_10_MHZ = 2;
+    BW_15_MHZ = 3;
+    BW_20_MHZ = 4;
+    BW_25_MHZ = 5;
+    BW_30_MHZ = 6;
+    BW_40_MHZ = 7;
+    BW_50_MHZ = 8;
+    BW_60_MHZ = 9;
+    BW_80_MHZ = 10;
+    BW_90_MHZ = 11;
+    BW_100_MHZ = 12;
+    BW_200_MHZ = 13;
+    BW_400_MHZ = 14;
+};
+
+enum NrScs {
+    SCS_UNSPECIFIED = 0;
+    SCS_15_KHZ = 1;
+    SCS_30_KHZ = 2;
+    SCS_60_KHZ = 3;
+    SCS_120_KHZ = 4;
+    SCS_240_KHZ = 5;
+};
 
 message LteNetServingCellInfo {
   LteServingCellState state = 1;
@@ -233,27 +284,86 @@ message LtePDPContextInfo {
     uint32 lipaindication = 12;
 }
 
-// LTE info
+message CellularNr5gSaServingCellInfo {
+  CellularServingCellState state = 1;
+  CellularMode mode = 2;
+  CellularFddTddMode fdd_tdd_mode = 3;
+  uint32 mcc = 4;
+  uint32 mnc = 5;
+  uint32 cellid = 6; // Hexadecimal format. Cell ID. The parameter determines the 16-bit (GSM) or 28-bit (UMTS) cell ID. Range: 0-0xFFFFFFF.
+  uint32 pcid = 7; // Physical cell ID
+  uint32 tac = 8; // Tracking Area Code (see 3GPP 23.003 Section 19.4.2.3)
+  uint32 arfcn = 9; // Number format. The parameter determines the UTRA-ARFCN of the cell that was scanned
+  uint32 band = 10;
+  NrDlBandwidth bw = 11;
+  int32 rsrp = 12; // Reference Signal Received Power (see 3GPP 36.214 Section 5.1.1)
+  int32 rsrq = 13; // Reference Signal Received Quality (see 3GPP 36.214 Section 5.1.2)
+  uint32 sinr = 14; // Logarithmic value of SINR, Values are in 1/5th of a dB. Range: 0-250 which translates to -20dB - +30dB
+  NrScs  scs = 15;  // NR sub carrier space
+  uint32 srxlev = 16;
+}
+
+message CellularNr5gNsaServingCellInfo {
+  CellularServingCellState lte_state = 1;
+  CellularMode lte_mode = 2;
+  CellularFddTddMode lte_fdd_tdd_mode = 3;
+  uint32 lte_mcc = 4;
+  uint32 lte_mnc = 5;
+  uint32 lte_cellid = 6;
+  uint32 lte_pcid = 7;
+  uint32 lte_earfcn = 8;
+  uint32 lte_freq_band_ind = 9;
+  LteBandwidth ul_bandwidth = 10;
+  LteBandwidth dl_bandwidth = 11;
+  uint32 lte_tac = 12;
+  int32 lte_rsrp = 13;
+  int32 lte_rsrq = 14;
+  uint32 lte_rssi = 15;
+  uint32 lte_sinr = 16;
+  uint32 lte_cqi = 17;
+  uint32 lte_tx_power = 18;
+  uint32 lte_srxlev = 19;
+  uint32 nr5g_nsa_mode = 20;
+  uint32 nr5g_nsa_mcc = 21;
+  uint32 nr5g_nsa_mnc = 22;
+  uint32 nr5g_nsa_pcid = 23;
+  int32 nr5g_nsa_rsrp = 24;
+  int32 nr5g_nsa_sinr = 25;
+  int32 nr5g_nsa_rsrq = 26;
+  uint32 nr5g_nsa_arfcn = 27;
+  uint32 nr5g_nsa_band = 28;
+  NrDlBandwidth nr5g_nsa_dl_bandwidth = 29;
+  NrScs nr5g_nsa_scs = 30;
+}
+
+/* LTE info */
 message LteInfoReport {
 
   LteCommonHeader header = 1;
 
-  // LTE info
+  /* LTE info */
   LteNetInfo lte_net_info = 2;
 
-  // Data usage
+  /* Data usage */
   LteDataUsage lte_data_usage = 3;
 
-  // Serving cell info
+  /* Serving cell info */
   LteNetServingCellInfo lte_srv_cell = 4;
 
-  // Neighbor cell info
+  /* Neighbor cell info */
   repeated LteNetNeighborCellInfo lte_neigh_cell_info = 5;
 
-  // Carrier aggregation
+  /* Carrier aggregation */
   LteNetCarrierAggInfo lte_primary_carrier_agg_info = 6;
   LteNetCarrierAggInfo lte_secondary_carrier_agg_info = 7;
 
-  // PDP context info
+  /* PDP context info */
   LtePDPContextInfo lte_pdp_context = 8;
+
+  /* NR5G-SA serving cell info */
+  CellularNr5gSaServingCellInfo cell_nr5g_sa_srv_cell = 9;
+
+  /* NR5G-NSA serving cell info */
+  CellularNr5gNsaServingCellInfo cell_nr5g_nsa_srv_cell = 10;
+
 }

@@ -43,7 +43,8 @@ Arguments:
     -h  show this help message
     See wm2_lib::configure_sta_interface for more information
 Script usage example:
-   ./tools/device/configure_sta_interface.sh -if_name bhaul-sta-l50 -ssid fut-2568.bhaul -onboard_type gre -channel 36 -clear_wcc -wait_ip -security '["map",[["encryption","WPA-PSK"],["key","FutTestPSK"],["mode","2"]]]'
+   ./tools/device/configure_sta_interface.sh -if_name bhaul-sta-l50 -ssid fut-2568.bhaul -onboard_type gre -channel 36 -clear_wcc -wait_ip -wifi_security_type legacy -security '["map",[["encryption","WPA-PSK"],["key","FutTestPSK"],["mode","2"]]]'
+   ./tools/device/configure_sta_interface.sh -if_name bhaul-sta-l50 -ssid fut-2568.bhaul -onboard_type gre -channel 36 -clear_wcc -wait_ip -wifi_security_type wpa -wpa "true" -wpa_key_mgmt "wpa-psk" -wpa_psks '["map",[["key","FutTestPSK"]]]' -wpa_oftags '["map",[["key","home--1"]]]'
 usage_string
 }
 

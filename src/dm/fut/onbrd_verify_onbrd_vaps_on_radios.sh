@@ -73,16 +73,16 @@ fut_info_dump_line
 
 NARGS=1
 [ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "onbrd/onbrd_verify_onbrd_vaps_on_radios.sh" -arg
-interface_name=$1
+if_name=$1
 
 log_title "onbrd/onbrd_verify_onbrd_vaps_on_radios.sh: ONBRD test - Verify onboarding VAPs on all radios"
 
-log "onbrd/onbrd_verify_onbrd_vaps_on_radios.sh: Verify onboarding VAPs on all radios, check interface $interface_name"
-wait_for_function_response 0 "check_ovsdb_entry Wifi_VIF_State -w if_name $interface_name" &&
-    log "onbrd/onbrd_verify_onbrd_vaps_on_radios.sh: Interface $interface_name exists - Success" ||
-    raise "FAIL: interface $interface_name does not exist" -l "onbrd/onbrd_verify_onbrd_vaps_on_radios.sh" -tc
+log "onbrd/onbrd_verify_onbrd_vaps_on_radios.sh: Verify onboarding VAPs on all radios, check interface $if_name"
+wait_for_function_response 0 "check_ovsdb_entry Wifi_VIF_State -w if_name $if_name" &&
+    log "onbrd/onbrd_verify_onbrd_vaps_on_radios.sh: Interface $if_name exists - Success" ||
+    raise "FAIL: interface $if_name does not exist" -l "onbrd/onbrd_verify_onbrd_vaps_on_radios.sh" -tc
 
 log "onbrd/onbrd_verify_onbrd_vaps_on_radios.sh: Clean created interfaces after test"
-vif_clean
+vif_reset
 
 pass

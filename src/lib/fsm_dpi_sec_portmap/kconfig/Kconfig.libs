@@ -1,0 +1,7 @@
+menuconfig FSM_DPI_SEC_PORTMAP
+        bool "Enables port forwarding monitoring"
+        depends on MANAGER_FSM
+        default y if PLATFORM_IS_NATIVE
+        default n
+        help
+            "Enables port forwarding monitoring through FSM"

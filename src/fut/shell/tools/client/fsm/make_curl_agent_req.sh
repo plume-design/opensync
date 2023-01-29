@@ -59,15 +59,15 @@ if [ -n "${1}" ]; then
         ;;
     esac
 fi
+
 NARGS=3
 [ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "tools/client/fsm/make_curl_agent_req.sh" -arg
-
 namespace_enter_cmd=$1
 user_agent=$2
 url=$3
 
 ${namespace_enter_cmd} -c "curl -S -s --output /dev/null -A '${user_agent}' '${url}'" || $(exit 1)
-if [[ "$?" != 0 ]];then
+if [[ "$?" != 0 ]]; then
     raise "Failed to make curl request to ${url} with user_agent ${user_agent}" -l "tools/client/fsm/make_curl_agent_req.sh"
 else
     log "tools/client/fsm/make_curl_agent_req.sh: curl request made to ${url} with user_agent ${user_agent}"

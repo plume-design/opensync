@@ -63,8 +63,6 @@ void test_target_unmap_ifname(char *map_name);
 void test_target_map_ifname_exists();
 void test_target_unmap_ifname_exists(char *map_name);
 void test_target_map_close();
-void test_target_ble_broadcast_start();
-void test_target_ble_broadcast_stop();
 void test_target_tools_dir();
 void test_target_bin_dir();
 void test_target_scripts_dir();

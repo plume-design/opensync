@@ -48,12 +48,18 @@ Arguments:
     -h  show this help message
     -if_name, -vif_if_name, -vif_radio_idx, -channel,
     -ht_mode, -enabled, -mode, -bridge,
-    -ssid, -ssid_broadcast, -security,
+    -ssid, -ssid_broadcast,
     -inet_if_name, -if_type, -ip_assign_scheme,
     -network, -inet_enabled,
-    -wpa, -wpa_key_mgmt, -wpa_psks, -wpa_oftags
+Wifi Security arguments(choose one or the other):
+    If 'wifi_security_type' == 'wpa' (preferred)
+    -wifi_security_type, -wpa, -wpa_key_mgmt, -wpa_psks, -wpa_oftags
+                    (OR)
+    If 'wifi_security_type' == 'legacy' (deprecated)
+    -wifi_security_type, -security
+
 Script usage example:
-    ./tools/device/configure_ap_interface.sh -if_name wifi1 -vif_if_name home-ap-l50 -vif_radio_idx 2 -channel 52 -ht_mode HT40 -enabled true -mode ap -security '["map",[["encryption","WPA-PSK"],["key","multi_psk_a"],["key-1","multi_psk_b"],["mode","2"],["oftag","home--1"],["oftag-key-1","home-1"]]]' -ssid FUT_ssid_dca632c8b9e2 -ssid_broadcast enabled -bridge br-home -inet_if_name home-ap-l50 -if_type vif -ip_assign_scheme none -NAT false -network true -inet_enabled true
+    ./tools/device/configure_ap_interface.sh -if_name wifi1 -vif_if_name home-ap-l50 -vif_radio_idx 2 -channel 52 -ht_mode HT40 -enabled true -mode ap -wifi_security_type legacy -security '["map",[["encryption","WPA-PSK"],["key","multi_psk_a"],["key-1","multi_psk_b"],["mode","2"],["oftag","home--1"],["oftag-key-1","home-1"]]]' -ssid FUT_ssid_dca632c8b9e2 -ssid_broadcast enabled -bridge br-home -inet_if_name home-ap-l50 -if_type vif -ip_assign_scheme none -NAT false -network true -inet_enabled true
 usage_string
 }
 
@@ -85,7 +91,6 @@ while [ -n "$1" ]; do
         -tx_chainmask | \
         -default_oftag | \
         -dpp_cc | \
-        -wpa_oftags | \
         -vif_radio_idx | \
         -ssid_broadcast | \
         -parent | \
@@ -94,20 +99,33 @@ while [ -n "$1" ]; do
         -vlan_id | \
         -radius_srv_secret | \
         -radius_srv_addr | \
-        -wpa | \
-        -wpa_key_mgmt | \
-        -wpa_psks | \
         -mac_list | \
         -credential_configs | \
         -ssid | \
         -ap_bridge | \
-        -security | \
         -mode | \
         -enabled | \
         -country | \
         -channel | \
         -if_name | \
         -disable_cac)
+            radio_vif_args="${radio_vif_args} -${option#?} ${1}"
+            shift
+            ;;
+        -wifi_security_type)
+            wifi_security_type=${1}
+            shift
+            ;;
+        -wpa | \
+        -wpa_key_mgmt | \
+        -wpa_psks | \
+        -wpa_oftags)
+            [ "${wifi_security_type}" != "wpa" ] && raise "FAIL: Incorrect combination of WPA and legacy wifi security type provided" -l "wm2/configure_ap_interface.sh" -arg
+            radio_vif_args="${radio_vif_args} -${option#?} ${1}"
+            shift
+            ;;
+        -security)
+            [ "${wifi_security_type}" != "legacy" ] && raise "FAIL: Incorrect combination of WPA and legacy wifi security type provided" -l "wm2/configure_ap_interface.sh" -arg
             radio_vif_args="${radio_vif_args} -${option#?} ${1}"
             shift
             ;;
@@ -173,6 +191,7 @@ if [ $inet_if_name ]; then
         log -deb "tools/device/configure_ap_interface.sh: Inet interface ${inet_if_name} created - Success" ||
         raise "FAIL: Inet interface ${inet_if_name} not created" -l "tools/device/configure_ap_interface.sh" -tc
 fi
+
 if [ $bridge ]; then
     add_bridge_port "${bridge}" "${vif_if_name}" &&
         log -deb "tools/device/configure_ap_interface.sh: Interface ${vif_if_name} added to bridge ${bridge} - Success" ||

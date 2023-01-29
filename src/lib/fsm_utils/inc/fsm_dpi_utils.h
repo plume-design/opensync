@@ -83,7 +83,7 @@ int fsm_set_icmp_dpi_state_timeout(
  */
 int fsm_set_dpi_mark(
         struct net_header_parser *net_hdr,
-        int mark
+        struct dpi_mark_policy *mark_policy
 );
 
 int fsm_set_dpi_state_timeout(

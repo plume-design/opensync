@@ -1,0 +1,12 @@
+config OSN_BACKEND_TAP_NULL
+    bool "Null"
+    help
+        Use dummy TAP interface operations for platforms where TAP interface is
+        not desired or not supported.
+
+config OSN_BACKEND_TAP_INTERFACE
+    bool "Linux"
+    select OSN_LINUX_TAPIF
+    help
+        Use the Linux TAP Interface backend provided by OpenSync.
+

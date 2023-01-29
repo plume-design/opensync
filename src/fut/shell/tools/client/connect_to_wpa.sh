@@ -33,29 +33,38 @@ fut_topdir="$(realpath "$current_dir"/../..)"
 source "${fut_topdir}"/config/default_shell.sh
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${fut_topdir}"/lib/unit_lib.sh
+source "${fut_topdir}"/lib/client_lib.sh
 
+enable_dhcp_default=true
+ip_address_default="8.8.8.8"
+connect_retry_max_default=2
+connect_check_timeout_default=30
+psk=""
 usage() {
     cat << usage_string
 tools/client/connect_to_wpa.sh [-h] arguments
 Description:
     - Connect Client to Wireless network
-Arguments:
+Fixed positional arguments:
     -h  show this help message
-    \$1 (client_model)        : Type of client (rpi/brix)                               : (string)(required)
-    \$2 (wpa_type)            : Type of wifi security (wpa2/wpa3)                       : (string)(required)
-    \$3 (wlan_namespace)      : Interface namespace name                                : (string)(required)
-    \$4 (wlan_name)           : Wireless interface name                                 : (string)(required)
-    \$5 (wpa_supp_cfg_path)   : wpa_supplicant.conf file path                           : (string)(required)
-    \$6 (ssid)                : Wireless ssid name                                      : (string)(required)
-    \$7 (psk)                 : Wireless psk key                                        : (string)(required)
-    \$8 (enable_dhcp)         : Wait for IP address from DHCP after connect             : (string)(option)   : (default:true)
-    \$9 (check_internet_ip)   : Check internet access on specific IP, ('false' to skip) : (string)(option)   : (default:8.8.8.8)
-    \$10 (dns_ip)             : Default DNS nameserver                                  : (string)(option)   : (default:8.8.8.8)
+    \$1 (wpa_type)            : Type of wifi security (open/wpa2/wpa3)                  : (string)(required)
+    \$2 (wlan_namespace)      : Interface namespace name                                : (string)(required)
+    \$3 (wlan_name)           : Wireless interface name                                 : (string)(required)
+    \$4 (wpa_supp_cfg_path)   : wpa_supplicant.conf file path                           : (string)(required)
+    \$5 (ssid)                : Wireless ssid name                                      : (string)(required)
+Variable optional arguments:
+    (psk)                     : Wireless psk key, required only for WPA2/WPA3 wpa_type  : (string)(option)
+    (enable_dhcp)             : Wait for IP address from DHCP after connect             : (string)(option)   : (default:true)
+    (check_internet_ip)       : Check internet access on specific IP, ('false' to skip) : (string)(option)   : (default:8.8.8.8)
+    (dns_ip)                  : Default DNS nameserver                                  : (string)(option)   : (default:8.8.8.8)
+    (connect_retry_max)       : Number of connection retries allowed                    : (integer)(option)  : (default:2)
+    (connect_check_timeout)   : Timeout in seconds for checking client connection       : (integer)(option)  : (default:30)
 Dependency:
   - route -n and iwconfig tool
 Script usage example:
-   ./tools/client/connect_to_wpa.sh rpi wpa2 nswifi1 wlan0 /etc/netns/nswifi1/wpa_supplicant/wpa_supplicant.conf network_ssid_name network_psk_key
-   ./tools/client/connect_to_wpa.sh brix wpa3 nswifi1 wlan0 /etc/netns/nswifi1/wpa_supplicant/wpa_supplicant.conf network_ssid_name network_psk_key false
+   ./tools/client/connect_to_wpa.sh open nswifi1 wlan0 /etc/netns/nswifi1/wpa_supplicant/wpa_supplicant.conf network_ssid_name
+   ./tools/client/connect_to_wpa.sh wpa2 nswifi1 wlan0 /etc/netns/nswifi1/wpa_supplicant/wpa_supplicant.conf network_ssid_name -psk network_psk_key
+   ./tools/client/connect_to_wpa.sh wpa3 nswifi1 wlan0 /etc/netns/nswifi1/wpa_supplicant/wpa_supplicant.conf network_ssid_name -psk network_psk_key -dhcp false -internet_ip false -dns_ip 8.8.8.8 -retry 3 -connect_timeout 60
 usage_string
 }
 if [ -n "${1}" ]; then
@@ -69,175 +78,73 @@ if [ -n "${1}" ]; then
 
     esac
 fi
-NARGS=7
+NARGS=5
 [ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "tools/client/connect_to_wpa.sh" -arg
 
-client_model=${1}
-wpa_type=${2}
-wlan_namespace=${3}
-wlan_name=${4}
-wpa_supp_cfg_path=${5}
-ssid=${6}
-psk=${7}
-enable_dhcp=${8:-true}
-check_internet_ip=${9:-"8.8.8.8"}
-dns_ip=${10:-"8.8.8.8"}
+wpa_type=${1}
+wlan_namespace=${2}
+wlan_name=${3}
+wpa_supp_cfg_path=${4}
+ssid=${5}
+enable_dhcp=${enable_dhcp_default}
+check_internet_ip=${ip_address_default}
+dns_ip=${ip_address_default}
+connect_retry_max=${connect_retry_max_default}
+connect_check_timeout=${connect_check_timeout_default}
 wlan_namespace_cmd="ip netns exec ${wlan_namespace} bash"
 wpa_supp_base_name=${wpa_supp_cfg_path%%".conf"}
+
+shift $NARGS
+# Parsing optional arguments with flags, if passed.
+while [ -n "${1}" ]; do
+    option=${1}
+    shift
+    case "${option}" in
+        -psk)
+            psk=${1}
+            shift
+            ;;
+        -dhcp)
+            enable_dhcp=${1}
+            shift
+            ;;
+        -internet_ip)
+            check_internet_ip=${1}
+            shift
+            ;;
+        -dns_ip)
+            dns_ip=${1}
+            shift
+            ;;
+        -retry)
+            connect_retry_max=${1}
+            shift
+            ;;
+        -connect_timeout)
+            connect_check_timeout=${1}
+            shift
+            ;;
+        *)
+            raise "FAIL: Wrong option provided: $option" -l "tools/client/connect_to_wpa.sh" -arg
+            ;;
+    esac
+done
 
 if [[ "$EUID" -ne 0 ]]; then
     raise "FAIL: Please run this function as root - sudo" -l "tools/client/connect_to_wpa.sh"
 fi
 
-if [ "${client_model}" != "rpi" ] && [ "${client_model}" != "brix" ]; then
-    usage && raise "Wrong client model. Supported models: 'rpi', 'brix'" -l "tools/client/connect_to_wpa.sh" -arg
+if [ "${wpa_type}" != "open" ] && [ "${wpa_type}" != "wpa2" ] && [ "${wpa_type}" != "wpa3" ]; then
+    usage && raise "Wrong WPA security type used. Supported types: 'open', 'wpa2', 'wpa3'" -l "tools/client/connect_to_wpa.sh" -arg
 fi
 
-if [ "${wpa_type}" != "wpa2" ] && [ "${wpa_type}" != "wpa3" ]; then
-    usage && raise "Wrong WPA security type used. Supported types: 'wpa2', 'wpa3'" -l "tools/client/connect_to_wpa.sh" -arg
+if [ "${wpa_type}" != "open" ]; then
+    [ $psk == "" ] && raise "PSK key is mandatory for ${wpa_type} security mode" -l "tools/client/connect_to_wpa.sh" -arg
 fi
-
-###############################################################################
-# DESCRIPTION:
-#   Function restarts dhclient on RPI Server by removing old dhclient pid,
-#   config files, flushing ip addresses for wireless interface and starting
-#   new dhclient
-# INPUT PARAMETER(S):
-# RETURNS:
-#   0     On success.
-#   not 0 On failure.
-# USAGE EXAMPLE(S):
-#   restart_dhclient
-###############################################################################
-restart_dhclient()
-{
-    log "tools/client/connect_to_wpa.sh: Restarting dhclient"
-    cmd="dhclient -4 -r ${wlan_name}"
-    ${wlan_namespace_cmd} -c "${cmd}" &&
-        log "tools/client/connect_to_wpa.sh: CMD: ${cmd} - OK" ||
-        log "tools/client/connect_to_wpa.sh: CMD: ${cmd} - FAIL"
-    cmd="dhclient -6 -r ${wlan_name}"
-    ${wlan_namespace_cmd} -c "${cmd}" &&
-        log "tools/client/connect_to_wpa.sh: CMD: ${cmd} - OK" ||
-        log "tools/client/connect_to_wpa.sh: CMD: ${cmd} - FAIL"
-    cmd="ip addr flush ${wlan_name} scope global"
-    ${wlan_namespace_cmd} -c "${cmd}" &&
-        log "tools/client/connect_to_wpa.sh: CMD: ${cmd} - OK" ||
-        log "tools/client/connect_to_wpa.sh: CMD: ${cmd} - FAIL"
-    # Put default $dns_ip dns into resolv.conf
-    cmd="sh -c \"echo 'nameserver $dns_ip' > /etc/resolv.conf\""
-    ${wlan_namespace_cmd} -c "${cmd}" &&
-        log "tools/client/connect_to_wpa.sh: CMD: ${cmd} - OK" ||
-        log "tools/client/connect_to_wpa.sh: CMD: ${cmd} - FAIL"
-    dhclient_4_pids=$(ps aux | grep "dhclient.${wlan_name}" | grep -v grep | awk '{print $2}')
-    if [ -n "${dhclient_4_pids}" ]; then
-        log "tools/client/connect_to_wpa.sh: Killing dhclient.${wlan_name} | ${dhclient_4_pids}"
-        # shellcheck disable=SC2086
-        kill $dhclient_4_pids && echo 'OK' || echo 'FAIL'
-    fi
-    dhclient_6_pids=$(ps aux | grep "dhclient6.${wlan_name}" | grep -v grep | awk '{print $2}')
-    if [ -n "${dhclient_6_pids}" ]; then
-        log "tools/client/connect_to_wpa.sh: Killing dhclient6.${wlan_name} | ${dhclient_6_pids}"
-        # shellcheck disable=SC2086
-        kill $dhclient_6_pids && echo 'OK' || echo 'FAIL'
-    fi
-    cmd="rm -f /var/lib/dhcp/dhclient*${wlan_name}* /var/run/dhclient*${wlan_name}*"
-    ${wlan_namespace_cmd} -c "${cmd}" &&
-        log "tools/client/connect_to_wpa.sh: CMD: ${cmd} - OK" ||
-        log "tools/client/connect_to_wpa.sh: CMD: ${cmd} - FAIL"
-    cmd="timeout 30 dhclient -4 -pf /var/run/dhclient.${wlan_name}.pid -lf /var/lib/dhcp/dhclient.${wlan_name}.leases -I -df /var/lib/dhcp/dhclient6.${wlan_name}.leases ${wlan_name}"
-    ${wlan_namespace_cmd} -c "${cmd}" &&
-        log "tools/client/connect_to_wpa.sh: CMD: ${cmd} - #1 - OK" ||
-        log "tools/client/connect_to_wpa.sh: CMD: ${cmd} - #1 - FAIL"
-    return $?
-}
-
-connect_to_wpa()
-{
-    # Check if wpa_supplicant is running - force kill
-    wpa_supp_pids=$(${wlan_namespace_cmd} -c "pidof wpa_supplicant")
-    if [[ -n "${wpa_supp_pids}" ]]; then
-        log "tools/client/connect_to_wpa.sh Killing wpa_supplicant_pids: kill ${wpa_supp_pids}"
-        ${wlan_namespace_cmd} -c "kill ${wpa_supp_pids}"
-    fi
-
-    log "tools/client/connect_to_wpa.sh Removing old /tmp/wpa_supplicant_${wlan_name}* files"
-    ${wlan_namespace_cmd} -c "rm -rf \"/tmp/wpa_supplicant_${wlan_name}*\"" || true
-
-    log "tools/client/connect_to_wpa.sh Bringing $wlan_name down: ifdown ${wlan_name} --force"
-    ${wlan_namespace_cmd} -c "ifdown ${wlan_name} --force"
-    ret=$?
-    sleep 1
-    if [ "$ret" -ne 0 ]; then
-        log "tools/client/connect_to_wpa.sh Failed while bringing interface ${wlan_name} down - maybe already down?"
-    fi
-
-    log "tools/client/connect_to_wpa.sh Bringing $wlan_name down: ifconfig down"
-    ${wlan_namespace_cmd} -c "ifconfig ${wlan_name} down"
-    sleep 3
-    log "tools/client/connect_to_wpa.sh Bringing $wlan_name up: ifconfig up"
-    ${wlan_namespace_cmd} -c "ifconfig ${wlan_name} up"
-    sleep 3
-
-    wait_for_function_response 0 "${wlan_namespace_cmd} -c \"ifconfig ${wlan_name} 2>/dev/null | grep \"flags=\" | grep UP\"" &&
-        log "tools/client/connect_to_wpa.sh: Interface '${wlan_name}' is UP - Success" ||
-        raise "FAIL: Interface '${wlan_name}' is DOWN, should be UP" -l "tools/client/connect_to_wpa.sh" -ds
-
-    wpa_cmd="wpa_supplicant -D nl80211,wext -i ${wlan_name} -c ${wpa_supp_cfg_path} -P ${wpa_supp_base_name}.pid -f /tmp/wpa_supplicant_${wlan_name}.log -t -B -d"
-    log "tools/client/connect_to_wpa.sh: Starting ${wpa_cmd}"
-    ${wlan_namespace_cmd} -c "${wpa_cmd}"
-    sleep 3
-    wait_for_function_response 0 "${wlan_namespace_cmd} -c \"iwconfig ${wlan_name} | grep $ssid\"" "${connect_check_timeout}"
-    is_connected="$?"
-    if [ "$enable_dhcp" == true ] && [ "$is_connected" -eq 0 ]; then
-        restart_dhclient
-        sleep 1
-    fi
-
-    return $is_connected
-}
-
-create_wpa_supplicant_config()
-{
-    rm "${wpa_supp_cfg_path}"
-    touch "${wpa_supp_cfg_path}"
-    log "tools/client/connect_to_wpa.sh: Creating ${wpa_supp_cfg_path} file"
-    echo 'ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=netdev' > "${wpa_supp_cfg_path}"
-    echo 'update_config=1' >> "${wpa_supp_cfg_path}"
-    echo 'country=US' >> "${wpa_supp_cfg_path}"
-    if [ "${wpa_type}" == "wpa2" ]; then
-(cat <<EOF
-network={
-    ssid="${ssid}"
-    scan_ssid=1
-    psk="${psk}"
-    key_mgmt=WPA-PSK
-    priority=1
-}
-EOF
-) >> $wpa_supp_cfg_path
-    elif [ "${wpa_type}" == "wpa3" ]; then
-(cat <<EOF
-network={
-    ssid="${ssid}"
-    scan_ssid=1
-    psk="${psk}"
-    key_mgmt=SAE
-    ieee80211w=2
-    priority=1
-}
-EOF
-) >> $wpa_supp_cfg_path
-    fi
-    log "tools/client/connect_to_wpa.sh - ${wpa_supp_cfg_path} file:"
-    cat "${wpa_supp_cfg_path}"
-}
 
 connected=false
-connect_retry_max=3
 connect_retry_count=1
-connect_check_timeout=60
-ping_timeout=30
+ping_timeout=15
 
 while [ "${connected}" == false ] && [ "${connect_retry_count}" -le "${connect_retry_max}" ]; do
     log "tools/client/connect_to_wpa.sh: Starting connection to network - #${connect_retry_count}"
@@ -245,9 +152,7 @@ while [ "${connected}" == false ] && [ "${connect_retry_count}" -le "${connect_r
     sleep 1
     ${wlan_namespace_cmd} -c "iw reg set US"
     sleep 1
-    create_wpa_supplicant_config
-    sleep 1
-    connect_to_wpa
+    connect_to_wpa ${wlan_namespace} ${wlan_name} ${wpa_supp_cfg_path} ${wpa_type} ${ssid} ${enable_dhcp} ${psk} ${dns_ip} ${connect_check_timeout}
     if [ "$?" -ne 0 ]; then
         log -wrn "tools/client/connect_to_wpa.sh: Interface $wlan_name not connected to $ssid"
         ${wlan_namespace_cmd} -c "iwconfig"
@@ -259,7 +164,7 @@ while [ "${connected}" == false ] && [ "${connect_retry_count}" -le "${connect_r
             if [ "$internet_check" != 0 ]; then
                 log "tools/client/connect_to_wpa.sh: Could not ping internet ${check_internet_ip}"
                 log "tools/client/connect_to_wpa.sh: Restarting dhclient"
-                restart_dhclient
+                restart_dhclient ${wlan_name} ${wlan_namespace} ${dns_ip}
                 wait_for_function_response 0 "${wlan_namespace_cmd} -c \"ping -c 3 ${check_internet_ip}\"" "${ping_timeout}"
                 internet_check="$?"
                 if [ "$internet_check" != 0 ]; then

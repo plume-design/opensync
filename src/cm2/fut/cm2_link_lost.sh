@@ -42,7 +42,7 @@ Description:
     - Test script validates Connection_Manager_Uplink:has_L2 proper behaviour
 Arguments:
     -h : show this help message
-    \$1 (if_name_l2) : used as L2 interface : (string)(required)
+    \$1 (if_name) : used as L2 interface : (string)(required)
 Testcase procedure:
     - On DEVICE: Run: ./${cm_setup_file} (see ${cm_setup_file} -h)
                  Run: ./cm2/cm2_link_lost.sh <IF-NAME-L2>
@@ -95,7 +95,7 @@ set_interface_up "$if_name" &&
     log "cm2/cm2_link_lost.sh: Interface $if_name is up - Success" ||
     raise "FAIL: Could not bring up interface $if_name" -l "cm2/cm2_link_lost.sh" -ds
 
-log "cm2/cm2_link_lost.sh: Waiting for Connection_Manager_Uplink::has_L2 -> true for ifname==$if_name"
+log "cm2/cm2_link_lost.sh: Waiting for Connection_Manager_Uplink::has_L2 -> true for if_name==$if_name"
 wait_ovsdb_entry Connection_Manager_Uplink -w if_name "$if_name" -is has_L2 true &&
     log "cm2/cm2_link_lost.sh: wait_ovsdb_entry - Interface $if_name has_L2 is true - Success" ||
     raise "FAIL: Connection_Manager_Uplink::has_L2 is not true" -l "cm2/cm2_link_lost.sh" -ow

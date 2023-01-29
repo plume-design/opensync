@@ -771,12 +771,18 @@ bm_stats_steering_parse_event(
 
         case CONNECT:
             LOGT( "Adding CONNECT event" );
+            event_rec->rssi = client->first_snr_after_connect;
+            LOGT("%s first_snr %u", client->mac_addr,
+                 client->first_snr_after_connect);
             event_rec->type = CONNECT;
             break;
 
         case DISCONNECT:
             LOGT( "Adding DISCONNECT event" );
             event_rec->type = DISCONNECT;
+            LOGT("%s last_snr %u", client->mac_addr,
+                 client->last_snr_before_disconnect);
+            event_rec->rssi = client->last_snr_before_disconnect;
             event_rec->disconnect_src = bm_stats_get_disconnect_src( event );
             event_rec->disconnect_type = bm_stats_get_disconnect_type( event );
             event_rec->disconnect_reason = event->data.disconnect.reason;

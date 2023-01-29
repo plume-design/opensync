@@ -45,6 +45,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "fcm_mgr.h"
 #include "memutil.h"
 #include "const.h"
+#include "policy_tags.h"
+#include "data_report_tags.h"
 
 /* Log entries from this file will contain "OVSDB" */
 #define MODULE_ID LOG_MODULE_ID_OVSDB
@@ -141,6 +143,37 @@ fcm_set_max_mem(void)
 
     LOGI("%s: fcm default max memory usage: %" PRIu64 " kB", __func__,
          mgr->max_mem);
+}
+
+
+/**
+ * @brief callback function invoked when tag value is
+ *        changed.
+ */
+static bool
+fcm_tag_update_cb(om_tag_t *tag,
+                  struct ds_tree *removed,
+                  struct ds_tree *added,
+                  struct ds_tree *updated)
+{
+    data_report_tags_update_cb(tag, removed, added, updated);
+
+    return true;
+}
+
+
+/**
+ * @brief register callback for receiving tag value updates
+ */
+bool
+fcm_tag_update_init(void)
+{
+    struct tag_mgr fcm_tagmgr;
+
+    memset(&fcm_tagmgr, 0, sizeof(fcm_tagmgr));
+    fcm_tagmgr.service_tag_update = fcm_tag_update_cb;
+    om_tag_init(&fcm_tagmgr);
+    return true;
 }
 
 /**
@@ -393,6 +426,7 @@ int fcm_ovsdb_init(void)
     OVSDB_TABLE_MONITOR(FCM_Collector_Config, false);
     OVSDB_TABLE_MONITOR(FCM_Report_Config, false);
     OVSDB_TABLE_MONITOR(Node_Config, false);
+
 
     // Advertize default memory limit usage
     snprintf(str_value, sizeof(str_value), "%" PRIu64 " kB", mgr->max_mem);

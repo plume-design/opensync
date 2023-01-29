@@ -70,8 +70,13 @@ bool target_is_interface_ready(char *if_name)
 
 target_survey_record_t *target_survey_record_alloc()
 {
-    char *ptr = malloc(16);
+    target_survey_record_t *ptr = malloc(sizeof(*ptr));
     return ptr;
+}
+
+void target_survey_record_free(target_survey_record_t *p)
+{
+    free(p);
 }
 
 bool target_stats_capacity_get(radio_entry_t *radio_cfg,

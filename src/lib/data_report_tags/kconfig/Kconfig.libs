@@ -1,0 +1,5 @@
+menuconfig LIB_DATA_REPORT_TAGS
+    bool "Enables data report tags"
+        default y
+        help
+            N/A

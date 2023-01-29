@@ -197,6 +197,59 @@ struct lte_pdp_ctx_dynamic_params_info g_pdp_params_info =
     .lipaindication = 0,
 };
 
+struct cellular_nr5g_sa_net_serving_cell_info g_nr5g_sa_srv_cell_info =
+{
+    .state = CELLULAR_SERVING_CELL_NOCONN,
+    .mode = CELLULAR_CELL_MODE_NR5G_SA,
+    .fdd_tdd_mode = CELLULAR_MODE_TDD,
+    .mcc = 460,
+    .mnc = 11,
+    .cellid = 0xB38751,
+    .pcid = 573,
+    .tac = 0xfffffe,
+    .arfcn = 633984,
+    .band = 78,
+    .bandwidth = 3,
+    .rsrp = -100,
+    .rsrq = -14,
+    .sinr = 5,
+    .scs = NR_SCS_30_KHZ,
+    .srxlev = 1288,
+};
+
+struct cellular_nr5g_nsa_net_serving_cell_info g_nr5g_nsa_srv_cell_info =
+{
+    .lte_state = CELLULAR_SERVING_CELL_NOCONN,
+    .lte_mode = CELLULAR_CELL_MODE_LTE,
+    .lte_fdd_tdd_mode = CELLULAR_MODE_TDD,
+    .lte_mcc = 460,
+    .lte_mnc = 11,
+    .lte_cellid = 0xB38751,
+    .lte_pcid = 573,
+    .lte_earfcn = 633984,
+    .lte_tac = 0xfffffe,
+    .lte_freq_band_ind = 78,
+    .lte_ul_bandwidth = LTE_BANDWIDTH_10_MHZ,
+    .lte_dl_bandwidth = LTE_BANDWIDTH_10_MHZ,
+    .lte_rsrp = -100,
+    .lte_rsrq = -14,
+    .lte_rssi = -69,
+    .lte_sinr = 10,
+    .lte_cqi = 15,
+    .lte_tx_power = 19,
+    .nr5g_nsa_mode = CELLULAR_CELL_MODE_NR5G_ENDC,
+    .nr5g_nsa_mcc = 460,
+    .nr5g_nsa_mnc = 11,
+    .nr5g_nsa_pcid = 573,
+    .nr5g_nsa_rsrp = -100,
+    .nr5g_nsa_sinr = 5,
+    .nr5g_nsa_rsrq = -14,
+    .nr5g_nsa_arfcn = 633984,
+    .nr5g_nsa_band = 78,
+    .nr5g_nsa_dl_bandwidth = 3,
+    .nr5g_nsa_scs = NR_SCS_30_KHZ,
+};
+
 char *pb_file = "/tmp/lte_ut_proto.bin";
 
 static void
@@ -389,7 +442,35 @@ test_lte_pdp_ctx_dyn_info(void)
     TEST_ASSERT_TRUE(ret);
 }
 
+/**
+ * @brief test setting for nr5g sa serving cell info
+ */
+void
+test_cellular_set_nr5g_sa_srv_cell(void)
+{
+    bool ret;
 
+    g_report = CALLOC(1, sizeof(*g_report));
+    TEST_ASSERT_NOT_NULL(g_report);
+
+    ret = cellular_info_set_nr5g_sa_srv_cell(&g_nr5g_sa_srv_cell_info, g_report);
+    TEST_ASSERT_TRUE(ret);
+}
+
+/**
+ * @brief test setting for nr5g nsa serving cell info
+ */
+void
+test_cellular_set_nr5g_nsa_srv_cell(void)
+{
+    bool ret;
+
+    g_report = CALLOC(1, sizeof(*g_report));
+    TEST_ASSERT_NOT_NULL(g_report);
+
+    ret = cellular_info_set_nr5g_nsa_srv_cell(&g_nr5g_nsa_srv_cell_info, g_report);
+    TEST_ASSERT_TRUE(ret);
+}
 /**
  * @brief set a full report
  */
@@ -455,6 +536,21 @@ lte_ut_set_report(void)
     /* Validate the addition of the serving cell info */
     TEST_ASSERT_TRUE(ret);
     TEST_ASSERT_NOT_NULL(g_report->lte_pdp_ctx_info);
+
+    /* Add nr5g sa info */
+    ret = cellular_info_set_nr5g_sa_srv_cell(&g_nr5g_sa_srv_cell_info, g_report);
+
+    /* Validate the addition of the serving cell info */
+    TEST_ASSERT_TRUE(ret);
+    TEST_ASSERT_NOT_NULL(g_report->nr5g_sa_srv_cell);
+
+    /* Add nr5g nsa info */
+    ret = cellular_info_set_nr5g_nsa_srv_cell(&g_nr5g_nsa_srv_cell_info, g_report);
+
+    /* Validate the addition of the nsa serving cell info */
+    TEST_ASSERT_TRUE(ret);
+    TEST_ASSERT_NOT_NULL(g_report->nr5g_nsa_srv_cell);
+
 }
 
 
@@ -514,6 +610,8 @@ main(int argc, char *argv[])
     RUN_TEST(test_lte_set_pca);
     RUN_TEST(test_lte_set_sca);
     RUN_TEST(test_lte_pdp_ctx_dyn_info);
+    RUN_TEST(test_cellular_set_nr5g_sa_srv_cell);
+    RUN_TEST(test_cellular_set_nr5g_nsa_srv_cell);
     RUN_TEST(test_lte_set_report);
     RUN_TEST(test_lte_serialize_report);
 

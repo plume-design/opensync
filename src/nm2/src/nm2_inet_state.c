@@ -155,6 +155,28 @@ void nm2_inet_state_to_schema(
     snprintf(pstate->hwaddr, sizeof(pstate->hwaddr), PRI_osn_mac_addr,
             FMT_osn_mac_addr(piface->if_inet_state.in_macaddr));
 
+    /* Retrieve speed and duplex mode (use breakthrough to add new if types)  */
+    switch (piface->if_type)
+    {
+        /* Retrieve speed and duplex type for ethernet interfaces */
+        case NM2_IFTYPE_ETH:
+            SCHEMA_SET_INT(pstate->link_speed, piface->if_inet_state.in_speed);
+            switch(piface->if_inet_state.in_duplex)
+            {
+                case OSN_DUPLEX_FULL:
+                    SCHEMA_SET_STR(pstate->link_duplex, "full");
+                    break;
+                case OSN_DUPLEX_HALF:
+                    SCHEMA_SET_STR(pstate->link_duplex, "half");
+                    break;
+                default:
+                    SCHEMA_SET_STR(pstate->link_duplex, "unknown");
+            }
+
+        default:
+            break;
+    }
+
     /*
      * Copy the assignment scheme
      */

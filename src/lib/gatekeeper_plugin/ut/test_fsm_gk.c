@@ -437,8 +437,8 @@ test_cname_redirect(void)
     struct fsm_policy *fpolicy;
     struct policy_table *table;
     struct fsm_policy_req req;
-    char ipv4_redirect_s[256];
-    char ipv6_redirect_s[256];
+    char ipv4_redirect_s[256+32];
+    char ipv6_redirect_s[256+32];
     struct str_set *fqdns_set;
     struct str_set *macs_set;
     struct addrinfo *result;

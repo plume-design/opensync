@@ -1,7 +1,7 @@
 {
   "name": "Open_vSwitch",
-  "version": "7.11.324",
-  "cksum": "829027187 286279",
+  "version": "7.11.346",
+  "cksum": "3388188422 296544",
   "tables": {
     "AWLAN_Node": {
       "columns": {
@@ -105,6 +105,13 @@
           }
         },
         "firmware_version": {
+          "type": {
+            "key": {
+              "type": "string"
+            }
+          }
+        },
+        "ovs_version": {
           "type": {
             "key": {
               "type": "string"
@@ -1315,6 +1322,32 @@
               "type": "boolean"
             }
           }
+        },
+        "link_duplex": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "full",
+                  "half",
+                  "unknown"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "link_speed": {
+          "type": {
+            "key": {
+              "type": "integer"
+            },
+            "min": 0,
+            "max": 1
+          }
         }
       },
       "isRoot": true,
@@ -1386,6 +1419,16 @@
             "min": 0,
             "max": 1
           }
+        },
+        "table": {
+          "type": {
+            "key": {
+              "type": "integer",
+              "minInteger": 1
+            },
+            "min": 0,
+            "max": 1
+          }
         }
       },
       "isRoot": true,
@@ -1449,12 +1492,31 @@
             "max": 1
           }
         },
+        "metric": {
+          "type": {
+            "key": {
+              "type": "integer"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
         "pref_src": {
           "type": {
             "key": {
               "type": "string",
               "minLength": 7,
               "maxLength": 15
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "table": {
+          "type": {
+            "key": {
+              "type": "integer",
+              "minInteger": 1
             },
             "min": 0,
             "max": 1
@@ -3630,6 +3692,62 @@
             "min": 0,
             "max": 1
           }
+        },
+        "wpa_key_mgmt": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "dpp",
+                  "wpa-psk",
+                  "sae",
+                  "wpa-psk-sha256",
+                  "wpa-eap",
+                  "wpa-eap-sha256",
+                  "wpa-eap-suite-b-192",
+                  "ft-sae",
+                  "ft-psk",
+                  "ft-eap",
+                  "ft-eap-sha384"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "pairwise_cipher": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "rsn-none",
+                  "rsn-tkip",
+                  "rsn-ccmp",
+                  "wpa-none",
+                  "wpa-tkip",
+                  "wpa-ccmp",
+                  "wep",
+                  "bip-cmac"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "pmf": {
+          "type": {
+           "key": {
+             "type": "boolean"
+           },
+           "min": 0,
+           "max": 1
+         }
         }
       },
       "isRoot": true
@@ -5645,7 +5763,8 @@
                   "device",
                   "rssi",
                   "steering",
-                  "client_auth_fails"
+                  "client_auth_fails",
+                  "radius_stats"
                 ]
               ]
             }
@@ -6068,6 +6187,28 @@
             "min": 0,
             "max": 1
           }
+        },
+        "st_bind_address": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 0,
+              "maxLength": 48
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "st_bind_interface": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 0,
+              "maxLength": 16
+            },
+            "min": 0,
+            "max": 1
+          }
         }
       },
       "isRoot": true,
@@ -6292,6 +6433,17 @@
           "type": {
             "key": {
               "type": "string"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "localIP": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 0,
+              "maxLength": 48
             },
             "min": 0,
             "max": 1
@@ -7020,12 +7172,31 @@
                     "max": 1
                 }
             },
+            "neighbor_list_filter_by_btm_status": {
+                "type": {
+                    "key": {
+                        "type": "boolean"
+                    },
+                    "min": 0,
+                    "max": 1
+                }
+            },
             "bottom_lwm": {
                 "type": {
                     "key": {
                         "type": "integer",
                         "minInteger": 0
                     }
+                }
+            },
+            "btm_max_neighbors": {
+                "type": {
+                    "key": {
+                        "type": "integer",
+                        "minInteger": 0
+                     },
+                    "min": 0,
+                    "max": 1
                 }
             }
         },
@@ -7776,6 +7947,17 @@
                     "max": 1
                 }
             },
+            "phy_type": {
+                "type": {
+                    "key": {
+                        "type": "integer",
+                        "minInteger": 0,
+                        "maxInteger": 255
+                    },
+                    "min": 0,
+                    "max": 1
+                }
+            },
             "priority": {
                 "type": {
                     "key": {
@@ -8478,6 +8660,26 @@
             "min": 0,
             "max": 1
           }
+        },
+        "ingress_classifier": {
+          "type": {
+            "key": {
+              "type": "uuid",
+              "refTable": "Interface_Classifier"
+            },
+            "min": 0,
+            "max": 64
+          }
+        },
+        "egress_classifier": {
+          "type": {
+            "key": {
+              "type": "uuid",
+              "refTable": "Interface_Classifier"
+            },
+            "min": 0,
+            "max": 64
+          }
         }
       },
       "isRoot": true,
@@ -9033,6 +9235,7 @@
               "enum": [
                 "set",
                 [
+                  "eth",
                   "ipv4",
                   "ipv6"
                 ]
@@ -9051,7 +9254,8 @@
                   "nat",
                   "mangle",
                   "raw",
-                  "security"
+                  "security",
+                  "broute"
                 ]
               ]
             }
@@ -10496,7 +10700,58 @@
           },
           "ephemeral": true
         }
-      }
+       }
+    },
+    "Interface_Classifier": {
+      "columns": {
+        "token": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            }
+          }
+        },
+        "priority": {
+            "type": "integer"
+        },
+        "match": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            }
+          }
+        },
+        "action": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          }
+        },
+        "status": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "success",
+                  "error"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": 1
+          }
+        }
+      },
+      "isRoot": true
     },
     "Interface_Queue": {
       "columns": {
@@ -12947,6 +13202,219 @@
         }
       },
       "isRoot": true
+    },
+    "Data_Report_Tags": {
+      "columns": {
+        "name": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "min": 1,
+            "max": 1
+          },
+          "mutable": false
+        },
+        "included_macs": {
+          "type": {
+            "key": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 32
+            },
+            "min": 0,
+            "max": 8
+          }
+        },
+        "excluded_macs": {
+          "type": {
+            "key": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 32
+            },
+            "min": 0,
+            "max": 8
+          }
+        },
+        "precedence": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "include",
+                  "exclude"
+                ]
+              ]
+            },
+            "min": 1,
+            "max": 1
+          }
+        }
+      },
+      "isRoot": true
+    },
+    "Policy_Routing_Rule": {
+      "columns": {
+        "name": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "min": 1,
+            "max": 1
+          },
+          "mutable": false
+        },
+        "addr_family": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "ipv4",
+                  "ipv6"
+                ]
+              ]
+            },
+            "min": 1,
+            "max": 1
+          }
+        },
+        "priority": {
+          "type": {
+            "key": {
+              "type": "integer",
+               "minInteger": 1
+            },
+            "min": 1,
+            "max": 1
+          }
+        },
+        "selector_not": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "selector_src_prefix": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 49
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "selector_dst_prefix": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 49
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "selector_input_intf": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 32
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "selector_output_intf": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 32
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "selector_fwmark": {
+          "type": {
+            "key": {
+              "type": "integer",
+               "minInteger": 1
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "selector_fwmask": {
+          "type": {
+            "key": {
+              "type": "integer",
+               "minInteger": 0
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "action_lookup_table": {
+          "type": {
+            "key": {
+              "type": "integer",
+               "minInteger": 1
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "action_suppress_preflen": {
+          "type": {
+            "key": {
+              "type": "integer",
+               "minInteger": 0
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "status": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "disabled",
+                  "enabled",
+                  "error"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": 1
+          }
+        }
+       },
+      "isRoot": true,
+      "indexes": [
+        [
+          "name"
+        ]
+      ]
     }
   }
 }

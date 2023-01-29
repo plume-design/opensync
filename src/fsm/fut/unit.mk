@@ -38,5 +38,6 @@ UNIT_FILE += fsm_configure_of_rules.sh
 UNIT_FILE += fsm_configure_test_ndp_plugin.sh
 UNIT_FILE += fsm_configure_test_walleye_plugin.sh
 UNIT_FILE += fsm_create_tap_interface.sh
+UNIT_FILE += fsm_test_gatekeeper_verdict.sh
 UNIT_FILE += fsm_test_http_plugin.sh
 UNIT_FILE += fsm_test_upnp_plugin.sh

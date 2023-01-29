@@ -188,6 +188,47 @@ ssize_t osp_ps_get(
 bool osp_ps_erase(osp_ps_t *ps);
 
 /**
+ * Erase content of store by the name of @p store_name (delete all keys and their values)
+ *
+ * @param[in]       store_name  Store name -- string used to open a store with this name.
+ *                              Opening the store using @ref osp_ps_open() with the flag
+ *                              OSP_PS_RDWR should return a valid object.
+ * @param[in]       flags       The flags parameter may be used to open a store in the
+ *                              preserve area, which is preserved across system upgrades.
+ *
+ * @note
+ * Stores opened with the same name but with or without the OPS_PS_PRESERVE
+ * flag are different stores. The flags parameter may be used to open the store
+ * in the area which is preserved across system updates.
+ *
+ * @return
+ * This function returns true on success, or false if any errors were
+ * encountered. If false is returned, it should be assumed that store
+ * was not erased.
+ *
+ * @note
+ * This function guarantees that the data was deleted from persistent
+ * store since the return code of @ref osp_ps_erase() and @ref osp_ps_sync()
+ * is checked.
+ */
+bool osp_ps_erase_store_name(
+        const char *store_name,
+        int flags);
+
+/**
+ * Completely wipe all data from persistent store
+ *
+ * @param[in]       recurse     Also erase all subfolders found in the persistent
+ *                              store directories.
+ *
+ * @return
+ * This function returns true on success, or false if any errors were
+ * encountered. If false is returned, it should be assumed that store
+ * was not completely erased.
+ */
+bool osp_ps_erase_all(bool recurse);
+
+/**
  * Flush all dirty data to persistent storage. When this function returns,
  * the data written by @ref osp_ps_set() should be considered safely stored.
  *

@@ -37,6 +37,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "nm2.h"
 #include "nm2_iface.h"
+#include "nm2_nb_port.h"
+#include "kconfig.h"
 
 /*
  * ===========================================================================
@@ -204,6 +206,7 @@ struct nm2_iface *nm2_iface_new(const char *_ifname, enum nm2_iftype if_type)
      */
     nm2_route_cfg_reapply(piface);
 
+
     LOG(INFO, "nm2_iface_new: %s: Created new interface (type %s).", ifname, nm2_iftype_tostr(if_type));
 
     return piface;
@@ -318,6 +321,11 @@ void __nm2_iface_apply(EV_P_ ev_debounce *w, int revent)
                     nm2_iftype_tostr(piface->if_type));
         }
 
+        if(kconfig_enabled(CONFIG_TARGET_USE_NATIVE_BRIDGE))
+        {
+            nm2_inet_bridge_config_reapply(piface);
+        }
+
         ds_dlist_iremove(&iter);
     }
 }
@@ -374,9 +382,14 @@ inet_t *nm2_iface_new_inet(const char *ifname, enum nm2_iftype type)
     {
         case NM2_IFTYPE_ETH:
         case NM2_IFTYPE_BRIDGE:
-        case NM2_IFTYPE_TAP:
         case NM2_IFTYPE_TUNNEL:
             nif = inet_eth_new(ifname);
+            break;
+        case NM2_IFTYPE_TAP:
+            if(kconfig_enabled(CONFIG_TARGET_USE_NATIVE_BRIDGE))
+                nif = inet_tap_new(ifname);
+            else
+                nif = inet_eth_new(ifname);
             break;
 
         case NM2_IFTYPE_VIF:

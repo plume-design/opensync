@@ -67,6 +67,8 @@ lte_info_set_net_info(struct lte_net_info *source, struct lte_info_report *repor
     lte_net_info->active_sim_slot = source->active_sim_slot;
     lte_net_info->rssi = source->rssi;
     lte_net_info->ber = source->ber;
+    lte_net_info->rsrp = source->rsrp;
+    lte_net_info->sinr = source->sinr;
     lte_net_info->last_healthcheck_success = source->last_healthcheck_success;
     lte_net_info->healthcheck_failures = source->healthcheck_failures;
 
@@ -142,9 +144,17 @@ lte_info_free_report(struct lte_info_report *report)
         lte_info_free_neigh_cell_info(cell);
     }
 
+    lte_info_free_pca_info(report);
+    lte_info_free_sca_info(report);
+
     FREE(report->lte_neigh_cell_info);
 
     lte_info_free_pdp_ctx_info(report);
+
+    cellular_info_free_nr5g_sa_serving_cell(report);
+
+    cellular_info_free_nr5g_nsa_serving_cell(report);
+
     FREE(report);
 }
 
@@ -640,6 +650,141 @@ lte_info_free_pdp_ctx_info(struct lte_info_report *report)
     report->lte_pdp_ctx_info = NULL;
 }
 
+
+/**
+ * @brief set nr5g sa info
+ *
+ * @param report the report
+ */
+bool
+cellular_info_set_nr5g_sa_srv_cell(struct cellular_nr5g_sa_net_serving_cell_info *source,
+                                    struct lte_info_report *report)
+{
+    struct cellular_nr5g_sa_net_serving_cell_info *srv_cell_info;
+
+    if (source == NULL) return false;
+    if (report == NULL) return false;
+
+    /* return if cellular structure is already allocated */
+    if (report->nr5g_sa_srv_cell != NULL) return false;
+
+    report->nr5g_sa_srv_cell = CALLOC(1, sizeof(*srv_cell_info));
+
+    srv_cell_info = report->nr5g_sa_srv_cell;
+    srv_cell_info->state = source->state;
+    srv_cell_info->mode = source->mode;
+    srv_cell_info->fdd_tdd_mode = source->fdd_tdd_mode;
+    srv_cell_info->mcc = source->mcc;
+    srv_cell_info->mnc = source->mnc;
+    srv_cell_info->cellid = source->cellid;
+    srv_cell_info->pcid = source->pcid;
+    srv_cell_info->tac = source->tac;
+    srv_cell_info->arfcn = source->arfcn;
+    srv_cell_info->band = source->band;
+    srv_cell_info->bandwidth = source->bandwidth;
+    srv_cell_info->rsrp = source->rsrp;
+    srv_cell_info->rsrq = source->rsrq;
+    srv_cell_info->sinr = source->sinr;
+    srv_cell_info->scs = source->scs;
+    srv_cell_info->srxlev = source->srxlev;
+
+    return true;
+}
+
+/**
+ * @brief free nr5g sa serving cell info
+ *
+ * @param report the report
+ */
+void
+cellular_info_free_nr5g_sa_serving_cell(struct lte_info_report *report)
+{
+    struct  cellular_nr5g_sa_net_serving_cell_info *srv_cell;
+
+    if (report == NULL) return;
+
+    srv_cell = report->nr5g_sa_srv_cell;
+    if (srv_cell == NULL) return;
+
+    FREE(srv_cell);
+    report->nr5g_sa_srv_cell = NULL;
+}
+
+
+/**
+ * @brief set nr5g sa info
+ *
+ * @param report the report
+ */
+bool
+cellular_info_set_nr5g_nsa_srv_cell(struct cellular_nr5g_nsa_net_serving_cell_info *source,
+                                    struct lte_info_report *report)
+{
+    struct cellular_nr5g_nsa_net_serving_cell_info *srv_cell_info;
+
+    if (source == NULL) return false;
+    if (report == NULL) return false;
+
+    /* return if cellular structure is already allocated */
+    if (report->nr5g_nsa_srv_cell != NULL) return false;
+
+    report->nr5g_nsa_srv_cell = CALLOC(1, sizeof(*srv_cell_info));
+
+    srv_cell_info = report->nr5g_nsa_srv_cell;
+    srv_cell_info->lte_state = source->lte_state;
+    srv_cell_info->lte_mode = source->lte_mode;
+    srv_cell_info->lte_fdd_tdd_mode = source->lte_fdd_tdd_mode;
+    srv_cell_info->lte_mcc = source->lte_mcc;
+    srv_cell_info->lte_mnc = source->lte_mnc;
+    srv_cell_info->lte_cellid = source->lte_cellid;
+    srv_cell_info->lte_pcid = source->lte_pcid;
+    srv_cell_info->lte_tac = source->lte_tac;
+    srv_cell_info->lte_earfcn = source->lte_earfcn;
+    srv_cell_info->lte_freq_band_ind = source->lte_freq_band_ind;
+    srv_cell_info->lte_ul_bandwidth = source->lte_ul_bandwidth;
+    srv_cell_info->lte_tac = source->lte_tac;
+    srv_cell_info->lte_rsrp = source->lte_rsrp;
+    srv_cell_info->lte_rsrq = source->lte_rsrq;
+    srv_cell_info->lte_rssi = source->lte_rssi;
+    srv_cell_info->lte_sinr = source->lte_sinr;
+    srv_cell_info->lte_cqi = source->lte_cqi;
+    srv_cell_info->lte_tx_power = source->lte_tx_power;
+    srv_cell_info->lte_srxlev = source->lte_srxlev;
+
+    srv_cell_info->nr5g_nsa_mode = source->nr5g_nsa_mode;
+    srv_cell_info->nr5g_nsa_mcc = source->nr5g_nsa_mcc;
+    srv_cell_info->nr5g_nsa_mnc = source->nr5g_nsa_mnc;
+    srv_cell_info->nr5g_nsa_pcid = source->nr5g_nsa_pcid;
+    srv_cell_info->nr5g_nsa_rsrp = source->nr5g_nsa_rsrp;
+    srv_cell_info->nr5g_nsa_sinr =  source->nr5g_nsa_sinr;
+    srv_cell_info->nr5g_nsa_rsrq = source->nr5g_nsa_rsrq;
+    srv_cell_info->nr5g_nsa_arfcn = source->nr5g_nsa_arfcn;
+    srv_cell_info->nr5g_nsa_band = source->nr5g_nsa_band;
+    srv_cell_info->nr5g_nsa_dl_bandwidth = source->nr5g_nsa_dl_bandwidth;
+    srv_cell_info->nr5g_nsa_scs = source->nr5g_nsa_scs;
+
+    return true;
+}
+
+/**
+ * @brief free nr5g sa serving cell info
+ *
+ * @param report the report
+ */
+void
+cellular_info_free_nr5g_nsa_serving_cell(struct lte_info_report *report)
+{
+    struct  cellular_nr5g_nsa_net_serving_cell_info *srv_cell;
+
+    if (report == NULL) return;
+
+    srv_cell = report->nr5g_nsa_srv_cell;
+    if (srv_cell == NULL) return;
+
+    FREE(srv_cell);
+    report->nr5g_nsa_srv_cell = NULL;
+}
+
 /**
  * @brief set the common header of a report
  *
@@ -1060,6 +1205,123 @@ lte_info_free_pb_pdp_ctx_param(Interfaces__LteInfo__LtePDPContextInfo *pb)
     FREE(pb);
 }
 
+static Interfaces__LteInfo__CellularNr5gSaServingCellInfo *
+cellular_info_set_pb_nr5g_sa_srv_cell(struct lte_info_report *report)
+{
+    Interfaces__LteInfo__CellularNr5gSaServingCellInfo *pb;
+    struct cellular_nr5g_sa_net_serving_cell_info *cell;
+
+    if (report == NULL) return NULL;
+
+    cell = report->nr5g_sa_srv_cell;
+    if (cell == NULL) return NULL;
+
+    /* Allocate the signal quality mesage */
+    pb = CALLOC(1, sizeof(*pb));
+
+    /* Initialize the message */
+    interfaces__lte_info__cellular_nr5g_sa_serving_cell_info__init(pb);
+
+    /* Assign the message fields */
+    pb->state = (Interfaces__LteInfo__CellularServingCellState)cell->state;
+    pb->mode = (Interfaces__LteInfo__CellularMode)cell->mode;
+    pb->fdd_tdd_mode = (Interfaces__LteInfo__CellularFddTddMode)cell->fdd_tdd_mode;
+    pb->mcc = cell->mcc;
+    pb->mnc = cell->mcc;
+    pb->cellid = cell->cellid;
+    pb->pcid = cell->pcid;
+    pb->tac = cell->tac;
+    pb->arfcn = cell->arfcn;
+    pb->band = cell->band;
+    pb->bw = (Interfaces__LteInfo__NrDlBandwidth)cell->bandwidth;
+    pb->rsrp = cell->rsrp;
+    pb->rsrq = cell->rsrq;
+    pb->sinr = cell->sinr;
+    pb->scs = (Interfaces__LteInfo__NrScs)cell->scs;
+    pb->srxlev = cell->srxlev;
+
+    LOGD("%s: state[%d], mode[%d], fdd_tdd_mode[%d], mcc[%d], mnc[%d], cellid[0x%d], pcid[%d], arfcn[%d], band[%d] bandwidth[%d], "
+         "tac[%d], rsrp[%d], rsrq[%d], sinr[%d], scs[%d], srxlev[%d]",
+         __func__, pb->state, pb->mode, pb->fdd_tdd_mode, pb->mcc, pb->mnc, pb->cellid, pb->pcid, pb->arfcn, pb->band, pb->bw,
+         pb->tac, pb->rsrp, pb->rsrq, pb->sinr, pb->scs, pb->srxlev);
+    return pb;
+}
+
+static void
+lte_info_free_pb_cellular_nr5g_sa_net_serving_cell_info(Interfaces__LteInfo__CellularNr5gSaServingCellInfo *pb)
+{
+    FREE(pb);
+}
+
+static Interfaces__LteInfo__CellularNr5gNsaServingCellInfo *
+cellular_info_set_pb_nr5g_nsa_srv_cell(struct lte_info_report *report)
+{
+    Interfaces__LteInfo__CellularNr5gNsaServingCellInfo *pb;
+    struct cellular_nr5g_nsa_net_serving_cell_info *cell;
+
+    if (report == NULL) return NULL;
+
+    cell = report->nr5g_nsa_srv_cell;
+    if (cell == NULL) return NULL;
+
+    /* Allocate the signal quality mesage */
+    pb = CALLOC(1, sizeof(*pb));
+
+    /* Initialize the message */
+    interfaces__lte_info__cellular_nr5g_nsa_serving_cell_info__init(pb);
+
+    /* Assign the message fields */
+    pb->lte_state = (Interfaces__LteInfo__CellularServingCellState)cell->lte_state;
+    pb->lte_mode = (Interfaces__LteInfo__CellularMode)cell->lte_mode;
+    pb->lte_fdd_tdd_mode = (Interfaces__LteInfo__CellularFddTddMode)cell->lte_fdd_tdd_mode;
+    pb->lte_mode = (Interfaces__LteInfo__CellularMode)cell->lte_mode;
+    pb->lte_mcc = cell->lte_mcc;
+    pb->lte_mnc = cell->lte_mcc;
+    pb->lte_cellid = cell->lte_cellid;
+    pb->lte_pcid = cell->lte_pcid;
+    pb->lte_earfcn = cell->lte_earfcn;
+    pb->lte_freq_band_ind = cell->lte_freq_band_ind;
+    pb->ul_bandwidth = (Interfaces__LteInfo__LteBandwidth)cell->lte_ul_bandwidth;
+    pb->dl_bandwidth = (Interfaces__LteInfo__LteBandwidth)cell->lte_dl_bandwidth;
+    pb->lte_tac = cell->lte_tac;
+    pb->lte_rsrp = cell->lte_rsrp;
+    pb->lte_rsrq = cell->lte_rsrq;
+    pb->lte_rssi = cell->lte_rssi;
+    pb->lte_sinr = cell->lte_sinr;
+    pb->lte_cqi = cell->lte_cqi;
+    pb->lte_tx_power = cell->lte_tx_power;
+    pb->lte_srxlev = cell->lte_srxlev;
+
+    pb->nr5g_nsa_mode = cell->nr5g_nsa_mode;
+    pb->nr5g_nsa_mcc = cell->nr5g_nsa_mcc;
+    pb->nr5g_nsa_mnc = cell->nr5g_nsa_mnc;
+    pb->nr5g_nsa_pcid = cell->nr5g_nsa_pcid;
+    pb->nr5g_nsa_rsrp = cell->nr5g_nsa_rsrp;
+    pb->nr5g_nsa_sinr = cell->nr5g_nsa_sinr;
+    pb->nr5g_nsa_rsrq = cell->nr5g_nsa_rsrq;
+    pb->nr5g_nsa_arfcn = cell->nr5g_nsa_arfcn;
+    pb->nr5g_nsa_band = cell->nr5g_nsa_band;
+    pb->nr5g_nsa_dl_bandwidth = (Interfaces__LteInfo__NrDlBandwidth)cell->nr5g_nsa_dl_bandwidth;
+    pb->nr5g_nsa_scs= (Interfaces__LteInfo__NrScs)cell->nr5g_nsa_scs;
+
+    LOGD("%s: lte_state[%d], lte_mode[%d], lte_fdd_tdd_mode[%d], lte_mcc[%d], lte_mnc[%d], lte_cellid[0x%d], lte_pcid[%d], lte_earfcn[%d], lte_freq_band_ind[%d] ul_bandwidth[%d],"
+            " dl_bandwidth[%d], lte_tac[%d], lte_rsrp[%d], lte_rsrq[%d], lte_rssi[%d], lte_sinr[%d], lte_cqi[%d], lte_tx_power[%d], lte_srxlev[%d], nr5g_nsa_mode[%d], nr5g_nsa_mcc[%d], nr5g_nsa_mnc[%d],"
+            " nr5g_nsa_pcid[%d], nr5g_nsa_rsrp[%d], nr5g_nsa_sinr[%d], nr5g_nsa_rsrq[%d], nr5g_nsa_arfcn[%d], nr5g_nsa_band[%d], nr5g_nsa_dl_bandwidth[%d], nr5g_nsa_scs[%d]",
+         __func__, pb->lte_state, pb->lte_mode, pb->lte_fdd_tdd_mode, pb->lte_mcc, pb->lte_mnc, pb->lte_cellid, pb->lte_pcid, pb->lte_earfcn, pb->lte_freq_band_ind, pb->ul_bandwidth,
+         pb->dl_bandwidth, pb->lte_tac, pb->lte_rsrp, pb->lte_rsrq, pb->lte_rssi, pb->lte_sinr, pb->lte_cqi, pb->lte_tx_power, pb->lte_srxlev, pb->nr5g_nsa_mode, pb->nr5g_nsa_mcc, pb->nr5g_nsa_mnc,
+         pb->nr5g_nsa_pcid, pb->nr5g_nsa_rsrp, pb->nr5g_nsa_sinr, pb->nr5g_nsa_rsrq, pb->nr5g_nsa_arfcn, pb->nr5g_nsa_band, pb->nr5g_nsa_dl_bandwidth, pb->nr5g_nsa_scs);
+
+    return pb;
+}
+
+static void
+lte_info_free_pb_cellular_nr5g_nsa_net_serving_cell_info(Interfaces__LteInfo__CellularNr5gNsaServingCellInfo *pb)
+{
+    FREE(pb);
+}
+
+
+
 /**
  * @brief Free a lte info report protobuf structure.
  *
@@ -1101,6 +1363,11 @@ lte_info_free_pb_report(Interfaces__LteInfo__LteInfoReport *pb)
 
     /* Free the pdp context info */
     lte_info_free_pb_pdp_ctx_param(pb->lte_pdp_context);
+
+    /* Free the nr5g sa serving cell info */
+    lte_info_free_pb_cellular_nr5g_sa_net_serving_cell_info(pb->cell_nr5g_sa_srv_cell);
+
+    lte_info_free_pb_cellular_nr5g_nsa_net_serving_cell_info(pb->cell_nr5g_nsa_srv_cell);
 
     FREE(pb);
 }
@@ -1145,7 +1412,13 @@ lte_info_set_pb_report(struct lte_info_report *report)
     /* Add pdp context dynamic parameters */
     pb->lte_pdp_context = lte_info_set_pb_pdp_ctx_param(report);
 
+    /* Add nr5g sa info */
+    pb->cell_nr5g_sa_srv_cell = cellular_info_set_pb_nr5g_sa_srv_cell(report);
+
+    /* Add nr5g sa info */
+    pb->cell_nr5g_nsa_srv_cell = cellular_info_set_pb_nr5g_nsa_srv_cell(report);
     return pb;
+
 
 error:
     lte_info_free_pb_report(pb);

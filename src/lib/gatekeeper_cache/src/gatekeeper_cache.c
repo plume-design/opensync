@@ -335,11 +335,8 @@ gk_add_new_redirect_entry(struct gk_attr_cache_interface *input, struct attr_cac
     {
         new_redirect->redirect_cname = STRDUP(in_redirect->redirect_cname);
     }
-    else
-    {
-        STRSCPY(new_redirect->redirect_ips[0], in_redirect->redirect_ips[0]);
-        STRSCPY(new_redirect->redirect_ips[1], in_redirect->redirect_ips[1]);
-    }
+    STRSCPY(new_redirect->redirect_ips[0], in_redirect->redirect_ips[0]);
+    STRSCPY(new_redirect->redirect_ips[1], in_redirect->redirect_ips[1]);
 }
 
 /**
@@ -874,6 +871,10 @@ gkc_lookup_redirect_entry(struct gk_attr_cache_interface *req, struct attr_cache
 
     if (req->fqdn_redirect == NULL || attr_entry->fqdn_redirect == NULL) return;
 
+    if (attr_entry->fqdn_redirect->redirect_cname)
+    {
+        req->fqdn_redirect->redirect_cname = STRDUP(attr_entry->fqdn_redirect->redirect_cname);
+    }
     req->fqdn_redirect->redirect = attr_entry->fqdn_redirect->redirect;
     req->fqdn_redirect->redirect_ttl = attr_entry->fqdn_redirect->redirect_ttl;
     STRSCPY(req->fqdn_redirect->redirect_ips[0], attr_entry->fqdn_redirect->redirect_ips[0]);

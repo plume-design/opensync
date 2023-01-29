@@ -35,6 +35,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "osp_l2uf.h"
 
 #include "nm2.h"
+#include "nm2_nb_port.h"
+#include "kconfig.h"
 
 #define ETH_PREFIX "eth"
 #define ETH_PREFIX_LEN 3
@@ -46,14 +48,14 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * ===========================================================================
  */
 static ovsdb_table_t    table_Port;
-static void             callback_Port(ovsdb_update_monitor_t *mon,
-                                      struct schema_Port *old,
+void                    callback_Port(ovsdb_update_monitor_t *mon, struct schema_Port *old,
                                       struct schema_Port *new);
 void                    nm2_add_vlans(struct schema_Port *rec);
 void                    nm2_remove_vlans(struct schema_Port *oldrec,
                                          struct schema_Port *newrec);
 void                    nm2_mod_vlans(struct schema_Port *oldrec,
                                       struct schema_Port *newrec);
+
 /*
  * Initialize table monitors
  */
@@ -157,18 +159,22 @@ void callback_Port(
         struct schema_Port *old,
         struct schema_Port *new)
 {
+    TRACE();
 
     switch (mon->mon_type) {
         case OVSDB_UPDATE_NEW:
             nm2_add_vlans(new);
             break;
+
         case OVSDB_UPDATE_MODIFY:
             nm2_remove_vlans(old, new);
             nm2_add_vlans(new);
             break;
+
         case OVSDB_UPDATE_DEL:
             nm2_remove_vlans(old, NULL);
             break;
+
         default:
             LOGW("%s:mon upd error: %d", __func__, mon->mon_type);
             return;
@@ -193,5 +199,9 @@ void callback_Port(
         }
         osp_l2switch_del(old->name);
     }
+
+    if (kconfig_enabled(CONFIG_TARGET_USE_NATIVE_BRIDGE))
+        nm2_nb_port_process_update(mon, old, new);
+
     return;
 }

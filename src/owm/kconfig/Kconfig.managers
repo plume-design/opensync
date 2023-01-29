@@ -1,0 +1,39 @@
+menuconfig MANAGER_OWM
+    bool "Opensync Wireless / One Wifi Manager (OWM)"
+    default y
+    help
+        This process is intended to handle all Wireless
+        related operations in Opensync - apply
+        configurations, report states, steering clients,
+        collect data (statistics, CSI), etc.
+
+        This is experimental for now. It aims at eventually
+        replacing WM, SM and BM and unifying them into one.
+
+        If rootfs space is at a premium and legacy WM/SM/BM
+        setup is used, select 'n'.
+
+        Otherwise, if unsure, select 'y'.
+
+    config MANAGER_OWM_STARTUP
+        bool "Automatic startup on system boot"
+        depends on MANAGER_OWM
+        default n
+        help
+            Enable Opensync Wireless / OneWifi Manager (OWM)
+            to be started up automatically on OpenSync
+            start up.
+
+            If unsure, select 'n'.
+
+if MANAGER_OWM_STARTUP
+    config MANAGER_OWM_CFG
+        depends on MANAGER_OWM_STARTUP
+        depends on MANAGER_OWM
+        string "Startup configuration"
+        default "owm;false;needs_plan_b=false"
+        help
+            Opensync Wireless Manager / One Wifi Manager
+            startup configuration for DM. This provides the
+            base parameters for daemon process supervision.
+endif

@@ -23,11 +23,41 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 UNIT_DISABLE :=  $(if $(CONFIG_MANAGER_FCM),n,y)
-UNIT_NAME := test_nm2_mac_tags
+UNIT_NAME := test_nm2_main
 
 UNIT_TYPE := TEST_BIN
 
-UNIT_SRC := test_nm2_mac_tags.c
+UNIT_SRC := test_nm2_main.c
+UNIT_SRC += test_nm2_mac_tags.c
+UNIT_SRC += $(if $(CONFIG_TARGET_USE_NATIVE_BRIDGE), test_nm2_native_bridge.c)
+
+UNIT_SRC    += ../src/nm2_dhcp_lease.c
+UNIT_SRC    += ../src/nm2_dhcp_option.c
+UNIT_SRC    += ../src/nm2_dhcp_rip.c
+UNIT_SRC    += ../src/nm2_dhcpv6_client.c
+UNIT_SRC    += ../src/nm2_dhcpv6_lease.c
+UNIT_SRC    += ../src/nm2_dhcpv6_server.c
+UNIT_SRC    += ../src/nm2_iface.c
+UNIT_SRC    += ../src/nm2_inet_config.c
+UNIT_SRC    += ../src/nm2_inet_state.c
+UNIT_SRC    += ../src/nm2_ip_interface.c
+UNIT_SRC    += ../src/nm2_ipv6_address.c
+UNIT_SRC    += ../src/nm2_ipv6_neighbors.c
+UNIT_SRC    += ../src/nm2_ipv6_prefix.c
+UNIT_SRC    += ../src/nm2_ipv6_routeadv.c
+UNIT_SRC    += ../src/nm2_mac_learning.c
+UNIT_SRC    += ../src/nm2_mcast.c
+UNIT_SRC    += ../src/nm2_port.c
+UNIT_SRC    += ../src/nm2_portfw.c
+UNIT_SRC    += ../src/nm2_route.c
+UNIT_SRC    += ../src/nm2_route_config.c
+UNIT_SRC    += ../src/nm2_util.c
+
+UNIT_SRC    += $(if $(CONFIG_TARGET_USE_NATIVE_BRIDGE), ../src/nm2_nb_bridge.c)
+UNIT_SRC    += $(if $(CONFIG_TARGET_USE_NATIVE_BRIDGE), ../src/nm2_default_ovsdb_bridge.c)
+UNIT_SRC    += $(if $(CONFIG_TARGET_USE_NATIVE_BRIDGE), ../src/nm2_nb_interface.c)
+UNIT_SRC    += $(if $(CONFIG_TARGET_USE_NATIVE_BRIDGE), ../src/nm2_nb_port.c)
+
 
 UNIT_CFLAGS := -I$(UNIT_PATH)/inc
 UNIT_CFLAGS += -Isrc/nm2/inc
@@ -36,6 +66,9 @@ UNIT_CFLAGS += -Isrc/nm2/src
 UNIT_DEPS := src/lib/ovsdb
 UNIT_DEPS += src/lib/pjs
 UNIT_DEPS += src/lib/schema
+UNIT_DEPS += src/lib/reflink
+UNIT_DEPS += src/lib/synclist
+UNIT_DEPS += src/lib/inet
 UNIT_DEPS += src/lib/log
 UNIT_DEPS += src/lib/common
 UNIT_DEPS += src/lib/unity

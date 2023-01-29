@@ -35,17 +35,21 @@
 #include <string.h>
 #include <stdio.h>
 
+#include "kconfig.h"
+
 #define MODULE_ID LOG_MODULE_ID_MAIN
 
 #define NFM_OSFW_PROTOCOL_INET4 "ipv4"
 #define NFM_OSFW_PROTOCOL_INET6 "ipv6"
 #define NFM_OSFW_PROTOCOL_BOTH "both"
+#define NFM_OSFW_PROTOCOL_ETH "eth"
 
 #define NFM_OSFW_TABLE_FILTER "filter"
 #define NFM_OSFW_TABLE_NAT "nat"
 #define NFM_OSFW_TABLE_MANGLE "mangle"
 #define NFM_OSFW_TABLE_RAW "raw"
 #define NFM_OSFW_TABLE_SECURITY "security"
+#define NFM_OSFW_TABLE_BROUTE "broute"
 
 #define NFM_OSFW_TARGET_ACCEPT "ACCEPT"
 #define NFM_OSFW_TARGET_DROP "DROP"
@@ -53,7 +57,29 @@
 #define NFM_OSFW_TARGET_REJECT "REJECT"
 #define NFM_OSFW_TARGET_QUEUE "QUEUE"
 
+#define NFM_OSEB_TARGET_ACCEPT "ACCEPT"
+#define NFM_OSEB_TARGET_DROP "DROP"
+#define NFM_OSEB_TARGET_CONTINUE "CONTINUE"
+#define NFM_OSEB_TARGET_RETURN "RETURN"
+
 struct nfm_osfw_base nfm_osfw_base;
+struct nfm_osfw_eb_base nfm_osfw_eb_base;
+
+bool nfm_osfw_eb_is_valid_chain(const char *chain)
+{
+	if (strchr(chain, ' ')) {
+		return false;
+	} else if (!strncmp(chain, NFM_OSEB_TARGET_ACCEPT, sizeof(NFM_OSEB_TARGET_ACCEPT))) {
+		return false;
+	} else if (!strncmp(chain, NFM_OSEB_TARGET_DROP, sizeof(NFM_OSEB_TARGET_DROP))) {
+		return false;
+	} else if (!strncmp(chain, NFM_OSEB_TARGET_CONTINUE, sizeof(NFM_OSEB_TARGET_CONTINUE))) {
+		return false;
+	} else if (!strncmp(chain, NFM_OSEB_TARGET_RETURN, sizeof(NFM_OSEB_TARGET_RETURN))) {
+		return false;
+	}
+	return true;
+}
 
 static bool nfm_osfw_is_valid_chain(const char *chain)
 {
@@ -87,7 +113,10 @@ static enum osfw_table nfm_osfw_convert_table(const char *table)
 		value = OSFW_TABLE_RAW;
 	} else if (!strncmp(table, NFM_OSFW_TABLE_SECURITY, sizeof(NFM_OSFW_TABLE_SECURITY))) {
 		value = OSFW_TABLE_SECURITY;
-	} else {
+	} else if (kconfig_enabled(CONFIG_TARGET_ENABLE_EBTABLES) &&
+               !strncmp(table, NFM_OSFW_TABLE_BROUTE, sizeof(NFM_OSFW_TABLE_BROUTE))) {
+		value = OSFW_TABLE_BROUTE;
+	}else {
 		LOGE("Convert firewall table: invalid table %s", table);
 	}
 	return value;
@@ -103,9 +132,25 @@ static void nfm_osfw_on_reschedule(struct ev_loop *loop, ev_timer *watcher, int 
 	}
 }
 
+static void nfm_osfw_eb_on_reschedule(struct ev_loop *loop, ev_timer *watcher, int revents)
+{
+	bool errcode;
+
+	errcode = osfw_eb_apply();
+	if (!errcode) {
+		LOGE("Apply ebtables configuration failed");
+	}
+}
+
 static bool nfm_osfw_reschedule(void)
 {
 	ev_timer_start(nfm_osfw_base.loop, &nfm_osfw_base.timer);
+	return true;
+}
+
+static bool nfm_osfw_eb_reschedule(void)
+{
+	ev_timer_start(nfm_osfw_eb_base.loop, &nfm_osfw_eb_base.timer);
 	return true;
 }
 
@@ -122,6 +167,24 @@ bool nfm_osfw_init(struct ev_loop *loop)
 		LOGE("Initialize the OpenSync firewall API failed");
 		return false;
 	}
+
+	return true;
+}
+
+bool nfm_osfw_eb_init(struct ev_loop *loop)
+{
+	bool errcode = true;
+
+	memset(&nfm_osfw_eb_base, 0, sizeof(nfm_osfw_eb_base));
+	nfm_osfw_eb_base.loop = loop;
+	ev_timer_init(&nfm_osfw_eb_base.timer, nfm_osfw_eb_on_reschedule, 0, 0);
+
+	errcode = osfw_eb_init(osfw_eb_execute_cmd);
+	if (!errcode) {
+		LOGE("Initialize the OpenSync ebtables API failed");
+		return false;
+	}
+
 	return true;
 }
 
@@ -137,6 +200,22 @@ bool nfm_osfw_fini(void)
 
 	ev_timer_stop(nfm_osfw_base.loop, &nfm_osfw_base.timer);
 	memset(&nfm_osfw_base, 0, sizeof(nfm_osfw_base));
+
+	return true;
+}
+
+bool nfm_osfw_eb_fini(void)
+{
+	bool errcode = true;
+
+	errcode = osfw_eb_fini();
+	if (!errcode) {
+		LOGE("Finilize the OpenSync firewall API failed");
+		return false;
+	}
+
+	ev_timer_stop(nfm_osfw_eb_base.loop, &nfm_osfw_eb_base.timer);
+	memset(&nfm_osfw_eb_base, 0, sizeof(nfm_osfw_eb_base));
 	return true;
 }
 
@@ -160,28 +239,63 @@ bool nfm_osfw_is_inet6(const char *protocol)
 	return false;
 }
 
+bool nfm_osfw_is_eth(const char *protocol)
+{
+	if (!strncmp(protocol, NFM_OSFW_PROTOCOL_ETH, sizeof(NFM_OSFW_PROTOCOL_ETH))) {
+		return true;
+	}
+
+	return false;
+}
+
 bool nfm_osfw_add_chain(int family, const char *table, const char *chain)
 {
 	bool errcode = true;
 
-	if (((family != AF_INET) && (family != AF_INET6)) || !table || !table[0] || !chain || !chain[0]) {
+
+	if (((family != AF_INET) && (family != AF_INET6) && (family != AF_BRIDGE)) || !table || !table[0] || !chain || !chain[0]) {
 		LOGE("Add firewall chain: invalid parameters");
 		return false;
-	} else if (!nfm_osfw_is_valid_chain(chain)) {
-		LOGD("Add firewall chain: %s is not a valid chain - ignore it", chain);
-		return true;
 	}
 
-	errcode = osfw_chain_add(family, nfm_osfw_convert_table(table), chain);
-	if (!errcode) {
-		LOGE("Add firewall chain failed");
-		return false;
+	if (kconfig_enabled(CONFIG_TARGET_ENABLE_EBTABLES) && family == AF_BRIDGE) {
+		if (!nfm_osfw_eb_is_valid_chain(chain)) {
+			LOGD("Add ebtable chain: %s is not a valid chain - ignore it", chain);
+			return true;
+		}
+	} else {
+		if (!nfm_osfw_is_valid_chain(chain)) {
+			LOGD("Add firewall chain: %s is not a valid chain - ignore it", chain);
+			return true;
+		}
 	}
 
-	errcode = nfm_osfw_reschedule();
-	if (!errcode) {
-		LOGE("Ask for a reschedule failed");
-		return false;
+	if (kconfig_enabled(CONFIG_TARGET_ENABLE_EBTABLES) && family == AF_BRIDGE) {
+		errcode = osfw_eb_chain_add(family, nfm_osfw_convert_table(table), chain);
+		if (!errcode) {
+			LOGE("Add ebtables chain failed");
+			return false;
+		}
+	} else {
+		errcode = osfw_chain_add(family, nfm_osfw_convert_table(table), chain);
+		if (!errcode) {
+			LOGE("Add firewall chain failed");
+			return false;
+		}
+	}
+
+	if (kconfig_enabled(CONFIG_TARGET_ENABLE_EBTABLES) && family == AF_BRIDGE) {
+		errcode = nfm_osfw_eb_reschedule();
+		if (!errcode) {
+			LOGE("Ask for a ebtable reschedule failed");
+			return false;
+		}
+	} else {
+		errcode = nfm_osfw_reschedule();
+		if (!errcode) {
+			LOGE("Ask for a reschedule failed");
+			return false;
+		}
 	}
 	return true;
 }
@@ -190,7 +304,7 @@ bool nfm_osfw_del_chain(int family, const char *table, const char *chain)
 {
 	bool errcode = true;
 
-	if (((family != AF_INET) && (family != AF_INET6)) || !table || !table[0] || !chain || !chain[0]) {
+	if (((family != AF_INET) && (family != AF_INET6) && (family != AF_BRIDGE)) || !table || !table[0] || !chain || !chain[0]) {
 		LOGE("Delete firewall chain: invalid parameters");
 		return false;
 	} else if (!nfm_osfw_is_valid_chain(chain)) {
@@ -198,17 +312,34 @@ bool nfm_osfw_del_chain(int family, const char *table, const char *chain)
 		return true;
 	}
 
-	errcode = osfw_chain_del(family, nfm_osfw_convert_table(table), chain);
-	if (!errcode) {
-		LOGE("Delete firewall chain failed");
-		return false;
+	if (kconfig_enabled(CONFIG_TARGET_ENABLE_EBTABLES) && family == AF_BRIDGE) {
+		errcode = osfw_eb_chain_del(family, nfm_osfw_convert_table(table), chain);
+		if (!errcode) {
+			LOGE("Delete firewall chain failed");
+			return false;
+		}
+	} else {
+		errcode = osfw_chain_del(family, nfm_osfw_convert_table(table), chain);
+		if (!errcode) {
+			LOGE("Delete firewall chain failed");
+			return false;
+		}
 	}
 
-	errcode = nfm_osfw_reschedule();
-	if (!errcode) {
-		LOGE("Ask for a reschedule failed");
-		return false;
+	if (kconfig_enabled(CONFIG_TARGET_ENABLE_EBTABLES) && family == AF_BRIDGE) {
+		errcode = nfm_osfw_eb_reschedule();
+		if (!errcode) {
+			LOGE("Ask for a ebtable reschedule failed");
+			return false;
+		}
+	} else {
+		errcode = nfm_osfw_reschedule();
+		if (!errcode) {
+			LOGE("Ask for a reschedule failed");
+			return false;
+		}
 	}
+
 	return true;
 }
 
@@ -241,8 +372,24 @@ bool nfm_osfw_add_rule(const struct schema_Netfilter *conf)
 		change = true;
 	}
 
+	if (kconfig_enabled(CONFIG_TARGET_ENABLE_EBTABLES) &&
+        nfm_osfw_is_eth(conf->protocol)) {
+		errcode = osfw_eb_rule_add(AF_BRIDGE, nfm_osfw_convert_table(conf->table),
+				conf->chain, conf->priority, conf->rule, conf->target);
+		if (!errcode) {
+			LOGE("Add ebtables firewall rule failed");
+			return false;
+		}
+		change = true;
+	}
+
 	if (change) {
-		errcode = nfm_osfw_reschedule();
+		if (kconfig_enabled(CONFIG_TARGET_ENABLE_EBTABLES) &&
+            nfm_osfw_is_eth(conf->protocol)) {
+			errcode = nfm_osfw_eb_reschedule();
+		} else {
+			errcode = nfm_osfw_reschedule();
+		}
 		if (!errcode) {
 			LOGE("Ask for a reschedule failed");
 			return false;
@@ -281,8 +428,24 @@ bool nfm_osfw_del_rule(const struct schema_Netfilter *conf)
 		change = true;
 	}
 
+    if (kconfig_enabled(CONFIG_TARGET_ENABLE_EBTABLES) &&
+        nfm_osfw_is_eth(conf->protocol)) {
+		errcode = osfw_eb_rule_del(AF_BRIDGE, nfm_osfw_convert_table(conf->table),
+				conf->chain, conf->priority, conf->rule, conf->target);
+		if (!errcode) {
+			LOGE("Delete ebtables rule failed");
+			return false;
+		}
+		change = true;
+	}
+
 	if (change) {
-		errcode = nfm_osfw_reschedule();
+    if (kconfig_enabled(CONFIG_TARGET_ENABLE_EBTABLES) &&
+        nfm_osfw_is_eth(conf->protocol)) {
+			errcode = nfm_osfw_eb_reschedule();
+		} else {
+			errcode = nfm_osfw_reschedule();
+		}
 		if (!errcode) {
 			LOGE("Ask for a reschedule failed");
 			return false;

@@ -1,0 +1,7 @@
+menu "OSW Configuration"
+    config OSW_UT
+        bool "Built unit tests"
+        default n
+        help
+            OSW unit tests
+endmenu

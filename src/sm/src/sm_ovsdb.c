@@ -69,7 +69,8 @@ char *sm_report_type_str[STS_REPORT_MAX] =
     "essid",
     "device",
     "rssi",
-    "client_auth_fails"
+    "client_auth_fails",
+    "radius_stats"
 };
 
 #ifndef CONFIG_MANAGER_QM
@@ -122,6 +123,54 @@ DS_TREE_INIT(
         (ds_key_cmp_t *) strcmp,
         struct network_id,
         next);
+
+static bool
+sm_skip_wifi(void)
+{
+    const char *sm_onewifi_env = getenv("SM_WIFI_STATS_DISABLE");
+
+    if (sm_onewifi_env == NULL)
+        return false;
+
+    if (strcmp(sm_onewifi_env , "enabled") == 0) {
+        LOG(INFO, "Skipping Wifi Stats");
+        return true;
+    }
+
+    return false;
+}
+
+static bool
+sm_can_config_stats(sm_stats_config_t *cfg, sm_radio_state_t *rstate)
+{
+    switch (cfg->sm_report_type) {
+        case STS_REPORT_DEVICE:
+            /* Allow sm to report only device stats */
+            return true;
+        case STS_REPORT_NEIGHBOR:           /* fall through */
+        case STS_REPORT_SURVEY:             /* fall through */
+        case STS_REPORT_CLIENT:             /* fall through */
+        case STS_REPORT_CAPACITY:           /* fall through */
+        case STS_REPORT_RADIO:              /* fall through */
+        case STS_REPORT_ESSID:              /* fall through */
+        case STS_REPORT_RSSI:               /* fall through */
+        case STS_REPORT_CLIENT_AUTH_FAILS:  /* fall through */
+        case STS_REPORT_RADIUS:             /* fall through */
+        case STS_REPORT_MAX:                /* fall through */
+            if (sm_skip_wifi() == true)
+                return false;
+            /* Radio does not exist */
+            if (rstate == NULL) {
+                LOGW("Skip configuring stats (%s radio not present!)",
+                     radio_get_name_from_type(cfg->radio_type));
+                return false;
+            }
+            return true;
+    }
+
+    assert(0);
+    return false;
+}
 
 /******************************************************************************
  *                          AWLAN CONFIG
@@ -336,12 +385,8 @@ bool sm_update_stats_config(sm_stats_config_t *stats_cfg,
         }
     }
 
-    /* Radio does not exist */
-    if (NULL == radio) {
-        LOGW("Skip configuring stats (%s radio not present!)",
-             radio_get_name_from_type(stats_cfg->radio_type));
+    if (sm_can_config_stats(stats_cfg, radio) == false)
         return false;
-    }
 
     /* Stats request */
     memset(&req, 0, sizeof(req));
@@ -424,6 +469,22 @@ bool sm_update_stats_config(sm_stats_config_t *stats_cfg,
                     break;
                 case OVSDB_UPDATE_DEL:
                     sm_client_auth_fails_report_stop(&req);
+                    break;
+                default:
+                    break;
+            }
+            break;
+        case STS_REPORT_RADIUS:
+            switch(mon_type)
+            {
+                case OVSDB_UPDATE_NEW:
+                    sm_radius_stats_report_start(&req);
+                    break;
+                case OVSDB_UPDATE_MODIFY:
+                    sm_radius_stats_report_update(&req);
+                    break;
+                case OVSDB_UPDATE_DEL:
+                    sm_radius_stats_report_stop(&req);
                     break;
                 default:
                     break;
@@ -1242,6 +1303,10 @@ int sm_setup_monitor(void)
     }
 #endif // CONFIG_MANAGER_QM
 
+    LOGI("skip wifi stats: %s", sm_skip_wifi() ? "yes" : "no");
+    if (sm_skip_wifi())
+        goto stats_table;
+
     /* Monitor Wifi_Radio_State */
     if (!ovsdb_update_monitor(
             &sm_update_wifi_radio_state,
@@ -1266,6 +1331,7 @@ int sm_setup_monitor(void)
         return -1;
     }
 
+stats_table:
     /* Monitor Wifi_Stats_Config */
     if (!ovsdb_update_monitor(
             &sm_update_wifi_stats_config,

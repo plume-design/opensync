@@ -1,0 +1,14 @@
+menuconfig OW
+    bool "Opensync Wireless / One Wifi Library (OW)"
+    default y
+    help
+        This provides business logic for wireless related
+        operations in opensync.
+
+        This can be used by 3rd parties by linking to
+        libopensync.so, although care must be taken.
+
+        The library can be embedded into an existing libev
+        mainloop, or it can be used as a separate thread.
+        The later requires careful API accesses because most
+        calls are not thread safe.

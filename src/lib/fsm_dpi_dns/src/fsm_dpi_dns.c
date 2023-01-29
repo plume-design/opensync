@@ -53,7 +53,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "os.h"
 #include "util.h"
 
-#define REDIRECT_TTL 10
 #define DNS_QTYPE_A 1
 #define DNS_QTYPE_AAAA 28
 #define DNS_QTYPE_65 65
@@ -405,7 +404,7 @@ fsm_dpi_dns_update_response_ips(struct net_header_parser *net_header,
             {
                 inet_pton(AF_INET, ipv4_addr,
                           (packet + parsed + rec->resp[i].offset));
-                *(uint32_t *)(p_ttl) = htonl(REDIRECT_TTL);
+                *(uint32_t *)(p_ttl) = htonl(policy_reply->rd_ttl);
                 is_updated = true;
             }
         }
@@ -422,7 +421,7 @@ fsm_dpi_dns_update_response_ips(struct net_header_parser *net_header,
             {
                 inet_pton(AF_INET6, ipv6_addr,
                               packet + parsed + rec->resp[i].offset);
-                *(uint32_t *)(p_ttl) = htonl(REDIRECT_TTL);
+                *(uint32_t *)(p_ttl) = htonl(policy_reply->rd_ttl);
                 is_updated = true;
             }
         }
@@ -687,7 +686,7 @@ fsm_dpi_dns_process_dns_record(struct fsm_session *session,
         }
     }
 
-    if ((action == FSM_REDIRECT) || (action == FSM_BLOCK))
+    if ((action == FSM_REDIRECT) || (action == FSM_REDIRECT_ALLOW) || (action == FSM_BLOCK))
     {
         rc = fsm_dpi_dns_update_response_ips(net_parser, acc, policy_reply);
         if (!rc)

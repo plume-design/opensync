@@ -88,6 +88,6 @@ wait_for_function_response 0 "check_interface_exists $if_name" &&
     raise "FAIL: Interface $if_name does not exist on system" -l "onbrd/onbrd_verify_home_vaps_on_radios.sh" -tc
 
 log "onbrd/onbrd_verify_home_vaps_on_radios.sh: Clean created interfaces after test"
-vif_clean
+vif_reset
 
 pass

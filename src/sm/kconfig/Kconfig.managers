@@ -21,13 +21,33 @@ menuconfig MANAGER_SM
 
             Note: This may require support from platform modules.
 
-    config SM_BACKEND_HAPD
+    config SM_BACKEND_RADIUS_STATS_HAPD
         depends on MANAGER_SM
-        bool "hostapd statistics backend"
+        bool "hostapd backend for radius statistics"
         default n
         help
-            Enable hostapd backend providing following statistics:
-            - client auth fails
+            Use hostapd backend for radius stats SM module.
+
+    config SM_BACKEND_RADIUS_STATS_NULL
+        depends on MANAGER_SM
+        bool "dummy/null backend for radius statistics"
+        default y if !SM_BACKEND_RADIUS_STATS_HAPD
+        help
+            Use dummy implementation for radius stats SM module.
+
+    config SM_BACKEND_CLIENT_AUTH_FAILS_HAPD
+        depends on MANAGER_SM
+        bool "hostapd backend for client auth fails stats"
+        default n
+        help
+            Use hostapd backend for radius stats SM module.
+
+    config SM_BACKEND_CLIENT_AUTH_FAILS_NULL
+        depends on MANAGER_SM
+        bool "dummy/null backend for radius statistics"
+        default y if !SM_BACKEND_CLIENT_AUTH_FAILS_HAPD
+        help
+            Use hostapd backend for client auth fails SM module.
 
     config SM_BACKEND_HAPD_CLIENTS_AUTH_FAILS_PER_VAP_LIMIT
         int "Clients auth fails limit per VAP per report"

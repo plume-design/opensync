@@ -829,6 +829,14 @@ cm2_ovsdb_copy_dhcp_ipv4_configuration(char *up_src, char *up_dst)
     return 0;
 }
 
+static bool cm2_util_skip_update_dhcp(const char *if_type)
+{
+    if (!strcmp(if_type, PPPOE_TYPE_NAME))
+        return true;
+
+    return false;
+}
+
 static bool
 cm2_util_set_dhcp_ipv4_cfg(char *if_name, char *inet_addr, bool refresh)
 {
@@ -844,11 +852,19 @@ cm2_util_set_dhcp_ipv4_cfg(char *if_name, char *inet_addr, bool refresh)
 
     ret = ovsdb_table_select_one(&table_Wifi_Inet_Config,
                 SCHEMA_COLUMN(Wifi_Inet_Config, if_name), if_name, &iconf);
-    if (!ret)
+    if (!ret) {
         LOGI("%s: %s: Failed to get interface config", __func__, if_name);
+        return false;
+    }
 
     LOGI("%s Set dhcp: inet_addr = %s assign_scheme = %s refresh = %d",
          if_name, inet_addr, iconf.ip_assign_scheme, refresh);
+
+    if (cm2_util_skip_update_dhcp(iconf.if_type)) {
+        LOGI("%s: Skip update dhcp configuration, type = %s",
+             if_name, iconf.if_type);
+        return false;
+    }
 
     dhcp_active = !strcmp(iconf.ip_assign_scheme, "dhcp");
     dhcp_static = !strcmp(iconf.ip_assign_scheme, "static");
@@ -2302,7 +2318,9 @@ cm2_Connection_Manager_Uplink_handle_update(
         LOGN("%s: Uplink table: detected priority change = %d", uplink->if_name, uplink->priority);
         LOGI("%s: Main link priority: %d new priority = %d uplink is used = %d",
              uplink->if_name, g_state.link.priority , uplink->priority , uplink->is_used);
-        if ((g_state.link.is_used && uplink->has_L3 && g_state.link.priority < uplink->priority) ||
+        if ((g_state.link.is_used && uplink->has_L3 &&
+             g_state.link.priority < uplink->priority &&
+             strcmp(g_state.link.if_name, uplink->if_name) != 0) ||
             cm2_util_get_link_is_used(uplink)) {
            cm2_util_switch_role(uplink);
            reconfigure = true;

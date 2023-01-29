@@ -360,3 +360,17 @@ static inline ds_tree_node_t *ds_tree_node_prev(ds_tree_node_t *node)
 
     return node;
 }
+
+/**
+ * Return the number of elements in a given tree
+ *
+ * Beware: Current implementation is O(n).
+ */
+static inline size_t ds_tree_len(ds_tree_t *root)
+{
+    void *p;
+    size_t n = 0;
+    ds_tree_foreach(root, p)
+        n++;
+    return n;
+}

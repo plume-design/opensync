@@ -103,6 +103,10 @@ static int build_ip_route_cmd(char *dst, size_t dst_size, const char *action, co
     {
         n += snprintf(dst + n, dst_size - n, " src %s", FMT_osn_ip_addr(route->pref_src));
     }
+    if (route->table > 0)
+    {
+        n += snprintf(dst + n, dst_size - n, " table %d", route->table);
+    }
 
     return n;
 }

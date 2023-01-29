@@ -127,6 +127,8 @@ int main(int argc, char *argv[])
         return 1;
     }
 
+    psm_erase_config_init();
+
     psm_ovsdb_row_init();
 
     if (g_psm_opt_restore)

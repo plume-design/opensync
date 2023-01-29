@@ -42,11 +42,11 @@ Description:
 Arguments:
     -h : show this help message
     \$1 (bhaul_ap_if_name) : used for bhaul ap interface name : (string)(required)
-    \$2 (gre_if_name)      : used as GRE ifname               : (string)(required)
+    \$2 (gre_if_name)      : used as GRE interface name       : (string)(required)
     \$3 (gre_mtu)          : used for GRE MTU                 : (string)(required)
 
     # Configure DUT bhaul-ap
-    # On DUT: ./fut-base/shell//tools/device/vif_clean.sh
+    # On DUT: ./fut-base/shell//tools/device/vif_reset.sh
     # On DUT: ./fut-base/shell//tools/device/create_inet_interface.sh  -if_name br-home -if_type bridge -enabled true -network true -NAT false -ip_assign_scheme dhcp
     # On DUT: ./fut-base/shell//tools/device/create_radio_vif_interface.sh  -if_name wifi0 -vif_if_name bhaul-ap-24 -vif_radio_idx 1 \
         -channel 6 -ht_mode HT40 -hw_mode 11n -enabled true -mac_list '["set",["60:b4:f7:f0:0e:b6"]]'
@@ -121,4 +121,3 @@ check_ovsdb_entry Wifi_Master_State -w if_name ${gre_name} &&
     raise "FAIL: Wifi_Master_State not populated with GRE interface '${gre_name}'" -l "othr/othr_verify_gre_iface_wifi_master_state.sh" -tc
 
 pass
-

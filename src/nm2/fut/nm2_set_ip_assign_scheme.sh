@@ -59,7 +59,7 @@ Arguments:
 Testcase procedure:
     1. For GRE interfaces:
         # Configure DUT bhaul-ap
-        # On DUT: ./fut-base/shell/tools/device/vif_clean.sh
+        # On DUT: ./fut-base/shell/tools/device/vif_reset.sh
         # On DUT: ./fut-base/shell/tools/device/create_inet_interface.sh  -if_name br-home -if_type bridge -enabled true -network true -NAT false -ip_assign_scheme dhcp
         # On DUT: ./fut-base/shell/tools/device/create_radio_vif_interface.sh  -if_name wifi0 -vif_if_name bhaul-ap-24 -vif_radio_idx 1 \
             -channel 6 -ht_mode HT40 -hw_mode 11n -enabled true -mac_list '["set",["60:b4:f7:f0:0e:b6"]]'
@@ -100,7 +100,7 @@ if_name=${1}
 if_type=${2}
 ip_assign_scheme=${3}
 wan_eth=${4}
-lan_br=${5}
+lan_bridge=${5}
 bhaul_ap_if_name=${6}
 gre_mtu=${7}
 patch_w2h=${8:-${patch_w2h_default}}
@@ -143,12 +143,12 @@ if [ "${if_type}" == "bridge" ];then
 
         add_bridge_port "${if_name}" "${patch_w2h}"
         set_interface_patch "${if_name}" "${patch_w2h}" "${patch_h2w}"
-        add_bridge_port "${lan_br}" "${patch_h2w}"
-        set_interface_patch "${lan_br}" "${patch_h2w}" "${patch_w2h}"
+        add_bridge_port "${lan_bridge}" "${patch_h2w}"
+        set_interface_patch "${lan_bridge}" "${patch_h2w}" "${patch_w2h}"
     else
-        add_bridge_port "${lan_br}" "${wan_eth}"
+        add_bridge_port "${lan_bridge}" "${wan_eth}"
         create_inet_entry \
-            -if_name "${lan_br}" \
+            -if_name "${lan_bridge}" \
             -enabled true \
             -network true \
             -ip_assign_scheme "none" \
@@ -194,10 +194,12 @@ if [ "$ip_assign_scheme" = "dhcp" ]; then
         log "nm2/nm2_set_ip_assign_scheme.sh: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State::ip_assign_scheme is 'dhcp' - Success" ||
         raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State::ip_assign_scheme is not 'dhcp'" -l "nm2/nm2_set_ip_assign_scheme.sh" -tc
 
-    log "nm2/nm2_set_ip_assign_scheme.sh: Checking if DHCP client is alive - LEVEL2"
-    wait_for_function_response 0 "check_pid_file alive \"/var/run/udhcpc-$if_name.pid\"" &&
-        log "nm2/nm2_set_ip_assign_scheme.sh: LEVEL2 - DHCP client process ACTIVE for interface $if_name - Success" ||
-        raise "FAIL: LEVEL2 - DHCP client process NOT ACTIVE for interface $if_name" -l "nm2/nm2_set_ip_assign_scheme.sh" -tc
+    if [ $FUT_SKIP_L2 != 'true' ]; then
+        log "nm2/nm2_set_ip_assign_scheme.sh: Checking if DHCP client is alive - LEVEL2"
+        wait_for_function_response 0 "check_pid_file alive \"/var/run/udhcpc-$if_name.pid\"" &&
+            log "nm2/nm2_set_ip_assign_scheme.sh: LEVEL2 - DHCP client process ACTIVE for interface $if_name - Success" ||
+            raise "FAIL: LEVEL2 - DHCP client process NOT ACTIVE for interface $if_name" -l "nm2/nm2_set_ip_assign_scheme.sh" -tc
+    fi
 
     log "nm2/nm2_set_ip_assign_scheme.sh: Setting dhcp for $if_name to none"
     update_ovsdb_entry Wifi_Inet_Config -w if_name "$if_name" -u ip_assign_scheme none &&
@@ -208,10 +210,12 @@ if [ "$ip_assign_scheme" = "dhcp" ]; then
         log "nm2/nm2_set_ip_assign_scheme.sh: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State::ip_assign_scheme is 'none' - Success" ||
         raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State::ip_assign_scheme is not 'none'" -l "nm2/nm2_set_ip_assign_scheme.sh" -tc
 
-    log "nm2/nm2_set_ip_assign_scheme.sh: Checking if DHCP client is dead - LEVEL2"
-    wait_for_function_response 0 "check_pid_file dead \"/var/run/udhcpc-$if_name.pid\"" &&
-        log "nm2/nm2_set_ip_assign_scheme.sh: LEVEL2 - DHCP client process NOT ACTIVE - Success" ||
-        raise "FAIL: LEVEL2 - DHCP client process ACTIVE" -l "nm2/nm2_set_ip_assign_scheme.sh" -tc
+    if [ $FUT_SKIP_L2 != 'true' ]; then
+        log "nm2/nm2_set_ip_assign_scheme.sh: Checking if DHCP client is dead - LEVEL2"
+        wait_for_function_response 0 "check_pid_file dead \"/var/run/udhcpc-$if_name.pid\"" &&
+            log "nm2/nm2_set_ip_assign_scheme.sh: LEVEL2 - DHCP client process NOT ACTIVE - Success" ||
+            raise "FAIL: LEVEL2 - DHCP client process ACTIVE" -l "nm2/nm2_set_ip_assign_scheme.sh" -tc
+    fi
 
 elif [ "$ip_assign_scheme" = "static" ]; then
     log "nm2/nm2_set_ip_assign_scheme.sh: Setting ip_assign_scheme for $if_name to static"
@@ -227,15 +231,18 @@ elif [ "$ip_assign_scheme" = "static" ]; then
             log "nm2/nm2_set_ip_assign_scheme.sh: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State::ip_assign_scheme is 'static' - Success" ||
             raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State::ip_assign_scheme is not 'static'" -l "nm2/nm2_set_ip_assign_scheme.sh" -tc
 
-    log "nm2/nm2_set_ip_assign_scheme.sh: Checking if settings are applied to ifconfig - LEVEL2"
-    wait_for_function_response 0 "check_interface_ip_address_set_on_system $if_name | grep -q \"$inet_addr\"" &&
-        log "nm2/nm2_set_ip_assign_scheme.sh: LEVEL2 - Settings applied to ifconfig for interface $if_name - Success" ||
-        raise "FAIL: LEVEL2 - Failed to apply settings to ifconfig for interface $if_name" -l "nm2/nm2_set_ip_assign_scheme.sh" -tc
+    if [ $FUT_SKIP_L2 != 'true' ]; then
+        log "nm2/nm2_set_ip_assign_scheme.sh: Checking if settings are applied to ifconfig - LEVEL2"
+        wait_for_function_response 0 "check_interface_ip_address_set_on_system $if_name | grep -q \"$inet_addr\"" &&
+            log "nm2/nm2_set_ip_assign_scheme.sh: LEVEL2 - Settings applied to ifconfig for interface $if_name - Success" ||
+            raise "FAIL: LEVEL2 - Failed to apply settings to ifconfig for interface $if_name" -l "nm2/nm2_set_ip_assign_scheme.sh" -tc
 
-    log "nm2/nm2_set_ip_assign_scheme.sh: Checking if DHCP client is DEAD - LEVEL2"
-    wait_for_function_response 0 "check_pid_file dead \"/var/run/udhcpc-$if_name.pid\"" &&
-        log "nm2/nm2_set_ip_assign_scheme.sh: LEVEL2 - DHCP client process is DEAD for interface $if_name - Success" ||
-        raise "FAIL: LEVEL2 - DHCP client process is NOT DEAD for interface $if_name" -l "nm2/nm2_set_ip_assign_scheme.sh" -tc
+        log "nm2/nm2_set_ip_assign_scheme.sh: Checking if DHCP client is DEAD - LEVEL2"
+        wait_for_function_response 0 "check_pid_file dead \"/var/run/udhcpc-$if_name.pid\"" &&
+            log "nm2/nm2_set_ip_assign_scheme.sh: LEVEL2 - DHCP client process is DEAD for interface $if_name - Success" ||
+            raise "FAIL: LEVEL2 - DHCP client process is NOT DEAD for interface $if_name" -l "nm2/nm2_set_ip_assign_scheme.sh" -tc
+    fi
+
 else
     raise "Wrong IP_ASSIGN_SCHEME parameter - $ip_assign_scheme" -l "nm2/nm2_set_ip_assign_scheme.sh" -arg
 fi

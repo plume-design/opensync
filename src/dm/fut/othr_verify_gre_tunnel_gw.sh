@@ -58,7 +58,7 @@ Testcase procedure (FUT scripts call only)(example):
     # On DUT: ./fut-base/shell//tools/device/check_wan_connectivity.sh
 
     # Configure DUT bhaul-ap
-    # On DUT: ./fut-base/shell//tools/device/vif_clean.sh 180
+    # On DUT: ./fut-base/shell//tools/device/vif_reset.sh
     # On DUT: ./fut-base/shell//tools/device/create_inet_interface.sh  -if_name br-home -if_type bridge -enabled true -network true -NAT false -ip_assign_scheme dhcp
     # On DUT: ./fut-base/shell//tools/device/configure_lan_bridge_for_wan_connectivity.sh  eth0 br-wan br-home 1500
     # On DUT: ./fut-base/shell//tools/device/create_radio_vif_interface.sh  -if_name wifi0 -vif_if_name bhaul-ap-24 -vif_radio_idx 1 \

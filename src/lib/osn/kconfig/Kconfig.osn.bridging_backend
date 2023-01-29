@@ -1,0 +1,13 @@
+config OSN_BACKEND_BRIDGING_NULL
+    bool "Null"
+    help
+        Use a dummy Linux Bridging implementation.
+
+config OSN_BACKEND_LINUX_BRIDGING
+    bool "Linux"
+
+    select OSN_LINUX_ENABLED
+    select OSN_LINUX_BRIDGING
+    help
+        Use the Linux brctl command for managing bridge config.
+

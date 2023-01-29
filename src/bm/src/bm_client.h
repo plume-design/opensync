@@ -58,6 +58,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #define BTM_DEFAULT_MAX_RETRIES             3
 #define BTM_DEFAULT_RETRY_INTERVAL          10  // In seconds
+#define BTM_RETRY_MAX_NEIGHBORS             16
 
 #define RRM_BCN_RPT_DEFAULT_SCAN_INTERVAL   1   // In seconds
 
@@ -302,6 +303,11 @@ typedef struct {
 } bm_client_supported_op_classes_t;
 
 typedef struct {
+    os_macaddr_t                bssid;
+    int                         preference;
+} bm_client_btm_retry_neigh_t;
+
+typedef struct {
     char                        mac_addr[MAC_STR_LEN];
     os_macaddr_t                macaddr;
 
@@ -355,6 +361,8 @@ typedef struct {
 
     bool                        kick_upon_idle;
     bm_client_kick_info_t       kick_info;
+    uint8_t                     last_snr_before_disconnect;
+    uint8_t                     first_snr_after_connect;
 
     // Client steering specific variables
     bm_client_reject_t          cs_reject_detection;
@@ -371,6 +379,7 @@ typedef struct {
     bm_client_cs_state_t        cs_state;
     bool                        cs_auto_disable;
 
+    bool                        rejects_2g_gt_max;
     int                         num_rejects_2g;
     int                         num_rejects_5g;
     int                         num_rejects_copy;
@@ -383,9 +392,12 @@ typedef struct {
     bm_client_steering_state_t  steering_state;
 
     // BSS Transition Management variables
+    size_t                      btm_max_neighbors;
     bsal_btm_params_t           steering_btm_params;
     bsal_btm_params_t           sticky_btm_params;
     bsal_btm_params_t           sc_btm_params;
+    bm_client_btm_retry_neigh_t btm_retry_neighbors[BTM_RETRY_MAX_NEIGHBORS];
+    unsigned int                btm_retry_neighbors_len;
 
     // Client BTM and RRM capabilities
     bool                        band_cap_2G;
@@ -444,6 +456,7 @@ typedef struct {
     unsigned int                active_treshold_bps;
 
     bool                        neighbor_list_filter_by_beacon_report;
+    bool                        neighbor_list_filter_by_btm_status;
     bool                        ignore_beacon_measurement_reports;
 
     ds_tree_node_t              dst_node;
@@ -552,4 +565,5 @@ extern void                 bm_client_handle_ext_xing(bm_client_t *client, const
 extern void                 bm_client_update_all_channel(const struct schema_Wifi_VIF_State *vstate);
 extern void                 bm_client_ignore_beacon_measurement_reports(bm_client_t *client);
 extern bool                 bm_client_should_ignore_beacon_measurement_reports(const bm_client_t *client);
+extern size_t               bm_client_get_btm_max_neighbors(const bm_client_t *client);
 #endif /* BM_CLIENT_H_INCLUDED */

@@ -166,4 +166,6 @@ bool dpi_adt_serialize_report(struct fsm_session *session,
                               struct fsm_dpi_adt_packed_buffer *report);
 
 
+struct fsm_dpi_adt_cache *
+fsm_dpi_adt_get_cache_mgr(void);
 #endif /* FSM_DPI_ADT_H_INCLUDED */

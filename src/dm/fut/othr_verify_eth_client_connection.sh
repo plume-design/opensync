@@ -64,7 +64,7 @@ fut_info_dump_line
 print_tables DHCP_leased_IP
 print_tables Connection_Manager_Uplink
 check_restore_ovsdb_server
-ovs-vsctl show
+show_bridge_details
 fut_info_dump_line
 ' EXIT SIGINT SIGTERM
 

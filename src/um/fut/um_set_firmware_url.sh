@@ -55,7 +55,7 @@ Testcase procedure:
     - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
                  Run: ./um/um_set_firmware_url.sh <FW-PATH> <FW-URL>
 Script usage example:
-   ./um/um_set_firmware_url.sh /tmp/pfirmware http://192.168.4.1:8000/fut-base/resource/um/${um_image_name_default}.img
+   ./um/um_set_firmware_url.sh /tmp/pfirmware http://fut.opensync.io:8000/fut-base/resource/um/${um_image_name_default}.img
 usage_string
 }
 if [ -n "${1}" ]; then

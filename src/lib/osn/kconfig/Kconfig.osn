@@ -17,6 +17,8 @@ menuconfig OSN_LINUX_ENABLED
             - QoS support (via tc)
             - LTE support (via quectel)
             - IPsec support (via strongSwan)
+            - Packet Classifier support (via tc)
+            - Policy Routing support (via iproute2)
 
 if OSN_LINUX_ENABLED
     config OSN_LINUX_NETIF
@@ -289,6 +291,27 @@ if OSN_LINUX_ENABLED
             QoS management via the tc/qdisc framework. This option implements
             the lnx_qos API and enables the "Linux" QoS backend (osn_qos).
 
+    config OSN_LINUX_TC
+        bool "Linux Packet Classifier"
+        default y
+        help
+            Linux TC support which helps mirror or redirect traffic from both
+            ingress and egress qdiscs to tap interfaces.
+
+    config OSN_LINUX_BRIDGING
+        bool "Linux Bridging"
+        default y
+        help
+            Native Bridge implementation using Linux brctl commands.  This option implements
+            lnx_bridge API using "brctl" commands to create and manage linux bridges.
+
+    config OSN_LINUX_TAPIF
+        bool "Linux TAP Interface Support"
+        default y
+        help
+            Provide support for TAP interface type.  This option implements lnx_tap API
+            and "Linux TAP Interface Support" backend (osn_tap).
+
     config OSN_LINUX_ROUTE
         bool "Linux routing table"
         default y
@@ -321,6 +344,41 @@ if OSN_LINUX_ENABLED
                 This option implements the osn_routes API and enables ip-route command
                 based "Linux" route control backend (osn_route).
     endchoice
+
+    choice
+        prompt "Route State Backend"
+        default OSN_LINUX_ROUTE_STATE_LIBNL3
+
+        config OSN_LINUX_ROUTE_STATE_LIBNL3
+            bool "libnl3"
+            help
+                Route state polling using netlink library (libnl3)
+
+                This option implements the osn_route_state API and enables netlink/libnl3 based
+                "Linux" route state polling.
+
+                This implementation is able to:
+                - Report routes from non-main routing tables.
+                - Report other route attributes (such as preferred source IP address, etc).
+
+                Polling via netlink should also provide better performance then other methods.
+
+                libnl3 library must be available on the system.
+
+        config OSN_LINUX_ROUTE_STATE_PROC
+            bool "proc"
+            help
+                Route state polling by parsing /proc/net/route
+
+                This option implements the osn_route_state API and enables polling
+                of routes states by parsing /proc/net/route
+
+                 Note: /proc/net/route is generally supported on any Linux system, but
+                 it has limitations:
+                     - Reports only routes from the main routing table.
+                     - No other route attributes such as the preferred source address reported.
+    endchoice
+
 
     config OSN_LINUX_LTE
         bool "Linux LTE support"
@@ -530,6 +588,25 @@ if OSN_LINUX_ENABLED
                    properly or optimally.
 
            endif
+
+        config OSN_LINUX_ROUTE_RULE
+            bool "Linux policy routing rules support"
+            default y
+            help
+                Linux policy routing rules support
+
+            choice
+                prompt "Route Rule Configuration Backend"
+                default OSN_LINUX_ROUTE_RULE_IP
+
+                config OSN_LINUX_ROUTE_RULE_IP
+                    bool "ip rule"
+                    help
+                        Route rules management using the `ip rule` command
+
+                        This option implements the osn_route_rule API and enables ip-rule command
+                        based "Linux" policy route rules control backend (osn_route_rule).
+            endchoice
 
 endif
 
