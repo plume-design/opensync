@@ -1213,80 +1213,129 @@ wm2_rconf_init_del(struct schema_Wifi_Radio_Config *rconf, const char *ifname)
     rconf->enabled_exists = true;
 }
 
+static int
+wm2_rstate_clip_chwidth(const struct schema_Wifi_Radio_State *rstate,
+                        int channel,
+                        const char *ht_mode)
+{
+    const char *width_str = strpbrk(ht_mode, "1234567890");
+    int orig_width = atoi(width_str);
+    int width = orig_width;
+    int i;
+
+    LOGD("%s: dfs: nol: clipping: %d %s -> %d %s",
+         rstate->if_name,
+         rstate->channel, rstate->ht_mode,
+         channel, ht_mode);
+
+    for (;;) {
+        const int *chans = unii_5g_chan2list(channel, width);
+        if (chans == NULL) {
+            LOGI("%s: dfs: nol: %d %s: cannot be used at any width",
+                 rstate->if_name, channel, ht_mode);
+            return 0;
+        }
+
+        bool usable = true;
+        int j;
+        for (i = 0; chans[i]; i++) {
+            for (j = 0; j < rstate->channels_len; j++) {
+                if (atoi(rstate->channels_keys[j]) == chans[i]) break;
+            }
+            const bool found = (j < rstate->channels_len);
+            const bool blocked = found && (strstr(rstate->channels[j], "nop_started") != NULL);
+
+            if (found == false) {
+                LOGI("%s: dfs: nol: %d %s: at HT%d: channel: %d not supported",
+                     rstate->if_name, channel, ht_mode, width, chans[i]);
+                usable = false;
+                break;
+            }
+
+            if (blocked == true) {
+                LOGI("%s: dfs: nol: %d %s: at HT%d: channel %d: radar blocked",
+                     rstate->if_name, channel, ht_mode, width, chans[i]);
+                usable = false;
+                break;
+            }
+        }
+
+        if (usable == true) {
+            break;
+        }
+
+        LOGD("%s: dfs: nol: %d %s: considering HT%d",
+             rstate->if_name, channel, ht_mode, width);
+
+        width /= 2;
+    }
+
+    if (width < orig_width) {
+        LOGI("%s: dfs: nol: %d %s: downgraded to HT%d",
+             rstate->if_name, channel, ht_mode, width);
+    }
+
+    return width;
+}
+
 void
 wm2_rconf_recalc_fixup_nop_channel(struct schema_Wifi_Radio_Config *rconf,
                                    const struct schema_Wifi_Radio_State *rstate)
 {
-    struct schema_Wifi_Radio_Config_flags rchanged;
-    const char *width_str = strpbrk(rconf->ht_mode, "1234567890");
-    const int *chans;
-    int width;
-    int i;
-    int j;
+    const char *band_5g = SCHEMA_CONSTS_RADIO_TYPE_STR_5G;
+    const char *band_5gl = SCHEMA_CONSTS_RADIO_TYPE_STR_5GL;
+    const char *band_5gu = SCHEMA_CONSTS_RADIO_TYPE_STR_5GU;
+    const bool is_5ghz = (strcmp(rconf->freq_band, band_5g) == 0)
+                      || (strcmp(rconf->freq_band, band_5gl) == 0)
+                      || (strcmp(rconf->freq_band, band_5gu) == 0);
+    const bool is_not_5ghz = !is_5ghz;
+
+    /* FIXME: This function could be extended to support
+     * other bands as well to simply handle "unsupported
+     * channels". That'll require wm2_rstate_clip_chwidth()
+     * to fix call to unii_5g_chan2list().
+     */
+    if (is_not_5ghz)
+        return;
 
     if (rstate->channels_len == 0)
         return;
-    /* After RADAR hit channel is not available because of NOP */
-    if (!rconf->channel_exists)
-        return;
-    if (!rstate->channel_exists)
-        return;
-    if (!wm2_rconf_changed(rconf, rstate, &rchanged))
-        return;
-    if (!rchanged.channel)
+
+    const char *desired_ht_mode = rconf->ht_mode_exists
+                                ? rconf->ht_mode
+                                : (rstate->ht_mode_exists
+                                   ? rstate->ht_mode
+                                   : NULL);
+    const bool no_desired_ht_mode = (desired_ht_mode == NULL);
+    if (no_desired_ht_mode)
         return;
 
-    for (i = 0; i < rstate->channels_len; i++) {
-        if (strstr(rstate->channels[i], "nop_started") == NULL)
-            continue;
-
-        width = atoi(width_str);
-        while ((chans = unii_5g_chan2list(rconf->channel, width)) != NULL) {
-            for (j = 0; chans[j]; j++)
-                if (atoi(rstate->channels_keys[i]) == chans[j])
-                    break;
-
-            if (chans[j] == 0)
-                break;
-
-            LOGD("%s: dfs: nol: channel %d unavailable for %d HT%d",
-                 rconf->if_name, chans[j], rconf->channel, width);
-            width /= 2;
+    if (rconf->channel_exists) {
+        const int new_width = wm2_rstate_clip_chwidth(rstate, rconf->channel, desired_ht_mode);
+        if (new_width > 0) {
+            const char *ht_mode = strfmta("HT%d", new_width);
+            SCHEMA_SET_STR(rconf->ht_mode, ht_mode);
+            return;
         }
-
-        if (chans) {
-            LOGI("%s: dfs: nol: downgrading ht_mode %s -> HT%d",
-                 rconf->if_name, rconf->ht_mode, width);
-            STRSCPY_WARN(rconf->ht_mode, strfmta("HT%d", width));
-            break;
-        }
-
-        LOGI("%s: dfs: nol: ignoring channel %d, staying on %d %s",
-             rconf->if_name, rconf->channel, rstate->channel, rstate->ht_mode);
-        rconf->channel = rstate->channel;
-        STRSCPY_WARN(rconf->ht_mode, rstate->ht_mode);
-        break;
     }
 
-    width = atoi(width_str);
-    while ((chans = unii_5g_chan2list(rconf->channel, width)) != NULL) {
-        for (i = 0; chans[i]; i++) {
-            for (j = 0; j < rstate->channels_len; j++)
-                if (atoi(rstate->channels_keys[j]) == chans[i])
-                    break;
-
-            if (j == rstate->channels_len)  /* 20 MHz hunk unavailable */
-                break;
+    if (rstate->channel_exists) {
+        const int new_width = wm2_rstate_clip_chwidth(rstate, rstate->channel, desired_ht_mode);
+        if (new_width > 0) {
+            const char *ht_mode = strfmta("HT%d", new_width);
+            LOGI("%s: dfs: nol: staying on current channel: %d %s",
+                 rstate->if_name,
+                 rstate->channel,
+                 ht_mode);
+            SCHEMA_SET_INT(rconf->channel, rstate->channel);
+            SCHEMA_SET_STR(rconf->ht_mode, ht_mode);
+            return;
         }
-
-        if (chans[i] == 0)  /* all 20 MHz hunks available */
-            break;
-
-        LOGI("%s: dfs: nol: channel %d HT%d unavailable, downgrading to HT%d",
-                rconf->if_name, rconf->channel, width, width / 2);
-        width /= 2;
-        STRSCPY_WARN(rconf->ht_mode, strfmta("HT%d", width));
     }
+
+    LOGI("%s: dfs: nol: no channel available", rstate->if_name);
+    SCHEMA_CPY_INT(rconf->channel, rstate->channel);
+    SCHEMA_CPY_STR(rconf->ht_mode, rstate->ht_mode);
 }
 
 static void
