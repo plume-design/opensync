@@ -279,7 +279,6 @@ bool mosqev_tls_opts_set(mosqev_t   *self,
 #undef SETSTR
 
     if (rc != MOSQ_ERR_SUCCESS)
-    if (rc != MOSQ_ERR_SUCCESS)
     {
         LOG(ERR, "Error setting TLS options: %s", mosquitto_strerror(rc));
         return false;
