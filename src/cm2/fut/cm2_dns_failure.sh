@@ -29,12 +29,12 @@
 # shellcheck disable=SC1091
 source /tmp/fut-base/shell/config/default_shell.sh
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
-source "${FUT_TOPDIR}/shell/lib/cm2_lib.sh"
+source "${FUT_TOPDIR}/shell/lib/unit_lib.sh"
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
 cm_setup_file="cm2/cm2_setup.sh"
-adr_internet_man_file="tools/server/cm/address_internet_man.sh"
+addr_internet_man_file="tools/server/cm/address_internet_man.sh"
 step_1_name="dns_blocked"
 step_2_name="dns_recovered"
 usage()
@@ -54,9 +54,9 @@ Arguments:
     \$1 (test_step)    : used as test step                      : (string)(required) : (${step_1_name}, ${step_2_name})
 Testcase procedure:
     - On DEVICE: Run: ${cm_setup_file} (see ${cm_setup_file} -h)
-    - On RPI SERVER: Run: ${adr_internet_man_file} <WAN-IP-ADDRESS> block
+    - On RPI SERVER: Run: ${addr_internet_man_file} <WAN-IP-ADDRESS> block
     - On DEVICE: Run: cm2/cm2_dns_failure.sh ${step_1_name}
-    - On RPI SERVER: Run: ${adr_internet_man_file} <WAN-IP-ADDRESS> unblock
+    - On RPI SERVER: Run: ${addr_internet_man_file} <WAN-IP-ADDRESS> unblock
     - On DEVICE: Run: cm2/cm2_dns_failure.sh ${step_2_name}
 Script usage example:
     ./cm2/cm2_dns_failure.sh ${step_1_name}

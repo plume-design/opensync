@@ -460,7 +460,7 @@ neigh_table_add_to_cache(struct neighbour_entry *to_add)
     }
 
     entry = CALLOC(1, sizeof(struct neighbour_entry));
-    if (!entry) return false;
+    if (!entry) return NULL;
 
     entry->ipaddr = CALLOC(1, sizeof(struct sockaddr_storage));
     if (entry->ipaddr == NULL) goto err_free_entry;
@@ -513,11 +513,7 @@ neigh_table_add(struct neighbour_entry *to_add)
     neigh_table_set_entry(to_add);
 
     entry = neigh_table_add_to_cache(to_add);
-    if (entry == NULL)
-    {
-        LOGD("%s: adding to cache failed", __func__);
-        return false;
-    }
+    if (entry == NULL) return false;
 
     // Update ovsdb tables if required.
     if (mgr->update_ovsdb_tables &&

@@ -65,6 +65,7 @@ typedef enum
     DPP_T_BS_CLIENT = 6,
     DPP_T_RSSI      = 7,
     DPP_T_CLIENT_AUTH_FAILS = 8,
+    DPP_T_RADIUS_STATS = 9,
 } DPP_STS_TYPE;
 
 uint32_t queue_depth;
@@ -176,6 +177,16 @@ typedef struct dpp_client_auth_fails_stats
     uint32_t                             qty;
 } dppline_client_auth_fails_stats_t;
 
+/* defined in dpp_radius_stats.h */
+typedef dpp_radius_stats_rec_t dppline_radius_stats_rec_t;
+
+typedef struct dpp_radius_stats
+{
+    dppline_radius_stats_rec_t **list;
+    uint32_t                     qty;
+    uint64_t                     timestamp_ms;
+} dppline_radius_stats_t;
+
 /* DPP stats type, used as element in internal double ds */
 typedef struct dpp_stats
 {
@@ -192,6 +203,7 @@ typedef struct dpp_stats
         dppline_bs_client_stats_t   bs_client;
         dppline_rssi_stats_t        rssi;
         dppline_client_auth_fails_stats_t client_auth_fails;
+        dppline_radius_stats_t      radius;
     } u;
 } dppline_stats_t;
 
@@ -275,6 +287,13 @@ static void dppline_free_stat(dppline_stats_t * s)
                     FREE(s->u.client_auth_fails.list[i].list);
                 }
                 FREE(s->u.client_auth_fails.list);
+                break;
+            case DPP_T_RADIUS_STATS:
+                for (i=0; i < s->u.radius.qty; i++)
+                {
+                    s->u.radius.list[i]->cleanup(s->u.radius.list[i]);
+                }
+                FREE(s->u.radius.list);
                 break;
             default:;
         }
@@ -742,6 +761,25 @@ static bool dppline_copysts(dppline_stats_t * dst, void * sts)
                     size += bss_size;
                     dst->u.client_auth_fails.qty++;
                 }
+            }
+            break;
+
+        case DPP_T_RADIUS_STATS:
+            {
+                dpp_radius_stats_report_data_t *report = sts;
+                /*
+                * Types pointed to by the dst.u.radius.list and report->records should both be
+                * typedefs of the same type, namely dpp_radius_stats_rec_t (dpp_radius_stats.h).
+                * This module now assumes the ownership of the pointer to the list, as well as
+                * the pointers in the list. The former is just a pointer, so FREE get's called.
+                * The records are structs with a "cleanup" function that gets passed the object's
+                * address (similar to a destructor method in OOP languages).
+                */
+                dst->u.radius.list = (dppline_radius_stats_rec_t **) report->records;
+                dst->u.radius.timestamp_ms = report->timestamp;
+                dst->u.radius.qty = report->qty;
+
+                size = report->qty * sizeof(**dst->u.radius.list);
             }
             break;
 
@@ -2001,10 +2039,10 @@ static void dppline_add_stat_client_auth_fails(Sts__Report *r, dppline_stats_t *
     size_t i;
     size_t j;
 
-    // increase the number of rssi_report
+    // increase the number of client_auth_fails_report
     r->n_client_auth_fails_report++;
 
-    // allocate or extend the size of rssi_report
+    // allocate or extend the size of client_auth_fails_report
     r->client_auth_fails_report = REALLOC(r->client_auth_fails_report, r->n_client_auth_fails_report * sizeof(Sts__ClientAuthFailsReport*));
 
     // allocate new buffer
@@ -2045,6 +2083,58 @@ static void dppline_add_stat_client_auth_fails(Sts__Report *r, dppline_stats_t *
     }
 }
 
+static void dppline_add_stat_radius(Sts__Report *r, dppline_stats_t *s)
+{
+    Sts__RadiusReport *sr = NULL;
+    dppline_radius_stats_t *dpp_radius = &s->u.radius;
+    unsigned int list_index;
+
+    /* Allocate or extend the size of the radius_report and increment counter. */
+    r->n_radius_report++;
+    r->radius_report = REALLOC(r->radius_report,
+            r->n_radius_report * sizeof(Sts__RadiusReport*));
+
+    /* Allocate new buffer for RadiusReport protobuf object */
+    sr = MALLOC(sizeof(Sts__RadiusReport));
+
+    sts__radius_report__init(sr);
+    sr->radius_list = MALLOC(dpp_radius->qty * sizeof(*sr->radius_list));
+    sr->timestamp_ms = dpp_radius->timestamp_ms;
+    sr->has_timestamp_ms = true;
+    sr->n_radius_list = dpp_radius->qty;
+
+    r->radius_report[r->n_radius_report - 1] = sr;
+
+    for (list_index = 0; list_index < dpp_radius->qty; list_index++)
+    {
+        dppline_radius_stats_rec_t *record;
+        Sts__RadiusReport__RadiusRecord *rr;
+
+        record = dpp_radius->list[list_index];
+        rr = sr->radius_list[list_index] = MALLOC(sizeof(*rr));
+        sts__radius_report__radius_record__init(rr);
+
+        rr->vif_name      = strdup(record->vif_name);
+        rr->vif_role      = strdup(record->vif_role);
+        rr->serveraddress = strdup(record->radiusAuthServerAddress);
+
+        rr->serverindex                    = record->radiusAuthServerIndex;
+        rr->clientserverportnumber         = record->radiusAuthClientServerPortNumber;
+        rr->clientroundtriptime            = record->radiusAuthClientRoundTripTime;
+        rr->clientaccessrequests           = record->radiusAuthClientAccessRequests;
+        rr->clientaccessretransmissions    = record->radiusAuthClientAccessRetransmissions;
+        rr->clientaccessaccepts            = record->radiusAuthClientAccessAccepts;
+        rr->clientaccessrejects            = record->radiusAuthClientAccessRejects;
+        rr->clientaccesschallenges         = record->radiusAuthClientAccessChallenges;
+        rr->clientmalformedaccessresponses = record->radiusAuthClientMalformedAccessResponses;
+        rr->clientbadauthenticators        = record->radiusAuthClientBadAuthenticators;
+        rr->clientpendingrequests          = record->radiusAuthClientPendingRequests;
+        rr->clienttimeouts                 = record->radiusAuthClientTimeouts;
+        rr->clientunknowntypes             = record->radiusAuthClientUnknownTypes;
+        rr->clientpacketsdropped           = record->radiusAuthClientPacketsDropped;
+    }
+}
+
 static void dppline_add_stat(Sts__Report * r, dppline_stats_t * s)
 {
     switch(s->type)
@@ -2079,6 +2169,10 @@ static void dppline_add_stat(Sts__Report * r, dppline_stats_t * s)
 
         case DPP_T_CLIENT_AUTH_FAILS:
             dppline_add_stat_client_auth_fails(r, s);
+            break;
+
+        case DPP_T_RADIUS_STATS:
+            dppline_add_stat_radius(r, s);
             break;
 
         default:
@@ -2239,6 +2333,11 @@ bool dpp_put_rssi(dpp_rssi_report_data_t * rpt)
 bool dpp_put_client_auth_fails(dpp_client_auth_fails_report_data_t *rpt)
 {
     return dppline_put(DPP_T_CLIENT_AUTH_FAILS, rpt);
+}
+
+bool dpp_put_radius_stats(dpp_radius_stats_report_data_t *rpt)
+{
+    return dppline_put(DPP_T_RADIUS_STATS, rpt);
 }
 
 /*

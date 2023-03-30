@@ -1954,7 +1954,7 @@ wm2_vstate_security_fixup(const struct schema_Wifi_VIF_Config *vconf,
     bool has_mixed;
     int i;
 
-    want_mode = SCHEMA_KEY_VAL_NULL(vconf->security, "mode");
+    want_mode = SCHEMA_KEY_VAL_NULL(vconf->security, "mode") != NULL;
     has_mixed = !strcmp(SCHEMA_KEY_VAL(vstate->security, "mode"), "mixed");
 
     memcpy(&orig, vstate, sizeof(*vstate));

@@ -505,7 +505,7 @@ lan_stats_close_window(fcm_collect_plugin_t *collector)
     ret = net_md_add_uplink(aggr, &uplink);
     if (!ret)
     {
-        LOGI("%s: Failed to add uplink to window", __func__);
+        LOGT("%s: Failed to add uplink to window", __func__);
     }
 
     ret = net_md_close_active_window(aggr);

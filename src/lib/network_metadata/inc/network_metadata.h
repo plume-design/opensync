@@ -89,6 +89,8 @@ struct flow_key
     uint32_t flowmarker; /* ct_mark */
     char *uplinkname; /* uplink interface of this flow */
     int log;
+    struct str_set **data_report;
+    size_t num_data_report;
 };
 
 /**
@@ -285,16 +287,30 @@ serialize_flow_counters(struct flow_counters *counters);
 /**
  * @brief Generates a flow tags serialized protobuf
  *
- * Uses the information pointed by the counter parameter to generate
+ * Uses the information pointed by the tags parameter to generate
  * a serialized flow tags buffer.
  * The caller is responsible for freeing to the returned serialized data,
  * @see free_packed_buffer() for this purpose.
  *
- * @param counters info used to fill up the protobuf.
+ * @param tags info used to fill up the protobuf.
  * @return a pointer to the serialized data.
  */
 struct packed_buffer *
 serialize_flow_tags(struct flow_tags *tags);
+
+/**
+ * @brief Generates a data report tags serialized protobuf
+ *
+ * Uses the information pointed by the report_tags parameter to generate
+ * a serialized report tags buffer.
+ * The caller is responsible for freeing to the returned serialized data,
+ * @see free_packed_buffer() for this purpose.
+ *
+ * @param tags info used to fill up the protobuf.
+ * @return a pointer to the serialized data.
+ */
+struct packed_buffer *
+serialize_data_report_tags(struct str_set *report_tags);
 
 
 /**
@@ -337,11 +353,26 @@ serialize_flow_state(struct flow_state *flow_state);
  * The caller is responsible for freeing the returned pointer,
  * @see free_pb_flow_tags() for this purpose.
  *
- * @param counters info used to fill up the protobuf
- * @return a pointer to a flow counters protobuf structure
+ * @param tags info used to fill up the protobuf
+ * @return a pointer to a flow tags protobuf structure
  */
 Traffic__FlowTags *
 set_flow_tags(struct flow_tags *tags);
+
+
+/**
+ * @brief Allocates and sets a data report tags protobuf.
+ *
+ * Uses the report tags info to fill a dynamically allocated
+ * flow key protobuf.
+ * The caller is responsible for freeing the returned pointer,
+ * @see free_pb_data_report_tags() for this purpose.
+ *
+ * @param report_tags info used to fill up the protobuf
+ * @return a pointer to a flow tags protobuf structure
+ */
+Traffic__DataReportTag *
+set_data_report_tags(struct str_set *report_tags);
 
 
 /**
@@ -369,6 +400,15 @@ set_pb_flow_tags(struct flow_key *key);
 void free_pb_flow_tags(Traffic__FlowTags *pb);
 
 
+/**
+ * @brief Free a data report tags protobuf structure.
+ *
+ * Free dynamically allocated fields and the protobuf structure.
+ *
+ * @param pb data report tag structure to free
+ * @return none
+ */
+void free_pb_data_report_tags(Traffic__DataReportTag *pb);
 /**
  * @brief Allocates and sets a vendor key/value protobuf.
  *

@@ -39,7 +39,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 struct wanp_vlan
 {
     wano_plugin_handle_t        wvl_handle;
-    char                        wvl_ifvlan[C_IFNAME_LEN];
+    char                        wvl_ifvlan[C_IFNAME_LEN+32];
     struct wano_wan_config      wvl_wan_config;
     bool                        wvl_have_config;
     bool                        wvl_if_created;

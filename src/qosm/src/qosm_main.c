@@ -35,15 +35,25 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "os.h"
 #include "os_backtrace.h"
 #include "target.h"
+#include "policy_tags.h"
 
+#include "qosm.h"
 #include "qosm_internal.h"
+#include "qosm_ip_iface.h"
+#include "qosm_ic_template.h"
+#include "qosm_interface_classifier.h"
+
+#include "kconfig.h"
 
 #define MODULE_ID LOG_MODULE_ID_MAIN
 
 static log_severity_t qosm_log_severity = LOG_SEVERITY_INFO;
+static struct tag_mgr tag_mgr;
 
 int main(int argc, char *argv[])
 {
+    int rc;
+
     // Parse command-line arguments
     if (os_get_opt(argc, argv, &qosm_log_severity))
     {
@@ -65,6 +75,23 @@ int main(int argc, char *argv[])
     {
         LOG(EMERG, "Initializing of QoSM (Failed to initialize OVSDB)");
         return 1;
+    }
+
+    if (kconfig_enabled(CONFIG_TARGET_ENABLE_TC_FILTERS))
+    {
+        memset(&tag_mgr, 0, sizeof(tag_mgr));
+        tag_mgr.service_tag_update = qosm_ic_template_tag_update;
+        om_tag_init(&tag_mgr);
+
+        qosm_init_mgr(qosm_ip_iface_debounce_fn);
+
+        rc = qosm_ovsdb_init();
+        if (rc)
+        {
+            LOGE("Initializing QOSM "
+                "(Failed to initialize QOSM tables)");
+            return -1;
+        }
     }
 
     // Initialize modules

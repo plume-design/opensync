@@ -29,7 +29,7 @@
 # shellcheck disable=SC1091
 source /tmp/fut-base/shell/config/default_shell.sh
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
-source "${FUT_TOPDIR}/shell/lib/wm2_lib.sh"
+source "${FUT_TOPDIR}/shell/lib/unit_lib.sh"
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
@@ -69,21 +69,36 @@ Testcase info:
         - Verify if <CHANNEL_B> has started CAC
 Arguments:
     -h  show this help message
-    \$1  (if_name)          : Wifi_Radio_Config::if_name        : (string)(required)
-    \$2  (vif_if_name)      : Wifi_VIF_Config::if_name          : (string)(required)
-    \$3  (vif_radio_idx)    : Wifi_VIF_Config::vif_radio_idx    : (int)(required)
-    \$4  (ssid)             : Wifi_VIF_Config::ssid             : (string)(required)
-    \$5  (security)         : Wifi_VIF_Config::security         : (string)(required)
-    \$6  (channel_a)        : Wifi_Radio_Config::channel        : (int)(required)
-    \$7  (channel_b)        : Wifi_Radio_Config::channel        : (int)(required)
-    \$8  (ht_mode)          : Wifi_Radio_Config::ht_mode        : (string)(required)
-    \$9  (hw_mode)          : Wifi_Radio_Config::hw_mode        : (string)(required)
-    \$10 (mode)             : Wifi_VIF_Config::mode             : (string)(required)
+    (if_name)          : Wifi_Radio_Config::if_name        : (string)(required)
+    (vif_if_name)      : Wifi_VIF_Config::if_name          : (string)(required)
+    (vif_radio_idx)    : Wifi_VIF_Config::vif_radio_idx    : (int)(required)
+    (ssid)             : Wifi_VIF_Config::ssid             : (string)(required)
+    (channel_a)        : Wifi_Radio_Config::channel        : (int)(required)
+    (channel_b)        : Wifi_Radio_Config::channel        : (int)(required)
+    (ht_mode)          : Wifi_Radio_Config::ht_mode        : (string)(required)
+    (hw_mode)          : Wifi_Radio_Config::hw_mode        : (string)(required)
+    (mode)             : Wifi_VIF_Config::mode             : (string)(required)
+    (channel_mode)     : Wifi_Radio_Config::channel_mode   : (string)(required)
+    (enabled)          : Wifi_Radio_Config::enabled        : (string)(required)
+    (wifi_security_type) : 'wpa' if wpa fields are used or 'legacy' if security fields are used: (string)(required)
+
+Wifi Security arguments(choose one or the other):
+    If 'wifi_security_type' == 'wpa' (preferred)
+    (wpa)              : Wifi_VIF_Config::wpa              : (string)(required)
+    (wpa_key_mgmt)     : Wifi_VIF_Config::wpa_key_mgmt     : (string)(required)
+    (wpa_psks)         : Wifi_VIF_Config::wpa_psks         : (string)(required)
+    (wpa_oftags)       : Wifi_VIF_Config::wpa_oftags       : (string)(required)
+                    (OR)
+    If 'wifi_security_type' == 'legacy' (deprecated)
+    (security)         : Wifi_VIF_Config::security         : (string)(required)
 Testcase procedure:
     - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
-                 Run: ./wm2/wm2_dfs_cac_aborted.sh <IF_NAME> <VIF_IF_NAME> <VIF-RADIO-IDX> <SSID> <SECURITY> <CHANNEL_A> <CHANNEL_B> <HT_MODE> <HW_MODE> <MODE>
+                 Run: ./wm2/wm2_dfs_cac_aborted.sh -if_name <IF_NAME> -vif_if_name <VIF_IF_NAME> -vif_radio_idx <VIF-RADIO-IDX> -ssid <SSID> -channel_a <CHANNEL_A> -channel_b <CHANNEL_B> -ht_mode <HT_MODE> -hw_mode <HW_MODE> -mode <MODE> -channel_mode <CHANNEL_MODE> -enabled <ENABLED> -wifi_security_type <WIFI_SECURITY_TYPE> -wpa <WPA> -wpa_key_mgmt <WPA_KEY_MGMT> -wpa_psks <WPA_PSKS> -wpa_oftags <WPA_OFTAGS>
+                             (OR)
+                 Run: ./wm2/wm2_dfs_cac_aborted.sh -if_name <IF_NAME> -vif_if_name <VIF_IF_NAME> -vif_radio_idx <VIF-RADIO-IDX> -ssid <SSID> -channel_a <CHANNEL_A> -channel_b <CHANNEL_B> -ht_mode <HT_MODE> -hw_mode <HW_MODE> -mode <MODE> -channel_mode <CHANNEL_MODE> -enabled <ENABLED> -wifi_security_type <WIFI_SECURITY_TYPE> -security <SECURITY>
 Script usage example:
-    ./wm2/wm2_dfs_cac_aborted.sh wifi2 home-ap-u50 2 FUTssid '["map",[["encryption","WPA-PSK"],["key","FUTpsk"],["mode","2"]]]' 120 104 HT20 11ac ap
+    ./wm2/wm2_dfs_cac_aborted.sh -if_name wifi2 -vif_if_name home-ap-u50 -vif_radio_idx 2 -ssid FUTssid -channel_a 120 -channel_b 104 -ht_mode HT20 -hw_mode 11ac -mode ap -wifi_security_type wpa -wpa "true" -wpa_key_mgmt "wpa-psk" -wpa_psks '["map",[["key","FutTestPSK"]]]' -wpa_oftags '["map",[["key","home--1"]]]'
+    ./wm2/wm2_dfs_cac_aborted.sh -if_name wifi2 -vif_if_name home-ap-u50 -vif_radio_idx 2 -ssid FUTssid -channel_a 120 -channel_b 104 -ht_mode HT20 -hw_mode 11ac -mode ap -channel_mode manual -enabled true -wifi_security_type legacy -security '["map",[["encryption","WPA-PSK"],["key","FutTestPSK"]]]'
 usage_string
 }
 if [ -n "${1}" ]; then
@@ -98,18 +113,8 @@ if [ -n "${1}" ]; then
     esac
 fi
 
-NARGS=10
-[ $# -lt ${NARGS} ] && usage && raise "Requires '${NARGS}' input argument(s)" -l "wm2/wm2_dfs_cac_aborted.sh" -arg
-if_name=${1}
-vif_if_name=${2}
-vif_radio_idx=${3}
-ssid=${4}
-security=${5}
-channel_a=${6}
-channel_b=${7}
-ht_mode=${8}
-hw_mode=${9}
-mode=${10}
+NARGS=26
+[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "wm2/wm2_dfs_cac_aborted.sh" -arg
 
 trap '
     fut_info_dump_line
@@ -118,83 +123,63 @@ trap '
     fut_info_dump_line
 ' EXIT SIGINT SIGTERM
 
-###############################################################################
-# DESCRIPTION:
-#   Function echoes first of the available channels on the radio that is usable
-#   (NOP_FINISHED) for the test, but will not echo the channel provided as an
-#   argument, since that channel would already be determined as usable.
-#   Raises exception if no usable channel is found.
-# INPUT PARAMETER(S):
-#   $1  Channel (int, required)
-# RETURNS:
-#   0   Channel found.
-#   See DESCRIPTION.
-# USAGE EXAMPLE(S):
-#   get_usable_channel 36
-###############################################################################
-get_usable_channel()
-{
-    local NARGS=1
-    [ $# -ne ${NARGS} ] &&
-        raise "get_usable_channel: Requires ${NARGS} input argument(s), $# given" -arg
-    other_chan_in_use=${1}
+# Parsing arguments passed to the script.
+while [ -n "$1" ]; do
+    option=$1
+    shift
+    case "$option" in
+        -ht_mode | \
+        -mode | \
+        -vif_if_name | \
+        -vif_radio_idx | \
+        -hw_mode | \
+        -ssid | \
+        -channel_mode | \
+        -enabled)
+            radio_vif_args="${radio_vif_args} -${option#?} ${1}"
+            shift
+            ;;
+        -if_name)
+            if_name=${1}
+            radio_vif_args="${radio_vif_args} -${option#?} ${if_name}"
+            shift
+            ;;
+        -channel_a)
+            channel_a=${1}
+            radio_vif_args="${radio_vif_args} -channel ${channel_a}"
+            shift
+            ;;
+        -channel_b)
+            channel_b=${1}
+            shift
+            ;;
+        -wifi_security_type)
+            wifi_security_type=${1}
+            shift
+            ;;
+        -wpa | \
+        -wpa_key_mgmt | \
+        -wpa_psks | \
+        -wpa_oftags)
+            [ "${wifi_security_type}" != "wpa" ] && raise "FAIL: Incorrect combination of WPA and legacy wifi security type provided" -l "wm2/wm2_dfs_cac_aborted.sh" -arg
+            radio_vif_args="${radio_vif_args} -${option#?} ${1}"
+            shift
+            ;;
+        -security)
+            [ "${wifi_security_type}" != "legacy" ] && raise "FAIL: Incorrect combination of WPA and legacy wifi security type provided" -l "wm2/wm2_dfs_cac_aborted.sh" -arg
+            radio_vif_args="${radio_vif_args} -${option#?} ${1}"
+            shift
+            ;;
+        *)
+            raise "FAIL: Wrong option provided: $option" -l "wm2/wm2_dfs_cac_aborted.sh" -arg
+            ;;
+    esac
+done
 
-    # Wifi_Radio_State::allowed channels list must not be empty!
-    get_chan_list=$(get_ovsdb_entry_value Wifi_Radio_State allowed_channels -w if_name "$if_name" -r)
-    list_of_chans=$(echo "${get_chan_list}" | cut -d '[' -f3 | cut -d ']' -f1 | sed "s/,/ /g")
-    [ -z "$list_of_chans" ] &&
-        raise "FAIL: Wifi_Radio_State::allowed_channels not populated" -l "wm2/wm2_dfs_cac_aborted.sh" -ds
-
-    # Get the first channel in list that has state NOP_FINISHED and
-    # is not the one provided in the argument.
-    for channel in ${list_of_chans}; do
-        [ "$channel" -eq "$other_chan_in_use" ] && continue
-        check_is_nop_finished "$channel" "$if_name" >/dev/null 2>&1
-        if [ $? = 0 ]; then
-            echo "$channel" && return 0
-        fi
-    done
-
-    raise "FAIL: No channels on radio $if_name are available for CAC abort test" -l "wm2/wm2_dfs_cac_aborted.sh" -s
-}
-
-# Sanity check - are channels even allowed on the radio
-check_is_channel_allowed "$channel_a" "$if_name" &&
-    log "wm2/wm2_dfs_cac_aborted.sh:check_is_channel_allowed - channel $channel_a is allowed on radio $if_name" ||
-    raise "Channel $channel_a is not allowed on radio $if_name" -l "wm2/wm2_dfs_cac_aborted.sh" -ds
-check_is_channel_allowed "$channel_b" "$if_name" &&
-    log "wm2/wm2_dfs_cac_aborted.sh:check_is_channel_allowed - channel $channel_b is allowed on radio $if_name" ||
-    raise "Channel $channel_b is not allowed on radio $if_name" -l "wm2/wm2_dfs_cac_aborted.sh" -ds
-
-# Verify configured channel_a is in nop_finished state for the test. If not, switch to new channel.
-chan_state=$(get_radio_channel_state "$channel_a" "$if_name")
-if [ "$chan_state" = "nop_finished" ]; then
-    log "wm2/wm2_dfs_cac_aborted.sh: Channel $channel_a on $if_name is usable for CAC abort test."
-else
-    log "wm2/wm2_dfs_cac_aborted.sh: Channel $channel_a in '$chan_state' state, expected \"nop_finished\". Searching for alternative channel."
-    new_channel_a=$(get_usable_channel "$channel_b")
-    if [ $? = 0 ]; then
-        log "wm2/wm2_dfs_cac_aborted.sh: Alternative channel '$new_channel_a' found"
-        channel_a=$new_channel_a
-    else
-        raise "FAIL: Could not find alternative channel for CAC abort test" -l "wm2/wm2_dfs_cac_aborted.sh" -s
-    fi
-fi
-
-# Verify configured channel_b is in nop_finished state for the test. If not, switch to new channel.
-chan_state=$(get_radio_channel_state "$channel_b" "$if_name")
-if [ "$chan_state" = "nop_finished" ]; then
-    log "wm2/wm2_dfs_cac_aborted.sh: Channel $channel_b on $if_name is usable for CAC abort test."
-else
-    log "wm2/wm2_dfs_cac_aborted.sh: Channel $channel_b in '$chan_state' state, expected \"nop_finished\". Searching for alternative channel."
-    new_channel_b=$(get_usable_channel "$channel_a")
-    if [ $? = 0 ]; then
-        log "wm2/wm2_dfs_cac_aborted.sh: Alternative channel '$new_channel_b' found"
-        channel_b=$new_channel_b
-    else
-        raise "FAIL: Could not find alternative channel for CAC abort test" -l "wm2/wm2_dfs_cac_aborted.sh" -s
-    fi
-fi
+# Performs sanity check(channels allowed on the radio) and verifies configured
+# channel is in nop_finished state for the test. If not, switch to new channel.
+channel_a=$(verify_channel_is_in_nop_finished "$if_name" "$channel_a" "$channel_b")
+channel_b=$(verify_channel_is_in_nop_finished "$if_name" "$channel_b" "$channel_a")
 
 log_title "wm2/wm2_dfs_cac_aborted.sh: WM2 test - DFC CAC Aborted - Using: '${channel_a}'->'${channel_b}'"
 
@@ -206,17 +191,7 @@ log_title "wm2/wm2_dfs_cac_aborted.sh: WM2 test - DFC CAC Aborted - Using: '${ch
 log "wm2/wm2_dfs_cac_aborted.sh: Configuring Wifi_Radio_Config, creating interface in Wifi_VIF_Config."
 log "wm2/wm2_dfs_cac_aborted.sh: Waiting for ${channel_change_timeout}s for settings {channel:$channel_a}"
 create_radio_vif_interface \
-    -channel "$channel_a" \
-    -channel_mode manual \
-    -enabled true \
-    -ht_mode "$ht_mode" \
-    -hw_mode "$hw_mode" \
-    -if_name "$if_name" \
-    -mode "$mode" \
-    -security "$security" \
-    -ssid "$ssid" \
-    -vif_if_name "$vif_if_name" \
-    -vif_radio_idx "$vif_radio_idx" \
+    ${radio_vif_args} \
     -timeout ${channel_change_timeout} \
     -disable_cac &&
         log "wm2/wm2_dfs_cac_aborted.sh: create_radio_vif_interface {$if_name, $channel_a} - Success" ||

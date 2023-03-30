@@ -90,6 +90,6 @@ print_tables Wifi_Inet_State
 print_tables Wifi_VIF_Config
 print_tables Wifi_VIF_State
 
-ovs-vsctl show
+show_bridge_details
 
 pass

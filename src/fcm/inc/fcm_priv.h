@@ -27,6 +27,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifndef FCM_PRIV_H_INCLUDED
 #define FCM_PRIV_H_INCLUDED
 
+#include <linux/limits.h>
 #include "ds_dlist.h"
 #include "ds_tree.h"
 #include "fcm.h"
@@ -36,7 +37,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define FCM_DSO_DFLT_PATH        CONFIG_INSTALL_PREFIX"/lib"
 #define FCM_DSO_PREFIX           "/libfcm_"
 #define FCM_DSO_TYPE             ".so"
-#define FCM_DSO_PATH_LEN         (255)
+#define FCM_DSO_PATH_LEN         (4096)
 #define FCM_DSO_INIT_LEN         (255)
 #define FCM_DSO                  "dso"
 #define FCM_DSO_LEN              (255)
@@ -145,5 +146,11 @@ void fcm_event_init(void);
  */
 void
 fcm_set_max_mem(void);
+
+/**
+ * @brief register callback for receiving tag value updates
+ */
+bool
+fcm_tag_update_init(void);
 
 #endif /* FCM_PRIV_H_INCLUDED */

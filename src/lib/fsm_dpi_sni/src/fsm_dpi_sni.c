@@ -209,7 +209,7 @@ fsm_dpi_sni_process_attr(struct fsm_session *session, const char *attr,
         return FSM_DPI_PASSTHRU;
     }
 
-    STRSCPY(val, value);
+    STRSCPY_LEN(val, value, length);
 
     MEMZERO(request_args);
     request_args.session = session;

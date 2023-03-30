@@ -33,7 +33,7 @@ struct wpas {
     char phy[IFNAMSIZ];
     char driver[32]; /* eg. nl80211, wext, ... */
     char confpath[PATH_MAX];
-    char conf[4096];
+    char conf[8192];
     int freqlist[64];
     int respect_multi_ap;
     void (*connected)(struct wpas *wpas, const char *bssid, int id, const char *id_str);

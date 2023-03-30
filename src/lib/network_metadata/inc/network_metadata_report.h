@@ -40,7 +40,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "network_metadata.h"
 #include "network_metadata_utils.h"
 
-
 /**
  * @brief flow key lookup structure
  */
@@ -74,6 +73,19 @@ struct net_md_flow_key
     uint16_t tx_idx;
 };
 
+/**
+ * net_md_flow_key anc acc flags values influencing the accumulator lookup
+ */
+enum
+{
+    NET_MD_ACC_CREATE = 0,
+    NET_MD_ACC_LOOKUP_ONLY = 1 << 0,
+    NET_MD_ACC_ETH = 1 << 1,
+    NET_MD_ACC_FIVE_TUPLE = 1 << 2,
+    NET_MD_ACC_FIRST_LEG = 1 << 3,
+    NET_MD_ACC_SECOND_LEG = 1 << 4,
+};
+
 
 /**
  * @brief Accumulates stats of a flow for the current observation window
@@ -92,10 +104,13 @@ struct net_md_stats_accumulator
     void (*free_plugins)(struct net_md_stats_accumulator *);
     ds_tree_t *dpi_plugins;
     int dpi_done;                          /* All dpi engines are done */
+    int mark_done;                         /* last known pushed mark to ct() */
     int refcnt;                            /* # of entities accessing the acc */
     bool report;                           /* send a report */
     uint16_t direction;                    /* flow direction */
     uint16_t originator;                   /* flow originator */
+    struct net_md_stats_accumulator *rev_acc;
+    uint32_t flags;
 };
 
 
@@ -112,16 +127,9 @@ struct net_md_flow_info
     uint16_t remote_port;
     uint16_t direction;
     uint8_t ip_version;
-};
-
-
-/**
- * net_md_flow_key flags values influencing the accumulator lookup
- */
-enum
-{
-    NET_MD_ACC_CREATE = 0,
-    NET_MD_ACC_LOOKUP_ONLY,
+    uint8_t ipprotocol;
+    uint16_t ethertype;
+    int16_t vlan_id;
 };
 
 
@@ -149,7 +157,7 @@ enum
 
 
 /**
- * @brief Report type: absolute counters or relative to their revious values
+ * @brief Report type: absolute counters or relative to their previous values
  */
 enum {
     NET_MD_REPORT_ABSOLUTE = 0,
@@ -225,6 +233,16 @@ struct net_md_aggregator_set
     void *context;
 };
 
+enum
+{
+    PKT_VERDICT_ONLY = 1 << 0,
+};
+
+struct dpi_mark_policy
+{
+    int flow_mark;
+    uint32_t mark_policy;
+};
 
 /**
  * @brief allocates a stats aggregator

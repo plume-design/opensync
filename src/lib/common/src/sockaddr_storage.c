@@ -42,6 +42,8 @@ sockaddr_storage_equals(struct sockaddr_storage *a, struct sockaddr_storage *b)
     bool ret;
     int cmp;
 
+    if (IS_NULL_PTR(a) || IS_NULL_PTR(b)) return false;
+
     if (a->ss_family != b->ss_family) return false;
 
     ret = false;

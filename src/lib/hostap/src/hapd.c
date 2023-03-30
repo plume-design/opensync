@@ -1325,7 +1325,10 @@ hapd_conf_gen_security_new(struct hapd *hapd,
     HAPD_CONF_APPEND_STR_NE(buf, len, "wpa_key_mgmt=%s\n", conf.wpa_key_mgmt);
     HAPD_CONF_APPEND_STR_NE(buf, len, "wpa_pairwise=%s\n", conf.wpa_pairwise);
     HAPD_CONF_APPEND_STR_NE(buf, len, "rsn_pairwise=%s\n", conf.rsn_pairwise);
-    HAPD_CONF_APPEND_STR_NE(buf, len, "wpa_psk_file=%s\n", hapd->pskspath);
+
+    if (conf.psk || conf.sae) {
+        HAPD_CONF_APPEND_STR_NE(buf, len, "wpa_psk_file=%s\n", hapd->pskspath);
+    }
 
     if (conf.eap) {
         HAPD_CONF_APPEND(buf, len, "ieee8021x=%s\n", "1");
@@ -1371,7 +1374,7 @@ hapd_conf_gen_security_new(struct hapd *hapd,
         HAPD_CONF_APPEND(buf, len, "ft_psk_generate_local=1\n");
     }
 
-    if (conf.ft && conf.eap) {
+    if (conf.ft && (conf.eap || conf.sae)) {
         HAPD_CONF_APPEND_WITH_DEFAULT(buf, len, "ft_over_ds=%d\n", vconf->ft_over_ds, 1);
         HAPD_CONF_APPEND_WITH_DEFAULT(buf, len, "pmk_r1_push=%d\n", vconf->ft_pmk_r1_push, 0);
         HAPD_CONF_APPEND_WITH_DEFAULT(buf, len, "ft_r0_key_lifetime=%d\n", vconf->ft_pmk_r0_key_lifetime_sec, 1209600);
@@ -1563,6 +1566,7 @@ hapd_conf_gen2(struct hapd *hapd,
     size_t len = sizeof(hapd->conf);
     char *buf = hapd->conf;
     char low_bssid[] = "00:00:00:00:00:00";
+    const int ap_isolate = !vconf->ap_bridge;
     int closed;
 
     memset(buf, 0, len);
@@ -1588,6 +1592,7 @@ hapd_conf_gen2(struct hapd *hapd,
     csnprintf(&buf, &len, "channel=%d\n", rconf->channel);
     csnprintf(&buf, &len, "ignore_broadcast_ssid=%d\n", closed);
     csnprintf(&buf, &len, "wmm_enabled=1\n");
+    csnprintf(&buf, &len, "ap_isolate=%d\n", ap_isolate);
     csnprintf(&buf, &len, "%s", hapd->respect_multi_ap ? "" : "#");
     csnprintf(&buf, &len, "multi_ap=%d\n", hapd_map_str2int(vconf));
     csnprintf(&buf, &len, "send_probe_response=%d\n", hapd->skip_probe_response ? 0 : 1);
@@ -1996,6 +2001,58 @@ hapd_bss_get(struct hapd *hapd,
     return 0;
 }
 
+static const char*
+hapd_akmsuite_translation(const char* akm_suite)
+{
+    if (!strcmp(akm_suite, "00-0f-ac-1"))
+        return "wpa-eap";
+    else if (!strcmp(akm_suite, "00-0f-ac-2"))
+        return "wpa-psk";
+    else if (!strcmp(akm_suite, "00-0f-ac-3"))
+        return "ft-eap";
+    else if (!strcmp(akm_suite, "00-0f-ac-4"))
+        return "ft-psk";
+    else if (!strcmp(akm_suite, "00-0f-ac-5"))
+        return "wpa-eap-sha256";
+    else if (!strcmp(akm_suite, "00-0f-ac-6"))
+        return "wpa-psk-sha256";
+    else if (!strcmp(akm_suite, "00-0f-ac-8"))
+        return "sae";
+    else if (!strcmp(akm_suite, "00-0f-ac-9"))
+        return "ft-sae";
+    else if (!strcmp(akm_suite, "00-0f-ac-12"))
+        return "wpa-eap-suite-b-192";
+    else if (!strcmp(akm_suite, "00-0f-ac-13"))
+        return "ft-eap-sha384";
+    else if (!strcmp(akm_suite, "50-6f-9a-02"))
+        return "dpp";
+
+    return NULL;
+}
+
+static const char*
+hapd_ciphersuite_translation(const char* cipher_suite)
+{
+    if (!strcmp(cipher_suite, "00-0f-ac-0"))
+        return "rsn-none";
+    else if (!strcmp(cipher_suite, "00-0f-ac-1"))
+        return "wep";
+    else if (!strcmp(cipher_suite, "00-0f-ac-2"))
+        return "rsn-tkip";
+    else if (!strcmp(cipher_suite, "00-0f-ac-4"))
+        return "rsn-ccmp";
+    else if (!strcmp(cipher_suite, "00-0f-ac-6"))
+        return "bip-cmac";
+    else if (!strcmp(cipher_suite, "00-50-f2-0"))
+        return "wpa-none";
+    else if (!strcmp(cipher_suite, "00-50-f2-2"))
+        return "wpa-tkip";
+    else if (!strcmp(cipher_suite, "00-50-f2-4"))
+        return "wpa-ccmp";
+    
+    return NULL;
+}
+
 int
 hapd_sta_get(struct hapd *hapd,
              const char *mac,
@@ -2004,10 +2061,15 @@ hapd_sta_get(struct hapd *hapd,
     const char *sta = HAPD_CLI(hapd, "sta", mac) ?: "";
     const char *keyid = NULL;
     const char *dpp_pkhash = NULL;
+    const char *akm_suite = NULL;
+    const char *wpa_key_mgmt = NULL;
+    const char *pairwise_cipher_suite = NULL;
+    const char *pairwise_cipher = NULL;
     const char *k;
     const char *v;
     char *lines = strdupa(sta);
     char *kv;
+    bool pmf = false;
 
     while ((kv = strsep(&lines, "\r\n")))
         if ((k = strsep(&kv, "=")) &&
@@ -2016,12 +2078,31 @@ hapd_sta_get(struct hapd *hapd,
                 keyid = v;
             else if (!strcmp(k, "dpp_pkhash"))
                 dpp_pkhash = v;
+            else if (!strcmp(k, "AKMSuiteSelector"))
+                akm_suite = v;
+            else if (!strcmp(k, "dot11RSNAStatsSelectedPairwiseCipher"))
+                pairwise_cipher_suite = v;
+            else if (!strcmp(k, "flags")) {
+                if (strstr(v, "[MFP]"))
+                    pmf = true;
+            }
         }
 
     SCHEMA_SET_STR(client->key_id, keyid ?: "");
     SCHEMA_SET_STR(client->mac, mac);
     SCHEMA_SET_STR(client->state, "active");
+    SCHEMA_SET_BOOL(client->pmf, pmf);
+
+    if (akm_suite)
+        wpa_key_mgmt = hapd_akmsuite_translation(akm_suite);
+    if (pairwise_cipher_suite)
+        pairwise_cipher = hapd_ciphersuite_translation(pairwise_cipher_suite);
+
     if (dpp_pkhash) SCHEMA_SET_STR(client->dpp_netaccesskey_sha256_hex, dpp_pkhash);
+
+    if (wpa_key_mgmt) SCHEMA_SET_STR(client->wpa_key_mgmt, wpa_key_mgmt);
+
+    if (pairwise_cipher) SCHEMA_SET_STR(client->pairwise_cipher, pairwise_cipher);
 
     if (!strcmp(sta, "FAIL"))
         return -1;

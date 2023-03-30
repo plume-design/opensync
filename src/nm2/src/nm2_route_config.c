@@ -194,6 +194,8 @@ bool nm2_route_cfg_parse(struct nm2_route_cfg *rt, const struct schema_Wifi_Rout
         rt->rc_route.pref_src_set = true;
     }
 
+    rt->rc_route.table = schema->table_exists ? schema->table : 0;
+
     return true;
 }
 

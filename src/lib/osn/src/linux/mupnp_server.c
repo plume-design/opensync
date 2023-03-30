@@ -265,7 +265,7 @@ static enum config_file_err create_config_file(const mupnp_server_t *self)
 
     if (!is_ext) return CFERR_NO_IFC;
 
-    if (kconfig_enabled(CONFIG_FSM_DPI_UPNP))
+    if (kconfig_enabled(CONFIG_FSM_DPI_SEC_PORTMAP))
     {
         /* Make it possible for to perform a "self query" */
         /* Add this first to ensure the Presentation URL will not use the 127. address */

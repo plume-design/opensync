@@ -398,6 +398,7 @@ fsm_demo_process_message(struct fsm_demo_session *f_session)
 {
     struct net_header_parser *net_parser;
     struct net_md_stats_accumulator *acc;
+    struct dpi_mark_policy mark_policy;
     struct fsm_demo_parser *parser;
     struct flow_counters counters;
     struct fsm_session *session;
@@ -453,6 +454,7 @@ fsm_demo_process_message(struct fsm_demo_session *f_session)
     }
     /* Demo application detector */
     fsm_demo_flow_analyser(net_parser, &key);
+    memset(&mark_policy, 0, sizeof(mark_policy));
     switch (net_parser->flow_action)
     {
         case FLOW_INSPECT:
@@ -464,12 +466,14 @@ fsm_demo_process_message(struct fsm_demo_session *f_session)
         break;
 
         case FLOW_PASSTHROUGH:
-            fsm_set_dpi_mark(net_parser, FSM_DPI_PASSTHRU);
+            mark_policy.flow_mark = FSM_DPI_PASSTHRU;
+            fsm_set_dpi_mark(net_parser, &mark_policy);
             LOGD("%s: Application is detected", __func__);
         break;
 
         case FLOW_DROP:
-            fsm_set_dpi_mark(net_parser, FSM_DPI_DROP);
+            mark_policy.flow_mark = FSM_DPI_DROP;
+            fsm_set_dpi_mark(net_parser, &mark_policy);
             LOGD("%s: IP flow is blocked", __func__);
         break;
 

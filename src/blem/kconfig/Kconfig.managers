@@ -1,0 +1,72 @@
+menuconfig MANAGER_BLEM
+    bool "Bluetooth Manager (BLEM)"
+    default n
+    help
+        Bluetooth Manager (BLEM) manages everything Bluetooth related, from
+        BLE beaconing for onboarding to connectable mode for editing persistent
+        configuration via BLE.
+
+if MANAGER_BLEM
+    config MANAGER_BLEM_CFG
+        string "BLEM Startup configuration"
+        default "blem;true;needs_plan_b=false"
+        help
+            Bluetooth Manager startup configuration
+
+    config BLEM_ADVERTISING_INTERVAL
+        int "Interval of advertising BLE beacons (in ms)"
+        default 250
+        help
+            Interval of advertising BT LE beacons (in milliseconds).
+            On some devices there is a separate antenna for Bluetooth so the
+            beaconing frequency can be increased (100 ms interval), but on
+            devices using shared antenna for Wi-Fi and Bluetooth (BT
+            coexistence) this interval shall be kept higher (250 ms).
+
+    config BLEM_MANUFACTURER_DATA_COMPANY_ID
+        hex "Advertised Manufacturer Data - Company ID"
+        default 0x0A17
+        help
+            Bluetooth beacons contain Manufacturer Data field, which has
+            a mandatory Company ID value - each BT advertisement packet
+            can contain multiple sets of Manufacturer Data, that is why
+            each MD field has a mandatory 16-bit Company ID value.
+            As example, 0x0A17 is officially assigned to Plume Design Inc..
+
+    config BLEM_GATT_SERVICE_UUID
+        hex "Advertised 16-bit Service UUID"
+        default 0xFE71
+        help
+            This value will be advertised as the Complete list of 16-bit Service UUIDs
+            in the BLE advertisement packets.
+            0xFE71 is assigned to Plume Design Inc. by the Bluetooth SIG.
+
+    menu "Advertise 'Pod <serial number>' as device name in BLE beacons"
+        config BLEM_ADVERTISE_NAME_WHEN_BROADCASTING
+            bool "Advertise name when advertising as non-connectable (BLE Broadcaster role)"
+            default n
+            help
+                If enabled, then serial number in form of "Pod <sn>" is advertised in Scan Response
+                BLE packets when device is advertising in broadcaster role (non-connectable beaconing),
+                causing it to be visible in BLE scanners as normal BLE peripheral device.
+
+        config BLEM_ADVERTISE_NAME_WHEN_CONNECTABLE
+            bool "Advertise name when advertising as connectable (BLE Peripheral role)"
+            depends on BLEM_CONFIG_VIA_BLE_ENABLED
+            default y
+            help
+                If enabled, then serial number in form of "Pod <sn>" is advertised in Scan Response
+                BLE packets when device is advertising in peripheral role (connectable mode),
+                causing it to be visible in BLE scanners as normal BLE peripheral device.
+                This is usually required so the users are able to connect to the device.
+    endmenu
+
+    config BLEM_CONFIG_VIA_BLE_ENABLED
+        bool "Enable support for connectable mode for editing persistent configuration via BLE"
+        default n
+        help
+            If enabled, device supports entering BLE Peripheral role, enabling BLE Central
+            devices (usually smartphone) to connect to it and edit persistent WAN configuration
+            via Plume Design Inc. JSON service (0xFE71).
+
+endif

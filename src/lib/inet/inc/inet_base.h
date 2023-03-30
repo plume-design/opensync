@@ -65,6 +65,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
     M(INET_BASE_RADV,           "IPv6 Route Advertisement")         \
     M(INET_BASE_ROUTES,         "Static routes")                    \
     M(INET_BASE_IPV4_READY,     "IPv4 ready")                       \
+    M(INET_BASE_BRIDGE,         "Bridge Creation")                  \
+    M(INET_BASE_BRIDGE_PORT,    "Bridge Port Settings")             \
 
 /*
  * This enum is used mainly to apply partial configurations through the

@@ -123,6 +123,9 @@ ltem_set_failover(ltem_mgr_t *mgr)
     LOGI("%s: failover_active=%d, start time[%ld]", __func__,
          mgr->lte_state_info->lte_failover_active,
          mgr->lte_state_info->lte_failover_start);
+
+    ltem_flush_flows(mgr);
+    ltem_ovsdb_set_v6_failover(mgr);
 }
 
 /**
@@ -153,6 +156,9 @@ ltem_revert_failover(ltem_mgr_t *mgr)
          mgr->lte_state_info->lte_failover_active,
          mgr->lte_state_info->lte_failover_start,
          mgr->lte_state_info->lte_failover_end);
+
+    ltem_flush_flows(mgr);
+    ltem_ovsdb_revert_v6_failover(mgr);
 }
 
 /**

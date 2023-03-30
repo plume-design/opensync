@@ -38,6 +38,14 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define SCHEMA_CONSTS_RADIO_TYPE_STR_5GU    "5GU"
 #define SCHEMA_CONSTS_RADIO_TYPE_STR_6G     "6G"
 
+#define SCHEMA_CONSTS_SCAN_TYPE_ON_CHAN "on-chan"
+#define SCHEMA_CONSTS_SCAN_TYPE_OFF_CHAN "off-chan"
+#define SCHEMA_CONSTS_SCAN_TYPE_FULL "full"
+
+#define SCHEMA_CONSTS_REPORT_TYPE_NEIGHBOR "neighbor"
+#define SCHEMA_CONSTS_REPORT_TYPE_CLIENT "client"
+#define SCHEMA_CONSTS_REPORT_TYPE_SURVEY "survey"
+
 /* Interface types */
 #define SCHEMA_CONSTS_IF_TYPE_ETH           "eth"
 #define SCHEMA_CONSTS_IF_TYPE_LTE           "lte"
@@ -152,6 +160,14 @@ typedef enum {
 #define SCHEMA_CONSTS_KEY_WPA2_EAP          "wpa2-eap"
 #define SCHEMA_CONSTS_KEY_FT_WPA2_PSK       "ft-wpa2-psk"
 
+#define SCHEMA_CONSTS_CIPHER_RSN_NONE     "rsn-none"
+#define SCHEMA_CONSTS_CIPHER_RSN_WEP      "wep"
+#define SCHEMA_CONSTS_CIPHER_RSN_TKIP     "rsn-tkip"
+#define SCHEMA_CONSTS_CIPHER_RSN_CCMP     "rsn-ccmp"
+#define SCHEMA_CONSTS_CIPHER_RSN_BIP_CMAC "bip-cmac"
+#define SCHEMA_CONSTS_CIPHER_WPA_NONE     "wpa-none"
+#define SCHEMA_CONSTS_CIPHER_WPA_TKIP     "wpa-tkip"
+#define SCHEMA_CONSTS_CIPHER_WPA_CCMP     "wpa-ccmp"
 
 #define SCHEMA_CONSTS_DPP_INIT_ON_ANNOUNCE "initiate_on_announce"
 #define SCHEMA_CONSTS_DPP_INIT_NOW         "initiate_now"

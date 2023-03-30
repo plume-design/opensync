@@ -410,7 +410,8 @@ struct fsm_session
     char bridge[64];                 /* underlying bridge name */
     char tx_intf[64];                /* plugin's TX interface */
     union fsm_dpi_context *dpi;      /* fsm dpi context */
-    int (*set_dpi_mark)(struct net_header_parser *net_hdr, int mark);
+    int (*set_dpi_mark)(struct net_header_parser *net_hdr,
+                        struct dpi_mark_policy *mark_policy);
     char *provider;
     struct fsm_policy_client policy_client;
     struct fsm_session *provider_plugin;

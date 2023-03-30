@@ -600,7 +600,11 @@ process_response_ips(dns_info *dns, uint8_t *packet,
     if (dns == NULL) return;
     if (req->dns_response.num_replies > 1) return;
 
-    if (dns->queries == NULL) LOGT("%s: no queries", __func__);
+    if (dns->queries == NULL)
+    {
+        LOGT("%s: no queries", __func__);
+        return;
+    }
 
     ttl = 0;
     answer = dns->answers;

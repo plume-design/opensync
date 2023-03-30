@@ -102,6 +102,24 @@ menu "Common"
             endchoice
 
             choice
+                prompt "Packet Classifier"
+                default OSN_BACKEND_TC_LINUX
+                source "kconfig/Kconfig.osn.tc_backend"
+            endchoice
+
+            choice
+                prompt "Native Bridge"
+                default OSN_BACKEND_LINUX_BRIDGING
+                source "kconfig/Kconfig.osn.bridging_backend"
+            endchoice
+
+            choice
+                prompt "TAP Interface"
+                default OSN_BACKEND_TAP_INTERFACE
+                source "kconfig/Kconfig.osn.tap_backend"
+            endchoice
+
+            choice
                 prompt "NFLOG"
                 default OSN_BACKEND_NFLOG_LINUX
                 source "kconfig/Kconfig.osn.nflog_backend"
@@ -125,6 +143,12 @@ menu "Common"
                     default OSN_BACKEND_IPSET_LINUX
                     source "kconfig/Kconfig.osn.ipset_backend"
                 endchoice
+                choice
+                    prompt "ebtables implementation"
+                    default OSN_BACKEND_FW_EBTABLES_FULL
+                    source "kconfig/Kconfig.osn.fw_eb_backend"
+                endchoice
+                source "kconfig/Kconfig.osn.fw_eb"
             endmenu
 
             choice
@@ -150,6 +174,12 @@ menu "Common"
                     source "kconfig/Kconfig.osn.tunnif_backend"
                 endchoice
             endmenu
+
+            choice
+                prompt "Policy Routing Rules"
+                default OSN_BACKEND_ROUTE_RULE_LINUX
+                source "kconfig/Kconfig.osn.route_rule_backend"
+            endchoice
 
             source "kconfig/Kconfig.osn"
         endmenu
@@ -274,6 +304,26 @@ menu "Common"
 
     config TARGET_NAME
         string "Device Descriptive Name"
+
+    config TARGET_USE_NATIVE_BRIDGE
+	bool "Use native bridge instead of OVS bridge"
+        default n
+        help
+            If enabled OVS Bridge is disabled and native bridge is enabled.
+
+    config TARGET_ENABLE_TC_FILTERS
+	bool "Enable tc filtering to mirror packets."
+        default n
+        help
+            If enabled tc filtering is used to mirror packets based on the
+            configured criteria.
+
+    config TARGET_ENABLE_EBTABLES
+	bool "Enable ebtables to filter layer2 frames."
+        default n
+        help
+            If enabled ebtables filtering is used to filter out layer2
+            frames.
 
     config TARGET_MODEL
         string "Device Model Name"

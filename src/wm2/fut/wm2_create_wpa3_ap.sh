@@ -29,7 +29,7 @@
 # shellcheck disable=SC1091
 source /tmp/fut-base/shell/config/default_shell.sh
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
-source "${FUT_TOPDIR}/shell/lib/wm2_lib.sh"
+source "${FUT_TOPDIR}/shell/lib/unit_lib.sh"
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
@@ -96,7 +96,7 @@ trap '
 log_title "wm2/wm2_create_wpa3_ap.sh: WM2 test - Testing WPA3 AP creation - interface $radio_if_name - channel $channel"
 
 log "wm2/wm2_create_wpa3_ap.sh: Cleaning VIF_Config"
-vif_clean
+vif_reset
 
 log "wm2/wm2_create_wpa3_ap.sh: Creating VIF interface"
 create_radio_vif_interface \
@@ -105,6 +105,7 @@ create_radio_vif_interface \
     -vif_radio_idx "$vif_radio_idx" \
     -ssid "$ssid" \
     -ssid_broadcast "$ssid_broadcast" \
+    -wifi_security_type "wpa" \
     -wpa "true" \
     -wpa_key_mgmt "sae" \
     -wpa_psks "$wpa_psks" \

@@ -31,5 +31,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 int32_t os_pid_to_name(pid_t pid, char *proc_name, int32_t len);
 pid_t os_name_to_pid(const char *proc_name);
+pid_t os_name_to_pid_of_ppid(const char *proc_name, pid_t ppid);
 
 #endif /* OS_PROC_H_INCLUDED */

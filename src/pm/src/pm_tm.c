@@ -62,12 +62,12 @@ static void pm_detect_fan_failure(
         struct osp_tm_ctx *ctx,
         unsigned int desired_fan_rpm,
         unsigned int fan_rpm);
-static void pm_detect_over_temperature(struct osp_tm_ctx *ctx, unsigned int current_state);
+static void pm_detect_over_temperature(struct osp_tm_ctx *ctx, unsigned int current_state, int temperature, int idx);
 static void pm_set_new_state(struct osp_tm_ctx *ctx, unsigned int new_state);
 static int pm_calc_temp_moving_avg(struct osp_tm_ctx *ctx, unsigned int temp_src, int temperature);
 static bool pm_is_temp_src_enabled(struct osp_tm_ctx *ctx, int idx);
 static void pm_therm_cb(struct ev_loop *loop, ev_timer *timer, int revents);
-static void pm_tm_reboot(struct osp_tm_ctx *ctx);
+static void pm_tm_reboot(struct osp_tm_ctx *ctx, int temperature, int idx);
 
 static int pm_get_temperature(struct osp_tm_ctx *ctx, unsigned int temp_src, int *temperature)
 {
@@ -215,7 +215,8 @@ static void pm_detect_fan_failure(
     }
 }
 
-static void pm_detect_over_temperature(struct osp_tm_ctx *ctx, unsigned int current_state)
+static void pm_detect_over_temperature(struct osp_tm_ctx *ctx, unsigned int current_state,
+        int temperature, int idx)
 {
     if (current_state >= (ctx->therm_state_cnt - 1))
     {
@@ -225,7 +226,7 @@ static void pm_detect_over_temperature(struct osp_tm_ctx *ctx, unsigned int curr
 
         ctx->crit_temp_periods++;
         if (ctx->crit_temp_periods > CONFIG_PM_TM_CRITICAL_TEMPERATURE_PERIOD_TOLERANCE) {
-            pm_tm_reboot(ctx);
+            pm_tm_reboot(ctx, temperature, idx);
         }
     }
     else
@@ -351,6 +352,8 @@ static void pm_therm_cb(struct ev_loop *loop, ev_timer *timer, int revents)
     unsigned int current_state = 0;
     unsigned int current_fan_rpm = 0;
     unsigned int fan_rpm = 0;
+    unsigned int temperature = 0;
+    unsigned int idx = 0;
 
     strscpy(info_msg, "TM: Radio temperatures", sizeof(info_msg));
 
@@ -379,8 +382,9 @@ static void pm_therm_cb(struct ev_loop *loop, ev_timer *timer, int revents)
         state = pm_get_highest_state(ctx, temp_src, temp, ctx->prev_state);
         if (state > current_state) {
             current_state = state;
+            temperature = temp;
+            idx = temp_src;
         }
-
         snprintf(buf, sizeof(buf), " %s:%d",
             osp_tm_get_temp_src_name(ctx->tgt_priv, temp_src), temp);
         strscat(info_msg, buf, sizeof(info_msg));
@@ -413,7 +417,7 @@ static void pm_therm_cb(struct ev_loop *loop, ev_timer *timer, int revents)
      * if the temperature is higher than the highest state,
      * for a couple of periods, reboot the device
      */
-    pm_detect_over_temperature(ctx, current_state);
+    pm_detect_over_temperature(ctx, current_state, temperature, idx);
 
     // has the thermal state changed?
     if (current_state != ctx->prev_state) {
@@ -446,11 +450,13 @@ static void pm_therm_cb(struct ev_loop *loop, ev_timer *timer, int revents)
     return;
 }
 
-static void pm_tm_reboot(struct osp_tm_ctx *ctx)
+static void pm_tm_reboot(struct osp_tm_ctx *ctx, int temperature, int idx)
 {
     (void)ctx;
-
-    osp_unit_reboot_ex(OSP_REBOOT_THERMAL, "Critical temperature, rebooting due to overheating", 0);
+    char buff[100];
+    snprintf(buff,100,"Critical temperature: %d C, rebooting due to overheating of: %s",
+             temperature, osp_tm_get_temp_src_name(ctx->tgt_priv, idx));
+    osp_unit_reboot_ex(OSP_REBOOT_THERMAL, buff, 0);
 }
 
 void pm_tm_init(void *data)

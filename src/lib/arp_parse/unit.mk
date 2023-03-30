@@ -29,7 +29,7 @@
 ###############################################################################
 UNIT_NAME := fsm_arp
 
-UNIT_DISABLE := $(if $(CONFIG_MANAGER_FSM),n,y)
+UNIT_DISABLE := $(if $(CONFIG_FSM_DPI_NDP),y,n)
 
 # If compiled with clang, assume a native unit test target
 # and build a static library

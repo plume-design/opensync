@@ -29,7 +29,7 @@
 # shellcheck disable=SC1091
 source /tmp/fut-base/shell/config/default_shell.sh
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
-source "${FUT_TOPDIR}/shell/lib/onbrd_lib.sh"
+source "${FUT_TOPDIR}/shell/lib/unit_lib.sh"
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
@@ -44,6 +44,7 @@ Description:
     - Validate CM connecting to specific Cloud TLS version
 Arguments:
     -h  show this help message
+    \$1 (certs_dir) : Path to device certificates : (string)(optional) : (default:/var/certs)
 Testcase procedure:
     - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
     - On RPI SERVER:
@@ -56,6 +57,7 @@ Testcase procedure:
     - On DEVICE: Run: ./onbrd/onbrd_verify_client_tls_connection.sh
 Script usage example:
    ./onbrd/onbrd_verify_client_tls_connection.sh
+   ./onbrd/onbrd_verify_client_tls_connection.sh /var/certs
 usage_string
 }
 if [ -n "${1}" ]; then
@@ -69,6 +71,8 @@ if [ -n "${1}" ]; then
             ;;
     esac
 fi
+
+cert_dir=${1:-"/var/certs"}
 
 log_title "onbrd/onbrd_verify_client_tls_connection.sh: ONBRD test - Verify client TLS connection"
 
@@ -89,6 +93,7 @@ log -deb "   AWLAN_Node :: redirector_addr  := ${an_redirector_addr_org}"
 log -deb "   Manager    :: inactivity_probe := ${m_inactivity_probe_org}"
 log -deb "   AWLAN_Node :: min_backoff      := ${m_min_backoff_org}"
 log -deb "   AWLAN_Node :: max_backoff      := ${m_max_backoff_org}"
+log -deb "Device certificate dir = ${cert_dir}"
 
 trap '
     fut_info_dump_line
@@ -102,7 +107,7 @@ trap '
     fut_info_dump_line
 ' EXIT SIGINT SIGTERM
 
-connect_to_fut_cloud &&
+connect_to_fut_cloud -cd "${cert_dir}" &&
     log "onbrd/onbrd_verify_client_tls_connection.sh: Device connected to FUT cloud. Start test case execution - Success" ||
     raise "FAIL: Failed to connect device to FUT cloud. Terminate test" -l "onbrd/onbrd_verify_client_tls_connection.sh" -tc
 

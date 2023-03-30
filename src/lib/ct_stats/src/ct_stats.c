@@ -1218,10 +1218,10 @@ ct_stats_print_contrack(ct_flow_t *flow)
     getnameinfo((struct sockaddr *)&flow->layer3_info.dst_ip,
                 sizeof(struct sockaddr_storage), dst, sizeof(dst),
                 0, 0, NI_NUMERICHOST);
-    LOGI("%s: [ proto=%d tx src=%s dst=%s] ", __func__,
+    LOGD("%s: [ proto=%d tx src=%s dst=%s] ", __func__,
          flow->layer3_info.proto_type, src, dst);
 
-    LOGI("%s: [src port=%d dst port=%d] "
+    LOGD("%s: [src port=%d dst port=%d] "
          "[packets=%" PRIu64 "  bytes=%" PRIu64 "]", __func__,
         ntohs(flow->layer3_info.src_port),
         ntohs(flow->layer3_info.dst_port),

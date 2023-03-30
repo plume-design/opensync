@@ -27,12 +27,12 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifndef JSON_MQTT_H_INCLUDED
 #define JSON_MQTT_H_INCLUDED
 
-#include <jansson.h>
 
-#include "http_parse.h"
-#include "upnp_parse.h"
+#include "fsm.h"
 #include "fsm_policy.h"
-#include "dhcp_parse.h"
+struct http_parse_report;
+struct upnp_report;
+struct dhcp_report;
 
 /**
  * @brief encodes a user agent report in json format
@@ -46,7 +46,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 char *
 jencode_user_agent(struct fsm_session *session,
                    struct http_parse_report *to_report);
-
 
 /**
  * @brief encodes a FQDN report in json format
@@ -62,8 +61,6 @@ jencode_url_report(struct fsm_session *session,
                    struct fqdn_pending_req *to_report,
                    struct fsm_policy_reply *policy_reply);
 
-
-
 /**
  * @brief encodes a upnp report in json format
  *
@@ -77,8 +74,6 @@ char *
 jencode_upnp_report(struct fsm_session *session,
                     struct upnp_report *to_report);
 
-
-
 /**
  * @brief encodes a dhcp report in json format
  *
@@ -91,5 +86,18 @@ jencode_upnp_report(struct fsm_session *session,
 char *
 jencode_dhcp_report(struct fsm_session *session,
                     struct dhcp_report *to_report);
+
+/*
+ * Expose the following 3 functions to allow visibility from external plugin.
+ */
+void
+jencode_header(struct fsm_session *session, json_t *json_report);
+
+char *
+json_mqtt_get_network_id(struct fsm_session *session, os_macaddr_t *mac);
+
+bool
+jcheck_header_info(struct fsm_session *session);
+
 
 #endif /* JSON_MQTT_H_INCLUDED */

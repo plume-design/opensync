@@ -56,3 +56,4 @@ UNIT_DEPS += src/lib/policy_tags
 UNIT_DEPS += src/lib/fcm_filter
 UNIT_DEPS += src/lib/nf_utils
 UNIT_DEPS += src/lib/neigh_table
+UNIT_DEPS += src/lib/data_report_tags

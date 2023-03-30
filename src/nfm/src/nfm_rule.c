@@ -32,6 +32,7 @@
 #include "log.h"
 #include "util.h"
 #include "nfm_rule.h"
+#include "nfm_trule.h"
 #include "nfm_chain.h"
 #include "nfm_ovsdb.h"
 #include "nfm_osfw.h"
@@ -39,6 +40,7 @@
 #include <string.h>
 #include <stdio.h>
 #include "memutil.h"
+#include "kconfig.h"
 
 #define MODULE_ID LOG_MODULE_ID_MAIN
 
@@ -103,7 +105,8 @@ static bool nfm_rule_get_ref_chain(struct nfm_rule *self)
 {
 	bool errcode = true;
 
-	if (nfm_osfw_is_inet4(self->conf.protocol)) {
+	if (kconfig_enabled(CONFIG_TARGET_ENABLE_EBTABLES) &&
+        nfm_osfw_is_inet4(self->conf.protocol)) {
 		errcode = nfm_chain_get_ref(AF_INET, self->conf.table, self->conf.chain);
 		if (!errcode) {
 			LOGE("[%s] Start Nefilter rule: get reference on %s inet chain failed",
@@ -137,6 +140,24 @@ static bool nfm_rule_get_ref_chain(struct nfm_rule *self)
 			return false;
 		}
 		self->flags |= NFM_FLAG_RULE_TARGET6_REFERENCED;
+	}
+
+	if (nfm_osfw_is_eth(self->conf.protocol)) {
+		errcode = nfm_chain_get_ref(AF_BRIDGE, self->conf.table, self->conf.chain);
+		if (!errcode) {
+			LOGE("[%s] Start Nefilter rule: get reference on %s ebtable chain failed",
+					self->conf.name, self->conf.chain);
+			return false;
+		}
+		self->flags |= NFM_FLAG_RULE_CHAIN_ETH_REFERENCED;
+
+		errcode = nfm_chain_get_ref(AF_BRIDGE, self->conf.table, self->conf.target);
+		if (!errcode) {
+			LOGE("[%s] Start Nefilter rule: get reference on %s ebtable target failed",
+					self->conf.name, self->conf.target);
+			return false;
+		}
+		self->flags |= NFM_FLAG_RULE_TARGET_ETH_REFERENCED;
 	}
 	return true;
 }
@@ -227,6 +248,28 @@ static bool nfm_rule_unset(struct nfm_rule *self)
 		self->flags &= ~NFM_FLAG_RULE_CHAIN6_REFERENCED;
 	}
 
+	if (kconfig_enabled(CONFIG_TARGET_ENABLE_EBTABLES) &&
+        self->flags & NFM_FLAG_RULE_CHAIN_ETH_REFERENCED) {
+		errcode = nfm_chain_put_ref(AF_BRIDGE, self->conf.table, self->conf.chain);
+		if (!errcode) {
+			LOGE("[%s] Start ebtable rule: put reference on %s ebtable chain failed",
+					self->conf.name, self->conf.chain);
+			return false;
+		}
+		self->flags &= ~NFM_FLAG_RULE_CHAIN_ETH_REFERENCED;
+	}
+
+	if (kconfig_enabled(CONFIG_TARGET_ENABLE_EBTABLES) &&
+        self->flags & NFM_FLAG_RULE_TARGET_ETH_REFERENCED) {
+		errcode = nfm_chain_put_ref(AF_BRIDGE, self->conf.table, self->conf.target);
+		if (!errcode) {
+			LOGE("[%s] Start Nefilter rule: put reference on %s ebtable target failed",
+					self->conf.name, self->conf.target);
+			return false;
+		}
+		self->flags &= ~NFM_FLAG_RULE_TARGET_ETH_REFERENCED;
+	}
+
 	if (self->flags & NFM_FLAG_RULE_IN_TREE) {
 		ds_tree_remove(&nfm_rule_tree, self);
 		self->flags &= ~NFM_FLAG_RULE_IN_TREE;
@@ -264,7 +307,7 @@ static struct nfm_rule *nfm_rule_create(const struct schema_Netfilter *conf)
 	return self;
 }
 
-static struct nfm_rule *nfm_rule_get(const char *name)
+struct nfm_rule *nfm_rule_get(const char *name)
 {
 	if (!name) {
 		return NULL;
@@ -338,11 +381,18 @@ bool nfm_rule_modify(const struct schema_Netfilter *conf)
 		LOGE("[%s] Modify Netfilter rule: delete rule failed", conf->name);
 		return false;
 	}
-	errcode = nfm_rule_new(conf);
-	if (!errcode) {
-		LOGE("[%s] Modify Netfilter rule: new rule failed", conf->name);
-		return false;
+	if (nfm_trule_is_template(conf)) {
+		errcode = nfm_trule_new(conf);
+		if (!errcode) {
+			LOGE("[%s] Modify Netfilter template rule: new template rule failed", conf->name);
+			return false;
+		}
+	} else {
+		errcode = nfm_rule_new(conf);
+		if (!errcode) {
+			LOGE("[%s] Modify Netfilter rule: new rule failed", conf->name);
+			return false;
+		}
 	}
 	return true;
 }
-

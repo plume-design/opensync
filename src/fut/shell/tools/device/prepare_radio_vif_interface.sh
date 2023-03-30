@@ -29,7 +29,7 @@
 # shellcheck disable=SC1091
 source /tmp/fut-base/shell/config/default_shell.sh
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
-source "${FUT_TOPDIR}/shell/lib/wm2_lib.sh"
+source "${FUT_TOPDIR}/shell/lib/unit_lib.sh"
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" &> /dev/null
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" &> /dev/null
 
@@ -93,6 +93,7 @@ check_radio_vif_state \
     -vif_if_name "$vif_if_name" \
     -vif_radio_idx "$vif_radio_idx" \
     -ssid "$ssid" \
+    -wifi_security_type "legacy" \
     -security "$security" \
     -mode "$mode" &&
         (
@@ -125,7 +126,7 @@ check_radio_vif_state \
         (
             log "tools/device/prepare_radio_vif_interface.sh: Radio/VIF states are not valid"
             log "tools/device/prepare_radio_vif_interface.sh: Cleaning VIF_Config..."
-            vif_clean
+            vif_reset
             log "tools/device/prepare_radio_vif_interface.sh: Creating interface..."
             create_radio_vif_interface \
                 -vif_radio_idx "$vif_radio_idx" \
@@ -134,6 +135,7 @@ check_radio_vif_state \
                 -if_name "$if_name" \
                 -ssid "$ssid" \
                 -ssid_broadcast "$ssid_broadcast" \
+                -wifi_security_type "legacy" \
                 -security "$security" \
                 -channel "$channel" \
                 -ht_mode "$ht_mode" \

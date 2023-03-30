@@ -270,11 +270,27 @@ wpas_util_get_pairwise(int wpa)
 static bool
 wpas_conf_gen_freqlist(struct wpas *wpas, char *freqs, size_t len)
 {
+    /* This list intentionally excludes DFS channels to
+     * avoid inheriting CAC to limit bugs and regulatory
+     * ambiguities.
+     */
     static const int onboard[] = {
-        /* the list excludes dfs channels to avoid inheriting cac */
+        /* 2.4Ghz band: */
         2412, 2417, 2422, 2427, 2432, 2437, 2442,
         2447, 2452, 2457, 2462, 2467, 2472, 2484,
+
+        /* 5Ghz band: */
         5180, 5200, 5220, 5240, 5745, 5765, 5785, 5805,
+
+        /* 6GHz band: */
+        5935, 5955, 5975, 5995, 6015, 6035, 6055, 6075,
+        6095, 6115, 6135, 6155, 6175, 6195, 6215, 6235,
+        6255, 6275, 6295, 6315, 6335, 6355, 6375, 6395,
+        6415, 6435, 6455, 6475, 6495, 6515, 6535, 6555,
+        6575, 6595, 6615, 6635, 6655, 6675, 6695, 6715,
+        6735, 6755, 6775, 6795, 6815, 6835, 6855, 6875,
+        6895, 6915, 6935, 6955, 6975, 6995, 7015, 7035,
+        7055, 7075, 7095, 7115,
     };
     size_t i;
     size_t j;
@@ -404,6 +420,7 @@ wpas_conf_gen_vif_network(struct wpas *wpas,
     legacy = !util_vif_pairwise_supported(vconf);
 
     csnprintf(buf, len, "network={\n");
+    csnprintf(buf, len, "\tid_str=\"0\"\n");
     csnprintf(buf, len, "\tdisabled=%c\n", dfs_allowed || freqlist_valid ? '0' : '1');
     csnprintf(buf, len, "\tscan_ssid=1\n");
     csnprintf(buf, len, "\tbgscan=\"\"\n");
@@ -460,6 +477,7 @@ wpas_conf_gen_vif_network_legacy(struct wpas *wpas,
     dfs_allowed = (vconf->parent_exists && strlen(vconf->parent) > 0);
 
     csnprintf(buf, len, "network={\n");
+    csnprintf(buf, len, "\tid_str=\"0\"\n");
     csnprintf(buf, len, "\tdisabled=%c\n", dfs_allowed || freqlist_valid ? '0' : '1');
     csnprintf(buf, len, "\tscan_ssid=1\n");
     csnprintf(buf, len, "\tbgscan=\"\"\n");
@@ -499,6 +517,7 @@ wpas_conf_gen_cred_config_networks(struct wpas *wpas,
     bool freqlist_valid;
     bool dfs_allowed;
     int wpa;
+    int id_num = 0;
 
     wpa = wpas_util_get_mode(SCHEMA_KEY_VAL(vconf->security, "mode"));
     wpa_pairwise = wpas_util_get_pairwise(wpa);
@@ -516,6 +535,7 @@ wpas_conf_gen_cred_config_networks(struct wpas *wpas,
         wpa_passphrase = SCHEMA_KEY_VAL(cconfs->security, "key");
 
         csnprintf(buf, len, "network={\n");
+        csnprintf(buf, len, "\tid_str=\"%d\"\n", id_num);
         csnprintf(buf, len, "\tdisabled=%c\n", dfs_allowed || freqlist_valid ? '0' : '1');
         csnprintf(buf, len, "\tscan_ssid=1\n");
         csnprintf(buf, len, "\tbgscan=\"\"\n");
@@ -532,6 +552,8 @@ wpas_conf_gen_cred_config_networks(struct wpas *wpas,
         csnprintf(buf, len, "bssid=%s\n", vconf->parent);
         csnprintf(buf, len, "\tieee80211w=%s\n", radio_6g ? "2" : "0");
         csnprintf(buf, len, "}\n");
+
+        id_num++;
     }
 
     WARN_ON(*len == 1); /* likely buf was truncated */
@@ -723,10 +745,41 @@ wpas_bss_get_network_security(struct schema_Wifi_VIF_State *vstate,
     if (dpp_key) SCHEMA_SET_STR(vstate->dpp_netaccesskey_hex, dpp_key);
     if (dpp_csign) SCHEMA_SET_STR(vstate->dpp_csign_hex, dpp_csign);
     if (pmf) SCHEMA_SET_STR(vstate->pmf, util_vif_pmf_enum_to_schema(atoi(pmf)));
-    SCHEMA_SET_BOOL(vstate->wpa_pairwise_tkip, (proto_wpa && tkip));
-    SCHEMA_SET_BOOL(vstate->wpa_pairwise_ccmp, (proto_wpa && ccmp));
-    SCHEMA_SET_BOOL(vstate->rsn_pairwise_tkip, (proto_rsn && tkip));
-    SCHEMA_SET_BOOL(vstate->rsn_pairwise_ccmp, (proto_rsn && ccmp));
+
+    if (pairwise_marker != NULL) {
+        SCHEMA_SET_BOOL(vstate->wpa_pairwise_tkip, (proto_wpa && tkip));
+        SCHEMA_SET_BOOL(vstate->wpa_pairwise_ccmp, (proto_wpa && ccmp));
+        SCHEMA_SET_BOOL(vstate->rsn_pairwise_tkip, (proto_rsn && tkip));
+        SCHEMA_SET_BOOL(vstate->rsn_pairwise_ccmp, (proto_rsn && ccmp));
+    }
+}
+
+static char *
+wpas_bss_get_next_network(char **networks, char **next)
+{
+    const char *label = "network={";
+    const size_t label_len = strlen(label);
+
+    if (*networks == NULL) {
+        return NULL;
+    }
+
+    if (*next == NULL) {
+        *next = strstr(*networks, label);
+        if (*next) (*next) += label_len;
+    }
+
+    char *net = *next;
+    *next = strstr(*next, label);
+    if (*next != NULL) {
+        (*next)[-1] = '\0';
+        (*next) += label_len;
+    }
+    else {
+        *networks = NULL;
+    }
+
+    return net;
 }
 
 static void
@@ -738,20 +791,32 @@ wpas_bss_get_network(struct schema_Wifi_VIF_State *vstate,
     const char *bridge = ini_geta(conf, "#bridge") ?: "";
     const char *bssid = ini_geta(status, "bssid");
     const char *ssid = ini_geta(status, "ssid");
-    const char *id = ini_geta(status, "id") ?: "0";
+    const char *id_str = ini_geta(status, "id_str");
     const char *map;
-    char *network = strdupa(conf);
-    int n = atoi(id) + 1;
+    char *network;
+    char *next = NULL;
+    char *networks = strdupa(conf);
+    const int id = atoi(id_str ?: "0");
 
     vstate->ssid_present = true;
     vstate->parent_present = true;
 
     if (strcmp(state, "COMPLETED"))
         return;
+    if (WARN_ON(id_str == NULL))
+        return;
 
-    while (network && n-- > 0)
-        if ((network = strstr(network, "network={")))
-            network += strlen("network={");
+
+    for (;;) {
+        network = wpas_bss_get_next_network(&networks, &next);
+        if (network == NULL) break;
+
+        const char *a = ini_geta(network, "id_str");
+        const char *b = a ?: "\"-1\"";
+        const char *c = (strchr(b, '"') ?: "\"-1\"") + 1;
+        const int net_id = atoi(c);
+        if (net_id == id) break;
+    }
 
     if (!network)
         network = strdupa("");

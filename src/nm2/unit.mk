@@ -57,6 +57,13 @@ UNIT_SRC    += src/nm2_portfw.c
 UNIT_SRC    += src/nm2_route.c
 UNIT_SRC    += src/nm2_route_config.c
 UNIT_SRC    += src/nm2_util.c
+UNIT_SRC    += src/nm2_route_rule.c
+
+UNIT_SRC    += $(if $(CONFIG_TARGET_USE_NATIVE_BRIDGE), src/nm2_nb_bridge.c)
+UNIT_SRC    += $(if $(CONFIG_TARGET_USE_NATIVE_BRIDGE), src/nm2_default_ovsdb_bridge.c)
+UNIT_SRC    += $(if $(CONFIG_TARGET_USE_NATIVE_BRIDGE), src/nm2_nb_interface.c)
+UNIT_SRC    += $(if $(CONFIG_TARGET_USE_NATIVE_BRIDGE), src/nm2_nb_port.c)
+
 
 UNIT_CFLAGS := -I$(UNIT_PATH)/inc
 UNIT_CFLAGS += -Isrc/lib/common/inc/

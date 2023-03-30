@@ -51,6 +51,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define ds_dlist_foreach(list, p)       \
     for (p = ds_dlist_head(list); p != NULL; p = ds_dlist_next(list, p))
 
+#define ds_dlist_foreach_reverse(list, p)       \
+    for (p = ds_dlist_tail(list); p != NULL; p = ds_dlist_prev(list, p))
+
 #define ds_dlist_iforeach ds_dlist_foreach_iter
 
 #define ds_dlist_foreach_iter(list, p, iter) \

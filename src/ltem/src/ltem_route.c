@@ -36,8 +36,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ovsdb.h"
 #include "target.h"
 #include "network_metadata.h"
-
 #include "ltem_mgr.h"
+#include "hw_acc.h"
 
 uint32_t
 ltem_netmask_to_cidr( char *mask)
@@ -267,23 +267,15 @@ ltem_force_lte_route(ltem_mgr_t *mgr)
     lte_route_info_t *route;
     uint32_t wan_priority;
     uint32_t new_lte_priority;
-    char cmd[256];
     int res;
 
     route = mgr->lte_route;
+    LOGI("%s: lte_route[%s][%s]", __func__, route->lte_if_name, route->lte_ip_addr);
     if (!route) return -1;
 
     if (route->wan_gw[0])
     {
         LOGI("%s: if_name[%s]", __func__, route->wan_if_name);
-        /*
-         * This is an ugly hack until the ookla speed test is fixed to use the LTE
-         * interface (wwan0) when we force switch to LTE. The ookla default is
-         * to use V6, which in the force switch case, still points at the ethernet
-         * WAN interface.
-         */
-        snprintf(cmd, sizeof(cmd), "ifconfig %s down", route->wan_if_name);
-        return (ltem_route_exec_cmd(cmd));
 
         route->wan_metric = WAN_L3_FAIL_METRIC;
         /*
@@ -298,7 +290,7 @@ ltem_force_lte_route(ltem_mgr_t *mgr)
         wan_priority = ltem_ovsdb_cmu_get_wan_priority(mgr);
         route->wan_priority = wan_priority;
         new_lte_priority = route->wan_priority + LTE_CMU_DEFAULT_PRIORITY;
-        LOGD("%s: wan_priority[%d], LTE_CMU_DEFAULT_PRIORITY[%d]", __func__, route->wan_priority, LTE_CMU_DEFAULT_PRIORITY);
+        LOGI("%s: wan_priority[%d], LTE_CMU_DEFAULT_PRIORITY[%d], new_lte_priority[%d]", __func__, route->wan_priority, LTE_CMU_DEFAULT_PRIORITY, new_lte_priority);
         return ltem_ovsdb_cmu_update_lte_priority(mgr, new_lte_priority);
     }
 
@@ -310,7 +302,6 @@ ltem_restore_default_wan_route(ltem_mgr_t *mgr)
 {
     lte_route_info_t *route;
     int res;
-    char cmd[256];
 
     route = mgr->lte_route;
     if (!route) return -1;
@@ -318,15 +309,6 @@ ltem_restore_default_wan_route(ltem_mgr_t *mgr)
     if (route->wan_gw[0])
     {
         LOGI("%s: if_name[%s]", __func__, route->wan_if_name);
-        /*
-         * This is an ugly hack until the ookla speed test is fixed to use the LTE
-         * interface (wwan0) when we force switch to LTE. The ookla default is
-         * to use V6, which in the force switch case, still points at the ethernet
-         * WAN interface.
-         */
-        snprintf(cmd, sizeof(cmd), "ifconfig %s up", route->wan_if_name);
-        return (ltem_route_exec_cmd(cmd));
-
         route->wan_metric = WAN_DEFAULT_METRIC;
         /*
          * Route updates are now handled by NM via the Wifi_Route_Config table.
@@ -341,4 +323,23 @@ ltem_restore_default_wan_route(ltem_mgr_t *mgr)
     }
 
     return 0;
+}
+
+void
+ltem_flush_flows(ltem_mgr_t *mgr)
+{
+    char cmd[256];
+    int res;
+
+    snprintf(cmd, sizeof(cmd), "conntrack -F");
+    res = cmd_log(cmd);
+    if (res)
+    {
+        LOGI("%s: cmd[%s] failed", __func__, cmd);
+        return;
+    }
+
+    hw_acc_flush_all_flows();
+
+    return;
 }

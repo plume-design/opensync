@@ -29,7 +29,7 @@
 # shellcheck disable=SC1091
 source /tmp/fut-base/shell/config/default_shell.sh
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
-source "${FUT_TOPDIR}/shell/lib/othr_lib.sh"
+source "${FUT_TOPDIR}/shell/lib/unit_lib.sh"
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
@@ -37,7 +37,7 @@ freeze_src_token="device_freeze_src"
 freeze_dst_token="device_freeze_dst"
 
 manager_setup_file="dm/othr_setup.sh"
-create_rad_vif_if_file="tools/device/create_radio_vif_interface.sh"
+create_radio_vif_if_file="tools/device/create_radio_vif_interface.sh"
 create_inet_file="tools/device/create_inet_interface.sh"
 add_bridge_port_file="tools/device/add_bridge_port.sh"
 client_connect_file="tools/client/connect_to_wpa.sh"
@@ -54,7 +54,7 @@ Arguments:
 Testcase procedure:
     - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
             Create Radio/VIF interface
-                Run: ./${create_rad_vif_if_file} (see ${create_rad_vif_if_file} -h)
+                Run: ./${create_radio_vif_if_file} (see ${create_radio_vif_if_file} -h)
             Create Inet entry for VIF interface
                 Run: ./${create_inet_file} (see ${create_inet_file} -h)
             Create Inet entry for home bridge interface (br-home)

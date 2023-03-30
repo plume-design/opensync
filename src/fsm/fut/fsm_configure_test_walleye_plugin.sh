@@ -29,8 +29,7 @@
 # shellcheck disable=SC1091
 source /tmp/fut-base/shell/config/default_shell.sh
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
-source "${FUT_TOPDIR}/shell/lib/fsm_lib.sh"
-source "${FUT_TOPDIR}/shell/lib/nm2_lib.sh"
+source "${FUT_TOPDIR}/shell/lib/unit_lib.sh"
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
@@ -47,8 +46,8 @@ Description:
     - Script configures interfaces FSM settings for WallEye Plugin rules
 Arguments:
     -h  show this help message
-    \$1 (lan_bridge_if)  : Interface name used for LAN bridge  : (string)(required)
-    \$2 (fsm_plugin)     : Path to FSM plugin under test       : (string)(required)
+    \$1 (lan_bridge_if_name)  : Interface name used for LAN bridge  : (string)(required)
+    \$2 (fsm_plugin)          : Path to FSM plugin under test       : (string)(required)
 Testcase procedure:
     - On Server: Configure MQTT on server
             Run: ./${server_start_mqtt} --start (see ${create_rad_vif_if_file} -h)
@@ -84,7 +83,7 @@ fut_info_dump_line
 NARGS=2
 [ $# -lt ${NARGS} ] && raise "Requires at least '${NARGS}' input argument(s)" -arg
 # Input arguments specific to GW, required:
-lan_bridge_if=${1}
+lan_bridge_if_name=${1}
 fsm_plugin=${2}
 
 of_out_token=dev_flow_demo_dpi_out
@@ -99,14 +98,15 @@ of_out_action_ct_passthru="\"NORMAL\""
 of_out_rule_ct_drop="\"ct_state=+trk,ct_mark=3,ip\""
 of_out_action_ct_drop="\"DROP\""
 
-tap_dpi_if="${lan_bridge_if}.dpiwn"
+tap_dpi_if="${lan_bridge_if_name}.dpiwn"
 
 log_title "fsm/fsm_configure_test_walleye_plugin.sh: FSM test - Configure walleye plugin"
 
 log "fsm/fsm_configure_test_walleye_plugin.sh: Configuring TAP interfaces required for FSM testing"
-add_bridge_port "${lan_bridge_if}" "${tap_dpi_if}"
-set_ovs_vsctl_interface_option "${tap_dpi_if}" "type" "internal"
-set_ovs_vsctl_interface_option "${tap_dpi_if}" "ofport_request" "${of_port}"
+add_bridge_port "${lan_bridge_if_name}" "${tap_dpi_if}"
+set_interface_option "${tap_dpi_if}" "type" "internal"
+set_interface_option "${tap_dpi_if}" "ofport_request" "${of_port}"
+
 create_inet_entry \
     -if_name "${tap_dpi_if}" \
     -if_type "tap" \
@@ -127,7 +127,7 @@ insert_ovsdb_entry Openflow_Config \
     -i token "${of_out_token}" \
     -i table 0 \
     -i priority 0 \
-    -i bridge "${lan_bridge_if}" \
+    -i bridge "${lan_bridge_if_name}" \
     -i action "NORMAL" &&
         log "fsm/fsm_configure_test_walleye_plugin.sh: Ingress rule inserted - Success" ||
         raise "FAIL: Failed to insert_ovsdb_entry" -l "fsm/fsm_configure_test_walleye_plugin.sh" -oe
@@ -137,7 +137,7 @@ insert_ovsdb_entry Openflow_Config \
     -i token "${of_out_token}" \
     -i table 0 \
     -i priority 200 \
-    -i bridge "${lan_bridge_if}" \
+    -i bridge "${lan_bridge_if_name}" \
     -i action "resubmit\(,7\)" &&
         log "fsm/fsm_configure_test_walleye_plugin.sh: Ingress rule inserted - Success" ||
         raise "FAIL: Failed to insert_ovsdb_entry" -l "fsm/fsm_configure_test_walleye_plugin.sh" -oe
@@ -147,7 +147,7 @@ insert_ovsdb_entry Openflow_Config \
     -i token "${of_out_token}" \
     -i table 7 \
     -i priority 0 \
-    -i bridge "${lan_bridge_if}" \
+    -i bridge "${lan_bridge_if_name}" \
     -i action "NORMAL" &&
         log "fsm/fsm_configure_test_walleye_plugin.sh: Ingress rule inserted - Success" ||
         raise "FAIL: Failed to insert_ovsdb_entry" -l "fsm/fsm_configure_test_walleye_plugin.sh" -oe
@@ -155,7 +155,7 @@ insert_ovsdb_entry Openflow_Config \
 # Insert egress rule to Openflow_Config
 insert_ovsdb_entry Openflow_Config \
      -i token "${of_out_token}" \
-     -i bridge "${lan_bridge_if}" \
+     -i bridge "${lan_bridge_if_name}" \
      -i table 7 \
      -i priority 200 \
      -i rule "${of_out_rule_ct}" \
@@ -166,7 +166,7 @@ insert_ovsdb_entry Openflow_Config \
 # Insert egress rule to Openflow_Config
 insert_ovsdb_entry Openflow_Config \
     -i token "${of_out_token}" \
-    -i bridge "${lan_bridge_if}" \
+    -i bridge "${lan_bridge_if_name}" \
     -i table 7 \
     -i priority 200 \
     -i rule "${of_out_rule_ct_inspect_new_conn}" \
@@ -177,7 +177,7 @@ insert_ovsdb_entry Openflow_Config \
 # Insert egress rule to Openflow_Config
 insert_ovsdb_entry Openflow_Config \
     -i token "${of_out_token}" \
-    -i bridge "${lan_bridge_if}" \
+    -i bridge "${lan_bridge_if_name}" \
     -i table 7 \
     -i priority 200 \
     -i rule "${of_out_rule_ct_inspect}" \
@@ -188,7 +188,7 @@ insert_ovsdb_entry Openflow_Config \
 # Insert egress rule to Openflow_Config
 insert_ovsdb_entry Openflow_Config \
     -i token "${of_out_token}" \
-    -i bridge "${lan_bridge_if}" \
+    -i bridge "${lan_bridge_if_name}" \
     -i table 7 \
     -i priority 200 \
     -i rule "${of_out_rule_ct_passthru}" \
@@ -199,7 +199,7 @@ insert_ovsdb_entry Openflow_Config \
 # Insert egress rule to Openflow_Config
 insert_ovsdb_entry Openflow_Config \
     -i token "${of_out_token}" \
-    -i bridge "${lan_bridge_if}" \
+    -i bridge "${lan_bridge_if_name}" \
     -i table 7 \
     -i priority 200 \
     -i rule "${of_out_rule_ct_drop}" \

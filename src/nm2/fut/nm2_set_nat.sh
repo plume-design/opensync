@@ -29,7 +29,7 @@
 # shellcheck disable=SC1091
 source /tmp/fut-base/shell/config/default_shell.sh
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
-source "${FUT_TOPDIR}/shell/lib/nm2_lib.sh"
+source "${FUT_TOPDIR}/shell/lib/unit_lib.sh"
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
@@ -114,10 +114,12 @@ wait_ovsdb_entry Wifi_Inet_State -w if_name "$if_name" -is NAT "$NAT" &&
     log "nm2/nm2_set_nat.sh: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State::NAT is $NAT - Success" ||
     raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State::NAT is not $NAT" -l "nm2/nm2_set_nat.sh" -tc
 
-log "nm2/nm2_set_nat.sh: Checking state of NAT for $if_name (must be ON) - LEVEL2"
-wait_for_function_response 0 "check_interface_nat_enabled $if_name" &&
-    log "nm2/nm2_set_nat.sh: LEVEL2 - NAT applied to iptables for interface $if_name - Success" ||
-    raise "FAIL: LEVEL2 - Failed to apply NAT to iptables for interface $if_name" -l "nm2/nm2_set_nat.sh" -tc
+if [ $FUT_SKIP_L2 != 'true' ]; then
+    log "nm2/nm2_set_nat.sh: Checking state of NAT for $if_name (must be ON) - LEVEL2"
+    wait_for_function_response 0 "check_interface_nat_enabled $if_name" &&
+        log "nm2/nm2_set_nat.sh: LEVEL2 - NAT applied to iptables for interface $if_name - Success" ||
+        raise "FAIL: LEVEL2 - Failed to apply NAT to iptables for interface $if_name" -l "nm2/nm2_set_nat.sh" -tc
+fi
 
 log "nm2/nm2_set_nat.sh: Disabling NAT for $if_name"
 update_ovsdb_entry Wifi_Inet_Config -w if_name "$if_name" -u NAT false &&
@@ -128,9 +130,11 @@ wait_ovsdb_entry Wifi_Inet_State -w if_name "$if_name" -is NAT false &&
     log "nm2/nm2_set_nat.sh: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State::NAT is 'false' - Success" ||
     raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State::NAT is not 'false'" -l "nm2/nm2_set_nat.sh" -tc
 
-log "nm2/nm2_set_nat.sh: Checking state of NAT for $if_name (must be OFF) - LEVEL2"
-wait_for_function_response 1 "check_interface_nat_enabled $if_name" &&
-    log "nm2/nm2_set_nat.sh: LEVEL2 - NAT removed from iptables for interface $if_name - Success" ||
-    raise "FAIL: LEVEL2 - Failed to remove NAT from iptables for interface $if_name" -l "nm2/nm2_set_nat.sh" -tc
+if [ $FUT_SKIP_L2 != 'true' ]; then
+    log "nm2/nm2_set_nat.sh: Checking state of NAT for $if_name (must be OFF) - LEVEL2"
+    wait_for_function_response 1 "check_interface_nat_enabled $if_name" &&
+        log "nm2/nm2_set_nat.sh: LEVEL2 - NAT removed from iptables for interface $if_name - Success" ||
+        raise "FAIL: LEVEL2 - Failed to remove NAT from iptables for interface $if_name" -l "nm2/nm2_set_nat.sh" -tc
+fi
 
 pass

@@ -48,6 +48,7 @@ struct nfm_interface_role
 
 struct ovsdb_table table_Openflow_Tag;
 struct ovsdb_table table_Openflow_Tag_Group;
+struct ovsdb_table table_Openflow_Local_Tag;
 struct ovsdb_table table_Netfilter;
 struct ovsdb_table table_Wifi_Inet_Config;
 
@@ -97,7 +98,13 @@ void callback_Netfilter(ovsdb_update_monitor_t *mon, struct schema_Netfilter *ol
 		break;
 
 	case OVSDB_UPDATE_MODIFY:
-		if (nfm_trule_is_template(old)) {
+		/* if old rule is not present, add/modify template rule or
+		 * non-template rule based on new record's rule type
+		 *
+		 * if old rule is present, add/modify template rule or
+		 * non-template rule based on old record's rule type */
+		if ((!(strcmp(old->rule, "")) && (nfm_trule_is_template(record))) ||
+		    (nfm_trule_is_template(old))) {
 			errcode = nfm_trule_modify(record);
 			if (!errcode) {
 				LOGE("Netfilter OVSDB event: modify template rule %s failed",
@@ -194,10 +201,12 @@ bool nfm_ovsdb_init(void)
     LOGD("Initializing Netfilter OVSDB tables");
     OVSDB_TABLE_INIT(Openflow_Tag, name);
     OVSDB_TABLE_INIT(Openflow_Tag_Group, name);
+    OVSDB_TABLE_INIT(Openflow_Local_Tag, name);
     OVSDB_TABLE_INIT(Netfilter, name);
     OVSDB_TABLE_INIT(Wifi_Inet_Config, if_name);
     om_standard_callback_openflow_tag(&table_Openflow_Tag);
     om_standard_callback_openflow_tag_group(&table_Openflow_Tag_Group);
+    om_standard_callback_openflow_local_tag(&table_Openflow_Local_Tag);
     OVSDB_TABLE_MONITOR(Netfilter, false);
     OVSDB_TABLE_MONITOR(Wifi_Inet_Config, false);
     return true;

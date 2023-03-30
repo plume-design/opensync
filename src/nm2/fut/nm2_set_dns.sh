@@ -29,7 +29,7 @@
 # shellcheck disable=SC1091
 source /tmp/fut-base/shell/config/default_shell.sh
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
-source "${FUT_TOPDIR}/shell/lib/nm2_lib.sh"
+source "${FUT_TOPDIR}/shell/lib/unit_lib.sh"
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
@@ -83,6 +83,10 @@ trap '
 ' EXIT SIGINT SIGTERM
 
 log_title "nm2/nm2_set_dns.sh: NM2 test - Testing table Wifi_Inet_Config field dns"
+
+if [ $FUT_SKIP_L2 == 'true' ]; then
+    raise "Flag to skip LEVEL2 testcases enabled, skipping execution." -l "nm2/nm2_set_dns.sh" -s
+fi
 
 log "nm2/nm2_set_dns.sh: Creating Wifi_Inet_Config entries for interface '$if_name'"
 create_inet_entry \

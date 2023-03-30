@@ -97,6 +97,45 @@ bool osp_ps_erase(osp_ps_t *ps)
     return psfs_erase(&ps->ps_psfs);
 }
 
+bool osp_ps_erase_store_name(
+        const char *store_name,
+        int flags)
+{
+    bool rv = false;
+    osp_ps_t *ps = osp_ps_open(store_name, OSP_PS_RDWR | flags);
+
+    if (ps == NULL)
+    {
+        LOG(ERR, "osp_ps: Error opening %s persistent store.", store_name);
+        goto exit;
+    }
+    LOG(DEBUG, "osp_ps: Persistent store %s opened", store_name);
+
+    if (!osp_ps_erase(ps))
+    {
+        LOG(ERR, "osp_ps: Error erasing %s persistent store.", store_name);
+        goto exit;
+    }
+    LOG(DEBUG, "osp_ps: Persistent store %s: ERASED.", store_name);
+
+    if (!osp_ps_sync(ps))
+    {
+        LOG(ERR, "osp_ps: Error syncing %s persistent store.", store_name);
+        goto exit;
+    }
+    LOG(DEBUG, "osp_ps: Persistent store %s: synced.", store_name);
+
+    rv = true;
+exit:
+    if (ps != NULL) osp_ps_close(ps);
+    return rv;
+}
+
+bool osp_ps_erase_all(bool recurse)
+{
+    return psfs_erase_all(recurse);
+}
+
 bool osp_ps_sync(osp_ps_t *ps)
 {
     return psfs_sync(&ps->ps_psfs, false);

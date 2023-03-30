@@ -35,6 +35,20 @@ menuconfig MANAGER_FSM
         help
             DPI_DNS plugin to process A, AAAA and Type 65 DNS exchanges
 
+    config FSM_DPI_NDP
+        depends on MANAGER_FSM
+        bool "Use DPI_NDP as neighbor discovery module"
+        default y
+        help
+            DPI_NDP plugin to process arp and icmpv6 NS and NA message exchanges
+
+    config FSM_DPI_MDNS_RESPONDER
+        depends on MANAGER_FSM
+        bool "Use DPI_MDNS_RESPONDER to respond to mdns queries"
+        default y
+        help
+            DPI_MDNS_RESPONDER plugin to respond to mdns queries
+
     config FSM_MEM_MAX
         depends on MANAGER_FSM
         int "High memory usage threshold in MB for FSM"

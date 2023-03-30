@@ -418,7 +418,7 @@ static void iperf_on_timeout(struct ev_loop *loop, ev_timer *watcher, int revent
 /* Run iperf command in async manner. */
 static bool iperf_run_async(struct st_context *st_ctx, bool run_reverse)
 {
-    char st_cmd[TARGET_BUFF_SZ];
+    char st_cmd[TARGET_BUFF_SZ*2];
     char arg_port[64] = { 0 };
 
     if (st_ctx->run_cnt >= st_ctx->run_cnt_max)

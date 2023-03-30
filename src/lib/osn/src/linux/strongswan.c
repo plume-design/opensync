@@ -1299,7 +1299,7 @@ static bool strongswan_get_status_ipsec(struct osn_ipsec_status *tunnel_status, 
             break;
         }
     } /* while (we're reading lines from the "ipsec status <tunnel_name>" output */
-    fclose(f);
+    pclose(f);
     f = NULL;
 
     if (!status_obtained)

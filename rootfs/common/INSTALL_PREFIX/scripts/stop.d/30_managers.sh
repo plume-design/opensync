@@ -1,3 +1,4 @@
+#!/bin/sh -e
 
 # Copyright (c) 2015, Plume Design Inc. All rights reserved.
 # 
@@ -23,6 +24,9 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+# {# jinja-parse #}
+INSTALL_PREFIX={{INSTALL_PREFIX}}
+
 # NM/WM/SM can interact with Wi-Fi driver therefore
 # wpa_supplicant and hostap must be stopped afterwards to
 # avoid races and unexpected driver sequences.
@@ -30,7 +34,7 @@
 # retain as much logs as possible.
 
 echo "killing managers"
-killall -s SIGKILL csc_man wano $(cd ${INSTALL_PREFIX}/bin/ && ls *m | grep -v -x fm)
+${INSTALL_PREFIX}/bin/dm --stop-all --except fm
 
 # From this point on CM is stopped and no one is pinging the
 # watchdog. There's about 60s to complete everything

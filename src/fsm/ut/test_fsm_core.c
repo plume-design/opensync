@@ -41,6 +41,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "unity.h"
 #include "unit_test_utils.h"
 
+#include "kconfig.h"
+
 #include "pcap.c"
 
 const char *ut_name = "fsm_core_tests";
@@ -918,7 +920,7 @@ test_init_plugin_fail(struct fsm_session *session)
 
 
 static int
-test_set_dpi_mark(struct net_header_parser *net_hdr, int mark)
+test_set_dpi_mark(struct net_header_parser *net_hdr, struct dpi_mark_policy *mark_policy)
 {
     return 1;
 }
@@ -1273,7 +1275,11 @@ test_tx_intf_kconfig(void)
 #endif
 
     memset(tx_intf, 0, sizeof(tx_intf));
-    snprintf(tx_intf, sizeof(tx_intf), "%s.tx", CONFIG_TARGET_LAN_BRIDGE_NAME);
+    if (!kconfig_enabled(CONFIG_TARGET_USE_NATIVE_BRIDGE))
+      snprintf(tx_intf, sizeof(tx_intf), "%s.tx", CONFIG_TARGET_LAN_BRIDGE_NAME);
+    else
+      snprintf(tx_intf, sizeof(tx_intf), "%s", CONFIG_TARGET_LAN_BRIDGE_NAME);
+
     LOGI("%s: CONFIG_TARGET_LAN_BRIDGE_NAME == %s", __func__, CONFIG_TARGET_LAN_BRIDGE_NAME);
 
     conf = &g_confs[0];
@@ -1957,6 +1963,8 @@ test_7_dpi_dispatcher_and_plugin(void)
     union fsm_dpi_context *dispatcher_dpi_context;
     union fsm_dpi_context *plugin_dpi_context;
     struct fsm_dpi_dispatcher *dpi_dispatcher;
+    struct net_md_stats_accumulator *rev_acc;
+    struct net_md_stats_accumulator *acc;
     struct fsm_dpi_plugin *plugin_lookup;
     struct net_header_parser *net_parser;
     struct fsm_parser_ops *dispatch_ops;
@@ -2060,10 +2068,15 @@ test_7_dpi_dispatcher_and_plugin(void)
     TEST_ASSERT_NOT_NULL(net_parser->acc);
 
     /* Validate the originator for SYN ACK packet */
-    originator = net_parser->acc->originator;
+    acc = net_parser->acc;
+    rev_acc = acc->rev_acc;
+    TEST_ASSERT_NOT_NULL(rev_acc);
+    TEST_ASSERT_EQUAL_INT(NET_MD_ACC_FIRST_LEG, acc->flags & NET_MD_ACC_FIRST_LEG);
+    TEST_ASSERT_EQUAL_INT(NET_MD_ACC_SECOND_LEG, rev_acc->flags & NET_MD_ACC_SECOND_LEG);
+    originator = rev_acc->originator;
     TEST_ASSERT_EQUAL_INT(originator, NET_MD_ACC_ORIGINATOR_DST);
 
-    direction = net_parser->acc->direction;
+    direction = rev_acc->direction;
     TEST_ASSERT_EQUAL_INT(direction, NET_MD_ACC_OUTBOUND_DIR);
 
     net_parser->acc->report = true;
@@ -2136,7 +2149,12 @@ test_7_dpi_dispatcher_and_plugin(void)
     TEST_ASSERT_NOT_NULL(net_parser->acc);
 
     /* Validate the originator and direction */
-    originator = net_parser->acc->originator;
+    acc = net_parser->acc;
+    rev_acc = acc->rev_acc;
+    TEST_ASSERT_NOT_NULL(rev_acc);
+    TEST_ASSERT_EQUAL_INT(NET_MD_ACC_FIRST_LEG, acc->flags & NET_MD_ACC_FIRST_LEG);
+    TEST_ASSERT_EQUAL_INT(NET_MD_ACC_SECOND_LEG, rev_acc->flags & NET_MD_ACC_SECOND_LEG);
+    originator = rev_acc->originator;
     TEST_ASSERT_EQUAL_INT(originator, NET_MD_ACC_ORIGINATOR_DST);
     direction = net_parser->acc->direction;
     TEST_ASSERT_EQUAL_INT(direction, NET_MD_ACC_LAN2LAN_DIR);
@@ -2152,6 +2170,13 @@ test_7_dpi_dispatcher_and_plugin(void)
     /* Remove the dpi plugin session */
     conf = &g_confs[11];
     fsm_delete_session(conf);
+    acc = net_parser->acc;
+    rev_acc = acc->rev_acc;
+    TEST_ASSERT_NOT_NULL(rev_acc);
+    TEST_ASSERT_EQUAL_INT(NET_MD_ACC_FIRST_LEG,  acc->flags & NET_MD_ACC_FIRST_LEG);
+    TEST_ASSERT_EQUAL_INT(NET_MD_ACC_SECOND_LEG, rev_acc->flags & NET_MD_ACC_SECOND_LEG);
+    TEST_ASSERT_NOT_NULL(acc->dpi_plugins);
+    TEST_ASSERT_NULL(rev_acc->dpi_plugins);
     info = ds_tree_find(net_parser->acc->dpi_plugins, plugin);
     TEST_ASSERT_NULL(info);
 }
@@ -4335,11 +4360,11 @@ test_dpi_dispatcher_tcp_http_req_response(void)
     TEST_ASSERT_EQUAL_INT(protocol, IPPROTO_TCP);
 
     /** Validate http src port number */
-    port_num = net_parser->acc->key->sport;
+    port_num = net_parser->acc->key->dport;
     TEST_ASSERT_EQUAL_INT(htons(port_num), 80);
 
     originator = net_parser->acc->originator;
-    TEST_ASSERT_EQUAL_INT(originator, NET_MD_ACC_ORIGINATOR_DST);
+    TEST_ASSERT_EQUAL_INT(originator, NET_MD_ACC_ORIGINATOR_SRC);
 
     direction = net_parser->acc->direction;
     TEST_ASSERT_EQUAL_INT(direction, NET_MD_ACC_OUTBOUND_DIR);
@@ -4502,11 +4527,11 @@ test_dpi_dispatcher_tcp_https_req_response(void)
     TEST_ASSERT_EQUAL_INT(protocol, IPPROTO_TCP);
 
     /** Validate http src port number */
-    port_num = net_parser->acc->key->sport;
+    port_num = net_parser->acc->key->dport;
     TEST_ASSERT_EQUAL_INT(htons(port_num), 443);
 
     originator = net_parser->acc->originator;
-    TEST_ASSERT_EQUAL_INT(originator, NET_MD_ACC_ORIGINATOR_DST);
+    TEST_ASSERT_EQUAL_INT(originator, NET_MD_ACC_ORIGINATOR_SRC);
 
     direction = net_parser->acc->direction;
     TEST_ASSERT_EQUAL_INT(direction, NET_MD_ACC_OUTBOUND_DIR);
@@ -4669,11 +4694,11 @@ test_dpi_dispatcher_udp_https_req_response(void)
     TEST_ASSERT_EQUAL_INT(protocol, IPPROTO_UDP);
 
     /** Validate http src port number */
-    port_num = net_parser->acc->key->sport;
+    port_num = net_parser->acc->key->dport;
     TEST_ASSERT_EQUAL_INT(htons(port_num), 443);
 
     originator = net_parser->acc->originator;
-    TEST_ASSERT_EQUAL_INT(originator, NET_MD_ACC_ORIGINATOR_DST);
+    TEST_ASSERT_EQUAL_INT(originator, NET_MD_ACC_ORIGINATOR_SRC);
 
     direction = net_parser->acc->direction;
     TEST_ASSERT_EQUAL_INT(direction, NET_MD_ACC_OUTBOUND_DIR);
@@ -5005,9 +5030,10 @@ test_dpi_dispatcher_no_ip_pkt(void)
     TEST_ASSERT_NOT_NULL(dispatch_ops->handler);
     dispatch_ops->handler(dispatcher, net_parser);
 
-    /* Accumulator shouldn't create */
-    TEST_ASSERT_NULL(net_parser->acc);
-
+    /* Accumulator should be created */
+    TEST_ASSERT_NOT_NULL(net_parser->acc);
+    TEST_ASSERT_EQUAL(NET_MD_ACC_ETH, net_parser->acc->flags & NET_MD_ACC_ETH);
+    TEST_ASSERT_EQUAL(0, net_parser->acc->flags & NET_MD_ACC_FIVE_TUPLE);
     /* Remove the dpi plugin session */
     conf = &g_confs[17];
     fsm_delete_session(conf);
@@ -5379,7 +5405,7 @@ main(int argc, char *argv[])
 
     ut_init(ut_name, NULL, NULL);
     ut_setUp_tearDown(ut_name, fsm_core_setUp, fsm_core_tearDown);
-
+    // ut_keep_temp_folder(true); /* For reference */
     g_mgr = fsm_get_mgr();
 
     RUN_TEST(test_add_awlan_headers);
@@ -5416,7 +5442,6 @@ main(int argc, char *argv[])
     RUN_TEST(test_dpi_dispatcher_udp_reserved);
     RUN_TEST(test_dpi_dispatcher_dns_request);
     RUN_TEST(test_dpi_dispatcher_dns_response);
-
     RUN_TEST(test_dpi_dispatcher_tcp_http_req_response);
     RUN_TEST(test_dpi_dispatcher_tcp_https_req_response);
     RUN_TEST(test_dpi_dispatcher_udp_https_req_response);

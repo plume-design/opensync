@@ -45,7 +45,8 @@ enum osfw_table
     OSFW_TABLE_NAT,
     OSFW_TABLE_MANGLE,
     OSFW_TABLE_RAW,
-    OSFW_TABLE_SECURITY
+    OSFW_TABLE_SECURITY,
+    OSFW_TABLE_BROUTE
 };
 
 /*
@@ -125,4 +126,85 @@ bool osfw_rule_del(int family, enum osfw_table table, const char *chain,
  */
 bool osfw_apply(void);
 
+
+typedef int (*osfw_run_cmd_fn)(const char* cmd);
+
+/*
+ * Initialize global firewall ebtable subsystem
+ *
+ * This function should set the default policy of the filter table's builtin
+ * chains to DROP, and set the default policy to other tables to ACCEPT.
+ * This function may also take care to clean the firewall subsystem, if it was
+ * previously configured.
+ */
+bool osfw_eb_init(int (*fun_cb)(const char* cmd));
+
+/*
+ * Deinitialize the firewall subsystem; clean up etc.
+ */
+bool osfw_eb_fini(void);
+
+/*
+ * Apply configuration to the system
+ * The implementation should apply the configuration in the firewall subsystem
+ * as defined by all previous calls to this API.
+ */
+bool osfw_eb_apply(void);
+
+int osfw_eb_execute_cmd(const char *cmd);
+
+/*
+ * Add a chain to the system:
+ *      - family: AF_INET or AF_INET6
+ *      - table: Table of the chain
+ *      - chain: Name of the chain
+ * The caller will not take any assomptions if the chain is a built-in chain
+ * or not. For example, in the case of iptables, the caller can try to create
+ * chain like "PREROUTING", "INPUT", "FORWARD", "OUTPUT" or "POSTROUTING". The
+ * implementation has to manager properly these cases (it may just do nothing
+ * and return true).
+ * This is also true for built-in target, like "DROP", "ACCEPT" or "REJECT",
+ * it is perfectly valid if the caller try to create a chain for these targets.
+ * The implementation should also take care about these cases (it may just do
+ * nothing and return true).
+ * Exact list of built-in chains and built-in targets is implementation
+ * specific.
+ */
+bool osfw_eb_chain_add(int family, enum osfw_table table, const char *chain);
+
+/*
+ * Delete a chain from the system:
+ *      - family: AF_INET or AF_INET6
+ *      - table: Table of the chain
+ *      - chain: Name of the chain
+ * To delete a chain, the caller must remove first all rules inside this chain.
+ */
+bool osfw_eb_chain_del(int family, enum osfw_table table, const char *chain);
+
+/*
+ * Add a rules in the system:
+ *      - family: AF_INET or AF_INET6
+ *      - table: Table of the rule
+ *      - chain: The chain that the rule will be added to, must be created with
+ *        osfw_chain_add() first
+ *      - prio: Rule priority, 0 is the highest
+ *      - match: A string using iptables match syntax
+ *      - target: User defined chain or one of the target actions : "ACCEPT,
+ *        DROP, REJECT"
+ */
+bool osfw_eb_rule_add(int family, enum osfw_table table, const char *chain,
+		              int prio, const char *match, const char *target);
+/*
+ * Delete a rule from the system:
+ *      - family: AF_INET or AF_INET6
+ *      - table: Table of the rule
+ *      - chain: The chain that the rule will be removed from
+ *      - prio: Rule priority, 0 is the highest
+ *      - match: A string using iptables match syntax
+ *      - target: User defined chain or one of the target actions : "ACCEPT,
+ *        DROP, REJECT"
+ */
+bool osfw_eb_rule_del(int family, enum osfw_table table, const char *chain,
+		               int prio, const char *match, const char *target);
+struct osfw_ebbase *osfw_eb_get_base(void);
 #endif /* OSN_FW_H_INCLUDED */

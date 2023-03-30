@@ -24,7 +24,21 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+#include <stdio.h>
+#include <stdbool.h>
+#include <stdint.h>
+
 #include "hw_acc.h"
+
+bool hw_acc_flush(struct hw_acc_flush_flow_t *flow)
+{
+    return true;
+}
+
+bool hw_acc_flush_flow_per_device(int devid)
+{
+    return true;
+}
 
 bool hw_acc_flush_flow_per_mac(const char *mac)
 {
@@ -34,4 +48,14 @@ bool hw_acc_flush_flow_per_mac(const char *mac)
 bool hw_acc_flush_all_flows()
 {
     return true;
+}
+
+void hw_acc_enable()
+{
+    return;
+}
+
+void hw_acc_disable()
+{
+    return;
 }

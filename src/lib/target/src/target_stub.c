@@ -103,56 +103,24 @@ bool target_log_pull_ext(const char *upload_location, const char *upload_token, 
 #ifndef IMPL_target_tls_cacert_filename
 const char *target_tls_cacert_filename(void)
 {
-    // Return path/filename to CA Certificate used to validate cloud
-    return TARGET_CERT_PATH "/ca.pem";
+    assert(!"tls_cacert_filename not defined for current platform");
+    return NULL;
 }
 #endif
 
 #ifndef IMPL_target_tls_mycert_filename
 const char *target_tls_mycert_filename(void)
 {
-    // Return path/filename to MY Certificate used to authenticate with cloud
-    return TARGET_CERT_PATH "/client.pem";
+    assert(!"tls_mycert_filename not defined for current platform");
+    return NULL;
 }
 #endif
 
 #ifndef IMPL_target_tls_privkey_filename
 const char *target_tls_privkey_filename(void)
 {
-    // Return path/filename to MY Private Key used to authenticate with cloud
-    return CONFIG_TARGET_PATH_PRIVKEY;
-}
-#endif
-
-/******************************************************************************
- * BLE
- *****************************************************************************/
-
-#ifndef IMPL_target_ble_preinit
-bool target_ble_preinit(struct ev_loop *loop)
-{
-    return true;
-}
-#endif
-
-#ifndef IMPL_target_ble_prerun
-bool target_ble_prerun(struct ev_loop *loop)
-{
-    return true;
-}
-#endif
-
-#ifndef IMPL_target_ble_broadcast_start
-bool target_ble_broadcast_start(struct schema_AW_Bluetooth_Config *config)
-{
-    return false;
-}
-#endif
-
-#ifndef IMPL_target_ble_broadcast_stop
-bool target_ble_broadcast_stop(void)
-{
-    return false;
+    assert(!"tls_privkey_filename not defined for current platform");
+    return NULL;
 }
 #endif
 
@@ -466,6 +434,75 @@ const char *target_persistent_storage_dir(void)
 /******************************************************************************
  * STATS
  *****************************************************************************/
+#ifndef IMPL_target_radio_tx_stats_enable
+bool target_radio_tx_stats_enable(
+        radio_entry_t              *radio_cfg,
+        bool                        status)
+{
+    return false;
+}
+#endif
+
+#ifndef IMPL_target_radio_fast_scan_enable
+bool target_radio_fast_scan_enable(
+        radio_entry_t              *radio_cfg,
+        ifname_t                    if_name)
+{
+    return false;
+}
+#endif
+
+#ifndef IMPL_target_stats_scan_get
+bool target_stats_scan_get(
+        radio_entry_t              *radio_cfg,
+        uint32_t                   *chan_list,
+        uint32_t                    chan_num,
+        radio_scan_type_t           scan_type,
+        dpp_neighbor_report_data_t *scan_results)
+{
+    return false;
+}
+#endif
+
+#ifndef IMPL_target_stats_scan_start
+bool target_stats_scan_start(radio_entry_t *radio_cfg,
+                             uint32_t *chan_list,
+                             uint32_t chan_num,
+                             radio_scan_type_t scan_type,
+                             int32_t dwell_time,
+                             target_scan_cb_t *scan_cb,
+                             void *scan_ctx)
+{
+    return false;
+}
+#endif
+
+#ifndef IMPL_target_stats_survey_get
+bool target_stats_survey_get(
+        radio_entry_t              *radio_cfg,
+        uint32_t                   *chan_list,
+        uint32_t                    chan_num,
+        radio_scan_type_t           scan_type,
+        target_stats_survey_cb_t   *survey_cb,
+        ds_dlist_t                 *survey_list,
+        void                       *survey_ctx)
+{
+    return false;
+}
+#endif
+
+#ifndef IMPL_target_stats_survey_convert
+bool target_stats_survey_convert (
+        radio_entry_t              *radio_cfg,
+        radio_scan_type_t           scan_type,
+        target_survey_record_t     *data_new,
+        target_survey_record_t     *data_old,
+        dpp_survey_record_t        *survey_record)
+{
+    return false;
+}
+#endif
+
 #ifndef IMPL_target_stats_device_get
 bool target_stats_device_get(
         dpp_device_record_t        *device_entry)
@@ -669,6 +706,18 @@ int target_bsal_rrm_remove_neighbor(const char *ifname, const bsal_neigh_info_t 
 {
     (void)ifname;
     (void)nr;
+    return -1;
+}
+#endif
+
+#ifndef IMPL_target_bsal_rrm_get_neighbors
+int target_bsal_rrm_get_neighbors(const char *ifname, bsal_neigh_info_t *nrs,
+                                  unsigned int *nr_cnt, const unsigned int max_nr_cnt)
+{
+    (void)ifname;
+    (void)nrs;
+    (void)nr_cnt;
+    (void)max_nr_cnt;
     return -1;
 }
 #endif

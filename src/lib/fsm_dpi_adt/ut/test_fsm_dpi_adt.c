@@ -37,6 +37,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "fsm_dpi_client_plugin.h"
 #include "log.h"
 #include "memutil.h"
+#include "fsm_dpi_adt_cache_internal.h"
 #include "network_metadata_report.h"
 #include "os.h"
 #include "os_nif.h"
@@ -44,6 +45,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "qm_conn.h"
 #include "unity.h"
 #include "unity_internals.h"
+#include "fsm_dpi_adt_cache.h"
 
 #define TEST_NETWORK_ID "test_network_id"
 
@@ -166,6 +168,517 @@ mock_get_config(struct fsm_session *session, char *key)
     (void)session;
 
     return key;
+}
+
+void
+test_fsm_dpi_adt_init_cache(void)
+{
+    struct fsm_dpi_adt_cache *adt_cache;
+    fsm_dpi_adt_init_cache();
+
+    adt_cache = fsm_dpi_adt_get_cache_mgr();
+    TEST_ASSERT_EQUAL_INT(0, adt_cache->counter);
+    TEST_ASSERT_EQUAL_INT(ADT_CACHE_AGE_TIMER, adt_cache->age_time);
+}
+
+void
+test_fsm_dpi_adt_add_to_cache_device(void)
+{
+    struct fsm_dpi_adt_device *adt_dev;
+    struct fsm_dpi_adt_device *adt_test_dev;
+    os_macaddr_t mac1 = { .addr = {0x00, 0x11, 0x22, 0x33, 0x44, 0x55}};
+    os_macaddr_t mac2 = { .addr = {0x22, 0x22, 0x22, 0x22, 0x22, 0x22}};
+    os_macaddr_t mac3 = { .addr = {0x33, 0x33, 0x33, 0x33, 0x33, 0x33}};
+    char *key = "http.host";
+    char *value = "proxy-safebrowsing.googleapis.com";
+
+    adt_test_dev = CALLOC(1, sizeof(*adt_test_dev));
+    adt_test_dev->mac = CALLOC(1, sizeof(*adt_test_dev->mac));
+    memcpy(adt_test_dev->mac, &mac1, sizeof(*adt_test_dev->mac));
+
+    fsm_dpi_adt_init_cache();
+    fsm_dpi_adt_add_to_cache(&mac1, key, value);
+    fsm_dpi_adt_add_to_cache(&mac2, key, value);
+    fsm_dpi_adt_add_to_cache(&mac3, key, value);
+    adt_dev = fsm_dpi_adt_dev_cache_lookup(&mac1);
+    TEST_ASSERT_NOT_NULL(adt_dev);
+    adt_dev = fsm_dpi_adt_dev_cache_lookup(&mac2);
+    TEST_ASSERT_NOT_NULL(adt_dev);
+    adt_dev = fsm_dpi_adt_dev_cache_lookup(&mac3);
+    TEST_ASSERT_NOT_NULL(adt_dev);
+
+    fsm_dpi_adt_clear_cache();
+    adt_dev = fsm_dpi_adt_dev_cache_lookup(&mac1);
+    TEST_ASSERT_NULL(adt_dev);
+    adt_dev = fsm_dpi_adt_dev_cache_lookup(&mac2);
+    TEST_ASSERT_NULL(adt_dev);
+    adt_dev = fsm_dpi_adt_dev_cache_lookup(&mac3);
+    TEST_ASSERT_NULL(adt_dev);
+
+    FREE(adt_test_dev->mac);
+    FREE(adt_test_dev);
+}
+
+void
+test_fsm_dpi_adt_add_to_cache_key(void)
+{
+    struct fsm_dpi_adt_device *adt_dev;
+    struct fsm_dpi_adt_device *adt_test_dev;
+
+    os_macaddr_t mac1 = { .addr = {0x00, 0x11, 0x22, 0x33, 0x44, 0x55}};
+    char *key1 = "http.host";
+    char *key2 = "https.host";
+    char *value = "proxy-safebrowsing.googleapis.com";
+
+    adt_test_dev = CALLOC(1, sizeof(*adt_test_dev));
+    adt_test_dev->mac = CALLOC(1, sizeof(*adt_test_dev->mac));
+    memcpy(adt_test_dev->mac, &mac1, sizeof(*adt_test_dev->mac));
+
+    fsm_dpi_adt_init_cache();
+    fsm_dpi_adt_add_to_cache(&mac1, key1, value);
+    fsm_dpi_adt_add_to_cache(&mac1, key2, value);
+
+    adt_dev = fsm_dpi_adt_dev_cache_lookup(&mac1);
+    TEST_ASSERT_NOT_NULL(adt_dev);
+    fsm_dpi_adt_clear_cache();
+
+    FREE(adt_test_dev->mac);
+    FREE(adt_test_dev);
+}
+
+void
+test_fsm_dpi_adt_add_to_cache_value(void)
+{
+    os_macaddr_t mac = { .addr = {0x00, 0x11, 0x22, 0x33, 0x44, 0x55}};
+    struct fsm_dpi_adt_device *adt_dev_check;
+    struct fsm_dpi_adt_key *adt_key_check;
+    struct fsm_dpi_adt_value *adt_value_check;
+    struct fsm_dpi_adt_device *adt_dev;
+    bool ret;
+    char *key = "http.host";
+    char *value = "google.com";
+    char *value1 = "yahoo.com";
+
+    adt_dev = CALLOC(1, sizeof(*adt_dev));
+    adt_dev->mac = CALLOC(1, sizeof(*adt_dev->mac));
+    memcpy(adt_dev->mac, &mac, sizeof(*adt_dev->mac));
+
+    fsm_dpi_adt_init_cache();
+    ret = fsm_dpi_adt_add_to_cache(&mac, key, value);
+    ret = fsm_dpi_adt_add_to_cache(&mac, key, value1);
+    TEST_ASSERT_TRUE(ret);
+
+    adt_dev_check = fsm_dpi_adt_dev_cache_lookup(&mac);
+    TEST_ASSERT_NOT_NULL(adt_dev_check);
+
+    adt_key_check = fsm_dpi_adt_key_cache_lookup(adt_dev_check, key);
+    TEST_ASSERT_NOT_NULL(adt_key_check);
+
+    adt_value_check = fsm_dpi_adt_value_cache_lookup(adt_key_check, value);
+    TEST_ASSERT_NOT_NULL(adt_value_check);
+
+    adt_value_check = fsm_dpi_adt_value_cache_lookup(adt_key_check, value1);
+    TEST_ASSERT_NOT_NULL(adt_value_check);
+
+    fsm_adt_adt_dump_cache();
+    fsm_dpi_adt_clear_cache();
+    FREE(adt_dev->mac);
+    FREE(adt_dev);
+}
+
+void
+test_fsm_dpi_adt_check_cache_count(void)
+{
+    os_macaddr_t mac = { .addr = {0x00, 0x11, 0x22, 0x33, 0x44, 0x55}};
+    struct fsm_dpi_adt_device *adt_dev_check;
+    struct fsm_dpi_adt_key *adt_key_check;
+    struct fsm_dpi_adt_value *adt_value_check;
+    struct fsm_dpi_adt_device *adt_dev;
+    uint64_t cache_count;
+
+    bool ret;
+    char *key = "http.host";
+    char *value = "google.com";
+    char *value1 = "yahoo.com";
+
+    adt_dev = CALLOC(1, sizeof(*adt_dev));
+    adt_dev->mac = CALLOC(1, sizeof(*adt_dev->mac));
+    memcpy(adt_dev->mac, &mac, sizeof(*adt_dev->mac));
+
+    fsm_dpi_adt_init_cache();
+    ret = fsm_dpi_adt_add_to_cache(&mac, key, value);
+    cache_count = fsm_dpi_adt_get_cache_count();
+    TEST_ASSERT_EQUAL_INT(cache_count, 3);
+    ret = fsm_dpi_adt_add_to_cache(&mac, key, value1);
+    TEST_ASSERT_TRUE(ret);
+
+    adt_dev_check = fsm_dpi_adt_dev_cache_lookup(&mac);
+    TEST_ASSERT_NOT_NULL(adt_dev_check);
+
+    adt_key_check = fsm_dpi_adt_key_cache_lookup(adt_dev_check, key);
+    TEST_ASSERT_NOT_NULL(adt_key_check);
+
+    adt_value_check = fsm_dpi_adt_value_cache_lookup(adt_key_check, value);
+    TEST_ASSERT_NOT_NULL(adt_value_check);
+
+    adt_value_check = fsm_dpi_adt_value_cache_lookup(adt_key_check, value1);
+    TEST_ASSERT_NOT_NULL(adt_value_check);
+
+    fsm_dpi_adt_clear_cache();
+    cache_count = fsm_dpi_adt_get_cache_count();
+    TEST_ASSERT_EQUAL_INT(cache_count, 0);
+    FREE(adt_dev->mac);
+    FREE(adt_dev);
+}
+
+void
+test_fsm_dpi_adt_remove_expired_devices(void)
+{
+    os_macaddr_t mac = { .addr = {0x00, 0x11, 0x22, 0x33, 0x44, 0x55}};
+    struct fsm_dpi_adt_value *adt_value_check;
+    struct fsm_dpi_adt_device *adt_dev_check;
+    struct fsm_dpi_adt_key *adt_key_check;
+    struct fsm_dpi_adt_cache *adt_cache;
+    struct fsm_dpi_adt_device *adt_dev;
+    char *key = "http.host";
+    char *value = "google.com";
+    char *value1 = "yahoo.com";
+    uint64_t cache_count;
+    bool ret;
+
+    adt_dev = CALLOC(1, sizeof(*adt_dev));
+    adt_dev->mac = CALLOC(1, sizeof(*adt_dev->mac));
+    memcpy(adt_dev->mac, &mac, sizeof(*adt_dev->mac));
+
+    fsm_dpi_adt_init_cache();
+    adt_cache = fsm_dpi_adt_get_cache_mgr();
+    adt_cache->age_time = 2;
+    ret = fsm_dpi_adt_add_to_cache(&mac, key, value);
+    cache_count = fsm_dpi_adt_get_cache_count();
+    TEST_ASSERT_EQUAL_INT(3, cache_count);
+    ret = fsm_dpi_adt_add_to_cache(&mac, key, value1);
+    TEST_ASSERT_TRUE(ret);
+
+    adt_dev_check = fsm_dpi_adt_dev_cache_lookup(&mac);
+    TEST_ASSERT_NOT_NULL(adt_dev_check);
+
+    adt_key_check = fsm_dpi_adt_key_cache_lookup(adt_dev_check, key);
+    TEST_ASSERT_NOT_NULL(adt_key_check);
+
+    adt_value_check = fsm_dpi_adt_value_cache_lookup(adt_key_check, value);
+    TEST_ASSERT_NOT_NULL(adt_value_check);
+
+    adt_value_check = fsm_dpi_adt_value_cache_lookup(adt_key_check, value1);
+    TEST_ASSERT_NOT_NULL(adt_value_check);
+
+    fsm_adt_adt_dump_cache();
+    sleep(4);
+    fsm_dpi_adt_remove_expired_devices(adt_cache);
+    cache_count = fsm_dpi_adt_get_cache_count();
+    TEST_ASSERT_EQUAL_INT(0, cache_count);
+    fsm_dpi_adt_clear_cache();
+    FREE(adt_dev->mac);
+    FREE(adt_dev);
+}
+
+void
+test_fsm_dpi_adt_remove_expired_entries(void)
+{
+    os_macaddr_t mac = { .addr = {0x00, 0x11, 0x22, 0x33, 0x44, 0x55}};
+    os_macaddr_t mac2 = { .addr = {0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff}};
+    struct fsm_dpi_adt_value *adt_value_check;
+    struct fsm_dpi_adt_device *adt_dev_check;
+    struct fsm_dpi_adt_key *adt_key_check;
+    struct fsm_dpi_adt_cache *adt_cache;
+    struct fsm_dpi_adt_device *adt_dev;
+    char *key1 = "http.host";
+    char *key2 = "https.host";
+    char *value1 = "google.com";
+    char *value2 = "yahoo.com";
+    char *value3 = "aaa.com";
+    int expected_entries = 0;
+    bool ret;
+
+    adt_dev = CALLOC(1, sizeof(*adt_dev));
+    adt_dev->mac = CALLOC(1, sizeof(*adt_dev->mac));
+    memcpy(adt_dev->mac, &mac, sizeof(*adt_dev->mac));
+
+    fsm_dpi_adt_init_cache();
+    adt_cache = fsm_dpi_adt_get_cache_mgr();
+    /* set the age time to 2 secs */
+    adt_cache->age_time = 2;
+    /* Add the device, key1 and value1 */
+    expected_entries = 3;
+    ret = fsm_dpi_adt_add_to_cache(&mac, key1, value1);
+    TEST_ASSERT_EQUAL_INT(expected_entries, fsm_dpi_adt_get_cache_count());
+    /* sleep till age timer expires */
+    sleep(3);
+    /* add value2 to cache, this also updates add time on mac and key1 */
+    ret = fsm_dpi_adt_add_to_cache(&mac, key1, value2);
+    expected_entries = 4;
+    TEST_ASSERT_TRUE(ret);
+    /* cache contains dev, key1, value1 and value2 */
+    TEST_ASSERT_EQUAL_INT(expected_entries, fsm_dpi_adt_get_cache_count());
+    /* only value1 entry is expired, so it should be removed */
+    fsm_dpi_adt_remove_expired_devices(adt_cache);
+    /* cache contains dev, key1 and value2 */
+    expected_entries--; // current value=3
+    TEST_ASSERT_EQUAL_INT(expected_entries, fsm_dpi_adt_get_cache_count());
+
+    adt_dev_check = fsm_dpi_adt_dev_cache_lookup(&mac);
+    TEST_ASSERT_NOT_NULL(adt_dev_check);
+    adt_key_check = fsm_dpi_adt_key_cache_lookup(adt_dev_check, key1);
+    TEST_ASSERT_NOT_NULL(adt_key_check);
+    adt_value_check = fsm_dpi_adt_value_cache_lookup(adt_key_check, value2);
+    TEST_ASSERT_NOT_NULL(adt_value_check);
+
+    sleep(3);
+    ret = fsm_dpi_adt_add_to_cache(&mac, key2, value3);
+    expected_entries += 2;// current value = 5 (key2 and value3 is added)
+    /* cache entries: dev, key1, value2, key2, value3 */
+    TEST_ASSERT_EQUAL_INT(expected_entries, fsm_dpi_adt_get_cache_count());
+    /* key1, value2 entries should be removed */
+    fsm_dpi_adt_remove_expired_devices(adt_cache);
+    expected_entries -= 2; //current value 3
+    /* cache entries: dev, key2, value3 */
+    TEST_ASSERT_EQUAL_INT(expected_entries, fsm_dpi_adt_get_cache_count());
+
+    /* cache entries: (dev, key2, value3) and (dev2, key1, value2) */
+    sleep(3);
+    fsm_dpi_adt_add_to_cache(&mac2, key1, value2);
+    expected_entries += 3;
+    TEST_ASSERT_EQUAL_INT(expected_entries, fsm_dpi_adt_get_cache_count());
+    fsm_dpi_adt_remove_expired_devices(adt_cache);
+    expected_entries -= 3; // current value 3 (dev, key2, value3) will be removed
+    /* current cache: (dev2, key1, value2) */
+    TEST_ASSERT_EQUAL_INT(expected_entries, fsm_dpi_adt_get_cache_count());
+
+    sleep(3);
+    fsm_dpi_adt_remove_expired_devices(adt_cache);
+    expected_entries -=3; // current value 0
+    TEST_ASSERT_EQUAL_INT(expected_entries, fsm_dpi_adt_get_cache_count());
+    FREE(adt_dev->mac);
+    FREE(adt_dev);
+}
+
+void
+test_fsm_dpi_adt_remove_expired_keys(void)
+{
+    os_macaddr_t mac = { .addr = {0x00, 0x11, 0x22, 0x33, 0x44, 0x55}};
+    struct fsm_dpi_adt_value *adt_value_check;
+    struct fsm_dpi_adt_device *adt_dev_check;
+    struct fsm_dpi_adt_key *adt_key_check;
+    struct fsm_dpi_adt_cache *adt_cache;
+    struct fsm_dpi_adt_device *adt_dev;
+    char *key = "http.host";
+    char *value = "google.com";
+    char *value1 = "yahoo.com";
+    uint64_t cache_count;
+    bool ret;
+
+    adt_dev = CALLOC(1, sizeof(*adt_dev));
+    adt_dev->mac = CALLOC(1, sizeof(*adt_dev->mac));
+    memcpy(adt_dev->mac, &mac, sizeof(*adt_dev->mac));
+
+    fsm_dpi_adt_init_cache();
+    adt_cache = fsm_dpi_adt_get_cache_mgr();
+    adt_cache->age_time = 2;
+    ret = fsm_dpi_adt_add_to_cache(&mac, key, value);
+
+    ret = fsm_dpi_adt_add_to_cache(&mac, key, value1);
+    TEST_ASSERT_TRUE(ret);
+    cache_count = fsm_dpi_adt_get_cache_count();
+    TEST_ASSERT_EQUAL_INT(4, cache_count);
+
+    adt_dev_check = fsm_dpi_adt_dev_cache_lookup(&mac);
+    TEST_ASSERT_NOT_NULL(adt_dev_check);
+
+    adt_key_check = fsm_dpi_adt_key_cache_lookup(adt_dev_check, key);
+    TEST_ASSERT_NOT_NULL(adt_key_check);
+
+    adt_value_check = fsm_dpi_adt_value_cache_lookup(adt_key_check, value);
+    TEST_ASSERT_NOT_NULL(adt_value_check);
+
+    adt_value_check = fsm_dpi_adt_value_cache_lookup(adt_key_check, value1);
+    TEST_ASSERT_NOT_NULL(adt_value_check);
+
+    fsm_adt_adt_dump_cache();
+    sleep(4);
+    fsm_dpi_adt_remove_expired_keys(adt_dev_check);
+    cache_count = fsm_dpi_adt_get_cache_count();
+    TEST_ASSERT_EQUAL_INT(1, cache_count);
+    fsm_dpi_adt_clear_cache();
+    FREE(adt_dev->mac);
+    FREE(adt_dev);
+}
+
+void
+test_fsm_dpi_adt_remove_expired_values(void)
+{
+    os_macaddr_t mac = { .addr = {0x00, 0x11, 0x22, 0x33, 0x44, 0x55}};
+    struct fsm_dpi_adt_value *adt_value_check;
+    struct fsm_dpi_adt_device *adt_dev_check;
+    struct fsm_dpi_adt_key *adt_key_check;
+    struct fsm_dpi_adt_cache *adt_cache;
+    struct fsm_dpi_adt_device *adt_dev;
+    char *key = "http.host";
+    char *value = "google.com";
+    char *value1 = "yahoo.com";
+    uint64_t cache_count;
+    bool ret;
+
+    adt_dev = CALLOC(1, sizeof(*adt_dev));
+    adt_dev->mac = CALLOC(1, sizeof(*adt_dev->mac));
+    memcpy(adt_dev->mac, &mac, sizeof(*adt_dev->mac));
+
+    fsm_dpi_adt_init_cache();
+    adt_cache = fsm_dpi_adt_get_cache_mgr();
+    adt_cache->age_time = 2;
+    ret = fsm_dpi_adt_add_to_cache(&mac, key, value);
+
+    ret = fsm_dpi_adt_add_to_cache(&mac, key, value1);
+    TEST_ASSERT_TRUE(ret);
+    cache_count = fsm_dpi_adt_get_cache_count();
+    TEST_ASSERT_EQUAL_INT(4, cache_count);
+
+    adt_dev_check = fsm_dpi_adt_dev_cache_lookup(&mac);
+    TEST_ASSERT_NOT_NULL(adt_dev_check);
+
+    adt_key_check = fsm_dpi_adt_key_cache_lookup(adt_dev_check, key);
+    TEST_ASSERT_NOT_NULL(adt_key_check);
+
+    adt_value_check = fsm_dpi_adt_value_cache_lookup(adt_key_check, value);
+    TEST_ASSERT_NOT_NULL(adt_value_check);
+
+    adt_value_check = fsm_dpi_adt_value_cache_lookup(adt_key_check, value1);
+    TEST_ASSERT_NOT_NULL(adt_value_check);
+
+    fsm_adt_adt_dump_cache();
+    sleep(4);
+    fsm_dpi_adt_removed_expired_values(adt_key_check);
+    cache_count = fsm_dpi_adt_get_cache_count();
+    TEST_ASSERT_EQUAL_INT(2, cache_count);
+    fsm_dpi_adt_clear_cache();
+    FREE(adt_dev->mac);
+    FREE(adt_dev);
+}
+
+void
+test_fsm_dpi_adt_check_cache_before_reporting(void)
+{
+    struct fsm_dpi_plugin_client_pkt_info pkt_info;
+    struct fsm_dpi_client_session *new_adt_session;
+    struct fsm_dpi_adt_report_aggregator *aggr;
+    struct fsm_dpi_adt_session *adt_session;
+    struct net_md_stats_accumulator acc;
+    struct fsm_session this_session;
+    int ret;
+
+    this_session = g_session;
+    this_session.name = "dpi_adt";
+    this_session.ops = g_sess_ops;
+    this_session.p_ops = &g_plugin_ops;
+    this_session.ops.get_config = mock_get_config;
+
+    new_adt_session = CALLOC(1, sizeof(*new_adt_session));
+    this_session.handler_ctxt = new_adt_session;
+
+    ret = fsm_dpi_adt_init(&this_session);
+    TEST_ASSERT_EQUAL_INT(0, ret);
+
+    adt_session = fsm_dpi_adt_get_session(&this_session);
+    TEST_ASSERT_NOT_NULL(adt_session);
+    aggr = adt_session->adt_aggr;
+    TEST_ASSERT_NOT_NULL(aggr);
+    aggr->send_report = mock_ut_qm_conn_send_direct;
+
+    MEMZERO(acc);
+    pkt_info.acc = &acc;
+
+    acc.direction = NET_MD_ACC_OUTBOUND_DIR;
+    acc.key = CALLOC(1, sizeof(*acc.key));
+    acc.originator = NET_MD_ACC_ORIGINATOR_SRC;
+
+    acc.key->smac = CALLOC(1, sizeof(*acc.key->smac));
+    os_nif_macaddr_from_str(acc.key->smac, "00:11:22:33:44:55");
+
+    acc.key->dmac = CALLOC(1, sizeof(*acc.key->dmac));
+    os_nif_macaddr_from_str(acc.key->dmac, "AA:BB:CC:DD:EE:FF");
+
+    acc.key->src_ip = CALLOC(4, sizeof(*acc.key->src_ip));
+    inet_pton(AF_INET, "1.2.3.4", acc.key->src_ip);
+    acc.key->sport = 401;
+    acc.key->dst_ip = CALLOC(4, sizeof(*acc.key->dst_ip));
+    inet_pton(AF_INET, "9.8.7.6", acc.key->dst_ip);
+    acc.key->dport = 499;
+    acc.key->ip_version = 4;
+
+    /* entry is added to cache */
+    ret = dpi_adt_store(&this_session, "the_key", RTS_TYPE_STRING, strlen("a_value"), "a_value", &pkt_info);
+    TEST_ASSERT_TRUE(ret);
+
+    /* entry already present in the cache, so returns false */
+    ret = dpi_adt_store(&this_session, "the_key", RTS_TYPE_STRING, strlen("a_value"), "a_value", &pkt_info);
+    TEST_ASSERT_FALSE(ret);
+
+    /* Clean up */
+    fsm_dpi_adt_exit(&this_session);
+    FREE(acc.key->dmac);
+    FREE(acc.key->smac);
+    FREE(acc.key->src_ip);
+    FREE(acc.key->dst_ip);
+    FREE(acc.key);
+    FREE(new_adt_session);
+}
+
+void
+test_fsm_dpi_adt_check_purge_cache(void)
+{
+    os_macaddr_t mac = { .addr = {0x00, 0x11, 0x22, 0x33, 0x44, 0x55}};
+    struct fsm_dpi_adt_device *adt_dev_check;
+    struct fsm_dpi_adt_key *adt_key_check;
+    struct fsm_dpi_adt_value *adt_value_check;
+    struct fsm_dpi_adt_cache *adt_cache;
+    struct fsm_dpi_adt_device *adt_dev;
+    uint64_t cache_count;
+    bool ret;
+    char *key = "http.host";
+    char *value = "google.com";
+    char *value1 = "yahoo.com";
+
+    adt_dev = CALLOC(1, sizeof(*adt_dev));
+    adt_dev->mac = CALLOC(1, sizeof(*adt_dev->mac));
+    memcpy(adt_dev->mac, &mac, sizeof(*adt_dev->mac));
+
+    fsm_dpi_adt_init_cache();
+    adt_cache = fsm_dpi_adt_get_cache_mgr();
+    adt_cache->age_time = 2;
+    ret = fsm_dpi_adt_add_to_cache(&mac, key, value);
+    cache_count = fsm_dpi_adt_get_cache_count();
+    TEST_ASSERT_EQUAL_INT(3, cache_count);
+    ret = fsm_dpi_adt_add_to_cache(&mac, key, value1);
+    TEST_ASSERT_TRUE(ret);
+
+    adt_dev_check = fsm_dpi_adt_dev_cache_lookup(&mac);
+    TEST_ASSERT_NOT_NULL(adt_dev_check);
+
+    adt_key_check = fsm_dpi_adt_key_cache_lookup(adt_dev_check, key);
+    TEST_ASSERT_NOT_NULL(adt_key_check);
+
+    adt_value_check = fsm_dpi_adt_value_cache_lookup(adt_key_check, value);
+    TEST_ASSERT_NOT_NULL(adt_value_check);
+
+    adt_value_check = fsm_dpi_adt_value_cache_lookup(adt_key_check, value1);
+    TEST_ASSERT_NOT_NULL(adt_value_check);
+
+    fsm_adt_adt_dump_cache();
+    sleep(4);
+    fsm_dpi_adt_remove_expired_entries();
+    cache_count = fsm_dpi_adt_get_cache_count();
+    TEST_ASSERT_EQUAL_INT(0, cache_count);
+    fsm_dpi_adt_clear_cache();
+    FREE(adt_dev->mac);
+    FREE(adt_dev);
 }
 
 void
@@ -426,7 +939,7 @@ test_fsm_dpi_adt_send_report_v4(void)
 
     /* This time with the correct ip_version */
     acc.key->ip_version = 4;
-    ret = dpi_adt_store(&this_session, "the_key", RTS_TYPE_STRING, strlen("a_value"), "a_value", &pkt_info);
+    ret = dpi_adt_store(&this_session, "the_key", RTS_TYPE_STRING, strlen("b_value"), "b_value", &pkt_info);
     TEST_ASSERT_TRUE(ret);
     ret = dpi_adt_send_report(&this_session);
     /* Do not check when using qm_conn_send_report() as it will fail on x64 */
@@ -538,6 +1051,17 @@ void
 run_test_adt(void)
 {
     RUN_TEST(test_fsm_dpi_adt_init);
+    RUN_TEST(test_fsm_dpi_adt_init_cache);
+    RUN_TEST(test_fsm_dpi_adt_add_to_cache_device);
+    RUN_TEST(test_fsm_dpi_adt_add_to_cache_key);
+    RUN_TEST(test_fsm_dpi_adt_add_to_cache_value);
+    RUN_TEST(test_fsm_dpi_adt_check_cache_count);
+    RUN_TEST(test_fsm_dpi_adt_check_purge_cache);
+    RUN_TEST(test_fsm_dpi_adt_remove_expired_entries);
+    RUN_TEST(test_fsm_dpi_adt_remove_expired_devices);
+    RUN_TEST(test_fsm_dpi_adt_remove_expired_keys);
+    RUN_TEST(test_fsm_dpi_adt_remove_expired_values);
+    RUN_TEST(test_fsm_dpi_adt_check_cache_before_reporting);
     RUN_TEST(test_fsm_dpi_adt_store);
     RUN_TEST(test_fsm_dpi_adt_store_to_proto);
 

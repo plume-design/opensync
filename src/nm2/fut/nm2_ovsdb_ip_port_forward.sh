@@ -29,7 +29,7 @@
 # shellcheck disable=SC1091
 source /tmp/fut-base/shell/config/default_shell.sh
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
-source "${FUT_TOPDIR}/shell/lib/nm2_lib.sh"
+source "${FUT_TOPDIR}/shell/lib/unit_lib.sh"
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
@@ -90,10 +90,12 @@ set_ip_port_forwarding "$src_ifname" "$src_port" "$dst_ipaddr" "$dst_port" "$pro
     log "nm2/nm2_ovsdb_ip_port_forward.sh: Set IP port forward for $src_ifname - Success" ||
     raise "FAIL: Failed to set IP port forward - $src_ifname" -l "nm2/nm2_ovsdb_ip_port_forward.sh" -tc
 
-log "nm2/nm2_ovsdb_ip_port_forward.sh: Check for IP FORWARD record in iptables - LEVEL2"
-wait_for_function_response 0 "check_ip_port_forwarding $dst_ipaddr:$dst_port" &&
-    log "nm2/nm2_ovsdb_ip_port_forward.sh: LEVEL2 - IP port forward record propagated to iptables" ||
-    raise "FAIL: LEVEL2 - Failed to propagate record into iptables" -l "nm2/nm2_ovsdb_ip_port_forward.sh" -tc
+if [ $FUT_SKIP_L2 != 'true' ]; then
+    log "nm2/nm2_ovsdb_ip_port_forward.sh: Check for IP FORWARD record in iptables - LEVEL2"
+    wait_for_function_response 0 "check_ip_port_forwarding $dst_ipaddr:$dst_port" &&
+        log "nm2/nm2_ovsdb_ip_port_forward.sh: LEVEL2 - IP port forward record propagated to iptables" ||
+        raise "FAIL: LEVEL2 - Failed to propagate record into iptables" -l "nm2/nm2_ovsdb_ip_port_forward.sh" -tc
+fi
 
 log "nm2/nm2_ovsdb_ip_port_forward.sh: Delete IP FORWARD from OVSDB"
 ${OVSH} d IP_Port_Forward -w dst_ipaddr=="$dst_ipaddr" -w src_ifname=="$src_ifname" &&
@@ -104,9 +106,11 @@ wait_ovsdb_entry_remove IP_Port_Forward -w dst_ipaddr "$dst_ipaddr" -w src_ifnam
     log "nm2/nm2_ovsdb_ip_port_forward.sh: Removed entry from IP_Port_Forward for $src_ifname - Success" ||
     raise "FAIL: Failed to remove entry from IP_Port_Forward for $src_ifname" -l "nm2/nm2_ovsdb_ip_port_forward.sh" -tc
 
-log "nm2/nm2_ovsdb_ip_port_forward.sh: Check is IP FORWARD record is deleted from iptables - LEVEL2"
-wait_for_function_response 1 "check_ip_port_forwarding $dst_ipaddr:$dst_port" &&
-    log "nm2/nm2_ovsdb_ip_port_forward.sh: LEVEL2 - IP FORWARD record deleted from iptables - Success" ||
-    force_delete_ip_port_forward_raise "$src_ifname" "NM_PORT_FORWARD" "$dst_ipaddr:$dst_port"
+if [ $FUT_SKIP_L2 != 'true' ]; then
+    log "nm2/nm2_ovsdb_ip_port_forward.sh: Check is IP FORWARD record is deleted from iptables - LEVEL2"
+    wait_for_function_response 1 "check_ip_port_forwarding $dst_ipaddr:$dst_port" &&
+        log "nm2/nm2_ovsdb_ip_port_forward.sh: LEVEL2 - IP FORWARD record deleted from iptables - Success" ||
+        force_delete_ip_port_forward_raise "$src_ifname" "NM_PORT_FORWARD" "$dst_ipaddr:$dst_port"
+fi
 
 pass

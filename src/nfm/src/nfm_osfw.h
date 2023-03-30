@@ -42,13 +42,21 @@ struct nfm_osfw_base {
 	ev_timer timer;
 };
 
+struct nfm_osfw_eb_base {
+	struct ev_loop *loop;
+	ev_timer timer;
+};
+
 bool nfm_osfw_init(struct ev_loop *loop);
 bool nfm_osfw_fini(void);
 bool nfm_osfw_is_inet4(const char *protocol);
 bool nfm_osfw_is_inet6(const char *protocol);
+bool nfm_osfw_is_eth(const char *protocol);
 bool nfm_osfw_add_chain(int family, const char *table, const char *chain);
 bool nfm_osfw_del_chain(int family, const char *table, const char *chain);
 bool nfm_osfw_add_rule(const struct schema_Netfilter *conf);
 bool nfm_osfw_del_rule(const struct schema_Netfilter *conf);
 
+bool nfm_osfw_eb_init(struct ev_loop *loop);
+bool nfm_osfw_eb_fini(void);
 #endif /* NFM_OSFW_H_INCLUDED */

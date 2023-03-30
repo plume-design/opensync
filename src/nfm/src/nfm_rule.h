@@ -39,9 +39,11 @@
 #define NFM_FLAG_RULE_IN_TREE (1 << 0)
 #define NFM_FLAG_RULE_CHAIN4_REFERENCED (1 << 1)
 #define NFM_FLAG_RULE_CHAIN6_REFERENCED (1 << 2)
-#define NFM_FLAG_RULE_TARGET4_REFERENCED (1 << 3)
-#define NFM_FLAG_RULE_TARGET6_REFERENCED (1 << 4)
-#define NFM_FLAG_RULE_APPLIED (1 << 5)
+#define NFM_FLAG_RULE_CHAIN_ETH_REFERENCED (1 << 3)
+#define NFM_FLAG_RULE_TARGET4_REFERENCED (1 << 4)
+#define NFM_FLAG_RULE_TARGET6_REFERENCED (1 << 5)
+#define NFM_FLAG_RULE_TARGET_ETH_REFERENCED (1 << 6)
+#define NFM_FLAG_RULE_APPLIED (1 << 7)
 
 struct nfm_rule {
 	struct ds_tree_node elt;
@@ -53,5 +55,7 @@ bool nfm_rule_init(void);
 bool nfm_rule_new(const struct schema_Netfilter *conf);
 bool nfm_rule_del(const struct schema_Netfilter *conf);
 bool nfm_rule_modify(const struct schema_Netfilter *conf);
+struct nfm_rule *nfm_rule_get(const char *name);
+
 
 #endif /* NFM_RULE_H_INCLUDED */

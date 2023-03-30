@@ -29,12 +29,12 @@
 # shellcheck disable=SC1091
 source /tmp/fut-base/shell/config/default_shell.sh
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
-source "${FUT_TOPDIR}/shell/lib/cm2_lib.sh"
+source "${FUT_TOPDIR}/shell/lib/unit_lib.sh"
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
 cm_setup_file="cm2/cm2_setup.sh"
-adr_internet_man_file="tools/server/cm/address_internet_man.sh"
+addr_internet_man_file="tools/server/cm/address_internet_man.sh"
 step_1_name="check_counter"
 step_2_name="cloud_recovered"
 counter_default=4
@@ -53,9 +53,9 @@ Arguments:
 Testcase procedure:
     - On DEVICE: Run: ${cm_setup_file} (see ${cm_setup_file} -h)
                  Run: cm2/cm2_cloud_down.sh <WAN_IF_NAME> <UNRCH-CLOUD-COUNTER> ${step_1_name}
-    - On RPI SERVER: Run: ${adr_internet_man_file} <WAN-IP-ADDRESS> block
+    - On RPI SERVER: Run: ${addr_internet_man_file} <WAN-IP-ADDRESS> block
     - On DEVICE: Run: cm2/cm2_cloud_down.sh <WAN_IF_NAME> <UNRCH-CLOUD-COUNTER> ${step_2_name}
-    - On RPI SERVER: Run: ${adr_internet_man_file} <WAN-IP-ADDRESS> unblock
+    - On RPI SERVER: Run: ${addr_internet_man_file} <WAN-IP-ADDRESS> unblock
 Script usage example:
     ./cm2/cm2_cloud_down.sh eth0 ${counter_default} ${step_1_name}
     ./cm2/cm2_cloud_down.sh eth0 0 ${step_2_name}

@@ -47,6 +47,8 @@ bool dm_hook_close();
 bool dm_st_monitor();
 void dm_st_in_progress_set(bool value);
 bool dm_st_in_progress_get();
+bool dm_manager_stop_all(char *except_mgrs);
+
 
 /**
  * Register a new manager

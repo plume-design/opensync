@@ -222,6 +222,20 @@ static inline void *ds_dlist_remove_before(ds_dlist_t *list, void *before)
     return NODE_TO_CONT(node, list->od_cof);
 }
 
+/**
+ * Return the number of elements in a given list
+ *
+ * Beware: Current implementation is O(n).
+ */
+static inline size_t ds_dlist_len(ds_dlist_t *root)
+{
+    void *p;
+    size_t n = 0;
+    ds_dlist_foreach(root, p)
+        n++;
+    return n;
+}
+
 /*
  * ============================================================
  *  Iterator API

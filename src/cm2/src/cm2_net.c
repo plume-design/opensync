@@ -90,33 +90,73 @@ static const char *cm2_get_timeout_cmd_arg(void)
     return needs_t_arg ? "-t 10" : "10";
 }
 
-static int cm2_ovs_insert_port_into_bridge(char *bridge, char *port, bool add)
+static int cm2_ovs_insert_port_into_bridge(char *bridge, char *port,
+                                           bool want_port_in_bridge)
 {
-    char *op_add = "add-port";
-    char *op_del = "del-port";
-    char *op_and = "&&";
-    char *op_or  = "||";
     char command[512];
-    char *op_log;
-    char *op;
+    char *op = "";
+    bool port_is_in_bridge;
+    bool need_to_add;
+    bool need_to_del;
+    int ret;
 
-    if (add) {
-        op = op_add;
-        op_log = op_or;
-    } else {
-        op = op_del;
-        op_log = op_and;
-    }
-
-    LOGI("OVS bridge: %s port = %s bridge = %s", op, port, bridge);
-
-    /* add/delete it to/from OVS bridge */
-    sprintf(command, "timeout %s ovs-vsctl port-to-br %s | grep %s %s timeout %s ovs-vsctl %s %s %s",
-            cm2_get_timeout_cmd_arg(), port, bridge, op_log, cm2_get_timeout_cmd_arg(), op, bridge, port);
-
+    snprintf(command, sizeof(command), "timeout %s ovs-vsctl port-to-br %s | grep %s",
+             cm2_get_timeout_cmd_arg(), port, bridge);
     LOGD("%s: Command: %s", __func__, command);
 
-    return target_device_execute(command);
+    port_is_in_bridge = target_device_execute(command);
+    need_to_add = !port_is_in_bridge && want_port_in_bridge;
+    need_to_del = port_is_in_bridge && !want_port_in_bridge;
+    ret = port_is_in_bridge;
+
+    if (need_to_add) {
+        op = "add-port";
+    } else if (need_to_del) {
+        op = "del-port";
+    }
+
+    /* add/delete it to/from OVS bridge */
+    if (need_to_add || need_to_del) {
+        LOGI("OVS bridge: %s port = %s bridge = %s", op, port, bridge);
+
+        snprintf(command, sizeof(command), "timeout %s ovs-vsctl %s %s %s",
+                 cm2_get_timeout_cmd_arg(), op, bridge, port);
+        LOGD("%s: Command: %s", __func__, command);
+        ret = target_device_execute(command);
+    }
+
+    return ret;
+}
+
+static int cm2_ovs_insert_port_into_native_bridge(char *bridge, char *port,
+                                                  bool want_port_in_bridge)
+{
+    char command[512];
+    char *op = "";
+    bool port_is_in_bridge;
+    bool need_to_add;
+    bool need_to_del;
+    int ret;
+
+    snprintf(command, sizeof(command), "timeout %s brctl show %s | grep %s",
+             cm2_get_timeout_cmd_arg(), bridge, port);
+    LOGD("%s: Command: %s", __func__, command);
+
+    port_is_in_bridge = target_device_execute(command);
+    need_to_add = !port_is_in_bridge && want_port_in_bridge;
+    need_to_del = port_is_in_bridge && !want_port_in_bridge;
+    ret = port_is_in_bridge;
+
+    /* add/delete it to/from Linux bridge */
+    if (need_to_add || need_to_del) {
+        LOGI("Linux bridge: %s port = %s bridge = %s", op, port, bridge);
+
+        if (need_to_add) cm2_add_port_to_br(port, bridge);
+        if (need_to_del) cm2_del_port_from_br(port, bridge);
+
+    }
+
+    return ret;
 }
 
 void cm2_update_bridge_cfg(char *bridge, char *port, bool brop,
@@ -134,7 +174,12 @@ void cm2_update_bridge_cfg(char *bridge, char *port, bool brop,
         }
     }
 
-    r = cm2_ovs_insert_port_into_bridge(bridge, port, brop);
+    if (kconfig_enabled(CONFIG_TARGET_USE_NATIVE_BRIDGE)) {
+        r = cm2_ovs_insert_port_into_native_bridge(bridge, port, brop);
+    } else {
+        r = cm2_ovs_insert_port_into_bridge(bridge, port, brop);
+    }
+
     if (!r)
         LOGI("Failed to update port %s in %s [state = %d]",
              port, bridge, brop);

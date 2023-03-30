@@ -71,4 +71,15 @@ int gk_send_ecurl_request(struct fsm_session *session,
 bool
 gk_set_policy(Gatekeeper__Southbound__V1__GatekeeperReply *response,
               struct fsm_gk_verdict *gk_verdict);
+
+/**
+ * @brief Adjust redirect TTL value based on redirect
+ * action.
+ *
+ * @param policy_reply FSM policy_reply
+ * @return None
+ */
+bool
+gk_is_redirect_reply(int req_type, int action);
+
 #endif /* GK_SINGLE_CURL_H_INCLUDED */

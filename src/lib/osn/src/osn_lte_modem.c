@@ -366,3 +366,33 @@ osn_lte_stop_vendor_daemon(void)
 {
     return;
 }
+int
+osn_gen_parser_sa(char *modem_resp, gen_resp_tokens *resp_tokens)
+{
+    return 0;
+}
+void
+osn_nr5g_save_serving_cell_5g_sa(gen_resp_tokens *resp_tokens)
+{
+    return;
+}
+int
+osn_get_module_id(void)
+{
+    return 0;
+}
+int
+osn_parse_sinr_rsrp(char *buf, cellular_sinr_rsrp_t *net_response)
+{
+    return 0;
+}
+int
+osn_cellular_save_sinr(cellular_sinr_rsrp_t *net_resp, osn_lte_modem_info_t *modem_info)
+{
+    return 0;
+}
+int
+osn_cellular_save_qsrp(cellular_sinr_rsrp_t *net_resp, osn_lte_modem_info_t *modem_info)
+{
+    return 0;
+}

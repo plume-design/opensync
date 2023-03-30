@@ -1,0 +1,64 @@
+#!/bin/sh -ave
+
+. ./common || return 1
+. ./case-post-assoc-phy-type_vars || return 1
+
+add_neighbor() {
+	$dut_ap_a <<. || return $?
+		ovsh i Wifi_VIF_Neighbors \
+			bssid:=$1 \
+			channel:=36 \
+			ht_mode:=HT40 \
+			if_name:=wlan1 \
+			priority:=0
+.
+}
+
+set_neighbor_phy_type() {
+	$dut_ap_a <<. || return $?
+		ovsh u Wifi_VIF_Neighbors \
+			-w bssid==$1 \
+			phy_type:=$2
+.
+}
+
+trigger_lwm_btm() {
+	bsal_sim write /dut_ap_a_bsal_in "RSSI_XING mac=${1} if_name=wlan0 snr=25" || return 1
+	sleep 1
+	bsal_sim write /dut_ap_a_bsal_in "RSSI_XING mac=${1} if_name=wlan0 snr=2 low_xing=lower" || return 1
+	clear_events
+	sleep 1
+}
+clear_events() {
+	while :
+	do
+		timeout 1 bsal_sim read /dut_ap_a_bsal_out || break
+	done
+}
+
+receive_btm_response() {
+	client_mac="20:00:00:00:00:00"
+	neigh_mac="de:ad:be:ef:fe:ed"
+
+	prepare_dut dut_ap_a || return 1
+	add_sta dut_ap_a || return 1
+
+	add_neighbor $neigh_mac
+
+	# Connect at 2.4 GHz and set RRM, BTM capabilities
+	bsal_sim write /dut_ap_a_bsal_in "UPDATE_CLIENT mac=${client_mac} btm=true rrm=true rrm_beacon_passive_mes=true rrm_beacon_active_mes=true rrm_beacon_table_mes=true \
+									  assoc_ies=000e6a616e75737a2d66742d74657374010802040b160c12182432043048606c2102001430140100000fac040100000fac040100000fac0200007f0b04004a0201000040000020460570000000003b155151525354737475767778797a7b7c7d7e7f808182dd070050f202000100" || return 1
+	bsal_sim write /dut_ap_a_bsal_in "CONNECT mac=${client_mac} if_name=wlan0" || return 1
+	sleep 1
+
+	set_neighbor_phy_type $neigh_mac 255
+	trigger_lwm_btm $client_mac
+	diff_vars "$ref_btm_req" "$(timeout 1 bsal_sim read /dut_ap_a_bsal_out)" || return 1
+
+	set_neighbor_phy_type $neigh_mac 128
+	trigger_lwm_btm $client_mac
+	diff_vars "$ref_btm_req_2" "$(timeout 1 bsal_sim read /dut_ap_a_bsal_out)" || return 1
+
+}
+
+step receive_btm_response

@@ -41,6 +41,9 @@ UNIT_SRC += src/inet_vlan.c
 UNIT_SRC += src/inet_routes.c
 UNIT_SRC += src/inet_lte.c
 UNIT_SRC += src/inet_unmanaged.c
+UNIT_SRC += $(if $(CONFIG_TARGET_USE_NATIVE_BRIDGE), src/inet_tap.c)
+UNIT_SRC += $(if $(CONFIG_TARGET_USE_NATIVE_BRIDGE), src/inet_bridge.c)
+UNIT_SRC += $(if $(CONFIG_TARGET_USE_NATIVE_BRIDGE), src/inet_port.c)
 
 UNIT_EXPORT_CFLAGS := -I$(UNIT_PATH)/inc
 UNIT_CFLAGS := $(UNIT_EXPORT_CFLAGS)

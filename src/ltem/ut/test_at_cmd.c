@@ -53,6 +53,7 @@ char *csq_cmd="at+csq\r";
 char *qgdcnt_cmd="at+qgdcnt?\r";
 char *qdsim_cmd="at+qdsim?\r";
 char *cops_cmd="at+cops?\r";
+char *nr_5g_sa_srv_cell_cmd = "nr_5g_sa_at+qeng=\\\"servingcell\\\"";
 char *srv_cell_cmd="at+qeng=\\\"servingcell\\\"\r";
 char *neigh_cell_cmd="at+qeng=\\\"neighbourcell\\\"\r";
 char *pdp_cgdcont_cmd="at+cgdcont?\r";
@@ -68,6 +69,7 @@ char *at_csq="at+csq\r\r\n+CSQ: 18,99\r\n\r\nOK\r\n";
 char *at_qgdcnt="at+qgdcnt?\r\r\n+QGDCNT: 356397,150721\r\n\r\nOK\r\n";
 char *at_qdsim="at+qdsim?\r\r\n+QDSIM: 0\r\n\r\nOK\r\n";
 char *at_cops="at+cops?\r\r\n+COPS: 0,0,\"AT&T\",7\r\n\r\nOK\r\n";
+char *at_srv_5g_sa="AT+QENG=\"servingcell\"\r\n+QENG: \"servingcell\",\"NOCONN\",\"NR5G-SA\", \"FDD\", 460, 01, B38751, 179, 13, 1653, 5, 3, -81, -4, -52, 25, 12\r\n\r\nOK";
 char *at_srv_cell_lte="at+qeng=\"servingcell\"\r\r\n+QENG: \"servingcell\",\"NOCONN\",\"LTE\",\"FDD\",310,410,A1FBF0A,310,800,2,5,5,8B1E,-115,-14,-80,10,8\r\n\r\nOK\r\n";
 char *at_srv_cell_wcdma="at+qeng=\"servingcell\"\r\r\n+QENG: \"servingcell\",\"LIMSRV\",\"WCDMA\",310,410,DEA6,2883C,4385,84,254,-102,-10,-,-,-,-,-\r\n\r\nOK\r\n";
 char *at_srv_cell_wcdma_noconn="at+qeng=\"servingcell\"\r\r\n+QENG: \"servingcell\",\"NOCONN\",\"WCDMA\",310,410,DEA6,2883C,4385,84,254,-98,-7,-,-,-,-,-\r\n\r\nOK\r\n";
@@ -157,6 +159,11 @@ lte_ut_modem_read(int fd, char *at_buf, ssize_t at_len)
     if (!res)
     {
         return lte_ut_modem_set_at_response(at_buf, at_cops);
+    }
+    res = strncmp(modem_cmd_buf, nr_5g_sa_srv_cell_cmd, modem_cmd_buf_sz);
+    if (!res)
+    {
+        return lte_ut_modem_set_at_response(at_buf, at_srv_5g_sa);
     }
     res = strncmp(modem_cmd_buf, srv_cell_cmd, modem_cmd_buf_sz);
     if (!res)

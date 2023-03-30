@@ -24,6 +24,8 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+# {# jinja-parse #}
+
 # Script checks if ovs-vswitchd is running without RCU warnings causing service effectively to hang
 # ovs-vswitchd uses Read-Copy-Update algorithm to enable concurrent non-blocking access to memory
 # resources, but sometimes one of reading threads does not release reading lock and effectively
@@ -79,11 +81,13 @@ get_log_age()
 
 # extracts blocking time from ovs-vswitchd RCU blocking warning log
 # expects arg1 to be log line, returns blocking time in [ms] units
-get_blocking_time() 
+get_blocking_time()
 {
     bt=$(echo $1 | egrep -o 'blocked .+' | egrep -o ' [[:digit:]]+ ms')
     # remove trailing ' ms' and return
+{% raw %}
     echo ${bt:0:$((${#bt}-3))}
+{% endraw %} 
 }
 
 # Process ID used in module scope
@@ -161,4 +165,8 @@ ovs_vswitchd_check()
     fi
 }
 
+# dont run ovs_vswitchd_check if native bridge mode is selected
+{%- if not CONFIG_TARGET_USE_NATIVE_BRIDGE %}
 ovs_vswitchd_check
+{%- endif %}
+

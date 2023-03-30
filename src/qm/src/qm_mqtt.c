@@ -306,6 +306,9 @@ void qm_append_report(qm_item_t *qi, qm_item_t *rep)
     if (rqi->bs_report) {
         APPEND(bs_report, BSReport);
     }
+    if (rqi->radius_report) {
+        APPEND(radius_report, RadiusReport);
+    }
 #undef APPEND
 
 first:

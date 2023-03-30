@@ -59,6 +59,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ovsdb_sync.h"
 #include "ovsdb_table.h"
 #include "schema.h"
+#include "kconfig.h"
 
 
 /*****************************************************************************/
@@ -642,7 +643,7 @@ om_monitor_update_flows(om_action_t type, json_t *js)
     }
 
     // Update the result in Openflow_State table so the cloud knows
-    om_monitor_update_openflow_state( &ofconf, type, ret );
+    om_monitor_update_openflow_state(&ofconf, type, ret);
 
     return;
 }
@@ -673,6 +674,42 @@ om_monitor_config_cb(ovsdb_update_monitor_t *self)
     }
 
     return;
+}
+
+static void
+om_monitor_config_native_cb(ovsdb_update_monitor_t *self)
+{
+    struct schema_Openflow_Config ofconf;
+    om_action_t type;
+    pjs_errmsg_t perr;
+
+    memset(&ofconf, 0, sizeof(ofconf));
+
+    switch(self->mon_type) {
+
+    case OVSDB_UPDATE_NEW:
+    case OVSDB_UPDATE_MODIFY:
+        type = (self->mon_type == OVSDB_UPDATE_NEW ? OM_ACTION_ADD : OM_ACTION_UPDATE);
+        if (!schema_Openflow_Config_from_json( &ofconf, self->mon_json_new, false, perr)) {
+            LOGE("[%s] Failed to parse new Openflow_Config row: %s", __func__, perr);
+            return;
+        }
+        break;
+
+    case OVSDB_UPDATE_DEL:
+        type = OM_ACTION_DELETE;
+        if (!schema_Openflow_Config_from_json( &ofconf, self->mon_json_old, false, perr)) {
+            LOGE("[%s] Failed to parse new Openflow_Config row: %s", __func__, perr);
+            return;
+        }
+        break;
+
+    default:
+        return;
+
+    }
+
+    om_monitor_update_openflow_state(&ofconf, type, true);
 }
 
 /******************************************************************************
@@ -840,13 +877,27 @@ om_monitor_init(void)
 {
     LOGI( "Openflow Monitoring initialization" );
 
-    // Start OVSDB monitoring
-    if(!ovsdb_update_monitor(&om_monitor_config,
-                             om_monitor_config_cb,
-                             SCHEMA_TABLE(Openflow_Config),
-                             OMT_ALL)) {
-        LOGE("Failed to monitor OVSDB table '%s'", SCHEMA_TABLE( Openflow_Config ) );
-        return false;
+    if (!kconfig_enabled(CONFIG_TARGET_USE_NATIVE_BRIDGE))
+    {
+        // Start OVSDB monitoring
+        if(!ovsdb_update_monitor(&om_monitor_config,
+                                 om_monitor_config_cb,
+                                 SCHEMA_TABLE(Openflow_Config),
+                                 OMT_ALL)) {
+            LOGE("Failed to monitor OVSDB table '%s'", SCHEMA_TABLE( Openflow_Config ) );
+            return false;
+        }
+    }
+    else
+    {
+        // Start OVSDB monitoring
+        if(!ovsdb_update_monitor(&om_monitor_config,
+                                 om_monitor_config_native_cb,
+                                 SCHEMA_TABLE(Openflow_Config),
+                                 OMT_ALL)) {
+            LOGE("Failed to monitor OVSDB table '%s'", SCHEMA_TABLE( Openflow_Config ) );
+            return false;
+        }
     }
 
     if(!ovsdb_update_monitor(&om_monitor_tags,

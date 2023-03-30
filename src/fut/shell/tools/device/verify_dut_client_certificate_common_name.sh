@@ -28,7 +28,7 @@
 # FUT environment loading
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source /tmp/fut-base/shell/config/default_shell.sh
-source "${FUT_TOPDIR}/shell/lib/onbrd_lib.sh"
+source "${FUT_TOPDIR}/shell/lib/unit_lib.sh"
 [ -n "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}"
 [ -n "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}"
 

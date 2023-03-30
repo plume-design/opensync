@@ -48,13 +48,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define ADD_MAC_LEARN_TBL(A) MAC_LEARN_TBL_IN_CMD A
 #define DEL_MAC_LEARN_TBL(A) MAC_LEARN_TBL_DEL_CMD A
 
-char *test_name = "nm2_mac_tags_tests";
-
-static void unit_test_init(void)
-{
-    ovsdb_init("NM_MAC_TAGS");
-}
-
 int is_created_oftag(char *tag)
 {
     FILE *fp = NULL;
@@ -118,7 +111,7 @@ int is_present_oftag_table(char *mac)
     return ret;
 }
 
-static void test_set_eth_devices(void)
+void test_set_eth_devices(void)
 {
     lan_clients_oftag_add_mac(MAC_ADDR1);
     TEST_ASSERT_EQUAL_INT(0, is_present_oftag_table(MAC_ADDR1));
@@ -126,7 +119,7 @@ static void test_set_eth_devices(void)
     TEST_ASSERT_EQUAL_INT(0, is_present_oftag_table(MAC_ADDR2));
 }
 
-static void test_unset_eth_devices(void)
+void test_unset_eth_devices(void)
 {
     lan_clients_oftag_remove_mac(MAC_ADDR1);
     TEST_ASSERT_EQUAL_INT(-1, is_present_oftag_table(MAC_ADDR1));
@@ -134,24 +127,9 @@ static void test_unset_eth_devices(void)
     TEST_ASSERT_EQUAL_INT(-1, is_present_oftag_table(MAC_ADDR2));
 }
 
-static void test_create_oftag(void)
+void test_create_oftag(void)
 {
     nm2_mac_tags_ovsdb_init();
     TEST_ASSERT_EQUAL_INT(0, is_created_oftag("eth_devices"));
 }
 
-
-int main(void)
-{
-    //struct ev_loop *loop = EV_DEFAULT;
-
-    ut_init(test_name, NULL, NULL);
-
-    ut_setUp_tearDown(test_name, NULL, NULL);
-
-    unit_test_init();
-    RUN_TEST(test_create_oftag);
-    RUN_TEST(test_set_eth_devices);
-    RUN_TEST(test_unset_eth_devices);
-    return ut_fini();
-}

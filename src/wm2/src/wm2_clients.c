@@ -52,6 +52,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ovsdb_sync.h"
 #include "ovsdb_table.h"
 #include "memutil.h"
+#include "kconfig.h"
 
 // Defines
 #define MODULE_ID LOG_MODULE_ID_MAIN
@@ -81,10 +82,13 @@ struct wm2_client_vif {
     char *if_name;
     char *wpa_key_id;
     char *dpp_pk_hash;
+    char *wpa_key_mgmt;
+    char *pairwise_cipher;
     char *oftag;
     bool connected;
     bool in_ovsdb;
     bool print_when_removed;
+    bool pmf;
 };
 
 enum wm2_client_transition {
@@ -332,25 +336,53 @@ wm2_clients_isolate(const char *ifname, const char *sta, bool connected)
             return;
         }
 
-        snprintf(cmd, sizeof(cmd), "ovs-vsctl del-port %s ;"
-                                   "ip link add link %s name %s type softwds &&"
-                                   "echo %s > /sys/class/net/%s/softwds/addr &&"
-                                   "echo N > /sys/class/net/%s/softwds/wrap &&"
-                                   "ovs-vsctl add-port %s %s &&"
-                                   "ip link set %s up",
-                                   ifname,
-                                   ifname, sta_ifname,
-                                   sta, sta_ifname,
-                                   sta_ifname,
-                                   vconf.bridge, sta_ifname,
-                                   sta_ifname);
+        if(kconfig_enabled(CONFIG_TARGET_USE_NATIVE_BRIDGE))
+        {
+            snprintf(cmd, sizeof(cmd), "brctl delif %s ;"
+                                       "ip link add link %s name %s type softwds &&"
+                                       "echo %s > /sys/class/net/%s/softwds/addr &&"
+                                       "echo N > /sys/class/net/%s/softwds/wrap &&"
+                                       "brctl addif %s %s &&"
+                                       "ip link set %s up",
+                                       ifname,
+                                       ifname, sta_ifname,
+                                       sta, sta_ifname,
+                                       sta_ifname,
+                                       vconf.bridge, sta_ifname,
+                                       sta_ifname);
+        }
+        else
+        {
+            snprintf(cmd, sizeof(cmd), "ovs-vsctl del-port %s ;"
+                                       "ip link add link %s name %s type softwds &&"
+                                       "echo %s > /sys/class/net/%s/softwds/addr &&"
+                                       "echo N > /sys/class/net/%s/softwds/wrap &&"
+                                       "ovs-vsctl add-port %s %s &&"
+                                       "ip link set %s up",
+                                       ifname,
+                                       ifname, sta_ifname,
+                                       sta, sta_ifname,
+                                       sta_ifname,
+                                       vconf.bridge, sta_ifname,
+                                       sta_ifname);
+        }
         err = system(cmd);
         LOGI("%s: %s: isolating into '%s': %d (errno: %d)", ifname, sta, sta_ifname, err, errno);
     } else {
-        snprintf(cmd, sizeof(cmd), "ovs-vsctl del-port %s ;"
-                                   "ip link del %s",
-                                   sta_ifname,
-                                   sta_ifname);
+        if (kconfig_enabled(CONFIG_TARGET_USE_NATIVE_BRIDGE))
+        {
+            snprintf(cmd, sizeof(cmd), "brctl delif %s ;"
+                                       "ip link del %s",
+                                       sta_ifname,
+                                       sta_ifname);
+        }
+        else
+        {
+            snprintf(cmd, sizeof(cmd), "ovs-vsctl del-port %s ;"
+                                       "ip link del %s",
+                                       sta_ifname,
+                                       sta_ifname);
+        }
         err = system(cmd);
         LOGI("%s: %s: cleaning up isolation of '%s': %d (errno: %d)", ifname, sta, sta_ifname, err, errno);
     }
@@ -419,8 +451,11 @@ wm2_client_ovsdb_is_synced(struct wm2_client *c)
     if (has_ovsdb != want_ovsdb) return false;
     if (strcmp(v ? (v->wpa_key_id ?: "") : "", c->ovsdb.key_id) != 0) return false;
     if (strcmp(v ? (v->dpp_pk_hash ?: "") : "", c->ovsdb.dpp_netaccesskey_sha256_hex) != 0) return false;
+    if (strcmp(v ? (v->wpa_key_mgmt ?: "") : "", c->ovsdb.wpa_key_mgmt) != 0) return false;
+    if (strcmp(v ? (v->pairwise_cipher ?: "") : "", c->ovsdb.pairwise_cipher) != 0) return false;
     if (strcmp(v ? (v->oftag ?: "") : "", c->ovsdb.oftag) != 0) return false;
     if (strcmp(v ? (v->oftag ?: "") : "", c->oftag_in_ovsdb ?: "") != 0) return false;
+    if (!v || v->pmf != c->ovsdb.pmf) return false;
 
     return true;
 }
@@ -514,7 +549,10 @@ wm2_client_ovsdb_upsert(struct wm2_client *c)
     SCHEMA_SET_STR(c->ovsdb.mac, c->mac_str);
     SCHEMA_SET_STR(c->ovsdb.key_id, v->wpa_key_id ?: "");
     SCHEMA_SET_STR(c->ovsdb.state, "active");
+    SCHEMA_SET_BOOL(c->ovsdb.pmf, v->pmf);
     if (v->oftag != NULL) SCHEMA_SET_STR(c->ovsdb.oftag, v->oftag);
+    if (v->wpa_key_mgmt != NULL) SCHEMA_SET_STR(c->ovsdb.wpa_key_mgmt, v->wpa_key_mgmt);
+    if (v->pairwise_cipher != NULL) SCHEMA_SET_STR(c->ovsdb.pairwise_cipher, v->pairwise_cipher);
 
     pwhere = ovsdb_where_simple("if_name", v->if_name);
     where = ovsdb_where_simple("mac", c->mac_str);
@@ -560,6 +598,8 @@ wm2_client_vif_free(struct wm2_client_vif *v)
     FREE(v->if_name);
     FREE(v->wpa_key_id);
     FREE(v->dpp_pk_hash);
+    FREE(v->wpa_key_mgmt);
+    FREE(v->pairwise_cipher);
     FREE(v->oftag);
     FREE(v);
 }
@@ -609,6 +649,7 @@ wm2_client_dump_debug(struct wm2_client *c)
     struct wm2_client_vif *v;
 
     LOGD("%s: key=%s/%s/%s dpp=%s/%s/%s oftag=%s/%s/%s vif=%s->%s "
+         "wpa_key_mgmt=%s/%s/%s pairwise_cipher=%s/%s/%s pmf=%s/%s/%s "
          "async=%d retry=%d connected=%d/%d sync=%d",
          c->mac_str,
          v_old != NULL ? (v_old->wpa_key_id ?: "") : "",
@@ -622,6 +663,15 @@ wm2_client_dump_debug(struct wm2_client *c)
          v_new != NULL ? (v_new->oftag ?: "") : "",
          v_old ? v_old->if_name : "",
          v_new ? v_new->if_name : "",
+         v_old != NULL ? (v_old->wpa_key_mgmt ?: "") : "",
+         v_new != NULL ? (v_new->wpa_key_mgmt ?: "") : "",
+         c->ovsdb.wpa_key_mgmt,
+         v_old != NULL ? (v_old->pairwise_cipher ?: "") : "",
+         v_new != NULL ? (v_new->pairwise_cipher ?: "") : "",
+         c->ovsdb.pairwise_cipher,
+         v_old != NULL ? (v_old->pmf ? "true" : "false") : "",
+         v_new != NULL ? (v_new->pmf ? "true" : "false") : "",
+         c->ovsdb.pmf ? "true" : "false",
          ev_is_pending(&c->async),
          ev_is_active(&c->retry),
          wm2_client_is_connected(c),
@@ -649,8 +699,10 @@ wm2_client_work(struct wm2_client *c)
     switch (wm2_client_get_transition(c)) {
         case WM2_CLIENT_CONNECTED:
             assert(v_new != NULL);
-            LOGN("Client '%s' connected on '%s' with key '%s'",
-                 c->mac_str, v_new->if_name, v_new->wpa_key_id ?: "");
+            LOGN("Client '%s' connected on '%s' with key '%s'"
+                 ", wpa_key_mgmt '%s', pairwise_cipher '%s', pmf %s",
+                 c->mac_str, v_new->if_name, v_new->wpa_key_id ?: "",
+                 v_new->wpa_key_mgmt, v_new->pairwise_cipher, v_new->pmf ? "true" : "false");
             wm2_client_ovsdb_upsert(c);
             wm2_clients_isolate(v_new->if_name, c->mac_str, true);
             break;
@@ -813,19 +865,27 @@ wm2_client_update(const char *if_name,
                   const char *mac_str,
                   const char *wpa_key_id,
                   const char *dpp_pk_hash,
+                  const char *wpa_key_mgmt,
+                  const char *pairwise_cipher,
+                  bool pmf,
                   bool connected)
 {
     struct wm2_client *c = wm2_client_lookup_or_new(mac_str);
     struct wm2_client_vif *v = wm2_client_vif_lookup_or_new(c, if_name);
 
+    if (strlen(wpa_key_mgmt ?: "") == 0) wpa_key_mgmt = NULL;
+    if (strlen(pairwise_cipher ?: "") == 0) pairwise_cipher = NULL;
     if (strlen(wpa_key_id ?: "") == 0) wpa_key_id = NULL;
     if (strlen(dpp_pk_hash ?: "") == 0) dpp_pk_hash = NULL;
 
+    FREE(v->wpa_key_mgmt);
+    FREE(v->pairwise_cipher);
     FREE(v->wpa_key_id);
     FREE(v->dpp_pk_hash);
     FREE(v->oftag);
 
     v->connected = connected;
+    v->pmf = pmf;
     ds_dlist_remove(&c->vif_list, v);
 
     if (v->connected == true)
@@ -833,19 +893,22 @@ wm2_client_update(const char *if_name,
     else
         ds_dlist_insert_tail(&c->vif_list, v);
 
+    v->wpa_key_mgmt = wpa_key_mgmt ? STRDUP(wpa_key_mgmt) : NULL;
+    v->pairwise_cipher = pairwise_cipher ? STRDUP(pairwise_cipher) : NULL;
     v->wpa_key_id = wpa_key_id ? STRDUP(wpa_key_id) : NULL;
     v->dpp_pk_hash = dpp_pk_hash ? STRDUP(dpp_pk_hash) : NULL;
     v->oftag = wm2_client_is_connected(c) == true
              ? wm2_client_get_oftag(if_name, c->mac_str, wpa_key_id, dpp_pk_hash)
              : NULL;
 
-    LOGD("%s: %s: set client as %s, key_id=%s dpp=%s oftag=%s",
+    LOGD("%s: %s: set client as %s, key_id=%s dpp=%s oftag=%s pmf=%s",
          c->mac_str,
          v->if_name,
          v->connected ? "connected" : "disconnected",
          v->wpa_key_id ?: "",
          v->dpp_pk_hash ?: "",
-         v->oftag ?: "");
+         v->oftag ?: "",
+         v->pmf ? "true" : "false");
 
     /* This is intended to debounce and coalesce multiple
      * client events across multiple vifs. This isn't
@@ -858,17 +921,21 @@ wm2_client_update(const char *if_name,
 bool
 wm2_clients_update(struct schema_Wifi_Associated_Clients *schema, char *ifname, bool status)
 {
-    LOGD("%s: %s: updating client as %s, key_id=%s, dpp=%s",
+    LOGD("%s: %s: updating client as %s, key_id=%s, dpp=%s, pmf=%s",
          schema->mac,
          ifname,
          status ? "connected" : "disconnected",
          schema->key_id,
-         schema->dpp_netaccesskey_sha256_hex);
+         schema->dpp_netaccesskey_sha256_hex,
+         schema->pmf ? "true" : "false");
 
     wm2_client_update(ifname,
                       schema->mac,
                       schema->key_id,
                       schema->dpp_netaccesskey_sha256_hex,
+                      schema->wpa_key_mgmt,
+                      schema->pairwise_cipher,
+                      schema->pmf,
                       status);
     return true;
 }
@@ -897,6 +964,9 @@ wm2_clients_update_per_vif(const struct schema_Wifi_Associated_Clients *clients,
                                   c->mac_str,
                                   v->wpa_key_id,
                                   v->dpp_pk_hash,
+                                  v->wpa_key_mgmt,
+                                  v->pairwise_cipher,
+                                  v->pmf,
                                   false);
             }
         }
@@ -907,6 +977,9 @@ wm2_clients_update_per_vif(const struct schema_Wifi_Associated_Clients *clients,
                           clients[i].mac,
                           clients[i].key_id,
                           clients[i].dpp_netaccesskey_sha256_hex,
+                          clients[i].wpa_key_mgmt,
+                          clients[i].pairwise_cipher,
+                          clients[i].pmf,
                           true);
     }
 }

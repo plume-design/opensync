@@ -31,6 +31,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "json_mqtt.h"
 #include "os_types.h"
 
+#include "http_parse.h"
+#include "upnp_parse.h"
+#include "dhcp_parse.h"
+
+
 char *version = "1.0.0";
 
 /**
@@ -42,7 +47,7 @@ char *version = "1.0.0";
  *
  * @remark Caller must ensure parameter is not NULL
  */
-static bool
+bool
 jcheck_header_info(struct fsm_session *session)
 {
     if (session->topic == NULL) return false;
@@ -59,7 +64,7 @@ jcheck_header_info(struct fsm_session *session)
  * @param session the fsm session triggering a report
  * @param mac the uder device mac address
  */
-static char *
+char *
 json_mqtt_get_network_id(struct fsm_session *session, os_macaddr_t *mac)
 {
     if (session == NULL) return NULL;
@@ -79,7 +84,7 @@ json_mqtt_get_network_id(struct fsm_session *session, os_macaddr_t *mac)
  * Formats the current time in the cloud accepted format:
  * yyyy-mm-ddTHH:MM:SS.mmmZ.
  */
-static void
+void
 json_mqtt_curtime(char *time_str, size_t size)
 {
     char tstr[128] = { 0 };

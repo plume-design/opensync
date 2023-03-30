@@ -29,7 +29,7 @@
 # shellcheck disable=SC1091
 source /tmp/fut-base/shell/config/default_shell.sh
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
-source "${FUT_TOPDIR}/shell/lib/nm2_lib.sh"
+source "${FUT_TOPDIR}/shell/lib/unit_lib.sh"
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
@@ -103,9 +103,11 @@ wait_ovsdb_entry Wifi_Inet_State -w if_name "$if_name" -is netmask "$netmask" &&
     log "nm2/nm2_set_netmask.sh: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State::netmask is $netmask - Success" ||
     raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State::netmask is not $netmask" -l "nm2/nm2_set_netmask.sh" -tc
 
-log "nm2/nm2_set_netmask.sh: Check if NETMASK was properly applied to $if_name - LEVEL2"
-wait_for_function_response 0 "check_interface_netmask_set_on_system $if_name | grep -q \"$netmask\"" &&
-    log "nm2/nm2_set_netmask.sh: LEVEL2 - NETMASK applied to ifconfig for interface $if_name - Success" ||
-    raise "FAIL: LEVEL2 - Failed to apply NETMASK to ifconfig for interface $if_name" -l "nm2/nm2_set_netmask.sh" -tc
+if [ $FUT_SKIP_L2 != 'true' ]; then
+    log "nm2/nm2_set_netmask.sh: Check if NETMASK was properly applied to $if_name - LEVEL2"
+    wait_for_function_response 0 "check_interface_netmask_set_on_system $if_name | grep -q \"$netmask\"" &&
+        log "nm2/nm2_set_netmask.sh: LEVEL2 - NETMASK applied to ifconfig for interface $if_name - Success" ||
+        raise "FAIL: LEVEL2 - Failed to apply NETMASK to ifconfig for interface $if_name" -l "nm2/nm2_set_netmask.sh" -tc
+fi
 
 pass

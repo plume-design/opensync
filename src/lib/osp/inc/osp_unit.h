@@ -220,6 +220,16 @@ bool osp_unit_factory_get(char *buff, size_t buffsz);
 bool osp_unit_mfg_date_get(char *buff, size_t buffsz);
 
 /**
+ * @brief This function retrieves the ovs-version running on the device
+ * by parsing the output of "ovs-vswitchd -V"
+ *
+ * @param buff string to hold the version information
+ * @param buffsz size of buff string
+ * @return true on success
+ */
+bool osp_unit_ovs_version_get(char *buff, size_t buffsz);
+
+/**
  * @brief Return serial_model hostname
  *
  * This function provides a null terminated byte string to be used as a 

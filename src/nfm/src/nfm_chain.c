@@ -48,7 +48,7 @@ static bool nfm_chain_set(struct nfm_chain *self, int family, const char *table,
 	memset(self, 0, sizeof(*self));
 	ds_dlist_insert_tail(&nfm_chain_list, self);
 
-	if (((family != AF_INET) && (family != AF_INET6)) || !table || !table[0] || !chain || !chain[0]) {
+	if (((family != AF_INET) && (family != AF_INET6) && (family != AF_BRIDGE)) || !table || !table[0] || !chain || !chain[0]) {
 		LOGE("Set Netfilter chain: invalid parameters(%d %s %s)", family, table, chain);
 		return false;
 	}
@@ -137,6 +137,30 @@ bool nfm_chain_init(void)
 	return true;
 }
 
+static const char *nfm_get_family(int family)
+{
+	const char *str = "osfw-unknwon";
+
+	switch (family) {
+	case AF_INET:
+		str = "IPv4";
+		break;
+
+	case AF_INET6:
+		str = "IPv6";
+		break;
+
+	case AF_BRIDGE:
+		str = "eth";
+		break;
+
+	default:
+		LOGN("%s(): Invalid family: %d", __func__, family);
+		break;
+	}
+	return str;
+}
+
 bool nfm_chain_get_ref(int family, const char *table, const char *chain)
 {
 	struct nfm_chain *self = NULL;
@@ -146,11 +170,11 @@ bool nfm_chain_get_ref(int family, const char *table, const char *chain)
 		self = nfm_chain_create(family, table, chain);
 		if (!self) {
 			LOGE("Get reference on chain: create %s chain %s for table %s failed",
-					(family == AF_INET) ? "IPv4" : "IPv6", chain, table);
+					nfm_get_family(family), chain, table);
 			return false;
 		}
 		LOGD("Netfilter %s chain %s is created for table %s",
-				(family == AF_INET) ? "IPv4" : "IPv6", chain, table);
+				nfm_get_family(family), chain, table);
 	}
 	self->nbref++;
 	return true;

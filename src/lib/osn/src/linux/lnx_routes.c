@@ -168,7 +168,8 @@ static struct rtnl_route *nl_create_route(
         const char *dev,
         const char *gw,
         int metric,
-        const char *pref_src)
+        const char *pref_src,
+        uint32_t table)
 {
     struct rtnl_route *route = rtnl_route_alloc();
     if (!route) return NULL;
@@ -191,6 +192,10 @@ static struct rtnl_route *nl_create_route(
     if (pref_src != NULL)
     {
         if (route_add_pref_src(route, pref_src) != 0) goto err;
+    }
+    if (table > 0)
+    {
+        rtnl_route_set_table(route, table);
     }
 
     return route;
@@ -234,7 +239,8 @@ static bool route_action(osn_route4_cfg_t *self, const osn_route4_t *route, bool
         self->if_name,
         route->gw_valid ? FMT_osn_ip_addr(route->gw) : NULL,
         route->metric,
-        route->pref_src_set ? FMT_osn_ip_addr(route->pref_src) : NULL);
+        route->pref_src_set ? FMT_osn_ip_addr(route->pref_src) : NULL,
+        route->table);
 
     if (!nlrt)
     {

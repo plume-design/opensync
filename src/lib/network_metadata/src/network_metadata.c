@@ -33,6 +33,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "memutil.h"
 #include "log.h"
+#include "ovsdb_utils.h"
 #include "network_metadata.h"
 #include "network_metadata_report.h"
 #include "network_metadata.pb-c.h"
@@ -285,6 +286,155 @@ err_free_serialized:
     return NULL;
 }
 
+/**
+ * @brief Generates a data_reports serialized protobuf
+ *
+ * Uses the information pointed by the data_reports parameter to generate
+ * a serialized data report buffer.
+ * The caller is responsible for freeing to the returned serialized data,
+ * @see free_packed_buffer() for this purpose.
+ *
+ * @param data_reports info used to fill up the protobuf.
+ * @return a pointer to the serialized data.
+ */
+struct packed_buffer *
+serialize_data_report_tags(struct str_set *data_reports)
+{
+    struct packed_buffer *serialized;
+    Traffic__DataReportTag *pb;
+    void *buf;
+    size_t len;
+
+    if (data_reports == NULL) return NULL;
+
+    /* Allocate serialization output container */
+    serialized = CALLOC(1, sizeof(struct packed_buffer));
+
+    /* Allocate and set data report protobuf */
+    pb = set_data_report_tags(data_reports);
+    if (pb == NULL) goto err_free_serialized;
+
+    /* Get serialization length */
+    len = traffic__data_report_tag__get_packed_size(pb);
+    if (len == 0) goto err_free_pb;
+
+    /* Allocate space for the serialized buffer */
+    buf = MALLOC(len);
+
+    /* Serialize protobuf */
+    serialized->len = traffic__data_report_tag__pack(pb, buf);
+    serialized->buf = buf;
+
+    /* Free the protobuf structure */
+    free_pb_data_report_tags(pb);
+    FREE(pb);
+
+    /* Return serialized content */
+    return serialized;
+
+err_free_pb:
+    free_pb_data_report_tags(pb);
+    FREE(pb);
+
+err_free_serialized:
+    FREE(serialized);
+
+    return NULL;
+}
+
+/**
+ * @brief Allocates and sets a data report tags protobuf.
+ *
+ * Uses the data reports info to fill a dynamically allocated
+ * flow key protobuf.
+ * The caller is responsible for freeing the returned pointer,
+ * @see free_pb_data_report_tags() for this purpose.
+ *
+ * @param data_reports info used to fill up the protobuf
+ * @return a pointer to a data report tags protobuf structure
+ */
+Traffic__DataReportTag *
+set_data_report_tags(struct str_set *data_reports)
+{
+    Traffic__DataReportTag *pb;
+    char **report_tags;
+    size_t allocated;
+    char **features;
+    size_t nelems;
+    char **pb_tag;
+    size_t i;
+    bool ret;
+
+    if (data_reports == NULL) return NULL;
+
+    /* Allocate the protobuf structure */
+    pb = CALLOC(1, sizeof(*pb));
+
+    /* Initialize the protobuf structure */
+    traffic__data_report_tag__init(pb);
+
+    nelems = data_reports->nelems;
+
+    report_tags = CALLOC(nelems, sizeof(*report_tags));
+
+    pb->features = report_tags;
+    pb_tag = report_tags;
+    features = data_reports->array;
+    allocated = 0;
+    for (i = 0; i < nelems; i++)
+    {
+        ret = str_duplicate(*features, pb_tag);
+        if (!ret) goto err_free_report_tags;
+
+        allocated++;
+        features++;
+        pb_tag++;
+    }
+
+    pb->n_features = nelems;
+
+    return pb;
+
+err_free_report_tags:
+    pb_tag = pb->features;
+    for (i = 0; i < allocated; i++)
+    {
+        FREE(*pb_tag);
+        pb_tag++;
+    }
+    FREE(report_tags);
+    FREE(pb);
+
+    return NULL;
+}
+
+/**
+ * @brief Free a data report tag protobuf structure.
+ *
+ * Free dynamically allocated fields.
+ *
+ * @param pb data report tag structure to free
+ * @return none
+ */
+void
+free_pb_data_report_tags(Traffic__DataReportTag *pb)
+{
+    char **features;
+    size_t i;
+
+    if (pb == NULL) return;
+    CHECK_DOUBLE_FREE(pb);
+
+    features = pb->features;
+    for (i = 0; i < pb->n_features; i++)
+    {
+        FREE(*features);
+        features++;
+    }
+
+    FREE(pb->features);
+
+}
 
 /**
  * @brief Allocates and sets a flow tags protobuf.
@@ -454,6 +604,61 @@ err_free_pb_tags:
     return NULL;
 }
 
+/**
+ * @brief Allocates and sets a table of Data Report protobuf's
+ *
+ * Uses the key info to fill a dynamically allocated
+ * table of data report protobuf'ss.
+ * The caller is responsible for freeing the returned pointer
+ *
+ * @param key info used to fill up the protobuf table
+ * @return a data report tags protobuf pointers table
+ */
+Traffic__DataReportTag **
+set_pb_report_tags(struct flow_key *key)
+{
+    Traffic__DataReportTag **report_tags_pb_tbl;
+    Traffic__DataReportTag **report_tags_pb;
+    struct str_set **report_tags;
+    size_t i, allocated;
+
+    if (key == NULL) return NULL;
+
+    if (key->num_data_report == 0) return NULL;
+
+    /* Allocate the array of report tags */
+    report_tags_pb_tbl = CALLOC(key->num_data_report, sizeof(*report_tags_pb_tbl));
+    if (report_tags_pb_tbl == NULL) return NULL;
+
+    report_tags = key->data_report;
+    report_tags_pb = report_tags_pb_tbl;
+    allocated = 0;
+
+    for (i = 0; i < key->num_data_report; i++)
+    {
+        *report_tags_pb = set_data_report_tags(*report_tags);
+        if (report_tags_pb == NULL) goto err_free_pb_data_report_tags;
+
+        allocated++;
+        report_tags++;
+        report_tags_pb++;
+    }
+
+    return report_tags_pb_tbl;
+
+err_free_pb_data_report_tags:
+    report_tags_pb = report_tags_pb_tbl;
+    for (i = 0; i < allocated; i++)
+    {
+        free_pb_data_report_tags(*report_tags_pb);
+        FREE(*report_tags_pb);
+        report_tags_pb++;
+    }
+
+    FREE(report_tags_pb_tbl);
+
+    return NULL;
+}
 
 /**
  * @brief Allocates and sets a vendor key/value protobuf.
@@ -904,7 +1109,6 @@ serialize_flow_state(struct flow_state *flow_state)
 
     /* Allocate serialization output container */
     serialized = CALLOC(1, sizeof(struct packed_buffer));
-    if (serialized == NULL) return NULL;
 
     /* Allocate and set flow key protobuf */
     pb = set_pb_flowstate(flow_state);
@@ -916,8 +1120,6 @@ serialize_flow_state(struct flow_state *flow_state)
 
     /* Allocate space for the serialized buffer */
     buf = MALLOC(len);
-    if (buf == NULL) goto err_free_pb;
-
     serialized->len = traffic__flow_state__pack(pb, buf);
     serialized->buf = buf;
 
@@ -1019,16 +1221,25 @@ static Traffic__FlowKey *set_flow_key(struct flow_key *key)
         /* Add the flow tags */
         pb->flowtags = set_pb_flow_tags(key);
         net_md_log_acc(key->acc, __func__);
-        if (pb->flowtags == NULL) goto err_free_dstip;
+        if (pb->flowtags == NULL) goto err_free_uplinkname;
 
         pb->n_flowtags = key->num_tags;
+        key->state.report_attrs = false;
+    }
+
+    if (key->num_data_report != 0)
+    {
+        pb->datareporttag = set_pb_report_tags(key);
+        if (pb->datareporttag == NULL) goto err_free_flow_tags;
+
+        pb->n_datareporttag = key->num_data_report;
         key->state.report_attrs = false;
     }
 
     if (key->num_vendor_data != 0)
     {
         pb->vendordata = set_pb_vendor_data(key);
-        if (pb->vendordata == NULL) goto err_free_flow_tags;
+        if (pb->vendordata == NULL) goto err_free_data_report;
 
         pb->n_vendordata = key->num_vendor_data;
         key->state.report_attrs = false;
@@ -1041,6 +1252,14 @@ static Traffic__FlowKey *set_flow_key(struct flow_key *key)
     }
     return pb;
 
+err_free_data_report:
+    for (i = 0; i < pb->n_datareporttag; i++)
+    {
+        free_pb_data_report_tags(pb->datareporttag[i]);
+        FREE(pb->datareporttag[i]);
+    }
+    FREE(pb->datareporttag);
+
 err_free_flow_tags:
     for (i = 0; i < pb->n_flowtags; i++)
     {
@@ -1048,6 +1267,9 @@ err_free_flow_tags:
         FREE(pb->flowtags[i]);
     }
     FREE(pb->flowtags);
+
+err_free_uplinkname:
+    FREE(pb->uplinkname);
 
 err_free_nwid:
     FREE(pb->networkzone);
@@ -1090,6 +1312,7 @@ static void free_pb_flowkey(Traffic__FlowKey *pb)
     FREE(pb->dstmac);
     FREE(pb->srcip);
     FREE(pb->dstip);
+    FREE(pb->uplinkname);
     FREE(pb->networkzone);
 
     for (i = 0; i < pb->n_flowtags; i++)
@@ -1105,6 +1328,13 @@ static void free_pb_flowkey(Traffic__FlowKey *pb)
         FREE(pb->vendordata[i]);
     }
     FREE(pb->vendordata);
+
+    for (i = 0; i < pb->n_datareporttag; i++)
+    {
+        free_pb_data_report_tags(pb->datareporttag[i]);
+        FREE(pb->datareporttag[i]);
+    }
+    FREE(pb->datareporttag);
 
     FREE(pb->flowstate);
 }

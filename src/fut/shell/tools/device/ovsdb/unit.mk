@@ -34,6 +34,7 @@ UNIT_DIR := shell/tools/device/ovsdb
 UNIT_FILE := get_ovsdb_entry_value.sh
 UNIT_FILE += get_radio_mac_from_ovsdb.sh
 UNIT_FILE += get_vif_mac_from_ovsdb.sh
+UNIT_FILE += insert_ovsdb_entry.sh
 UNIT_FILE += update_ovsdb_entry.sh
 UNIT_FILE += wait_ovsdb_entry.sh
 UNIT_FILE += check_ovsdb_table_field_exists.sh

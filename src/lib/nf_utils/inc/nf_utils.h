@@ -99,6 +99,7 @@ struct nfq_pkt_info
     size_t             payload_len;
     void               *payload;
     int                flow_mark;
+    uint32_t           mark_policy;
     uint16_t           rx_vidx;
     uint16_t           tx_vidx;
     uint16_t           rx_pidx;
@@ -180,7 +181,8 @@ struct nfqueue_ctxt
     ds_tree_node_t  nfq_tnode;
 };
 
-int nf_queue_set_dpi_mark(struct net_header_parser *net_hdr, int mark);
+int nf_queue_set_dpi_mark(struct net_header_parser *net_hdr,
+                          struct dpi_mark_policy *mark_policy);
 
 bool nf_queue_init();
 
@@ -190,7 +192,8 @@ void nf_queue_close(uint32_t queue_num);
 
 void nf_queue_exit(void);
 
-bool nf_queue_set_ct_mark(uint32_t packet_id, int flow_mark, uint32_t queue_num);
+bool nf_queue_set_ct_mark(uint32_t packet_id, struct dpi_mark_policy *mark_policy,
+                          uint32_t queue_num);
 
 bool nf_queue_set_nlsock_buffsz(uint32_t queue_num, uint32_t sock_buff_sz);
 

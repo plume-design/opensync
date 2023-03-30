@@ -41,6 +41,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "unity.h"
 #include "test_network_metadata.h"
 #include "qm_conn.h"
+#include "ovsdb_utils.h"
 
 struct test_network_data_report g_nd_test;
 
@@ -427,7 +428,7 @@ void test_net_md_report_teardown(void)
 /**
  * @brief emits a protobuf report
  *
- * Assumes the presenece of QM to send the report on non native platforms,
+ * Assumes the presence of QM to send the report on non native platforms,
  * simply resets the aggregator content for native target.
  * @param aggr the aggregator
  */
@@ -1577,6 +1578,80 @@ test_flow_tags_one_key(void)
     FREE(aggr);
 }
 
+void
+test_report_tags_one_key(void)
+{
+    struct net_md_aggregator_set *aggr_set;
+    struct net_md_stats_accumulator *acc;
+    struct flow_counters counters[1];
+    struct net_md_aggregator *aggr;
+    struct net_md_flow_key *key;
+    struct str_set **tags;
+    struct str_set *tag;
+    struct flow_key *fkey;
+    bool ret;
+
+    TEST_ASSERT_TRUE(g_nd_test.initialized);
+    counters[0].bytes_count = 10000;
+    counters[0].packets_count = 100;
+
+    /* Allocate aggregator */
+    aggr_set = &g_nd_test.aggr_set;
+    aggr_set->report_type = NET_MD_REPORT_RELATIVE;
+    aggr = net_md_allocate_aggregator(aggr_set);
+    TEST_ASSERT_NOT_NULL(aggr);
+
+    /* Activate aggregator window */
+    ret = net_md_activate_window(aggr);
+    TEST_ASSERT_TRUE(ret);
+
+    /* Add one sample */
+    key = g_nd_test.net_md_keys[5];
+    key->direction = NET_MD_ACC_OUTBOUND_DIR;
+    key->originator = NET_MD_ACC_ORIGINATOR_SRC;
+    ret = net_md_add_sample(aggr, key, counters);
+    TEST_ASSERT_TRUE(ret);
+
+    /* Validate the state of the accumulator bound to the key */
+    acc = net_md_lookup_acc(aggr, key);
+    acc->direction = NET_MD_ACC_OUTBOUND_DIR;
+    acc->originator = NET_MD_ACC_ORIGINATOR_SRC;
+    TEST_ASSERT_NOT_NULL(acc);
+    fkey = acc->fkey;
+    TEST_ASSERT_NOT_NULL(fkey);
+
+    /* Add a flow tag to the key */
+    fkey->num_data_report = 1;
+    fkey->data_report = CALLOC(1, sizeof(*fkey->data_report));
+    TEST_ASSERT_NOT_NULL(fkey->data_report);
+
+    tag = CALLOC(1, sizeof(*tag));
+    TEST_ASSERT_NOT_NULL(tag);
+
+    tag->nelems = 2;
+    tag->array = CALLOC(tag->nelems, sizeof(tags));
+    TEST_ASSERT_NOT_NULL(tag->array);
+
+    tag->array[0] = strdup("APP Priority");
+    TEST_ASSERT_NOT_NULL(tag->array[0]);
+
+    tag->array[1] = strdup("QOS Policy");
+    TEST_ASSERT_NOT_NULL(tag->array[1]);
+
+    *(fkey->data_report) = tag;
+
+    /* Close the active window */
+    ret = net_md_close_active_window(aggr);
+    TEST_ASSERT_TRUE(ret);
+
+    /* Emit the report */
+    test_emit_report(aggr);
+
+    /* Free aggregator */
+    net_md_free_aggregator(aggr);
+    FREE(aggr);
+}
+
 
 void
 test_vendor_data_one_key(void)
@@ -2061,7 +2136,7 @@ test_vendor_data_serialize_deserialize(void)
         kvp++;
     }
     vd1 = CALLOC(1, sizeof(struct flow_vendor_data));
-    vd1->vendor = strdup("vendor1");
+    vd1->vendor = strdup("vendor123");
     TEST_ASSERT_NOT_NULL(vd1->vendor);
     vd1->nelems = 3;
     vd1->kv_pairs = kvps1;
@@ -2139,7 +2214,7 @@ test_vendor_data_serialize_deserialize(void)
 
     test_emit_report(aggr_in);
 
-    /* Allocate the receiving aggregator */
+    // /* Allocate the receiving aggregator */
     aggr_out = net_md_allocate_aggregator(aggr_set);
     TEST_ASSERT_NOT_NULL(aggr_out);
 
@@ -2147,7 +2222,138 @@ test_vendor_data_serialize_deserialize(void)
     ret = net_md_activate_window(aggr_out);
     TEST_ASSERT_TRUE(ret);
 
-    /* Transfer tags and vendor data */
+    // /* Transfer tags and vendor data */
+    net_md_update_aggr(aggr_out, &recv_pb);
+
+    /* Free the serialized container */
+    free_packed_buffer(pb);
+    FREE(pb);
+    ret = net_md_close_active_window(aggr_out);
+
+    test_emit_report(aggr_out);
+
+    /* Free aggregators */
+    net_md_free_aggregator(aggr_in);
+    FREE(aggr_in);
+    net_md_free_aggregator(aggr_out);
+    FREE(aggr_out);
+}
+
+
+void
+test_report_data_serialize_deserialize(void)
+{
+    struct net_md_aggregator_set *aggr_set;
+    struct net_md_stats_accumulator *acc;
+    struct flow_counters counters[1];
+    struct net_md_aggregator *aggr_out;
+    struct net_md_aggregator *aggr_in;
+    struct net_md_flow_key *key;
+    struct flow_key *fkey;
+    bool ret;
+
+    struct packed_buffer recv_pb;
+    struct packed_buffer *pb;
+    struct flow_tags **tags;
+    struct flow_tags *tag;
+
+    struct str_set **report_tags;
+    struct str_set *report_tag;
+
+    TEST_ASSERT_TRUE(g_nd_test.initialized);
+    counters[0].bytes_count = 10000;
+    counters[0].packets_count = 100;
+
+    /* Allocate aggregator */
+    aggr_set = &g_nd_test.aggr_set;
+    aggr_set->report_type = NET_MD_REPORT_RELATIVE;
+    aggr_in = net_md_allocate_aggregator(aggr_set);
+    TEST_ASSERT_NOT_NULL(aggr_in);
+
+    /* Activate aggregator window */
+    ret = net_md_activate_window(aggr_in);
+    TEST_ASSERT_TRUE(ret);
+
+    /* Add one sample */
+    key = g_nd_test.net_md_keys[5];
+    ret = net_md_add_sample(aggr_in, key, counters);
+    TEST_ASSERT_TRUE(ret);
+
+    /* Validate the state of the accumulator bound to the key */
+    acc = net_md_lookup_acc(aggr_in, key);
+    acc->direction = NET_MD_ACC_OUTBOUND_DIR;
+    acc->originator = NET_MD_ACC_ORIGINATOR_SRC;
+    TEST_ASSERT_NOT_NULL(acc);
+    fkey = acc->fkey;
+    TEST_ASSERT_NOT_NULL(fkey);
+
+    /* Add a flow tag to the key */
+    fkey->num_tags = 1;
+    fkey->tags = CALLOC(fkey->num_tags, sizeof(*fkey->tags));
+    TEST_ASSERT_NOT_NULL(fkey->tags);
+
+    tag = CALLOC(1, sizeof(*tag));
+    TEST_ASSERT_NOT_NULL(tag);
+
+    tag->vendor = strdup("Plume");
+    TEST_ASSERT_NOT_NULL(tag->vendor);
+
+    tag->app_name = strdup("Plume App");
+    TEST_ASSERT_NOT_NULL(tag->app_name);
+
+    tag->nelems = 2;
+    tag->tags = CALLOC(tag->nelems, sizeof(tags));
+    TEST_ASSERT_NOT_NULL(tag->tags);
+
+    tag->tags[0] = strdup("Plume Tag0");
+    TEST_ASSERT_NOT_NULL(tag->tags[0]);
+
+    tag->tags[1] = strdup("Plume Tag1");
+    TEST_ASSERT_NOT_NULL(tag->tags[1]);
+
+    *(fkey->tags) = tag;
+
+    /* Add report tags to the key */
+    fkey->num_data_report = 1;
+    fkey->data_report = CALLOC(fkey->num_data_report, sizeof(*fkey->data_report));
+    TEST_ASSERT_NOT_NULL(fkey->data_report);
+
+    report_tag = CALLOC(1, sizeof(*report_tag));
+    TEST_ASSERT_NOT_NULL(report_tag);
+
+    report_tag->nelems = 2;
+    report_tag->array = CALLOC(report_tag->nelems, sizeof(report_tags));
+
+    report_tag->array[0] = strdup("App prioritization");
+    TEST_ASSERT_NOT_NULL(report_tag->array[0]);
+
+    report_tag->array[1] = strdup("QOS");
+    TEST_ASSERT_NOT_NULL(report_tag->array[1]);
+
+    (*fkey->data_report) = report_tag;
+
+
+    /* Close the active window */
+    ret = net_md_close_active_window(aggr_in);
+    TEST_ASSERT_TRUE(ret);
+
+    pb = serialize_flow_report(aggr_in->report);
+    TEST_ASSERT_NOT_NULL(pb);
+
+    recv_pb.len = pb->len;
+    recv_pb.buf = pb->buf;
+
+    test_emit_report(aggr_in);
+
+    // /* Allocate the receiving aggregator */
+    aggr_out = net_md_allocate_aggregator(aggr_set);
+    TEST_ASSERT_NOT_NULL(aggr_out);
+
+    /* Activate the receiving aggregator window */
+    ret = net_md_activate_window(aggr_out);
+    TEST_ASSERT_TRUE(ret);
+
+    // /* Transfer tags and vendor data */
     net_md_update_aggr(aggr_out, &recv_pb);
 
     /* Free the serialized container */
@@ -2843,7 +3049,7 @@ test_reverse_lookup_acc(void)
 /**
  * @brief validates originator and direction of aggregator
  *
- * test validates orginator and direction of aggregator and generated
+ * test validates originator and direction of aggregator and generated
  * aggregator from protobuf.
  */
 void
@@ -3154,9 +3360,11 @@ test_network_metadata_reports(void)
     RUN_TEST(test_activate_and_free_aggr);
     RUN_TEST(test_bogus_ttl);
     RUN_TEST(test_flow_tags_one_key);
+    RUN_TEST(test_report_tags_one_key);
     RUN_TEST(test_vendor_data_one_key);
     RUN_TEST(test_flow_key_to_net_md_key);
     RUN_TEST(test_vendor_data_serialize_deserialize);
+    RUN_TEST(test_report_data_serialize_deserialize);
     RUN_TEST(test_update_flow_tags);
     RUN_TEST(test_update_vendor_data);
     RUN_TEST(test_update_filter_flow_tags);

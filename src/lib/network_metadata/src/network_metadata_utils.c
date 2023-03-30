@@ -33,8 +33,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "log.h"
 #include "memutil.h"
+#include "ovsdb_utils.h"
 #include "network_metadata_report.h"
 #include "sockaddr_storage.h"
+#include "data_report_tags.h"
 
 /**
  * @brief compares 2 flow keys'ethernet content
@@ -365,6 +367,33 @@ free_flow_key_tags(struct flow_key *key)
     FREE(key->tags);
 }
 
+static void
+free_flow_key_data_report(struct str_set *data_report)
+{
+    size_t i;
+
+    CHECK_DOUBLE_FREE(data_report);
+
+    for (i = 0; i < data_report->nelems; i++) FREE(data_report->array[i]);
+    FREE(data_report->array);
+}
+
+void
+free_flow_key_data_reports(struct flow_key *key)
+{
+    size_t i;
+
+    CHECK_DOUBLE_FREE(key);
+
+    for (i = 0; i < key->num_data_report; i++)
+    {
+        free_flow_key_data_report(key->data_report[i]);
+        FREE(key->data_report[i]);
+    }
+
+    FREE(key->data_report);
+}
+
 void
 free_flow_key_vendor_data(struct flow_vendor_data *vd)
 {
@@ -418,6 +447,7 @@ free_flow_key(struct flow_key *key)
 
     free_flow_key_tags(key);
     free_flow_key_vdr_data(key);
+    free_flow_key_data_reports(key);
 }
 
 
@@ -555,6 +585,8 @@ struct net_md_flow_key * set_net_md_flow_key(struct net_md_flow_key *lkey)
     key->icmp_idt = lkey->icmp_idt;
     key->rx_idx = lkey->rx_idx;
     key->tx_idx = lkey->tx_idx;
+    key->flags = lkey->flags;
+
     return key;
 
 err_free_src_ip:
@@ -677,7 +709,13 @@ void net_md_free_acc(struct net_md_stats_accumulator *acc)
     free_flow_key(acc->fkey);
     FREE(acc->fkey);
     if (acc->free_plugins != NULL) acc->free_plugins(acc);
-    // dpi_plugins tree for the acc is set to NULL.
+
+    /* Clean up rev_acc's dereference */
+    if (acc->rev_acc != NULL)
+    {
+        acc->rev_acc->rev_acc = NULL;
+    }
+    acc->rev_acc = NULL;
     acc->dpi_plugins = NULL;
 }
 
@@ -701,6 +739,7 @@ net_md_set_acc(struct net_md_aggregator *aggr,
     acc->fkey->acc = acc;
     acc->fkey->state.report_attrs = true;
 
+    acc->flags = (key->flags & (NET_MD_ACC_ETH | NET_MD_ACC_FIVE_TUPLE));
     if (aggr->on_acc_create != NULL) aggr->on_acc_create(aggr, acc);
     acc->aggr = aggr;
 
@@ -766,7 +805,7 @@ net_md_set_eth_pair(struct net_md_aggregator *aggr,
     os_ufid_t *ufid;
 
     if (key == NULL) return NULL;
-    if (key->flags == NET_MD_ACC_LOOKUP_ONLY) return NULL;
+    if (key->flags & NET_MD_ACC_LOOKUP_ONLY) return NULL;
 
     eth_pair = CALLOC(1, sizeof(*eth_pair));
     if (eth_pair == NULL) return NULL;
@@ -778,6 +817,8 @@ net_md_set_eth_pair(struct net_md_aggregator *aggr,
     key->ufid = ufid;
 
     if (eth_pair->mac_stats == NULL) goto err_free_eth_pair;
+
+    eth_pair->mac_stats->flags |= NET_MD_ACC_ETH;
 
     ds_tree_init(&eth_pair->ethertype_flows, net_md_eth_flow_cmp,
                  struct net_md_flow, flow_node);
@@ -813,7 +854,7 @@ net_md_tree_lookup_acc(struct net_md_aggregator *aggr,
     if (flow != NULL) return flow->tuple_stats;
 
     /* Return if the acc creation is not requested */
-    if (key->flags == NET_MD_ACC_LOOKUP_ONLY) return NULL;
+    if (key->flags & NET_MD_ACC_LOOKUP_ONLY) return NULL;
 
     /* Allocate flow */
     flow = CALLOC(1, sizeof(*flow));
@@ -842,9 +883,18 @@ net_md_lookup_acc_from_pair(struct net_md_aggregator *aggr,
                             struct net_md_flow_key *key)
 {
     ds_tree_t *tree;
+    bool eth_only;
 
     /* Check if the key refers to a L2 flow */
-    tree = is_eth_only(key) ? &pair->ethertype_flows : &pair->five_tuple_flows;
+    eth_only = is_eth_only(key);
+    if (eth_only)
+    {
+        tree = &pair->ethertype_flows;
+    }
+    else
+    {
+        tree = &pair->five_tuple_flows;
+    }
 
     return net_md_tree_lookup_acc(aggr, tree, key);
 }
@@ -865,6 +915,7 @@ struct net_md_eth_pair * net_md_lookup_eth_pair(struct net_md_aggregator *aggr,
                                                 struct net_md_flow_key *key)
 {
     struct net_md_eth_pair *eth_pair;
+    bool mark_key_as_eth;
     bool has_eth;
 
     if (aggr == NULL) return NULL;
@@ -874,8 +925,19 @@ struct net_md_eth_pair * net_md_lookup_eth_pair(struct net_md_aggregator *aggr,
     eth_pair = ds_tree_find(&aggr->eth_pairs, key);
     if (eth_pair != NULL) return eth_pair;
 
+    if (key->flags & NET_MD_ACC_LOOKUP_ONLY) return NULL;
+
     /* Allocate and insert a new ethernet pair */
+    mark_key_as_eth = (!(key->flags & NET_MD_ACC_ETH));
+    if (mark_key_as_eth)
+    {
+        key->flags |= NET_MD_ACC_ETH;
+    }
     eth_pair = net_md_set_eth_pair(aggr, key);
+    if (mark_key_as_eth)
+    {
+        key->flags &= ~NET_MD_ACC_ETH;
+    }
     if (eth_pair == NULL) return NULL;
 
     ds_tree_insert(&aggr->eth_pairs, eth_pair, eth_pair->mac_stats->key);
@@ -894,7 +956,15 @@ net_md_lookup_eth_acc(struct net_md_aggregator *aggr,
     if (aggr == NULL) return NULL;
 
     eth_pair = net_md_lookup_eth_pair(aggr, key);
-    if (eth_pair == NULL) return NULL;
+    if (eth_pair == NULL)
+    {
+        return NULL;
+    }
+
+    if (key->flags & NET_MD_ACC_ETH)
+    {
+        return eth_pair->mac_stats;
+    }
 
     acc = net_md_lookup_acc_from_pair(aggr, eth_pair, key);
     if (acc != NULL) acc->aggr = aggr;
@@ -942,7 +1012,8 @@ net_md_lookup_reverse_acc(struct net_md_aggregator *aggr,
     rkey.ipprotocol = okey->ipprotocol;
     rkey.sport = okey->dport;
     rkey.dport = okey->sport;
-    rkey.flags = NET_MD_ACC_LOOKUP_ONLY;
+    rkey.flags = okey->flags;
+    rkey.flags |= NET_MD_ACC_LOOKUP_ONLY;
     reverse_acc = net_md_lookup_acc(aggr, &rkey);
 
     return reverse_acc;
@@ -1028,9 +1099,9 @@ bool net_md_add_sample_to_window(struct net_md_aggregator *aggr,
     struct flow_counters *to;
     struct flow_counters *from;
 
-
     window = net_md_active_window(aggr);
     if (window == NULL) return false;
+    if (IS_NULL_PTR(window->flow_stats)) return false;
 
     if (aggr->report_filter != NULL)
     {
@@ -1451,7 +1522,7 @@ pbkeydir2net_md_key_dir(Traffic__FlowKey *pb_key, struct net_md_flow_key *key)
 /**
  * @brief: translates protobuf key structure in a net_md_flow_key
  *
- * @param aggr the aggregator the ky will check against
+ * @param aggr the aggregator the key will check against
  * @param in_key the reader friendly key2net
  * @return a pointer to a net_md_flow_key
  */
@@ -1583,6 +1654,55 @@ net_md_set_tags(struct flow_tags *tag,
     return 0;
 }
 
+static void
+net_md_set_data_report_tag(struct net_md_stats_accumulator *acc, Traffic__FlowKey *flowkey_pb)
+{
+    struct net_md_flow_info info;
+    struct str_set *data_report;
+    struct str_set *report_set;
+    struct flow_key *fkey;
+    int rc;
+    size_t i;
+
+    MEMZERO(info);
+    rc = net_md_get_flow_info(acc, &info);
+    if (!rc)
+    {
+        LOGD("%s(): Failed to find flow information", __func__);
+        return;
+    }
+
+    if (info.local_mac == NULL)
+    {
+        LOGD("%s(): Failed to find MAC address", __func__);
+        return;
+    }
+
+    LOGN("%s(): fetching data report tags for " PRI_os_macaddr_lower_t " ", __func__,
+         FMT_os_macaddr_pt(info.local_mac));
+    report_set = data_report_tags_get_tags(info.local_mac);
+    if (report_set == NULL)
+    {
+        LOGN("%s(): report details are empty for mac " PRI_os_macaddr_lower_t " ", __func__,
+             FMT_os_macaddr_pt(info.local_mac));
+        return;
+    }
+
+    fkey = acc->fkey;
+    fkey->num_data_report = 1;
+    fkey->data_report = CALLOC(fkey->num_data_report, sizeof(*fkey->data_report));
+
+    data_report = CALLOC(1, sizeof(*data_report));
+    data_report->nelems = report_set->nelems;
+    data_report->array = CALLOC(data_report->nelems, sizeof(*data_report->array));
+    for (i = 0; i < data_report->nelems; i++)
+    {
+        data_report->array[i] = STRDUP(report_set->array[i]);
+    }
+
+    (*fkey->data_report) = data_report;
+    return;
+}
 
 static void
 net_md_update_flow_tags(struct flow_key *fkey, Traffic__FlowKey *flowkey_pb)
@@ -1933,6 +2053,9 @@ net_md_update_flow_key(struct net_md_aggregator *aggr,
     acc->key->direction = acc->direction;
     fkey->direction = acc->direction;
 
+    /* Update report tags */
+    net_md_set_data_report_tag(acc, flowkey_pb);
+
     LOGD("%s: acc updated", __func__);
     net_md_log_acc(acc, __func__);
 
@@ -2147,7 +2270,8 @@ net_md_log_key(struct net_md_flow_key *key, const char *caller)
          " origin: %s"                    \
          " flowmarker: %d"                \
          " rx_if_idx: %d"                 \
-         " tx_if_idx: %d",
+         " tx_if_idx: %d"                 \
+         " flags: 0x%x",
          FMT_os_macaddr_pt(smac),
          FMT_os_macaddr_pt(dmac),
          FMT_os_ufid_t_pt(ufid),
@@ -2165,7 +2289,8 @@ net_md_log_key(struct net_md_flow_key *key, const char *caller)
          net_md_origin_to_str(key->originator),
          key->flowmarker,
          key->rx_idx,
-         key->tx_idx
+         key->tx_idx,
+         key->flags
         );
     if (key->fstart) LOGD(" Flow Starts");
     if (key->fend) LOGD(" Flow Ends");
@@ -2181,6 +2306,7 @@ net_md_log_key(struct net_md_flow_key *key, const char *caller)
 void
 net_md_log_fkey(struct flow_key *fkey, const char *caller)
 {
+    struct str_set *data_report;
     struct flow_tags *ftag;
     size_t i, j;
 
@@ -2237,6 +2363,16 @@ net_md_log_fkey(struct flow_key *fkey, const char *caller)
                  j, ftag->tags[j]);
         }
     }
+
+    for (i = 0; i < fkey->num_data_report; i++)
+    {
+        data_report = fkey->data_report[i];
+        for (j = 0; j < data_report->nelems; j++)
+        {
+            LOGD("data_report[%zu]: %s", j, data_report->array[j]);
+        }
+    }
+    
 }
 
 
@@ -2264,7 +2400,7 @@ net_md_log_acc(struct net_md_stats_accumulator *acc, const char *caller)
     LOGD("%s: caller: %s, acc %p", __func__, caller, acc);
     LOGD("%s: Printing key => net_md_flow_key :: fkey => flow_key",
          __func__);
-    LOGD("------------");
+    LOGD("%s: ------------", __func__);
 
     net_md_log_key(key, caller);
 
@@ -2277,6 +2413,11 @@ net_md_log_acc(struct net_md_stats_accumulator *acc, const char *caller)
          __func__,
          acc->counters.packets_count,
          acc->counters.bytes_count);
+    LOGD("%s: flags: ", __func__);
+    if (acc->flags & NET_MD_ACC_ETH) LOGD("%s: ethernet acc", __func__);
+    if (acc->flags & NET_MD_ACC_FIVE_TUPLE) LOGD("%s: five tuple", __func__);
+    if (acc->flags & NET_MD_ACC_FIRST_LEG) LOGD("%s: first leg", __func__);
+    if (acc->flags & NET_MD_ACC_SECOND_LEG) LOGD("%s: second leg", __func__);
 }
 
 
@@ -2426,6 +2567,9 @@ net_md_get_flow_info(struct net_md_stats_accumulator *acc,
 
     info->ip_version = key->ip_version;
     info->direction = key->direction;
+    info->ipprotocol = key->ipprotocol;
+    info->ethertype = key->ethertype;
+    info->vlan_id = key->vlan_id;
 
     switch (acc->direction)
     {

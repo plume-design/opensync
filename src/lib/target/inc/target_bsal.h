@@ -114,7 +114,7 @@ typedef struct {
 } bsal_neigh_info_t;
 
 typedef struct {
-    bsal_neigh_info_t       neigh[BSAL_MAX_TM_NEIGHBORS];
+    bsal_neigh_info_t       *neigh;
 
     int                     num_neigh;
     uint8_t                 valid_int;
@@ -158,6 +158,7 @@ typedef enum {
     BSAL_EVENT_AUTH_FAIL, /**< reported when station is rejected by driver */
     BSAL_EVENT_ACTION_FRAME, /**< received action frame */
     BSAL_EVENT_BTM_STATUS, /**< BTM status */
+    BSAL_EVENT_SOCKET_OVERRUN, /**< When underlying transport buffers overrun */
 
     BSAL_EVENT_DEBUG_CHAN_UTIL  = 128, /**< deprecated */
     BSAL_EVENT_DEBUG_RSSI /**< deprecated */
@@ -547,6 +548,24 @@ int target_bsal_rrm_set_neighbor(const char *ifname,
  */
 int target_bsal_rrm_remove_neighbor(const char *ifname,
                                     const bsal_neigh_info_t *nr);
+
+/**
+ * @brief Requests target to provide neighbor list
+ *
+ * This is required for AP to handle BTM Query Request
+ * frames, ie. when clients actively seek roaming
+ * information from the AP they are connected to.
+ *
+ * @param ifname Wireless interface name the client is connected on
+ * @param nrs Neighbor info array to fill in, allocated with max_nr_cnt entries
+ * @param nr_cnt Number of retrieved neighbors
+ * @param max_nr_cnt Maximum number of retrieved neighbors
+ * @return 0 is treated as success, anything else is an error
+ */
+int target_bsal_rrm_get_neighbors(const char *ifname,
+                                  bsal_neigh_info_t *nrs,
+                                  unsigned int *nr_cnt,
+                                  const unsigned int max_nr_cnt);
 
 /**
  * @brief Request target to send action frame

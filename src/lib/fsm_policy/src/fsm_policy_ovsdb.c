@@ -239,6 +239,11 @@ fsm_free_rules(struct fsm_policy_rules *rules)
     rules->ip_rule_present = false;
     rules->ip_op = -1;
     free_str_set(rules->ipaddrs);
+
+    /* Reset app check */
+    rules->app_rule_present = false;
+    rules->app_op = -1;
+    free_str_set(rules->apps);
 }
 
 
@@ -319,6 +324,7 @@ bool fsm_set_fqdn_rules(struct fsm_policy_rules *rules,
     check = fsm_check_conversion(rules->fqdns, spolicy->fqdns_len);
     return check;
 }
+
 
 bool fsm_set_cats_rules(struct fsm_policy_rules *rules,
                         struct schema_FSM_Policy *spolicy)
@@ -427,6 +433,31 @@ fsm_set_ip_rules(struct fsm_policy_rules *rules,
 }
 
 
+bool fsm_set_app_rules(struct fsm_policy_rules *rules,
+                       struct schema_FSM_Policy *spolicy)
+{
+    int cmp;
+    bool check;
+
+    rules->app_rule_present = spolicy->app_op_exists;
+    if (!rules->app_rule_present) return true;
+
+    rules->app_op = -1;
+    cmp = strcmp(spolicy->app_op, "in");
+    if (!cmp) rules->app_op = APP_OP_IN;
+
+    cmp = strcmp(spolicy->app_op, "out");
+    if (!cmp) rules->app_op = APP_OP_OUT;
+
+    if (rules->app_op == -1) return false;
+
+    rules->apps = schema2str_set(sizeof(spolicy->apps[0]),
+                                 spolicy->apps_len,
+                                 spolicy->apps);
+    check = fsm_check_conversion(rules->apps, spolicy->apps_len);
+    return check;
+}
+
 /**
  * @brief instantiates a policy rule
  *
@@ -455,6 +486,9 @@ fsm_set_rules(struct fsm_policy_rules *rules,
     if (!ret) goto err_free_rules;
 
     ret = fsm_set_ip_rules(rules, spolicy);
+    if (!ret) goto err_free_rules;
+
+    ret = fsm_set_app_rules(rules, spolicy);
     if (!ret) goto err_free_rules;
 
     return true;

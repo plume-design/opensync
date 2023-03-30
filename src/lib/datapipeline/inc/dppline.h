@@ -46,6 +46,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "dpp_bs_client.h"
 #include "dpp_rssi.h"
 #include "dpp_client_auth_fails.h"
+#include "dpp_radius_stats.h"
 
 #ifdef CONFIG_MANAGER_QM
 // QM does queue-ing of reports when offline on it's own, so dpp needs
@@ -106,6 +107,11 @@ bool dpp_put_rssi(dpp_rssi_report_data_t *rpt);
  * Insert Client authentication failures stats into dpp internal queue
  */
 bool dpp_put_client_auth_fails(dpp_client_auth_fails_report_data_t *rpt);
+
+/*
+ * Insert RADIUS stats into dpp internal queue
+ */
+bool dpp_put_radius_stats(dpp_radius_stats_report_data_t *rpt);
 
 /*
  * Get the protobuf packed buffer

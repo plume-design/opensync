@@ -29,9 +29,14 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <sys/wait.h>
 #include <net/if.h>
 #include <arpa/inet.h>
+#include <net/if_arp.h>
+#include <linux/ethtool.h>
+#include <linux/sockios.h>
 
 #include <stdlib.h>
 #include <errno.h>
+
+#include <ev.h>
 
 #include "const.h"
 #include "log.h"
@@ -39,10 +44,15 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "lnx_netif.h"
 
+/* Maximum time between two state updates (in seconds) */
+#define OSN_STATE_UPDATE_TIMEOUT (5.0)
+
 static lnx_netlink_fn_t lnx_netif_nl_fn;
 static void lnx_netif_status_poll(lnx_netif_t *self);
 static int lnx_netif_socket(void);
 static bool lnx_netif_ioctl(const char *ifname, int cmd, struct ifreq *req);
+static void lnx_netif_set_timer(void *data);
+static void lnx_netif_stop_timer(void);
 
 /*
  * ===========================================================================
@@ -79,6 +89,9 @@ bool lnx_netif_init(lnx_netif_t *self, const char *ifname)
     lnx_netlink_set_ifname(&self->ni_netlink, self->ni_ifname);
     lnx_netlink_set_events(&self->ni_netlink, LNX_NETLINK_LINK);
 
+    /* init and kick off the timer for status polling */
+    lnx_netif_set_timer(self);
+
     return true;
 }
 
@@ -95,6 +108,8 @@ bool lnx_netif_fini(lnx_netif_t *self)
         LOG(ERR, "netif: %s: Error destroying netlink object.", self->ni_ifname);
         retval = false;
     }
+
+    lnx_netif_stop_timer();
 
     memset(self, 0, sizeof(*self));
 
@@ -137,6 +152,8 @@ bool lnx_netif_apply(lnx_netif_t *self)
 
     bool retval = true;
 
+    LOGT("%s(): configuring interface %s", __func__, self->ni_ifname);
+
     /* First of all, check if the interface exists. If it does not, just return */
     if (!lnx_netif_ioctl(self->ni_ifname, SIOCGIFINDEX, &ifr))
     {
@@ -160,6 +177,10 @@ bool lnx_netif_apply(lnx_netif_t *self)
     {
         /* Copy the mac address */
         memcpy(&ifr.ifr_addr.sa_data, self->ni_hwaddr.ma_addr, sizeof(self->ni_hwaddr.ma_addr));
+        ifr.ifr_hwaddr.sa_family = ARPHRD_ETHER;
+        LOGT("%s(): setting mac address " PRI_osn_mac_addr " on interface %s", __func__,
+             FMT_osn_mac_addr(self->ni_hwaddr), self->ni_ifname);
+
         if (!lnx_netif_ioctl(self->ni_ifname, SIOCSIFHWADDR, &ifr))
         {
             LOG(NOTICE, "netif: %s: Unable to set MAC address "PRI_osn_mac_addr,
@@ -238,6 +259,9 @@ void lnx_netif_status_poll(lnx_netif_t *self)
 {
     unsigned int if_idx;
     struct ifreq ifr;
+    struct ethtool_cmd etl_cmd;
+
+    lnx_netif_stop_timer();
 
     LOG(DEBUG, "netif: %s: Interface status update.", self->ni_ifname);
 
@@ -281,6 +305,12 @@ void lnx_netif_status_poll(lnx_netif_t *self)
         self->ni_status.ns_mtu = ifr.ifr_mtu;
     }
 
+    /* Retrieve interface index */
+    if (lnx_netif_ioctl(self->ni_ifname, SIOCGIFINDEX, &ifr))
+    {
+        self->ni_status.ns_index = ifr.ifr_ifindex;
+    }
+
     /* Retrieve hardware address */
     self->ni_status.ns_hwaddr = OSN_MAC_ADDR_INIT;
     if (lnx_netif_ioctl(self->ni_ifname, SIOCGIFHWADDR, &ifr))
@@ -290,9 +320,38 @@ void lnx_netif_status_poll(lnx_netif_t *self)
                 sizeof(self->ni_status.ns_hwaddr.ma_addr));
     }
 
+    /* Retrieve link speed/duplex */
+    memset(&etl_cmd, 0x00, sizeof(etl_cmd));
+    etl_cmd.cmd = ETHTOOL_GSET;
+    ifr.ifr_data = (void *) &etl_cmd;
+    if (lnx_netif_ioctl(self->ni_ifname, SIOCETHTOOL, &ifr))
+    {
+        self->ni_status.ns_speed = (etl_cmd.speed_hi << 16) | (etl_cmd.speed);
+        switch (etl_cmd.duplex)
+        {
+            case DUPLEX_FULL:
+                self->ni_status.ns_duplex = OSN_DUPLEX_FULL;
+                break;
+            case DUPLEX_HALF:
+                self->ni_status.ns_duplex = OSN_DUPLEX_HALF;
+                break;
+            default:
+                self->ni_status.ns_duplex = OSN_DUPLEX_UNKNOWN;
+        }
+    }
+    else
+    {
+        self->ni_status.ns_duplex = OSN_DUPLEX_UNKNOWN;
+        self->ni_status.ns_speed = -1;
+    }
+    ifr.ifr_data = NULL;
+
     /* Execute the callback */
     if (self->ni_status_fn != NULL)
         self->ni_status_fn(self, &self->ni_status);
+
+    /* Restart the timer (we might come here because of a netlink event) */
+    lnx_netif_set_timer(NULL);
 }
 
 /*
@@ -350,4 +409,59 @@ bool lnx_netif_ioctl(const char *ifname, int cmd, struct ifreq *req)
     if (ioctl(s, cmd, (void *)req) < 0) return false;
 
     return true;
+}
+
+/*
+ * ===========================================================================
+ *  Timer functions (private)
+ * ===========================================================================
+ */
+
+/*
+ * Timer callback - changing the duplex doesn't trigger a netlink event,
+ * so we do it periodically with a timer.
+ */
+static void lnx_netif_timer_cb(struct ev_loop *loop, ev_timer *w, int revents)
+{
+    (void)revents;
+
+    lnx_netif_status_poll((lnx_netif_t *) w->data);
+}
+
+/*
+ * Return an evlib timer object. On first call initialize it and kick it off.
+ */
+static ev_timer *lnx_netif_get_timer(void)
+{
+    static ev_timer timer;
+    static bool init = true;
+
+    if (init)
+    {
+        ev_timer_init(&timer, lnx_netif_timer_cb, OSN_STATE_UPDATE_TIMEOUT, 0.0);
+        init = false;
+    }
+
+    return &timer;
+}
+
+/*
+ * Reset the timer.
+ */
+static void lnx_netif_set_timer(void *data)
+{
+    ev_timer *timer = lnx_netif_get_timer();
+
+    if (data != NULL)
+        timer->data = data;
+
+    ev_timer_again(EV_DEFAULT, timer);
+}
+
+/*
+ * Stop the timer.
+ */
+static void lnx_netif_stop_timer(void)
+{
+    ev_timer_stop(EV_DEFAULT, lnx_netif_get_timer());
 }

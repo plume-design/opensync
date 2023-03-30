@@ -40,7 +40,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "test_network_metadata.h"
 #include "unit_test_utils.h"
-
+#include "data_report_tags.h"
 /**
  * brief global variable initialized in @see main_setUp()
  */
@@ -539,6 +539,12 @@ static void validate_node_info(struct node_info *node,
  */
 static void validate_flow_tags(struct flow_tags *flow_tags,
                                 Traffic__FlowTags *flow_tags_pb)
+{
+    return;
+}
+
+static void validate_data_report_tags(struct str_set *report_tags,
+                                      Traffic__DataReportTag *pb_tags)
 {
     return;
 }
@@ -1281,6 +1287,51 @@ test_serialize_flow_tags(void)
     traffic__flow_tags__free_unpacked(pb_tags, NULL);
 }
 
+void
+test_serialize_data_report_tags(void)
+{
+    char *features[] = {
+        "QOS",
+        "APP",
+    };
+
+    struct str_set report_tags = {
+        .nelems = 2,
+        .array = features,
+    };
+
+    struct packed_buffer pb_r = { 0 };
+    struct packed_buffer *pb;
+    uint8_t rbuf[4096];
+    size_t nread = 0;
+    Traffic__DataReportTag *pb_tags;
+
+    pb = serialize_data_report_tags(&report_tags);
+    /* Basic validation */
+    TEST_ASSERT_NOT_NULL(pb);
+    TEST_ASSERT_NOT_NULL(pb->buf);
+
+    /* Save the serialized protobuf to file */
+    pb2file(pb, g_test.f_name);
+
+    /* Free the serialized container */
+    free_packed_buffer(pb);
+    FREE(pb);
+
+    /* Read back the serialized protobuf */
+    pb_r.buf = rbuf;
+    pb_r.len = sizeof(rbuf);
+    nread = file2pb(g_test.f_name, &pb_r);
+    pb_tags = traffic__data_report_tag__unpack(NULL, nread, rbuf);
+    TEST_ASSERT_NOT_NULL(pb_tags);
+
+    /* Validate the deserialized content */
+    validate_data_report_tags(&report_tags, pb_tags);
+
+    /* Free the deserialized content */
+    traffic__data_report_tag__free_unpacked(pb_tags, NULL);
+}
+
 
 /**
  * @brief test flow tags serialization
@@ -1706,6 +1757,7 @@ test_network_metadata(void)
     RUN_TEST(test_serialize_flow_report);
     RUN_TEST(test_serialize_flow_tags);
     RUN_TEST(test_serialize_flow_key_with_tags);
+    RUN_TEST(test_serialize_data_report_tags);
     RUN_TEST(test_serialize_vendor_data);
     RUN_TEST(test_serialize_flow_key_with_vendor_data);
     RUN_TEST(test_serialize_flow_state);

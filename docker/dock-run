@@ -11,6 +11,9 @@ MPWDF=${PWDF}
 MGRPF=${GRPF}
 TPWDF=""
 TGRPF=""
+DOCKRUN_CONT_ID=
+DOCKRUN_EXIT_CODE=
+CLEANUP_SIGNALS='INT HUP KILL TERM QUIT EXIT'
 
 #=============================================================================
 
@@ -21,6 +24,7 @@ usage: [ENVOPT] $0 [OPTIONS] [COMMAND] [ARGS]
 ENVOPT:
 DOCK_OPT=... : additional docker options
 DOCK_RUN_MOUNT_OPTS=... : additional docker bind mount path
+DOCKER_NAME=... : docker container name
 OPTIONS:
     --root
         run as root instead of user (this also skips mounting of home, passwd,...)
@@ -198,6 +202,7 @@ run_docker()
         | grep .)
 
     ARGS=(
+    --init
     --cap-add SYS_PTRACE
     --security-opt seccomp=unconfined
     --rm
@@ -246,6 +251,10 @@ run_docker()
 
     ARGS+=($DOCK_RUN_MOUNT_OPTS)
 
+    [ -n "$DOCKER_NAME" ] && {
+        ARGS+=("--name" "$DOCKER_NAME")
+    }
+
     ARGS+=("$TAG")
 
     # Run bash by default
@@ -265,7 +274,14 @@ run_docker()
 
     # ... and then the real thing:
     echo_report
-    docker run "${ARGS[@]}" "$@"
+    DOCKRUN_CONT_ID=$(docker create "${ARGS[@]}" "$@")
+
+    set +e
+    docker start -ai $DOCKRUN_CONT_ID
+    DOCKRUN_EXIT_CODE=$?
+    DOCKRUN_CONT_ID=
+
+    set -e
 
     ######################################################################
 
@@ -279,13 +295,24 @@ run_docker()
 }
 
 cleanup() {
+    DOCKRUN_EXIT_CODE=$?
+
+    trap - $CLEANUP_SIGNALS
+
+    [ -n "$DOCKRUN_CONT_ID" ] && {
+        echo_debug "=> Performing container cleanup: $DOCKRUN_CONT_ID"
+        docker kill $DOCKRUN_CONT_ID || true
+    }
+
     [ "${ROOT:-no}" = "no" ] && {
         delete_pwd_file
         delete_grp_file
     }
+
+    exit $DOCKRUN_EXIT_CODE
 }
 
-trap cleanup EXIT
+trap cleanup $CLEANUP_SIGNALS
 
 #=============================================================================
 
@@ -355,3 +382,4 @@ echo_report "Done."
 echo_report "--------------------------------------------------"
 
 echo_report
+exit $DOCKRUN_EXIT_CODE

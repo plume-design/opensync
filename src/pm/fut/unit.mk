@@ -22,7 +22,7 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-UNIT_NAME := fut_lm
+UNIT_NAME := fut_pm
 
 UNIT_DISABLE := n
 
@@ -35,3 +35,4 @@ UNIT_DIR := shell/tests/pm
 UNIT_FILE := lm_setup.sh
 UNIT_FILE += lm_trigger_cloud_logpull.sh
 UNIT_FILE += lm_verify_log_severity.sh
+UNIT_FILE += pm_setup.sh

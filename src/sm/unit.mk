@@ -46,13 +46,20 @@ UNIT_SRC     += src/sm_healthcheck_schedule.c
 UNIT_SRC     += src/sm_rssi_report.c
 UNIT_SRC     += src/sm_common.c
 UNIT_SRC     += src/sm_backend.c
+UNIT_SRC     += src/sm_client_auth_fails.c
 UNIT_SRC     += src/sm_client_auth_fails_report.c
+UNIT_SRC     += src/sm_radius_stats.c
+UNIT_SRC     += src/sm_radius_stats_report.c
 
 ifeq ($(CONFIG_SM_CAPACITY_QUEUE_STATS),y)
 UNIT_SRC     += src/sm_capacity_report.c
 endif
 
-UNIT_SRC     += $(if $(CONFIG_SM_BACKEND_HAPD),src/sm_hapd.c,)
+UNIT_SRC     += $(if $(CONFIG_SM_BACKEND_RADIUS_STATS_NULL),src/sm_radius_stats_null.c)
+UNIT_SRC     += $(if $(CONFIG_SM_BACKEND_RADIUS_STATS_HAPD),src/sm_radius_stats_hapd.c)
+
+UNIT_SRC     += $(if $(CONFIG_SM_BACKEND_CLIENT_AUTH_FAILS_NULL),src/sm_client_auth_fails_null.c)
+UNIT_SRC     += $(if $(CONFIG_SM_BACKEND_CLIENT_AUTH_FAILS_HAPD),src/sm_client_auth_fails_hapd.c)
 
 UNIT_LDFLAGS := -lpthread
 UNIT_LDFLAGS += -ljansson

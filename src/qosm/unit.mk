@@ -32,6 +32,11 @@ UNIT_DISABLE := $(if $(CONFIG_MANAGER_QOSM),n,y)
 UNIT_NAME := qosm
 UNIT_TYPE := BIN
 
+UNIT_SRC += $(if $(CONFIG_TARGET_ENABLE_TC_FILTERS), src/qosm_ovsdb.c)
+UNIT_SRC += $(if $(CONFIG_TARGET_ENABLE_TC_FILTERS), src/qosm_mgr.c)
+UNIT_SRC += $(if $(CONFIG_TARGET_ENABLE_TC_FILTERS), src/qosm_ip_iface.c)
+UNIT_SRC += $(if $(CONFIG_TARGET_ENABLE_TC_FILTERS), src/qosm_interface_classifier.c)
+UNIT_SRC += $(if $(CONFIG_TARGET_ENABLE_TC_FILTERS), src/qosm_ic_template.c)
 UNIT_SRC += src/qosm_interface_qos.c
 UNIT_SRC += src/qosm_interface_queue.c
 UNIT_SRC += src/qosm_ip_interface.c
@@ -49,3 +54,5 @@ UNIT_DEPS += src/lib/module
 UNIT_DEPS += src/lib/osn
 UNIT_DEPS += src/lib/ovsdb
 UNIT_DEPS += src/lib/reflink
+UNIT_DEPS += src/lib/timevt
+UNIT_DEPS += src/lib/policy_tags

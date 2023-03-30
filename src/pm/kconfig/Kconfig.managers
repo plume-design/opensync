@@ -23,6 +23,19 @@ if MANAGER_PM
         help
             Enable client nickname feature Web UI synchronization
 
+
+    config PM_HW_ACC
+        bool "Enable or disable acceleration for testing purposes."
+        default y
+        help
+            Enable or disable acceleration.
+
+    config PM_ENABLE_FF_OVSDB_PS
+        bool "Enable support for feature flags persitent storage to be updated by OVSDB"
+        default y
+        help
+           Monitor OVSDB for changes in feature flags and reflect them in persistent storage
+
     menuconfig PM_ENABLE_LED
         bool "Enable support for LED"
         default n

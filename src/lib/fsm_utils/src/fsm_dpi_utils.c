@@ -312,16 +312,27 @@ int fsm_set_icmp_dpi_state_timeout(
     flow.zone = FSM_DPI_ZONE;
     ret1 = nf_ct_set_mark_timeout(&flow, timeout);
     /* -ve or 0 - failed in both zones or +ve atleast one zone passed */
-    return (ret0 + ret1);
+    return ((ret0 == 0) || (ret1 == 0)) ? 0 : -1;
 }
 
 // APIs using net_header_parser
-int fsm_set_dpi_mark(struct net_header_parser *net_hdr, int mark)
+int fsm_set_dpi_mark(struct net_header_parser *net_hdr,
+                     struct dpi_mark_policy *mark_policy)
 {
+    struct eth_header *eth_hdr;
+    unsigned int type;
     int ret0;
     int ret1;
 
-    ret0 = nf_ct_set_flow_mark(net_hdr, mark, 0);
+    if (mark_policy ==  NULL) return -1;
+    if (mark_policy->mark_policy & PKT_VERDICT_ONLY) return 0;
+
+    eth_hdr = &net_hdr->eth_header;
+    type = eth_hdr->ethertype;
+
+    if (type != ETH_P_IP && type != ETH_P_IPV6) return 0;
+
+    ret0 = nf_ct_set_flow_mark(net_hdr, mark_policy->flow_mark, 0);
     /*
      * Set the mark for the default zone 0 also.
      * The reason behind it in router mode
@@ -334,9 +345,9 @@ int fsm_set_dpi_mark(struct net_header_parser *net_hdr, int mark)
      * TODO Either check Router/Bridge mode and make this additional call
      * or dump_all_flows and apply mark for all mathching 5 tuple flows.
      */
-    ret1 = nf_ct_set_flow_mark(net_hdr, mark, FSM_DPI_ZONE);
+    ret1 = nf_ct_set_flow_mark(net_hdr, mark_policy->flow_mark, FSM_DPI_ZONE);
     /* -ve or 0 - failed in both zones or +ve atleast one zone passed */
-    return (ret0 + ret1);
+     return ((ret0 == 0) || (ret1 == 0)) ? 0 : -1;
 }
 
 int fsm_set_dpi_state_timeout(

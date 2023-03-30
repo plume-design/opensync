@@ -33,7 +33,7 @@ time_now=$(date -u +"%s")
 source /tmp/fut-base/shell/config/default_shell.sh
 # shellcheck disable=SC1091
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
-source "${FUT_TOPDIR}/shell/lib/onbrd_lib.sh"
+source "${FUT_TOPDIR}/shell/lib/unit_lib.sh"
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
@@ -67,13 +67,17 @@ if [ -n "${1}" ]; then
             ;;
     esac
 fi
+
+if [ $FUT_SKIP_L2 == 'true' ]; then
+    raise "Flag to skip LEVEL2 testcases enabled, skipping execution." -l "onbrd/onbrd_verify_dut_system_time_accuracy.sh" -s
+fi
+
 NARGS=2
 [ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "onbrd/onbrd_verify_dut_system_time_accuracy.sh" -arg
-
-log_title "onbrd/onbrd_verify_dut_system_time_accuracy.sh: ONBRD test - Verify DUT system time is within threshold of the reference"
-
 time_ref=$1
 time_accuracy=$2
+
+log_title "onbrd/onbrd_verify_dut_system_time_accuracy.sh: ONBRD test - Verify DUT system time is within threshold of the reference"
 
 # Timestamps in human readable format
 time_ref_str=$(date -D @"${time_ref}")

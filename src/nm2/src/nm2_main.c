@@ -48,6 +48,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "nm2.h"
 #include "target.h"
 #include "timevt.h"
+#include "nm2_nb_interface.h"
+#include "nm2_nb_bridge.h"
+#include "kconfig.h"
 
 #define MODULE_ID LOG_MODULE_ID_MAIN
 
@@ -114,8 +117,17 @@ int main(int argc, char ** argv)
     nm2_dhcpv6_server_init();
     nm2_dhcp_option_init();
     nm2_ipv6_routeadv_init();
+
     nm2_mcast_init();
 
+    nm2_route_rule_init();
+
+    if(kconfig_enabled(CONFIG_TARGET_USE_NATIVE_BRIDGE))
+    {
+        nm2_bridge_init();
+        nm2_if_init();
+        nm2_default_br_create_tables(CONFIG_TARGET_LAN_BRIDGE_NAME);
+    }
     ev_run(loop, 0);
 
     if (!ovsdb_stop_loop(loop)) {

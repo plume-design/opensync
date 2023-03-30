@@ -41,6 +41,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "fcm_mgr.h"
 #include "fcm_filter.h"
 #include "neigh_table.h"
+#include "data_report_tags.h"
 
 /* Default log severity */
 static log_severity_t  log_severity = LOG_SEVERITY_INFO;
@@ -119,6 +120,12 @@ int main(int argc, char ** argv)
         return -1;
     }
 
+    /* Initialize the data report tags library */
+    data_report_tags_init();
+
+    /* register for tag update callback */
+    fcm_tag_update_init();
+
     // FCM registers to both neighbor system and ovsdb events
     neigh_table_init_monitor(loop, true, neigh_table_events);
 
@@ -151,6 +158,8 @@ int main(int argc, char ** argv)
 
     // De-init FCM filter manager
     fcm_filter_cleanup();
+
+    data_report_tags_exit();
 
     if (!ovsdb_stop_loop(loop))
     {

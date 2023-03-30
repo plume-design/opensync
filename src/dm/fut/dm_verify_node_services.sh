@@ -29,7 +29,7 @@
 # shellcheck disable=SC1091
 source /tmp/fut-base/shell/config/default_shell.sh
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
-source "${FUT_TOPDIR}/shell/lib/dm_lib.sh"
+source "${FUT_TOPDIR}/shell/lib/unit_lib.sh"
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
@@ -40,12 +40,12 @@ cat << usage_string
 dm/dm_verify_node_services.sh [-h] arguments
 Description:
     - Verify Node_Services table is correctly populated
-    - Check if Node_Services table contains service_name from test case config
-    - Check if Node_Services table having enable field for service_name is set
-      to true and service_name is running
+    - Check if Node_Services table contains service from test case config
+    - Check if Node_Services table having enable field for service is set
+      to true and service is running
 Arguments:
     -h  show this help message
-    \$1 (service_name) : service_name to verify : (string)(required)
+    \$1 (service)     : service to verify : (string)(required)
     \$2 (kconfig_val) : kconfig value used to check service is supported on device or not : (string)(required)
 Testcase procedure:
     - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
@@ -69,7 +69,7 @@ fi
 
 NARGS=2
 [ $# -ne ${NARGS} ] && usage && raise "Requires exactly '${NARGS}' input arguments" -l "dm/dm_verify_node_services.sh" -arg
-service_name=${1}
+service=${1}
 kconfig_val=${2}
 
 trap '
@@ -85,19 +85,19 @@ check_kconfig_option "$kconfig_val" "y" &&
     log "dm/dm_verify_node_services.sh: $kconfig_val = y - KCONFIG exists on the device - Success" ||
     raise "FAIL: $kconfig_val - KCONFIG is not supported on the device" -l "dm/dm_verify_node_services.sh" -s
 
-check_ovsdb_entry Node_Services -w service "$service_name" &&
-    log "dm/dm_verify_node_services.sh: Node_Services table contains $service_name - Success" ||
-    raise "FAIL: Node_Services table does not contain $service_name" -l "dm/dm_verify_node_services.sh" -tc
+check_ovsdb_entry Node_Services -w service "$service" &&
+    log "dm/dm_verify_node_services.sh: Node_Services table contains $service - Success" ||
+    raise "FAIL: Node_Services table does not contain $service" -l "dm/dm_verify_node_services.sh" -tc
 
-if [ $(get_ovsdb_entry_value Node_Services enable -w service $service_name) == "true" ]; then
-    log "dm/dm_verify_node_services.sh: $service_name from Node_Services table that have enable field set to true"
-    if [ -n $($(get_process_cmd) | grep /usr/opensync/bin/$service_name | grep -v 'grep' | wc -l) ]; then
-        log "dm/dm_verify_node_services.sh: $service_name from Node_Services table is running - Success"
+if [ $(get_ovsdb_entry_value Node_Services enable -w service $service) == "true" ]; then
+    log "dm/dm_verify_node_services.sh: $service from Node_Services table that have enable field set to true"
+    if [ -n $($(get_process_cmd) | grep /usr/opensync/bin/$service | grep -v 'grep' | wc -l) ]; then
+        log "dm/dm_verify_node_services.sh: $service from Node_Services table is running - Success"
     else
-        raise "FAIL: $service_name from Node_Services table is not running" -l "dm/dm_verify_node_services.sh" -tc
+        raise "FAIL: $service from Node_Services table is not running" -l "dm/dm_verify_node_services.sh" -tc
     fi
 else
-    raise "FAIL: $service_name from Node_Services table that have enable field not set to true"
+    raise "FAIL: $service from Node_Services table that have enable field not set to true"
 fi
 
 pass

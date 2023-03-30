@@ -29,8 +29,7 @@
 # shellcheck disable=SC1091
 source /tmp/fut-base/shell/config/default_shell.sh
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
-source "${FUT_TOPDIR}/shell/lib/onbrd_lib.sh"
-source "${FUT_TOPDIR}/shell/lib/nm2_lib.sh"
+source "${FUT_TOPDIR}/shell/lib/unit_lib.sh"
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
@@ -88,6 +87,6 @@ wait_for_function_response 0 "check_interface_exists $if_name" &&
     raise "FAIL: Interface $if_name does not exist on system" -l "onbrd/onbrd_verify_home_vaps_on_radios.sh" -tc
 
 log "onbrd/onbrd_verify_home_vaps_on_radios.sh: Clean created interfaces after test"
-vif_clean
+vif_reset
 
 pass

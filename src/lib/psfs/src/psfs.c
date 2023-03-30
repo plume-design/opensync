@@ -35,8 +35,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
+#include <dirent.h>
 
 #include "log.h"
+#include "os.h"
 #include "osp_ps.h"
 #include "osp_sec.h"
 #include "util.h"
@@ -60,6 +62,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 /* Running a CRC32 over a "data + CRC32" buffer will always yield this number */
 #define PSFS_CRC32_VERIFY                   0x2144DF1C
 
+/* Maximum absolute pathname length */
+#define MAX_PATH_LEN 1024
+
 /* Calculate pad length given size x */
 #define PSFS_PAD_LEN(x)                     ((4 - ((x) & 3)) & 3)
 
@@ -76,6 +81,8 @@ static bool psfs_sync_prune(psfs_t *ps);
 static bool psfs_file_lock(int fd, bool exclusive);
 static bool psfs_file_unlock(int fd);
 static void psfs_drop_record(psfs_t *ps, struct psfs_record *pr, ds_tree_iter_t *iter);
+static bool wipe_dir(const char *path, bool remove_entire_dir, bool recurse);
+static bool psfs_wipe(bool recurse);
 ssize_t psfs_record_write(int fd, struct psfs_record *pr);
 ssize_t psfs_record_read(int fd, struct psfs_record *pr);
 void psfs_record_init(struct psfs_record *pr, const char *key, const void *data, size_t datasz);
@@ -491,6 +498,17 @@ bool psfs_erase(psfs_t *ps)
     }
 
     return true;
+}
+
+/**
+ * Completely wipe all PSFS files
+ *
+ * @return
+ * This function will return true on success, or false on error.
+ */
+bool psfs_erase_all(bool recurse)
+{
+    return psfs_wipe(recurse);
 }
 
 /**
@@ -1473,4 +1491,102 @@ uint32_t psfs_crc32(uint32_t crc, void *buf, ssize_t bufsz)
     }
 
     return ~crc;
+}
+
+/**
+ * Delete entire content of a directory. In case the recurse flag is set, the function
+ * will recursively traverse possible subdirectories and delete their content as well.
+ * The remove_entire_dir flag may be also passed in order to delete
+ * the directory itself.
+ *
+ * @param[in]   path                Absolute path to the directory
+ * @param[in]   remove_entire_dir   Flag to indicate deletion of the directory itself
+ * @param[in]   recurse             Flag to indicate recursively deleting all subdirectories
+ *                                  on top of just flat files
+ *
+ * @return
+ * Returns true if directory content was successfully deleted and false if
+ * errors were encountered.
+ */
+bool wipe_dir(const char *path, bool remove_entire_dir, bool recurse)
+{
+    DIR *dir;
+    struct dirent *de;
+    char subfolder_path[MAX_PATH_LEN];
+
+    bool retval = true;
+
+    LOG(INFO, "psfs: Removing directory content: %s", path);
+
+    dir = opendir(path);
+    if (dir == NULL)
+    {
+        LOG(ERR, "psfs: %s: Error opening directory: %s", path, strerror(errno));
+        return 1;
+    }
+
+    while ((de = readdir(dir)) != NULL)
+    {
+        if (strcmp(de->d_name, ".") == 0 || strcmp(de->d_name, "..") == 0)
+        {
+            continue;
+        }
+
+        /* Recursively delete all subfolders if the path is a directory and the recurse flag is set */
+        if (de->d_type == DT_DIR && recurse)
+        {
+            snprintf(subfolder_path, sizeof(subfolder_path), "%s/%s", path, de->d_name);
+            retval &= wipe_dir(subfolder_path, true, recurse);
+        }
+        else
+        {
+            if (unlinkat(dirfd(dir), de->d_name, 0) != 0)
+            {
+                LOG(ERR, "psfs: %s: Error removing file: %s", de->d_name, strerror(errno));
+                retval = false;
+            }
+        }
+    }
+
+    closedir(dir);
+
+    if (remove_entire_dir)
+    {
+        LOG(INFO, "psfs: Removing entire directory: %s", path);
+        if (rmdir(path) != 0)
+        {
+            LOG(ERR, "psfs: %s: Error removing directory: %s", path, strerror(errno));
+            retval = false;
+        }
+    }
+
+    return retval;
+}
+
+bool psfs_wipe(bool recurse)
+{
+    uint8_t i;
+    const char *psd;
+
+    bool retval = true;
+
+    /* Persistent storage directories are listed in a global variable, psfs_dirs.
+     * Iterate across all of the paths in psfs_dirs and delete their content.
+     */
+    for (i = 0; i < sizeof(psfs_dirs) / sizeof(psfs_dirs[0]); i++)
+    {
+        psd = psfs_dirs[i].psd_dir;
+
+        if (strlen(psd) <= 1)
+        {
+            retval = false;
+            LOG(WARN, "psfs: Skipping wiping PS directory because path is too short [%s]", psd);
+            continue;
+        }
+
+        /* Remove all flat files and subfolders in psfs directory but not the directory itself */
+        retval &= wipe_dir(psd, false, recurse);
+    }
+
+    return retval;
 }

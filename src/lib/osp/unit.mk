@@ -72,3 +72,5 @@ UNIT_SRC += $(if $(CONFIG_OSP_L2SWITCH_SWCONFIG),src/osp_l2switch_swconfig.c)
 
 UNIT_SRC += $(if $(CONFIG_OSP_L2UF_NULL),src/osp_l2uf_null.c)
 UNIT_SRC += $(if $(CONFIG_OSP_L2UF_LIBPCAP),src/osp_l2uf_pcap.c)
+
+UNIT_SRC += $(if $(CONFIG_OSP_BLE_NULL),src/osp_ble_null.c)

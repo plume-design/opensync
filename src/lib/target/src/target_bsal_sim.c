@@ -395,6 +395,54 @@ handle_rssi_xing(const char *msg)
     return true;
 }
 
+static bool
+handle_receive_action(const char *msg)
+{
+    const char *token;
+    char *args = strdupa(msg);
+    bsal_ev_action_frame_t *action_event;
+    bsal_event_t event;
+    ssize_t data_len;
+
+    if (strstr(msg, "RECEIVE_ACTION") != msg)
+        return false;
+
+    memset(&event, 0, sizeof(event));
+    event.type = BSAL_EVENT_ACTION_FRAME;
+    action_event = &event.data.action_frame;
+
+    while((token = strsep(&args, " "))) {
+        char *kv = strdupa(token);
+        const char *k = strsep(&kv, "=");
+        const char *v = strsep(&kv, "=");
+
+        if (!k || !v)
+            continue;
+
+        if (strcmp(k, "if_name") == 0) {
+            STRSCPY_WARN(event.ifname, v);
+        }
+
+        else if (strcmp(k, "data") == 0) {
+            data_len = hex2bin(v,
+                               strlen(v),
+                               action_event->data,
+                               sizeof(action_event->data));
+
+            if (data_len < 0) {
+                LOGE("BSAL: Failed to read RECEIVE_ACTION's hex to binary");
+                exit(1);
+            }
+
+            action_event->data_len = data_len;
+        }
+    }
+
+    g_event_cb(&event);
+
+    return true;
+}
+
 static void
 bsal_in_cb(EV_P_ ev_io *w, int revents)
 {
@@ -413,6 +461,7 @@ bsal_in_cb(EV_P_ ev_io *w, int revents)
     if (handle_connect(buf)) return;
     if (handle_disconnect(buf)) return;
     if (handle_rssi_xing(buf)) return;
+    if (handle_receive_action(buf)) return;
 
     LOGE("BSAL invalid or unknown command '%s'", buf);
     exit(1);

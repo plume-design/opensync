@@ -76,5 +76,7 @@ extern ds_key_cmp_t ds_int_cmp;
 extern ds_key_cmp_t ds_str_cmp;
 /** Pointer comparison (the key value is stored directly) */
 extern ds_key_cmp_t ds_void_cmp;
+/** Unsigned 32-bit integer comparator */
+extern ds_key_cmp_t ds_u32_cmp;
 
 #endif /* DS_H_INCLUDED */

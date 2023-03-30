@@ -314,4 +314,51 @@ extern bool             _c_get_param_by_key(c_item_t *list, int list_sz, int key
  */
 #define C_FIELD_SZ(type, field)     sizeof(((type *)NULL)->field)
 
+/*
+ * Bound checking helpers for nested, and variable-length
+ * encoded structures.
+ *
+ * Example usage:
+ *
+ *  struct foo {
+ *    uint32_t bar;
+ *    uint32_t baz;
+ *  };
+ *
+ *  char buf1[10] = {0};
+ *  size_t len1 = 10;
+ *
+ *  char buf2[5] = {0};
+ *  size_t len2 = 5;
+ *
+ *  size_t rem;
+ *  const uint32_t *a = C_FIELD_GET_REM(buf1, len1, rem, struct foo, bar);
+ *  assert(a != NULL);
+ *  assert(rem == 6);
+ *
+ *  const uint32_t *b = C_FIELD_GET_REM(buf1, len1, rem, struct foo, baz);
+ *  assert(b != NULL);
+ *  assert(rem == 2);
+ *
+ *  const uint32_t *c = C_FIELD_GET_REM(buf2, len2, rem, struct foo, bar);
+ *  assert(c != NULL);
+ *  assert(rem == 1);
+ *
+ *  const uint32_t *d = C_FIELD_GET_REM(buf2, len2, rem, struct foo, baz);
+ *  assert(d == NULL);
+ *  // rem undefined
+ *
+ */
+#define C_FIELD_END(type, field)           (offsetof(type, field) + C_FIELD_SZ(type, field))
+#define C_FIELD_GET(buf, len, type, field) (((len) >= C_FIELD_END(type, field)) \
+                                            ? ((const void *)(buf) + offsetof(type, field)) \
+                                            : NULL)
+
+#define C_FIELD_GET_REM(buf, len, rem, type, field) ({ \
+        const typeof (((const type *)NULL)->field) *buf_safe \
+            = (const void *)C_FIELD_GET(buf, len, type, field); \
+        rem = (len) - C_FIELD_END(type, field); \
+        buf_safe; \
+    })
+
 #endif /* CONST_H_INCLUDED */

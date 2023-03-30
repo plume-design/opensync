@@ -62,6 +62,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "gatekeeper_cache.h"
 #include "dns_cache.h"
 #include "memutil.h"
+#include "kconfig.h"
 #include "network_zone.h"
 
 #define MODULE_ID LOG_MODULE_ID_OVSDB
@@ -309,6 +310,55 @@ fsm_get_other_config_val(struct fsm_session *session, char *key)
     return pair->value;
 }
 
+static int
+get_native_home_bridge(char *if_name, char *bridge, size_t len)
+{
+    char shell_cmd[1024];
+    char buf[1024];
+
+    FILE *fcmd = NULL;
+    int rc = -1;
+
+    if (if_name == NULL) return 0;
+    if (bridge == NULL) return -1;
+
+    snprintf(shell_cmd, sizeof(shell_cmd),
+             "brctl show | awk 'NF>1 && NR>1 {print $1}'");
+
+    fcmd = popen(shell_cmd, "r");
+    if (fcmd == NULL)
+    {
+        LOGD("Error executing command.::shell_cmd=%s", shell_cmd);
+        goto exit;
+    }
+
+    LOGT("Executing command.::shell_cmd=%s ", shell_cmd);
+
+    while (fgets(buf, sizeof(buf), fcmd) != NULL)
+    {
+        LOGI("%s: home bridge: %s", __func__, buf);
+    }
+
+    if (ferror(fcmd))
+    {
+        LOGE("%s: fgets() failed", __func__);
+        goto exit;
+    }
+
+    rc = pclose(fcmd);
+    fcmd = NULL;
+
+    strchomp(buf, " \t\r\n");
+    strscpy(bridge, buf, len);
+
+exit:
+    if (fcmd != NULL)
+    {
+        pclose(fcmd);
+    }
+
+    return rc;
+}
 
 static int
 get_home_bridge(char *if_name, char *bridge, size_t len)
@@ -382,7 +432,14 @@ fsm_set_tx_intf(struct fsm_session *session)
     if ((name == NULL) || (name[0] == 0)) return;
 #endif
 
-    ret = snprintf(session->tx_intf, sizeof(session->tx_intf), "%s.tx", name);
+    if (!kconfig_enabled(CONFIG_TARGET_USE_NATIVE_BRIDGE))
+    {
+        ret = snprintf(session->tx_intf, sizeof(session->tx_intf), "%s.tx", name);
+    }
+    else
+    {
+        ret = snprintf(session->tx_intf, sizeof(session->tx_intf), "%s", name);
+    }
 
     if (ret >= sizeof(session->tx_intf))
     {
@@ -1199,6 +1256,14 @@ update_sessions:
     /* Lookup sessions, update their header info */
     sessions = fsm_get_sessions();
     session = ds_tree_head(sessions);
+    if (!kconfig_enabled(CONFIG_TARGET_USE_NATIVE_BRIDGE))
+    {
+        mgr->get_br = get_home_bridge;
+    }
+    else
+    {
+        mgr->get_br = get_native_home_bridge;
+    }
     while (session != NULL) {
         session->mqtt_headers = mgr->mqtt_headers;
         session->location_id  = mgr->location_id;
@@ -1428,7 +1493,6 @@ fsm_ovsdb_init(void)
     // Initialize the plugin loader routine
     mgr = fsm_get_mgr();
     mgr->init_plugin = fsm_init_plugin;
-    mgr->get_br = get_home_bridge;
     mgr->update_session_tap = fsm_update_session_tap;
     fsm_policy_init();
     network_zone_init();

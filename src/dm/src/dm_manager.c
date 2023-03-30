@@ -227,7 +227,7 @@ bool dm_manager_register(
 
     ds_tree_insert(&dm_manager_list, dm, (char *)dm->dm_name);
 
-    LOG(INFO, "Registered manager: %s", dm->dm_name);
+    LOG(INFO, "Registered manager: %s pid: %d", dm->dm_name, dm->dm_pid);
 
     /* Clean up old instances of this manager */
     dm_manager_kill(dm);
@@ -278,6 +278,160 @@ bool dm_manager_update(
  *  Private functions
  * ===========================================================================
  */
+
+void update_manager_list(char *name)
+{
+    struct dm_manager *dm;
+    dm = ds_tree_find(&dm_manager_list, name);
+    struct dm_manager *dm_slave;
+    dm_slave = ds_tree_find(&dm_manager_list, "dm.slave");
+
+    if (dm == NULL)
+    {
+        dm = CALLOC(1, sizeof(*dm));
+        *dm = DM_MANAGER_INIT;
+        STRSCPY(dm->dm_name, name);
+        if (dm_slave && strncmp("dm.slave", name, sizeof("dm.slave")))
+        {
+            dm->dm_pid = os_name_to_pid_of_ppid(dm->dm_name, dm_slave->dm_pid);
+        }
+        else
+        {
+            dm->dm_pid = os_name_to_pid(dm->dm_name);
+        }
+
+        LOG(DEBUG, "Updating PID %d to %s managers", dm->dm_pid, dm->dm_name);
+
+        if (dm->dm_pid > 0)
+        {
+            ds_tree_insert(&dm_manager_list, dm, name);
+        }
+    }
+
+}
+
+/**
+ * Kill all managers
+ */
+bool dm_manager_stop_all(char *except_mgrs)
+{
+    char line[BFR_SIZE_256];
+    char except_mgr_list[BFR_SIZE_32][20];
+    int mgr_list_count = 0;
+    int len;
+    struct schema_Node_Services *list;
+    struct schema_Node_Services *manager;
+    struct dm_manager *dm;
+    struct dm_manager *mgr_ptr;
+    int count;
+    char *start;
+    char *end;
+    char *name = NULL;
+    FILE* f;
+    bool skip_kill;
+    int i;
+    int j;
+
+    f = popen("sed -e '/CONFIG_MANAGER_/!d' -e '/_CFG/!d' -e \
+               '/;true/!d' "CONFIG_INSTALL_PREFIX"/etc/kconfig", "r");
+
+    if (!f)
+    {
+        LOGE("Failed to open file");
+        return true;
+    }
+
+    /*
+     * In case of multiple forked process with the same manager name,
+     * finding dm.slave first helps us decide which process is the
+     * direct descendent of DM.
+     */
+    update_manager_list("dm.slave");
+
+    /* Get list of managers from kconfig */
+    while (fgets(line, sizeof(line), f))
+    {
+        if ((start = strstr( line, "_CFG=")) != NULL)
+        {
+            start += strlen("_CFG=");
+            if ((end = strstr(start, ";true")) != NULL )
+            {
+                name = (char *) malloc(end - start + 1);
+                memcpy(name, start + 1, end - start + 1);
+                name[end - start - 1] = '\0';
+            }
+        }
+        update_manager_list(name);
+    }
+
+    OVSDB_TABLE_INIT(Node_Services, service);
+    list = ovsdb_table_select(&table_Node_Services, "status", "enabled", &count);
+
+    if (!list)
+        return true;
+
+    for (manager = list; manager && count; manager++,count--)
+    {
+        update_manager_list(manager->service);
+    }
+
+    update_manager_list("dm.master");
+
+    /* if except managers is null, nothing to do */
+    if (except_mgrs != NULL)
+    {
+        len = strlen(except_mgrs);
+        for (i = 0, j = 0; i <= len; i++)
+        {
+            if (except_mgrs[i] == ',' || except_mgrs[i] == '\0')
+            {
+                except_mgr_list[mgr_list_count][j] = '\0';
+                mgr_list_count++;
+                j = 0;
+            } else {
+                except_mgr_list[mgr_list_count][j] = except_mgrs[i];
+                j++;
+            }
+        }
+    }
+
+    ds_tree_foreach(&dm_manager_list, dm)
+    {
+        skip_kill = 0;
+
+        for (i = 0; i < mgr_list_count; i++)
+        {
+            if (!strcmp(except_mgr_list[i], dm->dm_name))
+            {
+                skip_kill = 1;
+            }
+            else if ((!strcmp(dm->dm_name, "dm.master")) &&
+                     (!strcmp(except_mgr_list[i], "dm")))
+            {
+                skip_kill = 1;
+            }
+        }
+
+        if (!skip_kill)
+        {
+            LOG(INFO, "Killing manager: %s", dm->dm_name);
+            dm_manager_stop(dm);
+        }
+
+        mgr_ptr = dm;
+        if (mgr_ptr != NULL)
+        {
+            FREE(mgr_ptr);
+            mgr_ptr = NULL;
+        }
+
+    }
+
+    pclose(f);
+    FREE(list);
+
+    return true;
+}
 
 /*
  * Terminate a stale instances of the manager. This should be executed at

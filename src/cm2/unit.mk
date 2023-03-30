@@ -44,6 +44,7 @@ UNIT_SRC    += src/cm2_resolve_sync.c
 endif
 UNIT_SRC    += src/cm2_resolve.c
 UNIT_SRC    += src/cm2_net.c
+UNIT_SRC    += src/cm2_ovsdb_bridge.c
 
 UNIT_CFLAGS += -I$(TOP_DIR)/src/lib/common/inc/
 

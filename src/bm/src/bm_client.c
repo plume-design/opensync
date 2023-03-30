@@ -652,6 +652,20 @@ bm_client_print_client_caps( bm_client_t *client )
     return;
 }
 
+static int bm_client_get_max_neighbors(struct schema_Band_Steering_Clients *bscli,
+                                       const bm_client_t *client)
+{
+    if (!bscli->btm_max_neighbors_exists) {
+        if (bm_client_is_cap_6G(client)) {
+            return BSAL_MAX_TM_NEIGHBORS;
+        } else {
+            return BSAL_MAX_TM_NEIGHBORS_LEGACY;
+        }
+    } else {
+        return bscli->btm_max_neighbors;
+    }
+}
+
 static void bm_client_report_caps(bm_client_t *client, const char *ifname, bsal_client_info_t *info)
 {
     bsal_event_t event;
@@ -811,7 +825,11 @@ void bm_client_check_connected(bm_client_t *client, bm_group_t *group, const cha
         return;
     }
 
+    client->first_snr_after_connect = info.snr;
+    client->last_snr_before_disconnect = info.snr;
+
     LOGI("%s: Client %s connected.", ifname, client->mac_addr);
+    LOGT("%s: Client %s first snr: %d.", ifname, client->mac_addr, info.snr);
 
     radio_type = bm_group_find_radio_type_by_ifname(ifname);
     switch (radio_type) {
@@ -1078,6 +1096,9 @@ bm_client_remove(bm_client_t *client)
         evsched_task_cancel(client->rrm_req[i].rrm_task);
 
     bm_kick_cleanup_by_client(client);
+    FREE(client->steering_btm_params.neigh);
+    FREE(client->sticky_btm_params.neigh);
+    FREE(client->sc_btm_params.neigh);
     FREE(client);
 
     return;
@@ -1453,7 +1474,9 @@ bm_client_get_btm_params( struct schema_Band_Steering_Clients *bscli,
         LOGE( "Client %s - error getting BTM params type '%d'", client->mac_addr, type );
         return false;
     }
+    FREE(btm_params->neigh);
     memset(btm_params, 0, sizeof(*btm_params));
+    btm_params->neigh = CALLOC(client->btm_max_neighbors, sizeof(*neigh));
 
     // Process base BTM parameters
     if ((val = bm_client_get_btm_param( bscli, type, "valid_int" ))) {
@@ -1529,7 +1552,11 @@ bm_client_get_btm_params( struct schema_Band_Steering_Clients *bscli,
 
     // Check for static neighbor parameters
     if ((val = bm_client_get_btm_param( bscli, type, "bssid" ))) {
-        neigh = &btm_params->neigh[0];
+        WARN_ON(client->btm_max_neighbors <= 0);
+        if (client->btm_max_neighbors <= 0)
+                return true;
+
+        neigh = btm_params->neigh;
         STRSCPY(mac_str, val);
         if(strlen(mac_str) > 0) {
             if(!os_nif_macaddr_from_str( &bssid, mac_str)) {
@@ -1813,6 +1840,8 @@ bm_client_from_ovsdb(struct schema_Band_Steering_Clients *bscli, bm_client_t *cl
         return false;
     }
 
+    client->btm_max_neighbors = bm_client_get_max_neighbors( bscli, client );
+
     // Fetch post-association transition management parameters
     if( !bm_client_get_btm_params( bscli, client, BM_CLIENT_BTM_PARAMS_STEERING )) {
         LOGE( "Client %s - error getting steering tm parameters", client->mac_addr );
@@ -1850,7 +1879,7 @@ bm_client_from_ovsdb(struct schema_Band_Steering_Clients *bscli, bm_client_t *cl
     }
 
     if (!bscli->rrm_better_factor_exists) {
-        client->rrm_better_factor = 3;
+        client->rrm_better_factor = 6;
     } else {
         client->rrm_better_factor = bscli->rrm_better_factor;
     }
@@ -1871,6 +1900,12 @@ bm_client_from_ovsdb(struct schema_Band_Steering_Clients *bscli, bm_client_t *cl
         client->neighbor_list_filter_by_beacon_report = true;
     } else {
         client->neighbor_list_filter_by_beacon_report = bscli->neighbor_list_filter_by_beacon_report;
+    }
+
+    if (!bscli->neighbor_list_filter_by_btm_status_exists) {
+        client->neighbor_list_filter_by_btm_status = false;
+    } else {
+        client->neighbor_list_filter_by_btm_status = bscli->neighbor_list_filter_by_btm_status;
     }
 
     if (!bscli->bottom_lwm_exists) {
@@ -2417,6 +2452,7 @@ bm_client_rejected_counter(bm_client_t *client, bsal_event_t *event)
     if (client->num_rejects_2g > 0) {
         if ((now - times->reject.counting_first) > max_rejects_period) {
             client->num_rejects_2g = 0;
+            client->rejects_2g_gt_max = false;
         }
     }
 
@@ -2448,13 +2484,15 @@ bm_client_rejected_counter(bm_client_t *client, bsal_event_t *event)
         }
     }
 
-    if (client->num_rejects_2g == max_rejects) {
+    if (client->num_rejects_2g >= max_rejects && client->rejects_2g_gt_max == false) {
         stats->steering_fail_cnt++;
+        client->rejects_2g_gt_max = true;
 
         if (client->steering_state == BM_CLIENT_CLIENT_STEERING) {
             LOGW("'%s' failed to client steer, disabling client steering ", client->mac_addr);
 
             client->num_rejects_2g = 0;
+            client->rejects_2g_gt_max = false;
 
             // Update the cs_state to OVSDB
             client->cs_state = BM_CLIENT_CS_STATE_FAILED;
@@ -3348,9 +3386,13 @@ bm_client_dump_dbg_event(const bm_event_stat_t *events, unsigned int idx)
                  dpp_event->rssi, dpp_event->probe_bcast, dpp_event->probe_blocked);
         break;
     case DISCONNECT:
-        snprintf(extra_buf, sizeof(extra_buf), "src %d type %d reason %d",
+        snprintf(extra_buf, sizeof(extra_buf), "src %d type %d reason %d last_snr %d",
                  dpp_event->disconnect_src, dpp_event->disconnect_type,
-                 dpp_event->disconnect_reason);
+                 dpp_event->disconnect_reason, dpp_event->rssi);
+        break;
+    case CONNECT:
+        snprintf(extra_buf, sizeof(extra_buf), "first snr %d",
+                 dpp_event->rssi);
         break;
     case ACTIVITY:
         snprintf(extra_buf, sizeof(extra_buf), "active %d",
@@ -3637,6 +3679,7 @@ bm_client_xing_recalc(bm_client_t *client, bsal_client_info_t *info)
 
     new_snr = info->snr;
     prev_snr = client->prev_xing_snr;
+    client->last_snr_before_disconnect = new_snr;
 
     xing_busy_override = ifcfg->conf.rssi_busy_override_xing;
     xing_lwm = ifcfg->conf.rssi_low_xing;
@@ -3781,4 +3824,10 @@ void bm_client_ignore_beacon_measurement_reports(bm_client_t *client)
 bool bm_client_should_ignore_beacon_measurement_reports(const bm_client_t *client)
 {
     return client->ignore_beacon_measurement_reports;
+}
+
+size_t
+bm_client_get_btm_max_neighbors(const bm_client_t *client)
+{
+    return client->btm_max_neighbors;
 }

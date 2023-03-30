@@ -38,9 +38,18 @@ $(eval $(if $(CONFIG_PM_ENABLE_CLIENT_NICKNAME),    UNIT_SRC += src/pm_client_ni
 $(eval $(if $(CONFIG_PM_ENABLE_LED),                UNIT_SRC += src/pm_led.c))
 $(eval $(if $(CONFIG_PM_ENABLE_LM),                 UNIT_SRC += src/pm_lm.c))
 
+ifeq ($(CONFIG_PM_ENABLE_FF_OVSDB_PS),y)
+UNIT_SRC += src/pm_ff_ovsdb_ps.c
+UNIT_DEPS += src/lib/ff
+endif
+
 ifeq ($(CONFIG_PM_ENABLE_TM),y)
 UNIT_SRC += src/pm_tm.c
 UNIT_SRC += src/pm_tm_ovsdb.c
+endif
+
+ifeq ($(CONFIG_PM_HW_ACC),y)
+UNIT_SRC += src/pm_hw_acc.c
 endif
 
 ifeq ($(CONFIG_PM_ENABLE_OBJM),y)

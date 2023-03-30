@@ -62,7 +62,8 @@ fsm_get_network_id(os_macaddr_t *device)
 
     nz = network_zone_get_zone(device);
     if (nz == NULL) nz = "Unknown";
-    LOGT("%s: network zone for " PRI_os_macaddr_lower_t "is %s",
+
+    LOGT("%s: network zone for " PRI_os_macaddr_lower_t " is %s",
          __func__, FMT_os_macaddr_pt(device), nz);
 
     return nz;
@@ -199,6 +200,33 @@ fsm_update_close_taps(uint32_t taps_to_close, struct fsm_session *session)
     }
 }
 
+
+static int
+set_dpi_mark(struct net_header_parser *net_hdr,
+             struct dpi_mark_policy *mark_policy)
+{
+    int ret;
+
+    if (net_hdr == NULL) return -1;
+
+    switch (net_hdr->source)
+    {
+        case PKT_SOURCE_PCAP:
+            ret = fsm_set_dpi_mark(net_hdr, mark_policy);
+            break;
+
+        case PKT_SOURCE_NFQ:
+            ret = nf_queue_set_dpi_mark(net_hdr, mark_policy);
+            break;
+
+        default:
+            ret = -1;
+    }
+
+    return ret;
+}
+
+
 /**
  * @brief Initializes the tap context for the given session
  *
@@ -226,14 +254,7 @@ fsm_update_session_tap(struct fsm_session *session)
     /* Update the session tap type */
     session->tap_type = after_tap_type;
 
-    if (session->tap_type & FSM_TAP_NFQ)
-    {
-        session->set_dpi_mark = nf_queue_set_dpi_mark;
-    }
-    else
-    {
-        session->set_dpi_mark = fsm_set_dpi_mark;
-    }
+    session->set_dpi_mark = set_dpi_mark;
 
     fsm_update_close_taps(taps_to_close, session);
 

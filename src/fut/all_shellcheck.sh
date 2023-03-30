@@ -65,19 +65,6 @@ fi
 
 if [ "$check" = "lib" ] || [ "$check" = "all" ]; then
     shellcheck --exclude=$excludes ./../fut/shell/lib/base_lib.sh
-    shellcheck --exclude=$excludes ./../fut/shell/lib/brv_lib.sh
-    shellcheck --exclude=$excludes ./../fut/shell/lib/cm2_lib.sh
-    shellcheck --exclude=$excludes ./../fut/shell/lib/dm_lib.sh
-    shellcheck --exclude=$excludes ./../fut/shell/lib/fsm_lib.sh
-    shellcheck --exclude=$excludes ./../fut/shell/lib/lm_lib.sh
-    shellcheck --exclude=$excludes ./../fut/shell/lib/nm2_lib.sh
-    shellcheck --exclude=$excludes ./../fut/shell/lib/onbrd_lib.sh
-    shellcheck --exclude=$excludes ./../fut/shell/lib/othr_lib.sh
-    shellcheck --exclude=$excludes ./../fut/shell/lib/qm_lib.sh
     shellcheck --exclude=$excludes ./../fut/shell/lib/rpi_lib.sh
-    shellcheck --exclude=$excludes ./../fut/shell/lib/sm_lib.sh
-    shellcheck --exclude=$excludes ./../fut/shell/lib/um_lib.sh
     shellcheck --exclude=$excludes ./../fut/shell/lib/unit_lib.sh
-    shellcheck --exclude=$excludes ./../fut/shell/lib/ut_lib.sh
-    shellcheck --exclude=$excludes ./../fut/shell/lib/wm2_lib.sh
 fi

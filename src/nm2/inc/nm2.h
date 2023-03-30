@@ -243,6 +243,9 @@ inet_route_status_fn_t nm2_route_notify;
 void nm2_route_cfg_init(void);
 void nm2_route_cfg_reapply(struct nm2_iface *pif);
 
+/* Policy Routing rules handling */
+bool nm2_route_rule_init(void);
+
 /*
  * ===========================================================================
  *  Misc

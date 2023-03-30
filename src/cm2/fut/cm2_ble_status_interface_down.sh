@@ -29,15 +29,15 @@
 # shellcheck disable=SC1091
 source /tmp/fut-base/shell/config/default_shell.sh
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
-source "${FUT_TOPDIR}/shell/lib/cm2_lib.sh"
+source "${FUT_TOPDIR}/shell/lib/unit_lib.sh"
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
 cm_setup_file="cm2/cm2_setup.sh"
 iface_down_bits=01
 iface_up_bits=75
-if_default="eth0"
-if_type_default="eth"
+default_if_name="eth0"
+default_if_type="eth"
 usage()
 {
 cat << usage_string
@@ -47,12 +47,12 @@ Description:
       If AW_Bluetooth_Config payload field fails to change in given sequence (${if_down_up_process_bits}), test fails
 Arguments:
     -h : show this help message
-    \$1 (if_name) : <CONNECTION-INTERFACE> : (string)(optional) : (default:${if_default})
+    \$1 (if_name) : <CONNECTION-INTERFACE> : (string)(optional) : (default:${default_if_name})
 Testcase procedure:
     - On DEVICE: Run: ${cm_setup_file} (see ${cm_setup_file} -h)
                  Run: cm2/cm2_ble_status_interface_down.sh <WAN-IF-NAME>
 Script usage example:
-    ./cm2/cm2_ble_status_interface_down.sh ${if_default}
+    ./cm2/cm2_ble_status_interface_down.sh ${default_if_name}
 usage_string
 }
 if [ -n "${1}" ]; then
@@ -75,8 +75,8 @@ check_kconfig_option "TARGET_CAP_EXTENDER" "y" ||
 
 NARGS=1
 [ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "cm2/cm2_ble_status_interface_down.sh" -arg
-if_name=${1:-${if_default}}
-if_type=${2:-${if_type_default}}
+if_name=${1:-${default_if_name}}
+if_type=${2:-${default_if_type}}
 
 trap '
 fut_info_dump_line

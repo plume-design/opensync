@@ -72,6 +72,58 @@ func_exit:
     return rc;
 }
 
+/*
+ * Return the parent process ID for given pid
+ */
+
+static pid_t os_pid_to_ppid(pid_t pid)
+{
+    char        buf[64];
+    char        *k = NULL;
+    char        *v = NULL;
+    char        *kv = NULL;
+    char        *ppid_string = NULL;
+    int         l;
+    long        lextr;
+    pid_t       ppid = -1;
+    FILE        *fp = NULL;
+    
+    snprintf(buf, sizeof(buf), "/proc/%d/status", pid);
+
+    fp = fopen(buf, "r");
+    if (NULL == fp)
+        goto func_exit;
+
+    while (fgets(buf, sizeof(buf), fp)) {
+        // remove newline if present
+        l = strlen(buf);
+        if (l > 0 && buf[l-1] == '\n') {
+            buf[l-1] = 0;
+        }
+
+        kv = buf;
+        if ((k = strsep(&kv, ":")) &&
+            (v = strsep(&kv, ""))) {
+            if (!strcmp(k, "PPid")) {
+                ppid_string = v;
+                break;
+            }
+        }
+    }
+
+    /* convert it to a number */
+    if (false == os_strtoul(ppid_string, &lextr, 0)) {
+        LOG(ERR, "Extracting pid from %s failed", v);
+        goto func_exit;
+    } else {
+        ppid = (pid_t)lextr;
+    }
+
+func_exit:
+    if (fp != NULL) fclose(fp);
+
+    return ppid;
+}
 
 /*
  * Return pid based on process name
@@ -153,6 +205,67 @@ pid_t os_name_to_pid(const char *proc_name)
             }
 
             break; /* for loop */
+        }
+    }
+
+exit:
+    /* Clean up. */
+    globfree(&g);
+
+    return pid;
+}
+
+/*
+ * Return pid based on parent process ID.
+ * In case of multiple forked process with the same name, return the PID
+ * if its parent PID matches the given ID, i.e. find the direct descendent
+ * of the given PPID.
+ */
+
+pid_t os_name_to_pid_of_ppid(const char *proc_name, pid_t ppid)
+{
+    pid_t       pid = -1;
+    glob_t      g = {0};
+    char        rbuff[1024];
+    uint32_t    i;
+    FILE        *f;
+    int         rc;
+    char *      newline;
+
+    /* process name is stored in /proc/pid/comm */
+    if (glob("/proc/*/comm", 0, NULL, &g) != 0) {
+        goto exit;
+    }
+
+    for (i = 0; i < g.gl_pathc; i++) {
+
+        /* Read the contents of the file */
+        if (NULL == (f = fopen(g.gl_pathv[i], "r"))) {
+            /* error opening file, ignore, continue */
+            continue;
+        }
+        /* try to read comm file */
+        // use size-1 for zero termination
+        rc = fread(rbuff, 1, sizeof(rbuff) - 1, f);
+        fclose(f);
+        if (rc <= 0) continue;
+        // zero terminate
+        rbuff[rc] = 0;
+        // trim newline
+        if (NULL != (newline = strrchr(rbuff, '\n'))) {
+           *newline = '\0';
+        }
+
+        /*
+         *  Find the match. If there is a match, extract pid
+         */
+        if (0 == strcmp(rbuff, proc_name)) {
+            if (1 == sscanf(g.gl_pathv[i] + strlen("/proc/"), "%d", &pid)) {
+                /* Check whether the parent ID of the found process matches */
+                if (ppid == os_pid_to_ppid(pid)) {
+                    break;
+                }
+            }
         }
     }
 

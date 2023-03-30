@@ -426,6 +426,14 @@ gk_cache_check_ttl_device_tree(ds_tree_t *tree)
     LOGT("%s(): cache entries after flushing expired TTL entries: %lu", __func__, gk_get_cache_count());
 }
 
+static int
+gkc_cmp_attr_name(const char *a, const char *b)
+{
+    if (IS_NULL_PTR(a) || IS_NULL_PTR(b)) return 1;
+    return strcmp(a, b);
+}
+
+
 static bool
 gkc_is_attr_present(struct attr_cache *attr_entry, struct gk_attr_cache_interface *req)
 {
@@ -443,12 +451,12 @@ gkc_is_attr_present(struct attr_cache *attr_entry, struct gk_attr_cache_interfac
         case GK_CACHE_REQ_TYPE_FQDN:
         case GK_CACHE_REQ_TYPE_HOST:
         case GK_CACHE_REQ_TYPE_SNI:
-            rc = strcmp(attr->host_name->name, req->attr_name);
+            rc = gkc_cmp_attr_name(attr->host_name->name, req->attr_name);
             ret = (rc == 0);
             break;
 
         case GK_CACHE_REQ_TYPE_URL:
-            rc = strcmp(attr->url->name, req->attr_name);
+            rc = gkc_cmp_attr_name(attr->url->name, req->attr_name);
             ret = (rc == 0);
             break;
 
@@ -461,7 +469,7 @@ gkc_is_attr_present(struct attr_cache *attr_entry, struct gk_attr_cache_interfac
             break;
 
         case GK_CACHE_REQ_TYPE_APP:
-            rc = strcmp(attr->app_name->name, req->attr_name);
+            rc = gkc_cmp_attr_name(attr->app_name->name, req->attr_name);
             ret = (rc == 0);
             break;
 
@@ -523,8 +531,6 @@ bool
 gkc_del_attr_from_dev(struct per_device_cache *pdevice, struct gk_attr_cache_interface *req)
 {
     bool ret = false;
-
-    if (!req->attr_name && !req->ip_addr) return false;
 
     switch (req->attribute_type)
     {

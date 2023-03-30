@@ -42,6 +42,8 @@ endif
 
 UNIT_SRC := src/fsm_dpi_adt.c
 UNIT_SRC += src/dpi_adt.c
+UNIT_SRC += src/fsm_dpi_adt_cache.c
+UNIT_SRC += src/fsm_dpi_adt_cache_internal.c
 
 UNIT_CFLAGS := -I$(UNIT_PATH)/inc
 

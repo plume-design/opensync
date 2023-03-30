@@ -39,8 +39,6 @@ void run_unit_test()
     RUN_TEST( test_target_stats_device_get );
     RUN_TEST( test_target_map_init );
     RUN_TEST( test_target_map_insert );
-    RUN_TEST( test_target_ble_broadcast_stop );
-    RUN_TEST( test_target_ble_broadcast_start );
     RUN_TEST( test_target_tools_dir );
     RUN_TEST( test_target_bin_dir );
     RUN_TEST( test_target_scripts_dir );

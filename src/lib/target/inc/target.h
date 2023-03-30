@@ -205,17 +205,6 @@ bool target_unmap_ifname_exists(const char *ifname);
 /// @} LIB_TARGET_MAP
 
 /******************************************************************************
- *  BLE definitions
- *****************************************************************************/
-/// @cond INTERNAL
-
-bool target_ble_preinit(struct ev_loop *loop);
-bool target_ble_prerun(struct ev_loop *loop);
-bool target_ble_broadcast_start(struct schema_AW_Bluetooth_Config *config);
-bool target_ble_broadcast_stop(void);
-/// @endcond INTERNAL
-
-/******************************************************************************
  *  OM definitions
  *****************************************************************************/
 /// @cond INTERNAL
@@ -239,22 +228,28 @@ bool target_om_hook(target_om_hook_t hook, const char *openflow_rule);
  *****************************************************************************/
 
 /**
- * @brief Get the TLS CA certificate filename
- * @return CA filename
+ * @brief Get the TLS CA certificate full path
+ * @return CA full path
  */
 const char *target_tls_cacert_filename(void);
 
 /**
- * @brief Get the TLS certificate filename
- * @return certificate filename
+ * @brief Get the TLS certificate full path
+ * @return certificate full path
  */
 const char *target_tls_mycert_filename(void);
 
 /**
- * @brief Get the TLS private key filename
- * @return private key filename
+ * @brief Get the TLS private key full path
+ * @return private key full path
  */
 const char *target_tls_privkey_filename(void);
+
+/**
+ * @brief Get the OpenSync CA certificate full path
+ * @return OpenSync CA certificate full path
+ */
+const char *target_opensync_ca_filename(void);
 
 /// @} LIB_TARGET_TLS
 

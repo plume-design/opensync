@@ -1,0 +1,6 @@
+#
+# OpenSync core ebtables.
+#
+source "src/lib/osn/kconfig/Kconfig.osn.fw_eb"
+
+

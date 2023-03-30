@@ -126,6 +126,79 @@ bm_action_frame_rrm(bm_client_t *client,
 }
 
 static void
+bm_ie_parse_neighbor_report(bm_client_t *client, struct neighbor_report_element *neighbor_element)
+{
+    bm_client_btm_retry_neigh_t *retry_neigh;
+    int neigh_pref = -1;
+    const struct element *subelem;
+    const struct neighbor_preference_subelement *neigh_pref_sub;
+    const unsigned int neigh_elem_len_w_hdr = neighbor_element->len + 2;
+    const unsigned int neigh_elem_struct_size = sizeof(*neighbor_element);
+
+    if (neigh_elem_len_w_hdr < neigh_elem_struct_size) {
+        LOGI("Neighbor report element too small neigh_elem_len_w_hdr = %d neigh_elem_struct_size = %d",
+             neigh_elem_len_w_hdr,
+             neigh_elem_struct_size);
+        return;
+    }
+
+    if (client->btm_retry_neighbors_len >= BTM_RETRY_MAX_NEIGHBORS) {
+        LOGI("%s btm retry neighbor list full", client->mac_addr);
+        return;
+    }
+
+    for_each_element_id(subelem,
+                        WLAN_SEID_CANDIDATE_PREFERENCE,
+                        neighbor_element->variable,
+                        neigh_elem_len_w_hdr - neigh_elem_struct_size) {
+
+        if (subelem->datalen > 0) {
+            LOGT("Candidate Preference subelement present");
+            neigh_pref_sub = (struct neighbor_preference_subelement *)subelem;
+            neigh_pref = neigh_pref_sub->preference;
+            break;
+        }
+    }
+
+    LOGI("%s adding neighbor from btm reject bssid = "
+         PRI_os_macaddr_lower_t " bssid_info = %02x%02x%02x%02x op_class = %hhu channel = %hhu phy_type = %hhu preference = %hhu",
+         client->mac_addr,
+         FMT_os_macaddr_pt((os_macaddr_t *)neighbor_element->bssid),
+         neighbor_element->bssid_info[3],
+         neighbor_element->bssid_info[2],
+         neighbor_element->bssid_info[1],
+         neighbor_element->bssid_info[0],
+         neighbor_element->op_class,
+         neighbor_element->channel,
+         neighbor_element->phy_type,
+         neigh_pref);
+
+    retry_neigh = &client->btm_retry_neighbors[client->btm_retry_neighbors_len];
+    retry_neigh->preference = neigh_pref;
+    memcpy(&retry_neigh->bssid,
+           neighbor_element->bssid,
+           sizeof(retry_neigh->bssid));
+
+    client->btm_retry_neighbors_len++;
+}
+
+static void
+bm_client_btm_reject_parse_neighbor_reports(bm_client_t *client, const uint8_t *ies, size_t ies_len)
+{
+    const struct element *elem;
+
+    LOGI("%s parsing neighbor reports from client's btm response", client->mac_addr);
+
+    /* Remove entries from retry neighbors */
+    client->btm_retry_neighbors_len = 0;
+
+    for_each_element_id(elem, WLAN_EID_NEIGHBOR_REPORT, ies, ies_len) {
+        LOGI("Parsing retry neighbor from btm reject");
+        bm_ie_parse_neighbor_report(client, (struct neighbor_report_element *)elem);
+    }
+}
+
+static void
 bm_action_frame_bss_trans_mgmt_resp(bm_client_t *client,
                                     const u8 *payload,
                                     size_t plen)
@@ -142,7 +215,9 @@ bm_action_frame_bss_trans_mgmt_resp(bm_client_t *client,
     status_code = payload[1];
     bss_termination_delay = payload[2];
 
-    LOGD("%s btm resp status %u", client->mac_addr, status_code);
+    LOGI("%s btm resp status %u bss_termination_delay %u",
+         client->mac_addr, status_code, bss_termination_delay);
+
     switch (status_code) {
     case WNM_BSS_TM_ACCEPT:
         if (plen < ETH_ALEN + 3) {
@@ -150,12 +225,16 @@ bm_action_frame_bss_trans_mgmt_resp(bm_client_t *client,
             break;
         }
 
-        LOGI("%s btm resp delay %u bssid "PRI(os_macaddr_t), client->mac_addr,
-             bss_termination_delay, FMT(os_macaddr_pt, (os_macaddr_t*) &payload[3]));
+        LOGI("%s btm resp bssid "PRI(os_macaddr_t), client->mac_addr,
+             FMT(os_macaddr_pt, (os_macaddr_t*) &payload[3]));
         break;
     case WNM_BSS_TM_REJECT_NO_SUITABLE_CANDIDATES:
         LOGI("%s btm resp no suitable candidates, cancel btm", client->mac_addr);
         bm_kick_cancel_btm_retry_task(client);
+        break;
+    case WNM_BSS_TM_REJECT_STA_CANDIDATE_LIST_PROVIDED:
+        LOGI("%s btm resp reject, candidate list provided", client->mac_addr);
+        bm_client_btm_reject_parse_neighbor_reports(client, &payload[3], plen-3);
         break;
     default:
         break;
@@ -184,6 +263,7 @@ bm_action_frame_bss_trans_mgmt_query(bm_client_t *client,
     }
 
     memset(&btm_params, 0, sizeof(btm_params));
+    btm_params.neigh = CALLOC(client->btm_max_neighbors, sizeof(*btm_params.neigh));
     btm_params.abridged = BTM_DEFAULT_ABRIDGED;
     btm_params.pref = BTM_DEFAULT_PREF;
     btm_params.valid_int = BTM_DEFAULT_VALID_INT;
@@ -193,12 +273,15 @@ bm_action_frame_bss_trans_mgmt_query(bm_client_t *client,
 
     if (!bm_neighbor_build_btm_neighbor_list(client, &btm_params)) {
         LOGI("Client '%s': Unable to build neighbor list (query)", client->mac_addr);
-        return;
+        goto out;
     }
 
     if (target_bsal_bss_tm_request(client->ifname, client->macaddr.addr, &btm_params ) < 0) {
         LOGE("BSS Transition Request (query) failed for client %s", client->mac_addr);
     }
+
+out:
+    FREE(btm_params.neigh);
 }
 
 static void

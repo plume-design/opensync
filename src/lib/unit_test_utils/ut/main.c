@@ -100,7 +100,7 @@ void
 test_create_pcap(void)
 {
     struct net_header_parser parser;
-    char filename[PATH_MAX];
+    char filename[PATH_MAX+32];
     char *temp_pcap_folder;
     int ret;
 
@@ -109,7 +109,7 @@ test_create_pcap(void)
 
     /* The filename needs to line up with the array name in 'pcap.c' */
     temp_pcap_folder = STRDUP(g_pcap_tmp_folder);
-    snprintf(filename, PATH_MAX, "%s/%s.txtpcap", g_pcap_tmp_folder, "pkt46");
+    snprintf(filename, sizeof(filename), "%s/%s.txtpcap", g_pcap_tmp_folder, "pkt46");
 
     /* First make sure we keep the folder */
     ut_keep_temp_folder(true);

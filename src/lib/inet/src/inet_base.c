@@ -440,10 +440,9 @@ bool inet_base_init(inet_base_t *self, const char *ifname)
                                                           NULL),
                                                 inet_unit(INET_BASE_SCHEME_DHCP, NULL),
                                                 inet_unit(INET_BASE_DHCPSNIFF, NULL),
-                                                inet_unit(INET_BASE_IPV4_READY,
-                                                          inet_unit(INET_BASE_IGMP, NULL),
-                                                          NULL),
+                                                inet_unit(INET_BASE_IPV4_READY, NULL),
                                                 inet_unit(INET_BASE_ROUTES, NULL),
+                                                inet_unit(INET_BASE_IGMP, NULL),
                                                 NULL),
                                     inet_unit(INET_BASE_INET6,
                                               inet_unit(INET_BASE_RADV, NULL),
@@ -2563,6 +2562,8 @@ bool inet_base_dhcp6_client_commit(inet_base_t *self, bool start)
     bool rc;
     int ii;
 
+    TELOG_STEP("DHCP6_CLIENT", self->inet.in_ifname, start ? "start" : "stop", NULL);
+
     if (self->in_dhcp6_client != NULL)
     {
         rc = osn_dhcpv6_client_del(self->in_dhcp6_client);
@@ -3076,7 +3077,12 @@ bool inet_base_dhcp6_server_commit(inet_base_t *self, bool start)
     }
 
     /* If we're stopping the service, return right now */
-    if (!start) return true;
+    if (!start)
+    {
+        TELOG_STEP("DHCP6_SERVER", self->inet.in_ifname, "stop", NULL);
+        return true;
+    }
+
 
     /* Apply configuration */
     if (!osn_dhcpv6_server_apply(self->in_dhcp6_server))
@@ -3086,6 +3092,7 @@ bool inet_base_dhcp6_server_commit(inet_base_t *self, bool start)
         return false;
     }
 
+    TELOG_STEP("DHCP6_SERVER", self->inet.in_ifname, "start", NULL);
     return true;
 }
 

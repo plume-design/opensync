@@ -33,7 +33,9 @@ UNIT_SRC += test_gatekeeper_cache.c
 UNIT_SRC += test_gatekeeper_cache_flush.c
 UNIT_SRC += test_gatekeeper_cache_cmp.c
 
-UNIT_CFLAGS := -I$(UNIT_PATH)/../inc
+# Add include path to the internal headers
+UNIT_CFLAGS := -I$(UNIT_PATH)/../src
+UNIT_CFLAGS += -Isrc/fsm/inc
 UNIT_EXPORT_CFLAGS := $(UNIT_CFLAGS)
 
 UNIT_LDFLAGS := -lev -ljansson

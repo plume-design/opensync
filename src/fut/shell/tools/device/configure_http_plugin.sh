@@ -29,8 +29,7 @@
 # shellcheck disable=SC1091
 source /tmp/fut-base/shell/config/default_shell.sh
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
-source "${FUT_TOPDIR}/shell/lib/fsm_lib.sh"
-source "${FUT_TOPDIR}/shell/lib/nm2_lib.sh"
+source "${FUT_TOPDIR}/shell/lib/unit_lib.sh"
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
@@ -43,12 +42,12 @@ Description:
     - Script configures interfaces FSM settings for HTTP blocking rules
 Arguments:
     -h  show this help message
-    \$1 (lan_bridge_if)    : Interface name used for LAN bridge        : (string)(required)
-    \$2 (fsm_plugin)       : Path to FSM plugin under test             : (string)(required)
-    \$3 (of_port)          : FSM out/of port                           : (int)(optional)     : (default:${of_port_default})
+    \$1 (lan_bridge_if_name)  : Interface name used for LAN bridge        : (string)(required)
+    \$2 (fsm_plugin)          : Path to FSM plugin under test             : (string)(required)
+    \$3 (mqtt_topic)          : Value of MQTT topic                       : (string)(required)
+    \$4 (client_mac)          : Connected client MAC address              : (string)(required)
 Script usage example:
-    ./tools/device/configure_http_plugin.sh br-home /usr/opensync/lib/libfsm_http.so
-    ./tools/device/configure_http_plugin.sh br-home /usr/opensync/lib/libfsm_http.so 3002
+    ./tools/device/configure_http_plugin.sh br-home /usr/opensync/lib/libfsm_http.so fsm_mqtt_topic ff:ff:ff:ff:ff
 usage_string
 }
 if [ -n "${1}" ]; then
@@ -72,59 +71,46 @@ fut_info_dump_line
 ' EXIT SIGINT SIGTERM
 
 # INPUT ARGUMENTS:
-NARGS=2
-[ $# -lt ${NARGS} ] && raise "Requires at least '${NARGS}' input argument(s)" -arg
+NARGS=4
+[ $# -ne ${NARGS} ] && raise "Requires exactly '${NARGS}' input argument(s)" -arg
 # Input arguments specific to GW, required:
-lan_bridge_if=${1}
+lan_bridge_if_name=${1}
 fsm_plugin=${2}
-of_port=${3:-${of_port_default}}
+mqtt_topic=${3}
+client_mac=${4}
 
-client_mac=$(get_ovsdb_entry_value Wifi_Associated_Clients mac)
-if [ -z "${client_mac}" ]; then
-    raise "FAIL: Could not acquire Client MAC address from Wifi_Associated_Clients, is client connected?" -l "tools/device/configure_http_plugin.sh"
-fi
-# Use first MAC from Wifi_Associated_Clients
-client_mac="${client_mac%%,*}"
-tap_http_if="${lan_bridge_if}.thttp"
+tap_http_if="${lan_bridge_if_name}.http"
+of_port=$(ovs-vsctl get Interface "${tap_http_if}" ofport)
 
 log_title "tools/device/configure_http_plugin.sh: FSM test - Configure http plugin"
-
-log "tools/device/configure_http_plugin.sh: Configuring TAP interfaces required for FSM testing"
-add_bridge_port "${lan_bridge_if}" "${tap_http_if}"
-set_ovs_vsctl_interface_option "${tap_http_if}" "type" "internal"
-set_ovs_vsctl_interface_option "${tap_http_if}" "ofport_request" "${of_port}"
-create_inet_entry \
-    -if_name "${tap_http_if}" \
-    -if_type "tap" \
-    -ip_assign_scheme "none" \
-    -dhcp_sniff "false" \
-    -network true \
-    -enabled true &&
-        log "tools/device/configure_http_plugin.sh: Interface ${tap_http_if} created - Success" ||
-        raise "FAIL: Failed to create interface ${tap_http_if}" -l "tools/device/configure_http_plugin.sh" -ds
 
 log "tools/device/configure_http_plugin.sh: Cleaning FSM OVSDB Config tables"
 empty_ovsdb_table Openflow_Config
 empty_ovsdb_table Flow_Service_Manager_Config
 empty_ovsdb_table FSM_Policy
+empty_ovsdb_table Openflow_Tag
+
+log "tools/device/configure_http_plugin.sh: Adding tags to Openflow_Tag"
+insert_ovsdb_entry Openflow_Tag \
+    -i name "client_mac" \
+    -i cloud_value '["set",["'${client_mac}'"]]'
 
 # Insert egress rule to Openflow_Config
 insert_ovsdb_entry Openflow_Config \
     -i token "dev_flow_http_out" \
     -i table 0 \
-    -i rule "dl_src=${client_mac},tcp,tcp_dst=80" \
+    -i rule 'dl_src=${client_mac},tcp,tcp_dst=80' \
     -i priority 200 \
-    -i bridge "${lan_bridge_if}" \
+    -i bridge "${lan_bridge_if_name}" \
     -i action "normal,output:${of_port}" &&
         log "tools/device/configure_http_plugin.sh: Ingress rule inserted - Success" ||
         raise "FAIL: Failed to insert_ovsdb_entry" -l "tools/device/configure_http_plugin.sh" -oe
 
-mqtt_value="dev-test/dev_http/$(get_node_id)/$(get_location_id)"
 insert_ovsdb_entry Flow_Service_Manager_Config \
     -i if_name "${tap_http_if}" \
     -i handler "dev_http" \
     -i pkt_capt_filter 'tcp' \
     -i plugin "${fsm_plugin}" \
-    -i other_config '["map",[["mqtt_v","'"${mqtt_value}"'"],["dso_init","http_plugin_init"]]]' &&
+    -i other_config '["map",[["mqtt_v","'"${mqtt_topic}"'"],["dso_init","http_plugin_init"]]]' &&
         log "tools/device/configure_http_plugin.sh: Flow_Service_Manager_Config entry added - Success" ||
         raise "FAIL: Failed to insert Flow_Service_Manager_Config entry" -l "tools/device/configure_http_plugin.sh" -oe

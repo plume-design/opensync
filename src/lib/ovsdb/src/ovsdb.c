@@ -75,6 +75,15 @@ ds_tree_t json_rpc_handler_list = DS_TREE_INIT(ds_int_cmp, struct rpc_response_h
 /* JSON-RPC update handler list */
 ds_tree_t json_rpc_update_handler_list = DS_TREE_INIT(ds_int_cmp, struct rpc_update_handler, rrh_node);
 
+/* Deferred readiness reporting */
+struct ovsdb_ready {
+    struct ds_dlist_node node;
+    ovsdb_ready_fn_t *fn;
+    void *fn_priv;
+};
+
+static struct ds_dlist g_ovsdb_ready = DS_DLIST_INIT(struct ovsdb_ready, node);
+
 /******************************************************************************
  *  PROTECTED declarations
  *****************************************************************************/
@@ -463,6 +472,28 @@ bool ovsdb_rpc_callback(int id, bool is_error, json_t *jsmsg)
  *  PUBLIC definitions
  *****************************************************************************/
 
+static void ovsdb_ready_notify(void)
+{
+    struct ovsdb_ready *r;
+    while ((r = ds_dlist_remove_head(&g_ovsdb_ready)) != NULL) {
+        r->fn(r->fn_priv);
+        FREE(r);
+    }
+}
+
+void ovsdb_when_ready(ovsdb_ready_fn_t *fn, void *fn_priv)
+{
+    if (json_rpc_fd == -1) {
+        struct ovsdb_ready *r = CALLOC(1, sizeof(*r));
+        r->fn = fn;
+        r->fn_priv = fn_priv;
+        ds_dlist_insert_tail(&g_ovsdb_ready, r);
+    }
+    else {
+        fn(fn_priv);
+    }
+}
+
 bool ovsdb_init(const char *name)
 {
     return ovsdb_init_loop(NULL, name);
@@ -493,6 +524,7 @@ bool ovsdb_init_loop(struct ev_loop *loop, const char *name)
         ev_io_start(loop, &wovsdb);
 
         success = true;
+        ovsdb_ready_notify();
     }
     else
     {

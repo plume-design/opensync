@@ -1,0 +1,14 @@
+config OSN_BACKEND_TC_NULL
+    bool "Null"
+
+    help
+        Use TC dummy implementation
+
+config OSN_BACKEND_TC_LINUX
+    bool "Linux"
+
+    select OSN_LINUX_ENABLED
+    select OSN_LINUX_TC
+    help
+        Use the Linux TC implementation that uses the tc tool to configure
+        interface mirroring and redirecting traffic.

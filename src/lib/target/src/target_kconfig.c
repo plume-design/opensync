@@ -120,6 +120,29 @@ const char *target_persistent_storage_dir(void)
 }
 #endif /* CONFIG_TARGET_PATH_PERSISTENT */
 
+const char *target_tls_cacert_filename(void)
+{
+    // Return path/filename to CA Certificate used to validate cloud
+    return CONFIG_TARGET_PATH_CERT "/" CONFIG_TARGET_PATH_CERT_CA;
+}
+
+const char *target_tls_mycert_filename(void)
+{
+    // Return path/filename to MY Certificate used to authenticate with cloud
+    return CONFIG_TARGET_PATH_CERT "/" CONFIG_TARGET_PATH_PRIV_CERT;
+}
+
+const char *target_tls_privkey_filename(void)
+{
+    // Return path/filename to MY Private Key used to authenticate with cloud
+    return CONFIG_TARGET_PATH_CERT "/" CONFIG_TARGET_PATH_PRIV_KEY;
+}
+
+const char *target_opensync_ca_filename(void)
+{
+    // Return path/filename to CA certificate used by OpenSync features such as logpull
+    return CONFIG_TARGET_PATH_CERT "/" CONFIG_TARGET_OPENSYNC_CAFILE;
+}
 
 #if defined(CONFIG_TARGET_RESTART_SCRIPT)
 bool target_device_restart_managers()

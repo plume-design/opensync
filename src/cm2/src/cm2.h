@@ -552,7 +552,7 @@ static inline bool cm2_is_wan_link_management(void)
 
 static inline bool cm2_is_config_via_ble_enabled(void)
 {
-#ifdef CONFIG_PLUME_CONFIG_VIA_BLE_ENABLED
+#ifdef CONFIG_BLEM_CONFIG_VIA_BLE_ENABLED
     return true;
 #else
     return false;
@@ -574,4 +574,7 @@ void cm2_update_device_type(const char *iftype);
 bool cm2_ovsdb_set_dhcpv6_client(char *ifname, bool enable);
 bool cm2_osn_is_ipv6_global_link(const char *ifname, const char *ipv6_addr);
 void cm2_restart_iface(char *ifname);
+bool cm2_add_port_to_br(char *port_name, char *br_name);
+bool cm2_del_port_from_br(char *port_name, char *br_name);
+
 #endif /* CM2_H_INCLUDED */

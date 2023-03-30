@@ -35,6 +35,7 @@ SCHEMA := interfaces/opensync.ovsschema
 
 # Source files
 UNIT_SRC := src/schema.c
+UNIT_SRC += src/compat.c
 
 # Additional object files
 UNIT_CLEAN := $(UNIT_BUILD)/schema_gen.h

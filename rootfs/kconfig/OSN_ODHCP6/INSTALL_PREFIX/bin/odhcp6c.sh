@@ -134,9 +134,18 @@ update_resolv()
     dns_apply "$1_ipv6"
 }
 
+log_dhcp6_time_event()
+{
+    logger="${INSTALL_PREFIX}"/tools/telog
+    if [ -x "$logger" ]; then
+        $logger -n "telog" -c "DHCP6_CLIENT" -s "$1" -t "$2" "addr=${3:-null}"
+    fi
+}
+
 setup_interface()
 {
     local device="$1"
+    event_time="$(date -r $OPTS_FILE "+%m-%d-%Y %H:%M")"
 
     # Merge RA-DNS
     for radns in $RA_DNS; do
@@ -216,8 +225,8 @@ setup_interface()
         local valid="${entry%%,*}"
 
         ip -6 address replace "$addr" dev "$device" preferred_lft "$preferred" valid_lft "$valid"
+        address=$addr
     done
-
 
     for entry in $RA_ROUTES; do
         local addr="${entry%%,*}"
@@ -246,6 +255,12 @@ setup_interface()
     }
 
     export > "$OPTS_FILE"
+
+    curr_time="$(date "+%m-%d-%Y %H:%M")"
+    if [ "$2" != "ra-updated" ] || [ "$event_time" != "$curr_time" ]
+    then
+        log_dhcp6_time_event "$1" "$2" "$address"
+    fi
 }
 
 teardown_interface()
@@ -261,10 +276,10 @@ teardown_interface()
     case "$2" in
         bound)
             teardown_interface "$1"
-            setup_interface "$1"
+            setup_interface "$1" "$2"
         ;;
         informed|updated|rebound|ra-updated)
-            setup_interface "$1"
+            setup_interface "$1" "$2"
         ;;
         stopped|unbound)
             teardown_interface "$1"

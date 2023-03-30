@@ -172,6 +172,7 @@ void um_start_download(char* url, int timeout)
     {
         status = um_map_errno_osp_to_cloud(osp_upg_errno());
         LOGE("System not ready for upgrade errno: %d", osp_upg_errno());
+        FREE(url);
         goto exit;
     }
 
@@ -179,6 +180,7 @@ void um_start_download(char* url, int timeout)
     {
         status = um_map_errno_osp_to_cloud(osp_upg_errno());
         LOGE("Error downloading %s: Errno: %d mapped %d", url, osp_upg_errno(), status);
+        FREE(url);
         goto exit;
     }
 
@@ -253,11 +255,7 @@ static void cb_upg(const osp_upg_op_t op,
             }
             else
             {
-                if (upg_url)
-                {
-                    FREE(upg_url);
-                    upg_url = NULL;
-                }
+                FREE(upg_url);
                 LOG(ERR, "Error in downloading. Errno: %d", osp_upg_errno());
                 ret_status = um_map_errno_osp_to_cloud(osp_upg_errno());
             }
@@ -328,13 +326,8 @@ static void callback_AWLAN_Node(
                             awlan_node->upgrade_timer);
                 if (strlen(awlan_node->firmware_url) > 0)
                 {
-                    if (upg_url == NULL || strncmp(upg_url, awlan_node->firmware_url, sizeof(awlan_node->firmware_url)))
+                    if (osp_upg_check_system())
                     {
-                        if (upg_url)
-                        {
-                           FREE(upg_url);
-                           upg_url = NULL;
-                        }
                         upg_url = strdup(awlan_node->firmware_url);
                         um_start_download(upg_url, awlan_node->upgrade_dl_timer);
                     }
@@ -345,11 +338,6 @@ static void callback_AWLAN_Node(
                 }
                 else
                 {
-                    if (upg_url)
-                    {
-                        FREE(upg_url);
-                        upg_url = NULL;
-                    }
                     LOG(NOTICE, "URL is empty");
                 }
             }
@@ -439,6 +427,7 @@ bool um_ovsdb()
                          SCHEMA_COLUMN(AWLAN_Node, firmware_url),
                          SCHEMA_COLUMN(AWLAN_Node, firmware_pass),
                          SCHEMA_COLUMN(AWLAN_Node, upgrade_timer),
+                         SCHEMA_COLUMN(AWLAN_Node, upgrade_dl_timer),
                          NULL };
     /*
      * Connect to the database

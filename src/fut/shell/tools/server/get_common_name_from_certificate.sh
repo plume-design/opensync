@@ -32,7 +32,7 @@ export FUT_TOPDIR="$(realpath "$current_dir"/../../..)"
 source "${FUT_TOPDIR}/shell/config/default_shell.sh" &> /dev/null
 # Ignore errors for fut_set_env.sh sourcing
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh &> /dev/null
-source "${FUT_TOPDIR}/shell/lib/onbrd_lib.sh" &> /dev/null
+source "${FUT_TOPDIR}/shell/lib/unit_lib.sh" &> /dev/null
 
 usage()
 {

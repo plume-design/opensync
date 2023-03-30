@@ -30,6 +30,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "unity.h"
 #include "unity_internals.h"
 #include "unit_test_utils.h"
+#include "fsm_dpi_adt_cache.h"
 
 char *test_name = "fsm_dpi_adt_plugin_tests";
 
@@ -53,6 +54,7 @@ void
 fsm_dpi_adt_tearDown(void)
 {
     dns_cache_cleanup_mgr();
+    fsm_dpi_adt_clear_cache();
 }
 
 
