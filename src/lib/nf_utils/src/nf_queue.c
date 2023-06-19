@@ -83,6 +83,7 @@ nf_queue_parse_attr_cb(const struct nlattr *attr, void *data)
 {
     struct nfq_pkt_info *pi = (struct nfq_pkt_info *)data;
     struct nfqnl_msg_packet_hdr *ph;
+    struct nfqnl_msg_packet_hw  *phw;
     int type = mnl_attr_get_type(attr);
     int rc;
 
@@ -147,7 +148,10 @@ nf_queue_parse_attr_cb(const struct nlattr *attr, void *data)
             LOGE("%s: mnl_attr_validate2 failed", __func__);
             return MNL_CB_ERROR;
         }
-        pi->hw_addr = mnl_attr_get_payload(attr);
+        phw = mnl_attr_get_payload(attr);
+        pi->hw_addr = phw->hw_addr;
+        pi->hw_addr_len = ntohs(phw->hw_addrlen);
+
         break;
     case NFQA_PAYLOAD:
         pi->payload = mnl_attr_get_payload(attr);
@@ -173,6 +177,8 @@ nf_queue_cb(const struct nlmsghdr *nlh, void *data)
 
     nfq = (struct nfqueue_ctxt *)data;
     pkt_info = &nfq->pkt_info;
+
+    MEMZERO(nfq->pkt_info);
     ret = mnl_attr_parse(nlh, sizeof(struct nfgenmsg), nf_queue_parse_attr_cb, pkt_info);
     if (ret == MNL_CB_ERROR) return MNL_CB_ERROR;
 

@@ -179,6 +179,7 @@ mock_get_config(struct fsm_session *session, char *key)
 void
 test_fsm_dpi_sni_init_exit(void)
 {
+    struct dpi_dns_client *mgr;
     struct fsm_session sess;
     int rc;
 
@@ -194,6 +195,11 @@ test_fsm_dpi_sni_init_exit(void)
     sess.name = "TESTING";
     rc = fsm_dpi_dns_init(&sess);
     TEST_ASSERT_EQUAL_INT(0, rc);
+    mgr = fsm_dpi_dns_get_mgr();
+    TEST_ASSERT_EQUAL_INT(1, mgr->initialized);
+
+    fsm_dpi_dns_exit(&sess);
+    TEST_ASSERT_EQUAL_INT(0, mgr->initialized);
 }
 
 void
@@ -214,6 +220,7 @@ test_fsm_dpi_sni_process_attr_wrong_type(void)
 
     /* Start populating the different parameters and check along the way */
     MEMZERO(acc);
+    MEMZERO(pkt_info);
     pkt_info.acc = &acc;
     acc.originator = NET_MD_ACC_UNKNOWN_ORIGINATOR;
     ret = fsm_dpi_dns_process_attr(NULL, NULL, 0, 0, NULL, &pkt_info);

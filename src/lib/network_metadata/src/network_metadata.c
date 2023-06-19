@@ -298,7 +298,7 @@ err_free_serialized:
  * @return a pointer to the serialized data.
  */
 struct packed_buffer *
-serialize_data_report_tags(struct str_set *data_reports)
+serialize_data_report_tags(struct data_report_tags *data_reports)
 {
     struct packed_buffer *serialized;
     Traffic__DataReportTag *pb;
@@ -354,9 +354,10 @@ err_free_serialized:
  * @return a pointer to a data report tags protobuf structure
  */
 Traffic__DataReportTag *
-set_data_report_tags(struct str_set *data_reports)
+set_data_report_tags(struct data_report_tags *data_report_tags)
 {
     Traffic__DataReportTag *pb;
+    struct str_set *tags;
     char **report_tags;
     size_t allocated;
     char **features;
@@ -365,7 +366,7 @@ set_data_report_tags(struct str_set *data_reports)
     size_t i;
     bool ret;
 
-    if (data_reports == NULL) return NULL;
+    if (data_report_tags == NULL) return NULL;
 
     /* Allocate the protobuf structure */
     pb = CALLOC(1, sizeof(*pb));
@@ -373,13 +374,14 @@ set_data_report_tags(struct str_set *data_reports)
     /* Initialize the protobuf structure */
     traffic__data_report_tag__init(pb);
 
-    nelems = data_reports->nelems;
+    tags = data_report_tags->data_report;
+    nelems = tags->nelems;
 
     report_tags = CALLOC(nelems, sizeof(*report_tags));
 
     pb->features = report_tags;
     pb_tag = report_tags;
-    features = data_reports->array;
+    features = tags->array;
     allocated = 0;
     for (i = 0; i < nelems; i++)
     {
@@ -392,6 +394,9 @@ set_data_report_tags(struct str_set *data_reports)
     }
 
     pb->n_features = nelems;
+    ret = str_duplicate(data_report_tags->id, &pb->id);
+
+    if (!ret) goto err_free_report_tags;
 
     return pb;
 
@@ -431,7 +436,7 @@ free_pb_data_report_tags(Traffic__DataReportTag *pb)
         FREE(*features);
         features++;
     }
-
+    FREE(pb->id);
     FREE(pb->features);
 
 }
@@ -619,7 +624,7 @@ set_pb_report_tags(struct flow_key *key)
 {
     Traffic__DataReportTag **report_tags_pb_tbl;
     Traffic__DataReportTag **report_tags_pb;
-    struct str_set **report_tags;
+    struct data_report_tags **report_tags;
     size_t i, allocated;
 
     if (key == NULL) return NULL;
@@ -1213,6 +1218,14 @@ static Traffic__FlowKey *set_flow_key(struct flow_key *key)
     set_uint32((uint32_t)key->flowmarker, &pb->flowmarker, &pb->has_flowmarker);
     pb->flowstate = set_pb_flowstate(&key->state);
 
+    if (key->num_data_report != 0)
+    {
+        pb->datareporttag = set_pb_report_tags(key);
+        if (pb->datareporttag == NULL) goto err_free_flow_tags;
+
+        pb->n_datareporttag = key->num_data_report;
+    }
+
     /* Exit now if not requested to send vendor data */
     if (!key->state.report_attrs) return pb;
 
@@ -1224,15 +1237,6 @@ static Traffic__FlowKey *set_flow_key(struct flow_key *key)
         if (pb->flowtags == NULL) goto err_free_uplinkname;
 
         pb->n_flowtags = key->num_tags;
-        key->state.report_attrs = false;
-    }
-
-    if (key->num_data_report != 0)
-    {
-        pb->datareporttag = set_pb_report_tags(key);
-        if (pb->datareporttag == NULL) goto err_free_flow_tags;
-
-        pb->n_datareporttag = key->num_data_report;
         key->state.report_attrs = false;
     }
 

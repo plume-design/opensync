@@ -35,6 +35,7 @@ UNIT_DEPS := src/lib/log
 UNIT_DEPS += src/lib/common
 UNIT_DEPS += src/lib/unity
 UNIT_DEPS += src/lib/osa
+UNIT_DEPS += src/lib/ustack
 UNIT_DEPS += src/qm/qm_conn
 UNIT_DEPS += src/lib/mdnsd
 UNIT_DEPS += src/lib/mdns_plugin

@@ -41,6 +41,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #define MODULE_ID LOG_MODULE_ID_TARGET
 
+static struct osfw_nfbase self;
+
 const char * const osfw_table_str_list[] =
 {
     [OSFW_TABLE_FILTER] = "filter",
@@ -63,9 +65,12 @@ static const char *osfw_table_str(enum osfw_table tbl)
     return osfw_table_str_list[tbl];
 }
 
-bool osfw_init(void)
+bool osfw_init(osfw_fn_t *osfw_status_fn)
 {
     LOG(INFO, "osfw: null init");
+
+    memset(&self, 0, sizeof(self));
+    self.osfw_fn = osfw_status_fn;
 
     return true;
 }
@@ -105,7 +110,8 @@ bool osfw_rule_add(
         const char *chain,
         int priority,
         const char *match,
-        const char *target)
+        const char *target,
+        const char *name)
 {
     LOG(INFO,
             "osfw: %s.%s.%s.: null rule add: [%d] %s -> %s",

@@ -117,18 +117,10 @@ ow_steer_policy_stack_add(struct ow_steer_policy_stack *stack,
 {
     assert(stack != NULL);
     assert(policy != NULL);
+    assert(policy->stack == NULL);
 
-    struct ow_steer_policy *entry;
-
-    ds_dlist_foreach(&stack->policy_list, entry)
-        if (policy->priority <= entry->priority)
-            break;
-
-    if (entry == NULL)
-        ds_dlist_insert_tail(&stack->policy_list, policy);
-    else
-        ds_dlist_insert_before(&stack->policy_list, entry, policy);
-
+    policy->stack = stack;
+    ds_dlist_insert_tail(&stack->policy_list, policy);
     ow_steer_policy_stack_schedule_recalc(stack);
 }
 
@@ -138,9 +130,11 @@ ow_steer_policy_stack_remove(struct ow_steer_policy_stack *stack,
 {
     assert(stack != NULL);
     assert(policy != NULL);
+    assert(policy->stack != NULL);
 
     ds_dlist_remove(&stack->policy_list, policy);
     ow_steer_policy_stack_schedule_recalc(stack);
+    policy->stack = NULL;
 }
 
 bool
@@ -148,6 +142,28 @@ ow_steer_policy_stack_is_empty(struct ow_steer_policy_stack *stack)
 {
     assert(stack != NULL);
     return ds_dlist_is_empty(&stack->policy_list);
+}
+
+const struct ow_steer_policy *
+ow_steer_policy_get_more_important(const struct ow_steer_policy *a,
+                                   const struct ow_steer_policy *b)
+{
+    if (a != NULL && a->stack == NULL) a = NULL;
+    if (b != NULL && b->stack == NULL) b = NULL;
+    if (a != NULL && b != NULL && a->stack != b->stack) return NULL;
+
+    struct ow_steer_policy_stack *stack = a != NULL ? a->stack
+                                        : b != NULL ? b->stack
+                                        : NULL;
+    if (stack == NULL) return NULL;
+
+    struct ow_steer_policy *i;
+    ds_dlist_foreach(&a->stack->policy_list, i) {
+        if (i == a) return a;
+        if (i == b) return b;
+    }
+
+    return NULL;
 }
 
 void
@@ -165,7 +181,6 @@ ow_steer_policy_stack_sigusr1_dump(struct ow_steer_policy_stack *stack)
     struct ow_steer_policy *policy;
     ds_dlist_foreach(&stack->policy_list, policy) {
         LOGI("ow: steer:       policy: name: %s", policy->name);
-        LOGI("ow: steer:         priority: %u", ow_steer_policy_get_priority(policy));
         LOGI("ow: steer:         bssid: "OSW_HWADDR_FMT, OSW_HWADDR_ARG(ow_steer_policy_get_bssid(policy)));
         if (policy->ops.sigusr1_dump_fn != NULL)
             policy->ops.sigusr1_dump_fn(policy);

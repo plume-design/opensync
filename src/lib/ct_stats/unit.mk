@@ -67,3 +67,4 @@ UNIT_DEPS += src/lib/ustack
 UNIT_DEPS += src/lib/nf_utils
 UNIT_DEPS += src/lib/fsm_utils
 UNIT_DEPS += src/lib/neigh_table
+UNIT_DEPS += src/lib/data_report_tags

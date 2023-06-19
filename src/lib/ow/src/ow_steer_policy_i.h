@@ -27,14 +27,16 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifndef OW_STEER_POLICY_I_H
 #define OW_STEER_POLICY_I_H
 
+struct ow_steer_policy_stack;
+
 typedef void
 ow_steer_policy_schedule_recalc_fn_t(void *priv);
 
 struct ow_steer_policy {
+    struct ow_steer_policy_stack *stack;
     char *name;
     struct osw_hwaddr sta_addr;
     struct osw_hwaddr bssid;
-    unsigned int priority;
     void *priv;
     struct ow_steer_policy_ops ops;
     struct ow_steer_policy_mediator mediator;

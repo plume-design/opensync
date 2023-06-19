@@ -216,7 +216,7 @@ bool lnx_tc_filter_begin(lnx_tc_t *self, bool ingress, int priority, const char 
     key->ingress = ingress;
     key->priority = priority;
     key->match = STRDUP(match);
-    if (!strcmp(action, "pass")) key->action = NULL;
+    if (!strcmp(action, "pass")) key->action = STRDUP("action classid 1:");
     else key->action = STRDUP(action);
     lkp = ds_tree_find(&self->lt_filters, key);
     if (lkp == NULL)

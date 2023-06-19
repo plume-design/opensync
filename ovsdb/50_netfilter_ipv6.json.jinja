@@ -132,6 +132,20 @@
         "op":"insert",
         "table":"Netfilter",
         "row": {
+            "name": "default.ipv6.filter.nm_mss_clamp",
+            "enable": true,
+            "priority": 900,
+            "protocol": "ipv6",
+            "table": "filter",
+            "chain": "FORWARD",
+            "rule": "",
+            "target": "NM_MSS_CLAMP"
+        }
+    },
+    {
+        "op":"insert",
+        "table":"Netfilter",
+        "row": {
             "name": "default.ipv6.nm_forward",
             "enable": true,
             "priority": 1000,

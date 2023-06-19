@@ -261,7 +261,7 @@ test_redirect_cache(void)
     TEST_ASSERT_TRUE(rc);
     dns_cache_cleanup();
 
-    reply.service_id = IP2ACTION_WP_SVC;
+    reply.service_id = IP2ACTION_BC_SVC;
     rc = fsm_dns_cache_add_redirect_entry(&param);
     TEST_ASSERT_TRUE(rc);
     dns_cache_cleanup();
@@ -285,7 +285,7 @@ test_redirect_cache(void)
     TEST_ASSERT_TRUE(rc);
     dns_cache_cleanup();
 
-    reply.service_id = IP2ACTION_WP_SVC;
+    reply.service_id = IP2ACTION_BC_SVC;
     rc = fsm_dns_cache_add_redirect_entry(&param);
     TEST_ASSERT_TRUE(rc);
     dns_cache_cleanup();
@@ -604,6 +604,7 @@ test_redirected_flow(void)
     uint8_t *cache_ip;
     bool rc;
 
+    MEMZERO(info);
     info.local_mac = &g_src_mac;
     info.ip_version = 4;
     info.remote_ip = CALLOC(1, 4);
@@ -622,7 +623,7 @@ test_redirected_flow(void)
     memset(&ip_cache_req, 0, sizeof(ip_cache_req));
     ip_cache_req.device_mac = &g_src_mac;
     ip_cache_req.ip_addr = &ipaddr;
-    ip_cache_req.service_id = 2;
+    ip_cache_req.service_id = URL_GK_SVC;
     ip_cache_req.action = FSM_REDIRECT;
     ip_cache_req.redirect_flag = true;
     ip_cache_req.cache_ttl = 1000;

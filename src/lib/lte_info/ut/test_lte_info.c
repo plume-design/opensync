@@ -46,6 +46,8 @@ struct lte_info_report *g_report = NULL;
 char *g_deployment = "dog1";
 char g_mqtt_topic[256];
 
+#define NEIGH_CELL_COUNT 4
+
 struct lte_common_header g_common_header =
 {
     .request_id = 1,
@@ -109,7 +111,6 @@ struct lte_net_neighbor_cell_info g_neigh_cells[] =
         .mode = LTE_CELL_MODE_LTE,
         .freq_mode = LTE_FREQ_MODE_INTRA,
         .earfcn = 5035,
-        .uarfcn = 0,
         .pcid = 159,
         .rsrq = -15,
         .rsrp = -111,
@@ -131,11 +132,58 @@ struct lte_net_neighbor_cell_info g_neigh_cells[] =
         .inter_freq_srxlev = -90,
     },
     {
-        .mode = LTE_CELL_MODE_WCDMA,
+        .mode = LTE_CELL_MODE_LTE,
         .freq_mode = LTE_FREQ_MODE_INTER,
         .earfcn = 5035,
-        .uarfcn = 0,
-        .pcid = 159,
+        .pcid = 160,
+        .rsrq = -15,
+        .rsrp = -111,
+        .rssi = -81,
+        .sinr = 0,
+        .srxlev = 13,
+        .cell_resel_priority = 1,
+        .s_non_intra_search = 8,
+        .thresh_serving_low = 0,
+        .s_intra_search = 46,
+        .thresh_x_low = 0,
+        .thresh_x_high = 0,
+        .psc = 0,
+        .rscp = 0,
+        .ecno = 0,
+        .cell_set = LTE_NEIGHBOR_CELL_SET_ASYNC_NEIGHBOR,
+        .rank = -190,
+        .cellid = 0,
+        .inter_freq_srxlev = -90,
+    },
+    {
+        .mode = LTE_CELL_MODE_LTE,
+        .freq_mode = LTE_FREQ_MODE_INTER,
+        .earfcn = 5035,
+        .pcid = 161,
+        .rsrq = -15,
+        .rsrp = -111,
+        .rssi = -81,
+        .sinr = 0,
+        .srxlev = 13,
+        .cell_resel_priority = 1,
+        .s_non_intra_search = 8,
+        .thresh_serving_low = 0,
+        .s_intra_search = 46,
+        .thresh_x_low = 0,
+        .thresh_x_high = 0,
+        .psc = 0,
+        .rscp = 0,
+        .ecno = 0,
+        .cell_set = LTE_NEIGHBOR_CELL_SET_ASYNC_NEIGHBOR,
+        .rank = -190,
+        .cellid = 0,
+        .inter_freq_srxlev = -90,
+    },
+    {
+        .mode = LTE_CELL_MODE_LTE,
+        .freq_mode = LTE_FREQ_MODE_INTER,
+        .earfcn = 5035,
+        .pcid = 162,
         .rsrq = -15,
         .rsrp = -111,
         .rssi = -81,
@@ -479,8 +527,8 @@ lte_ut_set_report(void)
 {
     bool ret;
 
-    /* Allocate a report provisioning 2 neighbor cells */
-    g_report = lte_info_allocate_report(2);
+    /* Allocate a report provisioning NEIGH_CELL_COUNT neighbor cells */
+    g_report = lte_info_allocate_report(NEIGH_CELL_COUNT);
     TEST_ASSERT_NOT_NULL(g_report);
 
     /* Add one report cell */
@@ -498,6 +546,22 @@ lte_ut_set_report(void)
     TEST_ASSERT_TRUE(ret);
     TEST_ASSERT_NOT_NULL(g_report->lte_neigh_cell_info[1]);
     TEST_ASSERT_EQUAL_UINT(2, g_report->cur_neigh_cell_idx);
+
+    /* Add another report cell */
+    ret = lte_info_add_neigh_cell_info(&g_neigh_cells[2], g_report);
+
+    /* validate the addition of the neighbor cell */
+    TEST_ASSERT_TRUE(ret);
+    TEST_ASSERT_NOT_NULL(g_report->lte_neigh_cell_info[2]);
+    TEST_ASSERT_EQUAL_UINT(3, g_report->cur_neigh_cell_idx);
+
+    /* Add another report cell */
+    ret = lte_info_add_neigh_cell_info(&g_neigh_cells[3], g_report);
+
+    /* validate the addition of the neighbor cell */
+    TEST_ASSERT_TRUE(ret);
+    TEST_ASSERT_NOT_NULL(g_report->lte_neigh_cell_info[3]);
+    TEST_ASSERT_EQUAL_UINT(4, g_report->cur_neigh_cell_idx);
 
     /* Validate the addition of the common header */
     ret = lte_info_set_common_header(&g_common_header, g_report);

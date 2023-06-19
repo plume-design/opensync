@@ -73,6 +73,16 @@ ow_steer_executor_add(struct ow_steer_executor *executor,
 }
 
 void
+ow_steer_executor_remove(struct ow_steer_executor *executor,
+                         struct ow_steer_executor_action *action)
+{
+    ASSERT(executor != NULL, "");
+    ASSERT(action != NULL, "");
+
+    ds_dlist_remove(&executor->action_list, action);
+}
+
+void
 ow_steer_executor_call(struct ow_steer_executor *executor,
                        const struct osw_hwaddr *sta_addr,
                        const struct ow_steer_candidate_list *candidate_list,

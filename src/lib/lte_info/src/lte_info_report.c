@@ -342,10 +342,9 @@ lte_info_set_neigh_cell_info(struct lte_net_neighbor_cell_info *source,
     if (source == NULL) return false;
     if (dest == NULL) return false;
 
-    dest->mode = source->mode;
     dest->freq_mode = source->freq_mode;
+    dest->mode = source->mode;
     dest->earfcn = source->earfcn;
-    dest->uarfcn = source->uarfcn;
     dest->pcid = source->pcid;
     dest->rsrq = source->rsrq;
     dest->rsrp = source->rsrp;
@@ -1004,7 +1003,6 @@ lte_info_set_pb_neighbor(struct lte_net_neighbor_cell_info *neighbor)
     pb->mode = (Interfaces__LteInfo__LteCellMode)neighbor->mode;
     pb->freq_mode = lte_info_set_neighbor_freq_mode(neighbor->freq_mode);
     pb->earfcn = neighbor->earfcn;
-    pb->uarfcn = neighbor->uarfcn;
     pb->pcid = neighbor->pcid;
     pb->rsrp = neighbor->rsrp;
     pb->rsrq = neighbor->rsrq;

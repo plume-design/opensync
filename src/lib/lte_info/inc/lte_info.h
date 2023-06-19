@@ -307,7 +307,6 @@ struct lte_net_neighbor_cell_info
     enum lte_cell_mode mode;
     enum lte_neighbor_freq_mode freq_mode;
     uint32_t earfcn;
-    uint32_t uarfcn;
     uint32_t pcid;
     int32_t rsrq;
     int32_t rsrp;

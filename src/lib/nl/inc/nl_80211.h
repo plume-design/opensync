@@ -193,6 +193,15 @@ nl_80211_alloc_get_sta(struct nl_80211 *nl_80211,
                        const void *mac);
 
 struct nl_msg *
+nl_80211_alloc_set_vif_power_auto(struct nl_80211 *nl_80211,
+                                  uint32_t ifindex);
+
+struct nl_msg *
+nl_80211_alloc_set_vif_power_fixed(struct nl_80211 *nl_80211,
+                                   uint32_t ifindex,
+                                   uint32_t mbm);
+
+struct nl_msg *
 nl_80211_alloc_dump_scan(struct nl_80211 *nl_80211,
                          uint32_t ifindex);
 
@@ -207,6 +216,12 @@ nl_80211_alloc_roc(struct nl_80211 *nl_80211,
 struct nl_msg *
 nl_80211_alloc_disconnect(struct nl_80211 *nl_80211,
                           uint32_t ifindex);
+
+struct nl_msg *
+nl_80211_alloc_set_phy_antenna(struct nl_80211 *nl_80211,
+                               uint32_t wiphy,
+                               uint32_t tx_chainmask,
+                               uint32_t rx_chainmask);
 
 typedef void
 nl_80211_sub_phy_added_fn_t(const struct nl_80211_phy *info,

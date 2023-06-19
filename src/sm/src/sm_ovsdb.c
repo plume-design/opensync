@@ -49,6 +49,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "schema_consts.h"
 #include "policy_tags.h"
 #include "memutil.h"
+#include "ff_lib.h"
 
 #include "dpp_client.h"
 
@@ -127,12 +128,9 @@ DS_TREE_INIT(
 static bool
 sm_skip_wifi(void)
 {
-    const char *sm_onewifi_env = getenv("SM_WIFI_STATS_DISABLE");
+    const bool ff_use_onewifi = ff_is_flag_enabled("use_owm");
 
-    if (sm_onewifi_env == NULL)
-        return false;
-
-    if (strcmp(sm_onewifi_env , "enabled") == 0) {
+    if (ff_use_onewifi == true) {
         LOG(INFO, "Skipping Wifi Stats");
         return true;
     }
@@ -676,9 +674,11 @@ void sm_radio_cfg_update(void)
         else if (strcmp(radio->schema.ht_mode, "HT160") == 0) {
             radio_cfg.chanwidth = RADIO_CHAN_WIDTH_160MHZ;
         }
-
         else if (strcmp(radio->schema.ht_mode, "HT80+80") == 0) {
             radio_cfg.chanwidth = RADIO_CHAN_WIDTH_80_PLUS_80MHZ;
+        }
+        else if (strcmp(radio->schema.ht_mode, "HT320") == 0) {
+            radio_cfg.chanwidth = RADIO_CHAN_WIDTH_320MHZ;
         }
         else {
             radio_cfg.chanwidth = RADIO_CHAN_WIDTH_NONE;
@@ -707,6 +707,9 @@ void sm_radio_cfg_update(void)
         }
         else if (strcmp(radio->schema.hw_mode, "11ax") == 0) {
             radio_cfg.protocol = RADIO_802_11_AX;
+        }
+        else if (strcmp(radio->schema.hw_mode, "11be") == 0) {
+            radio_cfg.protocol = RADIO_802_11_BE;
         }
         else {
             LOG(DEBUG,

@@ -96,9 +96,10 @@ UNIT_DEPS += src/lib/osn
 UNIT_DEPS += src/lib/rq
 UNIT_DEPS += src/lib/hostap2
 
-ifneq (,$(wildcard $(TARGET_DIR)/usr/include/libnl3))
+ifneq (,$(wildcard $(TARGET_DIR)/usr/include/libnl3)$(LIBNL3_HEADERS))
 UNIT_SRC += src/osw_drv_nl80211.c
 UNIT_DEPS += src/lib/nl
+UNIT_CFLAGS += $(LIBNL3_HEADERS)
 endif
 
 ifeq ($(BUILD_SHARED_LIB),y)

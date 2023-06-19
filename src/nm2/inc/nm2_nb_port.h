@@ -55,5 +55,6 @@ reflink_t *nm2_ports_getref(const ovs_uuid_t *uuid);
 void callback_Port(ovsdb_update_monitor_t *mon, struct schema_Port *old,
                    struct schema_Port *new);
 void nm2_inet_bridge_config_reapply(struct nm2_iface *pif);
+void nm2_port_config_hairpin(const char *port_name);
 
 #endif /* NM2_NB_PORT_H_INCLUDED */

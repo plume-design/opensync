@@ -687,8 +687,7 @@ ow_steer_policy_snr_xing_enforce_timer_cb(struct osw_timer *timer)
 }
 
 struct ow_steer_policy_snr_xing*
-ow_steer_policy_snr_xing_create(unsigned int priority,
-                                const char *name,
+ow_steer_policy_snr_xing_create(const char *name,
                                 const struct osw_hwaddr *sta_addr,
                                 const struct ow_steer_policy_mediator *mediator)
 {
@@ -715,7 +714,7 @@ ow_steer_policy_snr_xing_create(unsigned int priority,
     struct ow_steer_policy_snr_xing_state *state = &xing_policy->state;
     osw_timer_init(&state->enforce_timer, ow_steer_policy_snr_xing_enforce_timer_cb);
 
-    xing_policy->base = ow_steer_policy_create(strfmta("%s_%s", g_policy_name, name), priority, sta_addr, &policy_ops, mediator, xing_policy);
+    xing_policy->base = ow_steer_policy_create(strfmta("%s_%s", g_policy_name, name), sta_addr, &policy_ops, mediator, xing_policy);
 
     return xing_policy;
 }
@@ -729,6 +728,7 @@ ow_steer_policy_snr_xing_free(struct ow_steer_policy_snr_xing *xing_policy)
     const bool unregister_observer = xing_policy->config != NULL;
 
     ow_steer_policy_snr_xing_state_reset(xing_policy);
+    osw_timer_disarm(&xing_policy->reconf_timer);
     FREE(xing_policy->next_config);
     xing_policy->next_config = NULL;
     FREE(xing_policy->config);

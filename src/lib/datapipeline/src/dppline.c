@@ -1590,6 +1590,11 @@ static void dppline_add_stat_device(Sts__Report *r, dppline_stats_t *s)
         sr->powerinfo->batt_level = device->record.power_info.batt_level;
         sr->powerinfo->has_batt_level = true;
     }
+
+    sr->total_file_handles = device->record.total_file_handles;
+    sr->used_file_handles  = device->record.used_file_handles;
+    sr->has_total_file_handles = true;
+    sr->has_used_file_handles  = true;
 }
 
 static void dppline_add_stat_capacity(Sts__Report *r, dppline_stats_t *s)

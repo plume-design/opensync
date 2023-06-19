@@ -145,8 +145,12 @@ osw_timer_get_remaining_nsec(const struct osw_timer *timer,
 {
     ASSERT(timer != NULL, "");
     if (osw_timer_is_armed(timer) == true) {
-        assert(timer->at_nsec >= now_nsec);
-        return timer->at_nsec - now_nsec;
+        if (timer->at_nsec >= now_nsec) {
+            return timer->at_nsec - now_nsec;
+        }
+        else {
+            return 0;
+        }
     }
     else {
         return UINT64_MAX;

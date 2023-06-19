@@ -34,6 +34,19 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <osw_drv.h>
 #include "osw_state_i.h"
 
+#define LOG_PREFIX(fmt, ...) \
+    "osw: drv: " fmt, ## __VA_ARGS__
+
+#define LOG_PREFIX_TX_DESC(desc, fmt, ...) \
+    LOG_PREFIX("osw: drv: %s/%s: tx_desc: %p: state=%d len=%zu channel="OSW_CHANNEL_FMT": " fmt, \
+            (desc)->phy_name.buf, \
+            (desc)->vif_name.buf, \
+            (desc), \
+            (desc)->state, \
+            (desc)->frame_len, \
+            OSW_CHANNEL_ARG(&(desc)->channel), \
+            ## __VA_ARGS__)
+
 enum osw_drv_obj_state {
     OSW_DRV_OBJ_INVALID,
     OSW_DRV_OBJ_REQUESTED,
@@ -103,8 +116,6 @@ struct osw_drv_vif {
     struct osw_channel radar_channel;
     struct osw_channel recent_channel;
     struct osw_timer recent_channel_timeout;
-    struct osw_ssid ssid;
-    struct osw_hwaddr bssid;
     const struct osw_hwaddr *vsta_root_ap;
     bool scan_started;
     bool connected;

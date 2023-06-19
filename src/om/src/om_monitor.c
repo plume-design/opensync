@@ -120,10 +120,13 @@ om_monitor_update_openflow_state( struct schema_Openflow_Config *ofconf,
         if (jrc == NULL)
         {
             LOGE( "Openflow_State insert failed to send" );
-            goto err_exit;
         }
-        json_decref(jrc);
+        else
+        {
+            json_decref(jrc);
+        }
 
+        return;
     } else if( type == OM_ACTION_DELETE ) {
         if( ret ) {
             // A flow was deleted successfully. Delete the corresponding
@@ -148,7 +151,10 @@ om_monitor_update_openflow_state( struct schema_Openflow_Config *ofconf,
             {
                 LOGE( "Openstate delete failed to send" );
             }
-            json_decref(jrc);
+            else
+            {
+                json_decref(jrc);
+            }
 
             return;
         } else {
@@ -158,15 +164,11 @@ om_monitor_update_openflow_state( struct schema_Openflow_Config *ofconf,
     }
 
 err_exit:
-    if (js_trans) {
-        json_decref(js_trans);
-    } else {
-        if (js_where) {
-            json_decref(js_where);
-        }
-        if (js_row) {
-            json_decref(js_row);
-        }
+    if (js_where) {
+        json_decref(js_where);
+    }
+    if (js_row) {
+        json_decref(js_row);
     }
 
     return;

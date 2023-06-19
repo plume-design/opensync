@@ -447,10 +447,10 @@ bool inet_base_init(inet_base_t *self, const char *ifname)
                                     inet_unit(INET_BASE_INET6,
                                               inet_unit(INET_BASE_RADV, NULL),
                                               inet_unit(INET_BASE_DHCP6_SERVER, NULL),
-                                              inet_unit(INET_BASE_MLD, NULL),
                                               NULL),
                                     inet_unit(INET_BASE_DHCP6_CLIENT, NULL),
                                     inet_unit(INET_BASE_UPNP, NULL),
+                                    inet_unit(INET_BASE_MLD, NULL),
                                     NULL),
                         NULL),
                 NULL);

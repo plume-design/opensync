@@ -1121,6 +1121,7 @@ void callback_Wifi_Inet_Config(
     {
         case OVSDB_UPDATE_NEW:
             piface = nm2_add_inet_conf(iconf);
+            if (piface == NULL) break;
             nm2_mcast_init_ifc(piface);
             break;
         case OVSDB_UPDATE_DEL:

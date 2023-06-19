@@ -38,10 +38,14 @@ struct osw_op_class_matrix {
     enum osw_channel_width width;
     int ctrl_chan[64];
     int center_chan_idx[32];
+    int flags;
 };
 
 #define OSW_OP_CLASS_END -1
 #define OSW_CHANNEL_END -2
+#define OSW_CH_LOWER (1 << 0)
+#define OSW_CH_UPPER (1 << 1)
+
 /*
  * FIXME
  * The OSW_CHANNEL_WILDCARD is a temporary hack because I don't know how verify
@@ -57,70 +61,73 @@ struct osw_op_class_matrix {
 static const struct osw_op_class_matrix g_op_class_matrix[] = {
     /* 2.4 GHz */
     { 81, 2407, OSW_CHANNEL_20MHZ, { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, OSW_CHANNEL_END },
-                                   { OSW_CHANNEL_END }, },
+                                   { OSW_CHANNEL_END }, 0, },
     { 82, 2414, OSW_CHANNEL_20MHZ, { 14, OSW_CHANNEL_END },
-                                   { OSW_CHANNEL_END }, },
+                                   { OSW_CHANNEL_END }, 0, },
     { 83, 2407, OSW_CHANNEL_40MHZ, { 1, 2, 3, 4, 5, 6, 7, 8, 9, OSW_CHANNEL_END },
-                                   { OSW_CHANNEL_END }, },
+                                   { OSW_CHANNEL_END }, OSW_CH_LOWER },
     { 84, 2407, OSW_CHANNEL_40MHZ, { 5, 6, 7, 8, 9, 10, 11, 12, 13, OSW_CHANNEL_END },
-                                   { OSW_CHANNEL_END }, },
+                                   { OSW_CHANNEL_END }, OSW_CH_UPPER },
     /* 5 GHz */
     { 115, 5000, OSW_CHANNEL_20MHZ, { 36, 40, 44, 48, OSW_CHANNEL_END },
-                                    { OSW_CHANNEL_END }, },
+                                    { OSW_CHANNEL_END }, 0 },
     { 116, 5000, OSW_CHANNEL_40MHZ, { 36, 44, OSW_CHANNEL_END },
-                                    { OSW_CHANNEL_END }, },
+                                    { OSW_CHANNEL_END }, OSW_CH_LOWER },
     { 117, 5000, OSW_CHANNEL_40MHZ, { 40, 48, OSW_CHANNEL_END },
-                                    { OSW_CHANNEL_END }, },
+                                    { OSW_CHANNEL_END }, OSW_CH_UPPER },
     { 118, 5000, OSW_CHANNEL_20MHZ, { 52, 56, 60, 64, OSW_CHANNEL_END },
-                                    { OSW_CHANNEL_END }, },
+                                    { OSW_CHANNEL_END }, 0 },
     { 119, 5000, OSW_CHANNEL_40MHZ, { 52, 60, OSW_CHANNEL_END },
-                                    { OSW_CHANNEL_END }, },
+                                    { OSW_CHANNEL_END }, OSW_CH_LOWER },
     { 120, 5000, OSW_CHANNEL_40MHZ, { 56, 64, OSW_CHANNEL_END },
-                                    { OSW_CHANNEL_END }, },
+                                    { OSW_CHANNEL_END }, OSW_CH_UPPER },
     { 121, 5000, OSW_CHANNEL_20MHZ, { 100, 104, 108, 112, 116, 120, 124, 128, 132, 136, 140, 144, OSW_CHANNEL_END },
-                                    { OSW_CHANNEL_END }, },
+                                    { OSW_CHANNEL_END }, 0, },
     { 122, 5000, OSW_CHANNEL_40MHZ, { 100, 108, 116, 124, 132, 140, OSW_CHANNEL_END },
-                                    { OSW_CHANNEL_END }, },
+                                    { OSW_CHANNEL_END }, OSW_CH_LOWER },
     { 123, 5000, OSW_CHANNEL_40MHZ, { 104, 112, 120, 128, 136, 144, OSW_CHANNEL_END },
-                                    { OSW_CHANNEL_END }, },
+                                    { OSW_CHANNEL_END }, OSW_CH_UPPER },
     { 124, 5000, OSW_CHANNEL_20MHZ, { 149, 153, 157, 161, OSW_CHANNEL_END },
-                                    { OSW_CHANNEL_END }, },
+                                    { OSW_CHANNEL_END }, 0, },
     { 125, 5000, OSW_CHANNEL_20MHZ, { 149, 153, 157, 161, 165, 169, 173, 177, OSW_CHANNEL_END },
-                                    { OSW_CHANNEL_END }, },
+                                    { OSW_CHANNEL_END }, 0, },
     { 126, 5000, OSW_CHANNEL_40MHZ, { 149, 157, 165, 173, OSW_CHANNEL_END },
-                                    { OSW_CHANNEL_END }, },
+                                    { OSW_CHANNEL_END }, OSW_CH_LOWER },
     { 127, 5000, OSW_CHANNEL_40MHZ, { 153, 161, 169, 177, OSW_CHANNEL_END },
-                                    { OSW_CHANNEL_END }, },
+                                    { OSW_CHANNEL_END }, OSW_CH_UPPER },
     { 128, 5000, OSW_CHANNEL_80MHZ, { OSW_CHANNEL_WILDCARD, OSW_CHANNEL_END },
-                                    { 42, 58, 106, 122, 138, 155, 171, OSW_CHANNEL_END }, },
+                                    { 42, 58, 106, 122, 138, 155, 171, OSW_CHANNEL_END }, 0 },
     { 129, 5000, OSW_CHANNEL_160MHZ, { OSW_CHANNEL_WILDCARD, OSW_CHANNEL_END },
-                                     { 50, 114, 163, OSW_CHANNEL_END }, },
-    { 130, 5000, OSW_CHANNEL_80P80MHZ, { OSW_CHANNEL_WILDCARD, OSW_CHANNEL_END },
-                                       { 42, 58, 106, 122, 138, 155, 171, OSW_CHANNEL_END }, },
+                                     { 50, 114, 163, OSW_CHANNEL_END }, 0, },
+    { 130, 5000, OSW_CHANNEL_80P80MHZ, { OSW_CHANNEL_WILDCARD, OSW_CHANNEL_END, 0 },
+                                       { 42, 58, 106, 122, 138, 155, 171, OSW_CHANNEL_END }, 0, },
     /* 6 GHz */
     { 131, 5950, OSW_CHANNEL_20MHZ, { 1, 5, 9, 13, 17, 21, 25, 29, 33, 37, 41, 45,
                                       49, 53, 57, 61, 65, 69, 73, 77, 81, 85, 89, 93,
                                       97, 101, 105, 109, 113, 117, 121, 125, 129, 133,
                                       137, 141, 145, 149, 153, 157, 161, 165, 169, 173,
                                       177, 181, 185, 189, 193, 197, 201, 205, 209, 213,
-                                      217, 221, 225, 229, 233, OSW_CHANNEL_END },
-                                    { OSW_CHANNEL_END }, },
+                                      217, 221, 225, 229, 233, OSW_CHANNEL_END, 0 },
+                                    { OSW_CHANNEL_END }, 0, },
     { 132, 5950, OSW_CHANNEL_40MHZ, { OSW_CHANNEL_WILDCARD, OSW_CHANNEL_END },
                                     { 3, 11, 19, 27, 35, 43, 51, 59, 67, 75, 83, 91, 99,
                                       107, 115, 123, 131, 139, 147, 155, 163, 171, 179,
-                                      187, 195, 203, 211, 219, 227, OSW_CHANNEL_END }, },
+                                      187, 195, 203, 211, 219, 227, OSW_CHANNEL_END }, 0, },
     { 133, 5950, OSW_CHANNEL_80MHZ, { OSW_CHANNEL_WILDCARD, OSW_CHANNEL_END },
                                     { 7, 23, 39, 55, 71, 87, 103, 119, 135, 151, 167, 83,
-                                      199, 215, OSW_CHANNEL_END }, },
+                                      199, 215, OSW_CHANNEL_END }, 0, },
     { 134, 5950, OSW_CHANNEL_160MHZ, { OSW_CHANNEL_WILDCARD, OSW_CHANNEL_END },
-                                     { 15, 47, 79, 111, 143, 175, 207, OSW_CHANNEL_END }, },
+                                     { 15, 47, 79, 111, 143, 175, 207, OSW_CHANNEL_END }, 0, },
     { 135, 5950, OSW_CHANNEL_80P80MHZ, { OSW_CHANNEL_WILDCARD, OSW_CHANNEL_END },
                                        { 7, 23, 39, 55, 71, 87, 103, 119, 135, 151, 167, 83,
-                                         199, 215, OSW_CHANNEL_END }, },
-    { 136, 5925, OSW_CHANNEL_20MHZ, { OSW_CHANNEL_WILDCARD, OSW_CHANNEL_END },
-                                    { OSW_CHANNEL_END }, },
+                                         199, 215, OSW_CHANNEL_END }, 0, },
+    { 136, 5925, OSW_CHANNEL_20MHZ, { 2, OSW_CHANNEL_END },
+                                    { OSW_CHANNEL_END }, 0, },
+
+    /* FIXME: 320 MHz */
+
     /* End */
-    { OSW_OP_CLASS_END, 0, 0, { OSW_CHANNEL_END, }, { OSW_CHANNEL_END } },
+    { OSW_OP_CLASS_END, 0, 0, { OSW_CHANNEL_END, }, { OSW_CHANNEL_END }, 0 },
 };
 
 static void
@@ -142,6 +149,71 @@ osw_ifname_cmp(const struct osw_ifname *a,
     WARN_ON(strnlen(a->buf, max_len) == max_len);
     WARN_ON(strnlen(b->buf, max_len) == max_len);
     return strncmp(a->buf, b->buf, max_len);
+}
+
+bool
+osw_ifname_is_equal(const struct osw_ifname *a,
+                    const struct osw_ifname *b)
+{
+    return (osw_ifname_cmp(a, b) == 0);
+}
+
+bool
+osw_ifname_is_valid(const struct osw_ifname *a)
+{
+    const size_t len = strnlen(a->buf, OSW_IFNAME_LEN);
+    const bool too_small = (len == 0);
+    const bool too_big = (len == OSW_IFNAME_LEN);
+    const bool impossible = (len > OSW_IFNAME_LEN);
+    if (too_small) return false;
+    if (too_big) return false;
+    if (WARN_ON(impossible)) return false;
+    return true;
+}
+
+void
+osw_wps_cred_list_to_str(char *out,
+                         size_t len,
+                         const struct osw_wps_cred_list *creds)
+{
+    size_t i;
+
+    out[0] = 0;
+    for (i = 0; i < creds->count; i++) {
+        const struct osw_wps_cred *p = &creds->list[i];
+        csnprintf(&out, &len,
+                  "len=%u,",
+                  strlen(p->psk.str));
+    }
+
+    if (creds->count > 0 && out[-1] == ',')
+        out[-1] = 0;
+}
+
+size_t
+osw_wps_cred_list_count_matches(const struct osw_wps_cred_list *a,
+                                const struct osw_wps_cred_list *b)
+{
+    size_t n_matches = 0;
+    size_t i;
+    for (i = 0; i < a->count; i++) {
+        const char *p = a->list[i].psk.str;
+        size_t j;
+        for (j = 0; j < b->count; j++) {
+            const char *q = b->list[j].psk.str;
+            const bool same = (strcmp(p, q) == 0);
+            if (same) n_matches++;
+        }
+    }
+    return n_matches;
+}
+
+bool
+osw_wps_cred_list_is_same(const struct osw_wps_cred_list *a,
+                          const struct osw_wps_cred_list *b)
+{
+    return a->count == b->count
+        && a->count == osw_wps_cred_list_count_matches(a, b);
 }
 
 const char *
@@ -186,6 +258,7 @@ osw_channel_width_to_str(enum osw_channel_width w)
         case OSW_CHANNEL_80MHZ: return "80";
         case OSW_CHANNEL_160MHZ: return "160";
         case OSW_CHANNEL_80P80MHZ: return "80p80";
+        case OSW_CHANNEL_320MHZ: return "320";
     }
     return "";
 }
@@ -266,6 +339,21 @@ osw_ap_mode_to_str(char *out, size_t len, const struct osw_ap_mode *mode)
     strip_trailing_whitespace(out);
 }
 
+char *
+osw_multi_ap_into_str(const struct osw_multi_ap *map)
+{
+    char *out = MALLOC(1);
+    out[0] = 0;
+    if (map->fronthaul_bss) strgrow(&out, "fronthaul-bss,");
+    if (map->backhaul_bss) strgrow(&out, "backhaul-bss,");
+    const size_t len = strlen(out);
+    if (len > 0) {
+        const size_t last_comma = len - 1;
+        out[last_comma] = '\0';
+    }
+    return out;
+}
+
 enum osw_band
 osw_freq_to_band(const int freq)
 {
@@ -297,6 +385,14 @@ osw_channel_to_band(const struct osw_channel *channel)
 {
     assert(channel != NULL);
     return osw_freq_to_band(channel->control_freq_mhz);
+}
+
+enum osw_band
+osw_chan_to_band_guess(const int chan)
+{
+    if (chan >= 1 && chan <= 14) return OSW_BAND_2GHZ;
+    if (chan >= 36 && chan <= 177) return OSW_BAND_5GHZ;
+    return OSW_BAND_UNDEFINED;
 }
 
 int
@@ -334,6 +430,7 @@ osw_channel_width_to_mhz(const enum osw_channel_width w)
         case OSW_CHANNEL_80MHZ: return 80;
         case OSW_CHANNEL_160MHZ: return 160;
         case OSW_CHANNEL_80P80MHZ: return 0; /* N/A */
+        case OSW_CHANNEL_320MHZ: return 320;
     }
     return 0;
 }
@@ -355,6 +452,9 @@ osw_channel_width_down(enum osw_channel_width *w)
             return true;
         case OSW_CHANNEL_80P80MHZ:
             *w = OSW_CHANNEL_80MHZ;
+            return true;
+        case OSW_CHANNEL_320MHZ:
+            *w = OSW_CHANNEL_160MHZ;
             return true;
     }
     return false;
@@ -499,6 +599,80 @@ osw_hwaddr_cmp(const struct osw_hwaddr *addr_a,
 }
 
 bool
+osw_hwaddr_is_equal(const struct osw_hwaddr *a,
+                    const struct osw_hwaddr *b)
+{
+    return (osw_hwaddr_cmp(a, b) == 0);
+}
+
+bool
+osw_hwaddr_is_zero(const struct osw_hwaddr *addr)
+{
+    static const struct osw_hwaddr zero = {0};
+    return osw_hwaddr_is_equal(addr, &zero);
+}
+
+bool
+osw_hwaddr_is_bcast(const struct osw_hwaddr *addr)
+{
+    static const struct osw_hwaddr bcast = { .octet = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff } };
+    return osw_hwaddr_is_equal(addr, &bcast);
+}
+
+bool
+osw_hwaddr_is_to_addr(const struct osw_hwaddr *da,
+                      const struct osw_hwaddr *self)
+{
+    if (osw_hwaddr_is_bcast(da)) return true;
+    return osw_hwaddr_is_equal(da, self);
+}
+
+bool
+osw_hwaddr_list_contains(const struct osw_hwaddr *array,
+                         size_t len,
+                         const struct osw_hwaddr *addr)
+{
+    while (len > 0) {
+        if (osw_hwaddr_is_equal(array, addr)) {
+            return true;
+        }
+        len--;
+        array++;
+    }
+    return false;
+}
+
+bool
+osw_hwaddr_list_is_equal(const struct osw_hwaddr_list *a,
+                         const struct osw_hwaddr_list *b)
+{
+    if (a->count != b->count) {
+        return false;
+    }
+
+    size_t i;
+    for (i = 0; i < a->count; i++) {
+        const struct osw_hwaddr *addr = &a->list[i];
+        if (osw_hwaddr_list_contains(b->list, b->count, addr) == false)
+            return false;
+    }
+
+    return true;
+}
+
+void
+osw_hwaddr_list_append(struct osw_hwaddr_list *list,
+                       const struct osw_hwaddr *addr)
+{
+    const size_t index = list->count;
+    list->count++;
+    const size_t elem_size = sizeof(*addr);
+    const size_t new_size = (list->count * elem_size);
+    list->list = REALLOC(list->list, new_size);
+    list->list[index] = *addr;
+}
+
+bool
 osw_channel_from_channel_num_width(uint8_t channel_num,
                                    enum osw_channel_width width,
                                    struct osw_channel *channel)
@@ -530,6 +704,7 @@ osw_channel_from_op_class(uint8_t op_class,
                           struct osw_channel *channel)
 {
     assert(channel != NULL);
+    memset(channel, 0, sizeof(*channel));
 
     const struct osw_op_class_matrix* entry;
     for (entry = g_op_class_matrix; entry->op_class != OSW_OP_CLASS_END; entry++)
@@ -550,9 +725,58 @@ osw_channel_from_op_class(uint8_t op_class,
     if (*ctrl_chan == OSW_CHANNEL_END)
         return false;
 
-    memset(channel, 0, sizeof(*channel));
+    int center_num = 0;
+    if (*ctrl_chan == OSW_CHANNEL_WILDCARD) {
+        /* FIXME: 320 MHz band schemes +/- */
+        const enum osw_channel_width width = entry->width;
+        const int width_mhz = osw_channel_width_to_mhz(width);
+        const int first_center = entry->center_chan_idx[0];
+        const int spacing_mhz = 5;
+        const int first_mhz = entry->start_freq_mhz + (first_center * spacing_mhz);
+        const enum osw_band band = osw_freq_to_band(first_mhz);
+        const int *chans = osw_channel_sidebands(band, channel_num, width_mhz, 13);
+        if (chans == NULL)
+            return false;
+
+        center_num = chanlist_to_center(chans);
+
+        const int *center_chan_idx;
+        for (center_chan_idx = entry->center_chan_idx; *center_chan_idx != OSW_CHANNEL_END; center_chan_idx++) {
+            if (*center_chan_idx == center_num)
+                break;
+        }
+
+        if (*center_chan_idx == OSW_CHANNEL_END)
+            return false;
+    }
+
+    if (center_num == 0) {
+        switch (entry->width) {
+            case OSW_CHANNEL_20MHZ:
+                center_num = channel_num;
+                break;
+            case OSW_CHANNEL_40MHZ:
+                if (entry->flags & OSW_CH_LOWER) {
+                    center_num =  channel_num + 2;
+                }
+                else if (entry->flags & OSW_CH_UPPER) {
+                    center_num = channel_num - 2;
+                }
+                else {
+                    return false;
+                }
+                break;
+            case OSW_CHANNEL_80MHZ:
+            case OSW_CHANNEL_80P80MHZ:
+            case OSW_CHANNEL_160MHZ:
+            case OSW_CHANNEL_320MHZ:
+                return false;
+        }
+    }
+
     channel->width = entry->width;
     channel->control_freq_mhz = entry->start_freq_mhz + (channel_num * 5);
+    channel->center_freq0_mhz = entry->start_freq_mhz + (center_num * 5);
 
     return true;
 }
@@ -580,7 +804,10 @@ osw_channel_to_op_class(const struct osw_channel *orig_channel,
 
     struct osw_channel copy = *orig_channel;
     struct osw_channel *channel = &copy;
-    osw_channel_compute_center_freq(channel, 13);
+
+    if (channel->center_freq0_mhz == 0) {
+        osw_channel_compute_center_freq(channel, 13);
+    }
 
     const struct osw_op_class_matrix* entry;
     for (entry = g_op_class_matrix; entry->op_class != OSW_OP_CLASS_END; entry++) {
@@ -595,6 +822,16 @@ osw_channel_to_op_class(const struct osw_channel *orig_channel,
         if (entry->ctrl_chan[0] == OSW_CHANNEL_WILDCARD) {
             chans = entry->center_chan_idx;
             scan_freq_mhz = channel->center_freq0_mhz;
+        }
+
+        if (entry->flags & OSW_CH_LOWER) {
+            if (channel->center_freq0_mhz <= channel->control_freq_mhz)
+                continue;
+        }
+
+        if (entry->flags & OSW_CH_UPPER) {
+            if (channel->center_freq0_mhz >= channel->control_freq_mhz)
+                continue;
         }
 
         const int *found = osw_op_class_matrx_chans_scan(chans,
@@ -905,6 +1142,29 @@ osw_cs_chan_is_usable(const struct osw_channel_state *cs,
     return valid && !contains_nol;
 }
 
+bool
+osw_cs_chan_is_control_dfs(const struct osw_channel_state *cs,
+                           size_t n_cs,
+                           const struct osw_channel *c)
+{
+    while ((cs != NULL) && (n_cs > 0)) {
+        if (cs->channel.control_freq_mhz == c->control_freq_mhz) {
+            switch (cs->dfs_state) {
+                case OSW_CHANNEL_NON_DFS:
+                    return false;
+                case OSW_CHANNEL_DFS_CAC_POSSIBLE:
+                case OSW_CHANNEL_DFS_CAC_IN_PROGRESS:
+                case OSW_CHANNEL_DFS_CAC_COMPLETED:
+                case OSW_CHANNEL_DFS_NOL:
+                    return true;
+            }
+        }
+        cs++;
+        n_cs--;
+    }
+    return false;
+}
+
 int
 osw_rate_legacy_to_halfmbps(enum osw_rate_legacy rate)
 {
@@ -1176,6 +1436,28 @@ osw_band_into_cstr(const enum osw_band band)
     }
 
     return "invalid";
+}
+
+const char *
+osw_ssid_into_hex(struct osw_ssid_hex *hex,
+                  const struct osw_ssid *ssid)
+{
+    const void *in = ssid->buf;
+    const int err = bin2hex(in, ssid->len, hex->buf, sizeof(hex->buf));
+    return err ? NULL : hex->buf;
+}
+
+bool
+osw_ssid_from_cbuf(struct osw_ssid *ssid,
+                   const void *buf,
+                   size_t len)
+{
+    memset(ssid, 0, sizeof(*ssid));
+    if (buf == NULL) return false;
+    if (len > OSW_IEEE80211_SSID_LEN) return false;
+    memcpy(ssid->buf, buf, len);
+    ssid->len = len;
+    return true;
 }
 
 #include "osw_types_ut.c"

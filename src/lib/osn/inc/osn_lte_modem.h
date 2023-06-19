@@ -29,17 +29,13 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "lte_info.h"
 
-#define SERVING_CELL_LTE_FIELD_CNT 16
-#define SERVING_CELL_WCDMA_FIELD_CNT 15
-
-/*
- * These should eventually mode to const.h
- */
 #define C_AT_CMD_RESP 16
 #define C_AT_CMD_LONG_RESP 32
 #define C_AT_CMD_LONGEST_RESP 64
 
 #define SOURCE_AT_CMD 1
+
+#define MAX_NEIGH_CELL_COUNT 6
 
 /* Max tokens to be acquired while parsing AT response buffer */
 #define MAX_RESP_TOKENS  25
@@ -260,8 +256,9 @@ typedef struct lte_srv_cell_wcdma   /* at_srv_cell */
     char com_mod[C_AT_CMD_RESP];
 } lte_srv_cell_wcdma_t;
 
-/* [+QENG:"neighbourcell intra","LTE",<earfcn>,<pcid>,<rsrq>,<rsrp>,<rssi>,<sinr>,<srxlev>,<cell_resel_priority>,<s_non_intra_search>,<thresh_serving_low>,<s_intra_search>
-char *at_neigh_cell=
+/*
+[+QENG: "neighbourcell intra","LTE",<earfcn>,<pcid>,<rsrq>,<rsrp>,<rssi>,<sinr>,<srxlev>,<cell_resel_priority>,<s_non_intra_search>,<thresh_serving_low>,<s_intra_search>
+[+QENG: "neighbourcell inter","LTE",<earfcn>,<pcid>,<rsrq>,<rsrp>,<rssi>,<sinr>,<srxlev>,<cell_resel_priority>,<threshX_low>,<threshX_high>
 1. "at+qeng=\"neighbourcell\"\r\r\n+QENG:(sp)
 2. \"neighbourcell intra\",\"LTE\",800,310,-14,-115,-80,0,8,4,10,2,62\r\n
 3. +QENG: \"neighbourcell inter\",\"LTE\",5110,263,-11,-102,-82,0,8,2,6,6\r\n
@@ -269,32 +266,12 @@ char *at_neigh_cell=
 5. +QENG: \"neighbourcell\",\"WCDMA\",512,6,14,62,-,-,-,-\r\n
 6. +QENG: \"neighbourcell\",\"WCDMA\",4385,0,14,62,84,-1030,-110,15\r\n\r\nOK\r\n";
 */
-typedef struct lte_neigh_cell_intra   /* at+neigh_cell */
+typedef struct lte_neigh_cell
 {
     char cmd[C_AT_CMD_LONGEST_RESP];
     char cell_type[C_AT_CMD_LONG_RESP];
-    char mode[C_AT_CMD_RESP];
     char freq_mode[C_AT_CMD_RESP];
-    char earfcn[C_AT_CMD_RESP];
-    char pcid[C_AT_CMD_RESP];
-    char rsrq[C_AT_CMD_RESP];
-    char rsrp[C_AT_CMD_RESP];
-    char rssi[C_AT_CMD_RESP];
-    char sinr[C_AT_CMD_RESP];
-    char srxlev_base_station[C_AT_CMD_RESP];
-    char cell_resel_priority[C_AT_CMD_RESP];
-    char s_non_intra_search[C_AT_CMD_RESP];
-    char thresh_serving_low[C_AT_CMD_RESP];
-    char s_intra_search[C_AT_CMD_RESP];
-} lte_neigh_cell_intra_t;
-
-/* [+QENG: "neighbourcell inter","LTE",<earfcn>,<pcid>,<rsrq>,<rsrp>,<rssi>,<sinr>,<srxlev>,<cell_resel_priority>,<threshX_low>,<threshX_high> */
-typedef struct lte_neigh_cell_inter   /* at+neigh_cell */
-{
-    char cmd[C_AT_CMD_LONGEST_RESP];
-    char cell_type[C_AT_CMD_LONG_RESP];
     char mode[C_AT_CMD_RESP];
-    char freq_mode[C_AT_CMD_RESP];
     char earfcn[C_AT_CMD_RESP];
     char pcid[C_AT_CMD_RESP];
     char rsrq[C_AT_CMD_RESP];
@@ -303,9 +280,7 @@ typedef struct lte_neigh_cell_inter   /* at+neigh_cell */
     char sinr[C_AT_CMD_RESP];
     char srxlev[C_AT_CMD_RESP];
     char cell_resel_priority[C_AT_CMD_RESP];
-    char thresh_x_low[C_AT_CMD_RESP];
-    char thresh_x_high[C_AT_CMD_RESP];
-} lte_neigh_cell_inter_t;
+} lte_neigh_cell_t;
 
 /* [+QENG:"neighbourcell","WCDMA",<uarfcn>,<cell_resel_priority>,<thresh_Xhigh>,<thresh_Xlow>,<psc>,<rscp><ecno>,<srxlev>
  [+QENG: "neighbourcell","LTE",<earfcn>,<cellid>,<rsrp>,<rsrq>,<s_rxlev>
@@ -481,6 +456,20 @@ typedef struct lte_serving_cell_wcdma_info_
     int32_t ecio;
 } lte_serving_cell_wcdma_info_t;
 
+typedef struct lte_neighbor_cell_info_
+{
+    enum lte_neighbor_freq_mode freq_mode;
+    enum lte_cell_mode mode;
+    uint32_t earfcn;
+    uint32_t pcid;
+    int32_t rsrq;
+    int32_t rsrp;
+    int32_t rssi;
+    uint32_t sinr;
+    uint32_t srxlev;
+    uint32_t cell_resel_priority;
+} lte_neighbor_cell_info_t;
+
 typedef struct lte_neighbor_cell_intra_info_
 {
     enum lte_cell_mode mode;
@@ -624,8 +613,7 @@ typedef struct osn_lte_modem_info_
     cellular_nr5g_nsa_net_serving_cell_info_t nr5g_serv_cell_nsa;
     lte_serving_cell_info_t srv_cell;
     lte_serving_cell_wcdma_info_t srv_cell_wcdma;
-    lte_neighbor_cell_intra_info_t neigh_cell_intra;
-    lte_neighbor_cell_inter_info_t neigh_cell_inter;
+    lte_neighbor_cell_info_t neigh_cell[MAX_NEIGH_CELL_COUNT];
     enum lte_sim_status sim_status;
     enum lte_sim_type sim_type;
     uint32_t active_simcard_slot;
@@ -661,10 +649,8 @@ int osn_lte_parse_operator(char *buf, lte_operator_t *operator);
 int osn_lte_save_operator(lte_operator_t *operator, osn_lte_modem_info_t *modem_info);
 int osn_lte_parse_serving_cell(char *buf, lte_srv_cell_t *srv_cell, lte_srv_cell_wcdma_t *srv_cell_wcdma);
 int osn_lte_save_serving_cell(lte_srv_cell_t *srv_cell, lte_srv_cell_wcdma_t *srv_cell_wcdma, osn_lte_modem_info_t *modem_info);
-int osn_lte_parse_neigh_cell_intra(char *buf, lte_neigh_cell_intra_t *neigh_cell_intra);
-int osn_lte_save_neigh_cell_intra(lte_neigh_cell_intra_t *neigh_cell_intra, osn_lte_modem_info_t *modem_info);
-int osn_lte_parse_neigh_cell_inter(char *buf, lte_neigh_cell_inter_t *neigh_cell_inter);
-int osn_lte_save_neigh_cell_inter(lte_neigh_cell_inter_t *neigh_cell_inter, osn_lte_modem_info_t *modem_info);
+int osn_lte_parse_neigh_cell(char *buf, lte_neigh_cell_t *neigh_cell);
+int osn_lte_save_neigh_cell(lte_neigh_cell_t *neigh_cell, osn_lte_modem_info_t *modem_info, int resp_idx);
 int osn_parse_band_info(char *buf, lte_band_info_t *band_info);
 int osn_save_band_info(lte_band_info_t *band_info, osn_lte_modem_info_t *modem_info);
 int osn_lte_modem_open(char *modem_path);
@@ -699,5 +685,6 @@ int osn_parse_sinr_rsrp(char *buf, cellular_sinr_rsrp_t *net_response);
 int osn_cellular_save_sinr(cellular_sinr_rsrp_t *net_resp, osn_lte_modem_info_t *modem_info);
 int osn_cellular_save_qsrp(cellular_sinr_rsrp_t *net_resp, osn_lte_modem_info_t *modem_info);
 void osn_lte_dump_modem_info();
+bool osn_lte_modem_init(void);
 
 #endif /* OSN_LTE_MODEM_H_INCLUDED */

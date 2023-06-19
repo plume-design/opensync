@@ -37,6 +37,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "memutil.h"
 #include "network_metadata_report.h"
 #include "policy_tags.h"
+#include "ovsdb_sync.h"
 #include "util.h"
 
 static char *FLOW_ATTRIBUTES = "flow_attributes";
@@ -101,7 +102,148 @@ fsm_process_added_tag(struct fsm_session *client_session,
              __func__, item->value, client_session->name);
         fsm_dpi_register_client(dpi_plugin, client_session, item->value);
     }
+    fsm_dpi_client_process_attributes(client_session, dpi_plugin);
 }
+
+
+bool
+is_in_set(size_t elem_size, char values[][elem_size], size_t values_len,
+          char *checking)
+{
+    size_t i;
+    int ret;
+
+    for (i = 0; i < values_len; i++)
+    {
+        ret = strcmp(values[i], checking);
+        if (!ret) return true;
+    }
+    return false;
+}
+
+
+static bool
+fsm_dpi_client_generate_update_tag(struct str_set *attributes,
+                                   char *tag_name)
+{
+    struct schema_Openflow_Tag *openflow_tag;
+    om_tag_list_entry_t *iter;
+    om_tag_list_entry_t *e;
+    size_t max_capacity;
+    pjs_errmsg_t err;
+    om_tag_t *tag;
+    json_t *jrow;
+    char *adding;
+    size_t i;
+    bool rc;
+
+    rc = false;
+    tag = om_tag_find_by_name(tag_name, false);
+    if (!tag) return false;
+
+    /* First check if the hard-coded device attributes are already present */
+    e = om_tag_list_entry_find_by_value(&tag->values, attributes->array[0]);
+    if (e != NULL) return true;
+
+    openflow_tag = CALLOC(1, sizeof(*openflow_tag));
+    max_capacity = ARRAY_SIZE(openflow_tag->device_value);
+
+    ds_tree_foreach(&tag->values, iter)
+    {
+        adding = iter->value;
+        if (iter->flags & OM_TLE_FLAG_DEVICE)
+        {
+            rc = is_in_set(sizeof(openflow_tag->device_value[0]),
+                           openflow_tag->device_value,
+                           openflow_tag->device_value_len,
+                           adding);
+            if (rc) continue;
+
+            STRSCPY(openflow_tag->device_value[openflow_tag->device_value_len],
+                    adding);
+            openflow_tag->device_value_len++;
+        }
+        else if (iter->flags & OM_TLE_FLAG_CLOUD)
+        {
+            rc = is_in_set(sizeof(openflow_tag->cloud_value[0]),
+                           openflow_tag->cloud_value,
+                           openflow_tag->cloud_value_len,
+                           adding);
+            if (rc) continue;
+
+            STRSCPY(openflow_tag->cloud_value[openflow_tag->cloud_value_len],
+                    adding);
+            openflow_tag->cloud_value_len++;
+        }
+    }
+
+    if (max_capacity < (attributes->nelems + openflow_tag->device_value_len)) goto out;
+
+    for (i = 0; i < attributes->nelems; i++)
+    {
+        adding = attributes->array[i];
+        rc = is_in_set(sizeof(openflow_tag->device_value[0]),
+                       openflow_tag->device_value,
+                       openflow_tag->device_value_len,
+                       adding);
+        if (rc) continue;
+
+        STRSCPY(openflow_tag->device_value[openflow_tag->device_value_len],
+                adding);
+        openflow_tag->device_value_len++;
+    }
+
+    STRSCPY(openflow_tag->name, tag_name);
+    openflow_tag->name_exists = true;
+    openflow_tag->name_present = true;
+    jrow = schema_Openflow_Tag_to_json(openflow_tag, err);
+    if (jrow == NULL)
+    {
+        LOGD("%s: failed to generate JSON for upsert: %s", __func__, err);
+
+        goto out;
+    }
+
+    rc = ovsdb_sync_update(SCHEMA_TABLE(Openflow_Tag), SCHEMA_COLUMN(Openflow_Tag, name),
+                           openflow_tag->name, jrow);
+
+out:
+    FREE(openflow_tag);
+    return rc;
+}
+
+
+void
+fsm_dpi_client_process_attributes(struct fsm_session *client_session,
+                                  struct fsm_session *dpi_plugin)
+{
+    struct str_set *attributes;
+    char *attributes_tag;
+    char tag_name[256];
+    int tle_flag;
+    char *tag_s;
+
+    attributes = client_session->dpi_attributes;
+    if (attributes == NULL) return;
+
+    attributes_tag = client_session->ops.get_config(client_session,
+                                                    "flow_attributes");
+    if (attributes_tag == NULL) return;
+
+    tle_flag = om_get_type_of_tag(attributes_tag);
+
+    if (tle_flag == -1) return;
+
+    if (!(tle_flag & (OM_TLE_FLAG_DEVICE | OM_TLE_FLAG_CLOUD | OM_TLE_FLAG_NONE))) return;
+
+    tag_s = attributes_tag + 2;
+    if (tle_flag & (OM_TLE_FLAG_DEVICE | OM_TLE_FLAG_CLOUD)) tag_s += 1;
+    MEMZERO(tag_name);
+    STRSCPY_LEN(tag_name, tag_s, -1);
+
+    fsm_dpi_client_generate_update_tag(client_session->dpi_attributes, tag_name);
+}
+
 
 /**
  * @brief process the modified tag values
@@ -151,6 +293,7 @@ fsm_process_tags(struct fsm_session *client_session,
         fsm_process_added_tag(client_session, dpi_plugin, added);
     }
 }
+
 
 /**
  * @brief called when tag values are updated.  Check for the tag
@@ -314,6 +457,7 @@ fsm_update_dpi_plugin_client(struct fsm_session *session)
         /* Register the client */
         fsm_dpi_register_client(dpi_plugin, session, tag_item->value);
     }
+    fsm_dpi_client_process_attributes(session, dpi_plugin);
 
     return true;
 }

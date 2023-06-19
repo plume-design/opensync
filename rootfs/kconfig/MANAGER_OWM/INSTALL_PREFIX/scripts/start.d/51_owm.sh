@@ -27,7 +27,7 @@
 ovsh=${INSTALL_PREFIX}/tools/ovsh
 
 use_owm() {
-        for i in wm bm sm
+        for i in wm bm
         do
                 $ovsh u Node_Services \
 			-w service==$i \
@@ -42,11 +42,11 @@ use_owm() {
 }
 
 should_use_owm() {
-        # FIXME: This should start using Feature Flags
-        # once they are introduced. In the meantime make
-        # it easier for anyone interested to give it a
-        # go with OWM if they want.
-        test -e /use_owm
+        if /usr/opensync/tools/osff_get "use_owm"; then
+            true; 
+        else 
+            false; 
+        fi
 }
 
 if should_use_owm

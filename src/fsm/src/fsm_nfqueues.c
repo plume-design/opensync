@@ -27,7 +27,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <errno.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
-
+#include "fsm_dpi_utils.h"
 #include "fsm_internal.h"
 #include "neigh_table.h"
 #include "sockaddr_storage.h"
@@ -55,7 +55,7 @@ fsm_nfq_net_header_parse(struct nfq_pkt_info *pkt_info, void *data)
     int domain;
     int len = 0;
 
-    memset(&net_parser, 0, sizeof(net_parser));
+    MEMZERO(net_parser);
     net_parser.packet_id = pkt_info->packet_id;
     net_parser.nfq_queue_num = pkt_info->queue_num;
     net_parser.packet_len = pkt_info->payload_len;
@@ -66,6 +66,7 @@ fsm_nfq_net_header_parse(struct nfq_pkt_info *pkt_info, void *data)
     net_parser.rx_pidx = pkt_info->rx_pidx;
     net_parser.tx_pidx = pkt_info->tx_pidx;
 
+    net_parser.payload_updated = false;
     net_parser.start = net_parser.data;
     net_parser.parsed = 0;
 
@@ -100,14 +101,18 @@ fsm_nfq_net_header_parse(struct nfq_pkt_info *pkt_info, void *data)
     rc_lookup = neigh_table_lookup_af(domain, src_ip, &src_mac);
     if (rc_lookup)
     {
-        net_parser.eth_header.srcmac = &src_mac;
+        if (fsm_nfq_mac_same(&src_mac, pkt_info) == false)
+        {
+            MEM_CPY(&src_mac, pkt_info->hw_addr, pkt_info->hw_addr_len);
+            rc_lookup = fsm_update_neigh_cache(src_ip, &src_mac, domain);
+            if (!rc_lookup) LOGT("%s: Couldn't update neighbor cache.",__func__);
+
+        }
+        if (rc_lookup) net_parser.eth_header.srcmac = &src_mac;
     }
 
     rc_lookup = neigh_table_lookup_af(domain, dst_ip, &dst_mac);
-    if (rc_lookup)
-    {
-        net_parser.eth_header.dstmac = &dst_mac;
-    }
+    if (rc_lookup) net_parser.eth_header.dstmac = &dst_mac;
 
     ip_protocol = net_parser.ip_protocol;
     if (ip_protocol == IPPROTO_TCP) len = net_header_parse_tcp(&net_parser);

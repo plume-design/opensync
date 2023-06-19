@@ -76,6 +76,7 @@ UNIT_DEPS    += src/lib/datapipeline
 UNIT_DEPS    += src/lib/target
 UNIT_DEPS    += src/lib/module
 UNIT_DEPS    += src/lib/execsh
+UNIT_DEPS    += src/lib/ff
 UNIT_DEPS    += $(if $(CONFIG_SM_BACKEND_HAPD),src/lib/hostap,)
 
 ifeq ($(CONFIG_MANAGER_QM),y)

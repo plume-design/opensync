@@ -173,7 +173,7 @@ struct schema_FSM_Policy spolicies[] =
     },
     { /* entry 3 */
         .policy_exists = true,
-        .policy = "dev_webpulse",
+        .policy = "dev_brightcloud",
         .name = "Rule0",
         .idx = 10,
         .mac_op_exists = true,
@@ -204,27 +204,7 @@ struct schema_FSM_Policy spolicies[] =
         .other_config_keys = { "rd_ttl", },
         .other_config = { "5" },
     },
-    { /* entry 4 */
-        .policy_exists = true,
-        .policy = "dev_webpulse_ipthreat",
-        .name = "RuleIpThreat0",
-        .idx = 10,
-        .mac_op_exists = false,
-        .fqdn_op_exists = false,
-        .fqdncat_op_exists = false,
-        .risk_op_exists = true,
-        .risk_op = "lte",
-        .risk_level = 7,
-        .ipaddr_op_exists = true,
-        .ipaddr_op = "out",
-        .ipaddrs_len = 2,
-        .ipaddrs =
-        {
-            "1.2.3.4",
-            "::1",
-        },
-    },
-    { /* entry 5. Always matching, no action */
+    { /* entry 4. Always matching, no action */
         .policy_exists = true,
         .policy = "test_policy",
         .name = "test_policy_observe",
@@ -236,7 +216,7 @@ struct schema_FSM_Policy spolicies[] =
         .log_exists = true,
         .log = "all",
     },
-    { /* entry 6. Mac match testing, block */
+    { /* entry 5. Mac match testing, block */
         .policy_exists = true,
         .policy = "mac_policy",
         .name = "mac_observe",
@@ -257,7 +237,7 @@ struct schema_FSM_Policy spolicies[] =
         .log_exists = true,
         .log = "all",
     },
-    { /* entry 7 */
+    { /* entry 6 */
         .policy_exists = true,
         .policy = "dev_webroot",
         .name = "dev_wild_tag_update",
@@ -285,7 +265,7 @@ struct schema_FSM_Policy spolicies[] =
         .other_config_keys = {"excluded_devices", "tagv4_name", "tagv6_name",},
         .other_config = {"exclude_tag", "my_v4_tag", "my_v6_tag"},
     },
-    { /* entry 8 */
+    { /* entry 7 */
         .policy_exists = true,
         .policy = "dev_plume_ipthreat",
         .name = "RuleIpThreat0",
@@ -309,7 +289,7 @@ struct schema_FSM_Policy spolicies[] =
         .log_exists = true,
         .log = "blocked",
     },
-    { /* entry 9 */
+    { /* entry 8 */
         .policy_exists = true,
         .policy = "dev_policy_flush",
         .name = "dev_rule_flush",
@@ -334,7 +314,7 @@ struct schema_FSM_Policy spolicies[] =
         .action_exists = true,
         .action = "flush",
     },
-    { /* entry 10 */
+    { /* entry 9 */
         .policy_exists = true,
         .policy = "outbound_ipthreat",
         .name = "outbound_ipthreat",
@@ -598,10 +578,10 @@ test_cat_check(struct fsm_policy_req *req,
 
     req_info->reply = reply;
 
-    reply->service_id = URL_WP_SVC;
+    reply->service_id = URL_BC_SVC;
     reply->nelems = 1;
     reply->categories[0] = 1; /* In policy blocked categories */
-    reply->wb.risk_level = 1;
+    reply->bc.reputation = 1;
     policy_reply->categorized = FSM_FQDN_CAT_SUCCESS;
 
     rc = fsm_fqdncats_in_set(req, policy, policy_reply);
@@ -704,10 +684,12 @@ void test_apply_policies(void)
     fsm_policy_free_reply(policy_reply);
     fsm_free_url_reply(fqdn_req.req_info->reply);
 }
+
+
 void test_wildcard_ovsdb_conversions(void)
 {
 
-    struct schema_FSM_Policy *spolicy = &spolicies[5];
+    struct schema_FSM_Policy *spolicy = &spolicies[3];
     pjs_errmsg_t err;
     json_t *jsonrow = schema_FSM_Policy_to_json(spolicy, err);
     TEST_ASSERT_NOT_NULL(jsonrow);
@@ -746,7 +728,7 @@ void test_apply_wildcard_policy_match_in(void)
     memset(&dev_mac, 0, sizeof(dev_mac));
 
     /* Insert wildcard policy */
-    spolicy = &spolicies[7];
+    spolicy = &spolicies[6];
 
     /* Validate access to the fsm policy */
     fsm_add_policy(spolicy);
@@ -842,7 +824,7 @@ void test_apply_wildcard_policy_no_match(void)
     memset(&dev_mac, 0, sizeof(dev_mac));
 
     /* Insert wildcard policy */
-    spolicy = &spolicies[7];
+    spolicy = &spolicies[6];
 
     /* Validate access to the fsm policy */
     fsm_add_policy(spolicy);
@@ -984,9 +966,9 @@ void test_fsm_policy_clients_same_session(void)
     struct fsm_session *session;
     struct schema_FSM_Policy *spolicy;
     struct fsm_policy_client *default_policy_client;
-    struct fsm_policy_client *dev_webpulse_client;
+    struct fsm_policy_client *dev_brightcloud_client;
     char *default_name = "default";
-    char *other_name = "dev_webpulse";
+    char *other_name = "dev_brightcloud";
     struct policy_table *table;
     struct fsm_policy_session *mgr;
 
@@ -994,7 +976,7 @@ void test_fsm_policy_clients_same_session(void)
     spolicy = &spolicies[0];
     fsm_add_policy(spolicy);
 
-    /* Insert dev_webpulse policy */
+    /* Insert dev_brightcloud policy */
     spolicy = &spolicies[3];
     fsm_add_policy(spolicy);
 
@@ -1010,17 +992,17 @@ void test_fsm_policy_clients_same_session(void)
     fsm_policy_register_client(default_policy_client);
     TEST_ASSERT_NOT_NULL(default_policy_client->table);
 
-    dev_webpulse_client = CALLOC(1, sizeof(*dev_webpulse_client));
-    dev_webpulse_client->name = strdup(other_name);
-    TEST_ASSERT_NOT_NULL(dev_webpulse_client->name);
+    dev_brightcloud_client = CALLOC(1, sizeof(*dev_brightcloud_client));
+    dev_brightcloud_client->name = strdup(other_name);
+    TEST_ASSERT_NOT_NULL(dev_brightcloud_client->name);
     session->handler_ctxt = default_policy_client;
-    dev_webpulse_client->session = session;
-    dev_webpulse_client->update_client = test_update_client;
-    dev_webpulse_client->session_name = test_session_name;
+    dev_brightcloud_client->session = session;
+    dev_brightcloud_client->update_client = test_update_client;
+    dev_brightcloud_client->session_name = test_session_name;
 
     /* Register the client. Its table pointer should be set */
-    fsm_policy_register_client(dev_webpulse_client);
-    TEST_ASSERT_NOT_NULL(dev_webpulse_client->table);
+    fsm_policy_register_client(dev_brightcloud_client);
+    TEST_ASSERT_NOT_NULL(dev_brightcloud_client->table);
 
     mgr = fsm_policy_get_mgr();
     table = ds_tree_find(&mgr->policy_tables, default_name);
@@ -1029,56 +1011,21 @@ void test_fsm_policy_clients_same_session(void)
 
     table = ds_tree_find(&mgr->policy_tables, other_name);
     TEST_ASSERT_NOT_NULL(table);
-    TEST_ASSERT_TRUE(table == dev_webpulse_client->table);
+    TEST_ASSERT_TRUE(table == dev_brightcloud_client->table);
 
     fsm_policy_deregister_client(default_policy_client);
     TEST_ASSERT_NULL(default_policy_client->table);
 
-    fsm_policy_deregister_client(dev_webpulse_client);
-    TEST_ASSERT_NULL(dev_webpulse_client->table);
+    fsm_policy_deregister_client(dev_brightcloud_client);
+    TEST_ASSERT_NULL(dev_brightcloud_client->table);
 
     FREE(default_policy_client->name);
     FREE(default_policy_client);
 
-    FREE(dev_webpulse_client->name);
-    FREE(dev_webpulse_client);
+    FREE(dev_brightcloud_client->name);
+    FREE(dev_brightcloud_client);
 
     FREE(session);
-}
-
-
-/**
- * @brief test the translation of ip threat attributes from ovsdb to fsm policy
- */
-void test_ip_threat_settings(void)
-{
-    struct schema_FSM_Policy *spolicy;
-    struct fsm_policy_rules *rules;
-    struct fsm_policy *fpolicy;
-    struct str_set *ipaddrs;
-    size_t i;
-
-    /* Add the policy */
-    spolicy = &spolicies[4];
-    fsm_add_policy(spolicy);
-    fpolicy = fsm_policy_lookup(spolicy);
-
-    /* Validate access to the fsm policy */
-    TEST_ASSERT_NOT_NULL(fpolicy);
-
-    /* Validate ipaddrs and risk level settings */
-    rules = &fpolicy->rules;
-    ipaddrs = rules->ipaddrs;
-    TEST_ASSERT_NOT_NULL(ipaddrs);
-
-    TEST_ASSERT_EQUAL_INT(spolicy->ipaddrs_len, ipaddrs->nelems);
-    for (i = 0; i < ipaddrs->nelems; i++)
-    {
-        LOGT("%s: ipaddrs[%zu] = %s", __func__, i, ipaddrs->array[i]);
-        TEST_ASSERT_EQUAL_STRING(spolicy->ipaddrs[i], ipaddrs->array[i]);
-    }
-
-    TEST_ASSERT_EQUAL_INT(spolicy->risk_level, rules->risk_level);
 }
 
 
@@ -1148,7 +1095,7 @@ void test_apply_mac_policies(void)
       };
 
     /* Insert the mac match policy */
-    spolicy = &spolicies[6];
+    spolicy = &spolicies[5];
     fsm_add_policy(spolicy);
     fpolicy = fsm_policy_lookup(spolicy);
 
@@ -1228,7 +1175,7 @@ void test_apply_no_action_policy(void)
     memset(&dev_mac, 0, sizeof(dev_mac));
 
     /* Insert dev_webpulse policy */
-    spolicy = &spolicies[5];
+    spolicy = &spolicies[4];
     fsm_add_policy(spolicy);
     fpolicy = fsm_policy_lookup(spolicy);
 
@@ -1301,7 +1248,7 @@ void test_ip_threat_blacklist(void)
     memset(&key, 0, sizeof(key));
 
     /* Insert ip threat policy */
-    spolicy = &spolicies[8];
+    spolicy = &spolicies[7];
     fsm_add_policy(spolicy);
     fpolicy = fsm_policy_lookup(spolicy);
 
@@ -1408,7 +1355,7 @@ void test_ipthreat_multiple_provider_check(void)
 
     /* Prepare dns cache entry */
     cache_init.dns_cache_source = MODULE_IPTHREAT_DPI;
-    cache_init.service_provider = IP2ACTION_WP_SVC;
+    cache_init.service_provider = IP2ACTION_GK_SVC;
     dns_cache_init(&cache_init);
     ip2a_req = CALLOC(1, sizeof(struct ip2action_req));
     ip2a_req->ip_addr = CALLOC(1, sizeof(struct sockaddr_storage));
@@ -1422,10 +1369,10 @@ void test_ipthreat_multiple_provider_check(void)
     ip2a_req->action              = FSM_ALLOW;
     ip2a_req->cache_ttl           = 600;
     ip2a_req->policy_idx          = 2;
-    ip2a_req->service_id          = 1;
+    ip2a_req->service_id          = URL_BC_SVC;
     ip2a_req->nelems              = 1;
     ip2a_req->categories[0]       = 7;
-    ip2a_req->cache_wb.risk_level = 7;
+    ip2a_req->cache_bc.reputation = 7;
     ip2a_req->direction = NET_MD_ACC_OUTBOUND_DIR;
     v4dstip = htonl(0x01020304);
     in4addr = (struct sockaddr_in *)ip2a_req->ip_addr;
@@ -1438,7 +1385,7 @@ void test_ipthreat_multiple_provider_check(void)
     dns_cache_print();
 
     /* Insert ip threat policy */
-    spolicy = &spolicies[10];
+    spolicy = &spolicies[9];
     fsm_add_policy(spolicy);
     fpolicy = fsm_policy_lookup(spolicy);
 
@@ -1549,7 +1496,7 @@ void test_ipthreat_multiple_provider_block(void)
 
     /* Prepare dns cache entry */
     cache_init.dns_cache_source = MODULE_IPTHREAT_DPI;
-    cache_init.service_provider = IP2ACTION_WP_SVC;
+    cache_init.service_provider = IP2ACTION_GK_SVC;
     dns_cache_init(&cache_init);
     ip2a_req = CALLOC(1, sizeof(struct ip2action_req));
     ip2a_req->ip_addr = CALLOC(1, sizeof(struct sockaddr_storage));
@@ -1563,10 +1510,10 @@ void test_ipthreat_multiple_provider_block(void)
     ip2a_req->action              = FSM_BLOCK;
     ip2a_req->cache_ttl           = 600;
     ip2a_req->policy_idx          = 2;
-    ip2a_req->service_id          = 1;
+    ip2a_req->service_id          = URL_BC_SVC;
     ip2a_req->nelems              = 1;
     ip2a_req->categories[0]       = 7;
-    ip2a_req->cache_wb.risk_level = 7;
+    ip2a_req->cache_bc.reputation = 7;
     ip2a_req->direction = NET_MD_ACC_OUTBOUND_DIR;
     v4dstip = htonl(0x01020304);
     in4addr = (struct sockaddr_in *)ip2a_req->ip_addr;
@@ -1579,7 +1526,7 @@ void test_ipthreat_multiple_provider_block(void)
     dns_cache_print();
 
     /* Insert ip threat policy */
-    spolicy = &spolicies[10];
+    spolicy = &spolicies[9];
     fsm_add_policy(spolicy);
     fpolicy = fsm_policy_lookup(spolicy);
 
@@ -1696,7 +1643,7 @@ test_fsm_policy_flush(void)
     fsm_policy_register_client(client);
 
     /* Insert a flush policy */
-    spolicy = &spolicies[9];
+    spolicy = &spolicies[8];
     fsm_add_policy(spolicy);
 
     TEST_ASSERT_EQUAL(ut_flush, client->name);
@@ -1839,7 +1786,6 @@ int main(int argc, char *argv[])
     RUN_TEST(test_apply_policies);
     RUN_TEST(test_wildcard_ovsdb_conversions);
     RUN_TEST(test_fsm_policy_client);
-    RUN_TEST(test_ip_threat_settings);
     RUN_TEST(test_fsm_policy_clients_same_session);
     RUN_TEST(test_apply_no_action_policy);
     RUN_TEST(test_apply_mac_policies);

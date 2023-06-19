@@ -120,6 +120,7 @@ static bool linux_device_memutil_get(dpp_device_memutil_t *memutil);
 static bool linux_device_fsutil_get(dpp_device_fsutil_t *fsutil);
 static bool linux_device_top(dpp_device_record_t *device_record);
 static bool linux_device_powerinfo_get(dpp_device_powerinfo_t *powerinfo);
+static bool linux_device_file_handles_get(dpp_device_record_t *record);
 
 static int proc_parse_uptime(uint64_t *uptime);
 static int proc_parse_meminfo(system_util_t *system_util);
@@ -912,6 +913,46 @@ err_out:
     return retval;
 }
 
+static bool linux_device_file_handles_get(dpp_device_record_t *record)
+{
+    const char *filename = "/proc/sys/fs/file-nr";
+    FILE *fp = NULL;
+    char buf[128];
+    bool retval = false;
+    uint32_t used, total;
+
+    used = total = 0;
+
+    fp = fopen(filename, "r");
+    if (fp == NULL)
+    {
+        goto out;
+    }
+
+    /* Read the stream and check there was no error and everything was read */
+    fread(buf, sizeof(*buf), sizeof(buf), fp);
+    if (ferror(fp) || !feof(fp))
+    {
+        goto cleanup;
+    }
+
+    /* Use <inttypes.h> macros for reliable reading into u32 vars */
+    if (sscanf(buf, "%" SCNu32 " %*s %" SCNu32, &used, &total) < 2)
+    {
+        goto cleanup;
+    }
+
+    /* Record the total/used counts of file handles */
+    record->used_file_handles  = used;
+    record->total_file_handles = total;
+    retval = true;
+
+cleanup:
+    fclose(fp);
+out:
+    return retval;
+}
+
 
 bool target_stats_device_get(dpp_device_record_t  *device_entry)
 {
@@ -950,6 +991,11 @@ bool target_stats_device_get(dpp_device_record_t  *device_entry)
     if (!linux_device_cpuutil_get(&device_entry->cpu_util))
     {
         LOG(ERR, "Failed to retrieve device cpu utilization.");
+        return false;
+    }
+    if (!linux_device_file_handles_get(device_entry))
+    {
+        LOG(ERR, "Failed to retrieve device file handles counts.");
         return false;
     }
 

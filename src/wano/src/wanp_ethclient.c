@@ -136,6 +136,7 @@ static void wanp_ethclient_inject_add(const char *ifname, const u_char *pkt, ssi
 static void wanp_ethclient_inject_clear(const char *ifname);
 static bool wanp_ethclient_inject_packet(const char *ifname, const u_char *pkt, ssize_t pkt_len);
 static bool wanp_ethclient_mac_learning_update(const char *brname, const char *ifname, osn_mac_addr_t mac);
+static bool wanp_ethclient_mac_learning_delete(const char *ifname);
 
 static void wanp_ethclient_dhcp_process(
         struct wanp_ethclient *self,
@@ -174,6 +175,11 @@ wano_plugin_handle_t *wanp_ethclient_init(
     self->ec_handle.wh_plugin = wp;
     STRSCPY(self->ec_handle.wh_ifname, ifname);
     self->ec_status_fn = status_fn;
+
+    if (!wanp_ethclient_mac_learning_delete(ifname))
+    {
+        LOG(WARN, "ethclient: %s: Error deleting OVS_MAC_Learning entries", ifname);
+    }
 
     ev_timer_init(
             &self->ec_client_timer,
@@ -842,6 +848,21 @@ bool wanp_ethclient_mac_learning_update(
             (char *)smac,
             &ml,
             false);
+}
+
+/*
+ * Delete from OVS_MAC_Learning table where ifname
+ */
+bool wanp_ethclient_mac_learning_delete(const char *ifname)
+{
+    int rc;
+    ovsdb_table_t table_OVS_MAC_Learning;
+    OVSDB_TABLE_INIT(OVS_MAC_Learning, ifname);
+    rc = ovsdb_table_delete_simple(
+            &table_OVS_MAC_Learning,
+            "ifname",
+            ifname);
+    return rc >= 0;  // rc: number of deleted items or -1 if error
 }
 
 /*

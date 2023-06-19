@@ -43,7 +43,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #define OSW_L2UF_PCAP_SNAPLEN 200
 #define OSW_L2UF_PCAP_BUFFER_SIZE (64 * 1024)
-#define OSW_L2UF_BPF_FILTER "ether broadcast and ether[12]==0 and (ether[13]==6 or ether[13]==8)"
+#define OSW_L2UF_BPF_FILTER "llc xid"
 #define OSW_L2UF_IF_RETRY_SECONDS 1
 #define LOG_PREFIX(i, fmt, ...) "osw: l2uf: %s: " fmt, (i)->if_name, ##__VA_ARGS__
 

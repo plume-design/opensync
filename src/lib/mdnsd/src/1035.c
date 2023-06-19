@@ -31,6 +31,7 @@
 #include "1035.h"
 #include <string.h>
 #include <stdio.h>
+#include "mdnsd.h"
 
 unsigned short int net2short(unsigned char **bufp)
 {
@@ -265,7 +266,8 @@ static int _rrparse(struct message *m, struct resource *rr, int count, unsigned 
 //      fprintf(stderr, "Record type %d class 0x%2x ttl %lu len %d\n", rr[i].type, rr[i].class, rr[i].ttl, rr[i].rdlength);
 
         /* If not going to overflow, make copy of source rdata */
-        if (rr[i].rdlength + (*bufp - m->_buf) > MAX_PACKET_LEN || m->_len + rr[i].rdlength > MAX_PACKET_LEN) {
+        if (rr[i].rdlength + (*bufp - m->_buf) > MAX_PACKET_LEN ||
+            m->_len + rr[i].rdlength > MAX_PACKET_LEN || rr[i].rdlength > m->pld_len) {
             rr[i].rdlength = 0;
             return 1;
         }
@@ -332,7 +334,7 @@ static int _rrparse(struct message *m, struct resource *rr, int count, unsigned 
     (x) = (void *)(m->_packet + m->_len);    \
     m->_len += (y);
 
-int message_parse(struct message *m, unsigned char *packet)
+int message_parse(struct message *m, unsigned char *packet, size_t len)
 {
     int i;
     unsigned char *buf;
@@ -341,6 +343,7 @@ int message_parse(struct message *m, unsigned char *packet)
         return 1;
 
     /* Header stuff bit crap */
+    m->pld_len = len;
     m->_buf = buf = packet;
     m->id = net2short(&buf);
     if (buf[0] & 0x80)

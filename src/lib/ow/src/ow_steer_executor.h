@@ -40,6 +40,10 @@ ow_steer_executor_add(struct ow_steer_executor *executor,
                       struct ow_steer_executor_action *action);
 
 void
+ow_steer_executor_remove(struct ow_steer_executor *executor,
+                         struct ow_steer_executor_action *action);
+
+void
 ow_steer_executor_call(struct ow_steer_executor *executor,
                        const struct osw_hwaddr *sta_mac,
                        const struct ow_steer_candidate_list *candidate_list,

@@ -66,6 +66,8 @@ struct osw_drv_vif_config_ap {
     bool ssid_changed;
 
     struct osw_hwaddr_list acl;
+    struct osw_hwaddr_list acl_add;
+    struct osw_hwaddr_list acl_del;
     bool acl_changed;
 
     struct osw_wpa wpa;
@@ -82,14 +84,25 @@ struct osw_drv_vif_config_ap {
     struct osw_neigh_list neigh_mod_list;
     struct osw_neigh_list neigh_del_list;
     bool neigh_list_changed;
+
+    struct osw_wps_cred_list wps_cred_list;
+    bool wps_cred_list_changed;
+
+    bool wps_pbc;
+    bool wps_pbc_changed;
+
+    struct osw_multi_ap multi_ap;
+    bool multi_ap_changed;
 };
 
 struct osw_drv_vif_sta_network {
+    struct osw_ifname bridge_if_name;
     struct osw_hwaddr bssid;
     struct osw_ssid ssid;
     struct osw_psk psk;
     struct osw_wpa wpa;
     struct osw_drv_vif_sta_network *next;
+    bool multi_ap;
 };
 
 enum osw_drv_vif_config_sta_operation {
@@ -115,6 +128,9 @@ struct osw_drv_vif_config {
     bool enabled;
     bool enabled_changed;
 
+    int tx_power_dbm;
+    bool tx_power_dbm_changed;
+
     union {
         struct osw_drv_vif_config_ap ap;
         struct osw_drv_vif_config_sta sta;
@@ -131,6 +147,7 @@ struct osw_drv_vif_state_ap {
     bool isolated;
     bool ssid_hidden;
     bool mcast2ucast;
+    bool wps_pbc;
     int beacon_interval_tu;
     struct osw_ifname bridge_if_name;
     struct osw_ap_mode mode;
@@ -142,10 +159,12 @@ struct osw_drv_vif_state_ap {
     struct osw_ap_psk_list psk_list;
     struct osw_radius_list radius_list;
     struct osw_neigh_list neigh_list;
+    struct osw_wps_cred_list wps_cred_list;
+    struct osw_multi_ap multi_ap;
 };
 
 struct osw_drv_vif_state_ap_vlan {
-    /* TBD */
+    struct osw_hwaddr_list sta_addrs;
 };
 
 enum osw_drv_vif_state_sta_link_status {
@@ -157,11 +176,13 @@ enum osw_drv_vif_state_sta_link_status {
 
 struct osw_drv_vif_state_sta_link {
     enum osw_drv_vif_state_sta_link_status status;
+    struct osw_ifname bridge_if_name;
     struct osw_channel channel;
     struct osw_hwaddr bssid;
     struct osw_ssid ssid;
     struct osw_psk psk;
     struct osw_wpa wpa;
+    bool multi_ap;
 };
 
 struct osw_drv_vif_state_sta {
@@ -181,6 +202,7 @@ struct osw_drv_vif_state {
     bool enabled;
     enum osw_vif_type vif_type;
     struct osw_hwaddr mac_addr;
+    int tx_power_dbm;
 
     union {
         struct osw_drv_vif_state_ap ap;
@@ -205,6 +227,9 @@ struct osw_drv_phy_config {
     struct osw_reg_domain reg_domain;
     bool reg_domain_changed;
 
+    struct osw_ifname mbss_tx_vif_name;
+    bool mbss_tx_vif_name_changed;
+
     struct osw_drv_vif_config_list vif_list;
 };
 
@@ -223,6 +248,7 @@ struct osw_drv_phy_state {
     size_t n_channel_states;
     struct osw_reg_domain reg_domain;
     struct osw_hwaddr mac_addr;
+    struct osw_ifname mbss_tx_vif_name;
     bool exists;
     bool enabled;
     int tx_chainmask;
@@ -295,9 +321,6 @@ typedef void
 osw_drv_request_config_fn_t(struct osw_drv *drv,
                             struct osw_drv_conf *conf);
 
-typedef void
-osw_drv_request_wps_pbc_fn_t(struct osw_drv *drv);
-
 /* FIXME: This should actually re-use the
  * push_frame_tx_fn and expect that to be handled
  * by the underlying driver appropriately. If the
@@ -352,7 +375,6 @@ struct osw_drv_ops {
     osw_drv_request_sta_state_fn_t *request_sta_state_fn;
     osw_drv_request_sta_deauth_fn_t *request_sta_deauth_fn;
     osw_drv_request_sta_delete_fn_t *request_sta_delete_fn;
-    osw_drv_request_wps_pbc_fn_t *request_wps_pbc_fn;
     osw_drv_request_config_fn_t *request_config_fn;
     osw_drv_request_stats_fn_t *request_stats_fn;
     osw_drv_request_scan_fn_t *request_scan_fn;
@@ -393,10 +415,6 @@ const struct osw_drv_ops *
 osw_drv_get_ops(struct osw_drv *drv);
 
 void
-osw_drv_report_config_failed(struct osw_drv *drv,
-                             const char *msg);
-
-void
 osw_drv_report_phy_changed(struct osw_drv *drv,
                            const char *phy_name);
 
@@ -411,29 +429,22 @@ osw_drv_report_vif_probe_req(struct osw_drv *drv,
                              const char *vif_name,
                              const struct osw_drv_report_vif_probe_req *probe_req);
 
+struct osw_drv_vif_frame_rx {
+    const uint8_t *data;
+    size_t len;
+    unsigned int snr;
+};
+
 void
 osw_drv_report_vif_frame_rx(struct osw_drv *drv,
                             const char *phy_name,
                             const char *vif_name,
-                            const uint8_t *data,
-                            size_t len);
+                            const struct osw_drv_vif_frame_rx *rx);
 
 void
 osw_drv_report_vif_changed(struct osw_drv *drv,
                            const char *phy_name,
                            const char *vif_name);
-
-void
-osw_drv_report_vif_connected(struct osw_drv *drv,
-                             const char *phy_name,
-                             const char *vif_name,
-                             const struct osw_ssid *ssid,
-                             const struct osw_hwaddr *bssid);
-
-void
-osw_drv_report_vif_disconnected(struct osw_drv *drv,
-                                const char *phy_name,
-                                const char *vif_name);
 
 void
 osw_drv_report_vif_state(struct osw_drv *drv,
@@ -460,6 +471,21 @@ osw_drv_report_vif_channel_change_advertised(struct osw_drv *drv,
                                              const struct osw_channel *channel);
 
 void
+osw_drv_report_vif_wps_success(struct osw_drv *drv,
+                               const char *phy_name,
+                               const char *vif_name);
+
+void
+osw_drv_report_vif_wps_overlap(struct osw_drv *drv,
+                               const char *phy_name,
+                               const char *vif_name);
+
+void
+osw_drv_report_vif_wps_pbc_timeout(struct osw_drv *drv,
+                                   const char *phy_name,
+                                   const char *vif_name);
+
+void
 osw_drv_report_sta_changed(struct osw_drv *drv,
                            const char *phy_name,
                            const char *vif_name,
@@ -475,6 +501,9 @@ osw_drv_report_sta_state(struct osw_drv *drv,
 void
 osw_drv_report_stats(struct osw_drv *drv,
                      const struct osw_tlv *tlv);
+
+void
+osw_drv_report_stats_reset(enum osw_stats_id id);
 
 void
 osw_drv_conf_free(struct osw_drv_conf *conf);
@@ -545,8 +574,6 @@ void osw_drv_report_stats_survey
 void osw_drv_report_stats_sta
 void osw_drv_report_scan_entry
 void osw_drv_report_scan_completed
-void osw_drv_report_wps_enrollee_handled
-void osw_drv_report_wps_pbc_stopped
 void osw_drv_report_dpp_enrollee_handled
 void osw_drv_report_dpp_auth_stopped
 void osw_drv_report_dpp_chirp_stopped

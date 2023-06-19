@@ -41,6 +41,8 @@ endif
 ifneq ($(GCCVER),)
 ifeq ($(shell [ $(GCCVER) -ge 7 ] && echo y),y)
 GCCVERFLAGS += -Wno-error=format-truncation
+GCCVERFLAGS += -Wno-error=implicit-fallthrough
+GCCVERFLAGS += -Wno-error=tautological-compare
 endif
 ifeq ($(shell [ $(GCCVER) -ge 8 ] && echo y),y)
 GCCVERFLAGS += -Wno-error=stringop-truncation

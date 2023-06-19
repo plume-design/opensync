@@ -229,46 +229,6 @@ jencode_gk_report(struct fsm_url_reply *reply)
 }
 
 static json_t *
-jencode_wb_report(struct fsm_url_reply *reply)
-{
-    struct fsm_wp_info *info;
-    json_t *categorization;
-    json_t *categories;
-    size_t nelems;
-    size_t i;
-
-    categorization = json_object();
-    categories = json_array();
-    info = &reply->wb;
-
-    /* Encode categories */
-    nelems = reply->nelems;
-    for (i = 0; i < nelems; i++)
-    {
-        json_t *category;
-        int category_id;
-
-        category = json_object();
-        category_id = reply->categories[i];
-        /* Encode category and confidence */
-        json_object_set_new(category, "categoryId",
-                            json_integer(category_id));
-
-        /* Append category, confidence data to the categories array */
-        json_array_append_new(categories, category);
-    }
-
-    /* Encode categorization */
-    json_object_set_new(categorization, "riskLevel",
-                        json_integer(info->risk_level));
-    json_object_set_new(categorization, "categories",
-                        categories);
-
-
-    return categorization;
-}
-
-static json_t *
 jencode_bc_report(struct fsm_url_reply *reply)
 {
     struct fsm_bc_info *info;
@@ -503,7 +463,6 @@ json_ipthreat_report(struct fsm_session *session,
         categorization = NULL;
         service_id = reply->service_id;
         if (service_id == URL_BC_SVC) categorization = jencode_bc_report(reply);
-        if (service_id == URL_WP_SVC) categorization = jencode_wb_report(reply);
         if (service_id == URL_GK_SVC) categorization = jencode_gk_report(reply);
 
         /* Add categorization source */
@@ -653,7 +612,6 @@ json_url_report(struct fsm_session *session,
         categorization = NULL;
         service_id = reply->service_id;
         if (service_id == URL_BC_SVC) categorization = jencode_bc_report(reply);
-        if (service_id == URL_WP_SVC) categorization = jencode_wb_report(reply);
         if (service_id == URL_GK_SVC) categorization = jencode_gk_report(reply);
 
         /* Add categorization source */

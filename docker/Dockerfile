@@ -8,6 +8,9 @@ ARG PKGINSTALL="eval apt-get update && DEBIAN_FRONTEND=noninteractive apt-get -y
 # Python
 RUN $PKGINSTALL python python3 python3-pip python3-dev python3-pexpect python3-tabulate \
                 python3-termcolor python3-paramiko python3-pydot
+RUN eval $PKGINSTALL python-pip
+RUN pip2 install 'pip==20.3.4'
+RUN pip2 install 'requests<2.28' 'certifi<=2021.10.08'
 RUN pip3 install kconfiglib 'MarkupSafe<2.0.0' 'Jinja2<3.0.0'
 
 # Development packages

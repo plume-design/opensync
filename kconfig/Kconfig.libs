@@ -18,6 +18,7 @@ source "src/lib/osw/kconfig/Kconfig.libs"
 source "src/lib/ow/kconfig/Kconfig.libs"
 source "src/lib/data_report_tags/kconfig/Kconfig.libs"
 source "src/lib/ff/kconfig/Kconfig.libs"
+source "src/lib/accel_evict_msg/kconfig/Kconfig.libs"
 
 osource "platform/*/kconfig/Kconfig.libs"
 osource "vendor/*/kconfig/Kconfig.libs"

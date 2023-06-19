@@ -39,6 +39,12 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #if JANSSON_MAJOR_VERSION <= 2 && JANSSON_MINOR_VERSION < 8
 extern void json_get_alloc_funcs(json_malloc_t *malloc_fn, json_free_t *free_fn);
+#define json_object_foreach_safe(object, n, key, value)                                  \
+    for (key = json_object_iter_key(json_object_iter(object)),                           \
+        n = json_object_iter_next(object, json_object_key_to_iter(key));                 \
+         key && (value = json_object_iter_value(json_object_key_to_iter(key)));          \
+         key = json_object_iter_key(n),                                                  \
+        n = json_object_iter_next(object, json_object_key_to_iter(key)))
 #endif
 
 /*

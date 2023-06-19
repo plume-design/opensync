@@ -33,8 +33,7 @@ struct ow_steer_policy*
 ow_steer_policy_btm_response_get_base(struct ow_steer_policy_btm_response *btm_response_policy);
 
 struct ow_steer_policy_btm_response*
-ow_steer_policy_btm_response_create(unsigned int priority,
-                                    const char *name,
+ow_steer_policy_btm_response_create(const char *name,
                                     const struct osw_hwaddr *sta_addr,
                                     const struct ow_steer_policy_mediator *mediator);
 

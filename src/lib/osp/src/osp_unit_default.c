@@ -168,44 +168,6 @@ bool osp_unit_mfg_date_get(char *buff, size_t buffsz)
     return false;
 }
 
-bool osp_unit_ovs_version_get(char *buff, size_t buffsz)
-{
-    FILE *fcmd = NULL;
-    bool ret = true;
-    char cmd[1024];
-
-
-    snprintf(cmd, sizeof(cmd), "ovs-vswitchd -V | awk '{print $NF}'");
-
-    fcmd = popen(cmd, "r");
-    if (fcmd ==  NULL) {
-        LOGN("%s(): Error executing command '%s' err: %s", __func__, cmd, strerror(errno));
-        ret = false;
-        goto exit;
-    }
-
-    while (fgets(buff, buffsz, fcmd) != NULL) {
-        LOGI("%s: ovs version: %s", __func__, buff);
-    }
-
-    if (ferror(fcmd)) {
-        LOGN("%s(): fgets() failed", __func__);
-        ret = false;
-        goto exit;
-    }
-
-    pclose(fcmd);
-    fcmd = NULL;
-
-    strchomp(buff, " \t\r\n");
-
-exit:
-    if (fcmd != NULL) {
-        pclose(fcmd);
-    }
-    return ret;
-}
-
 bool osp_unit_dhcpc_hostname_get(void *buff, size_t buffsz)
 {
     char serial_num[buffsz];
@@ -229,5 +191,3 @@ bool osp_unit_dhcpc_hostname_get(void *buff, size_t buffsz)
 
     return true;
 }
-
-

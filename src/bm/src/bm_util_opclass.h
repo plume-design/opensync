@@ -29,6 +29,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <os_types.h>
 
+uint8_t ieee80211_global_op_class_get(const uint8_t band, const uint8_t channel, const uint16_t width);
 bool ieee80211_global_op_class_is_contained_in(const uint8_t superset_op_class, const uint8_t subset_op_class);
 bool ieee80211_global_op_class_is_channel_supported(const uint8_t op_class, const uint8_t chan);
 uint8_t ieee80211_global_op_class_to_20mhz_op_class(const uint8_t op_class, const uint8_t chan);
@@ -41,5 +42,6 @@ bool ieee80211_global_op_class_is_40mhz(const uint8_t op_class);
 bool ieee80211_global_op_class_is_80mhz(const uint8_t op_class);
 bool ieee80211_global_op_class_is_80plus80mhz(const uint8_t op_class);
 bool ieee80211_global_op_class_is_160mhz(const uint8_t op_class);
+bool ieee80211_global_op_class_is_320mhz(const uint8_t op_class);
 
 #endif /* BM_UTIL_OPCLASS_H_INCLUDED */

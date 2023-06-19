@@ -46,7 +46,7 @@ $(TESTBINDIR): | $(WORKDIRS)
 ##########################################################
 # Overriding CFLAGS from the command line doesn't really
 # work at the moment (make CFLAGS=...). As a workaround,
-# implement LOCAL_CFLAGS, which can be used to add 
+# implement LOCAL_CFLAGS, which can be used to add
 # developer C flags to the target's CFLAGS.
 #
 # This is useful for specifying options like
@@ -75,6 +75,7 @@ UNIT_ALL_INSTALL += $(UNIT_PATH)/install
 UNIT_ALL_CLEAN += $(UNIT_PATH)/clean
 UNIT_ALL_BIN_UNITS += $(UNIT_PATH)
 UNIT_ALL_BIN_FILES += $(BINDIR)/$(UNIT_BIN)
+UNIT_GOALS_$(UNIT_PATH) += $(BINDIR)/$(UNIT_BIN)
 
 $(call UNIT_MAKE_RULES)
 
@@ -112,6 +113,7 @@ UNIT_ALL_CLEAN += $(UNIT_PATH)/clean
 UNIT_ALL_TEST_BIN_UNITS += $(UNIT_PATH)
 UNIT_ALL_TEST_BIN_FILES += $(TESTBINDIR)/$(UNIT_BIN)/unit
 UNIT_DIRS += $(TESTBINDIR)/$(UNIT_BIN)
+UNIT_GOALS_$(UNIT_PATH) += $(TESTBINDIR)/$(UNIT_BIN)/unit
 
 $(call UNIT_MAKE_RULES)
 
@@ -148,29 +150,6 @@ $(call UNIT_C_RULES)
 endef
 
 ##########################################################
-# Definition of a "FUT" type unit
-##########################################################
-define UNIT_BUILD_FUT
-# Add the unit to the global list of units
-UNIT_ALL += $(UNIT_PATH)
-UNIT_ALL_INSTALL += $(UNIT_PATH)/install
-UNIT_ALL_CLEAN += $(UNIT_PATH)/clean
-UNIT_ALL_FUT_FILES += $(foreach FILE,$(UNIT_FILE),$(UNIT_PATH)/$(FILE))
-UNIT_ALL_FUT_DIRS += $(foreach SRC,$(UNIT_FILE),'$(dir $(FUTDIR)/$(UNIT_DIR)/$(SRC))')
-UNIT_ALL_FUT_COPY += echo " $(call color_copy,copy)    [$(call COLOR_BOLD,$(UNIT_PATH))] -> $(FUTDIR)/$(UNIT_DIR)";
-UNIT_ALL_FUT_COPY += $(foreach SRC,$(UNIT_FILE),$(CP) $(UNIT_PATH)/$(SRC) $(dir $(FUTDIR)/$(UNIT_DIR)/$(SRC));)
-
-.PHONY: $(UNIT_PATH)
-.PHONY: $(UNIT_PATH)/
-.PHONY: $(UNIT_PATH)/install
-$(UNIT_PATH) $(UNIT_PATH)/ $(UNIT_PATH)/install: fut
-
-$(call UNIT_MAKE_DIRS)
-$(call UNIT_MAKE_INFO)
-$(call UNIT_MAKE_CLEAN,$(FUTDIR)/$(UNIT_DIR))
-endef
-
-##########################################################
 # Definition of a "LIB" type unit
 ##########################################################
 # Helper for LIB and STATIC_LIB
@@ -178,6 +157,7 @@ define __UNIT_BUILD_ARCHIVE
 # Add the unit to the global list of units
 UNIT_ALL += $(UNIT_PATH)
 UNIT_ALL_CLEAN += $(UNIT_PATH)/clean
+UNIT_GOALS_$(UNIT_PATH) += $(UNIT_BUILD)/lib$(UNIT_NAME).a
 
 $(call UNIT_MAKE_RULES)
 
@@ -185,6 +165,7 @@ $(UNIT_BUILD)/.target: $(UNIT_BUILD)/lib$(UNIT_NAME).a
 
 $(UNIT_BUILD)/lib$(UNIT_NAME).a: $(UNIT_OBJ) $(UNIT_ALL_DEPS)
 	$$(NQ) " $(call color_link,link)    [$(call COLOR_BOLD,$(UNIT_NAME))] $$@"
+	$$(Q)rm -f $$@
 	$$(Q)$$(AR) rcs $$@ $(UNIT_OBJ)
 	@# error on duplicate symbols to prevent clashing with stubs
 	@# ignore symbols with $ . in name or starting with __
@@ -227,6 +208,7 @@ define UNIT_BUILD_MAKEFILE
 UNIT_ALL += $(UNIT_PATH)
 UNIT_ALL_INSTALL += $(UNIT_PATH)/install
 UNIT_ALL_CLEAN += $(UNIT_PATH)/clean
+UNIT_GOALS_$(UNIT_PATH) += $(BINDIR)/$(UNIT_BIN)
 
 $(call UNIT_MAKE_RULES)
 
@@ -256,6 +238,7 @@ UNIT_ALL += $(UNIT_PATH)
 UNIT_ALL_INSTALL += $(UNIT_PATH)/install
 UNIT_ALL_CLEAN += $(UNIT_PATH)/clean
 UNIT_EXPORT_LDFLAGS += -l$(UNIT_NAME)
+UNIT_GOALS_$(UNIT_PATH) += $(LIBDIR)/lib$(UNIT_NAME).so
 
 $(call UNIT_MAKE_RULES)
 
@@ -304,6 +287,7 @@ define UNIT_BUILD_PACKAGE
 UNIT_ALL += $(UNIT_PATH)
 UNIT_ALL_INSTALL += $(UNIT_PATH)/install
 UNIT_ALL_CLEAN += $(UNIT_PATH)/clean
+UNIT_GOALS_$(UNIT_PATH) += $(PKGDIR)/$$($(UNIT_NAME)_PACKAGE_BIN)
 
 # PACKAGE_ARCH can be used to define per package arch
 $(UNIT_NAME)_PACKAGE_ARCH := $(firstword $(PACKAGE_ARCH) $(ARCH_3RDPARTY) $(TARGET))
@@ -347,7 +331,8 @@ $(UNIT_OBJ): $$(UNIT_OBJ_DEPS)
 $(UNIT_PATH)/compile: $(UNIT_BUILD)/.target
 
 # Build up .target dependency tree
-$(UNIT_BUILD)/.target: $(call UNIT_MARK_FILES,$(UNIT_DEPS)) $(UNIT_PRE) | $(UNIT_DIRS)
+UNITS_WITH_MARK_FILE += $(UNIT_PATH)
+$(UNIT_BUILD)/.target: $(UNIT_PRE) | $(UNIT_DIRS)
 	$$(Q)touch "$$@"
 
 $(UNIT_PATH)/install_headers: $(wildcard $(UNIT_PATH)/inc/*.h)
@@ -433,6 +418,7 @@ define UNIT_MAKE_INFO
 $(UNIT_PATH)/info:
 	$(NQ) "UNIT_NAME:           " $(UNIT_NAME)
 	$(NQ) "UNIT_PATH:           " $(UNIT_PATH)
+	$(NQ) "UNIT_MK_FILES:       " $(UNIT_MK_FILES)
 	$(NQ) "UNIT_DISABLE:        " $(UNIT_DISABLE)
 	$(NQ) "UNIT_TYPE:           " $(UNIT_TYPE)
 	$(NQ) "UNIT_DEPS:           " $(UNIT_DEPS)
@@ -479,6 +465,7 @@ _OVERRIDE_DISABLE  := $$(UNIT_DISABLE_LAYER_$(1))
 endif
 ifneq ($$(_OVERRIDE_DISABLE),y)
 -include $$(OVERRIDE_DIR)/override.mk
+UNIT_MK_FILES   += $$(wildcard $$(call CANNED_PATH,$$(OVERRIDE_DIR)/override.mk))
 endif
 
 endef
@@ -513,6 +500,7 @@ UNIT_FILE:=
 
 UNIT_MK         := $(1)
 UNIT_PATH       := $(call CANNED_PATH,$(dir $(UNIT_MK)))
+UNIT_MK_FILES   := $(call CANNED_PATH,$(UNIT_MK))
 UNIT_BUILD      := $(OBJDIR)/$$(call FLATTEN_PATH,$$(UNIT_PATH))
 # The build directories must be created before individual unit.mk files set
 # other rules (like auto-generating files)
@@ -542,8 +530,6 @@ ifeq ($$(UNIT_BIN),)
 UNIT_BIN := $$(UNIT_NAME)
 endif
 
-$$(eval UNIT_NAME_$$(UNIT_PATH) = $$(UNIT_NAME))
-
 # Expand all variables
 UNIT_SOURCES    := $$(foreach SRC,$$(UNIT_SRC),$$(call CANNED_PATH,$$(UNIT_PATH)/$$(SRC)))
 UNIT_SOURCES    += $$(foreach SRC,$$(UNIT_SRC_TOP),$$(call CANNED_PATH,$$(SRC)))
@@ -566,10 +552,20 @@ ifdef UNIT_POST_MACRO
 $$(eval $$(UNIT_POST_MACRO))
 endif
 
-UNIT_REGULAR_DEPS = $$(call UNIT_MARK_FILES,$$(UNIT_DEPS)) $$(UNIT_PRE)
+# store some per-unit variables for later use
+UNIT_NAME_$$(UNIT_PATH) := $$(UNIT_NAME)
+UNIT_BUILD_DIR_$$(UNIT_PATH) := $$(UNIT_BUILD)
+UNIT_OBJ_$$(UNIT_PATH) := $$(UNIT_OBJ)
+UNIT_PRE_$$(UNIT_PATH) := $$(UNIT_PRE)
+
+# Types of Makefile prerequisites:
+# targets : normal-prerequisites | order-only-prerequisites
+# Order-only prerequisites are never checked when determining whether the target is out of date
+# They are only checked for existence (useful for directories whose timestamp is likely to change)
+UNIT_REGULAR_DEPS = $$(UNIT_PRE) $$(UNIT_MK_FILES)
 UNIT_ORDER_DEPS = $$(UNIT_DIRS)
 UNIT_ALL_DEPS = $$(UNIT_REGULAR_DEPS) | $$(UNIT_ORDER_DEPS)
-UNIT_OBJ_DEPS = $$(UNIT_PRE) | $$(UNIT_ORDER_DEPS) $$(call UNIT_MARK_FILES,$$(UNIT_DEPS))
+UNIT_OBJ_DEPS = $$(UNIT_PRE) | $$(UNIT_ORDER_DEPS)
 
 # Expand rules
 ifeq ($$(UNIT_DISABLE),y)
@@ -582,12 +578,6 @@ endif
 
 $$(eval UNIT_DEPS_$$(UNIT_PATH) = $$(UNIT_DEPS))
 $$(eval UNIT_DEPS_CFLAGS_$$(UNIT_PATH) = $$(UNIT_DEPS_CFLAGS))
-$$(eval DEPS_$$(UNIT_PATH) = $$(UNIT_DEPS) $$(foreach DEP,$$(UNIT_DEPS),$$$$(DEPS_$$(DEP))))
-
-# moved handling of DEPS_CFLAGS to after all layers are processed
-# $$(eval DEPS_CFLAGS_$$(UNIT_PATH) += $$(UNIT_DEPS_CFLAGS))
-# $$(eval DEPS_CFLAGS_$$(UNIT_PATH) += $$(foreach DEP,$$(UNIT_DEPS),$$$$(DEPS_CFLAGS_$$(DEP))))
-# $$(eval DEPS_CFLAGS_$$(UNIT_PATH) += $$(foreach DEP,$$(UNIT_DEPS_CFLAGS),$$$$(DEPS_$$(DEP))))
 
 # Handle exported CFLAGS and LDFLAGS
 CFLAGS_$$(UNIT_PATH) := $$(UNIT_EXPORT_CFLAGS)
@@ -630,23 +620,66 @@ $(eval $(call PROCESS_LAYERS,'unit.mk',src))
 # Save a list of all but the last unit so it can be referenced by the following mk rules
 UNIT_ALL_NOT_LAST := $(UNIT_ALL)
 
+# Process DEPS_* and DEPS_CFLAGS_* after all layers to resolve circular dependencies
+# $1: list of units to expand (result)
+# $2: list of already expanded deps to filter out to prevent circular dependency
+# note: sort removes duplicate words
+define EXPAND_DEPS
+$1 $(if $1,$(call EXPAND_DEPS,$(sort $(filter-out $2 $1,$(foreach UNIT,$1,\
+$(UNIT_DEPS_$(UNIT))))),$2 $1),)
+endef
+define DO_EXPAND_DEPS
+$(foreach UNIT_PATH, $(UNIT_ALL),\
+$(eval DEPS_$(UNIT_PATH):=$(filter-out $(UNIT_PATH),\
+$(call sort,$(call EXPAND_DEPS,$(UNIT_PATH) $(UNIT_DEPS_$(UNIT_PATH)),))))\
+)
+endef
+
+define EXPAND_DEPS_CFLAGS
+$1 $(if $1,$(call EXPAND_DEPS_CFLAGS,$(sort $(filter-out $2 $1,$(foreach UNIT,$1,\
+$(DEPS_$(UNIT)) $(foreach DEP,$(DEPS_$(UNIT)),$(UNIT_DEPS_CFLAGS_$(UNIT)))))),$2 $1),)
+endef
+define DO_EXPAND_DEPS_CFLAGS
+$(foreach UNIT_PATH, $(UNIT_ALL),\
+$(eval DEPS_CFLAGS_$(UNIT_PATH):=$(filter-out $(UNIT_PATH) $(DEPS_$(UNIT_PATH)),\
+$(call sort,$(call EXPAND_DEPS_CFLAGS,$(UNIT_PATH) $(UNIT_DEPS_CFLAGS_$(UNIT_PATH)),))))\
+)
+endef
+
+$(call DO_EXPAND_DEPS)
+$(call DO_EXPAND_DEPS_CFLAGS)
+
 # Process unit-last.mk last
 $(eval $(call PROCESS_LAYERS,'unit-last.mk',src))
 
+# unit-last.mk requires DEPS_ to be set, and the below ADD_MARK_FILE_DEPS
+# also requires updated DEPS_ with unit-last.mk provided additions,
+# that's why we call DO_EXPAND_DEPS twice
+$(call DO_EXPAND_DEPS)
+$(call DO_EXPAND_DEPS_CFLAGS)
 
-# Process DEPS_CFLAGS_* after all layers to resolve circular deps
-# $1: list of units to expand (result)
-# $2: list of already expanded deps to filter out to prevent cyclic dependancy
-define EXPAND_DEPS
-$1 $(if $1,$(call EXPAND_DEPS,$(sort $(filter-out $2 $1,$(foreach UNIT,$1,$(DEPS_$(UNIT)) $(foreach DEP,$(DEPS_$(UNIT)),$(UNIT_DEPS_CFLAGS_$(UNIT)))))),$2 $1),)
+# Add .target mark file dependencies to all units.
+# This is done post PROCESS_LAYERS, so that we can use the
+# expanded DEPS_ with resolved circular dependencies.
+# For LIB types only: add dependencies to other units which have some special
+# prerequisites defined by UNIT_PRE, and include those in DEPS_CFLAGS.
+# This is to avoid creating circular dependencies which exist between some LIB units
+# $1: UNIT_PATH
+define ADD_MARK_FILE_DEPS
+DEPS_PRE := $$(foreach UNIT,$$(DEPS_$(1)) $$(DEPS_CFLAGS_$(1)),$$(if $$(UNIT_PRE_$$(UNIT)),$$(UNIT),))
+ifeq ($(UNIT_TYPE_$(1)),LIB)
+$(UNIT_BUILD_DIR_$(1))/.target: $$(call UNIT_MARK_FILES,$$(DEPS_PRE))
+$(UNIT_OBJ_$(1)): | $$(call UNIT_MARK_FILES,$$(DEPS_PRE))
+else
+$(UNIT_BUILD_DIR_$(1))/.target: $$(call UNIT_MARK_FILES,$$(DEPS_$(1)))
+$(UNIT_OBJ_$(1)): | $$(call UNIT_MARK_FILES,$$(DEPS_$(1)))
+$(UNIT_GOALS_$(1)): $$(call UNIT_MARK_FILES,$$(DEPS_$(1)))
+endif
 endef
-# note: sort also removes duplicate words
-$(foreach UNIT_PATH, $(UNIT_ALL),\
-$(eval DEPS_CFLAGS_$(UNIT_PATH):=$(filter-out $(UNIT_PATH) $(DEPS_$(UNIT_PATH)),\
-$(call sort,$(call EXPAND_DEPS,$(UNIT_PATH) $(UNIT_DEPS_CFLAGS_$(UNIT_PATH)),))))\
-)
+$(foreach UNIT_PATH, $(UNITS_WITH_MARK_FILE),$(eval $(call ADD_MARK_FILE_DEPS,$(UNIT_PATH))))
 
-.PHONY: unit-list unit-all unit-clean
+
+.PHONY: unit-list unit-all unit-clean unit-bin
 unit-list:
 	$(NQ) Currently active units:
 	$(NQ)
@@ -671,14 +704,16 @@ $(TESTBINDIR)/clean:
 	$(Q)$(RM) -r $(TESTBINDIR)
 
 unit-all: workdirs $(UNIT_ALL)
+unit-bin: workdirs $(UNIT_ALL_BIN_UNITS)
 unit-install: $(UNIT_ALL_INSTALL)
 unit-clean: $(UNIT_ALL_CLEAN) $(TESTBINDIR)/clean
+unit-info: $(foreach UNIT,$(sort $(UNIT_ALL)),$(UNIT)/info)
 
 ##########################################################
 # Targets to allow for code coverage calculation
 ##########################################################
 # Note : currently we are NOT failing the build if a test does not complete
-#        we will NOT fail. 
+#        we will NOT fail.
 #        Eventually we must uncomment the "exit 1" in the 2 following targets
 #        (unit-run-prerequisite and unit-run).
 
@@ -713,11 +748,11 @@ unit-run-cleanup: unit-run-exec
 	$(Q)3rdparty/plume/docker/gk_container_service.sh stop
 	$(NQ) " $(call color_external,Stop)    [$(call COLOR_BOLD,OVSDB)]"
 	$(Q)3rdparty/plume/docker/ovsdb_service.sh stop
-	
+
 
 # Simply running the UT doesn't require a specific compiler.
 # All unset options are properly ignored.
-# 
+#
 # We need to use multiple targets in order to ensure execution order
 # (make does not guarantee order of evaluation of multiple dependencies)
 # Note: if make is interrupted, FAILURE.log will not be deleted.
@@ -750,7 +785,7 @@ unit-coverage-prerequisite:
 
 unit-coverage: CFLAGS += -fprofile-instr-generate -fcoverage-mapping
 unit-coverage: LDFLAGS += -fprofile-instr-generate -fcoverage-mapping
-unit-coverage: unit-coverage-prerequisite unit-run 
+unit-coverage: unit-coverage-prerequisite unit-run
 	$(Q)llvm-profdata${CLANG_VERSION} merge -sparse ${TESTBINDIR}/*/*profraw -o ${TESTBINDIR}/all.profdata
 	$(Q)SRC_FILES=`find ./src \( -not -path "*/ut/*" -and -name "*.[ch]" -and -not -name "*pb-c*" \) | sort`; \
 	UNIT_TESTS=`find ${TESTBINDIR} -name unit`; \

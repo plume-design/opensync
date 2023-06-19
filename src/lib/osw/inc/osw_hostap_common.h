@@ -161,7 +161,8 @@ enum osw_hostap_conf_chanwidth {
     OSW_HOSTAP_CONF_CHANWIDTH_20MHZ_40MHZ = 0,
     OSW_HOSTAP_CONF_CHANWIDTH_80MHZ,
     OSW_HOSTAP_CONF_CHANWIDTH_160MHZ,
-    OSW_HOSTAP_CONF_CHANWIDTH_80P80MHZ
+    OSW_HOSTAP_CONF_CHANWIDTH_80P80MHZ,
+    OSW_HOSTAP_CONF_CHANWIDTH_320MHZ = 9,
 };
 
 enum osw_hostap_conf_acl_policy {
@@ -190,6 +191,7 @@ struct osw_hostap_conf_sta_state_bufs {
     const char *status;
     const char *list_networks;
     const char *mib;
+    const char *bridge_if_name;
 };
 
 enum osw_hostap_conf_chanwidth

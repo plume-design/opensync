@@ -274,6 +274,7 @@ enum wanp_vlan_state wanp_vlan_state_PPLINE_CREATE(
     switch (action)
     {
         case wanp_vlan_do_STATE_INIT:
+            self->wvl_status_fn(&self->wvl_handle, &WANO_PLUGIN_STATUS(WANP_BUSY));
             /* Create a new IPv4/IPV6 plug-in pipeline on the VLAN interface */
             if (!wano_ppline_init(
                     &self->wvl_ppl,
@@ -300,6 +301,15 @@ enum wanp_vlan_state wanp_vlan_state_PPLINE_CREATE(
             switch (*ps)
             {
                 case WANO_PPLINE_OK:
+                    LOG(INFO, "wanp_vlan: %s: Plug-in pipeline success.",
+                            self->wvl_handle.wh_ifname);
+                    self->wvl_status_fn(&self->wvl_handle, &WANO_PLUGIN_STATUS(WANP_RESERVED));
+                    return wanp_vlan_IDLE;
+
+                case WANO_PPLINE_FREEZE:
+                    LOG(INFO, "wanp_vlan: %s: Plug-in pipeline was frozen.",
+                            self->wvl_handle.wh_ifname);
+                    self->wvl_status_fn(&self->wvl_handle, &WANO_PLUGIN_STATUS(WANP_RESERVED));
                     return wanp_vlan_IDLE;
 
                 case WANO_PPLINE_IDLE:
@@ -315,11 +325,6 @@ enum wanp_vlan_state wanp_vlan_state_PPLINE_CREATE(
                 case WANO_PPLINE_RESTART:
                     LOG(INFO, "wanp_vlan: %s: Plug-in pipeline started on %s.",
                             self->wvl_handle.wh_ifname, self->wvl_ifvlan);
-                    break;
-
-                case WANO_PPLINE_FREEZE:
-                    LOG(INFO, "wanp_vlan: %s: Plug-in pipeline was frozen.",
-                            self->wvl_handle.wh_ifname);
                     break;
             }
             break;
@@ -344,15 +349,11 @@ enum wanp_vlan_state wanp_vlan_state_IDLE(
     switch (action)
     {
         case wanp_vlan_do_STATE_INIT:
-        {
-            struct wano_plugin_status ws = WANO_PLUGIN_STATUS(WANP_BUSY);
-            self->wvl_status_fn(&self->wvl_handle, &ws);
             wano_wan_status_set(
                     wano_wan_from_plugin_handle(&self->wvl_handle),
                     WC_TYPE_VLAN,
                     WC_STATUS_SUCCESS);
             break;
-        }
 
         case wanp_vlan_do_PPLINE_UPDATE:
             switch (*ps)

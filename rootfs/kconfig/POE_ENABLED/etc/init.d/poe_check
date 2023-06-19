@@ -1,0 +1,188 @@
+#!/bin/sh -e
+# {# jinja-parse #}
+INSTALL_PREFIX={{INSTALL_PREFIX}}
+
+START=963
+
+. ${INSTALL_PREFIX}/scripts/log.funcs.sh
+. ${INSTALL_PREFIX}/scripts/poe_functions.sh
+. ${INSTALL_PREFIX}/etc/kconfig
+. /lib/opensync_functions.sh
+
+POE_TOOLS_PATH=${INSTALL_PREFIX}/tools
+
+loge()
+{
+    echo "$@"
+    log_err "$@"
+}
+
+logi()
+{
+    echo "$@"
+    log_info "$@"
+}
+
+logd()
+{
+    echo "$@"
+    log_debug "$@"
+}
+
+get_wifi_ctl_manager()
+{
+    if $POE_TOOLS_PATH/osff_get "use_owm" > /dev/null 2>&1
+    then
+        echo "owm"
+    else
+        echo "wm"
+    fi
+}
+
+start_power_save_mode()
+{
+    WIFI_CTL_MANAGER=${1}
+
+    logi "Starting power save mode: setting LED to HWerror state and disabling $WIFI_CTL_MANAGER and CM"
+    # Set LED to HWerror state
+    if [ "$CONFIG_PM_ENABLE_LED" = "y" ]
+    then
+        $POE_TOOLS_PATH/ovsh u AWLAN_Node led_config::'["map",[["state","hwerror"]]]' > /dev/null
+    fi
+    # Disable CM and the manager responsible for WiFi services, either WM or OWM
+    if [ "$WIFI_CTL_MANAGER" != "" ]
+    then
+        $POE_TOOLS_PATH/ovsh u Node_Services --where service=="$WIFI_CTL_MANAGER" enable:=false > /dev/null
+    fi
+    $POE_TOOLS_PATH/ovsh u Node_Services --where service==cm enable:=false > /dev/null
+    # Continuously ping watchdog
+    if [ "$CONFIG_CM2_USE_WDT" = "y" ]
+    then
+        target_device_wdt_ping
+    fi
+}
+
+stop_power_save_mode()
+{
+    WIFI_CTL_MANAGER=${1}
+
+    logi "Stopping power save mode: clearing LED HWerror state and reenabling $WIFI_CTL_MANAGER and CM"
+    # Clear LED HWerror state
+    if [ "$CONFIG_PM_ENABLE_LED" = "y" ]
+    then
+        $POE_TOOLS_PATH/ovsh u AWLAN_Node led_config::'["map",[["state","hwerror"], ["clear", "true"]]]' > /dev/null
+    fi
+    # Reenable CM and the manager responsible for WiFi services, either WM or OWM
+    if [ "$WIFI_CTL_MANAGER" != "" ]
+    then
+        $POE_TOOLS_PATH/ovsh u Node_Services --where service=="$WIFI_CTL_MANAGER" enable:=true > /dev/null
+    fi
+    $POE_TOOLS_PATH/ovsh u Node_Services --where service==cm enable:=true > /dev/null
+    # Stop process which continuously pings watchdog
+    if [ "$CONFIG_CM2_USE_WDT" = "y" ]
+    then
+        target_device_wdt_ping_stop
+    fi
+}
+
+lldp_negotiate_poe_plus()
+{
+    if ! pgrep lldpd > /dev/null
+    then
+        logi "Starting lldpd"
+        /bin/lldpd
+        if [ $? -ne 0 ]
+        then
+            loge "Failed to start lldpd"
+            return 1
+        fi
+    fi
+
+    # Wait for 5 minutes to see if the switch supports LLDP
+    TIMER=0
+    while true
+    do
+        # Continuously check if supplied power level has changed and skip LLDP negotiation if it has
+        if ! poe_low_power_detected
+        then
+            logi "Sufficient power detected, no need to wait for LLDP negotiation"
+            return 0
+        fi
+
+        if lldpcli show neighbors ports "$CONFIG_POE_PORT_IFNAME" | grep -q "via: LLDP"
+        then
+            break
+        fi
+
+        if [[ $TIMER -eq 150 ]]
+        then
+            logi "Switch does not support LLDP"
+            return 1
+        fi
+
+        logd "Waiting 2s to find LLDP enabled switch"
+        TIMER=$((TIMER+1))
+        sleep 2
+    done
+
+    logi "Switch supports LLDP, checking if it supports PoE+"
+    if ! lldpcli show neighbors ports "$CONFIG_POE_PORT_IFNAME" details | grep -iq "Power Source: PSE" ||
+        ! lldpcli show neighbors ports "$CONFIG_POE_PORT_IFNAME" details | grep -iq "class 4"
+    then
+        logi "Power source equipment is not 'class 4', PoE+ is not supported"
+        return 1
+    fi
+
+    # Send several LLDP messages to request higher power to the switch
+    logi "Sending LLDP messages to request 30000 mW power from the switch with critical priority"
+    lldpcli configure med power pd source pse priority critical value 30000
+    for _ in $(seq 5)
+    do
+        lldpcli update
+        sleep 5
+    done
+
+    return 0
+}
+
+start()
+{
+    # Function which checks if we do not have enough power to run the device must be
+    # implemented per platform, default value is false
+    if poe_low_power_detected
+    then
+        WIFI_CTL_MANAGER=$(get_wifi_ctl_manager)
+        start_power_save_mode "$WIFI_CTL_MANAGER"
+        # Attempt to negotiate with the switch for PoE+ power using LLDP messages. If negotiation was
+        # not successful, OpenSync services need to be stopped and the device rebooted, else the device
+        # might not function properly.
+        if lldp_negotiate_poe_plus
+        then
+            stop_power_save_mode "$WIFI_CTL_MANAGER"
+            return
+        fi
+
+        # If a sufficient power source has not been found after more than 5 minutes,
+        # reboot device and store the reboot reason
+        logi "Rebooting device due to insufficient power"
+        /sbin/reboot -Rtype=device -Rreason="Low power PoE detected"
+    fi
+}
+
+case "$1" in
+    start)
+        logi "Starting PoE check..."
+        start &
+        exit 0
+        ;;
+
+    stop)
+        logi "Stopping PoE check..."
+        exit 0
+        ;;
+
+    *)
+        loge "$0: unrecognized option $1"
+        exit 1
+        ;;
+esac

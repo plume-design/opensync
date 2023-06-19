@@ -42,7 +42,9 @@ enum dns_state
 {
     UNDEFINED = 0,
     BEGIN_DNS,
+    DNS_QTYPE,
     DNS_QNAME,
+    DNS_NANSWERS,
     DNS_TYPE,
     DNS_TTL,
     DNS_A,
@@ -77,6 +79,8 @@ struct dns_record
     struct dns_response resp[64];
     size_t idx;
     enum dns_state next_state;
+    uint16_t ancount;
+    uint8_t qtype;
 };
 
 struct dns_session

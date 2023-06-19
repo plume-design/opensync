@@ -148,7 +148,6 @@ struct dns_device
 
 enum {
     URL_BC_SVC,
-    URL_WP_SVC,
     URL_GK_SVC,
 };
 

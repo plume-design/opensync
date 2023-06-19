@@ -1825,6 +1825,7 @@ fqdn_policy_check(struct dns_device *ds,
     preq.req_type = FSM_FQDN_REQ;
     policy_reply->req_type = FSM_FQDN_REQ;
     preq.session = session;
+    preq.supported_features |= FSM_CNAME_FEATURE;
     fsm_apply_policies(&preq, policy_reply);
 
     req->rd_ttl = policy_reply->rd_ttl;

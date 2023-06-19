@@ -1024,6 +1024,12 @@ gkc_lookup_attr_tree(ds_tree_t *tree, struct gk_attr_cache_interface *req, bool 
     req->flow_marker = attr_entry->flow_marker;
     req->network_id = attr_entry->network_id;
 
+    if ((req->attribute_type == GK_CACHE_REQ_TYPE_SNI) && (req->action == FSM_REDIRECT))
+    {
+        req->action = FSM_BLOCK;
+        req->redirect_flag = false;
+    }
+
     gkc_lookup_redirect_entry(req, attr_entry);
 
     if (attr_entry->gk_policy != NULL)

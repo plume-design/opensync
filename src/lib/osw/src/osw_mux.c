@@ -161,6 +161,7 @@ osw_mux_frame_tx_schedule(const char *phy_name,
     desc->state = OSW_DRV_FRAME_TX_STATE_PENDING;
     desc->list = &phy->drv->frame_tx_list;
     desc->drv = phy->drv;
+    LOGD(LOG_PREFIX_TX_DESC(desc, "pending"));
     ds_dlist_insert_tail(desc->list, desc);
 
     osw_drv_work_all_schedule();

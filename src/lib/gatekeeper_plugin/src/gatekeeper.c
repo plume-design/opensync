@@ -1012,10 +1012,10 @@ gatekeeper_get_verdict(struct fsm_policy_req *req,
     {
         if (!policy_reply->cat_unknown_to_service)
             stats->cache_hits++;
-        LOGT("%s(): %s found in cache, returning action %d (mark:%d), redirect flag %d from cache",
+        LOGT("%s(): %s found in cache, returning action %s (mark:%d), redirect flag %d from cache",
              __func__,
              req->url,
-             policy_reply->action,
+             fsm_policy_get_action_str(policy_reply->action),
              policy_reply->flow_marker,
              policy_reply->redirect);
         return true;

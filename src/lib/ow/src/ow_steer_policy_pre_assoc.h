@@ -67,6 +67,7 @@ struct ow_steer_policy_pre_assoc_backoff_condition {
 
 struct ow_steer_policy_pre_assoc_config {
     struct osw_hwaddr bssid;
+    bool immediate_backoff_on_auth_req;
     unsigned int backoff_timeout_sec;
     unsigned int backoff_exp_base;
     struct ow_steer_policy_pre_assoc_reject_condition reject_condition;
@@ -74,8 +75,7 @@ struct ow_steer_policy_pre_assoc_config {
 };
 
 struct ow_steer_policy_pre_assoc*
-ow_steer_policy_pre_assoc_create(unsigned int priority,
-                                 const struct osw_hwaddr *sta_addr,
+ow_steer_policy_pre_assoc_create(const struct osw_hwaddr *sta_addr,
                                  const struct ow_steer_policy_mediator *mediator);
 
 void

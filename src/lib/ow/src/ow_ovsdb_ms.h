@@ -42,6 +42,10 @@ ow_ovsdb_ms_set_vif(struct ow_ovsdb_ms_root *root,
                     const struct osw_state_vif_info *vif);
 
 void
+ow_ovsdb_ms_set_sta_disconnected(struct ow_ovsdb_ms_root *root,
+                                 const struct osw_state_sta_info *sta);
+
+void
 ow_ovsdb_ms_init(struct ow_ovsdb_ms_root *root);
 
 #endif /* OW_OVSDB_MS_H_INCLUDED */

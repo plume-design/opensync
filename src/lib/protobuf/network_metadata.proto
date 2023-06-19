@@ -45,6 +45,7 @@ message VendorData {
 
 message DataReportTag {
     repeated string features                                                = 1;
+    optional string id                                                      = 2;
 }
 
 message FlowTags {

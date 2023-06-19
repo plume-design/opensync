@@ -88,6 +88,7 @@ ltem_init_mgr(struct ev_loop *loop)
     mgr->lte_config_info = lte_config;
     mgr->lte_state_info = lte_state;
     mgr->lte_route = lte_route;
+    MEMZERO(mgr->modem_info);
     mgr->modem_info = osn_get_modem_info();
 
     return true;
@@ -171,6 +172,9 @@ int main(int argc, char **argv)
     ltem_create_client_table(mgr);
 
     LOGD("%s: state=%s", __func__, ltem_get_lte_state_name(mgr->lte_state));
+
+    // Bring up the LTE interface
+    ltem_ovsdb_config_lte(mgr);
 
     // Start the event loop
     ev_run(loop, 0);

@@ -47,6 +47,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "osp_unit.h"
 #include "json_util.h"
 #include "build_version.h"
+#include "os_proc.h"
 
 #include "dm.h"
 
@@ -288,6 +289,50 @@ bool act_check_id (void)
     return retval;
 }
 
+bool dm_ovsdb_ovs_version_get(char *buff, size_t buffsz)
+{
+    FILE *fcmd = NULL;
+    bool ret = true;
+    char cmd[TARGET_BUFF_SZ];
+    pid_t     pid;
+
+    pid = os_name_to_pid("ovs-vswitchd");
+    if (pid == -1) {
+        // "N/A" - indicates that OpenSync node is running in Linux SDN mode
+        strscpy(buff, "N/A", buffsz);
+        return ret;
+    }
+
+    snprintf(cmd, sizeof(cmd), "ovs-vswitchd -V | awk '{print $NF}'");
+    fcmd = popen(cmd, "r");
+    if (fcmd ==  NULL) {
+        LOGN("%s(): Error executing command '%s' err: %s", __func__, cmd, strerror(errno));
+        ret = false;
+        goto exit;
+    }
+
+    LOGT("%s(): executing cmd: %s", __func__, cmd);
+    while (fgets(buff, buffsz, fcmd) != NULL) {
+        LOGI("%s: ovs version: %s", __func__, buff);
+    }
+
+    if (ferror(fcmd)) {
+        LOGN("%s(): fgets() failed", __func__);
+        ret = false;
+        goto exit;
+    }
+
+    pclose(fcmd);
+    fcmd = NULL;
+
+    strchomp(buff, " \t\r\n");
+
+exit:
+    if (fcmd != NULL) {
+        pclose(fcmd);
+    }
+    return ret;
+}
 
 static void fill_entity_data(struct schema_AWLAN_Node *s_awlan_node)
 {
@@ -344,7 +389,7 @@ static void fill_entity_data(struct schema_AWLAN_Node *s_awlan_node)
         SCHEMA_SET_STR(s_awlan_node->vendor_mfg_date, buff);
 
     /* ovs version */
-    if (osp_unit_ovs_version_get(buff, sizeof(buff)) == true)
+    if (dm_ovsdb_ovs_version_get(buff, sizeof(buff)) == true)
         SCHEMA_SET_STR(s_awlan_node->ovs_version, buff);
 
     LOG(NOTICE, "Device entity {serial=%s id=%s version=%s platform=%s sku=%s}",

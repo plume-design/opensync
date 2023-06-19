@@ -33,6 +33,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "net_header_parse.h"
 #include "network_metadata_report.h"
 #include "fsm_dpi_utils.h"
+#include "sockaddr_storage.h"
 
 #define DEFAULT_ZONE (0)
 #define FSM_DPI_ZONE (1)
@@ -489,5 +490,57 @@ fsm_ops_get_network_id(struct fsm_session *session, os_macaddr_t *mac)
     if (network_id == NULL) network_id = "unknown";
 
     return network_id;
+}
+
+bool
+fsm_nfq_mac_same(os_macaddr_t *lkp_mac, struct nfq_pkt_info *pkt_info)
+{
+    bool rc = false;
+    size_t i;
+
+
+    if (!pkt_info->hw_addr || pkt_info->hw_addr_len != 6) return true;
+
+    if (!memcmp(lkp_mac, pkt_info->hw_addr, sizeof(os_macaddr_t))) return true;
+
+    LOGT("%s: pkt_mac",__func__);
+    for (i = 0; i < pkt_info->hw_addr_len; i++)
+    {
+	    LOGT(":%02x", (unsigned char)pkt_info->hw_addr[i]);
+	}
+
+    LOGT("%s: lkp_mac: "PRI_os_macaddr_t , __func__, FMT_os_macaddr_pt(lkp_mac));
+
+    return rc;
+
+}
+
+
+bool
+fsm_update_neigh_cache(void *ipaddr, os_macaddr_t *mac, int domain)
+{
+    struct sockaddr_storage ss_ipaddr;
+    char buf[INET6_ADDRSTRLEN] = {0};
+    struct neighbour_entry entry;
+    time_t curr = time(NULL);
+    bool rc = false;
+
+    if (!mac || !ipaddr) return rc;
+
+    MEMZERO(entry);
+    MEMZERO(ss_ipaddr);
+
+    LOGI("Adding neighbor entry for: %s.",inet_ntop(domain, ipaddr, buf, INET6_ADDRSTRLEN));
+    entry.ipaddr = &ss_ipaddr;
+    entry.mac = mac;
+    entry.cache_valid_ts = curr;
+    entry.source = FSM_NFQUEUE;
+    entry.ifname = "dpi_nfq";
+    sockaddr_storage_populate(domain, ipaddr, entry.ipaddr);
+
+    rc = neigh_table_add(&entry);
+    if (rc == false) LOGE("%s: Failed to add neighbor entry for: %s",__func__, buf);
+
+    return rc;
 }
 

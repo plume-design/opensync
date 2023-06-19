@@ -534,6 +534,7 @@ json_t *ovsdb_row_filter_argv(json_t * row, int argc, char ** argv)
 {
     const char *key;
     json_t *value;
+    void *tmp;
 
     if (NULL == row)
     {
@@ -541,7 +542,7 @@ json_t *ovsdb_row_filter_argv(json_t * row, int argc, char ** argv)
     }
 
     /* iterate through all keys in given json and remove unwanted */
-    json_object_foreach(row, key, value)
+    json_object_foreach_safe(row, tmp, key, value)
     {
         if (!is_inarray(key, argc, argv))
         {
@@ -580,6 +581,7 @@ json_t *ovsdb_row_filtout_argv(json_t * row, int argc, char ** argv)
 {
     const char *key;
     json_t *value;
+    void *tmp;
 
     if (NULL == row)
     {
@@ -587,7 +589,7 @@ json_t *ovsdb_row_filtout_argv(json_t * row, int argc, char ** argv)
     }
 
     /* iterate through all keys in given json and remove unwanted */
-    json_object_foreach(row, key, value)
+    json_object_foreach_safe(row, tmp, key, value)
     {
         if (is_inarray(key, argc, argv))
         {

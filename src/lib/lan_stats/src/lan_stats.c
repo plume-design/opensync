@@ -46,6 +46,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ovsdb.h"
 #include "ovsdb_table.h"
 #include "ovsdb_utils.h"
+#include "data_report_tags.h"
 
 #define ETH_DEVICES_TAG "${@eth_devices}"
 
@@ -414,6 +415,131 @@ lan_stats_parse_flows(lan_stats_instance_t *lan_stats_instance, char *buf)
     parse_lan_stats(tokens, lan_stats_instance);
 }
 
+
+static void
+lan_stats_set_data_report_tag(struct net_md_stats_accumulator *acc)
+{
+    struct data_report_tags **report_tags_array;
+    struct data_report_tags *report_tags;
+    struct str_set *smac_report_set;
+    struct str_set *dmac_report_set;
+    struct net_md_flow_key *key;
+    struct str_set *report_tag;
+    struct flow_key *fkey;
+    char smac[32];
+    char dmac[32];
+    size_t idx;
+    size_t i;
+
+    key = acc->key;
+    if (key == NULL) return;
+
+    fkey = acc->fkey;
+    if (fkey == NULL) return;
+
+    fkey->num_data_report = 0;
+    smac_report_set = NULL;
+    dmac_report_set = NULL;
+
+    if (key->smac != NULL)
+    {
+        MEMZERO(smac);
+        snprintf(smac, sizeof(smac), PRI_os_macaddr_lower_t, FMT_os_macaddr_pt(key->smac));
+        LOGD("%s(): fetching data report tags for %s", __func__, smac);
+        smac_report_set = data_report_tags_get_tags(key->smac);
+        if (smac_report_set != NULL)
+        {
+            fkey->num_data_report++;
+        }
+        else
+        {
+            LOGD("%s(): report details are empty for smac %s", __func__,
+                 smac);
+        }
+    }
+
+    if (key->dmac != NULL)
+    {
+        MEMZERO(dmac);
+        snprintf(dmac, sizeof(dmac), PRI_os_macaddr_lower_t, FMT_os_macaddr_pt(key->dmac));
+        LOGD("%s(): fetching data report tags for %s", __func__, dmac);
+        dmac_report_set = data_report_tags_get_tags(key->dmac);
+        if (dmac_report_set != NULL)
+        {
+            fkey->num_data_report++;
+        }
+        else
+        {
+            LOGD("%s(): report details are empty for dmac %s", __func__,
+                 dmac);
+        }
+    }
+
+    if (fkey->num_data_report == 0) return;
+
+    report_tags_array = CALLOC(fkey->num_data_report, sizeof(*report_tags_array));
+    idx = 0;
+
+    if (smac_report_set != NULL)
+    {
+        report_tags = CALLOC(1, sizeof(*report_tags));
+        report_tags_array[idx] = report_tags;
+
+        report_tag = CALLOC(smac_report_set->nelems, sizeof(*report_tag));
+        report_tags->data_report = report_tag;
+
+        report_tag->nelems = smac_report_set->nelems;
+        report_tag->array = CALLOC(report_tag->nelems, sizeof(*report_tag->array));
+        for (i = 0; i < report_tag->nelems; i++)
+        {
+            report_tag->array[i] = STRDUP(smac_report_set->array[i]);
+        }
+        report_tags->id = STRDUP(smac);
+        idx++;
+    }
+
+    if (dmac_report_set != NULL)
+    {
+        report_tags = CALLOC(1, sizeof(*report_tags));
+        report_tags_array[idx] = report_tags;
+
+        report_tag = CALLOC(dmac_report_set->nelems, sizeof(*report_tag));
+        report_tags->data_report = report_tag;
+
+        report_tag->nelems = dmac_report_set->nelems;
+        report_tag->array = CALLOC(report_tag->nelems, sizeof(*report_tag->array));
+        for (i = 0; i < report_tag->nelems; i++)
+        {
+            report_tag->array[i] = STRDUP(dmac_report_set->array[i]);
+        }
+        report_tags->id = STRDUP(dmac);
+    }
+
+    fkey->data_report = report_tags_array;
+
+    return;
+}
+
+
+/**
+ * @brief callback from the accumulator reporting
+ *
+ * Called on the reporting of an accumulator
+ * @param aggr the lan_stats aggregator
+ * @param the accumulator being reported
+ */
+static void
+lan_stats_on_acc_report(struct net_md_aggregator *aggr,
+                        struct net_md_stats_accumulator *acc)
+{
+    if (aggr == NULL) return;
+    if (acc == NULL) return;
+
+    /* Add data report tags */
+    lan_stats_set_data_report_tag(acc);
+}
+
+
 static int
 lan_stats_alloc_aggr(lan_stats_instance_t *lan_stats_instance)
 {
@@ -436,6 +562,7 @@ lan_stats_alloc_aggr(lan_stats_instance_t *lan_stats_instance)
     aggr_set.num_windows = MAX_HISTOGRAMS;
     aggr_set.acc_ttl = (2 * collector->report_interval);
     aggr_set.send_report = net_md_send_report;
+    aggr_set.on_acc_report = lan_stats_on_acc_report;
     aggr = net_md_allocate_aggregator(&aggr_set);
     if (aggr == NULL)
     {
@@ -916,7 +1043,15 @@ int lan_stats_plugin_init(fcm_collect_plugin_t *collector)
 
     lan_stats_activate_window(collector);
 
-    lan_stats_instance->collect_flows = lan_stats_collect_flows;
+
+    if(!kconfig_enabled(CONFIG_TARGET_USE_NATIVE_BRIDGE))
+    {
+        lan_stats_instance->collect_flows = lan_stats_collect_flows;
+    }
+    else
+    {
+        lan_stats_instance->collect_flows = lan_stats_collect_native_flows;
+    }
     lan_stats_instance->initialized = true;
 
     /* Check if the session has a name */

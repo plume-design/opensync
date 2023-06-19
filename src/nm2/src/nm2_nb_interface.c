@@ -25,6 +25,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 #include "nm2_nb_interface.h"
+#include "nm2_nb_port.h"
 #include "ovsdb_table.h"
 #include "ovsdb_sync.h"
 #include "os_util.h"
@@ -155,6 +156,8 @@ static void nm2_if_netif_status_fn(osn_netif_t *netif, struct osn_netif_status *
     nm2_if_set_runtime_state(status);
 
     nm2_if_config_apply(intf);
+
+    nm2_port_config_hairpin(status->ns_ifname);
 }
 
 struct nm2_interface *nm2_if_get_from_uuid(const ovs_uuid_t *uuid)

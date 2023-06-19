@@ -231,32 +231,33 @@ lte_set_serving_cell(struct lte_info_report *lte_report)
  * @brief Set intra neighbor cell info in the report
  */
 int
-lte_set_neigh_cell_intra_info(struct lte_info_report *lte_report)
+lte_set_neigh_cell_info(struct lte_info_report *lte_report)
 {
     bool ret;
     ltem_mgr_t *mgr = ltem_get_mgr();
     struct lte_net_neighbor_cell_info neigh_cell_info;
-    lte_neighbor_cell_intra_info_t *neigh_cell;
+    lte_neighbor_cell_info_t *neigh_cell;
+    int i;
 
-    MEMZERO(neigh_cell_info);
-    neigh_cell = &mgr->modem_info->neigh_cell_intra;
+    for (i = 0; i < MAX_NEIGH_CELL_COUNT; i++)
+    {
+        MEMZERO(neigh_cell_info);
+        neigh_cell = &mgr->modem_info->neigh_cell[i];
 
-    neigh_cell_info.mode = neigh_cell->mode;
-    neigh_cell_info.freq_mode = neigh_cell->freq_mode;
-    neigh_cell_info.earfcn = neigh_cell->earfcn;
-    neigh_cell_info.pcid = neigh_cell->pcid;
-    neigh_cell_info.rsrq = neigh_cell->rsrq;
-    neigh_cell_info.rsrp = neigh_cell->rsrp;
-    neigh_cell_info.rssi = neigh_cell->rssi;
-    neigh_cell_info.sinr = neigh_cell->sinr;
-    neigh_cell_info.srxlev = neigh_cell->srxlev;
-    neigh_cell_info.cell_resel_priority = neigh_cell->cell_resel_priority;
-    neigh_cell_info.s_non_intra_search = neigh_cell->s_non_intra_search;
-    neigh_cell_info.thresh_serving_low = neigh_cell->thresh_serving_low;
-    neigh_cell_info.s_intra_search = neigh_cell->s_intra_search;
+        neigh_cell_info.freq_mode = neigh_cell->freq_mode;
+        neigh_cell_info.mode = neigh_cell->mode;
+        neigh_cell_info.earfcn = neigh_cell->earfcn;
+        neigh_cell_info.pcid = neigh_cell->pcid;
+        neigh_cell_info.rsrq = neigh_cell->rsrq;
+        neigh_cell_info.rsrp = neigh_cell->rsrp;
+        neigh_cell_info.rssi = neigh_cell->rssi;
+        neigh_cell_info.sinr = neigh_cell->sinr;
+        neigh_cell_info.srxlev = neigh_cell->srxlev;
+        neigh_cell_info.cell_resel_priority = neigh_cell->cell_resel_priority;
 
-    ret = lte_info_add_neigh_cell_info(&neigh_cell_info, lte_report);
-    if (!ret) return -1;
+        ret = lte_info_add_neigh_cell_info(&neigh_cell_info, lte_report);
+        if (!ret) return -1;
+    }
 
     return 0;
 }
@@ -384,7 +385,7 @@ lte_set_report(void)
 
     if (lte_check_modem_status(mgr)) return -1;
 
-    lte_report = lte_info_allocate_report(1);
+    lte_report = lte_info_allocate_report(MAX_NEIGH_CELL_COUNT);
     if (!lte_report)
     {
         LOGE("lte_report calloc failed");
@@ -424,7 +425,7 @@ lte_set_report(void)
     }
 
     /* Add neighbor cell info */
-    res = lte_set_neigh_cell_intra_info(lte_report);
+    res = lte_set_neigh_cell_info(lte_report);
     if (res) LOGE("Failed to set neighbor cell");
 
 
@@ -481,11 +482,20 @@ int
 ltem_build_mqtt_report(time_t now)
 {
     int res;
+    ltem_mgr_t *mgr = ltem_get_mgr();
 
     res = osn_lte_read_modem();
     if (res < 0)
     {
         LOGW("%s: osn_lte_read_modem() failed", __func__);
+    }
+
+    /*
+     * We have to catch the case where something has changed the the SIM slot.
+     */
+    if (mgr->modem_info->active_simcard_slot != mgr->lte_config_info->active_simcard_slot)
+    {
+        osn_lte_set_sim_slot(mgr->lte_config_info->active_simcard_slot);
     }
 
     res = lte_serialize_report();

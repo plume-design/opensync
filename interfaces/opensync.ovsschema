@@ -1,7 +1,7 @@
 {
   "name": "Open_vSwitch",
-  "version": "7.11.346",
-  "cksum": "3388188422 296544",
+  "version": "7.11.349",
+  "cksum": "1857677778 298901",
   "tables": {
     "AWLAN_Node": {
       "columns": {
@@ -1636,6 +1636,17 @@
             "max": 1
           }
         },
+        "center_freq0_chan": {
+          "type": {
+            "key": {
+              "type": "integer",
+              "minInteger": 1,
+              "maxInteger": 233
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
         "hw_mode": {
           "type": {
             "key": {
@@ -1649,7 +1660,8 @@
                   "11n",
                   "11ab",
                   "11ac",
-                  "11ax"
+                  "11ax",
+                  "11be"
                 ]
               ]
             },
@@ -1671,7 +1683,8 @@
                   "HT40-",
                   "HT80",
                   "HT160",
-                  "HT80+80"
+                  "HT80+80",
+                  "HT320"
                 ]
               ]
             },
@@ -1944,6 +1957,17 @@
             "max": 1
           }
         },
+        "center_freq0_chan": {
+          "type": {
+            "key": {
+              "type": "integer",
+              "minInteger": 1,
+              "maxInteger": 233
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
         "mac": {
           "type": {
             "key": {
@@ -1976,7 +2000,8 @@
                   "HT40-",
                   "HT80",
                   "HT160",
-                  "HT80+80"
+                  "HT80+80",
+                  "HT320"
                 ]
               ]
             },
@@ -7928,7 +7953,8 @@
                         "HT40-",
                         "HT80",
                         "HT160",
-                        "HT80+80"
+                        "HT80+80",
+                        "HT320"
                         ]
                         ]
                     },
@@ -11485,6 +11511,49 @@
             "min": 0,
             "max": 64
           }
+        },
+        "apn_username": {
+          "type": {
+            "key": {
+              "type": "string"
+            }
+          }
+        },
+        "apn_password": {
+          "type": {
+            "key": {
+              "type": "string"
+            }
+          }
+        },
+        "apn_proto_type": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "ipv4",
+                  "ipv6",
+                  "ipv4v6"
+                ]
+              ]
+            }
+          }
+        },
+        "apn_auth_proto": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "CHAP",
+                  "PAP"
+                ]
+              ]
+            }
+          }
         }
       },
       "isRoot": true
@@ -11802,6 +11871,49 @@
             },
             "min": 0,
             "max": 64
+          }
+        },
+        "apn_username": {
+          "type": {
+            "key": {
+              "type": "string"
+            }
+          }
+        },
+        "apn_password": {
+          "type": {
+            "key": {
+              "type": "string"
+            }
+          }
+        },
+        "apn_proto_type": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "ipv4",
+                  "ipv6",
+                  "ipv4v6"
+                ]
+              ]
+            }
+          }
+        },
+        "apn_auth_proto": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "CHAP",
+                  "PAP"
+                ]
+              ]
+            }
           }
         }
       },

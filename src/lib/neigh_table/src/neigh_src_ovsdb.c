@@ -180,6 +180,10 @@ static const struct neigh_mapping_source source_map[] =
         .source = "ovsdb inet state",
         .source_enum = OVSDB_INET_STATE,
     },
+    {
+        .source = "dpi nfqueue",
+        .source_enum = FSM_NFQUEUE,
+    },
 };
 
 /**

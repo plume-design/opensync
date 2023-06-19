@@ -49,5 +49,14 @@ collect_bm()
     cat /var/log/messages | grep "BM\[" > "$LOGPULL_TMP_DIR"/_bm_dbg_events
 }
 
+collect_owm()
+{
+    # This will put dbg events in syslog
+    killall -s SIGUSR1 owm
+    sleep 1
+    cat /var/log/messages | grep "OW\[" > "$LOGPULL_TMP_DIR"/_owm_dbg_events
+}
+
 collect_osync
 collect_bm
+collect_owm

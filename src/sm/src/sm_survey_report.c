@@ -369,6 +369,22 @@ void sm_survery_target_validate (
 }
 
 static
+bool sm_survey_entry_can_be_reported (
+    const radio_entry_t            *rcfg,
+    const radio_scan_type_t         type,
+    const dpp_survey_info_t        *info)
+{
+    switch (type) {
+        case RADIO_SCAN_TYPE_NONE: return false;
+        case RADIO_SCAN_TYPE_FULL: return true;
+        case RADIO_SCAN_TYPE_ONCHAN: return rcfg->chan == info->chan;
+        case RADIO_SCAN_TYPE_OFFCHAN: return rcfg->chan != info->chan;
+    }
+    /* unreachable */
+    return false;
+}
+
+static
 bool sm_survey_report_calculate_average (
         sm_survey_ctx_t            *survey_ctx)
 {
@@ -450,6 +466,19 @@ bool sm_survey_report_calculate_average (
 
     for (chan_index = 0; chan_index < RADIO_MAX_CHANNELS; chan_index++)
     {
+        const bool allowed =
+            sm_survey_entry_can_be_reported (
+                    radio_cfg_ctx,
+                    scan_type,
+                    &avg_record[chan_index].info);
+        if (!allowed) {
+            LOGD("Filtering %s %s %u survey report due to mismatched type",
+                 radio_get_name_from_cfg(radio_cfg_ctx),
+                 radio_get_scan_name_from_type(scan_type),
+                 avg_record[chan_index].info.chan);
+            continue;
+        }
+
         /* Skip non averaged channels */
         if (avg_record[chan_index].info.chan) {
             report_entry = CALLOC(1, sizeof(*report_entry));
@@ -504,6 +533,19 @@ bool sm_survey_report_calculate_raw (
             record_entry != NULL;
             record_entry = ds_dlist_inext(&record_iter))
     {
+        const bool allowed =
+            sm_survey_entry_can_be_reported (
+                    radio_cfg_ctx,
+                    scan_type,
+                    &record_entry->info);
+        if (!allowed) {
+            LOGD("Filtering %s %s %u survey report due to mismatched type",
+                 radio_get_name_from_cfg(radio_cfg_ctx),
+                 radio_get_scan_name_from_type(scan_type),
+                 record_entry->info.chan);
+            continue;
+        }
+
         report_entry = dpp_survey_record_alloc();
         if (NULL == report_entry) {
             LOGE("Sending %s %s survey report"

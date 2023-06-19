@@ -43,6 +43,7 @@ typedef struct
     int32_t                         lastseen;
     radio_essid_t                   ssid;
     radio_chanwidth_t               chanwidth;
+    uint32_t                        c_freq0_chan;
 } dpp_neighbor_record_t;
 
 typedef struct

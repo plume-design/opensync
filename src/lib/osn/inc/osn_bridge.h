@@ -57,5 +57,6 @@ bool osn_bridge_del(char *brname);
 bool osn_bridge_add_port(char *brname, char *portname);
 bool osn_bridge_del_port(char *brname, char *portname);
 bool osn_bridge_set_hairpin(char *port, bool enable);
+int osn_bridge_get_hairpin(const char *port);
 
 #endif /* OSN_BRIDGE_H_INCLUDED */

@@ -41,10 +41,10 @@ void
 osw_token_pool_ref_free(struct osw_token_pool_reference *pool_ref);
 
 int
-osw_token_pool_fetch_token(const struct osw_token_pool_reference *pool_ref);
+osw_token_pool_fetch_token(struct osw_token_pool_reference *pool_ref);
 
 void
-osw_token_pool_free_token(const struct osw_token_pool_reference *pool_ref,
+osw_token_pool_free_token(struct osw_token_pool_reference *pool_ref,
                           int token);
 
 #endif /* OSW_TOKEN_H_INCLUDED */

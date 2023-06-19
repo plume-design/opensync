@@ -575,53 +575,51 @@ void wano_ppline_status_async_fn(struct ev_loop *loop, ev_async *ev, int revent)
     (void)loop;
     (void)revent;
 
-    char if_type[32] = {0};
+    char iftype[32];
+
     struct wano_ppline_plugin *wpp = CONTAINER_OF(ev, struct wano_ppline_plugin, wpp_status_async);
     wano_ppline_t *self = wpp->wpp_ppline;
+
+    wano_ppline_map_iftype(self->wpl_iftype, iftype);
 
     switch (wpp->wpp_status.ws_type)
     {
         case WANP_OK:
+        {
+            char *update_ifname = self->wpl_ifname;
+
             LOG(NOTICE, "wano: %s: WAN Plug-in success: %s",
                     self->wpl_ifname, wano_plugin_name(wpp->wpp_handle));
 
             /* Stop the timeout timer */
             ev_timer_stop(EV_DEFAULT, &wpp->wpp_timeout);
 
-            /* Update the connection manager table */
             if (wpp->wpp_status.ws_ifname[0] != '\0')
             {
-                /* Use the interface name and type reported in the plug-in status */
-                if (!WANO_CONNMGR_UPLINK_UPDATE(
-                            wpp->wpp_status.ws_ifname,
-                            .if_type = (wpp->wpp_status.ws_iftype[0] == '\0') ?
-                                    self->wpl_iftype : wpp->wpp_status.ws_iftype,
-                            .has_L2 = WANO_TRI_TRUE,
-                            .has_L3 = WANO_TRI_TRUE))
-                {
-                    LOG(WARN, "wano: %s: Error updating Connection_Manager_Uplink (plugin interface) table (has_L3 = true).",
-                            self->wpl_ifname);
-                }
-
                 /* Reset the .has_L3 field from the parent interface */
                 if (!WANO_CONNMGR_UPLINK_DELETE_COLUMN(self->wpl_ifname, .has_L3 = WANO_TRI_TRUE))
                 {
                     LOG(WARN, "wano: %s: Error deleting .has_L3 from Connection_Manager_Uplink).",
                             self->wpl_ifname);
                 }
+
+                update_ifname = wpp->wpp_status.ws_ifname;
             }
-            else
+
+            if (wpp->wpp_status.ws_iftype[0] != '\0')
             {
-                wano_ppline_map_iftype(self->wpl_iftype, if_type);
-                if (!WANO_CONNMGR_UPLINK_UPDATE(
-                            self->wpl_ifname,
-                            .if_type = if_type,
-                            .has_L2 = WANO_TRI_TRUE,
-                            .has_L3 = WANO_TRI_TRUE))
-                {
-                    LOG(WARN, "wano: %s: Error updating Connection_Manager_Uplink table (has_L3 = true).",
-                            self->wpl_ifname);
-                }
+                STRSCPY(iftype, wpp->wpp_status.ws_iftype);
+            }
+
+            /* Use the interface name and type reported in the plug-in status */
+            if (!WANO_CONNMGR_UPLINK_UPDATE(
+                        update_ifname,
+                        .if_type = iftype,
+                        .has_L2 = WANO_TRI_TRUE,
+                        .has_L3 = WANO_TRI_TRUE))
+            {
+                LOG(WARN, "wano: %s: Error updating Connection_Manager_Uplink (plugin interface) table (has_L3 = true).",
+                        self->wpl_ifname);
             }
 
             self->wpl_has_l3 = true;
@@ -632,6 +630,45 @@ void wano_ppline_status_async_fn(struct ev_loop *loop, ev_async *ev, int revent)
             /* Notify upper layers */
             wano_ppline_event_dispatch(self, WANO_PPLINE_OK);
             return;
+        }
+
+        case WANP_RESERVED:
+        {
+            LOG(NOTICE, "wano: %s: Interface reserved: %s", self->wpl_ifname, wano_plugin_name(wpp->wpp_handle));
+
+            if (wpp->wpp_status.ws_iftype[0] != '\0')
+            {
+                STRSCPY(iftype, wpp->wpp_status.ws_iftype);
+            }
+
+            /* Use the interface name and type reported in the plug-in status */
+            if (!WANO_CONNMGR_UPLINK_UPDATE(
+                        self->wpl_ifname,
+                        .if_type = iftype,
+                        .has_L2 = WANO_TRI_TRUE))
+            {
+                LOG(WARN, "wano: %s: Error updating Connection_Manager_Uplink (plugin interface) table (has_L3 = true).",
+                        self->wpl_ifname);
+            }
+
+            /* Reset the .has_L3 field from the parent interface */
+            if (!WANO_CONNMGR_UPLINK_DELETE_COLUMN(
+                        self->wpl_ifname,
+                        .has_L3 = WANO_TRI_TRUE))
+            {
+                LOG(WARN, "wano: %s: Error deleting .has_L3 from Connection_Manager_Uplink).",
+                        self->wpl_ifname);
+            }
+
+            self->wpl_has_l3 = true;
+
+            /* Reset the retries count */
+            self->wpl_retries = 0;
+
+            /* Notify upper layers */
+            wano_ppline_event_dispatch(self, WANO_PPLINE_OK);
+            return;
+        }
 
         case WANP_SKIP:
             LOG(INFO, "wano: %s: Plug-in requested skip: %s", self->wpl_ifname, wano_plugin_name(wpp->wpp_handle));

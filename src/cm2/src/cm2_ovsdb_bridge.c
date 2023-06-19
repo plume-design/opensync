@@ -219,7 +219,11 @@ static json_t *cm2_get_del_params_from_response(json_t *response)
     char *uuid_s;
 
     rows = cm2_get_obj_from_json(response, "rows");
+    if (!rows) return NULL;
+
     uuid = cm2_get_obj_from_json(rows, "_uuid");
+    if (!uuid) return NULL;
+
     json_unpack(uuid, "[s,s]", &uuid_t,  &uuid_s);
     del = json_pack("[[s, s,[s,[[s, s]]]]]", "ports", "delete", "set", uuid_t, uuid_s);
 
@@ -294,6 +298,16 @@ bool cm2_del_port_from_br(char *port_name, char *br_name)
 {
     json_t *params;
     json_t *response;
+    json_t *row;
+    bool row_exists = false;
+
+    /* Check if port exists.*/
+    row = ovsdb_sync_select_where(SCHEMA_TABLE(Port), cm2_set_where(port_name));
+    row_exists = (row != NULL);
+    json_decref(row);
+    row = NULL;
+    if (row_exists == false) return false;
+
 
     params = cm2_port_uuid_params(port_name);
 

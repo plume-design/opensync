@@ -40,7 +40,7 @@ $(eval $(if $(CONFIG_PM_ENABLE_LM),                 UNIT_SRC += src/pm_lm.c))
 
 ifeq ($(CONFIG_PM_ENABLE_FF_OVSDB_PS),y)
 UNIT_SRC += src/pm_ff_ovsdb_ps.c
-UNIT_DEPS += src/lib/ff
+UNIT_DEPS += src/lib/ff_provider_ps
 endif
 
 ifeq ($(CONFIG_PM_ENABLE_TM),y)

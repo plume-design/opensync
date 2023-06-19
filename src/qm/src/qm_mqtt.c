@@ -38,6 +38,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ds_dlist.h"
 #include "opensync_stats.pb-c.h"
 #include "memutil.h"
+#include "util.h"
 
 #include "qm.h"
 
@@ -50,6 +51,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define STATS_MQTT_INTERVAL     60  /* Report interval in seconds */
 #define STATS_MQTT_RECONNECT    60  /* Reconnect interval -- seconds */
 #define QM_LOG_TOPIC_PREFIX     "log"
+#define QM_PM_STRING_LENGTH     1025 /* power mode string length */
+                                     /* max length defined in schema */
 
 /* Global MQTT instance */
 static mosqev_t         qm_mqtt;
@@ -68,7 +71,19 @@ static uint8_t          qm_mqtt_compress = 0;
 static char             qm_log_topic[128];
 static int              qm_log_interval = 0; // 0 = disabled
 static int              qm_agg_stats_interval = STATS_MQTT_INTERVAL;
+static char             qm_power_mode[QM_PM_STRING_LENGTH];
+static bool             qm_has_power_mode;
 bool                    qm_log_enabled = false;
+
+void qm_set_power_mode(const char* power_mode)
+{
+    if (!power_mode) {
+        qm_has_power_mode = false;
+        return;
+    }
+    STRSCPY_WARN(qm_power_mode, power_mode);
+    qm_has_power_mode = true;
+}
 
 bool qm_mqtt_is_connected()
 {
@@ -313,6 +328,12 @@ void qm_append_report(qm_item_t *qi, qm_item_t *rep)
 
 first:
     {
+        // set the power mode first
+        if (qm_has_power_mode) {
+            LOGD("Report: setting power mode to %s", qm_power_mode);
+            rpt->power_mode = STRDUP(qm_power_mode);
+        }
+
         // pack new message
         int size = sts__report__get_packed_size(rpt);
         void *buf = MALLOC(size);

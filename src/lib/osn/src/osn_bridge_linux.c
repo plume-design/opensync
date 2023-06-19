@@ -54,6 +54,23 @@ bool osn_bridge_add_port(char *brname, char *portname)
     return lnx_bridge_add_port(brname, portname);
 }
 
+int osn_bridge_get_hairpin(const char *port)
+{
+    char filename[256];
+    int hairpin_mode;
+    FILE *fp;
+
+    sprintf(filename, "/sys/class/net/%s/brport/bridge/brif/%s/hairpin_mode", port, port);
+
+    fp = fopen(filename, "r");
+    if (fp == NULL) return -1;
+
+    fscanf(fp, "%d", &hairpin_mode);
+    fclose(fp);
+
+    return hairpin_mode;
+}
+
 bool osn_bridge_set_hairpin(char *port, bool enable)
 {
     return lnx_bridge_set_hairpin(port, enable);

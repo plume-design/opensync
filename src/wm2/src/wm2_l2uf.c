@@ -42,7 +42,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #define WM2_L2UF_PCAP_SNAPLEN 200
 #define WM2_L2UF_PCAP_BUFFER_SIZE (64 * 1024)
-#define WM2_L2UF_BPF_FILTER "ether broadcast and ether[12]==0 and (ether[13]==6 or ether[13]==8)"
+#define WM2_L2UF_BPF_FILTER "llc xid"
 #define WM2_L2UF_IF_RETRY_SECONDS 1
 
 struct wm2_l2uf_if {

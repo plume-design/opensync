@@ -40,7 +40,8 @@ else
 endif
 
 UNIT_SRC := src/lan_stats.c
-ifeq ($(CONFIG_FCM_OVS_CMD),y)
+UNIT_SRC += src/lan_native_flows.c
+ifeq ($(CONFIG_FCM_LAN_STATS_COLLECT_METHOD),y)
 UNIT_SRC += src/lan_cmd_flows.c
 else
 UNIT_SRC += src/lan_dpctl.c
@@ -55,7 +56,7 @@ ifneq ($(TARGET), native)
     UNIT_CFLAGS += -DOVS_PACKAGE_VERNUM=$(OVS_PACKAGE_VERNUM)
 endif
 
-ifneq ($(CONFIG_FCM_OVS_CMD),y)
+ifneq ($(CONFIG_FCM_LAN_STATS_COLLECT_METHOD),y)
 UNIT_LDFLAGS += -lopenvswitch
 endif
 
@@ -67,3 +68,4 @@ UNIT_DEPS += src/lib/log
 UNIT_DEPS += src/lib/ovsdb
 UNIT_DEPS += src/lib/network_metadata
 UNIT_DEPS += src/lib/fcm_filter
+UNIT_DEPS += src/lib/data_report_tags

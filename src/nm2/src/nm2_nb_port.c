@@ -30,6 +30,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "nm2_nb_interface.h"
 #include "ovsdb_utils.h"
 #include "inet_port.h"
+#include "osn_bridge.h"
 
 static ds_tree_t nm2_port_list = DS_TREE_INIT(ds_str_cmp, struct nm2_port, port_tnode);
 
@@ -324,6 +325,23 @@ static void nm2_inet_bridge_port_set(struct nm2_port *port)
     }
     inet_br_port_set(br->br_inet, port->port_inet, true);
     inet_commit(br->br_inet);
+}
+
+void nm2_port_config_hairpin(const char *port_name)
+{
+    struct nm2_port *port;
+    int configured;
+
+    port = nm2_port_get_by_name(port_name);
+    if (port == NULL) return;
+
+    configured = osn_bridge_get_hairpin(port_name);
+    if (configured == -1) return;
+
+    /* return if the device is already configured with the specified value */
+    if (port->port_hairpin == configured) return;
+
+    osn_bridge_set_hairpin((char *)port_name, port->port_hairpin);
 }
 
 void nm2_inet_bridge_config_reapply(struct nm2_iface *pif)

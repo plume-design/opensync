@@ -40,27 +40,47 @@ enum mdns_state
     UNDEFINED = 0,
     BEGIN_MDNS,
     MDNS_QNAME,
-    MDNS_UNICAST,
+    MDNS_RESP_TYPE,
     END_MDNS
 };
 
 struct mdns_record
 {
-    char *qname;
-    uin16_t unicast;
+    char qname[NS_MAXCDNAME];
+    bool unicast;
+    enum mdns_state next_state;
 };
 
 struct mdns_resp_session
 {
     bool initialized;
     ds_tree_node_t next;
+    struct fsm_session *session;
 };
 
 struct dpi_mdns_resp_client
 {
     bool initialized;
-    ds_tree_t fsm_sessions;
+    int  mcast_fd;
+    char *srcip;
+    char *txintf;
+
     struct mdns_record curr_mdns_rec_processed;
+    ds_tree_t fsm_sessions;
+    ds_tree_t services;
+};
+
+struct fsm_dpi_mdns_service
+{
+    char           *name;
+    char           *type;
+    int             port;
+    char           *target;
+    char           *cname;
+    ds_tree_t      *txt;
+
+    int             n_txt_recs;
+    ds_tree_node_t  service_node;
 };
 
 /**
@@ -68,6 +88,9 @@ struct dpi_mdns_resp_client
  */
 struct dpi_mdns_resp_client *
 fsm_dpi_mdns_get_mgr(void);
+
+ds_tree_t *
+fsm_dpi_mdns_get_services(void);
 
 /**
  * @brief reset mdns record
@@ -82,14 +105,14 @@ fsm_dpi_mdns_reset_state(struct fsm_session *session);
   * @param session the session to lookup
   * @return the found/allocated session, or NULL if the allocation failed
   */
-struct mdns_session *fsm_dpi_mdns_get_session(struct fsm_session *session);
+struct mdns_resp_session *fsm_dpi_mdns_get_session(struct fsm_session *session);
 
 /**
   * @brief Frees a mdns session
   *
   * @param n_session the mdns session to delete
   */
-void fsm_dpi_mdns_free_session(struct mdns_session *n_session);
+void fsm_dpi_mdns_free_session(struct mdns_resp_session *n_session);
 
 /**
   * @brief deletes a session
@@ -138,10 +161,20 @@ void fsm_dpi_mdns_periodic(struct fsm_session *session);
  * @param packet_info packet details (acc, net_parser)
  */
 int fsm_dpi_mdns_process_attr(struct fsm_session *session, const char *attr,
-                             uint8_t type, uint16_t length, const void *value,
-                             struct fsm_dpi_plugin_client_pkt_info *pkt_info);
+                                     uint8_t type, uint16_t length, const void *value,
+                                     struct fsm_dpi_plugin_client_pkt_info *pkt_info);
 
-bool fsm_dpi_mdns_process_record(struct fsm_session *session,
-                                   struct net_md_stats_accumulator *acc,
-                                   struct net_header_parser *net_parser);
+void
+callback_Service_Announcement(ovsdb_update_monitor_t *mon,
+                              struct schema_Service_Announcement *old_rec,
+                              struct schema_Service_Announcement *conf);
+
+void
+fsm_dpi_mdns_ovsdb_init(void);
+
+bool
+fsm_dpi_mdns_send_response(struct fsm_dpi_mdns_service *record, bool unicast, struct net_header_parser *net_parser);
+
+int
+fsm_dpi_mdns_create_mcastv4_socket(void);
 #endif /* FSM_DPI_MDNS_RESPONDER_INCLUDED */

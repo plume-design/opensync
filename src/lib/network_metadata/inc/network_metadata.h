@@ -58,6 +58,12 @@ struct flow_state
     bool     report_attrs;
 };
 
+struct data_report_tags
+{
+    char *id;
+    struct str_set *data_report;
+};
+
 /**
  * @brief container of information needed to set a flowkey protobuf.
  *
@@ -89,7 +95,7 @@ struct flow_key
     uint32_t flowmarker; /* ct_mark */
     char *uplinkname; /* uplink interface of this flow */
     int log;
-    struct str_set **data_report;
+    struct data_report_tags **data_report;
     size_t num_data_report;
 };
 
@@ -310,7 +316,7 @@ serialize_flow_tags(struct flow_tags *tags);
  * @return a pointer to the serialized data.
  */
 struct packed_buffer *
-serialize_data_report_tags(struct str_set *report_tags);
+serialize_data_report_tags(struct data_report_tags *report_tags);
 
 
 /**
@@ -372,7 +378,7 @@ set_flow_tags(struct flow_tags *tags);
  * @return a pointer to a flow tags protobuf structure
  */
 Traffic__DataReportTag *
-set_data_report_tags(struct str_set *report_tags);
+set_data_report_tags(struct data_report_tags *data_report_tags);
 
 
 /**

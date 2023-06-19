@@ -101,12 +101,35 @@ static void nfm_rule_set_status(struct nfm_rule *self, const char *status)
 	LOGD("[%s] Netfilter rule status is %s", self->conf.name, status);
 }
 
+/**
+ * @brief callback received from the OSN layer when the rule
+ * is applied on the device.
+ *
+ * @param name configuration name in the Netfilter table which is configured.
+ * @param ret return value received when the rule is applied.
+ */
+void nfm_rule_apply_status_cb(const char *name, int ret)
+{
+	struct nfm_rule *self = NULL;
+	const char* result;
+
+	/* get the Netfilter table entry with the given name */
+	self = nfm_rule_get(name);
+	if (!self) {
+		LOGN("%s(): could not find config entry for %s in Netfilter table ", __func__, name);
+		return;
+	}
+
+	/* set the status based on the return code */
+	result = (ret == 0) ? "enabled" : "error";
+	nfm_rule_set_status(self, result);
+}
+
 static bool nfm_rule_get_ref_chain(struct nfm_rule *self)
 {
 	bool errcode = true;
 
-	if (kconfig_enabled(CONFIG_TARGET_ENABLE_EBTABLES) &&
-        nfm_osfw_is_inet4(self->conf.protocol)) {
+	if (nfm_osfw_is_inet4(self->conf.protocol)) {
 		errcode = nfm_chain_get_ref(AF_INET, self->conf.table, self->conf.chain);
 		if (!errcode) {
 			LOGE("[%s] Start Nefilter rule: get reference on %s inet chain failed",
@@ -142,7 +165,8 @@ static bool nfm_rule_get_ref_chain(struct nfm_rule *self)
 		self->flags |= NFM_FLAG_RULE_TARGET6_REFERENCED;
 	}
 
-	if (nfm_osfw_is_eth(self->conf.protocol)) {
+	if (kconfig_enabled(CONFIG_TARGET_ENABLE_EBTABLES) &&
+		nfm_osfw_is_eth(self->conf.protocol)) {
 		errcode = nfm_chain_get_ref(AF_BRIDGE, self->conf.table, self->conf.chain);
 		if (!errcode) {
 			LOGE("[%s] Start Nefilter rule: get reference on %s ebtable chain failed",

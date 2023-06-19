@@ -30,15 +30,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ow_steer_sta_i.h"
 
 struct ow_steer_policy_stack_ut_ctx {
-    unsigned int prio_low;
-    unsigned int prio_mid;
-    unsigned int prio_high;
-
     struct ow_steer_policy policy_low_0;
-    struct ow_steer_policy policy_low_1;
     struct ow_steer_policy policy_mid_0;
     struct ow_steer_policy policy_high_0;
-    struct ow_steer_policy policy_high_1;
 };
 
 struct ow_steer_policy_stack_ut_policy {
@@ -53,7 +47,7 @@ ow_steer_policy_stack_ut_policy_new(const struct osw_hwaddr *sta_addr,
                                     const struct ow_steer_policy_mediator *mediator)
 {
     struct ow_steer_policy_stack_ut_policy *priv = CALLOC(1, sizeof(*priv));
-    return ow_steer_policy_create(g_ow_steer_policy_stack_ut_policy_name, 0, sta_addr, ops, mediator, priv);
+    return ow_steer_policy_create(g_ow_steer_policy_stack_ut_policy_name, sta_addr, ops, mediator, priv);
 }
 
 static void
@@ -63,20 +57,9 @@ ow_steer_policy_stack_ut_ctx_init(struct ow_steer_policy_stack_ut_ctx* ctx)
 
     memset(ctx, 0, sizeof(*ctx));
 
-    ctx->prio_low = 2;
-    ctx->prio_mid = 1;
-    ctx->prio_high = 0;
-
     ctx->policy_low_0.name = "policy_low_0";
-    ctx->policy_low_0.priority = ctx->prio_low;
-    ctx->policy_low_1.name = "policy_low_1";
-    ctx->policy_low_1.priority = ctx->prio_low;
     ctx->policy_mid_0.name = "policy_policy_mid_0";
-    ctx->policy_mid_0.priority = ctx->prio_mid;
     ctx->policy_high_0.name = "policy_policy_high_0";
-    ctx->policy_high_0.priority = ctx->prio_high;
-    ctx->policy_high_1.name = "policy_policy_high_1";
-    ctx->policy_high_1.priority = ctx->prio_high;
 }
 
 static void
@@ -101,9 +84,9 @@ OSW_UT(ow_steer_policy_stack_ut_sorting_policies_1)
 
     sta.candidate_list = ow_steer_candidate_list_new();
     policy_stack = ow_steer_policy_stack_create(&sta);
-    ow_steer_policy_stack_add(policy_stack, &ctx.policy_low_0);
-    ow_steer_policy_stack_add(policy_stack, &ctx.policy_mid_0);
     ow_steer_policy_stack_add(policy_stack, &ctx.policy_high_0);
+    ow_steer_policy_stack_add(policy_stack, &ctx.policy_mid_0);
+    ow_steer_policy_stack_add(policy_stack, &ctx.policy_low_0);
     osw_ut_time_advance(0);
 
     /* Expected policies order:
@@ -165,73 +148,54 @@ OSW_UT(ow_steer_policy_stack_ut_sorting_policies_2)
     ow_steer_policy_stack_ut_ctx_init(&ctx);
 
     policy_stack = ow_steer_policy_stack_create(&sta);
-    ow_steer_policy_stack_add(policy_stack, &ctx.policy_low_0);
     ow_steer_policy_stack_add(policy_stack, &ctx.policy_high_0);
 
     /* Expected policies oerder:
      * - policy_high_0
-     * - policy_low_0
      */
     policy = (struct ow_steer_policy*) ds_dlist_head(&policy_stack->policy_list);
     assert(policy == &ctx.policy_high_0);
-    policy = (struct ow_steer_policy*) ds_dlist_next(&policy_stack->policy_list, policy);
-    assert(policy == &ctx.policy_low_0);
-    policy = (struct ow_steer_policy*) ds_dlist_next(&policy_stack->policy_list, policy);
-    assert(policy == NULL);
-
-    ow_steer_policy_stack_add(policy_stack, &ctx.policy_low_1);
-    /* Expected policies oerder:
-     * - policy_high_0
-     * - policy_low_1
-     * - policy_low_0
-     */
-    policy = (struct ow_steer_policy*) ds_dlist_head(&policy_stack->policy_list);
-    assert(policy == &ctx.policy_high_0);
-    policy = (struct ow_steer_policy*) ds_dlist_next(&policy_stack->policy_list, policy);
-    assert(policy == &ctx.policy_low_1);
-    policy = (struct ow_steer_policy*) ds_dlist_next(&policy_stack->policy_list, policy);
-    assert(policy == &ctx.policy_low_0);
-    policy = (struct ow_steer_policy*) ds_dlist_next(&policy_stack->policy_list, policy);
-    assert(policy == NULL);
-
-    ow_steer_policy_stack_add(policy_stack, &ctx.policy_high_1);
-    /* Expected policies oerder:
-     * - policy_high_1
-     * - policy_high_0
-     * - policy_low_1
-     * - policy_low_0
-     */
-    policy = (struct ow_steer_policy*) ds_dlist_head(&policy_stack->policy_list);
-    assert(policy == &ctx.policy_high_1);
-    policy = (struct ow_steer_policy*) ds_dlist_next(&policy_stack->policy_list, policy);
-    assert(policy == &ctx.policy_high_0);
-    policy = (struct ow_steer_policy*) ds_dlist_next(&policy_stack->policy_list, policy);
-    assert(policy == &ctx.policy_low_1);
-    policy = (struct ow_steer_policy*) ds_dlist_next(&policy_stack->policy_list, policy);
-    assert(policy == &ctx.policy_low_0);
     policy = (struct ow_steer_policy*) ds_dlist_next(&policy_stack->policy_list, policy);
     assert(policy == NULL);
 
     ow_steer_policy_stack_add(policy_stack, &ctx.policy_mid_0);
     /* Expected policies oerder:
-     * - policy_high_1
      * - policy_high_0
      * - policy_mid_0
-     * - policy_low_1
-     * - policy_low_0
      */
     policy = (struct ow_steer_policy*) ds_dlist_head(&policy_stack->policy_list);
-    assert(policy == &ctx.policy_high_1);
-    policy = (struct ow_steer_policy*) ds_dlist_next(&policy_stack->policy_list, policy);
     assert(policy == &ctx.policy_high_0);
     policy = (struct ow_steer_policy*) ds_dlist_next(&policy_stack->policy_list, policy);
     assert(policy == &ctx.policy_mid_0);
     policy = (struct ow_steer_policy*) ds_dlist_next(&policy_stack->policy_list, policy);
-    assert(policy == &ctx.policy_low_1);
+    assert(policy == NULL);
+
+    ow_steer_policy_stack_add(policy_stack, &ctx.policy_low_0);
+    /* Expected policies oerder:
+     * - policy_high_0
+     * - policy_mid_0
+     * - policy_low_0
+     */
+    policy = (struct ow_steer_policy*) ds_dlist_head(&policy_stack->policy_list);
+    assert(policy == &ctx.policy_high_0);
+    policy = (struct ow_steer_policy*) ds_dlist_next(&policy_stack->policy_list, policy);
+    assert(policy == &ctx.policy_mid_0);
     policy = (struct ow_steer_policy*) ds_dlist_next(&policy_stack->policy_list, policy);
     assert(policy == &ctx.policy_low_0);
     policy = (struct ow_steer_policy*) ds_dlist_next(&policy_stack->policy_list, policy);
     assert(policy == NULL);
+
+    assert(ow_steer_policy_get_more_important(&ctx.policy_low_0, &ctx.policy_low_0) == &ctx.policy_low_0);
+    assert(ow_steer_policy_get_more_important(&ctx.policy_low_0, &ctx.policy_mid_0) == &ctx.policy_mid_0);
+    assert(ow_steer_policy_get_more_important(&ctx.policy_low_0, &ctx.policy_high_0) == &ctx.policy_high_0);
+
+    assert(ow_steer_policy_get_more_important(&ctx.policy_mid_0, &ctx.policy_low_0) == &ctx.policy_mid_0);
+    assert(ow_steer_policy_get_more_important(&ctx.policy_mid_0, &ctx.policy_mid_0) == &ctx.policy_mid_0);
+    assert(ow_steer_policy_get_more_important(&ctx.policy_mid_0, &ctx.policy_high_0) == &ctx.policy_high_0);
+
+    assert(ow_steer_policy_get_more_important(&ctx.policy_high_0, &ctx.policy_low_0) == &ctx.policy_high_0);
+    assert(ow_steer_policy_get_more_important(&ctx.policy_high_0, &ctx.policy_mid_0) == &ctx.policy_high_0);
+    assert(ow_steer_policy_get_more_important(&ctx.policy_high_0, &ctx.policy_high_0) == &ctx.policy_high_0);
 }
 
 OSW_UT(ow_steer_policy_stack_ut_lifecycle)

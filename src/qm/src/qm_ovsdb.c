@@ -50,8 +50,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "qm.h"
 
 #define MODULE_ID LOG_MODULE_ID_OVSDB
+#define NODE_CONFIG_MODULE         "QM"
+#define NODE_CONFIG_POWER_MODE_KEY "power_mode"
 
 ovsdb_table_t table_AWLAN_Node;
+ovsdb_table_t table_Node_Config;
 
 void callback_AWLAN_Node(ovsdb_update_monitor_t *mon,
         struct schema_AWLAN_Node *old_rec,
@@ -123,7 +126,33 @@ void callback_AWLAN_Node(ovsdb_update_monitor_t *mon,
     qm_mqtt_set_agg_stats_interval(agg_stats_interval);
 }
 
+static
+void callback_Node_Config(ovsdb_update_monitor_t *mon,
+                          struct schema_Node_Config *old_rec,
+                          struct schema_Node_Config *config)
+{
+    LOGD("%s mon_type = %d", __func__, mon->mon_type);
 
+    if (!(config->module_exists && strcmp(config->module, NODE_CONFIG_MODULE) == 0))
+        return;
+
+    switch (mon->mon_type) {
+        case OVSDB_UPDATE_NEW:
+        case OVSDB_UPDATE_MODIFY:
+            if (config->key_exists && !strcmp(config->key, NODE_CONFIG_POWER_MODE_KEY)) {
+                qm_set_power_mode(config->value);
+            }
+            break;
+        case OVSDB_UPDATE_DEL:
+            if (old_rec->key_exists && strcmp(old_rec->key, NODE_CONFIG_POWER_MODE_KEY) == 0) {
+                qm_set_power_mode(NULL);
+            }
+            break;
+        case OVSDB_UPDATE_ERROR:
+            LOGE("%s: OVSDB error", __func__);
+            break;
+    }
+}
 
 int qm_ovsdb_init(void)
 {
@@ -134,6 +163,10 @@ int qm_ovsdb_init(void)
 
     // Initialize OVSDB monitor callbacks
     OVSDB_TABLE_MONITOR(AWLAN_Node, false);
+
+    /* Monitor Node_Config table */
+    OVSDB_TABLE_INIT_NO_KEY(Node_Config);
+    OVSDB_TABLE_MONITOR(Node_Config, false);
 
     return 0;
 }

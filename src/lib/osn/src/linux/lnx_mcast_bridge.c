@@ -29,6 +29,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "log.h"
 #include "execsh.h"
 #include "os_util.h"
+#include "kconfig.h"
 
 #include "lnx_mcast.h"
 
@@ -46,6 +47,7 @@ static char set_max_groups[] = _S(ovs-vsctl set Bridge "$1" other_config:mcast-s
 static char set_unknown_group[] = _S(ovs-vsctl set Bridge "$1" other_config:mcast-snooping-disable-flood-unregistered="$2");
 static char set_static_mrouter[] = _S(ovs-vsctl set Port "$1" other_config:mcast-snooping-flood-reports="$2");
 static char set_igmp_age[] = _S(ovs-vsctl set Bridge "$1" other_config:mcast-snooping-aging-time="$2");
+static char flush_mcast_table[] = _S(ovs-appctl mdb/flush "$1");
 
 lnx_mcast_bridge lnx_mcast_bridge_base;
 
@@ -339,6 +341,15 @@ bool lnx_mcast_apply_config(lnx_mcast_bridge *self)
     }
     STRSCPY_WARN(self->static_mrouter, static_mrouter);
 
+    /* Flush mcast table */
+    status = execsh_log(LOG_SEVERITY_DEBUG, flush_mcast_table, snooping_bridge);
+    if (!WIFEXITED(status) || WEXITSTATUS(status) != 0)
+    {
+        LOG(WARN, "lnx_mcast_apply_config: Error flushing mcast table, command failed for %s",
+                snooping_bridge);
+        return true;
+    }
+
     return true;
 }
 
@@ -354,6 +365,8 @@ bool lnx_mcast_apply()
 void lnx_mcast_apply_fn(struct ev_loop *loop, ev_debounce *w, int revent)
 {
     lnx_mcast_bridge *self = &lnx_mcast_bridge_base;
+
+    if (kconfig_enabled(CONFIG_TARGET_USE_NATIVE_BRIDGE)) return;
 
     if (!self->igmp_initialized && !self->mld_initialized)
         return;

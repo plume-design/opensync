@@ -228,7 +228,7 @@ ow_sta_log_snr_dump_assoc_ies(const struct ow_sta_log_snr_sta *sta)
      * would then also be able to estimate it based on SNR
      * changes.
      */
-    LOGI("ow: sta_log_snr: %s/"OSW_HWADDR_FMT": link capab: bw=%sMHz nss=%u mcs=%u%s%s%s%s%s%s%s",
+    LOGI("ow: sta_log_snr: %s/"OSW_HWADDR_FMT": link capab: bw=%sMHz nss=%u mcs=%u%s%s%s%s%s%s%s%s%s%s",
          vif_name,
          OSW_HWADDR_ARG(sta_addr),
          osw_channel_width_to_str(width),
@@ -240,7 +240,10 @@ ow_sta_log_snr_dump_assoc_ies(const struct ow_sta_log_snr_sta *sta)
          band_2ghz ? " 2ghz" : "",
          band_5ghz ? " 5ghz" : "",
          band_6ghz ? " 6ghz" : "",
-         info.wnm_bss_trans ? " btm" : "");
+         info.wnm_bss_trans ? " btm" : "",
+         info.rrm_neighbor_bcn_pas_meas ? " rrmp" : "",
+         info.rrm_neighbor_bcn_act_meas ? " rrma" : "",
+         info.rrm_neighbor_bcn_tab_meas ? " rrmt" : "");
 }
 
 static void

@@ -105,6 +105,9 @@ bool
 osw_btm_desc_set_req_params(struct osw_btm_desc *desc,
                             const struct osw_btm_req_params *req_params);
 
+void
+osw_btm_sta_log_req_params(const struct osw_btm_req_params *params);
+
 struct osw_btm_sta*
 osw_btm_desc_get_sta(struct osw_btm_desc *desc);
 

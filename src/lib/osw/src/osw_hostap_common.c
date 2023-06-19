@@ -113,6 +113,7 @@ osw_hostap_conf_chwidth_from_osw(enum osw_channel_width width)
         case OSW_CHANNEL_80MHZ:    return OSW_HOSTAP_CONF_CHANWIDTH_80MHZ;
         case OSW_CHANNEL_160MHZ:   return OSW_HOSTAP_CONF_CHANWIDTH_160MHZ;
         case OSW_CHANNEL_80P80MHZ: return OSW_HOSTAP_CONF_CHANWIDTH_80P80MHZ;
+        case OSW_CHANNEL_320MHZ:   return OSW_HOSTAP_CONF_CHANWIDTH_320MHZ;
     }
     /* unreachable */
     return OSW_HOSTAP_CONF_CHANWIDTH_20MHZ_40MHZ;;
@@ -127,6 +128,7 @@ osw_hostap_conf_chwidth_to_osw(enum osw_hostap_conf_chanwidth width)
         case OSW_HOSTAP_CONF_CHANWIDTH_80MHZ:       return OSW_CHANNEL_80MHZ;
         case OSW_HOSTAP_CONF_CHANWIDTH_160MHZ:      return OSW_CHANNEL_160MHZ;
         case OSW_HOSTAP_CONF_CHANWIDTH_80P80MHZ:    return OSW_CHANNEL_80P80MHZ;
+        case OSW_HOSTAP_CONF_CHANWIDTH_320MHZ:      return OSW_CHANNEL_320MHZ;
     }
     /* unreachable */
     return OSW_CHANNEL_40MHZ;
@@ -413,6 +415,7 @@ osw_hostap_util_unquote(const char *original,
         orig[strlen(orig) - 1] = '\0';
         /* remove leading while copying */
         memcpy(unquoted, &orig[1], strlen(orig));
+        FREE(orig);
         return true;
     }
 nop:

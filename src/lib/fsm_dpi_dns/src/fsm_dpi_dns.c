@@ -50,6 +50,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "net_header_parse.h"
 #include "network_metadata_report.h"
 #include "sockaddr_storage.h"
+#include "policy_tags.h"
 #include "os.h"
 #include "util.h"
 
@@ -68,6 +69,7 @@ const char * const dns_state_str[] =
     [UNDEFINED] = "undefined",
     [BEGIN_DNS] = "begin",
     [DNS_QNAME] = "dns.qname",
+    [DNS_QTYPE] = "dns.qtype",
     [DNS_TYPE] = "dns.type",
     [DNS_TTL] = "dns.ttl",
     [DNS_A] = "dns.a",
@@ -76,6 +78,7 @@ const char * const dns_state_str[] =
     [DNS_AAAA_OFFSET] = "dns.aaaa_offset",
     [END_DNS] = "end",
     [IP_ADDRESS] = "IP address",
+    [DNS_NANSWERS] = "dns.nanswers",
 };
 
 const char *dns_attr_value = "dns";
@@ -103,6 +106,9 @@ get_dns_state(const char *attribute)
     }                                         \
     while (0)
 
+    GET_DNS_STATE(attribute, DNS_QNAME);
+    GET_DNS_STATE(attribute, DNS_QTYPE);
+    GET_DNS_STATE(attribute, DNS_NANSWERS);
     GET_DNS_STATE(attribute, DNS_TYPE);
     GET_DNS_STATE(attribute, DNS_TTL);
     GET_DNS_STATE(attribute, DNS_A);
@@ -111,11 +117,17 @@ get_dns_state(const char *attribute)
     GET_DNS_STATE(attribute, DNS_AAAA_OFFSET);
     GET_DNS_STATE(attribute, BEGIN_DNS);
     GET_DNS_STATE(attribute, END_DNS);
-    GET_DNS_STATE(attribute, DNS_QNAME);
 
     return UNDEFINED;
 #undef GET_DNS_STATE
 }
+
+static char dpi_attributes[][64] =
+{
+    [0] = "dns.qtype",
+    [1] = "dns.nanswers",
+};
+
 
 void
 fsm_dpi_dns_reset_state(void)
@@ -335,12 +347,26 @@ void
 fsm_dpi_dns_update_csum(struct net_header_parser *net_parser)
 {
     struct udphdr *udp_hdr;
+    uint16_t ethertype;
     uint8_t *packet;
     uint16_t csum;
 
     /* update check sum */
     packet = (uint8_t *)net_parser->start;
+
+    ethertype = net_header_get_ethertype(net_parser);
+    if (ethertype != ETH_P_IP && ethertype != ETH_P_IPV6) return;
+
+    if (net_parser->ip_protocol != IPPROTO_UDP) return;
+
     udp_hdr = net_parser->ip_pld.udphdr;
+
+    /* Add a guard against non DNS protocols */
+    if (ntohs(udp_hdr->source) != 53) return;
+
+    LOGT("%s: marking the following net header for re-injection", __func__);
+    net_header_logt(net_parser);
+
     if (net_parser->ip_version == 4) udp_hdr->check = 0;
     else if (net_parser->ip_version == 6)
     {
@@ -499,7 +525,7 @@ is_record_to_process()
     if (!rc) return true;
 
     rec = &mgr->curr_rec_processed;
-    rc = (rec->resp[0].type == DNS_QTYPE_65);
+    rc = (rec->qtype == DNS_QTYPE_65);
     return rc;
 }
 
@@ -540,6 +566,7 @@ fsm_dpi_dns_process_dns_record(struct fsm_session *session,
     struct dpi_dns_client *mgr;
     struct dns_record *rec;
     uint8_t qtype;
+    bool redirect;
     int action;
     size_t i;
     bool rc;
@@ -556,15 +583,14 @@ fsm_dpi_dns_process_dns_record(struct fsm_session *session,
     rc = is_record_to_process();
     if (!rc)
     {
-        LOGT("%s: query type: %d dns_parse is enabled returning...", __func__, rec->resp[0].type);
-        return action;
+        return FSM_DPI_BYPASS;
     }
 
-    qtype = rec->resp[0].type;
+    qtype = rec->qtype;
     rc = is_valid_qtype(qtype);
     if (!rc)
     {
-        LOGT("%s: not processing query type: %d ", __func__, rec->resp[0].type);
+        LOGI("%s: not processing query type: %d ", __func__, rec->resp[0].type);
         return action;
     }
 
@@ -686,7 +712,14 @@ fsm_dpi_dns_process_dns_record(struct fsm_session *session,
         }
     }
 
-    if ((action == FSM_REDIRECT) || (action == FSM_REDIRECT_ALLOW) || (action == FSM_BLOCK))
+    redirect = (action == FSM_REDIRECT);
+    redirect |= (action == FSM_REDIRECT_ALLOW);
+    redirect |= (policy_reply->redirect == true);
+    LOGT("%s: policy action: %s, returned action: %s, redirect: %s", __func__,
+         fsm_policy_get_action_str(policy_reply->action),
+         fsm_policy_get_action_str(action),
+         redirect ? "true" : " false");
+    if ((action == FSM_BLOCK) || (redirect))
     {
         rc = fsm_dpi_dns_update_response_ips(net_parser, acc, policy_reply);
         if (!rc)
@@ -769,6 +802,9 @@ fsm_dpi_dns_init(struct fsm_session *session)
     session->ops.exit = fsm_dpi_dns_exit;
     session->ops.notify_identical_sessions = fsm_dpi_dns_identical_plugin_status;
     session->plugin_id = FSM_DPI_DNS_PLUGIN;
+    session->dpi_attributes = schema2str_set(sizeof(dpi_attributes[0]),
+                                             ARRAY_SIZE(dpi_attributes),
+                                             dpi_attributes);
 
     /* Set the plugin specific ops */
     client_ops = &session->p_ops->dpi_plugin_client_ops;
@@ -778,7 +814,7 @@ fsm_dpi_dns_init(struct fsm_session *session)
     session->ops.update(session);
 
     mgr = fsm_dpi_dns_get_mgr();
-    if (mgr->initialized) return 1;
+    if (mgr->initialized) return 0;
 
     ds_tree_init(&mgr->fsm_sessions, dns_session_cmp,
                  struct dns_session, next);
@@ -816,10 +852,22 @@ dpi_dns_plugin_init(struct fsm_session *session)
 void
 fsm_dpi_dns_exit(struct fsm_session *session)
 {
+    struct dpi_dns_client *mgr;
+    struct dns_record *rec;
+
     LOGD("%s: Exit DNS client plugin", __func__);
+
+    if (session == NULL) return;
 
     /* Free the generic client */
     fsm_dpi_client_exit(session);
+    mgr = fsm_dpi_dns_get_mgr();
+    rec = &mgr->curr_rec_processed;
+    MEMZERO(*rec);
+    mgr->initialized = false;
+    mgr->identical_plugin_enabled = false;
+    free_str_set(session->dpi_attributes);
+    session->dpi_attributes = NULL;
 }
 
 /**
@@ -870,6 +918,8 @@ fsm_dpi_dns_process_attr(struct fsm_session *session, const char *attr,
     int action;
     int cmp;
 
+    rec = NULL;
+
     if (pkt_info == NULL) return FSM_DPI_IGNORED;
 
     acc = pkt_info->acc;
@@ -878,9 +928,11 @@ fsm_dpi_dns_process_attr(struct fsm_session *session, const char *attr,
     net_parser = pkt_info->parser;
     if (net_parser == NULL) return FSM_DPI_IGNORED;
 
+    if (net_parser->start == NULL) return FSM_DPI_IGNORED;
+
     /* Process the generic part (e.g., logging, include, exclude lists) */
     action = fsm_dpi_client_process_attr(session, attr, type, length, value, pkt_info);
-    if (action == FSM_DPI_IGNORED) return action;
+    if (action == FSM_DPI_IGNORED) goto dns_forward;
 
     /*
      * The combo (device, attribute) is to be processed, but no service provided
@@ -888,7 +940,7 @@ fsm_dpi_dns_process_attr(struct fsm_session *session, const char *attr,
      */
     if (session->service == NULL) return FSM_DPI_PASSTHRU;
 
-    action = FSM_DPI_IGNORED;
+    action = FSM_DPI_BYPASS;
 
     mgr = fsm_dpi_dns_get_mgr();
     if (!mgr->initialized)
@@ -934,9 +986,44 @@ fsm_dpi_dns_process_attr(struct fsm_session *session, const char *attr,
             if (rec->next_state != curr_state) goto wrong_state;
 
             STRSCPY_LEN(rec->qname, value, length);
-            rec->next_state = DNS_TYPE;
+            rec->next_state = DNS_QTYPE;
             LOGT("%s: copied %s = %s - next is %s",
                  __func__, dns_state_str[curr_state], rec->qname,
+                 dns_state_str[rec->next_state]);
+            break;
+        }
+
+        case DNS_QTYPE:
+        {
+            if (type != RTS_TYPE_NUMBER)
+            {
+                LOGD("%s: value for %s should be a number", __func__, attr);
+                goto reset_state_machine;
+            }
+            if (rec->next_state != curr_state) goto wrong_state;
+
+            rec->next_state = DNS_NANSWERS;
+            rec->qtype = *(int64_t *)value;
+            LOGT("%s: copied %s = %d - next is %s",
+                 __func__, dns_state_str[curr_state], rec->qtype,
+                 dns_state_str[rec->next_state]);
+            break;
+        }
+
+        case DNS_NANSWERS:
+        {
+            if (type != RTS_TYPE_NUMBER)
+            {
+                LOGD("%s: value for %s should be a number", __func__, attr);
+                goto reset_state_machine;
+            }
+            if (rec->next_state != curr_state) goto wrong_state;
+
+            rec->ancount = *(int64_t *)value;
+            rec->next_state = DNS_TYPE;
+
+            LOGT("%s: copied %s = %d - next is %s",
+                 __func__, dns_state_str[curr_state], rec->ancount,
                  dns_state_str[rec->next_state]);
             break;
         }
@@ -1086,13 +1173,30 @@ fsm_dpi_dns_process_attr(struct fsm_session *session, const char *attr,
         }
     }
 
+dns_forward:
+    if (action == FSM_DPI_IGNORED)
+    {
+        /* Forward the reply */
+        action = FSM_DPI_PASSTHRU;
+        fsm_dpi_dns_update_csum(net_parser);
+    }
+    else if (action == FSM_DPI_BYPASS)
+    {
+        action = FSM_DPI_IGNORED;
+    }
+
     return action;
 
 wrong_state:
     LOGD("%s: Failed when processing attr '%s' (expected state '%s')",
          __func__, attr, dns_state_str[rec->next_state]);
+
 reset_state_machine:
     fsm_dpi_dns_reset_state();
+
+    /* Forward the reply anyway */
+    fsm_dpi_dns_update_csum(net_parser);
+
     return -1;
 }
 

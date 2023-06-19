@@ -37,6 +37,7 @@ struct ow_steer_policy_pre_assoc_ut_ctx {
     struct osw_drv_report_vif_probe_req probe_req;
     struct ow_steer_candidate_list *candidate_list;
     struct ow_steer_policy_pre_assoc_config config;
+    struct osw_drv_dot11_frame_header auth_frame;
 };
 
 static struct ow_steer_policy_pre_assoc_ut_ctx*
@@ -79,8 +80,14 @@ ow_steer_policy_pre_assoc_ut_ctx_get(void)
                 .type = OW_STEER_POLICY_PRE_ASSOC_BACKOFF_CONDITION_NONE,
             },
         },
+        .auth_frame = {
+            .sa = { 0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB, },
+            .da = { 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, },
+            .bssid = { 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, },
+        },
     };
 
+    ctx.auth_frame.frame_control = htole16(DOT11_FRAME_CTRL_SUBTYPE_AUTH);
     ctx.candidate_list = ow_steer_candidate_list_new();
 
     return &ctx;
@@ -148,7 +155,7 @@ OSW_UT(ow_steer_policy_pre_assoc_ut_always_success_steer)
     candidate_1 = ow_steer_candidate_list_lookup(ctx->candidate_list, &ctx->drv_vif_state_1.mac_addr);
 
     /* Create policy */
-    counter_policy = ow_steer_policy_pre_assoc_create(0, &ctx->probe_req.sta_addr, &mediator);
+    counter_policy = ow_steer_policy_pre_assoc_create(&ctx->probe_req.sta_addr, &mediator);
     OSW_UT_EVAL(counter_policy != NULL);
 
     ow_steer_candidate_list_clear(ctx->candidate_list);
@@ -243,7 +250,7 @@ OSW_UT(ow_steer_policy_pre_assoc_ut_always_backoff_connect_blocked_vif)
     candidate_0 = ow_steer_candidate_list_lookup(ctx->candidate_list, &ctx->drv_vif_state_0.mac_addr);
     candidate_1 = ow_steer_candidate_list_lookup(ctx->candidate_list, &ctx->drv_vif_state_1.mac_addr);
 
-    counter_policy = ow_steer_policy_pre_assoc_create(0, &ctx->probe_req.sta_addr, &mediator);
+    counter_policy = ow_steer_policy_pre_assoc_create(&ctx->probe_req.sta_addr, &mediator);
     OSW_UT_EVAL(counter_policy != NULL);
     OSW_UT_EVAL(mediator_cnt.trigger_executor_cnt == 0);
     OSW_UT_EVAL(mediator_cnt.schedule_recalc_cnt == 0);
@@ -336,7 +343,7 @@ OSW_UT(ow_steer_policy_pre_assoc_ut_always_backoff_connect_preferred_vif)
     candidate_0 = ow_steer_candidate_list_lookup(ctx->candidate_list, &ctx->drv_vif_state_0.mac_addr);
     candidate_1 = ow_steer_candidate_list_lookup(ctx->candidate_list, &ctx->drv_vif_state_1.mac_addr);
 
-    counter_policy = ow_steer_policy_pre_assoc_create(0, &ctx->probe_req.sta_addr, &mediator);
+    counter_policy = ow_steer_policy_pre_assoc_create(&ctx->probe_req.sta_addr, &mediator);
     OSW_UT_EVAL(counter_policy != NULL);
     OSW_UT_EVAL(mediator_cnt.trigger_executor_cnt == 0);
     OSW_UT_EVAL(mediator_cnt.schedule_recalc_cnt == 0);
@@ -429,7 +436,7 @@ OSW_UT(ow_steer_policy_pre_assoc_ut_always_backoff_no_connect)
     candidate_0 = ow_steer_candidate_list_lookup(ctx->candidate_list, &ctx->drv_vif_state_0.mac_addr);
     candidate_1 = ow_steer_candidate_list_lookup(ctx->candidate_list, &ctx->drv_vif_state_1.mac_addr);
 
-    counter_policy = ow_steer_policy_pre_assoc_create(0, &ctx->probe_req.sta_addr, &mediator);
+    counter_policy = ow_steer_policy_pre_assoc_create(&ctx->probe_req.sta_addr, &mediator);
     OSW_UT_EVAL(counter_policy != NULL);
     OSW_UT_EVAL(mediator_cnt.trigger_executor_cnt == 0);
     OSW_UT_EVAL(mediator_cnt.schedule_recalc_cnt == 0);
@@ -543,7 +550,7 @@ OSW_UT(ow_steer_policy_pre_assoc_ut_threshold_snr_success_steer)
     candidate_0 = ow_steer_candidate_list_lookup(ctx->candidate_list, &ctx->drv_vif_state_0.mac_addr);
     candidate_1 = ow_steer_candidate_list_lookup(ctx->candidate_list, &ctx->drv_vif_state_1.mac_addr);
 
-    counter_policy = ow_steer_policy_pre_assoc_create(0, &ctx->probe_req.sta_addr, &mediator);
+    counter_policy = ow_steer_policy_pre_assoc_create(&ctx->probe_req.sta_addr, &mediator);
     OSW_UT_EVAL(counter_policy != NULL);
     OSW_UT_EVAL(mediator_cnt.trigger_executor_cnt == 0);
     OSW_UT_EVAL(mediator_cnt.schedule_recalc_cnt == 0);
@@ -620,7 +627,7 @@ OSW_UT(ow_steer_policy_pre_assoc_ut_threshold_snr_enter_backoff)
     candidate_0 = ow_steer_candidate_list_lookup(ctx->candidate_list, &ctx->drv_vif_state_0.mac_addr);
     candidate_1 = ow_steer_candidate_list_lookup(ctx->candidate_list, &ctx->drv_vif_state_1.mac_addr);
 
-    counter_policy = ow_steer_policy_pre_assoc_create(0, &ctx->probe_req.sta_addr, &mediator);
+    counter_policy = ow_steer_policy_pre_assoc_create(&ctx->probe_req.sta_addr, &mediator);
     OSW_UT_EVAL(counter_policy != NULL);
     OSW_UT_EVAL(mediator_cnt.trigger_executor_cnt == 0);
     OSW_UT_EVAL(mediator_cnt.schedule_recalc_cnt == 0);
@@ -701,7 +708,7 @@ OSW_UT(ow_steer_policy_pre_assoc_ut_dormant_when_connected_to_desired_band)
     candidate_0 = ow_steer_candidate_list_lookup(ctx->candidate_list, &ctx->drv_vif_state_0.mac_addr);
     candidate_1 = ow_steer_candidate_list_lookup(ctx->candidate_list, &ctx->drv_vif_state_1.mac_addr);
 
-    counter_policy = ow_steer_policy_pre_assoc_create(0, &ctx->probe_req.sta_addr, &mediator);
+    counter_policy = ow_steer_policy_pre_assoc_create(&ctx->probe_req.sta_addr, &mediator);
     OSW_UT_EVAL(counter_policy != NULL);
     OSW_UT_EVAL(mediator_cnt.trigger_executor_cnt == 0);
     OSW_UT_EVAL(mediator_cnt.schedule_recalc_cnt == 0);
@@ -856,7 +863,7 @@ OSW_UT(ow_steer_policy_pre_assoc_ut_timer_mode_connect_to_blocked)
     candidate_0 = ow_steer_candidate_list_lookup(ctx->candidate_list, &ctx->drv_vif_state_0.mac_addr);
     candidate_1 = ow_steer_candidate_list_lookup(ctx->candidate_list, &ctx->drv_vif_state_1.mac_addr);
 
-    counter_policy = ow_steer_policy_pre_assoc_create(0, &ctx->probe_req.sta_addr, &mediator);
+    counter_policy = ow_steer_policy_pre_assoc_create(&ctx->probe_req.sta_addr, &mediator);
     OSW_UT_EVAL(counter_policy != NULL);
     OSW_UT_EVAL(mediator_cnt.trigger_executor_cnt == 0);
     OSW_UT_EVAL(mediator_cnt.schedule_recalc_cnt == 0);
@@ -946,7 +953,7 @@ OSW_UT(ow_steer_policy_pre_assoc_ut_timer_mode_connect_to_preferred)
     candidate_0 = ow_steer_candidate_list_lookup(ctx->candidate_list, &ctx->drv_vif_state_0.mac_addr);
     candidate_1 = ow_steer_candidate_list_lookup(ctx->candidate_list, &ctx->drv_vif_state_1.mac_addr);
 
-    counter_policy = ow_steer_policy_pre_assoc_create(0, &ctx->probe_req.sta_addr, &mediator);
+    counter_policy = ow_steer_policy_pre_assoc_create(&ctx->probe_req.sta_addr, &mediator);
     OSW_UT_EVAL(counter_policy != NULL);
     OSW_UT_EVAL(mediator_cnt.trigger_executor_cnt == 0);
     OSW_UT_EVAL(mediator_cnt.schedule_recalc_cnt == 0);
@@ -993,4 +1000,298 @@ OSW_UT(ow_steer_policy_pre_assoc_ut_timer_mode_connect_to_preferred)
     counter_policy->base->ops.recalc_fn(counter_policy->base, ctx->candidate_list);
     OSW_UT_EVAL(ow_steer_candidate_get_preference(candidate_0) == OW_STEER_CANDIDATE_PREFERENCE_SOFT_BLOCKED);
     OSW_UT_EVAL(ow_steer_candidate_get_preference(candidate_1) == OW_STEER_CANDIDATE_PREFERENCE_NONE);
+}
+
+OSW_UT(ow_steer_policy_pre_assoc_ut_timer_mode_connect_to_blocked_auth_after_probe)
+{
+    struct ow_steer_policy_pre_assoc_ut_ctx *ctx = ow_steer_policy_pre_assoc_ut_ctx_get();
+
+    struct ow_steer_policy_pre_assoc_ut_mediator_cnt mediator_cnt = {
+        .schedule_recalc_cnt = 0,
+        .trigger_executor_cnt = 0,
+        .dismiss_executor_cnt = 0,
+    };
+    const struct osw_channel channel = { .width = OSW_CHANNEL_20MHZ, .control_freq_mhz = 2412, };
+    const struct ow_steer_policy_mediator mediator = {
+        .sched_recalc_stack_fn = ow_steer_policy_pre_assoc_ut_mediator_sched_stack_recalc,
+        .trigger_executor_fn = ow_steer_policy_pre_assoc_ut_mediator_trigger_executor,
+        .dismiss_executor_fn = ow_steer_policy_pre_assoc_ut_mediator_dismis_executor,
+        .priv = &mediator_cnt,
+    };
+    struct ow_steer_policy_pre_assoc *counter_policy;
+    struct ow_steer_candidate *candidate_0 = NULL;
+    struct ow_steer_candidate *candidate_1 = NULL;
+
+    /* Setup internal bits */
+    ctx->config.reject_condition.type = OW_STEER_POLICY_PRE_ASSOC_REJECT_CONDITION_TIMER;
+    ctx->config.reject_condition.params.timer.reject_timeout_msec = 4000;
+    ctx->config.immediate_backoff_on_auth_req = true;
+
+    osw_ut_time_init();
+    ow_steer_candidate_list_bss_set(ctx->candidate_list, &ctx->drv_vif_state_0.mac_addr, &channel);
+    ow_steer_candidate_list_bss_set(ctx->candidate_list, &ctx->drv_vif_state_1.mac_addr, &channel);
+    candidate_0 = ow_steer_candidate_list_lookup(ctx->candidate_list, &ctx->drv_vif_state_0.mac_addr);
+    candidate_1 = ow_steer_candidate_list_lookup(ctx->candidate_list, &ctx->drv_vif_state_1.mac_addr);
+
+    counter_policy = ow_steer_policy_pre_assoc_create(&ctx->probe_req.sta_addr, &mediator);
+    OSW_UT_EVAL(counter_policy != NULL);
+    OSW_UT_EVAL(mediator_cnt.trigger_executor_cnt == 0);
+    OSW_UT_EVAL(mediator_cnt.schedule_recalc_cnt == 0);
+    OSW_UT_EVAL(mediator_cnt.dismiss_executor_cnt == 0);
+
+    ow_steer_policy_pre_assoc_set_config(counter_policy, MEMNDUP(&ctx->config, sizeof(ctx->config)));
+    osw_ut_time_advance(0);
+    OSW_UT_EVAL(mediator_cnt.trigger_executor_cnt == 0);
+    OSW_UT_EVAL(mediator_cnt.schedule_recalc_cnt == 1);
+    OSW_UT_EVAL(mediator_cnt.dismiss_executor_cnt == 0);
+
+    /* STA send probe to initiate reject period */
+    counter_policy->state_observer.vif_probe_req_fn(&counter_policy->state_observer, &ctx->vif_0, &ctx->probe_req);
+    ow_steer_candidate_list_clear(ctx->candidate_list);
+    OSW_UT_EVAL(mediator_cnt.trigger_executor_cnt == 1);
+    OSW_UT_EVAL(mediator_cnt.schedule_recalc_cnt == 1);
+    OSW_UT_EVAL(mediator_cnt.dismiss_executor_cnt == 0);
+    counter_policy->base->ops.recalc_fn(counter_policy->base, ctx->candidate_list);
+    OSW_UT_EVAL(ow_steer_candidate_get_preference(candidate_0) == OW_STEER_CANDIDATE_PREFERENCE_SOFT_BLOCKED);
+    OSW_UT_EVAL(ow_steer_candidate_get_preference(candidate_1) == OW_STEER_CANDIDATE_PREFERENCE_NONE);
+
+    /* Give it some time, should still be rejecting */
+    osw_ut_time_advance(OSW_TIME_SEC(1));
+    ow_steer_candidate_list_clear(ctx->candidate_list);
+    OSW_UT_EVAL(mediator_cnt.trigger_executor_cnt == 1);
+    OSW_UT_EVAL(mediator_cnt.schedule_recalc_cnt == 1);
+    OSW_UT_EVAL(mediator_cnt.dismiss_executor_cnt == 0);
+    counter_policy->base->ops.recalc_fn(counter_policy->base, ctx->candidate_list);
+    OSW_UT_EVAL(ow_steer_candidate_get_preference(candidate_0) == OW_STEER_CANDIDATE_PREFERENCE_SOFT_BLOCKED);
+    OSW_UT_EVAL(ow_steer_candidate_get_preference(candidate_1) == OW_STEER_CANDIDATE_PREFERENCE_NONE);
+
+    /* Send auth, no probes */
+    counter_policy->state_observer.vif_frame_rx_fn(&counter_policy->state_observer,
+                                                   &ctx->vif_0,
+                                                   (const void *)&ctx->auth_frame,
+                                                   sizeof(ctx->auth_frame));
+
+    ow_steer_candidate_list_clear(ctx->candidate_list);
+    OSW_UT_EVAL(mediator_cnt.trigger_executor_cnt == 1);
+    OSW_UT_EVAL(mediator_cnt.schedule_recalc_cnt == 2);
+    OSW_UT_EVAL(mediator_cnt.dismiss_executor_cnt == 1);
+    counter_policy->base->ops.recalc_fn(counter_policy->base, ctx->candidate_list);
+    OSW_UT_EVAL(ow_steer_candidate_get_preference(candidate_0) == OW_STEER_CANDIDATE_PREFERENCE_AVAILABLE);
+    OSW_UT_EVAL(ow_steer_candidate_get_preference(candidate_1) == OW_STEER_CANDIDATE_PREFERENCE_NONE);
+
+    /* STA connects to blocked VIF */
+    osw_ut_time_advance(OSW_TIME_SEC(1));
+    ctx->sta_info.vif = &ctx->vif_0;
+    counter_policy->state_observer.sta_connected_fn(&counter_policy->state_observer, &ctx->sta_info);
+    ow_steer_candidate_list_clear(ctx->candidate_list);
+    OSW_UT_EVAL(mediator_cnt.trigger_executor_cnt == 1);
+    OSW_UT_EVAL(mediator_cnt.schedule_recalc_cnt == 3);
+    OSW_UT_EVAL(mediator_cnt.dismiss_executor_cnt == 1);
+    counter_policy->base->ops.recalc_fn(counter_policy->base, ctx->candidate_list);
+    OSW_UT_EVAL(ow_steer_candidate_get_preference(candidate_0) == OW_STEER_CANDIDATE_PREFERENCE_SOFT_BLOCKED);
+    OSW_UT_EVAL(ow_steer_candidate_get_preference(candidate_1) == OW_STEER_CANDIDATE_PREFERENCE_NONE);
+}
+
+OSW_UT(ow_steer_policy_pre_assoc_ut_timer_mode_connect_to_blocked_auth_only)
+{
+    struct ow_steer_policy_pre_assoc_ut_ctx *ctx = ow_steer_policy_pre_assoc_ut_ctx_get();
+
+    struct ow_steer_policy_pre_assoc_ut_mediator_cnt mediator_cnt = {
+        .schedule_recalc_cnt = 0,
+        .trigger_executor_cnt = 0,
+        .dismiss_executor_cnt = 0,
+    };
+    const struct osw_channel channel = { .width = OSW_CHANNEL_20MHZ, .control_freq_mhz = 2412, };
+    const struct ow_steer_policy_mediator mediator = {
+        .sched_recalc_stack_fn = ow_steer_policy_pre_assoc_ut_mediator_sched_stack_recalc,
+        .trigger_executor_fn = ow_steer_policy_pre_assoc_ut_mediator_trigger_executor,
+        .dismiss_executor_fn = ow_steer_policy_pre_assoc_ut_mediator_dismis_executor,
+        .priv = &mediator_cnt,
+    };
+    struct ow_steer_policy_pre_assoc *counter_policy;
+    struct ow_steer_candidate *candidate_0 = NULL;
+    struct ow_steer_candidate *candidate_1 = NULL;
+
+    /* Setup internal bits */
+    ctx->config.reject_condition.type = OW_STEER_POLICY_PRE_ASSOC_REJECT_CONDITION_TIMER;
+    ctx->config.reject_condition.params.timer.reject_timeout_msec = 4000;
+    ctx->config.immediate_backoff_on_auth_req = true;
+
+    osw_ut_time_init();
+    ow_steer_candidate_list_bss_set(ctx->candidate_list, &ctx->drv_vif_state_0.mac_addr, &channel);
+    ow_steer_candidate_list_bss_set(ctx->candidate_list, &ctx->drv_vif_state_1.mac_addr, &channel);
+    candidate_0 = ow_steer_candidate_list_lookup(ctx->candidate_list, &ctx->drv_vif_state_0.mac_addr);
+    candidate_1 = ow_steer_candidate_list_lookup(ctx->candidate_list, &ctx->drv_vif_state_1.mac_addr);
+
+    counter_policy = ow_steer_policy_pre_assoc_create(&ctx->probe_req.sta_addr, &mediator);
+    OSW_UT_EVAL(counter_policy != NULL);
+    OSW_UT_EVAL(mediator_cnt.trigger_executor_cnt == 0);
+    OSW_UT_EVAL(mediator_cnt.schedule_recalc_cnt == 0);
+    OSW_UT_EVAL(mediator_cnt.dismiss_executor_cnt == 0);
+
+    ow_steer_policy_pre_assoc_set_config(counter_policy, MEMNDUP(&ctx->config, sizeof(ctx->config)));
+    osw_ut_time_advance(0);
+    OSW_UT_EVAL(mediator_cnt.trigger_executor_cnt == 0);
+    OSW_UT_EVAL(mediator_cnt.schedule_recalc_cnt == 1);
+    OSW_UT_EVAL(mediator_cnt.dismiss_executor_cnt == 0);
+
+    /* STA send auth to initiate backoff immediatelly period */
+    counter_policy->state_observer.vif_frame_rx_fn(&counter_policy->state_observer,
+                                                   &ctx->vif_0,
+                                                   (const void *)&ctx->auth_frame,
+                                                   sizeof(ctx->auth_frame));
+    ow_steer_candidate_list_clear(ctx->candidate_list);
+    OSW_UT_EVAL(mediator_cnt.trigger_executor_cnt == 1);
+    OSW_UT_EVAL(mediator_cnt.schedule_recalc_cnt == 2);
+    OSW_UT_EVAL(mediator_cnt.dismiss_executor_cnt == 1);
+    counter_policy->base->ops.recalc_fn(counter_policy->base, ctx->candidate_list);
+    OSW_UT_EVAL(ow_steer_candidate_get_preference(candidate_0) == OW_STEER_CANDIDATE_PREFERENCE_AVAILABLE);
+    OSW_UT_EVAL(ow_steer_candidate_get_preference(candidate_1) == OW_STEER_CANDIDATE_PREFERENCE_NONE);
+
+    /* STA send auth again, should already be in backoff anyway and nothing should change */
+    osw_ut_time_advance(OSW_TIME_SEC(1));
+    counter_policy->state_observer.vif_frame_rx_fn(&counter_policy->state_observer,
+                                                   &ctx->vif_0,
+                                                   (const void *)&ctx->auth_frame,
+                                                   sizeof(ctx->auth_frame));
+    ow_steer_candidate_list_clear(ctx->candidate_list);
+    OSW_UT_EVAL(mediator_cnt.trigger_executor_cnt == 1);
+    OSW_UT_EVAL(mediator_cnt.schedule_recalc_cnt == 2);
+    OSW_UT_EVAL(mediator_cnt.dismiss_executor_cnt == 1);
+    counter_policy->base->ops.recalc_fn(counter_policy->base, ctx->candidate_list);
+    OSW_UT_EVAL(ow_steer_candidate_get_preference(candidate_0) == OW_STEER_CANDIDATE_PREFERENCE_AVAILABLE);
+    OSW_UT_EVAL(ow_steer_candidate_get_preference(candidate_1) == OW_STEER_CANDIDATE_PREFERENCE_NONE);
+
+    /* STA connects to blocked VIF */
+    osw_ut_time_advance(OSW_TIME_SEC(1));
+    ctx->sta_info.vif = &ctx->vif_0;
+    counter_policy->state_observer.sta_connected_fn(&counter_policy->state_observer, &ctx->sta_info);
+    ow_steer_candidate_list_clear(ctx->candidate_list);
+    OSW_UT_EVAL(mediator_cnt.trigger_executor_cnt == 1);
+    OSW_UT_EVAL(mediator_cnt.schedule_recalc_cnt == 3);
+    OSW_UT_EVAL(mediator_cnt.dismiss_executor_cnt == 1);
+    counter_policy->base->ops.recalc_fn(counter_policy->base, ctx->candidate_list);
+    OSW_UT_EVAL(ow_steer_candidate_get_preference(candidate_0) == OW_STEER_CANDIDATE_PREFERENCE_SOFT_BLOCKED);
+    OSW_UT_EVAL(ow_steer_candidate_get_preference(candidate_1) == OW_STEER_CANDIDATE_PREFERENCE_NONE);
+}
+
+OSW_UT(ow_steer_policy_pre_assoc_ut_timer_mode_connect_to_blocked_auth_only_negative)
+{
+    struct ow_steer_policy_pre_assoc_ut_ctx *ctx = ow_steer_policy_pre_assoc_ut_ctx_get();
+
+    struct ow_steer_policy_pre_assoc_ut_mediator_cnt mediator_cnt = {
+        .schedule_recalc_cnt = 0,
+        .trigger_executor_cnt = 0,
+        .dismiss_executor_cnt = 0,
+    };
+    const struct osw_channel channel = { .width = OSW_CHANNEL_20MHZ, .control_freq_mhz = 2412, };
+    const struct ow_steer_policy_mediator mediator = {
+        .sched_recalc_stack_fn = ow_steer_policy_pre_assoc_ut_mediator_sched_stack_recalc,
+        .trigger_executor_fn = ow_steer_policy_pre_assoc_ut_mediator_trigger_executor,
+        .dismiss_executor_fn = ow_steer_policy_pre_assoc_ut_mediator_dismis_executor,
+        .priv = &mediator_cnt,
+    };
+    struct ow_steer_policy_pre_assoc *counter_policy;
+    struct ow_steer_candidate *candidate_0 = NULL;
+    struct ow_steer_candidate *candidate_1 = NULL;
+
+    /* Setup internal bits */
+    ctx->config.reject_condition.type = OW_STEER_POLICY_PRE_ASSOC_REJECT_CONDITION_TIMER;
+    ctx->config.reject_condition.params.timer.reject_timeout_msec = 4000;
+    ctx->config.immediate_backoff_on_auth_req= false;
+
+    osw_ut_time_init();
+    ow_steer_candidate_list_bss_set(ctx->candidate_list, &ctx->drv_vif_state_0.mac_addr, &channel);
+    ow_steer_candidate_list_bss_set(ctx->candidate_list, &ctx->drv_vif_state_1.mac_addr, &channel);
+    candidate_0 = ow_steer_candidate_list_lookup(ctx->candidate_list, &ctx->drv_vif_state_0.mac_addr);
+    candidate_1 = ow_steer_candidate_list_lookup(ctx->candidate_list, &ctx->drv_vif_state_1.mac_addr);
+
+    counter_policy = ow_steer_policy_pre_assoc_create(&ctx->probe_req.sta_addr, &mediator);
+    OSW_UT_EVAL(counter_policy != NULL);
+    OSW_UT_EVAL(mediator_cnt.trigger_executor_cnt == 0);
+    OSW_UT_EVAL(mediator_cnt.schedule_recalc_cnt == 0);
+    OSW_UT_EVAL(mediator_cnt.dismiss_executor_cnt == 0);
+
+    ow_steer_policy_pre_assoc_set_config(counter_policy, MEMNDUP(&ctx->config, sizeof(ctx->config)));
+    osw_ut_time_advance(0);
+    OSW_UT_EVAL(mediator_cnt.trigger_executor_cnt == 0);
+    OSW_UT_EVAL(mediator_cnt.schedule_recalc_cnt == 1);
+    OSW_UT_EVAL(mediator_cnt.dismiss_executor_cnt == 0);
+
+    /* STA send auth - but it should not cause backoff because auth_block==true */
+    counter_policy->state_observer.vif_frame_rx_fn(&counter_policy->state_observer,
+                                                   &ctx->vif_0,
+                                                   (const void *)&ctx->auth_frame,
+                                                   sizeof(ctx->auth_frame));
+    ow_steer_candidate_list_clear(ctx->candidate_list);
+    OSW_UT_EVAL(mediator_cnt.trigger_executor_cnt == 0);
+    OSW_UT_EVAL(mediator_cnt.schedule_recalc_cnt == 1);
+    OSW_UT_EVAL(mediator_cnt.dismiss_executor_cnt == 0);
+    counter_policy->base->ops.recalc_fn(counter_policy->base, ctx->candidate_list);
+    OSW_UT_EVAL(ow_steer_candidate_get_preference(candidate_0) == OW_STEER_CANDIDATE_PREFERENCE_SOFT_BLOCKED);
+    OSW_UT_EVAL(ow_steer_candidate_get_preference(candidate_1) == OW_STEER_CANDIDATE_PREFERENCE_NONE);
+}
+
+OSW_UT(ow_steer_policy_pre_assoc_ut_timer_mode_connect_to_blocked_auth_only_bypass_failed)
+{
+    struct ow_steer_policy_pre_assoc_ut_ctx *ctx = ow_steer_policy_pre_assoc_ut_ctx_get();
+
+    struct ow_steer_policy_pre_assoc_ut_mediator_cnt mediator_cnt = {
+        .schedule_recalc_cnt = 0,
+        .trigger_executor_cnt = 0,
+        .dismiss_executor_cnt = 0,
+    };
+    const struct osw_channel channel = { .width = OSW_CHANNEL_20MHZ, .control_freq_mhz = 2412, };
+    const struct ow_steer_policy_mediator mediator = {
+        .sched_recalc_stack_fn = ow_steer_policy_pre_assoc_ut_mediator_sched_stack_recalc,
+        .trigger_executor_fn = ow_steer_policy_pre_assoc_ut_mediator_trigger_executor,
+        .dismiss_executor_fn = ow_steer_policy_pre_assoc_ut_mediator_dismis_executor,
+        .priv = &mediator_cnt,
+    };
+    struct ow_steer_policy_pre_assoc *counter_policy;
+    struct ow_steer_candidate *candidate_0 = NULL;
+    struct ow_steer_candidate *candidate_1 = NULL;
+
+    /* Setup internal bits */
+    ctx->config.reject_condition.type = OW_STEER_POLICY_PRE_ASSOC_REJECT_CONDITION_TIMER;
+    ctx->config.reject_condition.params.timer.reject_timeout_msec = 4000;
+    ctx->config.immediate_backoff_on_auth_req = true;
+
+    osw_ut_time_init();
+    ow_steer_candidate_list_bss_set(ctx->candidate_list, &ctx->drv_vif_state_0.mac_addr, &channel);
+    ow_steer_candidate_list_bss_set(ctx->candidate_list, &ctx->drv_vif_state_1.mac_addr, &channel);
+    candidate_0 = ow_steer_candidate_list_lookup(ctx->candidate_list, &ctx->drv_vif_state_0.mac_addr);
+    candidate_1 = ow_steer_candidate_list_lookup(ctx->candidate_list, &ctx->drv_vif_state_1.mac_addr);
+
+    counter_policy = ow_steer_policy_pre_assoc_create(&ctx->probe_req.sta_addr, &mediator);
+    OSW_UT_EVAL(counter_policy != NULL);
+    OSW_UT_EVAL(mediator_cnt.trigger_executor_cnt == 0);
+    OSW_UT_EVAL(mediator_cnt.schedule_recalc_cnt == 0);
+    OSW_UT_EVAL(mediator_cnt.dismiss_executor_cnt == 0);
+
+    ow_steer_policy_pre_assoc_set_config(counter_policy, MEMNDUP(&ctx->config, sizeof(ctx->config)));
+    osw_ut_time_advance(0);
+    OSW_UT_EVAL(mediator_cnt.trigger_executor_cnt == 0);
+    OSW_UT_EVAL(mediator_cnt.schedule_recalc_cnt == 1);
+    OSW_UT_EVAL(mediator_cnt.dismiss_executor_cnt == 0);
+
+    /* STA send auth to initiate backoff immediatelly period */
+    counter_policy->state_observer.vif_frame_rx_fn(&counter_policy->state_observer,
+                                                   &ctx->vif_0,
+                                                   (const void *)&ctx->auth_frame,
+                                                   sizeof(ctx->auth_frame));
+    ow_steer_candidate_list_clear(ctx->candidate_list);
+    OSW_UT_EVAL(mediator_cnt.trigger_executor_cnt == 1);
+    OSW_UT_EVAL(mediator_cnt.schedule_recalc_cnt == 2);
+    OSW_UT_EVAL(mediator_cnt.dismiss_executor_cnt == 1);
+    counter_policy->base->ops.recalc_fn(counter_policy->base, ctx->candidate_list);
+    OSW_UT_EVAL(ow_steer_candidate_get_preference(candidate_0) == OW_STEER_CANDIDATE_PREFERENCE_AVAILABLE);
+    OSW_UT_EVAL(ow_steer_candidate_get_preference(candidate_1) == OW_STEER_CANDIDATE_PREFERENCE_NONE);
+
+    /* This simulates possible failure to unblock a client
+     * quickly enough through auth unblocking. It simply
+     * checks if the report will be generated.
+     */
+    osw_ut_time_advance(OSW_TIME_SEC(10));
+    OSW_UT_EVAL(counter_policy->pstate.auth_bypass_fail_cnt == 1);
 }

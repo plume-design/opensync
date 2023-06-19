@@ -27,6 +27,7 @@ CFLAGS   := -Wall -Wextra -Werror
 CFLAGS   += -Wno-unused-parameter
 CFLAGS   += -Wno-unused-label
 CFLAGS   += -Wno-strict-aliasing
+CFLAGS   += -Wno-missing-braces
 CFLAGS   += -fasynchronous-unwind-tables
 
 DEBUGFLAGS := -g

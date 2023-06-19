@@ -672,7 +672,7 @@ qosm_ic_template_tag_update(om_tag_t *tag,
         {
             LOGT("%s(): tag %s in use is updated", __func__, tag->name);
             qosm_ip_iface_start(filter->parent);
-            break;
+            continue;
         }
     }
     return true;

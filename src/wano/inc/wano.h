@@ -141,6 +141,7 @@ struct wano_plugin_status
     enum
     {
         WANP_OK,        /* WANO link was successfully provisioned */
+        WANP_RESERVED,  /* Interface reserved */
         WANP_ERROR,     /* Error occurred while provisioning plug-in, skip to the next plug-in */
         WANP_SKIP,      /* Skip this plug-in */
         WANP_BUSY,      /* Plug-in is busy doing work, stop the timeout timer */

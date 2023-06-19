@@ -370,6 +370,12 @@ static struct osw_drv_conf g_drv_conf = {
                                     { .server = "192.168.7.2", .passphrase = "no_idea", .port = 1812 },
                                 },
                             },
+                            .wps_cred_list = {
+                                .count = 1,
+                                .list = (struct osw_wps_cred[]) {
+                                    { .psk.str = "password2" },
+                                },
+                            },
                         },
                     },
                 },
@@ -591,9 +597,9 @@ OSW_UT(osw_hostap_conf_generate_ap_config_psk_file_ut)
                                    "vif0.10_ap",
                                    &ap_conf);
     osw_hostap_conf_generate_ap_config_bufs(&ap_conf);
-    OSW_UT_EVAL(strstr(psks_buf, "wps=1 keyid=key-1 00:00:00:00:00:00 password1\n"));
+    OSW_UT_EVAL(strstr(psks_buf, "keyid=key-1 00:00:00:00:00:00 password1\n"));
     OSW_UT_EVAL(strstr(psks_buf, "wps=1 keyid=key-2 00:00:00:00:00:00 password2\n"));
-    OSW_UT_EVAL(strstr(psks_buf, "wps=1 keyid=key-3 00:00:00:00:00:00 password3\n\0"));
+    OSW_UT_EVAL(strstr(psks_buf, "keyid=key-3 00:00:00:00:00:00 password3\n\0"));
 
 
 
@@ -611,10 +617,10 @@ OSW_UT(osw_hostap_conf_generate_ap_config_psk_file_ut)
                                    "vif0.10_ap",
                                    &ap_conf);
     osw_hostap_conf_generate_ap_config_bufs(&ap_conf);
-    OSW_UT_EVAL(strstr(psks_buf, "wps=1 keyid=key--100 00:00:00:00:00:00 !@#$%^&*()-={}?><//\\\n"));
-    OSW_UT_EVAL(strstr(psks_buf, "wps=1 keyid=key--2147483647 00:00:00:00:00:00 "
+    OSW_UT_EVAL(strstr(psks_buf, "keyid=key--100 00:00:00:00:00:00 !@#$%^&*()-={}?><//\\\n"));
+    OSW_UT_EVAL(strstr(psks_buf, "keyid=key--2147483647 00:00:00:00:00:00 "
                 "123456789012345678901234567890123456789023456789012345678901234\n"));
-    OSW_UT_EVAL(strstr(psks_buf, "wps=1 keyid=key-2147483647 00:00:00:00:00:00 -\n"));
+    OSW_UT_EVAL(strstr(psks_buf, "keyid=key-2147483647 00:00:00:00:00:00 -\n"));
 
     template_config_free(drv_conf);
 }
@@ -734,7 +740,7 @@ OSW_UT(osw_hostap_conf_parse_ap_state_psk_ut)
 
     wpa_psk_file = ""
         "wps=1 keyid=key-1 00:00:00:00:00:00 password1\n"
-        "wps=1 keyid=key-2 00:00:00:00:00:00 password2\n"
+        "keyid=key-2 00:00:00:00:00:00 password2\n"
         "wps=1 keyid=key--100 00:00:00:00:00:00 password3\n";
     ap_bufs.wpa_psk_file = wpa_psk_file;
     osw_hostap_conf_fill_ap_state(&ap_bufs,
@@ -746,6 +752,9 @@ OSW_UT(osw_hostap_conf_parse_ap_state_psk_ut)
     OSW_UT_EVAL(strcmp(vstate.u.ap.psk_list.list[1].psk.str, "password2") == 0);
     OSW_UT_EVAL(vstate.u.ap.psk_list.list[2].key_id == -100);
     OSW_UT_EVAL(strcmp(vstate.u.ap.psk_list.list[2].psk.str, "password3") == 0);
+    OSW_UT_EVAL(vstate.u.ap.wps_cred_list.count == 2);
+    OSW_UT_EVAL(strcmp(vstate.u.ap.wps_cred_list.list[0].psk.str, "password1") == 0);
+    OSW_UT_EVAL(strcmp(vstate.u.ap.wps_cred_list.list[1].psk.str, "password3") == 0);
     FREE(vstate.u.ap.psk_list.list);
     /* Intentionally leave ap_bufs.wpa_psk_file.
      * This test checks precedence if wpa_psk_file
@@ -771,3 +780,36 @@ OSW_UT(osw_hostap_conf_parse_ap_state_radius_ut)
     /* FIXME - implementation incomplete */
 }
 
+OSW_UT(osw_hostap_conf_parse_funky_psks)
+{
+    struct osw_ap_psk_list psks;
+    struct osw_wps_cred_list creds;
+    MEMZERO(psks);
+    MEMZERO(creds);
+    hapd_util_hapd_psk_file_to_osw(
+        "keyid=key--1 00:00:00:00:00:00 hello\n"
+        "keyid=key-2 00:00:00:00:00:00 foo bar\n"
+        "keyid=key-4 00:00:00:00:00:00 0123456789012345678901234567890123456789012345678901234567890123\n" /* 64 chars */
+        "keyid=key-5 unknown_attr=xx 00:00:00:00:00:00 left=right\n"
+        "bogus line\n"
+        "incomplete=1 00:00:00\n" /* invalid mac */
+        "incomplete=2 00:00:00:00:00:00\n" /* no space + passphrase */
+        "broken=1 00:00:00:00:00:00 01234567890123456789012345678901234567890123456789012345678901234\n" /* 65 chars, too long */
+        "#keyid=key-5 00:00:00:00:00:00 commented\n"
+        "keyid=key-3 00:00:00:00:00:00 one\"two\n",
+        &psks,
+        &creds);
+    LOGT("count = %zu", psks.count);
+    assert(psks.count == 5);
+    assert(psks.list[0].key_id == -1);
+    assert(psks.list[1].key_id == 2);
+    assert(psks.list[2].key_id == 4);
+    assert(psks.list[3].key_id == 5);
+    assert(psks.list[4].key_id == 3);
+    assert(strcmp(psks.list[0].psk.str, "hello") == 0);
+    assert(strcmp(psks.list[1].psk.str, "foo bar") == 0);
+    assert(strcmp(psks.list[2].psk.str, "0123456789012345678901234567890123456789012345678901234567890123") == 0);
+    assert(strcmp(psks.list[3].psk.str, "left=right") == 0);
+    assert(strcmp(psks.list[4].psk.str, "one\"two") == 0);
+    FREE(psks.list);
+}

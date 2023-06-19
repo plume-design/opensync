@@ -132,7 +132,6 @@ static int cm2_ovs_insert_port_into_native_bridge(char *bridge, char *port,
                                                   bool want_port_in_bridge)
 {
     char command[512];
-    char *op = "";
     bool port_is_in_bridge;
     bool need_to_add;
     bool need_to_del;
@@ -149,11 +148,11 @@ static int cm2_ovs_insert_port_into_native_bridge(char *bridge, char *port,
 
     /* add/delete it to/from Linux bridge */
     if (need_to_add || need_to_del) {
-        LOGI("Linux bridge: %s port = %s bridge = %s", op, port, bridge);
 
-        if (need_to_add) cm2_add_port_to_br(port, bridge);
-        if (need_to_del) cm2_del_port_from_br(port, bridge);
-
+        LOGI("Linux bridge  %s: port = %s bridge = %s",
+              need_to_add ? "add" : "del", port, bridge);
+        if (need_to_add) ret = cm2_add_port_to_br(port, bridge);
+        if (need_to_del) ret = cm2_del_port_from_br(port, bridge);
     }
 
     return ret;

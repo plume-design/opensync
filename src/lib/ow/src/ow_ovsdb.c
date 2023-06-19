@@ -35,6 +35,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <osw_module.h>
 #include "ow_conf.h"
 #include "ow_ovsdb_ms.h"
+#include "ow_ovsdb_wps.h"
 #include "ow_ovsdb_steer.h"
 #include "ow_ovsdb_cconf.h"
 #include "ow_ovsdb_stats.h"
@@ -47,6 +48,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #define OW_OVSDB_RETRY_SECONDS 5.0
 #define OW_OVSDB_VIF_FLAG_SEEN 0x01
+#define OW_OVSDB_CM_NEEDS_PORT_STATE_BLIP 1
 
 /* FIXME: This will likely need legacy workarounds, eg. to not add
  * objects to State tables unless they are in Config table first,
@@ -66,7 +68,8 @@ struct ow_ovsdb {
     struct ds_tree vif_tree;
     struct ds_tree sta_tree;
     struct ow_ovsdb_ms_root ms;
-    struct ds_tree vif_cleanup_tree;
+    struct ow_ovsdb_wps_ops *wps;
+    struct ow_ovsdb_wps_changed *wps_changed;
     struct ow_ovsdb_steer *steering;
 };
 
@@ -80,16 +83,6 @@ struct ow_ovsdb_phy {
     struct schema_Wifi_Radio_State state_cur;
     struct schema_Wifi_Radio_State state_new;
     char *phy_name;
-    ev_timer work;
-};
-
-struct ow_ovsdb_vif_cleanup {
-    struct ds_tree_node node;
-    struct ds_tree *root;
-    char *vif_name;
-    char *phy_name;
-    bool configured;
-    bool reported;
     ev_timer work;
 };
 
@@ -130,116 +123,54 @@ static struct ow_ovsdb g_ow_ovsdb = {
     .phy_tree = DS_TREE_INIT(ds_str_cmp, struct ow_ovsdb_phy, node),
     .vif_tree = DS_TREE_INIT(ds_str_cmp, struct ow_ovsdb_vif, node),
     .sta_tree = DS_TREE_INIT(ow_ovsdb_sta_cmp, struct ow_ovsdb_sta, node),
-    .vif_cleanup_tree = DS_TREE_INIT(ds_str_cmp, struct ow_ovsdb_vif_cleanup, node),
 };
 
-static void
-ow_ovsdb_vif_cleanup_gc(struct ow_ovsdb_vif_cleanup *vif)
+static bool
+ow_ovsdb_vif_treat_deleted_as_disabled(enum osw_vif_type vif_type)
 {
-    if (vif->configured == true) return;
-    if (vif->reported == true) return;
-
-    ds_tree_remove(vif->root, vif);
-    FREE(vif->phy_name);
-    FREE(vif->vif_name);
-    FREE(vif);
-}
-
-static void
-ow_ovsdb_vif_cleanup_sched(struct ow_ovsdb_vif_cleanup *vif)
-{
-    ev_timer_stop(EV_DEFAULT_ &vif->work);
-    ev_timer_set(&vif->work, 0, 5);
-    ev_timer_start(EV_DEFAULT_ &vif->work);
+    /* Current Wifi_VIF_Config row semantics are a bit
+     * hairy. Row removal is considered implicitly as a
+     * desire to disable an interface (and remove it).
+     * However removal of interfaces is strictly
+     * implementation specific - both historically and in
+     * OSW. It only makes sense to disable interfaces.
+     * However row existence should ideally be considered as
+     * intent to override state of a matching if_name row in
+     * Wifi_VIF_State. Until that is fixed in the entire
+     * stack (all the way to the controller) the implicit
+     * delete-is-disable needs to be upheld.
+     */
+    switch (vif_type) {
+        case OSW_VIF_AP: return true;
+        case OSW_VIF_AP_VLAN: return false;
+        case OSW_VIF_STA: return true;
+        case OSW_VIF_UNDEFINED: return false;
+    }
+    return true;
 }
 
 static bool
-ow_ovsdb_vif_cleanup_sync(struct ow_ovsdb_vif_cleanup *vif)
+ow_ovsdb_vif_report_only_configured(enum osw_vif_type vif_type)
 {
-    /* FIXME: This could be using osw_conf_mutator
-     * instead of ow_conf for more independent
-     * operation and to avoid overriding
-     * accidentally ow_ovsdb core logic.
+    /* This is tied to reporting Wifi_VIF_State rows only if
+     * there's an associated Wifi_VIF_Config row of a given
+     * if_name. The deleted as disabled is tightly coupled
+     * to that, but for clarity of intent this is kept as a
+     * separate helper.
      */
-
-    if (vif->configured == true) {
-        return true;
+    switch (vif_type) {
+        case OSW_VIF_AP: return true;
+        case OSW_VIF_AP_VLAN: return false;
+        case OSW_VIF_STA: return true;
+        case OSW_VIF_UNDEFINED: return false;
     }
-
-    if (vif->reported == false) {
-        ow_conf_vif_set_enabled(vif->vif_name, NULL);
-        ow_conf_vif_set_phy_name(vif->vif_name, NULL);
-        return true;
-    }
-
-    if (vif->phy_name == NULL) {
-        LOGI("ow: ovsdb: vif: cleanup: %s: cannot force remove "
-             "because phy_name is not known, postponing",
-             vif->vif_name);
-        return true;
-    }
-
-    LOGI("ow: ovsdb: vif: cleanup: %s: force removing", vif->vif_name);
-    bool f = false;
-    ow_conf_vif_set_enabled(vif->vif_name, &f);
-    ow_conf_vif_set_phy_name(vif->vif_name, vif->phy_name);
-
     return false;
 }
 
-static void
-ow_ovsdb_vif_cleanup_work_cb(EV_P_ ev_timer *arg, int events)
+static bool
+ow_ovsdb_vif_is_deleted(const struct ow_ovsdb_vif *vif)
 {
-    struct ow_ovsdb_vif_cleanup *vif = container_of(arg, struct ow_ovsdb_vif_cleanup, work);
-    if (ow_ovsdb_vif_cleanup_sync(vif) == false) return;
-    ev_timer_stop(EV_A_ &vif->work);
-    ow_ovsdb_vif_cleanup_gc(vif);
-}
-
-static struct ow_ovsdb_vif_cleanup *
-ow_ovsdb_vif_cleanup_get(struct ds_tree *tree,
-                         const char *vif_name)
-{
-    struct ow_ovsdb_vif_cleanup *vif = ds_tree_find(tree, vif_name);
-    if (vif == NULL) {
-        vif = CALLOC(1, sizeof(*vif));
-        vif->vif_name = STRDUP(vif_name);
-        vif->root = tree;
-        ev_timer_init(&vif->work, ow_ovsdb_vif_cleanup_work_cb, 0, 0);
-        ds_tree_insert(tree, vif, vif->vif_name);
-    }
-    return vif;
-}
-
-static void
-ow_ovsdb_vif_cleanup_set_phy_name(const char *vif_name,
-                                  const char *phy_name)
-{
-    struct ds_tree *tree = &g_ow_ovsdb.vif_cleanup_tree;
-    struct ow_ovsdb_vif_cleanup *vif = ow_ovsdb_vif_cleanup_get(tree, vif_name);
-    FREE(vif->phy_name);
-    vif->phy_name = STRDUP(phy_name);
-    ow_ovsdb_vif_cleanup_sched(vif);
-}
-
-static void
-ow_ovsdb_vif_cleanup_set_reported(const char *vif_name,
-                                  bool reported)
-{
-    struct ds_tree *tree = &g_ow_ovsdb.vif_cleanup_tree;
-    struct ow_ovsdb_vif_cleanup *vif = ow_ovsdb_vif_cleanup_get(tree, vif_name);
-    vif->reported = reported;
-    ow_ovsdb_vif_cleanup_sched(vif);
-}
-
-static void
-ow_ovsdb_vif_cleanup_set_configured(const char *vif_name,
-                                    bool configured)
-{
-    struct ds_tree *tree = &g_ow_ovsdb.vif_cleanup_tree;
-    struct ow_ovsdb_vif_cleanup *vif = ow_ovsdb_vif_cleanup_get(tree, vif_name);
-    vif->configured = configured;
-    ow_ovsdb_vif_cleanup_sched(vif);
+    return strlen(vif->config.if_name) == 0;
 }
 
 static int
@@ -272,6 +203,7 @@ ow_ovsdb_width_to_htmode(enum osw_channel_width w)
         case OSW_CHANNEL_80MHZ: return "HT80";
         case OSW_CHANNEL_160MHZ: return "HT160";
         case OSW_CHANNEL_80P80MHZ: return "HT8080";
+        case OSW_CHANNEL_320MHZ: return "HT320";
     }
     return NULL;
 }
@@ -396,6 +328,74 @@ ow_ovsdb_min_hw_mode_from_ap_mode(const struct osw_ap_mode *ap_mode,
     return OW_OVSDB_MIN_HW_MODE_UNSPEC;
 }
 
+static const char *
+ow_ovsdb_sta_multi_ap_to_cstr(const bool multi_ap)
+{
+    if (multi_ap) {
+        return SCHEMA_CONSTS_MULTI_AP_BACKHAUL_STA;
+    }
+    else {
+        return SCHEMA_CONSTS_MULTI_AP_NONE;
+    }
+}
+
+static bool
+ow_ovsdb_sta_multi_ap_from_cstr(const char *str)
+{
+    if (strcmp(str, SCHEMA_CONSTS_MULTI_AP_BACKHAUL_STA) == 0) {
+        return true;
+    }
+    else if (strcmp(str, SCHEMA_CONSTS_MULTI_AP_NONE) == 0) {
+        return false;
+    }
+    else {
+        WARN_ON(1);
+        return false;
+    }
+}
+
+static const char *
+ow_ovsdb_ap_multi_ap_to_cstr(const struct osw_multi_ap *multi_ap)
+{
+    if (multi_ap->fronthaul_bss && multi_ap->backhaul_bss) {
+        return SCHEMA_CONSTS_MULTI_AP_FRONTHAUL_BACKHAUL_BSS;
+    }
+    else if (multi_ap->fronthaul_bss && !multi_ap->backhaul_bss) {
+        return SCHEMA_CONSTS_MULTI_AP_FRONTHAUL_BSS;
+    }
+    else if (!multi_ap->fronthaul_bss && multi_ap->backhaul_bss) {
+        return SCHEMA_CONSTS_MULTI_AP_BACKHAUL_BSS;
+    }
+    else {
+        return SCHEMA_CONSTS_MULTI_AP_NONE;
+    }
+}
+
+static void
+ow_ovsdb_ap_multi_ap_from_cstr(const char *str,
+                               struct osw_multi_ap *multi_ap)
+{
+    if (strcmp(str, SCHEMA_CONSTS_MULTI_AP_NONE) == 0) {
+        multi_ap->fronthaul_bss = false;
+        multi_ap->backhaul_bss = false;
+    }
+    else if (strcmp(str, SCHEMA_CONSTS_MULTI_AP_FRONTHAUL_BSS) == 0) {
+        multi_ap->fronthaul_bss = true;
+        multi_ap->backhaul_bss = false;
+    }
+    else if (strcmp(str, SCHEMA_CONSTS_MULTI_AP_FRONTHAUL_BACKHAUL_BSS) == 0) {
+        multi_ap->fronthaul_bss = true;
+        multi_ap->backhaul_bss = true;
+    }
+    else if (strcmp(str, SCHEMA_CONSTS_MULTI_AP_BACKHAUL_BSS) == 0) {
+        multi_ap->fronthaul_bss = false;
+        multi_ap->backhaul_bss = true;
+    }
+    else {
+        WARN_ON(1);
+    }
+}
+
 /* FIXME: These get helpers could be replaced with
  * ovsdb_cache lookups to be more efficient  */
 
@@ -512,6 +512,44 @@ ow_ovsdb_phystate_fill_channel(struct schema_Wifi_Radio_State *schema,
         const char *ht_mode = ow_ovsdb_width_to_htmode(channel.width);
         if (ht_mode != NULL) SCHEMA_SET_STR(schema->ht_mode, ht_mode);
     }
+}
+
+static void
+ow_ovsdb_phystate_get_tx_power_dbm_iter_cb(const struct osw_state_vif_info *info,
+                                           void *priv)
+{
+    int *tx_power_dbm = priv;
+    const bool vifs_with_mismatched_power = (*tx_power_dbm == -1);
+    if (vifs_with_mismatched_power) return;
+
+    const int vif_power_dbm = info->drv_state->tx_power_dbm;
+    if (info->drv_state->tx_power_dbm == 0) return;
+
+    if (*tx_power_dbm == -1) {
+        /* unreachable */
+    }
+    else if (*tx_power_dbm == 0) {
+        *tx_power_dbm = vif_power_dbm;
+    }
+    else if (*tx_power_dbm != vif_power_dbm) {
+        *tx_power_dbm = -1;
+    }
+    else {
+        *tx_power_dbm = vif_power_dbm;
+    }
+}
+
+static void
+ow_ovsdb_phystate_fill_tx_power(struct schema_Wifi_Radio_State *schema,
+                                const struct osw_state_phy_info *phy)
+{
+    int tx_power_dbm = 0;
+    osw_state_vif_get_list(ow_ovsdb_phystate_get_tx_power_dbm_iter_cb,
+                           phy->phy_name,
+                           &tx_power_dbm);
+
+    if (tx_power_dbm <= 0) return;
+    SCHEMA_SET_INT(schema->tx_power, tx_power_dbm);
 }
 
 static void
@@ -759,6 +797,8 @@ ow_ovsdb_phystate_to_schema(struct schema_Wifi_Radio_State *schema,
                                       rconf->fallback_parents_keys[i],
                                       rconf->fallback_parents[i]);
         }
+
+        SCHEMA_CPY_INT(schema->thermal_tx_chainmask, rconf->thermal_tx_chainmask);
     }
 
     snprintf(mac_str, sizeof(mac_str), "%02x:%02x:%02x:%02x:%02x:%02x",
@@ -775,6 +815,7 @@ ow_ovsdb_phystate_to_schema(struct schema_Wifi_Radio_State *schema,
     SCHEMA_SET_BOOL(schema->enabled, phy->drv_state->enabled);
     ow_ovsdb_phystate_fill_bcn_int(schema, phy);
     ow_ovsdb_phystate_fill_channel(schema, phy);
+    ow_ovsdb_phystate_fill_tx_power(schema, phy);
     ow_ovsdb_phystate_fill_hwmode(schema, freq_band, phy);
     ow_ovsdb_phystate_fill_allowed_channels(schema, phy);
     ow_ovsdb_phystate_fill_channels(schema, phy);
@@ -914,19 +955,37 @@ ow_ovsdb_vifstate_fill_ap_acl(struct schema_Wifi_VIF_State *schema,
     }
 }
 
+static bool
+ow_ovsdb_min_hw_mode_is_not_supported(void)
+{
+    return getenv("OW_OVSDB_MIN_HW_MODE_NOT_SUPPORTED") != NULL;
+}
+
+static bool
+ow_ovsdb_min_hw_mode_is_supported(void)
+{
+    return !ow_ovsdb_min_hw_mode_is_not_supported();
+}
+
 static void
 ow_ovsdb_vifstate_fill_min_hw_mode(struct schema_Wifi_VIF_State *vstate,
+                                   const struct schema_Wifi_VIF_Config *vconf,
                                    const struct osw_ap_mode *ap_mode,
                                    const enum osw_band band)
 {
-    const enum ow_ovsdb_min_hw_mode min_hw_mode = ow_ovsdb_min_hw_mode_from_ap_mode(ap_mode, band);
-    const char *str = ow_ovsdb_min_hw_mode_to_str(min_hw_mode);
-    const bool valid = (strlen(str) > 0);
-
     SCHEMA_UNSET_FIELD(vstate->min_hw_mode);
 
-    if (valid) {
-        SCHEMA_SET_STR(vstate->min_hw_mode, str);
+    if (ow_ovsdb_min_hw_mode_is_supported()) {
+        const enum ow_ovsdb_min_hw_mode min_hw_mode = ow_ovsdb_min_hw_mode_from_ap_mode(ap_mode, band);
+        const char *str = ow_ovsdb_min_hw_mode_to_str(min_hw_mode);
+        const bool valid = (strlen(str) > 0);
+
+        if (valid) {
+            SCHEMA_SET_STR(vstate->min_hw_mode, str);
+        }
+    }
+    else {
+        SCHEMA_CPY_STR(vstate->min_hw_mode, vconf->min_hw_mode);
     }
 }
 
@@ -936,6 +995,7 @@ ow_ovsdb_vifstate_to_schema(struct schema_Wifi_VIF_State *schema,
                             const struct osw_state_vif_info *vif)
 {
     const struct osw_drv_vif_state_ap *ap = &vif->drv_state->u.ap;
+    const struct osw_drv_vif_state_ap_vlan *ap_vlan = &vif->drv_state->u.ap_vlan;
     const struct osw_drv_vif_state_sta *vsta = &vif->drv_state->u.sta;
     struct osw_hwaddr_str mac;
     int c;
@@ -961,7 +1021,7 @@ ow_ovsdb_vifstate_to_schema(struct schema_Wifi_VIF_State *schema,
             SCHEMA_SET_BOOL(schema->uapsd_enable, ap->mode.wmm_uapsd_enabled);
             SCHEMA_SET_BOOL(schema->mcast2ucast, ap->mcast2ucast);
             SCHEMA_SET_BOOL(schema->dynamic_beacon, false); // FIXME
-            SCHEMA_SET_STR(schema->multi_ap, "none"); // FIXME
+            SCHEMA_SET_STR(schema->multi_ap, ow_ovsdb_ap_multi_ap_to_cstr(&ap->multi_ap));
 
             {
                 const char *acl_policy_str = ow_ovsdb_acl_policy_to_str(ap->acl_policy);
@@ -979,13 +1039,22 @@ ow_ovsdb_vifstate_to_schema(struct schema_Wifi_VIF_State *schema,
             ow_ovsdb_vifstate_fill_akm(schema, &ap->wpa);
             ow_ovsdb_vifstate_fill_ap_psk(schema, &ap->psk_list);
             ow_ovsdb_vifstate_fill_ap_acl(schema, &ap->acl);
+            ow_ovsdb_wps_op_fill_vstate(g_ow_ovsdb.wps, schema);
 
             const uint32_t freq = ap->channel.control_freq_mhz;
             const enum osw_band band = osw_freq_to_band(freq);
-            ow_ovsdb_vifstate_fill_min_hw_mode(schema, &ap->mode, band);
+            ow_ovsdb_vifstate_fill_min_hw_mode(schema, vconf, &ap->mode, band);
             break;
         case OSW_VIF_AP_VLAN:
             SCHEMA_SET_STR(schema->mode, "ap_vlan");
+            SCHEMA_SET_BOOL(schema->wds, true);
+            if (ap_vlan->sta_addrs.count > 0) {
+                WARN_ON(ap_vlan->sta_addrs.count > 1);
+                const struct osw_hwaddr *first = &ap_vlan->sta_addrs.list[0];
+                struct osw_hwaddr_str buf;
+                const char *mac_str = osw_hwaddr2str(first, &buf);
+                SCHEMA_SET_STR(schema->ap_vlan_sta_addr, mac_str);
+            }
             break;
         case OSW_VIF_STA:
             SCHEMA_SET_STR(schema->mode, "sta");
@@ -1001,6 +1070,9 @@ ow_ovsdb_vifstate_to_schema(struct schema_Wifi_VIF_State *schema,
                     }
                     ow_ovsdb_vifstate_fill_akm(schema, &vsta->link.wpa);
 
+                    SCHEMA_SET_STR(schema->bridge,vsta->link.bridge_if_name.buf);
+                    SCHEMA_SET_STR(schema->multi_ap, ow_ovsdb_sta_multi_ap_to_cstr(vsta->link.multi_ap));
+
                     c = ow_ovsdb_freq_to_chan(vsta->link.channel.control_freq_mhz);
                     if (c != 0)
                         SCHEMA_SET_INT(schema->channel, c);
@@ -1011,13 +1083,11 @@ ow_ovsdb_vifstate_to_schema(struct schema_Wifi_VIF_State *schema,
                     SCHEMA_SET_BOOL(schema->mcast2ucast, false);
                     SCHEMA_SET_INT(schema->ft_psk, 0);
                     SCHEMA_SET_INT(schema->rrm, 0);
-                    SCHEMA_SET_STR(schema->bridge, "");
                     SCHEMA_SET_STR(schema->wps_pbc_key_id, "");
                     SCHEMA_SET_STR(schema->dpp_connector, "");
                     SCHEMA_SET_STR(schema->dpp_csign_hex, "");
                     SCHEMA_SET_STR(schema->dpp_netaccesskey_hex, "");
                     SCHEMA_SET_STR(schema->mac_list_type, "none");
-                    SCHEMA_SET_STR(schema->multi_ap, "none");
                     SCHEMA_SET_STR(schema->ssid_broadcast, "enabled");
                     SCHEMA_SET_BOOL(schema->uapsd_enable, false);
                     SCHEMA_SET_BOOL(schema->wds, false);
@@ -1025,6 +1095,8 @@ ow_ovsdb_vifstate_to_schema(struct schema_Wifi_VIF_State *schema,
                 case OSW_DRV_VIF_STATE_STA_LINK_UNKNOWN:
                 case OSW_DRV_VIF_STATE_STA_LINK_CONNECTING:
                 case OSW_DRV_VIF_STATE_STA_LINK_DISCONNECTED:
+                    SCHEMA_UNSET_FIELD(schema->ssid);
+                    SCHEMA_UNSET_FIELD(schema->parent);
                     break;
             }
             break;
@@ -1333,15 +1405,39 @@ static bool
 ow_ovsdb_vif_state_is_wanted(struct ow_ovsdb_vif *vif)
 {
     if (vif->info == NULL) return false;
-    if (vif->info->drv_state->enabled == true) return true;
-    if (vif->info->drv_state->vif_type == OSW_VIF_AP_VLAN) return true;
-    if (strlen(vif->config.if_name) == 0) return false;
-    return true;
+
+    const enum osw_vif_type vif_type = vif->info->drv_state->vif_type;
+    const bool is_configured = (ow_ovsdb_vif_is_deleted(vif) == false);
+    const bool always_wanted = (ow_ovsdb_vif_report_only_configured(vif_type) == false);
+
+    return always_wanted ? true : is_configured;
+}
+
+static void
+ow_ovsdb_vif_sync_deleted_as_disabled(struct ow_ovsdb_vif *vif)
+{
+    if (ow_ovsdb_vif_is_deleted(vif) == false) return;
+
+    const enum osw_vif_type vif_type = vif->info != NULL
+                                     ? vif->info->drv_state->vif_type
+                                     : OSW_VIF_UNDEFINED;
+
+    if (ow_ovsdb_vif_treat_deleted_as_disabled(vif_type) && vif->phy_name != NULL) {
+        const bool x = false;
+        ow_conf_vif_clear(vif->vif_name);
+        ow_conf_vif_set_enabled(vif->vif_name, &x);
+        ow_conf_vif_set_phy_name(vif->vif_name, vif->phy_name);
+    }
+    else {
+        ow_conf_vif_unset(vif->vif_name);
+    }
 }
 
 static bool
 ow_ovsdb_vif_sync(struct ow_ovsdb_vif *vif)
 {
+    ow_ovsdb_vif_sync_deleted_as_disabled(vif);
+
     if (ow_ovsdb_vif_state_is_wanted(vif) == false) {
         if (strlen(vif->state_cur.if_name) == 0) return true;
 
@@ -1457,7 +1553,6 @@ ow_ovsdb_vif_set_config(const char *vif_name,
         (vif->config.wpa_oftags_changed == true))
         ow_ovsdb_vif_sync_stas(vif);
 
-    ow_ovsdb_vif_cleanup_set_configured(vif_name, config ? true : false);
     ow_ovsdb_vif_work_sched(vif);
 }
 
@@ -1951,8 +2046,6 @@ ow_ovsdb_vif_added_cb(struct osw_state_observer *self,
 {
     ow_ovsdb_vif_set_info(info->vif_name, info);
     ow_ovsdb_ms_set_vif(&g_ow_ovsdb.ms, info);
-    ow_ovsdb_vif_cleanup_set_phy_name(info->vif_name, info->phy->phy_name);
-    ow_ovsdb_vif_cleanup_set_reported(info->vif_name, info->drv_state->enabled);
 }
 
 static void
@@ -1961,8 +2054,6 @@ ow_ovsdb_vif_changed_cb(struct osw_state_observer *self,
 {
     ow_ovsdb_vif_set_info(info->vif_name, info);
     ow_ovsdb_ms_set_vif(&g_ow_ovsdb.ms, info);
-    ow_ovsdb_vif_cleanup_set_phy_name(info->vif_name, info->phy->phy_name);
-    ow_ovsdb_vif_cleanup_set_reported(info->vif_name, info->drv_state->enabled);
 }
 
 static void
@@ -1971,7 +2062,6 @@ ow_ovsdb_vif_removed_cb(struct osw_state_observer *self,
 {
     ow_ovsdb_vif_set_info(info->vif_name, NULL);
     ow_ovsdb_ms_set_vif(&g_ow_ovsdb.ms, info);
-    ow_ovsdb_vif_cleanup_set_reported(info->vif_name, false);
 }
 
 static void
@@ -1987,6 +2077,9 @@ ow_ovsdb_sta_connected_cb(struct osw_state_observer *self,
                           const struct osw_state_sta_info *info)
 {
     ow_ovsdb_sta_set_info(info->mac_addr, info);
+    if (OW_OVSDB_CM_NEEDS_PORT_STATE_BLIP) {
+        ow_ovsdb_ms_set_sta_disconnected(&g_ow_ovsdb.ms, info);
+    }
 }
 
 static void
@@ -2001,6 +2094,9 @@ ow_ovsdb_sta_disconnected_cb(struct osw_state_observer *self,
                              const struct osw_state_sta_info *info)
 {
     ow_ovsdb_sta_set_info(info->mac_addr, info);
+    if (OW_OVSDB_CM_NEEDS_PORT_STATE_BLIP) {
+        ow_ovsdb_ms_set_sta_disconnected(&g_ow_ovsdb.ms, info);
+    }
 }
 
 static struct osw_state_observer g_ow_ovsdb_osw_state_obs = {
@@ -2091,6 +2187,7 @@ ow_ovsdb_htmode2width(const char *ht_mode)
            strcmp(ht_mode, "HT40") == 0 ? OSW_CHANNEL_40MHZ :
            strcmp(ht_mode, "HT80") == 0 ? OSW_CHANNEL_80MHZ :
            strcmp(ht_mode, "HT160") == 0 ? OSW_CHANNEL_160MHZ :
+           strcmp(ht_mode, "HT320") == 0 ? OSW_CHANNEL_320MHZ :
            OSW_CHANNEL_20MHZ;
 }
 
@@ -2113,6 +2210,24 @@ ow_ovsdb_rconf_to_ow_conf(const struct schema_Wifi_Radio_Config *rconf,
         }
         else {
             ow_conf_phy_set_tx_chainmask(rconf->if_name, NULL);
+        }
+    }
+
+    if (is_new == true || rconf->tx_power_changed == true) {
+        if (rconf->tx_power_exists == true) {
+            ow_conf_phy_set_tx_power_dbm(rconf->if_name, &rconf->tx_power);
+        }
+        else {
+            ow_conf_phy_set_tx_power_dbm(rconf->if_name, NULL);
+        }
+    }
+
+    if (is_new == true || rconf->thermal_tx_chainmask_changed == true) {
+        if (rconf->thermal_tx_chainmask_exists == true) {
+            ow_conf_phy_set_thermal_tx_chainmask(rconf->if_name, &rconf->thermal_tx_chainmask);
+        }
+        else {
+            ow_conf_phy_set_thermal_tx_chainmask(rconf->if_name, NULL);
         }
     }
 
@@ -2236,8 +2351,9 @@ static void
 ow_ovsdb_vconf_to_min_hw_mode(const struct schema_Wifi_VIF_Config *vconf)
 {
     const char *vif_name = vconf->if_name;
+    const bool is_supported = ow_ovsdb_min_hw_mode_is_supported();
 
-    if (vconf->min_hw_mode_exists) {
+    if (vconf->min_hw_mode_exists && is_supported) {
         const enum ow_ovsdb_min_hw_mode min_hw_mode = ow_ovsdb_min_hw_mode_from_str(vconf->min_hw_mode);
         struct osw_ap_mode ap_mode = {0};
 
@@ -2475,6 +2591,17 @@ ow_ovsdb_vconf_to_ow_conf_ap(const struct schema_Wifi_VIF_Config *vconf,
         ow_ovsdb_vconf_to_min_hw_mode(vconf);
     }
 
+    if (is_new == true || vconf->multi_ap_changed == true) {
+        if (vconf->multi_ap_exists == true) {
+            struct osw_multi_ap multi_ap;
+            ow_ovsdb_ap_multi_ap_from_cstr(vconf->multi_ap, &multi_ap);
+            ow_conf_vif_set_ap_multi_ap(vconf->if_name, &multi_ap);
+        }
+        else {
+            ow_conf_vif_set_ap_multi_ap(vconf->if_name, NULL);
+        }
+    }
+
     const bool wpa_changed = (vconf->security_changed == true)
                           || (vconf->wpa_changed == true)
                           || (vconf->pmf_changed == true)
@@ -2486,8 +2613,6 @@ ow_ovsdb_vconf_to_ow_conf_ap(const struct schema_Wifi_VIF_Config *vconf,
     if (is_new == true || wpa_changed == true)
         ow_ovsdb_vconf_to_ow_conf_ap_wpa(vconf);
 
-    // wps_pbc
-    // multiap
     // dynamic beacon
     // vlan_id
     // parent
@@ -2539,11 +2664,20 @@ ow_ovsdb_vconf_to_ow_conf_sta(const struct schema_Wifi_VIF_Config *vconf,
         MEMZERO(psk);
         struct osw_wpa wpa;
         MEMZERO(wpa);
+        struct osw_ifname bridge;
+        MEMZERO(bridge);
+        const bool multi_ap = vconf->multi_ap_exists
+                            ? ow_ovsdb_sta_multi_ap_from_cstr(vconf->multi_ap)
+                            : false;
 
         STRSCPY_WARN(psk.str, vconf->wpa_psks[0]);
         STRSCPY_WARN(ssid.buf, vconf->ssid);
         ssid.len = strlen(vconf->ssid);
         osw_hwaddr_from_cstr(vconf->parent, &bssid);
+
+        if (vconf->bridge_exists) {
+            STRSCPY_WARN(bridge.buf, vconf->bridge);
+        }
 
         int i;
         for (i = 0; i < vconf->wpa_key_mgmt_len; i++) {
@@ -2567,7 +2701,7 @@ ow_ovsdb_vconf_to_ow_conf_sta(const struct schema_Wifi_VIF_Config *vconf,
 
         /* FIXME: Optimize to not overwrite it all the time */
         ow_conf_vif_flush_sta_net(vconf->if_name);
-        ow_conf_vif_set_sta_net(vconf->if_name, &ssid, &bssid, &psk, &wpa);
+        ow_conf_vif_set_sta_net(vconf->if_name, &ssid, &bssid, &psk, &wpa, &bridge, &multi_ap);
     }
     else {
         ow_ovsdb_cconf_sched();
@@ -2630,6 +2764,13 @@ callback_Wifi_VIF_Config(ovsdb_update_monitor_t *mon,
 
     switch (mon->mon_type) {
         case OVSDB_UPDATE_NEW:
+            /* FIXME: This ow_conf_vif_unset() here
+             * shouldn't be really necessary: Instead the
+             * new-or-modiy should be idempotent via
+             * ow_ovsdb_vif_sync().
+             */
+            ow_conf_vif_unset(vconf->if_name);
+
             ow_ovsdb_vstate_fix_vif_config(vconf);
             /* fall through */
         case OVSDB_UPDATE_MODIFY:
@@ -2642,13 +2783,13 @@ callback_Wifi_VIF_Config(ovsdb_update_monitor_t *mon,
             ow_ovsdb_vif_set_config(vconf->if_name, vconf);
             break;
         case OVSDB_UPDATE_DEL:
-            ow_conf_vif_unset(vconf->if_name);
             ow_ovsdb_vif_set_config(vconf->if_name, NULL);
             break;
         case OVSDB_UPDATE_ERROR:
             break;
     }
 
+    ow_ovsdb_wps_op_handle_vconf_update(g_ow_ovsdb.wps, mon, old, vconf, row);
     ow_ovsdb_link_phy_vif();
 }
 
@@ -2712,6 +2853,27 @@ ow_ovsdb_flush(void)
 }
 
 static void
+ow_ovsdb_wps_changed_cb(void *priv,
+                        const char *vif_name)
+{
+    struct ow_ovsdb *m = priv;
+    struct ow_ovsdb_vif *vif = ds_tree_find(&m->vif_tree, vif_name);
+    if (vif == NULL) return;
+    ow_ovsdb_vif_work_sched(vif);
+}
+
+static void
+ow_ovsdb_reattach_wps(struct ow_ovsdb *m)
+{
+    ow_ovsdb_wps_op_set_vconf_table(m->wps, &table_Wifi_VIF_Config);
+    ow_ovsdb_wps_op_del_changed(m->wps,
+                                m->wps_changed);
+    m->wps_changed = ow_ovsdb_wps_op_add_changed(m->wps,
+                                                 ow_ovsdb_wps_changed_cb,
+                                                 m);
+}
+
+static void
 ow_ovsdb_retry_cb(EV_P_ ev_timer *arg, int events)
 {
     if (ovsdb_init_loop(EV_A_ "OW") == false) {
@@ -2725,6 +2887,7 @@ ow_ovsdb_retry_cb(EV_P_ ev_timer *arg, int events)
     OVSDB_CACHE_MONITOR(Wifi_VIF_Neighbors, true);
 
     ow_ovsdb_ms_init(&g_ow_ovsdb.ms);
+    ow_ovsdb_reattach_wps(&g_ow_ovsdb);
     ow_ovsdb_cconf_init(&table_Wifi_VIF_Config);
     ow_ovsdb_stats_init();
     g_ow_ovsdb.steering = ow_ovsdb_steer_create();
@@ -2773,6 +2936,12 @@ OSW_MODULE(ow_ovsdb)
     }
 
     ow_ovsdb_init();
+    g_ow_ovsdb.wps = OSW_MODULE_LOAD(ow_ovsdb_wps);
+    OSW_MODULE_LOAD(ow_conf);
+
+    const bool auto_enable = true;
+    ow_conf_ap_vlan_set_enabled(&auto_enable);
+
     return NULL;
 }
 

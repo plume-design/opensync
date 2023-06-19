@@ -163,6 +163,7 @@ ow_steer_executor_action_btm_call_fn(struct ow_steer_executor_action *action,
         const bool can_issue_req = osw_throttle_tap(btm_action->throttle, &next_attempt_tstamp_nsec);
         if (can_issue_req == true) {
             struct osw_btm_req_params* btm_req_params = ow_steer_executor_action_btm_req_create_params(btm_action, candidate_list);
+            osw_btm_sta_log_req_params(btm_req_params);
             const bool params_set = osw_btm_desc_set_req_params(btm_action->btm_desc, btm_req_params);
             if (params_set == true) {
                 LOGI("%s submitting btm req", ow_steer_executor_action_get_prefix(btm_action->base));

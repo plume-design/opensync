@@ -1581,13 +1581,14 @@ test_flow_tags_one_key(void)
 void
 test_report_tags_one_key(void)
 {
+    struct data_report_tags **report_tags_array;
     struct net_md_aggregator_set *aggr_set;
     struct net_md_stats_accumulator *acc;
+    struct data_report_tags *report_tags;
     struct flow_counters counters[1];
     struct net_md_aggregator *aggr;
     struct net_md_flow_key *key;
-    struct str_set **tags;
-    struct str_set *tag;
+    struct str_set *report_tag;
     struct flow_key *fkey;
     bool ret;
 
@@ -1621,24 +1622,52 @@ test_report_tags_one_key(void)
     TEST_ASSERT_NOT_NULL(fkey);
 
     /* Add a flow tag to the key */
-    fkey->num_data_report = 1;
-    fkey->data_report = CALLOC(1, sizeof(*fkey->data_report));
-    TEST_ASSERT_NOT_NULL(fkey->data_report);
+    fkey->num_data_report = 2;
 
-    tag = CALLOC(1, sizeof(*tag));
-    TEST_ASSERT_NOT_NULL(tag);
+    report_tags_array = CALLOC(fkey->num_data_report,
+                               sizeof(*report_tags_array));
+    report_tags = CALLOC(1, sizeof(*report_tags));
+    report_tags_array[0] = report_tags;
 
-    tag->nelems = 2;
-    tag->array = CALLOC(tag->nelems, sizeof(tags));
-    TEST_ASSERT_NOT_NULL(tag->array);
+    report_tag = CALLOC(1, sizeof(*report_tag));
+    TEST_ASSERT_NOT_NULL(report_tag);
 
-    tag->array[0] = strdup("APP Priority");
-    TEST_ASSERT_NOT_NULL(tag->array[0]);
+    report_tag->nelems = 2;
+    report_tag->array = CALLOC(report_tag->nelems, sizeof(*report_tag->array));
+    TEST_ASSERT_NOT_NULL(report_tag->array);
 
-    tag->array[1] = strdup("QOS Policy");
-    TEST_ASSERT_NOT_NULL(tag->array[1]);
+    report_tag->array[0] = strdup("APP Priority idx 0");
+    TEST_ASSERT_NOT_NULL(report_tag->array[0]);
 
-    *(fkey->data_report) = tag;
+    report_tag->array[1] = strdup("QOS Policy idx 0");
+    TEST_ASSERT_NOT_NULL(report_tag->array[1]);
+
+    report_tags->data_report = report_tag;
+    report_tags->id = STRDUP("ut_test_report_tags idx 0");
+
+    report_tags = CALLOC(1, sizeof(*report_tags));
+    report_tags_array[1] = report_tags;
+
+    report_tag = CALLOC(1, sizeof(*report_tag));
+    TEST_ASSERT_NOT_NULL(report_tag);
+
+    report_tag->nelems = 3;
+    report_tag->array = CALLOC(report_tag->nelems, sizeof(*report_tag->array));
+    TEST_ASSERT_NOT_NULL(report_tag->array);
+
+    report_tag->array[0] = strdup("APP Priority idx 1");
+    TEST_ASSERT_NOT_NULL(report_tag->array[0]);
+
+    report_tag->array[1] = strdup("QOS Policy idx 1");
+    TEST_ASSERT_NOT_NULL(report_tag->array[1]);
+
+    report_tag->array[2] = strdup("Volt info idx 2");
+    TEST_ASSERT_NOT_NULL(report_tag->array[1]);
+
+    report_tags->data_report = report_tag;
+    report_tags->id = STRDUP("ut_test_report_tags idx 1");
+
+    fkey->data_report = report_tags_array;
 
     /* Close the active window */
     ret = net_md_close_active_window(aggr);
@@ -2243,8 +2272,10 @@ test_vendor_data_serialize_deserialize(void)
 void
 test_report_data_serialize_deserialize(void)
 {
+    struct data_report_tags **report_tags_array;
     struct net_md_aggregator_set *aggr_set;
     struct net_md_stats_accumulator *acc;
+    struct data_report_tags *report_tags;
     struct flow_counters counters[1];
     struct net_md_aggregator *aggr_out;
     struct net_md_aggregator *aggr_in;
@@ -2257,7 +2288,6 @@ test_report_data_serialize_deserialize(void)
     struct flow_tags **tags;
     struct flow_tags *tag;
 
-    struct str_set **report_tags;
     struct str_set *report_tag;
 
     TEST_ASSERT_TRUE(g_nd_test.initialized);
@@ -2315,14 +2345,20 @@ test_report_data_serialize_deserialize(void)
 
     /* Add report tags to the key */
     fkey->num_data_report = 1;
-    fkey->data_report = CALLOC(fkey->num_data_report, sizeof(*fkey->data_report));
-    TEST_ASSERT_NOT_NULL(fkey->data_report);
+
+    report_tags_array = CALLOC(fkey->num_data_report,
+                               sizeof(*report_tags_array));
+    report_tags = CALLOC(1, sizeof(*report_tags));
+    report_tags_array[0] = report_tags;
 
     report_tag = CALLOC(1, sizeof(*report_tag));
-    TEST_ASSERT_NOT_NULL(report_tag);
+    TEST_ASSERT_NOT_NULL(tag);
 
     report_tag->nelems = 2;
-    report_tag->array = CALLOC(report_tag->nelems, sizeof(report_tags));
+    report_tag->array = CALLOC(report_tag->nelems, sizeof(*report_tag->array));
+    TEST_ASSERT_NOT_NULL(report_tag->array);
+
+    report_tags->data_report = report_tag;
 
     report_tag->array[0] = strdup("App prioritization");
     TEST_ASSERT_NOT_NULL(report_tag->array[0]);
@@ -2330,8 +2366,7 @@ test_report_data_serialize_deserialize(void)
     report_tag->array[1] = strdup("QOS");
     TEST_ASSERT_NOT_NULL(report_tag->array[1]);
 
-    (*fkey->data_report) = report_tag;
-
+    fkey->data_report = report_tags_array;
 
     /* Close the active window */
     ret = net_md_close_active_window(aggr_in);
@@ -2345,7 +2380,7 @@ test_report_data_serialize_deserialize(void)
 
     test_emit_report(aggr_in);
 
-    // /* Allocate the receiving aggregator */
+    /* Allocate the receiving aggregator */
     aggr_out = net_md_allocate_aggregator(aggr_set);
     TEST_ASSERT_NOT_NULL(aggr_out);
 
@@ -2353,7 +2388,7 @@ test_report_data_serialize_deserialize(void)
     ret = net_md_activate_window(aggr_out);
     TEST_ASSERT_TRUE(ret);
 
-    // /* Transfer tags and vendor data */
+    /* Transfer tags and vendor data */
     net_md_update_aggr(aggr_out, &recv_pb);
 
     /* Free the serialized container */
@@ -3372,6 +3407,7 @@ test_network_metadata_reports(void)
     RUN_TEST(test_direction_originator_data_serialize_deserialize);
     RUN_TEST(test_acc_flow_info_report);
     RUN_TEST(test_net_md_ufid);
+
     UnitySetTestFile(old_filename);
     FREE(filename);
 }

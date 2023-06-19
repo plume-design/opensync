@@ -25,6 +25,87 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 #include <os_types.h>
+#include "bm_util_opclass.h"
+
+#define BM_UTIL_OPCLASS_MAP_MAX_CHAN_BUF 16
+
+struct ieee80211_global_op_class_record {
+    uint8_t  band;
+    uint8_t  channels[BM_UTIL_OPCLASS_MAP_MAX_CHAN_BUF];
+    uint16_t width;
+    uint8_t  op_class;
+};
+
+static const struct ieee80211_global_op_class_record op_class_map[] = {
+    {24,    {1,2,3,4,5,6,7,8,9,10,11,12,13,0},                     20,   81},
+    {24,    {14,0},                                                20,   82},
+    {24,    {1,2,3,4,5,6,7,8,9,0},                                 40,   83},
+    {24,    {5,6,7,8,9,10,11,12,13,0},                             40,   84},
+    {50,    {36,40,44,48,0},                                       20,   115},
+    {50,    {52,56,60,64,0},                                       20,   118},
+    {50,    {100,104,108,112,116,120,124,128,132,136,140,144,0},   20,   121},
+    {50,    {149,153,157,161,0},                                   20,   124},
+    {50,    {36,44,0},                                             40,   116},
+    {50,    {40,48,0},                                             40,   117},
+    {50,    {52,60,0},                                             40,   119},
+    {50,    {56,64,0},                                             40,   120},
+    {50,    {100,108,116,124,132,140,0},                           40,   122},
+    {50,    {104,112,120,128,136,144,0},                           40,   123},
+    {50,    {149,157,0},                                           40,   126},
+    {50,    {153,161,0},                                           40,   127},
+    {50,    {0},                                                   80,   128},
+    {50,    {0},                                                   160,  129},
+    {60,    {0},                                                   20,   131},
+    {60,    {0},                                                   40,   132},
+    {60,    {0},                                                   80,   133},
+    {60,    {0},                                                   160,  134},
+    {60,    {0},                                                   320,  137},
+    {0,     {0},                                                   0,    0}
+};
+
+static bool
+ieee80211_global_op_class_is_channel_in_list(const uint8_t channel,
+                                             const uint8_t *channel_list)
+{
+    const uint8_t *chan_it = channel_list;
+
+    if (channel_list == NULL) return false;
+
+    while (*chan_it != 0) {
+        if (channel == *chan_it) return true;
+        chan_it++;
+    }
+
+    return false;
+}
+
+uint8_t
+ieee80211_global_op_class_get(const uint8_t band,
+                              const uint8_t channel,
+                              const uint16_t width)
+{
+    uint8_t ret_val = 0;
+    const struct ieee80211_global_op_class_record *record;
+
+    record = op_class_map;
+    while (record->band != 0) {
+        if (band == record->band) {
+            if (width == record->width) {
+                const bool is_list_empty = (record->channels[0] == 0);
+                const bool list_contains_all_channels = is_list_empty;
+                const bool is_channel_in_list = (ieee80211_global_op_class_is_channel_in_list(channel, record->channels));
+                if (is_channel_in_list == true ||
+                    list_contains_all_channels == true) {
+                    ret_val = record->op_class;
+                    break;
+                }
+            }
+        }
+        record++;
+    }
+
+    return ret_val;
+}
 
 bool
 ieee80211_global_op_class_is_contained_in(const uint8_t superset_op_class, const uint8_t subset_op_class)
@@ -117,6 +198,9 @@ bool ieee80211_global_op_class_is_channel_supported(const uint8_t op_class, cons
               105, 109, 113, 117, 121, 125, 129, 133, 137, 141, 145, 149, 153, 157, 161, 165, 169, 173, 177, 181,
               185, 189, 193, 197, 201, 205, 209, 213, 217, 221, 225, 229, 233, 0, /* UHB channels, 80+80 MHz */
          136, 2, 0, /* UHB channels, 20 MHz */
+         137, 1, 5, 9, 13, 17, 21, 25, 29, 33, 37, 41, 45, 49, 53, 57, 61, 65, 69, 73, 77, 81, 85, 89, 93, 97, 101,
+              105, 109, 113, 117, 121, 125, 129, 133, 137, 141, 145, 149, 153, 157, 161, 165, 169, 173, 177, 181,
+              185, 189, 193, 197, 201, 205, 209, 213, 217, 221, 225, 229, 233, 0, /* UHB channels, 320 MHz: 31, 63, 95, 127, 159, 191 */
          -1,  /* keep last */
     };
 
@@ -181,6 +265,7 @@ uint8_t ieee80211_global_op_class_to_20mhz_op_class(const uint8_t op_class, cons
         case 133:
         case 134:
         case 135:
+        case 137:
             return 131;
         case 136:
             return 136;
@@ -206,7 +291,7 @@ bool ieee80211_global_op_class_is_5ghz(const uint8_t op_class)
 
 bool ieee80211_global_op_class_is_6ghz(const uint8_t op_class)
 {
-    if (op_class >= 131 && op_class <= 136)
+    if ((op_class >= 131 && op_class <= 137))
         return true;
 
     return false;
@@ -260,6 +345,14 @@ bool ieee80211_global_op_class_is_80plus80mhz(const uint8_t op_class)
 bool ieee80211_global_op_class_is_160mhz(const uint8_t op_class)
 {
     if (op_class == 129 || op_class == 135)
+        return true;
+
+    return false;
+}
+
+bool ieee80211_global_op_class_is_320mhz(const uint8_t op_class)
+{
+    if (op_class == 137)
         return true;
 
     return false;

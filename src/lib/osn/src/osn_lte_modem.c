@@ -228,28 +228,15 @@ int osn_lte_save_serving_cell(lte_srv_cell_t *srv_cell, lte_srv_cell_wcdma_t *sr
 }
 
 int
-osn_lte_parse_neigh_cell_intra(char *buf, lte_neigh_cell_intra_t *neigh_cell_intra)
+osn_lte_parse_neigh_cell(char *buf, lte_neigh_cell_t *neigh_cell)
 {
     return 0;
 }
 
 int
-osn_lte_save_neigh_cell_intra(lte_neigh_cell_intra_t *neigh_cell_intra, osn_lte_modem_info_t *modem_info)
+osn_lte_save_neigh_cell(lte_neigh_cell_t *neigh_cell, osn_lte_modem_info_t *modem_info, int resp_idx)
 {
     return 0;
-}
-
-int
-osn_lte_parse_neigh_cell_inter(char *buf, lte_neigh_cell_inter_t *neigh_cell_inter)
-{
-    return 0;
-}
-
-int
-osn_lte_save_neigh_cell_inter(lte_neigh_cell_inter_t *neigh_cell_inter, osn_lte_modem_info_t *modem_info)
-{
-    return 0;
-
 }
 
 int
@@ -376,6 +363,7 @@ osn_nr5g_save_serving_cell_5g_sa(gen_resp_tokens *resp_tokens)
 {
     return;
 }
+
 int
 osn_get_module_id(void)
 {
@@ -393,6 +381,12 @@ osn_cellular_save_sinr(cellular_sinr_rsrp_t *net_resp, osn_lte_modem_info_t *mod
 }
 int
 osn_cellular_save_qsrp(cellular_sinr_rsrp_t *net_resp, osn_lte_modem_info_t *modem_info)
+{
+    return 0;
+}
+
+bool
+osn_lte_modem_init(void)
 {
     return 0;
 }

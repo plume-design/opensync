@@ -97,6 +97,7 @@ struct message {
     unsigned char *_buf;
     char *_labels[MAX_NUM_LABELS];
     int _len, _label;
+    size_t pld_len;
 
     /* Packet acts as padding, easier mem management */
     unsigned char _packet[MAX_PACKET_LEN];
@@ -119,7 +120,7 @@ void long2net (unsigned long int  l, unsigned char **buf);
  * message must be zero'd for safety
  * @returns 0 if OK, else parser error.
  */
-int message_parse(struct message *m, unsigned char *packet);
+int message_parse(struct message *m, unsigned char *packet, size_t len);
 
 /**
  * create a message for sending out on the wire

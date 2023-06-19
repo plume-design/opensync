@@ -491,7 +491,7 @@ void wanp_static_ipv4_fini(wano_plugin_handle_t *wh)
     if (wsh->ping_pid > 0)
     {
         ev_child_stop(EV_DEFAULT_ &wsh->ping_pid_watcher);
-        kill(wsh->ping_pid, SIGILL);
+        kill(wsh->ping_pid, SIGKILL);
         waitpid(wsh->ping_pid, NULL, 0);
     }
 

@@ -122,6 +122,17 @@ ow_steer_policy_bss_filter_recalc_cb(struct ow_steer_policy *policy,
         if (preference->override == false)
             continue;
 
+        const enum ow_steer_candidate_preference current_pref = ow_steer_candidate_get_preference(candidate);
+        const bool cannot_override = (current_pref != OW_STEER_CANDIDATE_PREFERENCE_NONE);
+        if (cannot_override) {
+            LOGD("%s bssid: "OSW_HWADDR_FMT" preference: %s cannot be set, already set to: %s",
+                 ow_steer_policy_get_prefix(policy),
+                 OSW_HWADDR_ARG(bssid),
+                 ow_steer_candidate_preference_to_cstr(current_pref),
+                 ow_steer_candidate_preference_to_cstr(preference->value));
+            continue;
+        }
+
         ow_steer_candidate_set_preference(candidate, preference->value);
 
         LOGD("%s bssid: "OSW_HWADDR_FMT" preference: %s", ow_steer_policy_get_prefix(policy), OSW_HWADDR_ARG(bssid),
@@ -150,8 +161,7 @@ ow_steer_policy_bss_filter_sigusr1_dump_cb(struct ow_steer_policy *policy)
 }
 
 struct ow_steer_policy_bss_filter*
-ow_steer_policy_bss_filter_create(unsigned int priority,
-                                  const char *name,
+ow_steer_policy_bss_filter_create(const char *name,
                                   const struct osw_hwaddr *sta_addr,
                                   const struct ow_steer_policy_mediator *mediator)
 {
@@ -165,7 +175,7 @@ ow_steer_policy_bss_filter_create(unsigned int priority,
     };
 
     struct ow_steer_policy_bss_filter *filter_policy = CALLOC(1, sizeof(*filter_policy));
-    filter_policy->base = ow_steer_policy_create(name, priority, sta_addr, &ops, mediator, filter_policy);
+    filter_policy->base = ow_steer_policy_create(name, sta_addr, &ops, mediator, filter_policy);
     ds_tree_init(&filter_policy->bssid_tree, (ds_key_cmp_t*) osw_hwaddr_cmp, struct ow_steer_policy_bss_filter_bssid, node);
 
     return filter_policy;
@@ -184,16 +194,19 @@ ow_steer_policy_bss_filter_set_config(struct ow_steer_policy_bss_filter *filter_
 
     if (memcmp(&filter_policy->included_preference, &config->included_preference, sizeof(filter_policy->included_preference)) != 0) {
         ow_steer_policy_bss_filter_reset(filter_policy, config);
+        FREE(config);
         return;
     }
 
     if (memcmp(&filter_policy->excluded_preference, &config->excluded_preference, sizeof(filter_policy->excluded_preference)) != 0) {
         ow_steer_policy_bss_filter_reset(filter_policy, config);
+        FREE(config);
         return;
     }
 
     if (ds_tree_len(&filter_policy->bssid_tree) != config->bssid_list_len) {
         ow_steer_policy_bss_filter_reset(filter_policy, config);
+        FREE(config);
         return;
     }
 
@@ -203,6 +216,7 @@ ow_steer_policy_bss_filter_set_config(struct ow_steer_policy_bss_filter *filter_
         const struct ow_steer_policy_bss_filter_bssid *entry = ds_tree_find(&filter_policy->bssid_tree, bssid);
         if (entry == NULL) {
             ow_steer_policy_bss_filter_reset(filter_policy, config);
+            FREE(config);
             return;
         }
     }

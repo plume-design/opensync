@@ -102,6 +102,7 @@ static bool apply_filter(struct net_md_flow_key *key,
     os_macaddr_t null_mac;
     os_macaddr_t *smac;
     os_macaddr_t *dmac;
+    bool ip_pkt;
 
     memset(&null_mac, 0, sizeof(null_mac));
 
@@ -120,33 +121,32 @@ static bool apply_filter(struct net_md_flow_key *key,
     mac_filter.vlan_id = key->vlan_id;
     mac_filter.eth_type = key->ethertype;
 
-    if (inet_ntop(AF_INET, key->src_ip, filter.src_ip,
-        INET6_ADDRSTRLEN) == NULL)
+    ip_pkt = (key->ip_version == 4 || key->ip_version == 6) ? true : false;
+    if (ip_pkt)
     {
-        LOGE("%s: inet_ntop src_ip %s error: %s", __func__,
-             key->src_ip, strerror(errno));
-        return false;
-    }
-    if (inet_ntop(AF_INET, key->dst_ip, filter.dst_ip,
-        INET6_ADDRSTRLEN) == NULL)
-    {
-        LOGE("%s: inet_ntop dst_ip %s error: %s", __func__,
-             key->dst_ip, strerror(errno));
-        return false;
-    }
+        if (inet_ntop(AF_INET, key->src_ip, filter.src_ip, INET6_ADDRSTRLEN) == NULL)
+        {
+            LOGE("%s: inet_ntop src_ip %s error: %s", __func__, key->src_ip, strerror(errno));
+            return false;
+        }
+        if (inet_ntop(AF_INET, key->dst_ip, filter.dst_ip, INET6_ADDRSTRLEN) == NULL)
+        {
+            LOGE("%s: inet_ntop dst_ip %s error: %s", __func__, key->dst_ip, strerror(errno));
+            return false;
+        }
+        filter.sport = ntohs(key->sport);
+        filter.dport = ntohs(key->dport);
+        filter.l4_proto = key->ipprotocol;
 
-    filter.sport = ntohs(key->sport);
-    filter.dport = ntohs(key->dport);
-    filter.l4_proto = key->ipprotocol;
-
-    /* key->ip_version No ip (0), ipv4 (4), ipv6 (6) */
-    filter.ip_type = (key->ip_version <= 4)? AF_INET: AF_INET6;
+        /* key->ip_version No ip (0), ipv4 (4), ipv6 (6) */
+        filter.ip_type = (key->ip_version <= 4)? AF_INET: AF_INET6;
+    }
 
     req = CALLOC(1, sizeof(struct fcm_filter));
     if (req == NULL) return true;
 
     req->l2_info = &mac_filter;
-    req->l3_info = &filter;
+    if (ip_pkt) req->l3_info = &filter;
     req->pkts = pkt;
     req->table = client->table;
     req->fkey = fkey;

@@ -60,6 +60,9 @@ is_internet_available()
     eval addr_first="\$addr$r1"
     eval addr_second="\$addr$r2"
 
+    # check ovsh s Manager::is_connected, if true skip pings
+    [ $($OVSH s Manager is_connected -r) == true ] && return 0
+
     ping $addr_first -c 2 -s 4 -w 2 > /dev/null || {
         ping $addr_second -c 2 -s 4 -w 2 > /dev/null || {
             # Internet not available after double check
@@ -148,13 +151,6 @@ if [ -z "$gw_ip" ]; then
     Healthcheck_Pass
 fi
 
-# In case that internet is not available we shouldn't execute DNS checks
-is_internet_available
-if [ $? -ne 0 ]; then
-    log_info "Skip healthcheck, internet not available"
-    Healthcheck_Pass
-fi
-
 # Check default DNS server configuration
 $timeout 10 $PLOOKUP $LOOKUP_HOST > /dev/null 2>&1
 if [ $? -ne 0 ]; then
@@ -169,6 +165,13 @@ check_dns_servers "Check default DNS servers" "$default_servers"
 
 # Check reference DNS servers
 check_dns_servers "Check reference DNS servers" "$DNS_SERVERS"
+
+# In case DNS checks fail, make sure that internet is available before failing check
+is_internet_available
+if [ $? -ne 0 ]; then
+    log_info "Skip healthcheck, internet not available"
+    Healthcheck_Pass
+fi
 
 # Return fail, no DNS available
 Healthcheck_Fail

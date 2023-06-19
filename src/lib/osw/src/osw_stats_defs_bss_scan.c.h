@@ -24,6 +24,9 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+#include <os.h>
+#include <osw_util.h>
+
 static const struct osw_tlv_policy
 g_osw_stats_tp_bss_scan[OSW_STATS_BSS_SCAN_MAX__] = {
     [OSW_STATS_BSS_SCAN_PHY_NAME] = { .type = OSW_TLV_STRING },
@@ -46,7 +49,55 @@ g_osw_stats_mp_bss_scan[OSW_STATS_BSS_SCAN_MAX__] = {
     [OSW_STATS_BSS_SCAN_SNR_DB] = { .type = OSW_TLV_OP_OVERWRITE },
 };
 
+static void
+osw_stats_defs_bss_scan_parse_ies(struct osw_tlv *data,
+                                  const struct osw_tlv_hdr **tb)
+{
+    const struct osw_tlv_hdr *hdr = tb[OSW_STATS_BSS_SCAN_IES];
+    if (hdr == NULL) return;
+
+    const void *ies = osw_tlv_get_data(hdr);
+    const size_t ies_len = hdr->len;
+
+    if (tb[OSW_STATS_BSS_SCAN_SSID] == NULL) {
+        size_t ssid_len = 0;
+        const int ssid_eid = 0;
+        const void *ssid_buf = osw_ie_find(ies, ies_len, ssid_eid, &ssid_len);
+        if (ssid_buf != NULL && ssid_len > 0) {
+            osw_tlv_put_buf(data, OSW_STATS_BSS_SCAN_SSID, ssid_buf, ssid_len);
+        }
+    }
+
+    if (tb[OSW_STATS_BSS_SCAN_WIDTH_MHZ] == NULL) {
+        /* FIXME: This should also parse / include HT, VHT
+         * Operation IEs, not just Capabilities.
+         */
+        struct osw_assoc_req_info info;
+        MEMZERO(info);
+        const bool parsed = osw_parse_assoc_req_ies(ies, ies_len, &info);
+        const enum osw_channel_width width = parsed
+                                           ? osw_assoc_req_to_max_chwidth(&info)
+                                           : OSW_CHANNEL_20MHZ;
+        const uint32_t width_mhz = osw_channel_width_to_mhz(width);
+        osw_tlv_put_u32(data, OSW_STATS_BSS_SCAN_WIDTH_MHZ, width_mhz);
+    }
+}
+
+static void
+osw_stats_defs_bss_scan_postprocess_cb(struct osw_tlv *data)
+{
+    const struct osw_tlv_hdr *tb[OSW_STATS_BSS_SCAN_MAX__] = {0};
+    const size_t left = osw_tlv_parse(data->data,
+                                      data->used,
+                                      g_osw_stats_tp_bss_scan,
+                                      tb,
+                                      OSW_STATS_BSS_SCAN_MAX__);
+    (void)left;
+    osw_stats_defs_bss_scan_parse_ies(data, tb);
+}
+
 static const struct osw_stats_defs g_osw_stats_defs_bss_scan = {
+    .postprocess_fn = osw_stats_defs_bss_scan_postprocess_cb,
     .tpolicy = g_osw_stats_tp_bss_scan,
     .mpolicy = g_osw_stats_mp_bss_scan,
     .size = OSW_STATS_BSS_SCAN_MAX__,

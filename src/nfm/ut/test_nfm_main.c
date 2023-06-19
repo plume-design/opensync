@@ -83,31 +83,6 @@ nfm_dump_file(char *filename)
     return;
 }
 
-int
-test_run_cmd(const char *cmd)
-{
-    char buf[255];
-    char *token;
-
-    LOGT("%s(): running cmd %s", __func__, cmd);
-
-    strncpy(buf, cmd, sizeof(buf));
-
-    /* command will be in this format:
-     * cat /tmp/osfw-eth.16248 | ebtables-restore
-     */
-    token = strtok(buf, " ");
-    LOGT("%s(): first token: %s", __func__, token);
-    if (token == NULL) return 0;
-
-    /* filename will be extracted */
-    token = strtok(NULL, " ");
-    LOGT("%s(): second token: %s", __func__, token);
-    nfm_dump_file(token);
-
-    return 0;
-}
-
 bool
 test_osfw_init(struct ev_loop *loop)
 {
@@ -121,12 +96,14 @@ test_osfw_init(struct ev_loop *loop)
     nfm_osfw_eb_base.loop = loop;
     ev_timer_init(&nfm_osfw_eb_base.timer, test_nfm_osfw_eb_on_reschedule, 0, 0);
 
-    errcode = osfw_eb_init(test_run_cmd);
+    errcode = osfw_eb_init(NULL);
     if (!errcode)
     {
         LOGE("osfw_eb_init failed");
         return false;
     }
+
+    osfw_init(NULL);
 
     return true;
 }

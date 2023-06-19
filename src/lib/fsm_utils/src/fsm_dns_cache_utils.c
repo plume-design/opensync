@@ -43,20 +43,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define IP2ACTION_MIN_TTL (6*60*60)
 
 /**
- * @brief Set wb details..
- *
- * receive wb dst and src.
- *
- * @return void.
- */
-void
-populate_dns_wb_cache_entry(struct ip2action_wb_info *i2a_cache_wb,
-                            struct fsm_wp_info *fqdn_reply_wb)
-{
-    i2a_cache_wb->risk_level = fqdn_reply_wb->risk_level;
-}
-
-/**
  * @brief Set bc details.
  *
  * receive bc dst, src and nelems.
@@ -122,10 +108,6 @@ add_redirect_entry_ip2action(struct dns_cache_param *param)
         ip_cache_req.nelems = 1;
         ip_cache_req.cache_info.bc_info.reputation = 3;
         ip_cache_req.cache_info.bc_info.confidence_levels[0] = 1;
-    }
-    else if (ip_cache_req.service_id == IP2ACTION_WP_SVC)
-    {
-        ip_cache_req.cache_info.wb_info.risk_level = 5;
     }
 
     ip_cache_req.cache_ttl = DNS_REDIRECT_TTL;
@@ -274,11 +256,6 @@ add_entry_ip2action(struct dns_cache_param *param)
         populate_dns_bc_cache_entry(&ip_cache_req.cache_bc,
                                     &req_reply->bc,
                                     req_reply->nelems);
-    }
-    else if (ip_cache_req.service_id == IP2ACTION_WP_SVC)
-    {
-        populate_dns_wb_cache_entry(&ip_cache_req.cache_wb,
-                                    &req_reply->wb);
     }
     else if (ip_cache_req.service_id == IP2ACTION_GK_SVC)
     {

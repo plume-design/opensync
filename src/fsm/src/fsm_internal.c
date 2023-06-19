@@ -307,6 +307,35 @@ fsm_wrap_init_dpi_plugin(struct fsm_session *session)
     return true;
 }
 
+
+static bool
+fsm_wrap_init_dpi_client_plugin(struct fsm_session *session)
+{
+    struct fsm_session *dpi_plugin;
+    char *dpi_plugin_handler;
+    ds_tree_t *sessions;
+
+    /* Look up the dpi plugin handler in the other_config settings */
+    dpi_plugin_handler = session->ops.get_config(session, "dpi_plugin");
+
+    /* Bail if not provided */
+    if (dpi_plugin_handler == NULL) return false;
+
+    /* Look up the corresponding session */
+    sessions = fsm_get_sessions();
+    dpi_plugin = ds_tree_find(sessions, dpi_plugin_handler);
+    /*
+     * The dpi plugin session might not yet be configured
+     * Bail now, the registration of the client plugin will resume
+     * once the dpi plugin is configured.
+     */
+    if (dpi_plugin == NULL) return true;
+    fsm_dpi_client_process_attributes(session, dpi_plugin);
+
+    return true;
+}
+
+
 /**
  * @brief wrap plugin initialization
  *
@@ -325,6 +354,10 @@ fsm_wrap_init_plugin(struct fsm_session *session)
     {
         case FSM_DPI_PLUGIN:
             ret = fsm_wrap_init_dpi_plugin(session);
+            break;
+
+        case FSM_DPI_PLUGIN_CLIENT:
+            ret = fsm_wrap_init_dpi_client_plugin(session);
             break;
 
         default:

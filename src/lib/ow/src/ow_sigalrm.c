@@ -32,42 +32,45 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <ev.h>
 
 /* opensync */
+#include <log.h>
 #include <osw_module.h>
 
-#define OW_SIGALRM_WDOG_SECONDS 30.0
-#define OW_SIGALRM_WDOG_COUNT 3
+#define OW_SIGALRM_WDOG_SECONDS 90.0
+#define OW_SIGALRM_WDOG_KICK_SECONDS (OW_SIGALRM_WDOG_SECONDS / 2.0)
 
-static ev_async g_ow_sigalrm_async;
-struct ev_loop *g_ow_sigalrm_loop;
-static int g_ow_sigalrm_cnt;
+struct ev_timer g_ow_sigalrm_kick;
+
+static void
+ow_sigalrm_defer(void)
+{
+    alarm(OW_SIGALRM_WDOG_SECONDS);
+}
 
 static void
 ow_sigalrm_sig_cb(int signum)
 {
     if (signum != SIGALRM) return;
 
-    assert(++g_ow_sigalrm_cnt < OW_SIGALRM_WDOG_COUNT);
-    ev_async_send(g_ow_sigalrm_loop, &g_ow_sigalrm_async);
-    alarm(OW_SIGALRM_WDOG_SECONDS);
+    LOGEM("main loop was no entered for too long, "
+          "possible infinite loop or blocking call");
+    assert(0);
 }
 
 static void
-ow_sigalrm_async_cb(EV_P_ ev_async *arg, int events)
+ow_sigalrm_kick_cb(EV_P_ ev_timer *arg, int events)
 {
-    alarm(0);
-    g_ow_sigalrm_cnt = 0;
-    alarm(OW_SIGALRM_WDOG_SECONDS);
+    ow_sigalrm_defer();
 }
 
 static void
 ow_sigalrm_init(EV_P)
 {
-    ev_async_init(&g_ow_sigalrm_async, ow_sigalrm_async_cb);
-    ev_async_start(EV_A_ &g_ow_sigalrm_async);
+    const ev_tstamp sec = OW_SIGALRM_WDOG_KICK_SECONDS;
+    ev_timer_init(&g_ow_sigalrm_kick, ow_sigalrm_kick_cb, sec, sec);
+    ev_timer_start(EV_A_ &g_ow_sigalrm_kick);
     ev_unref(EV_A);
-    g_ow_sigalrm_loop = EV_A;
     signal(SIGALRM, ow_sigalrm_sig_cb);
-    alarm(OW_SIGALRM_WDOG_SECONDS);
+    ow_sigalrm_defer();
 }
 
 OSW_MODULE(ow_sigalrm)

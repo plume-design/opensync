@@ -67,6 +67,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "memutil.h"
 #include "hw_acc.h"
 
+#ifdef CONFIG_ACCEL_FLOW_EVICT_MESSAGE
+#include "accel_evict_msg.h"
+#endif
+
 #define MAX_RESERVED_PORT_NUM 1023
 #define NON_RESERVED_PORT_START_NUM MAX_RESERVED_PORT_NUM + 1
 #define DHCP_SERVER_PORT_NUM 67
@@ -1867,17 +1871,22 @@ fsm_dpi_should_process(struct net_header_parser *net_parser,
     return process;
 }
 
+
+#define FLUSH_COOKIE 0xDA2C5588
+
 int
 flush_accel_flows(struct net_header_parser *net_parser, int mark)
 {
+#if defined(CONFIG_ACCEL_FLOW_EVICT_MESSAGE)
     struct net_md_stats_accumulator *acc = NULL;
     struct net_md_flow_info info;
-    MEMZERO(info);
-    struct hw_acc_flush_flow_t flow;
-    MEMZERO(flow);
+    int cookie, ip_len, index, err;
     bool rc;
-
-    LOGD("%s: done setting new mark to CT: %d", __func__, mark);
+    uint8_t fush_msg[48];
+    os_macaddr_t client;
+    MEMZERO(info);
+    MEMZERO(fush_msg);
+    MEMZERO(client);
 
     acc = net_parser->acc;
     if (acc == NULL)
@@ -1893,30 +1902,44 @@ flush_accel_flows(struct net_header_parser *net_parser, int mark)
         return -1;
     }
 
-
-    flow.actions = HW_ACC_FLUSH_ACTION_5_TUPLE;
-    flow.protocol = info.ipprotocol;
-    flow.ip_version = info.ip_version;
-
-    /**
-     * LAN -> WAN always full, direction does not matter
-     * WAN -> LAN omitted if in router mode
-     */
-    flow.src_port = ntohs(info.local_port);
-    if(info.local_ip)  { memcpy(flow.src_ip, info.local_ip, 4); }
-    if(info.local_mac) { memcpy(flow.src_mac, info.local_mac, 6); }
-
-
-    flow.dst_port = ntohs(info.remote_port);
-    if(info.remote_ip)  { memcpy(flow.dst_ip, info.remote_ip, 4); }
-    if(info.remote_mac) { memcpy(flow.dst_mac, info.remote_mac, 6); }
-
-    rc = hw_acc_flush(&flow);
-    if (rc == false)
+    if (!info.local_ip || !info.remote_ip)
     {
-        LOGD("%s: flush failed: %d", __func__, rc);
+        LOGD("%s: src or dst ip NULL %p/%p", __func__, info.local_ip, info.remote_ip);
         return -1;
     }
+
+    index = 0;
+    cookie = FLUSH_COOKIE;
+    ip_len = (info.ip_version == 4) ? 4 : 16;
+    memcpy(&fush_msg[index], &cookie, 4);             index +=4;
+    memcpy(&fush_msg[index], &info.ip_version, 1);    index +=1;
+    memcpy(&fush_msg[index], &info.ipprotocol, 1);    index +=1;
+    memcpy(&fush_msg[index], info.local_ip, ip_len);  index +=ip_len;
+    memcpy(&fush_msg[index], info.remote_ip, ip_len); index +=ip_len;
+    memcpy(&fush_msg[index], &info.local_port, 2);    index +=2;
+    memcpy(&fush_msg[index], &info.remote_port, 2);   index +=2;
+    memcpy(&fush_msg[index], &mark, 4);               index +=4;
+
+    /* get the device mac */
+    if (memcmp(&client, info.local_mac, sizeof(os_macaddr_t)) == 0)
+    {
+        LOGW("%s: Unknown client (no mac)? Broadcasting the flush message to all nodes", __func__);
+        memset(&client, 0xff, sizeof(os_macaddr_t));
+    }
+    else
+    {
+        memcpy(&client, info.local_mac, sizeof(os_macaddr_t));
+    }
+
+    err = accel_evict_msg(CONFIG_TARGET_LAN_BRIDGE_NAME, &client, fush_msg, index);
+    if (err != 0)
+    {
+        LOGD("%s: flush failed: %d", __func__, err);
+        return -1;
+    }
+#endif //CONFIG_ACCEL_FLOW_EVICT_MESSAGE
+
+    LOGD("%s: done setting new mark to CT: %d", __func__, mark);
 
     return 0;
 }
@@ -1987,7 +2010,7 @@ fsm_dispatch_pkt(struct fsm_session *session,
             return;
         }
 
-        if ((ct_mark_flow) && (mark > 2))
+        if ((ct_mark_flow) && (mark > 2) && (acc->mark_done != mark))
         {
             flush_accel_flows(net_parser, mark);
             acc->mark_done = mark;
@@ -2075,10 +2098,10 @@ fsm_dispatch_pkt(struct fsm_session *session,
         }
         else
         {
-            acc->mark_done = mark;
-            if (mark > 2)
+            if ((mark > 2) && (acc->mark_done != mark))
             {
                 flush_accel_flows(net_parser, mark);
+                acc->mark_done = mark;
             }
         }
     }

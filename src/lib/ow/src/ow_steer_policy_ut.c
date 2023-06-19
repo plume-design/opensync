@@ -39,7 +39,6 @@ OSW_UT(ow_steer_policy_ut_methods)
 {
     const char *name = "policy_ut";
     const char *prefix = "ow: steer: policy: policy_ut [sta: aa:aa:aa:aa:aa:aa bssid: bb:bb:bb:bb:bb:bb]:";
-    const unsigned int priority = 14;
     const struct osw_hwaddr sta_addr = { .octet = { 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA }, };
     const struct osw_hwaddr bssid = { .octet = { 0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB }, };
     const struct ow_steer_policy_ops ops = { 0 };
@@ -51,7 +50,7 @@ OSW_UT(ow_steer_policy_ut_methods)
         .priv = &stack_recalc_cnt,
     };
 
-    policy = ow_steer_policy_create(name, priority, &sta_addr, &ops, &mediator, priv);
+    policy = ow_steer_policy_create(name, &sta_addr, &ops, &mediator, priv);
     ow_steer_policy_set_bssid(policy, &bssid);
     OSW_UT_EVAL(policy != NULL);
     OSW_UT_EVAL(ow_steer_policy_get_priv(policy) == priv);

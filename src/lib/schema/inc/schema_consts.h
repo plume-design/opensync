@@ -127,6 +127,12 @@ typedef enum {
 #define SCHEMA_CONSTS_SECURITY_PMF_OPTIONAL     "optional"
 #define SCHEMA_CONSTS_SECURITY_PMF_REQUIRED     "required"
 
+#define SCHEMA_CONSTS_MULTI_AP_NONE                   "none"
+#define SCHEMA_CONSTS_MULTI_AP_FRONTHAUL_BSS          "fronthaul_bss"
+#define SCHEMA_CONSTS_MULTI_AP_FRONTHAUL_BACKHAUL_BSS "fronthaul_backhaul_bss"
+#define SCHEMA_CONSTS_MULTI_AP_BACKHAUL_BSS           "backhaul_bss"
+#define SCHEMA_CONSTS_MULTI_AP_BACKHAUL_STA           "backhaul_sta"
+
 #define SCHEMA_CONSTS_INET_ENABLED          "enabled"
 #define SCHEMA_CONSTS_INET_DNS              "dns"
 #define SCHEMA_CONSTS_INET_DNS_PRIMARY      "primary"

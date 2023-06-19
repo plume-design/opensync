@@ -58,7 +58,7 @@ logpull_usage()
     echo "./logpull.sh [options] <logpull_type>"
     echo
     echo "Options:"
-    echo " --nopskmask                          ... skips masking preshared keys from log files"
+    echo " --nopwdmask                          ... skips masking passwords from log files"
     echo 
     echo "Logpull types:"
     for f in $LOGPULL_TYPE_DIR/* ; do
@@ -92,9 +92,9 @@ logpull_run()
         sh "$f"
     done
 
-    # Mask PSKs
-    if [ -z "$NO_PSK_MASK" ]; then
-        logi "masking psks from logpull data"
+    # Mask Passwords
+    if [ -z "$NO_PWD_MASK" ]; then
+        logi "masking passwords from logpull data"
 
         TARB_EXT=".tar.gz"
         logi "repacking tarballs"
@@ -103,18 +103,18 @@ logpull_run()
             logi "unpacking $f to $TARB_TMPDIR"
             mkdir -p "$TARB_TMPDIR" >&2 && tar xzf "$f" -C "$TARB_TMPDIR" >&2
             logi "masking tarball"
-            find "$TARB_TMPDIR" -type f | xargs $CONFIG_TARGET_PATH_TOOLS/pskmask -o _MASKED_ -- >&2 ||
+            find "$TARB_TMPDIR" -type f | xargs $CONFIG_TARGET_PATH_TOOLS/pwdmask -o _MASKED_ -- >&2 ||
             {
-                loge "PSK masking failed"
+                loge "PWD masking failed"
                 return 1
             }
             logi "repacking $TARB_TMPDIR back to $f"
             tar czf "$f" -C "$TARB_TMPDIR" . >&2 && rm -rf "$TARB_TMPDIR" >&2
         done
 
-        find "$LOGPULL_TMP_DIR" -type f ! -name "$TARB_EXT"| xargs $CONFIG_TARGET_PATH_TOOLS/pskmask -o _MASKED_ -- >&2 ||
+        find "$LOGPULL_TMP_DIR" -type f ! -name "$TARB_EXT"| xargs $CONFIG_TARGET_PATH_TOOLS/pwdmask -o _MASKED_ -- >&2 ||
         {
-            loge "PSK masking failed"
+            loge "PWD masking failed"
             return 1
         }
     fi
@@ -133,8 +133,8 @@ logpull_run()
 }
 
 # Parse options
-if [ "$1" = "--nopskmask" ]; then
-    export NO_PSK_MASK=1
+if [ "$1" = "--nopwdmask" ]; then
+    export NO_PWD_MASK=1
     shift
 fi
 [ "$#" -lt 1 ] && logpull_usage

@@ -41,7 +41,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "network_metadata_report.h"
 
 #define GATEKEEPER  "gatekeeper"
-#define WEBPULSE    "webpulse"
 #define BRIGHTCLOUD "brightcloud"
 
 static struct dns_cache_mgr
@@ -106,9 +105,6 @@ dns_cache_get_service_provider(char *service_provider)
 
     rc = strncmp(service_provider, GATEKEEPER, strlen(GATEKEEPER));
     if (!rc) return IP2ACTION_GK_SVC;
-
-    rc = strncmp(service_provider, WEBPULSE, strlen(WEBPULSE));
-    if (!rc) return IP2ACTION_WP_SVC;
 
     rc = strncmp(service_provider, BRIGHTCLOUD, strlen(BRIGHTCLOUD));
     if (!rc) return IP2ACTION_BC_SVC;
@@ -359,30 +355,6 @@ dns_cache_lookup_ip2action(struct ip2action_req *req)
 }
 
 /**
- * @brief Set wb details..
- *
- * receive wb dst and src.
- *
- * @return void.
- *
- */
-bool
-dns_cache_set_wb_cache_entry(struct ip2action_wb_info *i2a_cache_wb,
-                             struct ip2action_wb_info *to_add_cache_wb)
-{
-    if (!to_add_cache_wb->risk_level)
-    {
-        LOGD("%s: Categorization: risk level = %d",
-             __func__, to_add_cache_wb->risk_level);
-        return false;
-    }
-
-    i2a_cache_wb->risk_level = to_add_cache_wb->risk_level;
-
-    return true;
-}
-
-/**
  * @brief Set bc details.
  *
  * receive bc dst, src and nelems.
@@ -531,10 +503,6 @@ dns_cache_ip2action_lookup(struct ip2action_req *req)
        dns_cache_set_bc_cache_entry(&req->cache_bc, &i2a->cache_bc,
                                     i2a->nelems);
    }
-   else if (req->service_id == IP2ACTION_WP_SVC)
-   {
-       dns_cache_set_wb_cache_entry(&req->cache_wb, &i2a->cache_wb);
-   }
    else if (req->service_id == IP2ACTION_GK_SVC)
    {
        dns_cache_set_gk_cache_entry(&req->cache_gk, &i2a->cache_gk);
@@ -624,10 +592,6 @@ dns_cache_alloc_ip2action(struct ip2action_req  *to_add)
     {
         rc = dns_cache_set_bc_cache_entry(&i2a->cache_bc, &to_add->cache_bc,
                                           to_add->nelems);
-    }
-    else if (i2a->service_id == IP2ACTION_WP_SVC)
-    {
-        rc = dns_cache_set_wb_cache_entry(&i2a->cache_wb, &to_add->cache_wb);
     }
     else if (i2a->service_id == IP2ACTION_GK_SVC)
     {
@@ -857,11 +821,7 @@ dns_cache_print_entry(struct ip2action *i2a)
          i2a->service_id, i2a->redirect_flag, i2a->cat_unknown_to_service,
          dir2str(i2a->direction));
 
-    if (i2a->service_id == IP2ACTION_WP_SVC)
-    {
-        LOGD("%s:     risk_level: %d", __func__, i2a->cache_wb.risk_level);
-    }
-    else if (i2a->service_id == IP2ACTION_BC_SVC)
+    if (i2a->service_id == IP2ACTION_BC_SVC)
     {
         LOGD("%s:     reputationScore: %d", __func__, i2a->cache_bc.reputation);
     }

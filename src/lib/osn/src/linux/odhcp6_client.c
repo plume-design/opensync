@@ -357,22 +357,37 @@ void odhcp6_client_debounce_fn(struct ev_loop *loop, ev_debounce *w, int revent)
 
         LOG(TRACE, "dhcpv6_client: Parsing option file line: %s", buf);
 
-        if (strncmp(p, "export ", strlen("export ")) != 0) continue;
+        if (strncmp(p, "export ", strlen("export ")) != 0)
+        {
+            LOG(ERR, "dhcpv6_client: opts file line does not start with the `export` keyword. Ignoring.");
+            continue;
+        }
 
         /* Skip the "export keyword" */
         p += strlen("export ");
 
         name = strsep(&p, "=");
-        if (name == NULL) continue;
+        if (name == NULL)
+        {
+            LOG(ERR, "dhcpv6_client: opts file does not contain a \"=\". Ignoring.");
+            continue;
+        }
 
         /* Skip the first ' */
         value = strsep(&p, "'");
-        if (value == NULL || value[0] != '\0') continue;
+        if (value == NULL || value[0] != '\0')
+        {
+            LOG(ERR, "dhcpv6_client: opts file does not have an opening \"'\". Ignoring.");
+            continue;
+        }
 
         value = strsep(&p, "'");
-
         /* The last ' should be followed by a new line, if it's not, discard this line */
-        if (p[0] != '\n') continue;
+        if (value == NULL || p == NULL || p[0] != '\n')
+        {
+            LOG(ERR, "dhcpv6_client: Format error during parsing opts file end of line. Ignoring.");
+            continue;
+        }
 
         /*
          * Parse various options

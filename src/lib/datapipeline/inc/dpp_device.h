@@ -118,6 +118,8 @@ typedef struct
     uint32_t                        n_top_cpu;
     dpp_device_ps_util_t            top_mem[DPP_DEVICE_TOP_MAX];
     uint32_t                        n_top_mem;
+    uint32_t                        used_file_handles;
+    uint32_t                        total_file_handles;
 } dpp_device_record_t;
 
 typedef struct

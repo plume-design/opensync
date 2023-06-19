@@ -40,7 +40,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 struct ow_steer_policy*
 ow_steer_policy_create(const char *name,
-                       unsigned int priority,
                        const struct osw_hwaddr *sta_addr,
                        const struct ow_steer_policy_ops *ops,
                        const struct ow_steer_policy_mediator *mediator,
@@ -54,7 +53,6 @@ ow_steer_policy_create(const char *name,
     struct ow_steer_policy *policy = CALLOC(1, sizeof(*policy));
 
     policy->name = STRDUP(name);
-    policy->priority = priority;
     memcpy(&policy->sta_addr, sta_addr, sizeof(policy->sta_addr));
     memcpy(&policy->ops, ops, sizeof(policy->ops));
     memcpy(&policy->mediator, mediator, sizeof(policy->mediator));
@@ -123,13 +121,6 @@ ow_steer_policy_get_prefix(const struct ow_steer_policy *policy)
 {
     assert(policy != NULL);
     return policy->prefix;
-}
-
-unsigned int
-ow_steer_policy_get_priority(const struct ow_steer_policy *policy)
-{
-    assert(policy != NULL);
-    return policy->priority;
 }
 
 void

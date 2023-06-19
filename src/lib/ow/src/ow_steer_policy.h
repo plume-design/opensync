@@ -89,7 +89,6 @@ struct ow_steer_policy_mediator {
 
 struct ow_steer_policy*
 ow_steer_policy_create(const char *name,
-                       unsigned int priority,
                        const struct osw_hwaddr *sta_addr,
                        const struct ow_steer_policy_ops *ops,
                        const struct ow_steer_policy_mediator *mediator,
@@ -113,8 +112,5 @@ ow_steer_policy_set_bssid(struct ow_steer_policy *policy,
 
 const char*
 ow_steer_policy_get_name(const struct ow_steer_policy *policy);
-
-unsigned int
-ow_steer_policy_get_priority(const struct ow_steer_policy *policy);
 
 #endif /* OW_STEER_POLICY_H */

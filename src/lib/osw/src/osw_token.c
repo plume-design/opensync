@@ -36,6 +36,14 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <osw_util.h>
 #include <osw_token.h>
 
+#define OSW_TOKEN_COUNT_ONE_BITS(array) osw_token_count_one_bits(array, ARRAY_SIZE(array))
+#define DIV_ROUND_UP(x, y) (((x) + (y) - 1) / (y))
+#define BITS_PER_BYTE 8
+#define BITS_PER_LONG (sizeof(long) * BITS_PER_BYTE)
+#define BITS_TO_LONG(bits) DIV_ROUND_UP(bits, BITS_PER_LONG)
+#define OSW_TOKEN_COUNT (OSW_TOKEN_MAX - OSW_TOKEN_MIN + 1)
+#define SUB_CLAMP(x, min, max) (((x) <= min) ? ((max) - 1) : ((x) - 1))
+
 struct osw_token_pool_key {
     struct osw_ifname vif_name;
     struct osw_hwaddr sta_addr;
@@ -43,8 +51,8 @@ struct osw_token_pool_key {
 
 struct osw_token_pool {
     struct osw_token_pool_key key;
-    int last_token;
-    struct ds_dlist token_list; /* struct osw_token_dialog_token */
+    unsigned int last_bit_used;
+    long tokens[BITS_TO_LONG(OSW_TOKEN_COUNT)];
     struct ds_dlist ref_list; /* struct osw_token_pool_reference */
     struct ds_tree_node node;
 };
@@ -52,12 +60,19 @@ struct osw_token_pool {
 struct osw_token_pool_reference {
     struct osw_token_pool *pool;
     struct ds_dlist_node node;
+    long tokens[BITS_TO_LONG(OSW_TOKEN_COUNT)];
 };
 
-struct osw_token_dialog_token {
-    int val;
-    struct ds_dlist_node node;
-};
+static size_t
+osw_token_count_one_bits(const long *words, const size_t len)
+{
+    size_t n = 0;
+    size_t i;
+    for (i = 0; i < len; i++) {
+        n += __builtin_popcountl(words[i]);
+    }
+    return n;
+}
 
 static int
 osw_token_pool_key_cmp(const void *a,
@@ -82,8 +97,7 @@ osw_token_pool_alloc_new(const struct osw_token_pool_key *key)
 {
     struct osw_token_pool *pool = CALLOC(1, sizeof(*pool));
     memcpy(&pool->key, key, sizeof(pool->key));
-    pool->last_token = OSW_TOKEN_MIN;
-    ds_dlist_init(&pool->token_list, struct osw_token_dialog_token, node);
+    pool->last_bit_used = 0;
     ds_dlist_init(&pool->ref_list, struct osw_token_pool_reference, node);
     ds_tree_insert(&g_pool_tree, pool, &pool->key);
     return pool;
@@ -144,7 +158,7 @@ osw_token_pool_free(struct osw_token_pool *pool)
     if (WARN_ON(pool == NULL)) return;
 
     size_t ref_count = ds_dlist_len(&pool->ref_list);
-    size_t token_count = ds_dlist_len(&pool->token_list);
+    size_t token_count = OSW_TOKEN_COUNT_ONE_BITS(pool->tokens);
     if (WARN_ON(ref_count != 0)) return;
     if (WARN_ON(token_count != 0)) return;
 
@@ -158,6 +172,18 @@ osw_token_pool_free(struct osw_token_pool *pool)
     FREE(pool);
 }
 
+static void
+osw_token_pool_ref_drop_tokens(struct osw_token_pool_reference *pool_ref)
+{
+    struct osw_token_pool *pool = pool_ref->pool;
+    assert(pool != NULL);
+
+    size_t word;
+    for (word = 0; word < ARRAY_SIZE(pool_ref->tokens); word++) {
+        pool->tokens[word] &= ~pool_ref->tokens[word];
+    }
+}
+
 void
 osw_token_pool_ref_free(struct osw_token_pool_reference *pool_ref)
 {
@@ -166,6 +192,7 @@ osw_token_pool_ref_free(struct osw_token_pool_reference *pool_ref)
     struct osw_token_pool *pool = pool_ref->pool;
     if (WARN_ON(pool == NULL)) return;
 
+    osw_token_pool_ref_drop_tokens(pool_ref);
     ds_dlist_remove(&pool->ref_list, pool_ref);
     FREE(pool_ref);
 
@@ -173,32 +200,8 @@ osw_token_pool_ref_free(struct osw_token_pool_reference *pool_ref)
     if (ref_count == 0) osw_token_pool_free(pool);
 }
 
-static int
-osw_token_get_next(const int last_token)
-{
-    /* upper half, going down from OSW_TOKEN_MAX to OSW_TOKEN_MIN */
-    if (last_token <= OSW_TOKEN_MIN) return OSW_TOKEN_MAX;
-    return last_token - 1;
-}
-
-static bool
-osw_token_is_present_in_list(struct osw_token_pool *pool,
-                             const int token)
-{
-    ASSERT(pool != NULL, "");
-
-    bool present = false;
-    struct osw_token_dialog_token *dt;
-    ds_dlist_foreach(&pool->token_list, dt) {
-        if (dt->val == token) {
-            present = true;
-        }
-    }
-    return present;
-}
-
 int
-osw_token_pool_fetch_token(const struct osw_token_pool_reference *pool_ref)
+osw_token_pool_fetch_token(struct osw_token_pool_reference *pool_ref)
 {
     if (WARN_ON(pool_ref == NULL)) return OSW_TOKEN_INVALID;
     struct osw_token_pool *pool = pool_ref->pool;
@@ -206,16 +209,18 @@ osw_token_pool_fetch_token(const struct osw_token_pool_reference *pool_ref)
 
     /* look for unused token */
     int new_token = OSW_TOKEN_INVALID;
-    uint8_t t;
-    for (t = osw_token_get_next(pool->last_token);
-         t != pool->last_token;
-         t = osw_token_get_next(t)) {
-        const bool is_token_taken = osw_token_is_present_in_list(pool, t);
-        if (is_token_taken == false) {
-            new_token = t;
+    const unsigned int started_with = pool->last_bit_used;
+    do {
+        pool->last_bit_used = SUB_CLAMP(pool->last_bit_used, 0, OSW_TOKEN_COUNT);
+        const size_t word = pool->last_bit_used / BITS_PER_LONG;
+        const long mask = 1L << (pool->last_bit_used % BITS_PER_LONG);
+        if ((pool->tokens[word] & mask) == 0) {
+            pool->tokens[word] |= mask;
+            pool_ref->tokens[word] |= mask;
+            new_token = pool->last_bit_used + OSW_TOKEN_MIN;
             break;
         }
-    }
+    } while (started_with != pool->last_bit_used);
 
     if (new_token == OSW_TOKEN_INVALID) {
         LOGN("osw: token: pool_fetch_token: unique dialog token pool exhausted"
@@ -226,25 +231,19 @@ osw_token_pool_fetch_token(const struct osw_token_pool_reference *pool_ref)
         return new_token;
     }
 
-    /* append list with reserved token */
-    struct osw_token_dialog_token *dialog_token = CALLOC(1, sizeof(*dialog_token));
-    dialog_token->val = new_token;
-    ds_dlist_insert_tail(&pool->token_list, dialog_token);
-    pool->last_token = new_token;
-
     LOGT("osw: token: pool_fetch_token: generated new dialog token,"
          " token: %d"
          " vif_name: %s"
          " sta_addr: "OSW_HWADDR_FMT,
-         pool->last_token,
+         new_token,
          pool->key.vif_name.buf,
          OSW_HWADDR_ARG(&pool->key.sta_addr));
 
-    return pool->last_token;
+    return new_token;
 }
 
 void
-osw_token_pool_free_token(const struct osw_token_pool_reference *pool_ref,
+osw_token_pool_free_token(struct osw_token_pool_reference *pool_ref,
                           int token)
 {
     if (WARN_ON(pool_ref == NULL)) return;
@@ -260,16 +259,17 @@ osw_token_pool_free_token(const struct osw_token_pool_reference *pool_ref,
          pool->key.vif_name.buf,
          OSW_HWADDR_ARG(&pool->key.sta_addr));
 
+    if (token < OSW_TOKEN_MIN) return;
+    if (token > OSW_TOKEN_MAX) return;
+
     /* free single dialog token reservation if present */
-    struct osw_token_dialog_token *dt;
-    struct osw_token_dialog_token *dt_tmp;
-    ds_dlist_foreach_safe(&pool->token_list, dt, dt_tmp) {
-        if (dt->val == token) {
-            ds_dlist_remove(&pool->token_list, dt);
-            FREE(dt);
-            break;
-        }
-    }
+    const long bit = token - OSW_TOKEN_MIN;
+    const size_t word = bit / BITS_PER_LONG;
+    const long mask = 1L << (bit % BITS_PER_LONG);
+    if (WARN_ON((pool_ref->tokens[word] & mask) == 0)) return;
+    WARN_ON((pool->tokens[word] & mask) == 0);
+    pool->tokens[word] &= ~mask;
+    pool_ref->tokens[word] &= ~mask;
 }
 
 OSW_MODULE(osw_token)

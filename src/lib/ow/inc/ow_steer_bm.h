@@ -33,6 +33,7 @@ enum ow_steer_bm_client_pref_5g {
     OW_STEER_BM_CLIENT_PREF_5G_NEVER,
     OW_STEER_BM_CLIENT_PREF_5G_ALWAYS,
     OW_STEER_BM_CLIENT_PREF_5G_HWM,
+    OW_STEER_BM_CLIENT_PREF_5G_NON_DFS,
 };
 
 enum ow_steer_bm_client_kick_type {
@@ -64,6 +65,7 @@ enum ow_steer_bm_neighbor_ht_mode {
     OW_STEER_BM_NEIGHBOR_HT80,
     OW_STEER_BM_NEIGHBOR_HT160,
     OW_STEER_BM_NEIGHBOR_HT80P80, /* 80+80 */
+    OW_STEER_BM_NEIGHBOR_HT320,
 };
 
 enum ow_steer_bm_client_cs_mode {
@@ -79,6 +81,8 @@ enum ow_steer_bm_cs_params_band {
 };
 
 enum ow_steer_bm_client_cs_state {
+    OW_STEER_BM_CS_STATE_UNKNOWN,
+    OW_STEER_BM_CS_STATE_INIT,
     OW_STEER_BM_CS_STATE_NONE,
     OW_STEER_BM_CS_STATE_STEERING,
     OW_STEER_BM_CS_STATE_EXPIRED,
@@ -114,6 +118,12 @@ ow_steer_bm_vif_changed_fn_t(struct ow_steer_bm_observer *observer,
                              struct ow_steer_bm_vif *vif);
 
 typedef void
+ow_steer_bm_vif_changed_channel_fn_t(struct ow_steer_bm_observer *observer,
+                                     struct ow_steer_bm_vif *vif,
+                                     const struct osw_channel *old_channel,
+                                     const struct osw_channel *new_channel);
+
+typedef void
 ow_steer_bm_neighbor_up_fn_t(struct ow_steer_bm_observer *observer,
                              struct ow_steer_bm_neighbor *neighbor);
 
@@ -139,6 +149,7 @@ struct ow_steer_bm_observer {
     ow_steer_bm_vif_up_fn_t *vif_up_fn;
     ow_steer_bm_vif_down_fn_t *vif_down_fn;
     ow_steer_bm_vif_changed_fn_t *vif_changed_fn;
+    ow_steer_bm_vif_changed_channel_fn_t *vif_changed_channel_fn;
     ow_steer_bm_neighbor_up_fn_t *neighbor_up_fn;
     ow_steer_bm_neighbor_down_fn_t *neighbor_down_fn;
     ow_steer_bm_client_added_fn_t *client_added_fn;
@@ -274,6 +285,14 @@ ow_steer_bm_client_set_kick_type(struct ow_steer_bm_client *client,
 void
 ow_steer_bm_client_set_kick_upon_idle(struct ow_steer_bm_client *client,
                                       const bool *kick_upon_idle);
+
+void
+ow_steer_bm_client_set_pre_assoc_auth_block(struct ow_steer_bm_client *client,
+                                            const bool *pre_assoc_auth_block);
+
+void
+ow_steer_bm_client_set_send_rrm_after_assoc(struct ow_steer_bm_client *client,
+                                            const bool *send_rrm_after_assoc);
 
 void
 ow_steer_bm_client_set_backoff_secs(struct ow_steer_bm_client *client,

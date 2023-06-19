@@ -692,6 +692,28 @@ osw_stats_put(const struct osw_tlv *src)
 }
 
 static void
+osw_stats_reset_last__(struct osw_stats *stats,
+                       enum osw_stats_id id)
+{
+    struct osw_stats_subscriber *sub;
+
+    ds_dlist_foreach(&stats->subscribers, sub) {
+        struct ds_tree *buckets = &sub->buckets[id];
+        struct osw_stats_bucket *bucket;
+
+        ds_tree_foreach(buckets, bucket) {
+            osw_tlv_fini(&bucket->last);
+        }
+    }
+}
+
+void
+osw_stats_reset_last(enum osw_stats_id id)
+{
+    osw_stats_reset_last__(&g_osw_stats, id);
+}
+
+static void
 osw_stats_work_cb(struct osw_timer *t)
 {
     struct osw_stats *stats = container_of(t, struct osw_stats, work);

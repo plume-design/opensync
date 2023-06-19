@@ -93,6 +93,10 @@ ow_stats_conf_entry_set_reporting(struct ow_stats_conf_entry *e,
                                   int seconds);
 
 void
+ow_stats_conf_entry_set_reporting_limit(struct ow_stats_conf_entry *e,
+                                        unsigned int count);
+
+void
 ow_stats_conf_entry_set_radio_type(struct ow_stats_conf_entry *e,
                                    enum ow_stats_conf_radio_type radio_type);
 

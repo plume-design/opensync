@@ -36,6 +36,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+typedef void osfw_fn_t(const char *name, int ret);
 /*
  * Iptables table enumeration
  */
@@ -57,7 +58,7 @@ enum osfw_table
  * This function may also take care to clean the firewall subsystem, if it was
  * previously configured.
  */
-bool osfw_init(void);
+bool osfw_init(osfw_fn_t *fn);
 
 /*
  * Deinitialize the firewall subsystem; clean up etc.
@@ -102,9 +103,10 @@ bool osfw_chain_del(int family, enum osfw_table table, const char *chain);
  *      - match: A string using iptables match syntax
  *      - target: User defined chain or one of the target actions : "ACCEPT,
  *        DROP, REJECT"
+ *        name: name of the config entry in the Netfilter table
  */
 bool osfw_rule_add(int family, enum osfw_table table, const char *chain,
-		int prio, const char *match, const char *target);
+		int prio, const char *match, const char *target, const char *name);
 
 /*
  * Delete a rule from the system:
@@ -127,8 +129,6 @@ bool osfw_rule_del(int family, enum osfw_table table, const char *chain,
 bool osfw_apply(void);
 
 
-typedef int (*osfw_run_cmd_fn)(const char* cmd);
-
 /*
  * Initialize global firewall ebtable subsystem
  *
@@ -137,7 +137,7 @@ typedef int (*osfw_run_cmd_fn)(const char* cmd);
  * This function may also take care to clean the firewall subsystem, if it was
  * previously configured.
  */
-bool osfw_eb_init(int (*fun_cb)(const char* cmd));
+bool osfw_eb_init(osfw_fn_t *fn);
 
 /*
  * Deinitialize the firewall subsystem; clean up etc.
@@ -150,8 +150,6 @@ bool osfw_eb_fini(void);
  * as defined by all previous calls to this API.
  */
 bool osfw_eb_apply(void);
-
-int osfw_eb_execute_cmd(const char *cmd);
 
 /*
  * Add a chain to the system:
@@ -193,7 +191,7 @@ bool osfw_eb_chain_del(int family, enum osfw_table table, const char *chain);
  *        DROP, REJECT"
  */
 bool osfw_eb_rule_add(int family, enum osfw_table table, const char *chain,
-		              int prio, const char *match, const char *target);
+		              int prio, const char *match, const char *target, const char *name);
 /*
  * Delete a rule from the system:
  *      - family: AF_INET or AF_INET6

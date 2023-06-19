@@ -27,9 +27,10 @@ menuconfig MANAGER_FCM
             FCM will be restarted once this threshold is reached.
             This value can be overridden through the ovsdb Node_Config table.
 
-    config FCM_OVS_CMD
+    config FCM_LAN_STATS_COLLECT_METHOD
         depends on MANAGER_FCM
-        bool "Flow collection using OVS"
+        bool "Lan Stats collection method config"
         default n
         help
-            Enable Lan stats collection using cmd
+            Default to collect lan stats through APIs, Disabling switches
+            the collection method through parsing of ovs command output.

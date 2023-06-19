@@ -56,11 +56,27 @@ osw_drv_nl80211_hook_pre_request_stats_fn_t(struct osw_drv_nl80211_hook *hook,
                                             unsigned int stats_mask,
                                             void *priv);
 
+typedef void
+osw_drv_nl80211_hook_get_vif_list_fn_t(struct osw_drv_nl80211_hook *hook,
+                                       const char *phy_name,
+                                       osw_drv_report_vif_fn_t *report_vif_fn,
+                                       void *fn_priv,
+                                       void *priv);
+
+typedef void
+osw_drv_nl80211_hook_get_vif_state_fn_t(struct osw_drv_nl80211_hook *hook,
+                                        const char *phy_name,
+                                        const char *vif_name,
+                                        struct osw_drv_vif_state *state,
+                                        void *priv);
+
 struct osw_drv_nl80211_hook_ops {
     osw_drv_nl80211_hook_fix_phy_state_fn_t *fix_phy_state_fn;
     osw_drv_nl80211_hook_fix_vif_state_fn_t *fix_vif_state_fn;
     osw_drv_nl80211_hook_pre_request_config_fn_t *pre_request_config_fn;
     osw_drv_nl80211_hook_pre_request_stats_fn_t *pre_request_stats_fn;
+    osw_drv_nl80211_hook_get_vif_list_fn_t *get_vif_list_fn;
+    osw_drv_nl80211_hook_get_vif_state_fn_t *get_vif_state_fn;
 };
 
 typedef struct nl_80211 *

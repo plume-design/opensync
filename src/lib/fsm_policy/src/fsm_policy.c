@@ -847,20 +847,6 @@ void set_policy_redirects(struct fsm_policy_req *req,
 }
 
 /**
- * @brief Set wb details..
- *
- * receive wb dst and src.
- *
- * @return void.
- *
- */
-void populate_wb_cache_entry(struct fsm_wp_info *fqdn_reply_wb,
-                             struct ip2action_wb_info *i2a_cache_wb)
-{
-    fqdn_reply_wb->risk_level = i2a_cache_wb->risk_level;
-}
-
-/**
  * @brief Set bc details.
  *
  * receive bc dst, src and nelems.
@@ -908,11 +894,7 @@ bool risk_level_compare(struct fsm_url_reply *reply,
     int risk_level = -1;
     bool result;
 
-    if (reply->service_id == IP2ACTION_WP_SVC)
-    {
-        risk_level = reply->wb.risk_level;
-    }
-    else if (reply->service_id == IP2ACTION_BC_SVC)
+    if (reply->service_id == IP2ACTION_BC_SVC)
     {
         risk_level = reply->bc.reputation;
     }
@@ -1017,10 +999,6 @@ fsm_dns_cache_lookup(struct fsm_policy_req *req, struct fsm_policy_reply *policy
     {
         populate_bc_cache_entry(&reply->bc, &lkp_req.cache_bc,
                                 lkp_req.nelems);
-    }
-    else if (lkp_req.service_id == IP2ACTION_WP_SVC)
-    {
-        populate_wb_cache_entry(&reply->wb, &lkp_req.cache_wb);
     }
     else if (lkp_req.service_id == IP2ACTION_GK_SVC)
     {

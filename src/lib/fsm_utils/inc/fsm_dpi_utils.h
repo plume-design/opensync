@@ -28,7 +28,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define FSM_DPI_UTILS_H_INCLUDED
 
 #include "fsm.h"
-
+#include "neigh_table.h"
 /**
  * @brief FSM DPI APIs using 5 tuples
  */
@@ -109,5 +109,11 @@ fsm_ops_get_network_id(struct fsm_session *session, os_macaddr_t *mac);
 
 int
 fsm_dpi_get_mark(struct net_md_stats_accumulator *acc, int action);
+
+bool
+fsm_nfq_mac_same(os_macaddr_t *lkp_mac, struct nfq_pkt_info *pkt_info);
+
+bool
+fsm_update_neigh_cache(void *ipaddr, os_macaddr_t *mac, int domain);
 
 #endif /* FSM_DPI_UTILS_H_INCLUDED */

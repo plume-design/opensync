@@ -368,29 +368,32 @@ free_flow_key_tags(struct flow_key *key)
 }
 
 static void
-free_flow_key_data_report(struct str_set *data_report)
+free_flow_key_data_report(struct str_set *report_tags)
 {
     size_t i;
 
-    CHECK_DOUBLE_FREE(data_report);
+    CHECK_DOUBLE_FREE(report_tags);
 
-    for (i = 0; i < data_report->nelems; i++) FREE(data_report->array[i]);
-    FREE(data_report->array);
+    for (i = 0; i < report_tags->nelems; i++) FREE(report_tags->array[i]);
+    FREE(report_tags->array);
+    FREE(report_tags);
 }
 
 void
 free_flow_key_data_reports(struct flow_key *key)
 {
+    struct data_report_tags *report_tag;
     size_t i;
 
     CHECK_DOUBLE_FREE(key);
 
     for (i = 0; i < key->num_data_report; i++)
     {
-        free_flow_key_data_report(key->data_report[i]);
+        report_tag = key->data_report[i];
+        free_flow_key_data_report(report_tag->data_report);
+        FREE(key->data_report[i]->id);
         FREE(key->data_report[i]);
     }
-
     FREE(key->data_report);
 }
 
@@ -1103,6 +1106,11 @@ bool net_md_add_sample_to_window(struct net_md_aggregator *aggr,
     if (window == NULL) return false;
     if (IS_NULL_PTR(window->flow_stats)) return false;
 
+    if (aggr->on_acc_report != NULL)
+    {
+        aggr->on_acc_report(aggr, acc);
+    }
+
     if (aggr->report_filter != NULL)
     {
         filter_add = aggr->report_filter(acc);
@@ -1178,10 +1186,6 @@ void net_md_report_5tuples_accs(struct net_md_aggregator *aggr,
         if (active_flow)
         {
             net_md_close_counters(aggr, acc);
-            if (aggr->on_acc_report != NULL)
-            {
-                aggr->on_acc_report(aggr, acc);
-            }
             net_md_add_sample_to_window(aggr, acc);
             acc->state = ACC_STATE_WINDOW_RESET;
         }
@@ -1654,55 +1658,6 @@ net_md_set_tags(struct flow_tags *tag,
     return 0;
 }
 
-static void
-net_md_set_data_report_tag(struct net_md_stats_accumulator *acc, Traffic__FlowKey *flowkey_pb)
-{
-    struct net_md_flow_info info;
-    struct str_set *data_report;
-    struct str_set *report_set;
-    struct flow_key *fkey;
-    int rc;
-    size_t i;
-
-    MEMZERO(info);
-    rc = net_md_get_flow_info(acc, &info);
-    if (!rc)
-    {
-        LOGD("%s(): Failed to find flow information", __func__);
-        return;
-    }
-
-    if (info.local_mac == NULL)
-    {
-        LOGD("%s(): Failed to find MAC address", __func__);
-        return;
-    }
-
-    LOGN("%s(): fetching data report tags for " PRI_os_macaddr_lower_t " ", __func__,
-         FMT_os_macaddr_pt(info.local_mac));
-    report_set = data_report_tags_get_tags(info.local_mac);
-    if (report_set == NULL)
-    {
-        LOGN("%s(): report details are empty for mac " PRI_os_macaddr_lower_t " ", __func__,
-             FMT_os_macaddr_pt(info.local_mac));
-        return;
-    }
-
-    fkey = acc->fkey;
-    fkey->num_data_report = 1;
-    fkey->data_report = CALLOC(fkey->num_data_report, sizeof(*fkey->data_report));
-
-    data_report = CALLOC(1, sizeof(*data_report));
-    data_report->nelems = report_set->nelems;
-    data_report->array = CALLOC(data_report->nelems, sizeof(*data_report->array));
-    for (i = 0; i < data_report->nelems; i++)
-    {
-        data_report->array[i] = STRDUP(report_set->array[i]);
-    }
-
-    (*fkey->data_report) = data_report;
-    return;
-}
 
 static void
 net_md_update_flow_tags(struct flow_key *fkey, Traffic__FlowKey *flowkey_pb)
@@ -2053,9 +2008,6 @@ net_md_update_flow_key(struct net_md_aggregator *aggr,
     acc->key->direction = acc->direction;
     fkey->direction = acc->direction;
 
-    /* Update report tags */
-    net_md_set_data_report_tag(acc, flowkey_pb);
-
     LOGD("%s: acc updated", __func__);
     net_md_log_acc(acc, __func__);
 
@@ -2306,6 +2258,7 @@ net_md_log_key(struct net_md_flow_key *key, const char *caller)
 void
 net_md_log_fkey(struct flow_key *fkey, const char *caller)
 {
+    struct data_report_tags *data_report_tags;
     struct str_set *data_report;
     struct flow_tags *ftag;
     size_t i, j;
@@ -2366,13 +2319,13 @@ net_md_log_fkey(struct flow_key *fkey, const char *caller)
 
     for (i = 0; i < fkey->num_data_report; i++)
     {
-        data_report = fkey->data_report[i];
+        data_report_tags = fkey->data_report[i];
+        data_report = data_report_tags->data_report;
         for (j = 0; j < data_report->nelems; j++)
         {
             LOGD("data_report[%zu]: %s", j, data_report->array[j]);
         }
     }
-    
 }
 
 

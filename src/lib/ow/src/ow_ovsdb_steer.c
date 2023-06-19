@@ -313,7 +313,7 @@ ow_ovsdb_steer_bm_client_set_cs_state_mutate_cb(const struct osw_hwaddr *client_
     ASSERT(client_addr != NULL, "");
 
     const char *cs_state_cstr = ow_steer_bm_client_cs_state_to_cstr(cs_state);
-    if (strcmp(cs_state_cstr, "unknown") == 0) {
+    if (cs_state_cstr == NULL) {
         LOGW("ow: steer: ovsdb: client: sta_addr: "OSW_HWADDR_FMT" cannot set cs_state, unknown enum value: %d", OSW_HWADDR_ARG(client_addr), cs_state);
         return;
     }
@@ -326,10 +326,36 @@ ow_ovsdb_steer_bm_client_set_cs_state_mutate_cb(const struct osw_hwaddr *client_
 
     update._partial_update = true;
     SCHEMA_SET_STR(update.mac, client_addr_str.buf);
-    SCHEMA_SET_STR(update.cs_state, cs_state_cstr);
+    if (strlen(cs_state_cstr) > 0) {
+        SCHEMA_SET_STR(update.cs_state, cs_state_cstr);
+    }
+    else {
+        SCHEMA_UNSET_FIELD(update.cs_state);
+    }
     ovsdb_table_update(&g_steering->client_table, &update);
 
     LOGD("ow: steer: ovsdb: client: sta_addr: "OSW_HWADDR_FMT" set cs_state: %s", OSW_HWADDR_ARG(client_addr), cs_state_cstr);
+}
+
+enum ow_steer_bm_client_cs_mode
+ow_ovsdb_steer_client_cs_mode_from_cstr(const char *cstr)
+{
+    if (strcmp(cstr, "off") == 0) return OW_STEER_BM_CLIENT_CS_MODE_OFF;
+    if (strcmp(cstr, "home") == 0) return OW_STEER_BM_CLIENT_CS_MODE_HOME;
+    if (strcmp(cstr, "away") == 0) return OW_STEER_BM_CLIENT_CS_MODE_AWAY;
+    return OW_STEER_BM_CLIENT_CS_MODE_OFF;
+}
+
+enum ow_steer_bm_client_cs_state
+ow_steer_bm_client_cs_state_from_cstr(const char *cstr)
+{
+    if (cstr == NULL) return OW_STEER_BM_CS_STATE_UNKNOWN;
+    if (strcmp(cstr, "") == 0) return OW_STEER_BM_CS_STATE_INIT;
+    if (strcmp(cstr, "none") == 0) return OW_STEER_BM_CS_STATE_NONE;
+    if (strcmp(cstr, "steering") == 0) return OW_STEER_BM_CS_STATE_STEERING;
+    if (strcmp(cstr, "expired") == 0) return OW_STEER_BM_CS_STATE_EXPIRED;
+    if (strcmp(cstr, "failed") == 0) return OW_STEER_BM_CS_STATE_FAILED;
+    return OW_STEER_BM_CS_STATE_UNKNOWN;
 }
 
 static void
@@ -367,6 +393,14 @@ ow_ovsdb_steer_client_set(const struct schema_Band_Steering_Clients *row)
         ow_steer_bm_client_set_lwm(client, NULL);
     }
 
+    if (row->pre_assoc_auth_block_exists == true) {
+        const bool auth_block = row->pre_assoc_auth_block;
+        ow_steer_bm_client_set_pre_assoc_auth_block(client, &auth_block);
+    }
+    else {
+        ow_steer_bm_client_set_pre_assoc_auth_block(client, NULL);
+    }
+
     if (row->pref_5g_exists == true) {
         if (strcmp(row->pref_5g, "always") == 0) {
              const enum ow_steer_bm_client_pref_5g pref_5g = OW_STEER_BM_CLIENT_PREF_5G_ALWAYS;
@@ -378,6 +412,10 @@ ow_ovsdb_steer_client_set(const struct schema_Band_Steering_Clients *row)
         }
         else if (strcmp(row->pref_5g, "hwm") == 0) {
              const enum ow_steer_bm_client_pref_5g pref_5g = OW_STEER_BM_CLIENT_PREF_5G_HWM;
+             ow_steer_bm_client_set_pref_5g(client, &pref_5g);
+        }
+        else if (strcmp(row->pref_5g, "nonDFS") == 0) {
+             const enum ow_steer_bm_client_pref_5g pref_5g = OW_STEER_BM_CLIENT_PREF_5G_NON_DFS;
              ow_steer_bm_client_set_pref_5g(client, &pref_5g);
         }
         else {
@@ -398,6 +436,9 @@ ow_ovsdb_steer_client_set(const struct schema_Band_Steering_Clients *row)
         else if (strcmp(row->kick_type, "btm_deauth") == 0) {
              const enum ow_steer_bm_client_kick_type kick_type = OW_STEER_BM_CLIENT_KICK_TYPE_BTM_DEAUTH;
              ow_steer_bm_client_set_kick_type(client, &kick_type);
+        }
+        else if (strcmp(row->kick_type, "none") == 0) {
+             ow_steer_bm_client_set_kick_type(client, NULL);
         }
         else {
             LOGW("ow: steer: ovsdb: client: sta_addr: "OSW_HWADDR_FMT" cannot add, unsupported kick_type: %s",
@@ -441,27 +482,35 @@ ow_ovsdb_steer_client_set(const struct schema_Band_Steering_Clients *row)
         ow_steer_bm_client_set_rejects_tmout_secs(client, NULL);
     }
 
-    if (row->cs_mode_exists == true) {
-        if (strcmp(row->cs_mode, "off") == 0) {
-            const enum ow_steer_bm_client_cs_mode cs_mode = OW_STEER_BM_CLIENT_CS_MODE_OFF;
+    const enum ow_steer_bm_client_cs_state cs_state = ow_steer_bm_client_cs_state_from_cstr(row->cs_state);
+    const enum ow_steer_bm_client_cs_mode cs_mode = ow_ovsdb_steer_client_cs_mode_from_cstr(row->cs_mode);
+    const enum ow_steer_bm_client_cs_mode cs_mode_off = OW_STEER_BM_CLIENT_CS_MODE_OFF;
+
+    switch (cs_state) {
+        case OW_STEER_BM_CS_STATE_STEERING:
+            /* There's a chance this is leftovers from a
+             * previous process life (before it crashed). In
+             * that case it'd be more of a problem to _not_
+             * respect it, even if this means resulting
+             * enforce period, was to end up being longer
+             * than originally intended.
+             */
+             /* fallthrough */
+        case OW_STEER_BM_CS_STATE_UNKNOWN:
+        case OW_STEER_BM_CS_STATE_INIT:
             ow_steer_bm_client_set_cs_mode(client, &cs_mode);
-        }
-        else if (strcmp(row->cs_mode, "home") == 0) {
-            const enum ow_steer_bm_client_cs_mode cs_mode = OW_STEER_BM_CLIENT_CS_MODE_HOME;
-            ow_steer_bm_client_set_cs_mode(client, &cs_mode);
-        }
-        else if (strcmp(row->cs_mode, "away") == 0) {
-            const enum ow_steer_bm_client_cs_mode cs_mode = OW_STEER_BM_CLIENT_CS_MODE_AWAY;
-            ow_steer_bm_client_set_cs_mode(client, &cs_mode);
-        }
-        else {
-            LOGW("ow: steer: ovsdb: client: sta_addr: "OSW_HWADDR_FMT" unsupported cs_mode: %s",
-                 OSW_HWADDR_ARG(&addr), row->cs_mode);
-            ow_steer_bm_client_set_cs_mode(client, NULL);
-        }
-    }
-    else {
-        ow_steer_bm_client_set_cs_mode(client, NULL);
+            break;
+        case OW_STEER_BM_CS_STATE_NONE:
+        case OW_STEER_BM_CS_STATE_EXPIRED:
+        case OW_STEER_BM_CS_STATE_FAILED:
+            /* The controller is expected to poke cs_mode to
+             * "none" or "[]". Otherwise it needs to be
+             * assumed the work related with this was
+             * already done, possibly by a previous process
+             * life (before crash).
+             */
+            ow_steer_bm_client_set_cs_mode(client, &cs_mode_off);
+            break;
     }
 
     if (row->sc_btm_params_len != 0) {
@@ -572,6 +621,14 @@ ow_ovsdb_steer_client_set(const struct schema_Band_Steering_Clients *row)
     }
     else {
         ow_steer_bm_client_unset_cs_params(client);
+    }
+
+    if (row->send_rrm_after_assoc_exists) {
+        const bool enable = row->send_rrm_after_assoc;
+        ow_steer_bm_client_set_send_rrm_after_assoc(client, &enable);
+    }
+    else {
+        ow_steer_bm_client_set_send_rrm_after_assoc(client, NULL);
     }
 
     ow_steer_bm_client_set_cs_state_mutate_cb(client, ow_ovsdb_steer_bm_client_set_cs_state_mutate_cb);

@@ -96,4 +96,6 @@ bool qm_event_init();
 void mqtt_telog_init(struct ev_loop *ev);
 void mqtt_telog_fini(void);
 
+void qm_set_power_mode(const char* power_mode);
+
 #endif /* QM_H_INCLUDED */

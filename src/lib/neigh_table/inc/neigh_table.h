@@ -91,6 +91,7 @@ enum source
     FSM_NDP           = OVSDB_NDP,
     OVSDB_INET_STATE  = 1 << 5,
     NEIGH_UT          = 1 << 6,
+    FSM_NFQUEUE       = 1 << 7,
 };
 
 enum ovsdb_table_lookup

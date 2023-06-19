@@ -27,6 +27,7 @@
 bhaul_ssid=$BACKHAUL_SSID
 bhaul_psk=$BACKHAUL_PASS
 bhaul_multi="$MULTI_BACKHAUL_CREDS"
+OVSDB_NOT_SET='["set",[]]'
 
 test "$CONFIG_OVSDB_BOOTSTRAP" = y || bhaul_multi=
 
@@ -92,7 +93,12 @@ htmode=$(echo "$i" | cut -d: -f3)
 hwmode=$(echo "$i" | cut -d: -f4)
 freqband=$(echo "$i" | cut -d: -f5)
 hwtype=$(echo "$i" | cut -d: -f6)
-args=$(echo "$i" | cut -d: -f7-)
+args=$(echo "$i" | cut -d: -f7)
+# Optional value
+bcn_int=$(echo "$i" | cut -d: -f8)
+
+test $bcn_int || bcn_int=$OVSDB_NOT_SET
+
 cat <<PHY
 {
     "op": "insert",
@@ -101,6 +107,7 @@ cat <<PHY
         "enabled": true,
         "if_name": "$phy",
         "freq_band": "$freqband",
+        "bcn_int": $bcn_int,
         "channel_mode": "cloud",
         "channel_sync": 0,
         "hw_type": "$hwtype",

@@ -118,6 +118,34 @@
         "op":"insert",
         "table":"Netfilter",
         "row": {
+            "name": "default.ipv4.filter.multicast",
+            "enable": true,
+            "priority": 900,
+            "protocol": "ipv4",
+            "table": "filter",
+            "chain": "FORWARD",
+            "rule": "-p udp -d 224.0.0.0/4",
+            "target": "ACCEPT"
+        }
+    },
+    {
+        "op":"insert",
+        "table":"Netfilter",
+        "row": {
+            "name": "default.ipv4.filter.nm_mss_clamp",
+            "enable": true,
+            "priority": 900,
+            "protocol": "ipv4",
+            "table": "filter",
+            "chain": "FORWARD",
+            "rule": "",
+            "target": "NM_MSS_CLAMP"
+        }
+    },
+    {
+        "op":"insert",
+        "table":"Netfilter",
+        "row": {
             "name": "default.ipv4.nm_input",
             "enable": true,
             "priority": 1000,
@@ -126,6 +154,34 @@
             "chain": "INPUT",
             "rule": "",
             "target": "NM_INPUT"
+        }
+    },
+    {
+        "op":"insert",
+        "table":"Netfilter",
+        "row": {
+            "name": "default.ipv4.filter.nm_forward",
+            "enable": true,
+            "priority": 1000,
+            "protocol": "ipv4",
+            "table": "filter",
+            "chain": "FORWARD",
+            "rule": "",
+            "target": "NM_FORWARD"
+        }
+    },
+    {
+        "op":"insert",
+        "table":"Netfilter",
+        "row": {
+            "name": "default.ipv4.filter.nm_port_forward",
+            "enable": true,
+            "priority": 1000,
+            "protocol": "ipv4",
+            "table": "filter",
+            "chain": "FORWARD",
+            "rule": "",
+            "target": "NM_PORT_FORWARD"
         }
     },
     {
@@ -146,7 +202,7 @@
         "op":"insert",
         "table":"Netfilter",
         "row": {
-            "name": "default.ipv4.nm_forward",
+            "name": "default.ipv4.nat.nm_port_forward",
             "enable": true,
             "priority": 1000,
             "protocol": "ipv4",

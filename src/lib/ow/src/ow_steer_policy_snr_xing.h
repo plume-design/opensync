@@ -64,8 +64,7 @@ struct ow_steer_policy_snr_xing_config {
 struct ow_steer_policy_snr_xing;
 
 struct ow_steer_policy_snr_xing*
-ow_steer_policy_snr_xing_create(unsigned int priority,
-                                const char *name,
+ow_steer_policy_snr_xing_create(const char *name,
                                 const struct osw_hwaddr *sta_addr,
                                 const struct ow_steer_policy_mediator *mediator);
 

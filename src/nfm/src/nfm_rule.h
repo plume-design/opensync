@@ -56,6 +56,7 @@ bool nfm_rule_new(const struct schema_Netfilter *conf);
 bool nfm_rule_del(const struct schema_Netfilter *conf);
 bool nfm_rule_modify(const struct schema_Netfilter *conf);
 struct nfm_rule *nfm_rule_get(const char *name);
+void nfm_rule_apply_status_cb(const char *name, int ret);
 
 
 #endif /* NFM_RULE_H_INCLUDED */

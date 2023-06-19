@@ -43,6 +43,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define LTE_DEFAULT_METRIC WAN_DEFAULT_METRIC + 50
 #define WAN_L3_FAIL_METRIC LTE_DEFAULT_METRIC + 10
 #define LTE_CMU_DEFAULT_PRIORITY 2
+#define DEFAULT_LTE_NAME "wwan0"
 
 enum  ltem_header_ids
 {
@@ -117,6 +118,7 @@ typedef struct lte_route_info_
     char lte_dns1[C_IPV6ADDR_LEN];
     char lte_dns2[C_IPV6ADDR_LEN];
     uint32_t wan_priority;
+    uint32_t lte_priority;
     bool has_L3;
 } lte_route_info_t;
 
@@ -196,6 +198,7 @@ int ltem_ovsdb_cmu_insert_lte(ltem_mgr_t *mgr);
 int ltem_ovsdb_cmu_update_lte(ltem_mgr_t *mgr);
 int ltem_ovsdb_cmu_disable_lte(ltem_mgr_t *mgr);
 uint32_t ltem_ovsdb_cmu_get_wan_priority(ltem_mgr_t *mgr);
+uint32_t ltem_ovsdb_cmu_get_lte_priority(ltem_mgr_t *mgr);
 int ltem_ovsdb_wifi_inet_create_config(ltem_mgr_t *mgr);
 int ltem_ovsdb_lte_create_config(ltem_mgr_t *mgr);
 void ltem_ovsdb_update_awlan_node(struct schema_AWLAN_Node *new);
@@ -214,6 +217,7 @@ void ltem_fini_lte_modem(void);
 char *ltem_ovsdb_get_if_type(char *if_name);
 int ltem_ovsdb_check_l3_state(ltem_mgr_t *mgr);
 int ltem_dns_connect_check(char *if_name);
+void ltem_ovsdb_config_lte(ltem_mgr_t *mgr);
 void ltem_flush_flows(ltem_mgr_t *mgr);
 void ltem_ovsdb_set_v6_failover(ltem_mgr_t *mgr);
 void ltem_ovsdb_revert_v6_failover(ltem_mgr_t *mgr);

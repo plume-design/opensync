@@ -96,6 +96,7 @@ struct nfq_pkt_info
     uint32_t           packet_id;
     uint16_t           hw_protocol;
     uint8_t            *hw_addr;
+    size_t             hw_addr_len;
     size_t             payload_len;
     void               *payload;
     int                flow_mark;

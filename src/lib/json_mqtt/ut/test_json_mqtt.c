@@ -350,33 +350,6 @@ test_jencode_url_report(void)
 
     json_decref(out_json);
 
-    /* Using WP */
-    to_report.req_info->reply->service_id = URL_WP_SVC;
-    policy_reply.categorized = FSM_FQDN_CAT_SUCCESS;
-    policy_reply.provider = "webpulse";
-
-    out = jencode_url_report(&session, &to_report, &policy_reply);
-    LOGI("%s", out);
-    json_free(out);
-
-    out_json = json_url_report(&session, &to_report, &policy_reply);
-    TEST_ASSERT_NOT_NULL(out_json);
-
-    field = json_object_get(out_json, "dnsQueries");
-    TEST_ASSERT_NOT_NULL(field);
-    TEST_ASSERT_TRUE(json_is_array(field));
-    TEST_ASSERT_EQUAL_INT(1, json_array_size(field));
-
-    array_entry = json_array_get(field, 0);
-    entry = json_object_get(array_entry, "dnsCategorization");
-    TEST_ASSERT_NOT_NULL(entry);
-
-    TEST_ASSERT_EQUAL_STRING("webpulse", json_string_value(json_object_get(entry, "source")));
-    TEST_ASSERT_NOT_NULL(json_object_get(entry, "riskLevel"));
-    TEST_ASSERT_NOT_NULL(json_object_get(entry, "categories"));
-
-    json_decref(out_json);
-
     /* Using GK */
     to_report.req_info->reply->service_id = URL_GK_SVC;
     policy_reply.categorized = FSM_FQDN_CAT_SUCCESS;

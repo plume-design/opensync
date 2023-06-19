@@ -182,6 +182,7 @@ ltem_ovsdb_create_lte_state(ltem_mgr_t *mgr)
                                 SCHEMA_COLUMN(Lte_State, if_name), if_name, &lte_state);
     if (rc) return 0;
 
+    modem_info = mgr->modem_info;
     LOGD("%s: Insert Lte_State: if_name=[%s]", __func__, if_name);
     lte_state._partial_update = true;
     // Config from Lte_Config table
@@ -192,8 +193,9 @@ ltem_ovsdb_create_lte_state(ltem_mgr_t *mgr)
     SCHEMA_SET_INT(lte_state.ipv6_enable, lte_config->ipv6_enable);
     SCHEMA_SET_INT(lte_state.force_use_lte, lte_config->force_use_lte);
     SCHEMA_SET_INT(lte_state.modem_enable, lte_config->modem_enable);
-    SCHEMA_SET_INT(lte_state.active_simcard_slot, lte_config->active_simcard_slot);
+    SCHEMA_SET_INT(lte_state.active_simcard_slot, modem_info->active_simcard_slot);
     SCHEMA_SET_INT(lte_state.report_interval, lte_config->report_interval);
+    SCHEMA_SET_INT(lte_state.enable_persist, true);
     if (lte_config->apn[0] == '\0')
     {
         SCHEMA_UNSET_FIELD(lte_state.apn);
@@ -322,6 +324,7 @@ ltem_ovsdb_update_lte_state(ltem_mgr_t *mgr)
                        SCHEMA_COLUMN(Lte_State, lte_failover_enable),
                        SCHEMA_COLUMN(Lte_State, ipv4_enable),
                        SCHEMA_COLUMN(Lte_State, ipv6_enable),
+                       SCHEMA_COLUMN(Lte_State, enable_persist),
                        SCHEMA_COLUMN(Lte_State, force_use_lte),
                        SCHEMA_COLUMN(Lte_State, active_simcard_slot),
                        SCHEMA_COLUMN(Lte_State, modem_enable),
@@ -373,9 +376,10 @@ ltem_ovsdb_update_lte_state(ltem_mgr_t *mgr)
     SCHEMA_SET_INT(lte_state.lte_failover_enable, lte_config->lte_failover_enable);
     SCHEMA_SET_INT(lte_state.ipv4_enable, lte_config->ipv4_enable);
     SCHEMA_SET_INT(lte_state.ipv6_enable, lte_config->ipv6_enable);
+    SCHEMA_SET_INT(lte_state.enable_persist, true);
     SCHEMA_SET_INT(lte_state.force_use_lte, lte_config->force_use_lte);
     SCHEMA_SET_INT(lte_state.modem_enable, lte_config->modem_enable);
-    SCHEMA_SET_INT(lte_state.active_simcard_slot, lte_config->active_simcard_slot);
+    SCHEMA_SET_INT(lte_state.active_simcard_slot, modem_info->active_simcard_slot);
     SCHEMA_SET_INT(lte_state.report_interval, lte_config->report_interval);
     if (lte_config->apn[0] == '\0')
     {
@@ -656,6 +660,26 @@ ltem_ovsdb_cmu_get_wan_priority(ltem_mgr_t *mgr)
     return wan_priority;
 }
 
+uint32_t
+ltem_ovsdb_cmu_get_lte_priority(ltem_mgr_t *mgr)
+{
+    struct schema_Connection_Manager_Uplink cm_conf;
+    const char *if_name;
+    uint32_t lte_priority;
+    int ret;
+
+    if_name = mgr->lte_route->lte_if_name;
+
+    ret = ovsdb_table_select_one(&table_Connection_Manager_Uplink,
+                                 SCHEMA_COLUMN(Connection_Manager_Uplink, if_name), if_name, &cm_conf);
+    if (!ret) {
+        LOGI("%s: Failed to get Connection_Manager_Uplink if_name[%s]", __func__, if_name);
+        return -1;
+    }
+    lte_priority = cm_conf.priority;
+    return lte_priority;
+}
+
 int
 ltem_ovsdb_cmu_update_lte_priority(ltem_mgr_t *mgr, uint32_t priority)
 {
@@ -725,153 +749,127 @@ ltem_ovsdb_get_if_type(char *if_name)
     if_type = strdup(icfg.if_type);
     return if_type;
 }
+static void
+ltem_ovsdb_add_wifi_lte_config(ltem_mgr_t *mgr)
+{
+    const char *if_name;
+    struct schema_Wifi_Inet_Config wifi_conf;
+
+    if_name = mgr->lte_config_info->if_name;
+    if (!if_name[0])
+    {
+        LOGI("%s: Bad if_name[%s]", __func__, if_name);
+        return;
+    }
+
+    MEMZERO(wifi_conf);
+
+    LOGI("%s: Insert Wifi_Inet_Config: if_name[%s]", __func__, if_name);
+    wifi_conf._partial_update = true;
+    SCHEMA_SET_STR(wifi_conf.if_name, if_name);
+    SCHEMA_SET_STR(wifi_conf.if_type, LTE_TYPE_NAME);
+    SCHEMA_SET_STR(wifi_conf.ip_assign_scheme, "dhcp");
+    SCHEMA_SET_INT(wifi_conf.enabled, true);
+    SCHEMA_SET_INT(wifi_conf.network, true);
+    SCHEMA_SET_INT(wifi_conf.NAT, true);
+    SCHEMA_SET_INT(wifi_conf.os_persist, true);
+
+    if (!ovsdb_table_insert(&table_Wifi_Inet_Config, &wifi_conf))
+    {
+        LOG(ERR, "%s: Error Inserting Wifi config", __func__);
+        return;
+    }
+
+    LOGI("%s: Inserted Wifi config for LTE", __func__);
+    return;
+}
+
+static void
+ltem_ovsdb_add_lte_config(ltem_mgr_t *mgr)
+{
+    struct schema_Lte_Config lte_conf;
+    const char *if_name;
+    int res;
+
+    if_name = mgr->lte_config_info->if_name;
+    res = ovsdb_table_select_one(&table_Lte_Config,
+                                 SCHEMA_COLUMN(Lte_Config, if_name), if_name, &lte_conf);
+    if (res)
+    {
+        LOGI("%s: %s already found in Lte_Config", __func__, if_name);
+        return;
+    }
+
+    MEMZERO(lte_conf);
+    lte_conf._partial_update = true;
+    SCHEMA_SET_STR(lte_conf.if_name, if_name);
+    SCHEMA_SET_INT(lte_conf.ipv4_enable, true);
+    SCHEMA_SET_INT(lte_conf.ipv6_enable, true);
+    SCHEMA_SET_INT(lte_conf.lte_failover_enable, true);
+    SCHEMA_SET_INT(lte_conf.manager_enable, true);
+    SCHEMA_SET_INT(lte_conf.modem_enable, true);
+    SCHEMA_SET_INT(lte_conf.enable_persist, true);
+    SCHEMA_SET_INT(lte_conf.os_persist, true);
+    SCHEMA_SET_INT(lte_conf.report_interval, mgr->mqtt_interval);
+
+    if (!ovsdb_table_insert(&table_Lte_Config, &lte_conf))
+    {
+        LOG(ERR, "%s: Error Inserting LTE config", __func__);
+        return;
+    }
+
+    LOGI("%s: Update %s in Lte_Config table succeeded", __func__, if_name);
+    return;
+}
 
 /**
- * @brief update os_persist field on wifi_inet_table
+ * @brief Configure LTE at init
  *
- * @param persist_state flag reflects enable_persist state
- * @param if_name Lte ifname
- * @return true when wifi_inet_config ovsdb table updated successfully
- *         false otherwise
+ * @param ltem_mgr_t *
+ * @return none
  */
-static void
-ltem_wifi_inet_os_persist_update(bool persist_state, char *if_name)
+void
+ltem_ovsdb_config_lte(ltem_mgr_t *mgr)
 {
-    struct schema_Wifi_Inet_Config icfg;
+    const char *if_name;
+    struct schema_Wifi_Inet_Config wifi_cfg;
+    osn_lte_modem_info_t *modem_info;
     int ret;
 
-    LOGI("%s: persist_state[%d] if_name[%s]", __func__, persist_state, if_name);
+    LOGI("%s:%d", __func__, __LINE__);
+
+    STRSCPY(mgr->lte_config_info->if_name, DEFAULT_LTE_NAME);
+
+    if (osn_lte_read_modem())
+    {
+        LOGI("%s: osn_lte_read_modem(): failed", __func__);
+        return;
+    }
+
+    if_name = mgr->lte_config_info->if_name;
+    modem_info = mgr->modem_info;
+    LOGI("%s: modem_present[%d], sim_inserted[%d]", __func__, modem_info->modem_present, modem_info->sim_inserted);
+    if (!modem_info->modem_present)
+        return;
+    if (!modem_info->sim_inserted)
+        return;
+
     ret = ovsdb_table_select_one(&table_Wifi_Inet_Config,
-                SCHEMA_COLUMN(Wifi_Inet_Config, if_name), if_name, &icfg);
+                SCHEMA_COLUMN(Wifi_Inet_Config, if_name), if_name, &wifi_cfg);
 
     if (!ret)
     {
-        LOGI("%s: %s: Failed to get interface config", __func__, if_name);
-        return;
+        ltem_ovsdb_add_wifi_lte_config(mgr);
     }
-
-    /* return true if os_persist is already set, update otherwise */
-    if (icfg.os_persist == persist_state) return;
-
-    MEMZERO(icfg);
-    char *filter[] = { "+",
-                       SCHEMA_COLUMN(Wifi_Inet_Config, os_persist),
-                       NULL };
-    SCHEMA_SET_INT(icfg.os_persist, persist_state);
-    ret = ovsdb_table_update_where_f(&table_Wifi_Inet_Config,
-                 ovsdb_where_simple(SCHEMA_COLUMN(Wifi_Inet_Config, if_name), if_name),
-                 &icfg, filter);
-
-    if (!ret)
+    else
     {
-        LOGE("%s: %s: Failed to update interface config", __func__, if_name);
+        LOGI("%s: Lte Wifi already configured", __func__);
     }
 
+    ltem_ovsdb_add_lte_config(mgr);
+    return;
 }
 
-/**
- * @brief called when os_persist field needs to be updated for
- * Lte_config table
- *
- * @param persist_state flag reflects enable_persist state
- * @param if_name Lte if_name
- * @return true when lte_config ovsdb table updated successfully
- *         false otherwise
- */
-static void
-ltem_lte_config_os_persist_update(bool persist_state, char *if_name)
-{
-    struct schema_Lte_Config lte_cfg;
-    int ret;
-
-    LOGI("%s: persist_state[%d] if_name[%s]", __func__, persist_state, if_name);
-    ret = ovsdb_table_select_one(&table_Lte_Config,
-                SCHEMA_COLUMN(Lte_Config, if_name), if_name, &lte_cfg);
-
-    if (!ret)
-    {
-        LOGE("%s: %s: Failed to get interface config", __func__, if_name);
-        return;
-    }
-
-    /* return true if os_persist is already set, update otherwise */
-    if (lte_cfg.os_persist == persist_state) return;
-
-    /* update the os_persist field */
-    MEMZERO(lte_cfg);
-    char *filter[] = { "+",
-                       SCHEMA_COLUMN(Lte_Config, os_persist),
-                       NULL };
-    SCHEMA_SET_INT(lte_cfg.os_persist, persist_state);
-    ret = ovsdb_table_update_where_f(&table_Lte_Config,
-                 ovsdb_where_simple(SCHEMA_COLUMN(Lte_Config, if_name), if_name),
-                 &lte_cfg, filter);
-
-    if (!ret)
-    {
-        LOGE("%s: %s: Failed to update interface config", __func__, if_name);
-        return;
-    }
-
-}
-
-/**
- * @brief called when os_persist field needs to be updated for
- * Lte_state table
- *
- * @param persist_state flag reflects enable_persist state
- * @param if_name Lte if_name
- * @return none
- */
-static void
-ltem_lte_state_update_persist(bool state, char *if_name)
-{
-    struct schema_Lte_State lte_state;
-    int ret;
-    char *filter[] = { "+",
-                       SCHEMA_COLUMN(Lte_State, enable_persist),
-                       NULL };
-
-    ret = ovsdb_table_select_one(&table_Lte_State,
-                SCHEMA_COLUMN(Lte_State, if_name), if_name, &lte_state);
-
-    if (!ret)
-    {
-        LOGE("%s: %s: Failed to get interface config", __func__, if_name);
-        return;
-    }
-    if (lte_state.enable_persist == state) return;
-
-    SCHEMA_SET_INT(lte_state.enable_persist, state);
-    ret = ovsdb_table_update_where_f(&table_Lte_State,
-                 ovsdb_where_simple(SCHEMA_COLUMN(Lte_State, if_name), if_name),
-                 &lte_state, filter);
-    if (!ret)
-    {
-            LOGE("%s: Failed to update Lte_State table entry", __func__);
-    }
-}
-
-/**
- * @brief update os_persist field on Wifi_Inet and Lte_Config
- * based on enable_persist flag
- *
- * @param persist_state flag reflects enable_persist state
- * @param if_name Lte ifname
- * @return none
- */
-static void
-ltem_update_enable_persist(bool persist_state, char *if_name)
-{
-
-    /* NOC expects  enable_persist to be present in Lte_State table before
-       Wifi_Inet_Config table is pushed. The sequence here updates first Lte_State table */
-
-    ltem_lte_state_update_persist(persist_state, if_name);
-    ltem_lte_config_os_persist_update(persist_state, if_name);
-    ltem_wifi_inet_os_persist_update(persist_state, if_name);
-
-}
 
 void
 callback_Lte_Config(ovsdb_update_monitor_t *mon,
@@ -952,7 +950,7 @@ callback_Lte_Config(ovsdb_update_monitor_t *mon,
                 osn_lte_set_pdp_context_params(PDP_CTXT_APN, conf->apn);
             }
 
-            if (old_lte_conf->active_simcard_slot != lte_conf->active_simcard_slot)
+            if (mgr->modem_info->active_simcard_slot != (uint32_t)lte_conf->active_simcard_slot)
             {
                 osn_lte_set_sim_slot(lte_conf->active_simcard_slot);
             }
@@ -997,11 +995,6 @@ callback_Lte_Config(ovsdb_update_monitor_t *mon,
             mgr->lte_state_info->lte_force_allow = true;
             LOGI("%s: lte_force_allow[%d]", __func__, mgr->lte_state_info->lte_force_allow);
 
-            if (lte_conf->enable_persist != old_lte_conf->enable_persist)
-            {
-                LOGI("%s: enable_persist[%d]", __func__, lte_conf->enable_persist);
-                ltem_update_enable_persist(lte_conf->enable_persist, lte_conf->if_name);
-            }
             if (lte_conf->esim_activation_code[0])
             {
                 rc = strncmp(lte_conf->esim_activation_code, old_lte_conf->esim_activation_code, sizeof(lte_conf->esim_activation_code));

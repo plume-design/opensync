@@ -697,6 +697,7 @@ wm2_rconf_changed(const struct schema_Wifi_Radio_Config *conf,
     memset(changedf, 0, sizeof(*changedf));
     changed |= (changedf->_uuid = strcmp(conf->_uuid.uuid, state->radio_config.uuid));
     CMP(CHANGED_INT, channel);
+    CMP(CHANGED_INT, center_freq0_chan);
     CMP(CHANGED_INT, channel_sync);
     CMP(CHANGED_INT, enabled);
     CMP(CHANGED_INT, thermal_shutdown);

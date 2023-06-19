@@ -175,8 +175,7 @@ ow_steer_policy_btm_response_cb(struct osw_btm_response_observer *observer,
 }
 
 struct ow_steer_policy_btm_response*
-ow_steer_policy_btm_response_create(unsigned int priority,
-                                    const char *name,
+ow_steer_policy_btm_response_create(const char *name,
                                     const struct osw_hwaddr *sta_addr,
                                     const struct ow_steer_policy_mediator *mediator)
 {
@@ -191,7 +190,6 @@ ow_steer_policy_btm_response_create(unsigned int priority,
 
     struct ow_steer_policy_btm_response *btm_response_policy = CALLOC(1, sizeof(*btm_response_policy));
     btm_response_policy->base = ow_steer_policy_create(strfmta("%s_%s", g_policy_name, name),
-                                                       priority,
                                                        sta_addr,
                                                        &policy_ops,
                                                        mediator,

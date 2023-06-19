@@ -39,7 +39,7 @@ fsm_dpi_dns_plugin_setUp(void)
     struct dns_cache_settings cache_init;
 
     cache_init.dns_cache_source = MODULE_DNS_PARSE;
-    cache_init.service_provider = IP2ACTION_WP_SVC;
+    cache_init.service_provider = IP2ACTION_GK_SVC;
     dns_cache_init(&cache_init);
 }
 

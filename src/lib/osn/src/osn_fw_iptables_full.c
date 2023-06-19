@@ -893,7 +893,7 @@ static bool osfw_nfinet_apply(struct osfw_nfinet *self)
 	return errcode;
 }
 
-static bool osfw_nfbase_set(struct osfw_nfbase *self)
+static bool osfw_nfbase_set(struct osfw_nfbase *self, osfw_fn_t *osfw_status_fn)
 {
 	bool errcode = true;
 
@@ -909,6 +909,8 @@ static bool osfw_nfbase_set(struct osfw_nfbase *self)
 		LOGE("Set OSFW base: set OSFW inet6 failed");
 		return false;
 	}
+	self->osfw_fn = osfw_status_fn;
+
 	return true;
 }
 
@@ -969,11 +971,11 @@ static struct osfw_nfinet *osfw_nfbase_get_inet(struct osfw_nfbase *self, int fa
 	return nfinet;
 }
 
-bool osfw_init(void)
+bool osfw_init(osfw_fn_t *osfw_status_fn)
 {
 	bool errcode = true;
 
-	errcode = osfw_nfbase_set(&osfw_nfbase);
+	errcode = osfw_nfbase_set(&osfw_nfbase, osfw_status_fn);
 	if (!errcode) {
 		LOGE("Initialize OSFW: set base failed");
 		return false;
@@ -1066,7 +1068,7 @@ bool osfw_chain_del(int family, enum osfw_table table, const char *chain)
 }
 
 bool osfw_rule_add(int family, enum osfw_table table, const char *chain,
-		int prio, const char *match, const char *target)
+		int prio, const char *match, const char *target, const char *name)
 {
 	bool errcode = true;
 	struct osfw_nfinet *nfinet = NULL;

@@ -732,7 +732,7 @@ bool target_stats_scan_get(
 /**
  * @brief Get device stats
  *
- * Returns device load average (loadavg) and uptime
+ * Returns device load average (loadavg), uptime and file handles counts
  *
  * @param device_entry output; device stats
  * @return true on success

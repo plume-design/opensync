@@ -72,15 +72,11 @@ multi_timer_cb(CURLM *multi, long timeout_ms,
                struct upnp_curl *mgr)
 {
     ev_timer_stop(mgr->loop, &mgr->timer_event);
-    if (timeout_ms > 0)
+    if (timeout_ms >= 0)
     {
         double  t = timeout_ms / 1000;
         ev_timer_init(&mgr->timer_event, timer_cb, t, 0.);
         ev_timer_start(mgr->loop, &mgr->timer_event);
-    }
-    else if (timeout_ms == 0)
-    {
-        timer_cb(mgr->loop, &mgr->timer_event, 0);
     }
     return 0;
 }

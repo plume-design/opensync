@@ -27,7 +27,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifndef OSW_UTIL_H_INCLUDED
 #define OSW_UTIL_H_INCLUDED
 
-#include <math.h>
 #include <osw_types.h>
 
 struct element {
@@ -63,15 +62,10 @@ osw_ie_find(const void *ies,
 #define OSW_BOOL_FMT "%s"
 #define OSW_BOOL_ARG(val) ((val) ? "true" : "false")
 
-static inline double
+double
 osw_periodic_get_next(const double interval_seconds,
                       const double offset_seconds,
-                      const double now)
-{
-    if (interval_seconds <= 0) return 0;
-    if (fabs(offset_seconds) >= interval_seconds) return 0;
-    return ((floor(now / interval_seconds) + 1) * interval_seconds) + offset_seconds;
-}
+                      const double now);
 
 static inline bool
 osw_periodic_is_expired(const double at,

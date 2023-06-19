@@ -254,7 +254,17 @@ setup_interface()
         echo "$RA_HOPLIMIT" > "/proc/sys/net/ipv6/conf/$device/hop_limit"
     }
 
-    export > "$OPTS_FILE"
+    # Before exporting PREFIXES, filter out prefixes with invalid/expired lifetimes
+    _PREFIXES=""
+    for prefix in $PREFIXES
+    do
+        lft=${prefix#*,}
+        [ "$lft" == "0,0" ] && continue
+        _PREFIXES="${_PREFIXES}${_PREFIXES:+ }${prefix}"
+    done
+    PREFIXES="${_PREFIXES}"
+    export > "${OPTS_FILE}.$$"
+    mv "${OPTS_FILE}.$$" "${OPTS_FILE}"
 
     curr_time="$(date "+%m-%d-%Y %H:%M")"
     if [ "$2" != "ra-updated" ] || [ "$event_time" != "$curr_time" ]
@@ -274,11 +284,11 @@ teardown_interface()
 
 (
     case "$2" in
-        bound)
+        bound|rebound)
             teardown_interface "$1"
             setup_interface "$1" "$2"
         ;;
-        informed|updated|rebound|ra-updated)
+        informed|updated|ra-updated)
             setup_interface "$1" "$2"
         ;;
         stopped|unbound)

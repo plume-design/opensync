@@ -154,6 +154,8 @@ enum GatekeeperAction {
     GATEKEEPER_ACTION_BLOCK = 2;
     GATEKEEPER_ACTION_REDIRECT = 3;
     GATEKEEPER_ACTION_REDIRECT_ALLOW = 4;
+    GATEKEEPER_ACTION_DNS_NO_REPLY = 5;
+    GATEKEEPER_ACTION_DNS_NXDOMAIN = 6;
 }
 
 // Gatekeeper Reply common fields
@@ -172,9 +174,15 @@ message GatekeeperFqdnRedirectReply {
     bytes redirect_ipv6 = 2;
     string redirect_cname = 3;
 }
+
+message GatekeeperFqdnNxdomainReply {
+    string autority = 1;
+};
+
 message GatekeeperFqdnReply {
     GatekeeperCommonReply header = 1;
     GatekeeperFqdnRedirectReply redirect = 2;
+    GatekeeperFqdnNxdomainReply nxdomain = 3;
 }
 
 message GatekeeperIpv4Reply {

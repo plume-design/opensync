@@ -33,6 +33,9 @@ schema_vconf_unify(struct schema_Wifi_VIF_Config *vconf);
 void
 schema_vstate_unify(struct schema_Wifi_VIF_State *vstate);
 
+bool
+schema_key_id_from_cstr(const char *key_id, int *idx);
+
 void
 schema_vstate_sync_to_vconf(struct schema_Wifi_VIF_State *vstate,
                             struct schema_Wifi_VIF_Config *vconf);

@@ -111,48 +111,6 @@ print_opts()
     [ -n "$vendorspec" ] && echo "vendorspec=$(echo "$vendorspec" | base64)"
 }
 
-subnet2prefix()
-{
-    prefix=0
-    for x in $(echo "$1" | tr '.' ' ')
-    do
-        case "$x" in
-            255)
-                c=8
-                ;;
-            254)
-                c=7
-                ;;
-            252)
-                c=6
-                ;;
-            248)
-                c=5
-                ;;
-            240)
-                c=4
-                ;;
-            224)
-                c=3
-                ;;
-            192)
-               c=2
-               ;;
-           128)
-               c=1
-               ;;
-            0)
-               c=0
-               ;;
-            *)
-               echo "$interface: Error, Invalid subnet: $1"
-               exit 1
-        esac
-        prefix=$((prefix+c))
-    done
-    echo "$prefix"
-}
-
 log_dhcp_time_event()
 {
     logger="${INSTALL_PREFIX}"/tools/telog
@@ -163,10 +121,8 @@ log_dhcp_time_event()
 
 setup_interface()
 {
-    # Calculate the prefix from the subnet, for example 255.255.255.0 -> 24
-    prefix=$(subnet2prefix "${subnet:-255.255.255.0}")
-
-    _addr="$ip/$prefix"
+    _subnet=${subnet:-255.255.255.0}
+    _addr="$ip/$_subnet"
     echo "$interface: adding ipv4 addr $_addr"
     ip addr replace dev "$interface" "$_addr" broadcast "${broadcast:-+}"
 

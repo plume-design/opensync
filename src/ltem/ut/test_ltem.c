@@ -238,7 +238,7 @@ ut_lte_read_modem(void)
     lte_operator_t operator;
     lte_srv_cell_t srv_cell;
     lte_srv_cell_wcdma_t srv_cell_wcdma;
-    lte_neigh_cell_intra_t neigh_cell_intra;
+    lte_neigh_cell_t neigh_cell;
     gen_resp_tokens resp_tokens[MAX_RESP_TOKENS];
 
     modem_info = osn_get_modem_info();
@@ -379,20 +379,15 @@ ut_lte_read_modem(void)
     char *neigh_cell_cmd = "at+qeng=\\\"neighbourcell\\\"";
     at_resp = lte_ut_run_microcom_cmd(neigh_cell_cmd);
     if (!at_resp) return -1;
-    res = osn_lte_parse_neigh_cell_intra(at_resp, &neigh_cell_intra);
-    if (res != 0)
+    res = osn_lte_parse_neigh_cell(at_resp, &neigh_cell);
+    if (res)
     {
-        LOGE("osn_lte_parse_neigh_cell_intra:failed");
+        LOGI("%s: osn_lte_parse_neigh_cell:failed", __func__);
     }
-    osn_lte_save_neigh_cell_intra(&neigh_cell_intra, modem_info);
-
-    lte_neigh_cell_inter_t neigh_cell_inter;
-    res = osn_lte_parse_neigh_cell_inter(at_resp, &neigh_cell_inter);
-    if (res != 0)
+    else
     {
-        LOGE("osn_lte_parse_neigh_cell_inter:failed");
+        osn_lte_save_neigh_cell(&neigh_cell, modem_info, 0);
     }
-    osn_lte_save_neigh_cell_inter(&neigh_cell_inter, modem_info);
 
     lte_pdp_context_t  pdp_context;
     char *pdp_cmd = "at+cgdcont?";

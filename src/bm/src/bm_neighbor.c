@@ -60,6 +60,10 @@ static ovsdb_update_monitor_t   bm_vif_state_ovsdb_update;
 static ds_tree_t                bm_neighbors = DS_TREE_INIT( ds_int_cmp,
                                                              bm_neighbor_t,
                                                              dst_node );
+static ovsdb_table_t table_Wifi_Radio_State;
+static ovsdb_table_t table_Wifi_VIF_State;
+static ovsdb_table_t table_Wifi_Radio_Config;
+static ovsdb_table_t table_Wifi_VIF_Config;
 
 static void
 bm_neighbor_add_to_group_by_ifname(const bm_group_t *group, const char *ifname, bool bs_allowed_only);
@@ -72,6 +76,7 @@ static c_item_t map_ovsdb_chanwidth[] = {
     C_ITEM_STR( RADIO_CHAN_WIDTH_80MHZ,         "HT80" ),
     C_ITEM_STR( RADIO_CHAN_WIDTH_160MHZ,        "HT160" ),
     C_ITEM_STR( RADIO_CHAN_WIDTH_80_PLUS_80MHZ, "HT80+80" ),
+    C_ITEM_STR( RADIO_CHAN_WIDTH_320MHZ,        "HT320" ),
     C_ITEM_STR( RADIO_CHAN_WIDTH_NONE,          "HT2040" )
 };
 
@@ -139,69 +144,312 @@ bm_neighbor_get_radio_type(const struct schema_Wifi_VIF_Neighbors *neigh)
     return RADIO_TYPE_NONE;
 }
 
-bool
-bm_neighbor_get_self_neighbor(const char *_ifname, bsal_neigh_info_t *neigh)
+static bool
+bm_neighbor_lookup_vif_state_by_if_name(struct schema_Wifi_VIF_State *vif_state,
+                                        const char *if_name)
 {
-    struct  schema_Wifi_VIF_State   vif;
-    json_t                          *jrow;
-    pjs_errmsg_t                    perr;
-    char                            *ifname;
-    os_macaddr_t                    macaddr;
-    radio_type_t                    rtype;
+    json_t *where = ovsdb_where_simple(SCHEMA_COLUMN(Wifi_VIF_State, if_name), if_name);
+    if (where == NULL)
+        return false;
+    return ovsdb_table_select_one_where(&table_Wifi_VIF_State, where, vif_state);
+}
+
+static bool
+bm_neighbor_lookup_radio_state_by_vif_if_name_dir(struct schema_Wifi_Radio_State *radio_state,
+                                                  const char *vif_if_name)
+{
+    struct schema_Wifi_Radio_State rstate;
+    struct schema_Wifi_VIF_State vstate;
+
+    LOGT("%s: Looking up radio state by vif interface name", vif_if_name);
+
+    /* select Wifi_VIF_State by interface name */
+    json_t *where = ovsdb_where_simple(SCHEMA_COLUMN(Wifi_VIF_State, if_name), vif_if_name);
+    if (where == NULL) return false;
+    const bool select_vif_state_ok = ovsdb_table_select_one_where(&table_Wifi_VIF_State, where, &vstate);
+    if (select_vif_state_ok == false) return false;
+
+    /* select Wifi_Radio_State with vif_states containing matching uuid */
+    const char *column = SCHEMA_COLUMN(Wifi_Radio_State, vif_states);
+    where = ovsdb_tran_cond(OCLM_UUID, column, OFUNC_INC, vstate._uuid.uuid);
+    if (where == NULL) return false;
+    const bool select_radio_state_ok = ovsdb_table_select_one_where(&table_Wifi_Radio_State, where, &rstate);
+    if (select_radio_state_ok == false) return false;
+
+    /* copy Wifi_Radio_State */
+    memcpy(radio_state, &rstate, sizeof(*radio_state));
+    LOGT("%s: found radio state %s via vif state", vif_if_name, radio_state->if_name);
+    return true;
+}
+
+static bool
+bm_neighbor_lookup_radio_state_by_vif_if_name_indir(struct schema_Wifi_Radio_State *radio_state,
+                                                    const char *vif_if_name)
+{
+    struct schema_Wifi_Radio_Config rconf;
+    struct schema_Wifi_Radio_State rstate;
+    struct schema_Wifi_VIF_Config vconf;
+
+    LOGT("%s: Looking up radio state by vif interface name through Wifi_VIF_Config", vif_if_name);
+
+    /* select Wifi_VIF_Config by interface name */
+    json_t *where = ovsdb_where_simple(SCHEMA_COLUMN(Wifi_VIF_Config, if_name), vif_if_name);
+    if (where == NULL) return false;
+    const bool select_vif_config_ok = ovsdb_table_select_one_where(&table_Wifi_VIF_Config, where, &vconf);
+    if (select_vif_config_ok == false) return false;
+
+    /* select Wifi_Radio_Config with vif_configs containing matching uuid */
+    const char *column = SCHEMA_COLUMN(Wifi_Radio_Config, vif_configs);
+    where = ovsdb_tran_cond(OCLM_UUID, column, OFUNC_INC, vconf._uuid.uuid);
+    if (where == NULL) return false;
+    const bool select_radio_config_ok = ovsdb_table_select_one_where(&table_Wifi_Radio_Config, where, &rconf);
+    if (select_radio_config_ok == false) return false;
+
+    /* select matching Wifi_Radio_State */
+    where = ovsdb_where_simple(SCHEMA_COLUMN(Wifi_Radio_State, if_name), rconf.if_name);
+    if (where == NULL) return false;
+    const bool select_radio_state_ok = ovsdb_table_select_one_where(&table_Wifi_Radio_State, where, &rstate);
+    if (select_radio_state_ok == false) return false;
+
+    /* copy Wifi_Radio_State */
+    memcpy(radio_state, &rstate, sizeof(*radio_state));
+    LOGT("%s: found radio state %s via vif state", vif_if_name, radio_state->if_name);
+    return true;
+}
+
+static bool
+bm_neighbor_lookup_radio_state_by_vif_if_name(struct schema_Wifi_Radio_State *radio_state,
+                                              const char *vif_if_name)
+{
+    LOGT("%s: Looking up radio state by vif interface name", vif_if_name);
+
+    memset(radio_state, 0, sizeof(*radio_state));
+
+    const bool directly_ok = bm_neighbor_lookup_radio_state_by_vif_if_name_dir(radio_state,
+                                                                               vif_if_name);
+    if (directly_ok == false) {
+        LOGN("%s: Could not look up radio state directly, trying again via Wifi_VIF_Config", vif_if_name);
+    }
+
+    const bool indirectly_ok = bm_neighbor_lookup_radio_state_by_vif_if_name_indir(radio_state,
+                                                                                   vif_if_name);
+    if (indirectly_ok == false) {
+        LOGN("%s: Could not look up radio state", vif_if_name);
+        return false;
+    }
+
+    LOGT("%s: Radio state lookup success", vif_if_name);
+    return true;
+}
+
+static uint16_t
+bm_neighbor_get_channel_width_number(const char *ht_mode)
+{
+    uint16_t width_number = 0;
+
+    LOGT("Getting channel width number for ht_mode %s", ht_mode);
+
+    if (strcmp(ht_mode, "HT20") == 0) width_number = 20;
+    else if ((strcmp(ht_mode, "HT2040") == 0) ||
+             (strcmp(ht_mode, "HT40"  ) == 0) ||
+             (strcmp(ht_mode, "HT40+" ) == 0) ||
+             (strcmp(ht_mode, "HT40-" ) == 0)) width_number = 40;
+    else if (strcmp(ht_mode, "HT80") == 0) width_number = 80;
+    else if (strcmp(ht_mode, "HT160") == 0) width_number = 160;
+    else if (strcmp(ht_mode, "HT320") == 0) width_number = 320;
+
+    WARN_ON(width_number == 0);
+
+    LOGT("Determined channel width number %d for ht_mode %s",
+         width_number,
+         ht_mode);
+
+    return width_number;
+}
+
+static uint8_t
+bm_neighbor_get_band_number(const radio_type_t radio_type)
+{
+    uint8_t band_number = 0;
+
+    LOGT("Getting band number for radio_type %d", radio_type);
+
+    switch (radio_type) {
+        case RADIO_TYPE_2G:
+            band_number = 24;
+            break;
+        case RADIO_TYPE_5G:
+        case RADIO_TYPE_5GL:
+        case RADIO_TYPE_5GU:
+            band_number = 50;
+            break;
+        case RADIO_TYPE_6G:
+            band_number = 60;
+            break;
+        default:
+            band_number = 0;
+            break;
+    }
+    WARN_ON(band_number == 0);
+
+    LOGT("Determined band number %d for radio_type %d",
+         band_number,
+         radio_type);
+
+    return band_number;
+}
+
+static uint8_t
+bm_neighbor_get_op_class2(uint8_t channel_number,
+                          radio_type_t rtype,
+                          const char *ht_mode)
+{
+    LOGT("Getting operating class,"
+         " channel_number: %d,"
+         " rtype: %d,"
+         " ht_mode: %s",
+         channel_number,
+         rtype,
+         (ht_mode == NULL) ? "unknown" : ht_mode);
+
+    if (ht_mode == NULL) goto get_op_class_fail;
+    if (channel_number == 0) goto get_op_class_fail;
+
+    const uint8_t band_number = bm_neighbor_get_band_number(rtype);
+    if (band_number == 0) goto get_op_class_fail;
+
+    const uint16_t width_number = bm_neighbor_get_channel_width_number(ht_mode);
+    if (width_number == 0) goto get_op_class_fail;
+
+    const uint8_t op_class = ieee80211_global_op_class_get(band_number,
+                                                           channel_number,
+                                                           width_number);
+    if (op_class == 0) goto get_op_class_fail;
+
+    LOGT("Determined operating class,"
+         " channel_number: %d,"
+         " band_number: %d,"
+         " width_number: %d"
+         " op_class: %d",
+         channel_number,
+         band_number,
+         width_number,
+         op_class);
+
+    return op_class;
+
+get_op_class_fail:
+    LOGN("Getting operating class failed,"
+         " channel_number: %d,"
+         " rtype: %d,"
+         " ht_mode: %s",
+         channel_number,
+         rtype,
+         (ht_mode == NULL) ? "unknown" : ht_mode);
+
+    return 0;
+}
+
+static uint8_t
+bm_neighbor_get_phy_type2(const char *hw_mode)
+{
+    if (strcmp(hw_mode, "11a") == 0) {
+        return 0x04;
+    }
+    else if (strcmp(hw_mode, "11b") == 0) {
+        return 0x05;
+    }
+    else if (strcmp(hw_mode, "11g") == 0) {
+        return 0x06;
+    }
+    else if (strcmp(hw_mode, "11n") == 0) {
+        return 0x07;
+    }
+    else if (strcmp(hw_mode, "11ac") == 0) {
+        return 0x09;
+    }
+    else if (strcmp(hw_mode, "11ax") == 0) {
+        return 0x0e;
+    }
+    else if (strcmp(hw_mode, "11be") == 0) {
+        return 0x10;
+    }
+
+    LOGN("Getting phy type failed, hw_mode: %s", hw_mode);
+    return 0;
+}
+
+bool
+bm_neighbor_get_self_neighbor(const char *ifname, bsal_neigh_info_t *neigh)
+{
+    struct schema_Wifi_VIF_State vif_state;
+    struct schema_Wifi_Radio_State radio_state;
+    os_macaddr_t macaddr;
+    radio_type_t radio_type;
+
+    LOGT("%s: Getting self neighbor", ifname);
+
+    const bool vif_state_ok = bm_neighbor_lookup_vif_state_by_if_name(&vif_state, ifname);
+    if (vif_state_ok == false) {
+        LOGW("%s: Cannot get self neighbor - cannot fetch vif state", ifname);
+        goto get_self_neigh_failed;
+    }
+    const bool radio_state_ok = bm_neighbor_lookup_radio_state_by_vif_if_name(&radio_state, ifname);
+    if (radio_state_ok == false) {
+        LOGW("%s: Cannot get self neighbor - cannot fetch radio state", ifname);
+        goto get_self_neigh_failed;
+    }
+    if (vif_state.mac_exists == false) {
+        LOGN("%s: Cannot get self neighbor - no mac in vif state", ifname);
+        goto get_self_neigh_failed;
+    }
+    if (vif_state.channel_exists == false) {
+        LOGN("%s: Cannot get self neighbor - no channel in vif state", ifname);
+        goto get_self_neigh_failed;
+    }
+    if (radio_state.ht_mode_exists == false) {
+        LOGN("%s: Cannot get self neighbor - no ht_mode in radio state", ifname);
+        goto get_self_neigh_failed;
+    }
+    if (radio_state.hw_mode_exists == false) {
+        LOGN("%s: Cannot get self neighbor - no hw_mode in radio state", ifname);
+        goto get_self_neigh_failed;
+    }
+    if(os_nif_macaddr_from_str(&macaddr, vif_state.mac) == false) {
+        LOGW("%s: Cannot get self neighbor - unable to parse mac address '%s'", ifname, vif_state.mac);
+        goto get_self_neigh_failed;
+    }
+    radio_type = bm_group_find_radio_type_by_ifname(ifname);
 
     memset(neigh, 0, sizeof(*neigh));
-
-    // On platforms other than pods, the home-ap-* interfaces are mapped to
-    // other platform-dependent names such as ath0, etc. On the pod, the
-    // mapping is the same.
-    ifname = target_unmap_ifname((char *) _ifname);
-    if( strlen( ifname ) == 0 ) {
-        LOGE("Unable to target_unmap_ifname '%s'", _ifname);
-        return false;
-    }
-
-    json_t  *where = ovsdb_where_simple( SCHEMA_COLUMN( Wifi_VIF_State, if_name),
-                                         ifname );
-
-    /* TODO use ovsdb_sync_select() here */
-    jrow = ovsdb_sync_select_where( SCHEMA_TABLE( Wifi_VIF_State ), where );
-
-    if( !schema_Wifi_VIF_State_from_json(
-                &vif,
-                json_array_get( jrow, 0 ),
-                false,
-                perr ) )
-    {
-        LOGE( "Unable to parse Wifi_VIF_State column: %s", perr );
-        json_decref(jrow);
-        return false;
-    }
-
-    neigh->channel = ( uint8_t )vif.channel;
-    rtype = bm_group_find_radio_type_by_ifname(ifname);
-
-    if (!vif.mac_exists) {
-        LOGE("%s: mac doesn't exists", ifname);
-        json_decref(jrow);
-        return false;
-    }
-
-    if( !os_nif_macaddr_from_str( &macaddr, vif.mac ) ) {
-        LOGE( "Unable to parse mac address '%s'", vif.mac );
-        json_decref(jrow);
-        return false;
-    }
-
-    LOGT("Got self channel: %d, bssid: %s ifname: %s", vif.channel, vif.mac, _ifname);
-    memcpy( neigh->bssid, (uint8_t *)&macaddr, sizeof( neigh->bssid ) );
-
-    // Assume the default BSSID_INFO
+    memcpy(neigh->bssid, (uint8_t *)&macaddr, sizeof(neigh->bssid));
+    neigh->channel = vif_state.channel;
     neigh->bssid_info = BTM_DEFAULT_NEIGH_BSS_INFO;
-    neigh->op_class = bm_neighbor_get_op_class(neigh->channel, rtype);
-    neigh->phy_type = bm_neighbor_get_phy_type(neigh->op_class);
+    neigh->phy_type = bm_neighbor_get_phy_type2(radio_state.hw_mode);
+    neigh->op_class = bm_neighbor_get_op_class2(vif_state.channel,
+                                                radio_type,
+                                                radio_state.ht_mode);
 
-    json_decref(jrow);
+    LOGT("%s: Got self neighbor,"
+         " channel: %d,"
+         " bssid: "PRI_os_macaddr_lower_t","
+         " bssid_info: %02x%02x%02x%02x,"
+         " op_class: %d,"
+         " phy_type: %d",
+         ifname,
+         neigh->channel,
+         FMT_os_macaddr_pt((os_macaddr_t *)neigh->bssid),
+         (neigh->bssid_info >> 24) & 0xff,
+         (neigh->bssid_info >> 16) & 0xff,
+         (neigh->bssid_info >> 8) & 0xff,
+         (neigh->bssid_info) & 0xff,
+         neigh->op_class,
+         neigh->phy_type);
+
     return true;
+
+get_self_neigh_failed:
+    return false;
 }
 
 uint8_t
@@ -212,6 +460,9 @@ bm_neighbor_get_phy_type(uint8_t op_class)
 
     if (ieee80211_global_op_class_is_5ghz(op_class))
         return BTM_5_PHY_TYPE;
+
+    if (ieee80211_global_op_class_is_320mhz(op_class))
+        return BTM_EHT_PHY_TYPE;
 
     if (ieee80211_global_op_class_is_6ghz(op_class))
         return BTM_HE_PHY_TYPE;
@@ -523,6 +774,11 @@ bm_neighbor_init( void )
         LOGE("Failed to monitor OVSDB table %s", SCHEMA_TABLE(Wifi_VIF_State));
         return false;
     }
+
+    OVSDB_TABLE_INIT(Wifi_VIF_Config, if_name);
+    OVSDB_TABLE_INIT(Wifi_VIF_State, if_name);
+    OVSDB_TABLE_INIT(Wifi_Radio_Config, if_name);
+    OVSDB_TABLE_INIT(Wifi_Radio_State, if_name);
 
     return true;
 }

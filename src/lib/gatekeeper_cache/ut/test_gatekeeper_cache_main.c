@@ -27,9 +27,14 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <libgen.h>
 #include <stdbool.h>
 #include <stdio.h>
+#include <stddef.h>
 #include <unistd.h>
 
 #include "gatekeeper_cache.h"
+#include "ovsdb.h"
+#include "ovsdb_utils.h"
+#include "ovsdb_table.h"
+#include "fsm_policy.h"
 #include "log.h"
 #include "memutil.h"
 #include "network_metadata_utils.h"
@@ -53,7 +58,18 @@ struct gk_attr_cache_interface *entry9;
 struct gkc_ip_flow_interface *flow_entry1, *flow_entry2, *flow_entry3, *flow_entry4;
 struct gkc_ip_flow_interface *flow_entry5, *flow_entry6, *flow_entry7, *flow_entry8;
 
+
+static struct gkc_test_mgr gkc_ovsdb_test_mgr;
+
+
+struct gkc_test_mgr *
+gkc_get_test_mgr(void)
+{
+    return &gkc_ovsdb_test_mgr;
+};
+
 char *g_genmac_filename = "./data/genmac.txt";
+
 
 void
 populate_sample_attribute_entries(void)
@@ -369,6 +385,127 @@ gatekeeper_cache_tearDown(void)
     FREE(test_flow_entries);
 }
 
+
+static int
+gkc_ut_flush_client(struct fsm_session *session, struct fsm_policy *policy)
+{
+    return gkc_flush_client(session, policy);
+}
+
+
+static void
+gkc_register_fsm_policy_client(void)
+{
+    struct fsm_policy_client *client;
+    struct fsm_session *fsm_session;
+    struct gkc_test_mgr *mgr;
+
+    mgr = gkc_get_test_mgr();
+    fsm_session = &mgr->session;
+    fsm_session->name = "fsm_gkc_ut_session";
+
+    client = &mgr->client;
+    client->session = fsm_session;
+    client->name = "ut_gk_cache";
+    client->flush_cache = gkc_ut_flush_client;
+    fsm_policy_register_client(client);
+}
+
+
+static void
+gkc_ovsdb_test_setup(void)
+{
+    struct gkc_test_mgr *mgr;
+
+    mgr = gkc_get_test_mgr();
+
+    mgr->has_ovsdb = unit_test_check_ovs();
+    if (mgr->has_ovsdb == false)
+    {
+        LOGI("%s: no ovsdb available", __func__);
+        goto no_ovsdb;
+    }
+
+    /* Proceed to settings and connecting to the ovsdb server */
+    mgr->loop = EV_DEFAULT;
+    mgr->g_timeout = 1.0;
+
+    if (!ovsdb_init_loop(mgr->loop, "UT_GATEKEEPER_CACHE"))
+    {
+        LOGI("%s: failed to initialize ovsdb framework", __func__);
+
+        goto no_ovsdb;
+    }
+    mgr->has_ovsdb = true;
+    fsm_policy_init();
+    gkc_register_fsm_policy_client();
+
+    return;
+
+no_ovsdb:
+    mgr->has_ovsdb = false;
+}
+
+
+void
+gkc_tests_register_cleanup(cleanup_callback_t cleanup)
+{
+    struct gkc_tests_cleanup_entry *entry;
+    struct gkc_test_mgr *mgr;
+
+    mgr = gkc_get_test_mgr();
+
+    entry = CALLOC(1, sizeof(*entry));
+    entry->callback = cleanup;
+    ds_dlist_insert_tail(&mgr->cleanup, entry);
+}
+
+
+static void
+gkc_ut_global_init(void)
+{
+    struct gkc_test_mgr *mgr;
+
+    mgr = gkc_get_test_mgr();
+    MEMZERO(*mgr);
+
+    ds_dlist_init(&mgr->cleanup, struct gkc_tests_cleanup_entry, node);
+    gkc_ovsdb_test_setup();
+}
+
+
+static void
+gkc_ut_global_exit(void)
+{
+    struct gkc_tests_cleanup_entry *cleanup_entry;
+    struct gkc_test_mgr *mgr;
+
+    mgr = gkc_get_test_mgr();
+    if (!ovsdb_stop_loop(mgr->loop))
+    {
+        LOGE("%s: Failed to stop OVSDB", __func__);
+    }
+
+    ev_loop_destroy(mgr->loop);
+
+    cleanup_entry = ds_dlist_head(&mgr->cleanup);
+    while (cleanup_entry != NULL)
+    {
+        struct gkc_tests_cleanup_entry *remove;
+        struct gkc_tests_cleanup_entry *next;
+
+        next = ds_dlist_next(&mgr->cleanup, cleanup_entry);
+        remove = cleanup_entry;
+        cleanup_entry = next;
+
+        remove->callback();
+        ds_dlist_remove(&mgr->cleanup, remove);
+        FREE(remove);
+    }
+
+    return;
+}
+
 int
 main(int argc, char *argv[])
 {
@@ -377,7 +514,7 @@ main(int argc, char *argv[])
     (void)argc;
     (void)argv;
 
-    ut_init(test_name, NULL, NULL);
+    ut_init(test_name, gkc_ut_global_init, gkc_ut_global_exit);
 
     ut_setUp_tearDown(test_name, gatekeeper_cache_setUp, gatekeeper_cache_tearDown);
 
@@ -396,6 +533,7 @@ main(int argc, char *argv[])
     run_gk_cache();
     run_gk_cache_cmp();
     run_gk_cache_flush();
+    run_gk_cache_ovsdb_app();
 
     return ut_fini();
 }

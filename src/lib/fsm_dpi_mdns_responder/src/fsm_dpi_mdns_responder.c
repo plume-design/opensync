@@ -66,8 +66,10 @@ fsm_dpi_mdns_get_mgr(void)
 const char * const mdns_state_str[] =
 {
     [UNDEFINED] = "undefined",
-    [BEGIN] = "begin",
-    [END] = "end",
+    [BEGIN_MDNS] = "begin",
+    [MDNS_QNAME] = "mdns.query.question.name",
+    [MDNS_RESP_TYPE] = "mdns.query.question.response_type",
+    [END_MDNS] = "end",
 };
 
 const char *mdns_attr_value = "mdns";
@@ -84,9 +86,10 @@ get_mdns_state(const char *attribute)
     }                                          \
     while (0)
 
-    GET_MDNS_STATE(attribute, MDSN_QNAME);
-    GET_MDNS_STATE(attribute, MDNS_UNICAST);
-    GET_MDNS_STATE(attribute, END);
+    GET_MDNS_STATE(attribute, MDNS_QNAME);
+    GET_MDNS_STATE(attribute, MDNS_RESP_TYPE);
+    GET_MDNS_STATE(attribute, BEGIN_MDNS);
+    GET_MDNS_STATE(attribute, END_MDNS);
 
     return UNDEFINED;
 #undef GET_MDNS_STATE
@@ -98,9 +101,8 @@ get_mdns_state(const char *attribute)
   * @param n_session the mdns session to free
   */
 void
-fsm_dpi_mdns_free_session(struct mdns_session *n_session)
+fsm_dpi_mdns_free_session(struct mdns_resp_session *n_session)
 {
-    FREE(n_session->entry.ipaddr);
     FREE(n_session);
 }
 
@@ -113,7 +115,7 @@ fsm_dpi_mdns_free_session(struct mdns_session *n_session)
 void
 fsm_dpi_mdns_delete_session(struct fsm_session *session)
 {
-    struct mdns_session *n_session;
+    struct mdns_resp_session *n_session;
     struct dpi_mdns_resp_client *mgr;
     ds_tree_t *sessions;
 
@@ -133,11 +135,9 @@ fsm_dpi_mdns_delete_session(struct fsm_session *session)
 void
 fsm_dpi_mdns_reset_state(struct fsm_session *session)
 {
-    struct mdns_session *n_session;
-    struct neighbour_entry *entry;
-    struct sockaddr_storage *ip;
+    struct mdns_resp_session *n_session;
     struct dpi_mdns_resp_client *mgr;
-    struct ndp_record *rec;
+    struct mdns_record *rec;
     ds_tree_t *sessions;
 
     mgr = fsm_dpi_mdns_get_mgr();
@@ -146,12 +146,7 @@ fsm_dpi_mdns_reset_state(struct fsm_session *session)
     n_session = ds_tree_find(sessions, session);
     if (n_session == NULL) return;
 
-    entry = &n_session->entry;
-    ip = entry->ipaddr;
-    MEMZERO(*entry);
-    entry->ipaddr = ip;
-
-    rec = &mgr->curr_ndp_rec_processed;
+    rec = &mgr->curr_mdns_rec_processed;
     MEMZERO(*rec);
 
     rec->next_state = BEGIN_MDNS;
@@ -166,7 +161,7 @@ fsm_dpi_mdns_reset_state(struct fsm_session *session)
  * @return 0 if sessions matches
  */
 static int
-mdns_session_cmp(const void *a, const void *b)
+mdns_resp_session_cmp(const void *a, const void *b)
 {
     uintptr_t p_a = (uintptr_t)a;
     uintptr_t p_b = (uintptr_t)b;
@@ -178,6 +173,60 @@ mdns_session_cmp(const void *a, const void *b)
 
 
 #define FSM_MDNS_DEFAULT_TTL (36*60*60)
+
+bool
+fsm_dpi_mdns_set_srcip(struct mdns_resp_session *md_session)
+{
+    struct dpi_mdns_resp_client *mgr = fsm_dpi_mdns_get_mgr();
+    struct fsm_session  *session = NULL;
+    char   *srcip = NULL;
+
+    if (!md_session || !mgr) return false;
+
+    session = md_session->session;
+    if (session->ops.get_config != NULL)
+    {
+        srcip = session->ops.get_config(session, "mdns_src_ip");
+    }
+
+    if (!srcip) return false;
+
+    if (mgr->srcip && !strcmp(mgr->srcip, srcip))
+    {
+        LOGT("mdns_daemon: No change in the sip.");
+        return false;
+    }
+    mgr->srcip = srcip;
+    return true;
+}
+
+bool
+fsm_dpi_mdns_set_intf(struct mdns_resp_session *md_session)
+{
+    struct dpi_mdns_resp_client *mgr = fsm_dpi_mdns_get_mgr();
+    struct fsm_session  *session = NULL;
+    bool   tx_change = true;
+    char   *tx_if;
+
+    if (!md_session || !mgr) return false;
+
+    session = md_session->session;
+
+    if (mgr->txintf && !strcmp(mgr->txintf, session->tx_intf))
+    {
+        LOGT("mdns_daemon: No change in the tx interface.");
+        tx_change = false;
+    }
+    else
+    {
+        tx_if = STRDUP(session->tx_intf);
+        mgr->txintf = tx_if;
+    }
+
+    return tx_change;
+}
+
+
 /**
  * @brief update routine
  *
@@ -186,45 +235,41 @@ mdns_session_cmp(const void *a, const void *b)
 void
 fsm_dpi_mdns_update(struct fsm_session *session)
 {
-    struct mdns_session *n_session;
+    struct mdns_resp_session *md_session;
     struct dpi_mdns_resp_client *mgr;
     ds_tree_t *sessions;
-    unsigned long ttl;
-    char *str_ttl;
+    bool ip_changed = false;
+    bool tx_intf_changed = false;
+
+    mgr = fsm_dpi_mdns_get_mgr();
+    if (!mgr) return;
+
+    sessions = &mgr->fsm_sessions;
+
+    md_session = ds_tree_find(sessions, session);
+    if (md_session == NULL) return;
 
     /* Generic config first */
     fsm_dpi_client_update(session);
 
-    mgr = fsm_dpi_mdns_get_mgr();
-    sessions = &mgr->fsm_sessions;
+    LOGD("%s: Updating mDNS responder config", __func__);
 
-    n_session = ds_tree_find(sessions, session);
-    if (n_session == NULL) return;
+    // Get the latest mdns sip.
+    ip_changed = fsm_dpi_mdns_set_srcip(md_session);
+    if (ip_changed) LOGT("%s: mdns_src_ip changed to '%s'", __func__, mgr->srcip);
 
-    /* set the default timer */
-    n_session->timestamp = time(NULL);
-    n_session->ttl = FSM_NDP_DEFAULT_TTL;
-    str_ttl = session->ops.get_config(session, "ttl");
-    if (str_ttl == NULL) goto log_settings;
+    // Get the latest mdns tx.
+    tx_intf_changed = fsm_dpi_mdns_set_intf(md_session);
+    if (tx_intf_changed) LOGT("%s: mdns tx intf changed to '%s'", __func__, mgr->txintf);
 
-    ttl = strtoul(str_ttl, NULL, 10);
-    if (ttl == 0 || ttl == ULONG_MAX)
-    {
-        LOGE("%s: conversion of %s failed: %d", __func__, str_ttl, errno);
-        goto log_settings;
-    }
-    n_session->ttl = (uint64_t)ttl;
-
-log_settings:
-    LOGD("%s: %s: setting neighbor entry ttl to %" PRIu64 " secs", __func__,
-         session->name, n_session->ttl);
+    mgr->mcast_fd = fsm_dpi_mdns_create_mcastv4_socket();
 }
 
 
 void
 fsm_dpi_mdns_periodic(struct fsm_session *session)
 {
-    struct mdns_session *n_session;
+    struct mdns_resp_session *n_session;
     struct dpi_mdns_resp_client *mgr;
     ds_tree_t *sessions;
     bool need_periodic;
@@ -239,45 +284,54 @@ fsm_dpi_mdns_periodic(struct fsm_session *session)
     need_periodic = fsm_dpi_client_periodic_check(session);
     if (need_periodic)
     {
-        if (LOG_SEVERITY_ENABLED(LOG_SEVERITY_TRACE)) print_neigh_table();
-        neigh_table_ttl_cleanup(n_session->ttl, OVSDB_ARP);
-        neigh_table_ttl_cleanup(n_session->ttl, OVSDB_NDP);
+        /* Nothing specific to be done here.*/
     }
 }
-
 
 bool
 fsm_dpi_mdns_process_record(struct fsm_session *session,
                             struct net_md_stats_accumulator *acc,
                             struct net_header_parser *net_parser)
 {
-    struct mdns_session *n_session;
-    struct neighbour_entry *entry;
+    struct fsm_dpi_mdns_service *service;
     struct dpi_mdns_resp_client *mgr;
-    ds_tree_t *sessions;
-    struct ndp_record *rec;
+    struct mdns_record *rec;
+    char *qname;
+    char *name;
+    bool rc = false;
 
     mgr = fsm_dpi_mdns_get_mgr();
-    sessions = &mgr->fsm_sessions;
+    if (!mgr->initialized) return false;
+    ds_tree_t *services = fsm_dpi_mdns_get_services();
 
-    n_session = ds_tree_find(sessions, session);
-    if (n_session == NULL) return false;
+    rec = &mgr->curr_mdns_rec_processed;
 
-    rec = &mgr->curr_ndp_rec_processed;
+    qname = STRDUP(rec->qname);
+    LOGT("%s: Processing dpi mDNS request for %s expecting %scast response", __func__, rec->qname, rec->unicast ? "uni": "multi");
+    name = strtok(qname, ".");
 
-    entry = &n_session->entry;
+    service = ds_tree_find(services, name);
+    if(!service)
+    {
+        LOGT("%s: Couldn't find record for qname[%s]",__func__,rec->qname);
+        goto err_qname;
+    }
 
-    populate_neigh_table_with_rec(entry, rec->ip_addr, &rec->mac, AF_INET6);
+    rc  = fsm_dpi_mdns_send_response(service, rec->unicast ? true : false, net_parser);
+    if (!rc)
+    {
+        LOGE("%s: Couldn't send mdns response for qname[%s]",__func__,rec->qname);
+        goto err_qname;
+    }
 
-    entry->cache_valid_ts = n_session->timestamp;
-    entry->source = FSM_NDP;
-    neigh_table_add(entry);
+err_qname:
+    FREE(qname);
 
-    return true;
+    return rc;
 }
 
 
-static int
+int
 fsm_dpi_mdns_process_attr(struct fsm_session *session, const char *attr,
                           uint8_t type, uint16_t length, const void *value,
                           struct fsm_dpi_plugin_client_pkt_info *pkt_info)
@@ -285,10 +339,8 @@ fsm_dpi_mdns_process_attr(struct fsm_session *session, const char *attr,
     struct net_header_parser *net_parser;
     struct net_md_stats_accumulator *acc;
     struct dpi_mdns_resp_client *mgr;
-    struct ndp_record *rec;
-    struct ip6_hdr *ip6hdr;
+    struct mdns_record *rec;
     unsigned int curr_state;
-    uint8_t *ip = NULL;
     int cmp;
     int ret = -1;
 
@@ -304,14 +356,65 @@ fsm_dpi_mdns_process_attr(struct fsm_session *session, const char *attr,
     if (net_parser == NULL) return FSM_DPI_IGNORED;
 
 
-    rec = &mgr->curr_ndp_rec_processed;
+    rec = &mgr->curr_mdns_rec_processed;
 
-    curr_state = get_ndp_state(attr);
+    curr_state = get_mdns_state(attr);
 
     switch (curr_state)
     {
         case BEGIN_MDNS:
+        {
+            if (type != RTS_TYPE_STRING)
+            {
+                LOGD("%s: value for %s should be a string", __func__, attr);
+                goto reset_state_machine;
+            }
+            cmp = strncmp(value, mdns_attr_value, length);
+            if (cmp)
+            {
+                LOGD("%s: value for %s should be %s", __func__, attr, mdns_attr_value);
+                goto reset_state_machine;
+           }
+           if (rec->next_state != UNDEFINED && rec->next_state != curr_state) goto wrong_state;
+           fsm_dpi_mdns_reset_state(session);
+           rec->next_state = MDNS_QNAME;
+           LOGT("%s: start new mDNS record - next is %s",
+                __func__, mdns_state_str[rec->next_state]);
+           break;
+        }
 
+        case MDNS_QNAME:
+        {
+            if (type != RTS_TYPE_STRING)
+            {
+                LOGD("%s: value for %s should be a string", __func__, attr);
+                goto reset_state_machine;
+            }
+            if (rec->next_state != curr_state) goto wrong_state;
+
+            STRSCPY_LEN(rec->qname, value, length);
+            rec->next_state = MDNS_RESP_TYPE;
+            LOGT("%s: copied %s = %s - next is %s",
+                 __func__, mdns_state_str[curr_state], rec->qname,
+                 mdns_state_str[rec->next_state]);
+           break;
+        }
+        case MDNS_RESP_TYPE:
+        {
+            if (type != RTS_TYPE_NUMBER)
+            {
+                LOGD("%s: value for %s should be a string", __func__, attr);
+                goto reset_state_machine;
+            }
+            if (rec->next_state != curr_state) goto wrong_state;
+
+            rec->unicast = *(bool *)value;
+            rec->next_state = END_MDNS;
+            LOGT("%s: copied %s = %d - next is %s",
+                 __func__, mdns_state_str[curr_state], rec->unicast,
+                 mdns_state_str[rec->next_state]);
+            break;
+        }
         case END_MDNS:
         {
             if (type != RTS_TYPE_STRING)
@@ -319,23 +422,25 @@ fsm_dpi_mdns_process_attr(struct fsm_session *session, const char *attr,
                 LOGD("%s: value for %s should be a string", __func__, attr);
                 goto reset_state_machine;
             }
-            cmp = strncmp(value, ndp_attr_value, length);
+            cmp = strncmp(value, mdns_attr_value, length);
             if (cmp)
             {
-                LOGD("%s: value for %s should be %s", __func__, attr, ndp_attr_value);
+                LOGD("%s: value for %s should be %s", __func__, attr, mdns_attr_value);
                 goto reset_state_machine;
             }
+            if (rec->next_state != END_MDNS) goto wrong_state;
+
+            rec->next_state = BEGIN_MDNS;
 
             /* Now we can process the record */
-            ret = fsm_dpi_mdns_process_icmpv6_record(session, acc, net_parser);
-            fsm_dpi_mdns_reset_state(session);
+            ret = fsm_dpi_mdns_process_record(session, acc, net_parser);
             break;
         }
 
         default:
         {
             LOGD("%s: Unexpected attr '%s' (expected state '%s')",
-                 __func__, attr, ndp_state_str[rec->next_state]);
+                 __func__, attr, mdns_state_str[rec->next_state]);
             goto reset_state_machine;
         }
     }
@@ -344,7 +449,7 @@ fsm_dpi_mdns_process_attr(struct fsm_session *session, const char *attr,
 
 wrong_state:
     LOGD("%s: Failed when processing attr '%s' (expected state '%s')",
-         __func__, attr, ndp_state_str[rec->next_state]);
+         __func__, attr, mdns_state_str[rec->next_state]);
 reset_state_machine:
     fsm_dpi_mdns_reset_state(session);
     return -1;
@@ -364,7 +469,7 @@ int
 fsm_dpi_mdns_init(struct fsm_session *session)
 {
     struct fsm_dpi_plugin_client_ops *client_ops;
-    struct mdns_session *mdns_session;
+    struct mdns_resp_session *mdns_resp_session;
     struct dpi_mdns_resp_client *mgr;
     int ret;
 
@@ -374,26 +479,19 @@ fsm_dpi_mdns_init(struct fsm_session *session)
 
     if (mgr->initialized) return 1;
 
-    ds_tree_init(&mgr->fsm_sessions, mdns_session_cmp,
-                 struct mdns_session, next);
+    ds_tree_init(&mgr->fsm_sessions, mdns_resp_session_cmp,
+                 struct mdns_resp_session, next);
     mgr->initialized = true;
 
     /* Look up the mdns session */
-    mdns_session = fsm_dpi_mdns_get_session(session);
-    if (mdns_session == NULL)
+    mdns_resp_session = fsm_dpi_mdns_get_session(session);
+    if (mdns_resp_session == NULL)
     {
         LOGE("%s: could not allocate dns parser", __func__);
         return -1;
     }
 
-    if (mdns_session->initialized) return 0;
-
-    mdns_session->entry.ipaddr = CALLOC(1, sizeof(*mdns_session->entry.ipaddr));
-    if (mdns_session->entry.ipaddr == NULL)
-    {
-        LOGE("%s: could not allocate arp ip storage", __func__);
-        goto error;
-    }
+    if (mdns_resp_session->initialized) return 0;
 
     /* Initialize generic client */
     ret = fsm_dpi_client_init(session);
@@ -402,7 +500,7 @@ fsm_dpi_mdns_init(struct fsm_session *session)
         goto error;
     }
 
-    /* And now all the NDP specific calls */
+    /* And now all the mDNS specific calls */
     session->ops.update = fsm_dpi_mdns_update;
     session->ops.periodic = fsm_dpi_mdns_periodic;
     session->ops.exit = fsm_dpi_mdns_exit;
@@ -410,11 +508,15 @@ fsm_dpi_mdns_init(struct fsm_session *session)
     /* Set the plugin specific ops */
     client_ops = &session->p_ops->dpi_plugin_client_ops;
     client_ops->process_attr = fsm_dpi_mdns_process_attr;
+    mdns_resp_session->session = session;
 
     /* Fetch the specific updates for this client plugin */
     session->ops.update(session);
 
-    mdns_session->initialized = true;
+    /* Initialize Service_Announcement tables */
+    fsm_dpi_mdns_ovsdb_init();
+    mdns_resp_session->initialized = true;
+
     LOGD("%s: added session %s", __func__, session->name);
 
     return 0;
@@ -456,11 +558,11 @@ fsm_dpi_mdns_exit(struct fsm_session *session)
  * @param session the session to lookup
  * @return the found/allocated session, or NULL if the allocation failed
  */
-struct mdns_session *
+struct mdns_resp_session *
 fsm_dpi_mdns_get_session(struct fsm_session *session)
 {
     struct dpi_mdns_resp_client *mgr;
-    struct mdns_session *n_session;
+    struct mdns_resp_session *n_session;
     ds_tree_t *sessions;
 
     mgr = fsm_dpi_mdns_get_mgr();
@@ -470,7 +572,7 @@ fsm_dpi_mdns_get_session(struct fsm_session *session)
     if (n_session != NULL) return n_session;
 
     LOGD("%s: Adding new session %s", __func__, session->name);
-    n_session = CALLOC(1, sizeof(struct mdns_session));
+    n_session = CALLOC(1, sizeof(struct mdns_resp_session));
     if (n_session == NULL) return NULL;
 
     n_session->initialized = false;

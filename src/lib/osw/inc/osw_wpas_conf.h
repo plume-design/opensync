@@ -92,6 +92,7 @@ struct osw_hostap_conf_sta_network_config {
 struct osw_hostap_conf_sta_config {
     struct osw_hostap_conf_sta_global_config global;
     struct osw_hostap_conf_sta_network_config *network;
+    struct osw_ifname bridge_if_name;
 
     char conf_buf[4096];
 };

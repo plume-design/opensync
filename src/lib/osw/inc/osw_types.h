@@ -52,6 +52,7 @@ enum osw_channel_width {
     OSW_CHANNEL_80MHZ,
     OSW_CHANNEL_160MHZ,
     OSW_CHANNEL_80P80MHZ,
+    OSW_CHANNEL_320MHZ,
 };
 
 enum osw_pmf {
@@ -274,13 +275,6 @@ osw_hwaddr_from_cptr(const void *ptr, size_t len)
     }
 }
 
-static inline bool
-osw_hwaddr_is_zero(const struct osw_hwaddr *addr)
-{
-    const struct osw_hwaddr zero = {0};
-    return memcmp(addr, &zero, sizeof(*addr)) == 0;
-}
-
 #define OSW_IEEE80211_SSID_LEN 32
 
 struct osw_ifname {
@@ -291,9 +285,24 @@ int
 osw_ifname_cmp(const struct osw_ifname *a,
                const struct osw_ifname *b);
 
+bool
+osw_ifname_is_equal(const struct osw_ifname *a,
+                    const struct osw_ifname *b);
+
+bool
+osw_ifname_is_valid(const struct osw_ifname *a);
+
+#define OSW_IFNAME_LEN sizeof(struct osw_ifname)
+#define OSW_IFNAME_FMT "%.*s"
+#define OSW_IFNAME_ARG(x) (int)OSW_IFNAME_LEN, (x)->buf
+
 struct osw_ssid {
     char buf[OSW_IEEE80211_SSID_LEN + 1];
     size_t len;
+};
+
+struct osw_ssid_hex {
+    char buf[OSW_IEEE80211_SSID_LEN * 2 + 1];
 };
 
 #define OSW_SSID_FMT "%.*s (len=%zu)"
@@ -309,6 +318,15 @@ osw_ssid_cmp(const struct osw_ssid *a, const struct osw_ssid *b)
         return memcmp(a->buf, b->buf, a->len);
     }
 }
+
+const char *
+osw_ssid_into_hex(struct osw_ssid_hex *hex,
+                  const struct osw_ssid *ssid);
+
+bool
+osw_ssid_from_cbuf(struct osw_ssid *ssid,
+                   const void *buf,
+                   size_t len);
 
 #define OSW_WPA_GROUP_REKEY_UNDEFINED -1
 
@@ -456,7 +474,14 @@ struct osw_ap_mode {
     bool vht_required;
     bool he_enabled;
     bool he_required;
+    bool eht_enabled;
+    bool eht_required;
     bool wps;
+};
+
+struct osw_multi_ap {
+    bool fronthaul_bss;
+    bool backhaul_bss;
 };
 
 struct osw_psk {
@@ -474,12 +499,17 @@ struct osw_net {
     struct osw_psk psk;
 };
 
+/* FIXME: needs to have osw_ssid added */
 struct osw_neigh {
     struct osw_hwaddr bssid;
     uint32_t bssid_info;
     uint8_t op_class;
     uint8_t channel;
     uint8_t phy_type;
+};
+
+struct osw_wps_cred {
+    struct osw_psk psk;
 };
 
 struct osw_radius {
@@ -513,6 +543,24 @@ struct osw_neigh_list {
     size_t count;
 };
 
+struct osw_wps_cred_list {
+    struct osw_wps_cred *list;
+    size_t count;
+};
+
+void
+osw_wps_cred_list_to_str(char *out,
+                         size_t len,
+                         const struct osw_wps_cred_list *creds);
+
+size_t
+osw_wps_cred_list_count_matches(const struct osw_wps_cred_list *a,
+                                const struct osw_wps_cred_list *b);
+
+bool
+osw_wps_cred_list_is_same(const struct osw_wps_cred_list *a,
+                          const struct osw_wps_cred_list *b);
+
 const char *
 osw_pmf_to_str(enum osw_pmf pmf);
 
@@ -540,11 +588,22 @@ osw_wpa_to_str(char *out, size_t len, const struct osw_wpa *wpa);
 void
 osw_ap_mode_to_str(char *out, size_t len, const struct osw_ap_mode *mode);
 
+char *
+osw_multi_ap_into_str(const struct osw_multi_ap *map);
+
 enum osw_band
 osw_freq_to_band(const int freq);
 
 enum osw_band
 osw_channel_to_band(const struct osw_channel *channel);
+
+/* Some channels on 5GHz and 6GHz overlap. No way to tell,
+ * hence _guess() suffix. This is intended to be used where
+ * the caller _knows_ the channel cannot be 6GHz - then it
+ * is safe to assume the result of this is correct.
+ */
+enum osw_band
+osw_chan_to_band_guess(const int chan);
 
 int
 osw_freq_to_chan(const int freq);
@@ -574,6 +633,33 @@ osw_channel_compute_center_freq(struct osw_channel *c, int max_2g_chan);
 int
 osw_hwaddr_cmp(const struct osw_hwaddr *addr_a,
                const struct osw_hwaddr *addr_b);
+
+bool
+osw_hwaddr_is_equal(const struct osw_hwaddr *a,
+                    const struct osw_hwaddr *b);
+
+bool
+osw_hwaddr_is_zero(const struct osw_hwaddr *addr);
+
+bool
+osw_hwaddr_is_bcast(const struct osw_hwaddr *addr);
+
+bool
+osw_hwaddr_is_to_addr(const struct osw_hwaddr *da,
+                      const struct osw_hwaddr *self);
+
+bool
+osw_hwaddr_list_contains(const struct osw_hwaddr *array,
+                         size_t len,
+                         const struct osw_hwaddr *addr);
+
+bool
+osw_hwaddr_list_is_equal(const struct osw_hwaddr_list *a,
+                         const struct osw_hwaddr_list *b);
+
+void
+osw_hwaddr_list_append(struct osw_hwaddr_list *list,
+                       const struct osw_hwaddr *addr);
 
 static inline int
 osw_channel_nf_20mhz_fixup(const int nf)
@@ -657,6 +743,11 @@ bool
 osw_cs_chan_is_usable(const struct osw_channel_state *channel_states,
                       size_t n_channel_states,
                       const struct osw_channel *c);
+
+bool
+osw_cs_chan_is_control_dfs(const struct osw_channel_state *cs,
+                           size_t n_cs,
+                           const struct osw_channel *c);
 
 uint32_t
 osw_suite_from_dash_str(const char *str);

@@ -28,14 +28,13 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define OW_STEER_POLICY_FORCE_KICK_H
 
 struct ow_steer_policy_force_kick_config {
-    /* nothing */
+    int stub; /* make sure sizeof() is >0, so malloc() guarantees non-NULL */
 };
 
 struct ow_steer_policy_force_kick;
 
 struct ow_steer_policy_force_kick*
-ow_steer_policy_force_kick_create(unsigned int priority,
-                                  const struct osw_hwaddr *sta_addr,
+ow_steer_policy_force_kick_create(const struct osw_hwaddr *sta_addr,
                                   const struct ow_steer_policy_mediator *mediator);
 
 void

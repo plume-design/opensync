@@ -63,6 +63,7 @@ struct osfw_rule
     int                 fr_priority;    /**< Rule priority */
     char               *fr_rule;        /**< Rule */
     char               *fr_target;      /**< Target */
+    char               *fr_name;        /**< Config Name */
     ds_tree_node_t      fr_tnode;
 };
 
@@ -87,7 +88,8 @@ bool osfw_iptables_rule_add(
         const char *chain,
         int priority,
         const char *match,
-        const char *target);
+        const char *target,
+        const char *name);
 
 static struct osfw_table_def *osfw_table_get(enum osfw_table table);
 static const char *osfw_table_str(enum osfw_table table);
@@ -130,6 +132,7 @@ static char *osfw_target_builtin[] =
     "ULOG"
 };
 
+static struct osfw_nfbase self;
 /*
  * Built-in tables and chain list
  */
@@ -198,7 +201,7 @@ static const char osfw_iptables_rule_add_cmd[] = _S(
  *  Public API implementation
  * ===========================================================================
  */
-bool osfw_init(void)
+bool osfw_init(osfw_fn_t *osfw_status_fn)
 {
     /*
      * The default debounce timer is 0.3ms with a maximum timeout of 2 seconds
@@ -207,6 +210,9 @@ bool osfw_init(void)
             &osfw_debounce_timer,
             osfw_debounce_fn,
             0.3, 2.0);
+
+    memset(&self, 0, sizeof(self));
+    self.osfw_fn = osfw_status_fn;
 
     return true;
 }
@@ -254,7 +260,8 @@ bool osfw_rule_add(
         const char *chain,
         int priority,
         const char *match,
-        const char *target)
+        const char *target,
+        const char *name)
 {
     struct osfw_rule *prule;
 
@@ -282,6 +289,7 @@ bool osfw_rule_add(
     prule->fr_priority = priority;
     prule->fr_rule = strdup(match);
     prule->fr_target = strdup(target);
+    prule->fr_name = strdup(name);
 
     ds_tree_insert(&osfw_rule_list, prule, prule);
 
@@ -326,6 +334,7 @@ bool osfw_rule_del(
     FREE(rule->fr_chain);
     FREE(rule->fr_rule);
     FREE(rule->fr_target);
+    FREE(rule->fr_name);
 
     FREE(rule);
 
@@ -336,6 +345,34 @@ bool osfw_apply(void)
 {
     ev_debounce_start(EV_DEFAULT, &osfw_debounce_timer);
     return true;
+}
+
+static void
+osn_iptables_chain_add(struct osfw_rule *prule, char *chain)
+{
+    struct osfw_chain *pchain;
+    struct osfw_chain kchain;
+
+    kchain.fc_family = prule->fr_family;
+    kchain.fc_table = prule->fr_table;
+    kchain.fc_chain = chain;
+
+    pchain = ds_tree_find(&osfw_chain_list, &kchain);
+    if (pchain == NULL)
+    {
+        pchain = CALLOC(1, sizeof(*pchain));
+        pchain->fc_family = prule->fr_family;
+        pchain->fc_table = prule->fr_table;
+        pchain->fc_chain = STRDUP(chain);
+        ds_tree_insert(&osfw_chain_list, pchain, pchain);
+    }
+
+    if (!pchain->fc_active)
+    {
+        pchain->fc_active = true;
+        /* osfw_iptables_chain_add() flushes or adds the chain */
+        osfw_iptables_chain_add(pchain->fc_family, pchain->fc_table, pchain->fc_chain);
+    }
 }
 
 void osfw_debounce_fn(struct ev_loop *loop, ev_debounce *w, int revent)
@@ -361,33 +398,8 @@ void osfw_debounce_fn(struct ev_loop *loop, ev_debounce *w, int revent)
      */
     ds_tree_foreach(&osfw_rule_list, prule)
     {
-        /* Lookup the chain */
-        struct osfw_chain kchain =
-        {
-            .fc_family = prule->fr_family,
-            .fc_table = prule->fr_table,
-            .fc_chain = prule->fr_chain,
-        };
-
-        pchain = ds_tree_find(&osfw_chain_list, &kchain);
-        if (pchain == NULL)
-        {
-            pchain = CALLOC(1, sizeof(*pchain));
-            pchain->fc_family = prule->fr_family;
-            pchain->fc_table = prule->fr_table;
-            pchain->fc_chain = STRDUP(prule->fr_chain);
-            ds_tree_insert(&osfw_chain_list, pchain, pchain);
-        }
-
-        if (!pchain->fc_active)
-        {
-            pchain->fc_active = true;
-            /* osfw_iptables_chain_add() flushes or adds the chain */
-            if (!osfw_iptables_chain_add(pchain->fc_family, pchain->fc_table, pchain->fc_chain))
-            {
-                continue;
-            }
-        }
+        osn_iptables_chain_add(prule, prule->fr_chain);
+        osn_iptables_chain_add(prule, prule->fr_target);
     }
 
     /* Scan the rule list again and remove unused chains (fc_active == false) */
@@ -419,7 +431,8 @@ void osfw_debounce_fn(struct ev_loop *loop, ev_debounce *w, int revent)
                 prule->fr_chain,
                 prule->fr_priority,
                 prule->fr_rule,
-                prule->fr_target))
+                prule->fr_target,
+                prule->fr_name))
         {
             continue;
         }
@@ -584,7 +597,8 @@ bool osfw_iptables_rule_add(
         const char *chain,
         int priority,
         const char *match,
-        const char *target)
+        const char *target,
+        const char *name)
 {
     (void)priority;
 
@@ -605,6 +619,9 @@ bool osfw_iptables_rule_add(
             (char *)chain,
             (char *)match,
             (char *)target);
+
+    if (self.osfw_fn) self.osfw_fn((char *)name, rc);
+
     if (rc != 0)
     {
         LOG(ERR, "osfw: %s.%s.%s: Error adding rule '%s' target '%s'",

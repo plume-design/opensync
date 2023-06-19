@@ -157,8 +157,7 @@ ow_steer_policy_band_filter_sigusr1_dump_cb(struct ow_steer_policy *policy)
 }
 
 struct ow_steer_policy_band_filter*
-ow_steer_policy_band_filter_create(unsigned int priority,
-                                   const char *name,
+ow_steer_policy_band_filter_create(const char *name,
                                    const struct osw_hwaddr *sta_addr,
                                    const struct ow_steer_policy_mediator *mediator)
 {
@@ -172,7 +171,7 @@ ow_steer_policy_band_filter_create(unsigned int priority,
     };
 
     struct ow_steer_policy_band_filter *filter_policy = CALLOC(1, sizeof(*filter_policy));
-    filter_policy->base = ow_steer_policy_create(name, priority, sta_addr, &ops, mediator, filter_policy);
+    filter_policy->base = ow_steer_policy_create(name, sta_addr, &ops, mediator, filter_policy);
     ds_tree_init(&filter_policy->band_tree, (ds_key_cmp_t*) ds_int_cmp, struct ow_steer_policy_band_filter_band, node);
 
     return filter_policy;

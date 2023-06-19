@@ -290,7 +290,7 @@ bool fw_nat_start(inet_fw_t *self)
         retval &= fw_rule_add(self,
                 FW_RULE_ALL,
                 "filter",
-                "FORWARD",
+                "NM_MSS_CLAMP",
                 "-o", self->fw_ifname,
                 "-p", "tcp",
                 "--tcp-flags", "SYN,RST", "SYN",
@@ -300,6 +300,10 @@ bool fw_nat_start(inet_fw_t *self)
         /* Plant miniupnpd rules for port forwarding via upnp */
         retval &= fw_rule_add(self,
                 FW_RULE_IPV4, "nat", "NM_PORT_FORWARD",
+                "-i", self->fw_ifname, "-j", "MINIUPNPD");
+
+        retval &= fw_rule_add(self,
+                FW_RULE_IPV4, "filter", "NM_PORT_FORWARD",
                 "-i", self->fw_ifname, "-j", "MINIUPNPD");
     }
     else
@@ -311,7 +315,7 @@ bool fw_nat_start(inet_fw_t *self)
                 "-i", self->fw_ifname, "-j", "ACCEPT");
 
         retval &= fw_rule_add(self,
-                FW_RULE_IPV6, "filter", "NM_FORWARD",
+                FW_RULE_ALL, "filter", "NM_FORWARD",
                 "-i", self->fw_ifname, "-j", "ACCEPT");
     }
 
@@ -338,7 +342,7 @@ bool fw_nat_stop(inet_fw_t *self)
     retval &= fw_rule_del(self,
             FW_RULE_ALL,
             "filter",
-            "FORWARD",
+            "NM_MSS_CLAMP",
             "-o", self->fw_ifname,
             "-p", "tcp",
             "--tcp-flags", "SYN,RST", "SYN",
@@ -349,7 +353,7 @@ bool fw_nat_stop(inet_fw_t *self)
     retval &= fw_rule_del(self, FW_RULE_ALL,
             "filter", "NM_INPUT", "-i", self->fw_ifname, "-j", "ACCEPT");
 
-    retval &= fw_rule_del(self, FW_RULE_IPV6,
+    retval &= fw_rule_del(self, FW_RULE_ALL,
             "filter", "NM_FORWARD", "-i", self->fw_ifname, "-j", "ACCEPT");
 
     return retval;
@@ -365,9 +369,11 @@ bool fw_nat_stop(inet_fw_t *self)
  */
 bool fw_portforward_rule(inet_fw_t *self, const struct inet_portforward *pf, bool remove)
 {
-    char *proto = 0;
-    char src_port[8] = { 0 };
-    char to_dest[32] = { 0 };
+    char *proto;
+    char src_port[C_INT32_LEN];
+    char dst_port[C_INT32_LEN];
+    char to_dest[C_IP4ADDR_LEN + C_INT32_LEN + 1];
+    char dest[C_IP4ADDR_LEN];
 
 
     if (pf->pf_proto == INET_PROTO_UDP)
@@ -378,9 +384,16 @@ bool fw_portforward_rule(inet_fw_t *self, const struct inet_portforward *pf, boo
         return false;
 
 
-    if (snprintf(src_port, sizeof(src_port), "%u", pf->pf_src_port)
-                  >= (int)sizeof(src_port))
+    if (snprintf(src_port, sizeof(src_port), "%u", pf->pf_src_port) >= (int)sizeof(src_port))
         return false;
+
+    if (snprintf(dst_port, sizeof(dst_port), "%u", pf->pf_dst_port) >= (int)sizeof(dst_port))
+        return false;
+
+    if (snprintf(dest, sizeof(dest), PRI_osn_ip_addr, FMT_osn_ip_addr(pf->pf_dst_ipaddr)) >= (int)sizeof(dest))
+    {
+        return false;
+    }
 
     if (snprintf(to_dest, sizeof(to_dest), PRI_osn_ip_addr":%u",
                  FMT_osn_ip_addr(pf->pf_dst_ipaddr), pf->pf_dst_port)
@@ -391,24 +404,105 @@ bool fw_portforward_rule(inet_fw_t *self, const struct inet_portforward *pf, boo
 
     if (remove)
     {
-        return fw_rule_del(self, FW_RULE_IPV4, "nat", "NM_PORT_FORWARD",
-                           "-i", self->fw_ifname,
-                           "-p", proto,
-                           "--dport", src_port,
-                           "-j", "DNAT",
-                           "--to-destination", to_dest);
+        if (pf->pf_proto == INET_PROTO_TCP)
+        {
+            if (!fw_rule_del(
+                        self,
+                        FW_RULE_IPV4, "filter", "NM_PORT_FORWARD",
+                        "-i", self->fw_ifname,
+                        "-p", proto,
+                        "--dport", dst_port,
+                        "--dst", dest,
+                        "--syn",
+                        "-m", "conntrack",
+                        "--ctstate", "NEW",
+                        "-j", "ACCEPT"))
+            {
+                return false;
+            }
+        }
+        else
+        {
+            if (!fw_rule_del(
+                        self,
+                        FW_RULE_IPV4, "filter", "NM_PORT_FORWARD",
+                        "-i", self->fw_ifname,
+                        "-p", proto,
+                        "--dport", dst_port,
+                        "--dst", dest,
+                        "-m", "conntrack",
+                        "--ctstate", "NEW",
+                        "-j", "ACCEPT"))
+            {
+                return false;
+            }
+        }
 
-    }
+        if (!fw_rule_del(
+                    self,
+                    FW_RULE_IPV4,
+                    "nat",
+                    "NM_PORT_FORWARD",
+                    "-i", self->fw_ifname,
+                    "-p", proto,
+                    "--dport", src_port,
+                    "-j", "DNAT",
+                    "--to-destination", to_dest))
+        {
+            return false;
+        }
+   }
     else
     {
-        return fw_rule_add(self, FW_RULE_IPV4, "nat", "NM_PORT_FORWARD",
-                           "-i", self->fw_ifname,
-                           "-p", proto,
-                           "--dport", src_port,
-                           "-j", "DNAT",
-                           "--to-destination", to_dest);
+        if (!fw_rule_add(
+                    self,
+                    FW_RULE_IPV4, "nat", "NM_PORT_FORWARD",
+                    "-i", self->fw_ifname,
+                    "-p", proto,
+                    "--dport", src_port,
+                    "-j", "DNAT",
+                    "--to-destination", to_dest))
+        {
+            return false;
+        }
+
+        if (pf->pf_proto == INET_PROTO_TCP)
+        {
+            if (!fw_rule_add(
+                        self,
+                        FW_RULE_IPV4, "filter", "NM_PORT_FORWARD",
+                        "-i", self->fw_ifname,
+                        "-p", proto,
+                        "--dport", dst_port,
+                        "--dst", dest,
+                        "--syn",
+                        "-m", "conntrack",
+                        "--ctstate", "NEW",
+                        "-j", "ACCEPT"))
+            {
+                return false;
+            }
+        }
+        else
+        {
+            if (!fw_rule_add(
+                        self,
+                        FW_RULE_IPV4, "filter", "NM_PORT_FORWARD",
+                        "-i", self->fw_ifname,
+                        "-p", proto,
+                        "--dport", dst_port,
+                        "--dst", dest,
+                        "-m", "conntrack",
+                        "--ctstate", "NEW",
+                        "-j", "ACCEPT"))
+            {
+                return false;
+            }
+
+        }
     }
 
+    return true;
 }
 
 /* Apply the current portforwarding configuration */
@@ -480,9 +574,9 @@ _S(
     tbl="$2";
     chain="$3";
     shift 3;
-    if ! "$IPTABLES" -t "$tbl" -C "$chain" "$@" 2> /dev/null;
+    if ! "$IPTABLES" -w -t "$tbl" -C "$chain" "$@" 2> /dev/null;
     then
-        "$IPTABLES" -t "$tbl" -A "$chain" "$@";
+        "$IPTABLES" -w -t "$tbl" -A "$chain" "$@";
     fi;
 );
 
@@ -527,9 +621,9 @@ _S(
     tbl="$2";
     chain="$3";
     shift 3;
-    if "$IPTABLES" -t "$tbl" -C "$chain" "$@" 2> /dev/null;
+    if "$IPTABLES" -w -t "$tbl" -C "$chain" "$@" 2> /dev/null;
     then
-        "$IPTABLES" -t "$tbl" -D "$chain" "$@";
+        "$IPTABLES" -w -t "$tbl" -D "$chain" "$@";
     fi;
 );
 

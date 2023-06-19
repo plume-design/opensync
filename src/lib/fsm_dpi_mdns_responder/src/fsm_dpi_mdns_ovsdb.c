@@ -32,6 +32,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ovsdb_table.h"
 #include "memutil.h"
 
+#include "fsm_dpi_mdns_responder.h"
 
 #define MODULE_ID LOG_MODULE_ID_OVSDB
 
@@ -53,6 +54,9 @@ fsm_dpi_mdns_service_cmp(const void *a, const void *b)
 void
 fsm_dpi_mdns_ovsdb_init(void)
 {
+    struct dpi_mdns_resp_client *mgr;
+
+    mgr = fsm_dpi_mdns_get_mgr();
     LOGI("fsm_dpi_mdns_ovsdb: Initializing mDNS tables");
 
     // Initialize OVSDB tables
@@ -61,6 +65,8 @@ fsm_dpi_mdns_ovsdb_init(void)
     // Initialize OVSDB monitor callbacks
     OVSDB_TABLE_MONITOR(Service_Announcement, false);
 
+    ds_tree_init(&mgr->services, fsm_dpi_mdns_service_cmp,
+                 struct fsm_dpi_mdns_service, service_node);
     return;
 }
 
@@ -78,12 +84,14 @@ fsm_dpi_mdns_ovsdb_exit(void)
 ds_tree_t *
 fsm_dpi_mdns_get_services(void)
 {
-    struct mdns_plugin_mgr *mgr = mdns_get_mgr();
-    return &mgr->ctxt->services;
+    struct dpi_mdns_resp_client *mgr;
+
+    mgr = fsm_dpi_mdns_get_mgr();
+    return &mgr->services;
 }
 
 static ds_tree_t *
-fsm_dpi_mdns_set_service_txt(struct schema_Service_Announcement *conf)
+fsm_dpi_mdns_set_service_txt(struct fsm_dpi_mdns_service *service, struct schema_Service_Announcement *conf)
 {
     ds_tree_t *txt = NULL;
 
@@ -94,6 +102,8 @@ fsm_dpi_mdns_set_service_txt(struct schema_Service_Announcement *conf)
                                conf->txt_keys,
                                conf->txt);
     if (!txt) return NULL;
+    /* number of text records */
+    service->n_txt_recs = sizeof(conf->txt[0]);
     return txt;
 }
 
@@ -186,18 +196,18 @@ struct fsm_dpi_mdns_service
 
     if (conf->protocol_present)
     {
-        service->type = strdup(conf->protocol);
+        service->type = STRDUP(conf->protocol);
     }
     else
     {
         // Default is http service.
-        service->type = strdup("_http._tcp");
+        service->type = STRDUP("_http._tcp");
     }
 
     if (!service->type) goto err_free_name;
 
     service->port = conf->port;
-    service->txt = fsm_dpi_mdns_set_service_txt(conf);
+    service->txt = fsm_dpi_mdns_set_service_txt(service, conf);
     return service;
 
 err_free_name:
@@ -230,12 +240,6 @@ fsm_dpi_mdns_add_service(struct schema_Service_Announcement *conf)
     }
     ds_tree_insert(services, service, service->name);
 
-    //Update the daemon records.
-    if (!fsm_dpi_mdns_update_record(service))
-    {
-        LOGE("mdns_ovsdb: Failed to add mdns service record.");
-        return false;
-    }
     fsm_dpi_mdns_walk_services_tree();
     return true;
 }
@@ -252,7 +256,6 @@ fsm_dpi_mdns_delete_service(struct schema_Service_Announcement *conf)
     if(!service) return;
 
     // Remove the record.
-    fsm_dpi_mdns_remove_record(service);
     fsm_dpi_mdns_free_service(service);
     fsm_dpi_mdns_walk_services_tree();
     return;
@@ -278,7 +281,6 @@ fsm_dpi_mdns_modify_service(struct schema_Service_Announcement *conf)
     }
 
     ds_tree_insert(services, service, service->name);
-    fsm_dpi_mdns_update_record(service);
 
     fsm_dpi_mdns_walk_services_tree();
     return true;

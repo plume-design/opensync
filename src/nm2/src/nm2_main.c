@@ -126,7 +126,7 @@ int main(int argc, char ** argv)
     {
         nm2_bridge_init();
         nm2_if_init();
-        nm2_default_br_create_tables(CONFIG_TARGET_LAN_BRIDGE_NAME);
+        nm2_default_br_init(CONFIG_TARGET_LAN_BRIDGE_NAME);
     }
     ev_run(loop, 0);
 

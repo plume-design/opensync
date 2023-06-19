@@ -29,7 +29,7 @@
 ###############################################################################
 UNIT_NAME := fsm_dpi_mdns_responder
 
-UNIT_DISABLE := $(if $(CONFIG_MANAGER_FSM), y, n)
+UNIT_DISABLE := $(if $(CONFIG_MANAGER_FSM), n, y)
 
 # If compiled with clang, assume a native unit test target
 # and build a static library
@@ -56,6 +56,8 @@ UNIT_DEPS := src/lib/const
 UNIT_DEPS += src/lib/fsm_dpi_client
 UNIT_DEPS += src/lib/fsm_policy
 UNIT_DEPS += src/lib/fsm_utils
+UNIT_DEPS += src/lib/ovsdb
+UNIT_DEPS += src/lib/mdnsd
 UNIT_DEPS += src/lib/log
 UNIT_DEPS += src/lib/network_metadata
 UNIT_DEPS += src/lib/policy_tags

@@ -315,10 +315,10 @@ test_IP_Interface_changes(void)
     TEST_ASSERT_NOT_NULL(ictest);
     /* count should be 1 as only 1 ingress classifier is configured */
     count = get_classifier_tree_counts(test_ipi, true);
-    TEST_ASSERT_EQUAL_UINT64(1, count);
+    TEST_ASSERT_EQUAL_INT32(1, count);
     /* no egress classifiers are configured */
     count = get_classifier_tree_counts(test_ipi, false);
-    TEST_ASSERT_EQUAL_UINT64(0, count);
+    TEST_ASSERT_EQUAL_INT32(0, count);
 
     ev_wait(NULL, 10.0);
 

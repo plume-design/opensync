@@ -74,6 +74,7 @@ ow_ovsdb_stats_setup(struct ow_stats_conf_entry *e,
     const enum ow_stats_conf_stats_type stats = ow_ovsdb_stats_xlate_stats(c);
     const int sampling = c->sampling_interval;
     const int reporting = c->reporting_interval;
+    const int report_limit = c->reporting_count;
     const int *channels = c->channel_list;
     const unsigned int dwell = c->survey_interval_ms;
     const size_t n_channels = c->channel_list_len;
@@ -92,19 +93,11 @@ ow_ovsdb_stats_setup(struct ow_stats_conf_entry *e,
     WARN_ON(c->reporting_count != 0); /* FIXME */
     if (c->report_type_exists == true) WARN_ON(strcmp(c->report_type, "raw") != 0); /* FIXME */
 
-    /* FIXME: survey_interval_ms is dwell time;
-     * need to extend ow_stats_conf to support it
-     */
-
-    /* FIXME need to respect threshold for offchan
-     * scans later. Need to pass that to
-     * ow_stats_conf.
-     */
-
     ow_stats_conf_entry_set_radio_type(e, radio);
     ow_stats_conf_entry_set_scan_type(e, scan);
     ow_stats_conf_entry_set_stats_type(e, stats);
     ow_stats_conf_entry_set_dwell_time(e, dwell);
+    ow_stats_conf_entry_set_reporting_limit(e, report_limit);
     ow_stats_conf_entry_set_holdoff_busy(e, util);
     ow_stats_conf_entry_set_holdoff_delay(e, delay);
     ow_stats_conf_entry_set_channels(e, channels, n_channels);

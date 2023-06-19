@@ -164,74 +164,109 @@ hapd_util_vif_enabled_to_osw(const char *state,
 }
 #endif
 
+static void
+hapd_util_wps_cred_append(struct osw_wps_cred_list *creds,
+                          const char *psk)
+{
+    if (creds == NULL) return;
+
+    creds->count++;
+    const size_t idx = creds->count - 1;
+    const size_t elem_size = sizeof(creds->list[0]);
+    const size_t list_size = creds->count * elem_size;
+    creds->list = REALLOC(creds->list, list_size);
+    MEMZERO(creds->list[idx]);
+    STRSCPY_WARN(creds->list[idx].psk.str, psk);
+}
+
+static void
+hapd_util_ap_psk_list_append(struct osw_ap_psk_list *psks,
+                             const char *psk,
+                             const int key_id)
+{
+    if (psks == NULL) return;
+    psks->count++;
+    const size_t idx = psks->count - 1;
+    const size_t elem_size = sizeof(psks->list[0]);
+    const size_t list_size = psks->count * elem_size;
+    psks->list = REALLOC(psks->list, list_size);
+    MEMZERO(psks->list[idx]);
+    psks->list[idx].key_id = key_id;
+    STRSCPY_WARN(psks->list[idx].psk.str, psk);
+}
+
 static bool
 hapd_util_hapd_psk_file_to_osw(const char *wpa_psk_file,
-                               struct osw_ap_psk_list *output_psk_list)
+                               struct osw_ap_psk_list *psks,
+                               struct osw_wps_cred_list *creds)
 {
-    int len;
+    char *local_wpa_psk_file = STRDUP(wpa_psk_file ?: "");
+    char *lines = local_wpa_psk_file;
+
+    FREE(psks->list);
+    psks->list = NULL;
+    psks->count = 0;
+
+    FREE(creds->list);
+    creds->list = NULL;
+    creds->count = 0;
+
     char *line;
-    struct osw_ap_psk_list psk_list;
-    struct osw_ap_psk psks[20];
-    char *local_wpa_psk_file;
-
-    if (wpa_psk_file == NULL || output_psk_list == NULL)
-        return false;
-    if (strlen(wpa_psk_file) < 1) return false;
-
-    local_wpa_psk_file = STRDUP(wpa_psk_file);
-    psk_list.list = psks;
-    psk_list.count = 0;
-
-    line = strtok(local_wpa_psk_file, "\n");
-
-    do {
+    while ((line = strsep(&lines, "\n")) != NULL) {
         int wps = 0;
         int oftag = 0;
         int keyid = 0;
-        char *param = NULL;
-        char psk[64] = {0};
+        const char *psk = NULL;
         struct osw_hwaddr hwaddr = {0};
 
         /* ignore commented lines */
         if (line[0] == '#') continue;
+        /* ignore empty lines */
+        if (line[0] == '\0') continue;
 
-        param = strsep(&line, " \n");
+        char *param;
+        while ((param = strsep(&line, " ")) != NULL) {
+            const bool is_attr = (strchr(param, '=') != NULL);
+            if (is_attr) {
+                const char *k = strsep(&param, "=");
+                const char *v = strsep(&param, "");
+                if (WARN_ON(k == NULL)) continue;
+                if (WARN_ON(v == NULL)) continue;
 
-        do {
-            if (strstr(param, "oftag=")) {
-                len = sscanf(param, "oftag=home-%d", &oftag);
-                continue;
+                     if (strcmp(k, "oftag") == 0) sscanf(v, "home-%d", &oftag);
+                else if (strcmp(k, "wps") == 0) wps = atoi(v);
+                else if (strcmp(k, "keyid") == 0) sscanf(v, "key-%d", &keyid);
+                else LOGW("unknown pskfile attribute: '%s' with value '%s'", k, v);
             }
-            if (strstr(param, "wps=")) {
-                len = sscanf(param, "wps=%d", &wps);
-                continue;
-            }
-            if (strstr(param, "keyid=")) {
-                len = sscanf(param, "keyid=key-%d", &keyid);
-                if (len != 1) return false;
-                continue;
-            }
-            if ((len = sscanf(param, OSW_HWADDR_FMT, OSW_HWADDR_SARG(&hwaddr))) == 6) {
-                continue;
-            }
-            /* On last iteration (we expect psk to be the last token
-             * in a line) reversed if logic */
-            if ((len = sscanf(param, "%64s", psk)) != 1) {
-                /* handle error here */
-                return false;
-            }
+            else {
+                const bool valid = osw_hwaddr_from_cstr(param, &hwaddr);
+                const bool not_valid = (valid == false);
+                if (WARN_ON(not_valid)) break;
 
-            psk_list.list[psk_list.count].key_id = keyid;
-            STRSCPY_WARN(psk_list.list[psk_list.count].psk.str, psk);
-            psk_list.count++;
-        } while ((param = strsep(&line, " \n")));
-    } while ((line = strtok(NULL, "\n")));
+                const char *until_eol = strsep(&line, "");
+                if (until_eol == NULL) break;
+
+                const size_t size = sizeof(psks->list[0].psk.str);
+                const size_t len = strnlen(until_eol, size);
+                const bool too_long = (len == size);
+                if (WARN_ON(too_long)) break;
+
+                psk = until_eol;
+            }
+        }
+
+        const bool usable = (psk != NULL);
+        const bool not_usable = (usable == false);
+        if (not_usable) continue;
+
+        if (wps) {
+            hapd_util_wps_cred_append(creds, psk);
+        }
+
+        hapd_util_ap_psk_list_append(psks, psk, keyid);
+    }
 
     FREE(local_wpa_psk_file);
-    /* Initialize memory - caller becomes the owner when this function returns! */
-    output_psk_list->list = CALLOC(psk_list.count, sizeof(struct osw_ap_psk));
-    memcpy(output_psk_list->list, psk_list.list, psk_list.count * sizeof(struct osw_ap_psk));
-    output_psk_list->count = psk_list.count;
 
     return true;
 }
@@ -284,6 +319,62 @@ hapd_util_wps_status_to_osw(const char *wps,
         *output_wps = true;
 
     return true;
+}
+
+static int
+hapd_util_from_osw_multi_ap(const struct osw_multi_ap *multi_ap)
+{
+    const int flags = 0
+                    | (multi_ap->backhaul_bss ? 1 : 0)
+                    | (multi_ap->fronthaul_bss ? 2 : 0);
+    return flags;
+}
+
+static bool
+hapd_util_into_osw_multi_ap(const char *str,
+                            struct osw_multi_ap *multi_ap)
+{
+    if (str == NULL) return false;
+    if (multi_ap == NULL) return false;
+
+    memset(multi_ap, 0, sizeof(*multi_ap));
+
+    const int val = atoi(str);
+    if (val & 1) multi_ap->backhaul_bss = true;
+    if (val & 2) multi_ap->fronthaul_bss = true;
+
+    return true;
+}
+
+static void
+hapd_util_wps_pbc_to_osw(const char *wps_get_status,
+                         bool *pbc_active)
+{
+    /*
+       PBC Status: Active
+       Last WPS result: None
+     */
+
+    char *copy = strdupa(wps_get_status ?: "");
+    char *line;
+
+    *pbc_active = false;
+
+    while ((line = strsep(&copy, "\n")) != NULL) {
+        const char *k = strsep(&line, ":");
+        const char *v = strsep(&line, "\n");
+
+        if (k == NULL) continue;
+        if (v == NULL) continue;
+        if (v[0] != ' ') continue;
+        v++;
+
+        if (strcmp(k, "PBC Status") == 0) {
+            if (strcmp(v, "Active") == 0) {
+                *pbc_active = true;
+            }
+        }
+    }
 }
 
 static bool
@@ -574,7 +665,6 @@ osw_hostap_conf_osw_wpa_to_channel(const struct osw_drv_vif_config_ap *ap,
     }
 }
 
-
 static void
 osw_hostap_conf_osw_wpa_to_ieee80211(const struct osw_drv_vif_config_ap *ap,
                                      struct osw_hostap_conf_ap_config *conf)
@@ -596,7 +686,7 @@ osw_hostap_conf_osw_wpa_to_ieee80211(const struct osw_drv_vif_config_ap *ap,
     OSW_HOSTAP_CONF_SET_VAL(conf->wmm_enabled, ap->mode.wmm_enabled);
     OSW_HOSTAP_CONF_SET_VAL(conf->uapsd_advertisement_enabled, ap->mode.wmm_uapsd_enabled);
     OSW_HOSTAP_CONF_SET_VAL(conf->ap_isolate, ap->isolated);
-    /* conf->multi_ap - FIXME - see commit hash: f1e5989ec4 */
+    OSW_HOSTAP_CONF_SET_VAL(conf->multi_ap, hapd_util_from_osw_multi_ap(&ap->multi_ap));
     // this needs a is_X_supported guard; this is not gauranteed to be there
     // OSW_HOSTAP_CONF_SET_VAL(conf->mcast_to_ucast, ap->mcast2ucast);
 }
@@ -738,13 +828,21 @@ osw_hostap_conf_osw_wpa_to_psks(const struct osw_drv_vif_config_ap *ap,
 {
     size_t i;
     struct osw_ap_psk *psk = ap->psk_list.list;
+    struct osw_wps_cred *wps_cred = ap->wps_cred_list.list;
 
     if (!(ap->wpa.akm_psk || ap->wpa.akm_ft_psk)) return;
 
     OSW_HOSTAP_CONF_SET_BUF(conf->wpa_psk_file, "SOMETHING");
     for (i = 0; i < ap->psk_list.count; i++) {
-        if (ap->mode.wps)
-            STRSCAT(conf->psks_buf, strfmta("wps=%d ", ap->mode.wps));
+        bool is_wps_psk = false;
+        size_t j = 0;
+        for (j = 0; j < ap->wps_cred_list.count; j++) {
+            is_wps_psk = strcmp(psk[i].psk.str, wps_cred[j].psk.str) == 0;
+            if (is_wps_psk == true)
+                break;
+        }
+
+        if (is_wps_psk == true) STRSCAT(conf->psks_buf, "wps=1 ");
         STRSCAT(conf->psks_buf, strfmta("keyid=key-%d ", psk[i].key_id));
         STRSCAT(conf->psks_buf, strfmta("%s ", "00:00:00:00:00:00"));
         STRSCAT(conf->psks_buf, strfmta("%s\n", psk[i].psk.str));
@@ -908,19 +1006,23 @@ osw_hostap_conf_generate_ap_config_bufs(struct osw_hostap_conf_ap_config *conf)
     CONF_APPEND(require_ht, "%d");
 
     /* IEEE 802.11ac related configuration */
-    CONF_APPEND(ieee80211ac, "%d");
-    CONF_APPEND(vht_capab, "%s");
-    CONF_APPEND(require_vht, "%d");
-    CONF_APPEND(vht_oper_chwidth, "%d");
-    CONF_APPEND(vht_oper_centr_freq_seg0_idx, "%d");
-    CONF_APPEND(vht_oper_centr_freq_seg1_idx, "%d");
+    if (conf->ieee80211ac_exists) {
+        CONF_APPEND(ieee80211ac, "%d");
+        CONF_APPEND(vht_capab, "%s");
+        CONF_APPEND(require_vht, "%d");
+        CONF_APPEND(vht_oper_chwidth, "%d");
+        CONF_APPEND(vht_oper_centr_freq_seg0_idx, "%d");
+        CONF_APPEND(vht_oper_centr_freq_seg1_idx, "%d");
+    }
 
     /* IEEE 802.11ax related configuration */
-    CONF_APPEND(ieee80211ax, "%d");
-    // FIXME: This (and a bunch of others) need to be guarded by "is_X_supported" flags; hostapd can be built with(out) certain bits
-    // CONF_APPEND(he_oper_chanwidth, "%d");
-    CONF_APPEND(he_oper_centr_freq_seg0_idx, "%d");
-    CONF_APPEND(he_oper_centr_freq_seg1_idx, "%d");
+    if (conf->ieee80211ax_exists) {
+        CONF_APPEND(ieee80211ax, "%d");
+        // FIXME: This (and a bunch of others) need to be guarded by "is_X_supported" flags; hostapd can be built with(out) certain bits
+        // CONF_APPEND(he_oper_chanwidth, "%d");
+        CONF_APPEND(he_oper_centr_freq_seg0_idx, "%d");
+        CONF_APPEND(he_oper_centr_freq_seg1_idx, "%d");
+    }
 
     /* IEEE 802.1X-2004 related configuration */
     CONF_APPEND(ieee8021x, "%d");
@@ -1032,7 +1134,6 @@ osw_hostap_conf_fill_ap_state_neighbors(const struct osw_hostap_conf_ap_state_bu
 
         neighbor_list->list = REALLOC(neighbor_list->list,
                                      (neighbor_list->count + 1) * sizeof(struct osw_neigh));
-        if (neighbor_list->list == NULL) return;
 
         neighbor = &neighbor_list->list[neighbor_list->count];
         MEMZERO(*neighbor);
@@ -1070,7 +1171,7 @@ osw_hostap_conf_fill_ap_state(const struct osw_hostap_conf_ap_state_bufs *bufs,
     const char *get_config = bufs->get_config;
     const char *status = bufs->status;
     //const char *mib = bufs->mib;
-    //const char *wps_get_status = bufs->wps_get_status;
+    const char *wps_get_status = bufs->wps_get_status;
     const char *wpa_psk_file = bufs->wpa_psk_file;
     struct osw_drv_vif_state_ap *ap = &vstate->u.ap;
 
@@ -1127,8 +1228,12 @@ osw_hostap_conf_fill_ap_state(const struct osw_hostap_conf_ap_state_bufs *bufs,
         ap->mode.ht_enabled = false;
     }
 
+    STATE_GET_BY_FN(ap->multi_ap,                config, "multi_ap",
+                    hapd_util_into_osw_multi_ap);
     STATE_GET_BY_FN(ap->mode.wps,                get_config, "wps_state",
                     hapd_util_wps_status_to_osw);
+
+    hapd_util_wps_pbc_to_osw(wps_get_status, &ap->wps_pbc);
 
     /* Every call for width overwrites the previous one.
      * This is because I couldn't decide on logic bahind
@@ -1168,8 +1273,9 @@ osw_hostap_conf_fill_ap_state(const struct osw_hostap_conf_ap_state_bufs *bufs,
     STATE_GET_BY_FN(ap->wpa,                     config, "ieee80211w",
                     osw_hostap_util_ieee80211w_to_osw);
 
-    STATE_GET_BY_FN(ap->psk_list,                wpa_psk_file, "",
-                    hapd_util_hapd_psk_file_to_osw);
+    hapd_util_hapd_psk_file_to_osw(wpa_psk_file,
+                                   &ap->psk_list,
+                                   &ap->wps_cred_list);
 
     STATE_GET_BY_FN(ap->psk_list,                config, "sae_password",
                     hapd_util_hapd_sae_password_to_osw);

@@ -61,7 +61,7 @@ OSW_UT(ow_steer_policy_band_filter_ut_typical_case)
     ow_steer_candidate_list_bss_set(candidate_list, &bssid_5g, &channel_5g);
     ow_steer_candidate_list_bss_set(candidate_list, &bssid_6g, &channel_6g);
 
-    filter_policy = ow_steer_policy_band_filter_create(0, "band_filter", &addr, &mediator);
+    filter_policy = ow_steer_policy_band_filter_create("band_filter", &addr, &mediator);
     OSW_UT_EVAL(filter_policy != NULL);
     OSW_UT_EVAL(schedule_recalc_cnt == 0);
 

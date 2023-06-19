@@ -121,7 +121,7 @@ OSW_UT(ow_steer_policy_force_kick_successful_ut)
      */
     osw_ut_time_init();
 
-    force_policy = ow_steer_policy_force_kick_create(0, &g_sta_addr, &mediator);
+    force_policy = ow_steer_policy_force_kick_create(&g_sta_addr, &mediator);
     OSW_UT_EVAL(force_policy != NULL);
     OSW_UT_EVAL(mediator_cnt.schedule_recalc_cnt == 0);
     OSW_UT_EVAL(mediator_cnt.trigger_executor_cnt == 0);
@@ -174,8 +174,8 @@ OSW_UT(ow_steer_policy_force_kick_successful_ut)
     OSW_UT_EVAL(mediator_cnt.dismiss_executor_cnt == 0);
 
     OSW_UT_EVAL(ow_steer_candidate_get_preference(self_candidate_1) == OW_STEER_CANDIDATE_PREFERENCE_HARD_BLOCKED);
-    OSW_UT_EVAL(ow_steer_candidate_get_preference(self_candidate_2) == OW_STEER_CANDIDATE_PREFERENCE_AVAILABLE);
-    OSW_UT_EVAL(ow_steer_candidate_get_preference(neighbor_candidate) == OW_STEER_CANDIDATE_PREFERENCE_AVAILABLE);
+    OSW_UT_EVAL(ow_steer_candidate_get_preference(self_candidate_2) == OW_STEER_CANDIDATE_PREFERENCE_NONE);
+    OSW_UT_EVAL(ow_steer_candidate_get_preference(neighbor_candidate) == OW_STEER_CANDIDATE_PREFERENCE_NONE);
 
     /*
      * Disonnect STA
@@ -226,7 +226,7 @@ OSW_UT(ow_steer_policy_force_kick_timeout_ut)
      */
     osw_ut_time_init();
 
-    force_policy = ow_steer_policy_force_kick_create(0, &g_sta_addr, &mediator);
+    force_policy = ow_steer_policy_force_kick_create(&g_sta_addr, &mediator);
     OSW_UT_EVAL(force_policy != NULL);
     OSW_UT_EVAL(mediator_cnt.schedule_recalc_cnt == 0);
     OSW_UT_EVAL(mediator_cnt.trigger_executor_cnt == 0);
@@ -279,8 +279,8 @@ OSW_UT(ow_steer_policy_force_kick_timeout_ut)
     OSW_UT_EVAL(mediator_cnt.dismiss_executor_cnt == 0);
 
     OSW_UT_EVAL(ow_steer_candidate_get_preference(self_candidate_1) == OW_STEER_CANDIDATE_PREFERENCE_HARD_BLOCKED);
-    OSW_UT_EVAL(ow_steer_candidate_get_preference(self_candidate_2) == OW_STEER_CANDIDATE_PREFERENCE_AVAILABLE);
-    OSW_UT_EVAL(ow_steer_candidate_get_preference(neighbor_candidate) == OW_STEER_CANDIDATE_PREFERENCE_AVAILABLE);
+    OSW_UT_EVAL(ow_steer_candidate_get_preference(self_candidate_2) == OW_STEER_CANDIDATE_PREFERENCE_NONE);
+    OSW_UT_EVAL(ow_steer_candidate_get_preference(neighbor_candidate) == OW_STEER_CANDIDATE_PREFERENCE_NONE);
 
     /*
      * STA doesn't do anything
@@ -330,7 +330,7 @@ OSW_UT(ow_steer_policy_force_kick_disconnected_sta_ut)
      */
     osw_ut_time_init();
 
-    force_policy = ow_steer_policy_force_kick_create(0, &g_sta_addr, &mediator);
+    force_policy = ow_steer_policy_force_kick_create(&g_sta_addr, &mediator);
     OSW_UT_EVAL(force_policy != NULL);
     OSW_UT_EVAL(mediator_cnt.schedule_recalc_cnt == 0);
     OSW_UT_EVAL(mediator_cnt.trigger_executor_cnt == 0);

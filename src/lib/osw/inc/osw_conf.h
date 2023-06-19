@@ -46,6 +46,11 @@ struct osw_conf_neigh {
     struct osw_neigh neigh;
 };
 
+struct osw_conf_wps_cred {
+    struct ds_dlist_node node;
+    struct osw_wps_cred cred;
+};
+
 struct osw_conf_vif_ap {
     enum osw_acl_policy acl_policy;
     struct osw_ssid ssid;
@@ -55,11 +60,14 @@ struct osw_conf_vif_ap {
     struct ds_tree acl_tree; /* osw_conf_acl */
     struct ds_tree psk_tree; /* osw_conf_psk */
     struct ds_tree neigh_tree; /* osw_conf_neigh */
+    struct ds_dlist wps_cred_list; /* osw_conf_wps_cred */
     struct osw_ap_mode mode;
     int beacon_interval_tu;
     bool ssid_hidden;
     bool isolated;
     bool mcast2ucast;
+    bool wps_pbc;
+    struct osw_multi_ap multi_ap;
 };
 
 struct osw_conf_net {
@@ -68,13 +76,11 @@ struct osw_conf_net {
     struct osw_hwaddr bssid;
     struct osw_psk psk;
     struct osw_wpa wpa;
+    struct osw_ifname bridge_if_name;
+    bool multi_ap;
 };
 
 struct osw_conf_vif_sta {
-    /* FIXME: for multi-ap, this will need:
-       struct osw_ifname bridge_if_name;
-       bool multi_ap;
-     */
     struct ds_dlist net_list;
 };
 
@@ -85,6 +91,7 @@ struct osw_conf_vif {
     char *vif_name;
     bool enabled;
     enum osw_vif_type vif_type;
+    int tx_power_dbm;
     union {
         struct osw_conf_vif_ap ap;
         struct osw_conf_vif_sta sta;
@@ -98,6 +105,7 @@ struct osw_conf_phy {
     bool enabled;
     int tx_chainmask;
     enum osw_radar_detect radar;
+    struct osw_ifname mbss_tx_vif_name;
     struct osw_reg_domain reg_domain;
     struct ds_tree vif_tree;
 };
@@ -163,5 +171,8 @@ osw_conf_neigh_tree_to_str(char *out, size_t len, const struct ds_tree *a);
 
 void
 osw_conf_ap_acl_tree_to_str(char *out, size_t len, const struct ds_tree *a);
+
+void
+osw_conf_ap_wps_cred_list_to_str(char *out, size_t len, const struct ds_dlist *a);
 
 #endif /* OSW_CONF_H_INCLUDED */

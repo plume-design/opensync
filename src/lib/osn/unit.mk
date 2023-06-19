@@ -85,6 +85,7 @@ UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_FW_NULL),src/osn_fw_null.c)
 UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_FW_IPTABLES_FULL),src/osn_fw_iptables_full.c)
 UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_FW_IPTABLES_THIN),src/osn_fw_iptables_thin.c)
 UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_FW_EBTABLES_FULL),src/osn_fw_ebtables_full.c)
+UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_FW_EBTABLES_THIN),src/osn_fw_ebtables_thin.c)
 
 UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_IPSET_NULL),src/osn_ipset_null.c)
 UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_IPSET_LINUX),src/osn_ipset_linux.c)

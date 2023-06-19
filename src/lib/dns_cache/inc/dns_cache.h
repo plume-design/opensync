@@ -58,7 +58,6 @@ struct dns_cache_mgr
 
 enum {
     IP2ACTION_BC_SVC,
-    IP2ACTION_WP_SVC,
     IP2ACTION_GK_SVC,
     IP2ACTION_UNKNOWN_SVC,
 };
@@ -143,11 +142,9 @@ struct ip2action_req
     union
     {
         struct ip2action_bc_info bc_info;
-        struct ip2action_wb_info wb_info;
         struct ip2action_gk_info gk_info;
     } cache_info;
 #define cache_bc cache_info.bc_info
-#define cache_wb cache_info.wb_info
 #define cache_gk cache_info.gk_info
 };
 

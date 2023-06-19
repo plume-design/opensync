@@ -25,6 +25,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 #include <net/if.h>
+#include <dirent.h>
 
 #include "nm2.h"
 #include "os.h"
@@ -78,11 +79,11 @@ json_t *interface_row(char *if_name)
  * @brief creates the default parameters for creating Port table.
  * @return json object specifing default Port table vales
  */
-json_t *port_row(char *br_name)
+json_t *port_row(char *port_name)
 {
     json_t *row = NULL;
 
-    row = json_pack("{s : s, s : [s, s]}", "name", br_name, "interfaces",
+    row = json_pack("{s : s, s : [s, s]}", "name", port_name, "interfaces",
                     "named-uuid", NBM_INTERFACE_TABLE_NAME);
 
     return row;
@@ -132,9 +133,8 @@ static json_t *nm2_ovswitch_row(void)
 {
     json_t *row = NULL;
 
-    row = json_pack("{ s : [s, [ [s, s] ]] }", "bridges", "set", "named-uuid",
-                    NBM_BRIDGE_TABLE_NAME);
-
+    row = json_pack("[[s, s, [s, [[s, s]]]]]", "bridges", "insert", "set",
+                    "named-uuid", NBM_BRIDGE_TABLE_NAME);
     return row;
 }
 
@@ -179,7 +179,7 @@ static json_t *nm2_bridge_name(void)
  * required for creating the corresponding tables.
  * @return None
  */
-json_t *nm2_table_params(char *br_name)
+json_t *nm2_add_bridge_table_params(char *br_name)
 {
     json_t *jarray = NULL;
 
@@ -194,10 +194,123 @@ json_t *nm2_table_params(char *br_name)
     jarray = ovsdb_tran_multi(jarray, nm2_bridge_name(), SCHEMA_TABLE(Bridge), OTR_INSERT,
                               NULL, bridge_row(br_name));
 
-    jarray = ovsdb_tran_multi(jarray, NULL, SCHEMA_TABLE(Open_vSwitch), OTR_UPDATE, NULL,
+    jarray = ovsdb_tran_multi(jarray, NULL, SCHEMA_TABLE(Open_vSwitch), OTR_MUTATE, NULL,
                               nm2_ovswitch_row());
 
     return jarray;
+}
+
+json_t *existing_interface_row(char *port_name)
+{
+    json_t *row = NULL;
+
+    row = json_pack("{s : s}", "name", port_name, "interfaces");
+
+    return row;
+}
+
+json_t *existing_bridge_row(char *br_name, char *port_name)
+{
+    char mac_str[MAC_STR_LEN];
+    json_t *row = NULL;
+    char datapath[128];
+    os_macaddr_t mac;
+    bool ret;
+
+    memset(datapath, 0, sizeof(datapath));
+    memset(mac_str, 0, sizeof(mac_str));
+
+    ret = os_nif_macaddr_get(port_name, &mac);
+    if (ret == false)
+    {
+        LOGN("%s(): failed to get interface mac address", __func__);
+    }
+
+    sprintf(mac_str, PRI_os_macaddr_plain_t, FMT(os_macaddr_pt, &mac));
+    snprintf(datapath, sizeof(datapath), "%s%s", "0000", mac_str);
+
+    row = json_pack("[[s, s, [s, [[s, s]]]]]", "ports", "insert", "set", "named-uuid",
+                    NBM_PORT_TABLE_NAME);
+
+    json_object_set_new(row, "datapath_id", json_string(datapath));
+    json_object_set_new(row, "mcast_snooping_enable", json_boolean(true));
+    json_object_set_new(row, "rstp_enable", json_boolean(false));
+
+    return row;
+}
+
+json_t *bridge_port_where_row(char *br_name)
+{
+    json_t *row = NULL;
+
+    row = json_pack("[[s, s, s]]", "name", "==", br_name);
+
+    return row;
+}
+
+json_t *nm2_add_ports_table_params(char *br_name, char *port_name)
+{
+    json_t *jarray = NULL;
+
+    /* jarray passed to ovsdb_tran_multi to will be NULL for the first transaction.
+     * It will be appended in the subsequent calls. */
+    jarray = ovsdb_tran_multi(jarray, nm2_interface_name(), SCHEMA_TABLE(Interface),
+                              OTR_INSERT, NULL, existing_interface_row(port_name));
+
+    jarray = ovsdb_tran_multi(jarray, nm2_port_name(), SCHEMA_TABLE(Port), OTR_INSERT, NULL,
+                              port_row(port_name));
+
+    jarray = ovsdb_tran_multi(jarray, NULL, SCHEMA_TABLE(Bridge), OTR_MUTATE,
+                              bridge_port_where_row(br_name), existing_bridge_row(br_name, port_name));
+
+    return jarray;
+}
+
+#define MAX_PATH_LEN 1024
+
+void nm2_default_ports_create_tables(char *br_name)
+{
+    json_t *params;
+    json_t *response;
+    DIR *dir;
+    struct dirent *de;
+    char bridge_path[MAX_PATH_LEN] = {0};
+
+    TRACE();
+
+    snprintf(bridge_path, sizeof(bridge_path), "/sys/class/net/%s/brif", br_name);
+
+    dir = opendir(bridge_path);
+    if (dir == NULL)
+    {
+        LOG(DEBUG, "Failed to open directory %s", bridge_path);
+        return;
+    }
+
+    while ((de = readdir(dir)) != NULL)
+    {
+        if (strcmp(de->d_name, ".") == 0 || strcmp(de->d_name, "..") == 0) continue;
+
+        /* populate the ters required for table creation */
+        params = nm2_add_ports_table_params(br_name, de->d_name);
+        if (params == NULL)
+        {
+            LOG(ERR, "failed to populate parameters for table creation %s", de->d_name);
+            continue;
+        }
+
+        /* send request to create tables OVSDB. ovsdb_method_send_s uses params as reference
+         * and will be freed, no need to free here.
+         */
+        response = ovsdb_method_send_s(MT_TRANS, params);
+        if (response == NULL)
+        {
+            LOG(ERR, "failed to create Interface, Port and Bridge tables");
+            continue;
+        }
+
+        json_decref(response);
+    }
 }
 
 /**
@@ -212,7 +325,7 @@ bool nm2_default_br_create_tables(char *br_name)
 
     TRACE();
     /* populate the parameters required for table creation */
-    params = nm2_table_params(br_name);
+    params = nm2_add_bridge_table_params(br_name);
     if (params == NULL)
     {
         LOG(ERR, "failed to populate parameters for table creation");
@@ -231,4 +344,10 @@ bool nm2_default_br_create_tables(char *br_name)
 
     json_decref(response);
     return true;
+}
+
+void nm2_default_br_init(char *br_name)
+{
+    nm2_default_br_create_tables(br_name);
+    nm2_default_ports_create_tables(br_name);
 }

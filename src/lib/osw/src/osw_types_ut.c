@@ -29,13 +29,15 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 static void
 osw_channel_ut_init(struct osw_channel *channel,
                     enum osw_channel_width width,
-                    int control_freq_mhz)
+                    int control_freq_mhz,
+                    int center_freq0_mhz)
 {
     assert(channel != NULL);
 
     memset(channel, 0, sizeof(*channel));
     channel->width = width;
     channel->control_freq_mhz = control_freq_mhz;
+    channel->center_freq0_mhz = center_freq0_mhz;
 }
 
 OSW_UT(osw_hwaddr_ut_from_cstr)
@@ -55,13 +57,14 @@ OSW_UT(osw_hwaddr_ut_from_cstr)
     OSW_UT_EVAL(osw_hwaddr_cmp(&addr2, &addr) == 0);
 }
 
-OSW_UT(osw_channel_ut_from_op_class) {
+OSW_UT(osw_channel_ut_from_op_class)
+{
     struct osw_channel ref_channel;
     struct osw_channel channel;
     bool result;
 
     /* op_class: 81, channel: 2 */
-    osw_channel_ut_init(&ref_channel, OSW_CHANNEL_20MHZ, 2417);
+    osw_channel_ut_init(&ref_channel, OSW_CHANNEL_20MHZ, 2417, 2417);
     result = osw_channel_from_op_class(81, 2, &channel);
     OSW_UT_EVAL(result == true);
     OSW_UT_EVAL(memcmp(&ref_channel, &channel, sizeof(ref_channel)) == 0);
@@ -70,23 +73,54 @@ OSW_UT(osw_channel_ut_from_op_class) {
     result = osw_channel_from_op_class(82, 5, &channel);
     OSW_UT_EVAL(result == false);
 
-    /* op_class: 128, channel: 36 (best effort) FIXME is it "good enough" */
-    osw_channel_ut_init(&ref_channel, OSW_CHANNEL_80MHZ, 5180);
+    /* op_class: 128, channel: 36 */
+    osw_channel_ut_init(&ref_channel, OSW_CHANNEL_80MHZ, 5180, 5210);
     result = osw_channel_from_op_class(128, 36, &channel);
     OSW_UT_EVAL(result == true);
     OSW_UT_EVAL(memcmp(&ref_channel, &channel, sizeof(ref_channel)) == 0);
 
+    /* op_class: 128, channel: 30, invalid channel */
+    osw_channel_ut_init(&ref_channel, OSW_CHANNEL_80MHZ, 5180, 5210);
+    result = osw_channel_from_op_class(128, 30, &channel);
+    OSW_UT_EVAL(result == false);
+
+    /* op_class: 136, channel: 2 */
+    osw_channel_ut_init(&ref_channel, OSW_CHANNEL_20MHZ, 5935, 5935);
+    result = osw_channel_from_op_class(136, 2, &channel);
+    OSW_UT_EVAL(result == true);
+    OSW_UT_EVAL(memcmp(&ref_channel, &channel, sizeof(ref_channel)) == 0);
+
     /* op_class: 131, channel: 9 */
-    osw_channel_ut_init(&ref_channel, OSW_CHANNEL_20MHZ, 5995);
+    osw_channel_ut_init(&ref_channel, OSW_CHANNEL_20MHZ, 5995, 5995);
     result = osw_channel_from_op_class(131, 9, &channel);
     OSW_UT_EVAL(result == true);
     OSW_UT_EVAL(memcmp(&ref_channel, &channel, sizeof(ref_channel)) == 0);
 
     /* op_class: 134, channel: 37 */
-    osw_channel_ut_init(&ref_channel, OSW_CHANNEL_160MHZ, 6135);
+    osw_channel_ut_init(&ref_channel, OSW_CHANNEL_160MHZ, 6135, 6185);
     result = osw_channel_from_op_class(134, 37, &channel);
     OSW_UT_EVAL(result == true);
     OSW_UT_EVAL(memcmp(&ref_channel, &channel, sizeof(ref_channel)) == 0);
+
+    /* op_class: 83, channel: 6, ht40+ */
+    osw_channel_ut_init(&ref_channel, OSW_CHANNEL_40MHZ, 2437, 2447);
+    result = osw_channel_from_op_class(83, 6, &channel);
+    OSW_UT_EVAL(result == true);
+    OSW_UT_EVAL(memcmp(&ref_channel, &channel, sizeof(ref_channel)) == 0);
+
+    /* op_class: 84, channel: 6, ht40- */
+    osw_channel_ut_init(&ref_channel, OSW_CHANNEL_40MHZ, 2437, 2427);
+    result = osw_channel_from_op_class(84, 6, &channel);
+    OSW_UT_EVAL(result == true);
+    OSW_UT_EVAL(memcmp(&ref_channel, &channel, sizeof(ref_channel)) == 0);
+
+    /* op_class: 83, channel: 11, ht40+, impossible */
+    result = osw_channel_from_op_class(83, 11, &channel);
+    OSW_UT_EVAL(result == false);
+
+    /* op_class: 84, channel: 1, ht40-, impossible */
+    result = osw_channel_from_op_class(84, 1, &channel);
+    OSW_UT_EVAL(result == false);
 }
 
 OSW_UT(osw_channel_ut_to_op_class) {
@@ -95,46 +129,69 @@ OSW_UT(osw_channel_ut_to_op_class) {
     uint8_t op_class;
 
     /* op_class: 81, channel: 2 */
-    osw_channel_ut_init(&channel, OSW_CHANNEL_20MHZ, 2417);
+    osw_channel_ut_init(&channel, OSW_CHANNEL_20MHZ, 2417, 2417);
     result = osw_channel_to_op_class(&channel, &op_class);
     OSW_UT_EVAL(result == true);
     OSW_UT_EVAL(op_class == 81);
 
-    /* op_class: 128, channel: 36 (best effort) FIXME is it "good enough" */
-    osw_channel_ut_init(&channel, OSW_CHANNEL_80MHZ, 5180);
+    /* op_class: 128, channel: 36 */
+    osw_channel_ut_init(&channel, OSW_CHANNEL_80MHZ, 5180, 5210);
     result = osw_channel_to_op_class(&channel, &op_class);
     OSW_UT_EVAL(result == true);
     OSW_UT_EVAL(op_class == 128);
 
     /* op_class: 131, channel: 9 */
-    osw_channel_ut_init(&channel, OSW_CHANNEL_20MHZ, 5995);
+    osw_channel_ut_init(&channel, OSW_CHANNEL_20MHZ, 5995, 5995);
     result = osw_channel_to_op_class(&channel, &op_class);
     OSW_UT_EVAL(result == true);
     OSW_UT_EVAL(op_class == 131);
 
     /* op_class: 131, channel: 37 */
-    osw_channel_ut_init(&channel, OSW_CHANNEL_20MHZ, 6135);
+    osw_channel_ut_init(&channel, OSW_CHANNEL_20MHZ, 6135, 6135);
     result = osw_channel_to_op_class(&channel, &op_class);
     OSW_UT_EVAL(result == true);
     OSW_UT_EVAL(op_class == 131);
 
     /* op_class: 134, channel: 37 */
-    osw_channel_ut_init(&channel, OSW_CHANNEL_40MHZ, 6135);
+    osw_channel_ut_init(&channel, OSW_CHANNEL_40MHZ, 6135, 6125);
     result = osw_channel_to_op_class(&channel, &op_class);
     OSW_UT_EVAL(result == true);
     OSW_UT_EVAL(op_class == 132);
 
     /* op_class: 134, channel: 37 */
-    osw_channel_ut_init(&channel, OSW_CHANNEL_80MHZ, 6135);
+    osw_channel_ut_init(&channel, OSW_CHANNEL_80MHZ, 6135, 6065);
     result = osw_channel_to_op_class(&channel, &op_class);
     OSW_UT_EVAL(result == true);
     OSW_UT_EVAL(op_class == 133);
 
     /* op_class: 134, channel: 37 */
-    osw_channel_ut_init(&channel, OSW_CHANNEL_160MHZ, 6135);
+    osw_channel_ut_init(&channel, OSW_CHANNEL_160MHZ, 6135, 6185);
     result = osw_channel_to_op_class(&channel, &op_class);
     OSW_UT_EVAL(result == true);
     OSW_UT_EVAL(op_class == 134);
+
+    /* op_class: 83, channel: 1, ht40+ */
+    osw_channel_ut_init(&channel, OSW_CHANNEL_40MHZ, 2412, 2422);
+    result = osw_channel_to_op_class(&channel, &op_class);
+    OSW_UT_EVAL(result == true);
+    OSW_UT_EVAL(op_class == 83);
+
+    /* op_class: 83, channel: 6, ht40+ */
+    osw_channel_ut_init(&channel, OSW_CHANNEL_40MHZ, 2437, 2447);
+    result = osw_channel_to_op_class(&channel, &op_class);
+    OSW_UT_EVAL(result == true);
+    OSW_UT_EVAL(op_class == 83);
+
+    /* op_class: 83, channel: 6, ht40- */
+    osw_channel_ut_init(&channel, OSW_CHANNEL_40MHZ, 2437, 2427);
+    result = osw_channel_to_op_class(&channel, &op_class);
+    OSW_UT_EVAL(result == true);
+    OSW_UT_EVAL(op_class == 84);
+
+    /* op_class: n/a, channel: 1, ht40- */
+    osw_channel_ut_init(&channel, OSW_CHANNEL_40MHZ, 2412, 2402);
+    result = osw_channel_to_op_class(&channel, &op_class);
+    OSW_UT_EVAL(result == false);
 }
 
 OSW_UT(osw_op_class_to_20mhz)

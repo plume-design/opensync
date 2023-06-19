@@ -276,7 +276,7 @@ ow_webconfig_set_vif_sta(const char *phy_name,
     STRSCPY_WARN(psk.str, sta->security.u.key.key);
 
     ow_conf_vif_flush_sta_net(vif_name);
-    ow_conf_vif_set_sta_net(vif_name, &ssid, &bssid, &psk, &wpa);
+    ow_conf_vif_set_sta_net(vif_name, &ssid, &bssid, &psk, &wpa, NULL, NULL);
 }
 
 static void

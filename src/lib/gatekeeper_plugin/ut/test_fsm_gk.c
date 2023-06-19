@@ -60,7 +60,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 char *g_location_id = "foo";
 char *g_node_id = "bar";
 
-static const char *g_server_url = "https://ovs_dev.plume.com:443/";
+static const char *g_server_url = "https://dev_gatekeeper_container.opensync.io:443/";
 static char *g_ssl_certs_file = "/tmp/client.pem";
 static char *g_ssl_key_file = "/tmp/client_dec.key";
 static bool g_is_connected;
@@ -77,8 +77,8 @@ char g_other_configs[][3][OTHER_CONFIG_NELEMS][OTHER_CONFIG_NELEM_SIZE] =
             "mqtt_v"
         },
         {
-            "https://ovs_dev.plume.com:443/",
-            "/tmp/cacert.pem",
+            "https://dev_gatekeeper_container.opensync.io:443/",
+            "./data/cacert.pem",
             "dev-test/gk_ut_topic",
         },
     },
@@ -1371,7 +1371,7 @@ test_health_stats_report(void)
     /* providing invalid endpoint will result in
      * service failure
      */
-    server_info->server_url = "https://ovs_dev.plume.com:443/xyz";
+    server_info->server_url = "https://dev_gatekeeper_container.opensync.io:443/xyz";
     test_curl_host();
     gatekeeper_report_compute_health_stats(fsm_gk_session, &hs);
     TEST_ASSERT_EQUAL_INT(0, hs.connectivity_failures);
@@ -1697,7 +1697,7 @@ test_categorization_count(void)
 
     server_info = &fsm_gk_session->gk_server_info;
     /* invalid end point */
-    server_info->server_url = "https://ovs_dev.plume.com:443/xxxx";
+    server_info->server_url = "https://dev_gatekeeper_container.opensync.io:443/xxxx";
 
     test_curl_host();
     gatekeeper_report_compute_health_stats(fsm_gk_session, &hs);
@@ -2092,7 +2092,7 @@ test_mcurl_config(void)
                 "mqtt_v"
             },
             {
-                "https://ovs_dev.plume.com:443/",
+                "https://dev_gatekeeper_container.opensync.io:443/",
                 "dev-test/gk_ut_topic",
             },
         },

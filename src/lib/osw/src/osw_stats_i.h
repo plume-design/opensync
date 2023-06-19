@@ -32,4 +32,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 void
 osw_stats_put(const struct osw_tlv *src);
 
+void
+osw_stats_reset_last(enum osw_stats_id id);
+
 #endif /* OSW_STATS_I_H_INCLUDED */

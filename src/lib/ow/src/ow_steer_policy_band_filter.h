@@ -44,8 +44,7 @@ struct ow_steer_policy_band_filter_config {
 };
 
 struct ow_steer_policy_band_filter*
-ow_steer_policy_band_filter_create(unsigned int priority,
-                                   const char *name,
+ow_steer_policy_band_filter_create(const char *name,
                                    const struct osw_hwaddr *sta_addr,
                                    const struct ow_steer_policy_mediator *mediator);
 

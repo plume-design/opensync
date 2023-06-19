@@ -528,6 +528,32 @@ schema_vstate_akm_has(const struct schema_Wifi_VIF_State *vstate,
     return false;
 }
 
+bool
+schema_key_id_from_cstr(const char *key_id, int *idx)
+{
+    const char *idx0 = "key";
+    const char *prefix = "key-";
+    const size_t prefix_len = strlen(prefix);
+    const bool is_idx0 = (strcmp(key_id, idx0) == 0);
+    if (is_idx0) {
+        *idx = 0;
+        return true;
+    }
+    const bool invalid_prefix = (strncmp(key_id, prefix, prefix_len) != 0);
+    if (invalid_prefix) {
+        return false;
+    }
+    *idx = atoi(key_id + prefix_len);
+    return true;
+}
+
+static bool
+schema_key_id_is_0(const char *key_id)
+{
+    int idx;
+    return schema_key_id_from_cstr(key_id, &idx) && idx == 0;
+}
+
 void
 schema_vstate_sync_to_vconf(struct schema_Wifi_VIF_State *vstate,
                             struct schema_Wifi_VIF_Config *vconf)
@@ -559,6 +585,35 @@ schema_vstate_sync_to_vconf(struct schema_Wifi_VIF_State *vstate,
      */
     if (is_ap && is_single_psk && has_sae) {
         STRSCPY_WARN(vstate->wpa_psks_keys[0], vconf->wpa_psks_keys[0]);
+    }
+
+    /* The "key-0" and "key" mean the same thing. However
+     * the way these can get generated may vary. Make sure
+     * these are aligned properly such that if someone puts
+     * one in Config, they can expect the identical string
+     * back in State.
+     */
+    if (is_ap) {
+        ssize_t vconf_idx0 = -1;
+        ssize_t vstate_idx0 = -1;
+        ssize_t i;
+
+        for (i = 0; i < vconf->wpa_psks_len; i++) {
+            if (schema_key_id_is_0(vconf->wpa_psks_keys[i])) {
+                vconf_idx0 = i;
+            }
+        }
+
+        for (i = 0; i < vstate->wpa_psks_len; i++) {
+            if (schema_key_id_is_0(vstate->wpa_psks_keys[i])) {
+                vstate_idx0 = i;
+            }
+        }
+
+        if (vstate_idx0 != -1 && vstate_idx0 != -1) {
+            STRSCPY_WARN(vstate->wpa_psks_keys[vstate_idx0],
+                         vconf->wpa_psks_keys[vconf_idx0]);
+        }
     }
 
     /* State schema doesn't differentiate between requested

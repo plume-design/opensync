@@ -46,6 +46,10 @@ ow_steer_policy_stack_remove(struct ow_steer_policy_stack *stack,
 bool
 ow_steer_policy_stack_is_empty(struct ow_steer_policy_stack *stack);
 
+const struct ow_steer_policy *
+ow_steer_policy_get_more_important(const struct ow_steer_policy *a,
+                                   const struct ow_steer_policy *b);
+
 void
 ow_steer_policy_stack_schedule_recalc(struct ow_steer_policy_stack *stack);
 

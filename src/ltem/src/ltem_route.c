@@ -265,8 +265,8 @@ int
 ltem_force_lte_route(ltem_mgr_t *mgr)
 {
     lte_route_info_t *route;
-    uint32_t wan_priority;
     uint32_t new_lte_priority;
+    char cmd[256];
     int res;
 
     route = mgr->lte_route;
@@ -277,18 +277,23 @@ ltem_force_lte_route(ltem_mgr_t *mgr)
     {
         LOGI("%s: if_name[%s]", __func__, route->wan_if_name);
 
-        route->wan_metric = WAN_L3_FAIL_METRIC;
         /*
-         * Route updates are now handled by NM via the Wifi_Route_Config table.
+         * If we just set the WAN route metric to a value higher than the value
+         * for LTE, CM will eventually detect that the WAN interface is
+         * healthy and switch the metric back so the WAN interface is the
+         * preferred route. To get around this, we have to bring the WAN
+         * interface down in the 'force' case.
          */
-        res = ltem_ovsdb_update_wifi_route_config_metric(mgr, route->wan_if_name, route->wan_metric);
+        snprintf(cmd, sizeof(cmd), "ifconfig %s down", route->wan_if_name);
+        res = cmd_log(cmd);
         if (res)
         {
-            LOGI("%s: ltem_ovsdb_update_wifi_route_config_metric() failed for [%s]", __func__, route->wan_if_name);
+            LOGI("%s: cmd[%s] failed", __func__, cmd);
             return res;
         }
-        wan_priority = ltem_ovsdb_cmu_get_wan_priority(mgr);
-        route->wan_priority = wan_priority;
+
+        route->wan_priority = ltem_ovsdb_cmu_get_wan_priority(mgr);
+        route->lte_priority = ltem_ovsdb_cmu_get_lte_priority(mgr);
         new_lte_priority = route->wan_priority + LTE_CMU_DEFAULT_PRIORITY;
         LOGI("%s: wan_priority[%d], LTE_CMU_DEFAULT_PRIORITY[%d], new_lte_priority[%d]", __func__, route->wan_priority, LTE_CMU_DEFAULT_PRIORITY, new_lte_priority);
         return ltem_ovsdb_cmu_update_lte_priority(mgr, new_lte_priority);
@@ -301,6 +306,7 @@ int
 ltem_restore_default_wan_route(ltem_mgr_t *mgr)
 {
     lte_route_info_t *route;
+    char cmd[256];
     int res;
 
     route = mgr->lte_route;
@@ -308,18 +314,15 @@ ltem_restore_default_wan_route(ltem_mgr_t *mgr)
 
     if (route->wan_gw[0])
     {
-        LOGI("%s: if_name[%s]", __func__, route->wan_if_name);
-        route->wan_metric = WAN_DEFAULT_METRIC;
-        /*
-         * Route updates are now handled by NM via the Wifi_Route_Config table.
-         */
-        res = ltem_ovsdb_update_wifi_route_config_metric(mgr, route->wan_if_name, route->wan_metric);
+        snprintf(cmd, sizeof(cmd), "ifconfig %s up", route->wan_if_name);
+        res = cmd_log(cmd);
         if (res)
         {
-            LOGI("%s: ltem_ovsdb_update_wifi_route_config_metric() failed for [%s]", __func__, route->wan_if_name);
+            LOGI("%s: cmd[%s] failed", __func__, cmd);
             return res;
         }
-        return ltem_ovsdb_cmu_update_lte_priority(mgr, LTE_CMU_DEFAULT_PRIORITY);
+
+        return ltem_ovsdb_cmu_update_lte_priority(mgr, route->lte_priority);
     }
 
     return 0;

@@ -36,12 +36,11 @@ UNIT_TYPE := SHLIB
 UNIT_DIR := lib
 
 UNIT_SRC := src/ff_lib.c
-UNIT_SRC += providers/ps/src/ff_provider_ps.c
 
-UNIT_CFLAGS := -I$(UNIT_PATH)/inc -I$(UNIT_PATH)/providers/ps/inc
+UNIT_CFLAGS := -I$(UNIT_PATH)/inc 
 UNIT_DEPS += src/lib/common
 UNIT_DEPS += src/lib/ds
-UNIT_DEPS := src/lib/log
+UNIT_DEPS += src/lib/log
 UNIT_DEPS += src/lib/module
 UNIT_DEPS += src/lib/osa
 UNIT_DEPS += src/lib/osp
@@ -52,5 +51,4 @@ UNIT_EXPORT_LDFLAGS := $(UNIT_LDFLAGS)
 ifeq ($(BUILD_SHARED_LIB),y)
 UNIT_DEPS += src/lib/opensync
 endif
-
 

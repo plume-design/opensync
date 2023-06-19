@@ -82,7 +82,7 @@ osw_wpas_util_fill_network_block(struct osw_drv_vif_sta_network *network,
     /* FIXME - conversion assumes null-terminated ssid! */
     OSW_HOSTAP_CONF_SET_BUF_Q_LEN(conf->ssid, network->ssid.buf, network->ssid.len);
     OSW_HOSTAP_CONF_SET_BUF_Q(conf->psk, network->psk.str);
-    OSW_HOSTAP_CONF_SET_VAL(conf->multi_ap_backhaul_sta, 0);
+    OSW_HOSTAP_CONF_SET_VAL(conf->multi_ap_backhaul_sta, network->multi_ap ? 1 : 0);
     OSW_HOSTAP_CONF_SET_VAL(conf->ieee80211w, osw_hostap_conf_pmf_from_osw(&network->wpa));
     OSW_HOSTAP_CONF_SET_VAL(conf->scan_ssid, true);
 
@@ -199,6 +199,9 @@ osw_wpas_util_parse_network_block(const char *network,
             if (strcmp(k, "ieee80211w") == 0) {
                 osw_hostap_util_ieee80211w_to_osw(v, &drv_network->wpa);
             }
+            if (strcmp(k, "multi_ap_backhaul_sta") == 0) {
+                drv_network->multi_ap = atoi(v) ? true : false;
+            }
         }
     }
     FREE(local_network);
@@ -309,6 +312,32 @@ osw_wpas_util_get_psk_from_config_id(const char *config,
     FREE(local_config);
 }
 
+static bool
+osw_wpas_util_net_list_has_same_bridge(struct osw_drv_vif_sta_network *net)
+{
+    const char *br = (net ? net->bridge_if_name.buf : NULL);
+    const ssize_t max_len= sizeof(net->bridge_if_name.buf);
+    while (net != NULL) {
+        const bool mismatch = (strncmp(br, net->bridge_if_name.buf, max_len) != 0);
+        if (mismatch) {
+            return false;
+        }
+        net = net->next;
+    }
+    return true;
+}
+
+static void
+osw_wpas_util_net_list_set_bridge_if_name(struct osw_drv_vif_sta_network *net,
+                                          const char *bridge_if_name)
+{
+    WARN_ON(osw_wpas_util_net_list_has_same_bridge(net) == false);
+    while (net != NULL) {
+        STRSCPY_WARN(net->bridge_if_name.buf, bridge_if_name ?: "");
+        net = net->next;
+    }
+}
+
 static void
 osw_wpas_util_fill_network_list(const struct osw_hostap_conf_sta_state_bufs *bufs,
                                 struct osw_drv_vif_state *vstate)
@@ -365,6 +394,8 @@ osw_wpas_util_fill_network_list(const struct osw_hostap_conf_sta_state_bufs *buf
         }
         ppnetwork = &(*ppnetwork)->next;
     }
+    osw_wpas_util_net_list_set_bridge_if_name(vstate->u.sta.network,
+                                              bufs->bridge_if_name);
     /* FREE both temporary lists */
     osw_wpas_util_purge_network_list(list_networks);
     osw_wpas_util_purge_network_list(conf_networks);
@@ -459,6 +490,42 @@ osw_hostap_conf_generate_sta_config_bufs(struct osw_hostap_conf_sta_config *conf
     CONF_FINI();
 }
 
+static const char *
+osw_hostap_conf_compute_bridge(const struct osw_drv_vif_sta_network *first)
+{
+    if (first == NULL) return "";
+
+    const char *name1 = first->bridge_if_name.buf;
+    const size_t max_len = sizeof(first->bridge_if_name.buf);
+    const size_t len1 = strnlen(name1, max_len);
+    if (WARN_ON(len1 == max_len)) return "";
+
+    /* This does a sanity check. Currently network blocks in
+     * wpa_supplicant don't support per-network block
+     * bridging setup. This by proxy also means that
+     * non-multi-ap and multi-ap networks can't be easily
+     * mixed in a single wpa_supplicant config file because
+     * their briging would not be configurable.
+     */
+    bool collision = false;
+    const struct osw_drv_vif_sta_network *second = first->next;
+    const struct osw_drv_vif_sta_network *i = second;
+    for (;;) {
+        if (i == NULL) break;
+        if (collision) break;
+
+        const char *name2 = i->bridge_if_name.buf;
+        const size_t len2 = strnlen(name2, max_len);
+        collision = (len1 != len2)
+                 || (len2 == max_len)
+                 || (strcmp(name1, name2) != 0);
+        i = i->next;
+    }
+
+    WARN_ON(collision);
+    return name1;
+}
+
 bool
 osw_hostap_conf_fill_sta_config(struct osw_drv_conf *drv_conf,
                                 const char *phy_name,
@@ -482,6 +549,7 @@ osw_hostap_conf_fill_sta_config(struct osw_drv_conf *drv_conf,
     sta = &vif->u.sta;
     network = &sta->network[0];
 
+    STRSCPY_WARN(conf->bridge_if_name.buf, osw_hostap_conf_compute_bridge(network));
     osw_wpas_util_fill_global_block(sta, &conf->global);
 
     if (network != NULL) {
@@ -524,6 +592,7 @@ osw_wpas_util_fill_link_details(const struct osw_hostap_conf_sta_state_bufs *buf
 
     if (status == NULL) return;
 
+    STRSCPY_WARN(link->bridge_if_name.buf, bufs->bridge_if_name ?: "");
     STATE_GET_BY_FN(link->status, status, "wpa_state", osw_hostap_util_sta_state_to_osw);
     STATE_GET_BY_FN(link->channel, status, "freq", osw_hostap_util_sta_freq_to_channel);
     STATE_GET_BY_FN(link->bssid, status, "bssid", osw_hwaddr_from_cstr);

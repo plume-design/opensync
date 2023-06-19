@@ -80,27 +80,11 @@ void nm2_bridge_ref_fn(reflink_t *obj, reflink_t *sender)
 
 void nm2_add_port_to_br(struct nm2_bridge *bridge, struct nm2_port *port, bool add)
 {
-    struct nm2_iface *piface;
     bool success;
 
     if (bridge == NULL || bridge->br_inet == NULL)
     {
         LOGE("%s(): bridge is NULL, cannot add port %s to bridge", __func__, port->port_name);
-        return;
-    }
-
-    /* check if the interface is available on wifi_inet_config table.
-     * if still not avialable, do not configure the port, wifi_inet cb
-     * will configure it
-     */
-    piface = nm2_iface_get_by_name(port->port_name);
-    /* check for interface existence only when adding.
-     * for delete, the interface might already been removed from interface list.
-     * so check only in case of add */
-    if (add && piface == NULL)
-    {
-        LOGD("%s(): interface details still not available for %s, not %s port to bridge",
-             __func__, port->port_name, (add == true ? "adding" : "removing"));
         return;
     }
 

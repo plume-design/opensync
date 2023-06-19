@@ -68,6 +68,7 @@ fsm_pcap_handler(uint8_t * args, const struct pcap_pkthdr *header,
     net_parser.caplen = header->caplen;
     net_parser.data = (uint8_t *)bytes;
     net_parser.pcap_datalink = session->pcaps->pcap_datalink;
+    net_parser.payload_updated = false;
     len = net_header_parse(&net_parser);
     if (len == 0) return;
 

@@ -208,7 +208,11 @@ lan_stats_exit_mgr(void);
 void
 lan_stats_flows_filter(lan_stats_instance_t *lan_stats_instance);
 
-void lan_stats_collect_flows(lan_stats_instance_t *lan_stats_instance);
+void
+lan_stats_collect_flows(lan_stats_instance_t *lan_stats_instance);
+
+void
+lan_stats_collect_native_flows(lan_stats_instance_t *lan_stats_instance);
 
 void
 link_stats_collect_cb(uplink_iface_type uplink_if_type);

@@ -32,7 +32,7 @@ if OSN_BACKEND_FW_IPTABLES_FULL
 
         choice
             prompt "FORWARD"
-            default OSN_FW_IPTABLES_POLICY_FILTER_FORWARD_ACCEPT
+            default OSN_FW_IPTABLES_POLICY_FILTER_FORWARD_DROP
 
             config OSN_FW_IPTABLES_POLICY_FILTER_FORWARD_ACCEPT
                 bool "Accept"

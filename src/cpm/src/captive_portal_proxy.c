@@ -294,7 +294,7 @@ static bool cportal_proxy_fw_rule(bool enable, const char *rule)
 {
     int rc = execsh_log(
             LOG_SEVERITY_DEBUG,
-            _S(iptables -t mangle "$1" PREROUTING -j TPROXY $2),
+            _S(iptables -w -t mangle "$1" PREROUTING -j TPROXY $2),
             enable ? "-A" : "-D",
             (char *)rule);
 

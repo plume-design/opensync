@@ -305,6 +305,7 @@ enum fsm_dpi_state
     FSM_DPI_PASSTHRU = 2,
     FSM_DPI_DROP     = 3,
     FSM_DPI_IGNORED  = 4,
+    FSM_DPI_BYPASS   = 5,
 };
 
 
@@ -417,6 +418,7 @@ struct fsm_session
     struct fsm_session *provider_plugin;
     struct fsm_web_cat_ops *provider_ops;
     struct fsm_forward_context forward_ctx;
+    struct str_set *dpi_attributes;
     enum fsm_plugin_id plugin_id;
 };
 

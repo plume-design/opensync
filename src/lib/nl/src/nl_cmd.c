@@ -39,6 +39,8 @@ nl_cmd_complete(struct nl_cmd *cmd,
 {
     if (nl_cmd_is_completed(cmd)) return;
 
+    LOGT("nl: cmd: %p: completing", cmd);
+
     if (cmd->in_flight != NULL) {
         if (cancelling) {
             nl_conn_cancel_cmd(cmd);
@@ -66,6 +68,8 @@ nl_cmd_receive(struct nl_cmd *cmd,
 {
     if (WARN_ON(cmd->in_flight == NULL)) return;
 
+    LOGT("nl: cmd: %p: response received", cmd);
+
     if (cmd->response_fn != NULL) {
         cmd->response_fn(cmd, msg, cmd->response_fn_priv);
     }
@@ -75,6 +79,8 @@ void
 nl_cmd_failed(struct nl_cmd *cmd,
               struct nlmsgerr *err)
 {
+    LOGT("nl: cmd: %p: failed: error=%d", cmd, err->error);
+
     if (cmd->failed_fn != NULL) {
         cmd->failed_fn(cmd, err, cmd->failed_fn_priv);
     }

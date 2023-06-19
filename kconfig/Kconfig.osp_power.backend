@@ -3,6 +3,20 @@
 #
 source "src/lib/osp/kconfig/Kconfig.osp_power.backend"
 
+menuconfig POE_ENABLED
+    bool "Enable PoE Support"
+    depends on OSP_POWER
+    default n
+    help
+        Enable if platform supports PoE
+
+    config POE_PORT_IFNAME
+        depends on POE_ENABLED
+        string "PoE Port Interface Name"
+        default "eth1"
+        help
+            Name of interface associated to the port which supports PoE
+
 #
 # include platform/vendor modules
 #

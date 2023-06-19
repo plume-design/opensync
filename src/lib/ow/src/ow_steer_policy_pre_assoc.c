@@ -25,6 +25,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 #include <math.h>
+#include <endian.h>
 #include <const.h>
 #include <ds_tree.h>
 #include <memutil.h>
@@ -43,12 +44,14 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 struct ow_steer_policy_pre_assoc_persistent_state {
     unsigned int backoff_connect_cnt;
     unsigned int active_link_cnt;
+    unsigned int auth_bypass_fail_cnt;
 };
 
 struct ow_steer_policy_pre_assoc_volatile_state {
     unsigned int reject_cnt;
     struct osw_timer reject_timer;
     struct osw_timer backoff_timer;
+    struct osw_timer auth_bypass_timer;
 };
 
 struct ow_steer_policy_pre_assoc {
@@ -77,6 +80,18 @@ ow_steer_policy_pre_assoc_compute_backoff_timeout(struct ow_steer_policy_pre_ass
     return config->backoff_timeout_sec * pow(base, power);
 }
 
+static double
+ow_steer_policy_pre_assoc_compute_auth_bypass_timeout_sec(struct ow_steer_policy_pre_assoc *pre_assoc_policy)
+{
+    /* Authentications are typically retried every
+     * 100-200ms, a few times. So there's probably up to a
+     * few seconds for client to actually connect in case it
+     * was blocked and it did not send Probe Requests at
+     * all. The 5s timeout like a good enough value.
+     */
+    return 5;
+}
+
 static void
 ow_steer_policy_pre_assoc_reset_volatile_state(struct ow_steer_policy_pre_assoc *pre_assoc_policy)
 {
@@ -100,6 +115,7 @@ ow_steer_policy_pre_assoc_reset_volatile_state(struct ow_steer_policy_pre_assoc 
     vstate->reject_cnt = 0;
     osw_timer_disarm(&vstate->reject_timer);
     osw_timer_disarm(&vstate->backoff_timer);
+    osw_timer_disarm(&vstate->auth_bypass_timer);
 
     if (dismiss_policy == true)
         ow_steer_policy_dismiss_executor(pre_assoc_policy->base);
@@ -189,6 +205,32 @@ ow_steer_policy_pre_assoc_backoff_timer_cb(struct osw_timer *timer)
 
     ow_steer_policy_pre_assoc_reset_volatile_state(pre_assoc_policy);
     ow_steer_policy_schedule_stack_recalc(pre_assoc_policy->base);
+}
+
+static void
+ow_steer_policy_pre_assoc_auth_bypass_timer_cb(struct osw_timer *timer)
+{
+    struct ow_steer_policy_pre_assoc *pre_assoc_policy = container_of(timer, struct ow_steer_policy_pre_assoc, vstate.auth_bypass_timer);
+    struct ow_steer_policy_pre_assoc_persistent_state *pstate = &pre_assoc_policy->pstate;
+
+    ASSERT(pre_assoc_policy->config != NULL, "");
+
+    /* This is an unlikely case where by the time the ACL
+     * was unblocked the client already had given up
+     * re-trying. This could happen if the osw_confsync
+     * reconfiguration took longer than expected, or if the
+     * main loop stalled. In either case log it visibly.
+     * This isn't fatal, but pretty severe to warrant a
+     * NOTICE.
+     */
+
+    const unsigned int prev_cnt = pstate->auth_bypass_fail_cnt;
+    pstate->auth_bypass_fail_cnt++;
+
+    LOGN("%s failed to let client in through auth bypass (total occurances: %u -> %u)",
+         ow_steer_policy_get_prefix(pre_assoc_policy->base),
+         prev_cnt,
+         pstate->auth_bypass_fail_cnt);
 }
 
 static void
@@ -460,6 +502,131 @@ ow_steer_policy_pre_assoc_vif_probe_req_cb(struct osw_state_observer *observer,
 }
 
 static void
+ow_steer_policy_pre_assoc_try_auth_backoff(struct ow_steer_policy_pre_assoc *pre_assoc_policy)
+{
+    struct ow_steer_policy_pre_assoc_volatile_state *vstate = &pre_assoc_policy->vstate;
+
+    if (osw_timer_is_armed(&vstate->backoff_timer)) {
+        LOGD("%s ignoring auth frame, already in backoff", ow_steer_policy_get_prefix(pre_assoc_policy->base));
+        return;
+    }
+
+    if (osw_timer_is_armed(&vstate->reject_timer)) {
+        /* This can happen if client scan turnaround time is
+         * shorter than the reject timer. If that happens it
+         * makes sense to abort reject timer and enter
+         * backoff immediately.
+         */
+        LOGI("%s auth attempt after probe request but before reject stopped",
+             ow_steer_policy_get_prefix(pre_assoc_policy->base));
+
+        osw_timer_disarm(&vstate->reject_timer);
+        LOGD("%s reject period stopped", ow_steer_policy_get_prefix(pre_assoc_policy->base));
+        ow_steer_policy_dismiss_executor(pre_assoc_policy->base);
+    }
+    else {
+        /* This is relatively rare, but possible: a client
+         * may rely on its local BSS data cache or receive
+         * Beacon frame. In either case it can start
+         * Authentication immediately. If so, unblock it.
+         */
+        LOGI("%s auth attempt before probe request",
+             ow_steer_policy_get_prefix(pre_assoc_policy->base));
+
+        /* Simulate the reject timer being started and
+         * immediatelly stopped to unify the handling of
+         * this corner case.
+         */
+        ow_steer_policy_trigger_executor(pre_assoc_policy->base);
+        ow_steer_policy_dismiss_executor(pre_assoc_policy->base);
+    }
+
+    const double backoff_timeout_sec = ow_steer_policy_pre_assoc_compute_backoff_timeout(pre_assoc_policy);
+    const uint64_t backoff_at_nsec = osw_time_mono_clk() + OSW_TIME_SEC(backoff_timeout_sec);
+    osw_timer_arm_at_nsec(&vstate->backoff_timer, backoff_at_nsec);
+    LOGD("%s backoff period started", ow_steer_policy_get_prefix(pre_assoc_policy->base));
+
+    const double bypass_timeout_sec = ow_steer_policy_pre_assoc_compute_auth_bypass_timeout_sec(pre_assoc_policy);
+    const uint64_t bypass_at_nsec = osw_time_mono_clk() + OSW_TIME_SEC(bypass_timeout_sec);
+    osw_timer_arm_at_nsec(&vstate->auth_bypass_timer, bypass_at_nsec);
+
+    ow_steer_policy_schedule_stack_recalc(pre_assoc_policy->base);
+}
+
+static bool
+ow_steer_policy_pre_assoc_is_auth_attempt(struct ow_steer_policy_pre_assoc *pre_assoc_policy,
+                                          const void *data,
+                                          size_t len)
+{
+    const struct ow_steer_policy_pre_assoc_config *config = pre_assoc_policy->config;
+
+    /* Some clients do not tolerate Authentication attempts
+     * being repeatedly rejected. For example iOS will
+     * prompt the user the network credentials are invalid
+     * and hard-block the network until it is manually
+     * connected to by the user through UI.
+     *
+     * Some clients however simply put the BSS on hold
+     * temporarily and will retry that BSS sometime later.
+     * For example wpa_supplicant uses 10s timeout (and
+     * grows that on subsequent failures).
+     */
+    if (config->immediate_backoff_on_auth_req == false) return false;
+
+    size_t rem;
+    const struct osw_drv_dot11_frame_header *hdr = ieee80211_frame_into_header(data, len, rem);
+    const bool probably_not_valid_frame = (hdr == NULL);
+    if (WARN_ON(probably_not_valid_frame)) return false;
+    (void)rem;
+
+    const uint16_t fc = le16toh(hdr->frame_control);
+    const uint16_t subtype = (fc & DOT11_FRAME_CTRL_SUBTYPE_MASK);
+    const bool is_not_auth = (subtype != DOT11_FRAME_CTRL_SUBTYPE_AUTH);
+    if (is_not_auth) return false;
+
+    const struct osw_hwaddr *policy_sta_addr = ow_steer_policy_get_sta_addr(pre_assoc_policy->base);
+    const struct osw_hwaddr *policy_bssid = &config->bssid;
+    const struct osw_hwaddr *frame_ta = osw_hwaddr_from_cptr_unchecked(hdr->sa);
+    const struct osw_hwaddr *frame_ra = osw_hwaddr_from_cptr_unchecked(hdr->bssid);
+
+    const bool non_policy_sta = (osw_hwaddr_is_equal(policy_sta_addr, frame_ta) == false);
+    const bool non_policy_bssid = (osw_hwaddr_is_equal(policy_bssid, frame_ra) == false);
+    const bool ignore = non_policy_sta
+                     || non_policy_bssid;
+    if (ignore) return false;
+
+    return true;
+}
+
+static void
+ow_steer_policy_pre_assoc_consider_auth_unblock(struct ow_steer_policy_pre_assoc *pre_assoc_policy,
+                                                const void *data,
+                                                size_t len)
+{
+    if (ow_steer_policy_pre_assoc_is_auth_attempt(pre_assoc_policy, data, len)) {
+        /* This is intended to be handled upon
+         * Authentication Reequest reception. This also
+         * means that if the ACL is blocking the client then
+         * the first Authentication attempt will have been
+         * already rejected. That is fine and in all
+         * likeliness the ACL will get unblocked by the time
+         * client re-tries.
+         */
+        ow_steer_policy_pre_assoc_try_auth_backoff(pre_assoc_policy);
+    }
+}
+
+static void
+ow_steer_policy_pre_assoc_vif_frame_rx_cb(struct osw_state_observer *self,
+                                          const struct osw_state_vif_info *vif,
+                                          const uint8_t *data,
+                                          size_t len)
+{
+    struct ow_steer_policy_pre_assoc *pre_assoc_policy = container_of(self, struct ow_steer_policy_pre_assoc, state_observer);
+    ow_steer_policy_pre_assoc_consider_auth_unblock(pre_assoc_policy, data, len);
+}
+
+static void
 ow_steer_policy_pre_assoc_recalc_cb(struct ow_steer_policy *policy,
                                     struct ow_steer_candidate_list *candidate_list)
 {
@@ -555,8 +722,7 @@ ow_steer_policy_pre_assoc_reconf_timer_cb(struct osw_timer *timer)
 }
 
 struct ow_steer_policy_pre_assoc*
-ow_steer_policy_pre_assoc_create(unsigned int priority,
-                                 const struct osw_hwaddr *sta_addr,
+ow_steer_policy_pre_assoc_create(const struct osw_hwaddr *sta_addr,
                                  const struct ow_steer_policy_mediator *mediator)
 {
     ASSERT(sta_addr != NULL, "");
@@ -571,6 +737,7 @@ ow_steer_policy_pre_assoc_create(unsigned int priority,
         .sta_connected_fn = ow_steer_policy_pre_assoc_sta_connected_cb,
         .sta_disconnected_fn = ow_steer_policy_pre_assoc_sta_disconnected_cb,
         .vif_probe_req_fn = ow_steer_policy_pre_assoc_vif_probe_req_cb,
+        .vif_frame_rx_fn = ow_steer_policy_pre_assoc_vif_frame_rx_cb,
     };
 
     struct ow_steer_policy_pre_assoc *pre_assoc_policy = CALLOC(1, sizeof(*pre_assoc_policy));
@@ -580,8 +747,9 @@ ow_steer_policy_pre_assoc_create(unsigned int priority,
     struct ow_steer_policy_pre_assoc_volatile_state *vstate = &pre_assoc_policy->vstate;
     osw_timer_init(&vstate->reject_timer, ow_steer_policy_pre_assoc_reject_timer_cb);
     osw_timer_init(&vstate->backoff_timer, ow_steer_policy_pre_assoc_backoff_timer_cb);
+    osw_timer_init(&vstate->auth_bypass_timer, ow_steer_policy_pre_assoc_auth_bypass_timer_cb);
 
-    pre_assoc_policy->base = ow_steer_policy_create(g_policy_name, priority, sta_addr, &ops, mediator, pre_assoc_policy);
+    pre_assoc_policy->base = ow_steer_policy_create(g_policy_name, sta_addr, &ops, mediator, pre_assoc_policy);
 
     return pre_assoc_policy;
 }
@@ -607,6 +775,7 @@ ow_steer_policy_pre_assoc_free(struct ow_steer_policy_pre_assoc *pre_assoc_polic
     const bool unregister_observer = pre_assoc_policy->config != NULL;
 
     ow_steer_policy_pre_assoc_reset_volatile_state(pre_assoc_policy);
+    osw_timer_disarm(&pre_assoc_policy->reconf_timer);
     FREE(pre_assoc_policy->next_config);
     pre_assoc_policy->next_config = NULL;
     FREE(pre_assoc_policy->config);

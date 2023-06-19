@@ -73,20 +73,12 @@ osw_conf_build_vif_cb(const struct osw_state_vif_info *info,
     assert(info->phy != NULL);
     assert(info->drv_state != NULL);
 
-    /* AP_VLAN interfaces aren't expected to be configurable for now. They are
-     * expected to be runtime artifacts spawned by the driver/system when
-     * a 4-addr client connects.
-     */
-    if (info->drv_state->vif_type == OSW_VIF_AP_VLAN) {
-        FREE(vif);
-        return;
-    }
-
     vif->phy = phy;
     vif->mac_addr = info->drv_state->mac_addr;
     vif->vif_name = STRDUP(info->vif_name);
     vif->enabled = info->drv_state->enabled;
     vif->vif_type = info->drv_state->vif_type;
+    vif->tx_power_dbm = info->drv_state->tx_power_dbm;
     switch (vif->vif_type) {
         case OSW_VIF_UNDEFINED:
             assert(0); /* driver bug, FIXME: dont use assert, be gentler and free memory */
@@ -120,14 +112,21 @@ osw_conf_build_vif_cb(const struct osw_state_vif_info *info,
                 ds_tree_insert(&vif->u.ap.neigh_tree, neigh, &neigh->neigh.bssid);
             }
 
+            for (i = 0; i < info->drv_state->u.ap.wps_cred_list.count; i++) {
+                struct osw_conf_wps_cred *cred = CALLOC(1, sizeof(*cred));
+                cred->cred = info->drv_state->u.ap.wps_cred_list.list[i];
+                ds_dlist_insert_tail(&vif->u.ap.wps_cred_list, cred);
+            }
+
             vif->u.ap.beacon_interval_tu = info->drv_state->u.ap.beacon_interval_tu;
             vif->u.ap.ssid_hidden = info->drv_state->u.ap.ssid_hidden;
             vif->u.ap.isolated = info->drv_state->u.ap.isolated;
             vif->u.ap.mcast2ucast = info->drv_state->u.ap.mcast2ucast;
+            vif->u.ap.wps_pbc = info->drv_state->u.ap.wps_pbc;
+            vif->u.ap.multi_ap = info->drv_state->u.ap.multi_ap;
             // FIXME: radius_list
             break;
         case OSW_VIF_AP_VLAN:
-            assert(0); /* shouldn't reach here */
             break;
         case OSW_VIF_STA:
             ds_dlist_init(&vif->u.sta.net_list, struct osw_conf_net, node);
@@ -137,6 +136,8 @@ osw_conf_build_vif_cb(const struct osw_state_vif_info *info,
                 memcpy(&cnet->bssid, &snet->bssid, sizeof(snet->bssid));
                 memcpy(&cnet->psk, &snet->psk, sizeof(snet->psk));
                 memcpy(&cnet->wpa, &snet->wpa, sizeof(snet->wpa));
+                memcpy(&cnet->bridge_if_name, &snet->bridge_if_name, sizeof(snet->bridge_if_name));
+                cnet->multi_ap = snet->multi_ap;
                 ds_dlist_insert_tail(&vif->u.sta.net_list, cnet);
             }
             break;
@@ -161,6 +162,7 @@ osw_conf_build_phy_cb(const struct osw_state_phy_info *info,
     phy->tx_chainmask = info->drv_state->tx_chainmask;
     phy->radar = info->drv_state->radar;
     phy->reg_domain = info->drv_state->reg_domain;
+    phy->mbss_tx_vif_name = info->drv_state->mbss_tx_vif_name;
     ds_tree_init(&phy->vif_tree, ds_str_cmp, struct osw_conf_vif, phy_node);
     osw_state_vif_get_list(osw_conf_build_vif_cb, phy->phy_name, phy);
     ds_tree_insert(phy_tree, phy, phy->phy_name);
@@ -420,6 +422,23 @@ osw_conf_neigh_tree_to_str(char *out, size_t len, const struct ds_tree *a)
                   i->neigh.phy_type);
     }
     if (ds_tree_is_empty(b) == false && out[-1] == ',')
+        out[-1] = 0;
+}
+
+void
+osw_conf_ap_wps_cred_list_to_str(char *out, size_t len, const struct ds_dlist *a)
+{
+    /* FIXME: ds_tree APIs don't have const variants necessary */
+    struct ds_dlist *b = (struct ds_dlist *)a;
+    struct osw_conf_wps_cred *i;
+
+    out[0] = 0;
+    ds_dlist_foreach(b, i) {
+        csnprintf(&out, &len,
+                  "len=%u,",
+                  strlen(i->cred.psk.str));
+    }
+    if (ds_dlist_is_empty(b) == false && out[-1] == ',')
         out[-1] = 0;
 }
 

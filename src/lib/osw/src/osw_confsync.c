@@ -112,6 +112,14 @@ osw_confsync_build_phy_debug(const struct osw_drv_phy_config *cmd,
         notified = true;
     }
 
+    if (cmd->mbss_tx_vif_name_changed) {
+        LOGI("osw: confsync: %s: mbss_tx_vif_name: "OSW_IFNAME_FMT" -> "OSW_IFNAME_FMT,
+             phy,
+             OSW_IFNAME_ARG(&state->mbss_tx_vif_name),
+             OSW_IFNAME_ARG(&conf->mbss_tx_vif_name));
+        notified = true;
+    }
+
     if (cmd->changed && !notified) {
         LOGW("osw: confsync: %s: changed, but missing specific attribute printout", phy);
     }
@@ -158,6 +166,22 @@ osw_confsync_build_vif_ap_debug(const char *phy,
     if (cmd->mcast2ucast_changed) {
         LOGI("osw: confsync: %s/%s: mcast2ucast: %d -> %d",
              phy, vif, state->mcast2ucast, conf->mcast2ucast);
+        *notified = true;
+    }
+
+    if (cmd->wps_pbc_changed) {
+        LOGI("osw: confsync: %s/%s: wps_pbc: %d -> %d",
+             phy, vif, state->wps_pbc, conf->wps_pbc);
+        *notified = true;
+    }
+
+    if (cmd->multi_ap_changed) {
+        char *from = osw_multi_ap_into_str(&state->multi_ap);
+        char *to = osw_multi_ap_into_str(&conf->multi_ap);
+        LOGI("osw: confsync: %s/%s: multi_ap: %s -> %s",
+             phy, vif, from, to);
+        FREE(from);
+        FREE(to);
         *notified = true;
     }
 
@@ -208,11 +232,20 @@ osw_confsync_build_vif_ap_debug(const char *phy,
     }
 
     if (cmd->acl_changed) {
-        char from[1024];
-        char to[1024];
-        osw_hwaddr_list_to_str(from, sizeof(from), &state->acl);
-        osw_conf_ap_acl_tree_to_str(to, sizeof(to), &conf->acl_tree);
-        LOGI("osw: confsync: %s/%s: acl: %s -> %s", phy, vif, from, to);
+        size_t i;
+
+        for (i = 0; i < cmd->acl_add.count; i++) {
+            const struct osw_hwaddr *mac = &cmd->acl_add.list[i];
+            LOGI("osw: confsync: %s/%s: acl: adding: "OSW_HWADDR_FMT,
+                 phy, vif, OSW_HWADDR_ARG(mac));
+        }
+
+        for (i = 0; i < cmd->acl_del.count; i++) {
+            const struct osw_hwaddr *mac = &cmd->acl_del.list[i];
+            LOGI("osw: confsync: %s/%s: acl: removing: "OSW_HWADDR_FMT,
+                 phy, vif, OSW_HWADDR_ARG(mac));
+        }
+
         *notified = true;
     }
 
@@ -241,6 +274,18 @@ osw_confsync_build_vif_ap_debug(const char *phy,
         if (strlen(mod) > 0) LOGI("osw: confsync: %s/%s: neigh: mod: %s", phy, vif, mod);
         if (strlen(del) > 0) LOGI("osw: confsync: %s/%s: neigh: del: %s", phy, vif, del);
         *notified = true;
+    }
+
+    if (cmd->wps_cred_list_changed) {
+        char from[1024];
+        char to[1024];
+        osw_wps_cred_list_to_str(from, sizeof(from), &state->wps_cred_list);
+        osw_conf_ap_wps_cred_list_to_str(to, sizeof(to), &conf->wps_cred_list);
+        LOGI("osw: confsync: %s/%s: wps_cred_list: %s -> %s",
+              phy,
+              vif,
+              from,
+              to);
     }
 }
 
@@ -275,6 +320,16 @@ osw_confsync_net_to_str(char *buf, size_t len,
         osw_wpa_to_str(wpa_str, sizeof(wpa_str), &net->wpa);
         if (strlen(wpa_str) > 0) {
             csnprintf(&buf, &len, " %s", wpa_str);
+        }
+        const char *bridge = net->bridge_if_name.buf;
+        const size_t bridge_max_len = sizeof(net->bridge_if_name.buf);
+        const size_t bridge_len = strnlen(bridge, bridge_max_len);
+        WARN_ON(bridge_len == bridge_max_len);
+        if (bridge_len > 0 && bridge_len < bridge_max_len) {
+            csnprintf(&buf, &len, " br:%s", bridge);
+        }
+        if (net->multi_ap) {
+            csnprintf(&buf, &len, " map");
         }
         if (net->next != NULL) {
             csnprintf(&buf, &len, ",");
@@ -318,8 +373,7 @@ osw_confsync_build_vif_debug(const struct osw_drv_vif_config *cmd,
     bool notified = false;
 
     if (cmd->enabled_changed) {
-        LOGI("osw: confsync: %s/%s: enabled: %d -> %d",
-             phy, vif, state->enabled, conf->enabled);
+        /* actual print handled by the caller */
         notified = true;
     }
 
@@ -329,7 +383,12 @@ osw_confsync_build_vif_debug(const struct osw_drv_vif_config *cmd,
         LOGI("osw: confsync: %s/%s: vif_type: %s -> %s",
              phy, vif, from, to);
         notified = true;
+    }
 
+    if (cmd->tx_power_dbm_changed) {
+        LOGI("osw: confsync: %s/%s: tx_power_dbm: %d -> %d",
+             phy, vif, state->tx_power_dbm, conf->tx_power_dbm);
+        notified = true;
     }
 
     if (cmd->vif_type_changed == false) {
@@ -358,7 +417,6 @@ osw_confsync_build_vif_debug(const struct osw_drv_vif_config *cmd,
     if (cmd->changed && !notified) {
         LOGI("osw: confsync: %s/%s: changed", phy, vif);
     }
-
 }
 
 static bool
@@ -527,6 +585,30 @@ osw_confsync_vif_ap_mode_changed(struct osw_ap_mode state,
     return changed;
 }
 
+static bool
+osw_confsync_vif_ap_wps_cred_list_changed(struct ds_dlist *a, const struct osw_wps_cred_list *b)
+{
+    const size_t n = ds_dlist_len(a);
+    size_t i;
+
+    if (n != b->count)
+        return true;
+
+    for (i = 0; i < b->count; i++) {
+        const struct osw_wps_cred *p = &b->list[i];
+        struct osw_conf_wps_cred *q = NULL;
+
+        ds_dlist_foreach(a, q)
+            if (strcmp(p->psk.str, q->cred.psk.str) == 0)
+                break;
+
+        if (q == NULL)
+            return true;
+    }
+
+    return false;
+}
+
 static void
 osw_confsync_vif_ap_mark_changed(struct osw_drv_vif_config *dvif,
                                  const struct osw_drv_phy_state *sphy,
@@ -537,6 +619,7 @@ osw_confsync_vif_ap_mark_changed(struct osw_drv_vif_config *dvif,
     dvif->u.ap.ssid_changed = all || osw_confsync_vif_ap_ssid_changed(&cvif->u.ap.ssid, &svif->u.ap.ssid);
     dvif->u.ap.psk_list_changed = all || osw_confsync_vif_ap_psk_tree_changed(&cvif->u.ap.psk_tree, &svif->u.ap.psk_list, &dvif->u.ap.wpa);
     dvif->u.ap.neigh_list_changed = all || osw_confsync_vif_ap_neigh_tree_changed(&cvif->u.ap.neigh_tree, &svif->u.ap.neigh_list);
+    dvif->u.ap.wps_cred_list_changed = all || osw_confsync_vif_ap_wps_cred_list_changed(&cvif->u.ap.wps_cred_list, &svif->u.ap.wps_cred_list);
     dvif->u.ap.acl_changed = all || osw_confsync_vif_ap_acl_tree_changed(&cvif->u.ap.acl_tree, &svif->u.ap.acl);
     dvif->u.ap.channel_changed = all || osw_confsync_vif_ap_channel_changed(&cvif->u.ap.channel, &svif->u.ap.channel);
 
@@ -548,8 +631,11 @@ osw_confsync_vif_ap_mark_changed(struct osw_drv_vif_config *dvif,
     dvif->changed |= all || (dvif->u.ap.wpa_changed = (memcmp(&svif->u.ap.wpa, &cvif->u.ap.wpa, sizeof(svif->u.ap.wpa)) != 0));
     dvif->changed |= all || (dvif->u.ap.mode_changed = (osw_confsync_vif_ap_mode_changed(svif->u.ap.mode, cvif->u.ap.mode)));
     dvif->changed |= all || (dvif->u.ap.bridge_if_name_changed = (strcmp(svif->u.ap.bridge_if_name.buf, cvif->u.ap.bridge_if_name.buf) != 0));
+    dvif->changed |= all || (dvif->u.ap.wps_pbc_changed = (svif->u.ap.wps_pbc != cvif->u.ap.wps_pbc));
+    dvif->changed |= all || (dvif->u.ap.multi_ap_changed = (memcmp(&svif->u.ap.multi_ap, &cvif->u.ap.multi_ap, sizeof(svif->u.ap.multi_ap)) != 0));
     dvif->changed |= dvif->u.ap.psk_list_changed;
     dvif->changed |= dvif->u.ap.neigh_list_changed;
+    dvif->changed |= dvif->u.ap.wps_cred_list_changed;
     dvif->changed |= dvif->u.ap.acl_changed;
     dvif->changed |= dvif->u.ap.ssid_changed;
     dvif->changed |= dvif->u.ap.channel_changed;
@@ -723,6 +809,40 @@ osw_confsync_vif_ap_neigh_filter(struct osw_neigh_list *output,
 }
 
 static void
+osw_confsync_build_drv_conf_vif_ap_acl_add(struct osw_drv_vif_config *dvif,
+                                           const struct osw_drv_vif_state *svif,
+                                           struct osw_conf_vif *cvif)
+{
+    struct osw_conf_acl *acl;
+    ds_tree_foreach(&cvif->u.ap.acl_tree, acl) {
+        const struct osw_hwaddr *mac = &acl->mac_addr;
+        const bool found = osw_hwaddr_list_contains(svif->u.ap.acl.list,
+                                                    svif->u.ap.acl.count,
+                                                    mac);
+        const bool in_config_but_not_in_state = (found == false);
+        if (in_config_but_not_in_state) {
+            osw_hwaddr_list_append(&dvif->u.ap.acl_add, mac);
+        }
+    }
+}
+
+static void
+osw_confsync_build_drv_conf_vif_ap_acl_del(struct osw_drv_vif_config *dvif,
+                                           const struct osw_drv_vif_state *svif,
+                                           struct osw_conf_vif *cvif)
+{
+    size_t i;
+    for (i = 0; i < svif->u.ap.acl.count; i++) {
+        const struct osw_hwaddr *mac = &svif->u.ap.acl.list[i];
+        struct osw_conf_acl *acl = ds_tree_find(&cvif->u.ap.acl_tree, mac);
+        const bool in_state_but_not_in_config = (acl == NULL);
+        if (in_state_but_not_in_config) {
+            osw_hwaddr_list_append(&dvif->u.ap.acl_del, mac);
+        }
+    }
+}
+
+static void
 osw_confsync_build_drv_conf_vif_ap(struct osw_drv_vif_config *dvif,
                                    const struct osw_drv_phy_state *sphy,
                                    const struct osw_drv_vif_state *svif,
@@ -740,6 +860,8 @@ osw_confsync_build_drv_conf_vif_ap(struct osw_drv_vif_config *dvif,
     dvif->u.ap.acl_policy = cvif->u.ap.acl_policy;
     dvif->u.ap.ssid = cvif->u.ap.ssid;
     dvif->u.ap.wpa = cvif->u.ap.wpa;
+    dvif->u.ap.wps_pbc = cvif->u.ap.wps_pbc;
+    dvif->u.ap.multi_ap = cvif->u.ap.multi_ap;
 
     if (dvif->u.ap.channel.center_freq0_mhz == 0)
         osw_channel_compute_center_freq(&dvif->u.ap.channel, max_2g_chan);
@@ -801,7 +923,30 @@ osw_confsync_build_drv_conf_vif_ap(struct osw_drv_vif_config *dvif,
         dvif->u.ap.neigh_list.list = neighs;
         dvif->u.ap.neigh_list.count = n;
     }
+    {
+        struct osw_wps_cred *wps_creds;
+        struct osw_conf_wps_cred *wps_cred;
+        int n = 0;
+        int i = 0;
+
+        ds_dlist_foreach(&cvif->u.ap.wps_cred_list, wps_cred)
+            n++;
+
+        wps_creds = CALLOC(n, sizeof(*wps_creds));
+        ds_dlist_foreach(&cvif->u.ap.wps_cred_list, wps_cred) {
+            const struct osw_wps_cred *cn = &wps_cred->cred;
+            struct osw_wps_cred *dn = &wps_creds[i];
+            *dn = *cn;
+            i++;
+        }
+
+        dvif->u.ap.wps_cred_list.list = wps_creds;
+        dvif->u.ap.wps_cred_list.count = n;
+    }
     // FIXME: radius
+
+    osw_confsync_build_drv_conf_vif_ap_acl_add(dvif, svif, cvif);
+    osw_confsync_build_drv_conf_vif_ap_acl_del(dvif, svif, cvif);
 
     const bool all_changed = (dvif->vif_type_changed == true);
     osw_confsync_vif_ap_mark_changed(dvif, sphy, svif, cvif, all_changed);
@@ -875,7 +1020,12 @@ osw_confsync_build_drv_conf_vif_sta_op(struct osw_drv_vif_config *dvif,
     struct osw_drv_vif_sta_network *dnet;
     for (dnet = dsta->network; dnet != NULL; dnet = dnet->next) {
         const size_t bssid_len = sizeof(dnet->bssid);
+        const size_t bridge_len = sizeof(dnet->bridge_if_name.buf);
         const size_t ssid_max = sizeof(dnet->ssid.buf);
+        const bool multi_ap_match = (dnet->multi_ap == ssta->link.multi_ap);
+        const bool bridge_match = (strncmp(dnet->bridge_if_name.buf,
+                                           ssta->link.bridge_if_name.buf,
+                                           bridge_len) == 0);
         const bool bssid_valid = osw_hwaddr_is_zero(&dnet->bssid) == false;
         const bool bssid_match = memcmp(&dnet->bssid, &ssta->link.bssid, bssid_len) == 0;
         const bool ssid_match = strncmp(dnet->ssid.buf, ssta->link.ssid.buf, ssid_max) == 0;
@@ -889,10 +1039,14 @@ osw_confsync_build_drv_conf_vif_sta_op(struct osw_drv_vif_config *dvif,
         const bool crypto_match = (ccmp || tkip)
                                && (wpa || rsn)
                                && (psk || sae);
-        const bool match = (bssid_valid == true && bssid_match == true)
-                        || (bssid_valid == false && ssid_match == true);
+        const bool net_match = (bssid_valid == true && bssid_match == true)
+                            || (bssid_valid == false && ssid_match == true);
+        const bool match = net_match
+                        && crypto_match
+                        && multi_ap_match
+                        && bridge_match;
 
-        if (match == true && crypto_match == true) {
+        if (match) {
             return OSW_DRV_VIF_CONFIG_STA_NOP;
         }
 
@@ -912,9 +1066,14 @@ static bool
 osw_confsync_net_is_identical(const struct osw_drv_vif_sta_network *a,
                               const struct osw_drv_vif_sta_network *b)
 {
+    const size_t bridge_max_len = sizeof(a->bridge_if_name.buf);
     const bool same_bssid = memcmp(&a->bssid, &b->bssid, sizeof(a->bssid)) == 0;
     const bool same_ssid = (a->ssid.len == b->ssid.len) &&
                            memcmp(a->ssid.buf, b->ssid.buf, a->ssid.len) == 0;
+    const bool same_multi_ap = (a->multi_ap == b->multi_ap);
+    const bool same_bridge = (strncmp(a->bridge_if_name.buf,
+                                      b->bridge_if_name.buf,
+                                      bridge_max_len) == 0);
     const bool same_psk = strcmp(a->psk.str, b->psk.str) == 0;
     struct osw_wpa wpa1 = a->wpa;
     struct osw_wpa wpa2 = b->wpa;
@@ -922,7 +1081,7 @@ osw_confsync_net_is_identical(const struct osw_drv_vif_sta_network *a,
     wpa2.group_rekey_seconds = 0;
     const bool same_wpa = memcmp(&wpa1, &wpa2, sizeof(wpa1)) == 0;
 
-    return same_bssid && same_ssid && same_psk && same_wpa;
+    return same_bssid && same_ssid && same_psk && same_wpa && same_multi_ap && same_bridge;
 }
 
 static bool
@@ -974,6 +1133,8 @@ osw_confsync_build_drv_conf_vif_sta_net_list(struct osw_conf_vif_sta *csta)
     ds_dlist_foreach(&csta->net_list, cnet) {
         struct osw_drv_vif_sta_network *dnet = CALLOC(1, sizeof(*dnet));
         dnet->next = first;
+        dnet->multi_ap = cnet->multi_ap;
+        memcpy(&dnet->bridge_if_name, &cnet->bridge_if_name, sizeof(cnet->bridge_if_name));
         memcpy(&dnet->ssid, &cnet->ssid, sizeof(cnet->ssid));
         memcpy(&dnet->bssid, &cnet->bssid, sizeof(cnet->bssid));
         memcpy(&dnet->wpa, &cnet->wpa, sizeof(cnet->wpa));
@@ -1035,6 +1196,7 @@ osw_confsync_build_drv_conf_vif(struct osw_confsync_arg *arg,
     dvif->vif_name = STRDUP(cvif->vif_name);
     dvif->enabled = enabled;
     dvif->vif_type = cvif->vif_type;
+    dvif->tx_power_dbm = cvif->tx_power_dbm;
 
     const bool skip = (dvif->enabled == false && svif->enabled == false);
 
@@ -1042,6 +1204,7 @@ osw_confsync_build_drv_conf_vif(struct osw_confsync_arg *arg,
     if (skip == false) {
         dvif->changed |= (dvif->enabled_changed = (cvif->enabled != svif->enabled));
         dvif->changed |= (dvif->vif_type_changed = (cvif->vif_type != svif->vif_type));
+        dphy->changed |= (dvif->tx_power_dbm_changed = cvif->tx_power_dbm != svif->tx_power_dbm);
     }
 
     switch (cvif->vif_type) {
@@ -1055,6 +1218,14 @@ osw_confsync_build_drv_conf_vif(struct osw_confsync_arg *arg,
         case OSW_VIF_STA:
             osw_confsync_build_drv_conf_vif_sta(dvif, svif, cvif);
             break;
+    }
+
+    if (dvif->enabled_changed) {
+        LOGI("osw: confsync: %s/%s: enabled: %d -> %d",
+             cvif->phy->phy_name,
+             cvif->vif_name,
+             svif->enabled,
+             cvif->enabled);
     }
 
     if (skip) {
@@ -1088,6 +1259,12 @@ osw_confsync_build_drv_conf_phy(struct osw_confsync_arg *arg,
     dphy->radar = cphy->radar;
     dphy->reg_domain = cphy->reg_domain;
 
+    const bool mbss_tx_vif_name_reported_non_empty = osw_ifname_is_valid(&sphy->mbss_tx_vif_name);
+    const bool mbss_is_enabled = mbss_tx_vif_name_reported_non_empty;
+    if (mbss_is_enabled) {
+        dphy->mbss_tx_vif_name = cphy->mbss_tx_vif_name;
+    }
+
     const bool skip = (dphy->enabled == false && sphy->enabled == false);
 
     dphy->changed = false;
@@ -1098,6 +1275,10 @@ osw_confsync_build_drv_conf_phy(struct osw_confsync_arg *arg,
         dphy->changed |= (dphy->reg_domain_changed = (memcmp(&cphy->reg_domain,
                                                              &sphy->reg_domain,
                                                              sizeof(cphy->reg_domain)) != 0));
+        if (mbss_is_enabled) {
+            dphy->changed |= (dphy->mbss_tx_vif_name_changed = (osw_ifname_is_equal(&cphy->mbss_tx_vif_name,
+                                                                                    &sphy->mbss_tx_vif_name) == false));
+        }
     }
 
     if (arg->debug) osw_confsync_build_phy_debug(dphy, cphy, sphy);

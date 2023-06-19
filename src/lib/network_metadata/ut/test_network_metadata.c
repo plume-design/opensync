@@ -1295,6 +1295,7 @@ test_serialize_data_report_tags(void)
         "APP",
     };
 
+    struct data_report_tags data_report_tags;
     struct str_set report_tags = {
         .nelems = 2,
         .array = features,
@@ -1306,7 +1307,9 @@ test_serialize_data_report_tags(void)
     size_t nread = 0;
     Traffic__DataReportTag *pb_tags;
 
-    pb = serialize_data_report_tags(&report_tags);
+    data_report_tags.data_report = &report_tags;
+    data_report_tags.id = "ut_test_data_report_tags_id";
+    pb = serialize_data_report_tags(&data_report_tags);
     /* Basic validation */
     TEST_ASSERT_NOT_NULL(pb);
     TEST_ASSERT_NOT_NULL(pb->buf);
@@ -1701,6 +1704,7 @@ void test_serialize_flow_report(void)
     Traffic__FlowReport *pb_report;
 
 #ifndef ARCH_X86
+    static char *mqtt_topic = "dev-IP/Flows/dog1/4C718002B3/59f39f5acbb22513f0ae5e17";
     qm_response_t res;
     bool ret = false;
 #endif
@@ -1710,7 +1714,7 @@ void test_serialize_flow_report(void)
 
 #ifndef ARCH_X86
     ret = qm_conn_send_direct(QM_REQ_COMPRESS_DISABLE,
-                              "network_metadata_test/4C71000027",
+                              mqtt_topic,
                               pb->buf, pb->len, &res);
     TEST_ASSERT_TRUE(ret);
 #endif

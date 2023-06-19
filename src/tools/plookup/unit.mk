@@ -38,3 +38,5 @@ UNIT_SRC := src/plookup.c
 UNIT_DEPS += src/lib/log
 UNIT_DEPS += src/lib/target
 UNIT_DEPS += src/lib/osa
+
+UNIT_LDFLAGS += -lresolv

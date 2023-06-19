@@ -642,6 +642,7 @@ neigh_table_cache_lookup(struct neighbour_entry *key)
 
 int lookup_sources[] =
 {
+    FSM_NFQUEUE,
     OVSDB_DHCP_LEASE,
     NEIGH_TBL_SYSTEM,
     OVSDB_NDP,
@@ -672,7 +673,7 @@ neigh_table_lookup_af(int af_family, void *ip_tbl, os_macaddr_t *mac_out)
     key.ip_tbl = ip_tbl;
     key.mac = mac_out;
     key.ifname = NULL;
-    
+
     len = ARRAY_SIZE(lookup_sources);
     for (i = 0; i < len; i++)
     {

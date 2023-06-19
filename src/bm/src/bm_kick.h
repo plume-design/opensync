@@ -44,6 +44,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define BTM_24_PHY_TYPE                 7
 #define BTM_5_PHY_TYPE                  9
 #define BTM_HE_PHY_TYPE                 14  /* HE is minimum PHY type for Wi-Fi 6e */
+#define BTM_EHT_PHY_TYPE                16
 
 #define RRM_DEFAULT_OP_CLASS            BTM_24_OP_CLASS
 #define RRM_DEFAULT_CHANNEL             0                   // All channels

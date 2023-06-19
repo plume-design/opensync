@@ -148,6 +148,7 @@ osw_btm_desc_reset(struct osw_btm_desc *desc)
         (desc->dialog_token != OSW_TOKEN_INVALID)) {
         osw_token_pool_free_token(desc->sta->pool_ref,
                                   desc->dialog_token);
+        desc->dialog_token = OSW_TOKEN_INVALID;
     }
 }
 
@@ -231,6 +232,40 @@ osw_btm_build_frame(const struct osw_btm_req_params *req_params,
     }
 
     return frame_len;
+}
+
+void
+osw_btm_sta_log_req_params(const struct osw_btm_req_params *params)
+{
+    size_t i;
+
+    LOGI("osw: btm: parameters:"
+         " valid_int %"PRIu8
+         " abridged %d"
+         " disassoc_imminent %d"
+         " bss_term %d"
+         " neighs %zu",
+         params->valid_int,
+         params->abridged,
+         params->disassoc_imminent,
+         params->bss_term,
+         params->neigh_len);
+
+    for (i = 0; i < params->neigh_len; i ++) {
+        const struct osw_btm_req_neigh *n = &params->neigh[i];
+        LOGI("osw: btm: parameters: neighbor[%zu]:"
+             " bssid "OSW_HWADDR_FMT
+             " info 0x%08"PRIx32
+             " chan %"PRIu8
+             " opclass %"PRIu8
+             " phytype %"PRIu8,
+             i,
+             OSW_HWADDR_ARG(&n->bssid),
+             n->bssid_info,
+             n->channel,
+             n->op_class,
+             n->phy_type);
+    }
 }
 
 static void
@@ -342,9 +377,11 @@ osw_btm_sta_set_info(struct osw_btm_sta *btm_sta,
         /* free all dialog tokens */
         struct osw_btm_desc *desc;
         ds_dlist_foreach(&btm_sta->desc_list, desc) {
-            osw_token_pool_free_token(btm_sta->pool_ref,
-                                      desc->dialog_token);
-            desc->dialog_token = OSW_TOKEN_INVALID;
+            if (desc->dialog_token != OSW_TOKEN_INVALID) {
+                osw_token_pool_free_token(btm_sta->pool_ref,
+                                          desc->dialog_token);
+                desc->dialog_token = OSW_TOKEN_INVALID;
+            }
         }
 
         /* free pool reference */
@@ -581,7 +618,7 @@ osw_btm_desc_set_req_params(struct osw_btm_desc *desc,
     const struct osw_state_vif_info *vif_info = btm_sta->sta_info->vif;
 
     ds_dlist_remove(&btm_sta->desc_list, desc);
-    ds_dlist_insert_tail(&btm_sta->desc_list, desc);
+    ds_dlist_insert_head(&btm_sta->desc_list, desc);
 
     int dtoken = 0;
     struct osw_token_pool_reference *pool_ref = desc->sta->pool_ref;

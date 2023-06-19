@@ -91,8 +91,8 @@ struct osw_hostap_bss_hapd {
     size_t n_task_neigh_mod;
     size_t n_task_neigh_del;
     //struct hostap_rq_task task_reload_rxkh;
-    //struct hostap_rq_task task_wps_pbc;
-    //struct hostap_rq_task task_wps_cancel;
+    struct hostap_rq_task task_wps_pbc;
+    struct hostap_rq_task task_wps_cancel;
 
     struct rq_nested q_state;
     struct hostap_rq_task task_get_config;
@@ -124,6 +124,9 @@ struct osw_hostap_bss_wpas {
      */
     struct osw_psk psk;
     bool psk_valid;
+
+    struct osw_ifname bridge_if_name;
+    struct osw_ifname bridge_if_name_pending;
 
     struct rq_nested q_config;
     struct hostap_rq_task task_add;
@@ -471,20 +474,29 @@ osw_hostap_bss_hapd_neigh_free(struct osw_hostap_bss_hapd *hapd)
 static void
 osw_hostap_bss_hapd_neigh_prep_set(char *buf,
                                    size_t buf_size,
+                                   const struct osw_ssid *ssid,
                                    const struct osw_neigh *n)
 {
+    struct osw_ssid_hex hexbuf;
+    const char *hex = osw_ssid_into_hex(&hexbuf, ssid);
+    LOGT(LOG_PREFIX("converting "OSW_SSID_FMT, OSW_SSID_ARG(ssid)));
+    WARN_ON(hex == NULL);
+    WARN_ON(strlen(hex) == 0);
+    if (hex == NULL) hex = "";
+
     /* SET_NEIGHBOR either adds a new entry, or re-uses an
      * existing one. There's no need to worry about
      * inserting duplicate BSSIDs.
     */
     snprintf(buf, buf_size,
-             "SET_NEIGHBOR "OSW_HWADDR_FMT" nr="
+             "SET_NEIGHBOR "OSW_HWADDR_FMT" ssid=%s nr="
              "%02hhx%02hhx%02hhx%02hhx%02hhx%02hhx" /* bssid */
              "%02hhx%02hhx%02hhx%02hhx"             /* info */
              "%02hhx"                               /* opclass */
              "%02hhx"                               /* channel */
              "%02hhx",                              /* phymode */
              OSW_HWADDR_ARG(&n->bssid),
+             hex,
              n->bssid.octet[0],
              n->bssid.octet[1],
              n->bssid.octet[2],
@@ -514,6 +526,7 @@ static void
 osw_hostap_bss_hapd_neigh_prep(struct osw_hostap_bss_hapd *hapd,
                                struct osw_drv_vif_config_ap *ap)
 {
+    const struct osw_ssid *ssid = &ap->ssid;
     const size_t n_add = ap->neigh_add_list.count;
     const size_t n_mod = ap->neigh_mod_list.count;
     const size_t n_del = ap->neigh_del_list.count;
@@ -526,7 +539,7 @@ osw_hostap_bss_hapd_neigh_prep(struct osw_hostap_bss_hapd *hapd,
         const struct osw_neigh *n = &ap->neigh_add_list.list[i];
         char cmd[1024];
 
-        osw_hostap_bss_hapd_neigh_prep_set(cmd, sizeof(cmd), n);
+        osw_hostap_bss_hapd_neigh_prep_set(cmd, sizeof(cmd), ssid, n);
         hostap_rq_task_init(&add[i], hapd->ctrl.txq, cmd);
         add[i].task.completed_fn = osw_hostap_bss_cmd_warn_on_fail;
     }
@@ -535,7 +548,7 @@ osw_hostap_bss_hapd_neigh_prep(struct osw_hostap_bss_hapd *hapd,
         const struct osw_neigh *n = &ap->neigh_mod_list.list[i];
         char cmd[1024];
 
-        osw_hostap_bss_hapd_neigh_prep_set(cmd, sizeof(cmd), n);
+        osw_hostap_bss_hapd_neigh_prep_set(cmd, sizeof(cmd), ssid, n);
         hostap_rq_task_init(&mod[i], hapd->ctrl.txq, cmd);
         mod[i].task.completed_fn = osw_hostap_bss_cmd_warn_on_fail;
     }
@@ -901,6 +914,8 @@ osw_hostap_bss_hapd_init(struct hostap_ev_ctrl *ghapd,
     hostap_rq_task_init(&hapd->task_init_bssid, hapd->ctrl.txq, "STATUS");
     hostap_rq_task_init(&hapd->task_init_neigh, hapd->ctrl.txq, ""); /* set in bssid_cb */
     hostap_rq_task_init(&hapd->task_reload_psk, hapd->ctrl.txq, "RELOAD_WPA_PSK");
+    hostap_rq_task_init(&hapd->task_wps_pbc, hapd->ctrl.txq, "WPS_PBC");
+    hostap_rq_task_init(&hapd->task_wps_cancel, hapd->ctrl.txq, "WPS_CANCEL");
     hostap_rq_task_init(&hapd->task_get_config, hapd->ctrl.txq, "GET_CONFIG");
     hostap_rq_task_init(&hapd->task_get_status, hapd->ctrl.txq, "STATUS");
     hostap_rq_task_init(&hapd->task_get_mib, hapd->ctrl.txq, "MIB");
@@ -915,6 +930,8 @@ osw_hostap_bss_hapd_init(struct hostap_ev_ctrl *ghapd,
     hapd->task_init_bssid.task.priv = &hapd->task_init_neigh;
     hapd->task_init_neigh.task.completed_fn = osw_hostap_bss_cmd_warn_on_err;
     hapd->task_reload_psk.task.completed_fn = osw_hostap_bss_cmd_warn_on_fail;
+    hapd->task_wps_pbc.task.completed_fn = osw_hostap_bss_cmd_warn_on_fail;
+    hapd->task_wps_cancel.task.completed_fn = osw_hostap_bss_cmd_warn_on_fail;
     hapd->task_get_config.task.completed_fn = osw_hostap_bss_cmd_warn_on_fail;
     hapd->task_get_status.task.completed_fn = osw_hostap_bss_cmd_warn_on_fail;
     hapd->task_get_mib.task.completed_fn = osw_hostap_bss_cmd_warn_on_fail;
@@ -934,6 +951,8 @@ osw_hostap_bss_hapd_fini(struct osw_hostap_bss_hapd *hapd)
     hostap_rq_task_fini(&hapd->task_init_bssid);
     hostap_rq_task_fini(&hapd->task_init_neigh);
     hostap_rq_task_fini(&hapd->task_reload_psk);
+    hostap_rq_task_fini(&hapd->task_wps_pbc);
+    hostap_rq_task_fini(&hapd->task_wps_cancel);
     hostap_rq_task_fini(&hapd->task_get_config);
     hostap_rq_task_fini(&hapd->task_get_status);
     hostap_rq_task_fini(&hapd->task_get_mib);
@@ -1014,6 +1033,7 @@ osw_hostap_bss_wpas_fill_state(struct osw_hostap_bss_wpas *wpas,
         .config = config ?: "",
         .status = wpas->task_get_status.reply ?: "",
         .list_networks = wpas->task_get_networks.reply ?: "",
+        .bridge_if_name = wpas->bridge_if_name.buf,
         .mib = "",
     };
 
@@ -1094,6 +1114,63 @@ osw_hostap_bss_wpas_closed_cb(struct hostap_ev_ctrl *ctrl,
 }
 
 static void
+osw_hostap_bss_cmd_add_completed_update_bridge(struct rq_task *task,
+                                               void *priv)
+{
+    struct hostap_rq_task *t = container_of(task, struct hostap_rq_task, task);
+    const char *ok_str = "OK";
+    const ssize_t ok_str_len = strlen(ok_str);
+    const bool reply_ok = (t->reply != NULL)
+                       && (strncmp(t->reply, ok_str, ok_str_len) == 0);
+    const bool reply_not_ok = !reply_ok;
+    if (reply_not_ok) return;
+
+    struct osw_hostap_bss_wpas *wpas = priv;
+    STRSCPY_WARN(wpas->bridge_if_name.buf,
+            wpas->bridge_if_name_pending.buf);
+}
+
+static void
+osw_hostap_bss_cmd_add_completed_cb(struct rq_task *task,
+                                    void *priv)
+{
+    osw_hostap_bss_cmd_warn_on_fail(task, priv);
+    osw_hostap_bss_cmd_add_completed_update_bridge(task, priv);
+}
+
+static void
+osw_hostap_bss_wpas_init_add(struct hostap_ev_ctrl *gwpas,
+                             struct osw_hostap_bss_wpas *wpas,
+                             const char *phy_name,
+                             const char *vif_name)
+{
+    char *path = osw_hostap_get_wpas_path(phy_name, vif_name);
+    char sock_dir_path[1024];
+    STRSCPY_WARN(sock_dir_path, path ?: "");
+    dirname(sock_dir_path);
+    FREE(path);
+
+    const char *drv_name = "nl80211";
+    const char *drv_param = "";
+    const char *bridge = wpas->bridge_if_name_pending.buf;
+    char cmd_add[8192];
+
+    snprintf(cmd_add, sizeof(cmd_add),
+             "INTERFACE_ADD %s\t%s\t%s\t%s\t%s\t%s",
+             vif_name,
+             wpas->path_config,
+             drv_name,
+             sock_dir_path,
+             drv_param,
+             bridge);
+
+    hostap_rq_task_fini(&wpas->task_add);
+    hostap_rq_task_init(&wpas->task_add, gwpas->txq, cmd_add);
+    wpas->task_add.task.completed_fn = osw_hostap_bss_cmd_add_completed_cb;
+    wpas->task_add.task.priv = wpas;
+}
+
+static void
 osw_hostap_bss_wpas_init(struct hostap_ev_ctrl *gwpas,
                          struct osw_hostap_bss_wpas *wpas,
                          const char *phy_name,
@@ -1108,9 +1185,6 @@ osw_hostap_bss_wpas_init(struct hostap_ev_ctrl *gwpas,
 
     char *path = osw_hostap_get_wpas_path(phy_name, vif_name);
     hostap_ev_ctrl_init(&wpas->ctrl, loop, path, &wpas_ops, NULL, wpas);
-    char sock_dir_path[1024];
-    STRSCPY_WARN(sock_dir_path, path ?: "");
-    dirname(sock_dir_path);
     FREE(path);
 
     rq_nested_init(&wpas->q_config, loop);
@@ -1118,34 +1192,18 @@ osw_hostap_bss_wpas_init(struct hostap_ev_ctrl *gwpas,
     wpas->q_config.q.max_running = 1;
     wpas->q_state.q.max_running = 1;
 
-    const char *drv_name = "nl80211";
-    const char *drv_param = NULL;
-    const char *bridge = NULL;
-    char cmd_add[8192];
     char cmd_remove[1024];
 
     snprintf(wpas->path_config, sizeof(wpas->path_config),
              "/var/run/supplicant-%s.config",
              vif_name);
 
-    /* FIXME: For Multi-AP this will need to be moved to be
-     * dynamically assembled right before task is queued
-     * because "bridge" is known only upon configuration.
-     */
-    snprintf(cmd_add, sizeof(cmd_add),
-             "INTERFACE_ADD %s\t%s\t%s\t%s\t%s\t%s",
-             vif_name,
-             wpas->path_config,
-             drv_name,
-             sock_dir_path,
-             drv_param ?: "",
-             bridge ?: "");
-
     snprintf(cmd_remove, sizeof(cmd_remove),
              "INTERFACE_REMOVE %s",
              vif_name);
 
-    hostap_rq_task_init(&wpas->task_add, gwpas->txq, cmd_add);
+    osw_hostap_bss_wpas_init_add(gwpas, wpas, phy_name, vif_name);
+
     hostap_rq_task_init(&wpas->task_remove, gwpas->txq, cmd_remove);
     hostap_rq_task_init(&wpas->task_log_level, wpas->ctrl.txq, "LOG_LEVEL DEBUG");
     hostap_rq_task_init(&wpas->task_reconfigure, wpas->ctrl.txq, "RECONFIGURE");
@@ -1154,7 +1212,6 @@ osw_hostap_bss_wpas_init(struct hostap_ev_ctrl *gwpas,
     hostap_rq_task_init(&wpas->task_get_status, wpas->ctrl.txq, "STATUS");
     hostap_rq_task_init(&wpas->task_get_networks, wpas->ctrl.txq, "LIST_NETWORKS");
 
-    wpas->task_add.task.completed_fn = osw_hostap_bss_cmd_warn_on_fail;
     wpas->task_remove.task.completed_fn = osw_hostap_bss_remove_done_cb;
     wpas->task_remove.task.priv = wpas->ctrl.conn;
     wpas->task_log_level.task.completed_fn = osw_hostap_bss_cmd_warn_on_fail;
@@ -1386,13 +1443,21 @@ osw_hostap_set_conf_ap(struct osw_hostap *hostap,
                           || dvif->u.ap.ssid_changed
                           || dvif->u.ap.wpa_changed
                           || dphy->reg_domain_changed;
+    const bool psk_file_invalidated = (dvif->u.ap.psk_list_changed
+                                    || dvif->u.ap.wps_cred_list_changed);
 
     const bool do_remove = (is_running && !want_running)
                         || (is_running && want_running && invalidated);
     const bool do_add = (!is_running && want_running)
                      || (is_running && want_running && invalidated);
-    const bool do_reload_psk = (want_running && dvif->u.ap.psk_list_changed);
+    const bool do_reload_psk = (want_running && psk_file_invalidated);
     const bool do_neigh = (want_running && dvif->u.ap.neigh_list_changed);
+    const bool do_wps_pbc = is_running
+                         && dvif->u.ap.wps_pbc == true
+                         && dvif->u.ap.wps_pbc_changed == true;
+    const bool do_wps_cancel = is_running
+                            && dvif->u.ap.wps_pbc == false
+                            && dvif->u.ap.wps_pbc_changed == true;
 
     rq_resume(q);
 
@@ -1419,6 +1484,16 @@ osw_hostap_set_conf_ap(struct osw_hostap *hostap,
         osw_hostap_bss_hapd_neigh_free(hapd);
         osw_hostap_bss_hapd_neigh_prep(hapd, &dvif->u.ap);
         osw_hostap_bss_hapd_neigh_add(hapd, q);
+    }
+
+    if (do_wps_pbc) {
+        LOGD(LOG_PREFIX_HAPD(hapd, "do wps pbc"));
+        rq_add_task(q, &hapd->task_wps_pbc.task);
+    }
+
+    if (do_wps_cancel) {
+        LOGD(LOG_PREFIX_HAPD(hapd, "do wps cancel"));
+        rq_add_task(q, &hapd->task_wps_cancel.task);
     }
 
     rq_stop(q);
@@ -1472,6 +1547,8 @@ osw_hostap_set_conf_sta(struct osw_hostap *hostap,
     OSW_HOSTAP_CONF_SET_BUF(conf->global.ctrl_interface, path_ctrl);
     FREE(path_ctrl);
 
+    CALL_HOOKS(hostap, sta_conf_mutate_fn, phy_name, vif_name, drv_conf, conf);
+
     osw_hostap_conf_generate_sta_config_bufs(conf);
     osw_hostap_set_conf_sta_write(wpas);
 
@@ -1480,14 +1557,25 @@ osw_hostap_set_conf_sta(struct osw_hostap *hostap,
     const bool want_running = dvif->enabled && want_sta;
     const bool invalidated = dvif->enabled_changed
                           || dvif->u.sta.network_changed;
+    const bool bridging_changed = (strncmp(conf->bridge_if_name.buf,
+                                           wpas->bridge_if_name.buf,
+                                           sizeof(wpas->bridge_if_name.buf)) != 0);
 
-    const bool do_remove = (is_running && !want_running);
-    const bool do_add = (!is_running && want_running);
-    const bool do_reconf = (want_running && invalidated);
+    const bool do_remove = (is_running && !want_running)
+                        || (is_running && want_running && bridging_changed);
+    const bool do_add = (!is_running && want_running)
+                     || (want_running && bridging_changed);
+    const bool do_reconf = (want_running && invalidated & !bridging_changed);
     const bool do_reassoc = (want_running &&
                              (dvif->u.sta.operation == OSW_DRV_VIF_CONFIG_STA_CONNECT ||
                               dvif->u.sta.operation == OSW_DRV_VIF_CONFIG_STA_RECONNECT));
     const bool do_disc = (want_running && dvif->u.sta.operation == OSW_DRV_VIF_CONFIG_STA_DISCONNECT);
+
+    STRSCPY_WARN(wpas->bridge_if_name_pending.buf,
+                 conf->bridge_if_name.buf);
+
+    struct hostap_ev_ctrl *gwpas = &hostap->gwpas;
+    osw_hostap_bss_wpas_init_add(gwpas, wpas, phy_name, vif_name);
 
     rq_resume(q);
 

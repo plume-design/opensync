@@ -162,7 +162,7 @@ ow_steer_executor_action_check_kick_needed(const struct ow_steer_executor_action
     }
 
     if (available_candidates_cnt == 0) {
-        LOGW("%s all candidates are soft/hard-blocked, aborting action", ow_steer_executor_action_get_prefix(action));
+        LOGI("%s all candidates are soft/hard-blocked, aborting action", ow_steer_executor_action_get_prefix(action));
         return false;
     }
 
@@ -170,7 +170,6 @@ ow_steer_executor_action_check_kick_needed(const struct ow_steer_executor_action
     const enum ow_steer_candidate_preference vif_preference = ow_steer_candidate_get_preference(vif_candidate);
     switch (vif_preference) {
         case OW_STEER_CANDIDATE_PREFERENCE_OUT_OF_SCOPE:
-            WARN_ON(true);
             return false;
         case OW_STEER_CANDIDATE_PREFERENCE_NONE:
             WARN_ON(true);

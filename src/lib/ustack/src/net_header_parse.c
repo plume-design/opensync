@@ -189,6 +189,7 @@ size_t net_header_parse_ipv4(struct net_header_parser *parser)
     ip_hlen = (hdr->ihl * 4);
     ip_dlen = ntohs(hdr->tot_len) - ip_hlen;
 
+    len = len - ip_hlen;
     /* check ip payload length against the captured packet size */
     if (len < ip_dlen) return 0;
 
@@ -301,9 +302,9 @@ size_t net_header_parse_ipv6(struct net_header_parser *parser)
     parser->eth_pld.ip.ipv6hdr = hdr;
     ip_dlen = ntohs(hdr->ip6_plen);
 
+    len = len - ip_hlen;
     /* check ip payload length against the captured packet size */
     if (len < ip_dlen) return 0;
-
     parser->parsed += ip_hlen;
     parser->data += ip_hlen;
     parser->ip_version = 6;
@@ -473,17 +474,22 @@ size_t net_header_parse_tcp(struct net_header_parser *parser)
 size_t net_header_parse_udp(struct net_header_parser *parser)
 {
     struct udphdr *hdr;
-    size_t len, udp_hlen;
+    size_t len, udp_hlen, udp_dlen;
 
     len = parser->packet_len - parser->parsed;
     udp_hlen = sizeof(*hdr);
     if (len < udp_hlen) return 0;
 
     hdr = (struct udphdr *)(parser->data);
+    udp_dlen = ntohs(hdr->len) - udp_hlen;
+
     parser->ip_pld.udphdr = hdr;
 
     parser->parsed += udp_hlen;
     parser->data += udp_hlen;
+
+    len = len - udp_hlen;
+    if (len < udp_dlen) return 0;
 
     return udp_hlen;
 }
@@ -661,6 +667,7 @@ net_header_fill_buf(char *buf, size_t len, struct net_header_parser *parser)
     char eth_pres[256];
     char tpt_pres[256];
     uint8_t eth_switch;
+    uint16_t ethertype;
     bool has_ip;
 
     eth = net_header_get_eth(parser);
@@ -709,6 +716,9 @@ net_header_fill_buf(char *buf, size_t len, struct net_header_parser *parser)
                      "ETH: N/A");
             break;
     }
+
+    ethertype = net_header_get_ethertype(parser);
+    if (ethertype != ETH_P_IP && ethertype != ETH_P_IPV6) goto out;
 
     /* Prepare ip presentation */
     has_ip = net_header_srcip_str(parser, ip_src, sizeof(ip_src));
@@ -774,6 +784,7 @@ net_header_fill_buf(char *buf, size_t len, struct net_header_parser *parser)
                  net_header_tap2str(parser));
     }
 
+out:
     snprintf(buf, len, "%s%s%s%s", eth_pres, ip_pres, tpt_pres, flow_pres);
 
     return buf;

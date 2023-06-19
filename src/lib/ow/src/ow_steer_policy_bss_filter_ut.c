@@ -59,7 +59,7 @@ OSW_UT(ow_steer_policy_bss_filter_ut_typical_case)
     ow_steer_candidate_list_bss_set(candidate_list, &bssid_b, &channel);
     ow_steer_candidate_list_bss_set(candidate_list, &bssid_c, &channel);
 
-    filter_policy = ow_steer_policy_bss_filter_create(0, "bss_filter", &addr, &mediator);
+    filter_policy = ow_steer_policy_bss_filter_create("bss_filter", &addr, &mediator);
     OSW_UT_EVAL(filter_policy != NULL);
     OSW_UT_EVAL(schedule_recalc_cnt == 0);
 

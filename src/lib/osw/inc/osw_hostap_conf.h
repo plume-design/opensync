@@ -54,10 +54,10 @@ struct osw_hostap_conf_ap_config {
     OSW_HOSTAP_CONF_DECL_STR (accept_mac_file, 64);
     OSW_HOSTAP_CONF_DECL_STR (deny_mac_file, 64);
     OSW_HOSTAP_CONF_DECL_INT (auth_algs);
+    OSW_HOSTAP_CONF_DECL_INT (multi_ap);
     OSW_HOSTAP_CONF_DECL_BOOL(ignore_broadcast_ssid);
     OSW_HOSTAP_CONF_DECL_BOOL(wmm_enabled);
     OSW_HOSTAP_CONF_DECL_BOOL(uapsd_advertisement_enabled);
-    OSW_HOSTAP_CONF_DECL_BOOL(multi_ap);
     OSW_HOSTAP_CONF_DECL_BOOL(ap_isolate);
     OSW_HOSTAP_CONF_DECL_BOOL(mcast_to_ucast);
     OSW_HOSTAP_CONF_DECL_BOOL(send_probe_response);

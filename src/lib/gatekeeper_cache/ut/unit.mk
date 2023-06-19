@@ -32,6 +32,7 @@ UNIT_SRC := test_gatekeeper_cache_main.c
 UNIT_SRC += test_gatekeeper_cache.c
 UNIT_SRC += test_gatekeeper_cache_flush.c
 UNIT_SRC += test_gatekeeper_cache_cmp.c
+UNIT_SRC += test_gatekeeper_cache_ovsdb_app.c
 
 # Add include path to the internal headers
 UNIT_CFLAGS := -I$(UNIT_PATH)/../src

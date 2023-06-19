@@ -119,6 +119,7 @@ osw_rrm_meas_desc_reset(struct osw_rrm_meas_desc *desc)
         (desc->dialog_token != OSW_TOKEN_INVALID)) {
         osw_token_pool_free_token(desc->pool_ref,
                                   desc->dialog_token);
+        desc->dialog_token = OSW_TOKEN_INVALID;
     }
 }
 

@@ -39,6 +39,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define DOT11_FRAME_CTRL_SUBTYPE_MASK 0x00F0
 #define DOT11_FRAME_CTRL_SUBTYPE_ASSOC_REQ 0x0000
 #define DOT11_FRAME_CTRL_SUBTYPE_REASSOC_REQ 0x0020
+#define DOT11_FRAME_CTRL_SUBTYPE_PROBE_REQ 0x0040
+#define DOT11_FRAME_CTRL_SUBTYPE_AUTH 0x00B0
 #define DOT11_FRAME_CTRL_SUBTYPE_ACTION 0x00D0
 #define DOT11_FRAME_CTRL_SUBTYPE_DEAUTH 0x00C0
 
@@ -164,6 +166,9 @@ struct osw_drv_dot11_frame_reassoc_req {
 
 #define ieee80211_frame_into_header(buf, len, rem) \
     C_FIELD_GET_REM(buf, len, rem, struct osw_drv_dot11_frame, header)
+
+#define ieee80211_frame_into_variable(buf, len, rem) \
+    C_FIELD_GET_REM(buf, len, rem, struct osw_drv_dot11_frame, u.variable)
 
 #define ieee80211_frame_into_assoc_req(buf, len, rem) \
     C_FIELD_GET_REM(buf, len, rem, struct osw_drv_dot11_frame, u.assoc_req)

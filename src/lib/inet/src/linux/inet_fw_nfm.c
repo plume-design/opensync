@@ -306,7 +306,7 @@ bool fw_nat_start(inet_fw_t *self)
                 100,
                 "ipv4",
                 "filter",
-                "FORWARD",
+                "NM_MSS_CLAMP",
                 NFM_RULE(
                         "-o", self->fw_ifname,
                         "-p", "tcp",
@@ -319,7 +319,7 @@ bool fw_nat_start(inet_fw_t *self)
                 100,
                 "ipv6",
                 "filter",
-                "FORWARD",
+                "NM_MSS_CLAMP",
                 NFM_RULE(
                         "-o", self->fw_ifname,
                         "-p", "tcp",
@@ -330,10 +330,19 @@ bool fw_nat_start(inet_fw_t *self)
 
         /* Plant miniupnpd rules for port forwarding via upnp */
         retval &= nfm_rule_add(
-                NFM_ID(self->fw_ifname, "ipv4", "miniupnpd"),
+                NFM_ID(self->fw_ifname, "ipv4", "nat.miniupnpd"),
                 100,
                 "ipv4",
                 "nat",
+                "NM_PORT_FORWARD",
+                NFM_RULE("-i", self->fw_ifname),
+                "MINIUPNPD");
+
+        retval &= nfm_rule_add(
+                NFM_ID(self->fw_ifname, "ipv4", "filter.miniupnpd"),
+                100,
+                "ipv4",
+                "filter",
                 "NM_PORT_FORWARD",
                 NFM_RULE("-i", self->fw_ifname),
                 "MINIUPNPD");
@@ -368,6 +377,15 @@ bool fw_nat_start(inet_fw_t *self)
                 "NM_FORWARD",
                 NFM_RULE("-i", self->fw_ifname),
                 "ACCEPT");
+
+        retval &= nfm_rule_add(
+                NFM_ID(self->fw_ifname, "ipv4", "forward"),
+                100,
+                "ipv4",
+                "filter",
+                "NM_FORWARD",
+                NFM_RULE("-i", self->fw_ifname),
+                "ACCEPT");
     }
 
     return true;
@@ -388,13 +406,15 @@ bool fw_nat_stop(inet_fw_t *self)
     retval &= nfm_rule_del(NFM_ID(self->fw_ifname, "ipv4", "mssclamp"));
     retval &= nfm_rule_del(NFM_ID(self->fw_ifname, "ipv6", "mssclamp"));
 
-    retval &= nfm_rule_del(NFM_ID(self->fw_ifname, "ipv4", "miniupnpd"));
+    retval &= nfm_rule_del(NFM_ID(self->fw_ifname, "ipv4", "nat.miniupnpd"));
+    retval &= nfm_rule_del(NFM_ID(self->fw_ifname, "ipv4", "filter.miniupnpd"));
 
     /* Flush out LAN rules */
     retval &= nfm_rule_del(NFM_ID(self->fw_ifname, "ipv4", "input"));
 
     retval &= nfm_rule_del(NFM_ID(self->fw_ifname, "ipv6", "input"));
 
+    retval &= nfm_rule_del(NFM_ID(self->fw_ifname, "ipv4", "forward"));
     retval &= nfm_rule_del(NFM_ID(self->fw_ifname, "ipv6", "forward"));
 
     return retval;
@@ -410,10 +430,11 @@ bool fw_nat_stop(inet_fw_t *self)
  */
 bool fw_portforward_rule(inet_fw_t *self, const struct inet_portforward *pf, bool remove)
 {
-    char *proto = 0;
-    char src_port[8] = { 0 };
-    char to_dest[32] = { 0 };
-
+    char *proto;
+    char src_port[C_INT32_LEN];
+    char dst_port[C_INT32_LEN];
+    char to_dest[C_IP4ADDR_LEN + C_INT32_LEN + 1];
+    char dest[C_IP4ADDR_LEN];
 
     if (pf->pf_proto == INET_PROTO_UDP)
         proto = "udp";
@@ -423,9 +444,16 @@ bool fw_portforward_rule(inet_fw_t *self, const struct inet_portforward *pf, boo
         return false;
 
 
-    if (snprintf(src_port, sizeof(src_port), "%u", pf->pf_src_port)
-                  >= (int)sizeof(src_port))
+    if (snprintf(src_port, sizeof(src_port), "%u", pf->pf_src_port) >= (int)sizeof(src_port))
         return false;
+
+    if (snprintf(dst_port, sizeof(dst_port), "%u", pf->pf_dst_port) >= (int)sizeof(dst_port))
+        return false;
+
+    if (snprintf(dest, sizeof(dest), PRI_osn_ip_addr, FMT_osn_ip_addr(pf->pf_dst_ipaddr)) >= (int)sizeof(dest))
+    {
+        return false;
+    }
 
     if (snprintf(to_dest, sizeof(to_dest), PRI_osn_ip_addr":%u",
                  FMT_osn_ip_addr(pf->pf_dst_ipaddr), pf->pf_dst_port)
@@ -436,19 +464,73 @@ bool fw_portforward_rule(inet_fw_t *self, const struct inet_portforward *pf, boo
 
     if (!remove)
     {
-        return nfm_rule_add(
-                NFM_ID(self->fw_ifname, "ipv4", "port_forward", proto, src_port),
-                200,
-                "ipv4",
-                "nat",
-                "NM_PORT_FORWARD",
-                NFM_RULE("-i", self->fw_ifname, "-p", proto, "--dport", src_port, "--to-destination", to_dest),
-                "DNAT");
+        if (!nfm_rule_add(
+                    NFM_ID(self->fw_ifname, "ipv4", "port_forward", proto, src_port),
+                    200,
+                    "ipv4", "nat", "NM_PORT_FORWARD",
+                    NFM_RULE("-i", self->fw_ifname, "-p", proto, "--dport", src_port, "--to-destination", to_dest),
+                    "DNAT"))
+        {
+            return false;
+        }
+
+        if (pf->pf_proto == INET_PROTO_TCP)
+        {
+            if (!nfm_rule_add(
+                        NFM_ID(self->fw_ifname, "ipv4", "port_forward_tcp", proto, src_port),
+                        200,
+                        "ipv4", "filter", "NM_PORT_FORWARD",
+                        NFM_RULE(
+                            "-i", self->fw_ifname,
+                            "-p", proto,
+                            "--dport", dst_port,
+                            "--dst", dest,
+                            "--syn",
+                            "-m", "conntrack",
+                            "--ctstate", "NEW"),
+                            "ACCEPT"))
+            {
+                return false;
+            }
+        }
+        else
+        {
+            if (!nfm_rule_add(
+                        NFM_ID(self->fw_ifname, "ipv4", "port_forward_udp", proto, src_port),
+                        200,
+                        "ipv4", "filter", "NM_PORT_FORWARD",
+                        NFM_RULE(
+                            "-i", self->fw_ifname,
+                            "-p", proto,
+                            "--dport", dst_port,
+                            "--dst", dest,
+                            "-m", "conntrack",
+                            "--ctstate", "NEW"),
+                            "ACCEPT"))
+            {
+                return false;
+            }
+        }
+
     }
     else
     {
-        return nfm_rule_del(NFM_ID(self->fw_ifname, "ipv4", "port_forward", proto, src_port));
+        if (!nfm_rule_del(NFM_ID(self->fw_ifname, "ipv4", "port_forward", proto, src_port)))
+        {
+            return false;
+        }
+
+        if (!nfm_rule_del(NFM_ID(
+                        self->fw_ifname,
+                        "ipv4",
+                        (pf->pf_proto == INET_PROTO_TCP) ? "port_forward_tcp" : "port_forward_udp",
+                        proto, src_port)))
+        {
+            return false;
+        }
     }
+
+    return true;
 }
 
 /* Apply the current portforwarding configuration */

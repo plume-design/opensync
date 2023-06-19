@@ -31,7 +31,9 @@
 
 #include "log.h"
 #include "nfm_osfw.h"
+#include "nfm_rule.h"
 #include "osn_fw.h"
+#include "nfm_rule.h"
 #include <string.h>
 #include <stdio.h>
 
@@ -162,7 +164,7 @@ bool nfm_osfw_init(struct ev_loop *loop)
 	nfm_osfw_base.loop = loop;
 	ev_timer_init(&nfm_osfw_base.timer, nfm_osfw_on_reschedule, 0, 0);
 
-	errcode = osfw_init();
+	errcode = osfw_init(nfm_rule_apply_status_cb);
 	if (!errcode) {
 		LOGE("Initialize the OpenSync firewall API failed");
 		return false;
@@ -179,7 +181,7 @@ bool nfm_osfw_eb_init(struct ev_loop *loop)
 	nfm_osfw_eb_base.loop = loop;
 	ev_timer_init(&nfm_osfw_eb_base.timer, nfm_osfw_eb_on_reschedule, 0, 0);
 
-	errcode = osfw_eb_init(osfw_eb_execute_cmd);
+	errcode = osfw_eb_init(nfm_rule_apply_status_cb);
 	if (!errcode) {
 		LOGE("Initialize the OpenSync ebtables API failed");
 		return false;
@@ -354,7 +356,7 @@ bool nfm_osfw_add_rule(const struct schema_Netfilter *conf)
 
 	if (nfm_osfw_is_inet4(conf->protocol)) {
 		errcode = osfw_rule_add(AF_INET, nfm_osfw_convert_table(conf->table),
-				conf->chain, conf->priority, conf->rule, conf->target);
+				conf->chain, conf->priority, conf->rule, conf->target, conf->name);
 		if (!errcode) {
 			LOGE("Add IPv4 firewall rule failed");
 			return false;
@@ -364,7 +366,7 @@ bool nfm_osfw_add_rule(const struct schema_Netfilter *conf)
 
 	if (nfm_osfw_is_inet6(conf->protocol)) {
 		errcode = osfw_rule_add(AF_INET6, nfm_osfw_convert_table(conf->table),
-				conf->chain, conf->priority, conf->rule, conf->target);
+				conf->chain, conf->priority, conf->rule, conf->target, conf->name);
 		if (!errcode) {
 			LOGE("Add IPv6 firewall rule failed");
 			return false;
@@ -375,7 +377,7 @@ bool nfm_osfw_add_rule(const struct schema_Netfilter *conf)
 	if (kconfig_enabled(CONFIG_TARGET_ENABLE_EBTABLES) &&
         nfm_osfw_is_eth(conf->protocol)) {
 		errcode = osfw_eb_rule_add(AF_BRIDGE, nfm_osfw_convert_table(conf->table),
-				conf->chain, conf->priority, conf->rule, conf->target);
+				conf->chain, conf->priority, conf->rule, conf->target, conf->name);
 		if (!errcode) {
 			LOGE("Add ebtables firewall rule failed");
 			return false;

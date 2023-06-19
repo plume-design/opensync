@@ -25,7 +25,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 #include <ev.h>
-#include <netinet/udp.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
@@ -493,12 +492,17 @@ test_mdns_parser(void)
     struct mdns_plugin_mgr *mgr;
     struct mdnsd_context *pctxt;
     struct sockaddr_storage ss;
+    uint16_t mdns_default_port;
+    struct udphdr *hdr;
     unsigned char *data;
+    uint16_t ethertype;
     struct message m;
     size_t nelems;
+    int ip_protocol;
+    bool is_ip = false;
     size_t len;
+    size_t pld_len;
     size_t i;
-    bool ret;
     int rc;
 
     ut_prepare_pcap(__func__);
@@ -526,13 +530,33 @@ test_mdns_parser(void)
         LOGI("%s: processing packet %s", __func__, pmap[i].name);
         /* Don't use the MACRO as we have explicit names */
         ut_create_pcap_payload(pmap[i].name, pmap[i].pkt, pmap[i].len, net_parser);
+
         len = net_header_parse(net_parser);
-        TEST_ASSERT_TRUE(len != 0);
+        if (len == 0)
+        {
+            LOGE("%s: Not processing packet %s", __func__, pmap[i].name);
+            continue;
+        }
         net_header_logi(net_parser);
 
-        memset(&ss, 0, sizeof(ss));
-        ret = mdns_populate_sockaddr(net_parser, &ss);
-        TEST_ASSERT_TRUE(ret);
+        /* Some basic validation */
+        /* Check ethertype */
+        ethertype = net_header_get_ethertype(net_parser);
+        is_ip = ((ethertype == ETH_P_IP) || (ethertype == ETH_P_IPV6));
+        if (!is_ip) continue;
+
+        /* Check for UDP protocol */
+        ip_protocol = net_parser->ip_protocol;
+        if (ip_protocol != IPPROTO_UDP) continue;
+
+        /* Check the UDP src and dst ports (both need to be 5353) */
+        hdr = net_parser->ip_pld.udphdr;
+        mdns_default_port = htons(5353);
+        if (!(hdr->source == mdns_default_port && hdr->dest == mdns_default_port))
+        {
+            LOGI("%s: Not a mdns packet",__func__);
+            continue;
+        }
 
         memset(&m, 0, sizeof(m));
 
@@ -540,8 +564,9 @@ test_mdns_parser(void)
         data = net_parser->ip_pld.payload;
         data += sizeof(struct udphdr);
 
+        pld_len = net_parser->packet_len - net_parser->parsed;
         /* Parse the message */
-        message_parse(&m, data);
+        message_parse(&m, data, pld_len);
         rc = mdnsd_in(pctxt->dmn, &m, &ss);
         TEST_ASSERT_EQUAL(0, rc);
     }
@@ -629,7 +654,6 @@ int main(int argc, char *argv[])
 
     ut_init(ut_name, NULL, NULL);
     ut_setUp_tearDown(ut_name, mdns_plugin_setUp, mdns_plugin_tearDown);
-
     /* Node Info(Observation Point) tests */
     RUN_TEST(test_serialize_node_info);
     RUN_TEST(test_serialize_node_info_null_ptr);
@@ -656,7 +680,6 @@ int main(int argc, char *argv[])
     RUN_TEST(test_add_mdnsd_service);
     RUN_TEST(test_del_mdnsd_service);
     RUN_TEST(test_modify_mdnsd_service);
-
     /* Test parser */
     RUN_TEST(test_mdns_parser);
 

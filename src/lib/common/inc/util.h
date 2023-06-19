@@ -150,7 +150,42 @@ int    file_put(const char *path, const char *buf);
 char  *file_get(const char *path);
 #define file_geta(path) strdupafree(file_get(path))
 const int *unii_5g_chan2list(int chan, int width);
+/*
+ * Gets 6GHz channels list for required segment: width, chan1, chan2, ..., 0
+ * Function is limited to support channel width 20Mhz - 160 MHz
+ * @param channel included in segment
+ * @param width channel width required for segment
+ * @returns list of channels for required segment
+ */
 const int *unii_6g_chan2list(int chan, int width);
+/*
+ * Gets 6GHz channels list for requied segment.
+ * Functions below are specialised for 320MHz
+ * channels with respect to band scheme (_1/_2)
+ * @param channel
+ * @return pointer to the list of channels terminated
+ * by value '0'
+ */
+const int *unii_6g_320_1_chan2list(int chan);
+const int *unii_6g_320_2_chan2list(int chan);
+/*
+ * Checks if given center channel number matches
+ * any of the center channel numbers for respective
+ * band scheme
+ * @param center channel number
+ * @returns true if center channel matches given scheme
+ */
+bool unii_6g_is_320_1(int centerchan);
+bool unii_6g_is_320_2(int centerchan);
+/*
+ * Based on primary channel and selected band scheme (1/2)
+ * returns center channel number.
+ * @param primary channel
+ * @param band scheme, either 1 or 2, equivalent to 320-1
+ * 320-2 band specifiers.
+ * @returns center channel number
+ */
+int unii_6g_320_get_centerchan(int primary, int bandscheme);
 int chanlist_to_center(const int *chans);
 bool is_private_ip(char *ip_str);
 

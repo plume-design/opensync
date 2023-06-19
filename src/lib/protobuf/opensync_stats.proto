@@ -55,6 +55,7 @@ enum ChanWidth {
     CHAN_WIDTH_80MHZ                        = 5;
     CHAN_WIDTH_160MHZ                       = 6;
     CHAN_WIDTH_80_PLUS_80MHZ                = 7;
+    CHAN_WIDTH_320MHZ                       = 8;
 }
 
 enum WmmAc {
@@ -168,6 +169,7 @@ message Neighbor {
         optional ChanWidth  chan_width      = 5;
         required uint32     channel         = 6;
         optional DiffType   status          = 7;
+        optional uint32     c_freq0_chan    = 8;
     }
     required RadioBandType  band            = 1;
     required NeighborType   scan_type       = 2;
@@ -418,6 +420,8 @@ message Device {
         optional uint32          batt_level        = 3;
     }
     optional PowerInfo powerInfo                   = 11;
+    optional uint32    used_file_handles           = 12;
+    optional uint32    total_file_handles          = 13;
 
 }
 
@@ -571,5 +575,6 @@ message Report {
     repeated RssiReport     rssi_report     = 8;
     repeated ClientAuthFailsReport client_auth_fails_report = 9;
     repeated RadiusReport   radius_report   = 10;
+    optional string         power_mode      = 11;
 }
 

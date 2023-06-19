@@ -1220,6 +1220,30 @@ nl_80211_alloc_get_sta(struct nl_80211 *nl_80211,
 }
 
 struct nl_msg *
+nl_80211_alloc_set_vif_power_auto(struct nl_80211 *nl_80211,
+                                  uint32_t ifindex)
+{
+    struct nl_msg *msg = nlmsg_alloc();
+    nl_80211_put_cmd(nl_80211, msg, 0, NL80211_CMD_SET_WIPHY);
+    assert(nla_put_u32(msg, NL80211_ATTR_IFINDEX, ifindex) == 0);
+    assert(nla_put_u32(msg, NL80211_ATTR_WIPHY_TX_POWER_SETTING, NL80211_TX_POWER_AUTOMATIC) == 0);
+    return msg;
+}
+
+struct nl_msg *
+nl_80211_alloc_set_vif_power_fixed(struct nl_80211 *nl_80211,
+                                   uint32_t ifindex,
+                                   uint32_t mbm)
+{
+    struct nl_msg *msg = nlmsg_alloc();
+    nl_80211_put_cmd(nl_80211, msg, 0, NL80211_CMD_SET_WIPHY);
+    assert(nla_put_u32(msg, NL80211_ATTR_IFINDEX, ifindex) == 0);
+    assert(nla_put_u32(msg, NL80211_ATTR_WIPHY_TX_POWER_SETTING, NL80211_TX_POWER_FIXED) == 0);
+    assert(nla_put_u32(msg, NL80211_ATTR_WIPHY_TX_POWER_LEVEL, mbm) == 0);
+    return msg;
+}
+
+struct nl_msg *
 nl_80211_alloc_dump_scan(struct nl_80211 *nl_80211,
                          uint32_t ifindex)
 {
@@ -1256,6 +1280,20 @@ nl_80211_alloc_disconnect(struct nl_80211 *nl_80211,
     struct nl_msg *msg = nlmsg_alloc();
     nl_80211_put_cmd(nl_80211, msg, 0, NL80211_CMD_DISCONNECT);
     assert(nla_put_u32(msg, NL80211_ATTR_IFINDEX, ifindex) == 0);
+    return msg;
+}
+
+struct nl_msg *
+nl_80211_alloc_set_phy_antenna(struct nl_80211 *nl_80211,
+                               uint32_t wiphy,
+                               uint32_t tx_chainmask,
+                               uint32_t rx_chainmask)
+{
+    struct nl_msg *msg = nlmsg_alloc();
+    nl_80211_put_cmd(nl_80211, msg, 0, NL80211_CMD_SET_WIPHY);
+    assert(nla_put_u32(msg, NL80211_ATTR_WIPHY, wiphy) == 0);
+    assert(nla_put_u32(msg, NL80211_ATTR_WIPHY_ANTENNA_TX, tx_chainmask) == 0);
+    assert(nla_put_u32(msg, NL80211_ATTR_WIPHY_ANTENNA_RX, rx_chainmask) == 0);
     return msg;
 }
 

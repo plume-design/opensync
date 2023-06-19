@@ -19,7 +19,7 @@ menuconfig OVSDB_BOOTSTRAP
                 The list must be space delimited and each item
                 must take the format of
 
-                  phy:chainmask:htmode:hwmode:freqband:hwtype:arg1=val1,arg2=val2
+                  phy:chainmask:htmode:hwmode:freqband:hwtype:arg1=val1,arg2=val2:bct_int
 
                 Values can be encapsulated with "" to express
                 strings. These may not contain spaces, : or =
@@ -28,8 +28,7 @@ menuconfig OVSDB_BOOTSTRAP
                 populate hw_config column.
 
                 Example:
-
-                  wifi0:3:HT40:11n:2.4G:qca9563:dfs_usenol="1",dfs_enable="1" wifi1:15:HT80:11ac:5G:qca9882
+                  wifi0:240:HT80:11ax:5G:qca8074:dfs_usenol=\"1\",dfs_ignorecac=\"0\",dfs_enable=\"1\":100 wifi1:3:HT40:11ax:2.4G:qca8074::200
 
         config OVSDB_BOOTSTRAP_WIFI_STA_LIST
             string "List of wireless sta interfaces"

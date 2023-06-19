@@ -158,6 +158,18 @@ typedef void
 osw_state_sta_changed_fn_t(struct osw_state_observer *self,
                            const struct osw_state_sta_info *sta);
 
+typedef void
+osw_state_wps_success_fn_t(struct osw_state_observer *self,
+                           const struct osw_state_vif_info *vif);
+
+typedef void
+osw_state_wps_overlap_fn_t(struct osw_state_observer *self,
+                           const struct osw_state_vif_info *vif);
+
+typedef void
+osw_state_wps_pbc_timeout_fn_t(struct osw_state_observer *self,
+                               const struct osw_state_vif_info *vif);
+
 struct osw_state_observer {
     struct ds_dlist_node node;
     const char *name;
@@ -180,6 +192,9 @@ struct osw_state_observer {
     osw_state_sta_connected_fn_t *sta_connected_fn;
     osw_state_sta_disconnected_fn_t *sta_disconnected_fn;
     osw_state_sta_changed_fn_t *sta_changed_fn;
+    osw_state_wps_success_fn_t *wps_success_fn;
+    osw_state_wps_overlap_fn_t *wps_overlap_fn;
+    osw_state_wps_pbc_timeout_fn_t *wps_pbc_timeout_fn;
 };
 
 void

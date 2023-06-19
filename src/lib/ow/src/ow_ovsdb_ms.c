@@ -55,6 +55,15 @@ struct ow_ovsdb_ms {
     bool vif_exists;
     bool ovsdb_sync;
     bool ovsdb_exists;
+
+    /* This is used to allow signalling the port_state:
+     * <some_state> -> inactive -> active. This is necessary
+     * to workaround issue in CM which doesn't properly
+     * handle an unchanged port_state even when the
+     * underlying link was reloaded.
+     */
+    bool signal_disconnect;
+
     enum ow_ovsdb_ms_port_state vif_port_state;
     enum ow_ovsdb_ms_port_state ovsdb_port_state;
     ev_timer work;
@@ -120,7 +129,11 @@ ow_ovsdb_ms_sync(struct ow_ovsdb_ms *ms)
     ovsdb_table_t *table = &ms->root->table;
 
     if (ms->ovsdb_sync == false) return true;
-    if (ms->vif_port_state == ms->ovsdb_port_state) return true;
+    if (ms->ovsdb_exists == false) return true;
+
+    if (ms->vif_port_state == ms->ovsdb_port_state) {
+        if (ms->signal_disconnect == false) return true;
+    }
 
     LOGI("ow: ovsdb: ms: %s: setting from %s to %s",
          ms->vif_name,
@@ -130,6 +143,14 @@ ow_ovsdb_ms_sync(struct ow_ovsdb_ms *ms)
     struct schema_Wifi_Master_State state = {0};
     state._partial_update = true;
     SCHEMA_SET_STR(state.if_name, ms->vif_name);
+    if (ms->signal_disconnect) {
+        LOGI("ow: ovsdb: ms: %s: signalling disconnect through port_state blip",
+             ms->vif_name);
+        ms->signal_disconnect = false;
+        ow_ovsdb_ms_port_to_schema(&state, OW_OVSDB_MS_PORT_INACTIVE);
+        ovsdb_table_update(table, &state);
+    }
+
     ow_ovsdb_ms_port_to_schema(&state, ms->vif_port_state);
     int cnt = ovsdb_table_update(table, &state);
 
@@ -241,12 +262,13 @@ ow_ovsdb_ms_dump(struct ow_ovsdb_ms_root *root)
     LOGI("ow: ovsdb: ms: dumping");
 
     ds_tree_foreach(&root->tree, ms) {
-        LOGI("ow: ovsdb: ms: %s: exists=%d/%d active=%d/%d sync=%d work=%d/%d",
+        LOGI("ow: ovsdb: ms: %s: exists=%d/%d active=%d/%d disconnect=%d sync=%d work=%d/%d",
              ms->vif_name,
              ms->vif_exists,
              ms->ovsdb_exists,
              ms->vif_port_state,
              ms->ovsdb_port_state,
+             ms->signal_disconnect,
              ms->ovsdb_sync,
              ev_is_active(&ms->work),
              ev_is_pending(&ms->work));
@@ -283,11 +305,10 @@ ow_ovsdb_ms_set_vif(struct ow_ovsdb_ms_root *root,
         case OSW_VIF_UNDEFINED:
             break;
         case OSW_VIF_AP:
+        case OSW_VIF_AP_VLAN:
             ms->vif_port_state = vif->drv_state->enabled
                                ? OW_OVSDB_MS_PORT_ACTIVE
                                : OW_OVSDB_MS_PORT_INACTIVE;
-            break;
-        case OSW_VIF_AP_VLAN:
             break;
         case OSW_VIF_STA:
             ms->vif_port_state = (vif->drv_state->u.sta.link.status == OSW_DRV_VIF_STATE_STA_LINK_CONNECTED)
@@ -305,4 +326,27 @@ ow_ovsdb_ms_set_vif(struct ow_ovsdb_ms_root *root,
          ms->vif_name,
          ms->vif_exists,
          ow_ovsdb_ms_port_to_str(ms->vif_port_state));
+}
+
+void
+ow_ovsdb_ms_set_sta_disconnected(struct ow_ovsdb_ms_root *root,
+                                 const struct osw_state_sta_info *sta)
+{
+    const struct osw_state_vif_info *vif = sta->vif;
+    struct ow_ovsdb_ms *ms = ow_ovsdb_ms_get(root, vif->vif_name);
+
+    switch (vif->drv_state->vif_type) {
+        case OSW_VIF_STA:
+            ms->signal_disconnect = true;
+            break;
+        case OSW_VIF_UNDEFINED:
+        case OSW_VIF_AP:
+        case OSW_VIF_AP_VLAN:
+            break;
+    }
+
+    ow_ovsdb_ms_work_sched(ms);
+
+    LOGD("ow: ovsdb: ms: %s: disconnected",
+         ms->vif_name);
 }

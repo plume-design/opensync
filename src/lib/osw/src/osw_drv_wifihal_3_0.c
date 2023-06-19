@@ -1054,6 +1054,9 @@ osw_to_bw(enum osw_channel_width w)
         case OSW_CHANNEL_80MHZ: return WIFI_CHANNELBANDWIDTH_80MHZ;
         case OSW_CHANNEL_160MHZ: return WIFI_CHANNELBANDWIDTH_160MHZ;
         case OSW_CHANNEL_80P80MHZ: return WIFI_CHANNELBANDWIDTH_80_80MHZ;
+        case OSW_CHANNEL_320MHZ:
+            LOGW("%s: Unsupported bandwidth: %d", __func__, w);
+            break;
     }
     LOGW("%s: unknown bandwidth: %d", __func__, w);
     return WIFI_CHANNELBANDWIDTH_20MHZ;

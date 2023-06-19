@@ -53,6 +53,8 @@ struct ow_conf_phy {
     bool *ap_vht_enabled;
     bool *ap_he_enabled;
     int *tx_chainmask;
+    int *tx_power_dbm;
+    int *thermal_tx_chainmask;
     int *ap_beacon_interval_tu;
     struct osw_channel *ap_channel;
 };
@@ -64,6 +66,7 @@ struct ow_conf_vif {
 
     bool *enabled;
     enum osw_vif_type *type;
+    int *tx_power_dbm;
 
     struct osw_channel *ap_channel;
     struct osw_ssid *ap_ssid;
@@ -99,6 +102,7 @@ struct ow_conf_vif {
     uint16_t *ap_basic_rates;
     struct osw_beacon_rate *ap_beacon_rate;
     enum osw_pmf *ap_pmf;
+    struct osw_multi_ap *ap_multi_ap;
     enum osw_acl_policy *ap_acl_policy;
     struct ds_tree sta_net_tree;
 };
@@ -109,6 +113,8 @@ struct ow_conf_net {
     struct osw_psk psk;
     struct osw_hwaddr bssid;
     struct osw_wpa wpa;
+    struct osw_ifname bridge_if_name;
+    bool multi_ap;
 };
 
 struct ow_conf_acl {
@@ -132,6 +138,7 @@ struct ow_conf {
     struct ds_tree phy_tree;
     struct ds_tree vif_tree;
     struct ds_dlist obs_list;
+    bool *ap_vlan_enabled;
 };
 
 static int
@@ -198,7 +205,13 @@ ow_conf_conf_mutate_phy(struct ow_conf *self,
     if (ow_phy == NULL) return;
 
     if (ow_phy->enabled != NULL) osw_phy->enabled = *ow_phy->enabled;
-    if (ow_phy->tx_chainmask != NULL) osw_phy->tx_chainmask = *ow_phy->tx_chainmask;
+
+    if (ow_phy->thermal_tx_chainmask != NULL) {
+        osw_phy->tx_chainmask = *ow_phy->thermal_tx_chainmask;
+    }
+    else if (ow_phy->tx_chainmask != NULL) {
+        osw_phy->tx_chainmask = *ow_phy->tx_chainmask;
+    }
 }
 
 static void
@@ -275,7 +288,9 @@ ow_conf_conf_mutate_vif_ap(struct ow_conf_phy *ow_phy,
         if (ow_phy->ap_he_enabled != NULL) osw_vif->u.ap.mode.he_enabled = *ow_phy->ap_he_enabled;
         if (ow_phy->ap_beacon_interval_tu != NULL) osw_vif->u.ap.beacon_interval_tu = *ow_phy->ap_beacon_interval_tu;
         if (ow_phy->ap_channel != NULL) osw_vif->u.ap.channel = *ow_phy->ap_channel;
+        if (ow_phy->tx_power_dbm != NULL) osw_vif->tx_power_dbm = *ow_phy->tx_power_dbm;
     }
+    if (ow_vif->tx_power_dbm != NULL) osw_vif->tx_power_dbm = *ow_vif->tx_power_dbm;
     if (ow_vif->ap_channel != NULL) osw_vif->u.ap.channel = *ow_vif->ap_channel;
     if (ow_vif->ap_ssid != NULL) osw_vif->u.ap.ssid = *ow_vif->ap_ssid;
     if (ow_vif->ap_bridge_if_name != NULL) osw_vif->u.ap.bridge_if_name = *ow_vif->ap_bridge_if_name;
@@ -308,6 +323,7 @@ ow_conf_conf_mutate_vif_ap(struct ow_conf_phy *ow_phy,
     if (ow_vif->ap_wnm_bss_trans != NULL) osw_vif->u.ap.mode.wnm_bss_trans = *ow_vif->ap_wnm_bss_trans;
     if (ow_vif->ap_rrm_neighbor_report != NULL) osw_vif->u.ap.mode.rrm_neighbor_report = *ow_vif->ap_rrm_neighbor_report;
     if (ow_vif->ap_mcast2ucast != NULL) osw_vif->u.ap.mcast2ucast = *ow_vif->ap_mcast2ucast;
+    if (ow_vif->ap_multi_ap != NULL) osw_vif->u.ap.multi_ap = *ow_vif->ap_multi_ap;
 
     ow_conf_conf_mutate_acl(&ow_vif->ap_acl_tree, &osw_vif->u.ap.acl_tree);
     ow_conf_conf_mutate_psk(&ow_vif->ap_psk_tree, &osw_vif->u.ap.psk_tree);
@@ -318,6 +334,24 @@ ow_conf_conf_mutate_vif_ap(struct ow_conf_phy *ow_phy,
         LOGD("%s: beacon interval undefined, setting default: %d",
              vif_name,
              osw_vif->u.ap.beacon_interval_tu);
+    }
+}
+
+static void
+ow_conf_conf_mutate_vif_ap_vlan(struct ow_conf *conf,
+                                struct ow_conf_phy *ow_phy,
+                                struct ow_conf_vif *ow_vif,
+                                struct osw_conf_vif *osw_vif,
+                                bool vif_eligible)
+{
+    const bool vif_enabled_is_defined = (vif_eligible)
+                                     && (ow_vif->enabled != NULL);
+    const bool vif_enabled_is_undefined = !vif_enabled_is_defined;
+    const bool ap_vlan_enabled_can_override = vif_enabled_is_undefined;
+    const bool ap_vlan_is_defined = (conf->ap_vlan_enabled != NULL);
+
+    if (ap_vlan_is_defined && ap_vlan_enabled_can_override) {
+        osw_vif->enabled = *conf->ap_vlan_enabled;
     }
 }
 
@@ -345,6 +379,8 @@ ow_conf_conf_mutate_vif_sta(struct ow_conf_phy *ow_phy,
         memcpy(&n->bssid, &net->bssid, sizeof(n->bssid));
         memcpy(&n->psk, &net->psk, sizeof(n->psk));
         memcpy(&n->wpa, &net->wpa, sizeof(n->wpa));
+        memcpy(&n->bridge_if_name, &net->bridge_if_name, sizeof(n->bridge_if_name));
+        n->multi_ap = net->multi_ap;
         ds_dlist_insert_tail(list, n);
     }
 }
@@ -358,11 +394,13 @@ ow_conf_conf_mutate_vif(struct ow_conf *self,
     struct ow_conf_phy *ow_phy = ds_tree_find(&self->phy_tree, phy_name);
     struct ow_conf_vif *ow_vif = ds_tree_find(&self->vif_tree, vif_name);
     enum osw_vif_type type = osw_vif->vif_type;
+    const bool vif_defined = (ow_vif != NULL);
+    const bool phy_undefined = (vif_defined)
+                            && (ow_vif->phy_name == NULL);
+    const bool phy_mismatch = (vif_defined)
+                           && (phy_undefined || (strcmp(ow_vif->phy_name, phy_name) != 0));
+    const bool vif_eligible = vif_defined && !phy_mismatch;
 
-    if (ow_vif == NULL) return;
-    if (ow_vif->phy_name == NULL) return;
-
-    const bool phy_mismatch = (strcmp(ow_vif->phy_name, phy_name) != 0);
     if (phy_mismatch) {
         LOGN("ow: conf: %s: phy_name mismatch (configured %s, reported %s)",
              vif_name,
@@ -372,21 +410,31 @@ ow_conf_conf_mutate_vif(struct ow_conf *self,
     }
 
     /* FIXME: Use macro and add tracing */
-    if (ow_vif->enabled != NULL) osw_vif->enabled = *ow_vif->enabled;
+    if (vif_eligible) {
+        if (ow_vif->enabled != NULL) {
+            osw_vif->enabled = *ow_vif->enabled;
+        }
 
-    if (ow_vif->type != NULL)
-        type = *(ow_vif->type);
+        if (ow_vif->type != NULL) {
+            type = *(ow_vif->type);
+        }
+    }
 
     switch (type) {
         case OSW_VIF_UNDEFINED:
             break;
         case OSW_VIF_AP:
-            ow_conf_conf_mutate_vif_ap(ow_phy, ow_vif, osw_vif);
+            if (vif_eligible) {
+                ow_conf_conf_mutate_vif_ap(ow_phy, ow_vif, osw_vif);
+            }
             break;
         case OSW_VIF_AP_VLAN:
+            ow_conf_conf_mutate_vif_ap_vlan(self, ow_phy, ow_vif, osw_vif, vif_eligible);
             break;
         case OSW_VIF_STA:
-            ow_conf_conf_mutate_vif_sta(ow_phy, ow_vif, osw_vif);
+            if (vif_eligible) {
+                ow_conf_conf_mutate_vif_sta(ow_phy, ow_vif, osw_vif);
+            }
             break;
     }
 }
@@ -428,6 +476,45 @@ static struct ow_conf g_ow_conf = {
 };
 
 void
+ow_conf_ap_vlan_set_enabled(const bool *enabled)
+{
+    struct ow_conf *self = &g_ow_conf;
+
+    const bool setting = (self->ap_vlan_enabled == NULL)
+                      && (enabled != NULL);
+    const bool unsetting = (self->ap_vlan_enabled != NULL)
+                        && (enabled == NULL);
+    const bool changing = (self->ap_vlan_enabled != NULL)
+                       && (enabled != NULL)
+                       && (*self->ap_vlan_enabled != *enabled);
+
+    if (setting) {
+        LOGI("ow: conf: ap_vlan_enabled set to %d",
+              *enabled);
+    }
+    else if (unsetting) {
+        LOGI("ow: conf: ap_vlan_enabled unset from %d",
+             *self->ap_vlan_enabled);
+    }
+    else if (changing) {
+        LOGI("ow: conf: ap_vlan_enabled changed from %d to %d",
+             *self->ap_vlan_enabled,
+             *enabled);
+    }
+
+    FREE(self->ap_vlan_enabled);
+    self->ap_vlan_enabled = NULL;
+    if (enabled != NULL) {
+        self->ap_vlan_enabled = MEMNDUP(enabled, sizeof(*enabled));
+    }
+
+    const bool invalidated = (setting || unsetting || changing);
+    if (invalidated) {
+        osw_conf_invalidate(&self->conf_mutator);
+    }
+}
+
+void
 ow_conf_register_observer(struct ow_conf_observer *obs)
 {
     struct ow_conf *self = &g_ow_conf;
@@ -463,14 +550,18 @@ ow_conf_phy_unset(const char *phy_name)
 {
     struct ow_conf *self = &g_ow_conf;
     struct ow_conf_phy *phy = ow_conf_phy_get(self, phy_name);
+    ds_tree_remove(&self->phy_tree, phy);
+    FREE(phy->phy_name);
     FREE(phy->enabled);
     FREE(phy->ap_wmm_enabled);
     FREE(phy->ap_ht_enabled);
     FREE(phy->ap_vht_enabled);
     FREE(phy->ap_he_enabled);
     FREE(phy->tx_chainmask);
+    FREE(phy->tx_power_dbm);
+    FREE(phy->thermal_tx_chainmask);
     FREE(phy->ap_beacon_interval_tu);
-    ds_tree_remove(&self->phy_tree, phy);
+    FREE(phy->ap_channel);
     FREE(phy);
 }
 
@@ -766,7 +857,9 @@ ow_conf_vif_set_sta_net(const char *vif_name,
                         const struct osw_ssid *ssid,
                         const struct osw_hwaddr *bssid,
                         const struct osw_psk *psk,
-                        const struct osw_wpa *wpa)
+                        const struct osw_wpa *wpa,
+                        const struct osw_ifname *bridge_if_name,
+                        const bool *multi_ap)
 {
     struct ow_conf *self = &g_ow_conf;
     struct ow_conf_vif *vif = ow_conf_vif_get(self, vif_name);
@@ -783,16 +876,23 @@ ow_conf_vif_set_sta_net(const char *vif_name,
         const struct osw_hwaddr prev_bssid = net->bssid;
         const struct osw_psk prev_psk = net->psk;
         const struct osw_wpa prev_wpa = net->wpa;
+        const struct osw_ifname prev_bridge_if_name = net->bridge_if_name;
+        const bool prev_multi_ap = net->multi_ap;
 
         memset(&net->bssid, 0, sizeof(net->bssid));
         memset(&net->psk, 0, sizeof(net->psk));
         if (bssid != NULL) memcpy(&net->bssid, bssid, sizeof(*bssid));
         if (psk != NULL) memcpy(&net->psk, psk, sizeof(*psk));
+        if (bridge_if_name != NULL) memcpy(&net->bridge_if_name, bridge_if_name, sizeof(*bridge_if_name));
+        if (multi_ap != NULL) net->multi_ap = *multi_ap;
         memcpy(&net->wpa, wpa, sizeof(*wpa));
+        net->bridge_if_name.buf[sizeof(net->bridge_if_name.buf) - 1] = '\0';
 
         const bool bssid_changed = (memcmp(&prev_bssid, &net->bssid, sizeof(prev_bssid)) != 0);
         const bool psk_changed = (memcmp(&prev_psk, &net->psk, sizeof(prev_psk)) != 0);
         const bool wpa_changed = (memcmp(&prev_wpa, &net->wpa, sizeof(prev_wpa)) != 0);
+        const bool bridge_changed = (memcmp(&prev_bridge_if_name, &net->bridge_if_name, sizeof(prev_bridge_if_name)) != 0);
+        const bool multi_ap_changed = (prev_multi_ap != net->multi_ap);
 
         if (bssid_changed) {
             LOGI("ow: conf: %s: net: " OSW_SSID_FMT": bssid="OSW_HWADDR_FMT" -> "OSW_HWADDR_FMT,
@@ -823,6 +923,22 @@ ow_conf_vif_set_sta_net(const char *vif_name,
                  old_wpa,
                  new_wpa);
         }
+
+        if (bridge_changed) {
+            LOGI("ow: conf: %s: net: " OSW_SSID_FMT": bridge_if_name=%s -> %s",
+                 vif_name,
+                 OSW_SSID_ARG(&net->ssid),
+                 prev_bridge_if_name.buf,
+                 net->bridge_if_name.buf);
+        }
+
+        if (multi_ap_changed) {
+            LOGI("ow: conf: %s: net: " OSW_SSID_FMT": multi_ap=%d -> %d",
+                 vif_name,
+                 OSW_SSID_ARG(&net->ssid),
+                 prev_multi_ap,
+                 net->multi_ap);
+        }
     }
 
     if (wpa == NULL) {
@@ -844,7 +960,7 @@ ow_conf_vif_flush_sta_net(const char *vif_name)
     struct ow_conf_net *net;
 
     while ((net = ds_tree_head(&vif->sta_net_tree)) != NULL)
-        ow_conf_vif_set_sta_net(vif_name, &net->ssid, NULL, NULL, NULL);
+        ow_conf_vif_set_sta_net(vif_name, &net->ssid, NULL, NULL, NULL, NULL, NULL);
 }
 
 
@@ -880,6 +996,10 @@ ow_conf_vif_flush_sta_net(const char *vif_name)
 #define ARG_phy_enabled(x) x
 #define FMT_phy_tx_chainmask "0x%04x"
 #define ARG_phy_tx_chainmask(x) x
+#define FMT_phy_tx_power_dbm "%d"
+#define ARG_phy_tx_power_dbm(x) x
+#define FMT_phy_thermal_tx_chainmask "0x%04x"
+#define ARG_phy_thermal_tx_chainmask(x) x
 #define FMT_phy_ap_wmm_enabled "%d"
 #define ARG_phy_ap_wmm_enabled(x) x
 #define FMT_phy_ap_ht_enabled "%d"
@@ -901,6 +1021,8 @@ ow_conf_vif_flush_sta_net(const char *vif_name)
                          (x) == OSW_VIF_AP_VLAN ? "ap_vlan" : \
                          (x) == OSW_VIF_STA ? "sta" : \
                          "")
+#define FMT_vif_tx_power_dbm "%d"
+#define ARG_vif_tx_power_dbm(x) x
 #define FMT_vif_ap_channel OSW_CHANNEL_FMT
 #define ARG_vif_ap_channel(x) OSW_CHANNEL_ARG(&(x))
 #define FMT_vif_ap_ssid OSW_SSID_FMT
@@ -948,6 +1070,9 @@ ow_conf_vif_flush_sta_net(const char *vif_name)
                            (x) == OSW_PMF_OPTIONAL ? "optional" : \
                            (x) == OSW_PMF_REQUIRED ? "required" : \
                            "")
+#define FMT_vif_ap_multi_ap "%s%s"
+#define ARG_vif_ap_multi_ap(x) (x).backhaul_bss ? "back" : "", \
+                               (x).fronthaul_bss ? "front" : ""
 #define FMT_vif_ap_wps "%d"
 #define ARG_vif_ap_wps(x) x
 #define FMT_vif_ap_wmm "%d"
@@ -994,6 +1119,8 @@ ow_conf_vif_flush_sta_net(const char *vif_name)
 
 DEFINE_PHY_FIELD(enabled);
 DEFINE_PHY_FIELD(tx_chainmask);
+DEFINE_PHY_FIELD(tx_power_dbm);
+DEFINE_PHY_FIELD(thermal_tx_chainmask);
 DEFINE_PHY_FIELD(ap_wmm_enabled);
 DEFINE_PHY_FIELD(ap_ht_enabled);
 DEFINE_PHY_FIELD(ap_vht_enabled);
@@ -1003,6 +1130,7 @@ DEFINE_PHY_FIELD(ap_channel);
 
 DEFINE_VIF_FIELD(type);
 DEFINE_VIF_FIELD(enabled);
+DEFINE_VIF_FIELD(tx_power_dbm);
 
 DEFINE_VIF_FIELD(ap_channel);
 DEFINE_VIF_FIELD(ap_ssid);
@@ -1029,6 +1157,7 @@ DEFINE_VIF_FIELD(ap_group_rekey_seconds);
 DEFINE_VIF_FIELD(ap_ft_mobility_domain);
 DEFINE_VIF_FIELD(ap_beacon_interval_tu);
 DEFINE_VIF_FIELD(ap_pmf);
+DEFINE_VIF_FIELD(ap_multi_ap);
 DEFINE_VIF_FIELD(ap_acl_policy);
 DEFINE_VIF_FIELD(ap_wps);
 DEFINE_VIF_FIELD(ap_wmm);
@@ -1038,51 +1167,66 @@ DEFINE_VIF_FIELD(ap_rrm_neighbor_report);
 DEFINE_VIF_FIELD(ap_mcast2ucast);
 
 void
-ow_conf_vif_unset(const char *vif_name)
+ow_conf_vif_clear(const char *vif_name)
 {
-    struct ow_conf *self = &g_ow_conf;
-    struct ow_conf_vif *vif = ow_conf_vif_get(self, vif_name);
-
-    ds_tree_remove(&self->vif_tree, vif);
-
     ow_conf_vif_flush_ap_psk(vif_name);
     ow_conf_vif_flush_ap_acl(vif_name);
     ow_conf_vif_flush_ap_neigh(vif_name);
     ow_conf_vif_flush_sta_net(vif_name);
 
-    FREE(vif->phy_name);
+    ow_conf_vif_set_type(vif_name, NULL);
+    ow_conf_vif_set_tx_power_dbm(vif_name, NULL);
+    ow_conf_vif_set_ap_channel(vif_name, NULL);
+    ow_conf_vif_set_ap_ssid(vif_name, NULL);
+    ow_conf_vif_set_ap_bridge_if_name(vif_name, NULL);
+    ow_conf_vif_set_ap_ssid_hidden(vif_name, NULL);
+    ow_conf_vif_set_ap_isolated(vif_name, NULL);
+    ow_conf_vif_set_ap_ht_enabled(vif_name, NULL);
+    ow_conf_vif_set_ap_vht_enabled(vif_name, NULL);
+    ow_conf_vif_set_ap_he_enabled(vif_name, NULL);
+    ow_conf_vif_set_ap_ht_required(vif_name, NULL);
+    ow_conf_vif_set_ap_vht_required(vif_name, NULL);
+    ow_conf_vif_set_ap_supp_rates(vif_name, NULL);
+    ow_conf_vif_set_ap_basic_rates(vif_name, NULL);
+    ow_conf_vif_set_ap_beacon_rate(vif_name, NULL);
+    ow_conf_vif_set_ap_wpa(vif_name, NULL);
+    ow_conf_vif_set_ap_rsn(vif_name, NULL);
+    ow_conf_vif_set_ap_pairwise_tkip(vif_name, NULL);
+    ow_conf_vif_set_ap_pairwise_ccmp(vif_name, NULL);
+    ow_conf_vif_set_ap_akm_psk(vif_name, NULL);
+    ow_conf_vif_set_ap_akm_sae(vif_name, NULL);
+    ow_conf_vif_set_ap_akm_ft_psk(vif_name, NULL);
+    ow_conf_vif_set_ap_akm_ft_sae(vif_name, NULL);
+    ow_conf_vif_set_ap_group_rekey_seconds(vif_name, NULL);
+    ow_conf_vif_set_ap_ft_mobility_domain(vif_name, NULL);
+    ow_conf_vif_set_ap_beacon_interval_tu(vif_name, NULL);
+    ow_conf_vif_set_ap_pmf(vif_name, NULL);
+    ow_conf_vif_set_ap_multi_ap(vif_name, NULL);
+    ow_conf_vif_set_ap_acl_policy(vif_name, NULL);
+    ow_conf_vif_set_ap_wps(vif_name, NULL);
+    ow_conf_vif_set_ap_wmm(vif_name, NULL);
+    ow_conf_vif_set_ap_wmm_uapsd(vif_name, NULL);
+    ow_conf_vif_set_ap_wnm_bss_trans(vif_name, NULL);
+    ow_conf_vif_set_ap_rrm_neighbor_report(vif_name, NULL);
+    ow_conf_vif_set_ap_mcast2ucast(vif_name, NULL);
+}
+
+void
+ow_conf_vif_unset(const char *vif_name)
+{
+    struct ow_conf *self = &g_ow_conf;
+    struct ow_conf_vif *vif = ow_conf_vif_get_ro(self, vif_name);
+    if (vif == NULL) return;
+
+    ow_conf_vif_clear(vif_name);
+    ow_conf_vif_set_enabled(vif_name, NULL);
+    ow_conf_vif_set_phy_name(vif->vif_name, NULL);
+
+    ds_tree_remove(&self->vif_tree, vif);
+
     FREE(vif->vif_name);
-    FREE(vif->type);
-    FREE(vif->enabled);
-
-    FREE(vif->ap_channel);
-    FREE(vif->ap_ssid);
-    FREE(vif->ap_bridge_if_name);
-    FREE(vif->ap_ssid_hidden);
-    FREE(vif->ap_isolated);
-    FREE(vif->ap_ht_enabled);
-    FREE(vif->ap_vht_enabled);
-    FREE(vif->ap_he_enabled);
-    FREE(vif->ap_ht_required);
-    FREE(vif->ap_vht_required);
-    FREE(vif->ap_supp_rates);
-    FREE(vif->ap_basic_rates);
-    FREE(vif->ap_beacon_rate);
-    FREE(vif->ap_wpa);
-    FREE(vif->ap_rsn);
-    FREE(vif->ap_pairwise_tkip);
-    FREE(vif->ap_pairwise_ccmp);
-    FREE(vif->ap_akm_psk);
-    FREE(vif->ap_akm_sae);
-    FREE(vif->ap_akm_ft_psk);
-    FREE(vif->ap_akm_ft_sae);
-    FREE(vif->ap_group_rekey_seconds);
-    FREE(vif->ap_ft_mobility_domain);
-    FREE(vif->ap_beacon_interval_tu);
-    FREE(vif->ap_pmf);
-    FREE(vif->ap_acl_policy);
-
     FREE(vif);
+    osw_conf_invalidate(&self->conf_mutator);
 }
 
 bool

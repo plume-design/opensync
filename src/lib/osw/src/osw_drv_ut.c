@@ -751,6 +751,36 @@ OSW_UT(osw_drv_ut_frame_tx_reuse_desc)
     assert(frame_a.submitted_cnt == 1);
     assert(frame_a.failed_cnt == 1);
     assert(frame_a.dropped_cnt == 0);
+
+    /*
+     * Cancel before even scheduling work
+     */
+    assert(osw_mux_frame_tx_schedule("phy2", "vif3", frame_a_desc) == true);
+    assert(osw_drv_frame_tx_desc_is_scheduled(frame_a_desc) == true);
+    osw_drv_frame_tx_desc_cancel(frame_a_desc);
+    assert(osw_drv_frame_tx_desc_is_scheduled(frame_a_desc) == false);
+    osw_drv_ut_work(&obs1);
+
+    assert(osw_drv_frame_tx_desc_is_scheduled(frame_a_desc) == false);
+    assert(frame_a.submitted_cnt == 1);
+    assert(frame_a.failed_cnt == 1);
+    assert(frame_a.dropped_cnt == 1);
+
+    /*
+     * Cancel before driver reports anything, but after it was pushed to driver
+     */
+    drv1.push_frame_tx_fn = osw_drv_ut_push_frame_tx_nop_cb;
+    assert(osw_mux_frame_tx_schedule("phy2", "vif3", frame_a_desc) == true);
+    assert(osw_drv_frame_tx_desc_is_scheduled(frame_a_desc) == true);
+    osw_drv_ut_work(&obs1);
+
+    assert(osw_drv_frame_tx_desc_is_scheduled(frame_a_desc) == true);
+    osw_drv_frame_tx_desc_cancel(frame_a_desc);
+    assert(osw_drv_frame_tx_desc_is_scheduled(frame_a_desc) == false);
+    assert(frame_a.submitted_cnt == 1);
+    assert(frame_a.failed_cnt == 1);
+    assert(frame_a.dropped_cnt == 2);
+
 }
 
 OSW_UT(osw_drv_ut_frame_tx_no_drv_feedback_after_push)

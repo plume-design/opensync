@@ -30,6 +30,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stddef.h>
 #include <string.h>
 #include <stdio.h>
+#include <math.h>
 #include <endian.h>
 #include <osw_types.h>
 #include <osw_util.h>
@@ -510,6 +511,16 @@ osw_parse_assoc_req_ies(const void *assoc_req_ies,
     }
 
     return true;
+}
+
+double
+osw_periodic_get_next(const double interval_seconds,
+                      const double offset_seconds,
+                      const double now)
+{
+    if (interval_seconds <= 0) return 0;
+    if (fabs(offset_seconds) >= interval_seconds) return 0;
+    return ((floor(now / interval_seconds) + 1) * interval_seconds) + offset_seconds;
 }
 
 #include "osw_util_ut.c"

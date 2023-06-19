@@ -148,6 +148,7 @@ struct ow_stats_conf_entry_params {
     enum ow_stats_conf_stats_type stats_type;
     double sample_seconds;
     double report_seconds;
+    unsigned int report_limit;
     unsigned int holdoff_busy_threshold;
     unsigned int holdoff_delay_seconds;
     unsigned int dwell_time_msec;
@@ -167,6 +168,7 @@ struct ow_stats_conf_entry {
     struct ow_stats_conf_entry_params params_next;
     struct osw_scan_sched *scan;
     struct osw_stats_subscriber *util_sub;
+    unsigned int report_counter;
     int last_util;
     double scan_delayed_until;
     double report_at;
@@ -295,6 +297,7 @@ ow_stats_conf_entry_params_changed(const struct ow_stats_conf_entry_params *a,
         || (a->stats_type != b->stats_type)
         || (a->sample_seconds != b->sample_seconds)
         || (a->report_seconds != b->report_seconds)
+        || (a->report_limit != b->report_limit)
         || (a->dwell_time_msec != b->dwell_time_msec)
         || (a->holdoff_busy_threshold != b->holdoff_busy_threshold)
         || (a->holdoff_delay_seconds != b->holdoff_delay_seconds)
@@ -1082,6 +1085,10 @@ ow_stats_conf_entry_report(struct ow_stats_conf_entry *e,
         break;
     }
 
+    if (e->params.report_limit != 0 && e->report_counter < e->params.report_limit) {
+        e->report_counter++;
+    }
+
     assert(e->params.report_seconds > 0);
     e->report_at = (floor(now_mono / e->params.report_seconds) + 1) * e->params.report_seconds;
     e->underrun = 0;
@@ -1503,7 +1510,14 @@ ow_stats_conf_entry_process__(struct ow_stats_conf_entry *e)
     ow_stats_conf_entry_params_free(&e->params);
     ow_stats_conf_entry_params_copy(&e->params, &e->params_next);
 
+    const bool limit_reached = (e->params.report_limit != 0)
+                            && (e->report_counter >= e->params.report_limit);
+
     if (changed == true) {
+        processed = false;
+    }
+
+    if (limit_reached == true) {
         processed = false;
     }
 
@@ -1521,6 +1535,14 @@ ow_stats_conf_entry_process__(struct ow_stats_conf_entry *e)
 
     if (e->params.radio_type == OW_STATS_CONF_RADIO_TYPE_UNSPEC) {
         LOGD("%s: %s: radio type unspec", __func__, e->id);
+        return OW_STATS_CONF_ENTRY_PROCESS_STOP;
+    }
+
+    if (limit_reached == true) {
+        if (e->sub == NULL) {
+            return OW_STATS_CONF_ENTRY_PROCESS_NOP;
+        }
+        WARN_ON(e->report_counter > e->params.report_limit);
         return OW_STATS_CONF_ENTRY_PROCESS_STOP;
     }
 
@@ -1610,6 +1632,15 @@ ow_stats_conf_entry_set_reporting(struct ow_stats_conf_entry *e,
     osw_timer_arm_at_nsec(&e->conf->work, 0);
     e->params_next.valid = true;
     e->params_next.report_seconds = seconds;
+}
+
+void
+ow_stats_conf_entry_set_reporting_limit(struct ow_stats_conf_entry *e,
+                                        unsigned int count)
+{
+    osw_timer_arm_at_nsec(&e->conf->work, 0);
+    e->params_next.valid = true;
+    e->params_next.report_limit = count;
 }
 
 void
@@ -2169,4 +2200,79 @@ OSW_UT(ow_stats_conf_process)
     ow_stats_conf_entry_reset(&e1);
     op = ow_stats_conf_entry_process__(&e1);
     assert(op == OW_STATS_CONF_ENTRY_PROCESS_FREE);
+}
+
+OSW_UT(ow_stats_conf_report_counter)
+{
+    struct ow_stats_conf c;
+    MEMZERO(c);
+    struct ow_stats_conf_entry e1 = {
+        .conf = &c,
+        .id = "e1",
+    };
+
+    OSW_MODULE_LOAD(osw_stats);
+    ow_stats_conf_init(&c);
+    ow_stats_conf_entry_set_radio_type(&e1, OW_STATS_CONF_RADIO_TYPE_2G);
+    ow_stats_conf_entry_set_scan_type(&e1, OW_STATS_CONF_SCAN_TYPE_ON_CHAN);
+    ow_stats_conf_entry_set_stats_type(&e1, OW_STATS_CONF_STATS_TYPE_CLIENT);
+    ow_stats_conf_entry_set_sampling(&e1, 1);
+    ow_stats_conf_entry_set_reporting(&e1, 1);
+    ow_stats_conf_entry_set_reporting_limit(&e1, 3);
+
+    assert(ow_stats_conf_entry_process__(&e1) == OW_STATS_CONF_ENTRY_PROCESS_START);
+    ow_stats_conf_entry_start(&e1, 0.0);
+    assert(e1.params.report_limit == 3);
+    assert(e1.report_counter == 0);
+    assert(ow_stats_conf_entry_process__(&e1) == OW_STATS_CONF_ENTRY_PROCESS_NOP);
+
+    ow_stats_conf_entry_report(&e1, 1.5, 1.5);
+    assert(e1.report_counter == 1);
+    assert(ow_stats_conf_entry_process__(&e1) == OW_STATS_CONF_ENTRY_PROCESS_NOP);
+
+    e1.last_sub_reported_at = 2.3;
+    ow_stats_conf_entry_report(&e1, 2.5, 2.5);
+    assert(e1.report_counter == 2);
+    assert(ow_stats_conf_entry_process__(&e1) == OW_STATS_CONF_ENTRY_PROCESS_NOP);
+
+    e1.last_sub_reported_at = 3.3;
+    ow_stats_conf_entry_report(&e1, 3.5, 3.5);
+    assert(e1.report_counter == 3);
+    assert(ow_stats_conf_entry_process__(&e1) == OW_STATS_CONF_ENTRY_PROCESS_STOP);
+
+    e1.last_sub_reported_at = 4.3;
+    ow_stats_conf_entry_report(&e1, 4.5, 4.5);
+    assert(e1.report_counter == 3);
+
+    ow_stats_conf_entry_stop(&e1);
+    assert(ow_stats_conf_entry_process__(&e1) == OW_STATS_CONF_ENTRY_PROCESS_NOP);
+
+    ow_stats_conf_entry_set_radio_type(&e1, OW_STATS_CONF_RADIO_TYPE_2G);
+    assert(ow_stats_conf_entry_process__(&e1) == OW_STATS_CONF_ENTRY_PROCESS_NOP);
+
+    ow_stats_conf_entry_set_reporting_limit(&e1, 2);
+    assert(e1.report_counter == 3);
+    assert(ow_stats_conf_entry_process__(&e1) == OW_STATS_CONF_ENTRY_PROCESS_NOP);
+
+    ow_stats_conf_entry_set_reporting_limit(&e1, 5);
+    assert(e1.report_counter == 3);
+    assert(ow_stats_conf_entry_process__(&e1) == OW_STATS_CONF_ENTRY_PROCESS_START);
+
+    ow_stats_conf_entry_start(&e1, 0.0);
+    assert(e1.params.report_limit == 5);
+    assert(e1.report_counter == 3);
+    assert(ow_stats_conf_entry_process__(&e1) == OW_STATS_CONF_ENTRY_PROCESS_NOP);
+
+    e1.last_sub_reported_at = 5.3;
+    ow_stats_conf_entry_report(&e1, 5.5, 5.5);
+    assert(e1.report_counter == 4);
+    assert(ow_stats_conf_entry_process__(&e1) == OW_STATS_CONF_ENTRY_PROCESS_NOP);
+
+    e1.last_sub_reported_at = 6.3;
+    ow_stats_conf_entry_report(&e1, 6.5, 6.5);
+    assert(e1.report_counter == 5);
+    assert(ow_stats_conf_entry_process__(&e1) == OW_STATS_CONF_ENTRY_PROCESS_STOP);
+
+    ow_stats_conf_entry_stop(&e1);
+    assert(ow_stats_conf_entry_process__(&e1) == OW_STATS_CONF_ENTRY_PROCESS_NOP);
 }

@@ -110,6 +110,7 @@ struct osfw_nfinet {
 struct osfw_nfbase {
 	struct osfw_nfinet inet;
 	struct osfw_nfinet inet6;
+	osfw_fn_t *osfw_fn;
 };
 
 #endif /* OSN_FW_PRI_H_INCLUDED */

@@ -82,8 +82,7 @@ bool lan_clients_add_oftag(char *oftag)
     return true;
 }
 
-
-int lan_clients_oftag_add_mac(char *mac)
+static int lan_clients_oftag_mutate_mac(char *mac, bool add)
 {
     json_t *result = NULL;
     json_t *where = NULL;
@@ -92,7 +91,7 @@ int lan_clients_oftag_add_mac(char *mac)
     int cnt = 0;
     char *oftag = OFTAG_LOCAL_ETH_DEVICES;
 
-    LOGD("%s: setting oftag='%s'", mac, oftag);
+    LOGD("%s: %s oftag='%s'", mac, (add) ? "setting" : "removing", oftag);
 
     where = ovsdb_where_simple("name", oftag);
     if (!where)
@@ -102,7 +101,7 @@ int lan_clients_oftag_add_mac(char *mac)
     }
 
     row = ovsdb_mutation("device_value",
-                         json_string("insert"),
+                         (add) ? json_string("insert") : json_string("delete"),
                          json_string(mac));
     if (!row)
     {
@@ -147,69 +146,14 @@ error_where:
 
 }
 
+int lan_clients_oftag_add_mac(char *mac)
+{
+    return lan_clients_oftag_mutate_mac(mac, true);
+}
+
 int lan_clients_oftag_remove_mac(char *mac)
 {
-    json_t *result;
-    json_t *where;
-    json_t *rows;
-    json_t *row;
-    char col[32];
-    char val[32];
-    int cnt;
-
-    LOGD("%s: removing oftag", mac);
-
-    snprintf(col, sizeof(col), "device_value");
-    tsnprintf(val, sizeof(val), "%s", mac);
-
-    where = ovsdb_tran_cond(OCLM_STR, col, OFUNC_INC, val);
-    if (!where) {
-        LOGW("%s: failed to allocate ovsdb condition, oom?", mac);
-        goto error_where;
-    }
-
-    row = ovsdb_mutation("device_value",
-                         json_string("delete"),
-                         json_string(mac));
-    if (!row) {
-        LOGW("%s: failed to allocate ovsdb mutation, oom?", mac);
-        goto error_row;
-    }
-
-    rows = json_array();
-    if (!rows) {
-        LOGW("%s: failed to allocate ovsdb mutation list, oom?", mac);
-        goto error_rows;
-    }
-
-    json_array_append_new(rows, row);
-
-    result = ovsdb_tran_call_s(OVSDB_OPENFLOW_TAG_TABLE,
-                               OTR_MUTATE,
-                               where,
-                               rows);
-    if (!result) {
-        LOGW("%s: failed to execute ovsdb transact", mac);
-        goto error_result;
-    }
-
-    cnt = ovsdb_get_update_result_count(result,
-                                        OVSDB_OPENFLOW_TAG_TABLE,
-                                        "mutate");
-
-    return cnt;
-
-error_result:
-    if (rows != NULL)
-        json_decref(rows);
-error_rows:
-    if (row != NULL)
-        json_decref(row);
-error_row:
-    if (where != NULL)
-        json_decref(where);
-error_where:
-    return -1;
+    return lan_clients_oftag_mutate_mac(mac, false);
 }
 
 int nm2_mac_tags_ovsdb_init(void)

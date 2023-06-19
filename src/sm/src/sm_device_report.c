@@ -220,11 +220,13 @@ void sm_device_report (EV_P_ ev_timer *w, int revents)
         get_timestamp();
 
     LOG(INFO,
-        "uptime=%u, mem=%u/%u, cpu=%u",
+        "uptime=%u, mem=%u/%u, cpu=%u, file_handles=%u/%u",
         report_ctx->record.uptime,
         report_ctx->record.mem_util.mem_used,
         report_ctx->record.mem_util.mem_total,
-        report_ctx->record.cpu_util.cpu_util);
+        report_ctx->record.cpu_util.cpu_util,
+        report_ctx->record.used_file_handles,
+        report_ctx->record.total_file_handles);
 
     LOG(INFO,
         "Sending device report at '%s'",

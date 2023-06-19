@@ -44,7 +44,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define DM_CLI_SHOW_INFO_MANUFACTURER   "manufacturer"
 #define DM_CLI_SHOW_INFO_FACTORY        "factory"
 #define DM_CLI_SHOW_INFO_MFG_DATE       "manufacturer_date"
-#define DM_CLI_SHOW_OVS_VERSION         "ovs-version"
 
 
 static int dm_cli_show_info(char *opt)
@@ -95,10 +94,6 @@ static int dm_cli_show_info(char *opt)
     if (!opt || !strcmp(opt, DM_CLI_SHOW_INFO_MFG_DATE))
     {
         printf(DM_CLI_SHOW_INFO_MFG_DATE"=%s\n", osp_unit_mfg_date_get(buf, buflen) ? buf : "?");
-    }
-    if (!opt || !strcmp(opt, DM_CLI_SHOW_OVS_VERSION))
-    {
-        printf(DM_CLI_SHOW_OVS_VERSION"=%s\n", osp_unit_ovs_version_get(buf, buflen) ? buf : "?");
     }
 
     return DM_CLI_DONE;

@@ -76,7 +76,7 @@ ow_ovsdb_cconf_apply_on_vif(const char *vif_name, struct ds_tree *cc_rows)
         STRSCPY_WARN(ssid.buf, c->ssid);
         ssid.len = strlen(ssid.buf);
 
-        ow_conf_vif_set_sta_net(vif_name, &ssid, &bssid, &psk, &wpa);
+        ow_conf_vif_set_sta_net(vif_name, &ssid, &bssid, &psk, &wpa, NULL, NULL);
     }
 }
 

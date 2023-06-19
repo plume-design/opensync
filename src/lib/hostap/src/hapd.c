@@ -797,6 +797,7 @@ hapd_11n_enabled(const struct schema_Wifi_Radio_Config *rconf)
 {
     if (!rconf->hw_mode_exists) return 0;
     if ((!strcmp(rconf->hw_mode, "11ax"))
+        || (!strcmp(rconf->hw_mode, "11be"))
         || (!strcmp(rconf->hw_mode, "11ac"))
         || (!strcmp(rconf->hw_mode, "11n")))
         return 1;
@@ -808,6 +809,7 @@ hapd_11ac_enabled(const struct schema_Wifi_Radio_Config *rconf)
 {
     if (!rconf->hw_mode_exists) return 0;
     if ((!strcmp(rconf->hw_mode, "11ax"))
+        || (!strcmp(rconf->hw_mode, "11be"))
         || (!strcmp(rconf->hw_mode, "11ac")))
         return 1;
     return 0;
@@ -817,7 +819,17 @@ static int
 hapd_11ax_enabled(const struct schema_Wifi_Radio_Config *rconf)
 {
     if (!rconf->hw_mode_exists) return 0;
-    if (!strcmp(rconf->hw_mode, "11ax"))
+    if (!strcmp(rconf->hw_mode, "11ax")
+        || (!strcmp(rconf->hw_mode, "11be")))
+        return 1;
+    return 0;
+}
+
+static int
+hapd_11be_enabled(const struct schema_Wifi_Radio_Config *rconf)
+{
+    if (!rconf->hw_mode_exists) return 0;
+    if (!strcmp(rconf->hw_mode, "11be"))
         return 1;
     return 0;
 }
@@ -913,10 +925,13 @@ hapd_op_class_6ghz_from_ht_mode(const char *ht_mode)
         op_code = 133;
     else if (!strcmp(ht_mode, "HT160"))
         op_code = 134;
+    else if (!strcmp(ht_mode, "HT320"))
+        op_code = 137;
 
     return op_code;
 }
 
+/* Get operating channel width for 80211n, 80211ac, 80211ax */
 static int
 hapd_util_get_oper_chwidth(const struct schema_Wifi_Radio_Config *rconf)
 {
@@ -926,21 +941,39 @@ hapd_util_get_oper_chwidth(const struct schema_Wifi_Radio_Config *rconf)
         return 0;
     else if (!strcmp(rconf->ht_mode, "HT80"))
         return 1;
-    else if (!strcmp(rconf->ht_mode, "HT160"))
+    else if (!strcmp(rconf->ht_mode, "HT160") ||
+             !strcmp(rconf->ht_mode, "HT320"))
         return 2;
 
     LOGT("%s: %s is incorrect htmode", __func__, rconf->ht_mode);
     return 0;
 }
 
+/* Get operating channel width for 80211be */
+static int
+hapd_util_get_eht_oper_chwidth(const struct schema_Wifi_Radio_Config *rconf)
+{
+    if (!rconf->ht_mode_exists) return 0;
+
+    if (!strcmp(rconf->ht_mode, "HT320"))
+        return 9;
+    else
+        return hapd_util_get_oper_chwidth(rconf);
+}
+
+/* Get center frequency index for 80211n, 80211ac, 80211ax */
 static int
 hapd_util_get_oper_centr_freq_idx(const struct schema_Wifi_Radio_Config *rconf)
 {
-    const int width = atoi(strlen(rconf->ht_mode) > 2 ? rconf->ht_mode + 2 : "20");
+    int width = atoi(strlen(rconf->ht_mode) > 2 ? rconf->ht_mode + 2 : "20");
     const int *chans = NULL;
 
     if (!rconf->freq_band_exists || !rconf->channel_exists)
         return 0;
+
+    /* Downgrade channel width from 320MHz to 160MHz */
+    if (width == 320)
+        width = 160;
 
     if (!strcmp(rconf->freq_band, SCHEMA_CONSTS_RADIO_TYPE_STR_6G))
         chans = unii_6g_chan2list(rconf->channel, width);
@@ -1606,6 +1639,8 @@ hapd_conf_gen2(struct hapd *hapd,
     csnprintf(&buf, &len, "ieee80211ac=%d\n", hapd_11ac_enabled(rconf));
     csnprintf(&buf, &len, "%s", hapd->ieee80211ax ? "" : "#");
     csnprintf(&buf, &len, "ieee80211ax=%d\n", hapd_11ax_enabled(rconf));
+    csnprintf(&buf, &len, "%s", hapd->ieee80211be ? "" : "#");
+    csnprintf(&buf, &len, "ieee80211be=%d\n", hapd_11be_enabled(rconf));
     if (hapd->use_driver_iface_addr == true) {
         csnprintf(&buf, &len, "use_driver_iface_addr=1\n");
     }
@@ -1623,6 +1658,10 @@ hapd_conf_gen2(struct hapd *hapd,
             csnprintf(&buf, &len, "vht_oper_chwidth=%d\n", hapd_util_get_oper_chwidth(rconf));
             csnprintf(&buf, &len, "vht_oper_centr_freq_seg0_idx=%d\n",
                       hapd_util_get_oper_centr_freq_idx(rconf));
+        }
+        if (hapd->ieee80211be && hapd_11be_enabled(rconf) && !WARN_ON(!rconf->center_freq0_chan_exists)) {
+            csnprintf(&buf, &len, "eht_oper_chwidth=%d\n", hapd_util_get_eht_oper_chwidth(rconf));
+            csnprintf(&buf, &len, "eht_oper_centr_freq_seg0_idx=%d\n", rconf->center_freq0_chan);
         }
     }
 
@@ -1661,6 +1700,9 @@ hapd_conf_gen2(struct hapd *hapd,
 
     if (vconf->group_rekey_exists && vconf->group_rekey >= 0)
         csnprintf(&buf, &len, "wpa_group_rekey=%d\n", vconf->group_rekey);
+
+    if (rconf->bcn_int_exists && rconf->bcn_int >= 0)
+        csnprintf(&buf, &len, "beacon_int=%d\n", rconf->bcn_int);
 
     if (vconf->wpa_exists) {
         if (util_vif_pairwise_supported(vconf)) {

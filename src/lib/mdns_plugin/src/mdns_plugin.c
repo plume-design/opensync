@@ -292,6 +292,7 @@ mdns_plugin_process_message(struct mdns_session *m_session)
     unsigned char *data;
     uint16_t mdns_default_port;
     struct message m;
+    size_t pld_len;
     bool is_ip;
     bool ret;
     int rc = 0;
@@ -346,8 +347,10 @@ mdns_plugin_process_message(struct mdns_session *m_session)
     data = net_parser->ip_pld.payload;
     data += sizeof(struct udphdr);
 
+    /* Get udp payload len */
+    pld_len = net_parser->packet_len - net_parser->parsed;
     /* Parse the message */
-    message_parse(&m, data);
+    message_parse(&m, data, pld_len);
     rc = mdnsd_in(pctxt->dmn, &m, &ss);
     if (!rc)
     {

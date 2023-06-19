@@ -73,9 +73,14 @@ void ow_conf_register_observer(struct ow_conf_observer *obs);
 
 bool ow_conf_is_settled(void);
 
+/* Can be used to auto-enable ap-vlan interfaces */
+void ow_conf_ap_vlan_set_enabled(const bool *enable);
+
 void ow_conf_phy_unset(const char *phy_name);
 void ow_conf_phy_set_enabled(const char *phy_name, const bool *enabled);
 void ow_conf_phy_set_tx_chainmask(const char *phy_name, const int *tx_chainmask);
+void ow_conf_phy_set_thermal_tx_chainmask(const char *phy_name, const int *tx_chainmask);
+void ow_conf_phy_set_tx_power_dbm(const char *phy_name, const int *tx_power_dbm);
 void ow_conf_phy_set_ap_wmm_enabled(const char *phy_name, const bool *enabled);
 void ow_conf_phy_set_ap_ht_enabled(const char *phy_name, const bool *enabled);
 void ow_conf_phy_set_ap_vht_enabled(const char *phy_name, const bool *enabled);
@@ -87,10 +92,12 @@ bool ow_conf_phy_is_set(const char *phy_name);
 const bool *ow_conf_phy_get_enabled(const char *phy_name);
 const int *ow_conf_phy_get_tx_chainmask(const char *phy_name);
 
+void ow_conf_vif_clear(const char *vif_name);
 void ow_conf_vif_unset(const char *vif_name);
 void ow_conf_vif_set_phy_name(const char *vif_name, const char *phy_name);
 void ow_conf_vif_set_type(const char *vif_name, const enum osw_vif_type *type);
 void ow_conf_vif_set_enabled(const char *vif_name, const bool *enabled);
+void ow_conf_vif_set_tx_power_dbm(const char *vif_name, const int *tx_power_dbm);
 void ow_conf_vif_set_ap_channel(const char *vif_name, const struct osw_channel *channel);
 void ow_conf_vif_set_ap_ssid(const char *vif_name, const struct osw_ssid *ssid);
 void ow_conf_vif_set_ap_bridge_if_name(const char *vif_name, const struct osw_ifname *bridge_if_name);
@@ -113,6 +120,7 @@ void ow_conf_vif_set_ap_akm_sae(const char *vif_name, const bool *sae_enabled);
 void ow_conf_vif_set_ap_akm_ft_psk(const char *vif_name, const bool *ft_psk_enabled);
 void ow_conf_vif_set_ap_akm_ft_sae(const char *vif_name, const bool *ft_sae_enabled);
 void ow_conf_vif_set_ap_pmf(const char *vif_name, const enum osw_pmf *pmf);
+void ow_conf_vif_set_ap_multi_ap(const char *vif_name, const struct osw_multi_ap *multi_ap);
 void ow_conf_vif_set_ap_group_rekey_seconds(const char *vif_name, const int *seconds);
 void ow_conf_vif_set_ap_ft_mobility_domain(const char *vif_name, const int *mdid);
 void ow_conf_vif_set_ap_beacon_interval_tu(const char *vif_name, const int *tu);
@@ -129,7 +137,9 @@ void ow_conf_vif_set_sta_net(const char *vif_name,
                              const struct osw_ssid *ssid,
                              const struct osw_hwaddr *bssid,
                              const struct osw_psk *psk,
-                             const struct osw_wpa *wpa);
+                             const struct osw_wpa *wpa,
+                             const struct osw_ifname *bridge_if_name,
+                             const bool *multi_ap);
 void ow_conf_vif_add_ap_acl(const char *vif_name, const struct osw_hwaddr *addr);
 void ow_conf_vif_del_ap_acl(const char *vif_name, const struct osw_hwaddr *addr);
 void ow_conf_vif_set_ap_neigh(const char *vif_name,

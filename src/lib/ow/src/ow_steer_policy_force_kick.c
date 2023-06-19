@@ -167,14 +167,20 @@ ow_steer_policy_force_kick_recalc_cb(struct ow_steer_policy *policy,
         struct ow_steer_candidate *candidate = ow_steer_candidate_list_get(candidate_list, i);
         const struct osw_hwaddr *bssid = ow_steer_candidate_get_bssid(candidate);
         const enum ow_steer_candidate_preference candidate_pref = ow_steer_candidate_get_preference(candidate);
-
-        if (candidate_pref != OW_STEER_CANDIDATE_PREFERENCE_NONE)
+        const enum ow_steer_candidate_preference blocked_pref = OW_STEER_CANDIDATE_PREFERENCE_HARD_BLOCKED;
+        if (blocked_candidate != candidate)
             continue;
 
-        if (blocked_candidate == candidate)
-            ow_steer_candidate_set_preference(candidate, OW_STEER_CANDIDATE_PREFERENCE_HARD_BLOCKED);
-        else
-            ow_steer_candidate_set_preference(candidate, OW_STEER_CANDIDATE_PREFERENCE_AVAILABLE);
+        if (candidate_pref != OW_STEER_CANDIDATE_PREFERENCE_NONE) {
+            LOGD("%s bssid: "OSW_HWADDR_FMT" preference: %s cannot be set, already set to: %s",
+                 ow_steer_policy_get_prefix(policy),
+                 OSW_HWADDR_ARG(bssid),
+                 ow_steer_candidate_preference_to_cstr(blocked_pref),
+                 ow_steer_candidate_preference_to_cstr(candidate_pref));
+            continue;
+        }
+
+        ow_steer_candidate_set_preference(candidate, blocked_pref);
 
         LOGD("%s bssid: "OSW_HWADDR_FMT" preference: %s", ow_steer_policy_get_prefix(policy), OSW_HWADDR_ARG(bssid),
              ow_steer_candidate_preference_to_cstr(ow_steer_candidate_get_preference(candidate)));
@@ -315,8 +321,7 @@ ow_steer_policy_force_kick_sta_disconnected_cb(struct osw_state_observer *observ
 }
 
 struct ow_steer_policy_force_kick*
-ow_steer_policy_force_kick_create(unsigned int priority,
-                                  const struct osw_hwaddr *sta_addr,
+ow_steer_policy_force_kick_create(const struct osw_hwaddr *sta_addr,
                                   const struct ow_steer_policy_mediator *mediator)
 {
     ASSERT(sta_addr != NULL, "");
@@ -337,7 +342,7 @@ ow_steer_policy_force_kick_create(unsigned int priority,
     osw_timer_init(&force_policy->enforce_timer, ow_steer_policy_force_kick_enforce_timer_cb);
     memcpy(&force_policy->state_observer, &state_observer, sizeof(force_policy->state_observer));
 
-    force_policy->base = ow_steer_policy_create(g_policy_name, priority, sta_addr, &ops, mediator, force_policy);
+    force_policy->base = ow_steer_policy_create(g_policy_name, sta_addr, &ops, mediator, force_policy);
 
     return force_policy;
 }
@@ -351,6 +356,7 @@ ow_steer_policy_force_kick_free(struct ow_steer_policy_force_kick *force_policy)
     const bool unregister_observer = force_policy->config != NULL;
 
     ow_steer_policy_force_kick_reset(force_policy);
+    osw_timer_disarm(&force_policy->reconf_timer);
     FREE(force_policy->next_config);
     force_policy->next_config = NULL;
     FREE(force_policy->config);

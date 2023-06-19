@@ -27,7 +27,7 @@
 # Netlink helpers
 #
 ###############################################################################
-UNIT_DISABLE := $(if $(wildcard $(TARGET_DIR)/usr/include/libnl3),n,y)
+UNIT_DISABLE := $(if $(wildcard $(TARGET_DIR)/usr/include/libnl3)$(LIBNL3_HEADERS),n,y)
 UNIT_NAME := nl
 UNIT_TYPE := LIB
 
@@ -39,7 +39,7 @@ UNIT_SRC += src/nl_80211.c
 
 UNIT_CFLAGS += -I$(UNIT_PATH)/inc
 
-UNIT_CFLAGS += -I$(TARGET_DIR)/usr/include/libnl3
+UNIT_CFLAGS += $(if $(LIBNL3_HEADERS),$(LIBNL3_HEADERS),-I$(TARGET_DIR)/usr/include/libnl3)
 UNIT_LDFLAGS += -lnl-3
 UNIT_LDFLAGS += -lnl-genl-3
 

@@ -361,7 +361,8 @@ static bool nfm_trule_apply_tag(struct nfm_trule *self, om_action_t type,
 					self->conf.name,
 					(ttle->flags & OM_TLE_FLAG_GROUP) ? "group " : "",
 					ttle->value);
-			return false;
+			/* Tag can be created and updated later, so returning true */
+			return true;
 		}
 		tlist = &tag->values;
 	}
@@ -733,6 +734,16 @@ bool nfm_trule_on_tag_update(struct nfm_trule *self, om_tag_t *tag, struct ds_tr
 			errcode = false;
 		}
 
+		/* Remove matching rules before adding */
+		memset(&tdata, 0, sizeof(tdata));
+		tdata.tag_override_name = tag->name;
+		tdata.tag_override_values = updated;
+		tdata.filter = NFM_TAG_FILTER_MATCH;
+		tdata.ignore_err = true;
+		tle = ds_tree_ifirst(&iter, &self->tags);
+		if (!nfm_trule_apply_tag(self, OM_ACTION_DELETE, tle, &iter, &tdata, 0)) {
+			errcode = false;
+		}
 		/* Add matching now */
 		memset(&tdata, 0, sizeof(tdata));
 		tdata.tag_override_name = tag->name;

@@ -55,7 +55,7 @@ struct osfw_ebinet
 struct osfw_ebbase
 {
     struct osfw_ebinet inet;
-    osfw_run_cmd_fn run_cmd;
+    osfw_fn_t *osfw_eb_fn;
 };
 
 static struct osfw_ebbase osfw_ebbase;
@@ -64,12 +64,6 @@ struct osfw_ebbase *
 osfw_eb_get_base(void)
 {
 	return &osfw_ebbase;
-}
-
-int osfw_eb_execute_cmd(const char *cmd)
-{
-	LOGT("%s(): running cmd: %s", __func__, cmd);
-	return cmd_log(cmd);
 }
 
 static char *osfw_eb_target_builtin[] =
@@ -330,8 +324,6 @@ static struct osfw_nfrule *osfw_eb_nfrule_add(struct ds_dlist *parent, const cha
 static bool osfw_eb_nfrule_match(const struct osfw_nfrule *self, const char *chain, int prio,
 		const char *match, const char *target)
 {
-	TRACE();
-
 	if (!self || !chain || !match || !target) {
 		return false;
 	} else if (self->prio != prio) {
@@ -425,11 +417,8 @@ static bool osfw_eb_nftable_check(struct osfw_nftable *self, struct osfw_nfrule 
 	char cmd[OSFW_SIZE_CMD*2];
 	char path[OSFW_SIZE_CMD];
 	FILE *stream = NULL;
-	struct osfw_ebbase *osfw_ebbase;
 
 	TRACE();
-	osfw_ebbase = osfw_eb_get_base();
-
 	snprintf(path,
 			sizeof(path) - 1,
 			"/tmp/osfw-%s-%s.%d",
@@ -450,13 +439,7 @@ static bool osfw_eb_nftable_check(struct osfw_nftable *self, struct osfw_nfrule 
 	snprintf(cmd, sizeof(cmd) - 1, "cat %s | %s", path, osfw_eb_convert_cmd(self->family));
 	cmd[sizeof(cmd) - 1] = '\0';
 
-	/* check if the callback function is registered to run the command */
-	if (osfw_ebbase->run_cmd == NULL) {
-		LOGE("callback function to run command is NULL");
-		return false;
-	}
-
-	err = osfw_ebbase->run_cmd(cmd);
+	err = cmd_log(cmd);
 	if (err) {
 		if (self->isinitialized) {
 			LOGN("Check ebtables %s %s configuration failed", osfw_eb_convert_family(self->family),
@@ -619,8 +602,8 @@ static bool osfw_eb_nftable_del_nfrule(struct osfw_nftable *self, const char *ch
 	TRACE();
 	nfrule = osfw_eb_nftable_get_nfrule(self, chain, prio, match, target);
 	if (!nfrule) {
-		LOGE("Rule not found");
-		return false;
+		LOGD("Rule not found");
+		return true;
 	}
 
 	errcode = osfw_eb_nfrule_del(nfrule);
@@ -801,11 +784,8 @@ static bool osfw_eb_inet_apply(struct osfw_ebinet *self)
 	char path[OSFW_SIZE_CMD];
 	char cmd[OSFW_SIZE_CMD*2 + 128];
 	FILE *stream = NULL;
-	struct osfw_ebbase *osfw_ebbase;
 
 	TRACE();
-	osfw_ebbase = osfw_eb_get_base();
-
 	if (!self->ismodified) {
 		return true;
 	}
@@ -825,12 +805,7 @@ static bool osfw_eb_inet_apply(struct osfw_ebinet *self)
 	snprintf(cmd, sizeof(cmd) - 1, "cat %s | %s", path, osfw_eb_convert_cmd(self->family));
 	cmd[sizeof(cmd) - 1] = '\0';
 
-	/* check if the callback function is registered to run the command */
-	if (osfw_ebbase->run_cmd == NULL) {
-		LOGE("callback function to run command is not set");
-		return false;
-	}
-	err = osfw_ebbase->run_cmd(cmd);
+	err = cmd_log(cmd);
 	if (err) {
 		LOGE("Apply OSFW configuration failed");
 		errcode = false;
@@ -845,12 +820,12 @@ static bool osfw_eb_inet_apply(struct osfw_ebinet *self)
 }
 
 
-static bool osfw_eb_base_set(struct osfw_ebbase *self, int (*fun_cb)(const char* cmd))
+static bool osfw_eb_base_set(struct osfw_ebbase *self, osfw_fn_t *fn)
 {
 	bool errcode = true;
 
 	memset(self, 0, sizeof(*self));
-	osfw_ebbase.run_cmd = fun_cb;
+	osfw_ebbase.osfw_eb_fn = fn;
 	errcode = osfw_eb_nfinet_set(&self->inet, AF_BRIDGE);
 	if (!errcode) {
 		LOGE("Set OSEB base: set OSEB inet failed");
@@ -876,7 +851,6 @@ static bool osfw_eb_base_unset(struct osfw_ebbase *self)
 static bool osfw_eb_base_apply(struct osfw_ebbase *self)
 {
 	bool errcode = true;
-	TRACE();
 
 	errcode = osfw_eb_inet_apply(&self->inet);
 	if (!errcode) {
@@ -897,11 +871,11 @@ static struct osfw_ebinet *osfw_eb_base_get_inet(struct osfw_ebbase *self, int f
 	return ebinet;
 }
 
-bool osfw_eb_init(int (*fun_cb)(const char* cmd))
+bool osfw_eb_init(osfw_fn_t *osfw_eb_status_fn)
 {
 	bool errcode = true;
 
-	errcode = osfw_eb_base_set(&osfw_ebbase, fun_cb);
+	errcode = osfw_eb_base_set(&osfw_ebbase, osfw_eb_status_fn);
 	if (!errcode) {
 		LOGE("Initialize ebtable: set base failed");
 		return false;
@@ -1029,7 +1003,7 @@ bool osfw_eb_rule_del(int family, enum osfw_table table, const char *chain,
 }
 
 bool osfw_eb_rule_add(int family, enum osfw_table table, const char *chain,
-		int prio, const char *match, const char *target)
+		int prio, const char *match, const char *target, const char *name)
 {
 	struct osfw_ebinet *ebinet;
 	bool errcode;

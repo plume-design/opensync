@@ -109,3 +109,28 @@ OSW_UT(osw_token_ut_gen_wraparound_free)
     token = osw_token_pool_fetch_token(pool_ref);
     OSW_UT_EVAL(token == -1);
 }
+
+OSW_UT(osw_token_ut_ref_drop)
+{
+    const struct osw_hwaddr sta_addr = { .octet = { 0x13, 0x13, 0x13, 0x13, 0x13, 0x13 } };
+    const struct osw_ifname vif_name = { .buf = "home-ap-4444" };
+    struct osw_token_pool_reference *ref1 = osw_token_pool_ref_get(&vif_name, &sta_addr);
+    struct osw_token_pool_reference *ref2 = osw_token_pool_ref_get(&vif_name, &sta_addr);
+
+    OSW_UT_EVAL(ref1 != NULL);
+    OSW_UT_EVAL(ref2 != NULL);
+    OSW_UT_EVAL(ref1->pool == ref2->pool);
+
+    OSW_UT_EVAL(OSW_TOKEN_COUNT_ONE_BITS(ref2->pool->tokens) == 0);
+    const int token = osw_token_pool_fetch_token(ref1);
+    OSW_UT_EVAL(OSW_TOKEN_COUNT_ONE_BITS(ref2->pool->tokens) == 1);
+    OSW_UT_EVAL(token == 255);
+    osw_token_pool_ref_free(ref1);
+
+    /* This frees the pool reference without freeing the
+     * token that granted through the reference. This checks
+     * if the token is implicitly freed.
+     */
+
+    OSW_UT_EVAL(OSW_TOKEN_COUNT_ONE_BITS(ref2->pool->tokens) == 0);
+}

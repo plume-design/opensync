@@ -403,6 +403,7 @@ width_to_mhz(radio_chanwidth_t w)
         case RADIO_CHAN_WIDTH_80MHZ: return 80;
         case RADIO_CHAN_WIDTH_160MHZ: return 160;
         case RADIO_CHAN_WIDTH_80_PLUS_80MHZ: return 160;
+        case RADIO_CHAN_WIDTH_320MHZ: return 320;
         case RADIO_CHAN_WIDTH_QTY: return 0;
     }
     return 0;
@@ -883,6 +884,7 @@ osw_drv_target_htmode2width(const char *ht_mode)
            strcmp(ht_mode, "HT40") == 0 ? OSW_CHANNEL_40MHZ :
            strcmp(ht_mode, "HT80") == 0 ? OSW_CHANNEL_80MHZ :
            strcmp(ht_mode, "HT160") == 0 ? OSW_CHANNEL_160MHZ :
+           strcmp(ht_mode, "HT320") == 0 ? OSW_CHANNEL_320MHZ :
            OSW_CHANNEL_20MHZ;
 }
 
@@ -959,6 +961,7 @@ osw_drv_target_phyconf2schema(const struct osw_drv_phy_config *phy,
             case OSW_CHANNEL_40MHZ: SCHEMA_SET_STR(rconf->ht_mode, "HT40"); break;
             case OSW_CHANNEL_80MHZ: SCHEMA_SET_STR(rconf->ht_mode, "HT80"); break;
             case OSW_CHANNEL_160MHZ: SCHEMA_SET_STR(rconf->ht_mode, "HT160"); break;
+            case OSW_CHANNEL_320MHZ: SCHEMA_SET_STR(rconf->ht_mode, "HT320"); break;
             case OSW_CHANNEL_80P80MHZ: break;
         }
         if (c->control_freq_mhz >= b2ch1 && c->control_freq_mhz <= b2ch13) {
@@ -2345,6 +2348,7 @@ osw_drv_target_op_csa_rx_cb(const char *phy_name,
             : chan_width_mhz == 40 ? OSW_CHANNEL_40MHZ
             : chan_width_mhz == 80 ? OSW_CHANNEL_80MHZ
             : chan_width_mhz == 160 ? OSW_CHANNEL_160MHZ
+            : chan_width_mhz == 320 ? OSW_CHANNEL_320MHZ
             : OSW_CHANNEL_20MHZ,
     };
 
@@ -2722,6 +2726,10 @@ osw_drv_target_bsal_handle_action_frame_event(const struct osw_drv_target_vif *v
     struct osw_drv_dummy *dummy = &target->dummy;
     const struct osw_drv_dot11_frame *frame = (const void *)event->data;
     const void *out_of_bounds = event->data + event->data_len;
+    const struct osw_drv_vif_frame_rx rx = {
+        .data = event->data,
+        .len = (size_t)event->data_len,
+    };
 
     assert(event != NULL);
     assert(event->data != NULL);
@@ -2749,8 +2757,7 @@ osw_drv_target_bsal_handle_action_frame_event(const struct osw_drv_target_vif *v
                     osw_drv_report_vif_frame_rx(dummy->drv,
                                                 vif->phy_name,
                                                 vif->vif_name,
-                                                event->data,
-                                                (size_t)event->data_len);
+                                                &rx);
                     break;
             }
             break;
