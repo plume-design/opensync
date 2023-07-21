@@ -238,6 +238,13 @@ ow_steer_bm_client_set_btm_params(const struct osw_hwaddr *sta_addr,
                 continue;
             }
         }
+        else if (strcmp(key, "disassoc_imminent") == 0) {
+            const bool b = (atoi(value) == 0)
+                         ? false
+                         : true;
+            ow_steer_bm_btm_params_set_disassoc_imminent(btm_params, &b);
+            continue;
+        }
         else {
             LOGD("ow: steer: ovsdb: client: sta_addr: "OSW_HWADDR_FMT" btm_params: %s key: %s is not supported",
                  OSW_HWADDR_ARG(sta_addr), btm_params_name, keys[i]);
@@ -529,6 +536,15 @@ ow_ovsdb_steer_client_set(const struct schema_Band_Steering_Clients *row)
     }
     else {
         ow_steer_bm_client_unset_steering_btm_params(client);
+    }
+
+    if (row->sticky_btm_params_len != 0) {
+        struct ow_steer_bm_btm_params *sticky_btm_params = ow_steer_bm_client_get_sticky_btm_params(client);
+        ow_steer_bm_client_set_btm_params(&addr, sticky_btm_params, "sticky_btm_params", row->sticky_btm_params_keys,
+                                          row->sticky_btm_params, row->sticky_btm_params_len);
+    }
+    else {
+        ow_steer_bm_client_unset_sticky_btm_params(client);
     }
 
     if (row->sc_kick_type_exists == true) {

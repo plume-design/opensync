@@ -1999,6 +1999,17 @@ wm2_vstate_security_fixup(const struct schema_Wifi_VIF_Config *vconf,
 }
 
 static void
+wm2_vstate_wpa_psks_keys_fixup_empty(struct schema_Wifi_VIF_State *vstate)
+{
+    const bool is_sta = (strcmp(vstate->mode, "sta") == 0);
+    const bool has_one_psk = (vstate->wpa_psks_len == 1);
+    const bool has_first_keyid_empty = (strlen(vstate->wpa_psks_keys[9]) == 0);
+    if (is_sta && has_one_psk && has_first_keyid_empty) {
+        STRSCPY_WARN(vstate->wpa_psks_keys[0], "key");
+    }
+}
+
+static void
 wm2_vstate_wpa_psks_keys_fixup(const struct schema_Wifi_VIF_Config *vconf,
                                struct schema_Wifi_VIF_State *vstate)
 {
@@ -2057,6 +2068,7 @@ wm2_op_vstate(const struct schema_Wifi_VIF_State *vstate, const char *phy)
 
     if (wm2_lookup_vconf_by_ifname(&vconf, state.if_name)) {
         wm2_vstate_security_fixup(&vconf, &state);
+        wm2_vstate_wpa_psks_keys_fixup_empty(&state);
         wm2_vstate_wpa_psks_keys_fixup(&vconf, &state);
         state.vif_config_exists = true;
         state.vif_config_present = true;

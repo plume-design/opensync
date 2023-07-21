@@ -36,14 +36,20 @@ static ovsdb_table_t *table_Wifi_VIF_Config;
 static ev_timer g_ow_ovsdb_cconf_timer;
 
 static void
-ow_ovsdb_cconf_apply_on_vif(const char *vif_name, struct ds_tree *cc_rows)
+ow_ovsdb_cconf_apply_on_vif(const struct schema_Wifi_VIF_Config *vconf)
 {
+    const char *vif_name = vconf->if_name;
+
     LOGD("ow: ovsdb: cconf: applying: %s", vif_name);
 
     ow_conf_vif_flush_sta_net(vif_name);
 
-    ovsdb_cache_row_t *i;
-    ds_tree_foreach(cc_rows, i) {
+    int i;
+    for (i = 0; i < vconf->credential_configs_len; i++) {
+        const char *uuid = vconf->credential_configs[i].uuid;
+        ovsdb_cache_row_t *row = ovsdb_cache_find_row_by_uuid(&table_Wifi_Credential_Config, uuid);
+        if (row == NULL) continue;
+
         struct osw_wpa wpa;
         MEMZERO(wpa);
         struct osw_psk psk;
@@ -51,14 +57,8 @@ ow_ovsdb_cconf_apply_on_vif(const char *vif_name, struct ds_tree *cc_rows)
         struct osw_ssid ssid;
         MEMZERO(ssid);
         const struct osw_hwaddr bssid = {0};
-        const struct schema_Wifi_Credential_Config *c = (const void *)i->record;
+        const struct schema_Wifi_Credential_Config *c = (const void *)row->record;
         const char *pass = SCHEMA_KEY_VAL(c->security, "key");
-
-        /* FIXME: Technically each vif_config carries
-         * a list of credential config uuids. These
-         * should be used to link between VIF_Config
-         * and Credential_Config.
-         */
 
         /* FIXME: Wifi_Credential_Config doesn't support new
          * style wpa_key_mgmt etc.  columns like
@@ -72,6 +72,14 @@ ow_ovsdb_cconf_apply_on_vif(const char *vif_name, struct ds_tree *cc_rows)
         wpa.pairwise_ccmp = true;
         wpa.akm_psk = true;
 
+        /* Technically there's nothing wrong in allowing
+         * WPA3-Transition mode. This actually makes it
+         * possible for 6GHz to be used during onboarding.
+         * 6GHz requires SAE and PMF.
+         */
+        wpa.akm_sae = true;
+        wpa.pmf = OSW_PMF_OPTIONAL;
+
         STRSCPY_WARN(psk.str, pass);
         STRSCPY_WARN(ssid.buf, c->ssid);
         ssid.len = strlen(ssid.buf);
@@ -81,8 +89,7 @@ ow_ovsdb_cconf_apply_on_vif(const char *vif_name, struct ds_tree *cc_rows)
 }
 
 static void
-ow_ovsdb_cconf_apply(struct ds_tree *v_rows,
-                     struct ds_tree *cc_rows)
+ow_ovsdb_cconf_apply(struct ds_tree *v_rows)
 {
     LOGD("ow: ovsdb: cconf: applying");
 
@@ -96,16 +103,15 @@ ow_ovsdb_cconf_apply(struct ds_tree *v_rows,
         if (is_sta == false) continue;
         if (has_ssid == true) continue;
 
-        ow_ovsdb_cconf_apply_on_vif(v->if_name, cc_rows);
+        ow_ovsdb_cconf_apply_on_vif(v);
     }
 }
 
 static void
 ow_ovsdb_cconf_timer_cb(EV_P_ ev_timer *arg, int events)
 {
-    struct ds_tree *cc_rows = &table_Wifi_Credential_Config.rows;
     struct ds_tree *v_rows = &table_Wifi_VIF_Config->rows;
-    ow_ovsdb_cconf_apply(v_rows, cc_rows);
+    ow_ovsdb_cconf_apply(v_rows);
 }
 
 void

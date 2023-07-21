@@ -266,6 +266,13 @@ menu "Common"
                 source "kconfig/Kconfig.osp_sec"
             endmenu
 
+            menu "Bluetooth Low Energy (OSP_BLE)"
+                choice
+                    prompt "Bluetooth Low Energy Backend"
+                    source "kconfig/Kconfig.osp_ble.backend"
+                endchoice
+            endmenu
+
         endmenu
     endmenu
 

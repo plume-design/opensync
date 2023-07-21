@@ -46,7 +46,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 /* FIXME Some defauls */
 #define OW_STEER_EXECUTOR_ACTION_BTM_NEIGHS_LIMIT 6
 #define OW_STEER_EXECUTOR_ACTION_BTM_VALID_INT 255
-#define OW_STEER_EXECUTOR_ACTION_BTM_DISASSOC_IMMINENT 1
+#define OW_STEER_EXECUTOR_ACTION_BTM_DISASSOC_IMMINENT 0
 #define OW_STEER_EXECUTOR_ACTION_BTM_AIRBRIDGED 1
 #define OW_STEER_EXECUTOR_ACTION_BTM_BSS_TERM 0
 
@@ -58,6 +58,7 @@ struct ow_steer_executor_action_btm {
     struct osw_btm_desc *btm_desc;
     struct osw_throttle *throttle;
     struct osw_timer throttle_timer;
+    bool *disassoc_imminent;
 };
 
 static void
@@ -74,6 +75,26 @@ ow_steer_executor_action_btm_req_tx_error_cb(struct osw_btm_sta_observer *observ
     struct ow_steer_executor_action_btm *btm_action = container_of(observer, struct ow_steer_executor_action_btm, btm_desc_observer);
     ow_steer_executor_action_sched_recall(btm_action->base);
     LOGD("%s request failed to submit", ow_steer_executor_action_get_prefix(btm_action->base));
+}
+
+static bool
+ow_steer_executor_action_btm_get_disassoc_imminent(const struct ow_steer_executor_action_btm *btm_action)
+{
+    if (btm_action->disassoc_imminent) {
+        return *btm_action->disassoc_imminent;
+    }
+
+    return OW_STEER_EXECUTOR_ACTION_BTM_DISASSOC_IMMINENT;
+}
+
+void
+ow_steer_executor_action_btm_set_disassoc_imminent(struct ow_steer_executor_action_btm *btm_action,
+                                                   const bool *b)
+{
+    FREE(btm_action->disassoc_imminent);
+    btm_action->disassoc_imminent = NULL;
+    if (b == NULL) return;
+    btm_action->disassoc_imminent = MEMNDUP(b, sizeof(*b));
 }
 
 static struct osw_btm_req_params*
@@ -138,7 +159,7 @@ ow_steer_executor_action_btm_req_create_params(struct ow_steer_executor_action_b
     btm_req_params.neigh_len = neigh_i;
     btm_req_params.valid_int = OW_STEER_EXECUTOR_ACTION_BTM_VALID_INT;
     btm_req_params.abridged = OW_STEER_EXECUTOR_ACTION_BTM_AIRBRIDGED;
-    btm_req_params.disassoc_imminent = OW_STEER_EXECUTOR_ACTION_BTM_DISASSOC_IMMINENT;
+    btm_req_params.disassoc_imminent = ow_steer_executor_action_btm_get_disassoc_imminent(btm_action);
     btm_req_params.bss_term = OW_STEER_EXECUTOR_ACTION_BTM_BSS_TERM;
 
     return MEMNDUP(&btm_req_params, sizeof(btm_req_params));
@@ -217,6 +238,7 @@ ow_steer_executor_action_btm_free(struct ow_steer_executor_action_btm *btm_actio
 
     ow_steer_executor_action_notify_going_idle(btm_action->base);
 
+    ow_steer_executor_action_btm_set_disassoc_imminent(btm_action, NULL);
     osw_btm_desc_free(btm_action->btm_desc);
     osw_throttle_free(btm_action->throttle);
     osw_timer_disarm(&btm_action->throttle_timer);

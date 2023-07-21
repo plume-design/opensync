@@ -603,6 +603,15 @@ void sm_radio_cfg_update(void)
     sm_radio_state_t               *radio;
     radio_entry_t                   radio_cfg;
 
+    /* When OWM is used, it should handle all changes to wifi
+       driver settings instead of SM. However we still need to
+       perform some read operations on the driver in SM and update
+       the radio_cfg structure so that device data like radio temp
+       can be reported in MQTT messages. Only the non-read operations
+       should be skipped when OWM is used.
+     */
+    bool wifi_changes_are_allowed = !sm_skip_wifi();
+
     /* SM requires both radio and VIF information to
        access driver sublayer therefore join the schema
        to radio config entry type and use it for stats
@@ -740,7 +749,9 @@ void sm_radio_cfg_update(void)
              * This results in a bit excessive
              * driver config tweaking.
              */
-            sm_radio_config_enable_tx_stats(&radio_cfg);
+            if (wifi_changes_are_allowed) {
+                sm_radio_config_enable_tx_stats(&radio_cfg);
+            }
 
             /* Lookup the first interface */
             for (ii = 0; ii < radio->schema.vif_states_len; ii++)
@@ -765,9 +776,10 @@ void sm_radio_cfg_update(void)
 
                 /* Radio VIF/VAP interface name */
                 STRSCPY(radio_cfg.if_name, vif->schema.if_name);
-
-                /* Enable fast scanning on all ap interfaces */
-                sm_radio_config_enable_fast_scan(&radio_cfg);
+                if (wifi_changes_are_allowed) {
+                    /* Enable fast scanning on all ap interfaces */
+                    sm_radio_config_enable_fast_scan(&radio_cfg);
+                }
                 break;
             }
         }
@@ -785,15 +797,16 @@ void sm_radio_cfg_update(void)
         /* Update cache config */
         radio->config = radio_cfg;
 
-        /* Restart stats with new radio parameters when
-           type, chan, if_name and phy_name are configured or
-           change on those parameters is detected
-         */
-        if(    is_changed
+        if(    wifi_changes_are_allowed
+            && is_changed
             && radio->config.type
             && (radio->config.chan != 0)
             && (radio->config.if_name[0] != '\0')
             && (radio->config.phy_name[0] != '\0')) {
+            /* Restart stats with new radio parameters when
+               type, chan, if_name and phy_name are configured or
+               change on those parameters is detected
+             */
             sm_neighbor_report_radio_change(&radio->config);
             sm_survey_report_radio_change(&radio->config);
             sm_client_report_radio_change(&radio->config);
@@ -1306,10 +1319,6 @@ int sm_setup_monitor(void)
     }
 #endif // CONFIG_MANAGER_QM
 
-    LOGI("skip wifi stats: %s", sm_skip_wifi() ? "yes" : "no");
-    if (sm_skip_wifi())
-        goto stats_table;
-
     /* Monitor Wifi_Radio_State */
     if (!ovsdb_update_monitor(
             &sm_update_wifi_radio_state,
@@ -1321,6 +1330,10 @@ int sm_setup_monitor(void)
                 SCHEMA_TABLE(Wifi_Radio_State));
         return -1;
     }
+
+    LOGI("skip wifi stats: %s", sm_skip_wifi() ? "yes" : "no");
+    if (sm_skip_wifi())
+        goto stats_table;
 
     /* Monitor Wifi_VIF_State  */
     if (!ovsdb_update_monitor(

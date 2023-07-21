@@ -39,4 +39,8 @@ ow_steer_executor_action_btm_free(struct ow_steer_executor_action_btm *btm_actio
 struct ow_steer_executor_action*
 ow_steer_executor_action_btm_get_base(struct ow_steer_executor_action_btm *btm_action);
 
+void
+ow_steer_executor_action_btm_set_disassoc_imminent(struct ow_steer_executor_action_btm *btm_action,
+                                                   const bool *b);
+
 #endif /* OW_STEER_EXECUTOR_ACTION_BTM_H */

@@ -1,10 +1,14 @@
 #
+# Vendor OSP Bluetooth backends (default, if available)
+#
+osource "vendor/*/kconfig/Kconfig.osp_ble.backend"
+
+#
+# Platform OSP Bluetooth backends
+#
+osource "platform/*/kconfig/Kconfig.osp_ble.backend"
+
+#
 # OpenSync core platform OSP Bluetooth backend
 #
 source "src/lib/osp/kconfig/Kconfig.osp_ble.backend"
-
-#
-# Platform/vendor OSP Bluetooth backends
-#
-osource "platform/*/kconfig/Kconfig.osp_ble.backend"
-osource "vendor/*/kconfig/Kconfig.osp_ble.backend"

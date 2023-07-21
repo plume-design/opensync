@@ -1,6 +1,5 @@
 config OSP_BLE_NULL
     bool "Null"
-
     help
         This backend implements a dummy implementation of the osp_ble API.
-        All functions in this implementation return an error.
+        All functions in this implementation do nothing and return success.

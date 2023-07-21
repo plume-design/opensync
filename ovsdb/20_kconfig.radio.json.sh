@@ -31,6 +31,16 @@ OVSDB_NOT_SET='["set",[]]'
 
 test "$CONFIG_OVSDB_BOOTSTRAP" = y || bhaul_multi=
 
+if test -n "$bhaul_psk"
+then
+    security='
+        ["encryption", "WPA-PSK"],
+        ["key", "'"$bhaul_psk"'"]
+    '
+else
+    security=
+fi
+
 cat <<OVS
 [
     "Open_vSwitch",
@@ -71,10 +81,7 @@ cat <<VIF
         "vif_radio_idx": 0,
         "multi_ap": "none",
         "ssid": "$bhaul_ssid",
-        "security": ["map", [
-            ["encryption", "WPA-PSK"],
-            ["key", "$bhaul_psk"]
-        ]],
+        "security": ["map", [ $security ]],
         "credential_configs": ["set", [
 $(echo "$bhaul_multi" | tr ': ' ' \n' | while read ssid psk
 do

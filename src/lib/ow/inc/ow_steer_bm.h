@@ -346,12 +346,23 @@ ow_steer_bm_client_get_steering_btm_params(struct ow_steer_bm_client *client);
 void
 ow_steer_bm_client_unset_steering_btm_params(struct ow_steer_bm_client *client);
 
+struct ow_steer_bm_btm_params*
+ow_steer_bm_client_get_sticky_btm_params(struct ow_steer_bm_client *client);
+
+void
+ow_steer_bm_client_unset_sticky_btm_params(struct ow_steer_bm_client *client);
+
 void
 ow_steer_bm_btm_params_reset(struct ow_steer_bm_btm_params *btm_params);
 
 void
 ow_steer_bm_btm_params_set_bssid(struct ow_steer_bm_btm_params *btm_params,
                                  const struct osw_hwaddr *bssid);
+
+void
+ow_steer_bm_btm_params_set_disassoc_imminent(struct ow_steer_bm_btm_params *btm_params,
+                                             const bool *disassoc_imminent);
+
 void
 ow_steer_bm_client_set_cs_mode(struct ow_steer_bm_client *client,
                                const enum ow_steer_bm_client_cs_mode *cs_mode);

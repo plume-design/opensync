@@ -543,6 +543,7 @@ wpas_conf_gen_cred_config_networks(struct wpas *wpas,
         csnprintf(buf, len, "\tfreq_list=%s\n", dfs_allowed ? "" : freqlist);
         csnprintf(buf, len, "\tssid=\"%s\"\n", cconfs->ssid);
         csnprintf(buf, len, "\tpsk=\"%s\"\n", wpa_passphrase);
+        csnprintf(buf, len, "\t#pairwise_marker=0\n");
         csnprintf(buf, len, "\tkey_mgmt=%s\n", radio_6g ? "SAE" : wpa_key_mgmt);
         csnprintf(buf, len, "\tpairwise=%s\n", wpa_pairwise);
         csnprintf(buf, len, "\tproto=%s\n", wpa_proto);

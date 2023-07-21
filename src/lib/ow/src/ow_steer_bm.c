@@ -193,6 +193,7 @@ struct ow_steer_bm_client {
 
     struct ow_steer_bm_btm_params *sc_btm_params;
     struct ow_steer_bm_btm_params *steering_btm_params;
+    struct ow_steer_bm_btm_params *sticky_btm_params;
     struct ow_steer_bm_cs_params *cs_params;
 
     struct ds_dlist sta_list;
@@ -269,6 +270,7 @@ struct ow_steer_bm_btm_params {
     struct osw_hwaddr sta_addr;
 
     OW_STEER_BM_ATTR_DECL(struct osw_hwaddr, bssid);
+    OW_STEER_BM_ATTR_DECL(bool, disassoc_imminent);
 };
 
 struct ow_steer_bm_cs_params {
@@ -480,6 +482,9 @@ ow_steer_bm_get_new_client_event_stats(struct ow_steer_bm_vif_stats *vif_stats);
 
 #define OW_STEER_BM_BTM_PARAMS_ATTR_PRINT_CHANGE_HWADDR(params, attr)                               \
     OW_STEER_BM_ATTR_PRINT_CHANGE_HWADDR(OW_STEER_BM_BTM_PARAMS_LOG_PREFIX(params), params, attr)
+
+#define OW_STEER_BM_BTM_PARAMS_ATTR_PRINT_CHANGE_DISASSOC_IMMINENT(params, attr)                               \
+    OW_STEER_BM_ATTR_PRINT_CHANGE_BOOL(OW_STEER_BM_BTM_PARAMS_LOG_PREFIX(params), params, attr)
 
 #define OW_STEER_BM_CLIENT_LOG_PREFIX(client)                                               \
     strfmta("ow: steer: bm: client: addr: "OSW_HWADDR_FMT, OSW_HWADDR_ARG(&client->addr))
@@ -1223,6 +1228,16 @@ free_report:
     FREE(buf);
 }
 
+#define OW_STEER_BM_STA_KICK_SET_DISASSOC_IMMINENT(STA, NAME) \
+    do { \
+        if ((STA) == NULL) break; \
+        const bool *b = (((STA)->client != NULL) && \
+                         ((STA)->client->NAME != NULL)) \
+                      ? (STA)->client->NAME->disassoc_imminent.cur \
+                      : NULL; \
+        ow_steer_executor_action_btm_set_disassoc_imminent((STA)->btm_executor_action, b); \
+    } while (0)
+
 static void
 ow_steer_bm_sta_kick_state_force_trig(struct ow_steer_bm_sta *sta)
 {
@@ -1233,6 +1248,7 @@ ow_steer_bm_sta_kick_state_force_trig(struct ow_steer_bm_sta *sta)
          " sta_addr: "OSW_HWADDR_FMT,
          OSW_HWADDR_ARG(&sta->addr));
     kick_state_mon->force_trig = true;
+    OW_STEER_BM_STA_KICK_SET_DISASSOC_IMMINENT(sta, sc_btm_params);
 }
 
 static void
@@ -1245,6 +1261,7 @@ ow_steer_bm_sta_kick_state_steering_trig(struct ow_steer_bm_sta *sta)
          " sta_addr: "OSW_HWADDR_FMT,
          OSW_HWADDR_ARG(&sta->addr));
     kick_state_mon->steering_trig = true;
+    OW_STEER_BM_STA_KICK_SET_DISASSOC_IMMINENT(sta, steering_btm_params);
 }
 
 static void
@@ -1257,6 +1274,7 @@ ow_steer_bm_sta_kick_state_sticky_trig(struct ow_steer_bm_sta *sta)
          " sta_addr: "OSW_HWADDR_FMT,
          OSW_HWADDR_ARG(&sta->addr));
     kick_state_mon->sticky_trig = true;
+    OW_STEER_BM_STA_KICK_SET_DISASSOC_IMMINENT(sta, sticky_btm_params);
 }
 
 static void
@@ -1273,6 +1291,7 @@ ow_steer_bm_sta_kick_state_reset(struct ow_steer_bm_sta *sta)
     kick_state_mon->sticky_trig = false;
     kick_state_mon->steering_trig = false;
     kick_state_mon->btm_send_cnt = 0;
+    ow_steer_executor_action_btm_set_disassoc_imminent(sta->btm_executor_action, NULL);
 }
 
 static const char*
@@ -1537,6 +1556,7 @@ ow_steer_bm_btm_params_free(struct ow_steer_bm_btm_params *btm_params)
     ASSERT(btm_params != NULL, "");
 
     OW_STEER_BM_MEM_ATTR_FREE(btm_params, bssid);
+    OW_STEER_BM_MEM_ATTR_FREE(btm_params, disassoc_imminent);
     FREE(btm_params);
 }
 
@@ -1552,8 +1572,11 @@ ow_steer_bm_btm_params_update(struct ow_steer_bm_btm_params *btm_params,
         return;
 
     OW_STEER_BM_MEM_ATTR_UPDATE(btm_params, bssid);
+    OW_STEER_BM_MEM_ATTR_UPDATE(btm_params, disassoc_imminent);
 
-    state->changed = (bssid_state.changed == true);
+    state->changed = false;
+    state->changed |= (bssid_state.changed == true);
+    state->changed |= (disassoc_imminent_state.changed == true);
     state->present = true;
 }
 
@@ -3485,6 +3508,7 @@ ow_steer_bm_client_free(struct ow_steer_bm_client *client)
     OW_STEER_BM_MEM_ATTR_FREE(client, pref_5g_pre_assoc_block_timeout_msecs);
     ow_steer_bm_btm_params_free(client->sc_btm_params);
     ow_steer_bm_btm_params_free(client->steering_btm_params);
+    ow_steer_bm_btm_params_free(client->sticky_btm_params);
     ow_steer_bm_cs_params_free(client->cs_params);
     ASSERT(ds_dlist_is_empty(&client->sta_list) == true, "");
     FREE(client);
@@ -3564,6 +3588,8 @@ ow_steer_bm_client_recalc(struct ow_steer_bm_client *client)
     ow_steer_bm_btm_params_update(client->sc_btm_params, &sc_btm_params_state);
     struct ow_steer_bm_attr_state steering_btm_params_state;
     ow_steer_bm_btm_params_update(client->steering_btm_params, &steering_btm_params_state);
+    struct ow_steer_bm_attr_state sticky_btm_params_state;
+    ow_steer_bm_btm_params_update(client->sticky_btm_params, &sticky_btm_params_state);
     struct ow_steer_bm_attr_state cs_params_state;
     ow_steer_bm_cs_params_update(client->cs_params, &cs_params_state);
 
@@ -3602,6 +3628,7 @@ ow_steer_bm_client_recalc(struct ow_steer_bm_client *client)
                                   pref_5g_pre_assoc_block_timeout_msecs_state.changed == true ||
                                   sc_btm_params_state.changed == true ||
                                   steering_btm_params_state.changed == true ||
+                                  sticky_btm_params_state.changed == true ||
                                   cs_params_state.changed == true;
 
     const bool schedule_work = any_attr_changed == true ||
@@ -5313,6 +5340,41 @@ ow_steer_bm_client_unset_steering_btm_params(struct ow_steer_bm_client *client)
     OW_STEER_BM_SCHEDULE_WORK;
 }
 
+struct ow_steer_bm_btm_params*
+ow_steer_bm_client_get_sticky_btm_params(struct ow_steer_bm_client *client)
+{
+    ASSERT(client != NULL, "");
+
+    if (client->sticky_btm_params != NULL)
+        goto end;
+
+    client->sticky_btm_params = CALLOC(1, sizeof(*client->sticky_btm_params));
+    client->sticky_btm_params->name = "sticky_btm_params";
+    memcpy(&client->sticky_btm_params->sta_addr, &client->addr, sizeof(client->sticky_btm_params->sta_addr));
+
+    LOGD("%s added", OW_STEER_BM_BTM_PARAMS_LOG_PREFIX(client->sticky_btm_params));
+
+    OW_STEER_BM_SCHEDULE_WORK;
+
+end:
+    return client->sticky_btm_params;
+}
+
+void
+ow_steer_bm_client_unset_sticky_btm_params(struct ow_steer_bm_client *client)
+{
+    ASSERT(client != NULL, "");
+
+    if (client->sticky_btm_params == NULL)
+        return;
+
+    LOGD("%s unset", OW_STEER_BM_BTM_PARAMS_LOG_PREFIX(client->sticky_btm_params));
+
+    ow_steer_bm_btm_params_free(client->sticky_btm_params);
+    client->sticky_btm_params = NULL;
+    OW_STEER_BM_SCHEDULE_WORK;
+}
+
 void
 ow_steer_bm_btm_params_reset(struct ow_steer_bm_btm_params *btm_params)
 {
@@ -5327,6 +5389,14 @@ ow_steer_bm_btm_params_set_bssid(struct ow_steer_bm_btm_params *btm_params,
 {
     OW_STEER_BM_MEM_ATTR_SET_BODY(btm_params, bssid);
     OW_STEER_BM_BTM_PARAMS_ATTR_PRINT_CHANGE_HWADDR(btm_params, bssid);
+}
+
+void
+ow_steer_bm_btm_params_set_disassoc_imminent(struct ow_steer_bm_btm_params *btm_params,
+                                             const bool *disassoc_imminent)
+{
+    OW_STEER_BM_MEM_ATTR_SET_BODY(btm_params, disassoc_imminent);
+    OW_STEER_BM_BTM_PARAMS_ATTR_PRINT_CHANGE_DISASSOC_IMMINENT(btm_params, disassoc_imminent);
 }
 
 void
