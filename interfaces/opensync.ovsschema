@@ -1,7 +1,7 @@
 {
   "name": "Open_vSwitch",
-  "version": "7.11.311",
-  "cksum": "1815753971 248822",
+  "version": "7.11.312",
+  "cksum": "2965061757 248822",
   "tables": {
     "AWLAN_Node": {
       "columns": {
@@ -11190,6 +11190,268 @@
         }
       },
       "isRoot": true
+    },
+    "RIPv2_Global_Config": {
+      "columns": {
+        "enable": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            }
+          }
+        },
+        "network": {
+          "type": {
+            "key": {
+              "type": "string"
+            }
+          }
+        },
+        "redistribute": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "static",
+                  "connected",
+                  "default"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "other_config": {
+          "type": {
+            "key": "string",
+            "value": "string",
+            "min": 0,
+            "max": "unlimited"
+          }
+        }
+      },
+      "isRoot": true,
+      "maxRows": 1
+    },
+    "RIPv2_Global_State": {
+      "columns": {
+        "enable": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            }
+          }
+        },
+        "network": {
+          "type": {
+            "key": {
+              "type": "string"
+            }
+          }
+        },
+        "redistribute": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "static",
+                  "connected",
+                  "default"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "other_config": {
+          "type": {
+            "key": "string",
+            "value": "string",
+            "min": 0,
+            "max": "unlimited"
+          }
+        }
+      },
+      "isRoot": true,
+      "maxRows": 1
+    },
+    "RIPv2_Interface_Config": {
+      "columns": {
+        "enable": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            }
+          }
+        },
+        "interface": {
+          "type": {
+            "key": {
+              "type": "string"
+            }
+          }
+        },
+        "network": {
+          "type": {
+            "key": {
+              "type": "string"
+            }
+          }
+        },
+        "passive": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            }
+          }
+        },
+        "cost": {
+          "type": {
+            "key": {
+              "type": "integer",
+              "minInteger": 1,
+              "maxInteger": 16
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "auth_type": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "none",
+                  "simple",
+                  "crypt"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "auth_key": {
+          "type": {
+            "key": {
+              "type": "string",
+              "maxLength": 16
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "status": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "up",
+                  "down"
+                ]
+              ]
+            }
+          }
+        }
+      },
+      "isRoot": true,
+      "maxRows": 3
+    },
+    "RIPv2_Interface_State": {
+      "columns": {
+        "enable": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            }
+          }
+        },
+        "interface": {
+          "type": {
+            "key": {
+              "type": "string"
+            }
+          }
+        },
+        "network": {
+          "type": {
+            "key": {
+              "type": "string"
+            }
+          }
+        },
+        "passive": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            }
+          }
+        },
+        "cost": {
+          "type": {
+            "key": {
+              "type": "integer",
+              "minInteger": 1,
+              "maxInteger": 16
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "auth_type": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "none",
+                  "simple",
+                  "crypt"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "auth_key": {
+          "type": {
+            "key": {
+              "type": "string",
+              "maxLength": 16
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "status": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "up",
+                  "down"
+                ]
+              ]
+            }
+          }
+        }
+      },
+      "isRoot": true,
+      "maxRows": 3
     }
   }
 }

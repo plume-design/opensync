@@ -54,6 +54,12 @@ UNIT_SRC    += src/nm2_main.c
 UNIT_SRC    += src/nm2_mcast.c
 UNIT_SRC    += src/nm2_port.c
 UNIT_SRC    += src/nm2_portfw.c
+
+#ifdef CONFIG_ABW_STATIC_IP
+UNIT_SRC    += src/nm2_ripv2_config.c
+UNIT_SRC    += src/nm2_ripv2_nfm.c
+#endif
+
 UNIT_SRC    += src/nm2_route.c
 UNIT_SRC    += src/nm2_route_config.c
 UNIT_SRC    += src/nm2_util.c

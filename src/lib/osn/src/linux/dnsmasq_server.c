@@ -427,6 +427,67 @@ bool dnsmasq_server_range_del(dnsmasq_server_t *self, osn_ip_addr_t start, osn_i
 /*
  * IP reservation handling
  */
+
+static void osd_dhcp_reserved_ip_add(const char *ifname, osn_mac_addr_t macaddr,
+        osn_ip_addr_t ipaddr, const char *hostname)
+{
+    static bool first_time = true;
+    FILE *fp = NULL;
+    char file_path[128] = {0};
+
+    // Taking advantage of the fact that only the cloud adds entries.
+    // If we're connected to the cloud, we can safely scrub all old entries.
+    snprintf(file_path, sizeof(file_path), "%s_%s", CONFIG_OSN_DNSMASQ_RESERVATIONS_PATH, ifname);
+    if (first_time) { unlink(file_path); first_time=false; }
+
+    if (NULL != (fp = fopen(file_path, "a")))
+    {
+        fprintf(fp, "dhcp-host="PRI_osn_mac_addr",%s%s"PRI_osn_ip_addr"%s""\n",
+                FMT_osn_mac_addr(macaddr),
+                (hostname) ? hostname : "",
+                (hostname) ? "," : "",
+                FMT_osn_ip_addr(ipaddr),
+                (!strncmp(ifname, CONFIG_STATIC_IP_LAN_INTF1, sizeof(ifname))
+                    || !strncmp(ifname, CONFIG_STATIC_IP_LAN_INTF2, sizeof(ifname))
+                    || !strncmp(ifname, CONFIG_STATIC_IP_LAN_INTF3, sizeof(ifname))) ? ",ignore" : "");
+        fclose(fp);
+    }
+}
+
+static void osd_dhcp_reserved_ip_del(const char *ifname, osn_mac_addr_t macaddr)
+{
+    FILE *fs = NULL;
+    FILE *fd = NULL;
+    char match[64] = {0};
+    char line[256] = {0};
+    char file_path[128] = {0};
+    char tmp_file_path[128] = {0};
+
+    snprintf(file_path, sizeof(file_path), "%s_%s", CONFIG_OSN_DNSMASQ_RESERVATIONS_PATH, ifname);
+    if(NULL == (fs = fopen(file_path, "r")))
+    {
+        return;
+    }
+    snprintf(tmp_file_path, sizeof(tmp_file_path), "%s.tmp", file_path);
+    if(NULL == (fd = fopen(tmp_file_path, "w")))
+    {
+        fclose(fs);
+        return;
+    }
+
+    snprintf(match, sizeof(match), "dhcp-host="PRI_osn_mac_addr, FMT_osn_mac_addr(macaddr));
+    while( fgets(line, sizeof(line), fs) )
+    {
+        if ( strncmp(line, match, strlen(match)) ) // Skip line if mac address matches
+        {
+            fputs(line, fd);
+        }
+    }
+    fclose(fs);
+    fclose(fd);
+    rename(tmp_file_path, file_path);
+}
+
 bool dnsmasq_server_reservation_add(
         dnsmasq_server_t *self,
         osn_mac_addr_t macaddr,
@@ -533,6 +594,27 @@ bool dnsmasq_server_config_write(void)
         struct dnsmasq_range *dr;
 
         if (!pds->ds_enabled) continue;
+
+	if (!strcmp(pds->ds_ifname, "BR_LAN") || !strcmp(pds->ds_ifname, "br-home") ||
+                !strncmp(pds->ds_ifname, CONFIG_STATIC_IP_LAN_INTF1, sizeof(pds->ds_ifname)) ||
+                !strncmp(pds->ds_ifname, CONFIG_STATIC_IP_LAN_INTF2, sizeof(pds->ds_ifname)) ||
+                !strncmp(pds->ds_ifname, CONFIG_STATIC_IP_LAN_INTF3, sizeof(pds->ds_ifname)))
+        {
+            struct osn_ip_addr lan_addr;
+            unsigned char addr6[64]={0};
+            if (get_ipaddr(pds->ds_ifname, &lan_addr))
+            {
+                fprintf(fconf, "address=/MyRouter/"PRI_osn_ip_addr"\n", FMT_osn_ip_addr(lan_addr));
+                fprintf(fconf, "address=/MyRouter.lan/"PRI_osn_ip_addr"\n", FMT_osn_ip_addr(lan_addr));
+            }
+
+            /* Added support for br-home link local address */
+            if (get_ipaddr6(addr6, pds->ds_ifname, 1, sizeof(addr6)))
+            {
+                fprintf(fconf, "address=/MyRouter/%s\n", addr6);
+                fprintf(fconf, "address=/MyRouter.lan/%s\n", addr6);
+            }
+        }
 
         /* Write out the range */
         fprintf(fconf, "# Interface: %s\n", pds->ds_ifname);

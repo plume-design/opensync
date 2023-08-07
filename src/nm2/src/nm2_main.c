@@ -115,6 +115,9 @@ int main(int argc, char ** argv)
     nm2_dhcp_option_init();
     nm2_ipv6_routeadv_init();
     nm2_mcast_init();
+#ifdef CONFIG_ABW_STATIC_IP
+    nm2_ripv2_init();
+#endif
 
     ev_run(loop, 0);
 
