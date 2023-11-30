@@ -28,6 +28,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <string.h>
 #include <resolv.h>
 #include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <net/if.h>
 #include <sys/ioctl.h>
 #include <sys/types.h>
@@ -35,6 +36,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <netdb.h>
 #include <arpa/inet.h>
 #include <errno.h>
+#include <time.h>
 
 #include "log.h"         // logging routines
 #include "json_util.h"   // json routines
@@ -69,7 +71,7 @@ char *dns_server_list[] =
 int next_dns_server;
 
 int
-ltem_check_dns(char *server, char *hostname)
+ltem_check_dns(const char *server, char *hostname)
 {
     int rc;
     int i;
@@ -106,7 +108,7 @@ ltem_check_dns(char *server, char *hostname)
     return rc;
 }
 
-static const char *
+const char *
 ltem_get_next_dns_server(void)
 {
     char *server;
@@ -128,6 +130,7 @@ ltem_dns_connect_check(char *if_name)
     const char *dns_server;
     struct sockaddr_in addr;
     struct ifreq ifr;
+    time_t start, end;
 
     s = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     memset(&addr, 0, sizeof(addr));
@@ -151,16 +154,53 @@ ltem_dns_connect_check(char *if_name)
         return -1;
     }
 
+    start = time(NULL);
     res = connect(s, (struct sockaddr *)&addr, sizeof(addr));
+    end = time(NULL);
     if (res)
     {
-        LOGI("%s: connect to %s failed: res=%d, err=%s", __func__, dns_server, res, strerror(errno));
+        LOGI("%s: connect to %s failed: res=%d, err=%s, time[%ld]", __func__, dns_server, res, strerror(errno), end - start);
         close(s);
         return -1;
     }
 
     sleep(1);
     close(s);
+
+    return 0;
+}
+
+int
+ltem_wan_healthcheck(ltem_mgr_t *mgr)
+{
+    target_connectivity_check_t cstate = {0};
+    target_connectivity_check_option_t opts;
+    time_t start, end;
+    bool ret;
+
+    if (mgr->lte_config_info->if_name[0] == '\0') return 0;
+
+    if (!mgr->lte_state_info->lte_failover_active && mgr->wan_state == LTEM_WAN_STATE_UP)
+    {
+        opts = (INTERNET_CHECK | FAST_CHECK | IPV4_CHECK);
+        start = time(NULL);
+        ret = target_device_connectivity_check(mgr->lte_route->wan_if_name, &cstate, opts);
+        end = time(NULL);
+        LOGI("%s: ping time[%ld]", __func__, end - start);
+        if (!ret)
+        {
+            mgr->wan_failure_count++;
+            mgr->wan_l3_reconnect_success = 0;
+            LOGI("%s: Failed, count[%d]", __func__, mgr->wan_failure_count);
+            return -1;
+        }
+        else
+        {
+            mgr->last_wan_healthcheck_success = time(NULL);
+            mgr->wan_failure_count = 0;
+            LOGI("%s: Success", __func__);
+        }
+    }
 
     return 0;
 }

@@ -589,8 +589,15 @@ osw_wpas_util_fill_link_details(const struct osw_hostap_conf_sta_state_bufs *buf
     struct osw_drv_vif_state_sta *sta = &vstate->u.sta;
     struct osw_drv_vif_state_sta_link *link = &sta->link;
     const char *id;
+    const bool no_status = (status == NULL)
+                        || (strlen(status) == 0);
 
-    if (status == NULL) return;
+    if (no_status) {
+        osw_vif_status_set(&vstate->status, OSW_VIF_DISABLED);
+        return;
+    }
+
+    osw_vif_status_set(&vstate->status, OSW_VIF_ENABLED);
 
     STRSCPY_WARN(link->bridge_if_name.buf, bufs->bridge_if_name ?: "");
     STATE_GET_BY_FN(link->status, status, "wpa_state", osw_hostap_util_sta_state_to_osw);

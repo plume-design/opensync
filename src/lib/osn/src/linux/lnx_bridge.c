@@ -37,6 +37,7 @@ const char lnx_br_del_cmd[] = _S(ip link delete dev "$1" type bridge);
 const char lnx_br_port_add_cmd[] = _S(brctl addif "$1" "$2");
 const char lnx_br_port_del_cmd[] = _S(brctl delif "$1" "$2");
 const char lnx_port_hairpin_cmd[] = _S(ip link set "$1" type bridge_slave hairpin "$2");
+const char lnx_port_in_bridge_cmd[] = _S(ip link show master "$1" dev "$2" | grep "$2");
 
 bool lnx_bridge_create(char *br)
 {
@@ -93,6 +94,13 @@ bool lnx_bridge_set_hairpin(char *port, bool enable)
 bool lnx_bridge_add_port(char *br, char *port)
 {
     int rc;
+
+    rc = execsh_log(LOG_SEVERITY_NOTICE, lnx_port_in_bridge_cmd, br, port);
+    if (rc == 0)
+    {
+        LOGD("%s(): Port %s already added to %s. Skipping!", __func__, port, br);
+        return true;
+    }
 
     rc = execsh_log(LOG_SEVERITY_NOTICE, lnx_br_port_add_cmd, br, port);
     if (rc != 0)

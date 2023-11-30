@@ -48,9 +48,24 @@ struct ow_steer_executor_action_deauth {
     struct ow_steer_executor_action *base;
     struct osw_drv_frame_tx_desc *tx_desc;
     struct osw_timer delay_timer;
+    float delay_seconds;
 };
 
-static void
+void
+ow_steer_executor_action_deauth_set_delay_sec(struct ow_steer_executor_action_deauth *deauth_action,
+                                              float seconds)
+{
+    if (deauth_action->delay_seconds == seconds) return;
+
+    LOGD("%s deauth delay set from %f to %f seconds",
+         ow_steer_executor_action_get_prefix(deauth_action->base),
+         deauth_action->delay_seconds,
+         seconds);
+
+    deauth_action->delay_seconds = seconds;
+}
+
+static bool
 ow_steer_executor_action_deauth_call_fn(struct ow_steer_executor_action *action,
                                         const struct ow_steer_candidate_list *candidate_list,
                                         struct osw_conf_mutator *mutator)
@@ -64,7 +79,7 @@ ow_steer_executor_action_deauth_call_fn(struct ow_steer_executor_action *action,
             LOGD("%s deauth already scheduled, remaining delay: %.2lf sec", ow_steer_executor_action_get_prefix(deauth_action->base), OSW_TIME_TO_DBL(delay_remaining_nsec));
         }
         else {
-            const uint64_t delay_nsec = OSW_TIME_SEC(OW_STEER_EXECUTOR_ACTION_DEAUTH_DELAY_SEC);
+            const uint64_t delay_nsec = OSW_TIME_SEC(deauth_action->delay_seconds);
             LOGI("%s scheduled deauth, delay: %.2lf sec", ow_steer_executor_action_get_prefix(deauth_action->base), OSW_TIME_TO_DBL(delay_nsec));
             osw_timer_arm_at_nsec(&deauth_action->delay_timer, osw_time_mono_clk() + delay_nsec);
         }
@@ -75,6 +90,7 @@ ow_steer_executor_action_deauth_call_fn(struct ow_steer_executor_action *action,
 
         osw_timer_disarm(&deauth_action->delay_timer);
     }
+    return true;
 }
 
 static void
@@ -193,6 +209,7 @@ ow_steer_executor_action_deauth_create(const struct osw_hwaddr *sta_addr,
     struct ow_steer_executor_action_deauth *deauth_action = CALLOC(1, sizeof(*deauth_action));
     osw_timer_init(&deauth_action->delay_timer, ow_steer_executor_action_deauth_delay_timer_cb);
     deauth_action->base = ow_steer_executor_action_create("deauth", sta_addr, &ops, mediator, deauth_action);
+    ow_steer_executor_action_deauth_set_delay_sec(deauth_action, OW_STEER_EXECUTOR_ACTION_DEAUTH_DELAY_SEC);
 
     return deauth_action;
 }

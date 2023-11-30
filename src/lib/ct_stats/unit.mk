@@ -43,7 +43,6 @@ UNIT_SRC := src/ct_stats.c
 
 UNIT_CFLAGS := -I$(UNIT_PATH)/inc
 UNIT_CFLAGS += -Isrc/fcm/inc
-UNIT_CFLAGS += -Isrc/lib/imc/inc
 
 UNIT_LDFLAGS := -lmnl -lev
 

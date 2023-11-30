@@ -209,10 +209,17 @@ hostap_txq_requeue_sent(struct hostap_txq *q)
             hostap_txq_req_complete(req, NULL, 0);
         }
         else {
-            LOGT(LOG_PREFIX_REQ(req, "requeueing"));
             ds_dlist_remove(&q->cmds_sent, req);
-            req->list = &q->cmds_queued;
-            ds_dlist_insert_head(&q->cmds_queued, req);
+            if (q->stopping) {
+                LOGT(LOG_PREFIX_REQ(req, "dropping"));
+                req->list = NULL;
+                hostap_txq_req_complete(req, NULL, 0);
+            }
+            else {
+                LOGT(LOG_PREFIX_REQ(req, "requeueing"));
+                req->list = &q->cmds_queued;
+                ds_dlist_insert_head(&q->cmds_queued, req);
+            }
         }
     }
 }

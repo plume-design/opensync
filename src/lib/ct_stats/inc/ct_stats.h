@@ -33,51 +33,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ds_dlist.h"
 #include "ds_tree.h"
 #include "network_metadata_report.h"
+#include "nf_utils.h"
 
 #define MAX_CT_STATS        (256)
 #define MAX_IPV4_IPV6_LEN    (46)
 
-typedef struct layer3_ct_info
-{
-    struct sockaddr_storage src_ip;
-    struct sockaddr_storage dst_ip;
-    uint16_t src_port;
-    uint16_t dst_port;
-    uint8_t proto_type;
-    uint8_t family_type;
-} layer3_ct_info_t;
-
-
-typedef struct pkts_ct_info
-{
-    uint64_t pkt_cnt;
-    uint64_t bytes;
-} pkts_ct_info_t;
-
-
-typedef struct ct_flow
-{
-    layer3_ct_info_t layer3_info;
-    pkts_ct_info_t pkt_info;
-    uint16_t dir;
-    uint16_t ct_zone; // CT_ZONE at tuple level
-    uint32_t ct_mark; // CT_MARK
-    bool start;
-    bool end;
-} ct_flow_t;
-
-typedef struct ctflow_info
-{
-    ct_flow_t flow;
-    ds_dlist_node_t dl_node;
-} ctflow_info_t;
-
-struct flow_tracker
-{
-    ctflow_info_t *flowptr;
-    uint16_t  zone_id;
-    ds_tree_node_t  ft_tnode;
-};
 
 typedef struct flow_stats_
 {
@@ -127,14 +87,12 @@ ct_stats_get_mgr(void);
 flow_stats_t *
 ct_stats_get_active_instance(void);
 
-void
-ct_stats_print_contrack(ct_flow_t *flow);
 
 int
 ct_stats_get_ct_flow(int af_family);
 
 int
-data_cb(const struct nlmsghdr *nlh, void *data);
+ct_get_stats(void);
 
 void
 ct_stats_collect_cb(fcm_collect_plugin_t *collector);
@@ -163,6 +121,9 @@ ct_stats_plugin_exit(fcm_collect_plugin_t *collector);
 void
 ct_stats_exit_mgr(void);
 
+
+void
+ct_free_ct_entries(ds_dlist_t *nf_ct_list);
 
 /**
  * @brief collector filter callback processing flows pushed from fsm

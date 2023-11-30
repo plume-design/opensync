@@ -54,6 +54,7 @@ struct neighbour_entry
     time_t cache_valid_ts;
     uint8_t *ip_tbl;           // for fast lookups
     int af_family;             // for fast lookups
+    uint32_t flags;
     ds_tree_node_t entry_node; // tree node structure
 };
 
@@ -101,6 +102,12 @@ enum ovsdb_table_lookup
     IPV6_NEIGHBORS  = 1 << 2,
     WIFI_INET_STATE = 1 << 3,
 };
+
+enum neigh_entry_flags
+{
+    NEIGH_CACHED = 1 << 0,
+};
+
 
 struct neigh_mapping_source
 {

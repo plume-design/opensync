@@ -54,24 +54,11 @@ ovsdb-client transact '
 }]'
 
 # Remove bridge interfaces from the system
-for BRIDGE in $(brctl show | awk 'FNR != 1 {print $1}'); do
-    ovsdb-client transact '
-    ["Open_vSwitch", {
-        "op":  "delete",
-        "table": "Bridge",
-        "where": [
-            ["name", "==", "'$BRIDGE'"]
-        ]
-    }, {
-        "op" : "update",
-        "table" : "Open_vSwitch",
-        "where" : [],
-        "row": {
-            "bridges": ["set",[]]
-        }
-     }]'
+for BRIDGE in $(echo /sys/class/net/*/bridge | tr ' ' '\n' | cut -d '/' -f 5); do
+    echo "Removing $BRIDGE"
+    ip link set dev $BRIDGE down
+    brctl delbr $BRIDGE
 done
-echo "Removing $BRIDGE"
 {%- endif %}
 
 # Stop openvswitch

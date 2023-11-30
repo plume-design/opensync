@@ -32,7 +32,7 @@ UNIT_NAME := ff
 # This unit relies heavily on MODULE(). LIB will generate
 # broken binaries because .ctors section will be stripped
 # away.
-UNIT_TYPE := SHLIB
+UNIT_TYPE := LIB
 UNIT_DIR := lib
 
 UNIT_SRC := src/ff_lib.c
@@ -47,8 +47,3 @@ UNIT_DEPS += src/lib/osp
 
 UNIT_EXPORT_CFLAGS := $(UNIT_CFLAGS)
 UNIT_EXPORT_LDFLAGS := $(UNIT_LDFLAGS)
-
-ifeq ($(BUILD_SHARED_LIB),y)
-UNIT_DEPS += src/lib/opensync
-endif
-

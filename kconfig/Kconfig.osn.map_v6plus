@@ -1,0 +1,4 @@
+# Include vendor's defaults first, if any:
+osource "vendor/*/kconfig/Kconfig.osn.map_v6plus"
+
+source "src/lib/osn/kconfig/Kconfig.osn.map_v6plus"

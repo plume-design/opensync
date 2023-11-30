@@ -24,6 +24,7 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+#define _GNU_SOURCE
 #include "log.h"
 #include "module.h"
 #include "ovsdb_table.h"
@@ -33,9 +34,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "osa_assert.h"
 #include "json_util.h"
 #include "memutil.h"
+#include "util.h"
 
 #include "wano_wan.h"
-
+#include "kconfig.h"
 #include "wanp_pppoe_stam.h"
 
 struct wanp_pppoe_handle
@@ -315,13 +317,23 @@ wano_plugin_handle_t *wanp_pppoe_init(
     struct wanp_pppoe_handle *wpoe;
 
     wpoe = CALLOC(1, sizeof(struct wanp_pppoe_handle));
-    ASSERT(wpoe != NULL, "Error allocating PPPOE object")
+    ASSERT(wpoe != NULL, "Error allocating PPPOE object");
 
     wpoe->wpoe_handle.wh_plugin = wp;
     STRSCPY(wpoe->wpoe_handle.wh_ifname, ifname);
-    // Concat name of new interface from "ppp-" and parent interface name
-    STRSCPY_WARN(wpoe->wpoe_ppp_ifname, "ppp-");
-    STRSCAT(wpoe->wpoe_ppp_ifname, wpoe->wpoe_handle.wh_ifname);
+
+    STRSCPY_WARN(wpoe->wpoe_ppp_ifname, CONFIG_OSN_BACKEND_PPPOE_NAME_TEMPLATE);
+
+    WARN_ON(str_replace_fixed(wpoe->wpoe_ppp_ifname
+                            , sizeof(wpoe->wpoe_ppp_ifname)
+                            , "@I"
+                            , strfmta("%s", &ifname[3])) < 0);
+    WARN_ON(str_replace_fixed(wpoe->wpoe_ppp_ifname
+                            , sizeof(wpoe->wpoe_ppp_ifname)
+                            , "@P"
+                            , ifname) < 0);
+    LOG(DEBUG, "wanp_pppoe: PPPoE interface: %s", wpoe->wpoe_ppp_ifname);
+
     wpoe->wpoe_status_fn = status_fn;
 
     return &wpoe->wpoe_handle;

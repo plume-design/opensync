@@ -32,8 +32,8 @@ CFLAGS += $(VENDOR_CFLAGS)
 TARGET_DEF := TARGET_$(shell echo -n "$(TARGET)" | tr -sc '[A-Za-z0-9]' _ | tr '[a-z]' '[A-Z]')
 CFLAGS += -D$(TARGET_DEF) -DTARGET_NAME="\"$(TARGET)\""
 
-# gcc version specific flags  (does not apply to clang)
-ifeq (,$(findstring clang,$(CC)))
+# gcc version specific flags (does not apply to clang)
+ifneq (,$(findstring cc,$(CC)))
 ifndef GCCVERFLAGS
 ifneq ($(CC),)
 GCCVER := $(shell $(CC) -dumpversion 2>/dev/null | cut -f1 -d.)
@@ -53,8 +53,15 @@ GCCVERFLAGS += -Wno-error=stringop-overflow
 endif
 endif
 endif
+else ifneq (,$(findstring clang,$(CC)))
+  CLANGVER := $(shell $(CC) --version | head -n1 | cut -f1 -d. | tr -dc '0-9')
+
+  ifeq ($(shell [ $(CLANGVER) -ge 15 ] && echo y),y)
+    CLANGVERFLAGS += -Wno-error=fortify-source
+    CLANGVERFLAGS += -Wno-error=deprecated-non-prototype
+    CLANGVERFLAGS += -Wno-error=array-parameter
+  endif
 endif
 
-
 CFLAGS += $(GCCVERFLAGS)
-
+CFLAGS += $(CLANGVERFLAGS)

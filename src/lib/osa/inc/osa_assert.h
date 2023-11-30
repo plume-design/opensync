@@ -33,11 +33,13 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <signal.h>
 #include <stdio.h>
 
-#define ASSERT(cond, fmt...)                                            \
-if (!(cond))                                                            \
-{                                                                       \
-   osa_assert_dump(#cond, __FUNCTION__, __FILE__, __LINE__, fmt);       \
-}
+#define ASSERT(cond, fmt...)                                                \
+    do {                                                                    \
+        if (!(cond))                                                        \
+        {                                                                   \
+           osa_assert_dump(#cond, __FUNCTION__, __FILE__, __LINE__, fmt);   \
+        }                                                                   \
+    } while(0)
 
 extern _Noreturn void osa_assert_dump(
         const char *cond,

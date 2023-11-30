@@ -299,8 +299,13 @@ gk_update_redirect_from_cache(struct fsm_policy_req *req,
                               struct gk_attr_cache_interface *entry,
                               struct fsm_policy_reply *policy_reply)
 {
-    /* update redirect entries only for attr type FQDN */
-    if (entry->attribute_type != GK_CACHE_REQ_TYPE_FQDN) return;
+    bool update;
+
+    /* update redirect entries only for attr type FQDN, HOST and SNI */
+    update = (entry->attribute_type == GK_CACHE_REQ_TYPE_FQDN);
+    update |= (entry->attribute_type == GK_CACHE_REQ_TYPE_HOST);
+    update |= (entry->attribute_type == GK_CACHE_REQ_TYPE_SNI);
+    if (!update) return;
 
     /* return if fqdn_redirect is not set */
     if (entry->fqdn_redirect == NULL) return;
@@ -593,7 +598,12 @@ gatekeeper_add_attr_cache(struct fsm_policy_req *req,
     }
 
     /* check if fqdn redirect entries needs to be added. */
-    if (req_type == GK_CACHE_REQ_TYPE_FQDN) gk_populate_redirect_entry(entry, req, policy_reply);
+    if (req_type == GK_CACHE_REQ_TYPE_FQDN ||
+        req_type == GK_CACHE_REQ_TYPE_HOST ||
+        req_type == GK_CACHE_REQ_TYPE_SNI)
+    {
+        gk_populate_redirect_entry(entry, req, policy_reply);
+    }
 
     ret = gkc_add_attribute_entry(entry);
     LOGT("%s(): adding %s (attr type %d) ttl (%" PRIu64 ") to cache %s ",
@@ -1439,7 +1449,6 @@ gatekeeper_exit(struct fsm_session *session)
 
     fsm_client = &fsm_gk_session->cache_flush_client;
     fsm_policy_deregister_client(fsm_client);
-    FREE(fsm_client->name);
 
     if (fsm_gk_session->re)
     {

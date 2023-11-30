@@ -46,14 +46,18 @@ typedef enum {
     BTRACE_LOG_ONLY
 } btrace_type;
 
-typedef bool        backtrace_func_t(void *ctx, void *addr, const char *func, const char *object);
+typedef bool        os_backtrace_func_t(void *ctx, void *addr, const char *func, void *faddr, const char *object);
 
-extern void         backtrace_init(void);
-extern void         backtrace_dump(void);
+extern void         os_backtrace_init(void);
+extern void         os_backtrace_dump_generic(btrace_type btrace);
+extern void         os_backtrace_dump(void);
+extern bool         os_backtrace(os_backtrace_func_t *handler, void *ctx);
+extern bool         os_backtrace_copy(void **addr, int size, int *count, int *all);
+extern bool         os_backtrace_resolve(void *addr, const char **func, const char **fname);
 extern void         sig_crash_report(int signum);
-extern bool         backtrace(backtrace_func_t *handler, void *ctx);
-bool backtrace_copy(void **addr, int size, int *count, int *all);
-bool backtrace_resolve(void *addr, const char **func, const char **fname);
+
+// legacy compatibility
+#define backtrace_init os_backtrace_init
 
 // Path where crashdump is generated
 #define BTRACE_DUMP_PATH        "/var/log/lm/crash"

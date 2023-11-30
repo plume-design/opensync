@@ -61,4 +61,5 @@ UNIT_DEPS += src/lib/neigh_table
 UNIT_DEPS += src/lib/gatekeeper_cache
 UNIT_DEPS += src/lib/unit_test_utils
 UNIT_DEPS += src/lib/network_zone
+UNIT_DEPS += src/lib/dpi_intf
 UNIT_DEPS += $(if $(CONFIG_ACCEL_FLOW_EVICT_MESSAGE), src/lib/accel_evict_msg)

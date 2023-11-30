@@ -35,6 +35,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <jansson.h>
 #include <syslog.h>
 #include <getopt.h>
+#include <inttypes.h>
 
 #include "ds_tree.h"
 #include "log.h"
@@ -126,6 +127,7 @@ void qm_get_opt(int argc, char ** argv)
 void cli_print_res(qm_response_t *res)
 {
 #define PR(X) printf("%-11s: %d\n", #X, res->X)
+#define PR64(X) printf("%-11s: %"PRId64"\n", #X, res->X)
 #define PR2(X,Y) printf("%-11s: %d  %s\n", #X, res->X, Y)
     printf("Response: [%.4s] %d\n", res->tag, res->ver);
     PR(seq);
@@ -138,6 +140,10 @@ void cli_print_res(qm_response_t *res)
     PR(qdrop);
     PR(log_size);
     PR(log_drop);
+    PR(num_sent);
+    PR64(num_bytes);
+    PR(num_errors);
+    PR(runtime);
 #undef PR
 }
 

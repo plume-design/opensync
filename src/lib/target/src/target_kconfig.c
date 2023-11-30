@@ -269,6 +269,7 @@ bool target_device_execute(const char *cmd)
 #define DEFAULT_TIMEOUT_ARG             5
 #define DEFAULT_INTERNET_CNT_CHECK      2
 #define DEFAULT_GRE_STA_PREFIX          "g-"
+#define DEFAULT_NDISC6_PATH             "/usr/bin/ndisc6"
 
 /* Root Servers based on https://www.iana.org/domains/root/servers */
 static char *util_connectivity_check_inet_addrs[] = {
@@ -463,6 +464,32 @@ util_arping_cmd(const char *ipstr)
     ret = util_system_cmd(cmd);
 
     LOGI("Arping %s result %d (cmd=%s)", ipstr, ret, cmd);
+    return ret;
+}
+
+static bool
+util_ndisc6_cmd(const char *ipstr, const char *ifname)
+{
+    char cmd[256];
+    char test_ndisc6[64];
+    bool ret;
+
+    snprintf(ARRAY_AND_SIZE(test_ndisc6),
+             "test -x %s",
+             DEFAULT_NDISC6_PATH);
+
+    ret = util_system_cmd(test_ndisc6);
+    if (!ret) {
+        LOGI("%s ndisc6 unsupported state: %d", ifname, ret);
+        return ret;
+    }
+
+    snprintf(ARRAY_AND_SIZE(cmd),
+             "ndisc6 %s %s",
+             ipstr, ifname);
+
+    ret = util_system_cmd(cmd);
+    LOGI("%s ndisc6 %s result %d (cmd=%s)", ifname, ipstr, ret, cmd);
     return ret;
 }
 
@@ -691,7 +718,12 @@ util_connectivity_router_ipv6_check(const char *ifname, bool cfast)
     if (!ret)
         return false;
 
-    return util_ping_cmd(r_6addr, ifname, true, cfast);
+    ret = util_ping_cmd(r_6addr, ifname, true, cfast);
+    if (!ret) {
+        ret = util_ndisc6_cmd(r_6addr, ifname);
+        LOGI("Router check: ping ipv6 failed, ndisc6 ret = %d", ret);
+    }
+    return ret;
 }
 
 static bool

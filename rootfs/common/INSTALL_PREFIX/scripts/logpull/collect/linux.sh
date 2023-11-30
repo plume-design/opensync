@@ -52,6 +52,10 @@ collect_linux()
     collect_cmd ip6tables -L -v -n
     collect_cmd ip6tables -t nat -L -v -n
     collect_cmd ip6tables -t mangle -L -v -n
+    collect_cmd brctl show
+    collect_cmd ebtables -t filter -L --Lc
+    collect_cmd ebtables -t nat -L --Lc
+    collect_cmd ebtables -t broute -L --Lc
 
     if ( which iwconfig > /dev/null ); then
         collect_cmd iwconfig
@@ -111,5 +115,18 @@ collect_ethernet()
     fi
 }
 
+collect_threads_wchan()
+{
+    pidstat -tv | while read A; do
+        TID=$(echo "$A" | awk '$4~/^[0-9]+$/{print $4}')
+        if [ -n "$TID" ]; then
+            echo "$A :" $(cat "/proc/$TID/wchan" 2>/dev/null)
+        else
+            echo "$A"
+        fi
+    done > "$LOGPULL_TMP_DIR/pidstat-threads-wchan"
+}
+
 collect_linux
 collect_ethernet
+collect_threads_wchan

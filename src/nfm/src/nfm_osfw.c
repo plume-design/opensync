@@ -29,6 +29,7 @@
 * POSSIBILITY OF SUCH DAMAGE.
 */
 
+#include "target.h"
 #include "log.h"
 #include "nfm_osfw.h"
 #include "nfm_rule.h"
@@ -38,8 +39,11 @@
 #include <stdio.h>
 
 #include "kconfig.h"
+#include "ds_list.h"
 
 #define MODULE_ID LOG_MODULE_ID_MAIN
+
+#define NFM_OSFW_RULE_LEN 512   /* Maximum length of schema rule string */
 
 #define NFM_OSFW_PROTOCOL_INET4 "ipv4"
 #define NFM_OSFW_PROTOCOL_INET6 "ipv6"
@@ -66,6 +70,14 @@
 
 struct nfm_osfw_base nfm_osfw_base;
 struct nfm_osfw_eb_base nfm_osfw_eb_base;
+
+struct nfm_osfw_hook {
+    target_om_hook_t hook;
+    const char* rule;
+    ds_list_node_t node;
+};
+static ds_list_t nfm_osfw_hook_list = DS_LIST_INIT(struct nfm_osfw_hook, node);
+static ds_list_t nfm_osfw_eb_hook_list = DS_LIST_INIT(struct nfm_osfw_hook, node);
 
 bool nfm_osfw_eb_is_valid_chain(const char *chain)
 {
@@ -156,6 +168,67 @@ static bool nfm_osfw_eb_reschedule(void)
 	return true;
 }
 
+static void nfm_osfw_hook_schedule(osfw_hook_target_t target)
+{
+    struct nfm_osfw_hook *hook;
+    ds_list_iter_t iter;
+    ds_list_t *list;
+
+    /*
+     * When NFM starts, it clears all previous rules in the sytem.
+     * At that time rules cache is empty (there is no specific rule addition/removal
+     * caused by Netfilter or Openflow_Tag callback) so there is no MAC to flush.
+     */
+    switch (target)
+    {
+        case OSFW_HOOK_IPTABLES:
+            if (!ds_list_is_empty(&nfm_osfw_hook_list)) list = &nfm_osfw_hook_list;
+            else
+            {
+                LOGD("Iptables hook list is empty, no MACs to flush");
+                return;
+            }
+            break;
+
+        case OSFW_HOOK_EBTABLES:
+            if (!ds_list_is_empty(&nfm_osfw_eb_hook_list)) list = &nfm_osfw_eb_hook_list;
+            else
+            {
+                LOGD("Ebtables hook list is empty, no MACs to flush");
+                return;
+            }
+            break;
+
+        default:
+            LOGE("Unknown target, MACs flush failed");
+            return;
+    }
+
+    for (hook = ds_list_ifirst(&iter, list); hook != NULL; hook = ds_list_inext(&iter))
+    {
+        LOGT("MAC flush scheduled for rule: %s", hook->rule);
+        target_om_hook(hook->hook, hook->rule);
+
+        ds_list_iremove(&iter);
+        FREE(hook->rule);
+        FREE(hook);
+    }
+}
+
+static void nfm_osfw_hook_list_add(target_om_hook_t action, const char *rule, osfw_hook_target_t target)
+{
+    struct nfm_osfw_hook *hook = NULL;
+
+    hook = CALLOC(1, sizeof(*hook));
+    hook->hook = action;
+    hook->rule = STRDUP(rule);
+
+    LOGT("Adding rule '%s' to flush list", rule);
+    if (target == OSFW_HOOK_IPTABLES) ds_list_insert_head(&nfm_osfw_hook_list, hook);
+    else if (target == OSFW_HOOK_EBTABLES) ds_list_insert_head(&nfm_osfw_eb_hook_list, hook);
+    else LOGE("Unknown target, adding rule to the list failed");
+}
+
 bool nfm_osfw_init(struct ev_loop *loop)
 {
 	bool errcode = true;
@@ -164,7 +237,7 @@ bool nfm_osfw_init(struct ev_loop *loop)
 	nfm_osfw_base.loop = loop;
 	ev_timer_init(&nfm_osfw_base.timer, nfm_osfw_on_reschedule, 0, 0);
 
-	errcode = osfw_init(nfm_rule_apply_status_cb);
+	errcode = osfw_init(nfm_rule_apply_status_cb, nfm_osfw_hook_schedule);
 	if (!errcode) {
 		LOGE("Initialize the OpenSync firewall API failed");
 		return false;
@@ -181,7 +254,7 @@ bool nfm_osfw_eb_init(struct ev_loop *loop)
 	nfm_osfw_eb_base.loop = loop;
 	ev_timer_init(&nfm_osfw_eb_base.timer, nfm_osfw_eb_on_reschedule, 0, 0);
 
-	errcode = osfw_eb_init(nfm_rule_apply_status_cb);
+	errcode = osfw_eb_init(nfm_rule_apply_status_cb, nfm_osfw_hook_schedule);
 	if (!errcode) {
 		LOGE("Initialize the OpenSync ebtables API failed");
 		return false;
@@ -349,6 +422,7 @@ bool nfm_osfw_add_rule(const struct schema_Netfilter *conf)
 {
 	bool errcode = true;
 	bool change = false;
+	size_t len;
 	if (!conf) {
 		LOGE("Add firewall rule: invalid parameter");
 		return false;
@@ -386,10 +460,17 @@ bool nfm_osfw_add_rule(const struct schema_Netfilter *conf)
 	}
 
 	if (change) {
+		len = strnlen(conf->rule, NFM_OSFW_RULE_LEN);
 		if (kconfig_enabled(CONFIG_TARGET_ENABLE_EBTABLES) &&
             nfm_osfw_is_eth(conf->protocol)) {
+			if (len) {
+				nfm_osfw_hook_list_add(TARGET_OM_POST_ADD, conf->rule, OSFW_HOOK_EBTABLES);
+			}
 			errcode = nfm_osfw_eb_reschedule();
 		} else {
+			if (len) {
+				nfm_osfw_hook_list_add(TARGET_OM_POST_ADD, conf->rule, OSFW_HOOK_IPTABLES);
+			}
 			errcode = nfm_osfw_reschedule();
 		}
 		if (!errcode) {
@@ -404,6 +485,7 @@ bool nfm_osfw_del_rule(const struct schema_Netfilter *conf)
 {
 	bool errcode = true;
 	bool change = false;
+	size_t len;
 
 	if (!conf) {
 		LOGE("Delete firewall rule: invalid parameter");
@@ -442,10 +524,17 @@ bool nfm_osfw_del_rule(const struct schema_Netfilter *conf)
 	}
 
 	if (change) {
+		len = strnlen(conf->rule, NFM_OSFW_RULE_LEN);
     if (kconfig_enabled(CONFIG_TARGET_ENABLE_EBTABLES) &&
         nfm_osfw_is_eth(conf->protocol)) {
+			if (len) {
+				nfm_osfw_hook_list_add(TARGET_OM_POST_DEL, conf->rule, OSFW_HOOK_EBTABLES);
+			}
 			errcode = nfm_osfw_eb_reschedule();
 		} else {
+			if (len) {
+				nfm_osfw_hook_list_add(TARGET_OM_POST_DEL, conf->rule, OSFW_HOOK_IPTABLES);
+			}
 			errcode = nfm_osfw_reschedule();
 		}
 		if (!errcode) {

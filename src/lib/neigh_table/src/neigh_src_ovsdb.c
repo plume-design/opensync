@@ -385,7 +385,8 @@ neigh_table_add_dhcp_entry(struct schema_DHCP_leased_IP *dhcp_lease)
     else
     {
         rc = neigh_table_add_to_cache(&entry);
-        if (!rc) LOGD("%s: failed to add the dhcp entry", __func__);
+        if (!rc && ((entry.flags & NEIGH_CACHED) == 0))
+            LOGD("%s: failed to add the dhcp entry", __func__);
     }
 }
 
@@ -517,7 +518,10 @@ neigh_table_add_v4_entry(struct schema_IPv4_Neighbors *neigh)
     else
     {
         rc = neigh_table_add_to_cache(&entry);
-        if (!rc) LOGD("%s: cache addition failed", __func__);
+        if (!rc && ((entry.flags & NEIGH_CACHED) == 0))
+        {
+            LOGD("%s: cache addition failed", __func__);
+        }
     }
 
 }
@@ -649,7 +653,10 @@ neigh_table_add_v6_entry(struct schema_IPv6_Neighbors *neigh)
     else
     {
         rc = neigh_table_add_to_cache(&entry);
-        if (!rc) LOGD("%s: cache addition failed", __func__);
+        if (!rc && ((entry.flags & NEIGH_CACHED) == 0))
+        {
+            LOGD("%s: cache addition failed", __func__);
+        }
     }
 }
 
@@ -775,7 +782,10 @@ neigh_table_add_inet_entry(struct schema_Wifi_Inet_State *inet_info)
     else
     {
         rc = neigh_table_add_to_cache(&entry);
-        if (!rc) LOGD("%s: failed to add the inet state entry", __func__);
+        if (!rc && ((entry.flags & NEIGH_CACHED) == 0))
+        {
+            LOGD("%s: failed to add the inet state entry", __func__);
+        }
     }
 }
 

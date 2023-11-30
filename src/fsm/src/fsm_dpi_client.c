@@ -582,7 +582,7 @@ fsm_dpi_register_client(struct fsm_session *dpi_plugin_session,
     /* New client session */
     new_client_session = CALLOC(1, sizeof(*new_client_session));
     if (new_client_session == NULL) goto exit_free_new_client_session;
-    new_client_session->name = dpi_plugin_session->name;  /* No need for a copy */
+    new_client_session->name = STRDUP(dpi_plugin_session->name);
     new_client_session->session = dpi_client_session;
 
     /* Now add to this client the attribute */
@@ -594,8 +594,6 @@ fsm_dpi_register_client(struct fsm_session *dpi_plugin_session,
     {
         dpi_plugin_ops->register_client(dpi_plugin_session, dpi_client_session, attr);
     }
-
-    fsm_print_dpi_clients(dpi_clients);
 
     return;
 
@@ -675,6 +673,7 @@ fsm_dpi_unregister_client(struct fsm_session *dpi_plugin_session,
             LOGD("%s: Delete monitoring on %s for %s",
                  __func__, attr, dpi_client_session->name);
             ds_tree_remove(reg_sessions, remove_session);
+            FREE(remove_session->name);
             FREE(remove_session);
             attr_clients->num_sessions--;
         }
@@ -686,7 +685,6 @@ fsm_dpi_unregister_client(struct fsm_session *dpi_plugin_session,
     {
         LOGD("%s: Attribute %s still registered with %d callback",
              __func__, attr, attr_clients->num_sessions);
-        fsm_print_dpi_clients(attr_tree);
         return;
     }
 
@@ -697,8 +695,6 @@ fsm_dpi_unregister_client(struct fsm_session *dpi_plugin_session,
 
     dpi_plugin_ops->unregister_client(dpi_plugin_session, attr_clients->attr);
     fsm_free_dpi_client_node(attr_clients);
-
-    fsm_print_dpi_clients(attr_tree);
 }
 
 /**
@@ -741,7 +737,7 @@ fsm_get_tag_by_name(struct fsm_mgr *mgr, const char *name)
 /**
  * @brief unregisters a dpi plugin
  *
- * @param dpi_plugin_session the dpi plugin to register to
+ * @param dpi_plugin_session the dpi plugin to unregister
 
  */
 void

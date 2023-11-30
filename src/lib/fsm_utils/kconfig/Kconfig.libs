@@ -1,0 +1,13 @@
+menuconfig LIB_FSM_UTILS
+    bool "Enables the FSM utilities library"
+        default y
+        help
+            Enable the FSM utilities library
+
+config FSM_IPC_USE_OSBUS
+    bool "Use OSBUS for FSM_IPC"
+    depends on LIB_FSM_UTILS && USE_OSBUS
+    default n
+    help
+        Use OSBUS for fsm_ipc instead of unix sockets (imc)
+

@@ -126,8 +126,24 @@ static struct ow_ovsdb g_ow_ovsdb = {
 };
 
 static bool
+ow_ovsdb_vif_config_state_rows_decoupled(void)
+{
+    /* This changes semantics of what Wifi_VIF_Config rows
+     * (non-)existence implies. This change requires the
+     * OVSDB controller to be updated in tandem to this
+     * option being enabled.
+     */
+    return getenv("OW_OVSDB_VIF_CONFIG_STATE_ROWS_DECOUPLED");
+}
+
+static bool
 ow_ovsdb_vif_treat_deleted_as_disabled(enum osw_vif_type vif_type)
 {
+    if (ow_ovsdb_vif_config_state_rows_decoupled()) {
+        /* do not treat deleted as disabled */
+        return false;
+    }
+
     /* Current Wifi_VIF_Config row semantics are a bit
      * hairy. Row removal is considered implicitly as a
      * desire to disable an interface (and remove it).
@@ -152,6 +168,11 @@ ow_ovsdb_vif_treat_deleted_as_disabled(enum osw_vif_type vif_type)
 static bool
 ow_ovsdb_vif_report_only_configured(enum osw_vif_type vif_type)
 {
+    if (ow_ovsdb_vif_config_state_rows_decoupled()) {
+        /* allow any state to be seen regardless of config */
+        return false;
+    }
+
     /* This is tied to reporting Wifi_VIF_State rows only if
      * there's an associated Wifi_VIF_Config row of a given
      * if_name. The deleted as disabled is tightly coupled
@@ -438,7 +459,7 @@ ow_ovsdb_phystate_get_bcn_int_iter_cb(const struct osw_state_vif_info *info,
                                       void *priv)
 {
     int *bcn_int = priv;
-    if (info->drv_state->enabled == false) return;
+    if (info->drv_state->status != OSW_VIF_ENABLED) return;
     if (info->drv_state->vif_type != OSW_VIF_AP) return;
     if (*bcn_int == 0) *bcn_int = info->drv_state->u.ap.beacon_interval_tu;
     if (*bcn_int != info->drv_state->u.ap.beacon_interval_tu) *bcn_int = -1;
@@ -472,7 +493,7 @@ ow_ovsdb_phystate_get_channel_h_ap(const struct osw_state_vif_info *info,
 {
     const struct osw_channel *i = &info->drv_state->u.ap.channel;
 
-    if (info->drv_state->enabled == false) return;
+    if (info->drv_state->status != OSW_VIF_ENABLED) return;
     if (info->drv_state->vif_type != OSW_VIF_AP) return;
     ow_ovsdb_phystate_get_channel_h_chan(i, priv);
 }
@@ -483,7 +504,7 @@ ow_ovsdb_phystate_get_channel_h_sta(const struct osw_state_vif_info *info,
 {
     const struct osw_channel *i = &info->drv_state->u.sta.link.channel;
 
-    if (info->drv_state->enabled == false) return;
+    if (info->drv_state->status != OSW_VIF_ENABLED) return;
     if (info->drv_state->vif_type != OSW_VIF_STA) return;
     if (info->drv_state->u.sta.link.status != OSW_DRV_VIF_STATE_STA_LINK_CONNECTED) return;
     ow_ovsdb_phystate_get_channel_h_chan(i, priv);
@@ -559,7 +580,7 @@ ow_ovsdb_phystate_get_mode_iter_cb(const struct osw_state_vif_info *info,
     const struct osw_ap_mode *i = &info->drv_state->u.ap.mode;
     struct osw_ap_mode *m = priv;
 
-    if (info->drv_state->enabled == false) return;
+    if (info->drv_state->status != OSW_VIF_ENABLED) return;
     if (info->drv_state->vif_type != OSW_VIF_AP) return;
 
     m->ht_enabled |= i->ht_enabled;
@@ -1001,7 +1022,17 @@ ow_ovsdb_vifstate_to_schema(struct schema_Wifi_VIF_State *schema,
     int c;
 
     SCHEMA_SET_STR(schema->if_name, vif->vif_name);
-    SCHEMA_SET_BOOL(schema->enabled, vif->drv_state->enabled);
+    switch (vif->drv_state->status) {
+        case OSW_VIF_UNKNOWN:
+        case OSW_VIF_BROKEN:
+            break;
+        case OSW_VIF_ENABLED:
+            SCHEMA_SET_BOOL(schema->enabled, true);
+            break;
+        case OSW_VIF_DISABLED:
+            SCHEMA_SET_BOOL(schema->enabled, false);
+            break;
+    }
     SCHEMA_SET_STR(schema->mac, osw_hwaddr2str(&vif->drv_state->mac_addr, &mac));
 
     switch (vif->drv_state->vif_type) {
@@ -1408,9 +1439,11 @@ ow_ovsdb_vif_state_is_wanted(struct ow_ovsdb_vif *vif)
 
     const enum osw_vif_type vif_type = vif->info->drv_state->vif_type;
     const bool is_configured = (ow_ovsdb_vif_is_deleted(vif) == false);
+    const bool is_running = (vif->info->drv_state->status == OSW_VIF_ENABLED)
+                         || (vif->info->drv_state->status == OSW_VIF_BROKEN);
     const bool always_wanted = (ow_ovsdb_vif_report_only_configured(vif_type) == false);
 
-    return always_wanted ? true : is_configured;
+    return always_wanted ? true : (is_configured || is_running);
 }
 
 static void
@@ -3154,7 +3187,7 @@ OSW_UT(ow_ovsdb_ut_rstate_bcn_int)
         .vif_name = "vif1",
         .drv_state = (const struct osw_drv_vif_state []){{
             .exists = true,
-            .enabled = true,
+            .status = OSW_VIF_ENABLED,
             .vif_type = OSW_VIF_AP,
             .u = { .ap = { .beacon_interval_tu = 100 } },
         }}
@@ -3164,7 +3197,7 @@ OSW_UT(ow_ovsdb_ut_rstate_bcn_int)
         .vif_name = "vif1",
         .drv_state = (const struct osw_drv_vif_state []){{
             .exists = true,
-            .enabled = true,
+            .status = OSW_VIF_ENABLED,
             .vif_type = OSW_VIF_AP,
             .u = { .ap = { .beacon_interval_tu = 200 } },
         }}
@@ -3174,7 +3207,7 @@ OSW_UT(ow_ovsdb_ut_rstate_bcn_int)
         .vif_name = "vif2",
         .drv_state = (const struct osw_drv_vif_state []){{
             .exists = true,
-            .enabled = true,
+            .status = OSW_VIF_ENABLED,
             .vif_type = OSW_VIF_AP,
             .u = { .ap = { .beacon_interval_tu = 200 } },
         }}
@@ -3237,7 +3270,7 @@ OSW_UT(ow_ovsdb_ut_vstate)
         .vif_name = "vif1",
         .drv_state = (const struct osw_drv_vif_state []){{
             .exists = true,
-            .enabled = true,
+            .status = OSW_VIF_ENABLED,
             .vif_type = OSW_VIF_AP,
             .u = { .ap = { .ssid = { .buf = "ssid123", .len = 7 } } },
         }}
@@ -3255,7 +3288,7 @@ OSW_UT(ow_ovsdb_ut_vstate)
     ow_ovsdb_get_vstate(&vstate, vif.vif_name);
 
     assert(vstate.enabled_exists == true);
-    assert(vstate.enabled == vif.drv_state->enabled);
+    assert((vstate.enabled ? OSW_VIF_ENABLED : OSW_VIF_DISABLED) == vif.drv_state->status);
     assert(vstate.ssid_exists == true);
     assert(strcmp(vstate.ssid, vif.drv_state->u.ap.ssid.buf) == 0);
     assert(rstate.vif_states_len == 1);
@@ -3272,7 +3305,17 @@ OSW_UT(ow_ovsdb_ut_vstate)
     void *filter = NULL;
     memset(&vconf, 0, sizeof(vconf));
     SCHEMA_SET_STR(vconf.if_name, vif.vif_name);
-    SCHEMA_SET_BOOL(vconf.enabled, vif.drv_state->enabled);
+    switch (vif.drv_state->status) {
+        case OSW_VIF_UNKNOWN:
+        case OSW_VIF_BROKEN:
+            break;
+        case OSW_VIF_ENABLED:
+            SCHEMA_SET_BOOL(vconf.enabled, true);
+            break;
+        case OSW_VIF_DISABLED:
+            SCHEMA_SET_BOOL(vconf.enabled, false);
+            break;
+    }
     SCHEMA_SET_STR(vconf.mode, "ap");
     SCHEMA_SET_STR(vconf.ssid, vif.drv_state->u.ap.ssid.buf);
 
@@ -3317,7 +3360,7 @@ OSW_UT(ow_ovsdb_ut_rstate_channel)
         .vif_name = "vif1",
         .drv_state = (const struct osw_drv_vif_state []){{
             .exists = true,
-            .enabled = true,
+            .status = OSW_VIF_ENABLED,
             .vif_type = OSW_VIF_AP,
             .u = { .ap = { .channel = { .control_freq_mhz = 2412, .width = OSW_CHANNEL_20MHZ} } },
         }}
@@ -3327,7 +3370,7 @@ OSW_UT(ow_ovsdb_ut_rstate_channel)
         .vif_name = "vif2",
         .drv_state = (const struct osw_drv_vif_state []){{
             .exists = true,
-            .enabled = true,
+            .status = OSW_VIF_ENABLED,
             .vif_type = OSW_VIF_AP,
             .u = { .ap = { .channel = { .control_freq_mhz = 2412, .width = OSW_CHANNEL_20MHZ} } },
         }}
@@ -3337,7 +3380,7 @@ OSW_UT(ow_ovsdb_ut_rstate_channel)
         .vif_name = "vif2",
         .drv_state = (const struct osw_drv_vif_state []){{
             .exists = true,
-            .enabled = true,
+            .status = OSW_VIF_ENABLED,
             .vif_type = OSW_VIF_AP,
             .u = { .ap = { .channel = { .control_freq_mhz = 2437, .width = OSW_CHANNEL_20MHZ} } },
         }}
@@ -3347,7 +3390,7 @@ OSW_UT(ow_ovsdb_ut_rstate_channel)
         .vif_name = "vif2",
         .drv_state = (const struct osw_drv_vif_state []){{
             .exists = true,
-            .enabled = true,
+            .status = OSW_VIF_ENABLED,
             .vif_type = OSW_VIF_AP,
             .u = { .ap = { .channel = { .control_freq_mhz = 2412, .width = OSW_CHANNEL_40MHZ} } },
         }}
@@ -3553,7 +3596,7 @@ OSW_UT(ow_ovsdb_ut_sta)
         .vif_name = "vif1",
         .drv_state = (const struct osw_drv_vif_state []){{
             .exists = true,
-            .enabled = true,
+            .status = OSW_VIF_ENABLED,
             .vif_type = OSW_VIF_AP,
             .u = { .ap = { .ssid = { .buf = "ssid1", .len = 5 } } },
         }},
@@ -3563,7 +3606,7 @@ OSW_UT(ow_ovsdb_ut_sta)
         .vif_name = "vif2",
         .drv_state = (const struct osw_drv_vif_state []){{
             .exists = true,
-            .enabled = true,
+            .status = OSW_VIF_ENABLED,
             .vif_type = OSW_VIF_AP,
             .u = { .ap = { .ssid = { .buf = "ssid2", .len = 5 } } },
         }},

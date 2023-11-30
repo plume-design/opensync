@@ -24,6 +24,8 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+#include <stddef.h>
+
 #include "ds_tree.h"
 #include "fsm_policy.h"
 #include "log.h"
@@ -100,9 +102,9 @@ fsm_walk_clients_tree(const char *caller)
         table_name = NULL;
         if (client->table != NULL) table_name = client->table->name;
         LOGD("%s: client: %s: session: %s, table: %s", __func__,
-             client->name != NULL ? client->name : "None",
-             session_name != NULL ? session_name : "None",
-             table_name != NULL ? table_name : "None");
+             IS_NULL_PTR(client->name) ? "None" : client->name,
+             IS_NULL_PTR(session_name) ? " None" : session_name,
+             IS_NULL_PTR(table_name) ? "None" : table_name);
         client = ds_tree_next(tree, client);
     }
 }
@@ -143,9 +145,9 @@ void fsm_policy_register_client(struct fsm_policy_client *client)
         LOGI("%s: updating client %s", __func__, p_client->name);
         if (client->table != NULL) table_name = client->table->name;
         LOGD("%s: client: %s: session: %s, table: %s", __func__,
-             client->name ? client->name : "None",
-             session_name ? session_name : "None",
-             table_name ? table_name : "None");
+             IS_NULL_PTR(client->name) ? "None" : client->name,
+             IS_NULL_PTR(session_name) ? "None" : session_name,
+             IS_NULL_PTR(table_name) ? "None" : table_name);
 
         fsm_walk_clients_tree(__func__);
         return;
@@ -155,9 +157,10 @@ void fsm_policy_register_client(struct fsm_policy_client *client)
     p_client = CALLOC(1, sizeof(*p_client));
     if (p_client == NULL) return;
 
-    name = (client->name == NULL ? default_name : client->name);
+    name = (IS_NULL_PTR(client->name) ? default_name : client->name);
     p_client->name = STRDUP(name);
-    if (p_client->name == NULL) goto err_free_client;
+    if (IS_NULL_PTR(p_client->name)) goto err_free_client;
+
     p_client->session = client->session;
     p_client->update_client = client->update_client;
     p_client->session_name = client->session_name;
@@ -168,13 +171,12 @@ void fsm_policy_register_client(struct fsm_policy_client *client)
     client->table = table;
     ds_tree_insert(tree, p_client, p_client);
 
-    LOGI("%s: registered client %s", __func__, p_client->name);
-
     if (client->table != NULL) table_name = client->table->name;
-    LOGD("%s: client: %s: session: %s, table: %s", __func__,
-         client->name ? client->name : "None",
-         session_name ? session_name : "None",
-         table_name ? table_name : "None");
+    LOGI("%s: registered client %s (session %s, table %s)", __func__,
+         p_client->name,
+         IS_NULL_PTR(session_name) ? "None" : session_name,
+         IS_NULL_PTR(table_name) ? "None" : table_name);
+
     fsm_walk_clients_tree(__func__);
     return;
 
@@ -199,9 +201,9 @@ void fsm_policy_deregister_client(struct fsm_policy_client *client)
     table_name = NULL;
     if (client->table != NULL) table_name = client->table->name;
     LOGD("%s: client: %s: session: %s, table: %s", __func__,
-         client->name ? client->name : "None",
-         session_name ? session_name : "None",
-         table_name ? table_name : "None");
+         IS_NULL_PTR(client->name) ? "None" : client->name,
+         IS_NULL_PTR(session_name) ? "None" : session_name,
+         IS_NULL_PTR(table_name) ? "None" : table_name);
 
     mgr = fsm_policy_get_mgr();
     p_client = ds_tree_find(&mgr->clients, client);
@@ -213,6 +215,7 @@ void fsm_policy_deregister_client(struct fsm_policy_client *client)
 
     client->table = NULL;
     client->session = NULL;
+    FREE(client->name);
     fsm_walk_clients_tree(__func__);
 }
 
@@ -270,12 +273,12 @@ fsm_policy_flush_cache(struct fsm_policy *policy)
             num_flushed_record = client->flush_cache(client->session, policy);
             if (num_flushed_record >= 0)
             {
-                LOGD("%s: Flushed %d records from client %s", 
+                LOGD("%s: Flushed %d records from client %s",
                      __func__, num_flushed_record, client->name);
             }
             else
             {
-                LOGD("%s: Failed to flush from client %s", 
+                LOGD("%s: Failed to flush from client %s",
                      __func__, client->name);
             }
         }

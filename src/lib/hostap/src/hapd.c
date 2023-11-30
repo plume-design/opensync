@@ -430,6 +430,11 @@ hapd_init(struct hapd *hapd, const char *phy, const char *bss)
     hapd->use_rxkh_file = false;
     /* FIXME same as above */
     hapd->use_reload_rxkhs = false;
+    /* Some hostapd instances do not implement the newest
+     * op_classes. This parameter allows target
+     * implementation to disable passing op_class to
+     * hostapd configuration file. Enabled by default */
+    hapd->use_op_class = true;
 
     return hapd;
 }
@@ -1666,8 +1671,10 @@ hapd_conf_gen2(struct hapd *hapd,
     }
 
     if (!strcmp(rconf->freq_band, SCHEMA_CONSTS_RADIO_TYPE_STR_6G)) {
-        const int op_class = hapd_op_class_6ghz_from_ht_mode(rconf->ht_mode);
-        csnprintf(&buf, &len, "op_class=%d\n", op_class);
+        if (hapd->use_op_class) {
+            const int op_class = hapd_op_class_6ghz_from_ht_mode(rconf->ht_mode);
+            csnprintf(&buf, &len, "op_class=%d\n", op_class);
+        }
         csnprintf(&buf, &len, "sae_pwe=2\n");
     }
 
@@ -1703,6 +1710,9 @@ hapd_conf_gen2(struct hapd *hapd,
 
     if (rconf->bcn_int_exists && rconf->bcn_int >= 0)
         csnprintf(&buf, &len, "beacon_int=%d\n", rconf->bcn_int);
+
+    if (rconf->puncture_bitmap_exists && rconf->puncture_bitmap >= 0)
+        csnprintf(&buf, &len, "puncture_bitmap=%d\n", rconf->puncture_bitmap);
 
     if (vconf->wpa_exists) {
         if (util_vif_pairwise_supported(vconf)) {

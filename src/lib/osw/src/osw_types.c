@@ -380,6 +380,19 @@ osw_freq_to_band(const int freq)
     return OSW_BAND_UNDEFINED;
 }
 
+bool
+osw_channel_is_equal(const struct osw_channel *a,
+                     const struct osw_channel *b)
+{
+    return ((a == NULL) && (b == NULL))
+       ||  ((a != NULL) &&
+            (b != NULL) &&
+            (a->control_freq_mhz == b->control_freq_mhz) &&
+            (a->center_freq0_mhz == b->center_freq0_mhz) &&
+            (a->center_freq1_mhz == b->center_freq1_mhz) &&
+            (a->width == b->width));
+}
+
 enum osw_band
 osw_channel_to_band(const struct osw_channel *channel)
 {
@@ -559,9 +572,9 @@ osw_chan_to_freq(enum osw_band band, int chan)
 {
     switch (band) {
         case OSW_BAND_UNDEFINED: return 0;
-        case OSW_BAND_2GHZ: return 2407 + (chan * 5);
+        case OSW_BAND_2GHZ: return chan == 14 ? 2484 : (2407 + (chan * 5));
         case OSW_BAND_5GHZ: return 5000 + (chan * 5);
-        case OSW_BAND_6GHZ: return 5950 + (chan * 5);
+        case OSW_BAND_6GHZ: return chan == 2 ? 5935 : (5950 + (chan * 5));
     }
     return 0;
 }
@@ -672,6 +685,79 @@ osw_hwaddr_list_append(struct osw_hwaddr_list *list,
     list->list[index] = *addr;
 }
 
+static int
+osw_channel_width_num_segments(enum osw_channel_width width)
+{
+    switch (width) {
+        case OSW_CHANNEL_20MHZ: return 1;
+        case OSW_CHANNEL_40MHZ: return 2;
+        case OSW_CHANNEL_80MHZ: return 4;
+        case OSW_CHANNEL_160MHZ: return 8;
+        case OSW_CHANNEL_320MHZ: return 16;
+        case OSW_CHANNEL_80P80MHZ: return 1; /* not supported */
+    }
+    return 0;
+}
+
+static bool
+osw_int_in_range(int first, int last, int step, int needle)
+{
+    for (; first <= last; first += step)
+        if (needle == first)
+            return true;
+    return false;
+}
+
+static bool
+osw_channel_control_fits_center(int control,
+                                int center,
+                                enum osw_channel_width width)
+{
+    /* Example: control=36, center=42, width=80MHz
+     *     segments = 4
+     *     channels = 4 * 4 = 16
+     *     first = 42 - (16/2) + 2 = 42 - 8 + 2 = 36
+     *     last = 42 + (16/2) - 2 = 42 + 8 - 2 = 48
+     * This virtually maps to the constituent channel list:
+     *   36, 40, 44, 48
+     * If control channel is found on the list, then it's
+     * good.
+     */
+    const int segments = osw_channel_width_num_segments(width);
+    const int channels = segments * 4;
+    const int first = center - (channels / 2) + 2;
+    const int last = center + (channels / 2) - 2;
+    const int step = 4;
+    return osw_int_in_range(first, last, step, control);
+}
+
+static bool
+osw_op_class_entry_center_chan_idx_matches_control(const struct osw_op_class_matrix *entry,
+                                                   int control)
+{
+    const enum osw_channel_width width = entry->width;
+    const int *center;
+    for (center = entry->center_chan_idx; *center != OSW_CHANNEL_END; center++) {
+        if (osw_channel_control_fits_center(control, *center, width)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool
+osw_op_class_entry_ctrl_chan_matches_control(const struct osw_op_class_matrix *entry,
+                                             int control)
+{
+    const int *ctrl_chan;
+    for (ctrl_chan = entry->ctrl_chan; *ctrl_chan != OSW_CHANNEL_END; ctrl_chan++) {
+        if (*ctrl_chan == control) {
+            return true;
+        }
+    }
+    return false;
+}
+
 bool
 osw_channel_from_channel_num_width(uint8_t channel_num,
                                    enum osw_channel_width width,
@@ -680,22 +766,32 @@ osw_channel_from_channel_num_width(uint8_t channel_num,
     assert(channel != NULL);
 
     const struct osw_op_class_matrix* entry;
+    struct osw_channel prev;
+    size_t num_matches = 0;
+
     for (entry = g_op_class_matrix; entry->op_class != OSW_OP_CLASS_END; entry++) {
         if (entry->width != width)
             continue;
+        if (entry->width == OSW_CHANNEL_80P80MHZ)
+            continue;
 
-        const int *ctrl_chan;
-        for (ctrl_chan = entry->ctrl_chan; *ctrl_chan != OSW_CHANNEL_END; ctrl_chan++) {
-            if (*ctrl_chan == channel_num || *ctrl_chan == OSW_CHANNEL_WILDCARD) {
-                memset(channel, 0, sizeof(*channel));
-                channel->width = width;
-                channel->control_freq_mhz = entry->start_freq_mhz + (channel_num * 5);
-                return true;
-            }
+        const bool match = osw_op_class_entry_center_chan_idx_matches_control(entry, channel_num)
+                        || osw_op_class_entry_ctrl_chan_matches_control(entry, channel_num);
+        if (match) {
+            num_matches++;
+            const bool ok = osw_channel_from_op_class(entry->op_class, channel_num, channel);
+            if (WARN_ON(ok == false)) return false;
+
+            const bool mismatch = num_matches > 1
+                                ? prev.control_freq_mhz != channel->control_freq_mhz
+                                : false;
+            if (mismatch) return false;
+
+            memcpy(&prev, channel, sizeof(*channel));
         }
     }
 
-    return false;
+    return (num_matches == 1);
 }
 
 bool
@@ -923,6 +1019,31 @@ osw_op_class_to_band(uint8_t op_class)
         return osw_freq_to_band(freq);
     }
     return OSW_BAND_UNDEFINED;
+}
+
+int *
+osw_op_class_to_freqs(uint8_t op_class)
+{
+    const struct osw_op_class_matrix *e;
+    for (e = g_op_class_matrix; e->op_class != OSW_OP_CLASS_END; e++) {
+        if (e->op_class != op_class) continue;
+
+        size_t n = 1;
+        int *freqs = MALLOC(n * sizeof(*freqs));
+        const int *last = &e->ctrl_chan[ARRAY_SIZE(e->ctrl_chan) - 1];
+        const int *c;
+        for (c = e->ctrl_chan; *c != OSW_CHANNEL_END && c <= last; c++) {
+            const int freq = e->start_freq_mhz + (*c * 5);
+
+            n++;
+            freqs = REALLOC(freqs, n * sizeof(*freqs));
+            freqs[n - 2] = freq;
+        }
+        freqs[n - 1] = 0;
+
+        return freqs;
+    }
+    return NULL;
 }
 
 bool
@@ -1458,6 +1579,59 @@ osw_ssid_from_cbuf(struct osw_ssid *ssid,
     memcpy(ssid->buf, buf, len);
     ssid->len = len;
     return true;
+}
+
+void
+osw_vif_status_set(enum osw_vif_status *status,
+                   enum osw_vif_status new_status)
+{
+    switch (*status) {
+        case OSW_VIF_UNKNOWN:
+            *status = new_status;
+            break;
+        case OSW_VIF_DISABLED:
+            switch (new_status) {
+                case OSW_VIF_UNKNOWN:
+                    WARN_ON(1);
+                    break;
+                case OSW_VIF_DISABLED:
+                    break;
+                case OSW_VIF_ENABLED:
+                    *status = OSW_VIF_BROKEN;
+                    break;
+                case OSW_VIF_BROKEN:
+                    break;
+            }
+            break;
+        case OSW_VIF_ENABLED:
+            switch (new_status) {
+                case OSW_VIF_UNKNOWN:
+                    WARN_ON(1);
+                    break;
+                case OSW_VIF_DISABLED:
+                    *status = OSW_VIF_BROKEN;
+                    break;
+                case OSW_VIF_ENABLED:
+                    break;
+                case OSW_VIF_BROKEN:
+                    break;
+            }
+            break;
+        case OSW_VIF_BROKEN:
+            break;
+    }
+}
+
+const char *
+osw_vif_status_into_cstr(enum osw_vif_status status)
+{
+    switch (status) {
+        case OSW_VIF_UNKNOWN: return "unknown";
+        case OSW_VIF_DISABLED: return "disabled";
+        case OSW_VIF_ENABLED: return "enabled";
+        case OSW_VIF_BROKEN: return "broken";
+    }
+    return "uncaught";
 }
 
 #include "osw_types_ut.c"

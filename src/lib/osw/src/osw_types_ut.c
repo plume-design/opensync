@@ -374,3 +374,46 @@ OSW_UT(osw_types_cipher)
     osw_types_ut_recode_cipher("00-0f-ac-12", OSW_SUITE_CIPHER_RSN_BIP_GMAC_256, OSW_CIPHER_RSN_BIP_GMAC_256, "rsn-bip-gmac-256");
     osw_types_ut_recode_cipher("00-50-f2-5", OSW_SUITE_CIPHER_WPA_WEP_104, OSW_CIPHER_WPA_WEP_104, "wpa-wep-104");
 }
+
+OSW_UT(osw_types_from_channel_num_width)
+{
+    struct osw_channel c;
+
+    OSW_UT_EVAL(osw_channel_control_fits_center(1, 1, OSW_CHANNEL_20MHZ) == true);
+    OSW_UT_EVAL(osw_channel_control_fits_center(1, 3, OSW_CHANNEL_40MHZ) == true);
+    OSW_UT_EVAL(osw_channel_control_fits_center(5, 3, OSW_CHANNEL_40MHZ) == true);
+    OSW_UT_EVAL(osw_channel_control_fits_center(149, 155, OSW_CHANNEL_80MHZ) == true);
+    OSW_UT_EVAL(osw_channel_control_fits_center(153, 155, OSW_CHANNEL_80MHZ) == true);
+    OSW_UT_EVAL(osw_channel_control_fits_center(157, 155, OSW_CHANNEL_80MHZ) == true);
+    OSW_UT_EVAL(osw_channel_control_fits_center(161, 155, OSW_CHANNEL_80MHZ) == true);
+    OSW_UT_EVAL(osw_channel_control_fits_center(148, 155, OSW_CHANNEL_80MHZ) == false);
+    OSW_UT_EVAL(osw_channel_control_fits_center(150, 155, OSW_CHANNEL_80MHZ) == false);
+    OSW_UT_EVAL(osw_channel_control_fits_center(162, 155, OSW_CHANNEL_80MHZ) == false);
+
+    /* These are ambiguous because of 6GHz */
+    OSW_UT_EVAL(osw_channel_from_channel_num_width(1, OSW_CHANNEL_20MHZ, &c) == false);
+    OSW_UT_EVAL(osw_channel_from_channel_num_width(2, OSW_CHANNEL_20MHZ, &c) == false);
+    OSW_UT_EVAL(osw_channel_from_channel_num_width(5, OSW_CHANNEL_20MHZ, &c) == false);
+    OSW_UT_EVAL(osw_channel_from_channel_num_width(157, OSW_CHANNEL_20MHZ, &c) == false);
+    OSW_UT_EVAL(osw_channel_from_channel_num_width(157, OSW_CHANNEL_80MHZ, &c) == false);
+
+    OSW_UT_EVAL(osw_channel_from_channel_num_width(4, OSW_CHANNEL_20MHZ, &c) == true);
+    OSW_UT_EVAL(c.control_freq_mhz == 2427);
+    OSW_UT_EVAL(c.center_freq0_mhz == 2427);
+    OSW_UT_EVAL(c.width == OSW_CHANNEL_20MHZ);
+
+    OSW_UT_EVAL(osw_channel_from_channel_num_width(36, OSW_CHANNEL_20MHZ, &c) == true);
+    OSW_UT_EVAL(c.control_freq_mhz == 5180);
+    OSW_UT_EVAL(c.center_freq0_mhz == 5180);
+    OSW_UT_EVAL(c.width == OSW_CHANNEL_20MHZ);
+
+    OSW_UT_EVAL(osw_channel_from_channel_num_width(40, OSW_CHANNEL_80MHZ, &c) == true);
+    OSW_UT_EVAL(c.control_freq_mhz == 5200);
+    OSW_UT_EVAL(c.center_freq0_mhz == 5210);
+    OSW_UT_EVAL(c.width == OSW_CHANNEL_80MHZ);
+
+    OSW_UT_EVAL(osw_channel_from_channel_num_width(69, OSW_CHANNEL_80MHZ, &c) == true);
+    OSW_UT_EVAL(c.control_freq_mhz == 6295);
+    OSW_UT_EVAL(c.center_freq0_mhz == 6305);
+    OSW_UT_EVAL(c.width == OSW_CHANNEL_80MHZ);
+}

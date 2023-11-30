@@ -40,6 +40,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "os_types.h"
 #include "dppline.h"
 #include "memutil.h"
+#include "dpi_intf.h"
 
 /* Set of default values for pcaps settings */
 static int g_buf_size = 0;
@@ -51,6 +52,20 @@ static int g_snaplen = CONFIG_FSM_PCAP_SNAPLEN;
 #else
 static int g_snaplen = 2048;
 #endif
+
+
+void
+fsm_pcap_dispatcher_handler(void *context,
+                            struct net_header_parser *net_parser)
+{
+    struct fsm_parser_ops *parser_ops;
+    struct fsm_session *session;
+
+    session = (struct fsm_session *)context;
+    parser_ops = &session->p_ops->parser_ops;
+    parser_ops->handler(session, net_parser);
+}
+
 
 static void
 fsm_pcap_handler(uint8_t * args, const struct pcap_pkthdr *header,
@@ -69,6 +84,7 @@ fsm_pcap_handler(uint8_t * args, const struct pcap_pkthdr *header,
     net_parser.data = (uint8_t *)bytes;
     net_parser.pcap_datalink = session->pcaps->pcap_datalink;
     net_parser.payload_updated = false;
+    net_parser.tap_intf = session->conf->if_name;
     len = net_header_parse(&net_parser);
     if (len == 0) return;
 

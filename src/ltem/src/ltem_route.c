@@ -262,7 +262,7 @@ ltem_set_lte_route_metric(ltem_mgr_t *mgr)
 }
 
 int
-ltem_force_lte_route(ltem_mgr_t *mgr)
+ltem_force_lte(ltem_mgr_t *mgr)
 {
     lte_route_info_t *route;
     uint32_t new_lte_priority;
@@ -303,7 +303,7 @@ ltem_force_lte_route(ltem_mgr_t *mgr)
 }
 
 int
-ltem_restore_default_wan_route(ltem_mgr_t *mgr)
+ltem_restore_wan(ltem_mgr_t *mgr)
 {
     lte_route_info_t *route;
     char cmd[256];
@@ -312,17 +312,72 @@ ltem_restore_default_wan_route(ltem_mgr_t *mgr)
     route = mgr->lte_route;
     if (!route) return -1;
 
-    if (route->wan_gw[0])
+    snprintf(cmd, sizeof(cmd), "ifconfig %s up", route->wan_if_name);
+    res = cmd_log(cmd);
+    if (res)
     {
-        snprintf(cmd, sizeof(cmd), "ifconfig %s up", route->wan_if_name);
-        res = cmd_log(cmd);
+        LOGI("%s: cmd[%s] failed", __func__, cmd);
+        return res;
+    }
+
+    return ltem_ovsdb_cmu_update_lte_priority(mgr, route->lte_priority);
+}
+
+int
+ltem_set_lte_route_preferred(ltem_mgr_t *mgr)
+{
+    lte_route_info_t *route;
+    int res;
+
+    route = mgr->lte_route;
+    LOGI("%s: lte_route[%s][%s]", __func__, route->lte_if_name, route->lte_ip_addr);
+    if (!route) return -1;
+
+    /* Make sure we have a valid LTE route before changing the WAN metric */
+    if (route->lte_gw[0])
+    {
+        LOGI("%s: if_name[%s]", __func__, route->wan_if_name);
+
+        route->wan_metric = WAN_L3_FAIL_METRIC;
+        /*
+         * Route updates are now handled by NM via the Wifi_Route_Config table.
+         */
+        res = ltem_ovsdb_update_wifi_route_config_metric(mgr, route->wan_if_name, route->wan_metric);
         if (res)
         {
-            LOGI("%s: cmd[%s] failed", __func__, cmd);
+            LOGI("%s: ltem_ovsdb_update_wifi_route_config_metric() failed for [%s]", __func__, route->wan_if_name);
             return res;
         }
+    }
 
-        return ltem_ovsdb_cmu_update_lte_priority(mgr, route->lte_priority);
+    return 0;
+}
+
+int
+ltem_set_wan_route_preferred(ltem_mgr_t *mgr)
+{
+    lte_route_info_t *route;
+    int res;
+
+    route = mgr->lte_route;
+    LOGI("%s: wan_route[%s][%s]", __func__, route->wan_if_name, route->wan_gw);
+    if (!route) return -1;
+
+    /* Make sure we have a valid WAN route before changing the metric */
+    if (route->wan_gw[0])
+    {
+        LOGI("%s: if_name[%s]", __func__, route->wan_if_name);
+
+        route->wan_metric = WAN_DEFAULT_METRIC;
+        /*
+         * Route updates are now handled by NM via the Wifi_Route_Config table.
+         */
+        res = ltem_ovsdb_update_wifi_route_config_metric(mgr, route->wan_if_name, route->wan_metric);
+        if (res)
+        {
+            LOGI("%s: ltem_ovsdb_update_wifi_route_config_metric() failed for [%s]", __func__, route->wan_if_name);
+            return res;
+        }
     }
 
     return 0;

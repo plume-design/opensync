@@ -136,7 +136,7 @@ osw_scan_sched_get_home_chan(struct osw_scan_sched *ss)
     if (info == NULL) return NULL;
 
     const struct osw_drv_vif_state *state = info->drv_state;
-    if (state->enabled == false) return NULL;
+    if (state->status != OSW_VIF_ENABLED) return NULL;
 
     switch (state->vif_type) {
         case OSW_VIF_UNDEFINED:

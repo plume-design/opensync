@@ -44,5 +44,7 @@ UNIT_DEPS += src/lib/network_metadata
 UNIT_DEPS += src/lib/fcm_filter
 UNIT_DEPS += src/lib/unity
 UNIT_DEPS += src/lib/unit_test_utils
+UNIT_DEPS += src/lib/nf_utils
+UNIT_DEPS += src/lib/neigh_table
 
 # data/stats*.txt are copied automatically

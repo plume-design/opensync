@@ -36,7 +36,12 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "log.h"
 #include "util.h"
 #include "ovsdb_table.h"
+#include "ovsdb_sync.h"
 #include "ds_tree.h"
+
+#define SCHEMA_STR_STATUS_DISABLED  "disabled"
+#define SCHEMA_STR_STATUS_ENABLED   "enabled"
+#define SCHEMA_STR_STATUS_ERROR     "error"
 
 /*
  * Keep track of Tunnel_Interface configs
@@ -50,6 +55,13 @@ struct vpnm_tunnel_iface
     ds_tree_node_t ti_tnode;
 };
 
+enum vpnm_tunnel_iface_status
+{
+    VPNM_TUNNEL_IFACE_STATUS_DISABLED,
+    VPNM_TUNNEL_IFACE_STATUS_ENABLED,
+    VPNM_TUNNEL_IFACE_STATUS_ERROR,
+};
+
 /*
  * The OVSDB table Tunnel_Interface we're handling here.
  */
@@ -57,6 +69,8 @@ static ovsdb_table_t table_Tunnel_Interface;
 
 /* Keeping track of Tunnel_Interface configs */
 static ds_tree_t vpnm_tunnel_iface_list = DS_TREE_INIT(ds_str_cmp, struct vpnm_tunnel_iface, ti_tnode);
+
+static bool vpnm_tunnel_iface_ovsdb_status_update(const char *if_name, enum vpnm_tunnel_iface_status new_status);
 
 static struct vpnm_tunnel_iface *vpnm_tunnel_iface_new(const char *if_name)
 {
@@ -106,8 +120,22 @@ static enum osn_tunnel_iface_type util_tunnel_iftype_from_schemastr(const char *
         return OSN_TUNNEL_IFACE_TYPE_VTI;
     else if (strcmp(if_type, "vti6") == 0)
         return OSN_TUNNEL_IFACE_TYPE_VTI6;
+    else if (strcmp(if_type, "ip6tnl") == 0)
+        return OSN_TUNNEL_IFACE_TYPE_IP6TNL;
     else
         return OSN_TUNNEL_IFACE_TYPE_NOT_SET;
+}
+
+static enum osn_tunnel_iface_mode util_tunnel_ifmode_from_schemastr(const char *mode)
+{
+    if (strcmp(mode, "any") == 0)
+        return OSN_TUNNEL_IFACE_MODE_ANY;
+    else if (strcmp(mode, "ipip6") == 0)
+        return OSN_TUNNEL_IFACE_MODE_IPIP6;
+    else if (strcmp(mode, "ip6ip6") == 0)
+        return OSN_TUNNEL_IFACE_MODE_IP6IP6;
+    else
+        return OSN_TUNNEL_IFACE_MODE_NOT_SET;
 }
 
 /*
@@ -148,6 +176,28 @@ static bool vpnm_tunnel_iface_config_set(
     {
         rv &= osn_tunnel_iface_key_set(vpnm_tif->ti_tunnel_iface, conf->key);
     }
+    else
+    {
+        rv &= osn_tunnel_iface_key_set(vpnm_tif->ti_tunnel_iface, 0);
+    }
+
+    if (conf->mode_exists)
+    {
+        rv &= osn_tunnel_iface_mode_set(vpnm_tif->ti_tunnel_iface, util_tunnel_ifmode_from_schemastr(conf->mode));
+    }
+    else
+    {
+        rv &= osn_tunnel_iface_mode_set(vpnm_tif->ti_tunnel_iface, OSN_TUNNEL_IFACE_MODE_NOT_SET);
+    }
+
+    if (conf->dev_if_name_exists)
+    {
+        rv &= osn_tunnel_iface_dev_set(vpnm_tif->ti_tunnel_iface, conf->dev_if_name);
+    }
+    else
+    {
+        rv &= osn_tunnel_iface_dev_set(vpnm_tif->ti_tunnel_iface, "");
+    }
 
     /* Enable/disable: */
     if (conf->enable_exists && conf->enable)
@@ -178,8 +228,8 @@ void callback_Tunnel_Interface(
         struct schema_Tunnel_Interface *old,
         struct schema_Tunnel_Interface *new)
 {
-
     struct vpnm_tunnel_iface *vpnm_tif;
+    bool rv;
 
     switch (mon->mon_type)
     {
@@ -192,6 +242,13 @@ void callback_Tunnel_Interface(
         case OVSDB_UPDATE_MODIFY:
             /* Update case */
             LOG(INFO, "vpnm_tunnel_iface: %s: Tunnel_Interface update: MODIFY row", new->if_name);
+
+            if (ovsdb_update_changed(mon, SCHEMA_COLUMN(Tunnel_Interface, status)))
+            {
+                /* Ignore OVSDB update callbacks for column 'status' as those are initiated by us */
+                return;
+            }
+
             vpnm_tif = vpnm_tunnel_iface_get(new->if_name);
 
             break;
@@ -229,12 +286,30 @@ void callback_Tunnel_Interface(
         /* Set tunnel interface config: */
         if (!vpnm_tunnel_iface_config_set(vpnm_tif, new))
         {
+            vpnm_tunnel_iface_ovsdb_status_update(new->if_name, VPNM_TUNNEL_IFACE_STATUS_ERROR);
             LOG(ERROR, "vpnm_tunnel_iface: %s: Error setting Tunnel_Interface configuration", new->if_name);
             return;
         }
 
         /* Apply the config to OSN: */
-        if (!vpnm_tunnel_iface_apply(vpnm_tif))
+        rv = vpnm_tunnel_iface_apply(vpnm_tif);
+        if (!new->enable_exists || !new->enable)
+        {
+            vpnm_tunnel_iface_ovsdb_status_update(new->if_name, VPNM_TUNNEL_IFACE_STATUS_DISABLED);
+        }
+        else
+        {
+            if (rv)
+            {
+                vpnm_tunnel_iface_ovsdb_status_update(new->if_name, VPNM_TUNNEL_IFACE_STATUS_ENABLED);
+            }
+            else
+            {
+                vpnm_tunnel_iface_ovsdb_status_update(new->if_name, VPNM_TUNNEL_IFACE_STATUS_ERROR);
+            }
+        }
+
+        if (!rv)
         {
             LOG(ERROR, "vpnm_tunnel_iface: %s: Error applying Tunnel Interface config.", new->if_name);
             return;
@@ -242,6 +317,43 @@ void callback_Tunnel_Interface(
         LOG(NOTICE, "vpnm_tunnel_iface: %s: applied tunnel interface config", new->if_name);
     }
 }
+
+/* Update the tunnel interface status in OVSDB. */
+static bool vpnm_tunnel_iface_ovsdb_status_update(const char *if_name, enum vpnm_tunnel_iface_status new_status)
+{
+    struct schema_Tunnel_Interface schema_tun_iface;
+
+    memset(&schema_tun_iface, 0, sizeof(schema_tun_iface));
+    schema_tun_iface._partial_update = true;
+
+    if (new_status == VPNM_TUNNEL_IFACE_STATUS_DISABLED)
+    {
+        STRSCPY(schema_tun_iface.status, SCHEMA_STR_STATUS_DISABLED);
+    }
+    else if (new_status == VPNM_TUNNEL_IFACE_STATUS_ENABLED)
+    {
+        STRSCPY(schema_tun_iface.status, SCHEMA_STR_STATUS_ENABLED);
+    }
+    else
+    {
+        STRSCPY(schema_tun_iface.status, SCHEMA_STR_STATUS_ERROR);
+    }
+
+    schema_tun_iface.status_exists = true;
+    schema_tun_iface.status_present = true;
+
+    if (!ovsdb_table_update_where(
+            &table_Tunnel_Interface,
+            ovsdb_where_simple(SCHEMA_COLUMN(Tunnel_Interface, if_name), if_name),
+            &schema_tun_iface))
+    {
+        LOG(ERR, "vpnm_tunnel_iface: %s: Error updating Tunnel_Interface status", if_name);
+        return false;
+    }
+
+    return true;
+}
+
 
 bool vpnm_tunnel_iface_init(void)
 {

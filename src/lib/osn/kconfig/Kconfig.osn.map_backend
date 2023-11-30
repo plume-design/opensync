@@ -1,0 +1,11 @@
+config OSN_BACKEND_MAP_NULL
+    bool "Null"
+
+    help
+        Use dummy implementation of MAP-T/MAP-E
+
+config OSN_BACKEND_MAP_LINUX
+    bool "MAP-T/MAP-E Linux backend"
+    select OSN_LINUX_ENABLED
+    help
+        Use the Linux MAP-T/MAP-E backend provided by OpenSync

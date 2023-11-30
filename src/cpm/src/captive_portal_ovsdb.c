@@ -71,11 +71,7 @@ int cportal_ovsdb_init(void)
 static int
 cportal_cmp(const void *a, const void *b)
 {
-    /*
-     * For now we only support one instance of
-     * Captive Portal.
-     */
-    return 0;
+    return strcmp(a, b);
 }
 
 static void
@@ -220,6 +216,7 @@ cportal_free_cportal(struct cportal *inst)
 
     if (!inst) return;
 
+    FREE(inst->cp_uuid);
     FREE(inst->name);
     FREE(inst->uam_url);
     FREE(inst->url->port);
@@ -228,6 +225,9 @@ cportal_free_cportal(struct cportal *inst)
 
     free_str_tree(inst->other_config);
     free_str_tree(inst->additional_headers);
+
+    FREE(inst->cportal_proxy_process);
+    FREE(inst->cportal_proxy_debounce);
     FREE(inst);
     return;
 }
@@ -254,14 +254,21 @@ cportal_alloc_inst(struct schema_Captive_Portal *new)
         inst->proxy_method = REVERSE;
     }
 
-    inst->name = strdup(new->name);
+    inst->cp_uuid = STRDUP(new->_uuid.uuid);
+    if (!inst->cp_uuid)
+    {
+        LOG(ERR, "%s: Couldn't allocate memory for cp_uuid[%s]", __func__, new->_uuid.uuid);
+        goto err_uuid;
+    }
+
+    inst->name = STRDUP(new->name);
     if (!inst->name)
     {
         LOG(ERR, "%s: Couldn't allocate memory for name[%s]", __func__, new->name);
         goto err_name;
     }
 
-    inst->uam_url = strdup(new->uam_url);
+    inst->uam_url = STRDUP(new->uam_url);
     if (!inst->uam_url)
     {
         LOG(ERR, "%s: Couldn't allocate memory for uam_url[%s]", __func__, new->uam_url);
@@ -274,13 +281,16 @@ cportal_alloc_inst(struct schema_Captive_Portal *new)
 
     cportal_parse_additional_hdrs(inst, new);
 
+    inst->cportal_proxy_process = CALLOC(1, sizeof(daemon_t));
+    inst->cportal_proxy_debounce = CALLOC(1, sizeof(ev_debounce));
+
     return inst;
 
-err_url:
-    FREE(inst->uam_url);
 err_uam:
     FREE(inst->name);
 err_name:
+    FREE(inst->cp_uuid);
+err_uuid:
     FREE(inst);
 
     return NULL;
@@ -303,6 +313,7 @@ cportal_update(struct cportal *inst,
 
    ds_tree_insert(&cportal_list, inst, inst->name);
 
+   cportal_proxy_init(inst);
    cportal_enable_inst(inst);
    return;
 }
@@ -314,13 +325,6 @@ cportal_add(struct schema_Captive_Portal *new)
 
     if (!new) return;
 
-    inst = ds_tree_find(&cportal_list, new->name);
-    if (inst)
-    {
-        LOGD("%s: Allowing only one instance of captive portal %s.",__func__,inst->name);
-        return;
-    }
-
     inst = cportal_alloc_inst(new);
 
     if (!inst)
@@ -331,6 +335,7 @@ cportal_add(struct schema_Captive_Portal *new)
     LOG(INFO, "%s: Created new cportal instance [%s]", __func__, inst->name);
     ds_tree_insert(&cportal_list, inst, inst->name);
 
+    cportal_proxy_init(inst);
     cportal_enable_inst(inst);
 
     LOG(INFO, "%s: Created new cportal instance [%s]", __func__, inst->name);

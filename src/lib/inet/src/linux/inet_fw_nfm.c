@@ -37,6 +37,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "memutil.h"
 
 #include "inet_fw.h"
+#include "os_nif.h"
 
 struct __inet_fw
 {
@@ -223,11 +224,12 @@ bool inet_fw_portforward_set(inet_fw_t *self, const struct inet_portforward *pf)
 {
     struct fw_portfw_entry *pe;
 
-    LOG(INFO, "fw: %s: PORT FORWARD SET: %d -> "PRI_osn_ip_addr":%d",
+    LOG(INFO, "fw: %s: PORT FORWARD SET: %d -> "PRI_osn_ip_addr":%d nat_loopback %d",
             self->fw_ifname,
             pf->pf_src_port,
             FMT_osn_ip_addr(pf->pf_dst_ipaddr),
-            pf->pf_dst_port);
+            pf->pf_dst_port,
+            pf->pf_nat_loopback);
 
     pe = ds_tree_find(&self->fw_portfw_list, (void *)pf);
     if (pe != NULL)
@@ -435,6 +437,11 @@ bool fw_portforward_rule(inet_fw_t *self, const struct inet_portforward *pf, boo
     char dst_port[C_INT32_LEN];
     char to_dest[C_IP4ADDR_LEN + C_INT32_LEN + 1];
     char dest[C_IP4ADDR_LEN];
+    char dest_subnet[C_IP4ADDR_LEN + C_INT32_LEN + 1];
+    osn_ip_addr_t dest_subnet_ipaddr = pf->pf_dst_ipaddr;
+    os_ipaddr_t addr;
+    bool result = false;
+    int ia_prefix = 0, i;
 
     if (pf->pf_proto == INET_PROTO_UDP)
         proto = "udp";
@@ -443,6 +450,23 @@ bool fw_portforward_rule(inet_fw_t *self, const struct inet_portforward *pf, boo
     else
         return false;
 
+    result = os_nif_netmask_get(CONFIG_TARGET_LAN_BRIDGE_NAME, &addr);
+    if (!result) {
+        LOG(ERROR, "%s: os_nif_netmask_get failed", __func__);
+    } else {
+        LOG(DEBUG, "%s: %s netmask %s ", __func__, CONFIG_TARGET_LAN_BRIDGE_NAME, inet_ntoa(*(struct in_addr*)&addr));
+    }
+    for (i=0; i<4; i++)
+    {
+        while (addr.addr[i] != 0)
+        {
+            ia_prefix += addr.addr[i] & 1;
+            addr.addr[i] >>= 1;
+        }
+    }
+
+    dest_subnet_ipaddr.ia_prefix = ia_prefix;
+    dest_subnet_ipaddr = osn_ip_addr_subnet(&dest_subnet_ipaddr);
 
     if (snprintf(src_port, sizeof(src_port), "%u", pf->pf_src_port) >= (int)sizeof(src_port))
         return false;
@@ -451,6 +475,12 @@ bool fw_portforward_rule(inet_fw_t *self, const struct inet_portforward *pf, boo
         return false;
 
     if (snprintf(dest, sizeof(dest), PRI_osn_ip_addr, FMT_osn_ip_addr(pf->pf_dst_ipaddr)) >= (int)sizeof(dest))
+    {
+        return false;
+    }
+
+    if (snprintf(dest_subnet, sizeof(dest_subnet), PRI_osn_ip_addr, FMT_osn_ip_addr(dest_subnet_ipaddr))
+                 >= (int)sizeof(dest_subnet))
     {
         return false;
     }
@@ -525,6 +555,42 @@ bool fw_portforward_rule(inet_fw_t *self, const struct inet_portforward *pf, boo
                         "ipv4",
                         (pf->pf_proto == INET_PROTO_TCP) ? "port_forward_tcp" : "port_forward_udp",
                         proto, src_port)))
+        {
+            return false;
+        }
+    }
+
+    // NAT loopback handling
+    if (remove || (!remove && pf->pf_nat_loopback == false))
+    {
+        if (!nfm_rule_del(NFM_ID(self->fw_ifname, "ipv4", "nat_loopback_prerouting", proto, src_port)))
+        {
+            return false;
+        }
+
+        if (!nfm_rule_del(NFM_ID(self->fw_ifname, "ipv4", "nat_loopback_postrouting", proto, src_port)))
+        {
+            return false;
+        }
+    }
+    else if (!remove && pf->pf_nat_loopback == true)
+    {
+        if (!nfm_rule_add(
+                    NFM_ID(self->fw_ifname, "ipv4", "nat_loopback_prerouting", proto, src_port),
+                    200,
+                    "ipv4", "nat", "NM_PORT_FORWARD",
+                    NFM_RULE("-i", CONFIG_TARGET_LAN_BRIDGE_NAME, "-p", proto, "--dport", src_port, "--to-destination", to_dest),
+                    "DNAT"))
+        {
+            return false;
+        }
+
+        if (!nfm_rule_add(
+                    NFM_ID(self->fw_ifname, "ipv4", "nat_loopback_postrouting", proto, src_port),
+                    200,
+                    "ipv4", "nat", "NM_NAT",
+                    NFM_RULE("--src", dest_subnet, "--dst", dest, "-o", CONFIG_TARGET_LAN_BRIDGE_NAME, "-p", proto, "--dport", dst_port),
+                    "MASQUERADE"))
         {
             return false;
         }

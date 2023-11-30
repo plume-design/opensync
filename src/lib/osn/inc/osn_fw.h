@@ -36,7 +36,13 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+typedef enum {
+    OSFW_HOOK_IPTABLES,
+    OSFW_HOOK_EBTABLES
+} osfw_hook_target_t;
+
 typedef void osfw_fn_t(const char *name, int ret);
+typedef void osfw_hook_fn_t(osfw_hook_target_t target);
 /*
  * Iptables table enumeration
  */
@@ -58,7 +64,7 @@ enum osfw_table
  * This function may also take care to clean the firewall subsystem, if it was
  * previously configured.
  */
-bool osfw_init(osfw_fn_t *fn);
+bool osfw_init(osfw_fn_t *fn, osfw_hook_fn_t *osfw_hook_fn);
 
 /*
  * Deinitialize the firewall subsystem; clean up etc.
@@ -137,7 +143,7 @@ bool osfw_apply(void);
  * This function may also take care to clean the firewall subsystem, if it was
  * previously configured.
  */
-bool osfw_eb_init(osfw_fn_t *fn);
+bool osfw_eb_init(osfw_fn_t *fn, osfw_hook_fn_t *osfw_hook_fn);
 
 /*
  * Deinitialize the firewall subsystem; clean up etc.

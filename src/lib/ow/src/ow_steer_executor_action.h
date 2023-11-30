@@ -29,7 +29,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 struct ow_steer_executor_action;
 
-typedef void
+typedef bool
 ow_steer_executor_action_call_fn_t(struct ow_steer_executor_action *action,
                                    const struct ow_steer_candidate_list *candidate_list,
                                    struct osw_conf_mutator *conf_mutator);

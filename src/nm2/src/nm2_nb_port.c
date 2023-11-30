@@ -33,6 +33,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "osn_bridge.h"
 
 static ds_tree_t nm2_port_list = DS_TREE_INIT(ds_str_cmp, struct nm2_port, port_tnode);
+static void nm2_inet_bridge_port_set(struct nm2_port *port, bool add);
 
 static void nm2_port_free(struct nm2_port *port)
 {
@@ -114,13 +115,20 @@ static void nm2_port_if_update(uuidset_t *us, enum uuidset_event type, reflink_t
         return;
     }
 
-    /* currently not processing interfaces being added to port */
     if (add)
+    {
         LOGT("%s(): interface %s is added to port %s", __func__, intf->if_name,
              port->port_name);
+
+        /* readded port */
+        nm2_inet_bridge_port_set(port, add);
+    }
     else
+    {
         LOGT("%s(): interface %s is removed from port %s", __func__, intf->if_name,
              port->port_name);
+        nm2_inet_bridge_port_set(port, add);
+    }
 }
 
 /*
@@ -313,7 +321,7 @@ void nm2_nb_port_cfg_reapply(struct nm2_iface *pif)
 }
 
 
-static void nm2_inet_bridge_port_set(struct nm2_port *port)
+static void nm2_inet_bridge_port_set(struct nm2_port *port, bool add)
 {
     struct nm2_bridge *br;
 
@@ -323,7 +331,7 @@ static void nm2_inet_bridge_port_set(struct nm2_port *port)
         LOGD("%s(): parent bridge pointer is NULL, cannot add ports to bridge", __func__);
         return;
     }
-    inet_br_port_set(br->br_inet, port->port_inet, true);
+    inet_br_port_set(br->br_inet, port->port_inet, add);
     inet_commit(br->br_inet);
 }
 
@@ -354,7 +362,7 @@ void nm2_inet_bridge_config_reapply(struct nm2_iface *pif)
     port = nm2_port_get_by_name(pif->if_name);
     if (port == NULL) return;
 
-    nm2_inet_bridge_port_set(port);
+    nm2_inet_bridge_port_set(port, true);
 }
 
 void nm2_nb_port_process_update(ovsdb_update_monitor_t *mon, struct schema_Port *old,

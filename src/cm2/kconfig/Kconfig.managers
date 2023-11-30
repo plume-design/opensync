@@ -247,5 +247,4 @@ if MANAGER_CM
         help
             Connection manager will control also Bluetooth by enable/disable beacons and state.
 
-
 endif

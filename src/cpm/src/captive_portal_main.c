@@ -96,13 +96,6 @@ int main(int argc, char ** argv)
         return 1;
     }
 
-    if (!cportal_proxy_init())
-    {
-        LOGE("Initializing Captive Portal proxy service "
-             "(Failed to initialize proxy service)");
-        return 1;
-    }
-
     // Start the event loop
     ev_run(loop, 0);
 

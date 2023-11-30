@@ -350,6 +350,12 @@ void test_add_neigh_entry(void)
     entry = entry3;
     rc_add = neigh_table_add_to_cache(entry);
     TEST_ASSERT_TRUE(rc_add);
+    TEST_ASSERT_EQUAL(0, (entry->flags & NEIGH_CACHED));
+
+    entry = entry3;
+    rc_add = neigh_table_add_to_cache(entry);
+    TEST_ASSERT_FALSE(rc_add);
+    TEST_ASSERT_EQUAL(NEIGH_CACHED, (entry->flags & NEIGH_CACHED));
 
     // fill sockaddr
     MEMZERO(mac_out);

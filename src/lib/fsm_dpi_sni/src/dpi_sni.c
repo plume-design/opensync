@@ -363,7 +363,7 @@ dpi_sni_policy_req(struct fsm_request_args *request_args, char *attr_value)
     action = dpi_sni_process_request(policy_request, policy_reply);
     dpi_sni_set_flow_marker(request_args, policy_reply);
 
-    action = (action == FSM_BLOCK ? FSM_DPI_DROP : FSM_DPI_PASSTHRU);
+    action = (action == FSM_BLOCK || action == FSM_REDIRECT) ? FSM_DPI_DROP : FSM_DPI_PASSTHRU;
 
     /* Cleanup */
     dpi_sni_free_memory(policy_request, policy_reply);

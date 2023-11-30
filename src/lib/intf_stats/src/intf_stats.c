@@ -489,6 +489,16 @@ intf_stats_get_node_info(fcm_collect_plugin_t *collector)
 
 /******************************************************************************/
 
+static uint32_t
+intf_stats_calculate_delta(unsigned int new_count, uint64_t old_count)
+{
+    uint32_t count;
+
+    count = (new_count >= old_count) ? (new_count - old_count) : (UINT_MAX - old_count) + new_count;
+    return count;
+}
+
+
 static void
 intf_stats_calculate_stats(intf_stats_t *stats_old, struct rtnl_link_stats *stats_new)
 {
@@ -526,10 +536,10 @@ intf_stats_calculate_stats(intf_stats_t *stats_old, struct rtnl_link_stats *stat
     if (report_type == FCM_RPT_FMT_DELTA)
     {
         // Calculate the stat deltas
-        intf_entry->tx_bytes   = ((stats_new->tx_bytes)   - (stats_old->tx_bytes));
-        intf_entry->rx_bytes   = ((stats_new->rx_bytes)   - (stats_old->rx_bytes));
-        intf_entry->tx_packets = ((stats_new->tx_packets) - (stats_old->tx_packets));
-        intf_entry->rx_packets = ((stats_new->rx_packets) - (stats_old->rx_packets));
+        intf_entry->tx_bytes   = intf_stats_calculate_delta(stats_new->tx_bytes, stats_old->tx_bytes);
+        intf_entry->rx_bytes   = intf_stats_calculate_delta(stats_new->rx_bytes, stats_old->rx_bytes);
+        intf_entry->tx_packets = intf_stats_calculate_delta(stats_new->tx_packets, stats_old->tx_packets);
+        intf_entry->rx_packets = intf_stats_calculate_delta(stats_new->rx_packets, stats_old->rx_packets);
     }
     else if (report_type == FCM_RPT_FMT_CUMUL)
     {

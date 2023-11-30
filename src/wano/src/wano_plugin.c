@@ -53,7 +53,7 @@ void wano_plugin_unregister(struct wano_plugin *wp)
     LOG(INFO, "wano_plugin: Un-registering plug-in: %s (priority %g)",
               wp->wanp_name, wp->wanp_priority);
 
-    ASSERT(ds_tree_find(&wano_plugin_list, wp) != NULL, "WANO plug-in double unregister")
+    ASSERT(ds_tree_find(&wano_plugin_list, wp) != NULL, "WANO plug-in double unregister");
 
     ds_tree_remove(&wano_plugin_list, wp);
 }
@@ -94,7 +94,7 @@ wano_plugin_handle_t *wano_plugin_init(
 {
     wano_plugin_handle_t *wh;
 
-    ASSERT(wp->wanp_init != NULL, "WANO plugin has NULL init function")
+    ASSERT(wp->wanp_init != NULL, "WANO plugin has NULL init function");
 
     wh = wp->wanp_init(wp, ifname, status_fn);
     if (wh == NULL)
@@ -110,16 +110,16 @@ wano_plugin_handle_t *wano_plugin_init(
 
 void wano_plugin_run(wano_plugin_handle_t *wh)
 {
-    ASSERT(wh->wh_plugin != NULL, "WANO handle has NULL plug-in reference")
-    ASSERT(wh->wh_plugin->wanp_run != NULL, "WANO plug-in has NULL run function")
+    ASSERT(wh->wh_plugin != NULL, "WANO handle has NULL plug-in reference");
+    ASSERT(wh->wh_plugin->wanp_run != NULL, "WANO plug-in has NULL run function");
 
     wh->wh_plugin->wanp_run(wh);
 }
 
 bool wano_plugin_fini(wano_plugin_handle_t *wh)
 {
-    ASSERT(wh->wh_plugin != NULL, "WANO handle has NULL plug-in reference")
-    ASSERT(wh->wh_plugin->wanp_fini != NULL, "WANO plug-in has NULL fini function")
+    ASSERT(wh->wh_plugin != NULL, "WANO handle has NULL plug-in reference");
+    ASSERT(wh->wh_plugin->wanp_fini != NULL, "WANO plug-in has NULL fini function");
 
     wh->wh_plugin->wanp_fini(wh);
     return true;

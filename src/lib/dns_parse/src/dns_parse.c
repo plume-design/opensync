@@ -530,8 +530,9 @@ dns_prepare_forward(uint8_t *packet,
 
     if (ip->src.vers == IPv4)
     {
-        /* UDP checksum to 0 */
-        memset(dns_session->udp.udp_csum_ptr, 0, 2);
+        uint16_t csum = compute_udp_checksum(packet, ip, &dns_session->udp);
+
+        *(uint16_t *)dns_session->udp.udp_csum_ptr = csum;
 
         inet_ntop(AF_INET, &dst->addr.v4.s_addr, buf, sizeof(buf));
         LOGD("%s: dst address %s, dst port %d, checksum 0x%x",
@@ -539,8 +540,8 @@ dns_prepare_forward(uint8_t *packet,
              buf, dns_session->udp.dstport, dns_session->udp.udp_checksum);
 
         inet_ntop(AF_INET, &src->addr.v4.s_addr, buf, sizeof(buf));
-        LOGD("%s: src address %s, src port %d",
-             __func__, buf, dns_session->udp.srcport);
+        LOGD("%s: src address %s, src port %d, csum %x",
+             __func__, buf, dns_session->udp.srcport, csum);
 
     }
     else

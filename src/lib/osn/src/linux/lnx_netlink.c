@@ -278,11 +278,10 @@ void lnx_netlink_sock_fn(struct ev_loop *loop, ev_io *w, int revent)
         /* The ENOBUFS error should be cleared by the next call to recv() */
         LOG(INFO, "netlink: ENOBUFS received. Netlink sockets may be under stress.");
         /*
-         * We lost an event, make sure to sync the state -- dispatch a global
-         * update event
+         * We lost an event, make sure to sync the state -- the error handling code
+         * will dispatch a global update event and revert back to polling
          */
-        lnx_netlink_dispatch(LNX_NETLINK_ALL, NULL);
-        return;
+        goto error;
     }
     else if (rc < 0)
     {
@@ -444,19 +443,19 @@ error:
 
 bool lnx_netlink_weed_out(struct nlmsghdr *nh)
 {
-    struct rtmsg *rm;
+    struct ifinfomsg *info;
     struct rtattr *rta;
     unsigned int rtalen;
 
-    rm = NLMSG_DATA(nh);
+    info = NLMSG_DATA(nh);
 
     switch (nh->nlmsg_type)
     {
         case RTM_NEWLINK:
         case RTM_DELLINK:
         case RTM_GETLINK:
-            rta = IFLA_RTA(rm);
-            rtalen = RTM_PAYLOAD(nh);
+            rta = IFLA_RTA(info);
+            rtalen = IFLA_PAYLOAD(nh);
 
             for (;RTA_OK(rta, rtalen); rta = RTA_NEXT(rta, rtalen))
             {

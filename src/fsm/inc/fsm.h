@@ -324,6 +324,13 @@ enum
     FSM_TCP_ACK = 1 << 4,
 };
 
+
+enum
+{
+    FSM_OSBUS_FCM = 1 << 1,
+};
+
+
 /**
  * @brief dpi dispatcher specifics
  */
@@ -445,6 +452,7 @@ struct fsm_mgr
     bool (*init_plugin)(struct fsm_session *); /* DSO plugin init */
     int (*get_br)(char *if_name, char *bridge, size_t len); /* get lan bridge */
     bool (*update_session_tap)(struct fsm_session *); /* session tap update */
+    uint32_t osbus_flags;
 };
 
 
@@ -893,5 +901,8 @@ fsm_get_node_config(struct schema_Node_Config *node_cfg);
 
 void
 fsm_set_session_ops(struct fsm_session *session);
+
+bool
+fsm_dpi_is_multicast_ip(struct net_md_flow_key *key);
 
 #endif /* FSM_H_INCLUDED */

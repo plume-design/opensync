@@ -432,6 +432,9 @@ void cm2_trigger_restart_managers(void) {
         LOGI("Detected device in Router mode, skip restart managers");
         skip_restart = true;
 
+        if (cm2_ovsdb_is_tunnel_created(g_state.link.if_name))
+            goto restart;
+
         /* When device operates in Router mode, restart managers is skipped
          * due to keep LAN connectivity.
          * Methods of restoring connection are triggered (see cm2_restore_method in cm2.h)
@@ -448,6 +451,9 @@ void cm2_trigger_restart_managers(void) {
             LOGW("Unsupported restore connection method: %d", g_state.restore_method);
             break;
         }
+
+        // Move to the next restore method in the list
+        g_state.restore_method = (g_state.restore_method + 1) % CM2_RESTORE_NUM;
 
         goto restart;
     }
@@ -467,15 +473,13 @@ void cm2_trigger_restart_managers(void) {
 restart:
     cm2_ovsdb_dump_debug_data();
 
-    // Move to the next restore method in the list
-    g_state.restore_method = (g_state.restore_method + 1) % CM2_RESTORE_NUM;
-
     int delta = cm2_get_restart_time();
     if (skip_restart &&
         delta < CM2_GW_SKIP_RESTART_TIMEOUT) {
         LOGI("Device type: %d, Skip restart managers[%d secs]",
              g_state.dev_type, delta);
-        cm2_reset_time();
+        if (!g_state.connected)
+            cm2_reset_time();
         return;
     }
 
@@ -485,11 +489,13 @@ restart:
 }
 
 static void cm2_restart_ovs_connection(bool state) {
+    bool gw_offline_en = (CONFIG_CM2_CLOUD_FATAL_THRESHOLD == 0 ||
+                            (g_state.cnts.ovs_resolve_fail < CONFIG_CM2_CLOUD_FATAL_THRESHOLD &&
+                            g_state.cnts.ovs_con < CONFIG_CM2_CLOUD_FATAL_THRESHOLD));
+
     if (cm2_is_extender())
     {
-        if (CONFIG_CM2_CLOUD_FATAL_THRESHOLD == 0 ||
-            (g_state.cnts.ovs_resolve_fail < CONFIG_CM2_CLOUD_FATAL_THRESHOLD &&
-             g_state.cnts.ovs_con < CONFIG_CM2_CLOUD_FATAL_THRESHOLD)) {
+        if (gw_offline_en) {
             cm2_enable_gw_offline();
             cm2_set_state(state, CM2_STATE_LINK_SEL);
         }
@@ -497,7 +503,11 @@ static void cm2_restart_ovs_connection(bool state) {
             cm2_trigger_restart_managers();
     }
     else
+    {
+        if (gw_offline_en)
+            cm2_enable_gw_offline();
         cm2_set_state(state, CM2_STATE_OVS_INIT);
+    }
 }
 
 static bool cm2_set_new_vtag(void) {
@@ -612,16 +622,17 @@ start:
                     cm2_ovsdb_set_dhcpv6_client(g_state.link.bridge_name, true);
                 } else {
                     cm2_ovsdb_inherit_ip_bridge_conf(g_state.link.if_name, g_state.link.bridge_name);
+                    cm2_update_bridge_cfg(g_state.link.bridge_name, g_state.link.if_name, true,
+                                      CM2_PAR_FALSE, cm2_is_eth_type(g_state.link.if_type));
                 }
-                cm2_update_bridge_cfg(g_state.link.bridge_name, g_state.link.if_name, true,
-                                      CM2_PAR_FALSE);
             } else {
                 cm2_ovsdb_set_default_wan_bridge(g_state.link.if_name, g_state.link.if_type);
             }
 
             cm2_ovsdb_connection_clean_link_counters(g_state.link.if_name);
             cm2_connection_req_stability_check_async(g_state.link.if_name, g_state.link.if_type, uplink, LINK_CHECK, false, false);
-            cm2_set_state(true, CM2_STATE_WAN_IP);
+            if (g_state.state < CM2_STATE_WAN_IP)
+                cm2_set_state(true, CM2_STATE_WAN_IP);
             break;
         case CM2_REASON_SET_NEW_VTAG:
             LOGI("vtag: %d: creating", g_state.link.vtag.tag);
@@ -688,9 +699,9 @@ start:
                 g_state.link.ipv4.resolve_retry = false;
                 g_state.link.ipv6.resolve_retry = false;
                 g_state.cnts.ovs_resolve = 0;
-                g_state.cnts.ovs_resolve_fail = 0;
                 cm2_set_state(true, CM2_STATE_LINK_SEL);
             }
+            g_state.cnts.ovs_resolve_fail = 0;
             break;
 
         case CM2_STATE_LINK_SEL: // EXTENDER only
@@ -701,8 +712,8 @@ start:
                 g_state.fast_reconnect = g_state.connected ? true : false;
                 if (g_state.fast_reconnect)
                     g_state.fast_backoff = true;
-
-                cm2_ovsdb_set_Manager_target("");
+                else
+                    cm2_ovsdb_set_Manager_target("");
                 g_state.connected = false;
                 g_state.ble_status = 0;
                 cm2_ovsdb_connection_update_ble_phy_link();
@@ -747,7 +758,9 @@ start:
             else if (cm2_timeout(false))
             {
                 cm2_trigger_restart_managers();
-            } else {
+            }
+            else if (!g_state.fast_reconnect)
+            {
                 cm2_ovsdb_set_Manager_target("");
             }
             break;
@@ -965,14 +978,13 @@ start:
                     cm2_connection_req_stability_check_async(g_state.link.if_name, g_state.link.if_type, uplink, opts, true, false);
                     cm2_set_ble_state(true, BLE_ONBOARDING_STATUS_CLOUD_OK);
                     cm2_update_device_type(g_state.link.if_type);
-                    g_state.cnts.ovs_con = 0;
                     g_state.restore_method = CM2_RESTORE_REFRESH_DHCP;
                     g_state.run_stability = true;
                     cm2_stability_update_interval(g_state.loop, false);
                     cm2_ovsdb_connection_update_unreachable_cloud_counter(g_state.link.if_name, 0);
-                    cm2_disable_gw_offline_state();
                 }
-
+                    g_state.cnts.ovs_con = 0;
+                    cm2_disable_gw_offline_state();
             }
 
             if (g_state.connected) {

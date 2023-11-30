@@ -1932,7 +1932,7 @@ ow_stats_conf_phy_removed_cb(struct osw_state_observer *self,
 static int
 ow_stats_conf_vif_get_freq_mhz(const struct osw_state_vif_info *vif)
 {
-    if (vif->drv_state->enabled == false) return 0;
+    if (vif->drv_state->status != OSW_VIF_ENABLED) return 0;
     switch (vif->drv_state->vif_type) {
         case OSW_VIF_UNDEFINED: return 0;
         case OSW_VIF_AP: return vif->drv_state->u.ap.channel.control_freq_mhz;
@@ -2004,7 +2004,7 @@ ow_stats_conf_freq_is_valid(const struct osw_state_vif_info *vif)
             return false;
         case OSW_VIF_AP:
         case OSW_VIF_STA:
-            return vif->drv_state->enabled;
+            return (vif->drv_state->status == OSW_VIF_ENABLED);
     }
     return false;
 }
@@ -2016,7 +2016,7 @@ ow_stats_conf_vif_set(struct osw_state_observer *self,
 {
     struct ow_stats_conf *c = container_of(self, struct ow_stats_conf, state_obs);
     const bool valid = (removing == false && ow_stats_conf_freq_is_valid(vif));
-    const bool enabled = vif->drv_state->enabled;
+    const bool enabled = (vif->drv_state->status == OSW_VIF_ENABLED);
     const enum osw_vif_type vif_type = removing
                                      ? OSW_VIF_UNDEFINED
                                      : vif->drv_state->vif_type;

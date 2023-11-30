@@ -131,6 +131,12 @@ menu "Common"
                 source "kconfig/Kconfig.osn.lte_backend"
             endchoice
 
+            choice
+                prompt "CELL"
+                default OSN_BACKEND_CELL_LINUX
+                source "kconfig/Kconfig.osn.cell_backend"
+            endchoice
+
             menu "Firewall"
                 choice
                     prompt "Firewall implementation"
@@ -150,12 +156,6 @@ menu "Common"
                 endchoice
                 source "kconfig/Kconfig.osn.fw_eb"
             endmenu
-
-            choice
-                prompt "MAP-T"
-                default OSN_BACKEND_MAPT_NULL
-                source "kconfig/Kconfig.osn.mapt_backend"
-            endchoice
 
             menu "Virtual Private Networks"
                 choice
@@ -180,6 +180,16 @@ menu "Common"
                 default OSN_BACKEND_ROUTE_RULE_LINUX
                 source "kconfig/Kconfig.osn.route_rule_backend"
             endchoice
+
+            menu "MAP-T/MAP-E"
+                choice
+                    prompt "MAP-T/MAP-E Implementation"
+                    default OSN_BACKEND_MAP_LINUX
+                    source "kconfig/Kconfig.osn.map_backend"
+                endchoice
+
+                source "kconfig/Kconfig.osn.map_v6plus"
+            endmenu
 
             source "kconfig/Kconfig.osn"
         endmenu
@@ -271,6 +281,15 @@ menu "Common"
                     prompt "Bluetooth Low Energy Backend"
                     source "kconfig/Kconfig.osp_ble.backend"
                 endchoice
+            endmenu
+
+            menu "OpenThread Border Router (OSP_OTBR)"
+                choice
+                    prompt "OpenThread Border Router Backend"
+                    default OSP_OTBR_NULL
+                    source "kconfig/Kconfig.osp_otbr.backend"
+                endchoice
+                source "kconfig/Kconfig.osp_otbr"
             endmenu
 
         endmenu

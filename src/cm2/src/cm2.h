@@ -143,7 +143,7 @@ typedef struct
 #else
     cm2_addr_list ipv6_addr_list;
     cm2_addr_list ipv4_addr_list;
-    bool          ipv6_cur;
+    bool          ipv6_pref;
 #endif
 } cm2_addr_t;
 
@@ -290,6 +290,7 @@ typedef enum {
     CM2_CONNECTION_REQ_UNBLOCKING_IPV4,
     CM2_CONNECTION_REQ_UNBLOCKING_IPV6,
     CM2_CONNECTION_REQ_ALL_ACTIVE_UPLINKS,
+    CM2_CONNECTION_REQ_LAN_ACTIVE_UPLINKS,
 } cm2_connection_request;
 
 // misc
@@ -408,6 +409,7 @@ int cm2_ovsdb_CMU_set_ipv6(const char *if_name, cm2_uplink_state_t state);
 bool cm2_ovsdb_CMU_get_ip_state(const char *if_name, cm2_uplink_state_t *ipv4, cm2_uplink_state_t *ipv6);
 cm2_uplink_state_t cm2_get_uplink_state_from_str(const char *uplink_state);
 int cm2_ovsdb_update_route_metric(const char *ifname, int metric);
+bool cm2_ovsdb_is_tunnel_created(const char *ifname);
 
 #ifdef CONFIG_CM2_USE_EXTRA_DEBUGS
 void cm2_ovsdb_dump_debug_data(void);
@@ -421,6 +423,7 @@ int cm2_ovsdb_inherit_ip_bridge_conf(char *up_src, char *up_dst);
 // addr resolve
 cm2_addr_t* cm2_get_addr(cm2_dest_e dest);
 cm2_addr_t* cm2_curr_addr(void);
+cm2_dest_e cm2_get_dest_type(void);
 void cm2_free_addrinfo(cm2_addr_t *addr);
 void cm2_clear_addr(cm2_addr_t *addr);
 bool cm2_parse_resource(cm2_addr_t *addr, cm2_dest_e dest);
@@ -486,17 +489,20 @@ static inline bool cm2_vtag_stability_check(void)
 {
     return true;
 }
-bool cm2_connection_req_stability_check(const char *uname,
+static inline bool cm2_connection_req_stability_check(const char *uname,
                                         const char *utype,
                                         const char *clink,
                                         target_connectivity_check_option_t opts,
-                                        bool db_update);
-void cm2_connection_req_stability_check_async(const char *uname,
-                                              const char *utype,
-                                              const char *clink,
-                                              target_connectivity_check_option_t opts,
-                                              bool db_update,
-                                              bool repeat)
+                                        bool db_update)
+{
+    return true;
+}
+static inline void cm2_connection_req_stability_check_async(const char *uname,
+                                                            const char *utype,
+                                                            const char *clink,
+                                                            target_connectivity_check_option_t opts,
+                                                            bool db_update,
+                                                            bool repeat)
 {
 }
 static inline void cm2_stability_init(struct ev_loop *loop)
@@ -559,9 +565,18 @@ static inline bool cm2_is_config_via_ble_enabled(void)
 #endif
 }
 
+static inline bool cm2_is_set_local_bit_mac_on_lan(void)
+{
+#ifdef CONFIG_TARGET_LAN_SET_LOCAL_MAC_BIT
+    return true;
+#else
+    return false;
+#endif
+}
+
 // net
 void cm2_update_bridge_cfg(char *bridge, char *port, bool brop,
-                           cm2_par_state_t state);
+                           cm2_par_state_t state, bool update_local_bit);
 void cm2_dhcpc_start_dryrun(char* ifname, char *iftype, int cnt);
 void cm2_dhcpc_stop_dryrun(char* ifname);
 bool cm2_is_eth_type(const char *if_type);

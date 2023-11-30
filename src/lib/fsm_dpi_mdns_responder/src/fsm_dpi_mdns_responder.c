@@ -67,12 +67,13 @@ const char * const mdns_state_str[] =
 {
     [UNDEFINED] = "undefined",
     [BEGIN_MDNS] = "begin",
-    [MDNS_QNAME] = "mdns.query.question.name",
-    [MDNS_RESP_TYPE] = "mdns.query.question.response_type",
+    [MDNS_QNAME] = "mdns.query.question.qname",
+    [MDNS_RESP_TYPE] = "mdns.query.question.qtype",
+    [MDNS_QUNICAST] = "mdns.query.question.qunicast",
     [END_MDNS] = "end",
 };
 
-const char *mdns_attr_value = "mdns";
+const char *mdns_attr_value = "mdns.query.question";
 
 static enum mdns_state
 get_mdns_state(const char *attribute)
@@ -88,6 +89,7 @@ get_mdns_state(const char *attribute)
 
     GET_MDNS_STATE(attribute, MDNS_QNAME);
     GET_MDNS_STATE(attribute, MDNS_RESP_TYPE);
+    GET_MDNS_STATE(attribute, MDNS_QUNICAST);
     GET_MDNS_STATE(attribute, BEGIN_MDNS);
     GET_MDNS_STATE(attribute, END_MDNS);
 
@@ -296,18 +298,30 @@ fsm_dpi_mdns_process_record(struct fsm_session *session,
     struct fsm_dpi_mdns_service *service;
     struct dpi_mdns_resp_client *mgr;
     struct mdns_record *rec;
+    uint16_t ethertype;
     char *qname;
     char *name;
     bool rc = false;
 
     mgr = fsm_dpi_mdns_get_mgr();
     if (!mgr->initialized) return false;
+
+    ethertype = net_header_get_ethertype(net_parser);
+    if (ethertype == ETH_P_IPV6)
+    {
+        LOGT("MDNS responder does not support IPv6");
+        return rc;
+    }
+
     ds_tree_t *services = fsm_dpi_mdns_get_services();
 
     rec = &mgr->curr_mdns_rec_processed;
 
+    if (strlen(rec->qname) == 0) return rc;
+
     qname = STRDUP(rec->qname);
-    LOGT("%s: Processing dpi mDNS request for %s expecting %scast response", __func__, rec->qname, rec->unicast ? "uni": "multi");
+    LOGT("%s: Processing dpi mDNS request for %s expecting %scast response", __func__,
+         rec->qname, rec->unicast ? "uni": "multi");
     name = strtok(qname, ".");
 
     service = ds_tree_find(services, name);
@@ -403,7 +417,23 @@ fsm_dpi_mdns_process_attr(struct fsm_session *session, const char *attr,
         {
             if (type != RTS_TYPE_NUMBER)
             {
-                LOGD("%s: value for %s should be a string", __func__, attr);
+                LOGD("%s: value for %s should be a number", __func__, attr);
+                goto reset_state_machine;
+            }
+            if (rec->next_state != curr_state) goto wrong_state;
+
+            rec->qtype = *(int64_t *)value;
+            rec->next_state = MDNS_QUNICAST;
+            LOGT("%s: copied %s = %u - next is %s",
+                 __func__, mdns_state_str[curr_state], rec->qtype,
+                 mdns_state_str[rec->next_state]);
+            break;
+        }
+        case MDNS_QUNICAST:
+        {
+            if (type != RTS_TYPE_NUMBER)
+            {
+                LOGD("%s: value for %s should be a number", __func__, attr);
                 goto reset_state_machine;
             }
             if (rec->next_state != curr_state) goto wrong_state;
@@ -434,6 +464,7 @@ fsm_dpi_mdns_process_attr(struct fsm_session *session, const char *attr,
 
             /* Now we can process the record */
             ret = fsm_dpi_mdns_process_record(session, acc, net_parser);
+            acc->dpi_always = true;
             break;
         }
 

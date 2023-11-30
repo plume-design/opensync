@@ -36,7 +36,7 @@ UNIT_TYPE := LIB
 
 UNIT_DIR := lib
 
-UNIT_SRC := src/nf_conn_mark.c
+UNIT_SRC := src/nf_conntrack.c
 UNIT_SRC += src/nf_util_neigh.c
 UNIT_SRC += src/nf_queue.c
 

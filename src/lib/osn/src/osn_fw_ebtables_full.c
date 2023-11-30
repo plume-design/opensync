@@ -56,6 +56,7 @@ struct osfw_ebbase
 {
     struct osfw_ebinet inet;
     osfw_fn_t *osfw_eb_fn;
+    osfw_hook_fn_t *osfw_hook_fn;
 };
 
 static struct osfw_ebbase osfw_ebbase;
@@ -857,6 +858,8 @@ static bool osfw_eb_base_apply(struct osfw_ebbase *self)
 		LOGE("Apply OSFW ebtables base: apply OSFW ebtables failed");
 		return false;
 	}
+
+    if (self->osfw_hook_fn) self->osfw_hook_fn(OSFW_HOOK_EBTABLES);
 	return true;
 }
 
@@ -871,7 +874,7 @@ static struct osfw_ebinet *osfw_eb_base_get_inet(struct osfw_ebbase *self, int f
 	return ebinet;
 }
 
-bool osfw_eb_init(osfw_fn_t *osfw_eb_status_fn)
+bool osfw_eb_init(osfw_fn_t *osfw_eb_status_fn, osfw_hook_fn_t *osfw_hook_fn)
 {
 	bool errcode = true;
 
@@ -880,6 +883,7 @@ bool osfw_eb_init(osfw_fn_t *osfw_eb_status_fn)
 		LOGE("Initialize ebtable: set base failed");
 		return false;
 	}
+    osfw_ebbase.osfw_hook_fn = osfw_hook_fn;
 
 	errcode = osfw_eb_apply();
 	if (!errcode) {

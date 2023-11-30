@@ -45,7 +45,6 @@ UNIT_SRC += src/fsm_nfqueues.c
 UNIT_SRC += src/fsm_raw.c
 
 UNIT_CFLAGS := -I$(UNIT_PATH)/inc
-UNIT_CFLAGS += -Isrc/lib/imc/inc
 UNIT_CFLAGS += -Isrc/lib/oms/inc
 
 UNIT_LDFLAGS := -lev -ljansson -lpcap -lmnl
@@ -73,4 +72,5 @@ UNIT_DEPS += src/lib/neigh_table
 UNIT_DEPS += src/lib/oms
 UNIT_DEPS += src/lib/gatekeeper_cache
 UNIT_DEPS += src/lib/network_zone
+UNIT_DEPS += src/lib/dpi_intf
 UNIT_DEPS += $(if $(CONFIG_ACCEL_FLOW_EVICT_MESSAGE), src/lib/accel_evict_msg)

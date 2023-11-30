@@ -53,22 +53,33 @@ struct mnl_buf
 	uint8_t data[4096];
 };
 
+struct conntrack_tuple {
+  uint32_t src_ip;
+  uint16_t src_port;
+  uint32_t dst_ip;
+  uint16_t dst_port;
+};
+
+struct conntrack {
+  struct conntrack_tuple original;
+  struct conntrack_tuple reply;
+  uint32_t status;
+  uint32_t use;
+  uint32_t id;
+};
+
 #include "mnl_dump_2.c"
 #include "mnl_dump_2_zones.c"
 #include "mnl_dump_10.c"
 #include "mnl_dump_10_zones.c"
 
 extern ds_tree_t flow_tracker_list;
-void process_merged_multi_zonestats(ds_dlist_t *list, ds_tree_t *tree);
-void flow_free_merged_multi_zonestats(ds_tree_t *tree);
 const char *test_name = "fcm_ct_stats_tests";
 
 
 char *g_node_id = "4C718002B3";
 char *g_loc_id = "59efd33d2c93832025330a3e";
 char *g_mqtt_topic = "dev-test/ct_stats/4C718002B3/59efd33d2c93832025330a3e";
-
-/* Gathered at sample colletion. See mnl_cb_run() implementation for details */
 int g_portid = 18404;
 int g_seq = 1581959512;
 
@@ -150,6 +161,7 @@ void
 ct_stats_setUp(void)
 {
     struct net_md_aggregator *aggr;
+    struct ev_loop *loop = EV_DEFAULT;
     flow_stats_t *ct_stats;
     flow_stats_mgr_t *mgr;
     size_t num_c;
@@ -160,6 +172,12 @@ ct_stats_setUp(void)
     TEST_ASSERT_NOT_NULL(mgr);
 
     neigh_table_init();
+
+    if (nf_ct_init(loop) < 0)
+    {
+        LOGE("Eror initializing conntrack");
+        return;
+    }
 
     num_c = sizeof(g_collector_tbl) / sizeof(g_collector_tbl[0]);
     for (i = 0; i < num_c; i++)
@@ -195,6 +213,7 @@ ct_stats_tearDown(void)
         ct_stats_plugin_exit(&g_collector_tbl[i]);
     }
     neigh_table_cleanup();
+    nf_ct_exit();
 }
 
 void
@@ -207,12 +226,10 @@ test_collect(void)
     ct_stats_collect_cb(ct_stats->collector);
 }
 
-
 void
 test_process_v4(void)
 {
     fcm_collect_plugin_t *collector;
-    ctflow_info_t *flow_info;
     flow_stats_t *ct_stats;
     struct mnl_buf *p_mnl;
     flow_stats_mgr_t *mgr;
@@ -241,7 +258,7 @@ test_process_v4(void)
         seq = g_seq;
         if (p_mnl->seq != 0) seq = p_mnl->seq;
         ret = mnl_cb_run(p_mnl->data, p_mnl->len, seq, portid,
-                         data_cb, ct_stats);
+                         nf_process_ct_cb, &ct_stats->ctflow_list);
         if (ret == -1)
         {
             ret = errno;
@@ -251,12 +268,6 @@ test_process_v4(void)
         else if (ret <= MNL_CB_STOP) loop = false;
         idx++;
     }
-
-    ds_dlist_foreach(&ct_stats->ctflow_list, flow_info)
-    {
-        ct_stats_print_contrack(&flow_info->flow);
-    }
-
     ct_flow_add_sample(ct_stats);
     collector->send_report(collector);
 }
@@ -266,7 +277,6 @@ void
 test_process_v6(void)
 {
     fcm_collect_plugin_t *collector;
-    ctflow_info_t *flow_info;
     flow_stats_t *ct_stats;
     flow_stats_mgr_t *mgr;
     struct mnl_buf *p_mnl;
@@ -289,7 +299,7 @@ test_process_v6(void)
     {
         p_mnl = &g_mnl_buf_ipv6[idx];
         ret = mnl_cb_run(p_mnl->data, p_mnl->len, g_seq, g_portid,
-                         data_cb, ct_stats);
+                         nf_process_ct_cb, &ct_stats->ctflow_list);
         if (ret == -1)
         {
             ret = errno;
@@ -299,11 +309,7 @@ test_process_v6(void)
         else if (ret <= MNL_CB_STOP) loop = false;
         idx++;
     }
-
-    ds_dlist_foreach(&ct_stats->ctflow_list, flow_info)
-    {
-        ct_stats_print_contrack(&flow_info->flow);
-    }
+    nf_ct_print_entries(&ct_stats->ctflow_list);
 
     ct_flow_add_sample(ct_stats);
     collector->send_report(collector);
@@ -313,7 +319,6 @@ void
 test_process_v4_zones(void)
 {
     fcm_collect_plugin_t *collector;
-    ctflow_info_t *flow_info;
     flow_stats_t *ct_stats;
     struct mnl_buf *p_mnl;
     flow_stats_mgr_t *mgr;
@@ -343,7 +348,7 @@ test_process_v4_zones(void)
         seq = g_seq;
         if (p_mnl->seq != 0) seq = p_mnl->seq;
         ret = mnl_cb_run(p_mnl->data, p_mnl->len, seq, portid,
-                         data_cb, ct_stats);
+                         nf_process_ct_cb, &ct_stats->ctflow_list);
         if (ret == -1)
         {
             ret = errno;
@@ -354,16 +359,7 @@ test_process_v4_zones(void)
         idx++;
     }
 
-    ds_dlist_foreach(&ct_stats->ctflow_list, flow_info)
-    {
-        ct_stats_print_contrack(&flow_info->flow);
-    }
-
-    if (ct_stats->ct_zone == USHRT_MAX)
-        process_merged_multi_zonestats(&ct_stats->ctflow_list,
-                                       &flow_tracker_list);
-
-    flow_free_merged_multi_zonestats(&flow_tracker_list);
+    nf_ct_print_entries(&ct_stats->ctflow_list);
 
     ct_flow_add_sample(ct_stats);
     collector->send_report(collector);
@@ -374,7 +370,6 @@ void
 test_process_v6_zones(void)
 {
     fcm_collect_plugin_t *collector;
-    ctflow_info_t *flow_info;
     flow_stats_t *ct_stats;
     flow_stats_mgr_t *mgr;
     struct mnl_buf *p_mnl;
@@ -405,7 +400,7 @@ test_process_v6_zones(void)
         if (p_mnl->seq != 0) seq = p_mnl->seq;
 
         ret = mnl_cb_run(p_mnl->data, p_mnl->len, seq, portid,
-                         data_cb, ct_stats);
+                         nf_process_ct_cb, &ct_stats->ctflow_list);
         if (ret == -1)
         {
             ret = errno;
@@ -415,17 +410,7 @@ test_process_v6_zones(void)
         else if (ret <= MNL_CB_STOP) loop = false;
         idx++;
     }
-
-    ds_dlist_foreach(&ct_stats->ctflow_list, flow_info)
-    {
-        ct_stats_print_contrack(&flow_info->flow);
-    }
-
-    if (ct_stats->ct_zone == USHRT_MAX)
-        process_merged_multi_zonestats(&ct_stats->ctflow_list,
-                                       &flow_tracker_list);
-
-    flow_free_merged_multi_zonestats(&flow_tracker_list);
+    nf_ct_print_entries(&ct_stats->ctflow_list);
 
     ct_flow_add_sample(ct_stats);
     collector->send_report(collector);
@@ -437,7 +422,6 @@ void
 test_ct_stat_v4(void)
 {
     fcm_collect_plugin_t *collector;
-    ctflow_info_t *flow_info;
     flow_stats_t *ct_stats;
     flow_stats_mgr_t *mgr;
     int ret;
@@ -451,16 +435,10 @@ test_ct_stat_v4(void)
     collector = ct_stats->collector;
     TEST_ASSERT_NOT_NULL(collector);
 
-    ret = ct_stats_get_ct_flow(AF_INET);
+    ret = nf_ct_get_flow_entries(AF_INET, &ct_stats->ctflow_list, ct_stats->ct_zone);
     TEST_ASSERT_EQUAL_INT(ret, 0);
 
-    ds_dlist_foreach(&ct_stats->ctflow_list, flow_info)
-    {
-        ct_stats_print_contrack(&flow_info->flow);
-    }
-
-    ct_flow_add_sample(ct_stats);
-    collector->send_report(collector);
+    nf_ct_print_entries(&ct_stats->ctflow_list);
 }
 
 
@@ -468,7 +446,6 @@ void
 test_ct_stat_v6(void)
 {
     fcm_collect_plugin_t *collector;
-    ctflow_info_t *flow_info;
     flow_stats_t *ct_stats;
     flow_stats_mgr_t *mgr;
     int ret;
@@ -482,13 +459,10 @@ test_ct_stat_v6(void)
     collector = ct_stats->collector;
     TEST_ASSERT_NOT_NULL(collector);
 
-    ret = ct_stats_get_ct_flow(AF_INET6);
+    ret = nf_ct_get_flow_entries(AF_INET6, &ct_stats->ctflow_list, ct_stats->ct_zone);
     TEST_ASSERT_EQUAL_INT(ret, 0);
 
-    ds_dlist_foreach(&ct_stats->ctflow_list, flow_info)
-    {
-        ct_stats_print_contrack(&flow_info->flow);
-    }
+    nf_ct_print_entries(&ct_stats->ctflow_list);
 
     ct_flow_add_sample(ct_stats);
     collector->send_report(collector);

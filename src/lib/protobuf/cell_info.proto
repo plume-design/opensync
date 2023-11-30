@@ -1,0 +1,381 @@
+// Copyright (c) 2015, Plume Design Inc. All rights reserved.
+// 
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
+//    1. Redistributions of source code must retain the above copyright
+//       notice, this list of conditions and the following disclaimer.
+//    2. Redistributions in binary form must reproduce the above copyright
+//       notice, this list of conditions and the following disclaimer in the
+//       documentation and/or other materials provided with the distribution.
+//    3. Neither the name of the Plume Design Inc. nor the
+//       names of its contributors may be used to endorse or promote products
+//       derived from this software without specific prior written permission.
+// 
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+// ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+// WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL Plume Design Inc. BE LIABLE FOR ANY
+// DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+// (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+// LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+// ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+// (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+// SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+syntax = "proto3";
+
+package interfaces.cell_info;
+
+// Cellular common fields
+message CellularCommonHeader {
+  uint32 request_id = 1;
+  string if_name = 2; // Can have multiple interfaces in case of multiple APN (wwan0, rmnet_data0, etc.)
+  string node_id = 3;
+  string location_id = 4;
+  string imei = 5;
+  string imsi = 6;
+  string iccid = 7;
+  string modem_info = 8;
+}
+
+// Network Registration Status
+enum CellularNetRegStatus {
+  NET_REG_STAT_UNSPECIFIED = 0;
+  NET_REG_STAT_NOTREG = 1; // Not registered. ME is not currently searching a new operator to register to
+  NET_REG_STAT_REG = 2; // Registered, home network
+  NET_REG_STAT_SEARCH = 3; // Not registered, but ME is currently searching a new operator to register to
+  NET_REG_STAT_DENIED = 4; // Registration denied
+  NET_REG_STAT_UNKNOWN = 5; // Unknown
+  NET_REG_STAT_ROAMING = 6; // Registered, roaming
+}
+
+// SIM type (eSIM, physical SIM)
+enum CellularSimType {
+  CELLULAR_SIM_TYPE_UNSPECIFIED = 0; // No SIM present
+  CELLULAR_SIM_TYPE_ESIM = 1;
+  CELLULAR_SIM_TYPE_PSIM = 2; // Physical SIM card
+}
+
+// SIM Status (Inserted, Removed, Unknown)
+enum CellularSimStatus {
+  CELLULAR_SIM_STATUS_UNSPECIFIED = 0;
+  CELLULAR_SIM_STATUS_INSERTED = 1;
+  CELLULAR_SIM_STATUS_REMOVED = 2;
+  CELLULAR_SIM_STATUS_BAD = 3;
+}
+
+enum Endc {
+  ENDC_UNDEFINED = 0;
+  ENDC_NOT_SUPPORTED = 1;
+  ENDC_SUPPORTED = 2;
+}
+
+message CellularNetInfo {
+  CellularNetRegStatus net_status = 1;
+  uint32 mcc = 2;
+  uint32 mnc = 3;
+  uint32 tac = 4;
+  string service_provider = 5;
+  CellularSimType sim_type = 6;
+  CellularSimStatus sim_status = 7;
+  uint32 active_sim_slot = 8;
+  Endc endc = 9; // EN-DC capability delivered by the operator. (in NAS registration)
+  CellularMode mode = 10;
+}
+
+// Cellular data usage
+message CellularDataUsage {
+  uint64 rx_bytes = 1;
+  uint64 tx_bytes = 2;
+}
+
+// Serving Cell State
+enum  CellularServingCellState {
+  CELLULAR_SERVING_CELL_UNSPECIFIED = 0;
+  CELLULAR_SERVING_CELL_SEARCH = 1; // UE is searching but could not (yet) find a suitable 3G/4G/5G cell.
+  CELLULAR_SERVING_CELL_LIMSERV = 2; // UE is camping on a cell but has not registered on the network.
+  CELLULAR_SERVING_CELL_NOCONN = 3; // UE is camping on a cell and has registered on the network, and it is in idle mode.
+  CELLULAR_SERVING_CELL_CONNECT = 4; // UE is camping on a cell and has registered on the network, and a call is in progress.
+}
+
+// cell mode
+enum CellularMode {
+  CELLULAR_MODE_UNSPECIFIED = 0;
+  CELLULAR_MODE_NR5G_SA = 1;  // Serving cell is SA
+  CELLULAR_MODE_NR5G_NSA = 2;  // Serving cell is SA
+  CELLULAR_MODE_NR5G_NSA_5G_RRC_IDLE = 3; // Serving cell is LTE, and a 5G cell is in use
+  CELLULAR_MODE_LTE = 4; // Serving cell is LTE, and no 5G cell
+  CELLULAR_MODE_WCDMA = 5;
+}
+
+enum LteCellMode {
+  LTE_CELL_MODE_UNSPECIFIED = 0;
+  LTE_CELL_MODE_LTE = 1;
+  LTE_CELL_MODE_WCDMA = 2;
+}
+
+// is_tdd
+enum  FddTddMode {
+  CELLULAR_DUPLEX_UNSPECIFIED = 0;
+  CELLULAR_DUPLEX_FDD = 1;
+  CELLULAR_DUPLEX_TDD = 2;
+}
+
+// Uplink/Downlink Bandwidth in MHz
+enum Bandwidth {
+  BW_UNSPECIFIED = 0;
+  BW_1P4_MHZ = 1;
+  BW_3_MHZ = 2;
+  BW_5_MHZ  = 3;
+  BW_10_MHZ = 4;
+  BW_15_MHZ = 5;
+  BW_20_MHZ = 6;
+  BW_25_MHZ = 7;
+  BW_30_MHZ = 8;
+  BW_35_MHZ = 9;
+  BW_40_MHZ = 10;
+  BW_45_MHZ = 11;
+  BW_50_MHZ = 12;
+  BW_60_MHZ = 13;
+  BW_70_MHZ = 14;
+  BW_80_MHZ = 15;
+  BW_90_MHZ = 16;
+  BW_100_MHZ = 17;
+  BW_200_MHZ = 18;
+  BW_400_MHZ = 19;
+}
+
+enum NrScs {
+    SCS_UNSPECIFIED = 0;
+    SCS_15_KHZ = 1;
+    SCS_30_KHZ = 2;
+    SCS_60_KHZ = 3;
+    SCS_120_KHZ = 4;
+    SCS_240_KHZ = 5;
+    SCS_480_KHZ = 6;
+    SCS_960_KHZ = 7;
+};
+
+message LteNetServingCellInfo {
+  CellularServingCellState state = 1;
+  FddTddMode fdd_tdd_mode = 2;
+  uint32 cellid = 3; // Hexadecimal format. Cell ID. The parameter determines the 16-bit (GSM) or 28-bit (UMTS) cell ID. Range: 0-0xFFFFFFF.
+  uint32 pcid = 4; // Physical cell ID
+  uint32 uarfcn = 5; // Number format. The parameter determines the UTRA-ARFCN of the cell that was scanned
+  uint32 earfcn = 6; // Number format. The parameter determines the E-UTRA-ARFCN of the cell that was scanned
+  uint32 band = 7; // E-UTRA frequency band (see 3GPP 36.101)
+  Bandwidth ul_bandwidth = 8;
+  Bandwidth dl_bandwidth = 9;
+  uint32 tac = 10; // Tracking Area Code (see 3GPP 23.003 Section 19.4.2.3)
+  int32 rsrp = 11; // Reference Signal Received Power (see 3GPP 36.214 Section 5.1.1)
+  int32 rsrq = 12; // Reference Signal Received Quality (see 3GPP 36.214 Section 5.1.2)
+  int32 rssi = 13; // The parameter shows the Received Signal Strength Indication
+  uint32 sinr = 14; // Logarithmic value of SINR, Values are in 1/5th of a dB. Range: 0-250 which translates to -20dB - +30dB
+  uint32 srxlev = 15; // Select receive level value for base station in dB (see 3GPP25.304).
+  Endc endc = 16; // Indicate whether the current LTE cell supports EN-DC mode.
+}
+
+// NeighborCell freq mode
+enum NeighborFreqMode {
+  FREQ_MODE_UNSPECIFIED = 0;
+  FREQ_MODE_INTRA = 1;
+  FREQ_MODE_INTER = 2;
+  FREQ_MODE_WCDMA = 3;
+  FREQ_MODE_WCDMA_LTE = 4;
+  FREQ_MODE_5G = 5;
+}
+
+// Set
+enum NeighborCellSet {
+  NEIGHBOR_CELL_SET_UNSPECIFIED = 0;
+  NEIGHBOR_CELL_SET_ACTIVE_SET = 1;
+  NEIGHBOR_CELL_SET_SYNC_NEIGHBOR = 2;
+  NEIGHBOR_CELL_SET_ASYNC_NEIGHBOR = 3;
+}
+
+// [+QENG: "neighbourcell intra","LTE",<earfcn>,<pcid>,<rsrq>,<rsrp>,<rssi>,<sinr>,<srxlev>,<cell_resel_priority>,<s_non_intra_search>,<thresh_serving_low>,<s_intra_search>
+// [+QENG: "neighbourcell inter","LTE",<earfcn>,<pcid>,<rsrq>,<rsrp>,<rssi>,<sinr>,<srxlev>,<cell_resel_priority>,<threshX_low>,<threshX_high>
+// [+QENG:"neighbourcell","WCDMA",<uarfcn>,<cell_resel_priority>,<thresh_Xhigh>,<thresh_Xlow>,<psc>,<rscp><ecno>,<srxlev>
+// [+QENG: "neighbourcell","LTE",<earfcn>,<cellid>,<rsrp>,<rsrq>,<s_rxlev>
+message NetNeighborCellInfo {
+  NeighborFreqMode freq_mode = 1;
+  uint32 arfcn = 2;
+  uint32 earfcn = 3; // Add arfcn
+  uint32 uarfcn = 4;
+  uint32 pcid = 5;
+  int32 rsrq = 6;
+  int32 rsrp = 7;
+  int32 rssi = 8;
+  uint32 sinr = 9;
+  uint32 srxlev = 10;
+  uint32 cell_resel_priority = 11; // Cell reselection priority. Range: 0-7
+  uint32 s_non_intra_search = 12; // Threshold to control non-intra frequency searches.
+  uint32 thresh_serving_low = 13; // Specifies the suitable receive level threshold (in dB) used by the UE on the serving cell when reselecting towards a lower priority RAT/frequency.
+  uint32 s_intra_search = 14; // Cell selection parameter for the intra frequency cell.
+  uint32 thresh_x_low = 15; // The suitable receive level value of an evaluated lower priority cell must be greater than this value.
+  uint32 thresh_x_high = 16; // The suitable receive level value of an evaluated higher priority cell must be greater than this value.
+  uint32 psc = 17; // The parameter determines the primary scrambling code of the cell that was scanned
+  int32 rscp = 18; // The parameter determines the Received Signal Code Power level of the cell that was scanned
+  int32 ecno = 19; // Carrier to noise ratio in dB = measured Ec/Io value in dB.
+  NeighborCellSet cell_set = 20; // 3G neighbour cell set
+  int32 rank = 21; // Rank of this cell as neighbour for inter-RAT cell reselection
+  uint32 cellid = 22; // Hexadecimal format. Cell ID. The parameter determines the 16-bit (GSM) or 28-bit (UMTS) cell ID. Range: 0-0xFFFFFFF.
+  int32 inter_freq_srxlev = 23; // Suitable receive level for inter frequency cell
+}
+
+enum PcellState {
+    NO_SERVING = 0;
+    REGISTERED = 1;
+}
+
+enum ScellState {
+    DECONFIGURED = 0;
+    CONFIGURED_DEACTIVATED = 1;
+    CONFIGURERD_ACTIVATED = 2;
+}
+
+enum CarrierComponent {
+    CC_UNAVAILABLE = 0;
+    PCC = 1;
+    SCC = 2;
+}
+
+message NetCarrierAggInfo {
+    CarrierComponent carrier_component = 1;
+    // Add type (5G or LTE)
+    uint32 freq = 2;
+    Bandwidth bandwidth = 3;
+    PcellState pcell_state = 4;
+    ScellState scell_state = 5;
+    uint32 pcid = 6;
+    int32 rsrp = 7;
+    int32 rsrq = 8;
+    int32 rssi = 9;
+    int32 sinr = 10;
+}
+
+message PdpContextInfo {
+    uint32 cid = 1;
+    uint32 bearer_id = 2;
+    string apn = 3;
+    string local_addr = 4;
+    string subnetmask = 5;
+    string gw_addr = 6;
+    string dns_prim_addr = 7;
+    string dns_sec_addr = 8;
+    string p_cscf_prim_addr = 9;
+    string p_cscf_sec_addr = 10;
+    uint32 im_cn_signalling_flag = 11;
+    uint32 lipaindication = 12;
+}
+
+enum Nr5gModulation {
+  MOD_UNDEFINED = 0;
+  MOD_QSPK = 1;
+  MOD_16QAM = 2;
+  MOD_64QAM = 3;
+  MOD_256QAM = 4;
+  MOD_1024QAM = 5;
+}
+
+enum Nr5gLayers {
+  LAYERS_UNDEFINED = 0;
+  LAYERS_0 = 1;
+  LAYERS_1 = 2;
+  LAYERS_2 = 3;
+  LAYERS_3 = 4;
+  LAYERS_4 = 5;
+}
+
+enum Nr5gMcs {
+  MCS_UNDEFINED = 0;
+  MCS_0 = 1;
+  MCS_1 = 2;
+  MCS_2 = 3;
+  MCS_3 = 4;
+  MCS_4 = 5;
+  MCS_5 = 6;
+  MCS_6 = 7;
+  MCS_7 = 8;
+  MCS_8 = 9;
+  MCS_9 = 10;
+  MCS_10 = 11;
+  MCS_11 = 12;
+  MCS_12 = 13;
+  MCS_13 = 14;
+  MCS_14 = 15;
+  MCS_15 = 16;
+  MCS_16 = 17;
+  MCS_17 = 18;
+  MCS_18 = 19;
+  MCS_19 = 20;
+  MCS_20 = 21;
+  MCS_21 = 22;
+  MCS_22 = 23;
+  MCS_23 = 24;
+  MCS_24 = 25;
+  MCS_25 = 26;
+  MCS_26 = 27;
+  MCS_27 = 28;
+  MCS_28 = 29;
+  MCS_29 = 30;
+  MCS_30 = 31;
+  MCS_31 = 32;
+}
+
+message CellularNr5gCellInfo {
+  CellularServingCellState state = 1;
+  FddTddMode fdd_tdd_mode = 2;
+  uint32 cellid = 3; // Hexadecimal format. Cell ID. The parameter determines the 16-bit (GSM) or 28-bit (UMTS) cell ID. Range: 0-0xFFFFFFF.   NOTE : Unknown for CA cell
+  uint32 pcid = 4;
+  int32 rsrp = 5; // Reference Signal Received Power (see 3GPP 36.214 Section 5.1.1)
+  int32 sinr = 6; // Logarithmic value of SINR, Values are in 1/5th of a dB. Range: 0-250 which translates to -20dB - +30dB
+  int32 rsrq = 7; // Reference Signal Received Quality (see 3GPP 36.214 Section 5.1.2)
+  uint32 arfcn = 8; // Number format. The parameter determines the UTRA-ARFCN of the cell that was scanned
+  uint32 band = 9;
+  Bandwidth ul_bandwidth = 10;  // NOTE : Unknown for CA cell
+  Bandwidth dl_bandwidth = 11;
+  NrScs scs = 12;  // NR sub carrier space
+  uint32 srxlev = 13;
+  Nr5gLayers layers = 14;
+  Nr5gMcs mcs = 15;
+  Nr5gModulation modulation = 16;
+  int32 rssi = 17;
+}
+
+/* Cellular info */
+message CellularInfoReport {
+
+  CellularCommonHeader header = 1;
+
+  /* Cellular info */
+  CellularNetInfo cellular_net_info = 2;
+
+  /* Data usage */
+  CellularDataUsage lte_data_usage = 3;
+
+  /* LTE/WCDMA Serving cell info */
+  LteNetServingCellInfo lte_srv_cell = 4; // defined if primary cell is WCDMA or LTE.
+
+  /* LTE Neighbor cell info */
+  repeated NetNeighborCellInfo lte_neigh_cell_info = 5;
+
+  /* Primary aggregation info */
+  NetCarrierAggInfo lte_primary_carrier_agg_info = 6; // "Primary" is actually the serving cell
+
+  /* Secondary LTE cells */
+  repeated NetCarrierAggInfo lte_secondary_carrier_agg_info = 7; // Currrently up to 4
+
+  /* PDP context info */
+  repeated PdpContextInfo pdp_context = 8; // PDP/PDU
+
+  /* NR5G-SA serving cell info */
+  CellularNr5gCellInfo cell_nr5g_sa_srv_cell = 9;  // defined if primary cell is NR5G SA, or empty if LTE/WCDMA
+
+  /* NR5G-NSA serving cell info */
+  CellularNr5gCellInfo cell_nr5g_nsa_srv_cell = 10;  // defined if primary cell is NR5G NSA, or empty if LTE/WCDMA
+
+  /* Secondary 5G cells */
+  repeated CellularNr5gCellInfo nrg_secondary_carrier_agg_info = 11; // Used in 5GNSA, or 5GSA
+
+}

@@ -107,9 +107,18 @@ ow_steer_executor_call(struct ow_steer_executor *executor,
     }
 
     struct ow_steer_executor_action *action;
-    ds_dlist_foreach(&executor->action_list, action)
-        if (action->ops.call_fn != NULL)
-            action->ops.call_fn(action, candidate_list, conf_mutator);
+    ds_dlist_foreach(&executor->action_list, action) {
+        if (action->ops.call_fn != NULL) {
+            const bool ready = action->ops.call_fn(action, candidate_list, conf_mutator);
+            /* Expect a recall to happen when an executor
+             * becomes ready for re-evaluation. This
+             * prevents running subsequent executors until
+             * every one becomes ready. For example ACL can
+             * be enforced before BTM/deauth is done.
+             */
+            if (ready == false) return;
+        }
+    }
 
     /* TODO Settled notification? */
 }

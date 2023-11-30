@@ -119,6 +119,18 @@ SCHEMA_LISTX(_SCHEMA_COL_DECL)
             FIELD##_present = true; \
         } while (0)
 
+// Set FIELD to string VALUE if the VALUE is not empty string, otherwise unset FIELD
+#define SCHEMA_SET_STR_NONEMPTY(FIELD, VALUE) \
+        do { \
+            if (((VALUE) != NULL) && (strlen(VALUE) > 0)) { \
+                STRSCPY(FIELD, (VALUE)); \
+                FIELD##_exists = true; \
+            } else { \
+                FIELD##_exists = false;       \
+            } \
+            FIELD##_present = true; \
+        } while (0)
+
 #define SCHEMA_CPY_STR(DST, SRC) \
         do { \
             STRSCPY(DST, SRC); \
@@ -146,6 +158,17 @@ SCHEMA_LISTX(_SCHEMA_COL_DECL)
             if (WARN_ON((size_t)FIELD##_len >= ARRAY_SIZE(FIELD))) break; \
             STRSCPY(FIELD##_keys[FIELD##_len], KEY); \
             FIELD[FIELD##_len] = VALUE; \
+            FIELD##_present = true; \
+            FIELD##_len++; \
+        } while(0)
+
+// Append atomic value (integer, real, boolean) to a map with atomic keys
+// (note that some clients may only support string keys)
+#define SCHEMA_KEY_VAL_APPEND_ATOMIC(FIELD, KEY, VALUE) \
+        do { \
+            if (WARN_ON((size_t)FIELD##_len >= ARRAY_SIZE(FIELD))) break; \
+            FIELD##_keys[FIELD##_len] = (KEY); \
+            FIELD[FIELD##_len] = (VALUE); \
             FIELD##_present = true; \
             FIELD##_len++; \
         } while(0)

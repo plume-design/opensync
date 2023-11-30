@@ -1515,7 +1515,6 @@ free_conn:
     dpi->dpi_sess->parser.net_parser = NULL;
     dpi->dpi_sess->conn_releasing = true;
     nfe_conn_release(conn);
-    dpi->dpi_sess->conn_releasing = false;
 }
 
 void

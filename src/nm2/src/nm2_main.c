@@ -122,6 +122,8 @@ int main(int argc, char ** argv)
 
     nm2_route_rule_init();
 
+    nm2_4in6_map_init();
+
     if(kconfig_enabled(CONFIG_TARGET_USE_NATIVE_BRIDGE))
     {
         nm2_bridge_init();

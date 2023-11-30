@@ -355,7 +355,7 @@ void callback_Policy_Routing_Rule(
 
             if (ovsdb_update_changed(mon, SCHEMA_COLUMN(Policy_Routing_Rule, status)))
             {
-                /* Ignore OVSDB update callbacks for column 'status' as those are initiated by us. */
+                /* Ignore OVSDB update callbacks for column 'status' as those are initiated by us */
                 return;
             }
 

@@ -36,6 +36,7 @@ UNIT_TYPE := LIB
 UNIT_CFLAGS += -I$(UNIT_PATH)/inc
 UNIT_CFLAGS += -I$(UNIT_PATH)/src
 UNIT_CFLAGS += -Isrc/lib/lte_info/inc
+UNIT_CFLAGS += -Isrc/lib/cell_info/inc
 
 UNIT_SRC += src/osn_types.c
 
@@ -90,9 +91,6 @@ UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_FW_EBTABLES_THIN),src/osn_fw_ebtables_thin
 UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_IPSET_NULL),src/osn_ipset_null.c)
 UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_IPSET_LINUX),src/osn_ipset_linux.c)
 
-UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_MAPT_NULL),src/osn_mapt_null.c)
-UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_MAPT_CERNET),src/osn_mapt_cernet.c)
-
 UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_LTE_NULL),src/osn_lte_null.c)
 UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_LTE_LINUX),src/osn_lte_linux.c)
 UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_LTE_LINUX),src/osn_lte_modem.c)
@@ -122,6 +120,12 @@ UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_LINUX_BRIDGING),src/osn_bridge_linux.c)
 
 UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_ROUTE_RULE_LINUX),src/osn_route_rule_linux.c)
 UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_ROUTE_RULE_NULL),src/osn_route_rule_null.c)
+
+UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_MAP_LINUX),src/osn_map_linux.c)
+UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_MAP_LINUX),src/osn_map_v6plus.c)
+UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_MAP_NULL),src/osn_map_null.c)
+
+UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_CELL_LINUX),src/osn_cell_modem.c)
 
 ifdef CONFIG_OSN_LINUX_ENABLED
 UNIT_CFLAGS += -I$(UNIT_PATH)/src/linux
@@ -160,7 +164,13 @@ UNIT_SRC += src/linux/udhcp_const.c
 UNIT_SRC += $(if $(CONFIG_OSN_LINUX_TC),src/linux/lnx_tc.c)
 UNIT_SRC += $(if $(CONFIG_OSN_LINUX_ROUTE_RULE_IP),src/linux/lnx_route_rule_iproute.c)
 
-ifeq ($(CONFIG_OSN_LINUX_ROUTE_LIBNL3),y)
+UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_MAP_LINUX),src/linux/lnx_map.c)
+UNIT_SRC += $(if $(CONFIG_OSN_LINUX_MAPT_NAT46),src/linux/lnx_map_mapt_nat46.c)
+UNIT_SRC += $(if $(CONFIG_OSN_LINUX_MAPT_NULL),src/linux/lnx_map_mapt_null.c)
+UNIT_SRC += $(if $(CONFIG_OSN_LINUX_MAPE_IP6TNL),src/linux/lnx_map_mape_ip6tnl.c)
+UNIT_SRC += $(if $(CONFIG_OSN_LINUX_MAPE_NULL),src/linux/lnx_map_mape_null.c)
+
+ifeq ($(or $(CONFIG_OSN_LINUX_ROUTE_LIBNL3),$(CONFIG_OSN_LINUX_MAPE_IP6TNL)),y)
 UNIT_CFLAGS += $(LIBNL3_HEADERS)
 UNIT_LDFLAGS += -lnl-3 -lnl-route-3
 endif

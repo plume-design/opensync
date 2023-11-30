@@ -1,0 +1,14 @@
+#
+# Vendor OSP OTBR configuration
+#
+osource "vendor/*/kconfig/Kconfig.osp_otbr"
+
+#
+# Platform OSP OTBR backends
+#
+osource "platform/*/kconfig/Kconfig.osp_otbr"
+
+#
+# OpenSync core platform OSP OTBR configuration
+#
+osource "src/lib/osp/kconfig/Kconfig.osp_otbr"

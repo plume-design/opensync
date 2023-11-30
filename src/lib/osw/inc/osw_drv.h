@@ -199,7 +199,7 @@ struct osw_drv_vif_state_sta {
 
 struct osw_drv_vif_state {
     bool exists;
-    bool enabled;
+    enum osw_vif_status status;
     enum osw_vif_type vif_type;
     struct osw_hwaddr mac_addr;
     int tx_power_dbm;

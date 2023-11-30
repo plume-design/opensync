@@ -193,6 +193,10 @@ nl_80211_alloc_get_sta(struct nl_80211 *nl_80211,
                        const void *mac);
 
 struct nl_msg *
+nl_80211_alloc_get_reg(struct nl_80211 *nl_80211,
+                       uint32_t wiphy);
+
+struct nl_msg *
 nl_80211_alloc_set_vif_power_auto(struct nl_80211 *nl_80211,
                                   uint32_t ifindex);
 

@@ -27,6 +27,19 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifndef OW_STEER_EXECUTOR_ACTION_I_H
 #define OW_STEER_EXECUTOR_ACTION_I_H
 
+enum ow_steer_executor_action_kick_action {
+    OW_STEER_EXECUTOR_ACTION_KICK_HARD_BLOCK,
+    OW_STEER_EXECUTOR_ACTION_KICK_BETTER_METRIC,
+    OW_STEER_EXECUTOR_ACTION_SKIP_DISCONNECTED,
+    OW_STEER_EXECUTOR_ACTION_SKIP_STA_MISSING_VIF,
+    OW_STEER_EXECUTOR_ACTION_SKIP_STA_VIF_MISSING_PHY,
+    OW_STEER_EXECUTOR_ACTION_SKIP_NO_CANDIDATES_LEFT,
+    OW_STEER_EXECUTOR_ACTION_SKIP_LINK_TO_NON_CANDIDATE,
+    OW_STEER_EXECUTOR_ACTION_SKIP_LINK_TO_OUT_OF_SCOPE,
+    OW_STEER_EXECUTOR_ACTION_SKIP_LINK_TO_NO_PREFERENCE,
+    OW_STEER_EXECUTOR_ACTION_SKIP_LINK_GOOD_ENOUGH,
+};
+
 struct ow_steer_executor_action {
     const char *name;
     struct osw_hwaddr sta_addr;
@@ -34,6 +47,7 @@ struct ow_steer_executor_action {
     struct ow_steer_executor_action_ops ops;
     struct ow_steer_executor_action_mediator mediator;
     void *priv;
+    enum ow_steer_executor_action_kick_action last_kick_action;
 
     struct ds_dlist_node node;
 };

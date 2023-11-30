@@ -25,6 +25,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 #include <stdbool.h>
+#include <stdint.h>
 #include <string.h>
 
 #include "ds_tree.h"
@@ -616,6 +617,18 @@ int ds_void_cmp(const void *a, const void *b)
 int ds_str_cmp(const void *a, const void *b)
 {
     return strcmp((const char *)a, (const char *)b);
+}
+
+/**
+ * Unsigned 8-bit integer comparator
+ */
+int ds_u8_cmp(const void *_a, const void *_b)
+{
+    const uint8_t *a = _a;
+    const uint8_t *b = _b;
+    if (*a < *b) return -1;
+    if (*a > *b) return 1;
+    return 0;
 }
 
 /**

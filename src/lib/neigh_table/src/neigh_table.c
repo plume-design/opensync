@@ -142,7 +142,10 @@ process_neigh_event(struct nf_neigh_info *neigh_info)
         rc = neigh_table_add_to_cache(&entry);
         if (!rc)
         {
-            LOGD("%s: add to cache failed", __func__);
+            if ((entry.flags & NEIGH_CACHED) == 0)
+            {
+                LOGD("%s: add to cache failed", __func__);
+            }
             return;
         }
 
@@ -439,6 +442,7 @@ neigh_table_add_to_cache(struct neighbour_entry *to_add)
     struct neighbour_entry *entry;
     struct neigh_table_mgr *mgr;
     int af_family;
+    int cmp;
 
     mgr = neigh_table_get_mgr();
 
@@ -453,10 +457,22 @@ neigh_table_add_to_cache(struct neighbour_entry *to_add)
     entry = neigh_table_cache_lookup(to_add);
     if (entry)
     {
-        /* Refresh timestamp */
+        /* Entry already present in the cache, refresh timestamp */
         entry->cache_valid_ts = to_add->cache_valid_ts;
+        /* If MAC address is the same, return NULL to prevent the update of the OVSDB table */
+        cmp = memcmp(entry->mac, to_add->mac, sizeof(os_macaddr_t));
+        if (cmp == 0)
+        {
+            to_add->flags |= NEIGH_CACHED;
+            return NULL;
+        }
 
-        return NULL;
+        LOGT("%s(): updating neighbor table cache from " PRI_os_macaddr_lower_t
+             " to " PRI_os_macaddr_lower_t " ",
+             __func__, FMT_os_macaddr_pt(entry->mac), FMT_os_macaddr_pt(to_add->mac));
+        memcpy(entry->mac, to_add->mac, sizeof(os_macaddr_t));
+
+        return entry;
     }
 
     entry = CALLOC(1, sizeof(struct neighbour_entry));
@@ -513,7 +529,10 @@ neigh_table_add(struct neighbour_entry *to_add)
     neigh_table_set_entry(to_add);
 
     entry = neigh_table_add_to_cache(to_add);
-    if (entry == NULL) return false;
+    if (entry == NULL)
+    {
+        return ((to_add->flags & NEIGH_CACHED) ? true : false);
+    }
 
     // Update ovsdb tables if required.
     if (mgr->update_ovsdb_tables &&
@@ -596,7 +615,10 @@ neigh_table_cache_update(struct neighbour_entry *entry)
     {
         if (!neigh_table_add_to_cache(entry))
         {
-            LOGD("%s: Couldn't cache the entry.", __func__);
+            if ((entry->flags & NEIGH_CACHED) == 0)
+            {
+                LOGD("%s: Couldn't cache the entry.", __func__);
+            }
             return false;
         }
         return true;
@@ -762,6 +784,7 @@ neigh_table_ttl_cleanup(int64_t ttl, uint32_t source_mask)
         }
 
         entry_node = ds_tree_next(tree, entry_node);
+        LOGT("%s(): deleting IPv4_Neighbors entry " PRI_os_macaddr_lower_t " due to TTL expiry %" PRId64, __func__, FMT_os_macaddr_pt(remove_node->mac), ttl);
         ds_tree_remove(tree, remove_node);
         free_neigh_entry(remove_node);
         mgr->count--;
@@ -787,10 +810,10 @@ print_neigh_entry(struct neighbour_entry *entry)
     pmac = (entry->mac != NULL) ? entry->mac : &nullmac;
     source = neigh_table_get_source(entry->source);
     LOGD("ip %s, mac "PRI_os_macaddr_lower_t
-         " if_name %s source %s af_family %d",
+         " if_name %s source %s af_family %d timestamp: %s",
          ipstr, FMT_os_macaddr_pt(pmac),
          entry->ifname ? entry->ifname : "empty",
-         source ? source : "empty", entry->af_family);
+         source ? source : "empty", entry->af_family, ctime(&entry->cache_valid_ts));
 }
 
 void

@@ -1,0 +1,19 @@
+menuconfig MANAGER_CELLM
+    bool "Cell Manager (CELLM)"
+    default n
+    help
+        Enable Cell Manager (CELLM)
+
+    config MANAGER_CELLM_CFG
+        depends on MANAGER_CELLM
+        string "CELLM Startup configuration"
+        default "cellm;true;always_restart=true;restart_delay=-1"
+        help
+            Cell Manager startup configuration
+
+    config MANAGER_CELLM_INTERFACE_NAME
+        string "Cell interface name"
+        default "rmnet_data0"
+
+        help
+            Interface name for the cellular interface

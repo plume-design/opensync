@@ -540,7 +540,7 @@ bool ovsdb_sync_insert_with_parent(const char *table, json_t *row, ovs_uuid_t *u
 
     LOG(DEBUG, "Table %s insert with parent: %s %s row: %s", table,
             parent_table, parent_column, json_dumps_static(row, 0));
-    tran = ovsdb_tran_insert_with_parent(table, row,
+    tran = ovsdb_tran_multi_insert_with_parent(NULL, table, row,
             parent_table, parent_where, parent_column);
     result = ovsdb_method_send_s(MT_TRANS, tran);
     // result contains both statuses, for insert and mutate:

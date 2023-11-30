@@ -857,22 +857,44 @@ static const char *find_radio_if_name_for_vif_with_uuid(
     json_t *radio_row;
     json_t *a_vif_config;
     const char *radio_if_name = NULL;
+    const char *first_key = NULL;
 
     json_array_foreach(cfg->radio_config, index, radio_row)
     {
         json_t *vif_configs = json_object_get(radio_row, "vif_configs");
 
-        json_array_foreach(json_array_get(vif_configs, 1), index2, a_vif_config)
+        first_key = json_string_value(json_array_get(vif_configs, 0));
+
+        if (strcmp(first_key, "uuid") == 0)
         {
-            const char *str_uuid = json_string_value(json_array_get(a_vif_config, 1));
+            /* Single GW location each radio only has one VIF config. */
+            /* The format of JSON is different from radio with multiple VIFs. */
+            /* Just get the second element of the array, which is the actual UUID string. */
+            const char *str_uuid = json_string_value(json_array_get(vif_configs, 1));
+
             if (str_uuid != NULL)
             {
                 if (strcmp(str_uuid, vif_str_uuid) == 0)
                 {
-                    /* For VIF with vif_str_uuid we've found the corresponding
-                     * radio if_name: */
+                    /* For VIF with vif_str_uuid we've found the corresponding radio if_name */
                     radio_if_name = json_string_value(json_object_get(radio_row, "if_name"));
                     return radio_if_name;
+                }
+            }
+        }
+        else
+        {
+            json_array_foreach(json_array_get(vif_configs, 1), index2, a_vif_config)
+            {
+                const char *str_uuid = json_string_value(json_array_get(a_vif_config, 1));
+                if (str_uuid != NULL)
+                {
+                    if (strcmp(str_uuid, vif_str_uuid) == 0)
+                    {
+                        /* For VIF with vif_str_uuid we've found the corresponding radio if_name */
+                        radio_if_name = json_string_value(json_object_get(radio_row, "if_name"));
+                        return radio_if_name;
+                    }
                 }
             }
         }

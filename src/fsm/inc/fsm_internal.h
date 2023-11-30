@@ -309,7 +309,10 @@ fsm_dpi_should_process(struct net_header_parser *net_parser,
                        char *excluded_targets);
 
 void
+fsm_pcap_dispatcher_handler(void *context,
+                            struct net_header_parser *net_parser);
+
+void
 fsm_dpi_client_process_attributes(struct fsm_session *client_session,
                                   struct fsm_session *dpi_plugin);
-
 #endif /* FSM_INTERNAL_H_INCLUDED */

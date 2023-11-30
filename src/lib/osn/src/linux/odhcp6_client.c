@@ -535,6 +535,14 @@ int odhcp6_client_tag_from_str(const char *str)
     {
         optidx = 26;
     }
+    else if (strcmp(str, "MAPT") == 0)
+    {
+        optidx = 95;
+    }
+    else if (strcmp(str, "MAPE") == 0)
+    {
+        optidx = 94;
+    }
     /* Custom option */
     else if (strncmp(str, "OPTION_", strlen("OPTION_")) == 0)
     {
@@ -677,4 +685,3 @@ bool odhcp6_client_b64_to_b16(
 
     return true;
 }
-

@@ -629,7 +629,7 @@ test_lte_set_report(void)
 
 
 /**
- * @brief test seerializing a full report
+ * @brief test serializing a full report
  */
 void
 test_lte_serialize_report(void)

@@ -31,7 +31,7 @@ const char*
 ow_steer_executor_action_get_prefix(const struct ow_steer_executor_action *action);
 
 bool
-ow_steer_executor_action_check_kick_needed(const struct ow_steer_executor_action *action,
+ow_steer_executor_action_check_kick_needed(struct ow_steer_executor_action *action,
                                            const struct ow_steer_candidate_list *candidate_list);
 
 void

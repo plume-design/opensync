@@ -388,6 +388,24 @@ nla_fill_tx_chainmask(int *chainmask,
     else if (rxca) *chainmask = rxca;
 }
 
+static void
+nla_fill_reg_domain(char *ccode,
+                    struct nlattr *tb[],
+                    uint32_t wiphy)
+{
+    if (tb[NL80211_ATTR_WIPHY] != NULL) {
+        if (nla_wiphy_equal(tb, wiphy) == false) return;
+        if (tb[NL80211_ATTR_WIPHY_SELF_MANAGED_REG] == NULL) return;
+    }
+    struct nlattr *reg = tb[NL80211_ATTR_REG_ALPHA2];
+    if (reg == NULL) return;
+    if (nla_len(reg) < 2) return;
+    const char *country_code = nla_data(reg);
+    ccode[0] = country_code[0];
+    ccode[1] = country_code[1];
+    ccode[2] = '\0';
+}
+
 static bool
 nla_comb_is_radar_supported(struct nlattr *comb)
 {

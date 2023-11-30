@@ -36,6 +36,7 @@ AR             ?= ar
 STRIP          ?= strip -g
 
 # Includes
+SDK_INCLUDES = -I/usr/include
 CFLAGS += -I/usr/include/protobuf-c
 CFLAGS += -I/$(OVS_SOURCE)
 CFLAGS += -I/$(OVS_SOURCE)/include

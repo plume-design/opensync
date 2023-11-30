@@ -38,7 +38,7 @@ ow_steer_executor_ut_action_conf_mutate(struct ow_steer_executor_action *action,
     *cnt = *cnt + 1;
 }
 
-static void
+static bool
 ow_steer_executor_ut_action_call(struct ow_steer_executor_action *action,
                                        const struct ow_steer_candidate_list *candidate_list,
                                        struct osw_conf_mutator *conf_mutator)
@@ -48,6 +48,8 @@ ow_steer_executor_ut_action_call(struct ow_steer_executor_action *action,
 
     unsigned int *cnt = action->priv;
     *cnt = *cnt + 1;
+
+    return true;
 }
 
 static void

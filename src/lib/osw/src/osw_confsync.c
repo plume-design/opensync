@@ -33,12 +33,47 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <osw_ut.h>
 #include <osw_conf.h>
 #include <osw_state.h>
+#include <osw_time.h>
+#include <osw_timer.h>
 #include <osw_confsync.h>
 #include <osw_drv_dummy.h>
 #include <osw_mux.h>
 #include <osw_module.h>
 
 #define OSW_CONFSYNC_RETRY_SECONDS_DEFAULT 30.0
+
+/* Starting up interfaces in most cases is not
+ * instantaneous. If a mutator happens to invalidate its
+ * config while a configuration is being applied that is
+ * bringing an interface up, it can interrupt that. In worst
+ * case this mutator is coupled with partial state updates
+ * of the bringup itself. If that happens osw_confsync could
+ * enter a live-lock where it keeps on reconfiguring and
+ * nothing gets a chance to finish configuring.
+ *
+ * As such this tries to provide a grace period.
+ *
+ * Why this particular time value? When hostapd is starting
+ * up it can perform a "country update" which has a timeout
+ * of 5s. Various kernel drivers may need to talk to a
+ * remote WLAN CPU which can also take 1s to do its job when
+ * starting up an AP, especially if it needs to (re)load the
+ * microcode. To provide extra leeway the 10s wait period
+ * seems like a safe bet.
+ *
+ * This _does not_ intend to cover CAC periods although it
+ * probably could. If the need arises this should be fairly
+ * easy to rework.
+ */
+#define OSW_CONFSYNC_ENABLE_PERIOD_SEC 10
+
+#define LOG_PREFIX(fmt, ...) "osw: confsync: " fmt, ## __VA_ARGS__
+#define LOG_PREFIX_DEFER(defer, fmt, ...) \
+    LOG_PREFIX("defer: %s%s%s: " fmt, \
+        defer->name, \
+        defer->deferred ? " deferred" : "", \
+        osw_timer_is_armed(&defer->expiry) ? "" : " expired", \
+        ## __VA_ARGS__)
 
 /* FIXME: This is temporary solution to avoid changing too
  * many things at once.  Before OSW_MODULE can be fully
@@ -56,6 +91,15 @@ struct osw_confsync {
     ev_timer retry;
     bool attached;
     bool settled;
+    struct ds_tree defers;
+};
+
+struct osw_confsync_defer {
+    struct osw_confsync *confsync;
+    struct ds_tree_node node;
+    char *name;
+    struct osw_timer expiry;
+    bool deferred;
 };
 
 struct osw_confsync_arg {
@@ -76,6 +120,143 @@ struct osw_confsync_changed {
     osw_confsync_changed_fn_t *fn;
     void *fn_priv;
 };
+
+static void
+osw_confsync_set_state(struct osw_confsync *cs,
+                       enum osw_confsync_state s);
+
+static bool
+osw_confsync_defer_is_pending(struct osw_confsync *cs)
+{
+    struct osw_confsync_defer *defer;
+    ds_tree_foreach(&cs->defers, defer) {
+        return true;
+    }
+    return false;
+}
+
+static void
+osw_confsync_defer_drop(struct osw_confsync_defer *defer)
+{
+    LOGD(LOG_PREFIX_DEFER(defer, "dropping"));
+    ds_tree_remove(&defer->confsync->defers, defer);
+    osw_timer_disarm(&defer->expiry);
+    FREE(defer->name);
+    FREE(defer);
+}
+
+static void
+osw_confsync_defer_expiry_cb(struct osw_timer *timer)
+{
+    struct osw_confsync_defer *defer = container_of(timer, struct osw_confsync_defer, expiry);
+    LOGI(LOG_PREFIX_DEFER(defer, "expired"));
+    if (defer->deferred) {
+        LOGD(LOG_PREFIX_DEFER(defer, "requesting because was deferred before"));
+        osw_confsync_set_state(defer->confsync, OSW_CONFSYNC_REQUESTING);
+    }
+}
+
+enum osw_confsync_defer_state {
+    OSW_CONFSYNC_DEFER_STARTED,
+    OSW_CONFSYNC_DEFER_RUNNING,
+    OSW_CONFSYNC_DEFER_EXPIRED,
+};
+
+static enum osw_confsync_defer_state
+osw_confsync_defer_start_with_time(struct osw_confsync *cs,
+                                   const char *name,
+                                   uint64_t now_mono)
+{
+    ASSERT(cs != NULL, "");
+    ASSERT(name != NULL, "");
+
+    struct osw_confsync_defer *defer = ds_tree_find(&cs->defers, name);
+    const uint64_t expire_at = now_mono
+                             + OSW_TIME_SEC(OSW_CONFSYNC_ENABLE_PERIOD_SEC);
+
+    if (defer != NULL) {
+        if (defer->deferred == false) {
+            LOGI(LOG_PREFIX_DEFER(defer, "deferring request, will try later"));
+            defer->deferred = true;
+        }
+        if (osw_timer_is_armed(&defer->expiry)) {
+            return OSW_CONFSYNC_DEFER_RUNNING;
+        }
+        else {
+            return OSW_CONFSYNC_DEFER_EXPIRED;
+        }
+    }
+
+    defer = CALLOC(1, sizeof(*defer));
+    defer->confsync = cs;
+    defer->name = STRDUP(name);
+    osw_timer_init(&defer->expiry, osw_confsync_defer_expiry_cb);
+    osw_timer_arm_at_nsec(&defer->expiry, expire_at);
+    ds_tree_insert(&cs->defers, defer, defer->name);
+    LOGD(LOG_PREFIX_DEFER(defer, "started"));
+    return OSW_CONFSYNC_DEFER_STARTED;
+}
+
+static enum osw_confsync_defer_state
+osw_confsync_defer_start(struct osw_confsync *cs,
+                         const char *name)
+{
+    return osw_confsync_defer_start_with_time(cs, name, osw_time_mono_clk());
+}
+
+static void
+osw_confsync_defer_disarm(struct osw_confsync *cs,
+                          const char *name)
+{
+    struct osw_confsync_defer *defer = ds_tree_find(&cs->defers, name);
+    if (defer == NULL) return;
+    if (defer->deferred) {
+        LOGI(LOG_PREFIX_DEFER(defer, "disarming because configuration finished"));
+    }
+    osw_confsync_defer_drop(defer);
+}
+
+static void
+osw_confsync_defer_flush(struct osw_confsync *cs)
+{
+    struct osw_confsync_defer *defer;
+    while ((defer = ds_tree_head(&cs->defers)) != NULL) {
+        if (defer->deferred) {
+            LOGI(LOG_PREFIX_DEFER(defer, "flushing, dropping request"));
+        }
+        else {
+            LOGD(LOG_PREFIX_DEFER(defer, "flushing"));
+        }
+        osw_confsync_defer_drop(defer);
+    }
+}
+
+static void
+osw_confsync_defer_flush_expired(struct osw_confsync *cs)
+{
+    struct osw_confsync_defer *defer;
+    struct osw_confsync_defer *tmp;
+    ds_tree_foreach_safe(&cs->defers, defer, tmp) {
+        if (osw_timer_is_armed(&defer->expiry) == false) {
+            osw_confsync_defer_drop(defer);
+        }
+    }
+}
+
+static enum osw_confsync_defer_state
+osw_confsync_defer_vif_enable_start(struct osw_confsync *cs,
+                                    const char *vif_name)
+{
+    return osw_confsync_defer_start(cs, strfmta("vif:%s", vif_name));
+}
+
+static void
+osw_confsync_defer_vif_enable_stop(struct osw_confsync *cs,
+                                   const struct osw_state_vif_info *vif)
+{
+    if (vif->drv_state->status != OSW_VIF_ENABLED) return;
+    osw_confsync_defer_disarm(cs, strfmta("vif:%s", vif->vif_name));
+}
 
 static void
 osw_confsync_build_phy_debug(const struct osw_drv_phy_config *cmd,
@@ -622,17 +803,27 @@ osw_confsync_vif_ap_mark_changed(struct osw_drv_vif_config *dvif,
     dvif->u.ap.wps_cred_list_changed = all || osw_confsync_vif_ap_wps_cred_list_changed(&cvif->u.ap.wps_cred_list, &svif->u.ap.wps_cred_list);
     dvif->u.ap.acl_changed = all || osw_confsync_vif_ap_acl_tree_changed(&cvif->u.ap.acl_tree, &svif->u.ap.acl);
     dvif->u.ap.channel_changed = all || osw_confsync_vif_ap_channel_changed(&cvif->u.ap.channel, &svif->u.ap.channel);
+    dvif->u.ap.beacon_interval_tu_changed = all || (svif->u.ap.beacon_interval_tu != cvif->u.ap.beacon_interval_tu);
+    dvif->u.ap.isolated_changed = all || (svif->u.ap.isolated != cvif->u.ap.isolated);
+    dvif->u.ap.ssid_hidden_changed = all || (svif->u.ap.ssid_hidden != cvif->u.ap.ssid_hidden);
+    dvif->u.ap.mcast2ucast_changed = all || (svif->u.ap.mcast2ucast != cvif->u.ap.mcast2ucast);
+    dvif->u.ap.acl_policy_changed = all || (svif->u.ap.acl_policy != cvif->u.ap.acl_policy);
+    dvif->u.ap.wpa_changed = all || (memcmp(&svif->u.ap.wpa, &cvif->u.ap.wpa, sizeof(svif->u.ap.wpa)) != 0);
+    dvif->u.ap.mode_changed = all || (osw_confsync_vif_ap_mode_changed(svif->u.ap.mode, cvif->u.ap.mode));
+    dvif->u.ap.bridge_if_name_changed = all || (strcmp(svif->u.ap.bridge_if_name.buf, cvif->u.ap.bridge_if_name.buf) != 0);
+    dvif->u.ap.wps_pbc_changed = all || (svif->u.ap.wps_pbc != cvif->u.ap.wps_pbc);
+    dvif->u.ap.multi_ap_changed = all || (memcmp(&svif->u.ap.multi_ap, &cvif->u.ap.multi_ap, sizeof(svif->u.ap.multi_ap)) != 0);
 
-    dvif->changed |= all || (dvif->u.ap.beacon_interval_tu_changed = (svif->u.ap.beacon_interval_tu != cvif->u.ap.beacon_interval_tu));
-    dvif->changed |= all || (dvif->u.ap.isolated_changed = (svif->u.ap.isolated != cvif->u.ap.isolated));
-    dvif->changed |= all || (dvif->u.ap.ssid_hidden_changed = (svif->u.ap.ssid_hidden != cvif->u.ap.ssid_hidden));
-    dvif->changed |= all || (dvif->u.ap.mcast2ucast_changed = (svif->u.ap.mcast2ucast != cvif->u.ap.mcast2ucast));
-    dvif->changed |= all || (dvif->u.ap.acl_policy_changed = (svif->u.ap.acl_policy != cvif->u.ap.acl_policy));
-    dvif->changed |= all || (dvif->u.ap.wpa_changed = (memcmp(&svif->u.ap.wpa, &cvif->u.ap.wpa, sizeof(svif->u.ap.wpa)) != 0));
-    dvif->changed |= all || (dvif->u.ap.mode_changed = (osw_confsync_vif_ap_mode_changed(svif->u.ap.mode, cvif->u.ap.mode)));
-    dvif->changed |= all || (dvif->u.ap.bridge_if_name_changed = (strcmp(svif->u.ap.bridge_if_name.buf, cvif->u.ap.bridge_if_name.buf) != 0));
-    dvif->changed |= all || (dvif->u.ap.wps_pbc_changed = (svif->u.ap.wps_pbc != cvif->u.ap.wps_pbc));
-    dvif->changed |= all || (dvif->u.ap.multi_ap_changed = (memcmp(&svif->u.ap.multi_ap, &cvif->u.ap.multi_ap, sizeof(svif->u.ap.multi_ap)) != 0));
+    dvif->changed |= dvif->u.ap.beacon_interval_tu_changed;
+    dvif->changed |= dvif->u.ap.isolated_changed;
+    dvif->changed |= dvif->u.ap.ssid_hidden_changed;
+    dvif->changed |= dvif->u.ap.mcast2ucast_changed;
+    dvif->changed |= dvif->u.ap.acl_policy_changed;
+    dvif->changed |= dvif->u.ap.wpa_changed;
+    dvif->changed |= dvif->u.ap.mode_changed;
+    dvif->changed |= dvif->u.ap.bridge_if_name_changed;
+    dvif->changed |= dvif->u.ap.wps_pbc_changed;
+    dvif->changed |= dvif->u.ap.multi_ap_changed;
     dvif->changed |= dvif->u.ap.psk_list_changed;
     dvif->changed |= dvif->u.ap.neigh_list_changed;
     dvif->changed |= dvif->u.ap.wps_cred_list_changed;
@@ -662,7 +853,7 @@ osw_confsync_vif_ap_mark_changed(struct osw_drv_vif_config *dvif,
 
         const bool csa_eligible = (dvif->u.ap.channel_changed == true)
                                && (dvif->u.ap.mode_changed == false)
-                               && (svif->enabled == true);
+                               && (svif->status == OSW_VIF_ENABLED);
 
         if (csa_eligible && (cac_running || cac_bugged)) {
             /* This shouldn't be a common occurance, so keep it
@@ -846,7 +1037,8 @@ static void
 osw_confsync_build_drv_conf_vif_ap(struct osw_drv_vif_config *dvif,
                                    const struct osw_drv_phy_state *sphy,
                                    const struct osw_drv_vif_state *svif,
-                                   struct osw_conf_vif *cvif)
+                                   struct osw_conf_vif *cvif,
+                                   const bool allow_changed)
 {
     const int max_2g_chan = 11; /* FIXME: Assuming worst case regulatory. Could use phy chan list */
 
@@ -948,8 +1140,10 @@ osw_confsync_build_drv_conf_vif_ap(struct osw_drv_vif_config *dvif,
     osw_confsync_build_drv_conf_vif_ap_acl_add(dvif, svif, cvif);
     osw_confsync_build_drv_conf_vif_ap_acl_del(dvif, svif, cvif);
 
-    const bool all_changed = (dvif->vif_type_changed == true);
-    osw_confsync_vif_ap_mark_changed(dvif, sphy, svif, cvif, all_changed);
+    if (allow_changed) {
+        const bool all_changed = (allow_changed && dvif->vif_type_changed == true);
+        osw_confsync_vif_ap_mark_changed(dvif, sphy, svif, cvif, all_changed);
+    }
 
     if (dvif->u.ap.neigh_list_changed) {
         osw_confsync_vif_ap_neigh_filter(&dvif->u.ap.neigh_add_list,
@@ -1148,7 +1342,8 @@ osw_confsync_build_drv_conf_vif_sta_net_list(struct osw_conf_vif_sta *csta)
 static void
 osw_confsync_build_drv_conf_vif_sta(struct osw_drv_vif_config *dvif,
                                     const struct osw_drv_vif_state *svif,
-                                    struct osw_conf_vif *cvif)
+                                    struct osw_conf_vif *cvif,
+                                    const bool allow_changed)
 {
     const struct osw_drv_vif_state_sta *ssta = &svif->u.sta;
     struct osw_drv_vif_config_sta *dsta = &dvif->u.sta;
@@ -1156,6 +1351,7 @@ osw_confsync_build_drv_conf_vif_sta(struct osw_drv_vif_config *dvif,
 
     dsta->network = osw_confsync_build_drv_conf_vif_sta_net_list(csta);
     dsta->network_changed = osw_confsync_vif_sta_net_list_changed(ssta, dsta);
+    dsta->network_changed &= allow_changed;
     dsta->operation = osw_confsync_build_drv_conf_vif_sta_op(dvif, svif, dsta->network_changed);
 
     if (dsta->operation == OSW_DRV_VIF_CONFIG_STA_NOP) {
@@ -1173,6 +1369,24 @@ osw_confsync_build_drv_conf_vif_sta(struct osw_drv_vif_config *dvif,
 
     dvif->changed |= dsta->network_changed;
     dvif->changed |= (dsta->operation != OSW_DRV_VIF_CONFIG_STA_NOP);
+    dvif->changed &= allow_changed;
+}
+
+static bool
+osw_confsync_vif_enabled_changed(enum osw_vif_status status,
+                                 bool enabled)
+{
+    switch (status) {
+        case OSW_VIF_UNKNOWN:
+            return false;
+        case OSW_VIF_ENABLED:
+            return (enabled == false);
+        case OSW_VIF_DISABLED:
+            return (enabled == true);
+        case OSW_VIF_BROKEN:
+            return true;
+    }
+    return false;
 }
 
 static void
@@ -1198,11 +1412,21 @@ osw_confsync_build_drv_conf_vif(struct osw_confsync_arg *arg,
     dvif->vif_type = cvif->vif_type;
     dvif->tx_power_dbm = cvif->tx_power_dbm;
 
-    const bool skip = (dvif->enabled == false && svif->enabled == false);
+    const bool enabling = (svif->status != OSW_VIF_ENABLED &&
+                           dvif->enabled == true);
+    const bool deferred = enabling
+                        ? (osw_confsync_defer_vif_enable_start(arg->confsync, dvif->vif_name) == OSW_CONFSYNC_DEFER_RUNNING)
+                        : false;
+    const bool config_is_disabled = (dvif->enabled == false);
+    const bool state_is_disabled = (svif->status == OSW_VIF_DISABLED ||
+                                    svif->status == OSW_VIF_UNKNOWN);
+    const bool skip = (config_is_disabled && state_is_disabled)
+                   || deferred;
 
     dvif->changed = false;
     if (skip == false) {
-        dvif->changed |= (dvif->enabled_changed = (cvif->enabled != svif->enabled));
+        const bool enabled_changed = osw_confsync_vif_enabled_changed(svif->status, dvif->enabled);
+        dvif->changed |= (dvif->enabled_changed = enabled_changed);
         dvif->changed |= (dvif->vif_type_changed = (cvif->vif_type != svif->vif_type));
         dphy->changed |= (dvif->tx_power_dbm_changed = cvif->tx_power_dbm != svif->tx_power_dbm);
     }
@@ -1211,21 +1435,21 @@ osw_confsync_build_drv_conf_vif(struct osw_confsync_arg *arg,
         case OSW_VIF_UNDEFINED:
             break;
         case OSW_VIF_AP:
-            osw_confsync_build_drv_conf_vif_ap(dvif, sphy, svif, cvif);
+            osw_confsync_build_drv_conf_vif_ap(dvif, sphy, svif, cvif, !skip);
             break;
         case OSW_VIF_AP_VLAN:
             break;
         case OSW_VIF_STA:
-            osw_confsync_build_drv_conf_vif_sta(dvif, svif, cvif);
+            osw_confsync_build_drv_conf_vif_sta(dvif, svif, cvif, !skip);
             break;
     }
 
     if (dvif->enabled_changed) {
-        LOGI("osw: confsync: %s/%s: enabled: %d -> %d",
+        LOGI("osw: confsync: %s/%s: enabled: %s -> %s",
              cvif->phy->phy_name,
              cvif->vif_name,
-             svif->enabled,
-             cvif->enabled);
+             osw_vif_status_into_cstr(svif->status),
+             cvif->enabled ? "enabled" : "disabled");
     }
 
     if (skip) {
@@ -1317,6 +1541,7 @@ static struct osw_drv_conf *
 osw_confsync_build_drv_conf(struct osw_confsync *cs, const bool debug)
 {
     struct osw_confsync_arg arg = {
+        .confsync = cs,
         .drv_conf = CALLOC(1, sizeof(*arg.drv_conf)),
         .phy_tree = cs->build_conf(),
         .debug = debug,
@@ -1342,12 +1567,14 @@ osw_confsync_set_state(struct osw_confsync *cs, enum osw_confsync_state s)
     cs->state = s;
     switch (cs->state) {
         case OSW_CONFSYNC_IDLE:
+            osw_confsync_defer_flush(cs);
             if (cs->settled == false) LOGN("osw: confsync: settled");
             cs->settled = true;
             ev_timer_stop(EV_DEFAULT_ &cs->retry);
             ev_idle_stop(EV_DEFAULT_ &cs->work);
             break;
         case OSW_CONFSYNC_REQUESTING:
+            osw_confsync_defer_flush_expired(cs);
             ev_timer_stop(EV_DEFAULT_ &cs->retry);
             ev_idle_start(EV_DEFAULT_ &cs->work);
             break;
@@ -1367,6 +1594,9 @@ osw_confsync_set_state(struct osw_confsync *cs, enum osw_confsync_state s)
 static bool
 osw_confsync_conf_is_synced(struct osw_confsync *cs)
 {
+    if (osw_confsync_defer_is_pending(cs)) {
+        return false;
+    }
     const bool debug = false;
     struct osw_drv_conf *conf = osw_confsync_build_drv_conf(cs, debug);
     bool changed = false;
@@ -1399,7 +1629,9 @@ osw_confsync_work(struct osw_confsync *cs)
                 const bool requested = osw_mux_request_config(conf);
                 const enum osw_confsync_state s = (requested == true)
                                                 ? OSW_CONFSYNC_WAITING
-                                                : OSW_CONFSYNC_IDLE;
+                                                : (osw_confsync_defer_is_pending(cs)
+                                                   ? OSW_CONFSYNC_WAITING
+                                                   : OSW_CONFSYNC_IDLE);
                 osw_confsync_set_state(cs, s);
             }
             break;
@@ -1515,6 +1747,7 @@ osw_confsync_state_vif_added_cb(struct osw_state_observer *o,
 {
     struct osw_confsync *cs = container_of(o, struct osw_confsync, state_obs);
     LOGD("osw: confsync: state: %s/%s: added", vif->phy->phy_name, vif->vif_name);
+    osw_confsync_defer_vif_enable_stop(cs, vif);
     osw_confsync_conf_changed(cs);
 }
 
@@ -1524,6 +1757,7 @@ osw_confsync_state_vif_changed_cb(struct osw_state_observer *o,
 {
     struct osw_confsync *cs = container_of(o, struct osw_confsync, state_obs);
     LOGD("osw: confsync: state: %s/%s: changed", vif->phy->phy_name, vif->vif_name);
+    osw_confsync_defer_vif_enable_stop(cs, vif);
     osw_confsync_state_changed(cs);
 }
 
@@ -1533,6 +1767,7 @@ osw_confsync_state_vif_removed_cb(struct osw_state_observer *o,
 {
     struct osw_confsync *cs = container_of(o, struct osw_confsync, state_obs);
     LOGD("osw: confsync: state: %s/%s: removed", vif->phy->phy_name, vif->vif_name);
+    osw_confsync_defer_vif_enable_stop(cs, vif);
     osw_confsync_conf_changed(cs);
 }
 
@@ -1569,6 +1804,7 @@ osw_confsync_init(struct osw_confsync *cs)
     cs->conf_obs = conf_obs;
     cs->build_conf = osw_conf_build;
     ds_dlist_init(&cs->changed_fns, struct osw_confsync_changed, node);
+    ds_tree_init(&cs->defers, ds_str_cmp, struct osw_confsync_defer, node);
     ev_idle_init(&cs->work, osw_confsync_work_cb);
     ev_timer_init(&cs->retry, osw_confsync_retry_cb, retry, retry);
 }

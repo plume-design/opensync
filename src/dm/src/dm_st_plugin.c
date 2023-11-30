@@ -45,7 +45,7 @@ void dm_st_plugin_register(struct dm_st_plugin *p)
 void dm_st_plugin_unregister(struct dm_st_plugin *p)
 {
     LOG(INFO, "dm_st_plugin: Un-registering plug-in: %s", p->st_name);
-    ASSERT(ds_tree_find(&dm_st_plugin_list, p) != NULL, "dm_st_plugin double unregister")
+    ASSERT(ds_tree_find(&dm_st_plugin_list, p) != NULL, "dm_st_plugin double unregister");
     ds_tree_remove(&dm_st_plugin_list, p);
 }
 

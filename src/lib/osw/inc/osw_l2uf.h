@@ -30,13 +30,15 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdbool.h>
 #include <osw_types.h>
 
+struct osw_l2uf;
 struct osw_l2uf_if;
 
 typedef void osw_l2uf_seen_fn_t(struct osw_l2uf_if *i,
                                 const struct osw_hwaddr *sa_addr);
 
 struct osw_l2uf_if *
-osw_l2uf_if_alloc(const char *if_name);
+osw_l2uf_if_alloc(struct osw_l2uf *m,
+                  const char *if_name);
 
 void
 osw_l2uf_if_free(struct osw_l2uf_if *i);

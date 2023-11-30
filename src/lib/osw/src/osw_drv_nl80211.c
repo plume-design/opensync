@@ -59,6 +59,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <hostap_sock.h>
 #include <hostap_rq_task.h>
 
+#include <osn_netif.h>
+
 #include "nl80211_copy.h"
 
 /* FIXME: osw_drv: make get_*_ list async */
@@ -90,6 +92,7 @@ struct osw_drv_nl80211_phy {
     struct nl_cmd_task task_nl_set_antenna;
     struct rq q_req;
     struct nl_cmd_task task_nl_get_wiphy;
+    struct nl_cmd_task task_nl_get_reg;
 };
 
 struct osw_drv_nl80211_vif {
@@ -112,6 +115,7 @@ struct osw_drv_nl80211_vif {
         struct osw_hwaddr bssid;
     } state_bits;
     struct osw_hostap_bss *hostap_bss;
+    osn_netif_t *netif;
 };
 
 struct osw_drv_nl80211_sta_id {
@@ -371,6 +375,7 @@ osw_drv_nl80211_request_phy_state_cb(struct osw_drv *drv,
 {
     struct osw_drv_nl80211_phy *phy = osw_drv_nl80211_phy_lookup(drv, phy_name);
     struct rq_task *get_wiphy = &phy->task_nl_get_wiphy.task;
+    struct rq_task *get_reg = &phy->task_nl_get_reg.task;
     struct rq *q = &phy->q_req;
 
     if (phy == NULL) {
@@ -386,6 +391,7 @@ osw_drv_nl80211_request_phy_state_cb(struct osw_drv *drv,
     rq_kill(q);
     rq_resume(q);
     rq_add_task(q, get_wiphy);
+    rq_add_task(q, get_reg);
     osw_drv_phy_state_report_free(&phy->state);
 }
 
@@ -1409,6 +1415,23 @@ osw_drv_nl80211_phy_state_get_wiphy_resp_cb(struct nl_cmd *cmd,
 }
 
 static void
+osw_drv_nl80211_phy_state_get_reg_resp_cb(struct nl_cmd *cmd,
+                                            struct nl_msg *msg,
+                                            void *priv)
+{
+    struct osw_drv_nl80211_phy *phy = priv;
+    struct osw_drv_phy_state *state = &phy->state;
+    const struct nl_80211_phy *info = phy->info;
+    const uint32_t wiphy = info->wiphy;
+
+    struct nlattr *tb[NL80211_ATTR_MAX + 1];
+    const int err = genlmsg_parse(nlmsg_hdr(msg), 0, tb, NL80211_ATTR_MAX, NULL);
+    if (err) return;
+
+    nla_fill_reg_domain(state->reg_domain.ccode, tb, wiphy);
+}
+
+static void
 osw_drv_nl80211_phy_added_cb(const struct nl_80211_phy *info,
                              void *priv)
 {
@@ -1431,6 +1454,17 @@ osw_drv_nl80211_phy_added_cb(const struct nl_80211_phy *info,
         struct nl_msg *msg = nl_80211_alloc_get_phy(nl, wiphy);
         nl_cmd_response_fn_t *resp_cb = osw_drv_nl80211_phy_state_get_wiphy_resp_cb;
         nl_cmd_task_init(&phy->task_nl_get_wiphy, cmd, msg);
+        nl_cmd_set_response_fn(cmd, resp_cb, phy);
+    }
+
+    {
+        const uint32_t wiphy = info->wiphy;
+        struct nl_conn *conn = m->nl_conn;
+        struct nl_80211 *nl = m->nl_80211;
+        struct nl_cmd *cmd = nl_conn_alloc_cmd(conn);
+        struct nl_msg *msg = nl_80211_alloc_get_reg(nl, wiphy);
+        nl_cmd_response_fn_t *resp_cb = osw_drv_nl80211_phy_state_get_reg_resp_cb;
+        nl_cmd_task_init(&phy->task_nl_get_reg, cmd, msg);
         nl_cmd_set_response_fn(cmd, resp_cb, phy);
     }
 
@@ -1458,6 +1492,7 @@ osw_drv_nl80211_phy_removed_cb(const struct nl_80211_phy *info,
                                void *priv)
 {
     struct osw_drv_nl80211 *m = priv;
+    struct osw_drv *drv = m->drv;
     struct osw_drv_nl80211_phy *phy = nl_80211_sub_phy_get_priv(m->nl_80211_sub, info);
     const char *phy_name = info->name;
 
@@ -1467,8 +1502,10 @@ osw_drv_nl80211_phy_removed_cb(const struct nl_80211_phy *info,
     rq_kill(&phy->q_req);
     rq_fini(&phy->q_req);
     nl_cmd_task_fini(&phy->task_nl_get_wiphy);
+    nl_cmd_task_fini(&phy->task_nl_get_reg);
 
     osw_drv_phy_state_report_free(&phy->state);
+    osw_drv_report_phy_state(drv, phy_name, &phy->state);
 
     LOGI(LOG_PREFIX_PHY(phy_name, "removed"));
 }
@@ -1502,6 +1539,9 @@ osw_drv_nl80211_vif_state_get_intf_resp_cb(struct nl_cmd *cmd,
             break;
         case OSW_VIF_AP:
             nla_vif_to_osw_vif_state_ap(tb, &state->u.ap);
+            osw_vif_status_set(&state->status, ((tb[NL80211_ATTR_SSID] == NULL)
+                                                ? OSW_VIF_DISABLED
+                                                : OSW_VIF_ENABLED));
             break;
         case OSW_VIF_AP_VLAN:
             nla_vif_to_osw_vif_state_ap_vlan(tb, &state->u.ap_vlan);
@@ -1663,7 +1703,12 @@ osw_drv_nl80211_vif_state_report_finalize(struct osw_drv_nl80211_vif *vif)
     }
 
     os_nif_exists((char *)vif_name, &state->exists);
-    state->enabled = osw_drv_nl80211_vif_is_enabled(state->vif_type, vif_name);
+    if (osw_drv_nl80211_vif_is_enabled(state->vif_type, vif_name)) {
+        osw_vif_status_set(&state->status, OSW_VIF_ENABLED);
+    }
+    else {
+        osw_vif_status_set(&state->status, OSW_VIF_DISABLED);
+    }
 
     osw_hostap_bss_fill_state(vif->hostap_bss, state);
 }
@@ -1673,7 +1718,7 @@ osw_drv_nl80211_vif_state_sanitize_tx_power_dbm(const char *phy_name,
                                                 const char *vif_name,
                                                 struct osw_drv_vif_state *state)
 {
-    if (state->enabled == false && state->tx_power_dbm != 0) {
+    if (state->status != OSW_VIF_ENABLED && state->tx_power_dbm != 0) {
         LOGD(LOG_PREFIX_VIF(phy_name, vif_name,
                             "state: tx_power_dbm override %d -> to 0: vif is disabled",
                             state->tx_power_dbm));
@@ -1975,6 +2020,23 @@ osw_drv_nl80211_vif_hostap_sta_disconnected_cb(const struct osw_hostap_bss_sta *
 }
 
 static void
+osw_drv_nl80211_vif_netif_cb(osn_netif_t *netif,
+                             struct osn_netif_status *status)
+{
+    struct osw_drv_nl80211_vif *vif = osn_netif_data_get(netif);
+    struct osw_drv_nl80211 *m = vif->m;
+    struct osw_drv *drv = m->drv;
+    struct nl_80211 *nl = m->nl_80211;
+    const uint32_t wiphy = vif->info->wiphy;
+    const struct nl_80211_phy *phy_info = nl_80211_phy_by_wiphy(nl, wiphy);
+    if (phy_info == NULL) return;
+    const char *phy_name = phy_info->name;
+    const char *vif_name = vif->info->name;
+
+    osw_drv_report_vif_changed(drv, phy_name, vif_name);
+}
+
+static void
 osw_drv_nl80211_vif_added_cb(const struct nl_80211_vif *info,
                              void *priv)
 {
@@ -1991,6 +2053,10 @@ osw_drv_nl80211_vif_added_cb(const struct nl_80211_vif *info,
 
     vif->info = info;
     vif->m = m;
+
+    vif->netif = osn_netif_new(vif_name);
+    osn_netif_data_set(vif->netif, vif);
+    osn_netif_status_notify(vif->netif, osw_drv_nl80211_vif_netif_cb);
 
     {
         const uint32_t ifindex = info->ifindex;
@@ -2071,6 +2137,7 @@ osw_drv_nl80211_vif_removed_cb(const struct nl_80211_vif *info,
     if (osw_drv_nl80211_vif_is_ignored(info->name)) return;
 
     struct osw_drv_nl80211 *m = priv;
+    struct osw_drv *drv = m->drv;
     struct osw_drv_nl80211_vif *vif = nl_80211_sub_vif_get_priv(m->nl_80211_sub, info);
     struct nl_80211 *nl = m->nl_80211;
     const char *vif_name = info->name;
@@ -2099,6 +2166,9 @@ osw_drv_nl80211_vif_removed_cb(const struct nl_80211_vif *info,
 
     osw_drv_nl80211_push_frame_tx_abort(vif);
     osw_drv_vif_state_report_free(&vif->state);
+    osw_drv_report_vif_state(drv, phy_name, vif_name, &vif->state);
+
+    osn_netif_del(vif->netif);
 
     LOGI(LOG_PREFIX_VIF(phy_name, vif_name, "removed"));
 }
@@ -2132,6 +2202,7 @@ osw_drv_nl80211_sta_removed_cb(const struct nl_80211_sta *info,
                                void *priv)
 {
     struct osw_drv_nl80211 *m = priv;
+    struct osw_drv *drv = m->drv;
     struct nl_80211 *nl = m->nl_80211;
 
     const struct osw_hwaddr *sta_addr = (const void *)info->addr.addr;
@@ -2149,6 +2220,7 @@ osw_drv_nl80211_sta_removed_cb(const struct nl_80211_sta *info,
     if (WARN_ON(sta == NULL)) return;
 
     osw_drv_sta_state_report_free(&sta->state);
+    osw_drv_report_sta_state(drv, phy_name, vif_name, sta_addr, &sta->state);
     osw_drv_nl80211_sta_fini_nl(sta);
     osw_drv_nl80211_sta_maybe_free(sta);
 }

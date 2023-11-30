@@ -349,6 +349,7 @@ bool ble_wan_config_ovsdb_get(struct wan_local_config *wc)
             if (secondary_dns != NULL)
             {
                 STRSCPY(wc->staticIPv4.secondaryDns, secondary_dns);
+                wc->staticIPv4.secondaryDns_exists = true;
             }
         }
         else if (strcmp(wan_config.type, "dhcp") == 0)
@@ -464,7 +465,7 @@ bool ble_wan_config_ovsdb_set(struct wan_local_config *wc)
                 "subnet", wc->staticIPv4.subnet,
                 "gateway", wc->staticIPv4.gateway,
                 "primary_dns", wc->staticIPv4.primaryDns,
-                "secondary_dns", wc->staticIPv4.secondaryDns,
+                "secondary_dns", wc->staticIPv4.secondaryDns_exists ? wc->staticIPv4.secondaryDns : NULL,
                 NULL);
 
         trans = ovsdb_tran_multi(trans, NULL, SCHEMA_TABLE(WAN_Config), OTR_INSERT, NULL, trow);

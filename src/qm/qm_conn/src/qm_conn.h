@@ -48,6 +48,13 @@ enum qm_req_cmd
 // flag: send directly to mqtt broker, bypassing the queue and interval
 #define QM_REQ_FLAG_SEND_DIRECT (1<<1)
 
+// flag: request acknowledge receipt
+// indicate that a response from qm is required
+// when using osbus this affects the use of the
+// underlying transport, normally a bus topic is used
+// if ack is required then a method call has to be used
+#define QM_REQ_FLAG_ACK_RCPT    (1<<2)
+
 typedef enum qm_req_compress
 {
     QM_REQ_COMPRESS_IF_CFG  = 0, // enabled by ovsdb mqtt conf
@@ -131,6 +138,10 @@ typedef struct qm_response
     uint32_t qdrop; // num queued messages dropped due to queue full
     uint32_t log_size; // log buffer size
     uint32_t log_drop; // log dropped lines
+    uint32_t num_sent;   // number of sent messages
+    uint64_t num_bytes;  // number of sent bytes
+    uint32_t num_errors; // errors
+    uint32_t runtime;    // seconds
 } qm_response_t;
 
 char *qm_data_type_str(enum qm_req_data_type type);
@@ -191,6 +202,7 @@ bool qm_conn_send_custom(
         qm_response_t *res);
 bool qm_conn_send_raw(char *topic, void *data, int data_size, qm_response_t *res);
 bool qm_conn_send_direct(qm_compress_t compress, char *topic, void *data, int data_size, qm_response_t *res);
+bool qm_conn_send_direct_req_ack(qm_compress_t compress, char *topic, void *data, int data_size, qm_response_t *res);
 bool qm_conn_send_stats(void *data, int data_size, qm_response_t *res);
 
 // streaming api

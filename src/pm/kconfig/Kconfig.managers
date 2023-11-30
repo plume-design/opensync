@@ -182,4 +182,8 @@ if MANAGER_PM
             Ability to recover previously working ethernet connected POD acting as a GW
             on reboot with loss of Internet access with local HOME LAN service
             from stored subset of Cloud-provisioned OVSDB configuration.
+
+# Include options from vendor
+
+    osource "vendor/*/src/pm/kconfig/Kconfig.managers"
 endif

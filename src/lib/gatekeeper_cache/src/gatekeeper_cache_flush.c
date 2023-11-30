@@ -49,6 +49,29 @@ allocated_empty_str_set()
 }
 
 int
+gkc_flush_url(struct per_device_cache *cache, struct fsm_policy_rules *rules)
+{
+    struct attr_cache *entry, *del_entry;
+    ds_tree_t *url_cache;
+    int count = 0;
+
+    url_cache = &cache->url_tree;
+
+    entry = ds_tree_head(url_cache);
+    while (entry != NULL)
+    {
+        del_entry = entry;
+        entry = ds_tree_next(url_cache, entry);
+        gkc_free_attr_entry(del_entry, GK_CACHE_REQ_TYPE_URL);
+        ds_tree_remove(url_cache, del_entry);
+        FREE(del_entry);
+        count++;
+    }
+
+    return count;
+}
+
+int
 gkc_flush_hostname(struct per_device_cache *cache, struct fsm_policy_rules *rules)
 {
     hostname_comparator hostname_cmp_fct;
@@ -474,9 +497,8 @@ gkc_flush_per_device(struct per_device_cache *entry, struct fsm_policy_rules *ru
 
     if (rules->fqdn_rule_present)
     {
-        ret = gkc_flush_hostname(entry, rules);
-        if (ret < 0) return ret;
-        total_count += ret;
+        total_count += gkc_flush_hostname(entry, rules);
+        total_count += gkc_flush_url(entry, rules);
     }
 
     if (rules->app_rule_present)

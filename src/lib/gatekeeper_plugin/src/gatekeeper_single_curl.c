@@ -213,17 +213,16 @@ gk_is_redirect_reply(int req_type, int action)
 {
     bool rd_reply;
 
-    rd_reply = (req_type == FSM_FQDN_REQ);
-    rd_reply &= (action == FSM_REDIRECT || action == FSM_REDIRECT_ALLOW);
+    rd_reply = (req_type == FSM_FQDN_REQ || req_type == FSM_SNI_REQ || req_type == FSM_HOST_REQ);
+    rd_reply &= (action == FSM_BLOCK || action == FSM_REDIRECT || action == FSM_REDIRECT_ALLOW);
 
     return rd_reply;
 }
 
-void
+static void
 gk_set_redirect(struct fsm_gk_verdict *gk_verdict,
-                Gatekeeper__Southbound__V1__GatekeeperFqdnReply *reply_fqdn)
+                Gatekeeper__Southbound__V1__GatekeeperFqdnRedirectReply *redirect_reply)
 {
-    Gatekeeper__Southbound__V1__GatekeeperFqdnRedirectReply *fqdn_redirect;
     char ipv6_str[INET6_ADDRSTRLEN] = { '\0' };
     char ipv4_str[INET_ADDRSTRLEN]  = { '\0' };
     struct fsm_policy_reply *policy_reply;
@@ -235,14 +234,19 @@ gk_set_redirect(struct fsm_gk_verdict *gk_verdict,
     bool status;
     time_t now;
 
-    fqdn_redirect = reply_fqdn->redirect;
+    if (redirect_reply == NULL)
+    {
+        LOGN("%s(), redirect is not set", __func__);
+        return;
+    }
+
     policy_reply  = gk_verdict->policy_reply;
     gk_session    = gk_verdict->gk_session_context;
 
     policy_reply->redirect = false;
 
-    cname_redirect = (fqdn_redirect->redirect_cname != NULL);
-    if (cname_redirect) cname_redirect &= (strlen(fqdn_redirect->redirect_cname) != 0);
+    cname_redirect = (redirect_reply->redirect_cname != NULL);
+    if (cname_redirect) cname_redirect &= (strlen(redirect_reply->redirect_cname) != 0);
     if (cname_redirect)
     {
         /* cname backoff timer */
@@ -256,11 +260,11 @@ gk_set_redirect(struct fsm_gk_verdict *gk_verdict,
             offline->cname_offline = false;
         }
 
-        status = gk_force_redirect_cname(fqdn_redirect->redirect_cname, policy_reply);
+        status = gk_force_redirect_cname(redirect_reply->redirect_cname, policy_reply);
         if (!status)
         {
             LOGT("%s : triggering backoff timer for cname = %s", __func__,
-                 fqdn_redirect->redirect_cname);
+                 redirect_reply->redirect_cname);
             offline->cname_offline = true;
             offline->offline_ts = time(NULL);
             offline->cname_resolve_failures++;
@@ -268,19 +272,19 @@ gk_set_redirect(struct fsm_gk_verdict *gk_verdict,
         return;
     }
 
-    res = inet_ntop(AF_INET, &(fqdn_redirect->redirect_ipv4), ipv4_str, INET_ADDRSTRLEN);
+    res = inet_ntop(AF_INET, &(redirect_reply->redirect_ipv4), ipv4_str, INET_ADDRSTRLEN);
     if (res != NULL)
     {
         gk_update_policy_redirect_ipv4(ipv4_str, policy_reply);
     }
 
     res = NULL;
-    if ((fqdn_redirect->redirect_ipv6.data != NULL) &&
-        (fqdn_redirect->redirect_ipv6.len != 0))
+    if ((redirect_reply->redirect_ipv6.data != NULL) &&
+        (redirect_reply->redirect_ipv6.len != 0))
 
     {
         res = inet_ntop(AF_INET6,
-                        fqdn_redirect->redirect_ipv6.data,
+                        redirect_reply->redirect_ipv6.data,
                         ipv6_str,
                         INET6_ADDRSTRLEN);
 
@@ -329,8 +333,8 @@ gk_get_fsm_action(Gatekeeper__Southbound__V1__GatekeeperCommonReply *header)
             action = FSM_ACTION_NONE;
     }
 
-    LOGT("%s(): Received action from gatekeeper service '%s'", __func__,
-         fsm_policy_get_action_str(action));
+    LOGT("%s(): Received action from gatekeeper service '%s' (%d)", __func__,
+         fsm_policy_get_action_str(action), action);
 
     return action;
 }
@@ -381,19 +385,21 @@ bool
 gk_set_policy(Gatekeeper__Southbound__V1__GatekeeperReply *response,
               struct fsm_gk_verdict *gk_verdict)
 {
+    Gatekeeper__Southbound__V1__GatekeeperFqdnRedirectReply *redirect_reply;
     Gatekeeper__Southbound__V1__GatekeeperCommonReply *header;
     struct fsm_policy_reply *policy_reply;
     struct fqdn_pending_req *fqdn_req;
     struct fsm_policy_req *policy_req;
     struct fsm_url_request *req_info;
     struct fsm_url_reply *url_reply;
-    bool redirect_reply;
+    bool process_redirect;
     int req_type;
 
     policy_reply = gk_verdict->policy_reply;
     policy_req = gk_verdict->policy_req;
     fqdn_req = policy_req->fqdn_req;
     req_info = fqdn_req->req_info;
+    redirect_reply = NULL;
 
     url_reply = req_info->reply;
     if (url_reply == NULL) return false;
@@ -407,6 +413,7 @@ gk_set_policy(Gatekeeper__Southbound__V1__GatekeeperReply *response,
             if (response->reply_fqdn != NULL)
             {
                 header = response->reply_fqdn->header;
+                redirect_reply = response->reply_fqdn->redirect;
             }
             else
             {
@@ -418,6 +425,7 @@ gk_set_policy(Gatekeeper__Southbound__V1__GatekeeperReply *response,
             if (response->reply_https_sni != NULL)
             {
                 header = response->reply_https_sni->header;
+                redirect_reply = (Gatekeeper__Southbound__V1__GatekeeperFqdnRedirectReply *)response->reply_https_sni->redirect;
             }
             else
             {
@@ -429,6 +437,7 @@ gk_set_policy(Gatekeeper__Southbound__V1__GatekeeperReply *response,
             if (response->reply_http_host != NULL)
             {
                 header = response->reply_http_host->header;
+                redirect_reply = (Gatekeeper__Southbound__V1__GatekeeperFqdnRedirectReply *)response->reply_http_host->redirect;
             }
             else
             {
@@ -510,8 +519,8 @@ gk_set_policy(Gatekeeper__Southbound__V1__GatekeeperReply *response,
     if (header == NULL) return false;
 
     policy_reply->action = gk_get_fsm_action(header);
-    redirect_reply = gk_is_redirect_reply(req_type, policy_reply->action);
-    if (redirect_reply) gk_set_redirect(gk_verdict, response->reply_fqdn);
+    process_redirect = gk_is_redirect_reply(req_type, policy_reply->action);
+    if (process_redirect) gk_set_redirect(gk_verdict, redirect_reply);
 
     LOGT("%s: received flow_marker from gatekeeper %d", __func__, header->flow_marker);
     policy_reply->flow_marker = header->flow_marker;

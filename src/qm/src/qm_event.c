@@ -38,10 +38,12 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "qm_conn.h"
 #include "os.h"
 #include "memutil.h"
+#include "os_time.h"
 
 
 static int g_qm_sock = -1;
 static ev_io g_qm_sock_ev;
+static int g_qm_start_time;
 
 typedef struct qm_async_ctx
 {
@@ -74,6 +76,28 @@ void qm_res_status(qm_response_t *res)
     }
     res->log_size = g_qm_log_buf_size;
     res->log_drop = g_qm_log_drop_count;
+    res->num_sent = g_qm_stats.sent;
+    res->num_bytes = g_qm_stats.bytes;
+    res->num_errors = g_qm_stats.errors;
+    res->runtime = time_monotonic() - g_qm_start_time;
+}
+
+void qm_enqueue_or_send(qm_item_t *qi, qm_response_t *res)
+{
+    qm_request_t *req = &qi->req;
+
+    LOG(TRACE, "%s", __FUNCTION__);
+    // enqueue or send directly if direct flag is set
+    if (req->cmd == QM_CMD_SEND && req->data_size) {
+        if (req->flags & QM_REQ_FLAG_SEND_DIRECT) {
+            qm_mqtt_send_message(qi, res);
+        } else {
+            qm_queue_put(&qi, res);
+            // sets qi to NULL if successful
+        }
+    }
+    // free queue item if not enqueued
+    if (qi) qm_queue_item_free(qi);
 }
 
 void qm_enqueue_and_reply(int fd, qm_item_t *qi)
@@ -82,17 +106,9 @@ void qm_enqueue_and_reply(int fd, qm_item_t *qi)
     qm_response_t res;
 
     LOG(TRACE, "%s", __FUNCTION__);
-    // enqueue
     qm_res_init(&res, req);
-    if (req->cmd == QM_CMD_SEND && req->data_size) {
-        if (req->flags & QM_REQ_FLAG_SEND_DIRECT) {
-            qm_mqtt_send_message(qi, &res);
-        } else {
-            qm_queue_put(&qi, &res); // sets qi to NULL if successful
-        }
-    }
-    // free queue item if not enqueued
-    if (qi) qm_queue_item_free(qi);
+    // enqueue
+    qm_enqueue_or_send(qi, &res);
     // reply
     if (!(req->flags & QM_REQ_FLAG_NO_RESPONSE)) {
         // send response if not disabled by flag
@@ -263,6 +279,8 @@ bool qm_event_init()
     ev_io_init(&g_qm_sock_ev, qm_sock_callback, g_qm_sock, EV_READ);
     //g_qm_sock_ev.data = ...;
     ev_io_start(EV_DEFAULT, &g_qm_sock_ev);
+
+    g_qm_start_time = time_monotonic();
 
     return true;
 }

@@ -556,7 +556,7 @@ char *strchomp(char *str, char *delim)
  * In key is present in at least one of the array members, true is
  * returned
  */
-bool is_inarray(const char * key, int argc, char ** argv)
+bool is_inarray(const char * key, int argc, char *argv[])
 {
     int i;
     bool retval = false;
@@ -565,7 +565,6 @@ bool is_inarray(const char * key, int argc, char ** argv)
     {
         if (0 == strcmp(key, argv[i]))
         {
-            LOG(TRACE, "Found is_inarray()::argc=%d|i=%d|argv[i]=%s", argc, i, argv[i]);
             retval = true;
             break;
         }
@@ -1553,4 +1552,52 @@ ssize_t hex2bin(const char *in, size_t in_size, unsigned char *out, size_t out_s
 bool ascii2hex(const char *input, char *output, size_t size)
 {
     return bin2hex((unsigned char *)input, strlen(input), output, size) == 0;
+}
+
+char *str_replace_with(const char *str,
+                 const char *from,
+                 const char *to)
+{
+    const size_t from_len = strlen(from);
+    const size_t to_len = strlen(to);
+    const char *pos = str;
+    const char *end = str + strlen(pos);
+    char *out = NULL;
+    size_t out_size = 1;
+    size_t out_len = 0;
+
+    for (;;) {
+        const char *found = strstr(pos, from);
+        const char *copy_until = found ? found : end;
+        const size_t copy_len = (copy_until - pos);
+
+        out_size += copy_len;
+        if (found) out_size += to_len;
+        out = REALLOC(out, out_size);
+        memcpy(out + out_len, pos, copy_len);
+        if (found) memcpy(out + out_len + copy_len, to, to_len);
+        out_len = out_size - 1;
+
+        if (found == NULL) break;
+
+        pos = found + from_len;
+    }
+
+    if (out != NULL) {
+        out[out_len] = 0;
+    }
+
+    return out;
+}
+
+int str_replace_fixed(
+        char *str,
+        int size,
+        const char *from,
+        const char *to)
+{
+    char *out = str_replace_with(str, from, to);
+    int ret = strscpy(str, out, size);
+    free(out);
+    return ret;
 }

@@ -186,7 +186,7 @@ static bool
 mac_is_empty_or_bcast(os_macaddr_t *mac)
 {
     os_macaddr_t zmac = { 0 };
-    os_macaddr_t fmac = { {0xff, 0xff, 0xff, 0xff, 0xff } };
+    os_macaddr_t fmac = { {0xff, 0xff, 0xff, 0xff, 0xff, 0xff} };
     int cmp = 0;
 
     cmp = memcmp(mac, &zmac, sizeof(zmac));
@@ -385,6 +385,7 @@ fsm_dpi_ndp_process_arp_record(struct fsm_session *session,
     struct dpi_ndp_client *mgr;
     struct arp_record *rec;
     ds_tree_t *sessions;
+    time_t now;
 
     mgr = fsm_dpi_ndp_get_mgr();
     sessions = &mgr->fsm_sessions;
@@ -395,10 +396,11 @@ fsm_dpi_ndp_process_arp_record(struct fsm_session *session,
     rec = &mgr->curr_arp_rec_processed;
 
     entry = &n_session->entry;
+    now = time(NULL);
 
     populate_neigh_table_with_rec(entry, &rec->s_ip_addr, &rec->s_mac, AF_INET);
 
-    entry->cache_valid_ts = n_session->timestamp;
+    entry->cache_valid_ts = now;
     entry->source = FSM_ARP;
     neigh_table_add(entry);
 
@@ -406,7 +408,7 @@ fsm_dpi_ndp_process_arp_record(struct fsm_session *session,
 
     populate_neigh_table_with_rec(entry, &rec->t_ip_addr, &rec->t_mac, AF_INET);
 
-    entry->cache_valid_ts = n_session->timestamp;
+    entry->cache_valid_ts = now;
     entry->source = FSM_ARP;
     neigh_table_add(entry);
 
@@ -434,9 +436,11 @@ fsm_dpi_ndp_process_icmpv6_record(struct fsm_session *session,
 
     entry = &n_session->entry;
 
+    if (mac_is_empty_or_bcast(&rec->mac)) return true;
+
     populate_neigh_table_with_rec(entry, rec->ip_addr, &rec->mac, AF_INET6);
 
-    entry->cache_valid_ts = n_session->timestamp;
+    entry->cache_valid_ts = time(NULL);
     entry->source = FSM_NDP;
     neigh_table_add(entry);
 
@@ -576,6 +580,7 @@ fsm_dpi_arp_process_attr(struct fsm_session *session, const char *attr,
             /* Now we can process the record */
             ret = fsm_dpi_ndp_process_arp_record(session, acc, net_parser);
             fsm_dpi_arp_reset_state(session);
+            acc->dpi_always = true;
             break;
         }
 

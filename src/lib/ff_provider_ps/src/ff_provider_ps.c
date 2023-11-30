@@ -111,10 +111,10 @@ static char* get_flags(ff_provider_ps_t *provider_ps)
     const char *ps_storage_name = ff_provider_ps2data(provider_ps)->ps_storage_name;
     const char *ps_storage_key = ff_provider_ps2data(provider_ps)->ps_storage_key;
 
-    ps = osp_ps_open(ps_storage_name, OSP_PS_RDWR);
+    ps = osp_ps_open(ps_storage_name, OSP_PS_READ);
     if (ps == NULL)
     {
-        LOGE(LOG_PREFIX "Error opening %s persistent store.", ps_storage_name);
+        LOGD(LOG_PREFIX "Error opening %s persistent store.", ps_storage_name);
         goto exit;
     }
 

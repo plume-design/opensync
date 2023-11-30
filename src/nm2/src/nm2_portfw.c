@@ -267,6 +267,10 @@ bool nm2_inet_portforward_from_schema(
 
     pportfw->pf_dst_port = (uint16_t)pschema->dst_port;
     pportfw->pf_src_port = (uint16_t)pschema->src_port;
+    if (pschema->nat_loopback_exists)
+    {
+        pportfw->pf_nat_loopback = pschema->nat_loopback;
+    }
 
     if (strcmp("udp", pschema->protocol) == 0)
     {

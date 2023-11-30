@@ -120,9 +120,45 @@ ow_steer_executor_action_get_name(struct ow_steer_executor_action *action)
     return action->name;
 }
 
-bool
-ow_steer_executor_action_check_kick_needed(const struct ow_steer_executor_action *action,
-                                           const struct ow_steer_candidate_list *candidate_list)
+static const char *
+ow_steer_executor_action_kick_action_to_cstr(enum ow_steer_executor_action_kick_action kick_action)
+{
+    switch (kick_action) {
+        case OW_STEER_EXECUTOR_ACTION_KICK_HARD_BLOCK: return "kick (hard block)";
+        case OW_STEER_EXECUTOR_ACTION_KICK_BETTER_METRIC: return "kick (better metric)";
+        case OW_STEER_EXECUTOR_ACTION_SKIP_DISCONNECTED: return "skip (disconnected)";
+        case OW_STEER_EXECUTOR_ACTION_SKIP_STA_MISSING_VIF: return "skip (sta missing vif)";
+        case OW_STEER_EXECUTOR_ACTION_SKIP_STA_VIF_MISSING_PHY: return "skip (sta vif missing phy)";
+        case OW_STEER_EXECUTOR_ACTION_SKIP_NO_CANDIDATES_LEFT: return "skip (no candidates left)";
+        case OW_STEER_EXECUTOR_ACTION_SKIP_LINK_TO_NON_CANDIDATE: return "skip (link to non-candidate)";
+        case OW_STEER_EXECUTOR_ACTION_SKIP_LINK_TO_OUT_OF_SCOPE: return "skip (link to out-of-scope)";
+        case OW_STEER_EXECUTOR_ACTION_SKIP_LINK_TO_NO_PREFERENCE: return "skip (link to none-preference)";
+        case OW_STEER_EXECUTOR_ACTION_SKIP_LINK_GOOD_ENOUGH: return "skip (link good enough)";
+    }
+    return "";
+}
+
+static bool
+ow_steer_executor_action_kick_action_to_bool(enum ow_steer_executor_action_kick_action kick_action)
+{
+    switch (kick_action) {
+        case OW_STEER_EXECUTOR_ACTION_KICK_HARD_BLOCK: return true;
+        case OW_STEER_EXECUTOR_ACTION_KICK_BETTER_METRIC: return true;
+        case OW_STEER_EXECUTOR_ACTION_SKIP_DISCONNECTED: return false;
+        case OW_STEER_EXECUTOR_ACTION_SKIP_STA_MISSING_VIF: return false;
+        case OW_STEER_EXECUTOR_ACTION_SKIP_STA_VIF_MISSING_PHY: return false;
+        case OW_STEER_EXECUTOR_ACTION_SKIP_NO_CANDIDATES_LEFT: return false;
+        case OW_STEER_EXECUTOR_ACTION_SKIP_LINK_TO_NON_CANDIDATE: return false;
+        case OW_STEER_EXECUTOR_ACTION_SKIP_LINK_TO_OUT_OF_SCOPE: return false;
+        case OW_STEER_EXECUTOR_ACTION_SKIP_LINK_TO_NO_PREFERENCE: return false;
+        case OW_STEER_EXECUTOR_ACTION_SKIP_LINK_GOOD_ENOUGH: return false;
+    }
+    return false;
+}
+
+static enum ow_steer_executor_action_kick_action
+ow_steer_executor_action_get_kick_action(const struct ow_steer_executor_action *action,
+                                         const struct ow_steer_candidate_list *candidate_list)
 {
     ASSERT(action != NULL, "");
     ASSERT(candidate_list != NULL, "");
@@ -131,24 +167,19 @@ ow_steer_executor_action_check_kick_needed(const struct ow_steer_executor_action
     const struct osw_state_sta_info *sta_info = osw_state_sta_lookup_newest(&action->sta_addr);
     const bool sta_is_disconnected = sta_info == NULL;
     if (sta_is_disconnected == true) {
-        LOGI("%s is disconnected, aborting action", ow_steer_executor_action_get_prefix(action));
-        return false;
+        return OW_STEER_EXECUTOR_ACTION_SKIP_DISCONNECTED;
     }
     if (WARN_ON(sta_info->vif == NULL)) {
-        LOGI("%s has invalid sta_info, aborting action", ow_steer_executor_action_get_prefix(action));
-        return false;
+        return OW_STEER_EXECUTOR_ACTION_SKIP_STA_MISSING_VIF;
     }
     if (WARN_ON(sta_info->vif->phy == NULL)) {
-        LOGI("%s has invalid sta_info, aborting action", ow_steer_executor_action_get_prefix(action));
-        return false;
+        return OW_STEER_EXECUTOR_ACTION_SKIP_STA_VIF_MISSING_PHY;
     }
 
     const struct osw_hwaddr *vif_bssid = &sta_info->vif->drv_state->mac_addr;
     const struct ow_steer_candidate *vif_candidate = ow_steer_candidate_list_const_lookup(candidate_list, vif_bssid);
     if (vif_candidate == NULL) {
-        LOGI("%s is connected to non-candidate bssid: "OSW_HWADDR_FMT", aborting action", ow_steer_executor_action_get_prefix(action),
-             OSW_HWADDR_ARG(vif_bssid));
-        return false;
+        return OW_STEER_EXECUTOR_ACTION_SKIP_LINK_TO_NON_CANDIDATE;
     }
 
     /* Validate candidate list */
@@ -162,20 +193,19 @@ ow_steer_executor_action_check_kick_needed(const struct ow_steer_executor_action
     }
 
     if (available_candidates_cnt == 0) {
-        LOGI("%s all candidates are soft/hard-blocked, aborting action", ow_steer_executor_action_get_prefix(action));
-        return false;
+        return OW_STEER_EXECUTOR_ACTION_SKIP_NO_CANDIDATES_LEFT;
     }
 
     /* Check if STA has to be kicked regardless of metric */
     const enum ow_steer_candidate_preference vif_preference = ow_steer_candidate_get_preference(vif_candidate);
     switch (vif_preference) {
         case OW_STEER_CANDIDATE_PREFERENCE_OUT_OF_SCOPE:
-            return false;
+            return OW_STEER_EXECUTOR_ACTION_SKIP_LINK_TO_OUT_OF_SCOPE;
         case OW_STEER_CANDIDATE_PREFERENCE_NONE:
             WARN_ON(true);
-            return false;
+            return OW_STEER_EXECUTOR_ACTION_SKIP_LINK_TO_NO_PREFERENCE;
         case OW_STEER_CANDIDATE_PREFERENCE_HARD_BLOCKED:
-            return true;
+            return OW_STEER_EXECUTOR_ACTION_KICK_HARD_BLOCK;
         case OW_STEER_CANDIDATE_PREFERENCE_SOFT_BLOCKED:
         case OW_STEER_CANDIDATE_PREFERENCE_AVAILABLE:
             break;
@@ -200,14 +230,35 @@ ow_steer_executor_action_check_kick_needed(const struct ow_steer_executor_action
         };
 
         const unsigned int candidate_metric = ow_steer_candidate_get_metric(vif_candidate);
-        if (candidate_metric > vif_candidate_metric)
-            return true;
+        if (candidate_metric > vif_candidate_metric) {
+            const struct osw_hwaddr *bssid = ow_steer_candidate_get_bssid(candidate);
+            LOGD("%s "OSW_HWADDR_FMT" has better metric than "OSW_HWADDR_FMT" (%d > %d), needs action",
+                 ow_steer_executor_action_get_prefix(action),
+                 OSW_HWADDR_ARG(bssid),
+                 OSW_HWADDR_ARG(vif_bssid),
+                 candidate_metric,
+                 vif_candidate_metric);
+            return OW_STEER_EXECUTOR_ACTION_KICK_BETTER_METRIC;
+        }
     }
 
-    LOGI("%s is connected to the best candidate bssid: "OSW_HWADDR_FMT" preference: %s, aborting action",
-         ow_steer_executor_action_get_prefix(action), OSW_HWADDR_ARG(vif_bssid), ow_steer_candidate_preference_to_cstr(vif_preference));
+    return OW_STEER_EXECUTOR_ACTION_SKIP_LINK_GOOD_ENOUGH;
+}
 
-    return false;
+bool
+ow_steer_executor_action_check_kick_needed(struct ow_steer_executor_action *action,
+                                           const struct ow_steer_candidate_list *candidate_list)
+{
+    const enum ow_steer_executor_action_kick_action kick_action = ow_steer_executor_action_get_kick_action(action, candidate_list);
+    const bool kick = ow_steer_executor_action_kick_action_to_bool(kick_action);
+    if (kick_action != action->last_kick_action) {
+        LOGI("%s kick: %s -> %s",
+             ow_steer_executor_action_get_prefix(action),
+             ow_steer_executor_action_kick_action_to_cstr(action->last_kick_action),
+             ow_steer_executor_action_kick_action_to_cstr(kick_action));
+        action->last_kick_action = kick_action;
+    }
+    return kick;
 }
 
 const struct osw_hwaddr*

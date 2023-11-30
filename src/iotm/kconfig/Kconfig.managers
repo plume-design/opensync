@@ -1,0 +1,33 @@
+menuconfig MANAGER_IOTM
+    bool "IoT Manager (IOTM)"
+    default n
+    help
+        IoT Manager (IOTM) manages everything related to IoT connectivity,
+        including Thread 802.15.4 mesh networking protocol.
+
+if MANAGER_IOTM
+    config MANAGER_IOTM_CFG
+        string "IOTM Startup configuration"
+        default "iotm;true;needs_plan_b=false"
+        help
+            IoT Manager startup configuration
+
+    menuconfig IOTM_ENABLE_THREAD
+        bool "Enable support for Thread Border Router functionality"
+        default n
+
+    if IOTM_ENABLE_THREAD
+        config IOTM_THREAD_INTERFACE_NAME
+            string "Default Thread network interface name"
+            default "wpan0"
+
+        config IOTM_THREAD_SCAN_INTERVAL
+            int "Default interval (seconds) to scan the Thread network(s)"
+            default 0
+            help
+                If greater than 0, periodic Thread network diagnostic scan will be
+                performed, to retrieve topology and other information about the
+                devices in the Thread network.
+    endif
+
+endif

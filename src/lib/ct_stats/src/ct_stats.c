@@ -34,7 +34,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
-#include <dlfcn.h>
+
 #include "os_types.h"
 #include "os.h"
 #include "log.h"
@@ -45,7 +45,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "network_metadata.h"
 #include "fcm_filter.h"
 #include "fcm_report_filter.h"
-#include "imc.h"
 #include "neigh_table.h"
 #include "util.h"
 #include "fsm_dpi_utils.h"
@@ -54,225 +53,12 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "memutil.h"
 #include "sockaddr_storage.h"
 #include "data_report_tags.h"
+#include "fsm_ipc.h"
 
 #include <netdb.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <fcntl.h>
-#include <libmnl/libmnl.h>
-
-#if defined(CONFIG_PLATFORM_IS_BCM)
-// on BCM the kernel header is missing CTA_TUPLE_ZONE
-#include <libnetfilter_conntrack/linux_nfnetlink_conntrack.h>
-#else
-#include <linux/netfilter/nfnetlink_conntrack.h>
-#endif
-
-#include <linux/netfilter/nf_conntrack_tcp.h>
-
-#define ZONE_2      (USHRT_MAX -1)
-
-/**
- * IMC shared library context, when loaded through dlopen()
- */
-static struct imc_dso g_imc_context;
-
-static int flow_cmp(const void *a, const void *b);
-
-/**
- * Temporary list to merge similar flows across zones.
- */
-ds_tree_t flow_tracker_list = DS_TREE_INIT(flow_cmp, struct flow_tracker, ft_tnode);
-
-/**
- * @brief compare flows.
- *
- * @param a flow pointer
- * @param b flow pointer
- * @return 0 if flows match
- */
-static int
-flow_cmp (const void *a, const void *b)
-{
-    const layer3_ct_info_t  *l3_a = (const layer3_ct_info_t *)a;
-    const layer3_ct_info_t  *l3_b = (const layer3_ct_info_t *)b;
-
-    return memcmp(l3_a, l3_b, sizeof(layer3_ct_info_t));
-}
-
-/*
- * WAR ESW-5906. Need to be removed
- * Process all collected and merged
- * flows and drop flows which are only
- * in zone1.
- */
-void
-process_merged_multi_zonestats(ds_dlist_t *list, ds_tree_t *tree)
-{
-    struct flow_tracker *ft, *next;
-    int count = 0;
-    flow_stats_t *ct_stats;
-
-    ct_stats = ct_stats_get_active_instance();
-    if (tree == NULL || list == NULL) return;
-
-    ft = ds_tree_head(tree);
-    while (ft != NULL)
-    {
-        count++;
-        if (ft->zone_id == 1)
-        {
-            ds_dlist_remove(list, ft->flowptr);
-            FREE(ft->flowptr);
-            ct_stats->node_count--;
-        }
-        next = ds_tree_next(tree, ft);
-        ft = next;
-    }
-    LOGT("%s: Total merged flows alloc'd: %d\n",__func__,count);
-    return;
-}
-
-void
-flow_free_merged_multi_zonestats(ds_tree_t *tree)
-{
-    struct flow_tracker *ft, *next;
-    int count = 0;
-
-    if (tree == NULL) return;
-
-    ft = ds_tree_head(tree);
-    while (ft != NULL)
-    {
-        next = ds_tree_next(tree, ft);
-        ds_tree_remove(tree, ft);
-        FREE(ft);
-        ft = next;
-        count++;
-    }
-    LOGT("%s: Total merged flows freed: %d\n",__func__,count);
-    return;
-}
-
-/**
- * @brief merge multiple zone stats.
- *
- * @param flow key to look for.
- * @return true if inserted/merged.
- */
-static bool
-flow_merge_multi_zonestats(ctflow_info_t *flow, uint16_t zone_id)
-{
-    layer3_ct_info_t *l3_key = &flow->flow.layer3_info;
-    struct flow_tracker *ft;
-    pkts_ct_info_t  *ft_pkts;
-    pkts_ct_info_t  *ct_pkts;
-
-    ft = ds_tree_find(&flow_tracker_list, l3_key);
-
-    if (ft == NULL)
-    {
-        // Allocate for the flow.
-        ft = CALLOC(1, sizeof(struct flow_tracker));
-        ft->flowptr = flow;
-        ft->zone_id = zone_id;
-        ds_tree_insert(&flow_tracker_list, ft, &flow->flow.layer3_info);
-    }
-    else
-    {
-        ct_pkts = &ft->flowptr->flow.pkt_info;
-        ft_pkts = &flow->flow.pkt_info;
-
-        if (ft_pkts->pkt_cnt > ct_pkts->pkt_cnt &&
-            ft_pkts->bytes > ct_pkts->bytes)
-        {
-            ct_pkts->pkt_cnt = ft_pkts->pkt_cnt;
-            ct_pkts->bytes = ft_pkts->bytes;
-        }
-        else if (ft_pkts->pkt_cnt < ct_pkts->pkt_cnt &&
-                 ft_pkts->bytes < ct_pkts->bytes)
-        {
-            ft_pkts->pkt_cnt = ct_pkts->pkt_cnt;
-            ft_pkts->bytes = ct_pkts->bytes;
-        }
-        ft->zone_id = USHRT_MAX;
-    }
-    return true;
-}
-
-/**
- * @brief dynamically load the imc library and initializes its context
- */
-static bool
-ct_stats_load_imc(void)
-{
-    char *dso = CONFIG_INSTALL_PREFIX"/lib/libimc.so";
-    char *init = "imc_init_dso";
-    struct stat st;
-    char *error;
-    int rc;
-
-    rc = stat(dso, &st);
-    if (rc != 0) return true; /* All ops will be void */
-
-    dlerror();
-    g_imc_context.handle = dlopen(dso, RTLD_NOW);
-    if (g_imc_context.handle == NULL)
-    {
-        LOGE("%s: dlopen %s failed: %s", __func__, dso, dlerror());
-        return false;
-    }
-
-    dlerror();
-    *(void **)(&g_imc_context.init) = dlsym(g_imc_context.handle, init);
-    error = dlerror();
-    if (error != NULL) {
-        LOGE("%s: could not get symbol %s: %s",
-             __func__, init, error);
-        dlclose(g_imc_context.handle);
-        return false;
-    }
-
-    g_imc_context.init(&g_imc_context);
-
-    return true;
-}
-
-
-/**
- * @brief starts the fsm -> fcm IMC server
- *
- * @param server the imc context of the server
- * @param loop the FCM manager's ev loop
- * @param recv_cb the ct_stats handler for the data received from fsm
- */
-static int
-ct_stats_init_server(struct imc_dso *imc, struct ev_loop *loop,
-                     imc_recv recv_cb)
-{
-    int ret;
-
-    if (imc->imc_init_server == NULL) return 0;
-
-    ret = imc->imc_init_server(imc, loop, recv_cb);
-
-    return ret;
-}
-
-
-/**
- * @brief stops imc_server
- *
- * @param server the imc context of the server
- */
-void
-ct_stats_terminate_server(struct imc_dso *imc)
-{
-    if (imc->imc_terminate_server == NULL) return;
-
-    imc->imc_terminate_server(imc);
-}
-
 
 /**
  * Singleton tracking the plugin state
@@ -281,6 +67,33 @@ static flow_stats_mgr_t g_ct_stats =
 {
     .initialized = false,
 };
+
+
+/**
+ * @brief imc callback processing the protobuf received from fsm
+ *
+ * @param data a pointer to the protobuf
+ * @param len the protobuf length
+ */
+static void
+proto_recv_cb(void *data, size_t len)
+{
+    struct net_md_aggregator *aggr;
+    struct packed_buffer recv_pb;
+    flow_stats_t *ct_stats;
+
+    ct_stats = ct_stats_get_active_instance();
+    if (ct_stats == NULL)
+    {
+        LOGD("%s: No active instance", __func__);
+        return;
+    }
+
+    aggr = ct_stats->aggr;
+    recv_pb.buf = data;
+    recv_pb.len = len;
+    net_md_update_aggr(aggr, &recv_pb);
+}
 
 
 /**
@@ -429,744 +242,35 @@ ct_stats_filter_ip(int af, void *ip)
 }
 
 
-/**
- * @brief validates and stores conntrack counters
- *
- * @param attr the netlink attribute
- * @param data the table of <attribute, value>
- * @return MNL_CB_OK when successful, -1 otherwise
- */
-static int
-parse_counters_cb(const struct nlattr *attr, void *data)
-{
-    const struct nlattr **tb;
-    int type;
-    int rc;
-
-    tb = data;
-    type = mnl_attr_get_type(attr);
-
-    rc = mnl_attr_type_valid(attr, CTA_COUNTERS_MAX);
-    if (rc < 0) return MNL_CB_OK;
-
-    switch (type)
-    {
-        case CTA_COUNTERS_PACKETS:
-        case CTA_COUNTERS_BYTES:
-            rc = mnl_attr_validate(attr, MNL_TYPE_U64);
-            if (rc < 0) return MNL_CB_ERROR;
-            break;
-
-        case CTA_COUNTERS32_PACKETS:
-        case CTA_COUNTERS32_BYTES:
-            rc = mnl_attr_validate(attr, MNL_TYPE_U32);
-            if (rc < 0) return MNL_CB_ERROR;
-            break;
-    }
-    tb[type] = attr;
-
-    return MNL_CB_OK;
-}
-
-
-/**
- * @brief validates and stores conntrack IP info
- *
- * @param attr the netlink attribute
- * @param data the table of <attribute, value>
- * @return MNL_CB_OK when successful, -1 otherwise
- */
-static int
-parse_ip_cb(const struct nlattr *attr, void *data)
-{
-    const struct nlattr **tb;
-    int type;
-    int rc;
-
-    tb = data;
-    type = mnl_attr_get_type(attr);
-
-    rc =  mnl_attr_type_valid(attr, CTA_IP_MAX);
-    if (rc < 0) return MNL_CB_OK; /* Why ok? */
-
-    switch (type)
-    {
-        case CTA_IP_V4_SRC:
-        case CTA_IP_V4_DST:
-            rc = mnl_attr_validate(attr, MNL_TYPE_U32);
-            if (rc < 0) return MNL_CB_ERROR;
-            break;
-
-        case CTA_IP_V6_SRC:
-        case CTA_IP_V6_DST:
-            rc =  mnl_attr_validate2(attr, MNL_TYPE_BINARY,
-                                     sizeof(struct in6_addr));
-            if (rc < 0) return MNL_CB_ERROR;
-            break;
-    }
-
-    tb[type] = attr;
-
-    return MNL_CB_OK;
-}
-
-
-/**
- * @brief validates and stores conntrack network proto
- *
- * @param attr the netlink attribute
- * @param data the table of <attribute, value>
- * @return MNL_CB_OK when successful, -1 otherwise
- */
-static int
-parse_proto_cb(const struct nlattr *attr, void *data)
-{
-    const struct nlattr **tb;
-    int type;
-    int rc;
-
-    tb = data;
-    type = mnl_attr_get_type(attr);
-
-    rc = mnl_attr_type_valid(attr, CTA_PROTO_MAX);
-    if (rc < 0) return MNL_CB_OK;
-
-    switch (type)
-    {
-        case CTA_PROTO_NUM:
-        case CTA_PROTO_ICMP_TYPE:
-        case CTA_PROTO_ICMP_CODE:
-            rc = mnl_attr_validate(attr, MNL_TYPE_U8);
-            if (rc < 0) return MNL_CB_ERROR;
-            break;
-
-        case CTA_PROTO_SRC_PORT:
-        case CTA_PROTO_DST_PORT:
-        case CTA_PROTO_ICMP_ID:
-            rc = mnl_attr_validate(attr, MNL_TYPE_U16);
-            if (rc < 0) return MNL_CB_ERROR;
-            break;
-    }
-
-    tb[type] = attr;
-
-    return MNL_CB_OK;
-}
-
-
-/**
- * @brief validates and stores conntrack tuple info
- *
- * @param attr the netlink attribute
- * @param data the table of <attribute, value>
- * @return MNL_CB_OK when successful, -1 otherwise
- */
-static int
-parse_tuple_cb(const struct nlattr *attr, void *data)
-{
-    const struct nlattr **tb;
-    int type;
-    int rc;
-
-    tb = data;
-    type = mnl_attr_get_type(attr);
-
-    rc = mnl_attr_type_valid(attr, CTA_TUPLE_MAX);
-    if (rc < 0)
-        return MNL_CB_OK;
-
-    switch (type)
-    {
-        case CTA_TUPLE_IP:
-            rc = mnl_attr_validate(attr, MNL_TYPE_NESTED);
-            if (rc < 0) return MNL_CB_ERROR;
-            break;
-
-        case CTA_TUPLE_PROTO:
-            rc = mnl_attr_validate(attr, MNL_TYPE_NESTED);
-            if (rc < 0) return MNL_CB_ERROR;
-            break;
-
-        case CTA_TUPLE_ZONE:
-            rc = mnl_attr_validate(attr, MNL_TYPE_U16);
-            if (rc < 0) return MNL_CB_ERROR;
-            break;
-    }
-
-    tb[type] = attr;
-
-    return MNL_CB_OK;
-}
-
-
-/**
- * @brief translates conntrack tuple to ct_stats flow
- *
- * @param nest the netlink attribute
- * @param flow the ct_stats flow to update
- * @return MNL_CB_OK when successful, -1 otherwise
- */
-static int
-get_tuple(const struct nlattr *nest, ct_flow_t *flow)
-{
-    struct nlattr *proto_tb[CTA_PROTO_MAX+1];
-    struct nlattr *tb[CTA_TUPLE_MAX+1];
-    struct nlattr *ip_tb[CTA_IP_MAX+1];
-    struct in6_addr *in6;
-    struct in_addr *in;
-    int rc;
-
-    memset(tb, 0, (CTA_TUPLE_MAX+1) * sizeof(tb[0]));
-
-    rc = mnl_attr_parse_nested(nest, parse_tuple_cb, tb);
-    if (rc < 0) return MNL_CB_ERROR;
-
-    if (tb[CTA_TUPLE_IP] != NULL)
-    {
-        memset(ip_tb, 0, (CTA_IP_MAX+1) * sizeof(ip_tb[0]));
-
-        rc = mnl_attr_parse_nested(tb[CTA_TUPLE_IP], parse_ip_cb, ip_tb);
-        if (rc < 0) return MNL_CB_ERROR;
-
-        if (ip_tb[CTA_IP_V4_SRC] != NULL)
-        {
-            in = mnl_attr_get_payload(ip_tb[CTA_IP_V4_SRC]);
-            sockaddr_storage_populate(AF_INET, &in->s_addr,
-                                      &flow->layer3_info.src_ip);
-        }
-
-        if (ip_tb[CTA_IP_V4_DST] != NULL)
-        {
-            in = mnl_attr_get_payload(ip_tb[CTA_IP_V4_DST]);
-            sockaddr_storage_populate(AF_INET, &in->s_addr,
-                                      &flow->layer3_info.dst_ip);
-        }
-
-        if (ip_tb[CTA_IP_V6_SRC] != NULL)
-        {
-            in6 = mnl_attr_get_payload(ip_tb[CTA_IP_V6_SRC]);
-            sockaddr_storage_populate(AF_INET6, in6->s6_addr,
-                                      &flow->layer3_info.src_ip);
-        }
-        if (ip_tb[CTA_IP_V6_DST] != NULL)
-        {
-           in6 = mnl_attr_get_payload(ip_tb[CTA_IP_V6_DST]);
-           sockaddr_storage_populate(AF_INET6, in6->s6_addr,
-                                     &flow->layer3_info.dst_ip);
-        }
-    }
-
-    if (tb[CTA_TUPLE_PROTO] != NULL)
-    {
-        uint16_t val16;
-        uint8_t val8;
-
-        memset(proto_tb, 0, (CTA_PROTO_MAX+1) * sizeof(proto_tb[0]));
-
-        rc = mnl_attr_parse_nested(tb[CTA_TUPLE_PROTO],
-                                   parse_proto_cb, proto_tb);
-        if (rc < 0) return MNL_CB_ERROR;
-
-        if (proto_tb[CTA_PROTO_NUM] != NULL)
-        {
-            val8 = mnl_attr_get_u8(proto_tb[CTA_PROTO_NUM]);
-            flow->layer3_info.proto_type = val8;
-        }
-
-        if (proto_tb[CTA_PROTO_SRC_PORT] != NULL)
-        {
-            val16 = mnl_attr_get_u16(proto_tb[CTA_PROTO_SRC_PORT]);
-            flow->layer3_info.src_port = val16;
-        }
-
-        if (proto_tb[CTA_PROTO_DST_PORT] != NULL)
-        {
-            val16 = mnl_attr_get_u16(proto_tb[CTA_PROTO_DST_PORT]);
-            flow->layer3_info.dst_port = val16;
-        }
-
-#ifdef CT_ICMP_SUPPORT
-        if (proto_tb[CTA_PROTO_ICMP_ID] != NULL)
-        {
-            val16 = mnl_attr_get_u16(proto_tb[CTA_PROTO_ICMP_ID]);
-            LOGT("%s: id=%u ", __func__, val16);
-        }
-
-        if (proto_tb[CTA_PROTO_ICMP_TYPE] != NULL)
-        {
-            val8 = mnl_attr_get_u8(proto_tb[CTA_PROTO_ICMP_TYPE]);
-            LOGT("%s: type=%u ", __func__, val8);
-        }
-
-        if (proto_tb[CTA_PROTO_ICMP_CODE] != NULL)
-        {
-            val8 = mnl_attr_get_u8(proto_tb[CTA_PROTO_ICMP_CODE]);
-            LOGT("%s: type=%u ", __func__, val8);
-        }
-#endif
-    }
-    if (tb[CTA_TUPLE_ZONE] != NULL)
-    {
-        flow->ct_zone = mnl_attr_get_u16(tb[CTA_TUPLE_ZONE]);
-        LOGD("%s: Tuple ct_zone: %d", __func__, ntohs(flow->ct_zone));
-    }
-    return MNL_CB_OK;
-}
-
-
-/**
- * @brief validates and stores conntrack proto info
- *
- * @param attr the netlink attribute
- * @param data the table of <attribute, value>
- * @return MNL_CB_OK when successful, -1 otherwise
- */
-static int
-parse_protoinfo(const struct nlattr *attr, void *data)
-{
-    const struct nlattr **tb;
-    int type;
-    int rc;
-
-    tb = data;
-    type = mnl_attr_get_type(attr);
-
-    rc = mnl_attr_type_valid(attr, CTA_PROTOINFO_MAX);
-    if (rc < 0) return MNL_CB_OK;
-
-    switch(type)
-    {
-        case CTA_PROTOINFO_TCP:
-            rc = mnl_attr_validate(attr, MNL_TYPE_NESTED);
-            if (rc < 0) return MNL_CB_ERROR;
-            break;
-    }
-
-    tb[type] = attr;
-
-    return MNL_CB_OK;
-}
-
-
-/**
- * @brief validates and stores conntrack tcp protoinfo
- *
- * @param attr the netlink attribute
- * @param data the table of <attribute, value>
- * @return MNL_CB_OK when successful, -1 otherwise
- */
-static int
-parse_tcp_protoinfo(const struct nlattr *attr, void *data)
-{
-    const struct nlattr **tb;
-    int type;
-    int rc;
-
-    tb = data;
-    type = mnl_attr_get_type(attr);
-
-    rc = mnl_attr_type_valid(attr, CTA_PROTOINFO_TCP_MAX);
-    if (rc < 0) return MNL_CB_OK;
-
-    switch (type)
-    {
-        case CTA_PROTOINFO_TCP_STATE:
-            rc = mnl_attr_validate(attr, MNL_TYPE_U8);
-            if (rc < 0) return MNL_CB_ERROR;
-            break;
-    }
-
-    tb[type] = attr;
-
-    return MNL_CB_OK;
-}
-
-
-/**
- * @brief translates conntrack protoinfo to ct_stats flow
- *
- * @param nest the netlink attribute
- * @param flow the ct_stats flow to update
- * @return MNL_CB_OK when successful, -1 otherwise
- */
-static int
-get_protoinfo(const struct nlattr *nest, ct_flow_t *flow)
-{
-    struct nlattr *tb[CTA_PROTOINFO_MAX + 1];
-    int rc;
-
-    memset(tb, 0 , (CTA_PROTOINFO_MAX + 1) * sizeof(tb[0]));
-    rc = mnl_attr_parse_nested(nest, parse_protoinfo, tb);
-    if (rc < 0) return MNL_CB_ERROR;
-
-    if (tb[CTA_PROTOINFO_TCP] != NULL)
-    {
-        struct nlattr *tcp_tb[CTA_PROTOINFO_TCP_MAX + 1];
-
-        memset(tcp_tb, 0 , (CTA_PROTOINFO_TCP_MAX + 1) * sizeof(tcp_tb[0]));
-        rc = mnl_attr_parse_nested(tb[CTA_PROTOINFO_TCP],
-                                   parse_tcp_protoinfo, tcp_tb);
-        if (rc < 0) return MNL_CB_ERROR;
-
-        if (tcp_tb[CTA_PROTOINFO_TCP_STATE] != NULL)
-        {
-            uint8_t state;
-
-            state = mnl_attr_get_u8(tcp_tb[CTA_PROTOINFO_TCP_STATE]);
-            switch (state)
-            {
-                case TCP_CONNTRACK_SYN_SENT:
-                case TCP_CONNTRACK_SYN_RECV:
-                case TCP_CONNTRACK_ESTABLISHED:
-                    flow->start = true;
-                    LOGD("%s: TCP Flow started", __func__);
-                    break;
-
-                case TCP_CONNTRACK_FIN_WAIT:
-                case TCP_CONNTRACK_CLOSE_WAIT:
-                case TCP_CONNTRACK_LAST_ACK:
-                case TCP_CONNTRACK_TIME_WAIT:
-                case TCP_CONNTRACK_CLOSE:
-                case TCP_CONNTRACK_TIMEOUT_MAX:
-                    flow->end = true;
-                    LOGD("%s: TCP Flow ended", __func__);
-                    break;
-
-                default:
-                    break;
-            }
-        }
-    }
-
-    return MNL_CB_OK;
-}
-
-
-/**
- * @brief validates conntrack attributes
- *
- * @param attr the netlink attribute
- * @param data the table of <attribute, value>
- * @return MNL_CB_OK when successful, -1 otherwise
- */
-static int
-data_attr_cb(const struct nlattr *attr, void *data)
-{
-    const struct nlattr **tb;
-    int type;
-    int rc;
-
-    tb = data;
-    type = mnl_attr_get_type(attr);
-
-    rc = mnl_attr_type_valid(attr, CTA_MAX);
-    if (rc < 0) return MNL_CB_OK;
-
-    switch (type)
-    {
-        case CTA_TUPLE_ORIG:
-        case CTA_COUNTERS_ORIG:
-        case CTA_COUNTERS_REPLY:
-            rc = mnl_attr_validate(attr, MNL_TYPE_NESTED);
-            if (rc < 0) return MNL_CB_ERROR;
-            break;
-
-        case CTA_TIMEOUT:
-        case CTA_MARK:
-        case CTA_SECMARK:
-            rc =  mnl_attr_validate(attr, MNL_TYPE_U32);
-            if (rc < 0) return MNL_CB_ERROR;
-            break;
-
-        case CTA_ZONE:
-            rc = mnl_attr_validate(attr, MNL_TYPE_U16);
-            if (rc < 0) return MNL_CB_ERROR;
-            break;
-    }
-
-    tb[type] = attr;
-
-    return MNL_CB_OK;
-}
-
-
-/**
- * @brief translates conntrack counters to ct_stats flow
- *
- * @param nest the netlink attribute
- * @param flow the ct_stats flow to update
- * @return MNL_CB_OK when successful, -1 otherwise
- */
-static int
-get_counter(const struct nlattr *nest, ct_flow_t *_flow)
-{
-    struct nlattr *count_tb[CTA_COUNTERS_MAX+1];
-    uint64_t val64;
-    uint32_t val32;
-    int rc;
-
-    memset(count_tb, 0, (CTA_COUNTERS_MAX+1) * sizeof(count_tb[0]));
-    rc = mnl_attr_parse_nested(nest, parse_counters_cb, count_tb);
-    if (rc < 0) return MNL_CB_ERROR;
-
-    if (count_tb[CTA_COUNTERS32_PACKETS] != NULL)
-    {
-        val32 = ntohl(mnl_attr_get_u32(count_tb[CTA_COUNTERS32_PACKETS]));
-        _flow->pkt_info.pkt_cnt = val32;
-    }
-
-    if (count_tb[CTA_COUNTERS_PACKETS] != NULL)
-    {
-        val64 = be64toh(mnl_attr_get_u64(count_tb[CTA_COUNTERS_PACKETS]));
-        _flow->pkt_info.pkt_cnt = val64;
-    }
-
-    if (count_tb[CTA_COUNTERS32_BYTES] != NULL)
-    {
-        val32 = ntohl(mnl_attr_get_u32(count_tb[CTA_COUNTERS32_BYTES]));
-        _flow->pkt_info.bytes = val32;
-    }
-
-    if (count_tb[CTA_COUNTERS_BYTES] != NULL)
-    {
-        val64 = be64toh(mnl_attr_get_u64(count_tb[CTA_COUNTERS_BYTES]));
-        _flow->pkt_info.bytes = val64;
-    }
-
-    return MNL_CB_OK;
-}
-
-
-/**
- * @brief callback parsing the content of a netlink message
- *
- * @param nhl the netlink header message
- * @param data the opaque context passed to mnl processing
- * @return MNL_CB_OK when successful, -1 otherwise
- */
 int
-data_cb(const struct nlmsghdr *nlh, void *data)
+ct_get_stats(void)
 {
-    struct nlattr *tb[CTA_MAX+1];
-    ctflow_info_t *flow_info_1;
-    ctflow_info_t *flow_info;
     flow_stats_t *ct_stats;
-    struct nfgenmsg *nfg;
-    ct_flow_t *flow_1;
-    uint16_t ct_zone;
-    ct_flow_t *flow;
-    int rc;
-    int af;
-
-    memset(tb, 0, (CTA_MAX+1) * sizeof(tb[0]));
-    ct_stats = (flow_stats_t *)data;
-    nfg = mnl_nlmsg_get_payload(nlh);
-
-    rc = mnl_attr_parse(nlh, sizeof(*nfg), data_attr_cb, tb);
-    if (rc < 0) return MNL_CB_ERROR;
-
-    if (tb[CTA_ZONE] != NULL)
-    {
-        ct_zone = ntohs(mnl_attr_get_u16(tb[CTA_ZONE]));
-    }
-    else
-    {
-        ct_zone = 0; /* Zone = 0 flows will not have CTA_ZONE */
-    }
-
-    LOGT("%s: Lookup IP flow for ct_zone: %d, retrieved: %d", __func__,
-         ct_stats->ct_zone, ct_zone);
-
-    if (ct_stats->ct_zone != USHRT_MAX && (ct_stats->ct_zone != ZONE_2) &&
-        ct_stats->ct_zone != ct_zone) return MNL_CB_OK;
-
-    LOGT("%s: Included IP flow for ct_zone: %d", __func__,
-          ct_zone);
-
-    flow_info = CALLOC(1, sizeof(struct ctflow_info));
-    flow =  &flow_info->flow;
-
-    flow_info_1 = CALLOC(1, sizeof(struct ctflow_info));
-    flow_1 =  &flow_info_1->flow;
-
-    if (tb[CTA_TUPLE_ORIG] == NULL) goto flow_info_1_free;
-
-    rc = get_tuple(tb[CTA_TUPLE_ORIG], flow);
-    if (rc < 0) goto flow_info_1_free;
-
-    if (tb[CTA_MARK]  != NULL)
-    {
-        flow->ct_mark = ntohl(mnl_attr_get_u32(tb[CTA_MARK]));
-        flow_1->ct_mark = flow->ct_mark;
-    }
-
-    if (tb[CTA_TUPLE_REPLY] == NULL) goto flow_info_1_free;
-
-    rc = get_tuple(tb[CTA_TUPLE_REPLY], flow_1);
-    if (rc < 0) goto flow_info_1_free;
-
-    af = flow->layer3_info.dst_ip.ss_family;
-    if (ct_stats_filter_ip(af, &flow->layer3_info.dst_ip)) goto flow_info_1_free;
-
-    af = flow_1->layer3_info.src_ip.ss_family;
-    if (ct_stats_filter_ip(af, &flow_1->layer3_info.src_ip)) goto flow_info_1_free;
-
-
-    af = flow_1->layer3_info.src_ip.ss_family;
-    // Getting the original ip for v4 NAT'ed case.
-    if (af == AF_INET)
-    {
-        flow->layer3_info.dst_ip = flow_1->layer3_info.src_ip;
-        flow_1->layer3_info.dst_ip = flow->layer3_info.src_ip;
-    }
-
-    if (flow->layer3_info.proto_type != 17  &&
-        tb[CTA_PROTOINFO] == NULL)
-    {
-        LOGT("%s: Missing protocol info.Dropping the ct_flow", __func__);
-        goto flow_info_1_free;
-    }
-
-    if (flow->layer3_info.proto_type != 17)
-    {
-        rc = get_protoinfo(tb[CTA_PROTOINFO], flow);
-        if (rc < 0) goto flow_info_1_free;
-    }
-
-    if (tb[CTA_COUNTERS_ORIG] == NULL) goto flow_info_1_free;
-
-    rc = get_counter(tb[CTA_COUNTERS_ORIG], flow);
-    if (rc < 0) goto flow_info_1_free;
-
-    if ((ct_stats->ct_zone == USHRT_MAX) || (ct_stats->ct_zone == ZONE_2))
-        flow_merge_multi_zonestats(flow_info, ct_zone);
-
-    ds_dlist_insert_tail(&ct_stats->ctflow_list, flow_info);
-    ct_stats->node_count++;
-
-    if (tb[CTA_COUNTERS_REPLY] == NULL) goto reply_dir_free;
-
-    rc = get_counter(tb[CTA_COUNTERS_REPLY], flow_1);
-    if (rc < 0) goto reply_dir_free;
-
-    if ((ct_stats->ct_zone == USHRT_MAX)  || (ct_stats->ct_zone == ZONE_2))
-        flow_merge_multi_zonestats(flow_info_1, ct_zone);
-
-    ds_dlist_insert_tail(&ct_stats->ctflow_list, flow_info_1);
-    ct_stats->node_count++;
-    return MNL_CB_OK;
-
-flow_info_1_free:
-    FREE(flow_info_1);
-flow_info_free:
-    FREE(flow_info);
-    return MNL_CB_OK;
-
-reply_dir_free:
-    FREE(flow_info_1);
-    return MNL_CB_OK;
-}
-
-
-/**
- * @brief probes conntrack info for the requested inet family
- *
- * @param af the inet family targeted by the conntrack probe
- * @return MNL_CB_OK when successful, -1 otherwise
- */
-int
-ct_stats_get_ct_flow(int af_family)
-{
-    char buf[MNL_SOCKET_BUFFER_SIZE];
-    flow_stats_t *ct_stats;
-    flow_stats_mgr_t *mgr;
-    struct mnl_socket *nl;
-    struct nlmsghdr *nlh;
-    struct nfgenmsg *nfh;
-    uint32_t seq, portid;
-    int ret;
     int rc;
 
     ct_stats = ct_stats_get_active_instance();
     if (ct_stats == NULL) return -1;
 
-    nl = mnl_socket_open(NETLINK_NETFILTER);
-    if (nl == NULL)
+    /* get IPv4 conntrack entries from kernel */
+    rc = nf_ct_get_flow_entries(AF_INET, &ct_stats->ctflow_list, ct_stats->ct_zone);
+    if (rc == -1)
     {
-        LOGE("%s: mnl_socket_open fail: %s", __func__, strerror(errno));
+        LOGE("%s: IPV4 conntrack flow collection error", __func__);
         return -1;
     }
 
-    rc = mnl_socket_bind(nl, 0, MNL_SOCKET_AUTOPID);
-    if (rc < 0)
+    /* get IPv6 conntrack entries from kernel */
+    rc = nf_ct_get_flow_entries(AF_INET6, &ct_stats->ctflow_list, ct_stats->ct_zone);
+    if (rc == -1)
     {
-        rc = errno;
-        LOGE("%s: mnl_socket_bind fail: %s", __func__, strerror(errno));
-        goto sock_err;
+        LOGE("%s: IPv6 conntrack flow collection error", __func__);
+        return -1;
     }
 
-    nlh = mnl_nlmsg_put_header(buf);
-    nlh->nlmsg_type = (NFNL_SUBSYS_CTNETLINK << 8) | IPCTNL_MSG_CT_GET;
-    nlh->nlmsg_flags = NLM_F_REQUEST|NLM_F_DUMP;
-    nlh->nlmsg_seq = seq = time(NULL);
+    nf_ct_print_entries(&ct_stats->ctflow_list);
 
-    nfh = mnl_nlmsg_put_extra_header(nlh, sizeof(struct nfgenmsg));
-    nfh->nfgen_family = af_family;
-    nfh->version = 0;
-    nfh->res_id = 0;
-
-    ret = mnl_socket_sendto(nl, nlh, nlh->nlmsg_len);
-    if (ret == -1)
-    {
-        LOGE("%s: mnl_socket_sendto", __func__);
-        goto sock_err;
-    }
-
-    portid = mnl_socket_get_portid(nl);
-
-    while (1)
-    {
-        ret = mnl_socket_recvfrom(nl, buf, sizeof(buf));
-        if (ret == -1)
-        {
-            ret = errno;
-            LOGE("%s: mnl_socket_recvfrom failed: %s", __func__, strerror(ret));
-            goto sock_err;
-        }
-
-        ret = mnl_cb_run(buf, ret, seq, portid, data_cb, ct_stats);
-        if (ret == -1)
-        {
-            ret = errno;
-            LOGE("%s: mnl_cb_run failed: %s", __func__, strerror(ret));
-            goto sock_err;
-        }
-        else if (ret <= MNL_CB_STOP) break;
-    }
-
-    mnl_socket_close(nl);
-
-    mgr = ct_stats_get_mgr();
-    if (mgr->debug)
-    {
-        ctflow_info_t *flow_info = NULL;
-        ds_dlist_foreach(&ct_stats->ctflow_list, flow_info)
-        {
-            ct_stats_print_contrack(&flow_info->flow);
-        }
-    }
-
-    if (LOG_SEVERITY_ENABLED(LOG_SEVERITY_TRACE))
-        LOGT("%s: total ct flow %d", __func__, ct_stats->node_count);
     return 0;
-
-sock_err:
-    mnl_socket_close(nl);
-    if (LOG_SEVERITY_ENABLED(LOG_SEVERITY_TRACE))
-        LOGT("%s: total ct flow %d", __func__, ct_stats->node_count);
-    return -1;
 }
-
 
 /**
  * @brief frees the temporary list of parsed flows
@@ -1194,39 +298,6 @@ free_ct_flow_list(flow_stats_t *ct_stats)
              del_count, ct_stats->node_count);
     }
     ct_stats->node_count = 0;
-}
-
-
-/**
- * @brief logs a flow content for debug purposes
- *
- * @param flow the flow to log
- */
-void
-ct_stats_print_contrack(ct_flow_t *flow)
-{
-    char src[INET6_ADDRSTRLEN];
-    char dst[INET6_ADDRSTRLEN];
-
-    if (flow == NULL) return;
-
-    memset(src, 0, sizeof(src));
-    memset(dst, 0, sizeof(dst));
-
-    getnameinfo((struct sockaddr *)&flow->layer3_info.src_ip,
-                sizeof(struct sockaddr_storage), src, sizeof(src),
-                0, 0, NI_NUMERICHOST);
-    getnameinfo((struct sockaddr *)&flow->layer3_info.dst_ip,
-                sizeof(struct sockaddr_storage), dst, sizeof(dst),
-                0, 0, NI_NUMERICHOST);
-    LOGD("%s: [ proto=%d tx src=%s dst=%s] ", __func__,
-         flow->layer3_info.proto_type, src, dst);
-
-    LOGD("%s: [src port=%d dst port=%d] "
-         "[packets=%" PRIu64 "  bytes=%" PRIu64 "]", __func__,
-        ntohs(flow->layer3_info.src_port),
-        ntohs(flow->layer3_info.dst_port),
-        flow->pkt_info.pkt_cnt, flow->pkt_info.bytes);
 }
 
 
@@ -1315,6 +386,7 @@ ct_flow_add_sample(flow_stats_t *ct_stats)
     {
         bool                     smac_lookup;
         bool                     dmac_lookup;
+        bool                     skip_flow;
         fcm_filter_l2_info_t     mac_filter;
         struct sockaddr_storage *ssrc;
         struct sockaddr_storage *sdst;
@@ -1333,18 +405,13 @@ ct_flow_add_sample(flow_stats_t *ct_stats)
 
         // Lookup source ip.
         smac_lookup = neigh_table_lookup(ssrc, &smac);
-        if (!smac_lookup)
-        {
-            LOGD("ct_stats: Failed to get mac for src ip of the flow.");
-        }
-
         dmac_lookup = neigh_table_lookup(sdst, &dmac);
-        // Lookup dest ip.
-        if (!dmac_lookup)
-        {
-            LOGD("ct_stats: Failed to get mac for dst ip of the flow.");
-        }
 
+        if (!smac_lookup && !dmac_lookup)
+        {
+            LOGD("%s failed to lookup macs", __func__);
+            continue;
+        }
 
         snprintf(mac_filter.src_mac, sizeof(mac_filter.src_mac),
                  "%02x:%02x:%02x:%02x:%02x:%02x",
@@ -1356,6 +423,13 @@ ct_flow_add_sample(flow_stats_t *ct_stats)
                  dmac.addr[0], dmac.addr[1],
                  dmac.addr[2], dmac.addr[3],
                  dmac.addr[4], dmac.addr[5]);
+
+
+        skip_flow = nf_ct_filter_ip(af, &flow->layer3_info.dst_ip);
+        if (skip_flow) continue;
+
+        skip_flow = nf_ct_filter_ip(af, &flow->layer3_info.src_ip);
+        if (skip_flow) continue;
 
         if (apply_filter(ct_stats, &mac_filter, flow))
         {
@@ -1402,7 +476,9 @@ ct_flow_add_sample(flow_stats_t *ct_stats)
                 break;
             }
         }
+        ct_stats->node_count++;
     }
+
     if (LOG_SEVERITY_ENABLED(LOG_SEVERITY_TRACE))
     {
         LOGT("%s: sample add %d count %d", __func__,
@@ -1410,7 +486,6 @@ ct_flow_add_sample(flow_stats_t *ct_stats)
     }
     free_ct_flow_list(ct_stats);
 }
-
 
 void
 ct_stats_block_flow(struct net_md_stats_accumulator *acc)
@@ -1820,28 +895,11 @@ ct_stats_collect_cb(fcm_collect_plugin_t *collector)
     ct_stats = collector->plugin_ctx;
     if (ct_stats != mgr->active) return;
 
-    rc = ct_stats_get_ct_flow(AF_INET);
-    if (rc == -1)
-    {
-        LOGE("%s: conntrack flow collection error", __func__);
-        return;
-    }
-
-    rc = ct_stats_get_ct_flow(AF_INET6);
-    if (rc == -1)
-    {
-        LOGE("%s: conntrack flow collection error", __func__);
-        return;
-    }
+    rc = ct_get_stats();
+    if (rc == -1) return;
 
     ct_stats = collector->plugin_ctx;
     ct_stats->collect_filter = collector->filters.collect;
-
-    if (ct_stats->ct_zone == USHRT_MAX)
-        process_merged_multi_zonestats(&ct_stats->ctflow_list,
-                                       &flow_tracker_list);
-
-    flow_free_merged_multi_zonestats(&flow_tracker_list);
 
     ct_flow_add_sample(ct_stats);
 }
@@ -1919,80 +977,6 @@ ct_stats_plugin_close_cb(fcm_collect_plugin_t *collector)
     return;
 }
 
-
-/**
- * @brief imc callback processing the protobuf received from fsm
- *
- * @param data a pointer to the protobuf
- * @param len the protobuf length
- */
-static void
-proto_recv_cb(void *data, size_t len)
-{
-    struct net_md_aggregator *aggr;
-    struct packed_buffer recv_pb;
-    flow_stats_t *ct_stats;
-
-    ct_stats = ct_stats_get_active_instance();
-    if (ct_stats == NULL)
-    {
-        LOGD("%s: No active instance", __func__);
-        return;
-    }
-
-    aggr = ct_stats->aggr;
-    recv_pb.buf = data;
-    recv_pb.len = len;
-    net_md_update_aggr(aggr, &recv_pb);
-}
-
-
-/**
- * @brief starts the imc server receiving flow info from fsm
- */
-int
-ct_stats_imc_init(void)
-{
-    struct imc_dso *imc;
-    struct ev_loop *loop;
-    bool ret;
-    int rc;
-
-    ret = ct_stats_load_imc();
-    if (!ret) goto err_init_imc;
-
-    imc = &g_imc_context;
-    loop = g_ct_stats.loop;
-
-    rc = ct_stats_init_server(imc, loop, proto_recv_cb);
-    if (rc != 0)
-    {
-        LOGE("%s: failed to init imc server", __func__);
-        goto err_init_imc;
-
-    }
-
-    imc->initialized = true;
-
-    return 0;
-
-err_init_imc:
-    return -1;
-}
-
-
-/**
- * @brief stops the imc server receiving flow info from fsm and app time
- */
-void
-ct_stats_imc_exit(void)
-{
-    struct imc_dso *imc;
-
-    imc = &g_imc_context;
-    ct_stats_terminate_server(imc);
-}
-
 /**
  * @brief initializes a ct_stats collector session
  *
@@ -2051,7 +1035,7 @@ ct_stats_plugin_init(fcm_collect_plugin_t *collector)
 
     fcm_filter_context_init(collector);
 
-    ds_dlist_init(&ct_stats->ctflow_list, ctflow_info_t, dl_node);
+    ds_dlist_init(&ct_stats->ctflow_list, ctflow_info_t, ct_node);
 
     ct_zone = collector->get_other_config(collector, "ct_zone");
     if (ct_zone) ct_stats->ct_zone = atoi(ct_zone);
@@ -2178,19 +1162,13 @@ ct_stats_init_mgr(struct ev_loop *loop)
     ds_tree_init(&mgr->ct_stats_sessions, ct_stats_session_cmp,
                  flow_stats_t, ct_stats_node);
 
-    rc = ct_stats_imc_init();
+    rc = fsm_ipc_server_init(loop, proto_recv_cb);
     if (rc != 0) return;
-
-    rc = nf_ct_init(loop);
-    if (rc != 0) goto err;
 
     mgr->debug = false;
     mgr->initialized = true;
 
     return;
-err:
-    ct_stats_imc_exit();
-    mgr->initialized = false;
 }
 
 void
@@ -2198,8 +1176,7 @@ ct_stats_exit_mgr(void)
 {
     flow_stats_mgr_t *mgr;
 
-    ct_stats_imc_exit();
-    nf_ct_exit();
+    fsm_ipc_server_close();
 
     mgr = ct_stats_get_mgr();
     memset(mgr, 0, sizeof(*mgr));

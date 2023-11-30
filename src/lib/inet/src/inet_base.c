@@ -890,13 +890,7 @@ bool inet_base_upnp_start_stop(inet_base_t *self)
 
         case UPNP_MODE_EXTERNAL:
         case UPNP_MODE_EXTERNAL_IPTV:
-            /* Star the UPnP service only if we're in NAT mode */
-            rv = inet_unit_enable(self->in_units, INET_BASE_UPNP, self->in_nat_enabled);
-            if (!self->in_nat_enabled)
-            {
-                LOG(WARN, "inet_base: %s: Warning, external UPnP mode disabled due to inactive NAT", self->inet.in_ifname);
-                rv = false;
-            }
+            rv = inet_unit_enable(self->in_units, INET_BASE_UPNP, true);
             return rv;
 
         default:

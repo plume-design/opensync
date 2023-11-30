@@ -98,6 +98,19 @@ fsm_nfq_net_header_parse(struct nfq_pkt_info *pkt_info, void *data)
         domain = AF_INET6;
     }
 
+    len = 0;
+    ip_protocol = net_parser.ip_protocol;
+    if (ip_protocol == IPPROTO_TCP) len = net_header_parse_tcp(&net_parser);
+    if (ip_protocol == IPPROTO_UDP) len = net_header_parse_udp(&net_parser);
+    if (ip_protocol == IPPROTO_ICMP) len = net_header_parse_icmp(&net_parser);
+    if (ip_protocol == IPPROTO_ICMPV6) len = net_header_parse_icmp6(&net_parser);
+
+    if (len == 0)
+    {
+        LOGT("%s: failed to parse protocol %x", __func__, ip_protocol);
+        return;
+    }
+
     rc_lookup = neigh_table_lookup_af(domain, src_ip, &src_mac);
     if (rc_lookup)
     {
@@ -113,18 +126,6 @@ fsm_nfq_net_header_parse(struct nfq_pkt_info *pkt_info, void *data)
 
     rc_lookup = neigh_table_lookup_af(domain, dst_ip, &dst_mac);
     if (rc_lookup) net_parser.eth_header.dstmac = &dst_mac;
-
-    ip_protocol = net_parser.ip_protocol;
-    if (ip_protocol == IPPROTO_TCP) len = net_header_parse_tcp(&net_parser);
-    if (ip_protocol == IPPROTO_UDP) len = net_header_parse_udp(&net_parser);
-    if (ip_protocol == IPPROTO_ICMP) len = net_header_parse_icmp(&net_parser);
-    if (ip_protocol == IPPROTO_ICMPV6) len = net_header_parse_icmp6(&net_parser);
-
-    if (len == 0)
-    {
-        LOGE("%s: failed to parse protocol %x", __func__, ip_protocol);
-        return;
-    }
 
     session = (struct fsm_session *)data;
     parser_ops = &session->p_ops->parser_ops;
@@ -147,7 +148,7 @@ fsm_nfq_tap_update(struct fsm_session *session)
     char   *queue_len_str;
     char   *queue_num_str;
     char   buf[10];
-    uint32_t nlbuf_sz = 3*(1024 * 1024); // 3M netlink packet buffer.
+    uint32_t nlbuf_sz = 6*(1024 * 1024); // 6M netlink packet buffer.
     uint32_t queue_len = 10240; // number of packets in queue.
     uint32_t queue_num = 0; // Default 0 queue for all traffic
     uint32_t num_of_queues = 1; // Default number of nfqueues

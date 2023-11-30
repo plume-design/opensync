@@ -65,12 +65,13 @@ static const char *osfw_table_str(enum osfw_table tbl)
     return osfw_table_str_list[tbl];
 }
 
-bool osfw_init(osfw_fn_t *osfw_status_fn)
+bool osfw_init(osfw_fn_t *osfw_status_fn, osfw_hook_fn_t *osfw_hook_fn)
 {
     LOG(INFO, "osfw: null init");
 
     memset(&self, 0, sizeof(self));
     self.osfw_fn = osfw_status_fn;
+    self.osfw_hook_fn = osfw_hook_fn;
 
     return true;
 }

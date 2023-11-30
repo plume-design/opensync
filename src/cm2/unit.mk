@@ -44,7 +44,6 @@ UNIT_SRC    += src/cm2_resolve_sync.c
 endif
 UNIT_SRC    += src/cm2_resolve.c
 UNIT_SRC    += src/cm2_net.c
-UNIT_SRC    += src/cm2_ovsdb_bridge.c
 
 UNIT_CFLAGS += -I$(TOP_DIR)/src/lib/common/inc/
 
@@ -85,3 +84,4 @@ ifeq ($(CONFIG_LIBEVX_USE_CARES),y)
 UNIT_DEPS += src/lib/evx
 endif
 UNIT_DEPS += src/lib/timevt
+UNIT_DEPS += src/lib/os_fdbuf

@@ -79,13 +79,13 @@ static bool dm_mod_sipalg_activate(struct dm_mod *mod_nat, bool enable)
     if (target_device_execute("lsmod | grep sip"))
     {
         dm_mod_update_state(&sipalg->sip_mod, true);
-        return true;
     }
     else
     {
         dm_mod_update_state(&sipalg->sip_mod, false);
-        return false;
     }
+
+    return true;
 }
 
 void dm_mod_sipalg_init(void *data)

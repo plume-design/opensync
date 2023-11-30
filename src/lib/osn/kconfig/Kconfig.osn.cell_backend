@@ -1,0 +1,12 @@
+config OSN_BACKEND_CELL_NULL
+    bool "Null"
+    help
+        Use dummy CELL implementation for platforms where CELL functionality is
+        not desired or not supported.
+
+config OSN_BACKEND_CELL_LINUX
+    bool "Linux"
+    select OSN_LINUX_ENABLED
+    select OSN_LINUX_CELL
+    help
+        Use the Linux CELL implementation that uses the 3rdparty apps to initialize CELL interfaces.

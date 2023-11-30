@@ -303,7 +303,7 @@ void sm_device_thermal_report (EV_P_ ev_timer *w, int revents)
     {
         thermal_record->fan_rpm = fan_rpm;
         thermal_valid = true;
-        LOG(DEBUG,
+        LOG(INFO,
             "Sending device stats fan rpm=%u",
             thermal_record->fan_rpm);
     }
@@ -317,7 +317,7 @@ void sm_device_thermal_report (EV_P_ ev_timer *w, int revents)
     {
         thermal_record->fan_duty_cycle = (int16_t)fan_duty_cycle;
         thermal_valid = true;
-        LOG(DEBUG,
+        LOG(INFO,
             "Sending device stats fan duty cycle=%u",
             thermal_record->fan_duty_cycle);
     }

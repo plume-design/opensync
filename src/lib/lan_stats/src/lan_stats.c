@@ -47,6 +47,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ovsdb_table.h"
 #include "ovsdb_utils.h"
 #include "data_report_tags.h"
+#include "nf_utils.h"
 
 #define ETH_DEVICES_TAG "${@eth_devices}"
 
@@ -305,16 +306,14 @@ static unsigned int get_eth_type(char *eth)
  * For speedy parsing did the hand-coded parser with the assumption the
  * output format of ovs-dpctl dump-flows  is consistent
  */
-void parse_lan_stats(char *buf[], lan_stats_instance_t *lan_stats_instance)
+void parse_lan_stats(char *buf[], lan_stats_instance_t *lan_stats_instance, dp_ctl_stats_t *stats)
 {
-    dp_ctl_stats_t *stats;
     int i = 0;
     char *pos = NULL;
     int ret = 0;
     bool rc;
 
     if (lan_stats_instance == NULL) return;
-    stats = &lan_stats_instance->stats;
 
     while (buf[i] != NULL)
     {
@@ -396,7 +395,7 @@ void parse_lan_stats(char *buf[], lan_stats_instance_t *lan_stats_instance)
 }
 
 void
-lan_stats_parse_flows(lan_stats_instance_t *lan_stats_instance, char *buf)
+lan_stats_parse_flows(lan_stats_instance_t *lan_stats_instance, char *buf, dp_ctl_stats_t *stats)
 {
     char *tokens[MAX_TOKENS] = {0};
     char *tok = NULL;
@@ -412,7 +411,7 @@ lan_stats_parse_flows(lan_stats_instance_t *lan_stats_instance, char *buf)
             break;
     }
     tokens[i] = NULL;
-    parse_lan_stats(tokens, lan_stats_instance);
+    parse_lan_stats(tokens, lan_stats_instance, stats);
 }
 
 
@@ -765,6 +764,8 @@ lan_stats_send_report_cb(fcm_collect_plugin_t *collector)
 {
     lan_stats_instance_t *lan_stats_instance;
     lan_stats_mgr_t *mgr;
+    char *ct_zone;
+    uint16_t tmp_zone;
 
     if (collector == NULL) return;
 
@@ -778,6 +779,17 @@ lan_stats_send_report_cb(fcm_collect_plugin_t *collector)
       return;
     }
 
+    /* Accept zone change after reporting */
+    ct_zone = collector->get_other_config(collector, "ct_zone");
+    tmp_zone = 0;
+    if (ct_zone) tmp_zone = atoi(ct_zone);
+
+    if (lan_stats_instance->ct_zone != tmp_zone)
+    {
+        lan_stats_instance->ct_zone = tmp_zone;
+        LOGD("%s: updated zone: %d", __func__, lan_stats_instance->ct_zone);
+    }
+
     mgr->report = true;
     lan_stats_close_window(collector);
     lan_stats_send_aggr_report(lan_stats_instance);
@@ -788,13 +800,11 @@ lan_stats_send_report_cb(fcm_collect_plugin_t *collector)
  * @brief updating uplink info to "dp_ctl_stats_t"
  */
 void
-lan_stats_add_uplink_info(lan_stats_instance_t *lan_stats_instance)
+lan_stats_add_uplink_info(lan_stats_instance_t *lan_stats_instance, dp_ctl_stats_t *stats)
 {
-    dp_ctl_stats_t *stats;
     lan_stats_mgr_t *mgr;
 
     if (lan_stats_instance == NULL) return;
-    stats = &lan_stats_instance->stats;
 
     mgr = lan_stats_get_mgr();
     if (!mgr->initialized) return;
@@ -816,7 +826,7 @@ lan_stats_add_uplink_info(lan_stats_instance_t *lan_stats_instance)
 
 
 void
-lan_stats_flows_filter(lan_stats_instance_t *lan_stats_instance)
+lan_stats_flows_filter(lan_stats_instance_t *lan_stats_instance, dp_ctl_stats_t *stats)
 {
     fcm_filter_l2_info_t l2_filter_info;
     fcm_filter_stats_t   l2_filter_pkts;
@@ -824,11 +834,9 @@ lan_stats_flows_filter(lan_stats_instance_t *lan_stats_instance)
     fcm_collect_plugin_t *collector;
     struct fcm_session *session;
     struct fcm_filter_req *req;
-    dp_ctl_stats_t *stats;
     bool allow;
 
     if (lan_stats_instance == NULL) return;
-    stats = &lan_stats_instance->stats;
 
     collector = lan_stats_instance->collector;
     if (collector == NULL) return;
@@ -855,6 +863,13 @@ lan_stats_flows_filter(lan_stats_instance_t *lan_stats_instance)
 
         if (allow)
         {
+
+            MEMZERO(stats->smac_addr);
+            MEMZERO(stats->dmac_addr);
+            snprintf(stats->smac_addr, sizeof(stats->smac_addr), PRI_os_macaddr_lower_t,
+                     FMT_os_macaddr_t(stats->smac_key));
+            snprintf(stats->dmac_addr, sizeof(stats->dmac_addr), PRI_os_macaddr_lower_t,
+                     FMT_os_macaddr_t(stats->dmac_key));
             LOGD("%s: Flow collect allowed: filter_name: %s, ufid: "PRI_os_ufid_t \
                     " smac: %s, dmac: %s, vlan_id: %d, eth_type: %d, pks: %lld, " \
                     "bytes: %lld, uplink_if_type: %s, uplink_changed: %s", __func__,
@@ -884,7 +899,6 @@ lan_stats_flows_filter(lan_stats_instance_t *lan_stats_instance)
     }
     else
     {
-        LOGD("%s: aggr add sample", __func__);
         lan_stats_aggr_add_sample(collector, stats);
     }
     FREE(req);
@@ -988,6 +1002,7 @@ int lan_stats_plugin_init(fcm_collect_plugin_t *collector)
     char *parent_tag;
     char *active;
     char *name;
+    char *ct_zone;
     int rc;
 
     mgr = lan_stats_get_mgr();
@@ -1034,6 +1049,10 @@ int lan_stats_plugin_init(fcm_collect_plugin_t *collector)
     collector->send_report = lan_stats_send_report_cb;
     collector->close_plugin = lan_stats_plugin_close_cb;
 
+    ct_zone = collector->get_other_config(collector, "ct_zone");
+    if (ct_zone) lan_stats_instance->ct_zone = atoi(ct_zone);
+
+
     rc = lan_stats_alloc_aggr(lan_stats_instance);
     if (rc != 0)
     {
@@ -1044,7 +1063,7 @@ int lan_stats_plugin_init(fcm_collect_plugin_t *collector)
     lan_stats_activate_window(collector);
 
 
-    if(!kconfig_enabled(CONFIG_TARGET_USE_NATIVE_BRIDGE))
+    if (!kconfig_enabled(CONFIG_TARGET_USE_NATIVE_BRIDGE))
     {
         lan_stats_instance->collect_flows = lan_stats_collect_flows;
     }
@@ -1052,6 +1071,9 @@ int lan_stats_plugin_init(fcm_collect_plugin_t *collector)
     {
         lan_stats_instance->collect_flows = lan_stats_collect_native_flows;
     }
+
+    ds_dlist_init(&lan_stats_instance->ct_list, ctflow_info_t, ct_node);
+
     lan_stats_instance->initialized = true;
 
     /* Check if the session has a name */

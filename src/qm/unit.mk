@@ -42,6 +42,7 @@ UNIT_SRC += src/qm_mqtt.c
 UNIT_SRC += src/qm_queue.c
 UNIT_SRC += src/qm_event.c
 UNIT_SRC += src/qm_teserver.c
+UNIT_SRC += $(if $(CONFIG_USE_OSBUS), src/qm_osbus.c)
 
 UNIT_CFLAGS += -I$(TOP_DIR)/src/lib/common/inc/
 

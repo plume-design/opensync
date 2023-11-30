@@ -80,7 +80,7 @@ ow_wps_ut_simple_init(struct ow_wps_ut_simple *ut,
 
     ut->expected_result = expected_result;
 
-    ut->vif0_state.enabled = false;
+    ut->vif0_state.status = OSW_VIF_DISABLED;
     ut->vif0_state.vif_type = OSW_VIF_AP;
 
     ut->vif0_info.vif_name = "vif0";
@@ -143,7 +143,7 @@ ow_wps_ut_simple_prepare(struct ow_wps_ut_simple *ut)
     OSW_UT_EVAL(ut->finished_cnt == 0);
     OSW_UT_EVAL(ut->job->sm_state == OW_WPS_JOB_ACTIVATING);
 
-    ut->vif0_state.enabled = true;
+    ut->vif0_state.status = OSW_VIF_ENABLED;
     ut->vif0_state.u.ap.mode.wps = true;
     ut->vif0_state.u.ap.wps_pbc = true;
     ut->vif0_state.u.ap.wps_cred_list = ut->job->config.creds;
@@ -312,7 +312,7 @@ OSW_UT(ow_wps_ap_pbc_fragmented_activation)
     osw_ut_time_advance(0);
     OSW_UT_EVAL(ut.job->sm_state == OW_WPS_JOB_ACTIVATING);
 
-    ut.vif0_state.enabled = false;
+    ut.vif0_state.status = OSW_VIF_DISABLED;
     ut.vif0_state.u.ap.mode.wps = false;
     ut.vif0_state.u.ap.wps_pbc = false;
     MEMZERO(ut.vif0_state.u.ap.wps_cred_list);
@@ -327,7 +327,7 @@ OSW_UT(ow_wps_ap_pbc_fragmented_activation)
     osw_ut_time_advance(0);
     OSW_UT_EVAL(ut.job->sm_state == OW_WPS_JOB_ACTIVATING);
 
-    ut.vif0_state.enabled = true;
+    ut.vif0_state.status = OSW_VIF_ENABLED;
     ow_wps_state_vif_changed_cb(&ut.job->obs, &ut.vif0_info);
     osw_ut_time_advance(0);
     OSW_UT_EVAL(ut.job->sm_state == OW_WPS_JOB_ACTIVATING);

@@ -25,6 +25,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 #include <log.h>
+#include <const.h>
 #include <memutil.h>
 #include <osw_types.h>
 #include <osw_state.h>
@@ -37,58 +38,127 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 struct ow_steer_executor_action_acl {
     struct ow_steer_executor_action *base;
-    struct ow_steer_candidate_list *prev_candidate_list;
+    struct ow_steer_candidate_list *candidate_list;
+    struct osw_state_observer state_obs;
+    bool syncing;
 };
 
+static bool
+ow_steer_executor_action_acl_in_sync(struct ow_steer_executor_action_acl *action)
+{
+    const struct osw_hwaddr *sta_addr = ow_steer_executor_action_get_sta_addr(action->base);
+    const struct ow_steer_candidate_list *list = action->candidate_list;
+    const size_t n = list != NULL ? ow_steer_candidate_list_get_length(list) : 0;
+    size_t i;
+    for (i = 0; i < n; i++) {
+        const struct ow_steer_candidate *c = ow_steer_candidate_list_const_get(list, i);
+        const struct osw_hwaddr *bssid = ow_steer_candidate_get_bssid(c);
+        const enum ow_steer_candidate_preference pref = ow_steer_candidate_get_preference(c);
+        const struct osw_state_vif_info *info = osw_state_vif_lookup_by_mac_addr(bssid);
+
+        const bool non_local_vif = (info == NULL);
+        if (non_local_vif) continue;
+
+        const bool not_running = (info->drv_state->status != OSW_VIF_ENABLED);
+        if (not_running) continue;
+
+        const bool not_an_ap = (info->drv_state->vif_type != OSW_VIF_AP);
+        if (not_an_ap) continue;
+
+        bool valid = false;
+        bool want_blocked = false;
+        switch (pref) {
+            case OW_STEER_CANDIDATE_PREFERENCE_SOFT_BLOCKED:
+            case OW_STEER_CANDIDATE_PREFERENCE_HARD_BLOCKED:
+                want_blocked = true;
+                valid = true;
+                break;
+            case OW_STEER_CANDIDATE_PREFERENCE_AVAILABLE:
+                want_blocked = false;
+                valid = true;
+                break;
+            case OW_STEER_CANDIDATE_PREFERENCE_OUT_OF_SCOPE:
+            case OW_STEER_CANDIDATE_PREFERENCE_NONE:
+                valid = false;
+                break;
+        }
+
+        if (valid == false) continue;
+
+        const struct osw_drv_vif_state_ap *ap = &info->drv_state->u.ap;
+        bool is_blocked = false;
+        switch (ap->acl_policy) {
+            case OSW_ACL_NONE:
+                is_blocked = false;
+                break;
+            case OSW_ACL_DENY_LIST:
+                is_blocked = (osw_hwaddr_list_contains(ap->acl.list, ap->acl.count, sta_addr) == true);
+                break;
+            case OSW_ACL_ALLOW_LIST:
+                is_blocked = (osw_hwaddr_list_contains(ap->acl.list, ap->acl.count, sta_addr) == false);
+                break;
+        }
+
+        if (want_blocked != is_blocked) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
 static void
+ow_steer_executor_action_vif_changed_cb(struct osw_state_observer *obs,
+                                        const struct osw_state_vif_info *info)
+{
+    struct ow_steer_executor_action_acl *acl_action = container_of(obs, struct ow_steer_executor_action_acl, state_obs);
+    struct ow_steer_executor_action *action = acl_action->base;
+
+    if (acl_action->syncing == false) return;
+    if (ow_steer_executor_action_acl_in_sync(acl_action) == false) return;
+
+    ow_steer_executor_action_sched_recall(action);
+}
+
+static void
+ow_steer_executor_action_acl_set_candidates(struct ow_steer_executor_action_acl *acl_action,
+                                            const struct ow_steer_candidate_list *candidate_list)
+{
+    ow_steer_candidate_list_free(acl_action->candidate_list);
+    acl_action->candidate_list = NULL;
+    if (candidate_list == NULL) return;
+
+    acl_action->candidate_list = ow_steer_candidate_list_copy(candidate_list);
+}
+
+static bool
 ow_steer_executor_action_acl_call_fn(struct ow_steer_executor_action *action,
                                      const struct ow_steer_candidate_list *candidate_list,
                                      struct osw_conf_mutator *conf_mutator)
 {
     struct ow_steer_executor_action_acl *acl_action = ow_steer_executor_action_get_priv(action);
-    if (acl_action->prev_candidate_list == NULL)
-        goto invalidate_conf;
 
-    /*
-     * FIXME
-     * This code should be improved. It should only invalidate configuration when
-     * list of blocked candidates changes.
-     */
-    /*
-     * TODO
-     * It also should check candidates against vif state.
-     */
+    ow_steer_executor_action_acl_set_candidates(acl_action, candidate_list);
 
-    const size_t prev_candidate_list_size = ow_steer_candidate_list_get_length(acl_action->prev_candidate_list);
-    const size_t candidate_list_size = ow_steer_candidate_list_get_length(candidate_list);
-    if (prev_candidate_list_size != candidate_list_size)
-        goto invalidate_conf;
-
-    size_t i = 0;
-    for (i = 0; i < prev_candidate_list_size; i++) {
-        const struct ow_steer_candidate *prev_candidate = ow_steer_candidate_list_const_get(acl_action->prev_candidate_list, i);
-        const struct osw_hwaddr *prev_candidate_bssid = ow_steer_candidate_get_bssid(prev_candidate);
-
-        const struct ow_steer_candidate *candidate = ow_steer_candidate_list_const_lookup(candidate_list, prev_candidate_bssid);
-        if (candidate == NULL)
-            goto invalidate_conf;
-
-        const enum ow_steer_candidate_preference prev_candidate_pref = ow_steer_candidate_get_preference(prev_candidate);
-        const enum ow_steer_candidate_preference candidate_pref = ow_steer_candidate_get_preference(candidate);
-        if (prev_candidate_pref != candidate_pref)
-            goto invalidate_conf;
+    if (ow_steer_executor_action_acl_in_sync(acl_action)) {
+        if (acl_action->syncing) {
+            LOGI("%s syncing -> synced", ow_steer_executor_action_get_prefix(action));
+            acl_action->syncing = false;
+        }
+        return true;
     }
 
-    LOGI("%s done", ow_steer_executor_action_get_prefix(action));
+    if (acl_action->syncing) {
+        LOGD("%s syncing -> syncing", ow_steer_executor_action_get_prefix(action));
+    }
+    else {
+        LOGI("%s synced -> syncing", ow_steer_executor_action_get_prefix(action));
+    }
 
-    return;
-
-invalidate_conf:
+    acl_action->syncing = true;
     osw_conf_invalidate(conf_mutator);
-    ow_steer_candidate_list_free(acl_action->prev_candidate_list);
-    acl_action->prev_candidate_list = ow_steer_candidate_list_copy(candidate_list);
-    ow_steer_executor_action_sched_recall(action);
-    LOGI("%s invalidate conf", ow_steer_executor_action_get_prefix(action));
+
+    return false;
 }
 
 static void
@@ -194,9 +264,18 @@ ow_steer_executor_action_acl_create(const struct osw_hwaddr *sta_addr,
         .call_fn = ow_steer_executor_action_acl_call_fn,
         .conf_mutate_fn = ow_steer_executor_action_acl_conf_mutate_fn,
     };
+    const struct osw_state_observer state_obs = {
+        .name = __FILE__,
+        .vif_added_fn = ow_steer_executor_action_vif_changed_cb,
+        .vif_changed_fn = ow_steer_executor_action_vif_changed_cb,
+        .vif_removed_fn = ow_steer_executor_action_vif_changed_cb,
+    };
+
     struct ow_steer_executor_action_acl *acl_action = CALLOC(1, sizeof(*acl_action));
 
     acl_action->base = ow_steer_executor_action_create("acl", sta_addr, &ops, mediator, acl_action);
+    acl_action->state_obs = state_obs;
+    osw_state_register_observer(&acl_action->state_obs);
 
     return acl_action;
 }
@@ -205,7 +284,8 @@ void
 ow_steer_executor_action_acl_free(struct ow_steer_executor_action_acl *acl_action)
 {
     ASSERT(acl_action != NULL, "");
-    ow_steer_candidate_list_free(acl_action->prev_candidate_list);
+    osw_state_unregister_observer(&acl_action->state_obs);
+    ow_steer_executor_action_acl_set_candidates(acl_action, NULL);
     ow_steer_executor_action_free(acl_action->base);
     FREE(acl_action);
 }

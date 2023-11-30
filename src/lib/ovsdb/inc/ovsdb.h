@@ -322,26 +322,28 @@ json_t * ovsdb_tran_multi(json_t * jarray,
                           json_t * row);
 
 /*
- * This function creates a combined OVSDB transaction which
- * inserts a new row, and inserts it's UUID into a parent
- * table's column using mutate
+ * This function is an extension of ovsdb_tran_multi() and creates
+ * a combined OVSDB transaction which inserts a new row, and inserts
+ * its UUID into a parent table's column using mutate.
  */
-json_t * ovsdb_tran_insert_with_parent(const char * table,
-                                       json_t * row,
-                                       const char * parent_table,
-                                       json_t * parent_where,
-                                       const char * parent_column);
+json_t * ovsdb_tran_multi_insert_with_parent(json_t * jarray,
+                                             const char * table,
+                                             json_t * row,
+                                             const char * parent_table,
+                                             json_t * parent_where,
+                                             const char * parent_column);
 
 /*
- * This function creates a combined OVSDB transaction which
- * deletes a rows by uuid in one table, and then removes
- * them from a parent table's column using mutate
+ * This function is an extension of ovsdb_tran_multi() and creates a
+ * combined OVSDB transaction which deletes rows by uuid in one table,
+ * and then removes them from a parent table's column using mutate.
  */
-json_t * ovsdb_tran_delete_with_parent(const char * table,
-                                       json_t * uuids,
-                                       const char * parent_table,
-                                       json_t * parent_where,
-                                       const char * parent_column);
+json_t *ovsdb_tran_multi_delete_with_parent(json_t *jarray,
+                                            const char *table,
+                                            json_t *uuids,
+                                            const char *parent_table,
+                                            json_t *parent_where,
+                                            const char *parent_column);
 
 /*
  * OVSDB special value
@@ -400,8 +402,8 @@ json_t *ovsdb_tran_call_s(
         json_t * row);
 
 /*
- * This function uses ovsdb_method_send_s() to send a
- * transaction created with ovsdb_tran_insert_with_parent()
+ * This function uses ovsdb_method_send_s() to send a transaction
+ * created with ovsdb_tran_multi_insert_with_parent()
  */
 bool ovsdb_insert_with_parent_s(char * table,
                                 json_t * row,
@@ -412,7 +414,7 @@ bool ovsdb_insert_with_parent_s(char * table,
 /*
  * This function builds a uuid list from where clause,
  * then uses ovsdb_method_send_s() to send a * transaction
- * created with ovsdb_tran_delete_with_parent()
+ * created with ovsdb_tran_multi_delete_with_parent()
  */
 json_t* ovsdb_delete_with_parent_res_s(const char * table,
                                 json_t *where,

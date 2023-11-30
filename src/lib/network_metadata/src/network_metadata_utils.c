@@ -1016,6 +1016,7 @@ net_md_lookup_reverse_acc(struct net_md_aggregator *aggr,
     rkey.sport = okey->dport;
     rkey.dport = okey->sport;
     rkey.flags = okey->flags;
+    rkey.icmp_idt = okey->icmp_idt;
     rkey.flags |= NET_MD_ACC_LOOKUP_ONLY;
     reverse_acc = net_md_lookup_acc(aggr, &rkey);
 
@@ -2211,7 +2212,7 @@ net_md_log_key(struct net_md_flow_key *key, const char *caller)
          " isparent_of_smac: %s"          \
          " isparent_of_dmac: %s"          \
          " vlanid: %d"                    \
-         " ethertype: %d"                 \
+         " ethertype: 0x%x"               \
          " ip_version: %d"                \
          " src_ip: %s"                    \
          " dst_ip: %s"                    \
@@ -2268,7 +2269,7 @@ net_md_log_fkey(struct flow_key *fkey, const char *caller)
          " isparent_of_smac: %s"    \
          " isparent_of_dmac: %s"    \
          " vlanid: %d"              \
-         " ethertype: %d"           \
+         " ethertype: 0x%x"         \
          " ip_version: %d"          \
          " src_ip: %s"              \
          " dst_ip: %s"              \

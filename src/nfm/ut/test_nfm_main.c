@@ -96,14 +96,14 @@ test_osfw_init(struct ev_loop *loop)
     nfm_osfw_eb_base.loop = loop;
     ev_timer_init(&nfm_osfw_eb_base.timer, test_nfm_osfw_eb_on_reschedule, 0, 0);
 
-    errcode = osfw_eb_init(NULL);
+    errcode = osfw_eb_init(NULL, NULL);
     if (!errcode)
     {
         LOGE("osfw_eb_init failed");
         return false;
     }
 
-    osfw_init(NULL);
+    osfw_init(NULL, NULL);
 
     return true;
 }

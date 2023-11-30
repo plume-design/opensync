@@ -40,12 +40,16 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "memutil.h"
 #include "qm_conn.h"
 
+#ifdef CONFIG_USE_OSBUS
+#include "qm_conn_osbus.h"
+#endif
+
 #define QM_SOCK_DIR "/tmp/opensync/"
 #define QM_SOCK_FILENAME QM_SOCK_DIR"qm.sock"
 #define QM_SOCK_MAX_PENDING 10
 #define QM_COMPACT_SEND_SIZE (64*1024)
 
-static double qm_conn_default_timeout = QM_CONN_DEFAULT_TIMEOUT;
+double qm_conn_default_timeout = QM_CONN_DEFAULT_TIMEOUT;
 
 extern const char *log_get_name();
 
@@ -442,7 +446,7 @@ char *qm_data_type_str(enum qm_req_data_type type)
 {
     switch (type) {
         case QM_DATA_RAW:   return "raw";
-        case QM_DATA_TEXT:  return "bs";
+        case QM_DATA_TEXT:  return "text";
         case QM_DATA_STATS: return "stats";
         case QM_DATA_LOG:   return "log";
     }
@@ -555,7 +559,7 @@ out:
 // all params except req can be NULL
 // returns true if message exchange succesfull and response is not of error type
 // on error details can be found in res->error
-bool qm_conn_send_req(qm_request_t *req, char *topic, void *data, int data_size, qm_response_t *res)
+bool qm_conn_sock_send_req(qm_request_t *req, char *topic, void *data, int data_size, qm_response_t *res)
 {
     int fd = -1;
     bool result = false;
@@ -565,6 +569,15 @@ bool qm_conn_send_req(qm_request_t *req, char *topic, void *data, int data_size,
     result = qm_conn_send_fd(fd, req, topic, data, data_size, res);
     close(fd);
     return result;
+}
+
+bool qm_conn_send_req(qm_request_t *req, char *topic, void *data, int data_size, qm_response_t *res)
+{
+#ifdef CONFIG_USE_OSBUS
+    return qm_conn_osbus_send_req(req, topic, data, data_size, res);
+#else
+    return qm_conn_sock_send_req(req, topic, data, data_size, res);
+#endif
 }
 
 bool qm_conn_send_custom(
@@ -601,6 +614,16 @@ bool qm_conn_send_direct(qm_compress_t compress, char *topic,
             topic, data, data_size, res);
 }
 
+
+bool qm_conn_send_direct_req_ack(qm_compress_t compress, char *topic,
+        void *data, int data_size, qm_response_t *res)
+{
+    return qm_conn_send_custom(
+            QM_DATA_RAW, compress,
+            QM_REQ_FLAG_SEND_DIRECT | QM_REQ_FLAG_ACK_RCPT,
+            topic, data, data_size, res);
+}
+
 bool qm_conn_send_stats(void *data, int data_size, qm_response_t *res)
 {
     qm_request_t req;
@@ -610,6 +633,7 @@ bool qm_conn_send_stats(void *data, int data_size, qm_response_t *res)
     req.compress = QM_REQ_COMPRESS_IF_CFG;
     return qm_conn_send_req(&req, NULL, data, data_size, res);
 }
+
 
 // streaming api
 // persistent connection for less overhead

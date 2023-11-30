@@ -30,6 +30,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 struct ow_steer_sta {
     struct osw_hwaddr mac_addr;
     struct ow_steer_candidate_list *candidate_list;
+    struct ow_steer_candidate_list *candidate_list_executed;
     struct ow_steer_policy_stack *policy_stack;
     struct ow_steer_executor *executor;
     struct osw_conf_mutator *mutator;

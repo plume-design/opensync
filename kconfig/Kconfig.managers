@@ -18,7 +18,6 @@ source "src/fsm/kconfig/Kconfig.managers"
 source "src/fcm/kconfig/Kconfig.managers"
 source "src/qosm/kconfig/Kconfig.managers"
 source "src/nfm/kconfig/Kconfig.managers"
-source "src/maptm/kconfig/Kconfig.managers"
 source "src/xm/kconfig/Kconfig.managers"
 source "src/cpm/kconfig/Kconfig.managers"
 source "src/hello_world/kconfig/Kconfig.managers"
@@ -28,6 +27,8 @@ source "src/pwm/kconfig/Kconfig.managers"
 source "src/vpnm/kconfig/Kconfig.managers"
 source "src/owm/kconfig/Kconfig.managers"
 source "src/blem/kconfig/Kconfig.managers"
+source "src/cellm/kconfig/Kconfig.managers"
+source "src/iotm/kconfig/Kconfig.managers"
 
 #
 # Include platform/vendor managers

@@ -240,7 +240,7 @@ ow_sta_channel_override_ap_is_info_valid(const struct osw_state_vif_info *info)
     return (info != NULL)
         && (info->drv_state != NULL)
         && (info->drv_state->exists)
-        && (info->drv_state->enabled)
+        && (info->drv_state->status == OSW_VIF_ENABLED)
         && (info->drv_state->vif_type == OSW_VIF_AP);
 }
 
@@ -339,7 +339,7 @@ ow_sta_channel_overide_sta_is_info_valid(struct ow_sta_channel_override_ap *ap,
         && (strcmp(info->phy->phy_name, ap->phy_name) == 0)
         && (info->drv_state != NULL)
         && (info->drv_state->exists)
-        && (info->drv_state->enabled)
+        && (info->drv_state->status == OSW_VIF_ENABLED)
         && (info->drv_state->vif_type == OSW_VIF_STA)
         && (info->drv_state->u.sta.link.status == OSW_DRV_VIF_STATE_STA_LINK_CONNECTED);
 }
@@ -698,24 +698,24 @@ ow_sta_channel_override_ut_init(struct ow_sta_channel_override_ut *ut)
 
     ut->sta1_state.vif_type = OSW_VIF_STA;
     ut->sta1_state.exists = true;
-    ut->sta1_state.enabled = true;
+    ut->sta1_state.status = OSW_VIF_ENABLED;
     ut->sta1_state.u.sta.link.status = OSW_DRV_VIF_STATE_STA_LINK_CONNECTED;
     ut->sta1_state.u.sta.link.channel.control_freq_mhz = 2412;
 
     ut->sta2_state.vif_type = OSW_VIF_STA;
     ut->sta2_state.exists = true;
-    ut->sta2_state.enabled = true;
+    ut->sta2_state.status = OSW_VIF_ENABLED;
     ut->sta2_state.u.sta.link.status = OSW_DRV_VIF_STATE_STA_LINK_CONNECTED;
     ut->sta2_state.u.sta.link.channel.control_freq_mhz = 5180;
 
     ut->ap1_state.vif_type = OSW_VIF_AP;
     ut->ap1_state.exists = true;
-    ut->ap1_state.enabled = true;
+    ut->ap1_state.status = OSW_VIF_ENABLED;
     ut->ap1_state.u.ap.channel.control_freq_mhz = 2437;
 
     ut->ap2_state.vif_type = OSW_VIF_AP;
-    ut->ap2_state.enabled = true;
     ut->ap2_state.exists = true;
+    ut->ap2_state.status = OSW_VIF_ENABLED;
     ut->ap2_state.u.ap.channel.control_freq_mhz = 5200;
 
     ut->phy1_info.phy_name = "phy1";

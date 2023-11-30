@@ -1103,7 +1103,7 @@ test_fsm_dpi_dns_process_dns_record_dns_tag(void)
     client->session = session;
     client->update_client = NULL;
     client->session_name = test_session_name;
-    client->name = "gatekeeper_p";
+    client->name = STRDUP("gatekeeper_p");
     fsm_policy_register_client(&session->policy_client);
 
     memset(&acc, 0, sizeof(acc));

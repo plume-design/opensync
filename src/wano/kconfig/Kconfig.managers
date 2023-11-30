@@ -111,6 +111,20 @@ if MANAGER_WANO
             If another DHCP packet type is received, or another host sends any
             type of DHCP packet, this number is ignored.
 
+    config MANAGER_WANO_PLUGIN_ETHCLIENT_IPV6_SPEEDUP
+        bool "WANO IPv6 ethernet client connection speedup"
+        default y
+        help
+            Independent part of WANO ethernet client detection plugin that is able
+            to speedup IPv6 connectivity of some ethernet IPv6 clients that may give up
+            sending router solicitation messages before the port is eventually added
+            into the bridge. It works in the following way: When the port is added
+            into the bridge, it artificially sends a RS message (via rdisc6).
+            Since the router typically responds with a RA to an unicast address,
+            such a RA message is then rewritten to be sent to a multicast address
+            of all-nodes. Thus, the IPv6 client, even if it gave up sending RS too
+            early, will then receive such a RA and will not have to wait for a periodic RA.
+
     config MANAGER_WANO_PLUGIN_CMTS
         bool "WANO CMTS plugin"
         default n

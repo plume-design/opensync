@@ -29,6 +29,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <arpa/inet.h>
 #include <ev.h>
+#include <libmnl/libmnl.h>
 #include "os_types.h"
 #include "net_header_parse.h"
 
@@ -107,6 +108,39 @@ struct nfq_pkt_info
     uint16_t           tx_pidx;
 };
 
+typedef struct layer3_ct_info
+{
+    struct sockaddr_storage src_ip;
+    struct sockaddr_storage dst_ip;
+    uint16_t src_port;
+    uint16_t dst_port;
+    uint8_t proto_type;
+    uint8_t family_type;
+} layer3_ct_info_t;
+
+typedef struct pkts_ct_info
+{
+    uint64_t pkt_cnt;
+    uint64_t bytes;
+} pkts_ct_info_t;
+
+typedef struct ct_flow
+{
+    layer3_ct_info_t layer3_info;
+    pkts_ct_info_t pkt_info;
+    uint16_t dir;
+    uint16_t ct_zone;
+    uint32_t ct_mark;
+    bool start;
+    bool end;
+} ct_flow_t;
+
+typedef struct ctflow_info
+{
+    ct_flow_t flow;
+    ds_dlist_node_t ct_node;
+} ctflow_info_t;
+
 enum
 {
     CT_MARK_INSPECT = 1,
@@ -114,16 +148,25 @@ enum
     CT_MARK_DROP
 };
 
-int nf_ct_init(struct ev_loop *loop);
+struct flow_tracker
+{
+    ctflow_info_t *flowptr;
+    uint16_t  zone_id;
+    ds_tree_node_t  ft_tnode;
+};
 
-int nf_ct_exit(void);
+struct nf_ct_context
+{
+    bool initialized;
+    struct ev_loop *loop;
+    struct ev_io wmnl;
+    struct mnl_socket *mnl;
+    struct nlmsghdr *nlh;
+    int fd;
 
-int nf_ct_set_mark(nf_flow_t *flow);
+    uint16_t zone_id;
+};
 
-int nf_ct_set_mark_timeout(nf_flow_t *flow, uint32_t timeout);
-
-int nf_ct_set_flow_mark(struct net_header_parser *net_pkt,
-                        uint32_t mark, uint16_t zone);
 
 enum
 {
@@ -182,6 +225,7 @@ struct nfqueue_ctxt
     ds_tree_node_t  nfq_tnode;
 };
 
+/* NFQUEUE APIs */
 int nf_queue_set_dpi_mark(struct net_header_parser *net_hdr,
                           struct dpi_mark_policy *mark_policy);
 
@@ -201,4 +245,29 @@ bool nf_queue_set_nlsock_buffsz(uint32_t queue_num, uint32_t sock_buff_sz);
 bool nf_queue_set_queue_maxlen(uint32_t queue_num, uint32_t queue_maxlen);
 
 bool nf_queue_update_payload(uint32_t packet_id, uint32_t queue_num);
+
+/* NF CONNTRACK APIs */
+int nf_process_ct_cb(const struct nlmsghdr *nlh, void *data);
+
+int nf_ct_init(struct ev_loop *loop);
+
+int nf_ct_exit(void);
+
+int nf_ct_set_mark(nf_flow_t *flow);
+
+int nf_ct_set_mark_timeout(nf_flow_t *flow, uint32_t timeout);
+
+int nf_ct_set_flow_mark(struct net_header_parser *net_pkt,
+                        uint32_t mark, uint16_t zone);
+
+struct nlmsghdr* nf_ct_build_msg_hdr(char *buf, uint32_t type, uint16_t flags, int af_family);
+
+bool nf_ct_get_flow_entries(int af_family, ds_dlist_t *g_nf_ct_list, uint16_t zone_id);
+
+void nf_ct_print_entries(ds_dlist_t *g_nf_ct_list);
+
+bool nf_ct_filter_ip(int af, void *ip);
+
+void nf_free_ct_flow_list(ds_dlist_t *ct_list);
+
 #endif /* NF_UTILS_H_INCLUDED */

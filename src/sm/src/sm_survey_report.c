@@ -374,6 +374,10 @@ bool sm_survey_entry_can_be_reported (
     const radio_scan_type_t         type,
     const dpp_survey_info_t        *info)
 {
+    /* If radio channel (which is populated from schema_Wifi_Radio_State) is not
+     * set skip reporting due to unknown state */
+    if (!rcfg->chan) return false;
+
     switch (type) {
         case RADIO_SCAN_TYPE_NONE: return false;
         case RADIO_SCAN_TYPE_FULL: return true;

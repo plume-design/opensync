@@ -215,13 +215,13 @@ osw_circ_buf_pop(struct osw_circ_buf *circ_buf,
 {
     assert(circ_buf != NULL);
     assert(i != NULL);
-    
+
     if (osw_circ_buf_is_empty(circ_buf) == true)
         return false;
 
     *i = circ_buf->head;
     circ_buf->head = osw_circ_buf_next(circ_buf, circ_buf->head);
-    
+
     return true;
 }
 

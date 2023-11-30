@@ -1,0 +1,5 @@
+
+source "src/lib/osn/kconfig/Kconfig.osn.map_backend"
+
+osource "platform/*/kconfig/Kconfig.osn.map_backend"
+osource "vendor/*/kconfig/Kconfig.osn.map_backend"

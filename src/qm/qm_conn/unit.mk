@@ -35,6 +35,7 @@ UNIT_NAME := qm_conn
 UNIT_TYPE := LIB
 
 UNIT_SRC += src/qm_conn.c
+UNIT_SRC += $(if $(CONFIG_USE_OSBUS), src/qm_conn_osbus.c)
 
 UNIT_CFLAGS := -I$(UNIT_PATH)/src
 
@@ -42,4 +43,6 @@ UNIT_EXPORT_CFLAGS := $(UNIT_CFLAGS)
 UNIT_EXPORT_LDFLAGS := $(UNIT_LDFLAGS)
 
 UNIT_DEPS += src/lib/common
+UNIT_DEPS_CFLAGS += src/lib/log
+UNIT_DEPS += $(if $(CONFIG_USE_OSBUS), src/lib/osbus)
 

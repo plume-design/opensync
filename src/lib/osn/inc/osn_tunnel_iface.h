@@ -64,7 +64,20 @@ enum osn_tunnel_iface_type
     OSN_TUNNEL_IFACE_TYPE_NOT_SET,
     OSN_TUNNEL_IFACE_TYPE_VTI,         /** Virtual Tunnel Interface IPv4 (vti) */
     OSN_TUNNEL_IFACE_TYPE_VTI6,        /** Virtual Tunnel Interface IPv6 (vti6) */
+    OSN_TUNNEL_IFACE_TYPE_IP6TNL,      /** Virtual Tunnel Interface IPv4|IPv6 over IPv6 */
     OSN_TUNNEL_IFACE_TYPE_MAX
+};
+
+/**
+ * OSN Tunnel Interface mode
+ */
+enum osn_tunnel_iface_mode
+{
+    OSN_TUNNEL_IFACE_MODE_NOT_SET,
+    OSN_TUNNEL_IFACE_MODE_ANY,         /* IPv4|IPv6 over IPv6 */
+    OSN_TUNNEL_IFACE_MODE_IPIP6,       /* IPv4 over IPv6 */
+    OSN_TUNNEL_IFACE_MODE_IP6IP6,      /* IPv6 over IPv6 */
+    OSN_TUNNEL_IFACE_MODE_MAX
 };
 
 /**
@@ -86,6 +99,19 @@ osn_tunnel_iface_t *osn_tunnel_iface_new(const char *ifname);
  * @return true on success
  */
 bool osn_tunnel_iface_type_set(osn_tunnel_iface_t *self, enum osn_tunnel_iface_type iftype);
+
+/**
+ * Set tunnel interface mode.
+ *
+ * This function is optional. Not all tunnel interface types support or require
+ * mode to be set.
+ *
+ * @param[in] self    a valid pointer to @ref osn_tunnel_iface_t object
+ * @param[in] mode    mode for this tunnel interface
+ *
+ * @return true on success
+ */
+bool osn_tunnel_iface_mode_set(osn_tunnel_iface_t *self, enum osn_tunnel_iface_mode mode);
 
 /**
  * Set tunnel interface local and remote endpoints.
@@ -120,6 +146,17 @@ bool osn_tunnel_iface_endpoints_set(
  * @return true on success
  */
 bool osn_tunnel_iface_key_set(osn_tunnel_iface_t *self, int key);
+
+/**
+ * Optional: Set physical device to use for tunnel endpoint communication.
+ *
+ * @param[in] self          a valid pointer to @ref osn_tunnel_iface_t object
+ * @param[in] dev_if_name   physical device interface name.
+ *                          Set to empty string to unset.
+ *
+ * @return true on success
+ */
+bool osn_tunnel_iface_dev_set(osn_tunnel_iface_t *self, const char *dev_if_name);
 
 /**
  * Enable or disable this tunnel interface.

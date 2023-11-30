@@ -1411,7 +1411,7 @@ ow_conf_ut_vif_enabled_op_request_config_cb(struct osw_drv *drv,
             MEMZERO(vif_state);
             vif_state.exists = true;
             vif_state.vif_type = vif->vif_type;
-            vif_state.enabled = vif->enabled;
+            vif_state.status = vif->enabled ? OSW_VIF_ENABLED : OSW_VIF_DISABLED;
             vif_state.u.ap.beacon_interval_tu = OW_CONF_DEFAULT_BEACON_INTERVAL_TU;
 
             osw_drv_dummy_set_vif(dummy,
@@ -1431,6 +1431,7 @@ OSW_UT(ow_conf_ut_vif_enabled)
         .request_config_fn = ow_conf_ut_vif_enabled_op_request_config_cb,
     };
     bool enabled = true;
+    enum osw_vif_status status = OSW_VIF_ENABLED;
     const char *phy_name = "phy1";
     const char *vif_name = "vif1";
 
@@ -1438,7 +1439,7 @@ OSW_UT(ow_conf_ut_vif_enabled)
     MEMZERO(vif_state);
     vif_state.exists = true;
     vif_state.vif_type = OSW_VIF_AP;
-    vif_state.enabled = true;
+    vif_state.status = OSW_VIF_ENABLED;
     vif_state.u.ap.beacon_interval_tu = OW_CONF_DEFAULT_BEACON_INTERVAL_TU;
 
     osw_module_load_name("osw_drv");
@@ -1454,33 +1455,33 @@ OSW_UT(ow_conf_ut_vif_enabled)
     osw_drv_dummy_set_vif(&dummy, phy_name, vif_name, &vif_state);
 
     ow_conf_ut_run();
-    assert(osw_state_vif_lookup(phy_name, vif_name)->drv_state->enabled == true);
+    assert(osw_state_vif_lookup(phy_name, vif_name)->drv_state->status == status);
 
     LOGI("%s: disabling vif %s, expect disablement", __func__, vif_name);
     ow_conf_vif_set_phy_name(vif_name, phy_name);
-    enabled = false; ow_conf_vif_set_enabled(vif_name, &enabled);
+    enabled = false; status = OSW_VIF_DISABLED; ow_conf_vif_set_enabled(vif_name, &enabled);
     ow_conf_ut_run();
     assert(ow_conf_vif_get(&g_ow_conf, vif_name) != NULL);
     assert(ow_conf_vif_get(&g_ow_conf, vif_name)->enabled != NULL);
     assert(*ow_conf_vif_get(&g_ow_conf, vif_name)->enabled == enabled);
-    assert(osw_state_vif_lookup(phy_name, vif_name)->drv_state->enabled == enabled);
+    assert(osw_state_vif_lookup(phy_name, vif_name)->drv_state->status == status);
 
     LOGI("%s: enabling vif %s, expect enablement", __func__, vif_name);
-    enabled = true; ow_conf_vif_set_enabled(vif_name, &enabled);
+    enabled = true; status = OSW_VIF_ENABLED; ow_conf_vif_set_enabled(vif_name, &enabled);
     ow_conf_ut_run();
     assert(ow_conf_vif_get(&g_ow_conf, vif_name) != NULL);
     assert(ow_conf_vif_get(&g_ow_conf, vif_name)->enabled != NULL);
     assert(*ow_conf_vif_get(&g_ow_conf, vif_name)->enabled == enabled);
-    assert(osw_state_vif_lookup(phy_name, vif_name)->drv_state->enabled == enabled);
+    assert(osw_state_vif_lookup(phy_name, vif_name)->drv_state->status == status);
 
     LOGI("%s: re-enabling vif %s, expect no-op", __func__, vif_name);
-    enabled = false; ow_conf_vif_set_enabled(vif_name, &enabled);
-    enabled = true; ow_conf_vif_set_enabled(vif_name, &enabled);
+    enabled = false; status = OSW_VIF_DISABLED; ow_conf_vif_set_enabled(vif_name, &enabled);
+    enabled = true; status = OSW_VIF_ENABLED; ow_conf_vif_set_enabled(vif_name, &enabled);
     ow_conf_ut_run();
     assert(ow_conf_vif_get(&g_ow_conf, vif_name) != NULL);
     assert(ow_conf_vif_get(&g_ow_conf, vif_name)->enabled != NULL);
     assert(*ow_conf_vif_get(&g_ow_conf, vif_name)->enabled == enabled);
-    assert(osw_state_vif_lookup(phy_name, vif_name)->drv_state->enabled == enabled);
+    assert(osw_state_vif_lookup(phy_name, vif_name)->drv_state->status == status);
 }
 
 OSW_UT(ow_conf_ut_is_set)

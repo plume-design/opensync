@@ -35,6 +35,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <osw_state.h>
 #include <osw_bss_map.h>
 #include <osw_conf.h>
+#include <osw_diag.h>
 #include "ow_steer_candidate_list.h"
 #include "ow_steer_policy.h"
 #include "ow_steer_policy_i.h"
@@ -73,17 +74,16 @@ ow_steer_policy_stack_work_cb(struct osw_timer *timer)
         struct ow_steer_candidate *candidate = ow_steer_candidate_list_get(candidate_list, i);
         const struct osw_hwaddr *bssid = ow_steer_candidate_get_bssid(candidate);
         const enum ow_steer_candidate_preference preference = ow_steer_candidate_get_preference(candidate);
+        const char *reason = "default";
 
         if (preference == OW_STEER_CANDIDATE_PREFERENCE_NONE)
-            ow_steer_candidate_set_preference(candidate, OW_STEER_CANDIDATE_PREFERENCE_AVAILABLE);
+            ow_steer_candidate_set_preference(candidate, reason, OW_STEER_CANDIDATE_PREFERENCE_AVAILABLE);
 
         LOGD("ow: steer: policy_stack: sta: "OSW_HWADDR_FMT" bssid: "OSW_HWADDR_FMT" preference: %s", OSW_HWADDR_ARG(mac_addr),
              OSW_HWADDR_ARG(bssid), ow_steer_candidate_preference_to_cstr(ow_steer_candidate_get_preference(candidate)));
      }
 
-    if (ow_steer_candidate_list_cmp(candidate_list, candidate_list_copy) == false)
-        ow_steer_sta_schedule_executor_call(stack->sta);
-
+    ow_steer_sta_schedule_executor_call(stack->sta);
     ow_steer_candidate_list_free(candidate_list_copy);
 }
 
@@ -174,16 +174,17 @@ ow_steer_policy_stack_schedule_recalc(struct ow_steer_policy_stack *stack)
 }
 
 void
-ow_steer_policy_stack_sigusr1_dump(struct ow_steer_policy_stack *stack)
+ow_steer_policy_stack_sigusr1_dump(osw_diag_pipe_t *pipe,
+                                   struct ow_steer_policy_stack *stack)
 {
     assert(stack != NULL);
 
     struct ow_steer_policy *policy;
     ds_dlist_foreach(&stack->policy_list, policy) {
-        LOGI("ow: steer:       policy: name: %s", policy->name);
-        LOGI("ow: steer:         bssid: "OSW_HWADDR_FMT, OSW_HWADDR_ARG(ow_steer_policy_get_bssid(policy)));
+        osw_diag_pipe_writef(pipe, "ow: steer:       policy: name: %s", policy->name);
+        osw_diag_pipe_writef(pipe, "ow: steer:         bssid: "OSW_HWADDR_FMT, OSW_HWADDR_ARG(ow_steer_policy_get_bssid(policy)));
         if (policy->ops.sigusr1_dump_fn != NULL)
-            policy->ops.sigusr1_dump_fn(policy);
+            policy->ops.sigusr1_dump_fn(pipe, policy);
     }
 }
 

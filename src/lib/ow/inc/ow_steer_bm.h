@@ -28,6 +28,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define OW_STEER_BM_H
 
 #include <osw_state.h>
+#include <osw_defer_vif_down.h>
 
 enum ow_steer_bm_client_pref_5g {
     OW_STEER_BM_CLIENT_PREF_5G_NEVER,
@@ -77,6 +78,8 @@ enum ow_steer_bm_client_cs_mode {
 enum ow_steer_bm_cs_params_band {
     OW_STEER_BM_CLIENT_CS_PARAMS_BAND_2G,
     OW_STEER_BM_CLIENT_CS_PARAMS_BAND_5G,
+    OW_STEER_BM_CLIENT_CS_PARAMS_BAND_5GL,
+    OW_STEER_BM_CLIENT_CS_PARAMS_BAND_5GU,
     OW_STEER_BM_CLIENT_CS_PARAMS_BAND_6G,
 };
 
@@ -132,6 +135,12 @@ ow_steer_bm_neighbor_down_fn_t(struct ow_steer_bm_observer *observer,
                                struct ow_steer_bm_neighbor *neighbor);
 
 typedef void
+ow_steer_bm_neighbor_changed_channel_fn_t(struct ow_steer_bm_observer *observer,
+                                          struct ow_steer_bm_neighbor *neighbor,
+                                          const struct osw_channel *old_channel,
+                                          const struct osw_channel *new_channel);
+
+typedef void
 ow_steer_bm_client_added_fn_t(struct ow_steer_bm_observer *observer,
                               struct ow_steer_bm_client *client);
 
@@ -152,6 +161,7 @@ struct ow_steer_bm_observer {
     ow_steer_bm_vif_changed_channel_fn_t *vif_changed_channel_fn;
     ow_steer_bm_neighbor_up_fn_t *neighbor_up_fn;
     ow_steer_bm_neighbor_down_fn_t *neighbor_down_fn;
+    ow_steer_bm_neighbor_changed_channel_fn_t *neighbor_changed_channel_fn;
     ow_steer_bm_client_added_fn_t *client_added_fn;
     ow_steer_bm_client_changed_fn_t *client_changed_fn;
     ow_steer_bm_client_removed_fn_t *client_removed_fn;
@@ -167,6 +177,7 @@ struct ow_steer_bm_group {
     struct ds_tree sta_tree;
     struct ds_tree bss_tree;
     struct ow_steer_bm_observer observer;
+    struct ds_tree pending_vifs;
 
     struct ds_tree_node node;
 };
@@ -195,7 +206,17 @@ struct ow_steer_bm_vif {
     struct ow_steer_bm_group *group;
     struct ds_tree_node group_node;
 
+    struct osw_defer_vif_down_rule *defer_vif_down_rule;
+    struct osw_defer_vif_down_observer *defer_vif_down_obs;
+    bool shutting_down;
+
     struct ds_tree_node node;
+};
+
+struct ow_steer_bm_vif_pending {
+    struct osw_ifname vif_name;
+    struct ds_tree_node group_node;
+    struct ow_steer_bm_group *group;
 };
 
 typedef void
@@ -252,6 +273,12 @@ ow_steer_bm_neighbor_set_op_class(struct ow_steer_bm_neighbor *neighbor,
 void
 ow_steer_bm_neighbor_set_priority(struct ow_steer_bm_neighbor *neighbor,
                                   const unsigned int *priority);
+
+const struct osw_hwaddr *
+ow_steer_bm_neighbor_get_bssid(struct ow_steer_bm_neighbor *neighbor);
+
+const struct ow_steer_bm_bss *
+ow_steer_bm_neighbor_get_bss(struct ow_steer_bm_neighbor *neighbor);
 
 struct ow_steer_bm_client*
 ow_steer_bm_get_client(const uint8_t *addr);

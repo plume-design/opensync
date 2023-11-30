@@ -145,9 +145,8 @@ disable_dns_cache(struct dns_cache_settings *cache_init)
     mgr = dns_cache_get_mgr();
     if (!mgr->initialized) return false;
 
-    /* Disable dns_cache if DNS and ipthreat using gatekeeper as service */
-    if (mgr->disable_dns_cache[MODULE_DNS_PARSE] &&
-        mgr->disable_dns_cache[MODULE_IPTHREAT_DPI])
+    /* Disable dns_cache if ipthreat is using gatekeeper as service */
+    if (mgr->disable_dns_cache[MODULE_IPTHREAT_DPI])
     {
         dns_cache_disable();
         return true;

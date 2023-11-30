@@ -905,7 +905,7 @@ void __inet_dhsnif_process_dhcp(
                     lease->le_info.dl_hostname);
             if (self->ds_lease_fn != NULL)
             {
-                self->ds_lease_fn(self->ds_lease_inet, false, &lease->le_info);
+                self->ds_lease_fn(self->ds_lease_inet, true, &lease->le_info);
             }
 
             /* Remove from the list */

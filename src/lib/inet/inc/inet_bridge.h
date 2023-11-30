@@ -48,9 +48,10 @@ struct inet_bridge
         inet_base_t base;
     };
 
-    char in_br_ifname[C_IFNAME_LEN]; /* Interface name */
-    bool in_br_add;                  /* add/del bridge */
-    ds_tree_t in_br_port_list;
+    char                in_br_ifname[C_IFNAME_LEN]; /* Interface name */
+    bool                in_br_add;                  /* add/del bridge */
+    struct ev_debounce  in_br_debounce;             /* Reconfiguration debounce timer */
+    ds_tree_t           in_br_port_list;
 };
 
 inet_t *inet_bridge_new(const char *ifname);

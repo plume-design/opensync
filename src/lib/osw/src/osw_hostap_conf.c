@@ -139,30 +139,28 @@ osw_hostap_conf_set_brate_to_hapd(const struct osw_beacon_rate *rate,
     }
 }
 
-#if 0
 static bool
 hapd_util_vif_enabled_to_osw(const char *state,
-                             bool *enabled)
+                             enum osw_vif_status *status)
 {
     if (strstr(state, "ENABLED") || \
         strstr(state, "COUNTRY_UPDATE") || \
         strstr(state, "ACS") || \
         strstr(state, "HT_SCAN") || \
         strstr(state, "DFS") ) {
-        *enabled = true;
+        osw_vif_status_set(status, OSW_VIF_ENABLED);
         return true;
     }
 
     if (strstr(state, "DISABLED") || \
         strstr(state, "UNINITIALIZED") || \
         strstr(state, "UNKNOWN") ) {
-        *enabled = false;
-        return true;
+        /* fall through */
     }
 
+    osw_vif_status_set(status, OSW_VIF_DISABLED);
     return false;
 }
-#endif
 
 static void
 hapd_util_wps_cred_append(struct osw_wps_cred_list *creds,
@@ -1178,13 +1176,8 @@ osw_hostap_conf_fill_ap_state(const struct osw_hostap_conf_ap_state_bufs *bufs,
     /* Fill in neighbors list */
     osw_hostap_conf_fill_ap_state_neighbors(bufs, vstate);
 
-    /* Inferring vstate->enabled isn't really reliable here.
-     * Better leave it to the other layers which are
-     * intended to look at, eg. driver state, or netdev
-     * carrier states.
-     */
-    //STATE_GET_BY_FN(vstate->enabled,             status, "state",
-                    //hapd_util_vif_enabled_to_osw);
+    STATE_GET_BY_FN(vstate->status,              status, "state",
+                    hapd_util_vif_enabled_to_osw);
 
     STATE_GET_BY_FN(vstate->mac_addr,            status, "bssid",
                     hapd_util_bssid_cstr_to_osw);

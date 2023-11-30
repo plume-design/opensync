@@ -43,12 +43,20 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #define OSW_L2UF_PCAP_SNAPLEN 200
 #define OSW_L2UF_PCAP_BUFFER_SIZE (64 * 1024)
-#define OSW_L2UF_BPF_FILTER "llc xid"
+#define OSW_L2UF_BPF_FILTER "ether broadcast and ether[12]==0 and (ether[13]==6 or ether[13]==8)"
 #define OSW_L2UF_IF_RETRY_SECONDS 1
 #define LOG_PREFIX(i, fmt, ...) "osw: l2uf: %s: " fmt, (i)->if_name, ##__VA_ARGS__
 
-struct osw_l2uf_if {
+struct osw_l2uf {
+    struct ev_idle work;
+    struct ds_dlist ifaces;
     struct ev_loop *loop;
+};
+
+struct osw_l2uf_if {
+    struct ds_dlist_node node;
+    bool pending;
+    struct osw_l2uf *m;
     char *if_name;
     struct bpf_program bpf;
     struct ev_io io;
@@ -66,6 +74,25 @@ struct eth_hdr {
 } __attribute__((packed));
 
 static void
+osw_l2uf_if_pending_set(struct osw_l2uf_if *i)
+{
+    if (i->pending == true) return;
+
+    i->pending = true;
+    ds_dlist_insert_tail(&i->m->ifaces, i);
+    ev_idle_start(i->m->loop, &i->m->work);
+}
+
+static void
+osw_l2uf_if_pending_unset(struct osw_l2uf_if *i)
+{
+    if (i->pending == false) return;
+
+    ds_dlist_remove(&i->m->ifaces, i);
+    i->pending = false;
+}
+
+static void
 osw_l2uf_netif_status_fn(osn_netif_t *netif,
                          struct osn_netif_status *status)
 {
@@ -76,10 +103,11 @@ osw_l2uf_netif_status_fn(osn_netif_t *netif,
     LOGD(LOG_PREFIX(i, "netif: exists=%d up=%d", status->ns_exists, status->ns_up));
 
     if (status->ns_exists && status->ns_up) {
-        ev_timer_start(i->loop, &i->retry);
+        ev_timer_start(i->m->loop, &i->retry);
     }
     else {
-        ev_timer_stop(i->loop, &i->retry);
+        ev_timer_stop(i->m->loop, &i->retry);
+        osw_l2uf_if_pending_unset(i);
     }
 }
 
@@ -114,10 +142,10 @@ osw_l2uf_if_pcap_stop(struct osw_l2uf_if *i)
 
     LOGD(LOG_PREFIX(i, "stopping"));
 
-    ev_io_stop(i->loop, &i->io);
+    ev_io_stop(i->m->loop, &i->io);
     pcap_close(i->pcap);
     i->pcap = NULL;
-    ev_timer_start(i->loop, &i->retry);
+    ev_timer_start(i->m->loop, &i->retry);
 }
 
 static void
@@ -137,6 +165,10 @@ osw_l2uf_io_cb(struct ev_loop *loop, ev_io *io, int revent)
 static void
 osw_l2uf_if_pcap_start(struct osw_l2uf_if *i)
 {
+    bool is_up = false;
+    os_nif_is_up(i->if_name, &is_up);
+    if (is_up == false) return;
+
     const bool already_started = (i->pcap != NULL);
     if (already_started) return;
 
@@ -162,8 +194,8 @@ osw_l2uf_if_pcap_start(struct osw_l2uf_if *i)
 
     ev_io_init(&i->io, osw_l2uf_io_cb, fd, EV_READ);
     i->io.data = i;
-    ev_io_start(i->loop, &i->io);
-    ev_timer_stop(i->loop, &i->retry);
+    ev_io_start(i->m->loop, &i->io);
+    ev_timer_stop(i->m->loop, &i->retry);
 
     LOGD(LOG_PREFIX(i, "started"));
     return;
@@ -182,21 +214,15 @@ osw_l2uf_if_retry_cb(struct ev_loop *loop,
                      int revent)
 {
     struct osw_l2uf_if *i = t->data;
-    bool is_up = false;
-    os_nif_is_up(i->if_name, &is_up);
-    if (is_up == false) return;
-    osw_l2uf_if_pcap_start(i);
+    osw_l2uf_if_pending_set(i);
 }
 
 struct osw_l2uf_if *
-osw_l2uf_if_alloc(const char *if_name)
+osw_l2uf_if_alloc(struct osw_l2uf *m,
+                  const char *if_name)
 {
-    struct ev_loop *loop = OSW_MODULE_LOAD(osw_ev);
-    if (WARN_ON(loop == NULL))
-        return NULL;
-
     struct osw_l2uf_if *i = CALLOC(1, sizeof(*i));
-    i->loop = loop;
+    i->m = m;
     i->if_name = STRDUP(if_name);
     LOGD(LOG_PREFIX(i, "allocating"));
     ev_timer_init(&i->retry, osw_l2uf_if_retry_cb,
@@ -216,7 +242,8 @@ osw_l2uf_if_free(struct osw_l2uf_if *i)
 
     LOGD(LOG_PREFIX(i, "freeing"));
     osw_l2uf_if_pcap_stop(i);
-    ev_timer_stop(i->loop, &i->retry);
+    ev_timer_stop(i->m->loop, &i->retry);
+    osw_l2uf_if_pending_unset(i);
     osn_netif_status_notify(i->netif, NULL);
     osn_netif_del(i->netif);
     FREE(i->if_name);
@@ -243,7 +270,39 @@ osw_l2uf_if_set_seen_fn(struct osw_l2uf_if *i,
     i->seen_fn = fn;
 }
 
+static void
+osw_l2uf_work_cb(struct ev_loop *loop,
+                 ev_idle *idle,
+                 int revent)
+{
+    struct osw_l2uf *m = idle->data;
+    struct osw_l2uf_if *i = ds_dlist_head(&m->ifaces);
+    ev_idle_stop(loop, &m->work);
+    if (i == NULL) return;
+
+    osw_l2uf_if_pending_unset(i);
+    osw_l2uf_if_pcap_start(i);
+    ev_idle_start(loop, &m->work);
+}
+
+static void
+osw_l2uf_init(struct osw_l2uf *m)
+{
+    ds_dlist_init(&m->ifaces, struct osw_l2uf_if, node);
+    ev_async_init(&m->work, osw_l2uf_work_cb);
+    m->work.data = m;
+}
+
+static void
+osw_l2uf_attach(struct osw_l2uf *m)
+{
+    m->loop = OSW_MODULE_LOAD(osw_ev);
+}
+
 OSW_MODULE(osw_l2uf)
 {
-    return NULL;
+    static struct osw_l2uf m;
+    osw_l2uf_init(&m);
+    osw_l2uf_attach(&m);
+    return &m;
 }

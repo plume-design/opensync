@@ -232,6 +232,37 @@ test_gkc_flush_rules_macs(void)
     FREE(entry);
 }
 
+/*
+ * Add one entry into the FQDN cache and another entry into the URL cache.
+ * Upon issuing the "fqdn flush" command, both the FQDN and URL cache entries
+ * should be purged.
+ */
+void
+test_gkc_flush_fqdn_and_url(void)
+{
+    struct fsm_policy_rules fpr;
+    int ret;
+
+    memset(&fpr, 0, sizeof(fpr));
+
+    /* insert fqdn cache entry */
+    gkc_add_attribute_entry(entry10);
+    /* insert url cache entry */
+    gkc_add_attribute_entry(entry11);
+
+    gkc_print_cache_entries();
+
+    fpr.fqdn_rule_present = 1;
+    fpr.fqdn_op = FQDN_OP_OUT;
+
+    /* both fqdn and url entries should be cleared */
+    ret = gkc_flush_rules(&fpr);
+    TEST_ASSERT_EQUAL_INT(2, ret);
+
+    /* Cleanup */
+    free_policy_rules(&fpr);
+}
+
 void
 test_gkc_flush_rules_fqdn(void)
 {
@@ -279,7 +310,7 @@ test_gkc_flush_rules_fqdn(void)
 
     /* re-add the entry */
     gkc_add_attribute_entry(entry3);
-    /* Now wirh _OUT */
+    /* Now with _OUT */
     fpr.fqdn_op = FQDN_OP_OUT;
     strcpy(fpr.fqdns->array[0], "www.entr3.com");
     ret = gkc_flush_rules(&fpr);
@@ -516,6 +547,7 @@ run_gk_cache_flush(void)
     RUN_TEST(test_gkc_flush_rules_params);
     RUN_TEST(test_gkc_flush_rules_macs);
     RUN_TEST(test_gkc_flush_rules_fqdn);
+    RUN_TEST(test_gkc_flush_fqdn_and_url);
     RUN_TEST(test_gkc_flush_rules_app);
     RUN_TEST(test_gkc_flush_ipv4_and_ipv6);
     RUN_TEST(test_gkc_flush_ipv4_and_ipv6_empty_ip_set);

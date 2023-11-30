@@ -131,7 +131,7 @@ callback_Interface_Classifier(ovsdb_update_monitor_t *mon,
             return;
     }
 
-    if (mon->mon_type == OVSDB_UPDATE_MODIFY)
+    if (mon->mon_type == OVSDB_UPDATE_MODIFY || mon->mon_type == OVSDB_UPDATE_NEW)
     {
         qosm_interface_classifier_update(ic, new_rec);
     }

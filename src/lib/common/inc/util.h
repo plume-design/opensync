@@ -65,7 +65,7 @@ char *strchomp(char *str, char *delim);
 
 int count_nt_array(char **array);
 char* strfmt_nt_array(char *str, size_t size, char **array);
-bool is_inarray(const char * key, int argc, char ** argv);
+bool is_inarray(const char * key, int argc, char *argv[]);
 int filter_out_nt_array(char **array, char **filter);
 bool is_array_in_array(char **src, char **dest);
 char *str_bool(bool a);
@@ -188,5 +188,7 @@ bool unii_6g_is_320_2(int centerchan);
 int unii_6g_320_get_centerchan(int primary, int bandscheme);
 int chanlist_to_center(const int *chans);
 bool is_private_ip(char *ip_str);
+char *str_replace_with(const char *str, const char *from, const char *to);
+int str_replace_fixed(char *str, int size, const char *from, const char *to);
 
 #endif /* UTIL_H_INCLUDED */

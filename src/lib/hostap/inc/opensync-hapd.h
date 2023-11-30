@@ -69,6 +69,7 @@ struct hapd {
     bool use_driver_rrb_lo;
     bool use_reload_rxkhs;
     bool use_rxkh_file;
+    bool use_op_class;
 };
 
 struct hapd *hapd_lookup(const char *bss);

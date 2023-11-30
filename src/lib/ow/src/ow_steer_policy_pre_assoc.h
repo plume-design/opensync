@@ -75,7 +75,9 @@ struct ow_steer_policy_pre_assoc_config {
 };
 
 struct ow_steer_policy_pre_assoc*
-ow_steer_policy_pre_assoc_create(const struct osw_hwaddr *sta_addr,
+ow_steer_policy_pre_assoc_create(const char *name,
+                                 struct ow_steer_bm_group *group,
+                                 const struct osw_hwaddr *sta_addr,
                                  const struct ow_steer_policy_mediator *mediator);
 
 void

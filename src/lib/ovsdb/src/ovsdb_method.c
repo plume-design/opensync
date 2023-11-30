@@ -903,26 +903,35 @@ json_t * ovsdb_tran_multi(json_t * jarray,
 }
 
 /*
- * This function creates a combined OVSDB transaction which
- * inserts a new row, and inserts it's UUID into a parent
- * table's column using mutate
+ * This function is an extension of ovsdb_tran_multi() and creates
+ * a combined OVSDB transaction which inserts a new row, and inserts
+ * its UUID into a parent table's column using mutate.
  */
-json_t * ovsdb_tran_insert_with_parent(const char * table,
-                                       json_t * row,
-                                       const char * parent_table,
-                                       json_t * parent_where,
-                                       const char * parent_column)
+json_t * ovsdb_tran_multi_insert_with_parent(json_t * jarray,
+                                             const char * table,
+                                             json_t * row,
+                                             const char * parent_table,
+                                             json_t * parent_where,
+                                             const char * parent_column)
 {
+    static unsigned int id = 0;
+    char uuid_name[9 + 8 + 1];
     json_t * js;
-    json_t * jarray;
     json_t * js_obj;
     json_t * js_mutations;
     json_t * js_named_uuid;
 
+    /* Ensure UUID name is unique, to prevent "duplicate uuid-name" ("This
+     * uuid-name appeared on an earlier insert operation.") error when
+     * performing multiple insert operations within the same transaction.
+     * The counter is safe to wrap around, as the UUID name is only used
+     * within the same transaction. */
+    snprintf(uuid_name, sizeof(uuid_name), "child_id_%x", id++);
+
     /* First transaction: Insert row into table with named UUID */
     js_obj = json_object();
-    json_object_set_new(js_obj, "uuid-name", json_string("child_id"));
-    jarray = ovsdb_tran_multi(NULL,         // NULL = first transaction
+    json_object_set_new(js_obj, "uuid-name", json_string(uuid_name));
+    jarray = ovsdb_tran_multi(jarray,       // Append transaction
                               js_obj,       // Initial transact object
                               table,        // Table for insert
                               OTR_INSERT,   // Insert operation
@@ -932,7 +941,7 @@ json_t * ovsdb_tran_insert_with_parent(const char * table,
     /* Second transaction: Parent table mutation to insert UUID */
     js_named_uuid = json_array();
     json_array_append_new(js_named_uuid, json_string("named-uuid"));
-    json_array_append_new(js_named_uuid, json_string("child_id"));
+    json_array_append_new(js_named_uuid, json_string(uuid_name));
 
     js = json_array();
     json_array_append_new(js, json_string(parent_column));
@@ -953,18 +962,18 @@ json_t * ovsdb_tran_insert_with_parent(const char * table,
 }
 
 /*
- * This function creates a combined OVSDB transaction which
- * deletes a rows by uuid in one table, and then removes
- * them from a parent table's column using mutate
+ * This function is an extension of ovsdb_tran_multi() and creates a
+ * combined OVSDB transaction which deletes rows by uuid in one table,
+ * and then removes them from a parent table's column using mutate.
  */
-json_t * ovsdb_tran_delete_with_parent(const char * table,
-                                       json_t * uuids,
-                                       const char * parent_table,
-                                       json_t * parent_where,
-                                       const char * parent_column)
+json_t *ovsdb_tran_multi_delete_with_parent(json_t *jarray,
+                                            const char *table,
+                                            json_t *uuids,
+                                            const char *parent_table,
+                                            json_t *parent_where,
+                                            const char *parent_column)
 {
     json_t * js;
-    json_t * jarray = NULL;
     json_t * jwhere;
     json_t * js_uuid;
     json_t * js_mutations;

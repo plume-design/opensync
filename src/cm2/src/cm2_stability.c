@@ -194,6 +194,12 @@ static void cm2_restore_connection(cm2_restore_con_t opt)
     if (opt == 0)
         return;
 
+    if (g_state.connected)
+        return;
+
+    if (cm2_ovsdb_is_tunnel_created(g_state.link.if_name))
+        return;
+
     if (!cm2_is_eth_type(g_state.link.if_type))
         return;
 
@@ -252,6 +258,12 @@ cm2_util_set_ip_opts(const char *uname, const char *utype,
     } else {
         *opts &= ~IPV6_CHECK;
     }
+
+    if (ipv4 != CM2_UPLINK_INACTIVE && ipv6 == CM2_UPLINK_NONE)
+        *opts |= IPV4_CHECK;
+
+    if (ipv6 != CM2_UPLINK_INACTIVE && ipv4 == CM2_UPLINK_NONE)
+        *opts |= IPV6_CHECK;
 
     if (!(*opts & IPV4_CHECK) && !(*opts & IPV6_CHECK)) {
         LOGI("Unexpected configuration of IP, force use IPv4");

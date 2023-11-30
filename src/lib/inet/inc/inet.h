@@ -108,11 +108,13 @@ struct inet_portforward
     uint16_t         pf_src_port;
     enum inet_proto  pf_proto;
     osn_ip_addr_t    pf_dst_ipaddr;
+    bool             pf_nat_loopback;
 };
 
 #define INET_PORTFORWARD_INIT (struct inet_portforward) \
 {                                                       \
     .pf_dst_ipaddr = OSN_IP_ADDR_INIT,                  \
+    .pf_nat_loopback = true,                            \
 }
 
 enum inet_ip6_addr_origin

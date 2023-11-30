@@ -454,12 +454,12 @@ OSW_UT(ow_steer_bm_case1)
     ow_steer_bm_neighbor_set_op_class(neighbor_aaa, &neighbor_aaa_op_class);
     osw_ut_time_advance(OSW_TIME_SEC(1));
 
-    OSW_UT_EVAL(ow_steer_bm_neighbor_is_ready(neighbor_aaa) == false);
-    OSW_UT_EVAL(ow_steer_bm_neighbor_is_up(neighbor_aaa) == false);
+    OSW_UT_EVAL(ow_steer_bm_neighbor_is_ready(neighbor_aaa) == true);
+    OSW_UT_EVAL(ow_steer_bm_neighbor_is_up(neighbor_aaa) == true);
 
     OSW_UT_EVAL(ds_tree_len(&group_a->vif_tree) == 1);
     OSW_UT_EVAL(ds_tree_find(&group_a->vif_tree, &vif_aa_name) == vif_aa);
-    OSW_UT_EVAL(ds_tree_len(&group_a->bss_tree) == 1);
+    OSW_UT_EVAL(ds_tree_len(&group_a->bss_tree) == 2);
     OSW_UT_EVAL(ow_steer_bm_ut_ds_tree_count_all(&group_a->bss_tree, &vif_aa_name_addr, (ow_steer_bm_ut_cmp_fn_t*) osw_hwaddr_cmp) == 1);
 
     OSW_UT_EVAL(ds_tree_len(&g_group_tree) == 1);
@@ -475,7 +475,7 @@ OSW_UT(ow_steer_bm_case1)
 
     OSW_UT_EVAL(ds_dlist_len(&g_sta_list) == 0);
 
-    OSW_UT_EVAL(ds_dlist_len(&g_bss_list) == 1);
+    OSW_UT_EVAL(ds_dlist_len(&g_bss_list) == 2);
     OSW_UT_EVAL(ow_steer_bm_ut_ds_dlist_count_all(&g_bss_list, &vif_aa_name_addr, (ow_steer_bm_ut_cmp_fn_t*) osw_hwaddr_cmp) == 1);
 
     const enum ow_steer_bm_neighbor_ht_mode neighbor_aaa_ht_mode = OW_STEER_BM_NEIGHBOR_HT20;
@@ -1379,7 +1379,7 @@ OSW_UT(ow_steer_bm_stats_steering_kick_2g)
     OSW_UT_EVAL(bm_sta != NULL);
 
     /* first try */
-    struct ow_steer_policy *steering_kick_policy_base_2g = ow_steer_policy_snr_xing_get_base(bm_sta->hwm_2g_xing_policy);
+    struct ow_steer_policy *steering_kick_policy_base_2g = ow_steer_bm_policy_hwm_2g_get_base(bm_sta->hwm_2g_policy);
     OSW_UT_EVAL(steering_kick_policy_base_2g != NULL);
 
     ow_steer_bm_policy_mediator_trigger_executor_cb(steering_kick_policy_base_2g,

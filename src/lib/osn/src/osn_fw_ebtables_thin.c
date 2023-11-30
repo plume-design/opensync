@@ -94,6 +94,7 @@ static ds_tree_t osfw_chain_list = DS_TREE_INIT(osfw_chain_cmp, struct osfw_chai
 struct osfw_ebbase
 {
     osfw_fn_t *status_fn;
+    osfw_hook_fn_t *osfw_hook_fn;
 };
 
 static struct osfw_ebbase osfw_ebbase;
@@ -164,9 +165,10 @@ static const char *osfw_eb_convert_cmd(int family)
  * ===========================================================================
  */
 
-bool osfw_eb_init(osfw_fn_t *status_fn)
+bool osfw_eb_init(osfw_fn_t *status_fn, osfw_hook_fn_t *osfw_hook_fn)
 {
     osfw_ebbase.status_fn = status_fn;
+    osfw_ebbase.osfw_hook_fn = osfw_hook_fn;
     /*
      * The default debounce timer is 0.3ms with a maximum timeout of 2 seconds
      */
@@ -275,6 +277,7 @@ void osfw_debounce_fn(struct ev_loop *loop, ev_debounce *w, int revent)
                 prule->fr_target,
                 prule->fr_name);
     }
+    if (osfw_ebbase.osfw_hook_fn) osfw_ebbase.osfw_hook_fn(OSFW_HOOK_EBTABLES);
 }
 
 /*

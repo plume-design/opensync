@@ -41,6 +41,8 @@ UNIT_SRC += src/os_exec.c
 UNIT_SRC += src/memutil.c
 UNIT_SRC += src/sockaddr_storage.c
 UNIT_SRC += src/iso3166.c
+UNIT_SRC += src/os_send_raw.c
+UNIT_SRC += src/os_llc_snap.c
 
 UNIT_CFLAGS := -I$(UNIT_PATH)/inc
 UNIT_CFLAGS += -fasynchronous-unwind-tables

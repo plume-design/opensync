@@ -65,6 +65,8 @@ const char lnx_pppoe_peers_template[] =
     "noauth\n"
     "# Interface name\n"
     "ifname %s\n"
+    "# Link name\n"
+    "linkname %s\n"
     "# Remote name\n"
     "remotename %s\n"
     "# Get DNS settings from the peer\n"
@@ -101,6 +103,7 @@ struct lnx_pppoe_secret
     char            ps_password[128];               /**< PPP password */
     ds_tree_node_t  ps_tnode;                       /**< Tree node structure */
 };
+
 
 static ds_tree_t lnx_pppoe_secrets = DS_TREE_INIT(ds_str_cmp, struct lnx_pppoe_secret, ps_tnode);
 
@@ -380,6 +383,7 @@ bool lnx_pppoe_peers_write(lnx_pppoe_t *self)
 
     fprintf(f, lnx_pppoe_peers_template,
             self->lp_pifname,
+            self->lp_ifname,
             self->lp_ifname,
             self->lp_ifname);
 

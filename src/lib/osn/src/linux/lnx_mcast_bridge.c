@@ -49,6 +49,11 @@ static char set_static_mrouter[] = _S(ovs-vsctl set Port "$1" other_config:mcast
 static char set_igmp_age[] = _S(ovs-vsctl set Bridge "$1" other_config:mcast-snooping-aging-time="$2");
 static char flush_mcast_table[] = _S(ovs-appctl mdb/flush "$1");
 
+/* Native bridge igmp snooping config */
+static char set_mcast_snooping_native[] = _S(echo "$1" > /sys/devices/virtual/net/"$2"/bridge/multicast_snooping);
+static char set_fast_leave_native[] = _S(for file in /sys/devices/virtual/net/"$1"/lower*/brport/multicast_fast_leave; \
+                                            do echo "$2" > "$file"; done);
+
 lnx_mcast_bridge lnx_mcast_bridge_base;
 
 static lnx_mcast_bridge *lnx_mcast_bridge_init()
@@ -135,7 +140,7 @@ static bool lnx_mcast_deconfigure(lnx_mcast_bridge *self)
     status = execsh_log(LOG_SEVERITY_DEBUG, set_mcast_snooping, self->snooping_bridge, "false");
     if (!WIFEXITED(status) || WEXITSTATUS(status) != 0)
     {
-        LOG(INFO, "osn_mcast_ovs_deconfigure: Cannot disable snooping on bridge %s",
+        LOG(INFO, "lnx_mcast_ovs_deconfigure: Cannot disable snooping on bridge %s",
                 self->snooping_bridge);
     }
 
@@ -143,7 +148,7 @@ static bool lnx_mcast_deconfigure(lnx_mcast_bridge *self)
     status = execsh_log(LOG_SEVERITY_DEBUG, remove_igmp_exceptions, self->snooping_bridge);
     if (!WIFEXITED(status) || WEXITSTATUS(status) != 0)
     {
-        LOG(INFO, "osn_mcast_ovs_deconfigure: Error removing IGMP exceptions on bridge %s",
+        LOG(INFO, "lnx_mcast_ovs_deconfigure: Error removing IGMP exceptions on bridge %s",
                 self->snooping_bridge);
     }
 
@@ -151,7 +156,7 @@ static bool lnx_mcast_deconfigure(lnx_mcast_bridge *self)
     status = execsh_log(LOG_SEVERITY_DEBUG, remove_mld_exceptions, self->snooping_bridge);
     if (!WIFEXITED(status) || WEXITSTATUS(status) != 0)
     {
-        LOG(INFO, "osn_mcast_ovs_deconfigure: Error removing MLD exceptions on bridge %s",
+        LOG(INFO, "lnx_mcast_ovs_deconfigure: Error removing MLD exceptions on bridge %s",
                 self->snooping_bridge);
     }
 
@@ -159,7 +164,7 @@ static bool lnx_mcast_deconfigure(lnx_mcast_bridge *self)
     status = execsh_log(LOG_SEVERITY_DEBUG, set_unknown_group, self->snooping_bridge, "false" );
     if (!WIFEXITED(status) || WEXITSTATUS(status) != 0)
     {
-        LOG(INFO, "osn_mcast_ovs_deconfigure: Error resetting unknown group behiavor on bridge %s",
+        LOG(INFO, "lnx_mcast_ovs_deconfigure: Error resetting unknown group behiavor on bridge %s",
                 self->snooping_bridge);
     }
 
@@ -169,10 +174,39 @@ static bool lnx_mcast_deconfigure(lnx_mcast_bridge *self)
         status = execsh_log(LOG_SEVERITY_DEBUG, set_static_mrouter, self->static_mrouter, "false");
         if (!WIFEXITED(status) || WEXITSTATUS(status) != 0)
         {
-            LOG(INFO, "osn_mcast_ovs_deconfigure: Error unsetting old static multicast router %s",
+            LOG(INFO, "lnx_mcast_ovs_deconfigure: Error unsetting old static multicast router %s",
                     self->static_mrouter);
         }
         self->static_mrouter[0] = '\0';
+    }
+
+    self->snooping_bridge[0] = '\0';
+    return true;
+}
+
+static bool lnx_mcast_native_deconfigure(lnx_mcast_bridge *self)
+{
+    int status;
+
+    LOGI("lnx_mcast_native_deconfigure: called with %s", self->snooping_bridge);
+
+    if (self->snooping_bridge[0] == '\0')
+        return true;
+
+    /* Disable snooping */
+    status = execsh_log(LOG_SEVERITY_DEBUG, set_mcast_snooping_native, "0", self->snooping_bridge);
+    if (!WIFEXITED(status) || WEXITSTATUS(status) != 0)
+    {
+        LOG(INFO, "lnx_mcast_native_deconfigure: Cannot disable snooping on bridge %s",
+                self->snooping_bridge);
+    }
+
+    /* Disable fast leave */
+    status = execsh_log(LOG_SEVERITY_DEBUG, set_fast_leave_native, self->snooping_bridge, "0");
+    if (!WIFEXITED(status) || WEXITSTATUS(status) != 0)
+    {
+        LOG(INFO, "lnx_mcast_native_deconfigure: Cannot disable fast leave on bridge %s",
+                self->snooping_bridge);
     }
 
     self->snooping_bridge[0] = '\0';
@@ -353,6 +387,63 @@ bool lnx_mcast_apply_config(lnx_mcast_bridge *self)
     return true;
 }
 
+/* Returns false, if reapply is needed */
+bool lnx_mcast_apply_native_config(lnx_mcast_bridge *self)
+{
+    lnx_igmp_t *igmp = &self->igmp;
+    lnx_mld_t *mld = &self->mld;
+    bool snooping_enabled;
+    char *snooping_bridge;
+    bool snooping_bridge_up;
+    bool fast_leave_enable;
+    int status;
+
+    if (igmp->snooping_enabled || !mld->snooping_enabled)
+    {
+        snooping_enabled = igmp->snooping_enabled;
+        snooping_bridge = igmp->snooping_bridge;
+        snooping_bridge_up = igmp->snooping_bridge_up;
+        fast_leave_enable = igmp->fast_leave_enable;
+    }
+    else
+    {
+        snooping_enabled = mld->snooping_enabled;
+        snooping_bridge = mld->snooping_bridge;
+        snooping_bridge_up = mld->snooping_bridge_up;
+        fast_leave_enable = mld->fast_leave_enable;
+    }
+
+    /* If snooping was turned off or snooping bridge was changed, deconfigure it first */
+    if (snooping_bridge_up == false || strncmp(self->snooping_bridge, snooping_bridge, IFNAMSIZ) != 0)
+        lnx_mcast_native_deconfigure(self);
+
+    if (snooping_bridge_up == false || snooping_bridge[0] == '\0')
+        return true;
+
+    /* Enable/disable snooping */
+    status = execsh_log(LOG_SEVERITY_DEBUG, set_mcast_snooping_native, snooping_enabled ? "1" : "0",
+                        snooping_bridge);
+    if (!WIFEXITED(status) || WEXITSTATUS(status) != 0)
+    {
+        LOG(ERR, "lnx_mcast_apply_native_config: Error enabling/disabling snooping, command failed for %s",
+                snooping_bridge);
+        return false;
+    }
+    STRSCPY_WARN(self->snooping_bridge, snooping_bridge);
+
+    /* Enable/disable fast leave */
+    status = execsh_log(LOG_SEVERITY_DEBUG, set_fast_leave_native, snooping_bridge,
+                        fast_leave_enable ? "1" : "0");
+    if (!WIFEXITED(status) || WEXITSTATUS(status) != 0)
+    {
+        LOG(ERR, "lnx_mcast_apply_native_config: Error enabling/disabling fast leave, command failed for %s",
+                snooping_bridge);
+        return false;
+    }
+
+    return true;
+}
+
 bool lnx_mcast_apply()
 {
     lnx_mcast_bridge *self = &lnx_mcast_bridge_base;
@@ -365,14 +456,18 @@ bool lnx_mcast_apply()
 void lnx_mcast_apply_fn(struct ev_loop *loop, ev_debounce *w, int revent)
 {
     lnx_mcast_bridge *self = &lnx_mcast_bridge_base;
+    bool status;
 
-    if (kconfig_enabled(CONFIG_TARGET_USE_NATIVE_BRIDGE)) return;
+    if (kconfig_enabled(CONFIG_TARGET_USE_NATIVE_BRIDGE))
+        status = lnx_mcast_apply_native_config(self);
+    else
+        status = lnx_mcast_apply_config(self);
 
     if (!self->igmp_initialized && !self->mld_initialized)
         return;
 
     /* Apply OVS configuration */
-    if (lnx_mcast_apply_config(self) == false)
+    if (status == false)
     {
         /* Schedule retry until retry limit reached */
         if (self->apply_retry > 0)
@@ -383,7 +478,7 @@ void lnx_mcast_apply_fn(struct ev_loop *loop, ev_debounce *w, int revent)
             return;
         }
 
-        LOG(ERR, "lnx_mcast_apply_fn: Unable to apply OVS configuration.");
+        LOG(ERR, "lnx_mcast_apply_fn: Unable to apply mcast bridge configuration.");
     }
 
     return;

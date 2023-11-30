@@ -26,12 +26,16 @@
 
 # {# jinja-parse #}
 INSTALL_PREFIX={{INSTALL_PREFIX}}
+LAN_INTF="{{CONFIG_TARGET_LAN_BRIDGE_NAME}}"
+MODE_PREFIX_NO_ADDRESS={{CONFIG_OSN_ODHCP6_MODE_PREFIX_NO_ADDRESS}}
 
 [ -z "$2" ] && echo "Error: should be run by odhcpc6c" && exit 1
 
 . ${INSTALL_PREFIX}/bin/dns_sub.sh
 
 OPTS_FILE=/var/run/odhcp6c_$1.opts
+RAND_ADDR_FILE=/var/run/odhcp6c_$1.rand_addr
+IP_UNNUMBERED_MODE_FILE=/var/run/odhcp6c_$1.ip_unnumbered
 
 #
 # Remove the "prefix" part from a `ip -6 route` command. For example:
@@ -140,6 +144,76 @@ log_dhcp6_time_event()
     if [ -x "$logger" ]; then
         $logger -n "telog" -c "DHCP6_CLIENT" -s "$1" -t "$2" "addr=${3:-null}"
     fi
+}
+
+#
+# From the delegated prefix generate a random IPv6 address.
+#
+rand_addr_gen_from_prefix()
+{
+    local prefix=${1%::*}
+    local prefix_len=$2
+
+    local addr=$prefix
+    [ $prefix_len -le 48 ] && addr="$addr:"
+
+    local i=0
+    while [ $i -lt 4 ]
+    do
+        local hex_16bit=$(cat /dev/urandom | tr -dc 0123456789abcdef | head -c 4)
+        [ "$hex_16bit" == "0000" ] && continue
+
+        addr="${addr}:${hex_16bit}"
+        let "i=$i+1"
+    done
+    echo "${addr}"
+}
+
+#
+# Generate a random address from the prefix and
+# assign it to the interface.
+#
+rand_addr_assign_from_prefix()
+{
+    local device=$1
+    local prefix=$2
+    local rand_addr=""
+
+    local paddr="${prefix%%,*}"
+    local plen="${paddr#*/}"    # prefix length
+    local pref="${paddr%/*}"    # prefix
+
+    if [ -e "$RAND_ADDR_FILE" ]; then
+        rand_addr=$(cat "$RAND_ADDR_FILE")
+    else
+        rand_addr=$(rand_addr_gen_from_prefix "$pref" "$plen")
+        echo "$rand_addr" > $RAND_ADDR_FILE
+    fi
+
+    ip -6 addr replace "${rand_addr}/128" dev "$device"
+    ip -6 neigh add proxy "$rand_addr" dev "$LAN_INTF"
+}
+
+#
+# Generate a ::1/64 address from prefix
+# and assign it to the LAN interface.
+#
+ip_unnumbered_assign_addr_from_prefix()
+{
+    local device=$1
+    local prefix=$2
+    local addr=""
+
+    local paddr="${prefix%%,*}"
+    local pref="${paddr%/*}"
+
+    addr="${pref}1/64"
+
+    ip -6 addr replace "$addr" dev "$LAN_INTF"
+    ip link set up dev "$LAN_INTF"  # LAN interface may be down, bring it up
+
+    # Mark the interface in IP unnumbered mode:
+    touch "$IP_UNNUMBERED_MODE_FILE"
 }
 
 setup_interface()
@@ -263,6 +337,30 @@ setup_interface()
         _PREFIXES="${_PREFIXES}${_PREFIXES:+ }${prefix}"
     done
     PREFIXES="${_PREFIXES}"
+
+    #
+    # We didn't get any IA_NA, but got IA_PD: we could still
+    # be able to establish connectivity:
+    #
+    if [ -z "$ADDRESSES" ] && [ -n "$PREFIXES" ]; then
+
+        local prefix=$(echo "$PREFIXES" | cut -d ' ' -f 1)
+
+        if [ "$MODE_PREFIX_NO_ADDRESS" == "RAND_ADDRESS" ]; then
+            # Take (the first) prefix, generate a random address from it
+            # and assign it to the interface to allow connectivity:
+            rand_addr_assign_from_prefix "$device" "$prefix"
+
+        elif [ "$MODE_PREFIX_NO_ADDRESS" == "IP_UNNUMBERED" ]; then
+            # IP unnumbered: The interface "borrows" an IP address
+            # from another interface.
+            #
+            # Take (the first) prefix, generate a ::1/64 address from it
+            # and assign it to the LAN interface to allow connectivity:
+            ip_unnumbered_assign_addr_from_prefix "$device" "$prefix"
+        fi
+    fi
+
     export > "${OPTS_FILE}.$$"
     mv "${OPTS_FILE}.$$" "${OPTS_FILE}"
 
@@ -282,6 +380,17 @@ teardown_interface()
     update_resolv "$device" ""
 }
 
+ip_unnumbered_teardown()
+{
+    local device=$1
+
+    if [ -e "$IP_UNNUMBERED_MODE_FILE" ]; then
+        ip -6 address flush dev "$LAN_INTF" scope global
+
+        rm -f "$IP_UNNUMBERED_MODE_FILE"
+    fi
+}
+
 (
     case "$2" in
         bound|rebound)
@@ -293,9 +402,11 @@ teardown_interface()
         ;;
         stopped|unbound)
             teardown_interface "$1"
+            ip_unnumbered_teardown "$1"
         ;;
         started)
             teardown_interface "$1"
+            ip_unnumbered_teardown "$1"
         ;;
     esac
 

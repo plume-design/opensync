@@ -36,6 +36,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <osw_time.h>
 #include <osw_timer.h>
 #include <osw_state.h>
+#include <osw_diag.h>
+#include <osw_bss_map.h>
+#include "ow_steer_bm.h"
 #include "ow_steer_candidate_list.h"
 #include "ow_steer_policy.h"
 #include "ow_steer_policy_priv.h"
@@ -54,6 +57,12 @@ struct ow_steer_policy_pre_assoc_volatile_state {
     struct osw_timer auth_bypass_timer;
 };
 
+struct ow_steer_policy_pre_assoc_neighbor {
+    enum osw_band band;
+    struct osw_hwaddr bssid;
+    struct ds_dlist_node node;
+};
+
 struct ow_steer_policy_pre_assoc {
     struct ow_steer_policy *base;
     struct ow_steer_policy_pre_assoc_config *next_config;
@@ -61,6 +70,9 @@ struct ow_steer_policy_pre_assoc {
     struct ow_steer_policy_pre_assoc_persistent_state pstate;
     struct ow_steer_policy_pre_assoc_volatile_state vstate;
     struct osw_state_observer state_observer;
+    struct ds_dlist local_bssids; /* struct ow_steer_policy_pre_assoc_neighbor */
+    struct ow_steer_bm_observer bm_obs;
+    struct ow_steer_bm_group *group;
     struct osw_timer reconf_timer;
 };
 
@@ -122,39 +134,49 @@ ow_steer_policy_pre_assoc_reset_volatile_state(struct ow_steer_policy_pre_assoc 
 }
 
 static void
-ow_steer_policy_pre_assoc_sigusr1_dump_cb(struct ow_steer_policy *policy)
+ow_steer_policy_pre_assoc_sigusr1_dump_cb(osw_diag_pipe_t *pipe,
+                                          struct ow_steer_policy *policy)
 {
     ASSERT(policy != NULL, "");
 
     const struct ow_steer_policy_pre_assoc *pre_assoc_policy = ow_steer_policy_get_priv(policy);
     const struct ow_steer_policy_pre_assoc_config *config = pre_assoc_policy->config;
 
-    LOGI("ow: steer:         config: %s", config != NULL ? "" : "(nil)");
+    osw_diag_pipe_writef(pipe, "ow: steer:         config: %s", config != NULL ? "" : "(nil)");
     if (config != NULL) {
-        LOGI("ow: steer:           backoff_timeout_sec: %u", config->backoff_timeout_sec);
-        LOGI("ow: steer:           backoff_exp_base: %u", config->backoff_exp_base);
+        osw_diag_pipe_writef(pipe, "ow: steer:           backoff_timeout_sec: %u", config->backoff_timeout_sec);
+        osw_diag_pipe_writef(pipe, "ow: steer:           backoff_exp_base: %u", config->backoff_exp_base);
 
         switch (config->reject_condition.type) {
             case OW_STEER_POLICY_PRE_ASSOC_REJECT_CONDITION_COUNTER:
-                LOGI("ow: steer:           reject condition: counter");
-                LOGI("ow: steer:             reject_limit: %u", config->reject_condition.params.counter.reject_limit);
-                LOGI("ow: steer:             reject_timeout_sec: %u", config->reject_condition.params.counter.reject_timeout_sec);
+                osw_diag_pipe_writef(pipe, "ow: steer:           reject condition: counter");
+                osw_diag_pipe_writef(pipe, "ow: steer:             reject_limit: %u", config->reject_condition.params.counter.reject_limit);
+                osw_diag_pipe_writef(pipe, "ow: steer:             reject_timeout_sec: %u", config->reject_condition.params.counter.reject_timeout_sec);
                 break;
             case OW_STEER_POLICY_PRE_ASSOC_REJECT_CONDITION_TIMER:
-                LOGI("ow: steer:           reject condition: timer");
-                LOGI("ow: steer:             reject_timeout_msec: %u", config->reject_condition.params.timer.reject_timeout_msec);
+                osw_diag_pipe_writef(pipe, "ow: steer:           reject condition: timer");
+                osw_diag_pipe_writef(pipe, "ow: steer:             reject_timeout_msec: %u", config->reject_condition.params.timer.reject_timeout_msec);
                 break;
         }
 
         switch (config->backoff_condition.type) {
             case OW_STEER_POLICY_PRE_ASSOC_BACKOFF_CONDITION_NONE:
-                LOGI("ow: steer:           backoff_condition: none");
+                osw_diag_pipe_writef(pipe, "ow: steer:           backoff_condition: none");
                 break;
             case OW_STEER_POLICY_PRE_ASSOC_BACKOFF_CONDITION_THRESHOLD_SNR:
-                LOGI("ow: steer:           backoff_condition: threshold snr");
-                LOGI("ow: steer:             threshold_snr: %u", config->backoff_condition.params.threshold_snr.threshold_snr);
+                osw_diag_pipe_writef(pipe, "ow: steer:           backoff_condition: threshold snr");
+                osw_diag_pipe_writef(pipe, "ow: steer:             threshold_snr: %u", config->backoff_condition.params.threshold_snr.threshold_snr);
                 break;
         }
+    }
+
+    struct ow_steer_policy_pre_assoc_neighbor *nbor;
+    struct ow_steer_policy_pre_assoc *deconst_pre_assoc_policy = ow_steer_policy_get_priv(policy);
+    const size_t local_bssids_count = ds_dlist_len(&deconst_pre_assoc_policy->local_bssids);
+    osw_diag_pipe_writef(pipe, "ow: steer:           local_bssids_count: %zu", local_bssids_count);
+    ds_dlist_foreach(&deconst_pre_assoc_policy->local_bssids, nbor) {
+        osw_diag_pipe_writef(pipe, "ow: steer:             neighbor: "OSW_HWADDR_FMT", band: %s",
+                OSW_HWADDR_ARG(&nbor->bssid), osw_band_to_str(nbor->band));
     }
 
     const struct ow_steer_policy_pre_assoc_volatile_state *vstate = &pre_assoc_policy->vstate;
@@ -163,15 +185,15 @@ ow_steer_policy_pre_assoc_sigusr1_dump_cb(struct ow_steer_policy *policy)
         strfmta("%.2lf sec remaining", OSW_TIME_TO_DBL(osw_timer_get_remaining_nsec(&vstate->reject_timer, now_nsec))) : "inactive";
     const char *backoff_timer_buf = osw_timer_is_armed(&vstate->backoff_timer) == true ?
         strfmta("%.2lf sec remaining", OSW_TIME_TO_DBL(osw_timer_get_remaining_nsec(&vstate->backoff_timer, now_nsec))) : "inactive";
-    LOGI("ow: steer:         vstate:");
-    LOGI("ow: steer:           reject_cnt: %u", vstate->reject_cnt);
-    LOGI("ow: steer:           reject_timer: %s", reject_timer_buf);
-    LOGI("ow: steer:           backoff_timer: %s", backoff_timer_buf);
+    osw_diag_pipe_writef(pipe, "ow: steer:         vstate:");
+    osw_diag_pipe_writef(pipe, "ow: steer:           reject_cnt: %u", vstate->reject_cnt);
+    osw_diag_pipe_writef(pipe, "ow: steer:           reject_timer: %s", reject_timer_buf);
+    osw_diag_pipe_writef(pipe, "ow: steer:           backoff_timer: %s", backoff_timer_buf);
 
     const struct ow_steer_policy_pre_assoc_persistent_state *pstate = &pre_assoc_policy->pstate;
-    LOGI("ow: steer:         pstate:");
-    LOGI("ow: steer:           active_link_cnt: %u", pstate->active_link_cnt);
-    LOGI("ow: steer:           backoff_connect_cnt: %u", pstate->backoff_connect_cnt);
+    osw_diag_pipe_writef(pipe, "ow: steer:         pstate:");
+    osw_diag_pipe_writef(pipe, "ow: steer:           active_link_cnt: %u", pstate->active_link_cnt);
+    osw_diag_pipe_writef(pipe, "ow: steer:           backoff_connect_cnt: %u", pstate->backoff_connect_cnt);
 }
 
 static void
@@ -598,6 +620,42 @@ ow_steer_policy_pre_assoc_is_auth_attempt(struct ow_steer_policy_pre_assoc *pre_
     return true;
 }
 
+static bool
+ow_steer_policy_pre_assoc_is_other_band_candidate_available(struct ow_steer_policy_pre_assoc *pre_assoc_policy,
+                                                            struct ow_steer_candidate_list *candidate_list,
+                                                            struct ow_steer_candidate *candidate)
+{
+    struct ds_dlist *local_bssids = &pre_assoc_policy->local_bssids;
+    enum osw_band current_candidate_band = OSW_BAND_UNDEFINED;
+    const struct osw_hwaddr *candidate_bssid = ow_steer_candidate_get_bssid(candidate);
+
+    struct ow_steer_policy_pre_assoc_neighbor *nbor;
+    ds_dlist_foreach(local_bssids, nbor) {
+        if (osw_hwaddr_is_equal(&nbor->bssid, candidate_bssid)) {
+            current_candidate_band = nbor->band;
+            break;
+        }
+    }
+
+    size_t i = 0;
+    size_t candidate_list_size = ow_steer_candidate_list_get_length(candidate_list);
+    for (i = 0; i < candidate_list_size; i++) {
+        const struct ow_steer_candidate *candidate_i = ow_steer_candidate_list_get(candidate_list, i);
+        const struct osw_channel *candidate_chan = ow_steer_candidate_get_channel(candidate_i);
+        switch (ow_steer_candidate_get_preference(candidate_i)) {
+            case OW_STEER_CANDIDATE_PREFERENCE_SOFT_BLOCKED: /* fall-through */
+            case OW_STEER_CANDIDATE_PREFERENCE_HARD_BLOCKED: /* fall-through */
+            case OW_STEER_CANDIDATE_PREFERENCE_OUT_OF_SCOPE:
+                continue;
+            case OW_STEER_CANDIDATE_PREFERENCE_NONE:         /* fall-through */
+            case OW_STEER_CANDIDATE_PREFERENCE_AVAILABLE:
+                if (osw_freq_to_band(candidate_chan->control_freq_mhz) != current_candidate_band)
+                    return true;
+        }
+    }
+    return false;
+}
+
 static void
 ow_steer_policy_pre_assoc_consider_auth_unblock(struct ow_steer_policy_pre_assoc *pre_assoc_policy,
                                                 const void *data,
@@ -627,6 +685,24 @@ ow_steer_policy_pre_assoc_vif_frame_rx_cb(struct osw_state_observer *self,
 }
 
 static void
+ow_steer_policy_pre_assoc_set_preference(struct ow_steer_policy_pre_assoc *pre_assoc_policy,
+                                         struct ow_steer_candidate_list *candidate_list,
+                                         const char *reason,
+                                         enum ow_steer_candidate_preference preference)
+{
+    struct ow_steer_candidate *can;
+    struct ow_steer_policy_pre_assoc_neighbor *nbor;
+    ds_dlist_foreach(&pre_assoc_policy->local_bssids, nbor) {
+        can = ow_steer_candidate_list_lookup(candidate_list, &nbor->bssid);
+        if (can == NULL)
+            continue;
+        if (ow_steer_candidate_get_preference(can) != OW_STEER_CANDIDATE_PREFERENCE_NONE)
+            continue;
+        ow_steer_candidate_set_preference(can, reason, preference);
+    }
+}
+
+static void
 ow_steer_policy_pre_assoc_recalc_cb(struct ow_steer_policy *policy,
                                     struct ow_steer_candidate_list *candidate_list)
 {
@@ -641,7 +717,7 @@ ow_steer_policy_pre_assoc_recalc_cb(struct ow_steer_policy *policy,
     const struct osw_hwaddr *policy_bssid = ow_steer_policy_get_bssid(policy);
     struct ow_steer_candidate *candidate = ow_steer_candidate_list_lookup(candidate_list, policy_bssid);
     if (candidate == NULL) {
-        LOGW("%s candidate bssid: "OSW_HWADDR_FMT" is missing", ow_steer_policy_get_prefix(policy), OSW_HWADDR_ARG(policy_bssid));
+        LOGI("%s candidate bssid: "OSW_HWADDR_FMT" is missing", ow_steer_policy_get_prefix(policy), OSW_HWADDR_ARG(policy_bssid));
         ow_steer_policy_pre_assoc_reset_volatile_state(pre_assoc_policy);
         return;
     }
@@ -655,10 +731,30 @@ ow_steer_policy_pre_assoc_recalc_cb(struct ow_steer_policy *policy,
     }
 
     struct ow_steer_policy_pre_assoc_volatile_state *vstate = &pre_assoc_policy->vstate;
-    if (osw_timer_is_armed(&vstate->backoff_timer) == false)
-        ow_steer_candidate_set_preference(candidate, OW_STEER_CANDIDATE_PREFERENCE_SOFT_BLOCKED);
-    else
-        ow_steer_candidate_set_preference(candidate, OW_STEER_CANDIDATE_PREFERENCE_AVAILABLE);
+
+    if (osw_timer_is_armed(&vstate->backoff_timer) == true) {
+        LOGD("%s policy in backoff. Candidate "OSW_HWADDR_FMT" marked as AVAILABLE",
+             ow_steer_policy_get_prefix(policy), OSW_HWADDR_ARG(policy_bssid));
+        const char *reason = strfmta("%s: pre-assoc in backoff", ow_steer_policy_get_name(policy));
+        ow_steer_candidate_set_preference(candidate, reason, OW_STEER_CANDIDATE_PREFERENCE_AVAILABLE);
+    } else {
+        if (ow_steer_policy_pre_assoc_is_other_band_candidate_available(pre_assoc_policy, candidate_list, candidate) == true) {
+            LOGD("%s policy acted. Candidate "OSW_HWADDR_FMT" marked SOFT_BLOCKED",
+                 ow_steer_policy_get_prefix(policy), OSW_HWADDR_ARG(policy_bssid));
+            const char *reason = strfmta("%s: pre-assoc blocked", ow_steer_policy_get_name(policy));
+            ow_steer_candidate_set_preference(candidate, reason, OW_STEER_CANDIDATE_PREFERENCE_SOFT_BLOCKED);
+            ow_steer_policy_pre_assoc_set_preference(pre_assoc_policy, candidate_list, reason, OW_STEER_CANDIDATE_PREFERENCE_AVAILABLE);
+        } else {
+            /* There is no other local band possible. Mark candidate as AVAILABLE as
+             * the only possible one. Specifically designed **not** to leave candidate
+             * list without any option for client to connect.
+             */
+            LOGD("%s policy suspended. Candidate "OSW_HWADDR_FMT" is on the last available band!",
+                 ow_steer_policy_get_prefix(policy), OSW_HWADDR_ARG(policy_bssid));
+            const char *reason = strfmta("%s: pre-assoc has no other candidate", ow_steer_policy_get_name(policy));
+            ow_steer_policy_pre_assoc_set_preference(pre_assoc_policy, candidate_list, reason, OW_STEER_CANDIDATE_PREFERENCE_AVAILABLE);
+        }
+    }
 
     LOGD("%s bssid: "OSW_HWADDR_FMT" preference: %s", ow_steer_policy_get_prefix(policy), OSW_HWADDR_ARG(policy_bssid),
          ow_steer_candidate_preference_to_cstr(ow_steer_candidate_get_preference(candidate)));
@@ -721,8 +817,78 @@ ow_steer_policy_pre_assoc_reconf_timer_cb(struct osw_timer *timer)
         osw_state_register_observer(&pre_assoc_policy->state_observer);
 }
 
+static void
+ow_steer_policy_pre_assoc_set_bss(struct ds_dlist *neigh_list,
+                                  const struct osw_hwaddr *bssid,
+                                  const struct osw_channel *channel)
+{
+    if (neigh_list == NULL) return;
+    if (bssid == NULL) return;
+
+    const enum osw_band band = osw_freq_to_band(channel ? channel->control_freq_mhz : 0);
+
+    struct ow_steer_policy_pre_assoc_neighbor *nbor, *tmp;
+    ds_dlist_foreach_safe(neigh_list, nbor, tmp) {
+        if (osw_hwaddr_is_equal(&nbor->bssid, bssid)) {
+            if (band == OSW_BAND_UNDEFINED) {
+               ds_dlist_remove(neigh_list, nbor);
+               FREE(nbor);
+               return;
+            }
+            /* For a case where radio switches channel
+             * between bands, keeping the same BSSID */
+            nbor->band = band;
+            return;
+        }
+    }
+
+    if (band == OSW_BAND_UNDEFINED) return;
+
+    nbor = CALLOC(1, sizeof(*nbor));
+    memcpy(&nbor->bssid, bssid, sizeof(*bssid));
+    nbor->band = band;
+    ds_dlist_insert_tail(neigh_list, nbor);
+}
+
+static void
+ow_steer_policy_pre_assoc_vif_added_cb(struct ow_steer_bm_observer *observer,
+                                       struct ow_steer_bm_vif *vif)
+{
+    struct ow_steer_policy_pre_assoc *preassoc = container_of(observer, struct ow_steer_policy_pre_assoc, bm_obs);
+    if (vif->bss == NULL) return;
+    if (vif->group != preassoc->group) return;
+    const struct osw_hwaddr *bssid = &vif->bss->bssid;
+    ow_steer_policy_pre_assoc_set_bss(&preassoc->local_bssids, bssid, osw_bss_get_channel(bssid));
+}
+
+static void
+ow_steer_policy_pre_assoc_vif_removed_cb(struct ow_steer_bm_observer *observer,
+                                         struct ow_steer_bm_vif *vif)
+{
+    struct ow_steer_policy_pre_assoc *preassoc = container_of(observer, struct ow_steer_policy_pre_assoc, bm_obs);
+    if (vif->bss == NULL) return;
+    if (vif->group != preassoc->group) return;
+    const struct osw_hwaddr *bssid = &vif->bss->bssid;
+    ow_steer_policy_pre_assoc_set_bss(&preassoc->local_bssids, bssid, NULL);
+}
+
+static void
+ow_steer_policy_pre_assoc_vif_changed_channel_cb(struct ow_steer_bm_observer *observer,
+                                                 struct ow_steer_bm_vif *vif,
+                                                 const struct osw_channel *old_channel,
+                                                 const struct osw_channel *new_channel)
+{
+    struct ow_steer_policy_pre_assoc *preassoc = container_of(observer, struct ow_steer_policy_pre_assoc, bm_obs);
+    if (vif->group != preassoc->group) return;
+    const struct osw_hwaddr *bssid = vif->bss ? &vif->bss->bssid : NULL;
+    const struct osw_channel *channel = bssid ? osw_bss_get_channel(bssid) : NULL;
+    ow_steer_policy_pre_assoc_set_bss(&preassoc->local_bssids, bssid, channel);
+}
+
 struct ow_steer_policy_pre_assoc*
-ow_steer_policy_pre_assoc_create(const struct osw_hwaddr *sta_addr,
+ow_steer_policy_pre_assoc_create(const char *name,
+                                 struct ow_steer_bm_group *group,
+                                 const struct osw_hwaddr *sta_addr,
                                  const struct ow_steer_policy_mediator *mediator)
 {
     ASSERT(sta_addr != NULL, "");
@@ -740,16 +906,26 @@ ow_steer_policy_pre_assoc_create(const struct osw_hwaddr *sta_addr,
         .vif_frame_rx_fn = ow_steer_policy_pre_assoc_vif_frame_rx_cb,
     };
 
+    static const struct ow_steer_bm_observer bm_obs = {
+        .vif_added_fn = ow_steer_policy_pre_assoc_vif_added_cb,
+        .vif_removed_fn = ow_steer_policy_pre_assoc_vif_removed_cb,
+        .vif_changed_channel_fn = ow_steer_policy_pre_assoc_vif_changed_channel_cb,
+    };
+
     struct ow_steer_policy_pre_assoc *pre_assoc_policy = CALLOC(1, sizeof(*pre_assoc_policy));
     memcpy(&pre_assoc_policy->state_observer, &state_observer, sizeof(pre_assoc_policy->state_observer));
+    pre_assoc_policy->base = ow_steer_policy_create(g_policy_name, sta_addr, &ops, mediator, pre_assoc_policy);
+    pre_assoc_policy->group = group;
+    pre_assoc_policy->bm_obs = bm_obs;
+    ow_steer_bm_observer_register(&pre_assoc_policy->bm_obs);
     osw_timer_init(&pre_assoc_policy->reconf_timer, ow_steer_policy_pre_assoc_reconf_timer_cb);
+    ds_dlist_init(&pre_assoc_policy->local_bssids, struct ow_steer_policy_pre_assoc_neighbor, node);
 
     struct ow_steer_policy_pre_assoc_volatile_state *vstate = &pre_assoc_policy->vstate;
     osw_timer_init(&vstate->reject_timer, ow_steer_policy_pre_assoc_reject_timer_cb);
     osw_timer_init(&vstate->backoff_timer, ow_steer_policy_pre_assoc_backoff_timer_cb);
     osw_timer_init(&vstate->auth_bypass_timer, ow_steer_policy_pre_assoc_auth_bypass_timer_cb);
 
-    pre_assoc_policy->base = ow_steer_policy_create(g_policy_name, sta_addr, &ops, mediator, pre_assoc_policy);
 
     return pre_assoc_policy;
 }
@@ -782,6 +958,7 @@ ow_steer_policy_pre_assoc_free(struct ow_steer_policy_pre_assoc *pre_assoc_polic
     pre_assoc_policy->config = NULL;
     if (unregister_observer == true)
         osw_state_unregister_observer(&pre_assoc_policy->state_observer);
+    ow_steer_bm_observer_unregister(&pre_assoc_policy->bm_obs);
     ow_steer_policy_free(pre_assoc_policy->base);
     FREE(pre_assoc_policy);
 }

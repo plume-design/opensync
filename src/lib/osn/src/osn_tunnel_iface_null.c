@@ -50,6 +50,14 @@ bool osn_tunnel_iface_type_set(osn_tunnel_iface_t *self, enum osn_tunnel_iface_t
     return true;
 }
 
+bool osn_tunnel_iface_mode_set(osn_tunnel_iface_t *self, enum osn_tunnel_iface_mode mode)
+{
+    (void)self;
+    (void)mode;
+
+    return true;
+}
+
 bool osn_tunnel_iface_endpoints_set(
         osn_tunnel_iface_t *self,
         osn_ipany_addr_t local_endpoint,
@@ -66,6 +74,14 @@ bool osn_tunnel_iface_key_set(osn_tunnel_iface_t *self, int key)
 {
     (void)self;
     (void)key;
+
+    return true;
+}
+
+bool osn_tunnel_iface_dev_set(osn_tunnel_iface_t *self, const char *dev_if_name)
+{
+    (void)self;
+    (void)dev_if_name;
 
     return true;
 }

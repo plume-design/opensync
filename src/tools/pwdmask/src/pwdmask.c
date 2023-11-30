@@ -40,6 +40,7 @@ static ovsdb_table_t table_Wifi_VIF_Config;
 static ovsdb_table_t table_Wifi_Credential_Config;
 static ovsdb_table_t table_IPSec_Config;
 static ovsdb_table_t table_WAN_Config;
+static ovsdb_table_t table_Lte_Config;
 
 static bool append_pwd_if_unique(const char *newstr)
 {
@@ -150,6 +151,24 @@ static void fetch_ovsdb_pwd(void)
         }
     }
     free(buf4);
+
+    n = 0;
+    struct schema_Lte_Config *buf5 = ovsdb_table_select_where(&table_Lte_Config, NULL, &n);
+    if (n == 0)
+    {
+        printf("No passwords found in Lte_Config\n");
+    }
+    else
+    {
+        for (record=0; record<n; record++)
+        {
+            if (buf5[record].apn_password_exists)
+            {
+                append_pwd_if_unique(buf5[record].apn_password);
+            }
+        }
+    }
+    free(buf5);
 
     qsort(password, pwd_count, MAX_PWD_LEN+1, strlencmp);
 }
@@ -270,6 +289,7 @@ int main(int argc, char **argv)
     OVSDB_TABLE_INIT(Wifi_Credential_Config, _uuid);
     OVSDB_TABLE_INIT(IPSec_Config, tunnel_name);
     OVSDB_TABLE_INIT(WAN_Config, _uuid);
+    OVSDB_TABLE_INIT(Lte_Config, if_name);
 
     /* Part 1 - gather passwords */
     fetch_ovsdb_pwd();

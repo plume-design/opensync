@@ -41,12 +41,14 @@ enum mdns_state
     BEGIN_MDNS,
     MDNS_QNAME,
     MDNS_RESP_TYPE,
+    MDNS_QUNICAST,
     END_MDNS
 };
 
 struct mdns_record
 {
     char qname[NS_MAXCDNAME];
+    uint8_t qtype;
     bool unicast;
     enum mdns_state next_state;
 };

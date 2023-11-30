@@ -274,7 +274,7 @@ sm_client_auth_fails_band_report_timer_cb(EV_P_ ev_timer *timer,
         if (!sm_client_auth_fails_collect_data(bss->priv))
             continue;
 
-        LOGD("%s: Reporting client auth fails on if_name: %s (%s) clients_len: %d",
+        LOGD("%s: Reporting client auth fails on if_name: %s (%s) clients_len: %zu",
              backend_name, bss->report.if_name, radio_get_name_from_type(bss->radio_type),
              bss->report.clients_len);
 

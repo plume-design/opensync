@@ -179,7 +179,7 @@ typedef enum _serv_cell
 } serv_cell;
 
 /* NR5G serving cell example
-  +QENG: "servingcell",<state>,"NR5G-SA",<duplex_mod e>,<MCC>,<MNC>,<cellID>,<PCID>,<TAC>,<ARFCN>,<ba nd>,<NR_DL_bandwidth>,<RSRP>,<RSRQ>,<SINR>,<tx_ power>,<srxlev> */
+  +QENG: "servingcell",<state>,"NR5G-SA",<duplex_mode>,<MCC>,<MNC>,<cellID>,<PCID>,<TAC>,<ARFCN>,<ba nd>,<NR_DL_bandwidth>,<RSRP>,<RSRQ>,<SINR>,<tx_power>,<srxlev> */
 typedef struct nr5g_serving_cell_sa_
 {
     char cell_type[C_AT_CMD_RESP];

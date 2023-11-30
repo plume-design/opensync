@@ -43,7 +43,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
             PJS_STRING(subnet, 16)                              \
             PJS_STRING(gateway, 16)                             \
             PJS_STRING(primaryDns, 16)                          \
-            PJS_STRING(secondaryDns, 16))
+            PJS_STRING_Q(secondaryDns, 16))
 
 #define PJS_LOCALCONFIG                                         \
     PJS(wan_local_config,                                       \

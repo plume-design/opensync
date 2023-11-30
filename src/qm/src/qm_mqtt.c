@@ -74,6 +74,7 @@ static int              qm_agg_stats_interval = STATS_MQTT_INTERVAL;
 static char             qm_power_mode[QM_PM_STRING_LENGTH];
 static bool             qm_has_power_mode;
 bool                    qm_log_enabled = false;
+qm_stats_t              g_qm_stats;
 
 void qm_set_power_mode(const char* power_mode)
 {
@@ -237,8 +238,14 @@ bool qm_mqtt_publish(mosqev_t *mqtt, qm_item_t *qi)
         mlen = len;
         mbuf = buf;
     }
-    LOGI("MQTT: Publishing %ld bytes", mlen);
+    LOGI("MQTT: Publishing (%d) %ld bytes '%s'", (int)qi->size, mlen, topic);
     ret = mosqev_publish(mqtt, NULL, topic, mlen, mbuf, qos, false);
+    if (ret) {
+        g_qm_stats.sent++;
+        g_qm_stats.bytes += mlen;
+    } else {
+        g_qm_stats.errors++;
+    }
 exit:
     if (buf) FREE(buf);
     return ret;

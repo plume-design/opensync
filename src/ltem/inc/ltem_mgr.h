@@ -44,6 +44,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define WAN_L3_FAIL_METRIC LTE_DEFAULT_METRIC + 10
 #define LTE_CMU_DEFAULT_PRIORITY 2
 #define DEFAULT_LTE_NAME "wwan0"
+#define LTEM_INACTIVITY_PROBE 10000
+#define WAN_L3_FAIL_LIMIT 3
+#define WAN_L3_RECONNECT 3
 
 enum  ltem_header_ids
 {
@@ -139,16 +142,18 @@ typedef struct ltem_handlers_
 typedef struct ltem_mgr_
 {
     struct ev_loop *loop;
-    ev_timer timer;               /* manager's event timer */
-    time_t periodic_ts;           /* periodic timestamp */
-    time_t mqtt_periodic_ts;      /* periodic timestamp for MQTT reports */
-    time_t state_periodic_ts;     /* periodic timestamp for Lte State updates */
-    time_t l3_state_periodic_ts;  /* periodic timestamp for L3 state check */
-    time_t lte_log_modem_info_ts; /* periodic timestamp for logging modem info */
-    time_t lte_healthcheck_ts;    /* periodic timestamp for LTE healthcheck */
-    time_t init_time;             /* init time */
-    char pid[16];                 /* manager's pid */
-    struct sysinfo sysinfo;       /* system information */
+    ev_timer timer;                  /* manager's event timer */
+    time_t periodic_ts;              /* periodic timestamp */
+    time_t mqtt_periodic_ts;         /* periodic timestamp for MQTT reports */
+    time_t state_periodic_ts;        /* periodic timestamp for Lte State updates */
+    time_t lte_l3_state_periodic_ts; /* periodic timestamp for LTE L3 state check */
+    time_t wan_l3_state_periodic_ts; /* periodic timestamp for WAN L3 state check */
+    time_t lte_log_modem_info_ts;    /* periodic timestamp for logging modem info */
+    time_t lte_healthcheck_ts;       /* periodic timestamp for LTE healthcheck */
+    time_t wan_healthcheck_ts;       /* periodic timestamp for WAN healthcheck */
+    time_t init_time;                /* init time */
+    char pid[16];                    /* manager's pid */
+    struct sysinfo sysinfo;          /* system information */
     enum ltem_wan_state wan_state;
     enum ltem_lte_state lte_state;
     int lte_init_fd[2];
@@ -168,6 +173,9 @@ typedef struct ltem_mgr_
     char location_id[64];
     int ipv6_ra_default_lifetime;
     char ipv6_prefix_valid_lifetime[64];
+    time_t last_wan_healthcheck_success;
+    int wan_failure_count;
+    int wan_l3_reconnect_success;
 } ltem_mgr_t;
 
 bool ltem_init_mgr(struct ev_loop *loop);
@@ -181,8 +189,8 @@ void ltem_event_init(void);
 int ltem_ovsdb_init(void);
 bool ltem_init_lte(void);
 int ltem_set_lte_route_metric(ltem_mgr_t *mgr);
-int ltem_force_lte_route(ltem_mgr_t *mgr);
-int ltem_restore_default_wan_route(ltem_mgr_t *mgr);
+int ltem_force_lte(ltem_mgr_t *mgr);
+int ltem_restore_wan(ltem_mgr_t *mgr);
 int ltem_create_lte_route_table(ltem_mgr_t *mgr);
 void ltem_create_client_table(ltem_mgr_t *mgr);
 void ltem_client_table_update(ltem_mgr_t *mgr, struct schema_DHCP_leased_IP *dhcp_lease);
@@ -191,7 +199,8 @@ void ltem_update_wan_route(ltem_mgr_t *mgr, struct schema_Wifi_Route_Config *rou
 void ltem_update_lte_route(ltem_mgr_t *mgr, char *if_name, char *lte_subnet, char *lte_gw, char *netmask);
 int ltem_add_lte_client_routes(ltem_mgr_t *mgr);
 int ltem_restore_default_client_routes(ltem_mgr_t *mgr);
-int ltem_check_dns(char *server, char *hostname);
+int ltem_check_dns(const char *server, char *hostname);
+const char *ltem_get_next_dns_server(void);
 int ltem_update_resolv_conf(ltem_mgr_t *mgr);
 int ltem_restore_resolv_conf(ltem_mgr_t *mgr);
 int ltem_ovsdb_cmu_insert_lte(ltem_mgr_t *mgr);
@@ -215,11 +224,15 @@ int ltem_update_esim(ltem_mgr_t *mgr);
 bool ltem_init_lte_modem(void);
 void ltem_fini_lte_modem(void);
 char *ltem_ovsdb_get_if_type(char *if_name);
-int ltem_ovsdb_check_l3_state(ltem_mgr_t *mgr);
+int ltem_ovsdb_check_lte_l3_state(ltem_mgr_t *mgr);
 int ltem_dns_connect_check(char *if_name);
 void ltem_ovsdb_config_lte(ltem_mgr_t *mgr);
 void ltem_flush_flows(ltem_mgr_t *mgr);
 void ltem_ovsdb_set_v6_failover(ltem_mgr_t *mgr);
 void ltem_ovsdb_revert_v6_failover(ltem_mgr_t *mgr);
+void ltem_set_failover(ltem_mgr_t *mgr);
+int ltem_wan_healthcheck(ltem_mgr_t *mgr);
+int ltem_set_lte_route_preferred(ltem_mgr_t *mgr);
+int ltem_set_wan_route_preferred(ltem_mgr_t *mgr);
 
 #endif /* LTEM_MGR_H_INCLUDED */

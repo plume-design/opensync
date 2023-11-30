@@ -39,21 +39,24 @@ struct lnx_tunnel_iface
 {
     char                        ti_ifname[C_IFNAME_LEN];
     enum osn_tunnel_iface_type  ti_type;
+    enum osn_tunnel_iface_mode  ti_mode;
     osn_ipany_addr_t            ti_local_endpoint;
     osn_ipany_addr_t            ti_remote_endpoint;
     int                         ti_key;
-    char                        ti_dev_ifname;
+    char                        ti_dev_ifname[C_IFNAME_LEN];
     bool                        ti_enable;
     bool                        ti_applied;
 };
 
 bool lnx_tunnel_iface_init(lnx_tunnel_iface_t *self, const char *ifname);
 bool lnx_tunnel_iface_type_set(lnx_tunnel_iface_t *self, enum osn_tunnel_iface_type iftype);
+bool lnx_tunnel_iface_mode_set(lnx_tunnel_iface_t *self, enum osn_tunnel_iface_mode mode);
 bool lnx_tunnel_iface_endpoints_set(
         lnx_tunnel_iface_t *self,
         osn_ipany_addr_t local_endpoint,
         osn_ipany_addr_t remote_endpoint);
 bool lnx_tunnel_iface_key_set(lnx_tunnel_iface_t *self, int key);
+bool lnx_tunnel_iface_dev_set(lnx_tunnel_iface_t *self, const char *dev_ifname);
 bool lnx_tunnel_iface_enable_set(lnx_tunnel_iface_t *self, bool enable);
 bool lnx_tunnel_iface_apply(lnx_tunnel_iface_t *self);
 bool lnx_tunnel_iface_fini(lnx_tunnel_iface_t *self);

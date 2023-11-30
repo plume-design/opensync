@@ -89,7 +89,7 @@ static bool crash_report_send_to_qm(char *topic, void *data, int data_size)
     qm_response_t res;
     bool ret;
 
-    ret = qm_conn_send_direct(QM_REQ_COMPRESS_IF_CFG, topic, data, data_size, &res);
+    ret = qm_conn_send_direct_req_ack(QM_REQ_COMPRESS_IF_CFG, topic, data, data_size, &res);
     if (!ret)
     {
         LOG(ERROR, LTAG"Error sending crash report to MQTT topic %s: response: %u, error: %u",
@@ -248,6 +248,7 @@ static void handle_new_crash_reports(void)
             {
                 LOG(DEBUG, LTAG"New crash reports detected. "
                            "However in back off since %ld seconds", (long int)(now - qm_mqtt_backoff));
+                ev_debounce_start(EV_DEFAULT, &backoff_debounce);
                 break;
             }
             else

@@ -58,6 +58,8 @@ UNIT_SRC    += src/nm2_route.c
 UNIT_SRC    += src/nm2_route_config.c
 UNIT_SRC    += src/nm2_util.c
 UNIT_SRC    += src/nm2_route_rule.c
+UNIT_SRC    += src/nm2_4in6_map.c
+UNIT_SRC    += src/nm2_ipv6_relay.c
 
 UNIT_SRC    += $(if $(CONFIG_TARGET_USE_NATIVE_BRIDGE), src/nm2_nb_bridge.c)
 UNIT_SRC    += $(if $(CONFIG_TARGET_USE_NATIVE_BRIDGE), src/nm2_default_ovsdb_bridge.c)
@@ -86,4 +88,5 @@ UNIT_DEPS += src/lib/reflink
 UNIT_DEPS += src/lib/schema
 UNIT_DEPS += src/lib/synclist
 UNIT_DEPS += src/lib/timevt
+UNIT_DEPS += src/lib/os_fdbuf
 UNIT_DEPS_CFLAGS += src/lib/version

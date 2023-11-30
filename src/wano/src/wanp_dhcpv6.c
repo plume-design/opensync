@@ -33,6 +33,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "wanp_dhcpv6_stam.h"
 #include "memutil.h"
+#include "const.h"
+
+#include <unistd.h>
 
 /*
  * Structure representing a single DHCPv6 plug-in instance
@@ -43,7 +46,9 @@ struct wanp_dhcpv6
     wano_plugin_status_fn_t    *wd6_status_fn;
     wanp_dhcpv6_state_t         wd6_state;
     osn_ip6_addr_t              wd6_ip6addr;
+    osn_ip6_addr_t              wd6_ip_unnumbered_addr;
     bool                        wd6_has_global_ip;
+    bool                        wd6_is_ip_unnumbered; // Is in IP unnumbered mode?
     bool                        wd6_ovsdb_subscribed;
     ds_tree_node_t              wd6_tnode;
 };
@@ -54,6 +59,8 @@ static wano_plugin_ops_init_fn_t wanp_dhcpv6_init;
 static wano_plugin_ops_run_fn_t wanp_dhcpv6_run;
 static wano_plugin_ops_fini_fn_t wanp_dhcpv6_fini;
 static void wanp_dhcpv6_ovsdb_reset(struct wanp_dhcpv6 *self);
+static bool wanp_dhcpv6_ovsdb_enable(struct wanp_dhcpv6 *self);
+static bool wanp_dhcpv6_ip_unnumbered_ovsdb_enable(struct wanp_dhcpv6 *self);
 
 void callback_IP_Interface(
         ovsdb_update_monitor_t *self,
@@ -132,17 +139,21 @@ void callback_IP_Interface(
 {
     struct schema_IPv6_Address ipv6_address;
     struct wanp_dhcpv6 *self;
+    osn_ip6_addr_t global_addr;
+    bool has_global_ip;
     int ii;
 
     const char *ifname = (mon->mon_type == OVSDB_UPDATE_DEL) ? old->if_name : new->if_name;
 
     self = ds_tree_find(&wanp_dhcpv6_ovsdb_list, (void *)ifname);
-    if (self == NULL)
+    if (self == NULL
+        && !(strcmp(CONFIG_OSN_ODHCP6_MODE_PREFIX_NO_ADDRESS, "IP_UNNUMBERED") == 0
+                && strcmp(ifname, CONFIG_TARGET_LAN_BRIDGE_NAME) == 0))
     {
         return;
     }
 
-    self->wd6_has_global_ip = false;
+    has_global_ip = false;
     if (mon->mon_type != OVSDB_UPDATE_DEL)
     {
         /*
@@ -160,7 +171,7 @@ void callback_IP_Interface(
                         &ipv6_address))
             {
                 LOG(WARN, "wanp_dhcpv6: %s: Unable to find IPv6_Address row with uuid: %s",
-                       self->wd6_handle.wh_ifname, new->ipv6_addr[ii].uuid);
+                       ifname, new->ipv6_addr[ii].uuid);
                 continue;
             }
 
@@ -172,7 +183,7 @@ void callback_IP_Interface(
             if (!osn_ip6_addr_from_str(&addr, ipv6_address.address))
             {
                 LOG(WARN, "wanp_dhcpv6: %s: Invalid IPv6 address: %s",
-                        self->wd6_handle.wh_ifname,
+                        ifname,
                         ipv6_address.address);
                 continue;
             }
@@ -180,20 +191,75 @@ void callback_IP_Interface(
             if (osn_ip6_addr_type(&addr) != OSN_IP6_ADDR_GLOBAL)
             {
                 LOG(DEBUG, "wanp_dhcpv6: %s: Not a global IPv6 address: %s",
-                        self->wd6_handle.wh_ifname,
+                        ifname,
                         ipv6_address.address);
                 continue;
             }
 
-            self->wd6_has_global_ip = true;
-            self->wd6_ip6addr = addr;
+            has_global_ip = true;
+            global_addr = addr;
             break;
         }
     }
 
-    if (self->wd6_ovsdb_subscribed)
+    if (self != NULL) // Uplink interface
     {
-        wanp_dhcpv6_state_do(&self->wd6_state, wanp_dhcpv6_do_OVSDB_UPDATE, NULL);
+        self->wd6_has_global_ip = has_global_ip;  // Does it have global IPv6 addr?
+        if (has_global_ip)
+        {
+            self->wd6_ip6addr = global_addr;
+        }
+
+        if (self->wd6_ovsdb_subscribed)
+        {
+            wanp_dhcpv6_state_do(&self->wd6_state, wanp_dhcpv6_do_OVSDB_UPDATE, NULL);
+        }
+    }
+    else // LAN interface (and IP_UNNUMBERED enabled)
+    {
+        /*
+         * IP unnumbered is a technique where a network interface can use an IP address
+         * without configuring a unique IP address on that interface. Instead, the
+         * interface borrows the IP address from another interface.
+         *
+         * If IP_UNNUMBERED enabled and we didn't get any IPv6 address for the WAN, but
+         * we got an IA_PD, then the odhcp6c client script will assign the first usable
+         * address from that prefix to the LAN interface. The uplink interface will then
+         * operate in IP unnumbered mode meaning it will "borrow" the global IPv6 address
+         * from another interface (in this case the LAN interface). This allows connectivity
+         * in such cases.
+         *
+         * Go through all the DHCPv6 uplink plugins:
+         *   - If we have a global IPv6 address on the LAN interface
+         *   - AND this uplink plugin has DHCPv6 options received,
+         *       THEN mark this plugin as ip_unnumbered successful.
+         */
+        ds_tree_foreach(&wanp_dhcpv6_ovsdb_list, self)
+        {
+            self->wd6_is_ip_unnumbered = false;
+
+            if (has_global_ip)
+            {
+                char uplink_opts_file[C_MAXPATH_LEN];
+
+                snprintf(
+                    uplink_opts_file,
+                    sizeof(uplink_opts_file),
+                    CONFIG_OSN_ODHCP6_OPTS_FILE,
+                    self->wd6_handle.wh_ifname);
+
+                if (access(uplink_opts_file, F_OK) == 0) // DHCPv6 opt file for this uplink exists
+                {
+                    self->wd6_is_ip_unnumbered = true;
+                    self->wd6_ip_unnumbered_addr = global_addr;
+                }
+            }
+
+            if (self->wd6_ovsdb_subscribed)
+            {
+                wanp_dhcpv6_state_do(&self->wd6_state, wanp_dhcpv6_do_OVSDB_UPDATE, NULL);
+            }
+        }
     }
 }
 
@@ -249,6 +315,44 @@ bool wanp_dhcpv6_ovsdb_enable(struct wanp_dhcpv6 *self)
         return false;
     }
 
+    return true;
+}
+
+/* Enable IP unnumbered option: In this case, the WAN DHPCv6 plugin could succeed even if no
+ * global IPv6 address (recived and assigned) on the interface, but a route-able prefix was
+ * received and a global IPv6 address from the prefix was assigned to the LAN interface.
+ *
+ * To enable that we need an IP_Interface row for the LAN interface to get LAN interface IPv6
+ * address updates.
+ */
+bool wanp_dhcpv6_ip_unnumbered_ovsdb_enable(struct wanp_dhcpv6 *self)
+{
+    struct schema_IP_Interface ip_interface;
+    int selcount;
+
+    selcount = ovsdb_table_select_one(&table_IP_Interface, "name", CONFIG_TARGET_LAN_BRIDGE_NAME, &ip_interface);
+    memset(&ip_interface, 0, sizeof(ip_interface));
+    ip_interface._partial_update = true;
+    SCHEMA_SET_STR(ip_interface.if_name, CONFIG_TARGET_LAN_BRIDGE_NAME);
+    SCHEMA_SET_STR(ip_interface.status, "up");
+    SCHEMA_SET_INT(ip_interface.enable, true);
+    if (selcount <= 0)
+    {
+        /* The `name` field is immutable which will cause upserts to will fail on existing
+         * rows so include it only if a row for the interface doesn't exist. */
+        SCHEMA_SET_STR(ip_interface.name, CONFIG_TARGET_LAN_BRIDGE_NAME);
+    }
+
+    if (!ovsdb_table_upsert_simple(
+            &table_IP_Interface,
+            "name",
+            CONFIG_TARGET_LAN_BRIDGE_NAME,
+            &ip_interface,
+            true))
+    {
+        LOG(ERR, "wanp_dhcpv6: %s: Error upserting IP_Interface.", CONFIG_TARGET_LAN_BRIDGE_NAME);
+        return false;
+    }
     return true;
 }
 
@@ -314,6 +418,10 @@ enum wanp_dhcpv6_state wanp_dhcpv6_state_ENABLE(
 
             wanp_dhcpv6_ovsdb_reset(self);
             wanp_dhcpv6_ovsdb_enable(self);
+            if (strcmp(CONFIG_OSN_ODHCP6_MODE_PREFIX_NO_ADDRESS, "IP_UNNUMBERED") == 0)
+            {
+                wanp_dhcpv6_ip_unnumbered_ovsdb_enable(self);
+            }
 
             /* Subscribe to OVSDB events */
             self->wd6_ovsdb_subscribed = true;
@@ -321,7 +429,7 @@ enum wanp_dhcpv6_state wanp_dhcpv6_state_ENABLE(
             /* FALLTHROUGH */
 
         case wanp_dhcpv6_do_OVSDB_UPDATE:
-            if (!self->wd6_has_global_ip)
+            if (!self->wd6_has_global_ip && !self->wd6_is_ip_unnumbered)
             {
                 return 0;
             }
@@ -346,9 +454,19 @@ enum wanp_dhcpv6_state wanp_dhcpv6_state_IDLE(
     switch (action)
     {
         case wanp_dhcpv6_do_STATE_INIT:
-            LOG(INFO, "wano_dhcpv6: %s: Acquired IPv6 address: "PRI_osn_ip6_addr,
-                        self->wd6_handle.wh_ifname,
-                        FMT_osn_ip6_addr(self->wd6_ip6addr));
+            if (self->wd6_has_global_ip)
+            {
+                LOG(INFO, "wano_dhcpv6: %s: Acquired IPv6 address: "PRI_osn_ip6_addr,
+                            self->wd6_handle.wh_ifname,
+                            FMT_osn_ip6_addr(self->wd6_ip6addr));
+            }
+            else if (self->wd6_is_ip_unnumbered)
+            {
+                LOG(NOTICE, "wano_dhcpv6: %s: IP unnumbered: Borrowing IPv6 address "PRI_osn_ip6_addr
+                            " from the LAN intf",
+                            self->wd6_handle.wh_ifname,
+                            FMT_osn_ip6_addr(self->wd6_ip_unnumbered_addr));
+            }
 
             struct wano_plugin_status ws = WANO_PLUGIN_STATUS(WANP_OK);
             self->wd6_status_fn(&self->wd6_handle, &ws);
@@ -360,12 +478,25 @@ enum wanp_dhcpv6_state wanp_dhcpv6_state_IDLE(
                 LOG(INFO, "wano_dhcpv6: %s: Lost IPv6 address.",
                         self->wd6_handle.wh_ifname);
             }
-            else
+            else if (self->wd6_has_global_ip)
             {
                 LOG(INFO, "wano_dhcpv6: %s: Re-acquired IPv6 address: "PRI_osn_ip6_addr,
                         self->wd6_handle.wh_ifname,
                         FMT_osn_ip6_addr(self->wd6_ip6addr));
             }
+
+            if (!self->wd6_is_ip_unnumbered)
+            {
+                LOG(INFO, "wano_dhcpv6: %s: Lost IP unnumbered mode",
+                        self->wd6_handle.wh_ifname);
+            }
+            else if (self->wd6_is_ip_unnumbered)
+            {
+                LOG(INFO, "wano_dhcpv6: %s: Re-acquired IP unnumbered mode: Address: "PRI_osn_ip6_addr,
+                        self->wd6_handle.wh_ifname,
+                        FMT_osn_ip6_addr(self->wd6_ip_unnumbered_addr));
+            }
+
             break;
 
         default:

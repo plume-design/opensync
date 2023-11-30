@@ -161,10 +161,12 @@ typedef struct lan_stats_instance
     struct net_md_aggregator *aggr;
     collect_flows_fn collect_flows;
     ds_tree_node_t  lan_stats_node;
-    dp_ctl_stats_t stats;
     struct fcm_session *session;
     struct fcm_filter_client *c_client;
     struct fcm_filter_client *r_client;
+    uint16_t ct_zone;
+    uint32_t node_count;
+    ds_dlist_t ct_list;
 } lan_stats_instance_t;
 
 typedef struct lan_stats_mgr_
@@ -194,7 +196,7 @@ lan_stats_instance_t *
 lan_stats_get_active_instance(void);
 
 void
-lan_stats_parse_flows(lan_stats_instance_t *lan_stats_instance, char *buf);
+lan_stats_parse_flows(lan_stats_instance_t *lan_stats_instance, char *buf, dp_ctl_stats_t *stats);
 
 int
 lan_stats_plugin_init(fcm_collect_plugin_t *collector);
@@ -206,7 +208,7 @@ void
 lan_stats_exit_mgr(void);
 
 void
-lan_stats_flows_filter(lan_stats_instance_t *lan_stats_instance);
+lan_stats_flows_filter(lan_stats_instance_t *lan_stats_instance, dp_ctl_stats_t *stats);
 
 void
 lan_stats_collect_flows(lan_stats_instance_t *lan_stats_instance);
@@ -218,6 +220,6 @@ void
 link_stats_collect_cb(uplink_iface_type uplink_if_type);
 
 void
-lan_stats_add_uplink_info(lan_stats_instance_t *lan_stats_instance);
+lan_stats_add_uplink_info(lan_stats_instance_t *lan_stats_instance, dp_ctl_stats_t *stats);
 
 #endif /* LAN_STATS_H_INCLUDED */

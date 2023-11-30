@@ -273,8 +273,13 @@ nl_conn_err_cb(struct sockaddr_nl *nla,
     const uint32_t seqno = err->msg.nlmsg_seq;
     struct nl_conn *conn = priv;
     struct nl_cmd *cmd = ds_tree_find(&conn->seqno_tree, &seqno);
+    const bool is_cancelled_seqno = conn->cancelled_seqno != SEQNO_UNSPEC
+                                 && conn->cancelled_seqno == seqno;
     if (cmd != NULL) {
         nl_cmd_failed(cmd, err);
+    }
+    else if (is_cancelled_seqno) {
+        conn->cancelled_seqno = SEQNO_UNSPEC;
     }
     return NL_SKIP;
 }
@@ -460,6 +465,47 @@ nl_conn_stop(struct nl_conn *conn)
     nl_conn_notify_stopped(conn);
 }
 
+static void
+nl_conn_verify_buffer_size(struct nl_sock *s,
+                           int expected_size)
+{
+    const int fd = nl_socket_get_fd(s);
+    int rxbuf;
+    int txbuf;
+    socklen_t rxbuf_size = sizeof(rxbuf);;
+    socklen_t txbuf_size = sizeof(txbuf);;
+
+    const int txbuf_rv = getsockopt(fd,
+                                     SOL_SOCKET,
+                                     SO_SNDBUF,
+                                     &txbuf,
+                                     &txbuf_size);
+    const int rxbuf_rv = getsockopt(fd,
+                                     SOL_SOCKET,
+                                     SO_RCVBUF,
+                                     &rxbuf,
+                                     &rxbuf_size);
+
+    const bool txbuf_err = (txbuf_rv < 0);
+    const bool rxbuf_err = (rxbuf_rv < 0);
+    const bool txbuf_too_small = (txbuf < expected_size);
+    const bool rxbuf_too_small = (rxbuf < expected_size);
+
+    WARN_ON(txbuf_err);
+    WARN_ON(rxbuf_err);
+    if (txbuf_err || rxbuf_err) return;
+
+    if (txbuf_too_small) {
+        LOGN("nl: conn: tx buffer size %d < %d, please consider changing /proc/sys/net/core/wmem_max",
+             txbuf, expected_size);
+    }
+
+    if (rxbuf_too_small) {
+        LOGN("nl: conn: rx buffer size %d < %d, please consider changing /proc/sys/net/core/rmem_max",
+             rxbuf, expected_size);
+    }
+}
+
 bool
 nl_conn_start(struct nl_conn *conn)
 {
@@ -485,6 +531,8 @@ nl_conn_start(struct nl_conn *conn)
              sk_buf_err,
              errno);
     }
+
+    nl_conn_verify_buffer_size(conn->sock, sk_buf_bytes);
 
     struct nl_cb *cb = nl_cb_alloc(NL_CB_DEFAULT);
     nl_cb_err(cb, NL_CB_CUSTOM, nl_conn_err_cb, conn);
@@ -592,8 +640,6 @@ nl_conn_poll(struct nl_conn *conn)
     conn->polling = true;
     const int err = nl_recvmsgs_default(conn->sock);
     conn->polling = false;
-    nl_conn_tx(conn);
-
     /* libnl maps ENOBUFS as NLE_NOMEM. NLE_NOMEM can has a
      * few other reasons it might be reporetd, so errno
      * needs to be checked to be sure if it's truly an
@@ -604,6 +650,8 @@ nl_conn_poll(struct nl_conn *conn)
     if (overrun) {
         nl_conn_handle_overrun(conn);
     }
+
+    nl_conn_tx(conn);
 
     if (err) return false;
     return true;

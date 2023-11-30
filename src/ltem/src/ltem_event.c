@@ -41,9 +41,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define LTEM_TIMER_INTERVAL   1
 #define LTEM_STATE_UPDATE_INTERVAL 60
 #define LTEM_MQTT_INTERVAL     60 * 15
-#define LTEM_L3_CHECK_INTERVAL 30
+#define LTEM_LTE_L3_CHECK_INTERVAL 30
 #define LTEM_MODEM_INFO_INTERVAL 60 * 5
 #define LTEM_LTE_HEALTHCHECK_INTERVAL 60 * 10
+#define LTEM_WAN_L3_CHECK_INTERVAL 60
 
 static void
 ltem_mqtt_periodic(time_t now, ltem_mgr_t *mgr)
@@ -75,15 +76,42 @@ ltem_state_periodic(time_t now, ltem_mgr_t *mgr)
 }
 
 static void
-ltem_check_l3_state(time_t now, ltem_mgr_t *mgr)
+ltem_check_lte_l3_state(time_t now, ltem_mgr_t *mgr)
 {
     time_t elapsed;
 
-    elapsed = now - mgr->l3_state_periodic_ts;
-    if (elapsed < LTEM_L3_CHECK_INTERVAL) return;
+    elapsed = now - mgr->lte_l3_state_periodic_ts;
+    if (elapsed < LTEM_LTE_L3_CHECK_INTERVAL) return;
 
-    ltem_ovsdb_check_l3_state(mgr);
-    mgr->l3_state_periodic_ts = now;
+    ltem_ovsdb_check_lte_l3_state(mgr);
+    mgr->lte_l3_state_periodic_ts = now;
+}
+
+static void
+ltem_check_wan_l3_state(time_t now, ltem_mgr_t *mgr)
+{
+    time_t elapsed;
+    int res;
+
+    elapsed = now - mgr->wan_l3_state_periodic_ts;
+    if (elapsed < LTEM_WAN_L3_CHECK_INTERVAL) return;
+
+    if (mgr->wan_state == LTEM_WAN_STATE_DOWN && mgr->lte_state_info->lte_failover_active)
+    {
+        res = ltem_wan_healthcheck(mgr);
+        if (!res)
+        {
+            mgr->wan_l3_reconnect_success++;
+            if (mgr->wan_l3_reconnect_success >= WAN_L3_RECONNECT)
+            {
+                ltem_set_wan_route_preferred(mgr);
+                ltem_set_wan_state(LTEM_WAN_STATE_UP);
+                mgr->wan_l3_reconnect_success = 0;
+            }
+        }
+    }
+
+    mgr->wan_l3_state_periodic_ts = now;
 }
 
 static void
@@ -170,10 +198,10 @@ ltem_event_cb(struct ev_loop *loop, ev_timer *watcher, int revents)
     LOGD("%s: modem_present[%d]", __func__, mgr->modem_info->modem_present);
     ltem_mqtt_periodic(now, mgr);
     ltem_state_periodic(now, mgr);
-    ltem_check_l3_state(now, mgr);
+    ltem_check_lte_l3_state(now, mgr);
     ltem_log_modem_info(now, mgr);
     ltem_lte_healthcheck(now, mgr);
-
+    ltem_check_wan_l3_state(now, mgr);
     mgr->periodic_ts = now;
 }
 

@@ -205,43 +205,6 @@ struct osw_hostap_hook {
 #define OSW_HOSTAP_HAPD_PATH "/var/run/hostapd/VIF"
 #define OSW_HOSTAP_WPAS_PATH "/var/run/wpa_supplicant/VIF"
 
-static char *
-str_replace_with(const char *str,
-                 const char *from,
-                 const char *to)
-{
-    const size_t from_len = strlen(from);
-    const size_t to_len = strlen(to);
-    const char *pos = str;
-    const char *end = str + strlen(pos);
-    char *out = NULL;
-    size_t out_size = 1;
-    size_t out_len = 0;
-
-    for (;;) {
-        const char *found = strstr(pos, from);
-        const char *copy_until = found ? found : end;
-        const size_t copy_len = (copy_until - pos);
-
-        out_size += copy_len;
-        if (found) out_size += to_len;
-        out = REALLOC(out, out_size);
-        memcpy(out + out_len, pos, copy_len);
-        if (found) memcpy(out + out_len + copy_len, to, to_len);
-        out_len = out_size - 1;
-
-        if (found == NULL) break;
-
-        pos = found + from_len;
-    }
-
-    if (out != NULL) {
-        out[out_len] = 0;
-    }
-
-    return out;
-}
-
 /* FIXME: This should probably be moved to osw_hostap_conf
  * since it's involved in translating to/from OSW,
  * especially since its responsible for assembling key id
@@ -816,6 +779,8 @@ osw_hostap_bss_hapd_init_bssid_cb(struct rq_task *task,
     struct osw_hwaddr bssid;
 
     MEMZERO(bssid);
+    if (task->cancelled) return;
+    if (task->killed) return;
     if (WARN_ON(t->reply == NULL)) return;
 
     char *copy = STRDUP(t->reply);
@@ -1225,6 +1190,9 @@ osw_hostap_bss_wpas_init(struct hostap_ev_ctrl *gwpas,
 static void
 osw_hostap_bss_wpas_fini(struct osw_hostap_bss_wpas *wpas)
 {
+    rq_task_kill(&wpas->q_config.task);
+    rq_task_kill(&wpas->q_state.task);
+
     hostap_rq_task_fini(&wpas->task_add);
     hostap_rq_task_fini(&wpas->task_remove);
     hostap_rq_task_fini(&wpas->task_log_level);
@@ -1234,6 +1202,7 @@ osw_hostap_bss_wpas_fini(struct osw_hostap_bss_wpas *wpas)
     hostap_rq_task_fini(&wpas->task_get_status);
     hostap_rq_task_fini(&wpas->task_get_networks);
     osw_hostap_conf_free_sta_config(&wpas->conf);
+    hostap_ev_ctrl_fini(&wpas->ctrl);
 }
 
 /* bss */
@@ -1284,6 +1253,8 @@ osw_hostap_bss_free(struct osw_hostap_bss *bss)
 
     osw_hostap_bss_hapd_fini(&bss->hapd);
     osw_hostap_bss_wpas_fini(&bss->wpas);
+    rq_task_kill(&bss->q_config.task);
+    rq_task_kill(&bss->q_state.task);
     ds_tree_remove(bsses, bss);
     FREE(bss->phy_name);
     FREE(bss->vif_name);

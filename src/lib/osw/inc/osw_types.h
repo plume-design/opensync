@@ -33,6 +33,20 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <string.h>
 #include <inttypes.h>
 
+enum osw_vif_status {
+    OSW_VIF_UNKNOWN,
+    OSW_VIF_DISABLED,
+    OSW_VIF_ENABLED,
+    OSW_VIF_BROKEN,
+};
+
+void
+osw_vif_status_set(enum osw_vif_status *status,
+                   enum osw_vif_status new_status);
+
+const char *
+osw_vif_status_into_cstr(enum osw_vif_status status);
+
 enum osw_vif_type {
     OSW_VIF_UNDEFINED,
     OSW_VIF_AP,
@@ -594,6 +608,10 @@ osw_multi_ap_into_str(const struct osw_multi_ap *map);
 enum osw_band
 osw_freq_to_band(const int freq);
 
+bool
+osw_channel_is_equal(const struct osw_channel *a,
+                     const struct osw_channel *b);
+
 enum osw_band
 osw_channel_to_band(const struct osw_channel *channel);
 
@@ -695,6 +713,9 @@ osw_op_class_to_20mhz(uint8_t op_class,
 
 enum osw_band
 osw_op_class_to_band(uint8_t op_class);
+
+int *
+osw_op_class_to_freqs(uint8_t op_class);
 
 bool
 osw_freq_is_dfs(int freq_mhz);

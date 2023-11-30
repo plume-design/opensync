@@ -45,8 +45,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ovsdb_table.h"
 #endif
 
-#define TINYPROXY_CONF_PATH      CONFIG_CPM_TINYPROXY_ETC "/tinyproxy.conf"
-
 #define TINYPROXY_DEBOUNCE_TIMER      1.0
 
 static char cportal_proxy_conf_header[] =
@@ -63,9 +61,6 @@ static char cportal_proxy_conf_header[] =
     "XTinyproxy-MAC Yes\n"
     "\n";
 
-static bool cportal_proxy_global_init = false;
-static daemon_t cportal_proxy_process;
-static ev_debounce cportal_proxy_debounce;
 
 struct cportal_proxy_other_config {
     char *listenip;
@@ -114,6 +109,7 @@ static bool
 cportal_proxy_write_additional_hdrs(struct cportal *self)
 {
     FILE *fconf = NULL;
+    char tinyproxy_conf_path[512] = {0};
     ds_tree_t       *add_hdrs;
     struct str_pair *pair = NULL;
 
@@ -121,11 +117,12 @@ cportal_proxy_write_additional_hdrs(struct cportal *self)
 
     if (!self->additional_headers) return false;
 
-    fconf = fopen(TINYPROXY_CONF_PATH, "a");
-    if (!fconf) fconf = fopen(TINYPROXY_CONF_PATH, "w");
+    snprintf(tinyproxy_conf_path, sizeof(tinyproxy_conf_path), CONFIG_CPM_TINYPROXY_ETC "/tinyproxy.%s.conf", self->cp_uuid);
+    fconf = fopen(tinyproxy_conf_path, "a");
+    if (!fconf) fconf = fopen(tinyproxy_conf_path, "w");
     if (!fconf)
     {
-        LOG(ERR, "%s: Error creating tinyproxy config file: %s", __func__, TINYPROXY_CONF_PATH);
+        LOG(ERR, "%s: Error opening tinyproxy config file: %s", __func__, tinyproxy_conf_path);
         return false;
     }
 
@@ -205,6 +202,7 @@ cportal_proxy_write_other_config(struct cportal *self)
 {
     FILE *fconf = NULL;
     struct cportal_proxy_other_config pconf;
+    char tinyproxy_conf_path[512] = {0};
     int ret;
 
     if (!self) return false;
@@ -212,10 +210,11 @@ cportal_proxy_write_other_config(struct cportal *self)
     memset(&pconf, 0, sizeof(struct cportal_proxy_other_config));
     cportal_proxy_fill_vals(self, &pconf);
 
-    fconf = fopen(TINYPROXY_CONF_PATH, "w");
+    snprintf(tinyproxy_conf_path, sizeof(tinyproxy_conf_path), CONFIG_CPM_TINYPROXY_ETC "/tinyproxy.%s.conf", self->cp_uuid);
+    fconf = fopen(tinyproxy_conf_path, "w");
     if (fconf == NULL)
     {
-        LOG(ERR, "%s: Error creating tinyproxy config file: %s", __func__, TINYPROXY_CONF_PATH);
+        LOG(ERR, "%s: Error opening tinyproxy config file: %s", __func__, tinyproxy_conf_path);
         return false;
     }
 
@@ -424,22 +423,56 @@ cportal_proxy_write_config(struct cportal *self)
     return true;
 }
 
+static bool
+cportal_proxy_delete_conf_pid(struct cportal *self)
+{
+
+    if (!self) return false;
+
+    char tinyproxy_conf_path[512] = {0};
+    char tinyproxy_pid_path[512] = {0};
+    const char *tinyproxy_paths[2];
+
+    snprintf(tinyproxy_conf_path, sizeof(tinyproxy_conf_path),
+             CONFIG_CPM_TINYPROXY_ETC "/tinyproxy.%s.conf", self->cp_uuid);
+    snprintf(tinyproxy_pid_path, sizeof(tinyproxy_pid_path),
+             "/var/run/tinyproxy.%s.conf", self->cp_uuid);
+
+    tinyproxy_paths[0] = tinyproxy_conf_path;
+    tinyproxy_paths[1] = tinyproxy_pid_path;
+
+    bool retval = true;
+    for (int i = 0; i < 2; i++)
+    {
+        if (access(tinyproxy_paths[i], F_OK) == 0)
+        {
+            if (unlink(tinyproxy_paths[i]) != 0)
+            {
+                LOG(ERR, "%s: Error deleting tinyproxy file: %s, errno: %d, strerror: %s",
+                    __func__, tinyproxy_paths[i], errno, strerror(errno));
+                retval = false;
+            }
+        }
+    }
+
+    return retval;
+}
+
 /**
- * Global restart of the tinyproxy service
+ * Restart of the tinyproxy service
  */
 static void
-__cportal_proxy_restart(void)
+__cportal_proxy_restart(struct cportal *self)
 {
-    if (!cportal_proxy_global_init) return;
 
     LOG(INFO, "%s: daemon restart...\n",__func__);
 
-    if (!daemon_stop(&cportal_proxy_process))
+    if (!daemon_stop(self->cportal_proxy_process))
     {
         LOG(WARN, "%s: Error stopping the tinyproxy process.",__func__);
     }
 
-    if (!daemon_start(&cportal_proxy_process))
+    if (!daemon_start(self->cportal_proxy_process))
     {
         LOG(ERR, "%s: Error starting tinyproxy.",__func__);
         goto exit;
@@ -455,49 +488,47 @@ cportal_proxy_restart_debounce(struct ev_loop *loop, ev_debounce *ev, int revent
     (void)loop;
     (void)ev;
     (void)revent;
-
-    __cportal_proxy_restart();
+    struct cportal *cp = (struct cportal *)(ev->data);
+    __cportal_proxy_restart(cp);
 }
 
 static void
-cportal_proxy_restart(void)
+cportal_proxy_restart(struct cportal *self)
 {
     /* Do a delayed restart */
-    ev_debounce_start(EV_DEFAULT, &cportal_proxy_debounce);
+    ev_debounce_start(EV_DEFAULT, self->cportal_proxy_debounce);
 }
 
-bool cportal_proxy_init(void)
+bool cportal_proxy_init(struct cportal *self)
 {
+        char tinyproxy_conf_path[512] = {0};
+        char tinyproxy_pid_path[512] = {0};
 
-    if (!cportal_proxy_global_init)
-    {
-        /*
-         * Initialize the tinyproxy global instance and process
-         */
-        ev_debounce_init(&cportal_proxy_debounce, cportal_proxy_restart_debounce, TINYPROXY_DEBOUNCE_TIMER);
+        self->cportal_proxy_debounce->fn = cportal_proxy_restart_debounce;
+        self->cportal_proxy_debounce->data = self;
+        ev_debounce_init(self->cportal_proxy_debounce, cportal_proxy_restart_debounce, TINYPROXY_DEBOUNCE_TIMER);
 
-        if (!daemon_init(&cportal_proxy_process, CONFIG_CPM_TINYPROXY_PATH, 0))
+        if (!daemon_init(self->cportal_proxy_process, CONFIG_CPM_TINYPROXY_PATH, 0))
         {
             LOG(ERR, "%s: Error initializing proxy.", __func__);
             return false;
         }
 
-        daemon_arg_add(&cportal_proxy_process, "-d");                             /* Run in foreground */
-        daemon_arg_add(&cportal_proxy_process, "-c", TINYPROXY_CONF_PATH);   /* Config file path */
+        daemon_arg_add(self->cportal_proxy_process, "-d");                             /* Run in foreground */
+        snprintf(tinyproxy_conf_path, sizeof(tinyproxy_conf_path), CONFIG_CPM_TINYPROXY_ETC "/tinyproxy.%s.conf", self->cp_uuid);
+        daemon_arg_add(self->cportal_proxy_process, "-c", tinyproxy_conf_path);
 
         /* Path to the PID file */
-        if (!daemon_pidfile_set(&cportal_proxy_process, "/var/run/tinyproxy.pid", false))
+        snprintf(tinyproxy_pid_path, sizeof(tinyproxy_pid_path), "/var/run/tinyproxy.%s.pid", self->cp_uuid);
+        if (!daemon_pidfile_set(self->cportal_proxy_process, tinyproxy_pid_path, true))
         {
             LOG(ERR, "%s: Error initializing proxy pid file.", __func__);
             return false;
         }
-        if (!daemon_restart_set(&cportal_proxy_process, true, 0, 10))
+        if (!daemon_restart_set(self->cportal_proxy_process, true, 0, 10))
         {
             LOGE("%s: Error enabling daemon auto-restart.", __func__);
         }
-
-        cportal_proxy_global_init = true;
-    }
 
     return true;
 }
@@ -507,7 +538,7 @@ bool cportal_proxy_init(void)
  */
 bool cportal_proxy_start(struct cportal *self)
 {
-    cportal_proxy_restart();
+    cportal_proxy_restart(self);
     self->enabled = true;
     return true;
 }
@@ -523,26 +554,30 @@ bool cportal_proxy_stop(struct cportal *self)
         return false;
     }
 
-    ev_debounce_stop(EV_DEFAULT, &cportal_proxy_debounce);
+    ev_debounce_stop(EV_DEFAULT, self->cportal_proxy_debounce);
 
-    if (!daemon_stop(&cportal_proxy_process))
+    if (!daemon_stop(self->cportal_proxy_process))
     {
         LOG(WARN, "%s: Error stopping tinyproxy server.",__func__);
         return false;
     }
 
-    cportal_proxy_global_init = true;
+    if (!cportal_proxy_delete_conf_pid(self))
+    {
+        LOG(ERR, "%s: Error deleting tinyproxy config and pid file, uuid %s", __func__, self->cp_uuid);
+        return false;
+    }
+
     return true;
 }
 
 bool cportal_proxy_set(struct cportal *self)
 {
-    if (!cportal_proxy_global_init) return false;
 
     if (!cportal_proxy_write_config(self))
     {
-        LOG(ERR, "%s: Error writing tinyproxy config file[%s].",__func__,
-                  TINYPROXY_CONF_PATH);
+        LOG(ERR, "%s: Error writing tinyproxy config file[/tmp/tinyproxy.%s.conf].",
+                     __func__, self->cp_uuid);
         return false;
     }
 

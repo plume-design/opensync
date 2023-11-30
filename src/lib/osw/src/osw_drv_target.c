@@ -378,7 +378,7 @@ phy_to_chan(struct osw_drv_dummy *dummy,
     ds_tree_foreach(&dummy->vif_tree, vif) {
         const bool phy_match = (strcmp(vif->phy_name.buf, phy_name) == 0);
         if (phy_match == false) continue;
-        if (vif->state.enabled == false) continue;
+        if (vif->state.status != OSW_VIF_ENABLED) continue;
         if (vif->state.vif_type != OSW_VIF_AP) continue;
         const struct osw_drv_vif_state_ap *vap = &vif->state.u.ap;
         const struct osw_channel *c = &vap->channel;
@@ -548,7 +548,7 @@ phy_to_scan_vif(struct osw_drv_dummy *dummy, const char *phy_name)
     struct osw_drv_dummy_vif *vif;
     ds_tree_foreach(&dummy->vif_tree, vif) {
         if (strcmp(vif->phy_name.buf, phy_name) != 0) continue;
-        if (vif->state.enabled == false) continue;
+        if (vif->state.status != OSW_VIF_ENABLED) continue;
         if (vif->state.vif_type != OSW_VIF_AP) continue;
         return vif->vif_name.buf;
     }
@@ -1480,7 +1480,14 @@ osw_drv_target_schema2vifstate(const struct schema_Wifi_VIF_State *vstate,
 {
     struct osw_drv_vif_state_sta *vsta = &info->u.sta;
 
-    info->enabled = vstate->enabled;
+    if (vstate->enabled_exists) {
+        if (vstate->enabled) {
+            osw_vif_status_set(&info->status, OSW_VIF_ENABLED);
+        }
+        else {
+            osw_vif_status_set(&info->status, OSW_VIF_DISABLED);
+        }
+    }
     info->vif_type = strcmp(vstate->mode, "ap") == 0 ? OSW_VIF_AP :
                      strcmp(vstate->mode, "ap_vlan") == 0 ? OSW_VIF_AP_VLAN :
                      strcmp(vstate->mode, "sta") == 0 ? OSW_VIF_STA :

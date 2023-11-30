@@ -318,11 +318,9 @@ ipthreat_dpi_plugin_exit(struct fsm_session *session)
 
     client = &ipthreat_dpi_session->outbound;
     fsm_policy_deregister_client(client);
-    FREE(client->name);
 
     client = &ipthreat_dpi_session->inbound;
     fsm_policy_deregister_client(client);
-    FREE(client->name);
 
     dns_cache_cleanup_mgr();
     ipthreat_dpi_delete_session(session);

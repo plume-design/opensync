@@ -82,6 +82,32 @@ osw_drv_nl80211_event_vif(struct osw_drv *drv,
 }
 
 static void
+osw_drv_nl80211_event_csa_notify(struct osw_drv *drv,
+                                 struct nlattr *tb[])
+{
+    const char *phy_name = osw_drv_nl80211_tb_to_phy_name(drv, tb);
+    const char *vif_name = osw_drv_nl80211_tb_to_vif_name(drv, tb);
+    struct osw_channel c;
+
+    MEMZERO(c);
+    nla_freq_to_osw_channel(tb, &c);
+
+    struct nlattr *nla_cs_count = tb[NL80211_ATTR_CH_SWITCH_COUNT];
+    struct nlattr *nla_block_tx = tb[NL80211_ATTR_CH_SWITCH_BLOCK_TX];
+    const uint32_t cs_count = nla_cs_count ? nla_get_u32(nla_cs_count) : 0;
+    const bool block_tx = nla_block_tx ? nla_get_flag(nla_block_tx) : 0;
+
+    LOGI("osw: drv: nl80211: event: vif: %s/%s: csa notify to " OSW_CHANNEL_FMT " cs=%" PRIu32 " %s",
+         phy_name,
+         vif_name,
+         OSW_CHANNEL_ARG(&c),
+         cs_count,
+         block_tx ? "tx blocked" : "tx allowed");
+
+    osw_drv_report_vif_channel_change_started(drv, phy_name, vif_name, &c);
+}
+
+static void
 osw_drv_nl80211_event_csa_started(struct osw_drv *drv,
                                   struct nlattr *tb[])
 {
@@ -104,7 +130,7 @@ osw_drv_nl80211_event_csa_started(struct osw_drv *drv,
          cs_count,
          block_tx ? "tx blocked" : "tx allowed");
 
-    osw_drv_report_vif_channel_change_started(drv, phy_name, vif_name, &c);
+    osw_drv_report_vif_channel_change_advertised(drv, phy_name, vif_name, &c);
 }
 
 static void
@@ -245,7 +271,8 @@ osw_drv_nl80211_event_process(struct osw_drv_nl80211 *m,
         case NL80211_CMD_DEL_INTERFACE: return osw_drv_nl80211_event_vif(drv, tb, "del");
         case NL80211_CMD_START_AP: return osw_drv_nl80211_event_vif(drv, tb, "start ap");
         case NL80211_CMD_STOP_AP: return osw_drv_nl80211_event_vif(drv, tb, "stop ap");
-        case NL80211_CMD_CH_SWITCH_NOTIFY: return osw_drv_nl80211_event_csa_started(drv, tb);
+        case NL80211_CMD_CH_SWITCH_NOTIFY: return osw_drv_nl80211_event_csa_notify(drv, tb);
+        case NL80211_CMD_CH_SWITCH_STARTED_NOTIFY: return osw_drv_nl80211_event_csa_started(drv, tb);
         case NL80211_CMD_NEW_STATION: return osw_drv_nl80211_event_sta(drv, tb, "new");
         case NL80211_CMD_SET_STATION: return osw_drv_nl80211_event_sta(drv, tb, "set");
         case NL80211_CMD_DEL_STATION: return osw_drv_nl80211_event_sta_del(drv, tb);

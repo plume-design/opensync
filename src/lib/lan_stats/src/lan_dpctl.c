@@ -201,6 +201,7 @@ dump_flows(lan_stats_instance_t *lan_stats_instance, struct dpctl_params *dpctl_
     char *name, *parse_name, *parse_type;
     struct dpif_flow_dump *flow_dump = NULL;
     struct hmap *portno_names;
+    dp_ctl_stats_t stats;
     struct dpif_flow f;
     struct dpif *dpif;
     struct ds ds;
@@ -246,15 +247,16 @@ dump_flows(lan_stats_instance_t *lan_stats_instance, struct dpctl_params *dpctl_
     memset(&f, 0, sizeof(f));
     while (dpif_flow_dump_next(dump_thread, &f, 1))
     {
+        memset(&stats, 0, sizeof(dp_ctl_stats_t));
 #if OVS_PACKAGE_VERNUM >= OVS_VERSION_2_11_1
         format_flow(&ds, &f, portno_names, dpctl_p);
 #elif OVS_PACKAGE_VERNUM == OVS_VERSION_2_8_7
         format_flow(&ds, &f, portno_names, type, dpctl_p);
 #endif
         ds.string[ds.length] = '\0';
-        lan_stats_parse_flows(lan_stats_instance, ds.string);
-        lan_stats_add_uplink_info(lan_stats_instance);
-        lan_stats_flows_filter(lan_stats_instance);
+        lan_stats_parse_flows(lan_stats_instance, ds.string, &stats);
+        lan_stats_add_uplink_info(lan_stats_instance, &stats);
+        lan_stats_flows_filter(lan_stats_instance, &stats);
         ds_clear(&ds);
     }
 

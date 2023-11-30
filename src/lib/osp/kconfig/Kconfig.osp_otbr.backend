@@ -1,0 +1,12 @@
+config OSP_OTBR_NULL
+    bool "Null"
+    help
+        This backend implements a dummy implementation of the osp_otbr API.
+        All functions in this implementation do nothing and return success.
+
+config OSP_OTBR_CLI_LIB
+    bool "OTBR Agent CLI library"
+    select OTBR_CLI
+    help
+        This backend uses OpenThread Border Router Agent CLI library to
+        run and control OTBR Agent using OpenThread CLI commands.

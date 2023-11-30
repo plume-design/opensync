@@ -27,7 +27,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifndef NET_HEADER_PARSE_H_INCLUDED
 #define NET_HEADER_PARSE_H_INCLUDED
 
+#ifndef _GNU_SOURCE
 #define _GNU_SOURCE
+#endif
 
 #include <stdbool.h>
 #include <pcap.h>
@@ -41,6 +43,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <netinet/tcp.h>
 #include <netinet/ip_icmp.h>
 #include <netinet/icmp6.h>
+#include <linux/if_packet.h>
 
 #include "log.h"
 #include "network_metadata.h"
@@ -118,11 +121,15 @@ struct net_header_parser
     pkt_source_t source;
     uint32_t packet_id;
     uint32_t nfq_queue_num;
-    bool payload_updated;
     uint16_t rx_vidx;
     uint16_t tx_vidx;
     uint16_t rx_pidx;
     uint16_t tx_pidx;
+    os_macaddr_t *src_eth_addr;
+    struct sockaddr_ll *raw_dst;
+    char *tap_intf;
+    int sock_fd;
+    bool payload_updated;
 };
 
 

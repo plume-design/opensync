@@ -1503,7 +1503,7 @@ osw_drv_request_vif_state_cb(struct osw_drv *drv,
     const wifi_front_haul_bss_t *bss = &vap.u.bss_info;
 
     vif.exists = true;
-    vif.enabled = bss->enabled;
+    osw_vif_status_set(&vif.status, bss->enabled ? OSW_VIF_ENABLED : OSW_VIF_DISABLED);
     vif.vif_type = OSW_VIF_AP;
     memcpy(&vif.mac_addr.octet, bss->bssid, MAC_LEN);
 

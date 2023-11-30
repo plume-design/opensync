@@ -64,6 +64,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "memutil.h"
 #include "kconfig.h"
 #include "network_zone.h"
+#include "fsm_ipc.h"
 
 #define MODULE_ID LOG_MODULE_ID_OVSDB
 
@@ -74,6 +75,7 @@ static ovsdb_table_t table_Openflow_Local_Tag;
 static ovsdb_table_t table_Openflow_Tag_Group;
 static ovsdb_table_t table_Node_Config;
 static ovsdb_table_t table_Node_State;
+static ovsdb_table_t table_FCM_Collector_Config;
 
 /**
  * This file manages the OVSDB updates for fsm.
@@ -256,7 +258,7 @@ fsm_walk_sessions_tree(void)
 
     LOGT("Walking sessions tree");
     while (session != NULL) {
-        LOGT(", handler: %s, topic: %s",
+        LOGT("  handler: %s, topic: %s",
              session->name ? session->name : "None",
              session->topic ? session->topic : "None");
         session = ds_tree_next(sessions, session);
@@ -519,7 +521,7 @@ fsm_update_client_table(struct fsm_session *session, char *table_name)
     if (cmp == 0) return;
 
 update:
-    session->policy_client.name = table_name;
+    session->policy_client.name = IS_NULL_PTR(table_name) ? NULL : STRDUP(table_name);
     fsm_update_client(session, table);
 }
 
@@ -1339,8 +1341,6 @@ fsm_set_node_state(const char *module, const char *key, const char *value)
     SCHEMA_SET_STR(node_state.value, value);
     ovsdb_table_upsert_where(&table_Node_State, where, &node_state, false);
 
-    json_decref(where);
-
     return;
 }
 
@@ -1463,6 +1463,80 @@ callback_Node_Config(ovsdb_update_monitor_t *mon,
 }
 
 
+static void
+fsm_enable_ct_stats_comms(struct schema_FCM_Collector_Config *node_cfg)
+{
+    struct fsm_mgr *mgr;
+    bool ret;
+    int cmp;
+
+    mgr = fsm_get_mgr();
+
+    /* Bail if the osbus connection to FCM is already established */
+    if (mgr->osbus_flags & FSM_OSBUS_FCM) return;
+
+    /* Check if the fcm feature is of interest */
+    cmp = strcmp(node_cfg->name, "ct_stats");
+    if (cmp != 0) return;
+
+    /* Initialize the FSM osbus end point */
+    ret = fsm_ipc_init_client();
+    if (!ret)
+    {
+        LOGD("%s: could not initiate client", __func__);
+        return;
+    }
+
+    mgr->osbus_flags |= FSM_OSBUS_FCM;
+
+    return;
+}
+
+
+static void
+fsm_disable_ct_stats_comms(struct schema_FCM_Collector_Config *old_rec)
+{
+    struct fsm_mgr *mgr;
+    int cmp;
+
+    mgr = fsm_get_mgr();
+
+    /* Bail if the osbus connection to FCM is not established */
+    if (!(mgr->osbus_flags & FSM_OSBUS_FCM)) return;
+
+    /* Check if the fcm feature is of interest */
+    cmp = strcmp(old_rec->name, "ct_stats");
+    if (cmp != 0) return;
+
+    /* Close the FSM osbus end point */
+    fsm_ipc_terminate_client();
+
+    mgr->osbus_flags &= ~FSM_OSBUS_FCM;
+
+    return;
+}
+
+
+/**
+ * @brief registered callback for Node_Config events
+ */
+static void
+callback_FCM_Collector_Config(ovsdb_update_monitor_t *mon,
+                              struct schema_FCM_Collector_Config *old_rec,
+                              struct schema_FCM_Collector_Config *node_cfg)
+{
+    if (mon->mon_type == OVSDB_UPDATE_NEW)
+    {
+        fsm_enable_ct_stats_comms(node_cfg);
+    }
+
+    if (mon->mon_type == OVSDB_UPDATE_DEL)
+    {
+        fsm_disable_ct_stats_comms(old_rec);
+    }
+}
+
+
 /**
  * @brief register ovsdb callback events
  */
@@ -1481,6 +1555,7 @@ fsm_ovsdb_init(void)
     OVSDB_TABLE_INIT_NO_KEY(Openflow_Tag_Group);
     OVSDB_TABLE_INIT_NO_KEY(Node_Config);
     OVSDB_TABLE_INIT_NO_KEY(Node_State);
+    OVSDB_TABLE_INIT_NO_KEY(FCM_Collector_Config);
 
     // Initialize OVSDB monitor callbacks
     OVSDB_TABLE_MONITOR(AWLAN_Node, false);
@@ -1489,6 +1564,7 @@ fsm_ovsdb_init(void)
     om_standard_callback_openflow_local_tag(&table_Openflow_Local_Tag);
     om_standard_callback_openflow_tag_group(&table_Openflow_Tag_Group);
     OVSDB_TABLE_MONITOR(Node_Config, false);
+    OVSDB_TABLE_MONITOR(FCM_Collector_Config, false);
 
     // Initialize the plugin loader routine
     mgr = fsm_get_mgr();

@@ -32,9 +32,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "util.h"
 #include "memutil.h"
 #include "execsh.h"
+#include "kconfig.h"
 #include "ds_tree.h"
 
 #include "inet_fw.h"
+#include "os_nif.h"
 
 #define FW_RULE_IPV4                (1 << 0)
 #define FW_RULE_IPV6                (1 << 1)
@@ -213,11 +215,12 @@ bool inet_fw_portforward_set(inet_fw_t *self, const struct inet_portforward *pf)
 {
     struct fw_portfw_entry *pe;
 
-    LOG(INFO, "fw: %s: PORT FORWARD SET: %d -> "PRI_osn_ip_addr":%d",
+    LOG(INFO, "fw: %s: PORT FORWARD SET: %d -> "PRI_osn_ip_addr":%d NAT loopback %d",
             self->fw_ifname,
             pf->pf_src_port,
             FMT_osn_ip_addr(pf->pf_dst_ipaddr),
-            pf->pf_dst_port);
+            pf->pf_dst_port,
+            pf->pf_nat_loopback);
 
     pe = ds_tree_find(&self->fw_portfw_list, (void *)pf);
     if (pe != NULL)
@@ -305,6 +308,21 @@ bool fw_nat_start(inet_fw_t *self)
         retval &= fw_rule_add(self,
                 FW_RULE_IPV4, "filter", "NM_PORT_FORWARD",
                 "-i", self->fw_ifname, "-j", "MINIUPNPD");
+
+        /* Regardless of NAT enabled, always allow input on the LAN interface */
+        if (strcmp(self->fw_ifname, CONFIG_TARGET_LAN_BRIDGE_NAME) == 0)
+        {
+            retval &= fw_rule_add(self,
+                    FW_RULE_ALL, "filter", "NM_INPUT",
+                    "-i", self->fw_ifname, "-j", "ACCEPT");
+
+            if (kconfig_enabled(CONFIG_TARGET_USE_NATIVE_BRIDGE))
+            {
+                retval &= fw_rule_add(self,
+                    FW_RULE_ALL, "filter", "NM_FORWARD",
+                    "-i", self->fw_ifname, "-j", "ACCEPT");
+            }
+        }
     }
     else
     {
@@ -374,7 +392,11 @@ bool fw_portforward_rule(inet_fw_t *self, const struct inet_portforward *pf, boo
     char dst_port[C_INT32_LEN];
     char to_dest[C_IP4ADDR_LEN + C_INT32_LEN + 1];
     char dest[C_IP4ADDR_LEN];
-
+    char dest_subnet[C_IP4ADDR_LEN + C_INT32_LEN + 1];
+    osn_ip_addr_t dest_subnet_ipaddr = pf->pf_dst_ipaddr;
+    os_ipaddr_t addr;
+    bool result = false;
+    int ia_prefix = 0, i;
 
     if (pf->pf_proto == INET_PROTO_UDP)
         proto = "udp";
@@ -383,6 +405,24 @@ bool fw_portforward_rule(inet_fw_t *self, const struct inet_portforward *pf, boo
     else
         return false;
 
+    result = os_nif_netmask_get(CONFIG_TARGET_LAN_BRIDGE_NAME, &addr);
+    if (!result) {
+        LOG(ERROR, "%s: os_nif_netmask_get failed", __func__);
+    } else {
+        LOG(DEBUG, "%s: %s netmask %s ", __func__, CONFIG_TARGET_LAN_BRIDGE_NAME, inet_ntoa(*(struct in_addr*)&addr));
+    }
+    for (i=0; i<4; i++)
+    {
+        while (addr.addr[i] != 0)
+        {
+            ia_prefix += addr.addr[i] & 1;
+            addr.addr[i] >>= 1;
+        }
+    }
+
+    dest_subnet_ipaddr.ia_prefix = ia_prefix;
+    dest_subnet_ipaddr = osn_ip_addr_subnet(&dest_subnet_ipaddr);
+    LOG(DEBUG, "%s: LAN bridge ia prefix %d", __func__, dest_subnet_ipaddr.ia_prefix);
 
     if (snprintf(src_port, sizeof(src_port), "%u", pf->pf_src_port) >= (int)sizeof(src_port))
         return false;
@@ -395,11 +435,77 @@ bool fw_portforward_rule(inet_fw_t *self, const struct inet_portforward *pf, boo
         return false;
     }
 
+    if (snprintf(dest_subnet, sizeof(dest_subnet), PRI_osn_ip_addr, FMT_osn_ip_addr(dest_subnet_ipaddr))
+                 >= (int)sizeof(dest_subnet))
+    {
+        return false;
+    }
+
     if (snprintf(to_dest, sizeof(to_dest), PRI_osn_ip_addr":%u",
                  FMT_osn_ip_addr(pf->pf_dst_ipaddr), pf->pf_dst_port)
                       >= (int)sizeof(to_dest))
     {
             return false;
+    }
+
+    // NAT loopback handling
+    if (remove || (!remove && pf->pf_nat_loopback == false))
+    {
+        if (!fw_rule_del(
+                    self,
+                    FW_RULE_IPV4,
+                    "nat",
+                    "NM_PORT_FORWARD",
+                    "-i", CONFIG_TARGET_LAN_BRIDGE_NAME,
+                    "-p", proto,
+                    "--dport", src_port,
+                    "-j", "DNAT",
+                    "--to-destination", to_dest))
+        {
+            return false;
+        }
+
+        if (!fw_rule_del(
+                    self,
+                    FW_RULE_IPV4,
+                    "nat",
+                    "NM_NAT",
+                    "--src", dest_subnet,
+                    "--dst", dest,
+                    "-o", CONFIG_TARGET_LAN_BRIDGE_NAME,
+                    "-p", proto,
+                    "--dport", dst_port,
+                    "-j", "MASQUERADE"))
+        {
+            return false;
+        }
+    }
+    else if (!remove && pf->pf_nat_loopback == true)
+    {
+        if (!fw_rule_add(
+                    self,
+                    FW_RULE_IPV4, "nat", "NM_PORT_FORWARD",
+                    "-i", CONFIG_TARGET_LAN_BRIDGE_NAME,
+                    "-p", proto,
+                    "--dport", src_port,
+                    "-j", "DNAT",
+                    "--to-destination", to_dest))
+        {
+            return false;
+        }
+
+        if (!fw_rule_add(
+                    self,
+                    FW_RULE_IPV4, "nat", "NM_NAT",
+                    "--src", dest_subnet,
+                    "--dst", dest,
+                    "-o", CONFIG_TARGET_LAN_BRIDGE_NAME,
+                    "-p", proto,
+                    "--dport", dst_port,
+                    "-j", "MASQUERADE"))
+        {
+            return false;
+        }
     }
 
     if (remove)
@@ -681,6 +787,9 @@ int fw_portforward_cmp(const void *_a, const void *_b)
 
     if (a->pf_src_port > b->pf_src_port) return 1;
     if (a->pf_src_port < b->pf_src_port) return -1;
+
+    if (a->pf_nat_loopback && !(b->pf_nat_loopback)) return 1;
+    if (!(a->pf_nat_loopback) && b->pf_nat_loopback) return -1;
 
     return 0;
 }

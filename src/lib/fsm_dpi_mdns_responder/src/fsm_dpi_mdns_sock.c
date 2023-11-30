@@ -63,6 +63,8 @@ fsm_dpi_mdns_create_mcastv4_socket(void)
 
     if (!mgr) return -1;
 
+    if (mgr->srcip == NULL) return -1;
+
     sd = socket(AF_INET, SOCK_DGRAM | SOCK_NONBLOCK, 0);
     if (sd < 0)
         return -1;
@@ -225,6 +227,8 @@ fsm_dpi_mdns_set_ip(struct sockaddr_in *to, bool unicast, struct net_header_pars
     to->sin_port = htons(5353);
 
     iphdr = net_header_get_ipv4_hdr(net_parser);
+    if (iphdr == NULL) return;
+
     ip.s_addr = iphdr->saddr;
 
     if (unicast) ip.s_addr = iphdr->saddr;
@@ -248,15 +252,13 @@ fsm_dpi_mdns_send_response(struct fsm_dpi_mdns_service *service, bool unicast, s
     mgr = fsm_dpi_mdns_get_mgr();
     if (!mgr->initialized) return false;
 
-    LOGT("%s: Send mdns %scast response for qname %s",__func__,unicast ? "uni": "multi", service->name);
+    LOGT("%s: Send mdns %scast response for qname %s", __func__, unicast ? "uni": "multi", service->name);
 
     fsm_dpi_populate_mdns_reply(service, &msg);
 
     /* copy msg struct to buffer */
     len = message_packet_len(&msg);
     buf = message_packet(&msg);
-
-    create_hex_dump("/tmp/mdsn_reply.txtpcap", buf, len);
 
     LOGT("%s(): sending mDNS reply", __func__);
     ssize_t n = sendto(mgr->mcast_fd, buf, len, 0, (struct sockaddr *)&to, sizeof(to));

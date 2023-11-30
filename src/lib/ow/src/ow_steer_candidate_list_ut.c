@@ -128,21 +128,21 @@ ow_steer_candidate_list_ut_lifecycle_cb(void *data)
 
     /* Update preferences, one by one */
     candidate = ow_steer_candidate_list_lookup(candidates_a, &bssid_a);
-    ow_steer_candidate_set_preference(candidate, pref_a);
+    ow_steer_candidate_set_preference(candidate, "", pref_a);
 
     assert(ow_steer_candidate_get_preference(ow_steer_candidate_list_lookup(candidates_a, &bssid_a)) == pref_a);
     assert(ow_steer_candidate_get_preference(ow_steer_candidate_list_lookup(candidates_a, &bssid_b)) == OW_STEER_CANDIDATE_PREFERENCE_NONE);
     assert(ow_steer_candidate_get_preference(ow_steer_candidate_list_lookup(candidates_a, &bssid_c)) == OW_STEER_CANDIDATE_PREFERENCE_NONE);
 
     candidate = ow_steer_candidate_list_lookup(candidates_a, &bssid_c);
-    ow_steer_candidate_set_preference(candidate, pref_b);
+    ow_steer_candidate_set_preference(candidate, "", pref_b);
 
     assert(ow_steer_candidate_get_preference(ow_steer_candidate_list_lookup(candidates_a, &bssid_a)) == pref_a);
     assert(ow_steer_candidate_get_preference(ow_steer_candidate_list_lookup(candidates_a, &bssid_b)) == OW_STEER_CANDIDATE_PREFERENCE_NONE);
     assert(ow_steer_candidate_get_preference(ow_steer_candidate_list_lookup(candidates_a, &bssid_c)) == pref_b);
 
     candidate = ow_steer_candidate_list_lookup(candidates_a, &bssid_b);
-    ow_steer_candidate_set_preference(candidate, pref_b);
+    ow_steer_candidate_set_preference(candidate, "", pref_b);
 
     assert(ow_steer_candidate_get_preference(ow_steer_candidate_list_lookup(candidates_a, &bssid_a)) == pref_a);
     assert(ow_steer_candidate_get_preference(ow_steer_candidate_list_lookup(candidates_a, &bssid_b)) == pref_b);

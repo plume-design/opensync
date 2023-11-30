@@ -58,6 +58,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define MODULE_ID LOG_MODULE_ID_MAIN
 
 #define WM2_RECALC_DELAY_SECONDS            30
+#define WM2_RECALC_DELAY_SOON_SECONDS       1
 #define WM2_DFS_FALLBACK_GRACE_PERIOD_SECONDS 10
 #define WM2_MAX_BSSID_LEN 18
 #define WM2_MAX_NAS_ID_LEN 49
@@ -223,6 +224,7 @@ wm2_delayed(void (*fn)(const char *ifname, bool force),
 }
 
 #define wm2_delayed_recalc(fn, ifname) (wm2_delayed((fn), (ifname), WM2_RECALC_DELAY_SECONDS, #fn))
+#define wm2_delayed_recalc_soon(fn, ifname) (wm2_delayed((fn), (ifname), WM2_RECALC_DELAY_SOON_SECONDS, #fn))
 #define wm2_delayed_recalc_cancel wm2_delayed_cancel
 
 #define wm2_timer(fn, ifname, timeout) (wm2_delayed((fn), (ifname), (timeout), #fn))
@@ -363,16 +365,43 @@ wm2_sta_has_dfs_channel(const struct schema_Wifi_Radio_State *rstate,
     if (!rstate->channel_exists)
          return status;
 
-    /* TODO check all channels base on number/width */
+    const bool is_5gl = (strcmp(rstate->freq_band, "5GL") == 0);
+    const bool is_5gu = (strcmp(rstate->freq_band, "5GU") == 0);
+    const bool is_5g = (strcmp(rstate->freq_band, "5G") == 0);
+    const bool is_5ghz = (is_5gl || is_5gu || is_5g);
+    const bool is_not_subject_to_dfs = !is_5ghz;
+    if (is_not_subject_to_dfs)
+        return false;
+
+    const int c = vstate->channel ?: rstate->channel;
+    const int w = strstr(rstate->ht_mode, "HT") == rstate->ht_mode
+                ? atoi(rstate->ht_mode + strlen("HT"))
+                : 20;
+    const int *chans = unii_5g_chan2list(c, w);
+    if (chans == NULL)
+        return false;
+
     for (i = 0; i < rstate->channels_len; i++) {
-        if (rstate->channel != atoi(rstate->channels_keys[i]))
-            continue;
+        const int ic = atoi(rstate->channels_keys[i]);
+        int j;
+        for (j = 0; chans[j]; j++) {
+            if (chans[j] == ic)
+                break;
+        }
+        const bool chan_found = (chans[j] == ic);
 
-        LOGI("%s: check channel %d (%d) %s", vstate->if_name, rstate->channel, vstate->channel, rstate->channels[i]);
-        if (!strstr(rstate->channels[i], "allowed"))
-            status = true;
+        if (chan_found) {
+            const bool is_dfs = (strstr(rstate->channels[i], "allowed") == NULL);
 
-        break;
+            if (is_dfs) {
+                LOGI("%s: channel %d/%s has DFS 20mhz segment in it at %d",
+                     vstate->if_name,
+                     rstate->channel,
+                     rstate->ht_mode,
+                     ic);
+                status = true;
+            }
+        }
     }
 
     return status;
@@ -717,6 +746,7 @@ wm2_rconf_changed(const struct schema_Wifi_Radio_Config *conf,
     CMP(CHANGED_MAP_INTSTR, temperature_control);
     CMP(CHANGED_MAP_STRINT, fallback_parents);
     CMP(CHANGED_STR, zero_wait_dfs);
+    CMP(CHANGED_INT, puncture_bitmap);
 
     if (changed)
         LOGD("%s: changed (forced=%d)", conf->if_name, changedf->_uuid);
@@ -1377,6 +1407,74 @@ wm2_rconf_recalc_fixup_op_mode(struct schema_Wifi_Radio_Config *rconf,
         SCHEMA_SET_STR(rconf->ht_mode, rstate->ht_mode);
 }
 
+static bool
+wm2_vconf_wps_pbc_is_ready(struct schema_Wifi_VIF_Config *vconf)
+{
+    json_t *where;
+
+    int n_configured;
+    int n_readied;
+
+    where = ovsdb_where_simple_typed(SCHEMA_COLUMN(Wifi_VIF_Config, wps), "true", OCLM_BOOL);
+    struct schema_Wifi_VIF_Config *configured = ovsdb_table_select_where(&table_Wifi_VIF_Config, where, &n_configured);
+
+    where = ovsdb_where_simple_typed(SCHEMA_COLUMN(Wifi_VIF_State, wps), "true", OCLM_BOOL);
+    struct schema_Wifi_VIF_State *readied = ovsdb_table_select_where(&table_Wifi_VIF_State, where, &n_readied);
+
+    bool ready = true;
+    int i;
+    for (i = 0; i < n_configured; i++) {
+        const struct schema_Wifi_VIF_Config *cvif = &configured[i];
+        int j;
+        for (j = 0; j < n_readied; j++) {
+            const struct schema_Wifi_VIF_State *rvif = &readied[j];
+            const bool matching = (strcmp(cvif->if_name, rvif->if_name) == 0);
+            if (matching) {
+                const bool wps_pbc_key_id_mismatched = (strcmp(cvif->wps_pbc_key_id,
+                                                               rvif->wps_pbc_key_id) != 0);
+                if (wps_pbc_key_id_mismatched) {
+                    LOGI("%s: wps: not ready yet (mismatched)", cvif->if_name);
+                    ready = false;
+                }
+                const bool wps_pbc_key_id_empty = (rvif->wps_pbc_key_id_exists == false)
+                                               || (strlen(rvif->wps_pbc_key_id) == 0);
+                if (wps_pbc_key_id_empty) {
+                    LOGI("%s: wps: not ready yet (empty)", cvif->if_name);
+                    ready = false;
+                }
+                break;
+            }
+        }
+        const bool not_found = (j == n_readied);
+        if (not_found) {
+            LOGI("%s: wps: not found in state", cvif->if_name);
+            ready = false;
+            break;
+        }
+    }
+
+    FREE(configured);
+    FREE(readied);
+
+    return ready;
+}
+
+static void
+wm2_vconf_wps_pbc_fixup(struct schema_Wifi_VIF_Config *vconf)
+{
+    const bool wps_is_being_activated = (vconf->wps_pbc_exists && vconf->wps_pbc);
+    const bool wps_is_not_being_activated = !wps_is_being_activated;
+    if (wps_is_not_being_activated) return;
+
+    LOGD("%s: wps: configuring", vconf->if_name);
+
+    const bool ready = wm2_vconf_wps_pbc_is_ready(vconf);
+    if (ready) return;
+
+    LOGI("%s: wps: withholding with pbc", vconf->if_name);
+    SCHEMA_UNSET_FIELD(vconf->wps_pbc);
+}
+
 static void
 wm2_rconf_recalc_fixup_tx_chainmask(struct schema_Wifi_Radio_Config *rconf)
 {
@@ -1389,6 +1487,20 @@ wm2_rconf_recalc_fixup_tx_chainmask(struct schema_Wifi_Radio_Config *rconf)
 
     rconf->tx_chainmask = rconf->thermal_tx_chainmask;
     rconf->tx_chainmask_exists = true;
+}
+
+static void
+wm2_rconf_recalc_fixup_bcn_int(struct schema_Wifi_Radio_Config *rconf,
+                               const struct schema_Wifi_Radio_State *rstate)
+{
+    const bool already_set = (rconf->bcn_int_exists == true);
+    if (already_set) return;
+
+    const bool no_data_to_fix = (rstate->bcn_int_exists == false);
+    if (no_data_to_fix) return;
+
+    LOGD("%s: bcn_int: inheriting %d from state", rconf->if_name, rstate->bcn_int);
+    SCHEMA_CPY_INT(rconf->bcn_int, rstate->bcn_int);
 }
 
 static void
@@ -1560,6 +1672,8 @@ wm2_vconf_recalc(const char *ifname, bool force)
         return;
     }
 
+    wm2_vconf_wps_pbc_fixup(&vconf);
+
     /* Compare config with state to see if vif requires recalc */
     changed |= wm2_vconf_changed(&vconf, &vstate, &vchanged);
     changed |= (eap_enabled && wm2_radius_config_changed(ifname));
@@ -1573,6 +1687,7 @@ wm2_vconf_recalc(const char *ifname, bool force)
     wm2_rconf_recalc_fixup_nop_channel(&rconf, &rstate);
     wm2_rconf_recalc_fixup_tx_chainmask(&rconf);
     wm2_rconf_recalc_fixup_op_mode(&rconf, &rstate);
+    wm2_rconf_recalc_fixup_bcn_int(&rconf, &rstate);
 
     if (vconf.dynamic_beacon_exists && vconf.dynamic_beacon &&
         vconf.ssid_broadcast_exists &&
@@ -1852,6 +1967,7 @@ wm2_rconf_recalc(const char *ifname, bool force)
         wm2_rconf_recalc_fixup_nop_channel(&rconf, &rstate);
         wm2_rconf_recalc_fixup_tx_chainmask(&rconf);
         wm2_rconf_recalc_fixup_op_mode(&rconf, &rstate);
+        wm2_rconf_recalc_fixup_bcn_int(&rconf, &rstate);
     }
 
     if (has && wm2_rstate_dfs_no_channels(&rstate)) {
@@ -2023,6 +2139,21 @@ wm2_vstate_wpa_psks_keys_fixup(const struct schema_Wifi_VIF_Config *vconf,
 }
 
 static void
+wm2_vconf_wps_recalc_all(void)
+{
+    int n;
+    int i;
+    json_t *where = ovsdb_where_simple_typed(SCHEMA_COLUMN(Wifi_VIF_Config, wps), "true", OCLM_BOOL);
+    struct schema_Wifi_VIF_Config *vifs = ovsdb_table_select_where(&table_Wifi_VIF_Config, where, &n);
+    for (i = 0; i < n; i++) {
+        const char *vif_name = vifs[i].if_name;
+        LOGD("%s: wps: scheduling a recalc", vif_name);
+        wm2_delayed_recalc_soon(wm2_vconf_recalc, vif_name);
+    }
+    FREE(vifs);
+}
+
+static void
 wm2_op_vstate(const struct schema_Wifi_VIF_State *vstate, const char *phy)
 {
     struct schema_Wifi_Radio_State rstate;
@@ -2064,6 +2195,13 @@ wm2_op_vstate(const struct schema_Wifi_VIF_State *vstate, const char *phy)
     if (!state.ft_psk_exists) {
         state.ft_psk_exists = true;
         state.ft_psk = 0;
+    }
+
+    const bool wps_pbc_key_id_changed = (strcmp(oldstate.wps_pbc_key_id,
+                                                state.wps_pbc_key_id) != 0);
+    if (wps_pbc_key_id_changed) {
+        LOGI("%s: wps: pbc_key_id changed, trying to recalc wps vifs", state.if_name);
+        wm2_vconf_wps_recalc_all();
     }
 
     if (wm2_lookup_vconf_by_ifname(&vconf, state.if_name)) {
@@ -2127,6 +2265,9 @@ wm2_op_vstate(const struct schema_Wifi_VIF_State *vstate, const char *phy)
         if (!strcmp(state.mode, "ap_vlan") && oldstate.mode_exists == false)
             TELOG_WDS_STATE(vstate, "created");
 
+        if (!strcmp(state.mode, "ap_vlan"))
+            SCHEMA_UNSET_FIELD(state.ap_bridge);
+
         REQUIRE(state.if_name, ovsdb_table_upsert_with_parent(&table_Wifi_VIF_State,
                                                               &state,
                                                               false, // uuid not needed
@@ -2143,6 +2284,7 @@ wm2_op_vstate(const struct schema_Wifi_VIF_State *vstate, const char *phy)
                                   SCHEMA_COLUMN(Wifi_VIF_State, if_name),
                                   state.if_name);
     }
+
     LOGI("%s: updated vif state", state.if_name);
 recalc:
     /* Reconnect workaround is for CAES-771 */

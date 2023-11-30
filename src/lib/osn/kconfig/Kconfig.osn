@@ -164,6 +164,25 @@ if OSN_LINUX_ENABLED
                 default "/var/run/odhcp6c_%s.pid"
                 help
                     Note: %s will be replaced with the interface name.
+
+            config OSN_ODHCP6_MODE_PREFIX_NO_ADDRESS
+                string "Prefix-no-address mode"
+                default "RAND_ADDRESS"
+
+                help
+                    Configure the behavior when a prefix through DHCPv6-PD is
+                    received, but no IA_NA received, to help with connectivity.
+
+                    Defined configuration options are:
+                      - "NONE": No special logic for this case.
+                      - "RAND_ADDRESS": Generate a random /128 address from the
+                        prefix and assign it to the interface.
+                      - "IP_UNNUMBERED": Generate a ::1/64 address from the prefix and
+                        assign it to the LAN interface.
+
+                        IP unnumbered is a technique where a network interface can use an
+                        IP address without configuring a unique IP address on that interface.
+                        Instead, the interface borrows the IP address from another interface.
         endif
 
     menuconfig OSN_DNSMASQ6
@@ -608,5 +627,42 @@ if OSN_LINUX_ENABLED
                         based "Linux" policy route rules control backend (osn_route_rule).
             endchoice
 
-endif
+    choice
+        prompt "MAP-T Backend"
+        default OSN_LINUX_MAPT_NAT46
 
+        config OSN_LINUX_MAPT_NAT46
+            bool "nat46"
+            help
+                Use the Generic stateless NAT46 kernel module for Linux (nat46)
+
+                https://github.com/ayourtch/nat46/tree/master/nat46/modules
+
+        config OSN_LINUX_MAPT_NULL
+            bool "null"
+            help
+                Use the NULL dummy MAP-T implementation
+
+    endchoice
+
+    choice
+        prompt "MAP-E Backend"
+        default OSN_LINUX_MAPE_IP6TNL
+
+        config OSN_LINUX_MAPE_IP6TNL
+            bool "ip6tnl"
+            help
+                Use the MAP-E backend implementation using ip6tnl
+
+        config OSN_LINUX_MAPE_NULL
+            bool "null"
+            help
+                Use the NULL dummy MAP-E implementation.
+                This option can also be chosen in cases where MAP-E ip6tnl interfaces are to
+                be configured by the controller via Tunnel_Interfaces OVSDB API
+                (Note, however, that Tunnel_Interface APIs may not support all the
+                MAP-E features, such as FMR rules)
+
+    endchoice
+
+endif

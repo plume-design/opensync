@@ -11,3 +11,14 @@ config OSN_BACKEND_PPPOE_LINUX
         Use the Linux PPPoE implementation that uses the pppd daemon and the
         rp-pppoe plug-in.
 
+config OSN_BACKEND_PPPOE_NAME_TEMPLATE
+    string "PPPoE interface naming template"
+    default "ppp-@P"
+    help
+        Customize the PPPoE interface naming with pre-defined variables.
+
+        Pre-defined variables:
+        @P represents the parent interface name
+        @I represents the interface index
+
+        The default is set to ppp-@P so the naming is ppp-eth1 for example.

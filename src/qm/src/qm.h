@@ -58,11 +58,20 @@ typedef struct qm_queue
     int size;
 } qm_queue_t;
 
+typedef struct qm_stats
+{
+    int sent;
+    int64_t bytes;
+    int errors;
+    int runtime;
+} qm_stats_t;
+
 extern qm_queue_t g_qm_queue;
 extern char *g_qm_log_buf;
 extern int   g_qm_log_buf_size;
 extern int   g_qm_log_drop_count;
 extern bool  qm_log_enabled;
+extern qm_stats_t g_qm_stats;
 
 int qm_ovsdb_init(void);
 
@@ -89,8 +98,16 @@ bool qm_queue_drop_head();
 bool qm_queue_make_room(qm_item_t *qi, qm_response_t *res);
 bool qm_queue_put(qm_item_t **qitem, qm_response_t *res);
 bool qm_queue_get(qm_item_t **qitem);
+void qm_res_status(qm_response_t *res);
+void qm_enqueue_or_send(qm_item_t *qi, qm_response_t *res);
 
 bool qm_event_init();
+
+#ifdef CONFIG_USE_OSBUS
+bool qm_osbus_init(void);
+#else
+static inline bool qm_osbus_init(void) { return true; }
+#endif
 
 // Time-event logs collector and report generator
 void mqtt_telog_init(struct ev_loop *ev);

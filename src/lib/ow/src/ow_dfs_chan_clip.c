@@ -565,7 +565,7 @@ ow_dfs_chan_clip_vif(struct ow_dfs_chan_clip *m,
     const size_t n_chan_states = phy_state ? phy_state->n_channel_states : 0;
     const struct osw_channel *state_c = (vif_state &&
                                          vif_state->vif_type == OSW_VIF_AP &&
-                                         vif_state->enabled == true)
+                                         vif_state->status == OSW_VIF_ENABLED)
                                       ? &vif_state->u.ap.channel
                                       : NULL;
     const bool is_postponed = ow_dfs_chan_clip_phy_is_postponed(m, phy_name);

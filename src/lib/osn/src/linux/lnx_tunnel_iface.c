@@ -54,6 +54,24 @@ static const char lnx_tunnel_iface_vti_create[] = _S(
     fi;);
 
 /*
+ * Script for creating an IP6TNL tunnel interface.
+ *
+ * Input parameters:
+ *
+ * $1 - Interface name
+ * $2 - local endpoint IP address
+ * $3 - remote endpoint IP address
+ * $4 - mode
+ * $5 - physical device to use for tunnel endpoint communication (optional)
+ */
+static const char lnx_tunnel_iface_ip6tnl_create[] = _S(
+    if [ -n "$5" ]; then
+        ip link add "$1" type ip6tnl local "$2" remote "$3" mode "$4" dev "$5";
+    else
+        ip link add "$1" type ip6tnl local "$2" remote "$3" mode "$4";
+    fi;);
+
+/*
  * Script for deleting a tunnel interface
  *
  * Input parameters:
@@ -92,6 +110,20 @@ bool lnx_tunnel_iface_type_set(lnx_tunnel_iface_t *self, enum osn_tunnel_iface_t
     return true;
 }
 
+bool lnx_tunnel_iface_mode_set(lnx_tunnel_iface_t *self, enum osn_tunnel_iface_mode mode)
+{
+    LOG(TRACE, "lnx_tunnel_iface: %s: mode=%d", __func__, mode);
+
+    if (mode < OSN_TUNNEL_IFACE_MODE_NOT_SET || mode >= OSN_TUNNEL_IFACE_MODE_MAX)
+    {
+        LOG(ERR, "lnx_tunnel_iface: %s: invalid mode: %d", self->ti_ifname, mode);
+        return false;
+    }
+    self->ti_mode = mode;
+
+    return true;
+}
+
 bool lnx_tunnel_iface_endpoints_set(
         lnx_tunnel_iface_t *self,
         osn_ipany_addr_t local_endpoint,
@@ -114,6 +146,15 @@ bool lnx_tunnel_iface_key_set(lnx_tunnel_iface_t *self, int key)
     return true;
 }
 
+bool lnx_tunnel_iface_dev_set(lnx_tunnel_iface_t *self, const char *dev_ifname)
+{
+    LOG(TRACE, "lnx_tunnel_iface: %s: dev_ifname=%s", __func__, dev_ifname);
+
+    STRSCPY(self->ti_dev_ifname, dev_ifname);
+    return true;
+}
+
+
 bool lnx_tunnel_iface_enable_set(lnx_tunnel_iface_t *self, bool enable)
 {
     LOG(TRACE, "lnx_tunnel_iface: %s: enable=%d", __func__, enable);
@@ -127,9 +168,24 @@ bool lnx_tunnel_iface_apply(lnx_tunnel_iface_t *self)
     char slocal[MAX(OSN_IP6_ADDR_LEN, OSN_IP_ADDR_LEN)];
     char sremote[MAX(OSN_IP6_ADDR_LEN, OSN_IP_ADDR_LEN)];
     char skey[C_INT32_LEN];
+    char *mode = NULL;
     int rc;
 
     LOG(TRACE, "lnx_tunnel_iface: %s", __func__);
+
+    if (self->ti_type == OSN_TUNNEL_IFACE_TYPE_IP6TNL && kconfig_enabled(CONFIG_OSN_LINUX_MAPE_IP6TNL))
+    {
+        /*
+         * This check should be temporary and removed when controller stops configuring MAP-E ip6tnl
+         * interface via Tunnel_Interface. This was the first design, but it has limitations and
+         * for MAP-E we had to switch to creating ip6tnl interfaces elsewhere (osn/lnx_map_mape).
+         *
+         * It would though still be good to keep this Tunnel_Interface API for creating ip6tnl
+         * interfaces in case if needed for any other feature in the future.
+         */
+        LOG(WARN, "lnx_tunnel_iface: %s: Ignoring OVSDB Tunnel_Interface request to create ip6tnl interface", self->ti_ifname);
+        return false;
+    }
 
     if (self->ti_type == OSN_TUNNEL_IFACE_TYPE_NOT_SET)
     {
@@ -195,6 +251,39 @@ bool lnx_tunnel_iface_apply(lnx_tunnel_iface_t *self)
         case OSN_TUNNEL_IFACE_TYPE_VTI6:
             LOG(ERR, "lnx_tunnel_iface: %s: VTI6 type not currently supported", self->ti_ifname);
             return false;
+            break;
+
+        case OSN_TUNNEL_IFACE_TYPE_IP6TNL:
+            if (self->ti_local_endpoint.addr_type != AF_INET6 || self->ti_remote_endpoint.addr_type != AF_INET6)
+            {
+                LOG(ERR, "lnx_tunnel_iface: %s: type=IP6TNL: local or remote address not set or not IPv6 type", self->ti_ifname);
+                return false;
+            }
+
+            snprintf(slocal, sizeof(slocal), PRI_osn_ip6_addr, FMT_osn_ip6_addr(self->ti_local_endpoint.addr.ip6));
+            snprintf(sremote, sizeof(sremote), PRI_osn_ip6_addr, FMT_osn_ip6_addr(self->ti_remote_endpoint.addr.ip6));
+
+            if (self->ti_mode == OSN_TUNNEL_IFACE_MODE_IPIP6) mode = "ipip6";
+            else if (self->ti_mode == OSN_TUNNEL_IFACE_MODE_IP6IP6) mode = "ip6ip6";
+            else mode = "any";
+
+            rc = execsh_log(
+                    LOG_SEVERITY_DEBUG,
+                    lnx_tunnel_iface_ip6tnl_create,
+                    self->ti_ifname,
+                    slocal,
+                    sremote,
+                    mode,
+                    self->ti_dev_ifname);
+            if (rc != 0)
+            {
+                LOG(ERR, "lnx_tunnel_iface: %s: Error creating IP6TNL tunnel interface (local %s, remote %s, mode '%s', dev '%s').",
+                        self->ti_ifname, slocal, sremote, mode, self->ti_dev_ifname);
+                return false;
+            }
+            LOG(INFO, "lnx_tunnel_iface: %s: tunnel interface created", self->ti_ifname);
+
+            self->ti_applied = true;
             break;
 
         default:

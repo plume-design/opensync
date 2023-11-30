@@ -933,6 +933,7 @@ void test_fsm_policy_client(void)
     TEST_ASSERT_NOT_NULL(table);
     TEST_ASSERT_TRUE(table == client->table);
 
+
     fsm_policy_deregister_client(client);
     TEST_ASSERT_NULL(client->table);
 
@@ -955,7 +956,6 @@ void test_fsm_policy_client(void)
     TEST_ASSERT_TRUE(table == client->table);
     fsm_policy_deregister_client(client);
 
-    FREE(client->name);
     FREE(client);
     FREE(session);
 }
@@ -1019,10 +1019,8 @@ void test_fsm_policy_clients_same_session(void)
     fsm_policy_deregister_client(dev_brightcloud_client);
     TEST_ASSERT_NULL(dev_brightcloud_client->table);
 
-    FREE(default_policy_client->name);
     FREE(default_policy_client);
 
-    FREE(dev_brightcloud_client->name);
     FREE(dev_brightcloud_client);
 
     FREE(session);
@@ -1355,7 +1353,7 @@ void test_ipthreat_multiple_provider_check(void)
 
     /* Prepare dns cache entry */
     cache_init.dns_cache_source = MODULE_IPTHREAT_DPI;
-    cache_init.service_provider = IP2ACTION_GK_SVC;
+    cache_init.service_provider = IP2ACTION_BC_SVC;
     dns_cache_init(&cache_init);
     ip2a_req = CALLOC(1, sizeof(struct ip2action_req));
     ip2a_req->ip_addr = CALLOC(1, sizeof(struct sockaddr_storage));
@@ -1496,7 +1494,7 @@ void test_ipthreat_multiple_provider_block(void)
 
     /* Prepare dns cache entry */
     cache_init.dns_cache_source = MODULE_IPTHREAT_DPI;
-    cache_init.service_provider = IP2ACTION_GK_SVC;
+    cache_init.service_provider = IP2ACTION_BC_SVC;
     dns_cache_init(&cache_init);
     ip2a_req = CALLOC(1, sizeof(struct ip2action_req));
     ip2a_req->ip_addr = CALLOC(1, sizeof(struct sockaddr_storage));

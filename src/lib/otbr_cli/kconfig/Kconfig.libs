@@ -1,0 +1,36 @@
+menuconfig OTBR_CLI
+    bool "OpenThread Border Router Agent CLI library"
+    default n
+    help
+        This library runs OTBR Agent daemon and controls it using
+        OpenThread CLI commands via IPC sockets (similar to how
+        the ot-ctl tool operates).
+
+    if OTBR_CLI
+        config OTBR_CLI_THREAD_RADIO_URL
+            string "Thread radio URL (IEEE802.15.4 or TREL radio)"
+            help
+                URL used for connecting to the Thread radio.
+                For UART devices this is in format:
+                "spinel+hdlc+uart://<PATH_TO_UART_DEVICE>?<Parameters>"
+                Example for USB attached UART device:
+                "spinel+hdlc+uart:///dev/ttyUSB0"
+
+        config OTBR_CLI_AGENT_DAEMON_PATH
+            string "Path to the otbr-agent daemon executable"
+            default "/usr/sbin/otbr-agent"
+
+        config OTBR_CLI_AGENT_DAEMON_PID_FILE
+            string "PID file used for running otbr-agent as a daemon"
+            default "/var/run/otbr-agent.pid"
+
+        config OTBR_CLI_AGENT_DAEMON_SOCKET_NAME_TEMPLATE
+            string "Socket name template used by otbr-agent daemon"
+            default "/var/run/openthread-%s.sock"
+            help
+                The socket name template shall contain exactly one '%s'
+                which will be replaced by Thread network interface name.
+                It shall be the same as OPENTHREAD_POSIX_DAEMON_SOCKET_NAME
+                definition used for compilation of the otbr-agent daemon.
+
+    endif

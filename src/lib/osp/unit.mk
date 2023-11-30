@@ -74,3 +74,13 @@ UNIT_SRC += $(if $(CONFIG_OSP_L2UF_NULL),src/osp_l2uf_null.c)
 UNIT_SRC += $(if $(CONFIG_OSP_L2UF_LIBPCAP),src/osp_l2uf_pcap.c)
 
 UNIT_SRC += $(if $(CONFIG_OSP_BLE_NULL),src/osp_ble_null.c)
+
+ifeq ($(CONFIG_OSP_OTBR_NULL),y)
+UNIT_SRC += src/osp_otbr_null.c
+UNIT_DEPS += src/lib/osn
+else ifeq ($(CONFIG_OSP_OTBR_CLI_LIB),y)
+UNIT_SRC += src/osp_otbr_cli_lib.c
+UNIT_DEPS += src/lib/osn
+UNIT_DEPS += src/lib/otbr_cli
+UNIT_DEPS += src/lib/const
+endif

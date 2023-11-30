@@ -137,6 +137,7 @@ static void wanp_ethclient_inject_clear(const char *ifname);
 static bool wanp_ethclient_inject_packet(const char *ifname, const u_char *pkt, ssize_t pkt_len);
 static bool wanp_ethclient_mac_learning_update(const char *brname, const char *ifname, osn_mac_addr_t mac);
 static bool wanp_ethclient_mac_learning_delete(const char *ifname);
+static bool wanp_ethclient_ipv6_ra_trigger(const char *ifname);
 
 static void wanp_ethclient_dhcp_process(
         struct wanp_ethclient *self,
@@ -250,6 +251,9 @@ void wanp_ethclient_ppline_event_fn(wano_ppline_event_t *wpe, enum wano_ppline_s
 
         case WANO_PPLINE_FREEZE:
             wanp_ethclient_inject(self->ec_handle.wh_ifname);
+
+            wanp_ethclient_ipv6_ra_trigger(self->ec_handle.wh_ifname);
+
             break;
 
         case WANO_PPLINE_IDLE:
@@ -613,8 +617,23 @@ void wanp_ethclient_dhcp_process(
         LOG(NOTICE, "ethclient: %s: Remote OpenSync device detected. Disabling fast client detection.",
                 self->ec_handle.wh_ifname);
         wanp_ethclient_set_status(self, &WANO_PLUGIN_STATUS(WANP_SKIP));
+        if (!WANO_CONNMGR_UPLINK_UPDATE(
+                self->ec_handle.wh_ifname,
+                .loop = WANO_TRI_TRUE))
+                {
+                    LOG(WARN, "wano: %s: Error updating the Connection_Manager_Uplink table (loop = true)",
+                            self->ec_handle.wh_ifname);
+                }
         goto abort;
     }
+
+    if (!WANO_CONNMGR_UPLINK_UPDATE(
+            self->ec_handle.wh_ifname,
+            .loop = WANO_TRI_FALSE))
+            {
+                LOG(WARN, "wano: %s: Error updating the Connection_Manager_Uplink table (loop = false)",
+                        self->ec_handle.wh_ifname);
+            }
 
     /* Remember the first seen MAC, start the timer */
     if (osn_mac_addr_cmp(&self->ec_client_mac, &OSN_MAC_ADDR_INIT) == 0)
@@ -904,8 +923,8 @@ void wanp_ethclient_module_start(void *data)
 
         [ -e "/sys/class/net/$if_ethc" ] && exit 0;
 
-        ip link add "$if_ethc" type dummy
-        ip link set "$if_ethc" up
+        ip link add "$if_ethc" type dummy;
+        ip link set "$if_ethc" up;
         brctl addif "$if_brlan" "$if_ethc"
 
     );
@@ -940,6 +959,33 @@ void wanp_ethclient_module_start(void *data)
         }
     }
 
+    if (kconfig_enabled(CONFIG_MANAGER_WANO_PLUGIN_ETHCLIENT_IPV6_SPEEDUP)
+            &&  !kconfig_enabled(CONFIG_TARGET_USE_NATIVE_BRIDGE))
+    {
+        static char ethclient_ipv6_RA_rewrite_setup[] = SHELL
+        (
+            if_brlan="$1";
+            if_ethc="$2";
+
+            [ ! -e "/sys/class/net/$if_ethc" ] && exit 0;
+
+            if_ethc_mac="$(cat /sys/class/net/$if_ethc/address)";
+
+            ovs-ofctl -O openflow12 add-flow "$if_brlan" table=0,priority=200,dl_dst="$if_ethc_mac",icmp6,icmp_type=134,action=mod_dl_dst=33:33:00:00:00:01,set_field:"ff02::1->ipv6_dst",NORMAL;
+        );
+
+        LOG(DEBUG, "eth_client: IPv6: Setting up RA rewrite OF rule for IPv6 ethclient connection speedup.");
+
+        if (EXECSH_LOG(
+                   DEBUG,
+                   ethclient_ipv6_RA_rewrite_setup,
+                   CONFIG_TARGET_LAN_BRIDGE_NAME,
+                   WANP_ETHCLIENT_INJECT_IF) != 0)
+        {
+            LOG(ERR, "eth_client: IPv6: Error setting up RA rewrite OF rule for IPv6 ethclient connection speedup.");
+        }
+    }
+
     wano_plugin_register(&wanp_ethclient_module);
 }
 
@@ -971,6 +1017,33 @@ void wanp_ethclient_module_stop(void *data)
 
     wano_plugin_unregister(&wanp_ethclient_module);
 
+    if (kconfig_enabled(CONFIG_MANAGER_WANO_PLUGIN_ETHCLIENT_IPV6_SPEEDUP)
+            && !kconfig_enabled(CONFIG_TARGET_USE_NATIVE_BRIDGE))
+    {
+        static char ethclient_ipv6_RA_rewrite_del[] = SHELL
+        (
+            if_brlan="$1";
+            if_ethc="$2";
+
+            [ ! -e "/sys/class/net/$if_ethc" ] && exit 0;
+
+            if_ethc_mac="$(cat /sys/class/net/$if_ethc/address)";
+
+            ovs-ofctl del-flows "$if_brlan" table=0,priority=200,dl_dst="$if_ethc_mac",icmp6,icmp_type=134 --strict;
+        );
+
+        LOG(DEBUG, "eth_client: IPv6: Deleting RA rewrite OF rule for IPv6 ethclient connection speedup.");
+
+        if (EXECSH_LOG(
+                   DEBUG,
+                   ethclient_ipv6_RA_rewrite_del,
+                   CONFIG_TARGET_LAN_BRIDGE_NAME,
+                   WANP_ETHCLIENT_INJECT_IF) != 0)
+        {
+            LOG(ERR, "eth_client: IPv6: Error deleting RA rewrite OF rule for IPv6 ethclient connection speedup.");
+        }
+    }
+
     /*
      * Delete the packet re-injection interface.
      */
@@ -984,6 +1057,44 @@ void wanp_ethclient_module_stop(void *data)
                 WANP_ETHCLIENT_INJECT_IF);
         return;
     }
+}
+
+/**
+ * To be called when the ethernet  port is added into bridge. It will send a RS message to trigger
+ * a RA from the router. Since the router typically responds with a RA sent to an unicast address,
+ * the specific RA will then be rewritten to be sent to multicast address all-nodes.
+ *
+ * This helps with connectivity of some IPv6 ethernet clients that may give up sending RS messages
+ * too early before the port is eventually added into LAN bridge.
+ *
+ * Note: This workaround currently works only with OVS bridge.
+ */
+bool wanp_ethclient_ipv6_ra_trigger(const char *ifname)
+{
+    if (kconfig_enabled(CONFIG_MANAGER_WANO_PLUGIN_ETHCLIENT_IPV6_SPEEDUP)
+            && !kconfig_enabled(CONFIG_TARGET_USE_NATIVE_BRIDGE))
+    {
+        static char ethclient_ipv6_speedup_RA_trigger[] = SHELL
+        (
+            if_ethc="$1";
+
+            [ ! -e "/sys/class/net/$if_ethc" ] && exit 0;
+
+            rdisc6 -r 3 "$if_ethc";
+        );
+
+        LOG(NOTICE, "eth_client: %s: IPv6: Performing router advertisement triggering.", ifname);
+
+        if (EXECSH_LOG(
+                    DEBUG,
+                    ethclient_ipv6_speedup_RA_trigger,
+                    WANP_ETHCLIENT_INJECT_IF) != 0)
+        {
+            LOG(ERR, "eth_client: %s: IPv6: Error triggering RS via '%s'", ifname, WANP_ETHCLIENT_INJECT_IF);
+            return false;
+        }
+    }
+    return true;
 }
 
 MODULE(wanp_ethclient_module, wanp_ethclient_module_start, wanp_ethclient_module_stop)

@@ -50,6 +50,7 @@ UNIT_SRC += src/osw_mux.c
 UNIT_SRC += src/osw_tlv.c
 UNIT_SRC += src/osw_tlv_merge.c
 UNIT_SRC += src/osw_module.c
+UNIT_SRC += src/osw_sta_chan_cap.c
 UNIT_SRC += src/osw_stats_defs.c
 UNIT_SRC += src/osw_stats.c
 UNIT_SRC += src/osw_scan_sched.c
@@ -70,6 +71,8 @@ UNIT_SRC += src/osw_rrm.c
 UNIT_SRC += src/osw_rrm_bcn_meas_rpt_cache.c
 UNIT_SRC += src/osw_token.c
 UNIT_SRC += src/osw_l2uf.c
+UNIT_SRC += src/osw_defer_vif_down.c
+UNIT_SRC += src/osw_diag.c
 
 UNIT_CFLAGS := -I$(UNIT_PATH)/inc
 UNIT_CFLAGS += -D_GNU_SOURCE

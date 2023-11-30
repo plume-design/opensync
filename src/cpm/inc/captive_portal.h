@@ -31,6 +31,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <ev.h>
 
 #include "ds_tree.h"
+#include "daemon.h"
+#include "evx.h"
 
 typedef enum proto_type {
 	PT_NONE = 0,
@@ -47,6 +49,7 @@ struct url_s {
 struct cportal {
     bool                    enabled;
     int                     proxy_method;
+    char                    *cp_uuid;
     char                    *name;
     char                    *pkt_mark;
     char                    *rt_tbl_id;
@@ -54,6 +57,8 @@ struct cportal {
     struct url_s            *url;
     ds_tree_t               *other_config;
     ds_tree_t               *additional_headers;
+    daemon_t                *cportal_proxy_process;
+    ev_debounce             *cportal_proxy_debounce;
 
     ds_tree_node_t           cp_tnode;
 };
@@ -66,7 +71,7 @@ enum cportal_proxy_method
     REVERSE
 };
 
-bool cportal_proxy_init(void);
+bool cportal_proxy_init(struct cportal *self);
 bool cportal_proxy_set(struct cportal *self);
 bool cportal_proxy_start(struct cportal *self);
 bool cportal_proxy_stop(struct cportal *self);

@@ -91,6 +91,28 @@ err_sockfd:
 }
 
 
+static bool
+fsm_net_parser_forward(struct net_header_parser *net_parser)
+{
+    uint8_t *packet;
+    int rc, len;
+
+    packet = (uint8_t *)net_parser->start;
+    len = net_parser->caplen;
+
+    rc = sendto(net_parser->sock_fd, packet, len, 0,
+                (struct sockaddr *)net_parser->raw_dst,
+                sizeof(*net_parser->raw_dst));
+    if (rc < 0)
+    {
+        LOGE("%s: failed to forward the packet (%s)", __func__, strerror(errno));
+        return false;
+    }
+
+    return true;
+}
+
+
 /**
  * @brief forward packet to datapath
  *
@@ -106,6 +128,13 @@ fsm_forward(struct fsm_session *session,
 
     if (session == NULL) return false;
     if (net_parser == NULL) return false;
+
+    if (net_parser->raw_dst != NULL)
+    {
+        /* The net parser is explicitely providing the TX interface to use */
+        return fsm_net_parser_forward(net_parser);
+    }
+
     if (!session->forward_ctx.initialized) return false;
 
     packet = (uint8_t *)net_parser->start;
@@ -119,6 +148,28 @@ fsm_forward(struct fsm_session *session,
         LOGE("%s: failed to forward the packet (%s)", __func__, strerror(errno));
         return false;
     }
+
+    return true;
+}
+
+static bool
+fsm_prepare_net_parser_forward(struct net_header_parser *net_parser)
+{
+    struct eth_header *eth_header;
+    uint8_t *packet;
+
+    packet = net_parser->start;
+
+    eth_header = net_header_get_eth(net_parser);
+    LOGD("%s: source mac: " PRI_os_macaddr_lower_t ", dst mac: " PRI_os_macaddr_lower_t,
+         __func__,
+         FMT_os_macaddr_pt(eth_header->srcmac),
+         FMT_os_macaddr_pt(eth_header->dstmac));
+
+    memcpy(net_parser->raw_dst->sll_addr, eth_header->dstmac,
+           sizeof(os_macaddr_t));
+    memcpy(packet + 6, net_parser->src_eth_addr->addr,
+           sizeof(net_parser->src_eth_addr->addr));
 
     return true;
 }
@@ -143,10 +194,16 @@ fsm_prepare_forward(struct fsm_session *session,
     if (session == NULL) return false;
     if (net_parser == NULL) return false;
 
+    if (net_parser->raw_dst != NULL)
+    {
+        /* The net parser is explicitely providing the TX interface to use */
+        return fsm_prepare_net_parser_forward(net_parser);
+    }
+
     packet = net_parser->start;
 
     eth_header = net_header_get_eth(net_parser);
-    LOGD("%s source mac: " PRI_os_macaddr_lower_t ", dst mac: " PRI_os_macaddr_lower_t,
+    LOGD("%s: source mac: " PRI_os_macaddr_lower_t ", dst mac: " PRI_os_macaddr_lower_t,
          __func__,
          FMT_os_macaddr_pt(eth_header->srcmac),
          FMT_os_macaddr_pt(eth_header->dstmac));

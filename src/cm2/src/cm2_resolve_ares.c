@@ -229,9 +229,10 @@ void cm2_resolve_timeout(void)
 static bool
 cm2_validate_target_addr(cm2_addr_list *list, int addr_type)
 {
-    LOGT("type: %s, ipv4.blocked = %d ipv6.blocked = %d ipv4.is_ip = %d, ipv6.is_ip = %d",
+    LOGT("type: %s, ipv4.blocked = %d ipv6.blocked = %d ipv4.is_ip = %d, ipv6.is_ip = %d, list index = %d",
           addr_family_to_str(addr_type), g_state.link.ipv4.blocked, g_state.link.ipv6.blocked,
-          g_state.link.ipv4.is_ip, g_state.link.ipv6.is_ip);
+          g_state.link.ipv4.is_ip, g_state.link.ipv6.is_ip,
+          list->h_cur_idx);
 
     if (addr_type == AF_INET && (!g_state.link.ipv4.is_ip || g_state.link.ipv4.blocked)) {
         LOGI("Ares: Skip ipv4 address. IP active: %s link blocked: %s ",
@@ -276,8 +277,9 @@ cm2_write_target_addr(cm2_addr_t *addr)
     char           *buf;
     int            ret;
 
-    if (cm2_validate_target_addr(&addr->ipv6_addr_list, AF_INET6))
+    if (addr->ipv6_pref)
     {
+        LOGI("ares: translating IPv6");
         char buffer[INET6_ADDRSTRLEN] = "";
 
         buf = addr->ipv6_addr_list.h_addr_list[addr->ipv6_addr_list.h_cur_idx];
@@ -293,11 +295,9 @@ cm2_write_target_addr(cm2_addr_t *addr)
                  buffer,
                  addr->port);
 
-        addr->ipv6_cur = true;
         g_state.ipv6_manager_con = true;
-    }
-    else if (cm2_validate_target_addr(&addr->ipv4_addr_list, AF_INET))
-    {
+    } else {
+        LOGI("ares: translating IPv4");
         char buffer[INET_ADDRSTRLEN] = "";
 
         buf = addr->ipv4_addr_list.h_addr_list[addr->ipv4_addr_list.h_cur_idx];
@@ -313,13 +313,7 @@ cm2_write_target_addr(cm2_addr_t *addr)
                  buffer,
                  addr->port);
 
-        addr->ipv6_cur = false;
         g_state.ipv6_manager_con = false;
-    }
-    else
-    {
-        LOGI("ares: No address available");
-        return false;
     }
 
     ret = cm2_ovsdb_set_Manager_target(target);
@@ -329,21 +323,94 @@ cm2_write_target_addr(cm2_addr_t *addr)
     return ret;
 }
 
+static bool cm2_pick_next_addr(cm2_addr_t *addr)
+{
+    bool is_ipv4_valid = cm2_validate_target_addr(&addr->ipv4_addr_list, AF_INET);
+    bool is_ipv6_valid = cm2_validate_target_addr(&addr->ipv6_addr_list, AF_INET6);
+
+    /**
+     * @brief Decide on the connection type for the next address
+     *
+     * If no address is valid, return.
+     *
+     * If the planned connection type matches with what's capable of, then we go for it;
+     * otherwise, we see what's available. If IPv6 is valid, we try IPv6. Same logic goes for IPv4.
+     *
+     * In general IPv6 is still preferred over IPv4, as seen from the order of if condition.
+     */
+    LOGD("ares: ipv6_pref: %d is ipv4 valid: %d is ipv6 valid: %d", addr->ipv6_pref, is_ipv4_valid, is_ipv6_valid);
+    if (is_ipv4_valid == false && is_ipv6_valid == false) {
+        LOGI("ares: No address available.");
+        return false;
+    }
+
+    if ((addr->ipv6_pref == true && is_ipv6_valid)
+     || (addr->ipv6_pref == false && is_ipv4_valid)) {
+        LOGI("ares: Next address is found.");
+        return true;
+    }
+
+    // We try whatever is valid
+    if (is_ipv6_valid) {
+        addr->ipv6_pref = true;
+        LOGI("ares: changed to ipv6, ipv6_pref %d", addr->ipv6_pref);
+    } else if (is_ipv4_valid) {
+        addr->ipv6_pref = false;
+        LOGI("ares: changed to ipv4, ipv6_pref %d", addr->ipv6_pref);
+    }
+    return true;
+}
+
 bool cm2_write_current_target_addr(void)
 {
     cm2_addr_t *addr = cm2_curr_addr();
+    cm2_dest_e dest_type = cm2_get_dest_type();
+    LOGD("ares: %s target addr index ipv6: %d/%d ipv4: %d/%d", __func__
+                                                             , addr->ipv6_addr_list.h_cur_idx, addr->ipv6_addr_list.h_length
+                                                             , addr->ipv4_addr_list.h_cur_idx, addr->ipv4_addr_list.h_length);
+
+    switch (dest_type)
+    {
+        case CM2_DEST_REDIR:
+            g_state.addr_redirector.ipv6_pref = true;
+            break;
+
+        case CM2_DEST_MANAGER:
+            g_state.addr_manager.ipv6_pref = g_state.addr_redirector.ipv6_pref;
+            break;
+
+        default:
+            LOGW("ares: Invalid dest type %d", dest_type);
+            return false;
+    }
+
+    if (!cm2_pick_next_addr(addr)) {
+        return false;
+    }
+
     return cm2_write_target_addr(addr);
 }
 
 bool cm2_write_next_target_addr(void)
 {
-    cm2_addr_t *addr;
+    cm2_addr_t *addr = cm2_curr_addr();
+    LOGD("ares: %s target addr index ipv6: %d/%d ipv4: %d/%d, ipv6_pref %d"
+        , __func__
+        , addr->ipv6_addr_list.h_cur_idx, addr->ipv6_addr_list.h_length
+        , addr->ipv4_addr_list.h_cur_idx, addr->ipv4_addr_list.h_length
+        , addr->ipv6_pref);
 
-    addr = cm2_curr_addr();
-    if (addr->ipv6_cur)
+    if (addr->ipv6_pref)
         addr->ipv6_addr_list.h_cur_idx++;
     else
         addr->ipv4_addr_list.h_cur_idx++;
+
+    // Flip it so everytime we tend to try a diffirent one
+    addr->ipv6_pref = !addr->ipv6_pref;
+
+    if (!cm2_pick_next_addr(addr)) {
+        return false;
+    }
 
     return  cm2_write_target_addr(addr);
 }

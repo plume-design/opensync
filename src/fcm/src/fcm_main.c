@@ -149,6 +149,12 @@ int main(int argc, char ** argv)
         return -1;
     }
 
+    if (nf_ct_init(loop) < 0)
+    {
+        LOGE("Eror initializing conntrack");
+        return -1;
+    }
+
     // Start the event loop
     ev_run(loop, 0);
 
@@ -166,6 +172,8 @@ int main(int argc, char ** argv)
         LOGE("Stopping FCM "
              "(Failed to stop OVSDB)");
     }
+
+    nf_ct_exit();
 
     ev_loop_destroy(loop);
 

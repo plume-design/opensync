@@ -59,6 +59,7 @@ ovsdb_table_t table_AWLAN_Node;
 ovsdb_table_t table_Wifi_Route_Config;
 ovsdb_table_t table_IPv6_RouteAdv;
 ovsdb_table_t table_IPv6_Prefix;
+ovsdb_table_t table_Manager;
 
 void
 ltem_disable_band_40(ltem_mgr_t *mgr)
@@ -606,7 +607,7 @@ ltem_ovsdb_cmu_disable_lte(ltem_mgr_t *mgr)
 }
 
 int
-ltem_ovsdb_check_l3_state(ltem_mgr_t *mgr)
+ltem_ovsdb_check_lte_l3_state(ltem_mgr_t *mgr)
 {
     struct schema_Wifi_Route_Config route_config;
     const char *if_name;
@@ -1342,6 +1343,106 @@ callback_Wifi_Route_Config(ovsdb_update_monitor_t *mon,
     FREE(if_type);
 }
 
+void callback_Manager(ovsdb_update_monitor_t *mon,
+                      struct schema_Manager *old_manager_config,
+                      struct schema_Manager *manager_config)
+{
+    int i;
+    int res;
+    int rc;
+    ltem_mgr_t *mgr = ltem_get_mgr();
+    int status_cnt = 0;
+    struct schema_Manager manager;
+    char *status;
+    char state[64];
+    int status_size;
+
+    if (mon->mon_type == OVSDB_UPDATE_DEL)
+    {
+        return;
+    }
+
+    if (manager_config->inactivity_probe > LTEM_INACTIVITY_PROBE)
+    {
+        rc = ovsdb_table_select_one_where(&table_Manager, NULL, &manager);
+        if (rc)
+        {
+            MEMZERO(manager);
+            SCHEMA_SET_INT(manager.inactivity_probe, LTEM_INACTIVITY_PROBE);
+            rc = ovsdb_table_update(&table_Manager, &manager);
+            if (rc)
+            {
+                LOGI("%s: Set inactivity_probe to %d", __func__, manager.inactivity_probe);
+            }
+        }
+    }
+
+    MEMZERO(state);
+    status_size = ARRAY_SIZE(manager_config->status);
+    for (i = 0; i < status_size; i++)
+    {
+        status = manager_config->status[i];
+        if (status[0] == '\0')
+        {
+            break;
+        }
+        else
+        {
+            status_cnt++;
+            if (!strncmp(status, "VOID", strlen(status)))
+            {
+                STRSCPY(state, status);
+                break;
+            }
+            if (!strncmp(status, "BACKOFF", strlen(status)))
+            {
+                STRSCPY(state, status);
+                break;
+            }
+            if (!strncmp(status, "CONNECTING", strlen(status)))
+            {
+                STRSCPY(state, status);
+                break;
+            }
+            if (!strncmp(status, "ACTIVE", strlen(status)))
+            {
+                STRSCPY(state, status);
+                break;
+            }
+            if (!strncmp(status, "IDLE", strlen(status)))
+            {
+                STRSCPY(state, status);
+                if ((mgr->wan_state == LTEM_WAN_STATE_UP) &&
+                    mgr->lte_state == LTEM_LTE_STATE_UP)
+                {
+                    res = ltem_wan_healthcheck(mgr);
+                    if (res)
+                    {
+                        if (mgr->wan_failure_count >= WAN_L3_FAIL_LIMIT)
+                        {
+                            res = ltem_set_lte_route_preferred(mgr);
+                            if (res < 0)
+                            {
+                                LOGI("%s: Set LTE preferred: failed", __func__);
+                            }
+                            else
+                            {
+                                LOGI("%s: LTE set as preferred route, fail count[%d]",
+                                     __func__, mgr->wan_failure_count);
+                                ltem_set_wan_state(LTEM_WAN_STATE_DOWN);
+                            }
+                        }
+                    }
+                }
+                break;
+            }
+        }
+    }
+
+    LOGD("%s: status_cnt[%d] state[%s] connected[%d]",
+         __func__, status_cnt, state, manager_config->is_connected);
+}
+
 void
 ltem_ovsdb_set_v6_failover(ltem_mgr_t *mgr)
 {
@@ -1475,6 +1576,7 @@ ltem_ovsdb_init(void)
     OVSDB_TABLE_INIT_NO_KEY(AWLAN_Node);
     OVSDB_TABLE_INIT_NO_KEY(IPv6_RouteAdv);
     OVSDB_TABLE_INIT_NO_KEY(IPv6_Prefix);
+    OVSDB_TABLE_INIT_NO_KEY(Manager);
 
     // Initialize OVSDB monitor callbacks
     OVSDB_TABLE_MONITOR(Lte_Config, false);
@@ -1483,6 +1585,7 @@ ltem_ovsdb_init(void)
     OVSDB_TABLE_MONITOR(Connection_Manager_Uplink, false);
     OVSDB_TABLE_MONITOR(Wifi_Route_Config, false);
     OVSDB_TABLE_MONITOR_F(AWLAN_Node, filter);
+    OVSDB_TABLE_MONITOR(Manager, false);
 
     return 0;
 }

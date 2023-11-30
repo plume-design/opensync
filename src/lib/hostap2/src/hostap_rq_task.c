@@ -35,7 +35,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <hostap_rq_task.h>
 
 /* private */
-#define HOSTAP_RQ_TASK_RUN_TIMEOUT_MSEC 3000
+#define HOSTAP_RQ_TASK_RUN_TIMEOUT_MSEC 10000
 #define LOG_PREFIX_TASK(task, fmt, ...) \
     "hostap: rq: task: %s: %s: " fmt, \
     hostap_sock_get_path( \

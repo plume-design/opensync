@@ -61,6 +61,16 @@ fsm_dpi_client_get_mgr(void)
     return &cache_mgr;
 }
 
+
+static bool is_mac_any_cast(os_macaddr_t *mac)
+{
+    os_macaddr_t *dmac = mac;
+
+    if (!mac) return false;
+    if ((dmac->addr[0] & 0x01) == 0x01) return true;
+    return false;
+}
+
 /**
  * @brief compare sessions
  *
@@ -377,15 +387,22 @@ fsm_dpi_client_process_attr(struct fsm_session *session, const char *attr,
     acc = pkt_info->acc;
     if (acc == NULL) return FSM_DPI_IGNORED;
 
-    if (acc->originator == NET_MD_ACC_UNKNOWN_ORIGINATOR)
-    {
-        LOGT("%s: No originator", __func__);
-        return FSM_DPI_IGNORED;
-    }
     key = acc->key;
     if (key == NULL)
     {
         LOGT("%s: No key for accumulator", __func__);
+        return FSM_DPI_IGNORED;
+    }
+
+    // Multicast and broadcast packets always need to be inspected
+    if (is_mac_any_cast(key->dmac) == true)
+    {
+        return FSM_DPI_INSPECT;
+    }
+
+    if (acc->originator == NET_MD_ACC_UNKNOWN_ORIGINATOR)
+    {
+        LOGT("%s: No originator", __func__);
         return FSM_DPI_IGNORED;
     }
 

@@ -54,7 +54,8 @@ void
 ow_steer_policy_stack_schedule_recalc(struct ow_steer_policy_stack *stack);
 
 void
-ow_steer_policy_stack_sigusr1_dump(struct ow_steer_policy_stack *stack);
+ow_steer_policy_stack_sigusr1_dump(osw_diag_pipe_t *pipe,
+                                   struct ow_steer_policy_stack *stack);
 
 void
 ow_steer_policy_stack_sta_snr_change(struct ow_steer_policy_stack *stack,

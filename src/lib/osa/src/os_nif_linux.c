@@ -59,12 +59,12 @@ os_ipaddr_t os_ipaddr_any =
     .addr = { 0, 0, 0, 0}
 };
 
-static int os_nif_ifreq(int cmd, char *ifname, struct ifreq *req);
+static int os_nif_ifreq(int cmd, const char *ifname, struct ifreq *req);
 
 /*
  * Returns true if the interface @p ifname exists
  */
-bool os_nif_exists(char *ifname, bool *exists)
+bool os_nif_exists(const char *ifname, bool *exists)
 {
     struct ifreq    req;
     int             rc;
@@ -91,7 +91,7 @@ bool os_nif_exists(char *ifname, bool *exists)
 /*
  * Retrieve the ip address of the interface @p ifname
  */
-bool os_nif_ipaddr_get(char* ifname, os_ipaddr_t* addr)
+bool os_nif_ipaddr_get(const char* ifname, os_ipaddr_t* addr)
 {
     int             rc;
     struct ifreq    req;
@@ -116,7 +116,7 @@ bool os_nif_ipaddr_get(char* ifname, os_ipaddr_t* addr)
 /*
  * Retrieve the netmask of the interface @p ifname
  */
-bool os_nif_netmask_get(char* ifname, os_ipaddr_t* addr)
+bool os_nif_netmask_get(const char* ifname, os_ipaddr_t* addr)
 {
     int             rc;
     struct ifreq    req;
@@ -141,7 +141,7 @@ bool os_nif_netmask_get(char* ifname, os_ipaddr_t* addr)
 /*
  * Retrieve the broadcast address of the interface @p ifname
  */
-bool os_nif_bcast_get(char* ifname, os_ipaddr_t* addr)
+bool os_nif_bcast_get(const char* ifname, os_ipaddr_t* addr)
 {
     int             rc;
     struct ifreq    req;
@@ -167,7 +167,7 @@ bool os_nif_bcast_get(char* ifname, os_ipaddr_t* addr)
 /*
  * Set the ip address of the interface @p ifname
  */
-bool os_nif_ipaddr_set(char* ifname, os_ipaddr_t addr)
+bool os_nif_ipaddr_set(const char* ifname, os_ipaddr_t addr)
 {
     int             rc;
     struct ifreq    req;
@@ -192,7 +192,7 @@ bool os_nif_ipaddr_set(char* ifname, os_ipaddr_t addr)
 /*
  * Set the netmask of the interface @p ifname
  */
-bool os_nif_netmask_set(char* ifname, os_ipaddr_t addr)
+bool os_nif_netmask_set(const char* ifname, os_ipaddr_t addr)
 {
     int             rc;
     struct ifreq    req;
@@ -217,7 +217,7 @@ bool os_nif_netmask_set(char* ifname, os_ipaddr_t addr)
 /*
  * Set the broadcast address of the interface @p ifname
  */
-bool os_nif_bcast_set(char* ifname, os_ipaddr_t addr)
+bool os_nif_bcast_set(const char* ifname, os_ipaddr_t addr)
 {
     int             rc;
     struct ifreq    req;
@@ -242,7 +242,7 @@ bool os_nif_bcast_set(char* ifname, os_ipaddr_t addr)
 /*
  * Get the MTU of the interface @p ifname
  */
-bool os_nif_mtu_get(char* ifname, int *mtu)
+bool os_nif_mtu_get(const char* ifname, int *mtu)
 {
     int             rc;
     struct ifreq    req;
@@ -263,7 +263,7 @@ bool os_nif_mtu_get(char* ifname, int *mtu)
 /*
  * Set the MTU of the interface @p ifname
  */
-bool os_nif_mtu_set(char* ifname, int mtu)
+bool os_nif_mtu_set(const char* ifname, int mtu)
 {
     int             rc;
     struct ifreq    req;
@@ -284,7 +284,7 @@ bool os_nif_mtu_set(char* ifname, int mtu)
 /**
  * Retrieve the interface MAC address.
  */
-bool os_nif_macaddr(char* ifname, os_macaddr_t* mac)
+bool os_nif_macaddr(const char* ifname, os_macaddr_t* mac)
 {
     int             rc;
     struct ifreq    req;
@@ -305,12 +305,12 @@ bool os_nif_macaddr(char* ifname, os_macaddr_t* mac)
     return true;
 }
 
-bool os_nif_macaddr_get(char* ifname, os_macaddr_t* mac)
+bool os_nif_macaddr_get(const char* ifname, os_macaddr_t* mac)
 {
     return os_nif_macaddr(ifname, mac);
 }
 
-bool os_nif_macaddr_set(char *ifname, os_macaddr_t mac)
+bool os_nif_macaddr_set(const char *ifname, os_macaddr_t mac)
 {
     int             rc;
     struct ifreq    req;
@@ -332,7 +332,7 @@ bool os_nif_macaddr_set(char *ifname, os_macaddr_t mac)
     return true;
 }
 
-bool os_nif_gateway_set(char* ifname, os_ipaddr_t gwaddr)
+bool os_nif_gateway_set(const char* ifname, os_ipaddr_t gwaddr)
 {
     char iproute[128];
 
@@ -342,7 +342,7 @@ bool os_nif_gateway_set(char* ifname, os_ipaddr_t gwaddr)
     return system(iproute) == 0;
 }
 
-bool os_nif_gateway_del(char* ifname, os_ipaddr_t gwaddr)
+bool os_nif_gateway_del(const char* ifname, os_ipaddr_t gwaddr)
 {
     char iproute[128];
 
@@ -436,7 +436,7 @@ bool os_nif_ipaddr_from_str(os_ipaddr_t *ipaddr, const char* str)
 /**
  * Equivalent of ifconfig IF up/down
  */
-bool os_nif_up(char* ifname, bool ifup)
+bool os_nif_up(const char* ifname, bool ifup)
 {
     struct ifreq    req;
     int             rc;
@@ -473,7 +473,7 @@ bool os_nif_up(char* ifname, bool ifup)
 /**
  * Returns @p true whether the device is UP
  */
-bool os_nif_is_up(char* ifname, bool *up)
+bool os_nif_is_up(const char* ifname, bool *up)
 {
     struct ifreq    req;
     int             rc;
@@ -499,7 +499,7 @@ bool os_nif_is_up(char* ifname, bool *up)
 /**
  * Returns @p true whether the device is UP and is operational (in case of Ethernet, if the cable is connected)
  */
-bool os_nif_is_running(char* ifname, bool *running)
+bool os_nif_is_running(const char* ifname, bool *running)
 {
     struct ifreq    req;
     int             rc;
@@ -523,8 +523,8 @@ bool os_nif_is_running(char* ifname, bool *running)
 }
 
 bool os_nif_softwds_create(
-        char* ifname,
-        char* parent,
+        const char* ifname,
+        const char* parent,
         os_macaddr_t* mac,
         bool wrap)
 {
@@ -552,7 +552,7 @@ bool os_nif_softwds_create(
 }
 
 bool os_nif_softwds_destroy(
-        char* ifname)
+        const char* ifname)
 {
     char cmd[1024];
     int rc;
@@ -659,7 +659,7 @@ void os_nif_list_free(ds_list_t* list)
  *
  * This function returns 0 on success or an errno-style code on error.
  */
-int os_nif_ifreq(int cmd, char *ifname, struct ifreq *req)
+int os_nif_ifreq(int cmd, const char *ifname, struct ifreq *req)
 {
     STRSCPY(req->ifr_name, ifname);
 
@@ -711,7 +711,7 @@ exit:
 /**
  * Return the PID of the udhcpc client serving on interface @p ifname
  */
-static int os_nif_dhcpc_pid(char *ifname)
+static int os_nif_dhcpc_pid(const char *ifname)
 {
     char pid_file[256];
     FILE *f;
@@ -740,7 +740,7 @@ static int os_nif_dhcpc_pid(char *ifname)
     return pid;
 }
 
-bool os_nif_dhcpc_start(char* ifname, bool apply, int dhcp_time)
+bool os_nif_dhcpc_start(const char* ifname, bool apply, int dhcp_time)
 {
     char dhcp_vendor_class[TARGET_BUFF_SZ];
     char pidfile[256];
@@ -751,7 +751,7 @@ bool os_nif_dhcpc_start(char* ifname, bool apply, int dhcp_time)
     char sku_num[100];
     char hostname[256];
     char *udhcpc_s_option;
-    char *pidname;
+    const char *pidname;
     char name[128];
     char paramT[256];
     pid_t pid;
@@ -834,7 +834,7 @@ bool os_nif_dhcpc_start(char* ifname, bool apply, int dhcp_time)
         STRSCPY(dhcp_vendor_class, TARGET_NAME);
     }
 
-    char *argv_apply[] = {
+    const char *argv_apply[] = {
 	"/sbin/udhcpc",
 	"-p", pidfile,
 	"-s", udhcpc_s_option,
@@ -862,7 +862,7 @@ bool os_nif_dhcpc_start(char* ifname, bool apply, int dhcp_time)
     };
 
 /* -T,--timeout SEC - Pause between packets (default 3) */
-    char *argv_dry_run[] = {
+    const char *argv_dry_run[] = {
 	"/sbin/udhcpc",
  	"-p", pidfile,
 	"-n",
@@ -888,9 +888,9 @@ bool os_nif_dhcpc_start(char* ifname, bool apply, int dhcp_time)
         {
 	    LOGI("%s: %%s option %s", __func__, udhcpc_s_option);
 	    if (apply == true) {
-		execv("/sbin/udhcpc", argv_apply);
+		execv("/sbin/udhcpc", (char *const*)argv_apply);
 	    } else {
-		execv("/sbin/udhcpc", argv_dry_run);
+		execv("/sbin/udhcpc", (char *const*)argv_dry_run);
 	    }
         }
         exit(0);
@@ -902,9 +902,9 @@ bool os_nif_dhcpc_start(char* ifname, bool apply, int dhcp_time)
     return true;
 }
 
-bool os_nif_dhcpc_stop(char* ifname, bool dryrun)
+bool os_nif_dhcpc_stop(const char* ifname, bool dryrun)
 {
-    char *pidname;
+    const char *pidname;
     char name[128];
 
     if (dryrun) {
@@ -937,7 +937,7 @@ bool os_nif_dhcpc_stop(char* ifname, bool dryrun)
     return true;
 }
 
-bool os_nif_dhcpc_refresh_lease(char* ifname)
+bool os_nif_dhcpc_refresh_lease(const char* ifname)
 {
     int  pid;
     int  ret;
@@ -1106,7 +1106,7 @@ bool os_nif_pppoe_stop(const char *ifname)
     return true;
 }
 
-bool    os_nif_is_interface_ready(char *if_name)
+bool    os_nif_is_interface_ready(const char *if_name)
 {
     bool    exists = false;
 

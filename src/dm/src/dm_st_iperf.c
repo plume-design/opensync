@@ -57,7 +57,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
 #define ST_EXE              "iperf3"
-#define ST_PATH             "/usr/bin/" ST_EXE
 #define ST_DEBUG_JSON_PATH  "/tmp/debug_iperf_out.log"
 #define ST_DEF_LEN          (10)  /* default speedtest duration, seconds */
 #define ST_WAIT_TIMEOUT     (30)  /* st wait timeout in addition to duration */
@@ -156,12 +155,39 @@ static bool iperf_parse_json(
     else
         is_udp = false;
 
-    const char *key_end_sum = is_udp ? "sum" : "sum_received"; /* different json key for UDP tests: */
-    if (json_unpack_ex(js_root, &error, 0, "{s:{s:o}}", "end", key_end_sum, &js) != 0)
+    const char *key_end_sum;
+
+    /* different json key for UDP tests: */
+    if (is_udp)
     {
-        LOG(ERR, "JSON parse error (end:sum_received/sum): %d:%d: %s",
-                error.line, error.column, error.text);
-        return false;
+        /* UDP UL get result from the server key is sum_received */
+        /* NOTE!!! sum_recieved is supported after iperf 3.11.0 */
+        /* NOTE!!! server output JSON value sum has bug is 0 until now! */
+        /* so reading server output JSON value sum is not feasible! */
+        key_end_sum = is_reverse ? "sum" : "sum_received";
+    }
+    else
+    {
+        key_end_sum = "sum_received";
+    }
+
+    if (is_udp && !is_reverse)
+    {
+        if (json_unpack_ex(js_root, &error, 0, "{s:{s:{s:o}}}", "server_output_json", "end", key_end_sum, &js) != 0)
+        {
+            LOG(ERR, "JSON parse error (server_output_json:end:sum_received/sum): %d:%d: %s",
+                    error.line, error.column, error.text);
+            return false;
+        }
+    }
+    else
+    {
+        if (json_unpack_ex(js_root, &error, 0, "{s:{s:o}}", "end", key_end_sum, &js) != 0)
+        {
+            LOG(ERR, "JSON parse error (end:sum_received/sum): %d:%d: %s",
+                    error.line, error.column, error.text);
+            return false;
+        }
     }
 
     /* Test results: */
@@ -199,6 +225,12 @@ static bool iperf_parse_json(
         }
         pkt_loss = json_is_real(js_pkt_loss) ?
                 json_real_value(js_pkt_loss) : (double) json_integer_value(js_pkt_loss);
+        if (pkt_loss > 100)
+        {
+            /* https://github.com/esnet/iperf/pull/1498 */
+            LOG(WARN, "ST_IPERF: JSON parse error: packet lost percentage is greater than 100, fallback to 100.");
+            pkt_loss = 100;
+        }
 
         jitter = json_is_real(js_jitter) ?
                 json_real_value(js_jitter) : (double) json_integer_value(js_jitter);
@@ -444,7 +476,7 @@ static bool iperf_run_async(struct st_context *st_ctx, bool run_reverse)
         }
 
         snprintf(st_cmd, sizeof(st_cmd), "%s -s -1 -i 0 -J %s%s",
-                 ST_PATH,
+                 ST_EXE,
                  arg_bind,
                  arg_port);
     }
@@ -455,6 +487,7 @@ static bool iperf_run_async(struct st_context *st_ctx, bool run_reverse)
         char arg_bw[64] = { 0 };
         const char *arg_reverse = "";
         const char *arg_udp = "";
+        const char *arg_get_server_output = "";
 
         if (!st_ctx->st_config.st_server_exists) // connect to host
         {
@@ -476,6 +509,9 @@ static bool iperf_run_async(struct st_context *st_ctx, bool run_reverse)
         if (st_ctx->st_config.st_udp_exists && st_ctx->st_config.st_udp) // use UDP rather than TCP
         {
             arg_udp = " -u";
+            // UDP test result should get from receiver.
+            // UL receiver is server.
+            arg_get_server_output = run_reverse ? "" : " --get-server-output";
         }
         if (st_ctx->st_config.st_bw_exists) // target bandwidth [bits/sec]
         {
@@ -483,15 +519,16 @@ static bool iperf_run_async(struct st_context *st_ctx, bool run_reverse)
                      st_ctx->st_config.st_bw);
         }
 
-        snprintf(st_cmd, sizeof(st_cmd), "%s -i 0 -O 2 -J -c %s %s%s%s%s%s%s",
-                 ST_PATH,
+        snprintf(st_cmd, sizeof(st_cmd), "%s -i 0 -O 2 -J -c %s %s%s%s%s%s%s%s",
+                 ST_EXE,
                  st_ctx->st_config.st_server,
                  arg_reverse,
                  arg_port,
                  arg_len,
                  arg_parallel,
                  arg_udp,
-                 arg_bw);
+                 arg_bw,
+                 arg_get_server_output);
     }
     else
     {

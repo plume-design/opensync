@@ -1,0 +1,15 @@
+if OSN_BACKEND_MAP_LINUX
+    menu "v6plus MAP-E Configuration"
+        config OSN_MAP_V6PLUS_MANUFACTURER_CODE
+            string "v6Plus Manufacturer code"
+            default ""
+            help
+                v6Plus Manufacturer code string used to construct the URL
+                for fetching MAP rules from a rule distribution server.
+                The Kconfig-configured manufacturer code is used by default,
+                unless overriden by OVSDB setting in MAP_Config.
+
+                Manufacturer code is issued for each manufacturer,
+                and universal for a product.
+    endmenu
+endif

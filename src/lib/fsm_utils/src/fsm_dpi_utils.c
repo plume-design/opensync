@@ -34,6 +34,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "network_metadata_report.h"
 #include "fsm_dpi_utils.h"
 #include "sockaddr_storage.h"
+#include "osn_types.h"
 
 #define DEFAULT_ZONE (0)
 #define FSM_DPI_ZONE (1)
@@ -498,10 +499,11 @@ fsm_nfq_mac_same(os_macaddr_t *lkp_mac, struct nfq_pkt_info *pkt_info)
     bool rc = false;
     size_t i;
 
-
     if (!pkt_info->hw_addr || pkt_info->hw_addr_len != 6) return true;
 
     if (!memcmp(lkp_mac, pkt_info->hw_addr, sizeof(os_macaddr_t))) return true;
+
+    if (!osn_mac_addr_cmp(pkt_info->hw_addr, &OSN_MAC_ADDR_INIT)) return true;
 
     LOGT("%s: pkt_mac",__func__);
     for (i = 0; i < pkt_info->hw_addr_len; i++)
@@ -539,7 +541,10 @@ fsm_update_neigh_cache(void *ipaddr, os_macaddr_t *mac, int domain)
     sockaddr_storage_populate(domain, ipaddr, entry.ipaddr);
 
     rc = neigh_table_add(&entry);
-    if (rc == false) LOGE("%s: Failed to add neighbor entry for: %s",__func__, buf);
+    if (rc == false && ((entry.flags & NEIGH_CACHED) == 0))
+    {
+        LOGE("%s: Failed to add neighbor entry for: %s", __func__, buf);
+    }
 
     return rc;
 }

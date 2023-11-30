@@ -111,6 +111,7 @@ struct net_md_stats_accumulator
     uint16_t originator;                   /* flow originator */
     struct net_md_stats_accumulator *rev_acc;
     uint32_t flags;
+    bool dpi_always;
 };
 
 

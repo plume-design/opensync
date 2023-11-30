@@ -611,7 +611,7 @@ static void start_download(struct schema_Object_Store_Config *new)
     if (query_str != NULL)
     {
         /* generate full file path dir + file name up to questionmark (?) */
-        snprintf(d_ctx->dl_path, sizeof(d_ctx->dl_path), "%s/%.*s", CONFIG_PM_OBJM_DOWNLOAD_DIR, (query_str - filename), filename);
+        snprintf(d_ctx->dl_path, sizeof(d_ctx->dl_path), "%s/%.*s", CONFIG_PM_OBJM_DOWNLOAD_DIR, (int)(query_str - filename), filename);
     }
     else
     {

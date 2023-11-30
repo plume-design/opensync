@@ -368,7 +368,6 @@ gkc_new_attr_entry(struct gk_attr_cache_interface *entry)
             if (attr->host_name == NULL) goto cleanup_new_attr;
             attr->host_name->name = STRDUP(entry->attr_name);
             attr->host_name->count_fqdn.total = 1;
-
             gk_add_new_redirect_entry(entry, new_attr_cache);
             break;
 
@@ -377,6 +376,7 @@ gkc_new_attr_entry(struct gk_attr_cache_interface *entry)
             if (attr->host_name == NULL) goto cleanup_new_attr;
             attr->host_name->name = STRDUP(entry->attr_name);
             attr->host_name->count_host.total = 1;
+            gk_add_new_redirect_entry(entry, new_attr_cache);
             break;
 
         case GK_CACHE_REQ_TYPE_SNI:
@@ -384,6 +384,7 @@ gkc_new_attr_entry(struct gk_attr_cache_interface *entry)
             if (attr->host_name == NULL) goto cleanup_new_attr;
             attr->host_name->name = STRDUP(entry->attr_name);
             attr->host_name->count_sni.total = 1;
+            gk_add_new_redirect_entry(entry, new_attr_cache);
             break;
 
         case GK_CACHE_REQ_TYPE_URL:
@@ -867,7 +868,13 @@ gkc_cleanup_mgr(void)
 void
 gkc_lookup_redirect_entry(struct gk_attr_cache_interface *req, struct attr_cache *attr_entry)
 {
-    if (req->attribute_type != GK_CACHE_REQ_TYPE_FQDN) return;
+    bool perform_lookup;
+    int type;
+
+    type = req->attribute_type;
+    /* lookup redirect entries only for attr type FQDN, HOST and SNI */
+    perform_lookup = (type == GK_CACHE_REQ_TYPE_FQDN || type == GK_CACHE_REQ_TYPE_HOST || type == GK_CACHE_REQ_TYPE_SNI);
+    if (!perform_lookup) return;
 
     if (req->fqdn_redirect == NULL || attr_entry->fqdn_redirect == NULL) return;
 

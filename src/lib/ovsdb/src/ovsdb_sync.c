@@ -274,8 +274,8 @@ json_t *ovsdb_tran_call_s(
 }
 
 /*
- * This function uses ovsdb_method_send_s() to send a
- * transaction created with ovsdb_tran_insert_with_parent()
+ * This function uses ovsdb_method_send_s() to send a transaction
+ * created with ovsdb_tran_multi_insert_with_parent()
  */
 bool ovsdb_insert_with_parent_s(char * table,
                                 json_t * row,
@@ -283,12 +283,12 @@ bool ovsdb_insert_with_parent_s(char * table,
                                 json_t * parent_where,
                                 char * parent_column)
 {
-    json_t *tran = ovsdb_tran_insert_with_parent(
-                                            table,
-                                            row,
-                                            parent_table,
-                                            parent_where,
-                                            parent_column);
+    json_t *tran = ovsdb_tran_multi_insert_with_parent(NULL,
+                                                       table,
+                                                       row,
+                                                       parent_table,
+                                                       parent_where,
+                                                       parent_column);
 
     json_t *resp = ovsdb_method_send_s(MT_TRANS, tran);
 
@@ -300,7 +300,7 @@ bool ovsdb_insert_with_parent_s(char * table,
 /*
  * This function builds a uuid list from where clause,
  * then uses ovsdb_method_send_s() to send a * transaction
- * created with ovsdb_tran_delete_with_parent()
+ * created with ovsdb_tran_multi_delete_with_parent()
  */
 json_t* ovsdb_delete_with_parent_res_s(const char * table,
                                 json_t *where,
@@ -340,11 +340,12 @@ json_t* ovsdb_delete_with_parent_res_s(const char * table,
     }
     json_decref(result);
 
-    tran = ovsdb_tran_delete_with_parent(table,
-                                         uuids,
-                                         parent_table,
-                                         parent_where,
-                                         parent_column);
+    tran = ovsdb_tran_multi_delete_with_parent(NULL,
+                                               table,
+                                               uuids,
+                                               parent_table,
+                                               parent_where,
+                                               parent_column);
 
     resp = ovsdb_method_send_s(MT_TRANS, tran);
 

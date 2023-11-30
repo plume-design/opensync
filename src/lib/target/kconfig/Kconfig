@@ -146,6 +146,21 @@ config TARGET_LAN_BRIDGE_NAME
     help
         LAN bridge name that will be used
 
+config TARGET_LAN_SET_LOCAL_MAC_BIT
+    bool "Local MAC bit on LAN bridge interface"
+    default y
+    help
+        Toggle of whether setting local bit on MAC address
+        of LAN bridge to avoid having the same MAC address
+        on ethernet interfaces.
+
+config TARGET_ETH_FOR_LAN_BRIDGE
+    string "Ethernet port for LAN bridge"
+    default "eth0"
+    help
+        Provide ethernet port which should be used for LAN bridge
+        The MAC of the selected port will be used on the LAN bridge
+
 config TARGET_USE_WAN_BRIDGE
     bool "Use WAN bridge"
     default y

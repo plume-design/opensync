@@ -57,7 +57,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 /*****************************************************************************/
 static ovsdb_update_monitor_t   bm_neighbor_ovsdb_update;
 static ovsdb_update_monitor_t   bm_vif_state_ovsdb_update;
-static ds_tree_t                bm_neighbors = DS_TREE_INIT( ds_int_cmp,
+static ds_tree_t                bm_neighbors = DS_TREE_INIT( ds_u8_cmp,
                                                              bm_neighbor_t,
                                                              dst_node );
 static ovsdb_table_t table_Wifi_Radio_State;
@@ -1209,6 +1209,12 @@ bm_neighbor_build_btm_add_retry_neighbors(bm_client_t *client,
                  "(BTM response preference value 0 is reserved)",
                  bm_neigh->bssid,
                  bm_neigh->ifname);
+            continue;
+        }
+
+        if ( ieee80211_global_op_class_is_2ghz(bm_neigh->neigh_report.op_class)
+             && bm_neigh->channel >=1 && bm_neigh->channel <= 13 ) {
+            LOGT("BTM retry neighbor is 2.4GHz, bssid = %s", mac_str);
             continue;
         }
 

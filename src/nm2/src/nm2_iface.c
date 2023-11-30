@@ -53,6 +53,7 @@ ds_dlist_t nm2_iface_commit_list = DS_DLIST_INIT(struct nm2_iface, if_commit_dno
 
 static void nm2_iface_dhcpc_notify(inet_t *self, enum osn_dhcp_option opt, const char *value);
 static inet_t *nm2_iface_new_inet(const char *ifname, enum nm2_iftype type);
+static os_fdbuf_pcap_t *nm2_iface_new_fdbuf_pcap(const char *ifname, enum nm2_iftype type);
 
 static const uint8_t dhcp_default_req_options[] = {
     DHCP_OPTION_SUBNET_MASK,
@@ -192,6 +193,8 @@ struct nm2_iface *nm2_iface_new(const char *_ifname, enum nm2_iftype if_type)
         return NULL;
     }
 
+    piface->if_fdbuf_pcap = nm2_iface_new_fdbuf_pcap(ifname, if_type);
+
     /* Setup private data pointer */
     piface->if_inet->in_data = piface;
 
@@ -218,12 +221,17 @@ struct nm2_iface *nm2_iface_new(const char *_ifname, enum nm2_iftype if_type)
 bool nm2_iface_del(struct nm2_iface *piface)
 {
     bool retval = true;
+    struct nm2_ip_interface *if_ipi;
+
+    if_ipi = piface->if_ipi;
 
     /* Remove the interface from the "pending commits" list */
     if (piface->if_commit)
     {
         ds_dlist_remove(&nm2_iface_commit_list, piface);
     }
+
+    os_fdbuf_pcap_drop_safe(&piface->if_fdbuf_pcap);
 
     /* Destroy the inet object */
     if (!inet_del(piface->if_inet))
@@ -237,6 +245,11 @@ bool nm2_iface_del(struct nm2_iface *piface)
     /* Destroy DHCP options list */
     ev_debounce_stop(EV_DEFAULT, &piface->if_opt_debounce);
     FREE(piface->if_dhcp_req_options);
+
+    if (if_ipi != NULL && if_ipi->ipi_iface == piface)
+    {
+        if_ipi->ipi_iface = NULL;
+    }
 
     /* Remove interface from global interface list */
     ds_tree_remove(&nm2_iface_list, piface);
@@ -461,6 +474,31 @@ inet_t *nm2_iface_new_inet(const char *ifname, enum nm2_iftype type)
     inet_dhcpc_option_set(nif, DHCP_OPTION_OSYNC_SERIAL_OPT, serial_num);
 
     return nif;
+}
+
+os_fdbuf_pcap_t *nm2_iface_new_fdbuf_pcap(const char *ifname, enum nm2_iftype type)
+{
+    switch (type) {
+        case NM2_IFTYPE_BRIDGE:
+            /* Only bridges are subject to Forward Database
+             * Update Frames.
+             */
+            return os_fdbuf_pcap_new(ifname);
+        case NM2_IFTYPE_NONE:
+        case NM2_IFTYPE_ETH:
+        case NM2_IFTYPE_VIF:
+        case NM2_IFTYPE_VLAN:
+        case NM2_IFTYPE_GRE:
+        case NM2_IFTYPE_GRE6:
+        case NM2_IFTYPE_TAP:
+        case NM2_IFTYPE_PPPOE:
+        case NM2_IFTYPE_LTE:
+        case NM2_IFTYPE_TUNNEL:
+        case NM2_IFTYPE_UNMANAGED:
+        case NM2_IFTYPE_MAX:
+            break;
+    }
+    return NULL;
 }
 
 /**

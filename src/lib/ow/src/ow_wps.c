@@ -344,7 +344,7 @@ ow_wps_job_set_vif_info(struct ow_wps_job *job,
             {
                 const bool cred_matches = osw_wps_cred_list_is_same(&ap->wps_cred_list,
                                                                     &job->config.creds);
-                const bool pbc_activated = vif->enabled
+                const bool pbc_activated = (vif->status == OSW_VIF_ENABLED)
                                         && ap->mode.wps
                                         && ap->wps_pbc
                                         && cred_matches;

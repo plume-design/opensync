@@ -366,13 +366,12 @@ bool dm_manager_stop_all(char *except_mgrs)
 
     OVSDB_TABLE_INIT(Node_Services, service);
     list = ovsdb_table_select(&table_Node_Services, "status", "enabled", &count);
-
-    if (!list)
-        return true;
-
-    for (manager = list; manager && count; manager++,count--)
+    if (list)
     {
-        update_manager_list(manager->service);
+        for (manager = list; manager && count; manager++,count--)
+        {
+            update_manager_list(manager->service);
+        }
     }
 
     update_manager_list("dm.master");

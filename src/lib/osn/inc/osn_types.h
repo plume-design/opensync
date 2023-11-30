@@ -34,6 +34,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stddef.h>
 #include <string.h>
 #include <stdio.h>
+#include <limits.h>
 
 /**
  * @file osn_types.h
@@ -366,6 +367,35 @@ int osn_ip6_addr_cmp(const void *a, const void *b);
  * greater than @p b.
  */
 int osn_ip6_addr_nolft_cmp(const void *_a, const void *_b);
+
+/**
+ * Strip the non-subnet part of an IPv6 address. For example:
+ *
+ * 2001:db8:1704:9902:7e13:1dff:fea8:924c/64
+ * --> 2001:db8:1704:9902::/64
+ *
+ * @param[in]    addr   IPv6 address with prefix set.
+ *
+ * @return
+ * Returns an osn_ip6_addr_t structure that has its non-subnet part
+ * set to all zeroes i.e. the IPv6 prefix of the provided address.
+ */
+osn_ip6_addr_t osn_ip6_addr_subnet(const osn_ip6_addr_t *addr);
+
+/**
+ * Convert a prefix integer to an IPv6 representation.
+ * For example:
+ *
+ * @code
+ * 16 -> ffff:0000:0000:0000:0000:0000:0000:0000
+ * @endcode
+ *
+ * @param[in]   prefix  Prefix to convert
+ *
+ * @return
+ * This function returns an osn_ip_addr_t structure representing the prefix
+ */
+osn_ip6_addr_t osn_ip6_addr_from_prefix(int prefix);
 
 /**
  * Detect the IPv6 address type.

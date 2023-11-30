@@ -689,7 +689,7 @@ osw_drv_vif_chan_sync_cb(EV_P_ ev_timer *arg, int events)
     struct osw_drv_phy *phy = vif->phy;
     struct osw_drv *drv = phy->drv;
 
-    LOGI("osw: drv: %s/%s: syncing channel state",
+    LOGD("osw: drv: %s/%s: syncing channel state",
          phy->phy_name, vif->vif_name);
 
     osw_drv_report_vif_changed(drv, phy->phy_name, vif->vif_name);
@@ -717,7 +717,7 @@ osw_drv_set_chan_sync(struct osw_drv *drv, const struct osw_drv_conf *conf)
             if (cvif->vif_type != OSW_VIF_AP) continue;
             if (cvif->u.ap.channel_changed == false) continue;
 
-            LOGI("osw: drv: %s/%s: scheduling channel state sync",
+            LOGD("osw: drv: %s/%s: scheduling channel state sync",
                  phy->phy_name, vif->vif_name);
 
             ev_timer_stop(EV_DEFAULT_ &vif->chan_sync);
@@ -1440,24 +1440,24 @@ static bool
 osw_drv_vif_state_is_changed(const struct osw_drv_vif *vif)
 {
     bool changed = false;
-    const bool changed_enabled = vif->cur_state.enabled != vif->new_state.enabled;
+    const bool changed_status = vif->cur_state.status != vif->new_state.status;
     const bool changed_vif_type = vif->cur_state.vif_type != vif->new_state.vif_type;
     const bool changed_tx_power_dbm = vif->cur_state.tx_power_dbm != vif->new_state.tx_power_dbm;
     const bool changed_mac_addr = memcmp(&vif->cur_state.mac_addr,
                                          &vif->new_state.mac_addr,
                                          sizeof(vif->new_state.mac_addr));
 
-    changed |= changed_enabled;
+    changed |= changed_status;
     changed |= changed_vif_type;
     changed |= changed_tx_power_dbm;
     changed |= changed_mac_addr;
 
-    if (changed_enabled) {
-        LOGI("osw: drv: %s/%s: enabled: %d -> %d",
+    if (changed_status) {
+        LOGI("osw: drv: %s/%s: status: %s -> %s",
              vif->phy->phy_name,
              vif->vif_name,
-             vif->cur_state.enabled,
-             vif->new_state.enabled);
+             osw_vif_status_into_cstr(vif->cur_state.status),
+             osw_vif_status_into_cstr(vif->new_state.status));
     }
 
     if (changed_tx_power_dbm) {
@@ -1641,11 +1641,11 @@ osw_drv_vif_dump_sta(struct osw_drv_vif *vif)
 static void
 osw_drv_vif_dump(struct osw_drv_vif *vif)
 {
-    LOGI("osw: drv: %s/%s/%s: enabled: %d",
+    LOGI("osw: drv: %s/%s/%s: status: %s",
          vif->phy->drv->ops->name,
          vif->phy->phy_name,
          vif->vif_name,
-         vif->cur_state.enabled);
+         osw_vif_status_into_cstr(vif->cur_state.status));
 
     LOGI("osw: drv: %s/%s/%s: type: %s",
          vif->phy->drv->ops->name,
@@ -1809,7 +1809,7 @@ osw_drv_vif_get_channel(const struct osw_drv_vif *vif)
     const struct osw_drv_vif_state_sta *vsta = &vif->cur_state.u.sta;
     const enum osw_drv_vif_state_sta_link_status status = vsta->link.status;
 
-    if (vif->cur_state.enabled == false) return NULL;
+    if (vif->cur_state.status != OSW_VIF_ENABLED) return NULL;
 
     switch (vif->cur_state.vif_type) {
         case OSW_VIF_UNDEFINED:
@@ -3400,6 +3400,7 @@ osw_drv_conf_free(struct osw_drv_conf *conf)
                     FREE(vif->u.ap.neigh_add_list.list);
                     FREE(vif->u.ap.neigh_mod_list.list);
                     FREE(vif->u.ap.neigh_del_list.list);
+                    FREE(vif->u.ap.wps_cred_list.list);
                     break;
                 case OSW_VIF_AP_VLAN:
                     break;
@@ -3410,7 +3411,7 @@ osw_drv_conf_free(struct osw_drv_conf *conf)
         }
 
         FREE(phy->phy_name);
-        FREE(phy->vif_list);
+        FREE(phy->vif_list.list);
     }
 
     FREE(conf->phy_list);

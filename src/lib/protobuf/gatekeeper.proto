@@ -175,6 +175,12 @@ message GatekeeperFqdnRedirectReply {
     string redirect_cname = 3;
 }
 
+message GatekeeperRedirectReply {
+    uint32 redirect_ipv4 = 1;
+    bytes redirect_ipv6 = 2;
+    string redirect_cname = 3;
+}
+
 message GatekeeperFqdnNxdomainReply {
     string autority = 1;
 };
@@ -209,11 +215,13 @@ message GatekeeperAppReply {
 // HTTPS SNI gatekeeper reply
 message GatekeeperHttpsSniReply {
     GatekeeperCommonReply header = 1;
+    GatekeeperRedirectReply redirect = 2;
 }
 
 // HTTP Host gatekeeper reply
 message GatekeeperHttpHostReply {
     GatekeeperCommonReply header = 1;
+    GatekeeperRedirectReply redirect = 2;
 }
 
 // HTTP URL gatekeeper reply

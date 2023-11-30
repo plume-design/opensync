@@ -60,6 +60,7 @@ static log_severity_t qm_log_severity = LOG_SEVERITY_INFO;
  *  PROTECTED definitions
  *****************************************************************************/
 
+
 /******************************************************************************
  *  PUBLIC API definitions
  *****************************************************************************/
@@ -102,6 +103,8 @@ int main(int argc, char ** argv)
     qm_mqtt_init();
 
     qm_event_init();
+
+    qm_osbus_init();
 
     ev_run(loop, 0);
 

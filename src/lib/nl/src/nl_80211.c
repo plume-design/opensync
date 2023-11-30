@@ -605,9 +605,9 @@ nl_80211_map_sta_flush(struct nl_80211_map *map)
 static void
 nl_80211_map_flush(struct nl_80211_map *map)
 {
-    nl_80211_map_phy_flush(map);
-    nl_80211_map_vif_flush(map);
     nl_80211_map_sta_flush(map);
+    nl_80211_map_vif_flush(map);
+    nl_80211_map_phy_flush(map);
 }
 
 static void
@@ -1216,6 +1216,16 @@ nl_80211_alloc_get_sta(struct nl_80211 *nl_80211,
     nl_80211_put_cmd(nl_80211, msg, 0, NL80211_CMD_GET_STATION);
     assert(nla_put_u32(msg, NL80211_ATTR_IFINDEX, ifindex) == 0);
     assert(nla_put(msg, NL80211_ATTR_MAC, ETH_ALEN, mac) == 0);
+    return msg;
+}
+
+struct nl_msg *
+nl_80211_alloc_get_reg(struct nl_80211 *nl_80211,
+                       uint32_t wiphy)
+{
+    struct nl_msg *msg = nlmsg_alloc();
+    assert(nla_put_u32(msg, NL80211_ATTR_WIPHY, wiphy) == 0);
+    nl_80211_put_cmd(nl_80211, msg, 0, NL80211_CMD_GET_REG);
     return msg;
 }
 

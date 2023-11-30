@@ -159,7 +159,7 @@ struct nm2_dhcp_option
     char                dco_version[3];             /* Either "v4" or "v6" */
     char                dco_type[3];                /* Either 'rx' or 'tx' */
     int                 dco_tag;                    /* Tag number */
-    char                dco_value[341];             /* Base64 encoded value */
+    char                dco_value[8192];            /* Base64 encoded value */
     ds_tree_node_t      dco_tnode;
 };
 
@@ -245,6 +245,9 @@ void nm2_route_cfg_reapply(struct nm2_iface *pif);
 
 /* Policy Routing rules handling */
 bool nm2_route_rule_init(void);
+
+/* IPv4 in IPv6 -- MAP-T and MAP-E: */
+bool nm2_4in6_map_init(void);
 
 /*
  * ===========================================================================

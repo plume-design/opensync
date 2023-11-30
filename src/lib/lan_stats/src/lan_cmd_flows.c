@@ -35,11 +35,10 @@ lan_stats_collect_flows(lan_stats_instance_t *lan_stats_instance)
 {
     char line_buf[LINE_BUFF_LEN] = {0,};
     fcm_collect_plugin_t *collector;
-    dp_ctl_stats_t *stats;
+    dp_ctl_stats_t stats;
     FILE *fp = NULL;
 
     if (lan_stats_instance == NULL) return;
-    stats = &lan_stats_instance->stats;
 
     collector = lan_stats_instance->collector;
     if (collector == NULL) return;
@@ -56,11 +55,11 @@ lan_stats_collect_flows(lan_stats_instance_t *lan_stats_instance)
 
     while (fgets(line_buf, LINE_BUFF_LEN, fp) != NULL)
     {
-        memset(stats, 0, sizeof(*stats));
+        memset(&stats, 0, sizeof(dp_ctl_stats_t));
         LOGD("ovs-dpctl dump line %s", line_buf);
-        lan_stats_parse_flows(lan_stats_instance, line_buf);
-        lan_stats_add_uplink_info(lan_stats_instance);
-        lan_stats_flows_filter(lan_stats_instance);
+        lan_stats_parse_flows(lan_stats_instance, line_buf, &stats);
+        lan_stats_add_uplink_info(lan_stats_instance, &stats);
+        lan_stats_flows_filter(lan_stats_instance, &stats);
         memset(line_buf, 0, sizeof(line_buf));
     }
 

@@ -52,6 +52,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "inet_lte.h"
 #include "inet_unmanaged.h"
 #include "inet_tap.h"
+#include "os_fdbuf_pcap.h"
 
 
 /* Debounce timer for interface configuration commit */
@@ -145,6 +146,7 @@ struct nm2_iface
     struct nm2_ip_interface        *if_ipi;                     /* Non-NULL if there's a nm2_ip_interface structure associated */
     struct nm2_dhcpv6_client       *if_dhcpv6_client;           /* Associated DHCPv6 client structure */
     struct nm2_dhcpv6_server       *if_dhcpv6_server;           /* Associated DHCPv6 server structure */
+    os_fdbuf_pcap_t                *if_fdbuf_pcap;              /* FDB Update Frame reception handling */
 
     /*
      * Fields that should be copied from Wifi_Inet_Config to Wifi_Inet_State

@@ -201,7 +201,7 @@ static const char osfw_iptables_rule_add_cmd[] = _S(
  *  Public API implementation
  * ===========================================================================
  */
-bool osfw_init(osfw_fn_t *osfw_status_fn)
+bool osfw_init(osfw_fn_t *osfw_status_fn, osfw_hook_fn_t *osfw_hook_fn)
 {
     /*
      * The default debounce timer is 0.3ms with a maximum timeout of 2 seconds
@@ -213,6 +213,7 @@ bool osfw_init(osfw_fn_t *osfw_status_fn)
 
     memset(&self, 0, sizeof(self));
     self.osfw_fn = osfw_status_fn;
+    self.osfw_hook_fn = osfw_hook_fn;
 
     return true;
 }
@@ -437,6 +438,7 @@ void osfw_debounce_fn(struct ev_loop *loop, ev_debounce *w, int revent)
             continue;
         }
     }
+    if (self.osfw_hook_fn) self.osfw_hook_fn(OSFW_HOOK_IPTABLES);
 }
 
 

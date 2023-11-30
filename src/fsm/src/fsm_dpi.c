@@ -37,7 +37,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
-#include <dlfcn.h>
 #include <time.h>
 #include <net/if.h>
 #include <netinet/in.h>
@@ -57,15 +56,17 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "target_common.h"
 #include "fsm.h"
 #include "network_metadata_report.h"
+#include "sockaddr_storage.h"
 #include "fsm_dpi_utils.h"
 #include "fsm_internal.h"
 #include "fsm_packet_reinject_utils.h"
-#include "imc.h"
 #include "qm_conn.h"
 #include "nf_utils.h"
 #include "kconfig.h"
 #include "memutil.h"
 #include "hw_acc.h"
+#include "dpi_intf.h"
+#include "fsm_ipc.h"
 
 #ifdef CONFIG_ACCEL_FLOW_EVICT_MESSAGE
 #include "accel_evict_msg.h"
@@ -75,9 +76,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define NON_RESERVED_PORT_START_NUM MAX_RESERVED_PORT_NUM + 1
 #define DHCP_SERVER_PORT_NUM 67
 #define DHCP_CLIENT_PORT_NUM 68
-
-static struct imc_dso g_imc_context;
-
 
 bool
 fsm_is_dns(struct net_header_parser *net_parser)
@@ -107,100 +105,6 @@ fsm_is_dns(struct net_header_parser *net_parser)
     }
 
 
-static bool
-fsm_dpi_load_imc(void)
-{
-    char *dso = CONFIG_INSTALL_PREFIX"/lib/libimc.so";
-    char *init = "imc_init_dso";
-    struct stat st;
-    char *error;
-    int rc;
-
-    rc = stat(dso, &st);
-    if (rc != 0) return true; /* All ops will be void */
-
-    dlerror();
-    g_imc_context.handle = dlopen(dso, RTLD_NOW);
-    if (g_imc_context.handle == NULL)
-    {
-        LOGE("%s: dlopen %s failed: %s", __func__, dso, dlerror());
-        return false;
-    }
-
-    dlerror();
-    *(void **)(&g_imc_context.init) = dlsym(g_imc_context.handle, init);
-    error = dlerror();
-    if (error != NULL) {
-        LOGE("%s: could not get symbol %s: %s",
-             __func__, init, error);
-        dlclose(g_imc_context.handle);
-        return false;
-    }
-
-    g_imc_context.init(&g_imc_context);
-
-    return true;
-}
-
-
-static int
-fsm_dpi_init_client(struct imc_dso *imc, imc_free_sndmsg free_cb,
-                    void *hint)
-{
-    int ret;
-
-    if (imc->imc_init_client == NULL)
-    {
-        imc->imc_free_sndmsg = free_cb;
-        return 0;
-    }
-
-    ret = imc->imc_init_client(imc, free_cb, hint);
-
-    if (ret)
-    {
-        LOGD("%s: IMC init client failed", __func__);
-    }
-
-    return ret;
-}
-
-
-static void
-fsm_dpi_terminate_client(struct imc_dso *imc)
-{
-    if (imc->imc_terminate_client == NULL) return;
-
-    imc->imc_terminate_client(imc);
-}
-
-
-static int
-fsm_dpi_client_send(struct imc_dso *imc, void *data,
-                    size_t len, int flags)
-{
-    int rc;
-
-    if (imc->imc_client_send == NULL)
-    {
-        imc->imc_free_sndmsg(data, imc->free_msg_hint);
-
-        return 0;
-    }
-
-    rc = imc->imc_client_send(imc, data, len, flags);
-
-    return rc;
-}
-
-
-static void
-free_send_msg(void *data, void *hint)
-{
-    FREE(data);
-}
-
-
 static int
 fsm_dpi_send_report(struct fsm_session *session)
 {
@@ -208,15 +112,12 @@ fsm_dpi_send_report(struct fsm_session *session)
     union fsm_dpi_context *dpi_context;
     struct net_md_aggregator *aggr;
     struct packed_buffer *pb;
-    struct imc_dso *imc;
+    struct fsm_mgr *mgr;
     char *mqtt_topic;
     int rc;
 
     dpi_context = session->dpi;
     if (dpi_context == NULL) return -1;
-    imc = &g_imc_context;
-
-    if (!imc->initialized) return -1;
 
     dispatch = &dpi_context->dispatch;
     aggr = dispatch->aggr;
@@ -239,18 +140,17 @@ fsm_dpi_send_report(struct fsm_session *session)
     mqtt_topic = session->ops.get_config(session, "mqtt_v");
     session->ops.send_pb_report(session, mqtt_topic, pb->buf, pb->len);
 
-    /* Beware, sending the pb through imc will schedule its freeing */
-    rc = fsm_dpi_client_send(imc, pb->buf, pb->len, IMC_DONTWAIT);
-    if (rc != 0)
+    /* Check if the connection to FCM is established */
+    mgr = fsm_get_mgr();
+    if (!(mgr->osbus_flags & FSM_OSBUS_FCM))
     {
-        LOGD("%s: could not send message", __func__);
-        imc->io_failure_cnt++;
-        rc = -1;
-        goto err_send;
+        FREE(pb->buf);
+        FREE(pb);
+        return 0;
     }
-    imc->io_success_cnt++;
 
-err_send:
+    /* Beware, sending the pb->buf will schedule its freeing */
+    rc = fsm_ipc_client_send(pb->buf, pb->len);
     FREE(pb);
 
     return rc;
@@ -446,6 +346,7 @@ fsm_dpi_add_plugin_to_flows(struct fsm_session *session,
                             struct net_md_aggregator *aggr)
 {
     struct net_md_eth_pair *pair;
+
     pair = ds_tree_head(&aggr->eth_pairs);
     while (pair != NULL)
     {
@@ -453,6 +354,34 @@ fsm_dpi_add_plugin_to_flows(struct fsm_session *session,
         pair = ds_tree_next(&aggr->eth_pairs, pair);
     }
     fsm_dpi_add_plugin_to_tree(session, &aggr->five_tuple_flows);
+}
+
+
+
+static void
+fsm_dpi_del_plugin_from_acc(struct fsm_session *session,
+                            struct net_md_stats_accumulator *acc)
+{
+    struct fsm_dpi_flow_info *dpi_flow_info;
+
+    if (acc == NULL)
+    {
+        return;
+    }
+
+    if (acc->dpi_plugins == NULL)
+    {
+        return;
+    }
+
+    dpi_flow_info = ds_tree_find(acc->dpi_plugins, session);
+    if (dpi_flow_info == NULL)
+    {
+        return;
+    }
+
+    ds_tree_remove(acc->dpi_plugins, dpi_flow_info);
+    FREE(dpi_flow_info);
 }
 
 
@@ -466,7 +395,6 @@ void
 fsm_dpi_del_plugin_from_tree(struct fsm_session *session,
                              ds_tree_t *tree)
 {
-    struct fsm_dpi_flow_info *dpi_flow_info;
     struct net_md_stats_accumulator *acc;
     struct net_md_flow *flow;
 
@@ -476,23 +404,11 @@ fsm_dpi_del_plugin_from_tree(struct fsm_session *session,
     while (flow != NULL)
     {
         acc = flow->tuple_stats;
-        if (acc->dpi_plugins == NULL)
-        {
-            flow = ds_tree_next(tree, flow);
-            continue;
-        }
-        dpi_flow_info = ds_tree_find(acc->dpi_plugins, session);
-        if (dpi_flow_info == NULL)
-        {
-            flow = ds_tree_next(tree, flow);
-            continue;
-        }
-
-        ds_tree_remove(acc->dpi_plugins, dpi_flow_info);
-        FREE(dpi_flow_info);
+        fsm_dpi_del_plugin_from_acc(session, acc);
         flow = ds_tree_next(tree, flow);
     }
 }
+
 
 /**
  * @brief delete a plugin's pointer from current flows
@@ -504,11 +420,17 @@ void
 fsm_dpi_del_plugin_from_flows(struct fsm_session *session,
                               struct net_md_aggregator *aggr)
 {
+    struct net_md_stats_accumulator *acc;
     struct net_md_eth_pair *pair;
+
     pair = ds_tree_head(&aggr->eth_pairs);
     while (pair != NULL)
     {
+        fsm_dpi_del_plugin_from_tree(session, &pair->ethertype_flows);
         fsm_dpi_del_plugin_from_tree(session, &pair->five_tuple_flows);
+        acc = pair->mac_stats;
+        fsm_dpi_del_plugin_from_acc(session, acc);
+
         pair = ds_tree_next(&aggr->eth_pairs, pair);
     }
     fsm_dpi_del_plugin_from_tree(session, &aggr->five_tuple_flows);
@@ -913,7 +835,39 @@ fsm_dpi_set_udp_acc_direction(struct fsm_dpi_dispatcher *dispatch,
     return (acc->direction != NET_MD_ACC_UNSET_DIR);
 }
 
+bool
+fsm_dpi_is_multicast_ip(struct net_md_flow_key *key)
+{
+    struct sockaddr_storage ip;
+    int family;
 
+    if (key->ip_version == 0) return false;
+
+    family = ((key->ip_version == 4) ? AF_INET : AF_INET6);
+    sockaddr_storage_populate(family, key->dst_ip, &ip);
+
+    if (key->ip_version == 4)
+    {
+        struct sockaddr_in   *in4;
+        in4 = (struct sockaddr_in *)&ip;
+
+        if (((in4->sin_addr.s_addr & htonl(0xE0000000)) == htonl(0xE0000000) ||
+            (in4->sin_addr.s_addr & htonl(0xF0000000)) == htonl(0xF0000000)))
+        {
+            /* broadcast or multicast */
+            return true;
+        }
+    }
+    else if (key->ip_version == 6)
+    {
+        struct sockaddr_in6 *in6;
+
+        in6 = (struct sockaddr_in6 *)&ip;
+        return IN6_IS_ADDR_MULTICAST(&in6->sin6_addr);
+    }
+
+    return false;
+}
 /**
  * @brief set ICMP accumulator flow direction
  *
@@ -929,6 +883,7 @@ fsm_dpi_set_icmp_acc_direction(struct fsm_dpi_dispatcher *dispatch,
     bool smac_found;
     bool dmac_found;
     uint8_t ipproto;
+    bool mcast_ip = false;
 
     if (dispatch == NULL) return false;
     if (acc == NULL) return false;
@@ -941,9 +896,15 @@ fsm_dpi_set_icmp_acc_direction(struct fsm_dpi_dispatcher *dispatch,
     smac_found = fsm_dpi_find_mac(key->smac, dispatch);
     dmac_found = fsm_dpi_find_mac(key->dmac, dispatch);
 
+    /* if dmac is multicast or broadcast, then direction will be LAN2LAN */
+    dmac_found |= fsm_dpi_is_mac_bcast(key->dmac);
     if (!(smac_found || dmac_found)) return false;
 
-    if (smac_found && dmac_found)
+    /* for some multicast pkts, dst mac is not populated,
+     * check if the pkt is multicast by checking its dest IP */
+    if (!dmac_found) mcast_ip = fsm_dpi_is_multicast_ip(key);
+
+    if ((smac_found && dmac_found) || mcast_ip)
     {
         acc->direction = NET_MD_ACC_LAN2LAN_DIR;
         fsm_dpi_set_lan2lan_originator(acc);
@@ -1188,7 +1149,7 @@ fsm_dpi_on_acc_creation(struct net_md_aggregator *aggr,
     {
         acc->flags |= NET_MD_ACC_FIRST_LEG;
     }
-
+    acc->dpi_always = false;
     if ((rev_acc != NULL) && (rev_acc->direction != NET_MD_ACC_UNSET_DIR))
     {
         acc->direction = rev_acc->direction;
@@ -1247,6 +1208,26 @@ fsm_dpi_on_acc_destruction(struct net_md_aggregator *aggr,
 }
 
 
+static void
+fsm_dispatcher_init_tap_intfs(struct fsm_session *dispatcher)
+{
+    struct dpi_intf_registration registrar;
+    struct fsm_mgr *mgr;
+
+    mgr = fsm_get_mgr();
+
+    dpi_intf_init();
+
+    MEMZERO(registrar);
+    registrar.loop = mgr->loop;
+    registrar.context = dispatcher;
+    registrar.id = dispatcher->name;
+    registrar.handler = fsm_pcap_dispatcher_handler;
+
+    dpi_intf_register_context(&registrar);
+}
+
+
 /**
  * @brief initializes the dpi resources of a dispatcher session
  *
@@ -1262,10 +1243,8 @@ fsm_init_dpi_dispatcher(struct fsm_session *session)
     struct net_md_aggregator *aggr;
     struct node_info node_info;
     ds_tree_t *dpi_sessions;
-    struct imc_dso *imc;
     struct fsm_mgr *mgr;
     bool ret;
-    int rc;
 
     dpi_context = session->dpi;
     if (dpi_context == NULL) return false;
@@ -1304,16 +1283,7 @@ fsm_init_dpi_dispatcher(struct fsm_session *session)
     fsm_dispatch_set_ops(session);
     fsm_dpi_bind_plugins(session);
 
-    ret = fsm_dpi_load_imc();
-    if (!ret) goto error;
-
-    imc = &g_imc_context;
-    rc = fsm_dpi_init_client(imc, free_send_msg, NULL);
-    if (rc)
-    {
-        LOGD("%s: could not initiate client", __func__);
-        goto error;
-    }
+    fsm_dispatcher_init_tap_intfs(session);
 
     ret = net_md_activate_window(dispatch->aggr);
     if (!ret)
@@ -1379,7 +1349,6 @@ fsm_free_dpi_dispatcher(struct fsm_session *session)
     struct dpi_node *remove;
     ds_tree_t *dpi_sessions;
     struct dpi_node *next;
-    struct imc_dso *imc;
 
     dpi_context = session->dpi;
     if (dpi_context == NULL) return;
@@ -1397,8 +1366,7 @@ fsm_free_dpi_dispatcher(struct fsm_session *session)
     net_md_free_aggregator(dispatch->aggr);
     FREE(dispatch->aggr);
 
-    imc = &g_imc_context;
-    fsm_dpi_terminate_client(imc);
+    fsm_ipc_terminate_client();
 }
 
 
@@ -2050,7 +2018,7 @@ fsm_dispatch_pkt(struct fsm_session *session,
             info->decision = FSM_DPI_INSPECT;
         }
 
-        if (info->decision == FSM_DPI_INSPECT)
+        if (info->decision == FSM_DPI_INSPECT || acc->dpi_always)
         {
             if (dpi_plugin->p_ops == NULL)
             {
@@ -2085,6 +2053,8 @@ fsm_dispatch_pkt(struct fsm_session *session,
     if (pass) state = FSM_DPI_PASSTHRU;
 
     acc->dpi_done = state;
+
+    if (acc->dpi_always) acc->dpi_done = FSM_DPI_CLEAR;
 
     if (pass || drop)
     {
@@ -2281,14 +2251,12 @@ fsm_dpi_periodic(struct fsm_session *session)
     struct flow_window **windows;
     struct flow_window *window;
     struct flow_report *report;
-    struct imc_dso *imc;
     time_t now;
     int rc;
 
     dpi_context = session->dpi;
     if (dpi_context == NULL) return;
 
-    imc = &g_imc_context;
     dispatch = &dpi_context->dispatch;
     aggr = dispatch->aggr;
     if (aggr == NULL) return;
@@ -2310,7 +2278,7 @@ fsm_dpi_periodic(struct fsm_session *session)
 
         LOGI("%s: unix_ipc: io successes: %" PRIu64
              ", io failures: %" PRIu64, __func__,
-             imc->io_success_cnt, imc->io_failure_cnt);
+             g_fsm_io_success_cnt, g_fsm_io_failure_cnt);
 
         dispatch->periodic_ts = now;
     }

@@ -71,6 +71,11 @@ ow_steer_policy_stack_ut_policy_recalc_cb(struct ow_steer_policy *policy,
     priv->recalc_cnt++;
 }
 
+static void
+ow_steer_policy_stack_ut_sorting_policies_1_exec_cb(struct osw_timer *timer)
+{
+}
+
 OSW_UT(ow_steer_policy_stack_ut_sorting_policies_1)
 {
     struct ow_steer_policy_stack_ut_ctx ctx;
@@ -78,6 +83,8 @@ OSW_UT(ow_steer_policy_stack_ut_sorting_policies_1)
     struct ow_steer_policy *policy;
     struct ow_steer_sta sta;
     MEMZERO(sta);
+
+    osw_timer_init(&sta.executor_timer, ow_steer_policy_stack_ut_sorting_policies_1_exec_cb);
 
     osw_ut_time_init();
     ow_steer_policy_stack_ut_ctx_init(&ctx);
@@ -198,6 +205,11 @@ OSW_UT(ow_steer_policy_stack_ut_sorting_policies_2)
     assert(ow_steer_policy_get_more_important(&ctx.policy_high_0, &ctx.policy_high_0) == &ctx.policy_high_0);
 }
 
+static void
+ow_steer_policy_stack_ut_lifecycle_exec_cb(struct osw_timer *timer)
+{
+}
+
 OSW_UT(ow_steer_policy_stack_ut_lifecycle)
 {
     const struct osw_hwaddr sta_addr = { .octet = { 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA }, };
@@ -213,6 +225,7 @@ OSW_UT(ow_steer_policy_stack_ut_lifecycle)
     };
 
     /* Setup */
+    osw_timer_init(&sta.executor_timer, ow_steer_policy_stack_ut_lifecycle_exec_cb);
     memset(&mediator, 0, sizeof(mediator));
     policy = ow_steer_policy_stack_ut_policy_new(&sta_addr, &ops, &mediator);
     priv = ow_steer_policy_get_priv(policy);

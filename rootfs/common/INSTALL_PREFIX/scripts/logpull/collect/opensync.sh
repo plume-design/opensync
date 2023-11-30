@@ -28,6 +28,7 @@
 # Collect common OpenSync info
 #
 . "$LOGPULL_LIB"
+. "$CONFIG_INSTALL_PREFIX/scripts/functions.d/52_owm_diag.sh"
 
 collect_osync()
 {
@@ -54,7 +55,7 @@ collect_owm()
     # This will put dbg events in syslog
     killall -s SIGUSR1 owm
     sleep 1
-    cat /var/log/messages | grep "OW\[" > "$LOGPULL_TMP_DIR"/_owm_dbg_events
+    collect_file $OSW_DIAG_DBG_FILE && rm -f $OSW_DIAG_DBG_FILE
 }
 
 collect_osync

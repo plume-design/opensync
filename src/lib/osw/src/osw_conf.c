@@ -52,12 +52,30 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * and mere state updates.
  */
 
+#define LOG_PREFIX(fmt, ...) "osw: conf: " fmt, ## __VA_ARGS__
+#define LOG_PREFIX_MUT(fmt, ...) LOG_PREFIX("mutator: " fmt, ## __VA_ARGS__)
+
 struct osw_conf {
     struct ds_dlist mutators;
     struct ds_dlist observers;
+    char *ordering;
+    struct osw_conf_mutator **ordered;
+    size_t n_ordered;
 };
 
 static struct osw_conf g_osw_conf;
+
+static bool
+osw_conf_vif_status_to_conf(enum osw_vif_status status)
+{
+    switch (status) {
+        case OSW_VIF_UNKNOWN: return false;
+        case OSW_VIF_ENABLED: return true;
+        case OSW_VIF_DISABLED: return false;
+        case OSW_VIF_BROKEN: return false;
+    }
+    return false;
+}
 
 static void
 osw_conf_build_vif_cb(const struct osw_state_vif_info *info,
@@ -76,7 +94,7 @@ osw_conf_build_vif_cb(const struct osw_state_vif_info *info,
     vif->phy = phy;
     vif->mac_addr = info->drv_state->mac_addr;
     vif->vif_name = STRDUP(info->vif_name);
-    vif->enabled = info->drv_state->enabled;
+    vif->enabled = osw_conf_vif_status_to_conf(info->drv_state->status);
     vif->vif_type = info->drv_state->vif_type;
     vif->tx_power_dbm = info->drv_state->tx_power_dbm;
     switch (vif->vif_type) {
@@ -177,14 +195,82 @@ osw_conf_build_from_state(void)
     return phy_tree;
 }
 
+static void
+osw_conf_order_mutators(struct osw_conf *m)
+{
+    const bool already_ordered = (m->ordered != NULL);
+    if (already_ordered) return;
+
+    struct osw_conf_mutator *mut;
+    size_t n = 0;
+    ds_dlist_foreach(&m->mutators, mut) n++;
+
+    struct osw_conf_mutator **unordered = CALLOC(n, sizeof(*unordered));
+    struct osw_conf_mutator **ordered = CALLOC(n, sizeof(*ordered));
+
+    size_t i = 0;
+    ds_dlist_foreach(&m->mutators, mut) {
+        unordered[i] = mut;
+        i++;
+    }
+
+    i = 0;
+    if (m->ordering != NULL) {
+        char *tokens = STRDUP(m->ordering);
+        char *token;
+
+        while ((token = strsep(&tokens, ", ")) != NULL) {
+            size_t j;
+            for (j = 0; j < n; j++) {
+                if (unordered[j] == NULL) continue;
+                const bool match = (strcmp(unordered[j]->name, token) == 0);
+                const bool not_match = (match == false);
+                if (not_match) continue;
+                ordered[i] = unordered[j];
+                unordered[j] = NULL;
+                i++;
+            }
+        }
+
+        FREE(tokens);
+    }
+
+    size_t j;
+    for (j = 0; j < n; j++) {
+        if (unordered[j] == NULL) continue;
+        if (i >= n) break;
+        ordered[i] = unordered[j];
+        unordered[j] = NULL;
+        i++;
+    }
+
+    ASSERT(i == j, "");
+    ASSERT(i == n, "");
+
+    FREE(unordered);
+    m->ordered = ordered;
+    m->n_ordered = n;
+
+    LOGD(LOG_PREFIX_MUT("ordered: "));
+    for (i = 0; i < n; i++) {
+        LOGD(LOG_PREFIX_MUT("ordered: %s", ordered[i]->name ?: ""));
+    }
+}
+
 struct ds_tree *
 osw_conf_build(void)
 {
-    struct osw_conf_mutator *i;
     struct ds_tree *phy_tree = osw_conf_build_from_state();
 
-    ds_dlist_foreach(&g_osw_conf.mutators, i)
-        i->mutate_fn(i, phy_tree);
+    osw_conf_order_mutators(&g_osw_conf);
+
+    if (g_osw_conf.ordered != NULL) {
+        size_t i;
+        for (i = 0; i < g_osw_conf.n_ordered; i++) {
+            struct osw_conf_mutator *mut = g_osw_conf.ordered[i];
+            mut->mutate_fn(mut, phy_tree);
+        }
+    }
 
     return phy_tree;
 }
@@ -214,11 +300,20 @@ osw_conf_free_vif_ap_neigh(struct osw_conf_vif *vif,
 }
 
 static void
+osw_conf_free_vif_ap_wps(struct osw_conf_vif *vif,
+                         struct osw_conf_wps_cred *wps)
+{
+    ds_dlist_remove(&vif->u.ap.wps_cred_list, wps);
+    FREE(wps);
+}
+
+static void
 osw_conf_free_vif(struct osw_conf_vif *vif)
 {
     struct osw_conf_acl *acl;
     struct osw_conf_psk *psk;
     struct osw_conf_neigh *neigh;
+    struct osw_conf_wps_cred *wps;
     struct osw_conf_net *net;
 
     switch (vif->vif_type) {
@@ -233,6 +328,9 @@ osw_conf_free_vif(struct osw_conf_vif *vif)
 
             while ((neigh = ds_tree_head(&vif->u.ap.neigh_tree)) != NULL)
                 osw_conf_free_vif_ap_neigh(vif, neigh);
+
+            while ((wps = ds_dlist_head(&vif->u.ap.wps_cred_list)) != NULL)
+                osw_conf_free_vif_ap_wps(vif, wps);
             break;
         case OSW_VIF_AP_VLAN:
             break;
@@ -276,9 +374,35 @@ osw_conf_free(struct ds_tree *phy_tree)
     FREE(phy_tree);
 }
 
+static const char *
+osw_conf_mutator_type_to_cstr(const enum osw_conf_type type)
+{
+    switch (type) {
+        case OSW_CONF_TAIL: return "tail";
+        case OSW_CONF_HEAD: return "head";
+    }
+    /* unreachable */
+    return "";
+}
+
+static void
+osw_conf_invalidate_mutator_order(struct osw_conf *m)
+{
+    if (m->ordered != NULL) {
+        LOGD(LOG_PREFIX("mutator order invalidated"));
+    }
+
+    FREE(m->ordered);
+    m->ordered = NULL;
+}
+
 void
 osw_conf_register_mutator(struct osw_conf_mutator *mutator)
 {
+    LOGD(LOG_PREFIX_MUT("registering: %s (%s)",
+                        mutator->name ?: "",
+                        osw_conf_mutator_type_to_cstr(mutator->type)));
+
     switch (mutator->type) {
     case OSW_CONF_HEAD:
         ds_dlist_insert_head(&g_osw_conf.mutators, mutator);
@@ -287,12 +411,22 @@ osw_conf_register_mutator(struct osw_conf_mutator *mutator)
         ds_dlist_insert_tail(&g_osw_conf.mutators, mutator);
         break;
     }
+
+    osw_conf_invalidate_mutator_order(&g_osw_conf);
 }
 
 void
 osw_conf_unregister_mutator(struct osw_conf_mutator *mutator)
 {
     ds_dlist_remove(&g_osw_conf.mutators, mutator);
+    osw_conf_invalidate_mutator_order(&g_osw_conf);
+}
+
+void
+osw_conf_set_mutator_ordering(const char *comma_separated)
+{
+    osw_conf_invalidate_mutator_order(&g_osw_conf);
+    if (comma_separated != NULL) g_osw_conf.ordering = STRDUP(comma_separated);
 }
 
 void
@@ -527,9 +661,95 @@ OSW_UT(osw_conf_ut_acl_changed)
     ds_tree_remove(&b, &acl3);
 }
 
+OSW_UT(osw_conf_ut_mutator_ordering_1)
+{
+    struct osw_conf_mutator m1 = { .name = "m1" };
+    struct osw_conf_mutator m2 = { .name = "m2" };
+    struct osw_conf_mutator m3 = { .name = "m3" };
+    struct osw_conf_mutator m4 = { .name = "m4" };
+    struct osw_conf *m = &g_osw_conf;
+
+    osw_conf_init(m);
+
+    osw_conf_register_mutator(&m1);
+    osw_conf_register_mutator(&m2);
+    osw_conf_register_mutator(&m3);
+    osw_conf_register_mutator(&m4);
+
+    osw_conf_order_mutators(m);
+    ASSERT(m->n_ordered == 4, "");
+    ASSERT(m->ordered[0] == &m1, "");
+    ASSERT(m->ordered[1] == &m2, "");
+    ASSERT(m->ordered[2] == &m3, "");
+    ASSERT(m->ordered[3] == &m4, "");
+
+    osw_conf_set_mutator_ordering("m3,m2,m4,m1");
+
+    osw_conf_order_mutators(m);
+    ASSERT(m->n_ordered == 4, "");
+    ASSERT(m->ordered[0] == &m3, "");
+    ASSERT(m->ordered[1] == &m2, "");
+    ASSERT(m->ordered[2] == &m4, "");
+    ASSERT(m->ordered[3] == &m1, "");
+
+    osw_conf_set_mutator_ordering("m4,m2");
+
+    osw_conf_order_mutators(m);
+    ASSERT(m->n_ordered == 4, "");
+    ASSERT(m->ordered[0] == &m4, "");
+    ASSERT(m->ordered[1] == &m2, "");
+    ASSERT(m->ordered[2] == &m1, ""); /* implied / leftovers */
+    ASSERT(m->ordered[3] == &m3, ""); /* implied / leftovers */
+
+    osw_conf_unregister_mutator(&m2);
+
+    osw_conf_order_mutators(m);
+    ASSERT(m->n_ordered == 3, "");
+    ASSERT(m->ordered[0] == &m4, "");
+    ASSERT(m->ordered[1] == &m1, "");
+    ASSERT(m->ordered[2] == &m3, "");
+
+    osw_conf_unregister_mutator(&m1);
+    osw_conf_unregister_mutator(&m3);
+    osw_conf_unregister_mutator(&m4);
+
+    osw_conf_order_mutators(m);
+    ASSERT(m->n_ordered == 0, "");
+
+    osw_conf_register_mutator(&m1);
+    osw_conf_order_mutators(m);
+    ASSERT(m->n_ordered == 1, "");
+    ASSERT(m->ordered[0] == &m1, "");
+
+    osw_conf_register_mutator(&m2);
+    osw_conf_order_mutators(m);
+    ASSERT(m->n_ordered == 2, "");
+    ASSERT(m->ordered[0] == &m2, "");
+    ASSERT(m->ordered[1] == &m1, "");
+
+    osw_conf_register_mutator(&m3);
+    osw_conf_order_mutators(m);
+    ASSERT(m->n_ordered == 3, "");
+    ASSERT(m->ordered[0] == &m2, "");
+    ASSERT(m->ordered[1] == &m1, "");
+    ASSERT(m->ordered[2] == &m3, "");
+
+    osw_conf_register_mutator(&m4);
+    osw_conf_order_mutators(m);
+    ASSERT(m->n_ordered == 4, "");
+    ASSERT(m->ordered[0] == &m4, "");
+    ASSERT(m->ordered[1] == &m2, "");
+    ASSERT(m->ordered[2] == &m1, "");
+    ASSERT(m->ordered[3] == &m3, "");
+}
+
 OSW_MODULE(osw_conf)
 {
     OSW_MODULE_LOAD(osw_state);
+    const char *ordering = getenv("OSW_CONF_MUTATOR_ORDERING");
+    if (ordering != NULL) {
+        osw_conf_set_mutator_ordering(ordering);
+    }
     osw_conf_init(&g_osw_conf);
     return NULL;
 }

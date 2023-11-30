@@ -948,6 +948,8 @@ static bool osfw_nfbase_apply(struct osfw_nfbase *self)
 		LOGE("Apply OSFW base: apply OSFW inet6 failed");
 		return false;
 	}
+
+    if (self->osfw_hook_fn) self->osfw_hook_fn(OSFW_HOOK_IPTABLES);
 	return true;
 }
 
@@ -971,10 +973,11 @@ static struct osfw_nfinet *osfw_nfbase_get_inet(struct osfw_nfbase *self, int fa
 	return nfinet;
 }
 
-bool osfw_init(osfw_fn_t *osfw_status_fn)
+bool osfw_init(osfw_fn_t *osfw_status_fn, osfw_hook_fn_t *osfw_hook_fn)
 {
 	bool errcode = true;
 
+    osfw_nfbase.osfw_hook_fn = osfw_hook_fn;
 	errcode = osfw_nfbase_set(&osfw_nfbase, osfw_status_fn);
 	if (!errcode) {
 		LOGE("Initialize OSFW: set base failed");

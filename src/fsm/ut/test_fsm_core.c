@@ -24,6 +24,7 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+#include <arpa/inet.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
@@ -3311,6 +3312,7 @@ test_12_dpi_dispatcher_icmp_req_reply(void)
     union fsm_dpi_context *dispatcher_dpi_context;
     union fsm_dpi_context *plugin_dpi_context;
     struct fsm_dpi_dispatcher *dpi_dispatcher;
+    struct net_md_stats_accumulator *rev_acc;
     struct fsm_dpi_plugin *plugin_lookup;
     struct net_header_parser *net_parser;
     struct fsm_parser_ops *dispatch_ops;
@@ -3439,14 +3441,18 @@ test_12_dpi_dispatcher_icmp_req_reply(void)
     protocol = net_parser->acc->key->ipprotocol;
     TEST_ASSERT_EQUAL_INT(protocol, IPPROTO_ICMP);
 
+    /* Validate that the rev_acc is found */
+    rev_acc = net_parser->acc->rev_acc;
+    TEST_ASSERT_NOT_NULL(rev_acc);
+
     /* Validate ICMP type */
-    icmp_type = net_parser->acc->key->icmp_type;
+    icmp_type = rev_acc->key->icmp_type;
     TEST_ASSERT_EQUAL_INT(icmp_type, ICMP_ECHOREPLY);
 
-    originator = net_parser->acc->originator;
+    originator = rev_acc->originator;
     TEST_ASSERT_EQUAL_INT(originator, NET_MD_ACC_ORIGINATOR_DST);
 
-    direction = net_parser->acc->direction;
+    direction = rev_acc->direction;
     TEST_ASSERT_EQUAL_INT(direction, NET_MD_ACC_OUTBOUND_DIR);
 
     net_parser->acc->report = true;
@@ -3528,11 +3534,15 @@ test_12_dpi_dispatcher_icmp_req_reply(void)
     protocol = net_parser->acc->key->ipprotocol;
     TEST_ASSERT_EQUAL_INT(protocol, IPPROTO_ICMP);
 
+    /* Validate that the rev_acc is found */
+    rev_acc = net_parser->acc->rev_acc;
+    TEST_ASSERT_NOT_NULL(rev_acc);
+
     /* Validate ICMP type */
-    icmp_type = net_parser->acc->key->icmp_type;
+    icmp_type = rev_acc->key->icmp_type;
     TEST_ASSERT_EQUAL_INT(icmp_type, ICMP_ECHOREPLY);
 
-    originator = net_parser->acc->originator;
+    originator = rev_acc->originator;
     TEST_ASSERT_EQUAL_INT(originator, NET_MD_ACC_ORIGINATOR_DST);
 
     direction = net_parser->acc->direction;
@@ -3573,6 +3583,7 @@ test_13_dpi_dispatcher_icmpv6_req_reply(void)
     union fsm_dpi_context *dispatcher_dpi_context;
     union fsm_dpi_context *plugin_dpi_context;
     struct fsm_dpi_dispatcher *dpi_dispatcher;
+    struct net_md_stats_accumulator *rev_acc;
     struct fsm_dpi_plugin *plugin_lookup;
     struct net_header_parser *net_parser;
     struct fsm_parser_ops *dispatch_ops;
@@ -3694,18 +3705,22 @@ test_13_dpi_dispatcher_icmpv6_req_reply(void)
     TEST_ASSERT_NOT_NULL(info);
     TEST_ASSERT_TRUE(info->session == plugin);
 
+    /* Validate that the rev_acc is found */
+    rev_acc = net_parser->acc->rev_acc;
+    TEST_ASSERT_NOT_NULL(rev_acc);
+
     /* Validate packet is ICMPv6 or not */
-    protocol = net_parser->acc->key->ipprotocol;
+    protocol = rev_acc->key->ipprotocol;
     TEST_ASSERT_EQUAL_INT(protocol, IPPROTO_ICMPV6);
 
     /* Validate ICMPv6 type */
-    icmp_type = net_parser->acc->key->icmp_type;
+    icmp_type = rev_acc->key->icmp_type;
     TEST_ASSERT_EQUAL_INT(icmp_type, ICMP6_ECHO_REPLY);
 
-    originator = net_parser->acc->originator;
+    originator = rev_acc->originator;
     TEST_ASSERT_EQUAL_INT(originator, NET_MD_ACC_ORIGINATOR_DST);
 
-    direction = net_parser->acc->direction;
+    direction = rev_acc->direction;
     TEST_ASSERT_EQUAL_INT(direction, NET_MD_ACC_OUTBOUND_DIR);
 
     net_parser->acc->report = true;
@@ -3783,18 +3798,22 @@ test_13_dpi_dispatcher_icmpv6_req_reply(void)
     TEST_ASSERT_NOT_NULL(info);
     TEST_ASSERT_TRUE(info->session == plugin);
 
+    /* Validate that the rev_acc is found */
+    rev_acc = net_parser->acc->rev_acc;
+    TEST_ASSERT_NOT_NULL(rev_acc);
+
     /* Validate packet is ICMPv6 or not */
-    protocol = net_parser->acc->key->ipprotocol;
+    protocol = rev_acc->key->ipprotocol;
     TEST_ASSERT_EQUAL_INT(protocol, IPPROTO_ICMPV6);
 
     /* Validate ICMPv6 type */
-    icmp_type = net_parser->acc->key->icmp_type;
+    icmp_type = rev_acc->key->icmp_type;
     TEST_ASSERT_EQUAL_INT(icmp_type, ICMP6_ECHO_REPLY);
 
-    originator = net_parser->acc->originator;
+    originator = rev_acc->originator;
     TEST_ASSERT_EQUAL_INT(originator, NET_MD_ACC_ORIGINATOR_DST);
 
-    direction = net_parser->acc->direction;
+    direction = rev_acc->direction;
     TEST_ASSERT_EQUAL_INT(direction, NET_MD_ACC_INBOUND_DIR);
 
     net_parser->acc->report = true;
@@ -5396,6 +5415,101 @@ test_notify_identical_plugin(void)
     TEST_ASSERT_FALSE(g_identical_plugin_enabled1);
 }
 
+void
+test_check_ip_multicast(void)
+{
+    uint8_t src_buf[sizeof(struct in6_addr)];
+    uint8_t dst_buf[sizeof(struct in6_addr)];
+    struct net_md_flow_key key;
+    size_t len;
+    size_t i;
+    int s;
+    int rc;
+
+    struct test_ip
+    {
+        char *src_ip;
+        char *dst_ip;
+        int ip_version;
+        int af;
+        bool expect;
+    } test_ips[] =
+    {
+        {
+            .src_ip = "192.168.40.2",
+            .dst_ip = "1.2.3.4",
+            .ip_version = 4,
+            .af = AF_INET,
+            .expect = false,
+        },
+        {
+            .src_ip = "192.168.40.2",
+            .dst_ip = "224.0.0.1",
+            .ip_version = 4,
+            .af = AF_INET,
+            .expect = true,
+        },
+        {
+            .src_ip = "192.168.40.2",
+            .dst_ip = "255.255.1.1",
+            .ip_version = 4,
+            .af = AF_INET,
+            .expect = true,
+        },
+        {
+            .src_ip = "2601:646:8a00:9c4::6746:8e26",
+            .dst_ip = "2a03:2880:f031:13:face:b00c:0:1823",
+            .ip_version = 6,
+            .af = AF_INET6,
+            .expect = false,
+        },
+        {
+            .src_ip = "2601:646:8a00:9c4::6746:8e26",
+            .dst_ip = "fe80::225:90ff:fe87:175d",
+            .ip_version = 6,
+            .af = AF_INET6,
+            .expect = false,
+        },
+        {
+            .src_ip = "2601:646:8a00:9c4::6746:8e26",
+            .dst_ip = "ff02::1",
+            .ip_version = 6,
+            .af = AF_INET6,
+            .expect = true,
+        },
+        {
+            .src_ip = "1.2.3.4",
+            .dst_ip = "1.2.3.4",
+            .ip_version = 4,
+            .af = AF_INET,
+            .expect = false,
+        }
+    };
+
+    memset(&key, 0, sizeof(key));
+    len = sizeof(test_ips) / sizeof(test_ips[0]);
+    for (i = 0; i < len; i++)
+    {
+        struct test_ip *t_ip;
+
+        t_ip = &test_ips[i];
+
+        /* set key */
+        key.ip_version = t_ip->ip_version;
+
+        s = inet_pton(t_ip->af, t_ip->src_ip, src_buf);
+        TEST_ASSERT_GREATER_OR_EQUAL(1, s);
+        key.src_ip = src_buf;
+
+        s = inet_pton(t_ip->af, t_ip->dst_ip, dst_buf);
+        TEST_ASSERT_GREATER_OR_EQUAL(1, s);
+        key.dst_ip = dst_buf;
+
+        rc = fsm_dpi_is_multicast_ip(&key);
+        LOGN("[%s:%d] is_multicast_ip returned %d for IP %s", __func__, __LINE__, rc, t_ip->dst_ip);
+        TEST_ASSERT_EQUAL(t_ip->expect, rc);
+    }
+}
 
 int
 main(int argc, char *argv[])
@@ -5456,6 +5570,7 @@ main(int argc, char *argv[])
     RUN_TEST(test_notify_dispatcher_tap_type);
     RUN_TEST(test_1_notify_dispatcher_tap_type);
     RUN_TEST(test_notify_identical_plugin);
+    RUN_TEST(test_check_ip_multicast);
 
     run_test_fsm_ovsdb();
 

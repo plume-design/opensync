@@ -496,7 +496,7 @@ fsm_dpi_adt_upnp_get_device(struct fsm_dpi_adt_upnp_session *session, os_macaddr
                      struct fsm_dpi_adt_upnp_root_desc, next_node);
         MEM_CPY(&upnp_dev->device_mac, device_mac, sizeof(*device_mac));
 
-        ds_tree_insert(&session->session_upnp_devices, upnp_dev, device_mac);
+        ds_tree_insert(&session->session_upnp_devices, upnp_dev, &upnp_dev->device_mac);
     }
 
     root_desc = ds_tree_find(&upnp_dev->descriptions, rootdevice_url);

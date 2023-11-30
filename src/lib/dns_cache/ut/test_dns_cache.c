@@ -759,7 +759,7 @@ void test_dns_cache_disable(void)
     dns_cache_init(&cache_init);
     /* Init dns cache through ipthreat module using gatekeeper service */
     cache_init.dns_cache_source = MODULE_IPTHREAT_DPI;
-    cache_init.service_provider = IP2ACTION_GK_SVC;
+    cache_init.service_provider = IP2ACTION_BC_SVC;
     dns_cache_init(&cache_init);
 
     rc = is_dns_cache_disabled();

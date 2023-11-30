@@ -42,6 +42,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "os.h"
 
+#define INET_BRIDGE_DEBOUNCE           1                 /* Configuration delay, in seconds */
+static void __inet_bridge_reapply(EV_P_ ev_debounce *w, int revent);
+bool inet_bridge_service_BRIDGE_PORT(inet_bridge_t *self, bool enable);
+
 static void inet_bridge_release_ports(ds_tree_t *tree)
 {
     struct inet_port *port_node;
@@ -56,6 +60,19 @@ static void inet_bridge_release_ports(ds_tree_t *tree)
     }
 }
 
+void __inet_bridge_reapply(EV_P_ ev_debounce *w, int revent)
+{
+    inet_bridge_t *bridge;
+    (void)revent;
+
+    bridge = CONTAINER_OF(w, inet_bridge_t, in_br_debounce);
+
+    LOGD("%s: debounce called for bridge %s", __func__, bridge->in_br_ifname);
+
+    inet_bridge_service_BRIDGE_PORT(bridge, true);
+
+}
+
 bool inet_bridge_fini(inet_bridge_t *self)
 {
     bool retval = true;
@@ -67,6 +84,9 @@ bool inet_bridge_fini(inet_bridge_t *self)
         LOG(ERR, "%s(): Error shutting down base class", __func__);
         retval = false;
     }
+
+    /* Stop any active debounce timers */
+    ev_debounce_stop(EV_DEFAULT, &self->in_br_debounce);
 
     inet_bridge_release_ports(&self->in_br_port_list);
     /* delete the bridge */
@@ -92,6 +112,7 @@ bool inet_bridge_service_BRIDGE_PORT(inet_bridge_t *self, bool enable)
     struct inet_port *current_port;
     struct inet_port *next_port;
     struct inet_port *remove_port;
+    bool status = false;
 
     current_port = ds_tree_head(&self->in_br_port_list);
 
@@ -107,20 +128,54 @@ bool inet_bridge_service_BRIDGE_PORT(inet_bridge_t *self, bool enable)
             continue;
         }
 
+        /*  skip adding self to bridge. mark the port as configured */
+        if (strcmp(self->in_br_ifname, current_port->in_port_ifname) == 0)
+        {
+            LOGD("%s(): skip adding self to bridge %s", __func__,
+                 self->in_br_ifname);
+            current_port->in_port_configured = true;
+            current_port = next_port;
+            continue;
+        }
+
         /* check if the port needs to be added or removed from bridge */
         if (current_port->in_add == true)
         {
             LOGD("%s(): adding port %s to bridge %s", __func__,
                  current_port->in_port_ifname, self->in_br_ifname);
-            osn_bridge_add_port(self->in_br_ifname, current_port->in_port_ifname);
-            osn_bridge_set_hairpin(current_port->in_port_ifname,
-                                   current_port->in_port_hairpin);
+
+            status = osn_bridge_add_port(self->in_br_ifname, current_port->in_port_ifname);
+            if (!status)
+            {
+                LOGD("%s(): failed to add port %s to bridge %s", __func__,
+                     current_port->in_port_ifname, self->in_br_ifname);
+
+                /* reapply this change later */
+                ev_debounce_start(EV_DEFAULT, &self->in_br_debounce);
+
+                current_port = next_port;
+                continue;
+            }
+            status = osn_bridge_set_hairpin(current_port->in_port_ifname,
+                                            current_port->in_port_hairpin);
+            if (!status)
+            {
+                LOGD("%s(): failed to set hairpin for port %s in bridge %s", __func__,
+                     current_port->in_port_ifname, self->in_br_ifname);
+                current_port = next_port;
+                continue;
+            }
         }
         else
         {
             LOGD("%s(): deleting port %s from bridge %s", __func__,
                  current_port->in_port_ifname, self->in_br_ifname);
-            osn_bridge_del_port(self->in_br_ifname, current_port->in_port_ifname);
+            status = osn_bridge_del_port(self->in_br_ifname, current_port->in_port_ifname);
+            if (!status)
+            {
+                LOGD("%s(): failed to add port %s to bridge %s", __func__,
+                     current_port->in_port_ifname, self->in_br_ifname);
+            }
             ds_tree_remove(&self->in_br_port_list, remove_port);
         }
 
@@ -147,7 +202,7 @@ bool inet_bridge_service_commit(inet_base_t *super, enum inet_base_services srv,
 {
     bool retval;
 
-    LOGD("%s(): received bridge service request %d.", __func__, srv);
+    LOGD("%s(): received bridge service request %s (%d).", __func__, inet_base_service_str(srv), srv);
     inet_bridge_t *self = CONTAINER_OF(super, inet_bridge_t, base);
 
     switch (srv)
@@ -281,6 +336,9 @@ bool inet_bridge_init(inet_bridge_t *self, const char *ifname)
      * Override inet_base_t methods
      */
     self->base.in_service_commit_fn = inet_bridge_service_commit;
+
+    /* Initialize debounce timer */
+    ev_debounce_init(&self->in_br_debounce, __inet_bridge_reapply, INET_BRIDGE_DEBOUNCE);
 
     return true;
 }

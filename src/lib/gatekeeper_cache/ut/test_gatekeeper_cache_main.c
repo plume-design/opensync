@@ -54,7 +54,7 @@ struct sample_flow_entries *test_flow_entries;
 
 struct gk_attr_cache_interface *entry1, *entry2, *entry3, *entry4;
 struct gk_attr_cache_interface *entry5, *entry6, *entry7, *entry8;
-struct gk_attr_cache_interface *entry9;
+struct gk_attr_cache_interface *entry9, *entry10, *entry11;
 struct gkc_ip_flow_interface *flow_entry1, *flow_entry2, *flow_entry3, *flow_entry4;
 struct gkc_ip_flow_interface *flow_entry5, *flow_entry6, *flow_entry7, *flow_entry8;
 
@@ -192,6 +192,22 @@ create_default_attr_entries(void)
     entry9->action = FSM_BLOCK;
     entry9->ip_addr = sockaddr_storage_create(AF_INET, "127.0.0.1");
     entry9->direction = NET_MD_ACC_INBOUND_DIR;
+
+    entry10 = CALLOC(1, sizeof(*entry10));
+    entry10->action = 1;
+    entry10->device_mac = str2os_mac("AA:AA:AA:AA:AA:01");
+    entry10->attribute_type = GK_CACHE_REQ_TYPE_FQDN;
+    entry10->cache_ttl = 1000;
+    entry10->action = FSM_BLOCK;
+    entry10->attr_name = strdup("yahoo.com");
+
+    entry11 = CALLOC(1, sizeof(*entry11));
+    entry11->action = 1;
+    entry11->device_mac = str2os_mac("AA:AA:AA:AA:AA:01");
+    entry11->attribute_type = GK_CACHE_REQ_TYPE_URL;
+    entry11->cache_ttl = 1000;
+    entry11->action = FSM_BLOCK;
+    entry11->attr_name = strdup("http://yahoo.com/");
 }
 
 static void
@@ -373,6 +389,8 @@ del_default_attr_entries(void)
     free_cache_interface(entry7);
     free_cache_interface(entry8);
     free_cache_interface(entry9);
+    free_cache_interface(entry10);
+    free_cache_interface(entry11);
 }
 
 void

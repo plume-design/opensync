@@ -543,6 +543,9 @@ size_t net_header_parse_icmp6(struct net_header_parser *parser)
     parser->parsed += icmp6_hlen;
     parser->data += icmp6_hlen;
 
+    // Avoid processing MLD packets.
+    if (hdr->icmp6_type == 143) return 0;
+
     return icmp6_hlen;
 }
 
@@ -759,14 +762,15 @@ net_header_fill_buf(char *buf, size_t len, struct net_header_parser *parser)
         struct icmphdr *icmph;
         icmph = parser->ip_pld.icmphdr;
         snprintf(tpt_pres, sizeof(tpt_pres),
-                 ", ICMP: type %u", icmph->type);
+                 ", ICMP: type %u, idt 0x%x", icmph->type, ntohs(icmph->un.echo.id));
     }
     else if (parser->ip_protocol == IPPROTO_ICMPV6)
     {
         struct icmp6_hdr *icmp6h;
         icmp6h = parser->ip_pld.icmp6hdr;
         snprintf(tpt_pres, sizeof(tpt_pres),
-                 ", ICMP: type %u", icmp6h->icmp6_type);
+                 ", ICMP: type %u, idt 0x%x", icmp6h->icmp6_type,
+                 ntohs(icmp6h->icmp6_dataun.icmp6_un_data16[0]));
     }
 
     /* Prepare flow presentation */
@@ -774,14 +778,16 @@ net_header_fill_buf(char *buf, size_t len, struct net_header_parser *parser)
     if (acc != NULL)
     {
         snprintf(flow_pres, sizeof(flow_pres), ", FLOW: direction: %s, "
-                 "originator: %s, tap : %s", dir2str(acc->direction),
+                 "originator: %s, tap : %s %s", dir2str(acc->direction),
                  orig2str(acc->originator),
-                 net_header_tap2str(parser));
+                 net_header_tap2str(parser),
+                 parser->tap_intf ? parser->tap_intf : "");
     }
     else
     {
-        snprintf(flow_pres, sizeof(flow_pres), ", tap : %s",
-                 net_header_tap2str(parser));
+        snprintf(flow_pres, sizeof(flow_pres), ", tap : %s %s",
+                 net_header_tap2str(parser),
+                 parser->tap_intf ? parser->tap_intf : "");
     }
 
 out:

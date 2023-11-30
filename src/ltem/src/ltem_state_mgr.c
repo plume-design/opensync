@@ -95,14 +95,14 @@ ltem_get_wan_state_name(enum ltem_wan_state state)
 /**
  * @brief WAN is interface down
  */
-static void
+void
 ltem_set_failover(ltem_mgr_t *mgr)
 {
     int res;
 
     if (mgr->lte_config_info->force_use_lte)
     {
-        res = ltem_force_lte_route(mgr);
+        res = ltem_force_lte(mgr);
         if (!res) /* If we fail to update the route, we don't set failover */
         {
             mgr->lte_state_info->lte_failover_force = true;
@@ -138,7 +138,7 @@ ltem_revert_failover(ltem_mgr_t *mgr)
 
     if (mgr->lte_state_info->lte_failover_force)
     {
-        res = ltem_restore_default_wan_route(mgr);
+        res = ltem_restore_wan(mgr);
         if (!res)
         {
             mgr->lte_state_info->lte_failover_force = false;

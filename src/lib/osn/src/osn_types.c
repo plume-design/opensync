@@ -379,6 +379,49 @@ bool osn_ip6_addr_is_subnet(osn_ip6_addr_t *addr, osn_ip6_addr_t *subnet)
 }
 
 /*
+ * Calculate the subnet from an IPv6 address.
+ */
+osn_ip6_addr_t osn_ip6_addr_subnet(const osn_ip6_addr_t *addr)
+{
+    osn_ip6_addr_t ip6_subnet = OSN_IP6_ADDR_INIT;
+    int addr_prefix = addr->ia6_prefix;
+
+    if (addr_prefix == -1) addr_prefix = 128;
+
+    size_t nbytes = addr_prefix / 8;  // number of whole bytes of prefix
+    size_t nbits = addr_prefix % 8;   // number of remaining bits
+
+    memcpy(&ip6_subnet.ia6_addr, &addr->ia6_addr, nbytes);
+
+    if (nbits > 0)
+    {
+        uint8_t pref_lsb_byte = *((uint8_t *)&addr->ia6_addr + nbytes);
+
+        pref_lsb_byte &= 0xFF << (8 - nbits);
+        memcpy((uint8_t *)&ip6_subnet.ia6_addr + nbytes, &pref_lsb_byte, 1);
+    }
+    ip6_subnet.ia6_prefix = addr_prefix;
+    return ip6_subnet;
+}
+
+/*
+ * Compute netmask address from prefix. For example 16 -> ffff::
+ */
+osn_ip6_addr_t osn_ip6_addr_from_prefix(int prefix)
+{
+    osn_ip6_addr_t out = OSN_IP6_ADDR_INIT;
+
+    size_t nbytes = prefix / 8;  // number of whole bytes of prefix
+    size_t nbits = prefix % 8;   // number of remaining bits
+
+    if (nbytes > 0) memset(&out.ia6_addr, 0xFF, nbytes);
+    memset((uint8_t *)&out.ia6_addr + nbytes, 0xFF << (8 - nbits), 1);
+    out.ia6_prefix = prefix;
+
+    return out;
+}
+
+/*
  * Parse the @p ip6 address and return osn_ip6_addr_type enum representing
  * its type
  */

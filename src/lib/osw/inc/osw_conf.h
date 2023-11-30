@@ -143,6 +143,9 @@ void
 osw_conf_unregister_mutator(struct osw_conf_mutator *mutator);
 
 void
+osw_conf_set_mutator_ordering(const char *comma_separated);
+
+void
 osw_conf_register_observer(struct osw_conf_observer *observer);
 
 struct ds_tree *

@@ -49,6 +49,11 @@ cm2_addr_t* cm2_curr_addr(void)
     return cm2_get_addr(g_state.dest);
 }
 
+cm2_dest_e cm2_get_dest_type(void)
+{
+    return g_state.dest;
+}
+
 void cm2_clear_addr(cm2_addr_t *addr)
 {
     *addr->resource = 0;

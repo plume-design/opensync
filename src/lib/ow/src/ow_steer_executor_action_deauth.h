@@ -39,4 +39,8 @@ ow_steer_executor_action_deauth_free(struct ow_steer_executor_action_deauth *dea
 struct ow_steer_executor_action*
 ow_steer_executor_action_deauth_get_base(struct ow_steer_executor_action_deauth *deauth_action);
 
+void
+ow_steer_executor_action_deauth_set_delay_sec(struct ow_steer_executor_action_deauth *deauth_action,
+                                              float seconds);
+
 #endif /* OW_STEER_EXECUTOR_ACTION_DEAUTH_H */

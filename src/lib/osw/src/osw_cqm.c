@@ -341,7 +341,7 @@ vif_is_configured(const struct osw_state_vif_info *vif)
 {
     if (vif == NULL) return false;
     if (vif->drv_state->vif_type != OSW_VIF_STA) return false;
-    if (vif->drv_state->enabled == false) return false;
+    if (vif->drv_state->status != OSW_VIF_ENABLED) return false;
 
     /* FIXME: This should look at u.sta.network but some
      * drivers currently can't guarantee to fill that in

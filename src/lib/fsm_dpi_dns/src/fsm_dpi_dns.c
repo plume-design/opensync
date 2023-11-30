@@ -367,13 +367,9 @@ fsm_dpi_dns_update_csum(struct net_header_parser *net_parser)
     LOGT("%s: marking the following net header for re-injection", __func__);
     net_header_logt(net_parser);
 
-    if (net_parser->ip_version == 4) udp_hdr->check = 0;
-    else if (net_parser->ip_version == 6)
-    {
-        /* IPv6 */
-        csum = fsm_compute_udp_checksum(packet, net_parser);
-        udp_hdr->check = csum;
-    }
+    csum = fsm_compute_udp_checksum(packet, net_parser);
+    udp_hdr->check = csum;
+
     net_parser->payload_updated = true;
 }
 
@@ -517,15 +513,13 @@ bool
 is_record_to_process()
 {
     struct dpi_dns_client *mgr;
-    struct dns_record *rec;
     bool rc;
 
+    rc = true;
     mgr = fsm_dpi_dns_get_mgr();
     rc = (mgr->identical_plugin_enabled);
     if (!rc) return true;
 
-    rec = &mgr->curr_rec_processed;
-    rc = (rec->qtype == DNS_QTYPE_65);
     return rc;
 }
 
@@ -590,8 +584,9 @@ fsm_dpi_dns_process_dns_record(struct fsm_session *session,
     rc = is_valid_qtype(qtype);
     if (!rc)
     {
-        LOGI("%s: not processing query type: %d ", __func__, rec->resp[0].type);
-        return action;
+        LOGI("%s: not processing query type: %d ", __func__,
+             rec->resp[0].type);
+        return FSM_DPI_IGNORED;
     }
 
 

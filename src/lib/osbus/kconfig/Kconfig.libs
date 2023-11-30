@@ -1,0 +1,57 @@
+menu "OSBUS Configuration"
+
+    config OSBUS_LIB
+        bool "OSBUS Support"
+        default n
+        help
+            Select to include OSBUS Support
+
+    config OSBUS_UBUS
+        bool "OSBUS UBUS Support"
+        depends on OSBUS_LIB
+        default n
+        help
+            Select to include UBUS Support
+
+    config OSBUS_RBUS
+        bool "OSBUS RBUS Support"
+        depends on OSBUS_LIB
+        default n
+        help
+            Select to include RBUS Support
+
+    if OSBUS_LIB
+        choice
+            prompt "OSBUS default bus"
+            default OSBUS_DEFAULT_UBUS if OSBUS_UBUS
+            default OSBUS_DEFAULT_RBUS if OSBUS_RBUS
+
+            config OSBUS_DEFAULT_NONE
+                bool "None"
+                help
+                    No default BUS selection
+
+            config OSBUS_DEFAULT_UBUS
+                bool "UBUS"
+                depends on OSBUS_UBUS
+                help
+                    Use UBUS as default OSBUS bus.
+
+            config OSBUS_DEFAULT_RBUS
+                bool "RBUS"
+                depends on OSBUS_RBUS
+                help
+                    Use RBUS as default OSBUS bus.
+        endchoice
+    endif
+
+    config USE_OSBUS
+        depends on OSBUS_LIB
+        bool "Use OSBUS in managers"
+        default n
+        help
+            Use OSBUS in managers
+
+endmenu
+
+

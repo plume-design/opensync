@@ -1256,6 +1256,30 @@ bm_client_get_cs_param( struct schema_Band_Steering_Clients *bscli, char *key )
     return NULL;
 }
 
+static bool
+bm_client_has_radio_type(bm_client_t *client, radio_type_t radio_type)
+{
+    unsigned int i;
+    bool has_radio_type = false;
+
+    for (i = 0; i < client->ifcfg_num; i++) {
+        if (client->ifcfg[i].radio_type == radio_type)
+            has_radio_type = true;
+    }
+
+    return has_radio_type;
+}
+
+static radio_type_t
+bm_client_get_correct_5g_radio_type(bm_client_t *client)
+{
+    if (bm_client_has_radio_type(client, RADIO_TYPE_5G)) return RADIO_TYPE_5G;
+    if (bm_client_has_radio_type(client, RADIO_TYPE_5GL)) return RADIO_TYPE_5GL;
+    if (bm_client_has_radio_type(client, RADIO_TYPE_5GU)) return RADIO_TYPE_5GU;
+
+    return RADIO_TYPE_NONE;
+}
+
 static bool 
 bm_client_get_cs_params( struct schema_Band_Steering_Clients *bscli, bm_client_t *client )
 {
@@ -1320,18 +1344,13 @@ bm_client_get_cs_params( struct schema_Band_Steering_Clients *bscli, bm_client_t
      * Today 5G could be 5G or 5GL/5GU for SP
      */
     if (client->cs_radio_type == RADIO_TYPE_5G) {
-        radio_type_t radio_type = client->cs_radio_type;
-        unsigned int i;
-
-        for (i = 0; i < client->ifcfg_num; i++) {
-            if (client->ifcfg[i].radio_type == RADIO_TYPE_2G)
-                continue;
-            radio_type = client->ifcfg[i].radio_type;
-            break;
+        radio_type_t radio_type = bm_client_get_correct_5g_radio_type(client);
+        if (radio_type == RADIO_TYPE_NONE) {
+            LOGN("No suitable radio type could be found");
+        } else {
+            LOGI("overwrite cs_radio_type from %d to %d", client->cs_radio_type, radio_type);
+            client->cs_radio_type = radio_type;
         }
-
-        LOGI("overwrite cs_radio_type from %d to %d", client->cs_radio_type, radio_type);
-        client->cs_radio_type = radio_type;
     }
 
     if( !bscli->cs_mode_exists ) {
@@ -2213,6 +2232,7 @@ bm_client_backoff(bm_client_t *client, bool enable)
         client->num_rejects_2g = 0;
         client->num_rejects_5g = 0;
         client->backoff_connect_calculated = false;
+        client->rejects_2g_gt_max = false;
         evsched_task_cancel(client->backoff_task);
         bm_client_update_all_groups(client);
         ev_timer_stop(EV_DEFAULT_ &client->pref_5g_pre_assoc_block_timer.timer);

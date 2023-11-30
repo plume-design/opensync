@@ -283,6 +283,16 @@ ow_steer_bm_client_set_cs_params(const struct osw_hwaddr *sta_addr,
                 ow_steer_bm_cs_params_set_band(cs_params, &band);
                 continue;
             }
+            else if (strcmp(value, "5GL") == 0) {
+                const enum ow_steer_bm_cs_params_band band = OW_STEER_BM_CLIENT_CS_PARAMS_BAND_5GL;
+                ow_steer_bm_cs_params_set_band(cs_params, &band);
+                continue;
+            }
+            else if (strcmp(value, "5GU") == 0) {
+                const enum ow_steer_bm_cs_params_band band = OW_STEER_BM_CLIENT_CS_PARAMS_BAND_5GU;
+                ow_steer_bm_cs_params_set_band(cs_params, &band);
+                continue;
+            }
             else if (strcmp(value, "6G") == 0) {
                 const enum ow_steer_bm_cs_params_band band = OW_STEER_BM_CLIENT_CS_PARAMS_BAND_6G;
                 ow_steer_bm_cs_params_set_band(cs_params, &band);
