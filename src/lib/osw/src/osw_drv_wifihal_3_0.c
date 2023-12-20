@@ -1067,13 +1067,15 @@ chan_avg(const int *c)
 {
     int sum = 0;
     int n = 0;
-    if (c == NULL)
+    if (c == NULL || *c > 1)
         return 0;
     while (*c) {
         sum += *c;
         n++;
         c++;
     }
+    if (n < 1)
+        return 0;
     return sum / n;
 }
 
