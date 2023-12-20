@@ -273,12 +273,14 @@ osw_drv_nl80211_init_cb(struct osw_drv *drv)
     /* FIXME: This shouldn't be looking at g_nl.
      * Instead osw drv init need to be reworked.
      */
-    LOGI("osw: drv: nl80211: initializing");
+LOGI("osw: drv: nl80211: initializing");
     struct osw_drv_nl80211_ops *ops = OSW_MODULE_LOAD(osw_drv_nl80211);
     struct osw_drv_nl80211 *m = ops_to_mod(ops);
     osw_drv_set_priv(drv, m);
     WARN_ON(m->drv != NULL);
     m->drv = drv;
+    char* flag_info = (getenv("OSW_DRV_NL80211_DISABLE") != NULL) ? "OSW_DRV_NL80211_DISABLE != NULL -> SET" : "OSW_DRV_NL80211_DISABLE == NULL -> unset";
+    LOGI(flag_info);
     LOGI("osw: drv: nl80211: initialized");
 }
 
