@@ -5,6 +5,7 @@ Documentation=https://www.opensync.io/documentation
 [Service]
 Type=simple
 EnvironmentFile=/usr/opensync/etc/kconfig
+Environment=OSW_DRV_TARGET_DISABLED=1 OSW_DRV_NL80211_DISABLE=1
 
 ExecStartPre=/usr/bin/env "${CONFIG_TARGET_PATH_SCRIPTS}"/opensync.init pre-start
 ExecStart=/usr/bin/env "${CONFIG_DM_MANAGER_PATH}"/dm
