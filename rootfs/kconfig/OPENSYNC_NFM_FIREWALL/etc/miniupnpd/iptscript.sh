@@ -54,7 +54,7 @@ add_forward_rule()
         table:=nat \
         chain:=MINIUPNPD \
         target:=DNAT \
-        rule:="-p $proto --dport $ext_port -m conntrack --cstate NEW --to $int_addr:$int_port ${rem_host:+-s ${rem_host}}"
+        rule:="-p $proto --dport $ext_port -m conntrack --ctstate NEW --to $int_addr:$int_port ${rem_host:+-s ${rem_host}}"
 }
 
 del_forward_rule()

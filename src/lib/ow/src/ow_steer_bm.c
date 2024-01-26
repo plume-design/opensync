@@ -2510,6 +2510,7 @@ ow_steer_bm_sta_free(struct ow_steer_bm_sta *sta)
     ow_steer_policy_stack_remove(policy_stack, ow_steer_policy_bss_filter_get_base(sta->cs_allow_filter_policy));
     ow_steer_policy_stack_remove(policy_stack, ow_steer_policy_bss_filter_get_base(sta->cs_deny_filter_policy));
     ow_steer_policy_stack_remove(policy_stack, ow_steer_policy_bss_filter_get_base(sta->cs_kick_filter_policy));
+    ow_steer_policy_stack_remove(policy_stack, ow_steer_policy_btm_response_get_base(sta->btm_response_policy));
 
     ow_steer_policy_bss_filter_free(sta->bss_filter_policy);
     ow_steer_policy_chan_cap_free(sta->chan_cap_policy);
@@ -2525,6 +2526,7 @@ ow_steer_bm_sta_free(struct ow_steer_bm_sta *sta)
     ow_steer_policy_bss_filter_free(sta->cs_allow_filter_policy);
     ow_steer_policy_bss_filter_free(sta->cs_deny_filter_policy);
     ow_steer_policy_bss_filter_free(sta->cs_kick_filter_policy);
+    ow_steer_policy_btm_response_free(sta->btm_response_policy);
 
     struct ow_steer_executor *executor = ow_steer_sta_get_executor(sta->steer_sta);
     ow_steer_executor_remove(executor, ow_steer_executor_action_acl_get_base(sta->acl_executor_action));
@@ -2541,6 +2543,7 @@ ow_steer_bm_sta_free(struct ow_steer_bm_sta *sta)
     ds_dlist_remove(&sta->client->sta_list, sta);
     ASSERT(sta->group != NULL, "");
     ds_tree_remove(&sta->group->sta_tree, sta);
+    ow_steer_sta_free(sta->steer_sta);
 
     FREE(sta);
 }

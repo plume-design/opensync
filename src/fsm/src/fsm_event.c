@@ -42,40 +42,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define FSM_MGR_INTERVAL 120
 
 /**
- * @brief gather pcap stats for an eligible a fsm session
- *
- * @param session the fsm session
- */
-static void
-fsm_pcap_stats(struct fsm_session *session)
-{
-    struct fsm_pcaps *pcaps;
-    struct pcap_stat stats;
-    pcap_t *pcap;
-    int rc;
-
-    if (!fsm_plugin_has_intf(session)) return;
-    if (session->conf == NULL) return;
-
-    pcaps = session->pcaps;
-    if (pcaps == NULL) return;
-
-    pcap = pcaps->pcap;
-    memset(&stats, 0, sizeof(stats));
-
-    rc = pcap_stats(pcap, &stats);
-    if (rc < 0)
-    {
-        LOGT("%s: pcap_stats failed: %s",
-             __func__, pcap_geterr(pcap));
-        return;
-    }
-
-    LOGI("%s: %s: packets received: %u, dropped: %u",
-         __func__, session->conf->if_name, stats.ps_recv, stats.ps_drop);
-}
-
-/**
  * @brief periodic routine. Calls fsm sessions' reiodic call backs
  */
 static void
@@ -85,7 +51,6 @@ fsm_event_cb(struct ev_loop *loop, ev_timer *watcher, int revents)
     ds_tree_t *sessions = fsm_get_sessions();
     struct fsm_session *session = ds_tree_head(sessions);
     struct mem_usage mem = { 0 };
-    struct nfqnl_counters nfq_counters = { 0 };
     time_t now = time(NULL);
     bool reset;
 
@@ -102,23 +67,7 @@ fsm_event_cb(struct ev_loop *loop, ev_timer *watcher, int revents)
     now = time(NULL);
     if ((now - mgr->periodic_ts) < FSM_MGR_INTERVAL) return;
 
-    session = ds_tree_head(sessions);
-    while (session != NULL)
-    {
-        fsm_pcap_stats(session);
-        session = ds_tree_next(sessions, session);
-    }
-
     mgr->periodic_ts = now;
-
-    fsm_get_nfqcounters(&nfq_counters);
-    LOGI(
-        "netlink queue stats: queue total: %u copy mode: %hhu copy range: %u qdrop: %u user drop: %u",
-        nfq_counters.queue_total,
-        nfq_counters.copy_mode,
-        nfq_counters.copy_range,
-        nfq_counters.queue_dropped,
-        nfq_counters.queue_user_dropped);
 
     fsm_get_memory(&mem);
     LOGI("pid %s: mem usage: real mem: %u, virt mem %u",
@@ -243,32 +192,52 @@ err_scan:
 /**
  * @brief get netfilters queue stats
  *
- * @param nfq_counters nf queue container
+ * @param none
  */
 void
-fsm_get_nfqcounters(struct nfqnl_counters *nfq_counters)
+fsm_get_nfqueue_stats(void)
 {
     char filename[] = "/proc/net/netfilter/nfnetlink_queue";
+    struct nfqnl_counters nfq_counters;
+    char line[256];
     FILE *fp;
     int rc;
 
     fp = fopen(filename, "r");
     if (fp == NULL) return;
 
-    errno = 0;
-    rc = fscanf(fp,
-                "%hu %u %u %hhu %u %u %u %u",
-                &nfq_counters->queue_num,
-                &nfq_counters->portid,
-                &nfq_counters->queue_total,
-                &nfq_counters->copy_mode,
-                &nfq_counters->copy_range,
-                &nfq_counters->queue_dropped,
-                &nfq_counters->queue_user_dropped,
-                &nfq_counters->id_sequence);
-    if ((rc != 1) && (errno != 0))
+   /* Read the nfqueue counters */
+    while (fgets(line, sizeof(line), fp))
     {
-        LOGD("%s: error scanning %s: %s", __func__, filename, strerror(errno));
+        errno = 0;
+        MEMZERO(nfq_counters);
+        rc = sscanf(line,
+                    "%hu %u %u %hhu %u %u %u %u",
+                    &nfq_counters.queue_num,
+                    &nfq_counters.portid,
+                    &nfq_counters.queue_total,
+                    &nfq_counters.copy_mode,
+                    &nfq_counters.copy_range,
+                    &nfq_counters.queue_dropped,
+                    &nfq_counters.queue_user_dropped,
+                    &nfq_counters.id_sequence);
+        if ((rc != 1) && (errno != 0))
+        {
+            LOGD("%s: error scanning %s: %s", __func__, filename, strerror(errno));
+            break;
+        }
+
+        LOGI(
+            "netlink queue stats: queue num: %u, port id: %u, queue total: %u copy mode: %hhu copy range: %u qdrop: %u user drop: %u seq id: %u",
+            nfq_counters.queue_num,
+            nfq_counters.portid,
+            nfq_counters.queue_total,
+            nfq_counters.copy_mode,
+            nfq_counters.copy_range,
+            nfq_counters.queue_dropped,
+            nfq_counters.queue_user_dropped,
+            nfq_counters.id_sequence);
     }
+
     fclose(fp);
 }

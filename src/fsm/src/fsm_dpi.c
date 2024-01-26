@@ -2271,7 +2271,11 @@ fsm_dpi_periodic(struct fsm_session *session)
     {
         windows = report->flow_windows;
         window = *windows;
+        /* collect and log pcap stats */
+        dpi_intf_get_pcap_stats();
 
+        /* collect and report nfqueue stats */
+        fsm_get_nfqueue_stats();
         LOGI("%s: %s: total flows: %zu held flows: %zu, reported flows: %zu",
              __func__, session->name, aggr->total_flows, aggr->held_flows,
              window->num_stats);

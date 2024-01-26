@@ -1827,6 +1827,7 @@ wm2_rstate_clip_chwidth(const struct schema_Wifi_Radio_State *rstate,
             }
             const bool found = (j < rstate->channels_len);
             const bool blocked = found && (strstr(rstate->channels[j], "nop_started") != NULL);
+            const bool punctured = found && rstate->puncture_bitmap_exists && (rstate->puncture_bitmap & (1 << i));
 
             if (found == false) {
                 LOGI("%s: dfs: nol: %d %s: at HT%d: channel: %d not supported",
@@ -1835,7 +1836,12 @@ wm2_rstate_clip_chwidth(const struct schema_Wifi_Radio_State *rstate,
                 break;
             }
 
-            if (blocked == true) {
+            if (punctured == true) {
+                LOGD("%s: dfs: nol: %d %s: at HT%d: channel %d: punctured",
+                     rstate->if_name, channel, ht_mode, width, chans[i]);
+            }
+
+            if (blocked == true && !punctured) {
                 LOGI("%s: dfs: nol: %d %s: at HT%d: channel %d: radar blocked",
                      rstate->if_name, channel, ht_mode, width, chans[i]);
                 usable = false;

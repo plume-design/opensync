@@ -539,6 +539,49 @@ bool ovsdb_init_loop(struct ev_loop *loop, const char *name)
     return success;
 }
 
+bool ovsdb_init_loop_with_priority(struct ev_loop *loop, const char *name, int priority)
+{
+    bool success = false;
+
+    if (json_rpc_fd != -1) {
+        if (ovsdb_comment == NULL && name != NULL) {
+            ovsdb_comment = name;
+        }
+        return true;
+    }
+
+    if (loop == NULL) {
+        loop = ev_default_loop(0);
+    }
+
+    json_rpc_fd = ovsdb_conn();
+
+    if (json_rpc_fd > 0)
+    {
+        LOG(NOTICE, "OVSDB connection established");
+
+        ev_io_init(&wovsdb, cb_ovsdb_read, json_rpc_fd, EV_READ);
+        ev_set_priority(&wovsdb, priority);
+        LOGI("%s: Set ovsdb event priority for %s to %d", __func__,
+             name, ev_priority(&wovsdb));
+        ev_io_start(loop, &wovsdb);
+
+        success = true;
+        ovsdb_ready_notify();
+    }
+    else
+    {
+        LOG(ERR, "Error starting OVSDB client.::reason=%d", json_rpc_fd);
+    }
+
+    if (name != NULL)
+    {
+        ovsdb_comment = name;
+    }
+
+    return success;
+}
+
 bool ovsdb_ready(const char *name)
 {
     /* Wait for the OVSDB to initialize */

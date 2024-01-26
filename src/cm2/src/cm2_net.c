@@ -103,6 +103,11 @@ static bool cm2_is_port_in_bridge(char *port, char *bridge)
     return target_device_execute(command);
 }
 
+static bool is_mac_local_bit_set(os_macaddr_t mac)
+{
+    return ((mac.addr[0] >> 1) & 0x1);
+}
+
 static bool cm2_update_mac_local_bit(char *bridge, bool set)
 {
     os_macaddr_t mac;
@@ -120,6 +125,12 @@ static bool cm2_update_mac_local_bit(char *bridge, bool set)
     os_nif_macaddr_to_str(&mac, macstr, PRI_os_macaddr_t);
 
     LOGD("%s: LAN bridge MAC %s", __func__, macstr);
+
+    if (is_mac_local_bit_set(mac) == set) {
+        LOGI("%s: Keep LAN bridge MAC %s as is.",
+             __func__, macstr);
+        return false;
+    }
 
     if (set) {
         mac.addr[0] |= 0x02;

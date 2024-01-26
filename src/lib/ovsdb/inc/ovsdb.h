@@ -202,6 +202,7 @@ ovsdb_col_t;
 /* API */
 typedef void ovsdb_ready_fn_t(void *priv);
 bool ovsdb_init_loop(struct ev_loop *loop, const char *name);
+bool ovsdb_init_loop_with_priority(struct ev_loop *loop, const char *name, int priority);
 bool ovsdb_init(const char *name);
 bool ovsdb_ready(const char *name);
 bool ovsdb_stop_loop(struct ev_loop *loop);

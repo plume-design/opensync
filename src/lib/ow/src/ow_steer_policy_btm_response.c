@@ -77,6 +77,7 @@ ow_steer_policy_btm_response_free(struct ow_steer_policy_btm_response *btm_respo
         FREE(neigh);
     }
 
+    osw_btm_unregister_btm_response_observer(&btm_response_policy->btm_resp_obs);
     ow_steer_policy_free(btm_response_policy->base);
     FREE(btm_response_policy);
 }

@@ -102,7 +102,7 @@ int main(int argc, char ** argv)
         return -1;
     }
 
-    if (!ovsdb_init_loop(loop, "FSM")) {
+    if (!ovsdb_init_loop_with_priority(loop, "FSM", -2)) {
         LOGE("Initializing FSM "
              "(Failed to initialize OVSDB)");
         return -1;

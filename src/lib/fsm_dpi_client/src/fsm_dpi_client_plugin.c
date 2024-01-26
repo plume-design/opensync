@@ -394,8 +394,9 @@ fsm_dpi_client_process_attr(struct fsm_session *session, const char *attr,
         return FSM_DPI_IGNORED;
     }
 
-    // Multicast and broadcast packets always need to be inspected
-    if (is_mac_any_cast(key->dmac) == true)
+    if ((is_mac_any_cast(key->dmac) == true) ||
+        (key->icmp_type == 135 ||
+         key->icmp_type == 136))
     {
         return FSM_DPI_INSPECT;
     }

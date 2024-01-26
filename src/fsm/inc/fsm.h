@@ -567,10 +567,10 @@ fsm_get_memory(struct mem_usage *mem);
 /**
  * @brief get netfilters queue stats
  *
- * @param nfq_counters netfilter queue container
+ * @param none
  */
 void
-fsm_get_nfqcounters(struct nfqnl_counters *nfq_counters);
+fsm_get_nfqueue_stats(void);
 
 /**
  * @brief add a fsm session

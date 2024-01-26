@@ -71,8 +71,10 @@ size_t net_header_parse(struct net_header_parser *parser)
     if (ip_protocol == IPPROTO_ICMP) return net_header_parse_icmp(parser);
     if (ip_protocol == IPPROTO_ICMPV6) return net_header_parse_icmp6(parser);
 
-    /* If not TCP or UDP, leave the ip payload parsing to the packet owner */
-    return len;
+    LOGT("%s: failed to parse protocol %x", __func__, ip_protocol);
+
+    /* Unknown protocol, return 0 to prevent further processing */
+    return 0;
 }
 
 

@@ -148,8 +148,10 @@ fsm_nfq_tap_update(struct fsm_session *session)
     char   *queue_len_str;
     char   *queue_num_str;
     char   buf[10];
-    uint32_t nlbuf_sz = 6*(1024 * 1024); // 6M netlink packet buffer.
-    uint32_t queue_len = 10240; // number of packets in queue.
+    uint32_t nlbuf_sz0 = 6*(1024 * 1024); // 6M netlink packet buffer.
+    uint32_t nlbuf_szx = 1*(1024 * 1024); // 1M netlink packet buffer remaining queues.
+    uint32_t queue_len0 = 10240; // number of packets in queue.
+    uint32_t queue_lenx = 2048; // number of packets in queue for remaining queues.
     uint32_t queue_num = 0; // Default 0 queue for all traffic
     uint32_t num_of_queues = 1; // Default number of nfqueues
     uint32_t start_queue_num = 0;
@@ -190,6 +192,36 @@ fsm_nfq_tap_update(struct fsm_session *session)
     nfqs.nfq_cb = fsm_nfq_net_header_parse;
     nfqs.data = session;
 
+    buf_size_str = fsm_get_other_config_val(session, "nfqueue_buff_size");
+    if (buf_size_str != NULL)
+    {
+        errno = 0;
+        nlbuf_sz0 = strtoul(buf_size_str, NULL, 10);
+        if (errno != 0)
+        {
+            LOGD("%s: error reading value %s: %s", __func__,
+                 buf_size_str, strerror(errno));
+        }
+    }
+
+    queue_len_str = fsm_get_other_config_val(session, "nfqueue_length");
+    if (queue_len_str != NULL)
+    {
+        errno = 0;
+        queue_len0 = strtoul(queue_len_str, NULL, 10);
+        if (errno != 0)
+        {
+            LOGD("%s: error reading value %s: %s", __func__,
+                 buf_size_str, strerror(errno));
+        }
+    }
+
+
+    mgr = fsm_get_mgr();
+    nfqs.loop = mgr->loop;
+    nfqs.nfq_cb = fsm_nfq_net_header_parse;
+    nfqs.data = session;
+
     for (index = 0; index < num_of_queues ; index++)
     {
         nfqs.queue_num = queue_num + index;
@@ -198,42 +230,19 @@ fsm_nfq_tap_update(struct fsm_session *session)
         {
             LOGE("%s : nfqs open failed to open queue %d", __func__, nfqs.queue_num);
         }
-    }
 
-    buf_size_str = fsm_get_other_config_val(session, "nfqueue_buff_size");
-    if (buf_size_str != NULL)
-    {
-        errno = 0;
-        nlbuf_sz = strtoul(buf_size_str, NULL, 10);
-        if (errno != 0)
+
+        ret = nf_queue_set_nlsock_buffsz(nfqs.queue_num, index == 0 ? nlbuf_sz0 : nlbuf_szx);
+        if (ret == false)
         {
-            LOGD("%s: error reading value %s: %s", __func__,
-                 buf_size_str, strerror(errno));
+            LOGE("%s: Failed to set netlink sock buf size[%u].",__func__, index == 0 ? nlbuf_sz0 : nlbuf_szx);
         }
-    }
 
-    ret = nf_queue_set_nlsock_buffsz(queue_num, nlbuf_sz);
-    if (ret == false)
-    {
-        LOGE("%s: Failed to set netlink sock buf size[%u].",__func__, nlbuf_sz);
-    }
-
-    queue_len_str = fsm_get_other_config_val(session, "nfqueue_length");
-    if (queue_len_str != NULL)
-    {
-        errno = 0;
-        queue_len = strtoul(queue_len_str, NULL, 10);
-        if (errno != 0)
+        ret = nf_queue_set_queue_maxlen(nfqs.queue_num, index == 0 ? queue_len0 : queue_lenx);
+        if (ret == false)
         {
-            LOGD("%s: error reading value %s: %s", __func__,
-                 buf_size_str, strerror(errno));
+            LOGE("%s: Failed to set default nfueue length[%u].",__func__, index == 0 ? queue_len0 : queue_lenx);
         }
-    }
-
-    ret = nf_queue_set_queue_maxlen(queue_num, queue_len);
-    if (ret == false)
-    {
-        LOGE("%s: Failed to set default nfueue length[%u].",__func__,queue_len);
     }
 
     return true;

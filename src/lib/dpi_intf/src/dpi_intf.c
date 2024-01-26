@@ -701,6 +701,41 @@ callback_Dpi_Interface_Map(ovsdb_update_monitor_t *mon,
     }
 }
 
+void
+dpi_intf_get_pcap_stats(void)
+{
+    struct dpi_intf_entry *entry;
+    struct dpi_intf_pcaps *pcaps;
+    struct dpi_intf_mgr *mgr;
+    struct pcap_stat stats;
+    ds_tree_t *tree;
+    pcap_t *pcap;
+    int rc;
+
+    mgr = dpi_intf_get_mgr();
+    tree = &mgr->dpi_intfs;
+
+    /* loop through all the configured interfaces */
+    ds_tree_foreach(tree, entry)
+    {
+        pcaps = entry->pcaps;
+        if (pcaps == NULL) continue;
+
+        pcap = pcaps->pcap;
+        memset(&stats, 0, sizeof(stats));
+        /* get the pcap stats */
+        rc = pcap_stats(pcap, &stats);
+        if (rc < 0)
+        {
+            LOGT("%s: pcap_stats failed: %s",
+                __func__, pcap_geterr(pcap));
+            return;
+        }
+
+        LOGI("%s: %s: packets received: %u, dropped: %u",
+         __func__, entry->tap_if_name, stats.ps_recv, stats.ps_drop);
+    }
+}
 
 bool
 dpi_intf_context_registered(void)

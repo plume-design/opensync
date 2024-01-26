@@ -449,6 +449,13 @@ nf_queue_open(struct nfq_settings *nfq_set)
 
     nfq->nfq_fd = mnl_socket_get_fd(nfq->nfq_mnl);
     ev_io_init(&nfq->nfq_io_mnl, nf_queue_read_mnl_cbk, nfq->nfq_fd, EV_READ);
+    if (nfq->queue_num == 1) ev_set_priority(&nfq->nfq_io_mnl, 2);
+    else ev_set_priority(&nfq->nfq_io_mnl, 1);
+
+    if (nfq->queue_num == 0) ev_set_priority(&nfq->nfq_io_mnl, 0);
+    LOGI("%s: Set nfq number %d priority to %d",
+          __func__, nfq->queue_num,
+          ev_priority(&nfq->nfq_io_mnl));
 
     nfq->nfq_io_mnl.data = (void *)nfq;
 

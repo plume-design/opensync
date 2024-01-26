@@ -2718,8 +2718,8 @@ ow_ovsdb_vconf_to_ow_conf_sta(const struct schema_Wifi_VIF_Config *vconf,
 
                  if (strcmp(akm, SCHEMA_CONSTS_KEY_WPA_PSK) == 0) { wpa.akm_psk = true; }
             else if (strcmp(akm, SCHEMA_CONSTS_KEY_SAE    ) == 0) { wpa.akm_sae = true; }
-            else if (strcmp(akm, SCHEMA_CONSTS_KEY_FT_SAE ) == 0) { wpa.akm_ft_psk = true; }
-            else if (strcmp(akm, SCHEMA_CONSTS_KEY_FT_PSK ) == 0) { wpa.akm_ft_sae = true; }
+            else if (strcmp(akm, SCHEMA_CONSTS_KEY_FT_SAE ) == 0) { wpa.akm_ft_sae = true; }
+            else if (strcmp(akm, SCHEMA_CONSTS_KEY_FT_PSK ) == 0) { wpa.akm_ft_psk = true; }
         }
 
         wpa.wpa = vconf->wpa_pairwise_tkip

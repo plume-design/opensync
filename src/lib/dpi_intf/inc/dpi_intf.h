@@ -69,4 +69,10 @@ dpi_intf_init(void);
 void
 dpi_intf_register_context(struct dpi_intf_registration *context);
 
+/**
+ * @brief reads the pcap stats for the configured interfaces
+ */
+void
+dpi_intf_get_pcap_stats(void);
+
 #endif /* DPI_INTF_H_INCLUDED */

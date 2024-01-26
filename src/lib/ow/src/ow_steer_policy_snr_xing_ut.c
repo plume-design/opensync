@@ -696,21 +696,6 @@ OSW_UT(ow_steer_policy_snr_xing_ut_lwm)
      */
     xing_policy->base->ops.sta_snr_change_fn(xing_policy->base, &bssid, 40);
     osw_ut_time_advance(0);
-    OSW_UT_EVAL(mediator_cnt.trigger_executor_cnt == 0);
-    OSW_UT_EVAL(mediator_cnt.schedule_recalc_cnt == 1);
-    OSW_UT_EVAL(mediator_cnt.dismiss_executor_cnt == 0);
-
-    ow_steer_candidate_list_clear(candidate_list);
-    xing_policy->base->ops.recalc_fn(xing_policy->base, candidate_list);
-    OSW_UT_EVAL(ow_steer_candidate_get_preference(candidate_cur) == OW_STEER_CANDIDATE_PREFERENCE_NONE);
-    OSW_UT_EVAL(ow_steer_candidate_get_preference(candidate_other) == OW_STEER_CANDIDATE_PREFERENCE_NONE);
-
-    /*
-     * Report low data vol diff
-     */
-    xing_policy->base->ops.sta_data_vol_change_fn(xing_policy->base, &bssid, 1000);
-    osw_ut_time_advance(OSW_TIME_SEC(1));
-    osw_ut_time_advance(OSW_TIME_SEC(xing_policy->state.activity.grace_seconds + 1));
     OSW_UT_EVAL(mediator_cnt.trigger_executor_cnt == 1);
     OSW_UT_EVAL(mediator_cnt.schedule_recalc_cnt == 2);
     OSW_UT_EVAL(mediator_cnt.dismiss_executor_cnt == 0);

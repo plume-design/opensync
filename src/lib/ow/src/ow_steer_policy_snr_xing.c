@@ -455,6 +455,32 @@ ow_steer_policy_snr_xing_recalc(struct ow_steer_policy_snr_xing *xing_policy)
                 return;
             break;
         case OW_STEER_POLICY_SNR_XING_MODE_LWM:
+            /* Workaround: Original intention for
+             * activity-based deferal was targeting
+             * deauth-type kicks only. BTM should not be
+             * affected by this.
+             *
+             * However OW design is to keep policies and
+             * executors separate. A proper fix needs to
+             * move activity deferral to the executor
+             * itself, along with Bottom LWM which works as
+             * an exception against the deferral. The fix is
+             * on the way, but carries a risk of regression
+             * that can't be taken now.
+             *
+             * This assumes that if a client is found to
+             * supoprt BTM then BTM executor will actually
+             * be run. This is always true right now,
+             * although it doesn't need to be in the future.
+             */
+            if (state->wnm_bss_trans)
+                break;
+
+            /* Otherwise (client does not support BTM and
+             * needs Deauth to be done to move it away)
+             * defer policing if client is active and it's
+             * desired for it to not be active.
+             */
             if (state->txrx_state == OW_STEER_POLICY_SNR_XING_TXRX_STATE_ACTIVE)
                 return;
             break;
