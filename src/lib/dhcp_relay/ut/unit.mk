@@ -38,8 +38,8 @@ UNIT_DEPS += src/lib/dhcp_relay
 UNIT_DEPS += src/lib/unit_test_utils
 
 # Ensure the required file is copied in its correct location
-$(UNIT_BUILD)/.target: /tmp/dhcp_relay.conf
-/tmp/dhcp_relay.conf: $(UNIT_PATH)/dhcp_relay.conf FORCE_DHCP_RELAY_CONF
+$(UNIT_BUILD)/.target: $(UNIT_BUILD)/dhcp_relay.conf
+$(UNIT_BUILD)/dhcp_relay.conf: $(UNIT_PATH)/dhcp_relay.conf FORCE_DHCP_RELAY_CONF
 	${NQ} " $(call color_copy,copy)    [$(call COLOR_BOLD,dhcp_relay.conf)] -> $@"
 	${Q} cp $< $@
 FORCE_DHCP_RELAY_CONF:
