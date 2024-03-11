@@ -1,0 +1,83 @@
+menuconfig REVSSH_ENABLED
+    bool "Enable OpenSync Reverse SSH Support"
+    default y
+    help
+        This enables OpenSync support for configuring
+        reverse SSH tunneling with remote port forwarding.
+
+if REVSSH_ENABLED
+    config REVSSH_TMP_DIR
+        string "Reverse SSH temporary directory"
+        default "/tmp/revssh"
+        help
+            Full path to the directory in tmpfs that will be
+            dedicated to temporary RevSSH files and resources.
+
+    config REVSSH_DEFAULT_IDLE_TIMEOUT
+    int "Default RevSSH session idle timeout"
+    default 10
+    help
+        Default RevSSH session inactivity/idle timeout.
+        In minutes. This configures the default, the value can be
+        overriden by OVSDB config. If a user ssh session is idle
+        (inactive) for this amount of time, it is automatically closed.
+
+    config REVSSH_DEFAULT_SESSION_MAX_TIME
+    int "Default RevSSH session maximum time"
+    default 480
+    help
+        Default RevSSH session maximum time regardles if active or not.
+        In minutes. This configures the default, the value can be
+        overriden by OVSDB config. If this time is reached, regardless
+        if user session is active or not, the whole RevSSH session is
+        destroyed and resources cleaned up.
+
+    choice
+        prompt "RevSSH Backend"
+        default REVSSH_BACKEND_DROPBEAR
+
+        config REVSSH_BACKEND_DROPBEAR
+            bool "Dropbear"
+            help
+                Use the RevSSH backend implementation using Dropbear
+
+        if REVSSH_BACKEND_DROPBEAR
+            config REVSSH_DROPBEAR_SERVER
+            string "Dropbear server"
+            default "dropbear"
+            help
+                Dropbear server command or full path to executable.
+
+            config REVSSH_DROPBEAR_CLIENT
+            string "Dropbear client"
+            default "dbclient"
+            help
+                Dropbear client command or full path to executable.
+
+            config REVSSH_DROPBEAR_KEYTOOL
+            string "Dropbear keytool"
+            default "dropbearkey"
+            help
+                Dropbear keytool command or full path to executable.
+
+            config REVSSH_DROPBEAR_KEYFILE
+            string "Path to the default Dropbear host key file"
+            default "/etc/dropbear/dropbear_rsa_host_key"
+            help
+                Full path to the default Dropbear host key file.
+
+            config REVSSH_DROPBEAR_AUTHORIZED_KEYS_FILE
+            string "Dropbear authorized_keys file path"
+            default "/etc/dropbear/authorized_keys"
+            help
+                Full path to Dropbear authorized_keys file.
+
+        endif
+
+        config REVSSH_BACKEND_NULL
+            bool "Null"
+            help
+                Use the dumy Null RevSSH backend.
+
+    endchoice
+endif

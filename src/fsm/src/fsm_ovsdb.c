@@ -526,6 +526,18 @@ update:
 }
 
 
+static int
+fsm_get_no_bridge(char *if_name, char *bridge, size_t len)
+{
+    if (if_name == NULL) return 0;
+    if (bridge == NULL) return -1;
+
+    strscpy(bridge, "no_bridge", len);
+
+    return 0;
+}
+
+
 /**
  * @brief update the ovsdb configuration of the session
  *
@@ -562,7 +574,7 @@ fsm_session_update(struct fsm_session *session,
     fconf->handler = STRDUP(conf->handler);
     if (fconf->handler == NULL) goto err_free_fconf;
 
-    if (strlen(conf->if_name) != 0)
+    if ((strlen(conf->if_name) != 0) && (kconfig_enabled(CONFIG_FSM_TAP_INTF)))
     {
         fconf->if_name = STRDUP(conf->if_name);
         if (fconf->if_name == NULL) goto err_free_fconf;
@@ -636,6 +648,7 @@ fsm_session_update(struct fsm_session *session,
 
     fsm_process_provider(session);
     fsm_set_tx_intf(session);
+    fsm_set_dpi_health_stats_cfg(session);
 
     ret = fsm_is_dpi(session);
     if (ret)
@@ -731,6 +744,115 @@ fsm_parse_dso(struct fsm_session *session)
 }
 
 
+#if defined(CONFIG_FSM_NO_DSO)
+
+static struct plugin_init_table plugin_init_table[] =
+{
+    {
+        .handler = "http",
+        .init = http_plugin_init,
+    },
+    {
+        .handler = "dns",
+        .init = dns_plugin_init,
+    },
+    {
+        .handler = "mdns",
+        .init = mdns_plugin_init,
+    },
+    {
+        .handler = "upnp",
+        .init = upnp_plugin_init,
+    },
+    {
+        .handler = "ndp",
+        .init = ndp_plugin_init,
+    },
+    {
+        .handler = "gatekeeper",
+        .init = gatekeeper_plugin_init,
+    },
+    {
+        .handler = "walleye_dpi",
+        .init = walleye_dpi_plugin_init,
+    },
+    {
+        .handler = "ipthreat_dpi",
+        .init = ipthreat_dpi_plugin_init,
+    },
+    {
+        .handler = "dpi_client",
+        .init = fsm_dpi_client_init,
+    },
+    {
+        .handler = "dpi_dns",
+        .init = dpi_dns_plugin_init,
+    },
+    {
+        .handler = "dpi_adt_upnp",
+        .init = dpi_adt_upnp_plugin_init,
+    },
+    {
+        .handler = "dpi_adt",
+        .init = dpi_adt_plugin_init,
+    },
+    {
+        .handler = "dpi_sni",
+        .init = dpi_sni_plugin_init,
+    },
+    {
+        .handler = "dpi_app",
+        .init = dpi_sni_plugin_init,
+    },
+    {
+        .handler = "dpi_ndp",
+        .init = dpi_ndp_plugin_init,
+    },
+    {
+        .handler = "dpi_mdns_responder",
+        .init = dpi_mdns_responder_plugin_init,
+    },
+    {
+        .handler = "wc_null",
+        .init = fsm_wc_null_plugin_init,
+    }
+};
+
+static bool
+fsm_match_init(struct fsm_session *session)
+{
+    char *prefix;
+    size_t i;
+    int ret;
+
+
+    if (session == NULL) return false;
+    if (session->name == NULL) return false;
+
+    for (i = 0; i < ARRAY_SIZE(plugin_init_table); i++)
+    {
+        prefix = plugin_init_table[i].handler;
+        ret = strncmp(session->name, prefix, strlen(prefix));
+        if (ret != 0) continue;
+
+        ret = plugin_init_table[i].init(session);
+        if (ret != 0) return false;
+
+        /* Wrap up initialization now that the plugin itsef is fully initialized */
+        ret = fsm_wrap_init_plugin(session);
+        return ret;
+    }
+
+    return false;
+}
+#else
+static bool
+fsm_match_init(struct fsm_session *session)
+{
+    return false;
+}
+#endif
+
 /**
  * @brief initialize a plugin
  *
@@ -747,6 +869,11 @@ fsm_init_plugin(struct fsm_session *session)
     int rc;
 
     if (session->type == FSM_DPI_DISPATCH) return true;
+
+    if (kconfig_enabled(CONFIG_FSM_NO_DSO))
+    {
+        return fsm_match_init(session);
+    }
 
     dlerror();
     session->handle = dlopen(session->dso, RTLD_NOW);
@@ -918,8 +1045,11 @@ fsm_set_session_ops(struct fsm_session *session)
     session->ops.state_cb = fsm_set_object_state;
     session->ops.latest_obj_cb = fsm_oms_get_highest_version;
     session->ops.last_active_obj_cb = fsm_oms_get_last_active_version;
+    session->ops.best_obj_cb = fsm_oms_get_best_version;
     session->ops.update_client = fsm_update_client;
     session->ops.get_network_id = fsm_session_get_network_id;
+    session->ops.monitor_object = fsm_register_object_to_monitor;
+    session->ops.unmonitor_object = fsm_unregister_object_to_monitor;
 }
 
 
@@ -1146,6 +1276,12 @@ fsm_delete_session(struct schema_Flow_Service_Manager_Config *conf)
     fsm_policy_deregister_client(&session->policy_client);
     ds_tree_remove(sessions, session);
     fsm_notify_identical_sessions(session, false);
+
+    if (kconfig_enabled(CONFIG_FSM_MAP_LEGACY_PLUGINS))
+    {
+        fsm_unmap_plugin(session);
+    }
+
     fsm_free_session(session);
     fsm_walk_sessions_tree();
 }
@@ -1258,14 +1394,7 @@ update_sessions:
     /* Lookup sessions, update their header info */
     sessions = fsm_get_sessions();
     session = ds_tree_head(sessions);
-    if (!kconfig_enabled(CONFIG_TARGET_USE_NATIVE_BRIDGE))
-    {
-        mgr->get_br = get_home_bridge;
-    }
-    else
-    {
-        mgr->get_br = get_native_home_bridge;
-    }
+
     while (session != NULL) {
         session->mqtt_headers = mgr->mqtt_headers;
         session->location_id  = mgr->location_id;
@@ -1576,6 +1705,19 @@ fsm_ovsdb_init(void)
     // Advertize default memory limit usage
     snprintf(str_value, sizeof(str_value), "%" PRIu64 " kB", mgr->max_mem);
     fsm_set_node_state(FSM_NODE_MODULE, FSM_NODE_STATE_MEM_KEY, str_value);
+
+    if (!kconfig_enabled(CONFIG_FSM_TAP_INTF))
+    {
+        mgr->get_br = fsm_get_no_bridge;
+    }
+    else if (!kconfig_enabled(CONFIG_TARGET_USE_NATIVE_BRIDGE))
+    {
+        mgr->get_br = get_home_bridge;
+    }
+    else
+    {
+        mgr->get_br = get_native_home_bridge;
+    }
 
     return 0;
 }

@@ -1,4 +1,5 @@
-#!/bin/bash -e
+#!/usr/bin/env bash
+set -e
 myname=$(basename $0)
 
 TAG=${DOCKER_TAG:-$(dirname "$(readlink -f "$0")" | tr / - | cut -b2- | tr A-Z a-z)}
@@ -36,6 +37,8 @@ OPTIONS:
         quick and quiet (skip rebuilding the docker image)
     -qqq
         quick and very quiet (suppress everything but the command output)
+    -qw
+        quiet wrapper output
     --color
         use colors in output even if redirected
     --no-color
@@ -117,11 +120,14 @@ rebuild_docker()
         docker build ${docker_quiet_opt} --tag "$TAG" .
 
         # ... and then the real thing:
-        echo "${ColorDim}" >&2
 
-        docker build ${docker_quiet_opt} --tag "$TAG" . >&2  # to stderr
-
-        echo "${ColorOff}" >&2
+        if [ $OPT_QUIET -eq 0 ]; then
+            echo "${ColorDim}" >&2
+            docker build ${docker_quiet_opt} --tag ${TAG} . >&2  # to stderr
+            echo "${ColorOff}" >&2
+        else
+            docker build ${docker_quiet_opt} --tag ${TAG} . > /dev/null
+        fi
 
         ######################################################################
 
@@ -137,7 +143,7 @@ rebuild_docker()
         echo_report "--------------------------------------------------"
         echo_report "Docker image (re)built, script exiting."
         echo_report "--------------------------------------------------"
-        echo
+        echo_report
         exit
     fi
 }
@@ -274,7 +280,7 @@ run_docker()
 
     # ... and then the real thing:
     echo_report
-    DOCKRUN_CONT_ID=$(docker create "${ARGS[@]}" "$@")
+    DOCKRUN_CONT_ID=$(docker create -i --attach=STDIN --attach=STDOUT --attach=STDERR "${ARGS[@]}" "$@")
 
     set +e
     docker start -ai $DOCKRUN_CONT_ID
@@ -350,6 +356,9 @@ do
             ;;
         -qqq)
             OPT_SKIP_DOCKER_REBUILD=1
+            OPT_QUIET=1
+            ;;
+        -qw)
             OPT_QUIET=1
             ;;
         --color)

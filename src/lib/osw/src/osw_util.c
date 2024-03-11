@@ -35,7 +35,15 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <osw_types.h>
 #include <osw_util.h>
 #include <const.h>
+#include <os.h>
 #include <log.h>
+
+#define DOT11_EID_DSSS 3
+#define DOT11_EID_HT_OP 61
+#define DOT11_EID_VHT_OP 192
+#define DOT11_EID_EXT 255
+#define DOT11_EID_EXT_HE_OP 36
+#define DOT11_EID_EXT_EHT_OP 106
 
 #define DOT11_EXTENDED_CAPS_TAG 0x7f
 #define DOT11_EXTENDED_CAPS_BTM (1 << 3)
@@ -63,6 +71,205 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define DOT11_EXT_HE_CAPS_PHY_160 (1 << 3)
 #define DOT11_EXT_HE_CAPS_PHY_160_8080 (1 << 4)
 #define DOT11_POWER_CAP 0x21
+#define DOT11_EXT_EHT_OP 106
+#define DOT11_EXT_EHT_CAP 108
+#define DOT11_EXT_EHT_CAP_MAC_LEN 2
+#define DOT11_EXT_EHT_CAP_PHY_LEN 9
+#define DOT11_EXT_EHT_CAP_PHY_320MHZ (1 << 1)
+#define DOT11_EXT_EHT_OP_INFO (1 << 0)
+#define DOT11_EXT_EHT_OP_INFO_CTL_WIDTH (0x1 + 0x2 + 0x4)
+
+#define DOT11_AS_LE32(ptr) ((((uint8_t *)(ptr))[0] >> 0) \
+                          | (((uint8_t *)(ptr))[1] >> 8) \
+                          | (((uint8_t *)(ptr))[2] >> 16) \
+                          | (((uint8_t *)(ptr))[3] >> 24))
+#define DOT11_AS_LE16(ptr) ((((uint8_t *)(ptr))[0] >> 0) \
+                          | (((uint8_t *)(ptr))[1] >> 8))
+
+#define __bf_shf(x) (__builtin_ffsll(x) - 1)
+#define FIELD_GET(mask, value) ((typeof(mask))(((value) & (mask)) >> __bf_shf(mask)))
+#define BIT(x) (1ULL << x)
+#define BYTES_LE16(bytes) (((uint32_t)((bytes)[0]) << 0) \
+                         | ((uint32_t)((bytes)[1]) << 8))
+#define BYTES_LE24(bytes) (((uint32_t)((bytes)[0]) << 0) \
+                         | ((uint32_t)((bytes)[1]) << 8) \
+                         | ((uint32_t)((bytes)[2]) << 16))
+
+struct dot11_elem_dsss {
+    uint8_t chan;
+} __attribute__((packed));
+
+struct dot11_elem_supp_op_class {
+    uint8_t current_op_class;
+    uint8_t other_op_classes[0];
+} __attribute__((packed));
+
+struct dot11_elem_ht_op {
+    uint8_t primary_chan;
+    uint8_t info[5];
+    uint8_t mcs[16];
+} __attribute__((packed));
+
+#define DOT11_ELEM_HT_OP_INFO0_SEC_CH_OFF (BIT(0) | BIT(1))
+#define DOT11_ELEM_HT_OP_INFO0_STA_CH_WIDTH (BIT(2))
+#define DOT11_ELEM_HT_OP_SEC_CH_OFF_SCA 1
+#define DOT11_ELEM_HT_OP_SEC_CH_OFF_SCB 3
+#define DOT11_ELEM_HT_OP_SEC_CH_OFF_SCN 0
+
+struct dot11_elem_vht_op_info {
+    uint8_t ch_width;
+    uint8_t ch_center_freq_seg0;
+    uint8_t ch_center_freq_seg1;
+} __attribute__((packed));
+
+struct dot11_elem_vht_op {
+    struct dot11_elem_vht_op_info info;
+    uint8_t mcs[2];
+} __attribute__((packed));
+
+#define DOT11_ELEM_VHT_OP_INFO_CH_WIDTH_2040 0
+#define DOT11_ELEM_VHT_OP_INFO_CH_WIDTH_80 1
+#define DOT11_ELEM_VHT_OP_INFO_CH_WIDTH_160_DEPRECATED 2
+#define DOT11_ELEM_VHT_OP_INFO_CH_WIDTH_8080_DEPRECATED 3
+
+struct dot11_elem_he_op_max_cohost {
+    uint8_t indicator;
+} __attribute__((packed));
+
+struct dot11_elem_he_op_6g_info {
+    uint8_t primary_channel;
+    uint8_t control;
+    uint8_t ch_center_freq_seg0;
+    uint8_t ch_center_freq_seg1;
+    uint8_t min_rate;
+} __attribute__((packed));
+
+#define DOT11_ELEM_HE_OP_6G_INFO_CONTROL_CH_WIDTH (BIT(0) | BIT(1))
+#define DOT11_ELEM_HE_OP_6G_INFO_CONTROL_DUP_BEACON (BIT(2))
+#define DOT11_ELEM_HE_OP_6G_INFO_CONTROL_REG_INFO (BIT(3) | BIT(4) | BIT(5))
+
+#define DOT11_ELEM_HE_OP_6G_INFO_CONTROL_CH_WIDTH_20 0
+#define DOT11_ELEM_HE_OP_6G_INFO_CONTROL_CH_WIDTH_40 1
+#define DOT11_ELEM_HE_OP_6G_INFO_CONTROL_CH_WIDTH_80 2
+#define DOT11_ELEM_HE_OP_6G_INFO_CONTROL_CH_WIDTH_160_8080 3
+
+struct dot11_elem_he_op {
+    uint8_t params[3];
+    uint8_t bss_color_info;
+    uint8_t mcs[2];
+    /* optional: struct dot11_elem_vht_op_info */
+    /* optional: struct dot11_elem_he_op_max_cohost */
+    /* optional: struct dot11_elem_he_op_6g_info */
+} __attribute__((packed));
+
+#define DOT11_ELEM_HE_OP_PARAMS_VHT_OP_INFO_PRESENT (BIT(14))
+#define DOT11_ELEM_HE_OP_PARAMS_MAX_COHOST_PRESENT (BIT(15))
+#define DOT11_ELEM_HE_OP_PARAMS_6G_OP_PRESENT (BIT(17))
+
+struct dot11_elem_eht_op_info {
+    uint8_t control;
+    uint8_t ccfs0;
+    uint8_t ccfs1;
+} __attribute__((packed));
+
+#define DOT11_ELEM_EHT_OP_INFO_CONTROL_CH_WIDTH (BIT(0) | BIT(1) | BIT(2))
+#define DOT11_ELEM_EHT_OP_INFO_CONTROL_CH_WIDTH_20 0
+#define DOT11_ELEM_EHT_OP_INFO_CONTROL_CH_WIDTH_40 1
+#define DOT11_ELEM_EHT_OP_INFO_CONTROL_CH_WIDTH_80 2
+#define DOT11_ELEM_EHT_OP_INFO_CONTROL_CH_WIDTH_160 3
+#define DOT11_ELEM_EHT_OP_INFO_CONTROL_CH_WIDTH_320 4
+
+struct dot11_elem_eht_op_subchan {
+    uint8_t bitmap[2];
+} __attribute__((packed));
+
+struct dot11_elem_eht_op {
+    uint8_t params;
+    uint8_t mcs[4];
+    /* optional: struct dot11_elem_eht_op_info */
+    /* optional: struct dot11_elem_eht_op_subchan */
+} __attribute__((packed));
+
+#define DOT11_ELEM_EHT_OP_PARAMS_INFO_PRESENT (BIT(0))
+#define DOT11_ELEM_EHT_OP_PARAMS_SUBCHAN_PRESENT (BIT(1))
+
+static bool
+dot11_elem_eht_op_parse(const void *buf,
+                        size_t buf_len,
+                        const struct dot11_elem_eht_op_info **info,
+                        const struct dot11_elem_eht_op_subchan **subchan)
+{
+    *info = NULL;
+    *subchan = NULL;
+
+    const struct dot11_elem_eht_op *eht_op = buf;
+    size_t left = buf_len;
+    if (left < sizeof(*eht_op)) return false;
+
+    const void *tail = eht_op + 1;
+    left -= sizeof(*eht_op);
+
+    const uint32_t params = eht_op->params;
+
+    if (FIELD_GET(DOT11_ELEM_EHT_OP_PARAMS_INFO_PRESENT, params)) {
+        if (left < sizeof(**info)) return false;
+        *info = tail;
+        tail += sizeof(**info);
+        left -= sizeof(**info);
+
+        if (FIELD_GET(DOT11_ELEM_EHT_OP_PARAMS_SUBCHAN_PRESENT, params)) {
+            if (left < sizeof(**subchan)) return false;
+            *subchan = tail;
+            tail += sizeof(**subchan);
+            left -= sizeof(**subchan);
+        }
+    }
+
+    return true;
+}
+
+static bool
+dot11_elem_he_op_parse(const void *buf,
+                       size_t buf_len,
+                       const struct dot11_elem_vht_op_info **vht_op_info,
+                       const struct dot11_elem_he_op_max_cohost **max_cohost,
+                       const struct dot11_elem_he_op_6g_info **band_6g_info)
+{
+    *vht_op_info = NULL;
+    *max_cohost = NULL;
+    *band_6g_info = NULL;
+
+    const struct dot11_elem_he_op *he_op = buf;
+    size_t left = buf_len;
+    if (left < sizeof(*he_op)) return false;
+
+    const void *tail = he_op + 1;
+    left -= sizeof(*he_op);
+    const uint32_t params = BYTES_LE24(he_op->params);
+
+    if (FIELD_GET(DOT11_ELEM_HE_OP_PARAMS_VHT_OP_INFO_PRESENT, params)) {
+        if (left < sizeof(**vht_op_info)) return false;
+        *vht_op_info = tail;
+        tail += sizeof(**vht_op_info);
+        left -= sizeof(**vht_op_info);
+    }
+
+    if (FIELD_GET(DOT11_ELEM_HE_OP_PARAMS_MAX_COHOST_PRESENT, params)) {
+        if (left < sizeof(**max_cohost)) return false;
+        *max_cohost = tail;
+        tail += sizeof(**max_cohost);
+        left -= sizeof(**max_cohost);
+    }
+
+    if (FIELD_GET(DOT11_ELEM_HE_OP_PARAMS_6G_OP_PRESENT, params)) {
+        if (left < sizeof(**band_6g_info)) return false;
+        *band_6g_info = tail;
+        tail += sizeof(**band_6g_info);
+        left -= sizeof(**band_6g_info);
+    }
+
+    return true;
+}
 
 unsigned int
 osw_ht_mcs_idx_to_nss(const unsigned int mcs_idx)
@@ -184,6 +391,7 @@ osw_assoc_req_to_max_chwidth(const struct osw_assoc_req_info *info)
     enum osw_channel_width ht_max_chwidth = OSW_CHANNEL_20MHZ;
     enum osw_channel_width vht_max_chwidth = OSW_CHANNEL_20MHZ;
     enum osw_channel_width he_max_chwidth = OSW_CHANNEL_20MHZ;
+    const enum osw_channel_width eht_max_chwidth = info->eht_cap_chwidth;
     const bool is_2ghz = osw_assoc_req_is_2ghz(info);
 
     if (info->ht_caps_present == true) {
@@ -210,6 +418,7 @@ osw_assoc_req_to_max_chwidth(const struct osw_assoc_req_info *info)
     if (ht_max_chwidth > max_chwidth) max_chwidth = ht_max_chwidth;
     if (vht_max_chwidth > max_chwidth) max_chwidth = vht_max_chwidth;
     if (he_max_chwidth > max_chwidth) max_chwidth = he_max_chwidth;
+    if (eht_max_chwidth > max_chwidth) max_chwidth = eht_max_chwidth;
     return max_chwidth;
 }
 
@@ -220,6 +429,7 @@ osw_assoc_req_to_max_nss(const struct osw_assoc_req_info *info)
     unsigned int ht_max_nss = 0;
     unsigned int vht_max_nss = 0;
     unsigned int he_max_nss = 0;
+    const unsigned int eht_max_nss = info->eht_cap_nss;
 
     if (info->ht_caps_present == true) {
         unsigned int i;
@@ -254,6 +464,7 @@ osw_assoc_req_to_max_nss(const struct osw_assoc_req_info *info)
     if (ht_max_nss > max_streams) max_streams = ht_max_nss;
     if (vht_max_nss > max_streams) max_streams = vht_max_nss;
     if (he_max_nss > max_streams) max_streams = he_max_nss;
+    if (eht_max_nss > max_streams) max_streams = eht_max_nss;
     return max_streams;
 }
 
@@ -264,6 +475,7 @@ osw_assoc_req_to_max_mcs(const struct osw_assoc_req_info *info)
     unsigned int ht_max_mcs = 0;
     unsigned int vht_max_mcs = 0;
     unsigned int he_max_mcs = 0;
+    const unsigned int eht_max_mcs = info->eht_cap_mcs;
 
     if (info->ht_caps_present == true) {
         unsigned int i;
@@ -298,6 +510,7 @@ osw_assoc_req_to_max_mcs(const struct osw_assoc_req_info *info)
     if (ht_max_mcs > max_mcs) max_mcs = ht_max_mcs;
     if (vht_max_mcs > max_mcs) max_mcs = vht_max_mcs;
     if (he_max_mcs > max_mcs) max_mcs = he_max_mcs;
+    if (eht_max_mcs > max_mcs) max_mcs = eht_max_mcs;
     return max_mcs;
 }
 
@@ -452,6 +665,217 @@ osw_parse_he_caps(const struct element *elem,
    }
 }
 
+static void
+osw_parse_eht_cap(struct osw_assoc_req_info *info,
+                  const bool is_2ghz,
+                  const bool is_non_ap,
+                  const uint8_t *he_cap,
+                  const uint8_t *eht_cap,
+                  size_t he_cap_len,
+                  size_t eht_cap_len)
+{
+    const bool non_eht_sta = (eht_cap == NULL);
+    if (non_eht_sta) return;
+
+    /* Note: 802.11be Draft 1.0 uses wording "20MHz-only
+     * STA" but 802.11be Draft 3.0 uses "20MHz-only non-AP
+     * STA". This means this is not backward compatible and
+     * can't be made so. If a buggy encoding is seen in the
+     * wild it's probably because of using a pre-802.11be
+     * Draft-3.0 wirelss stack.
+     */
+
+    if (eht_cap_len < (2 + 4)) return;
+    const uint32_t eht_phy_cap0 = DOT11_AS_LE32(eht_cap + 2);
+
+    if (he_cap_len < 7) return;
+    const uint16_t he_phy_info0 = he_cap[6];
+
+    const bool is_not_2ghz = (is_2ghz == false);
+    const bool is_eht_phy_cap_320mhz = !!(eht_phy_cap0 & DOT11_EXT_EHT_CAP_PHY_320MHZ);
+    const bool is_2ghz_40mhz = (is_2ghz && !!(he_phy_info0 & DOT11_EXT_HE_CAPS_PHY_2GHZ_40));
+    const bool is_2ghz_20mhz_only = (is_2ghz && !(he_phy_info0 & DOT11_EXT_HE_CAPS_PHY_2GHZ_40));
+    const bool is_5_6ghz_40_80mhz = (is_not_2ghz && !!(he_phy_info0 & DOT11_EXT_HE_CAPS_PHY_40_80));
+    const bool is_5_6ghz_160mhz = (is_not_2ghz && !!(he_phy_info0 & DOT11_EXT_HE_CAPS_PHY_160));
+    const bool is_5_6ghz_160_8080mhz = (is_not_2ghz && !!(he_phy_info0 & DOT11_EXT_HE_CAPS_PHY_160_8080));
+    const bool is_5_6ghz_20mhz_only = is_5_6ghz_40_80mhz
+                                   || is_5_6ghz_160mhz
+                                   || is_5_6ghz_160_8080mhz;
+
+    const bool is_mcs_20only_non_ap = (is_2ghz_20mhz_only || is_5_6ghz_20mhz_only);
+    const bool is_mcs_80 = is_non_ap
+                         ? is_2ghz_40mhz
+                         : true; /* AP always has it */
+    const bool is_mcs_160 = is_5_6ghz_160mhz;
+    const bool is_mcs_320 = is_eht_phy_cap_320mhz;
+
+    const uint8_t *mcs_set = eht_cap
+                       + DOT11_EXT_EHT_CAP_MAC_LEN
+                       + DOT11_EXT_EHT_CAP_PHY_LEN;
+    size_t len = eht_cap_len;
+
+    const uint8_t *mcs_20only_non_ap = NULL;
+    if (is_mcs_20only_non_ap) {
+        if (len < 4) return;
+
+        mcs_20only_non_ap = mcs_set;
+        mcs_set += 4;
+        len -= 4;
+    }
+
+    const uint8_t *mcs_80 = NULL;
+    if (is_mcs_80) {
+        if (len < 3) return;
+
+        mcs_80 = mcs_set;
+        mcs_set += 3;
+        len -= 3;
+    }
+
+    const uint8_t *mcs_160 = NULL;
+    if (is_mcs_160) {
+        if (len < 3) return;
+
+        mcs_160 = mcs_set;
+        mcs_set += 3;
+        len -= 3;
+    }
+
+    const uint8_t *mcs_320 = NULL;
+    if (is_mcs_320) {
+        if (len < 3) return;
+
+        mcs_320 = mcs_set;
+        mcs_set += 3;
+        len -= 3;
+    }
+
+    uint8_t max_mcs = 0;
+    uint8_t max_nss = 0;
+    enum osw_channel_width max_chwidth = OSW_CHANNEL_20MHZ;
+
+    const uint8_t mcs[] = {
+        mcs_20only_non_ap && mcs_20only_non_ap[0] ? 7 : 0,
+        mcs_20only_non_ap && mcs_20only_non_ap[1] ? 9 : 0,
+        mcs_20only_non_ap && mcs_20only_non_ap[2] ? 11 : 0,
+        mcs_20only_non_ap && mcs_20only_non_ap[3] ? 13 : 0,
+
+        mcs_80 && mcs_80[0] ? 9 : 0,
+        mcs_80 && mcs_80[1] ? 11 : 0,
+        mcs_80 && mcs_80[2] ? 13 : 0,
+
+        mcs_160 && mcs_160[0] ? 9 : 0,
+        mcs_160 && mcs_160[1] ? 11 : 0,
+        mcs_160 && mcs_160[2] ? 13 : 0,
+
+        mcs_320 && mcs_320[0] ? 9 : 0,
+        mcs_320 && mcs_320[1] ? 11 : 0,
+        mcs_320 && mcs_320[2] ? 13 : 0,
+    };
+
+    const uint8_t nss[] = {
+        mcs_20only_non_ap ? mcs_20only_non_ap[0] >> 0 : 0,
+        mcs_20only_non_ap ? mcs_20only_non_ap[0] >> 4 : 0,
+        mcs_20only_non_ap ? mcs_20only_non_ap[1] >> 0 : 0,
+        mcs_20only_non_ap ? mcs_20only_non_ap[1] >> 4 : 0,
+        mcs_20only_non_ap ? mcs_20only_non_ap[2] >> 0 : 0,
+        mcs_20only_non_ap ? mcs_20only_non_ap[2] >> 4 : 0,
+        mcs_20only_non_ap ? mcs_20only_non_ap[3] >> 0 : 0,
+        mcs_20only_non_ap ? mcs_20only_non_ap[3] >> 4 : 0,
+
+        mcs_80 ? mcs_80[0] >> 0 : 0,
+        mcs_80 ? mcs_80[0] >> 4 : 0,
+        mcs_80 ? mcs_80[1] >> 0 : 0,
+        mcs_80 ? mcs_80[1] >> 4 : 0,
+        mcs_80 ? mcs_80[2] >> 0 : 0,
+        mcs_80 ? mcs_80[2] >> 4 : 0,
+
+        mcs_160 ? mcs_160[0] >> 0 : 0,
+        mcs_160 ? mcs_160[0] >> 4 : 0,
+        mcs_160 ? mcs_160[1] >> 0 : 0,
+        mcs_160 ? mcs_160[1] >> 4 : 0,
+        mcs_160 ? mcs_160[2] >> 0 : 0,
+        mcs_160 ? mcs_160[2] >> 4 : 0,
+
+        mcs_320 ? mcs_320[0] >> 0 : 0,
+        mcs_320 ? mcs_320[0] >> 4 : 0,
+        mcs_320 ? mcs_320[1] >> 0 : 0,
+        mcs_320 ? mcs_320[1] >> 4 : 0,
+        mcs_320 ? mcs_320[2] >> 0 : 0,
+        mcs_320 ? mcs_320[2] >> 4 : 0,
+    };
+
+    size_t i;
+
+    for (i = 0; i < ARRAY_SIZE(mcs); i++) {
+        if (mcs[i] > max_mcs) {
+            max_mcs = mcs[i];
+        }
+    }
+
+    for (i = 0; i < ARRAY_SIZE(nss); i++) {
+        if (nss[i] > max_nss) {
+            max_nss = nss[i];
+        }
+    }
+
+    if (is_eht_phy_cap_320mhz) {
+        max_chwidth = OSW_CHANNEL_320MHZ;
+    }
+
+
+    info->eht_cap_mcs = max_mcs;
+    info->eht_cap_nss = max_nss;
+    info->eht_cap_chwidth = max_chwidth;
+}
+
+static void
+osw_parse_eht_op(struct osw_assoc_req_info *info,
+                 const uint8_t *eht_op,
+                 size_t eht_op_len)
+{
+    const bool eht_op_is_not_present = (eht_op == NULL);
+    if (eht_op_is_not_present) return;
+
+    if (eht_op_len < 1) return;
+    const uint8_t eht_op_params = eht_op[0];
+    eht_op += 1;
+    eht_op_len -= 1;
+
+    if (eht_op_len < 4) return;
+    const uint8_t *eht_basic_mcs = eht_op;
+    eht_op += 4;
+    eht_op_len -= 4;
+
+    (void)eht_basic_mcs;
+
+    const bool eht_op_info_present = (eht_op_params & DOT11_EXT_EHT_OP_INFO);
+    if (eht_op_info_present) {
+        if (eht_op_len < 3) return;
+        const uint8_t control = eht_op[0];
+        const uint8_t ccfs0 = eht_op[1];
+        const uint8_t ccfs1 = eht_op[2];
+        eht_op += 3;
+        eht_op_len -= 3;
+
+        const uint8_t eht_op_width = control & DOT11_EXT_EHT_OP_INFO_CTL_WIDTH;
+        enum osw_channel_width width = OSW_CHANNEL_20MHZ;
+        switch (eht_op_width) {
+            case 0: width = OSW_CHANNEL_20MHZ; break;
+            case 1: width = OSW_CHANNEL_40MHZ; break;
+            case 2: width = OSW_CHANNEL_80MHZ; break;
+            case 3: width = OSW_CHANNEL_160MHZ; break;
+            case 4: width = OSW_CHANNEL_320MHZ; break;
+        }
+
+        info->eht_op_chwidth_present = true;
+        info->eht_op_chwidth = width;
+
+        (void)ccfs0;
+        (void)ccfs1;
+    }
+}
+
 bool
 osw_parse_assoc_req_ies(const void *assoc_req_ies,
                         size_t assoc_req_ies_len,
@@ -469,6 +893,13 @@ osw_parse_assoc_req_ies(const void *assoc_req_ies,
     memset(info, 0, sizeof(*info));
     ies = assoc_req_ies;
     len = assoc_req_ies_len;
+
+    const uint8_t *he_cap = NULL;
+    const uint8_t *eht_op = NULL;
+    const uint8_t *eht_cap = NULL;
+    uint8_t he_cap_len = 0;
+    uint8_t eht_op_len = 0;
+    uint8_t eht_cap_len = 0;
 
     for_each_ie(elem, ies, len) {
         switch(elem->id) {
@@ -504,13 +935,320 @@ osw_parse_assoc_req_ies(const void *assoc_req_ies,
                                    info);
                 break;
             case DOT11_ELEM_ID_EXT:
+                if (elem->datalen < 1) break;
+                const uint8_t ext_id = elem->data[0];
+                const uint8_t *data = &elem->data[1];
+                const uint8_t datalen = elem->datalen - 1;
+
                 osw_parse_he_caps(elem,
                                   info);
+
+                switch (ext_id) {
+                    case DOT11_EXT_HE_CAPS:
+                        he_cap = data;
+                        he_cap_len = datalen;
+                        break;
+                    case DOT11_EXT_EHT_OP:
+                        eht_op = data;
+                        eht_op_len = datalen;
+                        break;
+                    case DOT11_EXT_EHT_CAP:
+                        eht_cap = data;
+                        eht_cap_len = datalen;
+                        break;
+                }
                 break;
         }
     }
 
+    const bool is_2ghz = osw_assoc_req_is_2ghz(info);
+    const bool is_non_ap = false; /* fixme */
+
+    osw_parse_eht_cap(info, is_2ghz, is_non_ap, he_cap, eht_cap, he_cap_len, eht_cap_len);
+    osw_parse_eht_op(info, eht_op, eht_op_len);
+
+    /* FIXME:
+     *  - add ccfs support?
+     *  - add non-AP / AP input config
+     *  - add 2/5/6ghz input optional config
+     *  - rework parsing to collect+comprehend instead of
+     *    applying comprehension on subsequent _get_foo()
+     *    calls
+     */
+
     return true;
+}
+
+void
+osw_parsed_ies_from_buf(struct osw_parsed_ies *parsed,
+                        const void *buf,
+                        size_t buf_len)
+{
+    const struct element *elem;
+    for_each_ie (elem, buf, buf_len) {
+        switch (elem->id) {
+            default:
+                parsed->base[elem->id].datalen = elem->datalen;
+                parsed->base[elem->id].data = elem->data;
+                break;
+            case DOT11_ELEM_ID_EXT:
+                if (elem->datalen < 1) break;
+                const uint8_t ext_id = elem->data[0];
+                const uint8_t *data = &elem->data[1];
+                const uint8_t datalen = elem->datalen - 1;
+                parsed->ext[ext_id].datalen = datalen;
+                parsed->ext[ext_id].data = data;
+                break;
+        }
+    }
+}
+
+const struct osw_channel *
+osw_channel_select_wider(const struct osw_channel *a,
+                         const struct osw_channel *b)
+{
+    if (a->control_freq_mhz == 0) return b;
+    if (b->control_freq_mhz == 0) return a;
+    return (a->width > b->width) ? a : b;
+}
+
+void
+osw_parsed_ies_get_channels(const struct osw_parsed_ies *parsed,
+                            struct osw_channel *non_ht_channel,
+                            struct osw_channel *ht_channel,
+                            struct osw_channel *vht_channel,
+                            struct osw_channel *he_channel,
+                            struct osw_channel *eht_channel)
+{
+    enum osw_band opband = OSW_BAND_UNDEFINED;
+
+    if (parsed->base[DOT11_SUPPORTED_OP_CLASSES].data != NULL &&
+        parsed->base[DOT11_SUPPORTED_OP_CLASSES].datalen >= 1) {
+        const struct dot11_elem_supp_op_class *op_classes = parsed->base[DOT11_SUPPORTED_OP_CLASSES].data;
+        opband = osw_op_class_to_band(op_classes->current_op_class);
+    }
+
+    if (parsed->base[DOT11_EID_DSSS].data != NULL &&
+        parsed->base[DOT11_EID_DSSS].datalen >= sizeof(struct dot11_elem_dsss)) {
+        const struct dot11_elem_dsss *dsss = parsed->base[DOT11_EID_DSSS].data;
+        const uint8_t chan = dsss->chan;
+        const enum osw_band band = opband ?: (chan >= 30)
+                                 ? OSW_BAND_5GHZ
+                                 : OSW_BAND_2GHZ;
+        const int freq = osw_chan_to_freq(band, chan);
+        if (non_ht_channel != NULL) {
+            MEMZERO(*non_ht_channel);
+            non_ht_channel->control_freq_mhz = freq;
+            non_ht_channel->center_freq0_mhz = freq;
+            non_ht_channel->center_freq1_mhz = 0;
+            non_ht_channel->width = OSW_CHANNEL_20MHZ;
+        }
+    }
+
+    if (parsed->base[DOT11_EID_HT_OP].data != NULL &&
+        parsed->base[DOT11_EID_HT_OP].datalen >= sizeof(struct dot11_elem_ht_op)) {
+        const struct dot11_elem_ht_op *ht_op = parsed->base[DOT11_EID_HT_OP].data;
+        const uint8_t chan = ht_op->primary_chan;
+        const uint8_t sta_ch_width = FIELD_GET(DOT11_ELEM_HT_OP_INFO0_STA_CH_WIDTH,
+                                               ht_op->info[0]);
+        const uint8_t sec_ch_off = sta_ch_width
+                                 ? FIELD_GET(DOT11_ELEM_HT_OP_INFO0_SEC_CH_OFF,
+                                             ht_op->info[0])
+                                 : DOT11_ELEM_HT_OP_SEC_CH_OFF_SCN;
+        const enum osw_band band = opband ?: (chan >= 30)
+                                 ? OSW_BAND_5GHZ
+                                 : OSW_BAND_2GHZ;
+        const int freq = osw_chan_to_freq(band, chan);
+        if (ht_channel != NULL) {
+            ht_channel->control_freq_mhz = freq;
+            ht_channel->center_freq1_mhz = 0;
+
+            switch (sec_ch_off) {
+                case DOT11_ELEM_HT_OP_SEC_CH_OFF_SCA:
+                    ht_channel->center_freq0_mhz = freq + 10;
+                    ht_channel->width = OSW_CHANNEL_40MHZ;
+                    break;
+                case DOT11_ELEM_HT_OP_SEC_CH_OFF_SCB:
+                    ht_channel->center_freq0_mhz = freq - 10;
+                    ht_channel->width = OSW_CHANNEL_40MHZ;
+                    break;
+                case DOT11_ELEM_HT_OP_SEC_CH_OFF_SCN:
+                    ht_channel->center_freq0_mhz = freq;
+                    ht_channel->width = OSW_CHANNEL_20MHZ;
+                    break;
+            }
+        }
+    }
+
+    if (parsed->base[DOT11_EID_VHT_OP].data != NULL &&
+        parsed->base[DOT11_EID_VHT_OP].datalen >= sizeof(struct dot11_elem_vht_op)) {
+        const struct dot11_elem_vht_op *vht_op = parsed->base[DOT11_EID_VHT_OP].data;
+
+        if (vht_channel != NULL) {
+            if (ht_channel != NULL) {
+                const enum osw_band band = OSW_BAND_5GHZ;
+                const int seg0 = osw_chan_to_freq(band, vht_op->info.ch_center_freq_seg0);
+                const int seg1 = osw_chan_to_freq(band, vht_op->info.ch_center_freq_seg1);
+                const int diff = seg0 > seg1 ? (seg0 - seg1) : (seg1 - seg0);
+
+                vht_channel->control_freq_mhz = ht_channel->control_freq_mhz
+                                             ?: non_ht_channel->control_freq_mhz;
+
+                switch (vht_op->info.ch_width) {
+                    case DOT11_ELEM_VHT_OP_INFO_CH_WIDTH_2040:
+                        vht_channel->width = ht_channel->width;
+                        vht_channel->center_freq0_mhz = ht_channel->center_freq0_mhz;
+                        vht_channel->center_freq1_mhz = 0;
+                        break;
+                    case DOT11_ELEM_VHT_OP_INFO_CH_WIDTH_80:
+                        if (vht_op->info.ch_center_freq_seg1 == 0) {
+                            vht_channel->width = OSW_CHANNEL_80MHZ;
+                            vht_channel->center_freq0_mhz = seg0;
+                            vht_channel->center_freq1_mhz = 0;
+                        }
+                        else if (diff == 40) {
+                            vht_channel->width = OSW_CHANNEL_160MHZ;
+                            vht_channel->center_freq0_mhz = seg1;
+                            vht_channel->center_freq1_mhz = 0;
+                        }
+                        else {
+                            vht_channel->width = OSW_CHANNEL_80P80MHZ;
+                            vht_channel->center_freq0_mhz = seg0;
+                            vht_channel->center_freq1_mhz = seg1;
+                        }
+                        break;
+                    case DOT11_ELEM_VHT_OP_INFO_CH_WIDTH_160_DEPRECATED:
+                        vht_channel->width = OSW_CHANNEL_160MHZ;
+                        vht_channel->center_freq0_mhz = seg0;
+                        break;
+                    case DOT11_ELEM_VHT_OP_INFO_CH_WIDTH_8080_DEPRECATED:
+                        vht_channel->width = OSW_CHANNEL_80P80MHZ;
+                        vht_channel->center_freq0_mhz = seg0;
+                        vht_channel->center_freq1_mhz = seg1;
+                        break;
+                }
+            }
+        }
+    }
+
+    if (parsed->ext[DOT11_EID_EXT_HE_OP].data != NULL &&
+        parsed->ext[DOT11_EID_EXT_HE_OP].datalen >= sizeof(struct dot11_elem_he_op)) {
+        const struct dot11_elem_vht_op_info *vht_op_info;
+        const struct dot11_elem_he_op_max_cohost *max_cohost;
+        const struct dot11_elem_he_op_6g_info *band_6g_info;
+        const bool ok = dot11_elem_he_op_parse(parsed->ext[DOT11_EID_EXT_HE_OP].data,
+                                               parsed->ext[DOT11_EID_EXT_HE_OP].datalen,
+                                               &vht_op_info,
+                                               &max_cohost,
+                                               &band_6g_info);
+        if (ok && he_channel != NULL) {
+            if (band_6g_info != NULL) {
+                const int chan = band_6g_info->primary_channel;
+                const int freq = osw_chan_to_freq(OSW_BAND_6GHZ, chan);
+                const int seg0 = osw_chan_to_freq(OSW_BAND_6GHZ, band_6g_info->ch_center_freq_seg0);
+                const int seg1 = osw_chan_to_freq(OSW_BAND_6GHZ, band_6g_info->ch_center_freq_seg1);
+                const int diff = seg0 > seg1 ? (seg0 - seg1) : (seg1 - seg0);
+                const int width = FIELD_GET(DOT11_ELEM_HE_OP_6G_INFO_CONTROL_CH_WIDTH,
+                                            band_6g_info->control);
+
+                he_channel->control_freq_mhz = freq;
+
+                switch (width) {
+                    case DOT11_ELEM_HE_OP_6G_INFO_CONTROL_CH_WIDTH_20:
+                        he_channel->width = OSW_CHANNEL_20MHZ;
+                        he_channel->center_freq0_mhz = freq;
+                        break;
+                    case DOT11_ELEM_HE_OP_6G_INFO_CONTROL_CH_WIDTH_40:
+                        he_channel->width = OSW_CHANNEL_40MHZ;
+                        he_channel->center_freq0_mhz = seg0;
+                        he_channel->center_freq1_mhz = 0;
+                        break;
+                    case DOT11_ELEM_HE_OP_6G_INFO_CONTROL_CH_WIDTH_80:
+                        he_channel->width = OSW_CHANNEL_80MHZ;
+                        he_channel->center_freq0_mhz = seg0;
+                        he_channel->center_freq1_mhz = 0;
+                        break;
+                    case DOT11_ELEM_HE_OP_6G_INFO_CONTROL_CH_WIDTH_160_8080:
+                        switch (diff) {
+                            case 40:
+                                he_channel->width = OSW_CHANNEL_160MHZ;
+                                he_channel->center_freq0_mhz = seg1;
+                                he_channel->center_freq1_mhz = 0;
+                                break;
+                            case 80:
+                                he_channel->width = OSW_CHANNEL_80P80MHZ;
+                                he_channel->center_freq0_mhz = seg0;
+                                he_channel->center_freq1_mhz = seg1;
+                                break;
+                        }
+                        break;
+
+                }
+            }
+        }
+    }
+
+    if (parsed->ext[DOT11_EID_EXT_EHT_OP].data != NULL &&
+        parsed->ext[DOT11_EID_EXT_EHT_OP].datalen >= sizeof(struct dot11_elem_eht_op)) {
+        const struct dot11_elem_eht_op_info *info;
+        const struct dot11_elem_eht_op_subchan *subchan;
+        const bool ok = dot11_elem_eht_op_parse(parsed->ext[DOT11_EID_EXT_EHT_OP].data,
+                                                parsed->ext[DOT11_EID_EXT_EHT_OP].datalen,
+                                                &info,
+                                                &subchan);
+        if (ok && eht_channel != NULL) {
+            if (info != NULL) {
+                /* Technically 320MHz is defined for 6GHz only, so EHT
+                 * Op should appear only there in practice as either
+                 * HE Op can express 160MHz already, or HT/VHT will be
+                 * present on 2.4G and 5G. However, to play it safe
+                 * against vendor extensions, be careful and don't
+                 * assume the band to be 6GHz.
+                 */
+                const enum osw_band band = osw_freq_to_band(non_ht_channel->control_freq_mhz ?:
+                                                            ht_channel->control_freq_mhz ?:
+                                                            vht_channel->control_freq_mhz ?:
+                                                            he_channel->control_freq_mhz);
+                const int width = FIELD_GET(DOT11_ELEM_EHT_OP_INFO_CONTROL_CH_WIDTH,
+                                            info->control);
+                const int seg0 = osw_chan_to_freq(band, info->ccfs0);
+                const int seg1 = osw_chan_to_freq(band, info->ccfs1);
+
+                eht_channel->control_freq_mhz = he_channel->control_freq_mhz
+                                             ?: vht_channel->control_freq_mhz
+                                             ?: ht_channel->control_freq_mhz
+                                             ?: non_ht_channel->control_freq_mhz;
+
+                switch (width) {
+                    case DOT11_ELEM_EHT_OP_INFO_CONTROL_CH_WIDTH_20:
+                        eht_channel->width = OSW_CHANNEL_20MHZ;
+                        eht_channel->center_freq0_mhz = seg0;
+                        eht_channel->center_freq1_mhz = 0;
+                        break;
+                    case DOT11_ELEM_EHT_OP_INFO_CONTROL_CH_WIDTH_40:
+                        eht_channel->width = OSW_CHANNEL_40MHZ;
+                        eht_channel->center_freq0_mhz = seg0;
+                        eht_channel->center_freq1_mhz = 0;
+                        break;
+                    case DOT11_ELEM_EHT_OP_INFO_CONTROL_CH_WIDTH_80:
+                        eht_channel->width = OSW_CHANNEL_80MHZ;
+                        eht_channel->center_freq0_mhz = seg0;
+                        eht_channel->center_freq1_mhz = 0;
+                        break;
+                    case DOT11_ELEM_EHT_OP_INFO_CONTROL_CH_WIDTH_160:
+                        eht_channel->width = OSW_CHANNEL_160MHZ;
+                        eht_channel->center_freq0_mhz = seg1;
+                        eht_channel->center_freq1_mhz = 0;
+                        break;
+                    case DOT11_ELEM_EHT_OP_INFO_CONTROL_CH_WIDTH_320:
+                        eht_channel->width = OSW_CHANNEL_320MHZ;
+                        eht_channel->center_freq0_mhz = seg1;
+                        eht_channel->center_freq1_mhz = 0;
+                        break;
+                }
+            }
+        }
+    }
 }
 
 double

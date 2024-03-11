@@ -1,0 +1,19 @@
+menuconfig MANAGER_TPSM
+    bool "3rd-Party Manager (TPSM)"
+    default y
+
+if MANAGER_TPSM
+    config MANAGER_TPSM_CFG
+        string "TPSM Startup configuration"
+        default "tpsm;true;needs_plan_b=false"
+        help
+            Third-party Manager startup configuration
+
+    config TPSM_PID_PATH
+        string "Path to the PID folder"
+        default "/tmp/tmpid"
+        help
+            This is the folder where PID files of the started processes will
+            be stored. The files will be named [MANAGER_NAME].pid
+
+endif

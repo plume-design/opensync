@@ -100,6 +100,7 @@ struct execsh_async
     ev_io                   esa_stdout_ev;
     ev_io                   esa_stderr_ev;
     int                     esa_exit_code;
+    bool                    esa_stop_requested;
 };
 
 /*

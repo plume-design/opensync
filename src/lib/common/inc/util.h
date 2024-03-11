@@ -33,6 +33,12 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <assert.h>
 
 #include "memutil.h"
+#include "const.h"
+
+#ifndef strdupa
+/* In case some libc do not provide strdupa support */
+#define strdupa(x) strcpy(alloca(strlen(x)+1), x)
+#endif
 
 #define IGNORE_VALUE(a) do { (void)(a); } while (0)
 
@@ -49,6 +55,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
     __typeof__ (b) _b = (b); \
     _a > _b ? _a : _b; })
 #endif
+
+#define FMT_int(x)  (__FMT_int((char[C_INT32_LEN]){0}, C_INT32_LEN, &x))
+char *__FMT_int(char *buf, size_t size, int *value);
 
 int bin2hex(const unsigned char *in, size_t in_size, char *out, size_t out_size);
 ssize_t hex2bin(const char *in, size_t in_size, unsigned char *out, size_t out_size);
@@ -190,5 +199,16 @@ int chanlist_to_center(const int *chans);
 bool is_private_ip(char *ip_str);
 char *str_replace_with(const char *str, const char *from, const char *to);
 int str_replace_fixed(char *str, int size, const char *from, const char *to);
+
+/**
+ * Check if all bytes in a memory region are equal to the specified value
+ *
+ * @param[in] buffer     Pointer to the block of memory to check. Must not be NULL.
+ * @param[in] value      Value to compare against (interpreted as an unsigned char).
+ * @param[in] num_bytes  Number of bytes to compare.
+ *
+ * @return true if all `num_bytes` bytes in the `buffer` are equal to the specified `value`, false otherwise
+ */
+bool memcmp_b(const void *buffer, int value, size_t num_bytes);
 
 #endif /* UTIL_H_INCLUDED */

@@ -48,13 +48,13 @@ struct osw_rrm_ut_process_multi_report_ctx {
 };
 
 static void
-osw_rrm_ut_typical_usage_req_status_cb(struct osw_rrm_desc_observer *observer,
+osw_rrm_ut_typical_usage_req_status_cb(void *priv,
                                        enum osw_rrm_radio_status status,
                                        const uint8_t *dialog_token,
                                        const uint8_t *meas_token,
                                        const struct osw_rrm_radio_meas_req *radio_meas_req)
 {
-    struct osw_rrm_ut_typical_usage_ctx *ctx = container_of(observer, struct osw_rrm_ut_typical_usage_ctx, observer);
+    struct osw_rrm_ut_typical_usage_ctx *ctx = priv;
 
     OSW_UT_EVAL(dialog_token != NULL);
     OSW_UT_EVAL(*dialog_token >= 1);
@@ -146,7 +146,7 @@ OSW_UT(osw_rrm_ut_build_multi_req_frame) {
         .name = "osw_rrm_ut",
         .radio_meas_req_status_fn = NULL,
     };
-    struct osw_rrm_desc *desc = osw_rrm_get_desc(&rrm, &sta_addr, &observer);
+    struct osw_rrm_desc *desc = osw_rrm_get_desc(&rrm, &sta_addr, &observer, NULL);
     OSW_UT_EVAL(desc != NULL);
 
     bool result = false;
@@ -217,7 +217,7 @@ OSW_UT(osw_rrm_ut_build_single_req_frame) {
         .name = "osw_rrm_ut",
         .radio_meas_req_status_fn = NULL,
     };
-    struct osw_rrm_desc *desc = osw_rrm_get_desc(&rrm, &sta_addr, &observer);
+    struct osw_rrm_desc *desc = osw_rrm_get_desc(&rrm, &sta_addr, &observer, NULL);
     OSW_UT_EVAL(desc != NULL);
 
     bool result = false;
@@ -371,7 +371,7 @@ OSW_UT(osw_rrm_ut_typical_usage) {
     ctx_a.observer.name = "osw_rrm_ut";
     ctx_a.observer.radio_meas_req_status_fn = osw_rrm_ut_typical_usage_req_status_cb;
 
-    struct osw_rrm_desc *desc_a = osw_rrm_get_desc(&rrm, &sta_addr, &ctx_a.observer);
+    struct osw_rrm_desc *desc_a = osw_rrm_get_desc(&rrm, &sta_addr, &ctx_a.observer, &ctx_a);
     OSW_UT_EVAL(desc_a != NULL);
 
     struct osw_rrm_ut_typical_usage_ctx ctx_b;
@@ -379,7 +379,7 @@ OSW_UT(osw_rrm_ut_typical_usage) {
     ctx_b.observer.name = "osw_rrm_ut";
     ctx_b.observer.radio_meas_req_status_fn = osw_rrm_ut_typical_usage_req_status_cb;
 
-    struct osw_rrm_desc *desc_b = osw_rrm_get_desc(&rrm, &sta_addr, &ctx_b.observer);
+    struct osw_rrm_desc *desc_b = osw_rrm_get_desc(&rrm, &sta_addr, &ctx_b.observer, &ctx_b);
     OSW_UT_EVAL(desc_b != NULL);
 
     struct osw_rrm_sta *sta = osw_rrm_get_sta(&rrm, &sta_addr);

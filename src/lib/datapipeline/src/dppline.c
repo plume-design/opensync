@@ -1199,6 +1199,10 @@ static void dppline_add_stat_client(Sts__Report *r, dppline_stats_t *s)
         dpp_mac_to_str(rec->info.mac, dr->mac_address);
         size += MACADDR_STR_LEN;
 
+        dr->mld_address = MALLOC(MACADDR_STR_LEN);
+        dpp_mac_to_str(rec->info.mld_addr, dr->mld_address);
+        size += MACADDR_STR_LEN;
+
         dr->ssid = strdup(rec->info.essid);
         size += strlen(rec->info.essid) + 1;
 
@@ -1446,72 +1450,98 @@ static void dppline_add_stat_device(Sts__Report *r, dppline_stats_t *s)
     sr->timestamp_ms = device->timestamp_ms;
     sr->has_timestamp_ms = true;
 
-    sr->load = MALLOC(sizeof(*sr->load));
-    sts__device__load_avg__init(sr->load);
-    sr->load->one = device->record.load[DPP_DEVICE_LOAD_AVG_ONE];
-    sr->load->has_one = true;
-    sr->load->five = device->record.load[DPP_DEVICE_LOAD_AVG_FIVE];
-    sr->load->has_five = true;
-    sr->load->fifteen = device->record.load[DPP_DEVICE_LOAD_AVG_FIFTEEN];
-    sr->load->has_fifteen = true;
+    if (device->record.populated) {
+        sr->load = MALLOC(sizeof(*sr->load));
+        sts__device__load_avg__init(sr->load);
+        sr->load->one = device->record.load[DPP_DEVICE_LOAD_AVG_ONE];
+        sr->load->has_one = true;
+        sr->load->five = device->record.load[DPP_DEVICE_LOAD_AVG_FIVE];
+        sr->load->has_five = true;
+        sr->load->fifteen = device->record.load[DPP_DEVICE_LOAD_AVG_FIFTEEN];
+        sr->load->has_fifteen = true;
 
-    sr->uptime = device->record.uptime;
-    sr->has_uptime = true;
+        sr->uptime = device->record.uptime;
+        sr->has_uptime = true;
 
-    sr->mem_util = MALLOC(sizeof(*sr->mem_util));
-    sts__device__mem_util__init(sr->mem_util);
-    sr->mem_util->mem_total = device->record.mem_util.mem_total;
-    sr->mem_util->mem_used = device->record.mem_util.mem_used;
-    sr->mem_util->swap_total = device->record.mem_util.swap_total;
-    sr->mem_util->has_swap_total = true;
-    sr->mem_util->swap_used = device->record.mem_util.swap_used;
-    sr->mem_util->has_swap_used = true;
+        sr->mem_util = MALLOC(sizeof(*sr->mem_util));
+        sts__device__mem_util__init(sr->mem_util);
+        sr->mem_util->mem_total = device->record.mem_util.mem_total;
+        sr->mem_util->mem_used = device->record.mem_util.mem_used;
+        sr->mem_util->swap_total = device->record.mem_util.swap_total;
+        sr->mem_util->has_swap_total = true;
+        sr->mem_util->swap_used = device->record.mem_util.swap_used;
+        sr->mem_util->has_swap_used = true;
 
-    sr->fs_util = MALLOC(DPP_DEVICE_FS_TYPE_QTY * sizeof(*sr->fs_util));
-    sr->n_fs_util = DPP_DEVICE_FS_TYPE_QTY;
-    for (i = 0; i < sr->n_fs_util; i++)
-    {
-        sr->fs_util[i] = MALLOC(sizeof(**sr->fs_util));
-        sts__device__fs_util__init(sr->fs_util[i]);
-
-        sr->fs_util[i]->fs_total = device->record.fs_util[i].fs_total;
-        sr->fs_util[i]->fs_used = device->record.fs_util[i].fs_used;
-        sr->fs_util[i]->fs_type = (Sts__FsType)device->record.fs_util[i].fs_type;
-    }
-
-    sr->cpuutil = MALLOC(sizeof(*sr->cpuutil));
-    sts__device__cpu_util__init(sr->cpuutil);
-    sr->cpuutil->cpu_util = device->record.cpu_util.cpu_util;
-    sr->cpuutil->has_cpu_util = true;
-
-    sr->n_ps_cpu_util = 0;
-    sr->n_ps_cpu_util = device->record.n_top_cpu;
-    if (sr->n_ps_cpu_util > 0)
-    {
-        sr->ps_cpu_util = MALLOC(sr->n_ps_cpu_util * sizeof(*sr->ps_cpu_util));
-        for (i = 0; i < sr->n_ps_cpu_util; i++)
+        sr->fs_util = MALLOC(DPP_DEVICE_FS_TYPE_QTY * sizeof(*sr->fs_util));
+        sr->n_fs_util = DPP_DEVICE_FS_TYPE_QTY;
+        for (i = 0; i < sr->n_fs_util; i++)
         {
-            sr->ps_cpu_util[i] = MALLOC(sizeof(**sr->ps_cpu_util));
-            sts__device__per_process_util__init(sr->ps_cpu_util[i]);
-            sr->ps_cpu_util[i]->pid = device->record.top_cpu[i].pid;
-            sr->ps_cpu_util[i]->cmd = strdup(device->record.top_cpu[i].cmd);
-            sr->ps_cpu_util[i]->util = device->record.top_cpu[i].util;
-        }
-    }
+            sr->fs_util[i] = MALLOC(sizeof(**sr->fs_util));
+            sts__device__fs_util__init(sr->fs_util[i]);
 
-    sr->n_ps_mem_util = 0;
-    sr->n_ps_mem_util = device->record.n_top_mem;
-    if (sr->n_ps_mem_util > 0)
-    {
-        sr->ps_mem_util = MALLOC(sr->n_ps_mem_util * sizeof(*sr->ps_mem_util));
-        for (i = 0; i < sr->n_ps_mem_util; i++)
-        {
-            sr->ps_mem_util[i] = MALLOC(sizeof(**sr->ps_mem_util));
-            sts__device__per_process_util__init(sr->ps_mem_util[i]);
-            sr->ps_mem_util[i]->pid = device->record.top_mem[i].pid;
-            sr->ps_mem_util[i]->cmd = strdup(device->record.top_mem[i].cmd);
-            sr->ps_mem_util[i]->util = device->record.top_mem[i].util;
+            sr->fs_util[i]->fs_total = device->record.fs_util[i].fs_total;
+            sr->fs_util[i]->fs_used = device->record.fs_util[i].fs_used;
+            sr->fs_util[i]->fs_type = (Sts__FsType)device->record.fs_util[i].fs_type;
         }
+
+        sr->cpuutil = MALLOC(sizeof(*sr->cpuutil));
+        sts__device__cpu_util__init(sr->cpuutil);
+        sr->cpuutil->cpu_util = device->record.cpu_util.cpu_util;
+        sr->cpuutil->has_cpu_util = true;
+
+        sr->n_ps_cpu_util = 0;
+        sr->n_ps_cpu_util = device->record.n_top_cpu;
+        if (sr->n_ps_cpu_util > 0)
+        {
+            sr->ps_cpu_util = MALLOC(sr->n_ps_cpu_util * sizeof(*sr->ps_cpu_util));
+            for (i = 0; i < sr->n_ps_cpu_util; i++)
+            {
+                sr->ps_cpu_util[i] = MALLOC(sizeof(**sr->ps_cpu_util));
+                sts__device__per_process_util__init(sr->ps_cpu_util[i]);
+                sr->ps_cpu_util[i]->pid = device->record.top_cpu[i].pid;
+                sr->ps_cpu_util[i]->cmd = strdup(device->record.top_cpu[i].cmd);
+                sr->ps_cpu_util[i]->util = device->record.top_cpu[i].util;
+            }
+        }
+
+        sr->n_ps_mem_util = 0;
+        sr->n_ps_mem_util = device->record.n_top_mem;
+        if (sr->n_ps_mem_util > 0)
+        {
+            sr->ps_mem_util = MALLOC(sr->n_ps_mem_util * sizeof(*sr->ps_mem_util));
+            for (i = 0; i < sr->n_ps_mem_util; i++)
+            {
+                sr->ps_mem_util[i] = MALLOC(sizeof(**sr->ps_mem_util));
+                sts__device__per_process_util__init(sr->ps_mem_util[i]);
+                sr->ps_mem_util[i]->pid = device->record.top_mem[i].pid;
+                sr->ps_mem_util[i]->cmd = strdup(device->record.top_mem[i].cmd);
+                sr->ps_mem_util[i]->util = device->record.top_mem[i].util;
+            }
+        }
+        sr->powerinfo = MALLOC(sizeof(*sr->powerinfo));
+        sts__device__power_info__init(sr->powerinfo);
+        if (device->record.power_info.ps_type)
+        {
+            sr->powerinfo->ps_type = device->record.power_info.ps_type;
+            sr->powerinfo->has_ps_type = true;
+        }
+
+        if (device->record.power_info.p_consumption)
+        {
+            sr->powerinfo->p_consumption = device->record.power_info.p_consumption;
+            sr->powerinfo->has_p_consumption = true;
+        }
+
+        if (device->record.power_info.batt_level)
+        {
+            sr->powerinfo->batt_level = device->record.power_info.batt_level;
+            sr->powerinfo->has_batt_level = true;
+        }
+
+        sr->total_file_handles = device->record.total_file_handles;
+        sr->used_file_handles  = device->record.used_file_handles;
+        sr->has_total_file_handles = true;
+        sr->has_used_file_handles  = true;
     }
 
     if (device->qty > 0)
@@ -1553,6 +1583,24 @@ static void dppline_add_stat_device(Sts__Report *r, dppline_stats_t *s)
             sr->thermal_stats[i]->has_fan_duty_cycle = true;
         }
 
+        if(device->thermal_list[i].thermal_state >= 0)
+        {
+            sr->thermal_stats[i]->thermal_state = device->thermal_list[i].thermal_state;
+            sr->thermal_stats[i]->has_thermal_state = true;
+        }
+
+        if(device->thermal_list[i].target_rpm >= 0)
+        {
+            sr->thermal_stats[i]->target_rpm = device->thermal_list[i].target_rpm;
+            sr->thermal_stats[i]->has_target_rpm = true;
+        }
+
+        if(device->thermal_list[i].led_state >= 0)
+        {
+            sr->thermal_stats[i]->led_state = device->thermal_list[i].led_state;
+            sr->thermal_stats[i]->has_led_state = true;
+        }
+
         sr->thermal_stats[i]->timestamp_ms = device->thermal_list[i].timestamp_ms;
         sr->thermal_stats[i]->has_timestamp_ms = true;
 
@@ -1576,31 +1624,6 @@ static void dppline_add_stat_device(Sts__Report *r, dppline_stats_t *s)
             }
         }
     }
-
-    sr->powerinfo = MALLOC(sizeof(*sr->powerinfo));
-    sts__device__power_info__init(sr->powerinfo);
-    if (device->record.power_info.ps_type)
-    {
-        sr->powerinfo->ps_type = device->record.power_info.ps_type;
-        sr->powerinfo->has_ps_type = true;
-    }
-
-    if (device->record.power_info.p_consumption)
-    {
-        sr->powerinfo->p_consumption = device->record.power_info.p_consumption;
-        sr->powerinfo->has_p_consumption = true;
-    }
-
-    if (device->record.power_info.batt_level)
-    {
-        sr->powerinfo->batt_level = device->record.power_info.batt_level;
-        sr->powerinfo->has_batt_level = true;
-    }
-
-    sr->total_file_handles = device->record.total_file_handles;
-    sr->used_file_handles  = device->record.used_file_handles;
-    sr->has_total_file_handles = true;
-    sr->has_used_file_handles  = true;
 }
 
 static void dppline_add_stat_capacity(Sts__Report *r, dppline_stats_t *s)
@@ -1744,6 +1767,9 @@ static void dppline_add_stat_bs_client(Sts__Report * r, dppline_stats_t * s)
 
         cr->mac_address = MALLOC(MACADDR_STR_LEN);
         dpp_mac_to_str(c_rec->mac, cr->mac_address);
+
+        cr->mld_address = MALLOC(MACADDR_STR_LEN);
+        dpp_mac_to_str(c_rec->mld_address, cr->mld_address);
 
         // alloc band list
         //printf("--- encode: %s\n", cr->mac_address);

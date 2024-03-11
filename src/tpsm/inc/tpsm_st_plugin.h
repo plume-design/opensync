@@ -24,8 +24,8 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef DM_ST_PLUGIN_H_INCLUDED
-#define DM_ST_PLUGIN_H_INCLUDED
+#ifndef TPSM_ST_PLUGIN_H_INCLUDED
+#define TPSM_ST_PLUGIN_H_INCLUDED
 
 #include <stdbool.h>
 
@@ -34,25 +34,25 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 /*
  * ===========================================================================
- *  DM speedtest plug-in API
+ *  TPSM speedtest plug-in API
  * ===========================================================================
  */
 
-struct dm_st_plugin;
-struct dm_st_plugin_iter;
-typedef struct dm_st_plugin dm_st_plugin_t;
-typedef struct dm_st_plugin_iter dm_st_plugin_iter_t;
-typedef bool dm_st_run_fn_t(struct schema_Wifi_Speedtest_Config *st_config);
+struct tpsm_st_plugin;
+struct tpsm_st_plugin_iter;
+typedef struct tpsm_st_plugin tpsm_st_plugin_t;
+typedef struct tpsm_st_plugin_iter tpsm_st_plugin_iter_t;
+typedef bool tpsm_st_run_fn_t(struct schema_Wifi_Speedtest_Config *st_config);
 
 /**
  * speedtest plugin
  *
  */
-struct dm_st_plugin
+struct tpsm_st_plugin
 {
-    const char* const       st_name;        /**< speed test type name */
-    dm_st_run_fn_t* const   st_run;         /**< run function */
-    ds_tree_node_t          _st_node;      /* Internal: r/b tree node structure */
+    const char *const st_name;      /**< speed test type name */
+    tpsm_st_run_fn_t *const st_run; /**< run function */
+    ds_tree_node_t _st_node;        /* Internal: r/b tree node structure */
 };
 
 /**
@@ -60,9 +60,9 @@ struct dm_st_plugin
  * list. Plug-ins are returned in a sorted order from the highest to the lowest
  * priority
  */
-struct dm_st_plugin_iter
+struct tpsm_st_plugin_iter
 {
-    ds_tree_iter_t  _st_iter;                /**< Tree iterator */
+    ds_tree_iter_t _st_iter; /**< Tree iterator */
 };
 
 /**
@@ -70,30 +70,30 @@ struct dm_st_plugin_iter
  *
  * @param[in]   p  Pointer to a speedtest plugin structure
  */
-void dm_st_plugin_register(struct dm_st_plugin *p);
+void tpsm_st_plugin_register(struct tpsm_st_plugin *p);
 
 /**
  * Unregister a speedtest plug-in
  *
  * @param[in]   p  Pointer to a speedtest plugin structure
  */
-void dm_st_plugin_unregister(struct dm_st_plugin *p);
+void tpsm_st_plugin_unregister(struct tpsm_st_plugin *p);
 
 /**
  * Reset current plug-in iterator and return the head of the list (entry with
  * lowest priority).
  *
  * @return
- * Return a pointer to a plug-in structure (struct dm_st_plugin) or NULL if no
+ * Return a pointer to a plug-in structure (struct tpsm_st_plugin) or NULL if no
  * plug-ins are registered.
  */
-struct dm_st_plugin* dm_st_plugin_first(dm_st_plugin_iter_t *iter);
+struct tpsm_st_plugin *tpsm_st_plugin_first(tpsm_st_plugin_iter_t *iter);
 
 /**
- * After dm_st_plugin_first() is called, return the next element in descending
+ * After tpsm_st_plugin_first() is called, return the next element in descending
  * priority * order
  */
-struct dm_st_plugin* dm_st_plugin_next(dm_st_plugin_iter_t *iter);
+struct tpsm_st_plugin *tpsm_st_plugin_next(tpsm_st_plugin_iter_t *iter);
 
 /**
  * Find a speedtest plug-in by name
@@ -104,7 +104,6 @@ struct dm_st_plugin* dm_st_plugin_next(dm_st_plugin_iter_t *iter);
  * This function returns a speedtest plug-in structure on success or a NULL pointer
  * if the plug-in couldn't be found
  */
-struct dm_st_plugin* dm_st_plugin_find(const char *name);
+struct tpsm_st_plugin *tpsm_st_plugin_find(const char *name);
 
-
-#endif /* DM_ST_PLUGIN_H_INCLUDED */
+#endif /* TPSM_ST_PLUGIN_H_INCLUDED */

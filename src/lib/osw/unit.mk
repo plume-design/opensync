@@ -73,6 +73,7 @@ UNIT_SRC += src/osw_token.c
 UNIT_SRC += src/osw_l2uf.c
 UNIT_SRC += src/osw_defer_vif_down.c
 UNIT_SRC += src/osw_diag.c
+UNIT_SRC += src/osw_mld_vif.c
 
 UNIT_CFLAGS := -I$(UNIT_PATH)/inc
 UNIT_CFLAGS += -D_GNU_SOURCE

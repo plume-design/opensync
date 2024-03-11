@@ -42,7 +42,17 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * @param max_mcount maximal number of messages stored in the kernel buffer or 0 to use default
  * @return ptr to MQ object OR NULL on failure
  */
-ipc_msg_link_t *mque_link_open(const char *name, struct ev_loop *evloop, 
+#ifdef CONFIG_LIBC_BIONIC
+static inline ipc_msg_link_t *mque_link_open(
+        const char *name, struct ev_loop *evloop,
+        enum mq_link_mode mode, size_t max_msize, size_t max_mcount)
+{
+    return NULL;
+}
+#else
+ipc_msg_link_t *mque_link_open(
+        const char *name, struct ev_loop *evloop,
         enum mq_link_mode mode, size_t max_msize, size_t max_mcount);
+#endif
 
 #endif

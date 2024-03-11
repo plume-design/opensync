@@ -25,42 +25,41 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 #define _GNU_SOURCE
-#include <stdlib.h>
+#include <dirent.h>
+#include <ev.h>
+#include <fcntl.h>
+#include <limits.h>
+#include <signal.h>
 #include <stdbool.h>
 #include <stdio.h>
-#include <signal.h>
-#include <unistd.h>
-#include <fcntl.h>
+#include <stdlib.h>
 #include <string.h>
-#include <ev.h>
-#include <limits.h>
-#include <dirent.h>
 #include <time.h>
+#include <unistd.h>
 
 #include "log.h"
 #include "ovsdb.h"
 #include "schema.h"
 
-#include "monitor.h"
 #include "json_util.h"
-#include "ovsdb_update.h"
-#include "ovsdb_sync.h"
+#include "monitor.h"
 #include "os_util.h"
+#include "ovsdb_sync.h"
+#include "ovsdb_update.h"
 #include "util.h"
 
 #include "target.h"
-#include "dm.h"
-
+#include "tpsm.h"
 
 /* can't be on the stack */
 static ovsdb_update_monitor_t st_monitor;
-static bool st_in_progress = false;  /* prevent multiple speedtests simultaneous run */
+static bool st_in_progress = false; /* prevent multiple speedtests simultaneous run */
 
-void dm_stupdate_cb(ovsdb_update_monitor_t *self)
+void tpsm_stupdate_cb(ovsdb_update_monitor_t *self)
 {
     struct schema_Wifi_Speedtest_Config speedtest_config;
     pjs_errmsg_t perr;
-    struct dm_st_plugin *plugin;
+    struct tpsm_st_plugin *plugin;
 
     LOG(DEBUG, "%s", __FUNCTION__);
 
@@ -82,7 +81,7 @@ void dm_stupdate_cb(ovsdb_update_monitor_t *self)
             }
 
             /* run the speed test according to the cloud instructions */
-            plugin = dm_st_plugin_find(speedtest_config.test_type);
+            plugin = tpsm_st_plugin_find(speedtest_config.test_type);
             if (plugin)
             {
                 plugin->st_run(&speedtest_config);
@@ -105,20 +104,14 @@ void dm_stupdate_cb(ovsdb_update_monitor_t *self)
     }
 }
 
-
 /*
  * Monitor Wifi_Speedtest_Config table
  */
-bool dm_st_monitor()
+bool tpsm_st_monitor()
 {
     bool ret = false;
-
     /* Set monitoring */
-    if (false == ovsdb_update_monitor(&st_monitor,
-                                      dm_stupdate_cb,
-                                      SCHEMA_TABLE(Wifi_Speedtest_Config),
-                                      OMT_ALL)
-       )
+    if (false == ovsdb_update_monitor(&st_monitor, tpsm_stupdate_cb, SCHEMA_TABLE(Wifi_Speedtest_Config), OMT_ALL))
     {
         LOG(ERR, "Error initializing Wifi_Speedtest_Config monitor");
         goto exit;
@@ -126,7 +119,7 @@ bool dm_st_monitor()
     else
     {
         LOG(NOTICE, "Wifi_Speedtest_Config monitor started");
-        dm_st_in_progress_set(false);
+        tpsm_st_in_progress_set(false);
     }
     ret = true;
 
@@ -137,7 +130,7 @@ exit:
 /*
  * Set control flag for handling multiple speedtests requests
  */
-void dm_st_in_progress_set(bool value)
+void tpsm_st_in_progress_set(bool value)
 {
     st_in_progress = value;
     if (false == st_in_progress)
@@ -149,7 +142,7 @@ void dm_st_in_progress_set(bool value)
 /*
  * Get control flag for handling multiple speedtests requests
  */
-bool dm_st_in_progress_get()
+bool tpsm_st_in_progress_get()
 {
     return st_in_progress;
 }

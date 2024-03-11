@@ -99,7 +99,7 @@ fsm_pcap_handler(uint8_t * args, const struct pcap_pkthdr *header,
  * @param session the session
  * @return true if the pcap session needs to be restarted, false otherwise.
  */
-bool
+static bool
 fsm_get_pcap_options(struct fsm_session *session)
 {
     struct fsm_pcaps *pcaps;
@@ -210,7 +210,7 @@ fsm_get_pcap_options(struct fsm_session *session)
 }
 
 
-bool
+static bool
 fsm_set_pcap_options(struct fsm_session *session)
 {
     struct fsm_pcaps *pcaps;
@@ -263,53 +263,6 @@ fsm_set_pcap_options(struct fsm_session *session)
     return ret;
 }
 
-bool
-fsm_pcap_tap_update(struct fsm_session *session)
-{
-    bool ret;
-
-    if ((session->tap_type & FSM_TAP_PCAP) == 0) return false;
-
-    ret = fsm_get_pcap_options(session);
-    if (session->pcaps != NULL) fsm_pcap_close(session);
-
-    if (session->pcaps == NULL)
-    {
-        struct bpf_program *bpf;
-        struct fsm_pcaps *pcaps;
-
-        pcaps = CALLOC(1, sizeof(struct fsm_pcaps));
-        if (pcaps == NULL) return false;
-        session->pcaps = pcaps;
-
-        bpf = CALLOC(1, sizeof(struct bpf_program));
-        if (bpf == NULL) goto err_free_pcaps;
-
-        session->pcaps->bpf = bpf;
-    }
-
-    ret = fsm_get_pcap_options(session);
-    ret = fsm_pcap_open(session);
-    if (!ret)
-    {
-        LOGE("pcap open failed for handler %s",
-             session->name);
-        goto err_free_bpf;
-    }
-
-    return true;
-
-err_free_bpf:
-    FREE(session->pcaps->bpf);
-    session->pcaps->bpf = NULL;
-
-err_free_pcaps:
-    FREE(session->pcaps);
-    session->pcaps = NULL;
-
-    return false;
-}
-
 
 static void
 fsm_pcap_recv_fn(EV_P_ ev_io *ev, int revents)
@@ -326,7 +279,9 @@ fsm_pcap_recv_fn(EV_P_ ev_io *ev, int revents)
 }
 
 
-bool fsm_pcap_open(struct fsm_session *session) {
+static bool
+fsm_pcap_open(struct fsm_session *session)
+{
     struct fsm_mgr *mgr = fsm_get_mgr();
     struct fsm_pcaps *pcaps = session->pcaps;
     pcap_t *pcap = NULL;
@@ -424,7 +379,9 @@ bool fsm_pcap_open(struct fsm_session *session) {
     return false;
 }
 
-void fsm_pcap_close(struct fsm_session *session) {
+void
+fsm_pcap_close(struct fsm_session *session)
+{
     struct fsm_mgr *mgr = fsm_get_mgr();
     struct fsm_pcaps *pcaps = session->pcaps;
     pcap_t *pcap = pcaps->pcap;
@@ -445,4 +402,52 @@ void fsm_pcap_close(struct fsm_session *session) {
     }
     FREE(pcaps);
     session->pcaps = NULL;
+}
+
+
+bool
+fsm_pcap_tap_update(struct fsm_session *session)
+{
+    bool ret;
+
+    if ((session->tap_type & FSM_TAP_PCAP) == 0) return false;
+
+    ret = fsm_get_pcap_options(session);
+    if (session->pcaps != NULL) fsm_pcap_close(session);
+
+    if (session->pcaps == NULL)
+    {
+        struct bpf_program *bpf;
+        struct fsm_pcaps *pcaps;
+
+        pcaps = CALLOC(1, sizeof(struct fsm_pcaps));
+        if (pcaps == NULL) return false;
+        session->pcaps = pcaps;
+
+        bpf = CALLOC(1, sizeof(struct bpf_program));
+        if (bpf == NULL) goto err_free_pcaps;
+
+        session->pcaps->bpf = bpf;
+    }
+
+    ret = fsm_get_pcap_options(session);
+    ret = fsm_pcap_open(session);
+    if (!ret)
+    {
+        LOGE("pcap open failed for handler %s",
+             session->name);
+        goto err_free_bpf;
+    }
+
+    return true;
+
+err_free_bpf:
+    FREE(session->pcaps->bpf);
+    session->pcaps->bpf = NULL;
+
+err_free_pcaps:
+    FREE(session->pcaps);
+    session->pcaps = NULL;
+
+    return false;
 }

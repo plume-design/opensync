@@ -95,6 +95,7 @@ struct osw_hostap_conf_sta_config {
     struct osw_ifname bridge_if_name;
 
     char conf_buf[4096];
+    char extra_buf[1024];
 };
 
 void

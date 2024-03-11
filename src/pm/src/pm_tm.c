@@ -35,6 +35,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "pm_tm.h"
 #include "osp_reboot.h"
+#include "osp_tm.h"
+#include "osp_temp.h"
 
 #define MODULE_ID LOG_MODULE_ID_MAIN
 
@@ -42,8 +44,9 @@ MODULE(pm_tm, pm_tm_init, pm_tm_fini);
 
 
 static struct osp_tm_ctx tm_ctx = { 0 };
+static void *tgt_priv;
 
-static int pm_get_temperature(struct osp_tm_ctx *ctx, unsigned int temp_src, int *temperature);
+static int pm_get_temperature(unsigned int temp_src, int *temperature);
 static int pm_get_fan_rpm(struct osp_tm_ctx *ctx, unsigned int *fan_rpm);
 
 static unsigned int pm_tbl_get_fanrpm(struct osp_tm_ctx *ctx, unsigned int state);
@@ -69,7 +72,7 @@ static bool pm_is_temp_src_enabled(struct osp_tm_ctx *ctx, int idx);
 static void pm_therm_cb(struct ev_loop *loop, ev_timer *timer, int revents);
 static void pm_tm_reboot(struct osp_tm_ctx *ctx, int temperature, int idx);
 
-static int pm_get_temperature(struct osp_tm_ctx *ctx, unsigned int temp_src, int *temperature)
+static int pm_get_temperature(unsigned int temp_src, int *temperature)
 {
 #ifdef PM_TM_DEBUG
     if (pm_tm_ovsdb_dbg_get_temperature(temp_src, temperature) == 0) {
@@ -77,7 +80,7 @@ static int pm_get_temperature(struct osp_tm_ctx *ctx, unsigned int temp_src, int
     }
 #endif
 
-    return osp_tm_get_temperature(ctx->tgt_priv, temp_src, temperature);
+    return osp_temp_get_temperature(temp_src, temperature);
 }
 
 static int pm_get_fan_rpm(struct osp_tm_ctx *ctx, unsigned int *fan_rpm)
@@ -88,7 +91,7 @@ static int pm_get_fan_rpm(struct osp_tm_ctx *ctx, unsigned int *fan_rpm)
     }
 #endif
 
-    return osp_tm_get_fan_rpm(ctx->tgt_priv, fan_rpm);
+    return osp_tm_get_fan_rpm(tgt_priv, fan_rpm);
 }
 
 static bool pm_is_fan_duty_cycle_active(unsigned int sec_in_state, unsigned int state)
@@ -254,7 +257,7 @@ static void pm_set_new_state(struct osp_tm_ctx *ctx, unsigned int new_state)
 
         if (txchainmask_new != txchainmask_old)
         {
-            const char *if_name = osp_tm_get_temp_src_name(ctx->tgt_priv, temp_src);
+            const char *if_name = osp_temp_get_temp_src_name(temp_src);
 
             // TODO: it might happen that radio will be torn down already
 
@@ -290,7 +293,7 @@ static int pm_calc_temp_moving_avg(struct osp_tm_ctx *ctx, unsigned int temp_src
     *cur_temp_meas = temperature;
 
     meas_cnt = 0;
-    for (i = 0; i < OSP_TM_TEMP_AVG_CNT; i++)
+    for (i = 0; i < CONFIG_OSP_TM_TEMP_AVG_CNT; i++)
     {
         if (ctx->temp_avg_meas[temp_src][i] != 0) {
             meas_cnt++;
@@ -318,7 +321,7 @@ static bool pm_is_temp_src_enabled(struct osp_tm_ctx *ctx, int idx)
 {
     const char *if_name;
 
-    if_name = osp_tm_get_temp_src_name(ctx->tgt_priv, idx);
+    if_name = osp_temp_get_temp_src_name(idx);
     if (if_name == NULL) {
         return false;
     }
@@ -369,11 +372,12 @@ static void pm_therm_cb(struct ev_loop *loop, ev_timer *timer, int revents)
             continue;
         }
 
-        rv = pm_get_temperature(ctx, temp_src, &temp);
+        rv = pm_get_temperature(temp_src, &temp);
+
         if (rv != 0)
         {
             LOGE("TM: Could not get temperature from source %d:%s",
-                 temp_src, osp_tm_get_temp_src_name(ctx->tgt_priv, temp_src));
+                 temp_src, osp_temp_get_temp_src_name(temp_src));
             continue;
         }
 
@@ -386,7 +390,7 @@ static void pm_therm_cb(struct ev_loop *loop, ev_timer *timer, int revents)
             idx = temp_src;
         }
         snprintf(buf, sizeof(buf), " %s:%d",
-            osp_tm_get_temp_src_name(ctx->tgt_priv, temp_src), temp);
+            osp_temp_get_temp_src_name(temp_src), temp);
         strscat(info_msg, buf, sizeof(info_msg));
     }
 
@@ -434,7 +438,7 @@ static void pm_therm_cb(struct ev_loop *loop, ev_timer *timer, int revents)
     if (current_fan_rpm != ctx->prev_fan_rpm) {
         LOGD("TM: Setting new fan RPM: %u", current_fan_rpm);
     }
-    rv = osp_tm_set_fan_rpm(ctx->tgt_priv, current_fan_rpm);
+    rv = osp_tm_set_fan_rpm(tgt_priv, current_fan_rpm);
     if (rv != 0) {
         LOGE("TM: Could not set new fan RPM: %d:%d", current_fan_rpm,  rv);
     }
@@ -444,7 +448,7 @@ static void pm_therm_cb(struct ev_loop *loop, ev_timer *timer, int revents)
     ctx->prev_state = current_state;
 
     ctx->temp_avg_idx++;
-    ctx->temp_avg_idx = ctx->temp_avg_idx % OSP_TM_TEMP_AVG_CNT;
+    ctx->temp_avg_idx = ctx->temp_avg_idx % CONFIG_OSP_TM_TEMP_AVG_CNT;
     ctx->curr_state_period_cnt++;
 
     return;
@@ -455,7 +459,7 @@ static void pm_tm_reboot(struct osp_tm_ctx *ctx, int temperature, int idx)
     (void)ctx;
     char buff[100];
     snprintf(buff,100,"Critical temperature: %d C, rebooting due to overheating of: %s",
-             temperature, osp_tm_get_temp_src_name(ctx->tgt_priv, idx));
+             temperature, osp_temp_get_temp_src_name(idx));
     osp_unit_reboot_ex(OSP_REBOOT_THERMAL, buff, 0);
 }
 
@@ -477,16 +481,16 @@ void pm_tm_init(void *data)
     if (osp_tm_init(&tm_ctx.therm_tbl,
             &tm_ctx.therm_state_cnt,
             &tm_ctx.temp_src_cnt,
-            &tm_ctx.tgt_priv) != 0) {
+            &tgt_priv) != 0) {
         LOGE("Initializing TM (failed to initialize OSP TM)");
         return;
     }
 
-    osp_tm_get_fan_rpm(tm_ctx.tgt_priv, &tm_ctx.prev_fan_rpm);
+    osp_tm_get_fan_rpm(tgt_priv, &tm_ctx.prev_fan_rpm);
 }
 
 void pm_tm_fini(void *data)
 {
     LOGN("Deinitializing TM");
-    osp_tm_deinit(&tm_ctx.tgt_priv);
+    osp_tm_deinit(tgt_priv);
 }

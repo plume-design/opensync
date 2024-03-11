@@ -1,0 +1,16 @@
+config OSP_TM_TEMP_SRC_MAX
+    int "Maximum number of temperature sources"
+    default 3
+    help
+        Represents the maximum number of sources used for reading
+        the temperature on different components of the device. Used
+        to determine the size of the thermal table the TM module.
+
+config OSP_TM_TEMP_AVG_CNT
+    int "Temperature averaging window size"
+    default 3
+    help
+        Measure running average of temperature over this number of temperature
+        samples. This is a compromise between a low number of samples to react to
+        fast rising temperature, and a high number of samples to react to bad
+        temperature readings.

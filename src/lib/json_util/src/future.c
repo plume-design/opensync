@@ -32,12 +32,12 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "log.h"
 
-#if JSON_MAJOR_VERSION <= 2 && JANSSON_MINOR_VERSION < 8
+#if JANSSON_MAJOR_VERSION <= 2 && JANSSON_MINOR_VERSION < 8
 
 static json_malloc_t    __json_malloc_fn    = malloc;
 static json_free_t      __json_free_fn      = free;
 
-void json_set_alloc_funcs(json_malloc_t malloc_fn, json_free_t free_fn)
+void json_set_alloc_funcs_override(json_malloc_t malloc_fn, json_free_t free_fn)
 {
     void (*set_func)(json_malloc_t, json_free_t);
 
@@ -57,8 +57,10 @@ void json_set_alloc_funcs(json_malloc_t malloc_fn, json_free_t free_fn)
 
 void json_get_alloc_funcs(json_malloc_t *malloc_fn, json_free_t *free_fn)
 {
-    *malloc_fn = __json_malloc_fn;
-    *free_fn = __json_free_fn;
+    if (malloc_fn)
+        *malloc_fn = __json_malloc_fn;
+    if (free_fn)
+        *free_fn = __json_free_fn;
 }
 
 #endif

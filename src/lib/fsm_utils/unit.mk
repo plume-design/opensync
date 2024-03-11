@@ -30,7 +30,7 @@
 UNIT_NAME := fsm_utils
 UNIT_TYPE := LIB
 
-UNIT_DISABLE := $(if $(CONFIG_MANAGER_FSM),n,y)
+UNIT_DISABLE := $(if $(CONFIG_LIB_FSM_UTILS),n,y)
 
 UNIT_SRC := src/fsm_dpi_utils.c
 UNIT_SRC += src/fsm_csum_utils.c

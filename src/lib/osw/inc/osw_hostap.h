@@ -141,6 +141,14 @@ void
 osw_hostap_bss_fill_state(struct osw_hostap_bss *bss,
                           struct osw_drv_vif_state *state);
 
+void
+osw_hostap_bss_fill_csa_by_hostap(struct osw_hostap_bss *hostap_bss,
+                                  bool csa_by_hostap);
+
+void
+osw_hostap_bss_fill_group_by_phy(struct osw_hostap_bss *bss,
+                                  bool group_by_phy);
+
 struct rq_task *
 osw_hostap_bss_prep_state_task(struct osw_hostap_bss *bss);
 

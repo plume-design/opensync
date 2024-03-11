@@ -252,7 +252,7 @@ imc_socket_send(struct imc_dso *imc, void *buf, size_t buflen, int flags)
     server.sun_family = AF_UNIX;
     STRSCPY(server.sun_path, client->endpoint);
 
-    rc = sendto(client->sock_fd, buf, buflen, 0,
+    rc = sendto(client->sock_fd, buf, buflen, MSG_DONTWAIT,
                 (const struct sockaddr *)&server, serv_len);
 
     imc->imc_free_sndmsg(buf, NULL);

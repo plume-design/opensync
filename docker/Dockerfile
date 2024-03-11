@@ -136,11 +136,16 @@ RUN cmake \
 RUN make install
 
 # Install clang
-ENV LLVM_VERSION=16
+ENV LLVM_VERSION=17
 RUN $PKGINSTALL lsb-release wget software-properties-common apt-utils
 COPY llvm.sh llvm.sh
 RUN ./llvm.sh ${LLVM_VERSION}
 RUN $PKGINSTALL clang-${LLVM_VERSION}
+RUN $PKGINSTALL clang-tidy-${LLVM_VERSION} bear jq
+RUN $PKGINSTALL clang-format-${LLVM_VERSION}
+
+# libcares
+RUN $PKGINSTALL libc-ares-dev
 
 # Open interactive bash
 CMD bash -i

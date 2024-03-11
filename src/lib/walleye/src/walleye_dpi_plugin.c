@@ -346,12 +346,6 @@ load_signatures(struct fsm_session *session, char *store)
     const char * const path = "/usr/walleye/etc/signature.bin";
     char signature_file[PATH_MAX+128];
 
-    dpi_plugin_ops = &session->p_ops->dpi_plugin_ops;
-    if (dpi_plugin_ops->unregister_clients != NULL)
-    {
-        dpi_plugin_ops->unregister_clients(session);
-    }
-
     snprintf(signature_file, sizeof(signature_file), "%s/%s",
              store, path);
     fd = open(signature_file, O_RDONLY);
@@ -367,6 +361,12 @@ load_signatures(struct fsm_session *session, char *store)
         LOGE("%s: failed to mmap signatures\n", __func__);
         close(fd);
         return -1;
+    }
+
+    dpi_plugin_ops = &session->p_ops->dpi_plugin_ops;
+    if (dpi_plugin_ops->unregister_clients != NULL)
+    {
+        dpi_plugin_ops->unregister_clients(session);
     }
 
     if ((res = rts_load(sig, sb.st_size)) != 0)
@@ -616,6 +616,33 @@ walleye_signature_load_highest(struct fsm_session *session)
     }
 }
 
+void
+walleye_signature_load_best(struct fsm_session *session)
+{
+    struct fsm_object *object;
+    int cnt;
+    int rc;
+
+    /* Put a hard limit to the loop */
+    cnt = 4;
+    do
+    {
+        /* Retrieve the best version of the signature */
+        object = session->ops.best_obj_cb(session, "app_signatures");
+        if (object == NULL) return;
+
+        /* Apply the best signature */
+        rc = walleye_signature_add(session, object);
+        if (!rc)
+        {
+            LOGI("%s: installing %s version %s succeeded", __func__,
+                 object->object, object->version);
+            FREE(object);
+        }
+        cnt--;
+    } while ((rc == 0) && (cnt != 0));
+}
+
 
 void
 walleye_signature_update(struct fsm_session *session,
@@ -624,24 +651,25 @@ walleye_signature_update(struct fsm_session *session,
 {
     int rc;
     struct dpi_plugin_cache *mgr;
+
     switch(ovsdb_event)
     {
         case OVSDB_UPDATE_NEW:
             rc = walleye_signature_add(session, object);
-            if (rc != 0) walleye_signature_load_highest(session);
+            if (rc != 0) walleye_signature_load_best(session);
             break;
 
         case OVSDB_UPDATE_DEL:
-            /* If removed version was active load highest available version */
+            /* If removed version was active load best available version */
             mgr = dpi_get_mgr();
             if (mgr->signature_version != NULL)
             {
                 rc = strcmp(mgr->signature_version, object->version);
                 if (!rc)
                 {
-                    LOGD("%s: active signature (%s) removed. Load newest version available",
+                    LOGD("%s: active signature (%s) removed. Load best version available",
                          __func__, object->version);
-                    walleye_signature_load_highest(session);
+                    walleye_signature_load_best(session);
                 }
             }
             break;
@@ -913,18 +941,13 @@ walleye_dpi_plugin_init(struct fsm_session *session)
     dpi_session->initialized = true;
     LOGD("%s: added session %s", __func__, session->name);
 
-    if (session->ops.latest_obj_cb == NULL) return 0;
-    if (session->ops.last_active_obj_cb == NULL) return 0;
+    if (session->ops.best_obj_cb == NULL) return 0;
 
-    /* Get last active version */
-    if (walleye_signature_load_last_active(session) == false)
-    {
-        /* If loading last active version fails then get the highest revision
-         * available */
-        LOGD("%s: No last active version available. Load highest version", __func__);
-        walleye_signature_load_highest(session);
-    }
+    /* Register app_signatures object monitoring */
+    session->ops.monitor_object(session, "app_signatures");
 
+    /* Load best available signature version */
+    walleye_signature_load_best(session);
     return 0;
 
 error:
@@ -947,6 +970,8 @@ dpi_plugin_exit(struct fsm_session *session)
     mgr = dpi_get_mgr();
     if (!mgr->initialized) return;
 
+    /* Unregister app_signatures object monitoring */
+    session->ops.unmonitor_object(session, "app_signatures");
     dpi_delete_session(session);
 }
 
@@ -1399,7 +1424,7 @@ dpi_plugin_handler(struct fsm_session *session,
 
     ethertype = 0;
     eth = net_header_get_eth(net_parser);
-    if (net_parser->source == PKT_SOURCE_NFQ)
+    if ((net_parser->source == PKT_SOURCE_NFQ) || (net_parser->source == PKT_SOURCE_SOCKET))
     {
         ethertype = eth->ethertype;
     }
@@ -1520,7 +1545,7 @@ free_conn:
 void
 dpi_report_kpis(struct dpi_session *dpi_session)
 {
-    struct dpi_stats_counters *counters;
+    struct dpi_engine_counters *counters;
     struct dpi_stats_packed_buffer *pb;
     struct dpi_stats_report report;
     struct fsm_session *session;

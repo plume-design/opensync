@@ -65,6 +65,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "kconfig.h"
 #include "memutil.h"
 #include "hw_acc.h"
+#include "dpi_stats.h"
 #include "dpi_intf.h"
 #include "fsm_ipc.h"
 
@@ -1257,6 +1258,11 @@ fsm_init_dpi_dispatcher(struct fsm_session *session)
     dispatch->excluded_devices = fsm_get_other_config_val(session,
                                                           "excluded_devices");
 
+    dispatch->listening_ip = fsm_get_other_config_val(session,
+                                                      "listening_ip");
+    dispatch->listening_port = fsm_get_other_config_val(session,
+                                                      "listening_port");
+
     memset(&aggr_set, 0, sizeof(aggr_set));
     mgr = fsm_get_mgr();
     node_info.location_id = mgr->location_id;
@@ -1485,6 +1491,10 @@ fsm_update_dpi_dispatcher(struct fsm_session *session)
                                                           "included_devices");
     dispatch->excluded_devices = fsm_get_other_config_val(session,
                                                           "excluded_devices");
+    dispatch->listening_ip = fsm_get_other_config_val(session,
+                                                      "listening_ip");
+    dispatch->listening_port = fsm_get_other_config_val(session,
+                                                      "listening_port");
 }
 
 
@@ -1941,7 +1951,6 @@ fsm_dispatch_pkt(struct fsm_session *session,
     int err;
 
     acc = net_parser->acc;
-
     if (acc == NULL) return;
 
     if (acc->dpi_done != 0)
@@ -2126,6 +2135,20 @@ fsm_dpi_handler(struct fsm_session *session,
     dpi_context = session->dpi;
     if (dpi_context == NULL) return;
 
+    if (kconfig_enabled(CONFIG_FSM_MAP_LEGACY_PLUGINS))
+    {
+        struct fsm_parser_ops *parser_ops;
+        struct fsm_session *mapped;
+
+        mapped = fsm_map_plugin_find_session(net_parser);
+        if (mapped == NULL) return;
+
+        parser_ops = &mapped->p_ops->parser_ops;
+        parser_ops->handler(mapped, net_parser);
+
+        return;
+    }
+
     dispatch = &dpi_context->dispatch;
     process = fsm_dpi_should_process(net_parser,
                                      dispatch->included_devices,
@@ -2234,6 +2257,63 @@ fsm_dpi_alloc_flow_context(struct fsm_session *session,
     }
 }
 
+static void
+fsm_pcap_stats(struct fsm_session *session)
+{
+    struct fsm_pcaps *pcaps;
+    struct pcap_stat stats;
+    pcap_t *pcap;
+    int rc;
+
+    if (!fsm_plugin_has_intf(session)) return;
+    if (session->conf == NULL) return;
+
+    pcaps = session->pcaps;
+    if (pcaps == NULL) return;
+
+    pcap = pcaps->pcap;
+    memset(&stats, 0, sizeof(stats));
+
+    rc = pcap_stats(pcap, &stats);
+    if (rc < 0)
+    {
+        LOGT("%s: pcap_stats failed: %s",
+             __func__, pcap_geterr(pcap));
+        return;
+    }
+
+    dpi_stats_store_pcap_stats(&stats, session->conf->if_name);
+    LOGI("%s: %s: packets received: %u, dropped: %u",
+         __func__, session->conf->if_name, stats.ps_recv, stats.ps_drop);
+}
+
+static void
+fsm_get_session_intf_pcap_stats(void)
+{
+    ds_tree_t *sessions = fsm_get_sessions();
+    struct fsm_session *session;
+
+    session = ds_tree_head(sessions);
+    while (session != NULL)
+    {
+        fsm_pcap_stats(session);
+        session = ds_tree_next(sessions, session);
+    }
+}
+
+/**
+ * @brief collect pcap stats from the interfaces configured in core_dpi_dispatch
+ *  and also in Dpi_Interface_Map
+ */
+static void
+fsm_get_intf_pcap_stats(void)
+{
+    /* get pcap stats from interface configured in core_dpi_dispatch */
+    fsm_get_session_intf_pcap_stats();
+    /* get pcap stats from interface configured in Dpi_Interface_Map */
+    dpi_intf_get_pcap_stats();
+}
+
 
 #define FSM_DPI_INTERVAL 120
 /**
@@ -2251,6 +2331,7 @@ fsm_dpi_periodic(struct fsm_session *session)
     struct flow_window **windows;
     struct flow_window *window;
     struct flow_report *report;
+    int long config_time;
     time_t now;
     int rc;
 
@@ -2261,21 +2342,25 @@ fsm_dpi_periodic(struct fsm_session *session)
     aggr = dispatch->aggr;
     if (aggr == NULL) return;
 
+    config_time = session->dpi_stats_report_interval;
+    if (!config_time) config_time = FSM_DPI_INTERVAL;
     report = aggr->report;
 
     /* Close the flows observation window */
     net_md_close_active_window(aggr);
 
     now = time(NULL);
-    if ((now - dispatch->periodic_ts) >= FSM_DPI_INTERVAL)
+    if ((now - dispatch->periodic_ts) >= config_time)
     {
         windows = report->flow_windows;
         window = *windows;
         /* collect and log pcap stats */
-        dpi_intf_get_pcap_stats();
+        fsm_get_intf_pcap_stats();
+        dpi_stats_report_pcap_stats(session, session->dpi_stats_report_topic);
 
         /* collect and report nfqueue stats */
         fsm_get_nfqueue_stats();
+        dpi_stats_report_nfq_stats(session, session->dpi_stats_report_topic);
         LOGI("%s: %s: total flows: %zu held flows: %zu, reported flows: %zu",
              __func__, session->name, aggr->total_flows, aggr->held_flows,
              window->num_stats);

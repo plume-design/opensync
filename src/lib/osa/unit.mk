@@ -49,7 +49,11 @@ UNIT_LDFLAGS := -lpthread
 ifeq ($(BUILD_WITH_LIBGCC_BACKTRACE),y)
 UNIT_CFLAGS += -fasynchronous-unwind-tables
 UNIT_CFLAGS += -DWITH_LIBGCC_BACKTRACE
+ifeq ($(PLATFORM), android)
+UNIT_LDFLAGS += -lgcc
+else
 UNIT_LDFLAGS += -lgcc_s
+endif
 endif
 
 UNIT_EXPORT_CFLAGS := $(UNIT_CFLAGS)

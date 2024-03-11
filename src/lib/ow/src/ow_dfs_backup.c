@@ -552,8 +552,14 @@ OSW_UT(ow_dfs_backup_walk)
     struct ow_dfs_backup m;
     MEMZERO(m);
     const struct osw_hwaddr bssid1 = { .octet = { 1 } };
-    const struct osw_channel c1 = { .control_freq_mhz = 2412 };
-    const struct osw_channel c60 = { .control_freq_mhz = 5300 };
+    const struct osw_channel c1 = {
+        .control_freq_mhz = 2412,
+        .center_freq0_mhz = 2412,
+    };
+    const struct osw_channel c60 = {
+        .control_freq_mhz = 5300,
+        .center_freq0_mhz = 5300,
+    };
     mod_init(&m);
 
     assert(ds_tree_is_empty(&m.phys) == true);

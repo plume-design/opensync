@@ -33,8 +33,8 @@ UNIT_NAME := ipc
 UNIT_TYPE := LIB
 
 UNIT_SRC := src/os_uds_link.c
-UNIT_SRC += src/os_mq_link.c
-UNIT_SRC  += src/mque_link.c
+UNIT_SRC  += $(if $(filter android,$(PLATFORM)),,src/os_mq_link.c)
+UNIT_SRC  += $(if $(filter android,$(PLATFORM)),,src/mque_link.c)
 UNIT_SRC  += src/udsock_link.c
 
 UNIT_CFLAGS := -I$(UNIT_PATH)/inc

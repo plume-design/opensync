@@ -29,7 +29,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *  Null OSN IGMP backend
  * ===========================================================================
  */
-
+#include <stdlib.h>
 #include "osn_igmp.h"
 
 struct osn_igmp

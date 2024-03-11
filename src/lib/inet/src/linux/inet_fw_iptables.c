@@ -287,6 +287,11 @@ bool fw_nat_start(inet_fw_t *self)
 
         retval &= fw_rule_add(self,
                 FW_RULE_IPV4, "nat", "NM_NAT",
+                "-o", self->fw_ifname,
+                "-m", "physdev", "--physdev-is-bridged",
+                "-j", "ACCEPT");
+        retval &= fw_rule_add(self,
+                FW_RULE_IPV4, "nat", "NM_NAT",
                 "-o", self->fw_ifname, "-j", "MASQUERADE");
 
         /* MSS clamping rules for both IPv4/6 */
@@ -299,15 +304,6 @@ bool fw_nat_start(inet_fw_t *self)
                 "--tcp-flags", "SYN,RST", "SYN",
                 "-j", "TCPMSS",
                 "--clamp-mss-to-pmtu");
-
-        /* Plant miniupnpd rules for port forwarding via upnp */
-        retval &= fw_rule_add(self,
-                FW_RULE_IPV4, "nat", "NM_PORT_FORWARD",
-                "-i", self->fw_ifname, "-j", "MINIUPNPD");
-
-        retval &= fw_rule_add(self,
-                FW_RULE_IPV4, "filter", "NM_PORT_FORWARD",
-                "-i", self->fw_ifname, "-j", "MINIUPNPD");
 
         /* Regardless of NAT enabled, always allow input on the LAN interface */
         if (strcmp(self->fw_ifname, CONFIG_TARGET_LAN_BRIDGE_NAME) == 0)
@@ -352,9 +348,11 @@ bool fw_nat_stop(inet_fw_t *self)
     /* Flush out NAT rules */
     retval &= fw_rule_del(self, FW_RULE_IPV4,
             "nat", "NM_NAT", "-o", self->fw_ifname, "-j", "MASQUERADE");
-
-    retval &= fw_rule_del(self, FW_RULE_IPV4,
-            "nat", "NM_PORT_FORWARD", "-i", self->fw_ifname, "-j", "MINIUPNPD");
+    retval &= fw_rule_del(self,
+            FW_RULE_IPV4, "nat", "NM_NAT",
+            "-o", self->fw_ifname,
+            "-m", "physdev", "--physdev-is-bridged",
+            "-j", "ACCEPT");
 
     /* Flush clamping rules */
     retval &= fw_rule_del(self,

@@ -174,6 +174,15 @@ bool qm_conn_client(int *pfd)
     return true;
 }
 
+bool qm_conn_init(void)
+{
+#ifdef CONFIG_USE_OSBUS
+    return qm_conn_osbus_init();
+#else
+    return true;
+#endif
+}
+
 // request
 
 void qm_req_init(qm_request_t *req)

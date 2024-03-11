@@ -83,6 +83,10 @@ nl_cmd_set_failed_fn(struct nl_cmd *cmd,
                      void *priv);
 
 void
+nl_cmd_set_name(struct nl_cmd *cmd,
+                const char *name);
+
+void
 nl_cmd_free(struct nl_cmd *cmd);
 
 bool

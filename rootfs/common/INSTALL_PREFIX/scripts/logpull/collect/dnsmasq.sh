@@ -31,8 +31,8 @@
 
 collect_dnsmasq()
 {
-    collect_file $CONFIG_OSN_DHCPD_CFG_PATH
-    collect_file $CONFIG_OSN_DHCPD_LEASE_PATH
+    collect_file $CONFIG_OSN_DNSMASQ_ETC_PATH
+    collect_file $CONFIG_OSN_DNSMASQ_LEASE_PATH
     collect_file /etc/resolv.conf
     collect_file /tmp/resolv.conf.auto
     collect_file /tmp/resolv.conf

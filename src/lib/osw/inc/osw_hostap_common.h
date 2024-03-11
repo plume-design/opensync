@@ -90,6 +90,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
     csnprintf(__buf, __len, "%s"# ARG"="FMT, __indent, conf->ARG); \
     csnprintf(__buf, __len, "\n"); }
 
+#define CONF_APPEND_BUF(BUF) \
+    csnprintf(__buf, __len, "%s", BUF);
+
 #define OSW_HOSTAP_CONF_NETWORK_BLOCK_START() \
     __indent = "\t"; \
     csnprintf(__buf, __len, "network={\n"); \

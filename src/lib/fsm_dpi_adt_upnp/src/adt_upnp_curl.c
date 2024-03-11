@@ -40,7 +40,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 static struct adt_upnp_curl conn_mgr;
 
-struct adt_upnp_curl *get_curl_mgr(void) {
+static struct adt_upnp_curl *
+get_curl_mgr(void)
+{
     return &conn_mgr;
 }
 
@@ -61,7 +63,8 @@ static struct adt_upnp_key_val elements[NUM_OF_ELEMENTS] =
     { "UPC", NULL, 12 },
 };
 
-void timer_cb(EV_P_ struct ev_timer *w, int revents);
+/* Forward definition */
+static void timer_cb(EV_P_ struct ev_timer *w, int revents);
 
 
 struct adt_upnp_key_val *
@@ -71,7 +74,7 @@ adt_upnp_get_elements(void)
 }
 
 
-int
+static int
 multi_timer_cb(CURLM *multi, long timeout_ms,
                struct adt_upnp_curl *mgr)
 {
@@ -90,7 +93,7 @@ multi_timer_cb(CURLM *multi, long timeout_ms,
 }
 
 
-void
+static void
 mcode_or_die(const char *where, CURLMcode code)
 {
     const char *s;
@@ -143,8 +146,8 @@ adt_upnp_init_elements(struct fsm_dpi_adt_upnp_root_desc *url)
 };
 
 
-void
-upnp_scan_data(struct conn_info *conn)
+static void
+adt_upnp_scan_data(struct conn_info *conn)
 {
     struct upnp_curl_buffer *data = &conn->data;
     struct fsm_dpi_adt_upnp_root_desc *url = conn->context;
@@ -217,7 +220,7 @@ fail:
 }
 
 
-void
+static void
 upnp_curl_process_conn(struct conn_info *conn)
 {
     struct upnp_curl_buffer *data = NULL;
@@ -231,11 +234,11 @@ upnp_curl_process_conn(struct conn_info *conn)
     url = conn->context;
     data = &conn->data;
     LOGT("%s: data for url %s:\n%s", __func__, url->url, data->buf);
-    upnp_scan_data(conn);
+    adt_upnp_scan_data(conn);
 }
 
 
-void
+static void
 upnp_free_conn(struct conn_info *conn)
 {
     struct adt_upnp_curl *mgr = get_curl_mgr();
@@ -250,7 +253,7 @@ upnp_free_conn(struct conn_info *conn)
     FREE(conn);
 }
 
-void
+static void
 check_multi_info(struct adt_upnp_curl *mgr)
 {
     struct fsm_dpi_adt_upnp_root_desc *url;
@@ -284,7 +287,7 @@ check_multi_info(struct adt_upnp_curl *mgr)
 }
 
 
-void
+static void
 event_cb(EV_P_ struct ev_io *w, int revents)
 {
     struct adt_upnp_curl *mgr = (struct adt_upnp_curl *) w->data;
@@ -306,7 +309,7 @@ event_cb(EV_P_ struct ev_io *w, int revents)
 }
 
 
-void
+static void
 timer_cb(EV_P_ struct ev_timer *w, int revents)
 {
     struct adt_upnp_curl *mgr = w->data;
@@ -319,7 +322,7 @@ timer_cb(EV_P_ struct ev_timer *w, int revents)
 }
 
 
-void
+static void
 remsock(struct sock_info *f, struct adt_upnp_curl *mgr)
 {
     if (f == NULL) return;
@@ -330,7 +333,7 @@ remsock(struct sock_info *f, struct adt_upnp_curl *mgr)
 }
 
 
-void
+static void
 setsock(struct sock_info *f, curl_socket_t s, CURL *e, int act,
         struct adt_upnp_curl *mgr)
 {
@@ -349,7 +352,7 @@ setsock(struct sock_info *f, curl_socket_t s, CURL *e, int act,
 }
 
 
-void
+static void
 addsock(curl_socket_t s, CURL *easy, int action,
         struct adt_upnp_curl *mgr)
 {
@@ -361,7 +364,7 @@ addsock(curl_socket_t s, CURL *easy, int action,
 }
 
 
-int
+static int
 sock_cb(CURL *e, curl_socket_t s, int what, void *cbp, void *sockp)
 {
     struct adt_upnp_curl *mgr = cbp;
@@ -377,7 +380,8 @@ sock_cb(CURL *e, curl_socket_t s, int what, void *cbp, void *sockp)
 }
 
 
-size_t write_cb(void *ptr, size_t size, size_t nmemb, void *data)
+static size_t
+write_cb(void *ptr, size_t size, size_t nmemb, void *data)
 {
     size_t realsize = size * nmemb;
     struct conn_info *conn = data;

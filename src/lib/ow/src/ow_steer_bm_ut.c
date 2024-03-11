@@ -1056,6 +1056,77 @@ OSW_UT(ow_steer_bm_stats_connect)
     OSW_UT_EVAL(client_event_stats->type == CONNECT);
 }
 
+OSW_UT(ow_steer_bm_stats_connect_snr)
+{
+    OSW_MODULE_LOAD(ow_steer_bm);
+    osw_ut_time_init();
+    osw_timer_disarm(&g_stats_timer);
+
+    const struct osw_hwaddr sta_addr = { .octet = { 0xBA, 0xDC, 0x0D, 0xEB, 0xAD, 0xC0 }, };
+    const struct osw_hwaddr bssid = { .octet = { 0xCA, 0xFE, 0xCA, 0xFE, 0xF0, 0x0D }, };
+    const char *group_id = "group_0";
+    const char *phy_name = "phy_0";
+    const char *vif_name = "vif_0";
+    struct ow_steer_bm_group *group = ow_steer_bm_get_group(group_id);
+    OSW_UT_EVAL(group != NULL);
+    struct ow_steer_bm_vif *vif = ow_steer_bm_group_get_vif(group, vif_name);
+    OSW_UT_EVAL(vif != NULL);
+    struct ow_steer_bm_client *client = ow_steer_bm_get_client(sta_addr.octet);
+    OSW_UT_EVAL(client != NULL);
+    struct osw_drv_vif_state drv_vif_state = {
+        .mac_addr = bssid,
+        .vif_type = OSW_VIF_AP,
+    };
+    struct osw_state_phy_info phy_info = {
+        .phy_name = phy_name,
+    };
+    struct osw_state_vif_info vif_info = {
+        .vif_name = vif_name,
+        .drv_state = &drv_vif_state,
+        .phy = &phy_info,
+    };
+    struct ow_steer_bm_bss bss = {
+        .bssid = {
+            .octet = { 0xCA, 0xFE, 0xCA, 0xFE, 0xF0, 0x0D },
+        },
+    };
+    ow_steer_bm_vif_set_vif_info(vif, &vif_info);
+    vif->bss = &bss;
+    struct osw_drv_sta_state drv_sta_state = { 0 };
+    struct osw_state_sta_info sta_info = {
+        .mac_addr = &sta_addr,
+        .vif = &vif_info,
+        .drv_state = &drv_sta_state,
+        .connected_at = 1234,
+        .assoc_req_ies = NULL,
+        .assoc_req_ies_len = 0
+    };
+    struct ow_steer_bm_sta *bm_sta;
+    ds_dlist_foreach(&g_sta_list, bm_sta) {
+        if (memcmp(&bm_sta->addr, &sta_addr, OSW_HWADDR_LEN) == 0) break;
+    }
+    OSW_UT_EVAL(bm_sta != NULL);
+
+    ow_steer_bm_sta_state_sta_connected_cb(&bm_sta->state_observer, &sta_info);
+
+    struct ow_steer_bm_vif_stats *client_vif_stats = ds_tree_find(&client->stats_tree, vif_name);
+    OSW_UT_EVAL(client_vif_stats != NULL);
+    /* connected, activity, client_capabilties are generated together */
+    OSW_UT_EVAL(client_vif_stats->event_stats_count == 3);
+    OSW_UT_EVAL(client_vif_stats->connected == true);
+    OSW_UT_EVAL(client_vif_stats->connects == 1);
+
+    struct ow_steer_bm_event_stats *client_event_stats = &client_vif_stats->event_stats[0];
+    OSW_UT_EVAL(client_event_stats->type == CONNECT);
+    /* Immediately after connect_cb SNR is not known */
+    OSW_UT_EVAL(client_event_stats->rssi == 0);
+
+    /* SNR in already registered CONNECT events is filled in
+     * after receiving next SNR update from snr observer */
+    ow_steer_bm_snr_obs_report_cb(NULL, &sta_addr, &bssid, 76);
+    OSW_UT_EVAL(client_event_stats->rssi == 76);
+}
+
 OSW_UT(ow_steer_bm_stats_disconnect)
 {
     OSW_MODULE_LOAD(ow_steer_bm);
@@ -1108,6 +1179,73 @@ OSW_UT(ow_steer_bm_stats_disconnect)
     OSW_UT_EVAL(client_event_stats->disconnect_src == LOCAL);
     OSW_UT_EVAL(client_event_stats->disconnect_type == DEAUTH);
     OSW_UT_EVAL(client_event_stats->disconnect_reason == 0);
+}
+
+OSW_UT(ow_steer_bm_stats_disconnect_snr)
+{
+    OSW_MODULE_LOAD(ow_steer_bm);
+    osw_ut_time_init();
+    osw_timer_disarm(&g_stats_timer);
+
+    const struct osw_hwaddr sta_addr = { .octet = { 0xBA, 0xDC, 0x0D, 0xEB, 0xAD, 0xC0 }, };
+    const struct osw_hwaddr bssid = { .octet = { 0xCA, 0xFE, 0xCA, 0xFE, 0xF0, 0x0D }, };
+    const char *group_id = "group_0";
+    const char *vif_name = "vif_0";
+    struct ow_steer_bm_group *group = ow_steer_bm_get_group(group_id);
+    OSW_UT_EVAL(group != NULL);
+    struct ow_steer_bm_vif *vif = ow_steer_bm_group_get_vif(group, vif_name);
+    OSW_UT_EVAL(vif != NULL);
+    struct ow_steer_bm_client *client = ow_steer_bm_get_client(sta_addr.octet);
+    OSW_UT_EVAL(client != NULL);
+    struct osw_drv_vif_state drv_vif_state = {
+        .mac_addr = bssid,
+    };
+    struct osw_state_vif_info vif_info = {
+        .vif_name = vif_name,
+        .drv_state = &drv_vif_state,
+    };
+    struct ow_steer_bm_bss bss = {
+        .bssid = {
+            .octet = { 0xCA, 0xFE, 0xCA, 0xFE, 0xF0, 0x0D },
+        },
+    };
+    ow_steer_bm_vif_set_vif_info(vif, &vif_info);
+    vif->bss = &bss;
+    struct osw_drv_sta_state drv_sta_state = { 0 };
+    struct osw_state_sta_info sta_info = {
+        .mac_addr = &sta_addr,
+        .vif = &vif_info,
+        .drv_state = &drv_sta_state,
+        .connected_at = 1234,
+        .assoc_req_ies = NULL,
+        .assoc_req_ies_len = 0
+    };
+    struct ow_steer_bm_sta *bm_sta;
+    ds_dlist_foreach(&g_sta_list, bm_sta) {
+        if (memcmp(&bm_sta->addr, &sta_addr, OSW_HWADDR_LEN) == 0) break;
+    }
+    OSW_UT_EVAL(bm_sta != NULL);
+
+    ow_steer_bm_snr_obs_report_cb(NULL, &sta_addr, &bssid, 11);
+    ow_steer_bm_snr_obs_report_cb(NULL, &sta_addr, &bssid, 22);
+    ow_steer_bm_snr_obs_report_cb(NULL, &sta_addr, &bssid, 33);
+    ow_steer_bm_snr_obs_report_cb(NULL, &sta_addr, &bssid, 44);
+    ow_steer_bm_snr_obs_report_cb(NULL, &sta_addr, &bssid, 55);
+
+    ow_steer_bm_sta_state_sta_disconnected_cb(&bm_sta->state_observer, &sta_info);
+
+    struct ow_steer_bm_vif_stats *client_vif_stats = ds_tree_find(&client->stats_tree, vif_name);
+    OSW_UT_EVAL(client_vif_stats != NULL);
+    OSW_UT_EVAL(client_vif_stats->event_stats_count == 1);
+    OSW_UT_EVAL(client_vif_stats->connected == false);
+    OSW_UT_EVAL(client_vif_stats->disconnects == 1);
+
+    struct ow_steer_bm_event_stats *client_event_stats = &client_vif_stats->event_stats[0];
+    OSW_UT_EVAL(client_event_stats->type == DISCONNECT);
+    OSW_UT_EVAL(client_event_stats->disconnect_src == LOCAL);
+    OSW_UT_EVAL(client_event_stats->disconnect_type == DEAUTH);
+    OSW_UT_EVAL(client_event_stats->disconnect_reason == 0);
+    OSW_UT_EVAL(client_event_stats->rssi == 55);
 }
 
 OSW_UT(ow_steer_bm_stats_force_kick)

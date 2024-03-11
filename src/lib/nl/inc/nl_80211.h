@@ -88,6 +88,9 @@ nl_80211_free(struct nl_80211 *nl_80211);
 bool
 nl_80211_is_ready(const struct nl_80211 *nl_80211);
 
+int
+nl_80211_get_family_id(struct nl_80211 *nl_80211);
+
 void
 nl_80211_stop(struct nl_80211 *nl_80211);
 
@@ -193,6 +196,10 @@ nl_80211_alloc_get_sta(struct nl_80211 *nl_80211,
                        const void *mac);
 
 struct nl_msg *
+nl_80211_alloc_dump_sta(struct nl_80211 *nl_80211,
+                        uint32_t ifindex);
+
+struct nl_msg *
 nl_80211_alloc_get_reg(struct nl_80211 *nl_80211,
                        uint32_t wiphy);
 
@@ -212,6 +219,10 @@ nl_80211_alloc_dump_scan(struct nl_80211 *nl_80211,
 struct nl_msg *
 nl_80211_alloc_trigger_scan(struct nl_80211 *nl_80211,
                             uint32_t ifindex);
+
+struct nl_msg *
+nl_80211_alloc_dump_survey(struct nl_80211 *nl_80211,
+                           uint32_t ifindex);
 
 struct nl_msg *
 nl_80211_alloc_roc(struct nl_80211 *nl_80211,

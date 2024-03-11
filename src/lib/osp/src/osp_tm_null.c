@@ -24,44 +24,31 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-/*
- * ===========================================================================
- *  DM speedtest plug-in management
- * ===========================================================================
- */
+#include <stdbool.h>
+#include <stdint.h>
+#include <stdio.h>
 
-#include "dm_st_plugin.h"
-#include "log.h"
-#include "osa_assert.h"
+#include "osp_tm.h"
 
-static ds_tree_t dm_st_plugin_list = DS_TREE_INIT(ds_str_cmp, struct dm_st_plugin, _st_node);
-
-void dm_st_plugin_register(struct dm_st_plugin *p)
+bool osp_tm_ovsdb_get_thermal_state(int *thermal_state)
 {
-    LOG(INFO, "dm_st_plugin: Registering plug-in: %s", p->st_name);
-    ds_tree_insert(&dm_st_plugin_list, p, (void*)p->st_name);
+    *thermal_state = -1;
+
+    return false;
 }
 
-void dm_st_plugin_unregister(struct dm_st_plugin *p)
+bool osp_tm_get_fan_rpm_from_thermal_state(const int state, int *fan_rpm)
 {
-    LOG(INFO, "dm_st_plugin: Un-registering plug-in: %s", p->st_name);
-    ASSERT(ds_tree_find(&dm_st_plugin_list, p) != NULL, "dm_st_plugin double unregister");
-    ds_tree_remove(&dm_st_plugin_list, p);
+    (void)state;
+
+    *fan_rpm = -1;
+
+    return false;
 }
 
-struct dm_st_plugin* dm_st_plugin_first(dm_st_plugin_iter_t *iter)
+bool osp_tm_get_led_state(int *led_state)
 {
-    return ds_tree_ifirst(&iter->_st_iter, &dm_st_plugin_list);
+    *led_state = -1;
+
+    return false;
 }
-
-struct dm_st_plugin* dm_st_plugin_next(dm_st_plugin_iter_t *iter)
-{
-    return ds_tree_inext(&iter->_st_iter);
-}
-
-struct dm_st_plugin* dm_st_plugin_find(const char *name)
-{
-    return ds_tree_find(&dm_st_plugin_list, (void*)name);
-}
-
-

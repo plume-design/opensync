@@ -53,6 +53,7 @@ struct osw_btm_req_neigh {
     uint32_t bssid_info;
     uint8_t op_class;
     uint8_t channel;
+    uint8_t btmpreference;
     uint8_t phy_type;
 };
 

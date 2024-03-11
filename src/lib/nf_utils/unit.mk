@@ -29,16 +29,16 @@
 ###############################################################################
 UNIT_NAME := nf_utils
 
-UNIT_DISABLE := $(if $(CONFIG_MANAGER_FSM),n,y)
+UNIT_DISABLE := $(if $(CONFIG_LIB_NF_UTILS),n,y)
 
 # Template type:
 UNIT_TYPE := LIB
 
 UNIT_DIR := lib
 
-UNIT_SRC := src/nf_conntrack.c
-UNIT_SRC += src/nf_util_neigh.c
+UNIT_SRC := src/nf_util_neigh.c
 UNIT_SRC += src/nf_queue.c
+UNIT_SRC += $(if $(CONFIG_FSM_NF_CONNTRACK), src/nf_conntrack.c, src/nf_conntrack_stubs.c)
 
 UNIT_CFLAGS := -I$(UNIT_PATH)/inc
 UNIT_CFLAGS += -I$(TOP_DIR)/src/lib/common/inc/

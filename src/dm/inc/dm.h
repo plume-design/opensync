@@ -32,7 +32,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <ev.h>
 
 #include "log.h"
-#include "dm_st_plugin.h"
 
 #define MODULE_ID LOG_MODULE_ID_MAIN
 
@@ -44,7 +43,6 @@ bool init_statem();
 
 bool dm_hook_init();
 bool dm_hook_close();
-bool dm_st_monitor();
 void dm_st_in_progress_set(bool value);
 bool dm_st_in_progress_get();
 bool dm_manager_stop_all(char *except_mgrs);

@@ -116,7 +116,7 @@ osw_hostap_conf_chwidth_from_osw(enum osw_channel_width width)
         case OSW_CHANNEL_320MHZ:   return OSW_HOSTAP_CONF_CHANWIDTH_320MHZ;
     }
     /* unreachable */
-    return OSW_HOSTAP_CONF_CHANWIDTH_20MHZ_40MHZ;;
+    return OSW_HOSTAP_CONF_CHANWIDTH_20MHZ_40MHZ;
 }
 
 enum osw_channel_width

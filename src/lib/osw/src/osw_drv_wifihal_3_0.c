@@ -1302,13 +1302,10 @@ end:
         size = sizeof(buf);
         if (WARN_ON(MEASURE(priv->wifi_getApAclDevices, (ap_index, buf, size)) != RETURN_OK)) return;
         while ((p = strsep(&bufp, "\n")) != NULL) {
-            static struct osw_hwaddr zero;
             struct osw_hwaddr addr;
 
-            /* FIXME: This could be done better */
-            sscanf(p, OSW_HWADDR_FMT, OSW_HWADDR_SARG(&addr));
-            if (memcmp(&addr, &zero, sizeof(addr)) == 0)
-                continue;
+            if (osw_hwaddr_from_cstr(p, &addr) == false) continue;
+            if (osw_hwaddr_is_zero(&addr)) continue;
 
             int n = ++ap->acl.count;
             ap->acl.list = REALLOC(ap->acl.list, n * sizeof(*ap->acl.list));

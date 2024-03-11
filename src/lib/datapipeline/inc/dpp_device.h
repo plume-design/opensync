@@ -120,6 +120,7 @@ typedef struct
     uint32_t                        n_top_mem;
     uint32_t                        used_file_handles;
     uint32_t                        total_file_handles;
+    bool                            populated;
 } dpp_device_record_t;
 
 typedef struct
@@ -141,6 +142,9 @@ typedef struct
     uint32_t                        txchainmask_qty;
     int32_t                         fan_rpm;
     int16_t                         fan_duty_cycle;
+    int16_t                         thermal_state;
+    int16_t                         target_rpm;
+    int16_t                         led_state;
     uint64_t                        timestamp_ms;
     ds_dlist_node_t                 node;
 } dpp_device_thermal_record_t;

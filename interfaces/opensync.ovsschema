@@ -1,7 +1,7 @@
 {
   "name": "Open_vSwitch",
-  "version": "7.11.361",
-  "cksum": "121355774 318778",
+  "version": "7.11.370",
+  "cksum": "2274781640 324205",
   "tables": {
     "AWLAN_Node": {
       "columns": {
@@ -260,6 +260,17 @@
               "type": "integer",
               "minInteger": 1,
               "maxInteger": 4294967295
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "pm_update_cert": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 0,
+              "maxLength": 256
             },
             "min": 0,
             "max": 1
@@ -1804,7 +1815,7 @@
             "value": {
                  "type": "integer",
                  "minInteger": 1,
-                 "maxInteger": 165
+                 "maxInteger": 233
             },
             "min": 0,
             "max": 8
@@ -3638,6 +3649,24 @@
             "min": 0,
             "max": 1
           }
+        },
+        "mld_if_name": {
+          "type": {
+            "key": {
+              "type": "string"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "mld_addr": {
+          "type": {
+            "key": {
+              "type": "string"
+            },
+            "min": 0,
+            "max": 1
+          }
         }
       },
       "isRoot": true,
@@ -3793,6 +3822,15 @@
            "min": 0,
            "max": 1
          }
+        },
+        "mld_addr": {
+          "type": {
+            "key": {
+              "type": "string"
+            },
+            "min": 0,
+            "max": 1
+          }
         }
       },
       "isRoot": true
@@ -8047,6 +8085,15 @@
                         "type": "string",
                         "minLength": 64,
                         "maxLength": 64
+                    },
+                    "min": 0,
+                    "max": 1
+                }
+            },
+            "mld_addr": {
+                "type": {
+                    "key": {
+                        "type": "string"
                     },
                     "min": 0,
                     "max": 1
@@ -14455,6 +14502,203 @@
           "ext_address"
         ]
       ]
+    },
+    "RevSSH": {
+      "columns": {
+        "server_host": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "min": 1,
+            "max": 1
+          }
+        },
+        "server_port": {
+          "type": {
+            "key": {
+              "type": "integer",
+               "minInteger": 0
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "server_user": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "min": 1,
+            "max": 1
+          }
+        },
+        "server_pubkey": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2048
+            },
+            "min": 1,
+            "max": 4
+          }
+        },
+        "tunnel_remote_bind_addr": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 49
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "tunnel_remote_bind_port": {
+          "type": {
+            "key": {
+              "type": "integer",
+               "minInteger": 0
+            },
+            "min": 1,
+            "max": 1
+          }
+        },
+        "tunnel_local_addr": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 49
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "tunnel_local_port": {
+          "type": {
+            "key": {
+              "type": "integer",
+               "minInteger": 0
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "session_max_time": {
+          "type": {
+            "key": {
+              "type": "integer",
+               "minInteger": 0
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "idle_timeout": {
+          "type": {
+            "key": {
+              "type": "integer",
+               "minInteger": 0
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "node_gen_key_type": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "rsa",
+                  "ecdsa",
+                  "ed25519"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "node_gen_key_bits": {
+          "type": {
+            "key": {
+              "type": "integer",
+               "minInteger": 256
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "other_config": {
+          "type": {
+            "key": "string",
+              "value": {
+               "type": "string",
+               "maxLength": 128
+              },
+              "min": 0,
+              "max": "unlimited"
+          }
+        },
+        "node_pubkey": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2048
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "tunnel_status": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "unknown",
+                  "init_error",
+                  "connect_failure",
+                  "preauth_failure",
+                  "auth_failure",
+                  "connecting",
+                  "remote_fwd_failure",
+                  "established",
+                  "active",
+                  "disconnected_idle",
+                  "disconnected_maxtime",
+                  "disconnected"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "log_last_err_msg": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "min": 0,
+            "max": 1
+          }
+        }
+       },
+       "isRoot": true,
+       "maxRows": 1
     }
   }
 }

@@ -29,7 +29,7 @@
 ###############################################################################
 UNIT_NAME := ustack
 
-UNIT_DISABLE := $(if $(CONFIG_MANAGER_FSM),n,y)
+UNIT_DISABLE := $(if $(CONFIG_LIB_USTACK),n,y)
 
 # Template type:
 UNIT_TYPE := LIB

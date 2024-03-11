@@ -103,6 +103,8 @@ int ovsdb_table_init(
     schema_mark_changed_t *mark_changed,
     char                **columns);
 
+void ovsdb_table_fini(ovsdb_table_t *table);
+
 #define OVSDB_TABLE_VAR_INIT_NO_KEY(VAR, TABLE) \
     ovsdb_table_init( \
         SCHEMA_TABLE(TABLE), \

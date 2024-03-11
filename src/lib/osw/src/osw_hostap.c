@@ -101,7 +101,10 @@ struct osw_hostap_bss_hapd {
     struct hostap_rq_task task_get_wps_status;
     struct hostap_rq_task task_get_neigh;
     //struct hostap_rq_task task_get_rxkhs;
+    bool   csa_by_hostap;
+    struct hostap_rq_task task_csa;
 
+    bool   group_by_phy;
     /* FIXME: sta listing? hostap_sta supports it somewhat */
 };
 
@@ -204,6 +207,7 @@ struct osw_hostap_hook {
 /* Some systems may want to use, eg. /var/run/hostapd-PHY/VIF */
 #define OSW_HOSTAP_HAPD_PATH "/var/run/hostapd/VIF"
 #define OSW_HOSTAP_WPAS_PATH "/var/run/wpa_supplicant/VIF"
+#define OSW_HOSTAP_CS_COUNT 15
 
 /* FIXME: This should probably be moved to osw_hostap_conf
  * since it's involved in translating to/from OSW,
@@ -421,6 +425,23 @@ osw_hostap_bss_remove_done_cb(struct rq_task *task,
 
 /* hapd */
 static void
+osw_hostap_bss_hapd_update_add_task(struct osw_hostap_bss_hapd *hapd,
+                                    struct osw_hostap *hostap,
+                                    const char *phy_name,
+                                    const char *vif_name)
+{
+    char cmd_add[8192];
+    const char *phy_group = hapd->group_by_phy ? phy_name : vif_name;
+
+    snprintf(cmd_add, sizeof(cmd_add),
+             "ADD bss_config=%s:%s",
+             phy_group,
+             hapd->path_config);
+    hostap_rq_task_fini(&hapd->task_add);
+    hostap_rq_task_init(&hapd->task_add, hostap->ghapd.txq, cmd_add);
+}
+
+static void
 osw_hostap_bss_hapd_neigh_free(struct osw_hostap_bss_hapd *hapd)
 {
     FREE(hapd->task_neigh_add);
@@ -544,6 +565,33 @@ osw_hostap_bss_hapd_neigh_add(struct osw_hostap_bss_hapd *hapd,
 }
 
 static void
+osw_hostap_bss_hapd_csa(struct osw_hostap_bss_hapd *hapd,
+                        struct osw_drv_vif_config_ap *ap,
+                        struct rq *q)
+{
+    char cmd[1024];
+    char mode[64] = {0};
+
+    if (ap->mode.ht_enabled)    STRSCAT(mode, "ht ");
+    if (ap->mode.vht_enabled)   STRSCAT(mode, "vht ");
+    if (ap->mode.he_enabled)    STRSCAT(mode, "he ");
+    if (ap->mode.eht_enabled)   STRSCAT(mode, "eht ");
+
+    snprintf(cmd, sizeof(cmd),
+             "CHAN_SWITCH %d %d center_freq1=%d sec_channel_offset=%d bandwidth=%s %s",
+             OSW_HOSTAP_CS_COUNT,
+             ap->channel.control_freq_mhz,
+             ap->channel.center_freq0_mhz,
+             osw_channel_ht40_offset(&ap->channel),
+             osw_channel_width_to_str(ap->channel.width),
+             mode);
+
+    hostap_rq_task_fini(&hapd->task_csa);
+    hostap_rq_task_init(&hapd->task_csa, hapd->ctrl.txq, cmd);
+    rq_add_task(q, &hapd->task_csa.task);
+}
+
+static void
 osw_hostap_bss_hapd_flush_state_replies(struct osw_hostap_bss_hapd *hapd)
 {
     hapd->task_get_config.reply = NULL;
@@ -643,6 +691,7 @@ osw_hostap_bss_hapd_closed_cb(struct hostap_ev_ctrl *ctrl,
     void *ops_priv = bss->ops_priv;
 
     rq_task_kill(&bss->q_state.task);
+    rq_kill(&bss->q_state.q);
 
     if (ops->bss_changed_fn != NULL) {
         ops->bss_changed_fn(ops_priv);
@@ -845,16 +894,7 @@ osw_hostap_bss_hapd_init(struct hostap_ev_ctrl *ghapd,
     hapd->q_config.task.completed_fn = osw_hostap_bss_hapd_config_complete_cb;
     hapd->q_config.task.priv = hapd;
 
-    char cmd_add[8192];
     char cmd_remove[1024];
-
-    /* FIXME: This should be probably selectable to group,
-     * or not to group, VIFs per PHY. Grouping is required
-     * for CSA to work out-of-the-box for hostapd, but some
-     * vendor drivers don't really need it, or care about
-     * it.
-     */
-    const char *phy_group = vif_name;
 
     snprintf(hapd->path_config, sizeof(hapd->path_config),
              "/var/run/hostapd-%s.config",
@@ -864,16 +904,11 @@ osw_hostap_bss_hapd_init(struct hostap_ev_ctrl *ghapd,
              "/var/run/hostapd-%s.pskfile",
              vif_name);
 
-    snprintf(cmd_add, sizeof(cmd_add),
-             "ADD bss_config=%s:%s",
-             phy_group,
-             hapd->path_config);
-
     snprintf(cmd_remove, sizeof(cmd_remove),
              "REMOVE %s",
              vif_name);
 
-    hostap_rq_task_init(&hapd->task_add, ghapd->txq, cmd_add);
+    hostap_rq_task_init(&hapd->task_add, ghapd->txq, ""); /* set in update_add_task */
     hostap_rq_task_init(&hapd->task_remove, ghapd->txq, cmd_remove);
     hostap_rq_task_init(&hapd->task_log_level, hapd->ctrl.txq, "LOG_LEVEL DEBUG");
     hostap_rq_task_init(&hapd->task_init_bssid, hapd->ctrl.txq, "STATUS");
@@ -886,6 +921,7 @@ osw_hostap_bss_hapd_init(struct hostap_ev_ctrl *ghapd,
     hostap_rq_task_init(&hapd->task_get_mib, hapd->ctrl.txq, "MIB");
     hostap_rq_task_init(&hapd->task_get_wps_status, hapd->ctrl.txq, "WPS_GET_STATUS");
     hostap_rq_task_init(&hapd->task_get_neigh, hapd->ctrl.txq, "SHOW_NEIGHBOR");
+    hostap_rq_task_init(&hapd->task_csa, hapd->ctrl.txq, ""); /* set in csa prepare */
 
     hapd->task_add.task.completed_fn = osw_hostap_bss_cmd_warn_on_fail;
     hapd->task_remove.task.completed_fn = osw_hostap_bss_remove_done_cb;
@@ -902,6 +938,7 @@ osw_hostap_bss_hapd_init(struct hostap_ev_ctrl *ghapd,
     hapd->task_get_mib.task.completed_fn = osw_hostap_bss_cmd_warn_on_fail;
     hapd->task_get_wps_status.task.completed_fn = osw_hostap_bss_cmd_warn_on_fail;
     hapd->task_get_neigh.task.completed_fn = osw_hostap_bss_cmd_warn_on_err;
+    hapd->task_csa.task.completed_fn = osw_hostap_bss_cmd_warn_on_err;
 }
 
 static void
@@ -923,6 +960,7 @@ osw_hostap_bss_hapd_fini(struct osw_hostap_bss_hapd *hapd)
     hostap_rq_task_fini(&hapd->task_get_mib);
     hostap_rq_task_fini(&hapd->task_get_wps_status);
     hostap_rq_task_fini(&hapd->task_get_neigh);
+    hostap_rq_task_fini(&hapd->task_csa);
     osw_hostap_bss_hapd_neigh_free(hapd);
     hostap_ev_ctrl_fini(&hapd->ctrl);
     assert(ds_tree_is_empty(&hapd->stas));
@@ -1072,6 +1110,7 @@ osw_hostap_bss_wpas_closed_cb(struct hostap_ev_ctrl *ctrl,
 
     osw_hostap_bss_wpas_psk_invalidate(wpas);
     rq_task_kill(&bss->q_state.task);
+    rq_kill(&bss->q_state.q);
 
     if (ops->bss_changed_fn != NULL) {
         ops->bss_changed_fn(ops_priv);
@@ -1279,6 +1318,22 @@ osw_hostap_bss_fill_state(struct osw_hostap_bss *bss,
     }
 }
 
+void
+osw_hostap_bss_fill_csa_by_hostap(struct osw_hostap_bss *bss,
+                                  bool csa_by_hostap)
+{
+    bss->hapd.csa_by_hostap = csa_by_hostap;
+    LOGD(LOG_PREFIX_BSS(bss, "csa_by_hostap=%d", csa_by_hostap));
+}
+
+void
+osw_hostap_bss_fill_group_by_phy(struct osw_hostap_bss *bss,
+                                  bool group_by_phy)
+{
+    bss->hapd.group_by_phy = group_by_phy;
+    LOGD(LOG_PREFIX_BSS(bss, "group_by_phy=%d", group_by_phy));
+}
+
 struct rq_task *
 osw_hostap_bss_prep_state_task(struct osw_hostap_bss *bss)
 {
@@ -1386,6 +1441,7 @@ osw_hostap_set_conf_ap(struct osw_hostap *hostap,
     OSW_HOSTAP_CONF_SET_BUF(conf->ctrl_interface, path_ctrl);
     FREE(path_ctrl);
 
+    MEMZERO(conf->extra_buf);
     CALL_HOOKS(hostap, ap_conf_mutate_fn, phy_name, vif_name, drv_conf, conf);
 
     osw_hostap_conf_generate_ap_config_bufs(conf);
@@ -1429,6 +1485,8 @@ osw_hostap_set_conf_ap(struct osw_hostap *hostap,
     const bool do_wps_cancel = is_running
                             && dvif->u.ap.wps_pbc == false
                             && dvif->u.ap.wps_pbc_changed == true;
+    const bool do_csa = is_running && want_running &&
+                     dvif->u.ap.channel_changed && dvif->u.ap.csa_required && hapd->csa_by_hostap;
 
     rq_resume(q);
 
@@ -1439,6 +1497,7 @@ osw_hostap_set_conf_ap(struct osw_hostap *hostap,
 
     if (do_add) {
         LOGD(LOG_PREFIX_HAPD(hapd, "do add"));
+        osw_hostap_bss_hapd_update_add_task(hapd, hostap, phy_name, vif_name);
         rq_add_task(q, &hapd->task_add.task);
         rq_add_task(q, &hapd->task_log_level.task);
         rq_add_task(q, &hapd->task_init_bssid.task);
@@ -1465,6 +1524,11 @@ osw_hostap_set_conf_ap(struct osw_hostap *hostap,
     if (do_wps_cancel) {
         LOGD(LOG_PREFIX_HAPD(hapd, "do wps cancel"));
         rq_add_task(q, &hapd->task_wps_cancel.task);
+    }
+
+    if (do_csa) {
+        LOGD(LOG_PREFIX_HAPD(hapd, "do csa"));
+        osw_hostap_bss_hapd_csa(hapd, &dvif->u.ap, q);
     }
 
     rq_stop(q);
@@ -1518,6 +1582,7 @@ osw_hostap_set_conf_sta(struct osw_hostap *hostap,
     OSW_HOSTAP_CONF_SET_BUF(conf->global.ctrl_interface, path_ctrl);
     FREE(path_ctrl);
 
+    MEMZERO(conf->extra_buf);
     CALL_HOOKS(hostap, sta_conf_mutate_fn, phy_name, vif_name, drv_conf, conf);
 
     osw_hostap_conf_generate_sta_config_bufs(conf);

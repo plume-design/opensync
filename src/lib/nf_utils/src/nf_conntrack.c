@@ -793,6 +793,32 @@ build_icmp_params_v6(struct nlmsghdr *nlh, const void *saddr, const void *daddr,
     return 0;
 }
 
+
+static struct nlmsghdr *
+nf_ct_build_msg_hdr(char *buf, uint32_t type, uint16_t flags, int af_family)
+{
+    struct nlmsghdr *nlh = NULL;
+    struct nfgenmsg *nfh = NULL;
+    struct nf_ct_context *nf_ct;
+
+    nf_ct = nf_ct_get_context();
+    if (!nf_ct->initialized) return NULL;
+
+    nlh = mnl_nlmsg_put_header(buf);
+
+    nlh->nlmsg_type = type;
+    nlh->nlmsg_flags = flags;
+    nlh->nlmsg_seq = time(NULL);
+
+    nfh = mnl_nlmsg_put_extra_header(nlh, sizeof(struct nfgenmsg));
+    nfh->nfgen_family = af_family;
+    nfh->version = NFNETLINK_V0;
+    nfh->res_id = 0;
+
+    return nlh;
+}
+
+
 static struct nlmsghdr *
 nf_build_icmp_nl_msg(char *buf, nf_addr_t *addr, nf_icmp_t *icmp, int proto, int family,
                      uint32_t mark, uint16_t zone)
@@ -851,6 +877,7 @@ nf_build_icmp_nl_msg(char *buf, nf_addr_t *addr, nf_icmp_t *icmp, int proto, int
     LOGD("%s: Added mark: %d zone: %d", __func__, mark, zone);
     return nlh;
 }
+
 
 static struct nlmsghdr *
 nf_build_ip_nl_msg(char *buf, nf_addr_t *addr, nf_port_t *port, int proto, int family,
@@ -1162,41 +1189,15 @@ nf_ct_print_conntrack(ct_flow_t *flow)
     getnameinfo((struct sockaddr *)&flow->layer3_info.dst_ip,
                 sizeof(struct sockaddr_storage), dst, sizeof(dst),
                 0, 0, NI_NUMERICHOST);
-    LOGD("%s: [ proto=%d tx src=%s dst=%s] ", __func__,
+    LOGT("%s: [ proto=%d tx src=%s dst=%s] ", __func__,
          flow->layer3_info.proto_type, src, dst);
 
-    LOGD("%s: [src port=%d dst port=%d] "
+    LOGT("%s: [src port=%d dst port=%d] "
          "[packets=%" PRIu64 "  bytes=%" PRIu64 "]", __func__,
         ntohs(flow->layer3_info.src_port),
         ntohs(flow->layer3_info.dst_port),
         flow->pkt_info.pkt_cnt, flow->pkt_info.bytes);
 }
-
-
-struct nlmsghdr *
-nf_ct_build_msg_hdr(char *buf, uint32_t type, uint16_t flags, int af_family)
-{
-    struct nlmsghdr *nlh = NULL;
-    struct nfgenmsg *nfh = NULL;
-    struct nf_ct_context *nf_ct;
-
-    nf_ct = nf_ct_get_context();
-    if(!nf_ct->initialized) return NULL;
-
-    nlh = mnl_nlmsg_put_header(buf);
-
-    nlh->nlmsg_type = type;
-    nlh->nlmsg_flags = flags;
-    nlh->nlmsg_seq = time(NULL);
-
-    nfh = mnl_nlmsg_put_extra_header(nlh, sizeof(struct nfgenmsg));
-    nfh->nfgen_family = af_family;
-    nfh->version = NFNETLINK_V0;
-    nfh->res_id = 0;
-
-    return nlh;
-}
-
 
 /*
  * ===========================================================================

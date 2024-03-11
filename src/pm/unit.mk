@@ -32,6 +32,7 @@ UNIT_TYPE := BIN
 UNIT_DISABLE := $(if $(CONFIG_MANAGER_PM),n,y)
 
 UNIT_SRC := src/pm_main.c
+UNIT_SRC += src/pm_cert_update.c
 
 $(eval $(if $(CONFIG_PM_ENABLE_CLIENT_FREEZE),      UNIT_SRC += src/pm_client_freeze.c))
 $(eval $(if $(CONFIG_PM_ENABLE_CLIENT_NICKNAME),    UNIT_SRC += src/pm_client_nickname.c))
@@ -62,7 +63,7 @@ UNIT_SRC += src/pm_gw_offline_cfg.c
 endif
 
 UNIT_CFLAGS  += -I$(UNIT_PATH)/inc
-UNIT_LDFLAGS += -lev
+UNIT_LDFLAGS += -lev -lcurl
 
 UNIT_DEPS += src/lib/common
 UNIT_DEPS += src/lib/osp

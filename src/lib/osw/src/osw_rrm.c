@@ -77,6 +77,7 @@ struct osw_rrm_sta {
 struct osw_rrm_desc {
     struct osw_rrm_sta *sta;
     struct osw_rrm_desc_observer *observer;
+    void *priv;
 
     struct ds_dlist_node node;
 };
@@ -146,8 +147,13 @@ osw_rrm_radio_meas_req_entry_free(struct osw_rrm_radio_meas_req_entry *radio_mea
         if (desc_observer == NULL)
             continue;
 
+        struct osw_rrm_desc *desc = entry_desc->desc;
+        if (desc == NULL)
+            continue;
+
+        void *priv = desc->priv;
         if (desc_observer->radio_meas_req_status_fn != NULL)
-            desc_observer->radio_meas_req_status_fn(desc_observer, status, dialog_token_ptr, meas_token_ptr, &radio_meas_req->req);
+            desc_observer->radio_meas_req_status_fn(priv, status, dialog_token_ptr, meas_token_ptr, &radio_meas_req->req);
 
         ds_dlist_remove(&radio_meas_req->desc_list, entry_desc);
         FREE(entry_desc);
@@ -393,9 +399,14 @@ osw_rrm_drv_frame_tx_result_cb(struct osw_drv_frame_tx_desc *tx_desc,
             if (observer->radio_meas_req_status_fn == NULL)
                 continue;
 
+            struct osw_rrm_desc *desc = entry_desc->desc;
+            if (desc == NULL)
+                continue;;
+
+            void *priv = desc->priv;
             const uint8_t *dialog_token_ptr = &sta->dialog_token;
             const uint8_t *meas_token_ptr = &meas_req->meas_token;
-            observer->radio_meas_req_status_fn(observer, OSW_RRM_RADIO_STATUS_SENT,
+            observer->radio_meas_req_status_fn(priv, OSW_RRM_RADIO_STATUS_SENT,
                                                dialog_token_ptr, meas_token_ptr,
                                                &meas_req->req);
         }
@@ -433,7 +444,7 @@ osw_rrm_sta_free(struct osw_rrm_sta *sta)
 {
     ASSERT(sta != NULL, "");
 
-    ASSERT(ds_dlist_is_empty(&sta->radio_meas_req_list) == false, NULL);
+    ASSERT(ds_dlist_is_empty(&sta->radio_meas_req_list) == true, NULL);
 
     osw_throttle_free(sta->throttle);
     osw_timer_disarm(&sta->tx_work_timer);
@@ -650,7 +661,8 @@ osw_rrm_init(struct osw_rrm *rrm)
 struct osw_rrm_desc*
 osw_rrm_get_desc(struct osw_rrm *rrm,
                  const struct osw_hwaddr *sta_addr,
-                 struct osw_rrm_desc_observer *observer)
+                 struct osw_rrm_desc_observer *observer,
+                 void *priv)
 {
     ASSERT(rrm != NULL, "");
     ASSERT(sta_addr != NULL, "");
@@ -661,6 +673,7 @@ osw_rrm_get_desc(struct osw_rrm *rrm,
 
     desc->sta = sta;
     desc->observer = observer;
+    desc->priv = priv;
 
     ds_dlist_insert_tail(&sta->desc_list, desc);
 
@@ -723,7 +736,8 @@ osw_rrm_desc_free(struct osw_rrm_desc *desc)
     struct osw_rrm_radio_meas_req_entry *tmp_radio_meas_req_entry = NULL;
     ds_dlist_foreach_safe(&sta->radio_meas_req_list, radio_meas_req_entry, tmp_radio_meas_req_entry) {
         struct osw_rrm_radio_meas_req_entry_desc *entry_desc = NULL;
-        ds_dlist_foreach(&radio_meas_req_entry->desc_list, entry_desc)
+        struct osw_rrm_radio_meas_req_entry_desc *tmp_entry_desc;
+        ds_dlist_foreach_safe(&radio_meas_req_entry->desc_list, entry_desc, tmp_entry_desc)
             if (entry_desc->desc == desc)
                 break;
 

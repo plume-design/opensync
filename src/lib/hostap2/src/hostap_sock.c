@@ -212,6 +212,7 @@ hostap_sock_alloc(const char *ctrl_path)
 void
 hostap_sock_free(struct hostap_sock *sock)
 {
+    if (sock == NULL) return;
     hostap_sock_close(sock);
     FREE(sock->ctrl_path);
     FREE(sock);

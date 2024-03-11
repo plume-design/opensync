@@ -85,6 +85,7 @@ void ow_conf_phy_set_ap_wmm_enabled(const char *phy_name, const bool *enabled);
 void ow_conf_phy_set_ap_ht_enabled(const char *phy_name, const bool *enabled);
 void ow_conf_phy_set_ap_vht_enabled(const char *phy_name, const bool *enabled);
 void ow_conf_phy_set_ap_he_enabled(const char *phy_name, const bool *enabled);
+void ow_conf_phy_set_ap_eht_enabled(const char *phy_name, const bool *enabled);
 void ow_conf_phy_set_ap_beacon_interval_tu(const char *phy_name, const int *tu);
 void ow_conf_phy_set_ap_channel(const char *phy_name, const struct osw_channel *channel);
 
@@ -106,6 +107,7 @@ void ow_conf_vif_set_ap_isolated(const char *vif_name, const bool *isolated);
 void ow_conf_vif_set_ap_ht_enabled(const char *vif_name, const bool *ht_enabled);
 void ow_conf_vif_set_ap_vht_enabled(const char *vif_name, const bool *vht_enabled);
 void ow_conf_vif_set_ap_he_enabled(const char *vif_name, const bool *he_enabled);
+void ow_conf_vif_set_ap_eht_enabled(const char *vif_name, const bool *eht_enabled);
 void ow_conf_vif_set_ap_ht_required(const char *vif_name, const bool *ht_required);
 void ow_conf_vif_set_ap_vht_required(const char *vif_name, const bool *vht_required);
 void ow_conf_vif_set_ap_supp_rates(const char *vif_name, const uint16_t *supp_rates);

@@ -48,6 +48,9 @@ include build/vendor-defines.mk
 # service provider specifics
 include build/service-provider.mk
 
+# Include 3rd party addon
+include build/3rdparty.mk
+
 ifneq ($(_OVERRIDE_MAIN_MAKEFILE),1)
 
 .PHONY: all build_all clean distclean FORCE
@@ -76,6 +79,8 @@ include build/devshell.mk
 include build/help.mk
 include build/doc.mk
 include build/packages.mk
+include build/static_analysis.mk
+include build/code_format.mk
 
 build_all: workdirs schema-check unit-install
 

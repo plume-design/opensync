@@ -39,6 +39,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #if JANSSON_MAJOR_VERSION <= 2 && JANSSON_MINOR_VERSION < 8
 extern void json_get_alloc_funcs(json_malloc_t *malloc_fn, json_free_t *free_fn);
+void json_set_alloc_funcs_override(json_malloc_t malloc_fn, json_free_t free_fn);
 #define json_object_foreach_safe(object, n, key, value)                                  \
     for (key = json_object_iter_key(json_object_iter(object)),                           \
         n = json_object_iter_next(object, json_object_key_to_iter(key));                 \
@@ -84,10 +85,9 @@ extern void         json_memdbg_report(bool diff_only);
  */
 static inline void json_free(void *p)
 {
-    json_malloc_t   __unused;
     json_free_t     free_func;
 
-    json_get_alloc_funcs(&__unused, &free_func);
+    json_get_alloc_funcs(NULL, &free_func);
 
     if (free_func != NULL) free_func(p);
 }

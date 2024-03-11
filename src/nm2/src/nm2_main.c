@@ -130,6 +130,8 @@ int main(int argc, char ** argv)
         nm2_if_init();
         nm2_default_br_init(CONFIG_TARGET_LAN_BRIDGE_NAME);
     }
+
+
     ev_run(loop, 0);
 
     if (!ovsdb_stop_loop(loop)) {

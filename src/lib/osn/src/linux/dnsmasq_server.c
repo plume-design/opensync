@@ -221,7 +221,7 @@ bool dnsmasq_server_init(dnsmasq_server_t *self, const char *ifname)
 
 #if defined(CONFIG_OSN_DNSMASQ_KEEP_RUNNING)
         /* Start dnsmasq immediately */
-        dnsmasq_server_apply();
+        dnsmasq_server_apply(self, dnsmasq_server_init);
 #endif
     }
 
@@ -263,7 +263,7 @@ bool dnsmasq_server_fini(dnsmasq_server_t *self)
     ds_dlist_remove(&dnsmasq_server_list, self);
 
     /* Issue a delayed server restart */
-    dnsmasq_server_apply();
+    dnsmasq_server_apply(self, false);
 
     /* Free DHCP options array */
     for (ii = 0; ii < DHCP_OPTION_MAX; ii++)
@@ -355,9 +355,10 @@ void dnsmasq_server_enable(dnsmasq_server_t *self, bool enable)
 /*
  * Schedule a debounced global configuration apply
  */
-void dnsmasq_server_apply(void)
+void dnsmasq_server_apply(dnsmasq_server_t *self, bool dnsmasq_server_init)
 {
-    ev_debounce_start(EV_DEFAULT, &dnsmasq_server_debounce);
+    if (self->ds_enabled || dnsmasq_server_init)
+        ev_debounce_start(EV_DEFAULT, &dnsmasq_server_debounce);
 }
 
 bool dnsmasq_server_option_set(

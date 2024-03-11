@@ -537,6 +537,22 @@ void wano_ovs_port_event_stop(wano_ovs_port_event_t *self);
 
 /*
  * ===========================================================================
+ *  WANO AWLAN_Node table API - Wrapper for monitoring the AWLAN_Node table
+ * ===========================================================================
+ */
+
+/**
+ * Initialize a AWLAN_Node table event listening object
+ */
+bool wano_awlan_node_init(void);
+
+/**
+ * Retrieve AWLAN_Node table redirector_addr field
+ */
+const char *wano_awlan_redirector_addr(void);
+
+/*
+ * ===========================================================================
  *  WANO Plugin Pipelines
  *
  *  A plug-in pipeline manages execution of plug-ins on an interface. The
@@ -697,5 +713,11 @@ void wano_ppline_event_start(wano_ppline_event_t *self, wano_ppline_t *wpp);
 
 /** Stop listening to pipeline events */
 void wano_ppline_event_stop(wano_ppline_event_t *event);
+
+/** Setup wan probe */
+bool wano_ppline_wan_probe_setup(void);
+
+/** Teardown wan probe */
+void wano_ppline_wan_probe_teardown(void);
 
 #endif /* WANO_H_INCLUDED */

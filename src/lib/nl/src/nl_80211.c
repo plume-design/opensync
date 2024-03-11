@@ -24,6 +24,8 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+#define _GNU_SOURCE
+
 /* libc */
 #include <inttypes.h>
 
@@ -40,6 +42,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <memutil.h>
 #include <log.h>
 #include <const.h>
+#include <util.h>
 
 /* unit */
 #include <nl_cmd.h>
@@ -100,6 +103,7 @@ nl_80211_cmd_dump_wiphy_send(struct nl_80211 *nl,
 {
     struct nl_msg *msg = nlmsg_alloc();
     nl_80211_put_cmd__(nl, msg, NLM_F_DUMP, NL80211_CMD_GET_WIPHY);
+    nl_cmd_set_name(cmd, "dump wiphy");
     nl_cmd_set_msg(cmd, msg);
 }
 
@@ -109,6 +113,7 @@ nl_80211_cmd_dump_interface_send(struct nl_80211 *nl,
 {
     struct nl_msg *msg = nlmsg_alloc();
     nl_80211_put_cmd__(nl, msg, NLM_F_DUMP, NL80211_CMD_GET_INTERFACE);
+    nl_cmd_set_name(cmd, "dump interface");
     nl_cmd_set_msg(cmd, msg);
 }
 
@@ -120,6 +125,7 @@ nl_80211_cmd_dump_station_send(struct nl_80211 *nl,
     struct nl_msg *msg = nlmsg_alloc();
     nl_80211_put_cmd__(nl, msg, NLM_F_DUMP, NL80211_CMD_GET_STATION);
     assert(nla_put_u32(msg, NL80211_ATTR_IFINDEX, ifindex) == 0);
+    nl_cmd_set_name(cmd, strfmta("dump station ifindex=%u", ifindex));
     nl_cmd_set_msg(cmd, msg);
 }
 
@@ -128,6 +134,7 @@ nl_80211_cmd_get_features_send(struct nl_80211 *nl_80211)
 {
     struct nl_msg *msg = nlmsg_alloc();
     nl_80211_put_cmd__(nl_80211, msg, 0, NL80211_CMD_GET_PROTOCOL_FEATURES);
+    nl_cmd_set_name(nl_80211->cmd_get_features, "get features");
     nl_cmd_set_msg(nl_80211->cmd_get_features, msg);
 }
 
@@ -144,6 +151,7 @@ nl_80211_cmd_get_family_send(struct nl_80211 *nl_80211)
                         CTRL_CMD_GETFAMILY,
                         0) == NULL);
     nla_put_string(msg, CTRL_ATTR_FAMILY_NAME, "nl80211");
+    nl_cmd_set_name(nl_80211->cmd_get_family, "get family");
     nl_cmd_set_msg(nl_80211->cmd_get_family, msg);
 }
 
@@ -866,6 +874,13 @@ nl_80211_cmd_is_busy(const struct nl_cmd *cmd)
     return false;
 }
 
+int
+nl_80211_get_family_id(struct nl_80211 *nl_80211)
+{
+    if (nl_80211_cmd_is_busy(nl_80211->cmd_get_family)) return -1;
+    return nl_80211->family_id;
+}
+
 bool
 nl_80211_is_ready(const struct nl_80211 *nl_80211)
 {
@@ -1220,6 +1235,16 @@ nl_80211_alloc_get_sta(struct nl_80211 *nl_80211,
 }
 
 struct nl_msg *
+nl_80211_alloc_dump_sta(struct nl_80211 *nl_80211,
+                        uint32_t ifindex)
+{
+    struct nl_msg *msg = nlmsg_alloc();
+    nl_80211_put_cmd(nl_80211, msg, NLM_F_DUMP, NL80211_CMD_GET_STATION);
+    assert(nla_put_u32(msg, NL80211_ATTR_IFINDEX, ifindex) == 0);
+    return msg;
+}
+
+struct nl_msg *
 nl_80211_alloc_get_reg(struct nl_80211 *nl_80211,
                        uint32_t wiphy)
 {
@@ -1269,6 +1294,16 @@ nl_80211_alloc_trigger_scan(struct nl_80211 *nl_80211,
 {
     struct nl_msg *msg = nlmsg_alloc();
     nl_80211_put_cmd(nl_80211, msg, 0, NL80211_CMD_TRIGGER_SCAN);
+    assert(nla_put_u32(msg, NL80211_ATTR_IFINDEX, ifindex) == 0);
+    return msg;
+}
+
+struct nl_msg *
+nl_80211_alloc_dump_survey(struct nl_80211 *nl_80211,
+                          uint32_t ifindex)
+{
+    struct nl_msg *msg = nlmsg_alloc();
+    nl_80211_put_cmd(nl_80211, msg, NLM_F_DUMP, NL80211_CMD_GET_SURVEY);
     assert(nla_put_u32(msg, NL80211_ATTR_IFINDEX, ifindex) == 0);
     return msg;
 }

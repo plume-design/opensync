@@ -195,6 +195,7 @@ typedef struct
     ifname_t                        ifname;
     radio_essid_t                   essid;
     network_id_t                    networkid;
+    mac_address_t                   mld_addr;
 } dpp_client_info_t;
 
 #define DPP_TARGET_CLIENT_RECORD_COMMON_STRUCT \

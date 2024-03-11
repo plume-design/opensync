@@ -81,6 +81,10 @@ ow_ovsdb_steer_ht_mode_to_bm_neighbor_enum(const char *cstr,
         *enumeration = OW_STEER_BM_NEIGHBOR_HT80P80;
         return true;
     }
+    else if (strcmp(cstr, "HT320") == 0) {
+        *enumeration = OW_STEER_BM_NEIGHBOR_HT320;
+        return true;
+    }
     else {
         return false;
     }
@@ -156,6 +160,21 @@ ow_ovsdb_steer_neighbor_set(const struct schema_Wifi_VIF_Neighbors *row)
     }
     else {
         ow_steer_bm_neighbor_set_priority(neighbor, NULL);
+    }
+
+    if (row->mld_addr_exists == true) {
+        const char *mld_addr_str = row->mld_addr;
+        struct osw_hwaddr mld_addr;
+        const bool addr_is_valid = osw_hwaddr_from_cstr(mld_addr_str, &mld_addr);
+        if (addr_is_valid) {
+            ow_steer_bm_neighbor_set_mld_addr(neighbor, &mld_addr);
+        }
+        else {
+            ow_steer_bm_neighbor_set_mld_addr(neighbor, NULL);
+        }
+    }
+    else {
+        ow_steer_bm_neighbor_set_mld_addr(neighbor, NULL);
     }
 
     if (row->channel_exists == true) {

@@ -638,6 +638,10 @@ json_url_report(struct fsm_session *session,
                 json_object_set_new(body, "httpsSniCategorization", categorization);
                 break;
 
+            case FSM_APP_REQ:
+                json_object_set_new(body, "appCategorization", categorization);
+                break;
+
             default:
                 json_object_set_new(body, "unknownTypeCategorization", categorization);
                 break;

@@ -57,10 +57,6 @@ const char *ut_name = "mdns_plugin_tests";
 #define OTHER_CONFIG_NELEMS 4
 #define OTHER_CONFIG_NELEM_SIZE 128
 
-extern void callback_Service_Announcement(ovsdb_update_monitor_t *mon,
-                         struct schema_Service_Announcement *old_rec,
-                         struct schema_Service_Announcement *new_rec);
-
 ovsdb_update_monitor_t g_mon;
 struct mdns_plugin_mgr *mgr;
 
@@ -280,7 +276,7 @@ void test_add_mdnsd_service(void)
     /* Add the service entry 0 */
     pconf = &g_mdns_ann[0];
     g_mon.mon_type = OVSDB_UPDATE_NEW;
-    callback_Service_Announcement(&g_mon, NULL, pconf);
+    mgr->service_announcement(&g_mon, NULL, pconf);
 
     snprintf(hlocal, sizeof(hlocal), "%s.%s.local.", pconf->name, pconf->protocol);
     r = mdnsd_find(pctxt->dmn, hlocal, QTYPE_TXT);
@@ -296,7 +292,7 @@ void test_add_mdnsd_service(void)
     /* Add the service entry 1 */
     pconf = &g_mdns_ann[1];
     g_mon.mon_type = OVSDB_UPDATE_NEW;
-    callback_Service_Announcement(&g_mon, NULL, pconf);
+    mgr->service_announcement(&g_mon, NULL, pconf);
 
     snprintf(hlocal, sizeof(hlocal), "%s.%s.local.", pconf->name, pconf->protocol);
     r = mdnsd_find(pctxt->dmn, hlocal, QTYPE_TXT);
@@ -339,7 +335,7 @@ void test_del_mdnsd_service(void)
     /* Add the service entry 0 */
     pconf = &g_mdns_ann[0];
     g_mon.mon_type = OVSDB_UPDATE_NEW;
-    callback_Service_Announcement(&g_mon, NULL, pconf);
+    mgr->service_announcement(&g_mon, NULL, pconf);
 
     // Check if entry is present.
     snprintf(hlocal, sizeof(hlocal), "%s.%s.local.", pconf->name, pconf->protocol);
@@ -355,7 +351,7 @@ void test_del_mdnsd_service(void)
     /* Add the service entry 1 */
     pconf = &g_mdns_ann[1];
     g_mon.mon_type = OVSDB_UPDATE_NEW;
-    callback_Service_Announcement(&g_mon, NULL, pconf);
+    mgr->service_announcement(&g_mon, NULL, pconf);
 
     // Check if entry is present.
     snprintf(hlocal, sizeof(hlocal), "%s.%s.local.", pconf->name, pconf->protocol);
@@ -371,7 +367,7 @@ void test_del_mdnsd_service(void)
     /* Del the service entry 0 */
     pconf = &g_mdns_ann[0];
     g_mon.mon_type = OVSDB_UPDATE_DEL;
-    callback_Service_Announcement(&g_mon, pconf, NULL);
+    mgr->service_announcement(&g_mon, pconf, NULL);
 
     // Check to make sure entry is deleted.
     snprintf(hlocal, sizeof(hlocal), "%s.%s.local.", pconf->name, pconf->protocol);
@@ -412,7 +408,7 @@ void test_modify_mdnsd_service(void)
     /* Add the service entry 0 */
     pconf = &g_mdns_ann[0];
     g_mon.mon_type = OVSDB_UPDATE_NEW;
-    callback_Service_Announcement(&g_mon, NULL, pconf);
+    mgr->service_announcement(&g_mon, NULL, pconf);
 
     // Check if entry is present.
     snprintf(hlocal, sizeof(hlocal), "%s.%s.local.", pconf->name, pconf->protocol);
@@ -428,7 +424,7 @@ void test_modify_mdnsd_service(void)
     /* Add the service entry 1 */
     pconf = &g_mdns_ann[1];
     g_mon.mon_type = OVSDB_UPDATE_NEW;
-    callback_Service_Announcement(&g_mon, NULL, pconf);
+    mgr->service_announcement(&g_mon, NULL, pconf);
 
     // Check if entry is present.
     snprintf(hlocal, sizeof(hlocal), "%s.%s.local.", pconf->name, pconf->protocol);
@@ -465,7 +461,7 @@ void test_modify_mdnsd_service(void)
     pconf = &g_mdns_ann[0];
     pnew = &mdns_ann_modify[0];
     g_mon.mon_type = OVSDB_UPDATE_MODIFY;
-    callback_Service_Announcement(&g_mon, pconf, pnew);
+    mgr->service_announcement(&g_mon, pconf, pnew);
 
     // Check to make sure entry is modified.
     wr_len = snprintf(txt_str, sizeof(txt_str), "%s=%s",  pnew->txt_keys[0], pnew->txt[0]);

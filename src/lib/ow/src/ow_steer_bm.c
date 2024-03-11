@@ -129,6 +129,7 @@ struct ow_steer_bm_event_stats {
     uint8_t *assoc_ies;
     size_t assoc_ies_len;
     uint32_t btm_status;
+    bool set_rssi_later;
 };
 
 struct ow_steer_bm_vif_stats {
@@ -148,6 +149,8 @@ struct ow_steer_bm_vif_stats {
     uint32_t probe_direct_blocked;
     uint32_t event_stats_count;
     struct ow_steer_bm_event_stats event_stats[OW_STEER_BM_MAX_EVENT_CNT];
+    int pending_connects_count;
+    int snr_last;
 
     struct ds_tree_node node;
 };
@@ -162,6 +165,7 @@ struct ow_steer_bm_neighbor {
     OW_STEER_BM_ATTR_DECL(uint8_t, op_class);
     OW_STEER_BM_ATTR_DECL(unsigned int, priority);
     OW_STEER_BM_ATTR_DECL(struct osw_channel, channel);
+    OW_STEER_BM_ATTR_DECL(struct osw_hwaddr, mld_addr);
     OW_STEER_BM_ATTR_DECL(struct ow_steer_bm_vif, vif);
 
     struct ow_steer_bm_bss *bss;
@@ -221,10 +225,16 @@ struct ow_steer_bm_kick_state_monitor {
     unsigned int btm_send_cnt;
 };
 
+/* This is keyed by a tuple of: (group, client). In other
+ * words if there is a client, and 2 groups, then 2
+ * ow_steer_bm_sta will exist.
+ */
 struct ow_steer_bm_sta {
     struct osw_hwaddr addr;
     bool removed;
 
+    /* FIXME: This needs to become a list to support MLD.
+     */
     const struct osw_state_sta_info *sta_info;
 
     struct ow_steer_sta *steer_sta;
@@ -257,6 +267,8 @@ struct ow_steer_bm_sta {
     struct ds_tree vif_rrm_tree;
     struct osw_state_observer state_observer;
     struct osw_assoc_req_info assoc_req_info;
+    struct ow_steer_snr_observer *snr_observer;
+    int connects_counter;
 
     bool issue_force_kick;
     bool client_steering_recalc;
@@ -331,6 +343,12 @@ static void
 ow_steer_bm_state_obs_vif_probe_cb(struct osw_state_observer *self,
                                    const struct osw_state_vif_info *vif,
                                    const struct osw_drv_report_vif_probe_req *probe_req);
+
+static void
+ow_steer_bm_snr_obs_report_cb(void *priv,
+                              const struct osw_hwaddr *sta_addr,
+                              const struct osw_hwaddr *bssid,
+                              int snr_db);
 
 static void
 ow_steer_bm_sta_stop_client_steering(struct ow_steer_bm_sta *sta);
@@ -519,6 +537,9 @@ ow_steer_bm_get_new_client_event_stats(struct ow_steer_bm_vif_stats *vif_stats);
 
 #define OW_STEER_BM_NEIGHBOR_ATTR_PRINT_CHANGE_IFNAME(neighbor, attr)                               \
     OW_STEER_BM_ATTR_PRINT_CHANGE_IFNAME(OW_STEER_BM_NEIGHBOR_LOG_PREFIX(neighbor), neighbor, attr)
+
+#define OW_STEER_BM_NEIGHBOR_ATTR_PRINT_CHANGE_HWADDR(neighbor, attr)                               \
+    OW_STEER_BM_ATTR_PRINT_CHANGE_HWADDR(OW_STEER_BM_NEIGHBOR_LOG_PREFIX(neighbor), neighbor, attr)
 
 #define OW_STEER_BM_NEIGHBOR_ATTR_PRINT_CHANGE_ENUM(neighbor, attr, to_str_fn)                                  \
     OW_STEER_BM_ATTR_PRINT_CHANGE_ENUM(OW_STEER_BM_NEIGHBOR_LOG_PREFIX(neighbor), neighbor, attr, to_str_fn)
@@ -815,6 +836,7 @@ ow_steer_bm_get_new_client_event_stats(struct ow_steer_bm_vif_stats *vif_stats)
 
     struct ow_steer_bm_event_stats *event_stats = &vif_stats->event_stats[vif_stats->event_stats_count];
 
+    event_stats->timestamp_ms = OSW_TIME_TO_MS(osw_time_wall_clk());
     vif_stats->event_stats_count++;
     if (vif_stats->event_stats_count == OW_STEER_BM_MAX_EVENT_CNT) {
         LOGW( "ow: steer: bm: stats: max events limit reached, adding OVERRUN event");
@@ -822,7 +844,6 @@ ow_steer_bm_get_new_client_event_stats(struct ow_steer_bm_vif_stats *vif_stats)
         return NULL;
     }
 
-    event_stats->timestamp_ms = OSW_TIME_TO_MS(osw_time_wall_clk());
     return event_stats;
 }
 
@@ -877,14 +898,17 @@ ow_steer_bm_stats_set_connect(const struct osw_hwaddr *sta_addr,
 
     LOGT("ow: steer: bm: stats: CONNECT event,"
          " mac: "OSW_HWADDR_FMT
-         " vif_name: %s",
+         " vif_name: %s,"
+         " waiting for SNR",
          OSW_HWADDR_ARG(sta_addr),
          vif_name);
 
     client_vif_stats->connects++;
     client_vif_stats->connected = true;
+    client_vif_stats->pending_connects_count++;
 
     client_event_stats->type = CONNECT;
+    client_event_stats->set_rssi_later = true;
 }
 
 static void
@@ -938,17 +962,20 @@ ow_steer_bm_stats_set_disconnect(const struct osw_hwaddr *sta_addr,
          " vif_name: %s"
          " disconnect_src: %s"
          " disconnect_type: %s"
-         " disconnect_reason: %u",
+         " disconnect_reason: %u"
+         " snr: %d",
          OSW_HWADDR_ARG(sta_addr),
          vif_name,
          disconnect_src_name,
          disconnect_type_name,
-         disconnect_reason);
+         disconnect_reason,
+         client_vif_stats->snr_last);
 
     client_vif_stats->disconnects++;
     client_vif_stats->connected = false;
 
     client_event_stats->type = DISCONNECT;
+    client_event_stats->rssi = client_vif_stats->snr_last;
     client_event_stats->disconnect_src = disconnect_src;
     client_event_stats->disconnect_type = disconnect_type;
     client_event_stats->disconnect_reason = disconnect_reason;
@@ -2273,6 +2300,18 @@ ow_steer_bm_sta_state_sta_connected_cb(struct osw_state_observer *self,
 
     ow_steer_bm_sta_update_info(sta, sta_info);
 
+    /* Connects counter is a guard for a connect event
+     * arriving out of order - before disconnect. Let's
+     * assume STA is connected to VIF1 then connect on
+     * VIF2 arrives before disconnect on VIF1. The code
+     * cannot unregister snr_observer in such case.
+     */
+    sta->connects_counter++;
+    if (sta->snr_observer == NULL)
+        sta->snr_observer = ow_steer_snr_register(sta_info->mac_addr,
+                                                  ow_steer_bm_snr_obs_report_cb,
+                                                  (void*) sta);
+
     /* Sanity check for above ap_width assignment. It should
      * never really happen, but better safe and log.
      */
@@ -2332,6 +2371,14 @@ ow_steer_bm_sta_state_sta_disconnected_cb(struct osw_state_observer *self,
                                      disconnect_src,
                                      disconnect_type,
                                      disconnect_reason);
+
+    if (sta->connects_counter <= 1) {
+        ow_steer_snr_unregister(sta->snr_observer);
+        sta->snr_observer = NULL;
+        sta->connects_counter = 0;
+    } else {
+        sta->connects_counter--;
+    }
 
     LOGI("ow: steer: bm: sta addr: "OSW_HWADDR_FMT" disconnected from bssid: "OSW_HWADDR_FMT,
          OSW_HWADDR_ARG(&sta->addr), OSW_HWADDR_ARG(&vif_info->drv_state->mac_addr));
@@ -3525,6 +3572,10 @@ ow_steer_bm_neighbor_recalc(struct ow_steer_bm_neighbor *neighbor)
                                  (op_class_state.present == true ||
                                   ht_mode_state.present == true));
     if (create_channel == true) {
+        /* FIXME: EHT/wifi7/11be: This does not have sufficient data
+         * to infer 320MHz properly. In fact, it doesn't do that for
+         * 2.4GHz HT40 as well. This needs to be fixed.
+         */
         struct osw_channel channel;
         const uint8_t chan = *neighbor->channel_number.cur;
 
@@ -3583,6 +3634,9 @@ ow_steer_bm_group_lookup_vif_by_band(struct ow_steer_bm_group *group,
     struct ow_steer_bm_vif *vif;
     ds_tree_foreach(&group->vif_tree, vif) {
         if (vif->vif_info == NULL)
+            continue;
+
+        if (vif->vif_info->drv_state->status != OSW_VIF_ENABLED)
             continue;
 
         const enum osw_band vif_band = osw_channel_to_band(&vif->vif_info->drv_state->u.ap.channel);
@@ -4132,6 +4186,52 @@ ow_steer_bm_probe_was_blocked(const struct osw_drv_vif_state *vif,
      * it.
      */
     return !probe_allowed;
+}
+
+static void
+ow_steer_bm_snr_obs_report_cb(void *priv,
+                              const struct osw_hwaddr *sta_addr,
+                              const struct osw_hwaddr *bssid,
+                              int snr_db)
+{
+    if (WARN_ON(sta_addr == NULL)) return;
+    if (WARN_ON(bssid == NULL)) return;
+
+    LOGT("ow: steer: bm: snr_obs: snr update for client: "OSW_HWADDR_FMT" bssid: "OSW_HWADDR_FMT" snr: %d",
+            OSW_HWADDR_ARG(sta_addr),
+            OSW_HWADDR_ARG(bssid),
+            snr_db);
+
+    struct ow_steer_bm_vif *tmp = NULL;
+    struct ow_steer_bm_vif *vif = NULL;
+    ds_tree_foreach(&g_vif_tree, tmp) {
+        if (WARN_ON(&tmp->bss->bssid == NULL)) return;
+        if (osw_hwaddr_cmp(bssid, &tmp->bss->bssid) == 0) {
+            vif = tmp;
+            break;
+        }
+    }
+    if (WARN_ON(vif == NULL)) return;
+
+    struct ow_steer_bm_vif_stats *vif_stats = ow_steer_bm_get_client_vif_stats(sta_addr, vif->vif_name.buf);
+    struct ow_steer_bm_client *client = ds_tree_find(&g_client_tree, sta_addr);
+
+    if (WARN_ON(vif_stats == NULL)) return;
+    if (WARN_ON(client == NULL)) return;
+
+    vif_stats->snr_last = snr_db;
+
+    if (vif_stats->pending_connects_count == 0) return;
+
+    unsigned int i;
+    for (i = 0; i < vif_stats->event_stats_count; i++) {
+        if (vif_stats->event_stats[i].type == CONNECT &&
+            vif_stats->event_stats[i].set_rssi_later == true) {
+            vif_stats->event_stats[i].rssi = snr_db;
+            vif_stats->event_stats[i].set_rssi_later = false;
+        }
+    }
+    vif_stats->pending_connects_count = 0;
 }
 
 static void
@@ -5468,6 +5568,15 @@ ow_steer_bm_neighbor_set_priority(struct ow_steer_bm_neighbor *neighbor,
     OW_STEER_BM_MEM_ATTR_SET_BODY(neighbor, priority);
     OW_STEER_BM_NEIGHBOR_ATTR_PRINT_CHANGE_NUM(neighbor, priority, "u");
 }
+
+void
+ow_steer_bm_neighbor_set_mld_addr(struct ow_steer_bm_neighbor *neighbor,
+                                  const struct osw_hwaddr *mld_addr)
+{
+    OW_STEER_BM_MEM_ATTR_SET_BODY(neighbor, mld_addr);
+    OW_STEER_BM_NEIGHBOR_ATTR_PRINT_CHANGE_HWADDR(neighbor, mld_addr);
+}
+
 
 const struct osw_hwaddr *
 ow_steer_bm_neighbor_get_bssid(struct ow_steer_bm_neighbor *neighbor)

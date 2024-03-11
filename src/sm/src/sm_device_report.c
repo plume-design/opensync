@@ -40,6 +40,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <limits.h>
 
 #include "sm.h"
+#include "osp_temp.h"
+#include "osp_tm.h"
+#include "ff_lib.h"
 
 #define MODULE_ID LOG_MODULE_ID_MAIN
 
@@ -69,6 +72,19 @@ static sm_device_ctx_t              g_sm_device_ctx;
 /******************************************************************************
  *  PROTECTED definitions
  *****************************************************************************/
+static bool
+sm_skip_wifi(void)
+{
+    const bool ff_use_onewifi = ff_is_flag_enabled("use_owm");
+
+    if (ff_use_onewifi == true) {
+        LOG(INFO, "Skipping Wifi Stats");
+        return true;
+    }
+
+    return false;
+}
+
 static
 bool dpp_device_report_timer_set(
         ev_timer                   *timer,
@@ -157,6 +173,8 @@ static
 void sm_device_report (EV_P_ ev_timer *w, int revents)
 {
     bool                           rc;
+    int                            temp_src_ix;
+    int                            temp_val;
 
     sm_device_ctx_t                *device_ctx =
         (sm_device_ctx_t *) w->data;
@@ -187,6 +205,7 @@ void sm_device_report (EV_P_ ev_timer *w, int revents)
     ds_tree_t                      *radios = sm_radios_get();
     sm_radio_state_t               *radio;
     dpp_device_temp_t              *temp;
+    char                           *radio_name;
     ds_tree_foreach(radios, radio)
     {
         temp = NULL;
@@ -196,18 +215,28 @@ void sm_device_report (EV_P_ ev_timer *w, int revents)
             goto clean;
         }
 
-        rc =
-            target_stats_device_temp_get (
-                    &radio->config,
-                    temp);
-        if (true != rc) {
+        radio_name = radio_get_name_from_type((&radio->config)->type);
+        temp_src_ix = osp_temp_get_idx_from_band(radio_name);
+        if (temp_src_ix == -1)
+        {
             dpp_device_temp_record_free(temp);
             continue;
         }
 
+        rc = osp_temp_get_temperature(temp_src_ix, &temp_val);
+        if (rc != 0)
+        {
+            dpp_device_temp_record_free(temp);
+            continue;
+        }
+
+        /* Assign values to device temperature config struct */
+        temp->value = (int32_t)temp_val;
+        temp->type = (&radio->config)->type;
+
         LOG(DEBUG,
             "Sending device stats %s temp %d\n",
-            radio_get_name_from_type(temp->type),
+            radio_name,
             temp->value);
 
         /* Add temperature config to report */
@@ -218,6 +247,8 @@ void sm_device_report (EV_P_ ev_timer *w, int revents)
     report_ctx->timestamp_ms =
         request_ctx->reporting_timestamp - device_ctx->report_ts +
         get_timestamp();
+
+    report_ctx->record.populated = true;
 
     LOG(INFO,
         "uptime=%u, mem=%u/%u, cpu=%u, file_handles=%u/%u",
@@ -250,6 +281,8 @@ void sm_device_thermal_report (EV_P_ ev_timer *w, int revents)
 {
     bool                            rc;
     bool                            thermal_valid = false;
+    int                             log_pos;
+    char                            log_msg[256];
 
     sm_device_ctx_t                *device_ctx =
         (sm_device_ctx_t *) w->data;
@@ -258,54 +291,60 @@ void sm_device_thermal_report (EV_P_ ev_timer *w, int revents)
         &device_ctx->report;
     sm_stats_request_t             *request_ctx =
         &device_ctx->request;
-
-
-    /* Get radio txchainmask stats */
-    ds_tree_t                      *radios = sm_radios_get();
-    sm_radio_state_t               *radio;
-
     dpp_device_thermal_record_t    *thermal_record;
-    dpp_device_txchainmask_t        tx_chainmask;
     uint32_t                        fan_rpm;
     uint16_t                        fan_duty_cycle;
-    int                             radio_idx = 0;
-
+    int                             thermal_state;
+    int                             target_rpm;
+    int                             led_state;
     thermal_record = dpp_device_thermal_record_alloc();
-    ds_tree_foreach(radios, radio)
+
+    if (!sm_skip_wifi())
     {
-        if(radio_idx >= DPP_DEVICE_TX_CHAINMASK_MAX)
+        /* Get radio txchainmask stats */
+        ds_tree_t                      *radios = sm_radios_get();
+        sm_radio_state_t               *radio;
+        dpp_device_txchainmask_t tx_chainmask;
+        int radio_idx = 0;
+
+        ds_tree_foreach(radios, radio)
         {
-            LOG(ERROR, "Not enough space to hold all txchainmask stats");
-            break;
-        }
+            if (radio_idx >= DPP_DEVICE_TX_CHAINMASK_MAX)
+            {
+                LOG(ERROR, "Not enough space to hold all txchainmask stats");
+                break;
+            }
 
-        rc = target_stats_device_txchainmask_get(&radio->config,
-                                                 &tx_chainmask);
-        if (true != rc) {
-            thermal_record->radio_txchainmasks[radio_idx].type = RADIO_TYPE_NONE;
-            thermal_record->radio_txchainmasks[radio_idx].value = 0;
-            continue;
-        }
+            rc = target_stats_device_txchainmask_get(&radio->config,
+                                                    &tx_chainmask);
+            if (true != rc) {
+                thermal_record->radio_txchainmasks[radio_idx].type = RADIO_TYPE_NONE;
+                thermal_record->radio_txchainmasks[radio_idx].value = 0;
+                continue;
+            }
 
-        thermal_record->radio_txchainmasks[radio_idx].type = tx_chainmask.type;
-        thermal_record->radio_txchainmasks[radio_idx].value = tx_chainmask.value;
-        thermal_record->txchainmask_qty = radio_idx;
-        radio_idx++;
-        thermal_valid = true;
-        LOG(DEBUG,
-            "Sending device stats tx chain %s=%u",
-            radio_get_name_from_type(tx_chainmask.type),
-            tx_chainmask.value);
+            thermal_record->radio_txchainmasks[radio_idx].type = tx_chainmask.type;
+            thermal_record->radio_txchainmasks[radio_idx].value = tx_chainmask.value;
+            thermal_record->txchainmask_qty = radio_idx;
+            radio_idx++;
+            thermal_valid = true;
+            LOG(DEBUG,
+                "Sending device stats tx chain %s=%u",
+                radio_get_name_from_type(tx_chainmask.type),
+                tx_chainmask.value);
+        }
     }
+
+    log_pos = snprintf(log_msg, sizeof(log_msg), "Sending device stats: ");
 
     rc = target_stats_device_fanrpm_get(&fan_rpm);
     if(true == rc)
     {
         thermal_record->fan_rpm = fan_rpm;
         thermal_valid = true;
-        LOG(INFO,
-            "Sending device stats fan rpm=%u",
-            thermal_record->fan_rpm);
+        log_pos += snprintf(log_msg + log_pos,
+                            sizeof(log_msg) - log_pos,
+                            "fan_rpm=%u, ", thermal_record->fan_rpm);
     }
     else
     {
@@ -317,21 +356,69 @@ void sm_device_thermal_report (EV_P_ ev_timer *w, int revents)
     {
         thermal_record->fan_duty_cycle = (int16_t)fan_duty_cycle;
         thermal_valid = true;
-        LOG(INFO,
-            "Sending device stats fan duty cycle=%u",
-            thermal_record->fan_duty_cycle);
+        log_pos += snprintf(log_msg + log_pos,
+                            sizeof(log_msg) - log_pos,
+                            "fan_duty_cycle=%u, ", thermal_record->fan_duty_cycle);
     }
     else
     {
         thermal_record->fan_duty_cycle = -1;
     }
 
+    rc = osp_tm_ovsdb_get_thermal_state(&thermal_state);
+    if(true == rc)
+    {
+        thermal_record->thermal_state = (int16_t)thermal_state;
+        thermal_valid = true;
+        log_pos += snprintf(log_msg + log_pos,
+                            sizeof(log_msg) - log_pos,
+                            "thermal_state=%u, ", thermal_record->thermal_state);
+    }
+    else
+    {
+        thermal_record->thermal_state = -1;
+    }
+
+    rc = osp_tm_get_fan_rpm_from_thermal_state(thermal_state, &target_rpm);
+    if(true == rc)
+    {
+        thermal_record->target_rpm = (int16_t)target_rpm;
+        thermal_valid = true;
+        log_pos += snprintf(log_msg + log_pos,
+                            sizeof(log_msg) - log_pos,
+                            "target_rpm=%u, ", thermal_record->target_rpm);
+    }
+    else
+    {
+        thermal_record->target_rpm = -1;
+    }
+
+    rc = osp_tm_get_led_state(&led_state);
+    if(true == rc)
+    {
+        thermal_record->led_state = (int16_t)led_state;
+        thermal_valid = true;
+        log_pos += snprintf(log_msg + log_pos,
+                            sizeof(log_msg) - log_pos,
+                            "led_state=%u", thermal_record->led_state);
+    }
+    else
+    {
+        thermal_record->led_state = -1;
+    }
+
+    /* Remove the trailing comma and space if there are any in the final log message */
+    if (log_pos > 2 && log_msg[log_pos - 2] == ',' && log_msg[log_pos - 1] == ' ') {
+        log_msg[log_pos - 2] = '\0';
+    }
+    LOG(INFO, "%s", log_msg);
+
     /* Insert thermal data only if data is valid, some devices like PIRANHAV1 doesn't
      * support thermal management */
     if (thermal_valid == true)
     {
         thermal_record->timestamp_ms = request_ctx->reporting_timestamp - device_ctx->report_ts + get_timestamp();
-        ds_dlist_insert_tail(&report_ctx->thermal_records, thermal_record); 
+        ds_dlist_insert_tail(&report_ctx->thermal_records, thermal_record);
     }
     else {
         dpp_device_thermal_record_free(thermal_record);
@@ -353,7 +440,7 @@ bool sm_device_report_request(
         &device_ctx->report;
     ev_timer                       *report_timer =
         &device_ctx->report_timer;
-    ev_timer                       *thermal_report_timer= 
+    ev_timer                       *thermal_report_timer=
         &device_ctx->thermal_report_timer;
 
 
@@ -388,7 +475,7 @@ bool sm_device_report_request(
          */
         ev_init (report_timer, sm_device_report);
         report_timer->data = device_ctx;
-        
+
         ev_init (thermal_report_timer, sm_device_thermal_report);
         thermal_report_timer->data = device_ctx;
         device_ctx->initialized = true;
@@ -399,6 +486,7 @@ bool sm_device_report_request(
      */
     REQUEST_VAL_UPDATE("device", reporting_count, "%d");
     REQUEST_VAL_UPDATE("device", reporting_interval, "%d");
+    REQUEST_VAL_UPDATE("device", sampling_interval, "%d");
     REQUEST_VAL_UPDATE("device", reporting_timestamp, "%"PRIu64"");
 
     /* Restart timers with new parameters */

@@ -307,9 +307,11 @@ OSW_UT(osw_types_dfs_overlap)
 {
     struct osw_channel non_dfs = {
         .control_freq_mhz = 5180, /* ch36 */
+        .center_freq0_mhz = 5180, /* ch36 */
     };
     struct osw_channel pri_dfs = {
         .control_freq_mhz = 5300, /* ch60 */
+        .center_freq0_mhz = 5300, /* ch60 */
     };
     struct osw_channel sb_dfs = {
         .control_freq_mhz = 5180, /* ch36 @ 160MHz */
@@ -416,4 +418,172 @@ OSW_UT(osw_types_from_channel_num_width)
     OSW_UT_EVAL(c.control_freq_mhz == 6295);
     OSW_UT_EVAL(c.center_freq0_mhz == 6305);
     OSW_UT_EVAL(c.width == OSW_CHANNEL_80MHZ);
+}
+
+OSW_UT(osw_channel_downgrade)
+{
+    struct osw_channel c1 = {
+        .control_freq_mhz = 5180, /* 36 */
+        .center_freq0_mhz = 5250, /* 50 */
+        .width = OSW_CHANNEL_160MHZ,
+    };
+    const struct osw_channel c1_80 = {
+        .control_freq_mhz = 5180, /* 36 */
+        .center_freq0_mhz = 5210, /* 42 */
+        .width = OSW_CHANNEL_80MHZ,
+    };
+    const struct osw_channel c1_40 = {
+        .control_freq_mhz = 5180, /* 36 */
+        .center_freq0_mhz = 5190, /* 38 */
+        .width = OSW_CHANNEL_40MHZ,
+    };
+    const struct osw_channel c1_20 = {
+        .control_freq_mhz = 5180, /* 36 */
+        .center_freq0_mhz = 5180, /* 36 */
+        .width = OSW_CHANNEL_20MHZ,
+    };
+    struct osw_channel c2 = {
+        .control_freq_mhz = 5220, /* 44 */
+        .center_freq0_mhz = 5250, /* 50 */
+        .width = OSW_CHANNEL_160MHZ,
+    };
+    const struct osw_channel c2_80 = {
+        .control_freq_mhz = 5220, /* 44 */
+        .center_freq0_mhz = 5210, /* 42 */
+        .width = OSW_CHANNEL_80MHZ,
+    };
+    const struct osw_channel c2_40 = {
+        .control_freq_mhz = 5220, /* 44 */
+        .center_freq0_mhz = 5230, /* 46 */
+        .width = OSW_CHANNEL_40MHZ,
+    };
+    const struct osw_channel c2_20 = {
+        .control_freq_mhz = 5220, /* 44 */
+        .center_freq0_mhz = 5220, /* 42 */
+        .width = OSW_CHANNEL_20MHZ,
+    };
+    struct osw_channel c3_80no36 = {
+        .control_freq_mhz = 5220, /* 44 */
+        .center_freq0_mhz = 5210, /* 42 */
+        .width = OSW_CHANNEL_80MHZ,
+        .puncture_bitmap = 0x0001,
+    };
+    struct osw_channel c3_80no40 = {
+        .control_freq_mhz = 5220, /* 44 */
+        .center_freq0_mhz = 5210, /* 42 */
+        .width = OSW_CHANNEL_80MHZ,
+        .puncture_bitmap = 0x0002,
+    };
+    struct osw_channel c3_80no48 = {
+        .control_freq_mhz = 5220, /* 44 */
+        .center_freq0_mhz = 5210, /* 42 */
+        .width = OSW_CHANNEL_80MHZ,
+        .puncture_bitmap = 0x0008,
+    };
+    struct osw_channel c4_80no36 = {
+        .control_freq_mhz = 5200, /* 40 */
+        .center_freq0_mhz = 5210, /* 42 */
+        .width = OSW_CHANNEL_80MHZ,
+        .puncture_bitmap = 0x0001,
+    };
+    struct osw_channel c4_80no44 = {
+        .control_freq_mhz = 5200, /* 40 */
+        .center_freq0_mhz = 5210, /* 42 */
+        .width = OSW_CHANNEL_80MHZ,
+        .puncture_bitmap = 0x0004,
+    };
+    struct osw_channel c4_80no48 = {
+        .control_freq_mhz = 5200, /* 40 */
+        .center_freq0_mhz = 5210, /* 42 */
+        .width = OSW_CHANNEL_80MHZ,
+        .puncture_bitmap = 0x0008,
+    };
+
+    assert(osw_channel_downgrade(&c1) == true);
+    assert(c1.center_freq0_mhz == c1_80.center_freq0_mhz);
+
+    assert(osw_channel_downgrade(&c1) == true);
+    assert(c1.center_freq0_mhz == c1_40.center_freq0_mhz);
+
+    assert(osw_channel_downgrade(&c1) == true);
+    assert(c1.center_freq0_mhz == c1_20.center_freq0_mhz);
+
+    assert(osw_channel_downgrade(&c1) == false);
+
+    assert(osw_channel_downgrade(&c2) == true);
+    LOGD("%d %d", c2.center_freq0_mhz, c2_80.center_freq0_mhz);
+    assert(c2.center_freq0_mhz == c2_80.center_freq0_mhz);
+
+    assert(osw_channel_downgrade(&c2) == true);
+    assert(c2.center_freq0_mhz == c2_40.center_freq0_mhz);
+
+    assert(osw_channel_downgrade(&c2) == true);
+    assert(c2.center_freq0_mhz == c2_20.center_freq0_mhz);
+
+    assert(osw_channel_downgrade(&c2) == false);
+
+    assert(osw_channel_downgrade(&c3_80no36) == true);
+    assert(c3_80no36.puncture_bitmap == 0x0000);
+
+    assert(osw_channel_downgrade(&c3_80no40) == true);
+    assert(c3_80no40.puncture_bitmap == 0x0000);
+
+    assert(osw_channel_downgrade(&c3_80no48) == true);
+    assert(c3_80no48.puncture_bitmap == 0x0002);
+
+    assert(osw_channel_downgrade(&c4_80no36) == true);
+    assert(c4_80no36.puncture_bitmap == 0x0001);
+
+    assert(osw_channel_downgrade(&c4_80no44) == true);
+    assert(c4_80no44.puncture_bitmap == 0x0000);
+
+    assert(osw_channel_downgrade(&c4_80no48) == true);
+    assert(c4_80no48.puncture_bitmap == 0x0000);
+}
+
+OSW_UT(osw_channel_ht40_offset)
+{
+    const struct osw_channel c36_20 = {
+        .control_freq_mhz = 5180,
+        .center_freq0_mhz = 5180,
+        .width = OSW_CHANNEL_20MHZ,
+    };
+    const struct osw_channel c36_40 = {
+        .control_freq_mhz = 5180,
+        .center_freq0_mhz = 5190,
+        .width = OSW_CHANNEL_40MHZ,
+    };
+    const struct osw_channel c40_40 = {
+        .control_freq_mhz = 5200,
+        .center_freq0_mhz = 5190,
+        .width = OSW_CHANNEL_40MHZ,
+    };
+    const struct osw_channel c36_80 = {
+        .control_freq_mhz = 5180,
+        .center_freq0_mhz = 5210,
+        .width = OSW_CHANNEL_80MHZ,
+    };
+    const struct osw_channel c40_80 = {
+        .control_freq_mhz = 5200,
+        .center_freq0_mhz = 5210,
+        .width = OSW_CHANNEL_80MHZ,
+    };
+    const struct osw_channel c44_80 = {
+        .control_freq_mhz = 5220,
+        .center_freq0_mhz = 5210,
+        .width = OSW_CHANNEL_80MHZ,
+    };
+    const struct osw_channel c48_80 = {
+        .control_freq_mhz = 5240,
+        .center_freq0_mhz = 5210,
+        .width = OSW_CHANNEL_80MHZ,
+    };
+
+    OSW_UT_EVAL(osw_channel_ht40_offset(&c36_20) == 0);
+    OSW_UT_EVAL(osw_channel_ht40_offset(&c36_40) == 1);
+    OSW_UT_EVAL(osw_channel_ht40_offset(&c40_40) == -1);
+    OSW_UT_EVAL(osw_channel_ht40_offset(&c36_80) == 1);
+    OSW_UT_EVAL(osw_channel_ht40_offset(&c40_80) == -1);
+    OSW_UT_EVAL(osw_channel_ht40_offset(&c44_80) == 1);
+    OSW_UT_EVAL(osw_channel_ht40_offset(&c48_80) == -1);
 }

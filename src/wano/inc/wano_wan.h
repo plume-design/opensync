@@ -140,6 +140,11 @@ int wano_wan_rollover_get(wano_wan_t *wan);
 void wano_wan_next(wano_wan_t *ww);
 
 /*
+ * Return true if wano_wan_next will rollover on next invocation, else false
+ */
+bool wano_wan_is_last_config(const wano_wan_t *ww);
+
+/*
  * Signal whether WAN processing for the current WAN object has been stopped.
  */
 void wano_wan_pause(wano_wan_t *wan, bool pause);

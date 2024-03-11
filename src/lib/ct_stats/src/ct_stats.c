@@ -267,7 +267,7 @@ ct_get_stats(void)
         return -1;
     }
 
-    nf_ct_print_entries(&ct_stats->ctflow_list);
+    if (LOG_SEVERITY_ENABLED(LOG_SEVERITY_TRACE)) nf_ct_print_entries(&ct_stats->ctflow_list);
 
     return 0;
 }

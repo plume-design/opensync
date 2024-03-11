@@ -76,6 +76,37 @@ int ovsdb_table_init(
     return 0;
 }
 
+static void ovsdb_table_fini_rows_unlink(ds_tree_t *rows)
+{
+    ovsdb_cache_row_t *row;
+    while ((row = ds_tree_remove_head(rows)) != NULL) {
+    }
+}
+
+static void ovsdb_table_fini_rows_drop(ds_tree_t *rows)
+{
+    ovsdb_cache_row_t *row;
+    while ((row = ds_tree_remove_head(rows)) != NULL) {
+        FREE(row);
+    }
+}
+
+static void ovsdb_table_fini_monitor(ovsdb_update_monitor_t *mon)
+{
+    const int mon_id = mon->mon_id;
+    if (mon_id == 0) return;
+    ovsdb_monitor_cancel_s(mon_id);
+    mon->mon_id = 0;
+}
+
+void ovsdb_table_fini(ovsdb_table_t *table)
+{
+    ovsdb_table_fini_rows_unlink(&table->rows_k);
+    ovsdb_table_fini_rows_unlink(&table->rows_k2);
+    ovsdb_table_fini_rows_drop(&table->rows);
+    ovsdb_table_fini_monitor(&table->monitor);
+    MEMZERO(*table);
+}
 
 // SCHEMA CONVERT
 

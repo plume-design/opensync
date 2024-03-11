@@ -44,7 +44,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "mdnsd.h"
 #include "sdtxt.h"
 #include "memutil.h"
-
+#include "kconfig.h"
 #include "mdns_plugin.h"
 #include "mdns_records.h"
 
@@ -146,9 +146,11 @@ bool
 mdnsd_ctxt_start(struct mdnsd_context *pctxt)
 {
     if (pctxt->enabled) return true;
-
-    //create the socket fd.
-    if ((pctxt->ipv4_mcast_fd = pctxt->dmn_get_mcast_ipv4_sock()) < 0) return false;
+    if (kconfig_enabled(CONFIG_FSM_TAP_INTF))
+    {
+        // create the socket fd.
+        if ((pctxt->ipv4_mcast_fd = pctxt->dmn_get_mcast_ipv4_sock()) < 0) return false;
+    }
 
     // Initialize the evtimer.
     pctxt->dmn_ev_timer_init();
@@ -442,6 +444,12 @@ mdnsd_ctxt_init(struct mdns_session *md_session)
     {
         LOGW("%s: mdns_daemon: Couldn't set src ip.", __func__);
     }
+
+    if (!kconfig_enabled(CONFIG_FSM_TAP_INTF))
+    {
+        return true;
+    }
+
     if(!mdnsd_ctxt_set_intf(md_session))
     {
         LOGW("%s: mdns_daemon: Couldn't set the outgoing if.", __func__);

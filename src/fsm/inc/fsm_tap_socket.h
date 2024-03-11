@@ -24,24 +24,29 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#define LL_STR_SZ  256
+#include "fsm.h"
 
-/*
- * JSON parsing functions
+#ifdef CONFIG_FSM_DPI_SOCKET
+/**
+ * @brief update network socket settings for the given session
+ *
+ * @param session the fsm session involved
+ * @return true if the sockets settings were successful, false otherwise
  */
-#define PJS_STREPORT_FMT                        \
-    PJS(streport  ,                             \
-        PJS_INT_Q(timestamp)                    \
-        PJS_STRING_Q(isp, LL_STR_SZ)            \
-        PJS_STRING_Q(sponsor, LL_STR_SZ)        \
-        PJS_REAL_Q(latency)                     \
-        PJS_REAL_Q(latitude)                    \
-        PJS_REAL_Q(longitude)                   \
-        PJS_REAL_Q(downlink)                    \
-        PJS_REAL_Q(uplink)                      \
-        PJS_INT_Q(DL_bytes)                     \
-        PJS_INT_Q(UL_bytes)                     \
-        PJS_INT_Q(id)                           \
-    )
+bool
+fsm_socket_tap_update(struct fsm_session *session);
 
-#define PJS_GEN_TABLE PJS_STREPORT_FMT
+void
+fsm_socket_tap_close(struct fsm_session *session);
+
+#else
+
+static inline bool
+fsm_socket_tap_update(struct fsm_session *session)
+{
+    return false;
+}
+
+void
+fsm_socket_tap_close(struct fsm_session *session) {}
+#endif /* CONFIG_FSM_DPI_SOCKET */

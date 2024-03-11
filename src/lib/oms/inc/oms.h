@@ -218,4 +218,24 @@ oms_delete_state_entry(struct oms_state_entry *entry);
 struct oms_config_entry *
 oms_get_highest_version(char *object, char *version_cap, oms_cmp_cb cmp_cb);
 
+/**
+ * @brief return the highest version of an object
+ *
+ * @param object the object name
+ * @return the FW integrated object
+ */
+struct oms_config_entry *
+oms_get_fw_integrated_version(char *object);
+
+/**
+ * @brief return the best match object
+ *
+ * @param object the object name
+ * @return the object found to match best
+ *
+ * Try loading the latest downloaded object first
+ */
+struct oms_config_entry *
+oms_get_best_object(char *name);
+
 #endif /* OMS_H_INCLUDED */

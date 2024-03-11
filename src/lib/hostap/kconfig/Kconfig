@@ -1,3 +1,7 @@
+config HOSTAP_LIB
+    bool "OpenSync hostapd library"
+    default y
+
 config HOSTAP_TIMEOUT_T_SWITCH
     bool "use -t switch with timeout command"
     default y

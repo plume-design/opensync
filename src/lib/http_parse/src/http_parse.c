@@ -370,6 +370,8 @@ http_get_device(struct http_session *h_session)
     parser = &h_session->parser;
     net_parser = parser->net_parser;
     eth = &net_parser->eth_header;
+    if (eth->srcmac == NULL) return NULL;
+
     hdev = CALLOC(1, sizeof(*hdev));
     if (hdev == NULL) return hdev;
 

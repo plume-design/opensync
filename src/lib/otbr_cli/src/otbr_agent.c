@@ -99,7 +99,14 @@ bool otbr_agent_start(daemon_t *const agent, const char *const thread_iface, con
     }
 
     /* RADIO_URL (spinel+hdlc+uart://${PATH_TO_UART_DEVICE}?${Parameters} for real UART device) */
-    daemon_arg_add(agent, CONFIG_OTBR_CLI_THREAD_RADIO_URL);
+    if (strlen(CONFIG_OTBR_CLI_THREAD_RADIO_URL) > 1)
+    {
+        daemon_arg_add(agent, CONFIG_OTBR_CLI_THREAD_RADIO_URL);
+    }
+    else if (network_iface == NULL)
+    {
+        LOGE(LOG_PREFIX "Thread radio URL not provided");
+    }
 
     /* [RADIO_URL] (Thread Radio Encapsulation Link) */
     if (network_iface != NULL)

@@ -162,6 +162,7 @@ nla_chan_width_to_osw_width(enum nl80211_chan_width width)
         case NL80211_CHAN_WIDTH_80: return OSW_CHANNEL_80MHZ;
         case NL80211_CHAN_WIDTH_80P80: return OSW_CHANNEL_80P80MHZ;
         case NL80211_CHAN_WIDTH_160: return OSW_CHANNEL_160MHZ;
+        case NL80211_CHAN_WIDTH_320: return OSW_CHANNEL_320MHZ;
         default: break;
     }
     return OSW_CHANNEL_20MHZ;

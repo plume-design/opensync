@@ -177,10 +177,6 @@ bool act_init_managers (void)
 
     retval = init_managers();
 
-    if (true == retval)
-    {
-        dm_st_monitor();
-    }
 
     STATE_TRANSIT(STATE_IDLE);
 

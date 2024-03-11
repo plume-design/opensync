@@ -300,6 +300,14 @@ bool fw_nat_start(inet_fw_t *self)
                 "ipv4",
                 "nat",
                 "NM_NAT",
+                NFM_RULE("-o", self->fw_ifname, "-m", "physdev", "--physdev-is-bridged"),
+                "ACCEPT");
+        retval &= nfm_rule_add(
+                NFM_ID(self->fw_ifname, "ipv4", "nat"),
+                100,
+                "ipv4",
+                "nat",
+                "NM_NAT",
                 NFM_RULE("-o", self->fw_ifname),
                 "MASQUERADE");
 
@@ -328,26 +336,6 @@ bool fw_nat_start(inet_fw_t *self)
                         "--tcp-flags", "SYN,RST", "SYN",
                         "--clamp-mss-to-pmtu"),
                 "TCPMSS");
-
-
-        /* Plant miniupnpd rules for port forwarding via upnp */
-        retval &= nfm_rule_add(
-                NFM_ID(self->fw_ifname, "ipv4", "nat.miniupnpd"),
-                100,
-                "ipv4",
-                "nat",
-                "NM_PORT_FORWARD",
-                NFM_RULE("-i", self->fw_ifname),
-                "MINIUPNPD");
-
-        retval &= nfm_rule_add(
-                NFM_ID(self->fw_ifname, "ipv4", "filter.miniupnpd"),
-                100,
-                "ipv4",
-                "filter",
-                "NM_PORT_FORWARD",
-                NFM_RULE("-i", self->fw_ifname),
-                "MINIUPNPD");
     }
     else
     {
@@ -575,16 +563,6 @@ bool fw_portforward_rule(inet_fw_t *self, const struct inet_portforward *pf, boo
     }
     else if (!remove && pf->pf_nat_loopback == true)
     {
-        if (!nfm_rule_add(
-                    NFM_ID(self->fw_ifname, "ipv4", "nat_loopback_prerouting", proto, src_port),
-                    200,
-                    "ipv4", "nat", "NM_PORT_FORWARD",
-                    NFM_RULE("-i", CONFIG_TARGET_LAN_BRIDGE_NAME, "-p", proto, "--dport", src_port, "--to-destination", to_dest),
-                    "DNAT"))
-        {
-            return false;
-        }
-
         if (!nfm_rule_add(
                     NFM_ID(self->fw_ifname, "ipv4", "nat_loopback_postrouting", proto, src_port),
                     200,

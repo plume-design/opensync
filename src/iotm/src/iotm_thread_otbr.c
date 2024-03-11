@@ -374,6 +374,12 @@ static void callback_Thread_Radio_Config(ovsdb_update_monitor_t *mon,
         schema_Thread_Radio_Config_mark_changed(config, config);
         state._partial_update = false;
     }
+    else if (mon->mon_type == OVSDB_UPDATE_DEL)
+    {
+        /* When/If this feature is disabled, the config table gets deleted */
+        config->enable = false;
+        config->enable_changed = true;
+    }
 
     apply_config(config, &state);
     update_state(&state);

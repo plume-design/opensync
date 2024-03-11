@@ -28,6 +28,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define HOSTAP_SOCK_I_H_INCLUDED
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <sys/time.h>
 
 struct hostap_sock *

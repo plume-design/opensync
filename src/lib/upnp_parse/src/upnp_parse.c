@@ -137,6 +137,7 @@ upnp_lookup_device(struct upnp_session *u_session)
 
     eth = upnp_get_eth(u_session);
     if (eth == NULL) return NULL;
+    if (eth->srcmac == NULL) return NULL;
 
     tree = &u_session->session_devices;
     udev = ds_tree_find(tree, eth->srcmac);
@@ -166,6 +167,7 @@ upnp_get_device(struct upnp_session *u_session)
     /* No match, allocate a new entry */
     eth = upnp_get_eth(u_session);
     if (eth == NULL) return NULL;
+    if (eth->srcmac == NULL) return NULL;
 
     udev = CALLOC(1, sizeof(*udev));
 
@@ -286,6 +288,7 @@ upnp_process_message(struct upnp_session *u_session)
     struct upnp_device_url *url;
 
     url = upnp_get_url(u_session);
+    if (url == NULL) return;
 
     /* If this URL was seen, bail */
     if (url->state != PLM_UPNP_INIT) return;

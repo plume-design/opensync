@@ -964,7 +964,7 @@ int strexread_spawn(const char *prog,
     close(pipe_writeable);
 
     if (err) {
-        LOGT("%s: failed to posix_spawnp()", ctx);
+        LOGT("%s: failed to posix_spawnp(): %d, %s (%d)", ctx, err, strerror(errno), errno);
         close(pipe_readable);
         return -1;
     }
@@ -1600,4 +1600,25 @@ int str_replace_fixed(
     int ret = strscpy(str, out, size);
     free(out);
     return ret;
+}
+
+char *__FMT_int(char *buf, size_t size, int *value)
+{
+    snprintf(buf, size, "%d", *value);
+    return buf;
+}
+
+bool memcmp_b(const void *buffer, const int value, size_t num_bytes)
+{
+    const unsigned char *byte_buffer = (const unsigned char *)buffer;
+
+    while (num_bytes--)
+    {
+        if (*(byte_buffer++) != (unsigned char)value)
+        {
+            return false;
+        }
+    }
+
+    return true;
 }

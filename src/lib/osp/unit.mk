@@ -35,7 +35,7 @@ UNIT_CFLAGS += -I$(UNIT_PATH)/inc
 UNIT_EXPORT_CFLAGS := -I$(UNIT_PATH)/inc
 
 UNIT_SRC += $(if $(CONFIG_OSP_UNIT_DEFAULT),src/osp_unit_default.c)
-UNIT_SRC += $(if $(CONFIG_OSP_LED),src/osp_led.c)
+UNIT_SRC += $(if $(CONFIG_OSP_LED),src/osp_led.c,src/osp_led_null.c)
 UNIT_DEPS += src/lib/common
 UNIT_DEPS += src/lib/log
 UNIT_DEPS += src/lib/schema
@@ -84,3 +84,8 @@ UNIT_DEPS += src/lib/osn
 UNIT_DEPS += src/lib/otbr_cli
 UNIT_DEPS += src/lib/const
 endif
+
+UNIT_SRC += src/osp_temp.c
+UNIT_SRC += src/osp_temp_srcs.c
+
+UNIT_SRC += $(if $(CONFIG_PM_ENABLE_TM),src/osp_tm.c,src/osp_tm_null.c)

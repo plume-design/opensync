@@ -52,6 +52,7 @@ struct ow_conf_phy {
     bool *ap_ht_enabled;
     bool *ap_vht_enabled;
     bool *ap_he_enabled;
+    bool *ap_eht_enabled;
     int *tx_chainmask;
     int *tx_power_dbm;
     int *thermal_tx_chainmask;
@@ -79,6 +80,7 @@ struct ow_conf_vif {
     bool *ap_ht_enabled;
     bool *ap_vht_enabled;
     bool *ap_he_enabled;
+    bool *ap_eht_enabled;
     bool *ap_ht_required;
     bool *ap_vht_required;
     bool *ap_wpa;
@@ -286,6 +288,7 @@ ow_conf_conf_mutate_vif_ap(struct ow_conf_phy *ow_phy,
         if (ow_phy->ap_ht_enabled != NULL) osw_vif->u.ap.mode.ht_enabled = *ow_phy->ap_ht_enabled;
         if (ow_phy->ap_vht_enabled != NULL) osw_vif->u.ap.mode.vht_enabled = *ow_phy->ap_vht_enabled;
         if (ow_phy->ap_he_enabled != NULL) osw_vif->u.ap.mode.he_enabled = *ow_phy->ap_he_enabled;
+        if (ow_phy->ap_eht_enabled != NULL) osw_vif->u.ap.mode.eht_enabled = *ow_phy->ap_eht_enabled;
         if (ow_phy->ap_beacon_interval_tu != NULL) osw_vif->u.ap.beacon_interval_tu = *ow_phy->ap_beacon_interval_tu;
         if (ow_phy->ap_channel != NULL) osw_vif->u.ap.channel = *ow_phy->ap_channel;
         if (ow_phy->tx_power_dbm != NULL) osw_vif->tx_power_dbm = *ow_phy->tx_power_dbm;
@@ -299,6 +302,7 @@ ow_conf_conf_mutate_vif_ap(struct ow_conf_phy *ow_phy,
     if (ow_vif->ap_ht_enabled != NULL) osw_vif->u.ap.mode.ht_enabled = *ow_vif->ap_ht_enabled;
     if (ow_vif->ap_vht_enabled != NULL) osw_vif->u.ap.mode.vht_enabled = *ow_vif->ap_vht_enabled;
     if (ow_vif->ap_he_enabled != NULL) osw_vif->u.ap.mode.he_enabled = *ow_vif->ap_he_enabled;
+    if (ow_vif->ap_eht_enabled != NULL) osw_vif->u.ap.mode.eht_enabled = *ow_vif->ap_eht_enabled;
     if (ow_vif->ap_ht_required != NULL) osw_vif->u.ap.mode.ht_required = *ow_vif->ap_ht_required;
     if (ow_vif->ap_vht_required != NULL) osw_vif->u.ap.mode.vht_required = *ow_vif->ap_vht_required;
     if (ow_vif->ap_supp_rates != NULL) osw_vif->u.ap.mode.supported_rates = *ow_vif->ap_supp_rates;
@@ -557,6 +561,7 @@ ow_conf_phy_unset(const char *phy_name)
     FREE(phy->ap_ht_enabled);
     FREE(phy->ap_vht_enabled);
     FREE(phy->ap_he_enabled);
+    FREE(phy->ap_eht_enabled);
     FREE(phy->tx_chainmask);
     FREE(phy->tx_power_dbm);
     FREE(phy->thermal_tx_chainmask);
@@ -1008,6 +1013,8 @@ ow_conf_vif_flush_sta_net(const char *vif_name)
 #define ARG_phy_ap_vht_enabled(x) x
 #define FMT_phy_ap_he_enabled "%d"
 #define ARG_phy_ap_he_enabled(x) x
+#define FMT_phy_ap_eht_enabled "%d"
+#define ARG_phy_ap_eht_enabled(x) x
 #define FMT_phy_ap_beacon_interval_tu "%d"
 #define ARG_phy_ap_beacon_interval_tu(x) x
 #define FMT_phy_ap_channel OSW_CHANNEL_FMT
@@ -1039,6 +1046,8 @@ ow_conf_vif_flush_sta_net(const char *vif_name)
 #define ARG_vif_ap_vht_enabled(x) x
 #define FMT_vif_ap_he_enabled "%d"
 #define ARG_vif_ap_he_enabled(x) x
+#define FMT_vif_ap_eht_enabled "%d"
+#define ARG_vif_ap_eht_enabled(x) x
 #define FMT_vif_ap_ht_required "%d"
 #define ARG_vif_ap_ht_required(x) x
 #define FMT_vif_ap_vht_required "%d"
@@ -1125,6 +1134,7 @@ DEFINE_PHY_FIELD(ap_wmm_enabled);
 DEFINE_PHY_FIELD(ap_ht_enabled);
 DEFINE_PHY_FIELD(ap_vht_enabled);
 DEFINE_PHY_FIELD(ap_he_enabled);
+DEFINE_PHY_FIELD(ap_eht_enabled);
 DEFINE_PHY_FIELD(ap_beacon_interval_tu);
 DEFINE_PHY_FIELD(ap_channel);
 
@@ -1140,6 +1150,7 @@ DEFINE_VIF_FIELD(ap_isolated);
 DEFINE_VIF_FIELD(ap_ht_enabled);
 DEFINE_VIF_FIELD(ap_vht_enabled);
 DEFINE_VIF_FIELD(ap_he_enabled);
+DEFINE_VIF_FIELD(ap_eht_enabled);
 DEFINE_VIF_FIELD(ap_ht_required);
 DEFINE_VIF_FIELD(ap_vht_required);
 DEFINE_VIF_FIELD(ap_supp_rates);
@@ -1184,6 +1195,7 @@ ow_conf_vif_clear(const char *vif_name)
     ow_conf_vif_set_ap_ht_enabled(vif_name, NULL);
     ow_conf_vif_set_ap_vht_enabled(vif_name, NULL);
     ow_conf_vif_set_ap_he_enabled(vif_name, NULL);
+    ow_conf_vif_set_ap_eht_enabled(vif_name, NULL);
     ow_conf_vif_set_ap_ht_required(vif_name, NULL);
     ow_conf_vif_set_ap_vht_required(vif_name, NULL);
     ow_conf_vif_set_ap_supp_rates(vif_name, NULL);
@@ -1441,6 +1453,8 @@ OSW_UT(ow_conf_ut_vif_enabled)
     vif_state.vif_type = OSW_VIF_AP;
     vif_state.status = OSW_VIF_ENABLED;
     vif_state.u.ap.beacon_interval_tu = OW_CONF_DEFAULT_BEACON_INTERVAL_TU;
+    vif_state.u.ap.channel.control_freq_mhz = 2412;
+    vif_state.u.ap.channel.center_freq0_mhz = 2412;
 
     osw_module_load_name("osw_drv");
     osw_drv_dummy_init(&dummy);

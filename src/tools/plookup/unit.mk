@@ -29,6 +29,7 @@
 ##############################################################################
 UNIT_NAME := plookup
 UNIT_DIR := tools
+UNIT_DISABLE := $(if $(CONFIG_OPENSYNC_NSLOOKUP),n,y)
 
 # Template type:
 UNIT_TYPE := BIN

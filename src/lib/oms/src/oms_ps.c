@@ -31,16 +31,16 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "memutil.h"
 
 
-bool oms_ps_save_last_active_version(struct oms_state_entry *entry)
+static bool oms_ps_save_version(struct oms_state_entry *entry, char *storage)
 {
     ssize_t strsz;
     bool success = false;
     osp_ps_t *ps = NULL;
 
-    ps = osp_ps_open(OMS_STORAGE, OSP_PS_RDWR);
+    ps = osp_ps_open(storage, OSP_PS_RDWR);
     if (ps == NULL)
     {
-        LOG(ERR, "oms: (%s) Unable to open \"%s\" store.", __func__, OMS_STORAGE);
+        LOG(ERR, "oms: (%s) Unable to open \"%s\" store.", __func__, storage);
         goto exit;
     }
 
@@ -59,7 +59,7 @@ exit:
     return success;
 }
 
-struct oms_config_entry *oms_ps_get_last_active_version(char *object)
+static struct oms_config_entry *oms_ps_get_last_version(char *object, char *storage)
 {
     struct oms_config_entry *entry = NULL;
     struct oms_mgr *mgr;
@@ -68,10 +68,10 @@ struct oms_config_entry *oms_ps_get_last_active_version(char *object)
     char *str = NULL;
     osp_ps_t *ps = NULL;
 
-    ps = osp_ps_open(OMS_STORAGE, OSP_PS_RDWR);
+    ps = osp_ps_open(storage, OSP_PS_RDWR);
     if (ps == NULL)
     {
-        LOG(ERR, "oms: (%s) Unable to open \"%s\" store.", __func__, OMS_STORAGE);
+        LOG(ERR, "oms: (%s) Unable to open \"%s\" store.", __func__, storage);
         goto exit;
     }
 
@@ -114,4 +114,27 @@ exit:
     if (ps != NULL) osp_ps_close(ps);
 
     return entry;
+}
+
+
+bool oms_ps_save_last_active_version(struct oms_state_entry *entry)
+{
+    return oms_ps_save_version(entry, OMS_LAST_ACTIVE);
+}
+
+
+bool oms_ps_save_last_downloaded_version(struct oms_state_entry *entry)
+{
+    return oms_ps_save_version(entry, OMS_LAST_DOWNLOAD);
+}
+
+struct oms_config_entry *oms_ps_get_last_active_version(char *object)
+{
+    return oms_ps_get_last_version(object, OMS_LAST_ACTIVE);
+}
+
+
+struct oms_config_entry *oms_ps_get_last_downloaded_version(char *object)
+{
+    return oms_ps_get_last_version(object, OMS_LAST_DOWNLOAD);
 }

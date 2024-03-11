@@ -114,6 +114,6 @@ bool
 fsm_nfq_mac_same(os_macaddr_t *lkp_mac, struct nfq_pkt_info *pkt_info);
 
 bool
-fsm_update_neigh_cache(void *ipaddr, os_macaddr_t *mac, int domain);
+fsm_update_neigh_cache(void *ipaddr, os_macaddr_t *mac, int domain, int source);
 
 #endif /* FSM_DPI_UTILS_H_INCLUDED */

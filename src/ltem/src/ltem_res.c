@@ -170,37 +170,55 @@ ltem_dns_connect_check(char *if_name)
     return 0;
 }
 
+static bool
+ltem_wan_ping_check(ltem_mgr_t *mgr, target_connectivity_check_option_t opts) {
+    target_connectivity_check_t cstate = {0};
+    time_t start, end;
+    bool ret;
+    const char *protocol;
+
+    start = time(NULL);
+    ret = target_device_connectivity_check(mgr->lte_route->wan_if_name, &cstate, opts);
+    end = time(NULL);
+    protocol = (opts & IPV4_CHECK) ? "IPv4" : "IPv6";
+    LOGI("%s: %s ping time[%ld], wan_if_name[%s]", __func__, protocol, end - start, mgr->lte_route->wan_if_name);
+
+    return ret;
+}
+
+/* Check if WAN (eth) interface has internet connectivity */
 int
 ltem_wan_healthcheck(ltem_mgr_t *mgr)
 {
-    target_connectivity_check_t cstate = {0};
     target_connectivity_check_option_t opts;
-    time_t start, end;
     bool ret;
 
-    if (mgr->lte_config_info->if_name[0] == '\0') return 0;
-
-    if (!mgr->lte_state_info->lte_failover_active && mgr->wan_state == LTEM_WAN_STATE_UP)
+    opts = (INTERNET_CHECK | FAST_CHECK | IPV4_CHECK);
+    ret = ltem_wan_ping_check(mgr, opts);
+    if (ret)
     {
-        opts = (INTERNET_CHECK | FAST_CHECK | IPV4_CHECK);
-        start = time(NULL);
-        ret = target_device_connectivity_check(mgr->lte_route->wan_if_name, &cstate, opts);
-        end = time(NULL);
-        LOGI("%s: ping time[%ld]", __func__, end - start);
-        if (!ret)
-        {
-            mgr->wan_failure_count++;
-            mgr->wan_l3_reconnect_success = 0;
-            LOGI("%s: Failed, count[%d]", __func__, mgr->wan_failure_count);
-            return -1;
-        }
-        else
-        {
-            mgr->last_wan_healthcheck_success = time(NULL);
-            mgr->wan_failure_count = 0;
-            LOGI("%s: Success", __func__);
-        }
+        mgr->last_wan_healthcheck_success = time(NULL);
+        mgr->wan_failure_count = 0;
+        LOGI("%s: Success", __func__);
+
+        return 0;
     }
 
-    return 0;
+    /* Try IPv6 connectivity if IPv4 is not available */
+    opts = (INTERNET_CHECK | FAST_CHECK | IPV6_CHECK);
+    ret = ltem_wan_ping_check(mgr, opts);
+    if (ret)
+    {
+        mgr->last_wan_healthcheck_success = time(NULL);
+        mgr->wan_failure_count = 0;
+        LOGI("%s: Success", __func__);
+
+        return 0;
+    }
+
+    mgr->wan_failure_count++;
+    mgr->wan_l3_reconnect_success = 0;
+    LOGI("%s: Failed, failure count[%d]", __func__, mgr->wan_failure_count);
+
+    return -1;
 }

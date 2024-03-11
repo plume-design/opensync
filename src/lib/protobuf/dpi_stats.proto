@@ -47,8 +47,33 @@ message DpiStatsCounters {
   uint32 streams = 13;
 }
 
+message ErrorCounters {
+    uint32 error = 1;
+    uint64 count = 2;
+}
+
+message NfqueueStatsCounters {
+  string queueNum = 1;
+  uint32 portId = 2;
+  uint32 queueTotal = 3;
+  uint32 copyRange = 4;
+  uint32 queueDropped = 5;
+  uint32 queueUserDropped = 6;
+  uint32 seqId = 7;
+  uint32 copyMode = 8;
+  repeated ErrorCounters errors = 9;
+}
+
+message PcapStatsCounters {
+  uint32 pkts_received = 1;
+  uint32 pkts_dropped = 2;
+  string ifname = 3;
+}
+
 message DpiStatsReport {
   DpiStatsObservationPoint observation_point = 1;
   string plugin = 2;
   DpiStatsCounters counters = 3;
+  repeated NfqueueStatsCounters nfqueue_stats = 4;
+  repeated PcapStatsCounters pcap_stats = 5;
 }

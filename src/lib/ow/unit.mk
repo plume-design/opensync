@@ -48,6 +48,7 @@ UNIT_SRC += src/ow_ovsdb_csa.c
 UNIT_SRC += src/ow_ovsdb_wps.c
 UNIT_SRC += src/ow_sigalrm.c
 UNIT_SRC += src/ow_ovsdb_steer.c
+UNIT_SRC += src/ow_ovsdb_mld_onboard.c
 UNIT_SRC += src/ow_steer.c
 UNIT_SRC += src/ow_steer_sta.c
 UNIT_SRC += src/ow_steer_candidate_list.c

@@ -36,6 +36,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <sys/socket.h>
 #include <netdb.h>
 #include <netinet/in.h>
+#ifdef CONFIG_LIBC_BIONIC
+#define __USE_BSD 1
+#endif
 #include <netinet/if_ether.h>
 #include <linux/netfilter.h>
 #include <linux/netfilter/nfnetlink.h>
@@ -78,14 +81,49 @@ nf_ct_mark_str(uint8_t mark)
     return buf;
 }
 
+void
+nf_record_err(struct nfqueue_ctxt *nfq, int err, const char *caller, int line)
+{
+    char err_str[16];
+    int idx;
+
+    idx = (err <= NF_ERRNO_MAX ? err : NF_ERRNO_MAX + 1);
+    if (idx == NF_ERRNO_MAX + 1)
+    {
+        snprintf(err_str, sizeof(err_str), "%d", err);
+    }
+    if (nfq->err_counters[idx].to_report == 0)
+    {
+        LOGE("%s: nfqueue %d: %s::%d failed: %s", __func__,
+             nfq->queue_num, caller, line, err <= NF_ERRNO_MAX ? strerror(err) : err_str);
+        nfq->err_counters[idx].to_report++;
+        nfq->errs_to_report++;
+    }
+    if (nfq->err_counters[idx].counter == UINT64_MAX)
+    {
+        nfq->err_counters[idx].counter = 0;
+    }
+    else
+    {
+        nfq->err_counters[idx].counter++;
+    }
+    nfq->err_counters[idx].error = idx;
+}
+
+
 static int
 nf_queue_parse_attr_cb(const struct nlattr *attr, void *data)
 {
-    struct nfq_pkt_info *pi = (struct nfq_pkt_info *)data;
     struct nfqnl_msg_packet_hdr *ph;
     struct nfqnl_msg_packet_hw  *phw;
+    struct nfqueue_ctxt *nfq;
+    struct nfq_pkt_info *pi;
+
     int type = mnl_attr_get_type(attr);
     int rc;
+
+    pi = (struct nfq_pkt_info *)data;
+    nfq = CONTAINER_OF(pi, struct nfqueue_ctxt, pkt_info);
 
     /* skip unsupported attribute in user-space */
     if (mnl_attr_type_valid(attr, NFQA_MAX) < 0)
@@ -99,7 +137,7 @@ nf_queue_parse_attr_cb(const struct nlattr *attr, void *data)
         rc = mnl_attr_validate(attr, MNL_TYPE_U32);
         if (rc < 0)
         {
-            LOGE("%s: mnl_attr_validate failed", __func__);
+            nf_record_err(nfq, errno, __func__, __LINE__);
             return MNL_CB_ERROR;
         }
         pi->rx_vidx = ntohl(mnl_attr_get_u32(attr));
@@ -108,7 +146,8 @@ nf_queue_parse_attr_cb(const struct nlattr *attr, void *data)
         rc = mnl_attr_validate(attr, MNL_TYPE_U32);
         if (rc < 0)
         {
-            LOGE("%s: mnl_attr_validate failed", __func__);
+            nf_record_err(nfq, errno, __func__, __LINE__);
+
             return MNL_CB_ERROR;
         }
         pi->tx_vidx = ntohl(mnl_attr_get_u32(attr));
@@ -117,7 +156,7 @@ nf_queue_parse_attr_cb(const struct nlattr *attr, void *data)
         rc = mnl_attr_validate(attr, MNL_TYPE_U32);
         if (rc < 0)
         {
-            LOGE("%s: mnl_attr_validate failed", __func__);
+            nf_record_err(nfq, errno, __func__, __LINE__);
             return MNL_CB_ERROR;
         }
         pi->rx_pidx = ntohl(mnl_attr_get_u32(attr));
@@ -126,7 +165,7 @@ nf_queue_parse_attr_cb(const struct nlattr *attr, void *data)
         rc = mnl_attr_validate(attr, MNL_TYPE_U32);
         if (rc < 0)
         {
-            LOGE("%s: mnl_attr_validate failed", __func__);
+            nf_record_err(nfq, errno, __func__, __LINE__);
             return MNL_CB_ERROR;
         }
         pi->tx_pidx = ntohl(mnl_attr_get_u32(attr));
@@ -136,7 +175,7 @@ nf_queue_parse_attr_cb(const struct nlattr *attr, void *data)
                                 sizeof(struct nfqnl_msg_packet_timestamp));
         if (rc < 0)
         {
-            LOGE("%s: mnl_attr_validate2 failed", __func__);
+            nf_record_err(nfq, errno, __func__, __LINE__);
             return MNL_CB_ERROR;
         }
         break;
@@ -145,7 +184,7 @@ nf_queue_parse_attr_cb(const struct nlattr *attr, void *data)
                                 sizeof(struct nfqnl_msg_packet_hw));
         if (rc < 0)
         {
-            LOGE("%s: mnl_attr_validate2 failed", __func__);
+            nf_record_err(nfq, errno, __func__, __LINE__);
             return MNL_CB_ERROR;
         }
         phw = mnl_attr_get_payload(attr);
@@ -261,7 +300,7 @@ nf_queue_send_nlh_request(struct nlmsghdr *nlh, uint8_t cfg_type,
     ret = mnl_socket_sendto(nfq->nfq_mnl, nlh, nlh->nlmsg_len);
     if (ret == -1)
     {
-        LOGE("%s: Failed to send nfq command type:[%d] ",__func__,cfg_type);
+        nf_record_err(nfq, errno, __func__, __LINE__);
     }
 
     return;
@@ -327,7 +366,7 @@ nf_queue_send_verdict(struct nfqnl_msg_verdict_hdr *vhdr,
     ret = mnl_socket_sendto(nfq->nfq_mnl, nfq->nlh, nfq->nlh->nlmsg_len);
     if (ret == -1)
     {
-        LOGE("%s: Failed to send verdict for packet_id[%d]",__func__,ntohl(vhdr->id));
+        nf_record_err(nfq, errno, __func__, __LINE__);
     }
     return;
 }
@@ -365,7 +404,7 @@ nf_queue_read_mnl_cbk(EV_P_ ev_io *ev, int revents)
     ret = mnl_socket_recvfrom(nfq->nfq_mnl, rcv_buf, sizeof(rcv_buf));
     if (ret == -1)
     {
-        LOGE("%s: mnl_socket_recvfrom failed: %s", __func__, strerror(errno));
+        nf_record_err(nfq, errno, __func__, __LINE__);
         return;
     }
 
@@ -375,7 +414,7 @@ nf_queue_read_mnl_cbk(EV_P_ ev_io *ev, int revents)
     ret = mnl_cb_run(rcv_buf, ret, 0, portid, nf_queue_cb, nfq);
     if (ret == -1)
     {
-        LOGE("%s: mnl_cb_run failed [%u]", __func__, errno);
+        nf_record_err(nfq, errno, __func__, __LINE__);
         return;
     }
 
@@ -400,6 +439,8 @@ nf_queue_open(struct nfq_settings *nfq_set)
     struct nfqueue_ctxt *nfq;
     int ret;
 
+    MEMZERO(buf);
+
     ctxt = nf_queue_get_context();
     if (ctxt->initialized == false) return false;
 
@@ -420,14 +461,14 @@ nf_queue_open(struct nfq_settings *nfq_set)
     nl = mnl_socket_open(NETLINK_NETFILTER);
     if (nl == NULL)
     {
-        LOGE("%s: mnl_socket_open failed", __func__);
+        nf_record_err(nfq, errno, __func__, __LINE__);
         goto err_free_nfq;
     }
 
     ret = mnl_socket_bind(nl, 0, MNL_SOCKET_AUTOPID);
     if (ret != 0)
     {
-        LOGE("%s: mnl_socket_bind failed", __func__);
+        nf_record_err(nfq, errno, __func__, __LINE__);
         goto err_mnl_sock;
     }
     nfq->nfq_mnl = nl;
@@ -462,7 +503,6 @@ nf_queue_open(struct nfq_settings *nfq_set)
     ev_io_start(nfq->loop, &nfq->nfq_io_mnl);
 
     ds_tree_insert(&ctxt->nfq_tree, nfq, nfq);
-
     return true;
 
 err_mnl_sock:
@@ -510,6 +550,41 @@ nf_queue_set_nlsock_buffsz(uint32_t queue_num, uint32_t sock_buff_sz)
     return true;
 }
 
+/**
+ * @brief Retrieves the socket buffer size for the given Netfilter queue.
+ *
+ * @param queue_num Netfilter queue number
+ * @return true if success else failure
+ */
+bool nf_queue_get_nlsock_buffsz(uint32_t queue_num)
+{
+    struct nf_queue_context *ctxt;
+    struct nfqueue_ctxt nfq_lkp;
+    struct nfqueue_ctxt *nfq;
+    socklen_t buf_size_len;
+    int sock_buff_sz = 0;
+    int ret;
+
+    /* Get the netfilter queue context */
+    ctxt = nf_queue_get_context();
+    if (ctxt->initialized == false) return false;
+
+    MEMZERO(nfq_lkp);
+    nfq_lkp.queue_num = queue_num;
+    nfq = ds_tree_find(&ctxt->nfq_tree, &nfq_lkp);
+    if (nfq == NULL) return false;
+
+    /* Get the socket buffer size */
+    buf_size_len = sizeof(sock_buff_sz);
+    ret = getsockopt(nfq->nfq_fd, SOL_SOCKET, SO_RCVBUF, &sock_buff_sz, &buf_size_len);
+    if (ret == -1)
+    {
+        LOGE("%s: Failed to get buff size error[%s]", __func__, strerror(errno));
+        return false;
+    }
+    LOGT("%s: nfq socket buffer size for queue %u is %d bytes", __func__, queue_num, sock_buff_sz);
+    return true;
+}
 
 /**
  * @brief set max length of nfqueues.
@@ -548,6 +623,83 @@ nfq_cmp(const void *_a, const void *_b)
 
     return (a->queue_num - b->queue_num);
 }
+
+
+struct nfqueue_ctxt *
+nfq_get_nfq_by_qnum(int qnum)
+{
+    struct nf_queue_context *ctxt;
+    struct nfqueue_ctxt nfq_lkp;
+    struct nfqueue_ctxt *nfq;
+
+    ctxt = nf_queue_get_context();
+    if (!ctxt->initialized) return NULL;
+
+    MEMZERO(nfq_lkp);
+    nfq_lkp.queue_num = qnum;
+    nfq = ds_tree_find(&ctxt->nfq_tree, &nfq_lkp);
+    return nfq;
+}
+
+
+struct nf_queue_context_errors *
+nfq_get_err_counters(int queue_num)
+{
+    struct nf_queue_err_counters **report_counter;
+    struct nf_queue_err_counters *nf_counter;
+    struct nf_queue_context_errors *report;
+    struct nf_queue_context *ctxt;
+    struct nfqueue_ctxt nfq_lkp;
+    struct nfqueue_ctxt *nfq;
+    size_t i;
+
+    ctxt = nf_queue_get_context();
+    if (!ctxt->initialized) return NULL;
+
+    MEMZERO(nfq_lkp);
+    nfq_lkp.queue_num = queue_num;
+    nfq = ds_tree_find(&ctxt->nfq_tree, &nfq_lkp);
+    if (nfq == NULL) return NULL;
+    if (!nfq->errs_to_report) return NULL;
+
+    report = CALLOC(1, sizeof(*report));
+    report->counters = CALLOC(nfq->errs_to_report, sizeof(*(report->counters)));
+    report_counter = report->counters;
+    report->count = nfq->errs_to_report;
+    for (i = 0; i < NF_ERRNO_MAX; i++)
+    {
+        nf_counter = &nfq->err_counters[i];
+        if (!nf_counter->to_report) continue;
+
+        *report_counter++ = nf_counter;
+    }
+
+    return report;
+}
+
+
+void
+nfq_log_err_counters(int queue_num)
+{
+    struct nf_queue_err_counters *report_counter;
+    struct nf_queue_context_errors *report;
+    size_t i;
+
+    report = nfq_get_err_counters(queue_num);
+    if (report == NULL) return;
+
+    for (i = 0; i < report->count; i++)
+    {
+        report_counter = report->counters[i];
+        LOGI("%s: nf queue id %d: error %d: %s, count: %" PRIu64, __func__,
+             queue_num, report_counter->error, strerror(report_counter->error),
+             report_counter->counter);
+    }
+
+    FREE(report->counters);
+    FREE(report);
+}
+
 
 /**
  * @brief initialize nfqueues

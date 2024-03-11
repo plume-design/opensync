@@ -1,0 +1,5 @@
+menuconfig LIB_NF_UTILS
+    bool "Enables OpenSync netfilter utilities"
+        default y
+        help
+            N/A

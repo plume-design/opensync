@@ -287,17 +287,6 @@ ow_ovsdb_ms_sigusr1_cb(EV_P_ ev_signal *arg, int events)
 }
 
 void
-ow_ovsdb_ms_init(struct ow_ovsdb_ms_root *root)
-{
-    ev_signal_init(&root->sigusr1, ow_ovsdb_ms_sigusr1_cb, SIGUSR1);
-    ev_signal_start(EV_DEFAULT_ &root->sigusr1);
-    ev_unref(EV_DEFAULT);
-    ds_tree_init(&root->tree, ds_str_cmp, struct ow_ovsdb_ms, node);
-    OVSDB_TABLE_VAR_INIT(&root->table, Wifi_Master_State, if_name);
-    ovsdb_cache_monitor(&root->table, (void *)ow_ovsdb_ms_table_cb, true);
-}
-
-void
 ow_ovsdb_ms_set_vif(struct ow_ovsdb_ms_root *root,
                     const struct osw_state_vif_info *vif)
 {
@@ -353,4 +342,92 @@ ow_ovsdb_ms_set_sta_disconnected(struct ow_ovsdb_ms_root *root,
 
     LOGD("ow: ovsdb: ms: %s: disconnected",
          ms->vif_name);
+}
+
+static void
+ow_ovsdb_ms_mld_added_cb(void *priv, const char *mld_if_name)
+{
+    struct ow_ovsdb_ms_root *root = priv;
+    const char *if_name = mld_if_name;
+    struct ow_ovsdb_ms *ms = ow_ovsdb_ms_get(root, if_name);
+    if (ms->vif_exists != true) {
+        LOGD("ow: ovsdb: ms: %s: mld: added",
+             ms->vif_name);
+    }
+    ms->vif_exists = true;
+    ow_ovsdb_ms_work_sched(ms);
+}
+
+static void
+ow_ovsdb_ms_mld_removed_cb(void *priv, const char *mld_if_name)
+{
+    struct ow_ovsdb_ms_root *root = priv;
+    const char *if_name = mld_if_name;
+    struct ow_ovsdb_ms *ms = ow_ovsdb_ms_get(root, if_name);
+    if (ms->vif_exists != false) {
+        LOGD("ow: ovsdb: ms: %s: mld: removed",
+             ms->vif_name);
+    }
+    ms->vif_exists = false;
+    ow_ovsdb_ms_work_sched(ms);
+}
+
+static void
+ow_ovsdb_ms_mld_connected_cb(void *priv, const char *mld_if_name)
+{
+    struct ow_ovsdb_ms_root *root = priv;
+    const char *if_name = mld_if_name;
+    struct ow_ovsdb_ms *ms = ow_ovsdb_ms_get(root, if_name);
+    if (ms->vif_port_state != OW_OVSDB_MS_PORT_ACTIVE) {
+        LOGD("ow: ovsdb: ms: %s: mld: connected",
+             ms->vif_name);
+    }
+    ms->vif_port_state = OW_OVSDB_MS_PORT_ACTIVE;
+    if (root->port_state_blip) {
+        ms->signal_disconnect = true;
+    }
+    ow_ovsdb_ms_work_sched(ms);
+}
+
+static void
+ow_ovsdb_ms_mld_disconnected_cb(void *priv, const char *mld_if_name)
+{
+    struct ow_ovsdb_ms_root *root = priv;
+    const char *if_name = mld_if_name;
+    struct ow_ovsdb_ms *ms = ow_ovsdb_ms_get(root, if_name);
+    if (ms->vif_port_state != OW_OVSDB_MS_PORT_INACTIVE) {
+        LOGD("ow: ovsdb: ms: %s: mld: disconnected",
+             ms->vif_name);
+    }
+    ms->vif_port_state = OW_OVSDB_MS_PORT_INACTIVE;
+    if (root->port_state_blip) {
+        ms->signal_disconnect = true;
+    }
+    ow_ovsdb_ms_work_sched(ms);
+}
+
+static osw_mld_vif_observer_t *
+ow_ovsdb_ms_mld_alloc(struct ow_ovsdb_ms_root *root)
+{
+    osw_mld_vif_t *m = OSW_MODULE_LOAD(osw_mld_vif);
+    if (m == NULL) return NULL;
+    osw_mld_vif_observer_t *obs = osw_mld_vif_observer_alloc(m);
+    osw_mld_vif_observer_set_mld_added_fn(obs, ow_ovsdb_ms_mld_added_cb, root);
+    osw_mld_vif_observer_set_mld_removed_fn(obs, ow_ovsdb_ms_mld_removed_cb, root);
+    osw_mld_vif_observer_set_mld_connected_fn(obs, ow_ovsdb_ms_mld_connected_cb, root);
+    osw_mld_vif_observer_set_mld_disconnected_fn(obs, ow_ovsdb_ms_mld_disconnected_cb, root);
+    return obs;
+}
+
+void
+ow_ovsdb_ms_init(struct ow_ovsdb_ms_root *root, bool port_state_blip)
+{
+    root->port_state_blip = true;
+    ev_signal_init(&root->sigusr1, ow_ovsdb_ms_sigusr1_cb, SIGUSR1);
+    ev_signal_start(EV_DEFAULT_ &root->sigusr1);
+    ev_unref(EV_DEFAULT);
+    ds_tree_init(&root->tree, ds_str_cmp, struct ow_ovsdb_ms, node);
+    OVSDB_TABLE_VAR_INIT(&root->table, Wifi_Master_State, if_name);
+    ovsdb_cache_monitor(&root->table, (void *)ow_ovsdb_ms_table_cb, true);
+    root->mld_obs = ow_ovsdb_ms_mld_alloc(root);
 }

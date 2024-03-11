@@ -1,0 +1,10 @@
+#
+# OpenSync core platform OSP TM
+#
+source "src/lib/osp/kconfig/Kconfig.osp_tm"
+
+#
+# Platform/vendor OSP TM
+#
+osource "platform/*/kconfig/Kconfig.osp_tm"
+osource "vendor/*/kconfig/Kconfig.osp_tm"

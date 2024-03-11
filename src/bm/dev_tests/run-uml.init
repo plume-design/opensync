@@ -1,4 +1,5 @@
-#!/bin/bash -ax
+#!/usr/bin/env bash
+set -ax
 export USER_MODE_LINUX=y
 
 mount -t proc proc /proc

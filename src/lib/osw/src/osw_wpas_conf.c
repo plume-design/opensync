@@ -238,6 +238,7 @@ osw_wpas_util_parse_config_to_networks(const char *config,
 static void
 osw_wpas_util_get_psk_from_config_id(const char *config,
                                      const char *id_str,
+                                     bool link_connected,
                                      struct osw_psk *osw_psk)
 {
     char *line = NULL;
@@ -253,6 +254,7 @@ osw_wpas_util_get_psk_from_config_id(const char *config,
     char id_str_buf[20];
     char *start = NULL;
     char *stop = NULL;
+    size_t networks_count = 0;
     bool psk_found = false;
     bool sae_found = false;
     bool network_found = false;
@@ -271,6 +273,9 @@ osw_wpas_util_get_psk_from_config_id(const char *config,
             (stop  = strstr(start, end)) != NULL ) {
         start += strlen(begin);
         if (stop != NULL) stop[0] = '\0';
+
+        psk_found = false;
+        sae_found = false;
 
         while ((line = strsep(&start, "\n\0")) != NULL) {
             /* Remove prefix spaces */
@@ -307,8 +312,33 @@ osw_wpas_util_get_psk_from_config_id(const char *config,
             break;
         }
 
+        networks_count++;
         start = stop + 1;
     }
+
+    const bool no_matching_id_str = (network_found == false);
+    const bool only_1_network_block = (networks_count == 1);
+    const bool infer_the_passphrase = no_matching_id_str
+                                   && only_1_network_block
+                                   && link_connected;
+    if (infer_the_passphrase) {
+        /* When reconfiguring networks the network intended to be
+         * remain to be used may be on the new list, but the config
+         * file may end up being re-generated causing the id_str to no
+         * longer match.
+         *
+         * However, if the link is known to be active for a given
+         * config file, and there's only a single network block in the
+         * config file, then it's fair to assume the passphrase used
+         * to setup that link is from that single network block, even
+         * if the id_str didn't match.
+         */
+        if (psk_found == true)
+            STRSCPY_WARN(osw_psk->str, psk);
+        if (sae_found == true)
+            STRSCPY_WARN(osw_psk->str, sae_password);
+    }
+
     FREE(local_config);
 }
 
@@ -433,6 +463,7 @@ osw_hostap_conf_generate_sta_config_bufs(struct osw_hostap_conf_sta_config *conf
     CONF_APPEND(scan_cur_freq, "%d");
     CONF_APPEND(disallow_dfs, "%d");
     CONF_APPEND(interworking, "%d");
+    CONF_APPEND_BUF(config->extra_buf);
 
     /* network block */
     while (net_conf != NULL) {
@@ -613,7 +644,8 @@ osw_wpas_util_fill_link_details(const struct osw_hostap_conf_sta_state_bufs *buf
     if (id == NULL) return;
     if (config == NULL) return;
 
-    osw_wpas_util_get_psk_from_config_id(config, id, &link->psk);
+    const bool connected = (link->status == OSW_DRV_VIF_STATE_STA_LINK_CONNECTED);
+    osw_wpas_util_get_psk_from_config_id(config, id, connected, &link->psk);
 }
 
 void

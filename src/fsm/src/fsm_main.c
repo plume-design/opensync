@@ -52,6 +52,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "fsm_oms.h"
 #include "nf_utils.h"
 #include "neigh_table.h"
+#include "kconfig.h"
+#include "qm_conn.h"
 
 /******************************************************************************/
 
@@ -130,10 +132,21 @@ int main(int argc, char ** argv)
         return -1;
     }
 
+    if (qm_conn_init() == false) {
+        LOGE("Initializing qm_conn");
+        return -1;
+    }
+
     if (neigh_table_init())
     {
         LOGE("Initializing Neighbour Table failed " );
         return -1;
+    }
+
+    if ((!kconfig_enabled(CONFIG_FSM_TAP_INTF)) &&
+        (!kconfig_enabled(CONFIG_FSM_CONNTRACK)))
+    {
+        neigh_table_events |= DHCP_LEASED_IP;
     }
 
     neigh_table_init_monitor(loop, false, neigh_table_events);

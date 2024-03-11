@@ -48,6 +48,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "synclist.h"
 #include "target.h"
 #include "memutil.h"
+#include "ff_lib.h"
 
 #include "nm2_iface.h"
 
@@ -215,6 +216,11 @@ nm2_mac_learning_init(void)
     }
 
     g_mac_learning_init = true;
+
+    if (ff_is_flag_enabled("nm2_arping_clients"))
+    {
+        nm2_arping_clients_init();
+    }
 
     return true;
 }

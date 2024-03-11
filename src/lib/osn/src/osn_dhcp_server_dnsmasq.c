@@ -77,7 +77,7 @@ bool osn_dhcp_server_apply(osn_dhcp_server_t *self)
     dnsmasq_server_enable(&self->ds_dnsmasq, true);
 
     /* Issue a server restart */
-    dnsmasq_server_apply();
+    dnsmasq_server_apply(&self->ds_dnsmasq, false);
 
     return true;
 }

@@ -62,6 +62,7 @@ ow_ovsdb_stats_xlate_stats(const struct schema_Wifi_Stats_Config *c)
     if (strcmp(s, SCHEMA_CONSTS_REPORT_TYPE_NEIGHBOR) == 0) return OW_STATS_CONF_STATS_TYPE_NEIGHBOR;
     if (strcmp(s, SCHEMA_CONSTS_REPORT_TYPE_CLIENT) == 0) return OW_STATS_CONF_STATS_TYPE_CLIENT;
     if (strcmp(s, SCHEMA_CONSTS_REPORT_TYPE_SURVEY) == 0) return OW_STATS_CONF_STATS_TYPE_SURVEY;
+    if (strcmp(s, SCHEMA_CONSTS_REPORT_TYPE_DEVICE) == 0) return OW_STATS_CONF_STATS_TYPE_DEVICE;
     return OW_STATS_CONF_STATS_TYPE_UNSPEC;
 }
 

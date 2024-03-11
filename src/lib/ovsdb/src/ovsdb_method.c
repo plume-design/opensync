@@ -288,6 +288,10 @@ bool ovsdb_method_send(json_rpc_response_t *callback,
             method = "monitor";
             break;
 
+        case MT_MONITOR_CANCEL:
+            method = "monitor_cancel";
+            break;
+
         case MT_TRANS:
             method = "transact";
             break;

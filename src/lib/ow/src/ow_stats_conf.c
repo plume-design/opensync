@@ -46,6 +46,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <osw_module.h>
 #include <osw_time.h>
 #include <osw_timer.h>
+#include <osw_util.h>
 #include <ow_stats_conf.h>
 #include <dpp_types.h>
 #include <dpp_survey.h>
@@ -99,6 +100,7 @@ struct ow_stats_conf {
 struct ow_stats_conf_band {
     struct ds_tree_node node;
     char *phy_name;
+    int tx_chainmask;
     enum ow_stats_conf_radio_type type;
 };
 
@@ -127,6 +129,7 @@ struct ow_stats_conf_sta {
     struct ds_tree_node node;
     struct ow_stats_conf_sta_id id;
     struct osw_ssid ssid;
+    struct osw_hwaddr mld_addr;
     uint32_t num_connects;
     uint32_t num_disconnects;
     double connected_at;
@@ -160,6 +163,7 @@ struct ow_stats_conf_entry {
     struct ds_dlist surveys; /* dpp_survey_record_t */
     struct ds_dlist neighbors; /* dpp_neighbor_record_list_t */
     struct ds_dlist clients; /* dpp_client_record_t */
+    struct ds_dlist thermal_records; /* dpp_device_thermal_record_t */
     struct ds_tree sta_tree; /* ow_stats_conf_sta */
     struct osw_stats_subscriber *sub;
     struct osw_state_observer obs;
@@ -171,6 +175,7 @@ struct ow_stats_conf_entry {
     unsigned int report_counter;
     int last_util;
     double scan_delayed_until;
+    double device_poll_at;
     double report_at;
     double last_sub_reported_at;
     char *id;
@@ -263,9 +268,48 @@ ow_stats_conf_stats_type_to_str(const enum ow_stats_conf_stats_type t)
         case OW_STATS_CONF_STATS_TYPE_SURVEY: return "survey";
         case OW_STATS_CONF_STATS_TYPE_CLIENT: return "client";
         case OW_STATS_CONF_STATS_TYPE_NEIGHBOR: return "neighbor";
+        case OW_STATS_CONF_STATS_TYPE_DEVICE: return "device";
         case OW_STATS_CONF_STATS_TYPE_UNSPEC: return "unspec";
     }
     return "";
+}
+
+radio_type_t
+ow_stats_conf_phy_to_type(const struct osw_state_phy_info *phy)
+{
+    const int b2ch1 = 2412;
+    const int b2ch13 = 2472;
+    const int b2ch14 = 2484;
+    const int b5ch36 = 5180;
+    const int b5ch100 = 5500;
+    const int b5ch177 = 5885;
+    const int b6ch1 = 5955;
+    const int b6ch2 = 5935;
+    const int b6ch233 = 7115;
+    bool band_2g = false;
+    bool band_5gl = false;
+    bool band_5gu = false;
+    bool band_6g = false;
+    size_t i;
+    for (i = 0; i < phy->drv_state->n_channel_states; i++) {
+        const struct osw_channel_state *s = &phy->drv_state->channel_states[i];
+        const int freq = s->channel.control_freq_mhz;
+        if (freq >= b2ch1 && freq <= b2ch13) band_2g = true;
+        if (freq == b2ch14) band_2g = true;
+        if (freq >= b5ch36 && freq < b5ch100) band_5gl = true;
+        if (freq >= b5ch100 && freq <= b5ch177) band_5gu = true;
+        if (freq == b6ch2) band_6g = true;
+        if (freq >= b6ch1 && freq <= b6ch233) band_6g = true;
+    }
+    const bool band_5g = band_5gl && band_5gu;
+    const bool bands = band_2g + (band_5gl || band_5gu) + band_6g;
+    if (bands != 1) return RADIO_TYPE_NONE;
+    else if (band_2g) return RADIO_TYPE_2G;
+    else if (band_5g) return RADIO_TYPE_5G;
+    else if (band_5gl) return RADIO_TYPE_5GL;
+    else if (band_5gu) return RADIO_TYPE_5GU;
+    else if (band_6g) return RADIO_TYPE_6G;
+    else return RADIO_TYPE_NONE;
 }
 
 static void
@@ -315,6 +359,7 @@ ow_stats_conf_entry_desired_count(const struct ow_stats_conf_entry *e)
         case OW_STATS_CONF_STATS_TYPE_SURVEY:
             return e->params.report_seconds / e->params.sample_seconds;
         case OW_STATS_CONF_STATS_TYPE_CLIENT: /* fall-through */
+        case OW_STATS_CONF_STATS_TYPE_DEVICE: /* fall-through */
         case OW_STATS_CONF_STATS_TYPE_NEIGHBOR:
             /* This isn't exactly desired count, but minimum
              * count for these entry types. For surveys it's
@@ -344,6 +389,10 @@ ow_stats_conf_entry_get_sub_timings(const struct ow_stats_conf_entry *e,
             break;
         case OW_STATS_CONF_STATS_TYPE_CLIENT: /* fall-through */
         case OW_STATS_CONF_STATS_TYPE_NEIGHBOR:
+            *report = e->params.report_seconds;
+            *poll = e->params.sample_seconds;
+            break;
+        case OW_STATS_CONF_STATS_TYPE_DEVICE:
             *report = e->params.report_seconds;
             *poll = e->params.sample_seconds;
             break;
@@ -380,6 +429,15 @@ ow_stats_conf_entry_free_clients(struct ow_stats_conf_entry *e)
     dpp_client_record_t *i;
     while ((i = ds_dlist_remove_head(&e->clients)) != NULL) {
         dpp_client_record_free(i);
+    }
+}
+
+static void
+ow_stats_conf_entry_free_thermal_records(struct ow_stats_conf_entry *e)
+{
+    dpp_device_thermal_record_t *i;
+    while ((i = ds_dlist_remove_head(&e->thermal_records)) != NULL) {
+        dpp_device_thermal_record_free(i);
     }
 }
 
@@ -423,6 +481,7 @@ ow_stats_conf_entry_stop(struct ow_stats_conf_entry *e)
     ow_stats_conf_entry_free_surveys(e);
     ow_stats_conf_entry_free_neighbors(e);
     ow_stats_conf_entry_free_clients(e);
+    ow_stats_conf_entry_free_thermal_records(e);
     ow_stats_conf_entry_free_sta_list(e);
 }
 
@@ -635,6 +694,10 @@ ow_stats_conf_sub_report_bss_scan(struct ow_stats_conf_entry *e,
     const struct osw_tlv_hdr *width = tb[OSW_STATS_BSS_SCAN_WIDTH_MHZ];
     const struct osw_tlv_hdr *ies = tb[OSW_STATS_BSS_SCAN_IES];
     const struct osw_tlv_hdr *snr = tb[OSW_STATS_BSS_SCAN_SNR_DB];
+    const struct osw_tlv_hdr *center0 = tb[OSW_STATS_BSS_SCAN_CENTER_FREQ0_MHZ];
+    const struct osw_tlv_hdr *center1 = tb[OSW_STATS_BSS_SCAN_CENTER_FREQ1_MHZ];
+
+    (void)center1;
 
     if (phy == NULL) return;
     if (mac == NULL) return;
@@ -669,6 +732,12 @@ ow_stats_conf_sub_report_bss_scan(struct ow_stats_conf_entry *e,
         r->entry.chanwidth = ow_stats_conf_width_to_dpp(mhz);
     }
 
+    if (center0 != NULL) {
+        const uint32_t mhz = osw_tlv_get_u32(center0);
+        const uint32_t chan = osw_freq_to_chan(mhz);
+        r->entry.c_freq0_chan = chan;
+    }
+
     if (ies != NULL) {
         /* FIXME:*/
     }
@@ -685,6 +754,7 @@ ow_stats_conf_sub_report_bss_scan(struct ow_stats_conf_entry *e,
          " chan=%"PRIu32
          " width=%d"
          " snr=%"PRId32
+         " center0=%"PRIu32
          " ssid=%s",
          ow_stats_conf_scan_type_to_str(e->params.scan_type),
          r->entry.bssid,
@@ -692,6 +762,7 @@ ow_stats_conf_sub_report_bss_scan(struct ow_stats_conf_entry *e,
          r->entry.chan,
          r->entry.chanwidth,
          r->entry.sig,
+         r->entry.c_freq0_chan,
          r->entry.ssid);
 
     /* FIXME: r->entry.tsf (unnecessary?) */
@@ -790,6 +861,7 @@ ow_stats_conf_sub_report_sta(struct ow_stats_conf_entry *e,
 
     r->info.type = ow_stats_conf_radio_type_to_dpp(e->params.radio_type);
     memcpy(r->info.mac, &id.addr.octet, 6);
+    memcpy(r->info.mld_addr, &sta->mld_addr.octet, 6);
 
     const struct osw_tlv_hdr *tx_bytes = tb[OSW_STATS_STA_TX_BYTES];
     const struct osw_tlv_hdr *rx_bytes = tb[OSW_STATS_STA_RX_BYTES];
@@ -1001,6 +1073,28 @@ ow_stats_conf_entry_report_client(struct ow_stats_conf_entry *e,
     return true;
 }
 
+static bool
+ow_stats_conf_entry_report_device(struct ow_stats_conf_entry *e,
+                                  const double now_mono,
+                                  const double now_real)
+{
+
+    const uint64_t real_msec = now_real * 1e3;
+
+    dpp_device_report_data_t r = {
+        .record.populated = false,
+        .thermal_records = e->thermal_records,
+        .timestamp_ms = real_msec,
+    };
+
+    dpp_put_device(&r);
+
+    ow_stats_conf_entry_free_thermal_records(e);
+
+    LOGD("ow: stats: device: device thermal report generated");
+
+    return true;
+}
 
 #define OW_STATS_CONF_MAX_UNDERRUN 10
 
@@ -1029,7 +1123,8 @@ ow_stats_conf_is_entry_ready(struct ow_stats_conf_entry *e,
     const int desired_count = ow_stats_conf_entry_desired_count(e);
     const int actual_count = ds_dlist_len(&e->surveys)
                            + ds_dlist_len(&e->neighbors)
-                           + ds_dlist_len(&e->clients);
+                           + ds_dlist_len(&e->clients)
+                           + ds_dlist_len(&e->thermal_records);
     const double offset = fabs(sample_seconds - age_seconds);
     const bool postpone = ((actual_count < desired_count)
                        &&  (offset < (age_seconds / 4)));
@@ -1080,6 +1175,9 @@ ow_stats_conf_entry_report(struct ow_stats_conf_entry *e,
         break;
     case OW_STATS_CONF_STATS_TYPE_CLIENT:
         ow_stats_conf_entry_report_client(e, now_mono, now_real);
+        break;
+    case OW_STATS_CONF_STATS_TYPE_DEVICE:
+        ow_stats_conf_entry_report_device(e, now_mono, now_real);
         break;
     case OW_STATS_CONF_STATS_TYPE_UNSPEC:
         break;
@@ -1165,6 +1263,7 @@ ow_stats_conf_sta_set_connected(struct ow_stats_conf_entry *e,
     }
 
     scsta->is_connected = connected;
+    scsta->mld_addr = sta->drv_state->mld_addr;
     ow_stats_conf_sta_update_duration(scsta, now);
 }
 
@@ -1479,6 +1578,7 @@ ow_stats_conf_entry_start(struct ow_stats_conf_entry *e,
         case OW_STATS_CONF_STATS_TYPE_SURVEY: osw_stats_subscriber_set_chan(e->sub, true); break;
         case OW_STATS_CONF_STATS_TYPE_CLIENT: osw_stats_subscriber_set_sta(e->sub, true); break;
         case OW_STATS_CONF_STATS_TYPE_NEIGHBOR: osw_stats_subscriber_set_bss(e->sub, true); break;
+        case OW_STATS_CONF_STATS_TYPE_DEVICE: break;
         case OW_STATS_CONF_STATS_TYPE_UNSPEC: break;
     }
     osw_stats_subscriber_set_report_fn(e->sub, ow_stats_conf_sub_report_cb, e);
@@ -1490,6 +1590,103 @@ ow_stats_conf_entry_start(struct ow_stats_conf_entry *e,
 
     if (e->params.report_seconds > 0) {
         e->report_at = (floor(now / e->params.report_seconds) + 1) * e->params.report_seconds;
+    }
+}
+
+static void
+ow_stats_conf_entry_start_device(struct ow_stats_conf_entry *e,
+                                 const double now)
+{
+    double poll;
+    double report;
+
+    ow_stats_conf_entry_get_sub_timings(e, &poll, &report);
+
+    LOGI("ow: stats: entry: %s: starting type=%s radio=%s chan=%s",
+         e->id ?: "",
+        ow_stats_conf_stats_type_to_str(e->params.stats_type),
+        ow_stats_conf_radio_type_to_str(e->params.radio_type),
+        ow_stats_conf_scan_type_to_str(e->params.scan_type));
+
+    if (poll > 0) {
+        e->device_poll_at = (floor(now / poll) + 1) * poll;
+    }
+    if (report > 0) {
+        e->report_at = (floor(now / e->params.report_seconds) + 1) * e->params.report_seconds;
+    }
+}
+
+
+static void
+ow_stats_conf_device_polling(struct ow_stats_conf_entry *e,
+                             const double now,
+                             const double now_real)
+{
+    const uint64_t real_msec = now_real * 1e3;
+    dpp_device_thermal_record_t *thermal_record = dpp_device_thermal_record_alloc();
+    struct ow_stats_conf *c = e->conf;
+    struct ow_stats_conf_band *b;
+    int radio_idx = 0;
+
+    double poll;
+    double report;
+
+    ow_stats_conf_entry_get_sub_timings(e, &poll, &report);
+
+    ds_tree_foreach(&c->bands, b) {
+        if (radio_idx >= DPP_DEVICE_TX_CHAINMASK_MAX) {
+            LOGE("ow: stats: device: Maximum amount of thermal record radio types reached.");
+            break;
+        }
+        const char tx_chainmask = b->tx_chainmask;
+        const radio_type_t radio_type = ow_stats_conf_radio_type_to_dpp(b->type);
+
+        thermal_record->radio_txchainmasks[radio_idx].type = radio_type;
+        thermal_record->radio_txchainmasks[radio_idx].value = tx_chainmask;
+        thermal_record->txchainmask_qty = radio_idx;
+        thermal_record->fan_rpm = -1;
+        thermal_record->fan_duty_cycle = -1;
+        thermal_record->thermal_state = -1;
+        thermal_record->target_rpm = -1;
+        thermal_record->led_state = -1;
+        thermal_record->timestamp_ms = real_msec;
+
+        LOGD("ow: stats: device: sample: radio=%s tx_chainmask=0x%04x",
+             ow_stats_conf_radio_type_to_str(ow_stats_conf_dpp_to_radio_type(radio_type)), tx_chainmask);
+
+        radio_idx++;
+    }
+
+    ds_dlist_insert_tail(&e->thermal_records, thermal_record);
+    e->last_sub_reported_at = now;
+}
+
+static void
+ow_stats_conf_device_start_sample(struct ow_stats_conf_entry *e,
+                                  double now,
+                                  double now_real)
+{
+    const bool expired = osw_periodic_eval(&e->device_poll_at,
+                                            e->params.sample_seconds,
+                                            0, now);
+    if (expired) ow_stats_conf_device_polling(e, now, now_real);
+}
+
+static void
+ow_stats_conf_entry_start_type(struct ow_stats_conf_entry *e,
+                               const double now)
+{
+    switch (e->params.stats_type) {
+        case OW_STATS_CONF_STATS_TYPE_CLIENT:
+        case OW_STATS_CONF_STATS_TYPE_NEIGHBOR:
+        case OW_STATS_CONF_STATS_TYPE_SURVEY:
+            ow_stats_conf_entry_start(e, now);
+            break;
+        case OW_STATS_CONF_STATS_TYPE_DEVICE:
+            ow_stats_conf_entry_start_device(e, now);
+            break;
+        case OW_STATS_CONF_STATS_TYPE_UNSPEC:
+            break;
     }
 }
 
@@ -1557,6 +1754,7 @@ ow_stats_conf_entry_process__(struct ow_stats_conf_entry *e)
             }
             break;
         case OW_STATS_CONF_STATS_TYPE_CLIENT:
+        case OW_STATS_CONF_STATS_TYPE_DEVICE:
             break;
     }
 
@@ -1565,10 +1763,14 @@ ow_stats_conf_entry_process__(struct ow_stats_conf_entry *e)
 
 static void
 ow_stats_conf_entry_process(struct ow_stats_conf_entry *e,
-                            const double now)
+                            const double now,
+                            const double now_real)
 {
     switch (ow_stats_conf_entry_process__(e)) {
         case OW_STATS_CONF_ENTRY_PROCESS_NOP:
+            if (e->params.stats_type == OW_STATS_CONF_STATS_TYPE_DEVICE) {
+                ow_stats_conf_device_start_sample(e, now, now_real);
+            }
             break;
         case OW_STATS_CONF_ENTRY_PROCESS_STOP:
             ow_stats_conf_entry_stop(e);
@@ -1578,7 +1780,7 @@ ow_stats_conf_entry_process(struct ow_stats_conf_entry *e,
             break;
         case OW_STATS_CONF_ENTRY_PROCESS_START:
             ow_stats_conf_entry_stop(e);
-            ow_stats_conf_entry_start(e, now);
+            ow_stats_conf_entry_start_type(e, now);
             break;
     }
 }
@@ -1595,6 +1797,7 @@ ow_stats_conf_get_entry(struct ow_stats_conf *conf,
         ds_dlist_init(&e->surveys, dpp_survey_record_t, node);
         ds_dlist_init(&e->neighbors, dpp_neighbor_record_list_t, node);
         ds_dlist_init(&e->clients, dpp_client_record_t, node);
+        ds_dlist_init(&e->thermal_records, dpp_device_thermal_record_t, node);
         ds_tree_init(&e->sta_tree, ow_stats_conf_sta_cmp, struct ow_stats_conf_sta, node);
         ds_tree_insert(&conf->entries, e, e->id);
     }
@@ -1784,8 +1987,10 @@ ow_stats_conf_get_next_at(struct ow_stats_conf *c)
         if (e->report_at <= 0) continue;
         if (at < 0) at = e->report_at;
         if (at > e->report_at) at = e->report_at;
+        if (e->device_poll_at > 0 && at > e->device_poll_at) {
+            at = e->device_poll_at;
+        }
     }
-
     return OSW_TIME_SEC(at);
 }
 
@@ -1816,7 +2021,7 @@ ow_stats_conf_run(struct ow_stats_conf *c,
     struct ow_stats_conf_entry *te;
 
     ds_tree_foreach_safe(&c->entries, e, te)
-        ow_stats_conf_entry_process(e, now_mono);
+        ow_stats_conf_entry_process(e, now_mono, now_real);
 
     ds_tree_foreach(&c->entries, e)
         ow_stats_conf_entry_report(e, now_mono, now_real);
@@ -1837,47 +2042,10 @@ ow_stats_conf_work_cb(struct osw_timer *t)
     ow_stats_conf_run(c, now_mono, now_real);
 }
 
-radio_type_t
-ow_stats_conf_phy_to_type(const struct osw_state_phy_info *phy)
-{
-    const int b2ch1 = 2412;
-    const int b2ch13 = 2472;
-    const int b2ch14 = 2484;
-    const int b5ch36 = 5180;
-    const int b5ch100 = 5500;
-    const int b5ch177 = 5885;
-    const int b6ch1 = 5955;
-    const int b6ch2 = 5935;
-    const int b6ch233 = 7115;
-    bool band_2g = false;
-    bool band_5gl = false;
-    bool band_5gu = false;
-    bool band_6g = false;
-    size_t i;
-    for (i = 0; i < phy->drv_state->n_channel_states; i++) {
-        const struct osw_channel_state *s = &phy->drv_state->channel_states[i];
-        const int freq = s->channel.control_freq_mhz;
-        if (freq >= b2ch1 && freq <= b2ch13) band_2g = true;
-        if (freq == b2ch14) band_2g = true;
-        if (freq >= b5ch36 && freq < b5ch100) band_5gl = true;
-        if (freq >= b5ch100 && freq <= b5ch177) band_5gu = true;
-        if (freq == b6ch2) band_6g = true;
-        if (freq >= b6ch1 && freq <= b6ch233) band_6g = true;
-    }
-    const bool band_5g = band_5gl && band_5gu;
-    const bool bands = band_2g + (band_5gl || band_5gu) + band_6g;
-    if (bands != 1) return RADIO_TYPE_NONE;
-    else if (band_2g) return RADIO_TYPE_2G;
-    else if (band_5g) return RADIO_TYPE_5G;
-    else if (band_5gl) return RADIO_TYPE_5GL;
-    else if (band_5gu) return RADIO_TYPE_5GU;
-    else if (band_6g) return RADIO_TYPE_6G;
-    else return RADIO_TYPE_NONE;
-}
-
 static void
 ow_stats_conf_band_set__(struct ow_stats_conf *c,
                          const char *phy_name,
+                         const int tx_chainmask,
                          enum ow_stats_conf_radio_type t)
 {
     struct ow_stats_conf_band *b = ds_tree_find(&c->bands, phy_name);
@@ -1889,6 +2057,7 @@ ow_stats_conf_band_set__(struct ow_stats_conf *c,
     }
 
     b->type = t;
+    b->tx_chainmask = tx_chainmask;
 
     if (t == OW_STATS_CONF_RADIO_TYPE_UNSPEC) {
         ds_tree_remove(&c->bands, b);
@@ -1905,7 +2074,8 @@ ow_stats_conf_band_set(struct osw_state_observer *self,
     struct ow_stats_conf *c = container_of(self, struct ow_stats_conf, state_obs);
     const radio_type_t dpp_t = removing ? 0 : ow_stats_conf_phy_to_type(phy);
     const enum ow_stats_conf_radio_type t = ow_stats_conf_dpp_to_radio_type(dpp_t);
-    ow_stats_conf_band_set__(c, phy->phy_name, t);
+    const int tx_chainmask = phy->drv_state->enabled ? phy->drv_state->tx_chainmask : 0;
+    ow_stats_conf_band_set__(c, phy->phy_name, tx_chainmask, t);
 }
 
 static void

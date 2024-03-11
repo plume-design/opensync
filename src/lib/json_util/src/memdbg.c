@@ -211,8 +211,11 @@ void json_memdbg_init(struct ev_loop *loop)
 {
     static ev_timer report_timer;
 
+#if JANSSON_MAJOR_VERSION <= 2 && JANSSON_MINOR_VERSION < 8
+    json_set_alloc_funcs_override(json_memdbg_malloc, json_memdbg_free);
+#else
     json_set_alloc_funcs(json_memdbg_malloc, json_memdbg_free);
-
+#endif
     if (loop != NULL)
     {
         ev_timer_init(

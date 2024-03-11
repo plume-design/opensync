@@ -54,7 +54,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "target.h"
 #include "pasync.h"
-#include "dm.h"
+#include "tpsm.h"
 
 
 #include "schema.h"
@@ -64,9 +64,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "target.h"
 
 /* speed test json output decoding */
-#include "dm_st_pjs.h"
+#include "tpsm_st_pjs.h"
 #include "pjs_gen_h.h"
-#include "dm_st_pjs.h"
+#include "tpsm_st_pjs.h"
 #include "pjs_gen_c.h"
 
 

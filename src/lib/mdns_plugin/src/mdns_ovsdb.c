@@ -36,8 +36,12 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #define MODULE_ID LOG_MODULE_ID_OVSDB
 
-ovsdb_table_t table_Service_Announcement;
+static ovsdb_table_t table_Service_Announcement;
 
+static void
+callback_Service_Announcement(ovsdb_update_monitor_t *mon,
+                              struct schema_Service_Announcement *old_rec,
+                              struct schema_Service_Announcement *conf);
 /**
  * @brief compare sessions
  *
@@ -50,6 +54,15 @@ mdnsd_service_cmp(const void *a, const void *b)
 {
     return strcmp(a, b);
 }
+
+void
+mdns_ovsdb_set_callback(void)
+{
+    struct mdns_plugin_mgr *mgr = mdns_get_mgr();
+
+    mgr->service_announcement = callback_Service_Announcement;
+}
+
 
 void
 mdns_ovsdb_init(void)
@@ -242,7 +255,7 @@ mdnsd_add_service(struct schema_Service_Announcement *conf)
 }
 
 void
-mdnsd_delete_service(struct schema_Service_Announcement *conf)
+ mdnsd_delete_service(struct schema_Service_Announcement *conf)
 {
     struct mdnsd_service *service;
     ds_tree_t *services = mdnsd_get_services();
@@ -285,7 +298,7 @@ mdnsd_modify_service(struct schema_Service_Announcement *conf)
     return true;
 }
 
-void
+static void
 callback_Service_Announcement(ovsdb_update_monitor_t *mon,
                               struct schema_Service_Announcement *old_rec,
                               struct schema_Service_Announcement *conf)

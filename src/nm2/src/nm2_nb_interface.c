@@ -102,7 +102,7 @@ static void nm2_if_config_apply(struct nm2_interface *intf)
     if (intf->if_mac_exists) rc = osn_mac_addr_cmp(&intf->if_mac_w, &intf->if_mac_r);
     hwaddr = (rc == 0) ? OSN_MAC_ADDR_INIT : intf->if_mac_w;
 
-    LOGN("%s(): configuring interface %s with mac " PRI_osn_mac_addr "", __func__, intf->if_name, FMT_osn_mac_addr(hwaddr));
+    LOGT("%s(): configuring interface %s with mac " PRI_osn_mac_addr "", __func__, intf->if_name, FMT_osn_mac_addr(hwaddr));
     osn_netif_hwaddr_set(intf->if_netif, hwaddr);
     rc = osn_netif_apply(intf->if_netif);
     if (rc == false)

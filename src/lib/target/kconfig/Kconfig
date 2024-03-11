@@ -1,7 +1,7 @@
 OPENSYNC_DIR := $(INSTALL_PREFIX)
 TOOLS_DIR := $(OPENSYNC_DIR)/tools
 OPENSYNC_BIN := $(OPENSYNC_DIR)/bin
-LM_DIR := /var/log/lm
+LOG_DIR := /var/log/opensync
 
 menu "Capabilities"
     config TARGET_CAP_GATEWAY
@@ -45,13 +45,9 @@ menu "Target paths"
             use the overlay path instead (/overlay/etc/log-state.conf)
             To disable dynamic log set to an empty string
 
-    config TARGET_PATH_LOG_LM
-        string "Path to LM log storage"
-        default "$(LM_DIR)"
-
     config TARGET_PATH_LOG_TRIGGER
         string "Path to the log trigger folder"
-        default "$(LM_DIR)/tmp"
+        default "$(LOG_DIR)/tmp"
         help
             To disable log trigger set to an empty string
 
@@ -84,6 +80,10 @@ menu "Target paths"
     config TARGET_PATH_OVSDB_SOCK
         string "Path to OVSDB socket"
         default "/var/run/db.sock"
+
+    config TARGET_PATH_OPENSYNC_CERTS
+        string "Path to OpenSync certs folder"
+        default "$(OPENSYNC_DIR)/certs"
 endmenu
 
 menuconfig TARGET_ETH_LIST
@@ -194,14 +194,6 @@ config TARGET_LOGPULL_REMOTE
     help
         This option enables support for remote logpulls in
         OpenSync target layer and logpull.sh.
-
-config TARGET_WATCHDOG
-    bool "Device has a watchdog"
-    help
-        If the device has a watchdog, select this option
-        and implement the target_device_wdt_ping() function.
-
-        This function will be periodically called to pet the watchdog.
 
 config TARGET_LINUX_EXECUTE
     bool "Use generic Linux execute"

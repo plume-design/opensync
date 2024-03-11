@@ -492,7 +492,7 @@ check_multi_info(struct gk_curl_multi_info *mcurl_info)
  * @param w event that is received
  * @param revents type of the event
  */
-void
+static void
 event_cb(EV_P_ struct ev_io *w, int revents)
 {
     struct gk_curl_multi_info *mcurl_info = (struct gk_curl_multi_info *) w->data;
@@ -628,7 +628,7 @@ curl_sock_cb(CURL *e, curl_socket_t s, int what, void *userp, void *sockp)
  * @param mgr private callback pointer
  * @return CURLM_OK
  */
-int
+static int
 multi_timer_cb(CURLM *multi, long timeout_ms,
                struct gk_curl_multi_info *mcurl_info)
 {

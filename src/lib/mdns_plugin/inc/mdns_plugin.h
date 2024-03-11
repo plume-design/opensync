@@ -117,6 +117,9 @@ struct mdns_plugin_mgr
 
     void (*ovsdb_init)(void);
     void (*ovsdb_exit)(void);
+    void (*service_announcement)(ovsdb_update_monitor_t *mon,
+                                 struct schema_Service_Announcement *old_rec,
+                                 struct schema_Service_Announcement *conf);
 };
 
 /**
@@ -201,9 +204,7 @@ bool
 mdnsd_ctxt_set_intf(struct mdns_session *md_session);
 
 void
-callback_Service_Announcement(ovsdb_update_monitor_t *mon,
-                              struct schema_Service_Announcement *old_rec,
-                              struct schema_Service_Announcement *conf);
+mdns_ovsdb_set_callback(void);
 
 void
 mdns_ovsdb_init(void);

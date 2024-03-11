@@ -96,7 +96,9 @@ ltem_check_wan_l3_state(time_t now, ltem_mgr_t *mgr)
     elapsed = now - mgr->wan_l3_state_periodic_ts;
     if (elapsed < LTEM_WAN_L3_CHECK_INTERVAL) return;
 
-    if (mgr->wan_state == LTEM_WAN_STATE_DOWN && mgr->lte_state_info->lte_failover_active)
+    if (mgr->wan_state == LTEM_WAN_STATE_DOWN
+        && mgr->lte_state_info->lte_failover_active
+        && !mgr->lte_config_info->force_use_lte)
     {
         res = ltem_wan_healthcheck(mgr);
         if (!res)

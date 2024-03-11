@@ -36,6 +36,7 @@ UNIT_CFLAGS := -I$(UNIT_PATH)/inc
 UNIT_LDFLAGS := -lpcap
 
 UNIT_EXPORT_CFLAGS := $(UNIT_CFLAGS)
+UNIT_EXPORT_LDFLAGS := $(UNIT_LDFLAGS)
 
 UNIT_DEPS := src/lib/const
 UNIT_DEPS += src/lib/log

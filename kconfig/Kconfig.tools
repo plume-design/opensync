@@ -2,6 +2,7 @@
 # Include common tools configs
 #
 source "src/tools/osps/kconfig/Kconfig.tools"
+source "src/tools/plookup/kconfig/Kconfig.tools"
 
 #
 # Include platform/vendor specific tool configs

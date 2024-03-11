@@ -11,3 +11,11 @@ menuconfig WALLEYE_DPI_ENGINE
         help
             The Walleye DPI engine provisions the memory amount it will need to parse
             presented flows.
+
+    config OSYNC_DPI_ENGINE_SIGNATURE
+        bool "Install opensync dpi engine signature"
+        default y
+        depends on !3RDPARTY_WALLEYE
+
+        help
+            Install the minimal DPI engine signature bundle

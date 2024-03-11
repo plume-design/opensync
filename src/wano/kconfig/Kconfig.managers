@@ -131,4 +131,10 @@ if MANAGER_WANO
         help
             WANO cmts plug-in for reporting configured link by the CMTS.
 
+    config WANO_DNS_PROBE_RESOLV_CONF_PATH
+        string "Location of the resolv.conf file"
+        default "/tmp/resolv.conf"
+        help
+            Location of the resolv.conf file used by DNS probe.
+
 endif

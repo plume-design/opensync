@@ -25,56 +25,48 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 #define _GNU_SOURCE
-#include <stdlib.h>
-#include <stdbool.h>
-#include <string.h>
-#include <limits.h>
-#include <time.h>
 #include <ev.h>
+#include <limits.h>
+#include <stdbool.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
 #include <unistd.h>
 
 #include "log.h"
 #include "ovsdb.h"
 #include "schema.h"
 
-#include "monitor.h"
 #include "json_util.h"
-#include "ovsdb_update.h"
-#include "ovsdb_sync.h"
-#include "os_util.h"
-#include "util.h"
 #include "memutil.h"
+#include "monitor.h"
+#include "os_util.h"
+#include "ovsdb_sync.h"
+#include "ovsdb_update.h"
+#include "util.h"
 
-#include "target.h"
-#include "pasync.h"
-#include "dm.h"
 #include "module.h"
+#include "pasync.h"
+#include "target.h"
+#include "tpsm.h"
 
+#define ST_STATUS_OK (0)
+#define ST_STATUS_JSON (-1)
+#define ST_STATUS_READ (-2)
 
-#define ST_STATUS_OK    (0)
-#define ST_STATUS_JSON  (-1)
-#define ST_STATUS_READ  (-2)
+#define ST_EXE "iperf3"
+#define ST_DEBUG_JSON_PATH "/tmp/debug_iperf_out.log"
+#define ST_DEF_LEN (10)      /* default speedtest duration, seconds */
+#define ST_WAIT_TIMEOUT (30) /* st wait timeout in addition to duration */
 
+#define ST_IS_IPERF3_S(st_ctx) (strcmp(st_ctx->st_config.test_type, "IPERF3_S") == 0)
 
-#define ST_EXE              "iperf3"
-#define ST_DEBUG_JSON_PATH  "/tmp/debug_iperf_out.log"
-#define ST_DEF_LEN          (10)  /* default speedtest duration, seconds */
-#define ST_WAIT_TIMEOUT     (30)  /* st wait timeout in addition to duration */
+#define ST_IS_IPERF3_C(st_ctx) (strcmp(st_ctx->st_config.test_type, "IPERF3_C") == 0)
 
+#define ST_IS_DLUL(st_ctx) (strcmp(st_ctx->st_config.st_dir, "DL_UL") == 0)
 
-#define ST_IS_IPERF3_S(st_ctx) \
-        (strcmp(st_ctx->st_config.test_type, "IPERF3_S") == 0)
-
-#define ST_IS_IPERF3_C(st_ctx) \
-        (strcmp(st_ctx->st_config.test_type, "IPERF3_C") == 0)
-
-#define ST_IS_DLUL(st_ctx) \
-        (strcmp(st_ctx->st_config.st_dir, "DL_UL") == 0)
-
-#define ST_IS_DL(st_ctx) \
-        (strcmp(st_ctx->st_config.st_dir, "DL") == 0)
-#define ST_IS_UL(st_ctx) \
-        (strcmp(st_ctx->st_config.st_dir, "UL") == 0)
+#define ST_IS_DL(st_ctx) (strcmp(st_ctx->st_config.st_dir, "DL") == 0)
+#define ST_IS_UL(st_ctx) (strcmp(st_ctx->st_config.st_dir, "UL") == 0)
 
 struct st_context
 {
@@ -91,10 +83,7 @@ static ev_timer st_timeout;
 static bool iperf_run_async(struct st_context *st_ctx, bool run_reverse);
 static bool iperf_debug_log(const char *buff, size_t buff_sz);
 
-
-static bool iperf_parse_json(
-        json_t *js_root,
-        struct st_context *st_ctx)
+static bool iperf_parse_json(json_t *js_root, struct st_context *st_ctx)
 {
     double duration;
     double bandwidth;
@@ -108,7 +97,6 @@ static bool iperf_parse_json(
     json_t *js_sec;
     json_t *js_bw;
 
-
     /* If "error" key present in json, an error occured, log the error string: */
     const char *str_error = NULL;
     if (json_unpack(js_root, "{s:s}", "error", &str_error) == 0)
@@ -120,8 +108,7 @@ static bool iperf_parse_json(
     /* Remote host IP: */
     if (json_unpack_ex(js_root, &error, 0, "{s:{s:o}}", "start", "connected", &js) != 0)
     {
-        LOG(ERR, "ST_IPERF: JSON parse error (start:connected): %d:%d: %s",
-                error.line, error.column, error.text);
+        LOG(ERR, "ST_IPERF: JSON parse error (start:connected): %d:%d: %s", error.line, error.column, error.text);
         return false;
     }
     if (json_is_array(js) && json_array_size(js) > 0)
@@ -133,16 +120,12 @@ static bool iperf_parse_json(
     /* Determine if this is 'reverse' test and protocol (TCP/UDP): */
     if (json_unpack_ex(js_root, &error, 0, "{s:{s:o}}", "start", "test_start", &js) != 0)
     {
-        LOG(ERR, "ST_IPERF: JSON parse error (start:test_start): %d:%d: %s",
-                error.line, error.column, error.text);
+        LOG(ERR, "ST_IPERF: JSON parse error (start:test_start): %d:%d: %s", error.line, error.column, error.text);
         return false;
     }
-    if (json_unpack_ex(js, &error, 0, "{s:i, s:s}",
-            "reverse", &is_reverse,
-            "protocol", &proto) != 0)
+    if (json_unpack_ex(js, &error, 0, "{s:i, s:s}", "reverse", &is_reverse, "protocol", &proto) != 0)
     {
-        LOG(ERR, "ST_IPERF: JSON parse error (reverse, protocol): %d:%d: %s",
-                error.line, error.column, error.text);
+        LOG(ERR, "ST_IPERF: JSON parse error (reverse, protocol): %d:%d: %s", error.line, error.column, error.text);
         return false;
     }
 
@@ -155,28 +138,18 @@ static bool iperf_parse_json(
     else
         is_udp = false;
 
-    const char *key_end_sum;
-
-    /* different json key for UDP tests: */
-    if (is_udp)
-    {
-        /* UDP UL get result from the server key is sum_received */
-        /* NOTE!!! sum_recieved is supported after iperf 3.11.0 */
-        /* NOTE!!! server output JSON value sum has bug is 0 until now! */
-        /* so reading server output JSON value sum is not feasible! */
-        key_end_sum = is_reverse ? "sum" : "sum_received";
-    }
-    else
-    {
-        key_end_sum = "sum_received";
-    }
+    /* NOTE: sum_received in UDP test needs IPERF3 version to be 3.11 and above */
+    const char *key_end_sum = "sum_received";
 
     if (is_udp && !is_reverse)
     {
         if (json_unpack_ex(js_root, &error, 0, "{s:{s:{s:o}}}", "server_output_json", "end", key_end_sum, &js) != 0)
         {
-            LOG(ERR, "JSON parse error (server_output_json:end:sum_received/sum): %d:%d: %s",
-                    error.line, error.column, error.text);
+            LOG(ERR,
+                "JSON parse error (server_output_json:end:sum_received/sum): %d:%d: %s",
+                error.line,
+                error.column,
+                error.text);
             return false;
         }
     }
@@ -184,8 +157,7 @@ static bool iperf_parse_json(
     {
         if (json_unpack_ex(js_root, &error, 0, "{s:{s:o}}", "end", key_end_sum, &js) != 0)
         {
-            LOG(ERR, "JSON parse error (end:sum_received/sum): %d:%d: %s",
-                    error.line, error.column, error.text);
+            LOG(ERR, "JSON parse error (end:sum_received/sum): %d:%d: %s", error.line, error.column, error.text);
             return false;
         }
     }
@@ -195,15 +167,28 @@ static bool iperf_parse_json(
     json_t *js_pkt_loss = NULL;
     double jitter = 0.0;
     json_t *js_jitter = NULL;
-    if (json_unpack_ex(js, &error, 0, "{s:o, s:i, s:o, s?o, s?o}",
-            "seconds", &js_sec,
-            "bytes", &bytes,
-            "bits_per_second", &js_bw,
-            "lost_percent", &js_pkt_loss,
-            "jitter_ms", &js_jitter) != 0)
+    if (json_unpack_ex(
+                js,
+                &error,
+                0,
+                "{s:o, s:i, s:o, s?o, s?o}",
+                "seconds",
+                &js_sec,
+                "bytes",
+                &bytes,
+                "bits_per_second",
+                &js_bw,
+                "lost_percent",
+                &js_pkt_loss,
+                "jitter_ms",
+                &js_jitter)
+        != 0)
     {
-        LOG(ERR, "ST_IPERF: JSON parse error (seconds, bytes, bits_per_second): %d:%d: %s",
-                error.line, error.column, error.text);
+        LOG(ERR,
+            "ST_IPERF: JSON parse error (seconds, bytes, bits_per_second): %d:%d: %s",
+            error.line,
+            error.column,
+            error.text);
         return false;
     }
     if (!json_is_number(js_sec) || !json_is_number(js_bw))
@@ -212,10 +197,8 @@ static bool iperf_parse_json(
         return false;
     }
     /* iperf sometimes returning results in integer sometimes in "float" format: */
-    duration = json_is_real(js_sec) ?
-            json_real_value(js_sec) : (double)json_integer_value(js_sec);
-    bandwidth = json_is_real(js_bw) ?
-            json_real_value(js_bw) : (double) json_integer_value(js_bw);
+    duration = json_is_real(js_sec) ? json_real_value(js_sec) : (double)json_integer_value(js_sec);
+    bandwidth = json_is_real(js_bw) ? json_real_value(js_bw) : (double)json_integer_value(js_bw);
     if (is_udp)
     {
         if (!json_is_number(js_pkt_loss) || !json_is_number(js_jitter))
@@ -223,8 +206,7 @@ static bool iperf_parse_json(
             LOG(ERR, "ST_IPERF: JSON parse error: end:sum: lost_percent|jitter_ms: not a number");
             return false;
         }
-        pkt_loss = json_is_real(js_pkt_loss) ?
-                json_real_value(js_pkt_loss) : (double) json_integer_value(js_pkt_loss);
+        pkt_loss = json_is_real(js_pkt_loss) ? json_real_value(js_pkt_loss) : (double)json_integer_value(js_pkt_loss);
         if (pkt_loss > 100)
         {
             /* https://github.com/esnet/iperf/pull/1498 */
@@ -232,25 +214,22 @@ static bool iperf_parse_json(
             pkt_loss = 100;
         }
 
-        jitter = json_is_real(js_jitter) ?
-                json_real_value(js_jitter) : (double) json_integer_value(js_jitter);
+        jitter = json_is_real(js_jitter) ? json_real_value(js_jitter) : (double)json_integer_value(js_jitter);
     }
 
     /* Determine if this is DL or UL speedtest: */
     bool is_UL = false;
-    if (ST_IS_IPERF3_S(st_ctx) && is_reverse)
-        is_UL = true;
-    if (ST_IS_IPERF3_C(st_ctx) && !is_reverse)
-        is_UL = true;
+    if (ST_IS_IPERF3_S(st_ctx) && is_reverse) is_UL = true;
+    if (ST_IS_IPERF3_C(st_ctx) && !is_reverse) is_UL = true;
 
-
-    LOG(INFO, "ST_IPERF: Parsed JSON results: %s: is_reverse=%d, direction=%s, "
-               "proto=%s, remote_host=%s",
-               st_ctx->st_config.test_type,
-               is_reverse,
-               (is_UL ? "UL" : "DL"),
-               (proto ? proto : "?"),
-               (host_remote ? host_remote : "?"));
+    LOG(INFO,
+        "ST_IPERF: Parsed JSON results: %s: is_reverse=%d, direction=%s, "
+        "proto=%s, remote_host=%s",
+        st_ctx->st_config.test_type,
+        is_reverse,
+        (is_UL ? "UL" : "DL"),
+        (proto ? proto : "?"),
+        (host_remote ? host_remote : "?"));
 
     /* Fill up st_status with test results: */
     if (host_remote)
@@ -297,10 +276,7 @@ static bool iperf_parse_json(
     return true;
 }
 
-static bool iperf_parse_json_output(
-        const char *json_buf,
-        size_t buflen,
-        struct st_context *st_ctx)
+static bool iperf_parse_json_output(const char *json_buf, size_t buflen, struct st_context *st_ctx)
 {
     json_t *js;
     json_error_t je;
@@ -308,10 +284,7 @@ static bool iperf_parse_json_output(
     js = json_loadb(json_buf, buflen, JSON_DISABLE_EOF_CHECK, &je);
     if (js == NULL)
     {
-        LOG(ERR, "ST_IPERF: JSON validation failed: '%s' (line=%d pos=%d)",
-           je.text,
-           je.line,
-           je.position);
+        LOG(ERR, "ST_IPERF: JSON validation failed: '%s' (line=%d pos=%d)", je.text, je.line, je.position);
 
         iperf_debug_log(json_buf, buflen);
         return false;
@@ -334,35 +307,30 @@ static void iperf_on_st_completed_cb(pasync_ctx_t *ctx, void *buff, int buff_sz)
     struct st_context *st_ctx = (struct st_context *)ctx->data;
     int status = ST_STATUS_READ;
     pjs_errmsg_t err;
-    ovs_uuid_t uuid = {{ '\0' }};
+    ovs_uuid_t uuid = {{'\0'}};
 
     LOG(DEBUG, "ST_IPERF: %s: buff_size=%d", __func__, buff_sz);
     if (buff_sz > 0)
     {
         /* parse iperf results */
         if (iperf_parse_json_output(buff, (size_t)buff_sz, st_ctx)
-                && (st_ctx->st_status.UL_exists || st_ctx->st_status.DL_exists))
+            && (st_ctx->st_status.UL_exists || st_ctx->st_status.DL_exists))
         {
             status = ST_STATUS_OK;
         }
     }
     else
     {
-        if (ctx->rc != 0)
-            LOG(ERR, "ST_IPERF: Speedtest command failed with rc=%d", ctx->rc);
-        if (buff_sz == 0)
-            LOG(ERR, "ST_IPERF: No output from speedtest app received.");
+        if (ctx->rc != 0) LOG(ERR, "ST_IPERF: Speedtest command failed with rc=%d", ctx->rc);
+        if (buff_sz == 0) LOG(ERR, "ST_IPERF: No output from speedtest app received.");
     }
 
     /* If this was 1st run, execute 2nd run (to measure both DL and UL): */
-    if (status == ST_STATUS_OK && st_ctx->run_cnt == 1
-            && st_ctx->run_cnt < st_ctx->run_cnt_max)
+    if (status == ST_STATUS_OK && st_ctx->run_cnt == 1 && st_ctx->run_cnt < st_ctx->run_cnt_max)
     {
-        LOG(DEBUG, "ST_IPERF: %s: ST 1st run completed. Execute 2nd run.",
-                   st_ctx->st_config.test_type);
+        LOG(DEBUG, "ST_IPERF: %s: ST 1st run completed. Execute 2nd run.", st_ctx->st_config.test_type);
 
-        if (ST_IS_IPERF3_C(st_ctx))
-            sleep(2);
+        if (ST_IS_IPERF3_C(st_ctx)) sleep(2);
 
         if (!iperf_run_async(st_ctx, true))  // 2nd run: run with reverse_mode=true
         {
@@ -370,7 +338,7 @@ static void iperf_on_st_completed_cb(pasync_ctx_t *ctx, void *buff, int buff_sz)
         }
         LOG(DEBUG, "ST_IPERF: %s: ST 2nd run executed.", st_ctx->st_config.test_type);
 
-        return; // async process run.
+        return;  // async process run.
     }
 
     /* 2nd run completed. All results ready. Insert into ovsdb. */
@@ -379,49 +347,52 @@ static void iperf_on_st_completed_cb(pasync_ctx_t *ctx, void *buff, int buff_sz)
     st_ctx->st_status.testid = ctx->id;
     st_ctx->st_status.testid_exists = true;
 
-    strscpy(st_ctx->st_status.test_type, st_ctx->st_config.test_type,
-            sizeof(st_ctx->st_status.test_type));
+    strscpy(st_ctx->st_status.test_type, st_ctx->st_config.test_type, sizeof(st_ctx->st_status.test_type));
     st_ctx->st_status.test_type_exists = true;
 
     st_ctx->st_status.timestamp = time(NULL);
     st_ctx->st_status.timestamp_exists = true;
 
-    LOG(NOTICE, "ST_IPERF: Speedtest results:"
-                " DL: %f Mbit/s (bytes=%d, duration=%f s),"
-                " UL: %f Mbit/s (bytes=%d, duration=%f s),"
-                " duration: %f s, remote_host: %s,"
-                " testid: %d, status=%d, timestamp=%d",
-                 st_ctx->st_status.DL,
-                 st_ctx->st_status.DL_bytes,
-                 st_ctx->st_status.DL_duration,
-                 st_ctx->st_status.UL,
-                 st_ctx->st_status.UL_bytes,
-                 st_ctx->st_status.UL_duration,
-                 st_ctx->st_status.duration,
-                 st_ctx->st_status.host_remote,
-                 st_ctx->st_status.testid,
-                 st_ctx->st_status.status,
-                 st_ctx->st_status.timestamp);
-
+    LOG(NOTICE,
+        "ST_IPERF: Speedtest results:"
+        " DL: %f Mbit/s (bytes=%d, duration=%f s),"
+        " UL: %f Mbit/s (bytes=%d, duration=%f s),"
+        " duration: %f s, remote_host: %s,"
+        " testid: %d, status=%d, timestamp=%d",
+        st_ctx->st_status.DL,
+        st_ctx->st_status.DL_bytes,
+        st_ctx->st_status.DL_duration,
+        st_ctx->st_status.UL,
+        st_ctx->st_status.UL_bytes,
+        st_ctx->st_status.UL_duration,
+        st_ctx->st_status.duration,
+        st_ctx->st_status.host_remote,
+        st_ctx->st_status.testid,
+        st_ctx->st_status.status,
+        st_ctx->st_status.timestamp);
 
     /* insert ST results into ovsdb row: */
-    if (!ovsdb_sync_insert(SCHEMA_TABLE(Wifi_Speedtest_Status),
-                           schema_Wifi_Speedtest_Status_to_json(&st_ctx->st_status, err),
-                           &uuid))
+    if (!ovsdb_sync_insert(
+                SCHEMA_TABLE(Wifi_Speedtest_Status),
+                schema_Wifi_Speedtest_Status_to_json(&st_ctx->st_status, err),
+                &uuid))
     {
-        LOG(ERR, "ST_IPERF: ovsdb: Wifi_Speedtest_Status: insert error: "
-                 "ST results not written.");
+        LOG(ERR,
+            "ST_IPERF: ovsdb: Wifi_Speedtest_Status: insert error: "
+            "ST results not written.");
     }
     else
     {
-        LOG(NOTICE, "ST_IPERF: ovsdb: Wifi_Speedtest_Status: "
-                    "ST results written. uuid=%s", uuid.uuid);
+        LOG(NOTICE,
+            "ST_IPERF: ovsdb: Wifi_Speedtest_Status: "
+            "ST results written. uuid=%s",
+            uuid.uuid);
     }
 
 st_end:
     ev_timer_stop(EV_DEFAULT, &st_timeout);
     /* signal that ST has completed: */
-    dm_st_in_progress_set(false);
+    tpsm_st_in_progress_set(false);
 
     /* free pasync user data context: */
     FREE(st_ctx);
@@ -432,26 +403,25 @@ static void iperf_on_timeout(struct ev_loop *loop, ev_timer *watcher, int revent
     int rc;
     const char *cmd = "killall -KILL " ST_EXE;
 
-    LOG(DEBUG, "ST_IPERF: %s called. st_in_progress=%d", __func__, dm_st_in_progress_get());
+    LOG(DEBUG, "ST_IPERF: %s called. st_in_progress=%d", __func__, tpsm_st_in_progress_get());
 
-    if (dm_st_in_progress_get())
+    if (tpsm_st_in_progress_get())
     {
         LOG(WARN, "ST_IPERF: maximum duration exceeded. Killing speedtest app.");
 
         LOG(DEBUG, "Running system cmd: %s", cmd);
         rc = system(cmd);
-        if (!(WIFEXITED(rc) && WEXITSTATUS(rc) == 0))
-            LOG(ERR, "Error executing system command: %s", cmd);
+        if (!(WIFEXITED(rc) && WEXITSTATUS(rc) == 0)) LOG(ERR, "Error executing system command: %s", cmd);
 
-        dm_st_in_progress_set(false);
+        tpsm_st_in_progress_set(false);
     }
 }
 
 /* Run iperf command in async manner. */
 static bool iperf_run_async(struct st_context *st_ctx, bool run_reverse)
 {
-    char st_cmd[TARGET_BUFF_SZ*2];
-    char arg_port[64] = { 0 };
+    char st_cmd[TARGET_BUFF_SZ * 2];
+    char arg_port[64] = {0};
 
     if (st_ctx->run_cnt >= st_ctx->run_cnt_max)
     {
@@ -459,10 +429,9 @@ static bool iperf_run_async(struct st_context *st_ctx, bool run_reverse)
         return false;
     }
 
-    if (st_ctx->st_config.st_port_exists) // server port to listen on/connect to
+    if (st_ctx->st_config.st_port_exists)  // server port to listen on/connect to
     {
-        snprintf(arg_port, sizeof(arg_port), " -p %d",
-                 st_ctx->st_config.st_port);
+        snprintf(arg_port, sizeof(arg_port), " -p %d", st_ctx->st_config.st_port);
     }
 
     /* Build speedtest command: */
@@ -470,65 +439,62 @@ static bool iperf_run_async(struct st_context *st_ctx, bool run_reverse)
     {
         char *arg_bind = "";
 
-        if (st_ctx->st_config.st_server_exists) // bind to a specific interface
+        if (st_ctx->st_config.st_server_exists)  // bind to a specific interface
         {
             arg_bind = strfmta(" -B %s", st_ctx->st_config.st_server);
         }
 
-        snprintf(st_cmd, sizeof(st_cmd), "%s -s -1 -i 0 -J %s%s",
-                 ST_EXE,
-                 arg_bind,
-                 arg_port);
+        snprintf(st_cmd, sizeof(st_cmd), "%s -s -1 -i 0 -J %s%s", ST_EXE, arg_bind, arg_port);
     }
-    else if (ST_IS_IPERF3_C(st_ctx)) // iperf client
+    else if (ST_IS_IPERF3_C(st_ctx))  // iperf client
     {
-        char arg_len[64] = { 0 };
-        char arg_parallel[64] = { 0 };
-        char arg_bw[64] = { 0 };
+        char arg_len[64] = {0};
+        char arg_parallel[64] = {0};
+        char arg_bw[64] = {0};
         const char *arg_reverse = "";
         const char *arg_udp = "";
         const char *arg_get_server_output = "";
 
-        if (!st_ctx->st_config.st_server_exists) // connect to host
+        if (!st_ctx->st_config.st_server_exists)  // connect to host
         {
             LOG(ERR, "ST_IPERF_C: st_server not specified");
             return false;
         }
 
         arg_reverse = run_reverse ? "-R" : "";
-        if (st_ctx->st_config.st_len_exists) // time in seconds to transmit
+        if (st_ctx->st_config.st_len_exists)  // time in seconds to transmit
         {
-            snprintf(arg_len, sizeof(arg_len), " -t %d",
-                     st_ctx->st_config.st_len);
+            snprintf(arg_len, sizeof(arg_len), " -t %d", st_ctx->st_config.st_len);
         }
-        if (st_ctx->st_config.st_parallel_exists) // number of parallel streams
+        if (st_ctx->st_config.st_parallel_exists)  // number of parallel streams
         {
-            snprintf(arg_parallel, sizeof(arg_parallel), " -P %d",
-                     st_ctx->st_config.st_parallel);
+            snprintf(arg_parallel, sizeof(arg_parallel), " -P %d", st_ctx->st_config.st_parallel);
         }
-        if (st_ctx->st_config.st_udp_exists && st_ctx->st_config.st_udp) // use UDP rather than TCP
+        if (st_ctx->st_config.st_udp_exists && st_ctx->st_config.st_udp)  // use UDP rather than TCP
         {
             arg_udp = " -u";
             // UDP test result should get from receiver.
             // UL receiver is server.
             arg_get_server_output = run_reverse ? "" : " --get-server-output";
         }
-        if (st_ctx->st_config.st_bw_exists) // target bandwidth [bits/sec]
+        if (st_ctx->st_config.st_bw_exists)  // target bandwidth [bits/sec]
         {
-            snprintf(arg_bw, sizeof(arg_bw), " -b %d",
-                     st_ctx->st_config.st_bw);
+            snprintf(arg_bw, sizeof(arg_bw), " -b %d", st_ctx->st_config.st_bw);
         }
 
-        snprintf(st_cmd, sizeof(st_cmd), "%s -i 0 -O 2 -J -c %s %s%s%s%s%s%s%s",
-                 ST_EXE,
-                 st_ctx->st_config.st_server,
-                 arg_reverse,
-                 arg_port,
-                 arg_len,
-                 arg_parallel,
-                 arg_udp,
-                 arg_bw,
-                 arg_get_server_output);
+        snprintf(
+                st_cmd,
+                sizeof(st_cmd),
+                "%s -i 0 -O 2 -J -c %s %s%s%s%s%s%s%s",
+                ST_EXE,
+                st_ctx->st_config.st_server,
+                arg_reverse,
+                arg_port,
+                arg_len,
+                arg_parallel,
+                arg_udp,
+                arg_bw,
+                arg_get_server_output);
     }
     else
     {
@@ -536,27 +502,24 @@ static bool iperf_run_async(struct st_context *st_ctx, bool run_reverse)
         return false;
     }
 
-    LOG(DEBUG, "ST_IPERF: Executing speedtest: test_type=%s, run_cnt=%u, is_reverse=%d",
-               st_ctx->st_config.test_type, st_ctx->run_cnt, run_reverse);
+    LOG(DEBUG,
+        "ST_IPERF: Executing speedtest: test_type=%s, run_cnt=%u, is_reverse=%d",
+        st_ctx->st_config.test_type,
+        st_ctx->run_cnt,
+        run_reverse);
     LOG(DEBUG, "ST_IPERF: Running command: %s", st_cmd);
 
     /* Run speedtest: */
-    if (!pasync_ropenx(EV_DEFAULT,
-                       st_ctx->st_config.testid,
-                       st_ctx,
-                       st_cmd,
-                       iperf_on_st_completed_cb))
+    if (!pasync_ropenx(EV_DEFAULT, st_ctx->st_config.testid, st_ctx, st_cmd, iperf_on_st_completed_cb))
     {
         LOG(ERR, "ST_IPERF: Failed executing command with pasync: %s", st_cmd);
         return false;
     }
 
-    LOG(NOTICE, "ST_IPERF: speedtest %s(%d) started!",
-                 st_ctx->st_config.test_type,
-                 run_reverse);
+    LOG(NOTICE, "ST_IPERF: speedtest %s(%d) started!", st_ctx->st_config.test_type, run_reverse);
 
     st_ctx->run_cnt++;
-    dm_st_in_progress_set(true);
+    tpsm_st_in_progress_set(true);
     return true;
 }
 
@@ -569,8 +532,7 @@ bool iperf_run_speedtest(struct schema_Wifi_Speedtest_Config *st_config)
     bool reverse_mode = false;
     int timeout;
 
-
-    if (dm_st_in_progress_get())
+    if (tpsm_st_in_progress_get())
     {
         LOG(ERR, "ST_IPERF: Speedtest already in progress");
         return false;
@@ -639,31 +601,28 @@ static bool iperf_debug_log(const char *buff, size_t buff_sz)
     return true;
 }
 
-/* DM speedtest plugin module */
+/* TPSM speedtest plugin module */
 
-struct dm_st_plugin dm_st_plugin_iperf3_s =
-{
+struct tpsm_st_plugin tpsm_st_plugin_iperf3_s = {
     .st_name = "IPERF3_S",
     .st_run = iperf_run_speedtest,
 };
 
-struct dm_st_plugin dm_st_plugin_iperf3_c =
-{
+struct tpsm_st_plugin tpsm_st_plugin_iperf3_c = {
     .st_name = "IPERF3_C",
     .st_run = iperf_run_speedtest,
 };
 
-void dm_st_iperf_init(void *data)
+void tpsm_st_iperf_init(void *data)
 {
-    dm_st_plugin_register(&dm_st_plugin_iperf3_s);
-    dm_st_plugin_register(&dm_st_plugin_iperf3_c);
+    tpsm_st_plugin_register(&tpsm_st_plugin_iperf3_s);
+    tpsm_st_plugin_register(&tpsm_st_plugin_iperf3_c);
 }
 
-void dm_st_iperf_fini(void *data)
+void tpsm_st_iperf_fini(void *data)
 {
-    dm_st_plugin_unregister(&dm_st_plugin_iperf3_s);
-    dm_st_plugin_unregister(&dm_st_plugin_iperf3_c);
+    tpsm_st_plugin_unregister(&tpsm_st_plugin_iperf3_s);
+    tpsm_st_plugin_unregister(&tpsm_st_plugin_iperf3_c);
 }
 
-MODULE(dm_st_iperf, dm_st_iperf_init, dm_st_iperf_fini)
-
+MODULE(tpsm_st_iperf, tpsm_st_iperf_init, tpsm_st_iperf_fini)

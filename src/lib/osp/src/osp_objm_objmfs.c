@@ -33,9 +33,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *  osp_objm API implementation
  *****************************************************************************/
 
-bool osp_objm_install(char *path, char *name, char *version)
+bool osp_objm_install(char *path, char *name, char *version, install_cb_t install_cb)
 {
-    return objmfs_install(path, name, version);
+    return objmfs_install(path, name, version, install_cb);
 }
 
 bool osp_objm_remove(char *name, char *version)

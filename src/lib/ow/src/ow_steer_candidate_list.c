@@ -187,8 +187,9 @@ bool
 ow_steer_candidate_list_cmp(const struct ow_steer_candidate_list *candidate_list_a,
                             const struct ow_steer_candidate_list *candidate_list_b)
 {
-    assert(candidate_list_a != NULL);
-    assert(candidate_list_b != NULL);
+    if (candidate_list_a == NULL && candidate_list_b == NULL) return true;
+    if (candidate_list_a == NULL) return false;
+    if (candidate_list_b == NULL) return false;
 
     if (candidate_list_a->set_size != candidate_list_b->set_size)
         return false;

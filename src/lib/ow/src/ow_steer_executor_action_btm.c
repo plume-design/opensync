@@ -194,8 +194,11 @@ ow_steer_executor_action_btm_req_create_params(struct ow_steer_executor_action_b
     size_t neigh_i = 0;
 
     size_t cand_i = 0;
+    uint8_t btmpreference = 255;
     for (cand_i = 0; cand_i < ow_steer_candidate_list_get_length(candidate_list); cand_i++) {
         if (neigh_i >= OW_STEER_EXECUTOR_ACTION_BTM_NEIGHS_LIMIT)
+            break;
+        if (btmpreference < 1)
             break;
 
         const struct ow_steer_candidate *candidate = ow_steer_candidate_list_const_get(candidate_list, cand_i);
@@ -233,11 +236,13 @@ ow_steer_executor_action_btm_req_create_params(struct ow_steer_executor_action_b
         struct osw_btm_req_neigh *btm_neighbor = &btm_req_params.neigh[neigh_i];
         memcpy(&btm_neighbor->bssid, bssid, sizeof(*bssid));
         btm_neighbor->op_class = *op_class;
+        btm_neighbor->btmpreference = btmpreference;
         btm_neighbor->channel = osw_freq_to_chan(channel->control_freq_mhz);
         btm_neighbor->bssid_info = OW_STEER_BM_BTM_DEFAULT_NEIGH_BSS_INFO;
         /* TODO Set btm_neighbor->phy_type */
 
         neigh_i++;
+        btmpreference--;
         continue;
     }
 

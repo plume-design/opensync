@@ -34,9 +34,15 @@ void wm2_l2uf_if_enable(const char *if_name);
 void wm2_l2uf_if_disable(const char *if_name);
 void wm2_l2uf_if_set_passive(const char *if_name, const bool enable);
 #else
-static inline void wm2_l2uf_if_enable(const char *if_name) {}
-static inline void wm2_l2uf_if_disable(const char *if_name) {}
-static inline void wm2_l2uf_if_set_passive(const char *if_name, const bool enable) {}
+static inline void wm2_l2uf_if_enable(const char *if_name)
+{
+}
+static inline void wm2_l2uf_if_disable(const char *if_name)
+{
+}
+static inline void wm2_l2uf_if_set_passive(const char *if_name, const bool enable)
+{
+}
 #endif
 
 #endif /* WM2_L2UF_H_INCLUDED */

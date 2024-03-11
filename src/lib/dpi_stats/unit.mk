@@ -46,3 +46,4 @@ UNIT_DEPS += src/lib/log
 UNIT_DEPS += src/lib/common
 UNIT_DEPS += src/lib/osa
 UNIT_DEPS += src/lib/protobuf
+UNIT_DEPS += src/lib/fsm_utils

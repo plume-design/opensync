@@ -42,6 +42,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "fcm_filter.h"
 #include "neigh_table.h"
 #include "data_report_tags.h"
+#include "qm_conn.h"
 
 /* Default log severity */
 static log_severity_t  log_severity = LOG_SEVERITY_INFO;
@@ -146,6 +147,11 @@ int main(int argc, char ** argv)
     {
         LOGE("Initializing HELLO_WORLD "
              "(Failed to initialize DPP library)");
+        return -1;
+    }
+
+    if (qm_conn_init() == false) {
+        LOGE("Initializing qm_conn");
         return -1;
     }
 

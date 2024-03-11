@@ -53,6 +53,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "kconfig.h"
 #include "os_time.h"
 #include "os_random.h"
+#include "ff_lib.h"
 
 #include <arpa/inet.h>
 
@@ -188,6 +189,10 @@ void callback_Manager(ovsdb_update_monitor_t *mon,
             // is_connected changed
             LOG(DEBUG, "Manager.is_connected = %s", str_bool(manager->is_connected));
         }
+        if (ovsdb_update_changed(mon, SCHEMA_COLUMN(Manager, target)))
+        {
+            STRSCPY(g_state.target, manager->target);
+        }
     }
 
     cm2_update_state(CM2_REASON_MANAGER);
@@ -296,6 +301,30 @@ static int cm2_util_get_wifi_priority(const char *if_name, const char *if_type)
 
 /* End functions with dependencies for KConfig configuration */
 
+static json_t *
+cm2_json_condition_wifi_non_ap_mld(const char *mld_ifname)
+{
+    const char *sta = SCHEMA_CONSTS_VIF_MODE_STA;
+    const char *col_mode = SCHEMA_COLUMN(Wifi_VIF_State, mode);
+    const char *col_mld = SCHEMA_COLUMN(Wifi_VIF_State, mld_if_name);
+    json_t *c = json_array();
+    json_t *mode = ovsdb_tran_cond_single_json(col_mode, OFUNC_EQ, json_string(sta));
+    json_t *mld_if_name = ovsdb_tran_cond_single_json(col_mld, OFUNC_EQ, json_string(mld_ifname));
+    json_array_append_new(c, mode);
+    json_array_append_new(c, mld_if_name);
+    return c;
+}
+
+static bool
+cm2_ifname_is_wifi_non_ap_mld(const char *ifname)
+{
+    json_t *condition = cm2_json_condition_wifi_non_ap_mld(ifname);
+    int count = 0;
+    void *matches = ovsdb_table_select_where(&table_Wifi_VIF_State, condition, &count);
+    FREE(matches); /* don't care, just want if there's at least 1 match */
+    return (count > 0);
+}
+
 static bool
 cm2_util_vif_is_sta(const char *ifname)
 {
@@ -331,6 +360,9 @@ cm2_util_vif_is_sta(const char *ifname)
     if (ovsdb_table_select_one(&table_Wifi_VIF_State,
                 SCHEMA_COLUMN(Wifi_VIF_State, if_name), ifname, &vstate))
         return !strcmp(vstate.mode, "sta");
+
+    if (cm2_ifname_is_wifi_non_ap_mld(ifname))
+        return true;
 
     LOGI("%s: %s: unable to find in ovsdb, checking interfaces",
          __func__, ifname);
@@ -1792,6 +1824,8 @@ static void cm2_connection_clear_used(void)
                 cm2_update_bridge_cfg(g_state.link.bridge_name, g_state.link.if_name, false, macrep, true);
             } else {
                 macrep = CM2_PAR_NOT_SET;
+                cm2_ovsdb_set_dhcp_client(g_state.link.bridge_name, false);
+                cm2_ovsdb_set_dhcpv6_client(g_state.link.bridge_name, false);
                 cm2_update_bridge_cfg(g_state.link.bridge_name, g_state.link.if_name, false, macrep, false);
             }
         }
@@ -2175,14 +2209,30 @@ void cm2_util_sync_limp_state(char *br, char *port, bool state)
     }
 }
 
+static bool
+cm2_use_many_uplinks_in_bridge(void)
+{
+    const bool ff_use_many_uplinks_in_bridge = ff_is_flag_enabled("cm2_allow_many_uplinks_in_bridge");
+
+    if (ff_use_many_uplinks_in_bridge == true) {
+        LOGI("Allow many uplinks in the bridge");
+        return true;
+    }
+
+    return false;
+}
+
 static void
 cm2_util_update_bridge_handle(
         struct schema_Connection_Manager_Uplink *old_uplink,
         struct schema_Connection_Manager_Uplink *uplink)
 {
     cm2_par_state_t   macrep;
+    bool              main_uplink;
 
-    if (!cm2_util_get_link_is_used(uplink)) {
+    main_uplink = cm2_util_get_link_is_used(uplink);
+
+    if (!cm2_use_many_uplinks_in_bridge() && !main_uplink) {
         LOGI("%s: bridge [%s] updated for not main link", uplink->if_name, uplink->bridge);
         return;
     }
@@ -2196,6 +2246,11 @@ cm2_util_update_bridge_handle(
     if (old_uplink->bridge_exists) {
         /* Remove uplink from previous bridge */
         cm2_update_bridge_cfg(old_uplink->bridge, uplink->if_name, false, macrep, cm2_is_eth_type(uplink->if_type));
+    }
+
+    if (!main_uplink && cm2_is_wifi_type(uplink->if_type) && cm2_is_wifi_type(g_state.link.if_type)) {
+        cm2_update_bridge_cfg(uplink->bridge, uplink->if_name, true, macrep, false);
+        return;
     }
 
     /* Main uplink in bridge */
@@ -2991,8 +3046,7 @@ bool cm2_ovsdb_set_Manager_target(char *target)
     struct schema_Manager manager;
     memset(&manager, 0, sizeof(manager));
     STRSCPY(manager.target, target);
-    manager.is_connected = false;
-    char *filter[] = { "+", SCHEMA_COLUMN(Manager, target), SCHEMA_COLUMN(Manager, is_connected), NULL };
+    char *filter[] = { "+", SCHEMA_COLUMN(Manager, target), NULL };
     int ret = ovsdb_table_update_where_f(&table_Manager, NULL, &manager, filter);
     return ret == 1;
 }

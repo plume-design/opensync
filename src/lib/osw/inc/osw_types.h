@@ -191,6 +191,7 @@ struct osw_channel {
     int control_freq_mhz;
     int center_freq0_mhz;
     int center_freq1_mhz;
+    uint16_t puncture_bitmap;
 };
 
 enum osw_reg_dfs {
@@ -215,11 +216,12 @@ struct osw_reg_domain {
 
 /* FIXME: need osw_channel_ helper to convert freq->chan */
 
-#define OSW_CHANNEL_FMT "%d (%s/%d)"
+#define OSW_CHANNEL_FMT "%d (%s/%d) 0x%"PRIx16
 #define OSW_CHANNEL_ARG(c) \
     (c)->control_freq_mhz, \
     osw_channel_width_to_str((c)->width), \
-    (c)->center_freq0_mhz
+    (c)->center_freq0_mhz, \
+    (c)->puncture_bitmap
 
 struct osw_channel_state {
     struct osw_channel channel;
@@ -252,7 +254,7 @@ struct osw_channel_state {
 
 struct osw_hwaddr {
     unsigned char octet[OSW_HWADDR_LEN];
-};
+} __attribute__((packed));
 
 struct osw_hwaddr_str {
     char buf[18];
@@ -632,6 +634,13 @@ osw_channel_width_to_mhz(const enum osw_channel_width w);
 bool
 osw_channel_width_down(enum osw_channel_width *w);
 
+bool
+osw_channel_downgrade(struct osw_channel *c);
+
+bool
+osw_channel_downgrade_to(struct osw_channel *c,
+                         enum osw_channel_width w);
+
 enum osw_channel_width
 osw_channel_width_min(const enum osw_channel_width a,
                       const enum osw_channel_width b);
@@ -639,11 +648,19 @@ osw_channel_width_min(const enum osw_channel_width a,
 const int *
 osw_channel_sidebands(enum osw_band band, int chan, int width, int max_2g_chan);
 
+size_t
+osw_channel_20mhz_segments(const struct osw_channel *c,
+                           int *segments,
+                           size_t segments_len);
+
 int
-osw_channel_ht40_offset(const struct osw_channel *c, int max_2g_chan);
+osw_channel_ht40_offset(const struct osw_channel *c);
 
 int
 osw_chan_to_freq(enum osw_band band, int chan);
+
+int
+osw_chan_avg(const int *chans);
 
 void
 osw_channel_compute_center_freq(struct osw_channel *c, int max_2g_chan);

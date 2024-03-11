@@ -314,8 +314,6 @@ osw_confsync_build_vif_ap_debug(const char *phy,
                                 const struct osw_drv_vif_state_ap *state,
                                 bool *notified)
 {
-    const int max_2g_chan = 11; /* FIXME: Assuming worst case regulatory. Could use phy chan list */
-
     if (cmd->bridge_if_name_changed) {
         const int max = ARRAY_SIZE(conf->bridge_if_name.buf);
         LOGI("osw: confsync: %s/%s: bridge_if_name: '%.*s' -> '%.*s'",
@@ -367,11 +365,8 @@ osw_confsync_build_vif_ap_debug(const char *phy,
     }
 
     if (cmd->channel_changed) {
-        // FIXME: common fmt for channel? fix bw
         struct osw_channel s = state->channel;
         struct osw_channel c = conf->channel;
-        osw_channel_compute_center_freq(&s, max_2g_chan);
-        osw_channel_compute_center_freq(&c, max_2g_chan);
         LOGI("osw: confsync: %s/%s: channel: "OSW_CHANNEL_FMT" -> "OSW_CHANNEL_FMT,
              phy, vif,
              OSW_CHANNEL_ARG(&s),
@@ -623,21 +618,7 @@ static bool
 osw_confsync_vif_ap_channel_changed(const struct osw_channel *a,
                                     const struct osw_channel *b)
 {
-    struct osw_channel x = *a;
-    struct osw_channel y = *b;
-    const int max_2g_chan = 11; /* FIXME: Assuming worst case regulatory. Could use phy chan list */
-
-    if (x.center_freq0_mhz == 0) {
-        osw_channel_compute_center_freq(&x, max_2g_chan);
-        LOGD("x: auto center freq: %d", x.center_freq0_mhz);
-    }
-
-    if (y.center_freq0_mhz == 0) {
-        osw_channel_compute_center_freq(&y, max_2g_chan);
-        LOGD("y: auto center freq: %d", y.center_freq0_mhz);
-    }
-
-    if (memcmp(&x, &y, sizeof(x)) == 0)
+    if (memcmp(a, b, sizeof(*a)) == 0)
         return false;
     else
         return true;
@@ -831,7 +812,7 @@ osw_confsync_vif_ap_mark_changed(struct osw_drv_vif_config *dvif,
     dvif->changed |= dvif->u.ap.ssid_changed;
     dvif->changed |= dvif->u.ap.channel_changed;
 
-    if (all == false) {
+    if (all == false && dvif->enabled && dvif->u.ap.channel.control_freq_mhz != 0 && svif->status == OSW_VIF_ENABLED) {
         const struct osw_channel_state *cs = sphy->channel_states;
         const size_t n_cs = sphy->n_channel_states;
         const struct osw_channel *c = &svif->u.ap.channel;
@@ -852,8 +833,7 @@ osw_confsync_vif_ap_mark_changed(struct osw_drv_vif_config *dvif,
         const bool cac_bugged = osw_cs_chan_intersects_state(cs, n_cs, c, state2);
 
         const bool csa_eligible = (dvif->u.ap.channel_changed == true)
-                               && (dvif->u.ap.mode_changed == false)
-                               && (svif->status == OSW_VIF_ENABLED);
+                               && (dvif->u.ap.mode_changed == false);
 
         if (csa_eligible && (cac_running || cac_bugged)) {
             /* This shouldn't be a common occurance, so keep it
@@ -1040,8 +1020,6 @@ osw_confsync_build_drv_conf_vif_ap(struct osw_drv_vif_config *dvif,
                                    struct osw_conf_vif *cvif,
                                    const bool allow_changed)
 {
-    const int max_2g_chan = 11; /* FIXME: Assuming worst case regulatory. Could use phy chan list */
-
     dvif->u.ap.bridge_if_name = cvif->u.ap.bridge_if_name;
     dvif->u.ap.beacon_interval_tu = cvif->u.ap.beacon_interval_tu;
     dvif->u.ap.channel = cvif->u.ap.channel;
@@ -1055,8 +1033,9 @@ osw_confsync_build_drv_conf_vif_ap(struct osw_drv_vif_config *dvif,
     dvif->u.ap.wps_pbc = cvif->u.ap.wps_pbc;
     dvif->u.ap.multi_ap = cvif->u.ap.multi_ap;
 
-    if (dvif->u.ap.channel.center_freq0_mhz == 0)
-        osw_channel_compute_center_freq(&dvif->u.ap.channel, max_2g_chan);
+    if (dvif->enabled && dvif->u.ap.channel.control_freq_mhz != 0) {
+        ASSERT(dvif->u.ap.channel.center_freq0_mhz != 0, "center freq required");
+    }
 
     {
         struct osw_ap_psk *psks;

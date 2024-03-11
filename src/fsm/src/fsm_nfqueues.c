@@ -117,7 +117,7 @@ fsm_nfq_net_header_parse(struct nfq_pkt_info *pkt_info, void *data)
         if (fsm_nfq_mac_same(&src_mac, pkt_info) == false)
         {
             MEM_CPY(&src_mac, pkt_info->hw_addr, pkt_info->hw_addr_len);
-            rc_lookup = fsm_update_neigh_cache(src_ip, &src_mac, domain);
+            rc_lookup = fsm_update_neigh_cache(src_ip, &src_mac, domain, FSM_NFQUEUE);
             if (!rc_lookup) LOGT("%s: Couldn't update neighbor cache.",__func__);
 
         }
@@ -148,8 +148,8 @@ fsm_nfq_tap_update(struct fsm_session *session)
     char   *queue_len_str;
     char   *queue_num_str;
     char   buf[10];
-    uint32_t nlbuf_sz0 = 6*(1024 * 1024); // 6M netlink packet buffer.
-    uint32_t nlbuf_szx = 1*(1024 * 1024); // 1M netlink packet buffer remaining queues.
+    uint32_t nlbuf_sz0 = 10*(1024 * 1024); // 10M netlink packet buffer.
+    uint32_t nlbuf_szx = 6*(1024 * 1024); // 6M netlink packet buffer remaining queues.
     uint32_t queue_len0 = 10240; // number of packets in queue.
     uint32_t queue_lenx = 2048; // number of packets in queue for remaining queues.
     uint32_t queue_num = 0; // Default 0 queue for all traffic
@@ -243,6 +243,8 @@ fsm_nfq_tap_update(struct fsm_session *session)
         {
             LOGE("%s: Failed to set default nfueue length[%u].",__func__, index == 0 ? queue_len0 : queue_lenx);
         }
+
+        nf_queue_get_nlsock_buffsz(nfqs.queue_num);
     }
 
     return true;

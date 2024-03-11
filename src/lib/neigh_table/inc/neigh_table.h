@@ -93,6 +93,7 @@ enum source
     OVSDB_INET_STATE  = 1 << 5,
     NEIGH_UT          = 1 << 6,
     FSM_NFQUEUE       = 1 << 7,
+    FSM_SOCKET        = 1 << 8,
 };
 
 enum ovsdb_table_lookup

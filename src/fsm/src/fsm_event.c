@@ -33,7 +33,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <inttypes.h>
 #include <time.h>
 #include <unistd.h>
+#include "kconfig.h"
 
+#include "nf_utils.h"
+#include  "dpi_stats.h"
 #include "fsm.h"
 #include "log.h"
 
@@ -42,7 +45,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define FSM_MGR_INTERVAL 120
 
 /**
- * @brief periodic routine. Calls fsm sessions' reiodic call backs
+ * @brief periodic routine. Calls fsm sessions' periodic call backs
  */
 static void
 fsm_event_cb(struct ev_loop *loop, ev_timer *watcher, int revents)
@@ -237,6 +240,11 @@ fsm_get_nfqueue_stats(void)
             nfq_counters.queue_dropped,
             nfq_counters.queue_user_dropped,
             nfq_counters.id_sequence);
+
+        nfq_log_err_counters(nfq_counters.queue_num);
+
+        /* store the collected stats, before reporting */
+        dpi_stats_store_nfq_stats(&nfq_counters);
     }
 
     fclose(fp);

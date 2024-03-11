@@ -152,6 +152,7 @@ char *qm_conn_status_str(enum qm_res_conn_status x);
 bool qm_conn_accept(int listen_fd, int *accept_fd);
 bool qm_conn_server(int *pfd);
 bool qm_conn_client(int *pfd);
+bool qm_conn_init(void);
 
 /**
  * @brief Set the qm_conn default timeout

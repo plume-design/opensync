@@ -69,10 +69,33 @@ test_dpi_stats_send_report(char *topic, struct dpi_stats_packed_buffer *pb)
     return;
 }
 
+static bool
+dpi_test_send_report(qm_compress_t compress, char *topic,
+                     void *data, int data_size, qm_response_t *res)
+{
+#ifndef ARCH_X86
+    bool ret = false;
+#endif
+
+    TEST_ASSERT_NOT_NULL(topic);
+    TEST_ASSERT_NOT_NULL(data);
+
+    LOGD("%s: msg len: %d, topic: %s",
+         __func__, data_size, topic);
+
+#ifndef ARCH_X86
+    ret = qm_conn_send_direct(QM_REQ_COMPRESS_IF_CFG, topic,
+                              data, data_size, res);
+    if (!ret) LOGE("error sending mqtt with topic %s", topic);
+#endif
+
+    return true;
+}
+
 void
 test_dpi_stats_serialize_report(void)
 {
-    struct dpi_stats_counters *counters;
+    struct dpi_engine_counters *counters;
     struct dpi_stats_report report;
 
     memset(&report, 0, sizeof(report));
@@ -107,6 +130,136 @@ test_lte_set_mqtt_topic(void)
     TEST_ASSERT_NOT_EQUAL_INT(0, rc);
 }
 
+void
+test_dpi_stats_serialize_nfq_pcap_report(void)
+{
+    struct nfqnl_counters nfq_stats;
+    struct pcap_stat pcap_stat;
+    char *ifname;
+    struct fsm_session session = {
+        .location_id = g_location_id,
+        .node_id = g_node_id,
+        .name = "test_plugin",
+    };
+    struct dpi_stats_report *gptr;
+
+    /* store 1st record, key is queue no */
+    nfq_stats.copy_mode = 12;
+    nfq_stats.queue_num = 13;
+    nfq_stats.queue_total = 14;
+    nfq_stats.copy_range = 15;
+    nfq_stats.queue_dropped = 16;
+
+    dpi_stats_store_nfq_stats(&nfq_stats);
+    TEST_ASSERT_EQUAL_INT(1, dpi_stats_get_nfq_stats_count());
+
+    /* store 2nd record */
+    nfq_stats.copy_mode = 22;
+    nfq_stats.queue_num = 23;
+    nfq_stats.queue_total = 24;
+    nfq_stats.copy_range = 25;
+    nfq_stats.queue_dropped = 26;
+
+    dpi_stats_store_nfq_stats(&nfq_stats);
+    TEST_ASSERT_EQUAL_INT(2, dpi_stats_get_nfq_stats_count());
+
+    pcap_stat.ps_recv = 12;
+    pcap_stat.ps_drop = 13;
+    ifname = "br-test1";
+    dpi_stats_store_pcap_stats(&pcap_stat, ifname);
+    TEST_ASSERT_EQUAL_INT(1, dpi_stats_get_pcap_stats_count());
+    TEST_ASSERT_EQUAL_INT(2, dpi_stats_get_nfq_stats_count());
+
+    pcap_stat.ps_recv = 22;
+    pcap_stat.ps_drop = 33;
+    ifname = "br-test2";
+    dpi_stats_store_pcap_stats(&pcap_stat, ifname);
+    TEST_ASSERT_EQUAL_INT(2, dpi_stats_get_pcap_stats_count());
+    TEST_ASSERT_EQUAL_INT(2, dpi_stats_get_nfq_stats_count());
+
+    gptr = dpi_stats_get_global_report();
+    gptr->send_report = dpi_test_send_report;
+
+    /* send the report */
+    // char *topic ="DpiStats/dog1/64777ef8e77ced000ab57892/LG8C401377";
+    dpi_stats_report_nfq_stats(&session, g_mqtt_topic);
+    TEST_ASSERT_EQUAL_INT(0, dpi_stats_get_pcap_stats_count());
+    TEST_ASSERT_EQUAL_INT(0, dpi_stats_get_nfq_stats_count());
+}
+
+void
+test_dpi_stats_serialize_nfq_report(void)
+{
+    struct nfqnl_counters nfq_stats;
+    struct dpi_stats_report *gptr;
+    struct fsm_session session = {
+        .location_id = g_location_id,
+        .node_id = g_node_id,
+        .name = "test_plugin",
+    };
+
+    /* store 1st record, key is queue no */
+    nfq_stats.copy_mode = 12;
+    nfq_stats.queue_num = 13;
+    nfq_stats.queue_total = 14;
+    nfq_stats.copy_range = 15;
+    nfq_stats.queue_dropped = 16;
+
+    dpi_stats_store_nfq_stats(&nfq_stats);
+    TEST_ASSERT_EQUAL_INT(1, dpi_stats_get_nfq_stats_count());
+
+    /* store 2nd record */
+    nfq_stats.copy_mode = 22;
+    nfq_stats.queue_num = 23;
+    nfq_stats.queue_total = 24;
+    nfq_stats.copy_range = 25;
+    nfq_stats.queue_dropped = 26;
+
+    dpi_stats_store_nfq_stats(&nfq_stats);
+    TEST_ASSERT_EQUAL_INT(2, dpi_stats_get_nfq_stats_count());
+
+    gptr = dpi_stats_get_global_report();
+    gptr->send_report = dpi_test_send_report;
+
+    /* send the report */
+    dpi_stats_report_nfq_stats(&session, g_mqtt_topic);
+    TEST_ASSERT_EQUAL_INT(0, dpi_stats_get_nfq_stats_count());
+}
+
+void
+test_dpi_stats_serialize_pcap_report(void)
+{
+    struct pcap_stat pcap_stat;
+    char *ifname;
+    struct fsm_session session = {
+        .location_id = g_location_id,
+        .node_id = g_node_id,
+        .name = "test_plugin",
+    };
+    struct dpi_stats_report *gptr;
+
+    pcap_stat.ps_recv = 12;
+    pcap_stat.ps_drop = 13;
+    ifname = "br-test1";
+    dpi_stats_store_pcap_stats(&pcap_stat, ifname);
+    TEST_ASSERT_EQUAL_INT(1, dpi_stats_get_pcap_stats_count());
+    TEST_ASSERT_EQUAL_INT(0, dpi_stats_get_nfq_stats_count());
+
+    pcap_stat.ps_recv = 22;
+    pcap_stat.ps_drop = 33;
+    ifname = "br-test2";
+    dpi_stats_store_pcap_stats(&pcap_stat, ifname);
+    TEST_ASSERT_EQUAL_INT(2, dpi_stats_get_pcap_stats_count());
+    TEST_ASSERT_EQUAL_INT(0, dpi_stats_get_nfq_stats_count());
+
+    gptr = dpi_stats_get_global_report();
+    gptr->send_report = dpi_test_send_report;
+
+    /* send the report */
+    dpi_stats_report_pcap_stats(&session, g_mqtt_topic);
+    TEST_ASSERT_EQUAL_INT(0, dpi_stats_get_pcap_stats_count());
+    TEST_ASSERT_EQUAL_INT(0, dpi_stats_get_nfq_stats_count());
+}
 
 int
 main(int argc, char *argv[])
@@ -117,6 +270,9 @@ main(int argc, char *argv[])
 
     RUN_TEST(test_lte_set_mqtt_topic);
     RUN_TEST(test_dpi_stats_serialize_report);
+    RUN_TEST(test_dpi_stats_serialize_nfq_report);
+    RUN_TEST(test_dpi_stats_serialize_pcap_report);
+    RUN_TEST(test_dpi_stats_serialize_nfq_pcap_report);
 
     return ut_fini();
 }

@@ -73,8 +73,8 @@ endef
 
 ifneq ($(filter ALL,$(SERVICE_PROVIDERS)),)
 # expand ALL token in service providers
-SERVICE_PROVIDERS := $(patsubst ALL,$(ALL_SERVICE_PROVIDERS),$(SERVICE_PROVIDERS))
-SERVICE_PROVIDERS := $(call _sp_uniq,$(SERVICE_PROVIDERS))
+override SERVICE_PROVIDERS := $(patsubst ALL,$(ALL_SERVICE_PROVIDERS),$(SERVICE_PROVIDERS))
+override SERVICE_PROVIDERS := $(call _sp_uniq,$(SERVICE_PROVIDERS))
 endif
 
 # check if all specified service providers exists

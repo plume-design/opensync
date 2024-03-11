@@ -123,12 +123,26 @@ static const struct osw_op_class_matrix g_op_class_matrix[] = {
                                          199, 215, OSW_CHANNEL_END }, 0, },
     { 136, 5925, OSW_CHANNEL_20MHZ, { 2, OSW_CHANNEL_END },
                                     { OSW_CHANNEL_END }, 0, },
-
-    /* FIXME: 320 MHz */
+    { 137, 5950, OSW_CHANNEL_320MHZ, { OSW_CHANNEL_WILDCARD, OSW_CHANNEL_END },
+                                     { 31, 63, 95, 127, 159, 191, OSW_CHANNEL_END }, 0, },
 
     /* End */
     { OSW_OP_CLASS_END, 0, 0, { OSW_CHANNEL_END, }, { OSW_CHANNEL_END }, 0 },
 };
+
+static int
+osw_channel_width_offsets(const enum osw_channel_width w)
+{
+    switch (w) {
+        case OSW_CHANNEL_20MHZ: return 0;
+        case OSW_CHANNEL_40MHZ: return 2;
+        case OSW_CHANNEL_80MHZ: return 6;
+        case OSW_CHANNEL_160MHZ: return 14;
+        case OSW_CHANNEL_80P80MHZ: return 6; /* refers to the center0 */
+        case OSW_CHANNEL_320MHZ: return 30;
+    }
+    return false;
+}
 
 static void
 strip_trailing_whitespace(char *str)
@@ -332,6 +346,8 @@ osw_ap_mode_to_str(char *out, size_t len, const struct osw_ap_mode *mode)
     if (mode->vht_required) csnprintf(&out, &len, "vhtR ");
     if (mode->he_enabled) csnprintf(&out, &len, "he ");
     if (mode->he_required) csnprintf(&out, &len, "heR ");
+    if (mode->eht_enabled) csnprintf(&out, &len, "eht ");
+    if (mode->eht_required) csnprintf(&out, &len, "ehtR ");
     if (mode->wps) csnprintf(&out, &len, "wps ");
     if (mode->supported_rates) csnprintf(&out, &len, "supp:" OSW_RATES_FMT " ", OSW_RATES_ARG(mode->supported_rates));
     if (mode->basic_rates) csnprintf(&out, &len, "basic:" OSW_RATES_FMT " ", OSW_RATES_ARG(mode->basic_rates));
@@ -473,6 +489,45 @@ osw_channel_width_down(enum osw_channel_width *w)
     return false;
 }
 
+bool
+osw_channel_downgrade(struct osw_channel *c)
+{
+    enum osw_channel_width w = c->width;
+    if (WARN_ON(w == OSW_CHANNEL_80P80MHZ)) return false;
+    if (osw_channel_width_down(&w) == false) return false;
+
+    const int offset_old = osw_channel_width_offsets(c->width) * 5;
+    const int offset_new = osw_channel_width_offsets(w) * 5;
+    const int freq_leftmost = c->center_freq0_mhz - offset_old;
+    const int freq_rightmost = c->center_freq0_mhz + offset_old;
+    const int center_new = (c->control_freq_mhz < c->center_freq0_mhz)
+                         ? freq_leftmost + offset_new
+                         : freq_rightmost - offset_new;
+    const int n_segments_new = ((freq_rightmost - freq_leftmost + 20) / 20) / 2;
+    const int segments_mask = ((1 << n_segments_new) - 1);
+    const int segments_shift = (c->control_freq_mhz < c->center_freq0_mhz)
+                             ? 0
+                             : n_segments_new;
+    const uint16_t puncture_new = ((c->puncture_bitmap >> segments_shift) & segments_mask);
+    c->width = w;
+    c->center_freq0_mhz = center_new;
+    c->puncture_bitmap = puncture_new;
+    return true;
+}
+
+bool
+osw_channel_downgrade_to(struct osw_channel *c,
+                         enum osw_channel_width w)
+{
+    if (c->width < w) return false;
+    while (c->width != w) {
+        const bool ok = osw_channel_downgrade(c);
+        const bool not_ok = (ok == false);
+        if (not_ok) return false;
+    }
+    return true;
+}
+
 enum osw_channel_width
 osw_channel_width_min(const enum osw_channel_width a,
                       const enum osw_channel_width b)
@@ -532,6 +587,14 @@ osw_2g_chan_list(int chan, int width, int max_chan)
 const int *
 osw_channel_sidebands(enum osw_band band, int chan, int width, int max_2g_chan)
 {
+    /* It doesn't make sense to fix all the callers of this
+     * function as it's a convenience helper for places
+     * where code is oblivious, or has inherently no access
+     * to sideband locations. Code expecting to support
+     * 320MHz must be aware of the sidebands already so no
+     * need to change this.
+     */
+    WARN_ON(width > 160);
     static int empty[] = { 0 };
     switch (band) {
         case OSW_BAND_UNDEFINED: return empty;
@@ -542,28 +605,106 @@ osw_channel_sidebands(enum osw_band band, int chan, int width, int max_2g_chan)
     return empty;
 }
 
-int
-osw_channel_ht40_offset(const struct osw_channel *c, int max_2g_chan)
+static size_t
+osw_channel_20mhz_segments_raw(const int center_freq,
+                               const int num_segments,
+                               int *segments,
+                               size_t segments_len)
 {
-    const int mhz = osw_channel_width_to_mhz(c->width);
-    const int freq = c->control_freq_mhz;
-    const int chan = osw_freq_to_chan(freq);
-    const enum osw_band band = osw_freq_to_band(freq);
-    const int *chans = osw_channel_sidebands(band, chan, mhz, max_2g_chan);
-    if (chans == NULL) return 0;
-
-    int sum = 0;
-    int n = 0;
-    while ((*chans) != 0) {
-        sum += *chans;
+    const int segment_width = 20;
+    const int leftmost = center_freq + (segment_width / 2) - (5 * 4 * num_segments / 2);
+    const int rightmost = center_freq - (segment_width / 2) + (5 * 4 * num_segments / 2);
+    int freq;
+    size_t n = 0;
+    for (freq = leftmost; freq <= rightmost; freq += segment_width) {
+        if (segments_len < 1) return 0;
+        *segments++ = freq;
+        segments_len--;
         n++;
-        chans++;
     }
+    return n;
+}
 
-    if (n == 0) return 0;
-    const int center = sum / n;
-    if (center < chan) return -1;
-    if (center > chan) return  1;
+size_t
+osw_channel_20mhz_segments(const struct osw_channel *c,
+                           int *segments,
+                           size_t segments_len)
+{
+    if (c->control_freq_mhz == 0) return 0;
+
+    ASSERT(c->center_freq0_mhz != 0, "center freq required");
+
+    /* FIXME: This could do sanity check to verify control +
+     * center + width make sense at all. */
+
+    struct osw_channel cpy = *c;
+    osw_channel_compute_center_freq(&cpy, 11);
+
+    switch (c->width) {
+        case OSW_CHANNEL_20MHZ:
+            return osw_channel_20mhz_segments_raw(cpy.center_freq0_mhz,
+                                                  1,
+                                                  segments,
+                                                  segments_len);
+        case OSW_CHANNEL_40MHZ:
+            return osw_channel_20mhz_segments_raw(cpy.center_freq0_mhz,
+                                                  2,
+                                                  segments,
+                                                  segments_len);
+        case OSW_CHANNEL_80MHZ:
+            return osw_channel_20mhz_segments_raw(cpy.center_freq0_mhz,
+                                                  4,
+                                                  segments,
+                                                  segments_len);
+        case OSW_CHANNEL_160MHZ:
+            return osw_channel_20mhz_segments_raw(cpy.center_freq0_mhz,
+                                                  8,
+                                                  segments,
+                                                  segments_len);
+        case OSW_CHANNEL_320MHZ:
+            return osw_channel_20mhz_segments_raw(cpy.center_freq0_mhz,
+                                                  16,
+                                                  segments,
+                                                  segments_len);
+        case OSW_CHANNEL_80P80MHZ:
+            {
+                const size_t n = osw_channel_20mhz_segments_raw(cpy.center_freq0_mhz,
+                                                                4,
+                                                                segments,
+                                                                segments_len);
+                const size_t m = osw_channel_20mhz_segments_raw(cpy.center_freq1_mhz,
+                                                                4,
+                                                                segments,
+                                                                segments_len);
+                if (n == 0) return 0;
+                if (m == 0) return 0;
+                return n + m;
+            }
+    }
+    return 0;
+}
+
+void
+osw_channel_20mhz_segments_to_chans(int *segs,
+                                    size_t n_segs)
+{
+    while (n_segs > 0) {
+        *segs = osw_freq_to_chan(*segs);
+        segs++;
+        n_segs--;
+    }
+}
+
+int
+osw_channel_ht40_offset(const struct osw_channel *c)
+{
+    ASSERT(c->center_freq0_mhz != 0, "center freq required");
+    struct osw_channel copy = *c;
+    const bool ok = osw_channel_downgrade_to(&copy, OSW_CHANNEL_40MHZ);
+    const bool not_ok = (ok == false);
+    if (not_ok) return 0;
+    if (copy.control_freq_mhz < copy.center_freq0_mhz) return 1;
+    if (copy.control_freq_mhz > copy.center_freq0_mhz) return -1;
     return 0;
 }
 
@@ -579,7 +720,7 @@ osw_chan_to_freq(enum osw_band band, int chan)
     return 0;
 }
 
-static int
+int
 osw_chan_avg(const int *chans)
 {
     int sum = 0;
@@ -596,6 +737,7 @@ osw_chan_avg(const int *chans)
 void
 osw_channel_compute_center_freq(struct osw_channel *c, int max_2g_chan)
 {
+    if (c->center_freq0_mhz != 0) return;
     const enum osw_band b = osw_freq_to_band(c->control_freq_mhz);
     const int w = osw_channel_width_to_mhz(c->width);
     const int cn = osw_freq_to_chan(c->control_freq_mhz);
@@ -794,6 +936,34 @@ osw_channel_from_channel_num_width(uint8_t channel_num,
     return (num_matches == 1);
 }
 
+/* FIXME:
+ * - does not support 320MHz/11be
+ * - has inadequate prototype
+ * - is used in unit tests for now
+ *
+ * This needs to be looked at much closer.
+ *
+ * Historically some devices would combine
+ * op_class + center freq channel index in their
+ * RRM or BTM responses. This was confusing
+ * because it ended up providing ambiguous channel
+ * info: the primary channel was still unknown.
+ *
+ * Until 320MHz showed up it was possible to infer
+ * center freq with 100% accurace from primary +
+ * op_class.
+ *
+ * However 320MHz sports as single op_class that
+ * is shared between both bandscheme allocations
+ * (the + or -). In this case providing primary +
+ * op_class is now ambiguous and can map to 2
+ * channel variants in many cases. On the other
+ * hand center + op_class is ambiguous in terms of
+ * the primary channel (where Beacons are).
+ *
+ * Until that is somehow necessary, this function
+ * remains as a glorified UT / dead code.
+ */
 bool
 osw_channel_from_op_class(uint8_t op_class,
                           uint8_t channel_num,
@@ -823,7 +993,6 @@ osw_channel_from_op_class(uint8_t op_class,
 
     int center_num = 0;
     if (*ctrl_chan == OSW_CHANNEL_WILDCARD) {
-        /* FIXME: 320 MHz band schemes +/- */
         const enum osw_channel_width width = entry->width;
         const int width_mhz = osw_channel_width_to_mhz(width);
         const int first_center = entry->center_chan_idx[0];
@@ -1066,18 +1235,14 @@ osw_freq_is_dfs(int freq_mhz)
 bool
 osw_channel_overlaps_dfs(const struct osw_channel *c)
 {
-    /* max 2GHz channel doesn't matter for this check so any
-     * value, including 11, is perfectly fine.
-     */
-    const int max_2g_chan = 11;
-    const enum osw_band b = osw_freq_to_band(c->control_freq_mhz);
-    const int w = osw_channel_width_to_mhz(c->width);
-    const int cn = osw_freq_to_chan(c->control_freq_mhz);
-    const int *chans = osw_channel_sidebands(b, cn, w, max_2g_chan);
-    while (chans != NULL && *chans != 0) {
-        const int freq = osw_chan_to_freq(b, *chans);
+    if (c->control_freq_mhz == 0) return false;
+    int segs[16];
+    const size_t n_segs = osw_channel_20mhz_segments(c, segs, ARRAY_SIZE(segs));
+    WARN_ON(n_segs == 0);
+    size_t i;
+    for (i = 0; i < n_segs; i++) {
+        const int freq = segs[i];
         if (osw_freq_is_dfs(freq) == true) return true;
-        chans++;
     }
     return false;
 }
@@ -1192,28 +1357,25 @@ osw_cs_chan_intersects_state(const struct osw_channel_state *channel_states,
                              const struct osw_channel *c,
                              enum osw_channel_state_dfs state)
 {
-    const int max_2g_chan = osw_cs_get_max_2g_chan(channel_states, n_channel_states);
-    const int freq = c->control_freq_mhz;
-    const int chan = osw_freq_to_chan(freq);
-    const int width = osw_channel_width_to_mhz(c->width);
-    const enum osw_band band = osw_freq_to_band(freq);
-    const int *chans = osw_channel_sidebands(band, chan, width, max_2g_chan);
+    ASSERT(c->center_freq0_mhz != 0, "center freq required");
 
-    if (chans == NULL) {
-        return false;
-    }
+    int freqs[16];
+    size_t n_freqs = osw_channel_20mhz_segments(c, freqs, ARRAY_SIZE(freqs));
+    if (n_freqs == 0) return false;
 
-    while (*chans != 0) {
+    while (n_freqs > 0) {
+        const uint16_t puncture_bit = (1 << (n_freqs - 1));
+        const bool punctured = ((c->puncture_bitmap & puncture_bit) != 0);
+        const bool not_punctured = (punctured == false);
         size_t i;
-        for (i = 0; i < n_channel_states; i++) {
+        for (i = 0; i < n_channel_states && not_punctured; i++) {
             const struct osw_channel_state *cs = &channel_states[i];
             const struct osw_channel *oc = &cs->channel;
             const int oc_freq = oc->control_freq_mhz;
-            const int oc_chan = osw_freq_to_chan(oc_freq);
-            if (oc_chan != *chans) continue;
+            if (oc_freq != freqs[n_freqs - 1]) continue;
             if (cs->dfs_state == state) return true;
         }
-        chans++;
+        n_freqs--;
     }
 
     return false;
@@ -1224,29 +1386,23 @@ osw_cs_chan_is_valid(const struct osw_channel_state *channel_states,
                      size_t n_channel_states,
                      const struct osw_channel *c)
 {
-    const int max_2g_chan = osw_cs_get_max_2g_chan(channel_states, n_channel_states);
-    const int freq = c->control_freq_mhz;
-    const int chan = osw_freq_to_chan(freq);
-    const int width = osw_channel_width_to_mhz(c->width);
-    const enum osw_band band = osw_freq_to_band(freq);
-    const int *chans = osw_channel_sidebands(band, chan, width, max_2g_chan);
+    ASSERT(c->center_freq0_mhz != 0, "");
 
-    if (chans == NULL) {
-        return false;
-    }
+    int freqs[16];
+    size_t n_freqs = osw_channel_20mhz_segments(c, freqs, ARRAY_SIZE(freqs));
+    if (n_freqs == 0) return false;
 
-    while (*chans != 0) {
+    while (n_freqs > 0) {
         size_t i;
         for (i = 0; i < n_channel_states; i++) {
             const struct osw_channel_state *cs = &channel_states[i];
             const struct osw_channel *oc = &cs->channel;
             const int oc_freq = oc->control_freq_mhz;
-            const int oc_chan = osw_freq_to_chan(oc_freq);
-            if (oc_chan == *chans) break;
+            if (oc_freq == freqs[n_freqs - 1]) break;
         }
         const bool not_found = (i == n_channel_states);
         if (not_found) return false;
-        chans++;
+        n_freqs--;
     }
 
     return true;

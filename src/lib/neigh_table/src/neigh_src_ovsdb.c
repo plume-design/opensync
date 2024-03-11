@@ -184,6 +184,10 @@ static const struct neigh_mapping_source source_map[] =
         .source = "dpi nfqueue",
         .source_enum = FSM_NFQUEUE,
     },
+    {
+        .source = "dpi socket",
+        .source_enum = FSM_SOCKET,
+    },
 };
 
 /**

@@ -42,6 +42,7 @@ enum ow_stats_conf_stats_type {
     OW_STATS_CONF_STATS_TYPE_SURVEY,
     OW_STATS_CONF_STATS_TYPE_NEIGHBOR,
     OW_STATS_CONF_STATS_TYPE_CLIENT,
+    OW_STATS_CONF_STATS_TYPE_DEVICE,
 };
 
 enum ow_stats_conf_radio_type {

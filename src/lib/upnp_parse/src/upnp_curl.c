@@ -36,7 +36,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 static struct upnp_curl conn_mgr;
 
-struct upnp_curl *get_curl_mgr(void) {
+static struct upnp_curl *
+get_curl_mgr(void)
+{
     return &conn_mgr;
 }
 
@@ -135,7 +137,7 @@ upnp_init_elements(struct upnp_device_url *url)
 };
 
 
-void
+static void
 upnp_scan_data(struct conn_info *conn)
 {
     struct upnp_device_url *url = conn->context;
@@ -210,7 +212,7 @@ upnp_scan_data(struct conn_info *conn)
 }
 
 
-void
+static void
 upnp_curl_process_conn(struct conn_info *conn)
 {
     struct upnp_curl_buffer *data = NULL;
@@ -231,7 +233,7 @@ upnp_curl_process_conn(struct conn_info *conn)
 }
 
 
-void
+static void
 upnp_free_conn(struct conn_info *conn)
 {
     struct upnp_curl *mgr = get_curl_mgr();
@@ -246,7 +248,7 @@ upnp_free_conn(struct conn_info *conn)
     FREE(conn);
 }
 
-void
+static void
 check_multi_info(struct upnp_curl *mgr)
 {
     char *eff_url;
@@ -279,7 +281,7 @@ check_multi_info(struct upnp_curl *mgr)
 }
 
 
-void
+static void
 event_cb(EV_P_ struct ev_io *w, int revents)
 {
     struct upnp_curl *mgr = (struct upnp_curl *) w->data;

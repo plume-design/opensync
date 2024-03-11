@@ -30,11 +30,14 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <ovsdb_table.h>
 #include <ds_tree.h>
 #include <osw_state.h>
+#include <osw_mld_vif.h>
 
 struct ow_ovsdb_ms_root {
+    osw_mld_vif_observer_t *mld_obs;
     ovsdb_table_t table;
     struct ds_tree tree;
     ev_signal sigusr1;
+    bool port_state_blip;
 };
 
 void
@@ -46,6 +49,7 @@ ow_ovsdb_ms_set_sta_disconnected(struct ow_ovsdb_ms_root *root,
                                  const struct osw_state_sta_info *sta);
 
 void
-ow_ovsdb_ms_init(struct ow_ovsdb_ms_root *root);
+ow_ovsdb_ms_init(struct ow_ovsdb_ms_root *root,
+                 bool port_state_blip);
 
 #endif /* OW_OVSDB_MS_H_INCLUDED */

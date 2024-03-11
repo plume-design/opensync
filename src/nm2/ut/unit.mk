@@ -52,6 +52,7 @@ UNIT_SRC    += ../src/nm2_portfw.c
 UNIT_SRC    += ../src/nm2_route.c
 UNIT_SRC    += ../src/nm2_route_config.c
 UNIT_SRC    += ../src/nm2_util.c
+UNIT_SRC    += ../src/nm2_arping_clients.c
 
 UNIT_SRC    += $(if $(CONFIG_TARGET_USE_NATIVE_BRIDGE), ../src/nm2_nb_bridge.c)
 UNIT_SRC    += $(if $(CONFIG_TARGET_USE_NATIVE_BRIDGE), ../src/nm2_default_ovsdb_bridge.c)

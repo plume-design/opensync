@@ -27,7 +27,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifndef OW_STEER_EXECUTOR_ACTION_H
 #define OW_STEER_EXECUTOR_ACTION_H
 
+#include <ds_tree.h>
+#include <osw_conf.h>
+
 struct ow_steer_executor_action;
+struct ow_steer_candidate_list;
 
 typedef bool
 ow_steer_executor_action_call_fn_t(struct ow_steer_executor_action *action,

@@ -176,6 +176,10 @@ json_t *ovsdb_method_send_s(
             method = "monitor";
             break;
 
+        case MT_MONITOR_CANCEL:
+            method = "monitor_cancel";
+            break;
+
         case MT_TRANS:
             method = "transact";
             break;
@@ -366,4 +370,22 @@ bool ovsdb_delete_with_parent_s(char * table,
 
     json_decref(resp);
     return true;
+}
+
+bool ovsdb_monitor_cancel_s(int monid)
+{
+    json_t *jparams;
+    bool retval = false;
+
+    /* RFC 7047 4.1.7:
+     * - "method": "monitor_cancel"
+     * - "params": [<json-value>]
+     * - "id": <nonnull-json-value>
+     */
+
+    jparams = json_array();
+    json_array_append_new(jparams, json_integer(monid));
+    retval = ovsdb_method_send_s(MT_MONITOR_CANCEL, jparams);
+
+    return retval;
 }

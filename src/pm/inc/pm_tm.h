@@ -46,11 +46,9 @@ struct osp_tm_ctx
     unsigned int prev_state;
     unsigned int fan_failure;
 
-    int temp_avg_sum[OSP_TM_TEMP_SRC_MAX];
-    int temp_avg_meas[OSP_TM_TEMP_SRC_MAX][OSP_TM_TEMP_AVG_CNT];
+    int temp_avg_sum[CONFIG_OSP_TM_TEMP_SRC_MAX];
+    int temp_avg_meas[CONFIG_OSP_TM_TEMP_SRC_MAX][CONFIG_OSP_TM_TEMP_AVG_CNT];
     unsigned int temp_avg_idx;
-
-    void *tgt_priv;
 };
 
 // enable support for reading temperature and

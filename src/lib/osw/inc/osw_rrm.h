@@ -27,6 +27,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifndef OSW_RRM_H
 #define OSW_RRM_H
 
+#include <osw_drv_common.h>
+
 struct osw_rrm;
 struct osw_rrm_desc_observer;
 struct osw_rrm_rpt_observer;
@@ -41,7 +43,7 @@ enum osw_rrm_radio_status {
 };
 
 typedef void
-osw_rrm_desc_radio_meas_req_status_fn_t(struct osw_rrm_desc_observer *observer,
+osw_rrm_desc_radio_meas_req_status_fn_t(void *priv,
                                         enum osw_rrm_radio_status status,
                                         const uint8_t *dialog_token,
                                         const uint8_t *meas_token,
@@ -89,7 +91,8 @@ struct osw_rrm_radio_meas_req {
 struct osw_rrm_desc*
 osw_rrm_get_desc(struct osw_rrm *rrm,
                  const struct osw_hwaddr *sta_addr,
-                 struct osw_rrm_desc_observer *observer);
+                 struct osw_rrm_desc_observer *observer,
+                 void *priv);
 
 bool
 osw_rrm_desc_schedule_radio_meas_req(struct osw_rrm_desc *desc,

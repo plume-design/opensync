@@ -41,4 +41,21 @@ ow_steer_sta_get_addr(const struct ow_steer_sta *sta);
 void
 ow_steer_sta_sigusr1_dump(void);
 
+
+typedef void
+ow_steer_snr_fn_t(void *priv,
+                  const struct osw_hwaddr *sta_addr,
+                  const struct osw_hwaddr *bssid,
+                  int snr_db);
+
+struct ow_steer_snr_observer;
+
+struct ow_steer_snr_observer *
+ow_steer_snr_register(const struct osw_hwaddr *sta_addr,
+                      ow_steer_snr_fn_t *fn,
+                      void *priv);
+
+void
+ow_steer_snr_unregister(struct ow_steer_snr_observer *obs);
+
 #endif /* OW_STEER_STA_H */

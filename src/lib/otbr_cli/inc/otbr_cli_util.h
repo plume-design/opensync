@@ -70,7 +70,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * @see @ref ARRAY_FREE_ITEMS()
  */
 #define ARRAY_APPEND(array_var, count_var, item) \
-    ({ /* Cannot take the address of rvalues - use test pointers for type check instead */ \
+    ({ \
+        /* Cannot take the address of rvalues - use test pointers for type check instead */ \
         const __typeof__(item) *const _p_new_item = NULL; \
         const __typeof__((array_var)[0]) *const _p_arr_item = _p_new_item; \
         (void)_p_arr_item; \
@@ -93,7 +94,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * @see @ref ARRAY_FREE()
  */
 #define ARRAY_APPEND_COPY(array_var, count_var, item) \
-    ({ /* Ensure item is lvalue of the same type as the array */ \
+    ({ \
+        /* Ensure item is lvalue of the same type as the array */ \
         const __typeof__(array_var[0]) *const _p_item = &(item); \
         (array_var) = REALLOC((array_var), ((count_var) + 1) * sizeof((array_var)[0])); \
         memcpy(&(array_var)[count_var], _p_item, sizeof((array_var)[0])); \

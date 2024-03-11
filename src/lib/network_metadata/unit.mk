@@ -29,8 +29,6 @@
 ###############################################################################
 UNIT_NAME := network_metadata
 
-UNIT_DISABLE := $(if $(CONFIG_MANAGER_FSM),n,y)
-
 # Template type:
 UNIT_TYPE := LIB
 

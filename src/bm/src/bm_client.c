@@ -707,6 +707,12 @@ static bool bm_client_caps_changed(bm_client_t *client, const char *ifname, bsal
 
     cur_info = &client->ifcfg[i].info;
 
+    // Check if 6G band capabilities have changed
+    if (info->band_cap_6G != cur_info->band_cap_6G) {
+        LOGT("Client '%s': 6G capability changed, notifying", client->mac_addr);
+        return true;
+    }
+
     // Check if BSS TM capability changed
     if (info->is_BTM_supported != cur_info->is_BTM_supported) {
         LOGT( "Client '%s': BSS TM capability changed, notifying", client->mac_addr );

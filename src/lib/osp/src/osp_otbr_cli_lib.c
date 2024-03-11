@@ -55,22 +55,6 @@ C_STATIC_ASSERT(
                 && ((int)OSP_OTBR_DEVICE_ROLE_LEADER == (int)OT_DEVICE_ROLE_LEADER),
         "osp_otbr_device_role_e incompatible with otDeviceRole");
 
-/** Check if all `num_bytes` bytes in the `buffer` are equal to the specified `value` */
-static bool memcmp_b(const void *buffer, const uint8_t value, size_t num_bytes)
-{
-    const uint8_t *byte_buffer = (const uint8_t *)buffer;
-
-    while (num_bytes--)
-    {
-        if (*(byte_buffer++) != value)
-        {
-            return false;
-        }
-    }
-
-    return true;
-}
-
 /**
  * Count the number of occurrences of a character in a string
  *
@@ -190,8 +174,72 @@ static bool report_dataset_change(void)
     return true;
 }
 
-static bool NONNULL(1, 2) parse_network_diag_peer_tlvs(
+static enum osp_otbr_device_role_e get_role(const uint16_t rloc16, const uint8_t leader_id)
+{
+    /* Use RLOC16 -> Router[Child=0] ID -> RLOC16 conversion to check if this device is
+     * a router (if child, cast router_id will have invalid value, which also works). */
+    const uint8_t router_id = (uint8_t)osp_otbr_device_id(rloc16);
+
+    if (rloc16 == osp_otbr_rloc16(router_id, 0))
+    {
+        if (router_id == leader_id)
+        {
+            return OSP_OTBR_DEVICE_ROLE_LEADER;
+        }
+        else
+        {
+            return OSP_OTBR_DEVICE_ROLE_ROUTER;
+        }
+    }
+    else
+    {
+        return OSP_OTBR_DEVICE_ROLE_CHILD;
+    }
+    /* Other roles (DETACHED, DISABLED) are not possible for devices connected
+     * to a Thread network, that is devices having RLOC16 address. */
+}
+
+static void parse_mode(struct osp_otbr_device_s *const device, const otLinkModeConfig *const mode)
+{
+    if (device->role > OSP_OTBR_DEVICE_ROLE_CHILD)
+    {
+        if (!(mode->mRxOnWhenIdle && mode->mDeviceType && mode->mNetworkData))
+        {
+            LOGW("%s with mode r=%d, d=%d, n=%d",
+                 (device->role == OSP_OTBR_DEVICE_ROLE_LEADER) ? "Leader" : "Router",
+                 mode->mRxOnWhenIdle,
+                 mode->mDeviceType,
+                 mode->mNetworkData);
+        }
+    }
+    else
+    {
+        device->child.mode.rx_on_when_idle = mode->mRxOnWhenIdle;
+        device->child.mode.full_thread_device = mode->mDeviceType;
+        device->child.mode.full_network_data = mode->mNetworkData;
+    }
+}
+
+static void parse_route(struct osp_otbr_device_s *const device, const otNetworkDiagRouteData *const route)
+{
+    struct osp_otbr_link_s link = {
+        .rloc16 = osp_otbr_rloc16(route->mRouterId, 0),
+        .lq_in = route->mLinkQualityIn,
+        .lq_out = route->mLinkQualityOut};
+
+    if (device->role >= OSP_OTBR_DEVICE_ROLE_ROUTER)
+    {
+        ARRAY_APPEND_COPY(device->router.neighbors.links, device->router.neighbors.count, link);
+    }
+    else if (device->role == OSP_OTBR_DEVICE_ROLE_CHILD)
+    {
+        memcpy(&device->child.parent, &link, sizeof(device->child.parent));
+    }
+}
+
+static bool NONNULL(1, 3) parse_network_diag_peer_tlvs(
         const struct otbr_network_diagnostic_peer_tlvs_s *const tlvs,
+        const otLeaderData *const leader,
         struct osp_otbr_device_s *const device)
 {
     LOGT("Parsing %d TLVs", tlvs->num_tlvs);
@@ -219,28 +267,32 @@ static bool NONNULL(1, 2) parse_network_diag_peer_tlvs(
                 const uint16_t addr16 = tlv->mData.mAddr16;
 
                 device->rloc16 = addr16;
+                device->role = get_role(addr16, (leader != NULL) ? leader->mLeaderRouterId : 0xFF);
 
-                LOGT("TLV Short Address: %04x", addr16);
+                LOGT("TLV Short Address: %04x (id=%d, role=%d)", addr16, osp_otbr_device_id(addr16), device->role);
                 break;
             }
             case OT_NETWORK_DIAGNOSTIC_TLV_MODE: {
                 const otLinkModeConfig *const mode = &tlv->mData.mMode;
 
-                device->child.mode.rx_on_when_idle = mode->mRxOnWhenIdle;
-                device->child.mode.full_thread_device = mode->mDeviceType;
-                device->child.mode.full_network_data = mode->mNetworkData;
+                parse_mode(device, mode);
 
-                LOGT("TLV Mode: 0x%02x", *((uint8_t *)mode));
+                LOGT("TLV Mode (role=%d): 0x%02x (r=%d, d=%d, n=%d)",
+                     device->role,
+                     *((uint8_t *)mode),
+                     mode->mRxOnWhenIdle,
+                     mode->mDeviceType,
+                     mode->mNetworkData);
                 break;
             }
             case OT_NETWORK_DIAGNOSTIC_TLV_TIMEOUT: {
                 const uint32_t timeout = tlv->mData.mTimeout;
-                LOGT("TLV Timeout: %d s", timeout);
+                LOGT("Ignoring TLV Timeout: %d s", timeout);
                 break;
             }
             case OT_NETWORK_DIAGNOSTIC_TLV_CONNECTIVITY: {
                 const otNetworkDiagConnectivity *const c = &tlv->mData.mConnectivity;
-                LOGT("TLV Connectivity: ParentPriority=%d, LeaderCost=%d, ActiveRouters=%d, LQ3/2/1=%d/%d/%d",
+                LOGT("Ignoring TLV Connectivity: ParentPriority=%d, LeaderCost=%d, ActiveRouters=%d, LQ3/2/1=%d/%d/%d",
                      c->mParentPriority,
                      c->mLeaderCost,
                      c->mActiveRouters,
@@ -250,14 +302,21 @@ static bool NONNULL(1, 2) parse_network_diag_peer_tlvs(
                 break;
             }
             case OT_NETWORK_DIAGNOSTIC_TLV_ROUTE: {
+                if (device->role < OSP_OTBR_DEVICE_ROLE_CHILD)
+                {
+                    LOGW("Routes (%d) for device role %d", tlv->mData.mRoute.mRouteCount, device->role);
+                    break;
+                }
+                else if ((device->role == OSP_OTBR_DEVICE_ROLE_CHILD) && (tlv->mData.mRoute.mRouteCount > 1))
+                {
+                    LOGW("Child with multiple routes");
+                }
+
                 for (size_t i_route = 0; i_route < tlv->mData.mRoute.mRouteCount; i_route++)
                 {
                     const otNetworkDiagRouteData *const rd = &tlv->mData.mRoute.mRouteData[i_route];
-                    struct osp_otbr_link_s link = {
-                        .rloc16 = osp_otbr_rloc16(rd->mRouterId, 0),
-                        .lq_in = rd->mLinkQualityIn,
-                        .lq_out = rd->mLinkQualityOut};
-                    ARRAY_APPEND_COPY(device->router.neighbors.links, device->router.neighbors.count, link);
+
+                    parse_route(device, rd);
 
                     LOGT("TLV Route: %d (RouterId=%d, RouteCost=%d, LQ In/Out=%d/%d)",
                          i_route,
@@ -270,7 +329,8 @@ static bool NONNULL(1, 2) parse_network_diag_peer_tlvs(
             }
             case OT_NETWORK_DIAGNOSTIC_TLV_LEADER_DATA: {
                 const otLeaderData *const ld = &tlv->mData.mLeaderData;
-                LOGT("TLV Leader Data: PartitionId=%d, Weighting=%d, DataVersion/Stable=%d/%d, LeaderRouterId=%d",
+                LOGT("Ignoring TLV Leader Data: PartitionId=%d, Weighting=%d, DataVersion/Stable=%d/%d, "
+                     "LeaderRouterId=%d",
                      ld->mPartitionId,
                      ld->mWeighting,
                      ld->mDataVersion,
@@ -286,7 +346,7 @@ static bool NONNULL(1, 2) parse_network_diag_peer_tlvs(
                 str[0] = '\0';
                 bin2hex(data, count, str, sizeof(str));
 
-                LOGT("TLV Network Data: %d B %s", count, str);
+                LOGT("Ignoring TLV Network Data: %d B %s", count, str);
                 break;
             }
             case OT_NETWORK_DIAGNOSTIC_TLV_IP6_ADDR_LIST: {
@@ -305,7 +365,7 @@ static bool NONNULL(1, 2) parse_network_diag_peer_tlvs(
             }
             case OT_NETWORK_DIAGNOSTIC_TLV_MAC_COUNTERS: {
                 const otNetworkDiagMacCounters *const mc = &tlv->mData.mMacCounters;
-                LOGT("TLV MAC Counters (In/Out Errors=%d/%d Discards=%d/%d"
+                LOGT("Ignoring TLV MAC Counters (In/Out Errors=%d/%d Discards=%d/%d"
                      " UcastPkts=%d/%d BroadcastPkts=%d/%d, UnknownProtos=%d/-)",
                      ntohl(mc->mIfInErrors),
                      ntohl(mc->mIfOutErrors),
@@ -384,15 +444,16 @@ static bool NONNULL(1, 2) parse_network_diag_peer_tlvs(
     return true;
 }
 
-static bool NONNULL(1, 2) parse_network_diag_tlvs(
+static bool NONNULL(1, 3) parse_network_diag_tlvs(
         const struct otbr_network_diagnostic_tlvs_s *const tlvs,
+        const otLeaderData *const leader,
         struct osp_otbr_devices_s *const devices)
 {
     for (size_t i_peer = 0; i_peer < tlvs->num_peers; i_peer++)
     {
         struct osp_otbr_device_s device = OSP_OTBR_DEVICE_INIT;
 
-        if (!parse_network_diag_peer_tlvs(&tlvs->peers[i_peer], &device))
+        if (!parse_network_diag_peer_tlvs(&tlvs->peers[i_peer], leader, &device))
         {
             return false;
         }
@@ -434,16 +495,31 @@ static bool NONNULL(1) ot_get_meshdiag_topology(struct osp_otbr_devices_s *const
         /* OT_NETWORK_DIAGNOSTIC_TLV_MLE_COUNTERS, */
     };
     struct otbr_network_diagnostic_tlvs_s tlvs = {0};
+    otLeaderData leader;
     bool success = false;
 
-    if (otbr_cli_get_network_diagnostic(
+    /* To find out which router has the Leader role, OT_NETWORK_DIAGNOSTIC_TLV_CONNECTIVITY
+     * could be retrieved and then otNetworkDiagConnectivity::mLeaderCost examined.
+     * Every device connected to a thread network always has a route to the leader
+     * of the network, and this route's quality is represented by LeaderCost.
+     * The cost is measured on a scale from 1 to 255, with 1 being the highest
+     * quality and 255 being the least, except when the device itself is the
+     * leader of the network, in which case the LeaderCost will be 0.
+     *
+     * However, instead of retrieving the whole connectivity TLV from each device
+     * just to get this information, utilize the otThreadGetLeaderData() API call
+     * to retrieve the leader data directly once, and then just check which router
+     * has the same ID as the leader.
+     */
+    if (otbr_cli_get_leader_data(&leader)
+        && otbr_cli_get_network_diagnostic(
                 otbr_cli_get_multicast_address(true, true, false),
                 diag_types,
                 ARRAY_SIZE(diag_types),
                 timeout,
                 &tlvs))
     {
-        success = parse_network_diag_tlvs(&tlvs, devices);
+        success = parse_network_diag_tlvs(&tlvs, &leader, devices);
     }
     otbr_cli_get_network_diagnostic_tlvs_free(&tlvs);
 

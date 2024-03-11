@@ -150,6 +150,7 @@ typedef struct
 typedef struct
 {
     mac_address_t                   mac;
+    mac_address_t                   mld_address;
     uint32_t                        num_band_records;
     dpp_bs_client_band_record_t     band_record[DPP_MAX_BS_BANDS];
 } dpp_bs_client_record_t;

@@ -54,7 +54,7 @@ endif
 endif
 endif
 else ifneq (,$(findstring clang,$(CC)))
-  CLANGVER := $(shell $(CC) --version | head -n1 | cut -f1 -d. | tr -dc '0-9')
+  CLANGVER := $(shell $(CC) --version | grep -o 'clang.*' | head -n1 | cut -f1 -d. | tr -dc '0-9')
 
   ifeq ($(shell [ $(CLANGVER) -ge 15 ] && echo y),y)
     CLANGVERFLAGS += -Wno-error=fortify-source

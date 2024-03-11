@@ -67,34 +67,6 @@ generate_os_ufid(ctflow_info_t *ct_entry, dp_ctl_stats_t *stats)
 }
 
 
-static void
-lan_ct_print_conntrack(ct_flow_t *flow)
-{
-    char src[INET6_ADDRSTRLEN];
-    char dst[INET6_ADDRSTRLEN];
-
-    if (flow == NULL) return;
-
-    memset(src, 0, sizeof(src));
-    memset(dst, 0, sizeof(dst));
-
-    getnameinfo((struct sockaddr *)&flow->layer3_info.src_ip,
-                sizeof(struct sockaddr_storage), src, sizeof(src),
-                0, 0, NI_NUMERICHOST);
-    getnameinfo((struct sockaddr *)&flow->layer3_info.dst_ip,
-                sizeof(struct sockaddr_storage), dst, sizeof(dst),
-                0, 0, NI_NUMERICHOST);
-    LOGD("%s: [ proto=%d tx src=%s dst=%s] ", __func__,
-         flow->layer3_info.proto_type, src, dst);
-
-    LOGD("%s: [src port=%d dst port=%d] "
-         "[packets=%" PRIu64 "  bytes=%" PRIu64 "]", __func__,
-        ntohs(flow->layer3_info.src_port),
-        ntohs(flow->layer3_info.dst_port),
-        flow->pkt_info.pkt_cnt, flow->pkt_info.bytes);
-}
-
-
 bool
 lan_stats_parse_ct(ctflow_info_t *ct_entry, dp_ctl_stats_t *stats)
 {
@@ -114,8 +86,6 @@ lan_stats_parse_ct(ctflow_info_t *ct_entry, dp_ctl_stats_t *stats)
 
     ssrc = &flow->layer3_info.src_ip;
     sdst = &flow->layer3_info.dst_ip;
-
-    lan_ct_print_conntrack(flow);
 
     // Lookup source ip.
     smac_lookup = neigh_table_lookup(ssrc, &stats->smac_key);
@@ -221,6 +191,8 @@ lan_stats_collect_native_flows(lan_stats_instance_t *lan_stats_instance)
     if (rc == false) return;
 
     lan_stats_process_ct_flows(lan_stats_instance);
+
+    if (LOG_SEVERITY_ENABLED(LOG_SEVERITY_TRACE)) nf_ct_print_entries(ct_list);
 
     nf_free_ct_flow_list(ct_list);
     return;

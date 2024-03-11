@@ -110,8 +110,12 @@ mdns_mgr_init(void)
 
     ds_tree_init(&mgr->fsm_sessions, mdns_session_cmp,
                  struct mdns_session, session_node);
+
+    mdns_ovsdb_set_callback();
+
     mgr->ovsdb_init = mdns_ovsdb_init;
     mgr->ovsdb_exit = mdns_ovsdb_exit;
+
     mgr->ctxt = NULL;
 
     mgr->initialized = true;

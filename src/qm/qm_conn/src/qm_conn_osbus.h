@@ -36,6 +36,7 @@ extern osbus_msg_policy_t qm_osbus_policy_send[QM_OSBUS_POLICY_SEND_NUM];
 extern const char *qm_conn_osbus_known_topics[];
 extern int qm_conn_osbus_known_topics_n;
 
+bool qm_conn_osbus_init(void);
 bool qm_conn_osbus_convert_response_stats_to_data(qm_response_t *res, osbus_msg_t **data);
 bool qm_conn_osbus_convert_response_short_to_data(qm_response_t *res, osbus_msg_t **data);
 bool qm_conn_osbus_convert_data_to_response(osbus_msg_t *data, qm_response_t *res);

@@ -93,6 +93,10 @@ struct osw_drv_nl80211_phy {
     struct rq q_req;
     struct nl_cmd_task task_nl_get_wiphy;
     struct nl_cmd_task task_nl_get_reg;
+    enum osw_drv_nl80211_phy_group_impl_type phy_group_impl_type;
+    enum osw_drv_nl80211_csa_impl_type csa_impl_type;
+    enum osw_drv_nl80211_dump_survey_impl_type dump_survey_impl_type;
+    enum osw_drv_nl80211_dump_sta_impl_type dump_sta_impl_type;
 };
 
 struct osw_drv_nl80211_vif {
@@ -109,6 +113,8 @@ struct osw_drv_nl80211_vif {
     struct osw_timer scan_timeout;
     struct rq q_stats;
     struct nl_cmd_task task_nl_dump_scan_stats;
+    struct nl_cmd_task task_nl_dump_survey_stats;
+    struct nl_cmd_task task_nl_dump_sta_stats;
     struct osw_drv_vif_state state;
     struct {
         bool connected;
@@ -172,6 +178,38 @@ struct osw_drv_nl80211_hook {
 #define LOG_PREFIX_VIF(phy, vif, fmt, ...) LOG_PREFIX_PHY(phy, "%s: " fmt, vif, ##__VA_ARGS__)
 #define LOG_PREFIX_STA(phy, vif, sta, fmt, ...) LOG_PREFIX_VIF(phy, vif, OSW_HWADDR_FMT": " fmt, OSW_HWADDR_ARG(sta), ##__VA_ARGS__)
 
+static bool
+osw_drv_nl80211_phy_is_ignored(const char *phy_name)
+{
+    /* This is intended to allow masking, ie. not reporting
+     * certain phy states, as if they didn't exist, and
+     * therefore prevent these phys from being managed. This
+     * is highly platform and integration-level specific.
+     * Use with caution and care.
+     */
+    char env_name[64];
+    snprintf(env_name, sizeof(env_name),
+             "OSW_DRV_NL80211_IGNORE_PHY_%s",
+             phy_name);
+    return getenv(env_name) != NULL;
+}
+
+static bool
+osw_drv_nl80211_vif_is_ignored(const char *vif_name)
+{
+    /* This is intended to allow masking, ie. not reporting
+     * certain vif states, as if they didn't exist, and
+     * therefore prevent these vifs from being managed. This
+     * is highly platform and integration-level specific.
+     * Use with caution and care.
+     */
+    char env_name[64];
+    snprintf(env_name, sizeof(env_name),
+             "OSW_DRV_NL80211_IGNORE_VIF_%s",
+             vif_name);
+    return getenv(env_name) != NULL;
+}
+
 /* This includes grouped static helpers. There are
  * intentionally no forward declarations.
  */
@@ -179,6 +217,7 @@ static struct osw_drv_nl80211_phy *
 osw_drv_nl80211_phy_lookup(struct osw_drv *drv,
                            const char *phy_name)
 {
+    if (osw_drv_nl80211_phy_is_ignored(phy_name)) return NULL;
     struct osw_drv_nl80211 *m = osw_drv_get_priv(drv);
     struct nl_80211 *nl = m->nl_80211;
     struct nl_80211_sub *sub = m->nl_80211_sub;
@@ -192,6 +231,7 @@ static struct osw_drv_nl80211_vif *
 osw_drv_nl80211_vif_lookup(struct osw_drv *drv,
                            const char *vif_name)
 {
+    if (osw_drv_nl80211_vif_is_ignored(vif_name)) return NULL;
     struct osw_drv_nl80211 *m = osw_drv_get_priv(drv);
     struct nl_80211 *nl = m->nl_80211;
     struct nl_80211_sub *sub = m->nl_80211_sub;
@@ -286,6 +326,8 @@ static void
 osw_rrv_nl80211_get_phy_list_each_cb(const struct nl_80211_phy *phy,
                                      void *priv)
 {
+    if (osw_drv_nl80211_phy_is_ignored(phy->name)) return;
+
     void **args = priv;
     osw_drv_report_phy_fn_t *fn = args[0];
     void *fn_priv = args[1];
@@ -301,22 +343,6 @@ osw_drv_nl80211_get_phy_list_cb(struct osw_drv *drv,
     struct nl_80211 *nl = m->nl_80211;
     void *args[] = { report_phy_fn, fn_priv };
     nl_80211_phy_each(nl, osw_rrv_nl80211_get_phy_list_each_cb, args);
-}
-
-static bool
-osw_drv_nl80211_vif_is_ignored(const char *vif_name)
-{
-    /* This is intended to allow masking, ie. not reporting
-     * certain vif states, as if they didn't exist, and
-     * therefore prevent these vifs from being managed. This
-     * is highly platform and integration-level specific.
-     * Use with caution and care.
-     */
-    char env_name[64];
-    snprintf(env_name, sizeof(env_name),
-             "OSW_DRV_NL80211_IGNORE_VIF_%s",
-             vif_name);
-    return getenv(env_name) != NULL;
 }
 
 static void
@@ -475,6 +501,9 @@ osw_drv_nl80211_phy_prep_set_antenna(struct osw_drv_nl80211_phy *phy,
     struct nl_msg *msg = nl_80211_alloc_set_phy_antenna(nl, wiphy, tx_chainmask, rx_chainmask);
     nl_cmd_task_init(&phy->task_nl_set_antenna, cmd, msg);
 
+    const char *phy_name = info->name;
+    nl_cmd_set_name(cmd, strfmta(LOG_PREFIX_PHY(phy_name, "set antenna: %x/%x", tx_chainmask, rx_chainmask)));
+
     return &phy->task_nl_set_antenna.task;
 }
 
@@ -563,6 +592,12 @@ osw_drv_nl80211_vif_prep_set_power(struct osw_drv_nl80211_vif *vif,
                        : nl_80211_alloc_set_vif_power_fixed(nl, ifindex, mbm);
     nl_cmd_task_init(&vif->task_nl_set_power, cmd, msg);
 
+    const char *vif_name = info->name;
+    const uint32_t wiphy = info->wiphy;
+    const struct nl_80211_phy *phy_info = nl_80211_phy_by_wiphy(nl, wiphy);
+    const char *phy_name = phy_info ? phy_info->name : NULL;
+    nl_cmd_set_name(cmd, strfmta(LOG_PREFIX_VIF(phy_name ?: "", vif_name, "set power: %ddBm", dbm)));
+
     vif->task_nl_set_power.task.completed_fn = osw_drv_nl80211_vif_tx_power_changed_cb;
     vif->task_nl_set_power.task.priv = vif;
 
@@ -593,7 +628,17 @@ osw_drv_nl80211_request_config_base(struct osw_drv *drv,
                     break;
             }
             if (vif->enabled_changed) {
-                os_nif_up(vif->vif_name, vif->enabled);
+                switch (vif->vif_type) {
+                    case OSW_VIF_UNDEFINED:
+                        break;
+                    case OSW_VIF_AP:
+                        os_nif_up(vif->vif_name, vif->enabled);
+                        break;
+                    case OSW_VIF_AP_VLAN:
+                        break;
+                    case OSW_VIF_STA:
+                        break;
+                }
             }
             if (vif->tx_power_dbm_changed) {
                 struct osw_drv_nl80211 *m = osw_drv_get_priv(drv);
@@ -655,6 +700,99 @@ osw_drv_nl80211_request_config_cb(struct osw_drv *drv,
     osw_drv_conf_free(conf);
 }
 
+static enum osw_drv_nl80211_phy_group_impl_type
+osw_drv_nl80211_get_phy_group_impl_type_from_cstr(const char *override)
+{
+    if (strcmp(override, "OSW_DRV_NL80211_PHY_GROUP_IMPL_NONE") == 0)
+        return OSW_DRV_NL80211_PHY_GROUP_IMPL_NONE;
+    else if (strcmp(override, "OSW_DRV_NL80211_PHY_GROUP_IMPL_PHY") == 0)
+        return OSW_DRV_NL80211_PHY_GROUP_IMPL_PHY;
+    WARN_ON(1);
+    return OSW_DRV_NL80211_PHY_GROUP_IMPL_NONE;
+}
+
+enum osw_drv_nl80211_phy_group_impl_type
+osw_drv_nl80211_get_phy_group_impl_type(const char *phy_name) {
+    enum osw_drv_nl80211_phy_group_impl_type impl_type;
+    const char *override = getenv(strfmta("OSW_DRV_NL80211_PHY_GROUP_IMPL_PHY_%s", phy_name));
+    if (override != NULL)
+        impl_type = osw_drv_nl80211_get_phy_group_impl_type_from_cstr(override);
+    else
+        impl_type = OSW_DRV_NL80211_PHY_GROUP_IMPL_NONE;
+    LOGI(LOG_PREFIX_PHY(phy_name, "get Phy Group impl type=%d", impl_type));
+    return impl_type;
+}
+
+static enum osw_drv_nl80211_csa_impl_type
+osw_drv_nl80211_get_csa_impl_type_from_cstr(const char *override)
+{
+    if (strcmp(override, "OSW_DRV_NL80211_CSA_IMPL_NONE") == 0)
+        return OSW_DRV_NL80211_CSA_IMPL_NONE;
+    else if (strcmp(override, "OSW_DRV_NL80211_CSA_IMPL_HOSTAP") == 0)
+        return OSW_DRV_NL80211_CSA_IMPL_HOSTAP;
+    WARN_ON(1);
+    return OSW_DRV_NL80211_CSA_IMPL_NONE;
+}
+
+enum osw_drv_nl80211_csa_impl_type
+osw_drv_nl80211_get_csa_impl_type(const char *phy_name) {
+    enum osw_drv_nl80211_csa_impl_type impl_type;
+    const char *override = getenv(strfmta("OSW_DRV_NL80211_CSA_IMPL_PHY_%s", phy_name));
+    if (override != NULL)
+        impl_type = osw_drv_nl80211_get_csa_impl_type_from_cstr(override);
+    else
+        impl_type = OSW_DRV_NL80211_CSA_IMPL_NONE;
+    LOGI(LOG_PREFIX_PHY(phy_name, "get CSA impl type=%d", impl_type));
+    return impl_type;
+}
+
+static enum osw_drv_nl80211_dump_survey_impl_type
+osw_drv_nl80211_get_dump_survey_impl_type_from_cstr(const char *override)
+{
+    if (strcmp(override, "OSW_DRV_NL80211_DUMP_SURVEY_IMPL_NONE") == 0)
+        return OSW_DRV_NL80211_DUMP_SURVEY_IMPL_NONE;
+    else if (strcmp(override, "OSW_DRV_NL80211_DUMP_SURVEY_IMPL_DELTA") == 0)
+        return OSW_DRV_NL80211_DUMP_SURVEY_IMPL_DELTA;
+    else if (strcmp(override, "OSW_DRV_NL80211_DUMP_SURVEY_IMPL_ABSOLUTE") == 0)
+        return OSW_DRV_NL80211_DUMP_SURVEY_IMPL_ABSOLUTE;
+    WARN_ON(1);
+    return OSW_DRV_NL80211_DUMP_SURVEY_IMPL_NONE;
+}
+
+static enum osw_drv_nl80211_dump_survey_impl_type
+osw_drv_nl80211_get_dump_survey_impl_type(const char *phy_name) {
+    enum osw_drv_nl80211_dump_survey_impl_type impl_type;
+    const char *override = getenv(strfmta("OSW_DRV_NL80211_DUMP_SURVEY_IMPL_PHY_%s", phy_name));
+    if (override != NULL)
+        impl_type = osw_drv_nl80211_get_dump_survey_impl_type_from_cstr(override);
+    else
+        impl_type = OSW_DRV_NL80211_DUMP_SURVEY_IMPL_NONE;
+    LOGI(LOG_PREFIX_PHY(phy_name, "get dump survey impl type=%d", impl_type));
+    return impl_type;
+}
+
+static enum osw_drv_nl80211_dump_sta_impl_type
+osw_drv_nl80211_get_dump_sta_impl_type_from_cstr(const char *override) {
+    if (strcmp(override, "OSW_DRV_NL80211_DUMP_STA_IMPL_NONE") == 0)
+        return OSW_DRV_NL80211_DUMP_STA_IMPL_NONE;
+    else if (strcmp(override, "OSW_DRV_NL80211_DUMP_STA_IMPL_DEFAULT") == 0)
+        return OSW_DRV_NL80211_DUMP_STA_IMPL_DEFAULT;
+    WARN_ON(1);
+    return OSW_DRV_NL80211_DUMP_STA_IMPL_NONE;
+}
+
+static enum osw_drv_nl80211_dump_sta_impl_type
+osw_drv_nl80211_get_dump_sta_impl_type(const char *phy_name) {
+    enum osw_drv_nl80211_dump_sta_impl_type impl_type;
+    const char *override = getenv(strfmta("OSW_DRV_NL80211_DUMP_STA_IMPL_PHY_%s", phy_name));
+    if (override != NULL)
+        impl_type = osw_drv_nl80211_get_dump_sta_impl_type_from_cstr(override);
+    else
+        impl_type = OSW_DRV_NL80211_DUMP_STA_IMPL_NONE;
+    LOGI(LOG_PREFIX_PHY(phy_name, "get dump sta impl type=%d", impl_type));
+    return impl_type;
+}
+
 static void
 osw_drv_nl80211_request_stats_bss_vif(const struct nl_80211_vif *nlvif,
                                       void *priv)
@@ -664,8 +802,12 @@ osw_drv_nl80211_request_stats_bss_vif(const struct nl_80211_vif *nlvif,
     struct osw_drv_nl80211_stats *stats = priv;
     struct osw_drv_nl80211 *m = stats->m;
     struct nl_80211_sub *sub = m->nl_80211_sub;
+    struct nl_80211 *nl = m->nl_80211;
+    const uint32_t wiphy = nlvif->wiphy;
+    const struct nl_80211_phy *nlphy = nl_80211_phy_by_wiphy(nl, wiphy);
+    struct osw_drv_nl80211_phy *phy = nl_80211_sub_phy_get_priv(sub, nlphy);
+    if (phy == NULL) return;
     struct osw_drv_nl80211_vif *vif = nl_80211_sub_vif_get_priv(sub, nlvif);
-
     if (vif == NULL) return;
 
     struct rq *q = &vif->q_stats;
@@ -675,12 +817,30 @@ osw_drv_nl80211_request_stats_bss_vif(const struct nl_80211_vif *nlvif,
         rq_task_kill(dump_scan);
         rq_add_task(q, dump_scan);
     }
+
+    if (phy->dump_survey_impl_type != OSW_DRV_NL80211_DUMP_SURVEY_IMPL_NONE) {
+        if (stats->mask & (1 << OSW_STATS_CHAN)) {
+            struct rq_task *dump_survey = &vif->task_nl_dump_survey_stats.task;
+            rq_task_kill(dump_survey);
+            rq_add_task(q, dump_survey);
+        }
+    }
+
+    if (phy->dump_sta_impl_type != OSW_DRV_NL80211_DUMP_STA_IMPL_NONE) {
+        if (stats->mask & (1 << OSW_STATS_STA)) {
+            struct rq_task *dump_sta = &vif->task_nl_dump_sta_stats.task;
+            rq_task_kill(dump_sta);
+            rq_add_task(q, dump_sta);
+        }
+    }
 }
 
 static void
 osw_drv_nl80211_request_stats_bss_phy(const struct nl_80211_phy *nlphy,
                                       void *priv)
 {
+    if (osw_drv_nl80211_phy_is_ignored(nlphy->name)) return;
+
     struct osw_drv_nl80211_stats *stats = priv;
     struct osw_drv_nl80211 *m = stats->m;
     struct nl_80211 *nl = m->nl_80211;
@@ -712,8 +872,6 @@ osw_drv_nl80211_request_stats_cb(struct osw_drv *drv,
                       osw_drv_nl80211_request_stats_bss_phy,
                       &stats);
 
-    // FIXME: NL80211_CMD_GET_STATION
-    // FIXME: NL80211_CMD_GET_SURVEY
     // needs detections/variants:
     //  - accumulating (ath9k)
     //  - overflowing (ath10k)
@@ -862,6 +1020,12 @@ osw_drv_nl80211_scan_setup(struct osw_drv_nl80211_vif *vif,
     struct nl_msg *msg = osw_drv_nl80211_scan_build_msg(nl, vif, params);
     nl_cmd_completed_fn_t *done_cb = osw_drv_nl80211_scan_done_cb;
     nl_cmd_set_completed_fn(cmd, done_cb, vif);
+
+    const char *vif_name = vif->info->name;
+    const uint32_t wiphy = vif->info->wiphy;
+    const struct nl_80211_phy *phy_info = nl_80211_phy_by_wiphy(nl, wiphy);
+    const char *phy_name = phy_info ? phy_info->name : NULL;
+    nl_cmd_set_name(cmd, strfmta(LOG_PREFIX_VIF(phy_name ?: "", vif_name, "scan")));
 
     vif->scan_cmd = cmd;
     nl_cmd_set_msg(cmd, msg);
@@ -1017,6 +1181,8 @@ osw_drv_nl80211_push_frame_tx_cb(struct osw_drv *drv,
     WARN_ON(vif->push_frame_tx_cmd != NULL);
     vif->push_frame_tx_cmd = cmd;
 
+    nl_cmd_set_name(cmd, strfmta(LOG_PREFIX_VIF(phy_name, vif_name, "frame")));
+
     struct osw_timer *timer = &vif->push_frame_tx_timer;
     const uint64_t timeout_at = osw_time_mono_clk() + OSW_TIME_SEC(1);
     osw_timer_arm_at_nsec(timer, timeout_at);
@@ -1141,6 +1307,8 @@ osw_drv_nl80211_sta_state_report_cb(struct rq *q,
         state->connected = true;
     }
 
+    CALL_HOOKS(m, fix_sta_state_fn, phy_name, vif_name, sta_addr, state);
+
     if (drv != NULL) osw_drv_report_sta_state(drv, phy_name, vif_name, sta_addr, state);
     osw_drv_sta_state_report_free(state);
 }
@@ -1161,6 +1329,14 @@ osw_drv_nl80211_sta_init_nl(struct osw_drv_nl80211_sta *sta,
     nl_cmd_response_fn_t *resp_cb = osw_drv_nl80211_sta_state_get_sta_resp_cb;
     nl_cmd_set_response_fn(cmd, resp_cb, sta);
     nl_cmd_task_init(&sta->task_nl_get_sta, cmd, msg);
+
+    const struct osw_hwaddr *sta_addr = mac;
+    const struct nl_80211_vif *vif_info = nl_80211_vif_by_ifindex(nl, ifindex);
+    const char *vif_name = vif_info ? vif_info->name : NULL;
+    const uint32_t wiphy = vif_info->wiphy;
+    const struct nl_80211_phy *phy_info = nl_80211_phy_by_wiphy(nl, wiphy);
+    const char *phy_name = phy_info ? phy_info->name : "";
+    nl_cmd_set_name(cmd, strfmta(LOG_PREFIX_STA(phy_name ?: "", vif_name ?: "", sta_addr, "get station")));
 }
 
 static void
@@ -1435,11 +1611,17 @@ static void
 osw_drv_nl80211_phy_added_cb(const struct nl_80211_phy *info,
                              void *priv)
 {
+    if (osw_drv_nl80211_phy_is_ignored(info->name)) return;
+
     struct osw_drv_nl80211 *m = priv;
     struct osw_drv_nl80211_phy *phy = nl_80211_sub_phy_get_priv(m->nl_80211_sub, info);
     const char *phy_name = info->name;
     phy->info = info;
     phy->m = m;
+    phy->phy_group_impl_type = osw_drv_nl80211_get_phy_group_impl_type(phy_name);
+    phy->csa_impl_type = osw_drv_nl80211_get_csa_impl_type(phy_name);
+    phy->dump_survey_impl_type = osw_drv_nl80211_get_dump_survey_impl_type(phy_name);
+    phy->dump_sta_impl_type = osw_drv_nl80211_get_dump_sta_impl_type(phy_name);
 
     rq_init(&phy->q_req, EV_DEFAULT);
     phy->q_req.max_running = 1;
@@ -1455,6 +1637,7 @@ osw_drv_nl80211_phy_added_cb(const struct nl_80211_phy *info,
         nl_cmd_response_fn_t *resp_cb = osw_drv_nl80211_phy_state_get_wiphy_resp_cb;
         nl_cmd_task_init(&phy->task_nl_get_wiphy, cmd, msg);
         nl_cmd_set_response_fn(cmd, resp_cb, phy);
+        nl_cmd_set_name(cmd, strfmta(LOG_PREFIX_PHY(phy_name, "get wiphy")));
     }
 
     {
@@ -1466,6 +1649,7 @@ osw_drv_nl80211_phy_added_cb(const struct nl_80211_phy *info,
         nl_cmd_response_fn_t *resp_cb = osw_drv_nl80211_phy_state_get_reg_resp_cb;
         nl_cmd_task_init(&phy->task_nl_get_reg, cmd, msg);
         nl_cmd_set_response_fn(cmd, resp_cb, phy);
+        nl_cmd_set_name(cmd, strfmta(LOG_PREFIX_PHY(phy_name, "get reg")));
     }
 
     LOGI(LOG_PREFIX_PHY(phy_name, "added"));
@@ -1477,6 +1661,8 @@ osw_drv_nl80211_phy_renamed_cb(const struct nl_80211_phy *info,
                                const char *new_name,
                                void *priv)
 {
+    if (osw_drv_nl80211_phy_is_ignored(info->name)) return;
+
     struct osw_drv_nl80211 *m = priv;
     struct osw_drv *drv = m->drv;
 
@@ -1491,6 +1677,8 @@ static void
 osw_drv_nl80211_phy_removed_cb(const struct nl_80211_phy *info,
                                void *priv)
 {
+    if (osw_drv_nl80211_phy_is_ignored(info->name)) return;
+
     struct osw_drv_nl80211 *m = priv;
     struct osw_drv *drv = m->drv;
     struct osw_drv_nl80211_phy *phy = nl_80211_sub_phy_get_priv(m->nl_80211_sub, info);
@@ -1611,22 +1799,6 @@ osw_drv_nl80211_vif_state_dump_scan_stats_resp_cb(struct nl_cmd *cmd,
     const int32_t rssi_dbm = mdbm / 100;
     const int32_t noise_dbm = osw_channel_nf_20mhz_fixup(0);
     const uint32_t snr_db = (rssi_dbm >= noise_dbm ? (rssi_dbm - noise_dbm) : 0);
-    size_t ssid_len = 0;
-    const void *ssid = osw_ie_find(nla_data(nla_ies),
-                                   nla_len(nla_ies),
-                                   0, /* SSID, FIXME */
-                                   &ssid_len);
-
-    struct osw_assoc_req_info ie_info;
-    MEMZERO(ie_info);
-    const bool ies_parsed = osw_parse_assoc_req_ies(nla_data(nla_ies),
-                                                    nla_len(nla_ies),
-                                                    &ie_info);
-    const enum osw_channel_width width = ies_parsed
-                                       ? osw_assoc_req_to_max_chwidth(&ie_info)
-                                       : OSW_CHANNEL_20MHZ;
-    const uint32_t width_mhz = osw_channel_width_to_mhz(width);
-
 
     struct osw_tlv t;
     MEMZERO(t);
@@ -1635,9 +1807,10 @@ osw_drv_nl80211_vif_state_dump_scan_stats_resp_cb(struct nl_cmd *cmd,
     osw_tlv_put_string(&t, OSW_STATS_BSS_SCAN_PHY_NAME, phy_name);
     osw_tlv_put_hwaddr(&t, OSW_STATS_BSS_SCAN_MAC_ADDRESS, bssid);
     osw_tlv_put_u32(&t, OSW_STATS_BSS_SCAN_FREQ_MHZ, freq_mhz);
-    osw_tlv_put_u32(&t, OSW_STATS_BSS_SCAN_WIDTH_MHZ, width_mhz);
     osw_tlv_put_u32(&t, OSW_STATS_BSS_SCAN_SNR_DB, snr_db);
-    osw_tlv_put_buf(&t, OSW_STATS_BSS_SCAN_SSID, ssid, ssid_len);
+    if (nla_ies != NULL) {
+        osw_tlv_put_buf(&t, OSW_STATS_BSS_SCAN_IES, nla_data(nla_ies), nla_len(nla_ies));
+    }
     osw_tlv_end_nested(&t, off);
 
     /* FIXME: This could be coalesced with other
@@ -1647,20 +1820,205 @@ osw_drv_nl80211_vif_state_dump_scan_stats_resp_cb(struct nl_cmd *cmd,
     osw_drv_report_stats(drv, &t);
     osw_tlv_fini(&t);
 
-    LOGT(LOG_PREFIX_PHY(phy_name, "stats: bss: "OSW_HWADDR_FMT" %uMHz @ %uMHz %udB ssid=%.*s (len=%zu)",
+    LOGT(LOG_PREFIX_PHY(phy_name, "stats: bss: "OSW_HWADDR_FMT" %uMHz %udB",
                         OSW_HWADDR_ARG(bssid),
                         freq_mhz,
-                        width_mhz,
-                        snr_db,
-                        (int)ssid_len,
-                        (const char *)ssid,
-                        ssid_len));
+                        snr_db));
 }
 
-static bool
-osw_drv_nl80211_vif_is_enabled(enum osw_vif_type type, const char *vif_name)
+static void
+osw_drv_nl80211_vif_state_dump_survey_stats_resp_cb(struct nl_cmd *cmd,
+                                                   struct nl_msg *msg,
+                                                   void *priv)
 {
-    bool enabled = false;
+    struct osw_drv_nl80211_vif *drv_nl80211_vif = priv;
+    struct osw_drv_nl80211 *m = drv_nl80211_vif->m;
+    struct osw_drv *drv = m->drv;
+    struct nl_80211 *nl = m->nl_80211;
+
+    struct nlattr *tb[NL80211_ATTR_MAX + 1];
+    const int err = genlmsg_parse(nlmsg_hdr(msg), 0, tb, NL80211_ATTR_MAX, NULL);
+    if (err) return;
+
+    const struct nl_80211_phy *phy = nl_80211_phy_by_nla(nl, tb);
+    if (phy == NULL) return;
+    const char *phy_name = phy->name;
+
+    const struct nl_80211_vif *vif = nl_80211_vif_by_nla(nl, tb);
+    if (vif == NULL) return;
+    const char *vif_name = vif->name;
+
+    LOGT(LOG_PREFIX_VIF(phy_name, vif_name, "stats: survey"));
+
+    struct osw_drv_nl80211_phy *drv_nl80211_phy = nl_80211_sub_phy_get_priv(m->nl_80211_sub, phy);
+    WARN_ON(drv_nl80211_phy->dump_survey_impl_type == OSW_DRV_NL80211_DUMP_SURVEY_IMPL_NONE);
+
+    struct nlattr *survey = tb[NL80211_ATTR_SURVEY_INFO];
+    if (survey == NULL) return;
+
+    static struct nla_policy survey_policy[NL80211_SURVEY_INFO_MAX + 1] = {
+        [NL80211_SURVEY_INFO_FREQUENCY] = { .type = NLA_U32 },
+        [NL80211_SURVEY_INFO_NOISE] = { .type = NLA_U8 },
+        [NL80211_SURVEY_INFO_TIME] = { .type = NLA_U64 },
+        [NL80211_SURVEY_INFO_TIME_TX] = { .type = NLA_U64 },
+        [NL80211_SURVEY_INFO_TIME_RX] = { .type = NLA_U64 },
+        [NL80211_SURVEY_INFO_TIME_BSS_RX] = { .type = NLA_U64 },
+        [NL80211_SURVEY_INFO_TIME_BUSY] = { .type = NLA_U64 },
+    };
+    struct nlattr *tb_survey[NL80211_SURVEY_INFO_MAX + 1];
+    const int survey_err = nla_parse_nested(tb_survey, NL80211_SURVEY_INFO_MAX, survey, survey_policy);
+    if (WARN_ON(survey_err)) return;
+
+    struct nlattr *nla_freq = tb_survey[NL80211_SURVEY_INFO_FREQUENCY];
+    struct nlattr *nla_noise = tb_survey[NL80211_SURVEY_INFO_NOISE];
+    struct nlattr *nla_time = tb_survey[NL80211_SURVEY_INFO_TIME];
+    struct nlattr *nla_time_tx = tb_survey[NL80211_SURVEY_INFO_TIME_TX];
+    struct nlattr *nla_time_rx = tb_survey[NL80211_SURVEY_INFO_TIME_RX];
+    struct nlattr *nla_time_bss_rx = tb_survey[NL80211_SURVEY_INFO_TIME_BSS_RX];
+    struct nlattr *nla_time_busy = tb_survey[NL80211_SURVEY_INFO_TIME_BUSY];
+
+    struct osw_tlv t;
+    MEMZERO(t);
+
+    size_t start_chan = osw_tlv_put_nested(&t, OSW_STATS_CHAN);
+    {
+        if (phy_name != NULL) osw_tlv_put_string(&t, OSW_STATS_CHAN_PHY_NAME, phy_name);
+        if (nla_freq != NULL) osw_tlv_put_u32(&t, OSW_STATS_CHAN_FREQ_MHZ, nla_get_u32(nla_freq));
+        if (nla_noise != NULL) osw_tlv_put_float(&t, OSW_STATS_CHAN_NOISE_FLOOR_DBM, (float)(int32_t)(int8_t)nla_get_u8(nla_noise));
+        if (nla_time != NULL) {
+            if (drv_nl80211_phy->dump_survey_impl_type == OSW_DRV_NL80211_DUMP_SURVEY_IMPL_DELTA)
+                osw_tlv_put_u32_delta(&t, OSW_STATS_CHAN_ACTIVE_MSEC, (uint32_t)nla_get_u64(nla_time));
+            else if (drv_nl80211_phy->dump_survey_impl_type == OSW_DRV_NL80211_DUMP_SURVEY_IMPL_ABSOLUTE)
+                osw_tlv_put_u32(&t, OSW_STATS_CHAN_ACTIVE_MSEC, (uint32_t)nla_get_u64(nla_time));
+        }
+
+        size_t start_cnt = osw_tlv_put_nested(&t, OSW_STATS_CHAN_CNT_MSEC);
+        {
+            switch (drv_nl80211_phy->dump_survey_impl_type) {
+                case OSW_DRV_NL80211_DUMP_SURVEY_IMPL_NONE:
+                    WARN_ON(1);
+                    break;
+                case OSW_DRV_NL80211_DUMP_SURVEY_IMPL_DELTA:
+                    if (nla_time_tx != NULL) osw_tlv_put_u32_delta(&t, OSW_STATS_CHAN_CNT_TX, (uint32_t)nla_get_u64(nla_time_tx));
+                    if (nla_time_rx != NULL) osw_tlv_put_u32_delta(&t, OSW_STATS_CHAN_CNT_RX, (uint32_t)nla_get_u64(nla_time_rx));
+                    if (nla_time_bss_rx != NULL) osw_tlv_put_u32_delta(&t, OSW_STATS_CHAN_CNT_RX_INBSS, (uint32_t)nla_get_u64(nla_time_bss_rx));
+                    if (nla_time_busy != NULL) osw_tlv_put_u32_delta(&t, OSW_STATS_CHAN_CNT_BUSY, (uint32_t)nla_get_u64(nla_time_busy));
+                    break;
+                case OSW_DRV_NL80211_DUMP_SURVEY_IMPL_ABSOLUTE:
+                    if (nla_time_tx != NULL) osw_tlv_put_u32(&t, OSW_STATS_CHAN_CNT_TX, (uint32_t)nla_get_u64(nla_time_tx));
+                    if (nla_time_rx != NULL) osw_tlv_put_u32(&t, OSW_STATS_CHAN_CNT_RX, (uint32_t)nla_get_u64(nla_time_rx));
+                    if (nla_time_bss_rx != NULL) osw_tlv_put_u32(&t, OSW_STATS_CHAN_CNT_RX_INBSS, (uint32_t)nla_get_u64(nla_time_bss_rx));
+                    if (nla_time_busy != NULL) osw_tlv_put_u32(&t, OSW_STATS_CHAN_CNT_BUSY, (uint32_t)nla_get_u64(nla_time_busy));
+                    break;
+            }
+            osw_tlv_end_nested(&t, start_cnt);
+        }
+        osw_tlv_end_nested(&t, start_chan);
+    }
+
+    osw_drv_report_stats(drv, &t);
+    osw_tlv_fini(&t);
+}
+
+static void
+osw_drv_nl80211_vif_state_dump_sta_stats_resp_cb(struct nl_cmd *cmd,
+                                                 struct nl_msg *msg,
+                                                 void *priv)
+{
+    struct osw_drv_nl80211_vif *drv_nl80211_vif = priv;
+    struct osw_drv_nl80211 *m = drv_nl80211_vif->m;
+    struct osw_drv *drv = m->drv;
+    struct nl_80211 *nl = m->nl_80211;
+
+    struct nlattr *tb[NL80211_ATTR_MAX + 1];
+    const int err = genlmsg_parse(nlmsg_hdr(msg), 0, tb, NL80211_ATTR_MAX, NULL);
+    if (err) return;
+
+    const struct nl_80211_phy *phy = nl_80211_phy_by_nla(nl, tb);
+    if (phy == NULL) return;
+    const char *phy_name = phy->name;
+
+    const struct nl_80211_vif *vif = nl_80211_vif_by_nla(nl, tb);
+    if (vif == NULL) return;
+    const char *vif_name = vif->name;
+
+    LOGT(LOG_PREFIX_VIF(phy_name, vif_name, "stats: sta"));
+
+    struct osw_drv_nl80211_phy *drv_nl80211_phy = nl_80211_sub_phy_get_priv(m->nl_80211_sub, phy);
+    WARN_ON(drv_nl80211_phy->dump_sta_impl_type == OSW_DRV_NL80211_DUMP_STA_IMPL_NONE);
+
+    struct nlattr *sta = tb[NL80211_ATTR_STA_INFO];
+    if (sta == NULL) return;
+
+    struct nlattr *nla_mac = tb[NL80211_ATTR_MAC];
+    if (WARN_ON(nla_mac == NULL)) return;
+    if (WARN_ON(nla_len(nla_mac) != ETH_ALEN)) return;
+    struct osw_hwaddr osw_mac;
+    memcpy(osw_mac.octet, nla_data(nla_mac), ETH_ALEN);
+
+    static struct nla_policy sta_policy[NL80211_STA_INFO_MAX + 1] = {
+        [NL80211_STA_INFO_SIGNAL] = { .type = NLA_U8 },
+        [NL80211_STA_INFO_TX_BYTES] = { .type = NLA_U32 },
+        [NL80211_STA_INFO_RX_BYTES] = { .type = NLA_U32 },
+        [NL80211_STA_INFO_TX_PACKETS] = { .type = NLA_U32 },
+        [NL80211_STA_INFO_RX_PACKETS] = { .type = NLA_U32 },
+        [NL80211_STA_INFO_TX_RETRIES] = { .type = NLA_U32 },
+        [NL80211_STA_INFO_TX_FAILED] = { .type = NLA_U32 },
+        [NL80211_STA_INFO_RX_DROP_MISC] = { .type = NLA_U64 },
+    };
+    struct nlattr *tb_sta[NL80211_STA_INFO_MAX + 1];
+    const int sta_err = nla_parse_nested(tb_sta, NL80211_STA_INFO_MAX, sta, sta_policy);
+    if (WARN_ON(sta_err)) return;
+
+    struct nlattr *nla_signal = tb_sta[NL80211_STA_INFO_SIGNAL];
+    struct nlattr *nla_tx_bytes = tb_sta[NL80211_STA_INFO_TX_BYTES];
+    struct nlattr *nla_rx_bytes = tb_sta[NL80211_STA_INFO_RX_BYTES];
+    struct nlattr *nla_tx_packets = tb_sta[NL80211_STA_INFO_TX_PACKETS];
+    struct nlattr *nla_rx_packets = tb_sta[NL80211_STA_INFO_RX_PACKETS];
+    struct nlattr *nla_tx_retries = tb_sta[NL80211_STA_INFO_TX_RETRIES];
+    struct nlattr *nla_tx_failed = tb_sta[NL80211_STA_INFO_TX_FAILED];
+    struct nlattr *nla_rx_drop_misc = tb_sta[NL80211_STA_INFO_RX_DROP_MISC];
+
+    struct osw_tlv t;
+    MEMZERO(t);
+
+    size_t start_sta = osw_tlv_put_nested(&t, OSW_STATS_STA);
+    {
+        if (phy_name != NULL) osw_tlv_put_string(&t, OSW_STATS_STA_PHY_NAME, phy_name);
+        if (vif_name != NULL) osw_tlv_put_string(&t, OSW_STATS_STA_VIF_NAME, vif_name);
+        if (nla_mac != NULL) osw_tlv_put_hwaddr(&t, OSW_STATS_STA_MAC_ADDRESS, &osw_mac);
+
+        const int32_t rssi_dbm = nla_signal ? (int32_t)(int8_t)nla_get_u8(nla_signal) : 0;
+        const int32_t noise_dbm = osw_channel_nf_20mhz_fixup(0);
+        const uint32_t snr_db = (rssi_dbm >= noise_dbm ? (rssi_dbm - noise_dbm) : 0);
+        osw_tlv_put_u32(&t, OSW_STATS_STA_SNR_DB, snr_db);
+
+        switch (drv_nl80211_phy->dump_sta_impl_type) {
+            case OSW_DRV_NL80211_DUMP_STA_IMPL_NONE:
+                WARN_ON(1);
+                break;
+            case OSW_DRV_NL80211_DUMP_STA_IMPL_DEFAULT:
+                if (nla_tx_bytes != NULL) osw_tlv_put_u32(&t, OSW_STATS_STA_TX_BYTES, nla_get_u32(nla_tx_bytes));
+                if (nla_rx_bytes != NULL) osw_tlv_put_u32(&t, OSW_STATS_STA_RX_BYTES, nla_get_u32(nla_rx_bytes));
+                if (nla_tx_packets != NULL) osw_tlv_put_u32(&t, OSW_STATS_STA_TX_FRAMES, nla_get_u32(nla_tx_packets));
+                if (nla_rx_packets != NULL) osw_tlv_put_u32(&t, OSW_STATS_STA_RX_FRAMES, nla_get_u32(nla_rx_packets));
+                if (nla_tx_retries != NULL) osw_tlv_put_u32(&t, OSW_STATS_STA_TX_RETRIES, nla_get_u32(nla_tx_retries));
+                if (nla_tx_failed != NULL) osw_tlv_put_u32(&t, OSW_STATS_STA_TX_ERRORS, nla_get_u32(nla_tx_failed));
+                if (nla_rx_drop_misc != NULL) osw_tlv_put_u32(&t, OSW_STATS_STA_RX_ERRORS, (uint32_t)nla_get_u64(nla_rx_drop_misc));
+                break;
+        }
+        osw_tlv_end_nested(&t, start_sta);
+    }
+
+    osw_drv_report_stats(drv, &t);
+    osw_tlv_fini(&t);
+}
+
+static void
+osw_drv_nl80211_vif_mark_enabled(const char *vif_name,
+                                 struct osw_drv_vif_state *state)
+{
+    const enum osw_vif_type type = state->vif_type;
 
     /* FIXME: This probably needs a bit more thought and
      * nl80211 should be used to infer that? Enabled !=
@@ -1670,16 +2028,22 @@ osw_drv_nl80211_vif_is_enabled(enum osw_vif_type type, const char *vif_name)
         case OSW_VIF_UNDEFINED:
             break;
         case OSW_VIF_AP:
-            os_nif_is_running((char *)vif_name, &enabled);
-            break;
+            {
+                bool enabled = false;
+                os_nif_is_running((char *)vif_name, &enabled);
+                if (enabled) {
+                    osw_vif_status_set(&state->status, OSW_VIF_ENABLED);
+                }
+                else {
+                    osw_vif_status_set(&state->status, OSW_VIF_DISABLED);
+                }
+                break;
+            }
         case OSW_VIF_AP_VLAN:
             break;
         case OSW_VIF_STA:
-            os_nif_is_up((char *)vif_name, &enabled);
             break;
     }
-
-    return enabled;
 }
 
 static void
@@ -1703,13 +2067,7 @@ osw_drv_nl80211_vif_state_report_finalize(struct osw_drv_nl80211_vif *vif)
     }
 
     os_nif_exists((char *)vif_name, &state->exists);
-    if (osw_drv_nl80211_vif_is_enabled(state->vif_type, vif_name)) {
-        osw_vif_status_set(&state->status, OSW_VIF_ENABLED);
-    }
-    else {
-        osw_vif_status_set(&state->status, OSW_VIF_DISABLED);
-    }
-
+    osw_drv_nl80211_vif_mark_enabled(vif_name, state);
     osw_hostap_bss_fill_state(vif->hostap_bss, state);
 }
 
@@ -1898,6 +2256,16 @@ osw_drv_nl80211_vif_hostap_event_cb(const char *msg,
     else if (strcmp(event_name, "CTRL-EVENT-BSS-REMOVED") == 0) {
         LOGD(LOG_PREFIX_VIF(phy_name, vif_name, "hostap event: %s (len=%zu)", msg, msg_len));
     }
+    else if ((strcmp(event_name, "DFS-RADAR-DETECTED") == 0) ||
+             (strcmp(event_name, "DFS-NEW-CHANNEL") == 0) ||
+             (strcmp(event_name, "DFS-CAC-START") == 0) ||
+             (strcmp(event_name, "DFS-CAC-COMPLETED") == 0) ||
+             (strcmp(event_name, "DFS-DFS-PRE-CAC-EXPIRED") == 0) ||
+             (strcmp(event_name, "DFS-DFS-NOP-FINISHED") == 0)) {
+        LOGD(LOG_PREFIX_VIF(phy_name, vif_name, "hostap event: %s (len=%zu)", msg, msg_len));
+        osw_drv_report_phy_changed(drv, phy_name);
+        osw_drv_report_vif_changed(drv, phy_name, vif_name);
+    }
     else {
         LOGI(LOG_PREFIX_VIF(phy_name, vif_name, "hostap event: %s (len=%zu)", msg, msg_len));
     }
@@ -2049,6 +2417,7 @@ osw_drv_nl80211_vif_added_cb(const struct nl_80211_vif *info,
     const char *vif_name = info->name;
     const uint32_t wiphy = info->wiphy;
     const struct nl_80211_phy *phy_info = nl_80211_phy_by_wiphy(nl, wiphy);
+    struct osw_drv_nl80211_phy *drv_nl80211_phy = nl_80211_sub_phy_get_priv(m->nl_80211_sub, phy_info);
     const char *phy_name = phy_info ? phy_info->name : "unknown";
 
     vif->info = info;
@@ -2064,6 +2433,7 @@ osw_drv_nl80211_vif_added_cb(const struct nl_80211_vif *info,
         struct nl_80211 *nl = m->nl_80211;
         struct nl_cmd *cmd = nl_conn_alloc_cmd(conn);
         struct nl_msg *msg = nl_80211_alloc_disconnect(nl, ifindex);
+        nl_cmd_set_name(cmd, strfmta(LOG_PREFIX_VIF(phy_name, vif_name, "disconnect")));
         nl_cmd_task_init(&vif->task_nl_disconnect, cmd, msg);
     }
 
@@ -2080,6 +2450,7 @@ osw_drv_nl80211_vif_added_cb(const struct nl_80211_vif *info,
         struct nl_msg *msg = nl_80211_alloc_get_interface(nl, ifindex);
         nl_cmd_response_fn_t *resp_cb = osw_drv_nl80211_vif_state_get_intf_resp_cb;
         nl_cmd_set_response_fn(cmd, resp_cb, vif);
+        nl_cmd_set_name(cmd, strfmta(LOG_PREFIX_VIF(phy_name, vif_name, "get interface")));
         nl_cmd_task_init(&vif->task_nl_get_intf, cmd, msg);
     }
 
@@ -2091,6 +2462,7 @@ osw_drv_nl80211_vif_added_cb(const struct nl_80211_vif *info,
         struct nl_msg *msg = nl_80211_alloc_dump_scan(nl, ifindex);
         nl_cmd_response_fn_t *resp_cb = osw_drv_nl80211_vif_state_dump_scan_resp_cb;
         nl_cmd_set_response_fn(cmd, resp_cb, vif);
+        nl_cmd_set_name(cmd, strfmta(LOG_PREFIX_VIF(phy_name, vif_name, "scan: vif")));
         nl_cmd_task_init(&vif->task_nl_dump_scan, cmd, msg);
     }
 
@@ -2106,7 +2478,30 @@ osw_drv_nl80211_vif_added_cb(const struct nl_80211_vif *info,
         struct nl_msg *msg = nl_80211_alloc_dump_scan(nl, ifindex);
         nl_cmd_response_fn_t *resp_cb = osw_drv_nl80211_vif_state_dump_scan_stats_resp_cb;
         nl_cmd_set_response_fn(cmd, resp_cb, vif);
+        nl_cmd_set_name(cmd, strfmta(LOG_PREFIX_VIF(phy_name, vif_name, "scan: stats")));
         nl_cmd_task_init(&vif->task_nl_dump_scan_stats, cmd, msg);
+    }
+
+    if (drv_nl80211_phy->dump_survey_impl_type != OSW_DRV_NL80211_DUMP_SURVEY_IMPL_NONE) {
+        const uint32_t ifindex = info->ifindex;
+        struct nl_conn *conn = m->nl_conn;
+        struct nl_80211 *nl = m->nl_80211;
+        struct nl_cmd *cmd = nl_conn_alloc_cmd(conn);
+        struct nl_msg *msg = nl_80211_alloc_dump_survey(nl, ifindex);
+        nl_cmd_response_fn_t *resp_cb = osw_drv_nl80211_vif_state_dump_survey_stats_resp_cb;
+        nl_cmd_set_response_fn(cmd, resp_cb, vif);
+        nl_cmd_task_init(&vif->task_nl_dump_survey_stats, cmd, msg);
+    }
+
+    if (drv_nl80211_phy->dump_sta_impl_type != OSW_DRV_NL80211_DUMP_STA_IMPL_NONE) {
+        const uint32_t ifindex = info->ifindex;
+        struct nl_conn *conn = m->nl_conn;
+        struct nl_80211 *nl = m->nl_80211;
+        struct nl_cmd *cmd = nl_conn_alloc_cmd(conn);
+        struct nl_msg *msg = nl_80211_alloc_dump_sta(nl, ifindex);
+        nl_cmd_response_fn_t *resp_cb = osw_drv_nl80211_vif_state_dump_sta_stats_resp_cb;
+        nl_cmd_set_response_fn(cmd, resp_cb, vif);
+        nl_cmd_task_init(&vif->task_nl_dump_sta_stats, cmd, msg);
     }
 
     // FIXME: if phy_name is empty, it could lead to problems */
@@ -2124,6 +2519,10 @@ osw_drv_nl80211_vif_added_cb(const struct nl_80211_vif *info,
                                            &hostap_bss_ops,
                                            vif);
 
+    if (drv_nl80211_phy->csa_impl_type == OSW_DRV_NL80211_CSA_IMPL_HOSTAP)
+        osw_hostap_bss_fill_csa_by_hostap(vif->hostap_bss, true);
+    if (drv_nl80211_phy->phy_group_impl_type == OSW_DRV_NL80211_PHY_GROUP_IMPL_PHY)
+        osw_hostap_bss_fill_group_by_phy(vif->hostap_bss, true);
     struct osw_timer *timer = &vif->push_frame_tx_timer;
     osw_timer_init(timer, osw_drv_nl80211_push_frame_tx_timer_cb);
 
@@ -2163,6 +2562,8 @@ osw_drv_nl80211_vif_removed_cb(const struct nl_80211_vif *info,
     rq_kill(&vif->q_stats);
     rq_fini(&vif->q_stats);
     nl_cmd_task_fini(&vif->task_nl_dump_scan_stats);
+    nl_cmd_task_fini(&vif->task_nl_dump_survey_stats);
+    nl_cmd_task_fini(&vif->task_nl_dump_sta_stats);
 
     osw_drv_nl80211_push_frame_tx_abort(vif);
     osw_drv_vif_state_report_free(&vif->state);
@@ -2238,12 +2639,6 @@ osw_drv_nl80211_nl_ready_cb(struct nl_80211 *nl_80211,
     if (WARN_ON(already_registered)) return;
 
     osw_drv_register_ops(&m->drv_ops);
-
-    /* FIXME: remove this! */
-    if (getenv("USER_MODE_LINUX")) {
-        system("(sleep 3 ; iw wlan1_2 del >/dev/null 2>/dev/null) &");
-        system("(sleep 3 ; iw wlan0_2 del >/dev/null 2>/dev/null) &");
-    }
 }
 
 static void

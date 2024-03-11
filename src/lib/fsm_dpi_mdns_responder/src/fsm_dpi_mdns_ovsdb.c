@@ -36,7 +36,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #define MODULE_ID LOG_MODULE_ID_OVSDB
 
-ovsdb_table_t table_Service_Announcement;
+static ovsdb_table_t table_Service_Announcement;
 
 /**
  * @brief compare sessions

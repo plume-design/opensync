@@ -222,9 +222,11 @@ osw_btm_build_frame(const struct osw_btm_req_params *req_params,
     static const uint8_t dot11_category = 0x0A;
     static const uint8_t dot11_action_code = 0x07;
     static const uint8_t dot11_neigh_report_tag = 0x34;
+    static const uint8_t dot11_neigh_pref_tag = 0x03;
 
     static const uint16_t duration = 60;
-    static const uint8_t neigh_report_tag_len = 13;
+    static const uint8_t neigh_report_tag_len = 16;
+    static const uint8_t neigh_report_pref_len = 1;
 
     struct osw_drv_dot11_frame *frame = (struct osw_drv_dot11_frame*) frame_buf;
     size_t frame_len = 0;
@@ -236,6 +238,7 @@ osw_btm_build_frame(const struct osw_btm_req_params *req_params,
     frame_len += offsetof(struct osw_drv_dot11_frame, u.action.u.bss_tm_req);
     frame_len += C_FIELD_SZ(struct osw_drv_dot11_frame, u.action.u.bss_tm_req);
     frame_len += req_params->neigh_len * sizeof(struct osw_drv_dot11_neighbor_report);
+    frame_len += req_params->neigh_len * sizeof(struct osw_drv_dot11_neighbor_preference);
 
     if (frame_len > frame_buf_size) {
         LOGW("osw: btm: [sta: "OSW_HWADDR_FMT"] failed to build frame, to small buffer (len: %zu size: %zu)",
@@ -267,6 +270,7 @@ osw_btm_build_frame(const struct osw_btm_req_params *req_params,
     for (i = 0; i < req_params->neigh_len; i ++) {
         const struct osw_btm_req_neigh *neigh = &req_params->neigh[i];
         struct osw_drv_dot11_neighbor_report *entry = (struct osw_drv_dot11_neighbor_report*) neigh_list;
+        struct osw_drv_dot11_neighbor_preference *pref = (struct osw_drv_dot11_neighbor_preference*) entry->variable;
 
         entry->tag = dot11_neigh_report_tag;
         entry->tag_len = neigh_report_tag_len;
@@ -276,7 +280,12 @@ osw_btm_build_frame(const struct osw_btm_req_params *req_params,
         entry->channel = neigh->channel;
         entry->phy_type = neigh->phy_type;
 
+        pref->eid = dot11_neigh_pref_tag;
+        pref->len = neigh_report_pref_len;
+        pref->preference = neigh->btmpreference;
+
         neigh_list += sizeof(*entry);
+        neigh_list += sizeof(*pref);
     }
 
     return frame_len;

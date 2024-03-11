@@ -33,8 +33,82 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <osw_module.h>
 #include <module.h>
 
+/**
+ * DOC: MLO - Multi-Link Operation
+ *
+ * MLO is intended to be non-configurable per se.
+ * It is expected to be a system property that
+ * other components may want, or need, to be aware
+ * of to adjust their runtime behavior.
+ *
+ * For example steering, or firewall rules may
+ * need to be applied to different bridge ports
+ * when MLO is set up.
+ *
+ * The reason for MLO being non-configurable (in
+ * other words static) is the fact that initial
+ * vendor support seems to be lacking in the
+ * dynamic runtime reconfiguration of it. Moreover
+ * it is expected that some radio combinations may
+ * not be possible on various platforms. The
+ * lowest common denominator is to consider it as
+ * an integration property.
+ *
+ * If a platform wants to support MLO it needs to:
+ *
+ *  - have an MLO capable hardware and driver
+ *    stack,
+ *
+ *  - make sure driver provisioning is done on
+ *    boot in a way that pre-enables MLO by
+ *    whatever means necessary for that platform.
+ *
+ * OSW is already expecting driver provisioning to
+ * be done at boot time by the system integrator,
+ * eg. it does not try create/destroy WLAN netdevs
+ * at runtime, nor to play around with BSSID or
+ * MAC Address allocations.
+ *
+ * Once MLO support matures and the entire
+ * ecosystem around it becomes more flexible this
+ * may be revisited and extended.
+ */
+
 struct osw_drv;
 struct osw_drv_frame_tx_desc;
+
+/**
+ * MLO Affiliated netdev state
+ *
+ * Used inside affiliated netdev state structures
+ * to denote their relation to possible (local)
+ * MLDs.
+ */
+struct osw_drv_mld_state {
+    /**
+     * The MLD Address.
+     *
+     * Can be empty (00:00:00:00:00:00) to denote
+     * the MLD state is invalid / does not exist.
+     */
+    struct osw_hwaddr addr;
+
+    /**
+     * Possible MLD bond netdev name. Depending on
+     * driver implementation this can point to:
+     *
+     *   - a distinct, special netdev that handles
+     *     tx/rx data path,
+     *
+     *   - one of the underlying affiliated netdevs,
+     *
+     *   - be empty ("") to denote that any and
+     *     all of the underlying affiliated
+     *     netdevs can be used for tx/rx data
+     *     path.
+     */
+    struct osw_ifname if_name;
+};
 
 struct osw_drv_vif_config_ap {
     struct osw_ifname bridge_if_name;
@@ -161,6 +235,7 @@ struct osw_drv_vif_state_ap {
     struct osw_neigh_list neigh_list;
     struct osw_wps_cred_list wps_cred_list;
     struct osw_multi_ap multi_ap;
+    struct osw_drv_mld_state mld;
 };
 
 struct osw_drv_vif_state_ap_vlan {
@@ -179,6 +254,14 @@ struct osw_drv_vif_state_sta_link {
     struct osw_ifname bridge_if_name;
     struct osw_channel channel;
     struct osw_hwaddr bssid;
+
+    /**
+     * AP MLD Address if the link is tied to one.
+     * Otherwise this holds 00:00:00:00:00:00 for
+     * regular non-MLD links.
+     */
+    struct osw_hwaddr mld_addr;
+
     struct osw_ssid ssid;
     struct osw_psk psk;
     struct osw_wpa wpa;
@@ -195,6 +278,8 @@ struct osw_drv_vif_state_sta {
      * driver currently has set for roaming purposes.
      */
     struct osw_drv_vif_sta_network *network;
+
+    struct osw_drv_mld_state mld;
 };
 
 struct osw_drv_vif_state {
@@ -253,6 +338,7 @@ struct osw_drv_phy_state {
     bool enabled;
     int tx_chainmask;
     enum osw_radar_detect radar;
+    bool puncture_supported;
 };
 
 struct osw_drv_sta_state {
@@ -262,6 +348,13 @@ struct osw_drv_sta_state {
     bool pmf;
     enum osw_akm akm;
     enum osw_cipher pairwise_cipher;
+
+    /**
+     * STA MLD Address if the (affiliated) STA is
+     * part of an MLD. Otherwise this holds
+     * 00:00:00:00:00:00 for regular non-MLD STAs.
+     */
+    struct osw_hwaddr mld_addr;
 };
 
 struct osw_drv_conf {

@@ -39,7 +39,7 @@ nl_cmd_complete(struct nl_cmd *cmd,
 {
     if (nl_cmd_is_completed(cmd)) return;
 
-    LOGT("nl: cmd: %p: completing", cmd);
+    LOGT("nl: cmd: %p: %s: completing", cmd, cmd->name ?: "");
 
     if (cmd->in_flight != NULL) {
         if (cancelling) {
@@ -68,7 +68,7 @@ nl_cmd_receive(struct nl_cmd *cmd,
 {
     if (WARN_ON(cmd->in_flight == NULL)) return;
 
-    LOGT("nl: cmd: %p: response received", cmd);
+    LOGT("nl: cmd: %p: %s: response received", cmd, cmd->name ?: "");
 
     if (cmd->response_fn != NULL) {
         cmd->response_fn(cmd, msg, cmd->response_fn_priv);
@@ -79,13 +79,13 @@ void
 nl_cmd_failed(struct nl_cmd *cmd,
               struct nlmsgerr *err)
 {
-    LOGT("nl: cmd: %p: failed: error=%d", cmd, err->error);
+    LOGT("nl: cmd: %p: %s: failed: error=%d", cmd, cmd->name ?: "", err->error);
 
     if (cmd->failed_fn != NULL) {
         cmd->failed_fn(cmd, err, cmd->failed_fn_priv);
     }
     else {
-        LOGI("nl: cmd: failed: error=%d", err->error);
+        LOGI("nl: cmd: %p: %s: failed: error=%d", cmd, cmd->name ?: "", err->error);
     }
 
     cmd->failed = true;
@@ -120,6 +120,7 @@ nl_cmd_free(struct nl_cmd *cmd)
 
     nl_cmd_flush(cmd);
     nl_conn_free_cmd(cmd);
+    FREE(cmd->name);
     FREE(cmd);
 }
 
@@ -195,6 +196,14 @@ nl_cmd_set_failed_fn(struct nl_cmd *cmd,
 {
     cmd->failed_fn = fn;
     cmd->failed_fn_priv = priv;
+}
+
+void
+nl_cmd_set_name(struct nl_cmd *cmd,
+                const char *name)
+{
+    FREE(cmd->name);
+    cmd->name = name ? STRDUP(name) : NULL;
 }
 
 bool

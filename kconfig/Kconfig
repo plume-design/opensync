@@ -239,6 +239,10 @@ menu "Common"
                 source "kconfig/Kconfig.osp_led"
             endmenu
 
+            menu "OSP TM"
+                source "kconfig/Kconfig.osp_tm"
+            endmenu
+
             menu "Layer 2 Switch Control"
                 choice
                     prompt "L2Switch backend"
@@ -309,6 +313,7 @@ menu "Common"
 
     menu "Misc"
         orsource "../src/lib/hostap/kconfig/Kconfig"
+        orsource "../src/wpd/kconfig/Kconfig"
 
         config REMAP_LEGACY
             bool "Remap legacy install prefix path"

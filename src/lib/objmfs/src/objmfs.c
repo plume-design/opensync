@@ -33,6 +33,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "schema.h"
 #include "log.h"
 #include "os.h"
+#include "objmfs.h"
 
 #define FIELD_ARRAY_LEN(TYPE,FIELD) ARRAY_LEN(((TYPE*)0)->FIELD)
 #define CMD_LEN (C_MAXPATH_LEN * 2 + 128)
@@ -75,7 +76,7 @@ static bool objmfs_mkdir(char *path)
  *  Public API
  *****************************************************************************/
 
-bool objmfs_install(char *path, char *name, char *version)
+bool objmfs_install(char *path, char *name, char *version, install_cb_t install_cb)
 {
     FILE *fd;
     char cmd[CMD_LEN];
@@ -85,6 +86,7 @@ bool objmfs_install(char *path, char *name, char *version)
 
     char object_name[FIELD_ARRAY_LEN(struct schema_Object_Store_Config, name)];
     char object_version[FIELD_ARRAY_LEN(struct schema_Object_Store_Config, version)];
+    bool is_unique;
     size_t len = 0;
     ssize_t read;
     bool ret;
@@ -135,9 +137,12 @@ bool objmfs_install(char *path, char *name, char *version)
         goto cleanup;
     }
 
+    is_unique = false;
     fd = fopen(tpath, "r");
     while ((read = getline(&line, &len, fd)) != -1)
     {
+        char *pos;
+
         if (strstr(line, "name") != NULL)
         {
             sscanf(line, "name:%s", object_name);
@@ -146,6 +151,8 @@ bool objmfs_install(char *path, char *name, char *version)
         {
             sscanf(line, "version:%s", object_version);
         }
+        pos = strstr(line, "unique:yes\n");
+        is_unique = (pos != NULL);
     }
     fclose(fd);
 
@@ -162,6 +169,12 @@ bool objmfs_install(char *path, char *name, char *version)
         LOG(ERR, "objmfs: version mismatch; ovsdb version: '%s'; package version: '%s'", version, object_version);
         ret = false;
         goto cleanup;
+    }
+
+    // Call back the object manager before the full object extraction
+    if (!IS_NULL_PTR(install_cb))
+    {
+        install_cb(object_name, object_version, is_unique);
     }
 
     // Extract data directly to storage

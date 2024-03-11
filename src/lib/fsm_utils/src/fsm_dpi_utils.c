@@ -35,6 +35,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "fsm_dpi_utils.h"
 #include "sockaddr_storage.h"
 #include "osn_types.h"
+#include "kconfig.h"
 
 #define DEFAULT_ZONE (0)
 #define FSM_DPI_ZONE (1)
@@ -323,8 +324,7 @@ int fsm_set_dpi_mark(struct net_header_parser *net_hdr,
 {
     struct eth_header *eth_hdr;
     unsigned int type;
-    int ret0;
-    int ret1;
+    int ret;
 
     if (mark_policy ==  NULL) return -1;
     if (mark_policy->mark_policy & PKT_VERDICT_ONLY) return 0;
@@ -334,22 +334,15 @@ int fsm_set_dpi_mark(struct net_header_parser *net_hdr,
 
     if (type != ETH_P_IP && type != ETH_P_IPV6) return 0;
 
-    ret0 = nf_ct_set_flow_mark(net_hdr, mark_policy->flow_mark, 0);
-    /*
-     * Set the mark for the default zone 0 also.
-     * The reason behind it in router mode
-     * two flows are present one in zone=1 and
-     * another in zone=0 due to NAT functionality.
-     * Mark has to be applied to flows in both the zones.
-     * In Bridge mode zone=0 will not be present
-     * so netlink call  will throw error which
-     * now. Cloud will configure appropriate mode.
-     * TODO Either check Router/Bridge mode and make this additional call
-     * or dump_all_flows and apply mark for all mathching 5 tuple flows.
-     */
-    ret1 = nf_ct_set_flow_mark(net_hdr, mark_policy->flow_mark, FSM_DPI_ZONE);
-    /* -ve or 0 - failed in both zones or +ve atleast one zone passed */
-     return ((ret0 == 0) || (ret1 == 0)) ? 0 : -1;
+    if (kconfig_enabled(CONFIG_TARGET_USE_NATIVE_BRIDGE))
+    {
+        ret = nf_ct_set_flow_mark(net_hdr, mark_policy->flow_mark, 0);
+    }
+    else
+    {
+        ret = nf_ct_set_flow_mark(net_hdr, mark_policy->flow_mark, FSM_DPI_ZONE);
+    }
+    return ret;
 }
 
 int fsm_set_dpi_state_timeout(
@@ -519,7 +512,7 @@ fsm_nfq_mac_same(os_macaddr_t *lkp_mac, struct nfq_pkt_info *pkt_info)
 
 
 bool
-fsm_update_neigh_cache(void *ipaddr, os_macaddr_t *mac, int domain)
+fsm_update_neigh_cache(void *ipaddr, os_macaddr_t *mac, int domain, int source)
 {
     struct sockaddr_storage ss_ipaddr;
     char buf[INET6_ADDRSTRLEN] = {0};
@@ -536,8 +529,8 @@ fsm_update_neigh_cache(void *ipaddr, os_macaddr_t *mac, int domain)
     entry.ipaddr = &ss_ipaddr;
     entry.mac = mac;
     entry.cache_valid_ts = curr;
-    entry.source = FSM_NFQUEUE;
-    entry.ifname = "dpi_nfq";
+    entry.source = source;
+    entry.ifname = neigh_table_get_source(source);
     sockaddr_storage_populate(domain, ipaddr, entry.ipaddr);
 
     rc = neigh_table_add(&entry);
@@ -548,4 +541,3 @@ fsm_update_neigh_cache(void *ipaddr, os_macaddr_t *mac, int domain)
 
     return rc;
 }
-

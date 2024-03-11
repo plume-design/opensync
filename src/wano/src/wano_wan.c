@@ -262,6 +262,27 @@ void wano_wan_next(wano_wan_t *ww)
     ww->ww_next_priority = ww->ww_priority = new_priority;
 }
 
+/*
+ * Check if current config is the one with the lowest priority. If so,
+ * the next invocation of wano_wan_next() will result in rollover.
+ */
+bool wano_wan_is_last_config(const wano_wan_t *ww)
+{
+    struct wano_wan_config_cache *wcc;
+
+    if (ww == NULL) { return false; }
+
+    ds_tree_foreach(&g_wano_wan_config_cache, wcc)
+    {
+        if (wcc->wcc_wan_config.wc_priority < ww->ww_next_priority)
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
 bool wano_wan_config_get(wano_wan_t *ww, enum wano_wan_config_type type, struct wano_wan_config *wc_out)
 {
     struct wano_wan_config wc_key;
@@ -485,12 +506,24 @@ bool wano_wan_config_from_schema(struct wano_wan_config *wc, struct schema_WAN_C
     {
         const char *username;
         const char *password;
+        size_t uname_len = 0;
+        size_t pword_len = 0;
 
         username = wano_wan_config_other_config_get(schema, "username");
         password = wano_wan_config_other_config_get(schema, "password");
         if (username == NULL || password == NULL)
         {
             LOG(ERR, "wan_config: PPPoE config is missing `username` or `password` settings.");
+            return false;
+        }
+
+        uname_len = strlen(username);
+        pword_len = strlen(password);
+
+        /* Check that credentials' lengths are valid. */
+        if (uname_len < 1 || uname_len > 128 || pword_len < 1 || pword_len > 128)
+        {
+            LOG(ERR, "wan_config: Invalid PPPoE `username` or `password`.");
             return false;
         }
 
@@ -576,6 +609,23 @@ bool wano_wan_config_from_schema(struct wano_wan_config *wc, struct schema_WAN_C
             LOG(DEBUG, "wan_config: Missing or invalid `secondary_dns` setting: %s",
                     ssecondary_dns == NULL ? "(null)" : ssecondary_dns);
             secondary_dns = OSN_IP_ADDR_INIT;
+        }
+
+        /* Check if the gateway is reachable with the current settings */
+        int prefix = osn_ip_addr_to_prefix(&netmask);
+        osn_ip_addr_t ipnet = ipaddr;
+        osn_ip_addr_t gwnet = gateway;
+
+        ipnet.ia_prefix = prefix;
+        gwnet.ia_prefix = prefix;
+
+        ipnet = osn_ip_addr_subnet(&ipnet);
+        gwnet = osn_ip_addr_subnet(&gwnet);
+
+        if (osn_ip_addr_cmp(&ipnet, &gwnet) != 0)
+        {
+            LOG(ERR, "wan_config: Static IPv4 gateway/ipaddr subnet mismatch.");
+            return false;
         }
 
         wc->wc_type = WC_TYPE_STATIC_IPV4;

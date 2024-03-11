@@ -47,6 +47,7 @@ enum
     FSM_TAP_PCAP = 0x01,
     FSM_TAP_NFQ = 0x02,
     FSM_TAP_RAW = 0x04,
+    FSM_TAP_SOCKET = 0x08,
 };
 
 struct reg_client_session
@@ -70,6 +71,30 @@ struct fsm_dpi_client_tags
     char *client_plugin_name;
     ds_tree_node_t next;
 };
+
+typedef int (*plugin_init)(struct fsm_session *);
+
+struct plugin_init_table
+{
+    char *handler;
+    plugin_init init;
+};
+
+
+struct plugin_map_table
+{
+    struct fsm_session *session;
+    char *handler;
+    int ip_protocol;
+    uint16_t port;
+};
+
+struct fsm_session *
+fsm_map_plugin_find_session(struct net_header_parser *net_parser);
+
+void
+fsm_unmap_plugin(struct fsm_session *session);
+
 
 /**
  * @brief returns the tapping mode for a session
@@ -315,4 +340,31 @@ fsm_pcap_dispatcher_handler(void *context,
 void
 fsm_dpi_client_process_attributes(struct fsm_session *client_session,
                                   struct fsm_session *dpi_plugin);
+
+
+#if defined(CONFIG_FSM_NO_DSO)
+int http_plugin_init(struct fsm_session *session);
+int dns_plugin_init(struct fsm_session *session);
+int mdns_plugin_init(struct fsm_session *session);
+int upnp_plugin_init(struct fsm_session *session);
+int ndp_plugin_init(struct fsm_session *session);
+int gatekeeper_plugin_init(struct fsm_session *session);
+int walleye_dpi_plugin_init(struct fsm_session *session);
+int ipthreat_dpi_plugin_init(struct fsm_session *session);
+int fsm_dpi_client_init(struct fsm_session *session);
+int dpi_dns_plugin_init(struct fsm_session *session);
+int dpi_adt_upnp_plugin_init(struct fsm_session *session);
+int dpi_adt_plugin_init(struct fsm_session *session);
+int dpi_sni_plugin_init(struct fsm_session *session);
+int dpi_ndp_plugin_init(struct fsm_session *session);
+int dpi_mdns_responder_plugin_init(struct fsm_session *session);
+int fsm_wc_null_plugin_init(struct fsm_session *session);
+#endif
+
+void
+fsm_set_dpi_health_stats_cfg(struct fsm_session *session);
+
+void
+fsm_collect_pcap_stats(struct fsm_session *session);
+
 #endif /* FSM_INTERNAL_H_INCLUDED */

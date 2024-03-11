@@ -33,6 +33,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "log.h"
 #include "net_header_parse.h"
 #include "memutil.h"
+#include "os.h"
 
 /**
  * @brief parses the network header parts of a message
@@ -192,6 +193,7 @@ size_t net_header_parse_ipv4(struct net_header_parser *parser)
     ip_dlen = ntohs(hdr->tot_len) - ip_hlen;
 
     len = len - ip_hlen;
+
     /* check ip payload length against the captured packet size */
     if (len < ip_dlen) return 0;
 
@@ -638,6 +640,11 @@ net_header_tap2str(struct net_header_parser *parser)
             ret = "nfqueue";
             break;
         }
+        case PKT_SOURCE_SOCKET:
+        {
+            ret = "socket";
+            break;
+        }
         default:
         {
             ret = "invalid";
@@ -646,6 +653,32 @@ net_header_tap2str(struct net_header_parser *parser)
     }
     return ret;
 };
+
+static void
+net_header_src_info(struct net_header_parser *parser, char *info, size_t len)
+{
+    if (parser == NULL) return;
+
+    switch (parser->source)
+    {
+        case PKT_SOURCE_PCAP:
+        {
+            if (parser->tap_intf)
+            {
+                snprintf(info, len, "%s", parser->tap_intf);
+            }
+            break;
+        }
+        case PKT_SOURCE_NFQ:
+        {
+            snprintf(info, len, "queue num %d", parser->nfq_queue_num);
+        }
+        default:
+        {
+            break;
+        }
+    }
+}
 
 
 /**
@@ -666,20 +699,23 @@ net_header_fill_buf(char *buf, size_t len, struct net_header_parser *parser)
     char ip_src[INET6_ADDRSTRLEN];
     char ip_dst[INET6_ADDRSTRLEN];
     struct eth_header *eth;
+    char pkt_id_pres[256];
     uint8_t has_src_mac;
     uint8_t has_dst_mac;
     char flow_pres[256];
     char eth_pres[256];
     char tpt_pres[256];
+    char src_info[256];
     uint8_t eth_switch;
     uint16_t ethertype;
     bool has_ip;
 
     eth = net_header_get_eth(parser);
-    memset(eth_pres, 0, sizeof(eth_pres));
-    memset(ip_pres, 0, sizeof(ip_pres));
-    memset(tpt_pres, 0, sizeof(tpt_pres));
-    memset(flow_pres, 0, sizeof(flow_pres));
+    MEMZERO(eth_pres);
+    MEMZERO(ip_pres);
+    MEMZERO(tpt_pres);
+    MEMZERO(flow_pres);
+    MEMZERO(pkt_id_pres);
     memset(buf, 0, len);
 
     /* Prepare ethernet presentation */
@@ -776,6 +812,8 @@ net_header_fill_buf(char *buf, size_t len, struct net_header_parser *parser)
     }
 
     /* Prepare flow presentation */
+    MEMZERO(src_info);
+    net_header_src_info(parser, src_info, sizeof(src_info));
     acc = parser->acc;
     if (acc != NULL)
     {
@@ -783,17 +821,25 @@ net_header_fill_buf(char *buf, size_t len, struct net_header_parser *parser)
                  "originator: %s, tap : %s %s", dir2str(acc->direction),
                  orig2str(acc->originator),
                  net_header_tap2str(parser),
-                 parser->tap_intf ? parser->tap_intf : "");
+                 src_info);
     }
     else
     {
         snprintf(flow_pres, sizeof(flow_pres), ", tap : %s %s",
                  net_header_tap2str(parser),
-                 parser->tap_intf ? parser->tap_intf : "");
+                 src_info);
+    }
+
+    MEMZERO(pkt_id_pres);
+    if (parser->source == PKT_SOURCE_SOCKET)
+    {
+        snprintf(pkt_id_pres, sizeof(pkt_id_pres), ", packet id: %d",
+                 parser->packet_id);
     }
 
 out:
-    snprintf(buf, len, "%s%s%s%s", eth_pres, ip_pres, tpt_pres, flow_pres);
+    snprintf(buf, len, "%s%s%s%s%s", eth_pres, ip_pres, tpt_pres, flow_pres,
+             pkt_id_pres);
 
     return buf;
 }

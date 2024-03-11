@@ -29,19 +29,49 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "cell_info.h"
 
-#define C_AT_CMD_RESP 16
-#define C_AT_CMD_LONG_RESP 32
-#define C_AT_CMD_LONGEST_RESP 64
+#define C_CMD_RESP 16
+#define C_CMD_LONG_RESP 32
+#define C_CMD_LONGEST_RESP 64
 
 #define MAX_CELL_COUNT 6
+
+/**
+ * apn_proto_type: ipv4, ipv6, ipv4v6
+ */
+enum cell_apn_proto_type
+{
+    CELL_APN_PROTO_TYPE_UNDEFINED,
+    CELL_APN_PROTO_TYPE_IPV4,
+    CELL_APN_PROTO_TYPE_IPV6,
+    CELL_APN_PROTO_TYPE_IPV4V6,
+};
+
+/**
+ * apn_auth_proto: CHAP, PAP
+ */
+enum cell_apn_auth_proto
+{
+    CELL_APN_AUTH_PROTO_CHAP,
+    CELL_APN_AUTH_PROTO_PAP,
+};
+
+/**
+ * cell_mode: Auto, 4G, 5G
+ */
+enum cell_mode
+{
+    CELL_MODE_AUTO,
+    CELL_MODE_4G,
+    CELL_MODE_5G,
+};
 
 typedef struct osn_cell_modem_info_
 {
     bool modem_present;
-    char chip_vendor[C_AT_CMD_RESP];
-    char model[C_AT_CMD_RESP];
-    char full_model[C_AT_CMD_LONG_RESP];
-    char modem_fw_ver[C_AT_CMD_LONGEST_RESP];
+    char chip_vendor[C_CMD_RESP];
+    char model[C_CMD_RESP];
+    char full_model[C_CMD_LONG_RESP];
+    char modem_fw_ver[C_CMD_LONGEST_RESP];
     struct cell_common_header header;
     struct cell_net_info cell_net_info;
     struct cell_data_usage cell_data_usage;
@@ -69,5 +99,13 @@ int osn_cell_read_modem(void);
 void osn_cell_start_modem(int source);
 void osn_cell_stop_modem(void);
 bool osn_cell_modem_init(void);
+void osn_cell_modem_reset(void);
+int osn_cell_set_apn(char *apn);
+int osn_cell_set_apn_username(char *apn_username);
+int osn_cell_set_apn_password(char *apn_password);
+int osn_cell_set_apn_prototype(enum cell_apn_proto_type apn_proto_type);
+int osn_cell_set_apn_auth_proto(enum cell_apn_auth_proto apn_auth_proto);
+int osn_cell_set_bands_enabled(char *bands);
+int osn_cell_set_mode(enum cell_mode mode);
 
 #endif /* OSN_CELL_MODEM_H_INCLUDED */

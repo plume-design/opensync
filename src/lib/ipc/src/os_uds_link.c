@@ -38,6 +38,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "log.h"
 #include "ds.h"
 
+#include "util.h"
 #include "memutil.h"
 #include "os_uds_link.h"
 

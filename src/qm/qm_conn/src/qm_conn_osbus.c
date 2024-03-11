@@ -312,4 +312,8 @@ out:
     return result;
 }
 
+bool qm_conn_osbus_init(void)
+{
+    return osbus_init();
+}
 

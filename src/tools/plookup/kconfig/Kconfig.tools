@@ -1,0 +1,5 @@
+menuconfig OPENSYNC_NSLOOKUP
+    bool "OpenSync simple nslookup"
+    default y
+    help
+        Simple nslookup like utility designed to handle both ipv4 and ipv6 addresses and lookup queries.

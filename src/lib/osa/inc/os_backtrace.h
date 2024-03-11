@@ -60,7 +60,7 @@ extern void         sig_crash_report(int signum);
 #define backtrace_init os_backtrace_init
 
 // Path where crashdump is generated
-#define BTRACE_DUMP_PATH        "/var/log/lm/crash"
+#define BTRACE_DUMP_PATH        "/var/log/opensync/crash"
 
 #define CRASH_REPORTS_TMP_DIR    "/tmp/osync_crash_reports"
 

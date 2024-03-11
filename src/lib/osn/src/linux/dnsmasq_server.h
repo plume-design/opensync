@@ -55,7 +55,7 @@ struct dnsmasq_server
 
 bool dnsmasq_server_init(dnsmasq_server_t *self, const char *ifname);
 bool dnsmasq_server_fini(dnsmasq_server_t *self);
-void dnsmasq_server_apply(void);
+void dnsmasq_server_apply(dnsmasq_server_t *self, bool dnsmasq_server_init);
 
 void dnsmasq_server_enable(dnsmasq_server_t *self, bool enable);
 

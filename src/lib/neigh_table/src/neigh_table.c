@@ -457,8 +457,12 @@ neigh_table_add_to_cache(struct neighbour_entry *to_add)
     entry = neigh_table_cache_lookup(to_add);
     if (entry)
     {
+        LOGT("%s(): updating neighbor table cache from " PRI_os_macaddr_lower_t " to " PRI_os_macaddr_lower_t " ",
+             __func__, FMT_os_macaddr_pt(entry->mac), FMT_os_macaddr_pt(to_add->mac));
+
         /* Entry already present in the cache, refresh timestamp */
         entry->cache_valid_ts = to_add->cache_valid_ts;
+
         /* If MAC address is the same, return NULL to prevent the update of the OVSDB table */
         cmp = memcmp(entry->mac, to_add->mac, sizeof(os_macaddr_t));
         if (cmp == 0)
@@ -467,9 +471,6 @@ neigh_table_add_to_cache(struct neighbour_entry *to_add)
             return NULL;
         }
 
-        LOGT("%s(): updating neighbor table cache from " PRI_os_macaddr_lower_t
-             " to " PRI_os_macaddr_lower_t " ",
-             __func__, FMT_os_macaddr_pt(entry->mac), FMT_os_macaddr_pt(to_add->mac));
         memcpy(entry->mac, to_add->mac, sizeof(os_macaddr_t));
 
         return entry;
@@ -654,11 +655,6 @@ neigh_table_cache_lookup(struct neighbour_entry *key)
     LOGT("%s: found entry", __func__);
     print_neigh_entry(lookup);
 
-    if (key->mac != NULL)
-    {
-        memcpy(key->mac, lookup->mac, sizeof(os_macaddr_t));
-    }
-
     return lookup;
 }
 
@@ -693,7 +689,6 @@ neigh_table_lookup_af(int af_family, void *ip_tbl, os_macaddr_t *mac_out)
     MEMZERO(key);
     key.af_family = af_family;
     key.ip_tbl = ip_tbl;
-    key.mac = mac_out;
     key.ifname = NULL;
 
     len = ARRAY_SIZE(lookup_sources);
@@ -705,6 +700,7 @@ neigh_table_lookup_af(int af_family, void *ip_tbl, os_macaddr_t *mac_out)
         if (ret) break;
     }
 
+    if (ret) MEM_CPY(mac_out, lookup->mac, sizeof(os_macaddr_t));
     return ret;
 }
 

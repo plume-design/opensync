@@ -28,7 +28,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define OSP_TM_H_INCLUDED
 
 #include <stdbool.h>
-
+#include <stdint.h>
+#include "osp_temp.h"
 
 /// @file
 /// @brief Thermal Management API
@@ -45,30 +46,43 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 /// OpenSync Thermal Management API
 /// @{
 
-/**
- * Maximum number of temperature sources
- */
-#define OSP_TM_TEMP_SRC_MAX     (3)
-
-/**
- * Averaging window size
- *
- * Measure running average of temperature over this number of temperature
- * samples. This is a compromise between a low number of samples to react to
- * fast rising temperature, and a high number of samples to react to bad
- * temperature readings.
- */
-#define OSP_TM_TEMP_AVG_CNT     (3)
 
 /**
  * Thermal state table element
  */
 struct osp_tm_therm_state
 {
-    int temp_thrld[OSP_TM_TEMP_SRC_MAX];
-    unsigned int radio_txchainmask[OSP_TM_TEMP_SRC_MAX];
+    int temp_thrld[CONFIG_OSP_TM_TEMP_SRC_MAX];
+    unsigned int radio_txchainmask[CONFIG_OSP_TM_TEMP_SRC_MAX];
     unsigned int fan_rpm;
 };
+
+/**
+ * Gets thermal management states table
+ */
+const struct osp_tm_therm_state* osp_tm_get_therm_tbl(void);
+
+/**
+ * Gets number of thermal states in the thermal table
+ */
+int osp_tm_get_therm_states_cnt(void);
+
+/**
+ * Gets currently active thermal state which is set by Platform Manager in
+ * Node_State
+ */
+bool osp_tm_ovsdb_get_thermal_state(int *thermal_state);
+
+/**
+ * Gets desired fan RPM based on the current thermal state
+ */
+bool osp_tm_get_fan_rpm_from_thermal_state(const int state, int *fan_rpm);
+
+/**
+ * Gets led state from AWLAN_Node as an indication of a hardware error on
+ * the device
+ */
+bool osp_tm_get_led_state(int *led_state);
 
 /**
  * Initialize thermal management subsystem
@@ -95,16 +109,6 @@ void osp_tm_deinit(void *priv);
  * Return true if temperature source with index idx is currently enabled
  */
 bool osp_tm_is_temp_src_enabled(void *priv, int idx);
-
-/**
- * Return the name of the temperature source with index idx
- */
-const char* osp_tm_get_temp_src_name(void *priv, int idx);
-
-/**
- * Return the temperature of the requested temperature source
- */
-int osp_tm_get_temperature(void *priv, int idx, int *temp);
 
 /**
  * Return the current fan RPM

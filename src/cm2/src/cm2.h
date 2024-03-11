@@ -68,6 +68,7 @@ typedef enum
     CM2_STATE_RE_CONNECT,
     CM2_STATE_TRY_CONNECT,
     CM2_STATE_FAST_RECONNECT, // EXTENDER only
+    CM2_STATE_FAST_RECONNECT_WAIT, // EXTENDER only
     CM2_STATE_CONNECTED,
     CM2_STATE_INTERNET,
     CM2_STATE_QUIESCE_OVS,
@@ -260,11 +261,12 @@ typedef struct
     int                max_backoff;
     bool               fast_backoff;
     int                target_type;
-    bool               fast_reconnect;
+    bool               connected_at_least_once;
     bool               resolve_retry;
     cm2_retries_cnt    cnts;
     cm2_dev_type       dev_type;
     cm2_restore_method restore_method;
+    char               target[129];
 } cm2_state_t;
 
 extern cm2_state_t g_state;

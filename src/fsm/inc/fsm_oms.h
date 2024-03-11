@@ -29,13 +29,12 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "fsm.h"
 
-/**
- * @brief notifies a plugin of available objects
- *
- * @param session the session to notify
- */
-void
-fsm_oms_notify_session(struct fsm_session *session);
+struct fsm_object_node
+{
+    char *object;
+    struct fsm_session *session;
+    ds_tree_node_t obj_node;
+};
 
 
 /**
@@ -65,6 +64,29 @@ fsm_oms_get_highest_version(struct fsm_session *session, char *name,
  */
 struct fsm_object *
 fsm_oms_get_last_active_version(struct fsm_session *session, char *name);
+
+
+/**
+ * @brief return the "best" version of an object
+ *
+ * @param session the querying fsm session
+ * @param object the object name
+ * @return the object with the active version
+ *
+ * First try to get the last downloaded version,
+ * then the last active version, finally the FW integrated version.
+ * The caller is responsible for freeing the returned object.
+ */
+struct fsm_object *
+fsm_oms_get_best_version(struct fsm_session *session, char *name);
+
+
+void
+fsm_register_object_to_monitor(struct fsm_session *session, char *name);
+
+void
+fsm_unregister_object_to_monitor(struct fsm_session *session, char *name);
+
 
 /**
  * @brief initializes the oms library

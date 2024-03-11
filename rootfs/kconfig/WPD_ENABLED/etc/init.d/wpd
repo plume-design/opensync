@@ -1,0 +1,80 @@
+#!/bin/sh
+# {# jinja-parse #}
+INSTALL_PREFIX={{INSTALL_PREFIX}}
+
+START=11
+STOP=99
+
+WPD=${INSTALL_PREFIX}/bin/wpd
+
+. /lib/opensync_functions.sh
+
+check_openwrt_version()
+{
+    if type ubus 2>&1 >/dev/null; then
+        owrt_ver=$(ubus call system board | grep description | grep -o '[0-9]\+'| head -n 1)
+        # call procd to stop watchdog pinging
+        if [ $owrt_ver -ge 18 ]; then
+            ubus call system watchdog '{"stop": true, "magicclose": true}'
+        else
+            ubus call system watchdog '{"stop": true}'
+        fi
+    # else do nothing as it is not open wrt
+    fi
+}
+
+start()
+{
+    CMD="${WPD} --daemon -x cm"
+    if type opensync_factory_mode > /dev/null 2>&1; then
+        if opensync_factory_mode ; then
+            CMD="${WPD} --daemon --set-auto"
+        fi
+    fi
+    check_openwrt_version
+    ${CMD}
+}
+
+stop()
+{
+    service_stop ${WPD} --kill
+    # restore watchdog when stopping wpd if ubus exists
+    command -v ubus >/dev/null 2>&1 && ubus call system watchdog '{"stop": false}'
+}
+
+reload()
+{
+    stop
+    start
+}
+
+##########################
+# emulating
+#!/bin/sh /etc/rc.common
+# for compatibility with OpenWrt
+##########################
+if [ -e $IPKG_INSTROOT/etc/rc.common ]; then
+    if [ -z "${RECURSIVE_PREVENTION}" ]; then
+        RECURSIVE_PREVENTION=YES /bin/sh $IPKG_INSTROOT/etc/rc.common $0 $1
+    fi
+else
+    case "$1" in
+        start)
+            start
+            ;;
+
+        stop)
+            stop
+            ;;
+
+        reload)
+            reload
+            ;;
+
+        *)
+            echo "$0: unrecognized option $1"
+            exit 1
+            ;;
+    esac
+fi
+

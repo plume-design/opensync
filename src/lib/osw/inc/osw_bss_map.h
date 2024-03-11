@@ -27,6 +27,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifndef OSW_BSS_MAP_H
 #define OSW_BSS_MAP_H
 
+#include <osw_types.h>
+
 struct osw_bss_entry;
 struct osw_bss_provider;
 struct osw_bss_map_observer;

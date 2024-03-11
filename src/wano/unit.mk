@@ -40,11 +40,15 @@ UNIT_SRC += src/wano_ovs_port.c
 UNIT_SRC += src/wano_plugin.c
 UNIT_SRC += src/wano_ppline.c
 UNIT_SRC += src/wano_wan.c
+UNIT_SRC += src/wano_awlan_node.c
 
 UNIT_CFLAGS += -I$(UNIT_PATH)/src
 UNIT_CFLAGS += -I$(UNIT_PATH)/inc
 
+UNIT_EXPORT_LDFLAGS += -lcares
+UNIT_LDFLAGS += -lcares
 UNIT_EXTERN_CFLAGS += -I$(UNIT_PATH)/inc
+UNIT_EXPORT_CFLAGS += $(UNIT_CFLAGS)
 
 UNIT_DEPS += src/lib/common
 UNIT_DEPS += src/lib/json_util

@@ -1039,6 +1039,47 @@ callback_Lte_State(ovsdb_update_monitor_t *mon,
     }
 }
 
+static void
+ltem_check_lte_mtu(void)
+{
+    struct schema_Wifi_Inet_Config wifi_conf;
+    char *filter[] = { "+",
+                       SCHEMA_COLUMN(Wifi_Inet_Config, mtu),
+                       NULL };
+    int res;
+
+    res = ovsdb_table_select_one(&table_Wifi_Inet_Config,
+                                 SCHEMA_COLUMN(Wifi_Inet_Config, if_type), LTE_TYPE_NAME, &wifi_conf);
+    if (!res)
+    {
+        LOGI("%s: %s not found in Wifi_Inet_Config", __func__, LTE_TYPE_NAME);
+        return;
+    }
+
+    /*
+     * The mtu_exists is false when the MTU has not been configured.
+     * This will allow the cloud to set the MTU in the future.
+     */
+    LOGI("%s: mtu[%d], mtu_present[%d], mtu_exists[%d]", __func__, wifi_conf.mtu, wifi_conf.mtu_present, wifi_conf.mtu_exists);
+    if (!wifi_conf.mtu_exists)
+    {
+        wifi_conf._partial_update = true;
+        SCHEMA_SET_INT(wifi_conf.mtu, DEFAULT_LTE_MTU);
+        res = ovsdb_table_update_where_f(&table_Wifi_Inet_Config,
+                                         ovsdb_where_simple(SCHEMA_COLUMN(Wifi_Inet_Config, if_type), LTE_TYPE_NAME),
+                                         &wifi_conf, filter);
+        if (!res)
+        {
+            LOGI("%s: update mtu failed, mtu[%d]", __func__, wifi_conf.mtu);
+        }
+        else
+        {
+            LOGI("%s: res[%d], mtu[%d]", __func__, res, wifi_conf.mtu);
+        }
+
+    }
+}
+
 void
 ltem_handle_nm_update_wwan0(struct schema_Wifi_Inet_State *old_inet_state,
                             struct schema_Wifi_Inet_State *inet_state)
@@ -1104,6 +1145,34 @@ callback_Wifi_Inet_State(ovsdb_update_monitor_t *mon,
             {
                 LOGI("%s: OVSDB_UPDATE_MODIFY", __func__);
                 ltem_handle_nm_update_wwan0(old_inet_state, inet_state);
+            }
+
+            break;
+    }
+}
+
+void
+callback_Wifi_Inet_Config(ovsdb_update_monitor_t *mon,
+                         struct schema_Wifi_Inet_Config *old_inet_config,
+                         struct schema_Wifi_Inet_Config *inet_config)
+{
+    int rc;
+
+    switch (mon->mon_type) {
+        default:
+        case OVSDB_UPDATE_ERROR:
+                LOGW("%s: mon upd error: %d", __func__, mon->mon_type);
+            return;
+
+        case OVSDB_UPDATE_DEL:
+            break;
+
+        case OVSDB_UPDATE_NEW:
+        case OVSDB_UPDATE_MODIFY:
+            rc = strncmp(inet_config->if_type, LTE_TYPE_NAME, strlen(inet_config->if_type));
+            if (!rc)
+            {
+                ltem_check_lte_mtu();
             }
 
             break;
@@ -1582,6 +1651,7 @@ ltem_ovsdb_init(void)
     OVSDB_TABLE_MONITOR(Lte_Config, false);
     OVSDB_TABLE_MONITOR(Lte_State, false);
     OVSDB_TABLE_MONITOR(Wifi_Inet_State, false);
+    OVSDB_TABLE_MONITOR(Wifi_Inet_Config, false);
     OVSDB_TABLE_MONITOR(Connection_Manager_Uplink, false);
     OVSDB_TABLE_MONITOR(Wifi_Route_Config, false);
     OVSDB_TABLE_MONITOR_F(AWLAN_Node, filter);
@@ -1589,4 +1659,3 @@ ltem_ovsdb_init(void)
 
     return 0;
 }
-

@@ -61,6 +61,8 @@ struct osw_hostap_conf_ap_config {
     OSW_HOSTAP_CONF_DECL_BOOL(ap_isolate);
     OSW_HOSTAP_CONF_DECL_BOOL(mcast_to_ucast);
     OSW_HOSTAP_CONF_DECL_BOOL(send_probe_response);
+    OSW_HOSTAP_CONF_DECL_BOOL(noscan);
+    OSW_HOSTAP_CONF_DECL_BOOL(use_driver_iface_addr);
     /* IEEE 802.11n related configuration */
     OSW_HOSTAP_CONF_DECL_BOOL(ieee80211n);
     OSW_HOSTAP_CONF_DECL_STR (ht_capab, 256);
@@ -74,9 +76,13 @@ struct osw_hostap_conf_ap_config {
     OSW_HOSTAP_CONF_DECL_INT (vht_oper_centr_freq_seg1_idx);
     /* IEEE 802.11ax related configuration */
     OSW_HOSTAP_CONF_DECL_BOOL(ieee80211ax);
-    OSW_HOSTAP_CONF_DECL_INT (he_oper_chanwidth);
+    OSW_HOSTAP_CONF_DECL_INT (he_oper_chwidth);
     OSW_HOSTAP_CONF_DECL_INT (he_oper_centr_freq_seg0_idx);
     OSW_HOSTAP_CONF_DECL_INT (he_oper_centr_freq_seg1_idx);
+    /* IEEE 802.11ax related configuration */
+    OSW_HOSTAP_CONF_DECL_BOOL(ieee80211be);
+    OSW_HOSTAP_CONF_DECL_INT (eht_oper_chwidth);
+    OSW_HOSTAP_CONF_DECL_INT (eht_oper_centr_freq_seg0_idx);
     /* IEEE 802.1X-2004 related configuration */
     OSW_HOSTAP_CONF_DECL_BOOL(ieee8021x);
     OSW_HOSTAP_CONF_DECL_INT (eapol_version);
@@ -115,6 +121,7 @@ struct osw_hostap_conf_ap_config {
     char psks_buf[4096];
     char acl_buf [4096];
     char rxkh_buf[4096];
+    char extra_buf[1024];
 };
 
 void

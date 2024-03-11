@@ -42,6 +42,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdlib.h>
 
 #include <ev.h>
+#include <ares.h>
 
 #include "evx.h"
 #include "os_time.h"
@@ -50,6 +51,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ovsdb_sync.h"
 #include "ovsdb_table.h"
 #include "memutil.h"
+#include "util.h"
 
 #include "wano.h"
 #include "wano_internal.h"
@@ -59,6 +61,12 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define WANO_PPLINE_RETRY_MAX       5       /* Maximum values of retries (for calculations) */
 #define WANO_PPLINE_RESTART_MIN     1.0     /* Pipeline restart debounce timer */
 #define WANO_PPLINE_RESTART_MAX     5.0     /* Pipeline restart maximum debounce timeout */
+
+#define WANO_DNS_PROBE_TIMEOUT_SEC 5
+
+#ifndef INET6_ADDRSTRLEN
+#define INET6_ADDRSTRLEN 46
+#endif
 
 /*
  * Structure describing a single plug-in running on the pipeline
@@ -92,7 +100,9 @@ static void wano_ppline_start_queues(wano_ppline_t *self);
 static void wano_ppline_stop_queues(wano_ppline_t *self);
 static void wano_ppline_schedule(wano_ppline_t *self);
 static bool wano_ppline_runq_add(wano_ppline_t *self, struct wano_ppline_plugin *wpp);
-static bool wano_ppline_runq_start(wano_ppline_t *self);
+static bool wano_ppline_runq_start_flagged(wano_ppline_t *self, bool run_dhcp);
+inline static bool wano_ppline_runq_start(wano_ppline_t *self);
+inline static bool wano_ppline_runq_start_dhcp(wano_ppline_t *self);
 static void __wano_ppline_runq_stop(wano_ppline_t *self, struct wano_ppline_plugin *wpp);
 static void wano_ppline_runq_del(wano_ppline_t *self, struct wano_ppline_plugin *wpp);
 static void wano_ppline_runq_flush(wano_ppline_t *self, bool flush_detached);
@@ -418,18 +428,31 @@ bool wano_ppline_runq_add(wano_ppline_t *self, struct wano_ppline_plugin *wpp)
 }
 
 /*
- * Scan the run-queue and start all plug-ins that are not yet started
+ * Scan the run-queue and start all plug-ins that are not yet started.
+ * Boolean run_dhcp determines whether either DHCP or non-DHCP are run, exclusively.
  */
-bool wano_ppline_runq_start(wano_ppline_t *self)
+static bool wano_ppline_runq_start_flagged(wano_ppline_t *self, bool run_dhcp)
 {
     struct wano_ppline_plugin *wpp;
 
     bool retval = false;
+    bool is_dhcp = false;
 
     ds_dlist_foreach(&self->wpl_plugin_runq, wpp)
     {
         /* Do not count detached plug-in towards pipeline exhaustion */
         if (wpp->wpp_detached)
+        {
+            continue;
+        }
+
+        is_dhcp = (
+          (strncmp("dhcpv4", wpp->wpp_plugin->wanp_name, sizeof("dhcpv4")) == 0) ||
+          (strncmp("dhcpv6", wpp->wpp_plugin->wanp_name, sizeof("dhcpv6")) == 0)
+        );
+
+        /* Are we running DHCP or non-DHCP plugins? */
+        if (is_dhcp != run_dhcp)
         {
             continue;
         }
@@ -456,6 +479,22 @@ bool wano_ppline_runq_start(wano_ppline_t *self)
     }
 
     return retval;
+}
+
+/*
+ * Scan the run-queue and start all *NON-DHCP* plug-ins that are not yet started
+ */
+inline bool wano_ppline_runq_start(wano_ppline_t *self)
+{
+    return wano_ppline_runq_start_flagged(self, false);
+}
+
+/*
+ * Scan the run-queue and start all *DHCP* plug-ins that are not yet started
+ */
+inline bool wano_ppline_runq_start_dhcp(wano_ppline_t *self)
+{
+    return wano_ppline_runq_start_flagged(self, true);
 }
 
 /*
@@ -566,6 +605,185 @@ void wano_ppline_plugin_status_fn(wano_plugin_handle_t *ph, struct wano_plugin_s
     ev_async_send(EV_DEFAULT, &wpp->wpp_status_async);
 }
 
+static const char* wano_wan_probe_get_dns_server(void)
+{
+    static char server[INET6_ADDRSTRLEN] = {0};
+    static bool init = false;
+
+    if (init == true)
+    {
+        goto out;
+    }
+
+    char *buf = strexa("grep", "-e", "nameserver", CONFIG_WANO_DNS_PROBE_RESOLV_CONF_PATH, "-s");
+
+    if (buf == NULL)
+    {
+        LOGD("wano: wan probe: strexa returned null, returning empty buffer");
+        goto done;
+    }
+
+    for (;;)
+    {
+        if (*buf == '\0')
+        {
+            goto done;
+        }
+
+        if (*buf == ' ')
+        {
+            break;
+        }
+
+        buf++;
+    }
+
+    while (*buf == ' ')
+    {
+        buf++;
+    }
+
+    STRSCPY(server, buf);
+
+done:
+    init = true;
+out:
+    return server;
+}
+
+static void wano_wan_probe_success_cb(void *arg, int status, int timeouts, struct hostent *hostent)
+{
+    switch (status) {
+        case ARES_SUCCESS:
+            LOGD("wano: dns probe: ares callback success");
+            break;
+        case ARES_ENOTIMP:
+            LOGD("wano: dns probe: ares family type not supported");
+            break;
+        case ARES_EBADNAME:
+            LOGD("wano: dns probe: invalid hostname");
+            break;
+        case ARES_ENODATA:
+            LOGD("wano: dns probe: no data returned");
+            break;
+        case ARES_ENOTFOUND:
+            LOGD("wano: dns probe: name could not be resolved");
+            *(bool *)arg = false;
+            break;
+        case ARES_ENOMEM:
+            LOGD("wano: dns probe: ran out of memory");
+            break;
+        case ARES_ECANCELLED:
+            LOGD("wano: dns probe: query was cancelled");
+            break;
+        case ARES_EDESTRUCTION:
+            LOGD("wano: dns probe: channel is being destroyed before query could complete");
+            break;
+        default:
+            LOGD("wano: dns probe: unknown status returned: %d", status);
+            break;
+    }
+}
+
+static bool wano_wan_probe_success(const char* if_name)
+{
+    ares_channel channel;
+    struct ares_options options;
+    struct timeval tv;
+    fd_set read_fds, write_fds;
+    int optmask;
+    int nfds;
+    const char *server = wano_wan_probe_get_dns_server();
+
+    bool cb_success = true;
+    const char *dns_target = wano_awlan_redirector_addr();
+
+    if (dns_target == NULL || *dns_target == '\0')
+    {
+        LOGI("wano: dns_target is null or empty, skipping probe");
+        return true;
+    }
+
+    /* Do DNS lookup, instead of reading hosts file -- guard against false positives due to cached DNS */
+    options.lookups = "b";
+    optmask = ARES_OPT_LOOKUPS;
+
+    if (ares_init_options(&channel, &options, optmask) != ARES_SUCCESS)
+    {
+        goto exit;
+    }
+
+    /* Bind ares sockets to the provisioned interface */
+    ares_set_local_dev(channel, if_name);
+
+    if (server[0] != '\0')
+    {
+        if (ares_set_servers_csv(channel, server) != ARES_SUCCESS)
+        {
+            LOGD("wano: dns probe: failed to set DNS server to %s", server);
+        }
+        else
+        {
+            LOGD("wano: dns probe: set DNS server to %s", server);
+        }
+    }
+
+    /* Callback will write the result of the DNS lookup to cb_success */
+    ares_gethostbyname(channel, dns_target, AF_INET, wano_wan_probe_success_cb, (void*) &cb_success);
+
+    FD_ZERO(&read_fds);
+    FD_ZERO(&write_fds);
+
+    nfds = ares_fds(channel, &read_fds, &write_fds);
+
+    if (nfds == 0)
+    {
+        goto clean_ares_chan;
+    }
+
+    /*
+     * Wait for the maximum of WANO_DNS_PROBE_TIMEOUT_SEC for the address
+     * lookup to complete. If select returns a non-negative value call
+     * ares_process which will invoke wano_wan_probe_success_cb that can
+     * report failure in cb_success.
+     */
+
+    tv.tv_sec = WANO_DNS_PROBE_TIMEOUT_SEC;
+    tv.tv_usec = 0;
+
+    int sel = select(nfds, &read_fds, &write_fds, NULL, &tv);
+
+    /* No retries on errors/signal interrupts, tv is no longer valid */
+    if (sel < 0)
+    {
+        LOGD("wano: dns probe: select returned negative value, skipping probe");
+    }
+    else if (sel > 0)
+    {
+        ares_process(channel, &read_fds, &write_fds);
+    }
+    else
+    {
+        LOGD("wano: dns probe: select timed-out, failing probe");
+        cb_success = false;
+    }
+
+clean_ares_chan:
+    ares_destroy(channel);
+exit:
+    return cb_success;
+}
+
+inline bool wano_ppline_wan_probe_setup(void)
+{
+    return (ares_library_init(ARES_LIB_INIT_ALL) == ARES_SUCCESS);
+}
+
+inline void wano_ppline_wan_probe_teardown(void)
+{
+    ares_library_cleanup();
+}
+
 /*
  * Process plug-in events asynchronously. Note that if a plug-in sends several
  * events in a rapid succession, they may get compressed into a single event.
@@ -586,13 +804,25 @@ void wano_ppline_status_async_fn(struct ev_loop *loop, ev_async *ev, int revent)
     {
         case WANP_OK:
         {
-            char *update_ifname = self->wpl_ifname;
-
-            LOG(NOTICE, "wano: %s: WAN Plug-in success: %s",
-                    self->wpl_ifname, wano_plugin_name(wpp->wpp_handle));
+            char *update_ifname = (wpp->wpp_status.ws_ifname[0] != '\0') ?
+                wpp->wpp_status.ws_ifname : self->wpl_ifname;
 
             /* Stop the timeout timer */
             ev_timer_stop(EV_DEFAULT, &wpp->wpp_timeout);
+
+            if (wano_wan_probe_success(update_ifname) != true)
+            {
+                LOG(WARN, "wano: %s: WAN Plug-in fail: %s, wan probe failed",
+                    update_ifname, wano_plugin_name(wpp->wpp_handle));
+
+                /* Trigger plugin timeout */
+                ev_timer_set(&wpp->wpp_timeout, 0., 0.);
+                ev_timer_start(EV_DEFAULT, &wpp->wpp_timeout);
+                break;
+            }
+
+            LOG(NOTICE, "wano: %s: WAN Plug-in success: %s",
+                    self->wpl_ifname, wano_plugin_name(wpp->wpp_handle));
 
             if (wpp->wpp_status.ws_ifname[0] != '\0')
             {
@@ -602,8 +832,6 @@ void wano_ppline_status_async_fn(struct ev_loop *loop, ev_async *ev, int revent)
                     LOG(WARN, "wano: %s: Error deleting .has_L3 from Connection_Manager_Uplink).",
                             self->wpl_ifname);
                 }
-
-                update_ifname = wpp->wpp_status.ws_ifname;
             }
 
             if (wpp->wpp_status.ws_iftype[0] != '\0')
@@ -1166,6 +1394,12 @@ enum wano_ppline_state wano_ppline_state_PLUGIN_RUN(
     {
         case wano_ppline_do_STATE_INIT:
             if (wano_ppline_runq_start(self))
+            {
+                break;
+            }
+
+            /* Only upon exhaustion of all plugins for all configs, try with DHCP */
+            if (wano_wan_is_last_config(self->wpl_wan) && wano_ppline_runq_start_dhcp(self))
             {
                 break;
             }

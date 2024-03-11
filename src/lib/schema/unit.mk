@@ -44,6 +44,7 @@ UNIT_CLEAN += $(UNIT_BUILD)/schema_pre.h
 # Flags for building this unit
 UNIT_CFLAGS := -I$(UNIT_BUILD) -I$(UNIT_PATH)/inc
 UNIT_CFLAGS += -Isrc/lib/common/inc/
+UNIT_CFLAGS += -Isrc/lib/const/inc/
 UNIT_CFLAGS += -Isrc/lib/log/inc/
 UNIT_CFLAGS += -Isrc/lib/osa/inc/
 

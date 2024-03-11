@@ -137,18 +137,19 @@ typedef struct cm2_state_info
 
 cm2_state_info_t cm2_state_info[CM2_STATE_NUM] =
 {
-    [CM2_STATE_INIT]             = { "INIT",                CM2_NO_TIMEOUT },
-    [CM2_STATE_LINK_SEL]         = { "LINK_SEL",            CM2_ONBOARD_LINK_SEL_TIMEOUT },
-    [CM2_STATE_WAN_IP]           = { "WAN_IP",              CM2_DEFAULT_TIMEOUT },
-    [CM2_STATE_NTP_CHECK]        = { "NTP_CHECK",           CM2_DEFAULT_TIMEOUT },
-    [CM2_STATE_OVS_INIT]         = { "OVS_INIT",            CM2_NO_TIMEOUT },
-    [CM2_STATE_TRY_RESOLVE]      = { "TRY_RESOLVE",         CM2_RESOLVE_TIMEOUT },
-    [CM2_STATE_RE_CONNECT]       = { "RE_CONNECT",          CM2_CONNECT_TIMEOUT },
-    [CM2_STATE_TRY_CONNECT]      = { "TRY_CONNECT",         CM2_CONNECT_TIMEOUT },
-    [CM2_STATE_FAST_RECONNECT]   = { "FAST_RECONNECT",      CM2_FAST_RECONNECT_TIMEOUT },
-    [CM2_STATE_CONNECTED]        = { "CONNECTED",           CM2_NO_TIMEOUT },
-    [CM2_STATE_QUIESCE_OVS]      = { "QUIESCE_OVS",         CM2_DEFAULT_TIMEOUT },
-    [CM2_STATE_INTERNET]         = { "INTERNET",            CM2_DEFAULT_TIMEOUT },
+    [CM2_STATE_INIT]                = { "INIT",                CM2_NO_TIMEOUT },
+    [CM2_STATE_LINK_SEL]            = { "LINK_SEL",            CM2_ONBOARD_LINK_SEL_TIMEOUT },
+    [CM2_STATE_WAN_IP]              = { "WAN_IP",              CM2_DEFAULT_TIMEOUT },
+    [CM2_STATE_NTP_CHECK]           = { "NTP_CHECK",           CM2_DEFAULT_TIMEOUT },
+    [CM2_STATE_OVS_INIT]            = { "OVS_INIT",            CM2_NO_TIMEOUT },
+    [CM2_STATE_TRY_RESOLVE]         = { "TRY_RESOLVE",         CM2_RESOLVE_TIMEOUT },
+    [CM2_STATE_RE_CONNECT]          = { "RE_CONNECT",          CM2_CONNECT_TIMEOUT },
+    [CM2_STATE_TRY_CONNECT]         = { "TRY_CONNECT",         CM2_CONNECT_TIMEOUT },
+    [CM2_STATE_FAST_RECONNECT]      = { "FAST_RECONNECT",      CM2_FAST_RECONNECT_TIMEOUT },
+    [CM2_STATE_FAST_RECONNECT_WAIT] = { "FAST_RECONNECT_WAIT", CM2_FAST_RECONNECT_TIMEOUT },
+    [CM2_STATE_CONNECTED]           = { "CONNECTED",           CM2_NO_TIMEOUT },
+    [CM2_STATE_QUIESCE_OVS]         = { "QUIESCE_OVS",         CM2_DEFAULT_TIMEOUT },
+    [CM2_STATE_INTERNET]            = { "INTERNET",            CM2_DEFAULT_TIMEOUT },
 };
 
 // reason for update
@@ -583,6 +584,24 @@ static void cm2_restore_bridge_config()
     cm2_ovsdb_connection_update_bridge_state(g_state.old_link.if_name, g_state.old_link.bridge_name);
 }
 
+static void
+cm2_ovs_connect(void)
+{
+    if (g_state.connected_at_least_once == false)
+    {
+        cm2_set_state(true, CM2_STATE_OVS_INIT);
+    }
+    else if (g_state.connected)
+    {
+        g_state.fast_backoff = true;
+        cm2_set_state(true, CM2_STATE_FAST_RECONNECT);
+    }
+    else
+    {
+        cm2_set_state(true, CM2_STATE_OVS_INIT);
+    }
+}
+
 void cm2_update_state(cm2_reason_e reason)
 {
     target_connectivity_check_option_t opts;
@@ -652,9 +671,6 @@ start:
             if (g_state.state != CM2_STATE_WAN_IP &&
                 !link_sel) {
                 LOGI("set async OVS INIT state");
-                cm2_ovsdb_set_Manager_target("");
-                g_state.connected = false;
-                g_state.fast_reconnect = false;
                 cm2_set_state(true, CM2_STATE_WAN_IP);
             }
             break;
@@ -701,6 +717,7 @@ start:
                 g_state.cnts.ovs_resolve = 0;
                 cm2_set_state(true, CM2_STATE_LINK_SEL);
             }
+            g_state.connected_at_least_once = false;
             g_state.cnts.ovs_resolve_fail = 0;
             break;
 
@@ -709,12 +726,6 @@ start:
             {
                 LOGI("Waiting for finish link selection");
                 g_state.run_stability = false;
-                g_state.fast_reconnect = g_state.connected ? true : false;
-                if (g_state.fast_reconnect)
-                    g_state.fast_backoff = true;
-                else
-                    cm2_ovsdb_set_Manager_target("");
-                g_state.connected = false;
                 g_state.ble_status = 0;
                 cm2_ovsdb_connection_update_ble_phy_link();
             }
@@ -759,10 +770,6 @@ start:
             {
                 cm2_trigger_restart_managers();
             }
-            else if (!g_state.fast_reconnect)
-            {
-                cm2_ovsdb_set_Manager_target("");
-            }
             break;
 
         case CM2_STATE_NTP_CHECK: // EXTENDER only
@@ -775,7 +782,7 @@ start:
             if (cm2_connection_req_stability_check(g_state.link.if_name, g_state.link.if_type, uplink, NTP_CHECK, false))
             {
                 cm2_set_ble_state(true, BLE_ONBOARDING_STATUS_INTERNET_OK);
-                cm2_set_state(true, g_state.fast_reconnect ? CM2_STATE_FAST_RECONNECT : CM2_STATE_OVS_INIT);
+                cm2_ovs_connect();
             }
             else if (cm2_timeout(false))
             {
@@ -790,7 +797,17 @@ start:
                 break;
             }
 
-            g_state.connected = false;
+            if (strlen(g_state.target) > 0)
+            {
+                cm2_ovsdb_set_Manager_target("");
+                break;
+            }
+
+            if (g_state.connected)
+            {
+                break;
+            }
+
             g_state.is_con_stable = false;
 
             if (g_state.addr_redirector.valid)
@@ -867,13 +884,10 @@ start:
             // disconnect, wait for disconnect then try to connect
             if (cm2_state_changed()) // first iteration
             {
-                // disconnect
-                g_state.connected = false;
                 cm2_ovsdb_set_Manager_target("");
             }
-            if (!g_state.connected)
+            if (strlen(g_state.target) == 0 && g_state.connected == false)
             {
-                // disconnected, go to try_connect
                 cm2_set_state(true, CM2_STATE_TRY_CONNECT);
             }
             else if (cm2_timeout(false))
@@ -948,30 +962,45 @@ start:
         case CM2_STATE_FAST_RECONNECT:
             if (cm2_state_changed()) // first iteration
             {
-                g_state.connected = false;
+                cm2_ovsdb_set_Manager_target("");
                 if ( (g_state.ipv6_manager_con && g_state.link.ipv6.blocked) ||
                      (!g_state.ipv6_manager_con && g_state.link.ipv4.blocked) )
                 {
                     g_state.fast_backoff = false;
                     cm2_restart_ovs_connection(false);
-                }
-                else
-                {
-                    cm2_ovsdb_set_Manager_target("");
-                    cm2_write_current_target_addr();
+                    break;
                 }
             }
-
+            if (strlen(g_state.target) > 0)
+            {
+                if (cm2_timeout(false))
+                    cm2_set_state(true, CM2_STATE_QUIESCE_OVS);
+                break;
+            }
             if (g_state.connected)
-                cm2_set_state(true, CM2_STATE_CONNECTED);
+            {
+                if (cm2_timeout(false))
+                    cm2_set_state(true, CM2_STATE_QUIESCE_OVS);
+                break;
+            }
+            cm2_write_current_target_addr();
+            cm2_set_state(true, CM2_STATE_FAST_RECONNECT_WAIT);
+            break;
 
-            if (cm2_timeout(false))
-                cm2_set_state(true, CM2_STATE_QUIESCE_OVS);
+        case CM2_STATE_FAST_RECONNECT_WAIT:
+            if (g_state.connected == false)
+            {
+                if (cm2_timeout(false))
+                    cm2_set_state(true, CM2_STATE_QUIESCE_OVS);
+                break;
+            }
 
-           break;
+            cm2_set_state(true, CM2_STATE_CONNECTED);
+            break;
         case CM2_STATE_CONNECTED:
             if (cm2_state_changed()) // first iteration
             {
+                g_state.connected_at_least_once = true;
                 LOG(NOTICE, "===== Connected to: %s", cm2_curr_dest_name());
                 if (cm2_is_extender()) {
                     opts = LINK_CHECK | ROUTER_CHECK | INTERNET_CHECK;
@@ -1034,10 +1063,14 @@ start:
                 cm2_curr_dest_name(), cm2_get_timeout());
             }
 
+            if (strlen(g_state.target) > 0)
+            {
+                break;
+            }
+
             if (g_state.connected)
             {
-                // connected
-                cm2_set_state(true, CM2_STATE_CONNECTED);
+                break;
             }
 
             if (cm2_timeout(true))
@@ -1055,8 +1088,9 @@ start:
                     g_state.fast_backoff = false;
                     cm2_restart_ovs_connection(false);
                     return;
-                } else {
-                    // Try again connecting to the current controller
+                }
+                else
+                {
                     cm2_set_state(true, CM2_STATE_FAST_RECONNECT);
                 }
             }

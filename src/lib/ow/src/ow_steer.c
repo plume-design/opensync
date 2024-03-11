@@ -48,12 +48,31 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #define OW_STEER_STATS_PERIOD_SEC 0.5
 
+struct ow_steer_snr {
+    struct ds_tree tree;
+};
+
+struct ow_steer_snr_observer_group {
+    struct osw_hwaddr addr;
+    struct ds_tree_node node;
+    struct ds_dlist list;
+    struct ow_steer_snr *root;
+};
+
+struct ow_steer_snr_observer {
+    struct ds_dlist_node node;
+    ow_steer_snr_fn_t *fn;
+    void *priv;
+    struct ow_steer_snr_observer_group *group;
+};
+
 static void
 ow_steer_mutator_cb(struct osw_conf_mutator *mutator,
                     struct ds_tree *phy_tree);
 
 static struct ds_dlist g_sta_list = DS_DLIST_INIT(struct ow_steer_sta, node);
 static struct ev_signal g_sigusr1;
+static struct ow_steer_snr g_ow_steer_snr;
 static struct osw_stats_subscriber *g_stats_sub = NULL;
 static struct osw_conf_mutator g_mutator = {
     .name = __FILE__,
@@ -67,6 +86,79 @@ ow_steer_sigusr1_cb(EV_P_ ev_signal *arg,
 {
     ow_steer_bm_sigusr1_dump();
     ow_steer_sta_sigusr1_dump();
+}
+
+static void
+ow_steer_snr_init(struct ow_steer_snr *root)
+{
+    ds_tree_init(&root->tree,
+                 (ds_key_cmp_t *)osw_hwaddr_cmp,
+                 struct ow_steer_snr_observer_group,
+                 node);
+}
+
+static struct ow_steer_snr_observer_group *
+ow_steer_snr_observer_group_get(const struct osw_hwaddr *sta_addr)
+{
+    struct ow_steer_snr *root = &g_ow_steer_snr;
+    struct ow_steer_snr_observer_group *group = ds_tree_find(&root->tree, sta_addr);
+    if (group == NULL) {
+        group = CALLOC(1, sizeof(*group));
+        group->addr = *sta_addr;
+        group->root = root;
+        ds_dlist_init(&group->list, struct ow_steer_snr_observer, node);
+        ds_tree_insert(&root->tree, group, &group->addr);
+    }
+    return group;
+}
+
+static void
+ow_steer_snr_observer_group_gc(struct ow_steer_snr_observer_group *group)
+{
+    if (ds_dlist_is_empty(&group->list) == false) return;
+    ds_tree_remove(&group->root->tree, group);
+    FREE(group);
+}
+
+struct ow_steer_snr_observer *
+ow_steer_snr_register(const struct osw_hwaddr *sta_addr,
+                      ow_steer_snr_fn_t *fn,
+                      void *priv)
+{
+    struct ow_steer_snr_observer *obs = CALLOC(1, sizeof(*obs));
+    obs->fn = fn;
+    obs->priv = priv;
+
+    struct ow_steer_snr_observer_group *group = ow_steer_snr_observer_group_get(sta_addr);
+    obs->group = group;
+    ds_dlist_insert_tail(&group->list, obs);
+
+    return obs;
+}
+
+void
+ow_steer_snr_unregister(struct ow_steer_snr_observer *obs)
+{
+    if (obs == NULL) return;
+    ds_dlist_remove(&obs->group->list, obs);
+    ow_steer_snr_observer_group_gc(obs->group);
+    FREE(obs);
+}
+
+static void
+ow_steer_snr_notify_observers(const struct osw_hwaddr *sta_addr,
+                              const struct osw_hwaddr *bssid,
+                              int snr_db)
+{
+    struct ow_steer_snr *root = &g_ow_steer_snr;
+    struct ow_steer_snr_observer_group *group = ds_tree_find(&root->tree, sta_addr);
+    if (group == NULL) return;
+
+    struct ow_steer_snr_observer *obs;
+    ds_dlist_foreach(&group->list, obs) {
+        if (obs->fn == NULL) continue;
+        obs->fn(obs->priv, sta_addr, bssid, snr_db);
+    }
 }
 
 static void
@@ -119,6 +211,8 @@ ow_steer_stats_report_cb(enum osw_stats_id id,
             struct ow_steer_policy_stack *policy_stack = ow_steer_sta_get_policy_stack(sta);
             ow_steer_policy_stack_sta_snr_change(policy_stack, sta_addr, bssid, snr_db);
         }
+
+        ow_steer_snr_notify_observers(sta_addr, bssid, snr_db);
     }
 
     if (tb[OSW_STATS_STA_TX_BYTES] != NULL || tb[OSW_STATS_STA_RX_BYTES] != NULL) {
@@ -166,6 +260,7 @@ ow_steer_init(void)
     osw_stats_register_subscriber(g_stats_sub);
 
     osw_conf_register_mutator(&g_mutator);
+    ow_steer_snr_init(&g_ow_steer_snr);
 }
 
 struct ds_dlist*

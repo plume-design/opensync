@@ -36,6 +36,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdint.h>
 #include <time.h>
 
+#ifdef CONFIG_LIBC_BIONIC
+#define __USE_BSD 1
+#endif
 #include <netinet/if_ether.h>
 #include <netinet/ip.h>
 #include <netinet/ip6.h>
@@ -80,7 +83,8 @@ typedef enum
     PKT_SOURCE_NONE = 0,
     PKT_SOURCE_PCAP = 1,
     PKT_SOURCE_NFQ = 2,
-    PKT_SOURCE_MAX = 3,
+    PKT_SOURCE_SOCKET = 3,
+    PKT_SOURCE_MAX = 4,
 } pkt_source_t;
 
 /**

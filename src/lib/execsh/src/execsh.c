@@ -322,7 +322,9 @@ void execsh_async_set_wstatus(execsh_async_t *esa, int wstat, bool error)
     {
         if (WIFSIGNALED(wstat))
         {
-            LOG(ERR, "execsh: Process terminated by signal %d.", WTERMSIG(wstat));
+            log_severity_t severity = esa->esa_stop_requested ? LOG_SEVERITY_INFO : LOG_SEVERITY_ERR;
+
+            LOG_SEVERITY(severity, "execsh: Process terminated by signal %d.", WTERMSIG(wstat));
         }
         else if (WIFEXITED(wstat))
         {
@@ -361,13 +363,18 @@ void execsh_async_stop(execsh_async_t *esa)
         {
             LOG(NOTICE, "execsh_async: Process %jd stil alive. Killing with SIGTERM",
                     (intmax_t)esa->esa_child_pid);
-            kill(esa->esa_child_pid, SIGTERM);
+            /* Kill with negative pid -PID: This way the termination signal is sent to every
+             * process in the process group whose ID is -PID. */
+            kill(-1 * esa->esa_child_pid, SIGTERM);
+            esa->esa_stop_requested = true; // So that we later don't log the fatal signal with ERR, but with INFO
         }
         else if (retry == (EXECSH_WAITPID_MAX / 2))
         {
             LOG(WARN, "execsh_async: Process %jd stil alive after SIGTERM. Killing with SIGKILL",
                     (intmax_t)esa->esa_child_pid);
-            kill(esa->esa_child_pid, SIGKILL);
+            /* Kill with negative pid -PID: This way the termination signal is sent to every
+             * process in the process group whose ID is -PID. */
+            kill(-1 * esa->esa_child_pid, SIGKILL);
         }
 
         usleep(EXECSH_WAITPID_POLL*1000000);
@@ -727,6 +734,14 @@ pid_t execsh_pspawn(
         LOG(DEBUG, "execsh: Fork failed.");
         return -1;
     }
+
+    /*
+     * Set child process group ID to the PID of this child process.
+     * All its child processes will inherit the PGID. Thus, later we would be able to kill
+     * this process and all of its children by sendig a termination signal to the whole
+     * process group by kill -<sigX> -PID.
+     */
+    setpgid(0, 0);
 
     /* Add the tools folder to the search path */
     envpath = getenv("PATH");

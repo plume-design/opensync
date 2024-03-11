@@ -274,6 +274,10 @@ void
 ow_steer_bm_neighbor_set_priority(struct ow_steer_bm_neighbor *neighbor,
                                   const unsigned int *priority);
 
+void
+ow_steer_bm_neighbor_set_mld_addr(struct ow_steer_bm_neighbor *neighbor,
+                                  const struct osw_hwaddr *mld_addr);
+
 const struct osw_hwaddr *
 ow_steer_bm_neighbor_get_bssid(struct ow_steer_bm_neighbor *neighbor);
 

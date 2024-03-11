@@ -230,10 +230,24 @@ int main(int argc, char *argv[])
         return 1;
     }
 
+    // Initialize the AWLAN_Node table watcher
+    if (!wano_awlan_node_init())
+    {
+        LOG(EMERG, "Error initializing AWLAN_Node table monitor.");
+        return 1;
+    }
+
     // Initialize WAN configuration
     if (!wano_wan_ovsdb_init())
     {
         LOG(EMERG, "Error initializing WAN_Config table monitor.");
+        return 1;
+    }
+
+    // Initialize WAN probe
+    if (!wano_ppline_wan_probe_setup())
+    {
+        LOG(EMERG, "Error initializing WAN probe.");
         return 1;
     }
 
@@ -267,6 +281,8 @@ int main(int argc, char *argv[])
     {
         LOG(ERR, "Stopping WANO (Failed to stop OVSDB");
     }
+
+    wano_ppline_wan_probe_teardown();
 
     module_fini();
 

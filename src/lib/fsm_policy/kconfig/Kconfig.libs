@@ -1,0 +1,5 @@
+menuconfig LIB_FSM_POLICY
+    bool "Enables the FSM policy management library"
+        default y
+        help
+            Enable the FSM policy management library

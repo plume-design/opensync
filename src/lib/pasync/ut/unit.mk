@@ -34,7 +34,7 @@ UNIT_TYPE := TEST_BIN
 
 UNIT_SRC := main.c
 
-UNIT_CFLAGS := -Isrc/dm/inc
+UNIT_CFLAGS := -Isrc/tpsm/inc
 
 UNIT_DEPS := src/lib/common
 UNIT_DEPS += src/lib/ds

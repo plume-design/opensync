@@ -73,6 +73,7 @@ collect_linux()
     collect_file /proc/loadavg
     collect_file /proc/net/dev
     collect_file /proc/mtd
+    collect_file /proc/net/netfilter/nfnetlink_queue
 
     collect_cmd top -n 1 -b
 

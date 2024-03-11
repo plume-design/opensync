@@ -29,7 +29,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *  Null OSN MLD backend
  * ===========================================================================
  */
-
+#include <stdlib.h>
 #include "osn_mld.h"
 
 struct osn_mld

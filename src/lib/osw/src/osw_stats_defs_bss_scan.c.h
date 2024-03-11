@@ -36,6 +36,8 @@ g_osw_stats_tp_bss_scan[OSW_STATS_BSS_SCAN_MAX__] = {
     [OSW_STATS_BSS_SCAN_WIDTH_MHZ] = { .type = OSW_TLV_U32 },
     [OSW_STATS_BSS_SCAN_IES] = { .type = OSW_TLV_UNSPEC },
     [OSW_STATS_BSS_SCAN_SNR_DB] = { .type = OSW_TLV_U32 },
+    [OSW_STATS_BSS_SCAN_CENTER_FREQ0_MHZ] = { .type = OSW_TLV_U32 },
+    [OSW_STATS_BSS_SCAN_CENTER_FREQ1_MHZ] = { .type = OSW_TLV_U32 },
 };
 
 static const struct osw_tlv_merge_policy
@@ -47,6 +49,8 @@ g_osw_stats_mp_bss_scan[OSW_STATS_BSS_SCAN_MAX__] = {
     [OSW_STATS_BSS_SCAN_IES] = { .type = OSW_TLV_OP_OVERWRITE },
     [OSW_STATS_BSS_SCAN_WIDTH_MHZ] = { .type = OSW_TLV_OP_OVERWRITE },
     [OSW_STATS_BSS_SCAN_SNR_DB] = { .type = OSW_TLV_OP_OVERWRITE },
+    [OSW_STATS_BSS_SCAN_CENTER_FREQ0_MHZ] = { .type = OSW_TLV_OP_OVERWRITE },
+    [OSW_STATS_BSS_SCAN_CENTER_FREQ1_MHZ] = { .type = OSW_TLV_OP_OVERWRITE },
 };
 
 static void
@@ -59,27 +63,68 @@ osw_stats_defs_bss_scan_parse_ies(struct osw_tlv *data,
     const void *ies = osw_tlv_get_data(hdr);
     const size_t ies_len = hdr->len;
 
+    const bool need_parse = (tb[OSW_STATS_BSS_SCAN_SSID] == NULL)
+                         || (tb[OSW_STATS_BSS_SCAN_FREQ_MHZ] == NULL)
+                         || (tb[OSW_STATS_BSS_SCAN_CENTER_FREQ0_MHZ] == NULL)
+                         || (tb[OSW_STATS_BSS_SCAN_CENTER_FREQ1_MHZ] == NULL)
+                         || (tb[OSW_STATS_BSS_SCAN_WIDTH_MHZ] == NULL);
+    struct osw_parsed_ies parsed;
+    MEMZERO(parsed);
+    if (need_parse) {
+        osw_parsed_ies_from_buf(&parsed, ies, ies_len);
+    }
+
     if (tb[OSW_STATS_BSS_SCAN_SSID] == NULL) {
-        size_t ssid_len = 0;
         const int ssid_eid = 0;
-        const void *ssid_buf = osw_ie_find(ies, ies_len, ssid_eid, &ssid_len);
+        const void *ssid_buf = parsed.base[ssid_eid].data;
+        const size_t ssid_len = parsed.base[ssid_eid].datalen;
+
         if (ssid_buf != NULL && ssid_len > 0) {
             osw_tlv_put_buf(data, OSW_STATS_BSS_SCAN_SSID, ssid_buf, ssid_len);
         }
     }
 
-    if (tb[OSW_STATS_BSS_SCAN_WIDTH_MHZ] == NULL) {
-        /* FIXME: This should also parse / include HT, VHT
-         * Operation IEs, not just Capabilities.
-         */
-        struct osw_assoc_req_info info;
-        MEMZERO(info);
-        const bool parsed = osw_parse_assoc_req_ies(ies, ies_len, &info);
-        const enum osw_channel_width width = parsed
-                                           ? osw_assoc_req_to_max_chwidth(&info)
-                                           : OSW_CHANNEL_20MHZ;
-        const uint32_t width_mhz = osw_channel_width_to_mhz(width);
-        osw_tlv_put_u32(data, OSW_STATS_BSS_SCAN_WIDTH_MHZ, width_mhz);
+    if (tb[OSW_STATS_BSS_SCAN_FREQ_MHZ] == NULL ||
+        tb[OSW_STATS_BSS_SCAN_WIDTH_MHZ] == NULL ||
+        tb[OSW_STATS_BSS_SCAN_CENTER_FREQ0_MHZ] == NULL ||
+        tb[OSW_STATS_BSS_SCAN_CENTER_FREQ1_MHZ] == NULL) {
+        struct osw_channel non_ht;
+        struct osw_channel ht;
+        struct osw_channel vht;
+        struct osw_channel he;
+        struct osw_channel eht;
+        MEMZERO(non_ht);
+        MEMZERO(ht);
+        MEMZERO(vht);
+        MEMZERO(he);
+        MEMZERO(eht);
+        osw_parsed_ies_get_channels(&parsed, &non_ht, &ht, &vht, &he, &eht);
+        const struct osw_channel *c = osw_channel_select_wider(&non_ht,
+                                      osw_channel_select_wider(&ht,
+                                      osw_channel_select_wider(&vht,
+                                      osw_channel_select_wider(&he, &eht))));
+        const uint32_t width_mhz = osw_channel_width_to_mhz(c->width);
+        const uint32_t center0_mhz = c->center_freq0_mhz;
+        const uint32_t center1_mhz = c->center_freq1_mhz;
+
+        if (c->control_freq_mhz != 0) {
+            if (tb[OSW_STATS_BSS_SCAN_WIDTH_MHZ] == NULL) {
+                osw_tlv_put_u32(data, OSW_STATS_BSS_SCAN_WIDTH_MHZ, width_mhz);
+            }
+            if (tb[OSW_STATS_BSS_SCAN_FREQ_MHZ] == NULL) {
+                osw_tlv_put_u32(data, OSW_STATS_BSS_SCAN_FREQ_MHZ, c->control_freq_mhz);
+            }
+            if (tb[OSW_STATS_BSS_SCAN_CENTER_FREQ0_MHZ] == NULL) {
+                if (center0_mhz != 0) {
+                    osw_tlv_put_u32(data, OSW_STATS_BSS_SCAN_CENTER_FREQ0_MHZ, center0_mhz);
+                }
+            }
+            if (tb[OSW_STATS_BSS_SCAN_CENTER_FREQ1_MHZ] == NULL) {
+                if (center1_mhz != 0) {
+                    osw_tlv_put_u32(data, OSW_STATS_BSS_SCAN_CENTER_FREQ1_MHZ, center1_mhz);
+                }
+            }
+        }
     }
 }
 

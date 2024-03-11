@@ -29,6 +29,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <stdlib.h>
 #include <stdint.h>
+#include "ds_tree.h"
+#include "qm_conn.h"
+#include "fsm.h"
 
 /**
  * @brief Container of protobuf serialization output
@@ -42,7 +45,7 @@ struct dpi_stats_packed_buffer
 };
 
 
-struct dpi_stats_counters
+struct dpi_engine_counters
 {
     uint32_t curr_alloc;
     uint32_t peak_alloc;
@@ -60,6 +63,28 @@ struct dpi_stats_counters
 };
 
 
+struct nfq_stats_counters
+{
+    uint32_t qnum;
+    uint32_t portid;
+    uint32_t qtotal;
+    uint32_t copy_mode;
+    uint32_t copy_range;
+    uint32_t qdropped;
+    uint32_t q_user_dropped;
+    uint32_t seqid;
+    ds_tree_node_t  nfq_node;
+};
+
+struct pcap_stats_counters
+{
+    char  ifname[32];
+    uint32_t pkts_received;
+    uint32_t pkts_dropped;
+    ds_tree_node_t  pcap_node;
+};
+
+
 /**
  * @brief DPI stats report
  */
@@ -68,7 +93,15 @@ struct dpi_stats_report
     char *node_id;
     char *location_id;
     char *plugin;
-    struct dpi_stats_counters counters;
+    int dpi_stats_count;
+    bool initialized;
+    struct dpi_engine_counters counters;
+    ds_tree_t  nfq_stats_tree;          /* nfqueue_node */
+    ds_tree_t  pcap_stats_tree;         /* pcap_node */
+
+    /** Helper for UT (initialized to @see qm_conn_send_direct() */
+    bool (*send_report)(qm_compress_t compress, char *topic,
+                        void *data, int data_size, qm_response_t *res);
 };
 
 
@@ -98,4 +131,70 @@ dpi_stats_serialize_report(struct dpi_stats_report *report);
  */
 void
 dpi_stats_free_packed_buffer(struct dpi_stats_packed_buffer *pb);
+
+
+/**
+ * @brief stores the node (pcap stats info) in the pcap stats tree
+ * @param data containing the pcap stats
+ * @param ifname of the pcap stats used as the key
+ * @return void
+ */
+void dpi_stats_store_pcap_stats(struct pcap_stat *stats, char *if_name);
+
+/**
+ * @brief stores the node (nfqueue stats info) in the nfqueue stats tree
+ * @param data containing the nfqueue stats
+ * @param ifname of the nfqueue stats used as the key
+ * @return void
+ */
+void dpi_stats_store_nfq_stats(struct nfqnl_counters *nfq_stats);
+
+/**
+ * @brief sends the pcap report using the specified mqtt topic
+ * @param session fsm_session containing the node details
+ * @param topic mqtt topic used for sending the report
+ * @return void
+ */
+void dpi_stats_report_pcap_stats(struct fsm_session *session, char *topic);
+
+/**
+ * @brief sends the nfqueue report using the specified mqtt topic
+ * @param session fsm_session containing the node details
+ * @param topic mqtt topic used for sending the report
+ * @return void
+ */
+void dpi_stats_report_nfq_stats(struct fsm_session *session, char *topic);
+
+/**
+ * @brief gets the number of pcap (pcap stats) present
+ * in the nfqueue tree
+ * @param void
+ * @return int the number of nodes present
+ */
+int dpi_stats_get_pcap_stats_count(void);
+
+/**
+ * @brief stores the node (pcap stats info) in the pcap stats tree
+ * @param data containing the pcap stats
+ * @param ifname of the pcap stats used as the key
+ * @return void
+ */
+int dpi_stats_get_nfq_stats_count(void);
+
+/**
+ * @brief Frees the stats stored in nfq and pcap tree
+ *
+ * @param none
+ * @return none
+ */
+void dpi_stats_clear_stats(void);
+
+/**
+ * @brief return pointer to global report structure
+ *
+ * @param void the info used to fill up the protobuf.
+ * @return dpi_stats_report a pointer to the global report structure.
+ */
+struct dpi_stats_report* dpi_stats_get_global_report(void);
+
 #endif /* DPI_STATS_H_INCLUDED */

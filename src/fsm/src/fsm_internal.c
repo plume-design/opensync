@@ -26,13 +26,16 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <errno.h>
 
 #include "fsm_internal.h"
+#include "fsm_tap_socket.h"
 #include "log.h"
 #include "nf_utils.h"
 #include "policy_tags.h"
 #include "fsm_dpi_utils.h"
 #include "network_zone.h"
+#include "kconfig.h"
 
 static const struct fsm_tap_type
 {
@@ -51,6 +54,10 @@ static const struct fsm_tap_type
     {
         .tap_str_type = "fsm_tap_raw",
         .tap_type = FSM_TAP_RAW,
+    },
+    {
+        .tap_str_type = "fsm_tap_socket",
+        .tap_type = FSM_TAP_SOCKET,
     }
 };
 
@@ -172,6 +179,8 @@ fsm_update_open_taps(uint32_t taps_to_open, struct fsm_session *session)
 
     if (taps_to_open & FSM_TAP_RAW) rc |= fsm_raw_tap_update(session);
 
+    if (taps_to_open & FSM_TAP_SOCKET) rc |= fsm_socket_tap_update(session);
+
     return rc;
 }
 
@@ -197,6 +206,11 @@ fsm_update_close_taps(uint32_t taps_to_close, struct fsm_session *session)
     {
         /* Free raw socket resources */
         return;
+    }
+
+    if (taps_to_close & FSM_TAP_SOCKET)
+    {
+        fsm_socket_tap_close(session);
     }
 }
 
@@ -226,6 +240,36 @@ set_dpi_mark(struct net_header_parser *net_hdr,
     return ret;
 }
 
+/**
+ * @brief Get the MQTT topic configured for reporting dpi
+ * statistics, and the reporting interval.
+ *
+ * @param session the fsm session to probe
+ * @return None
+ */
+void
+fsm_set_dpi_health_stats_cfg(struct fsm_session *session)
+{
+    char *interval_str;
+    long int interval;
+
+    if (session->type != FSM_DPI_DISPATCH) return;
+
+    session->dpi_stats_report_topic = fsm_get_other_config_val(session, "dpi_health_stats_topic");
+
+    /* read the interval time */
+    interval_str = fsm_get_other_config_val(session, "dpi_health_stats_interval_secs");
+    if (interval_str != NULL)
+    {
+        errno = 0;
+        interval = strtol(interval_str, 0, 10);
+        if (errno == 0) session->dpi_stats_report_interval = (int)interval;
+    }
+
+    LOGI("%s: dpi health stats topic : %s, interval: %ld", __func__,
+         session->dpi_stats_report_topic != NULL ? session->dpi_stats_report_topic : "not set",
+         session->dpi_stats_report_interval);
+}
 
 /**
  * @brief Initializes the tap context for the given session
@@ -336,6 +380,163 @@ fsm_wrap_init_dpi_client_plugin(struct fsm_session *session)
 }
 
 
+#if defined(CONFIG_FSM_MAP_LEGACY_PLUGINS)
+static struct plugin_map_table plugin_map_table[] =
+{
+    {
+        .handler = "http",
+        .ip_protocol = IPPROTO_TCP,
+        .port = 80,
+    },
+    {
+        .handler = "mdns",
+        .ip_protocol = IPPROTO_UDP,
+        .port = 5353,
+    },
+    {
+        .handler = "upnp",
+        .ip_protocol = IPPROTO_UDP,
+        .port = 1900,
+    },
+    {
+        .handler = "dns",
+        .ip_protocol = IPPROTO_UDP,
+        .port = 53,
+    },
+};
+
+
+static void
+fsm_map_plugin(struct fsm_session *session)
+{
+    char *prefix;
+    size_t i;
+    int ret;
+
+    if (session == NULL) return;
+    if (session->name == NULL) return;
+    if (session->type != FSM_PARSER) return;
+
+    for (i = 0; i < ARRAY_SIZE(plugin_map_table); i++)
+    {
+        prefix = plugin_map_table[i].handler;
+        ret = strncmp(session->name, prefix, strlen(prefix));
+        if (ret != 0) continue;
+
+        plugin_map_table[i].session = session;
+        return;
+    }
+
+    return;
+}
+
+
+void
+fsm_unmap_plugin(struct fsm_session *session)
+{
+    char *prefix;
+    size_t i;
+    int ret;
+
+    if (session == NULL) return;
+    if (session->name == NULL) return;
+    if (session->type != FSM_PARSER) return;
+
+    for (i = 0; i < ARRAY_SIZE(plugin_map_table); i++)
+    {
+        prefix = plugin_map_table[i].handler;
+        ret = strncmp(session->name, prefix, strlen(prefix));
+        if (ret != 0) continue;
+
+        plugin_map_table[i].session = NULL;
+        return;
+    }
+
+    return;
+}
+
+
+struct fsm_session *
+fsm_map_plugin_find_session(struct net_header_parser *net_parser)
+{
+    struct plugin_map_table *entry;
+    uint16_t ethertype;
+    int ip_protocol;
+    size_t i;
+
+    if (net_parser == NULL) return NULL;
+
+    ethertype = net_header_get_ethertype(net_parser);
+    if (ethertype != ETH_P_IP && ethertype != ETH_P_IPV6) return NULL;
+
+    for (i = 0; i < ARRAY_SIZE(plugin_map_table); i++)
+    {
+        entry = &plugin_map_table[i];
+        ip_protocol = entry->ip_protocol;
+        if (ip_protocol != net_parser->ip_protocol) continue;
+
+        if (net_parser->ip_protocol == IPPROTO_TCP)
+        {
+            struct tcphdr *tcph;
+
+            tcph = net_parser->ip_pld.tcphdr;
+
+            if (ntohs(tcph->source) != entry->port &&
+                ntohs(tcph->dest) != entry->port)
+            {
+                continue;
+            }
+        }
+        else if (net_parser->ip_protocol == IPPROTO_UDP)
+        {
+            struct udphdr *udph;
+
+            udph = net_parser->ip_pld.udphdr;
+            if (ntohs(udph->source) != entry->port &&
+                ntohs(udph->dest) != entry->port)
+            {
+                continue;
+            }
+        }
+        else
+        {
+            continue;
+        }
+
+        LOGT("%s: dispatching to legacy handler %s", __func__, entry->handler);
+        net_header_logt(net_parser);
+        return entry->session;
+
+    }
+
+    LOGT("%s: no legacy handler found", __func__);
+    return NULL;
+}
+
+
+#else
+static void
+fsm_map_plugin(struct fsm_session *session)
+{
+    return;
+}
+
+
+void
+fsm_unmap_plugin(struct fsm_session *session)
+{
+    return;
+}
+
+
+struct fsm_session *
+fsm_map_plugin_find_session(struct net_header_parser *net_parser)
+{
+    return NULL;
+}
+
+#endif
+
 /**
  * @brief wrap plugin initialization
  *
@@ -364,6 +565,10 @@ fsm_wrap_init_plugin(struct fsm_session *session)
             ret = true;
     }
 
+    if (kconfig_enabled(CONFIG_FSM_MAP_LEGACY_PLUGINS))
+    {
+        fsm_map_plugin(session);
+    }
     return ret;
 }
 

@@ -140,6 +140,9 @@ bool lnx_pppoe_init(lnx_pppoe_t *self, const char *ifname)
 
     daemon_arg_add(&self->lp_pppd, "call", (char *)ifname);
 
+    /* Use SIGKILL instead of SIGTERM when terminating pppd */
+    daemon_signal_set(&self->lp_pppd, SIGKILL, SIGKILL);
+
     /* Register to netlink update events */
     if (!lnx_netlink_init(&self->lp_nl, lnx_pppoe_netlink_fn))
     {

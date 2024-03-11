@@ -139,6 +139,7 @@ typedef enum
 {
     MT_ECHO,
     MT_MONITOR,
+    MT_MONITOR_CANCEL,
     MT_TRANS,
     MT_GET_SCHEMA
 }ovsdb_mt_t;
@@ -428,6 +429,8 @@ bool ovsdb_delete_with_parent_s(char * table,
                                 char * parent_table,
                                 json_t * parent_where,
                                 char * parent_column);
+
+bool ovsdb_monitor_cancel_s(int monid);
 
 /**
  * The following set of functions filters all json key-value pairs

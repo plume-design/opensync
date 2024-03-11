@@ -56,3 +56,51 @@ menuconfig MANAGER_FSM
         help
             FSM will be restarted once this threshold is reached.
             This value can be overridden through the ovsdb Node_Config table.
+
+    config FSM_DPI_SOCKET
+        depends on MANAGER_FSM
+        bool "FSM getting packets to parse through a network socket"
+        default y if PLATFORM_IS_NATIVE
+        default n
+        help
+            Start a UDP listening server to receive packets to parse through
+            a remote network entity.
+
+    config FSM_NF_CONNTRACK
+        depends on MANAGER_FSM
+        bool "Access netfilter conntrack API"
+        default n if PLATFORM_IS_NATIVE
+        default y
+        help
+            Enable access netfilter conntrack API
+
+    config FSM_TAP_INTF
+        depends on MANAGER_FSM
+        bool "Enable tap interfaces"
+        default n if PLATFORM_IS_NATIVE
+        default y
+        help
+            Enable tap interfaces
+
+    config FSM_NO_DSO
+        depends on MANAGER_FSM
+        depends on PLATFORM_IS_NATIVE
+        bool "Compile all FSM plugins as part of libopensync as opposed to DSOs"
+        default y if $(shell, echo $(CC) | grep -qw ^clang && echo "yes" || echo "no") = "yes"
+        help
+            Compile FSM plugins as part of libopensync in native mode if the compiler is clang
+
+    config FSM_MAP_LEGACY_PLUGINS
+        depends on MANAGER_FSM
+        bool "Hard code a mapping between legacy plugins and reserved internet ports"
+        default n
+        help
+            Hard code a mapping between legacy plugins and reserved internet ports
+
+    config FSM_ALWAYS_ADD_NEIGHBOR_INFO
+        depends on MANAGER_FSM
+        depends on PLATFORM_IS_NATIVE
+        bool "Unconditionally cache IP <-> mac mapping from a packet"
+        default y
+        help
+            Hard code a mapping between legacy plugins and reserved internet ports

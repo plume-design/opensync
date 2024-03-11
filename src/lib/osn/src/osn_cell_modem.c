@@ -71,13 +71,63 @@ osn_cell_start_modem(int source)
 {
     return;
 }
+
 void
 osn_cell_stop_modem(void)
 {
     return;
 }
+
 bool
 osn_cell_modem_init(void)
+{
+    return 0;
+}
+
+void
+osn_cell_modem_reset(void)
+{
+    return;
+}
+
+int
+osn_cell_set_apn(char *apn)
+{
+    return 0;
+}
+
+int
+osn_cell_set_apn_username(char *apn_username)
+{
+    return 0;
+}
+
+int
+osn_cell_set_apn_password(char *apn_password)
+{
+    return 0;
+}
+
+int
+osn_cell_set_apn_prototype(enum cell_apn_proto_type apn_proto_type)
+{
+    return 0;
+}
+
+int
+osn_cell_set_apn_auth_proto(enum cell_apn_auth_proto apn_auth_proto)
+{
+    return 0;
+}
+
+int
+osn_cell_set_bands_enabled(char *bands)
+{
+    return 0;
+}
+
+int
+osn_cell_set_mode(enum cell_mode mode)
 {
     return 0;
 }

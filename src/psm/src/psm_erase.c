@@ -31,6 +31,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "schema.h"
 
 #define PSM_MODULE_NAME                 "PSM"
+#define PM_MODULE_NAME                  "PM"
+#define KEY_OFFLINE_MON                 "gw_offline_mon"
 #define KEY_ERASE_WAN_PS                "erase_wan_ps"
 #define KEY_ERASE_LTE_PS                "erase_lte_ps"
 #define KEY_ERASE_GW_OFF_PS             "erase_gw_offline_ps"
@@ -40,6 +42,18 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 static ovsdb_table_t table_Node_Config;
 static ovsdb_table_t table_Node_State;
+
+static void disable_gw_offline_mon(void)
+{
+    json_t *where;
+
+    where = json_array();
+    json_array_append_new(where, ovsdb_tran_cond_single("module", OFUNC_EQ, (char *)PM_MODULE_NAME));
+    json_array_append_new(where, ovsdb_tran_cond_single("key", OFUNC_EQ, (char *)KEY_OFFLINE_MON));
+
+    LOG(INFO, "Disabling OVSDB GW offline config changes monitoring.");
+    ovsdb_table_delete_where(&table_Node_Config, where);
+}
 
 static void write_erase_op_status(int error_cnt)
 {
@@ -84,7 +98,7 @@ void callback_Node_Config(ovsdb_update_monitor_t *mon,
 
     if (strcmp(config->value, VAL_ERASE_PS_TRUE) != 0)
     {
-        LOG(DEBUG, "Erase entire persistent storage flag set to value other than true. Returning.");
+        LOG(DEBUG, "Erase persistent storage flag set to value other than true. Returning.");
         return;
     }
 
@@ -111,9 +125,15 @@ void callback_Node_Config(ovsdb_update_monitor_t *mon,
 
     if (strcmp(config->key, KEY_ERASE_ALL_PS) == 0 || strcmp(config->key, KEY_ERASE_GW_OFF_PS) == 0)
     {
+        /*
+         * Disable GW offline monitoring before erasing config from persistent storage
+         * to prevent re-saving in the time between erasing data and device reboot
+         */
+        disable_gw_offline_mon();
+
         /* GW Offline erase function returns false on error */
         if (!ps_mgmt_erase_gw_offline_config()) {
-            LOG(ERR, "Failed to erase LTE config from persistent storage.");
+            LOG(ERR, "Failed to erase GW Offline config from persistent storage.");
             error_cnt++;
         }
     }

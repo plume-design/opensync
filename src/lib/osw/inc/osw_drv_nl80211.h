@@ -30,6 +30,27 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <nl.h>
 #include <osw_drv.h>
 
+enum osw_drv_nl80211_phy_group_impl_type {
+  OSW_DRV_NL80211_PHY_GROUP_IMPL_NONE,
+  OSW_DRV_NL80211_PHY_GROUP_IMPL_PHY
+};
+
+enum osw_drv_nl80211_csa_impl_type {
+  OSW_DRV_NL80211_CSA_IMPL_NONE,
+  OSW_DRV_NL80211_CSA_IMPL_HOSTAP
+};
+
+enum osw_drv_nl80211_dump_survey_impl_type {
+  OSW_DRV_NL80211_DUMP_SURVEY_IMPL_NONE,
+  OSW_DRV_NL80211_DUMP_SURVEY_IMPL_DELTA,
+  OSW_DRV_NL80211_DUMP_SURVEY_IMPL_ABSOLUTE
+};
+
+enum osw_drv_nl80211_dump_sta_impl_type {
+  OSW_DRV_NL80211_DUMP_STA_IMPL_NONE,
+  OSW_DRV_NL80211_DUMP_STA_IMPL_DEFAULT
+};
+
 struct osw_drv_nl80211_ops;
 struct osw_drv_nl80211_hook;
 
@@ -44,6 +65,14 @@ osw_drv_nl80211_hook_fix_vif_state_fn_t(struct osw_drv_nl80211_hook *hook,
                                         const char *phy_name,
                                         const char *vif_name,
                                         struct osw_drv_vif_state *state,
+                                        void *priv);
+
+typedef void
+osw_drv_nl80211_hook_fix_sta_state_fn_t(struct osw_drv_nl80211_hook *hook,
+                                        const char *phy_name,
+                                        const char *vif_name,
+                                        const struct osw_hwaddr *sta_addr,
+                                        struct osw_drv_sta_state *state,
                                         void *priv);
 
 typedef void
@@ -73,6 +102,7 @@ osw_drv_nl80211_hook_get_vif_state_fn_t(struct osw_drv_nl80211_hook *hook,
 struct osw_drv_nl80211_hook_ops {
     osw_drv_nl80211_hook_fix_phy_state_fn_t *fix_phy_state_fn;
     osw_drv_nl80211_hook_fix_vif_state_fn_t *fix_vif_state_fn;
+    osw_drv_nl80211_hook_fix_sta_state_fn_t *fix_sta_state_fn;
     osw_drv_nl80211_hook_pre_request_config_fn_t *pre_request_config_fn;
     osw_drv_nl80211_hook_pre_request_stats_fn_t *pre_request_stats_fn;
     osw_drv_nl80211_hook_get_vif_list_fn_t *get_vif_list_fn;

@@ -302,6 +302,13 @@ static os_reg_list_t dmesg_sig_pattern[] =
     /* ATOM __show_regs */
     OS_REG_LIST_ENTRY(9, "EIP is at"),
 
+    /* ARMv8-A __show_regs */
+    OS_REG_LIST_ENTRY(10, "pc :"),
+    OS_REG_LIST_ENTRY(11, "lr :"),
+
+    /* panic_on_oom */
+    OS_REG_LIST_ENTRY(12, "panic_on_oom is enabled"),
+
     OS_REG_LIST_END(0)
 };
 
@@ -338,7 +345,7 @@ void pstore_parse_dmesg(const char *path, enum osp_reboot_type *type, char *reas
     reason[0] = '\0';
 
     /*
-     * Scan the file and try to find the "PC is at" and "LR is at" lines,
+     * Scan the file and try to find the signatures that match,
      * which should give some indication on where the kernel actually crashed.
      */
     while (fgets(dbuf, sizeof(dbuf), fd) != NULL)

@@ -15,3 +15,4 @@ files.idx
 .vscode
 .buildnum
 /doc
+compile_commands.json

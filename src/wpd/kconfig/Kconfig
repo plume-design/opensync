@@ -1,0 +1,43 @@
+
+menuconfig WPD_ENABLED
+    bool "Enable WPD (Watchdog Proxy Daemon)"
+    default y
+    help
+        Select to include WPD daemon in the image.
+
+    if WPD_ENABLED
+
+        config WPD_WATCHDOG_DEVICE
+            string "Watchdog device"
+            default "/dev/watchdog"
+
+        config WPD_PING_TIMEOUT
+            int "Ping timeout"
+            default 60
+            help
+                Timeout after which WPD will setup watchdog device to trigger
+                an immediate hardware reset, if in this time period WPD doesn't
+                receive a ping from managers.
+
+        config WPD_PING_INITIAL_TIMEOUT
+            int "Initial ping timeout"
+            default 80
+            help
+                First ping from managers must be received within this time period,
+                otherwise WPD will setup watchdog device to trigger an immediate
+                hardware reset.
+
+        config WPD_WATCHDOG_TIMEOUT
+            int "Watchdog timeout"
+            default 30
+            help
+                WPD will setup watchdog device to trigger a harware reset after
+                this number of seconds, if WPD crashes and stops pinging the
+                device.
+
+        config WPD_PID_PATH
+            string "Location of the WPD PID file"
+            default "/var/run/wpd.pid"
+
+
+    endif

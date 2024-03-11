@@ -141,7 +141,7 @@ const char *target_tls_privkey_filename(void)
 const char *target_opensync_ca_filename(void)
 {
     // Return path/filename to CA certificate used by OpenSync features such as logpull
-    return CONFIG_TARGET_PATH_CERT "/" CONFIG_TARGET_OPENSYNC_CAFILE;
+    return CONFIG_TARGET_PATH_OPENSYNC_CERTS "/" CONFIG_TARGET_OPENSYNC_CAFILE;
 }
 
 #if defined(CONFIG_TARGET_RESTART_SCRIPT)
@@ -223,14 +223,6 @@ bool target_log_pull(const char *upload_location, const char *upload_token)
 }
 #endif
 
-#if !defined(CONFIG_TARGET_WATCHDOG)
-/* Implement dummy watchdog function */
-bool target_device_wdt_ping(void)
-{
-    return true;
-}
-#endif
-
 #if defined(CONFIG_TARGET_LINUX_EXECUTE)
 bool target_device_execute(const char *cmd)
 {
@@ -239,6 +231,16 @@ bool target_device_execute(const char *cmd)
     if (!WIFEXITED(rc) || WEXITSTATUS(rc) != 0) return false;
 
     return true;
+}
+#endif
+
+#if defined(CONFIG_WPD_ENABLED)
+/* Implement generic wpd watchdog function */
+bool target_device_wdt_ping(void)
+{
+    char *wdt_cmd = "[ -x "CONFIG_INSTALL_PREFIX"/bin/wpd ] && "CONFIG_INSTALL_PREFIX"/bin/wpd --ping || true";
+
+    return target_device_execute(wdt_cmd);
 }
 #endif
 

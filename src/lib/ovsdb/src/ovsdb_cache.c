@@ -73,7 +73,7 @@ bool ovsdb_cache_monitor_filter(ovsdb_table_t *table,
 {
     table->monitor_callback = ovsdb_cache_update_cb;
     table->cache_callback = callback;
-    return ovsdb_table_monitor(table, NULL, filter);
+    return ovsdb_table_monitor_filter(table, NULL, filter);
 }
 
 // debug dump table

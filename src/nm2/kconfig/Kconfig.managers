@@ -19,6 +19,7 @@ menuconfig MANAGER_NM
             Network Manager configures OVS multicast exceptions when Snooping enabled
 
     config MANAGER_NM_ROUTE_BASE_METRIC
+        depends on MANAGER_NM
         int "Routes base metric"
         default 100
 
@@ -41,3 +42,10 @@ menuconfig MANAGER_NM
             MANAGER_NM_ROUTE_BASE_METRIC value.
 
             This ensures proper WAN priority across different interface types.
+
+    config MANAGER_NM_ARPING_CLIENTS_PERIOD_DEFAULT
+        depends on MANAGER_NM
+        int "Default arping period"
+        default 150
+        help
+            Default arping period, in seconds.

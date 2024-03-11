@@ -257,6 +257,7 @@ message Client {
     repeated TidStats   tid_stats           = 12;
     optional uint32     uapsd               = 13;
     optional string     network_id          = 14;
+    optional string     mld_address         = 15;
 }
 
 message ClientReport {
@@ -375,6 +376,9 @@ message Device {
         optional uint32           fan_rpm          = 2;
         optional uint64           timestamp_ms     = 3;
         optional uint32           fan_duty_cycle   = 4;
+        optional uint32           thermal_state    = 5;
+        optional uint32           target_rpm       = 6;
+        optional uint32           led_state        = 7;
     }
     repeated Thermal        thermal_stats          = 5;
 
@@ -489,6 +493,7 @@ message BSClient {
     }
     required string             mac_address                 = 1;
     repeated BSBandReport       bs_band_report              = 2;
+    optional string             mld_address                 = 3;
 }
 
 message BSReport {
@@ -578,4 +583,3 @@ message Report {
     repeated RadiusReport   radius_report   = 10;
     optional string         power_mode      = 11;
 }
-

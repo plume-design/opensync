@@ -1,0 +1,127 @@
+menuconfig MANAGER_FM
+    bool "Flash Manager (FM)"
+    default n
+    help
+        Flash Manager
+
+if MANAGER_FM
+    config MANAGER_FM_CFG
+        string "FM Startup configuration"
+        default "fm;true;needs_plan_b=true"
+        help
+            Flash Manager startup configuration
+
+    comment "Default logging type"
+
+    config FM_LOG_FILE
+    string "Name of the log file to rotate"
+    default "messages"
+    help
+        Name of the base log file to rotate
+
+    config FM_LOGFILE_MONITOR
+        string "Monitored log file name"
+        default "messages.0"
+        help
+            "Monitored log file name"
+
+    config FM_LOG_PATH
+        string "Path where FM_LOG_PATH and FM_LOGFILE_MONITOR are stored"
+        default "/var/log"
+        help
+            Path to log files
+
+    config FM_LOG_FLASH_ARCHIVE_PATH
+        string "Path where to keep archived logs on flash"
+        default "$(INSTALL_PREFIX)/log_archive"
+        help
+            Path where to keep archived logs on flash when logging to flash is enabled
+
+    config FM_LOG_RAM_ARCHIVE_PATH
+        string "Path where to keep archived logs on RAM"
+        default "/var/log/opensync/log_archive"
+        help
+            Path where to keep archived logs on RAM when logging to RAM is enabled
+
+    config FM_LOG_ARCHIVE_SUBDIRECTORY
+        string "Subdirectory in the archive directory to store logs"
+        default "syslog"
+        help
+            Subdirectory in the archive directory to store logs
+
+    comment "Default logging type"
+
+    config FM_LOG_TO_RAMOOPS
+        bool "Logging to ramoops"
+        default y
+        help
+            Logging to RAMOOPS
+
+    config FM_LOG_TO_FLASH
+        bool "Logging to flash"
+        default n
+        help
+            Logging to flash only
+
+    config FM_RAMOOPS_BUFFER
+        string "Default path to ramoops buffer"
+        default "/dev/pmsg0"
+        help
+            Path to a secured userspace-accessible pstore object
+
+    config FM_CRASH_LOG_DIR
+        string "Default crash logs directory"
+        default "crash"
+        help
+            Crash log directory name
+
+    config FM_BT_PATH
+        string "Default path for backtrace logs"
+        default "/var/log/opensync/crash"
+        help
+            Path to a destination directory for backtrace logs
+
+    config FM_LOG_CRASH_ARCHIVE_PATH
+        string "Path where to keep archived logs on RAM"
+        default "/var/log/opensync/log_archive/crash"
+        help
+            Path where to keep archived logs on RAM when logging to RAM is enabled
+
+    config FM_MAX_ROTATION_SYSLOG_FLASH_CNT
+        int "Maximum number of syslog files in flash"
+        default 8
+        help
+            Maximum number of rotated syslog files to keep in flash
+
+    config FM_MAX_ROTATION_SYSLOG_RAM_CNT
+        int "Maximum number of syslog files in RAM"
+        default 8
+        help
+            Maximum number of rotated syslog files to keep in RAM
+
+    comment "Default persistent configuration"
+
+    config FM_USE_PERSIST
+        bool "Use persist state by default"
+        default n
+        help
+            Use persist state to keep data with logging type
+
+    config FM_LOG_PERSISTENT_STATE
+        string "Path to file with log state"
+        default "$(INSTALL_PREFIX)/log_archive/fm_state"
+        help
+            "Path to the file with log state info"
+
+    config FM_CRASH_COUNT_PATH
+        string "Default filepath for crash file count"
+        default "/tmp/crash_count.txt"
+        help
+            Path to a file destination for crash file count
+
+    config FM_CRASH_FILE_COUNT
+        int "Maximum number of syslog crash files"
+        default 100
+        help
+            Maximum number of rotated crash syslog files to keep
+endif

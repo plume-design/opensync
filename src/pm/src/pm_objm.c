@@ -378,6 +378,129 @@ cleanup:
  * Install of package functions
  *****************************************************************************/
 
+static inline bool pm_objm_check_store_record_for_removal(struct pm_objm_store_record *store_record,
+                                                          char *name, char *version)
+{
+    int rc;
+
+    LOGI("%s: store record: name: %s, version: %s, fw_integrated: %s", __func__,
+         store_record->name, store_record->version, store_record->fw_integrated ? "yes" : "no");
+
+    if (store_record->fw_integrated) return false;
+
+    rc = strcmp(store_record->name, name);
+    if (rc != 0) return false;
+
+    rc = strcmp(store_record->version, version);
+    if (rc == 0) return false;
+
+    return true;
+}
+
+static inline void pm_objm_log_store(void)
+{
+    struct pm_objm_store_record *store_record;
+    struct pm_objm_store *st;
+    int i;
+
+    st = &db;
+    LOGD("%s: : number of records: %d", __func__, st->obj_records_len);
+    for (i = 0; i < st->obj_records_len; i++)
+    {
+        store_record = &st->obj_records[i];
+        LOGD("%s: record index: %d, name = %s, version = %s, fw_integrated = %s", __func__,
+             i, store_record->name, store_record->version,
+             store_record->fw_integrated ? "yes" : "no");
+    }
+}
+
+/*
+ *  Remove object from object database
+ *
+ *  Object database is implemented as array. Cleanest way to remove an element and not have
+ *  any free spots in array is to remove mentioned element and move last element to removed
+ *  element position. This is possible since order of elements does not matter.
+ */
+static void pm_objm_keep_only_one_version(char *name, char *version, bool unique)
+{
+    struct pm_objm_store_record *store_record_last;
+    struct pm_objm_store_record *store_record;
+    struct oms_config_entry c_entry;
+    struct oms_state_entry s_entry;
+    struct pm_objm_store *st;
+    bool save_store;
+    bool check;
+    int last;
+    int i;
+
+    LOGD("%s: store before processing:", __func__);
+    pm_objm_log_store();
+
+    /* If unicity is not requested, bail */
+    if (!unique)
+    {
+        LOGD("%s: object unicity not requested", __func__);
+        return;
+    }
+
+    st = &db;
+
+    save_store = false;
+    for (i = 0; i < st->obj_records_len; i++)
+    {
+        store_record = &st->obj_records[i];
+        check = pm_objm_check_store_record_for_removal(store_record, name, version);
+        if (!check) continue;
+
+        save_store |= true;
+
+        // Move last element to removed element position
+        // check if last element is a target for removal
+        do
+        {
+            // Remove complete "path" folder trough osp_objm_remove api
+            if (!osp_objm_remove(store_record->name, store_record->version))
+            {
+                LOG(ERR, "objm: remove from storage failed");
+            }
+
+            // Remove entry from Object_Store_State for final user to process
+            s_entry.object = strdup(store_record->name);
+            s_entry.version = strdup(store_record->version);
+            oms_delete_state_entry(&s_entry);
+
+            // Remove entry from OMS_Config for final user to process
+            c_entry.object = strdup(store_record->name);
+            c_entry.version = strdup(store_record->version);
+            oms_delete_config_entry(&c_entry);
+
+            LOGD("%s: objm: Successful removal of object: %s version: %s", __func__,
+                 store_record->name, store_record->version);
+
+            // Check if the last element is a target for removal
+            last = st->obj_records_len - 1;
+            store_record_last = &st->obj_records[last];
+            st->obj_records_len -= 1;
+
+            if (store_record != store_record_last)
+            {
+                STRSCPY_WARN(store_record->name, store_record_last->name);
+                STRSCPY_WARN(store_record->version, store_record_last->version);
+                store_record->fw_integrated = store_record_last->fw_integrated;
+                check = pm_objm_check_store_record_for_removal(store_record_last, name, version);
+            }
+            else
+            {
+                check = false;
+            }
+        } while (check);
+    }
+
+    if (save_store) pm_objm_ps_save(st);
+    LOGD("%s: store after processing:", __func__);
+    pm_objm_log_store();
+}
+
 static bool install(struct pm_objm_ctx_t *d_ctx)
 {
     struct oms_config_entry c_entry;
@@ -387,7 +510,7 @@ static bool install(struct pm_objm_ctx_t *d_ctx)
     {
         // If object is fw_integrated don't use osp_objm_install function since
         // object is already preinstalled.
-        if (!osp_objm_install(d_ctx->dl_path, d_ctx->name, d_ctx->version))
+        if (!osp_objm_install(d_ctx->dl_path, d_ctx->name, d_ctx->version, pm_objm_keep_only_one_version))
         {
             LOG(ERR, "objm: Install failed");
             STRSCPY_WARN(d_ctx->status, PM_OBJS_INSTALL_FAILED);
@@ -408,9 +531,16 @@ static bool install(struct pm_objm_ctx_t *d_ctx)
     }
 
     STRSCPY_WARN(d_ctx->status, PM_OBJS_INSTALLED);
+    pm_ctx_to_oms_state(&s_entry, d_ctx);
+    if (!d_ctx->fw_integrated)
+    {
+        if (!oms_ps_save_last_downloaded_version(&s_entry))
+        {
+            LOGE("%s: failed to save last downlaod", __func__);
+        }
+    }
 
     // Insert to Object_Store_State
-    pm_ctx_to_oms_state(&s_entry, d_ctx);
     oms_add_state_entry(&s_entry);
 
     // Update OMS_Config table
@@ -546,7 +676,7 @@ static void object_remove(struct pm_objm_ctx_t *d_ctx)
     // Remove Object information from persistent storage
     pm_objm_ps_remove(&db, d_ctx->name, d_ctx->version);
 
-    // Remove entry from OMS_Config for final user to process
+    // Remove entry from Object_Store_State for final user to process
     pm_ctx_to_oms_state(&s_entry, d_ctx);
     oms_delete_state_entry(&s_entry);
 
@@ -724,7 +854,8 @@ static void oms_state_cb(struct oms_state_entry *entry, int event)
 
             break;
         case OVSDB_UPDATE_DEL:
-            strcpy(entry->state, PM_OBJS_REMOVED);
+            free(entry->state);
+            entry->state = STRDUP(PM_OBJS_REMOVED);
             break;
     }
 

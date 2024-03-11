@@ -25,7 +25,7 @@
 
 UNIT_NAME := test_qosm
 
-UNIT_DISABLE := $(if $(CONFIG_TARGET_USE_NATIVE_BRIDGE),n,y)
+UNIT_DISABLE := $(if $(CONFIG_MANAGER_QOSM),n,y)
 UNIT_TYPE := TEST_BIN
 
 UNIT_SRC := test_qosm_main.c

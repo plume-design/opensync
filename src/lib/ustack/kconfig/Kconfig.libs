@@ -1,0 +1,5 @@
+menuconfig LIB_USTACK
+    bool "Enables the network header parser"
+        default y
+        help
+            Enable the parsing of network headers for packet inspection

@@ -30,6 +30,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdio.h>
 #include <stdbool.h>
 
+#include "objmfs.h"
 
 /// @file
 /// @brief OSP Object Management API
@@ -53,11 +54,12 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * @param[in] path      Path where the file for installation is located
  * @param[in] name      Name of the object
  * @param[in] version   Version of object
+ * @param[in] install   Callback to the object manager, triggered before full installation of an object
  *
  * @return true if install is successful
  *
  */
-bool osp_objm_install(char *path, char *name, char *version);
+bool osp_objm_install(char *path, char *name, char *version, install_cb_t install_cb);
 
 /**
  * Remove object from object storage

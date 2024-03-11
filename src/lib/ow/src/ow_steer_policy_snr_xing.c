@@ -527,9 +527,9 @@ ow_steer_policy_snr_xing_recalc_cb(struct ow_steer_policy *policy,
     if (blocked_candidate_exists == false)
         LOGI("%s bssid: "OSW_HWADDR_FMT" preference: (nil), doesnt exist", ow_steer_policy_get_prefix(policy), OSW_HWADDR_ARG(&config->bssid));
 
-    const enum ow_steer_candidate_preference blocked_candidate_pref = ow_steer_candidate_get_preference(blocked_candidate);
     bool block_cancicdate_blockable = true;
     if (blocked_candidate_exists == true) {
+        const enum ow_steer_candidate_preference blocked_candidate_pref = ow_steer_candidate_get_preference(blocked_candidate);
         switch (blocked_candidate_pref) {
             case OW_STEER_CANDIDATE_PREFERENCE_OUT_OF_SCOPE:
             case OW_STEER_CANDIDATE_PREFERENCE_SOFT_BLOCKED:
@@ -541,11 +541,12 @@ ow_steer_policy_snr_xing_recalc_cb(struct ow_steer_policy *policy,
                 block_cancicdate_blockable = true;
                 break;
         }
-    }
+        if (block_cancicdate_blockable == false) {
+            LOGI("%s bssid: "OSW_HWADDR_FMT" preference: %s, cannot block candidate", ow_steer_policy_get_prefix(policy), OSW_HWADDR_ARG(&config->bssid),
+                 ow_steer_candidate_preference_to_cstr(blocked_candidate_pref));
+        }
 
-    if (block_cancicdate_blockable == false)
-        LOGI("%s bssid: "OSW_HWADDR_FMT" preference: %s, cannot block candidate", ow_steer_policy_get_prefix(policy), OSW_HWADDR_ARG(&config->bssid),
-             ow_steer_candidate_preference_to_cstr(blocked_candidate_pref));
+    }
 
     bool any_available_candidates = false;
     size_t i = 0;

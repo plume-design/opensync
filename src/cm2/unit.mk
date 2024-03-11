@@ -85,3 +85,4 @@ UNIT_DEPS += src/lib/evx
 endif
 UNIT_DEPS += src/lib/timevt
 UNIT_DEPS += src/lib/os_fdbuf
+UNIT_DEPS += src/lib/ff

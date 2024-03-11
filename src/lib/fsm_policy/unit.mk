@@ -28,7 +28,7 @@
 #
 ###############################################################################
 UNIT_NAME := fsm_policy
-UNIT_DISABLE := $(if $(CONFIG_MANAGER_FSM),n,y)
+UNIT_DISABLE := $(if $(CONFIG_LIB_FSM_POLICY),n,y)
 UNIT_TYPE := LIB
 
 UNIT_SRC := src/fsm_policy.c

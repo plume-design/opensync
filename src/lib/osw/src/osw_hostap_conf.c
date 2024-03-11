@@ -615,11 +615,23 @@ static void
 osw_hostap_conf_osw_wpa_to_width(const struct osw_drv_vif_config_ap *ap,
                                  struct osw_hostap_conf_ap_config *conf)
 {
-    enum osw_hostap_conf_chanwidth chanwidth;
-    chanwidth = osw_hostap_conf_chwidth_from_osw(ap->channel.width);
+    struct osw_channel pre_eht = ap->channel;
+    struct osw_channel eht = ap->channel;
 
-    if (ap->mode.vht_enabled) OSW_HOSTAP_CONF_SET_VAL(conf->vht_oper_chwidth, chanwidth);
-    if (ap->mode.he_enabled) OSW_HOSTAP_CONF_SET_VAL(conf->he_oper_chanwidth, chanwidth);
+    osw_channel_downgrade_to(&pre_eht, OSW_CHANNEL_160MHZ);
+
+    if (ap->mode.vht_enabled) {
+        OSW_HOSTAP_CONF_SET_VAL(conf->vht_oper_chwidth,
+                                osw_hostap_conf_chwidth_from_osw(pre_eht.width));
+    }
+    if (ap->mode.he_enabled) {
+        OSW_HOSTAP_CONF_SET_VAL(conf->he_oper_chwidth,
+                                osw_hostap_conf_chwidth_from_osw(pre_eht.width));
+    }
+    if (ap->mode.eht_enabled) {
+        OSW_HOSTAP_CONF_SET_VAL(conf->eht_oper_chwidth,
+                                osw_hostap_conf_chwidth_from_osw(eht.width));
+    }
 }
 
 static void
@@ -647,19 +659,30 @@ static void
 osw_hostap_conf_osw_wpa_to_channel(const struct osw_drv_vif_config_ap *ap,
                                    struct osw_hostap_conf_ap_config *conf)
 {
-    int channel = osw_freq_to_chan(ap->channel.control_freq_mhz);
-    int center0 = osw_freq_to_chan(ap->channel.center_freq0_mhz);
-    int center1 = osw_freq_to_chan(ap->channel.center_freq1_mhz);
+    const int channel = osw_freq_to_chan(ap->channel.control_freq_mhz);
+    struct osw_channel pre_eht = ap->channel;
+    struct osw_channel eht = ap->channel;
+
+    osw_channel_downgrade_to(&pre_eht, OSW_CHANNEL_160MHZ);
 
     if (channel != 0) OSW_HOSTAP_CONF_SET_VAL(conf->channel, channel);
 
     if (ap->mode.vht_enabled) {
+        const int center0 = osw_freq_to_chan(pre_eht.center_freq0_mhz);
+        const int center1 = osw_freq_to_chan(pre_eht.center_freq1_mhz);
         if (center0 != 0) OSW_HOSTAP_CONF_SET_VAL(conf->vht_oper_centr_freq_seg0_idx, center0);
         if (center1 != 0) OSW_HOSTAP_CONF_SET_VAL(conf->vht_oper_centr_freq_seg1_idx, center1);
     }
     if (ap->mode.he_enabled) {
+        const int center0 = osw_freq_to_chan(pre_eht.center_freq0_mhz);
+        const int center1 = osw_freq_to_chan(pre_eht.center_freq1_mhz);
         if (center0 != 0) OSW_HOSTAP_CONF_SET_VAL(conf->he_oper_centr_freq_seg0_idx, center0);
         if (center1 != 0) OSW_HOSTAP_CONF_SET_VAL(conf->he_oper_centr_freq_seg1_idx, center1);
+    }
+    if (ap->mode.eht_enabled) {
+        WARN_ON(eht.width == OSW_CHANNEL_80P80MHZ);
+        const int center0 = osw_freq_to_chan(eht.center_freq0_mhz);
+        if (center0 != 0) OSW_HOSTAP_CONF_SET_VAL(conf->eht_oper_centr_freq_seg0_idx, center0);
     }
 }
 
@@ -711,31 +734,9 @@ osw_hostap_conf_osw_wpa_to_ieee80211n(const struct osw_drv_vif_config_ap *ap,
 static const char *
 osw_hostap_conf_osw_chan_to_ht40_capab(const struct osw_channel *c)
 {
-    /* Any >20MHz channels will have different control and
-     * center freqs..
-     */
-    if (c->center_freq0_mhz == c->control_freq_mhz) return "";
-
-    /* .. but using their relation alone isn't sufficient
-     * alone. It needs a bit more calculations to infer the
-     * HT40+/-.
-     */
-    const enum osw_band band = osw_channel_to_band(c);
-    const int pri_chan = osw_freq_to_chan(c->control_freq_mhz);
-    const int *chans = osw_channel_sidebands(band, pri_chan, 40, 11);
-
-    int center_chan = 0;
-    size_t n = 0;
-    while (*chans) {
-        center_chan += *chans;
-        n++;
-        chans++;
-    }
-    if (n == 0) return "";
-
-    center_chan /= n;
-    if (center_chan < pri_chan) return "[HT40-]";
-    if (center_chan > pri_chan) return "[HT40+]";
+    const int offset = osw_channel_ht40_offset(c);
+    if (offset == 1) return "[HT40+]";
+    if (offset == -1) return "[HT40-]";
     return "";
 }
 
@@ -776,6 +777,16 @@ osw_hostap_conf_osw_wpa_to_ieee80211ax(const struct osw_drv_vif_config_ap *ap,
     if (ap->mode.he_enabled) {
         OSW_HOSTAP_CONF_SET_VAL(conf->ieee80211ax, ap->mode.he_enabled);
         //OSW_HOSTAP_CONF_SET_VAL(conf->require_vht, ap->mode.he_required);
+    }
+}
+
+static void
+osw_hostap_conf_osw_wpa_to_ieee80211be(const struct osw_drv_vif_config_ap *ap,
+                                       struct osw_hostap_conf_ap_config *conf)
+{
+    if (ap->mode.eht_enabled) {
+        OSW_HOSTAP_CONF_SET_VAL(conf->ieee80211be, ap->mode.eht_enabled);
+        //OSW_HOSTAP_CONF_SET_VAL(conf->require_eht, ap->mode.eht_required);
     }
 }
 
@@ -916,8 +927,10 @@ osw_hostap_conf_fill_ap_config(struct osw_drv_conf *drv_conf,
         return false;
 
     ap = &vif->u.ap;
+    if (vif->vif_type != OSW_VIF_AP) return true;
 
     memset(conf, 0, sizeof(*conf));
+    if (vif->enabled == false) return true;
 
     osw_hostap_conf_osw_vif_config_to_base (vif, conf);
     osw_hostap_conf_osw_wpa_to_ieee80211   (ap, conf);
@@ -942,6 +955,9 @@ osw_hostap_conf_fill_ap_config(struct osw_drv_conf *drv_conf,
 
     /*  IEEE 802.11ax related configuration  */
     osw_hostap_conf_osw_wpa_to_ieee80211ax (ap, conf);
+
+    /*  IEEE 802.11be related configuration  */
+    osw_hostap_conf_osw_wpa_to_ieee80211be (ap, conf);
 
     /* RADIUS client configuration */
     /* FIXME */
@@ -997,6 +1013,7 @@ osw_hostap_conf_generate_ap_config_bufs(struct osw_hostap_conf_ap_config *conf)
     CONF_APPEND(ap_isolate, "%d");
     CONF_APPEND(mcast_to_ucast, "%d");
     CONF_APPEND(send_probe_response, "%d");
+    CONF_APPEND(noscan, "%d");
 
     /* IEEE 802.11n related configuration */
     CONF_APPEND(ieee80211n, "%d");
@@ -1016,10 +1033,16 @@ osw_hostap_conf_generate_ap_config_bufs(struct osw_hostap_conf_ap_config *conf)
     /* IEEE 802.11ax related configuration */
     if (conf->ieee80211ax_exists) {
         CONF_APPEND(ieee80211ax, "%d");
-        // FIXME: This (and a bunch of others) need to be guarded by "is_X_supported" flags; hostapd can be built with(out) certain bits
-        // CONF_APPEND(he_oper_chanwidth, "%d");
+        CONF_APPEND(he_oper_chwidth, "%d");
         CONF_APPEND(he_oper_centr_freq_seg0_idx, "%d");
         CONF_APPEND(he_oper_centr_freq_seg1_idx, "%d");
+    }
+
+    /* IEEE 802.11ax related configuration */
+    if (conf->ieee80211be_exists) {
+        CONF_APPEND(ieee80211be, "%d");
+        CONF_APPEND(eht_oper_chwidth, "%d");
+        CONF_APPEND(eht_oper_centr_freq_seg0_idx, "%d");
     }
 
     /* IEEE 802.1X-2004 related configuration */
@@ -1065,8 +1088,8 @@ osw_hostap_conf_generate_ap_config_bufs(struct osw_hostap_conf_ap_config *conf)
     /* Radio measurements / location */
     CONF_APPEND(rrm_neighbor_report, "%d");
 
-    /* send_probe_response   FIXME - see commit hash: e011ad1078 */
-    /* use_driver_iface_addr FIXME - see commit hash: 470635f906 */
+    CONF_APPEND(use_driver_iface_addr, "%d");
+    CONF_APPEND_BUF(conf->extra_buf);
     /* osw_hwaddr_list (acl) - not handled by hostapd */
 
     CONF_FINI();
@@ -1205,6 +1228,7 @@ osw_hostap_conf_fill_ap_state(const struct osw_hostap_conf_ap_state_bufs *bufs,
     STATE_GET_BOOL(ap->mode.ht_enabled,          status, "ieee80211n");
     STATE_GET_BOOL(ap->mode.vht_enabled,         status, "ieee80211ac");
     STATE_GET_BOOL(ap->mode.he_enabled,          status, "ieee80211ax");
+    STATE_GET_BOOL(ap->mode.eht_enabled,         status, "ieee80211be");
     STATE_GET_BOOL(ap->mode.ht_required,         config, "require_ht");
     STATE_GET_BOOL(ap->mode.vht_required,        config, "require_vht");
 

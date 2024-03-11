@@ -179,7 +179,7 @@ create_parent_tmp_folder(void)
     if (*g_parent_tmp_folder != '\0') return true;
 
     /* create the folder using the user id executing the process */
-    login = cuserid(NULL);
+    login = getlogin();
     if (login == NULL)
     {
         uid = getuid();

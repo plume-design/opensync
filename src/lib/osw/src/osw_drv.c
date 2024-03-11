@@ -443,6 +443,7 @@ osw_drv_sta_state_is_changed(const struct osw_drv_sta *sta)
     const bool changed_pmf = sta->cur_state.pmf != sta->new_state.pmf;
     const bool changed_akm = sta->cur_state.akm != sta->new_state.akm;
     const bool changed_pairwise_cipher = sta->cur_state.pairwise_cipher != sta->new_state.pairwise_cipher;
+    const bool changed_mld_addr = (osw_hwaddr_is_equal(&sta->cur_state.mld_addr, &sta->new_state.mld_addr) == false);
 
     if (changed_key_id) {
         LOGI("osw: drv: %s/%s/"OSW_HWADDR_FMT": key_id: %d -> %d",
@@ -484,12 +485,22 @@ osw_drv_sta_state_is_changed(const struct osw_drv_sta *sta)
              to);
     }
 
+    if (changed_mld_addr) {
+        LOGI("osw: drv: %s/%s/"OSW_HWADDR_FMT": mld_addr: " OSW_HWADDR_FMT" -> "OSW_HWADDR_FMT,
+             sta->vif->phy->phy_name,
+             sta->vif->vif_name,
+             OSW_HWADDR_ARG(&sta->mac_addr),
+             OSW_HWADDR_ARG(&sta->cur_state.mld_addr),
+             OSW_HWADDR_ARG(&sta->new_state.mld_addr));
+    }
+
     changed |= changed_connected;
     changed |= changed_key_id;
     changed |= changed_ies;
     changed |= changed_pmf;
     changed |= changed_akm;
     changed |= changed_pairwise_cipher;
+    changed |= changed_mld_addr;
 
     return changed;
 }
@@ -560,7 +571,7 @@ osw_drv_sta_process_state(struct osw_drv_sta *sta)
     }
 
     if (added == true) {
-        LOGN("osw: drv: %s/%s/"OSW_HWADDR_FMT": connected keyid=%d pmf=%d akm=%s pairwise_cipher=%s (since %d seconds)",
+        LOGN("osw: drv: %s/%s/"OSW_HWADDR_FMT": connected keyid=%d pmf=%d akm=%s pairwise_cipher=%s mld="OSW_HWADDR_FMT" (since %d seconds)",
              sta->vif->phy->phy_name,
              sta->vif->vif_name,
              OSW_HWADDR_ARG(&sta->mac_addr),
@@ -568,6 +579,7 @@ osw_drv_sta_process_state(struct osw_drv_sta *sta)
              sta->cur_state.pmf,
              osw_akm_into_cstr(sta->cur_state.akm) ?: "",
              osw_cipher_into_cstr(sta->cur_state.pairwise_cipher) ?: "",
+             OSW_HWADDR_ARG(&sta->cur_state.mld_addr),
              in_network_sec);
     }
 
@@ -905,6 +917,8 @@ osw_drv_vif_state_is_changed_ap(const struct osw_drv_vif *vif)
     const bool changed_acl_policy = o->acl_policy != n->acl_policy;
     const bool changed_wps_pbc = o->wps_pbc != n->wps_pbc;
     const bool changed_multi_ap = memcmp(&o->multi_ap, &n->multi_ap, sizeof(o->multi_ap));
+    const bool changed_mld_addr = (osw_hwaddr_is_equal(&o->mld.addr, &n->mld.addr) == false);
+    const bool changed_mld_if_name = (strcmp(o->mld.if_name.buf, n->mld.if_name.buf) != 0);
     bool changed_acl = false;
     bool changed_psk = false;
     bool changed_neigh = false;
@@ -1030,6 +1044,8 @@ osw_drv_vif_state_is_changed_ap(const struct osw_drv_vif *vif)
     changed |= changed_acl_policy;
     changed |= changed_wps_pbc;
     changed |= changed_multi_ap;
+    changed |= changed_mld_addr;
+    changed |= changed_mld_if_name;
     changed |= changed_acl;
     changed |= changed_psk;
     changed |= changed_neigh;
@@ -1231,6 +1247,25 @@ osw_drv_vif_state_is_changed_ap(const struct osw_drv_vif *vif)
         FREE(to);
     }
 
+    if (changed_mld_addr) {
+        LOGI("osw: drv: %s/%s/%s: mld.addr: "OSW_HWADDR_FMT" -> "OSW_HWADDR_FMT,
+             vif->phy->drv->ops->name,
+             vif->phy->phy_name,
+             vif->vif_name,
+             OSW_HWADDR_ARG(&o->mld.addr),
+             OSW_HWADDR_ARG(&n->mld.addr));
+    }
+
+    if (changed_mld_if_name) {
+        LOGI("osw: drv: %s/%s/%s: mld.if_name: "OSW_IFNAME_FMT" -> "OSW_IFNAME_FMT,
+             vif->phy->drv->ops->name,
+             vif->phy->phy_name,
+             vif->vif_name,
+             OSW_IFNAME_ARG(&o->mld.if_name),
+             OSW_IFNAME_ARG(&n->mld.if_name));
+    }
+
+
     // FIXME: radius
     return changed;
 }
@@ -1366,11 +1401,14 @@ osw_drv_vif_state_is_changed_sta(const struct osw_drv_vif *vif)
     const struct osw_drv_vif_state_sta *o = &vif->cur_state.u.sta;
     const struct osw_drv_vif_state_sta *n = &vif->new_state.u.sta;
 
+    const bool changed_mld_addr = (osw_hwaddr_is_equal(&o->mld.addr, &n->mld.addr) == false);
+    const bool changed_mld_if_name = (strcmp(o->mld.if_name.buf, n->mld.if_name.buf) != 0);
     const bool changed_status = o->link.status != n->link.status;
     const bool changed_ssid = osw_ssid_cmp(&o->link.ssid, &n->link.ssid);
     const bool changed_bssid = osw_hwaddr_cmp(&o->link.bssid, &n->link.bssid);
     const bool changed_psk = strcmp(o->link.psk.str, n->link.psk.str) != 0;
     const bool changed_wpa = memcmp(&o->link.wpa, &n->link.wpa, sizeof(n->link.wpa));
+    const bool changed_link_mld_addr = (osw_hwaddr_is_equal(&o->link.mld_addr, &n->link.mld_addr) == false);
     const bool changed_channel = memcmp(&o->link.channel, &n->link.channel, sizeof(n->link.channel));
     const bool changed_networks = osw_drv_vif_state_is_changed_sta_networks(vif);
 
@@ -1424,7 +1462,36 @@ osw_drv_vif_state_is_changed_sta(const struct osw_drv_vif *vif)
              OSW_CHANNEL_ARG(&n->link.channel));
     }
 
+    if (changed_link_mld_addr) {
+        LOGI("osw: drv: %s/%s/%s: link: mld_addr: "OSW_HWADDR_FMT" -> "OSW_HWADDR_FMT,
+             vif->phy->drv->ops->name,
+             vif->phy->phy_name,
+             vif->vif_name,
+             OSW_HWADDR_ARG(&o->link.mld_addr),
+             OSW_HWADDR_ARG(&n->link.mld_addr));
+    }
+
+    if (changed_mld_addr) {
+        LOGI("osw: drv: %s/%s/%s: mld.addr: "OSW_HWADDR_FMT" -> "OSW_HWADDR_FMT,
+             vif->phy->drv->ops->name,
+             vif->phy->phy_name,
+             vif->vif_name,
+             OSW_HWADDR_ARG(&o->mld.addr),
+             OSW_HWADDR_ARG(&n->mld.addr));
+    }
+
+    if (changed_mld_if_name) {
+        LOGI("osw: drv: %s/%s/%s: mld.if_name: "OSW_IFNAME_FMT" -> "OSW_IFNAME_FMT,
+             vif->phy->drv->ops->name,
+             vif->phy->phy_name,
+             vif->vif_name,
+             OSW_IFNAME_ARG(&o->mld.if_name),
+             OSW_IFNAME_ARG(&n->mld.if_name));
+    }
+
     const bool changed = false
+                       | changed_mld_addr
+                       | changed_mld_if_name
                        | changed_networks
                        | changed_status
                        | changed_ssid
@@ -1563,6 +1630,18 @@ osw_drv_vif_dump_ap(struct osw_drv_vif *vif)
          vif->vif_name,
          multi_ap_str);
     FREE(multi_ap_str);
+
+    LOGI("osw: drv: %s/%s/%s: ap: mld.addr: "OSW_HWADDR_FMT,
+         vif->phy->drv->ops->name,
+         vif->phy->phy_name,
+         vif->vif_name,
+         OSW_HWADDR_ARG(&ap->mld.addr));
+
+    LOGI("osw: drv: %s/%s/%s: ap: mld.if_name: "OSW_IFNAME_FMT,
+         vif->phy->drv->ops->name,
+         vif->phy->phy_name,
+         vif->vif_name,
+         OSW_IFNAME_ARG(&ap->mld.if_name));
 }
 
 static void
@@ -1585,6 +1664,7 @@ osw_drv_vif_dump_ap_vlan(struct osw_drv_vif *vif)
 static void
 osw_drv_vif_dump_sta(struct osw_drv_vif *vif)
 {
+    const struct osw_drv_vif_state_sta *sta = &vif->cur_state.u.sta;
     const struct osw_drv_vif_state_sta_link *link = &vif->cur_state.u.sta.link;
 
     LOGI("osw: drv: %s/%s/%s: sta: link: status: %s",
@@ -1636,6 +1716,24 @@ osw_drv_vif_dump_sta(struct osw_drv_vif *vif)
          vif->phy->phy_name,
          vif->vif_name,
          link->multi_ap ? "yes" : "no");
+
+    LOGI("osw: drv: %s/%s/%s: sta: link: mld_addr: "OSW_HWADDR_FMT,
+         vif->phy->drv->ops->name,
+         vif->phy->phy_name,
+         vif->vif_name,
+         OSW_HWADDR_ARG(&sta->link.mld_addr));
+
+    LOGI("osw: drv: %s/%s/%s: sta: mld.addr: "OSW_HWADDR_FMT,
+         vif->phy->drv->ops->name,
+         vif->phy->phy_name,
+         vif->vif_name,
+         OSW_HWADDR_ARG(&sta->mld.addr));
+
+    LOGI("osw: drv: %s/%s/%s: sta: mld.if_name: "OSW_IFNAME_FMT,
+         vif->phy->drv->ops->name,
+         vif->phy->phy_name,
+         vif->vif_name,
+         OSW_IFNAME_ARG(&sta->mld.if_name));
 }
 
 static void
@@ -1988,6 +2086,22 @@ osw_drv_phy_request_state(struct osw_drv_phy *phy)
     drv->ops->request_phy_state_fn(drv, phy->phy_name);
 }
 
+static bool
+osw_channel_overlaps_with_freq(const struct osw_channel *c, const int freq)
+{
+    if (c->control_freq_mhz == 0) return false;
+    int segs[16];
+    const size_t n_segs = osw_channel_20mhz_segments(c, segs, ARRAY_SIZE(segs));
+    if (n_segs == 0) return false;
+
+    size_t i;
+    for (i = 0; i < n_segs; i++) {
+        if (segs[i] == freq) return true;
+    }
+
+    return false;
+}
+
 static void
 osw_drv_phy_mark_vif_radar(struct osw_drv_phy *phy,
                            const struct osw_channel *c)
@@ -2001,7 +2115,7 @@ osw_drv_phy_mark_vif_radar(struct osw_drv_phy *phy,
             continue;
         }
 
-        const bool is_on_freq = (vif->cur_state.u.ap.channel.control_freq_mhz == freq);
+        const bool is_on_freq = osw_channel_overlaps_with_freq(&vif->cur_state.u.ap.channel, freq);
         if (is_on_freq) {
             vif->radar_detected = true;
             vif->radar_channel = vif->cur_state.u.ap.channel;
@@ -2010,7 +2124,7 @@ osw_drv_phy_mark_vif_radar(struct osw_drv_phy *phy,
         }
 
         const bool was_on_freq = osw_timer_is_armed(&vif->recent_channel_timeout)
-                               ? vif->recent_channel.control_freq_mhz == freq
+                               ? osw_channel_overlaps_with_freq(&vif->recent_channel, freq)
                                : false;
         if (was_on_freq) {
             vif->radar_detected = true;

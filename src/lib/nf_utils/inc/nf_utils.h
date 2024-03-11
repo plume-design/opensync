@@ -210,6 +210,21 @@ struct nf_queue_context
     ds_tree_t nfq_tree;
 };
 
+#define NF_ERRNO_MAX 160
+struct nf_queue_err_counters
+{
+    int error;
+    uint64_t prev_counter;
+    uint64_t counter;
+    int32_t to_report;
+};
+
+struct nf_queue_context_errors
+{
+    struct nf_queue_err_counters **counters;
+    size_t count;
+};
+
 struct nfqueue_ctxt
 {
     uint32_t queue_num;
@@ -222,6 +237,8 @@ struct nfqueue_ctxt
     void *user_data;
     char send_buf[0xFFFF];
     struct nlmsghdr *nlh;
+    size_t errs_to_report;
+    struct nf_queue_err_counters err_counters[NF_ERRNO_MAX + 2];
     ds_tree_node_t  nfq_tnode;
 };
 
@@ -242,6 +259,8 @@ bool nf_queue_set_ct_mark(uint32_t packet_id, struct dpi_mark_policy *mark_polic
 
 bool nf_queue_set_nlsock_buffsz(uint32_t queue_num, uint32_t sock_buff_sz);
 
+bool nf_queue_get_nlsock_buffsz(uint32_t queue_num);
+
 bool nf_queue_set_queue_maxlen(uint32_t queue_num, uint32_t queue_maxlen);
 
 bool nf_queue_update_payload(uint32_t packet_id, uint32_t queue_num);
@@ -260,8 +279,6 @@ int nf_ct_set_mark_timeout(nf_flow_t *flow, uint32_t timeout);
 int nf_ct_set_flow_mark(struct net_header_parser *net_pkt,
                         uint32_t mark, uint16_t zone);
 
-struct nlmsghdr* nf_ct_build_msg_hdr(char *buf, uint32_t type, uint16_t flags, int af_family);
-
 bool nf_ct_get_flow_entries(int af_family, ds_dlist_t *g_nf_ct_list, uint16_t zone_id);
 
 void nf_ct_print_entries(ds_dlist_t *g_nf_ct_list);
@@ -269,5 +286,9 @@ void nf_ct_print_entries(ds_dlist_t *g_nf_ct_list);
 bool nf_ct_filter_ip(int af, void *ip);
 
 void nf_free_ct_flow_list(ds_dlist_t *ct_list);
+
+struct nf_queue_context_errors * nfq_get_err_counters(int queue_num);
+
+void nfq_log_err_counters(int queue_num);
 
 #endif /* NF_UTILS_H_INCLUDED */

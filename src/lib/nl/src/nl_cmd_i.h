@@ -45,6 +45,7 @@ struct nl_cmd {
     void *completed_fn_priv;
     void *failed_fn_priv;
     bool failed;
+    char *name;
 };
 
 void
