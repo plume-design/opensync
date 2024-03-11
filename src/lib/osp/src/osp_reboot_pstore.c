@@ -50,7 +50,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "memutil.h"
 
 /** Pattern for matching the dmesg file */
-#define PSTORE_DMESG        "dmesg-ramoops-*"
+#define PSTORE_DMESG        "dmesg-efi-*"
 /** Pattern for matching the pmsg file */
 #define PSTORE_PMSG         "pmsg-ramoops-*"
 /**
