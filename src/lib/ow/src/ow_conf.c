@@ -1425,6 +1425,8 @@ ow_conf_ut_vif_enabled_op_request_config_cb(struct osw_drv *drv,
             vif_state.vif_type = vif->vif_type;
             vif_state.status = vif->enabled ? OSW_VIF_ENABLED : OSW_VIF_DISABLED;
             vif_state.u.ap.beacon_interval_tu = OW_CONF_DEFAULT_BEACON_INTERVAL_TU;
+            vif_state.u.ap.channel.control_freq_mhz = 2412;
+            vif_state.u.ap.channel.center_freq0_mhz = 2412;
 
             osw_drv_dummy_set_vif(dummy,
                                   phy->phy_name,

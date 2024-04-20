@@ -63,6 +63,9 @@ static char lnx_tc_qdisc_egress_set[] = _S(
         tc qdisc add dev "$1" \
                 handle 1:0 \
                 root prio;
+        tc qdisc add dev "$1" parent 1:1 handle 10: sfq limit 1024;
+        tc qdisc add dev "$1" parent 1:2 handle 20: sfq limit 1024;
+        tc qdisc add dev "$1" parent 1:3 handle 30: sfq limit 1024;
 
         );
 static char lnx_tc_qdisc_ingress_filter_add[] = _S(

@@ -277,3 +277,94 @@ OSW_UT(osw_util_ut_circ_buf_foreach_macro) {
     OSW_UT_EVAL(cmp_buf[1] == true);
     OSW_UT_EVAL(cmp_buf[2] == true);
 }
+
+OSW_UT(osw_ies_supported_channels_2ghz)
+{
+    unsigned char ies[] = {
+        DOT11_SUPPORTED_CHANNELS,
+        0,
+        1, 11,
+    };
+    ies[1] = sizeof(ies) - 2;
+    const struct element *e = (const struct element *)ies;
+
+    struct osw_assoc_req_info info;
+    MEMZERO(info);
+    osw_parse_supported_channels(e, &info);
+
+    const int expected[] = {
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11,
+    };
+
+    ASSERT(ARRAY_SIZE(expected) == info.channel_cnt,
+            strfmta("wrong channel count, expected %zu found %u",
+                ARRAY_SIZE(expected),
+                info.channel_cnt));
+
+    size_t i;
+    for (i = 0; i < info.channel_cnt; i++) {
+        ASSERT(info.channel_list[i] == expected[i],
+                strfmta("wrong channel at %zu, expected %d found %d",
+                    i, expected[i], info.channel_list[i]));
+    }
+}
+
+OSW_UT(osw_ies_supported_channels_5ghz)
+{
+    unsigned char ies[] = {
+        DOT11_SUPPORTED_CHANNELS,
+        0,
+        36, 4,
+        52, 4,
+        100, 11,
+        149, 4,
+        165, 1,
+    };
+    ies[1] = sizeof(ies) - 2;
+    const struct element *e = (const struct element *)ies;
+
+    struct osw_assoc_req_info info;
+    MEMZERO(info);
+    osw_parse_supported_channels(e, &info);
+
+    const int expected[] = {
+        36, 40, 44, 48,
+        52, 56, 60, 64,
+        100, 104, 108, 112, 116, 120, 124, 128, 132, 136, 140,
+        149, 153, 157, 161,
+        165,
+    };
+
+    ASSERT(ARRAY_SIZE(expected) == info.channel_cnt,
+            strfmta("wrong channel count, expected %zu found %u",
+                ARRAY_SIZE(expected),
+                info.channel_cnt));
+
+    size_t i;
+    for (i = 0; i < info.channel_cnt; i++) {
+        ASSERT(info.channel_list[i] == expected[i],
+                strfmta("wrong channel at %zu, expected %d found %d",
+                    i, expected[i], info.channel_list[i]));
+    }
+}
+
+OSW_UT(osw_ies_supported_channels_bounds)
+{
+    unsigned char ies[] = {
+        DOT11_SUPPORTED_CHANNELS,
+        0,
+        1, 200,
+        1, 200,
+        1, 200,
+    };
+    ies[1] = sizeof(ies) - 2;
+    const struct element *e = (const struct element *)ies;
+
+
+    struct osw_assoc_req_info info;
+    MEMZERO(info);
+    osw_parse_supported_channels(e, &info);
+
+    ASSERT(info.channel_cnt == ARRAY_SIZE(info.channel_list),
+            "out of bounds");
+}

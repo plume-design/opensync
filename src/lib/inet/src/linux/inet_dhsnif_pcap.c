@@ -596,8 +596,7 @@ void __inet_dhsnif_process_L3(
             ntohs(udp->udp_len));
 
     /* Check the DHCP valid port range */
-    if ((ntohs(udp->udp_src) != 68 || ntohs(udp->udp_dst) != 67) &&
-        (ntohs(udp->udp_src) != 67 || ntohs(udp->udp_dst) != 68))
+    if (ntohs(udp->udp_dst) != 67 && ntohs(udp->udp_dst) != 68)
     {
         LOG(ERR, "inet_dhsnif: %s: UDP src/dst port range mismatch.", self->ds_ifname);
         return;

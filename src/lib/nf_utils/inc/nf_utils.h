@@ -211,6 +211,7 @@ struct nf_queue_context
 };
 
 #define NF_ERRNO_MAX 160
+#define NF_ERRNO_BACKOFF 159
 struct nf_queue_err_counters
 {
     int error;
@@ -239,6 +240,7 @@ struct nfqueue_ctxt
     struct nlmsghdr *nlh;
     size_t errs_to_report;
     struct nf_queue_err_counters err_counters[NF_ERRNO_MAX + 2];
+    bool backoff_nfq;
     ds_tree_node_t  nfq_tnode;
 };
 
@@ -264,6 +266,8 @@ bool nf_queue_get_nlsock_buffsz(uint32_t queue_num);
 bool nf_queue_set_queue_maxlen(uint32_t queue_num, uint32_t queue_maxlen);
 
 bool nf_queue_update_payload(uint32_t packet_id, uint32_t queue_num);
+
+bool nf_queue_backoff_update(bool enable, uint32_t queue_num);
 
 /* NF CONNTRACK APIs */
 int nf_process_ct_cb(const struct nlmsghdr *nlh, void *data);

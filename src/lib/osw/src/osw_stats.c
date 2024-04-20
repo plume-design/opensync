@@ -34,6 +34,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <const.h>
 #include <os_time.h>
 #include <log.h>
+#include <util.h>
+#include <os.h>
 
 /* osw */
 #include <osw_tlv.h>
@@ -41,6 +43,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <osw_stats.h>
 #include <osw_stats_subscriber.h>
 #include <osw_stats_defs.h>
+#include <osw_state.h>
 #include <osw_util.h>
 #include <osw_module.h>
 #include <osw_time.h>
@@ -54,6 +57,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 #define OSW_STATS_BUCKET_EXPIRE_AFTER_N_PERIODS 30
 #define OSW_STATS_POLL_MAX_GAP (1 / 256.0)
+
+#define LOG_PREFIX(fmt, ...) \
+    "osw: stats: " fmt, ##__VA_ARGS__
 
 static void
 set_enum_bit(unsigned long *mask, int i, bool set)
@@ -104,6 +110,7 @@ struct osw_stats_subscriber {
 };
 
 struct osw_stats {
+    struct osw_state_observer state_obs;
     struct ds_dlist subscribers;
     struct ds_tree pollers;
     struct osw_timer work;
@@ -214,7 +221,7 @@ osw_stats_first_to_bool(const bool inherited,
     return true;
 }
 
-static void
+static enum osw_tlv_merge_result
 osw_stats_subscriber_put(struct osw_stats_subscriber *sub,
                          const enum osw_stats_id id,
                          const struct osw_stats_defs *defs,
@@ -223,7 +230,7 @@ osw_stats_subscriber_put(struct osw_stats_subscriber *sub,
                          const size_t len)
 {
     const int bit = 1 << id;
-    if ((sub->stats_mask & bit) == 0) return;
+    if ((sub->stats_mask & bit) == 0) return OSW_TLV_MERGE_OK;
 
     struct ds_tree *tree = &sub->buckets[id];
     struct osw_stats_bucket *bucket = ds_tree_find(tree, key);
@@ -235,13 +242,46 @@ osw_stats_subscriber_put(struct osw_stats_subscriber *sub,
         ds_tree_insert(tree, bucket, &bucket->key);
     }
 
-    osw_tlv_merge(&bucket->data,
-                  &bucket->last,
-                  data, len,
-                  first,
-                  defs->tpolicy,
-                  defs->mpolicy,
-                  defs->size);
+    struct osw_tlv backup;
+    MEMZERO(backup);
+    osw_tlv_copy(&backup, &bucket->data);
+
+    const enum osw_tlv_merge_result r = osw_tlv_merge(&bucket->data,
+                                                      &bucket->last,
+                                                      data, len,
+                                                      first,
+                                                      defs->tpolicy,
+                                                      defs->mpolicy,
+                                                      defs->size);
+    switch (r) {
+        case OSW_TLV_MERGE_OK:
+            break;
+        case OSW_TLV_MERGE_ERR:
+            break;
+        case OSW_TLV_MERGE_ERR_UNDERFLOW:
+            /* Some absolute TLVs need 2 samples to compute
+             * the delta. However some require only 1
+             * because they can be compared against "0". For
+             * example re-association and station counters
+             * can be compared against 0. To handle the
+             * latter clear out last samples and try again.
+             */
+            osw_tlv_fini(&bucket->data);
+            osw_tlv_fini(&bucket->last);
+            bucket->data = backup;
+            MEMZERO(backup);
+            osw_tlv_merge(&bucket->data,
+                          &bucket->last,
+                          data, len,
+                          first,
+                          defs->tpolicy,
+                          defs->mpolicy,
+                          defs->size);
+
+            break;
+    }
+    osw_tlv_fini(&backup);
+    return r;
 }
 
 void
@@ -629,6 +669,83 @@ osw_stats_put_key(struct osw_tlv *key,
 }
 
 static void
+osw_stats_log_prefix_sta(char **buf,
+                         size_t *len,
+                         const struct osw_tlv_hdr **tb)
+{
+    const struct osw_tlv_hdr *phy_name = tb[OSW_STATS_STA_PHY_NAME];
+    const struct osw_tlv_hdr *vif_name = tb[OSW_STATS_STA_VIF_NAME];
+    const struct osw_tlv_hdr *sta_addr = tb[OSW_STATS_STA_MAC_ADDRESS];
+    const struct osw_hwaddr *addr = osw_tlv_get_data(sta_addr) ?: osw_hwaddr_zero();
+    csnprintf(buf, len, LOG_PREFIX("sta: %s/%s/"OSW_HWADDR_FMT": ",
+                osw_tlv_get_string(phy_name) ?: "",
+                osw_tlv_get_string(vif_name) ?: "",
+                OSW_HWADDR_ARG(addr)));
+}
+
+static void
+osw_stats_log_prefix_chan(char **buf,
+                          size_t *len,
+                          const struct osw_tlv_hdr **tb)
+{
+    const struct osw_tlv_hdr *phy_name = tb[OSW_STATS_CHAN_PHY_NAME];
+    const struct osw_tlv_hdr *freq_mhz = tb[OSW_STATS_CHAN_FREQ_MHZ];
+    const uint32_t zero = 0;
+    csnprintf(buf, len, LOG_PREFIX("chan: %s/%"PRIu32": ",
+                osw_tlv_get_string(phy_name) ?: "",
+                *(uint32_t *)(osw_tlv_get_data(freq_mhz) ?: &zero)));
+}
+
+static void
+osw_stats_log_prefix_bss_scan(char **buf,
+                              size_t *len,
+                              const struct osw_tlv_hdr **tb)
+{
+    const struct osw_tlv_hdr *phy_name = tb[OSW_STATS_BSS_SCAN_PHY_NAME];
+    const struct osw_tlv_hdr *bssid = tb[OSW_STATS_BSS_SCAN_MAC_ADDRESS];
+    const struct osw_hwaddr *addr = osw_tlv_get_data(bssid) ?: osw_hwaddr_zero();
+    csnprintf(buf, len, LOG_PREFIX("bss_scan: %s/"OSW_HWADDR_FMT": ",
+                osw_tlv_get_string(phy_name) ?: "",
+                OSW_HWADDR_ARG(addr)));
+}
+
+static void
+osw_stats_log_prefix(char **buf,
+                     size_t *len,
+                     const enum osw_stats_id id,
+                     const struct osw_tlv_hdr **tb)
+{
+    switch (id) {
+        case OSW_STATS_PHY: return;
+        case OSW_STATS_VIF: return;
+        case OSW_STATS_STA: return osw_stats_log_prefix_sta(buf, len, tb);
+        case OSW_STATS_CHAN: return osw_stats_log_prefix_chan(buf, len, tb);
+        case OSW_STATS_BSS_SCAN: return osw_stats_log_prefix_bss_scan(buf, len, tb);
+        case OSW_STATS_MAX__: return;
+    }
+}
+
+static void
+osw_stats_log(const enum osw_stats_id id,
+              const struct osw_tlv_hdr **tb,
+              log_severity_t sev,
+              const char *fmt,
+              ...)
+{
+    char buf[1024];
+    char *p = buf;
+    size_t len = sizeof(buf);
+    osw_stats_log_prefix(&p, &len, id, tb);
+
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(p, len, fmt, ap);
+    va_end(ap);
+
+    mlog(sev, MODULE_ID, "%s", buf);
+}
+
+static void
 osw_stats_put_one(struct osw_stats *stats,
                   const struct osw_tlv_hdr *src)
 {
@@ -661,8 +778,22 @@ osw_stats_put_one(struct osw_stats *stats,
         return;
     }
 
+    bool underflow = false;
     ds_dlist_foreach(&stats->subscribers, sub) {
-        osw_stats_subscriber_put(sub, id, defs, &key, data, len);
+        const enum osw_tlv_merge_result r = osw_stats_subscriber_put(sub, id, defs, &key, data, len);
+        switch (r) {
+            case OSW_TLV_MERGE_OK:
+                break;
+            case OSW_TLV_MERGE_ERR:
+                break;
+            case OSW_TLV_MERGE_ERR_UNDERFLOW:
+                underflow = true;
+                break;
+        }
+    }
+
+    if (underflow) {
+        osw_stats_log(id, tb, LOG_SEVERITY_INFO, "underflow, some stats were lost");
     }
 
     osw_tlv_fini(&key);
@@ -737,11 +868,58 @@ osw_stats_work_cb(struct osw_timer *t)
 }
 
 static void
+osw_stats_sta_invalidate(struct osw_stats *m,
+                         const char *phy_name,
+                         const char *vif_name,
+                         const struct osw_hwaddr *sta_addr)
+{
+    struct osw_tlv key;
+    MEMZERO(key);
+
+    osw_tlv_put_string(&key, OSW_STATS_STA_PHY_NAME, phy_name);
+    osw_tlv_put_string(&key, OSW_STATS_STA_VIF_NAME, vif_name);
+    osw_tlv_put_hwaddr(&key, OSW_STATS_STA_MAC_ADDRESS, sta_addr);
+
+    struct osw_stats_subscriber *sub;
+    const enum osw_stats_id id = OSW_STATS_STA;
+    ds_dlist_foreach(&m->subscribers, sub) {
+        struct ds_tree *tree = &sub->buckets[id];
+        struct osw_stats_bucket *bucket = ds_tree_find(tree, &key);
+        if (bucket == NULL) continue;
+
+        osw_tlv_fini(&bucket->last);
+    }
+
+    osw_tlv_fini(&key);
+}
+
+static void
+osw_stats_sta_disconnected_cb(struct osw_state_observer *obs,
+                              const struct osw_state_sta_info *info)
+{
+    struct osw_stats *m = container_of(obs, typeof(*m), state_obs);
+    const char *phy_name = info->vif->phy->phy_name;
+    const char *vif_name = info->vif->vif_name;
+    const struct osw_hwaddr *sta_addr = info->mac_addr;
+
+    osw_stats_sta_invalidate(m, phy_name, vif_name, sta_addr);
+}
+
+static void
 osw_stats_init(struct osw_stats *stats)
 {
     ds_dlist_init(&stats->subscribers, struct osw_stats_subscriber, node);
     ds_tree_init(&stats->pollers, osw_stats_double_cmp, struct osw_stats_poller, node);
     osw_timer_init(&stats->work, osw_stats_work_cb);
+
+    stats->state_obs.name = __FILE__;
+    stats->state_obs.sta_disconnected_fn = osw_stats_sta_disconnected_cb;
+}
+
+static void
+osw_stats_attach(struct osw_stats *m)
+{
+    osw_state_register_observer(&m->state_obs);
 }
 
 OSW_MODULE(osw_stats)
@@ -750,6 +928,7 @@ OSW_MODULE(osw_stats)
     OSW_MODULE_LOAD(osw_mux);
     struct osw_stats *s = &g_osw_stats;
     osw_stats_init(s);
+    osw_stats_attach(s);
     return NULL;
 }
 

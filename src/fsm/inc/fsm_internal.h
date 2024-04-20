@@ -367,4 +367,7 @@ fsm_set_dpi_health_stats_cfg(struct fsm_session *session);
 void
 fsm_collect_pcap_stats(struct fsm_session *session);
 
+int
+flush_accel_flows(struct net_md_stats_accumulator *acc);
+
 #endif /* FSM_INTERNAL_H_INCLUDED */

@@ -46,7 +46,8 @@ struct osw_tlv_merge_op {
 
 typedef void osw_tlv_merge_add_fn_t(void *d, const void *s);
 typedef void osw_tlv_merge_sub_fn_t(void *d, const void *s);
-typedef void osw_tlv_merge_op_fn_t(const struct osw_tlv_merge_op *op);
+typedef bool osw_tlv_merge_ufl_fn_t(const void *a, const void *b);
+typedef enum osw_tlv_merge_result osw_tlv_merge_op_fn_t(const struct osw_tlv_merge_op *op);
 
 void
 osw_tlv_merge_repack(struct osw_tlv *dst,
@@ -96,13 +97,14 @@ osw_tlv_merge_replace(struct osw_tlv *dst,
     osw_tlv_fini(src);
 }
 
-static void
+static enum osw_tlv_merge_result
 osw_tlv_merge_op_none_cb(const struct osw_tlv_merge_op *op)
 {
     (void)op;
+    return OSW_TLV_MERGE_OK;
 }
 
-static void
+static enum osw_tlv_merge_result
 osw_tlv_merge_op_overwrite_cb(const struct osw_tlv_merge_op *op)
 {
     if (*op->dest == NULL || (*op->dest)->len != op->src->len) {
@@ -112,6 +114,7 @@ osw_tlv_merge_op_overwrite_cb(const struct osw_tlv_merge_op *op)
     memcpy(osw_tlv_get_data(*op->dest),
            osw_tlv_get_data(op->src),
            op->src->len);
+    return OSW_TLV_MERGE_OK;
 }
 
 static void
@@ -124,6 +127,13 @@ static void
 osw_stats_type_u32_sub_cb(void *d, const void *s)
 {
     *(uint32_t *)d = *(uint32_t *)d - *(uint32_t *)s;
+}
+
+static bool
+osw_stats_type_u32_ufl_cb(const void *a, const void *b)
+{
+    const uint32_t d = *(uint32_t *)a - *(uint32_t *)b;
+    return d > (UINT32_MAX / 2);
 }
 
 static void
@@ -168,30 +178,58 @@ osw_tlv_merge_sub_fn_lookup(const enum osw_tlv_type t)
     return NULL;
 }
 
-static void
+static osw_tlv_merge_ufl_fn_t *
+osw_tlv_merge_ufl_fn_lookup(const enum osw_tlv_type t)
+{
+    switch (t) {
+        case OSW_TLV_U32: return osw_stats_type_u32_ufl_cb;
+        case OSW_TLV_FLOAT: return NULL;
+        case OSW_TLV_HWADDR: return NULL;
+        case OSW_TLV_STRING: return NULL;
+        case OSW_TLV_UNSPEC: return NULL;
+        case OSW_TLV_NESTED: return NULL;
+    }
+    assert(0);
+    return NULL;
+}
+
+static enum osw_tlv_merge_result
 osw_tlv_merge_op_accumulate_cb(const struct osw_tlv_merge_op *op)
 {
     const bool need_diff = ((op->src->flags & OSW_TLV_F_DELTA) == 0);
     const bool skip_null = (need_diff == true && op->diff_on_first == false);
     const enum osw_tlv_type type = op->src->type;
+    bool underflow = false;
     osw_tlv_merge_add_fn_t *add_fn = osw_tlv_merge_add_fn_lookup(type);
     osw_tlv_merge_sub_fn_t *sub_fn = osw_tlv_merge_sub_fn_lookup(type);
+    osw_tlv_merge_ufl_fn_t *ufl_fn = osw_tlv_merge_ufl_fn_lookup(type);
 
-    if (WARN_ON(add_fn == NULL)) return;
-    if (WARN_ON(sub_fn == NULL)) return;
-    if (op->prev[0] == NULL && skip_null == true) goto store;
+    if (WARN_ON(add_fn == NULL)) return OSW_TLV_MERGE_ERR;
+    if (WARN_ON(sub_fn == NULL)) return OSW_TLV_MERGE_ERR;
+    if (op->prev[0] == NULL && skip_null == true) goto store_maybe;
+
+    const void *s = osw_tlv_get_data(op->src);
+    const void *p = op->prev[0] ? osw_tlv_get_data(*op->prev) : NULL;
+    underflow = need_diff
+             && (op->prev[0] != NULL)
+             && (ufl_fn != NULL)
+             && (ufl_fn(s, p));
+    if (underflow) goto store_maybe;
+
     if (op->dest[0] == NULL || op->dest[0]->len != op->src->len) {
         void *data = osw_tlv_put(op->dest_tlv, op->src->id, op->src->type, op->src->len);
         op->dest[0] = osw_tlv_get_hdr(data);
         memset(data, 0, op->src->len);
     }
-    const void *s = osw_tlv_get_data(op->src);
-    const void *p = op->prev[0] ? osw_tlv_get_data(*op->prev) : NULL;
     void *d = osw_tlv_get_data(op->dest[0]);
     add_fn(d, s);
     if (p != NULL) sub_fn(d, p);
-store:
-    if (need_diff == false) return;
+
+store_maybe:
+    if (need_diff == false) {
+        goto end;
+    }
+
     if (op->prev[0] == NULL) {
         op->prev[0] = osw_tlv_get_hdr(osw_tlv_put_copy(op->prev_tlv, op->src));
     }
@@ -200,6 +238,13 @@ store:
                osw_tlv_get_data(op->src),
                op->src->len);
     }
+
+end:
+    if (underflow) {
+        return OSW_TLV_MERGE_ERR_UNDERFLOW;
+    }
+
+    return OSW_TLV_MERGE_OK;
 }
 
 #if 0
@@ -222,18 +267,18 @@ osw_tlv_merge_first_to_bool(const bool inherited,
     return true;
 }
 
-static void
+static enum osw_tlv_merge_result
 osw_tlv_merge_op_merge_cb(const struct osw_tlv_merge_op *op)
 {
     const uint32_t id = op->src->id;
     const enum osw_tlv_type type = op->src->type;
 
-    if (op->tpolicy == NULL) return;
-    if (op->mpolicy == NULL) return;
-    if (op->tpolicy[id].tb_size == 0) return;
-    if (op->tpolicy[id].tb_size != op->mpolicy[id].tb_size) return;
-    if (op->mpolicy[id].nested == NULL) return;
-    if (WARN_ON(type != OSW_TLV_NESTED)) return;
+    if (op->tpolicy == NULL) return OSW_TLV_MERGE_ERR;
+    if (op->mpolicy == NULL) return OSW_TLV_MERGE_ERR;
+    if (op->tpolicy[id].tb_size == 0) return OSW_TLV_MERGE_ERR;
+    if (op->tpolicy[id].tb_size != op->mpolicy[id].tb_size) return OSW_TLV_MERGE_ERR;
+    if (op->mpolicy[id].nested == NULL) return OSW_TLV_MERGE_ERR;
+    if (WARN_ON(type != OSW_TLV_NESTED)) return OSW_TLV_MERGE_ERR;
 
     const struct osw_tlv_policy *tpolicy = op->tpolicy[id].nested;
     const struct osw_tlv_merge_policy *mpolicy = op->mpolicy[id].nested;
@@ -245,17 +290,18 @@ osw_tlv_merge_op_merge_cb(const struct osw_tlv_merge_op *op)
     osw_tlv_merge_clone(&dest_tmp, *op->dest);
     osw_tlv_merge_clone(&prev_tmp, *op->prev);
 
-    osw_tlv_merge(&dest_tmp,
-                  &prev_tmp,
-                  osw_tlv_get_data(op->src),
-                  op->src->len,
-                  diff_on_first,
-                  tpolicy,
-                  mpolicy,
-                  tb_size);
+    const enum osw_tlv_merge_result r = osw_tlv_merge(&dest_tmp,
+                                                      &prev_tmp,
+                                                      osw_tlv_get_data(op->src),
+                                                      op->src->len,
+                                                      diff_on_first,
+                                                      tpolicy,
+                                                      mpolicy,
+                                                      tb_size);
 
     osw_tlv_merge_replace(op->dest_tlv, op->dest, op->src, &dest_tmp);
     osw_tlv_merge_replace(op->prev_tlv, op->prev, op->src, &prev_tmp);
+    return r;
 }
 
 static osw_tlv_merge_op_fn_t *
@@ -271,7 +317,7 @@ osw_tlv_merge_op_fn_lookup(enum osw_tlv_merge_op_type t)
     return NULL;
 }
 
-void
+enum osw_tlv_merge_result
 osw_tlv_merge(struct osw_tlv *dest_tlv,
               struct osw_tlv *prev_tlv,
               const void *data,
@@ -287,8 +333,11 @@ osw_tlv_merge(struct osw_tlv *dest_tlv,
     size_t i;
     bool need_dest_repack = false;
     bool need_prev_repack = false;
+    bool underflow = false;
 
-    if (mpolicy == NULL) return;
+    if (mpolicy == NULL) {
+        return OSW_TLV_MERGE_ERR;
+    }
 
     memset(dtb, 0, tb_size * sizeof(*dtb));
     memset(ntb, 0, tb_size * sizeof(*ntb));
@@ -337,7 +386,16 @@ osw_tlv_merge(struct osw_tlv *dest_tlv,
         osw_tlv_merge_op_fn_t *op_fn = osw_tlv_merge_op_fn_lookup(optype);
 
         if (WARN_ON(op_fn == NULL)) continue;
-        op_fn(&op);
+        const enum osw_tlv_merge_result r = op_fn(&op);
+        switch (r) {
+            case OSW_TLV_MERGE_OK:
+                break;
+            case OSW_TLV_MERGE_ERR:
+                break;
+            case OSW_TLV_MERGE_ERR_UNDERFLOW:
+                underflow = true;
+                break;
+        }
 
         if (old_dest != dtb[i]) need_dest_repack = true;
         if (old_prev != ptb[i]) need_prev_repack = true;
@@ -348,6 +406,12 @@ osw_tlv_merge(struct osw_tlv *dest_tlv,
 
     if (need_prev_repack == true)
         osw_tlv_merge_repack(prev_tlv, ptb, tb_size);
+
+    if (underflow) {
+        return OSW_TLV_MERGE_ERR_UNDERFLOW;
+    }
+
+    return OSW_TLV_MERGE_OK;
 }
 
 #include "osw_tlv_merge_ut.c.h"

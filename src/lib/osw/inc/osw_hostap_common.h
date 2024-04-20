@@ -187,6 +187,8 @@ struct osw_hostap_conf_ap_state_bufs {
     const char *wps_get_status;
     const char *wpa_psk_file;
     const char *show_neighbor;
+    const char *show_accept_acl;
+    const char *show_deny_acl;
 };
 
 struct osw_hostap_conf_sta_state_bufs {

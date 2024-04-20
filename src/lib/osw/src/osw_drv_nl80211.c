@@ -95,6 +95,7 @@ struct osw_drv_nl80211_phy {
     struct nl_cmd_task task_nl_get_reg;
     enum osw_drv_nl80211_phy_group_impl_type phy_group_impl_type;
     enum osw_drv_nl80211_csa_impl_type csa_impl_type;
+    enum osw_drv_nl80211_acl_impl_type acl_impl_type;
     enum osw_drv_nl80211_dump_survey_impl_type dump_survey_impl_type;
     enum osw_drv_nl80211_dump_sta_impl_type dump_sta_impl_type;
 };
@@ -743,6 +744,29 @@ osw_drv_nl80211_get_csa_impl_type(const char *phy_name) {
     else
         impl_type = OSW_DRV_NL80211_CSA_IMPL_NONE;
     LOGI(LOG_PREFIX_PHY(phy_name, "get CSA impl type=%d", impl_type));
+    return impl_type;
+}
+
+static enum osw_drv_nl80211_acl_impl_type
+osw_drv_nl80211_get_acl_impl_type_from_cstr(const char *override)
+{
+    if (strcmp(override, "OSW_DRV_NL80211_ACL_IMPL_NONE") == 0)
+        return OSW_DRV_NL80211_ACL_IMPL_NONE;
+    else if (strcmp(override, "OSW_DRV_NL80211_ACL_IMPL_HOSTAP") == 0)
+        return OSW_DRV_NL80211_ACL_IMPL_HOSTAP;
+    WARN_ON(1);
+    return OSW_DRV_NL80211_ACL_IMPL_NONE;
+}
+
+enum osw_drv_nl80211_acl_impl_type
+osw_drv_nl80211_get_acl_impl_type(const char *phy_name) {
+    enum osw_drv_nl80211_acl_impl_type impl_type;
+    const char *override = getenv(strfmta("OSW_DRV_NL80211_ACL_IMPL_PHY_%s", phy_name));
+    if (override != NULL)
+        impl_type = osw_drv_nl80211_get_acl_impl_type_from_cstr(override);
+    else
+        impl_type = OSW_DRV_NL80211_ACL_IMPL_NONE;
+    LOGI(LOG_PREFIX_PHY(phy_name, "get ACL impl type=%d", impl_type));
     return impl_type;
 }
 
@@ -1620,6 +1644,7 @@ osw_drv_nl80211_phy_added_cb(const struct nl_80211_phy *info,
     phy->m = m;
     phy->phy_group_impl_type = osw_drv_nl80211_get_phy_group_impl_type(phy_name);
     phy->csa_impl_type = osw_drv_nl80211_get_csa_impl_type(phy_name);
+    phy->acl_impl_type = osw_drv_nl80211_get_acl_impl_type(phy_name);
     phy->dump_survey_impl_type = osw_drv_nl80211_get_dump_survey_impl_type(phy_name);
     phy->dump_sta_impl_type = osw_drv_nl80211_get_dump_sta_impl_type(phy_name);
 
@@ -2523,6 +2548,8 @@ osw_drv_nl80211_vif_added_cb(const struct nl_80211_vif *info,
         osw_hostap_bss_fill_csa_by_hostap(vif->hostap_bss, true);
     if (drv_nl80211_phy->phy_group_impl_type == OSW_DRV_NL80211_PHY_GROUP_IMPL_PHY)
         osw_hostap_bss_fill_group_by_phy(vif->hostap_bss, true);
+    if (drv_nl80211_phy->acl_impl_type == OSW_DRV_NL80211_ACL_IMPL_HOSTAP)
+        osw_hostap_bss_fill_acl_by_hostap(vif->hostap_bss, true);
     struct osw_timer *timer = &vif->push_frame_tx_timer;
     osw_timer_init(timer, osw_drv_nl80211_push_frame_tx_timer_cb);
 

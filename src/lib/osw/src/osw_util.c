@@ -584,19 +584,32 @@ static void
 osw_parse_supported_channels(const struct element *elem,
                              struct osw_assoc_req_info *info)
 {
+    unsigned int space_left = ARRAY_SIZE(info->channel_list);
     unsigned int i;
     info->channel_cnt = 0;
     for (i = 0; (i + 1) < elem->datalen; i += 2) {
-        const uint8_t chan_num = elem->data[i];
-        const uint8_t chan_range = elem->data[i+1];
+        const uint8_t chan_start = elem->data[i];
+        const uint8_t chan_count = elem->data[i+1];
+
+        /* 6GHz capable devices should not be using this
+         * IE, so the channel - frequency mapping is not a
+         * problem. Looking up spacing based on op class is
+         * possible, but to support [165, 1] pair it would
+         * need to walk every chan in every op class to find
+         * if an op class matches.. silly. Just do fixed
+         * spacing.
+         */
+        const uint8_t chan_spacing = (chan_start < 36) ? 1 : 4;
+
         unsigned int j;
-        bool channel_list_full = false;
-        for (j = 0; j < chan_range ; j++) {
-            info->channel_list[j] = chan_num + j;
+        for (j = 0; j < chan_count && space_left > 0; j++) {
+            info->channel_list[info->channel_cnt] = chan_start + (j * chan_spacing);
             info->channel_cnt++;
-            if (info->channel_cnt > ARRAY_SIZE(info->channel_list)) channel_list_full = true;
+            space_left--;
         }
-        if (channel_list_full == true) {
+
+        const bool did_not_finish = (j < chan_count);
+        if (did_not_finish && space_left == 0) {
             LOGT("osw: util: too many channels");
             break;
         }

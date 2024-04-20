@@ -1169,8 +1169,6 @@ osw_op_class_to_20mhz(uint8_t op_class,
 enum osw_band
 osw_op_class_to_band(uint8_t op_class)
 {
-    assert(op_class > 0);
-
     const struct osw_op_class_matrix *entry;
     for (entry = g_op_class_matrix; entry->op_class != OSW_OP_CLASS_END; entry++) {
         if (entry->op_class != op_class)
@@ -1788,6 +1786,37 @@ osw_vif_status_into_cstr(enum osw_vif_status status)
         case OSW_VIF_BROKEN: return "broken";
     }
     return "uncaught";
+}
+
+bool
+osw_channel_is_none(const struct osw_channel *c)
+{
+    if (c == NULL) return true;
+    if (c->control_freq_mhz == 0) return true;
+    return false;
+}
+
+const struct osw_channel *
+osw_channel_none(void)
+{
+    static const struct osw_channel zero;
+    return &zero;
+}
+
+const struct osw_hwaddr *
+osw_hwaddr_zero(void)
+{
+    static const struct osw_hwaddr zero;
+    return &zero;
+}
+
+void
+osw_hwaddr_write(const struct osw_hwaddr *addr,
+                 void *buf,
+                 size_t buf_len)
+{
+    if (WARN_ON(buf_len < sizeof(addr->octet))) return;
+    memcpy(buf, addr, sizeof(addr->octet));
 }
 
 #include "osw_types_ut.c"

@@ -73,6 +73,20 @@ struct accel_evict_msg {
     uint8_t     data[FF_MAX_PAYLOAD];
 } __attribute__ ((packed)) ;
 
+struct accel_evict_mgr {
+    struct accel_evict_msg evict_msg;
+    struct sockaddr_ll saddr;
+    char ifname[32];
+    int ifidx;
+    int fd;
+    bool initialized;
+};
+
+static struct accel_evict_mgr mgr =
+{
+    .initialized = false,
+};
+
 static int accel_evict_msg_send_packet(const char *ifname, struct accel_evict_msg *ff, size_t ff_len)
 {
     struct sockaddr_ll  saddr;
@@ -143,3 +157,91 @@ int accel_evict_msg(const char *ifname, const os_macaddr_t *target_mac, const ui
 
     return accel_evict_msg_send_packet(ifname, &evict_msg, sizeof(struct accel_evict_msg));
 }
+
+int accel_evict_with_context(const os_macaddr_t *target_mac, const uint8_t *data, size_t data_len)
+{
+    struct accel_evict_msg *evict_msg;
+    ssize_t ret;
+
+    if (mgr.initialized == false) return -1;
+
+    evict_msg = &mgr.evict_msg;
+
+    if (target_mac)
+    {
+        memcpy(evict_msg->eth_hdr.h_dest, target_mac, ETHER_ADDR_LEN);
+    }
+    else
+    {
+        memset(evict_msg->eth_hdr.h_dest, 0xff, ETHER_ADDR_LEN);
+    }
+
+    WARN_ON(data_len > FF_MAX_PAYLOAD);
+    memcpy(evict_msg->data, data, (data_len < FF_MAX_PAYLOAD) ? data_len : FF_MAX_PAYLOAD);
+
+    ret = sendto(mgr.fd, evict_msg, sizeof(*evict_msg), 0,
+                 (const struct sockaddr *)&mgr.saddr, sizeof(mgr.saddr));
+    if (ret < 0)
+    {
+        LOGE("%s: sendto() failed, errno: %s", __func__, strerror(errno));
+    }
+
+    LOGD("%s: sent %zu bytes to %s", __func__,
+         ret, mgr.ifname);
+
+    return 0;
+}
+
+int accel_evict_init(const char *ifname)
+{
+    struct accel_evict_msg *evict_msg;
+    os_macaddr_t local_mac;
+    int ifidx;
+    int fd;
+
+    MEMZERO(mgr);
+
+    if (!os_nif_macaddr_get((char *)ifname, &local_mac))
+    {
+        LOGW("%s: unable to get %s mac address", __func__, ifname);
+        return -1;
+    }
+
+    fd = socket(AF_PACKET, SOCK_RAW, 0);
+    if (fd < 0)
+    {
+        LOGE("%s: Failed to created raw socket", __func__);
+        return -1;
+    }
+
+    ifidx = if_nametoindex(ifname);
+    if (ifidx == 0)
+    {
+        LOGE("%s: Failed to get sys_index for '%s'", __func__, ifname);
+        return -1;
+    }
+
+    STRLCPY(mgr.ifname, ifname);
+    mgr.fd = fd;
+    mgr.saddr.sll_ifindex = ifidx;
+    mgr.saddr.sll_halen = ETHER_ADDR_LEN;
+    memcpy(&mgr.saddr.sll_addr, &local_mac, ETHER_ADDR_LEN);
+
+    evict_msg = &mgr.evict_msg;
+    evict_msg->eth_hdr.h_proto = htons(ETH_P_PLUME_FM);
+
+    evict_msg->llc_hdr.dsap = 0;
+    evict_msg->llc_hdr.ssap = 0 | LLC_CR;
+    evict_msg->llc_hdr.control = LLC_TEST_RSP;
+
+    mgr.initialized = true;
+
+    return 0;
+}
+
+void accel_evict_exit(void)
+{
+    if (mgr.initialized == false) return;
+
+    close(mgr.fd);
+};

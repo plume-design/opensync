@@ -40,6 +40,11 @@ enum osw_drv_nl80211_csa_impl_type {
   OSW_DRV_NL80211_CSA_IMPL_HOSTAP
 };
 
+enum osw_drv_nl80211_acl_impl_type {
+  OSW_DRV_NL80211_ACL_IMPL_NONE,
+  OSW_DRV_NL80211_ACL_IMPL_HOSTAP
+};
+
 enum osw_drv_nl80211_dump_survey_impl_type {
   OSW_DRV_NL80211_DUMP_SURVEY_IMPL_NONE,
   OSW_DRV_NL80211_DUMP_SURVEY_IMPL_DELTA,

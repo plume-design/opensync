@@ -105,6 +105,20 @@ struct osw_hostap_bss_hapd {
     struct hostap_rq_task task_csa;
 
     bool   group_by_phy;
+    struct hostap_rq_task task_clear_accept_acl;
+    struct hostap_rq_task task_clear_deny_acl;
+    struct hostap_rq_task task_set_accept_acl_policy;
+    struct hostap_rq_task task_set_deny_acl_policy;
+    struct hostap_rq_task *task_acl_mac;
+    struct hostap_rq_task *task_acl_add_mac;
+    struct hostap_rq_task *task_acl_del_mac;
+    struct hostap_rq_task task_get_accept_acl_list;
+    struct hostap_rq_task task_get_deny_acl_list;
+    bool   acl_by_hostap;
+    size_t n_task_acl_mac;
+    size_t n_task_acl_add_mac;
+    size_t n_task_acl_del_mac;
+
     /* FIXME: sta listing? hostap_sta supports it somewhat */
 };
 
@@ -350,6 +364,18 @@ osw_hostap_add_task_array(struct rq *q,
 }
 
 static void
+osw_hostap_fini_task_array(struct hostap_rq_task *tasks,
+                           size_t n_tasks)
+{
+    if (tasks == NULL) return;
+    while (n_tasks > 0) {
+        hostap_rq_task_fini(tasks);
+        tasks++;
+        n_tasks--;
+    }
+}
+
+static void
 osw_hostap_bss_cmd_warn_on_fail(struct rq_task *task,
                                 void *priv)
 {
@@ -444,6 +470,9 @@ osw_hostap_bss_hapd_update_add_task(struct osw_hostap_bss_hapd *hapd,
 static void
 osw_hostap_bss_hapd_neigh_free(struct osw_hostap_bss_hapd *hapd)
 {
+    osw_hostap_fini_task_array(hapd->task_neigh_add, hapd->n_task_neigh_add);
+    osw_hostap_fini_task_array(hapd->task_neigh_mod, hapd->n_task_neigh_mod);
+    osw_hostap_fini_task_array(hapd->task_neigh_del, hapd->n_task_neigh_del);
     FREE(hapd->task_neigh_add);
     FREE(hapd->task_neigh_mod);
     FREE(hapd->task_neigh_del);
@@ -592,6 +621,177 @@ osw_hostap_bss_hapd_csa(struct osw_hostap_bss_hapd *hapd,
 }
 
 static void
+osw_hostap_bss_hapd_acl_free(struct osw_hostap_bss_hapd *hapd)
+{
+    osw_hostap_fini_task_array(hapd->task_acl_mac, hapd->n_task_acl_mac);
+    osw_hostap_fini_task_array(hapd->task_acl_add_mac, hapd->n_task_acl_add_mac);
+    osw_hostap_fini_task_array(hapd->task_acl_del_mac, hapd->n_task_acl_del_mac);
+    FREE(hapd->task_acl_mac);
+    FREE(hapd->task_acl_add_mac);
+    FREE(hapd->task_acl_del_mac);
+    hapd->task_acl_mac = NULL;
+    hapd->task_acl_add_mac = NULL;
+    hapd->task_acl_del_mac = NULL;
+    hapd->n_task_acl_mac = 0;
+    hapd->n_task_acl_add_mac = 0;
+    hapd->n_task_acl_del_mac = 0;
+}
+
+static void
+osw_hostap_bss_hapd_acl_list_prep_add_mac(char *buf,
+                                   size_t buf_size,
+                                   const char* hostapd_cli_acl_list,
+                                   const struct osw_hwaddr *addr)
+{
+    struct osw_hwaddr_str hwaddr_str;
+    const char *str = osw_hwaddr2str(addr, &hwaddr_str);
+
+    if (WARN_ON(str == NULL)) return;
+
+    snprintf(buf, buf_size,
+             "%s ADD_MAC %s",
+             hostapd_cli_acl_list,
+             str);
+}
+
+static void
+osw_hostap_bss_hapd_acl_list_prep_del_mac(char *buf,
+                                   size_t buf_size,
+                                   const char* hostapd_cli_acl_list,
+                                   const struct osw_hwaddr *addr)
+{
+    struct osw_hwaddr_str hwaddr_str;
+    const char *str = osw_hwaddr2str(addr, &hwaddr_str);
+
+    if (WARN_ON(str == NULL)) return;
+
+    snprintf(buf, buf_size,
+             "%s DEL_MAC %s",
+             hostapd_cli_acl_list,
+             str);
+}
+
+static void
+osw_hostap_bss_hapd_acl_list_all_prep(struct osw_hostap_bss_hapd *hapd,
+                               struct osw_drv_vif_config_ap *ap,
+                               const char *hostapd_cli_acl_list)
+{
+    struct osw_hwaddr_list *acl_list = &ap->acl;
+    const size_t n_acl_list = ap->acl.count;
+    struct hostap_rq_task *acl_mac = CALLOC(n_acl_list, sizeof(*acl_mac));
+    size_t i;
+
+    for (i = 0; i < n_acl_list; i++) {
+        const struct osw_hwaddr *addr = &acl_list->list[i];
+        char cmd[1024];
+
+        osw_hostap_bss_hapd_acl_list_prep_add_mac(cmd,
+                                                  sizeof(cmd),
+                                                  hostapd_cli_acl_list,
+                                                  addr);
+        hostap_rq_task_init(&acl_mac[i], hapd->ctrl.txq, cmd);
+        acl_mac[i].task.completed_fn = osw_hostap_bss_cmd_warn_on_fail;
+    }
+
+    hapd->n_task_acl_mac = n_acl_list;
+    hapd->task_acl_mac = acl_mac;
+}
+
+static void
+osw_hostap_bss_hapd_acl_list_all_add(struct osw_hostap_bss_hapd *hapd,
+                              struct rq *q)
+{
+    osw_hostap_add_task_array(q, hapd->task_acl_mac, hapd->n_task_acl_mac);
+}
+
+static void
+osw_hostap_bss_hapd_acl_list_prep(struct osw_hostap_bss_hapd *hapd,
+                               struct osw_drv_vif_config_ap *ap,
+                               const char *hostapd_cli_acl_list)
+{
+    struct osw_hwaddr_list *acl_add_list = &ap->acl_add;
+    struct osw_hwaddr_list *acl_del_list = &ap->acl_del;
+    const size_t n_acl_add_list = ap->acl_add.count;
+    const size_t n_acl_del_list = ap->acl_del.count;
+    struct hostap_rq_task *acl_add_mac = CALLOC(n_acl_add_list, sizeof(*acl_add_mac));
+    struct hostap_rq_task *acl_del_mac = CALLOC(n_acl_del_list, sizeof(*acl_del_mac));
+    size_t i;
+
+    for (i = 0; i < n_acl_add_list; i++) {
+        const struct osw_hwaddr *addr = &acl_add_list->list[i];
+        char cmd[1024];
+
+        osw_hostap_bss_hapd_acl_list_prep_add_mac(cmd,
+                                                  sizeof(cmd),
+                                                  hostapd_cli_acl_list,
+                                                  addr);
+        hostap_rq_task_init(&acl_add_mac[i], hapd->ctrl.txq, cmd);
+        acl_add_mac[i].task.completed_fn = osw_hostap_bss_cmd_warn_on_fail;
+    }
+
+    for (i = 0; i < n_acl_del_list; i++) {
+        const struct osw_hwaddr *addr = &acl_del_list->list[i];
+        char cmd[1024];
+
+        osw_hostap_bss_hapd_acl_list_prep_del_mac(cmd,
+                                                  sizeof(cmd),
+                                                  hostapd_cli_acl_list,
+                                                  addr);
+        hostap_rq_task_init(&acl_del_mac[i], hapd->ctrl.txq, cmd);
+        acl_del_mac[i].task.completed_fn = osw_hostap_bss_cmd_warn_on_fail;
+    }
+
+    hapd->n_task_acl_add_mac = n_acl_add_list;
+    hapd->task_acl_add_mac = acl_add_mac;
+    hapd->n_task_acl_del_mac = n_acl_del_list;
+    hapd->task_acl_del_mac = acl_del_mac;
+}
+
+static void
+osw_hostap_bss_hapd_acl_list_add(struct osw_hostap_bss_hapd *hapd,
+                              struct rq *q)
+{
+    osw_hostap_add_task_array(q, hapd->task_acl_add_mac, hapd->n_task_acl_add_mac);
+    osw_hostap_add_task_array(q, hapd->task_acl_del_mac, hapd->n_task_acl_del_mac);
+}
+
+static void
+osw_hostap_bss_hapd_acl_update(struct osw_hostap_bss_hapd *hapd,
+                                    struct osw_drv_vif_config_ap *ap,
+                                    struct rq *q)
+{
+    char hostapd_cli_acl_list[64] = {0};
+
+    if (ap->acl_policy == OSW_ACL_ALLOW_LIST)
+        STRSCPY(hostapd_cli_acl_list, "ACCEPT_ACL");
+    else if (ap->acl_policy == OSW_ACL_DENY_LIST)
+        STRSCPY(hostapd_cli_acl_list, "DENY_ACL");
+
+    if (ap->acl_policy_changed) {
+        rq_add_task(q, &hapd->task_clear_accept_acl.task);
+        rq_add_task(q, &hapd->task_clear_deny_acl.task);
+        switch (ap->acl_policy) {
+            case OSW_ACL_ALLOW_LIST:
+                rq_add_task(q, &hapd->task_set_accept_acl_policy.task);
+                osw_hostap_bss_hapd_acl_list_all_prep(hapd, ap, hostapd_cli_acl_list);
+                osw_hostap_bss_hapd_acl_list_all_add(hapd, q);
+                break;
+            case OSW_ACL_DENY_LIST:
+                rq_add_task(q, &hapd->task_set_deny_acl_policy.task);
+                osw_hostap_bss_hapd_acl_list_all_prep(hapd, ap, hostapd_cli_acl_list);
+                osw_hostap_bss_hapd_acl_list_all_add(hapd, q);
+                break;
+            case OSW_ACL_NONE:
+                rq_add_task(q, &hapd->task_set_deny_acl_policy.task);
+                break;
+        }
+    } else if (ap->acl_changed) {
+        osw_hostap_bss_hapd_acl_list_prep(hapd, ap, hostapd_cli_acl_list);
+        osw_hostap_bss_hapd_acl_list_add(hapd, q);
+    }
+}
+
+static void
 osw_hostap_bss_hapd_flush_state_replies(struct osw_hostap_bss_hapd *hapd)
 {
     hapd->task_get_config.reply = NULL;
@@ -599,6 +799,8 @@ osw_hostap_bss_hapd_flush_state_replies(struct osw_hostap_bss_hapd *hapd)
     hapd->task_get_mib.reply = NULL;
     hapd->task_get_wps_status.reply = NULL;
     hapd->task_get_neigh.reply = NULL;
+    hapd->task_get_accept_acl_list.reply = NULL;
+    hapd->task_get_deny_acl_list.reply = NULL;
 }
 
 static void
@@ -615,6 +817,8 @@ osw_hostap_bss_hapd_prep_state_task(struct osw_hostap_bss_hapd *hapd)
     rq_add_task(q, &hapd->task_get_mib.task);
     rq_add_task(q, &hapd->task_get_wps_status.task);
     rq_add_task(q, &hapd->task_get_neigh.task);
+    rq_add_task(q, &hapd->task_get_accept_acl_list.task);
+    rq_add_task(q, &hapd->task_get_deny_acl_list.task);
     rq_stop(q);
 }
 
@@ -633,6 +837,8 @@ osw_hostap_bss_hapd_fill_state(struct osw_hostap_bss_hapd *hapd,
         .mib = hapd->task_get_mib.reply ?: "",
         .wps_get_status = hapd->task_get_wps_status.reply ?: "",
         .show_neighbor = hapd->task_get_neigh.reply ?: "",
+        .show_accept_acl =  hapd->task_get_accept_acl_list.reply ?: "",
+        .show_deny_acl = hapd->task_get_deny_acl_list.reply ?: "",
     };
 
     osw_hostap_conf_fill_ap_state(&bufs, state);
@@ -851,6 +1057,7 @@ osw_hostap_bss_hapd_init_bssid_cb(struct rq_task *task,
             char cmd[256];
             const struct osw_neigh n = { .bssid = bssid };
             osw_hostap_bss_hapd_neigh_prep_del(cmd, sizeof(cmd), &n);
+            hostap_rq_task_fini(t2);
             hostap_rq_task_init(t2, t2->txq, cmd);
             break;
         }
@@ -922,6 +1129,12 @@ osw_hostap_bss_hapd_init(struct hostap_ev_ctrl *ghapd,
     hostap_rq_task_init(&hapd->task_get_wps_status, hapd->ctrl.txq, "WPS_GET_STATUS");
     hostap_rq_task_init(&hapd->task_get_neigh, hapd->ctrl.txq, "SHOW_NEIGHBOR");
     hostap_rq_task_init(&hapd->task_csa, hapd->ctrl.txq, ""); /* set in csa prepare */
+    hostap_rq_task_init(&hapd->task_clear_accept_acl, hapd->ctrl.txq, "ACCEPT_ACL CLEAR");
+    hostap_rq_task_init(&hapd->task_clear_deny_acl, hapd->ctrl.txq, "DENY_ACL CLEAR");
+    hostap_rq_task_init(&hapd->task_set_accept_acl_policy, hapd->ctrl.txq, "SET macaddr_acl 1");
+    hostap_rq_task_init(&hapd->task_set_deny_acl_policy, hapd->ctrl.txq, "SET macaddr_acl 0");
+    hostap_rq_task_init(&hapd->task_get_accept_acl_list, hapd->ctrl.txq, "ACCEPT_ACL SHOW");
+    hostap_rq_task_init(&hapd->task_get_deny_acl_list, hapd->ctrl.txq, "DENY_ACL SHOW");
 
     hapd->task_add.task.completed_fn = osw_hostap_bss_cmd_warn_on_fail;
     hapd->task_remove.task.completed_fn = osw_hostap_bss_remove_done_cb;
@@ -939,6 +1152,12 @@ osw_hostap_bss_hapd_init(struct hostap_ev_ctrl *ghapd,
     hapd->task_get_wps_status.task.completed_fn = osw_hostap_bss_cmd_warn_on_fail;
     hapd->task_get_neigh.task.completed_fn = osw_hostap_bss_cmd_warn_on_err;
     hapd->task_csa.task.completed_fn = osw_hostap_bss_cmd_warn_on_err;
+    hapd->task_clear_accept_acl.task.completed_fn = osw_hostap_bss_cmd_warn_on_err;
+    hapd->task_clear_deny_acl.task.completed_fn = osw_hostap_bss_cmd_warn_on_err;
+    hapd->task_set_accept_acl_policy.task.completed_fn = osw_hostap_bss_cmd_warn_on_err;
+    hapd->task_set_deny_acl_policy.task.completed_fn = osw_hostap_bss_cmd_warn_on_err;
+    hapd->task_get_accept_acl_list.task.completed_fn = osw_hostap_bss_cmd_warn_on_err;
+    hapd->task_get_deny_acl_list.task.completed_fn = osw_hostap_bss_cmd_warn_on_err;
 }
 
 static void
@@ -961,6 +1180,13 @@ osw_hostap_bss_hapd_fini(struct osw_hostap_bss_hapd *hapd)
     hostap_rq_task_fini(&hapd->task_get_wps_status);
     hostap_rq_task_fini(&hapd->task_get_neigh);
     hostap_rq_task_fini(&hapd->task_csa);
+    hostap_rq_task_fini(&hapd->task_clear_accept_acl);
+    hostap_rq_task_fini(&hapd->task_clear_deny_acl);
+    hostap_rq_task_fini(&hapd->task_set_accept_acl_policy);
+    hostap_rq_task_fini(&hapd->task_set_deny_acl_policy);
+    hostap_rq_task_fini(&hapd->task_get_accept_acl_list);
+    hostap_rq_task_fini(&hapd->task_get_deny_acl_list);
+    osw_hostap_bss_hapd_acl_free(hapd);
     osw_hostap_bss_hapd_neigh_free(hapd);
     hostap_ev_ctrl_fini(&hapd->ctrl);
     assert(ds_tree_is_empty(&hapd->stas));
@@ -1334,6 +1560,14 @@ osw_hostap_bss_fill_group_by_phy(struct osw_hostap_bss *bss,
     LOGD(LOG_PREFIX_BSS(bss, "group_by_phy=%d", group_by_phy));
 }
 
+void
+osw_hostap_bss_fill_acl_by_hostap(struct osw_hostap_bss *bss,
+                                  bool acl_by_hostap)
+{
+    bss->hapd.acl_by_hostap = acl_by_hostap;
+    LOGD(LOG_PREFIX_BSS(bss, "acl_by_hostap=%d", acl_by_hostap));
+}
+
 struct rq_task *
 osw_hostap_bss_prep_state_task(struct osw_hostap_bss *bss)
 {
@@ -1488,6 +1722,9 @@ osw_hostap_set_conf_ap(struct osw_hostap *hostap,
     const bool do_csa = is_running && want_running &&
                      dvif->u.ap.channel_changed && dvif->u.ap.csa_required && hapd->csa_by_hostap;
 
+    const bool do_acl = want_running && (dvif->u.ap.acl_changed || dvif->u.ap.acl_policy_changed) &&
+                     hapd->acl_by_hostap;
+
     rq_resume(q);
 
     if (do_remove) {
@@ -1531,6 +1768,11 @@ osw_hostap_set_conf_ap(struct osw_hostap *hostap,
         osw_hostap_bss_hapd_csa(hapd, &dvif->u.ap, q);
     }
 
+    if (do_acl) {
+        LOGD(LOG_PREFIX_HAPD(hapd, "do acl"));
+        osw_hostap_bss_hapd_acl_free(hapd);
+        osw_hostap_bss_hapd_acl_update(hapd, &dvif->u.ap, q);
+    }
     rq_stop(q);
     return t;
 }

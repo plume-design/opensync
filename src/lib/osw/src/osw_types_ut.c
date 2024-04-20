@@ -587,3 +587,14 @@ OSW_UT(osw_channel_ht40_offset)
     OSW_UT_EVAL(osw_channel_ht40_offset(&c44_80) == 1);
     OSW_UT_EVAL(osw_channel_ht40_offset(&c48_80) == -1);
 }
+
+OSW_UT(osw_op_class_to_band)
+{
+    OSW_UT_EVAL(osw_op_class_to_band(0) == OSW_BAND_UNDEFINED);
+    OSW_UT_EVAL(osw_op_class_to_band(55) == OSW_BAND_UNDEFINED);
+    OSW_UT_EVAL(osw_op_class_to_band(255) == OSW_BAND_UNDEFINED);
+
+    OSW_UT_EVAL(osw_op_class_to_band(81) == OSW_BAND_2GHZ);
+    OSW_UT_EVAL(osw_op_class_to_band(123) == OSW_BAND_5GHZ);
+    OSW_UT_EVAL(osw_op_class_to_band(134) == OSW_BAND_6GHZ);
+}

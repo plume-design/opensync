@@ -149,6 +149,10 @@ void
 osw_hostap_bss_fill_group_by_phy(struct osw_hostap_bss *bss,
                                   bool group_by_phy);
 
+void
+osw_hostap_bss_fill_acl_by_hostap(struct osw_hostap_bss *hostap_bss,
+                                  bool acl_by_hostap);
+
 struct rq_task *
 osw_hostap_bss_prep_state_task(struct osw_hostap_bss *bss);
 

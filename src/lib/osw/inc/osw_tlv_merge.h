@@ -48,6 +48,12 @@ enum osw_tlv_merge_first_policy {
     OSW_TLV_TWO_SAMPLES_MINIMUM,
 };
 
+enum osw_tlv_merge_result {
+    OSW_TLV_MERGE_OK,
+    OSW_TLV_MERGE_ERR,
+    OSW_TLV_MERGE_ERR_UNDERFLOW,
+};
+
 struct osw_tlv_merge_policy {
     enum osw_tlv_merge_op_type type;
     enum osw_tlv_merge_first_policy first;
@@ -55,7 +61,7 @@ struct osw_tlv_merge_policy {
     size_t tb_size;
 };
 
-void
+enum osw_tlv_merge_result
 osw_tlv_merge(struct osw_tlv *dest_tlv,
               struct osw_tlv *prev_tlv,
               const void *data,

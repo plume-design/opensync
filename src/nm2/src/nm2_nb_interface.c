@@ -46,7 +46,6 @@ static void nm2_if_release(struct nm2_interface *intf)
     LOGT("%s(): releasing interface %s", __func__, intf->if_name);
 
     /* inform listeners that the interface is being removed */
-    intf->if_valid = false;
     reflink_signal(&intf->if_reflink);
 
     osn_netif_del(intf->if_netif);
@@ -229,21 +228,12 @@ void nm2_if_update_netif_obj(struct nm2_interface *intf, char *if_name)
 
 void nm2_if_update(struct nm2_interface *intf, struct schema_Interface *schema)
 {
-    /* if_valid will be true in case of update operation */
-    if (intf->if_valid)
-    {
-        /* invalidate the intf config and inform the listeners */
-        intf->if_valid = false;
-        reflink_signal(&intf->if_reflink);
-    }
-
     /* copy data from schema */
     STRSCPY(intf->if_name, schema->name);
     if (schema->mac_exists) nm2_if_update_mac(intf, schema->mac);
     if (intf->if_netif == NULL) nm2_if_update_netif_obj(intf, schema->name);
 
     /* interface struct is updated, notify listeners */
-    intf->if_valid = true;
     reflink_signal(&intf->if_reflink);
 }
 

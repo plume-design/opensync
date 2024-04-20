@@ -71,7 +71,9 @@ error:
 
 bool osp_ps_close(osp_ps_t *ps)
 {
-    return psfs_close(&ps->ps_psfs);
+    const bool r = psfs_close(&ps->ps_psfs);
+    FREE(ps);
+    return r;
 }
 
 ssize_t osp_ps_set(

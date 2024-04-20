@@ -99,15 +99,14 @@ static void nm2_port_if_update(uuidset_t *us, enum uuidset_event type, reflink_t
     switch (type)
     {
     case UUIDSET_NEW:
-        if (intf->if_valid == false) return;
+        add = true;
         break;
 
     case UUIDSET_MOD:
-        add = intf->if_valid;
+        add = true;
         break;
 
     case UUIDSET_DEL:
-        if (intf->if_valid == false) return;
         add = false;
         break;
 

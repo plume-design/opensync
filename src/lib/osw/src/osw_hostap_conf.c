@@ -519,6 +519,17 @@ hapd_util_hapd_wpa_to_osw(const char *wpa,
     return true;
 }
 
+static bool
+hapd_util_macaddr_acl_to_osw(const char *acl,
+                            int *output_acl)
+{
+    if (acl == NULL || output_acl == NULL)
+        return false;
+
+    *output_acl = atoi(acl);
+    return true;
+}
+
 static void
 osw_hostap_conf_osw_vif_config_to_base(const struct osw_drv_vif_config *vconf,
                                        struct osw_hostap_conf_ap_config *conf)
@@ -1184,6 +1195,75 @@ osw_hostap_conf_fill_ap_state_neighbors(const struct osw_hostap_conf_ap_state_bu
     FREE(cpy_show_neighbor);
 }
 
+static void
+osw_hostap_conf_fill_ap_state_acl(const struct osw_hostap_conf_ap_state_bufs *bufs,
+                                        struct osw_drv_vif_state *vstate)
+{
+    const char *accept_acl = bufs->show_accept_acl;
+    const char *deny_acl = bufs->show_deny_acl;
+    const char *get_config = bufs->get_config;
+    struct osw_drv_vif_state_ap *ap = &vstate->u.ap;
+    struct osw_hwaddr_list *acl_list;
+    struct osw_hwaddr * acl;
+    char *cpy_deny_acl = NULL;
+    char *cpy_accept_acl = NULL;
+    char *line;
+    bool ok;
+    int  macaddr_acl = 0;
+
+    STATE_GET_BY_FN(macaddr_acl, get_config, "macaddr_acl", hapd_util_macaddr_acl_to_osw);
+
+    if (deny_acl != NULL && strlen(deny_acl) > 0) {
+        cpy_deny_acl = STRDUP(deny_acl);
+    }
+
+    if (accept_acl != NULL && strlen(accept_acl) > 0) {
+        cpy_accept_acl = STRDUP(accept_acl);
+    }
+
+    if (cpy_deny_acl == NULL && cpy_accept_acl == NULL) {
+        return;
+    }
+
+    acl_list = &ap->acl;
+    acl_list->count = 0;
+    acl_list->list = CALLOC(1, sizeof(struct osw_hwaddr));
+
+    if (cpy_deny_acl != NULL) {
+        while ((line = strsep(&cpy_deny_acl, "\n")) != NULL) {
+            if (cpy_accept_acl == NULL ||
+                (cpy_accept_acl != NULL && strstr(cpy_accept_acl, line) == NULL)) {
+                acl_list->list = REALLOC(acl_list->list,
+                                         (acl_list->count + 1) * sizeof(struct osw_hwaddr));
+                acl = &acl_list->list[acl_list->count];
+                MEMZERO(*acl);
+                ok = osw_hwaddr_from_cstr(line, acl);
+                if (ok == false) continue;
+                acl_list->count++;
+            }
+        }
+    } else if (cpy_accept_acl != NULL) {
+        while ((line = strsep(&cpy_accept_acl, "\n")) != NULL) {
+            acl_list->list = REALLOC(acl_list->list,
+                                     (acl_list->count + 1) * sizeof(struct osw_hwaddr));
+            acl = &acl_list->list[acl_list->count];
+            MEMZERO(*acl);
+            ok = osw_hwaddr_from_cstr(line, acl);
+            if (ok == false) continue;
+            acl_list->count++;
+        }
+    }
+
+    if (macaddr_acl == 0)
+        ap->acl_policy = OSW_ACL_DENY_LIST;
+    else
+        ap->acl_policy = OSW_ACL_ALLOW_LIST;
+
+    FREE(cpy_deny_acl);
+    FREE(cpy_accept_acl);
+}
+
+
 void
 osw_hostap_conf_fill_ap_state(const struct osw_hostap_conf_ap_state_bufs *bufs,
                               struct osw_drv_vif_state *vstate)
@@ -1271,7 +1351,8 @@ osw_hostap_conf_fill_ap_state(const struct osw_hostap_conf_ap_state_bufs *bufs,
     STATE_GET_BY_FN(ap->ssid,                    status, "ssid[0]",
                     osw_hostap_util_ssid_to_osw);
 
-    /* FIXME implement ACL */
+    /* Fill in acl list */
+    osw_hostap_conf_fill_ap_state_acl(bufs, vstate);
 
     STATE_GET_BY_FN(ap->wpa,                     get_config, "wpa",
                     hapd_util_hapd_wpa_to_osw);

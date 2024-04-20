@@ -56,7 +56,6 @@ ow_steer_policy_stack_work_cb(struct osw_timer *timer)
     struct ow_steer_policy_stack *stack = container_of(timer, struct ow_steer_policy_stack, work);
     const struct osw_hwaddr *mac_addr = ow_steer_sta_get_addr(stack->sta);
     struct ow_steer_candidate_list *candidate_list = ow_steer_sta_get_candidate_list(stack->sta);
-    struct ow_steer_candidate_list *candidate_list_copy = ow_steer_candidate_list_copy(candidate_list);
     size_t i;
 
     LOGD("ow: steer: policy_stack: sta: "OSW_HWADDR_FMT" recalc candidates", OSW_HWADDR_ARG(mac_addr));
@@ -84,7 +83,6 @@ ow_steer_policy_stack_work_cb(struct osw_timer *timer)
      }
 
     ow_steer_sta_schedule_executor_call(stack->sta);
-    ow_steer_candidate_list_free(candidate_list_copy);
 }
 
 struct ow_steer_policy_stack*

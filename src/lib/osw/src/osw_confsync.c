@@ -41,6 +41,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <osw_module.h>
 
 #define OSW_CONFSYNC_RETRY_SECONDS_DEFAULT 30.0
+#define OSW_CONFSYNC_DEADLINE_SECONDS_DEFAULT 10.0
 
 /* Starting up interfaces in most cases is not
  * instantaneous. If a mutator happens to invalidate its
@@ -88,10 +89,12 @@ struct osw_confsync {
     struct osw_conf_observer conf_obs;
     osw_confsync_build_conf_fn_t *build_conf;
     ev_idle work;
+    ev_timer deadline;
     ev_timer retry;
     bool attached;
     bool settled;
     struct ds_tree defers;
+    struct ds_tree phys;
 };
 
 struct osw_confsync_defer {
@@ -102,6 +105,13 @@ struct osw_confsync_defer {
     bool deferred;
 };
 
+struct osw_confsync_phy {
+    struct osw_confsync *cs;
+    char *phy_name;
+    struct ds_tree_node node;
+    struct osw_timer cac_timeout;
+};
+
 struct osw_confsync_arg {
     struct osw_confsync *confsync;
     struct osw_drv_conf *drv_conf;
@@ -110,6 +120,8 @@ struct osw_confsync_arg {
     struct osw_conf_phy *cphy;
     struct osw_conf_vif *cvif;
     struct ds_tree *phy_tree;
+    bool cac_planned;
+    bool cac_ongoing;
     bool debug;
 };
 
@@ -689,6 +701,26 @@ osw_confsync_vif_ap_acl_tree_changed(struct ds_tree *a, const struct osw_hwaddr_
 }
 
 static bool
+osw_confsync_vif_ap_acl_policy_changed(const enum osw_acl_policy *a_policy,
+                                    const enum osw_acl_policy *b_policy,
+                                    const struct osw_hwaddr_list *acl_list)
+{
+    if (*a_policy != *b_policy) {
+        if ((*a_policy == OSW_ACL_NONE && *b_policy == OSW_ACL_DENY_LIST) ||
+            (*a_policy == OSW_ACL_DENY_LIST && *b_policy == OSW_ACL_NONE)) {
+            if (acl_list->count == 0) {
+                return false;
+            } else {
+                return true;
+            }
+        } else {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool
 osw_confsync_vif_ap_neigh_tree_changed(struct ds_tree *a, const struct osw_neigh_list *b)
 {
     const size_t n = ds_tree_len(a);
@@ -788,7 +820,7 @@ osw_confsync_vif_ap_mark_changed(struct osw_drv_vif_config *dvif,
     dvif->u.ap.isolated_changed = all || (svif->u.ap.isolated != cvif->u.ap.isolated);
     dvif->u.ap.ssid_hidden_changed = all || (svif->u.ap.ssid_hidden != cvif->u.ap.ssid_hidden);
     dvif->u.ap.mcast2ucast_changed = all || (svif->u.ap.mcast2ucast != cvif->u.ap.mcast2ucast);
-    dvif->u.ap.acl_policy_changed = all || (svif->u.ap.acl_policy != cvif->u.ap.acl_policy);
+    dvif->u.ap.acl_policy_changed = all || osw_confsync_vif_ap_acl_policy_changed(&cvif->u.ap.acl_policy, &svif->u.ap.acl_policy, &svif->u.ap.acl);
     dvif->u.ap.wpa_changed = all || (memcmp(&svif->u.ap.wpa, &cvif->u.ap.wpa, sizeof(svif->u.ap.wpa)) != 0);
     dvif->u.ap.mode_changed = all || (osw_confsync_vif_ap_mode_changed(svif->u.ap.mode, cvif->u.ap.mode));
     dvif->u.ap.bridge_if_name_changed = all || (strcmp(svif->u.ap.bridge_if_name.buf, cvif->u.ap.bridge_if_name.buf) != 0);
@@ -1352,6 +1384,21 @@ osw_confsync_build_drv_conf_vif_sta(struct osw_drv_vif_config *dvif,
 }
 
 static bool
+osw_confsync_cac_is_planned(const struct osw_drv_phy_state *sphy,
+                            const struct osw_drv_vif_config *dvif)
+{
+    if (dvif->enabled == false) return false;
+    const struct osw_channel_state *cs = sphy->channel_states;
+    const size_t n_cs = sphy->n_channel_states;
+    const struct osw_channel *c = &dvif->u.ap.channel;
+    const bool cac_running = osw_cs_chan_intersects_state(cs, n_cs, c, OSW_CHANNEL_DFS_CAC_IN_PROGRESS);
+    const bool cac_needed = osw_cs_chan_intersects_state(cs, n_cs, c, OSW_CHANNEL_DFS_CAC_POSSIBLE);
+    const bool cac_completed = osw_cs_chan_intersects_state(cs, n_cs, c, OSW_CHANNEL_DFS_CAC_COMPLETED);
+    const bool cac_discarded = (cac_completed && dvif->changed);
+    return cac_running || cac_needed || cac_discarded;
+}
+
+static bool
 osw_confsync_vif_enabled_changed(enum osw_vif_status status,
                                  bool enabled)
 {
@@ -1400,6 +1447,8 @@ osw_confsync_build_drv_conf_vif(struct osw_confsync_arg *arg,
     const bool state_is_disabled = (svif->status == OSW_VIF_DISABLED ||
                                     svif->status == OSW_VIF_UNKNOWN);
     const bool skip = (config_is_disabled && state_is_disabled)
+                   || arg->cac_ongoing
+                   || arg->cac_planned
                    || deferred;
 
     dvif->changed = false;
@@ -1410,11 +1459,26 @@ osw_confsync_build_drv_conf_vif(struct osw_confsync_arg *arg,
         dphy->changed |= (dvif->tx_power_dbm_changed = cvif->tx_power_dbm != svif->tx_power_dbm);
     }
 
+    if (arg->cac_planned) {
+        LOGD("osw: confsync: %s/%s: skipping because another vif is planned to do cac",
+                cvif->phy->phy_name,
+                cvif->vif_name);
+    }
+
+    if (arg->cac_ongoing) {
+        LOGD("osw: confsync: %s/%s: skipping because phy is already doing cac",
+                cvif->phy->phy_name,
+                cvif->vif_name);
+    }
+
     switch (cvif->vif_type) {
         case OSW_VIF_UNDEFINED:
             break;
         case OSW_VIF_AP:
             osw_confsync_build_drv_conf_vif_ap(dvif, sphy, svif, cvif, !skip);
+            if (skip == false && osw_confsync_cac_is_planned(sphy, dvif)) {
+                arg->cac_planned = true;
+            }
             break;
         case OSW_VIF_AP_VLAN:
             break;
@@ -1501,6 +1565,34 @@ osw_confsync_build_drv_conf_vif_cb(const struct osw_state_vif_info *vif,
     osw_confsync_build_drv_conf_vif(arg, vif);
 }
 
+static bool
+osw_confsync_cac_is_ongoing(const struct osw_state_phy_info *phy)
+{
+    if (phy->drv_state->exists == false) {
+        return false;
+    }
+
+    const struct osw_channel_state *cs = phy->drv_state->channel_states;
+    const size_t n_cs = phy->drv_state->n_channel_states;
+    size_t i;
+    for (i = 0; i < n_cs; i++) {
+        const struct osw_channel_state *csi = &cs[i];
+        if (csi->dfs_state == OSW_CHANNEL_DFS_CAC_IN_PROGRESS) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool
+osw_confsync_cac_is_timed_out(struct osw_confsync *cs,
+                              const struct osw_state_phy_info *phy)
+{
+    const char *phy_name = phy->phy_name;
+    struct osw_confsync_phy *cs_phy = ds_tree_find(&cs->phys, phy_name);
+    return (cs_phy != NULL) && (osw_timer_is_armed(&cs_phy->cac_timeout) == false);
+}
+
 static void
 osw_confsync_build_drv_conf_phy_cb(const struct osw_state_phy_info *phy,
                                    void *priv)
@@ -1510,6 +1602,9 @@ osw_confsync_build_drv_conf_phy_cb(const struct osw_state_phy_info *phy,
 
     arg->cphy = ds_tree_find(phy_tree, phy->phy_name);
     arg->sphy = phy->drv_state;
+    arg->cac_planned = false;
+    arg->cac_ongoing = (osw_confsync_cac_is_ongoing(phy) == true)
+                    && (osw_confsync_cac_is_timed_out(arg->confsync, phy) == false);
     assert(arg->cphy != NULL);
 
     osw_confsync_build_drv_conf_phy(arg, phy);
@@ -1551,20 +1646,24 @@ osw_confsync_set_state(struct osw_confsync *cs, enum osw_confsync_state s)
             cs->settled = true;
             ev_timer_stop(EV_DEFAULT_ &cs->retry);
             ev_idle_stop(EV_DEFAULT_ &cs->work);
+            ev_timer_stop(EV_DEFAULT_ &cs->deadline);
             break;
         case OSW_CONFSYNC_REQUESTING:
             osw_confsync_defer_flush_expired(cs);
             ev_timer_stop(EV_DEFAULT_ &cs->retry);
+            ev_timer_start(EV_DEFAULT_ &cs->deadline);
             ev_idle_start(EV_DEFAULT_ &cs->work);
             break;
         case OSW_CONFSYNC_WAITING:
             if (cs->settled == true) LOGN("osw: confsync: unsettled");
             cs->settled = false;
             ev_idle_stop(EV_DEFAULT_ &cs->work);
+            ev_timer_stop(EV_DEFAULT_ &cs->deadline);
             ev_timer_start(EV_DEFAULT_ &cs->retry);
             break;
         case OSW_CONFSYNC_VERIFYING:
             ev_idle_start(EV_DEFAULT_ &cs->work);
+            ev_timer_start(EV_DEFAULT_ &cs->deadline);
             break;
     }
     osw_confsync_notify_changed(cs);
@@ -1645,6 +1744,14 @@ osw_confsync_retry_cb(EV_P_  ev_timer *arg, int events)
 }
 
 static void
+osw_confsync_deadline_cb(EV_P_  ev_timer *arg, int events)
+{
+    struct osw_confsync *cs = container_of(arg, struct osw_confsync, deadline);
+    LOGN("osw: confsync: work deadline reached, ignoring non-idle mainloop");
+    osw_confsync_work(cs);
+}
+
+static void
 osw_confsync_state_changed(struct osw_confsync *cs)
 {
     /* When a configuration command is submitted the system
@@ -1675,6 +1782,81 @@ osw_confsync_conf_changed(struct osw_confsync *cs)
 }
 
 static void
+osw_confsync_cac_timeout_cb(struct osw_timer *t)
+{
+    struct osw_confsync_phy *phy = container_of(t, typeof(*phy), cac_timeout);
+    const char *phy_name = phy->phy_name;
+
+    LOGN("osw: confsync: %s: cac: timed out", phy_name);
+    osw_confsync_state_changed(phy->cs);
+}
+
+static uint64_t
+osw_confsync_cac_get_time(const struct osw_state_phy_info *phy)
+{
+    const struct osw_channel_state *cs = phy->drv_state->channel_states;
+    const size_t n_cs = phy->drv_state->n_channel_states;
+    uint64_t max = 0;
+    size_t i;
+    for (i = 0; i < n_cs; i++) {
+        const struct osw_channel_state *csi = &cs[i];
+        if (csi->dfs_state == OSW_CHANNEL_DFS_CAC_IN_PROGRESS) {
+            const int freq = csi->channel.control_freq_mhz;
+            const bool is_weather = (freq >= 5580)
+                                 && (freq <= 5660);
+            const uint64_t minutes = is_weather ? 10 : 1;
+            const uint64_t seconds = minutes * 60;
+            if (seconds > max) max = seconds;
+        }
+    }
+    return max;
+}
+
+static void
+osw_confsync_cac_update(struct osw_confsync *cs,
+                        const struct osw_state_phy_info *phy)
+{
+    struct ds_tree *phys = &cs->phys;
+    const char *phy_name = phy->phy_name;
+    struct osw_confsync_phy *cs_phy = ds_tree_find(phys, phy_name);
+    const uint64_t sec = 2 * osw_confsync_cac_get_time(phy);
+    const uint64_t at = osw_time_mono_clk()
+                      + OSW_TIME_SEC(sec);
+
+    if (osw_confsync_cac_is_ongoing(phy) == false) {
+        if (cs_phy != NULL) {
+            if (osw_timer_is_armed(&cs_phy->cac_timeout)) {
+                osw_timer_disarm(&cs_phy->cac_timeout);
+                LOGI("osw: confsync: %s: cac: completed", phy_name);
+            }
+            else {
+                LOGN("osw: confsync: %s: cac: completed after timeout", phy_name);
+            }
+            ds_tree_remove(phys, cs_phy);
+            FREE(cs_phy->phy_name);
+            FREE(cs_phy);
+        }
+    }
+    else if (cs_phy == NULL) {
+        cs_phy = CALLOC(1, sizeof(*cs_phy));
+        cs_phy->cs = cs;
+        cs_phy->phy_name = STRDUP(phy_name);
+        ds_tree_insert(phys, cs_phy, cs_phy->phy_name);
+        osw_timer_init(&cs_phy->cac_timeout, osw_confsync_cac_timeout_cb);
+        osw_timer_arm_at_nsec(&cs_phy->cac_timeout, at);
+
+        LOGN("osw: confsync: %s: cac: started: %"PRIu64" seconds",
+             phy_name, sec);
+    }
+    else if (osw_timer_is_armed(&cs_phy->cac_timeout) == false) {
+        osw_timer_arm_at_nsec(&cs_phy->cac_timeout, at);
+
+        LOGN("osw: confsync: %s: cac: started: %"PRIu64" seconds (but previous cac hasn't finished!)",
+             phy_name, sec);
+    }
+}
+
+static void
 osw_confsync_state_busy_cb(struct osw_state_observer *o)
 {
     LOGD("osw: confsync: state: busy");
@@ -1692,6 +1874,7 @@ osw_confsync_state_phy_added_cb(struct osw_state_observer *o,
 {
     struct osw_confsync *cs = container_of(o, struct osw_confsync, state_obs);
     LOGD("osw: confsync: state: %s: added", phy->phy_name);
+    osw_confsync_cac_update(cs, phy);
     /* This, and other cases of conf_changed() called for
      * state observer is intentional. When entities
      * appear/disappear they impact fundamentally the way
@@ -1708,6 +1891,7 @@ osw_confsync_state_phy_changed_cb(struct osw_state_observer *o,
 {
     struct osw_confsync *cs = container_of(o, struct osw_confsync, state_obs);
     LOGD("osw: confsync: state: %s: changed", phy->phy_name);
+    osw_confsync_cac_update(cs, phy);
     osw_confsync_state_changed(cs);
 }
 
@@ -1717,6 +1901,7 @@ osw_confsync_state_phy_removed_cb(struct osw_state_observer *o,
 {
     struct osw_confsync *cs = container_of(o, struct osw_confsync, state_obs);
     LOGD("osw: confsync: state: %s: removed", phy->phy_name);
+    osw_confsync_cac_update(cs, phy);
     osw_confsync_conf_changed(cs);
 }
 
@@ -1778,14 +1963,17 @@ osw_confsync_init(struct osw_confsync *cs)
         .mutated_fn = osw_confsync_conf_mutated_cb,
     };
     const float retry = OSW_CONFSYNC_RETRY_SECONDS_DEFAULT;
+    const float deadline = OSW_CONFSYNC_DEADLINE_SECONDS_DEFAULT;;
 
     cs->state_obs = state_obs;
     cs->conf_obs = conf_obs;
     cs->build_conf = osw_conf_build;
     ds_dlist_init(&cs->changed_fns, struct osw_confsync_changed, node);
     ds_tree_init(&cs->defers, ds_str_cmp, struct osw_confsync_defer, node);
+    ds_tree_init(&cs->phys, ds_str_cmp, struct osw_confsync_phy, node);
     ev_idle_init(&cs->work, osw_confsync_work_cb);
     ev_timer_init(&cs->retry, osw_confsync_retry_cb, retry, retry);
+    ev_timer_init(&cs->deadline, osw_confsync_deadline_cb, deadline, deadline);
 }
 
 static void

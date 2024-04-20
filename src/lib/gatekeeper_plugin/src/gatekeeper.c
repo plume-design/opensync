@@ -1086,13 +1086,16 @@ gatekeeper_get_verdict(struct fsm_policy_req *req,
         if (gk_response != GK_LOOKUP_SUCCESS)
         {
             policy_reply->categorized = FSM_FQDN_CAT_FAILED;
-            /* if connection error, start the backoff timer */
-            if (gk_response == GK_CONNECTION_ERROR)
+
+            /* start backoff timer for connection or service errors */
+            if (gk_response == GK_CONNECTION_ERROR || gk_response == GK_SERVICE_ERROR)
             {
                 offline->provider_offline = true;
                 offline->offline_ts = time(NULL);
-                offline->connection_failures++;
             }
+
+            /* increment connection failure count for connection errors */
+            if (gk_response == GK_CONNECTION_ERROR) offline->connection_failures++;
 
             LOGD("%s() curl error not updating cache", __func__);
             ret = false;

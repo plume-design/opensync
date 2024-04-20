@@ -55,8 +55,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * this number in closefrom() surrogate implementation */
 #define DM_MAX_FD       (1024)
 
-#define IGNORE_SIGMASK ((1 << SIGTERM) | (1 << SIGKILL) | (1 << SIGUSR1) | \
-                        (1 << SIGUSR2) | (1 << SIGINT))
+#define IGNORE_SIGMASK ((1 << SIGTERM) | (1 << SIGINT) | (1 << SIGUSR1) | (1 << SIGUSR2))
 
 #define TM_OUT_FAST     (5)
 #define TM_OUT_SLOW     (60)

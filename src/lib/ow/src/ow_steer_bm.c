@@ -1597,7 +1597,7 @@ ow_steer_bm_schedule_work_impl(void)
 static void
 ow_steer_bm_btm_params_free(struct ow_steer_bm_btm_params *btm_params)
 {
-    ASSERT(btm_params != NULL, "");
+    if (btm_params == NULL) return;
 
     OW_STEER_BM_MEM_ATTR_FREE(btm_params, bssid);
     OW_STEER_BM_MEM_ATTR_FREE(btm_params, disassoc_imminent);
@@ -1627,7 +1627,7 @@ ow_steer_bm_btm_params_update(struct ow_steer_bm_btm_params *btm_params,
 static void
 ow_steer_bm_cs_params_free(struct ow_steer_bm_cs_params *cs_params)
 {
-    ASSERT(cs_params != NULL, "");
+    if (cs_params == NULL) return;
 
     OW_STEER_BM_MEM_ATTR_FREE(cs_params, band);
     OW_STEER_BM_MEM_ATTR_FREE(cs_params, enforce_period_secs);
@@ -2407,7 +2407,19 @@ ow_steer_bm_sta_create(struct ow_steer_bm_group *group,
     ASSERT(group != NULL, "");
     ASSERT(client != NULL, "");
 
-    struct ow_steer_bm_sta *sta = CALLOC(1, sizeof(*sta));
+    struct ow_steer_bm_sta *sta = ds_tree_find(&group->sta_tree, &client->addr);
+    if (sta != NULL) {
+        ASSERT(sta->removed == true, "shouldn't reach this point otherwise");
+        LOGD("ow: steer: bm: sta addr: "OSW_HWADDR_FMT" un-removing from group id: %s",
+             OSW_HWADDR_ARG(&client->addr),
+             group->id);
+        sta->removed = false;
+        OW_STEER_BM_SCHEDULE_WORK;
+        return;
+    }
+
+    sta = CALLOC(1, sizeof(*sta));
+
     const struct ow_steer_policy_mediator policy_mediator = {
         .sched_recalc_stack_fn = ow_steer_bm_policy_mediator_sched_stack_recalc_cb,
         .trigger_executor_fn = ow_steer_bm_policy_mediator_trigger_executor_cb,
@@ -3077,7 +3089,7 @@ ow_steer_bm_sta_start_inbound_client_steering(struct ow_steer_bm_sta *sta)
             continue;
 
         const struct osw_channel *channel = osw_bss_get_channel(&bss->bssid);
-        if (WARN_ON(channel == NULL))
+        if (channel == NULL)
             continue;
 
         const enum osw_band bss_band = osw_freq_to_band(channel->control_freq_mhz);
@@ -3865,6 +3877,7 @@ ow_steer_bm_client_free(struct ow_steer_bm_client *client)
     OW_STEER_BM_MEM_ATTR_FREE(client, sticky_kick_type);
     OW_STEER_BM_MEM_ATTR_FREE(client, neighbor_list_filter_by_beacon_report);
     OW_STEER_BM_MEM_ATTR_FREE(client, pref_5g_pre_assoc_block_timeout_msecs);
+    OW_STEER_BM_MEM_ATTR_FREE(client, cs_mode);
     ow_steer_bm_btm_params_free(client->sc_btm_params);
     ow_steer_bm_btm_params_free(client->steering_btm_params);
     ow_steer_bm_btm_params_free(client->sticky_btm_params);
@@ -5590,6 +5603,24 @@ ow_steer_bm_neighbor_get_bss(struct ow_steer_bm_neighbor *neighbor)
     return neighbor->bss;
 }
 
+static void
+ow_steer_bm_client_notify_added(struct ow_steer_bm_client *client)
+{
+    struct ow_steer_bm_observer *observer;
+    ds_dlist_foreach(&g_observer_list, observer)
+        if (observer->client_added_fn != NULL)
+            observer->client_added_fn(observer, client);
+}
+
+static void
+ow_steer_bm_client_notify_removed(struct ow_steer_bm_client *client)
+{
+    struct ow_steer_bm_observer *observer;
+    ds_dlist_foreach(&g_observer_list, observer)
+        if (observer->client_removed_fn != NULL)
+            observer->client_removed_fn(observer, client);
+}
+
 struct ow_steer_bm_client*
 ow_steer_bm_get_client(const uint8_t *addr)
 {
@@ -5600,7 +5631,11 @@ ow_steer_bm_get_client(const uint8_t *addr)
 
     struct ow_steer_bm_client *client = ds_tree_find(&g_client_tree, &tmp_addr);
     if (client != NULL) {
-        client->removed = false;
+        if (client->removed) {
+            client->removed = false;
+            OW_STEER_BM_SCHEDULE_WORK;
+            ow_steer_bm_client_notify_added(client);
+        }
         return client;
     }
 
@@ -5613,11 +5648,7 @@ ow_steer_bm_get_client(const uint8_t *addr)
     LOGD("ow: steer: bm: client addr: "OSW_HWADDR_FMT" added", OSW_HWADDR_ARG(&client->addr));
 
     OW_STEER_BM_SCHEDULE_WORK;
-
-    struct ow_steer_bm_observer *observer;
-    ds_dlist_foreach(&g_observer_list, observer)
-        if (observer->client_added_fn != NULL)
-            observer->client_added_fn(observer, client);
+    ow_steer_bm_client_notify_added(client);
 
     return client;
 }
@@ -5627,7 +5658,9 @@ ow_steer_bm_client_unset(struct ow_steer_bm_client *client)
 {
     ASSERT(client != NULL, "");
 
-    LOGD("%s unset TODO", OW_STEER_BM_CLIENT_LOG_PREFIX(client));
+    client->removed = true;
+    OW_STEER_BM_SCHEDULE_WORK;
+    ow_steer_bm_client_notify_removed(client);
 }
 
 void

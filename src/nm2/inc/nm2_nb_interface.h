@@ -37,7 +37,6 @@ struct nm2_interface
 {
     ovs_uuid_t          if_uuid;
     char                if_name[128 + 1];
-    bool                if_valid;
     osn_mac_addr_t      if_mac_w;        /* mac address configured on Interface table */
     osn_mac_addr_t      if_mac_r;        /* mac address configured on the device */
     bool                if_mac_exists;

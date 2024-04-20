@@ -349,7 +349,8 @@ struct fsm_dpi_dispatcher
     struct net_md_aggregator *aggr;
     struct fsm_session *session;
     ds_tree_t plugin_sessions;
-    time_t periodic_ts;
+    time_t periodic_report_ts;
+    time_t periodic_backoff_ts;
     char *included_devices;
     char *excluded_devices;
     char *listening_ip;
@@ -430,6 +431,7 @@ struct fsm_session
     char bridge[64];                 /* underlying bridge name */
     char tx_intf[64];                /* plugin's TX interface */
     long dpi_stats_report_interval;  /* dpi stats reporting interval */
+    long dpi_backoff_interval;       /* dpi backoff interval */
     char *dpi_stats_report_topic;    /* mqtt topic for reporting dpi stats */
     union fsm_dpi_context *dpi;      /* fsm dpi context */
     int (*set_dpi_mark)(struct net_header_parser *net_hdr,

@@ -425,6 +425,29 @@ ow_ovsdb_ap_multi_ap_from_cstr(const char *str,
     }
 }
 
+static enum osw_acl_policy
+ow_ovsdb_ap_get_acl_policy(const struct osw_drv_vif_state_ap *ap,
+                        const struct schema_Wifi_VIF_Config *vconf)
+{
+    if (vconf == NULL) return ap->acl_policy;
+    if (ap->acl.count > 0) return ap->acl_policy;
+
+    // if config is valid, and ACL is empty, then blacklist == none
+    // so report whatever config has to satisfy the cloud controller
+    switch (ap->acl_policy) {
+        case OSW_ACL_NONE:
+            if (strcmp(vconf->mac_list_type, "blacklist") == 0) return OSW_ACL_DENY_LIST;
+            break;
+        case OSW_ACL_DENY_LIST:
+            if (strcmp(vconf->mac_list_type, "none") == 0) return OSW_ACL_NONE;
+            break;
+        case OSW_ACL_ALLOW_LIST:
+            break;
+    }
+
+    return ap->acl_policy;
+}
+
 /* FIXME: These get helpers could be replaced with
  * ovsdb_cache lookups to be more efficient  */
 
@@ -1176,7 +1199,8 @@ ow_ovsdb_vifstate_to_schema(struct schema_Wifi_VIF_State *schema,
             SCHEMA_SET_STR(schema->multi_ap, ow_ovsdb_ap_multi_ap_to_cstr(&ap->multi_ap));
 
             {
-                const char *acl_policy_str = ow_ovsdb_acl_policy_to_str(ap->acl_policy);
+                const enum osw_acl_policy acl_policy = ow_ovsdb_ap_get_acl_policy(ap, vconf);
+                const char *acl_policy_str = ow_ovsdb_acl_policy_to_str(acl_policy);
                 if (acl_policy_str != NULL)
                     SCHEMA_SET_STR(schema->mac_list_type, acl_policy_str);
             }
@@ -3364,6 +3388,10 @@ OSW_UT(ow_ovsdb_ut_rstate_bcn_int)
             .enabled = true,
         }}
     };
+    const struct osw_channel c = {
+        .control_freq_mhz = 2412,
+        .center_freq0_mhz = 2412,
+    };
     const struct osw_state_vif_info vif1_100 = {
         .phy = &phy,
         .vif_name = "vif1",
@@ -3371,7 +3399,7 @@ OSW_UT(ow_ovsdb_ut_rstate_bcn_int)
             .exists = true,
             .status = OSW_VIF_ENABLED,
             .vif_type = OSW_VIF_AP,
-            .u = { .ap = { .beacon_interval_tu = 100 } },
+            .u = { .ap = { .channel = c, .beacon_interval_tu = 100 } },
         }}
     };
     const struct osw_state_vif_info vif1_200 = {
@@ -3381,7 +3409,7 @@ OSW_UT(ow_ovsdb_ut_rstate_bcn_int)
             .exists = true,
             .status = OSW_VIF_ENABLED,
             .vif_type = OSW_VIF_AP,
-            .u = { .ap = { .beacon_interval_tu = 200 } },
+            .u = { .ap = { .channel = c, .beacon_interval_tu = 200 } },
         }}
     };
     const struct osw_state_vif_info vif2 = {
@@ -3391,7 +3419,7 @@ OSW_UT(ow_ovsdb_ut_rstate_bcn_int)
             .exists = true,
             .status = OSW_VIF_ENABLED,
             .vif_type = OSW_VIF_AP,
-            .u = { .ap = { .beacon_interval_tu = 200 } },
+            .u = { .ap = { .channel = c, .beacon_interval_tu = 200 } },
         }}
     };
     struct osw_drv_dummy dummy = {
@@ -3805,8 +3833,12 @@ OSW_UT(ow_ovsdb_ut_sta)
 {
     if (ow_ovsdb_ut_is_not_runnable()) return;
 
+    struct osw_channel c = {
+        .control_freq_mhz = 2412,
+        .center_freq0_mhz = 2412,
+    };
     struct osw_channel_state cs_2g[] = {
-            { .channel = { .control_freq_mhz = 2412 } },
+            { .channel = c },
     };
     const struct osw_state_phy_info phy = {
         .phy_name = "phy1",
@@ -3824,7 +3856,7 @@ OSW_UT(ow_ovsdb_ut_sta)
             .exists = true,
             .status = OSW_VIF_ENABLED,
             .vif_type = OSW_VIF_AP,
-            .u = { .ap = { .ssid = { .buf = "ssid1", .len = 5 } } },
+            .u = { .ap = { .channel = c, .ssid = { .buf = "ssid1", .len = 5 } } },
         }},
     };
     const struct osw_state_vif_info vif2 = {
@@ -3834,7 +3866,7 @@ OSW_UT(ow_ovsdb_ut_sta)
             .exists = true,
             .status = OSW_VIF_ENABLED,
             .vif_type = OSW_VIF_AP,
-            .u = { .ap = { .ssid = { .buf = "ssid2", .len = 5 } } },
+            .u = { .ap = { .channel = c, .ssid = { .buf = "ssid2", .len = 5 } } },
         }},
     };
     const struct osw_hwaddr addr1 = { .octet = { 0, 1, 2, 3, 4, 5 } };

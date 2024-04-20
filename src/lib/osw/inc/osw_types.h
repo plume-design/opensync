@@ -814,4 +814,20 @@ osw_cipher_into_cstr(const enum osw_cipher cipher);
 const char *
 osw_band_into_cstr(const enum osw_band band);
 
+bool
+osw_channel_is_none(const struct osw_channel *c);
+
+const struct osw_channel *
+osw_channel_none(void);
+
+const struct osw_hwaddr *
+osw_hwaddr_zero(void);
+
+void
+osw_hwaddr_write(const struct osw_hwaddr *addr,
+                 void *buf,
+                 size_t buf_len);
+
+#define OSW_HWADDR_WRITE(addr, buf) osw_hwaddr_write(addr, buf, sizeof(buf))
+
 #endif /* OSW_TYPES_H_INCLUDED */
