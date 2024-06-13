@@ -125,7 +125,7 @@ define rootfs_install_to_target
 	$(Q)echo "$(call color_install,install) rootfs $(call color_profile,$(BUILD_ROOTFS_DIR) => $(INSTALL_ROOTFS_DIR))"
 	$(Q)if [ -L $(INSTALL_ROOTFS_DIR)$(INSTALL_PREFIX) ]; then rm $(INSTALL_ROOTFS_DIR)$(INSTALL_PREFIX); fi
 	$(Q)if [ -L $(INSTALL_ROOTFS_DIR)$(ROOTFS_LEGACY_PREFIX) ]; then rm $(INSTALL_ROOTFS_DIR)$(ROOTFS_LEGACY_PREFIX); fi
-	$(Q)cp --remove-destination --archive $(BUILD_ROOTFS_DIR)/. $(INSTALL_ROOTFS_DIR)/.
+	$(Q)cp --remove-destination -dR $(BUILD_ROOTFS_DIR)/. $(INSTALL_ROOTFS_DIR)/.
 
 endef
 
