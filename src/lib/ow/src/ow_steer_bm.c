@@ -1693,7 +1693,9 @@ ow_steer_bm_bss_update_channel(struct ow_steer_bm_bss *bss,
             observer->vif_changed_fn(observer, bss->vif);
         }
 
-        if (channel != NULL && old_channel != NULL) {
+        const bool channel_changed = (osw_channel_is_equal(channel ?: osw_channel_none(),
+                                                           old_channel ?: osw_channel_none()) == false);
+        if (channel_changed) {
             if (observer->vif_changed_channel_fn != NULL) {
                 observer->vif_changed_channel_fn(observer,
                                                  bss->vif,
@@ -4658,6 +4660,13 @@ ow_steer_bm_observer_register(struct ow_steer_bm_observer *observer)
             observer->vif_added_fn(observer, vif);
     }
 
+    if (observer->vif_up_fn != NULL) {
+        struct ow_steer_bm_vif *vif;
+        ds_tree_foreach(&g_vif_tree, vif)
+            if (ow_steer_bm_vif_is_up(vif) == true)
+                observer->vif_up_fn(observer, vif);
+    }
+
     if (observer->neighbor_up_fn != NULL) {
         struct ow_steer_bm_neighbor *neighbor;
         ds_tree_foreach(&g_neighbor_tree, neighbor)
@@ -4679,6 +4688,13 @@ ow_steer_bm_observer_unregister(struct ow_steer_bm_observer *observer)
 {
     ASSERT(observer != NULL, "");
     ds_dlist_remove(&g_observer_list, observer);
+
+    if (observer->vif_down_fn != NULL) {
+        struct ow_steer_bm_vif *vif;
+        ds_tree_foreach(&g_vif_tree, vif)
+            if (ow_steer_bm_vif_is_up(vif) == true)
+                observer->vif_down_fn(observer, vif);
+    }
 
     if (observer->vif_removed_fn != NULL) {
         struct ow_steer_bm_vif *vif;

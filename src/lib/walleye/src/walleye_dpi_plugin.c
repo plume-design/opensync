@@ -1189,6 +1189,8 @@ add_tag(struct flow_key *fkey, const char *service,
     struct flow_tags *tag;
     int i;
 
+    free_flow_key_tags(fkey);
+
     /* Allocate one key tag container */
     key_tags = CALLOC(1, sizeof(*key_tags));
     if (key_tags == NULL) return;

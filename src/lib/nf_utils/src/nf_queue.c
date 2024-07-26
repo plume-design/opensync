@@ -492,9 +492,9 @@ nf_queue_open(struct nfq_settings *nfq_set)
     params.copy_mode = NFQNL_COPY_PACKET;
     nf_queue_send_nlh_request(nlh, NFQA_CFG_PARAMS, &params, nfq);
 
-    /* Set flag NFQA_CFG_F_GSO to avoid receiving fragmented packets to the QUEUE*/    
-    /* Set flag NFQA_CFG_F_FAIL_OPEN for accepting packets by kernel when queue full*/
-    /* Set flag NFQA_CFG_F_CONNTRACK to Get/Set conntrack info through NFQUEUE.*/ 
+    /* Set flag NFQA_CFG_F_GSO to avoid receiving fragmented packets to the QUEUE */
+    /* Set flag NFQA_CFG_F_FAIL_OPEN for accepting packets by kernel when queue full */
+    /* Set flag NFQA_CFG_F_CONNTRACK to Get/Set conntrack info through NFQUEUE. */
     flags = (NFQA_CFG_F_GSO | NFQA_CFG_F_FAIL_OPEN | NFQA_CFG_F_CONNTRACK);
 
     nf_queue_send_nlh_request(nlh, NFQA_CFG_FLAGS, &flags, nfq);

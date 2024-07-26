@@ -240,7 +240,7 @@ void wanp_dhcpv4_fini(wano_plugin_handle_t *wh)
 
     wano_inet_state_event_fini(&wdh->wd4_inet_state_watcher);
 
-    FREE(wh);
+    FREE(wdh);
 }
 
 /*

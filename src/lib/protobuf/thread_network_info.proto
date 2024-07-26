@@ -26,6 +26,12 @@ syntax = "proto3";
 
 package otbr;
 
+// Information to uniquely identify a device
+message ObservationPoint {
+  string node_id = 1;
+  string location_id = 2;
+}
+
 // Thread Network Discovery result
 message ThreadNetwork {
   fixed64 ext_addr = 1;        // IEEE 802.15.4 Extended Address
@@ -45,4 +51,5 @@ message ThreadNetwork {
 // Thread Network Discovery Results
 message ThreadNetworkScan {
   repeated ThreadNetwork networks = 1;
+  ObservationPoint observation_point = 2;
 }

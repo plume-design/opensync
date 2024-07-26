@@ -130,8 +130,8 @@ ow_steer_bm_policy_hwm_2g_set_bss(struct ow_steer_bm_policy_hwm_2g *hwm,
 }
 
 static void
-ow_steer_bm_policy_hwm_2g_vif_added_cb(struct ow_steer_bm_observer *obs,
-                                       struct ow_steer_bm_vif *vif)
+ow_steer_bm_policy_hwm_2g_vif_up_cb(struct ow_steer_bm_observer *obs,
+                                    struct ow_steer_bm_vif *vif)
 {
     struct ow_steer_bm_policy_hwm_2g *hwm = container_of(obs, struct ow_steer_bm_policy_hwm_2g, bm_obs);
     if (vif->bss == NULL) return;
@@ -141,8 +141,8 @@ ow_steer_bm_policy_hwm_2g_vif_added_cb(struct ow_steer_bm_observer *obs,
 }
 
 static void
-ow_steer_bm_policy_hwm_2g_vif_removed_cb(struct ow_steer_bm_observer *obs,
-                                         struct ow_steer_bm_vif *vif)
+ow_steer_bm_policy_hwm_2g_vif_down_cb(struct ow_steer_bm_observer *obs,
+                                      struct ow_steer_bm_vif *vif)
 {
     struct ow_steer_bm_policy_hwm_2g *hwm = container_of(obs, struct ow_steer_bm_policy_hwm_2g, bm_obs);
     if (vif->bss == NULL) return;
@@ -158,6 +158,7 @@ ow_steer_bm_policy_hwm_2g_vif_channel_cb(struct ow_steer_bm_observer *obs,
                                          const struct osw_channel *new_channel)
 {
     struct ow_steer_bm_policy_hwm_2g *hwm = container_of(obs, struct ow_steer_bm_policy_hwm_2g, bm_obs);
+    if (vif->bss == NULL) return;
     if (vif->group != hwm->group) return;
     const struct osw_hwaddr *bssid = vif->bss ? &vif->bss->bssid : NULL;
     ow_steer_bm_policy_hwm_2g_set_bss(hwm, bssid, bssid ? osw_bss_get_channel(bssid) : NULL, true);
@@ -205,8 +206,8 @@ ow_steer_bm_policy_hwm_2g_alloc(const char *name,
                                 const struct ow_steer_policy_mediator *mediator)
 {
     static const struct ow_steer_bm_observer bm_obs = {
-        .vif_added_fn = ow_steer_bm_policy_hwm_2g_vif_added_cb,
-        .vif_removed_fn = ow_steer_bm_policy_hwm_2g_vif_removed_cb,
+        .vif_up_fn = ow_steer_bm_policy_hwm_2g_vif_up_cb,
+        .vif_down_fn = ow_steer_bm_policy_hwm_2g_vif_down_cb,
         .vif_changed_channel_fn = ow_steer_bm_policy_hwm_2g_vif_channel_cb,
 
         .neighbor_up_fn = ow_steer_bm_policy_hwm_2g_neighbor_up_cb,

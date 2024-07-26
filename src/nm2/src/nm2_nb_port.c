@@ -56,6 +56,7 @@ static void nm2_port_release(struct nm2_port *port)
 
     /* clean up */
     ds_tree_remove(&nm2_port_list, port);
+    uuidset_fini(&port->port_interfaces);
     nm2_port_free(port);
 }
 
@@ -295,17 +296,14 @@ static void nm2_port_update(struct nm2_port *port, struct schema_Port *schema)
  *  public api definitions
  *****************************************************************************/
 
-void nm2_nb_port_cfg_reapply(struct nm2_iface *pif)
+void nm2_nb_port_cfg_reapply(const char *port_name, bool add)
 {
     struct nm2_port *port;
     struct nm2_bridge *br;
-    bool add = true;
 
-    LOGT("%s(): reapplying port configuration for %s (type %d)", __func__, pif->if_name,
-         pif->if_type);
-
+    LOGT("%s(): reapplying port configuration for %s (add %d)", __func__, port_name, add);
     /* check if the port is present in the port list */
-    port = nm2_port_get_by_name(pif->if_name);
+    port = nm2_port_get_by_name(port_name);
     if (port == NULL) return;
 
     br = port->port_bridge;
@@ -316,7 +314,7 @@ void nm2_nb_port_cfg_reapply(struct nm2_iface *pif)
     }
 
     /* port information is present in the Port config, so create the port */
-    nm2_add_port_to_br(br, port, add);
+    nm2_inet_bridge_port_set(port, add);
 }
 
 
