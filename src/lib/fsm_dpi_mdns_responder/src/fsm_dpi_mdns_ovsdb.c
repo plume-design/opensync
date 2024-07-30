@@ -76,7 +76,7 @@ fsm_dpi_mdns_ovsdb_exit(void)
     LOGI("%s: Unregister OVSDB events", __func__);
 
     /* Deregister monitor events */
-    ovsdb_unregister_update_cb(table_Service_Announcement.monitor.mon_id);
+    ovsdb_table_fini(&table_Service_Announcement);
 
     return;
 }

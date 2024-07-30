@@ -627,9 +627,9 @@ bm_client_print_client_caps( bm_client_t *client )
     LOGD( " Supports 6G           : %s", bm_client_is_cap_6G(client) ? "Yes":"No" );
 
     LOGD( "   ~~~Datarate Information~~~    " );
-    LOGD( " Max Channel Width     : %hhu", client->info->datarate_info.max_chwidth );
+    LOGD( " Max Channel Width     : %u", client->info->datarate_info.max_chwidth );
     LOGD( " Max Streams           : %hhu", client->info->datarate_info.max_streams );
-    LOGD( " PHY Mode              : %hhu", client->info->datarate_info.phy_mode );
+    LOGD( " PHY Mode              : %u", client->info->datarate_info.phy_mode );
     LOGD( " Max MCS               : %hhu", client->info->datarate_info.max_MCS );
     LOGD( " Max TX power          : %hhu", client->info->datarate_info.max_txpower );
     LOGD( " Is Static SMPS?       : %s", client->info->datarate_info.is_static_smps ? "Yes":"No" );

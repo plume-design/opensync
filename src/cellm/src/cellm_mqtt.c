@@ -29,6 +29,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdbool.h>
 #include <string.h>
 #include <errno.h>
+#include <inttypes.h>
 
 #include "cell_info.h"
 #include "memutil.h"
@@ -156,9 +157,10 @@ cell_set_data_usage(struct cell_info_report *report)
     cellm_mgr_t *mgr = cellm_get_mgr();
     struct cell_data_usage data_usage;
 
-    LOGI("%s: rx_bytes[%lu], tx_bytes[%lu]", __func__,
-         mgr->modem_info->cell_data_usage.rx_bytes,
-         mgr->modem_info->cell_data_usage.tx_bytes);
+    LOGI("%s: rx_bytes[%"PRIu64"], tx_bytes[%"PRIu64"]", __func__,
+         (uint64_t)mgr->modem_info->cell_data_usage.rx_bytes,
+         (uint64_t)mgr->modem_info->cell_data_usage.tx_bytes);
+
     data_usage.rx_bytes = mgr->modem_info->cell_data_usage.rx_bytes;
     data_usage.tx_bytes = mgr->modem_info->cell_data_usage.tx_bytes;
     ret = cell_info_set_data_usage(&data_usage, report);
@@ -203,12 +205,45 @@ cell_set_neigh_cell_info(struct cell_info_report *report)
     bool ret;
     cellm_mgr_t *mgr = cellm_get_mgr();
     struct cell_net_neighbor_cell_info *neigh_cell;
-    int i;
 
-    for (i = 0; i < MAX_CELL_COUNT; i++)
+    for (size_t i = 0; i < report->n_neigh_cells; i++)
     {
+        if (i == MAX_CELL_COUNT)
+        {
+            LOGE("%s: Number of neighbor cells [%zu] exceeds maximum cell count[%d]",
+                 __func__, report->n_neigh_cells, MAX_CELL_COUNT);
+            break;
+        }
+
         neigh_cell = &mgr->modem_info->cell_neigh_cell_info[i];
-        ret = cell_info_add_neigh_cell(neigh_cell, report);
+        ret = cell_info_add_neigh_cell(neigh_cell, report, i);
+        if (!ret) return -1;
+    }
+
+    return 0;
+}
+
+/**
+ * @brief Set full scan neighbor cell info in the report
+ */
+int
+cell_set_full_scan_neigh_cell_info(struct cell_info_report *report)
+{
+    bool ret;
+    cellm_mgr_t *mgr = cellm_get_mgr();
+    struct cell_full_scan_neighbor_cell_info *full_scan_neigh_cell;
+
+    for (size_t i = 0; i < report->n_full_scan_neigh_cells; i++)
+    {
+        if (i == MAX_FULL_SCAN_CELL_COUNT)
+        {
+            LOGE("%s: Number of full scan neighbor cells [%zu] exceeds maximum cell count[%d]",
+                 __func__, report->n_full_scan_neigh_cells, MAX_FULL_SCAN_CELL_COUNT);
+            break;
+        }
+
+        full_scan_neigh_cell = &mgr->modem_info->cell_full_scan_neigh_cell_info[i];
+        ret = cell_info_add_full_scan_neigh_cell(full_scan_neigh_cell, report, i);
         if (!ret) return -1;
     }
 
@@ -364,8 +399,9 @@ cell_set_report(void)
     cellm_mgr_t *mgr = cellm_get_mgr();
 
 
-    report = cell_info_allocate_report(mgr->modem_info->n_neigh_cells, mgr->modem_info->n_lte_sca_cells,
-                                       mgr->modem_info->n_pdp_cells, mgr->modem_info->n_nrg_sca_cells);
+    report = cell_info_allocate_report(mgr->modem_info->n_neigh_cells, mgr->modem_info->n_full_scan_neigh_cells,
+                                       mgr->modem_info->n_lte_sca_cells, mgr->modem_info->n_pdp_cells,
+                                       mgr->modem_info->n_nrg_sca_cells);
     if (!report)
     {
         LOGE("report calloc failed");
@@ -409,6 +445,14 @@ cell_set_report(void)
     if (res)
     {
         LOGE("Failed to set neighbor cell");
+        return res;
+    }
+
+    /* Add full scan neighbor cell info */
+    res = cell_set_full_scan_neigh_cell_info(report);
+    if (res)
+    {
+        LOGE("Failed to set full scan neighbor cell info");
         return res;
     }
 

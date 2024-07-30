@@ -63,7 +63,6 @@ int pm_tm_ovsdb_thermtbl_get_radio_temp(unsigned int state, unsigned int radio_i
 int pm_tm_ovsdb_thermtbl_get_radio_txchainmask(unsigned int state, unsigned int radio_idx, unsigned int *txchainmask);
 int pm_tm_ovsdb_thermtbl_get_fan_rpm(unsigned int state, unsigned int *rpm);
 int pm_tm_ovsdb_set_state(unsigned int state);
-int pm_tm_ovsdb_set_led_state(enum osp_led_state led_state, bool clear);
 
 #ifdef PM_TM_DEBUG
 int pm_tm_ovsdb_dbg_get_temperature(unsigned int radio_idx, int *temp);

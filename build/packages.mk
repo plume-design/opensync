@@ -27,11 +27,11 @@
 
 PACKAGE_ARCHIVE := $(IMAGEDIR)/3rdparty-packages-$(TARGET)-$(ROOTFS_PACK_VERSION).tar.gz
 
-PACKAGE_TO_PACK := $(shell cd $(PKGDIR) && ls *.tar.gz 2>/dev/null)
-
 packages:
 ifneq ($(BUILD_3RDPARTY_PACKAGES),n)
-ifneq ($(strip $(PACKAGE_TO_PACK)),)
-	$(Q)tar czf $(PACKAGE_ARCHIVE) -C $(PKGDIR) $(PACKAGE_TO_PACK)
-endif
+	$(Q)PACKAGE_TO_PACK=$$(cd $(PKGDIR) && ls *.tar.gz 2>/dev/null) ; \
+		if [ -n "$$PACKAGE_TO_PACK" ]; then \
+			echo "$(call color_install,generate) $(PACKAGE_ARCHIVE)" ; \
+			tar czf $(PACKAGE_ARCHIVE) -C $(PKGDIR) $$PACKAGE_TO_PACK ; \
+		fi
 endif

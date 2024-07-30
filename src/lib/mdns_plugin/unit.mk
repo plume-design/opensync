@@ -30,8 +30,7 @@
 UNIT_NAME := fsm_mdns
 UNIT_DISABLE := $(if $(CONFIG_MANAGER_FSM),n,y)
 
-# Template type:
-ifneq (,$(findstring clang,$(CC)))
+ifeq ($(CONFIG_FSM_NO_DSO),y)
 	UNIT_TYPE := LIB
 else
 	UNIT_TYPE := SHLIB

@@ -52,6 +52,7 @@ struct lnx_qos
     struct lnx_qos_queue   *lq_queue_e;
     lnx_netlink_t           lq_netlink;     /* Interface monitorting object */
     unsigned int            lq_ifindex;     /* Interface index */
+    osn_qos_event_fn_t     *lq_event_cb;    /* QoS event notification callback */
 };
 
 bool lnx_qos_init(lnx_qos_t *self, const char *ifname);
@@ -70,5 +71,9 @@ bool lnx_qos_queue_begin(
         struct osn_qos_queue_status *qqs);
 
 bool lnx_qos_queue_end(lnx_qos_t *self);
+
+bool lnx_qos_notify_event_set(lnx_qos_t *self, osn_qos_event_fn_t *status_fn_cb);
+
+bool lnx_qos_is_qdisc_based(lnx_qos_t *self);
 
 #endif /* LNX_QOS_H_INCLUDED */

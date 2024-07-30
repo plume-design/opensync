@@ -157,7 +157,7 @@ static struct nm2_route_state *nm2_route_state_get(const ovs_uuid_t *uuid)
  *   - destination
  *   - gateway
  *   - metric
- * */
+ */
 static int nm2_route_state_cmp(
         const struct nm2_route_state *rs_cached,
         const char *if_name,

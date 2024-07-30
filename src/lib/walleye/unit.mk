@@ -31,8 +31,7 @@ UNIT_NAME := fsm_walleye_dpi
 
 UNIT_DISABLE := $(if $(CONFIG_WALLEYE_DPI_ENGINE),n,y)
 
-# Template type:
-ifneq (,$(findstring clang,$(CC)))
+ifeq ($(CONFIG_FSM_NO_DSO),y)
     UNIT_TYPE := LIB
 else
     UNIT_TYPE := SHLIB
@@ -65,3 +64,5 @@ UNIT_DEPS += src/lib/dpi_stats
 UNIT_DEPS += src/lib/kconfig
 UNIT_DEPS += src/lib/nfe
 UNIT_DEPS += src/lib/rts
+UNIT_DEPS += src/lib/fsm_utils
+UNIT_DEPS += src/lib/objmfs

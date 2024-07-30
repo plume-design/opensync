@@ -46,7 +46,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 void net_md_free_aggregator(struct net_md_aggregator *aggr)
 {
     struct net_md_eth_pair *pair;
-    if (IS_NULL_PTR(aggr)) return;
+    if (aggr == NULL) return;
 
     net_md_free_flow_report(aggr->report);
     FREE(aggr->report);

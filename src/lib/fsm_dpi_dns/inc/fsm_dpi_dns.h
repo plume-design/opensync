@@ -83,6 +83,16 @@ struct dns_record
     uint8_t qtype;
 };
 
+struct dns_header
+{
+    uint16_t id;  // Identification Number
+    uint16_t flags;  // Flags
+    uint16_t qdcount;  // Question Count
+    uint16_t ancount;  // Answer Count
+    uint16_t nscount;  // Authority Count
+    uint16_t arcount;  // Additional Count
+};
+
 struct dns_session
 {
     ds_tree_t cached_entries;
@@ -196,5 +206,11 @@ int
 fsm_dpi_dns_process_dns_record(struct fsm_session *session,
                                struct net_md_stats_accumulator *acc,
                                struct net_header_parser *net_parser);
+
+bool
+fsm_dpi_dns_update_ttl(uint8_t *packet, size_t length, int ttl);
+
+int
+fsm_dpi_dns_skip_domain_name(uint8_t *packet, size_t offset, size_t length);
 
 #endif /* FSM_DPI_DNS_H_INCLUDED */

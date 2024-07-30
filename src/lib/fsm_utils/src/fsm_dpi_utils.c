@@ -27,6 +27,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <string.h>
 #include <netinet/ip_icmp.h>
 #include <netinet/icmp6.h>
+#include <errno.h>
 #include "log.h"
 #include "ds_tree.h"
 #include "nf_utils.h"
@@ -540,4 +541,36 @@ fsm_update_neigh_cache(void *ipaddr, os_macaddr_t *mac, int domain, int source)
     }
 
     return rc;
+}
+
+
+/**
+ * @brief Get the MQTT topic configured for reporting dpi
+ * statistics, and the reporting interval.
+ *
+ * @param session the fsm session to probe
+ * @return None
+ */
+void
+fsm_set_dpi_health_stats_cfg(struct fsm_session *session)
+{
+    char *interval_str;
+    long int interval;
+
+    if (!session) return;
+
+    session->dpi_stats_report_topic = session->ops.get_config(session, "dpi_health_stats_topic");
+
+    /* read the interval time */
+    interval_str = session->ops.get_config(session, "dpi_health_stats_interval_secs");
+    if (interval_str != NULL)
+    {
+        errno = 0;
+        interval = strtol(interval_str, 0, 10);
+        if (errno == 0) session->dpi_stats_report_interval = (int)interval;
+    }
+
+    LOGI("%s: dpi health stats topic : %s, interval: %ld", __func__,
+         session->dpi_stats_report_topic != NULL ? session->dpi_stats_report_topic : "not set",
+         session->dpi_stats_report_interval);
 }

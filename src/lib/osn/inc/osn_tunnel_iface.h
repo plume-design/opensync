@@ -65,6 +65,10 @@ enum osn_tunnel_iface_type
     OSN_TUNNEL_IFACE_TYPE_VTI,         /** Virtual Tunnel Interface IPv4 (vti) */
     OSN_TUNNEL_IFACE_TYPE_VTI6,        /** Virtual Tunnel Interface IPv6 (vti6) */
     OSN_TUNNEL_IFACE_TYPE_IP6TNL,      /** Virtual Tunnel Interface IPv4|IPv6 over IPv6 */
+    OSN_TUNNEL_IFACE_TYPE_IP4GRE,      /** Virtual Tunnel Interface GRE over IPv4 */
+    OSN_TUNNEL_IFACE_TYPE_IP4GRETAP,   /** Virtual L2 Tunnel Interface GRE over IPv4 */
+    OSN_TUNNEL_IFACE_TYPE_IP6GRE,      /** Virtual Tunnel Interface GRE over IPv6 */
+    OSN_TUNNEL_IFACE_TYPE_IP6GRETAP,   /** Virtual L2 Tunnel Interface GRE over IPv6 */
     OSN_TUNNEL_IFACE_TYPE_MAX
 };
 

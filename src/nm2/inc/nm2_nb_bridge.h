@@ -49,5 +49,6 @@ ds_tree_t *nm2_bridge_get_list(void);
 bool nm2_default_br_create_tables(char *br_name);
 void nm2_default_br_init(char *br_name);
 void nm2_bridge_init(void);
+void nm2_open_vswitch_init(void);
 
 #endif /* NM2_NB_BRIDGE_H_INCLUDED */

@@ -37,6 +37,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "memutil.h"
 #include "network_metadata_report.h"
 #include "os.h"
+#include "fsm_fn_trace.h"
 
 static struct fsm_dpi_sni_cache cache_mgr =
 {
@@ -76,6 +77,7 @@ fsm_dpi_sni_init(struct fsm_session *session)
     /* Set the plugin specific ops */
     client_ops = &session->p_ops->dpi_plugin_client_ops;
     client_ops->process_attr = fsm_dpi_sni_process_attr;
+    FSM_FN_MAP(fsm_dpi_sni_process_attr);
 
     /* Fetch the specific updates for this client plugin */
     session->ops.update(session);
@@ -83,10 +85,6 @@ fsm_dpi_sni_init(struct fsm_session *session)
     LOGD("%s: Added session '%s'", __func__, session->name);
 
     return 0;
-
-failed_type_init:
-    LOGI("%s: Failed to initialize '%s'", __func__, session->name);
-    return -1;
 }
 
 /*

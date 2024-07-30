@@ -68,6 +68,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "dpi_stats.h"
 #include "dpi_intf.h"
 #include "fsm_ipc.h"
+#include "fsm_fn_trace.h"
 
 #include "accel_evict_msg.h"
 
@@ -524,6 +525,8 @@ fsm_dpi_find_mac(os_macaddr_t *mac, struct fsm_dpi_dispatcher *dispatch)
 
     if (mac == NULL) return false;
     if (dispatch == NULL) return false;
+
+    if (dispatch->recv_method == BUFFER) return true;
 
     if (dispatch->excluded_devices == NULL) excluded_devices = false;
     else excluded_devices = true;
@@ -1250,6 +1253,7 @@ fsm_init_dpi_dispatcher(struct fsm_session *session)
     struct net_md_aggregator *aggr;
     struct node_info node_info;
     ds_tree_t *dpi_sessions;
+    char *recv_str;
     struct fsm_mgr *mgr;
     bool ret;
     int rc;
@@ -1270,6 +1274,10 @@ fsm_init_dpi_dispatcher(struct fsm_session *session)
                                                       "listening_ip");
     dispatch->listening_port = fsm_get_other_config_val(session,
                                                       "listening_port");
+    recv_str = fsm_get_other_config_val(session, "recv_method");
+
+    dispatch->recv_method = VECTOR_IO;
+    if (recv_str && strcmp(recv_str, "buffer") == 0) dispatch->recv_method = BUFFER;
 
     memset(&aggr_set, 0, sizeof(aggr_set));
     mgr = fsm_get_mgr();
@@ -1313,6 +1321,7 @@ fsm_init_dpi_dispatcher(struct fsm_session *session)
         return false;
     }
 
+    fsm_set_dpi_health_stats_cfg(session);
     return true;
 }
 
@@ -1494,6 +1503,7 @@ fsm_update_dpi_dispatcher(struct fsm_session *session)
 {
     struct fsm_dpi_dispatcher *dispatch;
     union fsm_dpi_context *dpi_context;
+    char *recv_str;
 
     dpi_context = session->dpi;
     if (dpi_context == NULL) return;
@@ -1505,8 +1515,12 @@ fsm_update_dpi_dispatcher(struct fsm_session *session)
                                                           "excluded_devices");
     dispatch->listening_ip = fsm_get_other_config_val(session,
                                                       "listening_ip");
-    dispatch->listening_port = fsm_get_other_config_val(session,
-                                                      "listening_port");
+    dispatch->listening_port = fsm_get_other_config_val(session, "listening_port");
+
+    dispatch->recv_method = VECTOR_IO;
+    recv_str = fsm_get_other_config_val(session, "recv_method");
+    if (recv_str && strcmp(recv_str, "buffer") == 0) dispatch->recv_method = BUFFER;
+
 }
 
 
@@ -2048,7 +2062,9 @@ fsm_dispatch_pkt(struct fsm_session *session,
             }
             FSM_TRACK_DNS(net_parser, dpi_plugin->name);
 
+            fsm_fn_trace(dpi_plugin_ops->handler, FSM_FN_ENTER);
             dpi_plugin_ops->handler(dpi_plugin, net_parser);
+            fsm_fn_trace(dpi_plugin_ops->handler, FSM_FN_EXIT);
         }
 
         drop = (info->decision == FSM_DPI_DROP);
@@ -2331,6 +2347,8 @@ fsm_get_intf_pcap_stats(void)
 void
 fsm_dpi_periodic(struct fsm_session *session)
 {
+    struct dpi_stats_packed_buffer *pb;
+    struct dpi_stats_report dpi_report;
     struct fsm_dpi_dispatcher *dispatch;
     union fsm_dpi_context *dpi_context;
     struct net_md_aggregator *aggr;
@@ -2349,6 +2367,10 @@ fsm_dpi_periodic(struct fsm_session *session)
     aggr = dispatch->aggr;
     if (aggr == NULL) return;
 
+    MEMZERO(dpi_report);
+    dpi_report.location_id = session->location_id;
+    dpi_report.node_id = session->node_id;
+
     dpi_report_conf_intvl = session->dpi_stats_report_interval;
     if (!dpi_report_conf_intvl) dpi_report_conf_intvl = FSM_DPI_STATS_REPORT_INTERVAL;
 
@@ -2356,9 +2378,11 @@ fsm_dpi_periodic(struct fsm_session *session)
     if (!dpi_backoff_conf_intvl) dpi_backoff_conf_intvl = FSM_DPI_BACKOFF_INTERVAL;
 
     report = aggr->report;
-
     /* Close the flows observation window */
     net_md_close_active_window(aggr);
+
+    /* collect and report function call traces */
+    fsm_fn_periodic(session);
 
     now = time(NULL);
 
@@ -2368,11 +2392,9 @@ fsm_dpi_periodic(struct fsm_session *session)
         window = *windows;
         /* collect and log pcap stats */
         fsm_get_intf_pcap_stats();
-        dpi_stats_report_pcap_stats(session, session->dpi_stats_report_topic);
 
-        /* collect and report nfqueue stats */
+        /* collect and log nfqueue stats */
         fsm_get_nfqueue_stats();
-        dpi_stats_report_nfq_stats(session, session->dpi_stats_report_topic);
         LOGI("%s: %s: total flows: %zu held flows: %zu, reported flows: %zu",
              __func__, session->name, aggr->total_flows, aggr->held_flows,
              window->num_stats);
@@ -2382,6 +2404,12 @@ fsm_dpi_periodic(struct fsm_session *session)
              g_fsm_io_success_cnt, g_fsm_io_failure_cnt);
 
         dispatch->periodic_report_ts = now;
+
+        pb = dpi_stats_serialize_counter_report(&dpi_report);
+        if (pb == NULL) return;
+
+        session->ops.send_pb_report(session, session->dpi_stats_report_topic, pb->buf, pb->len);
+        dpi_stats_free_packed_buffer(pb);
     }
 
     if ((now - dispatch->periodic_backoff_ts) >= dpi_backoff_conf_intvl)

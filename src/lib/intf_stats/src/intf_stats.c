@@ -709,7 +709,7 @@ intf_stats_plugin_close_cb(fcm_collect_plugin_t *collector)
     intf_stats_reset_report(&report);
 
     /* Deregister monitor events */
-    ovsdb_unregister_update_cb(intf_stats_inet_config_ovsdb_update.mon_id);
+    ovsdb_update_monitor_cancel(&intf_stats_inet_config_ovsdb_update, SCHEMA_TABLE(Wifi_Inet_Config));
     return;
 }
 

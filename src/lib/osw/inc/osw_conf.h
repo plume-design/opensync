@@ -41,6 +41,11 @@ struct osw_conf_psk {
     struct osw_ap_psk ap_psk;
 };
 
+struct osw_conf_radius {
+    struct ds_dlist_node node;
+    struct osw_radius radius;
+};
+
 struct osw_conf_neigh {
     struct ds_tree_node node;
     struct osw_neigh neigh;
@@ -56,11 +61,14 @@ struct osw_conf_vif_ap {
     struct osw_ssid ssid;
     struct osw_channel channel;
     struct osw_ifname bridge_if_name;
+    struct osw_nas_id nas_identifier;
     struct osw_wpa wpa;
     struct ds_tree acl_tree; /* osw_conf_acl */
     struct ds_tree psk_tree; /* osw_conf_psk */
     struct ds_tree neigh_tree; /* osw_conf_neigh */
     struct ds_dlist wps_cred_list; /* osw_conf_wps_cred */
+    struct ds_dlist radius_list; /* osw_conf_radius */
+    struct ds_dlist accounting_list; /* osw_conf_radius */
     struct osw_ap_mode mode;
     int beacon_interval_tu;
     bool ssid_hidden;
@@ -68,6 +76,9 @@ struct osw_conf_vif_ap {
     bool mcast2ucast;
     bool wps_pbc;
     struct osw_multi_ap multi_ap;
+    enum osw_mbss_vif_ap_mode mbss_mode;
+    int mbss_group;
+    struct osw_passpoint passpoint;
 };
 
 struct osw_conf_net {
@@ -105,7 +116,6 @@ struct osw_conf_phy {
     bool enabled;
     int tx_chainmask;
     enum osw_radar_detect radar;
-    struct osw_ifname mbss_tx_vif_name;
     struct osw_reg_domain reg_domain;
     struct ds_tree vif_tree;
 };
@@ -156,6 +166,9 @@ osw_conf_build(void);
 
 void
 osw_conf_free(struct ds_tree *phy_tree);
+
+void
+osw_conf_radius_free(struct osw_conf_radius *rad);
 
 void
 osw_conf_invalidate(struct osw_conf_mutator *mutator);

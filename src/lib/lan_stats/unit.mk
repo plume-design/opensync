@@ -31,8 +31,7 @@ UNIT_NAME := fcm_lanstats
 
 UNIT_DISABLE := $(if $(CONFIG_MANAGER_FCM),n,y)
 
-# Template type:
-ifneq (,$(findstring clang,$(CC)))
+ifeq ($(CONFIG_FSM_NO_DSO),y)
     UNIT_TYPE := LIB
 else
     UNIT_TYPE := SHLIB
@@ -45,7 +44,7 @@ ifeq ($(CONFIG_FCM_LAN_STATS_COLLECT_METHOD),y)
 UNIT_SRC += src/lan_cmd_flows.c
 else
 UNIT_SRC += src/lan_dpctl.c
-OVS_PACKAGE_VERNUM:=$(shell echo $(OVS_PACKAGE_VER) | (IFS=. read A B C; echo $$(($$A*10000+$$B*100+$$C))))
+OVS_PACKAGE_VERNUM:=$(if $(OVS_PACKAGE_VER),$(shell echo $(OVS_PACKAGE_VER) | (IFS=. read A B C; echo $$(($$A*10000+$$B*100+$$C)))),0)
 endif
 
 UNIT_CFLAGS := -I$(UNIT_PATH)/inc

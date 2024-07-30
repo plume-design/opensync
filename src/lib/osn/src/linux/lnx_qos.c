@@ -50,6 +50,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "log.h"
 #include "util.h"
 #include "memutil.h"
+#include "kconfig.h"
 
 #include "lnx_qos.h"
 
@@ -180,11 +181,19 @@ bool lnx_qos_apply(lnx_qos_t *self)
         return false;
     }
 
-    /* Restart netlink monitoring */
+    /* First, stop any previous netlink monitoring: */
     lnx_netlink_stop(&self->lq_netlink);
     self->lq_ifindex = 0;
-    lnx_netlink_start(&self->lq_netlink);
 
+    /* Reconfigure: */
+    if (!lnx_qos_reconfigure(self))
+    {
+        LOG(ERR, "qos: %s: QoS reconfiguration failed.", self->lq_ifname);
+        return false;
+    }
+
+    /* Restart netlink monitoring */
+    lnx_netlink_start(&self->lq_netlink);
     return true;
 }
 
@@ -279,6 +288,17 @@ bool lnx_qos_queue_end(lnx_qos_t *self)
     }
     self->lq_que_begin = false;
 
+    return true;
+}
+
+bool lnx_qos_notify_event_set(lnx_qos_t *self, osn_qos_event_fn_t *event_fn_cb)
+{
+    self->lq_event_cb = event_fn_cb;
+    return true;
+}
+
+bool lnx_qos_is_qdisc_based(lnx_qos_t *self)
+{
     return true;
 }
 
@@ -444,19 +464,22 @@ void lnx_qos_netlink_fn(lnx_netlink_t *nl, uint64_t event, const char *ifname)
 
     ifindex = if_nametoindex(self->lq_ifname);
 
-    /*
-     * OVS wipes the qdisc configuration when an interface is added to an OVS
-     * bridge. We need to re-apply the configuration when this happens.
-     *
-     * Adding/removing an interface to/from an OVS bridge generates a netlink
-     * event. To check if the interface was added to a bridge, we can simply check
-     * if the /sys/class/net/IF/master symbolic link exists.
-     */
-    snprintf(master_path, sizeof(master_path), "/sys/class/net/%s/master", self->lq_ifname);
-    if (access(master_path, F_OK) == 0)
+    if (!kconfig_enabled(CONFIG_TARGET_USE_NATIVE_BRIDGE))
     {
-        /* Flip a bit, this will force an interface index change */
-        ifindex ^= 0x4000;
+        /*
+        * OVS wipes the qdisc configuration when an interface is added to an OVS
+        * bridge. We need to re-apply the configuration when this happens.
+        *
+        * Adding/removing an interface to/from an OVS bridge generates a netlink
+        * event. To check if the interface was added to a bridge, we can simply check
+        * if the /sys/class/net/IF/master symbolic link exists.
+        */
+        snprintf(master_path, sizeof(master_path), "/sys/class/net/%s/master", self->lq_ifname);
+        if (access(master_path, F_OK) == 0)
+        {
+            /* Flip a bit, this will force an interface index change */
+            ifindex ^= 0x4000;
+        }
     }
 
     LOG(DEBUG, "qosm: %s: Interface status changed, index %u->%u", self->lq_ifname, self->lq_ifindex, ifindex);
@@ -471,10 +494,19 @@ void lnx_qos_netlink_fn(lnx_netlink_t *nl, uint64_t event, const char *ifname)
     }
     else
     {
-        LOG(NOTICE, "qos: %s: Interface exists. Reconfiguring QoS.", self->lq_ifname);
-        if (!lnx_qos_reconfigure(self))
+        /*
+         * Trigger "reconfiguration needed" event.
+         * Only if this is not the first interface netlink event, in that case, the
+         * configuration was already done at lnx_qos_apply().
+         */
+        if (self->lq_ifindex != 0)
         {
-            LOG(ERR, "qos: %s: QoS reconfiguration failed.", self->lq_ifname);
+            LOG(NOTICE, "qos: %s: Interface exists. Trigger QoS reconfiguration needed event.", self->lq_ifname);
+
+            if (self->lq_event_cb != NULL)
+            {
+                self->lq_event_cb(self->lq_ifname, OSN_QOS_EVENT_RECONFIGURATION_NEEDED);
+            }
         }
     }
 

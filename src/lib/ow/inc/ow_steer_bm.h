@@ -263,6 +263,10 @@ ow_steer_bm_neighbor_set_channel_number(struct ow_steer_bm_neighbor *neighbor,
                                         const uint8_t *channel_number);
 
 void
+ow_steer_bm_neighbor_set_center_freq0_chan_number(struct ow_steer_bm_neighbor *neighbor,
+                                        const uint8_t *channel_number);
+
+void
 ow_steer_bm_neighbor_set_ht_mode(struct ow_steer_bm_neighbor *neighbor,
                                  const enum ow_steer_bm_neighbor_ht_mode *ht_mode);
 

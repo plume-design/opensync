@@ -52,7 +52,6 @@ struct qosm_ip_interface
     struct qosm_interface_qos
                        *ipi_interface_qos;          /**< Interface_QoS structure */
     reflink_t           ipi_interface_qos_reflink;  /**< Reflink to Interface_QoS */
-    struct ev_debounce  ipi_debounce;               /**< Reconfiguration debounce timer */
     osn_qos_t          *ipi_qos;                    /**< OSN QoS configuration object */
     ds_tree_node_t      ipi_tnode;                  /**< Tree node */
 };

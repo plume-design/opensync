@@ -31,11 +31,17 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define OSW_HOSTAP_CONF_DECL_INT(name) \
     OSW_HOSTAP_CONF_DECL_OPTIONAL(int, name)
 
+#define OSW_HOSTAP_CONF_DECL_INT_LIST(name, len) \
+    OSW_HOSTAP_CONF_DECL_OPTIONAL_ARRAY(int, name, len)
+
 #define OSW_HOSTAP_CONF_DECL_BOOL(name) \
     OSW_HOSTAP_CONF_DECL_OPTIONAL(bool, name)
 
 #define OSW_HOSTAP_CONF_DECL_STR(name, len) \
     OSW_HOSTAP_CONF_DECL_OPTIONAL_ARRAY(char, name, len)
+
+#define OSW_HOSTAP_CONF_DECL_STR_LIST(name, len) \
+    OSW_HOSTAP_CONF_DECL_OPTIONAL_ARRAY(char*, name, len)
 
 #define OSW_HOSTAP_CONF_DECL_OPTIONAL(__type, __name) \
     __type __name; \
@@ -51,8 +57,30 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
     var ## _exists = true; \
     } while(0)
 
+#define OSW_HOSTAP_CONF_SET_VAR_ARRAY(var, val, len) do { \
+    size_t i; \
+    ASSERT_ARRAY(var); \
+    size_t vlen = ARRAY_SIZE(var); \
+    WARN_ON(vlen < len); \
+    for (i = 0; i < len && i < vlen; i++) { \
+        var[i] = val[i]; \
+    } \
+    var ## _exists = true; \
+    } while(0)
+
 #define OSW_HOSTAP_CONF_SET_BUF(dst, src) do { \
     STRSCPY_WARN(dst, src); \
+    dst ## _exists = true; \
+    } while(0)
+
+#define OSW_HOSTAP_CONF_SET_BUF_ARRAY(dst, src, len) do { \
+    size_t i; \
+    ASSERT_ARRAY(dst); \
+    size_t dlen = ARRAY_SIZE(dst); \
+    WARN_ON(dlen < len); \
+    for (i = 0; i < len && i < dlen; i++) { \
+        dst[i] = STRDUP(src[i]); \
+    } \
     dst ## _exists = true; \
     } while(0)
 
@@ -89,6 +117,33 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
     if (conf->ARG ## _exists == false) {} else { \
     csnprintf(__buf, __len, "%s"# ARG"="FMT, __indent, conf->ARG); \
     csnprintf(__buf, __len, "\n"); }
+
+/* ARG=opt[0]
+ * ARG=opt[1]
+ * ... */
+#define CONF_APPEND_ARRAY(ARG, FMT) \
+    if (conf->ARG ## _exists == false) {} else { \
+    int i; \
+    for (i = 0; i < conf->ARG ## _len; i++) { \
+        csnprintf(__buf, __len, "%s"# ARG"="FMT, __indent, conf->ARG[i]); \
+        csnprintf(__buf, __len, "\n"); \
+    } \
+    }
+
+/* ARG=opt[0],opt[1],...
+ * if SEP="," */
+#define CONF_APPEND_ARRAY_SEP(ARG, FMT, SEP) \
+    if (conf->ARG ## _exists == false || \
+        conf->ARG ## _len == 0) {} else { \
+    int i; \
+    csnprintf(__buf, __len, "%s"# ARG"=", __indent); \
+    for (i = 0; i < conf->ARG ## _len; i++) { \
+        csnprintf(__buf, __len, FMT, conf->ARG[i]); \
+        if (i < (conf->ARG ## _len - 1)) \
+            csnprintf(__buf, __len, "%s", SEP); \
+    } \
+    csnprintf(__buf, __len, "\n"); \
+    }
 
 #define CONF_APPEND_BUF(BUF) \
     csnprintf(__buf, __len, "%s", BUF);
@@ -138,6 +193,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
     } while(0)
 
 #define OSW_HOSTAP_CONF_WPA_KEY_MGMT_MAX_LEN 128
+#define OSW_HOSTAP_CONF_RADIUS_MAX_COUNT 6
 
 enum osw_hostap_conf_auth_algs {
     OSW_HOSTAP_CONF_AUTH_ALG_OPEN = 0x01,

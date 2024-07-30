@@ -77,6 +77,9 @@ static bool call_ip_route(char *cmd, int pos, size_t space, const char *if_name)
         return false;
     }
 
+
+    if (!is_input_shell_safe(if_name)) return false;
+
     int rc = cmd_log(cmd);
     return WEXIT_SUCCESS(rc);
 }

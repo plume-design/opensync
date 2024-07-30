@@ -53,10 +53,13 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "policy_tags.h"
 #include "os.h"
 #include "util.h"
+#include "fsm_fn_trace.h"
 
 #define DNS_QTYPE_A 1
 #define DNS_QTYPE_AAAA 28
 #define DNS_QTYPE_65 65
+#define DNS_QTYPE_64 64
+#define DNS_HEADER_SIZE 12
 
 /* TTL Len 4 bytes + RD length 2 bytes */
 #define DNS_TTL_START_OFFSET 6
@@ -263,6 +266,12 @@ fsm_dpi_dns_process_verdict(struct fsm_policy_req *policy_request,
     fsm_dpi_dns_send_report(policy_request, policy_reply);
 }
 
+static void
+fsm_set_supported_feature(struct fsm_policy_req *policy_request, int feature)
+{
+    policy_request->supported_features |= feature;
+}
+
 struct fsm_policy_req *
 fsm_dpi_dns_create_request(struct fsm_request_args *request_args,
                            char *hostname)
@@ -279,6 +288,10 @@ fsm_dpi_dns_create_request(struct fsm_request_args *request_args,
         LOGD("%s(): fsm policy request initialization failed for dpi sni", __func__);
         return NULL;
     }
+
+    /* set the supported features flag */
+    fsm_set_supported_feature(policy_request, FSM_CNAME_FEATURE);
+    fsm_set_supported_feature(policy_request, FSM_NOANSWER_FEATURE);
 
     pending_req = policy_request->fqdn_req;
     policy_request->url = STRDUP(hostname);
@@ -374,6 +387,231 @@ fsm_dpi_dns_update_csum(struct net_header_parser *net_parser)
 }
 
 /**
+ * Update the IP checksum in the given network header parser.
+ * This function recalculates the IP checksum for IPv4 packets
+ * and updates it in the header.
+ *
+ * @param net_parser The network header parser containing the IP header.
+ */
+static void fsm_update_ip_csum(struct net_header_parser *net_parser)
+{
+    if (net_parser->ip_version == 4)
+    {
+        struct iphdr *ip_hdr = net_parser->eth_pld.ip.iphdr;
+        ip_hdr->check = 0x0000;
+        ip_hdr->check = htons(fsm_compute_ip_checksum(ip_hdr));
+    }
+}
+
+/**
+ * @brief Calculates the length of the domain name in a DNS packet.
+ *
+ * The function goes through the packet starting from domain name section
+ * and counts the number of bytes until it reaches the end of the domain name.
+ *
+ * @param packet The DNS packet.
+ * @param offset The offset of the domain name section.
+ * @return len of dns start upto domain name.
+ */
+static int fsm_get_domain_name_len(unsigned char *packet, int offset)
+{
+    while (packet[offset] != 0) {
+        /* compression pointer */
+        if ((packet[offset] & 0xC0) == 0xC0) {
+            /* skip 2 bytes for the pointer */
+            return offset + 2;
+        }
+        /* skip the label and its length */
+        offset++;
+    }
+    /* skip the NULL terminator */
+    return offset + 1;
+}
+
+/**
+ * @brief Sets the DNS flags to indicate NXDOMAIN (no error no answer)
+ * and updates the DNS packet length.
+ *
+ * It determines the new DNS packet length by excluding the answers section
+ * and updates the UDP and IP header lengths accordingly.
+ *
+ * @param net_header A pointer to the net_header_parser structure.
+ * @return Returns true if successful, otherwise false.
+ */
+static bool fsm_dpi_dns_set_noerror_noanswer(struct net_header_parser *net_header)
+{
+    struct dns_header *dns_hdr;
+    uint16_t new_ipv4_len;
+    uint16_t new_ipv6_len;
+    size_t dns_query_len;
+    size_t reduction_len;
+    size_t dns_hdr_len;
+    size_t old_dns_len;
+    size_t new_dns_len;
+    size_t dns_start;
+    uint8_t *packet;
+    uint8_t *qptr;
+
+    if (net_header == NULL || net_header->start == NULL) return false;
+
+    packet = net_header->start;
+
+    /* parsed will point to the start of DNS header */
+    dns_start = net_header->parsed;
+
+    /* update DNS flags to indicate NXDOMAIN (no error no answer) */
+    dns_hdr = (struct dns_header *)(packet + dns_start);
+    dns_hdr->flags = htons(ntohs(dns_hdr->flags) | 0x03);
+    dns_hdr->ancount = 0;
+    dns_hdr->nscount = 0;
+    dns_hdr->arcount = 0;
+
+    /* determine new DNS packet length, upto answers section */
+    dns_hdr_len = sizeof(struct dns_header);
+    dns_query_len = 0;
+    qptr = packet + dns_start + dns_hdr_len;
+    for (int i = 0; i < ntohs(dns_hdr->qdcount); i++) {
+        dns_query_len += fsm_get_domain_name_len(qptr + dns_query_len, dns_query_len);
+        dns_query_len += 4; // Skip QTYPE (2 bytes) and QCLASS (2 bytes)
+    }
+
+    new_dns_len = dns_hdr_len + dns_query_len;
+    old_dns_len = net_header->caplen - dns_start;
+    reduction_len = old_dns_len - new_dns_len;
+
+    /* update net_header packet length */
+    net_header->caplen = net_header->caplen - reduction_len;
+
+    /* update UDP length */
+    struct udphdr *udp_hdr;
+    udp_hdr = net_header->ip_pld.udphdr;
+    udp_hdr->len = htons(ntohs(udp_hdr->len) - reduction_len);
+
+    /* update IP header length */
+    if (net_header->ip_version == 4)
+    {
+        struct iphdr *ip_hdr;
+        ip_hdr = net_header_get_ipv4_hdr(net_header);
+        new_ipv4_len = ntohs(ip_hdr->tot_len) - reduction_len;
+        ip_hdr->tot_len = htons(new_ipv4_len);
+    }
+    else if (net_header->ip_version == 6)
+    {
+        struct ip6_hdr *ip6_hdr;
+        ip6_hdr = net_header_get_ipv6_hdr(net_header);
+        new_ipv6_len = ntohs(ip6_hdr->ip6_plen) - reduction_len;
+        ip6_hdr->ip6_plen = htons(new_ipv6_len);
+    }
+
+    return true;
+}
+
+/**
+ * @brief Skip sthe domain name in the DNS packet.
+ * @param packet The DNS packet.
+ * @param offset The offset of the domain name section.
+ * @param length The length of the packet.
+ * @return The offset after the domain name, returns 0 if out of bounds.
+ */
+int fsm_dpi_dns_skip_domain_name(uint8_t *packet, size_t offset, size_t length)
+{
+    while (offset < length && packet[offset] != 0)
+    {
+        /* compression pointer */
+        if ((packet[offset] & 0xC0) == 0xC0) {
+            /* skip 2 bytes for the pointer */
+            if (offset + 1 < length) return offset + 2;
+            /* out of bounds */
+            return 0;
+        }
+        /* skip the label and its length */
+        offset++;
+    }
+    /* skip the NULL terminator */
+    if (offset < length) return offset + 1;
+    /* out of bounds */
+    return 0;
+}
+
+/**
+ * @brief Update the TTL field in the DNS packet.
+ *
+ * @param packet The DNS packet.
+ * @param length The length of the packet.
+ * @param ttl The new TTL value.
+ * @return true if successful, false otherwise.
+ */
+bool fsm_dpi_dns_update_ttl(uint8_t *packet, size_t length, int ttl)
+{
+    struct dns_header *header;
+    size_t pos;
+    int i;
+
+    if (length < DNS_HEADER_SIZE) return false;
+
+    pos = 0;
+    header = (struct dns_header *)packet;
+    pos += DNS_HEADER_SIZE;
+
+    /* skip question section */
+    for (i = 0; i < ntohs(header->qdcount); i++)
+    {
+        pos = fsm_dpi_dns_skip_domain_name(packet, pos, length);
+        if (pos == 0)
+        {
+            LOGD("%s():%d failed to skip domain name", __func__, __LINE__);
+            return false;
+        }
+        pos += 2;  // Skip QTYPE (2 bytes)
+        pos += 2;  // Skip QCLASS (2 bytes)
+    }
+
+    /* answer section */
+    for (i = 0; i < ntohs(header->ancount) && pos < length; i++)
+    {
+        pos = fsm_dpi_dns_skip_domain_name(packet, pos, length);
+        if (pos == 0)
+        {
+            LOGD("%s():%d failed to skip domain name", __func__, __LINE__);
+            return false;
+        }
+        pos += 2;  // Skip QTYPE (2 bytes)
+        pos += 2;  // Skip QCLASS (2 bytes)
+
+        /* Update the TTL value */
+        if (pos + 4 > length)
+        {
+            LOGD("%s():%d Packet too short for TTL", __func__, __LINE__);
+            return false;
+        }
+
+        uint32_t new_ttl = htonl(ttl);
+        memcpy(&packet[pos], &new_ttl, sizeof(new_ttl));
+
+        /* Move past TTL */
+        pos += 4;
+
+        /* skip RD Len field */
+        // Read RDLENGTH
+        uint16_t rdlength;
+        if (pos + 2 > length)
+        {
+            LOGD("%s():%d Packet too short for RDLENGTH", __func__, __LINE__);
+            return false;
+        }
+
+        memcpy(&rdlength, &packet[pos], sizeof(rdlength));
+        rdlength = ntohs(rdlength);
+        pos += 2;
+
+        // Skip RDATA
+        pos += rdlength;
+    }
+
+    return true;
+}
+
+/**
  * @brief update dns response ips
  *
  * @param net_parser the packet container
@@ -390,8 +628,10 @@ fsm_dpi_dns_update_response_ips(struct net_header_parser *net_header,
     struct dns_record *rec;
     uint8_t *packet;
     bool is_updated;
+    size_t dns_pkt_len;
     size_t parsed;
     size_t i;
+    bool success;
 
     is_updated = false;
 
@@ -410,9 +650,10 @@ fsm_dpi_dns_update_response_ips(struct net_header_parser *net_header,
 
     if (key->ipprotocol != IPPROTO_UDP) return is_updated;
 
+    dns_pkt_len = net_header->caplen - parsed;
+
     for (i = 0; i < rec->idx; i++)
     {
-        uint8_t *p_ttl = packet + parsed + (rec->resp[i].offset - DNS_TTL_START_OFFSET);
         if (rec->resp[i].ip_v == 4)
         {
             char *ipv4_addr = fsm_dns_check_redirect(policy_reply->redirects[0],
@@ -426,7 +667,6 @@ fsm_dpi_dns_update_response_ips(struct net_header_parser *net_header,
             {
                 inet_pton(AF_INET, ipv4_addr,
                           (packet + parsed + rec->resp[i].offset));
-                *(uint32_t *)(p_ttl) = htonl(policy_reply->rd_ttl);
                 is_updated = true;
             }
         }
@@ -443,11 +683,13 @@ fsm_dpi_dns_update_response_ips(struct net_header_parser *net_header,
             {
                 inet_pton(AF_INET6, ipv6_addr,
                               packet + parsed + rec->resp[i].offset);
-                *(uint32_t *)(p_ttl) = htonl(policy_reply->rd_ttl);
                 is_updated = true;
             }
         }
     }
+
+    success = fsm_dpi_dns_update_ttl(packet + parsed, dns_pkt_len, policy_reply->rd_ttl);
+    if (!success) LOGD("%s():%d failed to update TTL", __func__, __LINE__);
 
     return is_updated;
 }
@@ -534,6 +776,7 @@ is_valid_qtype(uint8_t qtype)
         case DNS_QTYPE_A:
         case DNS_QTYPE_AAAA:
         case DNS_QTYPE_65:
+        case DNS_QTYPE_64:
             rc = true;
             break;
 
@@ -632,10 +875,9 @@ fsm_dpi_dns_process_dns_record(struct fsm_session *session,
      * The actual action returned in this case must be fully over-written,
      * since we want to _always_ finsih processing of DNS transaction.
      */
-    if (rec->idx == 0)
+    if (rec->idx == 0 || action == FSM_NOANSWER)
     {
-        LOGT("%s: No answer to process.", __func__);
-        action = FSM_DPI_PASSTHRU;
+        LOGT("%s: action is 'no error no answer' or no answer to process.", __func__);
         goto no_answer;
     }
 
@@ -723,14 +965,22 @@ fsm_dpi_dns_process_dns_record(struct fsm_session *session,
         }
     }
 
+
     /* Allow dns responses */
     action = FSM_DPI_PASSTHRU;
 
 no_answer:
     if (net_parser != NULL)
     {
+        if (action == FSM_NOANSWER)
+        {
+            LOGT("%s()%d: setting NXDOMAIN (no error no answer) DNS response", __func__, __LINE__);
+            fsm_dpi_dns_set_noerror_noanswer(net_parser);
+            fsm_update_ip_csum(net_parser);
+        }
         /* update check sum */
         fsm_dpi_dns_update_csum(net_parser);
+        action = FSM_DPI_PASSTHRU;
     }
 
     /* Cleanup */
@@ -804,6 +1054,7 @@ fsm_dpi_dns_init(struct fsm_session *session)
     /* Set the plugin specific ops */
     client_ops = &session->p_ops->dpi_plugin_client_ops;
     client_ops->process_attr = fsm_dpi_dns_process_attr;
+    FSM_FN_MAP(fsm_dpi_dns_process_attr);
 
     /* Fetch the specific updates for this client plugin */
     session->ops.update(session);

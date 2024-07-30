@@ -39,6 +39,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include  "dpi_stats.h"
 #include "fsm.h"
 #include "log.h"
+#include "fsm_fn_trace.h"
+#include "os_ev_trace.h"
 
 // Intervals and timeouts in seconds
 #define FSM_TIMER_INTERVAL 5
@@ -95,6 +97,7 @@ fsm_event_init(void)
 {
     struct fsm_mgr *mgr = fsm_get_mgr();
     LOGI("Initializing FSM event");
+    OS_EV_TRACE_MAP(fsm_event_cb);
     ev_timer_init(&mgr->timer, fsm_event_cb,
                   FSM_TIMER_INTERVAL, FSM_TIMER_INTERVAL);
     mgr->timer.data = NULL;
@@ -215,7 +218,7 @@ fsm_get_nfqueue_stats(void)
         errno = 0;
         MEMZERO(nfq_counters);
         rc = sscanf(line,
-                    "%hu %u %u %hhu %u %u %u %u",
+                    "%d %u %u %hhu %u %u %u %u",
                     &nfq_counters.queue_num,
                     &nfq_counters.portid,
                     &nfq_counters.queue_total,
@@ -231,7 +234,7 @@ fsm_get_nfqueue_stats(void)
         }
 
         LOGI(
-            "netlink queue stats: queue num: %u, port id: %u, queue total: %u copy mode: %hhu copy range: %u qdrop: %u user drop: %u seq id: %u",
+            "netlink queue stats: queue num: %d, port id: %u, queue total: %u copy mode: %hhu copy range: %u qdrop: %u user drop: %u seq id: %u",
             nfq_counters.queue_num,
             nfq_counters.portid,
             nfq_counters.queue_total,
@@ -245,6 +248,7 @@ fsm_get_nfqueue_stats(void)
 
         /* store the collected stats, before reporting */
         dpi_stats_store_nfq_stats(&nfq_counters);
+        dpi_stats_store_nfq_err_cnt(nfq_counters.queue_num);
     }
 
     fclose(fp);

@@ -164,6 +164,13 @@ bool target_vif_sta_remove(const char *ifname, const uint8_t *mac_addr)
 }
 #endif
 
+#ifndef IMPL_target_is_radio_interface_ready
+bool target_is_radio_interface_ready(char *phy_name)
+{
+    return true;
+}
+#endif
+
 #ifndef IMPL_target_radio_state_get
 bool target_radio_state_get(char *ifname, struct schema_Wifi_Radio_State *rstate)
 {
@@ -184,6 +191,13 @@ const char *target_wan_interface_name()
 {
     const char *iface_name = "eth0";
     return iface_name;
+}
+#endif
+
+#ifndef IMPL_target_is_interface_ready
+bool target_is_interface_ready(char *if_name)
+{
+    return true;
 }
 #endif
 
@@ -503,6 +517,13 @@ bool target_stats_survey_convert (
 }
 #endif
 
+#ifndef IMPL_target_survey_record_alloc
+target_survey_record_t *target_survey_record_alloc()
+{
+    return NULL;
+}
+#endif
+
 #ifndef IMPL_target_stats_device_get
 bool target_stats_device_get(
         dpp_device_record_t        *device_entry)
@@ -575,6 +596,59 @@ bool target_stats_device_fandutycycle_get(uint16_t *fan_duty_cycle)
 btrace_type target_get_btrace_type()
 {
     return BTRACE_FILE_LOG;
+}
+#endif
+
+#ifndef IMPL_target_client_record_alloc
+target_client_record_t *target_client_record_alloc()
+{
+    return NULL;
+}
+#endif
+
+#ifndef IMPL_target_client_record_free
+void target_client_record_free(target_client_record_t *record)
+{
+    FREE(record);
+}
+#endif
+
+#ifndef IMPL_target_survey_record_free
+void target_survey_record_free(target_survey_record_t *result)
+{
+    FREE(result);
+}
+#endif
+
+#ifndef IMPL_target_stats_clients_convert
+bool target_stats_clients_convert(
+        radio_entry_t              *radio_cfg,
+        target_client_record_t     *data_new,
+        target_client_record_t     *data_old,
+        dpp_client_record_t        *client_result)
+{
+    return false;
+}
+#endif
+
+#ifndef IMPL_target_stats_clients_get
+bool target_stats_clients_get(
+        radio_entry_t              *radio_cfg,
+        radio_essid_t              *essid,
+        target_stats_clients_cb_t  *client_cb,
+        ds_dlist_t                 *client_list,
+        void                       *client_ctx)
+{
+    return false;
+}
+#endif
+
+#ifndef IMPL_target_stats_scan_stop
+bool target_stats_scan_stop(
+        radio_entry_t              *radio_cfg,
+        radio_scan_type_t           scan_type)
+{
+    return false;
 }
 #endif
 

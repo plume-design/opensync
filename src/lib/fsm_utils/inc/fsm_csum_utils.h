@@ -29,6 +29,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "net_header_parse.h"
 
-uint16_t    fsm_compute_udp_checksum(uint8_t *packet, struct net_header_parser *net_parser); 
+uint16_t    fsm_compute_udp_checksum(uint8_t *packet, struct net_header_parser *net_parser);
+uint16_t    fsm_compute_ip_checksum(struct iphdr *ip_header);
+
 
 #endif /* FSM_CSUM_UTILS_H_INCLUDED */

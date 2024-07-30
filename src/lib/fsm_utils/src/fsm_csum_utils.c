@@ -112,3 +112,39 @@ fsm_compute_udp_checksum(uint8_t *packet, struct net_header_parser *net_parser)
 
     return (csum == 0 ? 0xffff : csum);
 }
+
+/**
+ * Calculate the IP checksum for the given IP header.
+ *
+ * @param ip_header The IP header to calculate the checksum for.
+ * @return The calculated checksum.
+ */
+uint16_t fsm_compute_ip_checksum(struct iphdr *ip_header)
+{
+    uint8_t *header;
+    uint32_t sum;
+    int len;
+
+    len = (ip_header->ihl) * 4;
+    header = (uint8_t *)ip_header;
+    sum = 0;
+
+    /* Calculate the sum of each 16-bit word in the IP header */
+    for (size_t i = 0; i < (size_t)len; i += 2)
+    {
+        uint16_t word = (header[i] << 8) | header[i + 1];
+        sum += word;
+    }
+
+    /* handle odd-lenght header */
+    if (len & 1) {
+        sum += (header[len - 1] << 8);
+    }
+
+    /* fold the 32 bit sum into 16 bits */
+    while (sum >> 16) {
+        sum = (sum & 0xffff) + (sum >> 16);
+    }
+
+    return ~sum;
+}

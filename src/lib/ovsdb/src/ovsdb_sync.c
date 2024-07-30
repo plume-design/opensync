@@ -224,7 +224,7 @@ json_t *ovsdb_method_send_s(
     pjs_errmsg_t err;
     if (!rpc_response_from_json(&res, jres, false, err))
     {
-        LOGE("Sync: Error parsing OVSDB response: %s", err);
+        LOGE("Sync: Error parsing OVSDB response: %s in JSON: %s", err, json_dumps_static(jres, 0));
         goto error;
     }
 
@@ -236,9 +236,7 @@ json_t *ovsdb_method_send_s(
 
     if (res.error_exists)
     {
-        LOGE("Sync: Error processing JSON-RPC response: code:%d message:%s\n",
-                res.error.code,
-                res.error.message);
+        LOGE("Sync: JSON-RPC response id: %d error: %s", res.id, res.error);
         goto error;
     }
 
@@ -372,20 +370,3 @@ bool ovsdb_delete_with_parent_s(char * table,
     return true;
 }
 
-bool ovsdb_monitor_cancel_s(int monid)
-{
-    json_t *jparams;
-    bool retval = false;
-
-    /* RFC 7047 4.1.7:
-     * - "method": "monitor_cancel"
-     * - "params": [<json-value>]
-     * - "id": <nonnull-json-value>
-     */
-
-    jparams = json_array();
-    json_array_append_new(jparams, json_integer(monid));
-    retval = ovsdb_method_send_s(MT_MONITOR_CANCEL, jparams);
-
-    return retval;
-}

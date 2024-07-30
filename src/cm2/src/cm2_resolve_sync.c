@@ -149,6 +149,16 @@ void cm2_resolve_timeout(void)
 {
 }
 
+/* Empty function not used in sync resolving process */
+void cm2_set_ipv6_pref(cm2_dest_e dst)
+{
+}
+
+/* Empty function not used in sync resolving process */
+void cm2_move_next_target_addr(void)
+{
+}
+
 struct addrinfo* cm2_get_next_addrinfo(cm2_addr_t *addr)
 {
     struct addrinfo *ai;

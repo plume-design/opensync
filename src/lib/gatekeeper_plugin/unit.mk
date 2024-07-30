@@ -31,10 +31,7 @@ UNIT_NAME := fsm_gatekeeper
 
 UNIT_DISABLE := $(if $(CONFIG_MANAGER_FSM), n, y)
 
-# Template type.
-# If compiled with clang, assume a native unit test target
-# and build a static library
-ifneq (,$(findstring clang,$(CC)))
+ifeq ($(CONFIG_FSM_NO_DSO),y)
     UNIT_TYPE := LIB
 else
     UNIT_TYPE := SHLIB

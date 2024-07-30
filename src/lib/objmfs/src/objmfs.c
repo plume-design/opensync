@@ -51,8 +51,9 @@ static bool objmfs_rmdir(char *path)
         return false;
     }
     snprintf(cmd, sizeof(cmd), "rm -fr %s", path);
+
     LOG(TRACE, "objmfs: rmdir: %s", cmd);
-    if (cmd_log(cmd))
+    if (cmd_log_check_safe(cmd))
     {
         return false;
     }
@@ -64,8 +65,9 @@ static bool objmfs_mkdir(char *path)
 {
     char cmd[CMD_LEN];
     snprintf(cmd, sizeof(cmd), "mkdir -p %s", path);
+
     LOG(TRACE, "objmfs: mkdir: %s", cmd);
-    if (cmd_log(cmd))
+    if (cmd_log_check_safe(cmd))
     {
         return false;
     }
@@ -104,7 +106,8 @@ bool objmfs_install(char *path, char *name, char *version, install_cb_t install_
     // Validate md5 of downloaded data
     // Note: currently only tar.gz is supported, .deb package would require additional handling
     snprintf(cmd, sizeof(cmd), "gzip -t %s", path);
-    if (cmd_log(cmd))
+
+    if (cmd_log_check_safe(cmd))
     {
         LOG(ERR, "objmfs: Integrity check of package failed: %s", cmd);
         ret = false;
@@ -121,7 +124,7 @@ bool objmfs_install(char *path, char *name, char *version, install_cb_t install_
     }
 
     LOG(TRACE, "objmfs: Extract base tarball command: %s", cmd);
-    if (cmd_log(cmd))
+    if (cmd_log_check_safe(cmd))
     {
         LOG(ERR, "objmfs: Extraction of package failed: %s", cmd);
         ret = false;
@@ -187,7 +190,7 @@ bool objmfs_install(char *path, char *name, char *version, install_cb_t install_
     }
 
     LOG(TRACE, "objmfs: Extract data command: %s", cmd);
-    if (cmd_log(cmd))
+    if (cmd_log_check_safe(cmd))
     {
         LOG(ERR, "objmfs: Extraction of data failed: %s", cmd);
         ret = false;

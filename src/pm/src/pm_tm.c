@@ -205,15 +205,14 @@ static void pm_detect_fan_failure(
         LOGE("TM: Fan cannot reach desired RPM: %d;%d", fan_rpm, desired_fan_rpm);
         ctx->fan_failure++;
         if (ctx->fan_failure > CONFIG_PM_TM_FAN_ERROR_PERIOD_TOLERANCE) {
-            LOGE("TM: Setting HW error state");
-            pm_tm_ovsdb_set_led_state(OSP_LED_ST_HWERROR, false);
+            osp_led_ovsdb_add_led_config(OSP_LED_ST_HWERROR, OSP_LED_PRIORITY_DEFAULT, OSP_LED_POSITION_DEFAULT);
         }
     }
     else
     {
         if (ctx->fan_failure != 0) {
             ctx->fan_failure = 0;
-            pm_tm_ovsdb_set_led_state(OSP_LED_ST_HWERROR, true);
+            osp_led_ovsdb_delete_led_config(OSP_LED_ST_HWERROR, OSP_LED_POSITION_DEFAULT);
         }
     }
 }
@@ -224,7 +223,7 @@ static void pm_detect_over_temperature(struct osp_tm_ctx *ctx, unsigned int curr
     if (current_state >= (ctx->therm_state_cnt - 1))
     {
         if (ctx->crit_temp_periods == 0) {
-            pm_tm_ovsdb_set_led_state(OSP_LED_ST_THERMAL, false);
+            osp_led_ovsdb_add_led_config(OSP_LED_ST_THERMAL, OSP_LED_PRIORITY_DEFAULT, OSP_LED_POSITION_DEFAULT);
         }
 
         ctx->crit_temp_periods++;
@@ -236,7 +235,7 @@ static void pm_detect_over_temperature(struct osp_tm_ctx *ctx, unsigned int curr
     {
         if (ctx->crit_temp_periods > 0) {
             ctx->crit_temp_periods = 0;
-            pm_tm_ovsdb_set_led_state(OSP_LED_ST_THERMAL, true);
+            osp_led_ovsdb_delete_led_config(OSP_LED_ST_THERMAL, OSP_LED_POSITION_DEFAULT);
         }
     }
 }

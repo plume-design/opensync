@@ -23,17 +23,19 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 # C FLAGS
-CFLAGS   := -Wall -Wextra -Werror
-CFLAGS   += -Wno-unused-parameter
-CFLAGS   += -Wno-unused-label
-CFLAGS   += -Wno-strict-aliasing
-CFLAGS   += -Wno-missing-braces
-CFLAGS   += -fasynchronous-unwind-tables
+OS_CFLAGS   = $(CFLAGS)
+OS_CFLAGS   += -Wall -Wextra -Werror
+OS_CFLAGS   += -Wno-unused-parameter
+OS_CFLAGS   += -Wno-unused-label
+OS_CFLAGS   += -Wno-strict-aliasing
+OS_CFLAGS   += -Wno-missing-braces
+OS_CFLAGS   += -fasynchronous-unwind-tables
 
 DEBUGFLAGS := -g
 OPTIMIZE :=
 
 # LD FLAGS
-LDFLAGS  := -Wl,--export-dynamic
+OS_LDFLAGS = $(LDFLAGS)
+OS_LDFLAGS += -Wl,--export-dynamic
 LIBS     += -lpthread
 

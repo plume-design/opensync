@@ -509,9 +509,9 @@ void
 fcm_filter_ovsdb_exit(void)
 {
     /* Deregister monitor events */
-    ovsdb_unregister_update_cb(table_FCM_Filter.monitor.mon_id);
-    ovsdb_unregister_update_cb(table_Openflow_Tag.monitor.mon_id);
-    ovsdb_unregister_update_cb(table_Openflow_Tag_Group.monitor.mon_id);
+    ovsdb_table_fini(&table_FCM_Filter);
+    ovsdb_table_fini(&table_Openflow_Tag);
+    ovsdb_table_fini(&table_Openflow_Tag_Group);
 }
 
 int

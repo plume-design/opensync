@@ -43,7 +43,7 @@ include()
     source "$SCRIPTS_DIR/$1.funcs.sh"
 }
 
-for F in $INSTALL_PREFIX/scripts/functions.d/[0-9]*.sh; do
+for F in $SCRIPTS_DIR/functions.d/[0-9]*.sh; do
     if [ -e "$F" ]; then
         . "$F"
     fi

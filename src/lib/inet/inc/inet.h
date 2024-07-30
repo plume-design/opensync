@@ -152,6 +152,11 @@ typedef void inet_route_status_fn_t(
         struct osn_route_status *status,
         bool remove);
 
+typedef void inet_route6_status_fn_t(
+        inet_t *self,
+        struct osn_route6_status *status,
+        bool remove);
+
 /* Lease notify callback */
 typedef bool inet_dhcp_lease_fn_t(
         void *data,
@@ -309,6 +314,10 @@ struct __inet
     bool (*in_route4_add_fn)(inet_t *super, const osn_route4_t *route);
     bool (*in_route4_remove_fn)(inet_t *super, const osn_route4_t *route);
 
+    /* Routing IPv6 table methods  -- if set to NULL route state reporting is disabled */
+    bool        (*in_route6_notify_fn)(inet_t *self, inet_route6_status_fn_t *func);
+    bool        (*in_route6_add_fn)(inet_t *super, const osn_route6_config_t *route);
+    bool        (*in_route6_remove_fn)(inet_t *super, const osn_route6_config_t *route);
 
     /* Commit all pending changes */
     bool        (*in_commit_fn)(inet_t *self);
@@ -361,6 +370,10 @@ struct __inet
 
     /* DHCPv6 options that will be sent to the server */
     bool        (*in_dhcp6_client_option_send_fn)(inet_t *self, int tag, char *value);
+
+    /* DHCPv6 client other_config */
+    bool        (*in_dhcp6_client_other_config_fn)(inet_t *self, char *key, char *value);
+
 
     /* DHCPv6 client status notification */
     bool        (*in_dhcp6_client_notify_fn)(inet_t *self, inet_dhcp6_client_notify_fn_t *fn);
@@ -775,6 +788,26 @@ static inline bool inet_route4_remove(inet_t *self, const osn_route4_t *route)
     return self->in_route4_remove_fn ? self->in_route4_remove_fn(self, route) : false;
 }
 
+/*
+ * Subscribe to route6 table state changes.
+ */
+static inline bool inet_route6_notify(inet_t *self, inet_route6_status_fn_t *func)
+{
+    if (self->in_route6_notify_fn == NULL) return false;
+
+    return self->in_route6_notify_fn(self, func);
+}
+
+static inline bool inet_route6_add(inet_t *self, const osn_route6_config_t *route)
+{
+    return self->in_route6_add_fn ? self->in_route6_add_fn(self, route) : false;
+}
+
+static inline bool inet_route6_remove(inet_t *self, const osn_route6_config_t *route)
+{
+    return self->in_route6_remove_fn ? self->in_route6_remove_fn(self, route) : false;
+}
+
 /**
  * Commit all pending changes; the purpose of this function is to figure out the order
  * in which subsystems must be brought up or tore down and call inet_apply() for each
@@ -878,6 +911,13 @@ static inline bool inet_dhcp6_client_option_send(inet_t *self, int tag, char *va
     if (self->in_dhcp6_client_option_send_fn == NULL) return false;
 
     return self->in_dhcp6_client_option_send_fn(self, tag, value);
+}
+
+static inline bool inet_dhcp6_client_other_config(inet_t *self, char *key, char *value)
+{
+    if (self->in_dhcp6_client_other_config_fn == NULL) return false;
+
+    return self->in_dhcp6_client_other_config_fn(self, key, value);
 }
 
 static inline bool inet_dhcp6_client_notify(inet_t *self, inet_dhcp6_client_notify_fn_t *fn)

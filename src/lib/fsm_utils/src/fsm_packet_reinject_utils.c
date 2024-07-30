@@ -203,6 +203,17 @@ fsm_prepare_forward(struct fsm_session *session,
     packet = net_parser->start;
 
     eth_header = net_header_get_eth(net_parser);
+    if (IS_NULL_PTR(eth_header->srcmac))
+    {
+        LOGD("%s: no source mac", __func__);
+        return false;
+    }
+    if (IS_NULL_PTR(eth_header->dstmac))
+    {
+        LOGD("%s: no destination mac", __func__);
+        return false;
+    }
+
     LOGD("%s: source mac: " PRI_os_macaddr_lower_t ", dst mac: " PRI_os_macaddr_lower_t,
          __func__,
          FMT_os_macaddr_pt(eth_header->srcmac),
@@ -242,13 +253,13 @@ fsm_forward_pkt(struct fsm_session *session,
 
     if (net_parser->source == PKT_SOURCE_NFQ)
     {
-        rc = nf_queue_update_payload(net_parser->packet_id, net_parser->nfq_queue_num);
+        rc = nf_queue_update_payload(net_parser->packet_id, net_parser->nfq_queue_num, net_parser->caplen);
         if (!rc)
         {
             LOGE("%s: Failed to update nfqueue payload", __func__);
         }
     }
-    else if (net_parser->source == PKT_SOURCE_PCAP)
+    else if ((net_parser->source == PKT_SOURCE_PCAP) || (net_parser->source == PKT_SOURCE_SOCKET))
     {
         rc = fsm_prepare_forward(session, net_parser);
         if (!rc)

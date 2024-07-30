@@ -50,6 +50,7 @@ char *g_deployment = "dog1";
 char g_mqtt_topic[256];
 
 #define NEIGH_CELL_COUNT 4
+#define FULL_SCAN_NEIGH_CELL_COUNT 3
 #define LTE_SCA_CELL_COUNT 4
 #define PDP_CELL_COUNT 4
 #define NRG_SCA_CELL_COUNT 4
@@ -209,6 +210,58 @@ struct cell_net_neighbor_cell_info g_neigh_cells[] =
         .cellid = 0,
         .inter_freq_srxlev = -90,
     }
+};
+
+struct cell_full_scan_neighbor_cell_info g_full_scan_neigh_cells[] =
+{
+    {
+        .rat = RAT_LTE,
+        .mcc = 32,
+        .mnc = 12,
+        .freq = 52,
+        .pcid = 115,
+        .rsrp = -20,
+        .rsrq = 20,
+        .srxlev = 55,
+        .scs = NR_SCS_60_KHZ,
+        .squal = 44,
+        .cellid = 11,
+        .tac = 86,
+        .bandwidth = CELL_BANDWIDTH_100_MHZ,
+        .band = 5,
+    },
+    {
+        .rat = RAT_LTE,
+        .mcc = 162,
+        .mnc = 26,
+        .freq = 96,
+        .pcid = 22,
+        .rsrp = -60,
+        .rsrq = 32,
+        .srxlev = 25,
+        .scs = NR_SCS_30_KHZ,
+        .squal = 41,
+        .cellid = 12,
+        .tac = 24,
+        .bandwidth = CELL_BANDWIDTH_200_MHZ,
+        .band = 2,
+    },
+    {
+        .rat = RAT_NR5G,
+        .mcc = 62,
+        .mnc = 29,
+        .freq = 532,
+        .pcid = 115,
+        .rsrp = -120,
+        .rsrq = -320,
+        .srxlev = 5,
+        .scs = NR_SCS_120_KHZ,
+        .squal = -42,
+        .cellid = 1,
+        .tac = 52,
+        .bandwidth = CELL_BANDWIDTH_200_MHZ,
+        .band = 6,
+    },
 };
 
 struct cell_net_pca_info g_pca_info =
@@ -708,40 +761,65 @@ cell_ut_set_report(void)
     bool ret;
 
     /* Allocate a report provisioning NEIGH_CELL_COUNT neighbor cells */
-    g_report = cell_info_allocate_report(NEIGH_CELL_COUNT, LTE_SCA_CELL_COUNT, PDP_CELL_COUNT, NRG_SCA_CELL_COUNT);
+    g_report = cell_info_allocate_report(NEIGH_CELL_COUNT, FULL_SCAN_NEIGH_CELL_COUNT, LTE_SCA_CELL_COUNT,
+                                         PDP_CELL_COUNT, NRG_SCA_CELL_COUNT);
     TEST_ASSERT_NOT_NULL(g_report);
 
     /* Add one report cell */
-    ret = cell_info_add_neigh_cell(&g_neigh_cells[0], g_report);
+    ret = cell_info_add_neigh_cell(&g_neigh_cells[0], g_report, 0);
 
     /* validate the addition of the neighbor cell */
     TEST_ASSERT_TRUE(ret);
     TEST_ASSERT_NOT_NULL(g_report->cell_neigh_cell_info[0]);
-    TEST_ASSERT_EQUAL_UINT(1, g_report->cur_neigh_cell_idx);
 
     /* Add another report cell */
-    ret = cell_info_add_neigh_cell(&g_neigh_cells[1], g_report);
+    ret = cell_info_add_neigh_cell(&g_neigh_cells[1], g_report, 1);
 
     /* validate the addition of the neighbor cell */
     TEST_ASSERT_TRUE(ret);
     TEST_ASSERT_NOT_NULL(g_report->cell_neigh_cell_info[1]);
-    TEST_ASSERT_EQUAL_UINT(2, g_report->cur_neigh_cell_idx);
 
     /* Add another report cell */
-    ret = cell_info_add_neigh_cell(&g_neigh_cells[2], g_report);
+    ret = cell_info_add_neigh_cell(&g_neigh_cells[2], g_report, 2);
 
     /* validate the addition of the neighbor cell */
     TEST_ASSERT_TRUE(ret);
     TEST_ASSERT_NOT_NULL(g_report->cell_neigh_cell_info[2]);
-    TEST_ASSERT_EQUAL_UINT(3, g_report->cur_neigh_cell_idx);
 
     /* Add another report cell */
-    ret = cell_info_add_neigh_cell(&g_neigh_cells[3], g_report);
+    ret = cell_info_add_neigh_cell(&g_neigh_cells[3], g_report, 3);
 
     /* validate the addition of the neighbor cell */
     TEST_ASSERT_TRUE(ret);
     TEST_ASSERT_NOT_NULL(g_report->cell_neigh_cell_info[3]);
-    TEST_ASSERT_EQUAL_UINT(4, g_report->cur_neigh_cell_idx);
+    TEST_ASSERT_EQUAL_UINT(162, g_report->cell_neigh_cell_info[3]->pcid);
+
+    /* Add one full scan neighbor cell */
+    ret = cell_info_add_full_scan_neigh_cell(&g_full_scan_neigh_cells[0], g_report, 0);
+
+    /* validate the addition of the full scan neighbor cell */
+    TEST_ASSERT_TRUE(ret);
+    TEST_ASSERT_NOT_NULL(g_report->cell_full_scan_neigh_cell_info[0]);
+    TEST_ASSERT_TRUE(g_report->cell_full_scan_neigh_cell_info[0]->rat == RAT_LTE);
+    TEST_ASSERT_EQUAL_UINT(52, g_report->cell_full_scan_neigh_cell_info[0]->freq);
+
+    /* Add one full scan neighbor cell */
+    ret = cell_info_add_full_scan_neigh_cell(&g_full_scan_neigh_cells[1], g_report, 1);
+
+    /* validate the addition of the full scan neighbor cell */
+    TEST_ASSERT_TRUE(ret);
+    TEST_ASSERT_NOT_NULL(g_report->cell_full_scan_neigh_cell_info[1]);
+    TEST_ASSERT_TRUE(g_report->cell_full_scan_neigh_cell_info[1]->bandwidth == CELL_BANDWIDTH_200_MHZ);
+    TEST_ASSERT_EQUAL_UINT(32, g_report->cell_full_scan_neigh_cell_info[1]->rsrq);
+
+    /* Add one full scan neighbor cell */
+    ret = cell_info_add_full_scan_neigh_cell(&g_full_scan_neigh_cells[2], g_report, 2);
+
+    /* validate the addition of the full scan neighbor cell */
+    TEST_ASSERT_TRUE(ret);
+    TEST_ASSERT_NOT_NULL(g_report->cell_full_scan_neigh_cell_info[2]);
+    TEST_ASSERT_TRUE(g_report->cell_full_scan_neigh_cell_info[2]->rat == RAT_NR5G);
+    TEST_ASSERT_EQUAL_UINT(1, g_report->cell_full_scan_neigh_cell_info[2]->cellid);
 
     /* Validate the addition of the common header */
     ret = cell_info_set_common_header(&g_common_header, g_report);

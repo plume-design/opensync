@@ -47,3 +47,4 @@ UNIT_DEPS += src/lib/common
 UNIT_DEPS += src/lib/osa
 UNIT_DEPS += src/lib/protobuf
 UNIT_DEPS += src/lib/fsm_utils
+UNIT_DEPS += src/lib/nf_utils

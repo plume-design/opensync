@@ -190,6 +190,23 @@ bool osn_dhcpv6_client_option_request(osn_dhcpv6_client_t *self, int tag);
 bool osn_dhcpv6_client_option_send(osn_dhcpv6_client_t *self, int tag, const char *value);
 
 /**
+ * Set DHCPv6 other_options that will be sent to the DHCPv6 client script
+ *
+ * A value of NULL indicates that the options should be removed from the
+ * request list.
+ *
+ * @param[in]   self   A valid pointer to an osn_dhcpv6_client_t object
+ * @param[in]   key    DHCPv6 other_config key
+ * @param[in]   value  DHCPv6 other_config value or NULL
+ *
+ * @return
+ * This function returns true if the option was successfully set, false
+ * otherwise.
+ *
+ */
+bool osn_dhcpv6_client_other_config(osn_dhcpv6_client_t *self, const char *key, const char *value);
+
+/**
  * Set the DHCPv6 client status callback.
  *
  * Depending on the implementation, the status callback may be invoked

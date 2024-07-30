@@ -170,6 +170,7 @@ message Neighbor {
         required uint32     channel         = 6;
         optional DiffType   status          = 7;
         optional uint32     c_freq0_chan    = 8;
+        optional bytes      beacon_ies      = 9;
     }
     required RadioBandType  band            = 1;
     required NeighborType   scan_type       = 2;
@@ -378,7 +379,11 @@ message Device {
         optional uint32           fan_duty_cycle   = 4;
         optional uint32           thermal_state    = 5;
         optional uint32           target_rpm       = 6;
-        optional uint32           led_state        = 7;
+        message LedState {
+            optional uint32 position               = 1;
+            optional uint32 value                  = 2;
+        }
+        repeated LedState         led_state        = 7;
     }
     repeated Thermal        thermal_stats          = 5;
 

@@ -57,7 +57,15 @@ if MANAGER_PM
             config LEGACY_LED_STATE_MAPPING
                 bool "Enable support for LED state mapping"
                 default y
+
+            config OSP_LED_COUNT
+                int "Number of LEDs"
+                range 0 255
+                default 1
+                help
+                    Number of LEDs which need to be controlled
         endif
+
 
     menuconfig PM_ENABLE_TM
         bool "Enable support for Thermal Management"

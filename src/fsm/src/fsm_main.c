@@ -54,6 +54,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "neigh_table.h"
 #include "kconfig.h"
 #include "qm_conn.h"
+#include "fsm_fn_trace.h"
 
 /******************************************************************************/
 
@@ -85,6 +86,8 @@ int main(int argc, char ** argv)
     if (os_get_opt(argc, argv, &fsm_log_severity)) {
         return -1;
     }
+
+    fsm_fn_tracer_init();
 
     // enable logging
     target_log_open("FSM", 0);

@@ -1152,6 +1152,89 @@ test_fsm_dpi_dns_process_dns_record_dns_tag(void)
     fsm_policy_deregister_client(client);
 }
 
+#define DNS_HEADER_SIZE 12
+static bool test_fsm_dns_check_ttl(uint8_t *packet, size_t length, uint32_t expected_ttl)
+{
+    struct dns_header *header;
+    uint16_t rdlength;
+    size_t pos;
+    size_t i;
+
+    pos = 0;
+    header = (struct dns_header *)packet;
+    pos += DNS_HEADER_SIZE;
+
+    /* skip question section */
+    for (i = 0; i < ntohs(header->qdcount); i++)
+    {
+        pos = fsm_dpi_dns_skip_domain_name(packet, pos, length);
+        if (pos == 0)
+        {
+            LOGN("%s():%d failed to skip domain name", __func__, __LINE__);
+            return false;
+        }
+        pos += 4; // Skip QTYPE and QCLASS (2 bytes each)
+    }
+
+    /* answer section */
+    for (i = 0; i < ntohs(header->ancount) && pos < length; i++)
+    {
+        pos = fsm_dpi_dns_skip_domain_name(packet, pos, length);
+        if (pos == 0)
+        {
+            LOGN("%s():%d failed to skip domain name", __func__, __LINE__);
+            return false;
+        }
+        pos += 4; // Skip TYPE and CLASS (2 bytes each)
+
+        /* Check the TTL */
+        if (pos + 4 > length)
+        {
+            LOGN("%s():%d Packet too short for TTL", __func__, __LINE__);
+            return false;
+        }
+
+        uint32_t current_ttl;
+        memcpy(&current_ttl, &packet[pos], sizeof(current_ttl));
+        current_ttl = ntohl(current_ttl);
+
+        TEST_ASSERT_EQUAL_UINT32(expected_ttl, current_ttl);
+
+        pos += 4; // Move past TTL
+
+        /* skip RD Len field and RDATA */
+        if (pos + 2 > length) {
+            LOGN("%s():%d Packet too short for RDLENGTH", __func__, __LINE__);
+            return false;
+        }
+
+        memcpy(&rdlength, &packet[pos], sizeof(rdlength));
+        rdlength = ntohs(rdlength);
+        pos += 2;
+
+        // Skip RDATA
+        pos += rdlength;
+    }
+
+    return true;
+}
+
+void
+test_fsm_dpi_dns_update_ttl(void)
+{
+    int total_pkts;
+    int i;
+    bool ret;
+
+    total_pkts = sizeof(sample_pkts) / sizeof(sample_pkts[0]);
+    for (i = 0; i < total_pkts; i++)
+    {
+        ret = fsm_dpi_dns_update_ttl(sample_pkts[i].dns_packet, sample_pkts[i].length, 100);
+        TEST_ASSERT_TRUE(ret);
+        test_fsm_dns_check_ttl(sample_pkts[i].dns_packet, sample_pkts[i].length, 100);
+    }
+}
+
 void
 run_test_dns(void)
 {
@@ -1173,4 +1256,5 @@ run_test_dns(void)
     RUN_TEST(test_fsm_dpi_dns_update_v4_tag_ip_expiration);
     RUN_TEST(test_fsm_dpi_dns_update_v6_tag_ip_expiration);
     RUN_TEST(test_fsm_dpi_dns_process_dns_record_dns_tag);
+    RUN_TEST(test_fsm_dpi_dns_update_ttl);
 }

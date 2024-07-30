@@ -28,6 +28,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
+#include <inttypes.h>
 
 #include "log.h"
 #include "cell_info.h"
@@ -106,7 +107,7 @@ cell_info_free_net_info(struct cell_info_report *report)
  * @param n_neighbors the number of neighbor cells to report
  */
 struct cell_info_report *
-cell_info_allocate_report(size_t n_neighbors, size_t n_lte_sca_cells,
+cell_info_allocate_report(size_t n_neighbors, size_t n_full_scan_neighbors, size_t n_lte_sca_cells,
                           size_t n_pdp_cells, size_t n_nrg_sca_cells)
 {
     struct cell_info_report *report;
@@ -115,6 +116,9 @@ cell_info_allocate_report(size_t n_neighbors, size_t n_lte_sca_cells,
 
     report->cell_neigh_cell_info = CALLOC(n_neighbors, sizeof(*report->cell_neigh_cell_info));
     report->n_neigh_cells = n_neighbors;
+
+    report->cell_full_scan_neigh_cell_info = CALLOC(n_full_scan_neighbors, sizeof(*report->cell_full_scan_neigh_cell_info));
+    report->n_full_scan_neigh_cells = n_full_scan_neighbors;
 
     report->cell_lte_sca_info = CALLOC(n_lte_sca_cells, sizeof(*report->cell_lte_sca_info));
     report->n_lte_sca_cells = n_lte_sca_cells;
@@ -137,6 +141,7 @@ void
 cell_info_free_report(struct cell_info_report *report)
 {
     struct cell_net_neighbor_cell_info *neigh_cell;
+    struct cell_full_scan_neighbor_cell_info *neigh_full_scan_cell;
     struct cell_pdp_ctx_dynamic_params_info *cell_pdp_ctx_info;
     struct cell_net_lte_sca_info *cell_lte_sca_info;
     struct cell_nr5g_cell_info *cell_nrg_sca_info;
@@ -155,6 +160,13 @@ cell_info_free_report(struct cell_info_report *report)
         cell_info_free_neigh_cell(neigh_cell);
     }
     FREE(report->cell_neigh_cell_info);
+
+    for (i = 0; i < report->n_full_scan_neigh_cells; i++)
+    {
+        neigh_full_scan_cell = report->cell_full_scan_neigh_cell_info[i];
+        cell_info_free_full_scan_neigh_cell(neigh_full_scan_cell);
+    }
+    FREE(report->cell_full_scan_neigh_cell_info);
 
     cell_info_free_pca(report);
 
@@ -298,31 +310,27 @@ cell_info_free_data_usage(struct cell_info_report *report)
  *
  * @param cell_info the cell info to add
  * @param report the report to update
+ * @param idx the index into which we are adding cell info in the report
  * @return true if the cell info was added, false otherwise
  */
 bool
 cell_info_add_neigh_cell(struct cell_net_neighbor_cell_info *cell_info,
-                         struct cell_info_report *report)
+                         struct cell_info_report *report,
+                         size_t idx)
 {
     struct cell_net_neighbor_cell_info *cell;
-    size_t idx;
     bool ret;
 
     if (report == NULL) return false;
     if (cell_info == NULL) return false;
 
-    /* Bail if we have reached n_neigh_cells */
-    idx = report->cur_neigh_cell_idx;
     LOGI("%s: idx[%zu], n_neigh_cells[%zu]", __func__, idx, report->n_neigh_cells);
-    if (idx == report->n_neigh_cells) return true;
 
     cell = CALLOC(1, sizeof(*cell));
-
     ret = cell_info_set_neigh_cell(cell_info, cell);
     if (!ret) goto error;
 
     report->cell_neigh_cell_info[idx] = cell;
-    report->cur_neigh_cell_idx++;
 
     return true;
 
@@ -383,6 +391,89 @@ cell_info_set_neigh_cell(struct cell_net_neighbor_cell_info *source,
  */
 void
 cell_info_free_neigh_cell(struct cell_net_neighbor_cell_info *cell)
+{
+    if (cell == NULL) return;
+
+    FREE(cell);
+    return;
+}
+
+/**
+ * @brief add a full scan neighbor cell info to a report
+ *
+ * @param cell_info the cell info to add
+ * @param report the report to update
+ * @param idx the index into which we are adding cell info in the report
+ * @return true if the cell info was added, false otherwise
+ */
+bool
+cell_info_add_full_scan_neigh_cell(struct cell_full_scan_neighbor_cell_info *cell_info,
+                                   struct cell_info_report *report,
+                                   size_t idx)
+{
+    struct cell_full_scan_neighbor_cell_info *cell;
+    bool ret;
+
+    if (report == NULL) return false;
+    if (cell_info == NULL) return false;
+
+    LOGI("%s: idx[%zu], n_full_scan_neigh_cells[%zu]", __func__, idx, report->n_full_scan_neigh_cells);
+
+    cell = CALLOC(1, sizeof(*cell));
+    ret = cell_info_set_full_scan_neigh_cell(cell_info, cell);
+    if (!ret) goto error;
+
+    report->cell_full_scan_neigh_cell_info[idx] = cell;
+
+    return true;
+
+error:
+    cell_info_free_report(report);
+    return false;
+}
+
+/**
+ * @brief copy full scan neighbor cell info
+ *
+ * @param source the cell info to copy
+ * @param dest the copy destination
+ * @return true if the cell info was copied, false otherwise
+ *
+ * Note: the destination is freed on error
+ */
+bool
+cell_info_set_full_scan_neigh_cell(struct cell_full_scan_neighbor_cell_info *source,
+                                   struct cell_full_scan_neighbor_cell_info *dest)
+{
+
+    if (source == NULL) return false;
+    if (dest == NULL) return false;
+
+    dest->rat = source->rat;
+    dest->mcc = source->mcc;
+    dest->mnc = source->mnc;
+    dest->freq = source->freq;
+    dest->pcid = source->pcid;
+    dest->rsrp = source->rsrp;
+    dest->rsrq = source->rsrq;
+    dest->srxlev = source->srxlev;
+    dest->scs = source->scs;
+    dest->squal = source->squal;
+    dest->cellid = source->cellid;
+    dest->tac = source->tac;
+    dest->bandwidth = source->bandwidth;
+    dest->band = source->band;
+
+    return true;
+}
+
+/**
+ * @brief free full scan neighbor cell info
+ *
+ * @param cell the structure to free
+ */
+void
+cell_info_free_full_scan_neigh_cell(struct cell_full_scan_neighbor_cell_info *cell)
 {
     if (cell == NULL) return;
 
@@ -1000,7 +1091,9 @@ cell_info_set_cell_data_usage(struct cell_info_report *report)
     pb->rx_bytes = cell_data_usage->rx_bytes;
     pb->tx_bytes = cell_data_usage->tx_bytes;
 
-    LOGI("%s: rx_bytes[%lu], tx_bytes[%lu]", __func__, pb->rx_bytes, pb->tx_bytes);
+    LOGI("%s: rx_bytes[%"PRIu64"], tx_bytes[%"PRIu64"]", __func__,
+         (uint64_t)pb->rx_bytes,
+         (uint64_t)pb->tx_bytes);
 
     return pb;
 }
@@ -1580,6 +1673,99 @@ error:
     return NULL;
 }
 
+static Interfaces__CellInfo__CellFullScanNeighborCell *
+cell_info_set_pb_full_scan_neighbor(struct cell_full_scan_neighbor_cell_info *neighbor)
+{
+    Interfaces__CellInfo__CellFullScanNeighborCell *pb;
+
+    /* Allocate the message */
+    pb  = CALLOC(1, sizeof(*pb));
+
+    /* Initialize the message */
+    interfaces__cell_info__cell_full_scan_neighbor_cell__init(pb);
+
+    /* Set the message fields */
+    pb->rat = (Interfaces__CellInfo__RadioAccessTechnology)neighbor->rat;
+    pb->mcc = neighbor->mcc;
+    pb->mnc = neighbor->mnc;
+    pb->freq = neighbor->freq;
+    pb->pcid = neighbor->pcid;
+    pb->rsrp = neighbor->rsrp;
+    pb->rsrq = neighbor->rsrq;
+    pb->srxlev = neighbor->srxlev;
+    pb->scs = (Interfaces__CellInfo__NrScs)neighbor->scs;
+    pb->squal = neighbor->squal;
+    pb->cellid = neighbor->cellid;
+    pb->tac = neighbor->tac;
+    pb->bandwidth = (Interfaces__CellInfo__Bandwidth)neighbor->bandwidth;
+    pb->band = neighbor->band;
+
+    LOGI("%s: rat[%d], mcc[%d], mnc[%d], freq[%d], pcid[%d], rsrp[%d], rsrq[%d], srxlev[%d], "
+         "scs[%d], squal[%d], cellid[%d], tac[%d], bandwidth[%d], band[%d]",
+         __func__, neighbor->rat, neighbor->mcc, neighbor->mnc, neighbor->freq, neighbor->pcid,
+         neighbor->rsrp, neighbor->rsrq, neighbor->srxlev, neighbor->scs, neighbor->squal,
+         neighbor->cellid, neighbor->tac, neighbor->bandwidth, neighbor->band);
+
+    return pb;
+}
+
+
+static void
+free_pb_full_scan_neighbor(Interfaces__CellInfo__CellFullScanNeighborCell *pb)
+{
+    FREE(pb);
+}
+
+/**
+ * @brief Allocates and sets a table of full scan neighbor cell messages
+ *
+ * Uses the report info to fill a dynamically allocated
+ * table of full scan neighbor cell messages.
+ * The caller is responsible for freeing the returned pointer
+ *
+ * @param window info used to fill up the protobuf table
+ * @return a flow stats protobuf pointers table
+ */
+Interfaces__CellInfo__CellFullScanNeighborCell **
+cell_info_set_pb_full_scan_neighbors(struct cell_info_report *report)
+{
+    Interfaces__CellInfo__CellFullScanNeighborCell **neighbors_pb_fs_tbl;
+    Interfaces__CellInfo__CellFullScanNeighborCell **neighbors_pb_fs;
+    struct cell_full_scan_neighbor_cell_info **neighbors;
+    size_t i, allocated;
+
+    if (report == NULL) return NULL;
+
+    if (report->n_full_scan_neigh_cells == 0) return NULL;
+
+    neighbors_pb_fs_tbl = CALLOC(report->n_full_scan_neigh_cells,
+                              sizeof(*neighbors_pb_fs_tbl));
+
+    neighbors = report->cell_full_scan_neigh_cell_info;
+    neighbors_pb_fs = neighbors_pb_fs_tbl;
+    allocated = 0;
+    /* Set each of the window protobuf */
+    for (i = 0; i < report->n_full_scan_neigh_cells; i++)
+    {
+        *neighbors_pb_fs = cell_info_set_pb_full_scan_neighbor(*neighbors);
+        if (*neighbors_pb_fs == NULL) goto error;
+
+        allocated++;
+        neighbors++;
+        neighbors_pb_fs++;
+    }
+    return neighbors_pb_fs_tbl;
+
+error:
+    for (i = 0; i < allocated; i++)
+    {
+        free_pb_full_scan_neighbor(neighbors_pb_fs_tbl[i]);
+    }
+    FREE(neighbors_pb_fs_tbl);
+
+    return NULL;
+}
+
 /**
  * @brief Free a cell info report protobuf structure.
  *
@@ -1672,6 +1858,14 @@ cell_info_set_pb_report(struct cell_info_report *report)
         if (pb->lte_neigh_cell_info == NULL) goto error;
     }
     pb->n_lte_neigh_cell_info = report->n_neigh_cells;
+
+    /* Serialize the full scan neighbor cells */
+    if (report->n_full_scan_neigh_cells != 0)
+    {
+        pb->full_scan_neigh_cell_info = cell_info_set_pb_full_scan_neighbors(report);
+        if (pb->full_scan_neigh_cell_info == NULL) goto error;
+    }
+    pb->n_full_scan_neigh_cell_info = report->n_full_scan_neigh_cells;
 
     /* Add the primary carrier component info */
     pb->lte_primary_carrier_agg_info = cell_info_set_pb_primary_carrier_agg(report);

@@ -47,6 +47,7 @@ UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_IPV4_NULL),src/osn_ip_null.c)
 UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_IPV4_LINUX),src/osn_ip_linux.c)
 
 UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_ROUTEV4_NULL),src/osn_route_null.c,src/osn_route_linux.c)
+UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_ROUTEV6_NULL),src/osn_route6_null.c,src/osn_route6_linux.c)
 
 UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_DHCPV4_CLIENT_NULL),src/osn_dhcp_client_null.c)
 UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_DHCPV4_CLIENT_UDHCP),src/osn_dhcp_client_udhcp.c)
@@ -141,6 +142,9 @@ UNIT_SRC += $(if $(CONFIG_OSN_LINUX_ROUTE_LIBNL3),src/linux/lnx_routes.c)
 UNIT_SRC += $(if $(CONFIG_OSN_LINUX_ROUTE_IP),src/linux/lnx_route_config.c)
 UNIT_SRC += $(if $(CONFIG_OSN_LINUX_ROUTE_STATE_LIBNL3),src/linux/lnx_route_state_nl.c)
 UNIT_SRC += $(if $(CONFIG_OSN_LINUX_ROUTE_STATE_PROC),src/linux/lnx_route_state_proc.c)
+UNIT_SRC += $(if $(CONFIG_OSN_LINUX_ROUTE6),src/linux/lnx_route6.c)
+UNIT_SRC += $(if $(CONFIG_OSN_LINUX_ROUTE6_LIBNL3),src/linux/lnx_route6_nl.c)
+UNIT_SRC += $(if $(CONFIG_OSN_LINUX_ROUTE6_STATE_LIBNL3),src/linux/lnx_route6_state_nl.c)
 UNIT_SRC += $(if $(CONFIG_OSN_MINIUPNPD),src/linux/mupnp_server.c)
 UNIT_SRC += $(if $(CONFIG_OSN_MINIUPNPD),src/linux/mupnp_cfg_iptv.c)
 UNIT_SRC += $(if $(CONFIG_OSN_MINIUPNPD),src/linux/mupnp_cfg_wan.c)
@@ -178,6 +182,7 @@ endif
 UNIT_DEPS += src/lib/daemon
 UNIT_DEPS += src/lib/evx
 UNIT_DEPS += src/lib/ds
+UNIT_DEPS += src/lib/ds_util
 UNIT_DEPS += src/lib/execsh
 endif
 

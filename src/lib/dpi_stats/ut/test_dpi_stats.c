@@ -69,28 +69,6 @@ test_dpi_stats_send_report(char *topic, struct dpi_stats_packed_buffer *pb)
     return;
 }
 
-static bool
-dpi_test_send_report(qm_compress_t compress, char *topic,
-                     void *data, int data_size, qm_response_t *res)
-{
-#ifndef ARCH_X86
-    bool ret = false;
-#endif
-
-    TEST_ASSERT_NOT_NULL(topic);
-    TEST_ASSERT_NOT_NULL(data);
-
-    LOGD("%s: msg len: %d, topic: %s",
-         __func__, data_size, topic);
-
-#ifndef ARCH_X86
-    ret = qm_conn_send_direct(QM_REQ_COMPRESS_IF_CFG, topic,
-                              data, data_size, res);
-    if (!ret) LOGE("error sending mqtt with topic %s", topic);
-#endif
-
-    return true;
-}
 
 void
 test_dpi_stats_serialize_report(void)
@@ -136,12 +114,12 @@ test_dpi_stats_serialize_nfq_pcap_report(void)
     struct nfqnl_counters nfq_stats;
     struct pcap_stat pcap_stat;
     char *ifname;
-    struct fsm_session session = {
-        .location_id = g_location_id,
-        .node_id = g_node_id,
-        .name = "test_plugin",
-    };
-    struct dpi_stats_report *gptr;
+    struct dpi_stats_report report;
+
+    memset(&report, 0, sizeof(report));
+    report.location_id = g_location_id;
+    report.node_id = g_node_id;
+    report.plugin = "test_plugin";
 
     /* store 1st record, key is queue no */
     nfq_stats.copy_mode = 12;
@@ -177,12 +155,17 @@ test_dpi_stats_serialize_nfq_pcap_report(void)
     TEST_ASSERT_EQUAL_INT(2, dpi_stats_get_pcap_stats_count());
     TEST_ASSERT_EQUAL_INT(2, dpi_stats_get_nfq_stats_count());
 
-    gptr = dpi_stats_get_global_report();
-    gptr->send_report = dpi_test_send_report;
+    g_serialized = dpi_stats_serialize_counter_report(&report);
+    TEST_ASSERT_NOT_NULL(g_serialized);
 
-    /* send the report */
-    // char *topic ="DpiStats/dog1/64777ef8e77ced000ab57892/LG8C401377";
-    dpi_stats_report_nfq_stats(&session, g_mqtt_topic);
+    test_dpi_stats_send_report(g_mqtt_topic, g_serialized);
+    dpi_stats_free_packed_buffer(g_serialized);
+
+    TEST_ASSERT_EQUAL_INT(2, dpi_stats_get_pcap_stats_count());
+    TEST_ASSERT_EQUAL_INT(2, dpi_stats_get_nfq_stats_count());
+
+    dpi_stats_cleanup_record();
+
     TEST_ASSERT_EQUAL_INT(0, dpi_stats_get_pcap_stats_count());
     TEST_ASSERT_EQUAL_INT(0, dpi_stats_get_nfq_stats_count());
 }
@@ -191,12 +174,12 @@ void
 test_dpi_stats_serialize_nfq_report(void)
 {
     struct nfqnl_counters nfq_stats;
-    struct dpi_stats_report *gptr;
-    struct fsm_session session = {
-        .location_id = g_location_id,
-        .node_id = g_node_id,
-        .name = "test_plugin",
-    };
+    struct dpi_stats_report report;
+
+    memset(&report, 0, sizeof(report));
+    report.location_id = g_location_id;
+    report.node_id = g_node_id;
+    report.plugin = "test_plugin";
 
     /* store 1st record, key is queue no */
     nfq_stats.copy_mode = 12;
@@ -218,11 +201,17 @@ test_dpi_stats_serialize_nfq_report(void)
     dpi_stats_store_nfq_stats(&nfq_stats);
     TEST_ASSERT_EQUAL_INT(2, dpi_stats_get_nfq_stats_count());
 
-    gptr = dpi_stats_get_global_report();
-    gptr->send_report = dpi_test_send_report;
 
-    /* send the report */
-    dpi_stats_report_nfq_stats(&session, g_mqtt_topic);
+    g_serialized = dpi_stats_serialize_counter_report(&report);
+    TEST_ASSERT_NOT_NULL(g_serialized);
+
+    test_dpi_stats_send_report(g_mqtt_topic, g_serialized);
+    dpi_stats_free_packed_buffer(g_serialized);
+
+
+    TEST_ASSERT_EQUAL_INT(2, dpi_stats_get_nfq_stats_count());
+
+    dpi_stats_cleanup_record();
     TEST_ASSERT_EQUAL_INT(0, dpi_stats_get_nfq_stats_count());
 }
 
@@ -230,13 +219,13 @@ void
 test_dpi_stats_serialize_pcap_report(void)
 {
     struct pcap_stat pcap_stat;
+    struct dpi_stats_report report;
     char *ifname;
-    struct fsm_session session = {
-        .location_id = g_location_id,
-        .node_id = g_node_id,
-        .name = "test_plugin",
-    };
-    struct dpi_stats_report *gptr;
+
+    memset(&report, 0, sizeof(report));
+    report.location_id = g_location_id;
+    report.node_id = g_node_id;
+    report.plugin = "test_plugin";
 
     pcap_stat.ps_recv = 12;
     pcap_stat.ps_drop = 13;
@@ -252,13 +241,59 @@ test_dpi_stats_serialize_pcap_report(void)
     TEST_ASSERT_EQUAL_INT(2, dpi_stats_get_pcap_stats_count());
     TEST_ASSERT_EQUAL_INT(0, dpi_stats_get_nfq_stats_count());
 
-    gptr = dpi_stats_get_global_report();
-    gptr->send_report = dpi_test_send_report;
 
-    /* send the report */
-    dpi_stats_report_pcap_stats(&session, g_mqtt_topic);
+    g_serialized = dpi_stats_serialize_counter_report(&report);
+    TEST_ASSERT_NOT_NULL(g_serialized);
+
+    test_dpi_stats_send_report(g_mqtt_topic, g_serialized);
+    dpi_stats_free_packed_buffer(g_serialized);
+
+    TEST_ASSERT_EQUAL_INT(2, dpi_stats_get_pcap_stats_count());
+    TEST_ASSERT_EQUAL_INT(0, dpi_stats_get_nfq_stats_count());
+
+    dpi_stats_cleanup_record();
+
     TEST_ASSERT_EQUAL_INT(0, dpi_stats_get_pcap_stats_count());
     TEST_ASSERT_EQUAL_INT(0, dpi_stats_get_nfq_stats_count());
+}
+
+
+void
+test_dpi_stats_serialize_call_trace_report(void)
+{
+    struct fn_tracer_stats fn_stat;
+    struct dpi_stats_report report;
+
+    memset(&report, 0, sizeof(report));
+    report.location_id = g_location_id;
+    report.node_id = g_node_id;
+    report.plugin = "test_plugin";
+
+    size_t count = 3;
+    for (size_t i = 0; i < count; i++)
+    {
+        fn_stat.fn_name = STRDUP("test");
+        fn_stat.call_count = 12 + i;
+        fn_stat.max_duration = 13 + i;
+        fn_stat.total_duration = 15 + i;
+        dpi_stats_store_call_trace_stats(&fn_stat);
+        FREE(fn_stat.fn_name);
+        MEMZERO(fn_stat);
+    }
+
+    TEST_ASSERT_EQUAL_INT(1, dpi_stats_get_call_trace_stats_count());
+
+    g_serialized = dpi_stats_serialize_call_trace_stats(&report);
+    TEST_ASSERT_NOT_NULL(g_serialized);
+
+    test_dpi_stats_send_report(g_mqtt_topic, g_serialized);
+    dpi_stats_free_packed_buffer(g_serialized);
+
+    TEST_ASSERT_EQUAL_INT(1, dpi_stats_get_call_trace_stats_count());
+
+    dpi_stats_cleanup_record();
+
+    TEST_ASSERT_EQUAL_INT(0, dpi_stats_get_call_trace_stats_count());
 }
 
 int
@@ -273,6 +308,7 @@ main(int argc, char *argv[])
     RUN_TEST(test_dpi_stats_serialize_nfq_report);
     RUN_TEST(test_dpi_stats_serialize_pcap_report);
     RUN_TEST(test_dpi_stats_serialize_nfq_pcap_report);
+    RUN_TEST(test_dpi_stats_serialize_call_trace_report);
 
     return ut_fini();
 }

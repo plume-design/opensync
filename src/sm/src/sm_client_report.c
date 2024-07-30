@@ -40,6 +40,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "sm.h"
 #include "memutil.h"
 
+#if defined(TARGET_NATIVE)
+#include "target_native.h"
+#endif
+
 #define MODULE_ID LOG_MODULE_ID_MAIN
 
 #define sm_client_report_stat_percent_get(v1, v2) \
@@ -135,13 +139,6 @@ static inline sm_client_ctx_t * sm_client_ctx_alloc()
     memset(client_ctx, 0, sizeof(sm_client_ctx_t));
 
     return client_ctx;
-}
-
-static inline void sm_client_ctx_free(sm_client_ctx_t *client_ctx)
-{
-    if (NULL != client_ctx) {
-        FREE(client_ctx);
-    }
 }
 
 static

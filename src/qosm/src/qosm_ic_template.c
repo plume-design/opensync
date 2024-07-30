@@ -24,13 +24,13 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-
+#include "memutil.h"
 #include "ds_tree.h"
 #include "reflink.h"
 #include "ovsdb_table.h"
-#include "memutil.h"
 #include "policy_tags.h"
-#include "qosm.h"
+
+#include "qosm_filter_internal.h"
 #include "qosm_ic_template.h"
 #include "qosm_ip_iface.h"
 
@@ -189,10 +189,10 @@ qosm_filter_detect_groups(const char *token, const char *rule, ds_tree_t *list)
 qosm_ic_tmpl_filter_t *
 qosm_ic_filter_find_by_token(char *token)
 {
-    struct qosm_mgr *mgr;
+    struct qosm_filter *qosm_filter;
 
-    mgr = qosm_get_mgr();
-    return (qosm_ic_tmpl_filter_t *)ds_tree_find(&mgr->qosm_ic_template_tree, token);
+    qosm_filter = qosm_filter_get();
+    return (qosm_ic_tmpl_filter_t *)ds_tree_find(&qosm_filter->qosm_ic_template_tree, token);
 }
 
 static qosm_ic_tmpl_filter_t *
@@ -577,14 +577,14 @@ bool
 qosm_ic_template_del_from_schema(char *token)
 {
     qosm_ic_tmpl_filter_t *filter;
-    struct qosm_mgr *mgr;
+    struct qosm_filter *qosm_filter;
     char tbuf[256];
 
     filter = qosm_ic_filter_find_by_token(token);
     if (!filter) return false;
 
-    mgr = qosm_get_mgr();
-    ds_tree_remove(&mgr->qosm_ic_template_tree, filter);
+    qosm_filter = qosm_filter_get();
+    ds_tree_remove(&qosm_filter->qosm_ic_template_tree, filter);
 
     om_tag_list_to_buf(&filter->tags, 0, tbuf, sizeof(tbuf) - 1);
     LOGN("[%s] Template filter removed (\"%s\"), tags:%s", filter->token, filter->match, tbuf);
@@ -598,11 +598,11 @@ bool
 qosm_ic_template_add_from_schema(struct schema_Interface_Classifier *config)
 {
     qosm_ic_tmpl_filter_t *filter;
-    struct qosm_mgr *mgr;
+    struct qosm_filter *qosm_filter;
     char tbuf[256];
 
     LOGT("%s(): inserting template rule: %s", __func__, config->token);
-    mgr = qosm_get_mgr();
+    qosm_filter = qosm_filter_get();
 
     filter = qosm_ic_filter_find_by_token(config->token);
     /* return if the tag is already present */
@@ -611,7 +611,7 @@ qosm_ic_template_add_from_schema(struct schema_Interface_Classifier *config)
     filter = qosm_filter_alloc_from_schema(config);
     if (filter == NULL) return false;
 
-    ds_tree_insert(&mgr->qosm_ic_template_tree, filter, filter->token);
+    ds_tree_insert(&qosm_filter->qosm_ic_template_tree, filter, filter->token);
 
     om_tag_list_to_buf(&filter->tags, 0, tbuf, sizeof(tbuf) - 1);
     LOGN("[%s] Template rule inserted ( \"%s\"), tags:%s",
@@ -623,12 +623,11 @@ qosm_ic_template_add_from_schema(struct schema_Interface_Classifier *config)
 void
 qosm_ic_template_init(void)
 {
-	struct qosm_mgr *mgr;
+    struct qosm_filter *qosm_filter;
 
-	mgr = qosm_get_mgr();
+    qosm_filter = qosm_filter_get();
 
-	ds_tree_init(&mgr->qosm_ic_template_tree, ds_str_cmp,
-				 qosm_ic_tmpl_filter_t, dst_node);
+    ds_tree_init(&qosm_filter->qosm_ic_template_tree, ds_str_cmp, qosm_ic_tmpl_filter_t, dst_node);
 }
 
 void
@@ -654,15 +653,15 @@ qosm_ic_template_tag_update(om_tag_t *tag,
                         ds_tree_t *updated)
 {
     om_tag_list_entry_t *tle;
-    struct qosm_mgr *mgr;
+    struct qosm_filter *qosm_filter;
     qosm_ic_tmpl_filter_t *filter;
     ds_tree_t *tcfilters;
 
     TRACE();
-    mgr = qosm_get_mgr();
+    qosm_filter = qosm_filter_get();
 
     // Fetch flow tree
-    tcfilters = &mgr->qosm_ic_template_tree;
+    tcfilters = &qosm_filter->qosm_ic_template_tree;
 
     // Walk template flows and find ones which reference this tag
     ds_tree_foreach(tcfilters, filter)

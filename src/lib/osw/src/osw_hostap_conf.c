@@ -101,13 +101,12 @@ static void
 osw_hostap_conf_set_rates_to_hapd(uint16_t rates, char *buf, size_t len)
 {
     enum osw_rate_legacy rate;
-    for (rate = 0; rates != 0 && rate < OSW_RATE_UNSPEC; rate++, rates >>= 1) {
+    for (rate = 0; rates != 0 && rate < OSW_RATE_COUNT; rate++, rates >>= 1) {
         if (rates & 1) {
             const int halfmbps = osw_rate_legacy_to_halfmbps(rate);
             const int kbps = halfmbps * 5;
             /* 5.5 Mbps -> 11 -> 110 */
-            csnprintf(&buf, &len, "%d ", kbps);
-            assert(halfmbps != 0);
+            if (kbps > 0) csnprintf(&buf, &len, "%d ", kbps);
         }
     }
 }
@@ -124,7 +123,7 @@ osw_hostap_conf_set_brate_to_hapd(const struct osw_beacon_rate *rate,
         case OSW_BEACON_RATE_UNSPEC:
             return;
         case OSW_BEACON_RATE_ABG:
-            if (rate->u.legacy == OSW_RATE_UNSPEC) return;
+            if (osw_rate_is_invalid(rate->u.legacy)) return;
             csnprintf(&buf, &len, "%d", kbps);
             return;
         case OSW_BEACON_RATE_HT:
@@ -270,6 +269,187 @@ hapd_util_hapd_psk_file_to_osw(const char *wpa_psk_file,
 }
 
 static bool
+hapd_util_hapd_mib_to_radius_list(const struct osw_hostap_conf_ap_state_bufs *bufs,
+                                  struct osw_radius_list *radius_list,
+                                  struct osw_radius_list *acct_list)
+{
+    if ((bufs->mib == NULL) || (strstr(bufs->mib, "radiusAuthServerAddress") == NULL)) {
+        LOGT("osw: hostap: conf: MIB does not contain RADIUS information");
+        return false;
+    }
+
+    if ((bufs->config == NULL) || (strstr(bufs->config, "auth_server_shared_secret") == NULL))
+        LOGW("osw: hostap: conf: config does not contain RADIUS secret information");
+
+    if (radius_list->list == NULL)
+        radius_list->list = CALLOC(OSW_HOSTAP_CONF_RADIUS_MAX_COUNT,
+                sizeof(struct osw_radius));
+
+    if (acct_list->list == NULL)
+        acct_list->list = CALLOC(OSW_HOSTAP_CONF_RADIUS_MAX_COUNT,
+                sizeof(struct osw_radius));
+
+    osw_radius_list_purge(radius_list);
+    osw_radius_list_purge(acct_list);
+
+    char *buf = strdupa(bufs->mib);
+    char *conf_buf = strdupa(bufs->config);
+    char *coursor = buf;
+    char *coursor_conf = conf_buf;
+    char *ip_addr;
+    char *passphrase;
+    while (((ip_addr = strstr(coursor, "radiusAuthServerAddress")) != NULL) &&
+           (radius_list->count < OSW_HOSTAP_CONF_RADIUS_MAX_COUNT)) {
+        char *ip = ini_geta(ip_addr, "radiusAuthServerAddress");
+        char *port_ch = ini_geta(ip_addr, "radiusAuthClientServerPortNumber");
+        if (ip != NULL && port_ch != NULL) {
+            radius_list->list[radius_list->count].server = STRDUP(ip);
+            /* MIB does not provide passphrase, so it has to come from the config instead */
+            if ((passphrase = strstr(coursor_conf, "auth_server_shared_secret")) != NULL) {
+                char *secret = ini_geta(passphrase, "auth_server_shared_secret");
+                radius_list->list[radius_list->count].passphrase = STRDUP(secret);
+                coursor_conf = passphrase + 1;
+            } else {
+                LOGW("osw: hostap: conf: failed to find Auth server secret in config");
+                radius_list->list[radius_list->count].passphrase = STRDUP("secret_unknown");
+            }
+            radius_list->list[radius_list->count].port = atoi(port_ch);
+            radius_list->count++;
+        }
+        coursor = ip_addr + 1;
+    }
+
+    coursor = buf;
+    coursor_conf = conf_buf;
+    while (((ip_addr = strstr(coursor, "radiusAccServerAddress")) != NULL) &&
+           (acct_list->count < OSW_HOSTAP_CONF_RADIUS_MAX_COUNT)) {
+        char *ip = ini_geta(ip_addr, "radiusAccServerAddress");
+        char *port_ch = ini_geta(ip_addr, "radiusAccClientServerPortNumber");
+        if (ip != NULL && port_ch != NULL) {
+            acct_list->list[acct_list->count].server = STRDUP(ip);
+            /* MIB does not provide passphrase, so it has to come from the config instead */
+            if ((passphrase = strstr(coursor_conf, "acct_server_shared_secret")) != NULL) {
+                char *secret = ini_geta(passphrase, "acct_server_shared_secret");
+                acct_list->list[acct_list->count].passphrase = STRDUP(secret);
+                coursor_conf = passphrase + 1;
+            } else {
+                LOGW("osw: hostap: conf: failed to find Accounting secret in config");
+                acct_list->list[acct_list->count].passphrase = STRDUP("secret_unknown");
+            }
+            acct_list->list[acct_list->count].port = atoi(port_ch);
+            acct_list->count++;
+        }
+        coursor = ip_addr + 1;
+    }
+    return true;
+}
+
+static bool
+hapd_util_hapd_conf_to_passpoint(const struct osw_hostap_conf_ap_state_bufs *bufs,
+                                 struct osw_passpoint *passpoint)
+{
+    const char *conf_buf = bufs->config;
+
+    if (conf_buf == NULL) {
+        LOGT("osw: hostap: conf: config buffer empty when filling passpoint");
+        return false;
+    }
+
+    osw_passpoint_free_internal(passpoint);
+
+    const char *hessid = ini_geta(conf_buf, "hessid");
+    if (hessid != NULL) {
+        STRSCPY_WARN(passpoint->hessid.buf, hessid);
+        passpoint->hessid.len = strlen(hessid);
+        passpoint->hs20_enabled = true;
+    }
+    const char *osu_ssid = ini_geta(conf_buf, "osu_ssid");
+    if (osu_ssid != NULL) {
+        STRSCPY_WARN(passpoint->osu_ssid.buf, osu_ssid);
+        passpoint->osu_ssid.len = strlen(osu_ssid);
+    }
+
+    STATE_GET_BOOL(passpoint->hs20_enabled, conf_buf, "hs20");
+    STATE_GET_BOOL(passpoint->osen, conf_buf, "osen");
+    STATE_GET_BOOL(passpoint->asra, conf_buf, "asra");
+    STATE_GET_INT(passpoint->ant, conf_buf, "access_network_type");
+    STATE_GET_INT(passpoint->venue_group, conf_buf, "venue_group");
+    STATE_GET_INT(passpoint->venue_type, conf_buf, "venue_type");
+    STATE_GET_INT(passpoint->anqp_domain_id, conf_buf, "anqp_domain_id");
+    /* FIXME this field doesn't exist in hostapd config
+    STATE_GET_INT(passpoint->pps_mo_id, config, "??");
+    */
+    STATE_GET_INT(passpoint->t_c_timestamp, conf_buf, "hs20_t_c_timestamp");
+
+    char *wan_metrics = ini_geta(conf_buf, "hs20_wan_metrics");
+    if (wan_metrics != NULL) {
+        char *wan_info = strsep(&wan_metrics, ":");
+        if (wan_info != NULL) {
+            unsigned int hex;
+            sscanf(wan_info, "%2x", &hex);
+            passpoint->adv_wan_status = (hex & OSW_PASSPOINT_ADV_WAN_STATUS);
+            passpoint->adv_wan_symmetric = (hex & OSW_PASSPOINT_ADV_WAN_SYMMETRIC);
+            passpoint->adv_wan_at_capacity = (hex & OSW_PASSPOINT_ADV_WAN_AT_CAP);
+        }
+    }
+
+    char *str = ini_geta(conf_buf, "hs20_t_c_filename");
+    if (str != NULL) {
+        passpoint->t_c_filename = STRDUP(str);
+    }
+
+    str = ini_geta(conf_buf, "anqp_elem");
+    if (str != NULL) {
+        passpoint->anqp_elem = STRDUP(str);
+    }
+
+    size_t list_len;
+    char **list = ini_get_multiple_str_sep(conf_buf, "domain_name", ",", &list_len);
+    if (list != NULL) {
+        passpoint->domain_list = list;
+        passpoint->domain_list_len = list_len;
+    }
+    list = ini_get_multiple_str(conf_buf, "nai_realm", &list_len);
+    if (list != NULL) {
+        passpoint->nairealm_list = list;
+        passpoint->nairealm_list_len = list_len;
+    }
+    list = ini_get_multiple_str(conf_buf, "roaming_consortium", &list_len);
+    if (list != NULL) {
+        passpoint->roamc_list = list;
+        passpoint->roamc_list_len = list_len;
+    }
+    list = ini_get_multiple_str(conf_buf, "hs20_oper_friendly_name", &list_len);
+    if (list != NULL) {
+        passpoint->oper_fname_list = list;
+        passpoint->oper_fname_list_len = list_len;
+    }
+    list = ini_get_multiple_str(conf_buf, "venue_name", &list_len);
+    if (list != NULL) {
+        passpoint->venue_name_list = list;
+        passpoint->venue_name_list_len = list_len;
+    }
+    list = ini_get_multiple_str(conf_buf, "venue_url", &list_len);
+    if (list != NULL) {
+        passpoint->venue_url_list = list;
+        passpoint->venue_url_list_len = list_len;
+    }
+    list = ini_get_multiple_str_sep(conf_buf, "anqp_3gpp_cell_net", ";", &list_len);
+    if (list != NULL) {
+        passpoint->list_3gpp_list = list;
+        passpoint->list_3gpp_list_len = list_len;
+    }
+
+    int *int_list = ini_get_multiple_int(conf_buf, "network_auth_type", &list_len);
+    if (list != NULL) {
+        passpoint->net_auth_type_list = int_list;
+        passpoint->net_auth_type_list_len = list_len;
+    }
+
+    return true;
+}
+
+static bool
 hapd_util_hapd_sae_password_to_osw(const char *sae_password,
                                    struct osw_ap_psk_list *psk_list)
 {
@@ -284,6 +464,15 @@ hapd_util_hapd_sae_password_to_osw(const char *sae_password,
     psk_list->list->key_id = 0;
     psk_list->count = 1;
 
+    return true;
+}
+
+static bool
+hapd_util_hapd_nas_identifier_to_osw(const char *nas_identifier,
+                                     struct osw_nas_id *nas_id)
+{
+    if (strlen(nas_identifier) < 1) return false;
+    STRSCPY_WARN(nas_id->buf, nas_identifier);
     return true;
 }
 
@@ -383,7 +572,7 @@ hapd_util_supp_rates_to_osw(const char *in, uint16_t *rates)
         const long halfmbps = strtol(in, NULL, 16);
         if (halfmbps != 0) {
             const enum osw_rate_legacy rate = osw_rate_legacy_from_halfmbps(halfmbps);
-            if (rate < OSW_RATE_UNSPEC) {
+            if (rate < OSW_RATE_COUNT) {
                 *rates |= (1 << rate);
             }
         }
@@ -402,7 +591,7 @@ hapd_util_basic_rates_to_osw(const char *in, uint16_t *rates)
         if (kbps != 0) {
             const long halfmbps = kbps / 5;
             enum osw_rate_legacy rate = osw_rate_legacy_from_halfmbps(halfmbps);
-            if (rate < OSW_RATE_UNSPEC) {
+            if (rate < OSW_RATE_COUNT) {
                 *rates |= 1 << rate;
             }
         }
@@ -457,7 +646,7 @@ hapd_util_beacon_rate_to_osw(const char *in, struct osw_beacon_rate *rate)
         const int halfmbps = kbps / 5;
         const enum osw_rate_legacy lrate = osw_rate_legacy_from_halfmbps(halfmbps);
 
-        if (lrate < OSW_RATE_UNSPEC) {
+        if (osw_rate_is_valid(lrate)) {
             rate->type = OSW_BEACON_RATE_ABG;
             rate->u.legacy = lrate;
         }
@@ -567,12 +756,12 @@ osw_hostap_conf_osw_wpa_to_wpa_key_mgmt(const struct osw_drv_vif_config_ap *ap,
     if (ap->wpa.akm_sae)           STRSCAT(wpa_key_mgmt, "SAE ");
     if (ap->wpa.akm_ft_psk)        STRSCAT(wpa_key_mgmt, "FT-PSK ");
     if (ap->wpa.akm_ft_sae)        STRSCAT(wpa_key_mgmt, "FT-SAE ");
-#if 0
     if (ap->wpa.akm_eap)           STRSCAT(wpa_key_mgmt, "WPA-EAP ");
+    if (ap->wpa.akm_ft_eap)        STRSCAT(wpa_key_mgmt, "FT-EAP ");
+#if 0
     if (ap->wpa.akm_eap_sha256)    STRSCAT(wpa_key_mgmt, "WPA-EAP-SHA256 ");
     if (ap->wpa.akm_psk_sha256)    STRSCAT(wpa_key_mgmt, "WPA-PSK-SHA256 ");
     if (ap->wpa.akm_suite_b192)    STRSCAT(wpa_key_mgmt, "WPA-EAP-SUITE-B-192 ");
-    if (ap->wpa.akm_ft_eap)        STRSCAT(wpa_key_mgmt, "FT-EAP ");
     if (ap->wpa.akm_ft_eap_sha384) STRSCAT(wpa_key_mgmt, "FT-EAP-SHA384 ");
 #endif
     /* commit */
@@ -720,7 +909,7 @@ osw_hostap_conf_osw_wpa_to_ieee80211(const struct osw_drv_vif_config_ap *ap,
     OSW_HOSTAP_CONF_SET_VAL(conf->ap_isolate, ap->isolated);
     OSW_HOSTAP_CONF_SET_VAL(conf->multi_ap, hapd_util_from_osw_multi_ap(&ap->multi_ap));
     // this needs a is_X_supported guard; this is not gauranteed to be there
-    // OSW_HOSTAP_CONF_SET_VAL(conf->mcast_to_ucast, ap->mcast2ucast);
+    // OSW_HOSTAP_CONF_SET_VAL(conf->multicast_to_unicast, ap->mcast2ucast);
 }
 
 static void
@@ -799,6 +988,123 @@ osw_hostap_conf_osw_wpa_to_ieee80211be(const struct osw_drv_vif_config_ap *ap,
         OSW_HOSTAP_CONF_SET_VAL(conf->ieee80211be, ap->mode.eht_enabled);
         //OSW_HOSTAP_CONF_SET_VAL(conf->require_eht, ap->mode.eht_required);
     }
+}
+
+static void
+osw_hostap_conf_osw_wpa_to_passpoint(const struct osw_drv_vif_config_ap *ap,
+                                     struct osw_hostap_conf_ap_config *conf)
+{
+    char hs20_wan_metrics[16];
+    unsigned char wan_info = 0;
+
+    if (!ap->passpoint.hs20_enabled) return;
+
+    OSW_HOSTAP_CONF_SET_VAL(conf->hs20, ap->passpoint.hs20_enabled);
+    OSW_HOSTAP_CONF_SET_VAL(conf->interworking, true);
+
+    if (ap->passpoint.hessid.len > 0)
+        OSW_HOSTAP_CONF_SET_BUF(conf->hessid, ap->passpoint.hessid.buf);
+
+    if (ap->passpoint.osu_ssid.len > 0)
+        OSW_HOSTAP_CONF_SET_BUF(conf->osu_ssid, ap->passpoint.osu_ssid.buf);
+
+    /* adv_wan legacy */
+    wan_info |= (ap->passpoint.adv_wan_status ? OSW_PASSPOINT_ADV_WAN_STATUS : 0);
+    wan_info |= (ap->passpoint.adv_wan_symmetric ? OSW_PASSPOINT_ADV_WAN_SYMMETRIC : 0);
+    wan_info |= (ap->passpoint.adv_wan_at_capacity ? OSW_PASSPOINT_ADV_WAN_AT_CAP : 0);
+    snprintf(hs20_wan_metrics, sizeof(hs20_wan_metrics), "%02X:0:0:0:0:0", wan_info);
+    OSW_HOSTAP_CONF_SET_BUF(conf->hs20_wan_metrics, hs20_wan_metrics);
+
+    OSW_HOSTAP_CONF_SET_VAL(conf->osen, ap->passpoint.osen);
+    OSW_HOSTAP_CONF_SET_VAL(conf->asra, ap->passpoint.asra);
+    OSW_HOSTAP_CONF_SET_VAL(conf->access_network_type, ap->passpoint.ant);
+    OSW_HOSTAP_CONF_SET_VAL(conf->venue_group, ap->passpoint.venue_group);
+    OSW_HOSTAP_CONF_SET_VAL(conf->venue_type, ap->passpoint.venue_type);
+    OSW_HOSTAP_CONF_SET_VAL(conf->anqp_domain_id, ap->passpoint.anqp_domain_id);
+    OSW_HOSTAP_CONF_SET_VAL(conf->hs20_t_c_timestamp, ap->passpoint.t_c_timestamp);
+
+    if (IS_NULL_PTR(ap->passpoint.t_c_filename) == false)
+        OSW_HOSTAP_CONF_SET_BUF(conf->hs20_t_c_filename, ap->passpoint.t_c_filename);
+
+    if (IS_NULL_PTR(ap->passpoint.anqp_elem) == false)
+        OSW_HOSTAP_CONF_SET_BUF(conf->anqp_elem, ap->passpoint.anqp_elem);
+
+    OSW_HOSTAP_CONF_SET_BUF_ARRAY(conf->domain_name,
+                                  ap->passpoint.domain_list,
+                                  ap->passpoint.domain_list_len);
+    OSW_HOSTAP_CONF_SET_VAL(conf->domain_name_len,
+                            ap->passpoint.domain_list_len);
+
+    OSW_HOSTAP_CONF_SET_BUF_ARRAY(conf->nai_realm,
+                                  ap->passpoint.nairealm_list,
+                                  ap->passpoint.nairealm_list_len);
+    OSW_HOSTAP_CONF_SET_VAL(conf->nai_realm_len,
+                            ap->passpoint.nairealm_list_len);
+
+    OSW_HOSTAP_CONF_SET_BUF_ARRAY(conf->roaming_consortium,
+                                  ap->passpoint.roamc_list,
+                                  ap->passpoint.roamc_list_len);
+    OSW_HOSTAP_CONF_SET_VAL(conf->roaming_consortium_len,
+                            ap->passpoint.roamc_list_len);
+
+    OSW_HOSTAP_CONF_SET_BUF_ARRAY(conf->hs20_oper_friendly_name,
+                                  ap->passpoint.oper_fname_list,
+                                  ap->passpoint.oper_fname_list_len);
+    OSW_HOSTAP_CONF_SET_VAL(conf->hs20_oper_friendly_name_len,
+                            ap->passpoint.oper_fname_list_len);
+
+    OSW_HOSTAP_CONF_SET_BUF_ARRAY(conf->venue_name,
+                                  ap->passpoint.venue_name_list,
+                                  ap->passpoint.venue_name_list_len);
+    OSW_HOSTAP_CONF_SET_VAL(conf->venue_name_len,
+                            ap->passpoint.venue_name_list_len);
+
+    OSW_HOSTAP_CONF_SET_BUF_ARRAY(conf->venue_url,
+                                  ap->passpoint.venue_url_list,
+                                  ap->passpoint.venue_url_list_len);
+    OSW_HOSTAP_CONF_SET_VAL(conf->venue_url_len,
+                            ap->passpoint.venue_url_list_len);
+
+    OSW_HOSTAP_CONF_SET_BUF_ARRAY(conf->anqp_3gpp_cell_net,
+                                  ap->passpoint.list_3gpp_list,
+                                  ap->passpoint.list_3gpp_list_len);
+    OSW_HOSTAP_CONF_SET_VAL(conf->anqp_3gpp_cell_net_len,
+                            ap->passpoint.list_3gpp_list_len);
+
+    OSW_HOSTAP_CONF_SET_VAR_ARRAY(conf->network_auth_type,
+                                  ap->passpoint.net_auth_type_list,
+                                  ap->passpoint.net_auth_type_list_len);
+
+    OSW_HOSTAP_CONF_SET_VAL(conf->network_auth_type_len,
+                            ap->passpoint.net_auth_type_list_len);
+}
+
+static void
+osw_hostap_conf_osw_wpa_to_radius_list(const struct osw_drv_vif_config_ap *ap,
+                                       struct osw_hostap_conf_ap_config *conf)
+{
+    const struct osw_radius_list *rad_list = &ap->radius_list;
+    struct osw_radius *ap_radius = rad_list->list;
+    size_t i;
+
+    MEMZERO(conf->radius_buf);
+
+    for (i = 0; i < rad_list->count; i++) {
+        STRSCAT(conf->radius_buf, strfmta("auth_server_addr=%s\n", ap_radius->server));
+        STRSCAT(conf->radius_buf, strfmta("auth_server_port=%d\n", ap_radius->port));
+        STRSCAT(conf->radius_buf, strfmta("auth_server_shared_secret=%s\n", ap_radius->passphrase));
+        ap_radius++;
+    };
+
+    rad_list = &ap->acct_list;
+    ap_radius = rad_list->list;
+
+    for (i = 0; i < rad_list->count; i++) {
+        STRSCAT(conf->radius_buf, strfmta("acct_server_addr=%s\n", ap_radius->server));
+        STRSCAT(conf->radius_buf, strfmta("acct_server_port=%d\n", ap_radius->port));
+        STRSCAT(conf->radius_buf, strfmta("acct_server_shared_secret=%s\n", ap_radius->passphrase));
+        ap_radius++;
+    };
 }
 
 static void
@@ -898,6 +1204,24 @@ osw_hostap_conf_osw_wpa_to_wps(const struct osw_drv_vif_config_ap *ap,
 }
 
 void
+osw_hostap_conf_osw_wpa_to_enterprise(const struct osw_drv_vif_config_ap *ap,
+                                      struct osw_hostap_conf_ap_config *conf)
+{
+    if (!(ap->wpa.akm_eap ||
+          ap->wpa.akm_ft_eap ||
+#if 0
+          ap->wpa.akm_eap_sha256 ||
+          ap->wpa.akm_ft_eap_sha384 ||
+#endif
+          false))
+        return;
+
+    OSW_HOSTAP_CONF_SET_VAL(conf->ieee8021x, 1);
+    OSW_HOSTAP_CONF_SET_VAL(conf->auth_algs, 1);
+    OSW_HOSTAP_CONF_SET_BUF(conf->nas_identifier, ap->nas_identifier.buf);
+}
+
+void
 osw_hostap_conf_osw_wpa_to_btm(const struct osw_drv_vif_config_ap *ap,
                                struct osw_hostap_conf_ap_config *conf)
 {
@@ -917,6 +1241,53 @@ compare(const char* a, const char* b)
     /* FIXME enhance this function to compare tokenized sub-string (space separated)
      * to be able to match 'SAE WPA-PSK' and 'WPA-PSK SAE' as equal */
     return strcmp(a, b);
+}
+
+void
+osw_hostap_conf_list_free(struct osw_hostap_conf_ap_config *conf)
+{
+    int i;
+    for (i = 0; i < conf->domain_name_len; i++) {
+        FREE(conf->domain_name[i]);
+        conf->domain_name[i] = NULL;
+    }
+    conf->domain_name_len = 0;
+
+    for (i = 0; i < conf->nai_realm_len; i++) {
+        FREE(conf->nai_realm[i]);
+        conf->nai_realm[i] = NULL;
+    }
+    conf->nai_realm_len = 0;
+
+    for (i = 0; i < conf->roaming_consortium_len; i++) {
+        FREE(conf->roaming_consortium[i]);
+        conf->roaming_consortium[i] = NULL;
+    }
+    conf->roaming_consortium_len = 0;
+
+    for (i = 0; i < conf->hs20_oper_friendly_name_len; i++) {
+        FREE(conf->hs20_oper_friendly_name[i]);
+        conf->hs20_oper_friendly_name[i] = NULL;
+    }
+    conf->hs20_oper_friendly_name_len = 0;
+
+    for (i = 0; i < conf->venue_name_len; i++) {
+        FREE(conf->venue_name[i]);
+        conf->venue_name[i] = NULL;
+    }
+    conf->venue_name_len = 0;
+
+    for (i = 0; i < conf->venue_url_len; i++) {
+        FREE(conf->venue_url[i]);
+        conf->venue_url[i] = NULL;
+    }
+    conf->venue_url_len = 0;
+
+    for (i = 0; i < conf->anqp_3gpp_cell_net_len; i++) {
+        FREE(conf->anqp_3gpp_cell_net[i]);
+        conf->anqp_3gpp_cell_net[i] = NULL;
+    }
+    conf->anqp_3gpp_cell_net_len = 0;
 }
 
 bool
@@ -970,8 +1341,8 @@ osw_hostap_conf_fill_ap_config(struct osw_drv_conf *drv_conf,
     /*  IEEE 802.11be related configuration  */
     osw_hostap_conf_osw_wpa_to_ieee80211be (ap, conf);
 
-    /* RADIUS client configuration */
-    /* FIXME */
+    /* Passpoint configuration */
+    osw_hostap_conf_osw_wpa_to_passpoint(ap, conf);
 
     /*  WPA/IEEE 802.11i configuration       */
     osw_hostap_conf_osw_wpa_to_wpa         (ap, conf);
@@ -982,6 +1353,10 @@ osw_hostap_conf_fill_ap_config(struct osw_drv_conf *drv_conf,
     osw_hostap_conf_osw_wpa_to_psks        (ap, conf);
     osw_hostap_conf_osw_wpa_to_sae         (ap, conf);
     osw_hostap_conf_osw_wpa_to_wps         (ap, conf);
+
+    /* WPA Enterprise/IEEE 802.1x configuration */
+    osw_hostap_conf_osw_wpa_to_enterprise  (ap, conf);
+    osw_hostap_conf_osw_wpa_to_radius_list (ap, conf);
 
     /*  WPA/IEEE 802.11kv configuration       */
     osw_hostap_conf_osw_wpa_to_btm         (ap, conf);
@@ -1022,7 +1397,7 @@ osw_hostap_conf_generate_ap_config_bufs(struct osw_hostap_conf_ap_config *conf)
     CONF_APPEND(uapsd_advertisement_enabled, "%d");
     CONF_APPEND(multi_ap, "%d");
     CONF_APPEND(ap_isolate, "%d");
-    CONF_APPEND(mcast_to_ucast, "%d");
+    CONF_APPEND(multicast_to_unicast, "%d");
     CONF_APPEND(send_probe_response, "%d");
     CONF_APPEND(noscan, "%d");
 
@@ -1066,6 +1441,30 @@ osw_hostap_conf_generate_ap_config_bufs(struct osw_hostap_conf_ap_config *conf)
     /* RADIUS client configuration */
     /* FIXME  */
 
+    /* Passpoint configuration */
+    CONF_APPEND(hessid, "%s");
+    CONF_APPEND(hs20, "%d");
+    CONF_APPEND(interworking, "%d");
+    CONF_APPEND(hs20_wan_metrics, "%s");
+    CONF_APPEND(osen, "%d");
+    CONF_APPEND(asra, "%d");
+    CONF_APPEND_ARRAY_SEP(domain_name, "%s", ",");
+    CONF_APPEND(access_network_type, "%d");
+    CONF_APPEND(venue_group, "%d");
+    CONF_APPEND(venue_type, "%d");
+    CONF_APPEND(anqp_domain_id, "%d");
+    CONF_APPEND(hs20_t_c_timestamp, "%d");
+    CONF_APPEND(osu_ssid, "%s");
+    CONF_APPEND(hs20_t_c_filename, "%s");
+    CONF_APPEND(anqp_elem, "%s");
+    CONF_APPEND_ARRAY(roaming_consortium, "%s");
+    CONF_APPEND_ARRAY(nai_realm, "%s");
+    CONF_APPEND_ARRAY(hs20_oper_friendly_name, "%s");
+    CONF_APPEND_ARRAY(venue_name, "%s");
+    CONF_APPEND_ARRAY(venue_url, "%s");
+    CONF_APPEND_ARRAY_SEP(anqp_3gpp_cell_net, "%s", ";");
+    CONF_APPEND_ARRAY(network_auth_type, "%d");
+
     /* WPA/IEEE 802.11i configuration */
     CONF_APPEND(wpa, "%d");
     CONF_APPEND(wpa_psk_file, "%s");
@@ -1080,6 +1479,7 @@ osw_hostap_conf_generate_ap_config_bufs(struct osw_hostap_conf_ap_config *conf)
 
     /* IEEE 802.11r configuration */
     CONF_APPEND(mobility_domain, "%04x");
+    CONF_APPEND(nas_identifier, "%s");
     /* FIXME */
 
     /* Wi-Fi Protected Setup (WPS) */
@@ -1100,6 +1500,7 @@ osw_hostap_conf_generate_ap_config_bufs(struct osw_hostap_conf_ap_config *conf)
     CONF_APPEND(rrm_neighbor_report, "%d");
 
     CONF_APPEND(use_driver_iface_addr, "%d");
+    CONF_APPEND_BUF(conf->radius_buf);
     CONF_APPEND_BUF(conf->extra_buf);
     /* osw_hwaddr_list (acl) - not handled by hostapd */
 
@@ -1213,6 +1614,11 @@ osw_hostap_conf_fill_ap_state_acl(const struct osw_hostap_conf_ap_state_bufs *bu
 
     STATE_GET_BY_FN(macaddr_acl, get_config, "macaddr_acl", hapd_util_macaddr_acl_to_osw);
 
+    if (macaddr_acl == 0)
+        ap->acl_policy = OSW_ACL_DENY_LIST;
+    else
+        ap->acl_policy = OSW_ACL_ALLOW_LIST;
+
     if (deny_acl != NULL && strlen(deny_acl) > 0) {
         cpy_deny_acl = STRDUP(deny_acl);
     }
@@ -1230,7 +1636,8 @@ osw_hostap_conf_fill_ap_state_acl(const struct osw_hostap_conf_ap_state_bufs *bu
     acl_list->list = CALLOC(1, sizeof(struct osw_hwaddr));
 
     if (cpy_deny_acl != NULL) {
-        while ((line = strsep(&cpy_deny_acl, "\n")) != NULL) {
+        char *tokens = cpy_deny_acl;
+        while ((line = strsep(&tokens, "\n")) != NULL) {
             if (cpy_accept_acl == NULL ||
                 (cpy_accept_acl != NULL && strstr(cpy_accept_acl, line) == NULL)) {
                 acl_list->list = REALLOC(acl_list->list,
@@ -1243,7 +1650,8 @@ osw_hostap_conf_fill_ap_state_acl(const struct osw_hostap_conf_ap_state_bufs *bu
             }
         }
     } else if (cpy_accept_acl != NULL) {
-        while ((line = strsep(&cpy_accept_acl, "\n")) != NULL) {
+        char *tokens = cpy_accept_acl;
+        while ((line = strsep(&tokens, "\n")) != NULL) {
             acl_list->list = REALLOC(acl_list->list,
                                      (acl_list->count + 1) * sizeof(struct osw_hwaddr));
             acl = &acl_list->list[acl_list->count];
@@ -1253,11 +1661,6 @@ osw_hostap_conf_fill_ap_state_acl(const struct osw_hostap_conf_ap_state_bufs *bu
             acl_list->count++;
         }
     }
-
-    if (macaddr_acl == 0)
-        ap->acl_policy = OSW_ACL_DENY_LIST;
-    else
-        ap->acl_policy = OSW_ACL_ALLOW_LIST;
 
     FREE(cpy_deny_acl);
     FREE(cpy_accept_acl);
@@ -1377,6 +1780,12 @@ osw_hostap_conf_fill_ap_state(const struct osw_hostap_conf_ap_state_bufs *bufs,
 
     STATE_GET_BY_FN(ap->psk_list,                config, "sae_password",
                     hapd_util_hapd_sae_password_to_osw);
+
+    STATE_GET_BY_FN(ap->nas_identifier,          config, "nas_identifier",
+                    hapd_util_hapd_nas_identifier_to_osw);
+
+    hapd_util_hapd_mib_to_radius_list(bufs, &ap->radius_list, &ap->acct_list);
+    hapd_util_hapd_conf_to_passpoint(bufs, &ap->passpoint);
 }
 
 #include "osw_hostap_conf_ut.c.h"

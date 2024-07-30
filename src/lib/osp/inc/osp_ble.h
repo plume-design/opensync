@@ -175,6 +175,23 @@ bool osp_ble_set_scan_response_data(const uint8_t payload[31], uint8_t len);
 bool osp_ble_set_advertising_params(bool enabled, bool sr_enabled, uint16_t interval_ms);
 
 /**
+ * Set advertising transmit power level
+ *
+ * @param[in]  tx_power      Target advertising TX power in 0.1 dBm steps (for example,
+ *                           the value of -10 is -1 dBm and 55 is 5.5 dBm).
+ * @param[out] set_tx_power  Optional pointer to a variable to store the actual TX power
+ *                           that will be used for advertising, in the same unit as
+ *                           `tx_power`. If the target `tx_power` is within the range
+ *                           supported by the hardware or the system global TX power
+ *                           limits (which are subject to certification regulations),
+ *                           then this value will be equal to the target `tx_power`,
+ *                           otherwise it will be clamped to the nearest supported value.
+ *
+ * @return true on success. Failure is logged internally.
+ */
+bool osp_ble_set_advertising_tx_power(int16_t tx_power, int16_t *set_tx_power);
+
+/**
  * Set connectable mode
  *
  * @param enabled  Enable advertising as connectable and reception of connection requests.

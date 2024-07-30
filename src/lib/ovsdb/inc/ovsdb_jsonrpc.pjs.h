@@ -35,17 +35,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
         PJS_STRING_A(params, 128, 32)           \
         PJS_INT(id))
 
-
-#define PJS_RPC_RS_ERROR                        \
-    PJS(rpc_response_error,                     \
-        PJS_INT(code)                           \
-        PJS_STRING_Q(message, 64))              \
-
-
 #define PJS_RPC_RS                              \
     PJS(rpc_response,                           \
-        PJS_SUB_Q(error, rpc_response_error)    \
+        PJS_STRING_Q(error, 128)    \
         PJS_INT(id))
 
-#define PJS_GEN_TABLE PJS_RPC_RQ PJS_RPC_RS_ERROR PJS_RPC_RS
+#define PJS_GEN_TABLE PJS_RPC_RQ PJS_RPC_RS
 

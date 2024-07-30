@@ -41,7 +41,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "target.h"
 #include "unity.h"
 #include "unit_test_utils.h"
-
+#include "fsm_fn_trace.h"
 #include "kconfig.h"
 
 #include "pcap.c"
@@ -5511,13 +5511,25 @@ test_check_ip_multicast(void)
     }
 }
 
+static void
+test_fsm_core_global_init(void)
+{
+    fsm_fn_tracer_init();
+}
+
+static void
+test_fsm_core_global_exit(void)
+{
+    return;
+}
+
 int
 main(int argc, char *argv[])
 {
     (void)argc;
     (void)argv;
 
-    ut_init(ut_name, NULL, NULL);
+    ut_init(ut_name, test_fsm_core_global_init, test_fsm_core_global_exit);
     ut_setUp_tearDown(ut_name, fsm_core_setUp, fsm_core_tearDown);
     // ut_keep_temp_folder(true); /* For reference */
     g_mgr = fsm_get_mgr();

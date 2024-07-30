@@ -37,6 +37,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "log.h"
 #include "memutil.h"
 #include "util.h"
+#include "os_ev_trace.h"
 
 static struct adt_upnp_curl conn_mgr;
 
@@ -79,15 +80,12 @@ multi_timer_cb(CURLM *multi, long timeout_ms,
                struct adt_upnp_curl *mgr)
 {
     ev_timer_stop(mgr->loop, &mgr->timer_event);
-    if (timeout_ms > 0)
+    if (timeout_ms >= 0)
     {
         double  t = timeout_ms / 1000;
+
         ev_timer_init(&mgr->timer_event, timer_cb, t, 0.);
         ev_timer_start(mgr->loop, &mgr->timer_event);
-    }
-    else if (timeout_ms == 0)
-    {
-        timer_cb(mgr->loop, &mgr->timer_event, 0);
     }
     return 0;
 }
@@ -345,6 +343,7 @@ setsock(struct sock_info *f, curl_socket_t s, CURL *e, int act,
     f->easy = e;
     if (f->evset) ev_io_stop(mgr->loop, &f->ev);
 
+    OS_EV_TRACE_MAP(event_cb);
     ev_io_init(&f->ev, event_cb, f->sockfd, kind);
     f->ev.data = mgr;
     f->evset = 1;
@@ -456,6 +455,7 @@ adt_upnp_curl_init(struct ev_loop *loop)
     mgr->loop = loop;
     mgr->multi = curl_multi_init();
 
+    os_ev_trace_map(timer_cb, "adt_upnp_timer_cb");
     ev_timer_init(&mgr->timer_event, timer_cb, 0., 0.);
     mgr->timer_event.data = mgr;
     mgr->fifo_event.data = mgr;

@@ -207,6 +207,16 @@ static inline uint64_t get_timestamp(void)
     else
         return timespec_to_timestamp(&ts);
 }
+#else
+static inline uint64_t timespec_to_timestamp(const struct timespec *ts)
+{
+    return 0;
+}
+
+static inline uint64_t get_timestamp(void)
+{
+    return 0;
+}
 #endif /* ! TARGET_NATIVE */
 
 typedef struct

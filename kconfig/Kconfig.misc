@@ -1,0 +1,18 @@
+
+orsource "../src/lib/hostap/kconfig/Kconfig"
+orsource "../src/wpd/kconfig/Kconfig"
+
+config REMAP_LEGACY
+    bool "Remap legacy install prefix path"
+    help
+        Move all files from legacy location to new install prefix path
+        Also replace all paths in installed scripts
+
+config IN_PLACE_UPGRADE
+    bool "Support in-place upgrade of OpenSync"
+    default n
+    help
+        Build an installable OpenSync package and
+        modify the boot process to allow for in-place
+        upgrade of OpenSync
+

@@ -1,1 +1,1 @@
-INSTALL_PREFIX/scripts/opensync_functions.sh
+../INSTALL_PREFIX/scripts/opensync_functions.sh

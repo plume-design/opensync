@@ -43,6 +43,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ovsdb.h"
 #include "json_util.h"
 #include "memutil.h"
+#include "os_ev_trace.h"
 
 /*****************************************************************************/
 
@@ -410,6 +411,21 @@ int ovsdb_unregister_update_cb(int mon_id)
     return 0;
 }
 
+bool ovsdb_change_update_cb(int mon_id, ovsdb_update_process_t *fn, void *data)
+{
+    struct rpc_update_handler *rh;
+
+    rh = ds_tree_find(&json_rpc_update_handler_list, &mon_id);
+    if (rh)
+    {
+        rh->rrh_callback = fn;
+        rh->data = data;
+        return true;
+    }
+
+    return false;
+}
+
 /**
  * Process single JSON-RPC "update" message
  */
@@ -519,7 +535,7 @@ bool ovsdb_init_loop(struct ev_loop *loop, const char *name)
     if (json_rpc_fd > 0)
     {
         LOG(NOTICE, "OVSDB connection established");
-
+        OS_EV_TRACE_MAP(cb_ovsdb_read);
         ev_io_init(&wovsdb, cb_ovsdb_read, json_rpc_fd, EV_READ);
         ev_io_start(loop, &wovsdb);
 
@@ -559,7 +575,7 @@ bool ovsdb_init_loop_with_priority(struct ev_loop *loop, const char *name, int p
     if (json_rpc_fd > 0)
     {
         LOG(NOTICE, "OVSDB connection established");
-
+        OS_EV_TRACE_MAP(cb_ovsdb_read);
         ev_io_init(&wovsdb, cb_ovsdb_read, json_rpc_fd, EV_READ);
         ev_set_priority(&wovsdb, priority);
         LOGI("%s: Set ovsdb event priority for %s to %d", __func__,

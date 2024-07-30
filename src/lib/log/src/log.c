@@ -40,6 +40,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "os_time.h"
 #include "util.h"
 #include "assert.h"
+#include "os_ev_trace.h"
 
 #define LF '\n'
 #define CR '\r'
@@ -846,6 +847,7 @@ static void log_dynamic_handler_init(struct ev_loop *loop)
         log_dynamic.trigger_directory = path;
 
         // Init timer
+        OS_EV_TRACE_MAP(log_dynamic_state_handler);
         ev_stat_init(&log_dynamic.stat,
                      log_dynamic_state_handler,
                      log_dynamic.state_file_path,

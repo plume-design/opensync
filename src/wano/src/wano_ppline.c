@@ -605,50 +605,62 @@ void wano_ppline_plugin_status_fn(wano_plugin_handle_t *ph, struct wano_plugin_s
     ev_async_send(EV_DEFAULT, &wpp->wpp_status_async);
 }
 
-static const char* wano_wan_probe_get_dns_server(void)
+void wano_wan_probe_get_dns_server(char *buf, const size_t buflen)
 {
-    static char server[INET6_ADDRSTRLEN] = {0};
-    static bool init = false;
+    char *csv = buf;
+    size_t csv_len = 0;
+    size_t csv_cap = buflen;
 
-    if (init == true)
-    {
+    FILE *fp = NULL;
+    char *line = NULL;
+    size_t len = 0;
+
+    fp = fopen(CONFIG_WANO_DNS_PROBE_RESOLV_CONF_PATH, "r");
+    if (fp == NULL) {
+        LOGD("wano: wano probe: failed to open %s for reading, returning NULL buffer", CONFIG_WANO_DNS_PROBE_RESOLV_CONF_PATH);
+        *csv = '\0';
         goto out;
     }
 
-    char *buf = strexa("grep", "-e", "nameserver", CONFIG_WANO_DNS_PROBE_RESOLV_CONF_PATH, "-s");
+    while (getline(&line, &len, fp) != -1) {
+        /* copy line ptr, because strtok modifies it */
+        char *l = line;
 
-    if (buf == NULL)
-    {
-        LOGD("wano: wan probe: strexa returned null, returning empty buffer");
-        goto done;
-    }
+        for (char *token = strtok(l, " "); token != NULL; token = strtok(NULL, " ")) {
+            if (strcmp(token, "nameserver") == 0) {
+                char *s = strtok(NULL, " ");
+                if (s != NULL) {
+                     size_t slen = strlen(s);
+                     if (slen > 0) {
+                         /* strtok might include newline character as well */
+                         if (s[slen-1] == '\n') {
+                             s[slen-1] = '\0';
+                             slen--;
+                         }
 
-    for (;;)
-    {
-        if (*buf == '\0')
-        {
-            goto done;
+                         if ((csv_cap - csv_len) <= (slen-2)) {
+                             LOGD("wano: dns probe: buffer too small, skipping server entries");
+                             goto out;
+                         }
+
+                         strncpy(csv + csv_len, s, slen);
+                         csv_len += slen;
+                         csv[csv_len++] = ',';
+                     }
+                }
+                break;
+            }
         }
-
-        if (*buf == ' ')
-        {
-            break;
-        }
-
-        buf++;
     }
 
-    while (*buf == ' ')
-    {
-        buf++;
-    }
-
-    STRSCPY(server, buf);
-
-done:
-    init = true;
 out:
-    return server;
+    /* Don't increment csv_len, because we want to override the terminator with next write */
+    csv[csv_len] = '\0';
+
+    if (fp != NULL)
+        fclose(fp);
+    if (line)
+        free(line);
 }
 
 static void wano_wan_probe_success_cb(void *arg, int status, int timeouts, struct hostent *hostent)
@@ -693,7 +705,9 @@ static bool wano_wan_probe_success(const char* if_name)
     fd_set read_fds, write_fds;
     int optmask;
     int nfds;
-    const char *server = wano_wan_probe_get_dns_server();
+    char server[256];
+
+    wano_wan_probe_get_dns_server(server, sizeof(server));
 
     bool cb_success = true;
     const char *dns_target = wano_awlan_redirector_addr();

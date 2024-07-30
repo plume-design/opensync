@@ -38,6 +38,12 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define DPP_DEVICE_TX_CHAINMASK_MAX      3
 #define DPP_DEVICE_TOP_MAX               10
 
+#if CONFIG_PM_ENABLE_LED
+#define DPP_DEVICE_LED_COUNT             CONFIG_OSP_LED_COUNT
+#else
+#define DPP_DEVICE_LED_COUNT             0
+#endif /* CONFIG_PM_ENABLE_LED */
+
 
 typedef enum
 {
@@ -138,13 +144,19 @@ typedef struct
 
 typedef struct
 {
+    int16_t                         position;
+    int16_t                         value;
+} dpp_device_led_state_t;
+
+typedef struct
+{
     dpp_device_txchainmask_t        radio_txchainmasks[DPP_DEVICE_TX_CHAINMASK_MAX];
     uint32_t                        txchainmask_qty;
     int32_t                         fan_rpm;
     int16_t                         fan_duty_cycle;
     int16_t                         thermal_state;
     int16_t                         target_rpm;
-    int16_t                         led_state;
+    dpp_device_led_state_t          led_states[DPP_DEVICE_LED_COUNT];
     uint64_t                        timestamp_ms;
     ds_dlist_node_t                 node;
 } dpp_device_thermal_record_t;

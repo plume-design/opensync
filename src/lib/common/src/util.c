@@ -59,6 +59,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
 #define UTIL_URI_MAX_LENG           512
+#define DANGEROUS_CHARACTERS        "|;<>&`$"
 
 static bool
 is_private_10(uint32_t addr)
@@ -598,6 +599,27 @@ char* strfmt_nt_array(char *str, size_t size, char **array)
     }
     strlcat(str, "]", size);
     return str;
+}
+
+void str_array_free(char **arr, size_t size)
+{
+    size_t i;
+    if (arr != NULL) {
+        for (i = 0; i < size; i++) {
+            FREE(arr[i]);
+        }
+        FREE(arr);
+    }
+}
+
+char** str_array_dup(char **src, size_t size)
+{
+    size_t i;
+    char** dst = CALLOC(size, sizeof(*dst));
+    for (i = 0; i < size; i++) {
+        dst[i] = STRDUP(src[i]);
+    }
+    return dst;
 }
 
 int filter_out_nt_array(char **array, char **filter)
@@ -1189,6 +1211,74 @@ char *ini_get(const char *buf, const char *key)
     return NULL;
 }
 
+char **ini_get_multiple_str(const char *buf, const char *key, size_t *out_len)
+{
+    size_t count = 0;
+    char **arr = NULL;
+    char *lines = strdupa(buf);
+    char *line;
+    const char *k;
+    const char *v;
+    while ((line = strsep(&lines, "\t\r\n"))) {
+        if ((k = strsep(&line, "=")) &&
+            (v = strsep(&line, "")) &&
+            (!strcmp(k, key)))
+        {
+            arr = REALLOC(arr, sizeof(*arr) * (count + 1));
+            arr[count++] = STRDUP(v);
+        }
+    }
+    *out_len = count;
+    return arr;
+}
+
+char **ini_get_multiple_str_sep(const char *buf, const char *key, const char *sep, size_t *out_len)
+{
+    size_t count = 0;
+    char **arr = NULL;
+    char *lines = strdupa(buf);
+    char *line;
+    const char *k;
+    const char *v;
+    while ((line = strsep(&lines, "\t\r\n"))) {
+        if ((k = strsep(&line, "=")) &&
+            (v = strsep(&line, "")) &&
+            (!strcmp(k, key)))
+        {
+            char *list = strdupa(v);
+            char *val;
+            while ((val = strsep(&list, sep))) {
+                arr = REALLOC(arr, sizeof(*arr) * (count + 1));
+                arr[count++] = STRDUP(val);
+            }
+            break;
+        }
+    }
+    *out_len = count;
+    return arr;
+}
+
+int *ini_get_multiple_int(const char *buf, const char *key, size_t *out_len)
+{
+    size_t count = 0;
+    int *arr = NULL;
+    char *lines = strdupa(buf);
+    char *line;
+    const char *k;
+    const char *v;
+    while ((line = strsep(&lines, "\t\r\n"))) {
+        if ((k = strsep(&line, "=")) &&
+            (v = strsep(&line, "")) &&
+            (!strcmp(k, key)))
+        {
+            arr = REALLOC(arr, sizeof(*arr) * (count + 1));
+            arr[count++] = atoi(v);
+        }
+    }
+    *out_len = count;
+    return arr;
+}
+
 int file_put(const char *path, const char *buf)
 {
     ssize_t len = strlen(buf);
@@ -1618,6 +1708,21 @@ bool memcmp_b(const void *buffer, const int value, size_t num_bytes)
         {
             return false;
         }
+    }
+
+    return true;
+}
+
+bool __is_input_shell_safe(const char* input, const char *calling_func)
+{
+    if (input == NULL) return false;
+
+    LOGT("%s: Input string [%s] being checked", calling_func, input);
+
+    if (strpbrk(input, DANGEROUS_CHARACTERS) != NULL)
+    {
+        LOGE("%s: Input string [%s] contains dangerous character", calling_func, input);
+        return false;
     }
 
     return true;

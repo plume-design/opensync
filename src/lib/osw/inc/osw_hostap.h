@@ -44,6 +44,8 @@ struct osw_hostap_bss_sta {
     bool pmf;
     enum osw_akm akm;
     enum osw_cipher pairwise_cipher;
+    uint8_t *assoc_ies;
+    size_t assoc_ies_len;
 };
 
 typedef void
@@ -114,9 +116,18 @@ osw_hostap_ops_sta_conf_mutate_fn_t(struct osw_hostap_hook *hook,
                                     struct osw_hostap_conf_sta_config *wpas_conf,
                                     void *priv);
 
+typedef void
+osw_hostap_ops_event_fn_t(struct osw_hostap_hook *hook,
+                          const char *phy_name,
+                          const char *vif_name,
+                          const char *msg,
+                          size_t msg_len,
+                          void *priv);
+
 struct osw_hostap_hook_ops {
     osw_hostap_ops_ap_conf_mutate_fn_t *ap_conf_mutate_fn;
     osw_hostap_ops_sta_conf_mutate_fn_t *sta_conf_mutate_fn;
+    osw_hostap_ops_event_fn_t *event_fn;
 };
 
 struct osw_hostap_hook *

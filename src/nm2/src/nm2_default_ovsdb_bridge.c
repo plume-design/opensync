@@ -46,6 +46,9 @@ static bool nm2_ovs_insert_port_into_native_bridge(char *br_name, char *port_nam
     LOGI("Linux bridge: %s port = %s bridge = %s", op, port_name, br_name);
     snprintf(command, sizeof(command), "ovs-vsctl --no-wait %s %s %s",
              op, br_name, port_name);
+
+    if (!is_input_shell_safe(command)) return false;
+
     LOGD("%s: Command: %s", __func__, command);
     ret = target_device_execute(command);
 
@@ -91,6 +94,8 @@ bool nm2_default_br_create_tables(char *br_name)
     char *op = "add-br";
     bool bridge_exists;
     bool ret = false;
+
+    if (!is_input_shell_safe(br_name)) return false;
 
     snprintf(command, sizeof(command), "ovs-vsctl --no-wait list-br | grep %s", br_name);
     LOGD("%s: Command: %s", __func__, command);

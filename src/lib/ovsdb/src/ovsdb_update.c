@@ -219,6 +219,45 @@ bool ovsdb_update_monitor(
     return ovsdb_update_monitor_ex(self, callback, table, monit_flags, 0, NULL);
 }
 
+/* monitor cancel */
+void ovsdb_update_monitor_cancel_drop_cb(int id, json_t *js, void *data)
+{
+    // when issuing monitor_cancel, some updates may already be in the queue
+    // we will drop these and when the monitor_cancel confirmation
+    // is received, this callback will be removed
+    LOG(INFO, "JSON-RPC: dropping update for cancelled monitor. mon_id=%d\n", id);
+}
+
+void ovsdb_update_monitor_cancel_resp_cb(int id, bool is_error, json_t *js, void *data)
+{
+    const char *jstr = json_dumps_static(js, 0);
+    int mon_id = (intptr_t)data;
+    if (is_error)
+    {
+        LOGE("MONITOR_CANCEL error response: %s mon_id: %d", jstr, mon_id);
+    }
+    else
+    {
+        LOGT("MONITOR_CANCEL success response: %s mon_id: %d", jstr, mon_id);
+        ovsdb_unregister_update_cb(mon_id);
+    }
+}
+
+bool ovsdb_update_monitor_cancel(ovsdb_update_monitor_t *self, const char *table_name)
+{
+    bool ret;
+    if (self->mon_id == 0)
+    {
+        // monitor not registered, nothing to do
+        return true;
+    }
+    // change cb to drop queued updates
+    ovsdb_change_update_cb(self->mon_id, ovsdb_update_monitor_cancel_drop_cb, NULL);
+    void *data = (void*)(intptr_t)self->mon_id;
+    ret = ovsdb_monitor_cancel_call(ovsdb_update_monitor_cancel_resp_cb, data, self->mon_id, table_name);
+    return ret;
+}
+
 /*
  * This is the callback for ovsdb_register_update_cb()
  */

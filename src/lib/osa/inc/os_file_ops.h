@@ -31,6 +31,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 /* Open the text file "<prefix>_process_name_<time_stamp>.pid>" at specified location. */
 FILE *os_file_open(char *location, char *prefix);
+int os_file_open_fd(char *location, char *prefix);
 
 void os_file_close(FILE *fp);
 

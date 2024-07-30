@@ -336,6 +336,13 @@ wm2_clients_isolate(const char *ifname, const char *sta, bool connected)
             return;
         }
 
+        if (!is_input_shell_safe(ifname)
+            || !is_input_shell_safe(sta)
+            || !is_input_shell_safe(vconf.bridge))
+        {
+            return;
+        }
+
         if(kconfig_enabled(CONFIG_TARGET_USE_NATIVE_BRIDGE))
         {
             snprintf(cmd, sizeof(cmd), "brctl delif %s ;"
@@ -369,6 +376,8 @@ wm2_clients_isolate(const char *ifname, const char *sta, bool connected)
         err = system(cmd);
         LOGI("%s: %s: isolating into '%s': %d (errno: %d)", ifname, sta, sta_ifname, err, errno);
     } else {
+        if (!is_input_shell_safe(sta_ifname)) return;
+
         if (kconfig_enabled(CONFIG_TARGET_USE_NATIVE_BRIDGE))
         {
             snprintf(cmd, sizeof(cmd), "brctl delif %s ;"

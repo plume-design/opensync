@@ -200,6 +200,12 @@ enum osw_reg_dfs {
     OSW_REG_DFS_ETSI,
 };
 
+enum osw_mbss_vif_ap_mode {
+    OSW_MBSS_NONE,
+    OSW_MBSS_TX_VAP,
+    OSW_MBSS_NON_TX_VAP,
+};
+
 struct osw_reg_domain {
     char ccode[3]; /* 2-letter ISO name, \0-terminated */
     int iso3166_num;
@@ -312,6 +318,14 @@ osw_ifname_is_valid(const struct osw_ifname *a);
 #define OSW_IFNAME_FMT "%.*s"
 #define OSW_IFNAME_ARG(x) (int)OSW_IFNAME_LEN, (x)->buf
 
+#define OSW_NAS_ID_LEN 48
+#define OSW_NAS_ID_FMT "%.*s"
+#define OSW_NAS_ID_ARG(x) (int)OSW_NAS_ID_LEN, (x)->buf
+
+struct osw_nas_id {
+    char buf[OSW_NAS_ID_LEN + 1];
+};
+
 struct osw_ssid {
     char buf[OSW_IEEE80211_SSID_LEN + 1];
     size_t len;
@@ -344,13 +358,131 @@ osw_ssid_from_cbuf(struct osw_ssid *ssid,
                    const void *buf,
                    size_t len);
 
+#define OSW_RADIUS_FMT "(%s:%d)(psk=<secret>:len=%zu)"
+#define OSW_RADIUS_ARG(x) (x)->server, (x)->port, strlen((x)->passphrase ?: "")
+
+struct osw_radius {
+    char *server;
+    char *passphrase;
+    int port;
+};
+
+struct osw_radius_list {
+    struct osw_radius *list;
+    size_t count;
+};
+
+void
+osw_radius_list_free(struct osw_radius_list *l);
+
+void
+osw_radius_list_purge(struct osw_radius_list *l);
+
+int
+osw_radius_cmp(const struct osw_radius *a,
+               const struct osw_radius *b);
+
+bool
+osw_radius_is_equal(const struct osw_radius *a,
+                    const struct osw_radius *b);
+
+bool
+osw_radius_list_is_equal(const struct osw_radius_list *a,
+                         const struct osw_radius_list *b);
+
+void
+osw_radius_list_copy(const struct osw_radius_list *src,
+                     struct osw_radius_list *dst);
+
+void
+osw_radius_list_to_str(char *out,
+                       size_t len,
+                       const struct osw_radius_list *radii);
+
+struct osw_osu_provider {
+    char *server_uri;
+    char *fname;
+    char *osu_nai;
+    char *osu_osen_nai;
+    int *method_list;
+    size_t method_list_len;
+    char  *osu_service_desc;
+};
+
+struct osw_passpoint {
+    bool hs20_enabled;
+    bool adv_wan_status;
+    bool adv_wan_symmetric;
+    bool adv_wan_at_capacity;
+    bool osen;
+    bool asra;  /* Additional step required for access */
+    int ant;   /* Access network type */
+    int venue_group;
+    int venue_type;
+    int anqp_domain_id;
+    int pps_mo_id;
+    int t_c_timestamp;
+    char *t_c_filename;
+    char *anqp_elem;
+
+    struct osw_ssid hessid;
+    struct osw_ssid osu_ssid;
+
+    char **domain_list;
+    size_t domain_list_len;
+
+    char **nairealm_list;
+    size_t nairealm_list_len;
+
+    char **roamc_list;
+    size_t roamc_list_len;
+
+    char **oper_fname_list;
+    size_t oper_fname_list_len;
+
+    char **venue_name_list;
+    size_t venue_name_list_len;
+
+    char **venue_url_list;
+    size_t venue_url_list_len;
+
+    char **list_3gpp_list;
+    size_t list_3gpp_list_len;
+
+    int *net_auth_type_list;
+    size_t net_auth_type_list_len;
+    /* FIXME */
+    //struct osw_osu_provider_list osu_list;
+    //size_t osu_list_len;
+};
+
+#define OSW_PASSPOINT_ADV_WAN_STATUS 0x01
+#define OSW_PASSPOINT_ADV_WAN_SYMMETRIC 0x04
+#define OSW_PASSPOINT_ADV_WAN_AT_CAP 0x08
+
+void
+osw_passpoint_to_str(char *out,
+                     size_t len,
+                     const char *ref_id);
+
+void
+osw_passpoint_free_internal(struct osw_passpoint *p);
+
+void
+osw_passpoint_copy(const struct osw_passpoint *src, struct osw_passpoint *dst);
+
+bool
+osw_passpoint_is_equal(const struct osw_passpoint *a, const struct osw_passpoint *b);
+
 #define OSW_WPA_GROUP_REKEY_UNDEFINED -1
 
 struct osw_wpa {
     bool wpa;
     bool rsn;
+    bool akm_eap;
     bool akm_psk;
     bool akm_sae;
+    bool akm_ft_eap;
     bool akm_ft_psk;
     bool akm_ft_sae;
     bool pairwise_tkip;
@@ -361,6 +493,8 @@ struct osw_wpa {
 };
 
 enum osw_rate_legacy {
+    OSW_RATE_UNSPEC,
+
     OSW_RATE_CCK_1_MBPS,
     OSW_RATE_CCK_2_MBPS,
     OSW_RATE_CCK_5_5_MBPS,
@@ -375,7 +509,7 @@ enum osw_rate_legacy {
     OSW_RATE_OFDM_48_MBPS,
     OSW_RATE_OFDM_54_MBPS,
 
-    OSW_RATE_UNSPEC,
+    OSW_RATE_COUNT,
 };
 
 #define OSW_RATE_MASK (1 << (OSW_RATE_OFDM_54_MBPS + 1)) - 1
@@ -393,6 +527,20 @@ static inline uint16_t
 osw_rate_legacy_bit(enum osw_rate_legacy rate)
 {
     return 1 << rate;
+}
+
+static inline bool
+osw_rate_is_invalid(enum osw_rate_legacy rate)
+{
+    if (rate == OSW_RATE_UNSPEC) return true;
+    if (rate >= OSW_RATE_COUNT) return true;
+    return false;
+}
+
+static inline bool
+osw_rate_is_valid(enum osw_rate_legacy rate)
+{
+    return osw_rate_is_invalid(rate) == false;
 }
 
 static inline uint16_t
@@ -480,6 +628,8 @@ struct osw_ap_mode {
     uint16_t supported_rates; /* osw_rate_legacy_bit */
     uint16_t basic_rates; /* osw_rate_legacy_bit */
     struct osw_beacon_rate beacon_rate;
+    enum osw_rate_legacy mcast_rate;
+    enum osw_rate_legacy mgmt_rate;
     bool wnm_bss_trans;
     bool rrm_neighbor_report;
     bool wmm_enabled;
@@ -528,12 +678,6 @@ struct osw_wps_cred {
     struct osw_psk psk;
 };
 
-struct osw_radius {
-    char *server;
-    char *passphrase;
-    int port;
-};
-
 struct osw_hwaddr_list {
     struct osw_hwaddr *list;
     size_t count;
@@ -541,11 +685,6 @@ struct osw_hwaddr_list {
 
 struct osw_ap_psk_list {
     struct osw_ap_psk *list;
-    size_t count;
-};
-
-struct osw_radius_list {
-    struct osw_radius *list;
     size_t count;
 };
 
@@ -715,6 +854,13 @@ osw_channel_from_channel_num_width(uint8_t channel_num,
                                    struct osw_channel *channel);
 
 bool
+osw_channel_from_channel_num_center_freq_width_op_class(uint8_t channel_num,
+                                                        uint8_t center_freq_channel_num,
+                                                        enum osw_channel_width width,
+                                                        uint8_t op_class,
+                                                        struct osw_channel *channel);
+
+bool
 osw_channel_from_op_class(uint8_t op_class,
                           uint8_t channel_num,
                           struct osw_channel *channel);
@@ -757,6 +903,9 @@ void
 osw_neigh_list_to_str(char *out,
                       size_t len,
                       const struct osw_neigh_list *neigh);
+
+const char *
+osw_mbss_vif_ap_mode_to_str(enum osw_mbss_vif_ap_mode mbss_mode);
 
 bool
 osw_ap_psk_is_same(const struct osw_ap_psk *a,

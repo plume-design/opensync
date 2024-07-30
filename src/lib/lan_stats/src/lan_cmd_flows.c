@@ -26,6 +26,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "log.h"
 #include "lan_stats.h"
+#include "util.h"
 
 #define OVS_DPCTL_DUMP_FLOWS "ovs-dpctl dump-flows -m"
 static char *collect_cmd = OVS_DPCTL_DUMP_FLOWS;
@@ -42,6 +43,8 @@ lan_stats_collect_flows(lan_stats_instance_t *lan_stats_instance)
 
     collector = lan_stats_instance->collector;
     if (collector == NULL) return;
+
+    if (!is_input_shell_safe(collector->fcm_plugin_ctx)) return;
 
     collect_cmd  = collector->fcm_plugin_ctx;
     if (collect_cmd == NULL)
@@ -66,4 +69,3 @@ lan_stats_collect_flows(lan_stats_instance_t *lan_stats_instance)
     pclose(fp);
     fp = NULL;
 }
-

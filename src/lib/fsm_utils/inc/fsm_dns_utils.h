@@ -32,7 +32,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "fsm.h"
 
-#define MAX_TAG_VALUES_LEN 64
+#define MAX_TAG_VALUES_LEN 65
 #define MAX_TAG_NAME_LEN 64
 
 struct fsm_dns_update_tag_param

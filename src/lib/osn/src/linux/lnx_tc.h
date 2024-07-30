@@ -47,11 +47,16 @@ struct lnx_tc
     char                    *lt_ifname;
     bool                    lt_tc_begin;
     bool                    lt_tc_filter_begin;
+
+    bool                    lt_reset_egress;
+
     ds_tree_t               lt_filters;
 };
 
 bool lnx_tc_init(lnx_tc_t *self, const char *ifname);
 void lnx_tc_fini(lnx_tc_t *self);
+
+void lnx_tc_set_reset_egress(lnx_tc_t *self, bool reset);
 
 bool lnx_tc_apply(lnx_tc_t *self);
 bool lnx_tc_begin(lnx_tc_t *self);

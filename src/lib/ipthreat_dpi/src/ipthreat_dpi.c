@@ -51,6 +51,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "memutil.h"
 #include "sockaddr_storage.h"
 #include "fsm_policy.h"
+#include "fsm_fn_trace.h"
 
 #define IPTHREAT_CACHE_INTERVAL  120
 
@@ -251,6 +252,7 @@ ipthreat_dpi_plugin_init(struct fsm_session *session)
 
     /* Set the plugin ops */
     dpi_plugin_ops = &session->p_ops->dpi_plugin_ops;
+    FSM_FN_MAP(ipthreat_dpi_plugin_handler);
     dpi_plugin_ops->handler = ipthreat_dpi_plugin_handler;
 
     /* Wrap up the session initialization */
@@ -787,6 +789,7 @@ ipthreat_dpi_process_message(struct ipthreat_dpi_session *ds_session)
     if (acc->direction == NET_MD_ACC_LAN2LAN_DIR)
     {
         LOGD("%s: Ignoring lan2lan direction packets.",__func__);
+        fsm_dpi_set_plugin_decision(session, net_parser, FSM_DPI_PASSTHRU);
         return;
     }
 

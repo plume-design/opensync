@@ -99,6 +99,18 @@ if MANAGER_FM
         help
             Maximum number of rotated syslog files to keep in RAM
 
+    config FM_RAM_SYSLOG_SIZE
+        int "RAM: syslog size"
+        default 1024
+        help
+            Size of syslog file storing in RAM
+
+    config FM_FLASH_SYSLOG_SIZE
+        int "FLASH syslog size"
+        default 1024
+        help
+            Size of syslog file storing in FLASH
+
     comment "Default persistent configuration"
 
     config FM_USE_PERSIST

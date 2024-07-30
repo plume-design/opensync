@@ -163,4 +163,8 @@ if [ -n "${VERSION_APPEND_END}" ]; then
     APP_VERSION="${APP_VERSION}-${VERSION_APPEND_END}"
 fi
 
+if [ -z "$SDK_SHA1" -a -d "$SDK_DIR" ]; then
+    SDK_SHA1=$(git -C "$SDK_DIR" rev-parse --short=10 HEAD 2>/dev/null)
+fi
+
 cd - >/dev/null

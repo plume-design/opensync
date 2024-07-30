@@ -424,9 +424,10 @@ static bool
 cm2_util_is_supported_main_link(const char *if_name, const char *if_type)
 {
     return  cm2_is_eth_type(if_type) ||
-            !strcmp(if_type, LTE_TYPE_NAME) ||
+            cm2_is_lte_type(if_type) ||
             (cm2_is_wifi_type(if_type) &&
-            (cm2_util_is_gre_station(if_name) || cm2_util_is_wds_station(if_name)));
+             (cm2_util_is_gre_station(if_name) ||
+              cm2_util_is_wds_station(if_name)));
 }
 
 static void cm2_util_ifname2gre(char *gre_ifname, int gre_size, char *ifname) {
@@ -779,8 +780,8 @@ int cm2_update_main_link_ip(cm2_main_link_t *link)
         return -1;
     }
 
-    g_state.link.ipv4.blocked = ipv4 == CM2_UPLINK_BLOCKED;
-    g_state.link.ipv6.blocked = ipv6 == CM2_UPLINK_BLOCKED;
+    g_state.link.ipv4.blocked = (ipv4 == CM2_UPLINK_BLOCKED || ipv4 == CM2_UPLINK_UNBLOCKING);
+    g_state.link.ipv6.blocked = (ipv6 == CM2_UPLINK_BLOCKED || ipv6 == CM2_UPLINK_UNBLOCKING);
 
     uplink = cm2_get_uplink_name();
     if (cm2_ovsdb_is_ipv6_global_link(uplink) &&
@@ -1198,7 +1199,7 @@ cm2_ovsdb_util_handle_master_sta_port_state(struct schema_Wifi_Master_State *mas
         }
 
         if (uplink_removed != NULL) {
-            if (g_state.link.is_bridge) {
+            if (cm2_link_is_bridge(&g_state.link)) {
                 cm2_ovsdb_set_dhcp_client(g_state.link.bridge_name, false);
                 cm2_ovsdb_set_dhcpv6_client(g_state.link.bridge_name, false);
                 cm2_update_bridge_cfg(g_state.link.bridge_name, g_state.link.if_name, false,
@@ -1263,9 +1264,10 @@ cm2_ovsdb_util_translate_master_port_state(struct schema_Wifi_Master_State *mast
 
     LOGI("%s: Add/update uplink in Connection Manager Uplink table", master->if_name);
 
+    con._partial_update = true;
     SCHEMA_SET_STR(con.if_name, master->if_name);
     SCHEMA_SET_STR(con.if_type, master->if_type);
-    SCHEMA_SET_BOOL(con.has_L2, true);
+    SCHEMA_SET_BOOL(con.has_L2, port_state);
 
     WARN_ON(!ovsdb_table_upsert_simple(&table_Connection_Manager_Uplink,
                                        SCHEMA_COLUMN(Connection_Manager_Uplink, if_name),
@@ -1804,7 +1806,7 @@ bool cm2_connection_get_used_link(struct schema_Connection_Manager_Uplink *uplin
     return ovsdb_table_select_one_where(&table_Connection_Manager_Uplink, ovsdb_where_simple_typed("is_used", "true", OCLM_BOOL), uplink);
 }
 
-static void cm2_connection_clear_used(void)
+void cm2_connection_clear_used(void)
 {
     cm2_par_state_t macrep;
     int             ret;
@@ -1817,7 +1819,7 @@ static void cm2_connection_clear_used(void)
             memcpy(&g_state.old_link, &g_state.link, sizeof(g_state.old_link));
         }
 
-        if (g_state.link.is_bridge) {
+        if (cm2_link_is_bridge(&g_state.link)) {
             if (cm2_is_eth_type(g_state.link.if_type)) {
                 macrep = CM2_PAR_TRUE;
                 WARN_ON(cm2_ovsdb_inherit_ip_bridge_conf(g_state.link.bridge_name, g_state.link.if_name));
@@ -1868,10 +1870,10 @@ static bool cm2_connection_set_is_used(struct schema_Connection_Manager_Uplink *
     STRSCPY(g_state.link.if_name, uplink->if_name);
     STRSCPY(g_state.link.if_type, uplink->if_type);
     g_state.link.is_used = true;
+    g_state.link.is_used_echoed = false;
     g_state.link.blocked = false;
     g_state.link.priority = uplink->priority;
     if (uplink->bridge_exists) {
-        g_state.link.is_bridge = true;
         STRSCPY(g_state.link.bridge_name, uplink->bridge);
         cm2_update_bridge_cfg(uplink->bridge, uplink->if_name, true,
             CM2_PAR_FALSE, cm2_is_eth_type(uplink->if_type));
@@ -2035,8 +2037,8 @@ bool cm2_ovsdb_recalc_links(bool block_current) {
                 cm2_connection_set_is_used(uplink);
 
             } else {
-               g_state.link.ipv6.blocked = s_ipv6 == CM2_UPLINK_BLOCKED;
-               g_state.link.ipv4.blocked = s_ipv4 == CM2_UPLINK_BLOCKED;
+                g_state.link.ipv6.blocked = (s_ipv6 == CM2_UPLINK_BLOCKED || s_ipv6 == CM2_UPLINK_UNBLOCKING);
+                g_state.link.ipv4.blocked = (s_ipv4 == CM2_UPLINK_BLOCKED || s_ipv4 == CM2_UPLINK_UNBLOCKING);
             }
 
             LOGD("%s Used uplink state ipv4: %s ipv6: %s",
@@ -2123,7 +2125,7 @@ void callback_Wifi_Master_State(ovsdb_update_monitor_t *mon,
     if (ovsdb_update_changed(mon, SCHEMA_COLUMN(Wifi_Master_State, network_state)))
     {
         LOGI("%s: Detected network_state change = %s", master->if_name, master->network_state);
-        if (g_state.link.is_bridge &&
+        if (cm2_link_is_bridge(&g_state.link) &&
             !strncmp(master->if_name, g_state.link.bridge_name, strlen(master->if_name))) {
             ret = cm2_ovsdb_set_Wifi_Inet_Config_network_state(true, master->if_name);
             if (!ret)
@@ -2193,13 +2195,13 @@ void cm2_util_sync_limp_state(char *br, char *port, bool state)
         }
     } else {
         u = state &&
-            g_state.link.is_bridge &&
+            cm2_link_is_bridge(&g_state.link) &&
             !strcmp(g_state.link.bridge_name, br) &&
             !strcmp(g_state.link.if_name, port);
 
         if (!u)
             u = !state &&
-                !g_state.link.is_bridge &&
+                !cm2_link_is_bridge(&g_state.link) &&
                 !strcmp(g_state.link.if_name, port);
 
         if (u) {
@@ -2256,7 +2258,6 @@ cm2_util_update_bridge_handle(
     /* Main uplink in bridge */
     if (uplink->bridge_exists) {
         STRSCPY(g_state.link.bridge_name, uplink->bridge);
-        g_state.link.is_bridge = true;
         cm2_util_sync_limp_state(uplink->bridge, uplink->if_name, true);
 
         if (old_uplink->bridge_exists) {
@@ -2269,7 +2270,7 @@ cm2_util_update_bridge_handle(
         /* Add new uplink to new bridge */
         cm2_update_bridge_cfg(uplink->bridge, uplink->if_name, true, macrep, cm2_is_eth_type(uplink->if_type));
     } else {
-        g_state.link.is_bridge = false;
+        MEMZERO(g_state.link.bridge_name);
         cm2_util_sync_limp_state(uplink->bridge, uplink->if_name, false);
 
         if (old_uplink->bridge_exists) {
@@ -2461,7 +2462,10 @@ cm2_Connection_Manager_Uplink_handle_update(
         }
 
         if (reconfigure)
+        {
+            g_state.link_sel_due_to_priority = true;
             cm2_util_switch_role(uplink);
+        }
     }
     if (ovsdb_update_changed(mon, SCHEMA_COLUMN(Connection_Manager_Uplink, loop))) {
         LOGN("%s: Uplink table: detected loop change = %d", uplink->if_name, uplink->loop);
@@ -2540,6 +2544,7 @@ cm2_Connection_Manager_Uplink_handle_update(
             if (cm2_is_eth_type(uplink->if_type))
                 cm2_disable_loops_on_eth();
 
+            g_state.link.is_used_echoed = true;
             cm2_update_state(CM2_REASON_LINK_USED);
         }
     }
@@ -2597,7 +2602,7 @@ cm2_Connection_Manager_Uplink_handle_update(
 
     if (reconfigure) {
         LOGN("%s Reconfigure main link", uplink->if_name);
-        cm2_connection_clear_used();
+
         cm2_update_state(CM2_REASON_LINK_NOT_USED);
         cm2_connection_recalculate_used_link();
     }
@@ -2732,7 +2737,7 @@ void callback_Wifi_Inet_State(ovsdb_update_monitor_t *mon,
         case OVSDB_UPDATE_MODIFY:
             if (ovsdb_update_changed(mon, SCHEMA_COLUMN(Wifi_Inet_State, inet_addr))) {
                 LOGI("%s: inet state update: inet_addr: %s", inet_state->if_name, inet_state->inet_addr);
-                if (g_state.link.is_bridge) {
+                if (cm2_link_is_bridge(&g_state.link)) {
                     if (strcmp(inet_state->if_type, BRIDGE_TYPE_NAME) ||
                         strcmp(inet_state->if_name, g_state.link.bridge_name))
                         break;
@@ -2961,11 +2966,11 @@ void callback_Bridge(ovsdb_update_monitor_t *mon,
         case OVSDB_UPDATE_MODIFY:
             if (ovsdb_update_changed(mon, SCHEMA_COLUMN(Bridge, ports))) {
                if (strcmp(bridge->name, CONFIG_TARGET_LAN_BRIDGE_NAME) &&
-                   (!g_state.link.is_bridge ||
-                    (g_state.link.is_bridge && strcmp(bridge->name, g_state.link.bridge_name))))
+                   (!cm2_link_is_bridge(&g_state.link) ||
+                    (cm2_link_is_bridge(&g_state.link) && strcmp(bridge->name, g_state.link.bridge_name))))
                    break;
 
-               if (g_state.link.is_bridge && !strcmp(bridge->name, g_state.link.bridge_name)) {
+               if (cm2_link_is_bridge(&g_state.link) && !strcmp(bridge->name, g_state.link.bridge_name)) {
                    if (g_state.link.is_used) {
                        r = cm2_ovsdb_validate_bridge_port_conf(g_state.link.bridge_name,
                                                                g_state.link.if_name);

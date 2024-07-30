@@ -44,7 +44,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * - use macros to automate value/string/list comparisons for "is changed", along with dumping to logs/traces
  * - add counters: settle/nosettle counts, work rounds, watchdog counts, request retry counts: will make testing teasier
  * - add global timestamp of when system last settled, for debugging purposes
- * - 
+ * -
  */
 
 struct ds_tree g_osw_drv_tree = DS_TREE_INIT(ds_void_cmp, struct osw_drv, node);
@@ -798,8 +798,10 @@ osw_drv_vif_assign_state(struct osw_drv_vif_state *dst,
         case OSW_VIF_AP:
             FREE(ap_dst->acl.list);
             FREE(ap_dst->psk_list.list);
-            FREE(ap_dst->radius_list.list);
+            osw_radius_list_free(&ap_dst->radius_list);
+            osw_radius_list_free(&ap_dst->acct_list);
             FREE(ap_dst->neigh_list.list);
+            osw_passpoint_free_internal(&ap_dst->passpoint);
             break;
         case OSW_VIF_AP_VLAN:
             FREE(ap_vlan_dst->sta_addrs.list);
@@ -821,8 +823,10 @@ osw_drv_vif_assign_state(struct osw_drv_vif_state *dst,
         case OSW_VIF_AP:
             ARRDUP(ap_src, ap_dst, acl.list, acl.count);
             ARRDUP(ap_src, ap_dst, psk_list.list, psk_list.count);
-            ARRDUP(ap_src, ap_dst, radius_list.list, radius_list.count);
+            osw_radius_list_copy(&ap_src->radius_list, &ap_dst->radius_list);
+            osw_radius_list_copy(&ap_src->acct_list, &ap_dst->acct_list);
             ARRDUP(ap_src, ap_dst, neigh_list.list, neigh_list.count);
+            osw_passpoint_copy(&ap_src->passpoint, &ap_dst->passpoint);
             break;
         case OSW_VIF_AP_VLAN:
             ARRDUP(ap_vlan_src, ap_vlan_dst, sta_addrs.list, sta_addrs.count);
@@ -883,6 +887,18 @@ osw_drv_vif_has_ap_channel_changed(const struct osw_drv_vif *vif)
     return (was_ap && still_is_ap && channel_changed);
 }
 
+static bool
+osw_drv_vsta_has_channel_changed(const struct osw_drv_vif *vif)
+{
+    const struct osw_drv_vif_state *o = &vif->cur_state;
+    const struct osw_drv_vif_state *n = &vif->new_state;
+    const size_t size = sizeof(n->u.sta.link.channel);
+    const bool was_sta = (o->vif_type == OSW_VIF_STA);
+    const bool still_is_sta = (n->vif_type == OSW_VIF_STA);
+    const bool channel_changed = (memcmp(&o->u.sta.link.channel, &n->u.sta.link.channel, size) != 0);
+    return (was_sta && still_is_sta && channel_changed);
+}
+
 static void
 osw_drv_vif_set_recent_channel(struct osw_drv_vif *vif,
                                const struct osw_channel *c)
@@ -906,6 +922,7 @@ osw_drv_vif_state_is_changed_ap(const struct osw_drv_vif *vif)
 
     bool changed = false;
     const bool changed_bridge = strcmp(o->bridge_if_name.buf, n->bridge_if_name.buf) != 0;
+    const bool changed_nas_id = strcmp(o->nas_identifier.buf, n->nas_identifier.buf) != 0;
     const bool changed_isolated = o->isolated != n->isolated;
     const bool changed_ssid_hidden = o->ssid_hidden != n->ssid_hidden;
     const bool changed_mcast2ucast = o->mcast2ucast != n->mcast2ucast;
@@ -919,6 +936,12 @@ osw_drv_vif_state_is_changed_ap(const struct osw_drv_vif *vif)
     const bool changed_multi_ap = memcmp(&o->multi_ap, &n->multi_ap, sizeof(o->multi_ap));
     const bool changed_mld_addr = (osw_hwaddr_is_equal(&o->mld.addr, &n->mld.addr) == false);
     const bool changed_mld_if_name = (strcmp(o->mld.if_name.buf, n->mld.if_name.buf) != 0);
+    const bool changed_mbss_mode = o->mbss_mode != n->mbss_mode;
+    const bool changed_mbss_group = o->mbss_group != n->mbss_group;
+    const bool changed_radius = (osw_radius_list_is_equal(&o->radius_list, &n->radius_list) == false);
+    const bool changed_accounting = (osw_radius_list_is_equal(&o->acct_list, &n->acct_list) == false);
+    const bool changed_passpoint = (osw_passpoint_is_equal(&o->passpoint, &n->passpoint) == false);
+
     bool changed_acl = false;
     bool changed_psk = false;
     bool changed_neigh = false;
@@ -1033,6 +1056,7 @@ osw_drv_vif_state_is_changed_ap(const struct osw_drv_vif *vif)
     }
 
     changed |= changed_bridge;
+    changed |= changed_nas_id;
     changed |= changed_isolated;
     changed |= changed_ssid_hidden;
     changed |= changed_mcast2ucast;
@@ -1046,10 +1070,15 @@ osw_drv_vif_state_is_changed_ap(const struct osw_drv_vif *vif)
     changed |= changed_multi_ap;
     changed |= changed_mld_addr;
     changed |= changed_mld_if_name;
+    changed |= changed_mbss_mode;
+    changed |= changed_mbss_group;
     changed |= changed_acl;
     changed |= changed_psk;
     changed |= changed_neigh;
     changed |= changed_wps_cred_list;
+    changed |= changed_radius;
+    changed |= changed_accounting;
+    changed |= changed_passpoint;
 
     if (changed_bridge) {
         const int max = ARRAY_SIZE(o->bridge_if_name.buf);
@@ -1059,6 +1088,16 @@ osw_drv_vif_state_is_changed_ap(const struct osw_drv_vif *vif)
              vif->vif_name,
              max, o->bridge_if_name.buf,
              max, n->bridge_if_name.buf);
+    }
+
+    if (changed_nas_id) {
+        const int max = ARRAY_SIZE(o->nas_identifier.buf);
+        LOGI("osw: drv: %s/%s/%s: bridge: '%.*s' -> '%.*s'",
+             vif->phy->drv->ops->name,
+             vif->phy->phy_name,
+             vif->vif_name,
+             max, o->nas_identifier.buf,
+             max, n->nas_identifier.buf);
     }
 
     if (changed_isolated) {
@@ -1265,8 +1304,173 @@ osw_drv_vif_state_is_changed_ap(const struct osw_drv_vif *vif)
              OSW_IFNAME_ARG(&n->mld.if_name));
     }
 
+    if (changed_mbss_mode) {
+        const char *from = osw_mbss_vif_ap_mode_to_str(o->mbss_mode);
+        const char *to = osw_mbss_vif_ap_mode_to_str(n->mbss_mode);
+        LOGI("osw: drv: %s/%s/%s: mbss_mode: %s -> %s",
+             vif->phy->drv->ops->name,
+             vif->phy->phy_name,
+             vif->vif_name,
+             from,
+             to);
+    }
 
-    // FIXME: radius
+    if (changed_mbss_group) {
+        LOGI("osw: drv: %s/%s/%s: mbss_group: %d -> %d",
+             vif->phy->drv->ops->name,
+             vif->phy->phy_name,
+             vif->vif_name,
+             o->mbss_group,
+             n->mbss_group);
+    }
+
+    if (changed_passpoint) {
+        if (o->passpoint.hs20_enabled != n->passpoint.hs20_enabled)
+            LOGI("osw: drv: %s/%s/%s: passpoint: hs20_enabled: %d -> %d",
+                 vif->phy->drv->ops->name,
+                 vif->phy->phy_name,
+                 vif->vif_name,
+                 o->passpoint.hs20_enabled,
+                 n->passpoint.hs20_enabled);
+        if (o->passpoint.adv_wan_status != n->passpoint.adv_wan_status)
+            LOGI("osw: drv: %s/%s/%s: passpoint: adv_wan_status: %d -> %d",
+                 vif->phy->drv->ops->name,
+                 vif->phy->phy_name,
+                 vif->vif_name,
+                 o->passpoint.adv_wan_status,
+                 n->passpoint.adv_wan_status);
+        if (o->passpoint.adv_wan_symmetric != n->passpoint.adv_wan_symmetric)
+            LOGI("osw: drv: %s/%s/%s: passpoint: adv_wan_symmetric: %d -> %d",
+                 vif->phy->drv->ops->name,
+                 vif->phy->phy_name,
+                 vif->vif_name,
+                 o->passpoint.adv_wan_symmetric,
+                 n->passpoint.adv_wan_symmetric);
+        if (o->passpoint.adv_wan_at_capacity != n->passpoint.adv_wan_at_capacity)
+            LOGI("osw: drv: %s/%s/%s: passpoint: adv_wan_at_capacity: %d -> %d",
+                 vif->phy->drv->ops->name,
+                 vif->phy->phy_name,
+                 vif->vif_name,
+                 o->passpoint.adv_wan_at_capacity,
+                 n->passpoint.adv_wan_at_capacity);
+        if (o->passpoint.osen != n->passpoint.osen)
+            LOGI("osw: drv: %s/%s/%s: passpoint: osen: %d -> %d",
+                 vif->phy->drv->ops->name,
+                 vif->phy->phy_name,
+                 vif->vif_name,
+                 o->passpoint.osen,
+                 n->passpoint.osen);
+        if (o->passpoint.asra != n->passpoint.asra)
+            LOGI("osw: drv: %s/%s/%s: passpoint: asra: %d -> %d",
+                 vif->phy->drv->ops->name,
+                 vif->phy->phy_name,
+                 vif->vif_name,
+                 o->passpoint.asra,
+                 n->passpoint.asra);
+        if (o->passpoint.ant != n->passpoint.ant)
+            LOGI("osw: drv: %s/%s/%s: passpoint: ant: %d -> %d",
+                 vif->phy->drv->ops->name,
+                 vif->phy->phy_name,
+                 vif->vif_name,
+                 o->passpoint.ant,
+                 n->passpoint.ant);
+        if (o->passpoint.venue_group != n->passpoint.venue_group)
+            LOGI("osw: drv: %s/%s/%s: passpoint: venue_group: %d -> %d",
+                 vif->phy->drv->ops->name,
+                 vif->phy->phy_name,
+                 vif->vif_name,
+                 o->passpoint.venue_group,
+                 n->passpoint.venue_group);
+        if (o->passpoint.venue_type != n->passpoint.venue_type)
+            LOGI("osw: drv: %s/%s/%s: passpoint: venue_type: %d -> %d",
+                 vif->phy->drv->ops->name,
+                 vif->phy->phy_name,
+                 vif->vif_name,
+                 o->passpoint.venue_type,
+                 n->passpoint.venue_type);
+        if (o->passpoint.anqp_domain_id != n->passpoint.anqp_domain_id)
+            LOGI("osw: drv: %s/%s/%s: passpoint: anqp_domain_id: %d -> %d",
+                 vif->phy->drv->ops->name,
+                 vif->phy->phy_name,
+                 vif->vif_name,
+                 o->passpoint.anqp_domain_id,
+                 n->passpoint.anqp_domain_id);
+        if (o->passpoint.pps_mo_id != n->passpoint.pps_mo_id)
+            LOGI("osw: drv: %s/%s/%s: passpoint: pps_mo_id: %d -> %d",
+                 vif->phy->drv->ops->name,
+                 vif->phy->phy_name,
+                 vif->vif_name,
+                 o->passpoint.pps_mo_id,
+                 n->passpoint.pps_mo_id);
+        if (o->passpoint.t_c_timestamp != n->passpoint.t_c_timestamp)
+            LOGI("osw: drv: %s/%s/%s: passpoint: t_c_timestamp: %d -> %d",
+                 vif->phy->drv->ops->name,
+                 vif->phy->phy_name,
+                 vif->vif_name,
+                 o->passpoint.t_c_timestamp,
+                 n->passpoint.t_c_timestamp);
+        if (STRSCMP(o->passpoint.t_c_filename, n->passpoint.t_c_filename) != 0)
+            LOGI("osw: drv: %s/%s/%s: passpoint: t_c_filename: %s -> %s",
+                 vif->phy->drv->ops->name,
+                 vif->phy->phy_name,
+                 vif->vif_name,
+                 o->passpoint.t_c_filename,
+                 n->passpoint.t_c_filename);
+        if (STRSCMP(o->passpoint.anqp_elem, n->passpoint.anqp_elem) != 0)
+            LOGI("osw: drv: %s/%s/%s: passpoint: anqp_elem: %s -> %s",
+                 vif->phy->drv->ops->name,
+                 vif->phy->phy_name,
+                 vif->vif_name,
+                 o->passpoint.anqp_elem,
+                 n->passpoint.anqp_elem);
+        if (osw_ssid_cmp(&o->passpoint.hessid, &n->passpoint.hessid) != 0)
+            LOGI("osw: drv: %s/%s/%s: passpoint: hessid: %s -> %s",
+                 vif->phy->drv->ops->name,
+                 vif->phy->phy_name,
+                 vif->vif_name,
+                 o->passpoint.hessid.buf,
+                 n->passpoint.hessid.buf);
+        if (osw_ssid_cmp(&o->passpoint.osu_ssid, &n->passpoint.osu_ssid) != 0)
+            LOGI("osw: drv: %s/%s/%s: passpoint: osu_ssid: %s -> %s",
+                 vif->phy->drv->ops->name,
+                 vif->phy->phy_name,
+                 vif->vif_name,
+                 o->passpoint.osu_ssid.buf,
+                 n->passpoint.osu_ssid.buf);
+        /* TODO domain_list
+         *      roamc_list,
+         *      oper_fname_list,
+         *      venue_name_list,
+         *      venue_url_list
+         *      list_3gpp_list,
+         *      net_auth_type_list
+         */
+    }
+
+    if (changed_radius) {
+        char from[512];
+        char to[512];
+        osw_radius_list_to_str(from, sizeof(from), &o->radius_list);
+        osw_radius_list_to_str(to, sizeof(to), &n->radius_list);
+        LOGI("osw: drv: %s/%s: radius_list: %s -> %s",
+             vif->phy->phy_name,
+             vif->vif_name,
+             from,
+             to);
+    }
+
+    if (changed_accounting) {
+        char from[512];
+        char to[512];
+        osw_radius_list_to_str(from, sizeof(from), &o->acct_list);
+        osw_radius_list_to_str(to, sizeof(to), &n->acct_list);
+        LOGI("osw: drv: %s/%s: acct_list: %s -> %s",
+             vif->phy->phy_name,
+             vif->vif_name,
+             from,
+             to);
+    }
+
     return changed;
 }
 
@@ -1642,6 +1846,13 @@ osw_drv_vif_dump_ap(struct osw_drv_vif *vif)
          vif->phy->phy_name,
          vif->vif_name,
          OSW_IFNAME_ARG(&ap->mld.if_name));
+
+    const char *mbss_mode_str = osw_mbss_vif_ap_mode_to_str(ap->mbss_mode);
+    LOGI("osw: drv: %s/%s/%s: ap: mbss_mode: %s",
+         vif->phy->drv->ops->name,
+         vif->phy->phy_name,
+         vif->vif_name,
+         mbss_mode_str);
 }
 
 static void
@@ -1802,8 +2013,23 @@ osw_drv_vif_process_state(struct osw_drv_vif *vif)
         }
     }
 
-    if (osw_drv_vif_has_ap_channel_changed(vif)) {
+    const bool ap_channel_changed = osw_drv_vif_has_ap_channel_changed(vif);
+    const bool vsta_channel_changed = osw_drv_vsta_has_channel_changed(vif);
+    const bool notify_channel_changed = ((vsta_channel_changed ||
+                                          ap_channel_changed) &&
+                                          vif->new_state.status == OSW_VIF_ENABLED);
+    struct osw_channel old_channel = {0};
+    struct osw_channel new_channel = {0};
+
+    if (ap_channel_changed) {
         osw_drv_vif_set_recent_channel(vif, &vif->cur_state.u.ap.channel);
+        new_channel = vif->new_state.u.ap.channel;
+        old_channel = vif->cur_state.u.ap.channel;
+    }
+
+    if (vsta_channel_changed) {
+        new_channel = vif->new_state.u.sta.link.channel;
+        old_channel = vif->cur_state.u.sta.link.channel;
     }
 
     osw_drv_vif_assign_state(&vif->cur_state, &vif->new_state);
@@ -1816,6 +2042,7 @@ osw_drv_vif_process_state(struct osw_drv_vif *vif)
     if (added == true) osw_drv_vif_dump(vif);
     if (added == true) OSW_STATE_NOTIFY(vif_added_fn, &vif->pub);
     if (changed == true) OSW_STATE_NOTIFY(vif_changed_fn, &vif->pub);
+    if (notify_channel_changed == true) OSW_STATE_NOTIFY(vif_channel_changed_fn, &vif->pub, &new_channel, &old_channel);
     if (removed == true) OSW_STATE_NOTIFY(vif_removed_fn, &vif->pub);
     if (vif->radar_detected == true) OSW_STATE_NOTIFY(vif_radar_detected_fn, &vif->pub, &vif->radar_channel);
 
@@ -2259,14 +2486,11 @@ osw_drv_phy_state_is_changed(const struct osw_drv_phy *phy)
     const bool changed_enabled = phy->cur_state.enabled != phy->new_state.enabled;
     const bool changed_tx_chainmask = phy->cur_state.tx_chainmask != phy->new_state.tx_chainmask;
     const bool changed_radar = phy->cur_state.radar != phy->new_state.radar;
-    const bool changed_mbss_tx_vif_name = (osw_ifname_is_equal(&phy->cur_state.mbss_tx_vif_name,
-                                                               &phy->new_state.mbss_tx_vif_name) == false);
     const bool changed_channels = osw_drv_phy_state_is_channels_changed(phy);
 
     changed |= changed_enabled;
     changed |= changed_tx_chainmask;
     changed |= changed_radar;
-    changed |= changed_mbss_tx_vif_name;
     changed |= changed_channels;
 
     if (changed_enabled) {
@@ -2293,14 +2517,6 @@ osw_drv_phy_state_is_changed(const struct osw_drv_phy *phy)
              phy->phy_name,
              from,
              to);
-    }
-
-    if (changed_mbss_tx_vif_name) {
-        LOGI("osw: drv: %s/%s: mbss_tx_vif_name: "OSW_IFNAME_FMT" -> "OSW_IFNAME_FMT,
-             phy->drv->ops->name,
-             phy->phy_name,
-             OSW_IFNAME_ARG(&phy->cur_state.mbss_tx_vif_name),
-             OSW_IFNAME_ARG(&phy->new_state.mbss_tx_vif_name));
     }
 
     return changed;
@@ -2347,11 +2563,6 @@ osw_drv_phy_dump(struct osw_drv_phy *phy)
          phy->drv->ops->name,
          phy->phy_name,
          OSW_REG_DOMAIN_ARG(&phy->cur_state.reg_domain));
-
-    LOGI("osw: drv: %s/%s: mbss_tx_vif_name: "OSW_IFNAME_FMT,
-         phy->drv->ops->name,
-         phy->phy_name,
-         OSW_IFNAME_ARG(&phy->cur_state.mbss_tx_vif_name));
 
     osw_drv_phy_dump_channels(phy);
 }
@@ -3069,6 +3280,7 @@ osw_drv_report_vif_channel_change_started(struct osw_drv *drv,
 
     osw_drv_obj_set_state(&phy->obj, OSW_DRV_OBJ_INVALID);
     osw_drv_obj_set_state(&vif->obj, OSW_DRV_OBJ_INVALID);
+    osw_drv_work_all_schedule();
 
     if (target_channel != NULL)
         vif->csa_channel = *target_channel;
@@ -3509,12 +3721,14 @@ osw_drv_conf_free(struct osw_drv_conf *conf)
                     FREE(vif->u.ap.acl.list);
                     FREE(vif->u.ap.acl_add.list);
                     FREE(vif->u.ap.acl_del.list);
-                    FREE(vif->u.ap.radius_list.list);
                     FREE(vif->u.ap.neigh_list.list);
                     FREE(vif->u.ap.neigh_add_list.list);
                     FREE(vif->u.ap.neigh_mod_list.list);
                     FREE(vif->u.ap.neigh_del_list.list);
                     FREE(vif->u.ap.wps_cred_list.list);
+                    osw_radius_list_free(&vif->u.ap.radius_list);
+                    osw_radius_list_free(&vif->u.ap.acct_list);
+                    osw_passpoint_free_internal(&vif->u.ap.passpoint);
                     break;
                 case OSW_VIF_AP_VLAN:
                     break;
@@ -3700,6 +3914,10 @@ osw_drv_report_sta_assoc_ies(struct osw_drv *drv,
     const struct osw_hwaddr zero = {0};
     char ies_hex[4096];
 
+    if (drv == NULL) return;
+    if (phy_name == NULL) return;
+    if (vif_name == NULL) return;
+
     MEMZERO(ies_hex);
     bin2hex(ies, ies_len, ies_hex, sizeof(ies_hex));
 
@@ -3830,8 +4048,10 @@ osw_drv_vif_state_report_free(struct osw_drv_vif_state *state)
         case OSW_VIF_AP:
             FREE(state->u.ap.acl.list);
             FREE(state->u.ap.psk_list.list);
-            FREE(state->u.ap.radius_list.list);
+            osw_radius_list_free(&state->u.ap.radius_list);
+            osw_radius_list_free(&state->u.ap.acct_list);
             FREE(state->u.ap.neigh_list.list);
+            osw_passpoint_free_internal(&state->u.ap.passpoint);
             break;
         case OSW_VIF_AP_VLAN:
             FREE(state->u.ap_vlan.sta_addrs.list);

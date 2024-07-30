@@ -206,22 +206,20 @@ typedef struct
     int   ovs_resolve;
     int   ovs_resolve_fail;
     int   ovs_con;
-    int   gw_offline;
 } cm2_retries_cnt;
 
 typedef struct
 {
     char        if_name[C_IFNAME_LEN];
     char        if_type[IFTYPE_SIZE];
-    bool        is_bridge;
     char        bridge_name[C_IFNAME_LEN];
     bool        is_used;
+    bool        is_used_echoed;
     bool        blocked;
     bool        restart_pending;
     int         priority;
     cm2_ip      ipv4;
     cm2_ip      ipv6;
-    bool        gretap_softwds;
     char        gateway_hwaddr[OS_MACSTR_SZ];
     cm2_vtag_t  vtag;
 } cm2_main_link_t;
@@ -261,12 +259,15 @@ typedef struct
     int                max_backoff;
     bool               fast_backoff;
     int                target_type;
+    bool               skip_reconnect;
     bool               connected_at_least_once;
-    bool               resolve_retry;
+    bool               link_sel_due_to_priority;
+    bool               is_previous_if_type_wifi;
     cm2_retries_cnt    cnts;
     cm2_dev_type       dev_type;
     cm2_restore_method restore_method;
     char               target[129];
+    ev_timer           gw_offline_start;
 } cm2_state_t;
 
 extern cm2_state_t g_state;
@@ -307,6 +308,7 @@ char* cm2_dest_name(cm2_dest_e dest);
 char* cm2_curr_dest_name(void);
 bool cm2_enable_gw_offline(void);
 void cm2_trigger_restart_managers(void);
+void cm2_set_dst_type(cm2_dest_e dst);
 
 //blem
 #ifdef CONFIG_CM2_BT_BEACON_HANDLER
@@ -373,6 +375,7 @@ bool cm2_ovsdb_set_Manager_target(char *target);
 bool cm2_ovsdb_set_AWLAN_Node_manager_addr(char *addr);
 void cm2_ovsdb_set_AWLAN_Node_boot_time(void);
 bool cm2_connection_get_used_link(struct schema_Connection_Manager_Uplink *con);
+void cm2_connection_clear_used(void);
 bool cm2_ovsdb_connection_get_connection_by_ifname(const char *if_name,
                                                    struct schema_Connection_Manager_Uplink *con);
 int cm2_ovsdb_get_connection_uplinks(struct schema_Connection_Manager_Uplink **uplink_p,
@@ -451,8 +454,10 @@ bool cm2_resolve(cm2_dest_e dest);
 void cm2_resolve_timeout(void);
 bool cm2_write_current_target_addr(void);
 bool cm2_write_next_target_addr(void);
+void cm2_move_next_target_addr(void);
 void cm2_clear_manager_addr(void);
 void cm2_free_addr_list(cm2_addr_t *addr);
+void cm2_set_ipv6_pref(cm2_dest_e dst);
 
 // stability and watchdog
 #ifdef CONFIG_CM2_USE_STABILITY_CHECK
@@ -471,6 +476,7 @@ void cm2_connection_req_stability_check_async(const char *uname,
 void cm2_stability_init(struct ev_loop *loop);
 void cm2_stability_init(struct ev_loop *loop);
 void cm2_stability_update_interval(struct ev_loop *loop, bool short_int);
+bool cm2_is_stability_check_pending(char *if_name);
 void cm2_stability_close(struct ev_loop *loop);
 void cm2_update_uplinks_init(struct ev_loop *loop);
 void cm2_update_uplinks_set_interval(struct ev_loop *loop, int v);
@@ -574,6 +580,11 @@ static inline bool cm2_is_set_local_bit_mac_on_lan(void)
 #else
     return false;
 #endif
+}
+
+static inline bool cm2_link_is_bridge(const cm2_main_link_t *link)
+{
+    return (strlen(link->bridge_name) > 0);
 }
 
 // net

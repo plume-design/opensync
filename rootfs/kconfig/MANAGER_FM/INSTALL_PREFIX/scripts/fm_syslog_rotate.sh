@@ -165,7 +165,7 @@ OUT_FILE=${PREFIX}_${NEXT_SUFFIX}
 log "Archiving: '${OUT_FILE}'"
 
 # Busybox's tar does not support the '--transform' option, therefore rename the file before archiving
-cp ${LOGS_LOCATION}/${LOG_FILE} ${LOGS_LOCATION}/${OUT_FILE}
+mv ${LOGS_LOCATION}/${LOG_FILE} ${LOGS_LOCATION}/${OUT_FILE}
 
 tar -C ${LOGS_LOCATION} -cvzf ${SYSLOG_ARCHIVE}/${OUT_FILE}.tar.gz ${OUT_FILE}
 

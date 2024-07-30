@@ -912,24 +912,24 @@ neigh_src_exit(uint32_t ovsdb_event)
     if (ovsdb_event & DHCP_LEASED_IP)
     {
         /* Deregister monitor events */
-        ovsdb_unregister_update_cb(table_DHCP_leased_IP.monitor.mon_id);
+        ovsdb_table_fini(&table_DHCP_leased_IP);
     }
 
     if (ovsdb_event & IPV4_NEIGHBORS)
     {
         /* Deregister monitor events */
-        ovsdb_unregister_update_cb(table_IPv4_Neighbors.monitor.mon_id);
+        ovsdb_table_fini(&table_IPv4_Neighbors);
     }
 
     if (ovsdb_event & IPV6_NEIGHBORS)
     {
         /* Deregister monitor events */
-        ovsdb_unregister_update_cb(table_IPv6_Neighbors.monitor.mon_id);
+        ovsdb_table_fini(&table_IPv6_Neighbors);
     }
 
     if (ovsdb_event & WIFI_INET_STATE)
     {
         /* Deregister monitor events */
-        ovsdb_unregister_update_cb(table_Wifi_Inet_State.monitor.mon_id);
+        ovsdb_table_fini(&table_Wifi_Inet_State);
     }
 }

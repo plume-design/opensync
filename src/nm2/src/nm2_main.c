@@ -109,6 +109,8 @@ int main(int argc, char ** argv)
     nm2_portfw_init();
     nm2_route_init();
     nm2_route_cfg_init();
+    nm2_route6_init();
+    nm2_route6_cfg_init();
     nm2_mac_tags_ovsdb_init();
     nm2_ip_interface_init();
     nm2_ipv6_address_init();
@@ -117,18 +119,17 @@ int main(int argc, char ** argv)
     nm2_dhcpv6_server_init();
     nm2_dhcp_option_init();
     nm2_ipv6_routeadv_init();
-
     nm2_mcast_init();
-
     nm2_route_rule_init();
-
     nm2_4in6_map_init();
+    nm2_fqdn_resolve_init();
 
     if(kconfig_enabled(CONFIG_TARGET_USE_NATIVE_BRIDGE))
     {
         nm2_bridge_init();
         nm2_if_init();
         nm2_default_br_init(CONFIG_TARGET_LAN_BRIDGE_NAME);
+        nm2_open_vswitch_init();
     }
 
 
@@ -138,6 +139,8 @@ int main(int argc, char ** argv)
         LOGE("Stopping NM "
              "(Failed to stop OVSDB");
     }
+
+    nm2_fqdn_resolve_stop();
 
     ev_default_destroy();
 

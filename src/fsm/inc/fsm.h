@@ -355,6 +355,7 @@ struct fsm_dpi_dispatcher
     char *excluded_devices;
     char *listening_ip;
     char *listening_port;
+    int recv_method;
     int listening_sockfd;
 };
 
@@ -489,7 +490,7 @@ struct mem_usage
 struct nfqnl_counters
 {
     uint8_t copy_mode;               /* copy mode*/
-    uint16_t queue_num;              /* queue number */
+    int queue_num;                   /* queue number */
     uint32_t portid;                 /* peer port id*/
     unsigned int queue_total;        /* current number of packets the queue */
     unsigned int copy_range;         /* length of the packet data */

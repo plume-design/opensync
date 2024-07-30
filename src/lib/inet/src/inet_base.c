@@ -67,6 +67,7 @@ static bool inet_base_radv_commit(inet_base_t *self, bool start);
 static bool inet_base_dhcp6_server_commit(inet_base_t *self, bool start);
 static bool inet_base_upnp_start_stop(inet_base_t *self);
 static osn_route_status_fn_t inet_base_route_status;
+static osn_route6_status_fn_t inet_base_route6_status;
 static osn_dhcp_client_opt_notify_fn_t inet_base_dhcp_client_option_fn;
 
 static osn_dhcpv6_client_status_fn_t inet_base_dhcp6_client_notify_fn;
@@ -242,6 +243,9 @@ bool inet_base_init(inet_base_t *self, const char *ifname)
     self->inet.in_route_notify_fn               = inet_base_route_notify;
     self->inet.in_route4_add_fn                    = inet_base_route_add;
     self->inet.in_route4_remove_fn                 = inet_base_route_remove;
+    self->inet.in_route6_notify_fn              = inet_base_route6_notify;
+    self->inet.in_route6_add_fn                 = inet_base_route6_add;
+    self->inet.in_route6_remove_fn              = inet_base_route6_remove;
     self->inet.in_commit_fn                     = inet_base_commit;
     self->inet.in_state_notify_fn               = inet_base_state_notify;
 
@@ -255,6 +259,7 @@ bool inet_base_init(inet_base_t *self, const char *ifname)
     self->inet.in_dhcp6_client_fn               = inet_base_dhcp6_client;
     self->inet.in_dhcp6_client_option_request_fn= inet_base_dhcp6_client_option_request;
     self->inet.in_dhcp6_client_option_send_fn   = inet_base_dhcp6_client_option_send;
+    self->inet.in_dhcp6_client_other_config_fn  = inet_base_dhcp6_client_other_config;
     self->inet.in_dhcp6_client_notify_fn        = inet_base_dhcp6_client_notify;
     self->inet.in_dhcp6_server_fn               = inet_base_dhcp6_server;
     self->inet.in_dhcp6_server_prefix_fn        = inet_base_dhcp6_server_prefix;
@@ -307,6 +312,8 @@ bool inet_base_init(inet_base_t *self, const char *ifname)
             struct ip6_neigh_status_node,
             ns_snode,
             ip6_neigh_status_node_sync);
+
+    self->in_dhcp6_client_other_config = ds_map_str_new();
 
     ds_tree_init(&self->in_radv_prefix_list, osn_ip6_addr_cmp, struct ip6_prefix_node, pr_tnode);
     ds_tree_init(&self->in_radv_rdnss_list, osn_ip6_addr_cmp, struct osn_ip6_addr_node, in_tnode);
@@ -413,6 +420,30 @@ bool inet_base_init(inet_base_t *self, const char *ifname)
     }
 
     /*
+     * Route6
+     */
+    self->in_route6 = osn_route6_new(self->inet.in_ifname);
+    if (self->in_route6 == NULL)
+    {
+        LOG(ERR, "inet_base: %s: Error creating ROUTE6 instance.", self->inet.in_ifname);
+        goto error;
+    }
+
+    osn_route6_data_set(self->in_route6, self);
+    if (!osn_route6_status_notify(self->in_route6, inet_base_route6_status))
+    {
+        LOG(ERR, "inet_base: %s: Error registering ROUTE6 status callback", self->inet.in_ifname);
+        goto error;
+    }
+
+    self->in_routes6_set = inet_routes6_new(self->inet.in_ifname);
+    if (self->in_routes6_set == NULL)
+    {
+        LOG(ERR, "inet_base: %s: Error creating ROUTES6_SET instance.", self->inet.in_ifname);
+        goto error;
+    }
+
+    /*
      * Initialize state update debounce timer.
      */
     ev_debounce_init2(
@@ -442,6 +473,7 @@ bool inet_base_init(inet_base_t *self, const char *ifname)
                                                 inet_unit(INET_BASE_DHCPSNIFF, NULL),
                                                 inet_unit(INET_BASE_IPV4_READY, NULL),
                                                 inet_unit(INET_BASE_ROUTES, NULL),
+                                                inet_unit(INET_BASE_ROUTES6, NULL),
                                                 inet_unit(INET_BASE_IGMP, NULL),
                                                 NULL),
                                     inet_unit(INET_BASE_INET6,
@@ -468,6 +500,9 @@ bool inet_base_init(inet_base_t *self, const char *ifname)
 
     /* Activate static routes service when interface is ready */
     inet_unit_start(self->in_units, INET_BASE_ROUTES);
+
+    /* Activate static routes6 service when interface is ready */
+    inet_unit_start(self->in_units, INET_BASE_ROUTES6);
 
     static bool once = true;
 
@@ -609,6 +644,17 @@ bool inet_base_fini(inet_base_t *self)
         inet_routes_del(self->in_routes_set);
     }
 
+    if (self->in_route6 != NULL && !osn_route6_del(self->in_route6))
+    {
+        LOG(WARN, "inet_base: %s: Error freeing ROUTE6 object.", self->inet.in_ifname);
+        retval = false;
+    }
+
+    if (self->in_routes6_set != NULL)
+    {
+        inet_routes6_del(self->in_routes6_set);
+    }
+
     if (self->in_ip6 != NULL && !osn_ip6_del(self->in_ip6))
     {
         LOG(WARN, "inet_base: %s: Error freeing IPv6 object.", self->inet.in_ifname);
@@ -661,6 +707,9 @@ bool inet_base_fini(inet_base_t *self)
             self->in_dhcp6_client_send[ii] = NULL;
         }
     }
+
+    /* Cleanup other_config */
+    ds_map_str_delete(&self->in_dhcp6_client_other_config);
 
     /*
      * DHCPv6 server cleanup list
@@ -1162,6 +1211,7 @@ bool inet_base_dhcp_client_option_fn(
         * added by OpenSync because kernel may flush those routes while
         * renewing or restarting DHCP addr assignment */
         inet_routes_reapply(self->in_routes_set);
+        inet_routes6_reapply(self->in_routes6_set);
     }
 
     if (self->in_dhcpc_option_fn != NULL)
@@ -1518,6 +1568,50 @@ bool inet_base_route_remove(inet_t *super, const osn_route4_t *route)
 
 /*
  * ===========================================================================
+ *  Route6 functions
+ * ===========================================================================
+ */
+bool inet_base_route6_status(osn_route6_t *rt, struct osn_route6_status *status, bool remove)
+{
+    inet_base_t *self = osn_route6_data_get(rt);
+
+    if (self->in_route6_status_fn != NULL)
+        self->in_route6_status_fn(&self->inet, status, remove);
+
+    return true;
+}
+
+bool inet_base_route6_notify(inet_t *super, inet_route6_status_fn_t *func)
+{
+    inet_base_t *self = (inet_base_t *)super;
+
+    self->in_route6_status_fn = func;
+    /* Re-register handler to trigger an immediate update */
+    return osn_route6_status_notify(self->in_route6, inet_base_route6_status);
+}
+
+static bool inet_base_routes6_commit(inet_base_t *self, bool start)
+{
+    bool rv = inet_routes6_enable(self->in_routes6_set, start);
+    if (!rv)
+    {
+        LOG(WARN, "inet_base: %s: Error %s INET_BASE_ROUTES6", self->inet.in_ifname, start ? "starting" : "stopping");
+    }
+    return rv;
+}
+
+bool inet_base_route6_add(inet_t *super, const osn_route6_config_t *route)
+{
+    return inet_routes6_add(((inet_base_t*)super)->in_routes6_set, route);
+}
+
+bool inet_base_route6_remove(inet_t *super, const osn_route6_config_t *route)
+{
+    return inet_routes6_remove(((inet_base_t*)super)->in_routes6_set, route);
+}
+
+/*
+ * ===========================================================================
  *  Commit / Start & Stop methods
  * ===========================================================================
  */
@@ -1631,6 +1725,9 @@ bool inet_base_service_commit(
 
         case INET_BASE_ROUTES:
             return inet_base_routes_commit(self, start);
+
+        case INET_BASE_ROUTES6:
+            return inet_base_routes6_commit(self, start);
 
         case INET_BASE_DHCP_SERVER:
             return inet_base_dhcp_server_commit(self, start);
@@ -2532,6 +2629,19 @@ bool inet_base_dhcp6_client_option_send(inet_t *super, int tag, char *value)
     return true;
 }
 
+/* DHCPv6 client other_config */
+bool inet_base_dhcp6_client_other_config(inet_t *super, char *key, char *value)
+{
+    inet_base_t *self = (void *)super;
+    bool changed = ds_map_str_set(self->in_dhcp6_client_other_config, key, value);
+    TRACE("%s=%s changed=%d", key, value, changed);
+    if (changed)
+    {
+        inet_unit_restart(self->in_units, INET_BASE_DHCP6_CLIENT, false);
+    }
+    return true;
+}
+
 bool inet_base_dhcp6_client_notify(inet_t *super, inet_dhcp6_client_notify_fn_t *fn)
 {
     inet_base_t *self = (void *)super;
@@ -2608,6 +2718,13 @@ bool inet_base_dhcp6_client_commit(inet_base_t *self, bool start)
     {
         if (self->in_dhcp6_client_send[ii] == NULL) continue;
         osn_dhcpv6_client_option_send(self->in_dhcp6_client, ii, self->in_dhcp6_client_send[ii]);
+    }
+
+    /* other_config */
+    ds_map_str_iter_t iter;
+    ds_map_str_foreach(self->in_dhcp6_client_other_config, iter)
+    {
+        osn_dhcpv6_client_other_config(self->in_dhcp6_client, iter.key, iter.val);
     }
 
     /* Apply configuration */

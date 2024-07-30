@@ -44,6 +44,8 @@ UNIT_DEPS += src/lib/log
 UNIT_DEPS += src/lib/module
 UNIT_DEPS += src/lib/osa
 UNIT_DEPS += src/lib/osp
+UNIT_DEPS += src/lib/ff_provider_env
+UNIT_DEPS += src/lib/ff_provider_access
 
 UNIT_EXPORT_CFLAGS := $(UNIT_CFLAGS)
 UNIT_EXPORT_LDFLAGS := $(UNIT_LDFLAGS)

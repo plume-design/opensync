@@ -31,63 +31,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdint.h>
 #include <ev.h>
 
-
-/**
- * Advertising data structure, exactly resembling BLE advertisement payload
- *
- * From Supplement to Bluetooth Core Specification | CSS v9, Part A, Section 1.3 FLAGS:
- *   The Flags data type shall be included when any of the Flag bits are non-zero and the
- *   advertising packet is connectable, otherwise the Flags data type may be omitted.
- *
- * So when advertising as connectable, it is impossible to remove flags. The Flags data type are prepended by the
- * BLE stack, hence the user shall not include them in the advertising data. The BLE stack adds 3 bytes at the
- * start of the advertising data, so the maximum length of the user defined advertising data shall be 28 bytes.
- *
- * This payload is used when advertising in modes:
- * - Non-connectable undirected advertising (ADV_NONCONN_IND)
- * - Scannable undirected advertising event (ADV_SCAN_IND)
- * - Connectable undirected advertising (ADV_IND)
- */
-typedef struct __attribute__ ((packed)) {
-    /* Flags - added by the Bluetooth Stack code
-    uint8_t len_flags;      2
-    uint8_t ad_type_flags;  0x01
-    uint8_t flags;          (1 << 1)|(1 << 2) = LE General Discoverable Mode | BR/EDR Not Supported
-    */
-
-    /* Complete List of 16-bit Service Class UUIDs */
-    uint8_t len_uuid;
-    uint8_t ad_type_uuid;
-    uint16_t service_uuid;
-
-    uint8_t len_manufacturer;
-    uint8_t ad_type_manufacturer;
-    /* region 22 bytes of manufacturer specific data */
-    uint16_t company_id;
-    uint8_t version;
-    char serial_num[12]; /*< Serial number is not required to be null-terminated */
-    uint8_t msg_type;
-    struct __attribute__ ((packed)) {
-        uint8_t status;
-        uint8_t _rfu[1];
-        /** Random token used in pairing passkey generation */
-        uint8_t pairing_token[4];
-    } msg;
-    /* endregion 22 bytes of manufacturer specific data */
-} ble_advertising_data_t;
-
-/**
- * Scan Response data structure, exactly resembling BLE scan response payload
- *
- * This is optionally used for convenience and for easier pod locating.
- */
-typedef struct __attribute__ ((packed)) {
-    /* Complete Local Name */
-    uint8_t len_complete_local_name;     /**< Length of this advertising structure: 1 + strlen(`complete_local_name`) */
-    uint8_t ad_type_complete_local_name; /**< Complete Local Name = 0x09 (fixed value) */
-    char complete_local_name[31 - 2];    /**< Advertised name, can be shorted and non-null terminated */
-} ble_scan_response_data_t;
-
+#include "ble_adv_data.h"
 
 /**
  * Initialize BLEM OVSDB tables
@@ -125,9 +69,29 @@ bool blem_ble_enable(bool connectable, int interval_ms, uint8_t msg_type, const 
 void blem_ble_disable(void);
 
 /**
+ * Configure advertising of the BLE proximity beacons
+ *
+ * @param     enable        Enable or disable advertising of the proximity beacons.
+ * @param     adv_tx_power  Advertising transmit power in 0.1 dBm steps.
+ * @param     adv_interval  Advertising interval in milliseconds.
+ * @param[in] uuid          Proximity Beacon UUID.
+ * @param     major         Proximity Beacon Major ID.
+ * @param     minor         Proximity Beacon Minor ID.
+ * @param     meas_power    Calibrated (measured) RSSI at 1 meter distance.
+ */
+void blem_ble_proximity_configure(
+        bool enable,
+        int16_t adv_tx_power,
+        uint16_t adv_interval,
+        const uint8_t uuid[16],
+        uint16_t major,
+        uint16_t minor,
+        int8_t meas_power,
+        blem_ble_adv_on_state_t on_state_change);
+
+/**
  * Power off the Bluetooth peripheral and cleanup resources
  */
 void blem_ble_close(void);
-
 
 #endif /* BLEM_H_INCLUDED */

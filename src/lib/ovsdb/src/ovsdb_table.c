@@ -91,11 +91,11 @@ static void ovsdb_table_fini_rows_drop(ds_tree_t *rows)
     }
 }
 
-static void ovsdb_table_fini_monitor(ovsdb_update_monitor_t *mon)
+static void ovsdb_table_fini_monitor(ovsdb_update_monitor_t *mon, const char *table_name)
 {
     const int mon_id = mon->mon_id;
     if (mon_id == 0) return;
-    ovsdb_monitor_cancel_s(mon_id);
+    ovsdb_update_monitor_cancel(mon, table_name);
     mon->mon_id = 0;
 }
 
@@ -104,7 +104,7 @@ void ovsdb_table_fini(ovsdb_table_t *table)
     ovsdb_table_fini_rows_unlink(&table->rows_k);
     ovsdb_table_fini_rows_unlink(&table->rows_k2);
     ovsdb_table_fini_rows_drop(&table->rows);
-    ovsdb_table_fini_monitor(&table->monitor);
+    ovsdb_table_fini_monitor(&table->monitor, table->table_name);
     MEMZERO(*table);
 }
 

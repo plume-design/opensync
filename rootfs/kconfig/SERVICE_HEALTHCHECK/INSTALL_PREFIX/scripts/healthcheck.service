@@ -4,6 +4,8 @@ export HEALTHCHECK_INTERVAL=60
 export HEALTHCHECK_THRESHOLD=10
 DIR=$(dirname "$(readlink -f "$0")")
 
+HEALTHCHECK_HOOK_SUCCESS=""
+
 . "$DIR"/healthcheck.funcs.sh
 . "$DIR"/../etc/kconfig
 
@@ -36,10 +38,16 @@ while true; do
         log_debug "$(basename "$x") check passed"
     done
 
-    if [ $RET -eq 0 -a $_hc_failcnt -gt 0 ]; then
-        log_notice "system now ok"
-        let _hc_failcnt=0
-    elif [ $RET -gt 0 ]; then
+    if [ $RET -eq 0 ]; then
+        if [ $_hc_failcnt -gt 0 ]; then
+            log_notice "system now ok"
+            let _hc_failcnt=0
+        fi
+        for HOOK in $HEALTHCHECK_HOOK_SUCCESS; do
+            log_debug "success hook: $HOOK"
+            $HOOK
+        done
+    else
         let _hc_failcnt++
         log_warn "${_hc_failcnt}/${HEALTHCHECK_THRESHOLD} failures reached"
         if [ $_hc_failcnt -ge $HEALTHCHECK_THRESHOLD ]; then

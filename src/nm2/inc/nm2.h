@@ -37,6 +37,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "osn_dhcpv6.h"
 #include "nm2_iface.h"
 #include "nm2_util.h"
+#include "ds_util.h"
 
 /*
  * ===========================================================================
@@ -117,6 +118,8 @@ struct nm2_dhcpv6_client
     uuidset_t           dc6_send_options;           /* uuidset of DHCP_Option objects */
     uuidset_t           dc6_received_options;       /* uuidset of DHCP_Option objects */
     synclist_t          dc6_received_list;          /* synclist of received options */
+    ds_map_str_t       *dc6_other_config;           /* other_config key-val map */
+    ds_map_str_t       *dc6_other_config_prev;      /* other_config previous value for delta */
     ds_tree_node_t      dc6_tnode;                  /* Tree element structure */
 };
 
@@ -243,11 +246,21 @@ inet_route_status_fn_t nm2_route_notify;
 void nm2_route_cfg_init(void);
 void nm2_route_cfg_reapply(struct nm2_iface *pif);
 
+/* Route6 handling */
+bool nm2_route6_init(void);
+inet_route6_status_fn_t nm2_route6_notify;
+void nm2_route6_cfg_init(void);
+void nm2_route6_cfg_reapply(struct nm2_iface *pif);
+
 /* Policy Routing rules handling */
 bool nm2_route_rule_init(void);
 
 /* IPv4 in IPv6 -- MAP-T and MAP-E: */
 bool nm2_4in6_map_init(void);
+
+/* FQDN_Resolve */
+bool nm2_fqdn_resolve_init(void);
+bool nm2_fqdn_resolve_stop(void);
 
 /*
  * ===========================================================================
@@ -261,7 +274,7 @@ int nm2_mac_tags_ovsdb_init(void);
 int lan_clients_oftag_add_mac(char *mac);
 int lan_clients_oftag_remove_mac(char *mac);
 void nm2_mcast_init_ifc(struct nm2_iface *iface);
-bool nm2_arping_clients_init(void);
+bool nm2_probe_eth_clients_init(void);
 
 /*
  * ===========================================================================

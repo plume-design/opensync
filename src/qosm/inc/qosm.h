@@ -27,92 +27,23 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifndef QOSM_H_INCLUDED
 #define QOSM_H_INCLUDED
 
-#include "ovsdb_update.h"
-#include "ds_tree.h"
-#include "ovsdb_table.h"
-#include "qosm_ic_template.h"
-#include "reflink.h"
-#include "const.h"
-#include "osn_tc.h"
-#include "evx.h"
+#include "ovsdb.h"
 
-void qosm_init_mgr(ev_debounce_fn_t *fn);
+/**
+ * Schedule reconfiguration for this interface.
+ *
+ * The reconfiguration is marked as pending and will be
+ * executed with a debounce timer.
+ *
+ * @param[in]   uuid   OVSDB uuid of the interface
+ */
+void qosm_mgr_schedule_qos_config(const ovs_uuid_t *uuid);
 
-#define QOSM_TC_DEBOUNCE_MIN   0.250       /**< 250ms default/minimum timer */
-#define QOSM_TC_DEBOUNCE_MAX   3.000       /**< 3 seconds max debounce timer */
+/**
+ * Cancel any pending reconfiguration for this interface.
+ *
+ * @param[in]   uuid   OVSDB uuid of the interface
+ */
+void qosm_mgr_stop_qos_config(const ovs_uuid_t *uuid);
 
-
-struct qosm_mgr *
-qosm_get_mgr(void);
-
-struct qosm_mgr
-{
-    ev_debounce_fn_t *debounce_fn_cb; /* callback function for configuring tc */
-    ds_tree_t qosm_bridges_tree;     /* tree for storing qosm_bridge */
-    ds_tree_t qosm_ports_tree;       /* tree for storing qosm_port */
-    ds_tree_t qosm_interfaces_tree;  /* tree for storing qosm_interface */
-    ds_tree_t qosm_wifi_inet_tree;   /* tree for storing Wifi_Inet */
-    ds_tree_t qosm_ip_iface_tree;   /* tree for storing IP_Interface */
-    ds_tree_t qosm_intf_classifier_tree;   /* tree for storing IP_Interface */
-    ds_tree_t qosm_ic_template_tree;  /* tree for storing the template tags */
-};
-
-struct intf_classifier_entry
-{
-    struct qosm_intf_classifier *ic;
-    bool ingress;
-    ds_tree_node_t ic_node;
-};
-
-struct qosm_ip_iface
-{
-    char ipi_ifname[C_IFNAME_LEN];      /* Interface name */
-    ovs_uuid_t ipi_uuid;                /* UUID of this object */
-    ds_tree_t ipi_intf_classifier_tree; /* tree to store ingress/egrees classifiers */
-    reflink_t ipi_classifier_reflink;   /* Reflink to classifier changes */
-    struct ev_debounce ipi_debounce;    /* Reconfiguration debounce timer */
-    osn_tc_t *ipi_tc;                   /* OSN QoS configuration object */
-    ds_tree_node_t ipi_tnode;           /* Tree node */
-};
-
-struct qosm_intf_classifier
-{
-    ovs_uuid_t ic_uuid;                 /* UUID of this object */
-    reflink_t ic_reflink;               /* Reflink of this object */
-    struct qosm_ip_iface *parent;    /* backpointer reference to nmb_ip_iface struc */
-    char *ic_token;                     /* token name */
-    char *ic_match;                     /* match to be applied to TC */
-    char *ic_action;                    /* action parameter required for TC command */
-    int ic_priority;                    /* priority of the TC filter rule */
-    ds_tree_node_t ic_tnode;            /* Tree node */
-};
-
-int qosm_ovsdb_init(void);
-void
-callback_IP_Interface(ovsdb_update_monitor_t *mon,
-                      struct schema_IP_Interface *old_rec,
-                      struct schema_IP_Interface *new_rec);
-
-void
-callback_Interface_Classifier(ovsdb_update_monitor_t *mon,
-                              struct schema_Interface_Classifier *old_rec,
-                              struct schema_Interface_Classifier *conf);
-
-void
-callback_Openflow_Local_Tag(ovsdb_update_monitor_t *mon,
-                            struct schema_Openflow_Local_Tag *old_rec,
-                            struct schema_Openflow_Local_Tag *tag);
-
-void
-callback_Openflow_Tag(ovsdb_update_monitor_t *mon,
-                      struct schema_Openflow_Tag *old_rec,
-                      struct schema_Openflow_Tag *tag);
-
-void
-callback_Openflow_Tag_Group(ovsdb_update_monitor_t *mon,
-                            struct schema_Openflow_Tag_Group *old_rec,
-                            struct schema_Openflow_Tag_Group *tag);
-
-
-
-#endif
+#endif /* QOSM_H_INCLUDED */

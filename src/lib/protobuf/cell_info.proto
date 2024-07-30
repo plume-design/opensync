@@ -223,6 +223,29 @@ message NetNeighborCellInfo {
   int32 inter_freq_srxlev = 23; // Suitable receive level for inter frequency cell
 }
 
+// radio access technology
+enum RadioAccessTechnology {
+  RADIO_ACCESS_TECHNOLOGY_LTE = 0;
+  RADIO_ACCESS_TECHNOLOGY_NR5G = 1;
+}
+
+message CellFullScanNeighborCell {
+  RadioAccessTechnology rat = 1;
+  uint32 mcc = 2;
+  uint32 mnc = 3;
+  uint32 freq = 4;
+  uint32 pcid = 5;
+  int32 rsrp = 6;
+  int32 rsrq = 7;
+  uint32 srxlev = 8;
+  NrScs scs = 9;
+  int32 squal = 10;
+  uint32 cellid = 11;
+  uint32 tac = 12;
+  Bandwidth bandwidth = 13;
+  uint32 band = 14;
+}
+
 enum PcellState {
     NO_SERVING = 0;
     REGISTERED = 1;
@@ -378,4 +401,6 @@ message CellularInfoReport {
   /* Secondary 5G cells */
   repeated CellularNr5gCellInfo nrg_secondary_carrier_agg_info = 11; // Used in 5GNSA, or 5GSA
 
+  /* Full scan neighbor cell info */
+  repeated CellFullScanNeighborCell full_scan_neigh_cell_info = 12;
 }

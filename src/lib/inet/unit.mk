@@ -39,6 +39,7 @@ UNIT_SRC += src/inet_base.c
 UNIT_SRC += src/inet_pppoe.c
 UNIT_SRC += src/inet_vlan.c
 UNIT_SRC += src/inet_routes.c
+UNIT_SRC += src/inet_routes6.c
 UNIT_SRC += src/inet_lte.c
 UNIT_SRC += src/inet_unmanaged.c
 UNIT_SRC += $(if $(CONFIG_TARGET_USE_NATIVE_BRIDGE), src/inet_tap.c)
@@ -63,6 +64,7 @@ UNIT_DEPS += src/lib/osp
 UNIT_DEPS += src/lib/synclist
 UNIT_DEPS += src/lib/log
 UNIT_DEPS += src/lib/timevt
+UNIT_DEPS += src/lib/ds_util
 UNIT_DEPS_CFLAGS += src/lib/version
 
 #

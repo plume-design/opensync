@@ -124,15 +124,31 @@ ip6route_check()
     return 0
 }
 
+# ignore route if env other_config_accept_ra_defrtr=false and route is default (::/0)
+ip6route_check_accept_ra_defrtr()
+{
+    if [ "$other_config_accept_ra_defrtr" = "false" ]; then
+        if [ "$1" = "::/0" ]; then
+            return 0
+        fi
+    fi
+    return 1
+}
+
 # Check if a similar route already exist, if it does, do nothing
 ip6route_replace()
 {
     ip6route_check "$@" && return 0
+    ip6route_check_accept_ra_defrtr "$@" && return 0
     ip -6 route replace "$@"
 }
 
 update_resolv()
 {
+    # ignore DNS if env other_config_accept_ra_rdnss=false
+    if [ "$other_config_accept_ra_rdnss" = "false" ]; then
+        return 0
+    fi
     dns_reset "$1_ipv6"
     [ -n "$2" ] && dns_add "$1_ipv6" "nameserver $2"
     dns_apply "$1_ipv6"
@@ -277,7 +293,7 @@ setup_interface()
         fi
 
         # TODO: delete this somehow when the prefix disappears
-        ip6route_replace unreachable "$addr" proto ra
+        ip6route_replace unreachable "$addr" proto ra expires "$valid"
     done
 
     # Merge addresses
@@ -312,14 +328,14 @@ setup_interface()
         local metric="${entry%%,*}"
 
         if [ -n "$gw" ]; then
-            ip6route_replace "$addr" via "$gw" metric "$metric" dev "$device" proto ra
+            ip6route_replace "$addr" via "$gw" metric "$metric" dev "$device" proto ra expires "$valid"
         else
-            ip6route_replace "$addr" metric "$metric" dev "$device" proto ra
+            ip6route_replace "$addr" metric "$metric" dev "$device" proto ra expires "$valid"
         fi
 
         for prefix in $PREFIXES; do
             local paddr="${prefix%%,*}"
-            [ -n "$gw" ] && ip6route_replace "$addr" via "$gw" metric "$metric" dev "$device" from "$paddr" proto ra
+            [ -n "$gw" ] && ip6route_replace "$addr" via "$gw" metric "$metric" dev "$device" from "$paddr" proto ra expires "$valid"
         done
     done
 

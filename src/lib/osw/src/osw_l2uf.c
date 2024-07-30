@@ -289,7 +289,7 @@ static void
 osw_l2uf_init(struct osw_l2uf *m)
 {
     ds_dlist_init(&m->ifaces, struct osw_l2uf_if, node);
-    ev_async_init(&m->work, osw_l2uf_work_cb);
+    ev_idle_init(&m->work, osw_l2uf_work_cb);
     m->work.data = m;
 }
 

@@ -93,4 +93,5 @@ UNIT_DEPS += $(if $(CONFIG_FSM_NO_DSO), src/lib/fsm_dpi_ndp)
 UNIT_DEPS += $(if $(CONFIG_FSM_NO_DSO), src/lib/fsm_dpi_mdns_responder)
 UNIT_DEPS += $(if $(CONFIG_FSM_NO_DSO), src/lib/fsm_dpi_adt_upnp)
 UNIT_DEPS += $(if $(CONFIG_FSM_NO_DSO), src/lib/wc_null_plugin)
+UNIT_DEPS += $(if $(CONFIG_FSM_NO_DSO), src/lib/we_dpi)
 

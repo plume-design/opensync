@@ -140,6 +140,8 @@ extern bool ovsdb_update_monitor(
         char *mon_table,
         int mon_flags);
 
+bool ovsdb_update_monitor_cancel(ovsdb_update_monitor_t *self, const char *table_name);
+
 bool ovsdb_update_changed(ovsdb_update_monitor_t *self, char *field);
 
 char* ovsdb_update_type_to_str(ovsdb_update_type_t update_type);

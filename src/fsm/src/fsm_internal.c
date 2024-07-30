@@ -240,36 +240,6 @@ set_dpi_mark(struct net_header_parser *net_hdr,
     return ret;
 }
 
-/**
- * @brief Get the MQTT topic configured for reporting dpi
- * statistics, and the reporting interval.
- *
- * @param session the fsm session to probe
- * @return None
- */
-void
-fsm_set_dpi_health_stats_cfg(struct fsm_session *session)
-{
-    char *interval_str;
-    long int interval;
-
-    if (session->type != FSM_DPI_DISPATCH) return;
-
-    session->dpi_stats_report_topic = fsm_get_other_config_val(session, "dpi_health_stats_topic");
-
-    /* read the interval time */
-    interval_str = fsm_get_other_config_val(session, "dpi_health_stats_interval_secs");
-    if (interval_str != NULL)
-    {
-        errno = 0;
-        interval = strtol(interval_str, 0, 10);
-        if (errno == 0) session->dpi_stats_report_interval = (int)interval;
-    }
-
-    LOGI("%s: dpi health stats topic : %s, interval: %ld", __func__,
-         session->dpi_stats_report_topic != NULL ? session->dpi_stats_report_topic : "not set",
-         session->dpi_stats_report_interval);
-}
 
 /**
  * @brief Initializes the tap context for the given session

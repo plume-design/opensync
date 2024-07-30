@@ -80,6 +80,28 @@ osn_tc_t* osn_tc_new(const char *ifname);
 void osn_tc_del(osn_tc_t *tc);
 
 /**
+ * Set or unset the reset-egress flag.
+ *
+ * By default, the TC-filter module will reset egress on configuration apply.
+ *
+ * Resetting egress involves deleting any current qdisc on root and then
+ * configuring some predefined egress qdisc configurations so that egress
+ * filters can be attached.
+ *
+ * This may interfere with any QoS configurations that may also be configured
+ * for the interface at the same time. In that case the reset-egress flag should
+ * be unset as the egress qdisc configurations are done by other QoS module and
+ * we do not want them to be deleted. While still allowing filters to be attached.
+ * Note that the implementation (currently) assumes that the egress qdisc attached
+ * to the root (by the other, QoS, module) is configured with a handle of "1:".
+ *
+ * @param[in]   tc      A valid pointer to an osn_tc_t object
+ * @param[in]   reset   The new value for the reset-egress flag.
+ *                      Note: By default, the reset-egress flag is true.
+ */
+void osn_tc_set_reset_egress(osn_tc_t *tc, bool reset);
+
+/**
  * Apply the TC configuration to the system
  *
  * @param[in]   tc     A valid pointer to an osn_tc_t object

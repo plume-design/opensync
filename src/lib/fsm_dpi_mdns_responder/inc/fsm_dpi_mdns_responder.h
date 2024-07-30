@@ -174,6 +174,9 @@ callback_Service_Announcement(ovsdb_update_monitor_t *mon,
 void
 fsm_dpi_mdns_ovsdb_init(void);
 
+void
+fsm_dpi_mdns_ovsdb_exit(void);
+
 bool
 fsm_dpi_mdns_send_response(struct fsm_dpi_mdns_service *record, bool unicast, struct net_header_parser *net_parser);
 

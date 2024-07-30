@@ -31,7 +31,7 @@ UNIT_NAME := fcm_intfstats
 
 UNIT_DISABLE := $(if $(CONFIG_MANAGER_FCM),n,y)
 
-ifneq (,$(findstring clang,$(CC)))
+ifeq ($(CONFIG_FSM_NO_DSO),y)
 	UNIT_TYPE := LIB
 else
 	UNIT_TYPE := SHLIB

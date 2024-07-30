@@ -51,6 +51,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "memutil.h"
 #include "ff_lib.h"
 
+#include "dpp_types.h"
 #include "dpp_client.h"
 
 #include "sm.h"

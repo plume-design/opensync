@@ -301,6 +301,8 @@ typedef struct osn_ip6_addr
  */
 #define FMT_osn_ip6_addr(x)     (__FMT_osn_ip6_addr((char[OSN_IP6_ADDR_LEN]){0}, OSN_IP6_ADDR_LEN, &x))
 char* __FMT_osn_ip6_addr(char *buf, size_t sz, const osn_ip6_addr_t *addr);
+#define FMT_osn_ip6_addr_nolft(x) (__FMT_osn_ip6_addr_nolft((char[OSN_IP6_ADDR_LEN]){0}, OSN_IP6_ADDR_LEN, &x))
+char* __FMT_osn_ip6_addr_nolft(char *buf, size_t sz, const osn_ip6_addr_t *addr);
 /**< @copydoc FMT_osn_ip6_addr */
 
 /**
@@ -383,6 +385,21 @@ int osn_ip6_addr_nolft_cmp(const void *_a, const void *_b);
 osn_ip6_addr_t osn_ip6_addr_subnet(const osn_ip6_addr_t *addr);
 
 /**
+ * Converts a subnet IPv6 representation to a prefix integer.
+ * For example:
+ *
+ * @code
+ * ffff:: -> 16
+ * @endcode
+ *
+ * @param[in]   addr  Input address
+ *
+ * @return
+ * Returns the number of consecutive bits set in @p addr
+ */
+int osn_ip6_addr_to_prefix(osn_ip6_addr_t *addr);
+
+/**
  * Convert a prefix integer to an IPv6 representation.
  * For example:
  *
@@ -451,6 +468,17 @@ typedef struct osn_ipany_addr
  * greater than @p b.
  */
 int osn_ipany_addr_cmp(const void *_a, const void *_b);
+
+/**
+ * Check if ipany address is valid (ipv4 or ipv6) and not zero (0.0.0.0 or ::)
+ *
+ * @param[in]      osn_ipany_addr_t to check
+ *
+ * @return
+ * This function returns true if the address is valid (addr_type is AF_INET or AF_INET6)
+ * and not zero value (0.0.0.0 ipv4 or :: ipv6)
+ */
+bool osn_ipany_addr_is_set(const osn_ipany_addr_t *addr);
 
 /**
  * Initialize an osn_ipany_addr_t from a string.

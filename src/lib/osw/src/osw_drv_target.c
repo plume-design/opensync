@@ -1159,6 +1159,7 @@ osw_drv_target_vifconf2schema(struct osw_drv_vif_config *vif,
             SCHEMA_SET_STR(vconf->mode, "ap");
             SCHEMA_SET_STR(vconf->ssid, ap->ssid.buf);
             SCHEMA_SET_STR(vconf->bridge, ap->bridge_if_name.buf);
+            SCHEMA_SET_STR(vconf->nas_identifier, ap->nas_identifier.buf);
             SCHEMA_SET_STR(vconf->ssid_broadcast, ap->ssid_hidden ? "disabled" : "enabled");
             switch (ap->acl_policy) {
                 case OSW_ACL_NONE: SCHEMA_SET_STR(vconf->mac_list_type, "none"); break;
@@ -1505,6 +1506,7 @@ osw_drv_target_schema2vifstate(const struct schema_Wifi_VIF_State *vstate,
             break;
         case OSW_VIF_AP:
             STRSCPY_WARN(info->u.ap.bridge_if_name.buf, vstate->bridge);
+            STRSCPY_WARN(info->u.ap.nas_identifier.buf, vstate->nas_identifier);
             STRSCPY_WARN(info->u.ap.ssid.buf, vstate->ssid);
             info->u.ap.ssid.len = strlen(vstate->ssid);
             info->u.ap.beacon_interval_tu = rstate->bcn_int;

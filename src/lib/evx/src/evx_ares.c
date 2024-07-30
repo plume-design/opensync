@@ -26,15 +26,21 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <evx.h>
 #include <ares.h>
+#include <inttypes.h>
 #include "log.h"
 #include "const.h"
+#include "util.h"
+
+#define MODULE_ID LOG_MODULE_ID_ARES
 
 #define ARES_PROCESS_TIMEOUT 10
 
 static void timeout_cb(EV_P_ ev_timer *t, int revents)
 {
     struct evx_ares   *eares_p;
-    struct timeval    tv, *tvp;
+    struct timeval    tv = {0, 0};
+    struct timeval    tv_poll = {0, 0};
+    struct timeval    *tvp;
     fd_set            readers, writers;
     int               nfds, count;
 
@@ -44,16 +50,29 @@ static void timeout_cb(EV_P_ ev_timer *t, int revents)
 
     nfds = ares_fds(eares_p->ares.channel, &readers, &writers);
     if (nfds == 0) {
-        LOGI("evx: ares: no nfds available");
+        LOGT("evx: ares[%s]: no nfds available", eares_p->server);
         evx_stop_ares(eares_p);
         return;
     }
 
     tvp = ares_timeout(eares_p->ares.channel, NULL, &tv);
-    count = select(nfds, &readers, &writers, NULL, tvp);
 
-    LOGI("evx: ares timeout: count = %d, tv: %ld.%06ld tvp: %ld.%06ld",
-         count, tv.tv_sec, tv.tv_usec, tvp->tv_sec, tvp->tv_usec);
+    // ares_timeout() will return either the tv or maxtv which is NULL in
+    // the above call. select() with timeout=NULL would block indefinitely,
+    // but this timeout handler should not block here. It will be triggered
+    // again in next ev timer interval so use a timeout of 0 to poll the
+    // fds and process eventual ares timeouts
+    // tv and tvp are used for log information only
+
+    count = select(nfds, &readers, &writers, NULL, &tv_poll);
+
+    LOGT("evx: ares[%s] timeout: count: %d tv: %"PRId64".%06ld %s",
+         eares_p->server, count,
+         (int64_t)tv.tv_sec, (long)tv.tv_usec,
+         tvp ? "" : "tvp=NULL");
+
+    // even if no fds are ready (count=0) we need to call ares_process()
+    // to handle ares request timeouts
 
     if (eares_p->timeout_user_cb)
         eares_p->timeout_user_cb();
@@ -71,7 +90,7 @@ static void io_cb (EV_P_ ev_io *w, int revents)
     rfd = ARES_SOCKET_BAD;
     wfd = ARES_SOCKET_BAD;
 
-    LOGI("evx: ares %s: fd: %d revents: %d", __func__, w->fd, revents);
+    LOGT("evx: ares[%s] %s: fd: %d revents: %d", ctx->eares->server, __func__, w->fd, revents);
 
     if (revents & EV_READ)
         rfd = w->fd;
@@ -123,7 +142,7 @@ static struct ares_ctx* allocctx(struct evx_ares *eares, int fd)
     }
 
     if (i == ARRAY_SIZE(eares->ctx)) {
-        LOGW("evx: ares: ctx out of memory");
+        LOGW("evx: ares[%s]: ctx out of memory", eares->server);
         return NULL;
     }
 
@@ -150,10 +169,10 @@ static void evx_ares_sock_state_cb(void *data, int s, int read, int write)
 
     io_p = &ctx->io;
 
-    LOGI("evx: ares: read: %d write: %d s: %d fd: %d", read, write, s, io_p->fd);
+    LOGT("evx: ares[%s]: read: %d write: %d s: %d fd: %d", eares->server, read, write, s, io_p->fd);
 
     if (ev_is_active(io_p) && io_p->fd != s) {
-        LOGE("evx: ares: %s: different socket id", __func__);
+        LOGE("evx: ares[%s]: %s: different socket id", eares->server, __func__);
         return;
     }
 
@@ -200,6 +219,21 @@ int evx_init_ares(struct ev_loop * loop, struct evx_ares *eares_p, void (*timeou
     return 0;
 }
 
+int evx_ares_set_server(struct evx_ares *eares_p, char *server)
+{
+    if (eares_p->chan_initialized) {
+        // set_server should be called between init and start
+        LOGE("%s(%s): channel already started", __func__, server);
+        return -1;
+    }
+    if (strscpy(eares_p->server, server, sizeof(eares_p->server)) < 0) {
+        *eares_p->server = 0;
+        LOGE("%s(%s): too long", __func__, server);
+        return -1;
+    }
+    return 0;
+}
+
 int evx_start_ares(struct evx_ares *eares_p)
 {
     int status;
@@ -209,8 +243,15 @@ int evx_start_ares(struct evx_ares *eares_p)
                                    &eares_p->ares.options,
                                    ARES_OPT_SOCK_STATE_CB);
         if (status != ARES_SUCCESS) {
-            LOGW("%s failed = %d", __func__, status);
+            LOGW("%s ares[%s] failed = %d", __func__, eares_p->server, status);
             return -1;
+        }
+        if (*eares_p->server) {
+            status = ares_set_servers_csv(eares_p->ares.channel, eares_p->server);
+            if (status != ARES_SUCCESS) {
+                LOGW("%s ares[%s] set server failed = %d", __func__, eares_p->server, status);
+                return -1;
+            }
         }
     }
     eares_p->chan_initialized = 1;
@@ -219,8 +260,8 @@ int evx_start_ares(struct evx_ares *eares_p)
 
 void evx_stop_ares(struct evx_ares *eares_p)
 {
-    LOGI("evx: ares: stop ares, channel state: %d",
-         eares_p->chan_initialized);
+    LOGT("evx: ares[%s]: stop ares, channel state: %d",
+         eares_p->server, eares_p->chan_initialized);
 
     if (eares_p->chan_initialized)
         ares_destroy(eares_p->ares.channel);

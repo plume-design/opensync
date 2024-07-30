@@ -1,7 +1,7 @@
 menu "libevx Configuration"
     config LIBEVX_USE_CARES
         bool "Asynchronous DNS resolution support"
-        default n
+        default y
         help
             Enable support for asynchronous DNS resolution.
 

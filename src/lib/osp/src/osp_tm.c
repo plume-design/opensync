@@ -47,7 +47,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define TM_OVSDBG_STATE "state"
 
 static ovsdb_table_t table_Node_State;
-static ovsdb_table_t table_AWLAN_Node;
 
 bool osp_tm_ovsdb_get_thermal_state(int *thermal_state)
 {
@@ -105,28 +104,14 @@ bool osp_tm_get_fan_rpm_from_thermal_state(const int state, int *fan_rpm)
     return true;
 }
 
-bool osp_tm_get_led_state(int *led_state)
+int osp_tm_get_led_state(int position)
 {
-    static bool init_awlan_node = false;
+    enum osp_led_state state;
 
-    struct schema_AWLAN_Node awlan_node;
+    /* Needed to initialize default priority values */
+    osp_led_init();
 
-    if (!init_awlan_node)
-    {
-        OVSDB_TABLE_INIT_NO_KEY(AWLAN_Node);
-        init_awlan_node = true;
-    }
+    state = osp_led_ovsdb_get_active_led_state((uint8_t)position);
 
-    MEMZERO(awlan_node);
-
-    if (!ovsdb_table_select_one_where(&table_AWLAN_Node, json_array(), &awlan_node))
-    {
-        LOGI("osp_tm: Cannot get led_state - AWLAN_Node table empty");
-        *led_state = -1;
-        return false;
-    }
-
-    *led_state = (int)osp_led_str_to_state((char *)awlan_node.led_config);
-
-    return true;
+    return (int)state;
 }

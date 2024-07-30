@@ -63,6 +63,7 @@ TARV=
 endif
 
 ROOTFS_TAR_TRANSFORM += --transform=s,INSTALL_PREFIX,$(INSTALL_PREFIX),
+ROOTFS_TAR_TRANSFORM += --transform=s,//,/,
 
 ifeq ($(CONFIG_REMAP_LEGACY),y)
 ifneq ($(ROOTFS_LEGACY_PREFIX),$(INSTALL_PREFIX))
@@ -174,6 +175,7 @@ rootfs-clean:
 rootfs-make: build_all rootfs-prepare ovsdb-create
 
 rootfs: rootfs-clean
+	$(Q)mkdir -p $(BUILD_ROOTFS_DIR)
 	$(MAKE) rootfs-make
 ifeq ($(BUILD_ROOTFS_PACK),y)
 	@# optional include rootfs-pack in rootfs
@@ -233,7 +235,18 @@ rootfs-install-main: rootfs-install-prepend
 
 rootfs-install-append: rootfs-install-main
 
-rootfs-install-only: rootfs-install-prepend rootfs-install-main rootfs-install-append
+rootfs-install-to-target-dir: rootfs-install-prepend rootfs-install-main rootfs-install-append
+
+rootfs-install-as-package:
+	@echo "rootfs: install as package"
+	$(MAKE) ospkg-build
+	$(MAKE) ospkg-install-to-rootfs
+
+ifeq ($(CONFIG_IN_PLACE_UPGRADE),y)
+rootfs-install-only: rootfs-install-as-package
+else
+rootfs-install-only: rootfs-install-to-target-dir
+endif
 
 rootfs-install: rootfs
 	$(MAKE) rootfs-install-only

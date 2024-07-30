@@ -44,6 +44,8 @@ typedef struct
     radio_essid_t                   ssid;
     radio_chanwidth_t               chanwidth;
     uint32_t                        c_freq0_chan;
+    uint8_t                         *beacon_ies;
+    size_t                          beacon_ies_len;
 } dpp_neighbor_record_t;
 
 typedef struct
@@ -68,6 +70,7 @@ static inline void dpp_neighbor_record_free(dpp_neighbor_record_list_t *record)
 {
     if (NULL != record)
     {
+        FREE(record->entry.beacon_ies);
         FREE(record);
     }
 }

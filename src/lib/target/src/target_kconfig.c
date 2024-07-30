@@ -36,6 +36,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "os_nif.h"
 #include "target.h"
 #include "execsh.h"
+#include "util.h"
 
 #if defined(CONFIG_TARGET_CAP_GATEWAY) || defined(CONFIG_TARGET_CAP_EXTENDER)
 int target_device_capabilities_get()
@@ -263,8 +264,8 @@ bool target_device_wdt_ping(void)
 /* CONNECTIVITY CHECK CONFIGURATION */
 #define PROC_NET_ROUTE                  "/proc/net/route"
 #define DEFAULT_PING_PACKET_SIZE        4
-#define DEFAULT_PING_PACKET_CNT         2
-#define DEFAULT_PING_DEADLINE           4
+#define DEFAULT_PING_PACKET_CNT         1
+#define DEFAULT_PING_DEADLINE           2
 #define DEFAULT_PING_TIMEOUT            2
 
 #define DEFAULT_BACKHAUL_PREFIX         "169.254."
@@ -435,9 +436,11 @@ util_ping_cmd(const char *ipstr, const char *ifname, bool ipv6, bool timeout)
         Wparam_p = "";
     }
 
-    snprintf(cmd, sizeof(cmd), "ping %s -I %s -s %d -c %d -w %d %s %s >/dev/null 2>&1",
-             ipv6_s, ifname,
-             DEFAULT_PING_PACKET_SIZE, DEFAULT_PING_PACKET_CNT, DEFAULT_PING_DEADLINE,
+    if (!is_input_shell_safe(ipstr) || !is_input_shell_safe(ifname)) return false;
+
+    snprintf(cmd, sizeof(cmd), "timeout %d ping %s -I %s -s %d -c %d %s %s >/dev/null 2>&1",
+             DEFAULT_PING_DEADLINE, ipv6_s, ifname,
+             DEFAULT_PING_PACKET_SIZE, DEFAULT_PING_PACKET_CNT,
              Wparam_p, ipstr);
 
     rc = util_system_cmd(cmd);
@@ -453,6 +456,8 @@ util_arping_cmd(const char *ipstr)
 {
     char cmd[256];
     bool ret;
+
+    if (!is_input_shell_safe(ipstr)) return false;
 
     snprintf(ARRAY_AND_SIZE(cmd),
              "arping -I \"$(ip ro get %s"
@@ -485,6 +490,8 @@ util_ndisc6_cmd(const char *ipstr, const char *ifname)
         LOGI("%s ndisc6 unsupported state: %d", ifname, ret);
         return ret;
     }
+
+    if (!is_input_shell_safe(ipstr) || !is_input_shell_safe(ifname)) return false;
 
     snprintf(ARRAY_AND_SIZE(cmd),
              "ndisc6 %s %s",
@@ -604,6 +611,8 @@ util_get_link_ip(const char *ifname, struct in_addr *dest)
 
     f1 = NULL;
     retval = false;
+
+    if (!is_input_shell_safe(ifname)) return false;
 
     if (util_is_gretap_softwds_link(ifname)) {
         snprintf(cmd, sizeof(cmd),

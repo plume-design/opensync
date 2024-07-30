@@ -99,6 +99,7 @@ void ev_debounce_set2(ev_debounce *w, double timeout, double timeout_max);
 void ev_debounce_set(ev_debounce *w, double timeout);
 
 #ifdef CONFIG_LIBEVX_USE_CARES
+#define EVX_ARES_SERVER_LEN 256
 struct evx_ares {
     struct ares_ctx {
         ev_io           io;
@@ -112,9 +113,11 @@ struct evx_ares {
     } ares;
     int chan_initialized;
     void (*timeout_user_cb)(void);
+    char server[EVX_ARES_SERVER_LEN];
 };
 int evx_ares_get_count_busy_fds(struct evx_ares *eares);
 int evx_init_ares(struct ev_loop * loop, struct evx_ares *eares_p, void (*timeout_user_cb)(void));
+int evx_ares_set_server(struct evx_ares *eares_p, char *server);
 int evx_start_ares(struct evx_ares *eares_p);
 void evx_stop_ares(struct evx_ares *eares_p);
 void evx_close_ares(struct evx_ares *eares_p);

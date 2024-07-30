@@ -114,6 +114,9 @@ struct osw_drv_vif_config_ap {
     struct osw_ifname bridge_if_name;
     bool bridge_if_name_changed;
 
+    struct osw_nas_id nas_identifier;
+    bool nas_identifier_changed;
+
     int beacon_interval_tu;
     bool beacon_interval_tu_changed;
 
@@ -152,6 +155,11 @@ struct osw_drv_vif_config_ap {
 
     struct osw_radius_list radius_list;
     bool radius_list_changed;
+    struct osw_radius_list acct_list;
+    bool acct_list_changed;
+
+    struct osw_passpoint passpoint;
+    bool passpoint_changed;
 
     struct osw_neigh_list neigh_list;
     struct osw_neigh_list neigh_add_list;
@@ -167,6 +175,12 @@ struct osw_drv_vif_config_ap {
 
     struct osw_multi_ap multi_ap;
     bool multi_ap_changed;
+
+    enum osw_mbss_vif_ap_mode mbss_mode;
+    bool mbss_mode_changed;
+
+    int mbss_group;
+    bool mbss_group_changed;
 };
 
 struct osw_drv_vif_sta_network {
@@ -224,6 +238,7 @@ struct osw_drv_vif_state_ap {
     bool wps_pbc;
     int beacon_interval_tu;
     struct osw_ifname bridge_if_name;
+    struct osw_nas_id nas_identifier;
     struct osw_ap_mode mode;
     struct osw_channel channel;
     struct osw_ssid ssid;
@@ -232,10 +247,14 @@ struct osw_drv_vif_state_ap {
     struct osw_wpa wpa;
     struct osw_ap_psk_list psk_list;
     struct osw_radius_list radius_list;
+    struct osw_radius_list acct_list;
     struct osw_neigh_list neigh_list;
     struct osw_wps_cred_list wps_cred_list;
     struct osw_multi_ap multi_ap;
     struct osw_drv_mld_state mld;
+    enum osw_mbss_vif_ap_mode mbss_mode;
+    int mbss_group;
+    struct osw_passpoint passpoint;
 };
 
 struct osw_drv_vif_state_ap_vlan {
@@ -312,9 +331,6 @@ struct osw_drv_phy_config {
     struct osw_reg_domain reg_domain;
     bool reg_domain_changed;
 
-    struct osw_ifname mbss_tx_vif_name;
-    bool mbss_tx_vif_name_changed;
-
     struct osw_drv_vif_config_list vif_list;
 };
 
@@ -333,7 +349,6 @@ struct osw_drv_phy_state {
     size_t n_channel_states;
     struct osw_reg_domain reg_domain;
     struct osw_hwaddr mac_addr;
-    struct osw_ifname mbss_tx_vif_name;
     bool exists;
     bool enabled;
     int tx_chainmask;

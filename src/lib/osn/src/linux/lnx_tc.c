@@ -53,13 +53,14 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * "tc qdisc del" may return an error if there's no qdisc configured on the
  * interface. Ignore errors.
  */
-static char lnx_tc_qdisc_reset[] = _S(
-        tc qdisc del dev "$1" root || true;
-        tc qdisc del dev "$1" ingress || true);
+
+static char lnx_tc_qdisc_egress_reset[] = _S(tc qdisc del dev "$1" root || true);
+
+static char lnx_tc_qdisc_ingress_reset[] = _S(tc qdisc del dev "$1" ingress || true);
 
 static char lnx_tc_qdisc_ingress_set[] = _S(tc qdisc add dev "$1" ingress handle ffff:fff1);
-static char lnx_tc_qdisc_egress_set[] = _S(
 
+static char lnx_tc_qdisc_egress_set[] = _S(
         tc qdisc add dev "$1" \
                 handle 1:0 \
                 root prio;
@@ -134,18 +135,72 @@ bool lnx_tc_init(lnx_tc_t *self, const char *ifname)
     ds_tree_init(&self->lt_filters, lnx_tc_filters_cmp,
                  struct lnx_tc_filter, lt_node);
 
+    /*
+     * By default, reset egress qdiscs unless reset_egress flag explicitly unconfigured.
+     * (Usually in cases where another module resets/sets initial qdiscs)
+     */
+    self->lt_reset_egress = true;
+
+    return true;
+}
+
+void lnx_tc_set_reset_egress(lnx_tc_t *self, bool reset)
+{
+    self->lt_reset_egress = reset;
+}
+
+static bool lnx_tc_reset_if_needed(lnx_tc_t *self)
+{
+    int rc;
+
+    /*
+     * Reset egress qdiscs, unless reset disabled (usually in cases where another
+     * module (for instance QoS module) is expected to reset/set initial egress qdiscs).
+     */
+    if (self->lt_reset_egress)
+    {
+        LOG(INFO, "tc: %s: Resetting egress", self->lt_ifname);
+
+        rc = execsh_log(LOG_SEVERITY_DEBUG, lnx_tc_qdisc_egress_reset, self->lt_ifname);
+        if (rc != 0)
+        {
+            LOG(INFO, "tc: %s: Error resetting egress TC.", self->lt_ifname);
+        }
+        rc = execsh_log(LOG_SEVERITY_DEBUG, lnx_tc_qdisc_egress_set, self->lt_ifname);
+        if (rc != 0)
+        {
+            LOG(ERR, "tc: %s: Error Setting egress TC.", self->lt_ifname);
+            return false;
+        }
+    }
+
+    /*
+     * Always reset ingress qdiscs. Ingress qdiscs are used only by tc-filters (this module),
+     * thus they can alway be reset independently of egress qdiscs.
+     */
+    LOG(INFO, "tc: %s: Resetting ingress", self->lt_ifname);
+    rc = execsh_log(LOG_SEVERITY_DEBUG, lnx_tc_qdisc_ingress_reset, self->lt_ifname);
+    if (rc != 0)
+    {
+        LOG(INFO, "tc: %s: Error resetting ingress TC.", self->lt_ifname);
+    }
+    rc = execsh_log(LOG_SEVERITY_DEBUG, lnx_tc_qdisc_ingress_set, self->lt_ifname);
+    if (rc != 0)
+    {
+        LOG(ERR, "tc: %s: Error setting ingress TC.", self->lt_ifname);
+        return false;
+    }
+
     return true;
 }
 
 void lnx_tc_fini(lnx_tc_t *self)
 {
-    int rc;
-
-    LOG(INFO, "tc: %s: Resetting TC", self->lt_ifname);
-    rc = execsh_log(LOG_SEVERITY_DEBUG, lnx_tc_qdisc_reset, self->lt_ifname);
-    if (rc != 0)
+    /* Reset ingress, and egress if needed: */
+    if (!lnx_tc_reset_if_needed(self))
     {
-        LOG(INFO, "tc: %s: Error resetting TC.", self->lt_ifname);
+        LOG(ERR, "tc: %s: Failed at tc-filter reset-if-needed stage", self->lt_ifname);
+        return;
     }
 
     lnx_tc_free_filters(self);
@@ -154,33 +209,18 @@ void lnx_tc_fini(lnx_tc_t *self)
 
 bool lnx_tc_begin(lnx_tc_t *self)
 {
-    int rc;
-
     if (self->lt_tc_begin)
     {
         LOG(ERR, "tc: %s: tc_begin/tc_end mismatch.", self->lt_ifname);
         return false;
     }
 
-    LOG(INFO, "tc: %s Initializin TC configuration.", self->lt_ifname);
+    LOG(INFO, "tc: %s Initializing TC-filter configuration.", self->lt_ifname);
 
-    rc = execsh_log(LOG_SEVERITY_DEBUG, lnx_tc_qdisc_reset, self->lt_ifname);
-    if (rc != 0)
+    /* Reset ingress, and egress if needed: */
+    if (!lnx_tc_reset_if_needed(self))
     {
-        LOG(INFO, "tc: %s: Error resetting TC.", self->lt_ifname);
-    }
-
-    rc = execsh_log(LOG_SEVERITY_DEBUG, lnx_tc_qdisc_ingress_set, self->lt_ifname);
-    if (rc != 0)
-    {
-        LOG(ERR, "tc: %s: Error Setting Ingress TC.", self->lt_ifname);
-        return false;
-    }
-
-    rc = execsh_log(LOG_SEVERITY_DEBUG, lnx_tc_qdisc_egress_set, self->lt_ifname);
-    if (rc != 0)
-    {
-        LOG(ERR, "tc: %s: Error Setting Egress TC.", self->lt_ifname);
+        LOG(ERR, "tc: %s: Failed at tc-filter reset-if-needed stage", self->lt_ifname);
         return false;
     }
 

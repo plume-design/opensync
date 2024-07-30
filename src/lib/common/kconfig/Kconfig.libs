@@ -1,0 +1,9 @@
+menu "OS Common configuration"
+
+    config OS_EV_TRACE
+    bool "enable libev event tracing"
+    default n
+    help
+        Enable libev tracing. libev must have support for it.
+
+endmenu

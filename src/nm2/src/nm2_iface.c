@@ -208,7 +208,7 @@ struct nm2_iface *nm2_iface_new(const char *_ifname, enum nm2_iftype if_type)
      * scenario, re-apply the routes when the interface is created
      */
     nm2_route_cfg_reapply(piface);
-
+    nm2_route6_cfg_reapply(piface);
 
     LOG(INFO, "nm2_iface_new: %s: Created new interface (type %s).", ifname, nm2_iftype_tostr(if_type));
 
@@ -527,6 +527,7 @@ void nm2_iface_status_register(struct nm2_iface *piface)
 
     /* Register the route state function */
     inet_route_notify(piface->if_inet, nm2_route_notify);
+    inet_route6_notify(piface->if_inet, nm2_route6_notify);
 }
 
 /*

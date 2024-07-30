@@ -1192,6 +1192,8 @@ static bool strongswan_get_status_ipsec(struct osn_ipsec_status *tunnel_status, 
 
     LOG(TRACE, "strongswan: %s called", __func__);
 
+    if (!is_input_shell_safe(tunnel_name)) return false;
+
     /* Run and parse "ipsec status <tunnel_name>" command: */
     snprintf(cmd, sizeof(cmd), "%s \"%s\" 2>/dev/null", SS_IPSEC_STATUS_CMD, tunnel_name);
     LOG(TRACE, "strongswan: Running cmd: %s", cmd);

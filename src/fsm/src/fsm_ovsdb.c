@@ -378,6 +378,7 @@ get_home_bridge(char *if_name, char *bridge, size_t len)
              "ovs-vsctl port-to-br %s",
              if_name);
 
+    if (!is_input_shell_safe(shell_cmd)) return -1;
     fcmd = popen(shell_cmd, "r");
     if (fcmd ==  NULL) {
         LOG(DEBUG, "Error executing command.::shell_cmd=%s", shell_cmd);
@@ -815,6 +816,10 @@ static struct plugin_init_table plugin_init_table[] =
     {
         .handler = "wc_null",
         .init = fsm_wc_null_plugin_init,
+    },
+    {
+        .handler = "we_dpi",
+        .init = we_dpi_plugin_init,
     }
 };
 

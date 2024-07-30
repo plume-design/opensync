@@ -28,15 +28,18 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define TARGET_NATIVE_H_INCLUDED
 
 #include "net/if.h"
+#include "dpp_client.h"
+#include "dpp_survey.h"
 
 #define TARGET_LOGREAD_FILENAME     "messages"
 
-typedef void target_client_record_t;
+typedef struct
+{
+    DPP_TARGET_CLIENT_RECORD_COMMON_STRUCT;
+} target_client_record_t;
 
 typedef struct {
-    struct {
-        int chan;
-    } info;
+    dpp_survey_info_t info;
     struct ds_dlist_node node;
 } target_survey_record_t;
 

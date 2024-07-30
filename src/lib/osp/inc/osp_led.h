@@ -28,6 +28,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define OSP_LED_H_INCLUDED
 
 #include <stdint.h>
+#include <stdbool.h>
 
 
 /// @file
@@ -47,6 +48,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #define OSP_LED_PRIORITY_DISABLE    ((uint32_t)-1)  /**< LED state disabled */
 #define OSP_LED_PRIORITY_DEFAULT    ((uint32_t)-2)  /**< Lowest priority */
+#define OSP_LED_POSITION_DEFAULT    0               /**< LED position for default system actions */
 
 /**
  * Available LED states
@@ -74,30 +76,76 @@ enum osp_led_state
     OSP_LED_ST_UPGRADEFAIL,     /**< Upgrade failed */
     OSP_LED_ST_HWTEST,          /**< Hardware test - FQC */
     OSP_LED_ST_IOT_ALARM,       /**< Alarm triggered by IoT devices */
+    OSP_LED_ST_CLOUD,           /**< Custom pattern pushed from the cloud */
     OSP_LED_ST_LAST             /**< (table sentinel) */
 };
 
+/**
+ * LED color value in RGB format
+ */
+struct osp_led_color {
+    union {
+        struct __attribute__((packed))
+        {
+            /* Order of fields is little-endian to allow for a packed RGB color value */
+            uint8_t b;  /**< Blue in range [0, 255] */
+            uint8_t g;  /**< Green in range [0, 255] */
+            uint8_t r;  /**< Red in range [0, 255] */
+        };
+        uint32_t rgb;  /**< RGB color value */
+    };
+};
+
+/**
+ * LED pattern element which describes the LED characteristics
+ * for a portion of the LED cycle period.
+ */
+struct osp_led_pattern_el {
+    uint16_t duration;           /**< Total duration of this element in milliseconds, including fade time */
+    struct osp_led_color color;  /**< RGB color */
+    uint16_t fade;               /**< Transition time from current to set color in milliseconds */
+};
+
+struct led_ctx
+{
+    enum osp_led_state cur_state;
+    bool     state_enab[OSP_LED_ST_LAST];
+    uint32_t state_prio[OSP_LED_ST_LAST];
+    uint32_t state_def_prio[OSP_LED_ST_LAST];
+    struct osp_led_pattern_el *pattern_els;
+    int pattern_els_count;
+};
 
 /**
  * Initialize the LED subsystem
  *
- * @param[out] led_cnt  Number of LED's supported by the system
- *
  * @return 0 on success, -1 on error
  */
-int osp_led_init(int *led_cnt);
+int osp_led_init(void);
 
 
 /**
  * Set LED to specified business level state (high-level LED API)
  *
- * @param[in] state     LED state
- * @param[in] priority  LED state priority -- 0 is highest. A higher priority
- *                      state overrides current LED behavior.
+ * @param[in] state        LED state
+ * @param[in] priority     LED state priority -- 0 is highest. A higher priority
+ *                         state overrides current LED behavior.
+ * @param[in] position     Position of LED whose state we are trying to set. Allows
+ *                         setting different patterns on systems with multiple LEDs.
+ * @param[in] pattern_els  List of LED custom pattern elements where each element
+ *                         controls LED behavior for a certain duration based on
+ *                         specified values. The pattern is executed in a cycle.
+ *                         Only applicable to the "cloud" state.
+ * @param[in] pattern_els_count  Number of elements in LED pattern
  *
  * @return 0 on success, -1 on error
  */
-int osp_led_set_state(enum osp_led_state state, uint32_t priority);
+int osp_led_set_state(
+        enum osp_led_state state,
+        uint32_t priority,
+        uint8_t position,
+        struct osp_led_pattern_el *pattern_els,
+        int pattern_els_count);
 
 
 /**
@@ -107,11 +155,12 @@ int osp_led_set_state(enum osp_led_state state, uint32_t priority);
  * next highest priority state is applied.
  * If there are no states on the LED state stack, @ref OSP_LED_ST_IDLE is applied.
  *
- * @param[in] state  A previously set LED state
+ * @param[in] state     A previously set LED state
+ * @param[in] position  Position of LED whose state we are trying to clear.
  *
  * @return 0 on success, -1 on error
  */
-int osp_led_clear_state(enum osp_led_state state);
+int osp_led_clear_state(enum osp_led_state state, uint8_t position);
 
 
 /**
@@ -127,10 +176,11 @@ int osp_led_reset(void);
  *
  * @param[out] state     Current LED state
  * @param[out] priority  Priority of the current state
+ * @param[in]  position  Position of LED whose state we are trying to get.
  *
  * @return 0 on success, -1 on error
  */
-int osp_led_get_state(enum osp_led_state *state, uint32_t *priority);
+int osp_led_get_state(enum osp_led_state *state, uint32_t *priority, uint8_t position);
 
 
 /**
@@ -151,6 +201,81 @@ const char* osp_led_state_to_str(enum osp_led_state state);
  */
 enum osp_led_state osp_led_str_to_state(const char *str);
 
+/**
+ * Get the default priority value LED state
+ *
+ * @param[in]  state     LED state
+ *
+ * @return 0 on success, -1 on error
+ */
+uint32_t osp_led_get_state_default_prio(enum osp_led_state state);
+
+/**
+ * Add a new active LED state into OVSDB table LED_Config
+ *
+ * @param[in] state     LED state to add into table
+ * @param[in] position  Position of LED whose state we are trying to add.
+ *
+ * @return 0 on success, -1 on error when failing to insert new row
+ */
+int osp_led_ovsdb_add_led_config(enum osp_led_state state, uint32_t priority, uint8_t position);
+
+/**
+ * Delete a currently active LED state from OVSDB table LED_Config
+ *
+ * @param[in] state     LED state to delete from table
+ * @param[in] position  Position of LED whose state we are trying to delete.
+ *
+ * @return 0 on success, -1 on error when no rows were deleted
+ */
+int osp_led_ovsdb_delete_led_config(enum osp_led_state state, uint8_t position);
+
+/**
+ * Gets currently active LED state for desired position from OVSDB table LED_Config
+ *
+ * @param[in]  position  Position of LED whose state we are trying to get
+ *
+ * @return 0 on success, -1 on error when no rows were deleted
+ */
+enum osp_led_state osp_led_ovsdb_get_active_led_state(uint8_t position);
+
+/**
+ * Gets the default priorities for every LED state.
+ *
+ * @param[out]  priorities      Array of default priorities for each state
+ * @param[in]   priorities_num  Number of priorities to get values for,
+ *                              should be equal to the number of states
+ *
+ * @return true on success, false on error
+ */
+bool osp_led_tgt_get_def_state_priorities(uint32_t priorities[], int priorities_num);
+
+/**
+ * Set LED to specified target level state (low-level LED API)
+ *
+ * @param[in] state        LED state
+ * @param[in] position     Position of LED whose state we are trying to set. Allows
+ *                         setting different patterns on systems with multiple LEDs.
+ * @param[in] pattern_els  List of LED custom pattern elements where each element
+ *                         controls LED behavior for a certain duration based on
+ *                         specified values. The pattern is executed in a cycle.
+ *                         Only applicable to the "cloud" state.
+ * @param[in] pattern_els_count  Number of elements in LED pattern
+ *
+ * @return true on success, false on error
+ */
+bool osp_led_tgt_set_state(
+        enum osp_led_state state,
+        uint8_t position,
+        struct osp_led_pattern_el *pattern_els,
+        int pattern_els_count);
+
+/**
+ * Initialize the LED target layer subsystem
+ *
+ * @return 0 on success, -1 on error
+ */
+void osp_led_tgt_init(void);
 
 /// @} OSP_LED
 /// @} OSP

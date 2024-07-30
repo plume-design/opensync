@@ -207,6 +207,7 @@ ow_steer_sta_free(struct ow_steer_sta *sta)
     ow_steer_executor_free(sta->executor);
     osw_timer_disarm(&sta->executor_timer);
     ow_steer_candidate_assessor_free(sta->candidate_assessor);
+    osw_conf_invalidate(sta->mutator);
     FREE(sta);
 }
 

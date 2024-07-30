@@ -30,6 +30,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <sys/types.h>
 #include <stdio.h>
 #include <ctype.h>
+#include <fcntl.h>
 
 #include "os_common.h"
 
@@ -40,25 +41,29 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "util.h"
 
 /* Return the process name for pid input */
+/* note, using fd instead of FILE so it's safe to call from a signal handler */
 int32_t os_pid_to_name(pid_t pid, char *proc_name, int32_t len)
 {
     char buf[64];
 
-    FILE *fp = NULL;
+    int fd = -1;
     int32_t rc = -1;
+    int l;
 
     memset(buf, 0x00, sizeof(buf));
     snprintf(buf, sizeof(buf), "/proc/%d/comm", pid);
 
-    fp = fopen(buf, "r+");
-    if (NULL == fp)
+    fd = open(buf, O_RDONLY);
+    if (fd < 0)
         goto func_exit;
 
-    if (fgets(buf, sizeof(buf), fp) == 0)
+    l = read(fd, buf, sizeof(buf) - 1);
+    if (l < 0 || l >= (int)sizeof(buf))
         goto func_exit;
+
+    buf[l] = 0;
 
     // remove newline if present
-    int l = strlen(buf);
     if (l > 0 && buf[l-1] == '\n') {
         buf[l-1] = 0;
     }
@@ -67,7 +72,7 @@ int32_t os_pid_to_name(pid_t pid, char *proc_name, int32_t len)
     rc = 0;
 
 func_exit:
-    if (fp != NULL) fclose(fp);
+    if (fd >= 0) close(fd);
 
     return rc;
 }

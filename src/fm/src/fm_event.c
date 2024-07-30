@@ -63,7 +63,6 @@ typedef struct
 static state_t g_state;
 
 static void fm_do_rotation(void);
-static void fm_archive_flash_file(const int src_fd);
 static int fm_ramoops_write(const char *buf, size_t size);
 static void fm_do_livecopy(void);
 static void fm_rotation_stat_callback(struct ev_loop *loop, ev_stat *watcher, int revents);
@@ -74,6 +73,7 @@ static void fm_backtrace_do_rotation(void);
 static void fm_crash_bt_rotation_stat_callback(struct ev_loop *loop, ev_stat *watcher, int revents);
 static void fm_crash_bt_update_log_options(const fm_log_type_t options);
 static void fm_execute_syslog_rotate(const char *logs_path, const int rotation_cnt, const char *logs_location);
+static void fm_update_syslog_size(const int syslog_size);
 
 static void fm_execute_syslog_rotate(const char *logs_path, const int rotation_cnt, const char *logs_location)
 {
@@ -90,6 +90,7 @@ static void fm_execute_syslog_rotate(const char *logs_path, const int rotation_c
             rotation_cnt,
             logs_location);
 
+    LOGI("Log rotation initiated!");
     LOGI("Execute shell command: %s", shell_cmd);
     cmd_log(shell_cmd);
 }
@@ -97,7 +98,6 @@ static void fm_execute_syslog_rotate(const char *logs_path, const int rotation_c
 static void fm_do_rotation(void)
 {
     const char *logs_path;
-    char shell_cmd[256];
     int rotation_cnt;
 
     // Check if file was really rotated
@@ -106,86 +106,17 @@ static void fm_do_rotation(void)
         return;
     }
 
-    LOGI("Log rotation initiated!");
-
     if (g_state.log_options.fm_log_flash)
     {
         logs_path = CONFIG_FM_LOG_FLASH_ARCHIVE_PATH;
         rotation_cnt = CONFIG_FM_MAX_ROTATION_SYSLOG_FLASH_CNT;
-        fm_execute_syslog_rotate(logs_path, rotation_cnt, CONFIG_FM_LOG_PATH);
     }
-    else if (g_state.log_options.fm_log_ramoops)
+    else
     {
         logs_path = CONFIG_FM_LOG_RAM_ARCHIVE_PATH;
         rotation_cnt = CONFIG_FM_MAX_ROTATION_SYSLOG_RAM_CNT;
-        fm_execute_syslog_rotate(logs_path, rotation_cnt, CONFIG_FM_LOG_PATH);
     }
-
-    snprintf(shell_cmd, sizeof(shell_cmd), "rm %s", FM_MESSAGES_ORIGINAL_ROTATED);
-
-    LOGI("Execute shell command: %s", shell_cmd);
-    cmd_log(shell_cmd);
-}
-
-static void fm_archive_flash_file(const int src_fd)
-{
-    char copy_buffer[FM_READ_BLOCK_SIZE];
-    int archive_fd;
-    char *logs_path;
-    int rotation_cnt;
-    ssize_t src_no;
-    char shell_cmd[256];
-
-    // Create copy of archive file (rotate livecopy)
-    archive_fd = open(FM_MESSAGES_LIVECOPY_ROTATED, O_CREAT | O_RDWR, S_IROTH | S_IRUSR | S_IWUSR | S_IRGRP);
-    if (archive_fd < 0)
-    {
-        LOGE("Failed to open flash backup destination file %s", strerror(errno));
-        return;
-    }
-
-    do
-    {
-        // Copy file to archive
-        src_no = read(src_fd, copy_buffer, FM_READ_BLOCK_SIZE);
-        if (src_no < 0)
-        {
-            LOGE("Error reading from file %s", strerror(errno));
-            return;
-        }
-
-        if (write(archive_fd, copy_buffer, src_no) < src_no)
-        {
-            LOGE("Write to flash archive failed %s", strerror(errno));
-            return;
-        }
-    } while (src_no > 0);
-
-    int err = fsync(archive_fd);
-    if (err != 0)
-    {
-        LOGE("Error syncing archive file %s", strerror(errno));
-    }
-
-    close(archive_fd);
-
-    if (g_state.log_options.fm_log_flash)
-    {
-        logs_path = CONFIG_FM_LOG_FLASH_ARCHIVE_PATH;
-        rotation_cnt = CONFIG_FM_MAX_ROTATION_SYSLOG_FLASH_CNT;
-        fm_execute_syslog_rotate(logs_path, rotation_cnt, logs_path);
-    }
-    else if (g_state.log_options.fm_log_ramoops)
-    {
-        logs_path = CONFIG_FM_LOG_RAM_ARCHIVE_PATH;
-        rotation_cnt = CONFIG_FM_MAX_ROTATION_SYSLOG_RAM_CNT;
-        fm_execute_syslog_rotate(logs_path, rotation_cnt, logs_path);
-    }
-
-    snprintf(shell_cmd, sizeof(shell_cmd), "rm %s", FM_MESSAGES_LIVECOPY_ROTATED);
-
-    LOGI("Execute shell command: %s", shell_cmd);
-    cmd_log(shell_cmd);
+    fm_execute_syslog_rotate(logs_path, rotation_cnt, CONFIG_FM_LOG_PATH);
 }
 
 static int fm_ramoops_write(const char *buf, size_t size)
@@ -370,7 +301,7 @@ static void fm_do_livecopy(void)
                 match = 0;
                 lseek(g_state.livecopy.dst_fd, block * FM_READ_BLOCK_SIZE + i, SEEK_SET);
                 LOGI("Temporary and flash file differs, writing differences to flash");
-                fm_archive_flash_file(g_state.livecopy.dst_fd);
+                fm_do_rotation();
                 lseek(g_state.livecopy.dst_fd, block * FM_READ_BLOCK_SIZE + i, SEEK_SET);
                 ftruncate(g_state.livecopy.dst_fd, block * FM_READ_BLOCK_SIZE + i);
                 break;
@@ -555,6 +486,21 @@ exit:
     return ret;
 }
 
+static void fm_update_syslog_size(const int syslog_size)
+{
+    char shell_cmd[128];
+
+    snprintf(
+            shell_cmd,
+            sizeof(shell_cmd),
+            "sh %s/scripts/fm_update_syslog_size.sh %d",
+            CONFIG_INSTALL_PREFIX,
+            syslog_size);
+
+    LOGI("Execute shell command: %s", shell_cmd);
+    cmd_log(shell_cmd);
+}
+
 void fm_set_logging(const fm_log_type_t options)
 {
     char *syslog_src;
@@ -563,8 +509,6 @@ void fm_set_logging(const fm_log_type_t options)
     char shell_cmd[256];
     bool sync_syslog;
 
-    g_state.log_options.fm_log_flash = false;
-    g_state.log_options.fm_log_ramoops = false;
     sync_syslog = true;
 
     fm_crash_bt_update_log_options(options);
@@ -575,12 +519,14 @@ void fm_set_logging(const fm_log_type_t options)
         syslog_src = CONFIG_FM_LOG_RAM_ARCHIVE_PATH "/" CONFIG_FM_LOG_ARCHIVE_SUBDIRECTORY;
         syslog_dst = CONFIG_FM_LOG_FLASH_ARCHIVE_PATH "/" CONFIG_FM_LOG_ARCHIVE_SUBDIRECTORY;
         syslog_cnt = CONFIG_FM_MAX_ROTATION_SYSLOG_FLASH_CNT;
+        fm_update_syslog_size(CONFIG_FM_FLASH_SYSLOG_SIZE);
     }
     else if (g_state.log_options.fm_log_ramoops)
     {
         syslog_src = CONFIG_FM_LOG_FLASH_ARCHIVE_PATH "/" CONFIG_FM_LOG_ARCHIVE_SUBDIRECTORY;
         syslog_dst = CONFIG_FM_LOG_RAM_ARCHIVE_PATH "/" CONFIG_FM_LOG_ARCHIVE_SUBDIRECTORY;
         syslog_cnt = CONFIG_FM_MAX_ROTATION_SYSLOG_RAM_CNT;
+        fm_update_syslog_size(CONFIG_FM_RAM_SYSLOG_SIZE);
     }
     else
     {
@@ -620,6 +566,9 @@ void fm_event_init(struct ev_loop *loop)
 
     // Init stat events
     g_state.loop = loop;
+
+    // Sync livecopy file and ram log file before continue. If FM has any prev boot logs they should be synchronized.
+    fm_do_livecopy();
 
     ev_stat_init(&g_state.livecopy_stat, fm_livecopy_stat_callback, FM_MESSAGES_ORIGINAL, 0.0);
     ev_stat_init(&g_state.rotation_stat, fm_rotation_stat_callback, FM_MESSAGES_ORIGINAL_ROTATED, 0.0);

@@ -1068,7 +1068,15 @@ bm_stats_steering_send_mqtt( void )
 
     while (dpp_get_queue_elements() > 0)
     {
-        if (!dpp_get_report(mqtt_buf, sizeof(mqtt_buf), &buf_len))
+        bool ret;
+#ifdef DPP_FAST_PACK
+        uint8_t *buf = mqtt_buf;
+
+        ret = dpp_get_report2(&buf, sizeof(mqtt_buf), &buf_len);
+#else
+        ret = dpp_get_report(mqtt_buf, sizeof(mqtt_buf), &buf_len);
+#endif
+        if (!ret)
         {
             LOGE("DPP: Get report failed.\n");
             break;

@@ -33,6 +33,7 @@
 
 #include "os.h"
 #include "log.h"
+#include "util.h"
 
 #include "pwm_port.h"
 #include "pwm_bridge.h"
@@ -59,7 +60,7 @@ static bool pwm_port_add_ovs(struct pwm_port *port)
                  CONFIG_PWM_BR_IF_NAME, port->name, port->ofport_request);
     }
 
-    err = cmd_log(cmd);
+    err = cmd_log_check_safe(cmd);
     if (err) {
         LOGE("Add OVS port to PWM bridge: add %s to %s failed", port->name, CONFIG_PWM_BR_IF_NAME);
         return false;
@@ -80,7 +81,7 @@ static bool pwm_port_delete_ovs(struct pwm_port *port)
     }
 
     snprintf(cmd, CMD_LEN - 1, "ovs-vsctl --if-exists del-port %s %s", CONFIG_PWM_BR_IF_NAME, port->name);
-    err = cmd_log(cmd);
+    err = cmd_log_check_safe(cmd);
     if (err) {
         LOGE("Delete OVS port from PWM bridge: add %s to %s failed", port->name, CONFIG_PWM_BR_IF_NAME);
         return false;
@@ -101,7 +102,7 @@ static bool pwm_port_update_ofid(struct pwm_port *port)
     snprintf(cmd, CMD_LEN - 1,
              "ovs-vsctl --timeout=3 wait-until Interface %s \"ofport>=0\"",
              port->name);
-    cmd_log(cmd);
+    cmd_log_check_safe(cmd);
 
     snprintf(cmd, CMD_LEN - 1, "ovs-vsctl get Interface %s ofport", port->name);
     result = popen(cmd, "r");

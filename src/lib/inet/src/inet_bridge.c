@@ -24,23 +24,18 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#include <errno.h>
 #include <glob.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
-#include "const.h"
-#include "execsh.h"
 #include "inet_base.h"
 #include "inet_bridge.h"
 #include "inet_port.h"
 #include "log.h"
 #include "memutil.h"
 #include "util.h"
-
-#include "os.h"
 
 #define INET_BRIDGE_DEBOUNCE           1                 /* Configuration delay, in seconds */
 static void __inet_bridge_reapply(EV_P_ ev_debounce *w, int revent);
@@ -57,6 +52,7 @@ static void inet_bridge_release_ports(ds_tree_t *tree)
         remove = port_node;
         port_node = ds_tree_next(tree, port_node);
         ds_tree_remove(tree, remove);
+        port_node->in_bridge = NULL;
     }
 }
 
@@ -177,6 +173,7 @@ bool inet_bridge_service_BRIDGE_PORT(inet_bridge_t *self, bool enable)
                      current_port->in_port_ifname, self->in_br_ifname);
             }
             ds_tree_remove(&self->in_br_port_list, remove_port);
+            remove_port->in_bridge = NULL;
         }
 
         /* mark the port as configured. */
@@ -231,9 +228,8 @@ static void inet_bridge_port_add(inet_bridge_t *self, inet_port_t *in_port)
     node = ds_tree_find(&self->in_br_port_list, in_port);
     if (node != NULL)
     {
-        LOGD("%s() port %s already present not adding", __func__,
+        LOGD("%s() port %s already present, reconfiguring", __func__,
              in_port->in_port_ifname);
-        return;
     }
 
     LOGD("%s(): marking port %s for adding to bridge", __func__, in_port->in_port_ifname);
@@ -243,7 +239,11 @@ static void inet_bridge_port_add(inet_bridge_t *self, inet_port_t *in_port)
     /* set flag for reconfiguring */
     in_port->in_port_configured = false;
 
-    ds_tree_insert(&self->in_br_port_list, in_port, in_port);
+    if (node == NULL)
+    {
+        ds_tree_insert(&self->in_br_port_list, in_port, in_port);
+        in_port->in_bridge = self;
+    }
 }
 
 static void inet_bridge_port_del(inet_bridge_t *self, inet_port_t *in_port)
@@ -274,12 +274,45 @@ bool inet_bridge_port_set(inet_t *super, inet_t *port_inet, bool add)
     self = CONTAINER_OF(super, inet_bridge_t, inet);
     in_port = CONTAINER_OF(port_inet, inet_port_t, inet);
 
+    LOGN("%s: Port %s -> %s", self->in_br_ifname, in_port->in_port_ifname, add ? "add" : "del");
+
     if (add == false)
     {
-        inet_bridge_port_del(self, in_port);
+        if (in_port->in_bridge == self)
+        {
+            inet_bridge_port_del(self, in_port);
+        }
+        else if (in_port->in_bridge != NULL)
+        {
+            LOGN("%s: Trying to remove port from current bridge (%s) while it is owned by another (%s).",
+                    in_port->in_port_ifname,
+                    self->in_br_ifname,
+                    in_port->in_bridge->in_br_ifname);
+        }
+        else /* in_port->in_bridge == NULL */
+        {
+            LOGN("%s: Trying to remove bridge port that is not in bridge.",
+                    in_port->in_port_ifname);
+        }
     }
     else
     {
+        /*
+         * When moving ports between bridges, delete the interface from the old
+         * bridge first
+         */
+        if (in_port->in_bridge != NULL && in_port->in_bridge != self)
+        {
+            LOGN("%s: Moving port from %s -> %s",
+                    in_port->in_port_ifname,
+                    in_port->in_bridge->in_br_ifname,
+                    self->in_br_ifname);
+            inet_bridge_port_del(in_port->in_bridge, in_port);
+            inet_unit_restart(in_port->in_bridge->base.in_units, INET_BASE_BRIDGE_PORT, true);
+            inet_commit(&in_port->in_bridge->inet);
+            ASSERT(in_port->in_bridge == NULL, "Port parent bridge is not NULL");
+        }
+
         inet_bridge_port_add(self, in_port);
     }
 

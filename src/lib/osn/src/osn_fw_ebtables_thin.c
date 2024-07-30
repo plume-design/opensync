@@ -428,6 +428,8 @@ bool osfw_ebtables_chain_flush(
         return false;
     }
 
+    if (!is_input_shell_safe(tbl->name) || !is_input_shell_safe(chain)) return false;
+
     snprintf(cmd, sizeof(cmd) - 1, "%s -t %s -F %s 2>&1", osfw_eb_convert_cmd(family), tbl->name, (char *)chain);
     cmd[sizeof(cmd) - 1] = '\0';
 
@@ -462,6 +464,8 @@ void osfw_ebtables_chain_add(
         LOG(INFO, "osfw: %s %s %s, skipping adding ebtables built in chain", osfw_eb_convert_cmd(family), tbl->name, chain);
         return;
     }
+
+    if (!is_input_shell_safe(tbl->name) || !is_input_shell_safe(chain)) return;
 
     LOG(INFO, "osfw: %s.%s.%s: Adding ebtables chain.",
             osfw_eb_convert_family(family), tbl->name, chain);
@@ -512,6 +516,8 @@ bool osfw_ebtables_chain_del(
 
     if (!osfw_ebtables_chain_flush(family, table, chain)) return false;
 
+    if (!is_input_shell_safe(tbl->name) || !is_input_shell_safe(chain)) return false;
+
     LOG(INFO, "osfw: %s.%s.%s: Deleting ebtables chain.",
             osfw_eb_convert_family(family), tbl->name, chain);
 
@@ -545,6 +551,14 @@ void osfw_ebtables_rule_add(
     if (tbl == NULL)
     {
         LOG(ERR, "osfw: Unknown ebtables table %d during rule add.", table);
+        return;
+    }
+
+    if (!is_input_shell_safe(tbl->name)
+        || !is_input_shell_safe(chain)
+        || !is_input_shell_safe(match)
+        || !is_input_shell_safe(target))
+    {
         return;
     }
 

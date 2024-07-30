@@ -1,8 +1,8 @@
 menu "libff: Feature Flag (FF) configuration"
-    config FF_DYNAMIC_PROVIDERS_PATH
-        string "Path to a directory containing dynamic providers"
-        default "$(INSTALL_PREFIX)/lib"
+    config FF_ACCESS_PATH
+        string "Path for feature flags access provider"
+        default "$(INSTALL_PREFIX)/etc/ff"
         help
-            Libraries from this path with name matching pattern "libff_provider_*"
-            will be automatically loaded as Feature Flag providers.
+            Files from this path will be checked by access provider to consider flags as enabled.
+            To set flag as ENABLED by this provider create a coresponding "flag_name" file in that path.
 endmenu

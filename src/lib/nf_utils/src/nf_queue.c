@@ -51,6 +51,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "nf_utils.h"
 #include "os_types.h"
 #include "memutil.h"
+#include "os_ev_trace.h"
 
 static struct nf_queue_context
 nfq_context =
@@ -280,7 +281,7 @@ nf_queue_send_nlh_request(struct nlmsghdr *nlh, uint8_t cfg_type,
     case NFQA_CFG_PARAMS:
         mnl_attr_put(nlh, NFQA_CFG_PARAMS,
                      sizeof(struct nfqnl_msg_config_params), cmd_opts);
-
+        break;
     case NFQA_CFG_FLAGS:
         flags = (uint32_t *)cmd_opts;
         mnl_attr_put_u32(nlh, NFQA_CFG_FLAGS, htonl(*flags));
@@ -500,6 +501,7 @@ nf_queue_open(struct nfq_settings *nfq_set)
     nf_queue_send_nlh_request(nlh, NFQA_CFG_FLAGS, &flags, nfq);
 
     nfq->nfq_fd = mnl_socket_get_fd(nfq->nfq_mnl);
+    OS_EV_TRACE_MAP(nf_queue_read_mnl_cbk);
     ev_io_init(&nfq->nfq_io_mnl, nf_queue_read_mnl_cbk, nfq->nfq_fd, EV_READ);
     if (nfq->queue_num == 1) ev_set_priority(&nfq->nfq_io_mnl, 2);
     else ev_set_priority(&nfq->nfq_io_mnl, 1);
@@ -703,7 +705,8 @@ nfq_log_err_counters(int queue_num)
     {
         report_counter = report->counters[i];
         LOGI("%s: nf queue id %d: error %d: %s, count: %" PRIu64, __func__,
-             queue_num, report_counter->error, strerror(report_counter->error),
+             queue_num, report_counter->error,
+             report_counter->error == NF_ERRNO_BACKOFF ? "backoff error indicator" : strerror(report_counter->error),
              report_counter->counter);
     }
 
@@ -847,7 +850,7 @@ nf_queue_set_ct_mark(uint32_t packet_id, struct dpi_mark_policy *mark_policy,
  * @brief update payload for given pktid.
  */
 bool
-nf_queue_update_payload(uint32_t packet_id, uint32_t queue_num)
+nf_queue_update_payload(uint32_t packet_id, uint32_t queue_num, int len)
 {
     struct nf_queue_context  *ctxt;
     struct nfq_pkt_info *pkt_info;
@@ -865,6 +868,7 @@ nf_queue_update_payload(uint32_t packet_id, uint32_t queue_num)
     pkt_info = &nfq->pkt_info;
     if (pkt_info->packet_id != packet_id) return false;
 
+    pkt_info->payload_len = len;
     mnl_attr_put(nfq->nlh, NFQA_PAYLOAD, pkt_info->payload_len, pkt_info->payload);
 
     LOGD("%s: updated payload for packet_id[%d] of queue[%d]",

@@ -643,7 +643,7 @@ bool nm2_inet_dhcps_set(
     /*
      * Parse options -- options are a ';' separated list of comma separated key,value pairs
      */
-    if (sdhcp_opts != NULL && !nm2_inet_dhcps_options_set(piface, sdhcp_opts))
+    if (!nm2_inet_dhcps_options_set(piface, sdhcp_opts))
     {
         LOG(ERR, "inet_config: %s (%s): Error parsing DHCP server options: %s",
                 piface->if_name,
@@ -698,7 +698,8 @@ bool nm2_inet_dhcps_options_set(struct nm2_iface *piface, const char *opts)
 {
     int ii;
 
-    char *topts = strdup(opts);
+    char *topts = NULL;
+    if (opts != NULL) topts = strdup(opts);
 
     /* opt_track keeps track of options that were set -- we must unset all other options at the end */
     uint8_t opt_track[C_SET_LEN(DHCP_OPTION_MAX, uint8_t)];

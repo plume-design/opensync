@@ -329,6 +329,10 @@ gk_get_fsm_action(Gatekeeper__Southbound__V1__GatekeeperCommonReply *header)
             action = FSM_REDIRECT_ALLOW;
             break;
 
+        case GATEKEEPER__SOUTHBOUND__V1__GATEKEEPER_ACTION__GATEKEEPER_ACTION_NOANSWER:
+            action = FSM_NOANSWER;
+            break;
+
         default:
             action = FSM_ACTION_NONE;
     }

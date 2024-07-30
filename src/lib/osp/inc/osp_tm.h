@@ -82,7 +82,7 @@ bool osp_tm_get_fan_rpm_from_thermal_state(const int state, int *fan_rpm);
  * Gets led state from AWLAN_Node as an indication of a hardware error on
  * the device
  */
-bool osp_tm_get_led_state(int *led_state);
+int osp_tm_get_led_state(int position);
 
 /**
  * Initialize thermal management subsystem

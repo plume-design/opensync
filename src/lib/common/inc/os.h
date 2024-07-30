@@ -150,6 +150,22 @@ extern pid_t os_popen(const char *shell_cmd, int *pipe_desc);
 extern int cmd_log(const char *shell_cmd);
 
 /**
+ * Check if @p shell_cmd contains any potentially dangerous shell characters
+ * which could be used for command injection. If no such characters are found,
+ * the command @p shell_cmd is executed and its standard output is redirected
+ * to the log file.
+ *
+ * @param[in]       shell_cmd       Command to check and execute
+ *
+ * @return
+ * This function returns the shell exit code using wait() semantics or a
+ * negative number in case of error or if dangerous characters were found.
+ *
+ * This function returns the shell exit code or -1 on error.
+ */
+extern int cmd_log_check_safe(const char *shell_cmd);
+
+/**
  * @brief 
  * Execute the command @p shell_cmd and redirect it's standard output to the
  * provided output buffer. 

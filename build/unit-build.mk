@@ -44,9 +44,7 @@ $(TESTBINDIR): | $(WORKDIRS)
 	$(Q)$(MKDIR) $(@)
 
 ##########################################################
-# Overriding CFLAGS from the command line doesn't really
-# work at the moment (make CFLAGS=...). As a workaround,
-# implement LOCAL_CFLAGS, which can be used to add
+# Append LOCAL_CFLAGS, which can be used to add
 # developer C flags to the target's CFLAGS.
 #
 # This is useful for specifying options like
@@ -54,7 +52,7 @@ $(TESTBINDIR): | $(WORKDIRS)
 # during edit-compile-error-repeat cycles.
 ##########################################################
 ifneq ($(LOCAL_CFLAGS),)
-CFLAGS += $(LOCAL_CFLAGS)
+OS_CFLAGS += $(LOCAL_CFLAGS)
 endif
 
 ##########################################################
@@ -85,7 +83,7 @@ $(UNIT_BUILD)/.target: $(BINDIR)/$(UNIT_BIN)
 # Use -Wl,--start-group to force GNU LD to ignore the link order; this might be slower for larger projects
 $(BINDIR)/$(UNIT_BIN): $(UNIT_OBJ) $(UNIT_ALL_DEPS)
 	$$(NQ) " $(call color_link,link)    [$$(call COLOR_BOLD,$(UNIT_BIN))] $$@"
-	$$(Q)$(call GET_LINKER,$(UNIT_SRC)) -L$(LIBDIR) -Wl,--start-group $$(UNIT_BIN_LDFLAGS) $$(foreach DEP,$$(sort $$(DEPS_$(UNIT_PATH))),$$(LDFLAGS_$$(DEP))) $(UNIT_OBJ) -Wl,--end-group $$(LDFLAGS) $(UNIT_LDFLAGS) -o $$@
+	$$(Q)$(call GET_LINKER,$(UNIT_SRC)) -L$(LIBDIR) -Wl,--start-group $$(UNIT_BIN_LDFLAGS) $$(foreach DEP,$$(sort $$(DEPS_$(UNIT_PATH))),$$(LDFLAGS_$$(DEP))) $(UNIT_OBJ) -Wl,--end-group $$(OS_LDFLAGS) $(UNIT_LDFLAGS) -o $$@
 
 $(UNIT_PATH)/install: $(UNIT_BUILD)/.target
 ifneq ($$(UNIT_INSTALL),n)
@@ -138,7 +136,7 @@ $(TESTBINDIR)/$(UNIT_BIN)/data:
 
 $(TESTBINDIR)/$(UNIT_BIN)/unit: $(UNIT_OBJ) $(UNIT_ALL_DEPS)
 	$$(NQ) " $(call color_link,link)    [$$(call COLOR_BOLD,$(UNIT_BIN))] $$@"
-	$$(Q)$$(CC) -L$(LIBDIR) -Wl,--start-group $$(UNIT_BIN_LDFLAGS) $$(foreach DEP,$$(sort $$(DEPS_$(UNIT_PATH))),$$(LDFLAGS_$$(DEP))) $(UNIT_OBJ) -Wl,--end-group $$(LDFLAGS) $(UNIT_LDFLAGS) -o $$@
+	$$(Q)$$(CC) -L$(LIBDIR) -Wl,--start-group $$(UNIT_BIN_LDFLAGS) $$(foreach DEP,$$(sort $$(DEPS_$(UNIT_PATH))),$$(LDFLAGS_$$(DEP))) $(UNIT_OBJ) -Wl,--end-group $$(OS_LDFLAGS) $(UNIT_LDFLAGS) -o $$@
 
 $(UNIT_PATH)/install: $(UNIT_BUILD)/.target
 	$$(Q)true
@@ -246,7 +244,7 @@ $(UNIT_BUILD)/.target: $(LIBDIR)/lib$(UNIT_NAME).so
 
 $(LIBDIR)/lib$(UNIT_NAME).so: $(UNIT_OBJ) $(UNIT_ALL_DEPS)
 	$$(NQ) " $(call color_link,link)    [$(call COLOR_BOLD,$(UNIT_NAME))] $$@"
-	$$(Q)$$(CC) $(UNIT_OBJ) -L$(LIBDIR) -shared -Wl,-soname=lib$(UNIT_NAME).so $$(LDFLAGS) $(UNIT_LDFLAGS) $$(foreach DEP,$$(sort $$(DEPS_$(UNIT_PATH))),$$(LDFLAGS_$$(DEP))) -o $$@
+	$$(Q)$$(CC) $(UNIT_OBJ) -L$(LIBDIR) -shared -Wl,-soname=lib$(UNIT_NAME).so $$(OS_LDFLAGS) $(UNIT_LDFLAGS) $$(foreach DEP,$$(sort $$(DEPS_$(UNIT_PATH))),$$(LDFLAGS_$$(DEP))) -o $$@
 
 $(UNIT_PATH)/install: $(UNIT_BUILD)/.target
 	$$(call app_install,$(LIBDIR)/lib$(UNIT_NAME).so,$(UNIT_DIR))
@@ -358,7 +356,7 @@ endef
 ##########################################################
 # Common C makefile rules
 ##########################################################
-GEN_C_FLAGS = $$(CFLAGS) $(UNIT_CFLAGS) $$(foreach DEP,$$(sort $$(DEPS_$(UNIT_PATH)) $$(DEPS_CFLAGS_$(UNIT_PATH))),$$(CFLAGS_$$(DEP)))
+GEN_C_FLAGS = $$(OS_CFLAGS) $(UNIT_CFLAGS) $$(foreach DEP,$$(sort $$(DEPS_$(UNIT_PATH)) $$(DEPS_CFLAGS_$(UNIT_PATH))),$$(CFLAGS_$$(DEP)))
 
 define UNIT_C_RULES
 # Single step dependency + compilation, generate the .d and .o file
@@ -589,7 +587,11 @@ endef
 # sub-layers can override a parent layer with override.mk
 LAYER_LIST := . $(PLATFORM_DIR) $(INCLUDE_LAYERS) $(VENDOR_DIR)
 ifeq ($(SHOW_VENDOR_INFO),1)
-$(info Layers($(words $(LAYER_LIST))): $(LAYER_LIST))
+$(info Layers: $(LAYER_LIST))
+ifeq ($(V),1)
+$(info CFLAGS=$(CFLAGS))
+$(info OS_CFLAGS=$(OS_CFLAGS))
+endif
 endif
 
 # Scan src subdirectories for units.
@@ -783,8 +785,8 @@ unit-coverage-prerequisite:
  	    exit 1; \
 	fi
 
-unit-coverage: CFLAGS += -fprofile-instr-generate -fcoverage-mapping
-unit-coverage: LDFLAGS += -fprofile-instr-generate -fcoverage-mapping
+unit-coverage: OS_CFLAGS += -fprofile-instr-generate -fcoverage-mapping
+unit-coverage: OS_LDFLAGS += -fprofile-instr-generate -fcoverage-mapping
 unit-coverage: unit-coverage-prerequisite unit-run
 	$(Q)llvm-profdata${CLANG_VERSION} merge -sparse ${TESTBINDIR}/*/*profraw -o ${TESTBINDIR}/all.profdata
 	$(Q)SRC_FILES=`find ./src \( -not -path "*/ut/*" -and -name "*.[ch]" -and -not -name "*pb-c*" \) | sort`; \
@@ -795,8 +797,8 @@ unit-coverage: unit-coverage-prerequisite unit-run
 	$(NQ) "\n       Visualize report by opening :  $(call COLOR_BOLD,file://$$PWD/${TESTBINDIR}/index.html)"
 
 # Provide individual coverage
-%/coverage: CFLAGS += -fprofile-instr-generate -fcoverage-mapping
-%/coverage: LDFLAGS += -fprofile-instr-generate -fcoverage-mapping
+%/coverage: OS_CFLAGS += -fprofile-instr-generate -fcoverage-mapping
+%/coverage: OS_LDFLAGS += -fprofile-instr-generate -fcoverage-mapping
 %/coverage: unit-coverage-prerequisite %
 	$(Q)export unit_path=${TESTBINDIR}/${UNIT_NAME_$(@D)}; \
 	SRC_FILES=`find ./src \( -not -path "*/ut/*" -and -name "*.[ch]" -and -not -name "*pb-c*" \) | sort`; \

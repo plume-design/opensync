@@ -33,33 +33,22 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "dpi_stats.pb-c.h"
 #include "dpi_stats.h"
 #include "memutil.h"
-#include "qm_conn.h"
+#include "ds_dlist.h"
+#include "nf_utils.h"
 
-
-struct dpi_stats_report g_dpi_stats_report;
+static struct dpi_stats
+g_dpi_stats =
+{
+    .initialized = false,
+};
 
 /*
  * ===========================================================================
  *  Private implementation
  * ===========================================================================
  */
-static bool
-dpi_stats_set_node(struct fsm_session *session, struct dpi_stats_report *report)
-{
-    if (session == NULL) return false;
-    if (session->node_id == NULL) return false;
-    if (session->location_id == NULL) return false;
-    if (session->name == NULL) return false;
-
-    report->node_id = session->node_id;
-    report->location_id = session->location_id;
-    report->plugin = session->name;
-
-    return true;
-}
-
 static void
-dpi_stats_clear_nfq_stats(ds_tree_t *tree)
+dpi_stats_clear_nfq_counters(ds_tree_t *tree)
 {
     struct nfq_stats_counters *entry, *remove;
 
@@ -70,11 +59,12 @@ dpi_stats_clear_nfq_stats(ds_tree_t *tree)
         entry = ds_tree_next(tree, entry);
         ds_tree_remove(tree, remove);
         FREE(remove);
+        g_dpi_stats.num_nfqs--;
     }
 }
 
 static void
-dpi_stats_clear_pcap_stats(ds_tree_t *tree)
+dpi_stats_clear_pcap_counters(ds_tree_t *tree)
 {
     struct pcap_stats_counters *entry, *remove;
 
@@ -85,33 +75,28 @@ dpi_stats_clear_pcap_stats(ds_tree_t *tree)
         entry = ds_tree_next(tree, entry);
         ds_tree_remove(tree, remove);
         FREE(remove);
+        g_dpi_stats.num_pcaps--;
     }
 }
 
-void
-dpi_stats_log_pcap_stats(void)
+static void dpi_stats_clear_trace_stats(ds_tree_t *tree)
 {
-    struct pcap_stats_counters *stats;
+    struct fn_tracer_stats *entry, *remove;
 
-    ds_tree_foreach(&g_dpi_stats_report.pcap_stats_tree, stats)
+    entry = ds_tree_head(tree);
+    while (entry != NULL)
     {
-        LOGT("%s(): ifname: %s, received %d", __func__, stats->ifname, stats->pkts_received);
-    }
-}
-
-void
-dpi_stats_log_nfq_stats(void)
-{
-    struct nfq_stats_counters *stats;
-
-    ds_tree_foreach(&g_dpi_stats_report.nfq_stats_tree, stats)
-    {
-        LOGT("%s(): qnum: %d, queue total %d", __func__, stats->qnum, stats->qtotal);
+        remove = entry;
+        entry = ds_tree_next(tree, entry);
+        ds_tree_remove(tree, remove);
+        FREE(remove->fn_name);
+        FREE(remove);
+        g_dpi_stats.num_fns--;
     }
 }
 
 static void
-dpi_stats_free_pcap_stat(Interfaces__DpiStats__PcapStatsCounters *pb)
+dpi_stats_free_pcap_report(Interfaces__DpiStats__PcapStatsCounters *pb)
 {
     if (pb == NULL) return;
 
@@ -120,13 +105,28 @@ dpi_stats_free_pcap_stat(Interfaces__DpiStats__PcapStatsCounters *pb)
 }
 
 static void
-dpi_stats_free_nfq_stat(Interfaces__DpiStats__NfqueueStatsCounters *pb)
+dpi_stats_free_nfq_report(Interfaces__DpiStats__NfqueueStatsCounters *pb)
 {
     if (pb == NULL) return;
+
     FREE(pb->queuenum);
     FREE(pb);
 }
 
+static void
+dpi_stats_free_call_trace_stat(Interfaces__DpiStats__CallTraceCounters *pb)
+{
+    if (pb == NULL) return;
+
+    FREE(pb->func_name);
+    FREE(pb);
+}
+
+static void
+dpi_stats_free_nfq_err_report(Interfaces__DpiStats__ErrorCounters *pb)
+{
+    FREE(pb);
+}
 
 /**
  * @brief Free a dpi stats report protobuf structure.
@@ -139,29 +139,45 @@ dpi_stats_free_nfq_stat(Interfaces__DpiStats__NfqueueStatsCounters *pb)
 static void
 dpi_stats_free_pb_report(Interfaces__DpiStats__DpiStatsReport *pb)
 {
-    size_t i;
     if (pb == NULL) return;
 
     FREE(pb->observation_point);
     FREE(pb->counters);
 
+    FREE(pb);
+}
+
+static void
+dpi_stats_free_counter_report(Interfaces__DpiStats__DpiStatsReport *pb)
+{
+    size_t i;
+    if (pb == NULL) return;
+
+    FREE(pb->observation_point);
+
     /* Free nfqueue stats resources */
     for (i = 0; i < pb->n_nfqueue_stats; i++)
     {
-        dpi_stats_free_nfq_stat(pb->nfqueue_stats[i]);
+        dpi_stats_free_nfq_report(pb->nfqueue_stats[i]);
     }
 
     /* Free pcap stats resources */
     for (i = 0; i < pb->n_pcap_stats; i++)
     {
-        dpi_stats_free_pcap_stat(pb->pcap_stats[i]);
+        dpi_stats_free_pcap_report(pb->pcap_stats[i]);
+    }
+
+    /* Free trace stats resource */
+    for (i = 0; i < pb->n_call_stats; i++)
+    {
+        dpi_stats_free_call_trace_stat(pb->call_stats[i]);
     }
 
     FREE(pb->nfqueue_stats);
     FREE(pb->pcap_stats);
+    FREE(pb->call_stats);
     FREE(pb);
 }
-
 
 static Interfaces__DpiStats__DpiStatsObservationPoint *
 dpi_stats_set_observation_point(struct dpi_stats_report *report)
@@ -181,6 +197,19 @@ dpi_stats_set_observation_point(struct dpi_stats_report *report)
     return pb;
 }
 
+static Interfaces__DpiStats__ErrorCounters *
+dpi_stats_set_pb_nfq_errs(struct nfq_err_cnts *errs)
+{
+    Interfaces__DpiStats__ErrorCounters *pb = NULL;
+
+    pb = CALLOC(1, sizeof(Interfaces__DpiStats__ErrorCounters));
+
+    interfaces__dpi_stats__error_counters__init(pb);
+    pb->error = errs->error_no;
+    pb->count = errs->count;
+
+    return pb;
+}
 
 static Interfaces__DpiStats__DpiStatsCounters *
 dpi_stats_set_counters(struct dpi_stats_report *report)
@@ -188,7 +217,6 @@ dpi_stats_set_counters(struct dpi_stats_report *report)
     Interfaces__DpiStats__DpiStatsCounters *pb;
     struct dpi_engine_counters *counters;
 
-    if (g_dpi_stats_report.dpi_stats_count == 0) return NULL;
 
     /* Allocate the protobuf structure */
     pb = CALLOC(1, sizeof(*pb));
@@ -216,10 +244,14 @@ dpi_stats_set_counters(struct dpi_stats_report *report)
 }
 
 static Interfaces__DpiStats__NfqueueStatsCounters *
-dpi_stats_set_pb_nfq_stats(struct nfq_stats_counters *stats)
+dpi_stats_set_pb_nfq_counters(struct nfq_stats_counters *stats)
 {
     Interfaces__DpiStats__NfqueueStatsCounters *pb = NULL;
+    Interfaces__DpiStats__ErrorCounters **nfqerr_pb_tbl = NULL;
+    struct nfq_err_cnts *nfq_err;
     char snum[32];
+    size_t err_alloc = 0;
+    size_t i = 0;
 
     pb = CALLOC(1, sizeof(Interfaces__DpiStats__NfqueueStatsCounters));
     if (pb == NULL) return NULL;
@@ -228,19 +260,36 @@ dpi_stats_set_pb_nfq_stats(struct nfq_stats_counters *stats)
 
     snprintf(snum, sizeof(snum), "%d", stats->qnum);
     pb->queuenum = STRDUP(snum);
-    pb->portid = stats->portid;
     pb->queuetotal = stats->qtotal;
-    pb->copyrange = stats->copy_range;
     pb->queuedropped = stats->qdropped;
     pb->queueuserdropped = stats->q_user_dropped;
     pb->seqid = stats->seqid;
-    pb->copymode = stats->copy_mode;
 
+    if (!stats->num_errs) return pb;
+
+    nfqerr_pb_tbl = CALLOC(stats->num_errs, sizeof(Interfaces__DpiStats__ErrorCounters*));
+    ds_dlist_foreach(&stats->error_list, nfq_err)
+    {
+        nfqerr_pb_tbl[err_alloc] = dpi_stats_set_pb_nfq_errs(nfq_err);
+        if (!nfqerr_pb_tbl[err_alloc]) goto err_free_pb_nfq_err;
+        err_alloc++;
+    }
+    pb->n_errors = err_alloc;
+    pb->errors = nfqerr_pb_tbl;
+    return pb;
+
+err_free_pb_nfq_err:
+    for (i = 0; i < err_alloc; i++)
+    {
+        dpi_stats_free_nfq_err_report(nfqerr_pb_tbl[i]);
+    }
+    FREE(nfqerr_pb_tbl);
+    pb->errors = NULL;
     return pb;
 }
 
 static Interfaces__DpiStats__NfqueueStatsCounters **
-dpi_stats_set_nfq_stats(struct dpi_stats_report *report)
+dpi_stats_set_nfq_counters(struct dpi_stats_report *report)
 {
     Interfaces__DpiStats__NfqueueStatsCounters **nfqstats_pb_tbl;
     struct nfq_stats_counters *nfq_stats;
@@ -250,9 +299,10 @@ dpi_stats_set_nfq_stats(struct dpi_stats_report *report)
     size_t i;
 
     if (report == NULL) return NULL;
-    nfq_tree = &g_dpi_stats_report.nfq_stats_tree;
+    nfq_tree = &g_dpi_stats.nfq_stats;
 
-    num_stats = dpi_stats_get_nfq_stats_count();
+    num_stats = g_dpi_stats.num_nfqs;
+
     if (num_stats == 0) return NULL;
 
     nfqstats_pb_tbl = CALLOC(num_stats, sizeof(Interfaces__DpiStats__NfqueueStatsCounters*));
@@ -260,7 +310,7 @@ dpi_stats_set_nfq_stats(struct dpi_stats_report *report)
     allocated = 0;
     ds_tree_foreach(nfq_tree, nfq_stats)
     {
-        nfqstats_pb_tbl[allocated] = dpi_stats_set_pb_nfq_stats(nfq_stats);
+        nfqstats_pb_tbl[allocated] = dpi_stats_set_pb_nfq_counters(nfq_stats);
         if (!nfqstats_pb_tbl[allocated]) goto err_free_pb_nfqueue_stats;
 
         allocated++;
@@ -271,7 +321,7 @@ dpi_stats_set_nfq_stats(struct dpi_stats_report *report)
 err_free_pb_nfqueue_stats:
     for (i = 0; i < allocated; i++)
     {
-        dpi_stats_free_nfq_stat(nfqstats_pb_tbl[i]);
+        dpi_stats_free_nfq_report(nfqstats_pb_tbl[i]);
     }
 
     FREE(nfqstats_pb_tbl);
@@ -279,7 +329,7 @@ err_free_pb_nfqueue_stats:
 }
 
 static Interfaces__DpiStats__PcapStatsCounters *
-dpi_stats_set_pb_pcap_stats(struct pcap_stats_counters *stats)
+dpi_stats_set_pb_pcap_counters(struct pcap_stats_counters *stats)
 {
     Interfaces__DpiStats__PcapStatsCounters *pb = NULL;
 
@@ -294,7 +344,7 @@ dpi_stats_set_pb_pcap_stats(struct pcap_stats_counters *stats)
 }
 
 static Interfaces__DpiStats__PcapStatsCounters **
-dpi_stats_set_pcap_stats(struct dpi_stats_report *report)
+dpi_stats_set_pcap_counters(struct dpi_stats_report *report)
 {
     Interfaces__DpiStats__PcapStatsCounters **pcapstats_pb_tbl;
     struct pcap_stats_counters *pcap_stats;
@@ -305,15 +355,15 @@ dpi_stats_set_pcap_stats(struct dpi_stats_report *report)
 
     if (report == NULL) return NULL;
 
-    pcap_tree = &g_dpi_stats_report.pcap_stats_tree;
-    num_stats = dpi_stats_get_pcap_stats_count();
+    pcap_tree = &g_dpi_stats.pcap_stats;
+    num_stats = g_dpi_stats.num_pcaps;
     if (num_stats == 0) return NULL;
 
     pcapstats_pb_tbl = CALLOC(num_stats, sizeof(Interfaces__DpiStats__PcapStatsCounters*));
 
     ds_tree_foreach(pcap_tree, pcap_stats)
     {
-        pcapstats_pb_tbl[allocated] = dpi_stats_set_pb_pcap_stats(pcap_stats);
+        pcapstats_pb_tbl[allocated] = dpi_stats_set_pb_pcap_counters(pcap_stats);
         if (pcapstats_pb_tbl[allocated] == NULL) goto err_free_pb_pcap_stats;
 
         allocated++;
@@ -324,10 +374,62 @@ dpi_stats_set_pcap_stats(struct dpi_stats_report *report)
 err_free_pb_pcap_stats:
     for (i = 0; i < allocated; i++)
     {
-        dpi_stats_free_pcap_stat(pcapstats_pb_tbl[i]);
+        dpi_stats_free_pcap_report(pcapstats_pb_tbl[i]);
     }
 
     FREE(pcapstats_pb_tbl);
+    return NULL;
+}
+
+static Interfaces__DpiStats__CallTraceCounters *
+dpi_stats_set_pb_trace_stats(struct fn_tracer_stats *stats)
+{
+    Interfaces__DpiStats__CallTraceCounters *pb = NULL;
+
+    pb = CALLOC(1, sizeof(Interfaces__DpiStats__CallTraceCounters));
+
+    interfaces__dpi_stats__call_trace_counters__init(pb);
+    pb->max_duration = stats->max_duration;
+    pb->total_duration = stats->total_duration;
+    pb->call_count = stats->call_count;
+    pb->func_name = STRDUP(stats->fn_name);
+    return pb;
+}
+
+static Interfaces__DpiStats__CallTraceCounters **
+dpi_stats_set_trace_stats(struct dpi_stats_report *report)
+{
+    Interfaces__DpiStats__CallTraceCounters **tracestats_pb_tbl;
+    struct fn_tracer_stats *trace_stats;
+    ds_tree_t *fn_stats;
+    size_t allocated = 0;
+    size_t num_stats;
+    size_t i;
+
+    if (report == NULL) return NULL;
+
+    fn_stats = &g_dpi_stats.fn_tracer_stats;
+    num_stats = g_dpi_stats.num_fns;
+    if (num_stats == 0) return NULL;
+
+    tracestats_pb_tbl = CALLOC(num_stats, sizeof(Interfaces__DpiStats__CallTraceCounters*));
+    ds_tree_foreach(fn_stats, trace_stats)
+    {
+        tracestats_pb_tbl[allocated] = dpi_stats_set_pb_trace_stats(trace_stats);
+        if (tracestats_pb_tbl[allocated] == NULL) goto err_free_pb_trace_stats;
+
+        allocated++;
+    }
+
+    return tracestats_pb_tbl;
+
+err_free_pb_trace_stats:
+    for (i = 0; i < allocated; i++)
+    {
+        dpi_stats_free_call_trace_stat(tracestats_pb_tbl[i]);
+    }
+
+    FREE(tracestats_pb_tbl);
     return NULL;
 }
 
@@ -352,51 +454,381 @@ dpi_stats_set_pb_report(struct dpi_stats_report *report)
     /* Set the dpi counters */
     pb->counters = dpi_stats_set_counters(report);
 
+    return pb;
+}
+
+static Interfaces__DpiStats__DpiStatsReport *
+dpi_stats_set_counter_report(struct dpi_stats_report *report)
+{
+    Interfaces__DpiStats__DpiStatsReport *pb;
+
+    /* Allocate the protobuf structure */
+    pb = CALLOC(1, sizeof(*pb));
+    if (pb == NULL) return NULL;
+
+    /* Initialize the protobuf structure */
+    interfaces__dpi_stats__dpi_stats_report__init(pb);
+
+    /* Add observation point */
+    pb->observation_point = dpi_stats_set_observation_point(report);
+
+    /* Set the plugin name */
+    pb->plugin = report->plugin;
+
     /* set the nfqueue counters */
-    pb->n_nfqueue_stats = dpi_stats_get_nfq_stats_count();
-    pb->nfqueue_stats = dpi_stats_set_nfq_stats(report);
+    pb->n_nfqueue_stats = g_dpi_stats.num_nfqs;
+    pb->nfqueue_stats = dpi_stats_set_nfq_counters(report);
     if (pb->nfqueue_stats == NULL) pb->n_nfqueue_stats = 0;
 
     /* set the pcap stats */
-    pb->n_pcap_stats = dpi_stats_get_pcap_stats_count();
-    pb->pcap_stats = dpi_stats_set_pcap_stats(report);
+    pb->n_pcap_stats = g_dpi_stats.num_pcaps;
+    pb->pcap_stats = dpi_stats_set_pcap_counters(report);
     if (pb->pcap_stats == NULL) pb->n_pcap_stats = 0;
 
     return pb;
 }
 
-void dpi_stats_init_record(void)
+static Interfaces__DpiStats__DpiStatsReport *
+dpi_stats_set_fn_stats_report(struct dpi_stats_report *report)
 {
-    if (g_dpi_stats_report.initialized) return;
+    Interfaces__DpiStats__DpiStatsReport *pb;
 
-    MEMZERO(g_dpi_stats_report);
+    /* Allocate the protobuf structure */
+    pb = CALLOC(1, sizeof(*pb));
+    if (pb == NULL) return NULL;
 
-    /* initialize nfq and pcap tress */
-    ds_tree_init(&g_dpi_stats_report.nfq_stats_tree, ds_int_cmp, struct nfq_stats_counters, nfq_node);
-    ds_tree_init(&g_dpi_stats_report.pcap_stats_tree, (ds_key_cmp_t *)strcmp, struct pcap_stats_counters, pcap_node);
+    /* Initialize the protobuf structure */
+    interfaces__dpi_stats__dpi_stats_report__init(pb);
 
-    /* overwritten by UT's */
-    g_dpi_stats_report.send_report = qm_conn_send_direct;
-    g_dpi_stats_report.initialized = true;
+    /* Add observation point */
+    pb->observation_point = dpi_stats_set_observation_point(report);
+
+    /* Set the plugin name */
+    pb->plugin = report->plugin;
+
+    /* set the function tracer stats */
+    pb->n_call_stats = g_dpi_stats.num_fns;
+    pb->call_stats = dpi_stats_set_trace_stats(report);
+    if (pb->call_stats == NULL) pb->n_call_stats = 0;
+
+    return pb;
 }
 
+static void
+dpi_stats_insert_pcap_entry(struct pcap_stat *data, char *ifname, struct pcap_stats_counters *new_stats)
+{
+    ds_tree_t *pcap_stats;
+
+    pcap_stats = &g_dpi_stats.pcap_stats;
+
+    if (!new_stats) return;
+
+    STRSCPY(new_stats->ifname, ifname);
+    new_stats->pkts_received = data->ps_recv;
+    new_stats->pkts_dropped = data->ps_drop;
+
+    ds_tree_insert(pcap_stats, new_stats, new_stats->ifname);
+    return;
+}
+
+static void
+dpi_stats_update_pcap_entry(struct pcap_stat *data, char *ifname, struct pcap_stats_counters *stats)
+{
+    if (data->ps_recv > stats->pkts_received) stats->pkts_received = data->ps_recv - stats->pkts_received;
+    else stats->pkts_received = data->ps_recv;
+
+    if (data->ps_drop > stats->pkts_dropped) stats->pkts_dropped = data->ps_drop - stats->pkts_dropped;
+    else stats->pkts_dropped = data->ps_drop;
+
+    return;
+}
+
+static void
+dpi_stats_insert_nfq_entry(struct nfqnl_counters *nfq_cnt, struct nfq_stats_counters *new_stats)
+{
+    ds_tree_t *nfq_stats;
+
+    nfq_stats = &g_dpi_stats.nfq_stats;
+
+    if (!new_stats) return;
+
+    new_stats->qnum = nfq_cnt->queue_num;
+    new_stats->qtotal = nfq_cnt->queue_total;
+    new_stats->qdropped = nfq_cnt->queue_dropped;
+    new_stats->q_user_dropped = nfq_cnt->queue_user_dropped;
+    new_stats->seqid = nfq_cnt->id_sequence;
+    ds_dlist_init(&new_stats->error_list, struct nfq_err_cnts, node);
+
+    ds_tree_insert(nfq_stats, new_stats, &new_stats->qnum);
+    return;
+}
+
+static void
+dpi_stats_update_nfq_entry(struct nfqnl_counters *nfq_stats, struct nfq_stats_counters *stats)
+{
+    stats->qtotal = nfq_stats->queue_total;
+    stats->seqid = nfq_stats->id_sequence;
+    if (nfq_stats->queue_dropped > stats->qdropped) stats->qdropped = nfq_stats->queue_dropped - stats->qdropped;
+    else stats->qdropped = nfq_stats->queue_dropped;
+
+    if (nfq_stats->queue_user_dropped > stats->q_user_dropped) stats->q_user_dropped = nfq_stats->queue_user_dropped - stats->q_user_dropped;
+    else stats->q_user_dropped = nfq_stats->queue_user_dropped;
+
+    return;
+}
+
+static void
+dpi_stats_insert_fn_entry(struct fn_tracer_stats *trace_stats, struct fn_tracer_stats *new_stats)
+{
+    ds_tree_t *fn_stats;
+
+    fn_stats = &g_dpi_stats.fn_tracer_stats;
+
+    if (!new_stats) return;
+
+    new_stats->fn_name = STRDUP(trace_stats->fn_name);
+    new_stats->call_count = trace_stats->call_count;
+    new_stats->max_duration = trace_stats->max_duration;
+    new_stats->total_duration = trace_stats->total_duration;
+
+    ds_tree_insert(fn_stats, new_stats, new_stats->fn_name);
+    return;
+}
+
+static void
+dpi_stats_update_fn_entry(struct fn_tracer_stats *trace_stats, struct fn_tracer_stats *stats)
+{
+    if (trace_stats->call_count > stats->call_count) stats->call_count = trace_stats->call_count - stats->call_count;
+    else stats->call_count = trace_stats->call_count;
+
+    stats->max_duration = trace_stats->max_duration;
+
+    if (trace_stats->total_duration > stats->total_duration) stats->total_duration = trace_stats->total_duration - stats->total_duration;
+    else stats->total_duration = trace_stats->total_duration;
+
+    return;
+}
+
+static void
+dpi_stats_insert_nfq_err_entry(struct nf_queue_err_counters *report_counter, struct nfq_stats_counters *stats)
+{
+    struct nfq_err_cnts *nfq_err;
+    ds_dlist_t *err_list;
+
+    if (!stats) return;
+    err_list = &stats->error_list;
+
+    nfq_err = CALLOC(1, sizeof(struct nfq_err_cnts));
+    nfq_err->error_no = report_counter->error;
+    nfq_err->count = report_counter->counter;
+    stats->num_errs++;
+    ds_dlist_insert_head(err_list, nfq_err);
+    return;
+}
+
+static bool
+dpi_stats_update_nfq_err_entry(struct nf_queue_err_counters *report_counter, struct nfq_stats_counters *stats)
+{
+    struct nfq_err_cnts *nfq_err;
+    ds_dlist_t *err_list;
+
+    if (!stats) return false;
+
+    err_list = &stats->error_list;
+
+    ds_dlist_foreach(err_list, nfq_err)
+    {
+        if (report_counter->error == nfq_err->error_no)
+        {
+            if (report_counter->counter > nfq_err->count) nfq_err->count = report_counter->counter - nfq_err->count;
+            else nfq_err->count = report_counter->counter;
+            return true;
+        }
+    }
+    return false;
+}
 /*
  * ===========================================================================
  *  Public API implementation
  * ===========================================================================
  */
 
-/**
- * @brief return pointer to global report structure
- *
- * @param void the info used to fill up the protobuf.
- * @return dpi_stats_report a pointer to the global report structure.
- */
-struct dpi_stats_report *
-dpi_stats_get_global_report(void)
+void
+dpi_stats_log_pcap_counters(void)
 {
-    return &g_dpi_stats_report;
+    struct pcap_stats_counters *stats;
+
+    ds_tree_foreach(&g_dpi_stats.pcap_stats, stats)
+    {
+        LOGT("%s(): ifname: %s, received %d", __func__, stats->ifname, stats->pkts_received);
+    }
 }
+
+
+void
+dpi_stats_log_nfq_counters(void)
+{
+    struct nfq_stats_counters *stats;
+    struct nfq_err_cnts *errs;
+
+    ds_tree_foreach(&g_dpi_stats.nfq_stats, stats)
+    {
+        LOGT("%s(): qnum: %d, queue total %d", __func__, stats->qnum, stats->qtotal);
+        ds_dlist_foreach(&stats->error_list, errs)
+        {
+            LOGT("%s(): errno: %u, err_cnt: %"PRIu64" ", __func__, errs->error_no, errs->count);
+        }
+    }
+}
+
+
+/**
+ * @brief stores the node (pcap stats info) in the pcap stats tree
+ * @param data containing the pcap stats
+ * @param ifname of the pcap stats used as the key
+ * @return void
+ */
+void
+dpi_stats_store_pcap_stats(struct pcap_stat *data, char *ifname)
+{
+    struct pcap_stats_counters *stats;
+    ds_tree_t *pcap_stats;
+
+    /* initialize the tree if not already initialized */
+    if (!g_dpi_stats.initialized) dpi_stats_init_record();
+
+    pcap_stats = &g_dpi_stats.pcap_stats;
+
+    stats = ds_tree_find(pcap_stats, ifname);
+    if (!stats)
+    {
+        stats = CALLOC(1, sizeof(*stats));
+        dpi_stats_insert_pcap_entry(data, ifname, stats);
+        g_dpi_stats.num_pcaps++;
+    }
+    else dpi_stats_update_pcap_entry(data, ifname, stats);
+
+    return;
+}
+
+
+/**
+ * @brief stores the node (nfqueue stats info) in the nfqueue stats tree
+ * @param data containing the nfqueue stats
+ * @param ifname of the nfqueue stats used as the key
+ * @return void
+ */
+void
+dpi_stats_store_nfq_stats(struct nfqnl_counters *nfq_cnt)
+{
+    struct nfq_stats_counters *stats;
+    ds_tree_t *nfq_stats;
+
+    /* initialize the tree if not already initialized */
+    if (!g_dpi_stats.initialized) dpi_stats_init_record();
+
+    nfq_stats = &g_dpi_stats.nfq_stats;
+
+    stats = ds_tree_find(nfq_stats, &nfq_cnt->queue_num);
+    if (!stats)
+    {
+        stats = CALLOC(1, sizeof(*stats));
+        dpi_stats_insert_nfq_entry(nfq_cnt, stats);
+        g_dpi_stats.num_nfqs++;
+
+    } else dpi_stats_update_nfq_entry(nfq_cnt, stats);
+
+    return;
+}
+
+
+/**
+ * @brief stores the node (nfqueue error info) in the nfqueue stats tree
+ * @param data containing the nfqueue error and its count
+ * @param ifname of the nfqueue stats used as the key
+ * @return void
+ */
+void
+dpi_stats_store_nfq_err_cnt(int queue_num)
+{
+    struct nf_queue_err_counters *report_counter;
+    struct nf_queue_context_errors *report;
+    struct nfq_stats_counters *stats;
+    ds_tree_t *nfq_stats;
+    bool rc = false;
+    size_t i;
+
+
+    nfq_stats = &g_dpi_stats.nfq_stats;
+    stats = ds_tree_find(nfq_stats, &queue_num);
+    if (!stats) return;
+
+    report = nfq_get_err_counters(queue_num);
+    if (report == NULL) return;
+
+    for (i = 0; i < report->count; i++)
+    {
+        report_counter = report->counters[i];
+        LOGI("%s: nf queue id %d: error %d: %s, count: %" PRIu64, __func__,
+             queue_num, report_counter->error,
+             report_counter->error == 159 ? "backoff error indicator" : strerror(report_counter->error),
+             report_counter->counter);
+
+        rc = dpi_stats_update_nfq_err_entry(report_counter, stats);
+        if (!rc) dpi_stats_insert_nfq_err_entry(report_counter, stats);
+    }
+
+    FREE(report->counters);
+    FREE(report);
+}
+
+
+/**
+ * @brief stores the call trace stats in the tree
+ * @param trace_stats containing the call trace stats
+ * @return void
+ */
+void dpi_stats_store_call_trace_stats(struct fn_tracer_stats *trace_stats)
+{
+    struct fn_tracer_stats *stats;
+    ds_tree_t *fn_stats;
+
+    /* initialize the tree if not already initialized */
+    if (!g_dpi_stats.initialized) dpi_stats_init_record();
+
+    fn_stats = &g_dpi_stats.fn_tracer_stats;
+
+    stats = ds_tree_find(fn_stats, trace_stats->fn_name);
+    if (!stats)
+    {
+        stats = CALLOC(1, sizeof(*stats));
+        dpi_stats_insert_fn_entry(trace_stats, stats);
+        g_dpi_stats.num_fns++;
+
+    } else dpi_stats_update_fn_entry(trace_stats, stats);
+
+    return;
+}
+
+
+/**
+ * @brief Frees the pointer to serialized data and container
+ *
+ * Frees the dynamically allocated pointer to serialized data (pb->buf)
+ * and the container (pb)
+ *
+ * @param pb a pointer to a serialized data container
+ * @return none
+ */
+void
+dpi_stats_free_packed_buffer(struct dpi_stats_packed_buffer *pb)
+{
+    if (pb == NULL) return;
+
+    FREE(pb->buf);
+    FREE(pb);
+}
+
 
 /**
  * @brief Generates a dpi stats serialized protobuf
@@ -451,45 +883,6 @@ error:
 
 
 /**
- * @brief Frees the pointer to serialized data and container
- *
- * Frees the dynamically allocated pointer to serialized data (pb->buf)
- * and the container (pb)
- *
- * @param pb a pointer to a serialized data container
- * @return none
- */
-void
-dpi_stats_free_packed_buffer(struct dpi_stats_packed_buffer *pb)
-{
-    if (pb == NULL) return;
-
-    FREE(pb->buf);
-    FREE(pb);
-}
-
-/**
- * @brief Frees the stats stored in nfq and pcap tree
- *
- * @param none
- * @return none
- */
-void dpi_stats_clear_stats(void)
-{
-    ds_tree_t *nfq_tree;
-    ds_tree_t *pcap_tree;
-
-    nfq_tree = &g_dpi_stats_report.nfq_stats_tree;
-    pcap_tree = &g_dpi_stats_report.pcap_stats_tree;
-
-    /* clear nfq tree */
-    dpi_stats_clear_nfq_stats(nfq_tree);
-
-    /* clear pcap tree */
-    dpi_stats_clear_pcap_stats(pcap_tree);
-}
-
-/**
  * @brief Serializes the data that can be consumed
  * by protobuf
  *
@@ -499,7 +892,7 @@ void dpi_stats_clear_stats(void)
  * the serialized data
  */
 struct dpi_stats_packed_buffer *
-dpi_stats_serialize_stats_report(struct dpi_stats_report *report)
+dpi_stats_serialize_counter_report(struct dpi_stats_report *report)
 {
     struct dpi_stats_packed_buffer *serialized;
     Interfaces__DpiStats__DpiStatsReport *pb;
@@ -510,7 +903,7 @@ dpi_stats_serialize_stats_report(struct dpi_stats_report *report)
     serialized = CALLOC(1, sizeof(*serialized));
     if (serialized == NULL) return NULL;
 
-    pb = dpi_stats_set_pb_report(report);
+    pb = dpi_stats_set_counter_report(report);
     if (pb == NULL) goto error;
 
     /* Get serialization length */
@@ -525,54 +918,110 @@ dpi_stats_serialize_stats_report(struct dpi_stats_report *report)
     serialized->buf = buf;
 
     /* Free the protobuf structure */
-    dpi_stats_free_pb_report(pb);
+    dpi_stats_free_counter_report(pb);
+    dpi_stats_log_nfq_counters();
+    return serialized;
+
+error:
+    dpi_stats_free_packed_buffer(serialized);
+    dpi_stats_free_counter_report(pb);
+
+    return NULL;
+}
+
+
+/**
+ * @brief sends the call trace report to the specified mqtt topic
+ * @param session fsm_session containing the session information
+ * @param topic mqtt topic used for sending the report
+ * @return none
+ */
+struct dpi_stats_packed_buffer *
+dpi_stats_serialize_call_trace_stats(struct dpi_stats_report *report)
+{
+    struct dpi_stats_packed_buffer *serialized;
+    Interfaces__DpiStats__DpiStatsReport *pb;
+    size_t len;
+    void *buf;
+
+    /* Allocate serialization output structure */
+    serialized = CALLOC(1, sizeof(*serialized));
+    if (serialized == NULL) return NULL;
+
+    pb = dpi_stats_set_fn_stats_report(report);
+    if (pb == NULL) goto error;
+
+    /* Get serialization length */
+    len = interfaces__dpi_stats__dpi_stats_report__get_packed_size(pb);
+    if (len == 0) goto error;
+
+    /* Allocate space for the serialized buffer */
+    buf = MALLOC(len);
+    if (buf == NULL) goto error;
+
+    serialized->len = interfaces__dpi_stats__dpi_stats_report__pack(pb, buf);
+    serialized->buf = buf;
+
+    /* Free the protobuf structure */
+    dpi_stats_free_counter_report(pb);
 
     return serialized;
 
 error:
     dpi_stats_free_packed_buffer(serialized);
-    dpi_stats_free_pb_report(pb);
+    dpi_stats_free_counter_report(pb);
 
     return NULL;
 }
 
-/**
- * @brief gets the number of nodes (pcap stats) present
- * in the pcap tree
- * @param void
- * @return int the number of nodes present
- */
-int
-dpi_stats_get_pcap_stats_count(void)
+void
+dpi_stats_init_record(void)
 {
-    struct pcap_stats_counters *stats;
-    int count = 0;
+    if (g_dpi_stats.initialized) return;
 
-    ds_tree_foreach(&g_dpi_stats_report.pcap_stats_tree, stats)
-    {
-        count++;
-    }
-    return count;
+    MEMZERO(g_dpi_stats);
+
+    /* initialize nfq and pcap tress */
+    ds_tree_init(&g_dpi_stats.nfq_stats, ds_int_cmp, struct nfq_stats_counters, nfq_node);
+    ds_tree_init(&g_dpi_stats.pcap_stats, ds_str_cmp, struct pcap_stats_counters, pcap_node);
+    ds_tree_init(&g_dpi_stats.fn_tracer_stats, ds_str_cmp, struct fn_tracer_stats, fn_stats_node);
+
+    g_dpi_stats.initialized = true;
 }
 
+void
+dpi_stats_cleanup_record(void)
+{
+    ds_tree_t *nfqs;
+    ds_tree_t *pcaps;
+    ds_tree_t *fns;
+
+    if (!g_dpi_stats.initialized) return;
+
+    nfqs = &g_dpi_stats.nfq_stats;
+    pcaps = &g_dpi_stats.pcap_stats;
+    fns = &g_dpi_stats.fn_tracer_stats;
+
+    dpi_stats_clear_nfq_counters(nfqs);
+    dpi_stats_clear_pcap_counters(pcaps);
+    dpi_stats_clear_trace_stats(fns);
+    g_dpi_stats.initialized = false;
+}
+
+
 /**
- * @brief gets the number of nfq (nfqueue stats) present
+ * @brief gets the number of pcap (pcap stats) present
  * in the nfqueue tree
  * @param void
  * @return int the number of nodes present
  */
-int
-dpi_stats_get_nfq_stats_count(void)
+int dpi_stats_get_pcap_stats_count(void)
 {
-    struct nfq_stats_counters *stats;
-    int count = 0;
+    if (!g_dpi_stats.initialized) return 0;
 
-    ds_tree_foreach(&g_dpi_stats_report.nfq_stats_tree, stats)
-    {
-        count++;
-    }
-    return count;
+    return g_dpi_stats.num_pcaps;
 }
+
 
 /**
  * @brief stores the node (pcap stats info) in the pcap stats tree
@@ -580,136 +1029,23 @@ dpi_stats_get_nfq_stats_count(void)
  * @param ifname of the pcap stats used as the key
  * @return void
  */
-void
-dpi_stats_store_pcap_stats(struct pcap_stat *data, char *ifname)
+int dpi_stats_get_nfq_stats_count(void)
 {
-    struct pcap_stats_counters *new_stats;
+    if (!g_dpi_stats.initialized) return 0;
 
-    /* initialize the tree if not already initialized */
-    if (!g_dpi_stats_report.initialized) dpi_stats_init_record();
-
-    new_stats = CALLOC(1, sizeof(*new_stats));
-    STRSCPY(new_stats->ifname, ifname);
-    new_stats->pkts_received = data->ps_recv;
-    new_stats->pkts_dropped = data->ps_drop;
-
-    ds_tree_insert(&g_dpi_stats_report.pcap_stats_tree, new_stats, new_stats->ifname);
+    return g_dpi_stats.num_nfqs;
 }
+
 
 /**
- * @brief stores the node (nfqueue stats info) in the nfqueue stats tree
- * @param data containing the nfqueue stats
- * @param ifname of the nfqueue stats used as the key
- * @return void
+ * @brief gets the number of call trace stats pre
+ * in the call trace tree
+ * @param void
+ * @return int the number of nodes present
  */
-void
-dpi_stats_store_nfq_stats(struct nfqnl_counters *nfq_stats)
+int dpi_stats_get_call_trace_stats_count(void)
 {
-    struct nfq_stats_counters *new_stats;
+    if (!g_dpi_stats.initialized) return 0;
 
-    /* initialize the tree if not already initialized */
-    if (!g_dpi_stats_report.initialized) dpi_stats_init_record();
-
-    new_stats = CALLOC(1, sizeof(*new_stats));
-    new_stats->qnum = nfq_stats->queue_num;
-    new_stats->qtotal = nfq_stats->queue_total;
-    new_stats->qdropped = nfq_stats->queue_dropped;
-    new_stats->q_user_dropped = nfq_stats->queue_user_dropped;
-    new_stats->seqid = nfq_stats->id_sequence;
-
-    ds_tree_insert(&g_dpi_stats_report.nfq_stats_tree, new_stats, &new_stats->qnum);
+    return g_dpi_stats.num_fns;
 }
-
-/**
- * @brief sends the pcap report using the specified mqtt topic
- * @param session fsm_session containing the node details
- * @param topic mqtt topic used for sending the report
- * @return void
- */
-void
-dpi_stats_report_pcap_stats(struct fsm_session *session, char *topic)
-{
-    struct dpi_stats_packed_buffer *pb;
-    struct dpi_stats_report report;
-    qm_response_t res;
-    bool success;
-    int count;
-
-    /* check if there are stats to report */
-    count = dpi_stats_get_pcap_stats_count();
-    if (count == 0) return;
-
-    /* return if topic is not configured */
-    if (topic == NULL) goto cleanup;
-
-    MEMZERO(report);
-    /* set node info (pcap stats) in the report */
-    success = dpi_stats_set_node(session, &report);
-    if (!success) goto cleanup;
-
-    pb = dpi_stats_serialize_stats_report(&report);
-    if (pb == NULL)
-    {
-        LOGN("%s(): failed to serialize pcap stats data", __func__);
-        goto cleanup;
-    }
-
-    if (g_dpi_stats_report.send_report)
-    {
-        success = g_dpi_stats_report.send_report(QM_REQ_COMPRESS_IF_CFG, topic, pb->buf, pb->len, &res);
-        if (!success) LOGN("error sending mqtt with topic '%s'", topic);
-    }
-    dpi_stats_free_packed_buffer(pb);
-
-cleanup:
-    /* clear the pcap stats tree */
-    dpi_stats_clear_stats();
-}
-
-/**
- * @brief sends the nfqueue report using the specified mqtt topic
- * @param session fsm_session containing the node details
- * @param topic mqtt topic used for sending the report
- * @return void
- */
-void
-dpi_stats_report_nfq_stats(struct fsm_session *session, char *topic)
-{
-    struct dpi_stats_packed_buffer *pb;
-    struct dpi_stats_report report;
-    qm_response_t res;
-    bool success;
-    int count;
-
-    /* check if there are stats to report */
-    count = dpi_stats_get_nfq_stats_count();
-    if (count == 0) return;
-
-    /* return if topic is not configured */
-    if (topic == NULL) goto cleanup;
-
-    MEMZERO(report);
-    /* set node info (nfq stats) in the report */
-    success = dpi_stats_set_node(session, &report);
-    if (!success) goto cleanup;
-
-    pb = dpi_stats_serialize_stats_report(&report);
-    if (pb == NULL)
-    {
-        LOGN("%s(): failed to serialize nfqueue stats data", __func__);
-        goto cleanup;
-    }
-
-    if (g_dpi_stats_report.send_report)
-    {
-        success = g_dpi_stats_report.send_report(QM_REQ_COMPRESS_IF_CFG, topic, pb->buf, pb->len, &res);
-        if (!success) LOGN("error sending mqtt with topic '%s'", topic);
-    }
-
-    dpi_stats_free_packed_buffer(pb);
-
-cleanup:
-    /* clear the dpi stats tree */
-    dpi_stats_clear_stats();
-}
-

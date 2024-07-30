@@ -181,14 +181,7 @@ bool osn_vpn_healthcheck_apply(osn_vpn_t *self)
                     self->ov_name, self->ov_healthc_timeout, self->ov_healthc_interval);
             return false;
         }
-        if (self->ov_healthc_ip.addr_type != AF_INET)
-        {
-            LOG(ERR, "vpn: %s: healthcheck: Only IPv4 currently supported. "
-                    "IP="PRI_osn_ipany_addr, self->ov_name,
-                    FMT_osn_ip_addr(self->ov_healthc_ip.addr.ip4));
-            return false;
-        }
-        if (self->ov_healthc_ip.addr_type == AF_INET && self->ov_healthc_ip.addr.ip4.ia_addr.s_addr == 0)
+        if (!osn_ipany_addr_is_set(&self->ov_healthc_ip))
         {
             LOG(ERR, "vpn: %s: healthcheck: IP address to ping not configured", self->ov_name);
             return false;
@@ -317,7 +310,7 @@ static void healthcheck_timer_cb(struct ev_loop *loop, ev_timer *watcher, int re
     snprintf(
             vpn_healthcheck_ping_cmd,
             sizeof(vpn_healthcheck_ping_cmd),
-            "timeout %d ping -c %d -W %d %s%s",
+            "timeout %d ping -c %d -W %d "PRI_osn_ipany_addr"%s",
             VPN_HEALTHC_PING_WAIT+3,
             VPN_HEALTHC_PING_COUNT,
             VPN_HEALTHC_PING_WAIT,

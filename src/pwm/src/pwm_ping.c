@@ -55,7 +55,7 @@ static void pwm_ping_check_ip_alive()
         return;
     }
 
-    err = cmd_log(cmd);
+    err = cmd_log_check_safe(cmd);
     if (err) {
         LOGE("Ping to PW end-point %s failed", ping_addr.ip);
         g_ping_fail_count++;

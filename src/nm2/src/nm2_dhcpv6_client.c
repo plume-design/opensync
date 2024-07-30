@@ -206,6 +206,9 @@ void nm2_dhcpv6_client_release(struct nm2_dhcpv6_client *dc6)
 
     reflink_fini(&dc6->dc6_reflink);
 
+    ds_map_str_delete(&dc6->dc6_other_config);
+    ds_map_str_delete(&dc6->dc6_other_config_prev);
+
     ds_tree_remove(&nm2_dhcpv6_client_list, dc6);
 
     FREE(dc6);
@@ -290,6 +293,9 @@ struct nm2_dhcpv6_client *nm2_dhcpv6_client_get(ovs_uuid_t *uuid)
             ropt_snode,
             dhcpv6_client_recv_opt_sync);
 
+    dc6->dc6_other_config = ds_map_str_new();
+    dc6->dc6_other_config_prev = ds_map_str_new();
+
     ds_tree_insert(&nm2_dhcpv6_client_list, dc6, dc6->dc6_uuid.uuid);
 
     return dc6;
@@ -350,6 +356,30 @@ void nm2_dhcpv6_client_send_opts_update(uuidset_t *us, enum uuidset_event type, 
     }
 
     nm2_iface_apply(piface);
+}
+
+void nm2_dhcpv6_client_other_config_update(struct nm2_dhcpv6_client *dc6, struct nm2_iface *piface)
+{
+    ds_map_str_iter_t iter;
+    // delete any key that exist in previous set but not in current set
+    ds_map_str_foreach(dc6->dc6_other_config_prev, iter)
+    {
+        if (!ds_map_str_find(dc6->dc6_other_config, iter.key, NULL))
+        {
+            // set with value=NULL means remove
+            inet_dhcp6_client_other_config(piface->if_inet, iter.key, NULL);
+        }
+    }
+    // clear prev
+    ds_map_str_clear(dc6->dc6_other_config_prev);
+    // send new or updated values
+    ds_map_str_foreach(dc6->dc6_other_config, iter)
+    {
+        // send new or updated values to inet
+        inet_dhcp6_client_other_config(piface->if_inet, iter.key, iter.val);
+        // copy current to prev
+        ds_map_str_insert(dc6->dc6_other_config_prev, iter.key, iter.val);
+    }
 }
 
 /*
@@ -422,6 +452,10 @@ bool nm2_dhcpv6_client_update(
     uuidset_set(&dc6->dc6_received_options, schema->received_options, schema->received_options_len);
     uuidset_set(&dc6->dc6_send_options, schema->send_options, schema->send_options_len);
 
+    ds_map_str_clear(dc6->dc6_other_config);
+    ds_map_str_insert_schema_map(dc6->dc6_other_config, schema->other_config,
+            LOG_SEVERITY_WARN, "DHCPv6_Client.other_config duplicate key");
+
     /*
      * Parsing successful, notify listeners that we have a valid structure now
      */
@@ -485,6 +519,9 @@ void nm2_dhcpv6_client_set(struct nm2_dhcpv6_client *dc6, bool enable)
                 tag,
                 ii < dc6->dc6_request_opts_len);
     }
+
+    /* update other_config */
+    nm2_dhcpv6_client_other_config_update(dc6, piface);
 
     piface->if_dhcpv6_client = dc6;
     inet_dhcp6_client_notify(piface->if_inet, nm2_dhcpv6_client_notify);

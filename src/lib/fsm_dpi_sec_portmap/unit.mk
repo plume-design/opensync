@@ -31,9 +31,7 @@ UNIT_NAME := fsm_dpi_sec_portmap
 
 UNIT_DISABLE := $(if $(CONFIG_FSM_DPI_SEC_PORTMAP), n, y)
 
-# If compiled with clang, assume a native unit test target
-# and build a static library
-ifneq (, $(findstring clang, $(CC)))
+ifeq ($(CONFIG_FSM_NO_DSO),y)
     UNIT_TYPE := LIB
 else
     UNIT_TYPE := SHLIB

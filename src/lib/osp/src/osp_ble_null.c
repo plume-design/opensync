@@ -84,6 +84,14 @@ bool osp_ble_set_advertising_params(bool enabled, bool sr_enabled, uint16_t inte
     return true;
 }
 
+bool osp_ble_set_advertising_tx_power(int16_t tx_power, int16_t *set_tx_power)
+{
+    (void)tx_power;
+    (void)set_tx_power;
+
+    return true;
+}
+
 bool osp_ble_set_connectable(bool enabled)
 {
     (void)enabled;

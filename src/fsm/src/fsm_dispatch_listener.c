@@ -49,8 +49,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "neigh_table.h"
 #include "sockaddr_storage.h"
 #include "osn_types.h"
+#include "fsm_fn_trace.h"
 
 #define MAX_BUFFER_SIZE 2048
+
 
 struct msg;
 typedef void (*sock_recv)(struct msg *);
@@ -64,6 +66,7 @@ struct sock_context
     ev_io w_io;
     int events;
     struct fsm_session *session;
+    int recv_method;
     bool initialized;
 };
 
@@ -73,6 +76,7 @@ struct sock_context g_sock_context =
     .loop = NULL,
     .sock_fd = 0,
     .session = NULL,
+    .recv_method = VECTOR_IO,
 };
 
 
@@ -90,18 +94,18 @@ struct msg
 struct msg my_msg;
 
 
+
 static bool
-fsm_socket_mac_same(os_macaddr_t *lkp_mac, struct msg *receiver)
+fsm_socket_mac_same(os_macaddr_t *lkp_mac, os_macaddr_t *recv_mac)
 {
     bool rc = false;
 
-    if (!memcmp(lkp_mac, receiver->mac, sizeof(os_macaddr_t))) return true;
+    if (!memcmp(lkp_mac, recv_mac, sizeof(os_macaddr_t))) return true;
 
-    if (!osn_mac_addr_cmp(receiver->mac, &OSN_MAC_ADDR_INIT)) return true;
+    if (!osn_mac_addr_cmp(recv_mac, &OSN_MAC_ADDR_INIT)) return true;
 
     LOGT("%s:%s: receiver->mac: " PRI_os_macaddr_lower_t,
-         __FILE__, __func__,
-         FMT_os_macaddr_pt((os_macaddr_t *)&receiver->mac));
+         __FILE__, __func__, FMT_os_macaddr_pt(recv_mac));
 
     LOGT("%s: lkp_mac: "PRI_os_macaddr_t , __func__, FMT_os_macaddr_pt(lkp_mac));
 
@@ -109,6 +113,68 @@ fsm_socket_mac_same(os_macaddr_t *lkp_mac, struct msg *receiver)
 
 }
 
+static bool fsm_parse_ip(struct net_header_parser *net_parser, void **src_ip, void **dst_ip, int *domain)
+{
+    if (net_parser->ip_version == 4)
+    {
+        struct iphdr *ipv4hdr = net_header_get_ipv4_hdr(net_parser);
+        if (ipv4hdr == NULL) return false;
+        *src_ip = &ipv4hdr->saddr;
+        *dst_ip = &ipv4hdr->daddr;
+        *domain = AF_INET;
+    }
+    else if (net_parser->ip_version == 6)
+    {
+        struct ip6_hdr *ipv6hdr = net_header_get_ipv6_hdr(net_parser);
+        if (ipv6hdr == NULL) return false;
+        *src_ip = &ipv6hdr->ip6_src;
+        *dst_ip = &ipv6hdr->ip6_dst;
+        *domain = AF_INET6;
+    }
+    else
+    {
+        LOGD("%s: received unknown version %d", __func__, net_parser->ip_version);
+        return false;
+    }
+
+    return true;
+}
+
+static void fsm_process_neigh_change(struct net_header_parser *net_parser, void *src_ip, int domain)
+{
+    os_macaddr_t src_mac;
+    int rc_lookup;
+
+    if (kconfig_enabled(CONFIG_FSM_ALWAYS_ADD_NEIGHBOR_INFO))
+    {
+        MEM_CPY(&src_mac, net_parser->eth_header.srcmac, sizeof(src_mac));
+        rc_lookup = fsm_update_neigh_cache(src_ip, &src_mac, domain, FSM_SOCKET);
+        if (!rc_lookup)
+        {
+            LOGT("%s: Couldn't update neighbor cache.", __func__);
+        }
+    }
+    else
+    {
+        /* lookup src mac from the neighbor table */
+        rc_lookup = neigh_table_lookup_af(domain, src_ip, &src_mac);
+        if (rc_lookup)
+        {
+            /* check if the src mac address and src mac in pkt are different */
+            if (fsm_socket_mac_same(&src_mac, net_parser->eth_header.srcmac) == false)
+            {
+                /* if different, update neighbor cache with the pkt mac address */
+                MEM_CPY(&src_mac, net_parser->eth_header.srcmac, sizeof(src_mac));
+                rc_lookup = fsm_update_neigh_cache(src_ip, &src_mac, domain, FSM_SOCKET);
+                if (!rc_lookup) LOGT("%s: Couldn't update neighbor cache.", __func__);
+            }
+            if (rc_lookup)
+            {
+                net_parser->eth_header.srcmac = &src_mac;
+            }
+        }
+    }
+}
 
 static void
 net_recv_cb(struct msg *receiver)
@@ -137,7 +203,6 @@ net_recv_cb(struct msg *receiver)
     net_parser.start = net_parser.data;
     net_parser.parsed = 0;
 
-    /* set packet source as NFQ */
     net_parser.source = PKT_SOURCE_SOCKET;
     net_parser.eth_header.ethertype = ntohs(receiver->hw_protocol);
 
@@ -187,7 +252,7 @@ net_recv_cb(struct msg *receiver)
         rc_lookup = neigh_table_lookup_af(domain, src_ip, &src_mac);
         if (rc_lookup)
         {
-            if (fsm_socket_mac_same(&src_mac, receiver) == false)
+            if (fsm_socket_mac_same(&src_mac, (os_macaddr_t *)receiver->mac) == false)
             {
                 MEM_CPY(&src_mac, receiver->mac, sizeof(receiver->mac));
                 rc_lookup = fsm_update_neigh_cache(src_ip, &src_mac, domain, FSM_SOCKET);
@@ -217,13 +282,79 @@ net_recv_cb(struct msg *receiver)
     parser_ops->handler(session, &net_parser);
 }
 
+void parse_recv_buf_data(uint8_t *bytes, int len)
+{
+    struct fsm_parser_ops *parser_ops;
+    struct net_header_parser net_parser;
+    struct fsm_session *session;
+    os_macaddr_t dst_mac;
+    uint16_t ethertype;
+    void *src_ip;
+    void *dst_ip;
+    int rc_lookup;
+    bool success;
+    bool ip_pkt;
+    int domain;
+    int ret;
+
+    /* initialize net parser with received data */
+    MEMZERO(net_parser);
+    net_parser.packet_len = len;
+    net_parser.caplen = len;
+    net_parser.data = (uint8_t *)bytes;
+
+    ret = net_header_parse(&net_parser);
+    if (ret == 0)
+    {
+        LOGN("%s: failed to parse packet", __func__);
+        return;
+    }
+    net_header_log(LOG_SEVERITY_INFO, &net_parser);
+    net_parser.source = PKT_SOURCE_PCAP;
+
+    net_parser.start = (uint8_t *)bytes;
+    net_parser.caplen = len;
+
+    ethertype = net_header_get_ethertype(&net_parser);
+    ip_pkt = (ethertype == ETH_P_IP || ethertype == ETH_P_IPV6);
+    if (ip_pkt)
+    {
+        /* parse the IP header */
+        success = fsm_parse_ip(&net_parser, &src_ip, &dst_ip, &domain);
+        if (!success) return;
+
+        /* update the neighbor cache */
+        fsm_process_neigh_change(&net_parser, src_ip, domain);
+
+        /* update the destination mac address */
+        rc_lookup = neigh_table_lookup_af(domain, dst_ip, &dst_mac);
+        if (rc_lookup) net_parser.eth_header.dstmac = &dst_mac;
+    }
+
+    session = g_sock_context.session;
+    parser_ops = &session->p_ops->parser_ops;
+    parser_ops->handler(session, &net_parser);
+}
+
+/**
+ * @brief Receives data from the network buffer and parses it.
+ * @param ev network socket event.
+ */
+static void net_recv_data_from_buffer(ev_io *ev)
+{
+    struct sock_context *context;
+    char buffer[MAX_BUFFER_SIZE];
+    context = ev->data;
+    int len;
+
+    MEMZERO(buffer);
+    len = recv(context->sock_fd, buffer, MAX_BUFFER_SIZE, 0);
+    if (len > 0) parse_recv_buf_data((uint8_t *)buffer, len);
+}
 
 static void
-net_ev_recv_cb(EV_P_ ev_io *ev, int revents)
+net_recv_data_from_iov(ev_io *ev)
 {
-    (void)loop;
-    (void)revents;
-
     struct sock_context *context;
     struct msg *receiver;
     struct iovec iov[4];
@@ -263,6 +394,21 @@ net_ev_recv_cb(EV_P_ ev_io *ev, int revents)
     receiver->rcvd_len = rc;
     receiver->len = receiver->rcvd_len - (6 + 2 + 4); /* remove iov[0-2].len */
     context->recv_fn(receiver);
+}
+
+
+static void
+net_ev_recv_cb(EV_P_ ev_io *ev, int revents)
+{
+    (void)loop;
+    (void)revents;
+    struct sock_context *context;
+
+    context = ev->data;
+
+    /* receive function based on the receive method */
+    if (context->recv_method == BUFFER) net_recv_data_from_buffer(ev);
+    else net_recv_data_from_iov(ev);
 }
 
 static int
@@ -346,9 +492,11 @@ fsm_dispatch_init_listener(struct fsm_session *session)
 
     memset(&g_sock_context, 0, sizeof(g_sock_context));
     g_sock_context.sock_fd = sockfd;
+    g_sock_context.recv_method = dispatch->recv_method;
     g_sock_context.recv_fn = net_recv_cb;
     g_sock_context.session = session;
     g_sock_context.loop = session->loop;
+    FSM_FN_MAP(net_ev_recv_cb);
     ev_io_init(&g_sock_context.w_io, net_ev_recv_cb,
                g_sock_context.sock_fd, EV_READ);
 

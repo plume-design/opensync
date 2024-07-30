@@ -121,7 +121,7 @@ class OvsColumn:
 
             map_map = \
             {
-                "string":   lambda: "PJS_OVS_%sMAP_STRING(%s, %s, %d + 1)"  % (type_mod, self.name, self.value.maxLength, self.max),
+                "string":   lambda: "PJS_OVS_%sMAP_STRING(%s, %d + 1, %d)"  % (type_mod, self.name, self.value.maxLength, self.max),
                 "uuid":     lambda: "PJS_OVS_%sMAP_UUID(%s, %d)"            % (type_mod, self.name, self.max),
                 "integer":  lambda: "PJS_OVS_%sMAP_INT(%s, %d)"             % (type_mod, self.name, self.max),
                 "boolean":  lambda: "PJS_OVS_%sMAP_BOOL(%s, %d)"            % (type_mod, self.name, self.max),
@@ -133,7 +133,7 @@ class OvsColumn:
         elif self.is_set():
             set_map = \
             {
-                "string":   lambda: "PJS_OVS_SET_STRING(%s, %s, %d + 1)"    % (self.name, self.key.maxLength, self.max),
+                "string":   lambda: "PJS_OVS_SET_STRING(%s, %d + 1, %d)"    % (self.name, self.key.maxLength, self.max),
                 "uuid":     lambda: "PJS_OVS_SET_UUID(%s, %d)"              % (self.name, self.max),
                 "integer":  lambda: "PJS_OVS_SET_INT(%s, %d)"               % (self.name, self.max),
                 "boolean":  lambda: "PJS_OVS_SET_BOOL(%s, %d)"              % (self.name, self.max),

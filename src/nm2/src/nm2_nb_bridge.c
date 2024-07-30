@@ -33,6 +33,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "inet_bridge.h"
 
 static ovsdb_table_t table_Bridge;
+static ovsdb_table_t table_Open_vSwitch;
 static ds_tree_t nm2_bridge_list = DS_TREE_INIT(ds_str_cmp, struct nm2_bridge, br_tnode);
 
 ds_tree_t *nm2_bridge_get_list(void)
@@ -46,6 +47,13 @@ void nm2_bridge_init(void)
 
     OVSDB_TABLE_INIT_NO_KEY(Bridge);
     OVSDB_TABLE_MONITOR(Bridge, false);
+}
+
+void nm2_open_vswitch_init(void)
+{
+    LOG(INFO, "Initializing NM Open_vSwitch");
+
+    OVSDB_TABLE_INIT_NO_KEY(Open_vSwitch);
 }
 
 void nm2_bridge_del(struct nm2_bridge *br)
@@ -94,6 +102,23 @@ void nm2_add_port_to_br(struct nm2_bridge *bridge, struct nm2_port *port, bool a
     {
         LOGD("%s(): error adding port %s to bridge %s", __func__, port->port_name, bridge->br_name);
     }
+}
+
+static void nm2_update_open_vswitch_table_config(void)
+{
+    int count;
+    struct schema_Open_vSwitch *schema_ovs = (struct schema_Open_vSwitch *)ovsdb_table_select_where(&table_Open_vSwitch, NULL, &count);
+
+    if (schema_ovs == NULL)
+    {
+        return;
+    }
+
+    schema_ovs->cur_cfg = schema_ovs->next_cfg;
+    WARN_ON(!ovsdb_table_update(&table_Open_vSwitch, schema_ovs));
+
+    if (schema_ovs)
+        FREE(schema_ovs);
 }
 
 /*
@@ -149,10 +174,10 @@ void nm2_bridge_ports_update(uuidset_t *us, enum uuidset_event type, reflink_t *
     }
     else
     {
-        port->port_bridge = br;
         LOGT("%s(): deleting port %s from %s", __func__, port->port_name, br->br_name);
         nm2_add_port_to_br(br, port, add);
     }
+    nm2_update_open_vswitch_table_config();
 }
 
 /*

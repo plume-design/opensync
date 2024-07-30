@@ -24,6 +24,7 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+#include <fcntl.h>
 #include "os_common.h"
 
 #define LOG_MODULE_ID  LOG_MODULE_ID_OSA
@@ -45,33 +46,63 @@ void os_time_stamp(char *bfr, int32_t len)
     strftime(bfr, len, "%Y%m%d_%H:%M:%S", &ts);
 }
 
+/* compose a file name "location/<prefix>_process_name_<time_stamp>.pid>" */
+bool os_file_name_timestamp_pid(char *file, int size, char *location, char *prefix)
+{
+    char time_stamp[32];
+    char pname[64];
+    int32_t pid = getpid();
+    int len;
+
+    if (os_pid_to_name(pid, pname, sizeof(pname)) != 0) {
+        LOG(ERR, "Error: os_pid_to_name(%d) failed", pid);
+        return false;
+    }
+    os_time_stamp(time_stamp, sizeof(time_stamp));
+    len = snprintf(file, size, "%s/%s_%s_%s.%d", location, prefix, pname, time_stamp, pid);
+    if (len < 0 || len >= size) return false;
+
+    return true;
+}
+
+
 /* Open the text file "<prefix>_process_name_<time_stamp>.pid>" at specified location. */
 FILE *os_file_open(char *location, char *prefix)
 {
-    char file[64], time_stamp[32];
+    char file[256];
     FILE *fp;
-    int32_t pid = getpid();
 
-
-    memset(file, 0x00, sizeof(file));
-    snprintf(file, sizeof(file), "%s/%s_", location, prefix);
-
-    if (os_pid_to_name(pid, file + strlen(file), sizeof(file) - strlen(file)) != 0) {
-        LOG(ERR, "Error! os_pid_to_name() failed");
+    if (!os_file_name_timestamp_pid(file, sizeof(file), location, prefix))
+    {
+        LOG(ERR, "Error formatting file name: %s %s", location, prefix);
         return NULL;
     }
-
-    memset(time_stamp, 0x00, sizeof(time_stamp));
-    os_time_stamp(time_stamp, sizeof(time_stamp));
-
-    snprintf(file + strlen(file),
-             sizeof(file) - strlen(file), "_%s.%d", time_stamp, pid);
 
     fp = fopen(file, "w+");
     if (NULL == fp)
         LOG(ERR, "Error opening the file: %s", file);
 
     return fp;
+}
+
+int os_file_open_fd(char *location, char *prefix)
+{
+    char file[256];
+    mode_t mode = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH;
+    int flags = O_CREAT | O_TRUNC | O_RDWR;
+    int fd;
+
+    if (!os_file_name_timestamp_pid(file, sizeof(file), location, prefix))
+    {
+        LOG(ERR, "Error formatting file name: %s %s", location, prefix);
+        return -1;
+    }
+
+    fd = open(file, flags, mode);
+    if (fd < 0)
+        LOG(ERR, "Error opening the file: %s", file);
+
+    return fd;
 }
 
 void os_file_close(FILE *fp)

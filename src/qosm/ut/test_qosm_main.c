@@ -38,15 +38,30 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "log.h"
 #include "util.h"
 
-#include "qosm.h"
+#include "qosm_filter.h"
+#include "qosm_filter_internal.h"
 #include "qosm_ip_iface.h"
 #include "qosm_ic_template.h"
 #include "qosm_interface_classifier.h"
 
+extern void __test_qosm_filter_callback_IP_Interface(
+    ovsdb_update_monitor_t *mon,
+    struct schema_IP_Interface *old_rec,
+    struct schema_IP_Interface *new_rec);
+
+extern void __test_qosm_filter_callback_Interface_Classifier(
+    ovsdb_update_monitor_t *mon,
+    struct schema_Interface_Classifier *old_rec,
+    struct schema_Interface_Classifier *new_rec);
+
+extern void __test_qosm_filter_callback_Openflow_Tag(
+    ovsdb_update_monitor_t *mon,
+    struct schema_Openflow_Tag *old_rec,
+    struct schema_Openflow_Tag *tag);
+
 const char *test_name = "qosm_tests";
 ovsdb_update_monitor_t g_mon;
 static struct tag_mgr tag_mgr;
-struct qosm_mgr *g_mgr;
 
 struct schema_Openflow_Tag g_tags[] =
 {
@@ -116,30 +131,12 @@ void qosm_test_tc_commit(struct qosm_intf_classifier *ic, bool ingress)
          (ingress == true ? "ingress" : "egress"));
 }
 
-void qosm_test_debounce_fn(struct ev_loop *loop, ev_debounce *w, int revent)
-{
-    struct intf_classifier_entry *ic_entry;
-    struct qosm_intf_classifier *ic;
-    struct qosm_ip_iface *ipi;
-
-    TRACE();
-    /* get the base address of ipi structure */
-    ipi = CONTAINER_OF(w, struct qosm_ip_iface, ipi_debounce);
-    ic_entry = ds_tree_head(&ipi->ipi_intf_classifier_tree);
-    while (ic_entry != NULL)
-    {
-        ic = ic_entry->ic;
-        qosm_test_tc_commit(ic, ic_entry->ingress);
-        ic_entry = ds_tree_next(&ipi->ipi_intf_classifier_tree, ic_entry);
-    }
-}
-
 void setUp(void)
 {
     target_log_open("TEST", 0);
     memset(&g_mon, 0, sizeof(g_mon));
     log_severity_set(LOG_SEVERITY_TRACE);
-    qosm_init_mgr(qosm_test_debounce_fn);
+    qosm_filter_init();
 
     memset(&tag_mgr, 0, sizeof(tag_mgr));
     tag_mgr.service_tag_update = qosm_ic_template_tag_update;
@@ -201,14 +198,14 @@ test_multiple_Interface_Classifier(void)
     /* configure interface classifier */
     g_mon.mon_type = OVSDB_UPDATE_NEW;
     g_mon.mon_uuid = ic[0]._uuid.uuid;
-    callback_Interface_Classifier(&g_mon, NULL, &ic[0]);
+    __test_qosm_filter_callback_Interface_Classifier(&g_mon, NULL, &ic[0]);
 
     g_mon.mon_type = OVSDB_UPDATE_NEW;
     g_mon.mon_uuid = ic[1]._uuid.uuid;
-    callback_Interface_Classifier(&g_mon, NULL, &ic[1]);
+    __test_qosm_filter_callback_Interface_Classifier(&g_mon, NULL, &ic[1]);
 
     g_mon.mon_uuid = ip_iface[0]._uuid.uuid;
-    callback_IP_Interface(&g_mon, NULL, &ip_iface[0]);
+    __test_qosm_filter_callback_IP_Interface(&g_mon, NULL, &ip_iface[0]);
 
     ev_wait(NULL, 10.0);
 
@@ -216,15 +213,15 @@ test_multiple_Interface_Classifier(void)
 
     g_mon.mon_type = OVSDB_UPDATE_DEL;
     g_mon.mon_uuid = ip_iface[0]._uuid.uuid;
-    callback_IP_Interface(&g_mon, &ip_iface[0], &ip_iface[0]);
+    __test_qosm_filter_callback_IP_Interface(&g_mon, &ip_iface[0], &ip_iface[0]);
 
     g_mon.mon_type = OVSDB_UPDATE_DEL;
     g_mon.mon_uuid = ic[0]._uuid.uuid;
-    callback_Interface_Classifier(&g_mon, &ic[0], &ic[0]);
+    __test_qosm_filter_callback_Interface_Classifier(&g_mon, &ic[0], &ic[0]);
 
     g_mon.mon_type = OVSDB_UPDATE_DEL;
     g_mon.mon_uuid = ic[1]._uuid.uuid;
-    callback_Interface_Classifier(&g_mon, &ic[1], &ic[1]);
+    __test_qosm_filter_callback_Interface_Classifier(&g_mon, &ic[1], &ic[1]);
 
 }
 
@@ -249,7 +246,7 @@ test_IP_Interface_changes(void)
 {
     struct qosm_ip_iface *test_ipi;
     struct qosm_intf_classifier *ictest;
-    struct qosm_mgr *mgr;
+    struct qosm_filter *qosm_filter;
     int count;
     struct schema_IP_Interface ip_iface[] = {
         {
@@ -284,34 +281,34 @@ test_IP_Interface_changes(void)
         }
     };
 
-    mgr = qosm_get_mgr();
+    qosm_filter = qosm_filter_get();
 
     /* configure interface classifier */
     g_mon.mon_type = OVSDB_UPDATE_NEW;
     g_mon.mon_uuid = ic[0]._uuid.uuid;
-    callback_Interface_Classifier(&g_mon, NULL, &ic[0]);
-    ictest = ds_tree_find(&mgr->qosm_intf_classifier_tree, (void *)ic[0]._uuid.uuid);
+    __test_qosm_filter_callback_Interface_Classifier(&g_mon, NULL, &ic[0]);
+    ictest = ds_tree_find(&qosm_filter->qosm_intf_classifier_tree, (void *)ic[0]._uuid.uuid);
     TEST_ASSERT_NOT_NULL(ictest);
     TEST_ASSERT_EQUAL_UINT64(1, ictest->ic_reflink.rl_refcount);
 
     g_mon.mon_type = OVSDB_UPDATE_NEW;
     g_mon.mon_uuid = ic[1]._uuid.uuid;
-    callback_Interface_Classifier(&g_mon, NULL, &ic[1]);
-    ictest = ds_tree_find(&mgr->qosm_intf_classifier_tree, (void *)ic[1]._uuid.uuid);
+    __test_qosm_filter_callback_Interface_Classifier(&g_mon, NULL, &ic[1]);
+    ictest = ds_tree_find(&qosm_filter->qosm_intf_classifier_tree, (void *)ic[1]._uuid.uuid);
     TEST_ASSERT_NOT_NULL(ictest);
     TEST_ASSERT_EQUAL_UINT64(1, ictest->ic_reflink.rl_refcount);
 
     g_mon.mon_uuid = ip_iface[0]._uuid.uuid;
-    callback_IP_Interface(&g_mon, NULL, &ip_iface[0]);
-    test_ipi = ds_tree_find(&mgr->qosm_ip_iface_tree, ip_iface[0]._uuid.uuid);
+    __test_qosm_filter_callback_IP_Interface(&g_mon, NULL, &ip_iface[0]);
+    test_ipi = ds_tree_find(&qosm_filter->qosm_ip_iface_tree, ip_iface[0]._uuid.uuid);
     TEST_ASSERT_NOT_NULL(test_ipi);
 
     g_mon.mon_uuid = ip_iface[1]._uuid.uuid;
-    callback_IP_Interface(&g_mon, NULL, &ip_iface[1]);
-    test_ipi = ds_tree_find(&mgr->qosm_ip_iface_tree, ip_iface[1]._uuid.uuid);
+    __test_qosm_filter_callback_IP_Interface(&g_mon, NULL, &ip_iface[1]);
+    test_ipi = ds_tree_find(&qosm_filter->qosm_ip_iface_tree, ip_iface[1]._uuid.uuid);
     TEST_ASSERT_NOT_NULL(test_ipi);
 
-    ictest = ds_tree_find(&mgr->qosm_intf_classifier_tree, &ip_iface[1].ingress_classifier[0]);
+    ictest = ds_tree_find(&qosm_filter->qosm_intf_classifier_tree, &ip_iface[1].ingress_classifier[0]);
     TEST_ASSERT_NOT_NULL(ictest);
     /* count should be 1 as only 1 ingress classifier is configured */
     count = get_classifier_tree_counts(test_ipi, true);
@@ -325,19 +322,19 @@ test_IP_Interface_changes(void)
     /* Delete interface */
     g_mon.mon_type = OVSDB_UPDATE_DEL;
     g_mon.mon_uuid = ip_iface[0]._uuid.uuid;
-    callback_IP_Interface(&g_mon, &ip_iface[0], &ip_iface[0]);
+    __test_qosm_filter_callback_IP_Interface(&g_mon, &ip_iface[0], &ip_iface[0]);
 
     g_mon.mon_type = OVSDB_UPDATE_DEL;
     g_mon.mon_uuid = ip_iface[1]._uuid.uuid;
-    callback_IP_Interface(&g_mon, &ip_iface[1], &ip_iface[1]);
+    __test_qosm_filter_callback_IP_Interface(&g_mon, &ip_iface[1], &ip_iface[1]);
 
     g_mon.mon_type = OVSDB_UPDATE_DEL;
     g_mon.mon_uuid = ic[0]._uuid.uuid;
-    callback_Interface_Classifier(&g_mon, &ic[0], NULL);
+    __test_qosm_filter_callback_Interface_Classifier(&g_mon, &ic[0], NULL);
 
     g_mon.mon_type = OVSDB_UPDATE_DEL;
     g_mon.mon_uuid = ic[1]._uuid.uuid;
-    callback_Interface_Classifier(&g_mon, &ic[1], NULL);
+    __test_qosm_filter_callback_Interface_Classifier(&g_mon, &ic[1], NULL);
 }
 
 void
@@ -345,7 +342,7 @@ test_IP_Interface_multiple_ic(void)
 {
     struct qosm_intf_classifier *ictest;
     struct qosm_ip_iface *ipitest;
-    struct qosm_mgr *mgr;
+    struct qosm_filter *qosm_filter;
     struct schema_IP_Interface ip_iface[] = {
         {
         ._uuid = { "uuid_ip_classifier1" },
@@ -381,30 +378,30 @@ test_IP_Interface_multiple_ic(void)
         }
     };
 
-    mgr = qosm_get_mgr();
+    qosm_filter = qosm_filter_get();
     /* configure interface classifier */
     g_mon.mon_type = OVSDB_UPDATE_NEW;
     g_mon.mon_uuid = ic[0]._uuid.uuid;
-    callback_Interface_Classifier(&g_mon, NULL, &ic[0]);
-    ictest = ds_tree_find(&mgr->qosm_intf_classifier_tree, (void *)ic[0]._uuid.uuid);
+    __test_qosm_filter_callback_Interface_Classifier(&g_mon, NULL, &ic[0]);
+    ictest = ds_tree_find(&qosm_filter->qosm_intf_classifier_tree, (void *)ic[0]._uuid.uuid);
     TEST_ASSERT_NOT_NULL(ictest);
     TEST_ASSERT_EQUAL_UINT64(1, ictest->ic_reflink.rl_refcount);
 
     g_mon.mon_type = OVSDB_UPDATE_NEW;
     g_mon.mon_uuid = ic[1]._uuid.uuid;
-    callback_Interface_Classifier(&g_mon, NULL, &ic[1]);
-    ictest = ds_tree_find(&mgr->qosm_intf_classifier_tree, (void *)ic[1]._uuid.uuid);
+    __test_qosm_filter_callback_Interface_Classifier(&g_mon, NULL, &ic[1]);
+    ictest = ds_tree_find(&qosm_filter->qosm_intf_classifier_tree, (void *)ic[1]._uuid.uuid);
     TEST_ASSERT_NOT_NULL(ictest);
     TEST_ASSERT_EQUAL_UINT64(1, ictest->ic_reflink.rl_refcount);
 
     g_mon.mon_uuid = ip_iface[0]._uuid.uuid;
-    callback_IP_Interface(&g_mon, NULL, &ip_iface[0]);
-    ipitest = ds_tree_find(&mgr->qosm_ip_iface_tree, (void *)ip_iface[0]._uuid.uuid);
+    __test_qosm_filter_callback_IP_Interface(&g_mon, NULL, &ip_iface[0]);
+    ipitest = ds_tree_find(&qosm_filter->qosm_ip_iface_tree, (void *)ip_iface[0]._uuid.uuid);
     TEST_ASSERT_NOT_NULL(ipitest);
 
 
     g_mon.mon_uuid = ip_iface[1]._uuid.uuid;
-    callback_IP_Interface(&g_mon, NULL, &ip_iface[1]);
+    __test_qosm_filter_callback_IP_Interface(&g_mon, NULL, &ip_iface[1]);
 
     ev_wait(NULL, 10.0);
 
@@ -413,20 +410,20 @@ test_IP_Interface_multiple_ic(void)
     LOGT("%s(): deleting IP interface", __func__ );
     g_mon.mon_type = OVSDB_UPDATE_DEL;
     g_mon.mon_uuid = ip_iface[0]._uuid.uuid;
-    callback_IP_Interface(&g_mon, &ip_iface[0], &ip_iface[0]);
+    __test_qosm_filter_callback_IP_Interface(&g_mon, &ip_iface[0], &ip_iface[0]);
 
     g_mon.mon_type = OVSDB_UPDATE_DEL;
     g_mon.mon_uuid = ip_iface[1]._uuid.uuid;
-    callback_IP_Interface(&g_mon, &ip_iface[1], &ip_iface[1]);
+    __test_qosm_filter_callback_IP_Interface(&g_mon, &ip_iface[1], &ip_iface[1]);
 
     LOGT("%s(): deleting interface classifier", __func__ );
     g_mon.mon_type = OVSDB_UPDATE_DEL;
     g_mon.mon_uuid = ic[0]._uuid.uuid;
-    callback_Interface_Classifier(&g_mon, &ic[0], NULL);
+    __test_qosm_filter_callback_Interface_Classifier(&g_mon, &ic[0], NULL);
 
     g_mon.mon_type = OVSDB_UPDATE_DEL;
     g_mon.mon_uuid = ic[1]._uuid.uuid;
-    callback_Interface_Classifier(&g_mon, &ic[1], NULL);
+    __test_qosm_filter_callback_Interface_Classifier(&g_mon, &ic[1], NULL);
 
 }
 
@@ -500,22 +497,22 @@ test_template_rule(void)
 
     /* configure Openflow Tags */
     g_mon.mon_type = OVSDB_UPDATE_NEW;
-    callback_Openflow_Tag(&g_mon, NULL, &g_tags[0]);
+    __test_qosm_filter_callback_Openflow_Tag(&g_mon, NULL, &g_tags[0]);
 
     /* configure interface classifier */
     g_mon.mon_type = OVSDB_UPDATE_NEW;
     g_mon.mon_uuid = ic[0]._uuid.uuid;
-    callback_Interface_Classifier(&g_mon, NULL, &ic[0]);
+    __test_qosm_filter_callback_Interface_Classifier(&g_mon, NULL, &ic[0]);
 
     g_mon.mon_type = OVSDB_UPDATE_NEW;
     g_mon.mon_uuid = ic[1]._uuid.uuid;
-    callback_Interface_Classifier(&g_mon, NULL, &ic[1]);
+    __test_qosm_filter_callback_Interface_Classifier(&g_mon, NULL, &ic[1]);
 
     g_mon.mon_uuid = ip_iface[0]._uuid.uuid;
-    callback_IP_Interface(&g_mon, NULL, &ip_iface[0]);
+    __test_qosm_filter_callback_IP_Interface(&g_mon, NULL, &ip_iface[0]);
 
     g_mon.mon_uuid = ip_iface[1]._uuid.uuid;
-    callback_IP_Interface(&g_mon, NULL, &ip_iface[1]);
+    __test_qosm_filter_callback_IP_Interface(&g_mon, NULL, &ip_iface[1]);
 
     ev_wait(NULL, 10.0);
 
@@ -526,23 +523,23 @@ test_template_rule(void)
     LOGT("%s(): deleting IP interface", __func__ );
     g_mon.mon_type = OVSDB_UPDATE_DEL;
     g_mon.mon_uuid = ip_iface[0]._uuid.uuid;
-    callback_IP_Interface(&g_mon, &ip_iface[0], &ip_iface[0]);
+    __test_qosm_filter_callback_IP_Interface(&g_mon, &ip_iface[0], &ip_iface[0]);
 
     g_mon.mon_type = OVSDB_UPDATE_DEL;
     g_mon.mon_uuid = ip_iface[1]._uuid.uuid;
-    callback_IP_Interface(&g_mon, &ip_iface[1], &ip_iface[1]);
+    __test_qosm_filter_callback_IP_Interface(&g_mon, &ip_iface[1], &ip_iface[1]);
 
     LOGT("%s(): deleting interface classifier", __func__ );
     g_mon.mon_type = OVSDB_UPDATE_DEL;
     g_mon.mon_uuid = ic[0]._uuid.uuid;
-    callback_Interface_Classifier(&g_mon, &ic[0], &ic[0]);
+    __test_qosm_filter_callback_Interface_Classifier(&g_mon, &ic[0], &ic[0]);
 
     g_mon.mon_type = OVSDB_UPDATE_DEL;
     g_mon.mon_uuid = ic[1]._uuid.uuid;
-    callback_Interface_Classifier(&g_mon, &ic[1], &ic[1]);
+    __test_qosm_filter_callback_Interface_Classifier(&g_mon, &ic[1], &ic[1]);
 
     g_mon.mon_type = OVSDB_UPDATE_DEL;
-    callback_Openflow_Tag(&g_mon, &g_tags[0], &g_tags[0]);
+    __test_qosm_filter_callback_Openflow_Tag(&g_mon, &g_tags[0], &g_tags[0]);
 
 }
 

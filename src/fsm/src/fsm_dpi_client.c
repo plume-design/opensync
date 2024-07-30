@@ -39,6 +39,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "policy_tags.h"
 #include "ovsdb_sync.h"
 #include "util.h"
+#include "fsm_fn_trace.h"
 
 static char *FLOW_ATTRIBUTES = "flow_attributes";
 static char *DPI_PLUGIN = "dpi_plugin";
@@ -899,8 +900,10 @@ fsm_dpi_call_client(struct fsm_session *dpi_plugin_session, const char *attr,
              __func__, client_session->session->name, attr);
 
         /* Return value needs to be somehow combined (ignore PASSTHRU, etc) */
+        fsm_fn_trace(dpi_client_plugin_ops->process_attr, FSM_FN_ENTER);
         rc = dpi_client_plugin_ops->process_attr(dpi_client_session, attr, type,
                                                  length, value, pkt_info);
+        fsm_fn_trace(dpi_client_plugin_ops->process_attr, FSM_FN_EXIT);
         if ((rc < 0) || (rc >= weight_max_idx)) continue;
         if (fsm_dpi_action_weight[rc] > weight)
         {

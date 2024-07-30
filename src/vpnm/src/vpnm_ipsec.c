@@ -67,9 +67,9 @@ static ds_tree_t vpnm_ipsec_list = DS_TREE_INIT(ds_str_cmp, struct vpnm_ipsec, v
 static const osn_ipany_addr_t IP4_ANY = { .addr_type = AF_INET, .addr.ip4 = OSN_IP_ADDR_INIT };
 
 /* OpenSync/target supported ciphers lists (initialized from Kconfig): */
-static enum osn_ipsec_enc       supported_enc_list[OSN_CIPHER_SUITE_MAX+1];
-static enum osn_ipsec_auth      supported_auth_list[OSN_CIPHER_SUITE_MAX+1];
-static enum osn_ipsec_dh_group  supported_dh_list[OSN_CIPHER_SUITE_MAX+1];
+static enum osn_ipsec_enc       supported_enc_list[OSN_CIPHER_SUITE_MAX];
+static enum osn_ipsec_auth      supported_auth_list[OSN_CIPHER_SUITE_MAX];
+static enum osn_ipsec_dh_group  supported_dh_list[OSN_CIPHER_SUITE_MAX];
 
 static bool vpnm_ipsec_config_set(
         struct vpnm_ipsec *vpn_ipsec,
@@ -129,7 +129,7 @@ static struct vpnm_ipsec *vpnm_ipsec_get(const char *tunnel_name)
 
 static int util_ipanny_addr_array_from_str(
         osn_ipany_addr_t *subnets, int subnets_len,
-        const char str_subnets[OSN_SUBNETS_MAX+1][IPSEC_SCHEMA_IPSTR_LEN], int str_subnets_len)
+        const char str_subnets[OSN_SUBNETS_MAX][IPSEC_SCHEMA_IPSTR_LEN], int str_subnets_len)
 {
     int i;
 
@@ -222,7 +222,7 @@ static enum osn_ipsec_dh_group util_dh_from_schemastr(const char *dh)
 
 static int util_enc_array_from_schemastr(
         enum osn_ipsec_enc *enc_list, int enc_list_len,
-        const char str_enc_list[OSN_CIPHER_SUITE_MAX+1][IPSEC_SCHEMA_CIPHERSTR_LEN], int str_enc_list_len)
+        const char str_enc_list[OSN_CIPHER_SUITE_MAX][IPSEC_SCHEMA_CIPHERSTR_LEN], int str_enc_list_len)
 {
     int i;
 
@@ -240,7 +240,7 @@ static int util_enc_array_from_schemastr(
 
 static int util_auth_array_from_schemastr(
         enum osn_ipsec_auth *auth_list, int auth_list_len,
-        const char str_auth_list[OSN_CIPHER_SUITE_MAX+1][IPSEC_SCHEMA_CIPHERSTR_LEN], int str_auth_list_len)
+        const char str_auth_list[OSN_CIPHER_SUITE_MAX][IPSEC_SCHEMA_CIPHERSTR_LEN], int str_auth_list_len)
 {
     int i;
 
@@ -257,7 +257,7 @@ static int util_auth_array_from_schemastr(
 
 static int util_dh_array_from_schemastr(
         enum osn_ipsec_dh_group *dh_list, int dh_list_len,
-        const char str_dh_list[OSN_CIPHER_SUITE_MAX+1][IPSEC_SCHEMA_CIPHERSTR_LEN], int str_dh_list_len)
+        const char str_dh_list[OSN_CIPHER_SUITE_MAX][IPSEC_SCHEMA_CIPHERSTR_LEN], int str_dh_list_len)
 {
     int i;
 
@@ -1051,12 +1051,12 @@ bool vpnm_ipsec_init(void)
  * accepting 2-D arrays from schema structs.
  */
 
-C_STATIC_ASSERT((OSN_SUBNETS_MAX+1) ==
+C_STATIC_ASSERT((OSN_SUBNETS_MAX) ==
         (sizeof(((struct schema_IPSec_Config *)(NULL))->local_subnets)
                 / sizeof(((struct schema_IPSec_Config *)(NULL))->local_subnets[0])),
                 "unexpected schema subnets array len");
 
-C_STATIC_ASSERT((OSN_CIPHER_SUITE_MAX+1) ==
+C_STATIC_ASSERT((OSN_CIPHER_SUITE_MAX) ==
         (sizeof(((struct schema_IPSec_Config *)(NULL))->ike_enc_suite)
                 / sizeof(((struct schema_IPSec_Config *)(NULL))->ike_enc_suite[0])),
                 "unexpected schema subnets array len");

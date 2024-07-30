@@ -34,6 +34,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define C_CMD_LONGEST_RESP 64
 
 #define MAX_CELL_COUNT 6
+#define MAX_FULL_SCAN_CELL_COUNT 20
 
 /**
  * apn_proto_type: ipv4, ipv6, ipv4v6
@@ -77,8 +78,9 @@ typedef struct osn_cell_modem_info_
     struct cell_data_usage cell_data_usage;
     struct lte_serving_cell_info cell_srv_cell;
     size_t n_neigh_cells;
-    size_t cur_neigh_cell_idx;
     struct cell_net_neighbor_cell_info cell_neigh_cell_info[MAX_CELL_COUNT];
+    size_t n_full_scan_neigh_cells;
+    struct cell_full_scan_neighbor_cell_info cell_full_scan_neigh_cell_info[MAX_FULL_SCAN_CELL_COUNT];
     struct cell_net_pca_info cell_pca_info;
     size_t n_lte_sca_cells;
     size_t cur_lte_sca_cell_idx;

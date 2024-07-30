@@ -74,6 +74,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define MODULE_ID  LOG_MODULE_ID_COMMON
 
 #define BACKTRACE_MAX_ITERATIONS 20
+#define BACKTRACE_CRASH_TIMEOUT 3
 
 /**
  * Stack-trace functions, mostly inspired from libubacktrace
@@ -81,8 +82,18 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 void                            os_backtrace_sig_crash(int signum);
 static os_backtrace_func_t      os_backtrace_dump_cbk;
 
-static FILE                     *fp = NULL;
-static FILE                     *fp_crash_report = NULL;
+/* NOTE: using fd instead of FILE* because FILE apis are not signal safe */
+
+/* fd_crash_log is peristently stored in INSTALL_PREFIX/log_archive/crash */
+static int                      fd_crash_log = -1;
+/* fd_crash_report goes to /tmp is sent via mqtt and is then removed */
+static int                      fd_crash_report = -1;
+
+static int g_crash_signum;
+static struct sigaction g_save_alarm_sa;
+static int g_save_alarm_time;
+
+#define VALID_FD(FD) ((FD) >= 0)
 
 /**
  * Install crash handlers that dump the current stack in the log file
@@ -93,7 +104,17 @@ void os_backtrace_init(void)
 
     sigemptyset(&sa.sa_mask);
     sa.sa_handler   = os_backtrace_sig_crash;
-    sa.sa_flags     = SA_RESETHAND;
+    sa.sa_flags     = SA_RESETHAND | SA_NODEFER;
+    /*
+     * These two flags allow us to execute the default signal handler by
+     * using raise from our handler or from the alarm handler:
+     *
+     * SA_RESETHAND
+     * Restore the signal action to the default upon entry to the signal handler.
+     *
+     * SA_NODEFER
+     * Do not add the signal to the signal mask while the handler is executing.
+     */
 
     sigaction(SIGABRT, &sa, NULL);
     sigaction(SIGSEGV, &sa, NULL);
@@ -110,10 +131,57 @@ void os_backtrace_init(void)
 }
 
 /**
+ * Alarm handler which is called if the crash_report hangs
+ */
+void os_backtrace_alarm_handler(int signum)
+{
+    if (g_crash_signum != SIGUSR2) {
+        // raise original signal to handle the crash
+        raise(g_crash_signum);
+    } else {
+        // default USR2 handler does not exit so raise ABORT instead,
+        // but first reset ABORT to default handler
+        struct sigaction sa;
+        sigemptyset(&sa.sa_mask);
+        sa.sa_handler = SIG_DFL; // default action
+        sa.sa_flags = 0;
+        sigaction(SIGABRT, &sa, NULL);
+        raise(SIGABRT);
+    }
+    // this should not be reached, exit with error
+    exit(128 + g_crash_signum);
+}
+
+/**
+ * Set an alarm handler and start the timer which will
+ * be triggered if the crash_report hanghs
+ */
+void os_backtrace_start_alarm()
+{
+    struct sigaction sa;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_handler = os_backtrace_alarm_handler;
+    sa.sa_flags = 0;
+    sigaction(SIGALRM, &sa, &g_save_alarm_sa);
+    g_save_alarm_time = alarm(BACKTRACE_CRASH_TIMEOUT);
+}
+
+/**
+ * Restore previous alarm handler and time
+ */
+void os_backtrace_reset_alarm()
+{
+    sigaction(SIGALRM, &g_save_alarm_sa, NULL);
+    alarm(g_save_alarm_time);
+}
+
+/**
  * The crash handler
  */
 void os_backtrace_sig_crash(int signum)
 {
+    g_crash_signum = signum;
+    os_backtrace_start_alarm();
     LOG(ALERT, "Signal %d received, generating stack dump...\n", signum);
 
     sig_crash_report(signum);
@@ -124,6 +192,7 @@ void os_backtrace_sig_crash(int signum)
            so re-send the signal to ourselves in order to properly crash */
         raise(signum);
     }
+    os_backtrace_reset_alarm();
 }
 
 /**
@@ -135,6 +204,30 @@ struct os_backtrace_dump_info
     char addr_info[512];
 };
 
+/* printf to a fd */
+static int fd_printf(int fd, char *fmt, ...)
+{
+    va_list args;
+    int len = -1;
+    int ret = -1;
+
+    if (fd < 0) return -1;
+    va_start(args, fmt);
+    len = vsnprintf(NULL, 0, fmt, args);
+    va_end(args);
+    if (len < 0) return len;
+    char buf[len + 1];
+    va_start(args, fmt);
+    len = vsnprintf(buf, sizeof(buf), fmt, args);
+    va_end(args);
+    if (len < 0) return -1;
+    if (len >= (int)sizeof(buf)) return -1;
+    ret = write(fd, buf, len);
+    if (ret != len) return -1;
+
+    return len;
+}
+
 static void crash_print(char *fmt, ...)
 {
     char    buf[BFR_SIZE_512];
@@ -143,21 +236,21 @@ static void crash_print(char *fmt, ...)
     memset(buf, 0x00, sizeof(buf));
     va_start(args, fmt);
     vsnprintf(buf, sizeof(buf), fmt, args);
+    va_end(args);
 
-    if (NULL != fp)
+    if (VALID_FD(fd_crash_log))
     {
-        fprintf(fp, "%s\n", buf);
+        fd_printf(fd_crash_log, "%s\n", buf);
     }
 
     LOG(ERR, "%s", buf);
-    va_end(args);
 }
 
 static void crash_report_print(char *line)
 {
-    if (fp_crash_report)
+    if (VALID_FD(fd_crash_report))
     {
-        fprintf(fp_crash_report, "%s\\n", line);
+        fd_printf(fd_crash_report, "%s\\n", line);
     }
 }
 
@@ -167,7 +260,7 @@ void os_backtrace_dump_generic(btrace_type btrace)
 
     if (btrace != BTRACE_LOG_ONLY) {
         /* This call opens up a file </location/crashed_<process_name>_<timestamp>.pid> */
-        fp = os_file_open(BTRACE_DUMP_PATH, "crashed");
+        fd_crash_log = os_file_open_fd(BTRACE_DUMP_PATH, "crashed");
     }
 
     int addr_len = 2 + sizeof(void*) * 2;
@@ -183,8 +276,9 @@ void os_backtrace_dump_generic(btrace_type btrace)
     crash_print("Note: Use the following command line to get a full trace:");
     crash_print("addr2line -e DEBUG_BINARY -ifp %s", di.addr_info);
 
-    if (btrace != BTRACE_LOG_ONLY) {
-        os_file_close(fp);
+    if (VALID_FD(fd_crash_log)) {
+        close(fd_crash_log);
+        fd_crash_log = -1;
     }
 }
 
@@ -196,42 +290,34 @@ void sig_crash_report(int signum)
 
     if (kconfig_enabled(CONFIG_DM_OSYNC_CRASH_REPORTS) && signum != SIGUSR2)
     {
-        int fd;
-
         mkdir(CRASH_REPORTS_TMP_DIR, 0755);
 
-        fp_crash_report = NULL;
-        if ((fd = mkstemp(template)) != -1)
-        {
-            fp_crash_report = fdopen(fd, "w");
-            if (fp_crash_report == NULL) close(fd);
-        }
-        if (fp_crash_report == NULL)
+        fd_crash_report = mkstemp(template);
+        if (!VALID_FD(fd_crash_report))
         {
             LOG(ERR, "Error creating temporary file: %s", strerror(errno));
         }
-
-        if (fp_crash_report != NULL)
+        else
         {
             pid = getpid();
             os_pid_to_name(pid, pname, sizeof(pname));
 
-            fprintf(fp_crash_report, "pid %d\n", pid);
-            fprintf(fp_crash_report, "name %s\n", pname);
-            fprintf(fp_crash_report, "reason SIG %d (%s)\n",
-                    signum, strsignal(signum));
-            fprintf(fp_crash_report, "timestamp %lld\n", (long long)clock_real_ms());
-            fprintf(fp_crash_report, "backtrace ");
+            fd_printf(fd_crash_report, "pid %d\n", pid);
+            fd_printf(fd_crash_report, "name %s\n", pname);
+            fd_printf(fd_crash_report, "reason SIG %d (%s)\n",
+                      signum, strsignal(signum));
+            fd_printf(fd_crash_report, "timestamp %lld\n", (long long)clock_real_ms());
+            fd_printf(fd_crash_report, "backtrace ");
         }
     }
 
     os_backtrace_dump_generic(target_get_btrace_type());
-    if (fp_crash_report)
-    {
-        fprintf(fp_crash_report, "\n");
 
-        fclose(fp_crash_report);
-        fp_crash_report = NULL;
+    if (VALID_FD(fd_crash_report))
+    {
+        fd_printf(fd_crash_report, "\n");
+        close(fd_crash_report);
+        fd_crash_report = -1;
     }
 }
 

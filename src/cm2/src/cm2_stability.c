@@ -32,6 +32,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "cm2.h"
 #include "kconfig.h"
 #include "cm2_stability.h"
+#include "ds_tree.h"
 
 
 #include "os_time.h"
@@ -51,13 +52,17 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * interface name and interface type */
 typedef struct {
     ev_child                           cw;
+    ds_tree_node_t                     node;
     target_connectivity_check_option_t opts;
     char                               uname[C_IFNAME_LEN];
     char                               utype[IFTYPE_SIZE];
     char                               clink[C_IFNAME_LEN];
     bool                               db_update;
     bool                               repeat;
+    pid_t                              pid;
 } async_check_t;
+
+static ds_tree_t g_async_checks = DS_TREE_INIT(ds_str_cmp, async_check_t, node);
 
 static const char* cm2_util_bool2str(bool v)
 {
@@ -170,6 +175,9 @@ void cm2_restore_switch_cfg(cm2_restore_con_t opt)
 
     if (opt & (1 << CM2_RESTORE_SWITCH_FIX_PORT_MAP)) {
        LOGI("Switch: Trigger fixing port map");
+
+        if (!is_input_shell_safe(g_state.link.gateway_hwaddr)) return;
+
        sprintf(command, "sh "CONFIG_INSTALL_PREFIX"/scripts/kick-ethernet.sh 3 %s",
               g_state.link.gateway_hwaddr);
        LOGD("%s: Command: %s", __func__, command);
@@ -416,46 +424,6 @@ void cm2_util_update_uplink_ip_state(struct schema_Connection_Manager_Uplink *co
     }
 }
 
-static void dump_proc_mem_usage(void)
-{
-    char buffer[1024] = "";
-    char fname[128];
-    char pid[128];
-    int rc;
-    char vmrss[512];
-    char vmsize[512];
-
-    snprintf(pid, sizeof(pid), "%d", (int)getpid());
-    snprintf(fname, sizeof(fname), "/proc/%s/status", pid);
-
-    FILE* file = fopen(fname, "r");
-    if (file == NULL) return;
-
-    while ((rc = fscanf(file, " %1023s", buffer)) == 1)
-    {
-        errno = 0;
-        if (strcmp(buffer, "VmRSS:") == 0)
-        {
-            rc = fscanf(file, " %s", vmrss);
-            if ((rc != 1) && (errno != 0)) goto err_scan;
-        }
-        else if (strcmp(buffer, "VmSize:") == 0)
-        {
-            rc = fscanf(file, " %s", vmsize);
-            if ((rc != 1) && (errno != 0)) goto err_scan;
-
-        }
-    }
-
-    LOGI("pid %s: mem usage: real mem: %s, virt mem %s", pid, vmrss, vmsize);
-    fclose(file);
-    return;
-
-err_scan:
-    LOGI("%s: error scanning %s: %s", __func__, fname, strerror(errno));
-    fclose(file);
-}
-
 static bool cm2_connection_req_stability_process(const char *if_name,
                                                  target_connectivity_check_option_t opts,
                                                  bool db_update,
@@ -517,7 +485,7 @@ static bool cm2_connection_req_stability_process(const char *if_name,
         return status;
 
     if (muplink &&
-        g_state.link.is_bridge &&
+        cm2_link_is_bridge(&g_state.link) &&
         !strcmp(g_state.link.bridge_name, con.bridge) &&
         con.bridge_exists &&
         !cm2_ovsdb_validate_bridge_port_conf(con.bridge, g_state.link.if_name))
@@ -703,14 +671,23 @@ void cm2_util_req_stability_check_recalc(const char *uname,
         return; /* never reached */
     }
 
-    async_check_t *async_check = (async_check_t *) MALLOC(sizeof(async_check_t));
+    async_check_t *async_check = ds_tree_find(&g_async_checks, uname);
+    if (async_check != NULL) {
+        ds_tree_remove(&g_async_checks, async_check);
+        ev_child_stop(EV_DEFAULT_ &async_check->cw);
+        kill(SIGKILL, async_check->pid);
+        FREE(async_check);
+    }
+    async_check = (async_check_t *) MALLOC(sizeof(async_check_t));
     memset(async_check, 0, sizeof(async_check_t));
     STRSCPY(async_check->uname, uname);
     STRSCPY(async_check->utype, utype);
     STRSCPY(async_check->clink, clink);
+    async_check->pid = pid;
     async_check->opts = opts;
     async_check->repeat = repeat;
     async_check->db_update = db_update;
+    ds_tree_insert(&g_async_checks, async_check, async_check->uname);
     ev_child_init(&async_check->cw, cm2_util_req_stability_cb, pid, 0);
     ev_child_start(EV_DEFAULT_ &async_check->cw);
 
@@ -767,6 +744,7 @@ void cm2_util_req_stability_cb(EV_P_ ev_child *w, int revents)
     async_check_t *async_check;
 
     async_check = (async_check_t *) w;
+    ds_tree_remove(&g_async_checks, async_check);
 
     int mask = WIFEXITED(w->rstatus) ? WEXITSTATUS(w->rstatus) : 0xff;
     bool ok = cm2_util_mask2cstate(mask, &cstate);
@@ -883,7 +861,7 @@ static void cm2_connection_stability_check(void)
         }
     }
     else {
-        c_uplink = g_state.link.is_bridge ? g_state.link.bridge_name : g_state.link.if_name;
+        c_uplink = cm2_link_is_bridge(&g_state.link) ? g_state.link.bridge_name : g_state.link.if_name;
         g_state.stability_cnts++;
         if (g_state.connected &&
             (!g_state.link.ipv4.blocked && !g_state.link.ipv6.blocked) &&
@@ -902,7 +880,6 @@ static void cm2_connection_stability_check(void)
     }
     if (uplinks)
         FREE(uplinks);
-    dump_proc_mem_usage();
 }
 
 void cm2_stability_cb(struct ev_loop *loop, ev_timer *watcher, int revents)
@@ -913,6 +890,14 @@ void cm2_stability_cb(struct ev_loop *loop, ev_timer *watcher, int revents)
 
     if (g_state.run_stability)
         cm2_connection_stability_check();
+}
+
+bool cm2_is_stability_check_pending(char *if_name)
+{
+    async_check_t *async_check = ds_tree_find(&g_async_checks, if_name);
+    if (async_check != NULL) return true;
+
+    return false;
 }
 
 void cm2_stability_init(struct ev_loop *loop)

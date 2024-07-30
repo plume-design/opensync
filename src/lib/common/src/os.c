@@ -407,6 +407,16 @@ int cmd_log(const char *shell_cmd)
 }
 
 /*
+ * Check for dangerous shell characters. If none are found, execute cmd_log()
+ */
+int cmd_log_check_safe(const char *shell_cmd)
+{
+    if (!is_input_shell_safe(shell_cmd)) return -1;
+
+    return cmd_log(shell_cmd);
+}
+
+/*
  * Common command-line parsing
  */
 int os_get_opt(int argc, char ** argv, log_severity_t* log_severity)

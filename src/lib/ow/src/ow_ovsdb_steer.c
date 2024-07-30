@@ -185,6 +185,14 @@ ow_ovsdb_steer_neighbor_set(const struct schema_Wifi_VIF_Neighbors *row)
         ow_steer_bm_neighbor_set_channel_number(neighbor, NULL);
     }
 
+    if (row->center_freq0_chan_exists == true) {
+        const uint8_t center_freq0_chan = row->center_freq0_chan;
+        ow_steer_bm_neighbor_set_center_freq0_chan_number(neighbor, &center_freq0_chan);
+    }
+    else {
+        ow_steer_bm_neighbor_set_center_freq0_chan_number(neighbor, NULL);
+    }
+
     if (row->op_class_exists == true) {
         const uint8_t op_class = row->op_class;
         ow_steer_bm_neighbor_set_op_class(neighbor, &op_class);
@@ -236,7 +244,7 @@ ow_steer_bm_client_set_btm_params(const struct osw_hwaddr *sta_addr,
                                   struct ow_steer_bm_btm_params *btm_params,
                                   const char *btm_params_name,
                                   const char keys[][64],
-                                  const char values[][32],
+                                  const char values[][32 + 1],
                                   int len)
 {
     ASSERT(sta_addr != NULL, "");
@@ -279,7 +287,7 @@ static void
 ow_steer_bm_client_set_cs_params(const struct osw_hwaddr *sta_addr,
                                  struct ow_steer_bm_cs_params *cs_params,
                                  const char keys[][64],
-                                 const char values[][32],
+                                 const char values[][32 + 1],
                                  int len)
 {
     ASSERT(sta_addr != NULL, "");

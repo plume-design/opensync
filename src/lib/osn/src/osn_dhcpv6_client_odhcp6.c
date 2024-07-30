@@ -96,6 +96,11 @@ bool osn_dhcpv6_client_option_send(osn_dhcpv6_client_t *self, int tag, const cha
     return odhcp6_client_option_send(&self->dc_odhcp6, tag, value);
 }
 
+bool osn_dhcpv6_client_other_config(osn_dhcpv6_client_t *self, const char *key, const char *value)
+{
+    return odhcp6_client_other_config(&self->dc_odhcp6, key, value);
+}
+
 bool osn_dhcpv6_client_apply(osn_dhcpv6_client_t *self)
 {
     return odhcp6_client_apply(&self->dc_odhcp6);

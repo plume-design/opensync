@@ -57,6 +57,11 @@ struct ow_conf_phy {
     int *tx_power_dbm;
     int *thermal_tx_chainmask;
     int *ap_beacon_interval_tu;
+    uint16_t *ap_supp_rates;
+    uint16_t *ap_basic_rates;
+    enum osw_rate_legacy *ap_beacon_rate;
+    enum osw_rate_legacy *ap_mcast_rate;
+    enum osw_rate_legacy *ap_mgmt_rate;
     struct osw_channel *ap_channel;
 };
 
@@ -72,9 +77,13 @@ struct ow_conf_vif {
     struct osw_channel *ap_channel;
     struct osw_ssid *ap_ssid;
     struct osw_ifname *ap_bridge_if_name;
+    struct osw_nas_id *ap_nas_identifier;
     struct ds_tree ap_psk_tree; /* ow_conf_psk */
     struct ds_tree ap_acl_tree; /* ow_conf_acl */
     struct ds_tree ap_neigh_tree; /* ow_conf_neigh */
+    struct ds_dlist ap_radius_list; /* ow_conf_radius */
+    struct ds_dlist ap_acct_list; /* ow_conf_radius */
+    char *ap_passpoint_ref;
     bool *ap_ssid_hidden;
     bool *ap_isolated;
     bool *ap_ht_enabled;
@@ -87,8 +96,10 @@ struct ow_conf_vif {
     bool *ap_rsn;
     bool *ap_pairwise_tkip;
     bool *ap_pairwise_ccmp;
+    bool *ap_akm_eap;
     bool *ap_akm_psk;
     bool *ap_akm_sae;
+    bool *ap_akm_ft_eap;
     bool *ap_akm_ft_psk;
     bool *ap_akm_ft_sae;
     bool *ap_wps;
@@ -97,6 +108,7 @@ struct ow_conf_vif {
     bool *ap_wnm_bss_trans;
     bool *ap_rrm_neighbor_report;
     bool *ap_mcast2ucast;
+    bool *ap_ieee8021x;
     int *ap_group_rekey_seconds;
     int *ap_ft_mobility_domain;
     int *ap_beacon_interval_tu;
@@ -107,6 +119,13 @@ struct ow_conf_vif {
     struct osw_multi_ap *ap_multi_ap;
     enum osw_acl_policy *ap_acl_policy;
     struct ds_tree sta_net_tree;
+};
+
+struct ow_radius {
+    char *uuid;
+    char *server;
+    char *passphrase;
+    int port;
 };
 
 struct ow_conf_net {
@@ -135,10 +154,72 @@ struct ow_conf_neigh {
     struct osw_neigh neigh;
 };
 
+struct ow_conf_radius_ref
+{
+    struct ds_dlist_node node;
+    const char *ref_id;
+};
+
+struct ow_conf_radius {
+    struct ds_tree_node node;
+    struct ow_radius radius;
+};
+
+struct ow_conf_passpoint {
+    struct ds_tree_node node;
+    char *uuid;
+    bool *hs20_enabled;
+    bool *adv_wan_status;
+    bool *adv_wan_symmetric;
+    bool *adv_wan_at_capacity;
+    bool *osen;
+    bool *asra;
+    int *ant;
+    int *venue_group;
+    int *venue_type;
+    int *anqp_domain_id;
+    int *pps_mo_id;
+    int *t_c_timestamp;
+    char *t_c_filename;
+    char *anqp_elem;
+
+    struct osw_ssid hessid;
+    struct osw_ssid osu_ssid;
+
+    char **domain_list;
+    size_t domain_list_len;
+
+    char **nairealm_list;
+    size_t nairealm_list_len;
+
+    char **roamc_list;
+    size_t roamc_list_len;
+
+    char **oper_fname_list;
+    size_t oper_fname_list_len;
+
+    char **venue_name_list;
+    size_t venue_name_list_len;
+
+    char **venue_url_list;
+    size_t venue_url_list_len;
+
+    char **list_3gpp_list;
+    size_t list_3gpp_list_len;
+
+    int *net_auth_type_list;
+    size_t net_auth_type_list_len;
+
+    /* FIXME */
+    //struct osw_osu_provider_list osu_list;
+};
+
 struct ow_conf {
     struct osw_conf_mutator conf_mutator;
     struct ds_tree phy_tree;
     struct ds_tree vif_tree;
+    struct ds_tree rad_tree;
+    struct ds_tree passpoint_tree;
     struct ds_dlist obs_list;
     bool *ap_vlan_enabled;
 };
@@ -181,6 +262,8 @@ ow_conf_vif_alloc(struct ow_conf *self, const char *vif_name)
     ds_tree_init(&vif->ap_psk_tree, ds_int_cmp, struct ow_conf_psk, node);
     ds_tree_init(&vif->ap_acl_tree, ow_conf_acl_cmp, struct ow_conf_acl, node);
     ds_tree_init(&vif->ap_neigh_tree, (ds_key_cmp_t *)osw_hwaddr_cmp, struct ow_conf_neigh, node);
+    ds_dlist_init(&vif->ap_radius_list, struct ow_conf_radius_ref, node);
+    ds_dlist_init(&vif->ap_acct_list, struct ow_conf_radius, node);
     ds_tree_init(&vif->sta_net_tree, (ds_key_cmp_t *)osw_ssid_cmp, struct ow_conf_net, node);
     return vif;
 }
@@ -257,6 +340,38 @@ ow_conf_conf_mutate_psk(struct ds_tree *in,
 }
 
 static void
+ow_conf_conf_mutate_radius(struct ow_conf *self,
+                           struct ds_dlist *in,
+                           struct ds_dlist *out)
+{
+    struct osw_conf_radius *p;
+    struct ow_conf_radius *rad;
+    struct ow_conf_radius_ref *i;
+
+    /* FIXME: differentiate between overwrite and append */
+    while ((p = ds_dlist_remove_head(out)) != NULL)
+        osw_conf_radius_free(p);
+
+    ds_dlist_foreach(in, i) {
+        if ((rad = ds_tree_find(&self->rad_tree, i->ref_id)) == NULL) {
+            LOGW("ow: conf: mutate_radius tries to add an unknown ref_id");
+            continue;
+        }
+        if (rad->radius.server == NULL ||
+            rad->radius.passphrase == NULL ||
+            rad->radius.port == 0) {
+            LOGW("ow: conf: mutate_radius tries to add incomplete entry");
+            continue;
+        }
+        p = CALLOC(1, sizeof(*p));
+        p->radius.server = STRDUP(rad->radius.server);
+        p->radius.passphrase = STRDUP(rad->radius.passphrase);
+        p->radius.port = rad->radius.port;
+        ds_dlist_insert_tail(out, p);
+    }
+}
+
+static void
 ow_conf_conf_mutate_neigh(struct ds_tree *in,
                           struct ds_tree *out)
 {
@@ -277,7 +392,115 @@ ow_conf_conf_mutate_neigh(struct ds_tree *in,
 }
 
 static void
-ow_conf_conf_mutate_vif_ap(struct ow_conf_phy *ow_phy,
+ow_conf_conf_mutate_passpoint(struct ow_conf *self,
+                              char *in_ref_id,
+                              struct osw_passpoint *out)
+{
+    osw_passpoint_free_internal(out);
+    if (in_ref_id == NULL) {
+        return;
+    }
+
+    struct ow_conf_passpoint *p = ds_tree_find(&self->passpoint_tree, in_ref_id);
+    size_t i;
+
+    if (p == NULL) {
+        LOGW("ow: conf: unknown ref_id, passpoint not found");
+        return;
+    }
+
+    if (p->hs20_enabled != NULL) out->hs20_enabled = *p->hs20_enabled;
+    if (p->adv_wan_status != NULL) out->adv_wan_status = *p->adv_wan_status;
+    if (p->adv_wan_symmetric != NULL) out->adv_wan_symmetric = *p->adv_wan_symmetric;
+    if (p->adv_wan_at_capacity != NULL) out->adv_wan_at_capacity = *p->adv_wan_at_capacity;
+    if (p->osen != NULL) out->osen = *p->osen;
+    if (p->asra != NULL) out->asra = *p->asra;
+    if (p->ant != NULL) out->ant = *p->ant;
+    if (p->venue_group != NULL) out->venue_group = *p->venue_group;
+    if (p->venue_type != NULL) out->venue_type = *p->venue_type;
+    if (p->anqp_domain_id != NULL) out->anqp_domain_id = *p->anqp_domain_id;
+    if (p->pps_mo_id != NULL) out->pps_mo_id = *p->pps_mo_id;
+    if (p->t_c_timestamp != NULL) out->t_c_timestamp = *p->t_c_timestamp;
+
+    if (STRSLEN(p->t_c_filename) > 0)
+        out->t_c_filename = STRDUP(p->t_c_filename);
+
+    if (STRSLEN(p->anqp_elem) > 0)
+        out->anqp_elem = STRDUP(p->anqp_elem);
+
+    if (p->hessid.len > 0)
+        memcpy(&out->hessid, &p->hessid, sizeof(out->hessid));
+
+    if (p->osu_ssid.len > 0)
+        memcpy(&out->osu_ssid, &p->osu_ssid, sizeof(out->osu_ssid));
+
+    if (p->domain_list_len > 0) {
+        out->domain_list = CALLOC(p->domain_list_len, sizeof(*out->domain_list));
+        for (i = 0; i < p->domain_list_len; i++) {
+            out->domain_list[i] = STRDUP(p->domain_list[i]);
+        }
+        out->domain_list_len = p->domain_list_len;
+    }
+
+    if (p->nairealm_list_len > 0) {
+        out->nairealm_list = CALLOC(p->nairealm_list_len, sizeof(*out->nairealm_list));
+        for (i = 0; i < p->nairealm_list_len; i++) {
+            out->nairealm_list[i] = STRDUP(p->nairealm_list[i]);
+        }
+        out->nairealm_list_len = p->nairealm_list_len;
+    }
+
+    if (p->roamc_list_len > 0) {
+        out->roamc_list = CALLOC(p->roamc_list_len, sizeof(*out->roamc_list));
+        for (i = 0; i < p->roamc_list_len; i++) {
+            out->roamc_list[i] = STRDUP(p->roamc_list[i]);
+        }
+        out->roamc_list_len = p->roamc_list_len;
+    }
+
+    if (p->oper_fname_list_len > 0) {
+        out->oper_fname_list = CALLOC(p->oper_fname_list_len, sizeof(*out->oper_fname_list));
+        for (i = 0; i < p->oper_fname_list_len; i++) {
+            out->oper_fname_list[i] = STRDUP(p->oper_fname_list[i]);
+        }
+        out->oper_fname_list_len = p->oper_fname_list_len;
+    }
+
+    if (p->venue_name_list_len > 0) {
+        out->venue_name_list = CALLOC(p->venue_name_list_len, sizeof(*out->venue_name_list));
+        for (i = 0; i < p->venue_name_list_len; i++) {
+            out->venue_name_list[i] = STRDUP(p->venue_name_list[i]);
+        }
+        out->venue_name_list_len = p->venue_name_list_len;
+    }
+
+    if (p->venue_url_list_len > 0) {
+        out->venue_url_list = CALLOC(p->venue_url_list_len, sizeof(*out->venue_url_list));
+        for (i = 0; i < p->venue_url_list_len; i++) {
+            out->venue_url_list[i] = STRDUP(p->venue_url_list[i]);
+        }
+        out->venue_url_list_len = p->venue_url_list_len;
+    }
+
+    if (p->list_3gpp_list_len > 0) {
+        out->list_3gpp_list = CALLOC(p->list_3gpp_list_len, sizeof(*out->list_3gpp_list));
+        for (i = 0; i < p->list_3gpp_list_len; i++) {
+            out->list_3gpp_list[i] = STRDUP(p->list_3gpp_list[i]);
+        }
+        out->list_3gpp_list_len = p->list_3gpp_list_len;
+    }
+
+    if (p->net_auth_type_list_len > 0) {
+        out->net_auth_type_list = CALLOC(p->net_auth_type_list_len, sizeof(*out->net_auth_type_list));
+        memcpy(out->net_auth_type_list, p->net_auth_type_list,
+                sizeof(*out->net_auth_type_list) * p->net_auth_type_list_len);
+        out->net_auth_type_list_len = p->net_auth_type_list_len;
+    }
+}
+
+static void
+ow_conf_conf_mutate_vif_ap(struct ow_conf *self,
+                           struct ow_conf_phy *ow_phy,
                            struct ow_conf_vif *ow_vif,
                            struct osw_conf_vif *osw_vif)
 {
@@ -291,12 +514,21 @@ ow_conf_conf_mutate_vif_ap(struct ow_conf_phy *ow_phy,
         if (ow_phy->ap_eht_enabled != NULL) osw_vif->u.ap.mode.eht_enabled = *ow_phy->ap_eht_enabled;
         if (ow_phy->ap_beacon_interval_tu != NULL) osw_vif->u.ap.beacon_interval_tu = *ow_phy->ap_beacon_interval_tu;
         if (ow_phy->ap_channel != NULL) osw_vif->u.ap.channel = *ow_phy->ap_channel;
+        if (ow_phy->ap_supp_rates != NULL) osw_vif->u.ap.mode.supported_rates = *ow_phy->ap_supp_rates;
+        if (ow_phy->ap_basic_rates != NULL) osw_vif->u.ap.mode.basic_rates = *ow_phy->ap_basic_rates;
+        if (ow_phy->ap_beacon_rate != NULL) {
+            osw_vif->u.ap.mode.beacon_rate.type = OSW_BEACON_RATE_ABG;
+            osw_vif->u.ap.mode.beacon_rate.u.legacy = *ow_phy->ap_beacon_rate;
+        }
+
+        if (ow_phy->ap_mcast_rate != NULL) osw_vif->u.ap.mode.mcast_rate = *ow_phy->ap_mcast_rate;
+        if (ow_phy->ap_mgmt_rate != NULL) osw_vif->u.ap.mode.mgmt_rate = *ow_phy->ap_mgmt_rate;
         if (ow_phy->tx_power_dbm != NULL) osw_vif->tx_power_dbm = *ow_phy->tx_power_dbm;
     }
-    if (ow_vif->tx_power_dbm != NULL) osw_vif->tx_power_dbm = *ow_vif->tx_power_dbm;
     if (ow_vif->ap_channel != NULL) osw_vif->u.ap.channel = *ow_vif->ap_channel;
     if (ow_vif->ap_ssid != NULL) osw_vif->u.ap.ssid = *ow_vif->ap_ssid;
     if (ow_vif->ap_bridge_if_name != NULL) osw_vif->u.ap.bridge_if_name = *ow_vif->ap_bridge_if_name;
+    if (ow_vif->ap_nas_identifier != NULL) osw_vif->u.ap.nas_identifier = *ow_vif->ap_nas_identifier;
     if (ow_vif->ap_ssid_hidden != NULL) osw_vif->u.ap.ssid_hidden = *ow_vif->ap_ssid_hidden;
     if (ow_vif->ap_isolated != NULL) osw_vif->u.ap.isolated = *ow_vif->ap_isolated;
     if (ow_vif->ap_ht_enabled != NULL) osw_vif->u.ap.mode.ht_enabled = *ow_vif->ap_ht_enabled;
@@ -312,8 +544,10 @@ ow_conf_conf_mutate_vif_ap(struct ow_conf_phy *ow_phy,
     if (ow_vif->ap_rsn != NULL) osw_vif->u.ap.wpa.rsn = *ow_vif->ap_rsn;
     if (ow_vif->ap_pairwise_tkip != NULL) osw_vif->u.ap.wpa.pairwise_tkip = *ow_vif->ap_pairwise_tkip;
     if (ow_vif->ap_pairwise_ccmp != NULL) osw_vif->u.ap.wpa.pairwise_ccmp = *ow_vif->ap_pairwise_ccmp;
+    if (ow_vif->ap_akm_eap != NULL) osw_vif->u.ap.wpa.akm_eap = *ow_vif->ap_akm_eap;
     if (ow_vif->ap_akm_psk != NULL) osw_vif->u.ap.wpa.akm_psk = *ow_vif->ap_akm_psk;
     if (ow_vif->ap_akm_sae != NULL) osw_vif->u.ap.wpa.akm_sae = *ow_vif->ap_akm_sae;
+    if (ow_vif->ap_akm_ft_eap != NULL) osw_vif->u.ap.wpa.akm_ft_eap = *ow_vif->ap_akm_ft_eap;
     if (ow_vif->ap_akm_ft_psk != NULL) osw_vif->u.ap.wpa.akm_ft_psk = *ow_vif->ap_akm_ft_psk;
     if (ow_vif->ap_akm_ft_sae != NULL) osw_vif->u.ap.wpa.akm_ft_sae = *ow_vif->ap_akm_ft_sae;
     if (ow_vif->ap_pmf != NULL) osw_vif->u.ap.wpa.pmf = *ow_vif->ap_pmf;
@@ -328,10 +562,14 @@ ow_conf_conf_mutate_vif_ap(struct ow_conf_phy *ow_phy,
     if (ow_vif->ap_rrm_neighbor_report != NULL) osw_vif->u.ap.mode.rrm_neighbor_report = *ow_vif->ap_rrm_neighbor_report;
     if (ow_vif->ap_mcast2ucast != NULL) osw_vif->u.ap.mcast2ucast = *ow_vif->ap_mcast2ucast;
     if (ow_vif->ap_multi_ap != NULL) osw_vif->u.ap.multi_ap = *ow_vif->ap_multi_ap;
+    if (ow_vif->tx_power_dbm != NULL) osw_vif->tx_power_dbm = *ow_vif->tx_power_dbm;
 
     ow_conf_conf_mutate_acl(&ow_vif->ap_acl_tree, &osw_vif->u.ap.acl_tree);
     ow_conf_conf_mutate_psk(&ow_vif->ap_psk_tree, &osw_vif->u.ap.psk_tree);
     ow_conf_conf_mutate_neigh(&ow_vif->ap_neigh_tree, &osw_vif->u.ap.neigh_tree);
+    ow_conf_conf_mutate_radius(self, &ow_vif->ap_radius_list, &osw_vif->u.ap.radius_list);
+    ow_conf_conf_mutate_radius(self, &ow_vif->ap_acct_list, &osw_vif->u.ap.accounting_list);
+    ow_conf_conf_mutate_passpoint(self, ow_vif->ap_passpoint_ref, &osw_vif->u.ap.passpoint);
 
     if (osw_vif->u.ap.beacon_interval_tu == 0) {
         osw_vif->u.ap.beacon_interval_tu = OW_CONF_DEFAULT_BEACON_INTERVAL_TU;
@@ -367,6 +605,12 @@ ow_conf_conf_mutate_vif_sta(struct ow_conf_phy *ow_phy,
     struct ds_dlist *list = &osw_vif->u.sta.net_list;
     struct osw_conf_net *osw_net;
     struct ow_conf_net *net;
+
+    if (ow_phy != NULL) {
+        if (ow_phy->tx_power_dbm != NULL) osw_vif->tx_power_dbm = *ow_phy->tx_power_dbm;
+    }
+
+    if (ow_vif->tx_power_dbm != NULL) osw_vif->tx_power_dbm = *ow_vif->tx_power_dbm;
 
     /* FIXME: It might be convenient to be able to declare
      * whether the list is exhaustive or additive. If it
@@ -429,7 +673,7 @@ ow_conf_conf_mutate_vif(struct ow_conf *self,
             break;
         case OSW_VIF_AP:
             if (vif_eligible) {
-                ow_conf_conf_mutate_vif_ap(ow_phy, ow_vif, osw_vif);
+                ow_conf_conf_mutate_vif_ap(self, ow_phy, ow_vif, osw_vif);
             }
             break;
         case OSW_VIF_AP_VLAN:
@@ -471,6 +715,8 @@ ow_conf_conf_mutate_cb(struct osw_conf_mutator *mutator,
 static struct ow_conf g_ow_conf = {
     .phy_tree = DS_TREE_INIT(ds_str_cmp, struct ow_conf_phy, node),
     .vif_tree = DS_TREE_INIT(ds_str_cmp, struct ow_conf_vif, node),
+    .rad_tree = DS_TREE_INIT(ds_str_cmp, struct ow_conf_radius, node),
+    .passpoint_tree = DS_TREE_INIT(ds_str_cmp, struct ow_conf_passpoint, node),
     .obs_list = DS_DLIST_INIT(struct ow_conf_observer, node),
     .conf_mutator = {
         .name ="ow_conf",
@@ -549,6 +795,55 @@ ow_conf_vif_notify_changed(const char *vif_name)
             obs->vif_changed_fn(obs, vif_name);
 }
 
+static void
+ow_conf_passpoint_notify_changed(const char *ref_id)
+{
+    /* Function is required to satisfy a macro DEFINE_FIELD
+     * that is used to define passpoint structure fields, but
+     * it is not used */
+}
+
+const char *
+ow_conf_vif_get_ap_passpoint_ref(const char *vif_name)
+{
+    struct ow_conf *self = &g_ow_conf;
+    struct ow_conf_vif *vif = ow_conf_vif_get_ro(self, vif_name);
+    return vif != NULL ? vif->ap_passpoint_ref : NULL;
+}
+
+void
+ow_conf_vif_set_ap_passpoint_ref(const char *vif_name,
+                                 const char *ref_id)
+{
+    struct ow_conf *self = &g_ow_conf;
+    struct ow_conf_vif *vif = ow_conf_vif_get(self, vif_name);
+    const bool changed = ((vif->ap_passpoint_ref == NULL) ||
+                          (vif->ap_passpoint_ref != NULL && ref_id == NULL) ||
+                          (strcmp(vif->ap_passpoint_ref, ref_id) != 0));
+
+    if (changed == true && vif->ap_passpoint_ref == NULL && ref_id != NULL) {
+        LOGI("ow: conf: %s: ref_id set to %s",
+             vif_name, ref_id);
+    }
+
+    if (changed == true && vif->ap_passpoint_ref != NULL && ref_id == NULL) {
+        LOGI("ow: conf: %s: ref_id unset from %s",
+             vif_name, vif->ap_passpoint_ref);
+    }
+
+    if (changed == true && vif->ap_passpoint_ref != NULL && ref_id != NULL) {
+        LOGI("ow: conf: %s: ref_id changed from %s from %s",
+             vif_name, vif->ap_passpoint_ref, ref_id);
+    }
+
+    FREE(vif->ap_passpoint_ref);
+    vif->ap_passpoint_ref = ref_id ? STRDUP(ref_id) : NULL;
+    if (changed) {
+        osw_conf_invalidate(&self->conf_mutator);
+        ow_conf_vif_notify_changed(vif_name);
+    }
+}
+
 void
 ow_conf_phy_unset(const char *phy_name)
 {
@@ -567,6 +862,11 @@ ow_conf_phy_unset(const char *phy_name)
     FREE(phy->thermal_tx_chainmask);
     FREE(phy->ap_beacon_interval_tu);
     FREE(phy->ap_channel);
+    FREE(phy->ap_supp_rates);
+    FREE(phy->ap_basic_rates);
+    FREE(phy->ap_beacon_rate);
+    FREE(phy->ap_mcast_rate);
+    FREE(phy->ap_mgmt_rate);
     FREE(phy);
 }
 
@@ -857,6 +1157,411 @@ ow_conf_vif_flush_ap_neigh(const char *vif_name)
         ow_conf_vif_del_ap_neigh(vif_name, &neigh->neigh.bssid);
 }
 
+static void
+ow_conf_radius_ref_free(struct ow_conf_radius_ref *ref)
+{
+    FREE(ref->ref_id);
+    FREE(ref);
+}
+
+static void
+ow_conf_radius_free(struct ow_conf_radius *rad)
+{
+    FREE(rad->radius.uuid);
+    FREE(rad->radius.server);
+    FREE(rad->radius.passphrase);
+    FREE(rad);
+}
+
+void
+ow_conf_radius_unset(const char *ref_id)
+{
+    struct ow_conf *self = &g_ow_conf;
+    struct ow_conf_radius *rad;
+
+    if ((rad = ds_tree_find(&self->rad_tree, ref_id)) != NULL) {
+        ds_tree_remove(&self->rad_tree, rad);
+        ow_conf_radius_free(rad);
+    }
+}
+
+void
+ow_conf_radius_flush(void)
+{
+    struct ow_conf *self = &g_ow_conf;
+    struct ow_conf_radius *rad;
+
+    while ((rad = ds_tree_remove_head(&self->rad_tree)) != NULL) {
+        ow_conf_radius_free(rad);
+    }
+}
+
+static struct ow_conf_radius*
+ow_conf_radius_get(const char *ref_id)
+{
+    struct ow_conf *self = &g_ow_conf;
+    struct ow_conf_radius *rad = ds_tree_find(&self->rad_tree, ref_id);
+    if (rad == NULL) {
+        rad = CALLOC(1, sizeof(*rad));
+        rad->radius.uuid = STRDUP(ref_id);
+        ds_tree_insert(&self->rad_tree, rad, rad->radius.uuid);
+    }
+    return rad;
+}
+
+void
+ow_conf_radius_set_ip_addr(const char *ref_id,
+                           const char *ip_addr)
+{
+    struct ow_conf *self = &g_ow_conf;
+    struct ow_conf_radius *rad = ow_conf_radius_get(ref_id);
+    FREE(rad->radius.server);
+    rad->radius.server = ip_addr != NULL ? STRDUP(ip_addr) : NULL;
+    osw_conf_invalidate(&self->conf_mutator);
+}
+
+void
+ow_conf_radius_set_secret(const char *ref_id,
+                          const char *secret)
+{
+    struct ow_conf *self = &g_ow_conf;
+    struct ow_conf_radius *rad = ow_conf_radius_get(ref_id);
+    FREE(rad->radius.passphrase);
+    rad->radius.passphrase = secret != NULL ? STRDUP(secret) : NULL;
+    osw_conf_invalidate(&self->conf_mutator);
+}
+
+void
+ow_conf_radius_set_port(const char *ref_id,
+                        uint16_t port)
+{
+    struct ow_conf *self = &g_ow_conf;
+    struct ow_conf_radius *rad = ow_conf_radius_get(ref_id);
+    rad->radius.port = port;
+    osw_conf_invalidate(&self->conf_mutator);
+}
+
+void
+ow_conf_vif_add_radius_ref(const char *vif_name,
+                           const char *ref_id)
+{
+    struct ow_conf *self = &g_ow_conf;
+    struct ow_conf_vif *vif = ow_conf_vif_get(self, vif_name);
+    struct ow_conf_radius_ref *ref = CALLOC(1, sizeof(*ref));
+
+    ref->ref_id = STRDUP(ref_id);
+    ds_dlist_insert_tail(&vif->ap_radius_list, ref);
+
+    osw_conf_invalidate(&self->conf_mutator);
+    ow_conf_vif_notify_changed(vif_name);
+}
+
+void
+ow_conf_vif_flush_radius_refs(const char *vif_name)
+{
+    struct ow_conf *self = &g_ow_conf;
+    struct ow_conf_vif *vif = ow_conf_vif_get(self, vif_name);
+    struct ow_conf_radius_ref *ref;
+
+    while ((ref = ds_dlist_remove_tail(&vif->ap_radius_list)) != NULL) {
+        ow_conf_radius_ref_free(ref);
+    }
+    osw_conf_invalidate(&self->conf_mutator);
+    ow_conf_vif_notify_changed(vif_name);
+}
+
+void
+ow_conf_vif_add_radius_accounting_ref(const char *vif_name,
+                                      const char *ref_id)
+{
+    struct ow_conf *self = &g_ow_conf;
+    struct ow_conf_vif *vif = ow_conf_vif_get(self, vif_name);
+    struct ow_conf_radius_ref *ref = CALLOC(1, sizeof(*ref));
+
+    ref->ref_id = STRDUP(ref_id);
+    ds_dlist_insert_tail(&vif->ap_acct_list, ref);
+
+    osw_conf_invalidate(&self->conf_mutator);
+    ow_conf_vif_notify_changed(vif_name);
+}
+
+void
+ow_conf_vif_flush_radius_accounting_refs(const char *vif_name)
+{
+    struct ow_conf *self = &g_ow_conf;
+    struct ow_conf_vif *vif = ow_conf_vif_get(self, vif_name);
+    struct ow_conf_radius_ref *ref;
+
+    while ((ref = ds_dlist_remove_tail(&vif->ap_acct_list)) != NULL) {
+        ow_conf_radius_ref_free(ref);
+    }
+    osw_conf_invalidate(&self->conf_mutator);
+    ow_conf_vif_notify_changed(vif_name);
+}
+
+static struct ow_conf_passpoint *
+ow_conf_passpoint_alloc(struct ow_conf *self, const char *ref_id)
+{
+    struct ow_conf_passpoint *passp = CALLOC(1, sizeof(*passp));
+    passp->uuid = STRDUP(ref_id);
+    ds_tree_insert(&self->passpoint_tree, passp, passp->uuid);
+    return passp;
+}
+
+static struct ow_conf_passpoint *
+ow_conf_passpoint_get(struct ow_conf *self, const char *ref_id)
+{
+    return ds_tree_find(&self->passpoint_tree, ref_id) ?: ow_conf_passpoint_alloc(self, ref_id);
+}
+
+static struct ow_conf_passpoint *
+ow_conf_passpoint_get_ro(struct ow_conf *self, const char *ref_id)
+{
+    return ds_tree_find(&self->passpoint_tree, ref_id);
+}
+
+void
+ow_conf_passpoint_set_hessid(const char *ref_id,
+                             const char *hessid)
+{
+    struct ow_conf *self = &g_ow_conf;
+    struct ow_conf_passpoint *p = ow_conf_passpoint_get(self, ref_id);
+
+    if (hessid != NULL) {
+        STRSCPY_WARN(p->hessid.buf, hessid);
+        p->hessid.len = strlen(hessid);
+    } else {
+        MEMZERO(p->hessid);
+    }
+    osw_conf_invalidate(&self->conf_mutator);
+}
+
+void
+ow_conf_passpoint_set_osu_ssid(const char *ref_id,
+                               const char *osu_ssid)
+{
+    struct ow_conf *self = &g_ow_conf;
+    struct ow_conf_passpoint *p = ow_conf_passpoint_get(self, ref_id);
+
+    if (osu_ssid != NULL) {
+        STRSCPY_WARN(p->osu_ssid.buf, osu_ssid);
+        p->osu_ssid.len = strlen(osu_ssid);
+    } else {
+        MEMZERO(p->osu_ssid);
+    }
+    osw_conf_invalidate(&self->conf_mutator);
+}
+
+void
+ow_conf_passpoint_set_t_c_filename(const char *ref_id,
+                                   const char *t_c_filename)
+{
+    struct ow_conf *self = &g_ow_conf;
+    struct ow_conf_passpoint *p = ow_conf_passpoint_get(self, ref_id);
+
+    FREE(p->t_c_filename);
+    p->t_c_filename = t_c_filename ? STRDUP(t_c_filename) : NULL;
+
+    osw_conf_invalidate(&self->conf_mutator);
+}
+
+void
+ow_conf_passpoint_set_anqp_elem(const char *ref_id,
+                                const char *anqp_elem)
+{
+    struct ow_conf *self = &g_ow_conf;
+    struct ow_conf_passpoint *p = ow_conf_passpoint_get(self, ref_id);
+
+    FREE(p->anqp_elem);
+    p->anqp_elem = anqp_elem ? STRDUP(anqp_elem) : NULL;
+
+    osw_conf_invalidate(&self->conf_mutator);
+}
+
+void
+ow_conf_passpoint_set_domain_list(const char *ref_id,
+                                  char **domain_list,
+                                  const int domain_list_len)
+{
+    struct ow_conf *self = &g_ow_conf;
+    struct ow_conf_passpoint *p = ow_conf_passpoint_get(self, ref_id);
+
+    str_array_free(p->domain_list, p->domain_list_len);
+    p->domain_list = NULL;
+    p->domain_list_len = 0;
+
+    if (domain_list != NULL && domain_list_len > 0) {
+        p->domain_list = domain_list;
+        p->domain_list_len = domain_list_len;
+    }
+    osw_conf_invalidate(&self->conf_mutator);
+}
+
+void
+ow_conf_passpoint_set_nairealm_list(const char *ref_id,
+                                  char **nairealm_list,
+                                  const int nairealm_list_len)
+{
+    struct ow_conf *self = &g_ow_conf;
+    struct ow_conf_passpoint *p = ow_conf_passpoint_get(self, ref_id);
+
+    str_array_free(p->nairealm_list, p->nairealm_list_len);
+    p->nairealm_list = NULL;
+    p->nairealm_list_len = 0;
+
+    if (nairealm_list != NULL && nairealm_list_len > 0) {
+        p->nairealm_list = nairealm_list;
+        p->nairealm_list_len = nairealm_list_len;
+    }
+    osw_conf_invalidate(&self->conf_mutator);
+}
+
+void
+ow_conf_passpoint_set_roamc(const char *ref_id,
+                            char **roamc_list,
+                            const int roamc_list_len)
+{
+    struct ow_conf *self = &g_ow_conf;
+    struct ow_conf_passpoint *p = ow_conf_passpoint_get(self, ref_id);
+
+    str_array_free(p->roamc_list, p->roamc_list_len);
+    p->roamc_list = NULL;
+    p->roamc_list_len = 0;
+
+    if (roamc_list != NULL && roamc_list_len > 0) {
+        p->roamc_list = roamc_list;
+        p->roamc_list_len = roamc_list_len;
+    }
+    osw_conf_invalidate(&self->conf_mutator);
+}
+
+void
+ow_conf_passpoint_set_oper_fname_list(const char *ref_id,
+                                      char **oper_fname_list,
+                                      const int oper_fname_list_len)
+{
+    struct ow_conf *self = &g_ow_conf;
+    struct ow_conf_passpoint *p = ow_conf_passpoint_get(self, ref_id);
+
+    str_array_free(p->oper_fname_list, p->oper_fname_list_len);
+    p->oper_fname_list = NULL;
+    p->oper_fname_list_len = 0;
+    if (oper_fname_list != NULL && oper_fname_list_len > 0) {
+        p->oper_fname_list = oper_fname_list;
+        p->oper_fname_list_len = oper_fname_list_len;
+    }
+    osw_conf_invalidate(&self->conf_mutator);
+}
+
+void
+ow_conf_passpoint_set_venue_name_list(const char *ref_id,
+                                      char **venue_name_list,
+                                      const int venue_name_list_len)
+{
+    struct ow_conf *self = &g_ow_conf;
+    struct ow_conf_passpoint *p = ow_conf_passpoint_get(self, ref_id);
+
+    str_array_free(p->venue_name_list, p->venue_name_list_len);
+    p->venue_name_list = NULL;
+    p->venue_name_list_len = 0;
+    if (venue_name_list != NULL && venue_name_list_len > 0) {
+        p->venue_name_list = venue_name_list;
+        p->venue_name_list_len = venue_name_list_len;
+    }
+    osw_conf_invalidate(&self->conf_mutator);
+}
+
+void
+ow_conf_passpoint_set_venue_url_list(const char *ref_id,
+                                      char **venue_url_list,
+                                      const int venue_url_list_len)
+{
+    struct ow_conf *self = &g_ow_conf;
+    struct ow_conf_passpoint *p = ow_conf_passpoint_get(self, ref_id);
+
+    str_array_free(p->venue_url_list, p->venue_url_list_len);
+    p->venue_url_list = NULL;
+    p->venue_url_list_len = 0;
+    if (venue_url_list != NULL && venue_url_list_len > 0) {
+        p->venue_url_list = venue_url_list;
+        p->venue_url_list_len = venue_url_list_len;
+    }
+    osw_conf_invalidate(&self->conf_mutator);
+}
+
+void
+ow_conf_passpoint_set_list_3gpp_list(const char *ref_id,
+                                      char **list_3gpp_list,
+                                      const int list_3gpp_list_len)
+{
+    struct ow_conf *self = &g_ow_conf;
+    struct ow_conf_passpoint *p = ow_conf_passpoint_get(self, ref_id);
+
+    str_array_free(p->list_3gpp_list, p->list_3gpp_list_len);
+    p->list_3gpp_list = NULL;
+    p->list_3gpp_list_len = 0;
+    if (list_3gpp_list != NULL && list_3gpp_list_len > 0) {
+        p->list_3gpp_list = list_3gpp_list;
+        p->list_3gpp_list_len = list_3gpp_list_len;
+    }
+    osw_conf_invalidate(&self->conf_mutator);
+}
+
+void
+ow_conf_passpoint_set_net_auth_type_list(const char *ref_id,
+                                      const int *net_auth_type_list,
+                                      const int net_auth_type_list_len)
+{
+    struct ow_conf *self = &g_ow_conf;
+    struct ow_conf_passpoint *p = ow_conf_passpoint_get(self, ref_id);
+
+    FREE(p->net_auth_type_list);
+    p->net_auth_type_list = NULL;
+    p->net_auth_type_list_len = 0;
+    if (net_auth_type_list != NULL && net_auth_type_list_len > 0) {
+        p->net_auth_type_list = MEMNDUP(net_auth_type_list,
+                                        sizeof(*net_auth_type_list) * net_auth_type_list_len);
+        p->net_auth_type_list_len = net_auth_type_list_len;
+    }
+    osw_conf_invalidate(&self->conf_mutator);
+}
+
+void
+ow_conf_passpoint_unset(char *ref_id)
+{
+    struct ow_conf *self = &g_ow_conf;
+    struct ow_conf_passpoint *passpoint = ow_conf_passpoint_get_ro(self, ref_id);
+    if (passpoint == NULL) return;
+
+    ds_tree_remove(&self->passpoint_tree, passpoint);
+    FREE(passpoint->uuid);
+    FREE(passpoint->hs20_enabled);
+    FREE(passpoint->adv_wan_status);
+    FREE(passpoint->adv_wan_symmetric);
+    FREE(passpoint->adv_wan_at_capacity);
+    FREE(passpoint->osen);
+    FREE(passpoint->asra);
+    FREE(passpoint->ant);
+    FREE(passpoint->venue_group);
+    FREE(passpoint->venue_type);
+    FREE(passpoint->anqp_domain_id);
+    FREE(passpoint->pps_mo_id);
+    FREE(passpoint->t_c_timestamp);
+    FREE(passpoint->t_c_filename);
+    FREE(passpoint->anqp_elem);
+    str_array_free(passpoint->domain_list, passpoint->domain_list_len);
+    str_array_free(passpoint->nairealm_list, passpoint->nairealm_list_len);
+    str_array_free(passpoint->roamc_list, passpoint->roamc_list_len);
+    str_array_free(passpoint->oper_fname_list, passpoint->oper_fname_list_len);
+    str_array_free(passpoint->venue_name_list, passpoint->venue_name_list_len);
+    str_array_free(passpoint->venue_url_list, passpoint->venue_url_list_len);
+    str_array_free(passpoint->list_3gpp_list, passpoint->list_3gpp_list_len);
+    FREE(passpoint->net_auth_type_list);
+    FREE(passpoint);
+
+    osw_conf_invalidate(&self->conf_mutator);
+}
+
 void
 ow_conf_vif_set_sta_net(const char *vif_name,
                         const struct osw_ssid *ssid,
@@ -1017,6 +1722,16 @@ ow_conf_vif_flush_sta_net(const char *vif_name)
 #define ARG_phy_ap_eht_enabled(x) x
 #define FMT_phy_ap_beacon_interval_tu "%d"
 #define ARG_phy_ap_beacon_interval_tu(x) x
+#define FMT_phy_ap_supp_rates "%04x"
+#define ARG_phy_ap_supp_rates(x) x
+#define FMT_phy_ap_basic_rates "%04x"
+#define ARG_phy_ap_basic_rates(x) x
+#define FMT_phy_ap_beacon_rate "%d kbps"
+#define ARG_phy_ap_beacon_rate(x) (osw_rate_legacy_to_halfmbps(x) * 500)
+#define FMT_phy_ap_mcast_rate "%d kbps"
+#define ARG_phy_ap_mcast_rate(x) (osw_rate_legacy_to_halfmbps(x) * 500)
+#define FMT_phy_ap_mgmt_rate "%d kbps"
+#define ARG_phy_ap_mgmt_rate(x) (osw_rate_legacy_to_halfmbps(x) * 500)
 #define FMT_phy_ap_channel OSW_CHANNEL_FMT
 #define ARG_phy_ap_channel(x) OSW_CHANNEL_ARG(&(x))
 
@@ -1036,6 +1751,8 @@ ow_conf_vif_flush_sta_net(const char *vif_name)
 #define ARG_vif_ap_ssid(x) OSW_SSID_ARG(&(x))
 #define FMT_vif_ap_bridge_if_name "%s"
 #define ARG_vif_ap_bridge_if_name(x) (x).buf
+#define FMT_vif_ap_nas_identifier "%s"
+#define ARG_vif_ap_nas_identifier(x) (x).buf
 #define FMT_vif_ap_ssid_hidden "%d"
 #define ARG_vif_ap_ssid_hidden(x) x
 #define FMT_vif_ap_isolated "%d"
@@ -1066,10 +1783,14 @@ ow_conf_vif_flush_sta_net(const char *vif_name)
 #define ARG_vif_ap_pairwise_tkip(x) x
 #define FMT_vif_ap_pairwise_ccmp "%d"
 #define ARG_vif_ap_pairwise_ccmp(x) x
+#define FMT_vif_ap_akm_eap "%d"
+#define ARG_vif_ap_akm_eap(x) x
 #define FMT_vif_ap_akm_psk "%d"
 #define ARG_vif_ap_akm_psk(x) x
 #define FMT_vif_ap_akm_sae "%d"
 #define ARG_vif_ap_akm_sae(x) x
+#define FMT_vif_ap_akm_ft_eap "%d"
+#define ARG_vif_ap_akm_ft_eap(x) x
 #define FMT_vif_ap_akm_ft_psk "%d"
 #define ARG_vif_ap_akm_ft_psk(x) x
 #define FMT_vif_ap_akm_ft_sae "%d"
@@ -1106,6 +1827,33 @@ ow_conf_vif_flush_sta_net(const char *vif_name)
                                   (x) == OSW_ACL_DENY_LIST ? "deny" : \
                                   "undefined")
 
+#define FMT_ap_passpoint_hessid OSW_SSID_FMT
+#define ARG_ap_passpoint_hessid(x) OSW_SSID_ARG(&(x))
+#define FMT_passpoint_hs20_enabled "%d"
+#define ARG_passpoint_hs20_enabled(x) x
+#define FMT_passpoint_adv_wan_status "%d"
+#define ARG_passpoint_adv_wan_status(x) x
+#define FMT_passpoint_adv_wan_symmetric "%d"
+#define ARG_passpoint_adv_wan_symmetric(x) x
+#define FMT_passpoint_adv_wan_at_capacity "%d"
+#define ARG_passpoint_adv_wan_at_capacity(x) x
+#define FMT_passpoint_osen "%d"
+#define ARG_passpoint_osen(x) x
+#define FMT_passpoint_asra "%d"
+#define ARG_passpoint_asra(x) x
+#define FMT_passpoint_ant "%d"
+#define ARG_passpoint_ant(x) x
+#define FMT_passpoint_venue_group "%d"
+#define ARG_passpoint_venue_group(x) x
+#define FMT_passpoint_venue_type "%d"
+#define ARG_passpoint_venue_type(x) x
+#define FMT_passpoint_anqp_domain_id "%d"
+#define ARG_passpoint_anqp_domain_id(x) x
+#define FMT_passpoint_pps_mo_id "%d"
+#define ARG_passpoint_pps_mo_id(x) x
+#define FMT_passpoint_t_c_timestamp "%d"
+#define ARG_passpoint_t_c_timestamp(x) x
+
 #define DEFINE_PHY_FIELD(name) \
     DEFINE_FIELD(name, \
                  typeof(*((struct ow_conf_phy *)NULL)->name), \
@@ -1126,6 +1874,29 @@ ow_conf_vif_flush_sta_net(const char *vif_name)
                  ow_conf_vif_notify_changed, \
                  FMT_vif_##name, ARG_vif_##name)
 
+#define DEFINE_PASSPOINT_FIELD(name) \
+    DEFINE_FIELD(name, \
+                 typeof(*((struct ow_conf_passpoint *)NULL)->name), \
+                 struct ow_conf_passpoint, \
+                 ow_conf_passpoint_get, \
+                 ow_conf_passpoint_set_##name, \
+                 ow_conf_passpoint_get_##name, \
+                 ow_conf_passpoint_notify_changed, \
+                 FMT_passpoint_##name, ARG_passpoint_##name)
+
+DEFINE_PASSPOINT_FIELD(hs20_enabled);
+DEFINE_PASSPOINT_FIELD(adv_wan_status);
+DEFINE_PASSPOINT_FIELD(adv_wan_symmetric);
+DEFINE_PASSPOINT_FIELD(adv_wan_at_capacity);
+DEFINE_PASSPOINT_FIELD(osen);
+DEFINE_PASSPOINT_FIELD(asra);
+DEFINE_PASSPOINT_FIELD(ant);
+DEFINE_PASSPOINT_FIELD(venue_group);
+DEFINE_PASSPOINT_FIELD(venue_type);
+DEFINE_PASSPOINT_FIELD(anqp_domain_id);
+DEFINE_PASSPOINT_FIELD(pps_mo_id);
+DEFINE_PASSPOINT_FIELD(t_c_timestamp);
+
 DEFINE_PHY_FIELD(enabled);
 DEFINE_PHY_FIELD(tx_chainmask);
 DEFINE_PHY_FIELD(tx_power_dbm);
@@ -1137,6 +1908,11 @@ DEFINE_PHY_FIELD(ap_he_enabled);
 DEFINE_PHY_FIELD(ap_eht_enabled);
 DEFINE_PHY_FIELD(ap_beacon_interval_tu);
 DEFINE_PHY_FIELD(ap_channel);
+DEFINE_PHY_FIELD(ap_supp_rates);
+DEFINE_PHY_FIELD(ap_basic_rates);
+DEFINE_PHY_FIELD(ap_beacon_rate);
+DEFINE_PHY_FIELD(ap_mcast_rate);
+DEFINE_PHY_FIELD(ap_mgmt_rate);
 
 DEFINE_VIF_FIELD(type);
 DEFINE_VIF_FIELD(enabled);
@@ -1145,6 +1921,7 @@ DEFINE_VIF_FIELD(tx_power_dbm);
 DEFINE_VIF_FIELD(ap_channel);
 DEFINE_VIF_FIELD(ap_ssid);
 DEFINE_VIF_FIELD(ap_bridge_if_name);
+DEFINE_VIF_FIELD(ap_nas_identifier);
 DEFINE_VIF_FIELD(ap_ssid_hidden);
 DEFINE_VIF_FIELD(ap_isolated);
 DEFINE_VIF_FIELD(ap_ht_enabled);
@@ -1160,8 +1937,10 @@ DEFINE_VIF_FIELD(ap_wpa);
 DEFINE_VIF_FIELD(ap_rsn);
 DEFINE_VIF_FIELD(ap_pairwise_tkip);
 DEFINE_VIF_FIELD(ap_pairwise_ccmp);
+DEFINE_VIF_FIELD(ap_akm_eap);
 DEFINE_VIF_FIELD(ap_akm_psk);
 DEFINE_VIF_FIELD(ap_akm_sae);
+DEFINE_VIF_FIELD(ap_akm_ft_eap);
 DEFINE_VIF_FIELD(ap_akm_ft_psk);
 DEFINE_VIF_FIELD(ap_akm_ft_sae);
 DEFINE_VIF_FIELD(ap_group_rekey_seconds);
@@ -1184,12 +1963,15 @@ ow_conf_vif_clear(const char *vif_name)
     ow_conf_vif_flush_ap_acl(vif_name);
     ow_conf_vif_flush_ap_neigh(vif_name);
     ow_conf_vif_flush_sta_net(vif_name);
+    ow_conf_vif_flush_radius_refs(vif_name);
+    ow_conf_vif_flush_radius_accounting_refs(vif_name);
 
     ow_conf_vif_set_type(vif_name, NULL);
     ow_conf_vif_set_tx_power_dbm(vif_name, NULL);
     ow_conf_vif_set_ap_channel(vif_name, NULL);
     ow_conf_vif_set_ap_ssid(vif_name, NULL);
     ow_conf_vif_set_ap_bridge_if_name(vif_name, NULL);
+    ow_conf_vif_set_ap_nas_identifier(vif_name, NULL);
     ow_conf_vif_set_ap_ssid_hidden(vif_name, NULL);
     ow_conf_vif_set_ap_isolated(vif_name, NULL);
     ow_conf_vif_set_ap_ht_enabled(vif_name, NULL);
@@ -1205,8 +1987,10 @@ ow_conf_vif_clear(const char *vif_name)
     ow_conf_vif_set_ap_rsn(vif_name, NULL);
     ow_conf_vif_set_ap_pairwise_tkip(vif_name, NULL);
     ow_conf_vif_set_ap_pairwise_ccmp(vif_name, NULL);
+    ow_conf_vif_set_ap_akm_eap(vif_name, NULL);
     ow_conf_vif_set_ap_akm_psk(vif_name, NULL);
     ow_conf_vif_set_ap_akm_sae(vif_name, NULL);
+    ow_conf_vif_set_ap_akm_ft_eap(vif_name, NULL);
     ow_conf_vif_set_ap_akm_ft_psk(vif_name, NULL);
     ow_conf_vif_set_ap_akm_ft_sae(vif_name, NULL);
     ow_conf_vif_set_ap_group_rekey_seconds(vif_name, NULL);
@@ -1221,6 +2005,7 @@ ow_conf_vif_clear(const char *vif_name)
     ow_conf_vif_set_ap_wnm_bss_trans(vif_name, NULL);
     ow_conf_vif_set_ap_rrm_neighbor_report(vif_name, NULL);
     ow_conf_vif_set_ap_mcast2ucast(vif_name, NULL);
+    ow_conf_vif_set_ap_passpoint_ref(vif_name, NULL);
 }
 
 void

@@ -351,6 +351,34 @@ struct cell_net_neighbor_cell_info
     int32_t inter_freq_srxlev;
 };
 
+/**
+ * Radio access technology
+ */
+enum rat {
+    RAT_LTE = INTERFACES__CELL_INFO__RADIO_ACCESS_TECHNOLOGY__RADIO_ACCESS_TECHNOLOGY_LTE,
+    RAT_NR5G = INTERFACES__CELL_INFO__RADIO_ACCESS_TECHNOLOGY__RADIO_ACCESS_TECHNOLOGY_NR5G,
+};
+
+struct cell_full_scan_neighbor_cell_info
+{
+    enum rat rat;              /* Radio access technology. Valid values ["LTE", "NR5G"] */
+    uint32_t mcc;              /* Mobile country code (the first part of PLMN code) */
+    uint32_t mnc;              /* Mobile network code (the second part of PLMN code) */
+    uint32_t freq;             /* The Absolute Radio Frequency Channel Number. Valid ranges:
+                                  - LTE EARFCN: [0, 262 143]
+                                  - 5G ARFCN:   [0, 3 279 165] */
+    uint32_t pcid;             /* Physical Cell ID */
+    int32_t rsrp;              /* Reference Signal Received Power. Valid range [-140, -44] dBm */
+    int32_t rsrq;              /* Reference Signal Received Quality. Valid range [-20, -3] dBm */
+    uint32_t srxlev;           /* Received signal (RX) Level value in dB for cell selection */
+    enum nr_scs scs;           /* Sub-carrier spacing value */
+    int32_t squal;             /* Received signal Quality value in dB for cell selection */
+    uint32_t cellid;           /* Cell ID, optional */
+    uint32_t tac;              /* Tracking area code, optional */
+    enum bandwidth bandwidth;  /* Bandwidth, optional */
+    uint32_t band;             /* Frequency band, optional */
+};
+
 enum cell_carrier_component {
     CELL_CC_UNAVAILABLE = INTERFACES__CELL_INFO__CARRIER_COMPONENT__CC_UNAVAILABLE,
     CELL_PCC = INTERFACES__CELL_INFO__CARRIER_COMPONENT__PCC,
@@ -420,8 +448,9 @@ struct cell_info_report
     struct cell_data_usage *cell_data_usage;
     struct lte_serving_cell_info *cell_srv_cell;
     size_t n_neigh_cells;
-    size_t cur_neigh_cell_idx;
     struct cell_net_neighbor_cell_info **cell_neigh_cell_info;
+    size_t n_full_scan_neigh_cells;
+    struct cell_full_scan_neighbor_cell_info **cell_full_scan_neigh_cell_info;
     struct cell_net_pca_info *cell_pca_info;
     size_t n_lte_sca_cells;
     size_t cur_lte_sca_cell_idx;
@@ -502,7 +531,7 @@ cell_info_free_data_usage(struct cell_info_report *report);
  * @param n_neighbors the number of neighbor cells to report
  */
 struct cell_info_report *
-cell_info_allocate_report(size_t n_neighbors, size_t n_lte_sca_cells,
+cell_info_allocate_report(size_t n_neighbors, size_t n_full_scan_neighbors, size_t n_lte_sca_cells,
                           size_t n_pdp_cells, size_t n_nrg_sca_cells);
 
 /**
@@ -537,11 +566,13 @@ cell_info_free_common_header(struct cell_info_report *report);
  *
  * @param cell_info the cell info to add
  * @param report the report to update
+ * @param idx the index into which we are adding cell info in the report
  * @return true if the cell info was added, false otherwise
  */
 bool
 cell_info_add_neigh_cell(struct cell_net_neighbor_cell_info *cell_info,
-                         struct cell_info_report *report);
+                         struct cell_info_report *report,
+                         size_t idx);
 
 
 /**
@@ -566,6 +597,39 @@ cell_info_set_neigh_cell(struct cell_net_neighbor_cell_info *source,
 void
 cell_info_free_neigh_cell(struct cell_net_neighbor_cell_info *cell);
 
+/**
+ * @brief add full scan neighbor cell info to a report
+ *
+ * @param cell_info the cell info to add
+ * @param report the report to update
+ * @param idx the index into which we are adding cell info in the report
+ * @return true if the cell info was added, false otherwise
+ */
+bool
+cell_info_add_full_scan_neigh_cell(struct cell_full_scan_neighbor_cell_info *cell_info,
+                                   struct cell_info_report *report,
+                                   size_t idx);
+
+/**
+ * @brief copy full scan neighbor cell info
+ *
+ * @param source the cell info to copy
+ * @param dest the copy destination
+ * @return true if the cell info was copied, false otherwise
+ *
+ * Note: the destination is freed on error
+ */
+bool
+cell_info_set_full_scan_neigh_cell(struct cell_full_scan_neighbor_cell_info *source,
+                                   struct cell_full_scan_neighbor_cell_info *dest);
+
+/**
+ * @brief free full scan neighbor cell info
+ *
+ * @param cell the structure to free
+ */
+void
+cell_info_free_full_scan_neigh_cell(struct cell_full_scan_neighbor_cell_info *cell);
 
 /**
  * @brief set a serving cell info

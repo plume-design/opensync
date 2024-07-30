@@ -1,0 +1,2 @@
+PKG_NAME="OpenSync"
+PKG_FS_TYPE="squashfs"

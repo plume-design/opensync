@@ -44,6 +44,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "upnp_portmap.pb-c.h"
 #include "upnp_report_aggregator.h"
 #include "util.h"
+#include "fsm_fn_trace.h"
 
 const char * const upnp_state_str[] =
 {
@@ -271,6 +272,7 @@ fsm_dpi_sec_portmap_init(struct fsm_session *session)
 
     /* Set the plugin specific ops */
     client_ops = &session->p_ops->dpi_plugin_client_ops;
+    FSM_FN_MAP(fsm_dpi_sec_portmap_process_attr);
     client_ops->process_attr = fsm_dpi_sec_portmap_process_attr;
 
 

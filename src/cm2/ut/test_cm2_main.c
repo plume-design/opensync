@@ -101,15 +101,14 @@ void cm2_test_init(void)
 {
     target_log_open("TEST_CM2", 0);
     log_severity_set(LOG_SEVERITY_TRACE);
-    g_state.addr_redirector.ipv6_pref = true;
-    g_state.addr_manager.ipv6_pref = true;
 
     return;
 }
 
 void cm2_test_setup(void)
 {
-    g_state.dest = CM2_DEST_REDIR,
+    cm2_set_ipv6_pref(CM2_DEST_REDIR);
+    g_state.dest = CM2_DEST_REDIR;
     g_state.addr_redirector.ipv6_addr_list.h_addr_list = resolved_ipv6_addr;
     g_state.addr_redirector.ipv6_addr_list.h_addrtype = AF_INET6;
     g_state.addr_redirector.ipv4_addr_list.h_addr_list = resolved_ipv4_addr;

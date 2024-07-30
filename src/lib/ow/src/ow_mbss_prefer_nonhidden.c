@@ -31,6 +31,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <osw_conf.h>
 #include <osw_types.h>
 #include <osw_module.h>
+#include <osw_drv.h>
+#include <osw_state.h>
 
 /**
  * Rationale
@@ -101,92 +103,43 @@ struct ow_mbss_prefer_nonhidden {
 #define mut_to_m(x) container_of(x, struct ow_mbss_prefer_nonhidden, mut)
 
 static struct osw_conf_vif *
-ow_mbss_prefer_nonhidden_find_first_nonhidden(struct osw_conf_phy *phy)
+ow_mbss_prefer_nonhidden_first_ap_in_group(struct ds_tree *vif_tree,
+                                           bool is_ssid_hidden,
+                                           int group_id)
 {
     struct osw_conf_vif *vif;
-    ds_tree_foreach(&phy->vif_tree, vif) {
-        if (vif->enabled == false) {
-            continue;
-        }
+    ds_tree_foreach(vif_tree, vif) {
+        const struct osw_state_vif_info *info = osw_state_vif_lookup(vif->phy->phy_name, vif->vif_name);
+        const struct osw_drv_vif_state *vif_state = info->drv_state;
+        if (vif->enabled &&
+            vif_state->vif_type == OSW_VIF_AP &&
+            vif_state->u.ap.mbss_group == group_id &&
+            vif->vif_type == OSW_VIF_AP &&
+            vif->u.ap.ssid_hidden == is_ssid_hidden) {
 
-        switch (vif->vif_type) {
-            case OSW_VIF_AP:
-                if (vif->u.ap.ssid_hidden == false) {
-                    return vif;
-                }
-                break;
-            case OSW_VIF_UNDEFINED:
-            case OSW_VIF_AP_VLAN:
-            case OSW_VIF_STA:
-                break;
+            return vif;
         }
     }
     return NULL;
 }
 
-static struct osw_conf_vif *
-ow_mbss_prefer_nonhidden_find_any_enabled(struct osw_conf_phy *phy)
+static enum osw_mbss_vif_ap_mode
+ow_mbss_prefer_nonhidden_get_mbss_mode(struct ds_tree *vif_tree,
+                                       struct osw_conf_vif *vif,
+                                       const struct osw_drv_vif_state_ap *ap_state)
 {
-    struct osw_conf_vif *vif;
-    ds_tree_foreach(&phy->vif_tree, vif) {
-        switch (vif->vif_type) {
-            case OSW_VIF_AP:
-                if (vif->enabled) {
-                    return vif;
-                }
-                break;
-            case OSW_VIF_UNDEFINED:
-            case OSW_VIF_AP_VLAN:
-            case OSW_VIF_STA:
-                break;
-        }
-    }
-    return NULL;
-}
+    int group_id = ap_state->mbss_group;
+    if (vif->vif_type != OSW_VIF_AP || vif->enabled == false) return OSW_MBSS_NONE;
 
-static struct osw_conf_vif *
-ow_mbss_prefer_nonhidden_find_suitable_vif(struct osw_conf_phy *phy)
-{
-    return ow_mbss_prefer_nonhidden_find_first_nonhidden(phy)
-        ?: ow_mbss_prefer_nonhidden_find_any_enabled(phy);
-}
+    struct osw_conf_vif *first_non_hidden = ow_mbss_prefer_nonhidden_first_ap_in_group(vif_tree, false, group_id);
+    struct osw_conf_vif *first_hidden = ow_mbss_prefer_nonhidden_first_ap_in_group(vif_tree, true, group_id);
+    struct osw_conf_vif *tx_vif = first_non_hidden ?: first_hidden;
+    if (tx_vif == NULL) return OSW_MBSS_NONE;
 
-static void
-ow_mbss_prefer_nonhidden_fix_phy(struct ow_mbss_prefer_nonhidden *m,
-                                 struct osw_conf_phy *phy)
-{
-    struct osw_ifname *tx_vif_name = &phy->mbss_tx_vif_name;
-    const bool mbss_is_active = (osw_ifname_is_valid(tx_vif_name));
-    const bool mbss_is_inactive = !mbss_is_active;
-    if (mbss_is_inactive) return;
+    const bool tx_vif_is_equal = (strcmp(vif->vif_name, tx_vif->vif_name) == 0);
+    if (tx_vif_is_equal) return OSW_MBSS_TX_VAP;
 
-    struct osw_conf_vif *tx_vif = ds_tree_find(&phy->vif_tree, tx_vif_name->buf);
-    const bool tx_vif_not_found = (tx_vif == NULL);
-    const bool tx_vif_is_disabled = (tx_vif != NULL)
-                                 && (tx_vif->enabled == false);
-    const bool tx_vif_is_ap_hidden = (tx_vif != NULL)
-                                  && (tx_vif->vif_type == OSW_VIF_AP)
-                                  && (tx_vif->u.ap.ssid_hidden == true);
-    const bool tx_vif_is_not_ap = (tx_vif != NULL)
-                               && (tx_vif->vif_type != OSW_VIF_AP);
-    const bool needs_fixing = tx_vif_not_found
-                           || tx_vif_is_disabled
-                           || tx_vif_is_ap_hidden
-                           || tx_vif_is_not_ap;
-    const bool does_not_need_fixing = !needs_fixing;
-    if (does_not_need_fixing) return;
-
-    struct osw_conf_vif *new_tx_vif = ow_mbss_prefer_nonhidden_find_suitable_vif(phy);
-    if (new_tx_vif == NULL) return;
-    if (new_tx_vif == tx_vif) return;
-
-    const char *phy_name = phy->phy_name;
-    LOGI(LOG_PREFIX_PHY(phy_name, "overriding: "OSW_IFNAME_FMT" -> %s",
-                        OSW_IFNAME_ARG(tx_vif_name),
-                        new_tx_vif->vif_name));
-
-    if (m->dryrun) return;
-    STRSCPY_WARN(tx_vif_name->buf, new_tx_vif->vif_name);
+    return OSW_MBSS_NON_TX_VAP;
 }
 
 static void
@@ -199,7 +152,17 @@ ow_mbss_prefer_nonhidden_mutate_cb(struct osw_conf_mutator *mut,
 
     struct osw_conf_phy *phy;
     ds_tree_foreach(phy_tree, phy) {
-        ow_mbss_prefer_nonhidden_fix_phy(m, phy);
+        struct ds_tree *vif_tree = &phy->vif_tree;
+        struct osw_conf_vif *vif;
+        ds_tree_foreach(vif_tree, vif) {
+            const struct osw_state_vif_info *info = osw_state_vif_lookup(phy->phy_name, vif->vif_name);
+            const struct osw_drv_vif_state *vif_state = info->drv_state;
+            if (vif_state->vif_type != OSW_VIF_AP) continue;
+            const struct osw_drv_vif_state_ap *ap_state = &vif_state->u.ap;
+            const enum osw_mbss_vif_ap_mode new_mbss_mode = ow_mbss_prefer_nonhidden_get_mbss_mode(vif_tree, vif, ap_state);
+            if (ap_state->mbss_mode == OSW_MBSS_NONE) continue;
+            vif->u.ap.mbss_mode = new_mbss_mode;
+        }
     }
 }
 

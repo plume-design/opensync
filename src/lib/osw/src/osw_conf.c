@@ -105,11 +105,14 @@ osw_conf_build_vif_cb(const struct osw_state_vif_info *info,
             ds_tree_init(&vif->u.ap.acl_tree, (ds_key_cmp_t *)osw_hwaddr_cmp, struct osw_conf_acl, node);
             ds_tree_init(&vif->u.ap.psk_tree, ds_int_cmp, struct osw_conf_psk, node);
             ds_tree_init(&vif->u.ap.neigh_tree, (ds_key_cmp_t *)osw_hwaddr_cmp, struct osw_conf_neigh, node);
+            ds_dlist_init(&vif->u.ap.radius_list, struct osw_conf_radius, node);
+            ds_dlist_init(&vif->u.ap.accounting_list, struct osw_conf_radius, node);
             vif->u.ap.acl_policy = info->drv_state->u.ap.acl_policy;
             vif->u.ap.ssid = info->drv_state->u.ap.ssid;
             vif->u.ap.channel = info->drv_state->u.ap.channel;
             vif->u.ap.mode = info->drv_state->u.ap.mode;
             STRSCPY_WARN(vif->u.ap.bridge_if_name.buf, info->drv_state->u.ap.bridge_if_name.buf ?: "");
+            STRSCPY_WARN(vif->u.ap.nas_identifier.buf, info->drv_state->u.ap.nas_identifier.buf ?: "");
             vif->u.ap.wpa = info->drv_state->u.ap.wpa;
 
             for (i = 0; i < info->drv_state->u.ap.acl.count; i++) {
@@ -136,13 +139,32 @@ osw_conf_build_vif_cb(const struct osw_state_vif_info *info,
                 ds_dlist_insert_tail(&vif->u.ap.wps_cred_list, cred);
             }
 
+            for (i = 0; i < info->drv_state->u.ap.radius_list.count; i++) {
+                struct osw_conf_radius *radius = CALLOC(1, sizeof(*radius));
+                radius->radius.server = STRDUP(info->drv_state->u.ap.radius_list.list[i].server);
+                radius->radius.port = info->drv_state->u.ap.radius_list.list[i].port;
+                radius->radius.passphrase = STRDUP(info->drv_state->u.ap.radius_list.list[i].passphrase);
+                ds_dlist_insert_tail(&vif->u.ap.radius_list, radius);
+            }
+
+            for (i = 0; i < info->drv_state->u.ap.acct_list.count; i++) {
+                struct osw_conf_radius *acct = CALLOC(1, sizeof(*acct));
+                acct->radius.server = STRDUP(info->drv_state->u.ap.acct_list.list[i].server);
+                acct->radius.port = info->drv_state->u.ap.acct_list.list[i].port;
+                acct->radius.passphrase = STRDUP(info->drv_state->u.ap.acct_list.list[i].passphrase);
+                ds_dlist_insert_tail(&vif->u.ap.accounting_list, acct);
+            }
+
+            osw_passpoint_copy(&info->drv_state->u.ap.passpoint, &vif->u.ap.passpoint);
+
             vif->u.ap.beacon_interval_tu = info->drv_state->u.ap.beacon_interval_tu;
             vif->u.ap.ssid_hidden = info->drv_state->u.ap.ssid_hidden;
             vif->u.ap.isolated = info->drv_state->u.ap.isolated;
             vif->u.ap.mcast2ucast = info->drv_state->u.ap.mcast2ucast;
             vif->u.ap.wps_pbc = info->drv_state->u.ap.wps_pbc;
             vif->u.ap.multi_ap = info->drv_state->u.ap.multi_ap;
-            // FIXME: radius_list
+            vif->u.ap.mbss_mode = info->drv_state->u.ap.mbss_mode;
+            vif->u.ap.mbss_group = info->drv_state->u.ap.mbss_group;
             break;
         case OSW_VIF_AP_VLAN:
             break;
@@ -180,7 +202,6 @@ osw_conf_build_phy_cb(const struct osw_state_phy_info *info,
     phy->tx_chainmask = info->drv_state->tx_chainmask;
     phy->radar = info->drv_state->radar;
     phy->reg_domain = info->drv_state->reg_domain;
-    phy->mbss_tx_vif_name = info->drv_state->mbss_tx_vif_name;
     ds_tree_init(&phy->vif_tree, ds_str_cmp, struct osw_conf_vif, phy_node);
     osw_state_vif_get_list(osw_conf_build_vif_cb, phy->phy_name, phy);
     ds_tree_insert(phy_tree, phy, phy->phy_name);
@@ -301,6 +322,16 @@ osw_conf_free_vif_ap_neigh(struct osw_conf_vif *vif,
 }
 
 static void
+osw_conf_free_vif_ap_radius(struct ds_dlist *dlist,
+                            struct osw_conf_radius *rad)
+{
+    ds_dlist_remove(dlist, rad);
+    FREE(rad->radius.server);
+    FREE(rad->radius.passphrase);
+    FREE(rad);
+}
+
+static void
 osw_conf_free_vif_ap_wps(struct osw_conf_vif *vif,
                          struct osw_conf_wps_cred *wps)
 {
@@ -316,6 +347,7 @@ osw_conf_free_vif(struct osw_conf_vif *vif)
     struct osw_conf_neigh *neigh;
     struct osw_conf_wps_cred *wps;
     struct osw_conf_net *net;
+    struct osw_conf_radius *rad;
 
     switch (vif->vif_type) {
         case OSW_VIF_UNDEFINED:
@@ -330,8 +362,16 @@ osw_conf_free_vif(struct osw_conf_vif *vif)
             while ((neigh = ds_tree_head(&vif->u.ap.neigh_tree)) != NULL)
                 osw_conf_free_vif_ap_neigh(vif, neigh);
 
+            while ((rad = ds_dlist_head(&vif->u.ap.radius_list)) != NULL)
+                osw_conf_free_vif_ap_radius(&vif->u.ap.radius_list, rad);
+
+            while ((rad = ds_dlist_head(&vif->u.ap.accounting_list)) != NULL)
+                osw_conf_free_vif_ap_radius(&vif->u.ap.accounting_list, rad);
+
             while ((wps = ds_dlist_head(&vif->u.ap.wps_cred_list)) != NULL)
                 osw_conf_free_vif_ap_wps(vif, wps);
+
+            osw_passpoint_free_internal(&vif->u.ap.passpoint);
             break;
         case OSW_VIF_AP_VLAN:
             break;
@@ -373,6 +413,14 @@ osw_conf_free(struct ds_tree *phy_tree)
         osw_conf_free_phy(phy);
 
     FREE(phy_tree);
+}
+
+void
+osw_conf_radius_free(struct osw_conf_radius *rad)
+{
+    FREE(rad->radius.server);
+    FREE(rad->radius.passphrase);
+    FREE(rad);
 }
 
 static const char *

@@ -101,6 +101,9 @@ function matrix()
     if [ -n "${IMAGE_DEPLOYMENT_PROFILE}" -a "${IMAGE_DEPLOYMENT_PROFILE}" != "none" ]; then
         echo "FW_PROFILE:${IMAGE_DEPLOYMENT_PROFILE}"
     fi
+    if [ -n "${SDK_SHA1}" ]; then
+        echo "SDK_COMMIT:${SDK_SHA1}"
+    fi
     echo "DATE:${VER_DATE}"
     echo "HOST:${USERNAME}@${HOSTNAME}"
     for LAYER in .. $LAYER_LIST $SDK_DIR $SDK_BASE; do

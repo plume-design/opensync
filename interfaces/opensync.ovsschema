@@ -1,7 +1,7 @@
 {
   "name": "Open_vSwitch",
-  "version": "7.11.370",
-  "cksum": "2274781640 324205",
+  "version": "7.11.392",
+  "cksum": "3729071019 347309",
   "tables": {
     "AWLAN_Node": {
       "columns": {
@@ -1537,6 +1537,158 @@
       "isRoot": true,
       "maxRows": 256
     },
+
+    "Wifi_Route6_Config": {
+      "columns": {
+        "dest_addr": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 2,
+              "maxLength": 49
+            },
+            "min": 1,
+            "max": 1
+          }
+        },
+        "gateway": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 2,
+              "maxLength": 49
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "metric": {
+          "type": {
+            "key": {
+              "type": "integer"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "if_name": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 2,
+              "maxLength": 31
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "pref_src": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 2,
+              "maxLength": 49
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "table": {
+          "type": {
+            "key": {
+              "type": "integer",
+              "minInteger": 1
+            },
+            "min": 0,
+            "max": 1
+          }
+        }
+      },
+      "isRoot": true,
+      "maxRows": 256
+    },
+
+    "Wifi_Route6_State": {
+      "columns": {
+        "if_name": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 2,
+              "maxLength": 31
+            },
+            "min": 1,
+            "max": 1
+          }
+        },
+        "dest_addr": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 2,
+              "maxLength": 49
+            },
+            "min": 1,
+            "max": 1
+          }
+        },
+        "gateway": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 2,
+              "maxLength": 49
+            },
+            "min": 1,
+            "max": 1
+          }
+        },
+        "gateway_hwaddr": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 12,
+              "maxLength": 17
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "metric": {
+          "type": {
+            "key": {
+              "type": "integer"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "pref_src": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 2,
+              "maxLength": 49
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "table": {
+          "type": {
+            "key": {
+              "type": "integer",
+              "minInteger": 1
+            },
+            "min": 0,
+            "max": 1
+          }
+        }
+      },
+      "isRoot": true,
+      "maxRows": 256
+    },
+
     "Wifi_Radio_Config": {
       "columns": {
         "if_name": {
@@ -1832,6 +1984,136 @@
                     "precac"
                   ]
                 ]
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "basic_rates": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "1",
+                  "2",
+                  "5.5",
+                  "11",
+                  "6",
+                  "9",
+                  "12",
+                  "18",
+                  "24",
+                  "36",
+                  "48",
+                  "54"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": "unlimited"
+          }
+        },
+        "supported_rates": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "1",
+                  "2",
+                  "5.5",
+                  "11",
+                  "6",
+                  "9",
+                  "12",
+                  "18",
+                  "24",
+                  "36",
+                  "48",
+                  "54"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": "unlimited"
+          }
+        },
+        "beacon_rate": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "1",
+                  "2",
+                  "5.5",
+                  "11",
+                  "6",
+                  "9",
+                  "12",
+                  "18",
+                  "24",
+                  "36",
+                  "48",
+                  "54"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "mcast_rate": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "1",
+                  "2",
+                  "5.5",
+                  "11",
+                  "6",
+                  "9",
+                  "12",
+                  "18",
+                  "24",
+                  "36",
+                  "48",
+                  "54"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "mgmt_rate": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "1",
+                  "2",
+                  "5.5",
+                  "11",
+                  "6",
+                  "9",
+                  "12",
+                  "18",
+                  "24",
+                  "36",
+                  "48",
+                  "54"
+                ]
+              ]
             },
             "min": 0,
             "max": 1
@@ -2187,6 +2469,136 @@
                     "precac"
                   ]
                 ]
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "basic_rates": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "1",
+                  "2",
+                  "5.5",
+                  "11",
+                  "6",
+                  "9",
+                  "12",
+                  "18",
+                  "24",
+                  "36",
+                  "48",
+                  "54"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": "unlimited"
+          }
+        },
+        "supported_rates": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "1",
+                  "2",
+                  "5.5",
+                  "11",
+                  "6",
+                  "9",
+                  "12",
+                  "18",
+                  "24",
+                  "36",
+                  "48",
+                  "54"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": "unlimited"
+          }
+        },
+        "beacon_rate": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "1",
+                  "2",
+                  "5.5",
+                  "11",
+                  "6",
+                  "9",
+                  "12",
+                  "18",
+                  "24",
+                  "36",
+                  "48",
+                  "54"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "mcast_rate": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "1",
+                  "2",
+                  "5.5",
+                  "11",
+                  "6",
+                  "9",
+                  "12",
+                  "18",
+                  "24",
+                  "36",
+                  "48",
+                  "54"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "mgmt_rate": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "1",
+                  "2",
+                  "5.5",
+                  "11",
+                  "6",
+                  "9",
+                  "12",
+                  "18",
+                  "24",
+                  "36",
+                  "48",
+                  "54"
+                ]
+              ]
             },
             "min": 0,
             "max": 1
@@ -2885,6 +3297,17 @@
             "max": 8
           }
         },
+        "passpoint_config": {
+          "type": {
+            "key": {
+              "type": "uuid",
+              "refTable": "Passpoint_Config",
+              "refType": "weak"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
         "default_oftag": {
           "type": {
             "key": {
@@ -3572,6 +3995,17 @@
             },
             "min": 0,
             "max": 8
+          }
+        },
+        "passpoint_config": {
+          "type": {
+            "key": {
+              "type": "uuid",
+              "refTable": "Passpoint_Config",
+              "refType": "weak"
+            },
+            "min": 0,
+            "max": 1
           }
         },
         "dpp_connector": {
@@ -7423,6 +7857,22 @@
         },
         "isRoot": true
     },
+    "WE_Config": {
+        "columns": {
+            "config": {
+                "type": {
+                    "key": "string",
+                    "value": {
+                        "type": "string",
+                        "maxLength": 2048
+                    },
+                    "min": 0,
+                    "max": "unlimited"
+                }
+            }
+        },
+        "isRoot": true
+    },
     "Openflow_Local_Tag": {
         "columns": {
           "name": {
@@ -8006,6 +8456,17 @@
                     "min": 0,
                     "max": 1
                 }
+            },
+            "center_freq0_chan": {
+              "type": {
+                "key": {
+                  "type": "integer",
+                  "minInteger": 1,
+                  "maxInteger": 233
+                },
+                "min": 0,
+                "max": 1
+              }
             },
             "ht_mode": {
                 "type": {
@@ -9235,6 +9696,14 @@
             },
             "min": 0,
             "max": 32
+          }
+        },
+        "other_config": {
+          "type": {
+            "key": "string",
+            "value": "string",
+            "min": 0,
+            "max": "unlimited"
           }
         }
       },
@@ -10778,7 +11247,25 @@
             "max": 64
           }
         },
+        "lnx_queues": {
+          "type": {
+            "key": {
+              "type": "uuid",
+              "refTable": "Linux_Queue"
+            },
+            "min": 0,
+            "max": 64
+          }
+        },
         "other_config": {
+          "type": {
+            "key": "string",
+            "value": "string",
+            "min": 0,
+            "max": 64
+          }
+        },
+        "adaptive_qos": {
           "type": {
             "key": "string",
             "value": "string",
@@ -10807,6 +11294,17 @@
     },
     "Interface_Classifier": {
       "columns": {
+        "parent_id": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 32
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
         "token": {
           "type": {
             "key": {
@@ -10876,6 +11374,15 @@
             "max": 1
           }
         },
+        "bandwidth_ceil": {
+          "type": {
+            "key": {
+              "type": "integer"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
         "tag": {
           "type": {
             "key": {
@@ -10906,6 +11413,87 @@
           "ephemeral": true
         }
       }
+    },
+    "Linux_Queue": {
+      "columns": {
+        "type": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "qdisc",
+                  "class"
+                ]
+              ]
+            },
+            "min": 1,
+            "max": 1
+          }
+        },
+        "name": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 32
+            },
+            "min": 1,
+            "max": 1
+          }
+        },
+        "parent_id": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 32
+            },
+            "min": 1,
+            "max": 1
+          }
+        },
+        "id": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 32
+            },
+            "min": 1,
+            "max": 1
+          }
+        },
+        "params": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "status": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "success",
+                  "error"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": 1
+          }
+        }
+      },
+      "isRoot": true
     },
     "DPP_Config": {
       "columns": {
@@ -12057,6 +12645,74 @@
       "isRoot": true,
       "maxRows": 1
     },
+    "Passpoint_OSU_Providers": {
+      "columns": {
+        "osu_server_uri": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 2,
+              "maxLength": 255
+            }
+          }
+        },
+        "osu_friendly_name": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 4,
+              "maxLength": 255
+            },
+            "min": 0,
+            "max": 16
+          }
+        },
+        "osu_nai": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            },
+            "min": 0,
+            "max": 8
+          }
+        },
+        "osu_osen_nai": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            },
+            "min": 0,
+            "max": 8
+          }
+        },
+        "osu_method_list": {
+          "type": {
+            "key": {
+              "type": "integer",
+              "minInteger": 0,
+              "maxInteger": 255
+            },
+            "min": 0,
+            "max": 8
+          }
+        },
+        "osu_service_desc": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 6,
+              "maxLength": 255
+            },
+            "min": 0,
+            "max": 16
+          }
+        }
+      }
+    },
     "Passpoint_Config": {
       "columns": {
         "enabled": {
@@ -12105,7 +12761,9 @@
               "type": "string",
               "minLength": 2,
               "maxLength": 255
-            }
+            },
+            "min": 0,
+            "max": 16
           }
         },
         "nairealm_list": {
@@ -12150,7 +12808,197 @@
                "min": 0,
                "max": 8
             }
-         }
+        },
+        "osen": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "anqp_domain_id": {
+          "type": {
+            "key": {
+              "type": "integer",
+              "minInteger": 0,
+              "maxInteger": 65535
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "pps_mo_id": {
+          "type": {
+            "key": {
+              "type": "integer",
+              "minInteger": 0,
+              "maxInteger": 65535
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "operator_friendly_name": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 4,
+              "maxLength": 255
+            },
+            "min": 0,
+            "max": 16
+          }
+        },
+        "t_c_filename": {
+          "type": {
+            "key": {
+              "type": "string"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "t_c_timestamp": {
+          "type": {
+            "key": {
+              "type": "integer"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "osu_ssid": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 32
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "osu_providers": {
+          "type": {
+            "key": {
+              "type": "uuid",
+              "refTable": "Passpoint_OSU_Providers",
+              "refType": "weak"
+            },
+            "min": 0,
+            "max": 8
+          }
+        },
+        "access_network_type": {
+          "type": {
+            "key": {
+              "type": "integer",
+              "minInteger": 0,
+              "maxInteger": 15
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "asra": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "venue_group": {
+          "type": {
+            "key": {
+              "type": "integer",
+              "minInteger": 0,
+              "maxInteger": 255
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "venue_type": {
+          "type": {
+            "key": {
+              "type": "integer",
+              "minInteger": 0,
+              "maxInteger": 255
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "venue_name": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 4,
+              "maxLength": 255
+            },
+            "min": 0,
+            "max": 16
+          }
+        },
+        "venue_url": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 2,
+              "maxLength": 255
+            },
+            "min": 0,
+            "max": 16
+          }
+        },
+        "network_auth_type": {
+          "type": {
+            "key": {
+              "type": "integer",
+              "minInteger": 0,
+              "maxInteger": 255
+            },
+            "min": 0,
+            "max": 8
+          }
+        },
+        "network_auth_t_c_url": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 2,
+              "maxLength": 255
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "network_auth_redirect_url": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 2,
+              "maxLength": 255
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "anqp_elem": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1024
+            },
+            "min": 0,
+            "max": 1
+          }
+        }
       },
       "isRoot": true
     },
@@ -12200,7 +13048,9 @@
               "type": "string",
               "minLength": 2,
               "maxLength": 255
-            }
+            },
+            "min": 0,
+            "max": 16
           }
         },
         "adv_wan_status": {
@@ -13342,7 +14192,11 @@
                 [
                   "vti",
                   "vti6",
-                  "ip6tnl"
+                  "ip6tnl",
+                  "ip4gre",
+                  "ip4gretap",
+                  "ip6gre",
+                  "ip6gretap"
                 ]
               ]
             }
@@ -14699,6 +15553,222 @@
        },
        "isRoot": true,
        "maxRows": 1
+    },
+    "LED_Config": {
+      "columns": {
+        "name": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "idle",
+                  "error",
+                  "connected",
+                  "connecting",
+                  "connectfail",
+                  "wps",
+                  "optimize",
+                  "locate",
+                  "hwerror",
+                  "thermal",
+                  "btconnectable",
+                  "btconnecting",
+                  "btconnected",
+                  "btconnectfail",
+                  "upgrading",
+                  "upgraded",
+                  "upgradefail",
+                  "hwtest",
+                  "iotalarm",
+                  "cloud"
+                ]
+              ]
+            }
+          }
+        },
+        "priority": {
+          "type": {
+            "key": {
+              "type": "integer"
+            }
+          }
+        },
+        "position": {
+          "type": {
+            "key": {
+              "type": "integer",
+              "minInteger": 0,
+              "maxInteger": 255
+            }
+          }
+        },
+        "pattern": {
+          "type": {
+            "key": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "indexes": [
+        [
+          "name",
+          "position"
+        ]
+      ],
+      "isRoot": true
+    },
+    "FQDN_Resolve": {
+      "columns": {
+        "fqdn": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "min": 1,
+            "max": 1
+          }
+        },
+        "ipv4_tag": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "ipv6_tag": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "server": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "interval": {
+          "type": {
+            "key": {
+              "type": "integer",
+               "minInteger": 0
+            },
+            "min": 0,
+            "max": 1
+          }
+        }
+      },
+      "isRoot": true
+    },
+    "BLE_Proximity_Config": {
+      "columns": {
+        "adv_tx_power": {
+          "type": {
+            "key": {
+              "type": "integer",
+              "minInteger": -32768,
+              "maxInteger": 32767
+            }
+          }
+        },
+        "adv_interval": {
+          "type": {
+            "key": {
+              "type": "integer",
+              "minInteger": 20,
+              "maxInteger": 10240
+            }
+          }
+        },
+        "ibeacon_enable": {
+          "type": "boolean"
+        },
+        "ibeacon_uuid": {
+          "type": "uuid"
+        },
+        "ibeacon_major": {
+          "type": {
+            "key": {
+              "type": "integer",
+              "minInteger": 1,
+              "maxInteger": 65534
+            }
+          }
+        },
+        "ibeacon_minor": {
+          "type": {
+            "key": {
+              "type": "integer",
+              "minInteger": 1,
+              "maxInteger": 65534
+            }
+          }
+        },
+        "ibeacon_power": {
+          "type": {
+            "key": {
+              "type": "integer",
+              "minInteger": -128,
+              "maxInteger": 127
+            }
+          }
+        },
+        "os_persist": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            },
+            "min": 0,
+            "max": 1
+          }
+        }
+      },
+      "isRoot": true
+    },
+    "BLE_Proximity_State": {
+      "columns": {
+        "adv_tx_power": {
+          "type": {
+            "key": {
+              "type": "integer",
+              "minInteger": -32768,
+              "maxInteger": 32767
+            }
+          }
+        },
+        "ibeacon_enable": {
+          "type": "boolean"
+        },
+        "ibeacon_active": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            },
+            "min": 0,
+            "max": 1
+          }
+        }
+      },
+      "isRoot": true
     }
   }
 }

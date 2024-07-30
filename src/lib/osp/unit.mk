@@ -36,6 +36,7 @@ UNIT_EXPORT_CFLAGS := -I$(UNIT_PATH)/inc
 
 UNIT_SRC += $(if $(CONFIG_OSP_UNIT_DEFAULT),src/osp_unit_default.c)
 UNIT_SRC += $(if $(CONFIG_OSP_LED),src/osp_led.c,src/osp_led_null.c)
+UNIT_SRC += $(if $(CONFIG_OSP_LED),src/osp_led_tgt.c)
 UNIT_DEPS += src/lib/common
 UNIT_DEPS += src/lib/log
 UNIT_DEPS += src/lib/schema

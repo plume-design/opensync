@@ -24,11 +24,11 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+#include "ovsdb_utils.h"
 
+#include "qosm_filter_internal.h"
 #include "qosm_interface_classifier.h"
 #include "qosm_ip_iface.h"
-#include "ovsdb_utils.h"
-#include "qosm.h"
 
 static void
 qosm_free_ic_elements(struct qosm_intf_classifier *ic)
@@ -41,13 +41,13 @@ qosm_free_ic_elements(struct qosm_intf_classifier *ic)
 void
 qosm_free_ic(struct qosm_intf_classifier *ic)
 {
-    struct qosm_mgr *mgr;
+    struct qosm_filter *qosm_filter;
     TRACE();
 
     if (ic == NULL) return;
 
-    mgr = qosm_get_mgr();
-    ds_tree_remove(&mgr->qosm_intf_classifier_tree, ic);
+    qosm_filter = qosm_filter_get();
+    ds_tree_remove(&qosm_filter->qosm_intf_classifier_tree, ic);
     qosm_free_ic_elements(ic);
 
     FREE(ic);
@@ -71,15 +71,15 @@ struct qosm_intf_classifier *
 qosm_interface_classifier_get(struct schema_Interface_Classifier *conf)
 {
     struct qosm_intf_classifier *ic;
-    struct qosm_mgr *mgr;
+    struct qosm_filter *qosm_filter;
     bool template_rule;
 
     TRACE();
 
-    mgr = qosm_get_mgr();
+    qosm_filter = qosm_filter_get();
 
      /* check if the interface_classifier obj is already present */
-    ic = ds_tree_find(&mgr->qosm_intf_classifier_tree, (void *)conf->_uuid.uuid);
+    ic = ds_tree_find(&qosm_filter->qosm_intf_classifier_tree, (void *)conf->_uuid.uuid);
     if (ic) return ic;
 
     LOGT("%s(): creating interface classifier object for %s", __func__, conf->_uuid.uuid);
@@ -93,7 +93,7 @@ qosm_interface_classifier_get(struct schema_Interface_Classifier *conf)
     reflink_set_fn(&ic->ic_reflink, qosm_int_classifier_reflink_fn);
 
     /* add new object to interface classifier tree */
-    ds_tree_insert(&mgr->qosm_intf_classifier_tree, ic, ic->ic_uuid.uuid);
+    ds_tree_insert(&qosm_filter->qosm_intf_classifier_tree, ic, ic->ic_uuid.uuid);
 
     /* copy match */
     ic->ic_match = STRDUP(conf->match);
@@ -173,10 +173,10 @@ qosm_ic_list_free(struct qosm_ip_iface *ipi)
 void
 qosm_intf_classifer_init(void)
 {
-    struct qosm_mgr *mgr;
+    struct qosm_filter *qosm_filter;
 
-    mgr = qosm_get_mgr();
-    ds_tree_init(&mgr->qosm_intf_classifier_tree, ds_str_cmp,
+    qosm_filter = qosm_filter_get();
+    ds_tree_init(&qosm_filter->qosm_intf_classifier_tree, ds_str_cmp,
                  struct qosm_intf_classifier, ic_tnode);
     return;
 }

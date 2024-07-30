@@ -38,6 +38,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "memutil.h"
 #include "nf_utils.h"
 #include "os_types.h"
+#include "os_ev_trace.h"
 
 #if defined(CONFIG_PLATFORM_IS_BCM)
 // on BCM the kernel header is missing CTA_TUPLE_ZONE
@@ -1433,6 +1434,7 @@ nf_ct_set_mark_timeout(nf_flow_t *flow, uint32_t timeout)
         LOGE("%s: setting connection mark failed", __func__);
         goto err_set_mark;
     }
+    OS_EV_TRACE_MAP(nf_ct_timeout_cbk);
     ev_timer_init(&timer_ctx->timeout, nf_ct_timeout_cbk, timeout, 0);
     ev_timer_start(nf_ct->loop, &timer_ctx->timeout);
     return 0;
@@ -1620,6 +1622,7 @@ nf_ct_init(struct ev_loop *loop)
     nf_ct->mnl = nl;
     nf_ct->loop = loop;
     nf_ct->fd = mnl_socket_get_fd(nl);
+    os_ev_trace_map(read_mnl_socket_cbk, "read_mnl_socket_cbk");
     ev_io_init(&nf_ct->wmnl, read_mnl_socket_cbk, nf_ct->fd, EV_READ);
     ev_io_start(loop, &nf_ct->wmnl);
     nf_ct->initialized = true;

@@ -72,6 +72,32 @@ static const char lnx_tunnel_iface_ip6tnl_create[] = _S(
     fi;);
 
 /*
+ * Script for creating an *GRE* tunnel interface.
+ *
+ * Input parameters:
+ *
+ * $1 - Interface name
+ * $2 - Interface type (gre, gretap, ip6gre, ip6gretap)
+ * $3 - local endpoint IP address
+ * $4 - remote endpoint IP address
+ * $5 - key (optional)
+ * $6 - physical device to use for tunnel endpoint communication (optional)
+ */
+static const char lnx_tunnel_iface_gre_create[] = _S(
+    if [ -n "$5" ]; then
+        opt_key="key $5";
+    else
+        opt_key="";
+    fi;
+    if [ -n "$6" ]; then
+        opt_dev="dev $6";
+    else
+        opt_dev="";
+    fi;
+    ip link add "$1" type "$2" local "$3" remote "$4" $opt_key $opt_dev;
+);
+
+/*
  * Script for deleting a tunnel interface
  *
  * Input parameters:
@@ -163,12 +189,25 @@ bool lnx_tunnel_iface_enable_set(lnx_tunnel_iface_t *self, bool enable)
     return true;
 }
 
+char* lnx_tunnel_iface_gre_type_to_lnx_ip_link(enum osn_tunnel_iface_type if_type)
+{
+    switch (if_type) {
+        case OSN_TUNNEL_IFACE_TYPE_IP4GRE: return "gre";
+        case OSN_TUNNEL_IFACE_TYPE_IP4GRETAP: return "gretap";
+        case OSN_TUNNEL_IFACE_TYPE_IP6GRE: return "ip6gre";
+        case OSN_TUNNEL_IFACE_TYPE_IP6GRETAP: return "ip6gretap";
+        default: return NULL;
+    }
+}
+
 bool lnx_tunnel_iface_apply(lnx_tunnel_iface_t *self)
 {
     char slocal[MAX(OSN_IP6_ADDR_LEN, OSN_IP_ADDR_LEN)];
     char sremote[MAX(OSN_IP6_ADDR_LEN, OSN_IP_ADDR_LEN)];
     char skey[C_INT32_LEN];
     char *mode = NULL;
+    char *type_str = NULL;
+    char *ti_type_str = NULL;
     int rc;
 
     LOG(TRACE, "lnx_tunnel_iface: %s", __func__);
@@ -279,6 +318,78 @@ bool lnx_tunnel_iface_apply(lnx_tunnel_iface_t *self)
             {
                 LOG(ERR, "lnx_tunnel_iface: %s: Error creating IP6TNL tunnel interface (local %s, remote %s, mode '%s', dev '%s').",
                         self->ti_ifname, slocal, sremote, mode, self->ti_dev_ifname);
+                return false;
+            }
+            LOG(INFO, "lnx_tunnel_iface: %s: tunnel interface created", self->ti_ifname);
+
+            self->ti_applied = true;
+            break;
+
+        case OSN_TUNNEL_IFACE_TYPE_IP4GRE:
+            ti_type_str = "IP4GRE";
+            goto L_gre_ipv4;
+
+        case OSN_TUNNEL_IFACE_TYPE_IP4GRETAP:
+            ti_type_str = "IP4GRETAP";
+        L_gre_ipv4:
+            if (self->ti_local_endpoint.addr_type != AF_INET || self->ti_remote_endpoint.addr_type != AF_INET)
+            {
+                LOG(ERR, "lnx_tunnel_iface: %s: type=%s: local or remote address not set or not IPv4 type", self->ti_ifname, ti_type_str);
+                return false;
+            }
+
+            snprintf(slocal, sizeof(slocal), PRI_osn_ip_addr, FMT_osn_ip_addr(self->ti_local_endpoint.addr.ip4));
+            snprintf(sremote, sizeof(sremote), PRI_osn_ip_addr, FMT_osn_ip_addr(self->ti_remote_endpoint.addr.ip4));
+
+            goto L_gre_common;
+
+        case OSN_TUNNEL_IFACE_TYPE_IP6GRE:
+            ti_type_str = "IP6GRE";
+            goto L_gre_ipv6;
+
+        case OSN_TUNNEL_IFACE_TYPE_IP6GRETAP:
+            ti_type_str = "IP6GRETAP";
+        L_gre_ipv6:
+            if (self->ti_local_endpoint.addr_type != AF_INET6 || self->ti_remote_endpoint.addr_type != AF_INET6)
+            {
+                LOG(ERR, "lnx_tunnel_iface: %s: type=%s: local or remote address not set or not IPv6 type", self->ti_ifname, ti_type_str);
+                return false;
+            }
+
+            snprintf(slocal, sizeof(slocal), PRI_osn_ip6_addr, FMT_osn_ip6_addr(self->ti_local_endpoint.addr.ip6));
+            snprintf(sremote, sizeof(sremote), PRI_osn_ip6_addr, FMT_osn_ip6_addr(self->ti_remote_endpoint.addr.ip6));
+
+        L_gre_common:
+
+            type_str = lnx_tunnel_iface_gre_type_to_lnx_ip_link(self->ti_type);
+            if (!type_str)
+            {
+                LOG(ERR, "lnx_tunnel_iface: %s: Unknown ip link type for gre tunnel interface type: %d", self->ti_ifname, self->ti_type);
+                return false;
+            }
+
+            if (self->ti_key != 0)
+            {
+                snprintf(skey, sizeof(skey), "%d", self->ti_key);
+            }
+            else
+            {
+                skey[0] = '\0';
+            }
+
+            rc = execsh_log(
+                    LOG_SEVERITY_DEBUG,
+                    lnx_tunnel_iface_gre_create,
+                    self->ti_ifname,
+                    type_str,
+                    slocal,
+                    sremote,
+                    skey,
+                    self->ti_dev_ifname);
+            if (rc != 0)
+            {
+                LOG(ERR, "lnx_tunnel_iface: %s: Error creating GRE tunnel interface (local %s, remote %s, type %s, key '%s' dev '%s').",
+                        self->ti_ifname, slocal, sremote, type_str, skey, self->ti_dev_ifname);
                 return false;
             }
             LOG(INFO, "lnx_tunnel_iface: %s: tunnel interface created", self->ti_ifname);

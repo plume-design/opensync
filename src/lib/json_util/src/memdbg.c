@@ -33,6 +33,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "os_backtrace.h"
 #include "ds_tree.h"
 #include "memutil.h"
+#include "os_ev_trace.h"
 
 #if defined(JSON_MEMDBG)
 
@@ -218,6 +219,7 @@ void json_memdbg_init(struct ev_loop *loop)
 #endif
     if (loop != NULL)
     {
+        OS_EV_TRACE_MAP(json_memdbg_do_report);
         ev_timer_init(
                 &report_timer,
                 json_memdbg_do_report,

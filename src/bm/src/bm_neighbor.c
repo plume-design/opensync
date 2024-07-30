@@ -655,9 +655,9 @@ bm_neighbor_ovsdb_update_cb( ovsdb_update_monitor_t *self )
 
             ds_tree_insert( &bm_neighbors, neigh, &neigh->priority );
             LOGN( "Initialized Neighbor VIF bssid:%s if-name:%s Priority: %hhu"
-                  " Channel: %hhu HT-Mode: %hhu", neigh->bssid, neigh->ifname,
-                                                  neigh->priority, neigh->channel,
-                                                  neigh->ht_mode );
+                  " Channel: %hhu HT-Mode: %u", neigh->bssid, neigh->ifname,
+                                                neigh->priority, neigh->channel,
+                                                neigh->ht_mode );
             bm_neighbor_set_neighbor(&neigh->neigh_report);
             break;
         }
@@ -671,8 +671,7 @@ bm_neighbor_ovsdb_update_cb( ovsdb_update_monitor_t *self )
 
             if( !schema_Wifi_VIF_Neighbors_from_json( &nconf,
                                                       self->mon_json_new, true, perr )) {
-                LOGE( "Failed to parse modeified Wifi_VIF_Neighbors row uuid=%s: %s", 
-                                                                        self->mon_uuid, perr );
+                LOGE( "Failed to parse modified Wifi_VIF_Neighbors row uuid=%s: %s", self->mon_uuid, perr );
                 return;
             }
 
@@ -1362,7 +1361,7 @@ bm_neighbor_build_btm_neighbor_list( bm_client_t *client, bsal_btm_params_t *btm
 
         btm_params->num_neigh++;
 
-        LOGT("Built neighbor [%d] (beacon report): %s channel: %hhu bssid: %hhu op_class: %hhu phy_type: %hhu",
+        LOGT("Built neighbor [%d] (beacon report): %s channel: %hhu bssid: %u op_class: %hhu phy_type: %hhu",
               btm_params->num_neigh, bm_neigh->bssid, bm_neigh->channel, bm_neigh->neigh_report.bssid_info,
               bm_neigh->neigh_report.op_class, bm_neigh->neigh_report.phy_type);
     }
@@ -1429,7 +1428,7 @@ bm_neighbor_build_btm_neighbor_list( bm_client_t *client, bsal_btm_params_t *btm
 
         btm_params->num_neigh++;
 
-        LOGT("Built neighbor [%d]: %s channel: %hhu bssid: %hhu op_class: %hhu phy_type: %hhu",
+        LOGT("Built neighbor [%d]: %s channel: %hhu bssid: %u op_class: %hhu phy_type: %hhu",
               btm_params->num_neigh, bm_neigh->bssid, bm_neigh->channel, bm_neigh->neigh_report.bssid_info,
               bm_neigh->neigh_report.op_class, bm_neigh->neigh_report.phy_type);
     }
@@ -1483,7 +1482,7 @@ bm_neighbor_build_btm_neighbor_list( bm_client_t *client, bsal_btm_params_t *btm
         return false;
     }
 
-    LOGT( "Client '%s': Total neighbors = %hhu", client->mac_addr, btm_params->num_neigh );
+    LOGT("Client '%s': Total neighbors = %u", client->mac_addr, btm_params->num_neigh);
 
     return true;
 }

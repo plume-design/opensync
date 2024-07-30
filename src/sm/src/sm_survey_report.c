@@ -120,12 +120,6 @@ static inline sm_survey_ctx_t * sm_survey_ctx_alloc()
     return survey_ctx;
 }
 
-static inline void sm_survey_ctx_free(sm_survey_ctx_t *survey_ctx)
-{
-    if (NULL != survey_ctx) {
-        FREE(survey_ctx);
-    }
-}
 
 static
 sm_survey_ctx_t *sm_survey_ctx_get (

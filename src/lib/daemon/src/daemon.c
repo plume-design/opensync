@@ -103,6 +103,7 @@ bool daemon_init(daemon_t *self, const char *exe_path, int flags)
     self->dn_stdout.data = self;
     self->dn_stderr.data = self;
     self->dn_restart_timer.data = self;
+    self->dn_env = ds_map_str_new();
 
     return true;
 }
@@ -123,6 +124,7 @@ void daemon_fini(daemon_t *self)
 
     if (self->dn_pidfile_path != NULL) FREE(self->dn_pidfile_path);
     if (self->dn_exec != NULL) FREE(self->dn_exec);
+    ds_map_str_delete(&self->dn_env);
 }
 
 /**
@@ -217,6 +219,14 @@ bool daemon_arg_add_a(daemon_t *self, char *argv[])
     return true;
 }
 
+/**
+ * Add env var
+ */
+bool daemon_env_set(daemon_t *self, const char *env, const char *value)
+{
+    ds_map_str_set(self->dn_env, env, value);
+    return true;
+}
 
 /**
  * Start the daemon process
@@ -366,6 +376,13 @@ bool __daemon_start(daemon_t *self)
 
     /* Child case */
     int maxfd = sysconf(_SC_OPEN_MAX);
+
+    /* Set env */
+    ds_map_str_iter_t iter;
+    ds_map_str_foreach(self->dn_env, iter)
+    {
+        setenv(iter.key, iter.val, 1);
+    }
 
     /* Duplicate the file descriptors */
     dup2(fd_devnull, 0);

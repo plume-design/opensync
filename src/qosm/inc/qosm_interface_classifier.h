@@ -27,7 +27,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifndef QOSM_INTERFACE_CLASSIFIER_INCLUDED
 #define QOSM_INTERFACE_CLASSIFIER_INCLUDED
 
-#include "qosm.h"
+#include "qosm_filter_internal.h"
 
 struct qosm_intf_classifier *
 qosm_interface_classifier_get(struct schema_Interface_Classifier *conf);

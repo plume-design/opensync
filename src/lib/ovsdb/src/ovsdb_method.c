@@ -406,6 +406,7 @@ bool ovsdb_monit_call_argv(json_rpc_response_t *callback,
     json_t * jtbl;
     bool retval = false;
 
+    /* "params": [<db-name>, <json-value>, <monitor-requests>] */
     jparams = json_array();
 
     /* add default DB name */
@@ -424,6 +425,7 @@ bool ovsdb_monit_call_argv(json_rpc_response_t *callback,
     /* Third parameter is table name */
     json_array_append_new(jparams, jtbl);
 
+    LOGT("OVSDB MONITOR table: %s monid: %d params: %s", table, monid, json_dumps_static(jparams, 0));
     retval = ovsdb_method_send(callback, data, MT_MONITOR, jparams);
 
     return retval;
@@ -439,6 +441,29 @@ bool OVSDB_VA_DECL(ovsdb_monit_call, json_rpc_response_t *callback, void *data, 
     OVSDB_VA_CALL(ovsdb_monit_call, callback, data, monid, table, mon_flags);
 }
 
+/**
+ * Cancel monitoring
+ * monid - monitor id, as provided in a previous successful monitor call
+ * table - table name (for logging only)
+ */
+bool ovsdb_monitor_cancel_call(json_rpc_response_t *callback, void *data, int monid, const char *table)
+{
+    json_t *jparams;
+    bool retval = false;
+
+    /* "params": [<json-value>]
+     *
+     * The <json-value> in "params" matches the <json-value> in "params" for
+     * the ongoing "monitor" request that is to be canceled.
+     */
+    jparams = json_array();
+    json_array_append_new(jparams, json_integer(monid));
+
+    LOGT("send MONITOR_CANCEL table: %s monid: %d params: %s", table, monid, json_dumps_static(jparams, 0));
+    retval = ovsdb_method_send(callback, data, MT_MONITOR_CANCEL, jparams);
+
+    return retval;
+}
 
 /**
  * Following three functions are different forms for

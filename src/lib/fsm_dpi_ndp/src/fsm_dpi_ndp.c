@@ -48,6 +48,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "sockaddr_storage.h"
 #include "os.h"
 #include "util.h"
+#include "fsm_fn_trace.h"
 
 #include "fsm_dpi_ndp.h"
 
@@ -881,6 +882,7 @@ fsm_dpi_ndp_init(struct fsm_session *session)
     /* Set the plugin specific ops */
     client_ops = &session->p_ops->dpi_plugin_client_ops;
     client_ops->process_attr = fsm_dpi_ndp_process_attr;
+    FSM_FN_MAP(fsm_dpi_ndp_process_attr);
 
     /* Fetch the specific updates for this client plugin */
     session->ops.update(session);

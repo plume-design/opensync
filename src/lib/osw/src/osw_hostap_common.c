@@ -171,6 +171,13 @@ osw_hostap_conf_auth_algs_from_osw(const struct osw_wpa *wpa)
         auth_algs |= OSW_HOSTAP_CONF_AUTH_ALG_SAE;
         auth_algs |= OSW_HOSTAP_CONF_AUTH_ALG_FT;
     }
+    if (wpa->akm_eap) {
+        auth_algs |= OSW_HOSTAP_CONF_AUTH_ALG_OPEN;
+    }
+    if (wpa->akm_ft_eap) {
+        auth_algs |= OSW_HOSTAP_CONF_AUTH_ALG_OPEN;
+        auth_algs |= OSW_HOSTAP_CONF_AUTH_ALG_FT;
+    }
     return auth_algs;
 }
 
@@ -190,6 +197,8 @@ osw_hostap_conf_wpa_key_mgmt_from_osw(const struct osw_wpa *wpa)
     if (wpa->akm_sae)           csnprintf(pbuf, plen, "SAE ");
     if (wpa->akm_ft_psk)        csnprintf(pbuf, plen, "FT-PSK ");
     if (wpa->akm_ft_sae)        csnprintf(pbuf, plen, "FT-SAE ");
+    if (wpa->akm_eap)           csnprintf(pbuf, plen, "WPA-EAP ");
+    if (wpa->akm_ft_eap)        csnprintf(pbuf, plen, "FT-EAP ");
 
     return cpy_wpa_key_mgmt;
 }
@@ -351,8 +360,16 @@ osw_hostap_util_wpa_key_mgmt_to_osw(const char *wpa_key_mgmt,
     if (strstr(wpa_key_mgmt, "FT-PSK"))  osw_wpa->akm_ft_psk = true;
     if (strstr(wpa_key_mgmt, "SAE"))     osw_wpa->akm_sae = true;
     if (strstr(wpa_key_mgmt, "FT-SAE"))  osw_wpa->akm_ft_sae = true;
+    if (strstr(wpa_key_mgmt, "WPA-EAP")) osw_wpa->akm_eap = true;
+    if (strstr(wpa_key_mgmt, "FT-EAP"))  osw_wpa->akm_ft_eap = true;
     /* only for wpa_supplicant */
     if (strstr(wpa_key_mgmt, "WPA2-PSK")) osw_wpa->akm_psk = true;
+    if (strstr(wpa_key_mgmt, "WPA2+WPA/IEEE 802.1X/EAP")) osw_wpa->akm_eap = true;
+    if (strstr(wpa_key_mgmt, "WPA2/IEEE 802.1X/EAP"))  osw_wpa->akm_eap = true;
+    if (strstr(wpa_key_mgmt, "WPA/IEEE 802.1X/EAP"))   osw_wpa->akm_eap = true;
+    if (strstr(wpa_key_mgmt, "IEEE 802.1X (no WPA)"))  osw_wpa->akm_eap = true;
+    if (strstr(wpa_key_mgmt, "WPA2-PSK+WPA-PSK"))      osw_wpa->akm_psk = true;
+    if (strstr(wpa_key_mgmt, "WPA-PSK"))               osw_wpa->akm_psk = true;
 
     return true;
 }
@@ -364,7 +381,7 @@ osw_hostap_util_key_mgmt_to_osw(const char *key_mgmt,
     if (key_mgmt == NULL || wpa == NULL)
         return false;
 
-    /* FIXME: EAP, DPP, etc. */
+    /* FIXME: DPP, etc. */
 
     if (strcmp(key_mgmt, "WPA2-PSK+WPA-PSK") == 0) {
         wpa->wpa = true;
@@ -396,6 +413,26 @@ osw_hostap_util_key_mgmt_to_osw(const char *key_mgmt,
     if (strcmp(key_mgmt, "SAE") == 0) {
         wpa->rsn = true;
         wpa->akm_sae = true;
+    }
+    if (strcmp(key_mgmt, "WPA2+WPA/IEEE 802.1X/EAP") == 0) {
+        wpa->wpa = true;
+        wpa->rsn = true;
+        wpa->akm_eap = true;
+    }
+    if (strcmp(key_mgmt, "WPA2/IEEE 802.1X/EAP") == 0) {
+        wpa->rsn = true;
+        wpa->akm_eap = true;
+    }
+    if (strcmp(key_mgmt, "WPA/IEEE 802.1X/EAP") == 0) {
+        wpa->wpa = true;
+        wpa->akm_eap = true;
+    }
+    if (strcmp(key_mgmt, "IEEE 802.1X (no WPA)") == 0) {
+        wpa->akm_eap = true;
+    }
+    if (strcmp(key_mgmt, "FT-EAP") == 0) {
+        wpa->rsn = true;
+        wpa->akm_ft_eap = true;
     }
 
     return true;

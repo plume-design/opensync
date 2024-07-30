@@ -32,6 +32,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "evx.h"
 #include "daemon.h"
 #include "osn_dhcpv6.h"
+#include "ds_util.h"
 
 typedef struct odhcp6_client odhcp6_client_t;
 typedef void odhcp6_client_status_fn_t(
@@ -48,6 +49,7 @@ struct odhcp6_client
     bool        oc_renew;                                   /* Renew address */
     bool        oc_option_request[OSN_DHCP_OPTIONS_MAX];    /* Options requested from server */
     char       *oc_option_send[OSN_DHCP_OPTIONS_MAX];       /* Options sent to server */
+    ds_map_str_t *oc_other_config;                          /* other_config */
     ev_stat     oc_opts_ev;                                 /* Options file watcher */
     ev_debounce oc_debounce;                                /* Debouncer for the file watcher */
     char        oc_opts_file[C_MAXPATH_LEN];                /* Path to the options file */
@@ -73,6 +75,7 @@ bool odhcp6_client_set(
 
 bool odhcp6_client_option_request(odhcp6_client_t *self, int tag);
 bool odhcp6_client_option_send(odhcp6_client_t *self, int tag, const char *value);
+bool odhcp6_client_other_config(odhcp6_client_t *self, const char *key, const char *value);
 void odhcp6_client_status_notify(odhcp6_client_t *self, odhcp6_client_status_fn_t *fn);
 
 #endif /* ODHCP6_CLIENT_H_INCLUDED */

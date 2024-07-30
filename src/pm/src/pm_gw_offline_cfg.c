@@ -535,6 +535,8 @@ static bool insert_port_into_bridge(char *bridge, char *port)
 {
     char command[512];
 
+    if (!is_input_shell_safe(port)) return false;
+
     if(kconfig_enabled(CONFIG_TARGET_USE_NATIVE_BRIDGE))
         snprintf(command, sizeof(command),
                  "brctl show %s | grep %s || brctl addif %s %s",
@@ -1644,7 +1646,7 @@ static bool util_interface_add_to_lanbridge(const char *interface)
     char cmd[C_MAXPATH_LEN];
     bool rc;
 
-
+    if (!is_input_shell_safe(interface)) return false;
 
     if(kconfig_enabled(CONFIG_TARGET_USE_NATIVE_BRIDGE))
         snprintf(cmd, sizeof(cmd),

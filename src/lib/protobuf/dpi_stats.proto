@@ -54,13 +54,10 @@ message ErrorCounters {
 
 message NfqueueStatsCounters {
   string queueNum = 1;
-  uint32 portId = 2;
   uint32 queueTotal = 3;
-  uint32 copyRange = 4;
   uint32 queueDropped = 5;
   uint32 queueUserDropped = 6;
   uint32 seqId = 7;
-  uint32 copyMode = 8;
   repeated ErrorCounters errors = 9;
 }
 
@@ -70,10 +67,19 @@ message PcapStatsCounters {
   string ifname = 3;
 }
 
+message CallTraceCounters {
+  string func_name = 1;
+  uint64 call_count = 2;
+  // duration is in micro seconds
+  uint64 max_duration = 3;
+  uint64 total_duration = 4;
+}
+
 message DpiStatsReport {
   DpiStatsObservationPoint observation_point = 1;
   string plugin = 2;
   DpiStatsCounters counters = 3;
   repeated NfqueueStatsCounters nfqueue_stats = 4;
   repeated PcapStatsCounters pcap_stats = 5;
+  repeated CallTraceCounters call_stats = 6;
 }

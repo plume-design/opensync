@@ -81,8 +81,8 @@ RUN chmod 0777 /usr/var/run/openvswitch
 
 # Install miniupnpc 2.2.1 from source (apt-get pulls V. 1.9)
 WORKDIR /usr/src
-RUN wget -O miniupnpc-2.2.1.tar.gz http://miniupnp.free.fr/files/download.php?file=miniupnpc-2.2.1.tar.gz && tar xf miniupnpc-2.2.1.tar.gz
-WORKDIR /usr/src/miniupnpc-2.2.1
+RUN wget -O miniupnpc-2.2.1.tar.gz https://github.com/miniupnp/miniupnp/archive/refs/tags/miniupnpc_2_2_1.tar.gz && tar xf miniupnpc-2.2.1.tar.gz
+WORKDIR /usr/src/miniupnp-miniupnpc_2_2_1/miniupnpc
 RUN make install
 
 # UBUS
@@ -145,7 +145,11 @@ RUN $PKGINSTALL clang-tidy-${LLVM_VERSION} bear jq
 RUN $PKGINSTALL clang-format-${LLVM_VERSION}
 
 # libcares
-RUN $PKGINSTALL libc-ares-dev
+# install a newer version which includes support for ares_getaddrinfo()
+WORKDIR /tmp
+RUN wget http://security.ubuntu.com/ubuntu/pool/main/c/c-ares/libc-ares2_1.18.1-1ubuntu0.22.04.3_amd64.deb
+RUN wget http://security.ubuntu.com/ubuntu/pool/main/c/c-ares/libc-ares-dev_1.18.1-1ubuntu0.22.04.3_amd64.deb
+RUN $PKGINSTALL ./libc-ares2_1.18.1-1ubuntu0.22.04.3_amd64.deb ./libc-ares-dev_1.18.1-1ubuntu0.22.04.3_amd64.deb
 
 # Open interactive bash
 CMD bash -i

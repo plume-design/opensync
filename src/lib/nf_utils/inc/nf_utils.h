@@ -215,7 +215,6 @@ struct nf_queue_context
 struct nf_queue_err_counters
 {
     int error;
-    uint64_t prev_counter;
     uint64_t counter;
     int32_t to_report;
 };
@@ -265,7 +264,7 @@ bool nf_queue_get_nlsock_buffsz(uint32_t queue_num);
 
 bool nf_queue_set_queue_maxlen(uint32_t queue_num, uint32_t queue_maxlen);
 
-bool nf_queue_update_payload(uint32_t packet_id, uint32_t queue_num);
+bool nf_queue_update_payload(uint32_t packet_id, uint32_t queue_num, int len);
 
 bool nf_queue_backoff_update(bool enable, uint32_t queue_num);
 

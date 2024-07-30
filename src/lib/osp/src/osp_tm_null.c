@@ -46,9 +46,9 @@ bool osp_tm_get_fan_rpm_from_thermal_state(const int state, int *fan_rpm)
     return false;
 }
 
-bool osp_tm_get_led_state(int *led_state)
+int osp_tm_get_led_state(int position)
 {
-    *led_state = -1;
+    (void)position;
 
-    return false;
+    return -1;
 }

@@ -50,6 +50,11 @@ enum
     FSM_TAP_SOCKET = 0x08,
 };
 
+enum recv_msg_type {
+    VECTOR_IO = 0,
+    BUFFER = 1
+};
+
 struct reg_client_session
 {
     char *name;
@@ -359,10 +364,8 @@ int dpi_sni_plugin_init(struct fsm_session *session);
 int dpi_ndp_plugin_init(struct fsm_session *session);
 int dpi_mdns_responder_plugin_init(struct fsm_session *session);
 int fsm_wc_null_plugin_init(struct fsm_session *session);
+int we_dpi_plugin_init(struct fsm_session *session);
 #endif
-
-void
-fsm_set_dpi_health_stats_cfg(struct fsm_session *session);
 
 void
 fsm_collect_pcap_stats(struct fsm_session *session);

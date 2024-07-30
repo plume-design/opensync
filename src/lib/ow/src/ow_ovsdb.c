@@ -67,6 +67,9 @@ static ovsdb_table_t table_Wifi_VIF_State;
 static ovsdb_table_t table_Wifi_VIF_Neighbors;
 static ovsdb_table_t table_Wifi_Associated_Clients;
 static ovsdb_table_t table_Openflow_Tag;
+static ovsdb_table_t table_RADIUS;
+static ovsdb_table_t table_Passpoint_Config;
+static ovsdb_table_t table_Passpoint_OSU_Providers;
 
 struct ow_ovsdb {
     struct ds_tree phy_tree;
@@ -905,6 +908,161 @@ ow_ovsdb_phystate_fill_regulatory(struct schema_Wifi_Radio_State *schema,
     }
 }
 
+#define OW_OVSDB_INVALID_RATE 15
+#define OW_OVSDB_INVALID_RATE_BIT (1 << OW_OVSDB_INVALID_RATE)
+
+static void
+ow_ovsdb_phystate_get_rates_iter_cb(const struct osw_state_vif_info *info,
+                                    void *priv)
+{
+    if (info->drv_state->status != OSW_VIF_ENABLED) return;
+    if (info->drv_state->vif_type != OSW_VIF_AP) return;
+
+    const struct osw_ap_mode *ap_mode = &info->drv_state->u.ap.mode;
+    struct osw_ap_mode *phy_mode = priv;
+
+    if (phy_mode->supported_rates == 0) phy_mode->supported_rates = ap_mode->supported_rates;
+    if (phy_mode->basic_rates == 0) phy_mode->basic_rates = ap_mode->basic_rates;
+    if (phy_mode->beacon_rate.type == OSW_BEACON_RATE_UNSPEC) phy_mode->beacon_rate = ap_mode->beacon_rate;
+    if (phy_mode->mcast_rate == OSW_RATE_UNSPEC) phy_mode->mcast_rate = ap_mode->mcast_rate;
+    if (phy_mode->mgmt_rate == OSW_RATE_UNSPEC) phy_mode->mgmt_rate = ap_mode->mgmt_rate;
+
+    if (phy_mode->supported_rates != ap_mode->supported_rates) {
+        phy_mode->supported_rates |= OW_OVSDB_INVALID_RATE_BIT;
+    }
+
+    if (phy_mode->basic_rates != ap_mode->basic_rates) {
+        phy_mode->basic_rates = OW_OVSDB_INVALID_RATE_BIT;
+    }
+
+    if (memcmp(&phy_mode->beacon_rate, &ap_mode->beacon_rate, sizeof(phy_mode->beacon_rate)) != 0) {
+        phy_mode->beacon_rate.type = OW_OVSDB_INVALID_RATE;
+    }
+
+    if (phy_mode->mcast_rate != ap_mode->mcast_rate) {
+        phy_mode->mcast_rate = OW_OVSDB_INVALID_RATE;
+    }
+
+    if (phy_mode->mgmt_rate != ap_mode->mgmt_rate) {
+        phy_mode->mgmt_rate = OW_OVSDB_INVALID_RATE;
+    }
+}
+
+static const char *
+ow_ovsdb_enum2rate(enum osw_rate_legacy rate)
+{
+    switch (rate) {
+        case OSW_RATE_CCK_1_MBPS: return "1";
+        case OSW_RATE_CCK_2_MBPS: return "2";
+        case OSW_RATE_CCK_5_5_MBPS: return "5.5";
+        case OSW_RATE_CCK_11_MBPS: return "11";
+
+        case OSW_RATE_OFDM_6_MBPS: return "6";
+        case OSW_RATE_OFDM_9_MBPS: return "9";
+        case OSW_RATE_OFDM_12_MBPS: return "12";
+        case OSW_RATE_OFDM_18_MBPS: return "18";
+        case OSW_RATE_OFDM_24_MBPS: return "24";
+        case OSW_RATE_OFDM_36_MBPS: return "36";
+        case OSW_RATE_OFDM_48_MBPS: return "48";
+        case OSW_RATE_OFDM_54_MBPS: return "54";
+
+        case OSW_RATE_UNSPEC: break;
+        case OSW_RATE_COUNT: break;
+    }
+    return NULL;
+}
+
+static enum osw_rate_legacy
+ow_ovsdb_rate2enum(const char *rate)
+{
+    return strcmp(rate, "1") == 0 ? OSW_RATE_CCK_1_MBPS :
+           strcmp(rate, "2") == 0 ? OSW_RATE_CCK_2_MBPS :
+           strcmp(rate, "5.5") == 0 ? OSW_RATE_CCK_5_5_MBPS :
+           strcmp(rate, "11") == 0 ? OSW_RATE_CCK_11_MBPS :
+
+           strcmp(rate, "6") == 0 ? OSW_RATE_OFDM_6_MBPS :
+           strcmp(rate, "9") == 0 ? OSW_RATE_OFDM_9_MBPS :
+           strcmp(rate, "12") == 0 ? OSW_RATE_OFDM_12_MBPS :
+           strcmp(rate, "18") == 0 ? OSW_RATE_OFDM_18_MBPS :
+           strcmp(rate, "24") == 0 ? OSW_RATE_OFDM_24_MBPS :
+           strcmp(rate, "36") == 0 ? OSW_RATE_OFDM_36_MBPS :
+           strcmp(rate, "48") == 0 ? OSW_RATE_OFDM_48_MBPS :
+           strcmp(rate, "54") == 0 ? OSW_RATE_OFDM_54_MBPS :
+
+           OSW_RATE_UNSPEC;
+}
+
+static void
+ow_ovsdb_phystate_fill_rates(struct schema_Wifi_Radio_State *schema,
+                            const struct osw_state_phy_info *phy)
+{
+    struct osw_ap_mode mode = {0};
+    const char *phy_name = phy->phy_name;
+
+    osw_state_vif_get_list(ow_ovsdb_phystate_get_rates_iter_cb,
+                           phy_name,
+                           &mode);
+
+    if (mode.supported_rates & OW_OVSDB_INVALID_RATE_BIT) {
+        mode.supported_rates = 0;
+    }
+
+    if (mode.basic_rates & OW_OVSDB_INVALID_RATE_BIT) {
+        mode.basic_rates = 0;
+    }
+
+    size_t i;
+    for (i = 0; i < OSW_RATE_COUNT; i++) {
+        if (mode.supported_rates & osw_rate_legacy_bit(i)) {
+            const char *str = ow_ovsdb_enum2rate(i);
+            if (WARN_ON(str == NULL)) continue;
+            SCHEMA_VAL_APPEND(schema->supported_rates, str);
+        }
+
+        if (mode.basic_rates & osw_rate_legacy_bit(i)) {
+            const char *str = ow_ovsdb_enum2rate(i);
+            if (WARN_ON(str == NULL)) continue;
+            SCHEMA_VAL_APPEND(schema->basic_rates, str);
+        }
+    }
+
+    if (mode.beacon_rate.type != OW_OVSDB_INVALID_RATE) {
+        switch (mode.beacon_rate.type) {
+            case OSW_BEACON_RATE_UNSPEC:
+                break;
+            case OSW_BEACON_RATE_ABG:
+                {
+                    const char *str = ow_ovsdb_enum2rate(mode.beacon_rate.u.legacy);
+                    WARN_ON(str == NULL);
+                    if (str != NULL) {
+                        SCHEMA_SET_STR(schema->beacon_rate, str);
+                    }
+                }
+                break;
+            case OSW_BEACON_RATE_HT:
+                break;
+            case OSW_BEACON_RATE_VHT:
+                break;
+            case OSW_BEACON_RATE_HE:
+                break;
+        }
+    }
+
+    if (mode.mcast_rate != OW_OVSDB_INVALID_RATE) {
+        const char *str = ow_ovsdb_enum2rate(mode.mcast_rate);
+        if (str != NULL) {
+            SCHEMA_SET_STR(schema->mcast_rate, str);
+        }
+    }
+
+    if (mode.mgmt_rate != OW_OVSDB_INVALID_RATE) {
+        const char *str = ow_ovsdb_enum2rate(mode.mgmt_rate);
+        if (str != NULL) {
+            SCHEMA_SET_STR(schema->mgmt_rate, str);
+        }
+    }
+}
+
 static void
 ow_ovsdb_phystate_to_schema(struct ow_ovsdb_phy *owo_phy,
                             struct schema_Wifi_Radio_State *schema,
@@ -969,6 +1127,7 @@ ow_ovsdb_phystate_to_schema(struct ow_ovsdb_phy *owo_phy,
     ow_ovsdb_phystate_fill_allowed_channels(schema, phy);
     ow_ovsdb_phystate_fill_channels(schema, phy);
     ow_ovsdb_phystate_fill_regulatory(schema, rconf, phy);
+    ow_ovsdb_phystate_fill_rates(schema, phy);
     ow_ovsdb_phystate_fix_no_vifs(schema, rconf);
 
     // FIXME: channels[], needed for DFS
@@ -1039,8 +1198,10 @@ ow_ovsdb_vifstate_fill_akm(struct schema_Wifi_VIF_State *schema,
 {
     /* FIXME: This isn't totally accurate, but good enough for now. */
 
+    if (wpa->akm_eap)    SCHEMA_VAL_APPEND(schema->wpa_key_mgmt, SCHEMA_CONSTS_KEY_WPA_EAP);
     if (wpa->akm_psk)    SCHEMA_VAL_APPEND(schema->wpa_key_mgmt, SCHEMA_CONSTS_KEY_WPA_PSK);
     if (wpa->akm_sae)    SCHEMA_VAL_APPEND(schema->wpa_key_mgmt, SCHEMA_CONSTS_KEY_SAE);
+    if (wpa->akm_ft_eap) SCHEMA_VAL_APPEND(schema->wpa_key_mgmt, SCHEMA_CONSTS_KEY_FT_EAP);
     if (wpa->akm_ft_psk) SCHEMA_VAL_APPEND(schema->wpa_key_mgmt, SCHEMA_CONSTS_KEY_FT_PSK);
     if (wpa->akm_ft_sae) SCHEMA_VAL_APPEND(schema->wpa_key_mgmt, SCHEMA_CONSTS_KEY_FT_SAE);
 
@@ -1088,8 +1249,21 @@ ow_ovsdb_vifstate_fill_ap_psk(struct schema_Wifi_VIF_State *schema,
     }
 }
 
+static bool
+ow_ovsdb_vconf_maclist_has_acl(const struct schema_Wifi_VIF_Config *vconf,
+                               const char *mac)
+{
+    int i;
+    for (i = 0; vconf != NULL && i < vconf->mac_list_len; i++) {
+        const bool match = (strcasecmp(vconf->mac_list[i], mac) == 0);
+        if (match) return true;
+    }
+    return false;
+}
+
 static void
 ow_ovsdb_vifstate_fill_ap_acl(struct schema_Wifi_VIF_State *schema,
+                              const struct schema_Wifi_VIF_Config *vconf,
                               const struct osw_hwaddr_list *acl)
 {
     size_t i;
@@ -1097,10 +1271,74 @@ ow_ovsdb_vifstate_fill_ap_acl(struct schema_Wifi_VIF_State *schema,
         struct osw_hwaddr_str buf;
         const char *str = osw_hwaddr2str(&acl->list[i], &buf);
 
+        /* ACLs can be dynamic and come from other parts of
+         * the system, eg. steering. These must not be
+         * included in the state report because the
+         * configuring entity may want to know if
+         * Wifi_VIF_Config == Wifi_VIF_State.
+         *
+         * This performs an intersection between mac_list in
+         * Wifi_VIF_Config and what the OSW drivers are
+         * reporting.
+         */
+        if (ow_ovsdb_vconf_maclist_has_acl(vconf, str) == false)
+            continue;
+
         if (WARN_ON(i >= ARRAY_SIZE(schema->mac_list)))
             break;
 
         SCHEMA_VAL_APPEND(schema->mac_list, str);
+    }
+}
+
+static bool
+ow_ovsdb_radius_is_equal(const struct schema_RADIUS *a,
+                         const struct osw_radius *b)
+{
+    if (a->ip_addr_exists == true &&
+        a->secret_exists == true &&
+        a->port_exists == true &&
+        strcmp(a->ip_addr, b->server) == 0 &&
+        strcmp(a->secret, b->passphrase) == 0 &&
+        a->port == b->port)
+        return true;
+    return false;
+}
+
+void
+ow_ovsdb_vifstate_fill_ap_radius(struct schema_Wifi_VIF_State *schema,
+                                 const struct osw_radius_list *radlist,
+                                 const struct osw_radius_list *acctlist)
+{
+    size_t i;
+    ovsdb_cache_row_t *rrow;
+
+    for (i = 0; i < radlist->count; i++) {
+        const struct osw_radius *rad = &radlist->list[i];
+        ds_tree_foreach(&table_RADIUS.rows, rrow) {
+            const struct schema_RADIUS *radius = (const void*)rrow->record;
+            if (ow_ovsdb_radius_is_equal(radius, rad) == true) {
+                if (i == 0) {
+                    SCHEMA_SET_UUID(schema->primary_radius, radius->_uuid.uuid);
+                } else {
+                    SCHEMA_APPEND_UUID(schema->secondary_radius, radius->_uuid.uuid);
+                }
+            }
+        }
+    }
+
+    for (i = 0; i < acctlist->count; i++) {
+        const struct osw_radius *rad = &acctlist->list[i];
+        ds_tree_foreach(&table_RADIUS.rows, rrow) {
+            const struct schema_RADIUS *radius = (const void*)rrow->record;
+            if (ow_ovsdb_radius_is_equal(radius, rad) == true) {
+                if (i == 0) {
+                    SCHEMA_SET_UUID(schema->primary_accounting, radius->_uuid.uuid);
+                } else {
+                    SCHEMA_APPEND_UUID(schema->secondary_accounting, radius->_uuid.uuid);
+                }
+            }
+        }
     }
 }
 
@@ -1187,6 +1425,7 @@ ow_ovsdb_vifstate_to_schema(struct schema_Wifi_VIF_State *schema,
             SCHEMA_SET_STR(schema->ssid, ap->ssid.buf);
             SCHEMA_SET_STR(schema->ssid_broadcast, ap->ssid_hidden ? "disabled" : "enabled");
             SCHEMA_SET_STR(schema->bridge, ap->bridge_if_name.buf);
+            SCHEMA_SET_STR(schema->nas_identifier, ap->nas_identifier.buf);
             SCHEMA_SET_INT(schema->ft_mobility_domain, ap->wpa.ft_mobility_domain);
             SCHEMA_SET_BOOL(schema->wpa, ap->wpa.wpa || ap->wpa.rsn);
             SCHEMA_SET_BOOL(schema->ap_bridge, ap->isolated ? false : true);
@@ -1197,6 +1436,9 @@ ow_ovsdb_vifstate_to_schema(struct schema_Wifi_VIF_State *schema,
             SCHEMA_SET_BOOL(schema->mcast2ucast, ap->mcast2ucast);
             SCHEMA_SET_BOOL(schema->dynamic_beacon, false); // FIXME
             SCHEMA_SET_STR(schema->multi_ap, ow_ovsdb_ap_multi_ap_to_cstr(&ap->multi_ap));
+            /* FIXME - passpoint is being read from config, not state in state report! */
+            const char *passpoint_ref = ow_conf_vif_get_ap_passpoint_ref(vif->vif_name);
+            if (passpoint_ref != NULL) SCHEMA_SET_UUID (schema->passpoint_config, passpoint_ref);
 
             {
                 const enum osw_acl_policy acl_policy = ow_ovsdb_ap_get_acl_policy(ap, vconf);
@@ -1214,7 +1456,8 @@ ow_ovsdb_vifstate_to_schema(struct schema_Wifi_VIF_State *schema,
 
             ow_ovsdb_vifstate_fill_akm(schema, &ap->wpa);
             ow_ovsdb_vifstate_fill_ap_psk(schema, &ap->psk_list);
-            ow_ovsdb_vifstate_fill_ap_acl(schema, &ap->acl);
+            ow_ovsdb_vifstate_fill_ap_acl(schema, vconf, &ap->acl);
+            ow_ovsdb_vifstate_fill_ap_radius(schema, &ap->radius_list, &ap->acct_list);
             ow_ovsdb_wps_op_fill_vstate(g_ow_ovsdb.wps, schema);
 
             const uint32_t freq = ap->channel.control_freq_mhz;
@@ -1268,7 +1511,7 @@ ow_ovsdb_vifstate_to_schema(struct schema_Wifi_VIF_State *schema,
                     SCHEMA_SET_STR(schema->mac_list_type, "none");
                     SCHEMA_SET_STR(schema->ssid_broadcast, "enabled");
                     SCHEMA_SET_BOOL(schema->uapsd_enable, false);
-                    SCHEMA_SET_BOOL(schema->wds, false);
+                    SCHEMA_SET_BOOL(schema->wds, vsta->link.multi_ap);
                     break;
                 case OSW_DRV_VIF_STATE_STA_LINK_UNKNOWN:
                 case OSW_DRV_VIF_STATE_STA_LINK_CONNECTING:
@@ -2540,6 +2783,58 @@ ow_ovsdb_rconf_to_ow_conf(const struct schema_Wifi_Radio_Config *rconf,
             ow_conf_phy_set_ap_wmm_enabled(rconf->if_name, NULL);
         }
     }
+
+    if (is_new == true || rconf->basic_rates_changed == true) {
+        uint16_t mask = 0;
+        {
+            int i;
+            for (i = 0; i < rconf->basic_rates_len; i++) {
+                const enum osw_rate_legacy rate = ow_ovsdb_rate2enum(rconf->basic_rates[i]);
+                if (WARN_ON(rate == OSW_RATE_UNSPEC)) continue;
+                mask |= osw_rate_legacy_bit(rate);
+            }
+        }
+        WARN_ON(rconf->basic_rates_len > 0 && mask == 0);
+        ow_conf_phy_set_ap_basic_rates(rconf->if_name, mask == 0 ? NULL : &mask);
+    }
+
+    if (is_new == true || rconf->supported_rates_changed == true) {
+        uint16_t mask = 0;
+        {
+            int i;
+            for (i = 0; i < rconf->supported_rates_len; i++) {
+                const enum osw_rate_legacy rate = ow_ovsdb_rate2enum(rconf->supported_rates[i]);
+                if (WARN_ON(rate == OSW_RATE_UNSPEC)) continue;
+                mask |= osw_rate_legacy_bit(rate);
+            }
+        }
+        WARN_ON(rconf->supported_rates_len > 0 && mask == 0);
+        ow_conf_phy_set_ap_supp_rates(rconf->if_name, mask == 0 ? NULL : &mask);
+    }
+
+    if (is_new == true || rconf->beacon_rate_changed == true) {
+        const enum osw_rate_legacy rate = rconf->beacon_rate_exists
+                                        ? ow_ovsdb_rate2enum(rconf->beacon_rate)
+                                        : OSW_RATE_UNSPEC;
+        WARN_ON(rconf->beacon_rate_exists && rate == OSW_RATE_UNSPEC);
+        ow_conf_phy_set_ap_beacon_rate(rconf->if_name, rate == OSW_RATE_UNSPEC ? NULL : &rate);
+    }
+
+    if (is_new == true || rconf->mcast_rate_changed == true) {
+        const enum osw_rate_legacy rate = rconf->mcast_rate_exists
+                                        ? ow_ovsdb_rate2enum(rconf->mcast_rate)
+                                        : OSW_RATE_UNSPEC;
+        WARN_ON(rconf->mcast_rate_exists && rate == OSW_RATE_UNSPEC);
+        ow_conf_phy_set_ap_mcast_rate(rconf->if_name, rate == OSW_RATE_UNSPEC ? NULL : &rate);
+    }
+
+    if (is_new == true || rconf->mgmt_rate_changed == true) {
+        const enum osw_rate_legacy rate = rconf->mgmt_rate_exists
+                                        ? ow_ovsdb_rate2enum(rconf->mgmt_rate)
+                                        : OSW_RATE_UNSPEC;
+        WARN_ON(rconf->mgmt_rate_exists && rate == OSW_RATE_UNSPEC);
+        ow_conf_phy_set_ap_mgmt_rate(rconf->if_name, rate == OSW_RATE_UNSPEC ? NULL : &rate);
+    }
 }
 
 static void
@@ -2625,8 +2920,10 @@ ow_ovsdb_vconf_to_ow_conf_ap_wpa(const struct schema_Wifi_VIF_Config *vconf)
     const bool rsn = vconf->rsn_pairwise_tkip
                   || vconf->rsn_pairwise_ccmp;
     bool unsupported = false;
+    bool eap = false;
     bool psk = false;
     bool sae = false;
+    bool ft_eap = false;
     bool ft_psk = false;
     bool ft_sae = false;
 
@@ -2637,6 +2934,8 @@ ow_ovsdb_vconf_to_ow_conf_ap_wpa(const struct schema_Wifi_VIF_Config *vconf)
         else if (strcmp(akm, SCHEMA_CONSTS_KEY_SAE    ) == 0)    { sae = true; }
         else if (strcmp(akm, SCHEMA_CONSTS_KEY_FT_SAE ) == 0) { ft_psk = true; }
         else if (strcmp(akm, SCHEMA_CONSTS_KEY_FT_PSK ) == 0) { ft_sae = true; }
+        else if (strcmp(akm, SCHEMA_CONSTS_KEY_WPA_EAP) == 0)    { eap = true; }
+        else if (strcmp(akm, SCHEMA_CONSTS_KEY_FT_EAP ) == 0) { ft_eap = true; }
         else { unsupported = true; }
     }
 
@@ -2647,8 +2946,10 @@ ow_ovsdb_vconf_to_ow_conf_ap_wpa(const struct schema_Wifi_VIF_Config *vconf)
          * prior.
          */
         LOGI("ow: ovsdb: vif: %s: unsupported configuration, ignoring", vconf->if_name);
+        ow_conf_vif_set_ap_akm_eap(vconf->if_name, NULL);
         ow_conf_vif_set_ap_akm_psk(vconf->if_name, NULL);
         ow_conf_vif_set_ap_akm_sae(vconf->if_name, NULL);
+        ow_conf_vif_set_ap_akm_ft_eap(vconf->if_name, NULL);
         ow_conf_vif_set_ap_akm_ft_psk(vconf->if_name, NULL);
         ow_conf_vif_set_ap_akm_ft_sae(vconf->if_name, NULL);
         ow_conf_vif_set_ap_pairwise_ccmp(vconf->if_name, NULL);
@@ -2659,8 +2960,10 @@ ow_ovsdb_vconf_to_ow_conf_ap_wpa(const struct schema_Wifi_VIF_Config *vconf)
         return;
     }
 
+    ow_conf_vif_set_ap_akm_eap(vconf->if_name, &eap);
     ow_conf_vif_set_ap_akm_psk(vconf->if_name, &psk);
     ow_conf_vif_set_ap_akm_sae(vconf->if_name, &sae);
+    ow_conf_vif_set_ap_akm_ft_eap(vconf->if_name, &ft_eap);
     ow_conf_vif_set_ap_akm_ft_psk(vconf->if_name, &ft_psk);
     ow_conf_vif_set_ap_akm_ft_sae(vconf->if_name, &ft_sae);
     ow_conf_vif_set_ap_pairwise_tkip(vconf->if_name, &tkip);
@@ -2839,6 +3142,42 @@ ow_ovsdb_vconf_to_ow_conf_ap(const struct schema_Wifi_VIF_Config *vconf,
         }
     }
 
+    if (is_new == true || vconf->nas_identifier_changed == true) {
+        if (vconf->nas_identifier_exists == true) {
+            struct osw_nas_id x = {0};
+            STRSCPY_WARN(x.buf, vconf->nas_identifier);
+            ow_conf_vif_set_ap_nas_identifier(vconf->if_name, &x);
+        } else {
+            ow_conf_vif_set_ap_nas_identifier(vconf->if_name, NULL);
+        }
+    }
+
+    if (is_new == true ||
+            vconf->primary_radius_changed == true ||
+            vconf->secondary_radius_changed == true)
+    {
+        int i;
+        ow_conf_vif_flush_radius_refs(vconf->if_name);
+
+        if (vconf->primary_radius_exists)
+            ow_conf_vif_add_radius_ref(vconf->if_name, vconf->primary_radius.uuid);
+        for (i = 0; i < vconf->secondary_radius_len; i++)
+            ow_conf_vif_add_radius_ref(vconf->if_name, vconf->secondary_radius[i].uuid);
+    }
+
+    if (is_new == true ||
+            vconf->primary_accounting_changed == true ||
+            vconf->secondary_accounting_changed == true)
+    {
+        int i;
+        ow_conf_vif_flush_radius_accounting_refs(vconf->if_name);
+
+        if (vconf->primary_accounting_exists)
+            ow_conf_vif_add_radius_accounting_ref(vconf->if_name, vconf->primary_accounting.uuid);
+        for (i = 0; i < vconf->secondary_accounting_len; i++)
+            ow_conf_vif_add_radius_accounting_ref(vconf->if_name, vconf->secondary_accounting[i].uuid);
+    }
+
     const bool wpa_changed = (vconf->security_changed == true)
                           || (vconf->wpa_changed == true)
                           || (vconf->pmf_changed == true)
@@ -2849,6 +3188,16 @@ ow_ovsdb_vconf_to_ow_conf_ap(const struct schema_Wifi_VIF_Config *vconf,
                           || (vconf->rsn_pairwise_ccmp_changed == true);
     if (is_new == true || wpa_changed == true)
         ow_ovsdb_vconf_to_ow_conf_ap_wpa(vconf);
+
+    if (is_new == true || vconf->passpoint_config_changed == true) {
+        if (vconf->passpoint_config_exists == true) {
+            const char *p = vconf->passpoint_config.uuid;
+            ow_conf_vif_set_ap_passpoint_ref(vconf->if_name, p);
+        }
+        else {
+            ow_conf_vif_set_ap_passpoint_ref(vconf->if_name, NULL);
+        }
+    }
 
     // dynamic beacon
     // vlan_id
@@ -2924,6 +3273,8 @@ ow_ovsdb_vconf_to_ow_conf_sta(const struct schema_Wifi_VIF_Config *vconf,
             else if (strcmp(akm, SCHEMA_CONSTS_KEY_SAE    ) == 0) { wpa.akm_sae = true; }
             else if (strcmp(akm, SCHEMA_CONSTS_KEY_FT_SAE ) == 0) { wpa.akm_ft_sae = true; }
             else if (strcmp(akm, SCHEMA_CONSTS_KEY_FT_PSK ) == 0) { wpa.akm_ft_psk = true; }
+            else if (strcmp(akm, SCHEMA_CONSTS_KEY_WPA_EAP) == 0) { wpa.akm_eap = true; }
+            else if (strcmp(akm, SCHEMA_CONSTS_KEY_FT_EAP ) == 0) { wpa.akm_ft_eap = true; }
         }
 
         wpa.wpa = vconf->wpa_pairwise_tkip
@@ -3070,6 +3421,220 @@ callback_Wifi_VIF_Neighbors(ovsdb_update_monitor_t *mon,
     }
 }
 
+static void
+callback_RADIUS(ovsdb_update_monitor_t *mon,
+                struct schema_RADIUS *old,
+                struct schema_RADIUS *radius,
+                ovsdb_cache_row_t *row)
+{
+    LOGD("ow: ovsdb: RADIUS callback: (%s:%d) %s",
+         radius->ip_addr, radius->port,
+         (mon->mon_type == OVSDB_UPDATE_NEW ? "new" :
+          mon->mon_type == OVSDB_UPDATE_MODIFY ? "modify" :
+          mon->mon_type == OVSDB_UPDATE_DEL ? "del" :
+          mon->mon_type == OVSDB_UPDATE_ERROR ? "error" :
+          ""));
+
+    bool is_new = false;
+    const char *uuid = radius->_uuid.uuid;
+    switch (mon->mon_type) {
+        case OVSDB_UPDATE_NEW:
+            is_new = true;
+            /* fall through */
+        case OVSDB_UPDATE_MODIFY:
+            if (is_new == true || radius->ip_addr_changed == true)
+                ow_conf_radius_set_ip_addr(uuid, radius->ip_addr);
+            if (is_new == true || radius->secret_changed == true)
+                ow_conf_radius_set_secret(uuid, radius->secret);
+            if (is_new == true || radius->port_changed == true)
+                ow_conf_radius_set_port(uuid, radius->port);
+            break;
+        case OVSDB_UPDATE_DEL:
+            ow_conf_radius_unset(uuid);
+            break;
+        case OVSDB_UPDATE_ERROR:
+            break;
+    }
+}
+
+static void
+ow_ovsdb_passpoint_to_ow_conf_ap(const struct schema_Passpoint_Config *pconf,
+                                 bool is_new)
+{
+    const char *ref_id = pconf->_uuid.uuid;
+
+    if (is_new || pconf->enabled_changed)
+        ow_conf_passpoint_set_hs20_enabled(ref_id, &pconf->enabled);
+
+    if (is_new || pconf->hessid_changed)
+        ow_conf_passpoint_set_hessid(ref_id, pconf->hessid);
+
+    if (is_new || pconf->osu_ssid_changed)
+        ow_conf_passpoint_set_osu_ssid(ref_id, pconf->osu_ssid);
+
+    if (is_new || pconf->adv_wan_status_changed)
+        ow_conf_passpoint_set_adv_wan_status(ref_id, &pconf->adv_wan_status);
+
+    if (is_new || pconf->adv_wan_symmetric_changed)
+        ow_conf_passpoint_set_adv_wan_symmetric(ref_id, &pconf->adv_wan_symmetric);
+
+    if (is_new || pconf->adv_wan_at_capacity_changed)
+        ow_conf_passpoint_set_adv_wan_at_capacity(ref_id, &pconf->adv_wan_at_capacity);
+
+    if (is_new || pconf->osen_changed)
+        ow_conf_passpoint_set_osen(ref_id, &pconf->osen);
+
+    if (is_new || pconf->asra_changed)
+        ow_conf_passpoint_set_asra(ref_id, &pconf->asra);
+
+    if (is_new || pconf->access_network_type_changed)
+        ow_conf_passpoint_set_ant(ref_id, &pconf->access_network_type);
+
+    if (is_new || pconf->venue_group_changed)
+        ow_conf_passpoint_set_venue_group(ref_id, &pconf->venue_group);
+
+    if (is_new || pconf->venue_type_changed)
+        ow_conf_passpoint_set_venue_type(ref_id, &pconf->venue_type);
+
+    if (is_new || pconf->anqp_domain_id_changed)
+        ow_conf_passpoint_set_anqp_domain_id(ref_id, &pconf->anqp_domain_id);
+
+    if (is_new || pconf->pps_mo_id_changed)
+        ow_conf_passpoint_set_pps_mo_id(ref_id, &pconf->pps_mo_id);
+
+    if (is_new || pconf->t_c_timestamp_changed)
+        ow_conf_passpoint_set_t_c_timestamp(ref_id, &pconf->t_c_timestamp);
+
+    if (is_new || pconf->t_c_filename_changed)
+        ow_conf_passpoint_set_t_c_filename(ref_id, pconf->t_c_filename);
+
+    if (is_new || pconf->anqp_elem_changed)
+        ow_conf_passpoint_set_anqp_elem(ref_id, pconf->anqp_elem);
+
+    if (is_new || pconf->domain_name_changed) {
+        if (pconf->domain_name_len > 0) {
+            int i;
+            char **ptr = MALLOC(sizeof(*ptr) * pconf->domain_name_len);
+            for (i = 0; i < pconf->domain_name_len; i++) {
+                ptr[i] = STRDUP(pconf->domain_name[i]);
+            }
+            ow_conf_passpoint_set_domain_list(ref_id, ptr,
+                                              pconf->domain_name_len);
+        } else {
+            ow_conf_passpoint_set_domain_list(ref_id, NULL, 0);
+        }
+    }
+
+    if (is_new || pconf->nairealm_list_changed) {
+        if (pconf->nairealm_list_len > 0) {
+            int i;
+            char **ptr = MALLOC(sizeof(*ptr) * pconf->nairealm_list_len);
+            for (i = 0; i < pconf->nairealm_list_len; i++) {
+                ptr[i] = STRDUP(pconf->nairealm_list[i]);
+            }
+            ow_conf_passpoint_set_nairealm_list(ref_id, ptr,
+                                                pconf->nairealm_list_len);
+        } else {
+            ow_conf_passpoint_set_nairealm_list(ref_id, NULL, 0);
+        }
+    }
+
+    if (is_new || pconf->roaming_consortium_changed) {
+        if (pconf->roaming_consortium_len > 0) {
+            int i;
+            char **ptr = MALLOC(sizeof(*ptr) * pconf->roaming_consortium_len);
+            for (i = 0; i < pconf->roaming_consortium_len; i++) {
+                ptr[i] = STRDUP(pconf->roaming_consortium[i]);
+            }
+            ow_conf_passpoint_set_roamc(ref_id, ptr,
+                                        pconf->roaming_consortium_len);
+        } else {
+            ow_conf_passpoint_set_roamc(ref_id, NULL, 0);
+        }
+    }
+
+    if (is_new || pconf->operator_friendly_name_changed) {
+        if (pconf->operator_friendly_name_len > 0) {
+            int i;
+            char **ptr = MALLOC(sizeof(*ptr) * pconf->operator_friendly_name_len);
+            for (i = 0; i < pconf->operator_friendly_name_len; i++) {
+                ptr[i] = STRDUP(pconf->operator_friendly_name[i]);
+            }
+            ow_conf_passpoint_set_oper_fname_list(ref_id, ptr,
+                                                  pconf->operator_friendly_name_len);
+        } else {
+            ow_conf_passpoint_set_oper_fname_list(ref_id, NULL, 0);
+        }
+    }
+
+    if (is_new || pconf->venue_name_changed) {
+        if (pconf->venue_name_len > 0) {
+            int i;
+            char **ptr = MALLOC(sizeof(*ptr) * pconf->venue_name_len);
+            for (i = 0; i < pconf->venue_name_len; i++) {
+                ptr[i] = STRDUP(pconf->venue_name[i]);
+            }
+            ow_conf_passpoint_set_venue_name_list(ref_id, ptr,
+                                                  pconf->venue_name_len);
+        } else {
+            ow_conf_passpoint_set_venue_name_list(ref_id, NULL, 0);
+        }
+    }
+
+    if (is_new || pconf->venue_url_changed) {
+        if (pconf->venue_url_len > 0) {
+            int i;
+            char **ptr = MALLOC(sizeof(*ptr) * pconf->venue_url_len);
+            for (i = 0; i < pconf->venue_url_len; i++) {
+                ptr[i] = STRDUP(pconf->venue_url[i]);
+            }
+            ow_conf_passpoint_set_venue_url_list(ref_id, ptr,
+                                                 pconf->venue_url_len);
+        } else {
+            ow_conf_passpoint_set_venue_url_list(ref_id, NULL, 0);
+        }
+    }
+
+    if (is_new || pconf->list_3gpp_changed) {
+        if (pconf->list_3gpp_len > 0) {
+            int i;
+            char **ptr = MALLOC(sizeof(*ptr) * pconf->list_3gpp_len);
+            for (i = 0; i < pconf->list_3gpp_len; i++) {
+                ptr[i] = STRDUP(pconf->list_3gpp[i]);
+            }
+            ow_conf_passpoint_set_list_3gpp_list(ref_id, ptr,
+                                                 pconf->list_3gpp_len);
+        } else {
+            ow_conf_passpoint_set_list_3gpp_list(ref_id, NULL, 0);
+        }
+    }
+
+    if (is_new || pconf->network_auth_type_changed)
+            ow_conf_passpoint_set_net_auth_type_list(ref_id, pconf->network_auth_type,
+                                                     pconf->network_auth_type_len);
+}
+
+static void
+callback_Passpoint_Config(ovsdb_update_monitor_t *mon,
+                          struct schema_Passpoint_Config *old,
+                          struct schema_Passpoint_Config *pconf,
+                          ovsdb_cache_row_t *row)
+{
+    switch (mon->mon_type) {
+        case OVSDB_UPDATE_NEW:
+            ow_ovsdb_passpoint_to_ow_conf_ap(pconf, true);
+            break;
+        case OVSDB_UPDATE_MODIFY:
+            ow_ovsdb_passpoint_to_ow_conf_ap(pconf, false);
+            break;
+        case OVSDB_UPDATE_DEL:
+            ow_conf_passpoint_unset(pconf->_uuid.uuid);
+            break;
+        case OVSDB_UPDATE_ERROR:
+            break;
+    }
+}
+
 static struct ev_timer g_ow_ovsdb_retry;
 
 static void
@@ -3122,6 +3687,8 @@ ow_ovsdb_retry_cb(EV_P_ ev_timer *arg, int events)
     OVSDB_CACHE_MONITOR(Wifi_VIF_Config, true);
     OVSDB_CACHE_MONITOR(Wifi_VIF_State, true);
     OVSDB_CACHE_MONITOR(Wifi_VIF_Neighbors, true);
+    OVSDB_CACHE_MONITOR(RADIUS, true);
+    OVSDB_CACHE_MONITOR(Passpoint_Config, true);
 
     ow_ovsdb_mld_onboard_drop(g_ow_ovsdb.mld_onboard);
     g_ow_ovsdb.mld_onboard = ow_ovsdb_mld_onboard_alloc();
@@ -3149,8 +3716,11 @@ ow_ovsdb_init(void)
     OVSDB_TABLE_INIT(Wifi_VIF_Config, if_name);
     OVSDB_TABLE_INIT(Wifi_VIF_State, if_name);
     OVSDB_TABLE_INIT(Wifi_VIF_Neighbors, if_name);
+    OVSDB_TABLE_INIT(Passpoint_Config, hessid);
+    OVSDB_TABLE_INIT(Passpoint_OSU_Providers, osu_server_uri);
     OVSDB_TABLE_INIT(Wifi_Associated_Clients, mac);
     OVSDB_TABLE_INIT(Openflow_Tag, name);
+    OVSDB_TABLE_INIT(RADIUS, name);
 
     ev_timer_init(&g_ow_ovsdb_retry, ow_ovsdb_retry_cb, 0, OW_OVSDB_RETRY_SECONDS);
     ev_timer_start(EV_DEFAULT_ &g_ow_ovsdb_retry);

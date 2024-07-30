@@ -54,6 +54,12 @@ menu "Common"
             endchoice
 
             choice
+                prompt "IPv6 routing (control and reporting)"
+                default OSN_BACKEND_ROUTEV6_LINUX
+                source "kconfig/Kconfig.osn.routev6_backend"
+            endchoice
+
+            choice
                 prompt "DHCPv6 client"
                 default OSN_BACKEND_DHCPV6_CLIENT_ODHCP6
                 source "kconfig/Kconfig.osn.dhcpv6_client_backend"
@@ -312,14 +318,7 @@ menu "Common"
     endmenu
 
     menu "Misc"
-        orsource "../src/lib/hostap/kconfig/Kconfig"
-        orsource "../src/wpd/kconfig/Kconfig"
-
-        config REMAP_LEGACY
-            bool "Remap legacy install prefix path"
-            help
-                Move all files from legacy location to new install prefix path
-                Also replace all paths in installed scripts
+        rsource "Kconfig.misc"
     endmenu
 
     menu "Target"
@@ -341,13 +340,6 @@ menu "Common"
         default n
         help
             If enabled OVS Bridge is disabled and native bridge is enabled.
-
-    config TARGET_ENABLE_TC_FILTERS
-	bool "Enable tc filtering to mirror packets."
-        default n
-        help
-            If enabled tc filtering is used to mirror packets based on the
-            configured criteria.
 
     config TARGET_ENABLE_EBTABLES
 	bool "Enable ebtables to filter layer2 frames."

@@ -56,8 +56,6 @@ static void lib_init(void)
 {
     static bool initialized = false;
     if (!initialized) {
-        const char dynamic_providers[] = CONFIG_FF_DYNAMIC_PROVIDERS_PATH"/libff_provider_*";
-        module_load_all(dynamic_providers);
         module_init();
         initialized = true;
     }

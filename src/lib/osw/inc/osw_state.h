@@ -115,6 +115,12 @@ osw_state_vif_changed_fn_t(struct osw_state_observer *self,
                            const struct osw_state_vif_info *vif);
 
 typedef void
+osw_state_vif_channel_changed_fn_t(struct osw_state_observer *self,
+                                   const struct osw_state_vif_info *vif,
+                                   const struct osw_channel *new_channel,
+                                   const struct osw_channel *old_channel);
+
+typedef void
 osw_state_vif_probe_req_fn_t(struct osw_state_observer *self,
                              const struct osw_state_vif_info *vif,
                              const struct osw_drv_report_vif_probe_req *probe_req);
@@ -183,6 +189,7 @@ struct osw_state_observer {
     osw_state_vif_added_fn_t *vif_added_fn;
     osw_state_vif_removed_fn_t *vif_removed_fn;
     osw_state_vif_changed_fn_t *vif_changed_fn;
+    osw_state_vif_channel_changed_fn_t *vif_channel_changed_fn;
     osw_state_vif_probe_req_fn_t *vif_probe_req_fn;
     osw_state_vif_csa_rx_fn_t *vif_csa_rx_fn;
     osw_state_vif_frame_rx_fn_t *vif_frame_rx_fn;

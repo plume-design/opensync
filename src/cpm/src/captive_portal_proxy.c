@@ -305,7 +305,8 @@ cportal_proxy_setup_nw_cfg(struct cportal *self, bool enable)
              "ip rule %s fwmark %s lookup %s",
              enable ? "add" : "del",
              pkt_mark, rt_tbl_id);
-    if (cmd_log(cmd_buff) == -1)
+
+    if (cmd_log_check_safe(cmd_buff) == -1)
     {
         LOGE("%s: Failed to execute command %s", __func__, cmd_buff);
         return false;
@@ -316,8 +317,9 @@ cportal_proxy_setup_nw_cfg(struct cportal *self, bool enable)
              "ip route %s local default dev lo table %s",
              enable ? "add" : "del",
              rt_tbl_id);
+
     LOGT("%s: command %s", __func__, cmd_buff);
-    if (cmd_log(cmd_buff) == -1)
+    if (cmd_log_check_safe(cmd_buff) == -1)
     {
         LOGE("%s: Failed to execute command %s", __func__, cmd_buff);
         return false;

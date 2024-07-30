@@ -36,6 +36,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "network_metadata_report.h"
 #include "fsm_dpi_adt_cache.h"
 #include "qm_conn.h"
+#include "fsm_fn_trace.h"
 
 static size_t FSM_DPI_ADT_MAX_DATAPOINTS = 10;
 
@@ -79,6 +80,7 @@ fsm_dpi_adt_init(struct fsm_session *session)
     /* Set the plugin specific ops */
     client_ops = &session->p_ops->dpi_plugin_client_ops;
     client_ops->process_attr = fsm_dpi_adt_process_attr;
+    FSM_FN_MAP(fsm_dpi_adt_process_attr);
 
     /* Fetch the specific updates for this client plugin */
     session->ops.update(session);

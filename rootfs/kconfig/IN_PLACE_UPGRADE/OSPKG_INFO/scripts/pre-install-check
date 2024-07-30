@@ -1,0 +1,10 @@
+#!/bin/sh
+
+PKGDIR="$1"
+PKG_FILE="$2"
+BUILTIN_PKG="$3"
+
+set -e
+
+ospkg check_sdk_commit "$PKGDIR" "$BUILTIN_PKG"
+

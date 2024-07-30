@@ -31,6 +31,13 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 static logger_fn_t logger_syslog_log;
 
+/* Limit message length to prevent glibc syslog() to allocate large buffers
+ * glibc will allocate a larger buffer if the length exceeds 1024
+ * musl and uclibc already truncate the syslog message to 1024
+ * Subtract 80 for the header length plus some headroom.
+ */
+#define SYSLOG_MAX_MSG_LEN (1024 - 80)
+
 bool logger_syslog_new(logger_t *self)
 {
     /* Open syslog facilities */
@@ -83,8 +90,8 @@ void logger_syslog_log(logger_t *self, logger_msg_t *msg)
     }
 
 #if defined(CONFIG_LOG_USE_PREFIX)
-    syslog(syslog_sev, "%s %s: %s", CONFIG_LOG_PREFIX, msg->lm_tag, msg->lm_text);
+    syslog(syslog_sev, "%s %s: %.*s", CONFIG_LOG_PREFIX, msg->lm_tag, SYSLOG_MAX_MSG_LEN, msg->lm_text);
 #else
-    syslog(syslog_sev, "%s: %s", msg->lm_tag, msg->lm_text);
+    syslog(syslog_sev, "%s: %.*s", msg->lm_tag, SYSLOG_MAX_MSG_LEN, msg->lm_text);
 #endif
 }

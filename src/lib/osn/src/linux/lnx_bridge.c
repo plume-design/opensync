@@ -25,6 +25,12 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 
+#include <errno.h>
+#include <limits.h>
+#include <string.h>
+#include <stdlib.h>
+#include <unistd.h>
+
 #include "execsh.h"
 #include "log.h"
 #include "util.h"
@@ -36,8 +42,9 @@ const char lnx_br_create_cmd[] = _S(ip link add name "$1" type bridge);
 const char lnx_br_del_cmd[] = _S(ip link delete dev "$1" type bridge);
 const char lnx_br_port_add_cmd[] = _S(brctl addif "$1" "$2");
 const char lnx_br_port_del_cmd[] = _S(brctl delif "$1" "$2");
+const char lnx_br_enable_bnf_cmd[] = _S(echo 1 > /sys/devices/virtual/net/"$1"/bridge/nf_call_iptables);
+const char lnx_br_enable_bnf_ipv6_cmd[] = _S(echo 1 > /sys/devices/virtual/net/"$1"/bridge/nf_call_ip6tables);
 const char lnx_port_hairpin_cmd[] = _S(ip link set "$1" type bridge_slave hairpin "$2");
-const char lnx_port_in_bridge_cmd[] = _S(ip link show master "$1" dev "$2" | grep "$2");
 
 bool lnx_bridge_create(char *br)
 {
@@ -48,6 +55,22 @@ bool lnx_bridge_create(char *br)
     if (rc != 0)
     {
         LOGT("%s(): failed to create bridge %s ", __func__, br);
+        return false;
+    }
+
+    LOGT("%s(): enabling bridge netfilter (IPv4) on bridge %s", __func__, br);
+    rc = execsh_log(LOG_SEVERITY_NOTICE, lnx_br_enable_bnf_cmd, br);
+    if (rc != 0)
+    {
+        LOGT("%s(): failed to enable bridge netfilter (IPv4) on bridge %s ", __func__, br);
+        return false;
+    }
+
+    LOGT("%s(): enabling bridge netfilter (IPv6) on bridge %s", __func__, br);
+    rc = execsh_log(LOG_SEVERITY_NOTICE, lnx_br_enable_bnf_ipv6_cmd, br);
+    if (rc != 0)
+    {
+        LOGT("%s(): failed to enable bridge netfilter (IPv6) on bridge %s ", __func__, br);
         return false;
     }
 
@@ -94,12 +117,34 @@ bool lnx_bridge_set_hairpin(char *port, bool enable)
 bool lnx_bridge_add_port(char *br, char *port)
 {
     int rc;
+    char brport_path[C_MAXPATH_LEN];
+    char master_path[C_MAXPATH_LEN];
+    char master_realpath[PATH_MAX];
+    char *current_bridge;
 
-    rc = execsh_log(LOG_SEVERITY_NOTICE, lnx_port_in_bridge_cmd, br, port);
-    if (rc == 0)
+    snprintf(brport_path, sizeof(brport_path), "/sys/class/net/%s/brport", port);
+    if (access(brport_path, F_OK) == 0)
     {
-        LOGD("%s(): Port %s already added to %s. Skipping!", __func__, port, br);
-        return true;
+        LOGD("%s(): Port %s already added to bridge. Checking master...", __func__, port);
+        snprintf(master_path, sizeof(master_path), "/sys/class/net/%s/master", port);
+        if (realpath(master_path, master_realpath) == NULL)
+        {
+            LOGW("%s(): Reading master symbolic link for port %s failed [errno=%d]: %s",
+                    __func__, port, errno, strerror(errno));
+        }
+        else
+        {
+            current_bridge = strrchr(master_realpath, '/') + 1;
+            if (current_bridge == NULL)
+            {
+                LOGW("%s(): basename was not found for %s", __func__, master_realpath);
+            }
+            else if (strcmp(current_bridge, br) == 0)
+            {
+                LOGD("%s(): Port %s already added to %s, skipping", __func__, port, br);
+                return true;
+            }
+        }
     }
 
     rc = execsh_log(LOG_SEVERITY_NOTICE, lnx_br_port_add_cmd, br, port);

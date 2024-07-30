@@ -621,8 +621,8 @@ osw_drv_nl80211_request_config_base(struct osw_drv *drv,
                 case OSW_VIF_UNDEFINED:
                     break;
                 case OSW_VIF_AP:
-                    break;
                 case OSW_VIF_AP_VLAN:
+                    os_nif_up(vif->vif_name, vif->enabled);
                     break;
                 case OSW_VIF_STA:
                     osw_drv_nl80211_request_config_vif_sta(drv, phy, vif);
@@ -779,6 +779,8 @@ osw_drv_nl80211_get_dump_survey_impl_type_from_cstr(const char *override)
         return OSW_DRV_NL80211_DUMP_SURVEY_IMPL_DELTA;
     else if (strcmp(override, "OSW_DRV_NL80211_DUMP_SURVEY_IMPL_ABSOLUTE") == 0)
         return OSW_DRV_NL80211_DUMP_SURVEY_IMPL_ABSOLUTE;
+    else if (strcmp(override, "OSW_DRV_NL80211_DUMP_SURVEY_IMPL_ONCHAN_ABSOLUTE_OFFCHAN_DELTA") == 0)
+        return OSW_DRV_NL80211_DUMP_SURVEY_IMPL_ONCHAN_ABSOLUTE_OFFCHAN_DELTA;
     WARN_ON(1);
     return OSW_DRV_NL80211_DUMP_SURVEY_IMPL_NONE;
 }
@@ -1316,16 +1318,14 @@ osw_drv_nl80211_sta_state_report_cb(struct rq *q,
     LOGD(LOG_PREFIX_STA(phy_name, vif_name, sta_addr, "reporting state"));
 
     if (sta->hostap) {
-        if (sta->hostap_info.authorized) {
-            state->connected = true;
-        }
-
         state->key_id = sta->hostap_info.key_id;
         state->pmf = sta->hostap_info.pmf;
         state->akm = sta->hostap_info.akm;
         state->pairwise_cipher = sta->hostap_info.pairwise_cipher;
         /* FIXME:assoc time */
     }
+
+    state->connected = sta->hostap_info.authorized;
 
     if (osw_timer_is_armed(&sta->delete_expiry)) {
         state->connected = true;
@@ -1376,6 +1376,12 @@ osw_drv_nl80211_sta_init_hostap(struct osw_drv_nl80211_sta *sta,
 {
     sta->hostap = true;
     sta->hostap_info = *info;
+
+    /* assoc_ies is a pointer, we don't use it
+     * directly in this driver, making it to NULL + 0
+     */
+    sta->hostap_info.assoc_ies = NULL;
+    sta->hostap_info.assoc_ies_len = 0;
 }
 
 static void
@@ -1884,6 +1890,7 @@ osw_drv_nl80211_vif_state_dump_survey_stats_resp_cb(struct nl_cmd *cmd,
     static struct nla_policy survey_policy[NL80211_SURVEY_INFO_MAX + 1] = {
         [NL80211_SURVEY_INFO_FREQUENCY] = { .type = NLA_U32 },
         [NL80211_SURVEY_INFO_NOISE] = { .type = NLA_U8 },
+        [NL80211_SURVEY_INFO_IN_USE] = { .type = NLA_FLAG },
         [NL80211_SURVEY_INFO_TIME] = { .type = NLA_U64 },
         [NL80211_SURVEY_INFO_TIME_TX] = { .type = NLA_U64 },
         [NL80211_SURVEY_INFO_TIME_RX] = { .type = NLA_U64 },
@@ -1896,6 +1903,7 @@ osw_drv_nl80211_vif_state_dump_survey_stats_resp_cb(struct nl_cmd *cmd,
 
     struct nlattr *nla_freq = tb_survey[NL80211_SURVEY_INFO_FREQUENCY];
     struct nlattr *nla_noise = tb_survey[NL80211_SURVEY_INFO_NOISE];
+    struct nlattr *nla_in_use = tb_survey[NL80211_SURVEY_INFO_IN_USE];
     struct nlattr *nla_time = tb_survey[NL80211_SURVEY_INFO_TIME];
     struct nlattr *nla_time_tx = tb_survey[NL80211_SURVEY_INFO_TIME_TX];
     struct nlattr *nla_time_rx = tb_survey[NL80211_SURVEY_INFO_TIME_RX];
@@ -1905,21 +1913,32 @@ osw_drv_nl80211_vif_state_dump_survey_stats_resp_cb(struct nl_cmd *cmd,
     struct osw_tlv t;
     MEMZERO(t);
 
+    enum osw_drv_nl80211_dump_survey_impl_type survey_type = drv_nl80211_phy->dump_survey_impl_type;
+
+    if (survey_type == OSW_DRV_NL80211_DUMP_SURVEY_IMPL_ONCHAN_ABSOLUTE_OFFCHAN_DELTA) {
+        const bool is_home_chan = nla_in_use ? nla_get_flag(nla_in_use) : 0;
+
+        if (is_home_chan)
+            survey_type = OSW_DRV_NL80211_DUMP_SURVEY_IMPL_ABSOLUTE;
+        else
+            survey_type = OSW_DRV_NL80211_DUMP_SURVEY_IMPL_DELTA;
+    }
+
     size_t start_chan = osw_tlv_put_nested(&t, OSW_STATS_CHAN);
     {
         if (phy_name != NULL) osw_tlv_put_string(&t, OSW_STATS_CHAN_PHY_NAME, phy_name);
         if (nla_freq != NULL) osw_tlv_put_u32(&t, OSW_STATS_CHAN_FREQ_MHZ, nla_get_u32(nla_freq));
         if (nla_noise != NULL) osw_tlv_put_float(&t, OSW_STATS_CHAN_NOISE_FLOOR_DBM, (float)(int32_t)(int8_t)nla_get_u8(nla_noise));
         if (nla_time != NULL) {
-            if (drv_nl80211_phy->dump_survey_impl_type == OSW_DRV_NL80211_DUMP_SURVEY_IMPL_DELTA)
+            if (survey_type == OSW_DRV_NL80211_DUMP_SURVEY_IMPL_DELTA)
                 osw_tlv_put_u32_delta(&t, OSW_STATS_CHAN_ACTIVE_MSEC, (uint32_t)nla_get_u64(nla_time));
-            else if (drv_nl80211_phy->dump_survey_impl_type == OSW_DRV_NL80211_DUMP_SURVEY_IMPL_ABSOLUTE)
+            else if (survey_type == OSW_DRV_NL80211_DUMP_SURVEY_IMPL_ABSOLUTE)
                 osw_tlv_put_u32(&t, OSW_STATS_CHAN_ACTIVE_MSEC, (uint32_t)nla_get_u64(nla_time));
         }
 
         size_t start_cnt = osw_tlv_put_nested(&t, OSW_STATS_CHAN_CNT_MSEC);
         {
-            switch (drv_nl80211_phy->dump_survey_impl_type) {
+            switch (survey_type) {
                 case OSW_DRV_NL80211_DUMP_SURVEY_IMPL_NONE:
                     WARN_ON(1);
                     break;
@@ -1934,6 +1953,9 @@ osw_drv_nl80211_vif_state_dump_survey_stats_resp_cb(struct nl_cmd *cmd,
                     if (nla_time_rx != NULL) osw_tlv_put_u32(&t, OSW_STATS_CHAN_CNT_RX, (uint32_t)nla_get_u64(nla_time_rx));
                     if (nla_time_bss_rx != NULL) osw_tlv_put_u32(&t, OSW_STATS_CHAN_CNT_RX_INBSS, (uint32_t)nla_get_u64(nla_time_bss_rx));
                     if (nla_time_busy != NULL) osw_tlv_put_u32(&t, OSW_STATS_CHAN_CNT_BUSY, (uint32_t)nla_get_u64(nla_time_busy));
+                    break;
+                case OSW_DRV_NL80211_DUMP_SURVEY_IMPL_ONCHAN_ABSOLUTE_OFFCHAN_DELTA:
+                    WARN_ON(1);
                     break;
             }
             osw_tlv_end_nested(&t, start_cnt);
@@ -1987,10 +2009,13 @@ osw_drv_nl80211_vif_state_dump_sta_stats_resp_cb(struct nl_cmd *cmd,
         [NL80211_STA_INFO_RX_BYTES] = { .type = NLA_U32 },
         [NL80211_STA_INFO_TX_PACKETS] = { .type = NLA_U32 },
         [NL80211_STA_INFO_RX_PACKETS] = { .type = NLA_U32 },
+        [NL80211_STA_INFO_RX_BITRATE] = { .type = NLA_NESTED },
+        [NL80211_STA_INFO_TX_BITRATE] = { .type = NLA_NESTED },
         [NL80211_STA_INFO_TX_RETRIES] = { .type = NLA_U32 },
         [NL80211_STA_INFO_TX_FAILED] = { .type = NLA_U32 },
         [NL80211_STA_INFO_RX_DROP_MISC] = { .type = NLA_U64 },
     };
+
     struct nlattr *tb_sta[NL80211_STA_INFO_MAX + 1];
     const int sta_err = nla_parse_nested(tb_sta, NL80211_STA_INFO_MAX, sta, sta_policy);
     if (WARN_ON(sta_err)) return;
@@ -2003,6 +2028,45 @@ osw_drv_nl80211_vif_state_dump_sta_stats_resp_cb(struct nl_cmd *cmd,
     struct nlattr *nla_tx_retries = tb_sta[NL80211_STA_INFO_TX_RETRIES];
     struct nlattr *nla_tx_failed = tb_sta[NL80211_STA_INFO_TX_FAILED];
     struct nlattr *nla_rx_drop_misc = tb_sta[NL80211_STA_INFO_RX_DROP_MISC];
+
+    /* Rate Info */
+    static struct nla_policy rate_policy[NL80211_RATE_INFO_MAX + 1] = {
+        [NL80211_RATE_INFO_BITRATE] = { .type = NLA_U16 },
+        [NL80211_RATE_INFO_BITRATE32] = { .type = NLA_U32 },
+    };
+
+    struct nlattr *rate_tb[NL80211_RATE_INFO_MAX + 1];
+    struct nlattr *nla_sta_rate_tx = tb_sta[NL80211_STA_INFO_TX_BITRATE];
+    struct nlattr *nla_sta_rate_rx = tb_sta[NL80211_STA_INFO_RX_BITRATE];
+    struct nlattr *nla_rate32 = NULL;
+    struct nlattr *nla_rate16 = NULL;
+    uint32_t rate_tx = 0;
+    uint32_t rate_rx = 0;
+
+    if (nla_sta_rate_tx &&
+        !nla_parse_nested(rate_tb,
+                          NL80211_RATE_INFO_MAX,
+                          nla_sta_rate_tx,
+                          rate_policy)) {
+        if ((nla_rate32 = rate_tb[NL80211_RATE_INFO_BITRATE32]))
+            rate_tx = nla_get_u32(nla_rate32) / 10;
+        if ((nla_rate16 = rate_tb[NL80211_RATE_INFO_BITRATE]))
+            rate_tx = (uint32_t)nla_get_u16(nla_rate16) / 10;
+    }
+
+    if (nla_sta_rate_rx &&
+        !nla_parse_nested(rate_tb,
+                          NL80211_RATE_INFO_MAX,
+                          nla_sta_rate_rx,
+                          rate_policy)) {
+        nla_rate32 = NULL;
+        nla_rate16 = NULL;
+
+        if ((nla_rate32 = rate_tb[NL80211_RATE_INFO_BITRATE32]))
+            rate_rx = nla_get_u32(nla_rate32) / 10;
+        if ((nla_rate16 = rate_tb[NL80211_RATE_INFO_BITRATE]))
+            rate_rx = (uint32_t)nla_get_u16(nla_rate16) / 10;
+    }
 
     struct osw_tlv t;
     MEMZERO(t);
@@ -2027,6 +2091,8 @@ osw_drv_nl80211_vif_state_dump_sta_stats_resp_cb(struct nl_cmd *cmd,
                 if (nla_rx_bytes != NULL) osw_tlv_put_u32(&t, OSW_STATS_STA_RX_BYTES, nla_get_u32(nla_rx_bytes));
                 if (nla_tx_packets != NULL) osw_tlv_put_u32(&t, OSW_STATS_STA_TX_FRAMES, nla_get_u32(nla_tx_packets));
                 if (nla_rx_packets != NULL) osw_tlv_put_u32(&t, OSW_STATS_STA_RX_FRAMES, nla_get_u32(nla_rx_packets));
+                if (rate_tx) osw_tlv_put_u32(&t, OSW_STATS_STA_TX_RATE_MBPS, rate_tx);
+                if (rate_rx) osw_tlv_put_u32(&t, OSW_STATS_STA_RX_RATE_MBPS, rate_rx);
                 if (nla_tx_retries != NULL) osw_tlv_put_u32(&t, OSW_STATS_STA_TX_RETRIES, nla_get_u32(nla_tx_retries));
                 if (nla_tx_failed != NULL) osw_tlv_put_u32(&t, OSW_STATS_STA_TX_ERRORS, nla_get_u32(nla_tx_failed));
                 if (nla_rx_drop_misc != NULL) osw_tlv_put_u32(&t, OSW_STATS_STA_RX_ERRORS, (uint32_t)nla_get_u64(nla_rx_drop_misc));
@@ -2053,6 +2119,7 @@ osw_drv_nl80211_vif_mark_enabled(const char *vif_name,
         case OSW_VIF_UNDEFINED:
             break;
         case OSW_VIF_AP:
+        case OSW_VIF_AP_VLAN:
             {
                 bool enabled = false;
                 os_nif_is_running((char *)vif_name, &enabled);
@@ -2064,8 +2131,6 @@ osw_drv_nl80211_vif_mark_enabled(const char *vif_name,
                 }
                 break;
             }
-        case OSW_VIF_AP_VLAN:
-            break;
         case OSW_VIF_STA:
             break;
     }
@@ -2176,6 +2241,35 @@ osw_drv_nl80211_vif_hostap_event_cb(const char *msg,
     else if (strcmp(event_name, "AP-DISABLED") == 0) {
         if (drv == NULL) return;
         osw_drv_report_vif_changed(drv, phy_name, vif_name);
+    }
+    else if (strcmp(event_name, "AP-STA-CONNECTED") == 0) {
+        if (drv == NULL) return;
+
+        LOGD(LOG_PREFIX_VIF(phy_name, vif_name, "hostap event: %s (len=%zu)", msg, msg_len));
+        /* AP-STA-CONNECTED c0:9f:51:8f:7a:2c auth_alg=sae assoc_ies=00002400f09f518 */
+        char *token;
+        struct osw_hwaddr sta_addr = {0};
+
+        osw_hwaddr_from_cstr(strsep(&p, " "), &sta_addr);
+
+        while ((token = strsep(&p, " ")) != NULL) {
+            const char *k = strsep(&token, "=");
+            const char *v = strsep(&token, " ");
+
+            if (strcmp(k, "assoc_ies") == 0) {
+                size_t assoc_ies_len = strlen(v)/2;
+                uint8_t *assoc_ies = MALLOC(sizeof(uint8_t) * assoc_ies_len);
+                const bool decoded = (hex2bin(v, strlen(v), assoc_ies, assoc_ies_len) != -1);
+                const bool valid_addr = (osw_hwaddr_is_zero(&sta_addr) != true);
+
+                if (decoded && valid_addr)
+                {
+                    osw_drv_report_sta_assoc_ies(drv, phy_name, vif_name, &sta_addr, assoc_ies, assoc_ies_len);
+                }
+                FREE(assoc_ies);
+                break;
+            }
+        }
     }
     else if (strcmp(event_name, "WPS-OVERLAP-DETECTED") == 0) {
         if (drv == NULL) return;
@@ -2350,6 +2444,7 @@ osw_drv_nl80211_vif_hostap_sta_connected_cb(const struct osw_hostap_bss_sta *inf
     const char *vif_name = vif_info->name;
 
     struct osw_drv_nl80211 *m = vif->m;
+    struct osw_drv *drv = m->drv;
     struct nl_80211 *nl = m->nl_80211;
     const uint32_t wiphy = vif_info->wiphy;
     const struct nl_80211_phy *phy_info = nl_80211_phy_by_wiphy(nl, wiphy);
@@ -2360,6 +2455,12 @@ osw_drv_nl80211_vif_hostap_sta_connected_cb(const struct osw_hostap_bss_sta *inf
                                    ?: osw_drv_nl80211_sta_create(m, phy_name, vif_name, sta_addr);
 
     osw_drv_nl80211_sta_init_hostap(sta, info);
+
+    if (info->assoc_ies_len) {
+        osw_drv_report_sta_assoc_ies(drv, phy_name, vif_name, sta_addr, info->assoc_ies, info->assoc_ies_len);
+    }
+
+    osw_drv_report_sta_changed(drv, phy_name, vif_name, sta_addr);
 }
 
 static void
@@ -2373,6 +2474,7 @@ osw_drv_nl80211_vif_hostap_sta_changed_cb(const struct osw_hostap_bss_sta *info,
     const char *vif_name = vif_info->name;
 
     struct osw_drv_nl80211 *m = vif->m;
+    struct osw_drv *drv = m->drv;
     struct nl_80211 *nl = m->nl_80211;
     const uint32_t wiphy = vif_info->wiphy;
     const struct nl_80211_phy *phy_info = nl_80211_phy_by_wiphy(nl, wiphy);
@@ -2383,8 +2485,13 @@ osw_drv_nl80211_vif_hostap_sta_changed_cb(const struct osw_hostap_bss_sta *info,
     if (WARN_ON(sta == NULL)) return;
 
     sta->hostap_info = *info;
+    sta->hostap_info.assoc_ies = NULL;
+    sta->hostap_info.assoc_ies_len = 0;
 
-    struct osw_drv *drv = m->drv;
+    if (info->assoc_ies_len) {
+        osw_drv_report_sta_assoc_ies(drv, phy_name, vif_name, sta_addr, info->assoc_ies, info->assoc_ies_len);
+    }
+
     osw_drv_report_sta_changed(drv, phy_name, vif_name, sta_addr);
 }
 
@@ -2399,6 +2506,7 @@ osw_drv_nl80211_vif_hostap_sta_disconnected_cb(const struct osw_hostap_bss_sta *
     const char *vif_name = vif_info->name;
 
     struct osw_drv_nl80211 *m = vif->m;
+    struct osw_drv *drv = m->drv;
     struct nl_80211 *nl = m->nl_80211;
     const uint32_t wiphy = vif_info->wiphy;
     const struct nl_80211_phy *phy_info = nl_80211_phy_by_wiphy(nl, wiphy);
@@ -2410,6 +2518,7 @@ osw_drv_nl80211_vif_hostap_sta_disconnected_cb(const struct osw_hostap_bss_sta *
 
     osw_drv_nl80211_sta_fini_hostap(sta);
     osw_drv_nl80211_sta_maybe_free(sta);
+    osw_drv_report_sta_changed(drv, phy_name, vif_name, sta_addr);
 }
 
 static void

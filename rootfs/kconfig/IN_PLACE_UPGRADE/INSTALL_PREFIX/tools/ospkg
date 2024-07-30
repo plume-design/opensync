@@ -1,0 +1,45 @@
+#!/bin/sh
+# {# jinja-parse #}
+
+usage()
+{
+    echo "Usage: ospkg COMMAND [OPTIONS]"
+    echo "  COMMANDS:"
+    echo "    status  [-v]"
+    echo "    install [--reboot] [--force-{version|precheck}]"
+    echo "    revert  [--builtin]"
+    echo "    next    PKGID"
+    exit 1
+}
+
+OPENSYNC_INSTALL_PREFIX={{CONFIG_INSTALL_PREFIX}}
+OSPKG_INSTALL_PREFIX=$(dirname $(dirname $(readlink -f "$0")))
+SCRIPTS_DIR="$OSPKG_INSTALL_PREFIX/scripts"
+. "$SCRIPTS_DIR/ospkg_functions.sh"
+
+if [ -z "$1" ]; then
+    usage
+fi
+
+ospkg_env_check
+
+CMD="$1"
+shift
+
+case "$CMD" in
+    # user commands
+    -h) usage ;;
+    install) ospkg_install "$@" ;;
+    status) ospkg_status "$@" ;;
+    revert) ospkg_revert "$@" ;;
+    next) ospkg_set_next "$@" ;;
+    # internal commands
+    boot_complete) ospkg_boot_complete ;;
+    healthcheck_complete) ospkg_healthcheck_complete ;;
+    preinit_mount_data) ospkg_preinit_mount_data "$@" ;;
+    preinit_mount_overlay) ospkg_preinit_mount_overlay "$@" ;;
+    check_sdk_commit) ospkg_check_sdk_commit "$@" ;;
+    call) CMD="$1"; shift; "$CMD" "$@" ;;
+    *) usage ;;
+esac
+

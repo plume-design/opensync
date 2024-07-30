@@ -38,6 +38,7 @@ UNIT_SRC += src/fsm_packet_reinject_utils.c
 UNIT_SRC += src/fsm_dns_tag.c
 UNIT_SRC += src/fsm_dns_cache_utils.c
 UNIT_SRC += src/fsm_ipc.c
+UNIT_SRC += $(if $(CONFIG_OS_EV_TRACE), src/fsm_fn_trace.c)
 
 UNIT_CFLAGS := -I$(UNIT_PATH)/inc
 UNIT_CFLAGS += -Isrc/fsm/inc
@@ -49,6 +50,7 @@ UNIT_EXPORT_CFLAGS := $(UNIT_CFLAGS)
 UNIT_EXPORT_LDFLAGS := $(UNIT_LDFLAGS)
 
 UNIT_DEPS := src/lib/const
+UNIT_DEPS += src/lib/common
 UNIT_DEPS += src/lib/ds
 UNIT_DEPS += src/lib/log
 UNIT_DEPS += src/lib/ustack
@@ -57,5 +59,6 @@ UNIT_DEPS += src/lib/fsm_policy
 UNIT_DEPS += src/lib/network_metadata
 UNIT_DEPS += src/lib/gatekeeper_cache
 UNIT_DEPS += src/lib/neigh_table
+UNIT_DEPS += src/lib/dpi_stats
 UNIT_DEPS += src/lib/osn
 UNIT_DEPS += $(if $(CONFIG_FSM_IPC_USE_OSBUS), src/lib/osbus)

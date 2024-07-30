@@ -190,6 +190,6 @@ void synclist_end(synclist_t *list)
         if (psl->sl_active) continue;
 
         ds_tree_iremove(&iter);
-        list->sl_fn(list, pdata, false);
+        list->sl_fn(list, pdata, NULL);
     }
 }

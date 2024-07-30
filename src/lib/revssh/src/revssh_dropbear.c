@@ -853,7 +853,7 @@ static void revssh_client_execsh_io_fn(execsh_async_t *esa, enum execsh_io io_ty
 /* Start revssh dropbear client. Either now (delay==0) or after the specified number of seconds. */
 static bool revssh_dropbear_client_start(revssh_t *self, int delay)
 {
-    // char revssh_client_cmd[512];
+    char revssh_client_cmd[512];
     pid_t client_pid;
 
     /* Start with a delay: */
@@ -871,19 +871,23 @@ static bool revssh_dropbear_client_start(revssh_t *self, int delay)
      *         -y -p <server_port> -I <idle_timeout>
      */
 
-    client_pid = execsh_async_start(
-            &self->rs_revssh_client,
-            _S("$1" -i "$2" -l "$3" -N -T "-R$4":"$5":"$6":"$7" "$8" -y -p "$9" -I "$10"),
+    memset(revssh_client_cmd, 0, sizeof(revssh_client_cmd));
+    snprintf(
+            revssh_client_cmd,
+            sizeof(revssh_client_cmd),
+            "%s -i %s -l %s -N -T -R%s:%d:%s:%d %s -y -p %d -I %d",
             CONFIG_REVSSH_DROPBEAR_CLIENT,
             self->rs_keyfile,
             self->rs_server_user,
             FMT_osn_ipany_addr(*self->rs_remote_bind_addr),
-            FMT_int(self->rs_remote_bind_port),
+            self->rs_remote_bind_port,
             FMT_osn_ipany_addr(*self->rs_local_addr),
-            FMT_int(self->rs_local_port),
+            self->rs_local_port,
             self->rs_server_host,
-            FMT_int(self->rs_server_port),
-            FMT_int(self->rs_idle_timeout));
+            self->rs_server_port,
+            self->rs_idle_timeout);
+
+    client_pid = execsh_async_start(&self->rs_revssh_client, revssh_client_cmd);
 
     if (client_pid == -1)
     {
@@ -1039,6 +1043,8 @@ static bool revssh_node_key_get_gen(revssh_t *self, char *pubkey_out, size_t pub
     char *line;
     FILE *f = NULL;
     bool rv = false;
+
+    if (!is_input_shell_safe(self->rs_keyfile)) return false;
 
     if (self->rs_tmpkey_type != REVSSH_KEYTYPE_NONE && !self->rs_tmpkey_generated)
     {

@@ -163,9 +163,18 @@ int osn_ip_addr_to_prefix(osn_ip_addr_t *addr)
  */
 osn_ip_addr_t osn_ip_addr_from_prefix(int prefix)
 {
+    uint32_t mask;
+
     osn_ip_addr_t out = OSN_IP_ADDR_INIT;
 
-    out.ia_addr.s_addr = htonl(~(0xFFFFFFFFu >> prefix));
+    /* If no prefix is present, assume it's /32 */
+    if (prefix < 0 || prefix > 31) {
+        mask = 0xFFFFFFFF;
+    } else {
+        mask  = ~(0xFFFFFFFFu >> prefix);
+    }
+
+    out.ia_addr.s_addr = htonl(mask);
 
     return out;
 }
@@ -250,6 +259,26 @@ char *__FMT_osn_ip6_addr(char *buf, size_t sz, const osn_ip6_addr_t *addr)
     {
         len = strlen(buf);
         snprintf(buf + len, sz - len, ",%d", addr->ia6_valid_lft);
+    }
+
+    return buf;
+}
+
+/*
+ * Convert to string and write to @p buf an osn_ip6_addr structure
+ * Ignore lft parameters
+ */
+char *__FMT_osn_ip6_addr_nolft(char *buf, size_t sz, const osn_ip6_addr_t *addr)
+{
+    size_t len;
+
+    inet_ntop(AF_INET6, &addr->ia6_addr, buf, sz);
+
+    /* Add prefix, if any */
+    if (addr->ia6_prefix >= 0)
+    {
+        len = strlen(buf);
+        snprintf(buf + len, sz - len, "/%d", addr->ia6_prefix);
     }
 
     return buf;
@@ -405,17 +434,49 @@ osn_ip6_addr_t osn_ip6_addr_subnet(const osn_ip6_addr_t *addr)
 }
 
 /*
+ * Compute prefix from a netmask address. For example, ffff:: -> /16
+ */
+int osn_ip6_addr_to_prefix(osn_ip6_addr_t *addr)
+{
+    uint32_t q;
+    uint32_t ii;
+    uint32_t laddr;
+    int prefix = 0;
+
+    for (q = 0; q < 4; q++)
+    {
+        laddr = ntohl(addr->ia6_addr.s6_addr32[q]);
+        for (ii = 0; ii < 32; ii++)
+        {
+            if ((laddr & (1 << (31 - ii))) == 0)
+            {
+                return prefix;
+            }
+            prefix++;
+        }
+    }
+    // if prefix is full length (128) return -1
+    return -1;
+}
+
+/*
  * Compute netmask address from prefix. For example 16 -> ffff::
  */
 osn_ip6_addr_t osn_ip6_addr_from_prefix(int prefix)
 {
     osn_ip6_addr_t out = OSN_IP6_ADDR_INIT;
+    int max_prefix = sizeof(out.ia6_addr) * 8;
+    // treat prefix -1 same as 128
+    if (prefix < 0) prefix = max_prefix;
+    if (prefix > max_prefix) prefix = max_prefix;
 
     size_t nbytes = prefix / 8;  // number of whole bytes of prefix
     size_t nbits = prefix % 8;   // number of remaining bits
 
+    if (nbytes > sizeof(out.ia6_addr)) nbytes = sizeof(out.ia6_addr);
     if (nbytes > 0) memset(&out.ia6_addr, 0xFF, nbytes);
-    memset((uint8_t *)&out.ia6_addr + nbytes, 0xFF << (8 - nbits), 1);
+    if (nbits > 0) memset((uint8_t *)&out.ia6_addr + nbytes, 0xFF << (8 - nbits), 1);
+    if (prefix == max_prefix) prefix = -1;
     out.ia6_prefix = prefix;
 
     return out;
@@ -482,6 +543,22 @@ int osn_ipany_addr_cmp(const void *_a, const void *_b)
         return osn_ip_addr_cmp(_a, _b);
     else
         return osn_ip6_addr_cmp(_a, _b);
+}
+
+bool osn_ipany_addr_is_set(const osn_ipany_addr_t *addr)
+{
+    osn_ip_addr_t ip4 = { 0 };
+    osn_ip6_addr_t ip6 = { 0 };
+
+    switch (addr->addr_type)
+    {
+        case AF_INET:
+            return memcmp(&ip4.ia_addr, &addr->addr.ip4.ia_addr, sizeof(ip4.ia_addr)) != 0;
+        case AF_INET6:
+            return memcmp(&ip6.ia6_addr, &addr->addr.ip6.ia6_addr, sizeof(ip6.ia6_addr)) != 0;
+        default:
+            return false;
+    }
 }
 
 bool osn_ipany_addr_from_str(osn_ipany_addr_t *out, const char *str)

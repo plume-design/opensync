@@ -73,6 +73,9 @@ static wano_plugin_ops_init_fn_t wanp_static_ipv4_init;
 static wano_plugin_ops_run_fn_t wanp_static_ipv4_run;
 static wano_plugin_ops_fini_fn_t wanp_static_ipv4_fini;
 static wano_inet_state_event_fn_t wanp_static_ipv4_inet_state_event_fn;
+static void callback_Wifi_Route_State(ovsdb_update_monitor_t *mon,
+    struct schema_Wifi_Route_State *old,
+    struct schema_Wifi_Route_State *new);
 
 static struct wano_plugin wanp_static_ipv4 = WANO_PLUGIN_INIT(
         "static_ipv4",
@@ -88,6 +91,11 @@ static struct wano_plugin wanp_static_ipv4 = WANO_PLUGIN_INIT(
  * until this flag is cleared.
  */
 static bool wanp_static_ipv4_wan_lock = false;
+
+/* Used for Wifi_Route_State monitoring */
+static wanp_static_ipv4_handle_t *static_h = NULL;
+struct wano_inet_state *static_is = NULL;
+static ovsdb_table_t table_Wifi_Route_State;
 
 static void ping_fd_watcher_cb(struct ev_loop *loop, ev_io *w, int revents)
 {
@@ -361,6 +369,22 @@ enum wanp_static_ipv4_state wanp_static_ipv4_state_CONFIGURE_GW(
             if (memcmp(&is->is_dns2, &pwc->wc_secondary_dns, sizeof(is->is_dns2)) != 0) break;
 
             wano_inet_state_event_fini(&h->inet_state_watcher);
+
+            // start the Wifi_Route_State monitor here and initialize the statics
+            OVSDB_TABLE_INIT(Wifi_Route_State, if_name);
+            if (OVSDB_TABLE_MONITOR(Wifi_Route_State, true) != true) {
+                LOG(ERROR, "wanp_static_ipv4: Error monitoring Wifi_Route_State");
+                h->status_fn(&h->handle, &WANO_PLUGIN_STATUS(WANP_ERROR));
+            }
+            static_h = h;
+            static_is = is;
+            break;
+
+        case wanp_static_ipv4_do_ROUTE_STATE_UPDATE:
+            // Shutdown the monitor and deinitialize the statics
+            ovsdb_table_fini(&table_Wifi_Route_State);
+            static_h = NULL;
+            static_is = NULL;
             return wanp_static_ipv4_RUNNING;
 
         default:
@@ -408,6 +432,14 @@ enum wanp_static_ipv4_state wanp_static_ipv4_state_EXCEPTION(
     (void)state;
     (void)action;
     (void)data;
+
+    if (static_is != NULL || static_h != NULL)
+    {
+        LOG(DEBUG, "static_ipv4_EXCEPTION: tearing down Route monitor");
+        ovsdb_table_fini(&table_Wifi_Route_State);
+        static_is = NULL;
+        static_h = NULL;
+    }
 
     LOG(INFO, "static_ipv4_EXCEPTION: %s", wanp_static_ipv4_action_str(action));
 
@@ -521,6 +553,37 @@ void wanp_static_ipv4_inet_state_event_fn(
     {
         LOG(ERR, "wanp_static_ipv4: Error sending action INET_STATE_UPDATE to state machine.");
     }
+}
+
+void callback_Wifi_Route_State(
+    ovsdb_update_monitor_t *mon,
+    struct schema_Wifi_Route_State *old,
+    struct schema_Wifi_Route_State *new)
+{
+    switch (mon->mon_type)
+    {
+        case OVSDB_UPDATE_NEW:
+        case OVSDB_UPDATE_MODIFY:
+            if (static_is == NULL || static_h == NULL)
+            {
+                LOG(DEBUG, "wanp_static_ipv4: Wifi_Route_State monitor cb reached, but statics are not non-null");
+                break;
+            }
+
+            if (strcmp(new->gateway, FMT_osn_ip_addr(static_is->is_gateway)) == 0)
+            {
+                if (wanp_static_ipv4_state_do(&static_h->state, wanp_static_ipv4_do_ROUTE_STATE_UPDATE, static_is) < 0)
+                {
+                    LOG(ERR, "wanp_static_ipv4: Error sending action ROUTE_STATE_UPDATE to state machine.");
+                }
+            }
+
+            break;
+
+        case OVSDB_UPDATE_DEL:
+        default:
+            return;
+        }
 }
 
 /*

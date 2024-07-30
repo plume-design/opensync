@@ -31,6 +31,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <limits.h>
 
 #include "osn_types.h"
+#include "osn_routes6.h"
 
 /**
  * @file osn_inet6.h

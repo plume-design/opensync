@@ -144,3 +144,18 @@ bool osn_qos_queue_end(osn_qos_t *self)
 
     return true;
 }
+
+bool osn_qos_notify_event_set(osn_qos_t *self, osn_qos_event_fn_t *event_fn_cb)
+{
+    (void)self;
+    (void)event_fn_cb;
+
+    return true;
+}
+
+bool osn_qos_is_qdisc_based(osn_qos_t *self)
+{
+    (void)self;
+
+    return false;
+}

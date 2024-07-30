@@ -49,16 +49,7 @@ should_use_owm() {
         fi
 }
 
-use_vif_rows_decoupled() {
-        if /usr/opensync/tools/osff_get "use_vif_rows_decoupled"; then
-            export OW_OVSDB_VIF_CONFIG_STATE_ROWS_DECOUPLED=y
-        else
-            unset OW_OVSDB_VIF_CONFIG_STATE_ROWS_DECOUPLED
-        fi
-}
-
 if should_use_owm
 then
         use_owm
-        use_vif_rows_decoupled
 fi

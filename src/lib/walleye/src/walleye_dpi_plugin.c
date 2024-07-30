@@ -55,6 +55,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "memutil.h"
 #include "dpi_stats.h"
 #include "kconfig.h"
+#include "fsm_fn_trace.h"
 
 /* Walleye library config */
 extern int rts_handle_isolate;
@@ -405,34 +406,6 @@ shared_free()
 
 
 static void
-dpi_plugin_set_health_stats_cfg(struct fsm_session *session)
-{
-    struct dpi_session *dpi_session;
-    long int interval;
-    char *str;
-
-    dpi_session = (struct dpi_session *)session->handler_ctxt;
-
-    /* Get the health stats topic */
-    str = session->ops.get_config(session, "dpi_health_stats_topic");
-    dpi_session->wc_topic = str;
-
-    /* Get the health stats reporting interval */
-    str = session->ops.get_config(session, "dpi_health_stats_interval_secs");
-    if (str != NULL)
-    {
-        errno = 0;
-        interval = strtol(str, 0, 10);
-        if (errno == 0) dpi_session->wc_interval = (int)interval;
-    }
-
-    LOGI("%s: wc_topic: %s, wc_interval: %d", __func__,
-         dpi_session->wc_topic != NULL ? dpi_session->wc_topic : "not set",
-         dpi_session->wc_interval);
-}
-
-
-static void
 dpi_plugin_update(struct fsm_session *session)
 {
     struct dpi_session *dpi_session;
@@ -471,7 +444,9 @@ dpi_plugin_update(struct fsm_session *session)
         }
     }
 
-    dpi_plugin_set_health_stats_cfg(session);
+    fsm_set_dpi_health_stats_cfg(session);
+    dpi_session->wc_topic = session->dpi_stats_report_topic;
+    dpi_session->wc_interval = session->dpi_stats_report_interval;
 
     return;
 }
@@ -891,6 +866,7 @@ walleye_dpi_plugin_init(struct fsm_session *session)
 
     /* Set the plugin specific ops */
     dpi_plugin_ops = &session->p_ops->dpi_plugin_ops;
+    FSM_FN_MAP(dpi_plugin_handler);
     dpi_plugin_ops->handler = dpi_plugin_handler;
     dpi_plugin_ops->register_client = walleye_dpi_register_client;
     dpi_plugin_ops->unregister_client = walleye_dpi_unregister_client;
@@ -936,7 +912,10 @@ walleye_dpi_plugin_init(struct fsm_session *session)
         goto error;
     }
 
-    dpi_plugin_set_health_stats_cfg(session);
+    fsm_set_dpi_health_stats_cfg(session);
+
+    dpi_session->wc_topic = session->dpi_stats_report_topic;
+    dpi_session->wc_interval = session->dpi_stats_report_interval;
 
     dpi_session->initialized = true;
     LOGD("%s: added session %s", __func__, session->name);
@@ -1426,7 +1405,7 @@ dpi_plugin_handler(struct fsm_session *session,
 
     ethertype = 0;
     eth = net_header_get_eth(net_parser);
-    if ((net_parser->source == PKT_SOURCE_NFQ) || (net_parser->source == PKT_SOURCE_SOCKET))
+    if (net_parser->source == PKT_SOURCE_SOCKET)
     {
         ethertype = eth->ethertype;
     }

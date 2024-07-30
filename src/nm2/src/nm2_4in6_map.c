@@ -1578,7 +1578,7 @@ static void callback_Connection_Manager_Uplink(
                 break;
             }
 
-            /* Fallthrough: */
+            /* FALLTHROUGH */
         case OVSDB_UPDATE_DEL:
 
             if (strcmp(nm2_map_ctx->nm_uplink_intf, new->if_name) == 0)

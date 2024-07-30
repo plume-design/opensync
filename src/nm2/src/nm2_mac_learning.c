@@ -217,9 +217,9 @@ nm2_mac_learning_init(void)
 
     g_mac_learning_init = true;
 
-    if (ff_is_flag_enabled("nm2_arping_clients"))
+    if (ff_is_flag_enabled("nm2_probe_eth_clients"))
     {
-        nm2_arping_clients_init();
+        nm2_probe_eth_clients_init();
     }
 
     return true;

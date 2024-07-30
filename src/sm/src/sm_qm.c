@@ -86,7 +86,16 @@ void sm_mqtt_timer_handler(struct ev_loop *loop, ev_timer *timer, int revents)
 
     while (dpp_get_queue_elements() > 0)
     {
-        if (!dpp_get_report(sm_mqtt_buf, sizeof(sm_mqtt_buf), &buf_len))
+        bool ret;
+
+#ifdef DPP_FAST_PACK
+        uint8_t *buf = sm_mqtt_buf;
+
+        ret = dpp_get_report2(&buf, sizeof(sm_mqtt_buf), &buf_len);
+#else
+        ret = dpp_get_report(sm_mqtt_buf, sizeof(sm_mqtt_buf), &buf_len);
+#endif
+        if (!ret)
         {
             LOGE("DPP: Get report failed.\n");
             break;

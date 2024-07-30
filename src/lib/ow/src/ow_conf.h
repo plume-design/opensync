@@ -92,6 +92,11 @@ void ow_conf_phy_set_ap_channel(const char *phy_name, const struct osw_channel *
 bool ow_conf_phy_is_set(const char *phy_name);
 const bool *ow_conf_phy_get_enabled(const char *phy_name);
 const int *ow_conf_phy_get_tx_chainmask(const char *phy_name);
+void ow_conf_phy_set_ap_supp_rates(const char *phy_name, const uint16_t *supp_rates);
+void ow_conf_phy_set_ap_basic_rates(const char *phy_name, const uint16_t *basic_rates);
+void ow_conf_phy_set_ap_beacon_rate(const char *phy_name, const enum osw_rate_legacy *beacon_rate);
+void ow_conf_phy_set_ap_mcast_rate(const char *phy_name, const enum osw_rate_legacy *mcast_rate);
+void ow_conf_phy_set_ap_mgmt_rate(const char *phy_name, const enum osw_rate_legacy *mgmt_rate);
 
 void ow_conf_vif_clear(const char *vif_name);
 void ow_conf_vif_unset(const char *vif_name);
@@ -102,6 +107,7 @@ void ow_conf_vif_set_tx_power_dbm(const char *vif_name, const int *tx_power_dbm)
 void ow_conf_vif_set_ap_channel(const char *vif_name, const struct osw_channel *channel);
 void ow_conf_vif_set_ap_ssid(const char *vif_name, const struct osw_ssid *ssid);
 void ow_conf_vif_set_ap_bridge_if_name(const char *vif_name, const struct osw_ifname *bridge_if_name);
+void ow_conf_vif_set_ap_nas_identifier(const char *vif_name, const struct osw_nas_id *nas_id);
 void ow_conf_vif_set_ap_ssid_hidden(const char *vif_name, const bool *hidden);
 void ow_conf_vif_set_ap_isolated(const char *vif_name, const bool *isolated);
 void ow_conf_vif_set_ap_ht_enabled(const char *vif_name, const bool *ht_enabled);
@@ -117,8 +123,10 @@ void ow_conf_vif_set_ap_wpa(const char *vif_name, const bool *wpa_enabled);
 void ow_conf_vif_set_ap_rsn(const char *vif_name, const bool *rsn_enabled);
 void ow_conf_vif_set_ap_pairwise_tkip(const char *vif_name, const bool *tkip_enabled);
 void ow_conf_vif_set_ap_pairwise_ccmp(const char *vif_name, const bool *ccmp_enabled);
+void ow_conf_vif_set_ap_akm_eap(const char *vif_name, const bool *eap_enabled);
 void ow_conf_vif_set_ap_akm_psk(const char *vif_name, const bool *psk_enabled);
 void ow_conf_vif_set_ap_akm_sae(const char *vif_name, const bool *sae_enabled);
+void ow_conf_vif_set_ap_akm_ft_eap(const char *vif_name, const bool *ft_eap_enabled);
 void ow_conf_vif_set_ap_akm_ft_psk(const char *vif_name, const bool *ft_psk_enabled);
 void ow_conf_vif_set_ap_akm_ft_sae(const char *vif_name, const bool *ft_sae_enabled);
 void ow_conf_vif_set_ap_pmf(const char *vif_name, const enum osw_pmf *pmf);
@@ -152,6 +160,28 @@ void ow_conf_vif_set_ap_neigh(const char *vif_name,
                               const uint8_t phy_type);
 void ow_conf_vif_del_ap_neigh(const char *vif_name,
                               const struct osw_hwaddr *addr);
+
+void ow_conf_radius_add(const char *ref_id,
+                        const char *ip_addr,
+                        const char *secret,
+                        uint16_t port);
+void ow_conf_radius_unset(const char *ref_id);
+void ow_conf_radius_flush(void);
+void ow_conf_radius_set_ip_addr(const char *ref_id,
+                                const char *ip_addr);
+void ow_conf_radius_set_secret(const char *ref_id,
+                               const char *secret);
+void ow_conf_radius_set_port(const char *ref_id,
+                             uint16_t port);
+
+void ow_conf_vif_add_radius_ref(const char *vif_name,
+                                const char *ref_id);
+void ow_conf_vif_flush_radius_refs(const char *vif_name);
+
+void ow_conf_vif_add_radius_accounting_ref(const char *vif_name,
+                                           const char *ref_id);
+void ow_conf_vif_flush_radius_accounting_refs(const char *vif_name);
+
 void ow_conf_vif_flush_ap_psk(const char *vif_name);
 void ow_conf_vif_flush_ap_acl(const char *vif_name);
 void ow_conf_vif_flush_ap_neigh(const char *vif_name);
@@ -173,5 +203,38 @@ const bool *ow_conf_vif_get_ap_akm_ft_sae(const char *vif_name);
 const enum osw_pmf *ow_conf_vif_get_ap_pmf(const char *vif_name);
 const char *ow_conf_vif_get_ap_psk(const char *vif_name, int key_id);
 bool ow_conf_vif_has_ap_acl(const char *vif_name, const struct osw_hwaddr *addr);
+
+void ow_conf_passpoint_set_hs20_enabled(const char *ref_id, const bool *enabled);
+void ow_conf_passpoint_set_adv_wan_status(const char *ref_id, const bool *adv_wan_status);
+void ow_conf_passpoint_set_adv_wan_symmetric(const char *ref_id, const bool *adv_wan_symmetric);
+void ow_conf_passpoint_set_adv_wan_at_capacity(const char *ref_id, const bool *adv_wan_at_capacity);
+void ow_conf_passpoint_set_osen(const char *ref_id, const bool *osen);
+void ow_conf_passpoint_set_asra(const char *ref_id, const bool *asra);
+void ow_conf_passpoint_set_ant(const char *ref_id, const int *access_network_type);
+void ow_conf_passpoint_set_venue_group(const char *ref_id, const int *venue_group);
+void ow_conf_passpoint_set_venue_type(const char *ref_id, const int *venue_type);
+void ow_conf_passpoint_set_anqp_domain_id(const char *ref_id, const int *anqp_domain_id);
+void ow_conf_passpoint_set_pps_mo_id(const char *ref_id, const int *pps_mo_id);
+void ow_conf_passpoint_set_t_c_timestamp(const char *ref_id, const int *t_c_timestamp);
+void ow_conf_passpoint_set_t_c_filename(const char *ref_id, const char *t_c_filename);
+void ow_conf_passpoint_set_anqp_elem(const char *ref_id, const char *anqp_elem);
+void ow_conf_passpoint_set_hessid(const char *ref_id, const char *hessid);
+void ow_conf_passpoint_set_osu_ssid(const char *ref_id, const char *osu_ssid);
+void ow_conf_passpoint_set_nairealm_list(const char *ref_id, char **nairealm_list, const int nairealm_list_len);
+void ow_conf_passpoint_set_domain_list(const char *ref_id, char **domain_list, const int domain_list_len);
+void ow_conf_passpoint_set_roamc(const char *ref_id, char **roamc_list, const int roamc_list_len);
+void ow_conf_passpoint_set_oper_fname_list(const char *ref_id, char **oper_fname_list,
+                                           const int oper_fname_list_len);
+void ow_conf_passpoint_set_venue_name_list(const char *ref_id, char **venue_name_list,
+                                           const int venue_name_list_len);
+void ow_conf_passpoint_set_venue_url_list(const char *ref_id, char **venue_url_list,
+                                          const int venue_url_list_len);
+void ow_conf_passpoint_set_list_3gpp_list(const char *ref_id, char **list_3gpp_list,
+                                          const int list_3gpp_list_len);
+void ow_conf_passpoint_set_net_auth_type_list(const char *ref_id, const int *net_auth_type_list,
+                                              const int net_auth_type_list_len);
+void ow_conf_passpoint_unset(char *ref_id);
+void ow_conf_vif_set_ap_passpoint_ref(const char *vif_name, const char *ref_id);
+const char* ow_conf_vif_get_ap_passpoint_ref(const char *vif_name);
 
 #endif /* OW_CONF_H_INCLUDED */

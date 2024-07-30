@@ -53,6 +53,7 @@ fsm_nfq_net_header_parse(struct nfq_pkt_info *pkt_info, void *data)
     void *src_ip;
     void *dst_ip;
     int domain;
+    uint16_t ethertype;
     int len = 0;
 
     MEMZERO(net_parser);
@@ -111,6 +112,13 @@ fsm_nfq_net_header_parse(struct nfq_pkt_info *pkt_info, void *data)
         return;
     }
 
+    /* Account for the ethetnet header that will be prepended */
+    net_parser.start -= ETH_HLEN;
+    net_parser.caplen += ETH_HLEN;
+    net_parser.packet_len += ETH_HLEN;
+    net_parser.parsed += ETH_HLEN;
+    memset(net_parser.start, 0, ETH_HLEN);
+
     rc_lookup = neigh_table_lookup_af(domain, src_ip, &src_mac);
     if (rc_lookup)
     {
@@ -121,11 +129,21 @@ fsm_nfq_net_header_parse(struct nfq_pkt_info *pkt_info, void *data)
             if (!rc_lookup) LOGT("%s: Couldn't update neighbor cache.",__func__);
 
         }
-        if (rc_lookup) net_parser.eth_header.srcmac = &src_mac;
+        if (rc_lookup)
+        {
+            net_parser.eth_header.srcmac = &src_mac;
+            memcpy(&net_parser.start[6], &src_mac, ETH_ALEN);
+        }
     }
 
     rc_lookup = neigh_table_lookup_af(domain, dst_ip, &dst_mac);
-    if (rc_lookup) net_parser.eth_header.dstmac = &dst_mac;
+    if (rc_lookup)
+    {
+        net_parser.eth_header.dstmac = &dst_mac;
+        memcpy(net_parser.start, &dst_mac, ETH_ALEN);
+    }
+    ethertype = htons(net_parser.eth_header.ethertype);
+    memcpy(&net_parser.start[12], &ethertype, sizeof(ethertype));
 
     session = (struct fsm_session *)data;
     parser_ops = &session->p_ops->parser_ops;

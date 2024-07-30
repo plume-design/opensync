@@ -104,3 +104,10 @@ menuconfig MANAGER_FSM
         default y
         help
             Hard code a mapping between legacy plugins and reserved internet ports
+
+    config FSM_ENABLE_DBG
+        depends on MANAGER_FSM
+        bool "Debug configuration only"
+        default y
+        help
+            Allow the management of debugging knobs

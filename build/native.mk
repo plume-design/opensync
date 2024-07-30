@@ -37,51 +37,51 @@ STRIP          ?= strip -g
 
 # Includes
 SDK_INCLUDES = -I/usr/include
-CFLAGS += -I/usr/include/protobuf-c
-CFLAGS += -I/$(OVS_SOURCE)
-CFLAGS += -I/$(OVS_SOURCE)/include
+OS_CFLAGS += -I/usr/include/protobuf-c
+OS_CFLAGS += -I/$(OVS_SOURCE)
+OS_CFLAGS += -I/$(OVS_SOURCE)/include
 
 # Flags
-CFLAGS += -fno-strict-aliasing
-CFLAGS += -fasynchronous-unwind-tables
-CFLAGS += -Wno-error=deprecated-declarations
-CFLAGS += -Wno-error=cpp
-CFLAGS += -fPIC
+OS_CFLAGS += -fno-strict-aliasing
+OS_CFLAGS += -fasynchronous-unwind-tables
+OS_CFLAGS += -Wno-error=deprecated-declarations
+OS_CFLAGS += -Wno-error=cpp
+OS_CFLAGS += -fPIC
 
 # GCC specific flags
 ifneq (,$(findstring gcc,$(CC)))
-	CFLAGS += -O3 -pipe
-	CFLAGS += -Wno-error=unused-but-set-variable
-	CFLAGS += -fno-caller-saves
+	OS_CFLAGS += -O3 -pipe
+	OS_CFLAGS += -Wno-error=unused-but-set-variable
+	OS_CFLAGS += -fno-caller-saves
 endif
 
 # clang specific flags. Enable address sanitizer and coverage
 # instrumentation if requested
 ifneq (,$(findstring clang,$(CC)))
-	CFLAGS += -O0 -pipe
-	CFLAGS += -fno-omit-frame-pointer
-	CFLAGS += -fno-optimize-sibling-calls
-	CFLAGS += -fsanitize=address
-	LDFLAGS += -fsanitize=address
+	OS_CFLAGS += -O0 -pipe
+	OS_CFLAGS += -fno-omit-frame-pointer
+	OS_CFLAGS += -fno-optimize-sibling-calls
+	OS_CFLAGS += -fsanitize=address
+	OS_LDFLAGS += -fsanitize=address
 	CLANG_VERSION = $(subst clang,,${CC})
 	ASAN_SYMBOLIZER_PATH = /usr/lib/llvm${CLANG_VERSION}/bin/llvm-symbolizer
 	ASAN_OPTIONS = symbolized=1
 ifneq (,$(findstring yes,$(COVERAGE)))
-	CFLAGS += -fprofile-instr-generate -fcoverage-mapping
-	LDFLAGS += -fprofile-instr-generate -fcoverage-mapping
+	OS_CFLAGS += -fprofile-instr-generate -fcoverage-mapping
+	OS_LDFLAGS += -fprofile-instr-generate -fcoverage-mapping
 endif
 endif
 
 # Defines
-CFLAGS += -D_U_="__attribute__((unused))"
-CFLAGS += -DARCH_X86
+OS_CFLAGS += -D_U_="__attribute__((unused))"
+OS_CFLAGS += -DARCH_X86
 
-LDFLAGS += -lssl -lcrypto -lpcap
+OS_LDFLAGS += -lssl -lcrypto -lpcap
 
 export CC
 export CXX
-export CFLAGS
-export LDFLAGS
+export OS_CFLAGS
+export OS_LDFLAGS
 export LIBS
 
 # enable use of netlink lib for native build

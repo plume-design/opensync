@@ -398,6 +398,47 @@ if OSN_LINUX_ENABLED
                      - No other route attributes such as the preferred source address reported.
     endchoice
 
+    config OSN_LINUX_ROUTE6
+        bool "Linux IPv6 routing table"
+        default y
+        select OSN_LINUX_NETLINK
+        help
+            This option implements the lnx_route API and enables the "Linux"
+            route status backend (osn_route).
+
+    if OSN_LINUX_ROUTE6
+        choice
+            prompt "IPv6 Route Configuration Backend"
+            default OSN_LINUX_ROUTE6_LIBNL3
+
+            config OSN_LINUX_ROUTE6_LIBNL3
+                bool "libnl3"
+                help
+                    Route management using netlink library (libnl3)
+
+                    This option implements the osn_routes API and enables netlink based
+                    "Linux" route control backend (osn_route).
+        endchoice
+
+        choice
+            prompt "IPv6 Route State Backend"
+            default OSN_LINUX_ROUTE6_STATE_LIBNL3
+
+            config OSN_LINUX_ROUTE6_STATE_LIBNL3
+                bool "libnl3"
+                help
+                    Route state polling using netlink library (libnl3)
+
+                    This option implements the osn_route_state API and enables netlink/libnl3 based
+                    "Linux" route state polling.
+
+                    This implementation is able to:
+                    - Report routes from non-main routing tables.
+                    - Report other route attributes (such as preferred source IP address, etc).
+
+                    libnl3 library must be available on the system.
+        endchoice
+    endif
 
     config OSN_LINUX_LTE
         bool "Linux LTE support"

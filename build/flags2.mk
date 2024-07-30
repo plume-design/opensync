@@ -25,12 +25,12 @@
 # this has to be included after target-arch and ARCH_MK
 # so that CC and TARGET are known
 
-CFLAGS += $(OPTIMIZE) $(DEBUGFLAGS) $(DEFINES) $(INCLUDES)
-CFLAGS += $(CFG_DEFINES)
-CFLAGS += $(VENDOR_CFLAGS)
+OS_CFLAGS += $(OPTIMIZE) $(DEBUGFLAGS) $(DEFINES) $(INCLUDES)
+OS_CFLAGS += $(CFG_DEFINES)
+OS_CFLAGS += $(VENDOR_CFLAGS)
 
 TARGET_DEF := TARGET_$(shell echo -n "$(TARGET)" | tr -sc '[A-Za-z0-9]' _ | tr '[a-z]' '[A-Z]')
-CFLAGS += -D$(TARGET_DEF) -DTARGET_NAME="\"$(TARGET)\""
+OS_CFLAGS += -D$(TARGET_DEF) -DTARGET_NAME="\"$(TARGET)\""
 
 # gcc version specific flags (does not apply to clang)
 ifneq (,$(findstring cc,$(CC)))
@@ -63,5 +63,8 @@ else ifneq (,$(findstring clang,$(CC)))
   endif
 endif
 
-CFLAGS += $(GCCVERFLAGS)
-CFLAGS += $(CLANGVERFLAGS)
+OS_CFLAGS += $(GCCVERFLAGS)
+OS_CFLAGS += $(CLANGVERFLAGS)
+
+export OS_CFLAGS
+

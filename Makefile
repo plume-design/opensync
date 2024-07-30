@@ -74,6 +74,7 @@ include build/tags.mk
 include build/app_install.mk
 include build/ovsdb.mk
 include build/rootfs.mk
+include build/ospkg.mk
 include build/schema.mk
 include build/devshell.mk
 include build/help.mk

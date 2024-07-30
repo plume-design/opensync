@@ -117,11 +117,11 @@ Note-1: the wait for re-connect back to same manager addr because
 #define CM2_ONBOARD_LINK_SEL_TIMEOUT    120
 #define CM2_RESOLVE_TIMEOUT             180
 #define CM2_CONNECT_TIMEOUT             30
+#define CM2_TRY_CONNECT_TIMEOUT         10
 
 #define CM2_MAX_DISCONNECTS             10
 #define CM2_STABLE_PERIOD               300 // 5 min
 #define CM2_RESOLVE_RETRY_THRESHOLD     10
-#define CM2_GW_OFFLINE_RETRY_THRESHOLD  3
 #define CM2_GW_SKIP_RESTART_TIMEOUT     86400 // 1 hour
 
 // state info
@@ -144,7 +144,7 @@ cm2_state_info_t cm2_state_info[CM2_STATE_NUM] =
     [CM2_STATE_OVS_INIT]            = { "OVS_INIT",            CM2_NO_TIMEOUT },
     [CM2_STATE_TRY_RESOLVE]         = { "TRY_RESOLVE",         CM2_RESOLVE_TIMEOUT },
     [CM2_STATE_RE_CONNECT]          = { "RE_CONNECT",          CM2_CONNECT_TIMEOUT },
-    [CM2_STATE_TRY_CONNECT]         = { "TRY_CONNECT",         CM2_CONNECT_TIMEOUT },
+    [CM2_STATE_TRY_CONNECT]         = { "TRY_CONNECT",         CM2_TRY_CONNECT_TIMEOUT },
     [CM2_STATE_FAST_RECONNECT]      = { "FAST_RECONNECT",      CM2_FAST_RECONNECT_TIMEOUT },
     [CM2_STATE_FAST_RECONNECT_WAIT] = { "FAST_RECONNECT_WAIT", CM2_FAST_RECONNECT_TIMEOUT },
     [CM2_STATE_CONNECTED]           = { "CONNECTED",           CM2_NO_TIMEOUT },
@@ -232,6 +232,12 @@ static bool cm2_timeout(bool expected)
         return true;
     }
     return false;
+}
+
+void cm2_set_dst_type(cm2_dest_e dst)
+{
+    g_state.dest = dst;
+    cm2_set_ipv6_pref(dst);
 }
 
 void cm2_set_state(bool success, cm2_state_e state)
@@ -355,6 +361,7 @@ static void cm2_extender_init_state(void) {
         STRSCPY(g_state.link.if_name, con.if_name);
         STRSCPY(g_state.link.if_type, con.if_type);
         g_state.link.is_used = true;
+        g_state.link.is_used_echoed = true;
         g_state.link.priority = con.priority;
     } else {
         g_state.link.priority = -1;
@@ -363,10 +370,20 @@ static void cm2_extender_init_state(void) {
     g_state.dev_type = CM2_DEVICE_NONE;
 }
 
-bool cm2_enable_gw_offline()
+static void cm2_gw_offline_start_cb(struct ev_loop *loop, ev_timer *t, int event)
 {
     bool r;
 
+    r = cm2_ovsdb_enable_gw_offline_conf();
+    if (!r) {
+        LOGW("Enabling GW offline configuration failed");
+    } else {
+        LOGI("GW offline configuration enabled");
+    }
+}
+
+bool cm2_enable_gw_offline()
+{
     if (cm2_is_wifi_type(g_state.link.if_type))
         return false;
 
@@ -386,21 +403,9 @@ bool cm2_enable_gw_offline()
         return false;
     }
 
-    LOGI("Waiting for applying GW offline functionality [%d,%d]",
-         g_state.cnts.gw_offline + 1, CM2_GW_OFFLINE_RETRY_THRESHOLD);
-
-    if (g_state.cnts.gw_offline < CM2_GW_OFFLINE_RETRY_THRESHOLD)
-        g_state.cnts.gw_offline++;
-
-    if (g_state.cnts.gw_offline != CM2_GW_OFFLINE_RETRY_THRESHOLD)
-        return true;
-
-    r = cm2_ovsdb_enable_gw_offline_conf();
-    if (!r) {
-        LOGW("Enabling GW offline configuration failed");
-        g_state.cnts.gw_offline--;
-    } else {
-        LOGI("GW offline configuration enabled");
+    if (!ev_is_active(&g_state.gw_offline_start)) {
+        ev_timer_start(g_state.loop, &g_state.gw_offline_start);
+        LOGI("GW offline starting timer");
     }
 
     return true;
@@ -489,6 +494,34 @@ restart:
     WARN_ON(target_device_restart_managers());
 }
 
+static void
+cm2_ovs_connect(void)
+{
+    const bool local_skip_reconnect = g_state.skip_reconnect;
+    g_state.skip_reconnect = false;
+
+    if (g_state.connected_at_least_once == false)
+    {
+        cm2_set_state(true, CM2_STATE_OVS_INIT);
+    }
+    else if (g_state.connected)
+    {
+        if (local_skip_reconnect)
+        {
+            cm2_set_state(true, CM2_STATE_CONNECTED);
+        }
+        else
+        {
+            g_state.fast_backoff = true;
+            cm2_set_state(true, CM2_STATE_FAST_RECONNECT);
+        }
+    }
+    else
+    {
+        cm2_set_state(true, CM2_STATE_OVS_INIT);
+    }
+}
+
 static void cm2_restart_ovs_connection(bool state) {
     bool gw_offline_en = (CONFIG_CM2_CLOUD_FATAL_THRESHOLD == 0 ||
                             (g_state.cnts.ovs_resolve_fail < CONFIG_CM2_CLOUD_FATAL_THRESHOLD &&
@@ -498,7 +531,7 @@ static void cm2_restart_ovs_connection(bool state) {
     {
         if (gw_offline_en) {
             cm2_enable_gw_offline();
-            cm2_set_state(state, CM2_STATE_LINK_SEL);
+            cm2_set_state(state, CM2_STATE_QUIESCE_OVS);
         }
         else
             cm2_trigger_restart_managers();
@@ -507,7 +540,7 @@ static void cm2_restart_ovs_connection(bool state) {
     {
         if (gw_offline_en)
             cm2_enable_gw_offline();
-        cm2_set_state(state, CM2_STATE_OVS_INIT);
+        cm2_ovs_connect();
     }
 }
 
@@ -553,12 +586,10 @@ static bool cm2_block_vtag(void) {
 
 static void cm2_disable_gw_offline_state(void)
 {
-    if (g_state.cnts.gw_offline != CM2_GW_OFFLINE_RETRY_THRESHOLD ||
-        !cm2_ovsdb_is_gw_offline_active())
+    if (!cm2_ovsdb_is_gw_offline_active())
         return;
 
     if (cm2_ovsdb_disable_gw_offline_conf()) {
-        g_state.cnts.gw_offline = 0;
         LOGI("GW offline configuration disabled");
     } else {
         LOGW("Disabling GW offline configuration failed");
@@ -570,8 +601,8 @@ static void cm2_restore_bridge_config()
     if (g_state.dev_type != CM2_DEVICE_BRIDGE)
         return;
 
-    if (!g_state.old_link.is_bridge ||
-        g_state.link.is_bridge)
+    if (!cm2_link_is_bridge(&g_state.old_link) ||
+        cm2_link_is_bridge(&g_state.link))
         return;
 
     if (!cm2_is_eth_type(g_state.link.if_type))
@@ -585,21 +616,11 @@ static void cm2_restore_bridge_config()
 }
 
 static void
-cm2_ovs_connect(void)
+cm2_dismiss_skip_reconnect(const char *reason)
 {
-    if (g_state.connected_at_least_once == false)
-    {
-        cm2_set_state(true, CM2_STATE_OVS_INIT);
-    }
-    else if (g_state.connected)
-    {
-        g_state.fast_backoff = true;
-        cm2_set_state(true, CM2_STATE_FAST_RECONNECT);
-    }
-    else
-    {
-        cm2_set_state(true, CM2_STATE_OVS_INIT);
-    }
+    if (g_state.skip_reconnect == false) return;
+    g_state.skip_reconnect = false;
+    LOGI("dismissing skip_reconnect: %s", reason);
 }
 
 void cm2_update_state(cm2_reason_e reason)
@@ -635,7 +656,7 @@ start:
             cm2_set_backhaul_update_ble_state();
             cm2_restore_bridge_config();
 
-            if (g_state.link.is_bridge) {
+            if (cm2_link_is_bridge(&g_state.link)) {
                 if (cm2_is_wifi_type(g_state.link.if_type)) {
                     cm2_ovsdb_set_dhcp_client(g_state.link.bridge_name, true);
                     cm2_ovsdb_set_dhcpv6_client(g_state.link.bridge_name, true);
@@ -650,21 +671,23 @@ start:
 
             cm2_ovsdb_connection_clean_link_counters(g_state.link.if_name);
             cm2_connection_req_stability_check_async(g_state.link.if_name, g_state.link.if_type, uplink, LINK_CHECK, false, false);
-            if (g_state.state < CM2_STATE_WAN_IP)
-                cm2_set_state(true, CM2_STATE_WAN_IP);
+            WARN_ON(g_state.state == CM2_STATE_INIT);
+            WARN_ON(g_state.state != CM2_STATE_LINK_SEL);
             break;
         case CM2_REASON_SET_NEW_VTAG:
             LOGI("vtag: %d: creating", g_state.link.vtag.tag);
             if (cm2_set_new_vtag()) {
                 cm2_ovsdb_refresh_dhcp(uplink);
-                cm2_set_state(true, CM2_STATE_WAN_IP);
+                if (g_state.state != CM2_STATE_LINK_SEL)
+                    cm2_set_state(true, CM2_STATE_WAN_IP);
             }
             break;
         case CM2_REASON_BLOCK_VTAG:
             LOGI("vtag: %d: blocking", g_state.link.vtag.tag);
             if (cm2_block_vtag()) {
                 cm2_ovsdb_refresh_dhcp(uplink);
-                cm2_set_state(true, CM2_STATE_WAN_IP);
+                if (g_state.state != CM2_STATE_LINK_SEL)
+                    cm2_set_state(true, CM2_STATE_WAN_IP);
             }
             break;
         case CM2_REASON_OVS_INIT:
@@ -688,7 +711,7 @@ start:
     {
         LOGI("Received new redirector address");
 
-        cm2_set_state(true, CM2_STATE_OVS_INIT);
+        cm2_ovs_connect();
         g_state.addr_redirector.updated = false;
     }
     // received new manager address?
@@ -699,7 +722,7 @@ start:
         LOGI("Received manager address");
 
         cm2_set_state(true, CM2_STATE_TRY_RESOLVE);
-        g_state.dest = CM2_DEST_MANAGER;
+        cm2_set_dst_type(CM2_DEST_MANAGER);
     }
 
     switch (g_state.state)
@@ -709,7 +732,7 @@ start:
             if (!cm2_is_extender()) {
                 LOGD("%s Skip onboarding process target_type = %d",
                      __func__, g_state.target_type);
-                cm2_set_state(true, CM2_STATE_OVS_INIT);
+                cm2_ovs_connect();
             } else {
                 cm2_extender_init_state();
                 g_state.link.ipv4.resolve_retry = false;
@@ -717,6 +740,9 @@ start:
                 g_state.cnts.ovs_resolve = 0;
                 cm2_set_state(true, CM2_STATE_LINK_SEL);
             }
+            cm2_dismiss_skip_reconnect("performing init");
+            g_state.link_sel_due_to_priority = false;
+            g_state.is_previous_if_type_wifi = false;;
             g_state.connected_at_least_once = false;
             g_state.cnts.ovs_resolve_fail = 0;
             break;
@@ -724,19 +750,36 @@ start:
         case CM2_STATE_LINK_SEL: // EXTENDER only
             if (cm2_state_changed()) // first iteration
             {
+                if (!g_state.connected_at_least_once && g_state.is_previous_if_type_wifi)
+                    LOGW("wifi_type should not be set, at the first entry to CM2_STATE_LINK_SEL state");
+
+                g_state.is_previous_if_type_wifi = (g_state.link.is_used && cm2_is_wifi_type(g_state.link.if_type));
+                if (g_state.is_previous_if_type_wifi)
+                    LOGD("Set previous if_type to wifi %s(%s)", g_state.link.if_name, g_state.link.if_type);
+
+                cm2_connection_clear_used();
                 LOGI("Waiting for finish link selection");
                 g_state.run_stability = false;
                 g_state.ble_status = 0;
                 cm2_ovsdb_connection_update_ble_phy_link();
             }
-            if (g_state.link.is_used)
+            if (g_state.link.is_used_echoed)
             {
                 cm2_connection_req_stability_check_async(g_state.link.if_name, g_state.link.if_type, uplink, LINK_CHECK, false, false);
                 cm2_set_backhaul_update_ble_state();
+                g_state.skip_reconnect = (g_state.is_previous_if_type_wifi
+                                      && cm2_is_wifi_type(g_state.link.if_type)
+                                      && g_state.link_sel_due_to_priority);
+                LOGD("Perform skip reconnect %s. Selected link: %s(%s)", g_state.skip_reconnect ? "true" : "false", g_state.link.if_name, g_state.link.if_type);
+                g_state.link_sel_due_to_priority = false;
+                g_state.is_previous_if_type_wifi = false;
                 cm2_set_state(true, CM2_STATE_WAN_IP);
             }
             else if (cm2_timeout(false))
             {
+                g_state.is_previous_if_type_wifi = false;
+                cm2_dismiss_skip_reconnect("performing link sel timeout");
+                g_state.link_sel_due_to_priority = false;
                 cm2_trigger_restart_managers();
             }
             break;
@@ -791,6 +834,10 @@ start:
             break;
 
         case CM2_STATE_OVS_INIT:
+            if (cm2_state_changed()) {
+                g_state.fast_backoff = false;
+                cm2_dismiss_skip_reconnect("performing full reconnect");
+            }
             if (cm2_is_extender() && !g_state.link.is_used) {
                 LOGN("Main link is not used, move to link selection");
                 cm2_set_state(false, CM2_STATE_LINK_SEL);
@@ -816,7 +863,7 @@ start:
                 // clear manager_addr
                 cm2_clear_manager_addr();
                 // try to resolve redirector
-                g_state.dest = CM2_DEST_REDIR;
+                cm2_set_dst_type(CM2_DEST_REDIR);
                 cm2_set_state(true, CM2_STATE_TRY_RESOLVE);
                 g_state.disconnects = 0;
             }
@@ -962,28 +1009,34 @@ start:
         case CM2_STATE_FAST_RECONNECT:
             if (cm2_state_changed()) // first iteration
             {
+                g_state.fast_backoff = false;
+                cm2_dismiss_skip_reconnect("performing fast reconnect");
                 cm2_ovsdb_set_Manager_target("");
-                if ( (g_state.ipv6_manager_con && g_state.link.ipv6.blocked) ||
-                     (!g_state.ipv6_manager_con && g_state.link.ipv4.blocked) )
-                {
-                    g_state.fast_backoff = false;
-                    cm2_restart_ovs_connection(false);
-                    break;
-                }
+                WARN_ON(cm2_update_main_link_ip(&g_state.link) < 0);
+                opts = LINK_CHECK | ROUTER_CHECK | INTERNET_CHECK;
+                cm2_connection_req_stability_check_async(g_state.link.if_name, g_state.link.if_type, uplink, opts, true, true);
             }
             if (strlen(g_state.target) > 0)
             {
                 if (cm2_timeout(false))
-                    cm2_set_state(true, CM2_STATE_QUIESCE_OVS);
+                    cm2_set_state(true, CM2_STATE_RE_CONNECT);
                 break;
             }
             if (g_state.connected)
             {
                 if (cm2_timeout(false))
-                    cm2_set_state(true, CM2_STATE_QUIESCE_OVS);
+                    cm2_set_state(true, CM2_STATE_RE_CONNECT);
                 break;
             }
-            cm2_write_current_target_addr();
+            /* Wait for finished stability check or timeout */
+            if (cm2_is_stability_check_pending(g_state.link.if_name) && !cm2_timeout(false))
+                break;
+
+            if (!cm2_write_current_target_addr())
+            {
+                cm2_set_state(true, CM2_STATE_OVS_INIT);
+                break;
+            }
             cm2_set_state(true, CM2_STATE_FAST_RECONNECT_WAIT);
             break;
 
@@ -991,7 +1044,10 @@ start:
             if (g_state.connected == false)
             {
                 if (cm2_timeout(false))
-                    cm2_set_state(true, CM2_STATE_QUIESCE_OVS);
+                {
+                    cm2_move_next_target_addr();
+                    cm2_set_state(true, CM2_STATE_RE_CONNECT);
+                }
                 break;
             }
 
@@ -1000,7 +1056,9 @@ start:
         case CM2_STATE_CONNECTED:
             if (cm2_state_changed()) // first iteration
             {
+                ev_timer_stop(g_state.loop, &g_state.gw_offline_start);
                 g_state.connected_at_least_once = true;
+                cm2_dismiss_skip_reconnect("skipped reconnect");
                 LOG(NOTICE, "===== Connected to: %s", cm2_curr_dest_name());
                 if (cm2_is_extender()) {
                     opts = LINK_CHECK | ROUTER_CHECK | INTERNET_CHECK;
@@ -1034,7 +1092,7 @@ start:
                     }
                 }
             } else {
-                cm2_set_state(true, CM2_STATE_QUIESCE_OVS);
+                cm2_set_state(true, CM2_STATE_FAST_RECONNECT);
                 g_state.is_con_stable = false;
             }
             break;
@@ -1082,8 +1140,10 @@ start:
 
                 if (g_state.disconnects > CM2_MAX_DISCONNECTS)
                 {
-                    // too many unsuccessful connect attempts, go back to redirector
-                    LOGE("Too many disconnects (%d/%d) back to redirector",
+                    // too many unsuccessful connect attempts
+                    cm2_enable_gw_offline();
+                    g_state.disconnects = 0;
+                    LOGE("Too many disconnects (%d/%d) go to QUIESCE_OVS",
                             g_state.disconnects, CM2_MAX_DISCONNECTS);
                     g_state.fast_backoff = false;
                     cm2_restart_ovs_connection(false);
@@ -1145,10 +1205,11 @@ void cm2_event_init(struct ev_loop *loop)
     ev_timer_init(&g_state.timer, cm2_event_cb, CM2_EVENT_INTERVAL, CM2_EVENT_INTERVAL);
     g_state.timer.data = NULL;
     ev_timer_start(g_state.loop, &g_state.timer);
+    ev_timer_init(&g_state.gw_offline_start, cm2_gw_offline_start_cb, 180, 0);
 }
 
 void cm2_event_close(struct ev_loop *loop)
 {
     LOGI("Stopping CM event");
-    (void)loop;
+    ev_timer_stop(g_state.loop, &g_state.gw_offline_start);
 }

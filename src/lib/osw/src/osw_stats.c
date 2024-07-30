@@ -906,6 +906,36 @@ osw_stats_sta_disconnected_cb(struct osw_state_observer *obs,
 }
 
 static void
+osw_stats_vif_added_cb(struct osw_state_observer *obs,
+                       const struct osw_state_vif_info *vif)
+{
+    LOGI("osw: stats: survey: resetting due to vif %s added", vif->vif_name);
+    osw_stats_reset_last(OSW_STATS_CHAN);
+}
+
+static void
+osw_stats_vif_removed_cb(struct osw_state_observer *obs,
+                       const struct osw_state_vif_info *vif)
+{
+    LOGI("osw: stats: survey: resetting due to vif %s removed", vif->vif_name);
+    osw_stats_reset_last(OSW_STATS_CHAN);
+}
+
+static void
+osw_stats_vif_channel_changed_cb(struct osw_state_observer *obs,
+                                 const struct osw_state_vif_info *vif,
+                                 const struct osw_channel *new_channel,
+                                 const struct osw_channel *old_channel)
+{
+    LOGI("osw: stats: survey: resetting due to vif channel changed: %s: "OSW_CHANNEL_FMT" -> "OSW_CHANNEL_FMT,
+         vif->vif_name,
+         OSW_CHANNEL_ARG(old_channel),
+         OSW_CHANNEL_ARG(new_channel));
+
+    osw_stats_reset_last(OSW_STATS_CHAN);
+}
+
+static void
 osw_stats_init(struct osw_stats *stats)
 {
     ds_dlist_init(&stats->subscribers, struct osw_stats_subscriber, node);
@@ -914,6 +944,9 @@ osw_stats_init(struct osw_stats *stats)
 
     stats->state_obs.name = __FILE__;
     stats->state_obs.sta_disconnected_fn = osw_stats_sta_disconnected_cb;
+    stats->state_obs.vif_added_fn = osw_stats_vif_added_cb;
+    stats->state_obs.vif_removed_fn = osw_stats_vif_removed_cb;
+    stats->state_obs.vif_channel_changed_fn = osw_stats_vif_channel_changed_cb;
 }
 
 static void

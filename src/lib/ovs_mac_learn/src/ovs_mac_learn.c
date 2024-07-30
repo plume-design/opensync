@@ -222,6 +222,8 @@ bool ovsmac_scan_br(char *brif)
     char cmd[256];
     int ret = false;
 
+    if (!is_input_shell_safe(brif)) return false;
+
     if (snprintf(cmd, sizeof(cmd), "ovs-appctl fdb/show %s", brif) >= (int)sizeof(cmd))
     {
         LOG(ERR, "OVSMAC: Command buffer too small.");

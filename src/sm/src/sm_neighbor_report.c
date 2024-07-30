@@ -91,12 +91,6 @@ static inline sm_neighbor_ctx_t * sm_neighbor_ctx_alloc()
     return neighbor_ctx;
 }
 
-static inline void sm_neighbor_ctx_free(sm_neighbor_ctx_t *neighbor_ctx)
-{
-    if (NULL != neighbor_ctx) {
-        FREE(neighbor_ctx);
-    }
-}
 
 static
 sm_neighbor_ctx_t *sm_neighbor_ctx_get (

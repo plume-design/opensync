@@ -43,6 +43,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "os_types.h"
 #include "policy_tags.h"
 #include "util.h"
+#include "fsm_fn_trace.h"
 
 /* Forward declaration */
 static bool find_mac_in_tag(os_macaddr_t *mac, char *tag);
@@ -141,6 +142,7 @@ fsm_dpi_client_init(struct fsm_session *session)
     /* Set the plugin specific ops */
     client_ops = &session->p_ops->dpi_plugin_client_ops;
     client_ops->process_attr = fsm_dpi_client_process_attr; /* Potentially overridden */
+    FSM_FN_MAP(fsm_dpi_client_process_attr);
 
     /* Wrap up the session initialization */
     client_session->session = session;

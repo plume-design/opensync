@@ -305,14 +305,6 @@ osw_confsync_build_phy_debug(const struct osw_drv_phy_config *cmd,
         notified = true;
     }
 
-    if (cmd->mbss_tx_vif_name_changed) {
-        LOGI("osw: confsync: %s: mbss_tx_vif_name: "OSW_IFNAME_FMT" -> "OSW_IFNAME_FMT,
-             phy,
-             OSW_IFNAME_ARG(&state->mbss_tx_vif_name),
-             OSW_IFNAME_ARG(&conf->mbss_tx_vif_name));
-        notified = true;
-    }
-
     if (cmd->changed && !notified) {
         LOGW("osw: confsync: %s: changed, but missing specific attribute printout", phy);
     }
@@ -332,6 +324,15 @@ osw_confsync_build_vif_ap_debug(const char *phy,
              phy, vif,
              max, state->bridge_if_name.buf,
              max, conf->bridge_if_name.buf);
+        *notified = true;
+    }
+
+    if (cmd->nas_identifier_changed) {
+        const int max = ARRAY_SIZE(conf->nas_identifier.buf);
+        LOGI("osw: confsync: %s/%s: nas_identifier: '%.*s' -> '%.*s'",
+             phy, vif,
+             max, state->nas_identifier.buf,
+             max, conf->nas_identifier.buf);
         *notified = true;
     }
 
@@ -474,6 +475,99 @@ osw_confsync_build_vif_ap_debug(const char *phy,
               vif,
               from,
               to);
+    }
+
+    if (cmd->mbss_mode_changed) {
+        const char *from = osw_mbss_vif_ap_mode_to_str(state->mbss_mode);
+        const char *to = osw_mbss_vif_ap_mode_to_str(conf->mbss_mode);
+        LOGI("osw: confsync: %s/%s: mbss_mode: %s -> %s",
+              phy,
+              vif,
+              from,
+              to);
+        *notified = true;
+    }
+
+    if (cmd->mbss_group_changed) {
+        LOGI("osw: confsync: %s/%s: mbss_group: %d -> %d",
+              phy,
+              vif,
+              state->mbss_group,
+              conf->mbss_group);
+        *notified = true;
+    }
+
+    if (cmd->radius_list_changed) {
+        char from[512];
+        char to[512];
+        osw_radius_list_to_str(from, sizeof(from), &state->radius_list);
+        osw_radius_list_to_str(to, sizeof(to), &cmd->radius_list);
+        LOGI("osw: confsync: %s/%s: radius_list: %s -> %s",
+             phy, vif, from, to);
+        *notified = true;
+    }
+
+    if (cmd->acct_list_changed) {
+        char from[512];
+        char to[512];
+        osw_radius_list_to_str(from, sizeof(from), &state->acct_list);
+        osw_radius_list_to_str(to, sizeof(to), &cmd->acct_list);
+        LOGI("osw: confsync: %s/%s: acct_list: %s -> %s",
+             phy, vif, from, to);
+        *notified = true;
+    }
+
+    if (cmd->passpoint_changed) {
+        if (osw_ssid_cmp(&state->passpoint.hessid, &cmd->passpoint.hessid) != 0)
+            LOGI("osw: confsync: %s/%s: passpoint_config: hessid \'%s\' -> \'%s\'",
+             phy, vif, state->passpoint.hessid.buf, cmd->passpoint.hessid.buf);
+        if (state->passpoint.hs20_enabled != cmd->passpoint.hs20_enabled)
+            LOGI("osw: confsync: %s/%s: passpoint_config: hs20 \'%d\' -> \'%d\'",
+             phy, vif, state->passpoint.hs20_enabled, cmd->passpoint.hs20_enabled);
+        if (state->passpoint.adv_wan_status != cmd->passpoint.adv_wan_status)
+            LOGI("osw: confsync: %s/%s: passpoint_config: adv_wan_status \'%d\' -> \'%d\'",
+             phy, vif, state->passpoint.adv_wan_status, cmd->passpoint.adv_wan_status);
+        if (state->passpoint.adv_wan_symmetric != cmd->passpoint.adv_wan_symmetric)
+            LOGI("osw: confsync: %s/%s: passpoint_config: adv_wan_symmetric \'%d\' -> \'%d\'",
+             phy, vif, state->passpoint.adv_wan_symmetric, cmd->passpoint.adv_wan_symmetric);
+        if (state->passpoint.adv_wan_at_capacity != cmd->passpoint.adv_wan_at_capacity)
+            LOGI("osw: confsync: %s/%s: passpoint_config: adv_wan_at_capacity \'%d\' -> \'%d\'",
+             phy, vif, state->passpoint.adv_wan_at_capacity, cmd->passpoint.adv_wan_at_capacity);
+        if (state->passpoint.osen != cmd->passpoint.osen)
+            LOGI("osw: confsync: %s/%s: passpoint_config: osen \'%d\' -> \'%d\'",
+             phy, vif, state->passpoint.osen, cmd->passpoint.osen);
+        if (state->passpoint.asra != cmd->passpoint.asra)
+            LOGI("osw: confsync: %s/%s: passpoint_config: asra \'%d\' -> \'%d\'",
+             phy, vif, state->passpoint.asra, cmd->passpoint.asra);
+        if (state->passpoint.ant != cmd->passpoint.ant)
+            LOGI("osw: confsync: %s/%s: passpoint_config: ant \'%d\' -> \'%d\'",
+             phy, vif, state->passpoint.ant, cmd->passpoint.ant);
+        if (state->passpoint.venue_group != cmd->passpoint.venue_group)
+            LOGI("osw: confsync: %s/%s: passpoint_config: venue_group \'%d\' -> \'%d\'",
+             phy, vif, state->passpoint.venue_group, cmd->passpoint.venue_group);
+        if (state->passpoint.venue_type != cmd->passpoint.venue_type)
+            LOGI("osw: confsync: %s/%s: passpoint_config: venue_type \'%d\' -> \'%d\'",
+             phy, vif, state->passpoint.venue_type, cmd->passpoint.venue_type);
+        if (state->passpoint.anqp_domain_id != cmd->passpoint.anqp_domain_id)
+            LOGI("osw: confsync: %s/%s: passpoint_config: anqp_domain_id \'%d\' -> \'%d\'",
+             phy, vif, state->passpoint.anqp_domain_id, cmd->passpoint.anqp_domain_id);
+        if (state->passpoint.pps_mo_id != cmd->passpoint.pps_mo_id)
+            LOGI("osw: confsync: %s/%s: passpoint_config: pps_mo_id \'%d\' -> \'%d\'",
+             phy, vif, state->passpoint.pps_mo_id, cmd->passpoint.pps_mo_id);
+        if (state->passpoint.t_c_timestamp != cmd->passpoint.t_c_timestamp)
+            LOGI("osw: confsync: %s/%s: passpoint_config: t_c_timestamp \'%d\' -> \'%d\'",
+             phy, vif, state->passpoint.t_c_timestamp, cmd->passpoint.t_c_timestamp);
+        if (osw_ssid_cmp(&state->passpoint.osu_ssid, &cmd->passpoint.osu_ssid) != 0)
+            LOGI("osw: confsync: %s/%s: passpoint_config: osu_ssid \'%s\' -> \'%s\'",
+             phy, vif, state->passpoint.osu_ssid.buf, cmd->passpoint.osu_ssid.buf);
+        if (STRSCMP(state->passpoint.t_c_filename, cmd->passpoint.t_c_filename) != 0)
+            LOGI("osw: confsync: %s/%s: passpoint_config: t_c_filename \'%s\' -> \'%s\'",
+             phy, vif, state->passpoint.t_c_filename, cmd->passpoint.t_c_filename);
+        if (STRSCMP(state->passpoint.anqp_elem, cmd->passpoint.anqp_elem) != 0)
+            LOGI("osw: confsync: %s/%s: passpoint_config: anqp_elem \'%s\' -> \'%s\'",
+             phy, vif, state->passpoint.anqp_elem, cmd->passpoint.anqp_elem);
+        /* TODO debug lists */
+        *notified = true;
     }
 }
 
@@ -721,6 +815,21 @@ osw_confsync_vif_ap_acl_policy_changed(const enum osw_acl_policy *a_policy,
 }
 
 static bool
+osw_confsync_vif_ap_radius_list_changed(struct ds_dlist *a, const struct osw_radius_list *b)
+{
+    size_t i = 0;
+    struct osw_conf_radius *rad;
+
+    if (ds_dlist_len(a) != b->count) return true;
+
+    ds_dlist_foreach(a, rad) {
+        if (osw_radius_is_equal(&rad->radius, &b->list[i++]) != true)
+            return true;
+    }
+    return false;
+}
+
+static bool
 osw_confsync_vif_ap_neigh_tree_changed(struct ds_tree *a, const struct osw_neigh_list *b)
 {
     const size_t n = ds_tree_len(a);
@@ -760,6 +869,14 @@ osw_confsync_vif_ap_mode_changed(struct osw_ap_mode state,
         memset(&state.beacon_rate, 0, size);
     }
 
+    if (conf.mcast_rate == OSW_RATE_UNSPEC) {
+        state.mcast_rate = OSW_RATE_UNSPEC;
+    }
+
+    if (conf.mgmt_rate == OSW_RATE_UNSPEC) {
+        state.mgmt_rate = OSW_RATE_UNSPEC;
+    }
+
     /* The following condition handles cases where state
      * report is missing valid data - assume that given
      * operational parameters are not supported so reset
@@ -769,10 +886,14 @@ osw_confsync_vif_ap_mode_changed(struct osw_ap_mode state,
      */
     if (state.supported_rates == 0
      && state.basic_rates == 0
-     && state.beacon_rate.type == OSW_BEACON_RATE_UNSPEC) {
+     && state.beacon_rate.type == OSW_BEACON_RATE_UNSPEC
+     && state.mcast_rate == OSW_RATE_UNSPEC
+     && state.mgmt_rate == OSW_RATE_UNSPEC) {
         conf.supported_rates = 0;
         conf.basic_rates = 0;
         memset(&conf.beacon_rate, 0, size);
+        conf.mcast_rate = OSW_RATE_UNSPEC;
+        conf.mgmt_rate = OSW_RATE_UNSPEC;
     }
 
     const bool changed = (memcmp(&conf, &state, sizeof(conf)) != 0);
@@ -824,8 +945,14 @@ osw_confsync_vif_ap_mark_changed(struct osw_drv_vif_config *dvif,
     dvif->u.ap.wpa_changed = all || (memcmp(&svif->u.ap.wpa, &cvif->u.ap.wpa, sizeof(svif->u.ap.wpa)) != 0);
     dvif->u.ap.mode_changed = all || (osw_confsync_vif_ap_mode_changed(svif->u.ap.mode, cvif->u.ap.mode));
     dvif->u.ap.bridge_if_name_changed = all || (strcmp(svif->u.ap.bridge_if_name.buf, cvif->u.ap.bridge_if_name.buf) != 0);
+    dvif->u.ap.nas_identifier_changed = all || (strcmp(svif->u.ap.nas_identifier.buf, cvif->u.ap.nas_identifier.buf) != 0);
     dvif->u.ap.wps_pbc_changed = all || (svif->u.ap.wps_pbc != cvif->u.ap.wps_pbc);
     dvif->u.ap.multi_ap_changed = all || (memcmp(&svif->u.ap.multi_ap, &cvif->u.ap.multi_ap, sizeof(svif->u.ap.multi_ap)) != 0);
+    dvif->u.ap.mbss_mode_changed = all || (svif->u.ap.mbss_mode != cvif->u.ap.mbss_mode);
+    dvif->u.ap.mbss_group_changed = all || (svif->u.ap.mbss_group != cvif->u.ap.mbss_group);
+    dvif->u.ap.radius_list_changed = all || osw_confsync_vif_ap_radius_list_changed(&cvif->u.ap.radius_list, &svif->u.ap.radius_list);
+    dvif->u.ap.acct_list_changed = all || osw_confsync_vif_ap_radius_list_changed(&cvif->u.ap.accounting_list, &svif->u.ap.acct_list);
+    dvif->u.ap.passpoint_changed = all || ((osw_passpoint_is_equal(&cvif->u.ap.passpoint, &svif->u.ap.passpoint)) != true);
 
     dvif->changed |= dvif->u.ap.beacon_interval_tu_changed;
     dvif->changed |= dvif->u.ap.isolated_changed;
@@ -835,6 +962,7 @@ osw_confsync_vif_ap_mark_changed(struct osw_drv_vif_config *dvif,
     dvif->changed |= dvif->u.ap.wpa_changed;
     dvif->changed |= dvif->u.ap.mode_changed;
     dvif->changed |= dvif->u.ap.bridge_if_name_changed;
+    dvif->changed |= dvif->u.ap.nas_identifier_changed;
     dvif->changed |= dvif->u.ap.wps_pbc_changed;
     dvif->changed |= dvif->u.ap.multi_ap_changed;
     dvif->changed |= dvif->u.ap.psk_list_changed;
@@ -843,6 +971,11 @@ osw_confsync_vif_ap_mark_changed(struct osw_drv_vif_config *dvif,
     dvif->changed |= dvif->u.ap.acl_changed;
     dvif->changed |= dvif->u.ap.ssid_changed;
     dvif->changed |= dvif->u.ap.channel_changed;
+    dvif->changed |= dvif->u.ap.mbss_mode_changed;
+    dvif->changed |= dvif->u.ap.mbss_group_changed;
+    dvif->changed |= dvif->u.ap.radius_list_changed;
+    dvif->changed |= dvif->u.ap.acct_list_changed;
+    dvif->changed |= dvif->u.ap.passpoint_changed;
 
     if (all == false && dvif->enabled && dvif->u.ap.channel.control_freq_mhz != 0 && svif->status == OSW_VIF_ENABLED) {
         const struct osw_channel_state *cs = sphy->channel_states;
@@ -1053,6 +1186,7 @@ osw_confsync_build_drv_conf_vif_ap(struct osw_drv_vif_config *dvif,
                                    const bool allow_changed)
 {
     dvif->u.ap.bridge_if_name = cvif->u.ap.bridge_if_name;
+    dvif->u.ap.nas_identifier = cvif->u.ap.nas_identifier;
     dvif->u.ap.beacon_interval_tu = cvif->u.ap.beacon_interval_tu;
     dvif->u.ap.channel = cvif->u.ap.channel;
     dvif->u.ap.isolated = cvif->u.ap.isolated;
@@ -1064,6 +1198,8 @@ osw_confsync_build_drv_conf_vif_ap(struct osw_drv_vif_config *dvif,
     dvif->u.ap.wpa = cvif->u.ap.wpa;
     dvif->u.ap.wps_pbc = cvif->u.ap.wps_pbc;
     dvif->u.ap.multi_ap = cvif->u.ap.multi_ap;
+    dvif->u.ap.mbss_mode = cvif->u.ap.mbss_mode;
+    dvif->u.ap.mbss_group = cvif->u.ap.mbss_group;
 
     if (dvif->enabled && dvif->u.ap.channel.control_freq_mhz != 0) {
         ASSERT(dvif->u.ap.channel.center_freq0_mhz != 0, "center freq required");
@@ -1146,7 +1282,52 @@ osw_confsync_build_drv_conf_vif_ap(struct osw_drv_vif_config *dvif,
         dvif->u.ap.wps_cred_list.list = wps_creds;
         dvif->u.ap.wps_cred_list.count = n;
     }
-    // FIXME: radius
+    {
+        struct osw_radius *radii;
+        struct osw_conf_radius *radius;
+        int n = 0;
+        int i = 0;
+
+        ds_dlist_foreach(&cvif->u.ap.radius_list, radius)
+            n++;
+
+        radii = CALLOC(n, sizeof(*radii));
+        ds_dlist_foreach(&cvif->u.ap.radius_list, radius) {
+            struct osw_radius *r = &radii[i];
+            r->server = STRDUP(radius->radius.server);
+            r->passphrase = STRDUP(radius->radius.passphrase);
+            r->port = radius->radius.port;
+            i++;
+        }
+        dvif->u.ap.radius_list.list = radii;
+        dvif->u.ap.radius_list.count = i;
+    }
+    {
+        struct osw_radius *accts;
+        struct osw_conf_radius *acct;
+        int n = 0;
+        int i = 0;
+
+        ds_dlist_foreach(&cvif->u.ap.accounting_list, acct)
+            n++;
+
+        accts = CALLOC(n, sizeof(*accts));
+        ds_dlist_foreach(&cvif->u.ap.accounting_list, acct) {
+            struct osw_radius *r = &accts[i];
+            r->server = STRDUP(acct->radius.server);
+            r->passphrase = STRDUP(acct->radius.passphrase);
+            r->port = acct->radius.port;
+            i++;
+        }
+        dvif->u.ap.acct_list.list = accts;
+        dvif->u.ap.acct_list.count = i;
+    }
+    {
+        const struct osw_passpoint *cpass = &cvif->u.ap.passpoint;
+        struct osw_passpoint *dpass = &dvif->u.ap.passpoint;
+
+        osw_passpoint_copy(cpass, dpass);
+    }
 
     osw_confsync_build_drv_conf_vif_ap_acl_add(dvif, svif, cvif);
     osw_confsync_build_drv_conf_vif_ap_acl_del(dvif, svif, cvif);
@@ -1526,12 +1707,6 @@ osw_confsync_build_drv_conf_phy(struct osw_confsync_arg *arg,
     dphy->radar = cphy->radar;
     dphy->reg_domain = cphy->reg_domain;
 
-    const bool mbss_tx_vif_name_reported_non_empty = osw_ifname_is_valid(&sphy->mbss_tx_vif_name);
-    const bool mbss_is_enabled = mbss_tx_vif_name_reported_non_empty;
-    if (mbss_is_enabled) {
-        dphy->mbss_tx_vif_name = cphy->mbss_tx_vif_name;
-    }
-
     const bool skip = (dphy->enabled == false && sphy->enabled == false);
 
     dphy->changed = false;
@@ -1542,10 +1717,6 @@ osw_confsync_build_drv_conf_phy(struct osw_confsync_arg *arg,
         dphy->changed |= (dphy->reg_domain_changed = (memcmp(&cphy->reg_domain,
                                                              &sphy->reg_domain,
                                                              sizeof(cphy->reg_domain)) != 0));
-        if (mbss_is_enabled) {
-            dphy->changed |= (dphy->mbss_tx_vif_name_changed = (osw_ifname_is_equal(&cphy->mbss_tx_vif_name,
-                                                                                    &sphy->mbss_tx_vif_name) == false));
-        }
     }
 
     if (arg->debug) osw_confsync_build_phy_debug(dphy, cphy, sphy);

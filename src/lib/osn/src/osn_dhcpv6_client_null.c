@@ -82,6 +82,15 @@ bool osn_dhcpv6_client_option_send(osn_dhcpv6_client_t *self, int tag, const cha
     return true;
 }
 
+bool osn_dhcpv6_client_other_config(osn_dhcpv6_client_t *self, const char *key, const char *value)
+{
+    (void)self;
+    (void)key;
+    (void)value;
+
+    return true;
+}
+
 bool osn_dhcpv6_client_apply(osn_dhcpv6_client_t *self)
 {
     (void)self;

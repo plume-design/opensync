@@ -52,6 +52,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 /******************************************************************************/
 
 #define MODULE_ID LOG_MODULE_ID_MAIN
+#define CM2_DMP_MEM_USAGE_TIMER 120
 
 /******************************************************************************/
 
@@ -69,6 +70,41 @@ void cm2_init_capabilities(void)
     LOGI("Device caps: 0x%x %s%s", g_state.target_type,
             g_state.target_type & TARGET_GW_TYPE ? "[GW]" : "",
             g_state.target_type & TARGET_EXTENDER_TYPE ? "[EXT]" : "");
+}
+
+static void dump_proc_mem_usage(void)
+{
+    char fname[128] = {};
+    char line[1024] = {};
+    int pid = getpid();
+    int vmrss = 0;
+    int vmsize = 0;
+
+    snprintf(fname, sizeof(fname), "/proc/%d/status", pid);
+
+    FILE *file = fopen(fname, "r");
+    if (file) {
+
+        while (fgets(line, sizeof(line), file)) {
+            if (strstr(line, "VmRSS:"))
+            {
+                vmrss = atoi(line + strlen("VmRSS: "));
+            }
+            else if (strstr(line, "VmSize:"))
+            {
+                 vmsize = atoi(line + strlen("VmSize: "));
+            }
+        }
+
+        fclose(file);
+        LOGI("pid %d: mem usage: real mem: %d, virt mem %d\n", pid, vmrss, vmsize);
+    }
+    return;
+}
+
+static void cm2_dmp_mem_usage_timer_cb(struct ev_loop *loop, ev_timer *timer, int revents)
+{
+    dump_proc_mem_usage();
 }
 
 /******************************************************************************
@@ -133,6 +169,11 @@ int main(int argc, char ** argv)
         LOGW("Ares init failed");
         return -1;
     }
+
+    ev_timer dump_mem_usage_timer;
+    ev_timer_init(&dump_mem_usage_timer, cm2_dmp_mem_usage_timer_cb, 0., CM2_DMP_MEM_USAGE_TIMER);
+    ev_timer_start (loop, &dump_mem_usage_timer);
+
     ev_run(loop, 0);
 
     if (cm2_is_extender()) {

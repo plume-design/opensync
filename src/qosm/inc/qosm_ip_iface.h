@@ -27,7 +27,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifndef QOSM_IP_INTERFACE_INCLUDED
 #define QOSM_IP_INTERFACE_INCLUDED
 
-#include "qosm.h"
+#include "qosm_filter_internal.h"
 
 void
 qosm_ip_iface_init(void);
@@ -44,11 +44,5 @@ qosm_ip_iface_del(struct schema_IP_Interface *conf);
 void
 qosm_ip_iface_update_ic(struct qosm_ip_iface *ipi,
                            struct schema_IP_Interface *conf);
-
-void
-qosm_init_debounce_cb(ev_debounce_fn_t *debounce_cb);
-
-void
-qosm_ip_iface_debounce_fn(struct ev_loop *loop, ev_debounce *w, int revent);
 
 #endif //QOSM_IP_INTERFACE_INCLUDED

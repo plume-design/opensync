@@ -24,38 +24,177 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#include "qosm_ip_iface.h"
-#include "qosm_interface_classifier.h"
-#include "qosm_ic_template.h"
+#include "qosm.h"
+
+#include "qosm_qos.h"
+#include "qosm_filter.h"
+
+#include <stdbool.h>
+
+#include "ovsdb.h"
+#include "memutil.h"
+#include "ds_tree.h"
+#include "const.h"
+#include "evx.h"
+#include "log.h"
 
 #define MODULE_ID LOG_MODULE_ID_MAIN
 
+#define CONFIG_APPLY_DEBOUNCE    0.500
+
+/* Pending interface QoS reconfiguration. */
+struct intf_pending_qos
+{
+    ovs_uuid_t      pq_uuid;        /* OVSDB uuid of the interface for which reconfiguration is pending */
+
+    ev_debounce     pq_debouncer;   /* debouncer */
+
+    ds_tree_node_t  pq_tnode;
+};
+
+static void apply_debouncer_fn(struct ev_loop *loop, ev_debounce *w, int revent);
+static bool qosm_mgr_apply_config(struct intf_pending_qos *pending_qos);
+
+static struct intf_pending_qos *qosm_pending_qos_new(const ovs_uuid_t *uuid);
+static bool qosm_pending_qos_del(struct intf_pending_qos *pending_qos);
+static struct intf_pending_qos *qosm_pending_qos_get(const ovs_uuid_t *uuid);
+static void qosm_pending_qos_debounce(struct intf_pending_qos *pending_qos);
+
+/* Interface QoS reconfiguration apply queue */
+static ds_tree_t  qosm_apply_queue = DS_TREE_INIT(ds_str_cmp, struct intf_pending_qos, pq_tnode);
+
+/* Create a pending intf qos and add it to apply queue. */
+static struct intf_pending_qos *qosm_pending_qos_new(const ovs_uuid_t *uuid)
+{
+    struct intf_pending_qos *pending_qos;
+
+    pending_qos = CALLOC(1, sizeof(*pending_qos));
+    pending_qos->pq_uuid = *uuid;
+
+    ds_tree_insert(&qosm_apply_queue, pending_qos, pending_qos->pq_uuid.uuid);
+
+    // Initialize debuncer:
+    ev_debounce_init(&pending_qos->pq_debouncer, apply_debouncer_fn, CONFIG_APPLY_DEBOUNCE);
+
+    return pending_qos;
+}
+
+/* Cancel the pending intf qos, remove it from the apply queue. */
+static bool qosm_pending_qos_del(struct intf_pending_qos *pending_qos)
+{
+    ev_debounce_stop(EV_DEFAULT, &pending_qos->pq_debouncer);
+
+    ds_tree_remove(&qosm_apply_queue, pending_qos);
+    FREE(pending_qos);
+    return true;
+}
+
+/* Find the pending intf qos in the apply queue, return NULL if not found. */
+static struct intf_pending_qos *qosm_pending_qos_get(const ovs_uuid_t *uuid)
+{
+    return ds_tree_find(&qosm_apply_queue, uuid->uuid);
+}
+
+/* Start (or restart) the pending intf qos debounce timer. */
+static void qosm_pending_qos_debounce(struct intf_pending_qos *pending_qos)
+{
+    if (pending_qos != NULL)
+    {
+        ev_debounce_start(EV_DEFAULT, &pending_qos->pq_debouncer);
+    }
+}
+
+/* Apply interface pending QoS (osn_qos and tc-filter) configuration. */
+static bool qosm_mgr_apply_config(struct intf_pending_qos *pending_qos)
+{
+    bool qos_qdisc_cfg_exists = false;
+    ovs_uuid_t uuid;
+    bool rv;
+
+    uuid = pending_qos->pq_uuid;
+    LOG(INFO, "qosm_mgr: Applying QoS and TC-filter config: %s", uuid.uuid);
+
+    /*
+     * First, Interface_QoS/Interface_Queue (osn_qos).
+     *
+     * qos_qdisc_cfg_exists flag will tell as if there was any actual QoS qdisc-based config applied.
+     */
+
+    LOG(NOTICE, "qosm_mgr: Applying QoS config: %s", uuid.uuid);
+    rv = qosm_qos_config_apply(&uuid, &qos_qdisc_cfg_exists);
+    if (!rv)
+    {
+        LOGE("qosm_mgr: Error applying Interface_Qos/Interface_Queue config for: %s", uuid.uuid);
+        return false;
+    }
+
+    /*
+     * Then, Interface_Classifier (osn_tc).
+     *
+     * If there was osn_qos config, we should not reset egress.
+     */
+    bool reset_egress = !qos_qdisc_cfg_exists;
+    LOG(DEBUG, "qosm: %s: reset_egress=%d", uuid.uuid, reset_egress);
+
+    LOG(NOTICE, "qosm_mgr: Applying Interface_Classifier config for: %s", uuid.uuid);
+    rv = qosm_filter_config_apply(&uuid, reset_egress);
+    if (!rv)
+    {
+        LOGE("qosm_mgr: Error applying Interface_Classifier config for: %s", uuid.uuid);
+        return false;
+    }
+
+    LOG(INFO, "qosm_mgr: Done: Applied QoS and TC-filter config: %s", uuid.uuid);
+    return true;
+}
+
+/* Debouncer callback for interface pending reconfiguration: */
+static void apply_debouncer_fn(struct ev_loop *loop, ev_debounce *w, int revent)
+{
+    struct intf_pending_qos *pending_qos;
+
+    pending_qos = CONTAINER_OF(w, struct intf_pending_qos, pq_debouncer);
+
+    qosm_mgr_apply_config(pending_qos);
+}
+
 /**
- * @brief qosm manager.
+ * Schedule reconfiguration for this interface.
  *
- * Container of qosm sessions
+ * The reconfiguration is marked as pending and will be
+ * executed with a debounce timer.
+ *
+ * @param[in]   uuid   OVSDB uuid of the interface
  */
-static struct qosm_mgr qosm_mgr;
-
-/**
- * @brief qosm manager accessor
- */
-struct qosm_mgr *
-qosm_get_mgr(void)
+void qosm_mgr_schedule_qos_config(const ovs_uuid_t *uuid)
 {
-    return &qosm_mgr;
+    struct intf_pending_qos *pending_qos;
+
+    LOG(INFO, "qosm_mgr: Schedule reconfiguration: %s", uuid->uuid);
+
+    pending_qos = qosm_pending_qos_get(uuid);
+    if (pending_qos == NULL)
+    {
+        pending_qos = qosm_pending_qos_new(uuid);
+    }
+    qosm_pending_qos_debounce(pending_qos);
 }
 
 /**
- * @brief initialize qosm manager
+ * Cancel any pending reconfiguration for this interface.
+ *
+ * @param[in]   uuid   OVSDB uuid of the interface
  */
-void
-qosm_init_mgr(ev_debounce_fn_t *debounce_cb)
+void qosm_mgr_stop_qos_config(const ovs_uuid_t *uuid)
 {
-    TRACE();
+    struct intf_pending_qos *pending_qos;
 
-    qosm_init_debounce_cb(debounce_cb);
-    qosm_ip_iface_init();
-    qosm_intf_classifer_init();
-    qosm_ic_template_init();
+    LOG(INFO, "qosm_mgr: Stop reconfiguration: %s", uuid->uuid);
+
+    pending_qos = qosm_pending_qos_get(uuid);
+    if (pending_qos != NULL)
+    {
+        qosm_pending_qos_del(pending_qos);
+    }
 }
+

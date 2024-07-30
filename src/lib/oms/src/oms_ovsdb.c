@@ -744,16 +744,16 @@ oms_ovsdb_exit(struct oms_ovsdb_set *oms_set)
 {
     if (oms_set->monitor_config)
     {
-        ovsdb_unregister_update_cb(table_Object_Store_State.monitor.mon_id);
+        ovsdb_table_fini(&table_Object_Store_State);
     }
 
     if (oms_set->monitor_state)
     {
-        ovsdb_unregister_update_cb(table_OMS_Config.monitor.mon_id);
+        ovsdb_table_fini(&table_OMS_Config);
     }
 
     if (oms_set->monitor_awlan)
     {
-        ovsdb_unregister_update_cb(table_AWLAN_Node.monitor.mon_id);
+        ovsdb_table_fini(&table_AWLAN_Node);
     }
 }

@@ -393,18 +393,16 @@ void sm_device_thermal_report (EV_P_ ev_timer *w, int revents)
         thermal_record->target_rpm = -1;
     }
 
-    rc = osp_tm_get_led_state(&led_state);
-    if(true == rc)
+    for (int pos = 0; pos < DPP_DEVICE_LED_COUNT; pos++)
     {
-        thermal_record->led_state = (int16_t)led_state;
+        led_state = osp_tm_get_led_state(pos);
+
+        thermal_record->led_states[pos].position = (int16_t)pos;
+        thermal_record->led_states[pos].value = (int16_t)led_state;
         thermal_valid = true;
         log_pos += snprintf(log_msg + log_pos,
                             sizeof(log_msg) - log_pos,
-                            "led_state=%u", thermal_record->led_state);
-    }
-    else
-    {
-        thermal_record->led_state = -1;
+                            "led_position=%d led_state=%u, ", (int16_t)pos, (int16_t)led_state);
     }
 
     /* Remove the trailing comma and space if there are any in the final log message */

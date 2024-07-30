@@ -1067,7 +1067,7 @@ chan_avg(const int *c)
 {
     int sum = 0;
     int n = 0;
-    if (c == NULL)
+    if (c == NULL || *c < 1)
         return 0;
     while (*c) {
         sum += *c;
@@ -2447,16 +2447,19 @@ osw_drv_fill_tlv_sta_stats(const struct wifihal_3_0_priv *priv,
 
 static void
 osw_drv_request_stats_cb(struct osw_drv *drv,
-                         unsigned int stats_mask)
+                         unsigned int stats_mask) // look for OSW_STATS_ENUM_H_INCLUDED
 {
     const struct wifihal_3_0_priv *priv = osw_drv_get_priv(drv);
     struct osw_tlv t = {0};
     int rix;
 
     for (rix = 0; rix < MAX_NUM_RADIOS; rix++) {
-        osw_drv_fill_tlv_chan_stats(priv, &t, rix);
-        osw_drv_fill_tlv_bss_scan_stats(priv, &t, rix);
-        osw_drv_fill_tlv_sta_stats(priv, &t, rix);
+        if (stats_mask & (1 << OSW_STATS_CHAN))
+            osw_drv_fill_tlv_chan_stats(priv, &t, rix);
+        if (stats_mask & (1 << OSW_STATS_BSS_SCAN))
+            osw_drv_fill_tlv_bss_scan_stats(priv, &t, rix);
+        if (stats_mask & (1 << OSW_STATS_STA))
+            osw_drv_fill_tlv_sta_stats(priv, &t, rix);
     }
 
     osw_drv_report_stats(drv, &t);

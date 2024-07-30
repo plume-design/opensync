@@ -85,6 +85,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define OW_STEER_BM_RRM_MEAS_DELAY_SEC 1
 #define OW_STEER_BM_DEFAULT_BITRATE_THRESHOLD 2000
 
+#define OW_STEER_BM_CLIENT_DEFAULT_BACKOFF_EXP_BASE_SEC 2
+
 #define OW_STEER_BM_ATTR_DECL(type, name)   \
     struct {                                \
         bool valid;                         \
@@ -161,6 +163,7 @@ struct ow_steer_bm_neighbor {
 
     OW_STEER_BM_ATTR_DECL(struct osw_ifname, vif_name);
     OW_STEER_BM_ATTR_DECL(uint8_t, channel_number);
+    OW_STEER_BM_ATTR_DECL(uint8_t, center_freq0_chan);
     OW_STEER_BM_ATTR_DECL(enum ow_steer_bm_neighbor_ht_mode, ht_mode);
     OW_STEER_BM_ATTR_DECL(uint8_t, op_class);
     OW_STEER_BM_ATTR_DECL(unsigned int, priority);
@@ -830,7 +833,7 @@ static struct ow_steer_bm_event_stats*
 ow_steer_bm_get_new_client_event_stats(struct ow_steer_bm_vif_stats *vif_stats)
 {
     if (vif_stats->event_stats_count >= OW_STEER_BM_MAX_EVENT_CNT) {
-        LOGW( "ow: steer: bm: stats: max events limit was already reached, not adding any more events");
+        LOGD("ow: steer: bm: stats: max events limit was already reached, not adding any more events");
         return NULL;
     }
 
@@ -839,7 +842,7 @@ ow_steer_bm_get_new_client_event_stats(struct ow_steer_bm_vif_stats *vif_stats)
     event_stats->timestamp_ms = OSW_TIME_TO_MS(osw_time_wall_clk());
     vif_stats->event_stats_count++;
     if (vif_stats->event_stats_count == OW_STEER_BM_MAX_EVENT_CNT) {
-        LOGW( "ow: steer: bm: stats: max events limit reached, adding OVERRUN event");
+        LOGN("ow: steer: bm: stats: max events limit reached, adding OVERRUN event");
         event_stats->type = OVERRUN;
         return NULL;
     }
@@ -860,7 +863,7 @@ ow_steer_bm_stats_set_probe(const struct osw_hwaddr *sta_addr,
     /* This is an exception - do not warn about probes from clients we don't know */
     if (client_vif_stats == NULL) return;
     struct ow_steer_bm_event_stats *client_event_stats = ow_steer_bm_get_new_client_event_stats(client_vif_stats);
-    if (WARN_ON(client_event_stats == NULL)) return;
+    if (client_event_stats == NULL) return;
 
     LOGT("ow: steer: bm: stats: PROBE event,"
          " mac: "OSW_HWADDR_FMT
@@ -1748,18 +1751,26 @@ ow_steer_bm_get_bss(struct ow_steer_bm_vif *vif,
             return;
         }
 
+        const bool is_enabled = vif->vif_info->drv_state->status == OSW_VIF_ENABLED;
+        const bool is_ap = vif->vif_info->drv_state->vif_type == OSW_VIF_AP;
+        const struct osw_channel *c = (is_enabled && is_ap)
+                                    ? &vif->vif_info->drv_state->u.ap.channel
+                                    : NULL;
+        uint8_t op_class;
+        const bool result = c != NULL
+                          ? osw_channel_to_op_class(c, &op_class)
+                          : false;
+
         ASSERT(ow_steer_bm_vif_is_ready(vif) == true, "");
         memcpy(&bss->bssid, &vif->vif_info->drv_state->mac_addr, sizeof(bss->bssid));
         bss->vif = vif;
         bss->bss_entry = osw_bss_map_entry_new(g_bss_provider, &bss->bssid);
-        ow_steer_bm_bss_update_channel(bss, &vif->vif_info->drv_state->u.ap.channel);
-        uint8_t op_class;
-        const bool result = osw_channel_to_op_class(&vif->vif_info->drv_state->u.ap.channel, &op_class);
-        if (result == true)
-            ow_steer_bm_bss_update_op_class(bss, &op_class);
-        else
+        ow_steer_bm_bss_update_channel(bss, c);
+        ow_steer_bm_bss_update_op_class(bss, c ? &op_class : NULL);
+        if (c != NULL && result == false) {
             LOGW("ow: steer: bm: vif vif_name: %s failed to infer op_class from channel: "OSW_CHANNEL_FMT,
                  vif->vif_name.buf, OSW_CHANNEL_ARG(&vif->vif_info->drv_state->u.ap.channel));
+        }
         bss->group = vif->group;
         ds_tree_insert(&vif->group->bss_tree, bss, &bss->bssid);
 
@@ -2677,38 +2688,17 @@ ow_steer_bm_sta_recalc_pre_assoc_2g_policy_config(struct ow_steer_bm_sta *sta)
     if (client->backoff_secs.cur == NULL)
         return NULL;
     if (client->backoff_exp_base.cur == NULL)
-        return NULL;
+        policy_config.backoff_exp_base = OW_STEER_BM_CLIENT_DEFAULT_BACKOFF_EXP_BASE_SEC;
+    else
+        policy_config.backoff_exp_base = *client->backoff_exp_base.cur;
 
     policy_config.backoff_timeout_sec = *client->backoff_secs.cur;
-    policy_config.backoff_exp_base = *client->backoff_exp_base.cur;
 
     if (client->max_rejects.cur == NULL)
         return NULL;
     if (client->rejects_tmout_secs.cur == NULL)
         return NULL;
     if (client->pref_5g_pre_assoc_block_timeout_msecs.cur == NULL)
-        return NULL;
-
-    const bool max_rejects_is_nonzero = (*client->max_rejects.cur > 0);
-    const bool pref_5g_pre_assoc_block_timeout_msecs_is_nonzero = (*client->pref_5g_pre_assoc_block_timeout_msecs.cur > 0);
-
-    if (max_rejects_is_nonzero == true && pref_5g_pre_assoc_block_timeout_msecs_is_nonzero == false) {
-        policy_config.reject_condition.type = OW_STEER_POLICY_PRE_ASSOC_REJECT_CONDITION_COUNTER;
-        policy_config.reject_condition.params.counter.reject_limit = *client->max_rejects.cur;
-        policy_config.reject_condition.params.counter.reject_timeout_sec = *client->rejects_tmout_secs.cur;
-    }
-    else if (max_rejects_is_nonzero == false && pref_5g_pre_assoc_block_timeout_msecs_is_nonzero == true) {
-        policy_config.reject_condition.type = OW_STEER_POLICY_PRE_ASSOC_REJECT_CONDITION_TIMER;
-        policy_config.reject_condition.params.timer.reject_timeout_msec = *client->pref_5g_pre_assoc_block_timeout_msecs.cur;
-    }
-    else {
-        LOGW("ow: steer: bm: sta addr: "OSW_HWADDR_FMT" failed to configure 2g pre-assoc policy, "
-             "ambiguous cfg max_rejects: %u pref_5g_pre_assoc_block_timeout_msecs: %u",
-             OSW_HWADDR_ARG(&sta->addr), *client->max_rejects.cur, *client->pref_5g_pre_assoc_block_timeout_msecs.cur);
-        return NULL;
-    }
-
-    if (client->pref_5g.cur == NULL)
         return NULL;
 
     switch (*client->pref_5g.cur) {
@@ -2733,6 +2723,28 @@ ow_steer_bm_sta_recalc_pre_assoc_2g_policy_config(struct ow_steer_bm_sta *sta)
             policy_config.backoff_condition.params.threshold_snr.threshold_snr = *client->hwm.cur;
             break;
     }
+
+    const bool max_rejects_is_nonzero = (*client->max_rejects.cur > 0);
+    const bool pref_5g_pre_assoc_block_timeout_msecs_is_nonzero = (*client->pref_5g_pre_assoc_block_timeout_msecs.cur > 0);
+
+    if (max_rejects_is_nonzero == true && pref_5g_pre_assoc_block_timeout_msecs_is_nonzero == false) {
+        policy_config.reject_condition.type = OW_STEER_POLICY_PRE_ASSOC_REJECT_CONDITION_COUNTER;
+        policy_config.reject_condition.params.counter.reject_limit = *client->max_rejects.cur;
+        policy_config.reject_condition.params.counter.reject_timeout_sec = *client->rejects_tmout_secs.cur;
+    }
+    else if (max_rejects_is_nonzero == false && pref_5g_pre_assoc_block_timeout_msecs_is_nonzero == true) {
+        policy_config.reject_condition.type = OW_STEER_POLICY_PRE_ASSOC_REJECT_CONDITION_TIMER;
+        policy_config.reject_condition.params.timer.reject_timeout_msec = *client->pref_5g_pre_assoc_block_timeout_msecs.cur;
+    }
+    else {
+        LOGW("ow: steer: bm: sta addr: "OSW_HWADDR_FMT" failed to configure 2g pre-assoc policy, "
+             "ambiguous cfg max_rejects: %u pref_5g_pre_assoc_block_timeout_msecs: %u",
+             OSW_HWADDR_ARG(&sta->addr), *client->max_rejects.cur, *client->pref_5g_pre_assoc_block_timeout_msecs.cur);
+        return NULL;
+    }
+
+    if (client->pref_5g.cur == NULL)
+        return NULL;
 
     if (client->pre_assoc_auth_block.cur != NULL) {
         policy_config.immediate_backoff_on_auth_req = *client->pre_assoc_auth_block.cur
@@ -3512,6 +3524,7 @@ ow_steer_bm_neighbor_free(struct ow_steer_bm_neighbor *neighbor)
 
     OW_STEER_BM_MEM_ATTR_FREE(neighbor, vif_name);
     OW_STEER_BM_MEM_ATTR_FREE(neighbor, channel_number);
+    OW_STEER_BM_MEM_ATTR_FREE(neighbor, center_freq0_chan);
     OW_STEER_BM_MEM_ATTR_FREE(neighbor, ht_mode);
     OW_STEER_BM_MEM_ATTR_FREE(neighbor, op_class);
     OW_STEER_BM_MEM_ATTR_FREE(neighbor, priority);
@@ -3550,6 +3563,7 @@ ow_steer_bm_neighbor_recalc(struct ow_steer_bm_neighbor *neighbor)
 
     OW_STEER_BM_MEM_ATTR_UPDATE(neighbor, vif_name);
     OW_STEER_BM_MEM_ATTR_UPDATE(neighbor, channel_number);
+    OW_STEER_BM_MEM_ATTR_UPDATE(neighbor, center_freq0_chan);
     OW_STEER_BM_MEM_ATTR_UPDATE(neighbor, ht_mode);
     OW_STEER_BM_MEM_ATTR_UPDATE(neighbor, op_class);
     OW_STEER_BM_MEM_ATTR_UPDATE(neighbor, priority);
@@ -3562,6 +3576,7 @@ ow_steer_bm_neighbor_recalc(struct ow_steer_bm_neighbor *neighbor)
 
     const bool invalidate_channel = channel_number_state.changed == true ||
                                     op_class_state.changed == true ||
+                                    center_freq0_chan_state.changed == true ||
                                     ht_mode_state.changed == true;
     if (invalidate_channel == true)
         ow_steer_bm_neighbor_set_channel(neighbor, NULL);
@@ -3582,33 +3597,40 @@ ow_steer_bm_neighbor_recalc(struct ow_steer_bm_neighbor *neighbor)
     }
 
     const bool create_channel = channel_state.present == false &&
-                                (channel_number_state.present == true &&
-                                 (op_class_state.present == true ||
-                                  ht_mode_state.present == true));
+                                channel_number_state.present == true &&
+                                (op_class_state.present == true ||
+                                 ht_mode_state.present == true);
     if (create_channel == true) {
-        /* FIXME: EHT/wifi7/11be: This does not have sufficient data
-         * to infer 320MHz properly. In fact, it doesn't do that for
-         * 2.4GHz HT40 as well. This needs to be fixed.
-         */
         struct osw_channel channel;
-        const uint8_t chan = *neighbor->channel_number.cur;
+        const uint8_t chan = neighbor->channel_number.cur ? *neighbor->channel_number.cur : 0;
+        const uint8_t center_chan = neighbor->center_freq0_chan.cur ? *neighbor->center_freq0_chan.cur : 0;
+        const uint8_t op_class = neighbor->op_class.cur ? *neighbor->op_class.cur : 0;
+        const enum ow_steer_bm_neighbor_ht_mode ht_mode = neighbor->ht_mode.cur ? *neighbor->ht_mode.cur : 0;
+        const enum osw_channel_width width = ow_steer_bm_neighbor_ht_mode_to_channel_width(ht_mode);
 
-        LOGD("ow: steer: bm: neighbor: bssid: "OSW_HWADDR_FMT" channel/ht_mode/op_class: %"PRIu8"/%d/%"PRIu8,
+        LOGD("ow: steer: bm: neighbor: bssid: "OSW_HWADDR_FMT" channel/ht_mode/op_class: %"PRIu8"/%"PRIu8"/%d/%"PRIu8"/%d",
              OSW_HWADDR_ARG(&neighbor->bssid),
-             neighbor->op_class.cur ? *neighbor->op_class.cur : 0,
-             neighbor->ht_mode.cur ? *neighbor->ht_mode.cur : 0,
-             neighbor->channel_number.cur ? *neighbor->channel_number.cur : 0);
-
-        if (op_class_state.present) {
-            const uint8_t op_class = *neighbor->op_class.cur;
+             chan,
+             center_chan,
+             ht_mode,
+             op_class,
+             width);
+        if (center_freq0_chan_state.present && ht_mode_state.present && op_class_state.present) {
+            const bool ok = osw_channel_from_channel_num_center_freq_width_op_class(chan, center_chan, width, op_class, &channel);
+            WARN_ON(!ok);
+            if (ok) {
+                ow_steer_bm_neighbor_set_channel(neighbor, &channel);
+            }
+        }
+        else if (op_class_state.present) {
             const bool ok = osw_channel_from_op_class(op_class, chan, &channel);
+
             WARN_ON(!ok);
             if (ok) {
                 ow_steer_bm_neighbor_set_channel(neighbor, &channel);
             }
         }
         else if (ht_mode_state.present) {
-            const enum ow_steer_bm_neighbor_ht_mode ht_mode = *neighbor->ht_mode.cur;
             const enum osw_channel_width width = ow_steer_bm_neighbor_ht_mode_to_channel_width(ht_mode);
             const bool ok = osw_channel_from_channel_num_width(chan, width, &channel);
             WARN_ON(!ok);
@@ -4808,6 +4830,7 @@ ow_steer_bm_sigusr1_dump_neighbors(void)
         osw_diag_pipe_writef(pipe, "ow: steer: bm:     removed: %s", neighbor->removed == true ? "true" : "false");
         osw_diag_pipe_writef(pipe, "ow: steer: bm:     vif_name: %s", neighbor->vif_name.cur == NULL ? "(nil)" : neighbor->vif_name.cur->buf);
         osw_diag_pipe_writef(pipe, "ow: steer: bm:     channel_number: %s", neighbor->channel_number.cur == NULL ? "(nil)" : strfmta("%u", *neighbor->channel_number.cur));
+        osw_diag_pipe_writef(pipe, "ow: steer: bm:     center_freq0_chan: %s", neighbor->center_freq0_chan.cur == NULL ? "(nil)" : strfmta("%u", *neighbor->center_freq0_chan.cur));
         osw_diag_pipe_writef(pipe, "ow: steer: bm:     ht_mode: %s", neighbor->ht_mode.cur == NULL ? "(nil)" : ow_steer_bm_neighbor_ht_mode_to_str(*neighbor->ht_mode.cur));
         osw_diag_pipe_writef(pipe, "ow: steer: bm:     op_class: %s", neighbor->op_class.cur == NULL ? "(nil)" : strfmta("%u", *neighbor->op_class.cur));
         osw_diag_pipe_writef(pipe, "ow: steer: bm:     channel: %s", neighbor->channel.cur == NULL ? "(nil)" : strfmta(OSW_CHANNEL_FMT, OSW_CHANNEL_ARG(neighbor->channel.cur)));
@@ -5572,6 +5595,14 @@ ow_steer_bm_neighbor_set_channel_number(struct ow_steer_bm_neighbor *neighbor,
 {
     OW_STEER_BM_MEM_ATTR_SET_BODY(neighbor, channel_number);
     OW_STEER_BM_NEIGHBOR_ATTR_PRINT_CHANGE_NUM(neighbor, channel_number, PRIu8);
+}
+
+void
+ow_steer_bm_neighbor_set_center_freq0_chan_number(struct ow_steer_bm_neighbor *neighbor,
+                                        const uint8_t *center_freq0_chan)
+{
+    OW_STEER_BM_MEM_ATTR_SET_BODY(neighbor, center_freq0_chan);
+    OW_STEER_BM_NEIGHBOR_ATTR_PRINT_CHANGE_NUM(neighbor, center_freq0_chan, PRIu8);
 }
 
 void

@@ -326,6 +326,9 @@ osw_wpa_to_str(char *out, size_t len, const struct osw_wpa *wpa)
     if (wpa->akm_sae) csnprintf(&out, &len, "sae ");
     if (wpa->akm_ft_psk) csnprintf(&out, &len, "ft_psk ");
     if (wpa->akm_ft_sae) csnprintf(&out, &len, "ft_sae ");
+    if (wpa->akm_eap) csnprintf(&out, &len, "eap ");
+    if (wpa->akm_ft_eap) csnprintf(&out, &len, "ft_eap ");
+    /* FIXME wpa_eap_sha256, ft_eap_sha384 */
     csnprintf(&out, &len, "pmf=%s ", osw_pmf_to_str(wpa->pmf));
     csnprintf(&out, &len, "mdid=%04x ", wpa->ft_mobility_domain);
     csnprintf(&out, &len, "gtk=%d ", wpa->group_rekey_seconds);
@@ -352,6 +355,8 @@ osw_ap_mode_to_str(char *out, size_t len, const struct osw_ap_mode *mode)
     if (mode->supported_rates) csnprintf(&out, &len, "supp:" OSW_RATES_FMT " ", OSW_RATES_ARG(mode->supported_rates));
     if (mode->basic_rates) csnprintf(&out, &len, "basic:" OSW_RATES_FMT " ", OSW_RATES_ARG(mode->basic_rates));
     if (mode->beacon_rate.type != OSW_BEACON_RATE_UNSPEC) csnprintf(&out, &len, "bcn:"OSW_BEACON_RATE_FMT " ", OSW_BEACON_RATE_ARG(&mode->beacon_rate));
+    if (mode->mgmt_rate != OSW_RATE_UNSPEC) csnprintf(&out, &len, "mgmt:%d kbps ", osw_rate_legacy_to_halfmbps(mode->mgmt_rate) * 500);
+    if (mode->mcast_rate != OSW_RATE_UNSPEC) csnprintf(&out, &len, "mcast:%d kbps ", osw_rate_legacy_to_halfmbps(mode->mcast_rate) * 500);
     strip_trailing_whitespace(out);
 }
 
@@ -936,34 +941,27 @@ osw_channel_from_channel_num_width(uint8_t channel_num,
     return (num_matches == 1);
 }
 
-/* FIXME:
- * - does not support 320MHz/11be
- * - has inadequate prototype
- * - is used in unit tests for now
- *
- * This needs to be looked at much closer.
- *
- * Historically some devices would combine
- * op_class + center freq channel index in their
- * RRM or BTM responses. This was confusing
- * because it ended up providing ambiguous channel
- * info: the primary channel was still unknown.
- *
- * Until 320MHz showed up it was possible to infer
- * center freq with 100% accurace from primary +
- * op_class.
- *
- * However 320MHz sports as single op_class that
- * is shared between both bandscheme allocations
- * (the + or -). In this case providing primary +
- * op_class is now ambiguous and can map to 2
- * channel variants in many cases. On the other
- * hand center + op_class is ambiguous in terms of
- * the primary channel (where Beacons are).
- *
- * Until that is somehow necessary, this function
- * remains as a glorified UT / dead code.
- */
+bool
+osw_channel_from_channel_num_center_freq_width_op_class(uint8_t channel_num,
+                                                        uint8_t center_freq_channel_num,
+                                                        enum osw_channel_width width,
+                                                        uint8_t op_class,
+                                                        struct osw_channel *channel)
+{
+    assert(channel != NULL);
+    memset(channel, 0, sizeof(*channel));
+
+    const enum osw_band band = osw_op_class_to_band(op_class);
+    if (band == OSW_BAND_UNDEFINED)
+        return false;
+
+    channel->width = width;
+    channel->control_freq_mhz = osw_chan_to_freq(band, channel_num);
+    channel->center_freq0_mhz = osw_chan_to_freq(band, center_freq_channel_num);
+    // channel->puncture_bitmap could also be set, but it's not necessary at the moment
+    return true;
+}
+
 bool
 osw_channel_from_op_class(uint8_t op_class,
                           uint8_t channel_num,
@@ -1256,6 +1254,17 @@ osw_reg_dfs_to_str(enum osw_reg_dfs dfs)
     return "unreachable";
 }
 
+const char *
+osw_mbss_vif_ap_mode_to_str(enum osw_mbss_vif_ap_mode mbss_mode)
+{
+    switch (mbss_mode) {
+        case OSW_MBSS_NONE: return "none";
+        case OSW_MBSS_TX_VAP: return "tx_vap";
+        case OSW_MBSS_NON_TX_VAP: return "non_tx_vap";
+    }
+    return "";
+}
+
 void
 osw_hwaddr_list_to_str(char *out,
                        size_t len,
@@ -1457,6 +1466,7 @@ osw_rate_legacy_to_halfmbps(enum osw_rate_legacy rate)
         case OSW_RATE_OFDM_48_MBPS: return 96;
         case OSW_RATE_OFDM_54_MBPS: return 108;
         case OSW_RATE_UNSPEC: return 0;
+        case OSW_RATE_COUNT: return 0;
     }
     return 0;
 }
@@ -1733,6 +1743,293 @@ osw_ssid_from_cbuf(struct osw_ssid *ssid,
     memcpy(ssid->buf, buf, len);
     ssid->len = len;
     return true;
+}
+
+static void
+osw_radius_free_internal(struct osw_radius *r)
+{
+    if (r == NULL) return;
+    FREE(r->server);
+    FREE(r->passphrase);
+    r->server = NULL;
+    r->passphrase = NULL;
+    r->port = 0;
+}
+
+void
+osw_radius_list_free(struct osw_radius_list *l)
+{
+    if (l == NULL) return;
+    if (l->list == NULL) return;
+    osw_radius_list_purge(l);
+    FREE(l->list);
+    l->list = NULL;
+    l->count = 0;
+}
+
+void
+osw_radius_list_purge(struct osw_radius_list *l)
+{
+    size_t i;
+    if (l == NULL) return;
+    for (i = 0; i < l->count; i++) {
+        struct osw_radius *r = &l->list[i];
+        osw_radius_free_internal(r);
+    }
+    l->count = 0;
+}
+
+int
+osw_radius_cmp(const struct osw_radius *a,
+               const struct osw_radius *b)
+{
+    if ((a == NULL) && (b == NULL)) return 0;
+    if ((a == NULL) || (b == NULL)) return (a == NULL) ? 1 : -1;
+    const int server = strcmp(a->server ?: "", b->server ?: "");
+    const int pass = strcmp(a->passphrase ?: "", b->passphrase ?: "");
+    if (server) return server;
+    if (pass) return pass;
+    return a->port - b->port;
+}
+
+bool
+osw_radius_is_equal(const struct osw_radius *a,
+                    const struct osw_radius *b)
+{
+    if ((a == NULL) && (b == NULL)) return true;
+    if ((a == NULL) || (b == NULL)) return false;
+    return (osw_radius_cmp(a, b) == 0);
+}
+
+bool
+osw_radius_list_is_equal(const struct osw_radius_list *a,
+                         const struct osw_radius_list *b)
+{
+    size_t i;
+    const struct osw_radius *rad_a, *rad_b;
+
+    if (a->count != b->count) return false;
+
+    for (i = 0; i < a->count; i++) {
+        rad_a = &a->list[i];
+        rad_b = &b->list[i];
+        if (osw_radius_is_equal(rad_a, rad_b) != true)
+            return false;
+    }
+    return true;
+}
+
+void
+osw_radius_list_copy(const struct osw_radius_list *src,
+                     struct osw_radius_list *dst)
+{
+    if (src == NULL || src->list == NULL) {
+        dst->list = NULL;
+        return;
+    }
+
+    dst->list = NULL;
+    dst->count = 0;
+    size_t i;
+    if (src->count > 0)
+        dst->list = CALLOC(src->count, sizeof(*dst->list));
+    for (i = 0; i < src->count; i++) {
+        dst->list[i].server = STRDUP(src->list[i].server);
+        dst->list[i].port = src->list[i].port;
+        dst->list[i].passphrase = STRDUP(src->list[i].passphrase);
+        dst->count++;
+    }
+}
+
+void
+osw_radius_list_to_str(char *out,
+                       size_t len,
+                       const struct osw_radius_list *radii)
+{
+    size_t i;
+
+    out[0] = 0;
+    for (i = 0; i < radii->count; i++) {
+        const struct osw_radius *r = &radii->list[i];
+        csnprintf(&out, &len,
+                  " "OSW_RADIUS_FMT,
+                  OSW_RADIUS_ARG(r));
+    }
+
+    if (radii->count > 0 && out[-1] == ',')
+        out[-1] = 0;
+}
+
+static bool
+osw_passpoint_str_list_is_equal(char **const a,
+                                char **const b,
+                                const size_t a_len,
+                                const size_t b_len)
+{
+    size_t i;
+
+    if (a == NULL && b == NULL) return true;
+    if (a == NULL || b == NULL) return false;
+    if (a_len != b_len) return false;
+    for (i = 0; i < a_len; i++) {
+        if (STRSCMP(a[i], b[i]) != 0) return false;
+    }
+    return true;
+}
+
+/* FIXME make osw_passpoint_is_equal a wrapper to
+ * not yet implemented _cmp function */
+bool
+osw_passpoint_is_equal(const struct osw_passpoint *a,
+                       const struct osw_passpoint *b)
+{
+    if (a->hs20_enabled != b->hs20_enabled) return false;
+    if (a->hessid.len != b->hessid.len) return false;
+    if (STRSCMP(a->hessid.buf, b->hessid.buf) != 0) return false;
+    if (STRSCMP(a->t_c_filename, b->t_c_filename) != 0) return false;
+    if (STRSCMP(a->anqp_elem, b->anqp_elem) != 0) return false;
+    if (a->hs20_enabled != b->hs20_enabled) return false;
+    if (a->adv_wan_status != b->adv_wan_status) return false;
+    if (a->adv_wan_symmetric != b->adv_wan_symmetric) return false;
+    if (a->adv_wan_at_capacity != b->adv_wan_at_capacity) return false;
+    if (a->osen != b->osen) return false;
+    if (a->asra != b->asra) return false;
+    if (a->ant != b->ant) return false;
+    if (a->venue_group != b->venue_group) return false;
+    if (a->venue_type != b->venue_type) return false;
+    if (a->anqp_domain_id != b->anqp_domain_id) return false;
+    if (a->pps_mo_id != b->pps_mo_id) return false;
+    if (a->t_c_timestamp != b->t_c_timestamp) return false;
+    if (!osw_passpoint_str_list_is_equal(a->domain_list, b->domain_list,
+                                         a->domain_list_len, b->domain_list_len)) return false;
+    if (!osw_passpoint_str_list_is_equal(a->nairealm_list, b->nairealm_list,
+                                         a->nairealm_list_len, b->nairealm_list_len)) return false;
+    if (!osw_passpoint_str_list_is_equal(a->roamc_list, b->roamc_list,
+                                         a->roamc_list_len, b->roamc_list_len)) return false;
+    if (!osw_passpoint_str_list_is_equal(a->oper_fname_list, b->oper_fname_list,
+                                         a->oper_fname_list_len, b->oper_fname_list_len)) return false;
+    if (!osw_passpoint_str_list_is_equal(a->venue_name_list, b->venue_name_list,
+                                         a->venue_name_list_len, b->venue_name_list_len)) return false;
+    if (!osw_passpoint_str_list_is_equal(a->venue_url_list, b->venue_url_list,
+                                         a->venue_url_list_len, b->venue_url_list_len)) return false;
+    if (!osw_passpoint_str_list_is_equal(a->list_3gpp_list, b->list_3gpp_list,
+                                         a->list_3gpp_list_len, b->list_3gpp_list_len)) return false;
+
+    if (a->net_auth_type_list_len != b->net_auth_type_list_len) return false;
+    if (memcmp(a->net_auth_type_list, b->net_auth_type_list,
+               sizeof(*a->net_auth_type_list) * a->net_auth_type_list_len) != 0) return false;
+
+    return true;
+};
+
+void
+osw_passpoint_free_internal(struct osw_passpoint *p)
+{
+    if (p == NULL) return;
+
+    str_array_free(p->domain_list, p->domain_list_len);
+    str_array_free(p->nairealm_list, p->nairealm_list_len);
+    str_array_free(p->roamc_list, p->roamc_list_len);
+    str_array_free(p->oper_fname_list, p->oper_fname_list_len);
+    str_array_free(p->venue_name_list, p->venue_name_list_len);
+    str_array_free(p->venue_url_list, p->venue_url_list_len);
+    str_array_free(p->list_3gpp_list, p->list_3gpp_list_len);
+    FREE(p->net_auth_type_list);
+
+    memset(p, 0, sizeof(*p));
+}
+
+void
+osw_passpoint_copy(const struct osw_passpoint *src,
+                   struct osw_passpoint *dst)
+{
+    if (dst == NULL || src == NULL) {
+        return;
+    }
+
+    *dst = *src;
+
+    if (src->t_c_filename != NULL) {
+        dst->t_c_filename = STRDUP(src->t_c_filename);
+    } else {
+        dst->t_c_filename = NULL;
+    }
+
+    if (src->anqp_elem != NULL) {
+        dst->anqp_elem = STRDUP(src->anqp_elem);
+    } else {
+        dst->anqp_elem = NULL;
+    }
+
+    if (src->domain_list != NULL) {
+        dst->domain_list = str_array_dup(src->domain_list, src->domain_list_len);
+        dst->domain_list_len = src->domain_list_len;
+    } else {
+        dst->domain_list = NULL;
+        dst->domain_list_len = 0;
+    }
+
+    if (src->nairealm_list != NULL) {
+        dst->nairealm_list = str_array_dup(src->nairealm_list, src->nairealm_list_len);
+        dst->nairealm_list_len = src->nairealm_list_len;
+    } else {
+        dst->nairealm_list = NULL;
+        dst->nairealm_list_len = 0;
+    }
+
+    if (src->roamc_list != NULL) {
+        dst->roamc_list = str_array_dup(src->roamc_list, src->roamc_list_len);
+        dst->roamc_list_len = src->roamc_list_len;
+    } else {
+        dst->roamc_list = NULL;
+        dst->roamc_list_len = 0;
+    }
+
+    if (src->oper_fname_list != NULL) {
+        dst->oper_fname_list = str_array_dup(src->oper_fname_list,
+                                             src->oper_fname_list_len);
+        dst->oper_fname_list_len = src->oper_fname_list_len;
+    } else {
+        dst->oper_fname_list = NULL;
+        dst->oper_fname_list_len = 0;
+    }
+
+    if (src->venue_name_list != NULL) {
+        dst->venue_name_list = str_array_dup(src->venue_name_list,
+                                             src->venue_name_list_len);
+        dst->venue_name_list_len = src->venue_name_list_len;
+    } else {
+        dst->venue_name_list = NULL;
+        dst->venue_name_list_len = 0;
+    }
+
+    if (src->venue_url_list != NULL) {
+        dst->venue_url_list = str_array_dup(src->venue_url_list,
+                                            src->venue_url_list_len);
+        dst->venue_url_list_len = src->venue_url_list_len;
+    } else {
+        dst->venue_url_list = NULL;
+        dst->venue_url_list_len = 0;
+    }
+
+    if (src->list_3gpp_list != NULL) {
+        dst->list_3gpp_list = str_array_dup(src->list_3gpp_list,
+                                            src->list_3gpp_list_len);
+        dst->list_3gpp_list_len = src->list_3gpp_list_len;
+    } else {
+        dst->list_3gpp_list = NULL;
+        dst->list_3gpp_list_len = 0;
+    }
+
+    if (src->net_auth_type_list != NULL) {
+        dst->net_auth_type_list = MEMNDUP(src->net_auth_type_list,
+                                          sizeof(*src->net_auth_type_list) *
+                                          src->net_auth_type_list_len);
+        dst->net_auth_type_list_len = src->net_auth_type_list_len;
+    } else {
+        dst->net_auth_type_list = NULL;
+        dst->net_auth_type_list_len = 0;
+    }
 }
 
 void

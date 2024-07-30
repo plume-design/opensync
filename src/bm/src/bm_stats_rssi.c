@@ -82,13 +82,6 @@ static inline bm_stats_rssi_ctx_t * bm_stats_rssi_ctx_alloc()
     return rssi_ctx;
 }
 
-static inline void bm_stats_rssi_ctx_free(bm_stats_rssi_ctx_t *rssi_ctx)
-{
-    if (NULL != rssi_ctx) {
-        FREE(rssi_ctx);
-    }
-}
-
 static
 bm_stats_rssi_ctx_t *bm_stats_rssi_ctx_get (
         radio_entry_t              *radio_cfg)

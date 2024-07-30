@@ -343,7 +343,7 @@ bool pwm_ovsdb_check_remote_endpoint_alive(const char *remote_endpoint)
         return false;
     }
     cmd[CMD_LEN - 1] = '\0';
-    err = cmd_log(cmd);
+    err = cmd_log_check_safe(cmd);
     if (err) {
         LOGE("Ping to PWM end-point %s failed", remote_endpoint);
         return false;

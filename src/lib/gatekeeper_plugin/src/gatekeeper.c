@@ -47,7 +47,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "schema.h"
 #include "const.h"
 #include "log.h"
-
+#include "fsm_fn_trace.h"
 #define GK_NOT_RATED 15
 #define GK_UNRATED_TTL (60*60*24)
 #define GK_MULTI_CURL_REQ_TIMEOUT 120
@@ -1082,7 +1082,9 @@ gatekeeper_get_verdict(struct fsm_policy_req *req,
 
         clock_gettime(CLOCK_REALTIME, &start);
         policy_reply->reply_type = FSM_INLINE_REPLY;
+        fsm_fn_trace(gk_send_ecurl_request, FSM_FN_ENTER);
         gk_response = gk_send_ecurl_request(session, fsm_gk_session, gk_verdict, policy_reply);
+        fsm_fn_trace(gk_send_ecurl_request, FSM_FN_EXIT);
         if (gk_response != GK_LOOKUP_SUCCESS)
         {
             policy_reply->categorized = FSM_FQDN_CAT_FAILED;
@@ -1237,13 +1239,13 @@ gatekeeper_unmonitor_ssl_table(void)
     LOGI("%s(): unmonitoring SSL table", __func__);
 
     /* Deregister monitor events */
-    ovsdb_unregister_update_cb(table_SSL.monitor.mon_id);
+    ovsdb_table_fini(&table_SSL);
 }
 
 
 
 static const char pattern_fqdn[] =
-    "^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9_-]*[a-zA-Z0-9])\\.){1,}"
+    "^(([a-zA-Z0-9_]|[a-zA-Z0-9_][a-zA-Z0-9_-]*[a-zA-Z0-9])\\.){1,}"
     "([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9_-]*[a-zA-Z0-9])$";
 
 static const char pattern_fqdn_lan[] =
@@ -1384,6 +1386,8 @@ gatekeeper_module_init(struct fsm_session *session)
     LOGD("%s: added session %s", __func__, session->name);
     LOGT("%s: session %s is multi-curl %s", __func__, session->name,
          fsm_gk_session->enable_multi_curl ? "enabled" : "disabled");
+
+    FSM_FN_MAP(gk_send_ecurl_request);
     return 0;
 
 err:

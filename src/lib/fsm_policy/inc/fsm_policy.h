@@ -49,6 +49,7 @@ enum {
     FSM_GATEKEEPER_REQ,
     FSM_FLUSH_CACHE,
     FSM_FLUSH_ALL_CACHE,
+    FSM_NOANSWER,
     FSM_NUM_ACTIONS, /* always last */
 };
 
@@ -135,7 +136,8 @@ enum {
 };
 
 enum fsm_supported_features {
-	FSM_CNAME_FEATURE = (1 << 0),
+    FSM_CNAME_FEATURE = (1 << 0),
+    FSM_NOANSWER_FEATURE = (1 << 1),
 };
 
 struct dns_device

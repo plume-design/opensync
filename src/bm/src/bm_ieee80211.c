@@ -161,7 +161,7 @@ bm_ie_parse_neighbor_report(bm_client_t *client, struct neighbor_report_element 
     }
 
     LOGI("%s adding neighbor from btm reject bssid = "
-         PRI_os_macaddr_lower_t " bssid_info = %02x%02x%02x%02x op_class = %hhu channel = %hhu phy_type = %hhu preference = %hhu",
+         PRI_os_macaddr_lower_t " bssid_info = %02x%02x%02x%02x op_class = %hhu channel = %hhu phy_type = %hhu preference = %u",
          client->mac_addr,
          FMT_os_macaddr_pt((os_macaddr_t *)neighbor_element->bssid),
          neighbor_element->bssid_info[3],
@@ -240,7 +240,7 @@ bm_action_frame_bss_trans_mgmt_resp(bm_client_t *client,
         break;
     }
 
-    if (!client->ifname)
+    if (!strlen(client->ifname))
         return;
 
     memset(&event, 0, sizeof(event));

@@ -28,12 +28,14 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <inttypes.h>
 #include <string.h>
 #include <stdbool.h>
+#include <ctype.h>
 
 #include "blem.h"
 #include "log.h"
 #include "schema.h"
 #include "const.h"
 #include "ovsdb_table.h"
+#include "os_util.h"
 #ifdef CONFIG_BLEM_CONFIG_VIA_BLE_ENABLED
 #include "osp_led.h"
 #endif
@@ -56,6 +58,8 @@ static ovsdb_table_t table_AW_Bluetooth_State;
 #ifdef CONFIG_BLEM_CONFIG_VIA_BLE_ENABLED
 static ovsdb_table_t table_AWLAN_Node;
 #endif
+static ovsdb_table_t table_BLE_Proximity_Config;
+static ovsdb_table_t table_BLE_Proximity_State;
 
 /*****************************************************************************/
 
@@ -163,6 +167,91 @@ void callback_AW_Bluetooth_Config(ovsdb_update_monitor_t *mon,
     }
 }
 
+
+bool uuid_str_to_bin(const char *const uuid_str, uint8_t uuid[16])
+{
+    // Allow separator between each UUID byte, but make sure that the string always represents exactly 16 bytes
+    const char *const str_end = uuid_str + strnlen(uuid_str, 16 * 2 + 15);
+    const char *p_str = uuid_str;
+    size_t uuid_i = 0;
+
+    while ((str_end - p_str >= 2) && (uuid_i < 16))
+    {
+        /* Copy two characters to a temporary buffer, to add null terminator and avoid using scanf */
+        char octet_str[3] = { p_str[0], p_str[1], '\0' };
+        long val;
+
+        if (isxdigit(*p_str) == 0)
+        {
+            p_str++;
+            continue;
+        }
+        if (!os_strtoul(octet_str, &val, 16))
+        {
+            break;
+        }
+        uuid[uuid_i] = (uint8_t)val;
+        p_str += 2;
+        uuid_i += 1;
+    }
+
+    if ((uuid_i != 16) || (p_str != str_end))
+    {
+        LOGE("Invalid UUID string '%s'", uuid_str);
+        return false;
+    }
+    return true;
+}
+
+static void blem_ble_proximity_on_state(ble_advertising_set_t *adv_set, bool active, int16_t adv_tx_power)
+{
+    struct schema_BLE_Proximity_State state = {0};
+
+    SCHEMA_SET_INT(state.adv_tx_power, adv_tx_power);
+    SCHEMA_SET_BOOL(state.ibeacon_enable, adv_set->mode.enabled);
+    SCHEMA_SET_BOOL(state.ibeacon_active, active);
+
+    if (!ovsdb_table_upsert(&table_BLE_Proximity_State, &state, false))
+    {
+        LOGE("Could not update %s", SCHEMA_TABLE(BLE_Proximity_State));
+    }
+}
+
+/** Callback invoked when the BLE_Proximity_Config table changes */
+static void callback_BLE_Proximity_Config(
+        ovsdb_update_monitor_t *mon,
+        struct schema_BLE_Proximity_Config *old_rec,
+        struct schema_BLE_Proximity_Config *config)
+{
+    uint8_t ibeacon_uuid[16];
+    (void)mon;
+
+    if (config == NULL)
+    {
+        if (old_rec == NULL)
+        {
+            return;
+        }
+        config = old_rec;
+        config->ibeacon_enable = false;
+    }
+
+    if (!uuid_str_to_bin(config->ibeacon_uuid.uuid, ibeacon_uuid))
+    {
+        return;
+    }
+
+    blem_ble_proximity_configure(
+            config->ibeacon_enable,
+            config->adv_tx_power,
+            config->adv_interval,
+            ibeacon_uuid,
+            config->ibeacon_major,
+            config->ibeacon_minor,
+            config->ibeacon_power,
+            blem_ble_proximity_on_state);
+}
+
 void blem_ovsdb_init(void)
 {
     LOGI("Initializing BLEM tables");
@@ -173,8 +262,11 @@ void blem_ovsdb_init(void)
 #ifdef CONFIG_BLEM_CONFIG_VIA_BLE_ENABLED
     OVSDB_TABLE_INIT_NO_KEY(AWLAN_Node);
 #endif
+    OVSDB_TABLE_INIT_NO_KEY(BLE_Proximity_Config);
+    OVSDB_TABLE_INIT_NO_KEY(BLE_Proximity_State);
 
     // Initialize OVSDB monitor callbacks
-    OVSDB_TABLE_MONITOR(AW_Bluetooth_Config, true);  // Trigger initial callback
+    OVSDB_TABLE_MONITOR(AW_Bluetooth_Config, false);
+    OVSDB_TABLE_MONITOR(BLE_Proximity_Config, false);
 }
 

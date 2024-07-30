@@ -51,6 +51,7 @@ static int odhcp6_client_tag_from_str(const char *str);
 static bool odhcp6_client_b64_to_b16(char *b16, ssize_t b16sz, char *b64);
 static bool odhcp6_client_apply_option_send(odhcp6_client_t *self, int tag, char *value);
 static bool odhcp6_client_apply_option_request(odhcp6_client_t *self);
+static bool odhcp6_client_apply_other_config(odhcp6_client_t *self);
 static char* odhcp6_client_process_value(int optidx, const char *value);
 
 /*
@@ -88,6 +89,8 @@ bool odhcp6_client_init(odhcp6_client_t *self, const char *ifname)
 
     ev_stat_init(&self->oc_opts_ev, odhcp6_client_stat_fn, self->oc_opts_file, 1.0);
     self->oc_opts_ev.data = self;
+
+    self->oc_other_config = ds_map_str_new();
 
     return true;
 }
@@ -142,6 +145,8 @@ bool odhcp6_client_fini(odhcp6_client_t *self)
         self->oc_option_send[ii] = NULL;
     }
 
+    ds_map_str_delete(&self->oc_other_config);
+
     return true;
 }
 
@@ -179,6 +184,9 @@ bool odhcp6_client_apply(odhcp6_client_t *self)
         if (self->oc_option_send[ii] == NULL) continue;
         odhcp6_client_apply_option_send(self, ii, self->oc_option_send[ii]);
     }
+
+    /* other_config */
+    odhcp6_client_apply_other_config(self);
 
     /* -v              Increase logging verbosity */
     daemon_arg_add(&self->oc_daemon, "-v");
@@ -276,6 +284,13 @@ bool odhcp6_client_option_send(odhcp6_client_t *self, int tag, const char *value
 
     self->oc_option_send[tag] = strdup(value);
 
+    return true;
+}
+
+/* DHCP client other_config */
+bool odhcp6_client_other_config(odhcp6_client_t *self, const char *key, const char *value)
+{
+    ds_map_str_set(self->oc_other_config, key, value);
     return true;
 }
 
@@ -685,3 +700,20 @@ bool odhcp6_client_b64_to_b16(
 
     return true;
 }
+
+/*
+ * Apply other_config
+ */
+bool odhcp6_client_apply_other_config(odhcp6_client_t *self)
+{
+    char oc_env[256];
+    ds_map_str_iter_t iter;
+    ds_map_str_foreach(self->oc_other_config, iter)
+    {
+        snprintf(oc_env, sizeof(oc_env), "other_config_%s", iter.key);
+        TRACE("env %s=%s", oc_env, iter.val);
+        daemon_env_set(&self->oc_daemon, oc_env, iter.val);
+    }
+    return true;
+}
+

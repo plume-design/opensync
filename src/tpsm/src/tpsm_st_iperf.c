@@ -37,6 +37,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ovsdb.h"
 #include "schema.h"
 
+#include "execsh.h"
 #include "json_util.h"
 #include "memutil.h"
 #include "monitor.h"
@@ -46,7 +47,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "util.h"
 
 #include "module.h"
-#include "pasync.h"
 #include "target.h"
 #include "tpsm.h"
 
@@ -76,6 +76,8 @@ struct st_context
     bool is_reverse;
     unsigned run_cnt;
     unsigned run_cnt_max;
+    execsh_async_t speedtest_esa;
+    char *msg;
 };
 
 static ev_timer st_timeout;
@@ -301,19 +303,41 @@ static bool iperf_parse_json_output(const char *json_buf, size_t buflen, struct 
     return true;
 }
 
-/* pasync API callback, invoked when speedtest command completes. */
-static void iperf_on_st_completed_cb(pasync_ctx_t *ctx, void *buff, int buff_sz)
+static void iperf_on_timeout(struct ev_loop *loop, ev_timer *watcher, int revent)
 {
-    struct st_context *st_ctx = (struct st_context *)ctx->data;
+    int rc;
+    const char *cmd = "killall -KILL " ST_EXE;
+
+    LOG(DEBUG, "ST_IPERF: %s called. st_in_progress=%d", __func__, tpsm_st_in_progress_get());
+
+    if (tpsm_st_in_progress_get())
+    {
+        LOG(WARN, "ST_IPERF: maximum duration exceeded. Killing speedtest app.");
+
+        LOG(DEBUG, "Running system cmd: %s", cmd);
+        rc = system(cmd);
+        if (!(WIFEXITED(rc) && WEXITSTATUS(rc) == 0)) LOG(ERR, "Error executing system command: %s", cmd);
+
+        tpsm_st_in_progress_set(false);
+    }
+}
+
+/* iperf speedtest at-exit callback. */
+static void iperf_speedtest_execsh_exit_fn(execsh_async_t *esa, int exit_status)
+{
+    struct st_context *st_ctx = CONTAINER_OF(esa, struct st_context, speedtest_esa);
     int status = ST_STATUS_READ;
     pjs_errmsg_t err;
     ovs_uuid_t uuid = {{'\0'}};
+    int buff_sz;
+
+    buff_sz = strlen(st_ctx->msg);
 
     LOG(DEBUG, "ST_IPERF: %s: buff_size=%d", __func__, buff_sz);
     if (buff_sz > 0)
     {
         /* parse iperf results */
-        if (iperf_parse_json_output(buff, (size_t)buff_sz, st_ctx)
+        if (iperf_parse_json_output(st_ctx->msg, (size_t)buff_sz, st_ctx)
             && (st_ctx->st_status.UL_exists || st_ctx->st_status.DL_exists))
         {
             status = ST_STATUS_OK;
@@ -321,7 +345,7 @@ static void iperf_on_st_completed_cb(pasync_ctx_t *ctx, void *buff, int buff_sz)
     }
     else
     {
-        if (ctx->rc != 0) LOG(ERR, "ST_IPERF: Speedtest command failed with rc=%d", ctx->rc);
+        if (exit_status != 0) LOG(ERR, "ST_IPERF: Speedtest command failed with rc=%d", exit_status);
         if (buff_sz == 0) LOG(ERR, "ST_IPERF: No output from speedtest app received.");
     }
 
@@ -344,7 +368,7 @@ static void iperf_on_st_completed_cb(pasync_ctx_t *ctx, void *buff, int buff_sz)
     /* 2nd run completed. All results ready. Insert into ovsdb. */
     st_ctx->st_status.status = status;
     st_ctx->st_status.status_exists = true;
-    st_ctx->st_status.testid = ctx->id;
+    st_ctx->st_status.testid = st_ctx->st_config.testid;
     st_ctx->st_status.testid_exists = true;
 
     strscpy(st_ctx->st_status.test_type, st_ctx->st_config.test_type, sizeof(st_ctx->st_status.test_type));
@@ -394,33 +418,33 @@ st_end:
     /* signal that ST has completed: */
     tpsm_st_in_progress_set(false);
 
-    /* free pasync user data context: */
+    /* free execsh user data context: */
+    FREE(st_ctx->msg);
     FREE(st_ctx);
 }
 
-static void iperf_on_timeout(struct ev_loop *loop, ev_timer *watcher, int revent)
+/* iperf speedtest output (stdout/stderr) callback. Called for each line of iperf speedtest output. */
+static void iperf_speedtest_execsh_io_fn(execsh_async_t *esa, enum execsh_io io_type, const char *msg)
 {
-    int rc;
-    const char *cmd = "killall -KILL " ST_EXE;
+    struct st_context *st_ctx = CONTAINER_OF(esa, struct st_context, speedtest_esa);
+    size_t new_msg_len;
 
-    LOG(DEBUG, "ST_IPERF: %s called. st_in_progress=%d", __func__, tpsm_st_in_progress_get());
-
-    if (tpsm_st_in_progress_get())
+    if (strlen(msg) == 0)
     {
-        LOG(WARN, "ST_IPERF: maximum duration exceeded. Killing speedtest app.");
-
-        LOG(DEBUG, "Running system cmd: %s", cmd);
-        rc = system(cmd);
-        if (!(WIFEXITED(rc) && WEXITSTATUS(rc) == 0)) LOG(ERR, "Error executing system command: %s", cmd);
-
-        tpsm_st_in_progress_set(false);
+        return;
     }
+
+    /* Parse only stdout */
+    if (io_type != EXECSH_IO_STDOUT) return;
+
+    new_msg_len = strlen(st_ctx->msg) + strlen(msg) + 1;
+    st_ctx->msg = REALLOC(st_ctx->msg, new_msg_len);
+    strscat(st_ctx->msg, msg, new_msg_len);
 }
 
 /* Run iperf command in async manner. */
 static bool iperf_run_async(struct st_context *st_ctx, bool run_reverse)
 {
-    char st_cmd[TARGET_BUFF_SZ * 2];
     char arg_port[64] = {0};
 
     if (st_ctx->run_cnt >= st_ctx->run_cnt_max)
@@ -434,6 +458,13 @@ static bool iperf_run_async(struct st_context *st_ctx, bool run_reverse)
         snprintf(arg_port, sizeof(arg_port), " -p %d", st_ctx->st_config.st_port);
     }
 
+    pid_t server_pid;
+    st_ctx->msg = MALLOC(1);
+    st_ctx->msg[0] = '\0';
+
+    execsh_async_init(&st_ctx->speedtest_esa, iperf_speedtest_execsh_exit_fn);
+    execsh_async_set(&st_ctx->speedtest_esa, NULL, iperf_speedtest_execsh_io_fn);
+
     /* Build speedtest command: */
     if (ST_IS_IPERF3_S(st_ctx))  // iperf server
     {
@@ -444,7 +475,8 @@ static bool iperf_run_async(struct st_context *st_ctx, bool run_reverse)
             arg_bind = strfmta(" -B %s", st_ctx->st_config.st_server);
         }
 
-        snprintf(st_cmd, sizeof(st_cmd), "%s -s -1 -i 0 -J %s%s", ST_EXE, arg_bind, arg_port);
+        LOGI("ST_IPERF_S: Running command: %s -s -1 -i 0 -J %s%s", ST_EXE, arg_bind, arg_port);
+        server_pid = execsh_async_start(&st_ctx->speedtest_esa, _S($1 -s -1 -i 0 -J $2$3), ST_EXE, arg_bind, arg_port);
     }
     else if (ST_IS_IPERF3_C(st_ctx))  // iperf client
     {
@@ -482,19 +514,28 @@ static bool iperf_run_async(struct st_context *st_ctx, bool run_reverse)
             snprintf(arg_bw, sizeof(arg_bw), " -b %d", st_ctx->st_config.st_bw);
         }
 
-        snprintf(
-                st_cmd,
-                sizeof(st_cmd),
-                "%s -i 0 -O 2 -J -c %s %s%s%s%s%s%s%s",
-                ST_EXE,
-                st_ctx->st_config.st_server,
-                arg_reverse,
-                arg_port,
-                arg_len,
-                arg_parallel,
-                arg_udp,
-                arg_bw,
-                arg_get_server_output);
+        LOGI("ST_IPERF_C: Running command: %s -i 0 -O 2 -J -c %s %s%s%s%s%s%s%s",
+             ST_EXE,
+             st_ctx->st_config.st_server,
+             arg_reverse,
+             arg_port,
+             arg_len,
+             arg_parallel,
+             arg_udp,
+             arg_bw,
+             arg_get_server_output);
+        server_pid = execsh_async_start(
+                &st_ctx->speedtest_esa,
+                _S($1 -i 0 -O 2 -J -c $2 $3$4$5$6$7$8$9),
+                   ST_EXE,
+                   st_ctx->st_config.st_server,
+                   (char *)arg_reverse,
+                   arg_port,
+                   arg_len,
+                   arg_parallel,
+                   (char *)arg_udp,
+                   arg_bw,
+                   arg_get_server_output);
     }
     else
     {
@@ -507,24 +548,24 @@ static bool iperf_run_async(struct st_context *st_ctx, bool run_reverse)
         st_ctx->st_config.test_type,
         st_ctx->run_cnt,
         run_reverse);
-    LOG(DEBUG, "ST_IPERF: Running command: %s", st_cmd);
 
-    /* Run speedtest: */
-    if (!pasync_ropenx(EV_DEFAULT, st_ctx->st_config.testid, st_ctx, st_cmd, iperf_on_st_completed_cb))
+    if (server_pid == -1)
     {
-        LOG(ERR, "ST_IPERF: Failed executing command with pasync: %s", st_cmd);
-        return false;
+        LOG(ERR, "Error running execsh_async_start");
+    }
+    else
+    {
+        LOG(NOTICE, "ST_IPERF: speedtest %s(%d) started", st_ctx->st_config.test_type, run_reverse);
+        st_ctx->run_cnt++;
+        tpsm_st_in_progress_set(true);
     }
 
-    LOG(NOTICE, "ST_IPERF: speedtest %s(%d) started!", st_ctx->st_config.test_type, run_reverse);
-
-    st_ctx->run_cnt++;
-    tpsm_st_in_progress_set(true);
     return true;
 }
 
-/* Run iperf speedtest (server or client) according to config,
- * both UL and DL. */
+/*
+ * Run iperf speedtest (server or client) according to config, both UL and DL.
+ */
 bool iperf_run_speedtest(struct schema_Wifi_Speedtest_Config *st_config)
 {
     const unsigned RUN_CNT_MAX = 2;
@@ -538,7 +579,7 @@ bool iperf_run_speedtest(struct schema_Wifi_Speedtest_Config *st_config)
         return false;
     }
 
-    /* Speedtest context: must be freed in pasync (on_st_completed_cb) callback. */
+    /* Speedtest context: must be freed in execsh (iperf_speedtest_execsh_exit_fn) callback */
     st_ctx = CALLOC(1, sizeof(*st_ctx));
     st_ctx->st_config = *st_config;
     st_ctx->run_cnt_max = RUN_CNT_MAX;

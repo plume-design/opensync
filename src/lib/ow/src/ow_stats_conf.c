@@ -739,7 +739,8 @@ ow_stats_conf_sub_report_bss_scan(struct ow_stats_conf_entry *e,
     }
 
     if (ies != NULL) {
-        /* FIXME:*/
+        r->entry.beacon_ies = MEMNDUP(osw_tlv_get_data(ies), ies->len);
+        r->entry.beacon_ies_len = ies->len;
     }
 
     if (snr != NULL) {
@@ -1648,7 +1649,9 @@ ow_stats_conf_device_polling(struct ow_stats_conf_entry *e,
         thermal_record->fan_duty_cycle = -1;
         thermal_record->thermal_state = -1;
         thermal_record->target_rpm = -1;
-        thermal_record->led_state = -1;
+        for (int i = 0; i < DPP_DEVICE_LED_COUNT; i++) {
+            thermal_record->led_states[i].value = -1;
+        }
         thermal_record->timestamp_ms = real_msec;
 
         LOGD("ow: stats: device: sample: radio=%s tx_chainmask=0x%04x",

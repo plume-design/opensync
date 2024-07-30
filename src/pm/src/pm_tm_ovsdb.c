@@ -243,27 +243,6 @@ int pm_tm_ovsdb_set_state(unsigned int state)
     return 0;
 }
 
-int pm_tm_ovsdb_set_led_state(enum osp_led_state led_state, bool clear)
-{
-    char *filter[] = {"+", SCHEMA_COLUMN(AWLAN_Node, led_config), NULL};
-    struct schema_AWLAN_Node awlan_node;
-
-    MEMZERO(awlan_node);
-
-    SCHEMA_KEY_VAL_APPEND(awlan_node.led_config, "state", osp_led_state_to_str(led_state));
-    if (clear == true)
-    {
-        SCHEMA_KEY_VAL_APPEND(awlan_node.led_config, "clear", "true");
-    }
-
-    if (!ovsdb_table_update_f(&table_AWLAN_Node, &awlan_node, filter))
-    {
-        return -1;
-    }
-
-    return 0;
-}
-
 #ifdef PM_TM_DEBUG
 
 int pm_tm_ovsdb_dbg_get_temperature(unsigned int radio_idx, int *temp)

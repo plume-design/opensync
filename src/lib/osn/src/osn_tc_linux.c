@@ -29,7 +29,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "log.h"
 #include "memutil.h"
 
+#include "osn_tc.h"
 #include "lnx_tc.h"
+
 
 struct osn_tc
 {
@@ -53,6 +55,11 @@ void osn_tc_del(osn_tc_t *self)
 {
     lnx_tc_fini(&self->ot_lnx);
     FREE(self);
+}
+
+void osn_tc_set_reset_egress(osn_tc_t *self, bool reset)
+{
+    return lnx_tc_set_reset_egress(&self->ot_lnx, reset);
 }
 
 bool osn_tc_apply(osn_tc_t *self)

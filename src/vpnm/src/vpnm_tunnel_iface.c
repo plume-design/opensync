@@ -122,6 +122,14 @@ static enum osn_tunnel_iface_type util_tunnel_iftype_from_schemastr(const char *
         return OSN_TUNNEL_IFACE_TYPE_VTI6;
     else if (strcmp(if_type, "ip6tnl") == 0)
         return OSN_TUNNEL_IFACE_TYPE_IP6TNL;
+    else if (strcmp(if_type, "ip4gre") == 0)
+        return OSN_TUNNEL_IFACE_TYPE_IP4GRE;
+    else if (strcmp(if_type, "ip4gretap") == 0)
+        return OSN_TUNNEL_IFACE_TYPE_IP4GRETAP;
+    else if (strcmp(if_type, "ip6gre") == 0)
+        return OSN_TUNNEL_IFACE_TYPE_IP6GRE;
+    else if (strcmp(if_type, "ip6gretap") == 0)
+        return OSN_TUNNEL_IFACE_TYPE_IP6GRETAP;
     else
         return OSN_TUNNEL_IFACE_TYPE_NOT_SET;
 }

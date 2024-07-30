@@ -627,6 +627,17 @@ void wanp_ethclient_dhcp_process(
         goto abort;
     }
 
+    /*
+     * If the message type is not DISCOVER or REQUEST, it means there's a
+     * DHCP server on the network.
+     */
+    if (dhcp_type != DHCP_TYPE_DISCOVER && dhcp_type != DHCP_TYPE_REQUEST)
+    {
+        LOG(NOTICE, "ethclient: %s: Non-DISCOVER/REQUEST DHCP message detected.",
+                self->ec_handle.wh_ifname);
+        goto abort;
+    }
+
     if (!WANO_CONNMGR_UPLINK_UPDATE(
             self->ec_handle.wh_ifname,
             .loop = WANO_TRI_FALSE))
@@ -638,7 +649,7 @@ void wanp_ethclient_dhcp_process(
     /* Remember the first seen MAC, start the timer */
     if (osn_mac_addr_cmp(&self->ec_client_mac, &OSN_MAC_ADDR_INIT) == 0)
     {
-        LOG(NOTICE, "etheclient: %s: DHCP detected: "PRI_osn_mac_addr,
+        LOG(NOTICE, "ethclient: %s: DHCP detected: "PRI_osn_mac_addr,
                 self->ec_handle.wh_ifname,
                 FMT_osn_mac_addr(*client_mac));
         self->ec_client_mac = *client_mac;
@@ -652,17 +663,6 @@ void wanp_ethclient_dhcp_process(
     if (osn_mac_addr_cmp(&self->ec_client_mac, client_mac) != 0)
     {
         LOG(NOTICE, "ethclient: %s: Multiple DHCP clients detected.",
-                self->ec_handle.wh_ifname);
-        goto abort;
-    }
-
-    /*
-     * If the message type is not DISCOVER or REQUEST, it means there's a
-     * DHCP server on the network.
-     */
-    if (dhcp_type != DHCP_TYPE_DISCOVER && dhcp_type != DHCP_TYPE_REQUEST)
-    {
-        LOG(NOTICE, "ethclient: %s: Non-DISCOVER/REQUEST DHCP message detected.",
                 self->ec_handle.wh_ifname);
         goto abort;
     }

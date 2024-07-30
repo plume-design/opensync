@@ -156,9 +156,7 @@ static void nm2_if_netif_status_fn(osn_netif_t *netif, struct osn_netif_status *
 
     nm2_if_config_apply(intf);
 
-    nm2_nb_port_cfg_reapply(status->ns_ifname, status->ns_up);
-
-    nm2_port_config_hairpin(status->ns_ifname);
+    nm2_nb_port_cfg_reapply(status->ns_ifname);
 }
 
 struct nm2_interface *nm2_if_get_from_uuid(const ovs_uuid_t *uuid)
@@ -166,17 +164,17 @@ struct nm2_interface *nm2_if_get_from_uuid(const ovs_uuid_t *uuid)
     return ds_tree_find(&nm2_if_list, (void *)uuid->uuid);
 }
 
-struct nm2_interface *nm2_if_get(struct schema_Interface *config)
+struct nm2_interface *nm2_if_get(const ovs_uuid_t *uuid)
 {
     struct nm2_interface *intf;
 
-    intf = nm2_if_get_from_uuid(&config->_uuid);
+    intf = nm2_if_get_from_uuid(uuid);
     if (intf) return intf;
 
     intf = CALLOC(1, sizeof(*intf));
     if (intf == NULL) return NULL;
 
-    intf->if_uuid = config->_uuid;
+    intf->if_uuid = *uuid;
     reflink_init(&intf->if_reflink, "Interface");
     reflink_set_fn(&intf->if_reflink, nm2_if_ref_fn);
 
@@ -194,7 +192,7 @@ reflink_t *nm2_if_getref(const ovs_uuid_t *uuid)
 {
     struct nm2_interface *intf;
 
-    intf = nm2_if_get_from_uuid(uuid);
+    intf = nm2_if_get(uuid);
     if (intf == NULL)
     {
         LOGN("%s(): Unable to acquire an Interface object for UUID %s", __func__,
@@ -248,18 +246,18 @@ void callback_Interface(ovsdb_update_monitor_t *mon, struct schema_Interface *ol
     switch (mon->mon_type)
     {
     case OVSDB_UPDATE_NEW:
-        intf = nm2_if_get(new);
+        intf = nm2_if_get(&new->_uuid);
         if (intf == NULL) return;
         reflink_ref(&intf->if_reflink, 1);
         break;
 
     case OVSDB_UPDATE_MODIFY:
-        intf = nm2_if_get(new);
+        intf = nm2_if_get(&new->_uuid);
         if (intf == NULL) return;
         break;
 
     case OVSDB_UPDATE_DEL:
-        intf = nm2_if_get(old_rec);
+        intf = nm2_if_get(&old_rec->_uuid);
         if (intf == NULL) return;
         reflink_ref(&intf->if_reflink, -1);
         return;

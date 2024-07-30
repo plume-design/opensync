@@ -74,6 +74,8 @@ char *strchomp(char *str, char *delim);
 
 int count_nt_array(char **array);
 char* strfmt_nt_array(char *str, size_t size, char **array);
+void str_array_free(char **arr, size_t size);
+char** str_array_dup(char **src, size_t size);
 bool is_inarray(const char * key, int argc, char *argv[]);
 int filter_out_nt_array(char **array, char **filter);
 bool is_array_in_array(char **src, char **dest);
@@ -123,6 +125,9 @@ bool parse_uri(char *uri, char *proto, size_t proto_size, char *host, size_t hos
 #define ASSERT_ARRAY(A) A
 #endif
 
+#define STRSCMP(a, b) strcmp((a == NULL || WARN_ON(a == (void *)MEMUTIL_MAGIC)) ? "" : a, \
+                             (b == NULL || WARN_ON(b == (void *)MEMUTIL_MAGIC)) ? "" : b)
+#define STRSLEN(a) strlen((a == NULL || WARN_ON(a == (void *)MEMUTIL_MAGIC)) ? "" : a)
 #define STRSCPY(dest, src)  strscpy(ASSERT_ARRAY(dest), (src), sizeof(dest))
 #define STRSCPY_WARN(dest, src) IGNORE_VALUE(WARN_ON(STRSCPY((dest), (src)) < 0))
 ssize_t strscpy(char *dest, const char *src, size_t size);
@@ -153,6 +158,9 @@ bool   str_join_int(char *str, int size, int *list, int num, char *delim);
 bool   str_startswith(const char *str, const char *start);
 bool   str_endswith(const char *str, const char *end);
 
+char **ini_get_multiple_str_sep(const char *buf, const char *key, const char *sep, size_t *out_len);
+char **ini_get_multiple_str(const char *buf, const char *key, size_t *out_len);
+int *ini_get_multiple_int(const char *buf, const char *key, size_t *out_len);
 char  *ini_get(const char *buf, const char *key);
 #define ini_geta(buf, key) strdupafree(ini_get(buf, key))
 int    file_put(const char *path, const char *buf);
@@ -210,5 +218,17 @@ int str_replace_fixed(char *str, int size, const char *from, const char *to);
  * @return true if all `num_bytes` bytes in the `buffer` are equal to the specified `value`, false otherwise
  */
 bool memcmp_b(const void *buffer, int value, size_t num_bytes);
+
+bool __is_input_shell_safe(const char* input, const char *calling_func);
+
+/**
+ * Check if a string contains any characters which can be dangerous when
+ * executed in a shell session. Function is used to prevent command injection.
+ *
+ * @param[in] input         The string we are inspecting for dangerous characters
+ *
+ * @return true if input string does not contain any dangerous characters, false otherwise
+ */
+#define is_input_shell_safe(input) __is_input_shell_safe(input, __func__)
 
 #endif /* UTIL_H_INCLUDED */

@@ -175,6 +175,11 @@ osw_defer_vif_down_csa_will_interrupt_service(struct osw_conf_phy *phy,
     const struct osw_channel *c = &vif->u.ap.channel;
     const struct osw_channel_state *cs = r->phy_info->drv_state->channel_states;
     size_t n_cs = r->phy_info->drv_state->n_channel_states;
+    const bool cannot_be_a_csa = (vif->enabled == false);
+    const bool invalid_chan = (c->control_freq_mhz == 0);
+
+    if (cannot_be_a_csa) return false;
+    if (WARN_ON(invalid_chan)) return false;
 
     /* FIXME: If/when Zero Wait DFS support is added this
      * should be made aware of that.

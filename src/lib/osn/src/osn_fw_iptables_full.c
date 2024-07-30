@@ -497,6 +497,8 @@ static bool osfw_nftable_check(struct osfw_nftable *self, struct osfw_nfrule *nf
 	osfw_nftable_print(self, false, nfrule, stream);
 	fclose(stream);
 
+	if (!is_input_shell_safe(path)) return false;
+
 	snprintf(cmd, sizeof(cmd) - 1, "cat %s | %s -t", path, osfw_convert_cmd(self->family));
 	cmd[sizeof(cmd) - 1] = '\0';
 	err = cmd_log(cmd);
@@ -877,6 +879,8 @@ static bool osfw_nfinet_apply(struct osfw_nfinet *self)
 	osfw_nftable_print(&self->tables.security, true, NULL, stream);
 	fclose(stream);
 
+	if (!is_input_shell_safe(path)) return false;
+
 	snprintf(cmd, sizeof(cmd) - 1, "cat %s | %s", path, osfw_convert_cmd(self->family));
 	cmd[sizeof(cmd) - 1] = '\0';
 	err = cmd_log(cmd);
@@ -1131,4 +1135,3 @@ bool osfw_apply(void)
 	}
 	return true;
 }
-

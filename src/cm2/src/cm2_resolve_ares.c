@@ -131,6 +131,7 @@ cm2_ares_host_cb(void *arg, int status, int timeouts, struct hostent *hostent)
                 memcpy(addr->h_addr_list[i], hostent->h_addr_list[i], hostent->h_length);
             }
             addr->h_addr_list[i] = NULL;
+            addr->h_length = cnt;
             addr->state = CM2_ARES_R_RESOLVED;
             addr->h_addrtype = hostent->h_addrtype;;
             addr->h_cur_idx = 0;
@@ -224,6 +225,21 @@ void cm2_resolve_timeout(void)
 {
     LOGI("ares: timeout calling");
     evx_stop_ares(&g_state.eares);
+}
+
+void cm2_set_ipv6_pref(cm2_dest_e dst)
+{
+    switch(dst)
+    {
+        case CM2_DEST_REDIR:
+            g_state.addr_redirector.ipv6_pref = true;
+            break;
+        case CM2_DEST_MANAGER:
+            g_state.addr_manager.ipv6_pref = g_state.addr_redirector.ipv6_pref;
+            break;
+        default:
+            return;
+    }
 }
 
 static bool
@@ -364,34 +380,28 @@ static bool cm2_pick_next_addr(cm2_addr_t *addr)
 bool cm2_write_current_target_addr(void)
 {
     cm2_addr_t *addr = cm2_curr_addr();
-    cm2_dest_e dest_type = cm2_get_dest_type();
     LOGD("ares: %s target addr index ipv6: %d/%d ipv4: %d/%d", __func__
                                                              , addr->ipv6_addr_list.h_cur_idx, addr->ipv6_addr_list.h_length
                                                              , addr->ipv4_addr_list.h_cur_idx, addr->ipv4_addr_list.h_length);
 
-    switch (dest_type)
-    {
-        case CM2_DEST_REDIR:
-            g_state.addr_redirector.ipv6_pref = true;
-            break;
-
-        case CM2_DEST_MANAGER:
-            g_state.addr_manager.ipv6_pref = g_state.addr_redirector.ipv6_pref;
-            break;
-
-        default:
-            LOGW("ares: Invalid dest type %d", dest_type);
-            return false;
-    }
-
-    if (!cm2_pick_next_addr(addr)) {
-        return false;
-    }
+    if (!cm2_pick_next_addr(addr)) return false;
 
     return cm2_write_target_addr(addr);
 }
 
 bool cm2_write_next_target_addr(void)
+{
+    cm2_addr_t *addr = cm2_curr_addr();
+    LOGD("ares: %s", __func__);
+    cm2_move_next_target_addr();
+
+    if (!cm2_pick_next_addr(addr)) {
+        return false;
+    }
+    return  cm2_write_target_addr(addr);
+}
+
+void cm2_move_next_target_addr(void)
 {
     cm2_addr_t *addr = cm2_curr_addr();
     LOGD("ares: %s target addr index ipv6: %d/%d ipv4: %d/%d, ipv6_pref %d"
@@ -407,12 +417,6 @@ bool cm2_write_next_target_addr(void)
 
     // Flip it so everytime we tend to try a diffirent one
     addr->ipv6_pref = !addr->ipv6_pref;
-
-    if (!cm2_pick_next_addr(addr)) {
-        return false;
-    }
-
-    return  cm2_write_target_addr(addr);
 }
 
 bool cm2_is_addr_resolved(const cm2_addr_t *addr)

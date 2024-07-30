@@ -33,9 +33,12 @@ run_parts()
     shift
     for i in $(ls $dir/*)
     do
-        ( . "$i" "$@" ) && return 0
+        if ! ( . "$i" "$@" ); then
+            # Exiting with fail if script from BSS_IS_UP_D returned 1 (fail)
+            return 1
+        fi
     done
-    return 1
+    return 0
 }
 
 for ifname in $($OVSH -r s Wifi_VIF_Config if_name -w enabled==true)

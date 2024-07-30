@@ -48,6 +48,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "sockaddr_storage.h"
 #include "os.h"
 #include "util.h"
+#include "fsm_fn_trace.h"
 
 #include "fsm_dpi_mdns_responder.h"
 
@@ -539,6 +540,7 @@ fsm_dpi_mdns_init(struct fsm_session *session)
     /* Set the plugin specific ops */
     client_ops = &session->p_ops->dpi_plugin_client_ops;
     client_ops->process_attr = fsm_dpi_mdns_process_attr;
+    FSM_FN_MAP(fsm_dpi_mdns_process_attr);
     mdns_resp_session->session = session;
 
     /* Fetch the specific updates for this client plugin */
@@ -575,6 +577,7 @@ fsm_dpi_mdns_exit(struct fsm_session *session)
     mgr = fsm_dpi_mdns_get_mgr();
     if (!mgr->initialized) return;
 
+    fsm_dpi_mdns_ovsdb_exit();
     /* Free the generic client */
     fsm_dpi_client_exit(session);
     fsm_dpi_mdns_delete_session(session);

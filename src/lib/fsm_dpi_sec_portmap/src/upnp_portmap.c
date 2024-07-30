@@ -839,7 +839,7 @@ upnp_portmap_static_exit(struct fsm_dpi_sec_portmap_session *u_session)
     if (!cache->initialized) return;
 
     /* Deregister monitor events */
-    ovsdb_unregister_update_cb(table_IP_Port_Forward.monitor.mon_id);
+    ovsdb_table_fini(&table_IP_Port_Forward);
     upnp_portmap_delete_snapshot(cache->store);
     cache->store = NULL;
     cache->initialized = false;

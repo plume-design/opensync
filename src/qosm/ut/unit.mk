@@ -29,11 +29,15 @@ UNIT_DISABLE := $(if $(CONFIG_MANAGER_QOSM),n,y)
 UNIT_TYPE := TEST_BIN
 
 UNIT_SRC := test_qosm_main.c
-UNIT_SRC += ../src/qosm_ovsdb.c
+UNIT_SRC += ../src/qosm_filter.c
 UNIT_SRC += ../src/qosm_mgr.c
 UNIT_SRC += ../src/qosm_ip_iface.c
 UNIT_SRC += ../src/qosm_interface_classifier.c
 UNIT_SRC += ../src/qosm_ic_template.c
+UNIT_SRC += ../src/qosm_interface_qos.c
+UNIT_SRC += ../src/qosm_interface_queue.c
+UNIT_SRC += ../src/qosm_ip_interface.c
+
 
 UNIT_CFLAGS := -I$(UNIT_PATH)/../inc
 

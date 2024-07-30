@@ -522,10 +522,6 @@ dpi_intf_enable_pcap(struct dpi_intf_entry *entry)
 
     return true;
 
-err_free_bpf:
-    FREE(entry->pcaps->bpf);
-    entry->pcaps->bpf = NULL;
-
 err_free_pcaps:
     FREE(entry->pcaps);
     entry->pcaps = NULL;
@@ -640,6 +636,11 @@ dpi_intf_add_ovsdb_entry(struct schema_Dpi_Interface_Map *node_cfg)
 
     entry->context = mgr->registered_context;
     mgr->ops.init_forward_context(entry);
+
+    if (strlen(node_cfg->pkt_capt_filter) != 0)
+    {
+        STRSCPY(entry->pcap_filter, node_cfg->pkt_capt_filter);
+    }
 
     /* Enable tapping on the interface */
     check = mgr->ops.enable_pcap(entry);

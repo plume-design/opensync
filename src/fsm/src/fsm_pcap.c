@@ -41,6 +41,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "dppline.h"
 #include "memutil.h"
 #include "dpi_intf.h"
+#include "os_ev_trace.h"
 
 /* Set of default values for pcaps settings */
 static int g_buf_size = 0;
@@ -364,6 +365,7 @@ fsm_pcap_open(struct fsm_session *session)
     }
 
     /* Register FD for libev events */
+    OS_EV_TRACE_MAP(fsm_pcap_recv_fn);
     ev_io_init(&pcaps->fsm_evio, fsm_pcap_recv_fn, pcaps->pcap_fd, EV_READ);
     /* Set user data */
     pcaps->fsm_evio.data = (void *)session;

@@ -336,6 +336,8 @@ bool os_nif_gateway_set(const char* ifname, os_ipaddr_t gwaddr)
 {
     char iproute[128];
 
+    if (!is_input_shell_safe(ifname)) return false;
+
     snprintf(iproute, sizeof(iproute),
             "ip route add default via "PRI(os_ipaddr_t)" dev %s", FMT(os_ipaddr_t, gwaddr), ifname);
 
@@ -345,6 +347,8 @@ bool os_nif_gateway_set(const char* ifname, os_ipaddr_t gwaddr)
 bool os_nif_gateway_del(const char* ifname, os_ipaddr_t gwaddr)
 {
     char iproute[128];
+
+    if (!is_input_shell_safe(ifname)) return false;
 
     snprintf(iproute, sizeof(iproute),
             "ip route del default via "PRI(os_ipaddr_t)" dev %s", FMT(os_ipaddr_t, gwaddr), ifname);
@@ -531,6 +535,8 @@ bool os_nif_softwds_create(
     char cmd[1024];
     int rc;
 
+    if (!is_input_shell_safe(ifname) || !is_input_shell_safe(parent)) return false;
+
     snprintf(cmd, sizeof(cmd),
              "ip link add link %s name %s type softwds && "
              "echo " PRI(os_macaddr_t) " > /sys/class/net/%s/softwds/addr && "
@@ -556,6 +562,8 @@ bool os_nif_softwds_destroy(
 {
     char cmd[1024];
     int rc;
+
+    if (!is_input_shell_safe(ifname)) return false;
 
     snprintf(cmd, sizeof(cmd), "ip link del %s", ifname);
     rc = cmd_log(cmd);

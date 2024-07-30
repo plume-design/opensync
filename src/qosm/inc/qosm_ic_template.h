@@ -27,7 +27,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifndef QOSM_IC_TEMPATE_INCLUDED
 #define QOSM_IC_TEMPATE_INCLUDED
 
-#include "qosm.h"
+#include "qosm_filter_internal.h"
 #include "ovsdb.h"
 #include "ovsdb_update.h"
 #include "policy_tags.h"

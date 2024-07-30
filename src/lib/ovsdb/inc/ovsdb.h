@@ -293,6 +293,9 @@ bool OVSDB_VA_DECL(ovsdb_monit_call,
         char *table,
         int mon_flags);
 
+/* Cancel a monitor request */
+bool ovsdb_monitor_cancel_call(json_rpc_response_t *callback, void *data, int monid, const char *table);
+
 /*
  * The following function creates and sends transaction method json
  *
@@ -430,8 +433,6 @@ bool ovsdb_delete_with_parent_s(char * table,
                                 json_t * parent_where,
                                 char * parent_column);
 
-bool ovsdb_monitor_cancel_s(int monid);
-
 /**
  * The following set of functions filters all json key-value pairs
  * except those for which key names are submitted
@@ -451,6 +452,7 @@ int ovsdb_get_jsonrpc_id(void);
 
 int ovsdb_register_update_cb(ovsdb_update_process_t *fn, void *data);
 int ovsdb_unregister_update_cb(int mon_id);
+bool ovsdb_change_update_cb(int mon_id, ovsdb_update_process_t *fn, void *data);
 
 /*
  * Global list of JSON-RPC handlers

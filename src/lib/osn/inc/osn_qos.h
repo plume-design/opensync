@@ -55,6 +55,13 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 /** Maximum length of a queue classify tag including the string terminator */
 #define OSN_QOS_QUEUE_CLASS_LEN  32
 
+/** QoS event */
+enum osn_qos_event
+{
+    OSN_QOS_EVENT_NONE,
+    OSN_QOS_EVENT_RECONFIGURATION_NEEDED  /**< Reconfiguration may be needed */
+};
+
 /**
  * OSN QoS object type
  *
@@ -91,6 +98,14 @@ struct osn_qos_queue_status
     uint32_t    qqs_fwmark;                         /**< The firewall mark */
     char        qqs_class[OSN_QOS_QUEUE_CLASS_LEN]; /**< Class definiton, to be used with CLASSIFY iptables rules */
 };
+
+/**
+ * QoS event reporting callback type
+ *
+ * @param[in]   if_name      Interface for which the event occured
+ * @param[in]   event        QoS event
+ */
+typedef void osn_qos_event_fn_t(const char *if_name, enum osn_qos_event event);
 
 /**
  * Create new QoS object for interface @p ifname.
@@ -197,6 +212,31 @@ bool osn_qos_queue_begin(
  * This function returns true on success, false otherwise.
  */
 bool osn_qos_queue_end(osn_qos_t *qos);
+
+/**
+ * Register a QoS event callback handler.
+ *
+ * Note: A target backend implementation may or may not support QoS event reporting.
+ *
+ * @param[in]   qos             A valid pointer to an osn_qos_t object
+ * @param[in]   event_fn_cb     Event callback function pointer or NULL to unset
+ *
+ * @return      true if the underlying backend implementation supports QoS event
+ *              reporting and callback successfully registered.
+ */
+bool osn_qos_notify_event_set(osn_qos_t *qos, osn_qos_event_fn_t *event_fn_cb);
+
+/**
+ * Is the underlying QoS backend Linux qdisc-based?
+ *
+ * This information may be important to some modules that may also
+ * deal or interfere with qdiscs such as tc-filter modules.
+ *
+ * @param[in]   qos     A valid pointer to an osn_qos_t object
+ *
+ * @return      true if the underlying backend is Linux qdisc-based.
+ */
+bool osn_qos_is_qdisc_based(osn_qos_t *qos);
 
 /** @} OSN_QOS */
 /** @} OSN */

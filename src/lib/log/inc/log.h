@@ -155,7 +155,8 @@ typedef enum log_sink_e
     ENTRY(WPAS)                             \
     ENTRY(NEIGHBORS)                        \
     ENTRY(TELOG)                            \
-    ENTRY(OSBUS)
+    ENTRY(OSBUS)                            \
+    ENTRY(ARES)
 
 
 #ifndef LOG_MODULE_TABLE_TARGET

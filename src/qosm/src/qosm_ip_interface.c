@@ -24,6 +24,8 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+#include "qosm.h"
+
 #include "qosm_internal.h"
 #include "memutil.h"
 
@@ -35,8 +37,8 @@ static void callback_IP_Interface(
 static ovsdb_table_t table_IP_Interface;
 static reflink_fn_t qosm_ip_interface_reflink_fn;
 static reflink_fn_t qosm_ip_interface_qos_reflink_fn;
-static void qosm_ip_interface_debounce_fn(struct ev_loop *loop, ev_debounce *w, int revent);
 static int qosm_ip_interface_queue_prio_cmp(const void *a, const void *b);
+static void qosm_on_qos_event(const char *if_name, enum osn_qos_event status);
 
 static ds_tree_t qosm_ip_interface_list = DS_TREE_INIT(
         ds_str_cmp,
@@ -69,12 +71,6 @@ struct qosm_ip_interface *qosm_ip_interface_get(ovs_uuid_t *uuid)
     reflink_init(&ipi->ipi_interface_qos_reflink, "IP_Interface.qos");
     reflink_set_fn(&ipi->ipi_interface_qos_reflink, qosm_ip_interface_qos_reflink_fn);
 
-    ev_debounce_init2(
-            &ipi->ipi_debounce,
-            qosm_ip_interface_debounce_fn,
-            QOSM_DEBOUNCE_MIN,
-            QOSM_DEBOUNCE_MAX);
-
     ds_tree_insert(&qosm_ip_interface_list, ipi, ipi->ipi_uuid.uuid);
 
     return ipi;
@@ -106,8 +102,8 @@ void qosm_ip_interface_reflink_fn(reflink_t *ref, reflink_t *sender)
         ipi->ipi_interface_qos = NULL;
     }
 
-    /* Stop any active debounce timers */
-    ev_debounce_stop(EV_DEFAULT, &ipi->ipi_debounce);
+    /* Stop any pending reconfigurations: */
+    qosm_mgr_stop_qos_config(&ipi->ipi_uuid);
 
     ds_tree_remove(&qosm_ip_interface_list, ipi);
 
@@ -123,28 +119,39 @@ void qosm_ip_interface_qos_reflink_fn(reflink_t *ref, reflink_t *sender)
         return;
     }
 
-    /* Schedule an update here */
-    ev_debounce_start(EV_DEFAULT, &ipi->ipi_debounce);
+    LOG(INFO, "qosm: QoS: %s: %s  Schedule reconfiguration", ipi->ipi_ifname, ipi->ipi_uuid.uuid);
+
+    /* Schedule reconfiguration: */
+    qosm_mgr_schedule_qos_config(&ipi->ipi_uuid);
 }
 
-/*
- * Debounce timer function callback; this is where the interface QoS is configured
+/**
+ * Apply QoS configuration to the system for an interface.
+ *
+ * @param[in]   uuid                    OVSDB uuid of the interface
+ * @param[out]  qos_qdisc_cfg_exists    Will be set to true if there was any actual QoS
+ *                                      configuration for this interface and the underlying
+ *                                      QoS backend is qdisc-based.
  */
-void qosm_ip_interface_debounce_fn(struct ev_loop *loop, ev_debounce *w, int revent)
+bool qosm_qos_config_apply(const ovs_uuid_t *uuid, bool *qos_qdisc_cfg_exists)
 {
-    (void)loop;
-    (void)revent;
-
-    struct qosm_interface_queue *que;
+    struct qosm_ip_interface *ipi;
     struct qosm_interface_qos *qos;
+    struct qosm_interface_queue *que;
+    bool qos_status = false;
     int qi;
 
-    bool qos_status = false;
+    *qos_qdisc_cfg_exists = false;
 
-    struct qosm_ip_interface *ipi = CONTAINER_OF(w, struct qosm_ip_interface, ipi_debounce);
+    ipi = ds_tree_find(&qosm_ip_interface_list, (void *)uuid->uuid);
+    if (ipi == NULL)
+    {
+        LOG(DEBUG, "qosm: QoS: Cannot find IP_Interface object for uuid=%s. Nothing to do.", uuid->uuid);
+        return true; // Nothing to do
+    }
+    LOG(INFO, "qosm: QoS: %s: %s: Reconfiguring QoS for interface", ipi->ipi_ifname, uuid->uuid);
 
-    LOG(NOTICE, "qosm: %s: IP_Interface QoS reconfiguration.", ipi->ipi_ifname);
-
+    // If this interface has QoS applied from before, delete the old config first:
     if (ipi->ipi_qos != NULL)
     {
         LOG(DEBUG, "qosm: %s: Removing old QoS configuration.", ipi->ipi_ifname);
@@ -152,15 +159,15 @@ void qosm_ip_interface_debounce_fn(struct ev_loop *loop, ev_debounce *w, int rev
         ipi->ipi_qos = NULL;
     }
 
-    qos = ipi->ipi_interface_qos;
+    qos = ipi->ipi_interface_qos; // QoS config from OVSDB
     if (qos == NULL)
     {
         LOG(NOTICE, "qosm: %s: No QoS configuration.", ipi->ipi_ifname);
-        return;
+        return true;
     }
 
     /*
-     * Some backesn require that queues are applied ordered by priority, where
+     * Some backends require that queues are applied ordered by priority, where
      * the highest priority (lowest number) comes first.
      */
     qsort(
@@ -175,12 +182,25 @@ void qosm_ip_interface_debounce_fn(struct ev_loop *loop, ev_debounce *w, int rev
         LOG(WARN, "qosm: %s: Error updating Interface_QoS status.", ipi->ipi_ifname);
     }
 
+    /* OSN QoS config object: */
     ipi->ipi_qos = osn_qos_new(ipi->ipi_ifname);
     if (ipi->ipi_qos == NULL)
     {
         LOG(ERR, "qosm: %s: Error creating QoS configuration object.", ipi->ipi_ifname);
         goto error;
     }
+
+    /* OVSDB QoS config exists && the underlying QoS backend is qdisc-based. */
+    *qos_qdisc_cfg_exists = osn_qos_is_qdisc_based(ipi->ipi_qos);
+
+    /* Set QoS notify event callback for this interface.
+     *
+     * This is currently needed only if the lower layer osn_qos reports an event
+     * that a reconfiguration may be needed for some reason. In that case we
+     * forward the reconfiguration request to the upper layer qosm_mgr that will
+     * do the reconfiguration (including any dependencies, for instance tc-filters).
+     */
+    osn_qos_notify_event_set(ipi->ipi_qos, qosm_on_qos_event);
 
     if (!osn_qos_begin(ipi->ipi_qos, NULL))
     {
@@ -242,12 +262,13 @@ void qosm_ip_interface_debounce_fn(struct ev_loop *loop, ev_debounce *w, int rev
     }
 
     qos_status = true;
-
 error:
     if (!qosm_interface_qos_set_status(qos, qos_status ? "success" : "error"))
     {
         LOG(WARN, "qosm: %s: Error updating Interface_QoS status.", ipi->ipi_ifname);
     }
+
+    return qos_status;
 }
 
 void callback_IP_Interface(
@@ -307,8 +328,10 @@ void callback_IP_Interface(
         }
     }
 
-    /* Schedule an update */
-    ev_debounce_start(EV_DEFAULT, &ipi->ipi_debounce);
+    LOG(INFO, "qosm: QoS: %s: %s: Schedule reconfiguration", ipi->ipi_ifname, ipi->ipi_uuid.uuid);
+
+    /* Schedule reconfiguration: */
+    qosm_mgr_schedule_qos_config(&ipi->ipi_uuid);
 }
 
 int qosm_ip_interface_queue_prio_cmp(
@@ -320,3 +343,45 @@ int qosm_ip_interface_queue_prio_cmp(
     return (*a)->que_priority - (*b)->que_priority;
 }
 
+static struct qosm_ip_interface *qosm_find_intf_by_name(const char *if_name)
+{
+    struct qosm_ip_interface *ipi;
+
+    ds_tree_foreach(&qosm_ip_interface_list, ipi)
+    {
+        if (strncmp(ipi->ipi_ifname, if_name, sizeof(ipi->ipi_ifname)) == 0)
+        {
+            return ipi;
+        }
+    }
+    return NULL;
+}
+
+/* osn_qos event callback handler. */
+static void qosm_on_qos_event(const char *if_name, enum osn_qos_event event)
+{
+    struct qosm_ip_interface *ipi;
+
+    if (event == OSN_QOS_EVENT_RECONFIGURATION_NEEDED)
+    {
+        LOG(NOTICE, "qosm: %s: Reconfiguration needed event", if_name);
+
+        ipi = qosm_find_intf_by_name(if_name);
+        if (ipi == NULL)
+        {
+            LOG(ERR, "qosm: %s: Reconfiguration needed event: Cannot find interface object", if_name);
+            return;
+        }
+
+        LOG(INFO, "qosm: QoS: %s: %s: Schedule reconfiguration", ipi->ipi_ifname, ipi->ipi_uuid.uuid);
+
+        /*
+         * Schedule a reconfiguration for this interface with qosm_mgr:
+         */
+        qosm_mgr_schedule_qos_config(&ipi->ipi_uuid);
+    }
+    else
+    {
+        LOG(WARN, "qosm: %s: Reconfiguration needed event: Unknown QoS status notification: %d", if_name, event);
+    }
+}

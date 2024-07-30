@@ -48,11 +48,20 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ovsdb_table.h"
 #include "ovsdb_update.h"
 
-#define OS_CA_PATH CONFIG_TARGET_PATH_OPENSYNC_CERTS "/" CONFIG_TARGET_OPENSYNC_CAFILE
-#define OS_DOWNLOAD_PATH CONFIG_TARGET_PATH_CERT "/"
+#define OS_CA_PATH            CONFIG_TARGET_PATH_OPENSYNC_CERTS "/" CONFIG_TARGET_OPENSYNC_CAFILE
+#define OS_DOWNLOAD_PATH      "/tmp/downloaded_file.pem"
+#define FILE_SIZE_LIMIT_MB    20
+#define FILE_SIZE_LIMIT_BYTES (FILE_SIZE_LIMIT_MB * 1024 * 1024)
 
 static ovsdb_table_t table_AWLAN_Node;
 static bool download_in_progress = false;
+
+struct download_progress
+{
+    FILE *file;
+    const char *file_path;
+    size_t total_size;
+};
 
 MODULE(pm_cert_cert_update, pm_cert_cert_update_init, pm_cert_cert_update_fini);
 
@@ -82,6 +91,7 @@ bool pm_calculate_md5(const char *file_path, unsigned char *digest)
     MD5_Final(digest, &context);
     return true;
 }
+
 /*
  * Compares the existing certificate with the new one.
  */
@@ -121,14 +131,6 @@ void overwrite_file(const char *new_ca, const char *existing_ca)
 
     LOGI("File overwritten successfully.");
 }
-/*
- * Get the name of the cert
- */
-const char *extract_filename_from_url(const char *url)
-{
-    const char *last_slash = strrchr(url, '/');
-    return (last_slash != NULL) ? (last_slash + 1) : url;
-}
 
 /*
  * Callback function for writing data received by CURL
@@ -139,25 +141,70 @@ size_t write_callback(void *ptr, size_t size, size_t nmemb, FILE *stream)
 }
 
 /*
+ * Progress callback function to monitor download size.
+ */
+static int progress_callback(
+        void *progress_data,
+        curl_off_t dltotal,
+        curl_off_t dlnow,
+        curl_off_t ultotal,
+        curl_off_t ulnow)
+{
+    struct download_progress *progress = (struct download_progress *)progress_data;
+    progress->total_size = (size_t)dlnow;
+
+    // If the download exceeds the specified file size limit, abort the download
+    if (progress->total_size > FILE_SIZE_LIMIT_BYTES)
+    {
+        LOGE("Download exceeds %dMB. Aborting...", FILE_SIZE_LIMIT_MB);
+        fclose(progress->file);
+        remove(progress->file_path);
+        return 1;
+    }
+
+    return 0;
+}
+
+/*
  * Download the cert with cURL.
  */
-bool download_with_curl(const char *url, const char *output_path)
+bool download_with_curl(const char *url)
 {
     CURL *curl;
-    FILE *fp;
     CURLcode res;
+    struct download_progress progress = {NULL, OS_DOWNLOAD_PATH, 0};
+
     curl = curl_easy_init();
     if (curl)
     {
-        fp = fopen(output_path, "wb");
+        progress.file = fopen(OS_DOWNLOAD_PATH, "wb");
+        if (progress.file == NULL)
+        {
+            LOGE("Error opening file for download: '%s'", OS_DOWNLOAD_PATH);
+            return false;
+        }
+
         curl_easy_setopt(curl, CURLOPT_URL, url);
         curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
-        curl_easy_setopt(curl, CURLOPT_WRITEDATA, fp);
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, progress.file);
+        curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0L);  // Enable progress meter
+        curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, progress_callback);
+        curl_easy_setopt(curl, CURLOPT_XFERINFODATA, &progress);
+
         res = curl_easy_perform(curl);
-        fclose(fp);
+        fclose(progress.file);
         curl_easy_cleanup(curl);
+
+        // If the download was aborted, return false
+        if (res == CURLE_ABORTED_BY_CALLBACK)
+        {
+            LOGE("Download aborted due to file size limit.");
+            return false;
+        }
+
         return (res == CURLE_OK);
     }
+
     return false;
 }
 
@@ -168,6 +215,7 @@ static void callback_AWLAN_Node(
 {
     LOG(INFO, "AWLAN_Node update: %s", __func__);
 
+    // Ensure the 'pm_update_cert' field has a value
     if (strlen(awlan_node->pm_update_cert) > 0)
     {
         if (download_in_progress)
@@ -177,21 +225,23 @@ static void callback_AWLAN_Node(
         }
 
         const char *url = awlan_node->pm_update_cert;
-        const char *downloaded_basename = extract_filename_from_url(url);
-        char downloaded_filepath[256];
-        snprintf(downloaded_filepath, sizeof(downloaded_filepath), "%s%s", OS_DOWNLOAD_PATH, downloaded_basename);
 
         download_in_progress = true;
 
         // Use download_with_curl function to download the certificate
-        if (download_with_curl(url, downloaded_filepath))
+        if (download_with_curl(url))
         {
+            // Check if the downloaded file has a ".pem" extension
             LOGI("Download completed successfully");
 
-            if (!pm_are_files_equal(OS_CA_PATH, downloaded_filepath))
+            if (!pm_are_files_equal(OS_CA_PATH, OS_DOWNLOAD_PATH))
             {
-                overwrite_file(downloaded_filepath, OS_CA_PATH);
+                overwrite_file(OS_DOWNLOAD_PATH, OS_CA_PATH);
                 LOGI("Certificate updated.");
+            }
+            else
+            {
+                LOGI("No changes required. Certificates are identical.");
             }
         }
         else

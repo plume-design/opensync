@@ -91,3 +91,13 @@ bool osn_qos_queue_end(osn_qos_t *self)
 {
     return lnx_qos_queue_end(&self->oq_lnx);
 }
+
+bool osn_qos_notify_event_set(osn_qos_t *self, osn_qos_event_fn_t *event_fn_cb)
+{
+    return lnx_qos_notify_event_set(&self->oq_lnx, event_fn_cb);
+}
+
+bool osn_qos_is_qdisc_based(osn_qos_t *self)
+{
+    return lnx_qos_is_qdisc_based(&self->oq_lnx);
+}

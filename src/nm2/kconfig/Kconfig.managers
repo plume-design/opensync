@@ -43,9 +43,9 @@ menuconfig MANAGER_NM
 
             This ensures proper WAN priority across different interface types.
 
-    config MANAGER_NM_ARPING_CLIENTS_PERIOD_DEFAULT
+    config MANAGER_NM_PROBE_ETH_CLIENTS_PERIOD_DEFAULT
         depends on MANAGER_NM
-        int "Default arping period"
+        int "Default probing period"
         default 150
         help
-            Default arping period, in seconds.
+            Default probing period, in seconds.

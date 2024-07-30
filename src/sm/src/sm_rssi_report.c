@@ -82,12 +82,6 @@ static inline sm_rssi_ctx_t * sm_rssi_ctx_alloc()
     return rssi_ctx;
 }
 
-static inline void sm_rssi_ctx_free(sm_rssi_ctx_t *rssi_ctx)
-{
-    if (NULL != rssi_ctx) {
-        FREE(rssi_ctx);
-    }
-}
 
 static
 sm_rssi_ctx_t *sm_rssi_ctx_get (

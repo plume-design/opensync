@@ -34,8 +34,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "kconfig.h"
 #include "const.h"
 #include "util.h"
+#include "os_types.h"
 #include "osp_ble.h"
 #include "osp_unit.h"
+#include "ble_adv_data.h"
 #ifdef CONFIG_BLEM_CONFIG_VIA_BLE_ENABLED
 #include "os_random.h"
 #include "json_util.h"
@@ -47,64 +49,246 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 /** Main event loop used for timer operations */
 static struct ev_loop *g_loop = NULL;
 
-/** Current state of BLE advertising (either connectable or non-connectable) */
-static bool g_adv_enabled = false;
-/** Current advertising payload (variable fields: serial_num, msg_type, msg) */
-static ble_advertising_data_t g_adv_data = {
-    .len_uuid = 3u,
-    .ad_type_uuid = 0x03u,
-    .service_uuid = CONFIG_BLEM_GATT_SERVICE_UUID,
-    .len_manufacturer = sizeof(ble_advertising_data_t) - offsetof(ble_advertising_data_t, ad_type_manufacturer),
-    .ad_type_manufacturer = 0xFFu,
-    .company_id = CONFIG_BLEM_MANUFACTURER_DATA_COMPANY_ID,
-    .version = 5u
-};
-C_STATIC_ASSERT(sizeof(ble_advertising_data_t) == 28u,
-                "ble_advertising_data_t is not packed to 28 B");
-C_STATIC_ASSERT(sizeof(ble_advertising_data_t) - offsetof(ble_advertising_data_t, ad_type_manufacturer) == 23u,
-                "ble_advertising_data_t Manufacturer Specific Data is not packed to 23 B");
-#if defined(CONFIG_BLEM_ADVERTISE_NAME_WHEN_CONNECTABLE) || defined(CONFIG_BLEM_ADVERTISE_NAME_WHEN_BROADCASTING)
+static void callback_on_fatal_error(void)
+{
+    LOGE("Breaking ev loop because of fatal ble_config error");
+    ev_break(g_loop, EVBREAK_ALL);
+}
+
 /**
- * Current scan response payload
+ * Set advertising or scan response payload via OSP layer
  *
- * Name shall be copied to `complete_local_name` (not null-terminated), then its length added
- * to the field `len_complete_local_name` (`len_complete_local_name` += strlen(`complete_local_name`);).
+ * @param[in] data           Payload data to set (which, if valid, begins with the AD element).
+ * @param[in] max_len        Maximum length of the payload data.
+ *                           The actual length of the payload is calculated using @ref ble_adv_data_get_length.
+ * @param[in] scan_response  True if the payload is a scan response and @ref osp_ble_set_scan_response_data
+ *                           shall be used to set it, false if @ref osp_ble_set_advertising_data shall be
+ *                           used instead.
+ *
+ * @return true for success. Failure is logged internally. In case of failure when setting
+ *         the data to the BT chip (in contrast to just the advertising data being invalid),
+ *         @ref callback_on_fatal_error is also called internally.
  */
-static ble_scan_response_data_t g_scan_response_data = {
-    .len_complete_local_name = 1u,
-    .ad_type_complete_local_name = 0x09u,
-    .complete_local_name = ""
-};
-#endif /* CONFIG_BLEM_ADVERTISE_NAME_WHEN_* */
-/** Flag indicating whether currently advertising as connectable, as set via @ref blem_ble_enable() */
-static bool g_connectable = false;
-/** Last set interval_ms, set only in @ref blem_ble_enable() */
-static int g_adv_interval_ms = CONFIG_BLEM_ADVERTISING_INTERVAL;
+static bool blem_osp_set_data(const ble_ad_structure_t *data, const size_t max_len, const bool scan_response)
+{
+    const char *const type_str = scan_response ? "scan response" : "advertising";
+    uint8_t actual_len;
+
+    actual_len = ble_adv_data_get_length(data, max_len);
+    if (actual_len == 0)
+    {
+        return false;
+    }
+
+    if (!(scan_response ? osp_ble_set_scan_response_data((const uint8_t *)data, actual_len)
+                        : osp_ble_set_advertising_data((const uint8_t *)data, actual_len)))
+    {
+        const size_t str_len = 2 * max_len + 1;
+        char *str = MALLOC(str_len);
+
+        if (bin2hex((const uint8_t *)data, max_len, str, str_len) < 0)
+        {
+            str[0] = '\0';
+        }
+        LOGE("Could not set %d/%d B of %s payload %s", actual_len, max_len, type_str, str);
+
+        FREE(str);
+        callback_on_fatal_error();
+        return false;
+    }
+
+    LOGD("Set %d/%d B of %s payload", actual_len, max_len, type_str);
+    return true;
+}
+
+/**
+ * Apply advertising data and parameters specified by the advertising set `adv`
+ *
+ * @param[in]  adv           Advertising set to apply.
+ * @param[out] set_tx_power  Optional, @see osp_ble_set_advertising_tx_power
+ *
+ * @return true for success. Failure is logged internally.
+ */
+static bool advertising_apply_set(ble_advertising_set_t *const adv, int16_t *set_tx_power)
+{
+    int16_t actual_tx_power = 0;
+
+    /* If mode is being changed, disable the advertising first, to ensure
+     * all parameters are set while the advertising is disabled.
+     * It will be enabled at the end anyway, if configured as so. */
+    if (!adv->mode.enabled || adv->mode.changed)
+    {
+        if (!osp_ble_set_advertising_params(false, false, adv->interval))
+        {
+            LOGE("Could not disable advertising");
+            return false;
+        }
+        if (!osp_ble_set_connectable(false))
+        {
+            LOGE("Could not disable connectable mode");
+            return false;
+        }
+    }
+    /* All parameters are set when the advertising is enabled, so there
+     * is no need to do anything more, if the advertising is disabled. */
+    if (!adv->mode.enabled)
+    {
+        LOGD("Advertising disabled");
+        return true;
+    }
+
+    /* Advertising payload */
+    if (adv->adv.changed || adv->mode.changed)
+    {
+        if (!blem_osp_set_data(&adv->adv.data.ad, sizeof(adv->adv.data), false))
+        {
+            return false;
+        }
+        adv->adv.changed = false;
+    }
+
+    /* Scan response payload */
+    if (adv->scan_rsp.enabled && (adv->scan_rsp.changed || adv->mode.changed))
+    {
+        if (!blem_osp_set_data(&adv->scan_rsp.data.ad, sizeof(adv->scan_rsp.data), true))
+        {
+            return false;
+        }
+        adv->scan_rsp.changed = false;
+    }
+
+    /* Not all platforms support setting the advertising TX power, so allow this function to fail */
+    if (osp_ble_set_advertising_tx_power(adv->adv_tx_power, &actual_tx_power))
+    {
+        /* But if the power can be set, warn if the requested power was out of range */
+        if (abs(adv->adv_tx_power - actual_tx_power) > 1)
+        {
+            LOGW("Requested TX power %d dBm, set %d dBm", adv->adv_tx_power, actual_tx_power);
+        }
+        if (set_tx_power != NULL)
+        {
+            *set_tx_power = actual_tx_power;
+        }
+        /* Adjust the power to applied value to avoid repeated warnings */
+        adv->adv_tx_power = actual_tx_power;
+    }
+    else if (set_tx_power != NULL)
+    {
+        *set_tx_power = 0;
+    }
+
+    if (adv->mode.changed)
+    {
+        if (!osp_ble_set_connectable(adv->mode.connectable))
+        {
+            LOGE("Could not %sable connectable", (adv->mode.connectable ? "en" : "dis"));
+            return false;
+        }
+
+        if (!osp_ble_set_advertising_params(adv->mode.enabled, adv->scan_rsp.enabled, adv->interval))
+        {
+            LOGE("Could not set advertising params (%d, %d, %d)",
+                 adv->mode.enabled,
+                 adv->scan_rsp.enabled,
+                 adv->interval);
+            return false;
+        }
+        adv->mode.changed = false;
+    }
+
+    LOGI("Advertising enabled (sr=%d, conn=%d, i=%dms)", adv->scan_rsp.enabled, adv->mode.connectable, adv->interval);
+    return true;
+}
+
+/**
+ * Apply advertising data and parameters specified in @ref g_advertising_sets to the BT chip
+ */
+static bool advertising_apply(void)
+{
+    /* If only the active set changes, but not its data, not all parameters would
+     * be applied, so track the last active set to force mode change. */
+    static int last_active_set = -1;
+    int active_set = -1;
+    bool success = false;
+
+    /* Advertising set priority is defined by the order in the
+     * array, so the first enabled set becomes the active one. */
+    for (int i = 0; i < ARRAY_LEN(g_advertising_sets); i++)
+    {
+        ble_advertising_set_t *const adv = &g_advertising_sets[i];
+        /* Copy each set before applying it, because "changed" flags
+         * are cleared when the set is applied, but we want to keep
+         * the info about the state which caused changes. */
+        ble_advertising_set_t adv_copy = *adv;
+        int16_t actual_tx_power = 0;
+
+        /* Only apply the highest-priority active (the first enabled) advertising set */
+        if ((active_set < 0) && adv->mode.enabled)
+        {
+            if (i != last_active_set)
+            {
+                LOGD("Switch adv. set from %d to %d", last_active_set, i);
+                adv->mode.changed = true;
+            }
+            else
+            {
+                LOGD("Reapply adv. set %d", i);
+            }
+            active_set = i;
+            success = advertising_apply_set(adv, &actual_tx_power);
+        }
+        /* Call callbacks of all sets, but only provide set power of the actually active set,
+         * to not confuse the upper layer with changed power value, when it was actually not
+         * even applied. */
+        if (adv->on_state_cb != NULL)
+        {
+            if (i == active_set)
+            {
+                adv->on_state_cb(&adv_copy, true, actual_tx_power);
+            }
+            else
+            {
+                adv->on_state_cb(&adv_copy, false, adv_copy.adv_tx_power);
+            }
+        }
+    }
+
+    /* If no set is enabled, use the temporary set to disable advertising */
+    if (active_set < 0)
+    {
+        ble_advertising_set_t adv = {
+            .mode = {.enabled = false, .connectable = false, .changed = true},
+            .interval = 1000 /*< Arbitrary interval to prevent warnings about an invalid interval when using OSP API */
+        };
+        LOGT("No enabled adv. set");
+        success = advertising_apply_set(&adv, NULL);
+    }
+
+    last_active_set = active_set;
+    return success;
+}
+
+/**
+ * Disable advertising of all @ref g_advertising_sets advertising sets
+ *
+ * This function does not apply the changes, use @ref advertising_apply() for that.
+ */
+static void advertising_disable_all(void)
+{
+    for (size_t i = 0; i < ARRAY_SIZE(g_advertising_sets); i++)
+    {
+        ble_advertising_set_t *const adv = &g_advertising_sets[i];
+
+        if (adv->mode.enabled)
+        {
+            adv->mode.enabled = false;
+            adv->mode.changed = true;
+        }
+    }
+}
+
 
 #ifdef CONFIG_BLEM_CONFIG_VIA_BLE_ENABLED
-
-/**
- * Send advertising data (advertising packet payload) to the BT chip
- *
- * @param     connectable  Used to ensure that the pairing token is not overwritten if `msg` is not NULL.
- * @param[in] msg_type     Copied to @ref g_adv_data, if not NULL.
- * @param[in] msg          Copied to @ref g_adv_data, if not NULL.
- *
- * @return true for success
- */
-static bool apply_advertising_data(bool connectable, const uint8_t *msg_type, const uint8_t msg[6]);
-/** Set connectable mode */
-static bool apply_advertising_mode(bool connectable);
-/**
- * Apply advertising parameters saved in @ref blem_ble_enable()
- *
- * @param connectable  Advertise as connectable (true) or non-connectable (false), used for deciding whether
- *                     to enable scan response or not.
- * @param adv_enabled  Enable/start BLE advertising (true) or disable/stop it (false). Scan responses may also
- *                     be enabled, depending on `connectable` and BLEM_ADVERTISE_NAME_WHEN_* Kconfig values.
- */
-static bool apply_advertising_params(bool connectable, bool adv_enable);
-
 
 /**
  * Generate pairing passkey using provided pairing token
@@ -117,7 +301,7 @@ static bool apply_advertising_params(bool connectable, bool adv_enable);
 static int get_pairing_passkey(const uint8_t *token)
 {
     /* Stability bits of the pairing token must be cleared before use */
-    uint8_t token_copy[sizeof(g_adv_data.msg.pairing_token)];
+    uint8_t token_copy[C_FIELD_SZ(ble_adv_data_general_t, msg.pairing_token)];
     uint32_t passkey;
 
     memcpy(token_copy, token, sizeof(token_copy));
@@ -136,7 +320,9 @@ static int get_pairing_passkey(const uint8_t *token)
  */
 static bool enable_pairing_tokens(bool skip_apply)
 {
-    uint8_t token[sizeof(g_adv_data.msg.pairing_token)];
+    ble_advertising_set_t *const adv = &g_advertising_sets[BLE_ADVERTISING_SET_GENERAL];
+    ble_adv_data_general_t *const adv_data = &adv->adv.data.general;
+    uint8_t token[sizeof(adv_data->msg.pairing_token)];
     bool passkey_ok = false;
     int passkey;
 
@@ -186,12 +372,13 @@ static bool enable_pairing_tokens(bool skip_apply)
      * limited amount of time (stable period) if enabled - it is the same at this point). */
     token[sizeof(token) - 1] |= 0b110u;
 
-    memcpy(g_adv_data.msg.pairing_token, token, sizeof(g_adv_data.msg.pairing_token));
+    memcpy(adv_data->msg.pairing_token, token, sizeof(adv_data->msg.pairing_token));
+    adv->adv.changed = true;
 
     if (!skip_apply)
     {
         /* Apply new advertising payload (as token is part of it) */
-        apply_advertising_data(g_connectable, NULL, NULL);
+        advertising_apply();
     }
     else
     {
@@ -239,30 +426,35 @@ exit:
 
 static bool callback_on_device_connected(uint8_t bd_address[6])
 {
-    LOGI("BT device %02x:%02x:%02x:%02x:%02x:%02x connected, use passkey %06d to pair",
-         bd_address[0], bd_address[1], bd_address[2], bd_address[3], bd_address[4], bd_address[5],
-         get_pairing_passkey(g_adv_data.msg.pairing_token));
+    const ble_adv_data_general_t *const adv_data = &g_advertising_sets[BLE_ADVERTISING_SET_GENERAL].adv.data.general;
+    const os_macaddr_t *const addr = (os_macaddr_t *)bd_address;
+
+    LOGI("BT device " PRI_os_macaddr_lower_t " connected, use passkey %06d to pair",
+         FMT_os_macaddr_pt(addr),
+         get_pairing_passkey(adv_data->msg.pairing_token));
+
     /* Data will be loaded to characteristic after device is paired */
     return true;
 }
 
 static bool callback_on_device_disconnected(void)
 {
+    ble_advertising_set_t *const adv = &g_advertising_sets[BLE_ADVERTISING_SET_GENERAL];
+
     LOGI("BT device disconnected");
 
     /* Always get a new token for every future new device connection */
     if (!enable_pairing_tokens(false))
     {
         /* Connectable mode is not possible if the pairing token cannot be generated */
-        g_connectable = false;
+        adv->mode.connectable = false;
     }
-    /* Restart advertising because device connection stopped it */
-    if (g_adv_enabled)
+    /* Restart advertising (if enabled) because device connection stopped it */
+    if (adv->mode.enabled)
     {
-        apply_advertising_data(g_connectable, NULL, NULL);
-        apply_advertising_mode(g_connectable);
-        apply_advertising_params(g_connectable, true);
+        adv->mode.changed = true;
     }
+    advertising_apply();
 
     return true;
 }
@@ -316,94 +508,17 @@ exit:
 
 #endif /* CONFIG_BLEM_CONFIG_VIA_BLE_ENABLED */
 
-static void callback_on_fatal_error(void)
-{
-    LOGE("Breaking ev loop because of fatal ble_config error");
-    ev_break(g_loop, EVBREAK_ALL);
-}
-
-static bool apply_advertising_data(bool connectable, const uint8_t *msg_type, const uint8_t msg[6])
-{
-    if (msg_type != NULL)
-    {
-        g_adv_data.msg_type = *msg_type;
-    }
-    if (msg != NULL)
-    {
-        if (connectable)
-        {
-            /* Protect bytes reserved for pairing token */
-            int n = sizeof(g_adv_data.msg) - sizeof(g_adv_data.msg.pairing_token);
-            memcpy(&g_adv_data.msg, msg, n);
-            /* But also warn if these bytes are actually being used */
-            for (; n < (int)sizeof(g_adv_data.msg); n++)
-            {
-                if (msg[n] != 0)
-                {
-                    LOGW("Ignoring msg[%d...]=0x%02x... because advertising as connectable", n, msg[n]);
-                    break;
-                }
-            }
-        }
-        else
-        {
-            memcpy(&g_adv_data.msg, msg, sizeof(g_adv_data.msg));
-        }
-    }
-
-    if (osp_ble_set_advertising_data((uint8_t *) &g_adv_data, sizeof(g_adv_data)))
-    {
-        char msg_hex[sizeof(g_adv_data.msg) * 2 + 1] = "";
-
-        bin2hex((uint8_t *)&g_adv_data.msg, sizeof(g_adv_data.msg), msg_hex, sizeof(msg_hex));
-
-        LOGI("Advertising configured (connectable=%d, 0x%02x/%s)", connectable, g_adv_data.msg_type, msg_hex);
-        return true;
-    }
-    else
-    {
-        LOGE("Could not set advertising payload");
-        callback_on_fatal_error();
-        return false;
-    }
-}
-
-static bool apply_advertising_mode(bool connectable)
-{
-    if (!osp_ble_set_connectable(connectable))
-    {
-        LOGE("Could not %sable connectable", (connectable ? "en" : "dis"));
-        callback_on_fatal_error();
-        return false;
-    }
-
-    return true;
-}
-
-static bool apply_advertising_params(bool connectable, bool adv_enable)
-{
-    const bool sr_enable = connectable ? kconfig_enabled(CONFIG_BLEM_ADVERTISE_NAME_WHEN_CONNECTABLE)
-                                       : kconfig_enabled(CONFIG_BLEM_ADVERTISE_NAME_WHEN_BROADCASTING);
-
-    if (!osp_ble_set_advertising_params(adv_enable, sr_enable, g_adv_interval_ms))
-    {
-        LOGE("Could not set advertising params (%d, %d, %d)", adv_enable, sr_enable, g_adv_interval_ms);
-        return false;
-    }
-
-    return true;
-}
-
-
 bool blem_ble_init(struct ev_loop *p_loop)
 {
-    char serial[sizeof(g_adv_data.serial_num) + 1] = "";
+    ble_advertising_set_t *const adv = &g_advertising_sets[BLE_ADVERTISING_SET_GENERAL];
+    ble_adv_data_general_t *const adv_data = &adv->adv.data.general;
+    ble_scan_response_data_t *const sr_data = &adv->scan_rsp.data;
+    char serial[sizeof(adv_data->serial_num) + 1] = "";
     uint16_t uuid = CONFIG_BLEM_GATT_SERVICE_UUID;
 
 #ifdef CONFIG_BLEM_CONFIG_VIA_BLE_ENABLED
     ble_wan_config_init();
 #endif
-
 
     if (!osp_ble_init(p_loop,
 #ifdef CONFIG_BLEM_CONFIG_VIA_BLE_ENABLED
@@ -420,25 +535,27 @@ bool blem_ble_init(struct ev_loop *p_loop)
         return false;
     }
 
-    /* Serial number in the advertising data is not null-delimited and does not change, set it */
-    osp_unit_serial_get(serial, sizeof(serial));
-    strncpy(g_adv_data.serial_num, serial, sizeof(g_adv_data.serial_num));
+    advertising_disable_all();
 
-    /* "Complete List of 16-bit Service UUIDs" value is static in the advertising data - set it.
-     * Note that g_adv_data.service_uuid cannot be used directly, because taking address of a
-     * packed member directly may result in an unaligned pointer value. */
+    /* The serial number in the advertising data is not null-delimited and does not change, set it */
+    osp_unit_serial_get(serial, sizeof(serial));
+    /* Use `strncpy` instead of `STRSCPY` because the SN in the advertising data does not need to be null-terminated */
+    strncpy(adv_data->serial_num, serial, sizeof(adv_data->serial_num));
+
+    /* "Complete List of 16-bit Service UUIDs" value is also static in the advertising data - set it */
     LOGD("Using %s UUID 0x%04x", osp_ble_get_service_uuid(&uuid) ? "provisioned" : "default", uuid);
-    g_adv_data.service_uuid = uuid;
+    adv_data->service.uuids[0] = TO_LE16(uuid);
+
+    /* Also prepare scan response data if eventually used */
+    snprintf(sr_data->cln.name, sizeof(sr_data->cln.name),
+             "Pod %.*s",
+             (int)strnlen(adv_data->serial_num, sizeof(adv_data->serial_num)),
+             adv_data->serial_num);
+    sr_data->cln.len = (uint8_t)(1 + strnlen(sr_data->cln.name, sizeof(sr_data->cln.name)));
 
 #if defined(CONFIG_BLEM_ADVERTISE_NAME_WHEN_CONNECTABLE) || defined(CONFIG_BLEM_ADVERTISE_NAME_WHEN_BROADCASTING)
-    /* Also prepare scan response data if eventually used */
-    snprintf(g_scan_response_data.complete_local_name, sizeof(g_scan_response_data.complete_local_name),
-             "Pod %.*s", (int)strnlen(g_adv_data.serial_num, sizeof(g_adv_data.serial_num)),
-             g_adv_data.serial_num);
-    g_scan_response_data.len_complete_local_name = (uint8_t)(1 + strlen(g_scan_response_data.complete_local_name));
-
-    osp_ble_set_device_name(g_scan_response_data.complete_local_name);
-#endif /* CONFIG_BLEM_ADVERTISE_NAME_WHEN_* */
+    osp_ble_set_device_name(sr_data->cln.name);
+#endif /* CONFIG_BLEM_ADVERTISE_NAME_ */
 
     g_loop = p_loop;
 
@@ -452,25 +569,19 @@ bool blem_ble_init(struct ev_loop *p_loop)
 
 bool blem_ble_enable(bool connectable, int interval_ms, uint8_t msg_type, const uint8_t msg[6])
 {
+    ble_advertising_set_t *const adv = &g_advertising_sets[BLE_ADVERTISING_SET_GENERAL];
+    ble_adv_data_general_t *const adv_data = &adv->adv.data.general;
     const char *log_info;
-    bool update_params = false;
 
-    /* Advertising params are applied in apply_advertising_params() */
-    if (g_adv_interval_ms != interval_ms)
-    {
-        g_adv_interval_ms = interval_ms;
-        update_params = true;
-    }
+    /* Advertising params are applied in apply_advertising() */
+
+    adv->interval = (uint16_t)MIN(interval_ms, UINT16_MAX);
 
     /* Do not reset advertising if just the advertising payload is changed, because setting the mode will cause
-     * disconnection of any currently connected device (which can be), or premature change of the pairing token
+     * disconnection of any currently connected device (which can be), or changing the pairing token to soon
      * will prevent successful pairing. */
-    if (!g_adv_enabled || (connectable != g_connectable))
+    if (!adv->mode.enabled || (connectable != adv->mode.connectable))
     {
-        /* Stop any previous advertising */
-        apply_advertising_params(false, false);
-        update_params = true;
-
 #ifdef CONFIG_BLEM_CONFIG_VIA_BLE_ENABLED
         /* Advertisement payload is applied below, don't apply it here - this is just to check
          * whether pairing tokens can be generated and therefore connectable mode even possible. */
@@ -480,69 +591,105 @@ bool blem_ble_enable(bool connectable, int interval_ms, uint8_t msg_type, const 
             connectable = false;
         }
 #endif /* CONFIG_BLEM_CONFIG_VIA_BLE_ENABLED */
-
-        if (connectable)
-        {
-            /* Pairing tokens are already enabled from call to enable_pairing_tokens above */
-            if (!(apply_advertising_data(true, &msg_type, msg) && apply_advertising_mode(true)))
-            {
-                return false;
-            }
-            g_connectable = true;
-        }
-        else {
-            g_connectable = false;
-            if (!(apply_advertising_data(false, &msg_type, msg) && apply_advertising_mode(false)))
-            {
-                return false;
-            }
-        }
-
-#if defined(CONFIG_BLEM_ADVERTISE_NAME_WHEN_CONNECTABLE) || defined(CONFIG_BLEM_ADVERTISE_NAME_WHEN_BROADCASTING)
-        /* Don't use sizeof as actual data can be shorter (note that adv. len does not include type) */
-        if (!osp_ble_set_scan_response_data((uint8_t *)&g_scan_response_data,
-                                            1 + g_scan_response_data.len_complete_local_name))
-        {
-            LOGE("Could not set scan response data");
-        }
-#endif /* CONFIG_BLEM_ADVERTISE_NAME_WHEN_* */
-
-        g_adv_enabled = true;
+        adv->mode.connectable = connectable;
+        adv->mode.changed = true;
         log_info = "new";
     }
     else
     {
-        /* Mode was not changed, only data */
-        if (!apply_advertising_data(g_connectable, &msg_type, msg))
-        {
-            return false;
-        }
+        /* Mode was not changed, only data, which is set below in any case */
         log_info = "update";
     }
 
-    /* Only set advertising parameters if actually changed to prevent disconnection of potentially connected device */
-    if (update_params && !apply_advertising_params(g_connectable, true))
+    adv->mode.enabled = true;
+    adv_data->msg_type = msg_type;
+    /* When advertising as connectable, protect bytes reserved for pairing token, otherwise copy whole `msg` */
+    if (adv->mode.connectable)
     {
-        return false;
+        const int n = offsetof(ble_adv_data_general_t, msg.pairing_token) - offsetof(ble_adv_data_general_t, msg);
+        /* Copy msg bytes up to the pairing token */
+        memcpy(&adv_data->msg, msg, n);
+        /* Additionally, warn if the remaining, reserved bytes are actually being used */
+        if (!memcmp_b(msg + n, 0, sizeof(adv_data->msg.pairing_token)))
+        {
+            LOGW("Ignoring msg[%d...]=0x%02x... because advertising as connectable", n, msg[n]);
+        }
     }
+    else
+    {
+        memcpy(&adv_data->msg, msg, sizeof(adv_data->msg));
+    }
+    adv->adv.changed = true;
+
+#if defined(CONFIG_BLEM_ADVERTISE_NAME_WHEN_CONNECTABLE)
+    adv->scan_rsp.enabled = adv->mode.connectable;
+#elif defined(CONFIG_BLEM_ADVERTISE_NAME_WHEN_BROADCASTING)
+    adv->scan_rsp.enabled = true;
+#else
+    adv->scan_rsp.enabled = false;
+#endif
+    adv->scan_rsp.changed = true;
 
     LOGI("BLE enabled (%s, con=%d, i=%dms, type=%d, status=0x%02x)",
          log_info, connectable, interval_ms, msg_type, msg[0]);
 
+    advertising_apply();
     return true;
 }
 
 void blem_ble_disable(void)
 {
-    apply_advertising_params(false, false);
-    g_connectable = false;
-    g_adv_enabled = false;
+    g_advertising_sets[BLE_ADVERTISING_SET_GENERAL].mode.enabled = false;
+    advertising_apply();
     LOGI("BLE disabled");
+}
+
+void blem_ble_proximity_configure(
+        bool enable,
+        int16_t adv_tx_power,
+        uint16_t adv_interval,
+        const uint8_t uuid[16],
+        uint16_t major,
+        uint16_t minor,
+        int8_t meas_power,
+        blem_ble_adv_on_state_t on_state_change)
+{
+    ble_advertising_set_t *const adv = &g_advertising_sets[BLE_ADVERTISING_SET_PROXIMITY];
+    ble_adv_data_proximity_t *const adv_data = &adv->adv.data.proximity;
+    char uuid_str[37] = "";
+
+    adv->interval = adv_interval;
+    adv->adv_tx_power = adv_tx_power;
+    adv->on_state_cb = on_state_change;
+    if (uuid != NULL)
+    {
+        memcpy(adv_data->proximity_uuid, uuid, sizeof(adv_data->proximity_uuid));
+    }
+    adv_data->major = htons(major);
+    adv_data->minor = htons(minor);
+    adv_data->measured_power = meas_power;
+    adv->mode.enabled = enable;
+    /* Trigger force refresh of all parameters */
+    adv->mode.changed = true;
+
+    bin2hex(adv_data->proximity_uuid, sizeof(adv_data->proximity_uuid), uuid_str, sizeof(uuid_str));
+
+    LOGI("BLE iBeacon configured (enable=%d, major=%d, minor=%d, meas_power=%d, UUID=%s), %.1f dBm, %d ms",
+         adv->mode.enabled,
+         ntohs(adv_data->major),
+         ntohs(adv_data->minor),
+         adv_data->measured_power,
+         uuid_str,
+         adv_tx_power * 0.1f,
+         adv_interval);
+
+    advertising_apply();
 }
 
 void blem_ble_close(void)
 {
-    blem_ble_disable();
+    advertising_disable_all();
+    advertising_apply();
     osp_ble_close();
 
     g_loop = NULL;

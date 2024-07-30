@@ -33,6 +33,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "const.h"
 #include "read_until.h"
+#include "ds_util.h"
 
 typedef struct __daemon daemon_t;
 typedef bool daemon_atexit_fn_t(daemon_t *self);
@@ -55,6 +56,7 @@ struct __daemon
     pid_t                   dn_pid;             /* PID of the currently running daemoness */
     int                     dn_argc;            /* Number of arguments in list, excluding the terminating NULL */
     char                    **dn_argv;          /* Argument list */
+    ds_map_str_t            *dn_env;            /* Environment variables list */
     daemon_atexit_fn_t      *dn_atexit_fn;      /* Cleanup at exit daemon */
     daemon_atrestart_fn_t   *dn_atrestart_fn;   /* Handle error code before restarting daemon */
     ev_timer                dn_restart_timer;   /* Restart timer */
@@ -86,6 +88,7 @@ extern bool daemon_stop(daemon_t *self);
 extern bool daemon_wait(daemon_t *self, double timeout);
 extern bool daemon_arg_reset(daemon_t *self);
 extern bool daemon_arg_add_a(daemon_t *self, char *argv[]);
+extern bool daemon_env_set(daemon_t *self, const char *env, const char *value);
 extern bool daemon_signal_set(daemon_t *self, int sig_term, int sig_kill);
 extern bool daemon_restart_set(daemon_t *self, bool auto_restart, double delay, int retries);
 extern bool daemon_atexit(daemon_t *self, daemon_atexit_fn_t *fn);

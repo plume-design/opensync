@@ -1978,6 +1978,10 @@ test_validate_fqdn(void)
     } test_fqdns[] =
     {
         {
+            .fqdn = "_dns.resolver.arpa",
+            .rc = true,
+        },
+        {
             .fqdn = "foo",
             .rc = false,
         },
@@ -2007,7 +2011,7 @@ test_validate_fqdn(void)
         },
         {
             .fqdn = "_007_betmen.blog.xfree.hu",
-            .rc = false,
+            .rc = true,
         },
         {
             .fqdn = "007_betmen_.blog.xfree.hu",

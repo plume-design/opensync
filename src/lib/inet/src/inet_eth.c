@@ -66,18 +66,16 @@ static bool inet_eth_network_start(inet_eth_t *self, bool enable);
 /*
  * Command for enabling the "no-flood" option for OVS interfaces
  */
-#if defined(CONFIG_TARGET_USE_NATIVE_BRIDGE)
-static char inet_eth_ovs_noflood_cmd[] = _S(
+static char inet_eth_native_noflood_cmd[] = _S(
         ifname="$1";
         flood="$2";
-        ip link set "$ifname" type bridge_slave flood "$flood");
-#else
+        cd /sys/class/net/"$ifname"/brport;
+        for file in *_flood; do echo "$flood" > "$file"; done);
 static char inet_eth_ovs_noflood_cmd[] = _S(
         ifname="$1";
         flood="$2";
         bridge=$(ovs-vsctl port-to-br "$ifname") && ovs-ofctl mod-port "$bridge" "$ifname" "$flood");
 
-#endif
 
 /*
  * ===========================================================================
@@ -405,9 +403,9 @@ bool inet_eth_mtu_start(inet_eth_t *self, bool enable)
         {
             rc = execsh_log(
                     LOG_SEVERITY_INFO,
-                    inet_eth_ovs_noflood_cmd,
+                    inet_eth_native_noflood_cmd,
                     self->inet.in_ifname,
-                    self->in_noflood ? "on" : "off");
+                    self->in_noflood ? "0" : "1");
         }
         else
         {

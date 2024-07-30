@@ -253,6 +253,10 @@ static void dppline_free_stat(dppline_stats_t * s)
                 FREE(s->u.survey.avg);
                 break;
             case DPP_T_NEIGHBOR:
+                for (i=0; i<s->u.neighbor.qty; i++)
+                {
+                    FREE(s->u.neighbor.list[i].beacon_ies);
+                }
                 FREE(s->u.neighbor.list);
                 break;
             case DPP_T_CLIENT:
@@ -452,9 +456,17 @@ static bool dppline_copysts(dppline_stats_t * dst, void * sts)
                                0,
                                sizeof(dpp_neighbor_record_t));
                     }
-                    memcpy(&dst->u.neighbor.list[dst->u.neighbor.qty++],
+                    memcpy(&dst->u.neighbor.list[dst->u.neighbor.qty],
                             result_entry,
                             sizeof(dpp_neighbor_record_t));
+
+                    if (result_entry->beacon_ies_len)
+                    {
+                        dst->u.neighbor.list[dst->u.neighbor.qty].beacon_ies =
+                            MEMNDUP(result_entry->beacon_ies, result_entry->beacon_ies_len);
+                        dst->u.neighbor.list[dst->u.neighbor.qty].beacon_ies_len = result_entry->beacon_ies_len;
+                    }
+                    dst->u.neighbor.qty++;
                 }
             }
             break;
@@ -1100,6 +1112,11 @@ static void dppline_add_stat_neighbor(Sts__Report *r, dppline_stats_t *s)
             dr->has_status = true;
         }
 
+        if (rec->beacon_ies_len) {
+            dr->beacon_ies.data = MEMNDUP(rec->beacon_ies, rec->beacon_ies_len);
+            dr->beacon_ies.len = rec->beacon_ies_len;
+            dr->has_beacon_ies = true;
+        }
     }
     LOGT("%s: ============= size raw: %zu alloc: %d proto struct: %d", __func__,
          sizeof(s->u.neighbor), s->size, size);
@@ -1434,6 +1451,7 @@ static void dppline_add_stat_device(Sts__Report *r, dppline_stats_t *s)
 {
     Sts__Device *sr = NULL;
     uint32_t i;
+    int j;
     dppline_device_stats_t *device = &s->u.device;
 
     // increase the number of devices
@@ -1596,10 +1614,24 @@ static void dppline_add_stat_device(Sts__Report *r, dppline_stats_t *s)
             sr->thermal_stats[i]->has_target_rpm = true;
         }
 
-        if(device->thermal_list[i].led_state >= 0)
+        sr->thermal_stats[i]->led_state = MALLOC(DPP_DEVICE_LED_COUNT * sizeof(*dts->led_state));
+        sr->thermal_stats[i]->n_led_state = 0;
+
+        for (j = 0; j < DPP_DEVICE_LED_COUNT; j++)
         {
-            sr->thermal_stats[i]->led_state = device->thermal_list[i].led_state;
-            sr->thermal_stats[i]->has_led_state = true;
+            if (device->thermal_list[i].led_states[j].value != -1)
+            {
+                Sts__Device__Thermal__LedState *led_state;
+
+                led_state = sr->thermal_stats[i]->led_state[j] = MALLOC(sizeof(**sr->thermal_stats[i]->led_state));
+                sts__device__thermal__led_state__init(led_state);
+                led_state->position = device->thermal_list[i].led_states[j].position;
+                led_state->has_position = true;
+                led_state->value = device->thermal_list[i].led_states[j].value;
+                led_state->has_value = true;
+
+                sr->thermal_stats[i]->n_led_state++;
+            }
         }
 
         sr->thermal_stats[i]->timestamp_ms = device->thermal_list[i].timestamp_ms;
@@ -1608,7 +1640,6 @@ static void dppline_add_stat_device(Sts__Report *r, dppline_stats_t *s)
         sr->thermal_stats[i]->txchainmask = MALLOC(DPP_DEVICE_TX_CHAINMASK_MAX * sizeof(*dts->txchainmask));
         sr->thermal_stats[i]->n_txchainmask = 0;
 
-        uint32_t j;
         for(j = 0; j < DPP_DEVICE_TX_CHAINMASK_MAX; j++)
         {
             Sts__Device__Thermal__RadioTxChainMask  *txchainmask;

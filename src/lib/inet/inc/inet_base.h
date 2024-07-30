@@ -42,6 +42,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "osn_inet.h"
 #include "synclist.h"
 #include "inet_routes.h"
+#include "inet_routes6.h"
+#include "ds_util.h"
 
 #define INET_BASE_SERVICE_LIST(M)                                   \
     M(INET_BASE_IF_ENABLE,      "Interface Enable")                 \
@@ -64,6 +66,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
     M(INET_BASE_DHCP6_SERVER,   "DHCPv6 Server")                    \
     M(INET_BASE_RADV,           "IPv6 Route Advertisement")         \
     M(INET_BASE_ROUTES,         "Static routes")                    \
+    M(INET_BASE_ROUTES6,        "Static IPv6 routes")               \
     M(INET_BASE_IPV4_READY,     "IPv4 ready")                       \
     M(INET_BASE_BRIDGE,         "Bridge Creation")                  \
     M(INET_BASE_BRIDGE_PORT,    "Bridge Port Settings")             \
@@ -132,6 +135,11 @@ struct __inet_base
     inet_route_status_fn_t *in_route_status_fn;
     inet_routes_t          *in_routes_set;
 
+    /* Routing6 table */
+    osn_route6_t           *in_route6;
+    inet_route6_status_fn_t*in_route6_status_fn;
+    inet_routes6_t         *in_routes6_set;
+
     /* Osync IPv6 API */
     osn_ip6_t              *in_ip6;
     osn_ip6_radv_t         *in_radv;
@@ -192,6 +200,7 @@ struct __inet_base
 
     bool                    in_dhcp6_client_request[DHCP_OPTION_MAX];
     char                   *in_dhcp6_client_send[DHCP_OPTION_MAX];
+    ds_map_str_t           *in_dhcp6_client_other_config;
 
     inet_dhcp6_client_notify_fn_t
                            *in_dhcp6_client_notify_fn;
@@ -336,6 +345,15 @@ extern bool inet_base_route_remove(inet_t *super, const osn_route4_t *route);
 
 /*
  * ===========================================================================
+ *  Route6 functions
+ * ===========================================================================
+ */
+extern bool inet_base_route6_notify(inet_t *super, inet_route6_status_fn_t *func);
+extern bool inet_base_route6_add(inet_t *super, const osn_route6_config_t *route);
+extern bool inet_base_route6_remove(inet_t *super, const osn_route6_config_t *route);
+
+/*
+ * ===========================================================================
  *  Commit & Service start/stop method implementation
  * ===========================================================================
  */
@@ -381,6 +399,8 @@ bool inet_base_dhcp6_client(inet_t *self, bool enable, bool request_addr, bool r
 bool inet_base_dhcp6_client_option_request(inet_t *self, int tag, bool request);
 /* DHCPv6 options that will be sent to the server */
 bool inet_base_dhcp6_client_option_send(inet_t *self, int tag, char *value);
+/* DHCPv6 client other_config */
+bool inet_base_dhcp6_client_other_config(inet_t *super, char *key, char *value);
 /* DHCPv6 client status notification */
 bool inet_base_dhcp6_client_notify(inet_t *super, inet_dhcp6_client_notify_fn_t *fn);
 /* DHCPv6 Server: Options that will be sent to the server */

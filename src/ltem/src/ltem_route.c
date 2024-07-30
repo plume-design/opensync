@@ -205,6 +205,8 @@ ltem_add_lte_client_routes(ltem_mgr_t *mgr)
     entry = ds_tree_head(&mgr->client_table);
     while (entry)
     {
+        if (!is_input_shell_safe(entry->client_addr)) return -1;
+
         /* ip rule add from `client_addr` lookup 76 */
         snprintf(cmd, sizeof(cmd), "ip rule add from %s lookup 76", entry->client_addr);
         res = ltem_route_exec_cmd(cmd);
@@ -229,6 +231,8 @@ ltem_restore_default_client_routes(ltem_mgr_t *mgr)
     entry = ds_tree_head(&mgr->client_table);
     while (entry)
     {
+        if (!is_input_shell_safe(entry->client_addr)) return -1;
+
         /* ip rule del from `client_addr` lookup table 76 */
         snprintf(cmd, sizeof(cmd), "ip rule del from %s lookup 76", entry->client_addr);
         res = ltem_route_exec_cmd(cmd);
@@ -285,7 +289,7 @@ ltem_force_lte(ltem_mgr_t *mgr)
          * interface down in the 'force' case.
          */
         snprintf(cmd, sizeof(cmd), "ifconfig %s down", route->wan_if_name);
-        res = cmd_log(cmd);
+        res = cmd_log_check_safe(cmd);
         if (res)
         {
             LOGI("%s: cmd[%s] failed", __func__, cmd);
@@ -313,7 +317,7 @@ ltem_restore_wan(ltem_mgr_t *mgr)
     if (!route) return -1;
 
     snprintf(cmd, sizeof(cmd), "ifconfig %s up", route->wan_if_name);
-    res = cmd_log(cmd);
+    res = cmd_log_check_safe(cmd);
     if (res)
     {
         LOGI("%s: cmd[%s] failed", __func__, cmd);

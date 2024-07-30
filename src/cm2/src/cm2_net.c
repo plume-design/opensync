@@ -96,6 +96,8 @@ static bool cm2_is_port_in_bridge(char *port, char *bridge)
 {
     char command[512];
 
+    if (!is_input_shell_safe(bridge)) return false;
+
     snprintf(command, sizeof(command), "ovs-vsctl --no-wait port-to-br %s | grep %s",
              port, bridge);
     LOGD("%s: Command: %s", __func__, command);
@@ -148,7 +150,8 @@ static bool cm2_update_mac_local_bit(char *bridge, bool set)
         snprintf(cmd, sizeof(cmd), "ovs-vsctl set bridge %s other-config:hwaddr=%s",
                  bridge, new_macstr);
     }
-    rc = cmd_log(cmd);
+
+    rc = cmd_log_check_safe(cmd);
     if (rc < 0) {
         LOGE("%s: %s cmd failed", __func__, cmd);
         return false;
@@ -182,6 +185,9 @@ static int cm2_ovs_insert_port_into_bridge(char *bridge, char *port,
 
         snprintf(command, sizeof(command), "timeout %s ovs-vsctl %s %s %s",
                  cm2_get_timeout_cmd_arg(), op, bridge, port);
+
+        if (!is_input_shell_safe(command)) return -1;
+
         LOGD("%s: Command: %s", __func__, command);
         ret = target_device_execute(command);
     }
@@ -212,8 +218,11 @@ static int cm2_ovs_insert_port_into_native_bridge(char *bridge, char *port,
     if (need_to_add || need_to_del) {
         LOGI("Linux bridge: %s port = %s bridge = %s", op, port, bridge);
 
-        snprintf(command, sizeof(command), "ovs-vsctl --no-wait %s %s %s",
+        snprintf(command, sizeof(command), "ovs-vsctl %s %s %s",
                  op, bridge, port);
+
+        if (!is_input_shell_safe(command)) return -1;
+
         LOGD("%s: Command: %s", __func__, command);
         ret = target_device_execute(command);
     }
@@ -311,6 +320,8 @@ bool cm2_is_iface_in_bridge(const char *bridge, const char *port)
 {
     char command[256];
 
+    if (!is_input_shell_safe(bridge) || !is_input_shell_safe(port)) return false;
+
     LOGD("OVS bridge: port = %s bridge = %s", port, bridge);
     sprintf(command, "timeout %s ovs-vsctl list-ifaces %s | grep %s",
             cm2_get_timeout_cmd_arg(), bridge, port);
@@ -329,6 +340,9 @@ static void cm2_tcpdump_cb(struct ev_loop *loop, ev_child *w, int revents)
     ev_child_stop (loop, w);
 
     LOGI("%s: tcpdump_cb: cleanup old pcaps", tcpdump->if_name);
+
+    if (!is_input_shell_safe(tcpdump->if_name)) return;
+
     tsnprintf(cmd, sizeof(cmd), "ls -1t %s/*%s-%s | sed 1d | xargs rm -v",
               CM2_VAR_PLUME_PATH , CM2_TCPDUMP_PREFIX_FILE, tcpdump->if_name);
 
@@ -414,6 +428,8 @@ void cm2_tcpdump_stop(char *ifname)
     }
 
     LOGI("%s: tcpdump stop: pid: %d pid_name: %s", ifname, pid, pidname);
+
+    if (!is_input_shell_safe(pidname)) return;
 
     tsnprintf(cmd, sizeof(cmd), "%s -p %s.pid -K; rm %s.pid",
               CONFIG_CM2_TCPDUMP_START_STOP_DAEMON_PATH, pidname, pidname);
@@ -627,6 +643,9 @@ void cm2_dhcpc_stop_dryrun(char *ifname)
         LOGW("%s: %s: failed to send kill signal: %d (%s)",
              __func__, ifname, errno, strerror(errno));
     }
+
+    if (!is_input_shell_safe(pidname)) return;
+
     tsnprintf(cmd, sizeof(cmd), "rm -f %s.pid", pidname);
     LOGD("%s: Command: %s", __func__, cmd);
     WARN_ON(!target_device_execute(cmd));
@@ -649,7 +668,7 @@ bool cm2_is_lte_type(const char *if_type) {
 
 char* cm2_get_uplink_name(void)
 {
-    if (g_state.link.is_bridge)
+    if (cm2_link_is_bridge(&g_state.link))
         return g_state.link.bridge_name;
 
     return g_state.link.if_name;
@@ -665,7 +684,7 @@ void cm2_update_device_type(const char *iftype)
         if (cm2_is_wan_bridge())
             bridge_mode = cm2_ovsdb_is_port_name("patch-w2h");
         else
-            bridge_mode = g_state.link.is_bridge;
+            bridge_mode = cm2_link_is_bridge(&g_state.link);
 
         g_state.dev_type = bridge_mode ? CM2_DEVICE_BRIDGE : CM2_DEVICE_ROUTER;
     }

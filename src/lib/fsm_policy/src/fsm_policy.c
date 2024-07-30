@@ -104,6 +104,7 @@ const char * const fsm_action_str[] =
     [FSM_GATEKEEPER_REQ] = "gk req",
     [FSM_FLUSH_CACHE] = "flush cache",
     [FSM_FLUSH_ALL_CACHE] = "flush all cache",
+    [FSM_NOANSWER] = "no error no answer",
 };
 
 char *cache_lookup_failure = "cacheLookupFailed";
@@ -1167,12 +1168,6 @@ fsm_policy_initialize_pending_req(struct fqdn_pending_req *pending_req,
     return 0;
 }
 
-static void
-fsm_set_supported_feature(struct fsm_policy_req *policy_request, int feature)
-{
-    policy_request->supported_features |= feature;
-}
-
 struct fsm_policy_req *
 fsm_policy_initialize_request(struct fsm_request_args *request_args)
 {
@@ -1209,7 +1204,6 @@ fsm_policy_initialize_request(struct fsm_request_args *request_args)
     policy_request->ip_addr = ip_addr;
 
     policy_request->session = request_args->session;
-    fsm_set_supported_feature(policy_request, FSM_CNAME_FEATURE);
 
     policy_request->acc = request_args->acc;
 

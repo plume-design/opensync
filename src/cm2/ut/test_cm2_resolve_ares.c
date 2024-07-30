@@ -126,6 +126,7 @@ void test_connect_redirector_manager(void)
     g_state.addr_manager.ipv6_addr_list.h_cur_idx = 0;
     g_state.addr_manager.ipv4_addr_list.h_cur_idx = 0;
     g_state.dest = CM2_DEST_MANAGER;
+    cm2_set_ipv6_pref(CM2_DEST_MANAGER);
 
     // manager IPv4 1
     TEST_ASSERT_TRUE(cm2_write_current_target_addr());

@@ -39,6 +39,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "schema.h"
 #include "schema_consts.h"
 #include "memutil.h"
+#include "util.h"
 
 #include "brctl_mac_learn.h"
 
@@ -110,6 +111,8 @@ static bool mac_learning_flt_get(const char *brname)
     int           ifidx;
     char          ifname[IFNAMSIZ];
 
+    if (!is_input_shell_safe(brname)) return false;
+
     /* Find port numbers for eth interfaces. Expected output:
      *
      * eth1 (2)
@@ -156,6 +159,10 @@ static bool mac_learning_flt_get(const char *brname)
         flt = mac_learning_flt_find(ifnum);
         if (flt != NULL) {
             LOGT("BRCTLMAC: Already exists %s @ %s :: ifnum=%d", flt->ifname, brname, flt->ifnum);
+            if (strcmp(flt->ifname, ifname) != 0) {
+                strncpy(flt->ifname, ifname, sizeof(flt->ifname));
+                LOGI("BRCTLMAC: Found ifnum=%d ifname changed to %s @ %s", flt->ifnum, flt->ifname, brname);
+            }
             continue;
         }
         else
@@ -183,6 +190,8 @@ static bool mac_learning_parse(const char *brname)
     FILE *fp;
     char cmd[512];
     char buf[512];
+
+    if (!is_input_shell_safe(brname)) return false;
 
     /* Find bridge port numbers and mac addresses. Expected output:
      *
@@ -302,7 +311,13 @@ static int mac_learning_cmp(const void *_a, const void *_b)
 {
     const struct schema_OVS_MAC_Learning *a = _a;
     const struct schema_OVS_MAC_Learning *b = _b;
-    return strcmp(a->hwaddr, b->hwaddr);
+
+    int result = strcmp(a->hwaddr, b->hwaddr);
+    if (result != 0)
+    {
+        return result;
+    }
+    return strcmp(a->ifname, b->ifname);
 }
 
 static void mac_learing_timer_cb(struct ev_loop *loop, ev_timer *watcher, int revents)

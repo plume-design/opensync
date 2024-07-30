@@ -437,6 +437,8 @@ static bool osfw_eb_nftable_check(struct osfw_nftable *self, struct osfw_nfrule 
 	fclose(stream);
 	TRACE();
 
+	if (!is_input_shell_safe(path)) return false;
+
 	snprintf(cmd, sizeof(cmd) - 1, "cat %s | %s", path, osfw_eb_convert_cmd(self->family));
 	cmd[sizeof(cmd) - 1] = '\0';
 
@@ -805,6 +807,8 @@ static bool osfw_eb_inet_apply(struct osfw_ebinet *self)
 
 	snprintf(cmd, sizeof(cmd) - 1, "cat %s | %s", path, osfw_eb_convert_cmd(self->family));
 	cmd[sizeof(cmd) - 1] = '\0';
+
+	if (!is_input_shell_safe(path)) return false;
 
 	err = cmd_log(cmd);
 	if (err) {

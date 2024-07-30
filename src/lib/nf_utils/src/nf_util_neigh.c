@@ -41,6 +41,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "neigh_table.h"
 #include "nf_utils.h"
 #include "os_types.h"
+#include "os_ev_trace.h"
 
 static struct nf_neigh_context
 {
@@ -473,6 +474,7 @@ nf_link_event_init(void)
 
     ctxt->link_mnl = nl;
     ctxt->link_fd = mnl_socket_get_fd(nl);
+    OS_EV_TRACE_MAP(read_mnl_link_cb);
     ev_io_init(&ctxt->link_io_mnl, read_mnl_link_cb,
                ctxt->link_fd, EV_READ);
     ev_io_start(ctxt->loop, &ctxt->link_io_mnl);
@@ -521,6 +523,7 @@ nf_neigh_event_init(void)
 
     ctxt->neigh_mnl = nl;
     ctxt->neigh_fd = mnl_socket_get_fd(nl);
+    OS_EV_TRACE_MAP(read_mnl_neigh_cb);
     ev_io_init(&ctxt->neigh_io_mnl, read_mnl_neigh_cb,
                ctxt->neigh_fd, EV_READ);
     ev_io_start(ctxt->loop, &ctxt->neigh_io_mnl);

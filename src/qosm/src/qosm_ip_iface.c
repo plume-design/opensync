@@ -24,50 +24,56 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+#include <stdlib.h>
+#include <stdio.h>
+#include <stdbool.h>
+#include <string.h>
+
+#include "ovsdb_utils.h"
+#include "schema.h"
+#include "memutil.h"
+#include "util.h"
+#include "osn_tc.h"
+#include "reflink.h"
+#include "ds_tree.h"
+#include "evx.h"
+#include "log.h"
+
+#include "qosm.h"
+
+#include "qosm_filter.h"
+#include "qosm_filter_internal.h"
 
 #include "qosm_interface_classifier.h"
 #include "qosm_ip_iface.h"
-#include "ovsdb_utils.h"
-#include "osn_tc.h"
-#include "qosm.h"
 
-/**
- * @brief initialize IP_Interface table monitoring
- * @param None
- * @return None
- */
+#include "policy_tags.h"
+
+#include "osn_tc.h"
+
 void
 qosm_ip_iface_init(void)
 {
-    struct qosm_mgr *mgr;
+    struct qosm_filter *qosm_filter;
 
-    mgr = qosm_get_mgr();
-    ds_tree_init(&mgr->qosm_ip_iface_tree, (ds_key_cmp_t *) strcmp,
+    qosm_filter = qosm_filter_get();
+    ds_tree_init(&qosm_filter->qosm_ip_iface_tree, (ds_key_cmp_t *) strcmp,
                  struct qosm_ip_iface, ipi_tnode);
     return;
-}
-
-void
-qosm_init_debounce_cb(ev_debounce_fn_t *debounce_cb)
-{
-    struct qosm_mgr *mgr;
-
-    mgr = qosm_get_mgr();
-    mgr->debounce_fn_cb = debounce_cb;
 }
 
 void
 qosm_ip_iface_del(struct schema_IP_Interface *conf)
 {
     struct qosm_ip_iface *ipi;
-    struct qosm_mgr *mgr;
+    struct qosm_filter *qosm_filter;
 
     TRACE();
 
     ipi = qosm_ip_iface_get(conf);
     if (ipi == NULL) return;
 
-    mgr = qosm_get_mgr();
+    qosm_filter = qosm_filter_get();
 
     if (ipi->ipi_tc)
     {
@@ -78,9 +84,10 @@ qosm_ip_iface_del(struct schema_IP_Interface *conf)
 
     qosm_ic_list_free(ipi);
 
-    /* Stop any active debounce timers */
-    ev_debounce_stop(EV_DEFAULT, &ipi->ipi_debounce);
-    ds_tree_remove(&mgr->qosm_ip_iface_tree, ipi);
+    /* Stop any active/pending TC-filter configurations: */
+    qosm_mgr_stop_qos_config(&ipi->ipi_uuid);
+
+    ds_tree_remove(&qosm_filter->qosm_ip_iface_tree, ipi);
     FREE(ipi);
 }
 
@@ -163,27 +170,52 @@ qosm_commit_classifers(struct qosm_ip_iface *ipi, osn_tc_t *ipi_tc)
     }
 }
 
-/*
- * Debounce timer function callback; this is where the TC is configured
+/* Does the interface have at least one classifier config? */
+static bool qosm_intf_has_classifier_config(struct qosm_ip_iface *ipi)
+{
+    return (ds_tree_len(&ipi->ipi_intf_classifier_tree) != 0);
+}
+
+/**
+ * Apply TC-filter configuration to the system for an interface.
+ *
+ * @param[in]   uuid            OVSDB uuid of the interface
+ * @param[in]   reset_egress    Should egress qdisc configuration be reset or not
  */
-void
-qosm_ip_iface_debounce_fn(struct ev_loop *loop, ev_debounce *w, int revent)
+bool qosm_filter_config_apply(const ovs_uuid_t *uuid, bool reset_egress)
 {
     struct qosm_ip_iface *ipi;
+    struct qosm_filter *qosm_filter;
     bool success;
 
-    /* get the base address of ipi structure */
-    ipi = CONTAINER_OF(w, struct qosm_ip_iface, ipi_debounce);
+    qosm_filter = qosm_filter_get();
 
-    LOGT("%s(): configuring TC rules for %s", __func__, ipi->ipi_ifname);
+    ipi = ds_tree_find(&qosm_filter->qosm_ip_iface_tree, uuid->uuid);
+    if (ipi == NULL)
+    {
+        LOGD("qosm: tc-filter: %s: Cannot find IP_Interface object for uuid=%s. Nothing to do.", __func__, uuid->uuid);
+        return true; // Nothing to do
+    }
+    LOGI("qosm: tc-filter: %s: %s: Reconfiguring interface", ipi->ipi_ifname, uuid->uuid);
 
     /* if ipi_tc is not NULL, that means tc rules are already created,
      * delete and configure the rules again */
     if (ipi->ipi_tc != NULL)
     {
+        /*
+         * Set if we need to reset egress qdiscs:
+         */
+        osn_tc_set_reset_egress(ipi->ipi_tc, reset_egress);
+
         LOGT("%s(): deleting TC configuration", __func__ );
         osn_tc_del(ipi->ipi_tc);
         ipi->ipi_tc = NULL;
+    }
+
+    if (!qosm_intf_has_classifier_config(ipi))
+    {
+        LOGN("qosm: tc-filter: %s: No Classifier configuration", ipi->ipi_ifname);
+        return true;
     }
 
     /* create new tc object */
@@ -193,6 +225,11 @@ qosm_ip_iface_debounce_fn(struct ev_loop *loop, ev_debounce *w, int revent)
         LOGE("%s(): error creating TC config object for %s", __func__, ipi->ipi_ifname);
         goto error;
     }
+
+    /*
+     * Set if we need to reset egress qdiscs:
+     */
+    osn_tc_set_reset_egress(ipi->ipi_tc, reset_egress);
 
     success = osn_tc_begin(ipi->ipi_tc);
     if (!success)
@@ -218,10 +255,10 @@ qosm_ip_iface_debounce_fn(struct ev_loop *loop, ev_debounce *w, int revent)
         goto error;
     }
 
-    return;
-
+    return true;
 error:
     LOGN("%s(): failed to apply TC configuration for %s", __func__, ipi->ipi_ifname);
+    return false;
 }
 
 static int
@@ -243,12 +280,12 @@ struct qosm_ip_iface *
 qosm_ip_iface_get(struct schema_IP_Interface *conf)
 {
     struct qosm_ip_iface *ipi;
-    struct qosm_mgr *mgr;
+    struct qosm_filter *qosm_filter;
 
-    mgr = qosm_get_mgr();
+    qosm_filter = qosm_filter_get();
 
     /* check if the ip_iface obj is already present */
-    ipi = ds_tree_find(&mgr->qosm_ip_iface_tree, (void *) conf->_uuid.uuid);
+    ipi = ds_tree_find(&qosm_filter->qosm_ip_iface_tree, (void *) conf->_uuid.uuid);
     if (ipi) return ipi;
 
     /* ip_iface for given uuid not present create a new object */
@@ -266,13 +303,7 @@ qosm_ip_iface_get(struct schema_IP_Interface *conf)
     ds_tree_init(&ipi->ipi_intf_classifier_tree, ipi_classifier_cmp,
                  struct intf_classifier_entry, ic_node);
 
-    LOGT("%s(): initializing debounce timer.", __func__);
-    ev_debounce_init2(&ipi->ipi_debounce,
-                      mgr->debounce_fn_cb,
-                      QOSM_TC_DEBOUNCE_MIN,
-                      QOSM_TC_DEBOUNCE_MAX);
-
-    ds_tree_insert(&mgr->qosm_ip_iface_tree, ipi, ipi->ipi_uuid.uuid);
+    ds_tree_insert(&qosm_filter->qosm_ip_iface_tree, ipi, ipi->ipi_uuid.uuid);
 
     return ipi;
 }
@@ -284,9 +315,10 @@ qosm_ip_iface_start(struct qosm_ip_iface *ipi)
 
     if (ipi == NULL) return;
 
-    /* ic is found in the tag tree and its parent pointer is also available. Invoke
-     * debounce timer for reconfiguring the TC */
-    ev_debounce_start(EV_DEFAULT, &ipi->ipi_debounce);
+    LOG(INFO, "qosm: tc-filter: %s: %s: Schedule reconfiguration", ipi->ipi_ifname, ipi->ipi_uuid.uuid);
+
+    /* Schedule reconfiguration: */
+    qosm_mgr_schedule_qos_config(&ipi->ipi_uuid);
 }
 
 static struct intf_classifier_entry*

@@ -296,6 +296,21 @@ osw_hostap_bss_sta_parse(const char *buf,
         else if (strcmp(k, "dot11RSNAStatsSelectedPairwiseCipher") == 0) {
             sta->pairwise_cipher = osw_hostap_cipher_selector_to_osw(v);
         }
+        else if (strcmp(k, "assoc_ies") == 0) {
+            if (sta->assoc_ies_len)
+                FREE(sta->assoc_ies);
+
+            sta->assoc_ies_len = strlen(v)/2;
+            sta->assoc_ies = MALLOC(sizeof(*sta->assoc_ies) * sta->assoc_ies_len);
+
+            const bool decoded = (hex2bin(v, strlen(v), sta->assoc_ies, sta->assoc_ies_len) != -1);
+
+            if (!decoded)
+            {
+                sta->assoc_ies_len = 0;
+                FREE(sta->assoc_ies);
+            }
+        }
     }
 
     FREE(copy);
@@ -649,9 +664,10 @@ osw_hostap_bss_hapd_acl_list_prep_add_mac(char *buf,
     if (WARN_ON(str == NULL)) return;
 
     snprintf(buf, buf_size,
-             "%s ADD_MAC %s",
-             hostapd_cli_acl_list,
-             str);
+            "%s ADD_MAC %s%s",
+            hostapd_cli_acl_list,
+            str,
+            " disassoc=0");
 }
 
 static void
@@ -870,6 +886,7 @@ osw_hostap_bss_hapd_msg_cb(struct hostap_conn_ref *ref,
 
     if (bss->ops->event_fn != NULL) {
         bss->ops->event_fn(msg, msg_len, bss->ops_priv);
+        CALL_HOOKS(bss->owner, event_fn, bss->phy_name, bss->vif_name, msg, msg_len);
     }
 }
 
@@ -981,6 +998,12 @@ osw_hostap_bss_hapd_sta_connected_cb(struct hostap_sta_ref *ref,
     if (ops->sta_connected_fn != NULL) {
         ops->sta_connected_fn(&sta, ops_priv);
     }
+
+    if (sta.assoc_ies_len)
+    {
+        sta.assoc_ies_len = 0;
+        FREE(sta.assoc_ies);
+    }
 }
 
 static void
@@ -1000,6 +1023,12 @@ osw_hostap_bss_hapd_sta_changed_cb(struct hostap_sta_ref *ref,
 
     if (ops->sta_changed_fn != NULL) {
         ops->sta_changed_fn(&sta, ops_priv);
+    }
+
+    if (sta.assoc_ies_len)
+    {
+        sta.assoc_ies_len = 0;
+        FREE(sta.assoc_ies);
     }
 }
 
@@ -1117,7 +1146,7 @@ osw_hostap_bss_hapd_init(struct hostap_ev_ctrl *ghapd,
 
     hostap_rq_task_init(&hapd->task_add, ghapd->txq, ""); /* set in update_add_task */
     hostap_rq_task_init(&hapd->task_remove, ghapd->txq, cmd_remove);
-    hostap_rq_task_init(&hapd->task_log_level, hapd->ctrl.txq, "LOG_LEVEL DEBUG");
+    hostap_rq_task_init(&hapd->task_log_level, hapd->ctrl.txq, "LOG_LEVEL INFO");
     hostap_rq_task_init(&hapd->task_init_bssid, hapd->ctrl.txq, "STATUS");
     hostap_rq_task_init(&hapd->task_init_neigh, hapd->ctrl.txq, ""); /* set in bssid_cb */
     hostap_rq_task_init(&hapd->task_reload_psk, hapd->ctrl.txq, "RELOAD_WPA_PSK");
@@ -1435,7 +1464,7 @@ osw_hostap_bss_wpas_init(struct hostap_ev_ctrl *gwpas,
     osw_hostap_bss_wpas_init_add(gwpas, wpas, phy_name, vif_name);
 
     hostap_rq_task_init(&wpas->task_remove, gwpas->txq, cmd_remove);
-    hostap_rq_task_init(&wpas->task_log_level, wpas->ctrl.txq, "LOG_LEVEL DEBUG");
+    hostap_rq_task_init(&wpas->task_log_level, wpas->ctrl.txq, "LOG_LEVEL INFO");
     hostap_rq_task_init(&wpas->task_reconfigure, wpas->ctrl.txq, "RECONFIGURE");
     hostap_rq_task_init(&wpas->task_reassociate, wpas->ctrl.txq, "REASSOCIATE");
     hostap_rq_task_init(&wpas->task_disconnect, wpas->ctrl.txq, "DISCONNECT");
@@ -1681,6 +1710,7 @@ osw_hostap_set_conf_ap(struct osw_hostap *hostap,
     osw_hostap_conf_generate_ap_config_bufs(conf);
     osw_hostap_set_conf_ap_write(hapd);
 
+    osw_hostap_conf_list_free(conf);
     /* FIXME: This could/should rely on hostapd
      * file content comparison, probably at least
      * partially.
@@ -1696,6 +1726,7 @@ osw_hostap_set_conf_ap(struct osw_hostap *hostap,
                           || (dvif->u.ap.channel_changed == true &&
                               dvif->u.ap.csa_required == false)
                           || dvif->u.ap.bridge_if_name_changed
+                          || dvif->u.ap.nas_identifier_changed
                           || dvif->u.ap.beacon_interval_tu_changed
                           || dvif->u.ap.ssid_hidden_changed
                           || dvif->u.ap.isolated_changed
@@ -1703,6 +1734,10 @@ osw_hostap_set_conf_ap(struct osw_hostap *hostap,
                           || dvif->u.ap.mode_changed
                           || dvif->u.ap.ssid_changed
                           || dvif->u.ap.wpa_changed
+                          || dvif->u.ap.radius_list_changed
+                          || dvif->u.ap.acct_list_changed
+                          || dvif->u.ap.passpoint_changed
+                          || dvif->u.ap.multi_ap_changed
                           || dphy->reg_domain_changed;
     const bool psk_file_invalidated = (dvif->u.ap.psk_list_changed
                                     || dvif->u.ap.wps_cred_list_changed);
