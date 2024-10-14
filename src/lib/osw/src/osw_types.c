@@ -130,6 +130,20 @@ static const struct osw_op_class_matrix g_op_class_matrix[] = {
     { OSW_OP_CLASS_END, 0, 0, { OSW_CHANNEL_END, }, { OSW_CHANNEL_END }, 0 },
 };
 
+static int
+osw_channel_width_offsets(const enum osw_channel_width w)
+{
+    switch (w) {
+        case OSW_CHANNEL_20MHZ: return 0;
+        case OSW_CHANNEL_40MHZ: return 2;
+        case OSW_CHANNEL_80MHZ: return 6;
+        case OSW_CHANNEL_160MHZ: return 14;
+        case OSW_CHANNEL_80P80MHZ: return 6; /* refers to the center0 */
+        case OSW_CHANNEL_320MHZ: return 30;
+    }
+    return false;
+}
+
 static void
 strip_trailing_whitespace(char *str)
 {
@@ -473,6 +487,38 @@ osw_channel_width_down(enum osw_channel_width *w)
     return false;
 }
 
+bool
+osw_channel_downgrade(struct osw_channel *c)
+{
+    enum osw_channel_width w = c->width;
+    if (WARN_ON(w == OSW_CHANNEL_80P80MHZ)) return false;
+    if (osw_channel_width_down(&w) == false) return false;
+
+    const int offset_old = osw_channel_width_offsets(c->width) * 5;
+    const int offset_new = osw_channel_width_offsets(w) * 5;
+    const int freq_leftmost = c->center_freq0_mhz - offset_old;
+    const int freq_rightmost = c->center_freq0_mhz + offset_old;
+    const int center_new = (c->control_freq_mhz < c->center_freq0_mhz)
+                         ? freq_leftmost + offset_new
+                         : freq_rightmost - offset_new;
+    c->width = w;
+    c->center_freq0_mhz = center_new;
+    return true;
+}
+
+bool
+osw_channel_downgrade_to(struct osw_channel *c,
+                         enum osw_channel_width w)
+{
+    if (c->width < w) return false;
+    while (c->width != w) {
+        const bool ok = osw_channel_downgrade(c);
+        const bool not_ok = (ok == false);
+        if (not_ok) return false;
+    }
+    return true;
+}
+
 enum osw_channel_width
 osw_channel_width_min(const enum osw_channel_width a,
                       const enum osw_channel_width b)
@@ -543,27 +589,15 @@ osw_channel_sidebands(enum osw_band band, int chan, int width, int max_2g_chan)
 }
 
 int
-osw_channel_ht40_offset(const struct osw_channel *c, int max_2g_chan)
+osw_channel_ht40_offset(const struct osw_channel *c)
 {
-    const int mhz = osw_channel_width_to_mhz(c->width);
-    const int freq = c->control_freq_mhz;
-    const int chan = osw_freq_to_chan(freq);
-    const enum osw_band band = osw_freq_to_band(freq);
-    const int *chans = osw_channel_sidebands(band, chan, mhz, max_2g_chan);
-    if (chans == NULL) return 0;
-
-    int sum = 0;
-    int n = 0;
-    while ((*chans) != 0) {
-        sum += *chans;
-        n++;
-        chans++;
-    }
-
-    if (n == 0) return 0;
-    const int center = sum / n;
-    if (center < chan) return -1;
-    if (center > chan) return  1;
+    ASSERT(c->center_freq0_mhz != 0, "center freq required");
+    struct osw_channel copy = *c;
+    const bool ok = osw_channel_downgrade_to(&copy, OSW_CHANNEL_40MHZ);
+    const bool not_ok = (ok == false);
+    if (not_ok) return 0;
+    if (copy.control_freq_mhz < copy.center_freq0_mhz) return 1;
+    if (copy.control_freq_mhz > copy.center_freq0_mhz) return -1;
     return 0;
 }
 
@@ -1000,8 +1034,6 @@ osw_op_class_to_20mhz(uint8_t op_class,
 enum osw_band
 osw_op_class_to_band(uint8_t op_class)
 {
-    assert(op_class > 0);
-
     const struct osw_op_class_matrix *entry;
     for (entry = g_op_class_matrix; entry->op_class != OSW_OP_CLASS_END; entry++) {
         if (entry->op_class != op_class)
@@ -1632,6 +1664,37 @@ osw_vif_status_into_cstr(enum osw_vif_status status)
         case OSW_VIF_BROKEN: return "broken";
     }
     return "uncaught";
+}
+
+bool
+osw_channel_is_none(const struct osw_channel *c)
+{
+    if (c == NULL) return true;
+    if (c->control_freq_mhz == 0) return true;
+    return false;
+}
+
+const struct osw_channel *
+osw_channel_none(void)
+{
+    static const struct osw_channel zero;
+    return &zero;
+}
+
+const struct osw_hwaddr *
+osw_hwaddr_zero(void)
+{
+    static const struct osw_hwaddr zero;
+    return &zero;
+}
+
+void
+osw_hwaddr_write(const struct osw_hwaddr *addr,
+                 void *buf,
+                 size_t buf_len)
+{
+    if (WARN_ON(buf_len < sizeof(addr->octet))) return;
+    memcpy(buf, addr, sizeof(addr->octet));
 }
 
 #include "osw_types_ut.c"

@@ -1162,10 +1162,10 @@ nf_ct_print_conntrack(ct_flow_t *flow)
     getnameinfo((struct sockaddr *)&flow->layer3_info.dst_ip,
                 sizeof(struct sockaddr_storage), dst, sizeof(dst),
                 0, 0, NI_NUMERICHOST);
-    LOGD("%s: [ proto=%d tx src=%s dst=%s] ", __func__,
+    LOGT("%s: [ proto=%d tx src=%s dst=%s] ", __func__,
          flow->layer3_info.proto_type, src, dst);
 
-    LOGD("%s: [src port=%d dst port=%d] "
+    LOGT("%s: [src port=%d dst port=%d] "
          "[packets=%" PRIu64 "  bytes=%" PRIu64 "]", __func__,
         ntohs(flow->layer3_info.src_port),
         ntohs(flow->layer3_info.dst_port),
@@ -1542,6 +1542,7 @@ nf_ct_set_flow_mark(struct net_header_parser *net_pkt, uint32_t mark, uint16_t z
     }
     if (nlh == NULL) return -1;
     res = mnl_socket_sendto(nf_ct->mnl, nlh, nlh->nlmsg_len);
+    read_mnl_socket_cbk(NULL, NULL, 0);
     LOGD("%s: nlh->nlmsg_len = %d res = %d\n", __func__, nlh->nlmsg_len, res);
     return (res == (int)nlh->nlmsg_len) ? 0 : -1;
 }

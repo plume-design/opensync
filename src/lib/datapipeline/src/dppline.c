@@ -262,6 +262,7 @@ static void dppline_free_stat(dppline_stats_t * s)
                     FREE(s->u.client.list[i].tx);
                     FREE(s->u.client.list[i].tid);
                 }
+                FREE(s->u.client.uplink_type);
                 FREE(s->u.client.list);
                 break;
             case DPP_T_DEVICE:

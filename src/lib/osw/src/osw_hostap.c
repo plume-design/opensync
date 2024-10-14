@@ -346,6 +346,18 @@ osw_hostap_add_task_array(struct rq *q,
 }
 
 static void
+osw_hostap_fini_task_array(struct hostap_rq_task *tasks,
+                           size_t n_tasks)
+{
+    if (tasks == NULL) return;
+    while (n_tasks > 0) {
+        hostap_rq_task_fini(tasks);
+        tasks++;
+        n_tasks--;
+    }
+}
+
+static void
 osw_hostap_bss_cmd_warn_on_fail(struct rq_task *task,
                                 void *priv)
 {
@@ -423,6 +435,9 @@ osw_hostap_bss_remove_done_cb(struct rq_task *task,
 static void
 osw_hostap_bss_hapd_neigh_free(struct osw_hostap_bss_hapd *hapd)
 {
+    osw_hostap_fini_task_array(hapd->task_neigh_add, hapd->n_task_neigh_add);
+    osw_hostap_fini_task_array(hapd->task_neigh_mod, hapd->n_task_neigh_mod);
+    osw_hostap_fini_task_array(hapd->task_neigh_del, hapd->n_task_neigh_del);
     FREE(hapd->task_neigh_add);
     FREE(hapd->task_neigh_mod);
     FREE(hapd->task_neigh_del);
@@ -802,6 +817,7 @@ osw_hostap_bss_hapd_init_bssid_cb(struct rq_task *task,
             char cmd[256];
             const struct osw_neigh n = { .bssid = bssid };
             osw_hostap_bss_hapd_neigh_prep_del(cmd, sizeof(cmd), &n);
+            hostap_rq_task_fini(t2);
             hostap_rq_task_init(t2, t2->txq, cmd);
             break;
         }

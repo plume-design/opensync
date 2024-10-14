@@ -119,6 +119,7 @@ hostap_rq_task_init(struct hostap_rq_task *task,
 void
 hostap_rq_task_fini(struct hostap_rq_task *task)
 {
+    rq_task_kill(&task->task);
     hostap_rq_task_cleanup(task);
     FREE(task->request);
     memset(task, 0, sizeof(*task));

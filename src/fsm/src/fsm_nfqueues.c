@@ -53,6 +53,7 @@ fsm_nfq_net_header_parse(struct nfq_pkt_info *pkt_info, void *data)
     void *src_ip;
     void *dst_ip;
     int domain;
+    uint16_t ethertype;
     int len = 0;
 
     MEMZERO(net_parser);
@@ -111,6 +112,13 @@ fsm_nfq_net_header_parse(struct nfq_pkt_info *pkt_info, void *data)
         return;
     }
 
+    /* Account for the ethetnet header that will be prepended */
+    net_parser.start -= ETH_HLEN;
+    net_parser.caplen += ETH_HLEN;
+    net_parser.packet_len += ETH_HLEN;
+    net_parser.parsed += ETH_HLEN;
+    memset(net_parser.start, 0, ETH_HLEN);
+
     rc_lookup = neigh_table_lookup_af(domain, src_ip, &src_mac);
     if (rc_lookup)
     {
@@ -121,11 +129,21 @@ fsm_nfq_net_header_parse(struct nfq_pkt_info *pkt_info, void *data)
             if (!rc_lookup) LOGT("%s: Couldn't update neighbor cache.",__func__);
 
         }
-        if (rc_lookup) net_parser.eth_header.srcmac = &src_mac;
+        if (rc_lookup)
+        {
+            net_parser.eth_header.srcmac = &src_mac;
+            memcpy(&net_parser.start[6], &src_mac, ETH_ALEN);
+        }
     }
 
     rc_lookup = neigh_table_lookup_af(domain, dst_ip, &dst_mac);
-    if (rc_lookup) net_parser.eth_header.dstmac = &dst_mac;
+    if (rc_lookup)
+    {
+        net_parser.eth_header.dstmac = &dst_mac;
+        memcpy(net_parser.start, &dst_mac, ETH_ALEN);
+    }
+    ethertype = htons(net_parser.eth_header.ethertype);
+    memcpy(&net_parser.start[12], &ethertype, sizeof(ethertype));
 
     session = (struct fsm_session *)data;
     parser_ops = &session->p_ops->parser_ops;
@@ -148,8 +166,8 @@ fsm_nfq_tap_update(struct fsm_session *session)
     char   *queue_len_str;
     char   *queue_num_str;
     char   buf[10];
-    uint32_t nlbuf_sz0 = 6*(1024 * 1024); // 6M netlink packet buffer.
-    uint32_t nlbuf_szx = 1*(1024 * 1024); // 1M netlink packet buffer remaining queues.
+    uint32_t nlbuf_sz0 = 10*(1024 * 1024); // 10M netlink packet buffer.
+    uint32_t nlbuf_szx = 6*(1024 * 1024); // 6M netlink packet buffer remaining queues.
     uint32_t queue_len0 = 10240; // number of packets in queue.
     uint32_t queue_lenx = 2048; // number of packets in queue for remaining queues.
     uint32_t queue_num = 0; // Default 0 queue for all traffic
@@ -243,6 +261,8 @@ fsm_nfq_tap_update(struct fsm_session *session)
         {
             LOGE("%s: Failed to set default nfueue length[%u].",__func__, index == 0 ? queue_len0 : queue_lenx);
         }
+
+        nf_queue_get_nlsock_buffsz(nfqs.queue_num);
     }
 
     return true;

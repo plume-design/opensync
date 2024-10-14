@@ -49,12 +49,11 @@ struct nm2_port
 void nm2_nb_port_process_update(ovsdb_update_monitor_t *mon, struct schema_Port *old,
                                 struct schema_Port *new);
 void nm2_add_port_to_br(struct nm2_bridge *bridge, struct nm2_port *port, bool add);
-void nm2_nb_port_cfg_reapply(struct nm2_iface *pif);
+void nm2_nb_port_cfg_reapply(const char *port_name);
 ds_tree_t *nm2_port_get_list(void);
 reflink_t *nm2_ports_getref(const ovs_uuid_t *uuid);
 void callback_Port(ovsdb_update_monitor_t *mon, struct schema_Port *old,
                    struct schema_Port *new);
 void nm2_inet_bridge_config_reapply(struct nm2_iface *pif);
-void nm2_port_config_hairpin(const char *port_name);
 
 #endif /* NM2_NB_PORT_H_INCLUDED */

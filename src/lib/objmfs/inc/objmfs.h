@@ -29,7 +29,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <stdbool.h>
 
-bool objmfs_install(char *path, char *name, char *version);
+typedef void (*install_cb_t)(char *, char *, bool);
+
+bool objmfs_install(char *path, char *name, char *version, install_cb_t install_cb);
+
 bool objmfs_remove(char *name, char *version);
 bool objmfs_path(char *buf, size_t buffsz, char *name, char *version);
 

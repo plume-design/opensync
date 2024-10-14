@@ -340,6 +340,13 @@ ow_dfs_chan_clip_vif_chan(struct ow_dfs_chan_clip *m,
     bool usable = false;
     struct osw_channel copy = *c;
 
+    /* Can't report as DISABLED because it would impact
+     * settling wait logic. Instead report unspec. This
+     * virtually means no-op since the vif is already
+     * intended to be disabled anyway.
+     */
+    if (*enabled == false) return OW_DFS_CHAN_UNSPEC;
+
     /* Sanity check to limit VLA below */
     if (WARN_ON(n_channel_states > 1024)) return OW_DFS_CHAN_UNSPEC;
 
@@ -908,6 +915,14 @@ OSW_UT(nol)
     assert(enabled == true);
     assert(c.control_freq_mhz == ch56ht40.control_freq_mhz);
     assert(c.width == ch56ht40.width);
+
+    c = ch56ht80;
+    enabled = false;
+    assert(ow_dfs_chan_clip_vif_test(&m, cs5gl_nol, ARRAY_SIZE(cs5gl_nol), &ch56ht80, &c, &enabled, true)
+        == OW_DFS_CHAN_UNSPEC);
+    assert(enabled == false);
+    assert(c.control_freq_mhz == ch56ht80.control_freq_mhz);
+    assert(c.width == ch56ht80.width);
 }
 
 OSW_MODULE(ow_dfs_chan_clip)

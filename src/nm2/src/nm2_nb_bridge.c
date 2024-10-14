@@ -149,7 +149,6 @@ void nm2_bridge_ports_update(uuidset_t *us, enum uuidset_event type, reflink_t *
     }
     else
     {
-        port->port_bridge = br;
         LOGT("%s(): deleting port %s from %s", __func__, port->port_name, br->br_name);
         nm2_add_port_to_br(br, port, add);
     }

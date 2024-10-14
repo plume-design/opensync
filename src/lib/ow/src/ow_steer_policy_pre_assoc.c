@@ -60,6 +60,7 @@ struct ow_steer_policy_pre_assoc_volatile_state {
 struct ow_steer_policy_pre_assoc_neighbor {
     enum osw_band band;
     struct osw_hwaddr bssid;
+    struct ow_steer_bm_vif *vif;
     struct ds_dlist_node node;
 };
 
@@ -817,13 +818,13 @@ ow_steer_policy_pre_assoc_reconf_timer_cb(struct osw_timer *timer)
         osw_state_register_observer(&pre_assoc_policy->state_observer);
 }
 
-static void
+static struct ow_steer_policy_pre_assoc_neighbor *
 ow_steer_policy_pre_assoc_set_bss(struct ds_dlist *neigh_list,
                                   const struct osw_hwaddr *bssid,
                                   const struct osw_channel *channel)
 {
-    if (neigh_list == NULL) return;
-    if (bssid == NULL) return;
+    if (neigh_list == NULL) return NULL;
+    if (bssid == NULL) return NULL;
 
     const enum osw_band band = osw_freq_to_band(channel ? channel->control_freq_mhz : 0);
 
@@ -833,21 +834,64 @@ ow_steer_policy_pre_assoc_set_bss(struct ds_dlist *neigh_list,
             if (band == OSW_BAND_UNDEFINED) {
                ds_dlist_remove(neigh_list, nbor);
                FREE(nbor);
-               return;
+               return NULL;
             }
             /* For a case where radio switches channel
              * between bands, keeping the same BSSID */
             nbor->band = band;
-            return;
+            return nbor;
         }
     }
 
-    if (band == OSW_BAND_UNDEFINED) return;
+    if (band == OSW_BAND_UNDEFINED) return NULL;
 
     nbor = CALLOC(1, sizeof(*nbor));
     memcpy(&nbor->bssid, bssid, sizeof(*bssid));
     nbor->band = band;
     ds_dlist_insert_tail(neigh_list, nbor);
+    return nbor;
+}
+
+struct ow_steer_policy_pre_assoc_neighbor *
+ow_steer_policy_pre_assoc_neighbor_lookup_vif(struct ow_steer_policy_pre_assoc *preassoc,
+                                              struct ow_steer_bm_vif *vif)
+{
+    struct ow_steer_policy_pre_assoc_neighbor *n;
+    ds_dlist_foreach(&preassoc->local_bssids, n) {
+        if (n->vif == vif) {
+            return n;
+        }
+    }
+    return NULL;
+}
+
+static void
+ow_steer_policy_pre_assoc_vif_update(struct ow_steer_policy_pre_assoc *preassoc,
+                                     struct ow_steer_bm_vif *vif,
+                                     bool keep)
+{
+    if (preassoc->group != vif->group) return;
+
+    /* vif->bss may become NULL after
+     * `ow_steer_policy_pre_assoc_neighbor` is allocated for
+     * it but before vif_removed_fn is fired. To properly
+     * manage the lifetime of
+     * `ow_steer_policy_pre_assoc_neighbor` (ie. avoid
+     * meleak) `vif` opinter needs to be remembered and used
+     * for lookups to handle the removal case.
+     */
+
+    struct ow_steer_policy_pre_assoc_neighbor *n = ow_steer_policy_pre_assoc_neighbor_lookup_vif(preassoc, vif);
+    const struct osw_hwaddr *bssid = (n != NULL)
+                                   ? &n->bssid
+                                   : (vif->bss ? &vif->bss->bssid : NULL);
+    if (bssid == NULL) return;
+
+    const struct osw_channel *channel = keep ? osw_bss_get_channel(bssid) : NULL;
+    n = ow_steer_policy_pre_assoc_set_bss(&preassoc->local_bssids, bssid, channel);
+    if (n != NULL) {
+        n->vif = vif;
+    }
 }
 
 static void
@@ -855,10 +899,7 @@ ow_steer_policy_pre_assoc_vif_added_cb(struct ow_steer_bm_observer *observer,
                                        struct ow_steer_bm_vif *vif)
 {
     struct ow_steer_policy_pre_assoc *preassoc = container_of(observer, struct ow_steer_policy_pre_assoc, bm_obs);
-    if (vif->bss == NULL) return;
-    if (vif->group != preassoc->group) return;
-    const struct osw_hwaddr *bssid = &vif->bss->bssid;
-    ow_steer_policy_pre_assoc_set_bss(&preassoc->local_bssids, bssid, osw_bss_get_channel(bssid));
+    ow_steer_policy_pre_assoc_vif_update(preassoc, vif, true);
 }
 
 static void
@@ -866,10 +907,7 @@ ow_steer_policy_pre_assoc_vif_removed_cb(struct ow_steer_bm_observer *observer,
                                          struct ow_steer_bm_vif *vif)
 {
     struct ow_steer_policy_pre_assoc *preassoc = container_of(observer, struct ow_steer_policy_pre_assoc, bm_obs);
-    if (vif->bss == NULL) return;
-    if (vif->group != preassoc->group) return;
-    const struct osw_hwaddr *bssid = &vif->bss->bssid;
-    ow_steer_policy_pre_assoc_set_bss(&preassoc->local_bssids, bssid, NULL);
+    ow_steer_policy_pre_assoc_vif_update(preassoc, vif, false);
 }
 
 static void
@@ -879,10 +917,7 @@ ow_steer_policy_pre_assoc_vif_changed_channel_cb(struct ow_steer_bm_observer *ob
                                                  const struct osw_channel *new_channel)
 {
     struct ow_steer_policy_pre_assoc *preassoc = container_of(observer, struct ow_steer_policy_pre_assoc, bm_obs);
-    if (vif->group != preassoc->group) return;
-    const struct osw_hwaddr *bssid = vif->bss ? &vif->bss->bssid : NULL;
-    const struct osw_channel *channel = bssid ? osw_bss_get_channel(bssid) : NULL;
-    ow_steer_policy_pre_assoc_set_bss(&preassoc->local_bssids, bssid, channel);
+    ow_steer_policy_pre_assoc_vif_update(preassoc, vif, true);
 }
 
 struct ow_steer_policy_pre_assoc*
@@ -917,9 +952,9 @@ ow_steer_policy_pre_assoc_create(const char *name,
     pre_assoc_policy->base = ow_steer_policy_create(g_policy_name, sta_addr, &ops, mediator, pre_assoc_policy);
     pre_assoc_policy->group = group;
     pre_assoc_policy->bm_obs = bm_obs;
-    ow_steer_bm_observer_register(&pre_assoc_policy->bm_obs);
     osw_timer_init(&pre_assoc_policy->reconf_timer, ow_steer_policy_pre_assoc_reconf_timer_cb);
     ds_dlist_init(&pre_assoc_policy->local_bssids, struct ow_steer_policy_pre_assoc_neighbor, node);
+    ow_steer_bm_observer_register(&pre_assoc_policy->bm_obs);
 
     struct ow_steer_policy_pre_assoc_volatile_state *vstate = &pre_assoc_policy->vstate;
     osw_timer_init(&vstate->reject_timer, ow_steer_policy_pre_assoc_reject_timer_cb);
@@ -959,6 +994,7 @@ ow_steer_policy_pre_assoc_free(struct ow_steer_policy_pre_assoc *pre_assoc_polic
     if (unregister_observer == true)
         osw_state_unregister_observer(&pre_assoc_policy->state_observer);
     ow_steer_bm_observer_unregister(&pre_assoc_policy->bm_obs);
+    ASSERT(ds_dlist_is_empty(&pre_assoc_policy->local_bssids), "bm obs should've removed all refs");
     ow_steer_policy_free(pre_assoc_policy->base);
     FREE(pre_assoc_policy);
 }

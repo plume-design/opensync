@@ -222,6 +222,7 @@ struct nfqueue_ctxt
     void *user_data;
     char send_buf[0xFFFF];
     struct nlmsghdr *nlh;
+    bool backoff_nfq;
     ds_tree_node_t  nfq_tnode;
 };
 
@@ -242,9 +243,13 @@ bool nf_queue_set_ct_mark(uint32_t packet_id, struct dpi_mark_policy *mark_polic
 
 bool nf_queue_set_nlsock_buffsz(uint32_t queue_num, uint32_t sock_buff_sz);
 
+bool nf_queue_get_nlsock_buffsz(uint32_t queue_num);
+
 bool nf_queue_set_queue_maxlen(uint32_t queue_num, uint32_t queue_maxlen);
 
 bool nf_queue_update_payload(uint32_t packet_id, uint32_t queue_num);
+
+bool nf_queue_backoff_update(bool enable, uint32_t queue_num);
 
 /* NF CONNTRACK APIs */
 int nf_process_ct_cb(const struct nlmsghdr *nlh, void *data);

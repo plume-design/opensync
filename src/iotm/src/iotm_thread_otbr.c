@@ -67,12 +67,17 @@ static ovsdb_table_t table_Thread_Radio_State;
 static ovsdb_table_t table_Thread_Devices;
 static ovsdb_table_t table_AWLAN_Node;
 
-/** MQTT topics for Thread Network status reporting */
 static struct
 {
-    /** AWLAN_Node::mqtt_topics::ThreadNetwork.Scan */
-    char scan[C_MAXPATH_LEN];
-} mqtt_topics;
+    char node_id[C_MAXPATH_LEN];
+    char location_id[C_MAXPATH_LEN];
+    /** MQTT topics for Thread Network status reporting */
+    struct
+    {
+        /** AWLAN_Node::mqtt_topics::ThreadNetwork.Scan */
+        char scan[C_MAXPATH_LEN];
+    } topics;
+} g_mqtt;
 
 /** Callback invoked from OSP when the dataset changes */
 static osp_otbr_on_dataset_change_cb_t on_dataset_change_cb;
@@ -92,40 +97,31 @@ static void update_state(struct schema_Thread_Radio_State *const state)
     }
 }
 
-
-static void copy_topic(char *const dst, size_t dst_len, const char *const topic_name, struct schema_AWLAN_Node *table)
+static void callback_AWLAN_Node(
+        ovsdb_update_monitor_t *mon,
+        struct schema_AWLAN_Node *old,
+        struct schema_AWLAN_Node *new)
 {
-    const char *const topic = (table != NULL) ? SCHEMA_KEY_VAL(table->mqtt_topics, topic_name) : "";
+    (void)old;
 
-    ASSERT(dst_len > 0, "Destination string too short");
-
-    if (strlen(topic) > 0)
+    if (mon->mon_type == OVSDB_UPDATE_ERROR)
     {
-        if (strncmp(dst, topic, dst_len) != 0)
-        {
-            strscpy(dst, topic, dst_len);
-            LOGI("%s reporting to '%s'", topic_name, dst);
-        }
+        return;
+    }
+
+    if (new != NULL)
+    {
+        STRSCPY_WARN(g_mqtt.node_id, SCHEMA_KEY_VAL(new->mqtt_headers, "nodeId"));
+        STRSCPY_WARN(g_mqtt.location_id, SCHEMA_KEY_VAL(new->mqtt_headers, "locationId"));
+        STRSCPY_WARN(g_mqtt.topics.scan, SCHEMA_KEY_VAL(new->mqtt_topics, "ThreadNetwork.Scan"));
     }
     else
     {
-        dst[0] = '\0';
-        if (topic_name != NULL)
-        {
-            LOGI("%s reporting disabled", topic_name);
-        }
+        g_mqtt.node_id[0] = '\0';
+        g_mqtt.location_id[0] = '\0';
+        g_mqtt.topics.scan[0] = '\0';
     }
 }
-
-void callback_AWLAN_Node(ovsdb_update_monitor_t *mon, struct schema_AWLAN_Node *old, struct schema_AWLAN_Node *new)
-{
-    (void)mon;
-    (void)old;
-
-    /* This also handles the case when the MQTT topics are removed and `new` is empty */
-    copy_topic(mqtt_topics.scan, sizeof(mqtt_topics.scan), "ThreadNetwork.Scan", new);
-}
-
 
 /** Get IP interface by UUID */
 static bool get_ip_if(const ovs_uuid_t *const ip_if_uuid, struct schema_IP_Interface *const ip_interface)
@@ -374,6 +370,12 @@ static void callback_Thread_Radio_Config(ovsdb_update_monitor_t *mon,
         schema_Thread_Radio_Config_mark_changed(config, config);
         state._partial_update = false;
     }
+    else if (mon->mon_type == OVSDB_UPDATE_DEL)
+    {
+        /* When/If this feature is disabled, the config table gets deleted */
+        config->enable = false;
+        config->enable_changed = true;
+    }
 
     apply_config(config, &state);
     update_state(&state);
@@ -449,6 +451,8 @@ bool iotm_thread_otbr_init(struct ev_loop *loop)
         return false;
     }
 
+    MEMZERO(g_mqtt);
+
     /* Initialize OVSDB tables */
     OVSDB_TABLE_INIT_NO_KEY(IP_Interface);
     OVSDB_TABLE_INIT_NO_KEY(Thread_Radio_Config);
@@ -458,7 +462,9 @@ bool iotm_thread_otbr_init(struct ev_loop *loop)
 
     /* Initialize OVSDB monitor callbacks */
     OVSDB_TABLE_MONITOR(Thread_Radio_Config, false);
-    OVSDB_TABLE_MONITOR_F(AWLAN_Node, C_VPACK(SCHEMA_COLUMN(AWLAN_Node, mqtt_topics)));
+    OVSDB_TABLE_MONITOR_F(
+            AWLAN_Node,
+            C_VPACK(SCHEMA_COLUMN(AWLAN_Node, mqtt_headers), SCHEMA_COLUMN(AWLAN_Node, mqtt_topics)));
 
     return initialize_config_table();
 }
@@ -467,7 +473,7 @@ bool iotm_thread_otbr_init(struct ev_loop *loop)
 void iotm_thread_otbr_close(void)
 {
     osp_otbr_close();
-    copy_topic(mqtt_topics.scan, sizeof(mqtt_topics.scan), NULL, NULL);
+    MEMZERO(g_mqtt);
 }
 
 
@@ -576,7 +582,7 @@ static void on_network_topology_cb(enum osp_otbr_device_role_e role, struct osp_
     existing = ovsdb_sync_select_where2(SCHEMA_TABLE(Thread_Devices), NULL);
 
     /* 2. Update existing rows (and delete them from `existing`), insert new ones (with the link to parent table) */
-    for (size_t i_dev = 0; i_dev < devices->count; i_dev++)
+    for (size_t i_dev = 0; devices && (i_dev < devices->count); i_dev++)
     {
         /* This callback always contains full network topology, so update (_partial_update = true)
          * all columns of existing devices (if there are any), including the deletion of the ones
@@ -668,26 +674,19 @@ static void on_network_topology_cb(enum osp_otbr_device_role_e role, struct osp_
 
 /* *** Thread Network scan/discovery result reporting *** */
 
-static Otbr__ThreadNetwork *pb_set_thread_network(const struct osp_otbr_scan_result_s *const network)
+static Otbr__ThreadNetwork *pb_set_thread_network(struct osp_otbr_scan_result_s *const network)
 {
     Otbr__ThreadNetwork *pb;
 
     pb = MALLOC(sizeof(*pb));
-
     otbr__thread_network__init(pb);
 
     pb->ext_addr = network->ext_addr;
     pb->ext_pan_id = network->ext_pan_id;
     pb->pan_id = network->pan_id;
-    if (strlen(network->name) > 0)
-    {
-        pb->name = STRDUP(network->name);
-    }
-    if (network->steering_data.length > 0)
-    {
-        pb->steering_data.len = network->steering_data.length;
-        pb->steering_data.data = MEMNDUP(network->steering_data.data, network->steering_data.length);
-    }
+    pb->name = network->name;
+    pb->steering_data.len = network->steering_data.length;
+    pb->steering_data.data = network->steering_data.data;
     pb->channel = network->channel;
     pb->rssi = network->rssi;
     pb->lqi = network->lqi;
@@ -713,12 +712,24 @@ static Otbr__ThreadNetwork **pb_set_thread_networks(const struct osp_otbr_scan_r
     return pb_arr;
 }
 
+static Otbr__ObservationPoint *pb_set_observation_point(void)
+{
+    Otbr__ObservationPoint *pb;
+
+    pb = MALLOC(sizeof(*pb));
+    otbr__observation_point__init(pb);
+
+    pb->node_id = g_mqtt.node_id;
+    pb->location_id = g_mqtt.location_id;
+
+    return pb;
+}
+
 static Otbr__ThreadNetworkScan *pb_serialize_thread_network_scan(const struct osp_otbr_scan_results_s *const networks)
 {
     Otbr__ThreadNetworkScan *pb;
 
     pb = MALLOC(sizeof(*pb));
-
     otbr__thread_network_scan__init(pb);
 
     if (networks->count > 0)
@@ -727,6 +738,8 @@ static Otbr__ThreadNetworkScan *pb_serialize_thread_network_scan(const struct os
         pb->n_networks = networks->count;
     }
 
+    pb->observation_point = pb_set_observation_point();
+
     return pb;
 }
 
@@ -734,13 +747,10 @@ static void pb_free_thread_network_scan(Otbr__ThreadNetworkScan *const pb)
 {
     while (pb->n_networks > 0)
     {
-        Otbr__ThreadNetwork *const pbo = pb->networks[--pb->n_networks];
-
-        FREE(pbo->name);
-        FREE(pbo->steering_data.data);
-        FREE(pbo);
+        FREE(pb->networks[--pb->n_networks]);
     }
     FREE(pb->networks);
+    FREE(pb->observation_point);
     FREE(pb);
 }
 
@@ -751,7 +761,7 @@ static void on_network_scan_result_cb(struct osp_otbr_scan_results_s *const netw
     size_t buff_len;
     qm_response_t res;
 
-    if (strnlen(mqtt_topics.scan, sizeof(mqtt_topics.scan)) == 0)
+    if (strnlen(g_mqtt.topics.scan, sizeof(g_mqtt.topics.scan)) == 0)
     {
         LOGD("ThreadNetwork.Scan reporting disabled");
         return;
@@ -764,7 +774,7 @@ static void on_network_scan_result_cb(struct osp_otbr_scan_results_s *const netw
     pb_free_thread_network_scan(pb);
 
     /* Send the serialized data */
-    if (!qm_conn_send_direct(QM_REQ_COMPRESS_IF_CFG, mqtt_topics.scan, buff, (int)buff_len, &res))
+    if (!qm_conn_send_direct(QM_REQ_COMPRESS_IF_CFG, g_mqtt.topics.scan, buff, (int)buff_len, &res))
     {
         LOGE("ThreadNetworkScan publish failed (%d, %d)", res.response, res.error);
     }

@@ -189,3 +189,52 @@ void otbr_cli_get_network_diagnostic_tlvs_free(struct otbr_network_diagnostic_tl
     }
     ARRAY_FREE(tlvs->peers, tlvs->num_peers);
 }
+
+bool otbr_cli_get_leader_data(otLeaderData *const leader_data)
+{
+    otbr_cli_response_t rsp = {0};
+    bool success;
+
+    /* > leaderdata
+     * "Partition ID: %lu"
+     * "Weighting: %u"
+     * "Data Version: %u"
+     * "Stable Data Version: %u"
+     * "Leader Router ID: %u"
+     */
+    if (otbr_cli_get("leaderdata", &rsp, 5, -1))
+    {
+        success = strtonum(
+                          strstra(rsp.lines[0], "Partition ID: "),
+                          &leader_data->mPartitionId,
+                          sizeof(leader_data->mPartitionId),
+                          10)
+                  && strtonum(
+                          strstra(rsp.lines[1], "Weighting: "),
+                          &leader_data->mWeighting,
+                          sizeof(leader_data->mWeighting),
+                          10)
+                  && strtonum(
+                          strstra(rsp.lines[2], "Data Version: "),
+                          &leader_data->mDataVersion,
+                          sizeof(leader_data->mDataVersion),
+                          10)
+                  && strtonum(
+                          strstra(rsp.lines[3], "Stable Data Version: "),
+                          &leader_data->mStableDataVersion,
+                          sizeof(leader_data->mStableDataVersion),
+                          10)
+                  && strtonum(
+                          strstra(rsp.lines[4], "Leader Router ID: "),
+                          &leader_data->mLeaderRouterId,
+                          sizeof(leader_data->mLeaderRouterId),
+                          10);
+    }
+    else
+    {
+        success = false;
+    }
+    otbr_cli_response_free(&rsp);
+
+    return success;
+}

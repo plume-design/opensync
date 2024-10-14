@@ -918,8 +918,11 @@ fsm_set_session_ops(struct fsm_session *session)
     session->ops.state_cb = fsm_set_object_state;
     session->ops.latest_obj_cb = fsm_oms_get_highest_version;
     session->ops.last_active_obj_cb = fsm_oms_get_last_active_version;
+    session->ops.best_obj_cb = fsm_oms_get_best_version;
     session->ops.update_client = fsm_update_client;
     session->ops.get_network_id = fsm_session_get_network_id;
+    session->ops.monitor_object = fsm_register_object_to_monitor;
+    session->ops.unmonitor_object = fsm_unregister_object_to_monitor;
 }
 
 

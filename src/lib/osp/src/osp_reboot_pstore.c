@@ -302,6 +302,10 @@ static os_reg_list_t dmesg_sig_pattern[] =
     /* ATOM __show_regs */
     OS_REG_LIST_ENTRY(9, "EIP is at"),
 
+    /* ARMv8-A __show_regs */
+    OS_REG_LIST_ENTRY(10, "pc :"),
+    OS_REG_LIST_ENTRY(11, "lr :"),
+
     OS_REG_LIST_END(0)
 };
 

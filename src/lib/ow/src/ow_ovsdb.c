@@ -27,12 +27,15 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <ev.h>
 #include <const.h>
 #include <util.h>
+#include <os.h>
 #include <memutil.h>
 #include <iso3166.h>
 #include <osw_drv_dummy.h>
 #include <osw_state.h>
 #include <osw_ut.h>
 #include <osw_module.h>
+#include <osw_time.h>
+#include <osw_timer.h>
 #include "ow_conf.h"
 #include "ow_ovsdb_ms.h"
 #include "ow_ovsdb_wps.h"
@@ -49,6 +52,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define OW_OVSDB_RETRY_SECONDS 5.0
 #define OW_OVSDB_VIF_FLAG_SEEN 0x01
 #define OW_OVSDB_CM_NEEDS_PORT_STATE_BLIP 1
+#define OW_OVSDB_PHY_LAST_CHANNEL_EXPIRE_SEC 5
 
 /* FIXME: This will likely need legacy workarounds, eg. to not add
  * objects to State tables unless they are in Config table first,
@@ -82,6 +86,8 @@ struct ow_ovsdb_phy {
     struct schema_Wifi_Radio_Config config;
     struct schema_Wifi_Radio_State state_cur;
     struct schema_Wifi_Radio_State state_new;
+    struct osw_channel last_channel;
+    struct osw_timer last_channel_expiry;
     char *phy_name;
     ev_timer work;
 };
@@ -519,13 +525,96 @@ ow_ovsdb_phystate_get_channel_iter_cb(const struct osw_state_vif_info *info,
 }
 
 static void
-ow_ovsdb_phystate_fill_channel(struct schema_Wifi_Radio_State *schema,
+ow_ovsdb_phy_work_sched(struct ow_ovsdb_phy *phy)
+{
+    ev_timer_stop(EV_DEFAULT_ &phy->work);
+    ev_timer_set(&phy->work, 0, 5);
+    ev_timer_start(EV_DEFAULT_ &phy->work);
+}
+
+static void
+ow_ovsdb_phy_last_channel_expiry_cb(struct osw_timer *t)
+{
+    struct ow_ovsdb_phy *phy = container_of(t, struct ow_ovsdb_phy, last_channel_expiry);
+    LOGD("ow: ovsdb: phy: %s: last_channel: "OSW_CHANNEL_FMT": expired",
+          phy->phy_name,
+          OSW_CHANNEL_ARG(&phy->last_channel));
+    MEMZERO(phy->last_channel);
+    ow_ovsdb_phy_work_sched(phy);
+}
+
+static void
+ow_ovsdb_phy_last_channel_expire_sched(struct ow_ovsdb_phy *phy)
+{
+    if (osw_timer_is_armed(&phy->last_channel_expiry)) return;
+    const uint64_t at_nsec = osw_time_mono_clk()
+                           + OSW_TIME_SEC(OW_OVSDB_PHY_LAST_CHANNEL_EXPIRE_SEC);
+    osw_timer_arm_at_nsec(&phy->last_channel_expiry, at_nsec);
+    LOGD("ow: ovsdb: phy: %s: last_channel: "OSW_CHANNEL_FMT": scheduling expiry",
+          phy->phy_name,
+          OSW_CHANNEL_ARG(&phy->last_channel));
+}
+
+static void
+ow_ovsdb_phy_last_channel_set(struct ow_ovsdb_phy *phy,
+                              const struct osw_channel *c)
+{
+    if (osw_timer_is_armed(&phy->last_channel_expiry)) {
+        LOGD("ow: ovsdb: phy: %s: last_channel: "OSW_CHANNEL_FMT": disarming",
+              phy->phy_name,
+              OSW_CHANNEL_ARG(&phy->last_channel));
+        osw_timer_disarm(&phy->last_channel_expiry);
+    }
+    struct osw_channel zero;
+    MEMZERO(zero);
+    if (c == NULL) c = &zero;
+    if (memcmp(c, &phy->last_channel, sizeof(*c)) == 0) return;
+    LOGD("ow: ovsdb: phy: %s: last_channel: "OSW_CHANNEL_FMT" -> "OSW_CHANNEL_FMT,
+          phy->phy_name,
+          OSW_CHANNEL_ARG(&phy->last_channel),
+          OSW_CHANNEL_ARG(c));
+    phy->last_channel = *c;
+}
+
+static void
+ow_ovsdb_phy_last_channel_fix(struct ow_ovsdb_phy *phy,
+                              struct osw_channel *c)
+{
+    if (c->control_freq_mhz > 0) {
+        ow_ovsdb_phy_last_channel_set(phy, c);
+        return;
+    }
+
+    if (phy->last_channel.control_freq_mhz == 0) {
+        return;
+    }
+
+    /* This attempts at maintaining a non-empty channel
+     * in Wifi_Radio_State for some time hoping that the
+     * emptiness is a brief/transient state that'll
+     * converge on a new channel soon enough.
+     *
+     * This offloads the controller from needing to
+     * state track and debounce events, having the
+     * device do that instead.
+     */
+    *c = phy->last_channel;
+    LOGD("ow: ovsdb: phy: %s: last_channel: "OSW_CHANNEL_FMT": temporarily overriding",
+            phy->phy_name,
+            OSW_CHANNEL_ARG(c));
+    ow_ovsdb_phy_last_channel_expire_sched(phy);
+}
+
+static void
+ow_ovsdb_phystate_fill_channel(struct ow_ovsdb_phy *owo_phy,
+                               struct schema_Wifi_Radio_State *schema,
                                const struct osw_state_phy_info *phy)
 {
     struct osw_channel channel = {0};
     osw_state_vif_get_list(ow_ovsdb_phystate_get_channel_iter_cb,
                            phy->phy_name,
                            &channel);
+    ow_ovsdb_phy_last_channel_fix(owo_phy, &channel);
     if (channel.control_freq_mhz > 0) {
         int num = ow_ovsdb_freq_to_chan(channel.control_freq_mhz);
         if (num > 0) SCHEMA_SET_INT(schema->channel, num);
@@ -779,7 +868,8 @@ ow_ovsdb_phystate_fill_regulatory(struct schema_Wifi_Radio_State *schema,
 }
 
 static void
-ow_ovsdb_phystate_to_schema(struct schema_Wifi_Radio_State *schema,
+ow_ovsdb_phystate_to_schema(struct ow_ovsdb_phy *owo_phy,
+                            struct schema_Wifi_Radio_State *schema,
                             const struct schema_Wifi_Radio_Config *rconf,
                             const struct osw_state_phy_info *phy)
 {
@@ -835,7 +925,7 @@ ow_ovsdb_phystate_to_schema(struct schema_Wifi_Radio_State *schema,
     SCHEMA_SET_INT(schema->tx_chainmask, phy->drv_state->tx_chainmask);
     SCHEMA_SET_BOOL(schema->enabled, phy->drv_state->enabled);
     ow_ovsdb_phystate_fill_bcn_int(schema, phy);
-    ow_ovsdb_phystate_fill_channel(schema, phy);
+    ow_ovsdb_phystate_fill_channel(owo_phy, schema, phy);
     ow_ovsdb_phystate_fill_tx_power(schema, phy);
     ow_ovsdb_phystate_fill_hwmode(schema, freq_band, phy);
     ow_ovsdb_phystate_fill_allowed_channels(schema, phy);
@@ -1005,7 +1095,7 @@ ow_ovsdb_vifstate_fill_min_hw_mode(struct schema_Wifi_VIF_State *vstate,
             SCHEMA_SET_STR(vstate->min_hw_mode, str);
         }
     }
-    else {
+    else if (vconf != NULL) {
         SCHEMA_CPY_STR(vstate->min_hw_mode, vconf->min_hw_mode);
     }
 }
@@ -1164,6 +1254,7 @@ ow_ovsdb_phy_gc(struct ow_ovsdb_phy *phy)
     if (strlen(phy->state_cur.if_name) > 0) return;
     if (phy->info != NULL) return;
 
+    ow_ovsdb_phy_last_channel_set(phy, NULL);
     ds_tree_remove(tree, phy);
     FREE(phy->phy_name);
     FREE(phy);
@@ -1201,7 +1292,7 @@ ow_ovsdb_phy_fill_schema(struct ow_ovsdb_phy *phy)
     if (strlen(phy->config.if_name) > 0)
         rconf = &phy->config;
 
-    ow_ovsdb_phystate_to_schema(&phy->state_new, rconf, phy->info); // FIXME
+    ow_ovsdb_phystate_to_schema(phy, &phy->state_new, rconf, phy->info); // FIXME
     ow_ovsdb_phy_fill_schema_radar(phy);
     ow_ovsdb_phystate_fix_vif_states(phy);
 }
@@ -1264,14 +1355,6 @@ ow_ovsdb_phy_work_cb(EV_P_ ev_timer *arg, int events)
 }
 
 static void
-ow_ovsdb_phy_work_sched(struct ow_ovsdb_phy *phy)
-{
-    ev_timer_stop(EV_DEFAULT_ &phy->work);
-    ev_timer_set(&phy->work, 0, 5);
-    ev_timer_start(EV_DEFAULT_ &phy->work);
-}
-
-static void
 ow_ovsdb_phy_init(struct ow_ovsdb *root,
                   struct ow_ovsdb_phy *phy,
                   const char *phy_name)
@@ -1279,6 +1362,7 @@ ow_ovsdb_phy_init(struct ow_ovsdb *root,
     phy->root = root;
     phy->phy_name = STRDUP(phy_name);
     ev_timer_init(&phy->work, ow_ovsdb_phy_work_cb, 0, 0);
+    osw_timer_init(&phy->last_channel_expiry, ow_ovsdb_phy_last_channel_expiry_cb);
     ds_tree_insert(&root->phy_tree, phy, phy->phy_name);
 }
 
@@ -3365,6 +3449,16 @@ OSW_UT(ow_ovsdb_ut_rstate_channel)
             .u = { .ap = { .channel = { .control_freq_mhz = 2412, .width = OSW_CHANNEL_20MHZ} } },
         }}
     };
+    const struct osw_state_vif_info vif1_c6w20 = {
+        .phy = &phy,
+        .vif_name = "vif1",
+        .drv_state = (const struct osw_drv_vif_state []){{
+            .exists = true,
+            .status = OSW_VIF_ENABLED,
+            .vif_type = OSW_VIF_AP,
+            .u = { .ap = { .channel = { .control_freq_mhz = 2437, .center_freq0_mhz = 2437, .width = OSW_CHANNEL_20MHZ} } },
+        }}
+    };
     const struct osw_state_vif_info vif2_c1w20 = {
         .phy = &phy,
         .vif_name = "vif2",
@@ -3406,6 +3500,7 @@ OSW_UT(ow_ovsdb_ut_rstate_channel)
 
     osw_module_load_name("osw_drv");
     osw_drv_dummy_init(&dummy);
+    osw_ut_time_init();
 
     ow_ovsdb_ut_init();
     osw_drv_dummy_set_phy(&dummy, phy.phy_name, (void *)phy.drv_state);
@@ -3438,15 +3533,48 @@ OSW_UT(ow_ovsdb_ut_rstate_channel)
     ow_ovsdb_ut_run();
     assert(osw_state_vif_lookup(phy.phy_name, vif2_c1w40.vif_name) != NULL);
     ow_ovsdb_get_rstate(&rstate, phy.phy_name);
-    assert(rstate.channel_exists == false);
-    assert(rstate.ht_mode_exists == false);
+    ASSERT(rstate.channel_exists == true, "");
+    ASSERT(rstate.ht_mode_exists == true, "");
+    osw_ut_time_advance(OSW_TIME_SEC(3));
+    ow_ovsdb_ut_run();
+    ow_ovsdb_get_rstate(&rstate, phy.phy_name);
+    ASSERT(rstate.channel_exists == true, "");
+    ASSERT(rstate.ht_mode_exists == true, "");
+    osw_ut_time_advance(OSW_TIME_SEC(2 + 1));
+    ow_ovsdb_ut_run();
+    ow_ovsdb_get_rstate(&rstate, phy.phy_name);
+    ASSERT(rstate.channel_exists == false, "");
+    ASSERT(rstate.ht_mode_exists == false, "");
+
+    osw_drv_dummy_set_vif(&dummy, phy.phy_name, vif2_c1w20.vif_name, (void *)vif2_c1w20.drv_state);
+    ow_ovsdb_ut_run();
+    assert(osw_state_vif_lookup(phy.phy_name, vif2_c6w20.vif_name) != NULL);
+    ow_ovsdb_get_rstate(&rstate, phy.phy_name);
+    ASSERT(rstate.channel_exists == true, "");
+    ASSERT(rstate.ht_mode_exists == true, "");
+    ASSERT(rstate.channel == 1, "");
 
     osw_drv_dummy_set_vif(&dummy, phy.phy_name, vif2_c6w20.vif_name, (void *)vif2_c6w20.drv_state);
     ow_ovsdb_ut_run();
     assert(osw_state_vif_lookup(phy.phy_name, vif2_c6w20.vif_name) != NULL);
     ow_ovsdb_get_rstate(&rstate, phy.phy_name);
-    assert(rstate.channel_exists == false);
-    assert(rstate.ht_mode_exists == false);
+    ASSERT(rstate.channel_exists == true, "");
+    ASSERT(rstate.ht_mode_exists == true, "");
+    ASSERT(rstate.channel == 1, "");
+    osw_ut_time_advance(OSW_TIME_SEC(3));
+    ow_ovsdb_ut_run();
+    ow_ovsdb_get_rstate(&rstate, phy.phy_name);
+    ASSERT(rstate.channel_exists == true, "");
+    ASSERT(rstate.ht_mode_exists == true, "");
+    ASSERT(rstate.channel == 1, "");
+
+    osw_drv_dummy_set_vif(&dummy, phy.phy_name, vif1_c1w20.vif_name, (void *)vif1_c6w20.drv_state);
+    osw_ut_time_advance(OSW_TIME_SEC(0));
+    ow_ovsdb_ut_run();
+    ow_ovsdb_get_rstate(&rstate, phy.phy_name);
+    ASSERT(rstate.channel_exists == true, "");
+    ASSERT(rstate.ht_mode_exists == true, "");
+    ASSERT(rstate.channel == 6, "");
 }
 
 OSW_UT(ow_ovsdb_ut_freq_band)

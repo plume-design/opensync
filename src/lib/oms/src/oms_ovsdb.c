@@ -82,7 +82,6 @@ oms_add_config_entry(struct oms_config_entry *entry)
     /* other_config, to be processed */
 
     rc = ovsdb_table_upsert_where(&table_OMS_Config, where, &config, false);
-    json_decref(where);
 
     ret = rc ? 0 : -1;
 
@@ -115,7 +114,6 @@ oms_delete_config_entry(struct oms_config_entry *entry)
     json_array_append_new(where, cond);
 
     rc = ovsdb_table_delete_where(&table_OMS_Config, where);
-    json_decref(where);
 
     ret = rc ? 0 : -1;
 
@@ -239,7 +237,6 @@ oms_delete_state_entry(struct oms_state_entry *entry)
     json_array_append_new(where, cond);
 
     rc = ovsdb_table_delete_where(&table_Object_Store_State, where);
-    json_decref(where);
 
     ret = rc ? 0 : -1;
 
@@ -460,14 +457,10 @@ oms_ovsdb_add_state_entry(struct schema_Object_Store_State *state)
     /* Allocate and initialize the entry */
     entry = CALLOC(1, sizeof(*entry));
 
-    entry->object = strdup(state->name);
-    if (entry->object == NULL) goto err_free_entry;
-
-    entry->version = strdup(state->version);
-    if (entry->version == NULL) goto err_free_object;
-
-    entry->state = strdup(state->status);
-    if (entry->state == NULL) goto err_free_version;
+    entry->object = STRDUP(state->name);
+    entry->version = STRDUP(state->version);
+    entry->state = STRDUP(state->status);
+    entry->fw_integrated = state->fw_integrated;
 
     /* Store the entry */
     ds_tree_insert(tree, entry, entry);
@@ -477,18 +470,6 @@ oms_ovsdb_add_state_entry(struct schema_Object_Store_State *state)
 
     mgr->num_states++;
 
-    return;
-
-err_free_version:
-    FREE(entry->version);
-
-err_free_object:
-    FREE(entry->object);
-
-err_free_entry:
-    FREE(entry);
-
-    LOGE("%s: entry creation failed", __func__);
     return;
 }
 

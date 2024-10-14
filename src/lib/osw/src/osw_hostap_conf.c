@@ -711,31 +711,9 @@ osw_hostap_conf_osw_wpa_to_ieee80211n(const struct osw_drv_vif_config_ap *ap,
 static const char *
 osw_hostap_conf_osw_chan_to_ht40_capab(const struct osw_channel *c)
 {
-    /* Any >20MHz channels will have different control and
-     * center freqs..
-     */
-    if (c->center_freq0_mhz == c->control_freq_mhz) return "";
-
-    /* .. but using their relation alone isn't sufficient
-     * alone. It needs a bit more calculations to infer the
-     * HT40+/-.
-     */
-    const enum osw_band band = osw_channel_to_band(c);
-    const int pri_chan = osw_freq_to_chan(c->control_freq_mhz);
-    const int *chans = osw_channel_sidebands(band, pri_chan, 40, 11);
-
-    int center_chan = 0;
-    size_t n = 0;
-    while (*chans) {
-        center_chan += *chans;
-        n++;
-        chans++;
-    }
-    if (n == 0) return "";
-
-    center_chan /= n;
-    if (center_chan < pri_chan) return "[HT40-]";
-    if (center_chan > pri_chan) return "[HT40+]";
+    const int offset = osw_channel_ht40_offset(c);
+    if (offset == 1) return "[HT40+]";
+    if (offset == -1) return "[HT40-]";
     return "";
 }
 

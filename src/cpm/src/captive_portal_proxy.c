@@ -40,11 +40,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "captive_portal.h"
 
-#if !defined(CONFIG_OPENSYNC_LEGACY_FIREWALL)
-#include "schema.h"
-#include "ovsdb_table.h"
-#endif
-
 #define TINYPROXY_DEBOUNCE_TIMER      1.0
 
 static char cportal_proxy_conf_header[] =
@@ -288,64 +283,6 @@ cportal_proxy_write_other_config(struct cportal *self)
     return true;
 }
 
-#if defined(CONFIG_OPENSYNC_LEGACY_FIREWALL)
-static bool cportal_proxy_fw_rule(bool enable, const char *rule)
-{
-    int rc = execsh_log(
-            LOG_SEVERITY_DEBUG,
-            _S(iptables -w -t mangle "$1" PREROUTING -j TPROXY $2),
-            enable ? "-A" : "-D",
-            (char *)rule);
-
-    return rc == 0;
-}
-#else
-static bool cportal_proxy_fw_rule(bool enable, const char *rule)
-{
-    bool retval;
-
-    ovsdb_table_t table_Netfilter;
-
-    OVSDB_TABLE_INIT_NO_KEY(Netfilter);
-
-    if (enable)
-    {
-        struct schema_Netfilter netfilter;
-
-        memset(&netfilter, 0, sizeof(netfilter));
-
-        SCHEMA_SET_STR(netfilter.name, "cpm_tproxy");
-        SCHEMA_SET_INT(netfilter.enable, true);
-        SCHEMA_SET_STR(netfilter.table, "mangle");
-        SCHEMA_SET_INT(netfilter.priority, 100);
-        SCHEMA_SET_STR(netfilter.protocol, "ipv4");
-        SCHEMA_SET_STR(netfilter.chain, "PREROUTING");
-        SCHEMA_SET_STR(netfilter.target, "TPROXY");
-        SCHEMA_SET_STR(netfilter.rule, rule);
-
-        retval = ovsdb_table_upsert_simple(
-                &table_Netfilter,
-                SCHEMA_COLUMN(Netfilter, name),
-                netfilter.name,
-                &netfilter, true);
-        if (!retval)
-        {
-            LOG(DEBUG, "captive_portal: Error inserting rule into the Netfilter table: %s", rule);
-        }
-    }
-    else
-    {
-        retval = ovsdb_table_delete_simple(&table_Netfilter, SCHEMA_COLUMN(Netfilter, name), "cpm_tproxy");
-        if (!retval)
-        {
-            LOG(DEBUG, "captive_portal: Error deleting rule from the Netfilter table: %s", rule);
-        }
-    }
-
-    return retval;
-}
-#endif
-
 static bool
 cportal_proxy_setup_nw_cfg(struct cportal *self, bool enable)
 {
@@ -364,15 +301,6 @@ cportal_proxy_setup_nw_cfg(struct cportal *self, bool enable)
     listenport = cportal_proxy_get_other_config_val(self, "listenport");
     if (!listenport) listenport = "8888";
 
-    snprintf(cmd_buff, sizeof(cmd_buff), "-m mark --mark %s -p tcp --dport 80 --on-port %s --on-ip %s",
-             pkt_mark, listenport, listenip);
-    if (!cportal_proxy_fw_rule(enable, cmd_buff))
-    {
-        LOG(ERR, "captive_portal: Error adding firewall rule.");
-        return false;
-    }
-
-    memset(cmd_buff, 0, sizeof(cmd_buff));
     snprintf(cmd_buff, sizeof(cmd_buff),
              "ip rule %s fwmark %s lookup %s",
              enable ? "add" : "del",

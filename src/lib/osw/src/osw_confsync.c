@@ -41,6 +41,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <osw_module.h>
 
 #define OSW_CONFSYNC_RETRY_SECONDS_DEFAULT 30.0
+#define OSW_CONFSYNC_DEADLINE_SECONDS_DEFAULT 10.0
 
 /* Starting up interfaces in most cases is not
  * instantaneous. If a mutator happens to invalidate its
@@ -88,6 +89,7 @@ struct osw_confsync {
     struct osw_conf_observer conf_obs;
     osw_confsync_build_conf_fn_t *build_conf;
     ev_idle work;
+    ev_timer deadline;
     ev_timer retry;
     bool attached;
     bool settled;
@@ -1572,20 +1574,24 @@ osw_confsync_set_state(struct osw_confsync *cs, enum osw_confsync_state s)
             cs->settled = true;
             ev_timer_stop(EV_DEFAULT_ &cs->retry);
             ev_idle_stop(EV_DEFAULT_ &cs->work);
+            ev_timer_stop(EV_DEFAULT_ &cs->deadline);
             break;
         case OSW_CONFSYNC_REQUESTING:
             osw_confsync_defer_flush_expired(cs);
             ev_timer_stop(EV_DEFAULT_ &cs->retry);
+            ev_timer_start(EV_DEFAULT_ &cs->deadline);
             ev_idle_start(EV_DEFAULT_ &cs->work);
             break;
         case OSW_CONFSYNC_WAITING:
             if (cs->settled == true) LOGN("osw: confsync: unsettled");
             cs->settled = false;
             ev_idle_stop(EV_DEFAULT_ &cs->work);
+            ev_timer_stop(EV_DEFAULT_ &cs->deadline);
             ev_timer_start(EV_DEFAULT_ &cs->retry);
             break;
         case OSW_CONFSYNC_VERIFYING:
             ev_idle_start(EV_DEFAULT_ &cs->work);
+            ev_timer_start(EV_DEFAULT_ &cs->deadline);
             break;
     }
     osw_confsync_notify_changed(cs);
@@ -1663,6 +1669,14 @@ osw_confsync_retry_cb(EV_P_  ev_timer *arg, int events)
     LOGT("%s", __func__);
     struct osw_confsync *cs = container_of(arg, struct osw_confsync, retry);
     osw_confsync_set_state(cs, OSW_CONFSYNC_REQUESTING);
+}
+
+static void
+osw_confsync_deadline_cb(EV_P_  ev_timer *arg, int events)
+{
+    struct osw_confsync *cs = container_of(arg, struct osw_confsync, deadline);
+    LOGN("osw: confsync: work deadline reached, ignoring non-idle mainloop");
+    osw_confsync_work(cs);
 }
 
 static void
@@ -1799,6 +1813,7 @@ osw_confsync_init(struct osw_confsync *cs)
         .mutated_fn = osw_confsync_conf_mutated_cb,
     };
     const float retry = OSW_CONFSYNC_RETRY_SECONDS_DEFAULT;
+    const float deadline = OSW_CONFSYNC_DEADLINE_SECONDS_DEFAULT;;
 
     cs->state_obs = state_obs;
     cs->conf_obs = conf_obs;
@@ -1807,6 +1822,7 @@ osw_confsync_init(struct osw_confsync *cs)
     ds_tree_init(&cs->defers, ds_str_cmp, struct osw_confsync_defer, node);
     ev_idle_init(&cs->work, osw_confsync_work_cb);
     ev_timer_init(&cs->retry, osw_confsync_retry_cb, retry, retry);
+    ev_timer_init(&cs->deadline, osw_confsync_deadline_cb, deadline, deadline);
 }
 
 static void

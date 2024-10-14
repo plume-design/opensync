@@ -188,6 +188,10 @@ void callback_Manager(ovsdb_update_monitor_t *mon,
             // is_connected changed
             LOG(DEBUG, "Manager.is_connected = %s", str_bool(manager->is_connected));
         }
+        if (ovsdb_update_changed(mon, SCHEMA_COLUMN(Manager, target)))
+        {
+            STRSCPY(g_state.target, manager->target);
+        }
     }
 
     cm2_update_state(CM2_REASON_MANAGER);
@@ -2991,8 +2995,7 @@ bool cm2_ovsdb_set_Manager_target(char *target)
     struct schema_Manager manager;
     memset(&manager, 0, sizeof(manager));
     STRSCPY(manager.target, target);
-    manager.is_connected = false;
-    char *filter[] = { "+", SCHEMA_COLUMN(Manager, target), SCHEMA_COLUMN(Manager, is_connected), NULL };
+    char *filter[] = { "+", SCHEMA_COLUMN(Manager, target), NULL };
     int ret = ovsdb_table_update_where_f(&table_Manager, NULL, &manager, filter);
     return ret == 1;
 }

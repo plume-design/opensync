@@ -61,7 +61,7 @@ ow_steer_candidate_assessor_assess(struct ow_steer_candidate_assessor *assessor,
     ASSERT(assessor != NULL, "");
     ASSERT(candidate_list != NULL, "");
 
-    LOGI("ow: steer: candidate_assessor: name: %s sta_addr: "OSW_HWADDR_FMT" assess candidates",
+    LOGD("ow: steer: candidate_assessor: name: %s sta_addr: "OSW_HWADDR_FMT" assess candidates",
          assessor->name, OSW_HWADDR_ARG(&assessor->sta_addr));
 
     ASSERT(assessor->ops.assess_fn != NULL, "");

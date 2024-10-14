@@ -221,6 +221,10 @@ ow_steer_policy_snr_level_enter_backoff(struct ow_steer_policy_snr_level *policy
         policy->backoff_pow = 1;
     }
 
+    if (policy->no_alternatives) {
+        policy->backoff_pow = 1;
+    }
+
     ow_steer_policy_snr_level_arm_backoff(policy);
     if (osw_timer_is_armed(&policy->ageout)) {
         LOGT(LOG_PREFIX(policy, "disarming ageout"));

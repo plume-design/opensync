@@ -186,6 +186,12 @@ nf_queue_cb(const struct nlmsghdr *nlh, void *data)
     pkt_info->flow_mark = CT_MARK_INSPECT;
     pkt_info->queue_num = nfq->queue_num;
 
+    if (nfq->backoff_nfq)
+    {
+        LOGI("%s: NFQ buffer full on queue: %d, backing off processing packets on all queues", __func__, nfq->queue_num);
+        pkt_info->flow_mark = CT_MARK_ACCEPT;
+        return MNL_CB_OK;
+    }
     if (nfq->nfq_cb) nfq->nfq_cb(pkt_info, nfq->user_data);
 
     return MNL_CB_OK;
@@ -219,6 +225,7 @@ nf_queue_send_nlh_request(struct nlmsghdr *nlh, uint8_t cfg_type,
 {
     struct nf_queue_context *ctxt;
     uint32_t *queue_maxlen;
+    uint32_t *flags;
     int ret;
 
     ctxt = nf_queue_get_context();
@@ -235,18 +242,10 @@ nf_queue_send_nlh_request(struct nlmsghdr *nlh, uint8_t cfg_type,
         mnl_attr_put(nlh, NFQA_CFG_PARAMS,
                      sizeof(struct nfqnl_msg_config_params), cmd_opts);
 
-        /* Set flag NFQA_CFG_F_FAIL_OPEN for accepting packets by kernel when queue full*/
-        mnl_attr_put_u32(nlh, NFQA_CFG_FLAGS, htonl(NFQA_CFG_F_FAIL_OPEN));
-        mnl_attr_put_u32(nlh, NFQA_CFG_MASK, htonl(NFQA_CFG_F_FAIL_OPEN));
-
-        /* Avoid receiving fragmented packets to the QUEUE*/
-        mnl_attr_put_u32(nlh, NFQA_CFG_FLAGS, htonl(NFQA_CFG_F_GSO));
-        mnl_attr_put_u32(nlh, NFQA_CFG_MASK, htonl(NFQA_CFG_F_GSO));
-
-        /* Get/Set conntrack info through NFQUEUE.*/
-        mnl_attr_put_u32(nlh, NFQA_CFG_FLAGS, htonl(NFQA_CFG_F_CONNTRACK));
-        mnl_attr_put_u32(nlh, NFQA_CFG_MASK, htonl(NFQA_CFG_F_CONNTRACK));
-
+    case NFQA_CFG_FLAGS:
+        flags = (uint32_t *)cmd_opts;
+        mnl_attr_put_u32(nlh, NFQA_CFG_FLAGS, htonl(*flags));
+        mnl_attr_put_u32(nlh, NFQA_CFG_MASK, htonl(*flags));
         break;
 
     case NFQA_CFG_QUEUE_MAXLEN:
@@ -366,6 +365,7 @@ nf_queue_read_mnl_cbk(EV_P_ ev_io *ev, int revents)
     if (ret == -1)
     {
         LOGE("%s: mnl_socket_recvfrom failed: %s", __func__, strerror(errno));
+        nf_queue_backoff_update(true, UINT32_MAX);
         return;
     }
 
@@ -376,6 +376,7 @@ nf_queue_read_mnl_cbk(EV_P_ ev_io *ev, int revents)
     if (ret == -1)
     {
         LOGE("%s: mnl_cb_run failed [%u]", __func__, errno);
+        nf_queue_backoff_update(true, UINT32_MAX);
         return;
     }
 
@@ -397,6 +398,7 @@ nf_queue_open(struct nfq_settings *nfq_set)
     struct nlmsghdr *nlh;
     struct nfqnl_msg_config_cmd cmd;
     struct nfqnl_msg_config_params params;
+    uint32_t flags = 0;
     struct nfqueue_ctxt *nfq;
     int ret;
 
@@ -446,6 +448,13 @@ nf_queue_open(struct nfq_settings *nfq_set)
     params.copy_range = htonl(0xFFFF);
     params.copy_mode = NFQNL_COPY_PACKET;
     nf_queue_send_nlh_request(nlh, NFQA_CFG_PARAMS, &params, nfq);
+
+    /* Set flag NFQA_CFG_F_GSO to avoid receiving fragmented packets to the QUEUE */
+    /* Set flag NFQA_CFG_F_FAIL_OPEN for accepting packets by kernel when queue full */
+    /* Set flag NFQA_CFG_F_CONNTRACK to Get/Set conntrack info through NFQUEUE. */
+    flags = (NFQA_CFG_F_GSO | NFQA_CFG_F_FAIL_OPEN | NFQA_CFG_F_CONNTRACK);
+
+    nf_queue_send_nlh_request(nlh, NFQA_CFG_FLAGS, &flags, nfq);
 
     nfq->nfq_fd = mnl_socket_get_fd(nfq->nfq_mnl);
     ev_io_init(&nfq->nfq_io_mnl, nf_queue_read_mnl_cbk, nfq->nfq_fd, EV_READ);
@@ -510,6 +519,41 @@ nf_queue_set_nlsock_buffsz(uint32_t queue_num, uint32_t sock_buff_sz)
     return true;
 }
 
+/**
+ * @brief Retrieves the socket buffer size for the given Netfilter queue.
+ *
+ * @param queue_num Netfilter queue number
+ * @return true if success else failure
+ */
+bool nf_queue_get_nlsock_buffsz(uint32_t queue_num)
+{
+    struct nf_queue_context *ctxt;
+    struct nfqueue_ctxt nfq_lkp;
+    struct nfqueue_ctxt *nfq;
+    socklen_t buf_size_len;
+    int sock_buff_sz = 0;
+    int ret;
+
+    /* Get the netfilter queue context */
+    ctxt = nf_queue_get_context();
+    if (ctxt->initialized == false) return false;
+
+    MEMZERO(nfq_lkp);
+    nfq_lkp.queue_num = queue_num;
+    nfq = ds_tree_find(&ctxt->nfq_tree, &nfq_lkp);
+    if (nfq == NULL) return false;
+
+    /* Get the socket buffer size */
+    buf_size_len = sizeof(sock_buff_sz);
+    ret = getsockopt(nfq->nfq_fd, SOL_SOCKET, SO_RCVBUF, &sock_buff_sz, &buf_size_len);
+    if (ret == -1)
+    {
+        LOGE("%s: Failed to get buff size error[%s]", __func__, strerror(errno));
+        return false;
+    }
+    LOGI("%s: nfq socket buffer size for queue %u is %d bytes", __func__, queue_num, sock_buff_sz);
+    return true;
+}
 
 /**
  * @brief set max length of nfqueues.
@@ -723,4 +767,33 @@ nf_queue_set_dpi_mark(struct net_header_parser *net_hdr,
     if (type != ETH_P_IP && type != ETH_P_IPV6) return 0;
     res = nf_queue_set_ct_mark(net_hdr->packet_id, mark_policy, net_hdr->nfq_queue_num);
     return (res == true) ? 0 : -1;
+}
+
+bool
+nf_queue_backoff_update(bool enable, uint32_t queue_num)
+{
+    struct nf_queue_context  *ctxt;
+    struct nfqueue_ctxt nfq_lkp;
+    struct nfqueue_ctxt *nfq;
+
+    ctxt = nf_queue_get_context();
+
+    if (ctxt->initialized == false) return false;
+
+    if (queue_num == UINT32_MAX)
+    {
+        ds_tree_foreach(&ctxt->nfq_tree, nfq)
+        {
+            nfq->backoff_nfq = enable;
+        }
+    }
+    else
+    {
+        memset(&nfq_lkp, 0, sizeof(struct nfqueue_ctxt));
+        nfq_lkp.queue_num = queue_num;
+        nfq = ds_tree_find(&ctxt->nfq_tree, &nfq_lkp);
+        if (nfq == NULL) return false;
+        nfq->backoff_nfq = enable;
+    }
+    return true;
 }

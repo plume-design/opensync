@@ -2,6 +2,7 @@ menuconfig ACCEL_FLOW_EVICT_MESSAGE
     bool "Enables accel flow eviction messages"
     default y
 	depends on MANAGER_FSM
+    depends on !PLATFORM_IS_NATIVE
     help
         Enable custom packet called flush which is used to sent acceleration eviction notices to opensync nodes.
 

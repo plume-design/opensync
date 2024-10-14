@@ -68,9 +68,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "dpi_intf.h"
 #include "fsm_ipc.h"
 
-#ifdef CONFIG_ACCEL_FLOW_EVICT_MESSAGE
 #include "accel_evict_msg.h"
-#endif
+
 
 #define MAX_RESERVED_PORT_NUM 1023
 #define NON_RESERVED_PORT_START_NUM MAX_RESERVED_PORT_NUM + 1
@@ -1196,6 +1195,13 @@ fsm_dpi_on_acc_destruction(struct net_md_aggregator *aggr,
                            struct net_md_stats_accumulator *acc)
 {
     struct net_md_stats_accumulator *rev_acc;
+    int mark;
+
+    mark = fsm_dpi_get_mark(acc, acc->dpi_done);
+    if ((mark > 2) && (acc->mark_done != mark))
+    {
+        flush_accel_flows(acc);
+    }
 
     rev_acc = acc->rev_acc;
 
@@ -1245,12 +1251,14 @@ fsm_init_dpi_dispatcher(struct fsm_session *session)
     ds_tree_t *dpi_sessions;
     struct fsm_mgr *mgr;
     bool ret;
+    int rc;
 
     dpi_context = session->dpi;
     if (dpi_context == NULL) return false;
 
     dispatch = &dpi_context->dispatch;
-    dispatch->periodic_ts = time(NULL);
+    dispatch->periodic_report_ts = time(NULL);
+    dispatch->periodic_backoff_ts = time(NULL);
 
     dispatch->included_devices = fsm_get_other_config_val(session,
                                                           "included_devices");
@@ -1289,15 +1297,17 @@ fsm_init_dpi_dispatcher(struct fsm_session *session)
     if (!ret)
     {
         LOGE("%s: failed to activate aggregator", __func__);
-        goto error;
+        return false;
+    }
+
+    rc = accel_evict_init(CONFIG_TARGET_LAN_BRIDGE_NAME);
+    if (rc < 0)
+    {
+        LOGE("%s: failed to initialize flow cache context", __func__);
+        return false;
     }
 
     return true;
-
-error:
-    net_md_free_aggregator(dispatch->aggr);
-    FREE(dispatch->aggr);
-    return false;
 }
 
 
@@ -1365,6 +1375,8 @@ fsm_free_dpi_dispatcher(struct fsm_session *session)
     }
     net_md_free_aggregator(dispatch->aggr);
     FREE(dispatch->aggr);
+
+    accel_evict_exit();
 
     fsm_ipc_terminate_client();
 }
@@ -1843,20 +1855,19 @@ fsm_dpi_should_process(struct net_header_parser *net_parser,
 #define FLUSH_COOKIE 0xDA2C5588
 
 int
-flush_accel_flows(struct net_header_parser *net_parser, int mark)
+flush_accel_flows(struct net_md_stats_accumulator *acc)
 {
 #if defined(CONFIG_ACCEL_FLOW_EVICT_MESSAGE)
-    struct net_md_stats_accumulator *acc = NULL;
+    int cookie, ip_len, index, err, mark;
     struct net_md_flow_info info;
-    int cookie, ip_len, index, err;
-    bool rc;
     uint8_t fush_msg[48];
     os_macaddr_t client;
+    bool rc;
+
     MEMZERO(info);
     MEMZERO(fush_msg);
     MEMZERO(client);
 
-    acc = net_parser->acc;
     if (acc == NULL)
     {
         LOGD("%s: No stats_accumulator data", __func__);
@@ -1876,6 +1887,7 @@ flush_accel_flows(struct net_header_parser *net_parser, int mark)
         return -1;
     }
 
+    mark = fsm_dpi_get_mark(acc, acc->dpi_done);
     index = 0;
     cookie = FLUSH_COOKIE;
     ip_len = (info.ip_version == 4) ? 4 : 16;
@@ -1899,16 +1911,15 @@ flush_accel_flows(struct net_header_parser *net_parser, int mark)
         memcpy(&client, info.local_mac, sizeof(os_macaddr_t));
     }
 
-    err = accel_evict_msg(CONFIG_TARGET_LAN_BRIDGE_NAME, &client, fush_msg, index);
+    err = accel_evict_with_context(&client, fush_msg, index);
     if (err != 0)
     {
         LOGD("%s: flush failed: %d", __func__, err);
         return -1;
     }
-#endif //CONFIG_ACCEL_FLOW_EVICT_MESSAGE
 
     LOGD("%s: done setting new mark to CT: %d", __func__, mark);
-
+#endif /* CONFIG_ACCEL_FLOW_EVICT_MESSAGE */
     return 0;
 }
 
@@ -1976,12 +1987,6 @@ fsm_dispatch_pkt(struct fsm_session *session,
         {
             LOGD("%s: Setting ct_mark failed (1)", __func__);
             return;
-        }
-
-        if ((ct_mark_flow) && (mark > 2) && (acc->mark_done != mark))
-        {
-            flush_accel_flows(net_parser, mark);
-            acc->mark_done = mark;
         }
 
         return;
@@ -2070,7 +2075,7 @@ fsm_dispatch_pkt(struct fsm_session *session,
         {
             if ((mark > 2) && (acc->mark_done != mark))
             {
-                flush_accel_flows(net_parser, mark);
+                flush_accel_flows(acc);
                 acc->mark_done = mark;
             }
         }
@@ -2235,7 +2240,8 @@ fsm_dpi_alloc_flow_context(struct fsm_session *session,
 }
 
 
-#define FSM_DPI_INTERVAL 120
+#define FSM_DPI_STATS_REPORT_INTERVAL 120
+#define FSM_DPI_BACKOFF_INTERVAL 30
 /**
  * @brief routine periodically called
  *
@@ -2251,6 +2257,8 @@ fsm_dpi_periodic(struct fsm_session *session)
     struct flow_window **windows;
     struct flow_window *window;
     struct flow_report *report;
+    int long dpi_report_conf_intvl;
+    int long dpi_backoff_conf_intvl;
     time_t now;
     int rc;
 
@@ -2261,13 +2269,20 @@ fsm_dpi_periodic(struct fsm_session *session)
     aggr = dispatch->aggr;
     if (aggr == NULL) return;
 
+    dpi_report_conf_intvl = session->dpi_stats_report_interval;
+    if (!dpi_report_conf_intvl) dpi_report_conf_intvl = FSM_DPI_STATS_REPORT_INTERVAL;
+
+    dpi_backoff_conf_intvl = session->dpi_backoff_interval;
+    if (!dpi_backoff_conf_intvl) dpi_backoff_conf_intvl = FSM_DPI_BACKOFF_INTERVAL;
+
     report = aggr->report;
 
     /* Close the flows observation window */
     net_md_close_active_window(aggr);
 
     now = time(NULL);
-    if ((now - dispatch->periodic_ts) >= FSM_DPI_INTERVAL)
+
+    if ((now - dispatch->periodic_report_ts) >= dpi_report_conf_intvl)
     {
         windows = report->flow_windows;
         window = *windows;
@@ -2284,7 +2299,13 @@ fsm_dpi_periodic(struct fsm_session *session)
              ", io failures: %" PRIu64, __func__,
              g_fsm_io_success_cnt, g_fsm_io_failure_cnt);
 
-        dispatch->periodic_ts = now;
+        dispatch->periodic_report_ts = now;
+    }
+
+    if ((now - dispatch->periodic_backoff_ts) >= dpi_backoff_conf_intvl)
+    {
+        nf_queue_backoff_update(false, UINT32_MAX);
+        dispatch->periodic_backoff_ts = now;
     }
 
     rc = fsm_dpi_send_report(session);

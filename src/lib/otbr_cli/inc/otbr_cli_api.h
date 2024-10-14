@@ -109,4 +109,13 @@ bool otbr_cli_get_network_diagnostic(
  */
 void otbr_cli_get_network_diagnostic_tlvs_free(struct otbr_network_diagnostic_tlvs_s *tlvs) NONNULL(1);
 
+/**
+ * Retrieve the Thread Leader Data
+ *
+ * @param[in] leader_data Pointer on the structure to store the retrieved Leader Data.
+ *
+ * @return true on success. Failure is logged internally.
+ */
+bool otbr_cli_get_leader_data(otLeaderData *leader_data) NONNULL(1);
+
 #endif /* OTBR_CLI_API_H_INCLUDED */

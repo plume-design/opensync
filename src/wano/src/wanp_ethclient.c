@@ -236,7 +236,7 @@ void wanp_ethclient_fini(wano_plugin_handle_t *wh)
     wanp_ethclient_pcap_close(self);
     wano_ppline_event_stop(&self->ec_ppline_event);
 
-    FREE(wh);
+    FREE(self);
 }
 
 void wanp_ethclient_ppline_event_fn(wano_ppline_event_t *wpe, enum wano_ppline_status status)

@@ -887,8 +887,11 @@ static void cm2_connection_stability_check(void)
         g_state.stability_cnts++;
         if (g_state.connected &&
             (!g_state.link.ipv4.blocked && !g_state.link.ipv6.blocked) &&
-            !cm2_cpu_is_low_loadavg())
+            !cm2_cpu_is_low_loadavg()) {
+            if (uplinks)
+                FREE(uplinks);
             return;
+        }
 
         if (g_state.connected)
             opts &= ~INTERNET_CHECK;

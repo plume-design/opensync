@@ -73,5 +73,13 @@ int osn_bridge_get_hairpin(const char *port)
 
 bool osn_bridge_set_hairpin(char *port, bool enable)
 {
+    bool configured_hairpin;
+
+    configured_hairpin = osn_bridge_get_hairpin(port);
+    if (configured_hairpin == enable)
+    {
+        LOGD("%s(): port %s has already set hairpin mode %d", __func__, port, enable);
+        return true;
+    }
     return lnx_bridge_set_hairpin(port, enable);
 }

@@ -56,6 +56,7 @@ static void nm2_port_release(struct nm2_port *port)
 
     /* clean up */
     ds_tree_remove(&nm2_port_list, port);
+    uuidset_fini(&port->port_interfaces);
     nm2_port_free(port);
 }
 
@@ -99,15 +100,14 @@ static void nm2_port_if_update(uuidset_t *us, enum uuidset_event type, reflink_t
     switch (type)
     {
     case UUIDSET_NEW:
-        if (intf->if_valid == false) return;
+        add = true;
         break;
 
     case UUIDSET_MOD:
-        add = intf->if_valid;
+        add = true;
         break;
 
     case UUIDSET_DEL:
-        if (intf->if_valid == false) return;
         add = false;
         break;
 
@@ -296,28 +296,25 @@ static void nm2_port_update(struct nm2_port *port, struct schema_Port *schema)
  *  public api definitions
  *****************************************************************************/
 
-void nm2_nb_port_cfg_reapply(struct nm2_iface *pif)
+void nm2_nb_port_cfg_reapply(const char *port_name)
 {
     struct nm2_port *port;
     struct nm2_bridge *br;
-    bool add = true;
 
-    LOGT("%s(): reapplying port configuration for %s (type %d)", __func__, pif->if_name,
-         pif->if_type);
-
+    LOGT("%s(): reapplying port configuration for %s", __func__, port_name);
     /* check if the port is present in the port list */
-    port = nm2_port_get_by_name(pif->if_name);
+    port = nm2_port_get_by_name(port_name);
     if (port == NULL) return;
 
     br = port->port_bridge;
     if (br == NULL)
     {
-        LOGD("%s(): parent bridge address is NULL, not configuring ports", __func__);
+        nm2_inet_bridge_port_set(port, false);
         return;
     }
 
     /* port information is present in the Port config, so create the port */
-    nm2_add_port_to_br(br, port, add);
+    nm2_inet_bridge_port_set(port, true);
 }
 
 
@@ -333,23 +330,6 @@ static void nm2_inet_bridge_port_set(struct nm2_port *port, bool add)
     }
     inet_br_port_set(br->br_inet, port->port_inet, add);
     inet_commit(br->br_inet);
-}
-
-void nm2_port_config_hairpin(const char *port_name)
-{
-    struct nm2_port *port;
-    int configured;
-
-    port = nm2_port_get_by_name(port_name);
-    if (port == NULL) return;
-
-    configured = osn_bridge_get_hairpin(port_name);
-    if (configured == -1) return;
-
-    /* return if the device is already configured with the specified value */
-    if (port->port_hairpin == configured) return;
-
-    osn_bridge_set_hairpin((char *)port_name, port->port_hairpin);
 }
 
 void nm2_inet_bridge_config_reapply(struct nm2_iface *pif)

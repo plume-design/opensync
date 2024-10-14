@@ -133,6 +133,12 @@ hostap_ev_ctrl_attach_closed_cb(struct hostap_conn_ref *ref,
     struct hostap_ev_ctrl *ctrl = priv;
     if (ctrl->ops == NULL) return;
     if (ctrl->ops->closed_fn == NULL) return;
+
+    hostap_txq_req_free(ctrl->attach_req);
+    hostap_txq_req_free(ctrl->attach_probe_req);
+    ctrl->attach_req = NULL;
+    ctrl->attach_probe_req = NULL;
+
     if (ctrl->opened == false) return;
 
     void *ops_priv = ctrl->ops_priv;

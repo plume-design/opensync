@@ -42,6 +42,33 @@ struct element {
         (const uint8_t *) (_data) + (_datalen) - (const uint8_t *) _elem >= (int) sizeof(*_elem) + _elem->datalen; \
         _elem = (const struct element *) (_elem->data + _elem->datalen))
 
+struct osw_parsed_ie {
+    uint8_t datalen;
+    const void *data;
+};
+
+struct osw_parsed_ies {
+    struct osw_parsed_ie base[256];
+    struct osw_parsed_ie ext[256];
+};
+
+void
+osw_parsed_ies_from_buf(struct osw_parsed_ies *parsed,
+                        const void *buf,
+                        size_t buf_len);
+
+void
+osw_parsed_ies_get_channels(const struct osw_parsed_ies *parsed,
+                            struct osw_channel *non_ht_channel,
+                            struct osw_channel *ht_channel,
+                            struct osw_channel *vht_channel,
+                            struct osw_channel *he_channel,
+                            struct osw_channel *eht_channel);
+
+const struct osw_channel *
+osw_channel_select_wider(const struct osw_channel *a,
+                         const struct osw_channel *b);
+
 static inline const void *
 osw_ie_find(const void *ies,
             size_t ies_len,

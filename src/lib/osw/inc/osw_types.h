@@ -632,6 +632,13 @@ osw_channel_width_to_mhz(const enum osw_channel_width w);
 bool
 osw_channel_width_down(enum osw_channel_width *w);
 
+bool
+osw_channel_downgrade(struct osw_channel *c);
+
+bool
+osw_channel_downgrade_to(struct osw_channel *c,
+                         enum osw_channel_width w);
+
 enum osw_channel_width
 osw_channel_width_min(const enum osw_channel_width a,
                       const enum osw_channel_width b);
@@ -640,7 +647,7 @@ const int *
 osw_channel_sidebands(enum osw_band band, int chan, int width, int max_2g_chan);
 
 int
-osw_channel_ht40_offset(const struct osw_channel *c, int max_2g_chan);
+osw_channel_ht40_offset(const struct osw_channel *c);
 
 int
 osw_chan_to_freq(enum osw_band band, int chan);
@@ -796,5 +803,21 @@ osw_cipher_into_cstr(const enum osw_cipher cipher);
 
 const char *
 osw_band_into_cstr(const enum osw_band band);
+
+bool
+osw_channel_is_none(const struct osw_channel *c);
+
+const struct osw_channel *
+osw_channel_none(void);
+
+const struct osw_hwaddr *
+osw_hwaddr_zero(void);
+
+void
+osw_hwaddr_write(const struct osw_hwaddr *addr,
+                 void *buf,
+                 size_t buf_len);
+
+#define OSW_HWADDR_WRITE(addr, buf) osw_hwaddr_write(addr, buf, sizeof(buf))
 
 #endif /* OSW_TYPES_H_INCLUDED */

@@ -83,6 +83,12 @@ struct fsm_session_ops
     /* other_config parser. Provided to the plugin */
     char * (*get_config)(struct fsm_session *, char *key);
 
+    /* Register object monitoring. Provided to the plugin */
+    void (*monitor_object)(struct fsm_session *, char *object);
+
+    /* Unregister object monitoring. Provided to the plugin */
+    void (*unmonitor_object)(struct fsm_session *, char *object);
+
     /* object update notification callback. provided by the plugin */
     void (*object_cb)(struct fsm_session *, struct fsm_object *, int);
 
@@ -97,6 +103,9 @@ struct fsm_session_ops
 
     /* Get last active object version. Provided to the plugin */
     struct fsm_object * (*last_active_obj_cb)(struct fsm_session *, char *);
+
+    /* Get best object version. Provided to the plugin */
+    struct fsm_object * (*best_obj_cb)(struct fsm_session *, char *);
 
     /* Update policy client */
     void (*update_client)(struct fsm_session *, struct policy_table *);
@@ -340,7 +349,8 @@ struct fsm_dpi_dispatcher
     struct net_md_aggregator *aggr;
     struct fsm_session *session;
     ds_tree_t plugin_sessions;
-    time_t periodic_ts;
+    time_t periodic_report_ts;
+    time_t periodic_backoff_ts;
     char *included_devices;
     char *excluded_devices;
 };
@@ -417,6 +427,9 @@ struct fsm_session
     ds_tree_node_t fsm_node;         /* Seesion manager node handle */
     char bridge[64];                 /* underlying bridge name */
     char tx_intf[64];                /* plugin's TX interface */
+    long dpi_stats_report_interval;  /* dpi stats reporting interval */
+    long dpi_backoff_interval;       /* dpi backoff interval */
+    char *dpi_stats_report_topic;    /* mqtt topic for reporting dpi stats */
     union fsm_dpi_context *dpi;      /* fsm dpi context */
     int (*set_dpi_mark)(struct net_header_parser *net_hdr,
                         struct dpi_mark_policy *mark_policy);
@@ -452,6 +465,7 @@ struct fsm_mgr
     bool (*init_plugin)(struct fsm_session *); /* DSO plugin init */
     int (*get_br)(char *if_name, char *bridge, size_t len); /* get lan bridge */
     bool (*update_session_tap)(struct fsm_session *); /* session tap update */
+    ds_tree_t objects_to_monitor;
     uint32_t osbus_flags;
 };
 

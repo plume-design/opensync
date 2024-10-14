@@ -365,6 +365,7 @@ free_flow_key_tags(struct flow_key *key)
         FREE(key->tags[i]);
     }
     FREE(key->tags);
+    key->num_tags = 0;
 }
 
 static void

@@ -26,7 +26,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <ev.h>
 
+#include "os.h"
 #include "oms.h"
+#include "oms_ps.h"
 #include "ovsdb_utils.h"
 #include "log.h"
 #include "memutil.h"
@@ -185,7 +187,6 @@ oms_delete_state_entries(void)
  * @return the object with the highest version
  *
  * If @param version_cap is provided, the return shall be lesser than it or NULL
- * The caller is responsible for freeing the returned object
  */
 struct oms_config_entry *
 oms_get_highest_version(char *object, char *version_cap, oms_cmp_cb cmp_cb)
@@ -238,6 +239,109 @@ oms_get_highest_version(char *object, char *version_cap, oms_cmp_cb cmp_cb)
     }
 
     return latest;
+}
+
+
+/**
+ * @brief return the FW integrated of an object
+ *
+ * @param object the object name
+ * @return the FW integrated object
+ */
+struct oms_config_entry *
+oms_get_fw_integrated_version(char *object)
+{
+    struct oms_state_entry *state_entry;
+    struct oms_config_entry oms_lookup;
+    struct oms_config_entry *oms_entry;
+    struct oms_mgr *mgr;
+    ds_tree_t *tree;
+    int cmp;
+
+    if (object == NULL) return NULL;
+
+    mgr = oms_get_mgr();
+    tree = &mgr->state;
+    state_entry = ds_tree_head(tree);
+    while (state_entry != NULL)
+    {
+        /* Ignore object mismatch */
+        cmp = strcmp(object, state_entry->object);
+        if (cmp != 0)
+        {
+            state_entry = ds_tree_next(tree, state_entry);
+            continue;
+        }
+
+        /* Check if the object is FW integrated */
+        if (state_entry->fw_integrated) break;
+
+        state_entry = ds_tree_next(tree, state_entry);
+    }
+
+    if (state_entry == NULL) return NULL;
+    if (!strcmp(state_entry->state, "load-failed")) return NULL;
+
+    MEMZERO(oms_lookup);
+    oms_lookup.object = object;
+    oms_lookup.version = state_entry->version;
+    tree = &mgr->config;
+    oms_entry = ds_tree_find(tree, &oms_lookup);
+
+    return oms_entry;
+}
+
+
+/**
+ * @brief return the best match object
+ *
+ * @param object the object name
+ * @return the object found to match best
+ *
+ * Try loading the latest downloaded object first
+ */
+struct oms_config_entry *
+oms_get_best_object(char *name)
+{
+    struct oms_config_entry *fw_config_integrated_entry;
+    struct oms_state_entry state_lookup_entry;
+    struct oms_state_entry *state_entry;
+    struct oms_config_entry *oms_entry;
+    struct oms_mgr *mgr;
+    ds_tree_t *tree;
+
+    mgr = oms_get_mgr();
+    state_entry = NULL;
+    fw_config_integrated_entry = NULL;
+
+    /* Get FW integrated version */
+    fw_config_integrated_entry = oms_get_fw_integrated_version(name);
+
+    oms_entry = oms_ps_get_last_downloaded_version(name);
+    if (oms_entry != NULL)
+    {
+        tree = &mgr->state;
+        MEMZERO(state_lookup_entry);
+        state_lookup_entry.object = name;
+        state_lookup_entry.version = oms_entry->version;
+        state_entry = ds_tree_find(tree, &state_lookup_entry);
+
+        /* on failures, fall back to FW integrated version */
+        if (state_entry == NULL)
+        {
+            return fw_config_integrated_entry;
+        }
+        if (!strcmp(state_entry->state, "load-failed"))
+        {
+            return fw_config_integrated_entry;
+        }
+        return oms_entry;
+    }
+
+    oms_entry = oms_ps_get_last_active_version(name);
+    if (oms_entry != NULL) return oms_entry;
+
+    return fw_config_integrated_entry;
 }
 
 

@@ -1115,7 +1115,7 @@ exit:
 /* Store config to persistent storage. */
 static bool gw_offline_cfg_ps_store(const struct gw_offline_cfg *cfg)
 {
-    bool rv;
+    bool rv = false;
 
     if (!json_equal(cfg->vif_config, cfg_cache.vif_config))
     {
@@ -1269,6 +1269,7 @@ static bool gw_offline_cfg_ps_store(const struct gw_offline_cfg *cfg)
         cfg_cache.interface_fronthauls = json_incref(cfg->interface_fronthauls);
     } else LOG(DEBUG, "offline_cfg: interface_fronthauls: cached==stored. Skipped storing.");
 
+    rv = true;
 exit:
     return rv;
 }

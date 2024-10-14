@@ -635,6 +635,10 @@ ow_stats_conf_sub_report_bss_scan(struct ow_stats_conf_entry *e,
     const struct osw_tlv_hdr *width = tb[OSW_STATS_BSS_SCAN_WIDTH_MHZ];
     const struct osw_tlv_hdr *ies = tb[OSW_STATS_BSS_SCAN_IES];
     const struct osw_tlv_hdr *snr = tb[OSW_STATS_BSS_SCAN_SNR_DB];
+    const struct osw_tlv_hdr *center0 = tb[OSW_STATS_BSS_SCAN_CENTER_FREQ0_MHZ];
+    const struct osw_tlv_hdr *center1 = tb[OSW_STATS_BSS_SCAN_CENTER_FREQ1_MHZ];
+
+    (void)center1;
 
     if (phy == NULL) return;
     if (mac == NULL) return;
@@ -669,6 +673,12 @@ ow_stats_conf_sub_report_bss_scan(struct ow_stats_conf_entry *e,
         r->entry.chanwidth = ow_stats_conf_width_to_dpp(mhz);
     }
 
+    if (center0 != NULL) {
+        const uint32_t mhz = osw_tlv_get_u32(center0);
+        const uint32_t chan = osw_freq_to_chan(mhz);
+        r->entry.c_freq0_chan = chan;
+    }
+
     if (ies != NULL) {
         /* FIXME:*/
     }
@@ -685,6 +695,7 @@ ow_stats_conf_sub_report_bss_scan(struct ow_stats_conf_entry *e,
          " chan=%"PRIu32
          " width=%d"
          " snr=%"PRId32
+         " center0=%"PRIu32
          " ssid=%s",
          ow_stats_conf_scan_type_to_str(e->params.scan_type),
          r->entry.bssid,
@@ -692,6 +703,7 @@ ow_stats_conf_sub_report_bss_scan(struct ow_stats_conf_entry *e,
          r->entry.chan,
          r->entry.chanwidth,
          r->entry.sig,
+         r->entry.c_freq0_chan,
          r->entry.ssid);
 
     /* FIXME: r->entry.tsf (unnecessary?) */

@@ -35,6 +35,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "inet.h"
 #include "inet_base.h"
+#include "inet_bridge.h"
 
 typedef struct inet_port inet_port_t;
 
@@ -51,6 +52,7 @@ struct inet_port
     bool in_port_hairpin;
     bool in_port_configured;
     bool in_add;
+    inet_bridge_t *in_bridge; /* Parent bridge */
     ds_tree_node_t in_port_tnode;
 };
 

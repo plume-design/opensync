@@ -29,9 +29,12 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "oms.h"
 
-#define OMS_STORAGE "oms-last-active"
+#define OMS_LAST_ACTIVE "oms-last-active"
+#define OMS_LAST_DOWNLOAD "oms-last-download"
 
 bool oms_ps_save_last_active_version(struct oms_state_entry *entry);
 struct oms_config_entry *oms_ps_get_last_active_version(char *object);
 
+bool oms_ps_save_last_downloaded_version(struct oms_state_entry *entry);
+struct oms_config_entry *oms_ps_get_last_downloaded_version(char *object);
 #endif /* OMS_PS_H_INCLUDED */

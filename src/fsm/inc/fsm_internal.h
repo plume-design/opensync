@@ -315,4 +315,8 @@ fsm_pcap_dispatcher_handler(void *context,
 void
 fsm_dpi_client_process_attributes(struct fsm_session *client_session,
                                   struct fsm_session *dpi_plugin);
+
+int
+flush_accel_flows(struct net_md_stats_accumulator *acc);
+
 #endif /* FSM_INTERNAL_H_INCLUDED */

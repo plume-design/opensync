@@ -217,9 +217,10 @@ osw_conf_order_mutators(struct osw_conf *m)
     i = 0;
     if (m->ordering != NULL) {
         char *tokens = STRDUP(m->ordering);
+        char *tokensp = tokens;
         char *token;
 
-        while ((token = strsep(&tokens, ", ")) != NULL) {
+        while ((token = strsep(&tokensp, ", ")) != NULL) {
             size_t j;
             for (j = 0; j < n; j++) {
                 if (unordered[j] == NULL) continue;
@@ -426,7 +427,11 @@ void
 osw_conf_set_mutator_ordering(const char *comma_separated)
 {
     osw_conf_invalidate_mutator_order(&g_osw_conf);
-    if (comma_separated != NULL) g_osw_conf.ordering = STRDUP(comma_separated);
+    FREE(g_osw_conf.ordering);
+    g_osw_conf.ordering = NULL;
+    if (comma_separated != NULL) {
+        g_osw_conf.ordering = STRDUP(comma_separated);
+    }
 }
 
 void

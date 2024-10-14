@@ -1611,22 +1611,6 @@ osw_drv_nl80211_vif_state_dump_scan_stats_resp_cb(struct nl_cmd *cmd,
     const int32_t rssi_dbm = mdbm / 100;
     const int32_t noise_dbm = osw_channel_nf_20mhz_fixup(0);
     const uint32_t snr_db = (rssi_dbm >= noise_dbm ? (rssi_dbm - noise_dbm) : 0);
-    size_t ssid_len = 0;
-    const void *ssid = osw_ie_find(nla_data(nla_ies),
-                                   nla_len(nla_ies),
-                                   0, /* SSID, FIXME */
-                                   &ssid_len);
-
-    struct osw_assoc_req_info ie_info;
-    MEMZERO(ie_info);
-    const bool ies_parsed = osw_parse_assoc_req_ies(nla_data(nla_ies),
-                                                    nla_len(nla_ies),
-                                                    &ie_info);
-    const enum osw_channel_width width = ies_parsed
-                                       ? osw_assoc_req_to_max_chwidth(&ie_info)
-                                       : OSW_CHANNEL_20MHZ;
-    const uint32_t width_mhz = osw_channel_width_to_mhz(width);
-
 
     struct osw_tlv t;
     MEMZERO(t);
@@ -1635,9 +1619,10 @@ osw_drv_nl80211_vif_state_dump_scan_stats_resp_cb(struct nl_cmd *cmd,
     osw_tlv_put_string(&t, OSW_STATS_BSS_SCAN_PHY_NAME, phy_name);
     osw_tlv_put_hwaddr(&t, OSW_STATS_BSS_SCAN_MAC_ADDRESS, bssid);
     osw_tlv_put_u32(&t, OSW_STATS_BSS_SCAN_FREQ_MHZ, freq_mhz);
-    osw_tlv_put_u32(&t, OSW_STATS_BSS_SCAN_WIDTH_MHZ, width_mhz);
     osw_tlv_put_u32(&t, OSW_STATS_BSS_SCAN_SNR_DB, snr_db);
-    osw_tlv_put_buf(&t, OSW_STATS_BSS_SCAN_SSID, ssid, ssid_len);
+    if (nla_ies != NULL) {
+        osw_tlv_put_buf(&t, OSW_STATS_BSS_SCAN_IES, nla_data(nla_ies), nla_len(nla_ies));
+    }
     osw_tlv_end_nested(&t, off);
 
     /* FIXME: This could be coalesced with other
@@ -1647,14 +1632,10 @@ osw_drv_nl80211_vif_state_dump_scan_stats_resp_cb(struct nl_cmd *cmd,
     osw_drv_report_stats(drv, &t);
     osw_tlv_fini(&t);
 
-    LOGT(LOG_PREFIX_PHY(phy_name, "stats: bss: "OSW_HWADDR_FMT" %uMHz @ %uMHz %udB ssid=%.*s (len=%zu)",
+    LOGT(LOG_PREFIX_PHY(phy_name, "stats: bss: "OSW_HWADDR_FMT" %uMHz %udB",
                         OSW_HWADDR_ARG(bssid),
                         freq_mhz,
-                        width_mhz,
-                        snr_db,
-                        (int)ssid_len,
-                        (const char *)ssid,
-                        ssid_len));
+                        snr_db));
 }
 
 static bool

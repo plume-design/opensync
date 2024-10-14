@@ -88,7 +88,6 @@ ow_steer_candidate_list_candidate_init(struct ow_steer_candidate *candidate,
     assert(candidate != NULL);
     assert(channel != NULL);
 
-    memset(candidate, 0, sizeof(*candidate));
     memcpy(&candidate->bssid, bssid, sizeof(candidate->bssid));
     memcpy(&candidate->channel, channel, sizeof(candidate->channel));
 }
@@ -219,6 +218,7 @@ ow_steer_candidate_list_bss_set(struct ow_steer_candidate_list *candidate_list,
     if (i == candidate_list->set_size) {
         candidate_list->set_size++;
         candidate_list->set = REALLOC(candidate_list->set, sizeof(struct ow_steer_candidate) * candidate_list->set_size);
+        memset(&candidate_list->set[i], 0, sizeof(candidate_list->set[i]));
     }
 
     ow_steer_candidate_list_candidate_init(&candidate_list->set[i], bssid, channel);
