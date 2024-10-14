@@ -1426,7 +1426,7 @@ dpi_plugin_handler(struct fsm_session *session,
 
     ethertype = 0;
     eth = net_header_get_eth(net_parser);
-    if ((net_parser->source == PKT_SOURCE_NFQ) || (net_parser->source == PKT_SOURCE_SOCKET))
+    if (net_parser->source == PKT_SOURCE_SOCKET)
     {
         ethertype = eth->ethertype;
     }

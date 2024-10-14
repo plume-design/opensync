@@ -1,7 +1,7 @@
 {
   "name": "Open_vSwitch",
-  "version": "7.11.370",
-  "cksum": "2274781640 324205",
+  "version": "7.11.373",
+  "cksum": "4015743893 324612",
   "tables": {
     "AWLAN_Node": {
       "columns": {
@@ -7418,6 +7418,22 @@
                     },
                     "min": 0,
                     "max": 255
+                }
+            }
+        },
+        "isRoot": true
+    },
+    "WE_Config": {
+        "columns": {
+            "config": {
+                "type": {
+                    "key": "string",
+                    "value": {
+                        "type": "string",
+                        "maxLength": 2048
+                    },
+                    "min": 0,
+                    "max": "unlimited"
                 }
             }
         },

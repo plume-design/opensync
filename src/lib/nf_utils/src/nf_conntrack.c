@@ -1543,6 +1543,7 @@ nf_ct_set_flow_mark(struct net_header_parser *net_pkt, uint32_t mark, uint16_t z
     }
     if (nlh == NULL) return -1;
     res = mnl_socket_sendto(nf_ct->mnl, nlh, nlh->nlmsg_len);
+    read_mnl_socket_cbk(NULL, NULL, 0);
     LOGD("%s: nlh->nlmsg_len = %d res = %d\n", __func__, nlh->nlmsg_len, res);
     return (res == (int)nlh->nlmsg_len) ? 0 : -1;
 }

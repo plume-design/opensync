@@ -1,0 +1,13 @@
+menuconfig WE_DPI_ENGINE
+    bool "WE DPI engine support"
+    default y
+    depends on MANAGER_FSM
+    help
+        Enable WE DPI engine support for FSM
+
+    config WE_AGENT_BINARY
+        bool "Install WE Agent binary"
+        default y
+
+        help
+            Install the WE Agent binary
