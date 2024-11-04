@@ -134,7 +134,7 @@ endef
 # $2 = script path-name (post-install)
 define rootfs_run_hook_script
 	echo "$(call color_install,hooks) rootfs $(call color_profile,$2) in $1"; \
-	$(ROOTFS_HOOK_ENV) $2 $1; \
+	$(ROOTFS_HOOK_ENV) $2 $1 || exit 1; \
 
 endef
 

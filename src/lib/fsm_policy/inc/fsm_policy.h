@@ -138,6 +138,7 @@ enum {
 enum fsm_supported_features {
     FSM_CNAME_FEATURE = (1 << 0),
     FSM_NOANSWER_FEATURE = (1 << 1),
+    FSM_PROXIMITY_FEATURE = (1 << 2),
 };
 
 struct dns_device
@@ -215,6 +216,7 @@ enum
     FSM_APP_REQ,
     FSM_IPV4_FLOW_REQ,
     FSM_IPV6_FLOW_REQ,
+    FSM_BULK_REQ,
 };
 
 
@@ -418,12 +420,12 @@ struct policy_table
 
 struct fsm_policy_client
 {
-    struct fsm_session *session;
+    void *session;
     char *name;
     struct policy_table *table;
-    void (*update_client)(struct fsm_session *, struct policy_table *);
+    void (*update_client)(void *, struct policy_table *);
     char *(*session_name)(struct fsm_policy_client *);
-    int (*flush_cache)(struct fsm_session *, struct fsm_policy *);
+    int (*flush_cache)(void *, struct fsm_policy *);
     ds_tree_node_t client_node;
 };
 
@@ -484,6 +486,7 @@ void fsm_policy_free_url(struct fqdn_pending_req* pending_req);
 int gk_reply_type(struct fsm_policy_req *policy_request);
 void process_gk_response_cb(struct fsm_policy_req *policy_request,
                        struct fsm_policy_reply *policy_reply);
+void fsm_policy_set_supported_feature(struct fsm_policy_req *policy_request, int feature);
 
 /**
  * @brief helper api to extract redirect ip from policy_reply redirects array.

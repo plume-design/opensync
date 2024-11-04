@@ -141,7 +141,7 @@ expand()
     [ -z "$KWORKDIR" ] && KWORKDIR=$(dirname $OUT)
     local tmpexp=$(get_tmp $OUT .exp)
     expinc $IN "$tmpexp"
-    kconfig/diffconfig --unminimize --config "$tmpexp" --out "$OUT" kconfig/Kconfig
+    kconfig/diffconfig --unminimize --config "$tmpexp" --out "$OUT" kconfig/Kconfig || die "ERROR: kconfig/diffconfig failed"
     debug "wrote: $OUT"
     # dependencies
     echo $OUT: $ALL_INCF > $OUT.dep

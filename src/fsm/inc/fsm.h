@@ -108,7 +108,7 @@ struct fsm_session_ops
     struct fsm_object * (*best_obj_cb)(struct fsm_session *, char *);
 
     /* Update policy client */
-    void (*update_client)(struct fsm_session *, struct policy_table *);
+    void (*update_client)(void *, struct policy_table *);
 
     /* Get client device's network ID */
     char * (*get_network_id)(struct fsm_session *, os_macaddr_t *mac);

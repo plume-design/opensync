@@ -805,7 +805,7 @@ print_neigh_entry(struct neighbour_entry *entry)
 
     pmac = (entry->mac != NULL) ? entry->mac : &nullmac;
     source = neigh_table_get_source(entry->source);
-    LOGD("ip %s, mac "PRI_os_macaddr_lower_t
+    LOGT("ip %s, mac "PRI_os_macaddr_lower_t
          " if_name %s source %s af_family %d timestamp: %s",
          ipstr, FMT_os_macaddr_pt(pmac),
          entry->ifname ? entry->ifname : "empty",

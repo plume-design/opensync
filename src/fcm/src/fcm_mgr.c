@@ -46,6 +46,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "fcm.h"         /* our api */
 #include "fcm_priv.h"
 #include "fcm_mgr.h"
+#include "fcm_gatekeeper.h"
 #include "fcm_filter.h"
 #include "memutil.h"
 #include "data_report_tags.h"
@@ -272,6 +273,7 @@ void init_collector_plugin(fcm_collector_t *collector)
     collector->plugin.get_mqtt_hdr_loc_id = fcm_get_mqtt_hdr_loc_id;
     collector->plugin.get_other_config = fcm_plugin_get_other_config;
     collector->plugin.name = collector->collect_conf.name;
+    collector->plugin.fcm_gk_request = fcm_gk_lookup;
 
     session = CALLOC(1, sizeof(*session));
     if (session == NULL) return;
@@ -318,6 +320,10 @@ void init_collector_plugin(fcm_collector_t *collector)
     fcm_reset_collect_interval(&collector->sample_timer,
                                collect_conf->sample_time);
     collector->initialized = true;
+
+    /* initialize curl */
+    LOGT("%s(): initializing curl", __func__);
+    gk_curl_easy_init(&mgr->ecurl);
 }
 
 void init_pending_collector_plugin(ds_tree_t *collect_tree)
@@ -674,6 +680,9 @@ bool fcm_init_mgr(struct ev_loop *loop)
 
     /* Set the initial max memory threshold */
     fcm_set_max_mem();
+
+    LOGT("%s(): initializing curl hanlder", __func__);
+    gk_curl_easy_init(&mgr->ecurl);
 
     /* Set the default timer for neigh_table entries*/
     mgr->neigh_cache_ttl = FCM_NEIGH_SYS_ENTRY_TTL;

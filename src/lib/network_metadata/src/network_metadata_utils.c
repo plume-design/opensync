@@ -1596,6 +1596,9 @@ pbkey2net_md_key(struct net_md_aggregator *aggr, Traffic__FlowKey *pb_key)
     key->dport = htons((uint16_t)(pb_key->tptdstport));
 
     pbkeydir2net_md_key_dir(pb_key, key);
+
+    key->flowmarker = pb_key->flowmarker;
+
     return key;
 
 err_free_dst_ip:
@@ -2010,8 +2013,10 @@ net_md_update_flow_key(struct net_md_aggregator *aggr,
     acc->key->direction = acc->direction;
     fkey->direction = acc->direction;
 
+    fkey->flowmarker = key->flowmarker;
+    if (aggr->process) aggr->process(acc);
+
     LOGD("%s: acc updated", __func__);
-    net_md_log_acc(acc, __func__);
 
 free_flow_key:
     /* Free the lookup key */

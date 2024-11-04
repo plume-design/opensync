@@ -309,6 +309,43 @@ void test_collect_report_filter_client(void)
     delete_collect_config(&test_collect[1]);
 }
 
+void test_fcm_set_gk_url_null_gk_url(void)
+{
+    struct schema_Flow_Service_Manager_Config conf = {.handler = "gatekeeper"};
+    fcm_mgr_t *mgr;
+
+    mgr = fcm_get_mgr();
+    fcm_set_gk_url(&conf);
+    TEST_ASSERT_EQUAL_STRING("", mgr->gk_conf.gk_url);
+}
+
+void test_fcm_set_gk_url_non_gatekeeper_handler(void)
+{
+    struct schema_Flow_Service_Manager_Config conf = {.handler = "not_gatekeeper"};
+    fcm_mgr_t *mgr;
+
+    mgr = fcm_get_mgr();
+    fcm_set_gk_url(&conf);
+    TEST_ASSERT_EQUAL_STRING("", mgr->gk_conf.gk_url);
+}
+
+void test_fcm_set_gk_url_success(void)
+{
+    struct schema_Flow_Service_Manager_Config conf = {
+        .handler = "gatekeeper",
+        .other_config_keys = {"mqtt_v", "gk_url", "policy_table"},
+        .other_config = {"dev-test/IP/Flows/ut/0/0", "http://plume.com/gatekeeper", "test_policy"},
+        .other_config_len = 3,
+    };
+    fcm_mgr_t *mgr;
+
+    const char *expected_url = "http://plume.com/gatekeeper";
+    mgr = fcm_get_mgr();
+
+    fcm_set_gk_url(&conf);
+    TEST_ASSERT_EQUAL_STRING(expected_url, mgr->gk_conf.gk_url);
+}
+
 int main(int argc, char *argv[])
 {
     (void)argc;
@@ -331,6 +368,9 @@ int main(int argc, char *argv[])
     RUN_TEST(test_null_collect_filter_client);
     RUN_TEST(test_null_report_filter_client);
     RUN_TEST(test_collect_report_filter_client);
+    RUN_TEST(test_fcm_set_gk_url_non_gatekeeper_handler);
+    RUN_TEST(test_fcm_set_gk_url_null_gk_url);
+    RUN_TEST(test_fcm_set_gk_url_success);
 
     return ut_fini();
 }

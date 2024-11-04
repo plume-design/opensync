@@ -39,6 +39,7 @@ else
 endif
 
 UNIT_SRC := src/ct_stats.c
+UNIT_SRC += src/ct_stats_remark.c
 
 UNIT_CFLAGS := -I$(UNIT_PATH)/inc
 UNIT_CFLAGS += -Isrc/fcm/inc

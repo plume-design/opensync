@@ -169,7 +169,7 @@ fsm_nfq_tap_update(struct fsm_session *session)
     uint32_t nlbuf_sz0 = 10*(1024 * 1024); // 10M netlink packet buffer.
     uint32_t nlbuf_szx = 6*(1024 * 1024); // 6M netlink packet buffer remaining queues.
     uint32_t queue_len0 = 10240; // number of packets in queue.
-    uint32_t queue_lenx = 2048; // number of packets in queue for remaining queues.
+    uint32_t queue_lenx = CONFIG_FSM_NFQUEUE_LEN; // number of packets in queue for remaining queues.
     uint32_t queue_num = 0; // Default 0 queue for all traffic
     uint32_t num_of_queues = 1; // Default number of nfqueues
     uint32_t start_queue_num = 0;
@@ -177,6 +177,8 @@ fsm_nfq_tap_update(struct fsm_session *session)
     size_t index;
     int ret_val;
     bool ret;
+
+    LOGN("%s: setting nfqueue queue len to %u", __func__, queue_lenx);
 
     if ((session->tap_type & FSM_TAP_NFQ) == 0) return false;
 

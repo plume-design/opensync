@@ -65,6 +65,7 @@ struct odhcp6_client
 bool odhcp6_client_init(odhcp6_client_t *self, const char *ifname);
 bool odhcp6_client_fini(odhcp6_client_t *self);
 bool odhcp6_client_apply(odhcp6_client_t *self);
+bool odhcp6_client_renew(odhcp6_client_t *self);
 
 bool odhcp6_client_set(
         odhcp6_client_t *self,

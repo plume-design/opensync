@@ -52,6 +52,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <os_llc_snap.h>
 #include <hw_acc.h>
 #include <ff_lib.h>
+#include <glob.h>
 
 #define LOG_PREFIX(fmt, ...) "os_fdbuf: " fmt, ##__VA_ARGS__
 #define LOG_PREFIX_IFNAME(if_name, fmt, ...) LOG_PREFIX("%s: " fmt, if_name, ##__VA_ARGS__)
@@ -80,11 +81,44 @@ os_fdbuf_fill_eh(const char *if_name,
     return 0;
 }
 
+static char *
+strsep_nth(char *bridge_port_path, const int word_number, const char *separator) {
+    int i = 0;
+    while(i < word_number - 1) // Minus one because last word is processed after loop
+    {
+        strsep(&bridge_port_path, separator);
+        i++;
+    }
+    return strsep(&bridge_port_path, separator);
+}
+
+static void
+os_fdbuf_flush_bridge_ports()
+{
+    glob_t g;
+    const int bridge_port_name_word_number = 5; // Bridge port name word number in system path
+    int ret = glob("/sys/class/net/*/master", 0, NULL, &g);
+    if (ret != 0) {
+        LOGE("os_fdbuf: glob() failed with error code %d", ret);
+        return;
+    }
+
+    for (size_t i = 0; i < g.gl_pathc; i++) {
+        char *bridge_port_name = strsep_nth(g.gl_pathv[i], bridge_port_name_word_number, "/");
+        const char *result = strexa("ip", "link", "set", "dev", bridge_port_name, "type", "bridge_slave", "fdb_flush");
+        LOGD(LOG_PREFIX_FDB_LINUX(bridge_port_name, "%s", result == NULL ? "not flushed" : "flushed"));
+    }
+    globfree(&g);
+}
+
 static void
 os_fdbuf_flush_linux(const char *if_name)
 {
     const char *result = strexa("bridge", "fdb", "flush", "dev", if_name);
     LOGD(LOG_PREFIX_FDB_LINUX(if_name, "%s", result == NULL ? "not flushed" : "flushed"));
+    if (result == NULL) {
+        os_fdbuf_flush_bridge_ports();
+    }
 }
 
 static void

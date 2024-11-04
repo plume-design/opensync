@@ -139,6 +139,8 @@ dpi_sni_create_request(struct fsm_request_args *request_args, char *attr_value)
         return NULL;
     }
 
+    fsm_policy_set_supported_feature(policy_request, FSM_PROXIMITY_FEATURE);
+
     ret = dpi_sni_init_specific_request(policy_request, request_args, attr_value);
     if (ret == -1)
     {

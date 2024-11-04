@@ -36,6 +36,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "gatekeeper_hero_stats.h"
 #include "gatekeeper_data.h"
 #include "gatekeeper_msg.h"
+#include "gatekeeper_ecurl.h"
 #include "ovsdb_sync.h"
 #include "ovsdb_table.h"
 #include "ovsdb_update.h"
@@ -1082,9 +1083,9 @@ gatekeeper_get_verdict(struct fsm_policy_req *req,
 
         clock_gettime(CLOCK_REALTIME, &start);
         policy_reply->reply_type = FSM_INLINE_REPLY;
-        fsm_fn_trace(gk_send_ecurl_request, FSM_FN_ENTER);
-        gk_response = gk_send_ecurl_request(session, fsm_gk_session, gk_verdict, policy_reply);
-        fsm_fn_trace(gk_send_ecurl_request, FSM_FN_EXIT);
+        fsm_fn_trace(gk_gatekeeper_lookup, FSM_FN_ENTER);
+        gk_response = gk_gatekeeper_lookup(session, fsm_gk_session, gk_verdict, policy_reply);
+        fsm_fn_trace(gk_gatekeeper_lookup, FSM_FN_EXIT);
         if (gk_response != GK_LOOKUP_SUCCESS)
         {
             policy_reply->categorized = FSM_FQDN_CAT_FAILED;
@@ -1214,12 +1215,12 @@ gatekeeper_init_curl(struct fsm_session *session)
     if (fsm_gk_session->enable_multi_curl)
     {
         LOGI("%s(): initializing multi curl", __func__);
-        gk_multi_curl_init(fsm_gk_session, session->loop);
+        gk_multi_curl_init(&fsm_gk_session->mcurl, session->loop);
     }
     else
     {
         LOGT("%s(): initializing single curl..", __func__);
-        gk_curl_easy_init(fsm_gk_session, session->loop);
+        gk_curl_easy_init(&fsm_gk_session->ecurl);
     }
 
     return true;
@@ -1387,7 +1388,7 @@ gatekeeper_module_init(struct fsm_session *session)
     LOGT("%s: session %s is multi-curl %s", __func__, session->name,
          fsm_gk_session->enable_multi_curl ? "enabled" : "disabled");
 
-    FSM_FN_MAP(gk_send_ecurl_request);
+    FSM_FN_MAP(gk_gatekeeper_lookup);
     return 0;
 
 err:
@@ -1469,8 +1470,8 @@ gatekeeper_exit(struct fsm_session *session)
         FREE(fsm_gk_session->re_lan);
     }
 
-    gk_curl_easy_cleanup(fsm_gk_session);
-    gk_curl_multi_cleanup(fsm_gk_session);
+    gk_curl_easy_cleanup(&fsm_gk_session->ecurl);
+    gk_curl_multi_cleanup(&fsm_gk_session->mcurl);
     mgr->initialized = false;
     gatekeeper_unmonitor_ssl_table();
 
@@ -1499,7 +1500,7 @@ gk_curl_easy_timeout(struct fsm_gk_session *fsm_gk_session, time_t ctime)
     if (time_diff < GK_CURL_TIMEOUT) return;
 
     LOGD("%s(): closing curl connection.", __func__);
-    gk_curl_easy_cleanup(fsm_gk_session);
+    gk_curl_easy_cleanup(&fsm_gk_session->ecurl);
 }
 
 void
@@ -1518,7 +1519,7 @@ gk_multi_curl_timeout(struct fsm_gk_session *fsm_gk_session, time_t ctime)
 
     LOGD("%s(): closing multi curl connection due to inactive timeout", __func__);
 
-    gk_curl_multi_cleanup(fsm_gk_session);
+    gk_curl_multi_cleanup(&fsm_gk_session->mcurl);
 }
 
 /**

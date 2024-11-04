@@ -42,6 +42,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #define OSW_CONFSYNC_RETRY_SECONDS_DEFAULT 30.0
 #define OSW_CONFSYNC_DEADLINE_SECONDS_DEFAULT 10.0
+#define OSW_CONFSYNC_PHY_TREE_TIMEOUT_SECONDS_DEFAULT 60.0
 
 /* Starting up interfaces in most cases is not
  * instantaneous. If a mutator happens to invalidate its
@@ -95,6 +96,8 @@ struct osw_confsync {
     bool settled;
     struct ds_tree defers;
     struct ds_tree phys;
+    struct ds_tree *last_phy_tree;
+    ev_timer last_phy_tree_timeout;
 };
 
 struct osw_confsync_defer {
@@ -1783,16 +1786,15 @@ osw_confsync_build_drv_conf_phy_cb(const struct osw_state_phy_info *phy,
 }
 
 static struct osw_drv_conf *
-osw_confsync_build_drv_conf(struct osw_confsync *cs, const bool debug)
+osw_confsync_build_drv_conf(struct osw_confsync *cs, const bool debug, struct ds_tree *phy_tree)
 {
     struct osw_confsync_arg arg = {
         .confsync = cs,
         .drv_conf = CALLOC(1, sizeof(*arg.drv_conf)),
-        .phy_tree = cs->build_conf(),
+        .phy_tree = phy_tree,
         .debug = debug,
     };
     osw_state_phy_get_list(osw_confsync_build_drv_conf_phy_cb, &arg);
-    osw_conf_free(arg.phy_tree);
     return arg.drv_conf;
 }
 
@@ -1818,6 +1820,11 @@ osw_confsync_set_state(struct osw_confsync *cs, enum osw_confsync_state s)
             ev_timer_stop(EV_DEFAULT_ &cs->retry);
             ev_idle_stop(EV_DEFAULT_ &cs->work);
             ev_timer_stop(EV_DEFAULT_ &cs->deadline);
+
+            /* clear cached last_phy tree */
+            ev_timer_stop(EV_DEFAULT_ &cs->last_phy_tree_timeout);
+            osw_conf_free(cs->last_phy_tree);
+            cs->last_phy_tree = NULL;
             break;
         case OSW_CONFSYNC_REQUESTING:
             osw_confsync_defer_flush_expired(cs);
@@ -1847,7 +1854,9 @@ osw_confsync_conf_is_synced(struct osw_confsync *cs)
         return false;
     }
     const bool debug = false;
-    struct osw_drv_conf *conf = osw_confsync_build_drv_conf(cs, debug);
+    struct ds_tree *phy_tree = cs->build_conf();
+    struct osw_drv_conf *conf = osw_confsync_build_drv_conf(cs, debug, phy_tree);
+    osw_conf_free(phy_tree);
     bool changed = false;
     size_t i;
     for (i = 0; i < conf->n_phy_list && changed == false; i++) {
@@ -1874,7 +1883,23 @@ osw_confsync_work(struct osw_confsync *cs)
         case OSW_CONFSYNC_REQUESTING:
             {
                 const bool debug = true;
-                struct osw_drv_conf *conf = osw_confsync_build_drv_conf(cs, debug);
+                struct ds_tree *phy_tree = cs->build_conf();
+                if (osw_conf_is_equal(cs->last_phy_tree, phy_tree) == true) {
+                    LOGI("osw: confsync: last config request is same as previous -> moving to state verifying");
+                    osw_conf_free(phy_tree);
+                    osw_confsync_set_state(cs, OSW_CONFSYNC_VERIFYING);
+                    break;
+                }
+                LOGT("osw: confsync: current conf differs than last requested config");
+                osw_conf_free(cs->last_phy_tree);
+                cs->last_phy_tree = phy_tree;
+
+                /* Restart timer */
+                ev_timer_stop(EV_DEFAULT_ &cs->last_phy_tree_timeout);
+                ev_timer_start(EV_DEFAULT_ &cs->last_phy_tree_timeout);
+
+                struct osw_drv_conf *conf = osw_confsync_build_drv_conf(cs, debug, phy_tree);
+
                 const bool requested = osw_mux_request_config(conf);
                 const enum osw_confsync_state s = (requested == true)
                                                 ? OSW_CONFSYNC_WAITING
@@ -2113,6 +2138,15 @@ osw_confsync_conf_mutated_cb(struct osw_conf_observer *o)
     osw_confsync_conf_changed(cs);
 }
 
+static void osw_confsync_phy_tree_timeout_cb(EV_P_  ev_timer *arg, int events)
+{
+    struct osw_confsync *cs = container_of(arg, struct osw_confsync, last_phy_tree_timeout);
+    LOGT("osw: confsync: last phy tree timer expired, flusing last phy_tree");
+    osw_conf_free(cs->last_phy_tree);
+    cs->last_phy_tree = NULL;
+    ev_timer_stop(EV_DEFAULT_ &cs->last_phy_tree_timeout);
+}
+
 static void
 osw_confsync_init(struct osw_confsync *cs)
 {
@@ -2134,7 +2168,8 @@ osw_confsync_init(struct osw_confsync *cs)
         .mutated_fn = osw_confsync_conf_mutated_cb,
     };
     const float retry = OSW_CONFSYNC_RETRY_SECONDS_DEFAULT;
-    const float deadline = OSW_CONFSYNC_DEADLINE_SECONDS_DEFAULT;;
+    const float deadline = OSW_CONFSYNC_DEADLINE_SECONDS_DEFAULT;
+    const float last_phy_tree_timeout = OSW_CONFSYNC_PHY_TREE_TIMEOUT_SECONDS_DEFAULT;
 
     cs->state_obs = state_obs;
     cs->conf_obs = conf_obs;
@@ -2145,6 +2180,7 @@ osw_confsync_init(struct osw_confsync *cs)
     ev_idle_init(&cs->work, osw_confsync_work_cb);
     ev_timer_init(&cs->retry, osw_confsync_retry_cb, retry, retry);
     ev_timer_init(&cs->deadline, osw_confsync_deadline_cb, deadline, deadline);
+    ev_timer_init(&cs->last_phy_tree_timeout, osw_confsync_phy_tree_timeout_cb, last_phy_tree_timeout, last_phy_tree_timeout);
 }
 
 static void

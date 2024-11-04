@@ -180,6 +180,11 @@ static int update_agent(struct fsm_session *fsm, struct we_dpi_session *dpi, str
         obj->state = FSM_OBJ_ACTIVE;
         mark_old_agent_obsolste(fsm, obj, version);
     }
+    else
+    {
+        LOGE("%s: Failed to run the update coroutine (%d)", __func__, res);
+        exit(EXIT_SUCCESS);
+    }
     free(version);
 err:
     fsm->ops.state_cb(fsm, obj);
@@ -258,7 +263,7 @@ static int load_agent(struct we_dpi_session *dpi, char *path)
     }
     res = we_call(&dpi->we_state, NULL); /* start main */
     res = handle_we_call_result(dpi->we_state, NULL, res);
-    if (res < 0)
+    if (res != 0)
     {
         LOGE("Failed to start agent");
         goto cleanup_we_state;
@@ -313,15 +318,27 @@ cleanup:
 
 static void we_dpi_agent_update(struct fsm_session *fsm, struct fsm_object *obj, int event_type)
 {
+    int mutex_status;
     struct we_dpi_session *dpi = (struct we_dpi_session *)(fsm->handler_ctxt);
+
     if (dpi == NULL) return;
 
     switch (event_type)
     {
         case OVSDB_UPDATE_NEW:
-            pthread_mutex_lock(&dpi->lock);
+            mutex_status = pthread_mutex_lock(&dpi->lock);
+            if (mutex_status != 0)
+            {
+                LOGE("%s: Failed to acquire the mutex (%d)", __func__, mutex_status);
+                exit(EXIT_SUCCESS);
+            }
             update_agent(fsm, dpi, obj);
-            pthread_mutex_unlock(&dpi->lock);
+            mutex_status = pthread_mutex_unlock(&dpi->lock);
+            if (mutex_status != 0)
+            {
+                LOGE("%s: Failed to release the mutex (%d)", __func__, mutex_status);
+                exit(EXIT_SUCCESS);
+            }
         default:
             break;
     }
@@ -329,12 +346,24 @@ static void we_dpi_agent_update(struct fsm_session *fsm, struct fsm_object *obj,
 
 static void unload_agent(struct we_dpi_session *dpi)
 {
+    int mutex_status;
+
     if (!dpi->we_state) return;
 
-    pthread_mutex_lock(&dpi->lock);
+    mutex_status = pthread_mutex_lock(&dpi->lock);
+    if (mutex_status != 0)
+    {
+        LOGE("%s: Failed to acquire the mutex (%d)", __func__, mutex_status);
+        exit(EXIT_SUCCESS);
+    }
     we_destroy(dpi->we_state);
     dpi->we_state = NULL;
-    pthread_mutex_unlock(&dpi->lock);
+    mutex_status = pthread_mutex_unlock(&dpi->lock);
+    if (mutex_status != 0)
+    {
+        LOGE("%s: Failed to release the mutex (%d)", __func__, mutex_status);
+        exit(EXIT_SUCCESS);
+    }
     pthread_join(dpi->thread, NULL);
     dpi->initialized = false;
 }
@@ -394,9 +423,10 @@ static int set_agent_config(
 
     /* Restart the coroutine */
     err = we_call(&coroutine, NULL);
-    if (err < 0)
+    if (err != 0)
     {
         LOGE("%s: Failed to push a new welang config (%d: %s)\n", __func__, err, strerror(err));
+        exit(EXIT_SUCCESS);
     }
     return err;
 }
@@ -404,6 +434,7 @@ static int set_agent_config(
 /* The schema we use for handling configuration */
 static void callback_WE_Config(ovsdb_update_monitor_t *mon, struct schema_WE_Config *old, struct schema_WE_Config *new)
 {
+    int mutex_status;
     struct we_dpi_plugin_cache *mgr = we_dpi_get_mgr();
     we_state_t agent;
 
@@ -412,7 +443,12 @@ static void callback_WE_Config(ovsdb_update_monitor_t *mon, struct schema_WE_Con
 
     agent = mgr->dpi_session.we_state;
 
-    pthread_mutex_lock(&mgr->dpi_session.lock);
+    mutex_status = pthread_mutex_lock(&mgr->dpi_session.lock);
+    if (mutex_status != 0)
+    {
+        LOGE("%s: Failed to acquire the mutex (%d)", __func__, mutex_status);
+        exit(EXIT_SUCCESS);
+    }
     switch (mon->mon_type)
     {
         case OVSDB_UPDATE_NEW:
@@ -427,7 +463,12 @@ static void callback_WE_Config(ovsdb_update_monitor_t *mon, struct schema_WE_Con
             LOGE("%s: unknown OVSDB event type %d", __func__, mon->mon_type);
             break;
     }
-    pthread_mutex_unlock(&mgr->dpi_session.lock);
+    mutex_status = pthread_mutex_unlock(&mgr->dpi_session.lock);
+    if (mutex_status != 0)
+    {
+        LOGE("%s: Failed to release the mutex (%d)", __func__, mutex_status);
+        exit(EXIT_SUCCESS);
+    }
 }
 
 int we_dpi_ovsdb_init()
@@ -522,6 +563,7 @@ void we_dpi_plugin_handler(struct fsm_session *fsm, struct net_header_parser *np
     void *buf;
     int reg;
     int res;
+    int mutex_status;
     struct we_dpi_session *dpi;
     struct we_dpi_agent_userdata user = {.fsm = fsm, .np = np};
 
@@ -535,15 +577,21 @@ void we_dpi_plugin_handler(struct fsm_session *fsm, struct net_header_parser *np
     we_hold(dpi->we_state, reg, &buf);
     /* Resume the WE coroutine -- Process the packet. */
     res = we_call(&dpi->we_state, &user);
-    if (res < 0)
+    if (res != 0)
     {
-        // TODO: How do we handle errors in the packet path?
+        LOGE("%s: Failed to process a packet (%d)", __func__, res);
+        exit(EXIT_SUCCESS);
     }
     /* Sync the packet if necessary */
     we_sync(buf);
     /* Pop the yielded value */
     we_pop(dpi->we_state);
-    pthread_mutex_unlock(&dpi->lock);
+    mutex_status = pthread_mutex_unlock(&dpi->lock);
+    if (mutex_status != 0)
+    {
+        LOGE("%s: Failed to release the mutex (%d)", __func__, mutex_status);
+        exit(EXIT_SUCCESS);
+    }
 }
 
 /**
@@ -557,6 +605,7 @@ void we_dpi_plugin_periodic(struct fsm_session *fsm)
 {
     struct we_dpi_session *dpi;
     int result;
+    int mutex_status;
     struct we_dpi_agent_userdata user = {.fsm = fsm, .np = NULL};
 
     dpi = (struct we_dpi_session *)fsm->handler_ctxt;
@@ -568,11 +617,17 @@ void we_dpi_plugin_periodic(struct fsm_session *fsm)
     result = coroutine_resume(dpi->we_state, WE_AGENT_CORO_PERIODIC, WE_AGENT_SLEN(WE_AGENT_CORO_PERIODIC), &user);
 
     result = handle_we_call_result(dpi->we_state, &user, result);
-    if (result < 0)
+    if (result != 0)
     {
         LOGE("Failed to run the agent periodic");
+        exit(EXIT_SUCCESS);
     }
-    pthread_mutex_unlock(&dpi->lock);
+    mutex_status = pthread_mutex_unlock(&dpi->lock);
+    if (mutex_status != 0)
+    {
+        LOGE("%s: Failed to release the mutex (%d)", __func__, mutex_status);
+        exit(EXIT_SUCCESS);
+    }
 }
 
 /**
@@ -630,7 +685,7 @@ static inline int handle_we_call_result(we_state_t s, struct we_dpi_agent_userda
     if (result == -EAGAIN)
     {
         int again = we_call(&s, user);
-        if (again < 0)
+        if (again != 0)
         {
             // Exit??
             return again;
@@ -658,23 +713,43 @@ static void *we_ct_task(void *args)
     int64_t duration;
     const int64_t interval_seconds = 15;
     struct we_dpi_agent_userdata user = {.fsm = dpi->fsm, .np = NULL};
+    int mutex_status;
 
     while (true)
     {
-        pthread_mutex_lock(&dpi->lock);
+        mutex_status = pthread_mutex_lock(&dpi->lock);
+        if (mutex_status != 0)
+        {
+            LOGE("%s: Failed to acquire the mutex (%d)", __func__, mutex_status);
+            exit(EXIT_SUCCESS);
+        }
         if (dpi->we_state == NULL)
         {
-            pthread_mutex_unlock(&dpi->lock);
+            mutex_status = pthread_mutex_unlock(&dpi->lock);
+            if (mutex_status != 0)
+            {
+                LOGE("%s: Failed to release the mutex (%d)", __func__, mutex_status);
+                exit(EXIT_SUCCESS);
+            }
             break;
         }
         clock_gettime(CLOCK_MONOTONIC, &start);
-        coroutine_resume(
+        int res = coroutine_resume(
                 dpi->we_state,
                 WE_AGENT_CORO_CONNTRACK_PERIODIC,
                 WE_AGENT_SLEN(WE_AGENT_CORO_CONNTRACK_PERIODIC),
                 &user);
+        if (res != 0) {
+            LOGE("%s: Failed to resume conntrack coroutine (%d)", __func__, res);
+            exit(EXIT_SUCCESS);
+        }
         clock_gettime(CLOCK_MONOTONIC, &end);
-        pthread_mutex_unlock(&dpi->lock);
+        mutex_status = pthread_mutex_unlock(&dpi->lock);
+        if (mutex_status != 0)
+        {
+            LOGE("%s: Failed to release the mutex (%d)", __func__, mutex_status);
+            exit(EXIT_SUCCESS);
+        }
         duration = end.tv_sec - start.tv_sec;
         if (duration >= 0 && duration <= interval_seconds)
         {

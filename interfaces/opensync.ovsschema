@@ -1,7 +1,7 @@
 {
   "name": "Open_vSwitch",
-  "version": "7.11.392",
-  "cksum": "3729071019 347309",
+  "version": "7.11.395",
+  "cksum": "4195976828 347636",
   "tables": {
     "AWLAN_Node": {
       "columns": {
@@ -733,6 +733,15 @@
             },
             "min": 0,
             "max": 1
+          }
+        },
+        "dhcp_renew": {
+          "type": {
+            "key": {
+              "type": "integer",
+              "minInteger": 0,
+              "maxInteger": 4294967295
+            }
           }
         },
         "inet_addr": {
@@ -15720,7 +15729,20 @@
               "type": "integer",
               "minInteger": 1,
               "maxInteger": 65534
-            }
+            },
+            "min": 1,
+            "max": 4
+          }
+        },
+        "ibeacon_minor_interval": {
+          "type": {
+            "key": {
+              "type": "integer",
+              "minInteger": 1,
+              "maxInteger": 93600
+            },
+            "min": 0,
+            "max": 1
           }
         },
         "ibeacon_power": {
@@ -15730,15 +15752,6 @@
               "minInteger": -128,
               "maxInteger": 127
             }
-          }
-        },
-        "os_persist": {
-          "type": {
-            "key": {
-              "type": "boolean"
-            },
-            "min": 0,
-            "max": 1
           }
         }
       },

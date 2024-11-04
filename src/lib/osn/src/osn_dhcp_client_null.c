@@ -53,6 +53,12 @@ bool osn_dhcp_client_start(osn_dhcp_client_t *self)
     return true;
 }
 
+bool osn_dhcp_client_renew(osn_dhcp_client_t *self)
+{
+    (void)self;
+    return true;
+}
+
 bool osn_dhcp_client_stop(osn_dhcp_client_t *self)
 {
     (void)self;

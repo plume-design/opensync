@@ -39,6 +39,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "log.h"
 #include "memutil.h"
 
+#include "osn_inet.h"
 #include "udhcp_client.h"
 
 static daemon_atexit_fn_t udhcp_client_atexit;
@@ -316,10 +317,22 @@ bool udhcp_client_start(udhcp_client_t *self)
     return true;
 }
 
+bool udhcp_client_renew(udhcp_client_t *self)
+{
+    return daemon_send_signal(&self->uc_proc, SIGUSR1);
+}
+
 static inline bool option_notify(udhcp_client_t *self, enum osn_dhcp_option opt, const char *value)
 {
     return (NULL != self->uc_opt_notify_fn) ?
         (self->uc_opt_notify_fn(self, opt, value), true) : false;
+}
+
+static void udhcp_client_flush_ips(udhcp_client_t *self)
+{
+    osn_ip_t *ip = osn_ip_new(self->uc_ifname);
+    if (ip == NULL) return;
+    osn_ip_del(ip);
 }
 
 bool udhcp_client_stop(udhcp_client_t *self)
@@ -348,6 +361,12 @@ bool udhcp_client_stop(udhcp_client_t *self)
         LOG(WARN, "dhcp_client: Error stopping DHCP client on interface %s.", self->uc_ifname);
         return false;
     }
+
+    /* In case IPs were not released (for whatever reason,
+     * and there's a couple corner cases), make sure to flush the
+     * IPs.
+     */
+    udhcp_client_flush_ips(self);
 
     self->uc_started = false;
 

@@ -76,6 +76,11 @@ bool osn_dhcpv6_client_del(osn_dhcpv6_client_t *self)
     return retval;
 }
 
+bool osn_dhcpv6_client_renew(osn_dhcpv6_client_t *self)
+{
+    return odhcp6_client_renew(&self->dc_odhcp6);
+}
+
 bool osn_dhcpv6_client_set(
         osn_dhcpv6_client_t *self,
         bool request_address,

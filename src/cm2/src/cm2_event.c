@@ -657,10 +657,7 @@ start:
             cm2_restore_bridge_config();
 
             if (cm2_link_is_bridge(&g_state.link)) {
-                if (cm2_is_wifi_type(g_state.link.if_type)) {
-                    cm2_ovsdb_set_dhcp_client(g_state.link.bridge_name, true);
-                    cm2_ovsdb_set_dhcpv6_client(g_state.link.bridge_name, true);
-                } else {
+                if (!cm2_is_wifi_type(g_state.link.if_type)) {
                     cm2_ovsdb_inherit_ip_bridge_conf(g_state.link.if_name, g_state.link.bridge_name);
                     cm2_update_bridge_cfg(g_state.link.bridge_name, g_state.link.if_name, true,
                                       CM2_PAR_FALSE, cm2_is_eth_type(g_state.link.if_type));
@@ -770,6 +767,24 @@ start:
                 g_state.skip_reconnect = (g_state.is_previous_if_type_wifi
                                       && cm2_is_wifi_type(g_state.link.if_type)
                                       && g_state.link_sel_due_to_priority);
+
+                /* If the newly selected link is using a bridge chances
+                 * are the previous one was too. If the link switched it
+                 * should in all likeliness maintain the same IP subnet,
+                 * but to play it safe make sure to renew IPs ASAP.
+                 *
+                 * If bridge isn't involved there's no point in renewing
+                 * anything as the underlying link (eg. eth as router,
+                 * or lte) manage their IPs just fine already.
+                 *
+                 * This is expected to also hit when extender acting as
+                 * gateway transitions its ethX interface into the
+                 * bridge. Renewing then is also done to play it safe.
+                 */
+                if (strlen(g_state.link.bridge_name) > 0) {
+                    cm2_ovsdb_WIC_dhcp_renew(g_state.link.bridge_name);
+                }
+
                 LOGD("Perform skip reconnect %s. Selected link: %s(%s)", g_state.skip_reconnect ? "true" : "false", g_state.link.if_name, g_state.link.if_type);
                 g_state.link_sel_due_to_priority = false;
                 g_state.is_previous_if_type_wifi = false;

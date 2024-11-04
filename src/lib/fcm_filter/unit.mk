@@ -54,3 +54,5 @@ UNIT_DEPS += src/lib/datapipeline
 UNIT_DEPS += src/lib/json_util
 UNIT_DEPS += src/lib/network_metadata
 UNIT_DEPS += src/lib/policy_tags
+UNIT_DEPS += src/lib/fsm_policy
+UNIT_DEPS += src/lib/gatekeeper_msg

@@ -405,8 +405,11 @@ gatekeeper_cache_tearDown(void)
 
 
 static int
-gkc_ut_flush_client(struct fsm_session *session, struct fsm_policy *policy)
+gkc_ut_flush_client(void *context, struct fsm_policy *policy)
 {
+    struct fsm_session *session;
+
+    session = (struct fsm_session *)context;
     return gkc_flush_client(session, policy);
 }
 

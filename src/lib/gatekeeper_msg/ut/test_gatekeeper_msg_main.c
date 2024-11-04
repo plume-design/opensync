@@ -29,6 +29,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "unity.h"
 
 #include "test_gatekeeper_msg.h"
+#include "gatekeeper_bulk_reply_msg.h"
 #include "unit_test_utils.h"
 
 char *test_name = "test_gatekeeper_msg";

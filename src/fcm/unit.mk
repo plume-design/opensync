@@ -36,6 +36,7 @@ UNIT_SRC := src/fcm_main.c
 UNIT_SRC += src/fcm_ovsdb.c
 UNIT_SRC += src/fcm_mgr.c
 UNIT_SRC += src/fcm_event.c
+UNIT_SRC += src/fcm_gatekeeper.c
 
 UNIT_CFLAGS := -I$(UNIT_PATH)/inc
 
@@ -57,4 +58,7 @@ UNIT_DEPS += src/lib/fcm_filter
 UNIT_DEPS += src/lib/nf_utils
 UNIT_DEPS += src/lib/neigh_table
 UNIT_DEPS += src/lib/data_report_tags
+UNIT_DEPS += src/lib/gatekeeper_msg
 UNIT_DEPS += src/qm/qm_conn
+UNIT_DEPS += src/lib/fsm_policy
+

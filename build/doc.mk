@@ -22,9 +22,10 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-DOC_SHORTVER    := $(shell cat .version | cut -d. -f-2)
+DOC_SHORTVER    := $(shell $(call version-gen) make | cut -d- -f1 | cut -d. -f-3)
+DOC_LONGVER     := $(shell $(call version-gen) make | cut -d- -f-2)
 PROJECT_NAME    := "OpenSync $(DOC_SHORTVER) Southbound API"
-DOC_OUTPUT_NAME := "OpenSync_$(DOC_SHORTVER)_Southbound_API.pdf"
+DOC_OUTPUT_NAME := "OpenSync_$(DOC_LONGVER)_Southbound_API.pdf"
 
 .PHONY: doc
 doc: doc-pdf
@@ -43,11 +44,17 @@ doc-html:
 .PHONY: doc-pdf
 doc-pdf: doc-html
 	$(NQ) " $(call color_generate,doc) $(call color_target,[PDF])"
+	@# prepend LATEX_CMD commands in generated Makefile with '-' to ignore error
+	@# return code which newer pdflatex version return also on warnings
+	$(Q)sed -i 's/\t\$$(LATEX_CMD)/\t-$$(LATEX_CMD)/' doc/latex/Makefile
 	$(Q)cd doc/latex; $(MAKE) > ../latex.log 2>&1
+	@# show pdflatex refman warnings
+	$(Q)grep -i 'latex warning' doc/latex/*.log || true
 	$(Q)echo -n "  "; ls -l doc/latex/*.pdf \
 		|| ( set -x; cat doc/latex.log; cat doc/latex/*.log | grep '^!' )
 	$(NQ) " $(call color_generate,doc) $(call color_target,[copy]) $(DOC_OUTPUT_NAME)"
-	$(Q)cp -v doc/latex/refman.pdf doc/$(DOC_OUTPUT_NAME)
+	$(Q)mkdir -p $(IMAGEDIR)
+	$(Q)cp -v doc/latex/refman.pdf $(IMAGEDIR)/$(DOC_OUTPUT_NAME)
 
 .PHONY: doc-clean
 doc-clean:

@@ -656,6 +656,12 @@ void cm2_util_req_stability_check_recalc(const char *uname,
         LOGD("stability: nothing to do anymore");
         return;
     }
+
+    if (cm2_is_stability_check_pending(g_state.link.if_name))
+    {
+        return;
+    }
+
     cm2_util_set_ip_opts(uname, utype, &opts);
     pid = fork();
     if (pid < 0) {
@@ -671,14 +677,7 @@ void cm2_util_req_stability_check_recalc(const char *uname,
         return; /* never reached */
     }
 
-    async_check_t *async_check = ds_tree_find(&g_async_checks, uname);
-    if (async_check != NULL) {
-        ds_tree_remove(&g_async_checks, async_check);
-        ev_child_stop(EV_DEFAULT_ &async_check->cw);
-        kill(SIGKILL, async_check->pid);
-        FREE(async_check);
-    }
-    async_check = (async_check_t *) MALLOC(sizeof(async_check_t));
+    async_check_t *async_check = (async_check_t *) MALLOC(sizeof(async_check_t));
     memset(async_check, 0, sizeof(async_check_t));
     STRSCPY(async_check->uname, uname);
     STRSCPY(async_check->utype, utype);

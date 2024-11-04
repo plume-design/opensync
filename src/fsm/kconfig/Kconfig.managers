@@ -20,6 +20,14 @@ menuconfig MANAGER_FSM
 
             If unsure, use 0 (use libpcap default - 65535).
 
+    config FSM_NFQUEUE_LEN
+        depends on MANAGER_FSM
+        int "Set nfqueue queue len"
+        default 2048
+        help
+            Set a custom nfqueue queue length.
+
+
     config FSM_ZMQ_IMC
         depends on MANAGER_FSM
         bool "Use ZMQ as IMC"

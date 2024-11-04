@@ -41,6 +41,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ds.h"
 #include "fcm.h"
 #include "ct_stats.h"
+#include "ct_stats_remark.h"
 #include "network_metadata_report.h"
 #include "network_metadata.h"
 #include "fcm_filter.h"
@@ -407,12 +408,9 @@ ct_flow_add_sample(flow_stats_t *ct_stats)
         smac_lookup = neigh_table_lookup(ssrc, &smac);
         dmac_lookup = neigh_table_lookup(sdst, &dmac);
 
+        ct_stats->node_count++;
         /* add only if smac or dmac is present */
-        if (!(smac_lookup ^ dmac_lookup))
-        {
-            LOGD("%s failed to lookup macs", __func__);
-            continue;
-        }
+        if (!(smac_lookup ^ dmac_lookup)) continue;
 
         snprintf(mac_filter.src_mac, sizeof(mac_filter.src_mac),
                  "%02x:%02x:%02x:%02x:%02x:%02x",
@@ -477,7 +475,6 @@ ct_flow_add_sample(flow_stats_t *ct_stats)
                 break;
             }
         }
-        ct_stats->node_count++;
     }
 
     if (LOG_SEVERITY_ENABLED(LOG_SEVERITY_TRACE))
@@ -489,10 +486,12 @@ ct_flow_add_sample(flow_stats_t *ct_stats)
 }
 
 void
-ct_stats_block_flow(struct net_md_stats_accumulator *acc)
+ct_stats_update_flow(struct net_md_stats_accumulator *acc, int action)
 {
     struct net_md_flow_key *key;
     struct flow_key *fkey;
+    int new_action;
+    int old_action;
     int af;
 
     fkey = acc->fkey;
@@ -504,16 +503,24 @@ ct_stats_block_flow(struct net_md_stats_accumulator *acc)
     if (key->ip_version == 6) af = AF_INET6;
     if (af == 0) return;
 
-    LOGI("%s: blocking flow src: %s, dst: %s, proto: %d, sport: %d, dport: %d",
+    new_action = action == FSM_BLOCK ? FSM_DPI_DROP : FSM_DPI_PASSTHRU;
+    old_action =  fkey->flowmarker == CT_MARK_DROP ? FSM_DPI_DROP: FSM_DPI_PASSTHRU;
+
+    if (old_action == new_action)
+    {
+        LOGT("%s: action not modified, not updating the flow", __func__);
+        return;
+    }
+
+    LOGI("%s: Updating flow src: %s, dst: %s, proto: %d, sport: %d, dport: %d from: %s, to: %s",
          __func__,
-         fkey->src_ip, fkey->dst_ip, fkey->protocol, fkey->sport, fkey->dport);
+         fkey->src_ip, fkey->dst_ip, fkey->protocol, fkey->sport, fkey->dport,
+         old_action == FSM_BLOCK ? "drop" : "allow",
+         action == FSM_BLOCK ? "drop" : "allow");
 
     fsm_set_ip_dpi_state(NULL, key->src_ip, key->dst_ip,
                          key->sport, key->dport,
-                         key->ipprotocol, af, FSM_DPI_DROP);
-    fsm_set_ip_dpi_state(NULL, key->dst_ip, key->src_ip,
-                         key->dport, key->sport,
-                         key->ipprotocol, af, FSM_DPI_DROP);
+                         key->ipprotocol, af, (action == FSM_BLOCK ? FSM_DPI_DROP : FSM_DPI_PASSTHRU), acc->flow_marker);
 }
 
 
@@ -599,7 +606,6 @@ ct_stats_set_data_report_tag(struct net_md_stats_accumulator *acc)
     {
         MEMZERO(smac);
         snprintf(smac, sizeof(smac), PRI_os_macaddr_lower_t, FMT_os_macaddr_pt(key->smac));
-        LOGD("%s(): fetching data report tags for %s", __func__, smac);
         smac_report_set = data_report_tags_get_tags(key->smac);
         if (smac_report_set != NULL)
         {
@@ -616,7 +622,6 @@ ct_stats_set_data_report_tag(struct net_md_stats_accumulator *acc)
     {
         MEMZERO(dmac);
         snprintf(dmac, sizeof(dmac), PRI_os_macaddr_lower_t, FMT_os_macaddr_pt(key->dmac));
-        LOGD("%s(): fetching data report tags for %s", __func__, dmac);
         dmac_report_set = data_report_tags_get_tags(key->dmac);
         if (dmac_report_set != NULL)
         {
@@ -767,6 +772,8 @@ ct_stats_alloc_aggr(flow_stats_t *ct_stats)
     aggr_set.collect_filter = ct_stats_collect_filter_cb;
     aggr_set.neigh_lookup = neigh_table_lookup_af;
     aggr_set.on_acc_report = ct_stats_on_acc_report;
+    aggr_set.process = ct_stats_get_dev2apps;
+    aggr_set.on_acc_destroy = ct_stats_on_destroy_acc;
     aggr = net_md_allocate_aggregator(&aggr_set);
     if (aggr == NULL)
     {
@@ -1021,6 +1028,7 @@ ct_stats_plugin_init(fcm_collect_plugin_t *collector)
     collector->collect_periodic = ct_stats_collect_cb;
     collector->send_report = ct_stats_report_cb;
     collector->close_plugin = ct_stats_plugin_close_cb;
+    collector->process_flush_cache = ct_stats_process_flush_cache;
 
     ct_stats->session = collector->session;
 
@@ -1037,6 +1045,7 @@ ct_stats_plugin_init(fcm_collect_plugin_t *collector)
     fcm_filter_context_init(collector);
 
     ds_dlist_init(&ct_stats->ctflow_list, ctflow_info_t, ct_node);
+    ds_tree_init(&ct_stats->device2apps, ds_str_cmp, struct ct_device2apps, d2a_node);
 
     ct_zone = collector->get_other_config(collector, "ct_zone");
     if (ct_zone) ct_stats->ct_zone = atoi(ct_zone);

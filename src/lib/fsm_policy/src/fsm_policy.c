@@ -1225,6 +1225,12 @@ free_policy_request:
 }
 
 void
+fsm_policy_set_supported_feature(struct fsm_policy_req *policy_request, int feature)
+{
+    policy_request->supported_features |= feature;
+}
+
+void
 fsm_policy_free_reply(struct fsm_policy_reply *policy_reply)
 {
     LOGT("%s(): freeing policy reply == %p", __func__, policy_reply);

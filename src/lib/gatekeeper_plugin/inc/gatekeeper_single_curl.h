@@ -32,20 +32,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "gatekeeper_msg.h"
 #include "gatekeeper.h"
 
-struct gk_curl_data
-{
-    char *memory;
-    size_t size;
-};
-
-/**
- * @brief initializes the curl handler
- *
- * @param * @param mgr the gate keeper session
- * @return true on success, false on failure
- */
-bool
-gk_curl_easy_init(struct fsm_gk_session *fsm_gk_session, struct ev_loop *loop);
 
 /**
  * @brief clean up curl handler
@@ -53,7 +39,7 @@ gk_curl_easy_init(struct fsm_gk_session *fsm_gk_session, struct ev_loop *loop);
  * @param mgr the gate keeper session
  */
 void
-gk_curl_easy_cleanup(struct fsm_gk_session *fsm_gk_session);
+gk_curl_easy_cleanup(struct gk_curl_easy_info *curl_info);
 
 /**
  * @brief sends request to the gatekeeper services
@@ -63,7 +49,7 @@ gk_curl_easy_cleanup(struct fsm_gk_session *fsm_gk_session);
  *        information, proto buffer and fsm_policy_req
  * @return gatekeeper response code.
  */
-int gk_send_ecurl_request(struct fsm_session *session,
+int gk_gatekeeper_lookup(struct fsm_session *session,
                           struct fsm_gk_session *fsm_gk_session,
                           struct fsm_gk_verdict *gk_verdict,
                           struct fsm_policy_reply *policy_reply);

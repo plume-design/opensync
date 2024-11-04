@@ -241,6 +241,7 @@ test_process_attr(void)
     int ret;
 
     MEMZERO(session);
+    MEMZERO(acc_key);    
     session.node_id = "NODE_ID";
     session.location_id = "LOCATION_ID";
     session.name = "Walleye";
@@ -315,6 +316,7 @@ test_process_attr_include_exclude_list(void)
     }
 
     MEMZERO(session);
+    MEMZERO(acc_key);    
     session.node_id = "NODE_ID";
     session.location_id = "LOCATION_ID";
     session.name = "Walleye";
@@ -390,6 +392,7 @@ test_process_attr_group_include_exclude_list(void)
     }
 
     MEMZERO(session);
+    MEMZERO(acc_key);    
     session.node_id = "NODE_ID";
     session.location_id = "LOCATION_ID";
     session.name = "Walleye";

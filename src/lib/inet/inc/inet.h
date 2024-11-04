@@ -237,6 +237,9 @@ struct __inet
      */
     bool        (*in_assign_scheme_set_fn)(inet_t *self, enum inet_assign_scheme scheme);
 
+    /* Renew DHCP */
+    bool        (*in_dhcp_renew_set_fn)(inet_t *self, uint32_t dhcp_renew);
+
     /*
      * Set IP Address/Netmask/Broadcast/Gateway -- only when assign_scheme == INET_ASSIGN_STATIC
      *
@@ -537,6 +540,13 @@ static inline bool inet_assign_scheme_set(inet_t *self, enum inet_assign_scheme 
     if (self->in_assign_scheme_set_fn == NULL) return false;
 
     return self->in_assign_scheme_set_fn(self, scheme);
+}
+
+static inline bool inet_dhcp_renew_set(inet_t *self, uint32_t dhcp_renew)
+{
+    if (self->in_dhcp_renew_set_fn == NULL) return false;
+
+    return self->in_dhcp_renew_set_fn(self, dhcp_renew);
 }
 
 static inline bool inet_ipaddr_static_set(

@@ -129,7 +129,8 @@ static char *osfw_target_builtin[] =
     "TOS",
     "TPROXY",
     "TTL",
-    "ULOG"
+    "ULOG",
+    CONFIG_OSN_SKIP_ACCEL
 };
 
 static struct osfw_nfbase self;

@@ -670,12 +670,12 @@ gkc_flush_all(struct fsm_policy_rules *rules);
 /**
  * @brief callback hook so FSM can trigger cache flushes based on policy
  *
- * @param session
+ * @param context
  * @param policy
  * @return number of cache entries flushed or -1 on error
  */
 int
-gkc_flush_client(struct fsm_session *session, struct fsm_policy *policy);
+gkc_flush_client(void *context, struct fsm_policy *policy);
 
 /**
  * @brief Compute a unique key for the request passed.

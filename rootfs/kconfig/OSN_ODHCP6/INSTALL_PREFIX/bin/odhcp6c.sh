@@ -169,19 +169,9 @@ rand_addr_gen_from_prefix()
 {
     local prefix=${1%::*}
     local prefix_len=$2
-
     local addr=$prefix
     [ $prefix_len -le 48 ] && addr="$addr:"
-
-    local i=0
-    while [ $i -lt 4 ]
-    do
-        local hex_16bit=$(cat /dev/urandom | tr -dc 0123456789abcdef | head -c 4)
-        [ "$hex_16bit" == "0000" ] && continue
-
-        addr="${addr}:${hex_16bit}"
-        let "i=$i+1"
-    done
+    addr="${addr}$(dd if=/dev/urandom bs=8 count=1 2>/dev/null | hexdump | sed 's/^0*//;s/ *$//;s/ /:/g;q')"
     echo "${addr}"
 }
 

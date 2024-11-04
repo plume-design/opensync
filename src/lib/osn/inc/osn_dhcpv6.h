@@ -135,6 +135,18 @@ osn_dhcpv6_client_t *osn_dhcpv6_client_new(const char *ifname);
 bool osn_dhcpv6_client_del(osn_dhcpv6_client_t *self);
 
 /**
+ * Renew DHCPv6 Client
+ *
+ * @param[in]   self  A valid pointer to an osn_dhcpv6_client_t object
+ *
+ * @return
+ * This function returns true on success. On error, false is returned.
+ * The input parameter should be considered invalid after this function
+ * returns, regardless of the error code.
+ */
+bool osn_dhcpv6_client_renew(osn_dhcpv6_client_t *self);
+
+/**
  * Set DHCPv6 client options.
  *
  * @param[in]   self  A valid pointer to an osn_dhcpv6_client_t object

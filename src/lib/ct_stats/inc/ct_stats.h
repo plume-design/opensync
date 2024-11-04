@@ -34,6 +34,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ds_tree.h"
 #include "network_metadata_report.h"
 #include "nf_utils.h"
+#include "fsm_policy.h"
 
 #define MAX_CT_STATS        (256)
 #define MAX_IPV4_IPV6_LEN    (46)
@@ -63,6 +64,8 @@ typedef struct flow_stats_
     struct fcm_session *session;
     struct fcm_filter_client *c_client;
     struct fcm_filter_client *r_client;
+    size_t n_device2apps;
+    ds_tree_t device2apps;
 } flow_stats_t;
 
 

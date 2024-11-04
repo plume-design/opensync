@@ -105,6 +105,7 @@ osw_conf_build_vif_cb(const struct osw_state_vif_info *info,
             ds_tree_init(&vif->u.ap.acl_tree, (ds_key_cmp_t *)osw_hwaddr_cmp, struct osw_conf_acl, node);
             ds_tree_init(&vif->u.ap.psk_tree, ds_int_cmp, struct osw_conf_psk, node);
             ds_tree_init(&vif->u.ap.neigh_tree, (ds_key_cmp_t *)osw_hwaddr_cmp, struct osw_conf_neigh, node);
+            ds_dlist_init(&vif->u.ap.wps_cred_list, struct osw_conf_wps_cred, node);
             ds_dlist_init(&vif->u.ap.radius_list, struct osw_conf_radius, node);
             ds_dlist_init(&vif->u.ap.accounting_list, struct osw_conf_radius, node);
             vif->u.ap.acl_policy = info->drv_state->u.ap.acl_policy;
@@ -279,6 +280,15 @@ osw_conf_order_mutators(struct osw_conf *m)
     }
 }
 
+static void
+osw_conf_computed(struct ds_tree *phy_tree)
+{
+    struct osw_conf_observer *i;
+
+    ds_dlist_foreach(&g_osw_conf.observers, i)
+        if (i->conf_computed_fn != NULL) i->conf_computed_fn(i, phy_tree);
+}
+
 struct ds_tree *
 osw_conf_build(void)
 {
@@ -294,6 +304,7 @@ osw_conf_build(void)
         }
     }
 
+    osw_conf_computed(phy_tree);
     return phy_tree;
 }
 
@@ -506,7 +517,7 @@ osw_conf_invalidate(struct osw_conf_mutator *mutator)
      *   - osw_conf_free()
     */
     ds_dlist_foreach(&g_osw_conf.observers, i)
-        i->mutated_fn(i);
+        if (i->mutated_fn != NULL) i->mutated_fn(i);
 }
 
 bool
@@ -610,6 +621,645 @@ osw_conf_neigh_tree_to_str(char *out, size_t len, const struct ds_tree *a)
     }
     if (ds_tree_is_empty(b) == false && out[-1] == ',')
         out[-1] = 0;
+}
+
+static void
+osw_conf_clone_vif_wps_cred_list(struct ds_dlist *src, struct ds_dlist *dst)
+{
+    struct osw_conf_wps_cred *src_cred;
+    ds_dlist_init(dst, struct osw_conf_wps_cred, node);
+
+    ds_dlist_foreach(src, src_cred) {
+        struct osw_conf_wps_cred *cred = CALLOC(1, sizeof(*cred));
+        cred->cred = src_cred->cred;
+        ds_dlist_insert_tail(dst, cred);
+    }
+}
+
+static void
+osw_conf_clone_vif_radius_list(struct ds_dlist *src, struct ds_dlist *dst)
+{
+    struct osw_conf_radius *src_radius;
+    ds_dlist_init(dst, struct osw_conf_radius, node);
+
+    ds_dlist_foreach(src, src_radius) {
+        struct osw_conf_radius *radius = CALLOC(1, sizeof(*radius));
+        radius->radius.server = STRDUP(src_radius->radius.server);
+        radius->radius.port = src_radius->radius.port;
+        radius->radius.passphrase = STRDUP(src_radius->radius.passphrase);
+        ds_dlist_insert_tail(dst, radius);
+    }
+}
+
+static void
+osw_conf_clone_vif_net_list(struct ds_dlist *src, struct ds_dlist *dst)
+{
+    struct osw_conf_net *src_cnet;
+    ds_dlist_init(dst, struct osw_conf_net, node);
+
+    ds_dlist_foreach(src, src_cnet) {
+        struct osw_conf_net *cnet = CALLOC(1, sizeof(*cnet));
+        memcpy(&cnet->ssid, &src_cnet->ssid, sizeof(cnet->ssid));
+        memcpy(&cnet->bssid, &src_cnet->bssid, sizeof(cnet->bssid));
+        memcpy(&cnet->psk, &src_cnet->psk, sizeof(cnet->psk));
+        memcpy(&cnet->wpa, &src_cnet->wpa, sizeof(cnet->wpa));
+        memcpy(&cnet->bridge_if_name, &src_cnet->bridge_if_name, sizeof(cnet->bridge_if_name));
+        cnet->multi_ap = src_cnet->multi_ap;
+        ds_dlist_insert_tail(dst, cnet);
+    }
+}
+
+static void
+osw_conf_clone_vif(struct osw_conf_vif *src, struct osw_conf_phy *phy)
+{
+    struct osw_conf_vif *vif = CALLOC(1, sizeof(*vif));
+    struct osw_conf_acl *src_acl;
+    struct osw_conf_psk *src_psk;
+    struct osw_conf_neigh *src_neigh;
+
+    vif->phy = phy;
+    vif->mac_addr = src->mac_addr;
+    vif->vif_name = STRDUP(src->vif_name);
+    vif->enabled = src->enabled;
+    vif->vif_type = src->vif_type;
+    vif->tx_power_dbm = src->tx_power_dbm;
+
+    switch (vif->vif_type) {
+        case OSW_VIF_UNDEFINED:
+            break;
+        case OSW_VIF_AP:
+            ds_tree_init(&vif->u.ap.acl_tree, (ds_key_cmp_t *)osw_hwaddr_cmp, struct osw_conf_acl, node);
+            ds_tree_init(&vif->u.ap.psk_tree, ds_int_cmp, struct osw_conf_psk, node);
+            ds_tree_init(&vif->u.ap.neigh_tree, (ds_key_cmp_t *)osw_hwaddr_cmp, struct osw_conf_neigh, node);
+            ds_dlist_init(&vif->u.ap.accounting_list, struct osw_conf_radius, node);
+            vif->u.ap.acl_policy = src->u.ap.acl_policy;
+            vif->u.ap.ssid = src->u.ap.ssid;
+            vif->u.ap.channel = src->u.ap.channel;
+            vif->u.ap.mode = src->u.ap.mode;
+            STRSCPY(vif->u.ap.bridge_if_name.buf, src->u.ap.bridge_if_name.buf);
+            STRSCPY(vif->u.ap.nas_identifier.buf, src->u.ap.nas_identifier.buf);
+            vif->u.ap.wpa = src->u.ap.wpa;
+
+
+            ds_tree_foreach(&src->u.ap.acl_tree, src_acl) {
+                struct osw_conf_acl *acl = CALLOC(1, sizeof(*acl));
+                acl->mac_addr = src_acl->mac_addr;
+                ds_tree_insert(&vif->u.ap.acl_tree, acl, &acl->mac_addr);
+            }
+
+            ds_tree_foreach(&src->u.ap.psk_tree, src_psk) {
+                struct osw_conf_psk *psk = CALLOC(1, sizeof(*psk));
+                psk->ap_psk = src_psk->ap_psk;
+                ds_tree_insert(&vif->u.ap.psk_tree, psk, &psk->ap_psk.key_id);
+            }
+
+            ds_tree_foreach(&src->u.ap.neigh_tree, src_neigh) {
+                struct osw_conf_neigh *neigh = CALLOC(1, sizeof(*neigh));
+                neigh->neigh = src_neigh->neigh;
+                ds_tree_insert(&vif->u.ap.neigh_tree, neigh, &neigh->neigh.bssid);
+            }
+            osw_conf_clone_vif_wps_cred_list(&src->u.ap.wps_cred_list, &vif->u.ap.wps_cred_list);
+            osw_conf_clone_vif_radius_list(&src->u.ap.radius_list, &vif->u.ap.radius_list);
+            osw_conf_clone_vif_radius_list(&src->u.ap.accounting_list, &vif->u.ap.accounting_list);
+            osw_passpoint_copy(&src->u.ap.passpoint, &vif->u.ap.passpoint);
+
+            vif->u.ap.beacon_interval_tu = src->u.ap.beacon_interval_tu;
+            vif->u.ap.ssid_hidden = src->u.ap.ssid_hidden;
+            vif->u.ap.isolated = src->u.ap.isolated;
+            vif->u.ap.mcast2ucast = src->u.ap.mcast2ucast;
+            vif->u.ap.wps_pbc = src->u.ap.wps_pbc;
+            vif->u.ap.multi_ap = src->u.ap.multi_ap;
+            vif->u.ap.mbss_mode = src->u.ap.mbss_mode;
+            vif->u.ap.mbss_group = src->u.ap.mbss_group;
+            break;
+        case OSW_VIF_AP_VLAN:
+            break;
+        case OSW_VIF_STA:
+            osw_conf_clone_vif_net_list(&src->u.sta.net_list, &vif->u.sta.net_list);
+            break;
+    }
+
+    ds_tree_insert(&phy->vif_tree, vif, vif->vif_name);
+}
+
+static void
+osw_conf_clone_phy(struct osw_conf_phy *src, struct ds_tree *phy_tree)
+{
+    struct osw_conf_vif *vif;
+
+    struct osw_conf_phy *phy = CALLOC(1, sizeof(*phy));
+
+    phy->phy_tree = phy_tree;
+    phy->phy_name = STRDUP(src->phy_name);
+    phy->enabled = src->enabled;
+    phy->tx_chainmask = src->tx_chainmask;
+    phy->radar = src->radar;
+    phy->reg_domain = src->reg_domain;
+    ds_tree_init(&phy->vif_tree, ds_str_cmp, struct osw_conf_vif, phy_node);
+
+    ds_tree_foreach(&src->vif_tree, vif)
+        osw_conf_clone_vif(vif, phy);
+
+    ds_tree_insert(phy_tree, phy, phy->phy_name);
+}
+
+struct ds_tree *osw_conf_clone(struct ds_tree *src)
+{
+    struct osw_conf_phy *phy;
+
+    if (src == NULL)
+        return NULL;
+
+    struct ds_tree *phy_tree = CALLOC(1, sizeof(*phy_tree));
+    ds_tree_init(phy_tree, ds_str_cmp, struct osw_conf_phy, conf_node);
+
+    ds_tree_foreach(src, phy)
+        osw_conf_clone_phy(phy, phy_tree);
+
+    return phy_tree;
+}
+
+/* This helper can be used to compare 2 trees
+ * built in the same way and in the same order
+ * it will return non equal 2 trees that contains
+ * equal elements but in different order.
+ */
+#define osw_check_null(r, a, b) \
+    r = a == NULL ? -1 \
+      : b == NULL ? 1 \
+      : 0; \
+    if (r != 0) return r;
+
+#define osw_ds_tree_pair_each(ta, tb, pa, pb)       \
+    osw_check_null(r, ta, tb) \
+    if (ds_tree_is_empty(ta) == true) { \
+        if(ds_tree_is_empty(tb) == true) \
+            return 0;\
+        return -1;\
+    } else { \
+        if(ds_tree_is_empty(tb) == true)\
+            return 1;\
+    } \
+    for (pa = ds_tree_head(ta), pb = ds_tree_head(tb) ; pa != NULL && pb != NULL; pa = ds_tree_next(ta, pa), pb = ds_tree_next(tb, pb))
+
+#define osw_ds_tree_pair_post(r, pa, pb)     \
+    r = pa != NULL ? 1 \
+      : pb != NULL ? -1 \
+      : 0; \
+    if (r != 0) return r;
+
+#define osw_int_compare(r, a, b) \
+     r = a < b ? -1 \
+       : a > b ? 1 \
+       : 0; \
+       if (r != 0) return r;
+
+#define osw_mem_compare(r, a, b) \
+     osw_check_null(r, a, b) \
+     r = memcmp(a, b, sizeof(*(a))); \
+     if (r != 0) return r;
+
+#define osw_str_compare(r, a, b) \
+     osw_check_null(r, a, b) \
+     r = strncmp(a, b, sizeof(*(a))); \
+     if (r != 0) return r;
+
+static int osw_conf_cmp_vif_wps_cred_list(struct ds_dlist *a, struct ds_dlist *b)
+{
+    struct ds_dlist wps_cred_list_tmp;
+    struct osw_conf_wps_cred *src_cred;
+    /* compare wps_cred_list, copy second side to remove checked elements
+     * during iterations, this will catch duplicate items on one of sides.
+     */
+    if (ds_dlist_is_empty(a)) {
+       if (ds_dlist_is_empty(b)) return 0;
+       return -1;
+    } else {
+       if (ds_dlist_is_empty(b)) return 1;
+    }
+
+    osw_conf_clone_vif_wps_cred_list(b, &wps_cred_list_tmp);
+
+    ds_dlist_foreach(a, src_cred) {
+        struct osw_conf_wps_cred *cred = NULL;
+        int tmp_r = 0;
+        ds_dlist_iter_t  iter;
+        cred = ds_dlist_ifirst(&iter, &wps_cred_list_tmp);
+        if (cred == NULL) return -1; /* we run out of elements in b (b is empty), a has more elements => -1 */
+
+        for(;cred != NULL;cred = ds_dlist_inext(&iter))
+        {
+            tmp_r = strncmp(src_cred->cred.psk.str, cred->cred.psk.str, sizeof(*src_cred->cred.psk.str));
+            if(tmp_r == 0) {
+                ds_dlist_iremove(&iter); /* item found marking jumping to next element from a */
+                break;
+            }
+        }
+        if (tmp_r != 0) {
+            /* element from a not found in b, cleaning */
+            while (!ds_dlist_is_empty(&wps_cred_list_tmp)) {
+                struct osw_conf_net *cred;
+                cred = ds_dlist_remove_tail(&wps_cred_list_tmp);
+                FREE(cred);
+            }
+            return -1;
+        }
+        /* next element from a */
+    }
+    if (!ds_dlist_is_empty(&wps_cred_list_tmp)) {
+        while (!ds_dlist_is_empty(&wps_cred_list_tmp)) {
+            struct osw_conf_wps_cred *cred;
+            cred = ds_dlist_remove_tail(&wps_cred_list_tmp);
+            FREE(cred);
+        }
+        return 1; /* some leftovers in b => 1 */
+    }
+
+    return 0;
+}
+
+static int osw_conf_cmp_vif_radius(struct osw_conf_radius *a, struct osw_conf_radius *b)
+{
+    int r;
+    osw_str_compare(r, a->radius.server, b->radius.server);
+    osw_str_compare(r, a->radius.passphrase, b->radius.passphrase);
+    osw_int_compare(r, a->radius.port, b->radius.port);
+
+    return 0;
+}
+
+static void osw_conf_radius_list_free(struct ds_dlist *list)
+{
+    struct osw_conf_radius *radius;
+    while ((radius = ds_dlist_remove_tail(list)) != NULL) {
+        FREE(radius->radius.server);
+        FREE(radius->radius.passphrase);
+        FREE(radius);
+    }
+}
+
+static int osw_conf_cmp_vif_radius_list(struct ds_dlist *a, struct ds_dlist *b)
+{
+    struct ds_dlist radius_list_tmp;
+    struct osw_conf_radius *src_radius;
+    /* compare radius_list, copy second side to remove checked elements
+     * during iterations, this will catch duplicate items on one of sides.
+     */
+    if (ds_dlist_is_empty(a)) {
+       if (ds_dlist_is_empty(b)) return 0;
+       return -1;
+    } else {
+       if (ds_dlist_is_empty(b)) return 1;
+    }
+
+    osw_conf_clone_vif_radius_list(b, &radius_list_tmp);
+
+    ds_dlist_foreach(a, src_radius) {
+        struct osw_conf_radius *radius = NULL;
+        int tmp_r = 0;
+        ds_dlist_iter_t  iter;
+        radius = ds_dlist_ifirst(&iter, &radius_list_tmp);
+        if (radius == NULL) return -1; /* we run out of elements in b (b is empty), a has more elements => -1 */
+
+        for(;radius != NULL;radius = ds_dlist_inext(&iter))
+        {
+            tmp_r = osw_conf_cmp_vif_radius(src_radius, radius);
+            if(tmp_r == 0) {
+                ds_dlist_iremove(&iter); /* item found marking jumping to next element from a */
+                break;
+            }
+        }
+        if (tmp_r != 0) {
+            /* element from a not found in b, cleaning */
+            osw_conf_radius_list_free(&radius_list_tmp);
+            return -1;
+        }
+        /* next element from a */
+    }
+    if (!ds_dlist_is_empty(&radius_list_tmp)) {
+        osw_conf_radius_list_free(&radius_list_tmp);
+        return 1; /* some leftovers in b => 1 */
+    }
+
+    return 0;
+}
+
+static int osw_wpa_compare(struct osw_wpa *a, struct osw_wpa *b)
+{
+    int r;
+    osw_int_compare(r, a->wpa, b->wpa);
+    osw_int_compare(r, a->rsn, b->rsn);
+    osw_int_compare(r, a->akm_eap, b->akm_eap);
+    osw_int_compare(r, a->akm_psk, b->akm_psk);
+    osw_int_compare(r, a->akm_sae, b->akm_sae);
+    osw_int_compare(r, a->akm_ft_eap, b->akm_ft_eap);
+    osw_int_compare(r, a->akm_ft_psk, b->akm_ft_psk);
+    osw_int_compare(r, a->akm_ft_sae, b->akm_ft_sae);
+    osw_int_compare(r, a->pairwise_tkip, b->pairwise_tkip);
+    osw_int_compare(r, a->pairwise_ccmp, b->pairwise_ccmp);
+    osw_int_compare(r, a->pmf, b->pmf);
+    osw_int_compare(r, a->group_rekey_seconds, b->group_rekey_seconds);
+    osw_int_compare(r, a->ft_mobility_domain, b->ft_mobility_domain);
+
+    return 0;
+}
+
+static int osw_conf_cmp_vif_net(struct osw_conf_net *a, struct osw_conf_net *b)
+{
+    int r;
+    r = osw_ssid_cmp(&a->ssid, &b->ssid);
+    if (r != 0) return r;
+
+    r = osw_hwaddr_cmp(&a->bssid, &a->bssid);
+    if (r != 0) return r;
+
+    osw_str_compare(r, a->psk.str, b->psk.str);
+    r = osw_wpa_compare(&a->wpa, &b->wpa);
+    if (r != 0) return r;
+
+    osw_str_compare(r, a->bridge_if_name.buf, b->bridge_if_name.buf);
+    osw_int_compare(r, a->multi_ap, b->multi_ap);
+    return 0;
+}
+
+static int osw_conf_cmp_vif_net_list(struct ds_dlist *a, struct ds_dlist *b)
+{
+    struct osw_conf_net *src_net;
+    struct ds_dlist net_list_tmp;
+    /* compare net_list, copy second side to remove checked elements
+     * during iterations, this will catch duplicate items on one of sides.
+     */
+    if (ds_dlist_is_empty(a)) {
+       if (ds_dlist_is_empty(b)) return 0;
+       return -1;
+    } else {
+       if (ds_dlist_is_empty(b)) return 1;
+    }
+
+    osw_conf_clone_vif_net_list(b, &net_list_tmp);
+
+    ds_dlist_foreach(a, src_net) {
+        struct osw_conf_net *net = NULL;
+        int tmp_r = 0;
+        ds_dlist_iter_t  iter;
+        net = ds_dlist_ifirst(&iter, &net_list_tmp);
+        if (net == NULL) return -1; /* we run out of elements in b (b is empty), a has more elements => -1 */
+
+        for(;net != NULL;net = ds_dlist_inext(&iter))
+        {
+            tmp_r = osw_conf_cmp_vif_net(src_net, net);
+            if(tmp_r == 0) {
+                ds_dlist_iremove(&iter); /* item found marking jumping to next element from a */
+                break;
+            }
+        }
+
+        if (tmp_r != 0) {
+            /* element from a not found in b, cleaning */
+            while (!ds_dlist_is_empty(&net_list_tmp)) {
+                struct osw_conf_net *net;
+                net = ds_dlist_remove_tail(&net_list_tmp);
+                FREE(net);
+            }
+            return -1;
+        }
+        /* next element from a */
+    }
+    if (!ds_dlist_is_empty(&net_list_tmp)) {
+        while (!ds_dlist_is_empty(&net_list_tmp)) {
+            struct osw_conf_net *net;
+            net = ds_dlist_remove_tail(&net_list_tmp);
+            FREE(net);
+        }
+        return 1; /* some leftovers in b => 1 */
+    }
+
+    return 0;
+}
+static int osw_channel_compare(struct osw_channel *a, struct osw_channel *b)
+{
+    int r;
+    osw_int_compare(r, a->width, b->width);
+    osw_int_compare(r, a->control_freq_mhz, b->control_freq_mhz);
+    osw_int_compare(r, a->center_freq0_mhz, b->center_freq0_mhz);
+    osw_int_compare(r, a->center_freq1_mhz, b->center_freq1_mhz);
+    osw_int_compare(r, a->puncture_bitmap, b->puncture_bitmap);
+
+    return 0;
+}
+
+static int osw_beacon_rate_compare(struct osw_beacon_rate *a, struct osw_beacon_rate *b)
+{
+    int r;
+    osw_int_compare(r, a->type, b->type);
+    switch (a->type) {
+        case OSW_BEACON_RATE_UNSPEC:
+           break;
+        case OSW_BEACON_RATE_ABG:
+           osw_int_compare(r, a->u.legacy, b->u.legacy);
+           break;
+        case OSW_BEACON_RATE_HT:
+           osw_int_compare(r, a->u.ht_mcs, b->u.ht_mcs);
+           break;
+        case OSW_BEACON_RATE_VHT:
+           osw_int_compare(r, a->u.vht_mcs, b->u.vht_mcs);
+           break;
+        case OSW_BEACON_RATE_HE:
+           osw_int_compare(r, a->u.he_mcs, b->u.he_mcs);
+           break;
+    }
+    return 0;
+}
+
+static int osw_ap_mode_compare(struct osw_ap_mode *a, struct osw_ap_mode *b)
+{
+    int r;
+    osw_int_compare(r, a->supported_rates, b->supported_rates);
+    osw_int_compare(r, a->basic_rates, b->basic_rates);
+    r = osw_beacon_rate_compare(&a->beacon_rate, &b->beacon_rate);
+    if (r != 0) return r;
+    osw_int_compare(r, a->mcast_rate, b->mcast_rate);
+    osw_int_compare(r, a->mgmt_rate, b->mgmt_rate);
+    osw_int_compare(r, a->wnm_bss_trans, b->wnm_bss_trans);
+    osw_int_compare(r, a->rrm_neighbor_report, b->rrm_neighbor_report);
+    osw_int_compare(r, a->wmm_enabled, b->wmm_enabled);
+    osw_int_compare(r, a->wmm_uapsd_enabled, b->wmm_uapsd_enabled);
+    osw_int_compare(r, a->ht_enabled, b->ht_enabled);
+    osw_int_compare(r, a->ht_required, b->ht_required);
+    osw_int_compare(r, a->vht_enabled, b->vht_enabled);
+    osw_int_compare(r, a->vht_required, b->vht_required);
+    osw_int_compare(r, a->he_enabled, b->he_enabled);
+    osw_int_compare(r, a->he_required, b->he_required);
+    osw_int_compare(r, a->eht_enabled, b->eht_enabled);
+    osw_int_compare(r, a->eht_required, b->eht_required);
+    osw_int_compare(r, a->wps, b->wps);
+
+    return 0;
+}
+
+static int osw_neigh_compare(struct osw_neigh *a, struct osw_neigh *b)
+{
+    int r;
+    r = osw_hwaddr_cmp(&a->bssid, &a->bssid);
+    if (r != 0) return r;
+    osw_int_compare(r, a->bssid_info, b->bssid_info);
+    osw_int_compare(r, a->op_class, b->op_class);
+    osw_int_compare(r, a->channel, b->channel);
+    osw_int_compare(r, a->phy_type, b->phy_type);
+
+    return 0;
+}
+
+static int osw_conf_cmp_vif(struct osw_conf_vif *a, struct osw_conf_vif *b)
+{
+    struct osw_conf_acl *a_acl, *b_acl;
+    struct osw_conf_psk *a_psk, *b_psk;
+    struct osw_conf_neigh *a_neigh, *b_neigh;
+    int r;
+
+    osw_check_null(r, a, b);
+
+    osw_int_compare(r, a->enabled, b->enabled);
+
+    osw_str_compare(r, a->vif_name, b->vif_name);
+    osw_int_compare(r, a->vif_type, b->vif_type);
+    osw_int_compare(r, a->tx_power_dbm, b->tx_power_dbm);
+    osw_mem_compare(r, &a->mac_addr, &b->mac_addr);
+
+     switch (a->vif_type) {
+        case OSW_VIF_UNDEFINED:
+            break;
+        case OSW_VIF_AP:
+            osw_int_compare(r, a->u.ap.acl_policy, b->u.ap.acl_policy);
+            r = osw_ssid_cmp(&a->u.ap.ssid, &b->u.ap.ssid);
+            if (r != 0) return r;
+
+            r = osw_channel_compare(&a->u.ap.channel, &b->u.ap.channel);
+            if (r != 0) return r;
+
+            r = osw_ap_mode_compare(&a->u.ap.mode, &b->u.ap.mode);
+            if (r != 0) return r;
+
+            r = osw_wpa_compare(&a->u.ap.wpa, &b->u.ap.wpa);
+            if (r != 0) return r;
+
+            osw_str_compare(r, a->u.ap.bridge_if_name.buf, b->u.ap.bridge_if_name.buf);
+            osw_str_compare(r, a->u.ap.nas_identifier.buf, b->u.ap.nas_identifier.buf);
+
+            osw_ds_tree_pair_each(&a->u.ap.acl_tree, &b->u.ap.acl_tree, a_acl, b_acl) {
+                osw_mem_compare(r, &a_acl->mac_addr, &b_acl->mac_addr);
+            }
+            osw_ds_tree_pair_post(r, a_acl, b_acl);
+
+            osw_ds_tree_pair_each(&a->u.ap.psk_tree, &b->u.ap.psk_tree, a_psk, b_psk) {
+                osw_int_compare(r, a_psk->ap_psk.key_id, b_psk->ap_psk.key_id);
+                osw_str_compare(r, a_psk->ap_psk.psk.str, b_psk->ap_psk.psk.str);
+            }
+            osw_ds_tree_pair_post(r, a_psk, b_psk);
+
+            osw_ds_tree_pair_each(&a->u.ap.neigh_tree, &b->u.ap.neigh_tree, a_neigh, b_neigh) {
+                r = osw_neigh_compare(&a_neigh->neigh, &b_neigh->neigh);
+                if (r != 0) return r;
+            }
+            osw_ds_tree_pair_post(r, a_neigh, b_neigh);
+
+
+            osw_conf_cmp_vif_wps_cred_list(&a->u.ap.wps_cred_list, &b->u.ap.wps_cred_list);
+            osw_conf_cmp_vif_radius_list(&a->u.ap.radius_list, &b->u.ap.radius_list);
+            osw_conf_cmp_vif_radius_list(&a->u.ap.accounting_list, &b->u.ap.accounting_list);
+
+            osw_int_compare(r, a->u.ap.beacon_interval_tu, b->u.ap.beacon_interval_tu);
+            osw_int_compare(r, a->u.ap.ssid_hidden, b->u.ap.ssid_hidden);
+            osw_int_compare(r, a->u.ap.isolated, b->u.ap.isolated);
+            osw_int_compare(r, a->u.ap.mcast2ucast, b->u.ap.mcast2ucast);
+            osw_int_compare(r, a->u.ap.wps_pbc, b->u.ap.wps_pbc);
+            osw_int_compare(r, a->u.ap.multi_ap.fronthaul_bss, b->u.ap.multi_ap.fronthaul_bss);
+            osw_int_compare(r, a->u.ap.multi_ap.backhaul_bss, b->u.ap.multi_ap.backhaul_bss);
+            osw_int_compare(r, a->u.ap.mbss_mode, b->u.ap.mbss_mode);
+            osw_int_compare(r, a->u.ap.mbss_group, b->u.ap.mbss_group);
+
+            /* FIXME: Currently there is only is equal funciton, there is no cmp function */
+            r = osw_passpoint_is_equal(&a->u.ap.passpoint, &b->u.ap.passpoint) ? 0 : 1;
+            if (r != 0)
+                return r;
+
+            break;
+        case OSW_VIF_AP_VLAN:
+            break;
+        case OSW_VIF_STA:
+            osw_conf_cmp_vif_net_list(&a->u.sta.net_list, &b->u.sta.net_list);
+            break;
+    }
+
+    return 0;
+}
+
+static int osw_reg_domain_compare(struct osw_reg_domain *a, struct osw_reg_domain *b)
+{
+    int r;
+    osw_str_compare(r, a->ccode, b->ccode);
+    osw_int_compare(r, a->iso3166_num, b->iso3166_num);
+    osw_int_compare(r, a->revision, b->revision);
+    osw_int_compare(r, a->dfs, b->dfs);
+
+    return 0;
+}
+
+static int osw_conf_cmp_phy(struct osw_conf_phy *a, struct osw_conf_phy *b)
+{
+    struct osw_conf_vif *va, *vb;
+    int r;
+
+    osw_check_null(r, a, b);
+
+    osw_str_compare(r, a->phy_name, b->phy_name);
+    osw_int_compare(r, a->enabled, b->enabled);
+    osw_int_compare(r, a->tx_chainmask, b->tx_chainmask);
+    osw_int_compare(r, a->radar, b->radar);
+    r = osw_reg_domain_compare(&a->reg_domain, &b->reg_domain);
+    if (r != 0) return r;
+
+    osw_ds_tree_pair_each(&a->vif_tree, &b->vif_tree, va, vb) {
+        r = osw_conf_cmp_vif(va,vb);
+        if (r != 0) {
+            LOGT("osw: conf: vif %s differs", va->vif_name);
+            return r;
+        }
+    }
+    osw_ds_tree_pair_post(r, va, vb);
+
+    return 0;
+}
+
+/* FIXME: Due to missing compare function for passpoint
+ * this compare function cannot fully compare.
+ * It is still usuable for is_equal purpose
+ */
+static int osw_conf_cmp(struct ds_tree *a, struct ds_tree *b)
+{
+    struct osw_conf_phy *pa, *pb;
+    int r = 0;
+
+    if (a == NULL && b == NULL) return 0;
+
+    osw_check_null(r, a, b);
+    osw_ds_tree_pair_each(a, b, pa, pb) {
+        r = osw_conf_cmp_phy(pa,pb);
+        if (r != 0) {
+            LOGT("osw: conf: phy %s differs", pa->phy_name);
+            return r;
+        }
+    }
+    osw_ds_tree_pair_post(r, pa, pb);
+
+    return 0;
+}
+
+bool osw_conf_is_equal(struct ds_tree *a, struct ds_tree *b)
+{
+    int r = osw_conf_cmp(a,b);
+    if (r != 0) LOGT("osw: conf: osw_conf compare = %d", r);
+    return r == 0;
 }
 
 void

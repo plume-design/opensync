@@ -35,6 +35,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "fcm.h"
 #include "schema.h"
 #include "ovsdb_table.h"
+#include "gatekeeper_ecurl.h"
+#include "fcm_priv.h"
 
 #define FCM_NEIGH_SYS_ENTRY_TTL (36*60*60)
 
@@ -48,8 +50,10 @@ typedef struct fcm_mgr_
     time_t periodic_ts;          // periodic timestamp
     char pid[16];                // manager's pid
     int64_t neigh_cache_ttl;     // neighbour table cache ttl
-    struct sysinfo sysinfo;      /* system information */
-    uint64_t max_mem;            /* max amount of memory allowed in kB */
+    struct sysinfo sysinfo;      // system information
+    struct gk_curl_easy_info ecurl; // gatekeeper curl info
+    struct gk_server_info gk_conf; // gatekeeper server configuration
+    uint64_t max_mem;            // max amount of memory allowed in kB
     bool (*cb_ovsdb_table_upsert_where)(ovsdb_table_t *, json_t *, void *, bool );
 } fcm_mgr_t;
 
@@ -64,4 +68,6 @@ void delete_report_config(struct schema_FCM_Report_Config *conf);
 void fcm_rm_node_config(struct schema_Node_Config *old_rec);
 void fcm_get_node_config(struct schema_Node_Config *node_cfg);
 void fcm_update_node_config(struct schema_Node_Config *node_cfg);
+void fcm_set_gk_url(struct schema_Flow_Service_Manager_Config *conf);
+
 #endif /* FCM_MGR_H_INCLUDED */

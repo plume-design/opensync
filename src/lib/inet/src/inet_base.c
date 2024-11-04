@@ -231,6 +231,7 @@ bool inet_base_init(inet_base_t *self, const char *ifname)
     self->inet.in_dhcpc_option_set_fn           = inet_base_dhcpc_option_set;
     self->inet.in_dhcpc_option_get_fn           = inet_base_dhcpc_option_get;
     self->inet.in_dhcpc_option_notify_fn        = inet_base_dhcpc_option_notify;
+    self->inet.in_dhcp_renew_set_fn             = inet_base_dhcp_renew_set;
     self->inet.in_dhcps_enable_fn               = inet_base_dhcps_enable;
     self->inet.in_dhcps_lease_set_fn            = inet_base_dhcps_lease_set;
     self->inet.in_dhcps_range_set_fn            = inet_base_dhcps_range_set;
@@ -1228,6 +1229,28 @@ bool inet_base_dhcpc_option_notify(inet_t *super, inet_dhcpc_option_notify_fn_t 
 
     /* Re-register handler to get an update */
     return osn_dhcp_client_opt_notify_set(self->in_dhcpc, inet_base_dhcp_client_option_fn);
+}
+
+bool inet_base_dhcp_renew_set(inet_t *super, uint32_t dhcp_renew)
+{
+    bool ret = true;
+    inet_base_t *self = (inet_base_t *)super;
+
+    if (self->dhcp_renew == dhcp_renew) return true;
+
+    self->dhcp_renew = dhcp_renew;
+    if (inet_unit_is_enabled(self->in_units, INET_BASE_SCHEME_DHCP))
+    {
+        LOGD("inet_base: renew DHCP client IP");
+        ret = osn_dhcp_client_renew(self->in_dhcpc);
+    }
+
+    if (inet_unit_is_enabled(self->in_units, INET_BASE_DHCP6_CLIENT))
+    {
+        LOGD("inet_base: renew DHCPv6 client IP");
+        ret &= osn_dhcpv6_client_renew(self->in_dhcp6_client);
+    }
+    return ret;
 }
 
 /*

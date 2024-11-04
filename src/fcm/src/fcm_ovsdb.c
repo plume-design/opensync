@@ -47,15 +47,20 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "const.h"
 #include "policy_tags.h"
 #include "data_report_tags.h"
+#include "gatekeeper_ecurl.h"
+
+#include "fsm_policy.h"
 
 /* Log entries from this file will contain "OVSDB" */
 #define MODULE_ID LOG_MODULE_ID_OVSDB
 
-ovsdb_table_t table_AWLAN_Node;
+ovsdb_table_t table_Flow_Service_Manager_Config;
 ovsdb_table_t table_FCM_Collector_Config;
 ovsdb_table_t table_FCM_Report_Config;
+ovsdb_table_t table_AWLAN_Node;
 ovsdb_table_t table_Node_State;
 ovsdb_table_t table_Node_Config;
+ovsdb_table_t table_SSL;
 
 #define FCM_NODE_MODULE "fcm"
 #define FCM_NODE_STATE_MEM_KEY "max_mem"
@@ -404,6 +409,152 @@ callback_Node_Config(ovsdb_update_monitor_t *mon,
     }
 }
 
+char *policy_session = "fcm_policy_session";
+char *policy_name = "gatekeeper";
+
+static void
+fcm_update_client(void *context, struct policy_table *table)
+{
+    return;
+}
+
+
+static char *
+fcm_session_name(struct fsm_policy_client *client)
+{
+    return policy_name;
+}
+
+static int
+fcm_flush_cache(void *context, struct fsm_policy *policy)
+{
+    fcm_collector_t *collector = NULL;
+    ds_tree_t *collect_tree = NULL;
+    fcm_collect_plugin_t *plugin;
+    fcm_mgr_t *mgr = NULL;
+    int nrecs = 0;
+
+    mgr = fcm_get_mgr();
+    collect_tree = &mgr->collect_tree;
+
+    ds_tree_foreach(collect_tree, collector)
+    {
+        plugin = &collector->plugin;
+        if (plugin->process_flush_cache) nrecs = plugin->process_flush_cache(policy);
+    }
+    return nrecs;
+}
+
+static void
+fcm_register_policy_client(void)
+{
+    struct fsm_policy_client *client;
+
+    client = CALLOC(1, sizeof(*client));
+    client->session = (void *)policy_session;
+    client->name = policy_name;
+    client->update_client = fcm_update_client;
+    client->session_name = fcm_session_name;
+    client->flush_cache = fcm_flush_cache;
+
+    fsm_policy_register_client(client);
+}
+
+/**
+ * @brief registered callback for SSL events
+ */
+static void callback_SSL(ovsdb_update_monitor_t *mon, struct schema_SSL *old_rec, struct schema_SSL *ssl)
+{
+    struct gk_server_info *gk_conf;
+    fcm_mgr_t *mgr;
+
+    if (!ssl || !ssl->certificate_exists || !ssl->private_key_exists) return;
+
+    mgr = fcm_get_mgr();
+    gk_conf = &mgr->gk_conf;
+
+    snprintf(gk_conf->ssl_cert, sizeof(gk_conf->ssl_cert), "%s", ssl->certificate);
+    snprintf(gk_conf->ssl_key, sizeof(gk_conf->ssl_key), "%s", ssl->private_key);
+    snprintf(gk_conf->ca_path, sizeof(gk_conf->ca_path), "%s", ssl->ca_cert);
+
+    LOGD("%s(): ssl cert %s, priv key %s, ca_path: %s",
+         __func__,
+         gk_conf->ssl_cert,
+         gk_conf->ssl_key,
+         gk_conf->ca_path);
+}
+
+/*
+ * Return a value from the `other_config` map from a Flow_Service_Manager_Config row
+ */
+static char *fcm_get_config_other(struct schema_Flow_Service_Manager_Config *config, const char *key)
+{
+    int i;
+
+    for (i = 0; i < config->other_config_len; i++)
+    {
+        if (strcmp(config->other_config_keys[i], key) == 0)
+        {
+            return config->other_config[i];
+        }
+    }
+
+    return NULL;
+}
+
+void fcm_set_gk_url(struct schema_Flow_Service_Manager_Config *conf)
+{
+    struct gk_server_info *gk_conf;
+    fcm_mgr_t *mgr;
+    char *gk_url;
+    int cmp;
+
+    /* check if the handler is gatekeeper */
+    cmp = strcmp(conf->handler, "gatekeeper");
+    if (cmp != 0) return;
+
+    mgr = fcm_get_mgr();
+    gk_conf = &mgr->gk_conf;
+
+    gk_url = fcm_get_config_other(conf, "gk_url");
+    if (gk_url == NULL)
+    {
+        LOGD("%s(): failed to read gatekeeper url", __func__);
+        return;
+    }
+    STRSCPY(gk_conf->gk_url, gk_url);
+
+    LOGD("%s(): setting gatekeeper url %s", __func__, gk_conf->gk_url);
+}
+
+static void fcm_del_gk_url(struct schema_Flow_Service_Manager_Config *conf)
+{
+    struct gk_server_info *gk_conf;
+    fcm_mgr_t *mgr;
+    int cmp;
+
+    /* check if the handler is gatekeeper */
+    cmp = strcmp(conf->handler, "gatekeeper");
+    if (cmp != 0) return;
+
+    mgr = fcm_get_mgr();
+    gk_conf = &mgr->gk_conf;
+
+    gk_conf->server_url = NULL;
+    MEMZERO(gk_conf->gk_url);
+    LOGD("%s(): gatekeeper url deleted", __func__);
+}
+
+static void callback_Flow_Service_Manager_Config(
+        ovsdb_update_monitor_t *mon,
+        struct schema_Flow_Service_Manager_Config *old_rec,
+        struct schema_Flow_Service_Manager_Config *conf)
+{
+    if (mon->mon_type == OVSDB_UPDATE_NEW) fcm_set_gk_url(conf);
+    if (mon->mon_type == OVSDB_UPDATE_DEL) fcm_del_gk_url(old_rec);
+    if (mon->mon_type == OVSDB_UPDATE_MODIFY) fcm_set_gk_url(conf);
+}
+
 int fcm_ovsdb_init(void)
 {
     char str_value[32] = { 0 };
@@ -420,13 +571,16 @@ int fcm_ovsdb_init(void)
     OVSDB_TABLE_INIT_NO_KEY(FCM_Report_Config);
     OVSDB_TABLE_INIT_NO_KEY(Node_Config);
     OVSDB_TABLE_INIT_NO_KEY(Node_State);
+    OVSDB_TABLE_INIT_NO_KEY(Flow_Service_Manager_Config);
+    OVSDB_TABLE_INIT_NO_KEY(SSL);
 
     // Initialize OVSDB monitor callbacks
     OVSDB_TABLE_MONITOR(AWLAN_Node, false);
     OVSDB_TABLE_MONITOR(FCM_Collector_Config, false);
     OVSDB_TABLE_MONITOR(FCM_Report_Config, false);
     OVSDB_TABLE_MONITOR(Node_Config, false);
-
+    OVSDB_TABLE_MONITOR(Flow_Service_Manager_Config, false);
+    OVSDB_TABLE_MONITOR_F(SSL, ((char*[]){"ca_cert", "certificate", "private_key", NULL}));
 
     // Advertize default memory limit usage
     snprintf(str_value, sizeof(str_value), "%" PRIu64 " kB", mgr->max_mem);
@@ -436,6 +590,9 @@ int fcm_ovsdb_init(void)
         LOGD("%s: Upserting Node-state fail", __func__);
         return -1;
     }
+
+    fsm_policy_init();
+    fcm_register_policy_client();
 
     return 0;
 }

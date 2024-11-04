@@ -1029,3 +1029,13 @@ static bool __daemon_set_nonblock(int fd, bool enable)
 
     return true;
 }
+
+bool daemon_send_signal(daemon_t *self, int signal)
+{
+    if (self->dn_pid != 0)
+    {
+        kill(self->dn_pid, signal);
+        return true;
+    }
+    return false;
+}

@@ -83,7 +83,7 @@ bool gk_send_mcurl_request(struct fsm_gk_session *fsm_gk_session,
  *
  */
 bool
-gk_curl_multi_cleanup(struct fsm_gk_session *fsm_gk_session);
+gk_curl_multi_cleanup(struct gk_curl_multi_info *mcurl_info);
 
 
 /**
@@ -94,7 +94,7 @@ gk_curl_multi_cleanup(struct fsm_gk_session *fsm_gk_session);
  *         false otherwise
  */
 bool
-gk_multi_curl_init(struct fsm_gk_session *fsm_gk_session, struct ev_loop *loop);
+gk_multi_curl_init(struct gk_curl_multi_info *mcurl_info, struct ev_loop *loop);
 
 
 #endif /* GK_CURL_H_INCLUDED */

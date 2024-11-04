@@ -28,6 +28,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define GATEKEEPER_MSG_H_INCLUDED
 
 #include "network_metadata_report.h"
+#include "gatekeeper_ecurl.h"
+#include "gatekeeper.pb-c.h"
 #include "os_types.h"
 
 /**
@@ -125,6 +127,18 @@ struct gk_ip_flow_request
 };
 
 
+struct gk_device2app_req {
+    struct gk_req_header *header;
+    size_t n_apps;             /* Number of apps in the array */
+    char **apps;
+};
+
+struct gk_bulk_request {
+    size_t n_devices;   /* Num of mac_app structs */
+    int req_type;
+    struct gk_device2app_req **devices;
+};
+
 /**
  * @brief union of specific requests
  */
@@ -137,6 +151,7 @@ union gk_data_req
     struct gk_url_request gk_url_req;
     struct gk_app_request gk_app_req;
     struct gk_ip_flow_request gk_ip_flow_req;
+    struct gk_bulk_request gk_bulk_req;
 };
 
 
@@ -149,6 +164,42 @@ struct gk_request
     union gk_data_req req;
 };
 
+
+struct gk_reply_header
+{
+    uint32_t request_id;
+    char *dev_id;
+    int action;
+    uint32_t ttl;
+    char *policy;
+    uint32_t category_id;
+    uint32_t confidence_level;
+    uint32_t flow_marker;
+};
+
+
+struct gk_device2app_repl
+{
+    struct gk_reply_header *header;
+    char *app_name;
+};
+
+struct gk_bulk_reply
+{
+    size_t n_devices;
+    struct gk_device2app_repl **devices;
+};
+
+union gk_data_reply
+{
+    struct gk_bulk_reply bulk_reply;
+};
+
+struct gk_reply
+{
+    int type;
+    union gk_data_reply data_reply;
+};
 
 /**
  * @brief Generates a flow report serialized protobuf
@@ -170,4 +221,7 @@ gk_serialize_request(struct gk_request *request);
  */
 void
 gk_free_packed_buffer(struct gk_packed_buffer *buffer);
+
+int
+gk_get_fsm_action(Gatekeeper__Southbound__V1__GatekeeperCommonReply *header);
 #endif /* GATEKEEPER_MSG_H_INCLUDED */

@@ -62,7 +62,7 @@ if REVSSH_ENABLED
 
             config REVSSH_DROPBEAR_KEYFILE
             string "Path to the default Dropbear host key file"
-            default "/etc/dropbear/dropbear_rsa_host_key"
+            default "/etc/dropbear/dropbear_ed25519_host_key"
             help
                 Full path to the default Dropbear host key file.
 

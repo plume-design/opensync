@@ -125,6 +125,7 @@ net_md_allocate_aggregator(struct net_md_aggregator_set *aggr_set)
     aggr->on_acc_destroy = aggr_set->on_acc_destroy;
     aggr->on_acc_report = aggr_set->on_acc_report;
     aggr->context = aggr_set->context;
+    aggr->process = aggr_set->process;
 
     return aggr;
 

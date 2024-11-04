@@ -1612,6 +1612,7 @@ static bool gw_offline_cfg_port_table_read(struct gw_offline_cfg *cfg)
         if (json_res == NULL || json_array_size(json_res) > 1)
         {
             LOG(ERR, "offline_cfg: Error selecting from Port table for: %s", mcast_intf);
+            json_decref(json_res);
             return false;
         }
         /* Note: if mcast interface is not in OVS bridge LAN_BRIDGE (e.g. with
@@ -1627,6 +1628,7 @@ static bool gw_offline_cfg_port_table_read(struct gw_offline_cfg *cfg)
     if (json_res == NULL || json_array_size(json_res) > 1)
     {
         LOG(ERR, "offline_cfg: Error selecting from Port table");
+        json_decref(json_res);
         return false;
     }
 

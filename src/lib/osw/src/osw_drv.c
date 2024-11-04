@@ -895,8 +895,10 @@ osw_drv_vsta_has_channel_changed(const struct osw_drv_vif *vif)
     const size_t size = sizeof(n->u.sta.link.channel);
     const bool was_sta = (o->vif_type == OSW_VIF_STA);
     const bool still_is_sta = (n->vif_type == OSW_VIF_STA);
+    const bool was_connected = (o->u.sta.link.status == OSW_DRV_VIF_STATE_STA_LINK_CONNECTED);
+    const bool is_connected = (n->u.sta.link.status == OSW_DRV_VIF_STATE_STA_LINK_CONNECTED);
     const bool channel_changed = (memcmp(&o->u.sta.link.channel, &n->u.sta.link.channel, size) != 0);
-    return (was_sta && still_is_sta && channel_changed);
+    return (was_sta && still_is_sta && was_connected && is_connected && channel_changed);
 }
 
 static void
@@ -2028,6 +2030,7 @@ osw_drv_vif_process_state(struct osw_drv_vif *vif)
     }
 
     if (vsta_channel_changed) {
+        osw_drv_vif_set_recent_channel(vif, &vif->new_state.u.sta.link.channel);
         new_channel = vif->new_state.u.sta.link.channel;
         old_channel = vif->cur_state.u.sta.link.channel;
     }
@@ -2316,6 +2319,7 @@ osw_drv_phy_request_state(struct osw_drv_phy *phy)
 static bool
 osw_channel_overlaps_with_freq(const struct osw_channel *c, const int freq)
 {
+    if (c == NULL) return false;
     if (c->control_freq_mhz == 0) return false;
     int segs[16];
     const size_t n_segs = osw_channel_20mhz_segments(c, segs, ARRAY_SIZE(segs));
@@ -2338,14 +2342,26 @@ osw_drv_phy_mark_vif_radar(struct osw_drv_phy *phy,
     const int freq = c->control_freq_mhz;
 
     ds_tree_foreach(vifs, vif) {
-        if (vif->cur_state.vif_type != OSW_VIF_AP) {
-            continue;
+        const struct osw_channel *c = NULL;
+        switch (vif->cur_state.vif_type) {
+            case OSW_VIF_UNDEFINED:
+                break;
+            case OSW_VIF_AP_VLAN:
+                break;
+            case OSW_VIF_AP:
+                c = &vif->cur_state.u.ap.channel;
+                break;
+            case OSW_VIF_STA:
+                c = vif->cur_state.u.sta.link.status == OSW_DRV_VIF_STATE_STA_LINK_CONNECTED
+                  ? &vif->cur_state.u.sta.link.channel
+                  : NULL;
+                break;
         }
 
-        const bool is_on_freq = osw_channel_overlaps_with_freq(&vif->cur_state.u.ap.channel, freq);
+        const bool is_on_freq = osw_channel_overlaps_with_freq(c, freq);
         if (is_on_freq) {
             vif->radar_detected = true;
-            vif->radar_channel = vif->cur_state.u.ap.channel;
+            vif->radar_channel = *c;
             osw_drv_report_vif_changed(phy->drv, phy->phy_name, vif->vif_name);
             return;
         }

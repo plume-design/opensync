@@ -35,6 +35,8 @@ UNIT_TYPE := LIB
 
 UNIT_SRC := src/gatekeeper_msg.c
 UNIT_SRC += src/gatekeeper_hero_stats.c
+UNIT_SRC += src/gatekeeper_ecurl.c
+UNIT_SRC += src/gatekeeper_bulk_reply_msg.c
 
 UNIT_CFLAGS := -I$(UNIT_PATH)/inc
 UNIT_CFLAGS += -I$(TOP_DIR)/src/lib/gatekeeper_plugin/inc

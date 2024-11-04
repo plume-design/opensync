@@ -127,6 +127,10 @@ static bool nm2_inet_credential_set(
         struct nm2_iface *piface,
         const struct schema_Wifi_Inet_Config *iconf);
 
+static bool nm2_inet_dhcp_renew_set(
+        struct nm2_iface *piface,
+        const struct schema_Wifi_Inet_Config *iconf);
+
 static void nm2_inet_copy(
         struct nm2_iface *piface,
         const struct schema_Wifi_Inet_Config *pconfig);
@@ -193,6 +197,7 @@ bool nm2_inet_config_set(struct nm2_iface *piface, struct schema_Wifi_Inet_Confi
     retval &= nm2_inet_vlan_set(piface, iconf);
     retval &= nm2_inet_vlan_egress_qos_map_set(piface, iconf);
     retval &= nm2_inet_credential_set(piface, iconf);
+    retval &= nm2_inet_dhcp_renew_set(piface, iconf);
 
     return retval;
 }
@@ -985,6 +990,25 @@ bool nm2_inet_credential_set(
     const char *password = SCHEMA_FIND_KEY(iconf->ppp_options, "password");
 
     return inet_credential_set(piface->if_inet, username, password);
+}
+
+bool nm2_inet_dhcp_renew_set(
+        struct nm2_iface *piface,
+        const struct schema_Wifi_Inet_Config *iconf)
+{
+    uint32_t dhcp_renew;
+
+    if (iconf->dhcp_renew_exists)
+    {
+        dhcp_renew = iconf->dhcp_renew;
+    }
+    else
+    {
+        LOG(WARN, "%s: dhcp_renew is not existing", __func__);
+        return true;
+    }
+
+    return inet_dhcp_renew_set(piface->if_inet, dhcp_renew);
 }
 
 /*

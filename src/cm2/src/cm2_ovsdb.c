@@ -54,6 +54,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "os_time.h"
 #include "os_random.h"
 #include "ff_lib.h"
+#include "cm2_bh_dhcp.h"
 
 #include <arpa/inet.h>
 
@@ -108,7 +109,7 @@ static ovsdb_table_t table_AWLAN_Node;
 static ovsdb_table_t table_Wifi_Master_State;
 static ovsdb_table_t table_Connection_Manager_Uplink;
 static ovsdb_table_t table_AW_Bluetooth_Config;
-static ovsdb_table_t table_Wifi_Inet_Config;
+ovsdb_table_t table_Wifi_Inet_Config;
 static ovsdb_table_t table_Wifi_Inet_State;
 static ovsdb_table_t table_Wifi_VIF_Config;
 static ovsdb_table_t table_Wifi_VIF_State;
@@ -123,6 +124,20 @@ static ovsdb_table_t table_Wifi_Route_State;
 static ovsdb_table_t table_Node_Config;
 static ovsdb_table_t table_Node_State;
 static ovsdb_table_t table_Tunnel_Interface;
+
+void
+cm2_ovsdb_WIC_dhcp_renew(const char *if_name)
+{
+    json_t *trans = ovsdb_tran_multi(
+            NULL,
+            NULL,
+            SCHEMA_TABLE(Wifi_Inet_Config),
+            OTR_MUTATE,
+            json_pack("[[s, s, s]]", SCHEMA_COLUMN(Wifi_Inet_Config, if_name), "==", if_name),
+            json_pack("[[s, s, i]]", SCHEMA_COLUMN(Wifi_Inet_Config, dhcp_renew), "+=", 1));
+    json_t *resp = ovsdb_method_send_s(MT_TRANS, trans);
+    json_decref(resp);
+}
 
 void callback_AWLAN_Node(ovsdb_update_monitor_t *mon,
         struct schema_AWLAN_Node *old_rec,
@@ -592,7 +607,7 @@ cm2_util_set_local_ip_cfg(struct schema_Wifi_Inet_State *istate, cm2_ip *ip,
     cm2_ovsdb_CMU_set_ipv4(if_name, s);
 }
 
-static int
+int
 cm2_util_get_ip_inet_state_cfg(const char *uplink, cm2_ip *ip, const char *if_name)
 {
     struct schema_Wifi_Inet_State istate;
@@ -616,6 +631,9 @@ cm2_util_get_ip_inet_state_cfg(const char *uplink, cm2_ip *ip, const char *if_na
 void
 cm2_ovsdb_set_dhcp_client(const char *if_name, bool enabled)
 {
+    const bool managed_elsewhere = (cm2_bh_dhcp_lookup(g_state.bh_dhcp, if_name) != NULL);
+    if (managed_elsewhere) return;
+
     struct schema_Wifi_Inet_Config iconf;
     char                           *ip_assign;
     char                           *filter[] = { "+",
@@ -973,27 +991,15 @@ static bool cm2_util_set_dhcp_ipv4_cfg_from_inet(struct schema_Wifi_Inet_State *
 void
 cm2_ovsdb_refresh_dhcp(char *if_name)
 {
-    struct schema_Wifi_Master_State  mstate;
-    int                              ret;
-
     if (!cm2_is_extender())
         return;
 
     LOGI("%s: Trigger refresh dhcp", if_name);
 
     if (g_state.link.ipv6.assign_scheme == CM2_IPV6_DHCP && !g_state.link.ipv6.blocked) {
-        cm2_ovsdb_set_dhcpv6_client(if_name, false);
-        cm2_ovsdb_set_dhcpv6_client(if_name, true);
+        cm2_ovsdb_WIC_dhcp_renew(if_name);
     } else if (!g_state.link.ipv4.blocked) {
-        MEMZERO(mstate);
-
-        ret = ovsdb_table_select_one(&table_Wifi_Master_State,
-                    SCHEMA_COLUMN(Wifi_Master_State, if_name), if_name, &mstate);
-        if (!ret) {
-            LOGW("%s: %s: Failed to get master row", __func__, mstate.if_name);
-            return;
-        }
-        cm2_util_set_dhcp_ipv4_cfg_from_master(&mstate, true);
+        cm2_ovsdb_WIC_dhcp_renew(if_name);
     }
 }
 
@@ -1017,6 +1023,8 @@ cm2_util_get_gateway_ip(char *ip_addr, char *netmask)
 static int
 cm2_ovsdb_insert_Wifi_Inet_Config(struct schema_Wifi_Master_State *master)
 {
+    if (1) return true;
+
     struct schema_Wifi_Inet_Config icfg;
     int                            ret;
 
@@ -1055,6 +1063,8 @@ cm2_ovsdb_insert_Wifi_Inet_Config(struct schema_Wifi_Master_State *master)
 /* Function removing GRE interface */
 static void
 cm2_ovsdb_remove_Wifi_Inet_Config(char *if_name, bool gre) {
+    if (1) return;
+
     char iface[C_IFNAME_LEN];
     int  ret;
 
@@ -1200,8 +1210,6 @@ cm2_ovsdb_util_handle_master_sta_port_state(struct schema_Wifi_Master_State *mas
 
         if (uplink_removed != NULL) {
             if (cm2_link_is_bridge(&g_state.link)) {
-                cm2_ovsdb_set_dhcp_client(g_state.link.bridge_name, false);
-                cm2_ovsdb_set_dhcpv6_client(g_state.link.bridge_name, false);
                 cm2_update_bridge_cfg(g_state.link.bridge_name, g_state.link.if_name, false,
                                       CM2_PAR_NOT_SET, false);
             }
@@ -1262,6 +1270,9 @@ cm2_ovsdb_util_translate_master_port_state(struct schema_Wifi_Master_State *mast
     if (!update)
         return;
 
+    if (cm2_bh_cmu_lookup_vif(g_state.bh_cmu, master->if_name) != NULL) return;
+    if (cm2_bh_cmu_lookup_gre(g_state.bh_cmu, master->if_name) != NULL) return;
+
     LOGI("%s: Add/update uplink in Connection Manager Uplink table", master->if_name);
 
     con._partial_update = true;
@@ -1278,6 +1289,9 @@ cm2_ovsdb_util_translate_master_port_state(struct schema_Wifi_Master_State *mast
 
 static void
 cm2_ovsdb_util_translate_master_priority(struct schema_Wifi_Master_State *master) {
+    if (cm2_bh_cmu_lookup_vif(g_state.bh_cmu, master->if_name) != NULL) return;
+    if (cm2_bh_cmu_lookup_gre(g_state.bh_cmu, master->if_name) != NULL) return;
+
     struct schema_Connection_Manager_Uplink con;
     char *filter[] = { "+", SCHEMA_COLUMN(Connection_Manager_Uplink, priority), NULL };
 
@@ -1738,6 +1752,9 @@ static
 bool cm2_ovsdb_connection_remove_uplink(char *if_name) {
     int ret;
 
+    if (cm2_bh_cmu_lookup_vif(g_state.bh_cmu, if_name) != NULL) return true;
+    if (cm2_bh_cmu_lookup_gre(g_state.bh_cmu, if_name) != NULL) return true;
+
     ret = ovsdb_table_delete_simple(&table_Connection_Manager_Uplink,
                                    SCHEMA_COLUMN(Connection_Manager_Uplink, if_name),
                                    if_name);
@@ -1826,8 +1843,6 @@ void cm2_connection_clear_used(void)
                 cm2_update_bridge_cfg(g_state.link.bridge_name, g_state.link.if_name, false, macrep, true);
             } else {
                 macrep = CM2_PAR_NOT_SET;
-                cm2_ovsdb_set_dhcp_client(g_state.link.bridge_name, false);
-                cm2_ovsdb_set_dhcpv6_client(g_state.link.bridge_name, false);
                 cm2_update_bridge_cfg(g_state.link.bridge_name, g_state.link.if_name, false, macrep, false);
             }
         }
@@ -2093,6 +2108,9 @@ void callback_Wifi_Master_State(ovsdb_update_monitor_t *mon,
     int ret;
 
     LOGD("%s calling %s", __func__, master->if_name);
+
+    cm2_bh_dhcp_WMS(g_state.bh_dhcp, mon, old_rec, master);
+    cm2_bh_cmu_WMS(g_state.bh_cmu, mon, old_rec, master);
 
     if (mon->mon_type == OVSDB_UPDATE_DEL) {
         char gre_ifname[C_IFNAME_LEN];
@@ -2614,6 +2632,8 @@ void callback_Connection_Manager_Uplink(ovsdb_update_monitor_t *mon,
 {
     LOGD("%s mon_type = %d", __func__, mon->mon_type);
 
+    cm2_bh_cmu_CMU(g_state.bh_cmu, mon, old_row, uplink);
+
     switch (mon->mon_type) {
         default:
         case OVSDB_UPDATE_ERROR:
@@ -2719,11 +2739,33 @@ static void cm2_Wifi_Inet_State_handle_dhcpc(struct schema_Wifi_Inet_State *inet
     }
 }
 
+void callback_Wifi_VIF_State(ovsdb_update_monitor_t *mon,
+                             struct schema_Wifi_VIF_State *old_row,
+                             struct schema_Wifi_VIF_State *vif_state)
+{
+    LOGD("%s mon_type = %d", __func__, mon->mon_type);
+
+    cm2_bh_dhcp_WVS(g_state.bh_dhcp, mon, old_row, vif_state);
+    cm2_bh_cmu_WVS(g_state.bh_cmu, mon, old_row, vif_state);
+}
+
+void callback_Wifi_Inet_Config(ovsdb_update_monitor_t *mon,
+                               struct schema_Wifi_Inet_Config *old_row,
+                               struct schema_Wifi_Inet_Config *inet_config)
+{
+    LOGD("%s mon_type = %d", __func__, mon->mon_type);
+
+    cm2_bh_dhcp_WIC(g_state.bh_dhcp, mon, old_row, inet_config);
+}
+
 void callback_Wifi_Inet_State(ovsdb_update_monitor_t *mon,
                               struct schema_Wifi_Inet_State *old_row,
                               struct schema_Wifi_Inet_State *inet_state)
 {
     LOGD("%s mon_type = %d", __func__, mon->mon_type);
+
+    cm2_bh_dhcp_WIS(g_state.bh_dhcp, mon, old_row, inet_state);
+    cm2_bh_gre_WIS(g_state.bh_gre, mon, old_row, inet_state);
 
     switch (mon->mon_type) {
         default:
@@ -3440,6 +3482,8 @@ int cm2_ovsdb_init(void)
     // Callback for EXTENDER
     if (cm2_is_extender()) {
         OVSDB_TABLE_MONITOR(Wifi_Master_State, false);
+        OVSDB_TABLE_MONITOR(Wifi_VIF_State, false);
+        OVSDB_TABLE_MONITOR(Wifi_Inet_Config, false);
         OVSDB_TABLE_MONITOR(Bridge, false);
         OVSDB_TABLE_MONITOR(Wifi_Route_State, false);
     }

@@ -128,6 +128,9 @@ typedef void osw_conf_mutate_fn_t(struct osw_conf_mutator *mutator,
 
 typedef void osw_conf_mutated_fn_t(struct osw_conf_observer *observer);
 
+typedef void osw_conf_computed_fn_t(struct osw_conf_observer *observer,
+                                    struct ds_tree *phy_tree);
+
 enum osw_conf_type {
     OSW_CONF_TAIL,
     OSW_CONF_HEAD,
@@ -144,6 +147,7 @@ struct osw_conf_observer {
     struct ds_dlist_node node;
     const char *name;
     osw_conf_mutated_fn_t *mutated_fn;
+    osw_conf_computed_fn_t *conf_computed_fn;
 };
 
 void
@@ -190,5 +194,9 @@ osw_conf_ap_acl_tree_to_str(char *out, size_t len, const struct ds_tree *a);
 
 void
 osw_conf_ap_wps_cred_list_to_str(char *out, size_t len, const struct ds_dlist *a);
+
+struct ds_tree *osw_conf_clone(struct ds_tree *from_phy_tree);
+
+bool osw_conf_is_equal(struct ds_tree *a, struct ds_tree *b);
 
 #endif /* OSW_CONF_H_INCLUDED */

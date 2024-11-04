@@ -90,6 +90,7 @@ extern bool daemon_arg_reset(daemon_t *self);
 extern bool daemon_arg_add_a(daemon_t *self, char *argv[]);
 extern bool daemon_env_set(daemon_t *self, const char *env, const char *value);
 extern bool daemon_signal_set(daemon_t *self, int sig_term, int sig_kill);
+extern bool daemon_send_signal(daemon_t *self, int signal);
 extern bool daemon_restart_set(daemon_t *self, bool auto_restart, double delay, int retries);
 extern bool daemon_atexit(daemon_t *self, daemon_atexit_fn_t *fn);
 extern bool daemon_atrestart(daemon_t *self, daemon_atrestart_fn_t *fn);

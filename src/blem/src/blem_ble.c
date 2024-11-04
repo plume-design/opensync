@@ -49,6 +49,12 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 /** Main event loop used for timer operations */
 static struct ev_loop *g_loop = NULL;
 
+/** Timer used for rotating Proximity Beacon Minor IDs */
+static ev_timer g_proximity_timer;
+/** Proximity Beacon Minor IDs to rotate (0 = unused), in host byte order */
+static uint16_t g_proximity_minors[ARRAY_SIZE(((blem_ble_proximity_config_t *)NULL)->minors)];
+
+
 static void callback_on_fatal_error(void)
 {
     LOGE("Breaking ev loop because of fatal ble_config error");
@@ -508,6 +514,44 @@ exit:
 
 #endif /* CONFIG_BLEM_CONFIG_VIA_BLE_ENABLED */
 
+static void proximity_timer_callback(struct ev_loop *const loop, ev_timer *const timer, const int r_events)
+{
+    (void)loop;
+    (void)timer;
+    (void)r_events;
+    /* Load the next Minor ID to the advertisement data */
+    ble_advertising_set_t *const adv = &g_advertising_sets[BLE_ADVERTISING_SET_PROXIMITY];
+    ble_adv_data_proximity_t *const adv_data = &adv->adv.data.proximity;
+    const uint16_t minor_id = ntohs(adv_data->minor);
+    size_t i;
+
+    /* Timer is only started from `blem_ble_proximity_configure()`, only if the proximity advertising is enabled */
+    ASSERT(adv->mode.enabled, "Invalid Prox. advertising state");
+
+    /* First, find the current minor ID */
+    for (i = 0; i < ARRAY_SIZE(g_proximity_minors); i++)
+    {
+        if (g_proximity_minors[i] == minor_id)
+        {
+            break;
+        }
+    }
+    ASSERT(i < ARRAY_SIZE(g_proximity_minors), "Minor ID %d not found", minor_id);
+
+    /* Set the next Minor ID, rotating through all valid Minor IDs */
+    i++;
+    if ((i >= ARRAY_SIZE(g_proximity_minors)) || (g_proximity_minors[i] == 0))
+    {
+        i = 0;
+    }
+
+    adv_data->minor = htons(g_proximity_minors[i]);
+    adv->adv.changed = true;
+
+    LOGD("Switching Prox. Minor ID from %d to %d", minor_id, g_proximity_minors[i]);
+    advertising_apply();
+}
+
 bool blem_ble_init(struct ev_loop *p_loop)
 {
     ble_advertising_set_t *const adv = &g_advertising_sets[BLE_ADVERTISING_SET_GENERAL];
@@ -558,6 +602,8 @@ bool blem_ble_init(struct ev_loop *p_loop)
 #endif /* CONFIG_BLEM_ADVERTISE_NAME_ */
 
     g_loop = p_loop;
+
+    ev_timer_init(&g_proximity_timer, proximity_timer_callback, 0, 0);
 
     LOGI("BLE initialized (connectable=%d, name=%d/%d)",
          kconfig_enabled(CONFIG_BLEM_CONFIG_VIA_BLE_ENABLED),
@@ -644,50 +690,118 @@ void blem_ble_disable(void)
     LOGI("BLE disabled");
 }
 
-void blem_ble_proximity_configure(
-        bool enable,
-        int16_t adv_tx_power,
-        uint16_t adv_interval,
-        const uint8_t uuid[16],
-        uint16_t major,
-        uint16_t minor,
-        int8_t meas_power,
-        blem_ble_adv_on_state_t on_state_change)
+static void blem_ble_log_proximity_configuration()
+{
+    const ble_advertising_set_t *const adv = &g_advertising_sets[BLE_ADVERTISING_SET_PROXIMITY];
+    const ble_adv_data_proximity_t *const adv_data = &adv->adv.data.proximity;
+    char uuid_str[37];
+    char minors_str[ARRAY_SIZE(g_proximity_minors) * 6 + sizeof("[] each 65535 s")];
+    char *minors_str_ptr;
+    size_t minors_str_size;
+    size_t num_minors;
+
+    uuid_str[0] = '\0';
+    bin2hex(adv_data->proximity_uuid, sizeof(adv_data->proximity_uuid), uuid_str, sizeof(uuid_str));
+
+    num_minors = 0;
+    minors_str_ptr = minors_str;
+    minors_str_size = sizeof(minors_str);
+    csnprintf(&minors_str_ptr, &minors_str_size, "[");
+    for (size_t i = 0; i < ARRAY_SIZE(g_proximity_minors); i++)
+    {
+        if (g_proximity_minors[i] == 0)
+        {
+            break;
+        }
+        csnprintf(&minors_str_ptr, &minors_str_size, "%s%d", (num_minors > 0 ? "," : ""), g_proximity_minors[i]);
+        num_minors++;
+    }
+    csnprintf(&minors_str_ptr, &minors_str_size, "]");
+
+    if ((num_minors > 1) && (g_proximity_timer.repeat > 0))
+    {
+        csnprintf(&minors_str_ptr, &minors_str_size, " %d s each", (int)g_proximity_timer.repeat);
+    }
+
+    LOGI("BLE iBeacon configured (enable=%d, major=%d, minors=%s, meas_power=%d, UUID=%s), %.1f dBm, %d ms",
+         adv->mode.enabled,
+         ntohs(adv_data->major),
+         minors_str,
+         adv_data->measured_power,
+         uuid_str,
+         adv->adv_tx_power * 0.1f,
+         adv->interval);
+}
+
+void blem_ble_proximity_configure(blem_ble_proximity_config_t *config, blem_ble_adv_on_state_t on_state_change)
 {
     ble_advertising_set_t *const adv = &g_advertising_sets[BLE_ADVERTISING_SET_PROXIMITY];
     ble_adv_data_proximity_t *const adv_data = &adv->adv.data.proximity;
-    char uuid_str[37] = "";
+    size_t num_minors;
 
-    adv->interval = adv_interval;
-    adv->adv_tx_power = adv_tx_power;
-    adv->on_state_cb = on_state_change;
-    if (uuid != NULL)
+    if (ev_is_active(&g_proximity_timer))
     {
-        memcpy(adv_data->proximity_uuid, uuid, sizeof(adv_data->proximity_uuid));
+        ev_timer_stop(g_loop, &g_proximity_timer);
     }
-    adv_data->major = htons(major);
-    adv_data->minor = htons(minor);
-    adv_data->measured_power = meas_power;
-    adv->mode.enabled = enable;
-    /* Trigger force refresh of all parameters */
-    adv->mode.changed = true;
+    ev_timer_set(&g_proximity_timer, 0, 0);
+    adv->mode.enabled = false;
 
-    bin2hex(adv_data->proximity_uuid, sizeof(adv_data->proximity_uuid), uuid_str, sizeof(uuid_str));
+    /* Check for multiple Minor IDs */
+    memset(g_proximity_minors, 0, sizeof(g_proximity_minors));
+    num_minors = 0;
+    for (size_t i = 0; i < ARRAY_SIZE(config->minors); i++)
+    {
+        if (config->minors[i] != 0)
+        {
+            g_proximity_minors[num_minors++] = config->minors[i];
+        }
+    }
+    if (num_minors < 1)
+    {
+        LOGE("No valid iBeacon Minor IDs");
+        return;
+    }
+    if (num_minors > 1)
+    {
+        if (config->minor_interval > 0)
+        {
+            ev_timer_set(&g_proximity_timer, 0, config->minor_interval);
+        }
+        else
+        {
+            LOGW("No minor_interval, ignoring %d additional iBeacon Minor IDs", num_minors - 1);
+        }
+    }
+    else if (config->minor_interval > 0)
+    {
+        LOGW("Ignoring minor_interval because of single iBeacon Minor ID");
+    }
 
-    LOGI("BLE iBeacon configured (enable=%d, major=%d, minor=%d, meas_power=%d, UUID=%s), %.1f dBm, %d ms",
-         adv->mode.enabled,
-         ntohs(adv_data->major),
-         ntohs(adv_data->minor),
-         adv_data->measured_power,
-         uuid_str,
-         adv_tx_power * 0.1f,
-         adv_interval);
+    memcpy(adv_data->proximity_uuid, config->uuid, sizeof(adv_data->proximity_uuid));
+    adv_data->major = htons(config->major);
+    adv_data->minor = htons(g_proximity_minors[0]); /*< Load the first minor value */
+    adv_data->measured_power = config->meas_power;
 
-    advertising_apply();
+    adv->interval = config->adv_interval;
+    adv->adv_tx_power = config->adv_tx_power;
+    adv->on_state_cb = on_state_change;
+    adv->mode.enabled = config->enable;
+    adv->mode.changed = true; /*< Trigger force refresh of all parameters */
+
+    blem_ble_log_proximity_configuration();
+
+    if (advertising_apply() && config->enable && (g_proximity_timer.repeat > 0))
+    {
+        ev_timer_again(g_loop, &g_proximity_timer);
+    }
 }
 
 void blem_ble_close(void)
 {
+    if (ev_is_active(&g_proximity_timer))
+    {
+        ev_timer_stop(g_loop, &g_proximity_timer);
+    }
     advertising_disable_all();
     advertising_apply();
     osp_ble_close();

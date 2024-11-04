@@ -397,7 +397,7 @@ dummy_gatekeeper_get_verdict(struct fsm_policy_req *req,
     else
     {
         LOGT("%s(): processing using easy curl", __func__);
-        gk_response = gk_send_ecurl_request(session, fsm_gk_session, gk_verdict, policy_reply);
+        gk_response = gk_gatekeeper_lookup(session, fsm_gk_session, gk_verdict, policy_reply);
         if (gk_response != GK_LOOKUP_SUCCESS)
         {
             policy_reply->categorized = FSM_FQDN_CAT_FAILED;

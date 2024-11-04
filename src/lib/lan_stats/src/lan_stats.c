@@ -442,7 +442,6 @@ lan_stats_set_data_report_tag(struct net_md_stats_accumulator *acc)
     {
         MEMZERO(smac);
         snprintf(smac, sizeof(smac), PRI_os_macaddr_lower_t, FMT_os_macaddr_pt(key->smac));
-        LOGD("%s(): fetching data report tags for %s", __func__, smac);
         smac_report_set = data_report_tags_get_tags(key->smac);
         if (smac_report_set != NULL)
         {
@@ -459,7 +458,6 @@ lan_stats_set_data_report_tag(struct net_md_stats_accumulator *acc)
     {
         MEMZERO(dmac);
         snprintf(dmac, sizeof(dmac), PRI_os_macaddr_lower_t, FMT_os_macaddr_pt(key->dmac));
-        LOGD("%s(): fetching data report tags for %s", __func__, dmac);
         dmac_report_set = data_report_tags_get_tags(key->dmac);
         if (dmac_report_set != NULL)
         {

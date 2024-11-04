@@ -885,10 +885,13 @@ void test_apply_wildcard_policy_no_match(void)
     fsm_free_url_reply(fqdn_req.req_info->reply);
 }
 
-static void test_update_client(struct fsm_session *session,
+static void test_update_client(void *context,
                                struct policy_table *table)
 {
     struct fsm_policy_client *client;
+    struct fsm_session *session;
+
+    session = (struct fsm_session *)context;
 
     client = (struct fsm_policy_client *)session->handler_ctxt;
     TEST_ASSERT_NOT_NULL(client);
@@ -1612,10 +1615,12 @@ void test_ipthreat_multiple_provider_block(void)
 char *ut_flush = "flushed";
 
 int
-ut_flush_cache(struct fsm_session *session, struct fsm_policy *policy)
+ut_flush_cache(void *context, struct fsm_policy *policy)
 {
     struct fsm_policy_client *client;
+    struct fsm_session *session;
 
+    session = (struct fsm_session *)context;
     client = &session->policy_client;
     client->name = ut_flush;
 

@@ -86,6 +86,7 @@ UNIT_SRC += src/ow_steer_policy_btm_response.c
 UNIT_SRC += src/ow_l2uf_kick.c
 UNIT_SRC += src/ow_steer_local_neigh.c
 UNIT_SRC += src/ow_mbss_prefer_nonhidden.c
+UNIT_SRC += src/ow_telog.c
 
 UNIT_EXPORT_CFLAGS += -I$(UNIT_PATH)/inc
 UNIT_CFLAGS += -I$(UNIT_PATH)/inc
@@ -97,3 +98,4 @@ UNIT_DEPS += src/lib/target
 UNIT_DEPS += src/lib/schema
 UNIT_DEPS += src/lib/ovsdb
 UNIT_DEPS += src/lib/datapipeline
+UNIT_DEPS += src/lib/timevt

@@ -38,19 +38,12 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "fsm.h"
 #include "ds_tree.h"
 #include "wc_telemetry.h"
+#include "gatekeeper_ecurl.h"
 
 #define GK_PERIODIC_INTERVAL 120
 #define GK_UNCATEGORIZED_ID 15
 #define GK_CURL_TIMEOUT      (2*60)
-#define MAX_PATH_LEN 256
 
-enum gk_response_code
-{
-    GK_LOOKUP_SUCCESS = 0,
-    GK_LOOKUP_FAILURE,
-    GK_CONNECTION_ERROR,
-    GK_SERVICE_ERROR
-};
 
 struct gk_req_ids
 {
@@ -63,26 +56,6 @@ struct gk_req_ids
     uint32_t req_https_sni_id;
     uint32_t req_http_host_id;
     uint32_t req_http_url_id;
-};
-
-/**
- * @brief required info for connecting to the
- * gatekeeper server
- */
-struct gk_server_info
-{
-    char *server_url;
-    char ca_path[MAX_PATH_LEN];
-    char ssl_cert[MAX_PATH_LEN];
-    char ssl_key[MAX_PATH_LEN];
-    char *cert_path;
-};
-
-struct gk_curl_easy_info
-{
-    CURL *curl_handle;
-    bool ecurl_connection_active;
-    time_t ecurl_connection_time;
 };
 
 struct gk_curl_multi_info

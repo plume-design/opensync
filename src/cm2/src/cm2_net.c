@@ -238,6 +238,11 @@ void cm2_update_bridge_cfg(char *bridge, char *port, bool brop,
     bool is_mac_updated = false;
     int  r;
 
+    if ((g_state.link.ipv4.blocked == false) && (strlen(bridge) > 0))
+    {
+        cm2_util_get_ip_inet_state_cfg(bridge, &g_state.link.ipv4, g_state.link.if_name);
+    }
+
     if (mstate != CM2_PAR_NOT_SET) {
         macrep = (mstate == CM2_PAR_TRUE) ? true : false;
         r = cm2_ovsdb_update_mac_reporting(port, macrep);

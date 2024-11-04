@@ -139,6 +139,7 @@ typedef enum {
 #define SCHEMA_CONSTS_INET_DNS_PRIMARY      "primary"
 #define SCHEMA_CONSTS_INET_DNS_SECONDARY    "secondary"
 
+#define SCHEMA_CONSTS_INET_IP_SCHEME_NONE   "none"
 #define SCHEMA_CONSTS_INET_IP_SCHEME_DHCP   "dhcp"
 #define SCHEMA_CONSTS_INET_IP_SCHEME_STATIC "static"
 

@@ -638,8 +638,9 @@ gkc_flush_all(struct fsm_policy_rules *rules)
 }
 
 int
-gkc_flush_client(struct fsm_session *session, struct fsm_policy *policy)
+gkc_flush_client(void *context, struct fsm_policy *policy)
 {
+    struct fsm_session *session;
     int num_hero_stats_records;
     int num_flushed_records;
     char *name;
@@ -647,6 +648,7 @@ gkc_flush_client(struct fsm_session *session, struct fsm_policy *policy)
 
     if (!policy) return -1;
 
+    session = (struct fsm_session *)context;
     chk = (session != NULL);
     if (chk) chk &= (session->name != NULL);
     if (chk) chk &= (strlen(session->name) != 0);

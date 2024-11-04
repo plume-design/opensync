@@ -36,6 +36,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "util.h"
 
 #include "lnx_bridge.h"
+#include "hw_acc.h"
 
 
 const char lnx_br_create_cmd[] = _S(ip link add name "$1" type bridge);
@@ -154,6 +155,7 @@ bool lnx_bridge_add_port(char *br, char *port)
         return false;
     }
 
+    hw_acc_flush_all_flows();
     return true;
 }
 
@@ -168,5 +170,6 @@ bool lnx_bridge_del_port(char *br, char *port)
         return false;
     }
 
+    hw_acc_flush_all_flows();
     return true;
 }

@@ -1074,6 +1074,15 @@ fsm_dpi_set_network_id(struct net_md_stats_accumulator *acc)
     fkey->networkid = (netid) ? STRDUP(netid) : STRDUP("unknown");
 }
 
+void
+fsm_dpi_set_flow_marker(struct net_md_stats_accumulator *acc)
+{
+    struct flow_key *fkey;
+    if (acc == NULL) return;
+
+    fkey = acc->fkey;
+    fkey->flowmarker = acc->flow_marker;
+}
 
 /**
  * @brief set uplinkname for the acc.
@@ -1201,7 +1210,7 @@ fsm_dpi_on_acc_destruction(struct net_md_aggregator *aggr,
     struct net_md_stats_accumulator *rev_acc;
     int mark;
 
-    mark = fsm_dpi_get_mark(acc, acc->dpi_done);
+    mark = fsm_dpi_get_mark(acc->flow_marker, acc->dpi_done);
     if ((mark > 2) && (acc->mark_done != mark))
     {
         flush_accel_flows(acc);
@@ -1911,7 +1920,7 @@ flush_accel_flows(struct net_md_stats_accumulator *acc)
         return -1;
     }
 
-    mark = fsm_dpi_get_mark(acc, acc->dpi_done);
+    mark = fsm_dpi_get_mark(acc->flow_marker, acc->dpi_done);
     index = 0;
     cookie = FLUSH_COOKIE;
     ip_len = (info.ip_version == 4) ? 4 : 16;
@@ -1986,7 +1995,7 @@ fsm_dispatch_pkt(struct fsm_session *session,
 
         memset(&mark_policy, 0, sizeof(mark_policy));
         FSM_TRACK_DNS(net_parser, session->name);
-        mark = fsm_dpi_get_mark(net_parser->acc, acc->dpi_done);
+        mark = fsm_dpi_get_mark(net_parser->acc->flow_marker, acc->dpi_done);
 
         /*
          * Ideally, we would like to set the ct_mark (and flush accelerated data-path)
@@ -2088,7 +2097,11 @@ fsm_dispatch_pkt(struct fsm_session *session,
 
     if (pass || drop)
     {
-        mark = fsm_dpi_get_mark(net_parser->acc, acc->dpi_done);
+        mark = fsm_dpi_get_mark(net_parser->acc->flow_marker, acc->dpi_done);
+
+        /* Set the flow_marker to be used for FCM */
+        acc->flow_marker = mark;
+        fsm_dpi_set_flow_marker(acc);
         memset(&mark_policy, 0, sizeof(mark_policy));
         mark_policy.flow_mark = mark;
         err = session->set_dpi_mark(net_parser, &mark_policy);

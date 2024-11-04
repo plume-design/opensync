@@ -95,6 +95,7 @@ struct net_md_stats_accumulator
     struct net_md_aggregator *aggr;
     struct net_md_flow_key *key;
     struct flow_key *fkey;
+    ds_tree_node_t net_md_acc_node;
     struct flow_counters first_counters;   /* first reported counters */
     struct flow_counters counters;         /* current accumulated stats */
     struct flow_counters report_counters;  /* reported stats */
@@ -228,6 +229,7 @@ struct net_md_aggregator_set
     bool (*neigh_lookup)(int, void *, os_macaddr_t *);
 
     /* callback on accumulator creation */
+    bool (*process)(struct net_md_stats_accumulator *);
     void (*on_acc_create)(struct net_md_aggregator *, struct net_md_stats_accumulator *);
     void (*on_acc_destroy)(struct net_md_aggregator *, struct net_md_stats_accumulator *);
     void (*on_acc_report)(struct net_md_aggregator *, struct net_md_stats_accumulator *);

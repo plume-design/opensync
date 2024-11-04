@@ -266,18 +266,13 @@ fsm_dpi_dns_process_verdict(struct fsm_policy_req *policy_request,
     fsm_dpi_dns_send_report(policy_request, policy_reply);
 }
 
-static void
-fsm_set_supported_feature(struct fsm_policy_req *policy_request, int feature)
-{
-    policy_request->supported_features |= feature;
-}
-
 struct fsm_policy_req *
 fsm_dpi_dns_create_request(struct fsm_request_args *request_args,
                            char *hostname)
 {
     struct fsm_policy_req *policy_request;
     struct fqdn_pending_req *pending_req;
+    int supported_features;
 
     if (request_args == NULL || hostname == NULL) return NULL;
 
@@ -290,8 +285,8 @@ fsm_dpi_dns_create_request(struct fsm_request_args *request_args,
     }
 
     /* set the supported features flag */
-    fsm_set_supported_feature(policy_request, FSM_CNAME_FEATURE);
-    fsm_set_supported_feature(policy_request, FSM_NOANSWER_FEATURE);
+    supported_features = FSM_CNAME_FEATURE | FSM_NOANSWER_FEATURE | FSM_PROXIMITY_FEATURE;
+    fsm_policy_set_supported_feature(policy_request, supported_features);
 
     pending_req = policy_request->fqdn_req;
     policy_request->url = STRDUP(hostname);

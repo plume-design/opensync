@@ -490,11 +490,13 @@ fsm_process_provider(struct fsm_session *session)
 
 
 void
-fsm_update_client(struct fsm_session *session,
+fsm_update_client(void *context,
                   struct policy_table *table)
 {
     struct fsm_policy_client *client;
+    struct fsm_session *session;
 
+    session = (struct fsm_session *)context;
     if (session == NULL) return;
 
     client = &session->policy_client;
@@ -1669,6 +1671,8 @@ callback_FCM_Collector_Config(ovsdb_update_monitor_t *mon,
         fsm_disable_ct_stats_comms(old_rec);
     }
 }
+
+struct fsm_session;
 
 
 /**

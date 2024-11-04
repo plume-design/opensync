@@ -75,6 +75,7 @@ struct ow_ovsdb {
     struct ds_tree phy_tree;
     struct ds_tree vif_tree;
     struct ds_tree sta_tree;
+    struct ds_tree mld_tree;
     struct ow_ovsdb_ms_root ms;
     struct ow_ovsdb_wps_ops *wps;
     struct ow_ovsdb_wps_changed *wps_changed;
@@ -109,8 +110,25 @@ struct ow_ovsdb_vif {
     ev_timer work;
 };
 
+struct ow_ovsdb_sta_mld_oftag {
+    struct ds_tree_node node;
+    char *oftag;
+    bool keep;
+};
+
+struct ow_ovsdb_sta_mld {
+    struct ds_tree_node node;
+    struct ds_tree links; /* ow_ovsdb_sta::node_mld */
+    struct ds_tree oftags; /* ow_ovsdb_sta_mld_oftag::node */
+    struct ow_ovsdb *root;
+    struct osw_hwaddr mld_addr;
+    ev_timer work;
+};
+
 struct ow_ovsdb_sta {
     struct ds_tree_node node;
+    struct ds_tree_node node_mld;
+    struct ow_ovsdb_sta_mld *mld;
     struct ow_ovsdb *root;
     const struct osw_state_sta_info *info;
     struct schema_Wifi_Associated_Clients state_cur;
@@ -134,6 +152,7 @@ static struct ow_ovsdb g_ow_ovsdb = {
     .phy_tree = DS_TREE_INIT(ds_str_cmp, struct ow_ovsdb_phy, node),
     .vif_tree = DS_TREE_INIT(ds_str_cmp, struct ow_ovsdb_vif, node),
     .sta_tree = DS_TREE_INIT(ow_ovsdb_sta_cmp, struct ow_ovsdb_sta, node),
+    .mld_tree = DS_TREE_INIT((ds_key_cmp_t *)osw_hwaddr_cmp, struct ow_ovsdb_sta_mld, node),
 };
 
 static bool
@@ -1212,6 +1231,31 @@ ow_ovsdb_vifstate_fill_akm(struct schema_Wifi_VIF_State *schema,
     SCHEMA_SET_STR(schema->pmf, pmf_to_str(wpa->pmf));
 }
 
+static const char *
+ow_ovsdb_vifstate_sta_derive_pmf(const struct schema_Wifi_VIF_Config *vconf,
+                                 const enum osw_pmf pmf)
+{
+    if (vconf == NULL) return NULL;
+    /* The link->pmf actually reports true/false. */
+    switch (pmf) {
+        case OSW_PMF_DISABLED: return SCHEMA_CONSTS_SECURITY_PMF_DISABLED;
+        case OSW_PMF_OPTIONAL: return vconf->pmf;
+        case OSW_PMF_REQUIRED: return vconf->pmf;
+    }
+    return NULL;
+}
+
+static void
+ow_ovsdb_vifstate_fill_sta_pmf(struct schema_Wifi_VIF_State *schema,
+                               const struct schema_Wifi_VIF_Config *vconf,
+                               const enum osw_pmf pmf)
+{
+    SCHEMA_UNSET_FIELD(schema->pmf);
+    const char *str = ow_ovsdb_vifstate_sta_derive_pmf(vconf, pmf);
+    if (str == NULL) return;
+    SCHEMA_SET_STR(schema->pmf, str);
+}
+
 static int
 ow_ovsdb_str2keyid(const char *key_id)
 {
@@ -1490,6 +1534,7 @@ ow_ovsdb_vifstate_to_schema(struct schema_Wifi_VIF_State *schema,
                     }
                     ow_ovsdb_vifstate_fill_akm(schema, &vsta->link.wpa);
                     ow_ovsdb_vifstate_fill_mld(schema, &vsta->mld);
+                    ow_ovsdb_vifstate_fill_sta_pmf(schema, vconf, vsta->link.wpa.pmf);
 
                     SCHEMA_SET_STR(schema->bridge,vsta->link.bridge_if_name.buf);
                     SCHEMA_SET_STR(schema->multi_ap, ow_ovsdb_sta_multi_ap_to_cstr(vsta->link.multi_ap));
@@ -1984,6 +2029,7 @@ ow_ovsdb_sta_gc(struct ow_ovsdb_sta *sta)
     if (sta->vif_name != NULL) return;
     if (sta->oftag != NULL) return;
     if (strlen(sta->state_cur.mac) > 0) return;
+    if (sta->mld != NULL) return;
 
     ds_tree_remove(tree, sta);
     FREE(sta);
@@ -2224,6 +2270,117 @@ ow_ovsdb_sta_tag_mutate(const struct osw_hwaddr *addr,
 }
 
 static bool
+ow_ovsdb_sta_mld_sync(struct ow_ovsdb_sta_mld *mld)
+{
+    struct ow_ovsdb_sta *sta;
+    struct ow_ovsdb_sta_mld_oftag *oftag;
+    struct ow_ovsdb_sta_mld_oftag *tmp;
+    bool something_failed = false;
+
+    ds_tree_foreach(&mld->oftags, oftag) {
+        oftag->keep = false;
+    }
+
+    ds_tree_foreach(&mld->links, sta) {
+        const bool no_oftag = (sta->oftag == NULL);
+        if (no_oftag) continue;
+
+        oftag = ds_tree_find(&mld->oftags, sta->oftag);
+        const bool already_set = (oftag != NULL);
+        if (already_set) {
+            LOGD("ow: ovsdb: mld: "OSW_HWADDR_FMT": oftag: %s: already set", OSW_HWADDR_ARG(&mld->mld_addr), sta->oftag);
+            oftag->keep = true;
+            continue;
+        }
+
+        LOGI("ow: ovsdb: mld: "OSW_HWADDR_FMT": oftag: %s: setting", OSW_HWADDR_ARG(&mld->mld_addr), sta->oftag);
+        const int num_updates = ow_ovsdb_sta_tag_mutate(&mld->mld_addr, sta->oftag, "insert");
+        if (num_updates != 1) {
+            something_failed = true;
+            continue;
+        }
+
+        oftag = CALLOC(1, sizeof(*oftag));
+        oftag->oftag = STRDUP(sta->oftag);
+        oftag->keep = true;
+        ds_tree_insert(&mld->oftags, oftag, oftag->oftag);
+    }
+
+    ds_tree_foreach_safe(&mld->oftags, oftag, tmp) {
+        if (oftag->keep) continue;
+
+        LOGI("ow: ovsdb: mld: "OSW_HWADDR_FMT": oftag: %s: clearing", OSW_HWADDR_ARG(&mld->mld_addr), oftag->oftag);
+        ow_ovsdb_sta_tag_mutate(&mld->mld_addr, oftag->oftag, "delete");
+        ds_tree_remove(&mld->oftags, oftag);
+        FREE(oftag->oftag);
+        FREE(oftag);
+    }
+
+    if (something_failed) return false;
+    return true;
+}
+
+static void
+ow_ovsdb_sta_mld_drop(struct ow_ovsdb_sta_mld *mld)
+{
+    if (mld == NULL) return;
+    ds_tree_remove(&mld->root->mld_tree, mld);
+    FREE(mld);
+}
+
+static void
+ow_ovsdb_sta_mld_gc(struct ow_ovsdb_sta_mld *mld)
+{
+    if (ds_tree_is_empty(&mld->links) == false) return;
+    if (ds_tree_is_empty(&mld->oftags) == false) return;
+    ow_ovsdb_sta_mld_drop(mld);
+}
+
+static void
+ow_ovsdb_sta_mld_work_cb(EV_P_ ev_timer *arg, int events)
+{
+    struct ow_ovsdb_sta_mld *mld = container_of(arg, struct ow_ovsdb_sta_mld, work);
+    if (ow_ovsdb_sta_mld_sync(mld) == false) return;
+    ev_timer_stop(EV_A_ arg);
+    ow_ovsdb_sta_mld_gc(mld);
+}
+
+static struct ow_ovsdb_sta_mld *
+ow_ovsdb_sta_mld_alloc(struct ow_ovsdb *root, const struct osw_hwaddr *mld_addr)
+{
+    struct ow_ovsdb_sta_mld *mld = CALLOC(1, sizeof(*mld));
+    mld->mld_addr = *mld_addr;
+    mld->root = root;
+    ds_tree_init(&mld->oftags, ds_str_cmp, struct ow_ovsdb_sta_mld_oftag, node);
+    ds_tree_init(&mld->links, ds_void_cmp, struct ow_ovsdb_sta, node_mld);
+    ev_timer_init(&mld->work, ow_ovsdb_sta_mld_work_cb, 0, 0);
+    ds_tree_insert(&root->mld_tree, mld, &mld->mld_addr);
+    return mld;
+}
+
+static struct ow_ovsdb_sta_mld *
+ow_ovsdb_sta_mld_get(const struct osw_state_sta_info *info)
+{
+    if (info == NULL) return NULL;
+    if (info->drv_state->connected == false) return NULL;
+    const struct osw_hwaddr *mld_addr = &info->drv_state->mld_addr;
+    if (osw_hwaddr_is_zero(mld_addr)) return NULL;
+    struct ow_ovsdb *root = &g_ow_ovsdb;
+    return ds_tree_find(&root->mld_tree, mld_addr)
+        ?: ow_ovsdb_sta_mld_alloc(root, mld_addr);
+}
+
+static void
+ow_ovsdb_sta_mld_work_sched(struct ow_ovsdb_sta_mld *mld)
+{
+    if (mld == NULL) return;
+
+    ev_timer_stop(EV_DEFAULT_ &mld->work);
+    ev_timer_set(&mld->work, 0, 5);
+    ev_timer_start(EV_DEFAULT_ &mld->work);
+}
+
+static bool
 ow_ovsdb_sta_set_tag(struct ow_ovsdb_sta *sta, const char *oftag)
 {
     if (WARN_ON(sta->oftag != NULL)) return true;
@@ -2232,6 +2389,7 @@ ow_ovsdb_sta_set_tag(struct ow_ovsdb_sta *sta, const char *oftag)
     if (c != 1) return false;
 
     sta->oftag = STRDUP(oftag);
+    ow_ovsdb_sta_mld_work_sched(sta->mld);
     return true;
 }
 
@@ -2243,6 +2401,7 @@ ow_ovsdb_sta_unset_tag(struct ow_ovsdb_sta *sta)
     ow_ovsdb_sta_tag_mutate(&sta->sta_addr, sta->oftag, "delete");
     FREE(sta->oftag);
     sta->oftag = NULL;
+    ow_ovsdb_sta_mld_work_sched(sta->mld);
     return true;
 }
 
@@ -2429,6 +2588,42 @@ ow_ovsdb_sta_get(const struct osw_hwaddr *sta_addr)
 }
 
 static void
+ow_ovsdb_sta_clear_mld(struct ow_ovsdb_sta *sta)
+{
+    if (WARN_ON(sta == NULL)) return;
+    if (sta->mld == NULL) return;
+    ow_ovsdb_sta_mld_work_sched(sta->mld);
+    ds_tree_remove(&sta->mld->links, sta);
+    sta->mld = NULL;
+    ow_ovsdb_sta_work_sched(sta);
+}
+
+static void
+ow_ovsdb_sta_set_mld(struct ow_ovsdb_sta *sta, struct ow_ovsdb_sta_mld *mld)
+{
+    if (mld == NULL) return;
+    if (WARN_ON(sta == NULL)) return;
+    if (WARN_ON(sta->mld != NULL)) ow_ovsdb_sta_clear_mld(sta);
+    ds_tree_insert(&mld->links, sta, sta);
+    sta->mld = mld;
+    ow_ovsdb_sta_mld_work_sched(mld);
+    ow_ovsdb_sta_work_sched(sta);
+}
+
+static void
+ow_ovsdb_sta_update_mld(struct ow_ovsdb_sta *sta)
+{
+    struct ow_ovsdb_sta_mld *mld = ow_ovsdb_sta_mld_get(sta->info);
+    if (sta->mld == mld) return;
+    LOGI("ow: ovsdb: sta: "OSW_HWADDR_FMT": mld: "OSW_HWADDR_FMT" -> "OSW_HWADDR_FMT,
+         OSW_HWADDR_ARG(&sta->sta_addr),
+         OSW_HWADDR_ARG(sta->mld ? &sta->mld->mld_addr : osw_hwaddr_zero()),
+         OSW_HWADDR_ARG(mld ? &mld->mld_addr : osw_hwaddr_zero()));
+    ow_ovsdb_sta_clear_mld(sta);
+    ow_ovsdb_sta_set_mld(sta, mld);
+}
+
+static void
 ow_ovsdb_sta_set_info(const struct osw_hwaddr *sta_addr,
                       const struct osw_state_sta_info *info)
 {
@@ -2438,6 +2633,7 @@ ow_ovsdb_sta_set_info(const struct osw_hwaddr *sta_addr,
     if (sta->info && sta->info->drv_state->connected == false)
         sta->info = NULL;
 
+    ow_ovsdb_sta_update_mld(sta);
     ow_ovsdb_sta_work_sched(sta);
 }
 

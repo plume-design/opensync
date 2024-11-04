@@ -132,16 +132,18 @@ ipthreat_dpi_plugin_update(struct fsm_session *session)
  * @param session the fsm session to update
  */
 static void
-ipthreat_dpi_plugin_update_client(struct fsm_session *session,
+ipthreat_dpi_plugin_update_client(void *context,
                                   struct policy_table *table)
 {
     struct ipthreat_dpi_session *ipthreat_dpi_session;
     struct fsm_policy_client *client;
+    struct fsm_session *session;
     char *outbound;
     char *inbound;
     size_t len;
     int cmp;
 
+    session = (struct fsm_session *)context;
     len = 0;
     if (table != NULL) len = strlen(table->name);
     ipthreat_dpi_session = session->handler_ctxt;
@@ -192,7 +194,7 @@ ipthreat_get_session_name(struct fsm_policy_client *client)
 
     if (client == NULL) return NULL;
 
-    session = client->session;
+    session = (struct fsm_session *)client->session;
     if (session == NULL) return NULL;
 
     return session->name;
@@ -833,6 +835,8 @@ ipthreat_dpi_process_message(struct ipthreat_dpi_session *ds_session)
         goto error;
     }
 
+    fsm_policy_set_supported_feature(policy_request, FSM_PROXIMITY_FEATURE);
+    
     policy_reply = fsm_ipthreat_create_reply(&request_args);
     if (policy_reply == NULL)
     {

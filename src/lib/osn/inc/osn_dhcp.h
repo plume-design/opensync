@@ -143,6 +143,8 @@ bool osn_dhcp_client_del(osn_dhcp_client_t *self);
 
 /** Start the DHCP client service */
 bool osn_dhcp_client_start(osn_dhcp_client_t *self);
+/** Renew the DHCP client service */
+bool osn_dhcp_client_renew(osn_dhcp_client_t *self);
 /** Stop the DHCP client service */
 bool osn_dhcp_client_stop(osn_dhcp_client_t *self);
 

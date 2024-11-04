@@ -38,3 +38,4 @@ UNIT_DEPS += src/lib/osa
 UNIT_DEPS += src/lib/unity
 UNIT_DEPS += src/lib/fcm_filter
 UNIT_DEPS += src/lib/unit_test_utils
+UNIT_DEPS += src/lib/gatekeeper_msg

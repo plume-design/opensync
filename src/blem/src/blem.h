@@ -33,6 +33,34 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "ble_adv_data.h"
 
+/** BLE proximity beacons configuration structure */
+typedef struct
+{
+    bool enable;             /**< Enable (`true`) or disable (`false`) advertising of the proximity beacons */
+    int16_t adv_tx_power;    /**< Advertising transmit power in 0.1 dBm steps */
+    uint16_t adv_interval;   /**< Advertising interval in milliseconds */
+    uint8_t uuid[16];        /**< Proximity Beacon UUID (UUID v4 in binary form) */
+    uint16_t major;          /**< Proximity Beacon Major ID */
+    uint16_t minors[4];      /**< One or more Proximity Beacon Minor IDs.
+                              *
+                              *   Minor ID value 0 is invalid (unset) and ignored, all
+                              *   valid values will be rotated every `minor_interval`
+                              *   seconds. If `minor_interval` is 0, only the first
+                              *   valid Minor ID is advertised.
+                              *   At least one Minor ID must be set to a valid value.
+                              */
+    uint16_t minor_interval; /**< Minor IDs rotation interval in seconds.
+                              *
+                              *   If more than one Minor ID is specified in `minors`,
+                              *   this is the interval between switching to the next
+                              *   Minor ID, rotating through all valid Minor IDs.
+                              *   If only one Minor ID is set, this value is ignored.
+                              *   If set to 0, only the first valid Minor ID will be
+                              *   advertised, even if multiple are set.
+                              */
+    int8_t meas_power;       /**< Calibrated (measured) beacon RSSI at 1 meter distance */
+} blem_ble_proximity_config_t;
+
 /**
  * Initialize BLEM OVSDB tables
  */
@@ -71,23 +99,10 @@ void blem_ble_disable(void);
 /**
  * Configure advertising of the BLE proximity beacons
  *
- * @param     enable        Enable or disable advertising of the proximity beacons.
- * @param     adv_tx_power  Advertising transmit power in 0.1 dBm steps.
- * @param     adv_interval  Advertising interval in milliseconds.
- * @param[in] uuid          Proximity Beacon UUID.
- * @param     major         Proximity Beacon Major ID.
- * @param     minor         Proximity Beacon Minor ID.
- * @param     meas_power    Calibrated (measured) RSSI at 1 meter distance.
+ * @param[in] config           Proximity beacons configuration.
+ * @param[in] on_state_change  Callback function to be called when BLE advertising state changes.
  */
-void blem_ble_proximity_configure(
-        bool enable,
-        int16_t adv_tx_power,
-        uint16_t adv_interval,
-        const uint8_t uuid[16],
-        uint16_t major,
-        uint16_t minor,
-        int8_t meas_power,
-        blem_ble_adv_on_state_t on_state_change);
+void blem_ble_proximity_configure(blem_ble_proximity_config_t *config, blem_ble_adv_on_state_t on_state_change);
 
 /**
  * Power off the Bluetooth peripheral and cleanup resources

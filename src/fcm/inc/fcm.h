@@ -28,7 +28,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define FCM_H_INCLUDED
 
 #include <ev.h>
-
+#include "fcm_gatekeeper.h"
+#include "fsm_policy.h"
 typedef enum
 {
     FCM_RPT_NO_FMT     = -1,
@@ -63,6 +64,8 @@ typedef struct fcm_collect_plugin_
     char * (*get_mqtt_hdr_node_id)(void);
     char * (*get_mqtt_hdr_loc_id)(void);
     char * (*get_other_config)(struct fcm_collect_plugin_ *, char *);
+    bool (*fcm_gk_request)(struct gk_request *req, struct gk_reply *rep);
+    int  (*process_flush_cache)(struct fsm_policy *policy);
     struct ev_loop *loop;
     struct fcm_session *session;
     struct fcm_filter_client *collect_client;

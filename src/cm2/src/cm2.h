@@ -33,6 +33,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "evx.h"
 #endif
 #include "target.h"
+#include "cm2_bh_dhcp.h"
+#include "cm2_bh_gre.h"
+#include "cm2_bh_cmu.h"
 
 #define IFTYPE_SIZE 128 + 1
 
@@ -268,6 +271,9 @@ typedef struct
     cm2_restore_method restore_method;
     char               target[129];
     ev_timer           gw_offline_start;
+    cm2_bh_dhcp_t     *bh_dhcp;
+    cm2_bh_gre_t      *bh_gre;
+    cm2_bh_cmu_t      *bh_cmu;
 } cm2_state_t;
 
 extern cm2_state_t g_state;
@@ -371,6 +377,7 @@ static inline void cm2_ovsdb_ble_init(void)
 
 // ovsdb
 int cm2_ovsdb_init(void);
+void cm2_ovsdb_WIC_dhcp_renew(const char *if_name);
 bool cm2_ovsdb_set_Manager_target(char *target);
 bool cm2_ovsdb_set_AWLAN_Node_manager_addr(char *addr);
 void cm2_ovsdb_set_AWLAN_Node_boot_time(void);
@@ -415,6 +422,7 @@ bool cm2_ovsdb_CMU_get_ip_state(const char *if_name, cm2_uplink_state_t *ipv4, c
 cm2_uplink_state_t cm2_get_uplink_state_from_str(const char *uplink_state);
 int cm2_ovsdb_update_route_metric(const char *ifname, int metric);
 bool cm2_ovsdb_is_tunnel_created(const char *ifname);
+int cm2_util_get_ip_inet_state_cfg(const char *uplink, cm2_ip *ip, const char *if_name);
 
 #ifdef CONFIG_CM2_USE_EXTRA_DEBUGS
 void cm2_ovsdb_dump_debug_data(void);

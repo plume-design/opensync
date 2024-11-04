@@ -1163,12 +1163,6 @@ static Traffic__FlowKey *set_flow_key(struct flow_key *key)
 
     if (key == NULL) return NULL;
 
-    if (key->log && key->acc != NULL)
-    {
-        LOGD("%s: preparing report for acc", __func__);
-        net_md_log_acc(key->acc, __func__);
-    }
-
     /* Allocate the protobuf structure */
     pb = CALLOC(1, sizeof(*pb));
     if (pb == NULL) return NULL;
@@ -1233,7 +1227,6 @@ static Traffic__FlowKey *set_flow_key(struct flow_key *key)
     {
         /* Add the flow tags */
         pb->flowtags = set_pb_flow_tags(key);
-        net_md_log_acc(key->acc, __func__);
         if (pb->flowtags == NULL) goto err_free_uplinkname;
 
         pb->n_flowtags = key->num_tags;

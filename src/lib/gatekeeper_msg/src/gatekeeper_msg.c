@@ -35,7 +35,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "log.h"
 #include "network_metadata_report.h"
 #include "os_types.h"
-
+#include "os_nif.h"
+#include "os.h"
 /**
  * @brief frees a protobuf request header
  *
@@ -146,18 +147,13 @@ gk_free_http_url_req(Gatekeeper__Southbound__V1__GatekeeperReq *pb)
  * @return none
  */
 static void
-gk_free_app_req(Gatekeeper__Southbound__V1__GatekeeperReq *pb)
+gk_free_app_req(Gatekeeper__Southbound__V1__GatekeeperAppReq *app_req)
 {
-    Gatekeeper__Southbound__V1__GatekeeperAppReq *app_req;
-
-    app_req = pb->req_app;
     if (app_req == NULL) return;
 
     gk_free_req_header(app_req->header);
     app_req->header = NULL;
     FREE(app_req);
-
-    pb->req_app = NULL;
 }
 
 
@@ -248,6 +244,29 @@ gk_free_ipv6_tuple_req(Gatekeeper__Southbound__V1__GatekeeperReq *pb)
     pb->req_ipv6_tuple = NULL;
 }
 
+static void gk_free_bulk_app_req(Gatekeeper__Southbound__V1__GatekeeperBulkRequest *bulk_req)
+{
+    size_t i;
+
+    for (i = 0; i < bulk_req->n_req_app; i++)
+    {
+        gk_free_app_req(bulk_req->req_app[i]);
+    }
+
+    FREE(bulk_req->req_app);
+}
+
+static void gk_free_bulk_req(Gatekeeper__Southbound__V1__GatekeeperReq *pb)
+{
+    Gatekeeper__Southbound__V1__GatekeeperBulkRequest *bulk_req;
+
+    bulk_req = pb->req_bulk;
+    if (bulk_req == NULL) return;
+
+    if (bulk_req->n_req_app) gk_free_bulk_app_req(bulk_req);
+
+    FREE(bulk_req);
+}
 
 static void
 gk_free_pb_request(Gatekeeper__Southbound__V1__GatekeeperReq *pb)
@@ -256,11 +275,12 @@ gk_free_pb_request(Gatekeeper__Southbound__V1__GatekeeperReq *pb)
     gk_free_https_sni_req(pb);
     gk_free_http_host_req(pb);
     gk_free_http_url_req(pb);
-    gk_free_app_req(pb);
+    gk_free_app_req(pb->req_app);
     gk_free_ipv4_req(pb);
     gk_free_ipv6_req(pb);
     gk_free_ipv4_tuple_req(pb);
     gk_free_ipv6_tuple_req(pb);
+    gk_free_bulk_req(pb);
     FREE(pb);
 }
 
@@ -273,7 +293,6 @@ gk_free_packed_buffer(struct gk_packed_buffer *buffer)
     FREE(buffer->buf);
     FREE(buffer);
 }
-
 
 static Gatekeeper__Southbound__V1__GatekeeperCommonRequest *
 gk_set_pb_common_req(struct gk_req_header *header)
@@ -950,6 +969,155 @@ gk_set_pb_ip_flow_req(Gatekeeper__Southbound__V1__GatekeeperReq *gk_req_pb,
     return true;
 }
 
+static size_t
+gk_get_bulk_app_count(struct gk_bulk_request *remark_req)
+{
+    size_t count = 0;
+    size_t i;
+
+    /* loop through each device to get the total number of apps request
+    * of all device */
+    for (i = 0; i < remark_req->n_devices; i++)
+    {
+        count += remark_req->devices[i]->n_apps;
+    }
+    return count;
+}
+
+Gatekeeper__Southbound__V1__GatekeeperAppReq **
+gk_set_pb_bulk_app(struct gk_bulk_request *request)
+{
+    Gatekeeper__Southbound__V1__GatekeeperAppReq **pb_tbl;
+    struct gk_device2app_req *dev_apps;
+    struct gk_app_request *app_req;
+    union gk_data_req *data_req;
+    struct gk_request gk_req;
+    size_t allocated;
+    char *app_name;
+    int count;
+    size_t i;
+    size_t j;
+
+    MEMZERO(gk_req);
+    gk_req.type = FSM_APP_REQ;
+    data_req = &gk_req.req;
+    app_req = &data_req->gk_app_req;
+
+    count = gk_get_bulk_app_count(request);
+    pb_tbl = CALLOC(count, sizeof(Gatekeeper__Southbound__V1__GatekeeperAppReq *));
+
+    allocated = 0;
+    for (i = 0; i < request->n_devices; i++)
+    {
+        dev_apps = request->devices[i];
+        if (dev_apps == NULL || dev_apps->header == NULL)
+        {
+            LOGD("%s(): request header or device id is not set", __func__);
+            goto free_pb;
+        }
+
+        /* set the header */
+        app_req->header = dev_apps->header;
+
+        for (j = 0; j < dev_apps->n_apps; j++)
+        {
+            app_name = dev_apps->apps[j];
+            if (app_name == NULL)
+            {
+                LOGD("%s(): Invalid app or app name", __func__);
+                goto free_pb;
+            }
+
+            app_req->appname = app_name;
+            pb_tbl[allocated] = gk_set_pb_app_req(app_req);
+            allocated++;
+        }
+    }
+    return pb_tbl;
+
+free_pb:
+    for (i = 0; i < allocated; i++)
+    {
+        gk_free_app_req(pb_tbl[i]);
+    }
+
+    FREE(pb_tbl);
+    return NULL;
+}
+
+int
+gk_get_fsm_action(Gatekeeper__Southbound__V1__GatekeeperCommonReply *header)
+{
+    Gatekeeper__Southbound__V1__GatekeeperAction gk_action;
+    int action;
+
+    gk_action = header->action;
+    switch(gk_action)
+    {
+        case GATEKEEPER__SOUTHBOUND__V1__GATEKEEPER_ACTION__GATEKEEPER_ACTION_UNSPECIFIED:
+            action = FSM_ACTION_NONE;
+            break;
+
+        case GATEKEEPER__SOUTHBOUND__V1__GATEKEEPER_ACTION__GATEKEEPER_ACTION_ACCEPT:
+            action = FSM_ALLOW;
+            break;
+
+        case GATEKEEPER__SOUTHBOUND__V1__GATEKEEPER_ACTION__GATEKEEPER_ACTION_BLOCK:
+            action = FSM_BLOCK;
+            break;
+
+        case GATEKEEPER__SOUTHBOUND__V1__GATEKEEPER_ACTION__GATEKEEPER_ACTION_REDIRECT:
+            action = FSM_REDIRECT;
+            break;
+
+        case GATEKEEPER__SOUTHBOUND__V1__GATEKEEPER_ACTION__GATEKEEPER_ACTION_REDIRECT_ALLOW:
+            action = FSM_REDIRECT_ALLOW;
+            break;
+
+        case GATEKEEPER__SOUTHBOUND__V1__GATEKEEPER_ACTION__GATEKEEPER_ACTION_NOANSWER:
+            action = FSM_NOANSWER;
+            break;
+
+        default:
+            action = FSM_ACTION_NONE;
+    }
+
+    LOGT("%s(): Received action from gatekeeper service '%s' (%d)", __func__,
+         fsm_policy_get_action_str(action), action);
+
+    return action;
+}
+
+static Gatekeeper__Southbound__V1__GatekeeperBulkRequest *
+gk_set_pb_bulk_app_request(struct gk_bulk_request *request)
+{
+    Gatekeeper__Southbound__V1__GatekeeperBulkRequest *pb;
+    if (request->n_devices == 0) return NULL;
+
+    pb = CALLOC(1, sizeof(*pb));
+    gatekeeper__southbound__v1__gatekeeper_bulk_request__init(pb);
+    pb->n_req_app = gk_get_bulk_app_count(request);
+    pb->req_app = gk_set_pb_bulk_app(request);
+
+    return pb;
+}
+
+static bool
+gk_set_pb_bulk_request(Gatekeeper__Southbound__V1__GatekeeperReq *gk_req_pb,
+                       struct gk_bulk_request *request)
+{
+    if (request == NULL || gk_req_pb == NULL) return false;
+    switch (request->req_type)
+    {
+        case FSM_APP_REQ:
+            gk_req_pb->req_bulk = gk_set_pb_bulk_app_request(request);
+            return (gk_req_pb->req_bulk != NULL) ? true : false;
+
+        default:
+            LOGN("%s():%d Invalid remark request type: %d", __func__, __LINE__, request->req_type);
+            return false;
+    }
+}
 
 /**
  * @brief fills up a gatekeeper protobuf request
@@ -962,6 +1130,7 @@ gk_set_pb_request(struct gk_request *request)
 {
     Gatekeeper__Southbound__V1__GatekeeperReq *pb;
     struct gk_ip_flow_request *gk_ip_flow_req;
+    struct gk_bulk_request *gk_bulk_req;
     struct gk_fqdn_request *gk_fqdn_req;
     struct gk_host_request *gk_host_req;
     struct gk_sni_request *gk_sni_req;
@@ -973,7 +1142,6 @@ gk_set_pb_request(struct gk_request *request)
 
     pb = CALLOC(1, sizeof(*pb));
     if (pb == NULL) return NULL;
-
     /* Initialize the protobuf structure */
     gatekeeper__southbound__v1__gatekeeper_req__init(pb);
 
@@ -1023,6 +1191,13 @@ gk_set_pb_request(struct gk_request *request)
             rc = gk_set_pb_ip_flow_req(pb, gk_ip_flow_req);
             if (!rc) goto out_err;
             break;
+
+        case FSM_BULK_REQ:
+            gk_bulk_req = &req_data->gk_bulk_req;
+            rc = gk_set_pb_bulk_request(pb, gk_bulk_req);
+            if (!rc) goto out_err;
+            break;
+
     }
 
     return pb;
@@ -1057,7 +1232,6 @@ gk_serialize_request(struct gk_request *request)
     /* Allocate serialization output structure */
     serialized = CALLOC(1, sizeof(*serialized));
     if (serialized == NULL) return NULL;
-
     /* Allocate and set flow report protobuf */
     pb = gk_set_pb_request(request);
     if (pb == NULL) goto out_err;

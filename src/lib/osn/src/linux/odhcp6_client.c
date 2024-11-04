@@ -96,6 +96,14 @@ bool odhcp6_client_init(odhcp6_client_t *self, const char *ifname)
 }
 
 /*
+ * Refresh the DHCPv6 client
+ */
+bool odhcp6_client_renew(odhcp6_client_t *self)
+{
+    return daemon_send_signal(&self->oc_daemon, SIGUSR1);
+}
+
+/*
  * Stop the DHCPv6 client, clear up resources
  */
 bool odhcp6_client_fini(odhcp6_client_t *self)

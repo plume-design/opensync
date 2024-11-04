@@ -63,7 +63,7 @@ message GatekeeperHttpHostReq {
 
 // HTTP URL gatekeeper request
 message GatekeeperHttpUrlReq {
-    GatekeeperCommonRequest header = 1;
+        GatekeeperCommonRequest header = 1;
     string http_url = 2;
 }
 
@@ -134,6 +134,19 @@ message GatekeeperIpv6Req {
     GatekeeperFlowOriginator flow_originator = 5;
 }
 
+message GatekeeperBulkRequest {
+    repeated GatekeeperFqdnReq req_fqdn = 1;
+    repeated GatekeeperIpv4Req req_ipv4 = 2;
+    repeated GatekeeperIpv6Req req_ipv6 = 3;
+    repeated GatekeeperIpv4TupleReq req_ipv4_tuple = 4;
+    repeated GatekeeperIpv6TupleReq req_ipv6_tuple = 5;
+    repeated GatekeeperAppReq req_app = 6;
+    repeated GatekeeperHttpsSniReq req_https_sni = 7;
+    repeated GatekeeperHttpHostReq req_http_host = 8;
+    repeated GatekeeperHttpUrlReq req_http_url = 9;
+}
+
+
 // Overall Gatekeeper request
 message GatekeeperReq {
     GatekeeperFqdnReq req_fqdn = 1;
@@ -145,7 +158,9 @@ message GatekeeperReq {
     GatekeeperHttpsSniReq req_https_sni = 7;
     GatekeeperHttpHostReq req_http_host = 8;
     GatekeeperHttpUrlReq req_http_url = 9;
+    GatekeeperBulkRequest req_bulk = 10;
 }
+
 
 // Action definition
 enum GatekeeperAction {
@@ -166,6 +181,7 @@ message GatekeeperCommonReply {
     uint32 category_id = 5;
     uint32 confidence_level = 6;
     uint32 flow_marker = 7;
+    bytes  device_id = 8; // MAC address
 }
 
 message GatekeeperFqdnRedirectReply {
@@ -209,6 +225,7 @@ message GatekeeperIpv6TupleReply {
 // App name gatekeeper reply
 message GatekeeperAppReply {
     GatekeeperCommonReply header = 1;
+    string app_name = 2;
 }
 
 // HTTPS SNI gatekeeper reply
@@ -228,6 +245,18 @@ message GatekeeperHttpUrlReply {
     GatekeeperCommonReply header = 1;
 }
 
+message GatekeeperBulkReply {
+    repeated GatekeeperFqdnReply reply_fqdn = 1;
+    repeated GatekeeperIpv4Reply reply_ipv4 = 2;
+    repeated GatekeeperIpv6Reply reply_ipv6 = 3;
+    repeated GatekeeperIpv4TupleReply reply_ipv4_tuple = 4;
+    repeated GatekeeperIpv6TupleReply reply_ipv6_tuple = 5;
+    repeated GatekeeperAppReply reply_app = 6;
+    repeated GatekeeperHttpsSniReply reply_https_sni = 7;
+    repeated GatekeeperHttpHostReply reply_http_host = 8;
+    repeated GatekeeperHttpUrlReply reply_http_url = 9;
+}
+
 // Overall Gatekeeper reply
 message GatekeeperReply {
     GatekeeperFqdnReply reply_fqdn = 1;
@@ -239,4 +268,5 @@ message GatekeeperReply {
     GatekeeperHttpsSniReply reply_https_sni = 7;
     GatekeeperHttpHostReply reply_http_host = 8;
     GatekeeperHttpUrlReply reply_http_url = 9;
+    GatekeeperBulkReply bulk_reply = 10;
 }

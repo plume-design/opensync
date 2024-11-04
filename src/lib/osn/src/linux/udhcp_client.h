@@ -60,6 +60,7 @@ struct udhcp_client
 bool udhcp_client_init(udhcp_client_t *self, const char *ifname);
 bool udhcp_client_fini(udhcp_client_t *self);
 bool udhcp_client_start(udhcp_client_t *self);
+bool udhcp_client_renew(udhcp_client_t *self);
 bool udhcp_client_stop(udhcp_client_t *self);
 bool udhcp_client_opt_request(udhcp_client_t *self, enum osn_dhcp_option opt, bool request);
 bool udhcp_client_opt_set(udhcp_client_t *self, enum osn_dhcp_option opt, const char *val);

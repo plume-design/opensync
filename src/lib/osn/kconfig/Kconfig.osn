@@ -51,6 +51,19 @@ if OSN_LINUX_ENABLED
             This option implements the lnx_ip6 API and enables the
             "Linux IPv6" backend (osn_ip6).
 
+    config OSN_SKIP_ACCEL
+        string
+        default "SKIPLOG" if PLATFORM_IS_BCM
+        default "skipaccel"
+        help
+            OpenSync SKIP-ACCEL mechanism using xtables
+
+            The set value if provided to NFM so that it never
+            tries to create a chain with the given name. This
+            can prevent unnecessary error messages when targets
+            with the same name are available on the system (e.g.,
+            `SKIPLOG` or `skipaccel`).
+
     menuconfig OSN_UDHCPC
         bool "udhcp DHCPv4 client"
         default y

@@ -75,6 +75,11 @@ bool osn_dhcp_client_start(osn_dhcp_client_t *self)
     return udhcp_client_start(&self->dc_udhcp);
 }
 
+bool osn_dhcp_client_renew(osn_dhcp_client_t *self)
+{
+    return udhcp_client_renew(&self->dc_udhcp);
+}
+
 bool osn_dhcp_client_stop(osn_dhcp_client_t *self)
 {
     return udhcp_client_stop(&self->dc_udhcp);

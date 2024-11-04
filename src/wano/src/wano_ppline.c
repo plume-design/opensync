@@ -40,6 +40,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <inttypes.h>
 #include <unistd.h>
 #include <stdlib.h>
+#include <errno.h>
 
 #include <ev.h>
 #include <ares.h>
@@ -106,6 +107,8 @@ inline static bool wano_ppline_runq_start_dhcp(wano_ppline_t *self);
 static void __wano_ppline_runq_stop(wano_ppline_t *self, struct wano_ppline_plugin *wpp);
 static void wano_ppline_runq_del(wano_ppline_t *self, struct wano_ppline_plugin *wpp);
 static void wano_ppline_runq_flush(wano_ppline_t *self, bool flush_detached);
+static struct wano_ppline_plugin *wano_ppline_plugin_new(wano_ppline_t *self, struct wano_plugin *wp);
+static void wano_ppline_plugin_del(struct wano_ppline_plugin *wpp);
 static wano_inet_state_event_fn_t wano_ppline_inet_state_event_fn;
 static wano_plugin_status_fn_t wano_ppline_plugin_status_fn;
 static void wano_ppline_retry_timer_fn(struct ev_loop *loop, ev_timer *w, int revent);
@@ -320,28 +323,8 @@ void wano_ppline_start_queues(wano_ppline_t *self)
         /* Skip all plug-ins in the exclusion mask */
         if (wp->wanp_mask & self->wpl_plugin_emask) continue;
 
-        wpp = CALLOC(1, sizeof(struct wano_ppline_plugin));
-
-        wpp->wpp_ppline = self;
-        wpp->wpp_plugin = wp;
-
-        /*
-         * Initialize the plug-in; plug-ins that return a NULL instance
-         * are skipped.
-         */
-        wpp->wpp_handle = wano_plugin_init(
-                wpp->wpp_plugin,
-                self->wpl_ifname,
-                wano_ppline_plugin_status_fn);
-        if (wpp->wpp_handle == NULL)
-        {
-            LOG(INFO, "wano: %s: Skipping plug-in %s",
-                    self->wpl_ifname,
-                    wpp->wpp_plugin->wanp_name);
-            FREE(wpp);
-            continue;
-        }
-        wpp->wpp_handle->wh_data = wpp;
+        wpp = wano_ppline_plugin_new(self, wp);
+        if (wpp == NULL) continue;
 
         ds_dlist_insert_tail(&self->wpl_plugin_waitq, wpp);
     }
@@ -364,7 +347,7 @@ void wano_ppline_stop_queues(wano_ppline_t *self)
     ds_dlist_foreach_iter(&self->wpl_plugin_waitq, wpp, iter)
     {
         ds_dlist_iremove(&iter);
-        FREE(wpp);
+        wano_ppline_plugin_del(wpp);
     }
 
     /*
@@ -406,7 +389,7 @@ void wano_ppline_schedule(wano_ppline_t *self)
         if (!wano_ppline_runq_add(self, wpp))
         {
             /* Plug-in was unable to start, continue */
-            FREE(wpp);
+            wano_ppline_plugin_del(wpp);
             continue;
         }
 
@@ -518,18 +501,6 @@ void __wano_ppline_runq_stop(wano_ppline_t *self, struct wano_ppline_plugin *wpp
                     wpp->wpp_status.ws_ifname);
         }
     }
-
-    if (wpp->wpp_handle != NULL)
-    {
-        wano_plugin_fini(wpp->wpp_handle);
-        wpp->wpp_handle = NULL;
-    }
-
-    /* Stop the async status handler */
-    ev_async_stop(EV_DEFAULT, &wpp->wpp_status_async);
-
-    /* Stop the timeout handler */
-    ev_timer_stop(EV_DEFAULT, &wpp->wpp_timeout);
 }
 
 void wano_ppline_runq_del(wano_ppline_t *self, struct wano_ppline_plugin *wpp)
@@ -537,6 +508,7 @@ void wano_ppline_runq_del(wano_ppline_t *self, struct wano_ppline_plugin *wpp)
     /* Remove the plug-in from the runqueue and clear the run mask */
     __wano_ppline_runq_stop(self, wpp);
     ds_dlist_remove(&self->wpl_plugin_runq, wpp);
+    wano_ppline_plugin_del(wpp);
 }
 
 void wano_ppline_runq_detach(wano_ppline_t *self, struct wano_ppline_plugin *wpp)
@@ -561,10 +533,53 @@ static void wano_ppline_runq_flush(wano_ppline_t *self, bool flush_detached)
             continue;
         }
 
-        ds_dlist_iremove(&iter);
         __wano_ppline_runq_stop(self, wpp);
-        FREE(wpp);
+        ds_dlist_iremove(&iter);
+        wano_ppline_plugin_del(wpp);
     }
+}
+
+struct wano_ppline_plugin *wano_ppline_plugin_new(wano_ppline_t *self, struct wano_plugin *wp)
+{
+    struct wano_ppline_plugin *wpp;
+
+    wpp = CALLOC(1, sizeof(struct wano_ppline_plugin));
+
+    wpp->wpp_ppline = self;
+    wpp->wpp_plugin = wp;
+    /*
+     * Initialize the plug-in; plug-ins that return a NULL instance
+     * are skipped.
+     */
+    wpp->wpp_handle = wano_plugin_init(
+            wpp->wpp_plugin,
+            self->wpl_ifname,
+            wano_ppline_plugin_status_fn);
+    if (wpp->wpp_handle == NULL)
+    {
+        LOG(INFO, "wano: %s: Skipping plug-in %s",
+                self->wpl_ifname,
+                wpp->wpp_plugin->wanp_name);
+        FREE(wpp);
+        return NULL;
+    }
+    wpp->wpp_handle->wh_data = wpp;
+
+    return wpp;
+}
+
+void wano_ppline_plugin_del(struct wano_ppline_plugin *wpp)
+{
+    if (wpp->wpp_handle != NULL)
+    {
+        wano_plugin_fini(wpp->wpp_handle);
+        wpp->wpp_handle = NULL;
+    }
+
+    ev_async_stop(EV_DEFAULT, &wpp->wpp_status_async);
+    ev_timer_stop(EV_DEFAULT, &wpp->wpp_timeout);
+
+    FREE(wpp);
 }
 
 void wano_ppline_inet_state_event_fn(
@@ -605,154 +620,159 @@ void wano_ppline_plugin_status_fn(wano_plugin_handle_t *ph, struct wano_plugin_s
     ev_async_send(EV_DEFAULT, &wpp->wpp_status_async);
 }
 
-void wano_wan_probe_get_dns_server(char *buf, const size_t buflen)
+struct wano_wan_probe_status
 {
-    char *csv = buf;
-    size_t csv_len = 0;
-    size_t csv_cap = buflen;
+    bool    probe_status;
+    int     probe_count;
+};
 
-    FILE *fp = NULL;
-    char *line = NULL;
-    size_t len = 0;
-
-    fp = fopen(CONFIG_WANO_DNS_PROBE_RESOLV_CONF_PATH, "r");
-    if (fp == NULL) {
-        LOGD("wano: wano probe: failed to open %s for reading, returning NULL buffer", CONFIG_WANO_DNS_PROBE_RESOLV_CONF_PATH);
-        *csv = '\0';
-        goto out;
-    }
-
-    while (getline(&line, &len, fp) != -1) {
-        /* copy line ptr, because strtok modifies it */
-        char *l = line;
-
-        for (char *token = strtok(l, " "); token != NULL; token = strtok(NULL, " ")) {
-            if (strcmp(token, "nameserver") == 0) {
-                char *s = strtok(NULL, " ");
-                if (s != NULL) {
-                     size_t slen = strlen(s);
-                     if (slen > 0) {
-                         /* strtok might include newline character as well */
-                         if (s[slen-1] == '\n') {
-                             s[slen-1] = '\0';
-                             slen--;
-                         }
-
-                         if ((csv_cap - csv_len) <= (slen-2)) {
-                             LOGD("wano: dns probe: buffer too small, skipping server entries");
-                             goto out;
-                         }
-
-                         strncpy(csv + csv_len, s, slen);
-                         csv_len += slen;
-                         csv[csv_len++] = ',';
-                     }
-                }
-                break;
-            }
-        }
-    }
-
-out:
-    /* Don't increment csv_len, because we want to override the terminator with next write */
-    csv[csv_len] = '\0';
-
-    if (fp != NULL)
-        fclose(fp);
-    if (line)
-        free(line);
-}
-
-static void wano_wan_probe_success_cb(void *arg, int status, int timeouts, struct hostent *hostent)
+static void wano_wan_probe_success_cb(void *arg, int ares_status, int timeouts, struct hostent *hostent)
 {
-    switch (status) {
+    struct wano_wan_probe_status *status = arg;
+
+    switch (ares_status)
+    {
         case ARES_SUCCESS:
-            LOGD("wano: dns probe: ares callback success");
+            LOG(INFO, "dns_probe: Host resolved.");
+            status->probe_status = true;
             break;
-        case ARES_ENOTIMP:
-            LOGD("wano: dns probe: ares family type not supported");
-            break;
-        case ARES_EBADNAME:
-            LOGD("wano: dns probe: invalid hostname");
-            break;
+        /*
+         * The DNS probe is essentially pinging the server -- it doesn't matter if
+         * it was able to successfully resolve the host. The following error codes
+         * may be returned from the server even if it didn't resolve the host.
+         */
         case ARES_ENODATA:
-            LOGD("wano: dns probe: no data returned");
-            break;
+        case ARES_EFORMERR:
+        case ARES_ESERVFAIL:
         case ARES_ENOTFOUND:
-            LOGD("wano: dns probe: name could not be resolved");
-            *(bool *)arg = false;
+        case ARES_ENOTIMP:
+        case ARES_EREFUSED:
+            LOG(WARN, "dns_probe: DNS server was unable to resolve host, but seems to be working. Error: %s",
+                    ares_strerror(ares_status));
+            status->probe_status = true;
             break;
-        case ARES_ENOMEM:
-            LOGD("wano: dns probe: ran out of memory");
-            break;
-        case ARES_ECANCELLED:
-            LOGD("wano: dns probe: query was cancelled");
-            break;
+
         case ARES_EDESTRUCTION:
-            LOGD("wano: dns probe: channel is being destroyed before query could complete");
+            /* This error happens when a channel is destroyed early, silence it */
             break;
+
         default:
-            LOGD("wano: dns probe: unknown status returned: %d", status);
+            LOG(WARN, "dns_probe: Ares error status(%d): %s", ares_status, ares_strerror(ares_status));
             break;
     }
+
+    status->probe_count++;
 }
 
 static bool wano_wan_probe_success(const char* if_name)
 {
-    ares_channel channel;
+    ares_channel dnslist;
+    ares_channel dnsprobe[32];
+    int ndnsprobe;
     struct ares_options options;
     struct timeval tv;
     fd_set read_fds, write_fds;
+    int64_t dns_timeout;
     int optmask;
-    int nfds;
-    char server[256];
+    int ii;
 
-    wano_wan_probe_get_dns_server(server, sizeof(server));
-
-    bool cb_success = true;
+    struct wano_wan_probe_status status = { 0 };
+    int nfds = 0;
     const char *dns_target = wano_awlan_redirector_addr();
 
     if (dns_target == NULL || *dns_target == '\0')
     {
-        LOGI("wano: dns_target is null or empty, skipping probe");
+        LOGI("dns_probe: dns_target is null or empty, skipping DNS probe.");
         return true;
     }
 
-    /* Do DNS lookup, instead of reading hosts file -- guard against false positives due to cached DNS */
-    options.lookups = "b";
-    optmask = ARES_OPT_LOOKUPS;
-
-    if (ares_init_options(&channel, &options, optmask) != ARES_SUCCESS)
+    /*
+     * Initialize a c-ares instance just to retrieve the server list -- the list
+     * from the custom resolv.conf file
+     */
+    optmask = ARES_OPT_RESOLVCONF;
+    options.resolvconf_path = CONFIG_WANO_DNS_PROBE_RESOLV_CONF_PATH;
+    if (ares_init_options(&dnslist, &options, optmask) != ARES_SUCCESS)
     {
+        LOG(WARN, "dns_probe: Error initializing cares, skipping DNS probe.");
+        return true;
+    }
+
+    struct ares_addr_node *csrv;
+    if (ares_get_servers(dnslist, &csrv) != ARES_SUCCESS || csrv == NULL)
+    {
+        LOG(WARN, "dns_probe: Error retrieving list of DNS servers or no DNS servers defined, skipping DNS probe.");
+        ares_destroy(dnslist);
+        return true;
+    }
+
+    LOG(INFO, "dns_probe: DNS probe resolving host: %s", dns_target);
+    ndnsprobe = 0;
+    for (;csrv != NULL; csrv = csrv->next)
+    {
+        if (ndnsprobe >= ARRAY_LEN(dnsprobe))
+        {
+            LOG(NOTICE, "dns_probe: Maximum number of DNS probes reached (%d), skipping the rest.", ARRAY_LEN(dnsprobe));
+            break;
+        }
+
+        char ssrv[INET6_ADDRSTRLEN];
+        if (inet_ntop(csrv->family, (void *)&csrv->addr, ssrv, sizeof(ssrv)) == NULL)
+        {
+            LOG(NOTICE, "dns_probe: Error converting address (%d) to string, skipping: %s",
+                    ndnsprobe,
+                    strerror(errno));
+            continue;
+        }
+
+        LOG(INFO, "Probing DNS server: %s", ssrv);
+
+        optmask = 0;
+        optmask |= ARES_OPT_LOOKUPS;
+        options.lookups = "b";
+        optmask |= ARES_OPT_SERVERS;
+        options.nservers = 0;
+        options.servers = NULL;
+        /* Bind ares sockets to the provisioned interface */
+        ares_set_local_dev(dnslist, if_name);
+
+        if (ares_init_options(&dnsprobe[ndnsprobe], &options, optmask) != ARES_SUCCESS)
+        {
+            LOG(NOTICE, "dns_probe: Error initializing DNS probe for server: %s. Skipping.", ssrv);
+            continue;
+        }
+
+        if (ares_set_servers_csv(dnsprobe[ndnsprobe], ssrv) != ARES_SUCCESS)
+        {
+            LOG(NOTICE, "dns_probe: Error setting DNS probe server: %s. Skipping.", ssrv);
+            ares_destroy(dnsprobe[ndnsprobe]);
+            continue;
+        }
+
+        ares_gethostbyname(dnsprobe[ndnsprobe], dns_target, AF_INET, wano_wan_probe_success_cb, (void*) &status);
+        ndnsprobe++;
+    }
+
+    if (ndnsprobe == 0)
+    {
+        LOG(NOTICE, "No DNS servers found.");
         goto exit;
     }
 
-    /* Bind ares sockets to the provisioned interface */
-    ares_set_local_dev(channel, if_name);
-
-    if (server[0] != '\0')
-    {
-        if (ares_set_servers_csv(channel, server) != ARES_SUCCESS)
-        {
-            LOGD("wano: dns probe: failed to set DNS server to %s", server);
-        }
-        else
-        {
-            LOGD("wano: dns probe: set DNS server to %s", server);
-        }
-    }
-
-    /* Callback will write the result of the DNS lookup to cb_success */
-    ares_gethostbyname(channel, dns_target, AF_INET, wano_wan_probe_success_cb, (void*) &cb_success);
-
+    nfds = 0;
     FD_ZERO(&read_fds);
     FD_ZERO(&write_fds);
 
-    nfds = ares_fds(channel, &read_fds, &write_fds);
+    for (ii = 0; ii < ndnsprobe; ii++)
+    {
+        nfds = ares_fds(dnsprobe[ii], &read_fds, &write_fds);
+    }
 
     if (nfds == 0)
     {
-        goto clean_ares_chan;
+        LOG(WARN, "dns_probe: DNS probes generated no descriptors, skipping DNS probe.");
+        status.probe_status = true;
+        goto exit;
     }
 
     /*
@@ -761,31 +781,52 @@ static bool wano_wan_probe_success(const char* if_name)
      * ares_process which will invoke wano_wan_probe_success_cb that can
      * report failure in cb_success.
      */
-
-    tv.tv_sec = WANO_DNS_PROBE_TIMEOUT_SEC;
-    tv.tv_usec = 0;
-
-    int sel = select(nfds, &read_fds, &write_fds, NULL, &tv);
-
-    /* No retries on errors/signal interrupts, tv is no longer valid */
-    if (sel < 0)
+    dns_timeout = clock_mono_usec() + WANO_DNS_PROBE_TIMEOUT_SEC * 1000000LL;
+    while (!status.probe_status)
     {
-        LOGD("wano: dns probe: select returned negative value, skipping probe");
-    }
-    else if (sel > 0)
-    {
-        ares_process(channel, &read_fds, &write_fds);
-    }
-    else
-    {
-        LOGD("wano: dns probe: select timed-out, failing probe");
-        cb_success = false;
+        if (status.probe_count >= ndnsprobe)
+        {
+            LOG(INFO, "dns_probe: All probes completed without success.");
+            break;
+        }
+
+        int64_t to_remain = dns_timeout - clock_mono_usec();
+        if (to_remain <= 0)
+        {
+            LOG(NOTICE, "dns_probe: Timeout occurred. Terminating all probes.");
+            break;
+        }
+
+        tv.tv_sec = to_remain / 1000000LL;
+        tv.tv_usec = to_remain % 1000000LL;
+        int sel = select(nfds, &read_fds, &write_fds, NULL, &tv);
+        /* No retries on errors/signal interrupts, tv is no longer valid */
+        if (sel > 0)
+        {
+            for (ii = 0; ii < ndnsprobe; ii++)
+            {
+                ares_process(dnsprobe[ii], &read_fds, &write_fds);
+            }
+        }
+        else if (sel < 0)
+        {
+            LOG(WARN, "dns_probe: Error while waiting on probe results, skipping DNS probe: %s", strerror(errno));
+            status.probe_status = true;
+            break;
+        }
+        else
+        {
+            LOG(INFO, "dns_probe: No responses after timeout.");
+            break;
+        }
     }
 
-clean_ares_chan:
-    ares_destroy(channel);
 exit:
-    return cb_success;
+    for (ii = 0; ii < ndnsprobe; ii++) ares_destroy(dnsprobe[ii]);
+    ares_destroy(dnslist);
+
+    LOG(NOTICE, "DNS probe status: %s\n", status.probe_status ? "SUCCESS" : "ERROR");
+    return status.probe_status;
 }
 
 inline bool wano_ppline_wan_probe_setup(void)
@@ -916,7 +957,6 @@ void wano_ppline_status_async_fn(struct ev_loop *loop, ev_async *ev, int revent)
         case WANP_SKIP:
             LOG(INFO, "wano: %s: Plug-in requested skip: %s", self->wpl_ifname, wano_plugin_name(wpp->wpp_handle));
             wano_ppline_runq_del(self, wpp);
-            FREE(wpp);
             wano_ppline_state_do(&self->wpl_state, wano_ppline_do_PLUGIN_UPDATE, NULL);
             break;
 
@@ -937,7 +977,6 @@ void wano_ppline_status_async_fn(struct ev_loop *loop, ev_async *ev, int revent)
                     self->wpl_ifname, wano_plugin_name(wpp->wpp_handle));
 
             wano_ppline_runq_del(self, wpp);
-            FREE(wpp);
             wano_ppline_state_do(&self->wpl_state, wano_ppline_do_PLUGIN_UPDATE, NULL);
             break;
 
@@ -975,8 +1014,6 @@ void wano_ppline_plugin_timeout_fn(struct ev_loop *loop, ev_timer *w, int revent
             self->wpl_ifname, wano_plugin_name(wpp->wpp_handle));
 
     wano_ppline_runq_del(self, wpp);
-    FREE(wpp);
-
     wano_ppline_state_do(&self->wpl_state, wano_ppline_do_PLUGIN_UPDATE, NULL);
 }
 

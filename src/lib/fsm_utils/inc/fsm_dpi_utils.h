@@ -40,19 +40,8 @@ int fsm_set_ip_dpi_state(
         uint16_t dst_port,
         uint8_t proto,
         uint16_t family,
-        enum fsm_dpi_state state
-);
-
-int fsm_set_ip_dpi_state_timeout(
-        void *ctx,
-        void *src_ip,
-        void *dst_ip,
-        uint16_t src_port,
-        uint16_t dst_port,
-        uint8_t proto,
-        uint16_t family,
         enum fsm_dpi_state state,
-        uint32_t timeout
+        int flow_marker
 );
 
 int fsm_set_icmp_dpi_state(
@@ -63,19 +52,8 @@ int fsm_set_icmp_dpi_state(
         uint8_t type,
         uint8_t code,
         uint16_t family,
-        enum fsm_dpi_state state
-);
-
-int fsm_set_icmp_dpi_state_timeout(
-        void *ctx,
-        void *src_ip,
-        void *dst_ip,
-        uint16_t id,
-        uint8_t type,
-        uint8_t code,
-        uint16_t family,
         enum fsm_dpi_state state,
-        uint32_t timeout
+        int flow_marker
 );
 
 /**
@@ -86,29 +64,16 @@ int fsm_set_dpi_mark(
         struct dpi_mark_policy *mark_policy
 );
 
-int fsm_set_dpi_state_timeout(
-        void *ctx,
-        struct net_header_parser *net_hdr,
-        enum  fsm_dpi_state state,
-        uint32_t timeout
-);
-
 void fsm_dpi_set_plugin_decision(
         struct fsm_session *session,
         struct net_header_parser *net_parser,
         enum fsm_dpi_state state);
 
-void
-fsm_dpi_allow_flow(struct net_md_stats_accumulator *acc);
-
-void
-fsm_dpi_block_flow(struct net_md_stats_accumulator *acc);
-
 char *
 fsm_ops_get_network_id(struct fsm_session *session, os_macaddr_t *mac);
 
 int
-fsm_dpi_get_mark(struct net_md_stats_accumulator *acc, int action);
+fsm_dpi_get_mark(int flow_marker, int action);
 
 bool
 fsm_nfq_mac_same(os_macaddr_t *lkp_mac, struct nfq_pkt_info *pkt_info);

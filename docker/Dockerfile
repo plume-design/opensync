@@ -151,5 +151,10 @@ RUN wget http://security.ubuntu.com/ubuntu/pool/main/c/c-ares/libc-ares2_1.18.1-
 RUN wget http://security.ubuntu.com/ubuntu/pool/main/c/c-ares/libc-ares-dev_1.18.1-1ubuntu0.22.04.3_amd64.deb
 RUN $PKGINSTALL ./libc-ares2_1.18.1-1ubuntu0.22.04.3_amd64.deb ./libc-ares-dev_1.18.1-1ubuntu0.22.04.3_amd64.deb
 
+# doxygen, latex
+RUN $PKGINSTALL doxygen
+RUN $PKGINSTALL texlive
+RUN $PKGINSTALL texlive-full
+
 # Open interactive bash
 CMD bash -i

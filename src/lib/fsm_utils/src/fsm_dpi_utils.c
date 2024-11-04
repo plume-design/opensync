@@ -43,8 +43,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #define NET_HDR_BUFF_SIZE 128 + (2 * INET6_ADDRSTRLEN + 128) + 256
 
-static char log_buf[NET_HDR_BUFF_SIZE] = { 0 };
-
 static void copy_nf_ip_flow(
         nf_flow_t *flow,
         void *src_ip,
@@ -54,7 +52,7 @@ static void copy_nf_ip_flow(
         uint8_t proto,
         uint16_t family,
         uint16_t zone,
-        enum fsm_dpi_state state
+        int flow_marker
 )
 {
     if (family == AF_INET)
@@ -71,7 +69,7 @@ static void copy_nf_ip_flow(
     flow->family = family;
     flow->fields.port.src_port = src_port;
     flow->fields.port.dst_port = dst_port;
-    flow->mark = state;
+    flow->mark = flow_marker;
     flow->zone = zone;
 }
 
@@ -84,7 +82,7 @@ static void copy_nf_icmp_flow(
         uint8_t code,
         uint16_t family,
         uint16_t zone,
-        enum fsm_dpi_state state
+        int flow_marker
 )
 {
     if (family == AF_INET)
@@ -103,81 +101,10 @@ static void copy_nf_icmp_flow(
     flow->fields.icmp.id = id;
     flow->fields.icmp.type = type;
     flow->fields.icmp.code = code;
-    flow->mark = state;
+    flow->mark = flow_marker;
     flow->zone = zone;
 }
 
-static void copy_nf_flow_from_net_hdr(
-        nf_flow_t *flow,
-        struct net_header_parser *net_hdr,
-        uint16_t zone,
-        enum fsm_dpi_state state
-)
-{
-    struct icmphdr icmpv4hdr;
-    struct icmp6_hdr icmpv6hdr;
-    struct iphdr *ipv4hdr = NULL;
-    struct ip6_hdr *ipv6hdr = NULL;
-
-    LOGT("%s: %s", __func__,
-         net_header_fill_trace_buf(log_buf, NET_HDR_BUFF_SIZE, net_hdr));
-
-    if (net_hdr->ip_version == 4)
-    {
-        ipv4hdr = net_header_get_ipv4_hdr(net_hdr);
-        memcpy(&flow->addr.src_ip.ipv4.s_addr, &ipv4hdr->saddr, 4);
-        memcpy(&flow->addr.dst_ip.ipv4.s_addr, &ipv4hdr->daddr, 4);
-        flow->family = AF_INET;
-    }
-    else if (net_hdr->ip_version == 6)
-    {
-        ipv6hdr = net_header_get_ipv6_hdr(net_hdr);
-        memcpy(&flow->addr.src_ip.ipv6.s6_addr, ipv6hdr->ip6_src.s6_addr, 16);
-        memcpy(&flow->addr.dst_ip.ipv6.s6_addr, ipv6hdr->ip6_dst.s6_addr, 16);
-        flow->family = AF_INET6;
-    }
-
-    flow->proto = net_hdr->ip_protocol;
-
-    switch (net_hdr->ip_protocol)
-    {
-        case IPPROTO_TCP:
-            flow->fields.port.src_port = ntohs(net_hdr->ip_pld.tcphdr->source);
-            flow->fields.port.dst_port = ntohs(net_hdr->ip_pld.tcphdr->dest);
-            break;
-
-        case IPPROTO_UDP:
-            flow->fields.port.src_port = ntohs(net_hdr->ip_pld.udphdr->source);
-            flow->fields.port.dst_port = ntohs(net_hdr->ip_pld.udphdr->dest);
-            break;
-
-        case IPPROTO_ICMP:
-            // icmpv4 hdr present in payload of ip
-            memcpy(&icmpv4hdr, net_hdr->eth_pld.payload,
-                    sizeof(struct icmphdr));
-            flow->fields.icmp.id = icmpv4hdr.un.echo.id;
-            flow->fields.icmp.type = icmpv4hdr.type;
-            flow->fields.icmp.code = icmpv4hdr.code;
-            LOGD("icmp: id:%d type:%d code:%d",
-                 icmpv4hdr.un.echo.id, icmpv4hdr.type, icmpv4hdr.code);
-            break;
-
-        case IPPROTO_ICMPV6:
-            // icmpv6 hdr present in payload of ipv6
-            memcpy(&icmpv6hdr, net_hdr->eth_pld.payload,
-                    sizeof(struct icmp6_hdr));
-            flow->fields.icmp.id = ICMP6_ECHO_REQUEST;
-            flow->fields.icmp.type = icmpv6hdr.icmp6_type;
-            flow->fields.icmp.code = icmpv6hdr.icmp6_code;
-            break;
-
-        default:
-            LOGD("protocol not supported for connection marking");
-            break;
-    }
-    flow->mark = state;
-    flow->zone = zone;
-}
 
 // TODO ctx used to hold flow and its state when multiple plugins used
 int fsm_set_ip_dpi_state(
@@ -188,50 +115,16 @@ int fsm_set_ip_dpi_state(
         uint16_t dst_port,
         uint8_t proto,
         uint16_t family,
-        enum fsm_dpi_state state
-)
-{
-    nf_flow_t flow;
-    int ret0;
-    int ret1;
-
-    memset(&flow, 0, sizeof(flow));
-    copy_nf_ip_flow(
-            &flow,
-            src_ip,
-            dst_ip,
-            src_port,
-            dst_port,
-            proto,
-            family,
-            DEFAULT_ZONE,
-            state);
-    ret0 = nf_ct_set_mark(&flow);
-    /* Set the conn mark for FSM_DPI_ZONE also */
-    flow.zone = FSM_DPI_ZONE;
-    ret1 = nf_ct_set_mark(&flow);
-
-    /* -ve or 0 - failed in both zones or +ve atleast one zone passed */
-    return (ret0 + ret1);
-}
-
-int fsm_set_ip_dpi_state_timeout(
-        void *ctx,
-        void *src_ip,
-        void *dst_ip,
-        uint16_t src_port,
-        uint16_t dst_port,
-        uint8_t proto,
-        uint16_t family,
         enum fsm_dpi_state state,
-        uint32_t timeout
+        int flow_marker
 )
 {
     nf_flow_t flow;
-    int ret0;
-    int ret1;
+    int ret;
+    int mark = CT_MARK_ACCEPT;
 
     memset(&flow, 0, sizeof(flow));
+    mark = fsm_dpi_get_mark(flow_marker, state);
     copy_nf_ip_flow(
             &flow,
             src_ip,
@@ -241,14 +134,12 @@ int fsm_set_ip_dpi_state_timeout(
             proto,
             family,
             DEFAULT_ZONE,
-            state);
-    ret0 = nf_ct_set_mark_timeout(&flow, timeout);
-    /* Set the conn mark for FSM_DPI_ZONE also */
-    flow.zone = FSM_DPI_ZONE;
-    ret1 = nf_ct_set_mark(&flow);
-    /* -ve or 0 - failed in both zones or +ve atleast one zone passed */
-    return (ret0 + ret1);
+            mark);
+    ret = nf_ct_set_mark(&flow);
+
+    return ret;
 }
+
 
 int fsm_set_icmp_dpi_state(
         void *ctx,
@@ -258,49 +149,16 @@ int fsm_set_icmp_dpi_state(
         uint8_t type,
         uint8_t code,
         uint16_t family,
-        enum fsm_dpi_state state
-)
-{
-    nf_flow_t flow;
-    int ret0;
-    int ret1;
-
-    memset(&flow, 0, sizeof(flow));
-    copy_nf_icmp_flow(
-            &flow,
-            src_ip,
-            dst_ip,
-            id,
-            type,
-            code,
-            family,
-            DEFAULT_ZONE,
-            state);
-    ret0 = nf_ct_set_mark(&flow);
-    /* Set the conn mark for FSM_DPI_ZONE also */
-    flow.zone = FSM_DPI_ZONE;
-    ret1 = nf_ct_set_mark(&flow);
-    /* -ve or 0 - failed in both zones or +ve atleast one zone passed */
-    return (ret0 + ret1);
-}
-
-int fsm_set_icmp_dpi_state_timeout(
-        void *ctx,
-        void *src_ip,
-        void *dst_ip,
-        uint16_t id,
-        uint8_t type,
-        uint8_t code,
-        uint16_t family,
         enum fsm_dpi_state state,
-        uint32_t timeout
+        int flow_marker
 )
 {
     nf_flow_t flow;
-    int ret0;
-    int ret1;
+    int ret;
+    int mark = CT_MARK_ACCEPT;
 
     memset(&flow, 0, sizeof(flow));
+    mark = fsm_dpi_get_mark(flow_marker, state);
     copy_nf_icmp_flow(
             &flow,
             src_ip,
@@ -310,13 +168,9 @@ int fsm_set_icmp_dpi_state_timeout(
             code,
             family,
             DEFAULT_ZONE,
-            state);
-    ret0 = nf_ct_set_mark_timeout(&flow, timeout);
-    /* Set the conn mark for FSM_DPI_ZONE also */
-    flow.zone = FSM_DPI_ZONE;
-    ret1 = nf_ct_set_mark_timeout(&flow, timeout);
-    /* -ve or 0 - failed in both zones or +ve atleast one zone passed */
-    return ((ret0 == 0) || (ret1 == 0)) ? 0 : -1;
+            mark);
+    ret = nf_ct_set_mark(&flow);
+    return ret;
 }
 
 // APIs using net_header_parser
@@ -346,27 +200,6 @@ int fsm_set_dpi_mark(struct net_header_parser *net_hdr,
     return ret;
 }
 
-int fsm_set_dpi_state_timeout(
-        void *ctx,
-        struct net_header_parser *net_hdr,
-        enum fsm_dpi_state state,
-        uint32_t timeout
-)
-{
-    nf_flow_t flow;
-    int ret0;
-    int ret1;
-
-    memset(&flow, 0, sizeof(flow));
-    copy_nf_flow_from_net_hdr(&flow, net_hdr, DEFAULT_ZONE, state);
-    ret0 = nf_ct_set_mark_timeout(&flow, timeout);
-    /* Set the conn mark for FSM_DPI_ZONE also */
-    flow.zone = FSM_DPI_ZONE;
-    ret1 = nf_ct_set_mark_timeout(&flow, timeout);
-    /* -ve or 0 - failed in both zones or +ve atleast one zone passed */
-    return (ret0 + ret1);
-}
-
 void fsm_dpi_set_plugin_decision(
         struct fsm_session *session,
         struct net_header_parser *net_parser,
@@ -388,60 +221,6 @@ void fsm_dpi_set_plugin_decision(
     info->decision = state;
 }
 
-void
-fsm_dpi_block_flow(struct net_md_stats_accumulator *acc)
-{
-    struct net_md_flow_key *key;
-    struct flow_key *fkey;
-    int af = 0;
-
-    fkey = acc->fkey;
-    key = acc->key;
-    if (key == NULL) return;
-
-    if (key->ip_version == 4) af = AF_INET;
-    if (key->ip_version == 6) af = AF_INET6;
-    if (af == 0) return;
-
-    LOGI("%s(): blocking flow %s:%d -> %s:%d, proto: %d",
-         __func__,
-         fkey->src_ip, fkey->sport, fkey->dst_ip, fkey->dport, fkey->protocol);
-
-    fsm_set_ip_dpi_state(NULL, key->src_ip, key->dst_ip,
-                         key->sport, key->dport,
-                         key->ipprotocol, af, FSM_DPI_DROP);
-    fsm_set_ip_dpi_state(NULL, key->dst_ip, key->src_ip,
-                         key->dport, key->sport,
-                         key->ipprotocol, af, FSM_DPI_DROP);
-}
-
-
-void
-fsm_dpi_allow_flow(struct net_md_stats_accumulator *acc)
-{
-    struct net_md_flow_key *key;
-    struct flow_key *fkey;
-    int af = 0;
-
-    fkey = acc->fkey;
-    key = acc->key;
-    if (key == NULL) return;
-
-    if (key->ip_version == 4) af = AF_INET;
-    if (key->ip_version == 6) af = AF_INET6;
-    if (af == 0) return;
-
-    LOGI("%s(): Allowing flow %s:%d -> %s:%d, proto: %d",
-         __func__,
-         fkey->src_ip, fkey->sport, fkey->dst_ip, fkey->dport, fkey->protocol);
-
-    fsm_set_ip_dpi_state(NULL, key->src_ip, key->dst_ip,
-                         key->sport, key->dport,
-                         key->ipprotocol, af, FSM_DPI_PASSTHRU);
-    fsm_set_ip_dpi_state(NULL, key->dst_ip, key->src_ip,
-                         key->dport, key->sport,
-                         key->ipprotocol, af, FSM_DPI_PASSTHRU);
-}
 
 /**
  * @brief determine the mark value to be used for contrack based on action.
@@ -450,7 +229,7 @@ fsm_dpi_allow_flow(struct net_md_stats_accumulator *acc)
  * @param action verdict received for this flow
  */
 int
-fsm_dpi_get_mark(struct net_md_stats_accumulator *acc, int action)
+fsm_dpi_get_mark(int flow_marker, int action)
 {
     int mark = CT_MARK_INSPECT;
     int mark_set;
@@ -459,9 +238,9 @@ fsm_dpi_get_mark(struct net_md_stats_accumulator *acc, int action)
     else if (action == FSM_DPI_PASSTHRU) mark = CT_MARK_ACCEPT;
 
     mark_set = (action == FSM_DPI_PASSTHRU);
-    mark_set &= (acc->flow_marker != 0);
+    mark_set &= (flow_marker != 0);
 
-    if (mark_set) mark = acc->flow_marker;
+    if (mark_set) mark = flow_marker;
 
     return mark;
 }

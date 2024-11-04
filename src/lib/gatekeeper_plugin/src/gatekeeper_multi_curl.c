@@ -84,14 +84,11 @@ mcode_or_die(const char *where, CURLMcode code)
  *
  */
 bool
-gk_curl_multi_cleanup(struct fsm_gk_session *fsm_gk_session)
+gk_curl_multi_cleanup(struct gk_curl_multi_info *mcurl_info)
 {
-    struct gk_curl_multi_info *mcurl_info;
     CURLMcode mret;
 
     LOGI("%s(): http2: cleaning up multi curl", __func__);
-
-    mcurl_info = &fsm_gk_session->mcurl;
 
     if (mcurl_info->mcurl_connection_active == false) return false;
 
@@ -726,7 +723,7 @@ gk_send_mcurl_request(struct fsm_gk_session *fsm_gk_session,
     if (mcurl_info->mcurl_connection_active == false)
     {
         LOGT("%s(): creating new mcurl connection", __func__);
-        gk_multi_curl_init(fsm_gk_session, session->loop);
+        gk_multi_curl_init(&fsm_gk_session->mcurl, session->loop);
     }
 
     conn = CALLOC(1, sizeof(struct gk_conn_info));
@@ -810,13 +807,10 @@ err_free_conn:
  *         false otherwise
  */
 bool
-gk_multi_curl_init(struct fsm_gk_session *fsm_gk_session, struct ev_loop *loop)
+gk_multi_curl_init(struct gk_curl_multi_info *mcurl_info, struct ev_loop *loop)
 {
-    struct gk_curl_multi_info *mcurl_info;
     CURLMcode cmret;
     CURLcode  rc;
-
-    mcurl_info = &fsm_gk_session->mcurl;
 
     LOGI("%s(): http2: initializing multi curl", __func__);
 
@@ -872,6 +866,6 @@ gk_multi_curl_init(struct fsm_gk_session *fsm_gk_session, struct ev_loop *loop)
     return true;
 
 err:
-    gk_curl_multi_cleanup(fsm_gk_session);
+    gk_curl_multi_cleanup(mcurl_info);
     return false;
 }

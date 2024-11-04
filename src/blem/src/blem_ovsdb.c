@@ -46,6 +46,15 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 /*****************************************************************************/
 
+/** Assert that a `value` is in range [`min_inclusive`, `min_inclusive`] */
+#define ASSERT_IN_RANGE(value, min_inclusive, max_inclusive)             \
+    ASSERT(((min_inclusive) <= (value)) && ((value) <= (max_inclusive)), \
+           "%s %d not in range [%d, %d]",                                \
+           (#value),                                                     \
+           (value),                                                      \
+           (min_inclusive),                                              \
+           (max_inclusive))
+
 // BLE Commands
 static c_item_t map_ble_command[] = {
     C_ITEM_STR(0x00, "on_boarding"),
@@ -168,9 +177,9 @@ void callback_AW_Bluetooth_Config(ovsdb_update_monitor_t *mon,
 }
 
 
-bool uuid_str_to_bin(const char *const uuid_str, uint8_t uuid[16])
+static bool uuid_str_to_bin(const char *const uuid_str, uint8_t uuid[16])
 {
-    // Allow separator between each UUID byte, but make sure that the string always represents exactly 16 bytes
+    /* Allow separator between each UUID byte, but make sure that the string always represents exactly 16 bytes */
     const char *const str_end = uuid_str + strnlen(uuid_str, 16 * 2 + 15);
     const char *p_str = uuid_str;
     size_t uuid_i = 0;
@@ -195,12 +204,7 @@ bool uuid_str_to_bin(const char *const uuid_str, uint8_t uuid[16])
         uuid_i += 1;
     }
 
-    if ((uuid_i != 16) || (p_str != str_end))
-    {
-        LOGE("Invalid UUID string '%s'", uuid_str);
-        return false;
-    }
-    return true;
+    return (uuid_i == 16) && (p_str == str_end);
 }
 
 static void blem_ble_proximity_on_state(ble_advertising_set_t *adv_set, bool active, int16_t adv_tx_power)
@@ -223,7 +227,7 @@ static void callback_BLE_Proximity_Config(
         struct schema_BLE_Proximity_Config *old_rec,
         struct schema_BLE_Proximity_Config *config)
 {
-    uint8_t ibeacon_uuid[16];
+    blem_ble_proximity_config_t cfg = {0};
     (void)mon;
 
     if (config == NULL)
@@ -235,21 +239,39 @@ static void callback_BLE_Proximity_Config(
         config = old_rec;
         config->ibeacon_enable = false;
     }
-
-    if (!uuid_str_to_bin(config->ibeacon_uuid.uuid, ibeacon_uuid))
+    if (mon->mon_type == OVSDB_UPDATE_DEL)
     {
-        return;
+        config->ibeacon_enable = false;
     }
 
-    blem_ble_proximity_configure(
-            config->ibeacon_enable,
-            config->adv_tx_power,
-            config->adv_interval,
-            ibeacon_uuid,
-            config->ibeacon_major,
-            config->ibeacon_minor,
-            config->ibeacon_power,
-            blem_ble_proximity_on_state);
+    /* OVSDB schema has strict constraints on the fields, so fail if they are not in range */
+    cfg.enable = config->ibeacon_enable;
+
+    ASSERT_IN_RANGE(config->adv_tx_power, INT8_MIN, INT8_MAX);
+    cfg.adv_tx_power = config->adv_tx_power;
+
+    ASSERT_IN_RANGE(config->adv_interval, 0, UINT16_MAX);
+    cfg.adv_interval = config->adv_interval;
+
+    ASSERT(uuid_str_to_bin(config->ibeacon_uuid.uuid, cfg.uuid), "Invalid UUID '%s'", config->ibeacon_uuid.uuid);
+
+    ASSERT_IN_RANGE(config->ibeacon_major, 0, UINT16_MAX);
+    cfg.major = config->ibeacon_major;
+
+    ASSERT_IN_RANGE(config->ibeacon_minor_len, 1, ARRAY_LEN(config->ibeacon_minor));
+    for (int i = 0; i < config->ibeacon_minor_len; i++)
+    {
+        ASSERT_IN_RANGE(config->ibeacon_minor[i], 0, UINT16_MAX);
+        cfg.minors[i] = config->ibeacon_minor[i];
+    }
+
+    ASSERT_IN_RANGE(config->ibeacon_minor_interval, 0, UINT16_MAX);
+    cfg.minor_interval = config->ibeacon_minor_interval;
+
+    ASSERT_IN_RANGE(config->ibeacon_power, INT8_MIN, INT8_MAX);
+    cfg.meas_power = config->ibeacon_power;
+
+    blem_ble_proximity_configure(&cfg, blem_ble_proximity_on_state);
 }
 
 void blem_ovsdb_init(void)

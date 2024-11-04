@@ -47,6 +47,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "os_backtrace.h"
 #include "json_util.h"
 #include "target.h"
+#include "kconfig.h"
 #include "cm2.h"
 
 /******************************************************************************/
@@ -107,6 +108,17 @@ static void cm2_dmp_mem_usage_timer_cb(struct ev_loop *loop, ev_timer *timer, in
     dump_proc_mem_usage();
 }
 
+static const char *cm2_sta_list(void)
+{
+    return
+#ifdef CONFIG_OVSDB_BOOTSTRAP_WIFI_STA_LIST
+    CONFIG_OVSDB_BOOTSTRAP_WIFI_STA_LIST
+#else
+    NULL
+#endif
+    ;
+}
+
 /******************************************************************************
  *  PUBLIC API definitions
  *****************************************************************************/
@@ -160,6 +172,9 @@ int main(int argc, char ** argv)
     }
 
     if (cm2_is_extender()) {
+        g_state.bh_dhcp = cm2_bh_dhcp_from_list(cm2_sta_list());
+        g_state.bh_gre = cm2_bh_gre_from_list(cm2_sta_list());
+        g_state.bh_cmu = cm2_bh_cmu_from_list(cm2_sta_list());
         cm2_wdt_init(loop);
         cm2_stability_init(loop);
         cm2_update_uplinks_init(loop);

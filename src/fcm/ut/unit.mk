@@ -33,6 +33,7 @@ UNIT_SRC += test_fcm_mock_fun.c
 UNIT_SRC += ../src/fcm_ovsdb.c
 UNIT_SRC += ../src/fcm_mgr.c
 UNIT_SRC += ../src/fcm_event.c
+UNIT_SRC += ../src/fcm_gatekeeper.c
 
 UNIT_CFLAGS := -I$(UNIT_PATH)/../inc
 
@@ -51,3 +52,5 @@ UNIT_DEPS += src/lib/ovsdb
 UNIT_DEPS += src/lib/neigh_table
 UNIT_DEPS += src/lib/unit_test_utils
 UNIT_DEPS += src/lib/data_report_tags
+UNIT_DEPS += src/lib/gatekeeper_msg
+UNIT_DEPS += src/lib/fsm_policy
