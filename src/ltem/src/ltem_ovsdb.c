@@ -57,6 +57,8 @@ ovsdb_table_t table_Connection_Manager_Uplink;
 ovsdb_table_t table_DHCP_leased_IP;
 ovsdb_table_t table_AWLAN_Node;
 ovsdb_table_t table_Wifi_Route_Config;
+ovsdb_table_t table_IPv6_RouteAdv;
+ovsdb_table_t table_IPv6_Prefix;
 
 void
 ltem_disable_band_40(ltem_mgr_t *mgr)
@@ -1339,6 +1341,117 @@ callback_Wifi_Route_Config(ovsdb_update_monitor_t *mon,
     FREE(if_type);
 }
 
+void
+ltem_ovsdb_set_v6_failover(ltem_mgr_t *mgr)
+{
+    struct schema_IPv6_RouteAdv ipv6_routeAdv;
+    struct schema_IPv6_Prefix ipv6_prefix;
+    int rc;
+
+    rc = ovsdb_table_select_one_where(&table_IPv6_RouteAdv, NULL, &ipv6_routeAdv);
+    if (rc)
+    {
+        if (!ipv6_routeAdv.default_lifetime_exists)
+        {
+            mgr->ipv6_ra_default_lifetime = -1;
+        }
+        else
+        {
+            mgr->ipv6_ra_default_lifetime = ipv6_routeAdv.default_lifetime;
+        }
+        SCHEMA_SET_INT(ipv6_routeAdv.default_lifetime, 0);
+        rc = ovsdb_table_update(&table_IPv6_RouteAdv, &ipv6_routeAdv);
+        if (!rc)
+        {
+            LOGI("%s: Set V6 default_lifetime failed", __func__);
+        }
+        else
+        {
+            LOGI("%s: status[%s], managed[%d], preferred_router[%s], default_lifetime[%d]",
+                 __func__, ipv6_routeAdv.status, ipv6_routeAdv.managed, ipv6_routeAdv.preferred_router,
+                 ipv6_routeAdv.default_lifetime);
+        }
+    }
+
+
+    rc = ovsdb_table_select_one_where(&table_IPv6_Prefix, NULL, &ipv6_prefix);
+    if (rc)
+    {
+        if (ipv6_prefix.valid_lifetime_exists)
+        {
+            STRSCPY(mgr->ipv6_prefix_valid_lifetime, ipv6_prefix.valid_lifetime);
+            SCHEMA_SET_STR(ipv6_prefix.valid_lifetime, "0");
+            rc = ovsdb_table_update(&table_IPv6_Prefix, &ipv6_prefix);
+            if (!rc)
+            {
+                LOGI("%s: Set V6 valid_lifetime failed", __func__);
+            }
+            else
+            {
+                LOGI("%s: enable[%d], preferred_lifetime[%s] valid_lifetime[%s]",
+                     __func__, ipv6_prefix.enable, ipv6_prefix.preferred_lifetime, ipv6_prefix.valid_lifetime);
+            }
+        }
+        else
+        {
+            MEMZERO(mgr->ipv6_prefix_valid_lifetime);
+        }
+    }
+
+}
+
+void
+ltem_ovsdb_revert_v6_failover(ltem_mgr_t *mgr)
+{
+    struct schema_IPv6_RouteAdv ipv6_routeAdv;
+    struct schema_IPv6_Prefix ipv6_prefix;
+    int rc;
+
+    rc = ovsdb_table_select_one_where(&table_IPv6_RouteAdv, NULL, &ipv6_routeAdv);
+    if (rc)
+    {
+        if (mgr->ipv6_ra_default_lifetime == -1)
+        {
+            SCHEMA_UNSET_FIELD(ipv6_routeAdv.default_lifetime);
+        }
+        else
+        {
+            SCHEMA_SET_INT(ipv6_routeAdv.default_lifetime, mgr->ipv6_ra_default_lifetime);
+        }
+        rc = ovsdb_table_update(&table_IPv6_RouteAdv, &ipv6_routeAdv);
+        if (!rc)
+        {
+            LOGI("%s: Set V6 default_lifetime failed", __func__);
+        }
+        else
+        {
+            LOGI("%s: status[%s], managed[%d], preferred_router[%s], default_lifetime[%d]",
+                 __func__, ipv6_routeAdv.status, ipv6_routeAdv.managed, ipv6_routeAdv.preferred_router,
+                 ipv6_routeAdv.default_lifetime);
+        }
+    }
+
+    rc = ovsdb_table_select_one_where(&table_IPv6_Prefix, NULL, &ipv6_prefix);
+    if (rc)
+    {
+        if (mgr->ipv6_prefix_valid_lifetime[0])
+        {
+            SCHEMA_SET_STR(ipv6_prefix.valid_lifetime, mgr->ipv6_prefix_valid_lifetime);
+            rc = ovsdb_table_update(&table_IPv6_Prefix, &ipv6_prefix);
+            if (!rc)
+            {
+                LOGI("%s: Set V6 valid_lifetime failed", __func__);
+            }
+            else
+            {
+                LOGI("%s: enable[%d], preferred_lifetime[%s] valid_lifetime[%s]",
+                     __func__, ipv6_prefix.enable, ipv6_prefix.preferred_lifetime, ipv6_prefix.valid_lifetime);
+            }
+        }
+    }
+
+}
+
 int
 ltem_ovsdb_init(void)
 {
@@ -1359,6 +1472,8 @@ ltem_ovsdb_init(void)
     OVSDB_TABLE_INIT(Connection_Manager_Uplink, if_name);
     OVSDB_TABLE_INIT(Wifi_Route_Config, if_name);
     OVSDB_TABLE_INIT_NO_KEY(AWLAN_Node);
+    OVSDB_TABLE_INIT_NO_KEY(IPv6_RouteAdv);
+    OVSDB_TABLE_INIT_NO_KEY(IPv6_Prefix);
 
     // Initialize OVSDB monitor callbacks
     OVSDB_TABLE_MONITOR(Lte_Config, false);

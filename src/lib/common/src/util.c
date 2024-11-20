@@ -37,6 +37,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <arpa/inet.h>
 #include <stdbool.h>
 #include <errno.h>
+#include <spawn.h>
 
 #ifdef STDC_HEADERS
 #include <stdlib.h>
@@ -922,66 +923,124 @@ char *argvstr(const char *const*argv)
     return q;
 }
 
+int strexread_spawn(const char *prog,
+                    const char *const*argv,
+                    pid_t *pid,
+                    int *read_fd)
+{
+    const char *ctx = strfmta("%s(%s, [%s]", __func__, prog ?: "", argvstra(argv) ?: "");
+
+    int fd[2];
+    if (pipe(fd) < 0) {
+        LOGW("%s: failed to pipe(): %d (%s)", ctx, errno, strerror(errno));
+        return -1;
+    }
+
+    const int pipe_writeable = fd[1];
+    const int pipe_readable = fd[0];
+
+    posix_spawn_file_actions_t actions;
+    MEMZERO(actions);
+
+    int err = 0;
+    err |= posix_spawn_file_actions_init(&actions);
+    err |= posix_spawn_file_actions_addclose(&actions, STDIN_FILENO);
+    err |= posix_spawn_file_actions_addclose(&actions, STDOUT_FILENO);
+    err |= posix_spawn_file_actions_addclose(&actions, STDERR_FILENO);
+    err |= posix_spawn_file_actions_addopen(&actions, STDIN_FILENO, "/dev/null", O_RDONLY, 0);
+    err |= posix_spawn_file_actions_adddup2(&actions, pipe_writeable, STDOUT_FILENO);
+    err |= posix_spawn_file_actions_addopen(&actions, STDERR_FILENO, "/dev/null", O_WRONLY, 0);
+    err |= posix_spawn_file_actions_addclose(&actions, pipe_writeable);
+    err |= posix_spawn_file_actions_addclose(&actions, pipe_readable);
+    if (err) {
+        LOGT("%s: failed to assemble posix file actions", ctx);
+        close(pipe_writeable);
+        close(pipe_readable);
+        posix_spawn_file_actions_destroy(&actions);
+        return -1;
+    }
+
+    err = posix_spawnp(pid, prog, &actions, NULL, (char **)argv, (char **)environ);
+    posix_spawn_file_actions_destroy(&actions);
+    close(pipe_writeable);
+
+    if (err) {
+        LOGT("%s: failed to posix_spawnp()", ctx);
+        close(pipe_readable);
+        return -1;
+    }
+
+    *read_fd = pipe_readable;
+    return 0;
+}
+
+char *strexread_read(const char *prog,
+                     const char *const*argv,
+                     pid_t pid,
+                     int read_fd)
+{
+    const char *ctx = strfmta("%s(%s, [%s]", __func__, prog ?: "", argvstra(argv) ?: "");
+
+    int i;
+    int j;
+    int n;
+    char *p;
+    char *q;
+    for (n=0,i=0,p=0;;) {
+        if (i+1 >= n) {
+            if ((q = REALLOC(p, (n+=4096))))
+                p = q;
+            else
+                break;
+        }
+        if ((j = read(read_fd, p+i, n-i-1)) <= 0)
+            break;
+        i += j;
+    }
+    p[i] = 0;
+
+    /* If for() above aborted before fully draining the pipe
+     * it's imperative to drain it before waiting for the
+     * child to exit.  Otherwise child could get stuck at
+     * write() and never exit.
+     */
+    char c;
+    while (read(read_fd, &c, 1) == 1);
+    close(read_fd);
+
+    int status;
+    int err;
+    do {
+        err = waitpid(pid, &status, 0);
+        if (err == -1)
+            break;
+    } while (!WIFEXITED(status) && !WIFSIGNALED(status));
+
+    LOGT("%s: err=%d status=%d output='%s'", ctx, err, status, p);
+    if ((errno = (WIFEXITED(status) ? WEXITSTATUS(status) : -1)) == 0)
+        return p;
+    FREE(p);
+    return NULL;
+}
+
 char *strexread(const char *prog, const char *const*argv)
 {
     const char *ctx = strfmta("%s(%s, [%s]", __func__, prog ?: "", argvstra(argv) ?: "");
-    char **args, *p, *q, c;
-    int fd[2], pid, status, i, j, n;
+
     if (!prog || !argv) {
         LOGW("%s: invalid arguments (prog=%p, argv=%p)", ctx, prog, argv);
         return NULL;
     }
-    if (pipe(fd) < 0) {
-        LOGW("%s: failed to pipe(): %d (%s)", ctx, errno, strerror(errno));
+
+    pid_t pid;
+    int read_fd;
+    int err = strexread_spawn(prog, argv, &pid, &read_fd);
+    if (err) {
+        LOGT("%s: strexread_spawn() failed", ctx);
         return NULL;
     }
-    switch ((pid = fork())) {
-        case -1:
-            LOGW("%s: failed to fork(): %d (%s)", ctx, errno, strerror(errno));
-            close(fd[0]);
-            close(fd[1]);
-            return NULL;
-        case 0:
-            close(0);
-            close(1);
-            close(2);
-            open("/dev/null", O_RDONLY);
-            dup2(fd[1], 1);
-            open("/dev/null", O_WRONLY);
-            close(fd[0]);
-            close(fd[1]);
-            for (n=0; argv[n]; n++);
-            args = CALLOC(++n, sizeof(args[0]));
-            for (n=0; argv[n]; n++) args[n] = strdup(argv[n]);
-            args[n] = 0;
-            execvp(prog, args);
-            LOGW("%s: failed to execvp(): %d (%s)", ctx, errno, strerror(errno));
-            exit(1);
-        default:
-            close(fd[1]);
-            for (n=0,i=0,p=0;;) {
-                if (i+1 >= n) {
-                    if ((q = REALLOC(p, (n+=4096))))
-                        p = q;
-                    else
-                        break;
-                }
-                if ((j = read(fd[0], p+i, n-i-1)) <= 0)
-                    break;
-                i += j;
-            }
-            p[i] = 0;
-            while (read(fd[0], &c, 1) == 1);
-            close(fd[0]);
-            waitpid(pid, &status, 0);
-            LOGT("%s: status=%d output='%s'", ctx, status, p);
-            if ((errno = (WIFEXITED(status) ? WEXITSTATUS(status) : -1)) == 0)
-                return p;
-            FREE(p);
-            return NULL;
-    }
-    LOGW("%s: unreachable", ctx);
-    return NULL;
+
+    return strexread_read(prog, argv, pid, read_fd);
 }
 
 char *strdel(char *heystack, const char *needle, int (*strcmp_fun) (const char*, const char*))

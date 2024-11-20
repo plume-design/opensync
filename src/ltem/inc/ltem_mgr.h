@@ -164,6 +164,8 @@ typedef struct ltem_mgr_
     char topic[256];
     char node_id[64];
     char location_id[64];
+    int ipv6_ra_default_lifetime;
+    char ipv6_prefix_valid_lifetime[64];
 } ltem_mgr_t;
 
 bool ltem_init_mgr(struct ev_loop *loop);
@@ -212,5 +214,8 @@ void ltem_fini_lte_modem(void);
 char *ltem_ovsdb_get_if_type(char *if_name);
 int ltem_ovsdb_check_l3_state(ltem_mgr_t *mgr);
 int ltem_dns_connect_check(char *if_name);
+void ltem_flush_flows(ltem_mgr_t *mgr);
+void ltem_ovsdb_set_v6_failover(ltem_mgr_t *mgr);
+void ltem_ovsdb_revert_v6_failover(ltem_mgr_t *mgr);
 
 #endif /* LTEM_MGR_H_INCLUDED */

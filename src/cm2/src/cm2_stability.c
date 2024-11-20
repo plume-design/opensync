@@ -404,6 +404,45 @@ void cm2_util_update_uplink_ip_state(struct schema_Connection_Manager_Uplink *co
     }
 }
 
+static void dump_proc_mem_usage(void)
+{
+    char buffer[1024] = "";
+    char fname[128];
+    char pid[128];
+    int rc;
+    char vmrss[512];
+    char vmsize[512];
+
+    snprintf(pid, sizeof(pid), "%d", (int)getpid());
+    snprintf(fname, sizeof(fname), "/proc/%s/status", pid);
+
+    FILE* file = fopen(fname, "r");
+    if (file == NULL) return;
+
+    while ((rc = fscanf(file, " %1023s", buffer)) == 1)
+    {
+        errno = 0;
+        if (strcmp(buffer, "VmRSS:") == 0)
+        {
+            rc = fscanf(file, " %s", vmrss);
+            if ((rc != 1) && (errno != 0)) goto err_scan;
+        }
+        else if (strcmp(buffer, "VmSize:") == 0)
+        {
+            rc = fscanf(file, " %s", vmsize);
+            if ((rc != 1) && (errno != 0)) goto err_scan;
+
+        }
+    }
+
+    LOGI("pid %s: mem usage: real mem: %s, virt mem %s", pid, vmrss, vmsize);
+    fclose(file);
+    return;
+
+err_scan:
+    LOGI("%s: error scanning %s: %s", __func__, fname, strerror(errno));
+    fclose(file);
+}
 
 static bool cm2_connection_req_stability_process(const char *if_name,
                                                  target_connectivity_check_option_t opts,
@@ -722,6 +761,9 @@ void cm2_util_req_stability_cb(EV_P_ ev_child *w, int revents)
     bool db_update = async_check->db_update;
     bool repeat = async_check->repeat;
     int opts = async_check->opts;
+    char uname[C_IFNAME_LEN];
+    char clink[C_IFNAME_LEN];
+    char utype[IFTYPE_SIZE];
 
     LOGD("%s: stability for %s: completed 0x%02x %supdate%s mask=0x%02x (%s) pid %d",
          async_check->uname,
@@ -733,27 +775,31 @@ void cm2_util_req_stability_cb(EV_P_ ev_child *w, int revents)
          ok ? "ok" : "fail",
          w->rpid);
 
+    STRSCPY(uname, async_check->uname);
+    STRSCPY(utype, async_check->utype);
+    STRSCPY(clink, async_check->clink);
+
     ev_child_stop(EV_A_ w);
+    FREE(async_check);
 
     /* Check if link is still up to date, if not stop repeating */
-    if (!cm2_check_uplink_state(async_check->uname, async_check->clink) && !ok) {
+    if (!cm2_check_uplink_state(uname, clink) && !ok) {
         LOGI("Force clean repeat and update state");
         repeat = false;
         db_update = false;
     }
 
-    cm2_connection_req_stability_process(async_check->uname, opts, db_update, ok, &cstate);
+    cm2_connection_req_stability_process(uname, opts, db_update, ok, &cstate);
     if (repeat && !ok) {
         if (!g_state.connected) {
             db_update = true;
             opts |= FAST_CHECK;
         }
 
-        cm2_util_req_stability_check_recalc(async_check->uname, async_check->utype,
-                                            async_check->clink, opts, db_update, repeat);
+        cm2_util_req_stability_check_recalc(uname, utype, clink, opts,
+                                            db_update, repeat);
         return;
     }
-    FREE(async_check);
 }
 
 void cm2_connection_req_stability_check_async(const char *uname,
@@ -823,9 +869,6 @@ static void cm2_connection_stability_check(void)
             c_uplink = uplink_i->bridge_exists && uplink_i->is_used ? uplink_i->bridge : uplink_i->if_name;
             cm2_connection_req_stability_check_async(uplink_i->if_name, uplink_i->if_type, c_uplink, opts, true, false);
         }
-
-        if (uplinks)
-            FREE(uplinks);
     }
     else {
         c_uplink = g_state.link.is_bridge ? g_state.link.bridge_name : g_state.link.if_name;
@@ -842,6 +885,9 @@ static void cm2_connection_stability_check(void)
 
         cm2_connection_req_stability_check_async(g_state.link.if_name, g_state.link.if_type, c_uplink, opts, true, false);
     }
+    if (uplinks)
+        FREE(uplinks);
+    dump_proc_mem_usage();
 }
 
 void cm2_stability_cb(struct ev_loop *loop, ev_timer *watcher, int revents)

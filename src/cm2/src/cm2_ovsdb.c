@@ -667,7 +667,11 @@ bool cm2_ovsdb_dhcpv6_enable(char *ifname)
     SCHEMA_SET_INT(dhcpv6_client.enable, true);
     SCHEMA_SET_INT(dhcpv6_client.renew, true);
     SCHEMA_SET_INT(dhcpv6_client.request_address, true);
-    SCHEMA_SET_INT(dhcpv6_client.request_prefixes, false);
+
+    /* Don't request prefixes for bridge interfaces */
+    SCHEMA_SET_INT(dhcpv6_client.request_prefixes,
+                  (strncmp(ifname, CONFIG_TARGET_LAN_BRIDGE_NAME,
+                   sizeof(CONFIG_TARGET_LAN_BRIDGE_NAME)) ? true : false));
 
     if (!ovsdb_table_upsert_where(
             &table_DHCPv6_Client,

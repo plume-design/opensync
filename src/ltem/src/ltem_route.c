@@ -36,8 +36,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ovsdb.h"
 #include "target.h"
 #include "network_metadata.h"
-
 #include "ltem_mgr.h"
+#include "hw_acc.h"
 
 uint32_t
 ltem_netmask_to_cidr( char *mask)
@@ -341,4 +341,23 @@ ltem_restore_default_wan_route(ltem_mgr_t *mgr)
     }
 
     return 0;
+}
+
+void
+ltem_flush_flows(ltem_mgr_t *mgr)
+{
+    char cmd[256];
+    int res;
+
+    snprintf(cmd, sizeof(cmd), "conntrack -F");
+    res = cmd_log(cmd);
+    if (res)
+    {
+        LOGI("%s: cmd[%s] failed", __func__, cmd);
+        return;
+    }
+
+    hw_acc_flush_all_flows();
+
+    return;
 }
