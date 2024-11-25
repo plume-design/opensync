@@ -508,19 +508,22 @@ ct_stats_update_flow(struct net_md_stats_accumulator *acc, int action)
 
     if (old_action == new_action)
     {
-        LOGT("%s: action not modified, not updating the flow", __func__);
+        LOGD("%s: action not modified, not updating the flow", __func__);
         return;
     }
 
     LOGI("%s: Updating flow src: %s, dst: %s, proto: %d, sport: %d, dport: %d from: %s, to: %s",
          __func__,
          fkey->src_ip, fkey->dst_ip, fkey->protocol, fkey->sport, fkey->dport,
-         old_action == FSM_BLOCK ? "drop" : "allow",
-         action == FSM_BLOCK ? "drop" : "allow");
+         old_action == FSM_DPI_DROP ? "drop" : "allow",
+         new_action == FSM_DPI_DROP ? "drop" : "allow");
 
     fsm_set_ip_dpi_state(NULL, key->src_ip, key->dst_ip,
                          key->sport, key->dport,
                          key->ipprotocol, af, (action == FSM_BLOCK ? FSM_DPI_DROP : FSM_DPI_PASSTHRU), acc->flow_marker);
+
+    if (acc->flow_marker == 0 && action == FSM_BLOCK) fkey->flowmarker = CT_MARK_DROP;
+    else fkey->flowmarker = acc->flow_marker;
 }
 
 

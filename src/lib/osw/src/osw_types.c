@@ -1860,7 +1860,7 @@ osw_radius_list_to_str(char *out,
         out[-1] = 0;
 }
 
-static bool
+bool
 osw_passpoint_str_list_is_equal(char **const a,
                                 char **const b,
                                 const size_t a_len,
@@ -1886,9 +1886,10 @@ osw_passpoint_is_equal(const struct osw_passpoint *a,
     if (a->hs20_enabled != b->hs20_enabled) return false;
     if (a->hessid.len != b->hessid.len) return false;
     if (STRSCMP(a->hessid.buf, b->hessid.buf) != 0) return false;
+    if (a->osu_ssid.len != b->osu_ssid.len) return false;
+    if (STRSCMP(a->osu_ssid.buf, b->osu_ssid.buf) != 0) return false;
     if (STRSCMP(a->t_c_filename, b->t_c_filename) != 0) return false;
     if (STRSCMP(a->anqp_elem, b->anqp_elem) != 0) return false;
-    if (a->hs20_enabled != b->hs20_enabled) return false;
     if (a->adv_wan_status != b->adv_wan_status) return false;
     if (a->adv_wan_symmetric != b->adv_wan_symmetric) return false;
     if (a->adv_wan_at_capacity != b->adv_wan_at_capacity) return false;
