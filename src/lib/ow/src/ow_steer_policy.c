@@ -38,11 +38,16 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ow_steer_policy_stack.h"
 #include "ow_steer_policy_i.h"
 
+#define LOG_PREFIX(fmt, ...) \
+    "ow: steer:" fmt, ##__VA_ARGS__
+
+
 struct ow_steer_policy*
 ow_steer_policy_create(const char *name,
                        const struct osw_hwaddr *sta_addr,
                        const struct ow_steer_policy_ops *ops,
                        const struct ow_steer_policy_mediator *mediator,
+                       const char *log_prefix,
                        void *priv)
 {
     assert(name != NULL);
@@ -57,8 +62,7 @@ ow_steer_policy_create(const char *name,
     memcpy(&policy->ops, ops, sizeof(policy->ops));
     memcpy(&policy->mediator, mediator, sizeof(policy->mediator));
     policy->priv = priv;
-    policy->prefix = strfmt("ow: steer: policy: %s [sta: "OSW_HWADDR_FMT" bssid: "OSW_HWADDR_FMT"]:",
-                            name, OSW_HWADDR_ARG(sta_addr), OSW_HWADDR_ARG(&policy->bssid));
+    policy->log_prefix = strfmt("%spolicy: %s: ", log_prefix, name);
 
     return policy;
 }
@@ -68,7 +72,7 @@ ow_steer_policy_free(struct ow_steer_policy *policy)
 {
     assert(policy != NULL);
     FREE(policy->name);
-    FREE(policy->prefix);
+    FREE(policy->log_prefix);
     FREE(policy);
 }
 
@@ -103,10 +107,6 @@ ow_steer_policy_set_bssid(struct ow_steer_policy *policy,
         memcpy(&policy->bssid, bssid, sizeof(policy->bssid));
     else
         memset(&policy->bssid, 0, sizeof(policy->bssid));
-
-    FREE(policy->prefix);
-    policy->prefix = strfmt("ow: steer: policy: %s [sta: "OSW_HWADDR_FMT" bssid: "OSW_HWADDR_FMT"]:",
-                            policy->name, OSW_HWADDR_ARG(&policy->sta_addr), OSW_HWADDR_ARG(&policy->bssid));
 }
 
 const char*
@@ -117,10 +117,10 @@ ow_steer_policy_get_name(const struct ow_steer_policy *policy)
 }
 
 const char*
-ow_steer_policy_get_prefix(const struct ow_steer_policy *policy)
+ow_steer_policy_get_prefix(struct ow_steer_policy *policy)
 {
     assert(policy != NULL);
-    return policy->prefix;
+    return policy->log_prefix;
 }
 
 void

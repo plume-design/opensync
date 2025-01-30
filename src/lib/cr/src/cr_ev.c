@@ -117,6 +117,7 @@ void cr_context_wakeup(cr_context_t *c)
 {
     if (c == NULL) return;
     if (c->t == NULL) return;
+    if (c->rt == NULL) return;
     ev_async_send(c->rt->l, &c->t->a);
 }
 
@@ -174,6 +175,7 @@ void cr_task_start(cr_task_t *t, cr_context_t *c)
 {
     if (t == NULL) return;
     if (c == NULL) return;
+    if (c->rt == NULL) return;
     if (WARN_ON(t->c != NULL)) return;
     if (WARN_ON(c->t != NULL)) return;
     t->c = c;

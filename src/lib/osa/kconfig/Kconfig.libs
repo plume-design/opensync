@@ -1,0 +1,25 @@
+menu "OS Backtrace Path Configuration"
+    config OS_BACKTRACE_DUMP_PATH
+        string "Default path for backtrace logs"
+        default "/var/log/opensync/crash"
+        help
+            Path to a destination directory for backtrace logs
+endmenu
+
+menu "Core Dump File Saving Configuration"
+    config SAVE_CORE_DUMP_FILES
+    	bool "Enable saving of core dump files"
+        default y
+        help
+            This enables saving crash core dump files using a
+            custom wrapper script and collecting them in log
+            pulls.
+
+        config CORE_DUMP_FILES_SAVE_PATH
+            depends on SAVE_CORE_DUMP_FILES
+            string "Path to core dump files"
+            default "/tmp"
+            help
+                File system path where core dump files will be
+                saved.
+endmenu

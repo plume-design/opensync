@@ -39,7 +39,8 @@ struct ow_steer_bm_policy_hwm_2g *
 ow_steer_bm_policy_hwm_2g_alloc(const char *name,
                                 struct ow_steer_bm_group *group,
                                 const struct osw_hwaddr *sta_addr,
-                                const struct ow_steer_policy_mediator *mediator);
+                                const struct ow_steer_policy_mediator *mediator,
+                                const char *log_prefix);
 
 void
 ow_steer_bm_policy_hwm_2g_free(struct ow_steer_bm_policy_hwm_2g *hwm);

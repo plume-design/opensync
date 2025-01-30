@@ -122,13 +122,6 @@ os_fdbuf_flush_linux(const char *if_name)
 }
 
 static void
-os_fdbuf_flush_ovs(const char *if_name)
-{
-    const char *result = strexa("ovs-appctl", "fdb/flush", if_name);
-    LOGD(LOG_PREFIX_FDB_OVS(if_name, "%s", result == NULL ? "not flushed" : "flushed"));
-}
-
-static void
 os_fdbuf_flush_accel(const char *if_name)
 {
     /* hw_acc_flush_flow_per_device() expects unknown devid.
@@ -143,7 +136,6 @@ os_fdbuf_flush(const char *if_name)
 {
     LOGD(LOG_PREFIX_FDB(if_name, "flushing"));
     os_fdbuf_flush_linux(if_name);
-    os_fdbuf_flush_ovs(if_name);
     os_fdbuf_flush_accel(if_name);
 }
 

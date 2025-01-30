@@ -44,26 +44,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * Template Flow Definitions
  *****************************************************************************/
 
-typedef struct {
-    char            *token;
-    char            *bridge;
-    char            *rule;
-    char            *action;
-    uint8_t         table_id;
-    uint8_t         priority;
 
-    ds_tree_t       tags;   // Tree of om_tag_list_entry_t
-
-    ds_tree_node_t  dst_node;
-} om_tflow_t;
-
-extern ds_tree_t *
-                om_tflow_get_tree(void);
-extern bool     om_tflow_rule_is_template(const char *rule);
-extern bool     om_tflow_add_from_schema(struct schema_Openflow_Config *sflow);
-extern bool     om_tflow_remove_from_schema(struct schema_Openflow_Config *sflow);
-extern bool     om_tflow_to_schema(om_tflow_t *tflow, char *erule,
-                                            struct schema_Openflow_Config *sflow);
 
 /***********************************************************************
  * Declarations and definitions for Range Rule tracking
@@ -97,19 +78,6 @@ extern bool         om_range_clear_range_rules(void);
 extern ds_list_t    *om_range_get_range_rules(void);
 extern bool         om_range_generate_range_rules(struct schema_Openflow_Config *ofconf);
 
-/******************************************************************************
- * Template Action Definitions
- *****************************************************************************/
-extern bool     om_template_tflow_update(om_action_t type, om_tflow_t *tflow);
-extern bool     om_template_tag_update(om_tag_t *tag, ds_tree_t *removed,
-                                        ds_tree_t *added, ds_tree_t *updated);
-
-
-/******************************************************************************
- * Openflow rules add/delete Definitions
- *****************************************************************************/
-extern bool     om_add_flow(const char *token, const struct schema_Openflow_Config *ofconf);
-extern bool     om_del_flow(const char *token, const struct schema_Openflow_Config *ofconf);
 
 /******************************************************************************
  * Misc External Function Definitions

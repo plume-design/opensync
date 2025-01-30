@@ -161,7 +161,7 @@ OSW_UT(ow_steer_policy_snr_xing_ut_eval_txrx_state)
     MEMZERO(mediator);
     MEMZERO(addr);
 
-    struct ow_steer_policy_snr_xing *xing = ow_steer_policy_snr_xing_create("test", &addr, &mediator);
+    struct ow_steer_policy_snr_xing *xing = ow_steer_policy_snr_xing_create("test", &addr, &mediator, "");
     struct ow_steer_policy_snr_xing_state *state = &xing->state;
 
     /*
@@ -404,7 +404,7 @@ OSW_UT(ow_steer_policy_snr_xing_ut_hwm)
      */
     osw_ut_time_init();
 
-    xing_policy = ow_steer_policy_snr_xing_create("hwm", &sta_addr, &mediator);
+    xing_policy = ow_steer_policy_snr_xing_create("hwm", &sta_addr, &mediator, "");
     OSW_UT_EVAL(xing_policy != NULL);
     OSW_UT_EVAL(mediator_cnt.trigger_executor_cnt == 0);
     OSW_UT_EVAL(mediator_cnt.schedule_recalc_cnt == 0);
@@ -637,7 +637,7 @@ OSW_UT(ow_steer_policy_snr_xing_ut_lwm)
      */
     osw_ut_time_init();
 
-    xing_policy = ow_steer_policy_snr_xing_create("lwm", &sta_addr, &mediator);
+    xing_policy = ow_steer_policy_snr_xing_create("lwm", &sta_addr, &mediator, "");
     OSW_UT_EVAL(xing_policy != NULL);
     OSW_UT_EVAL(mediator_cnt.trigger_executor_cnt == 0);
     OSW_UT_EVAL(mediator_cnt.schedule_recalc_cnt == 0);
@@ -764,7 +764,7 @@ OSW_UT(ow_steer_policy_snr_xing_ut_bottom_lwm_11kv_sta)
      */
     osw_ut_time_init();
 
-    xing_policy = ow_steer_policy_snr_xing_create("lwm", &sta_addr, &mediator);
+    xing_policy = ow_steer_policy_snr_xing_create("lwm", &sta_addr, &mediator, "");
     OSW_UT_EVAL(xing_policy != NULL);
     OSW_UT_EVAL(mediator_cnt.trigger_executor_cnt == 0);
     OSW_UT_EVAL(mediator_cnt.schedule_recalc_cnt == 0);
@@ -888,7 +888,7 @@ OSW_UT(ow_steer_policy_snr_xing_ut_bottom_lwm_non_11kv_sta)
      */
     osw_ut_time_init();
 
-    xing_policy = ow_steer_policy_snr_xing_create("lwm", &sta_addr, &mediator);
+    xing_policy = ow_steer_policy_snr_xing_create("lwm", &sta_addr, &mediator, "");
     OSW_UT_EVAL(xing_policy != NULL);
     OSW_UT_EVAL(mediator_cnt.trigger_executor_cnt == 0);
     OSW_UT_EVAL(mediator_cnt.schedule_recalc_cnt == 0);

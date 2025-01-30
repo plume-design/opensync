@@ -1027,26 +1027,44 @@ void osp_dl_curl_timeout_timer_fn(struct ev_loop *loop, ev_timer *w, int revent)
 
 void osp_dl_curl_progress(struct osp_dl_curl *dc)
 {
+    #if LIBCURL_VERSION_NUM >= 0x073700 /* version 7.55 */
+    curl_off_t content_len;
+    curl_off_t dl_size;
+    curl_off_t dl_speed;
+    #else
     double content_len;
     double dl_size;
     double dl_speed;
+    #endif
     CURLcode erc;
 
     int prc_done = -1;
 
-    erc = curl_easy_getinfo(dc->dc_curl, CURLINFO_CONTENT_LENGTH_DOWNLOAD, &content_len);
+    #if LIBCURL_VERSION_NUM >= 0x073700 /* version 7.55 */
+        erc = curl_easy_getinfo(dc->dc_curl, CURLINFO_CONTENT_LENGTH_DOWNLOAD_T, &content_len);
+    #else
+        erc = curl_easy_getinfo(dc->dc_curl, CURLINFO_CONTENT_LENGTH_DOWNLOAD, &content_len);
+    #endif
     if (erc != CURLE_OK)
     {
         content_len = -1.0;
     }
 
-    erc = curl_easy_getinfo(dc->dc_curl, CURLINFO_SIZE_DOWNLOAD, &dl_size);
+    #if LIBCURL_VERSION_NUM >= 0x073700 /* version 7.55 */
+        erc = curl_easy_getinfo(dc->dc_curl, CURLINFO_SIZE_DOWNLOAD_T, &dl_size);
+    #else
+        erc = curl_easy_getinfo(dc->dc_curl, CURLINFO_SIZE_DOWNLOAD, &dl_size);
+    #endif
     if (erc != CURLE_OK)
     {
         dl_size = -1.0;
     }
 
-    erc = curl_easy_getinfo(dc->dc_curl, CURLINFO_SPEED_DOWNLOAD, &dl_speed);
+    #if LIBCURL_VERSION_NUM >= CURL_V_7_55_0
+        erc = curl_easy_getinfo(dc->dc_curl, CURLINFO_SPEED_DOWNLOAD_T, &dl_speed);
+    #else
+        erc = curl_easy_getinfo(dc->dc_curl, CURLINFO_SPEED_DOWNLOAD, &dl_speed);
+    #endif
     if (erc != CURLE_OK)
     {
         dl_speed = -1.0;

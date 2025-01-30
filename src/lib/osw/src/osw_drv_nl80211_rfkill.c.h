@@ -45,7 +45,7 @@ rfkill_get(const char *phy_name, const char *type)
     for (i = 0; i < g.gl_pathc; i++) {
         const char *path = g.gl_pathv[i];
         const char *data = file_geta(path);
-        LOGT("%s: %s: read: '%s'", __func__, path, data);
+        LOGT("%s: %s: read: '%s'", __func__, path, data ?: "");
         if (WARN_ON(data == NULL)) continue;
         if (atoi(data) == 1) blocked = true;
     }

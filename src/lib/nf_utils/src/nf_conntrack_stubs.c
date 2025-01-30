@@ -34,7 +34,7 @@ nf_process_ct_cb(const struct nlmsghdr *nlh, void *data)
 
 
 int
-nf_ct_init(struct ev_loop *loop)
+nf_ct_init(struct ev_loop *loop, void (*callback)(void *data))
 {
     return 0;
 }

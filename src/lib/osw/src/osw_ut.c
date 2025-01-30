@@ -30,6 +30,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <sys/types.h>
 #include <unistd.h>
 
+#include <log.h>
 #include <util.h>
 #include <module.h>
 #include <const.h>
@@ -115,7 +116,7 @@ osw_ut_io_cb(EV_P_ ev_io *arg, int events)
      * really happen, but hey). This is good enough for now.
      */
     if (proc->verbose)
-        write(fileno(stdout), buf, len);
+        WARN_ON(write(fileno(stdout), buf, len) != len);
     else
         strgrow(&proc->output, "%s", buf);
 }

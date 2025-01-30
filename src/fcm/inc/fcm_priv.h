@@ -50,7 +50,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define FCM_MQTT_TOPIC_LEN       (257)
 #define FCM_OTHER_CONFIG_KEY_LEN (65)
 #define FCM_OTHER_CONFIG_VAL_LEN FCM_OTHER_CONFIG_KEY_LEN
-#define FCM_MGR_INTERVAL         120
+#define FCM_MGR_INTERVAL         CONFIG_FCM_MEM_CHECK_PERIOD
 
 typedef enum {
     FCM_NO_HEADER          = -1,
@@ -138,6 +138,8 @@ struct mem_usage
 void fcm_get_memory(struct mem_usage *mem);
 int fcm_ovsdb_init(void);
 void fcm_event_init(void);
+
+void fcm_conntrack_event_cb(void *data);
 
 /**
  * @brief Set the initial memory usage threshold.

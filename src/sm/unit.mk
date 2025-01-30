@@ -40,7 +40,6 @@ UNIT_SRC     += src/sm_neighbor_report.c
 UNIT_SRC     += src/sm_client_report.c
 UNIT_SRC     += src/sm_device_report.c
 UNIT_SRC     += src/sm_survey_report.c
-UNIT_SRC     += src/sm_radio_config.c
 UNIT_SRC     += src/sm_scan_schedule.c
 UNIT_SRC     += src/sm_healthcheck_schedule.c
 UNIT_SRC     += src/sm_rssi_report.c
@@ -50,6 +49,12 @@ UNIT_SRC     += src/sm_client_auth_fails.c
 UNIT_SRC     += src/sm_client_auth_fails_report.c
 UNIT_SRC     += src/sm_radius_stats.c
 UNIT_SRC     += src/sm_radius_stats_report.c
+
+UNIT_SRC     += $(if $(CONFIG_SM_LATENCY_STATS),src/sm_lat_mqtt.c)
+UNIT_SRC     += $(if $(CONFIG_SM_LATENCY_STATS),src/sm_lat_core.c)
+UNIT_SRC     += $(if $(CONFIG_SM_LATENCY_STATS),src/sm_lat_ovsdb.c)
+UNIT_SRC     += $(if $(CONFIG_SM_LATENCY_IMPL_NONE),src/sm_lat_sys_none.c)
+UNIT_SRC     += $(if $(CONFIG_SM_LATENCY_IMPL_EPPING),src/sm_lat_sys_epping.c)
 
 ifeq ($(CONFIG_SM_CAPACITY_QUEUE_STATS),y)
 UNIT_SRC     += src/sm_capacity_report.c

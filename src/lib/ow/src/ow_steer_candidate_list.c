@@ -38,10 +38,16 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ow_steer_candidate_assessor.h"
 #include "ow_steer_candidate_list.h"
 
+#define LOG_PREFIX(fmt, ...) "ow: steer: " fmt, ##__VA_ARGS__
+
 struct ow_steer_candidate {
     struct osw_hwaddr bssid;
+    struct osw_hwaddr mld_addr;
     enum ow_steer_candidate_preference preference;
     struct osw_channel channel;
+    /* Arguably confusingly, the higher the
+     * metric, the more preferred a candidate is.
+     */
     unsigned int metric;
     char *reason;
 };
@@ -83,13 +89,17 @@ ow_steer_candidate_list_qsort_cmp(const void *a,
 static void
 ow_steer_candidate_list_candidate_init(struct ow_steer_candidate *candidate,
                                        const struct osw_hwaddr *bssid,
-                                       const struct osw_channel *channel)
+                                       const struct osw_channel *channel,
+                                       const struct osw_hwaddr *mld_addr)
 {
     assert(candidate != NULL);
     assert(channel != NULL);
 
+    mld_addr = mld_addr ?: osw_hwaddr_zero();
+
     memcpy(&candidate->bssid, bssid, sizeof(candidate->bssid));
     memcpy(&candidate->channel, channel, sizeof(candidate->channel));
+    memcpy(&candidate->mld_addr, mld_addr, sizeof(candidate->mld_addr));
 }
 
 const char*
@@ -204,9 +214,10 @@ ow_steer_candidate_list_cmp(const struct ow_steer_candidate_list *candidate_list
 }
 
 void
-ow_steer_candidate_list_bss_set(struct ow_steer_candidate_list *candidate_list,
-                                const struct osw_hwaddr *bssid,
-                                const struct osw_channel *channel)
+ow_steer_candidate_list_bss_mld_set(struct ow_steer_candidate_list *candidate_list,
+                                    const struct osw_hwaddr *bssid,
+                                    const struct osw_channel *channel,
+                                    const struct osw_hwaddr *mld_addr)
 {
     assert(candidate_list != NULL);
     assert(bssid != NULL);
@@ -222,7 +233,15 @@ ow_steer_candidate_list_bss_set(struct ow_steer_candidate_list *candidate_list,
         memset(&candidate_list->set[i], 0, sizeof(candidate_list->set[i]));
     }
 
-    ow_steer_candidate_list_candidate_init(&candidate_list->set[i], bssid, channel);
+    ow_steer_candidate_list_candidate_init(&candidate_list->set[i], bssid, channel, mld_addr);
+}
+
+void
+ow_steer_candidate_list_bss_set(struct ow_steer_candidate_list *candidate_list,
+                                const struct osw_hwaddr *bssid,
+                                const struct osw_channel *channel)
+{
+    ow_steer_candidate_list_bss_mld_set(candidate_list, bssid, channel, NULL);
 }
 
 void
@@ -329,11 +348,11 @@ ow_steer_candidate_list_sigusr1_dump(osw_diag_pipe_t *pipe,
 
     size_t i = 0;
     for (i = 0; i < candidate_list->set_size; i++) {
-        osw_diag_pipe_writef(pipe, "ow: steer:      candidate:");
-        osw_diag_pipe_writef(pipe, "ow: steer:        bssid: "OSW_HWADDR_FMT, OSW_HWADDR_ARG(&candidate_list->set[i].bssid));
-        osw_diag_pipe_writef(pipe, "ow: steer:        preference: %s (%s)",
+        osw_diag_pipe_writef(pipe, LOG_PREFIX("     candidate:"));
+        osw_diag_pipe_writef(pipe, LOG_PREFIX("       bssid: "OSW_HWADDR_FMT, OSW_HWADDR_ARG(&candidate_list->set[i].bssid)));
+        osw_diag_pipe_writef(pipe, LOG_PREFIX("       preference: %s (%s)",
                              ow_steer_candidate_preference_to_cstr(candidate_list->set[i].preference),
-                             ow_steer_candidate_get_reason(&candidate_list->set[i]));
+                             ow_steer_candidate_get_reason(&candidate_list->set[i])));
     }
 }
 
@@ -355,6 +374,13 @@ ow_steer_candidate_get_bssid(const struct ow_steer_candidate *candidate)
 {
     assert(candidate != NULL);
     return &candidate->bssid;
+}
+
+const struct osw_hwaddr*
+ow_steer_candidate_get_mld_addr(const struct ow_steer_candidate *candidate)
+{
+    assert(candidate != NULL);
+    return osw_hwaddr_is_zero(&candidate->mld_addr) ? NULL : &candidate->mld_addr;
 }
 
 enum ow_steer_candidate_preference
@@ -380,12 +406,12 @@ ow_steer_candidate_set_preference(struct ow_steer_candidate *candidate,
     assert(candidate != NULL);
 
     if (candidate->preference != OW_STEER_CANDIDATE_PREFERENCE_NONE) {
-        LOGW("ow: steer: candidate: cannot override "OSW_HWADDR_FMT" preference to %s with reason %s, because %s already set it to %s",
+        LOGW(LOG_PREFIX("candidate: cannot override "OSW_HWADDR_FMT" preference to %s with reason %s, because %s already set it to %s",
              OSW_HWADDR_ARG(&candidate->bssid),
              candidate->reason,
              ow_steer_candidate_preference_to_cstr(candidate->preference),
              reason,
-             ow_steer_candidate_preference_to_cstr(preference));
+             ow_steer_candidate_preference_to_cstr(preference)));
         return;
     }
 

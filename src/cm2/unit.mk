@@ -44,10 +44,13 @@ UNIT_SRC    += src/cm2_resolve_sync.c
 endif
 UNIT_SRC    += src/cm2_resolve.c
 UNIT_SRC    += src/cm2_net.c
+UNIT_SRC    += src/cm2_work.c
 UNIT_SRC    += src/cm2_bh_dhcp.c
 UNIT_SRC    += src/cm2_bh_gre.c
 UNIT_SRC    += src/cm2_bh_cmu.c
+UNIT_SRC    += src/cm2_bh_mlo.c
 
+UNIT_CFLAGS += -I$(UNIT_PATH)/inc
 UNIT_CFLAGS += -I$(TOP_DIR)/src/lib/common/inc/
 
 UNIT_LDFLAGS := -lpthread
@@ -68,6 +71,7 @@ endif
 
 ifeq ($(CONFIG_CM2_USE_STABILITY_CHECK),y)
 UNIT_SRC    += src/cm2_stability.c
+UNIT_SRC    += src/cm2_uplink_event.c
 endif
 
 ifeq ($(CONFIG_CM2_BT_BEACON_HANDLER),y)
@@ -89,3 +93,4 @@ endif
 UNIT_DEPS += src/lib/timevt
 UNIT_DEPS += src/lib/os_fdbuf
 UNIT_DEPS += src/lib/ff
+UNIT_DEPS += src/lib/ovsdb_bridge

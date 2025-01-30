@@ -25,6 +25,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 #include <openssl/sha.h>
+#include <openssl/evp.h>
 
 #include "evx.h"
 #include "json_util.h"
@@ -529,22 +530,38 @@ void psm_ovsdb_row_sync(struct ev_loop *loop, ev_debounce *w, int revent)
 void psm_ovsdb_row_key_from_json(struct psm_ovsdb_row_key *key, const char *table, json_t *row)
 {
     const char *row_data;
+#if OPENSSL_VERSION_NUMBER >= 0x030000000  // 3.0.0
+    EVP_MD_CTX *md_ctx = EVP_MD_CTX_create();
+    const EVP_MD *md = EVP_sha256();
+#else
     SHA256_CTX sha_ctx;
+#endif
     uint8_t sha_buf[SHA256_DIGEST_LENGTH];
 
     memset(key, 0, sizeof(*key));
 
+    /* Generate a compact representation of the row data and add it to the hash */
+    row_data = json_dumps(row, JSON_COMPACT | JSON_SORT_KEYS | JSON_ENSURE_ASCII);
+
+#if OPENSSL_VERSION_NUMBER >= 0x030000000  // 3.0.0
+    EVP_DigestInit_ex(md_ctx, md, NULL);
+
+    /* Include the trailing \0 in the hash */
+    EVP_DigestUpdate(md_ctx, table, strlen(table) + 1);
+    EVP_DigestUpdate(md_ctx, row_data, strlen(row_data) + 1);
+
+    EVP_DigestFinal_ex(md_ctx, sha_buf, 0);
+    EVP_MD_CTX_destroy(md_ctx);
+#else
     SHA256_Init(&sha_ctx);
 
     /* Include the trailing \0 in the hash */
     SHA256_Update(&sha_ctx, table, strlen(table) + 1);
-
-    /* Generate a compact representation of the row data and add it to the hash */
-    row_data = json_dumps(row, JSON_COMPACT | JSON_SORT_KEYS | JSON_ENSURE_ASCII);
     SHA256_Update(&sha_ctx, row_data, strlen(row_data) + 1);
-    json_memdbg_free((void *)row_data);
 
     SHA256_Final(sha_buf, &sha_ctx);
+#endif
+    json_memdbg_free((void *)row_data);
 
     bin2hex(sha_buf, sizeof(sha_buf), key->rk_key, sizeof(key->rk_key));
 }

@@ -1,0 +1,11 @@
+#
+# OpenSync core network Generic Linux qdisc-based QoS backend
+#
+source "src/lib/osn/kconfig/Kconfig.osn.qdisc_backend"
+
+#
+# Platform/vendor QoS backends
+#
+osource "platform/*/kconfig/Kconfig.osn.qdisc_backend"
+osource "vendor/*/kconfig/Kconfig.osn.qdisc_backend"
+

@@ -85,4 +85,3 @@ bool lnx_lte_fini(lnx_lte_t *self)
     daemon_fini(&self->ll_lted);
     return true;
 }
-

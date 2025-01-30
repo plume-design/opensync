@@ -91,19 +91,16 @@ SCHEMA_LISTX(_SCHEMA_COL_DECL)
             FIELD##_len++; \
         } while(0)
 
-#define SCHEMA_SET_BOOL(FIELD, VALUE) \
+#define SCHEMA_SET_SCALAR(FIELD, VALUE) \
         do { \
             FIELD = (VALUE); \
             FIELD##_exists  = true; \
             FIELD##_present = true; \
         } while (0)
 
-#define SCHEMA_SET_INT(FIELD, VALUE) \
-        do { \
-            FIELD = (VALUE); \
-            FIELD##_exists  = true; \
-            FIELD##_present = true; \
-        } while (0)
+#define SCHEMA_SET_BOOL(FIELD, VALUE) SCHEMA_SET_SCALAR(FIELD, VALUE)
+#define SCHEMA_SET_INT(FIELD, VALUE)  SCHEMA_SET_SCALAR(FIELD, VALUE)
+#define SCHEMA_SET_REAL(FIELD, VALUE) SCHEMA_SET_SCALAR(FIELD, VALUE)
 
 #define SCHEMA_CPY_INT(DST, SRC) \
         do { \
@@ -209,6 +206,13 @@ SCHEMA_LISTX(_SCHEMA_COL_DECL)
             FIELD##_exists  = false; \
             FIELD##_present = true;  \
         } while (0)
+
+/** Mark that `FIELD` has a value set (when done so manually), as any of the `SCHEMA_SET_*` macros would do */
+#define SCHEMA_MARK_SET(FIELD)  \
+    do {                        \
+        FIELD##_exists = true;  \
+        FIELD##_present = true; \
+    } while (0)
 
 // void schema_TABLE_mark_changed(schema old*, schema *rec);
 // This will sets all rec->*_changed flag for each old->*_present flag

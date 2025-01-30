@@ -49,7 +49,6 @@ void run_unit_test()
     RUN_TEST( test_target_stats_device_temp_get );
     RUN_TEST( test_target_device_execute );
     RUN_TEST( test_target_device_wdt_ping );
-    RUN_TEST( test_target_device_capabilities_get );
     RUN_TEST( test_target_radio_config_need_reset );
     RUN_TEST( test_target_vif_state_get );
     RUN_TEST( test_target_radio_state_get );

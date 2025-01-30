@@ -65,19 +65,14 @@ static bool util_if_mac_get(void *buff, size_t buffsz, char *if_name)
 /**
   * @brief get the serial number
   *        Serial number is defined by kconfig
-  *        (CONFIG_TARGET_WAN_BRIDGE_NAME, CONFIG_TARGET_ETH0_NAME). If these are
-  *        not defined, get it from eth0 interface or en* interface.
+  *        CONFIG_TARGET_ETH0_NAME. If it is not defined,
+  *        get it from eth0 interface or en* interface.
   */
 bool osp_unit_serial_get(char *buff, size_t buffsz)
 {
     memset(buff, 0, buffsz);
 
-#if defined(CONFIG_TARGET_WAN_BRIDGE_NAME)
-    if (util_if_mac_get(buff, buffsz, CONFIG_TARGET_WAN_BRIDGE_NAME))
-    {
-        return true;
-    }
-#elif defined(CONFIG_TARGET_ETH0_NAME)
+#if defined(CONFIG_TARGET_ETH0_NAME)
     if (util_if_mac_get(buff, buffsz, CONFIG_TARGET_ETH0_NAME))
     {
         return true;

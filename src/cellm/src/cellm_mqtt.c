@@ -29,24 +29,22 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdbool.h>
 #include <string.h>
 #include <errno.h>
-#include <inttypes.h>
 
-#include "cell_info.h"
+#include "lte_info.h"
 #include "memutil.h"
 #include "log.h"
 #include "target.h"
 #include "qm_conn.h"
 #include "cellm_mgr.h"
 
-struct cell_info_packed_buffer *serialized_report = NULL;
-struct cell_info_report *report = NULL;
+struct lte_info_packed_buffer *lte_serialized = NULL;
+struct lte_info_report *lte_report = NULL;
 
-char cell_mqtt_topic[256];
+char lte_mqtt_topic[256];
 
-static uint32_t cell_request_id = 0;
+static uint32_t lte_request_id = 0;
 
-static int
-cell_send_report(char *topic, struct cell_info_packed_buffer *pb)
+static int cellm_lte_send_report(char *topic, struct lte_info_packed_buffer *pb)
 {
 #ifndef ARCH_X86
     qm_response_t res;
@@ -71,12 +69,10 @@ cell_send_report(char *topic, struct cell_info_packed_buffer *pb)
         return -1;
     }
 
-    LOGI("%s: msg len: %zu, topic: %s",
-         __func__, pb->len, topic);
+    LOGD("%s: msg len: %zu, topic: %s", __func__, pb->len, topic);
 
 #ifndef ARCH_X86
-    ret = qm_conn_send_direct(QM_REQ_COMPRESS_IF_CFG, topic,
-                              pb->buf, pb->len, &res);
+    ret = qm_conn_send_direct(QM_REQ_COMPRESS_IF_CFG, topic, pb->buf, pb->len, &res);
     if (!ret)
     {
         LOGE("error sending mqtt with topic %s", topic);
@@ -90,107 +86,150 @@ cell_send_report(char *topic, struct cell_info_packed_buffer *pb)
 /**
  * @brief Set the common header
  */
-int
-cell_set_common_header(struct cell_info_report *report)
+int cellm_lte_set_common_header(struct lte_info_report *lte_report)
 {
     bool ret;
-    struct cell_common_header common_header;
+    struct lte_common_header common_header;
     cellm_mgr_t *mgr = cellm_get_mgr();
 
-    if (!report) return -1;
+    if (!lte_report) return -1;
 
-    LOGI("%s: if_name[%s], node_id[%s], location_id[%s], imei[%s], imsi[%s], iccid[%s], modem_info[%s]",
-         __func__, mgr->modem_info->header.if_name, mgr->node_id, mgr->location_id, mgr->modem_info->header.imei,
-         mgr->modem_info->header.imsi, mgr->modem_info->header.iccid, mgr->modem_info->header.modem_info);
     MEMZERO(common_header);
-    common_header.request_id = cell_request_id++;
-    STRSCPY(common_header.if_name, mgr->modem_info->header.if_name);
-    STRSCPY(common_header.node_id, mgr->node_id);
-    STRSCPY(common_header.location_id, mgr->location_id);
-    STRSCPY(common_header.imei, mgr->modem_info->header.imei);
-    STRSCPY(common_header.imsi, mgr->modem_info->header.imsi);
-    STRSCPY(common_header.iccid, mgr->modem_info->header.iccid);
-    STRSCPY(common_header.modem_info, mgr->modem_info->header.modem_info);
-    // reported_at is set in cell_info_set_common_header
-    ret = cell_info_set_common_header(&common_header, report);
+    common_header.request_id = lte_request_id++;
+    common_header.if_name = mgr->cellm_config_info->if_name;
+    common_header.node_id = mgr->node_id;
+    common_header.location_id = mgr->location_id;
+    common_header.imei = mgr->modem_info->imei;
+    common_header.imsi = mgr->modem_info->imsi;
+    common_header.iccid = mgr->modem_info->iccid;
+    // reported_at is set in lte_info_set_common_header
+    ret = lte_info_set_common_header(&common_header, lte_report);
     if (!ret) return -1;
 
     return 0;
 }
 
 /**
- * @brief Set the cell_net_info in the report
+ * @brief Set the lte_net_info in the report
  */
-int
-cell_set_net_info(struct cell_info_report *report)
+int cellm_lte_set_net_info(struct lte_info_report *lte_report)
 {
     bool ret;
-    struct cell_net_info net_info;
+    struct lte_net_info net_info;
     cellm_mgr_t *mgr = cellm_get_mgr();
 
-    net_info.net_status = mgr->modem_info->cell_net_info.net_status;
-    net_info.mcc = mgr->modem_info->cell_net_info.mcc;
-    net_info.mnc = mgr->modem_info->cell_net_info.mnc;
-    net_info.tac = mgr->modem_info->cell_net_info.tac;
-    STRSCPY(net_info.service_provider, mgr->modem_info->cell_net_info.service_provider);
-    net_info.sim_type = mgr->modem_info->cell_net_info.sim_type;
-    net_info.sim_status = mgr->modem_info->cell_net_info.sim_status;
-    net_info.active_sim_slot = mgr->modem_info->cell_net_info.active_sim_slot;
-    net_info.rssi = mgr->modem_info->cell_net_info.rssi;
-    net_info.ber = mgr->modem_info->cell_net_info.ber;
-    net_info.endc = mgr->modem_info->cell_net_info.endc;
-    net_info.mode = mgr->modem_info->cell_net_info.mode;
+    net_info.net_status = mgr->modem_info->reg_status;
+    net_info.rssi = mgr->modem_info->rssi;
+    net_info.ber = mgr->modem_info->ber;
+    net_info.mcc = mgr->modem_info->srv_cell.mcc;
+    net_info.mnc = mgr->modem_info->srv_cell.mnc;
+    net_info.tac = mgr->modem_info->srv_cell.tac;
+    net_info.service_provider = mgr->modem_info->operator;
+    net_info.sim_type = mgr->modem_info->sim_type;
+    net_info.sim_status = mgr->modem_info->sim_status;
+    net_info.active_sim_slot = mgr->modem_info->active_simcard_slot;
+    net_info.last_healthcheck_success = mgr->modem_info->last_healthcheck_success;
+    net_info.healthcheck_failures = mgr->modem_info->healthcheck_failures;
 
-    ret = cell_info_set_net_info(&net_info, report);
+    ret = lte_info_set_net_info(&net_info, lte_report);
     if (!ret) return -1;
 
     return 0;
 }
 
 /**
- * @brief Set cell_data_usage in the report
+ * @brief Set lte_data_usage in the report
  */
-int
-cell_set_data_usage(struct cell_info_report *report)
+int cellm_lte_set_data_usage(struct lte_info_report *lte_report)
 {
     bool ret;
     cellm_mgr_t *mgr = cellm_get_mgr();
-    struct cell_data_usage data_usage;
+    struct lte_data_usage data_usage;
 
-    LOGI("%s: rx_bytes[%"PRIu64"], tx_bytes[%"PRIu64"]", __func__,
-         (uint64_t)mgr->modem_info->cell_data_usage.rx_bytes,
-         (uint64_t)mgr->modem_info->cell_data_usage.tx_bytes);
-
-    data_usage.rx_bytes = mgr->modem_info->cell_data_usage.rx_bytes;
-    data_usage.tx_bytes = mgr->modem_info->cell_data_usage.tx_bytes;
-    ret = cell_info_set_data_usage(&data_usage, report);
+    data_usage.rx_bytes = mgr->modem_info->rx_bytes;
+    data_usage.tx_bytes = mgr->modem_info->tx_bytes;
+    data_usage.failover_start = mgr->cellm_state_info->cellm_failover_start;
+    data_usage.failover_end = mgr->cellm_state_info->cellm_failover_end;
+    data_usage.failover_count = mgr->cellm_state_info->cellm_failover_count;
+    ret = lte_info_set_data_usage(&data_usage, lte_report);
     if (!ret) return -1;
 
     return 0;
+}
 
+/**
+ * @brief Set serving cell lte info
+ */
+void cellm_lte_set_serving_cell_lte(struct lte_net_serving_cell_info *srv_cell_info, cell_serving_cell_info_t *srv_cell)
+{
+    srv_cell_info->fdd_tdd_mode = srv_cell->fdd_tdd_mode;
+    srv_cell_info->earfcn = srv_cell->earfcn;
+    srv_cell_info->freq_band = srv_cell->freq_band;
+    srv_cell_info->ul_bandwidth = srv_cell->ul_bandwidth;
+    srv_cell_info->dl_bandwidth = srv_cell->dl_bandwidth;
+    srv_cell_info->tac = srv_cell->tac;
+    srv_cell_info->rsrp = srv_cell->rsrp;
+    srv_cell_info->rsrq = srv_cell->rsrq;
+    srv_cell_info->rssi = srv_cell->rssi;
+    srv_cell_info->sinr = srv_cell->sinr;
+    srv_cell_info->srxlev = srv_cell->srxlev;
 }
 
 /**
  * @brief Set serving cell info
  */
-int
-cell_set_serving_cell(struct cell_info_report *report)
+int cellm_lte_set_serving_cell(struct lte_info_report *lte_report)
 {
     bool ret;
     cellm_mgr_t *mgr = cellm_get_mgr();
-    struct lte_serving_cell_info *srv_cell;
+    struct lte_net_serving_cell_info srv_cell_info;
+    cell_serving_cell_info_t *srv_cell;
 
-    srv_cell = &mgr->modem_info->cell_srv_cell;
+    MEMZERO(srv_cell_info);
+    srv_cell = &mgr->modem_info->srv_cell;
 
-    LOGI("%s: state[%d], fdd_tdd_mode[%d], cellid[%d] pcid[%d], uarfcn[%d], "
-         "earfcn[%d], band[%d], ul_bandwidth[%d] dl_bandwidth[%d], tac[%d], rsrp[%d], "
-         "rsrq[%d], rssi[%d], sinr[%d], srxlev[%d] endc[%d]",
-         __func__, srv_cell->state, srv_cell->fdd_tdd_mode, srv_cell->cellid,
-         srv_cell->pcid, srv_cell->uarfcn, srv_cell->earfcn, srv_cell->band,
-         srv_cell->ul_bandwidth, srv_cell->dl_bandwidth, srv_cell->tac, srv_cell->rsrp,
-         srv_cell->rsrq, srv_cell->rssi, srv_cell->sinr, srv_cell->srxlev, srv_cell->endc);
+    srv_cell_info.state = srv_cell->state;
+    if (srv_cell->state == SERVING_CELL_SEARCH) /* No service */
+    {
+        LOGI("%s: state=LTE_SERVING_CELL_SEARCH", __func__);
+    }
 
-    ret = cell_info_set_serving_cell(srv_cell, report);
+    if (srv_cell->state == SERVING_CELL_LIMSERV) /* No data connection, camping on a cell */
+    {
+        LOGI("%s: state=LTE_SERVING_CELL_LIMSERV", __func__);
+    }
+
+    switch (srv_cell->mode)
+    {
+        case CELL_MODE_NR5G_SA:
+        case CELL_MODE_NR5G_ENDC:
+        case CELL_MODE_NR5G_NSA:
+        case CELL_MODE_NR5G_NSA_5G_RRC_IDLE:
+            srv_cell_info.mode = CELL_MODE_5G;
+            break;
+
+        case CELL_MODE_LTE:
+        case CELL_MODE_WCDMA:
+            srv_cell_info.mode = CELL_MODE_4G;
+            break;
+
+        default:
+            srv_cell_info.mode = CELL_MODE_AUTO;
+            break;
+    }
+
+    if (srv_cell->state == SERVING_CELL_NOCONN && srv_cell->mode == CELL_MODE_WCDMA) /* No PDP context, WCDMA mode */
+    {
+        LOGI("%s: state=LTE_SERVING_CELL_NOCONN, srv_cell->mode=LTE_CELL_MODE_WCDMA", __func__);
+    }
+
+    srv_cell_info.cellid = srv_cell->cellid;
+    srv_cell_info.pcid = srv_cell->pcid;
+    if (srv_cell->mode == CELL_MODE_LTE)
+    {
+        cellm_lte_set_serving_cell_lte(&srv_cell_info, srv_cell);
+    }
+    ret = lte_info_set_serving_cell(&srv_cell_info, lte_report);
     if (!ret) return -1;
 
     return 0;
@@ -199,99 +238,78 @@ cell_set_serving_cell(struct cell_info_report *report)
 /**
  * @brief Set intra neighbor cell info in the report
  */
-int
-cell_set_neigh_cell_info(struct cell_info_report *report)
+int cellm_lte_set_neigh_cell_info(struct lte_info_report *lte_report)
 {
     bool ret;
     cellm_mgr_t *mgr = cellm_get_mgr();
-    struct cell_net_neighbor_cell_info *neigh_cell;
+    struct lte_net_neighbor_cell_info neigh_cell_info;
+    cell_neighbor_cell_info_t *neigh_cell;
+    int i;
 
-    for (size_t i = 0; i < report->n_neigh_cells; i++)
+    for (i = 0; i < MAX_NEIGH_CELL_COUNT; i++)
     {
-        if (i == MAX_CELL_COUNT)
-        {
-            LOGE("%s: Number of neighbor cells [%zu] exceeds maximum cell count[%d]",
-                 __func__, report->n_neigh_cells, MAX_CELL_COUNT);
-            break;
-        }
+        MEMZERO(neigh_cell_info);
+        neigh_cell = &mgr->modem_info->neigh_cell[i];
 
-        neigh_cell = &mgr->modem_info->cell_neigh_cell_info[i];
-        ret = cell_info_add_neigh_cell(neigh_cell, report, i);
+        neigh_cell_info.freq_mode = neigh_cell->freq_mode;
+        neigh_cell_info.mode = neigh_cell->mode;
+        neigh_cell_info.earfcn = neigh_cell->earfcn;
+        neigh_cell_info.pcid = neigh_cell->pcid;
+        neigh_cell_info.rsrq = neigh_cell->rsrq;
+        neigh_cell_info.rsrp = neigh_cell->rsrp;
+        neigh_cell_info.rssi = neigh_cell->rssi;
+        neigh_cell_info.sinr = neigh_cell->sinr;
+        neigh_cell_info.srxlev = neigh_cell->srxlev;
+        neigh_cell_info.cell_resel_priority = neigh_cell->cell_resel_priority;
+
+        ret = lte_info_add_neigh_cell_info(&neigh_cell_info, lte_report);
         if (!ret) return -1;
     }
 
     return 0;
 }
-
-/**
- * @brief Set full scan neighbor cell info in the report
- */
-int
-cell_set_full_scan_neigh_cell_info(struct cell_info_report *report)
-{
-    bool ret;
-    cellm_mgr_t *mgr = cellm_get_mgr();
-    struct cell_full_scan_neighbor_cell_info *full_scan_neigh_cell;
-
-    for (size_t i = 0; i < report->n_full_scan_neigh_cells; i++)
-    {
-        if (i == MAX_FULL_SCAN_CELL_COUNT)
-        {
-            LOGE("%s: Number of full scan neighbor cells [%zu] exceeds maximum cell count[%d]",
-                 __func__, report->n_full_scan_neigh_cells, MAX_FULL_SCAN_CELL_COUNT);
-            break;
-        }
-
-        full_scan_neigh_cell = &mgr->modem_info->cell_full_scan_neigh_cell_info[i];
-        ret = cell_info_add_full_scan_neigh_cell(full_scan_neigh_cell, report, i);
-        if (!ret) return -1;
-    }
-
-    return 0;
-}
-
 
 /**
  * @brief Set carrier aggregation info to the report
  */
-int
-cell_set_pca_info(struct cell_info_report *report)
+int cellm_lte_set_carrier_agg_info(struct lte_info_report *lte_report)
 {
     bool ret;
     cellm_mgr_t *mgr = cellm_get_mgr();
-    struct cell_net_pca_info *pca_info;
+    cell_pca_info_t *lte_pca;
+    cell_sca_info_t *lte_sca;
 
-    pca_info  = &mgr->modem_info->cell_pca_info;
-    LOGI("%s: lcc[%d], freq[%d], bandwidth[%d], pcell_state[%d], pcid[%d], rsrp[%d], rsrq[%d], rssi[%d], sinr[%d]",
-         __func__, pca_info->lcc, pca_info->freq, pca_info->bandwidth, pca_info->pcell_state, pca_info->pcid, pca_info->rsrp, pca_info->rsrq,
-         pca_info->rssi, pca_info->sinr);
-    ret = cell_info_set_pca(pca_info, report);
+    struct lte_net_pca_info pca_info;
+    struct lte_net_sca_info sca_info;
+
+    MEMZERO(pca_info);
+    MEMZERO(sca_info);
+    lte_pca = &mgr->modem_info->pca_info;
+    lte_sca = &mgr->modem_info->sca_info;
+
+    pca_info.lcc = lte_pca->lcc;
+    pca_info.freq = lte_pca->freq;
+    pca_info.bandwidth = lte_pca->bandwidth;
+    pca_info.pcell_state = lte_pca->pcell_state;
+    pca_info.pcid = lte_pca->pcid;
+    pca_info.rsrp = lte_pca->rsrp;
+    pca_info.rsrq = lte_pca->rsrq;
+    pca_info.rssi = lte_pca->rssi;
+    pca_info.sinr = lte_pca->sinr;
+    sca_info.lcc = lte_sca->lcc;
+    sca_info.freq = lte_sca->freq;
+    sca_info.bandwidth = lte_sca->bandwidth;
+    sca_info.scell_state = lte_sca->scell_state;
+    sca_info.pcid = lte_sca->pcid;
+    sca_info.rsrp = lte_sca->rsrp;
+    sca_info.rsrq = lte_sca->rsrq;
+    sca_info.rssi = lte_sca->rssi;
+    sca_info.sinr = lte_sca->sinr;
+
+    ret = lte_info_set_primary_carrier_agg(&pca_info, lte_report);
     if (!ret) return -1;
-
-    return 0;
-}
-
-/**
- * @brief Set LTE secondary aggregation info
- */
-int
-cell_set_lte_sca_info(struct cell_info_report *report)
-{
-    bool ret;
-    cellm_mgr_t *mgr = cellm_get_mgr();
-    struct cell_net_lte_sca_info *lte_sca_info;
-    size_t i;
-
-    for (i = 0; i < mgr->modem_info->n_lte_sca_cells; i++)
-    {
-        lte_sca_info = &mgr->modem_info->cell_lte_sca_info[i];
-        if (lte_sca_info == NULL) return -1;
-        LOGI("%s: lcc[%d], freq[%d], bandwidth[%d], scell_state[%d], pcid[%d], rsrp[%d], rsrq[%d], rssi[%d], sinr[%d]",
-             __func__, lte_sca_info->lcc, lte_sca_info->freq, lte_sca_info->bandwidth, lte_sca_info->scell_state,
-             lte_sca_info->pcid, lte_sca_info->rsrp, lte_sca_info->rsrq, lte_sca_info->rssi, lte_sca_info->sinr);
-        ret = cell_info_add_lte_sca(lte_sca_info, report);
-        if (!ret) return -1;
-    }
+    ret = lte_info_set_secondary_carrier_agg(&sca_info, lte_report);
+    if (!ret) return -1;
 
     return 0;
 }
@@ -299,92 +317,58 @@ cell_set_lte_sca_info(struct cell_info_report *report)
 /**
  * @brief Set dynamic pdp context parameters info
  */
-int
-cell_set_pdp_ctx_info(struct cell_info_report *report)
+int cellm_lte_set_pdp_context_dynamic_info(struct lte_info_report *lte_report)
 {
-    bool ret;
     cellm_mgr_t *mgr = cellm_get_mgr();
-    struct cell_pdp_ctx_dynamic_params_info *pdp_ctx;
-    size_t i;
+    cell_pdp_ctx_dynamic_param_info_t *pdp_modem_source;
 
-    for (i = 0; i < mgr->modem_info->n_pdp_cells; i++)
-    {
-        pdp_ctx = &mgr->modem_info->cell_pdp_ctx_info[i];
-        if (pdp_ctx == NULL) return -1;
-        ret = cell_info_add_pdp_ctx(pdp_ctx, report);
-        if (!ret) return -1;
-    }
+    int ret;
+    struct lte_pdp_ctx_dynamic_params_info pdp_ctx_report;
 
-    return 0;
+    MEMZERO(pdp_ctx_report);
+    pdp_modem_source = &mgr->modem_info->pdp_ctx_info;
+    pdp_ctx_report.cid = pdp_modem_source->cid;
+    pdp_ctx_report.bearer_id = pdp_modem_source->bearer_id;
+    pdp_ctx_report.apn = pdp_modem_source->apn;
+    pdp_ctx_report.local_addr = pdp_modem_source->local_addr;
+    pdp_ctx_report.subnetmask = pdp_modem_source->subnetmask;
+    pdp_ctx_report.gw_addr = pdp_modem_source->gw_addr;
+    pdp_ctx_report.dns_prim_addr = pdp_modem_source->dns_prim_addr;
+    pdp_ctx_report.dns_sec_addr = pdp_modem_source->dns_sec_addr;
+    pdp_ctx_report.p_cscf_prim_addr = pdp_modem_source->p_cscf_prim_addr;
+    pdp_ctx_report.im_cn_signalling_flag = pdp_modem_source->im_cn_signalling_flag;
+    pdp_ctx_report.lipaindication = pdp_modem_source->lipaindication;
 
-}
-
-/**
- * @brief Set nr5g sa serving cell
- */
-int cell_set_nr5g_sa_serving_cell(struct cell_info_report *report)
-{
-    bool ret;
-    cellm_mgr_t *mgr = cellm_get_mgr();
-    struct cell_nr5g_cell_info *srv_cell_info;
-
-    srv_cell_info = &mgr->modem_info->nr5g_sa_srv_cell;
-    LOGI("%s: state[%d], fdd_tdd_mode[%d], mcc[%d], mnc[%d], cellid[%d], pcid[%d], tac[%d], arfcn[%d], band[%d], "
-         "ul_bandwidth[%d], dl_bandwidth[%d], rsrp[%d], rsrq[%d], sinr[%d], scs[%d], srxlev[%d], layers[%d], mcs[%d], "
-         "modulation[%d]", __func__,
-         srv_cell_info->state, srv_cell_info->fdd_tdd_mode, srv_cell_info->mcc, srv_cell_info->mnc,
-         srv_cell_info->cellid, srv_cell_info->pcid, srv_cell_info->tac, srv_cell_info->arfcn, srv_cell_info->band,
-         srv_cell_info->ul_bandwidth, srv_cell_info->dl_bandwidth, srv_cell_info->rsrp, srv_cell_info->rsrq,
-         srv_cell_info->sinr, srv_cell_info->scs, srv_cell_info->srxlev, srv_cell_info->layers, srv_cell_info->mcs,
-         srv_cell_info->modulation);
-    ret = cell_info_set_nr5g_sa_serving_cell(srv_cell_info, report);
+    ret = lte_info_set_pdp_ctx_dynamic_params(&pdp_ctx_report, lte_report);
     if (!ret) return -1;
 
     return 0;
 }
 
 /**
- * @brief Set nr5g nsa serving cell
+ * @brief Check the modem status
  */
-int cell_set_nr5g_nsa_serving_cell(struct cell_info_report *report)
+
+int cellm_check_modem_status(cellm_mgr_t *mgr)
 {
-    bool ret;
-    cellm_mgr_t *mgr = cellm_get_mgr();
-    struct cell_nr5g_cell_info *srv_cell_info;
+    cellm_config_info_t *cellm_config_info;
+    osn_cell_modem_info_t *modem_info;
+    int res;
 
-    srv_cell_info = &mgr->modem_info->nr5g_nsa_srv_cell;
-    LOGI("%s: state[%d], fdd_tdd_mode[%d], mcc[%d], mnc[%d], cellid[%d], pcid[%d], tac[%d], arfcn[%d], band[%d], "
-         "ul_bandwidth[%d], dl_bandwidth[%d], rsrp[%d], rsrq[%d], sinr[%d], scs[%d], srxlev[%d], layers[%d], mcs[%d], "
-         "modulation[%d]", __func__,
-         srv_cell_info->state, srv_cell_info->fdd_tdd_mode, srv_cell_info->mcc, srv_cell_info->mnc,
-         srv_cell_info->cellid, srv_cell_info->pcid, srv_cell_info->tac, srv_cell_info->arfcn, srv_cell_info->band,
-         srv_cell_info->ul_bandwidth, srv_cell_info->dl_bandwidth, srv_cell_info->rsrp, srv_cell_info->rsrq,
-         srv_cell_info->sinr, srv_cell_info->scs, srv_cell_info->srxlev, srv_cell_info->layers, srv_cell_info->mcs,
-         srv_cell_info->modulation);
-    ret = cell_info_set_nr5g_nsa_serving_cell(srv_cell_info, report);
-    if (!ret) return -1;
+    cellm_config_info = mgr->cellm_config_info;
+    if (!cellm_config_info) return -1;
 
-    return 0;
-}
+    modem_info = mgr->modem_info;
+    if (!modem_info) return -1;
 
-/**
- * @brief Set nrg secondary aggregation info
- */
-int
-cell_set_nrg_sca_info(struct cell_info_report *report)
-{
-    bool ret;
-    cellm_mgr_t *mgr = cellm_get_mgr();
-    struct cell_nr5g_cell_info *nrg_sca_info;
-    size_t i;
+    if (!cellm_config_info->modem_enable) return -1;
 
-    for (i = 0; i < mgr->modem_info->n_nrg_sca_cells; i++)
-    {
-        nrg_sca_info = &mgr->modem_info->cell_nrg_sca_info[i];
-        if (nrg_sca_info == NULL) return -1;
-        ret = cell_info_add_nrg_sca(nrg_sca_info, report);
-        if (!ret) return -1;
-    }
+    if (!modem_info->modem_present) return -1;
+
+    if (!modem_info->sim_inserted) return -1;
+
+    res = strncmp(modem_info->iccid, "0", strlen(modem_info->iccid));
+    if (!res) return -1;
 
     return 0;
 }
@@ -392,40 +376,38 @@ cell_set_nrg_sca_info(struct cell_info_report *report)
 /**
  * @brief set a full report
  */
-int
-cell_set_report(void)
+int cellm_lte_set_report(void)
 {
     int res;
     cellm_mgr_t *mgr = cellm_get_mgr();
 
+    if (cellm_check_modem_status(mgr)) return -1;
 
-    report = cell_info_allocate_report(mgr->modem_info->n_neigh_cells, mgr->modem_info->n_full_scan_neigh_cells,
-                                       mgr->modem_info->n_lte_sca_cells, mgr->modem_info->n_pdp_cells,
-                                       mgr->modem_info->n_nrg_sca_cells);
-    if (!report)
+    lte_report = lte_info_allocate_report(MAX_NEIGH_CELL_COUNT);
+    if (!lte_report)
     {
-        LOGE("report calloc failed");
+        LOGE("lte_report calloc failed");
         return -1;
     }
 
     /* Set the common header */
-    res = cell_set_common_header(report);
+    res = cellm_lte_set_common_header(lte_report);
     if (res)
     {
         LOGE("Failed to set common header");
         return res;
     }
 
-    /* Add the cell net info */
-    res = cell_set_net_info(report);
+    /* Add the lte net info */
+    res = cellm_lte_set_net_info(lte_report);
     if (res)
     {
         LOGE("Failed to set net info");
         return res;
     }
 
-    /* Add the cell data usage */
-    res = cell_set_data_usage(report);
+    /* Add the lte data usage */
+    res = cellm_lte_set_data_usage(lte_report);
     if (res)
     {
         LOGE("Failed to set data usage");
@@ -433,7 +415,7 @@ cell_set_report(void)
     }
 
     /* Add the serving cell info */
-    res = cell_set_serving_cell(report);
+    res = cellm_lte_set_serving_cell(lte_report);
     if (res)
     {
         LOGE("Failed to set serving cell");
@@ -441,99 +423,46 @@ cell_set_report(void)
     }
 
     /* Add neighbor cell info */
-    res = cell_set_neigh_cell_info(report);
+    res = cellm_lte_set_neigh_cell_info(lte_report);
+    if (res) LOGE("Failed to set neighbor cell");
+
+    /* Add carrier aggregation info */
+    res = cellm_lte_set_carrier_agg_info(lte_report);
     if (res)
     {
-        LOGE("Failed to set neighbor cell");
-        return res;
-    }
-
-    /* Add full scan neighbor cell info */
-    res = cell_set_full_scan_neigh_cell_info(report);
-    if (res)
-    {
-        LOGE("Failed to set full scan neighbor cell info");
-        return res;
-    }
-
-    /* Add primary carrier aggregation info */
-    res = cell_set_pca_info(report);
-    if (res) {
         LOGE("Failed to set carrier aggregation info");
         return res;
     }
-
-    /* Add lte secondary aggregation info */
-    res = cell_set_lte_sca_info(report);
-    if (res)
-    {
-        LOGE("Failed to set lte sca info");
-        return res;
-    }
-
     /* Add pdp context dynamic parameters info */
-    res = cell_set_pdp_ctx_info(report);
-    if (res)
-    {
-        LOGE("Failed to set pdp context info");
-        return res;
-    }
-
-    /* Add nr5g_sa serving cell info */
-    res = cell_set_nr5g_sa_serving_cell(report);
-    if (res)
-    {
-        LOGE("Failed to set nr5g_sa srv cell info");
-        return res;
-    }
-
-    /* Add nr5g_nsa serving cell info */
-    res = cell_set_nr5g_nsa_serving_cell(report);
-    if (res)
-    {
-        LOGE("Failed to set nr5g_nsa srv cell info");
-        return res;
-    }
-
-    /* Add nrg secondary aggregation info */
-    res = cell_set_nrg_sca_info(report);
-    if (res)
-    {
-        LOGE("Failed to set nrg sca info");
-        return res;
-    }
-
-    return 0;
-
+    res = cellm_lte_set_pdp_context_dynamic_info(lte_report);
+    if (res) LOGE("Failed to set carrier aggregation info");
+    return res;
 }
 
-void
-cell_mqtt_cleanup(void)
+void cellm_mqtt_cleanup(void)
 {
-    cell_info_free_report(report);
-    cell_info_free_packed_buffer(serialized_report);
+    lte_info_free_report(lte_report);
+    lte_info_free_packed_buffer(lte_serialized);
     return;
 }
 
 /**
  * @brief serialize a full report
  */
-int
-cell_serialize_report(void)
+int cellm_serialize_report(void)
 {
     int res;
     cellm_mgr_t *mgr = cellm_get_mgr();
 
-    res = cell_set_report();
+    res = cellm_lte_set_report();
     if (res) return res;
 
-    serialized_report = serialize_cell_info(report);
-    if (!serialized_report) return -1;
-
+    lte_serialized = serialize_lte_info(lte_report);
+    if (!lte_serialized) return -1;
 
     if (mgr->topic[0])
     {
-        res = cell_send_report(mgr->topic, serialized_report);
+        res = cellm_lte_send_report(mgr->topic, lte_serialized);
         LOGD("%s: AWLAN topic[%s]", __func__, mgr->topic);
     }
     else
@@ -544,25 +473,32 @@ cell_serialize_report(void)
     return res;
 }
 
-int
-cellm_build_mqtt_report(time_t now)
+int cellm_build_mqtt_report(time_t now)
 {
     int res;
+    cellm_mgr_t *mgr = cellm_get_mgr();
 
-    LOGI("%s()", __func__);
     res = osn_cell_read_modem();
     if (res < 0)
     {
         LOGW("%s: osn_cell_read_modem() failed", __func__);
     }
 
-    res = cell_serialize_report();
-    if (res)
+    /*
+     * We have to catch the case where something has changed the the SIM slot.
+     */
+    if (mgr->modem_info->active_simcard_slot != mgr->cellm_config_info->active_simcard_slot)
     {
-        LOGW("%s: cell_serialize_report: failed", __func__);
+        osn_cell_set_sim_slot(mgr->cellm_config_info->active_simcard_slot);
     }
 
-    cell_mqtt_cleanup();
+    res = cellm_serialize_report();
+    if (res)
+    {
+        LOGW("%s: lte_serialize_report: failed", __func__);
+    }
+
+    cellm_mqtt_cleanup();
 
     return res;
 }

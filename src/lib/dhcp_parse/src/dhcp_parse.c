@@ -280,7 +280,7 @@ void dhcp_process_message(struct dhcp_session *d_session)
          FMT(os_macaddr_t, dhcp->dhcp_chaddr), FMT(os_ipaddr_t, dhcp->dhcp_yiaddr),
          ntohl(dhcp->dhcp_magic));
 
-    sprintf(mac_str, PRI(os_macaddr_lower_t), FMT(os_macaddr_t, dhcp->dhcp_chaddr));
+    SPRINTF(mac_str, PRI(os_macaddr_lower_t), FMT(os_macaddr_t, dhcp->dhcp_chaddr));
 
     // Lookup the current leases list using the client's hardware address,
     // and use it to lookup the leases structure
@@ -503,7 +503,7 @@ void dhcp_process_message(struct dhcp_session *d_session)
         case DHCP_MSG_OFFER:
         {
             // Save the IP Address
-            sprintf(lease->dlip.inet_addr, "%d.%d.%d.%d",
+            SPRINTF(lease->dlip.inet_addr, "%d.%d.%d.%d",
                     dhcp->dhcp_yiaddr.addr[0], dhcp->dhcp_yiaddr.addr[1],
                     dhcp->dhcp_yiaddr.addr[2], dhcp->dhcp_yiaddr.addr[3]);
 
@@ -514,7 +514,7 @@ void dhcp_process_message(struct dhcp_session *d_session)
         case DHCP_MSG_ACK:
         {
             // Update the IP Address
-            sprintf(lease->dlip.inet_addr, "%d.%d.%d.%d",
+            SPRINTF(lease->dlip.inet_addr, "%d.%d.%d.%d",
                     dhcp->dhcp_yiaddr.addr[0], dhcp->dhcp_yiaddr.addr[1],
                     dhcp->dhcp_yiaddr.addr[2], dhcp->dhcp_yiaddr.addr[3]);
 

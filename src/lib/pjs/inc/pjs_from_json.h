@@ -64,6 +64,9 @@ bool name ## _from_json_cb(void *out, json_t *js, bool update, pjs_errmsg_t err)
 #define PJS_INT(name) \
     if (!pjs_int_from_json(&out->name, js, #name, update, err)) goto error;
 
+#define PJS_INT64(name) \
+    if (!pjs_int64_from_json(&out->name, js, #name, update, err)) goto error;
+
 #define PJS_BOOL(name) \
     if (!pjs_bool_from_json(&out->name, js, #name, update, err)) goto error;
 
@@ -95,6 +98,11 @@ bool name ## _from_json_cb(void *out, json_t *js, bool update, pjs_errmsg_t err)
  */
 #define PJS_INT_Q(name)                                                                 \
     if (!pjs_int_q_from_json(&out->name, &out->name ## _exists,                         \
+            js, #name, update, err))                                                    \
+        goto error;
+
+#define PJS_INT64_Q(name)                                                               \
+    if (!pjs_int64_q_from_json(&out->name, &out->name ## _exists,                       \
             js, #name, update, err))                                                    \
         goto error;
 
@@ -205,6 +213,17 @@ bool name ## _from_json_cb(void *out, json_t *js, bool update, pjs_errmsg_t err)
             err))                                                                       \
         goto error;
 
+#define PJS_OVS_INT64(name)                                                             \
+    if (!pjs_ovs_int64_from_json(                                                       \
+            &out->name,                                                                 \
+            &out->name ## _exists,                                                      \
+            &out->name ## _present,                                                     \
+            js,                                                                         \
+            #name,                                                                      \
+            update,                                                                     \
+            err))                                                                       \
+        goto error;
+
 #define PJS_OVS_BOOL(name)                                                              \
     if (!pjs_ovs_bool_from_json(                                                        \
             &out->name,                                                                 \
@@ -257,6 +276,17 @@ bool name ## _from_json_cb(void *out, json_t *js, bool update, pjs_errmsg_t err)
  */
 #define PJS_OVS_INT_Q(name)                                                             \
     if (!pjs_ovs_int_q_from_json(                                                       \
+            &out->name,                                                                 \
+            &out->name ## _exists,                                                      \
+            &out->name ## _present,                                                     \
+            js,                                                                         \
+            #name,                                                                      \
+            update,                                                                     \
+            err))                                                                       \
+        goto error;
+
+#define PJS_OVS_INT64_Q(name)                                                           \
+    if (!pjs_ovs_int64_q_from_json(                                                     \
             &out->name,                                                                 \
             &out->name ## _exists,                                                      \
             &out->name ## _present,                                                     \

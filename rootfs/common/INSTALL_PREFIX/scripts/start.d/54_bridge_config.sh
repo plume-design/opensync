@@ -46,7 +46,6 @@ ETH_BRIDGE_MAC=$(mac_set_local_bit $(mac_get {{CONFIG_TARGET_ETH_FOR_LAN_BRIDGE}
 ETH_BRIDGE_MAC=$(mac_get {{ CONFIG_TARGET_ETH_FOR_LAN_BRIDGE }})
 {%- endif %}
 
-{%- if CONFIG_TARGET_USE_NATIVE_BRIDGE %}
 echo "Setting up native LAN bridge with MAC address $ETH_BRIDGE_MAC"
 brctl addbr {{ CONFIG_TARGET_LAN_BRIDGE_NAME }}
 ip link set {{ CONFIG_TARGET_LAN_BRIDGE_NAME }} address "$ETH_BRIDGE_MAC"
@@ -54,10 +53,3 @@ ip link set dev {{ CONFIG_TARGET_LAN_BRIDGE_NAME }} up
 echo "Enabling bridge netfilter on {{ CONFIG_TARGET_LAN_BRIDGE_NAME }}"
 echo 1 > /sys/devices/virtual/net/{{ CONFIG_TARGET_LAN_BRIDGE_NAME }}/bridge/nf_call_iptables
 echo 1 > /sys/devices/virtual/net/{{ CONFIG_TARGET_LAN_BRIDGE_NAME }}/bridge/nf_call_ip6tables
-{%- else %}
-echo "Adding LAN bridge with MAC address $ETH_BRIDGE_MAC"
-ovs-vsctl add-br {{ CONFIG_TARGET_LAN_BRIDGE_NAME }}
-ovs-vsctl set bridge {{ CONFIG_TARGET_LAN_BRIDGE_NAME }} other-config:hwaddr="$ETH_BRIDGE_MAC"
-echo "Enabling LAN interface" {{ CONFIG_TARGET_ETH_FOR_LAN_BRIDGE }}
-ip link set dev {{ CONFIG_TARGET_LAN_BRIDGE_NAME }} up
-{%- endif %}

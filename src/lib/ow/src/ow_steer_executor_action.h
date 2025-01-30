@@ -77,6 +77,7 @@ ow_steer_executor_action_create(const char *name,
                                 const struct osw_hwaddr *sta_addr,
                                 const struct ow_steer_executor_action_ops *ops,
                                 const struct ow_steer_executor_action_mediator *mediator,
+                                const char *log_prefix,
                                 void *priv);
 
 void

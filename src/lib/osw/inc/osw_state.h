@@ -252,6 +252,16 @@ osw_state_get_max_2g_chan_phy(const struct osw_drv_phy_state *phy);
 int
 osw_state_get_max_2g_chan_phy_name(const char *phy_name);
 
+static inline bool
+osw_state_sta_info_has_addr(const struct osw_state_sta_info *info,
+                            const struct osw_hwaddr *addr)
+{
+    const struct osw_hwaddr *sta_addr = osw_hwaddr_is_zero(&info->drv_state->mld_addr)
+                                      ? info->mac_addr
+                                      : &info->drv_state->mld_addr;
+    return osw_hwaddr_is_equal(sta_addr, addr);
+}
+
 
 #define OSW_STATE_DEFINE(obs) \
     static void obs##module_start(void *data) { osw_state_register_observer(&obj); } \

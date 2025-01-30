@@ -60,7 +60,7 @@ OSW_UT(osw_btm_ut_build_frame)
         0xd0, 0x00, 0x3c, 0x00, 0xd4, 0x61, 0x9d, 0x53,
         0x75, 0x05, 0x52, 0xb4, 0xf7, 0xf0, 0x1c, 0xcd,
         0x52, 0xb4, 0xf7, 0xf0, 0x1c, 0xcd, 0x00, 0x00,
-        0x0a, 0x07, 0x01, 0x07, 0x00, 0x00, 0xff,
+        0x0a, 0x07, 0x01, 0x07, 0x01, 0x00, 0xff,
 
         /* Neighbor 1 */
         0x34, 0x10, 0x52, 0xb4, 0xf7, 0xf0, 0x1a, 0xbe,
@@ -93,6 +93,7 @@ OSW_UT(osw_btm_ut_build_frame)
                 .bssid_info = 0x13,
                 .op_class = 125,
                 .channel = 146,
+                .disassoc_imminent = true,
                 .btmpreference = 127,
                 .phy_type = 0x9,
             },
@@ -100,7 +101,6 @@ OSW_UT(osw_btm_ut_build_frame)
         .neigh_len = 2,
         .valid_int = 255,
         .abridged  = true,
-        .disassoc_imminent = true,
         .bss_term = false,
     };
 
@@ -172,13 +172,13 @@ OSW_UT(osw_btm_ut_send_single_btm)
                 .bssid_info = 0x13,
                 .op_class = 125,
                 .channel = 146,
+                .disassoc_imminent = true,
                 .phy_type = 0x9,
             },
         },
         .neigh_len = 2,
         .valid_int = 255,
         .abridged  = true,
-        .disassoc_imminent = true,
         .bss_term = false,
     };
 

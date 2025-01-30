@@ -214,7 +214,7 @@ lan_stats_process_ct_flows(lan_stats_instance_t *lan_stats_instance)
 
 
 void
-lan_stats_collect_native_flows(lan_stats_instance_t *lan_stats_instance)
+lan_stats_collect_flows(lan_stats_instance_t *lan_stats_instance)
 {
     ds_dlist_t *ct_list;
     bool rc = false;

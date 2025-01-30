@@ -89,10 +89,14 @@ enum osw_pmf {
 #define OSW_SUITE_AKM_RSN_PSK_SHA256      OSW_SUITE(0x00, 0x0f, 0xac, 6)
 #define OSW_SUITE_AKM_RSN_SAE             OSW_SUITE(0x00, 0x0f, 0xac, 8)
 #define OSW_SUITE_AKM_RSN_FT_SAE          OSW_SUITE(0x00, 0x0f, 0xac, 9)
+#define OSW_SUITE_AKM_RSN_EAP_SUITE_B     OSW_SUITE(0x00, 0x0f, 0xac, 11)
 #define OSW_SUITE_AKM_RSN_EAP_SUITE_B_192 OSW_SUITE(0x00, 0x0f, 0xac, 12)
 #define OSW_SUITE_AKM_RSN_FT_EAP_SHA384   OSW_SUITE(0x00, 0x0f, 0xac, 13)
 #define OSW_SUITE_AKM_RSN_FT_PSK_SHA384   OSW_SUITE(0x00, 0x0f, 0xac, 19)
 #define OSW_SUITE_AKM_RSN_PSK_SHA384      OSW_SUITE(0x00, 0x0f, 0xac, 20)
+#define OSW_SUITE_AKM_RSN_EAP_SHA384      OSW_SUITE(0x00, 0x0f, 0xac, 23)
+#define OSW_SUITE_AKM_RSN_SAE_EXT         OSW_SUITE(0x00, 0x0f, 0xac, 24)
+#define OSW_SUITE_AKM_RSN_FT_SAE_EXT      OSW_SUITE(0x00, 0x0f, 0xac, 25)
 
 #define OSW_SUITE_AKM_WPA_NONE            OSW_SUITE(0x00, 0x50, 0xf2, 0)
 #define OSW_SUITE_AKM_WPA_8021X           OSW_SUITE(0x00, 0x50, 0xf2, 1)
@@ -130,10 +134,14 @@ enum osw_akm {
     OSW_AKM_RSN_PSK_SHA256, /* 00-0f-ac-6 */
     OSW_AKM_RSN_SAE, /* 00-0f-ac-8 */
     OSW_AKM_RSN_FT_SAE, /* 00-0f-ac-9 */
+    OSW_AKM_RSN_EAP_SUITE_B, /* 00-0f-ac-11 */
     OSW_AKM_RSN_EAP_SUITE_B_192, /* 00-0f-ac-12 */
     OSW_AKM_RSN_FT_EAP_SHA384, /* 00-0f-ac-13 */
     OSW_AKM_RSN_FT_PSK_SHA384, /* 00-0f-ac-19 */
     OSW_AKM_RSN_PSK_SHA384, /* 00-0f-ac-20 */
+    OSW_AKM_RSN_EAP_SHA384, /* 00-0f-ac-23 */
+    OSW_AKM_RSN_SAE_EXT, /* 00-0f-ac-24 */
+    OSW_AKM_RSN_FT_SAE_EXT, /* 00-0f-ac-25 */
 
     OSW_AKM_WPA_NONE, /* 00-50-f2-0 */
     OSW_AKM_WPA_8021X, /* 00-50-f2-1 */
@@ -222,11 +230,12 @@ struct osw_reg_domain {
 
 /* FIXME: need osw_channel_ helper to convert freq->chan */
 
-#define OSW_CHANNEL_FMT "%d (%s/%d) 0x%"PRIx16
+#define OSW_CHANNEL_FMT "%d (%s/%d %d) 0x%"PRIx16
 #define OSW_CHANNEL_ARG(c) \
     (c)->control_freq_mhz, \
     osw_channel_width_to_str((c)->width), \
     (c)->center_freq0_mhz, \
+    (c)->center_freq1_mhz, \
     (c)->puncture_bitmap
 
 struct osw_channel_state {
@@ -322,8 +331,16 @@ osw_ifname_is_valid(const struct osw_ifname *a);
 #define OSW_NAS_ID_FMT "%.*s"
 #define OSW_NAS_ID_ARG(x) (int)OSW_NAS_ID_LEN, (x)->buf
 
+#define OSW_FT_ENCR_KEY_LEN 64
+#define OSW_FT_ENCR_KEY_FMT "%.*s"
+#define OSW_FT_ENCR_KEY_ARG(x) (int)OSW_FT_ENCR_KEY_LEN, (x)->buf
+
 struct osw_nas_id {
     char buf[OSW_NAS_ID_LEN + 1];
+};
+
+struct osw_ft_encr_key {
+    char buf[OSW_FT_ENCR_KEY_LEN + 1];
 };
 
 struct osw_ssid {
@@ -425,7 +442,7 @@ struct osw_passpoint {
     char *t_c_filename;
     char *anqp_elem;
 
-    struct osw_ssid hessid;
+    struct osw_hwaddr hessid;
     struct osw_ssid osu_ssid;
 
     char **domain_list;
@@ -484,13 +501,24 @@ struct osw_wpa {
     bool wpa;
     bool rsn;
     bool akm_eap;
+    bool akm_eap_sha256;
+    bool akm_eap_sha384;
+    bool akm_eap_suite_b;
+    bool akm_eap_suite_b192;
     bool akm_psk;
+    bool akm_psk_sha256;
     bool akm_sae;
+    bool akm_sae_ext;
     bool akm_ft_eap;
+    bool akm_ft_eap_sha384;
     bool akm_ft_psk;
     bool akm_ft_sae;
+    bool akm_ft_sae_ext;
     bool pairwise_tkip;
     bool pairwise_ccmp;
+    bool pairwise_ccmp256;
+    bool pairwise_gcmp;
+    bool pairwise_gcmp256;
     enum osw_pmf pmf;
     int group_rekey_seconds;
     int ft_mobility_domain;
@@ -678,6 +706,12 @@ struct osw_neigh {
     uint8_t phy_type;
 };
 
+struct osw_neigh_ft {
+    struct osw_hwaddr bssid;
+    struct osw_ft_encr_key ft_encr_key;
+    struct osw_nas_id nas_identifier;
+};
+
 struct osw_wps_cred {
     struct osw_psk psk;
 };
@@ -699,6 +733,11 @@ struct osw_net_list {
 
 struct osw_neigh_list {
     struct osw_neigh *list;
+    size_t count;
+};
+
+struct osw_neigh_ft_list {
+    struct osw_neigh_ft *list;
     size_t count;
 };
 
@@ -753,9 +792,17 @@ osw_multi_ap_into_str(const struct osw_multi_ap *map);
 enum osw_band
 osw_freq_to_band(const int freq);
 
+int
+osw_channel_cmp(const struct osw_channel *a,
+                const struct osw_channel *b);
+
 bool
 osw_channel_is_equal(const struct osw_channel *a,
                      const struct osw_channel *b);
+
+bool
+osw_channel_is_subchannel(const struct osw_channel *a,
+                          const struct osw_channel *b);
 
 enum osw_band
 osw_channel_to_band(const struct osw_channel *channel);
@@ -773,6 +820,9 @@ osw_freq_to_chan(const int freq);
 
 int
 osw_channel_width_to_mhz(const enum osw_channel_width w);
+
+enum osw_channel_width
+osw_channel_width_mhz_to_width(const int w);
 
 bool
 osw_channel_width_down(enum osw_channel_width *w);
@@ -805,6 +855,7 @@ osw_chan_to_freq(enum osw_band band, int chan);
 int
 osw_chan_avg(const int *chans);
 
+// Last resort, it's not recommended to use
 void
 osw_channel_compute_center_freq(struct osw_channel *c, int max_2g_chan);
 
@@ -818,6 +869,10 @@ osw_hwaddr_is_equal(const struct osw_hwaddr *a,
 
 bool
 osw_hwaddr_is_zero(const struct osw_hwaddr *addr);
+
+const struct osw_hwaddr *
+osw_hwaddr_first_nonzero(const struct osw_hwaddr *a,
+                         const struct osw_hwaddr *b);
 
 bool
 osw_hwaddr_is_bcast(const struct osw_hwaddr *addr);
@@ -838,6 +893,9 @@ osw_hwaddr_list_is_equal(const struct osw_hwaddr_list *a,
 void
 osw_hwaddr_list_append(struct osw_hwaddr_list *list,
                        const struct osw_hwaddr *addr);
+
+void
+osw_hwaddr_list_flush(struct osw_hwaddr_list *list);
 
 static inline int
 osw_channel_nf_20mhz_fixup(const int nf)
@@ -890,6 +948,11 @@ osw_freq_is_dfs(int freq_mhz);
 bool
 osw_channel_overlaps_dfs(const struct osw_channel *c);
 
+void osw_channel_state_get_min_max(const struct osw_channel_state *channel_states,
+                                   const int n_channel_states,
+                                   int *min_channel_number,
+                                   int *max_channel_number);
+
 const char *
 osw_reg_dfs_to_str(enum osw_reg_dfs dfs);
 
@@ -925,6 +988,12 @@ osw_cs_chan_intersects_state(const struct osw_channel_state *channel_states,
                              const struct osw_channel *c,
                              enum osw_channel_state_dfs state);
 
+struct osw_channel_state *
+osw_cs_chan_get_segments_states(const struct osw_channel_state *channel_states,
+                                   size_t n_channel_states,
+                                   const struct osw_channel *c,
+                                   size_t *n_states);
+
 bool
 osw_cs_chan_is_valid(const struct osw_channel_state *channel_states,
                      size_t n_channel_states,
@@ -939,6 +1008,9 @@ bool
 osw_cs_chan_is_control_dfs(const struct osw_channel_state *cs,
                            size_t n_cs,
                            const struct osw_channel *c);
+
+enum osw_band
+osw_cs_chan_get_band(const struct osw_channel_state *cs, const int n_cs);
 
 uint32_t
 osw_suite_from_dash_str(const char *str);
@@ -980,6 +1052,25 @@ void
 osw_hwaddr_write(const struct osw_hwaddr *addr,
                  void *buf,
                  size_t buf_len);
+
+int
+osw_nas_id_cmp(const struct osw_nas_id *a,
+               const struct osw_nas_id *b);
+
+bool
+osw_nas_id_is_equal(const struct osw_nas_id *a,
+                    const struct osw_nas_id *b);
+
+int
+osw_ft_encr_key_cmp(const struct osw_ft_encr_key *a,
+                    const struct osw_ft_encr_key *b);
+
+bool
+osw_ft_encr_key_is_equal(const struct osw_ft_encr_key *a,
+                         const struct osw_ft_encr_key *b);
+
+bool
+osw_wpa_is_ft(const struct osw_wpa *wpa);
 
 #define OSW_HWADDR_WRITE(addr, buf) osw_hwaddr_write(addr, buf, sizeof(buf))
 

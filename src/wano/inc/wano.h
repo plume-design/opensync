@@ -605,12 +605,7 @@ struct wano_ppline
     char                        wpl_ifname[C_IFNAME_LEN];   /**< Interface name */
     char                        wpl_iftype[32];             /**< Interface type */
     uint64_t                    wpl_plugin_emask;           /**< Exclusion mask */
-    uint64_t                    wpl_plugin_rmask;           /**< Mask of currently running plug-in types */
-    uint64_t                    wpl_plugin_imask;           /**< Interface reset mask */
-    struct wano_plugin         *wpl_plugin_next;            /**< Next plugin in the pipeline */
-    wano_plugin_iter_t          wpl_plugin_iter;            /**< Plug-in iterator */
     ds_dlist_t                  wpl_plugin_waitq;           /**< Queue of waiting plug-ins */
-    ds_dlist_t                  wpl_plugin_runq;            /**< Queue of currently running plug-ins */
     wano_ppline_state_t         wpl_state;                  /**< STAM state machine */
     wano_inet_state_event_t     wpl_inet_state_event;       /**< Interface status monitoring */
     bool                        wpl_carrier_exception;      /**< Generate a PPLINE_RESTART exception on carrier loss */

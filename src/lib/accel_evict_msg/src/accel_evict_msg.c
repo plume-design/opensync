@@ -87,6 +87,9 @@ static struct accel_evict_mgr mgr =
     .initialized = false,
 };
 
+/**
+ * This implements single message sender.
+ */
 static int accel_evict_msg_send_packet(const char *ifname, struct accel_evict_msg *ff, size_t ff_len)
 {
     struct sockaddr_ll  saddr;
@@ -128,7 +131,7 @@ error_exit:
 
 }
 
-int accel_evict_msg(const char *ifname, const os_macaddr_t *target_mac, const uint8_t *data, size_t data_len)
+int accel_evict_msg_send(const char *ifname, const os_macaddr_t *target_mac, const uint8_t *data, size_t data_len)
 {
     struct accel_evict_msg evict_msg;
     os_macaddr_t local_mac;
@@ -158,7 +161,10 @@ int accel_evict_msg(const char *ifname, const os_macaddr_t *target_mac, const ui
     return accel_evict_msg_send_packet(ifname, &evict_msg, sizeof(struct accel_evict_msg));
 }
 
-int accel_evict_with_context(const os_macaddr_t *target_mac, const uint8_t *data, size_t data_len)
+/**
+ * This implements persistent socket for sending evict messages.
+ */
+int accel_evict_msg_socket_send(const os_macaddr_t *target_mac, const uint8_t *data, size_t data_len)
 {
     struct accel_evict_msg *evict_msg;
     ssize_t ret;
@@ -175,6 +181,7 @@ int accel_evict_with_context(const os_macaddr_t *target_mac, const uint8_t *data
     {
         memset(evict_msg->eth_hdr.h_dest, 0xff, ETHER_ADDR_LEN);
     }
+    memcpy(evict_msg->eth_hdr.h_source, mgr.saddr.sll_addr, ETHER_ADDR_LEN);
 
     WARN_ON(data_len > FF_MAX_PAYLOAD);
     memcpy(evict_msg->data, data, (data_len < FF_MAX_PAYLOAD) ? data_len : FF_MAX_PAYLOAD);
@@ -186,13 +193,12 @@ int accel_evict_with_context(const os_macaddr_t *target_mac, const uint8_t *data
         LOGE("%s: sendto() failed, errno: %s", __func__, strerror(errno));
     }
 
-    LOGD("%s: sent %zu bytes to %s", __func__,
-         ret, mgr.ifname);
+    LOGD("%s: sent %zu bytes to %s", __func__, ret, mgr.ifname);
 
     return 0;
 }
 
-int accel_evict_init(const char *ifname)
+int accel_evict_msg_socket_init(const char *ifname)
 {
     struct accel_evict_msg *evict_msg;
     os_macaddr_t local_mac;
@@ -239,9 +245,9 @@ int accel_evict_init(const char *ifname)
     return 0;
 }
 
-void accel_evict_exit(void)
+int accel_evict_msg_socket_exit(void)
 {
-    if (mgr.initialized == false) return;
+    if (mgr.initialized == false) return -1;
 
-    close(mgr.fd);
+    return close(mgr.fd);
 };

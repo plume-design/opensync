@@ -576,15 +576,15 @@ bool dnsmasq6_server_write_config(void)
 
         // mtu to be used by clients.for now we dont supporting sending mtus of other interfaces.
         if(ra->ra_opts.ra_mtu >= 1280)
-            sprintf(mtu,",mtu:%d",ra->ra_opts.ra_mtu);
+            SPRINTF(mtu,",mtu:%d",ra->ra_opts.ra_mtu);
 
         switch(ra->ra_opts.ra_preferred_router)
         {
             case 0:
-                    sprintf(prfd_router,  ",%s", "low");
+                    SPRINTF(prfd_router,  ",%s", "low");
                     break;
             case 2:
-                    sprintf(prfd_router,  ",%s", "high");
+                    SPRINTF(prfd_router,  ",%s", "high");
                     break;
             default:
                     // medium - no need to specify.
@@ -594,11 +594,11 @@ bool dnsmasq6_server_write_config(void)
         // RA packets interval.
         // If the value is < 4 it will be set to 4 by dnsmasq.
         // If the value is > 1800 it will be set to 1800 by dnsmasq.
-        sprintf(radvt_intrvl, ",%d", ra->ra_opts.ra_max_adv_interval >= 0 ? ra->ra_opts.ra_max_adv_interval : 0);
+        SPRINTF(radvt_intrvl, ",%d", ra->ra_opts.ra_max_adv_interval >= 0 ? ra->ra_opts.ra_max_adv_interval : 0);
 
         // RA router lifetime.if not specified it takes 3 * RA packets interval.
         if(ra->ra_opts.ra_default_lft >= 0)
-            sprintf(router_lifetime, ",%d", ra->ra_opts.ra_default_lft);
+            SPRINTF(router_lifetime, ",%d", ra->ra_opts.ra_default_lft);
 
         fprintf(f,"ra-param=%s%s%s%s%s\n",
                 ra->ra_ifname,
@@ -727,9 +727,9 @@ bool dnsmasq6_server_write_config(void)
             int  pf_vld_tmr = d6s_prefix->dp_prefix.d6s_prefix.ia6_valid_lft;
 
             if(pf_vld_tmr == -1)
-                sprintf(prfx_valid_timer, ",%s", "infinite");
+                SPRINTF(prfx_valid_timer, ",%s", "infinite");
             else if(pf_vld_tmr > 0)
-                sprintf(prfx_valid_timer, ",%d", pf_vld_tmr);
+                SPRINTF(prfx_valid_timer, ",%d", pf_vld_tmr);
 
             fprintf(f, "dhcp-range=%s,::1,::FFFF:FFFF,constructor:%s%s%s\n",
                     d6s->d6s_ifname,

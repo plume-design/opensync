@@ -25,6 +25,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 #include <osw_ut.h>
+#include "os.h"
+#include "util.h"
 
 OSW_UT(osw_hostap_supp_rates)
 {
@@ -543,8 +545,7 @@ OSW_UT(osw_hostap_conf_generate_ap_config_ssid_ut)
     struct osw_drv_conf *drv_conf = template_config_copy();
     struct osw_hostap_conf_ap_config ap_conf = {0};
     char *conf = ap_conf.conf_buf;
-    char *ssid = drv_conf->phy_list[0].vif_list.list[0].u.ap.ssid.buf;
-    size_t *ssid_len = &drv_conf->phy_list[0].vif_list.list[0].u.ap.ssid.len;
+    struct osw_ssid *ssid = &drv_conf->phy_list[0].vif_list.list[0].u.ap.ssid;
 
     osw_hostap_conf_fill_ap_config(drv_conf,
                                    "phy0",
@@ -554,7 +555,7 @@ OSW_UT(osw_hostap_conf_generate_ap_config_ssid_ut)
     OSW_UT_EVAL(strstr(conf, "ssid=Dummy_ssid_wif0.0"));
 
 
-    strcpy(ssid, "!@#$%^&*()-={}?><");
+    STRSCPY(ssid->buf, "!@#$%^&*()-={}?><");
     osw_hostap_conf_fill_ap_config(drv_conf,
                                    "phy0",
                                    "vif0.10_ap",
@@ -563,8 +564,8 @@ OSW_UT(osw_hostap_conf_generate_ap_config_ssid_ut)
     OSW_UT_EVAL(strstr(conf, "ssid=!@#$%^&*()-={}?><"));
 
 
-    strcpy(ssid, "12345678901234567890\0");
-    *ssid_len = 32;
+    STRSCPY(ssid->buf, "12345678901234567890\0");
+    ssid->len = 32;
     osw_hostap_conf_fill_ap_config(drv_conf,
                                    "phy0",
                                    "vif0.10_ap",
@@ -573,8 +574,8 @@ OSW_UT(osw_hostap_conf_generate_ap_config_ssid_ut)
     OSW_UT_EVAL(strstr(conf, "ssid=12345678901234567890\n"));
 
 
-    strcpy(ssid, "1234567890123456789012");
-    *ssid_len = 32;
+    STRSCPY(ssid->buf, "1234567890123456789012");
+    ssid->len = 32;
     osw_hostap_conf_fill_ap_config(drv_conf,
                                    "phy0",
                                    "vif0.10_ap",
@@ -604,13 +605,13 @@ OSW_UT(osw_hostap_conf_generate_ap_config_psk_file_ut)
 
 
     psk_list[0].key_id = -100;
-    strcpy(psk_list[0].psk.str, "!@#$%^&*()-={}?><//\\");
+    STRSCPY(psk_list[0].psk.str, "!@#$%^&*()-={}?><//\\");
 
     psk_list[1].key_id = -2147483647;
-    strcpy(psk_list[1].psk.str, "123456789012345678901234567890123456789023456789012345678901234");
+    STRSCPY(psk_list[1].psk.str, "123456789012345678901234567890123456789023456789012345678901234");
 
     psk_list[2].key_id =  2147483647;
-    strcpy(psk_list[2].psk.str, "-");
+    STRSCPY(psk_list[2].psk.str, "-");
 
     osw_hostap_conf_fill_ap_config(drv_conf,
                                    "phy0",

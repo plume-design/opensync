@@ -42,16 +42,16 @@ struct ow_steer_candidate_assessor_ops {
 };
 
 struct ow_steer_candidate_assessor {
-    const char *name;
     struct osw_hwaddr sta_addr;
+    const char *log_prefix;
     struct ow_steer_candidate_assessor_ops ops;
     void *priv;
 };
 
 struct ow_steer_candidate_assessor*
-ow_steer_candidate_assessor_create(const char *name,
-                                   const struct osw_hwaddr *sta_addr,
+ow_steer_candidate_assessor_create(const struct osw_hwaddr *sta_addr,
                                    const struct ow_steer_candidate_assessor_ops *ops,
+                                   const char *log_prefix,
                                    void *priv);
 
 #endif /* OW_STEER_CANDIDATE_ASSESSOR_I_H */

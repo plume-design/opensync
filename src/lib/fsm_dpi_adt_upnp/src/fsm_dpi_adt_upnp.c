@@ -113,8 +113,8 @@ hexdump(const char *function, const void *data, size_t size)
     for (i = 0; i < size; ++i)
     {
         c = ((unsigned char*)data)[i];
-        sprintf(buf, "%02X ", c);
-        strcat(hex, buf);
+        SPRINTF(buf, "%02X ", c);
+        STRSCAT(hex, buf);
 
         if ((c >= ' ') && (c <= '~'))
         {

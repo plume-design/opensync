@@ -43,6 +43,25 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "util.h"
 #include "log.h"
 
+const char *vpnm_addr_family_desc_str(int addr_family)
+{
+    switch (addr_family)
+    {
+        case AF_INET: return "IPv4";
+        case AF_INET6: return "IPv6";
+        case AF_UNSPEC: return "IPv4 or IPv6";
+        default: return "UNK";
+    }
+}
+
+/**
+ * vpnm_resolve()
+ * addr_family accepted values are:
+ * - AF_INET - resolve IPv4 address
+ * - AF_INET6 - resolve IPv6 address
+ * - AF_UNSPEC - resolve either IPv4 or IPv6 address
+ */
+
 bool vpnm_resolve(osn_ipany_addr_t *ip_addr, const char *name, int addr_family)
 {
     struct addrinfo hints;
@@ -51,7 +70,7 @@ bool vpnm_resolve(osn_ipany_addr_t *ip_addr, const char *name, int addr_family)
     bool rv = false;
     int rc;
 
-    if (!(addr_family == AF_INET || addr_family == AF_INET6))
+    if (!(addr_family == AF_INET || addr_family == AF_INET6 || addr_family == AF_UNSPEC))
     {
         LOG(ERROR, "vpnm_resolve: %s: Invalid address family: %d", name, addr_family);
         return false;
@@ -62,7 +81,7 @@ bool vpnm_resolve(osn_ipany_addr_t *ip_addr, const char *name, int addr_family)
     hints.ai_socktype = SOCK_DGRAM;
 
     LOG(TRACE, "vpnm_resolve: Resolving %s (addr_family=%s)",
-            name, addr_family == AF_INET ? "IPv4" : "IPv6");
+            name, vpnm_addr_family_desc_str(addr_family));
 
     rc = getaddrinfo(name, NULL, &hints, &result);
     if (rc != 0)
@@ -73,23 +92,26 @@ bool vpnm_resolve(osn_ipany_addr_t *ip_addr, const char *name, int addr_family)
 
     for (rp = result; rp != NULL; rp = rp->ai_next)
     {
+        bool found = false;
         if (rp->ai_family == AF_INET)
         {
             struct sockaddr_in *ipv4 = (struct sockaddr_in *)rp->ai_addr;
             ip_addr->addr_type = AF_INET;
             ip_addr->addr.ip4 = OSN_IP_ADDR_INIT;
             ip_addr->addr.ip4.ia_addr = ipv4->sin_addr;
+            found = true;
         }
-        else
+        else if (rp->ai_family == AF_INET6)
         {
             struct sockaddr_in6 *ipv6 = (struct sockaddr_in6 *)rp->ai_addr;
             ip_addr->addr_type = AF_INET6;
             ip_addr->addr.ip6 = OSN_IP6_ADDR_INIT;
             ip_addr->addr.ip6.ia6_addr = ipv6->sin6_addr;
+            found = true;
         }
 
         /* Take the first IP address of the requested family on the resolve list: */
-        if (rp->ai_family == addr_family)
+        if (found && (rp->ai_family == addr_family || addr_family == AF_UNSPEC))
         {
             LOG(DEBUG, "vpnm_resolve: %s: resolved to: "PRI_osn_ipany_addr,
                     name, FMT_osn_ipany_addr(*ip_addr));

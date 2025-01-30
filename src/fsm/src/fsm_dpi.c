@@ -30,6 +30,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <unistd.h>
 #include <string.h>
 #include <errno.h>
+#include <endian.h>
 #include <jansson.h>
 #include <pcap.h>
 #include <net/if.h>
@@ -525,8 +526,6 @@ fsm_dpi_find_mac(os_macaddr_t *mac, struct fsm_dpi_dispatcher *dispatch)
 
     if (mac == NULL) return false;
     if (dispatch == NULL) return false;
-
-    if (dispatch->recv_method == BUFFER) return true;
 
     if (dispatch->excluded_devices == NULL) excluded_devices = false;
     else excluded_devices = true;
@@ -1323,7 +1322,7 @@ fsm_init_dpi_dispatcher(struct fsm_session *session)
         return false;
     }
 
-    rc = accel_evict_init(CONFIG_TARGET_LAN_BRIDGE_NAME);
+    rc = accel_evict_msg_socket_init(CONFIG_TARGET_LAN_BRIDGE_NAME);
     if (rc < 0)
     {
         LOGE("%s: failed to initialize flow cache context", __func__);
@@ -1400,7 +1399,7 @@ fsm_free_dpi_dispatcher(struct fsm_session *session)
     net_md_free_aggregator(dispatch->aggr);
     FREE(dispatch->aggr);
 
-    accel_evict_exit();
+    accel_evict_msg_socket_exit();
 
     fsm_ipc_terminate_client();
 }
@@ -1886,14 +1885,13 @@ fsm_dpi_should_process(struct net_header_parser *net_parser,
 
 
 #define FLUSH_COOKIE 0xDA2C5588
-
 int
 flush_accel_flows(struct net_md_stats_accumulator *acc)
 {
 #if defined(CONFIG_ACCEL_FLOW_EVICT_MESSAGE)
-    int cookie, ip_len, index, err, mark;
-    struct net_md_flow_info info;
+    int32_t data_i32, ct_mark, ip_len, index, err;
     uint8_t fush_msg[48];
+    struct net_md_flow_info info;
     os_macaddr_t client;
     bool rc;
 
@@ -1903,14 +1901,14 @@ flush_accel_flows(struct net_md_stats_accumulator *acc)
 
     if (acc == NULL)
     {
-        LOGD("%s: No stats_accumulator data", __func__);
+        LOGD("%s: no stats_accumulator data", __func__);
         return -1;
     }
 
     rc = net_md_get_flow_info(acc, &info);
     if ((rc == false) || (info.local_mac == NULL))
     {
-        LOGD("%s: No flow_info data, rc: %d or missing srcmac: %p", __func__, rc, info.local_mac);
+        LOGD("%s: no flow_info data, rc: %d or missing srcmac: %p", __func__, rc, info.local_mac);
         return -1;
     }
 
@@ -1920,23 +1918,31 @@ flush_accel_flows(struct net_md_stats_accumulator *acc)
         return -1;
     }
 
-    mark = fsm_dpi_get_mark(acc->flow_marker, acc->dpi_done);
+    ct_mark = fsm_dpi_get_mark(acc->flow_marker, acc->dpi_done);
+
     index = 0;
-    cookie = FLUSH_COOKIE;
     ip_len = (info.ip_version == 4) ? 4 : 16;
-    memcpy(&fush_msg[index], &cookie, 4);             index +=4;
+
+    //cookie: ensure `value'
+    data_i32 = htole32(FLUSH_COOKIE);
+    memcpy(&fush_msg[index], &data_i32, 4);           index +=4;
     memcpy(&fush_msg[index], &info.ip_version, 1);    index +=1;
     memcpy(&fush_msg[index], &info.ipprotocol, 1);    index +=1;
     memcpy(&fush_msg[index], info.local_ip, ip_len);  index +=ip_len;
     memcpy(&fush_msg[index], info.remote_ip, ip_len); index +=ip_len;
+
+    //ports: ensure endian (ports are in `be` format)
     memcpy(&fush_msg[index], &info.local_port, 2);    index +=2;
     memcpy(&fush_msg[index], &info.remote_port, 2);   index +=2;
-    memcpy(&fush_msg[index], &mark, 4);               index +=4;
+
+    //ct_mark: ensure `value'
+    data_i32 = htole32(ct_mark);
+    memcpy(&fush_msg[index], &data_i32, 4);           index +=4;
 
     /* get the device mac */
     if (memcmp(&client, info.local_mac, sizeof(os_macaddr_t)) == 0)
     {
-        LOGW("%s: Unknown client (no mac)? Broadcasting the flush message to all nodes", __func__);
+        LOGW("%s: unknown client (no mac)? Broadcasting the flush message to all nodes", __func__);
         memset(&client, 0xff, sizeof(os_macaddr_t));
     }
     else
@@ -1944,14 +1950,14 @@ flush_accel_flows(struct net_md_stats_accumulator *acc)
         memcpy(&client, info.local_mac, sizeof(os_macaddr_t));
     }
 
-    err = accel_evict_with_context(&client, fush_msg, index);
+    err = accel_evict_msg_socket_send(&client, fush_msg, index);
     if (err != 0)
     {
-        LOGD("%s: flush failed: %d", __func__, err);
+        LOGW("%s: evict message transmit failed: %d", __func__, err);
         return -1;
     }
 
-    LOGD("%s: done setting new mark to CT: %d", __func__, mark);
+    LOGD("%s: done setting new mark to CT: %d", __func__, ct_mark);
 #endif /* CONFIG_ACCEL_FLOW_EVICT_MESSAGE */
     return 0;
 }

@@ -29,6 +29,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 #include <stddef.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <string.h>
 #include <jansson.h>
 
@@ -62,6 +63,7 @@ extern json_t *name ## _to_json(                                                
  * =============================================================
  */
 #define PJS_INT(name)                       int name;
+#define PJS_INT64(name)                     int64_t name;
 #define PJS_BOOL(name)                      bool name;
 #define PJS_REAL(name)                      double name;
 #define PJS_STRING(name, len)               char name[len];
@@ -73,6 +75,7 @@ extern json_t *name ## _to_json(                                                
  * =============================================================
  */
 #define PJS_INT_Q(name)                     int name;               bool name ## _exists;
+#define PJS_INT64_Q(name)                   int64_t name;           bool name ## _exists;
 #define PJS_BOOL_Q(name)                    bool name;              bool name ## _exists;
 #define PJS_STRING_Q(name, sz)              char name[sz];          bool name ## _exists;
 #define PJS_REAL_Q(name)                    double name;            bool name ## _exists;
@@ -114,6 +117,7 @@ extern json_t *name ## _to_json(                                                
  * =============================================================
  */
 #define PJS_OVS_INT(name)                   int name;               PJS_OVS_COMMON_EXISTS(name)
+#define PJS_OVS_INT64(name)                 int64_t name;           PJS_OVS_COMMON_EXISTS(name)
 #define PJS_OVS_BOOL(name)                  bool name;              PJS_OVS_COMMON_EXISTS(name)
 #define PJS_OVS_REAL(name)                  double name;            PJS_OVS_COMMON_EXISTS(name)
 #define PJS_OVS_STRING(name, len)           char name[len];         PJS_OVS_COMMON_EXISTS(name)
@@ -125,6 +129,7 @@ extern json_t *name ## _to_json(                                                
  * =============================================================
  */
 #define PJS_OVS_INT_Q(name)                 int name;               PJS_OVS_COMMON_EXISTS(name)
+#define PJS_OVS_INT64_Q(name)               int64_t name;           PJS_OVS_COMMON_EXISTS(name)
 #define PJS_OVS_BOOL_Q(name)                bool name;              PJS_OVS_COMMON_EXISTS(name)
 #define PJS_OVS_STRING_Q(name, sz)          char name[sz];          PJS_OVS_COMMON_EXISTS(name)
 #define PJS_OVS_REAL_Q(name)                double name;            PJS_OVS_COMMON_EXISTS(name)

@@ -71,6 +71,16 @@ static bool execsh_set_nonblock(int fd, bool enable);
 static pid_t execsh_pspawn(const char *path, const char *argv[], int fdin, int fdout, int fderr);
 static bool execsh_log_fn(void *ctx, enum execsh_io type, const char *msg);
 
+const char *execsh_default_shell[] =
+{
+    EXECSH_SHELL_PATH,
+    "-e",   /* Abort on error */
+    "-x",   /* Verbose */
+    "-s",   /* Read script from ... */
+    "-",    /* ... STDIN */
+    NULL
+};
+
 /*
  * ===========================================================================
  *  execsh async interface -- all other interfaces are based upon this one
@@ -91,6 +101,8 @@ void execsh_async_init(execsh_async_t *esa, execsh_async_fn_t *fn)
             EXECSH_WAITPID_POLL,
             EXECSH_WAITPID_POLL);
     memset(&esa->esa_child_ev, 0, sizeof(esa->esa_child_ev));
+
+    esa->esa_shell = execsh_default_shell;
     execsh_async_set(esa, NULL, NULL);
 }
 
@@ -110,6 +122,16 @@ void execsh_async_set(
 }
 
 /*
+ * Set alternative shell
+ *
+ * shell - An argv-style NULL-terminated array of pointers to strings
+ */
+void execsh_async_shell_set(execsh_async_t *esa, const char *shell[])
+{
+    esa->esa_shell = shell;
+}
+
+/*
  * Start the execsh script asynchronously. Upon process termination, the exit
  * callback will be called.
  *
@@ -126,7 +148,6 @@ pid_t execsh_async_start_a(
 {
     const char **pargs;
     const char **pargv;
-    int ii;
 
     const char **args = NULL;
     void *args_e = NULL;
@@ -177,22 +198,10 @@ pid_t execsh_async_start_a(
     esa->esa_stdin_pos = 0;
     esa->esa_stdin_buf = STRDUP(script);
 
-    /*
-     * Build the shell argument list
-     */
-    const char *shell_args[] =
+    for (pargv = esa->esa_shell; *pargv != NULL; pargv++)
     {
-        EXECSH_SHELL_PATH,
-        "-e",   /* Abort on error */
-        "-x",   /* Verbose */
-        "-s",   /* Read script from ... */
-        "-"     /* ... STDIN */
-    };
-
-    for (ii = 0; ii < ARRAY_LEN(shell_args); ii++)
-    {
-        pargs = MEM_APPEND((void **)&args, &args_e, sizeof(const char *));
-        *pargs = shell_args[ii];
+        pargs = MEM_APPEND(&args, &args_e, sizeof(const char *));
+        *pargs = *pargv;
     }
 
     /* Add variable arguments */
@@ -207,7 +216,7 @@ pid_t execsh_async_start_a(
     *pargs = NULL;
 
     /* Run the child */
-    esa->esa_child_pid = execsh_pspawn(EXECSH_SHELL_PATH, args, pin[P_RD],  pout[P_WR], perr[P_WR]);
+    esa->esa_child_pid = execsh_pspawn(args[0], args, pin[P_RD],  pout[P_WR], perr[P_WR]);
     if (esa->esa_child_pid < 0)
     {
         LOG(ERR, "execsh: Error executing: %s", script);
@@ -425,8 +434,8 @@ void execsh_async_cleanup(execsh_async_t *esa)
     esa->esa_stdin_fd = -1;
     esa->esa_stdout_fd = -1;
     esa->esa_stderr_fd = -1;
-
     FREE(esa->esa_stdin_buf);
+    esa->esa_stdin_buf = NULL;
 }
 
 /*
@@ -485,7 +494,7 @@ void execsh_async_std_read(struct ev_loop *loop, ev_io *w, int revent)
 void execsh_async_std_write(struct ev_loop *loop, ev_io *w, int revent)
 {
     ssize_t nwr;
-    char *buf;
+    const char *buf;
 
     execsh_async_t *esa = CONTAINER_OF(w, execsh_async_t, esa_stdin_ev);
 
@@ -810,7 +819,7 @@ pid_t execsh_pspawn(
     // Close all other file descriptors
     execsh_closefrom(3);
 
-    execv(path, (char **)argv);
+    execvp(path, (char **)argv);
 
     dprintf(flog, "execsh (post-fork): execv(\"%s\", ...) failed. Error: %s\n",
                   path, strerror(errno));

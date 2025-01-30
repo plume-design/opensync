@@ -99,6 +99,6 @@ void sockaddr_storage_copy(struct sockaddr_storage *from, struct sockaddr_storag
  *
  * @remark Caller is responsible allocate the referenced destination string.
  */
-void sockaddr_storage_str(struct sockaddr_storage *addr, char *output);
+void sockaddr_storage_str(struct sockaddr_storage *addr, char *output, int output_size);
 
 #endif /* FSM_UTILS_H_INCLUDED */

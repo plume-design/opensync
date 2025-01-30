@@ -98,6 +98,10 @@ void
 nl_80211_start(struct nl_80211 *nl_80211);
 
 void
+nl_80211_poll_stas(struct nl_80211 *nl_80211,
+                   const struct nl_80211_vif *vif);
+
+void
 nl_80211_set_conn(struct nl_80211 *nl_80211,
                   struct nl_conn *conn);
 

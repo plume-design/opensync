@@ -35,6 +35,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ds.h"
 #include "os_time.h"
 #include "memutil.h"
+#include "util.h"
 
 #include "timevt_server.h"
 #include "timevt_msg_link.h"
@@ -246,7 +247,10 @@ static char *alloc_string(char *oldstr, const char *newstr)
 {
     if (newstr != NULL)
     {
-        return strcpy(REALLOC(oldstr, strlen(newstr) + 1), newstr);
+        int size = strlen(newstr) + 1;
+        oldstr = REALLOC(oldstr, size);
+        strscpy(oldstr, newstr, size);
+        return oldstr;
     }
     else
     {

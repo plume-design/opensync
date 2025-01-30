@@ -39,6 +39,20 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 typedef struct __inet_dns inet_dns_t;
 
+struct inet_dns_status
+{
+        osn_ip_addr_t   primary;
+        osn_ip_addr_t   secondary;
+};
+
+#define INET_DNS_STATUS_INIT (struct inet_dns_status)   \
+{                                                       \
+    .primary    = OSN_IP_ADDR_INIT,                     \
+    .secondary  = OSN_IP_ADDR_INIT,                     \
+}
+
+typedef void inet_dns_status_fn_t(struct inet_dns_status *status, void *ctx);
+
 inet_dns_t *inet_dns_new(const char *ifname);
 bool inet_dns_del(inet_dns_t *self);
 
@@ -49,5 +63,7 @@ bool inet_dns_server_set(
         inet_dns_t *self,
         osn_ip_addr_t primary,
         osn_ip_addr_t secondary);
+
+void inet_dns_status_notify(inet_dns_t *self, inet_dns_status_fn_t *fn, void *ctx);
 
 #endif /* INET_DNS_H_INCLUDED */

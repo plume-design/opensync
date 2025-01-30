@@ -61,7 +61,7 @@ struct osw_defer_vif_down_rule {
     bool was_enabled;
     struct osw_timer grace_period_timer;
     const struct osw_state_phy_info *phy_info;
-    const struct osw_state_vif_info *vif_info;
+    struct osw_channel channel;
     bool reason_phy;
     bool reason_vif;
     bool reason_csa;
@@ -168,8 +168,7 @@ osw_defer_vif_down_csa_will_interrupt_service(struct osw_conf_phy *phy,
                                               struct osw_defer_vif_down_rule *r)
 {
     if (r->phy_info == NULL) return false;
-    if (r->vif_info == NULL) return false;
-    if (r->vif_info->drv_state->vif_type != OSW_VIF_AP) return false;
+    if (osw_channel_is_none(&r->channel)) return false;
     if (vif->vif_type != OSW_VIF_AP) return false;
 
     const struct osw_channel *c = &vif->u.ap.channel;
@@ -201,7 +200,7 @@ osw_defer_vif_down_rule_mutate_phy_channel(struct osw_conf_phy *phy,
                                            struct osw_conf_vif *vif,
                                            struct osw_defer_vif_down_rule *r)
 {
-    const struct osw_channel *c = osw_defer_vif_down_extract_vif_ap_channel(r->vif_info);
+    const struct osw_channel *c = osw_channel_is_none(&r->channel) ? NULL : &r->channel;
     if (c == NULL) return;
 
     struct osw_conf_vif *phy_vif;
@@ -333,6 +332,16 @@ osw_defer_vif_down_phy_removed_cb(struct osw_state_observer *obs,
 }
 
 static void
+osw_defer_vif_down_vif_update(struct osw_defer_vif_down_rule *r,
+                              const struct osw_state_vif_info *info)
+{
+    const struct osw_channel *c = osw_defer_vif_down_extract_vif_ap_channel(info);
+    if (osw_channel_is_equal(c, &r->channel)) return;
+    r->channel = c ? *c : *osw_channel_none();
+    osw_conf_invalidate(&r->mut);
+}
+
+static void
 osw_defer_vif_down_vif_added_cb(struct osw_state_observer *obs,
                                 const struct osw_state_vif_info *info)
 {
@@ -341,8 +350,7 @@ osw_defer_vif_down_vif_added_cb(struct osw_state_observer *obs,
     if (other_vif) return;
     if (info->phy != NULL) LOGD(LOG_PREFIX_RULE(r, "state: latched to phy %s", info->phy->phy_name));
     r->phy_info = info->phy;
-    r->vif_info = info;
-    osw_conf_invalidate(&r->mut);
+    osw_defer_vif_down_vif_update(r, info);
 }
 
 static void
@@ -352,8 +360,7 @@ osw_defer_vif_down_vif_changed_cb(struct osw_state_observer *obs,
     struct osw_defer_vif_down_rule *r = container_of(obs, struct osw_defer_vif_down_rule, obs);
     const bool other_vif = (strcmp(info->vif_name, r->vif_name) != 0);
     if (other_vif) return;
-    r->vif_info = info;
-    osw_conf_invalidate(&r->mut);
+    osw_defer_vif_down_vif_update(r, info);
 }
 
 static void
@@ -364,9 +371,8 @@ osw_defer_vif_down_vif_removed_cb(struct osw_state_observer *obs,
     const bool other_vif = (strcmp(info->vif_name, r->vif_name) != 0);
     if (other_vif) return;
     if (info->phy != NULL) LOGD(LOG_PREFIX_RULE(r, "state: unlatched from phy %s", info->phy->phy_name));
-    r->vif_info = NULL;
     r->phy_info = NULL;
-    osw_conf_invalidate(&r->mut);
+    osw_defer_vif_down_vif_update(r, NULL);
 }
 
 static void
@@ -513,6 +519,7 @@ osw_defer_vif_down_get_remaining_nsec(osw_defer_vif_down_t *m,
                                       const char *vif_name)
 {
     if (m == NULL) return 0;
+    if (vif_name == NULL) return 0;
     struct osw_defer_vif_down_rule *r = ds_tree_find(&m->rules, vif_name);
     const uint64_t now_nsec = osw_time_mono_clk();
     struct osw_timer *t = &r->grace_period_timer;

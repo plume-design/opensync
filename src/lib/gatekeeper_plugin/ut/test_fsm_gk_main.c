@@ -50,7 +50,12 @@ main(int argc, char *argv[])
      * This is a requirement: Do NOT proceed if the file is missing.
      * File presence will not be tested any further.
      */
-    chdir(dirname(argv[0]));
+    if (chdir(dirname(argv[0])) != 0)
+    {
+        LOGW("chdir(\"%s\") failed", argv[0]);
+        return ut_fini();
+    }
+
     ret = access(g_certs_file, F_OK);
     if (ret != 0)
     {

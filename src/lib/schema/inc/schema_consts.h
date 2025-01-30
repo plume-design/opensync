@@ -46,6 +46,19 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define SCHEMA_CONSTS_REPORT_TYPE_CLIENT "client"
 #define SCHEMA_CONSTS_REPORT_TYPE_SURVEY "survey"
 #define SCHEMA_CONSTS_REPORT_TYPE_DEVICE "device"
+#define SCHEMA_CONSTS_REPORT_TYPE_LATENCY "latency"
+
+#define SCHEMA_CONSTS_LATENCY_DSCP_TYPE_DO_NOT_REPORT "do_not_report"
+#define SCHEMA_CONSTS_LATENCY_DSCP_TYPE_REPORT_PER_DSCP "report_per_dscp"
+
+#define SCHEMA_CONSTS_LATENCY_KIND_MIN "min"
+#define SCHEMA_CONSTS_LATENCY_KIND_MAX "max"
+#define SCHEMA_CONSTS_LATENCY_KIND_AVG "avg"
+#define SCHEMA_CONSTS_LATENCY_KIND_LAST "last"
+#define SCHEMA_CONSTS_LATENCY_KIND_NUM "num"
+
+#define SCHEMA_CONSTS_SAMPLE_POLICY_SEPARATE "separate"
+#define SCHEMA_CONSTS_SAMPLE_POLICY_MERGE "merge"
 
 /* Interface types */
 #define SCHEMA_CONSTS_IF_TYPE_ETH           "eth"
@@ -76,7 +89,6 @@ typedef enum {
 } schema_consts_vif_type_t;
 
 /* Cloud bridge ifname's */
-#define SCHEMA_CONSTS_BR_NAME_WAN            "br-wan"
 #define SCHEMA_CONSTS_BR_NAME_HOME           "br-home"
 #define SCHEMA_CONSTS_BR_NAME_GUEST          "br-guest"
 
@@ -155,13 +167,17 @@ typedef enum {
 #define SCHEMA_CONSTS_KEY_WPA_PSK_SHA256    "wpa-psk-sha256"
 #define SCHEMA_CONSTS_KEY_WPA_EAP           "wpa-eap"
 #define SCHEMA_CONSTS_KEY_WPA_EAP_SHA256    "wpa-eap-sha256"
+#define SCHEMA_CONSTS_KEY_WPA_EAP_SHA384    "wpa-eap-sha384"
+#define SCHEMA_CONSTS_KEY_WPA_EAP_B         "wpa-eap-suite-b"
 #define SCHEMA_CONSTS_KEY_WPA_EAP_B_192     "wpa-eap-suite-b-192"
 #define SCHEMA_CONSTS_KEY_FT_SAE            "ft-sae"
+#define SCHEMA_CONSTS_KEY_FT_SAE_EXT        "ft-sae-ext"
 #define SCHEMA_CONSTS_KEY_FT_PSK            "ft-psk"
 #define SCHEMA_CONSTS_KEY_FT_EAP            "ft-eap"
 #define SCHEMA_CONSTS_KEY_FT_EAP_SHA384     "ft-eap-sha384"
 #define SCHEMA_CONSTS_KEY_DPP               "dpp"
 #define SCHEMA_CONSTS_KEY_SAE               "sae"
+#define SCHEMA_CONSTS_KEY_SAE_EXT           "sae-ext"
 #define SCHEMA_CONSTS_KEY_OWE               "owe"
 /* legacy and deprecated */
 #define SCHEMA_CONSTS_KEY_WPA2_PSK          "wpa2-psk"
@@ -172,6 +188,9 @@ typedef enum {
 #define SCHEMA_CONSTS_CIPHER_RSN_WEP      "wep"
 #define SCHEMA_CONSTS_CIPHER_RSN_TKIP     "rsn-tkip"
 #define SCHEMA_CONSTS_CIPHER_RSN_CCMP     "rsn-ccmp"
+#define SCHEMA_CONSTS_CIPHER_RSN_CCMP_256 "rsn-ccmp256"
+#define SCHEMA_CONSTS_CIPHER_RSN_GCMP     "rsn-gcmp"
+#define SCHEMA_CONSTS_CIPHER_RSN_GCMP_256 "rsn-gcmp256"
 #define SCHEMA_CONSTS_CIPHER_RSN_BIP_CMAC "bip-cmac"
 #define SCHEMA_CONSTS_CIPHER_WPA_NONE     "wpa-none"
 #define SCHEMA_CONSTS_CIPHER_WPA_TKIP     "wpa-tkip"
@@ -207,5 +226,8 @@ typedef enum {
 #define SCHEMA_CONSTS_DPP_STA_PSK "sta-psk"
 #define SCHEMA_CONSTS_DPP_AP_DPP  "ap-dpp"
 #define SCHEMA_CONSTS_DPP_AP_PSK  "ap-psk"
+
+#define SCHEMA_CONSTS_ONBOARD_TYPE_GRE "gre"
+#define SCHEMA_CONSTS_ONBOARD_TYPE_MULTI_AP "multi_ap"
 
 #endif /* SCHEMA_CONSTS_H_INCLUDED */

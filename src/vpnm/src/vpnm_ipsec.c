@@ -481,19 +481,20 @@ static bool vpnm_ipsec_config_set(
     bool rv = true;
 
     /*
-     * Remote endpoint can be configured as an IPv4 or an FQDN. If it is an FQDN
-     * we will resolve it to an IPv4 address. DNS resolution is performed only
-     * when remote_endpoint changes and if it is configured after the change.
+     * Remote endpoint can be configured as an IPv4 or IPv6 or FQDN. If it is a
+     * FQDN we will resolve it to an IP address (v4 or v6 whichever is first).
+     * DNS resolution is performed only when remote_endpoint changes and
+     * if it is configured after the change.
      */
     if (ovsdb_update_changed(mon, SCHEMA_COLUMN(IPSec_Config, remote_endpoint))
             && new->remote_endpoint_exists)
     {
         /*
-         * Resolve remote_endpoint. Currently we only support IPv4 (AF_INET).
+         * Resolve remote_endpoint. Accept either IPv4 or IPv6 (AF_UNSPEC).
          * If the remote endpoint is already an IP address it simply
          * "resolves" to the IP address.
          */
-        if (vpnm_resolve(&remote_endpoint_ip, new->remote_endpoint, AF_INET))
+        if (vpnm_resolve(&remote_endpoint_ip, new->remote_endpoint, AF_UNSPEC))
         {
             /*
              * Remember the resolved IP address. Needed for reporting this
@@ -509,7 +510,7 @@ static bool vpnm_ipsec_config_set(
             remote_endpoint_ip = IP4_ANY; // to indicate in _State DNS resolution failed
             vpn_ipsec->vi_remote_endpoint_ip = remote_endpoint_ip;
 
-            LOG(ERROR, "vpnm_ipsec: %s: Error resolving to an IPv4 address: %s",
+            LOG(ERROR, "vpnm_ipsec: %s: Error resolving to an IP address: %s",
                     vpn_ipsec->vi_name, new->remote_endpoint);
         }
     }
@@ -683,13 +684,13 @@ static void vpnm_ipsec_status_cb(const struct osn_ipsec_status *tunnel_status)
 
         if (ipany->addr_type == AF_INET)
         {
-            sprintf(schema_ipsec_state.local_subnets[i],
+            SPRINTF(schema_ipsec_state.local_subnets[i],
                     PRI_osn_ip_addr, FMT_osn_ip_addr(ipany->addr.ip4));
             schema_ipsec_state.local_subnets_len++;
         }
         else if (ipany->addr_type == AF_INET6)
         {
-            sprintf(schema_ipsec_state.local_subnets[i],
+            SPRINTF(schema_ipsec_state.local_subnets[i],
                     PRI_osn_ip6_addr, FMT_osn_ip6_addr(ipany->addr.ip6));
             schema_ipsec_state.local_subnets_len++;
         }
@@ -703,13 +704,13 @@ static void vpnm_ipsec_status_cb(const struct osn_ipsec_status *tunnel_status)
 
         if (ipany->addr_type == AF_INET)
         {
-            sprintf(schema_ipsec_state.remote_subnets[i],
+            SPRINTF(schema_ipsec_state.remote_subnets[i],
                     PRI_osn_ip_addr, FMT_osn_ip_addr(ipany->addr.ip4));
             schema_ipsec_state.remote_subnets_len++;
         }
         else if (ipany->addr_type == AF_INET6)
         {
-            sprintf(schema_ipsec_state.remote_subnets[i],
+            SPRINTF(schema_ipsec_state.remote_subnets[i],
                     PRI_osn_ip6_addr, FMT_osn_ip6_addr(ipany->addr.ip6));
             schema_ipsec_state.remote_subnets_len++;
         }
@@ -723,13 +724,13 @@ static void vpnm_ipsec_status_cb(const struct osn_ipsec_status *tunnel_status)
 
         if (ipany->addr_type == AF_INET)
         {
-            sprintf(schema_ipsec_state.local_virt_ip[i],
+            SPRINTF(schema_ipsec_state.local_virt_ip[i],
                     PRI_osn_ip_addr, FMT_osn_ip_addr(ipany->addr.ip4));
             schema_ipsec_state.local_virt_ip_len++;
         }
         else if (ipany->addr_type == AF_INET6)
         {
-            sprintf(schema_ipsec_state.local_virt_ip[i],
+            SPRINTF(schema_ipsec_state.local_virt_ip[i],
                     PRI_osn_ip6_addr, FMT_osn_ip6_addr(ipany->addr.ip6));
             schema_ipsec_state.local_virt_ip_len++;
         }

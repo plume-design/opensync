@@ -34,6 +34,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <const.h>
 #include <memutil.h>
 #include <ds_tree.h>
+#include <ovsdb_sync.h>
 #include <ovsdb_table.h>
 #include <schema_consts.h>
 
@@ -51,6 +52,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define LOG_PREFIX_VIF(vif, fmt, ...) \
     LOG_PREFIX((vif)->m, "%s (%s): " fmt, (vif)->vif_name, (vif)->tun ? (vif)->tun->tun_name : "", ##__VA_ARGS__)
 
+extern ovsdb_table_t table_Wifi_Inet_State;
 extern ovsdb_table_t table_Wifi_Inet_Config;
 
 struct cm2_bh_gre_tun
@@ -426,6 +428,7 @@ cm2_bh_gre_vif_t *cm2_bh_gre_vif_alloc(cm2_bh_gre_t *m, const char *vif_name)
     vif->vif_name = STRDUP(vif_name);
     ds_tree_insert(&m->vifs, vif, vif->vif_name);
     LOGI(LOG_PREFIX_VIF(vif, "allocated"));
+    CM2_BH_OVS_INIT(vif->m, cm2_bh_gre_WIS, Wifi_Inet_State, if_name, vif->vif_name);
     return vif;
 }
 
@@ -471,6 +474,7 @@ cm2_bh_gre_tun_t *cm2_bh_gre_tun_alloc(cm2_bh_gre_vif_t *vif, const char *tun_na
     vif->tun = tun;
     ds_tree_insert(&m->tuns, tun, tun->tun_name);
     LOGI(LOG_PREFIX_TUN(tun, "allocated"));
+    CM2_BH_OVS_INIT(tun->vif->m, cm2_bh_gre_WIS, Wifi_Inet_State, if_name, tun->tun_name);
     return tun;
 }
 
@@ -478,6 +482,7 @@ void cm2_bh_gre_tun_drop(cm2_bh_gre_tun_t *tun)
 {
     if (tun == NULL) return;
     LOGI(LOG_PREFIX_TUN(tun, "dropping"));
+    cm2_bh_gre_tun_delete(tun);
     ev_timer_stop(tun->vif->m->loop, &tun->backoff);
     ev_timer_stop(tun->vif->m->loop, &tun->deadline);
     ev_idle_stop(tun->vif->m->loop, &tun->recalc);

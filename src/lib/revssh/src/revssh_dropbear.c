@@ -462,6 +462,12 @@ static bool revssh_authorized_keys_setup(revssh_t *self)
     int rc;
     int i;
 
+    /* If dropbear authorized_keys does not exist, create an empty one: */
+    execsh_log(
+            LOG_SEVERITY_DEBUG,
+            _S([ ! -e "$1" ] && touch "$1"),
+            CONFIG_REVSSH_DROPBEAR_AUTHORIZED_KEYS_FILE);
+
     /* Copy current contents of dropbear authorized_keys to temporary authorized_keys: */
     rc = execsh_log(
             LOG_SEVERITY_DEBUG,

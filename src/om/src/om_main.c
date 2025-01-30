@@ -95,7 +95,6 @@ int main( int argc, char **argv )
     }
 
     memset(&tag_mgr, 0, sizeof(tag_mgr));
-    tag_mgr.service_tag_update = om_template_tag_update;
     om_tag_init(&tag_mgr);
 
     if( !om_monitor_init() ) {

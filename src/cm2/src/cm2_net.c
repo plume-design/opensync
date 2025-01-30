@@ -45,6 +45,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "kconfig.h"
 #include "osn_types.h"
 #include "memutil.h"
+#include "ovsdb_bridge.h"
 
 #define CM2_VAR_RUN_PATH               "/var/run"
 #define CM2_VAR_PLUME_PATH             "/var/opensync"
@@ -80,57 +81,26 @@ typedef struct {
     char     if_name[C_IFNAME_LEN];
 } cm2_delayed_eth_update_t;
 
-static const char *cm2_get_timeout_cmd_arg(void)
-{
-    static int checked;
-    static int needs_t_arg;
-
-    if (!checked) {
-        needs_t_arg = target_device_execute("timeout -t 0 true");
-        checked = 1;
-    }
-    return needs_t_arg ? "-t 10" : "10";
-}
-
-static bool cm2_is_port_in_bridge(char *port, char *bridge)
-{
-    char command[512];
-
-    if (!is_input_shell_safe(bridge)) return false;
-
-    snprintf(command, sizeof(command), "ovs-vsctl --no-wait port-to-br %s | grep %s",
-             port, bridge);
-    LOGD("%s: Command: %s", __func__, command);
-
-    return target_device_execute(command);
-}
-
 static bool is_mac_local_bit_set(os_macaddr_t mac)
 {
     return ((mac.addr[0] >> 1) & 0x1);
 }
 
-static bool cm2_update_mac_local_bit(char *bridge, bool set)
+bool cm2_update_mac_local_bit(const char *bridge, bool set)
 {
     os_macaddr_t mac;
-    char macstr[64];
-    char new_macstr[64];
-    char cmd[256];
     bool ret = false;
-    int  rc = -1;
 
     ret = os_nif_macaddr_get(bridge, &mac);
     if (!ret) {
         LOGE("%s: failed to get interface mac address", __func__);
         return false;
     }
-    os_nif_macaddr_to_str(&mac, macstr, PRI_os_macaddr_t);
 
-    LOGD("%s: LAN bridge MAC %s", __func__, macstr);
-
+    LOGD("%s: LAN bridge MAC "PRI_os_macaddr_t, __func__, FMT_os_macaddr_t(mac));
     if (is_mac_local_bit_set(mac) == set) {
-        LOGI("%s: Keep LAN bridge MAC %s as is.",
-             __func__, macstr);
+        LOGI("%s: Keep LAN bridge MAC "PRI_os_macaddr_t" as is.",
+             __func__, FMT_os_macaddr_t(mac));
         return false;
     }
 
@@ -139,95 +109,32 @@ static bool cm2_update_mac_local_bit(char *bridge, bool set)
     } else {
         mac.addr[0] &= (0xFF ^ 0x02);
     }
-    os_nif_macaddr_to_str(&mac, new_macstr, PRI_os_macaddr_t);
 
-    LOGI("%s: updated LAN bridge MAC %s", __func__, new_macstr);
-
-    if (kconfig_enabled(CONFIG_TARGET_USE_NATIVE_BRIDGE)) {
-        snprintf(cmd, sizeof(cmd), "ip link set dev %s address %s",
-                 bridge, new_macstr);
-    } else {
-        snprintf(cmd, sizeof(cmd), "ovs-vsctl set bridge %s other-config:hwaddr=%s",
-                 bridge, new_macstr);
-    }
-
-    rc = cmd_log_check_safe(cmd);
-    if (rc < 0) {
-        LOGE("%s: %s cmd failed", __func__, cmd);
+    LOGI("%s: updated LAN bridge MAC"PRI_os_macaddr_t, __func__, FMT_os_macaddr_t(mac));
+    const bool success = os_nif_macaddr_set(bridge, mac);
+    if (success == false) {
+        LOGE("%s: failed to set %s address to"PRI_os_macaddr_t,
+             __func__, bridge, FMT_os_macaddr_t(mac));
         return false;
     }
 
     return true;
 }
 
-static int cm2_ovs_insert_port_into_bridge(char *bridge, char *port,
-                                           bool want_port_in_bridge, bool port_is_in_bridge)
+static int cm2_bridge_manage_port(char *bridge, char *port,
+                                  bool want_port_in_bridge, bool port_is_in_bridge)
 {
-    char command[512];
-    char *op = "";
     bool need_to_add;
     bool need_to_del;
-    int ret;
 
     need_to_add = !port_is_in_bridge && want_port_in_bridge;
     need_to_del = port_is_in_bridge && !want_port_in_bridge;
-    ret = port_is_in_bridge;
 
-    if (need_to_add) {
-        op = "add-port";
-    } else if (need_to_del) {
-        op = "del-port";
-    }
-
-    /* add/delete it to/from OVS bridge */
     if (need_to_add || need_to_del) {
-        LOGI("OVS bridge: %s port = %s bridge = %s", op, port, bridge);
-
-        snprintf(command, sizeof(command), "timeout %s ovs-vsctl %s %s %s",
-                 cm2_get_timeout_cmd_arg(), op, bridge, port);
-
-        if (!is_input_shell_safe(command)) return -1;
-
-        LOGD("%s: Command: %s", __func__, command);
-        ret = target_device_execute(command);
+        return ovsdb_bridge_manage_port(port, bridge, want_port_in_bridge);
     }
 
-    return ret;
-}
-
-static int cm2_ovs_insert_port_into_native_bridge(char *bridge, char *port,
-                                                  bool want_port_in_bridge, bool port_is_in_bridge)
-{
-    char command[512];
-    char *op = "";
-    bool need_to_add;
-    bool need_to_del;
-    int ret;
-
-    need_to_add = !port_is_in_bridge && want_port_in_bridge;
-    need_to_del = port_is_in_bridge && !want_port_in_bridge;
-    ret = port_is_in_bridge;
-
-    if (need_to_add) {
-        op = "add-port";
-    } else if (need_to_del) {
-        op = "del-port";
-    }
-
-    /* add/delete it to/from OVS bridge */
-    if (need_to_add || need_to_del) {
-        LOGI("Linux bridge: %s port = %s bridge = %s", op, port, bridge);
-
-        snprintf(command, sizeof(command), "ovs-vsctl %s %s %s",
-                 op, bridge, port);
-
-        if (!is_input_shell_safe(command)) return -1;
-
-        LOGD("%s: Command: %s", __func__, command);
-        ret = target_device_execute(command);
-    }
-
-    return ret;
+    return 1;
 }
 
 void cm2_update_bridge_cfg(char *bridge, char *port, bool brop,
@@ -252,7 +159,7 @@ void cm2_update_bridge_cfg(char *bridge, char *port, bool brop,
         }
     }
 
-    port_is_in_bridge = cm2_is_port_in_bridge(port, bridge);
+    port_is_in_bridge = cm2_is_iface_in_bridge(bridge, port);
 
     LOGD("%s: bridge %s port %s brop %d update_local_bit %d port_is_in_bridge %d",
          __func__, bridge, port, brop, update_local_bit, port_is_in_bridge);
@@ -262,11 +169,7 @@ void cm2_update_bridge_cfg(char *bridge, char *port, bool brop,
         is_mac_updated = cm2_update_mac_local_bit(CONFIG_TARGET_LAN_BRIDGE_NAME, false);
     }
 
-    if (kconfig_enabled(CONFIG_TARGET_USE_NATIVE_BRIDGE)) {
-        r = cm2_ovs_insert_port_into_native_bridge(bridge, port, brop, port_is_in_bridge);
-    } else {
-        r = cm2_ovs_insert_port_into_bridge(bridge, port, brop, port_is_in_bridge);
-    }
+    r = cm2_bridge_manage_port(bridge, port, brop, port_is_in_bridge);
 
     if (!r)
         LOGI("Failed to update port %s in %s [state = %d]",
@@ -323,16 +226,10 @@ static int cm2_util_get_pid(char *pidname)
 
 bool cm2_is_iface_in_bridge(const char *bridge, const char *port)
 {
-    char command[256];
-
-    if (!is_input_shell_safe(bridge) || !is_input_shell_safe(port)) return false;
-
-    LOGD("OVS bridge: port = %s bridge = %s", port, bridge);
-    sprintf(command, "timeout %s ovs-vsctl list-ifaces %s | grep %s",
-            cm2_get_timeout_cmd_arg(), bridge, port);
-
-    LOGD("%s: Command: %s", __func__, command);
-    return target_device_execute(command);
+    char *port_bridge = ovsdb_bridge_port_get_bridge(port);
+    const bool match = (port_bridge != NULL) && (strcmp(port_bridge, bridge) == 0);
+    FREE(port_bridge);
+    return match;
 }
 
 #ifdef CONFIG_CM2_USE_TCPDUMP

@@ -318,7 +318,7 @@ qosm_ip_iface_start(struct qosm_ip_iface *ipi)
     LOG(INFO, "qosm: tc-filter: %s: %s: Schedule reconfiguration", ipi->ipi_ifname, ipi->ipi_uuid.uuid);
 
     /* Schedule reconfiguration: */
-    qosm_mgr_schedule_qos_config(&ipi->ipi_uuid);
+    qosm_mgr_schedule_classifier_qos_config(&ipi->ipi_uuid);
 }
 
 static struct intf_classifier_entry*

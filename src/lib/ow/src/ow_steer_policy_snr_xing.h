@@ -66,7 +66,8 @@ struct ow_steer_policy_snr_xing;
 struct ow_steer_policy_snr_xing*
 ow_steer_policy_snr_xing_create(const char *name,
                                 const struct osw_hwaddr *sta_addr,
-                                const struct ow_steer_policy_mediator *mediator);
+                                const struct ow_steer_policy_mediator *mediator,
+                                const char *log_prefix);
 
 void
 ow_steer_policy_snr_xing_free(struct ow_steer_policy_snr_xing *xing_policy);

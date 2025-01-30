@@ -1,0 +1,14 @@
+digraph {
+    IDLE[init="true"];
+    IDLE -> PENDING[label="START"];
+    PENDING -> SCHEDULED[label="SCHEDULE"];
+    SCHEDULED -> RUNNING[label="RUN"];
+    SCHEDULED -> IDLE;
+    RUNNING -> ACTIVE[label="SUCCESS"];
+    RUNNING -> DETACHED[label="DETACH"];
+    RUNNING -> IDLE[label="TIMEOUT"];
+    RUNNING -> IDLE[label="SKIP"];
+    RUNNING -> IDLE[label="ERROR"];
+    DETACHED -> IDLE[label="SKIP"];
+    EXCEPTION -> IDLE [label="!CANCEL"]
+}

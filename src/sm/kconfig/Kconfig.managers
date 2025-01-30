@@ -12,6 +12,44 @@ menuconfig MANAGER_SM
         help
             Statistics Manager startup configuration
 
+    config SM_LATENCY_STATS
+        depends on MANAGER_SM
+        bool "Latency statistics"
+        default y
+        help
+            Support for latency statistics for SM.
+
+            Remember to select an adequate implementation backend.
+
+    choice
+        prompt "Latency stats implementation backend"
+        depends on MANAGER_SM && SM_LATENCY_STATS
+        default SM_LATENCY_IMPL_NONE
+        config SM_LATENCY_IMPL_NONE
+            bool "none"
+            help
+                This is a stub latency backend implementation.
+                It does nothing. Just satisfying build time and
+                linking mechanics.
+
+                This isn't all that useful except for developent and
+                testing of core logic that ingests configuration and
+                to check plumbing.
+
+                It makes little sense in enabling SM_LATENCY_STATS
+                with SM_LATENCY_IMPL_NONE for deployment.
+        config SM_LATENCY_IMPL_EPPING
+            bool "epping"
+            help
+                This uses XDP and epping to passively monitor
+                latency of running flows by performing DPI
+                on their metadata to infer RTT.
+
+                Requires fairly recent Linux kernel to run.
+
+                May interact poorly with HW and SW datapath accelerator.
+    endchoice
+
     config SM_CAPACITY_QUEUE_STATS
         depends on MANAGER_SM
         bool "Capacity Queue Stats"
@@ -50,6 +88,7 @@ menuconfig MANAGER_SM
             Use hostapd backend for client auth fails SM module.
 
     config SM_BACKEND_HAPD_CLIENTS_AUTH_FAILS_PER_VAP_LIMIT
+        depends on MANAGER_SM
         int "Clients auth fails limit per VAP per report"
         default 256
         help

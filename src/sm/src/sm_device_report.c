@@ -42,7 +42,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "sm.h"
 #include "osp_temp.h"
 #include "osp_tm.h"
-#include "ff_lib.h"
 
 #define MODULE_ID LOG_MODULE_ID_MAIN
 
@@ -72,19 +71,6 @@ static sm_device_ctx_t              g_sm_device_ctx;
 /******************************************************************************
  *  PROTECTED definitions
  *****************************************************************************/
-static bool
-sm_skip_wifi(void)
-{
-    const bool ff_use_onewifi = ff_is_flag_enabled("use_owm");
-
-    if (ff_use_onewifi == true) {
-        LOG(INFO, "Skipping Wifi Stats");
-        return true;
-    }
-
-    return false;
-}
-
 static
 bool dpp_device_report_timer_set(
         ev_timer                   *timer,
@@ -298,42 +284,6 @@ void sm_device_thermal_report (EV_P_ ev_timer *w, int revents)
     int                             target_rpm;
     int                             led_state;
     thermal_record = dpp_device_thermal_record_alloc();
-
-    if (!sm_skip_wifi())
-    {
-        /* Get radio txchainmask stats */
-        ds_tree_t                      *radios = sm_radios_get();
-        sm_radio_state_t               *radio;
-        dpp_device_txchainmask_t tx_chainmask;
-        int radio_idx = 0;
-
-        ds_tree_foreach(radios, radio)
-        {
-            if (radio_idx >= DPP_DEVICE_TX_CHAINMASK_MAX)
-            {
-                LOG(ERROR, "Not enough space to hold all txchainmask stats");
-                break;
-            }
-
-            rc = target_stats_device_txchainmask_get(&radio->config,
-                                                    &tx_chainmask);
-            if (true != rc) {
-                thermal_record->radio_txchainmasks[radio_idx].type = RADIO_TYPE_NONE;
-                thermal_record->radio_txchainmasks[radio_idx].value = 0;
-                continue;
-            }
-
-            thermal_record->radio_txchainmasks[radio_idx].type = tx_chainmask.type;
-            thermal_record->radio_txchainmasks[radio_idx].value = tx_chainmask.value;
-            thermal_record->txchainmask_qty = radio_idx;
-            radio_idx++;
-            thermal_valid = true;
-            LOG(DEBUG,
-                "Sending device stats tx chain %s=%u",
-                radio_get_name_from_type(tx_chainmask.type),
-                tx_chainmask.value);
-        }
-    }
 
     log_pos = snprintf(log_msg, sizeof(log_msg), "Sending device stats: ");
 

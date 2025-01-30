@@ -47,7 +47,7 @@ ow_steer_policy_stack_ut_policy_new(const struct osw_hwaddr *sta_addr,
                                     const struct ow_steer_policy_mediator *mediator)
 {
     struct ow_steer_policy_stack_ut_policy *priv = CALLOC(1, sizeof(*priv));
-    return ow_steer_policy_create(g_ow_steer_policy_stack_ut_policy_name, sta_addr, ops, mediator, priv);
+    return ow_steer_policy_create(g_ow_steer_policy_stack_ut_policy_name, sta_addr, ops, mediator, "", priv);
 }
 
 static void
@@ -90,7 +90,7 @@ OSW_UT(ow_steer_policy_stack_ut_sorting_policies_1)
     ow_steer_policy_stack_ut_ctx_init(&ctx);
 
     sta.candidate_list = ow_steer_candidate_list_new();
-    policy_stack = ow_steer_policy_stack_create(&sta);
+    policy_stack = ow_steer_policy_stack_create(&sta, "");
     ow_steer_policy_stack_add(policy_stack, &ctx.policy_high_0);
     ow_steer_policy_stack_add(policy_stack, &ctx.policy_mid_0);
     ow_steer_policy_stack_add(policy_stack, &ctx.policy_low_0);
@@ -154,7 +154,7 @@ OSW_UT(ow_steer_policy_stack_ut_sorting_policies_2)
 
     ow_steer_policy_stack_ut_ctx_init(&ctx);
 
-    policy_stack = ow_steer_policy_stack_create(&sta);
+    policy_stack = ow_steer_policy_stack_create(&sta, "");
     ow_steer_policy_stack_add(policy_stack, &ctx.policy_high_0);
 
     /* Expected policies oerder:
@@ -229,7 +229,7 @@ OSW_UT(ow_steer_policy_stack_ut_lifecycle)
     memset(&mediator, 0, sizeof(mediator));
     policy = ow_steer_policy_stack_ut_policy_new(&sta_addr, &ops, &mediator);
     priv = ow_steer_policy_get_priv(policy);
-    policy_stack = ow_steer_policy_stack_create(&sta);
+    policy_stack = ow_steer_policy_stack_create(&sta, "");
 
     assert(priv->recalc_cnt == 0);
 

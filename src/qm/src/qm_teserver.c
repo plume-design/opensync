@@ -64,12 +64,13 @@ static char *alloc_string(char *oldstr, const char *newstr)
     char *str = NULL;
 
     if (newstr != NULL) {
-        str = (char *)REALLOC(oldstr, strlen(newstr) + 1);
+        int str_size = strlen(newstr) + 1;
+        str = (char *)REALLOC(oldstr, str_size);
+        strscpy(str, newstr, str_size);
     } else {
         FREE(oldstr);
         str = NULL;
     }
-    if (str) strcpy(str, newstr);
     return str;
 }
 

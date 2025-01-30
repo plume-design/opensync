@@ -322,13 +322,23 @@ osw_wpa_to_str(char *out, size_t len, const struct osw_wpa *wpa)
     if (wpa->rsn) csnprintf(&out, &len, "rsn ");
     if (wpa->pairwise_tkip) csnprintf(&out, &len, "tkip ");
     if (wpa->pairwise_ccmp) csnprintf(&out, &len, "ccmp ");
+    if (wpa->pairwise_ccmp256) csnprintf(&out, &len, "ccmp256 ");
+    if (wpa->pairwise_gcmp) csnprintf(&out, &len, "gcmp ");
+    if (wpa->pairwise_gcmp256) csnprintf(&out, &len, "gcmp256 ");
     if (wpa->akm_psk) csnprintf(&out, &len, "psk ");
+    if (wpa->akm_psk_sha256) csnprintf(&out, &len, "psk_sha256 ");
     if (wpa->akm_sae) csnprintf(&out, &len, "sae ");
+    if (wpa->akm_sae_ext) csnprintf(&out, &len, "sae_ext ");
     if (wpa->akm_ft_psk) csnprintf(&out, &len, "ft_psk ");
     if (wpa->akm_ft_sae) csnprintf(&out, &len, "ft_sae ");
+    if (wpa->akm_ft_sae_ext) csnprintf(&out, &len, "ft_sae_ext ");
     if (wpa->akm_eap) csnprintf(&out, &len, "eap ");
+    if (wpa->akm_eap_sha256) csnprintf(&out, &len, "eap_sha256 ");
+    if (wpa->akm_eap_sha384) csnprintf(&out, &len, "eap_sha384 ");
+    if (wpa->akm_eap_suite_b) csnprintf(&out, &len, "eap_suite_b ");
+    if (wpa->akm_eap_suite_b192) csnprintf(&out, &len, "eap_suite_b192 ");
     if (wpa->akm_ft_eap) csnprintf(&out, &len, "ft_eap ");
-    /* FIXME wpa_eap_sha256, ft_eap_sha384 */
+    if (wpa->akm_ft_eap_sha384) csnprintf(&out, &len, "ft_eap_sha384 ");
     csnprintf(&out, &len, "pmf=%s ", osw_pmf_to_str(wpa->pmf));
     csnprintf(&out, &len, "mdid=%04x ", wpa->ft_mobility_domain);
     csnprintf(&out, &len, "gtk=%d ", wpa->group_rekey_seconds);
@@ -401,6 +411,13 @@ osw_freq_to_band(const int freq)
     return OSW_BAND_UNDEFINED;
 }
 
+int
+osw_channel_cmp(const struct osw_channel *a,
+                const struct osw_channel *b)
+{
+    return memcmp(a, b, sizeof(*a));
+}
+
 bool
 osw_channel_is_equal(const struct osw_channel *a,
                      const struct osw_channel *b)
@@ -412,6 +429,34 @@ osw_channel_is_equal(const struct osw_channel *a,
             (a->center_freq0_mhz == b->center_freq0_mhz) &&
             (a->center_freq1_mhz == b->center_freq1_mhz) &&
             (a->width == b->width));
+}
+
+bool
+osw_channel_is_subchannel(const struct osw_channel *narrower,
+                          const struct osw_channel *wider)
+{
+    return (narrower != NULL) && (wider != NULL) &&
+           (abs(narrower->control_freq_mhz - wider->center_freq0_mhz) < (osw_channel_width_to_mhz(wider->width) / 2));
+}
+
+enum osw_channel_width
+osw_channel_width_mhz_to_width(const int w)
+{
+    switch (w)
+    {
+    case 320:
+        return OSW_CHANNEL_320MHZ;
+    case 160:
+        return OSW_CHANNEL_160MHZ;
+    case 80:
+        return OSW_CHANNEL_80MHZ;
+    case 40:
+        return OSW_CHANNEL_40MHZ;
+    case 20:
+        return OSW_CHANNEL_20MHZ;
+    default:
+        return OSW_CHANNEL_20MHZ;
+    }
 }
 
 enum osw_band
@@ -739,6 +784,7 @@ osw_chan_avg(const int *chans)
     else return sum / n;
 }
 
+// Last resort, it's not recommended to use
 void
 osw_channel_compute_center_freq(struct osw_channel *c, int max_2g_chan)
 {
@@ -770,6 +816,15 @@ osw_hwaddr_is_zero(const struct osw_hwaddr *addr)
 {
     static const struct osw_hwaddr zero = {0};
     return osw_hwaddr_is_equal(addr, &zero);
+}
+
+const struct osw_hwaddr *
+osw_hwaddr_first_nonzero(const struct osw_hwaddr *a,
+                         const struct osw_hwaddr *b)
+{
+    if (osw_hwaddr_is_zero(a) == false) return a;
+    if (osw_hwaddr_is_zero(b) == false) return b;
+    return NULL;
 }
 
 bool
@@ -830,6 +885,15 @@ osw_hwaddr_list_append(struct osw_hwaddr_list *list,
     const size_t new_size = (list->count * elem_size);
     list->list = REALLOC(list->list, new_size);
     list->list[index] = *addr;
+}
+
+void
+osw_hwaddr_list_flush(struct osw_hwaddr_list *list)
+{
+    if (list == NULL) return;
+    FREE(list->list);
+    list->list = NULL;
+    list->count = 0;
 }
 
 static int
@@ -1243,6 +1307,21 @@ osw_channel_overlaps_dfs(const struct osw_channel *c)
     return false;
 }
 
+void osw_channel_state_get_min_max(const struct osw_channel_state *cs,
+                                   const int n_cs,
+                                   int *min_chan_n,
+                                   int *max_chan_n)
+{
+    if (n_cs < 1) return;
+    *min_chan_n = UINT8_MAX;
+    *max_chan_n = 0;
+    for (int i = 0; i < n_cs; i++) {
+        const int chan_n = osw_freq_to_chan(cs[i].channel.control_freq_mhz);
+        *max_chan_n = MAX(chan_n, *max_chan_n);
+        *min_chan_n = MIN(chan_n, *min_chan_n);
+    }
+}
+
 const char *
 osw_reg_dfs_to_str(enum osw_reg_dfs dfs)
 {
@@ -1358,6 +1437,13 @@ osw_cs_get_max_2g_chan(const struct osw_channel_state *channel_states,
     return max;
 }
 
+/*
+ * osw_cs_chan_intersects_state implements the predicate of intersection
+ * between channel_states and state.
+ *
+ * Input: ...
+ * Output: True, if each of the 20 MHz segments has dfs_state equal to state.
+ */
 bool
 osw_cs_chan_intersects_state(const struct osw_channel_state *channel_states,
                              size_t n_channel_states,
@@ -1386,6 +1472,53 @@ osw_cs_chan_intersects_state(const struct osw_channel_state *channel_states,
     }
 
     return false;
+}
+
+/*
+ * osw_cs_chan_get_subchannels_states
+ *
+ * Input: ...
+ * Output: An array of osw_channel_state for each of the 20 MHz segments that
+ * make up c. Caller must free the output array.
+ */
+struct osw_channel_state *
+osw_cs_chan_get_segments_states(const struct osw_channel_state *channel_states,
+                                   size_t n_channel_states,
+                                   const struct osw_channel *c,
+                                   size_t *n_output)
+{
+    ASSERT(c->center_freq0_mhz != 0, "center freq required");
+
+    int freqs[16];
+    size_t n_freqs = osw_channel_20mhz_segments(c, freqs, ARRAY_SIZE(freqs));
+    if (n_freqs == 0) return NULL;
+
+    const size_t old_n_freqs = n_freqs;
+    *n_output = 0;
+    struct osw_channel_state *output = NULL;
+    while (n_freqs > 0) {
+        const uint16_t puncture_bit = (1 << (n_freqs - 1));
+        const bool punctured = ((c->puncture_bitmap & puncture_bit) != 0);
+        const bool not_punctured = (punctured == false);
+        size_t i;
+        for (i = 0; i < n_channel_states && not_punctured; i++) {
+            const struct osw_channel_state *cs = &channel_states[i];
+            const struct osw_channel *oc = &cs->channel;
+            const int oc_freq = oc->control_freq_mhz;
+            if (oc_freq == freqs[n_freqs - 1]) {
+                (*n_output)++;
+                output = REALLOC(output, (*n_output) * sizeof(*output));
+                output[*n_output - 1] = *cs;
+            }
+        }
+        n_freqs--;
+    }
+    if (*n_output != old_n_freqs) {
+        FREE(output);
+        output = NULL;
+        *n_output = 0;
+    }
+    return output;
 }
 
 bool
@@ -1447,6 +1580,21 @@ osw_cs_chan_is_control_dfs(const struct osw_channel_state *cs,
         n_cs--;
     }
     return false;
+}
+
+enum osw_band
+osw_cs_chan_get_band(const struct osw_channel_state *cs, const int n_cs)
+{
+    if (n_cs < 1)
+        return OSW_BAND_UNDEFINED;
+    enum osw_band prev_band = osw_channel_to_band(&cs[0].channel);
+    for (int i = 1; i < n_cs; i++)
+    {
+        const enum osw_band chan_band = osw_channel_to_band(&cs[i].channel);
+        if (prev_band != chan_band)
+            return OSW_BAND_UNDEFINED;
+    }
+    return prev_band;
 }
 
 int
@@ -1563,9 +1711,13 @@ osw_suite_into_akm(const uint32_t s)
         case OSW_SUITE_AKM_RSN_FT_EAP: return OSW_AKM_RSN_FT_EAP;
         case OSW_SUITE_AKM_RSN_FT_PSK: return OSW_AKM_RSN_FT_PSK;
         case OSW_SUITE_AKM_RSN_EAP_SHA256: return OSW_AKM_RSN_EAP_SHA256;
+        case OSW_SUITE_AKM_RSN_EAP_SHA384: return OSW_AKM_RSN_EAP_SHA384;
         case OSW_SUITE_AKM_RSN_PSK_SHA256: return OSW_AKM_RSN_PSK_SHA256;
         case OSW_SUITE_AKM_RSN_SAE: return OSW_AKM_RSN_SAE;
+        case OSW_SUITE_AKM_RSN_SAE_EXT: return OSW_AKM_RSN_SAE_EXT;
         case OSW_SUITE_AKM_RSN_FT_SAE: return OSW_AKM_RSN_FT_SAE;
+        case OSW_SUITE_AKM_RSN_FT_SAE_EXT: return OSW_AKM_RSN_FT_SAE_EXT;
+        case OSW_SUITE_AKM_RSN_EAP_SUITE_B: return OSW_AKM_RSN_EAP_SUITE_B;
         case OSW_SUITE_AKM_RSN_EAP_SUITE_B_192: return OSW_AKM_RSN_EAP_SUITE_B_192;
         case OSW_SUITE_AKM_RSN_FT_EAP_SHA384: return OSW_AKM_RSN_FT_EAP_SHA384;
         case OSW_SUITE_AKM_RSN_FT_PSK_SHA384: return OSW_AKM_RSN_FT_PSK_SHA384;
@@ -1589,9 +1741,13 @@ osw_suite_from_akm(const enum osw_akm akm)
         case OSW_AKM_RSN_FT_EAP: return OSW_SUITE_AKM_RSN_FT_EAP;
         case OSW_AKM_RSN_FT_PSK: return OSW_SUITE_AKM_RSN_FT_PSK;
         case OSW_AKM_RSN_EAP_SHA256: return OSW_SUITE_AKM_RSN_EAP_SHA256;
+        case OSW_AKM_RSN_EAP_SHA384: return OSW_SUITE_AKM_RSN_EAP_SHA384;
         case OSW_AKM_RSN_PSK_SHA256: return OSW_SUITE_AKM_RSN_PSK_SHA256;
         case OSW_AKM_RSN_SAE: return OSW_SUITE_AKM_RSN_SAE;
+        case OSW_AKM_RSN_SAE_EXT: return OSW_SUITE_AKM_RSN_SAE_EXT;
         case OSW_AKM_RSN_FT_SAE: return OSW_SUITE_AKM_RSN_FT_SAE;
+        case OSW_AKM_RSN_FT_SAE_EXT: return OSW_SUITE_AKM_RSN_FT_SAE_EXT;
+        case OSW_AKM_RSN_EAP_SUITE_B: return OSW_SUITE_AKM_RSN_EAP_SUITE_B;
         case OSW_AKM_RSN_EAP_SUITE_B_192: return OSW_SUITE_AKM_RSN_EAP_SUITE_B_192;
         case OSW_AKM_RSN_FT_EAP_SHA384: return OSW_SUITE_AKM_RSN_FT_EAP_SHA384;
         case OSW_AKM_RSN_FT_PSK_SHA384: return OSW_SUITE_AKM_RSN_FT_PSK_SHA384;
@@ -1665,9 +1821,13 @@ osw_akm_into_cstr(const enum osw_akm akm)
         case OSW_AKM_RSN_FT_EAP: return "rsn-ft-eap";
         case OSW_AKM_RSN_FT_PSK: return "rsn-ft-psk";
         case OSW_AKM_RSN_EAP_SHA256: return "rsn-eap-sha256";
+        case OSW_AKM_RSN_EAP_SHA384: return "rsn-eap-sha384";
         case OSW_AKM_RSN_PSK_SHA256: return "rsn-psk-sha256";
         case OSW_AKM_RSN_SAE: return "rsn-sae";
+        case OSW_AKM_RSN_SAE_EXT: return "rsn-sae-ext";
         case OSW_AKM_RSN_FT_SAE: return "rsn-ft-sae";
+        case OSW_AKM_RSN_FT_SAE_EXT: return "rsn-ft-sae-ext";
+        case OSW_AKM_RSN_EAP_SUITE_B: return "rsn-eap-suite-b";
         case OSW_AKM_RSN_EAP_SUITE_B_192: return "rsn-eap-suite-b-192";
         case OSW_AKM_RSN_FT_EAP_SHA384: return "rsn-ft-eap-sha384";
         case OSW_AKM_RSN_FT_PSK_SHA384: return "rsn-ft-psk-sha384";
@@ -1860,6 +2020,46 @@ osw_radius_list_to_str(char *out,
         out[-1] = 0;
 }
 
+int
+osw_nas_id_cmp(const struct osw_nas_id *a,
+               const struct osw_nas_id *b)
+{
+    assert(a != NULL);
+    assert(b != NULL);
+
+    const size_t max_len = sizeof(a->buf);
+    WARN_ON(strnlen(a->buf, max_len) == max_len);
+    WARN_ON(strnlen(b->buf, max_len) == max_len);
+    return strncmp(a->buf, b->buf, max_len);
+}
+
+bool
+osw_nas_id_is_equal(const struct osw_nas_id *a,
+                    const struct osw_nas_id *b)
+{
+    return (osw_nas_id_cmp(a, b) == 0);
+}
+
+int
+osw_ft_encr_key_cmp(const struct osw_ft_encr_key *a,
+                    const struct osw_ft_encr_key *b)
+{
+    assert(a != NULL);
+    assert(b != NULL);
+
+    const size_t max_len = sizeof(a->buf);
+    WARN_ON(strnlen(a->buf, max_len) == max_len);
+    WARN_ON(strnlen(b->buf, max_len) == max_len);
+    return strncmp(a->buf, b->buf, max_len);
+}
+
+bool
+osw_ft_encr_key_is_equal(const struct osw_ft_encr_key *a,
+                         const struct osw_ft_encr_key *b)
+{
+    return (osw_ft_encr_key_cmp(a, b) == 0);
+}
+
 bool
 osw_passpoint_str_list_is_equal(char **const a,
                                 char **const b,
@@ -1884,8 +2084,7 @@ osw_passpoint_is_equal(const struct osw_passpoint *a,
                        const struct osw_passpoint *b)
 {
     if (a->hs20_enabled != b->hs20_enabled) return false;
-    if (a->hessid.len != b->hessid.len) return false;
-    if (STRSCMP(a->hessid.buf, b->hessid.buf) != 0) return false;
+    if (!osw_hwaddr_is_equal(&a->hessid, &b->hessid)) return false;
     if (a->osu_ssid.len != b->osu_ssid.len) return false;
     if (STRSCMP(a->osu_ssid.buf, b->osu_ssid.buf) != 0) return false;
     if (STRSCMP(a->t_c_filename, b->t_c_filename) != 0) return false;
@@ -2115,6 +2314,13 @@ osw_hwaddr_write(const struct osw_hwaddr *addr,
 {
     if (WARN_ON(buf_len < sizeof(addr->octet))) return;
     memcpy(buf, addr, sizeof(addr->octet));
+}
+
+bool
+osw_wpa_is_ft(const struct osw_wpa *wpa)
+{
+    return wpa->akm_ft_eap || wpa->akm_ft_psk || wpa->akm_ft_sae ||
+           wpa->akm_ft_sae_ext || wpa->akm_ft_eap_sha384;
 }
 
 #include "osw_types_ut.c"

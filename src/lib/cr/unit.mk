@@ -26,12 +26,16 @@ UNIT_NAME := cr
 UNIT_TYPE := LIB
 UNIT_SRC += src/cr_ev.c
 UNIT_SRC += src/cr_sleep.c
-UNIT_SRC += src/cr_nl_cmd.c
 UNIT_CFLAGS += -I$(UNIT_PATH)/inc
-UNIT_CFLAGS += $(LIBNL3_HEADERS)
 UNIT_LDFLAGS += -lev
+
+ifneq (,$(wildcard $(TARGET_DIR)/usr/include/libnl3)$(LIBNL3_HEADERS))
+UNIT_SRC += src/cr_nl_cmd.c
+UNIT_CFLAGS += $(LIBNL3_HEADERS)
 UNIT_LDFLAGS += -lnl-3
 UNIT_LDFLAGS += -lnl-genl-3
+endif
+
 UNIT_EXPORT_CFLAGS += -I$(UNIT_PATH)/inc
 UNIT_EXPORT_CFLAGS += $(UNIT_CFLAGS)
 UNIT_EXPORT_LDFLAGS += $(UNIT_LDFLAGS)

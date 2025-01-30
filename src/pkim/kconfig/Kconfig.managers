@@ -1,0 +1,12 @@
+menuconfig MANAGER_PKIM
+    bool "PKI Manager (PKIM)"
+    default n
+    help
+        Enable PKI Manager (PKIM)
+
+    config MANAGER_PKIM_CFG
+        depends on MANAGER_PKIM
+        string "PKIM Startup configuration"
+        default "pkim;true;needs_plan_b=false"
+        help
+            PKI Manager startup configuration

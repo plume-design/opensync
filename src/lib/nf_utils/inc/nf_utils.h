@@ -164,6 +164,9 @@ struct nf_ct_context
     struct nlmsghdr *nlh;
     int fd;
 
+    /* for reading conntrack events */
+    void (*conntrack_update_cb)(void *data);
+
     uint16_t zone_id;
 };
 
@@ -271,7 +274,7 @@ bool nf_queue_backoff_update(bool enable, uint32_t queue_num);
 /* NF CONNTRACK APIs */
 int nf_process_ct_cb(const struct nlmsghdr *nlh, void *data);
 
-int nf_ct_init(struct ev_loop *loop);
+int nf_ct_init(struct ev_loop *loop, void(*callback)(void *data));
 
 int nf_ct_exit(void);
 

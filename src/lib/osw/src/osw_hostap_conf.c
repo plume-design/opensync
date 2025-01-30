@@ -359,8 +359,7 @@ hapd_util_hapd_conf_to_passpoint(const struct osw_hostap_conf_ap_state_bufs *buf
 
     const char *hessid = ini_geta(conf_buf, "hessid");
     if (hessid != NULL) {
-        STRSCPY_WARN(passpoint->hessid.buf, hessid);
-        passpoint->hessid.len = strlen(hessid);
+        WARN_ON(osw_hwaddr_from_cstr(hessid, &passpoint->hessid) == false);
         passpoint->hs20_enabled = true;
     }
     const char *osu_ssid = ini_geta(conf_buf, "osu_ssid");
@@ -754,39 +753,34 @@ osw_hostap_conf_osw_wpa_to_wpa_key_mgmt(const struct osw_drv_vif_config_ap *ap,
     char wpa_key_mgmt[128] = {0};
     if (ap->wpa.akm_psk)           STRSCAT(wpa_key_mgmt, "WPA-PSK ");
     if (ap->wpa.akm_sae)           STRSCAT(wpa_key_mgmt, "SAE ");
+    if (ap->wpa.akm_sae_ext)       STRSCAT(wpa_key_mgmt, "SAE-EXT-KEY ");
     if (ap->wpa.akm_ft_psk)        STRSCAT(wpa_key_mgmt, "FT-PSK ");
     if (ap->wpa.akm_ft_sae)        STRSCAT(wpa_key_mgmt, "FT-SAE ");
+    if (ap->wpa.akm_ft_sae_ext)    STRSCAT(wpa_key_mgmt, "FT-SAE-EXT-KEY ");
     if (ap->wpa.akm_eap)           STRSCAT(wpa_key_mgmt, "WPA-EAP ");
     if (ap->wpa.akm_ft_eap)        STRSCAT(wpa_key_mgmt, "FT-EAP ");
-#if 0
     if (ap->wpa.akm_eap_sha256)    STRSCAT(wpa_key_mgmt, "WPA-EAP-SHA256 ");
+    if (ap->wpa.akm_eap_sha384)    STRSCAT(wpa_key_mgmt, "WPA-EAP-SHA384 ");
     if (ap->wpa.akm_psk_sha256)    STRSCAT(wpa_key_mgmt, "WPA-PSK-SHA256 ");
-    if (ap->wpa.akm_suite_b192)    STRSCAT(wpa_key_mgmt, "WPA-EAP-SUITE-B-192 ");
+    if (ap->wpa.akm_eap_suite_b)   STRSCAT(wpa_key_mgmt, "WPA-EAP-SUITE-B ");
+    if (ap->wpa.akm_eap_suite_b192) STRSCAT(wpa_key_mgmt, "WPA-EAP-SUITE-B-192 ");
     if (ap->wpa.akm_ft_eap_sha384) STRSCAT(wpa_key_mgmt, "FT-EAP-SHA384 ");
-#endif
     /* commit */
     const bool not_empty = (strlen(wpa_key_mgmt) > 0);
     if (not_empty) OSW_HOSTAP_CONF_SET_BUF(conf->wpa_key_mgmt, wpa_key_mgmt);
-}
-
-static bool
-hapd_util_hapd_pairwise_to_osw(const char *pairwise,
-                               struct osw_wpa *osw_wpa)
-{
-    if (!pairwise) return false;
-    if (strstr(pairwise, "TKIP")) osw_wpa->pairwise_tkip = true;
-    if (strstr(pairwise, "CCMP")) osw_wpa->pairwise_ccmp = true;
-    return true;
 }
 
 static void
 osw_hostap_conf_osw_wpa_to_pairwise(const struct osw_drv_vif_config_ap *ap,
                                     struct osw_hostap_conf_ap_config *conf)
 {
-    char wpa_pairwise[16] = {0};
+    char wpa_pairwise[32] = {0};
 
     if (ap->wpa.pairwise_tkip) STRSCAT(wpa_pairwise, "TKIP ");
     if (ap->wpa.pairwise_ccmp) STRSCAT(wpa_pairwise, "CCMP ");
+    if (ap->wpa.pairwise_ccmp256) STRSCAT(wpa_pairwise, "CCMP-256 ");
+    if (ap->wpa.pairwise_gcmp) STRSCAT(wpa_pairwise, "GCMP ");
+    if (ap->wpa.pairwise_gcmp256) STRSCAT(wpa_pairwise, "GCMP-256 ");
     /* commit */
     if (strlen(wpa_pairwise)) OSW_HOSTAP_CONF_SET_BUF(conf->wpa_pairwise, wpa_pairwise);
 }
@@ -1002,8 +996,10 @@ osw_hostap_conf_osw_wpa_to_passpoint(const struct osw_drv_vif_config_ap *ap,
     OSW_HOSTAP_CONF_SET_VAL(conf->hs20, ap->passpoint.hs20_enabled);
     OSW_HOSTAP_CONF_SET_VAL(conf->interworking, true);
 
-    if (ap->passpoint.hessid.len > 0)
-        OSW_HOSTAP_CONF_SET_BUF(conf->hessid, ap->passpoint.hessid.buf);
+    if (!osw_hwaddr_is_zero(&ap->passpoint.hessid)) {
+        struct osw_hwaddr_str hessid;
+        OSW_HOSTAP_CONF_SET_BUF(conf->hessid, osw_hwaddr2str(&ap->passpoint.hessid, &hessid));
+    }
 
     if (ap->passpoint.osu_ssid.len > 0)
         OSW_HOSTAP_CONF_SET_BUF(conf->osu_ssid, ap->passpoint.osu_ssid.buf);
@@ -1108,6 +1104,38 @@ osw_hostap_conf_osw_wpa_to_radius_list(const struct osw_drv_vif_config_ap *ap,
 }
 
 static void
+osw_hostap_conf_osw_wpa_to_rxkhs(const struct osw_drv_vif_config_ap *ap,
+                                 struct osw_hostap_conf_ap_config *conf)
+{
+    if (!osw_wpa_is_ft(&ap->wpa)) return;
+
+    MEMZERO(conf->rxkh_buf);
+
+    const struct osw_neigh_ft_list *neigh_ft_list = &ap->neigh_ft_list;
+    struct osw_neigh_ft *neigh_ft = neigh_ft_list->list;
+    size_t k;
+
+    for (k = 0; k < neigh_ft_list->count; k++) {
+        STRSCAT(conf->rxkh_buf, strfmta("r0kh="OSW_HWADDR_FMT, OSW_HWADDR_ARG(&neigh_ft->bssid)));
+        STRSCAT(conf->rxkh_buf, strfmta(" "OSW_NAS_ID_FMT, OSW_NAS_ID_ARG(&neigh_ft->nas_identifier)));
+        STRSCAT(conf->rxkh_buf, strfmta(" "OSW_FT_ENCR_KEY_FMT"\n", OSW_FT_ENCR_KEY_ARG(&neigh_ft->ft_encr_key)));
+
+        neigh_ft++;
+    }
+
+    neigh_ft_list = &ap->neigh_ft_list;
+    neigh_ft = neigh_ft_list->list;
+
+    for (k = 0; k < neigh_ft_list->count; k++) {
+        STRSCAT(conf->rxkh_buf, strfmta("r1kh="OSW_HWADDR_FMT, OSW_HWADDR_ARG(&neigh_ft->bssid)));
+        STRSCAT(conf->rxkh_buf, strfmta(" "OSW_HWADDR_FMT, OSW_HWADDR_ARG(&neigh_ft->bssid)));
+        STRSCAT(conf->rxkh_buf, strfmta(" "OSW_FT_ENCR_KEY_FMT"\n", OSW_FT_ENCR_KEY_ARG(&neigh_ft->ft_encr_key)));
+
+        neigh_ft++;
+    }
+}
+
+static void
 osw_hostap_conf_osw_wpa_to_vht_capab(const struct osw_drv_vif_config_ap *ap,
                                      struct osw_hostap_conf_ap_config *conf)
 {
@@ -1208,17 +1236,23 @@ osw_hostap_conf_osw_wpa_to_enterprise(const struct osw_drv_vif_config_ap *ap,
                                       struct osw_hostap_conf_ap_config *conf)
 {
     if (!(ap->wpa.akm_eap ||
-          ap->wpa.akm_ft_eap ||
-#if 0
           ap->wpa.akm_eap_sha256 ||
+          ap->wpa.akm_eap_sha384 ||
+          ap->wpa.akm_ft_eap ||
           ap->wpa.akm_ft_eap_sha384 ||
-#endif
+          ap->wpa.akm_eap_suite_b ||
+          ap->wpa.akm_eap_suite_b192 ||
           false))
         return;
 
     OSW_HOSTAP_CONF_SET_VAL(conf->ieee8021x, 1);
     OSW_HOSTAP_CONF_SET_VAL(conf->auth_algs, 1);
     OSW_HOSTAP_CONF_SET_BUF(conf->nas_identifier, ap->nas_identifier.buf);
+    OSW_HOSTAP_CONF_SET_VAL(conf->ft_over_ds, ap->ft_over_ds);
+    OSW_HOSTAP_CONF_SET_VAL(conf->ft_r0_key_lifetime, ap->ft_pmk_r0_key_lifetime_sec);
+    OSW_HOSTAP_CONF_SET_VAL(conf->r1_max_key_lifetime, ap->ft_pmk_r1_max_key_lifetime_sec);
+    OSW_HOSTAP_CONF_SET_VAL(conf->pmk_r1_push, ap->ft_pmk_r1_push);
+    OSW_HOSTAP_CONF_SET_VAL(conf->ft_psk_generate_local, ap->ft_psk_generate_local);
 }
 
 void
@@ -1357,6 +1391,7 @@ osw_hostap_conf_fill_ap_config(struct osw_drv_conf *drv_conf,
     /* WPA Enterprise/IEEE 802.1x configuration */
     osw_hostap_conf_osw_wpa_to_enterprise  (ap, conf);
     osw_hostap_conf_osw_wpa_to_radius_list (ap, conf);
+    osw_hostap_conf_osw_wpa_to_rxkhs       (ap, conf);
 
     /*  WPA/IEEE 802.11kv configuration       */
     osw_hostap_conf_osw_wpa_to_btm         (ap, conf);
@@ -1480,6 +1515,14 @@ osw_hostap_conf_generate_ap_config_bufs(struct osw_hostap_conf_ap_config *conf)
     /* IEEE 802.11r configuration */
     CONF_APPEND(mobility_domain, "%04x");
     CONF_APPEND(nas_identifier, "%s");
+    CONF_APPEND(ft_encr_key, "%s");
+    CONF_APPEND(ft_over_ds, "%d");
+    CONF_APPEND(pmk_r1_push, "%d");
+    CONF_APPEND(ft_psk_generate_local, "%d");
+    CONF_APPEND(ft_r0_key_lifetime, "%d");
+    CONF_APPEND(r1_max_key_lifetime, "%d");
+    CONF_APPEND(rxkh_file, "%s");
+    CONF_APPEND(ft_rrb_lo_sock, "%d");
     /* FIXME */
 
     /* Wi-Fi Protected Setup (WPS) */
@@ -1597,6 +1640,87 @@ osw_hostap_conf_fill_ap_state_neighbors(const struct osw_hostap_conf_ap_state_bu
 }
 
 static void
+osw_hostap_conf_fill_ap_state_neighbors_ft(const struct osw_hostap_conf_ap_state_bufs *bufs,
+                                           struct osw_drv_vif_state *vstate)
+{
+    const char *show_rxkhs = bufs->show_rxkhs;
+    struct osw_drv_vif_state_ap *ap = &vstate->u.ap;
+    struct osw_neigh_ft_list *neighbor_ft_list;
+    struct osw_neigh_ft *neighbor_ft;
+    char *cpy_show_rxkhs = NULL;
+    char *line;
+
+    if (show_rxkhs != NULL && strlen(show_rxkhs) > 0) {
+        cpy_show_rxkhs = STRDUP(show_rxkhs);
+    }
+
+    neighbor_ft_list = &ap->neigh_ft_list;
+    neighbor_ft_list->count = 0;
+    neighbor_ft_list->list = CALLOC(1, sizeof(struct osw_neigh_ft));
+
+    if (cpy_show_rxkhs != NULL) {
+        neighbor_ft_list->list = REALLOC(neighbor_ft_list->list,
+        (neighbor_ft_list->count + 1) * sizeof(struct osw_neigh_ft));
+
+        neighbor_ft = &neighbor_ft_list->list[neighbor_ft_list->count];
+        MEMZERO(*neighbor_ft);
+
+        char *tokens = cpy_show_rxkhs;
+        while ((line = strsep(&tokens, "\n")) != NULL) {
+            const char *prefix = strsep(&line, "=");
+            if (prefix && strcmp(prefix, "r0kh") == 0) {
+                const char *bssid = strsep(&line, " ");
+                const char *nas_id = strsep(&line, " ");
+                const char *ft_encr_key = strsep(&line, " ");
+                const bool bssid_ok = osw_hwaddr_from_cstr(bssid ?: "", &neighbor_ft->bssid);
+
+                if (nas_id && ft_encr_key && bssid_ok) {
+                    STRSCPY(neighbor_ft->nas_identifier.buf, nas_id);
+                    STRSCPY(neighbor_ft->ft_encr_key.buf, ft_encr_key);
+                    neighbor_ft_list->count++;
+                }
+            }
+        }
+    }
+
+    FREE(cpy_show_rxkhs);
+}
+
+static void
+hapd_util_hapd_conf_ft_encry_key_get(const struct osw_hostap_conf_ap_state_bufs *bufs,
+                                     struct osw_drv_vif_state *vstate)
+{
+    const char *show_rxkhs = bufs->show_rxkhs;
+    struct osw_drv_vif_state_ap *ap = &vstate->u.ap;
+    struct osw_hwaddr bssid_tmp;
+    char *cpy_show_rxkhs = NULL;
+    char *line;
+
+    if (show_rxkhs != NULL && strlen(show_rxkhs) > 0) {
+        cpy_show_rxkhs = STRDUP(show_rxkhs);
+    }
+
+    if (cpy_show_rxkhs != NULL) {
+        char *tokens = cpy_show_rxkhs;
+        while ((line = strsep(&tokens, "\n")) != NULL) {
+            const char *prefix = strsep(&line, "=");
+            if (prefix && strcmp(prefix, "r0kh") == 0) {
+                const char *bssid = strsep(&line, " ");
+                const char *nas_id = strsep(&line, " ");
+                const char *ft_encr_key = strsep(&line, " ");
+                const bool bssid_ok = osw_hwaddr_from_cstr(bssid ?: "", &bssid_tmp);
+
+                if (nas_id && ft_encr_key && bssid_ok && osw_hwaddr_cmp(&bssid_tmp, &vstate->mac_addr)) {
+                    STRSCPY(ap->ft_encr_key.buf, ft_encr_key);
+                }
+            }
+        }
+    }
+
+    FREE(cpy_show_rxkhs);
+}
+
+static void
 osw_hostap_conf_fill_ap_state_acl(const struct osw_hostap_conf_ap_state_bufs *bufs,
                                         struct osw_drv_vif_state *vstate)
 {
@@ -1681,6 +1805,7 @@ osw_hostap_conf_fill_ap_state(const struct osw_hostap_conf_ap_state_bufs *bufs,
 
     /* Fill in neighbors list */
     osw_hostap_conf_fill_ap_state_neighbors(bufs, vstate);
+    osw_hostap_conf_fill_ap_state_neighbors_ft(bufs, vstate);
 
     STATE_GET_BY_FN(vstate->status,              status, "state",
                     hapd_util_vif_enabled_to_osw);
@@ -1764,12 +1889,18 @@ osw_hostap_conf_fill_ap_state(const struct osw_hostap_conf_ap_state_bufs *bufs,
     /* It's safe to call below twice as pairwise_to_osw only
      * sets. This will result in sum of the two in ap->wpa */
     STATE_GET_BY_FN(ap->wpa,                     get_config, "wpa_pairwise_cipher",
-                    hapd_util_hapd_pairwise_to_osw);
+                    osw_hostap_util_pairwise_to_osw);
     STATE_GET_BY_FN(ap->wpa,                     get_config, "rsn_pairwise_cipher",
-                    hapd_util_hapd_pairwise_to_osw);
+                    osw_hostap_util_pairwise_to_osw);
 
     STATE_GET_INT(ap->wpa.group_rekey_seconds,   config, "wpa_group_rekey");
     STATE_GET_INT(ap->wpa.ft_mobility_domain,    config, "mobility_domain");
+
+    STATE_GET_INT(ap->ft_pmk_r0_key_lifetime_sec, config, "ft_r0_key_lifetime");
+    STATE_GET_INT(ap->ft_pmk_r1_max_key_lifetime_sec, config, "r1_max_key_lifetime");
+    STATE_GET_BOOL(ap->ft_over_ds,               config, "ft_over_ds");
+    STATE_GET_BOOL(ap->ft_pmk_r1_push,           config, "pmk_r1_push");
+    STATE_GET_BOOL(ap->ft_psk_generate_local,    config, "ft_psk_generate_local");
 
     STATE_GET_BY_FN(ap->wpa,                     config, "ieee80211w",
                     osw_hostap_util_ieee80211w_to_osw);
@@ -1786,6 +1917,7 @@ osw_hostap_conf_fill_ap_state(const struct osw_hostap_conf_ap_state_bufs *bufs,
 
     hapd_util_hapd_mib_to_radius_list(bufs, &ap->radius_list, &ap->acct_list);
     hapd_util_hapd_conf_to_passpoint(bufs, &ap->passpoint);
+    hapd_util_hapd_conf_ft_encry_key_get(bufs, vstate);
 }
 
 #include "osw_hostap_conf_ut.c.h"

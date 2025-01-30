@@ -200,6 +200,15 @@ ovsdb_col_t;
 
 #define OMT_ALL         (OMT_INITIAL | OMT_INSERT | OMT_DELETE | OMT_MODIFY)
 
+
+/*
+ * Printing UUIDs utilities
+ */
+#define OVSDB_SHORT_UUID_FMT "%.4s~%.4s"
+#define OVSDB_SHORT_UUID_ARG(x) \
+    (x) ?: "????",              \
+    (strlen((x) ?: "") >= 4 ? ((x) + strlen((x)) - 4) : "????")
+
 /* API */
 typedef void ovsdb_ready_fn_t(void *priv);
 bool ovsdb_init_loop(struct ev_loop *loop, const char *name);

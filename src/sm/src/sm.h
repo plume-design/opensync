@@ -143,8 +143,6 @@ void sm_mqtt_stop(void);
 bool sm_capacity_report_request(
         radio_entry_t              *radio_cfg,
         sm_stats_request_t         *request);
-bool sm_capacity_report_radio_change(
-        radio_entry_t              *radio_cfg);
 #endif
 
 /******************************************************************************
@@ -159,8 +157,6 @@ bool sm_device_report_request(
 bool sm_survey_report_request(
         radio_entry_t              *radio_cfg,
         sm_stats_request_t         *request);
-bool sm_survey_report_radio_change(
-        radio_entry_t              *radio_cfg);
 
 /******************************************************************************
  *  CLIENT REPORT definitions
@@ -168,8 +164,6 @@ bool sm_survey_report_radio_change(
 bool sm_client_report_request(
         radio_entry_t              *radio_cfg,
         sm_stats_request_t         *request);
-bool sm_client_report_radio_change(
-        radio_entry_t              *radio_cfg);
 
 #ifdef CONFIG_SM_UPLINK_STATS
 bool sm_client_report_uplink_change(
@@ -186,8 +180,6 @@ bool sm_cmu_get_type_for_used_link(
 bool sm_neighbor_report_request(
         radio_entry_t              *radio_cfg,
         sm_stats_request_t         *request);
-bool sm_neighbor_report_radio_change (
-        radio_entry_t              *radio_cfg);
 
 /* Special case update neighbor through survey to minimize scans */
 bool sm_neighbor_stats_results_update(
@@ -201,8 +193,6 @@ bool sm_neighbor_stats_results_update(
 bool sm_rssi_report_request(
         radio_entry_t              *radio_cfg,
         sm_stats_request_t         *request);
-bool sm_rssi_report_radio_change (
-        radio_entry_t              *radio_cfg);
 
 /* Special update for neighbor and client RSSI updates */
 bool sm_rssi_stats_results_update(
@@ -213,14 +203,6 @@ bool sm_rssi_stats_results_update(
         uint64_t                    tx_ppdus,
         rssi_source_t               source);
 bool sm_rssi_is_reporting_enabled (
-        radio_entry_t              *radio_cfg);
-
-/******************************************************************************
- *  RADIO definitions
- *****************************************************************************/
-bool sm_radio_config_enable_tx_stats(
-        radio_entry_t              *radio_cfg);
-bool sm_radio_config_enable_fast_scan(
         radio_entry_t              *radio_cfg);
 
 /******************************************************************************

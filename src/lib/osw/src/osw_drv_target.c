@@ -30,6 +30,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <osw_state.h>
 #include <osw_module.h>
 #include <osw_ut.h>
+#include <osw_etc.h>
 #include <target.h>
 #include <target_bsal.h>
 #include <memutil.h>
@@ -140,7 +141,7 @@ osw_drv_target_request_config_cb(struct osw_drv *drv,
 static bool
 osw_drv_target_enabled(void)
 {
-    if (getenv("OSW_DRV_TARGET_DISABLED") == NULL)
+    if (osw_etc_get("OSW_DRV_TARGET_DISABLED") == NULL)
         return true;
     else
         return false;
@@ -149,7 +150,7 @@ osw_drv_target_enabled(void)
 static bool
 osw_drv_target_ovsdb_enabled(void)
 {
-    if (getenv("OSW_DRV_TARGET_OVSDB_DISABLED") == NULL)
+    if (osw_etc_get("OSW_DRV_TARGET_OVSDB_DISABLED") == NULL)
         return true;
     else
         return false;
@@ -1183,6 +1184,11 @@ osw_drv_target_vifconf2schema(struct osw_drv_vif_config *vif,
             SCHEMA_SET_BOOL(vconf->uapsd_enable, ap->mode.wmm_uapsd_enabled);
             SCHEMA_SET_BOOL(vconf->wps, ap->mode.wps);
             osw_drv_target_wpa2schema(vconf, vchanged, &ap->wpa, ap->wpa_changed);
+            SCHEMA_SET_BOOL(vconf->ft_over_ds, ap->ft_over_ds);
+            SCHEMA_SET_BOOL(vconf->ft_pmk_r1_push, ap->ft_pmk_r1_push);
+            SCHEMA_SET_BOOL(vconf->ft_psk_generate_local, ap->ft_psk_generate_local);
+            SCHEMA_SET_INT(vconf->ft_pmk_r0_key_lifetime_sec, ap->ft_pmk_r0_key_lifetime_sec);
+            SCHEMA_SET_INT(vconf->ft_pmk_r1_max_key_lifetime_sec, ap->ft_pmk_r1_max_key_lifetime_sec);
 
             // FIXME: ft, 802.1x, dpp
 
@@ -1507,6 +1513,7 @@ osw_drv_target_schema2vifstate(const struct schema_Wifi_VIF_State *vstate,
         case OSW_VIF_AP:
             STRSCPY_WARN(info->u.ap.bridge_if_name.buf, vstate->bridge);
             STRSCPY_WARN(info->u.ap.nas_identifier.buf, vstate->nas_identifier);
+            STRSCPY_WARN(info->u.ap.ft_encr_key.buf, vstate->ft_encr_key);
             STRSCPY_WARN(info->u.ap.ssid.buf, vstate->ssid);
             info->u.ap.ssid.len = strlen(vstate->ssid);
             info->u.ap.beacon_interval_tu = rstate->bcn_int;
@@ -1523,6 +1530,11 @@ osw_drv_target_schema2vifstate(const struct schema_Wifi_VIF_State *vstate,
             info->u.ap.mode.wmm_enabled = true;
             info->u.ap.mode.wmm_uapsd_enabled = vstate->uapsd_enable;
             info->u.ap.mode.wps = vstate->wps;
+            info->u.ap.ft_over_ds = vstate->ft_over_ds;
+            info->u.ap.ft_pmk_r0_key_lifetime_sec = vstate->ft_pmk_r0_key_lifetime_sec;
+            info->u.ap.ft_pmk_r1_max_key_lifetime_sec = vstate->ft_pmk_r1_max_key_lifetime_sec;
+            info->u.ap.ft_pmk_r1_push = vstate->ft_pmk_r1_push;
+            info->u.ap.ft_psk_generate_local = vstate->ft_psk_generate_local;
             if (strcmp(rstate->hw_mode, "11ax") == 0) {
                 info->u.ap.mode.ht_enabled = true;
                 info->u.ap.mode.vht_enabled = true;
@@ -2985,6 +2997,12 @@ OSW_UT(osw_drv_target_ut_phyconf2schema)
         .enabled_changed = true,
         .tx_chainmask = 0x0f,
         .tx_chainmask_changed = true,
+        .radar_next_channel = {
+            .control_freq_mhz = 5785,
+            .width = OSW_CHANNEL_80MHZ,
+            .center_freq0_mhz = 5775,
+        },
+        .radar_next_channel_changed = true,
         .radar = OSW_RADAR_DETECT_DISABLED,
         .radar_changed = true,
         .vif_list = {

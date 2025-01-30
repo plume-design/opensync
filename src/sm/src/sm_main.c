@@ -143,6 +143,7 @@ int main (int argc, char **argv)
 
     ev_run(EV_DEFAULT, 0);
 
+    sm_cancel_monitor();
     target_close(TARGET_INIT_MGR_SM, loop);
 
     sm_healthcheck_stop_all();

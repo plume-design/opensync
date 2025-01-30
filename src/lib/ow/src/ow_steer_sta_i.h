@@ -38,6 +38,7 @@ struct ow_steer_sta {
     struct osw_state_observer state_observer;
     struct osw_timer executor_timer;
     struct ow_steer_candidate_assessor *candidate_assessor;
+    char* log_prefix;
 
     struct ds_dlist_node node;
 };

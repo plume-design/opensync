@@ -211,13 +211,21 @@ wano_plugin_handle_t *wanp_dhcpv4_init(
 void wanp_dhcpv4_run(wano_plugin_handle_t *wh)
 {
     struct wanp_dhcpv4_handle *self = CONTAINER_OF(wh, struct wanp_dhcpv4_handle, wd4_handle);
+    wano_wan_t *wan = wano_wan_from_plugin_handle(wh);
 
     (void)wanp_dhcpv4_inet_state_event_fn;
 
     self->wd4_have_config = wano_wan_config_get(
-            wano_wan_from_plugin_handle(wh),
+            wan,
             WC_TYPE_DHCP,
             &self->wd4_wan_config);
+
+    if (!self->wd4_have_config && !wano_wan_is_last_config(wan))
+    {
+        LOG(INFO, "wanp_dhcpv4: %s: WAN config not exhausted yet, skipping.", wh->wh_ifname);
+        self->wd4_status_fn(wh, &WANO_PLUGIN_STATUS(WANP_SKIP));
+        return;
+    }
 
     /* Register to Wifi_Inet_State events, this will also kick-off the state machine */
     wano_inet_state_event_init(

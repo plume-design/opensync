@@ -49,7 +49,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * @return true if duplicated, false otherwise
  */
 static bool 
-intf_stats_str_duplicate(char *src, char **dst)
+intf_stats_str_duplicate(char *src, char **dst, size_t max)
 {
     if (src == NULL)
     {
@@ -57,7 +57,7 @@ intf_stats_str_duplicate(char *src, char **dst)
         return true;
     }
 
-    *dst = strndup(src, MAX_STRLEN);
+    *dst = strndup(src, max);
     if (*dst == NULL)
     {
         LOGE("%s: could not duplicate %s", __func__, src);
@@ -95,10 +95,10 @@ intf_stats_set_node_info(node_info_t *node)
     interfaces__intf_stats__observation_point__init(pb);
 
     /* Set the protobuf fields */
-    ret = intf_stats_str_duplicate(node->node_id, &pb->node_id);
+    ret = intf_stats_str_duplicate(node->node_id, &pb->node_id, MAX_STRLEN);
     if (!ret) goto err_free_pb;
 
-    ret = intf_stats_str_duplicate(node->location_id, &pb->location_id);
+    ret = intf_stats_str_duplicate(node->location_id, &pb->location_id, MAX_STRLEN);
     if (!ret) goto err_free_node_id;
 
     return pb;
@@ -213,10 +213,10 @@ intf_stats_set_intf_stats(intf_stats_t *intf)
     interfaces__intf_stats__intf_stats__init(pb);
 
     // Set the protobuf fields
-    ret = intf_stats_str_duplicate(intf->ifname, &pb->if_name);
+    ret = intf_stats_str_duplicate(intf->ifname, &pb->if_name, sizeof(intf->ifname));
     if (!ret) goto err_free_pb;
 
-    ret = intf_stats_str_duplicate(intf->role, &pb->role);
+    ret = intf_stats_str_duplicate(intf->role, &pb->role, sizeof(intf->role));
     if (!ret) goto err_free_ifname;
 
     pb->tx_bytes = intf->tx_bytes;

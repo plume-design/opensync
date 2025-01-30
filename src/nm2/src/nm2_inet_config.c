@@ -1025,10 +1025,6 @@ void nm2_inet_copy(
     /* Copy fields that should be simply copied to Wifi_Inet_State */
     NM2_IFACE_INET_CONFIG_COPY(piface->if_cache._uuid, iconf->_uuid);
     NM2_IFACE_INET_CONFIG_COPY(piface->if_cache.if_uuid, iconf->if_uuid);
-    NM2_IFACE_INET_CONFIG_COPY(piface->if_cache.gateway, iconf->gateway);
-    NM2_IFACE_INET_CONFIG_COPY(piface->if_cache.dns, iconf->dns);
-    NM2_IFACE_INET_CONFIG_COPY(piface->if_cache.dns_keys, iconf->dns_keys);
-    piface->if_cache.dns_len = iconf->dns_len;
     NM2_IFACE_INET_CONFIG_COPY(piface->if_cache.dhcpd, iconf->dhcpd);
     NM2_IFACE_INET_CONFIG_COPY(piface->if_cache.dhcpd_keys, iconf->dhcpd_keys);
     piface->if_cache.dhcpd_len = iconf->dhcpd_len;

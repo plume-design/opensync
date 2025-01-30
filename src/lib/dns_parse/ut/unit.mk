@@ -1,4 +1,4 @@
-UNIT_DISABLE := $(if $(CONFIG_MANAGER_FSM),n,y)
+UNIT_DISABLE := $(if $(CONFIG_LIB_LEGACY_FSM_DNS_PARSER),n,y)
 
 UNIT_NAME := test_dns_parse
 
@@ -35,19 +35,21 @@ UNIT_DEPS += src/lib/network_zone
 UNIT_DEPS += src/lib/dpi_intf
 UNIT_DEPS += src/lib/dpi_stats
 UNIT_DEPS += src/lib/accel_evict_msg
-UNIT_DEPS += $(if $(CONFIG_FSM_NO_DSO), src/lib/http_parse)
-UNIT_DEPS += $(if $(CONFIG_FSM_NO_DSO), src/lib/mdns_plugin)
-UNIT_DEPS += $(if $(CONFIG_FSM_NO_DSO), src/lib/upnp_parse)
-UNIT_DEPS += $(if $(CONFIG_FSM_NO_DSO), src/lib/ndp_parse)
-UNIT_DEPS += $(if $(CONFIG_FSM_NO_DSO), src/lib/gatekeeper_plugin)
-UNIT_DEPS += $(if $(CONFIG_FSM_NO_DSO), src/lib/walleye)
-UNIT_DEPS += $(if $(CONFIG_FSM_NO_DSO), src/lib/ipthreat_dpi)
-UNIT_DEPS += $(if $(CONFIG_FSM_NO_DSO), src/lib/fsm_dpi_client)
-UNIT_DEPS += $(if $(CONFIG_FSM_NO_DSO), src/lib/fsm_dpi_adt)
-UNIT_DEPS += $(if $(CONFIG_FSM_NO_DSO), src/lib/fsm_dpi_dns)
-UNIT_DEPS += $(if $(CONFIG_FSM_NO_DSO), src/lib/fsm_dpi_sni)
-UNIT_DEPS += $(if $(CONFIG_FSM_NO_DSO), src/lib/fsm_dpi_ndp)
-UNIT_DEPS += $(if $(CONFIG_FSM_NO_DSO), src/lib/fsm_dpi_mdns_responder)
-UNIT_DEPS += $(if $(CONFIG_FSM_NO_DSO), src/lib/fsm_dpi_adt_upnp)
-UNIT_DEPS += $(if $(CONFIG_FSM_NO_DSO), src/lib/wc_null_plugin)
-UNIT_DEPS += $(if $(CONFIG_FSM_NO_DSO), src/lib/we_dpi)
+ifeq ($(CONFIG_FSM_NO_DSO),y)
+	UNIT_DEPS += $(if $(CONFIG_LIB_LEGACY_FSM_HTTP_PARSER), src/lib/http_parse)
+	UNIT_DEPS += $(if $(CONFIG_LIB_LEGACY_FSM_MDNS_PARSER), src/lib/mdns_plugin)
+	UNIT_DEPS += $(if $(CONFIG_LIB_LEGACY_FSM_UPNP_PARSER), src/lib/upnp_parse)
+	UNIT_DEPS += $(if $(CONFIG_LIB_LEGACY_FSM_NDP_PARSER), src/lib/ndp_parse)
+	UNIT_DEPS += $(if $(CONFIG_FSM_NO_DSO), src/lib/gatekeeper_plugin)
+	UNIT_DEPS += $(if $(CONFIG_FSM_NO_DSO), src/lib/walleye)
+	UNIT_DEPS += $(if $(CONFIG_FSM_NO_DSO), src/lib/ipthreat_dpi)
+	UNIT_DEPS += $(if $(CONFIG_FSM_NO_DSO), src/lib/fsm_dpi_client)
+	UNIT_DEPS += $(if $(CONFIG_FSM_NO_DSO), src/lib/fsm_dpi_adt)
+	UNIT_DEPS += $(if $(CONFIG_FSM_NO_DSO), src/lib/fsm_dpi_dns)
+	UNIT_DEPS += $(if $(CONFIG_FSM_NO_DSO), src/lib/fsm_dpi_sni)
+	UNIT_DEPS += $(if $(CONFIG_FSM_NO_DSO), src/lib/fsm_dpi_ndp)
+	UNIT_DEPS += $(if $(CONFIG_FSM_NO_DSO), src/lib/fsm_dpi_mdns_responder)
+	UNIT_DEPS += $(if $(CONFIG_FSM_NO_DSO), src/lib/fsm_dpi_adt_upnp)
+	UNIT_DEPS += $(if $(CONFIG_FSM_NO_DSO), src/lib/wc_null_plugin)
+	UNIT_DEPS += $(if $(CONFIG_FSM_NO_DSO), src/lib/we_dpi)
+endif

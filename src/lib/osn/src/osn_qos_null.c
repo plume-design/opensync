@@ -106,12 +106,14 @@ bool osn_qos_queue_begin(
         osn_qos_t *self,
         int priority,
         int bandwidth,
+        int bandwidth_ceil,
         const char *tag,
         const struct osn_qos_other_config *other_config,
         struct osn_qos_queue_status *qqs)
 {
     (void)priority;
     (void)bandwidth;
+    (void)bandwidth_ceil;
     (void)other_config;
 
     uint32_t mark;

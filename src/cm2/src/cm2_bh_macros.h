@@ -27,6 +27,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifndef CM2_BH_MACROS_H_INCLUDED
 #define CM2_BH_MACROS_H_INCLUDED
 
+#include <ovsdb_sync.h>
+#include <ovsdb_table.h>
+
 static inline int strcmp_null(const char *a, const char *b)
 {
     if (a == NULL && b != NULL) return -1;
@@ -42,5 +45,23 @@ static inline int strcmp_null(const char *a, const char *b)
     : (mon)->mon_type == OVSDB_UPDATE_MODIFY ? (new##_exists ? new : NULL) \
     : (mon)->mon_type == OVSDB_UPDATE_DEL    ? (old##_exists ? old : NULL) \
                                              : NULL
+
+#define CM2_BH_GRE_PREFIX "g-"
+
+#define CM2_BH_OVS_INIT(PRIV, CALLBACK, TABLE, KEY_COLUMN, KEY_VALUE)              \
+    do                                                                             \
+    {                                                                              \
+        const char *column = SCHEMA_COLUMN(TABLE, KEY_COLUMN);                     \
+        const char *value = KEY_VALUE;                                             \
+        json_t *where = ovsdb_where_simple(column, value);                         \
+        struct schema_##TABLE row;                                                 \
+        MEMZERO(row);                                                              \
+        const bool ok = ovsdb_table_select_one_where(&table_##TABLE, where, &row); \
+        if (ok == false) break;                                                    \
+        ovsdb_update_monitor_t mon = {                                             \
+            .mon_type = OVSDB_UPDATE_NEW,                                          \
+        };                                                                         \
+        CALLBACK(PRIV, &mon, NULL, &row);                                          \
+    } while (0)
 
 #endif /* CM2_BH_MACROS_H_INCLUDED */

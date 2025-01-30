@@ -38,6 +38,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdbool.h>
 #include <errno.h>
 #include <spawn.h>
+#include <linux/limits.h>
 
 #ifdef STDC_HEADERS
 #include <stdlib.h>
@@ -758,6 +759,27 @@ char *str_trimws(char *s)
     while (*s && isspace(*s)) { s++; }
 
     return s;
+}
+
+/*
+ * Delete all occurences or characters `chars` in string
+ * `str`
+ *
+ * Note: This function modifies the input string.
+ */
+char *strstrip(char *str, const char *chars)
+{
+    char *psrc, *pdst;
+
+    psrc = pdst = str;
+    while (*psrc != '\0')
+    {
+        *pdst = *psrc++;
+        if (strchr(chars, *pdst) == NULL) pdst++;
+    }
+    *pdst = '\0';
+
+    return str;
 }
 
 bool str_is_mac_address(const char *mac)
@@ -1611,7 +1633,7 @@ int bin2hex(const unsigned char *in, size_t in_size, char *out, size_t out_size)
     ptr = &out[0];
 
     for (i = 0; i < in_size; i++)
-        ptr += sprintf(ptr, "%02hhx", in[i]);
+        csnprintf(&ptr, &out_size, "%02hhx", in[i]);
 
     return 0;
 }
@@ -1727,3 +1749,26 @@ bool __is_input_shell_safe(const char* input, const char *calling_func)
 
     return true;
 }
+
+/**
+ * os_readlink(): a safer readlink() alternative
+ * which takes care for NUL string termination
+ * returns -1 in case of truncation or other error
+ * suitable as a drop-in replacement for readlink()
+ *
+ * libc readlink():
+ * - does not append a terminating null byte to buf.
+ * - It will (silently) truncate the contents to a length of bufsiz characters
+ * - If the returned value equals bufsiz, then truncation may have occurred.
+ */
+ssize_t os_readlink(const char *restrict pathname, char *restrict buf, size_t bufsiz)
+{
+    ssize_t len = readlink(pathname, buf, bufsiz);
+    if (len > 0 && len < (ssize_t)bufsiz)
+    {
+        buf[len] = 0;
+        return len;
+    }
+    return -1;
+}
+

@@ -37,6 +37,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <osw_types.h>
 #include <osw_module.h>
 #include "ow_dfs_backup.h"
+#include "ow_ovsdb.h"
 
 /*
  * Purpose:
@@ -160,13 +161,10 @@ rconf_cb(ovsdb_update_monitor_t *mon,
                              : rconf->freq_band[0] == '6' ? OSW_BAND_6GHZ
                              : OSW_BAND_UNDEFINED;
     const int freq_mhz = osw_chan_to_freq(band, chan);
-    const int htmode = atoi((strstr(rconf->ht_mode, "HT") ?: "HT20") + strlen("HT"));
-    const int width_mhz = htmode == 2040 ? 40
-                        : htmode == 8080 ? 160
-                        : htmode;
+    const enum osw_channel_width width = ow_ovsdb_htmode2width(rconf->ht_mode);
     const struct osw_channel c = {
         .control_freq_mhz = freq_mhz,
-        .width = width_mhz
+        .width = width,
     };
 
     struct osw_hwaddr bssid = {0};

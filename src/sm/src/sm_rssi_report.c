@@ -726,31 +726,6 @@ bool sm_rssi_report_request(
     return true;
 }
 
-bool sm_rssi_report_radio_change(
-        radio_entry_t              *radio_cfg)
-{
-    bool                            status;
-    sm_rssi_ctx_t                   *rssi_ctx = NULL;
-
-    if (NULL == radio_cfg) {
-        LOGE("Initializing rssi reporting "
-             "(Invalid radio config)");
-        return false;
-    }
-
-    rssi_ctx = sm_rssi_ctx_get(radio_cfg);
-
-    status =
-        sm_rssi_stats_process (
-                radio_cfg,
-                rssi_ctx);
-    if (true != status) {
-        return false;
-    }
-
-    return true;
-}
-
 bool sm_rssi_is_reporting_enabled (
         radio_entry_t              *radio_cfg)
 {

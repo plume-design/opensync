@@ -33,7 +33,6 @@ UNIT_SRC += test_fsm_dpi_sni_plugin.c
 UNIT_SRC += test_fsm_dpi_sni_functions.c
 
 UNIT_DEPS := src/lib/common
-UNIT_DEPS += src/lib/dns_parse
 UNIT_DEPS += src/lib/fsm_dpi_sni
 UNIT_DEPS += src/lib/log
 UNIT_DEPS += src/lib/network_metadata

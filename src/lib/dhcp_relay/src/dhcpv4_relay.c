@@ -126,7 +126,7 @@ dhcp_relay_option82_insert(struct dhcp_relay_conf_options *opt,
         if (!rc)
         {
             dhcp = (void *)(net_parser->data);
-            sprintf(mac_str, PRI(os_macaddr_lower_t), FMT(os_macaddr_t, dhcp->dhcp_chaddr));
+            SPRINTF(mac_str, PRI(os_macaddr_lower_t), FMT(os_macaddr_t, dhcp->dhcp_chaddr));
             rid_len = strlen(mac_str);
             size_option += rid_len + 2;
         }
@@ -305,7 +305,7 @@ dhcp_relay_process_dhcpv4_message(struct dhcp_session *d_session)
          FMT(os_macaddr_t, dhcp->dhcp_chaddr), FMT(os_ipaddr_t, dhcp->dhcp_yiaddr),
          ntohl(dhcp->dhcp_magic));
 
-    sprintf(mac_str, PRI(os_macaddr_lower_t), FMT(os_macaddr_t, dhcp->dhcp_chaddr));
+    SPRINTF(mac_str, PRI(os_macaddr_lower_t), FMT(os_macaddr_t, dhcp->dhcp_chaddr));
 
     // Parse DHCP options, update the current lease
     popt = dhcp->dhcp_options;

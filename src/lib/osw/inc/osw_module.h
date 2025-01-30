@@ -68,4 +68,11 @@ void *osw_module_load_name(const char *name);
 #define OSW_MODULE_LOAD(name) \
     osw_module_load_name(#name)
 
+#define OSW_MODULE_LOAD_ONCE(name) \
+    ({ \
+       static void *data__; \
+       if (data__ == NULL) data__ = osw_module_load_name(#name); \
+       data__; \
+    })
+
 #endif /* OSW_MODULE_H_INCLUDED */

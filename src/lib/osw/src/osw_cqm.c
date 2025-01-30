@@ -64,6 +64,7 @@ enum osw_cqm_link_op {
 struct osw_cqm_link_sm {
     enum osw_cqm_link_state state;
     struct osw_channel channel;
+    struct osw_channel channel_next;
     bool connected;
     bool configured;
     bool timed_out;
@@ -74,7 +75,6 @@ struct osw_cqm_link {
     struct osw_cqm *cqm;
     char *vif_name;
     const struct osw_state_vif_info *vif;
-    struct osw_channel channel;
     struct osw_timer work;
     struct osw_timer deadline;
     struct osw_cqm_link_sm sm;
@@ -111,6 +111,7 @@ link_state_to_str(enum osw_cqm_link_state s)
         case OSW_CQM_LINK_DECONFIGURED: return "deconfigured";
         case OSW_CQM_LINK_DISCONNECTED: return "disconnected";
         case OSW_CQM_LINK_CONNECTED: return "connected";
+        case OSW_CQM_LINK_CHANNEL_CHANGED: return "channel_changed";
         case OSW_CQM_LINK_TIMING_OUT: return "timing_out";
         case OSW_CQM_LINK_RECOVERING: return "recovering";
         case OSW_CQM_LINK_TIMED_OUT: return "timed_out";
@@ -166,7 +167,10 @@ link_sm_next(struct osw_cqm_link_sm *sm)
         case OSW_CQM_LINK_CONNECTED:
             if (sm->configured == false) return OSW_CQM_LINK_DECONFIGURED;
             if (sm->connected == false) return OSW_CQM_LINK_TIMING_OUT;
+            if (osw_channel_is_equal(&sm->channel, &sm->channel_next) == false) return OSW_CQM_LINK_CHANNEL_CHANGED;
             break;
+        case OSW_CQM_LINK_CHANNEL_CHANGED:
+            return OSW_CQM_LINK_CONNECTED;
         case OSW_CQM_LINK_RECOVERING:
             return OSW_CQM_LINK_CONNECTED;
         case OSW_CQM_LINK_TIMING_OUT:
@@ -220,7 +224,7 @@ link_sm_op(struct osw_cqm_link *link,
             osw_timer_disarm(&link->deadline);
             break;
         case OSW_CQM_LINK_SET_CHANNEL:
-            link->sm.channel = link->channel;
+            link->sm.channel = link->sm.channel_next;
             break;
         case OSW_CQM_LINK_CLEAR_TIMEOUT:
             link->sm.timed_out = false;
@@ -236,6 +240,7 @@ link_sm_leave(struct osw_cqm_link *link,
         case OSW_CQM_LINK_DECONFIGURED: return OSW_CQM_LINK_NOP;
         case OSW_CQM_LINK_DISCONNECTED: return OSW_CQM_LINK_NOP;
         case OSW_CQM_LINK_CONNECTED: return OSW_CQM_LINK_NOP;
+        case OSW_CQM_LINK_CHANNEL_CHANGED: return OSW_CQM_LINK_NOP;
         case OSW_CQM_LINK_TIMING_OUT: return OSW_CQM_LINK_DEADLINE_DISARM;
         case OSW_CQM_LINK_RECOVERING: return OSW_CQM_LINK_NOP;
         case OSW_CQM_LINK_TIMED_OUT: return OSW_CQM_LINK_CLEAR_TIMEOUT;
@@ -251,6 +256,7 @@ link_sm_enter(struct osw_cqm_link *link,
         case OSW_CQM_LINK_DECONFIGURED: return OSW_CQM_LINK_NOP;
         case OSW_CQM_LINK_DISCONNECTED: return OSW_CQM_LINK_NOP;
         case OSW_CQM_LINK_CONNECTED: return OSW_CQM_LINK_SET_CHANNEL;
+        case OSW_CQM_LINK_CHANNEL_CHANGED: return OSW_CQM_LINK_NOP;
         case OSW_CQM_LINK_TIMING_OUT: return OSW_CQM_LINK_DEADLINE_ARM;
         case OSW_CQM_LINK_RECOVERING: return OSW_CQM_LINK_NOP;
         case OSW_CQM_LINK_TIMED_OUT: return OSW_CQM_LINK_NOP;
@@ -366,7 +372,7 @@ sta_update_cb(struct osw_state_observer *obs,
     const bool configured =vif_is_configured(link->vif);
     const bool connected = vif_is_connected(link->vif);
     if (connected == true) {
-        link->channel = vif->drv_state->u.sta.link.channel;
+        link->sm.channel_next = vif->drv_state->u.sta.link.channel;
     }
     LOGD(LOG_PREFIX"link: %s: updating: configured=%d -> %d connected=%d -> %d channel="OSW_CHANNEL_FMT" -> "OSW_CHANNEL_FMT,
          link->vif_name,
@@ -375,7 +381,7 @@ sta_update_cb(struct osw_state_observer *obs,
          link->sm.connected,
          connected,
          OSW_CHANNEL_ARG(&link->sm.channel),
-         OSW_CHANNEL_ARG(&link->channel));
+         OSW_CHANNEL_ARG(&link->sm.channel_next));
     link->sm.configured = configured;
     link->sm.connected = connected;
     link_arm(link);
@@ -494,6 +500,14 @@ OSW_UT(osw_cqm_)
     struct osw_cqm cqm;
     osw_cqm_init(&cqm);
     struct osw_cqm_link *link = link_get(&cqm, "vif1");
+    struct osw_channel ch1 = {
+        .control_freq_mhz = 2412,
+        .center_freq0_mhz = 2412,
+    };
+    struct osw_channel ch6 = {
+        .control_freq_mhz = 2437,
+        .center_freq0_mhz = 2437,
+    };
     enum osw_cqm_link_state *s = &link->sm.state;
     assert(link != NULL);
     link->sm.configured = true;
@@ -504,7 +518,15 @@ OSW_UT(osw_cqm_)
     assert((*s = link_sm_next(&link->sm)) == OSW_CQM_LINK_DECONFIGURED);
     link->sm.configured = true;
     link->sm.connected = true;
+    link->sm.channel_next = ch1;
     assert((*s = link_sm_next(&link->sm)) == OSW_CQM_LINK_DISCONNECTED);
+    assert((*s = link_sm_next(&link->sm)) == OSW_CQM_LINK_CONNECTED);
+    link_sm_op(link, OSW_CQM_LINK_SET_CHANNEL);
+    assert((*s = link_sm_next(&link->sm)) == OSW_CQM_LINK_CONNECTED);
+    link->sm.channel_next = ch6;
+    assert((*s = link_sm_next(&link->sm)) == OSW_CQM_LINK_CHANNEL_CHANGED);
+    link_sm_op(link, OSW_CQM_LINK_SET_CHANNEL);
+    assert(osw_channel_is_equal(&link->sm.channel, &ch6));
     assert((*s = link_sm_next(&link->sm)) == OSW_CQM_LINK_CONNECTED);
     assert((*s = link_sm_next(&link->sm)) == OSW_CQM_LINK_CONNECTED);
     link->sm.connected = false;

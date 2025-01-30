@@ -63,6 +63,7 @@ typedef void (*imc_terminate_server)(struct imc_dso *);
 typedef void (*imc_config_client_endpoint)(struct imc_dso *, char *endpoint);
 
 typedef void (*init)(struct imc_dso *);
+void imc_init_dso(struct imc_dso *dso);
 
 struct imc_dso
 {

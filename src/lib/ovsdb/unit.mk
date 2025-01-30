@@ -35,6 +35,7 @@ UNIT_TYPE := LIB
 UNIT_SRC := src/ovsdb.c
 UNIT_SRC += src/ovsdb_method.c
 UNIT_SRC += src/ovsdb_update.c
+UNIT_SRC += src/ovsdb_stream.c
 UNIT_SRC += src/ovsdb_sync.c
 UNIT_SRC += src/ovsdb_sync_api.c
 UNIT_SRC += src/ovsdb_table.c

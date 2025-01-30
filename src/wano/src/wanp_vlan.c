@@ -372,7 +372,7 @@ enum wanp_vlan_state wanp_vlan_state_IDLE(
                     break;
 
                 case WANO_PPLINE_IDLE:
-                    LOG(ERR, "wano_vlan: %s: Plug-in pipeline failed on %s.",
+                    LOG(INFO, "wano_vlan: %s: Plug-in pipeline exhausted on %s.",
                             self->wvl_handle.wh_ifname, self->wvl_ifvlan);
                     return wanp_vlan_ERROR;
 
@@ -406,7 +406,7 @@ enum wanp_vlan_state wanp_vlan_state_ERROR(
     {
         case wanp_vlan_do_STATE_INIT:
         {
-            struct wano_plugin_status ws = WANO_PLUGIN_STATUS(WANP_ERROR);
+            struct wano_plugin_status ws = WANO_PLUGIN_STATUS(WANP_SKIP);
             self->wvl_status_fn(&self->wvl_handle, &ws);
 
             if (self->wvl_have_config)

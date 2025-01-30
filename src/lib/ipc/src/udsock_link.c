@@ -36,6 +36,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <ds.h>
 #include <log.h>
 #include "memutil.h"
+#include "util.h"
 
 #define IPC_MSG_LINK_ABSTRACT
 #include "udsock_link.h"
@@ -151,7 +152,7 @@ static bool udslink_sendto(ipc_msg_link_impl_t *self, const ipc_msg_t *msg)
     }
 
     dgram.addr.sun_family = AF_UNIX;
-    strcpy(dgram.addr.sun_path, da);
+    STRSCPY(dgram.addr.sun_path, da);
     // support abstract namespaces
     if (dgram.addr.sun_path[0] == '@') dgram.addr.sun_path[0] = 0;
 
@@ -227,7 +228,7 @@ static bool udslink_receive(ipc_msg_link_impl_t *self, ipc_msg_t *msg)
 
         if (msg->addr != NULL)
         {
-            strcpy(msg->addr, dg.addr.sun_path);
+            strscpy(msg->addr, dg.addr.sun_path, sizeof(dg.addr.sun_path));
         }
         memcpy(msg->data, dg.data, dg.size);
         msg->size = dg.size;

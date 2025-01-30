@@ -95,6 +95,7 @@ ow_steer_policy_create(const char *name,
                        const struct osw_hwaddr *sta_addr,
                        const struct ow_steer_policy_ops *ops,
                        const struct ow_steer_policy_mediator *mediator,
+                       const char *log_prefix,
                        void *priv);
 
 void

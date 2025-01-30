@@ -483,7 +483,6 @@ bool lnx_ip_addr_parse(void *data, enum execsh_io type, const char *line)
      * Example output:
      *
      * # ip -o -4 addr show
-     * 20: br-wan    inet 10.77.204.196/24 brd 10.77.204.255 scope global br-wan\       valid_lft forever preferred_lft forever
      * 21: br-home    inet 192.168.40.1/24 brd 192.168.40.255 scope global br-home\       valid_lft forever preferred_lft forever
      */
 

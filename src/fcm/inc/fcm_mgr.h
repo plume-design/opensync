@@ -40,6 +40,19 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #define FCM_NEIGH_SYS_ENTRY_TTL (36*60*60)
 
+#if defined(CONFIG_FCM_NO_DSO)
+typedef int (*plugin_init)(fcm_collect_plugin_t *collector);
+
+int ct_stats_plugin_init(fcm_collect_plugin_t *collector);
+int lanstats_plugin_init(fcm_collect_plugin_t *collector);
+int intfstats_plugin_init(fcm_collect_plugin_t *collector);
+
+struct plugin_init_table
+{
+    char *name;
+    plugin_init init;
+};
+#endif
 typedef struct fcm_mgr_
 {
     struct ev_loop *loop;

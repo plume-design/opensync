@@ -26,6 +26,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "log.h"
 #include "memutil.h"
+#include "util.h"
 
 #include "osn_bridge.h"
 #include "linux/lnx_bridge.h"
@@ -57,15 +58,17 @@ bool osn_bridge_add_port(char *brname, char *portname)
 int osn_bridge_get_hairpin(const char *port)
 {
     char filename[256];
-    int hairpin_mode;
+    int hairpin_mode = 0;
+    int rc;
     FILE *fp;
 
-    sprintf(filename, "/sys/class/net/%s/brport/bridge/brif/%s/hairpin_mode", port, port);
+    SPRINTF(filename, "/sys/class/net/%s/brport/bridge/brif/%s/hairpin_mode", port, port);
 
     fp = fopen(filename, "r");
     if (fp == NULL) return -1;
 
-    fscanf(fp, "%d", &hairpin_mode);
+    rc = fscanf(fp, "%d", &hairpin_mode);
+    (void)rc;
     fclose(fp);
 
     return hairpin_mode;

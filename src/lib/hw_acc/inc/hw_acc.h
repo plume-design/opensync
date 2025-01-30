@@ -28,6 +28,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define HW_ACC_H_INCLUDED
 
 #include <stdbool.h>
+#include <stdint.h>
 
 enum hw_acc_flush_action_e {
     HW_ACC_FLUSH_ACTION_ALL     = (1 << 0),

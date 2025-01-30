@@ -361,9 +361,9 @@ bool lnx_ip6_ipaddr_parse(void *_self, enum execsh_io type, const char *line)
     /*
      * Example output:
      *
-     * # ip -o -6 addr show dev br-wan
-     * 20: br-wan    inet6 2a00:ee2:1704:9901::2000/128 scope global dynamic \       valid_lft 237sec preferred_lft 124sec
-     * 20: br-wan    inet6 fe80::62b4:f7ff:fef0:15c8/64 scope link \       valid_lft forever preferred_lft forever
+     * # ip -o -6 addr show dev eth0
+     * 20: eth0    inet6 2a00:ee2:1704:9901::2000/128 scope global dynamic \       valid_lft 237sec preferred_lft 124sec
+     * 20: eth0    inet6 fe80::62b4:f7ff:fef0:15c8/64 scope link \       valid_lft forever preferred_lft forever
      */
 
     /* Skip interface index */

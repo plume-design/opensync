@@ -126,7 +126,7 @@ mock_ut_qm_conn_send_direct(qm_compress_t compress, char *topic,
 
     Interfaces__Adt__AdtReport *report;
 
-    sprintf(filename, "/tmp/%s_%zu.pb", topic, i++);
+    SPRINTF(filename, "/tmp/%s_%zu.pb", topic, i++);
 
     LOGI("Sending report to file %s", filename);
 

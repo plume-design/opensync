@@ -26,17 +26,6 @@
 
 # {# jinja-parse #}
 
-{%- if not CONFIG_TARGET_USE_NATIVE_BRIDGE %}
-# Stop cloud connection
-echo "Removing manager"
-ovs-vsctl del-manager
-
-# Remove bridge interfaces from the system
-for BRIDGE in $(ovs-vsctl list-br); do
-    ovs-vsctl del-br $BRIDGE
-    echo "Removing $BRIDGE"
-done
-{%- else %}
 # Stop cloud connection
 echo "Removing manager"
 ovsdb-client transact '
@@ -59,9 +48,7 @@ for BRIDGE in $(echo /sys/class/net/*/bridge | tr ' ' '\n' | cut -d '/' -f 5); d
     ip link set dev $BRIDGE down
     brctl delbr $BRIDGE
 done
-{%- endif %}
 
 # Stop openvswitch
 /etc/init.d/openvswitch stop
 echo "openvswitch stop"
-

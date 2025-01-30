@@ -37,12 +37,20 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ow_steer_executor_action_i.h"
 #include "ow_steer_executor_action_priv.h"
 
+#define LOG_PREFIX(fmt, ...) \
+    "ow: steer: executor" fmt, ##__VA_ARGS__
+#define LOG_WITH_PREFIX(prefix, fmt, ...) \
+    LOG_PREFIX(                           \
+        "%s " fmt,                        \
+        prefix,                           \
+        ##__VA_ARGS__)
 
 struct ow_steer_executor_action*
 ow_steer_executor_action_create(const char *name,
                                 const struct osw_hwaddr *sta_addr,
                                 const struct ow_steer_executor_action_ops *ops,
                                 const struct ow_steer_executor_action_mediator *mediator,
+                                const char* log_prefix,
                                 void *priv)
 {
     ASSERT(name != NULL, "");
@@ -53,7 +61,8 @@ ow_steer_executor_action_create(const char *name,
     struct ow_steer_executor_action *action = CALLOC(1, sizeof(*action));
 
     action->name = name;
-    action->log_prefix = strfmt("ow: steer: executor: action: %s: sta: "OSW_HWADDR_FMT" ", name, OSW_HWADDR_ARG(sta_addr));
+    action->log_prefix = strfmt("%saction: %s: sta: "OSW_HWADDR_FMT" ", log_prefix, name, OSW_HWADDR_ARG(sta_addr));
+
     memcpy(&action->sta_addr, sta_addr, sizeof(action->sta_addr));
     memcpy(&action->ops, ops, sizeof(action->ops));
     memcpy(&action->mediator, mediator, sizeof(action->mediator));

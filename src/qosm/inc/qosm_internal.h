@@ -33,8 +33,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "evx.h"
 #include "log.h"
 #include "osn_qos.h"
+#include "osn_qdisc.h"
+#include "osn_adaptive_qos.h"
 #include "ovsdb_table.h"
 #include "reflink.h"
+#include "ds_map_str.h"
 
 #define QOSM_DEBOUNCE_MIN   0.250       /**< 250ms default/minimum timer */
 #define QOSM_DEBOUNCE_MAX   3.000       /**< 3 seconds max debounce timer */
@@ -53,6 +56,7 @@ struct qosm_ip_interface
                        *ipi_interface_qos;          /**< Interface_QoS structure */
     reflink_t           ipi_interface_qos_reflink;  /**< Reflink to Interface_QoS */
     osn_qos_t          *ipi_qos;                    /**< OSN QoS configuration object */
+    osn_qdisc_cfg_t    *ipi_qdisc_cfg;              /**< OSN qdisc_cfg configuration object */
     ds_tree_node_t      ipi_tnode;                  /**< Tree node */
 };
 
@@ -68,10 +72,19 @@ struct qosm_interface_qos
 {
     ovs_uuid_t          qos_uuid;                   /**< UUID of this object */
     reflink_t           qos_reflink;                /**< Reflink of this object */
+
     struct qosm_interface_queue
                       **qos_interface_queue;        /**< Array of pointers to Interface_Queue objects */
     int                 qos_interface_queue_len;    /**< Length of the queues array */
     reflink_t           qos_interface_queue_reflink;/**< Reflink to Interface_Queue */
+
+    struct qosm_linux_queue
+                      **qos_linux_queue;            /**< Array of pointers to Linux_Queue objects */
+    int                 qos_linux_queue_len;        /**< Length of the lnx_queues array */
+    reflink_t           qos_linux_queue_reflink;    /**< Reflink to Linux_Queue */
+
+    ds_map_str_t       *qos_adaptive_qos;           /**< Adaptive QoS key-value map configuration */
+
     ds_tree_node_t      qos_tnode;                  /**< Tree node */
 };
 
@@ -90,11 +103,43 @@ struct qosm_interface_queue
     reflink_t           que_reflink;                /**< Reflink of this object */
     int                 que_priority;               /**< Queue priority */
     int                 que_bandwidth;              /**< Queue bandwidth in kbit/s */
+    int                 que_bandwidth_ceil;         /**< Queue ceil bandwidth in kbit/s */
     char                que_tag[32];                /**< Queue tag */
     ds_tree_node_t      que_tnode;                  /**< Tree node */
     struct osn_qos_other_config
                         que_other_config;           /**< Queue configuration */
 };
+
+/*
+ * ===========================================================================
+ *  Linux_Queue table
+ * ===========================================================================
+ */
+struct qosm_linux_queue
+{
+    ovs_uuid_t          que_uuid;                   /**< UUID of this object */
+    reflink_t           que_reflink;                /**< Reflink of this object */
+
+    bool                que_is_class;               /**< True if this is a class definition
+                                                     *   for a classfull qdisc, false if this
+                                                     *   is a qdisc definition, either classless
+                                                     *   or classful */
+
+    char                que_qdisc[32];              /**< Qdisc name (well, type) */
+
+    char                que_parent_id[32];          /**< Parent qdisc or class ID or special value “root”. */
+
+    char                que_id[32];                 /**< qdisc or class ID:
+                                                     *   if type==qdisc then this is a "handle" in the format
+                                                     *   "major:" which specifies the qdisc id. if type==class
+                                                     *   then this is a "class id" in the format "major:minor". */
+
+    char                que_params[256];            /**  qdisc-specific parameters */
+
+    ds_tree_node_t      que_tnode;                  /**< Tree node */
+
+};
+
 
 void qosm_interface_queue_init(void);
 struct qosm_interface_queue *qosm_interface_queue_get(ovs_uuid_t *uuid);
@@ -102,5 +147,8 @@ bool qosm_interface_queue_set_status(
         struct qosm_interface_queue *que,
         bool status,
         struct osn_qos_queue_status *qqs);
+
+void qosm_linux_queue_init(void);
+struct qosm_linux_queue *qosm_linux_queue_get(ovs_uuid_t *uuid);
 
 #endif /* QOSM_INTERNAL_H_INCLUDED */

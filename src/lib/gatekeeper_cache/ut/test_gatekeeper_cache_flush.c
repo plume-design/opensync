@@ -36,6 +36,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "test_gatekeeper_cache.h"
 
+#define MAC_STR_SIZE 32
+#define URL_STR_SIZE 64
+#define NAME_STR_SIZE 64
+#define IP_STR_SIZE 64
+
 /* Allow for easy cleanup of fsm_policy_rules variables */
 static void
 free_policy_rules(struct fsm_policy_rules *fpr)
@@ -131,12 +136,12 @@ test_gkc_flush_all(void)
     fpr.macs = CALLOC(1, sizeof(*fpr.macs));
     fpr.macs->nelems = 2;
     fpr.macs->array = CALLOC(2, sizeof(*fpr.macs->array));
-    fpr.macs->array[0] = CALLOC(32, sizeof(char));
+    fpr.macs->array[0] = CALLOC(MAC_STR_SIZE, sizeof(char));
     snprintf(fpr.macs->array[0],
-             32,
+             MAC_STR_SIZE,
              PRI_os_macaddr_t, FMT_os_macaddr_pt(entry1->device_mac));
-    fpr.macs->array[1] = CALLOC(32, sizeof(char));
-    strcpy(fpr.macs->array[1], "BROKEN_MAC");
+    fpr.macs->array[1] = CALLOC(MAC_STR_SIZE, sizeof(char));
+    strscpy(fpr.macs->array[1], "BROKEN_MAC", MAC_STR_SIZE);
 
     ret = gkc_flush_all(&fpr);
     TEST_ASSERT_EQUAL_INT(2, ret);
@@ -204,26 +209,26 @@ test_gkc_flush_rules_macs(void)
     fpr.macs = CALLOC(1, sizeof(*fpr.macs));
     fpr.macs->nelems = 2;
     fpr.macs->array = CALLOC(2, sizeof(*fpr.macs->array));
-    fpr.macs->array[0] = CALLOC(32, sizeof(char));
-    strcpy(fpr.macs->array[0], "AA:AA:AA:AA:AA:00");
-    fpr.macs->array[1] = CALLOC(32, sizeof(char));
-    strcpy(fpr.macs->array[1], "BROKEN_MAC");
+    fpr.macs->array[0] = CALLOC(MAC_STR_SIZE, sizeof(char));
+    strscpy(fpr.macs->array[0], "AA:AA:AA:AA:AA:00", MAC_STR_SIZE);
+    fpr.macs->array[1] = CALLOC(MAC_STR_SIZE, sizeof(char));
+    strscpy(fpr.macs->array[1], "BROKEN_MAC", MAC_STR_SIZE);
     ret = gkc_flush_rules(&fpr);
     TEST_ASSERT_EQUAL_INT(0, ret);
 
     /* fpr points to the CORRECT MAC => everything gets removed */
-    strcpy(fpr.macs->array[0], "AA:AA:AA:AA:AA:01");
+    strscpy(fpr.macs->array[0], "AA:AA:AA:AA:AA:01", MAC_STR_SIZE);
     ret = gkc_flush_rules(&fpr);
     TEST_ASSERT_EQUAL_INT(1, ret);
 
     /* add entry again, and check OUT */
     gkc_add_attribute_entry(entry);
     fpr.mac_op = MAC_OP_OUT;
-    strcpy(fpr.macs->array[0], "AA:AA:AA:AA:AA:01");
+    strscpy(fpr.macs->array[0], "AA:AA:AA:AA:AA:01", MAC_STR_SIZE);
     ret = gkc_flush_rules(&fpr);
     TEST_ASSERT_EQUAL_INT(0, ret);
 
-    strcpy(fpr.macs->array[0], "AA:AA:AA:AA:AA:00");
+    strscpy(fpr.macs->array[0], "AA:AA:AA:AA:AA:00", MAC_STR_SIZE);
     ret = gkc_flush_rules(&fpr);
     TEST_ASSERT_EQUAL_INT(1, ret);
 
@@ -296,15 +301,15 @@ test_gkc_flush_rules_fqdn(void)
     fpr.fqdns = CALLOC(1, sizeof(*fpr.fqdns));
     fpr.fqdns->nelems = 1;
     fpr.fqdns->array = CALLOC(1, sizeof(*fpr.fqdns->array));
-    fpr.fqdns->array[0] = CALLOC(64, sizeof(char));
+    fpr.fqdns->array[0] = CALLOC(URL_STR_SIZE, sizeof(char));
 
     /* This name is not present */
-    strcpy(fpr.fqdns->array[0], "www.FOO.com");
+    strscpy(fpr.fqdns->array[0], "www.FOO.com", URL_STR_SIZE);
     ret = gkc_flush_rules(&fpr);
     TEST_ASSERT_EQUAL_INT(0, ret);
 
     /* This hostname is present */
-    strcpy(fpr.fqdns->array[0], "www.entr3.com");
+    strscpy(fpr.fqdns->array[0], "www.entr3.com", URL_STR_SIZE);
     ret = gkc_flush_rules(&fpr);
     TEST_ASSERT_EQUAL_INT(1, ret);
 
@@ -312,11 +317,11 @@ test_gkc_flush_rules_fqdn(void)
     gkc_add_attribute_entry(entry3);
     /* Now with _OUT */
     fpr.fqdn_op = FQDN_OP_OUT;
-    strcpy(fpr.fqdns->array[0], "www.entr3.com");
+    strscpy(fpr.fqdns->array[0], "www.entr3.com", URL_STR_SIZE);
     ret = gkc_flush_rules(&fpr);
     TEST_ASSERT_EQUAL_INT(0, ret);
 
-    strcpy(fpr.fqdns->array[0], "www.FOO.com");
+    strscpy(fpr.fqdns->array[0], "www.FOO.com", URL_STR_SIZE);
     ret = gkc_flush_rules(&fpr);
     TEST_ASSERT_EQUAL_INT(1, ret);
 
@@ -356,15 +361,15 @@ test_gkc_flush_rules_app(void)
     fpr.apps = CALLOC(1, sizeof(*fpr.apps));
     fpr.apps->nelems = 1;
     fpr.apps->array = CALLOC(1, sizeof(*fpr.apps->array));
-    fpr.apps->array[0] = CALLOC(64, sizeof(char));
+    fpr.apps->array[0] = CALLOC(NAME_STR_SIZE, sizeof(char));
 
     /* This name is not present */
-    strcpy(fpr.apps->array[0], "wrong_app_name");
+    strscpy(fpr.apps->array[0], "wrong_app_name", NAME_STR_SIZE);
     ret = gkc_flush_rules(&fpr);
     TEST_ASSERT_EQUAL_INT(0, ret);
 
     /* This hostname is present */
-    strcpy(fpr.apps->array[0], entry5->attr_name);
+    strscpy(fpr.apps->array[0], entry5->attr_name, NAME_STR_SIZE);
     ret = gkc_flush_rules(&fpr);
     TEST_ASSERT_EQUAL_INT(1, ret);
 
@@ -373,11 +378,11 @@ test_gkc_flush_rules_app(void)
 
     /* Now wirh _OUT */
     fpr.app_op = APP_OP_OUT;
-    strcpy(fpr.apps->array[0], entry5->attr_name);
+    strscpy(fpr.apps->array[0], entry5->attr_name, NAME_STR_SIZE);
     ret = gkc_flush_rules(&fpr);
     TEST_ASSERT_EQUAL_INT(0, ret);
 
-    strcpy(fpr.apps->array[0], "another_app_name");
+    strscpy(fpr.apps->array[0], "another_app_name", NAME_STR_SIZE);
     ret = gkc_flush_rules(&fpr);
     TEST_ASSERT_EQUAL_INT(1, ret);
 
@@ -456,14 +461,14 @@ test_gkc_flush_ipv4_and_ipv6(void)
     fpr.ipaddrs = CALLOC(1, sizeof(*fpr.ipaddrs));
     fpr.ipaddrs->nelems = 4;
     fpr.ipaddrs->array = CALLOC(4, sizeof(*fpr.ipaddrs->array));
-    fpr.ipaddrs->array[0] = CALLOC(64, sizeof(char));
-    strcpy(fpr.ipaddrs->array[0], "1.2.3.4");
-    fpr.ipaddrs->array[1] = CALLOC(64, sizeof(char));
-    strcpy(fpr.ipaddrs->array[1], "127.0.0.1");
-    fpr.ipaddrs->array[2] = CALLOC(64, sizeof(char));
-    strcpy(fpr.ipaddrs->array[2], "2001:0000:3238:DFE1:0063:0000:0000:FEFB");
-    fpr.ipaddrs->array[3] = CALLOC(64, sizeof(char));
-    strcpy(fpr.ipaddrs->array[3], "2001:0000:3238:DFE1:0063:0000:0000:ABCD");
+    fpr.ipaddrs->array[0] = CALLOC(IP_STR_SIZE, sizeof(char));
+    strscpy(fpr.ipaddrs->array[0], "1.2.3.4", IP_STR_SIZE);
+    fpr.ipaddrs->array[1] = CALLOC(IP_STR_SIZE, sizeof(char));
+    strscpy(fpr.ipaddrs->array[1], "127.0.0.1", IP_STR_SIZE);
+    fpr.ipaddrs->array[2] = CALLOC(IP_STR_SIZE, sizeof(char));
+    strscpy(fpr.ipaddrs->array[2], "2001:0000:3238:DFE1:0063:0000:0000:FEFB", IP_STR_SIZE);
+    fpr.ipaddrs->array[3] = CALLOC(IP_STR_SIZE, sizeof(char));
+    strscpy(fpr.ipaddrs->array[3], "2001:0000:3238:DFE1:0063:0000:0000:ABCD", IP_STR_SIZE);
     ret = gkc_flush_rules(&fpr);
     TEST_ASSERT_EQUAL_INT(0, ret);
 

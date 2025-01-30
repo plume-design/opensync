@@ -158,6 +158,7 @@ void callback_Interface_Queue(
 
     que->que_priority = new->priority;
     que->que_bandwidth = new->bandwidth;
+    que->que_bandwidth_ceil = new->bandwidth_ceil_exists ? new->bandwidth_ceil : 0;
     STRSCPY(que->que_tag, new->tag);
 
     qosm_interface_queue_free_other_config(que);

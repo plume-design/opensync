@@ -244,7 +244,7 @@ static const char *osw_mld_vif_state_get_mld_if_name(const struct osw_state_vif_
         case OSW_VIF_AP_VLAN:
             break;
         case OSW_VIF_STA:
-            if (osw_hwaddr_is_zero(&info->drv_state->u.ap.mld.addr))
+            if (osw_hwaddr_is_zero(&info->drv_state->u.sta.mld.addr))
             {
                 return NULL;
             }

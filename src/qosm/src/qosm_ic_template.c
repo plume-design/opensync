@@ -345,7 +345,7 @@ qosm_template_rule_expand(qosm_ic_tmpl_filter_t *filter, om_tdata_t *tdata)
             continue;
         }
         *s = '\0';
-        strcat(erule, p);
+        strscat(erule, p, nlen);
 
         s += 2;
         if (*s == TEMPLATE_DEVICE_CHAR || *s == TEMPLATE_CLOUD_CHAR || *s == TEMPLATE_LOCAL_CHAR) {
@@ -362,12 +362,12 @@ qosm_template_rule_expand(qosm_ic_tmpl_filter_t *filter, om_tdata_t *tdata)
             LOGE("[%s] Error expanding %stag '%s', not found", filter->token, group ? "group " : "", s);
             goto err;
         }
-        strcat(erule, nval);
+        strscat(erule, nval, nlen);
 
         s = p;
     }
     if (*p != '\0') {
-        strcat(erule, p);
+        strscat(erule, p, nlen);
     }
 
     FREE(mrule);

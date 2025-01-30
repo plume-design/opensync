@@ -35,7 +35,7 @@ ow_steer_policy_set_bssid(struct ow_steer_policy *policy,
                           const struct osw_hwaddr *bssid);
 
 const char*
-ow_steer_policy_get_prefix(const struct ow_steer_policy *policy);
+ow_steer_policy_get_prefix(struct ow_steer_policy *policy);
 
 void
 ow_steer_policy_schedule_stack_recalc(struct ow_steer_policy *policy);

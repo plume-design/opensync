@@ -37,10 +37,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ow_steer_policy_priv.h"
 #include "ow_steer_policy_chan_cap.h"
 
-#define LOG_PREFIX(policy, fmt, ...) \
-    "%s: " fmt, \
-    ow_steer_policy_get_prefix((policy)->base), \
-    ## __VA_ARGS__
+#define LOG_PREFIX(fmt, ...) "ow: steer: " fmt, ##__VA_ARGS__
+#define LOG_GET_PREFIX(policy, fmt, ...) \
+    "%s " fmt,                           \
+    ow_steer_policy_get_prefix(policy),  \
+    ##__VA_ARGS__
 
 struct ow_steer_policy_chan_cap {
     struct ow_steer_policy *base;
@@ -73,7 +74,7 @@ ow_steer_policy_chan_cap_recalc_cb(struct ow_steer_policy *base,
                     switch (p) {
                         case OW_STEER_CANDIDATE_PREFERENCE_OUT_OF_SCOPE:
                         case OW_STEER_CANDIDATE_PREFERENCE_HARD_BLOCKED:
-                            LOGT(LOG_PREFIX(policy, OSW_HWADDR_FMT" is not reachable on "
+                            LOGT(LOG_GET_PREFIX(policy->base, OSW_HWADDR_FMT" is not reachable on "
                                                     OSW_CHANNEL_FMT", but is marked as %s already, should work fine",
                                                     OSW_HWADDR_ARG(bssid),
                                                     OSW_CHANNEL_ARG(ch),
@@ -81,14 +82,14 @@ ow_steer_policy_chan_cap_recalc_cb(struct ow_steer_policy *base,
                             break;
                         case OW_STEER_CANDIDATE_PREFERENCE_SOFT_BLOCKED:
                         case OW_STEER_CANDIDATE_PREFERENCE_AVAILABLE:
-                            LOGI(LOG_PREFIX(policy, OSW_HWADDR_FMT" is not reachable on "
+                            LOGI(LOG_GET_PREFIX(policy->base, OSW_HWADDR_FMT" is not reachable on "
                                                     OSW_CHANNEL_FMT", but is marked as %s already, expect issues",
                                                     OSW_HWADDR_ARG(bssid),
                                                     OSW_CHANNEL_ARG(ch),
                                                     p_str));
                             break;
                         case OW_STEER_CANDIDATE_PREFERENCE_NONE:
-                            LOGT(LOG_PREFIX(policy, OSW_HWADDR_FMT" is not reachable on "
+                            LOGT(LOG_GET_PREFIX(policy->base, OSW_HWADDR_FMT" is not reachable on "
                                                     OSW_CHANNEL_FMT", marking as out-of-scope",
                                                     OSW_HWADDR_ARG(bssid),
                                                     OSW_CHANNEL_ARG(ch)));
@@ -116,7 +117,7 @@ ow_steer_policy_chan_cap_sigusr1_dump_freq_cb(void *priv,
                                               int freq_mhz)
 {
     osw_diag_pipe_t *pipe = priv;
-    osw_diag_pipe_writef(pipe, "ow: steer:          - %dMHz", freq_mhz);
+    osw_diag_pipe_writef(pipe, LOG_PREFIX("         - %dMHz", freq_mhz));
 }
 
 static void
@@ -129,7 +130,7 @@ ow_steer_policy_chan_cap_sigusr1_dump_cb(osw_diag_pipe_t *pipe,
     const struct osw_hwaddr *sta_addr = ow_steer_policy_get_sta_addr(base);
     osw_sta_chan_cap_t *m = OSW_MODULE_LOAD(osw_sta_chan_cap);
 
-    osw_diag_pipe_writef(pipe, "ow: steer:         freqs:");
+    osw_diag_pipe_writef(pipe, LOG_PREFIX("        freqs:"));
     osw_sta_chan_cap_obs_t *obs = osw_sta_chan_cap_register(m, sta_addr, &ops, pipe);
     osw_sta_chan_cap_obs_unregister(obs);
 }
@@ -143,7 +144,8 @@ ow_steer_policy_chan_cap_get_base(struct ow_steer_policy_chan_cap *policy)
 struct ow_steer_policy_chan_cap *
 ow_steer_policy_chan_cap_alloc(const char *name,
                                const struct osw_hwaddr *sta_addr,
-                               const struct ow_steer_policy_mediator *mediator)
+                               const struct ow_steer_policy_mediator *mediator,
+                               const char *log_prefix)
 {
     static const struct ow_steer_policy_ops policy_ops = {
         .sigusr1_dump_fn = ow_steer_policy_chan_cap_sigusr1_dump_cb,
@@ -155,7 +157,7 @@ ow_steer_policy_chan_cap_alloc(const char *name,
     };
     osw_sta_chan_cap_t *m = OSW_MODULE_LOAD(osw_sta_chan_cap);
     struct ow_steer_policy_chan_cap *policy = CALLOC(1, sizeof(*policy));
-    policy->base = ow_steer_policy_create(name, sta_addr, &policy_ops, mediator, policy);
+    policy->base = ow_steer_policy_create(name, sta_addr, &policy_ops, mediator, log_prefix, policy);
     policy->obs = osw_sta_chan_cap_register(m, sta_addr, &cap_ops, policy);
     return policy;
 }

@@ -711,9 +711,9 @@ osw_parse_eht_cap(struct osw_assoc_req_info *info,
     const bool is_5_6ghz_40_80mhz = (is_not_2ghz && !!(he_phy_info0 & DOT11_EXT_HE_CAPS_PHY_40_80));
     const bool is_5_6ghz_160mhz = (is_not_2ghz && !!(he_phy_info0 & DOT11_EXT_HE_CAPS_PHY_160));
     const bool is_5_6ghz_160_8080mhz = (is_not_2ghz && !!(he_phy_info0 & DOT11_EXT_HE_CAPS_PHY_160_8080));
-    const bool is_5_6ghz_20mhz_only = is_5_6ghz_40_80mhz
-                                   || is_5_6ghz_160mhz
-                                   || is_5_6ghz_160_8080mhz;
+    const bool is_5_6ghz_20mhz_only = !is_5_6ghz_40_80mhz
+                                   && !is_5_6ghz_160mhz
+                                   && !is_5_6ghz_160_8080mhz;
 
     const bool is_mcs_20only_non_ap = (is_2ghz_20mhz_only || is_5_6ghz_20mhz_only);
     const bool is_mcs_80 = is_non_ap
@@ -787,35 +787,35 @@ osw_parse_eht_cap(struct osw_assoc_req_info *info,
     };
 
     const uint8_t nss[] = {
-        mcs_20only_non_ap ? mcs_20only_non_ap[0] >> 0 : 0,
-        mcs_20only_non_ap ? mcs_20only_non_ap[0] >> 4 : 0,
-        mcs_20only_non_ap ? mcs_20only_non_ap[1] >> 0 : 0,
-        mcs_20only_non_ap ? mcs_20only_non_ap[1] >> 4 : 0,
-        mcs_20only_non_ap ? mcs_20only_non_ap[2] >> 0 : 0,
-        mcs_20only_non_ap ? mcs_20only_non_ap[2] >> 4 : 0,
-        mcs_20only_non_ap ? mcs_20only_non_ap[3] >> 0 : 0,
-        mcs_20only_non_ap ? mcs_20only_non_ap[3] >> 4 : 0,
+        mcs_20only_non_ap ? ((mcs_20only_non_ap[0] >> 0) & 0x0f) : 0,
+        mcs_20only_non_ap ? ((mcs_20only_non_ap[0] >> 4) & 0x0f) : 0,
+        mcs_20only_non_ap ? ((mcs_20only_non_ap[1] >> 0) & 0x0f) : 0,
+        mcs_20only_non_ap ? ((mcs_20only_non_ap[1] >> 4) & 0x0f) : 0,
+        mcs_20only_non_ap ? ((mcs_20only_non_ap[2] >> 0) & 0x0f) : 0,
+        mcs_20only_non_ap ? ((mcs_20only_non_ap[2] >> 4) & 0x0f) : 0,
+        mcs_20only_non_ap ? ((mcs_20only_non_ap[3] >> 0) & 0x0f) : 0,
+        mcs_20only_non_ap ? ((mcs_20only_non_ap[3] >> 4) & 0x0f) : 0,
 
-        mcs_80 ? mcs_80[0] >> 0 : 0,
-        mcs_80 ? mcs_80[0] >> 4 : 0,
-        mcs_80 ? mcs_80[1] >> 0 : 0,
-        mcs_80 ? mcs_80[1] >> 4 : 0,
-        mcs_80 ? mcs_80[2] >> 0 : 0,
-        mcs_80 ? mcs_80[2] >> 4 : 0,
+        mcs_80 ? ((mcs_80[0] >> 0) & 0x0f) : 0,
+        mcs_80 ? ((mcs_80[0] >> 4) & 0x0f) : 0,
+        mcs_80 ? ((mcs_80[1] >> 0) & 0x0f) : 0,
+        mcs_80 ? ((mcs_80[1] >> 4) & 0x0f) : 0,
+        mcs_80 ? ((mcs_80[2] >> 0) & 0x0f) : 0,
+        mcs_80 ? ((mcs_80[2] >> 4) & 0x0f) : 0,
 
-        mcs_160 ? mcs_160[0] >> 0 : 0,
-        mcs_160 ? mcs_160[0] >> 4 : 0,
-        mcs_160 ? mcs_160[1] >> 0 : 0,
-        mcs_160 ? mcs_160[1] >> 4 : 0,
-        mcs_160 ? mcs_160[2] >> 0 : 0,
-        mcs_160 ? mcs_160[2] >> 4 : 0,
+        mcs_160 ? ((mcs_160[0] >> 0) & 0x0f) : 0,
+        mcs_160 ? ((mcs_160[0] >> 4) & 0x0f) : 0,
+        mcs_160 ? ((mcs_160[1] >> 0) & 0x0f) : 0,
+        mcs_160 ? ((mcs_160[1] >> 4) & 0x0f) : 0,
+        mcs_160 ? ((mcs_160[2] >> 0) & 0x0f) : 0,
+        mcs_160 ? ((mcs_160[2] >> 4) & 0x0f) : 0,
 
-        mcs_320 ? mcs_320[0] >> 0 : 0,
-        mcs_320 ? mcs_320[0] >> 4 : 0,
-        mcs_320 ? mcs_320[1] >> 0 : 0,
-        mcs_320 ? mcs_320[1] >> 4 : 0,
-        mcs_320 ? mcs_320[2] >> 0 : 0,
-        mcs_320 ? mcs_320[2] >> 4 : 0,
+        mcs_320 ? ((mcs_320[0] >> 0) & 0x0f) : 0,
+        mcs_320 ? ((mcs_320[0] >> 4) & 0x0f) : 0,
+        mcs_320 ? ((mcs_320[1] >> 0) & 0x0f) : 0,
+        mcs_320 ? ((mcs_320[1] >> 4) & 0x0f) : 0,
+        mcs_320 ? ((mcs_320[2] >> 0) & 0x0f) : 0,
+        mcs_320 ? ((mcs_320[2] >> 4) & 0x0f) : 0,
     };
 
     size_t i;

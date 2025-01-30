@@ -62,6 +62,13 @@ fsm_ipc_load_imc(void)
     char *error;
     int rc;
 
+    if (kconfig_enabled(CONFIG_IMC_LIBOPENSYNC))
+    {
+        g_imc_context.init = imc_init_dso;
+        g_imc_context.init(&g_imc_context);
+        return true;
+    }
+
     rc = stat(dso, &st);
     if (rc != 0) return true; /* All ops will be void */
 

@@ -194,6 +194,6 @@ bool lnx_vlan_egress_qos_map_set(lnx_vlan_t *self, const char *qos_map)
         LOG(ERR, "vlan: egress qos map too long: %s", qos_map);
         return false;
     }
-    strcpy(self->lv_egress_qos_map, qos_map);
+    STRSCPY(self->lv_egress_qos_map, qos_map);
     return true;
 }

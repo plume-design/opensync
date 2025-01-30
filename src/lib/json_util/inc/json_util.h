@@ -54,8 +54,6 @@ void json_set_alloc_funcs_override(json_malloc_t malloc_fn, json_free_t free_fn)
 
 extern char *JSON_SPLIT_ERROR;
 
-extern char        *json_split(char *str);
-
 extern const char  *json_dumps_static(const json_t *json, int flags);
 extern bool         json_gets(const json_t *json, char *output, size_t output_sz, int flags);
 extern bool         json_get_str(const json_t *json, char *output, size_t output_sz);

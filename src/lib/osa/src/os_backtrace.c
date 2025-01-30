@@ -260,7 +260,7 @@ void os_backtrace_dump_generic(btrace_type btrace)
 
     if (btrace != BTRACE_LOG_ONLY) {
         /* This call opens up a file </location/crashed_<process_name>_<timestamp>.pid> */
-        fd_crash_log = os_file_open_fd(BTRACE_DUMP_PATH, "crashed");
+        fd_crash_log = os_file_open_fd(CONFIG_OS_BACKTRACE_DUMP_PATH, "crashed");
     }
 
     int addr_len = 2 + sizeof(void*) * 2;

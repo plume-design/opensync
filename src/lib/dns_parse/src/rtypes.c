@@ -4,6 +4,9 @@
 #include "rtypes.h"
 #include "strutils.h"
 #include "memutil.h"
+#include "util.h"
+
+#define IPV4_STR_SIZE 16
 
 static rr_parser_container default_rr_parser =
 {
@@ -22,10 +25,7 @@ mk_error(const char * msg, const uint8_t * packet, uint32_t pos,
          uint16_t rdlength)
 {
     char * tmp = escape_data(packet, pos, pos+rdlength);
-    size_t len = strlen(tmp) + strlen(msg) + 1;
-    char * buffer = MALLOC(sizeof(char)*len);
-
-    sprintf(buffer, "%s%s", msg, tmp);
+    char *buffer = strfmt("%s%s", msg, tmp);
     FREE(tmp);
 
     return buffer;
@@ -39,18 +39,13 @@ char *
 A(const uint8_t * packet, uint32_t pos, uint32_t i,
   uint16_t rdlength, uint32_t plen)
 {
-    char * data = (char *)MALLOC(sizeof(char)*16);
-
     if (rdlength != 4)
     {
-        FREE(data);
         return mk_error("Bad A record: ", packet, pos, rdlength);
     }
 
-    sprintf(data, "%d.%d.%d.%d", packet[pos], packet[pos+1],
+    return strfmt("%d.%d.%d.%d", packet[pos], packet[pos+1],
                                  packet[pos+2], packet[pos+3]);
-
-    return data;
 }
 
 
@@ -100,12 +95,7 @@ char * soa(const uint8_t * packet, uint32_t pos, uint32_t id_pos,
         minimum <<= 8; minimum |= packet[pos+(i+(4*4))];
     }
 
-    /* let snprintf() measure the formatted string */
-    int len = snprintf(0, 0, format, mname, rname, serial, refresh, retry,
-                       expire, minimum);
-    buffer = MALLOC(len + 1);
-    sprintf(buffer, format, mname, rname, serial, refresh, retry, expire,
-            minimum);
+    buffer = strfmt(format, mname, rname, serial, refresh, retry, expire, minimum);
     FREE(mname);
     FREE(rname);
     return buffer;
@@ -132,8 +122,7 @@ mx(const uint8_t * packet, uint32_t pos, uint32_t id_pos,
         return mk_error("Bad MX: ", packet, spos, rdlength);
     }
 
-    buffer = MALLOC(sizeof(char)*(5 + 1 + strlen(name) + 1));
-    sprintf(buffer, "%d,%s", pref, name);
+    buffer = strfmt("%d,%s", pref, name);
     FREE(name);
     return buffer;
 }
@@ -156,9 +145,7 @@ opts(const uint8_t * packet, uint32_t pos, uint32_t id_pos,
     const char * base_format = "size:%d,rcode:0x%02x%02x%02x%02x,%s";
     char *rdata = escape_data(packet, pos+6, pos + 6 + rdlength);
 
-    buffer = MALLOC(sizeof(char) * (strlen(base_format) - 20 + 5 + 8 +
-                                    strlen(rdata) + 1));
-    sprintf(buffer, base_format, payload_size, packet[pos+2], packet[pos+3],
+    buffer = strfmt(base_format, payload_size, packet[pos+2], packet[pos+3],
                                  packet[pos+4], packet[pos+5], rdata);
     FREE(rdata);
 
@@ -185,8 +172,7 @@ srv(const uint8_t * packet, uint32_t pos, uint32_t id_pos,
     if (target == NULL)
         return mk_error("Bad SRV", packet, pos, rdlength);
 
-    buffer = MALLOC(sizeof(char) * ((3*5+3) + strlen(target)));
-    sprintf(buffer, "%d,%d,%d %s", priority, weight, port, target);
+    buffer = strfmt("%d,%d,%d %s", priority, weight, port, target);
     FREE(target);
 
     return buffer;
@@ -212,8 +198,7 @@ AAAA(const uint8_t * packet, uint32_t pos, uint32_t id_pos,
         ipv6[i] = (packet[pos+i*2] << 8) + packet[pos+i*2+1];
     }
 
-    buffer = MALLOC(sizeof(char) * (4*8 + 7 + 1));
-    sprintf(buffer, "%x:%x:%x:%x:%x:%x:%x:%x", ipv6[0], ipv6[1], ipv6[2],
+    buffer = strfmt("%x:%x:%x:%x:%x:%x:%x:%x", ipv6[0], ipv6[1], ipv6[2],
                                                ipv6[3], ipv6[4], ipv6[5],
                                                ipv6[6], ipv6[7]);
 
@@ -236,8 +221,7 @@ dnskey(const uint8_t * packet, uint32_t pos, uint32_t id_pos,
     char *buffer, *key;
 
     key = b64encode(packet, pos+4, rdlength-4);
-    buffer = MALLOC(sizeof(char) * (1 + strlen(key) + 18));
-    sprintf(buffer, "%d,%d,%d,%s", flags, proto, algorithm, key);
+    buffer = strfmt("%d,%d,%d,%s", flags, proto, algorithm, key);
     FREE(key);
 
     return buffer;
@@ -279,13 +263,7 @@ rrsig(const uint8_t * packet, uint32_t pos, uint32_t id_pos,
     }
 
     signature = b64encode(packet, pos, o_pos+rdlength-pos);
-    buffer = MALLOC(sizeof(char) * (2*5 +  /* 2 16 bit ints */
-                                    3*10 + /* 3 32 bit ints */
-                                    2*3 +  /* 2 8 bit ints */
-                                    8 +    /* 8 separator chars */
-                                    strlen(signer) +
-                                    strlen(signature) + 1));
-    sprintf(buffer, "%d,%d,%d,%d,%d,%d,%d,%s,%s", tc, alg, labels, ottl,
+    buffer = strfmt("%d,%d,%d,%d,%d,%d,%d,%s,%s", tc, alg, labels, ottl,
                     sig_exp, sig_inc, key_tag, signer, signature);
     FREE(signer);
     FREE(signature);
@@ -312,8 +290,7 @@ nsec(const uint8_t * packet, uint32_t pos, uint32_t id_pos,
     }
 
     bitmap = escape_data(packet, pos, pos+rdlength);
-    buffer = MALLOC(sizeof(char) * (strlen(domain)+strlen(bitmap)+2));
-    sprintf(buffer, "%s,%s", domain, bitmap);
+    buffer = strfmt("%s,%s", domain, bitmap);
     FREE(domain);
     FREE(bitmap);
 
@@ -336,8 +313,7 @@ ds(const uint8_t * packet, uint32_t pos, uint32_t id_pos,
     char * digest = b64encode(packet,pos+4,rdlength-4);
     char * buffer;
 
-    buffer = MALLOC(sizeof(char) * (strlen(digest) + 15));
-    sprintf(buffer,"%d,%d,%d,%s", key_tag, alg, dig_type, digest);
+    buffer = strfmt("%d,%d,%d,%s", key_tag, alg, dig_type, digest);
     FREE(digest);
 
     return buffer;

@@ -43,6 +43,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "log.h"
 #include "os_time.h"
 #include "memutil.h"
+#include "util.h"
 
 #include "timevt_client.h"
 #include "timevt_msg_link.h"
@@ -113,7 +114,7 @@ bool tecli_log_event(te_client_handle h, const char *cat,
     size_t hdrlen = strlen(TIMEVT_HEADER);
     uint8_t outbuf[hdrlen + proto_size + sizeof(uint32_t)];
 
-    strcpy((char*)outbuf, TIMEVT_HEADER);
+    strscpy((char*)outbuf, TIMEVT_HEADER, sizeof(outbuf));
     (void)sts__time_event__pack(&timevt, &outbuf[hdrlen]);
     (void)te_crc32_append(outbuf, hdrlen + proto_size);
 

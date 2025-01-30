@@ -191,6 +191,26 @@ if MANAGER_PM
             on reboot with loss of Internet access with local HOME LAN service
             from stored subset of Cloud-provisioned OVSDB configuration.
 
+    config PM_TS_CFG
+        bool "Enable support for topology snapshot restore"
+        default n
+        help
+            Ability to recover previously working wifi backhaul connection
+            on node acting as a leaf on reboot.
+
+    if PM_TS_CFG
+        config PM_TS_RESTORE_TIMEOUT
+            int "Timeout for restoring onboarding networks"
+            default 90
+            help
+                When feature flag use_only_preferred_network is set or stored network is multiap then
+                node temporary disables default onboard network to promote last connection only.
+                Default value is 90 as this is value that should be sufficient to establish connection
+                with counting DFS CAC waiting (60s CAC + 30s system connection).
+                Integrators can finetune timeout using this option.
+                As a fallback mechanism default network can be reenabled after timeout.
+    endif
+
 # Include options from vendor
 
     osource "vendor/*/src/pm/kconfig/Kconfig.managers"

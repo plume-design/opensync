@@ -161,11 +161,32 @@ struct osw_drv_vif_config_ap {
     struct osw_passpoint passpoint;
     bool passpoint_changed;
 
+    struct osw_ft_encr_key ft_encr_key;
+    bool ft_encr_key_changed;
+
+    bool ft_over_ds;
+    bool ft_over_ds_changed;
+
+    bool ft_pmk_r1_push;
+    bool ft_pmk_r1_push_changed;
+
+    bool ft_psk_generate_local;
+    bool ft_psk_generate_local_changed;
+
+    int ft_pmk_r0_key_lifetime_sec;
+    bool ft_pmk_r0_key_lifetime_sec_changed;
+
+    int ft_pmk_r1_max_key_lifetime_sec;
+    bool ft_pmk_r1_max_key_lifetime_sec_changed;
+
     struct osw_neigh_list neigh_list;
     struct osw_neigh_list neigh_add_list;
     struct osw_neigh_list neigh_mod_list;
     struct osw_neigh_list neigh_del_list;
     bool neigh_list_changed;
+
+    struct osw_neigh_ft_list neigh_ft_list;
+    bool neigh_ft_list_changed;
 
     struct osw_wps_cred_list wps_cred_list;
     bool wps_cred_list_changed;
@@ -191,6 +212,7 @@ struct osw_drv_vif_sta_network {
     struct osw_wpa wpa;
     struct osw_drv_vif_sta_network *next;
     bool multi_ap;
+    int priority;
 };
 
 enum osw_drv_vif_config_sta_operation {
@@ -249,12 +271,19 @@ struct osw_drv_vif_state_ap {
     struct osw_radius_list radius_list;
     struct osw_radius_list acct_list;
     struct osw_neigh_list neigh_list;
+    struct osw_neigh_ft_list neigh_ft_list;
     struct osw_wps_cred_list wps_cred_list;
     struct osw_multi_ap multi_ap;
     struct osw_drv_mld_state mld;
     enum osw_mbss_vif_ap_mode mbss_mode;
     int mbss_group;
     struct osw_passpoint passpoint;
+    struct osw_ft_encr_key ft_encr_key;
+    bool ft_over_ds;
+    bool ft_pmk_r1_push;
+    bool ft_psk_generate_local;
+    int ft_pmk_r0_key_lifetime_sec;
+    int ft_pmk_r1_max_key_lifetime_sec;
 };
 
 struct osw_drv_vif_state_ap_vlan {
@@ -325,6 +354,9 @@ struct osw_drv_phy_config {
     int tx_chainmask;
     bool tx_chainmask_changed;
 
+    struct osw_channel radar_next_channel;
+    bool radar_next_channel_changed;
+
     enum osw_radar_detect radar;
     bool radar_changed;
 
@@ -352,6 +384,7 @@ struct osw_drv_phy_state {
     bool exists;
     bool enabled;
     int tx_chainmask;
+    struct osw_channel radar_next_channel;
     enum osw_radar_detect radar;
     bool puncture_supported;
 };
@@ -660,6 +693,21 @@ osw_drv_vif_state_report_free(struct osw_drv_vif_state *state);
 
 void
 osw_drv_sta_state_report_free(struct osw_drv_sta_state *state);
+
+const char *
+osw_drv_vif_state_sta_link_status_to_cstr(enum osw_drv_vif_state_sta_link_status s);
+
+const struct osw_channel *
+osw_drv_vif_get_channel(const struct osw_drv_vif_state *state);
+
+const struct osw_drv_vif_sta_network *
+osw_drv_vif_sta_network_get(const struct osw_drv_vif_state_sta *vsta);
+
+const struct osw_drv_mld_state *
+osw_drv_vif_state_get_mld_state(const struct osw_drv_vif_state *state);
+
+const char *
+osw_drv_mld_state_get_name(const struct osw_drv_mld_state *mld_state);
 
 /* TODO
 void osw_drv_report_sta_deauth_tx

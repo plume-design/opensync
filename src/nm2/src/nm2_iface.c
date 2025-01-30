@@ -334,10 +334,7 @@ void __nm2_iface_apply(EV_P_ ev_debounce *w, int revent)
                     nm2_iftype_tostr(piface->if_type));
         }
 
-        if(kconfig_enabled(CONFIG_TARGET_USE_NATIVE_BRIDGE))
-        {
-            nm2_inet_bridge_config_reapply(piface);
-        }
+        nm2_inet_bridge_config_reapply(piface);
 
         ds_dlist_iremove(&iter);
     }
@@ -399,10 +396,7 @@ inet_t *nm2_iface_new_inet(const char *ifname, enum nm2_iftype type)
             nif = inet_eth_new(ifname);
             break;
         case NM2_IFTYPE_TAP:
-            if(kconfig_enabled(CONFIG_TARGET_USE_NATIVE_BRIDGE))
-                nif = inet_tap_new(ifname);
-            else
-                nif = inet_eth_new(ifname);
+            nif = inet_tap_new(ifname);
             break;
 
         case NM2_IFTYPE_VIF:
@@ -538,7 +532,7 @@ void nm2_iface_status_register(struct nm2_iface *piface)
 void nm2_iface_dhcpc_notify(inet_t *inet, enum osn_dhcp_option opt, const char *value)
 {
     struct nm2_iface *piface = inet->in_data;
-    
+
     (void)opt;
     (void)value;
 

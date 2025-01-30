@@ -139,12 +139,7 @@ void test_target_map_insert()
     /*setup*/
     char *map_name = "map3";
     int ret;
-
-#ifdef CONFIG_TARGET_WAN_BRIDGE_NAME
-    char *if_name = CONFIG_TARGET_WAN_BRIDGE_NAME"3";
-#else
-    char *if_name = "br-wan3";
-#endif
+    char *if_name = "br-home3";
 
     /*if map is not initialized and other inputs are correct*/
     target_map_close();
@@ -354,12 +349,8 @@ void test_target_is_radio_interface_ready()
 
     ret = target_is_radio_interface_ready(radio_if_name);
     if (ret == false) {
-#ifdef CONFIG_TARGET_WAN_BRIDGE_NAME
-        ret = target_is_interface_ready(CONFIG_TARGET_WAN_BRIDGE_NAME);
-#else
-        ret = target_is_interface_ready("br-wan");
-#endif
-        return; /*means br-wan is up, so wifi0 should be down*/
+        ret = target_is_interface_ready("br-home");
+        return; /*means br-home is up, so wifi0 should be down*/
     }
     TEST_ASSERT_FALSE_MESSAGE(!ret, "Failed, radio-interface wifi0 is not ready");
     TEST_ASSERT_FALSE_MESSAGE(!ret, "PASS");
@@ -376,12 +367,8 @@ void test_target_is_interface_ready()
 {
     /*setup*/
     bool ret;
+    char *if_name = "br-home";
 
-#ifdef CONFIG_TARGET_WAN_BRIDGE_NAME
-        char *if_name = CONFIG_TARGET_WAN_BRIDGE_NAME;
-#else
-        char *if_name = "br-home";
-#endif
     ret = target_is_interface_ready(if_name);
     TEST_ASSERT_FALSE_MESSAGE(!ret, "Failed, if_name is not ready");
 
@@ -622,19 +609,6 @@ void test_target_device_restart_managers()
     }
     ret = target_device_restart_managers();
     TEST_ASSERT_FALSE_MESSAGE(!ret, "failed, to restart managers");
-
-}//END OF FUNCTION
-
-/*! \brief
- * Function to test target_device_capabilities_get, which returns the device
- * capabilities
- * @param[out] pass, if returns true, fail otherwise
- */
-void test_target_device_capabilities_get()
-{
-    bool ret;
-    ret = target_device_capabilities_get();
-    TEST_ASSERT_FALSE_MESSAGE(!ret, "failed, to get the capabilities");
 
 }//END OF FUNCTION
 

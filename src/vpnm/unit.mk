@@ -36,7 +36,7 @@ UNIT_TYPE := BIN
 
 UNIT_SRC += src/vpnm_main.c
 UNIT_SRC += src/vpnm_tunnel.c
-UNIT_SRC += src/vpnm_ipsec.c
+UNIT_SRC += $(if $(CONFIG_OSN_VPN_IPSEC),src/vpnm_ipsec.c)
 UNIT_SRC += src/vpnm_tunnel_iface.c
 UNIT_SRC += src/vpnm_resolve.c
 

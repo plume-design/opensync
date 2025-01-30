@@ -1276,10 +1276,7 @@ test_tx_intf_kconfig(void)
 #endif
 
     memset(tx_intf, 0, sizeof(tx_intf));
-    if (!kconfig_enabled(CONFIG_TARGET_USE_NATIVE_BRIDGE))
-      snprintf(tx_intf, sizeof(tx_intf), "%s.tx", CONFIG_TARGET_LAN_BRIDGE_NAME);
-    else
-      snprintf(tx_intf, sizeof(tx_intf), "%s", CONFIG_TARGET_LAN_BRIDGE_NAME);
+    snprintf(tx_intf, sizeof(tx_intf), "%s", CONFIG_TARGET_LAN_BRIDGE_NAME);
 
     LOGI("%s: CONFIG_TARGET_LAN_BRIDGE_NAME == %s", __func__, CONFIG_TARGET_LAN_BRIDGE_NAME);
 

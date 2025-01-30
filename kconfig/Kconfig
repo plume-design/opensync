@@ -108,6 +108,18 @@ menu "Common"
             endchoice
 
             choice
+                prompt "Qdisc QoS"
+                default OSN_BACKEND_QDISC_LINUX
+                source "kconfig/Kconfig.osn.qdisc_backend"
+            endchoice
+
+            choice
+                prompt "Adaptive QoS"
+                default OSN_BACKEND_ADAPTIVE_QOS_NULL
+                source "kconfig/Kconfig.osn.adaptive_qos_backend"
+            endchoice
+
+            choice
                 prompt "Packet Classifier"
                 default OSN_BACKEND_TC_LINUX
                 source "kconfig/Kconfig.osn.tc_backend"
@@ -132,13 +144,7 @@ menu "Common"
             endchoice
 
             choice
-                prompt "LTE"
-                default OSN_BACKEND_LTE_LINUX
-                source "kconfig/Kconfig.osn.lte_backend"
-            endchoice
-
-            choice
-                prompt "CELL"
+                prompt "Cellular"
                 default OSN_BACKEND_CELL_LINUX
                 source "kconfig/Kconfig.osn.cell_backend"
             endchoice
@@ -171,7 +177,7 @@ menu "Common"
                 endchoice
                 choice
                     prompt "IPsec"
-                    default OSN_BACKEND_IPSEC_LINUX_STRONGSWAN
+                    default CONFIG_OSN_BACKEND_IPSEC_NULL
                     source "kconfig/Kconfig.osn.ipsec_backend"
                 endchoice
                 choice
@@ -302,6 +308,15 @@ menu "Common"
                 source "kconfig/Kconfig.osp_otbr"
             endmenu
 
+            menu "Public Key Infrastrucutre (OSP_PKI)"
+                choice
+                    prompt "PKI Backend"
+                    default OSP_PKI_PS
+                    source "kconfig/Kconfig.osp_pki.backend"
+                endchoice
+                source "kconfig/Kconfig.osp_pki"
+            endmenu
+
         endmenu
     endmenu
 
@@ -334,12 +349,6 @@ menu "Common"
 
     config TARGET_NAME
         string "Device Descriptive Name"
-
-    config TARGET_USE_NATIVE_BRIDGE
-	bool "Use native bridge instead of OVS bridge"
-        default n
-        help
-            If enabled OVS Bridge is disabled and native bridge is enabled.
 
     config TARGET_ENABLE_EBTABLES
 	bool "Enable ebtables to filter layer2 frames."

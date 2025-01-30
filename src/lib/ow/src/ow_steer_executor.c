@@ -36,6 +36,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ow_steer_executor_action_i.h"
 #include "ow_steer_executor.h"
 
+#define LOG_PREFIX(fmt, ...) "ow: steer: executor: sta: " fmt, ##__VA_ARGS__
+
 struct ow_steer_executor {
     struct ds_dlist action_list;
 };
@@ -93,15 +95,15 @@ ow_steer_executor_call(struct ow_steer_executor *executor,
     ASSERT(candidate_list != NULL, "");
     ASSERT(conf_mutator != NULL, "");
 
-    LOGD("ow: steer: executor: sta: "OSW_HWADDR_FMT" call actions", OSW_HWADDR_ARG(sta_addr));
+    LOGT(LOG_PREFIX(OSW_HWADDR_FMT" call actions", OSW_HWADDR_ARG(sta_addr)));
 
     size_t i = 0;
     for (i = 0; i < ow_steer_candidate_list_get_length(candidate_list); i++) {
         const struct ow_steer_candidate *candidate = ow_steer_candidate_list_const_get(candidate_list, i);
         const enum ow_steer_candidate_preference preference = ow_steer_candidate_get_preference(candidate);
         if (preference == OW_STEER_CANDIDATE_PREFERENCE_NONE) {
-            LOGD("ow: steer: executor: sta: "OSW_HWADDR_FMT" ignorring call, at least one candidate has preference: none, abort calling cations",
-                 OSW_HWADDR_ARG(sta_addr));
+            LOGD(LOG_PREFIX(OSW_HWADDR_FMT" ignorring call, at least one candidate has preference: none, abort calling cations",
+                 OSW_HWADDR_ARG(sta_addr)));
             return;
         }
     }
@@ -134,15 +136,15 @@ ow_steer_executor_conf_mutate(struct ow_steer_executor *executor,
     ASSERT(candidate_list != NULL, "");
     ASSERT(phy_tree != NULL, "");
 
-    LOGD("ow: steer: executor: sta: "OSW_HWADDR_FMT" mutate conf", OSW_HWADDR_ARG(sta_addr));
+    LOGD(LOG_PREFIX(OSW_HWADDR_FMT" mutate conf", OSW_HWADDR_ARG(sta_addr)));
 
     size_t i = 0;
     for (i = 0; i < ow_steer_candidate_list_get_length(candidate_list); i++) {
         const struct ow_steer_candidate *candidate = ow_steer_candidate_list_const_get(candidate_list, i);
         const enum ow_steer_candidate_preference preference = ow_steer_candidate_get_preference(candidate);
         if (preference == OW_STEER_CANDIDATE_PREFERENCE_NONE) {
-            LOGD("ow: steer: executor: sta: "OSW_HWADDR_FMT" ignorring mutate, at least one candidate has preference: none, aborting mutate conf",
-                 OSW_HWADDR_ARG(sta_addr));
+            LOGD(LOG_PREFIX(OSW_HWADDR_FMT" ignorring mutate, at least one candidate has preference: none, aborting mutate conf",
+                 OSW_HWADDR_ARG(sta_addr)));
             return;
         }
     }

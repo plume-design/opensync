@@ -37,6 +37,12 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ow_steer_policy_i.h"
 #include "ow_steer_policy_bss_filter.h"
 
+#define LOG_PREFIX(fmt, ...) "ow: steer: " fmt, ##__VA_ARGS__
+#define LOG_GET_PREFIX(policy, fmt, ...) \
+    "%s " fmt,                           \
+    ow_steer_policy_get_prefix(policy),  \
+    ##__VA_ARGS__
+
 struct ow_steer_policy_bss_filter {
     struct ow_steer_policy *base;
     struct ow_steer_policy_bss_filter_preference included_preference;
@@ -94,7 +100,7 @@ ow_steer_policy_bss_filter_reset(struct ow_steer_policy_bss_filter *filter_polic
         }
     }
 
-    LOGI("%s config changed", ow_steer_policy_get_prefix(filter_policy->base));
+    LOGI(LOG_GET_PREFIX(filter_policy->base, "config changed"));
 
     ow_steer_policy_schedule_stack_recalc(filter_policy->base);
 }
@@ -126,19 +132,21 @@ ow_steer_policy_bss_filter_recalc_cb(struct ow_steer_policy *policy,
         const enum ow_steer_candidate_preference current_pref = ow_steer_candidate_get_preference(candidate);
         const bool cannot_override = (current_pref != OW_STEER_CANDIDATE_PREFERENCE_NONE);
         if (cannot_override) {
-            LOGD("%s bssid: "OSW_HWADDR_FMT" preference: %s cannot be set, already set to: %s",
-                 ow_steer_policy_get_prefix(policy),
+            LOGD(LOG_GET_PREFIX(policy,
+                 "bssid: "OSW_HWADDR_FMT" preference: %s cannot be set, already set to: %s",
                  OSW_HWADDR_ARG(bssid),
                  ow_steer_candidate_preference_to_cstr(current_pref),
-                 ow_steer_candidate_preference_to_cstr(preference->value));
+                 ow_steer_candidate_preference_to_cstr(preference->value)));
             continue;
         }
 
         const char *reason = ow_steer_policy_get_name(policy);
         ow_steer_candidate_set_preference(candidate, reason, preference->value);
 
-        LOGD("%s bssid: "OSW_HWADDR_FMT" preference: %s", ow_steer_policy_get_prefix(policy), OSW_HWADDR_ARG(bssid),
-             ow_steer_candidate_preference_to_cstr(ow_steer_candidate_get_preference(candidate)));
+        LOGD(LOG_GET_PREFIX(policy,
+             "bssid: "OSW_HWADDR_FMT" preference: %s",
+             OSW_HWADDR_ARG(bssid),
+             ow_steer_candidate_preference_to_cstr(ow_steer_candidate_get_preference(candidate))));
      }
 }
 
@@ -150,23 +158,24 @@ ow_steer_policy_bss_filter_sigusr1_dump_cb(osw_diag_pipe_t *pipe,
 
     struct ow_steer_policy_bss_filter *filter_policy = ow_steer_policy_get_priv(policy);
 
-    osw_diag_pipe_writef(pipe, "ow: steer:         included_preference:");
-    osw_diag_pipe_writef(pipe, "ow: steer:           override: %s", filter_policy->included_preference.override == true ? "true" : "false");
-    osw_diag_pipe_writef(pipe, "ow: steer:           preference: %s", ow_steer_candidate_preference_to_cstr(filter_policy->included_preference.value));
-    osw_diag_pipe_writef(pipe, "ow: steer:         excluded_preference:");
-    osw_diag_pipe_writef(pipe, "ow: steer:           override: %s", filter_policy->excluded_preference.override == true ? "true" : "false");
-    osw_diag_pipe_writef(pipe, "ow: steer:           preference: %s", ow_steer_candidate_preference_to_cstr(filter_policy->excluded_preference.value));
-    osw_diag_pipe_writef(pipe, "ow: steer:         bssids:%s", ds_tree_is_empty(&filter_policy->bssid_tree) == true ? " (none)" : "");
+    osw_diag_pipe_writef(pipe, LOG_PREFIX("        included_preference:"));
+    osw_diag_pipe_writef(pipe, LOG_PREFIX("          override: %s", filter_policy->included_preference.override == true ? "true" : "false"));
+    osw_diag_pipe_writef(pipe, LOG_PREFIX("          preference: %s", ow_steer_candidate_preference_to_cstr(filter_policy->included_preference.value)));
+    osw_diag_pipe_writef(pipe, LOG_PREFIX("        excluded_preference:"));
+    osw_diag_pipe_writef(pipe, LOG_PREFIX("          override: %s", filter_policy->excluded_preference.override == true ? "true" : "false"));
+    osw_diag_pipe_writef(pipe, LOG_PREFIX("          preference: %s", ow_steer_candidate_preference_to_cstr(filter_policy->excluded_preference.value)));
+    osw_diag_pipe_writef(pipe, LOG_PREFIX("        bssids:%s", ds_tree_is_empty(&filter_policy->bssid_tree) == true ? " (none)" : ""));
 
     struct ow_steer_policy_bss_filter_bssid *entry;
     ds_tree_foreach(&filter_policy->bssid_tree, entry)
-        osw_diag_pipe_writef(pipe, "ow: steer:           bssid: "OSW_HWADDR_FMT, OSW_HWADDR_ARG(&entry->bssid));
+        osw_diag_pipe_writef(pipe, LOG_PREFIX("          bssid: "OSW_HWADDR_FMT, OSW_HWADDR_ARG(&entry->bssid)));
 }
 
 struct ow_steer_policy_bss_filter*
 ow_steer_policy_bss_filter_create(const char *name,
                                   const struct osw_hwaddr *sta_addr,
-                                  const struct ow_steer_policy_mediator *mediator)
+                                  const struct ow_steer_policy_mediator *mediator,
+                                  const char *log_prefix)
 {
     ASSERT(name != NULL, "");
     ASSERT(sta_addr != NULL, "");
@@ -178,7 +187,7 @@ ow_steer_policy_bss_filter_create(const char *name,
     };
 
     struct ow_steer_policy_bss_filter *filter_policy = CALLOC(1, sizeof(*filter_policy));
-    filter_policy->base = ow_steer_policy_create(name, sta_addr, &ops, mediator, filter_policy);
+    filter_policy->base = ow_steer_policy_create(name, sta_addr, &ops, mediator, log_prefix, filter_policy);
     ds_tree_init(&filter_policy->bssid_tree, (ds_key_cmp_t*) osw_hwaddr_cmp, struct ow_steer_policy_bss_filter_bssid, node);
 
     return filter_policy;

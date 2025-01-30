@@ -155,7 +155,7 @@ int main(int argc, char ** argv)
         return -1;
     }
 
-    if (nf_ct_init(loop) < 0)
+    if (nf_ct_init(loop, fcm_conntrack_event_cb) < 0)
     {
         LOGE("Eror initializing conntrack");
         return -1;

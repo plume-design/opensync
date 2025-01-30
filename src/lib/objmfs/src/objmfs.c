@@ -88,11 +88,15 @@ bool objmfs_install(char *path, char *name, char *version, install_cb_t install_
 
     char object_name[FIELD_ARRAY_LEN(struct schema_Object_Store_Config, name)];
     char object_version[FIELD_ARRAY_LEN(struct schema_Object_Store_Config, version)];
+    bool leave_compressed;
     bool is_unique;
     size_t len = 0;
     ssize_t read;
     bool ret;
     int rsz;
+
+    leave_compressed = false;
+    is_unique = false;
 
     ret = true;
     LOG(DEBUG, "objmfs: (%s): Installing: %s:%s:%s", __func__, name, version, path);
@@ -140,12 +144,10 @@ bool objmfs_install(char *path, char *name, char *version, install_cb_t install_
         goto cleanup;
     }
 
-    is_unique = false;
     fd = fopen(tpath, "r");
     while ((read = getline(&line, &len, fd)) != -1)
     {
         char *pos;
-
         if (strstr(line, "name") != NULL)
         {
             sscanf(line, "name:%s", object_name);
@@ -156,6 +158,9 @@ bool objmfs_install(char *path, char *name, char *version, install_cb_t install_
         }
         pos = strstr(line, "unique:yes\n");
         is_unique = (pos != NULL);
+
+        pos = strstr(line, "leave_compressed:yes\n");
+        leave_compressed = (pos != NULL);
     }
     fclose(fd);
 
@@ -189,16 +194,21 @@ bool objmfs_install(char *path, char *name, char *version, install_cb_t install_
         goto cleanup;
     }
 
-    LOG(TRACE, "objmfs: Extract data command: %s", cmd);
-    if (cmd_log_check_safe(cmd))
+    if (!leave_compressed)
     {
-        LOG(ERR, "objmfs: Extraction of data failed: %s", cmd);
-        ret = false;
-        goto cleanup;
+        LOG(TRACE, "objmfs: Extract data command: %s", cmd);
+        if (cmd_log_check_safe(cmd))
+        {
+            LOG(ERR, "objmfs: Extraction of data failed: %s", cmd);
+            ret = false;
+            goto cleanup;
+        }
     }
 
 cleanup:
     objmfs_rmdir(path);  // clean downloaded tarball
+    if (leave_compressed) return ret;
+
     rsz = snprintf(tpath, sizeof(tpath), "%s/data.tar.gz", folder_path);
     if (rsz < (int)sizeof(tpath))
     {

@@ -36,6 +36,9 @@ ow_steer_sta_get_policy_stack(struct ow_steer_sta *sta);
 struct ow_steer_executor*
 ow_steer_sta_get_executor(struct ow_steer_sta *sta);
 
+const char*
+ow_steer_sta_get_log_prefix(struct ow_steer_sta *sta);
+
 void
 ow_steer_sta_set_candidate_assessor(struct ow_steer_sta *sta,
                                     struct ow_steer_candidate_assessor *candidate_assessor);

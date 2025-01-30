@@ -323,6 +323,33 @@ if OSN_LINUX_ENABLED
             QoS management via the tc/qdisc framework. This option implements
             the lnx_qos API and enables the "Linux" QoS backend (osn_qos).
 
+    menuconfig OSN_ADAPTIVE_QOS_CAKE_AUTORATE
+        bool "OpenSync Adaptive QoS support with cake-autorate"
+        default n
+        help
+            OpenSync Adaptive QoS support with cake-autorate
+
+        if OSN_ADAPTIVE_QOS_CAKE_AUTORATE
+            config OSN_ADAPTIVE_QOS_CAKE_AUTORATE_PATH
+            string "cake-autorate script path"
+            default "/opt/cake-autorate/cake-autorate.sh"
+            help
+                Full path to cake-autorate script
+
+            config OSN_ADAPTIVE_QOS_CAKE_AUTORATE_CONFIG
+            string "cake-autorate configuration file"
+            default "/opt/cake-autorate/config.primary.sh"
+            help
+                Full path to cake-autorate configuration file
+        endif
+
+    config OSN_LINUX_QDISC
+        bool "Linux qdisc QoS"
+        default y
+        help
+            Generic Linux qdisc-based QoS via the tc/qdisc framework. This option implements
+            the lnx_qdisc API and enables the generic "Linux" qdisc-based backend (osn_qdisc).
+
     config OSN_LINUX_TC
         bool "Linux Packet Classifier"
         default y
@@ -510,7 +537,7 @@ if OSN_LINUX_ENABLED
         if OSN_VPN
             config OSN_VPN_IPSEC
             bool "OpenSync IPsec VPN support"
-            default y
+            default n
             help
                 OpenSync IPsec VPN support
 

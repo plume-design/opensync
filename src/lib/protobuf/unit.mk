@@ -76,5 +76,6 @@ $(eval $(call protobuf_generate,adv_data_typing.proto,adv_data_typing))
 $(eval $(call protobuf_generate,upnp_portmap.proto,upnp_portmap))
 $(eval $(call protobuf_generate,cell_info.proto,cell_info))
 $(eval $(call protobuf_generate,thread_network_info.proto,thread_network_info))
+$(eval $(call protobuf_generate,latency.proto,latency))
 
 UNIT_EXPORT_CFLAGS += -I$(PROTO_INC_DIR)

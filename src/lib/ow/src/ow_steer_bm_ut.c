@@ -941,7 +941,7 @@ OSW_UT(ow_steer_bm_stats_probe)
     const struct osw_hwaddr bssid = { .octet = { 0xCA, 0xFE, 0xCA, 0xFE, 0xF0, 0x0D }, };
     const struct osw_ssid ssid = { .buf = "ssid_0", .len = strlen("ssid_0") };
     const struct osw_ssid empty_ssid = { .buf = "", .len = strlen("") };
-    const char *group_id = "group_0";
+    const char *group_id = "00000000-0000-0000-0000-000000000000";
     const char *vif_name = "vif_0";
     const void *placeholder_invalid_ptr = (void *) 0xB0BAF00D;
     struct ow_steer_bm_group *group = ow_steer_bm_get_group(group_id);
@@ -1006,7 +1006,7 @@ OSW_UT(ow_steer_bm_stats_connect)
 
     const struct osw_hwaddr sta_addr = { .octet = { 0xBA, 0xDC, 0x0D, 0xEB, 0xAD, 0xC0 }, };
     const struct osw_hwaddr bssid = { .octet = { 0xCA, 0xFE, 0xCA, 0xFE, 0xF0, 0x0D }, };
-    const char *group_id = "group_0";
+    const char *group_id = "00000000-0000-0000-0000-000000000000";
     const char *phy_name = "phy_0";
     const char *vif_name = "vif_0";
     struct ow_steer_bm_group *group = ow_steer_bm_get_group(group_id);
@@ -1047,8 +1047,8 @@ OSW_UT(ow_steer_bm_stats_connect)
 
     struct ow_steer_bm_vif_stats *client_vif_stats = ds_tree_find(&client->stats_tree, vif_name);
     OSW_UT_EVAL(client_vif_stats != NULL);
-    /* connected, activity, client_capabilties are generated together */
-    OSW_UT_EVAL(client_vif_stats->event_stats_count == 3);
+    /* connected, activity are generated together, capabilities require assoc ies */
+    OSW_UT_EVAL(client_vif_stats->event_stats_count == 2);
     OSW_UT_EVAL(client_vif_stats->connected == true);
     OSW_UT_EVAL(client_vif_stats->connects == 1);
 
@@ -1064,7 +1064,7 @@ OSW_UT(ow_steer_bm_stats_connect_snr)
 
     const struct osw_hwaddr sta_addr = { .octet = { 0xBA, 0xDC, 0x0D, 0xEB, 0xAD, 0xC0 }, };
     const struct osw_hwaddr bssid = { .octet = { 0xCA, 0xFE, 0xCA, 0xFE, 0xF0, 0x0D }, };
-    const char *group_id = "group_0";
+    const char *group_id = "00000000-0000-0000-0000-000000000000";
     const char *phy_name = "phy_0";
     const char *vif_name = "vif_0";
     struct ow_steer_bm_group *group = ow_steer_bm_get_group(group_id);
@@ -1111,8 +1111,8 @@ OSW_UT(ow_steer_bm_stats_connect_snr)
 
     struct ow_steer_bm_vif_stats *client_vif_stats = ds_tree_find(&client->stats_tree, vif_name);
     OSW_UT_EVAL(client_vif_stats != NULL);
-    /* connected, activity, client_capabilties are generated together */
-    OSW_UT_EVAL(client_vif_stats->event_stats_count == 3);
+    /* connected, activity are generated together, capabilities require assoc ies */
+    OSW_UT_EVAL(client_vif_stats->event_stats_count == 2);
     OSW_UT_EVAL(client_vif_stats->connected == true);
     OSW_UT_EVAL(client_vif_stats->connects == 1);
 
@@ -1135,20 +1135,29 @@ OSW_UT(ow_steer_bm_stats_disconnect)
 
     const struct osw_hwaddr sta_addr = { .octet = { 0xBA, 0xDC, 0x0D, 0xEB, 0xAD, 0xC0 }, };
     const struct osw_hwaddr bssid = { .octet = { 0xCA, 0xFE, 0xCA, 0xFE, 0xF0, 0x0D }, };
-    const char *group_id = "group_0";
+    const char *group_id = "00000000-0000-0000-0000-000000000000";
     const char *vif_name = "vif_0";
+    const char *phy_name = "phy_0";
     struct ow_steer_bm_group *group = ow_steer_bm_get_group(group_id);
     OSW_UT_EVAL(group != NULL);
     struct ow_steer_bm_vif *vif = ow_steer_bm_group_get_vif(group, vif_name);
     OSW_UT_EVAL(vif != NULL);
     struct ow_steer_bm_client *client = ow_steer_bm_get_client(sta_addr.octet);
     OSW_UT_EVAL(client != NULL);
+    struct osw_drv_phy_state drv_phy_state = {
+    };
+    struct osw_state_phy_info phy_info = {
+        .phy_name = phy_name,
+        .drv_state = &drv_phy_state,
+    };
     struct osw_drv_vif_state drv_vif_state = {
         .mac_addr = bssid,
+        .vif_type = OSW_VIF_AP,
     };
     struct osw_state_vif_info vif_info = {
         .vif_name = vif_name,
         .drv_state = &drv_vif_state,
+        .phy = &phy_info,
     };
     ow_steer_bm_vif_set_vif_info(vif, &vif_info);
     struct osw_drv_sta_state drv_sta_state = { 0 };
@@ -1166,15 +1175,16 @@ OSW_UT(ow_steer_bm_stats_disconnect)
     }
     OSW_UT_EVAL(bm_sta != NULL);
 
+    ow_steer_bm_sta_state_sta_connected_cb(&bm_sta->state_observer, &sta_info);
     ow_steer_bm_sta_state_sta_disconnected_cb(&bm_sta->state_observer, &sta_info);
 
     struct ow_steer_bm_vif_stats *client_vif_stats = ds_tree_find(&client->stats_tree, vif_name);
     OSW_UT_EVAL(client_vif_stats != NULL);
-    OSW_UT_EVAL(client_vif_stats->event_stats_count == 1);
+    OSW_UT_EVAL(client_vif_stats->event_stats_count == 3);
     OSW_UT_EVAL(client_vif_stats->connected == false);
     OSW_UT_EVAL(client_vif_stats->disconnects == 1);
 
-    struct ow_steer_bm_event_stats *client_event_stats = &client_vif_stats->event_stats[0];
+    struct ow_steer_bm_event_stats *client_event_stats = &client_vif_stats->event_stats[2];
     OSW_UT_EVAL(client_event_stats->type == DISCONNECT);
     OSW_UT_EVAL(client_event_stats->disconnect_src == LOCAL);
     OSW_UT_EVAL(client_event_stats->disconnect_type == DEAUTH);
@@ -1189,20 +1199,29 @@ OSW_UT(ow_steer_bm_stats_disconnect_snr)
 
     const struct osw_hwaddr sta_addr = { .octet = { 0xBA, 0xDC, 0x0D, 0xEB, 0xAD, 0xC0 }, };
     const struct osw_hwaddr bssid = { .octet = { 0xCA, 0xFE, 0xCA, 0xFE, 0xF0, 0x0D }, };
-    const char *group_id = "group_0";
+    const char *group_id = "00000000-0000-0000-0000-000000000000";
     const char *vif_name = "vif_0";
+    const char *phy_name = "phy_0";
     struct ow_steer_bm_group *group = ow_steer_bm_get_group(group_id);
     OSW_UT_EVAL(group != NULL);
     struct ow_steer_bm_vif *vif = ow_steer_bm_group_get_vif(group, vif_name);
     OSW_UT_EVAL(vif != NULL);
     struct ow_steer_bm_client *client = ow_steer_bm_get_client(sta_addr.octet);
     OSW_UT_EVAL(client != NULL);
+    struct osw_drv_phy_state drv_phy_state = {
+    };
+    struct osw_state_phy_info phy_info = {
+        .phy_name = phy_name,
+        .drv_state = &drv_phy_state,
+    };
     struct osw_drv_vif_state drv_vif_state = {
         .mac_addr = bssid,
+        .vif_type = OSW_VIF_AP,
     };
     struct osw_state_vif_info vif_info = {
         .vif_name = vif_name,
         .drv_state = &drv_vif_state,
+        .phy = &phy_info,
     };
     struct ow_steer_bm_bss bss = {
         .bssid = {
@@ -1226,6 +1245,8 @@ OSW_UT(ow_steer_bm_stats_disconnect_snr)
     }
     OSW_UT_EVAL(bm_sta != NULL);
 
+    ow_steer_bm_sta_state_sta_connected_cb(&bm_sta->state_observer, &sta_info);
+
     ow_steer_bm_snr_obs_report_cb(NULL, &sta_addr, &bssid, 11);
     ow_steer_bm_snr_obs_report_cb(NULL, &sta_addr, &bssid, 22);
     ow_steer_bm_snr_obs_report_cb(NULL, &sta_addr, &bssid, 33);
@@ -1236,11 +1257,11 @@ OSW_UT(ow_steer_bm_stats_disconnect_snr)
 
     struct ow_steer_bm_vif_stats *client_vif_stats = ds_tree_find(&client->stats_tree, vif_name);
     OSW_UT_EVAL(client_vif_stats != NULL);
-    OSW_UT_EVAL(client_vif_stats->event_stats_count == 1);
+    OSW_UT_EVAL(client_vif_stats->event_stats_count == 3);
     OSW_UT_EVAL(client_vif_stats->connected == false);
     OSW_UT_EVAL(client_vif_stats->disconnects == 1);
 
-    struct ow_steer_bm_event_stats *client_event_stats = &client_vif_stats->event_stats[0];
+    struct ow_steer_bm_event_stats *client_event_stats = &client_vif_stats->event_stats[2];
     OSW_UT_EVAL(client_event_stats->type == DISCONNECT);
     OSW_UT_EVAL(client_event_stats->disconnect_src == LOCAL);
     OSW_UT_EVAL(client_event_stats->disconnect_type == DEAUTH);
@@ -1256,7 +1277,7 @@ OSW_UT(ow_steer_bm_stats_force_kick)
 
     const struct osw_hwaddr sta_addr = { .octet = { 0xBA, 0xDC, 0x0D, 0xEB, 0xAD, 0xC0 }, };
     const struct osw_hwaddr bssid = { .octet = { 0xCA, 0xFE, 0xCA, 0xFE, 0xF0, 0x0D }, };
-    const char *group_id = "group_0";
+    const char *group_id = "00000000-0000-0000-0000-000000000000";
     const char *vif_name = "vif_0";
     struct ow_steer_bm_group *group = ow_steer_bm_get_group(group_id);
     OSW_UT_EVAL(group != NULL);
@@ -1314,7 +1335,7 @@ OSW_UT(ow_steer_bm_stats_sticky_kick_2g)
 
     const struct osw_hwaddr sta_addr = { .octet = { 0xBA, 0xDC, 0x0D, 0xEB, 0xAD, 0xC0 }, };
     const struct osw_hwaddr bssid = { .octet = { 0xCA, 0xFE, 0xCA, 0xFE, 0xF0, 0x0D }, };
-    const char *group_id = "group_0";
+    const char *group_id = "00000000-0000-0000-0000-000000000000";
     const char *vif_name = "vif_0";
     struct ow_steer_bm_group *group = ow_steer_bm_get_group(group_id);
     OSW_UT_EVAL(group != NULL);
@@ -1374,7 +1395,7 @@ OSW_UT(ow_steer_bm_stats_sticky_kick_bottom_2g)
 
     const struct osw_hwaddr sta_addr = { .octet = { 0xBA, 0xDC, 0x0D, 0xEB, 0xAD, 0xC0 }, };
     const struct osw_hwaddr bssid = { .octet = { 0xCA, 0xFE, 0xCA, 0xFE, 0xF0, 0x0D }, };
-    const char *group_id = "group_0";
+    const char *group_id = "00000000-0000-0000-0000-000000000000";
     const char *vif_name = "vif_0";
     struct ow_steer_bm_group *group = ow_steer_bm_get_group(group_id);
     OSW_UT_EVAL(group != NULL);
@@ -1434,7 +1455,7 @@ OSW_UT(ow_steer_bm_stats_sticky_kick_5g)
 
     const struct osw_hwaddr sta_addr = { .octet = { 0xBA, 0xDC, 0x0D, 0xEB, 0xAD, 0xC0 }, };
     const struct osw_hwaddr bssid = { .octet = { 0xCA, 0xFE, 0xCA, 0xFE, 0xF0, 0x0D }, };
-    const char *group_id = "group_0";
+    const char *group_id = "00000000-0000-0000-0000-000000000000";
     const char *vif_name = "vif_0";
     struct ow_steer_bm_group *group = ow_steer_bm_get_group(group_id);
     OSW_UT_EVAL(group != NULL);
@@ -1494,7 +1515,7 @@ OSW_UT(ow_steer_bm_stats_steering_kick_2g)
 
     const struct osw_hwaddr sta_addr = { .octet = { 0xBA, 0xDC, 0x0D, 0xEB, 0xAD, 0xC0 }, };
     const struct osw_hwaddr bssid = { .octet = { 0xCA, 0xFE, 0xCA, 0xFE, 0xF0, 0x0D }, };
-    const char *group_id = "group_0";
+    const char *group_id = "00000000-0000-0000-0000-000000000000";
     const char *vif_name = "vif_0";
     struct ow_steer_bm_group *group = ow_steer_bm_get_group(group_id);
     OSW_UT_EVAL(group != NULL);

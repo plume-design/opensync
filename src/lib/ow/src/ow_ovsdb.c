@@ -36,6 +36,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <osw_module.h>
 #include <osw_time.h>
 #include <osw_timer.h>
+#include <osw_etc.h>
 #include "ow_conf.h"
 #include "ow_ovsdb_ms.h"
 #include "ow_ovsdb_mld_onboard.h"
@@ -81,6 +82,7 @@ struct ow_ovsdb {
     struct ow_ovsdb_wps_changed *wps_changed;
     struct ow_ovsdb_steer *steering;
     ow_ovsdb_mld_onboard_t *mld_onboard;
+    bool idle;
 };
 
 struct ow_ovsdb_phy {
@@ -163,7 +165,7 @@ ow_ovsdb_vif_config_state_rows_decoupled(void)
      * OVSDB controller to be updated in tandem to this
      * option being enabled.
      */
-    return getenv("OW_OVSDB_VIF_CONFIG_STATE_ROWS_DECOUPLED");
+    return osw_etc_get("OW_OVSDB_VIF_CONFIG_STATE_ROWS_DECOUPLED");
 }
 
 static bool
@@ -253,7 +255,7 @@ ow_ovsdb_width_to_htmode(enum osw_channel_width w)
         case OSW_CHANNEL_40MHZ: return "HT40";
         case OSW_CHANNEL_80MHZ: return "HT80";
         case OSW_CHANNEL_160MHZ: return "HT160";
-        case OSW_CHANNEL_80P80MHZ: return "HT8080";
+        case OSW_CHANNEL_80P80MHZ: return "HT80+80";
         case OSW_CHANNEL_320MHZ: return "HT320";
     }
     return NULL;
@@ -575,7 +577,7 @@ static void
 ow_ovsdb_phy_work_sched(struct ow_ovsdb_phy *phy)
 {
     ev_timer_stop(EV_DEFAULT_ &phy->work);
-    ev_timer_set(&phy->work, 0, 5);
+    ev_timer_set(&phy->work, 0.1, 5);
     ev_timer_start(EV_DEFAULT_ &phy->work);
 }
 
@@ -1217,43 +1219,71 @@ ow_ovsdb_vifstate_fill_akm(struct schema_Wifi_VIF_State *schema,
 {
     /* FIXME: This isn't totally accurate, but good enough for now. */
 
-    if (wpa->akm_eap)    SCHEMA_VAL_APPEND(schema->wpa_key_mgmt, SCHEMA_CONSTS_KEY_WPA_EAP);
-    if (wpa->akm_psk)    SCHEMA_VAL_APPEND(schema->wpa_key_mgmt, SCHEMA_CONSTS_KEY_WPA_PSK);
-    if (wpa->akm_sae)    SCHEMA_VAL_APPEND(schema->wpa_key_mgmt, SCHEMA_CONSTS_KEY_SAE);
-    if (wpa->akm_ft_eap) SCHEMA_VAL_APPEND(schema->wpa_key_mgmt, SCHEMA_CONSTS_KEY_FT_EAP);
-    if (wpa->akm_ft_psk) SCHEMA_VAL_APPEND(schema->wpa_key_mgmt, SCHEMA_CONSTS_KEY_FT_PSK);
-    if (wpa->akm_ft_sae) SCHEMA_VAL_APPEND(schema->wpa_key_mgmt, SCHEMA_CONSTS_KEY_FT_SAE);
+    if (wpa->akm_eap)            SCHEMA_VAL_APPEND(schema->wpa_key_mgmt, SCHEMA_CONSTS_KEY_WPA_EAP);
+    if (wpa->akm_eap_sha256)     SCHEMA_VAL_APPEND(schema->wpa_key_mgmt, SCHEMA_CONSTS_KEY_WPA_EAP_SHA256);
+    if (wpa->akm_eap_sha384)     SCHEMA_VAL_APPEND(schema->wpa_key_mgmt, SCHEMA_CONSTS_KEY_WPA_EAP_SHA384);
+    if (wpa->akm_eap_suite_b)    SCHEMA_VAL_APPEND(schema->wpa_key_mgmt, SCHEMA_CONSTS_KEY_WPA_EAP_B);
+    if (wpa->akm_eap_suite_b192) SCHEMA_VAL_APPEND(schema->wpa_key_mgmt, SCHEMA_CONSTS_KEY_WPA_EAP_B_192);
+    if (wpa->akm_ft_eap)         SCHEMA_VAL_APPEND(schema->wpa_key_mgmt, SCHEMA_CONSTS_KEY_FT_EAP);
+    if (wpa->akm_ft_eap_sha384)  SCHEMA_VAL_APPEND(schema->wpa_key_mgmt, SCHEMA_CONSTS_KEY_FT_EAP_SHA384);
+    if (wpa->akm_ft_psk)         SCHEMA_VAL_APPEND(schema->wpa_key_mgmt, SCHEMA_CONSTS_KEY_FT_PSK);
+    if (wpa->akm_ft_sae)         SCHEMA_VAL_APPEND(schema->wpa_key_mgmt, SCHEMA_CONSTS_KEY_FT_SAE);
+    if (wpa->akm_ft_sae_ext)     SCHEMA_VAL_APPEND(schema->wpa_key_mgmt, SCHEMA_CONSTS_KEY_FT_SAE_EXT);
+    if (wpa->akm_psk)            SCHEMA_VAL_APPEND(schema->wpa_key_mgmt, SCHEMA_CONSTS_KEY_WPA_PSK);
+    if (wpa->akm_psk_sha256)     SCHEMA_VAL_APPEND(schema->wpa_key_mgmt, SCHEMA_CONSTS_KEY_WPA_PSK_SHA256);
+    if (wpa->akm_sae)            SCHEMA_VAL_APPEND(schema->wpa_key_mgmt, SCHEMA_CONSTS_KEY_SAE);
+    if (wpa->akm_sae_ext)        SCHEMA_VAL_APPEND(schema->wpa_key_mgmt, SCHEMA_CONSTS_KEY_SAE_EXT);
 
     SCHEMA_SET_BOOL(schema->wpa_pairwise_tkip, wpa->wpa && wpa->pairwise_tkip);
     SCHEMA_SET_BOOL(schema->wpa_pairwise_ccmp, wpa->wpa && wpa->pairwise_ccmp);
     SCHEMA_SET_BOOL(schema->rsn_pairwise_tkip, wpa->rsn && wpa->pairwise_tkip);
     SCHEMA_SET_BOOL(schema->rsn_pairwise_ccmp, wpa->rsn && wpa->pairwise_ccmp);
+    SCHEMA_SET_BOOL(schema->rsn_pairwise_ccmp256, wpa->rsn && wpa->pairwise_ccmp256);
+    SCHEMA_SET_BOOL(schema->rsn_pairwise_gcmp, wpa->rsn && wpa->pairwise_gcmp);
+    SCHEMA_SET_BOOL(schema->rsn_pairwise_gcmp256, wpa->rsn && wpa->pairwise_gcmp256);
     SCHEMA_SET_STR(schema->pmf, pmf_to_str(wpa->pmf));
 }
 
-static const char *
-ow_ovsdb_vifstate_sta_derive_pmf(const struct schema_Wifi_VIF_Config *vconf,
-                                 const enum osw_pmf pmf)
-{
-    if (vconf == NULL) return NULL;
-    /* The link->pmf actually reports true/false. */
-    switch (pmf) {
-        case OSW_PMF_DISABLED: return SCHEMA_CONSTS_SECURITY_PMF_DISABLED;
-        case OSW_PMF_OPTIONAL: return vconf->pmf;
-        case OSW_PMF_REQUIRED: return vconf->pmf;
-    }
-    return NULL;
-}
-
 static void
-ow_ovsdb_vifstate_fill_sta_pmf(struct schema_Wifi_VIF_State *schema,
-                               const struct schema_Wifi_VIF_Config *vconf,
-                               const enum osw_pmf pmf)
+ow_ovsdb_vifstate_fill_akm_sta(struct schema_Wifi_VIF_State *schema,
+                               const struct osw_drv_vif_state_sta *vsta)
 {
-    SCHEMA_UNSET_FIELD(schema->pmf);
-    const char *str = ow_ovsdb_vifstate_sta_derive_pmf(vconf, pmf);
-    if (str == NULL) return;
-    SCHEMA_SET_STR(schema->pmf, str);
+    /* The report is expected to match the _configured_
+     * parameters, not the resulting parameters.  Station
+     * link can, and typically will be, a subset of the
+     * allowed network configuration. Eg. WPA3-T allows
+     * either PSK or SAE, and depends on the parent AP
+     * capabilities.
+     */
+
+    const struct osw_drv_vif_sta_network *network = osw_drv_vif_sta_network_get(vsta);
+    if (network) {
+        const struct osw_wpa *wpa = &network->wpa;
+        if (wpa->akm_eap)            SCHEMA_VAL_APPEND(schema->wpa_key_mgmt, SCHEMA_CONSTS_KEY_WPA_EAP);
+        if (wpa->akm_eap_sha256)     SCHEMA_VAL_APPEND(schema->wpa_key_mgmt, SCHEMA_CONSTS_KEY_WPA_EAP_SHA256);
+        if (wpa->akm_eap_sha384)     SCHEMA_VAL_APPEND(schema->wpa_key_mgmt, SCHEMA_CONSTS_KEY_WPA_EAP_SHA384);
+        if (wpa->akm_eap_suite_b)    SCHEMA_VAL_APPEND(schema->wpa_key_mgmt, SCHEMA_CONSTS_KEY_WPA_EAP_B);
+        if (wpa->akm_eap_suite_b192) SCHEMA_VAL_APPEND(schema->wpa_key_mgmt, SCHEMA_CONSTS_KEY_WPA_EAP_B_192);
+        if (wpa->akm_ft_eap)         SCHEMA_VAL_APPEND(schema->wpa_key_mgmt, SCHEMA_CONSTS_KEY_FT_EAP);
+        if (wpa->akm_ft_eap_sha384)  SCHEMA_VAL_APPEND(schema->wpa_key_mgmt, SCHEMA_CONSTS_KEY_FT_EAP_SHA384);
+        if (wpa->akm_ft_psk)         SCHEMA_VAL_APPEND(schema->wpa_key_mgmt, SCHEMA_CONSTS_KEY_FT_PSK);
+        if (wpa->akm_ft_sae)         SCHEMA_VAL_APPEND(schema->wpa_key_mgmt, SCHEMA_CONSTS_KEY_FT_SAE);
+        if (wpa->akm_ft_sae_ext)     SCHEMA_VAL_APPEND(schema->wpa_key_mgmt, SCHEMA_CONSTS_KEY_FT_SAE_EXT);
+        if (wpa->akm_psk)            SCHEMA_VAL_APPEND(schema->wpa_key_mgmt, SCHEMA_CONSTS_KEY_WPA_PSK);
+        if (wpa->akm_psk_sha256)     SCHEMA_VAL_APPEND(schema->wpa_key_mgmt, SCHEMA_CONSTS_KEY_WPA_PSK_SHA256);
+        if (wpa->akm_sae)            SCHEMA_VAL_APPEND(schema->wpa_key_mgmt, SCHEMA_CONSTS_KEY_SAE);
+        if (wpa->akm_sae_ext)        SCHEMA_VAL_APPEND(schema->wpa_key_mgmt, SCHEMA_CONSTS_KEY_SAE_EXT);
+
+        SCHEMA_SET_BOOL(schema->wpa_pairwise_tkip, wpa->wpa && wpa->pairwise_tkip);
+        SCHEMA_SET_BOOL(schema->wpa_pairwise_ccmp, wpa->wpa && wpa->pairwise_ccmp);
+        SCHEMA_SET_BOOL(schema->rsn_pairwise_tkip, wpa->rsn && wpa->pairwise_tkip);
+        SCHEMA_SET_BOOL(schema->rsn_pairwise_ccmp, wpa->rsn && wpa->pairwise_ccmp);
+        SCHEMA_SET_BOOL(schema->rsn_pairwise_ccmp256, wpa->rsn && wpa->pairwise_ccmp256);
+        SCHEMA_SET_BOOL(schema->rsn_pairwise_gcmp, wpa->rsn && wpa->pairwise_gcmp);
+        SCHEMA_SET_BOOL(schema->rsn_pairwise_gcmp256, wpa->rsn && wpa->pairwise_gcmp256);
+
+        SCHEMA_SET_STR(schema->pmf, pmf_to_str(wpa->pmf));
+    }
 }
 
 static int
@@ -1389,7 +1419,7 @@ ow_ovsdb_vifstate_fill_ap_radius(struct schema_Wifi_VIF_State *schema,
 static bool
 ow_ovsdb_min_hw_mode_is_not_supported(void)
 {
-    return getenv("OW_OVSDB_MIN_HW_MODE_NOT_SUPPORTED") != NULL;
+    return osw_etc_get("OW_OVSDB_MIN_HW_MODE_NOT_SUPPORTED") != NULL;
 }
 
 static bool
@@ -1432,6 +1462,15 @@ ow_ovsdb_vifstate_fill_mld(struct schema_Wifi_VIF_State *schema,
 
     if (strlen(mld->if_name.buf) > 0) {
         SCHEMA_SET_STR(schema->mld_if_name, mld->if_name.buf);
+    }
+}
+
+static void
+ow_ovsdb_vifstate_fill_ft_encr_key(struct schema_Wifi_VIF_State *schema,
+                                   const struct osw_drv_vif_state_ap *ap)
+{
+    if (strlen(ap->ft_encr_key.buf) > 0) {
+        SCHEMA_SET_STR(schema->ft_encr_key, ap->ft_encr_key.buf);
     }
 }
 
@@ -1480,6 +1519,11 @@ ow_ovsdb_vifstate_to_schema(struct schema_Wifi_VIF_State *schema,
             SCHEMA_SET_BOOL(schema->mcast2ucast, ap->mcast2ucast);
             SCHEMA_SET_BOOL(schema->dynamic_beacon, false); // FIXME
             SCHEMA_SET_STR(schema->multi_ap, ow_ovsdb_ap_multi_ap_to_cstr(&ap->multi_ap));
+            SCHEMA_SET_BOOL(schema->ft_over_ds, ap->ft_over_ds);
+            SCHEMA_SET_BOOL(schema->ft_pmk_r1_push, ap->ft_pmk_r1_push);
+            SCHEMA_SET_BOOL(schema->ft_psk_generate_local, ap->ft_psk_generate_local);
+            SCHEMA_SET_INT(schema->ft_pmk_r0_key_lifetime_sec, ap->ft_pmk_r0_key_lifetime_sec);
+            SCHEMA_SET_INT(schema->ft_pmk_r1_max_key_lifetime_sec, ap->ft_pmk_r1_max_key_lifetime_sec);
             /* FIXME - passpoint is being read from config, not state in state report! */
             const char *passpoint_ref = ow_conf_vif_get_ap_passpoint_ref(vif->vif_name);
             if (passpoint_ref != NULL) SCHEMA_SET_UUID (schema->passpoint_config, passpoint_ref);
@@ -1508,6 +1552,7 @@ ow_ovsdb_vifstate_to_schema(struct schema_Wifi_VIF_State *schema,
             const enum osw_band band = osw_freq_to_band(freq);
             ow_ovsdb_vifstate_fill_min_hw_mode(schema, vconf, &ap->mode, band);
             ow_ovsdb_vifstate_fill_mld(schema, &ap->mld);
+            ow_ovsdb_vifstate_fill_ft_encr_key(schema, ap);
             break;
         case OSW_VIF_AP_VLAN:
             SCHEMA_SET_STR(schema->mode, "ap_vlan");
@@ -1532,9 +1577,8 @@ ow_ovsdb_vifstate_to_schema(struct schema_Wifi_VIF_State *schema,
                     if (strlen(vsta->link.psk.str) > 0) {
                         SCHEMA_KEY_VAL_APPEND(schema->wpa_psks, "key", vsta->link.psk.str);
                     }
-                    ow_ovsdb_vifstate_fill_akm(schema, &vsta->link.wpa);
+                    ow_ovsdb_vifstate_fill_akm_sta(schema, vsta);
                     ow_ovsdb_vifstate_fill_mld(schema, &vsta->mld);
-                    ow_ovsdb_vifstate_fill_sta_pmf(schema, vconf, vsta->link.wpa.pmf);
 
                     SCHEMA_SET_STR(schema->bridge,vsta->link.bridge_if_name.buf);
                     SCHEMA_SET_STR(schema->multi_ap, ow_ovsdb_sta_multi_ap_to_cstr(vsta->link.multi_ap));
@@ -1665,6 +1709,8 @@ ow_ovsdb_phy_sync_vifs(struct ow_ovsdb_phy *phy)
 static bool
 ow_ovsdb_phy_sync(struct ow_ovsdb_phy *phy)
 {
+    if (phy->root->idle == false) return false;
+
     if (phy->info == NULL) {
         if (strlen(phy->state_cur.if_name) == 0) return true;
 
@@ -1900,6 +1946,8 @@ ow_ovsdb_vif_sync_deleted_as_disabled(struct ow_ovsdb_vif *vif)
 static bool
 ow_ovsdb_vif_sync(struct ow_ovsdb_vif *vif)
 {
+    if (vif->root->idle == false) return false;
+
     ow_ovsdb_vif_sync_deleted_as_disabled(vif);
 
     if (ow_ovsdb_vif_state_is_wanted(vif) == false) {
@@ -1955,7 +2003,7 @@ static void
 ow_ovsdb_vif_work_sched(struct ow_ovsdb_vif *vif)
 {
     ev_timer_stop(EV_DEFAULT_ &vif->work);
-    ev_timer_set(&vif->work, 0, 5);
+    ev_timer_set(&vif->work, 0.1, 5);
     ev_timer_start(EV_DEFAULT_ &vif->work);
 
     if (vif->phy_name != NULL) {
@@ -2120,9 +2168,13 @@ ow_ovsdb_akm_into_cstr(const enum osw_akm akm)
         case OSW_AKM_RSN_FT_EAP: return SCHEMA_CONSTS_KEY_FT_EAP;
         case OSW_AKM_RSN_FT_PSK: return SCHEMA_CONSTS_KEY_FT_PSK;
         case OSW_AKM_RSN_EAP_SHA256: return SCHEMA_CONSTS_KEY_WPA_EAP_SHA256;
+        case OSW_AKM_RSN_EAP_SHA384: return SCHEMA_CONSTS_KEY_WPA_EAP_SHA384;
         case OSW_AKM_RSN_PSK_SHA256: return SCHEMA_CONSTS_KEY_WPA_PSK_SHA256;
         case OSW_AKM_RSN_SAE: return SCHEMA_CONSTS_KEY_SAE;
+        case OSW_AKM_RSN_SAE_EXT: return SCHEMA_CONSTS_KEY_SAE_EXT;
         case OSW_AKM_RSN_FT_SAE: return SCHEMA_CONSTS_KEY_FT_SAE;
+        case OSW_AKM_RSN_FT_SAE_EXT: return SCHEMA_CONSTS_KEY_FT_SAE_EXT;
+        case OSW_AKM_RSN_EAP_SUITE_B: return SCHEMA_CONSTS_KEY_WPA_EAP_B;
         case OSW_AKM_RSN_EAP_SUITE_B_192: return SCHEMA_CONSTS_KEY_WPA_EAP_B_192;
         case OSW_AKM_RSN_FT_EAP_SHA384: return SCHEMA_CONSTS_KEY_FT_EAP_SHA384;
 
@@ -2152,6 +2204,9 @@ ow_ovsdb_cipher_into_cstr(const enum osw_cipher cipher)
         case OSW_CIPHER_RSN_WEP_40: return SCHEMA_CONSTS_CIPHER_RSN_WEP;
         case OSW_CIPHER_RSN_TKIP: return SCHEMA_CONSTS_CIPHER_RSN_TKIP;
         case OSW_CIPHER_RSN_CCMP_128: return SCHEMA_CONSTS_CIPHER_RSN_CCMP;
+        case OSW_CIPHER_RSN_CCMP_256: return SCHEMA_CONSTS_CIPHER_RSN_CCMP_256;
+        case OSW_CIPHER_RSN_GCMP_128: return SCHEMA_CONSTS_CIPHER_RSN_GCMP;
+        case OSW_CIPHER_RSN_GCMP_256: return SCHEMA_CONSTS_CIPHER_RSN_GCMP_256;
         case OSW_CIPHER_RSN_BIP_CMAC_128: return SCHEMA_CONSTS_CIPHER_RSN_BIP_CMAC;
 
         /* WPA */
@@ -2160,9 +2215,6 @@ ow_ovsdb_cipher_into_cstr(const enum osw_cipher cipher)
         case OSW_CIPHER_WPA_CCMP: return SCHEMA_CONSTS_CIPHER_WPA_CCMP;
 
         /* Undefined in OVSDB schema */
-        case OSW_CIPHER_RSN_GCMP_128: return NULL;
-        case OSW_CIPHER_RSN_GCMP_256: return NULL;
-        case OSW_CIPHER_RSN_CCMP_256: return NULL;
         case OSW_CIPHER_RSN_BIP_GMAC_128: return NULL;
         case OSW_CIPHER_RSN_BIP_GMAC_256: return NULL;
 
@@ -2182,6 +2234,7 @@ ow_ovsdb_sta_fill_schema(struct ow_ovsdb_sta *sta)
     const struct osw_drv_sta_state *state = sta->info->drv_state;
     const char *oftag = ow_ovsdb_sta_derive_oftag(sta);
     const char *uuid = sta->state_cur._uuid.uuid;
+    const struct osw_hwaddr *mld_addr = NULL;
     struct osw_hwaddr_str mac_str;
     struct osw_hwaddr_str mld_str;
     struct ow_ovsdb *root = &g_ow_ovsdb;
@@ -2190,6 +2243,7 @@ ow_ovsdb_sta_fill_schema(struct ow_ovsdb_sta *sta)
     const char *akm = ow_ovsdb_akm_into_cstr(state->akm);
     const bool pmf = state->pmf;
     char key_id[64];
+    bool is_mld = false;
 
     memset(schema, 0, sizeof(*schema));
 
@@ -2203,16 +2257,19 @@ ow_ovsdb_sta_fill_schema(struct ow_ovsdb_sta *sta)
     if (vif == NULL)
         return;
 
+    mld_addr = &sta->info->drv_state->mld_addr;
+    is_mld = osw_hwaddr_is_zero(mld_addr) ? false : true;
+
     osw_hwaddr2str(&sta->sta_addr, &mac_str);
-    osw_hwaddr2str(&sta->info->drv_state->mld_addr, &mld_str);
+    osw_hwaddr2str(mld_addr, &mld_str);
     ow_ovsdb_keyid2str(key_id, sizeof(key_id), sta->info->drv_state->key_id);
     ow_ovsdb_keyid_fixup(key_id, ARRAY_SIZE(key_id), &vif->config);
 
     SCHEMA_SET_STR(schema->mac, mac_str.buf);
-    SCHEMA_SET_STR(schema->mld_addr, mld_str.buf);
     SCHEMA_SET_STR(schema->state, "active");
     SCHEMA_SET_STR(schema->key_id, key_id);
     SCHEMA_SET_BOOL(schema->pmf, pmf);
+    if (is_mld) SCHEMA_SET_STR(schema->mld_addr, mld_str.buf);
     if (akm != NULL) SCHEMA_SET_STR(schema->wpa_key_mgmt, akm);
     if (pairwise_cipher != NULL) SCHEMA_SET_STR(schema->pairwise_cipher, pairwise_cipher);
 
@@ -2272,6 +2329,8 @@ ow_ovsdb_sta_tag_mutate(const struct osw_hwaddr *addr,
 static bool
 ow_ovsdb_sta_mld_sync(struct ow_ovsdb_sta_mld *mld)
 {
+    if (mld->root->idle == false) return false;
+
     struct ow_ovsdb_sta *sta;
     struct ow_ovsdb_sta_mld_oftag *oftag;
     struct ow_ovsdb_sta_mld_oftag *tmp;
@@ -2376,7 +2435,7 @@ ow_ovsdb_sta_mld_work_sched(struct ow_ovsdb_sta_mld *mld)
     if (mld == NULL) return;
 
     ev_timer_stop(EV_DEFAULT_ &mld->work);
-    ev_timer_set(&mld->work, 0, 5);
+    ev_timer_set(&mld->work, 0.1, 5);
     ev_timer_start(EV_DEFAULT_ &mld->work);
 }
 
@@ -2517,6 +2576,8 @@ ow_ovsdb_sta_roamed(struct ow_ovsdb_sta *sta)
 static bool
 ow_ovsdb_sta_sync(struct ow_ovsdb_sta *sta)
 {
+    if (sta->root->idle == false) return false;
+
     bool ok = true;
     bool roamed = ow_ovsdb_sta_roamed(sta);
 
@@ -2552,7 +2613,7 @@ static void
 ow_ovsdb_sta_work_sched(struct ow_ovsdb_sta *sta)
 {
     ev_timer_stop(EV_DEFAULT_ &sta->work);
-    ev_timer_set(&sta->work, 0, 5);
+    ev_timer_set(&sta->work, 0.1, 5);
     ev_timer_start(EV_DEFAULT_ &sta->work);
 
     if (sta->info != NULL) {
@@ -2638,6 +2699,53 @@ ow_ovsdb_sta_set_info(const struct osw_hwaddr *sta_addr,
 }
 
 static void
+ow_ovsdb_retry_all_work(struct ow_ovsdb *root)
+{
+    struct ow_ovsdb_phy *phy;
+    ds_tree_foreach(&root->phy_tree, phy) {
+        if (ev_is_active(&phy->work)) {
+            ow_ovsdb_phy_work_sched(phy);
+        }
+    }
+
+    struct ow_ovsdb_vif *vif;
+    ds_tree_foreach(&root->vif_tree, vif) {
+        if (ev_is_active(&vif->work)) {
+            ow_ovsdb_vif_work_sched(vif);
+        }
+    }
+
+    struct ow_ovsdb_sta *sta;
+    ds_tree_foreach(&root->sta_tree, sta) {
+        if (ev_is_active(&sta->work)) {
+            ow_ovsdb_sta_work_sched(sta);
+        }
+    }
+
+    struct ow_ovsdb_sta_mld *sta_mld;
+    ds_tree_foreach(&root->mld_tree, sta_mld) {
+        if (ev_is_active(&sta_mld->work)) {
+            ow_ovsdb_sta_mld_work_sched(sta_mld);
+        }
+    }
+}
+
+static void
+ow_ovsdb_idle_cb(struct osw_state_observer *self)
+{
+    struct ow_ovsdb *root = &g_ow_ovsdb;
+    root->idle = true;
+    ow_ovsdb_retry_all_work(root);
+}
+
+static void
+ow_ovsdb_busy_cb(struct osw_state_observer *self)
+{
+    struct ow_ovsdb *root = &g_ow_ovsdb;
+    root->idle = false;
+}
+
+static void
 ow_ovsdb_phy_added_cb(struct osw_state_observer *self,
                       const struct osw_state_phy_info *info)
 {
@@ -2719,6 +2827,8 @@ ow_ovsdb_sta_disconnected_cb(struct osw_state_observer *self,
 
 static struct osw_state_observer g_ow_ovsdb_osw_state_obs = {
     .name = "ow_ovsdb",
+    .idle_fn = ow_ovsdb_idle_cb,
+    .busy_fn = ow_ovsdb_busy_cb,
     .phy_added_fn = ow_ovsdb_phy_added_cb,
     .phy_changed_fn = ow_ovsdb_phy_changed_cb,
     .phy_removed_fn = ow_ovsdb_phy_removed_cb,
@@ -2798,7 +2908,7 @@ ow_ovsdb_band2num(const char *freq_band)
            2;
 }
 
-static enum osw_channel_width
+enum osw_channel_width
 ow_ovsdb_htmode2width(const char *ht_mode)
 {
     return strcmp(ht_mode, "HT20") == 0 ? OSW_CHANNEL_20MHZ :
@@ -2911,7 +3021,12 @@ ow_ovsdb_rconf_to_ow_conf(const struct schema_Wifi_Radio_Config *rconf,
                 .width = w,
                 .puncture_bitmap = puncture,
             };
-            ow_conf_phy_set_ap_channel(rconf->if_name, &c);
+            if (WARN_ON(c.center_freq0_mhz == 0)) {
+                ow_conf_phy_set_ap_channel(rconf->if_name, NULL);
+            }
+            else {
+                ow_conf_phy_set_ap_channel(rconf->if_name, &c);
+            }
         }
         else {
             ow_conf_phy_set_ap_channel(rconf->if_name, NULL);
@@ -3115,23 +3230,42 @@ ow_ovsdb_vconf_to_ow_conf_ap_wpa(const struct schema_Wifi_VIF_Config *vconf)
                   || vconf->wpa_pairwise_ccmp;
     const bool rsn = vconf->rsn_pairwise_tkip
                   || vconf->rsn_pairwise_ccmp;
+    const bool ccmp256 = vconf->rsn_pairwise_ccmp256;
+    const bool gcmp = vconf->rsn_pairwise_gcmp;
+    const bool gcmp256 = vconf->rsn_pairwise_gcmp256;
     bool unsupported = false;
-    bool eap = false;
     bool psk = false;
+    bool psk_sha256 = false;
     bool sae = false;
+    bool sae_ext = false;
+    bool eap = false;
+    bool eap_sha256 = false;
+    bool eap_sha384 = false;
+    bool eap_suite_b = false;
+    bool eap_suite_b192 = false;
     bool ft_eap = false;
+    bool ft_eap_sha384 = false;
     bool ft_psk = false;
     bool ft_sae = false;
+    bool ft_sae_ext = false;
 
     for (i = 0; i < vconf->wpa_key_mgmt_len; i++) {
         const char *akm = vconf->wpa_key_mgmt[i];
 
-             if (strcmp(akm, SCHEMA_CONSTS_KEY_WPA_PSK) == 0)    { psk = true; }
-        else if (strcmp(akm, SCHEMA_CONSTS_KEY_SAE    ) == 0)    { sae = true; }
-        else if (strcmp(akm, SCHEMA_CONSTS_KEY_FT_SAE ) == 0) { ft_psk = true; }
-        else if (strcmp(akm, SCHEMA_CONSTS_KEY_FT_PSK ) == 0) { ft_sae = true; }
-        else if (strcmp(akm, SCHEMA_CONSTS_KEY_WPA_EAP) == 0)    { eap = true; }
-        else if (strcmp(akm, SCHEMA_CONSTS_KEY_FT_EAP ) == 0) { ft_eap = true; }
+             if (strcmp(akm, SCHEMA_CONSTS_KEY_FT_EAP) == 0)        { ft_eap = true; }
+        else if (strcmp(akm, SCHEMA_CONSTS_KEY_FT_EAP_SHA384) == 0) { ft_eap_sha384 = true; }
+        else if (strcmp(akm, SCHEMA_CONSTS_KEY_FT_PSK) == 0)        { ft_psk = true; }
+        else if (strcmp(akm, SCHEMA_CONSTS_KEY_FT_SAE) == 0)        { ft_sae = true; }
+        else if (strcmp(akm, SCHEMA_CONSTS_KEY_FT_SAE_EXT) == 0)    { ft_sae_ext = true; }
+        else if (strcmp(akm, SCHEMA_CONSTS_KEY_SAE) == 0)     { sae = true; }
+        else if (strcmp(akm, SCHEMA_CONSTS_KEY_SAE_EXT) == 0) { sae_ext = true; }
+        else if (strcmp(akm, SCHEMA_CONSTS_KEY_WPA_EAP) == 0)        { eap = true; }
+        else if (strcmp(akm, SCHEMA_CONSTS_KEY_WPA_EAP_B) == 0)      { eap_suite_b = true; }
+        else if (strcmp(akm, SCHEMA_CONSTS_KEY_WPA_EAP_B_192) == 0)  { eap_suite_b192 = true; }
+        else if (strcmp(akm, SCHEMA_CONSTS_KEY_WPA_EAP_SHA256) == 0) { eap_sha256 = true; }
+        else if (strcmp(akm, SCHEMA_CONSTS_KEY_WPA_EAP_SHA384) == 0) { eap_sha384 = true; }
+        else if (strcmp(akm, SCHEMA_CONSTS_KEY_WPA_PSK_SHA256) == 0) { psk_sha256 = true; }
+        else if (strcmp(akm, SCHEMA_CONSTS_KEY_WPA_PSK) == 0)        { psk = true; }
         else { unsupported = true; }
     }
 
@@ -3143,13 +3277,24 @@ ow_ovsdb_vconf_to_ow_conf_ap_wpa(const struct schema_Wifi_VIF_Config *vconf)
          */
         LOGI("ow: ovsdb: vif: %s: unsupported configuration, ignoring", vconf->if_name);
         ow_conf_vif_set_ap_akm_eap(vconf->if_name, NULL);
+        ow_conf_vif_set_ap_akm_eap_sha256(vconf->if_name, NULL);
+        ow_conf_vif_set_ap_akm_eap_sha384(vconf->if_name, NULL);
+        ow_conf_vif_set_ap_akm_eap_suite_b(vconf->if_name, NULL);
+        ow_conf_vif_set_ap_akm_eap_suite_b192(vconf->if_name, NULL);
         ow_conf_vif_set_ap_akm_psk(vconf->if_name, NULL);
+        ow_conf_vif_set_ap_akm_psk_sha256(vconf->if_name, NULL);
         ow_conf_vif_set_ap_akm_sae(vconf->if_name, NULL);
+        ow_conf_vif_set_ap_akm_sae_ext(vconf->if_name, NULL);
         ow_conf_vif_set_ap_akm_ft_eap(vconf->if_name, NULL);
+        ow_conf_vif_set_ap_akm_ft_eap_sha384(vconf->if_name, NULL);
         ow_conf_vif_set_ap_akm_ft_psk(vconf->if_name, NULL);
         ow_conf_vif_set_ap_akm_ft_sae(vconf->if_name, NULL);
+        ow_conf_vif_set_ap_akm_ft_sae_ext(vconf->if_name, NULL);
         ow_conf_vif_set_ap_pairwise_ccmp(vconf->if_name, NULL);
+        ow_conf_vif_set_ap_pairwise_ccmp256(vconf->if_name, NULL);
         ow_conf_vif_set_ap_pairwise_tkip(vconf->if_name, NULL);
+        ow_conf_vif_set_ap_pairwise_gcmp(vconf->if_name, NULL);
+        ow_conf_vif_set_ap_pairwise_gcmp256(vconf->if_name, NULL);
         ow_conf_vif_set_ap_pmf(vconf->if_name, NULL);
         ow_conf_vif_set_ap_rsn(vconf->if_name, NULL);
         ow_conf_vif_set_ap_wpa(vconf->if_name, NULL);
@@ -3157,13 +3302,24 @@ ow_ovsdb_vconf_to_ow_conf_ap_wpa(const struct schema_Wifi_VIF_Config *vconf)
     }
 
     ow_conf_vif_set_ap_akm_eap(vconf->if_name, &eap);
+    ow_conf_vif_set_ap_akm_eap_sha256(vconf->if_name, &eap_sha256);
+    ow_conf_vif_set_ap_akm_eap_sha384(vconf->if_name, &eap_sha384);
+    ow_conf_vif_set_ap_akm_eap_suite_b(vconf->if_name, &eap_suite_b);
+    ow_conf_vif_set_ap_akm_eap_suite_b192(vconf->if_name, &eap_suite_b192);
     ow_conf_vif_set_ap_akm_psk(vconf->if_name, &psk);
+    ow_conf_vif_set_ap_akm_psk_sha256(vconf->if_name, &psk_sha256);
     ow_conf_vif_set_ap_akm_sae(vconf->if_name, &sae);
+    ow_conf_vif_set_ap_akm_sae_ext(vconf->if_name, &sae_ext);
     ow_conf_vif_set_ap_akm_ft_eap(vconf->if_name, &ft_eap);
+    ow_conf_vif_set_ap_akm_ft_eap_sha384(vconf->if_name, &ft_eap_sha384);
     ow_conf_vif_set_ap_akm_ft_psk(vconf->if_name, &ft_psk);
     ow_conf_vif_set_ap_akm_ft_sae(vconf->if_name, &ft_sae);
+    ow_conf_vif_set_ap_akm_ft_sae_ext(vconf->if_name, &ft_sae_ext);
     ow_conf_vif_set_ap_pairwise_tkip(vconf->if_name, &tkip);
     ow_conf_vif_set_ap_pairwise_ccmp(vconf->if_name, &ccmp);
+    ow_conf_vif_set_ap_pairwise_ccmp256(vconf->if_name, &ccmp256);
+    ow_conf_vif_set_ap_pairwise_gcmp(vconf->if_name, &gcmp);
+    ow_conf_vif_set_ap_pairwise_gcmp256(vconf->if_name, &gcmp256);
     ow_conf_vif_set_ap_pmf(vconf->if_name, &pmf);
     ow_conf_vif_set_ap_wpa(vconf->if_name, &wpa);
     ow_conf_vif_set_ap_rsn(vconf->if_name, &rsn);
@@ -3381,7 +3537,10 @@ ow_ovsdb_vconf_to_ow_conf_ap(const struct schema_Wifi_VIF_Config *vconf,
                           || (vconf->wpa_pairwise_tkip_changed == true)
                           || (vconf->wpa_pairwise_ccmp_changed == true)
                           || (vconf->rsn_pairwise_tkip_changed == true)
-                          || (vconf->rsn_pairwise_ccmp_changed == true);
+                          || (vconf->rsn_pairwise_ccmp_changed == true)
+                          || (vconf->rsn_pairwise_ccmp256_changed == true)
+                          || (vconf->rsn_pairwise_gcmp_changed == true)
+                          || (vconf->rsn_pairwise_gcmp256_changed == true);
     if (is_new == true || wpa_changed == true)
         ow_ovsdb_vconf_to_ow_conf_ap_wpa(vconf);
 
@@ -3392,6 +3551,66 @@ ow_ovsdb_vconf_to_ow_conf_ap(const struct schema_Wifi_VIF_Config *vconf,
         }
         else {
             ow_conf_vif_set_ap_passpoint_ref(vconf->if_name, NULL);
+        }
+    }
+
+    if (is_new == true || vconf->ft_over_ds_changed == true) {
+        if (vconf->ft_over_ds_exists == true) {
+            const bool x = vconf->ft_over_ds;
+            ow_conf_vif_set_ap_ft_over_ds(vconf->if_name, &x);
+        }
+        else {
+            ow_conf_vif_set_ap_ft_over_ds(vconf->if_name, NULL);
+        }
+    }
+
+    if (is_new == true || vconf->ft_pmk_r1_push_changed == true) {
+        if (vconf->ft_pmk_r1_push_exists == true) {
+            const bool x = vconf->ft_pmk_r1_push;
+            ow_conf_vif_set_ap_ft_pmk_r1_push(vconf->if_name, &x);
+        }
+        else {
+            ow_conf_vif_set_ap_ft_pmk_r1_push(vconf->if_name, NULL);
+        }
+    }
+
+    if (is_new == true || vconf->ft_psk_generate_local_changed == true) {
+        if (vconf->ft_psk_generate_local_exists == true) {
+            const bool x = vconf->ft_psk_generate_local;
+            ow_conf_vif_set_ap_ft_psk_generate_local(vconf->if_name, &x);
+        }
+        else {
+            ow_conf_vif_set_ap_ft_psk_generate_local(vconf->if_name, NULL);
+        }
+    }
+
+    if (is_new == true || vconf->ft_pmk_r0_key_lifetime_sec_changed == true) {
+        if (vconf->ft_pmk_r0_key_lifetime_sec_exists == true) {
+            int x = vconf->ft_pmk_r0_key_lifetime_sec;
+            ow_conf_vif_set_ap_ft_pmk_r0_key_lifetime_sec(vconf->if_name, &x);
+        }
+        else {
+            ow_conf_vif_set_ap_ft_pmk_r0_key_lifetime_sec(vconf->if_name, NULL);
+        }
+    }
+
+    if (is_new == true || vconf->ft_pmk_r1_max_key_lifetime_sec_changed == true) {
+        if (vconf->ft_pmk_r1_max_key_lifetime_sec_exists == true) {
+            int x = vconf->ft_pmk_r1_max_key_lifetime_sec;
+            ow_conf_vif_set_ap_ft_pmk_r1_max_key_lifetime_sec(vconf->if_name, &x);
+        }
+        else {
+            ow_conf_vif_set_ap_ft_pmk_r1_max_key_lifetime_sec(vconf->if_name, NULL);
+        }
+    }
+
+    if (is_new == true || vconf->ft_encr_key_changed == true) {
+        if (vconf->ft_encr_key_exists == true) {
+            struct osw_ft_encr_key x = {0};
+            STRSCPY_WARN(x.buf, vconf->ft_encr_key);
+            ow_conf_vif_set_ap_ft_encr_key(vconf->if_name, &x);
+        } else {
+            ow_conf_vif_set_ap_ft_encr_key(vconf->if_name, NULL);
         }
     }
 
@@ -3411,12 +3630,18 @@ ow_ovsdb_vneigh_to_ow_conf_ap(const struct schema_Wifi_VIF_Neighbors *vneigh,
                          (vneigh->bssid_changed == true) ||
                          (vneigh->op_class_changed == true) ||
                          (vneigh->channel_changed == true) ||
-                         (vneigh->phy_type_changed == true);
+                         (vneigh->phy_type_changed == true) ||
+                         (vneigh->ft_enabled_changed == true) ||
+                         (vneigh->ft_encr_key_changed == true) ||
+                         (vneigh->nas_identifier_changed == true);
 
     const bool req_params_set = (vneigh->bssid_exists == true) ||
                                 (vneigh->op_class_exists == true) ||
                                 (vneigh->channel_exists == true) ||
-                                (vneigh->phy_type_exists);
+                                (vneigh->phy_type_exists) ||
+                                (vneigh->ft_enabled_exists == true) ||
+                                (vneigh->ft_encr_key_exists == true) ||
+                                (vneigh->nas_identifier_exists == true);
 
 
     if (changed == false || req_params_set == false) return;
@@ -3431,6 +3656,12 @@ ow_ovsdb_vneigh_to_ow_conf_ap(const struct schema_Wifi_VIF_Neighbors *vneigh,
                              vneigh->op_class,
                              vneigh->channel,
                              vneigh->phy_type);
+
+    ow_conf_vif_set_ap_neigh_ft(vneigh->if_name,
+                                &bssid,
+                                vneigh->ft_enabled,
+                                vneigh->ft_encr_key,
+                                vneigh->nas_identifier);
 }
 
 static void
@@ -3465,12 +3696,20 @@ ow_ovsdb_vconf_to_ow_conf_sta(const struct schema_Wifi_VIF_Config *vconf,
         for (i = 0; i < vconf->wpa_key_mgmt_len; i++) {
             const char *akm = vconf->wpa_key_mgmt[i];
 
-                 if (strcmp(akm, SCHEMA_CONSTS_KEY_WPA_PSK) == 0) { wpa.akm_psk = true; }
-            else if (strcmp(akm, SCHEMA_CONSTS_KEY_SAE    ) == 0) { wpa.akm_sae = true; }
-            else if (strcmp(akm, SCHEMA_CONSTS_KEY_FT_SAE ) == 0) { wpa.akm_ft_sae = true; }
-            else if (strcmp(akm, SCHEMA_CONSTS_KEY_FT_PSK ) == 0) { wpa.akm_ft_psk = true; }
-            else if (strcmp(akm, SCHEMA_CONSTS_KEY_WPA_EAP) == 0) { wpa.akm_eap = true; }
-            else if (strcmp(akm, SCHEMA_CONSTS_KEY_FT_EAP ) == 0) { wpa.akm_ft_eap = true; }
+                 if (strcmp(akm, SCHEMA_CONSTS_KEY_FT_EAP) == 0)         { wpa.akm_ft_eap = true; }
+            else if (strcmp(akm, SCHEMA_CONSTS_KEY_FT_EAP_SHA384) == 0)  { wpa.akm_ft_eap_sha384 = true; }
+            else if (strcmp(akm, SCHEMA_CONSTS_KEY_FT_PSK) == 0)         { wpa.akm_ft_psk = true; }
+            else if (strcmp(akm, SCHEMA_CONSTS_KEY_FT_SAE) == 0)         { wpa.akm_ft_sae = true; }
+            else if (strcmp(akm, SCHEMA_CONSTS_KEY_FT_SAE_EXT) == 0)     { wpa.akm_ft_sae_ext = true; }
+            else if (strcmp(akm, SCHEMA_CONSTS_KEY_SAE) == 0)            { wpa.akm_sae = true; }
+            else if (strcmp(akm, SCHEMA_CONSTS_KEY_SAE_EXT) == 0)        { wpa.akm_sae_ext = true; }
+            else if (strcmp(akm, SCHEMA_CONSTS_KEY_WPA_EAP) == 0)        { wpa.akm_eap = true; }
+            else if (strcmp(akm, SCHEMA_CONSTS_KEY_WPA_EAP_B) == 0)      { wpa.akm_eap_suite_b = true; }
+            else if (strcmp(akm, SCHEMA_CONSTS_KEY_WPA_EAP_B_192) == 0)  { wpa.akm_eap_suite_b192 = true; }
+            else if (strcmp(akm, SCHEMA_CONSTS_KEY_WPA_EAP_SHA256) == 0) { wpa.akm_eap_sha256 = true; }
+            else if (strcmp(akm, SCHEMA_CONSTS_KEY_WPA_EAP_SHA384) == 0) { wpa.akm_eap_sha384 = true; }
+            else if (strcmp(akm, SCHEMA_CONSTS_KEY_WPA_PSK) == 0)        { wpa.akm_psk = true; }
+            else if (strcmp(akm, SCHEMA_CONSTS_KEY_WPA_PSK_SHA256) == 0) { wpa.akm_psk_sha256 = true; }
         }
 
         wpa.wpa = vconf->wpa_pairwise_tkip
@@ -3481,11 +3720,14 @@ ow_ovsdb_vconf_to_ow_conf_sta(const struct schema_Wifi_VIF_Config *vconf,
                          || vconf->rsn_pairwise_tkip;
         wpa.pairwise_ccmp = vconf->wpa_pairwise_ccmp
                          || vconf->rsn_pairwise_ccmp;
+        wpa.pairwise_ccmp256 = vconf->rsn_pairwise_ccmp256;
+        wpa.pairwise_gcmp = vconf->rsn_pairwise_gcmp;
+        wpa.pairwise_gcmp256 = vconf->rsn_pairwise_gcmp256;
         wpa.pmf = pmf_from_str(vconf->pmf);
 
         /* FIXME: Optimize to not overwrite it all the time */
         ow_conf_vif_flush_sta_net(vconf->if_name);
-        ow_conf_vif_set_sta_net(vconf->if_name, &ssid, &bssid, &psk, &wpa, &bridge, &multi_ap);
+        ow_conf_vif_set_sta_net(vconf->if_name, &ssid, &bssid, &psk, &wpa, &bridge, &multi_ap, NULL);
     }
     else {
         ow_ovsdb_cconf_sched();
@@ -3927,7 +4169,7 @@ ow_ovsdb_init(void)
 static bool
 ow_ovsdb_enabled(void)
 {
-    if (getenv("OW_OVSDB_DISABLED") == NULL)
+    if (osw_etc_get("OW_OVSDB_DISABLED") == NULL)
         return true;
     else
         return false;

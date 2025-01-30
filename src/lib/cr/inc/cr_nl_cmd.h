@@ -56,6 +56,8 @@ struct nl_msg *cr_nl_cmd_resp(cr_nl_cmd_t *cmd);
 
 struct nl_msg **cr_nl_cmd_resps(cr_nl_cmd_t *cmd);
 
+struct nlattr *cr_nl_cmd_genl_attr(cr_nl_cmd_t *cmd, int attr_max, int attr);
+
 bool cr_nl_cmd_is_ok(cr_nl_cmd_t *data);
 
 void cr_nl_cmd_log(cr_nl_cmd_t *data, char *buf, size_t buf_len);

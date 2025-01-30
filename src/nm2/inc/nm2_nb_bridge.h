@@ -46,8 +46,6 @@ struct nm2_bridge
 void callback_Bridge(ovsdb_update_monitor_t *mon, struct schema_Bridge *old_rec,
                      struct schema_Bridge *conf);
 ds_tree_t *nm2_bridge_get_list(void);
-bool nm2_default_br_create_tables(char *br_name);
-void nm2_default_br_init(char *br_name);
 void nm2_bridge_init(void);
 void nm2_open_vswitch_init(void);
 

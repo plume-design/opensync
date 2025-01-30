@@ -43,6 +43,7 @@ static void
 ow_wps_ut_osw_conf_invalidate_cb(struct osw_conf_observer *obs)
 {
     struct ow_wps_ut_simple *ut = container_of(obs, struct ow_wps_ut_simple, obs);
+    if (ut->job == NULL) return;
     LOGD(LOG_PREFIX_JOB(ut->job, "ut: invalidated"));
     ut->invalidate_conf_cnt++;
 }
@@ -365,9 +366,11 @@ OSW_UT(ow_wps_ap_pbc_drop_before_running)
     osw_ut_time_advance(0);
     OSW_UT_EVAL(ut.job->sm_state == OW_WPS_JOB_ACTIVATING);
 
+    OSW_UT_EVAL(ut.wps.counters.cancelled == 0);
     ow_wps_op_job_drop(&ut.wps.ops, ut.job);
+    ut.job = NULL;
     osw_ut_time_advance(0);
-    OSW_UT_EVAL(ow_wps_op_job_get_result(&ut.wps.ops, ut.job) == ut.expected_result);
+    OSW_UT_EVAL(ut.wps.counters.cancelled == 1);
 
     OSW_UT_EVAL(ds_dlist_is_empty(&ut.wps.jobs) == true);
 }

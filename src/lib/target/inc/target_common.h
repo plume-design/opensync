@@ -752,17 +752,6 @@ bool target_stats_device_temp_get(
         dpp_device_temp_t          *device_entry);
 
 /**
- * @brief Get device txchainmask
- *
- * @param radio_cfg radio interface handle
- * @param txchainmask_entry txchainmask of device
- * @return true on success
- */
-bool target_stats_device_txchainmask_get(
-        radio_entry_t              *radio_cfg,
-        dpp_device_txchainmask_t   *txchainmask_entry);
-
-/**
  * @brief Get device fan RPM
  *
  * @param fan_rpm RPM of the internal fan
@@ -872,21 +861,6 @@ bool target_device_config_set(struct schema_AWLAN_Node *awlan);
  * @return true on success
  */
 bool target_device_execute(const char* cmd);
-
-/* Capabilities returned by @ref target_device_capabilities_get() */
-#define TARGET_GW_TYPE       (1 << 0)  /**< returned by @ref target_device_capabilities_get() */
-#define TARGET_EXTENDER_TYPE (1 << 1)  /**< returned by @ref target_device_capabilities_get() */
-
-/**
- * @brief Get device capabilities
- *
- * All targets are at least TARGET_GW_TYPE, so example implementation can
- * return just TARGET_GW_TYPE. If the target is also capable of being an extender,
- * the TARGET_EXTENDER_TYPE should be set in a bitmask additionally.
- *
- * @return device capabilities as a bitmask based on target capabilities types
- */
-int target_device_capabilities_get();
 
 /** States returned by @ref target_device_connectivity_check() */
 typedef struct {

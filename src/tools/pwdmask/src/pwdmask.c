@@ -201,9 +201,10 @@ static void print_usage(void)
 int mask_file(const char *fpath, const char *obfstr)
 {
     const char *tmp_extension = ".tmp";
-    char *tmp_fpath = malloc(strlen(fpath)+strlen(tmp_extension)+1);
-    strcpy(tmp_fpath, fpath);
-    strcat(tmp_fpath, tmp_extension);
+    int tmp_fpath_size = strlen(fpath)+strlen(tmp_extension)+1;
+    char *tmp_fpath = malloc(tmp_fpath_size);
+    strscpy(tmp_fpath, fpath, tmp_fpath_size);
+    strscat(tmp_fpath, tmp_extension, tmp_fpath_size);
 
     printf("Masking file: %s ... ", fpath);
 

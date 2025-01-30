@@ -45,7 +45,8 @@ struct ow_steer_policy_bss_filter_config {
 struct ow_steer_policy_bss_filter*
 ow_steer_policy_bss_filter_create(const char *name,
                                   const struct osw_hwaddr *sta_addr,
-                                  const struct ow_steer_policy_mediator *mediator);
+                                  const struct ow_steer_policy_mediator *mediator,
+                                  const char *log_prefix);
 
 void
 ow_steer_policy_bss_filter_set_config(struct ow_steer_policy_bss_filter *filter_policy,

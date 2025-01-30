@@ -136,6 +136,14 @@ struct osw_hostap_conf_ap_config {
     /* IEEE 802.11r configuration */
     OSW_HOSTAP_CONF_DECL_INT (mobility_domain);
     OSW_HOSTAP_CONF_DECL_STR (nas_identifier, 64);
+    OSW_HOSTAP_CONF_DECL_BOOL (ft_over_ds);
+    OSW_HOSTAP_CONF_DECL_BOOL (pmk_r1_push);
+    OSW_HOSTAP_CONF_DECL_BOOL (ft_psk_generate_local);
+    OSW_HOSTAP_CONF_DECL_INT (ft_r0_key_lifetime);
+    OSW_HOSTAP_CONF_DECL_INT (r1_max_key_lifetime);
+    OSW_HOSTAP_CONF_DECL_STR (ft_encr_key, 64);
+    OSW_HOSTAP_CONF_DECL_STR (rxkh_file, 64);
+    OSW_HOSTAP_CONF_DECL_BOOL (ft_rrb_lo_sock);
     /* Wi-Fi Protected Setup (WPS) */
     OSW_HOSTAP_CONF_DECL_INT (wps_state);
     OSW_HOSTAP_CONF_DECL_STR (config_methods, 32);

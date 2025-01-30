@@ -33,6 +33,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <osw_ut.h>
 #include <osw_drv_dummy.h>
 #include "ow_conf.h"
+#include "osw_types.h"
 #include <module.h>
 #include <memutil.h>
 #include <ds_tree.h>
@@ -78,9 +79,11 @@ struct ow_conf_vif {
     struct osw_ssid *ap_ssid;
     struct osw_ifname *ap_bridge_if_name;
     struct osw_nas_id *ap_nas_identifier;
+    struct osw_ft_encr_key *ap_ft_encr_key;
     struct ds_tree ap_psk_tree; /* ow_conf_psk */
     struct ds_tree ap_acl_tree; /* ow_conf_acl */
     struct ds_tree ap_neigh_tree; /* ow_conf_neigh */
+    struct ds_tree ap_neigh_ft_tree; /* ow_conf_neigh_ft */
     struct ds_dlist ap_radius_list; /* ow_conf_radius */
     struct ds_dlist ap_acct_list; /* ow_conf_radius */
     char *ap_passpoint_ref;
@@ -96,12 +99,23 @@ struct ow_conf_vif {
     bool *ap_rsn;
     bool *ap_pairwise_tkip;
     bool *ap_pairwise_ccmp;
+    bool *ap_pairwise_ccmp256;
+    bool *ap_pairwise_gcmp;
+    bool *ap_pairwise_gcmp256;
     bool *ap_akm_eap;
+    bool *ap_akm_eap_sha256;
+    bool *ap_akm_eap_sha384;
+    bool *ap_akm_eap_suite_b;
+    bool *ap_akm_eap_suite_b192;
     bool *ap_akm_psk;
+    bool *ap_akm_psk_sha256;
     bool *ap_akm_sae;
+    bool *ap_akm_sae_ext;
     bool *ap_akm_ft_eap;
+    bool *ap_akm_ft_eap_sha384;
     bool *ap_akm_ft_psk;
     bool *ap_akm_ft_sae;
+    bool *ap_akm_ft_sae_ext;
     bool *ap_wps;
     bool *ap_wmm;
     bool *ap_wmm_uapsd;
@@ -109,9 +123,14 @@ struct ow_conf_vif {
     bool *ap_rrm_neighbor_report;
     bool *ap_mcast2ucast;
     bool *ap_ieee8021x;
+    bool *ap_ft_over_ds;
+    bool *ap_ft_pmk_r1_push;
+    bool *ap_ft_psk_generate_local;
     int *ap_group_rekey_seconds;
     int *ap_ft_mobility_domain;
     int *ap_beacon_interval_tu;
+    int *ap_ft_pmk_r0_key_lifetime_sec;
+    int *ap_ft_pmk_r1_max_key_lifetime_sec;
     uint16_t *ap_supp_rates;
     uint16_t *ap_basic_rates;
     struct osw_beacon_rate *ap_beacon_rate;
@@ -136,6 +155,7 @@ struct ow_conf_net {
     struct osw_wpa wpa;
     struct osw_ifname bridge_if_name;
     bool multi_ap;
+    int priority;
 };
 
 struct ow_conf_acl {
@@ -152,6 +172,11 @@ struct ow_conf_psk {
 struct ow_conf_neigh {
     struct ds_tree_node node;
     struct osw_neigh neigh;
+};
+
+struct ow_conf_neigh_ft {
+    struct ds_tree_node node;
+    struct osw_neigh_ft neigh_ft;
 };
 
 struct ow_conf_radius_ref
@@ -183,7 +208,7 @@ struct ow_conf_passpoint {
     char *t_c_filename;
     char *anqp_elem;
 
-    struct osw_ssid hessid;
+    struct osw_hwaddr hessid;
     struct osw_ssid osu_ssid;
 
     char **domain_list;
@@ -232,6 +257,19 @@ ow_conf_acl_cmp(const void *a, const void *b)
     return memcmp(x, y, sizeof(*x));
 }
 
+static inline int ow_sta_net_cmp(const struct ow_conf_net *a, const struct ow_conf_net *b)
+{
+    int r;
+
+    r = osw_ssid_cmp(&a->ssid, &b->ssid);
+    if (r != 0) return r;
+
+    r = osw_hwaddr_cmp(&a->bssid, &b->bssid);
+    if (r != 0) return r;
+
+    return 0;
+}
+
 static struct ow_conf_phy *
 ow_conf_phy_alloc(struct ow_conf *self, const char *phy_name)
 {
@@ -262,9 +300,10 @@ ow_conf_vif_alloc(struct ow_conf *self, const char *vif_name)
     ds_tree_init(&vif->ap_psk_tree, ds_int_cmp, struct ow_conf_psk, node);
     ds_tree_init(&vif->ap_acl_tree, ow_conf_acl_cmp, struct ow_conf_acl, node);
     ds_tree_init(&vif->ap_neigh_tree, (ds_key_cmp_t *)osw_hwaddr_cmp, struct ow_conf_neigh, node);
+    ds_tree_init(&vif->ap_neigh_ft_tree, (ds_key_cmp_t *)osw_hwaddr_cmp, struct ow_conf_neigh_ft, node);
     ds_dlist_init(&vif->ap_radius_list, struct ow_conf_radius_ref, node);
     ds_dlist_init(&vif->ap_acct_list, struct ow_conf_radius, node);
-    ds_tree_init(&vif->sta_net_tree, (ds_key_cmp_t *)osw_ssid_cmp, struct ow_conf_net, node);
+    ds_tree_init(&vif->sta_net_tree, (ds_key_cmp_t *)ow_sta_net_cmp, struct ow_conf_net, node);
     return vif;
 }
 
@@ -392,6 +431,78 @@ ow_conf_conf_mutate_neigh(struct ds_tree *in,
 }
 
 static void
+ow_conf_conf_mutate_neigh_ft_add_local(struct osw_conf_vif *osw_conf_vif_self,
+                                       struct ow_conf *self,
+                                       struct ds_tree *in,
+                                       struct ds_tree *out)
+{
+    /* Adding all local ap's that have FT wpa_key_mgmt
+     * to each FT enabled ap's fast transition neighbors.
+     * <vif_name>.rxkhs needs to be populated with all
+     * local FT enabled interfaces.
+    */
+    struct ds_tree *phy_tree = osw_conf_vif_self->phy->phy_tree;
+    struct osw_conf_phy *conf_phy;
+    struct osw_conf_neigh_ft *p;
+
+    ds_tree_foreach(phy_tree, conf_phy) {
+        if (conf_phy == NULL) continue;
+
+        struct osw_conf_vif *conf_vif;
+
+        ds_tree_foreach(&conf_phy->vif_tree, conf_vif) {
+            if (conf_vif == NULL) continue;
+            if (conf_vif->vif_type != OSW_VIF_AP) continue;
+
+            struct osw_conf_vif_ap *ap = &conf_vif->u.ap;
+            if (ap == NULL) continue;
+
+            if (!osw_wpa_is_ft(&ap->wpa)) continue;
+            struct ow_conf_vif *ow_vif = ow_conf_vif_get(self, conf_vif->vif_name);
+
+            /* Adding only interfaces that have the same ssid */
+            if (osw_ssid_cmp(&conf_vif->u.ap.ssid, &osw_conf_vif_self->u.ap.ssid) != 0) continue;
+
+            if (ow_vif->ap_ft_encr_key == NULL) continue;
+            if (ow_vif->ap_nas_identifier == NULL) continue;
+
+            p = MALLOC(sizeof(*p));
+
+            memcpy(&p->neigh_ft.bssid, &conf_vif->mac_addr, sizeof(conf_vif->mac_addr));
+            STRSCPY(p->neigh_ft.ft_encr_key.buf, ow_vif->ap_ft_encr_key->buf);
+            STRSCPY(p->neigh_ft.nas_identifier.buf, ow_vif->ap_nas_identifier->buf);
+
+            ds_tree_insert(out, p, &p->neigh_ft.bssid);
+        }
+    }
+}
+
+static void
+ow_conf_conf_mutate_neigh_ft(struct osw_conf_vif *osw_vif,
+                             struct ow_conf *self,
+                             struct ds_tree *in,
+                             struct ds_tree *out)
+{
+    struct osw_conf_neigh_ft *p;
+    struct ow_conf_neigh_ft *i;
+
+    while ((p = ds_tree_head(out)) != NULL) {
+        ds_tree_remove(out, p);
+        FREE(p);
+    }
+
+    ds_tree_foreach(in, i) {
+        p = MALLOC(sizeof(*p));
+        p->neigh_ft = i->neigh_ft;
+        ds_tree_insert(out, p, &p->neigh_ft.bssid);
+    }
+
+    if (osw_wpa_is_ft(&osw_vif->u.ap.wpa)) {
+        ow_conf_conf_mutate_neigh_ft_add_local(osw_vif, self, in, out);
+    }
+}
+
+static void
 ow_conf_conf_mutate_passpoint(struct ow_conf *self,
                               char *in_ref_id,
                               struct osw_passpoint *out)
@@ -428,7 +539,7 @@ ow_conf_conf_mutate_passpoint(struct ow_conf *self,
     if (STRSLEN(p->anqp_elem) > 0)
         out->anqp_elem = STRDUP(p->anqp_elem);
 
-    if (p->hessid.len > 0)
+    if (!osw_hwaddr_is_zero(&p->hessid))
         memcpy(&out->hessid, &p->hessid, sizeof(out->hessid));
 
     if (p->osu_ssid.len > 0)
@@ -498,6 +609,39 @@ ow_conf_conf_mutate_passpoint(struct ow_conf *self,
     }
 }
 
+static bool
+ow_conf_is_ft_set(struct ow_conf_vif *ow_vif)
+{
+    bool is_ft_eap_set = (ow_vif->ap_akm_ft_eap != NULL && *(ow_vif->ap_akm_ft_eap));
+    bool is_ft_psk_set = (ow_vif->ap_akm_ft_psk != NULL && *(ow_vif->ap_akm_ft_psk));
+    bool is_ft_sae_set = (ow_vif->ap_akm_ft_sae != NULL && *(ow_vif->ap_akm_ft_sae));
+    bool is_ft_sae_ext_set = (ow_vif->ap_akm_ft_sae_ext != NULL && *(ow_vif->ap_akm_ft_sae_ext));
+    bool is_ft_eap_sha384_set = (ow_vif->ap_akm_ft_eap_sha384 != NULL && *(ow_vif->ap_akm_ft_eap_sha384));
+
+    return is_ft_eap_set || is_ft_psk_set || is_ft_sae_set || is_ft_sae_ext_set || is_ft_eap_sha384_set;
+}
+
+static void
+ow_conf_conf_mutate_fast_transition(struct ow_conf_vif *ow_vif,
+                                    struct osw_conf_vif *osw_vif)
+{
+    if (ow_conf_is_ft_set(ow_vif)) {
+        osw_vif->u.ap.ft_over_ds = (ow_vif->ap_ft_over_ds != NULL) ? *ow_vif->ap_ft_over_ds : 1;
+        osw_vif->u.ap.ft_pmk_r0_key_lifetime_sec = (ow_vif->ap_ft_pmk_r0_key_lifetime_sec != NULL) ? *ow_vif->ap_ft_pmk_r0_key_lifetime_sec : 1209600;
+        osw_vif->u.ap.ft_pmk_r1_max_key_lifetime_sec = (ow_vif->ap_ft_pmk_r1_max_key_lifetime_sec != NULL) ? *ow_vif->ap_ft_pmk_r1_max_key_lifetime_sec : 0;
+        osw_vif->u.ap.ft_pmk_r1_push = (ow_vif->ap_ft_pmk_r1_push != NULL) ? *ow_vif->ap_ft_pmk_r1_push : 0;
+        osw_vif->u.ap.ft_psk_generate_local = (ow_vif->ap_ft_psk_generate_local != NULL) ? *ow_vif->ap_ft_psk_generate_local : 0;
+
+        return;
+    }
+
+    if (ow_vif->ap_ft_over_ds != NULL) osw_vif->u.ap.ft_over_ds = *ow_vif->ap_ft_over_ds;
+    if (ow_vif->ap_ft_pmk_r0_key_lifetime_sec != NULL) osw_vif->u.ap.ft_pmk_r0_key_lifetime_sec = *ow_vif->ap_ft_pmk_r0_key_lifetime_sec;
+    if (ow_vif->ap_ft_pmk_r1_max_key_lifetime_sec != NULL) osw_vif->u.ap.ft_pmk_r1_max_key_lifetime_sec = *ow_vif->ap_ft_pmk_r1_max_key_lifetime_sec;
+    if (ow_vif->ap_ft_pmk_r1_push != NULL) osw_vif->u.ap.ft_pmk_r1_push = *ow_vif->ap_ft_pmk_r1_push;
+    if (ow_vif->ap_ft_psk_generate_local != NULL) osw_vif->u.ap.ft_psk_generate_local = *ow_vif->ap_ft_psk_generate_local;
+}
+
 static void
 ow_conf_conf_mutate_vif_ap(struct ow_conf *self,
                            struct ow_conf_phy *ow_phy,
@@ -529,6 +673,7 @@ ow_conf_conf_mutate_vif_ap(struct ow_conf *self,
     if (ow_vif->ap_ssid != NULL) osw_vif->u.ap.ssid = *ow_vif->ap_ssid;
     if (ow_vif->ap_bridge_if_name != NULL) osw_vif->u.ap.bridge_if_name = *ow_vif->ap_bridge_if_name;
     if (ow_vif->ap_nas_identifier != NULL) osw_vif->u.ap.nas_identifier = *ow_vif->ap_nas_identifier;
+    if (ow_vif->ap_ft_encr_key != NULL) osw_vif->u.ap.ft_encr_key = *ow_vif->ap_ft_encr_key;
     if (ow_vif->ap_ssid_hidden != NULL) osw_vif->u.ap.ssid_hidden = *ow_vif->ap_ssid_hidden;
     if (ow_vif->ap_isolated != NULL) osw_vif->u.ap.isolated = *ow_vif->ap_isolated;
     if (ow_vif->ap_ht_enabled != NULL) osw_vif->u.ap.mode.ht_enabled = *ow_vif->ap_ht_enabled;
@@ -544,12 +689,23 @@ ow_conf_conf_mutate_vif_ap(struct ow_conf *self,
     if (ow_vif->ap_rsn != NULL) osw_vif->u.ap.wpa.rsn = *ow_vif->ap_rsn;
     if (ow_vif->ap_pairwise_tkip != NULL) osw_vif->u.ap.wpa.pairwise_tkip = *ow_vif->ap_pairwise_tkip;
     if (ow_vif->ap_pairwise_ccmp != NULL) osw_vif->u.ap.wpa.pairwise_ccmp = *ow_vif->ap_pairwise_ccmp;
+    if (ow_vif->ap_pairwise_ccmp256 != NULL) osw_vif->u.ap.wpa.pairwise_ccmp256 = *ow_vif->ap_pairwise_ccmp256;
+    if (ow_vif->ap_pairwise_gcmp != NULL) osw_vif->u.ap.wpa.pairwise_gcmp = *ow_vif->ap_pairwise_gcmp;
+    if (ow_vif->ap_pairwise_gcmp256 != NULL) osw_vif->u.ap.wpa.pairwise_gcmp256 = *ow_vif->ap_pairwise_gcmp256;
     if (ow_vif->ap_akm_eap != NULL) osw_vif->u.ap.wpa.akm_eap = *ow_vif->ap_akm_eap;
+    if (ow_vif->ap_akm_eap_sha256 != NULL) osw_vif->u.ap.wpa.akm_eap_sha256 = *ow_vif->ap_akm_eap_sha256;
+    if (ow_vif->ap_akm_eap_sha384 != NULL) osw_vif->u.ap.wpa.akm_eap_sha384 = *ow_vif->ap_akm_eap_sha384;
+    if (ow_vif->ap_akm_eap_suite_b != NULL) osw_vif->u.ap.wpa.akm_eap_suite_b = *ow_vif->ap_akm_eap_suite_b;
+    if (ow_vif->ap_akm_eap_suite_b192 != NULL) osw_vif->u.ap.wpa.akm_eap_suite_b192 = *ow_vif->ap_akm_eap_suite_b192;
     if (ow_vif->ap_akm_psk != NULL) osw_vif->u.ap.wpa.akm_psk = *ow_vif->ap_akm_psk;
+    if (ow_vif->ap_akm_psk_sha256 != NULL) osw_vif->u.ap.wpa.akm_psk_sha256 = *ow_vif->ap_akm_psk_sha256;
     if (ow_vif->ap_akm_sae != NULL) osw_vif->u.ap.wpa.akm_sae = *ow_vif->ap_akm_sae;
+    if (ow_vif->ap_akm_sae_ext != NULL) osw_vif->u.ap.wpa.akm_sae_ext = *ow_vif->ap_akm_sae_ext;
     if (ow_vif->ap_akm_ft_eap != NULL) osw_vif->u.ap.wpa.akm_ft_eap = *ow_vif->ap_akm_ft_eap;
+    if (ow_vif->ap_akm_ft_eap_sha384 != NULL) osw_vif->u.ap.wpa.akm_ft_eap_sha384 = *ow_vif->ap_akm_ft_eap_sha384;
     if (ow_vif->ap_akm_ft_psk != NULL) osw_vif->u.ap.wpa.akm_ft_psk = *ow_vif->ap_akm_ft_psk;
     if (ow_vif->ap_akm_ft_sae != NULL) osw_vif->u.ap.wpa.akm_ft_sae = *ow_vif->ap_akm_ft_sae;
+    if (ow_vif->ap_akm_ft_sae_ext != NULL) osw_vif->u.ap.wpa.akm_ft_sae_ext = *ow_vif->ap_akm_ft_sae_ext;
     if (ow_vif->ap_pmf != NULL) osw_vif->u.ap.wpa.pmf = *ow_vif->ap_pmf;
     if (ow_vif->ap_group_rekey_seconds != NULL) osw_vif->u.ap.wpa.group_rekey_seconds = *ow_vif->ap_group_rekey_seconds;
     if (ow_vif->ap_ft_mobility_domain != NULL) osw_vif->u.ap.wpa.ft_mobility_domain = *ow_vif->ap_ft_mobility_domain;
@@ -567,9 +723,11 @@ ow_conf_conf_mutate_vif_ap(struct ow_conf *self,
     ow_conf_conf_mutate_acl(&ow_vif->ap_acl_tree, &osw_vif->u.ap.acl_tree);
     ow_conf_conf_mutate_psk(&ow_vif->ap_psk_tree, &osw_vif->u.ap.psk_tree);
     ow_conf_conf_mutate_neigh(&ow_vif->ap_neigh_tree, &osw_vif->u.ap.neigh_tree);
+    ow_conf_conf_mutate_neigh_ft(osw_vif, self, &ow_vif->ap_neigh_ft_tree, &osw_vif->u.ap.neigh_ft_tree);
     ow_conf_conf_mutate_radius(self, &ow_vif->ap_radius_list, &osw_vif->u.ap.radius_list);
     ow_conf_conf_mutate_radius(self, &ow_vif->ap_acct_list, &osw_vif->u.ap.accounting_list);
     ow_conf_conf_mutate_passpoint(self, ow_vif->ap_passpoint_ref, &osw_vif->u.ap.passpoint);
+    ow_conf_conf_mutate_fast_transition(ow_vif, osw_vif);
 
     if (osw_vif->u.ap.beacon_interval_tu == 0) {
         osw_vif->u.ap.beacon_interval_tu = OW_CONF_DEFAULT_BEACON_INTERVAL_TU;
@@ -629,6 +787,7 @@ ow_conf_conf_mutate_vif_sta(struct ow_conf_phy *ow_phy,
         memcpy(&n->wpa, &net->wpa, sizeof(n->wpa));
         memcpy(&n->bridge_if_name, &net->bridge_if_name, sizeof(n->bridge_if_name));
         n->multi_ap = net->multi_ap;
+        n->priority = net->priority;
         ds_dlist_insert_tail(list, n);
     }
 }
@@ -1125,6 +1284,96 @@ ow_conf_vif_set_ap_neigh(const char *vif_name,
     ow_conf_vif_notify_changed(vif_name);
 }
 
+void ow_conf_vif_set_ap_neigh_ft(const char *vif_name,
+                                 const struct osw_hwaddr *bssid,
+                                 const bool ft_enabled,
+                                 const char *ft_encr_key,
+                                 const char *nas_id)
+{
+    struct ow_conf *self = &g_ow_conf;
+    struct ow_conf_vif *self_vif = ow_conf_vif_get(self, vif_name);
+    struct ow_conf_vif *vif;
+    bool ft_encr_key_changed = false;
+    bool nas_id_changed = false;
+    if (!ft_enabled) return;
+
+    /* All FT neighbors have to be present in each .rxkhs file
+     * This includes neighbors from different bands
+    */
+
+    ds_tree_foreach(&self->vif_tree, vif) {
+        if (!ow_conf_is_ft_set(vif)) continue;
+
+        /* Only add neighbors from the interfaces with the same ssid */
+        if (strcmp(self_vif->ap_ssid->buf, vif->ap_ssid->buf) != 0) continue;
+
+        struct ow_conf_neigh_ft *neigh_ft = ds_tree_find(&vif->ap_neigh_ft_tree, bssid);
+
+        if (neigh_ft == NULL) {
+            neigh_ft = CALLOC(1, sizeof(*neigh_ft));
+            neigh_ft->neigh_ft.bssid = *bssid;
+            ds_tree_insert(&vif->ap_neigh_ft_tree, neigh_ft, &neigh_ft->neigh_ft.bssid);
+
+            LOGI("ow: conf: %s: neigh_ft: adding new neighbor fast transition to"
+                " bssid: "OSW_HWADDR_FMT
+                " ft_encr_key: %s"
+                " nas_id: %s",
+                vif->vif_name,
+                OSW_HWADDR_ARG(bssid),
+                ft_encr_key,
+                nas_id);
+
+            ft_encr_key_changed = true;
+            nas_id_changed = true;
+        }
+        else {
+            char logbuf[1024] = {0};
+            char *out = logbuf;
+            size_t len = sizeof(logbuf);
+
+            ft_encr_key_changed = (strcmp(neigh_ft->neigh_ft.ft_encr_key.buf, ft_encr_key) != 0);
+            nas_id_changed = (strcmp(neigh_ft->neigh_ft.nas_identifier.buf, nas_id) != 0);
+
+            if (ft_encr_key_changed || nas_id_changed) {
+                csnprintf(&out,
+                        &len,
+                        "ow: conf: %s: neigh: updating neighbor fast transition"
+                        " bssid: "OSW_HWADDR_FMT,
+                        vif->vif_name,
+                        OSW_HWADDR_ARG(bssid));
+            }
+
+            if (ft_encr_key_changed) {
+                csnprintf(&out,
+                        &len,
+                        " ft_encr_key: "OSW_FT_ENCR_KEY_FMT
+                        " -> %s",
+                        OSW_FT_ENCR_KEY_ARG(&neigh_ft->neigh_ft.ft_encr_key),
+                        ft_encr_key);
+            }
+
+            if (nas_id_changed) {
+                csnprintf(&out,
+                        &len,
+                        " nas_id: "OSW_NAS_ID_FMT
+                        " -> %s",
+                        OSW_NAS_ID_ARG(&neigh_ft->neigh_ft.nas_identifier),
+                        nas_id);
+            }
+
+            LOGI("%s",logbuf);
+        }
+
+        STRSCPY_WARN(neigh_ft->neigh_ft.ft_encr_key.buf, ft_encr_key);
+        STRSCPY_WARN(neigh_ft->neigh_ft.nas_identifier.buf, nas_id);
+
+        if (ft_encr_key_changed || nas_id_changed) {
+            osw_conf_invalidate(&self->conf_mutator);
+            ow_conf_vif_notify_changed(vif->vif_name);
+        }
+    }
+}
+
 void
 ow_conf_vif_del_ap_neigh(const char *vif_name,
                          const struct osw_hwaddr *bssid)
@@ -1147,6 +1396,27 @@ ow_conf_vif_del_ap_neigh(const char *vif_name,
 }
 
 void
+ow_conf_vif_del_ap_neigh_ft(const char *vif_name,
+                         const struct osw_hwaddr *bssid)
+{
+    struct ow_conf *self = &g_ow_conf;
+    struct ow_conf_vif *vif = ow_conf_vif_get(self, vif_name);
+    struct ow_conf_neigh *neigh_ft = ds_tree_find(&vif->ap_neigh_ft_tree, bssid);
+
+    if (neigh_ft == NULL) return;
+
+    LOGI("ow: conf: %s: neigh: removing neighbor fast transition"
+         " bssid: "OSW_HWADDR_FMT,
+         vif_name,
+         OSW_HWADDR_ARG(bssid));
+
+    ds_tree_remove(&vif->ap_neigh_ft_tree, neigh_ft);
+    FREE(neigh_ft);
+    osw_conf_invalidate(&self->conf_mutator);
+    ow_conf_vif_notify_changed(vif_name);
+}
+
+void
 ow_conf_vif_flush_ap_neigh(const char *vif_name)
 {
     struct ow_conf *self = &g_ow_conf;
@@ -1156,6 +1426,18 @@ ow_conf_vif_flush_ap_neigh(const char *vif_name)
     while ((neigh = ds_tree_head(&vif->ap_neigh_tree)) != NULL)
         ow_conf_vif_del_ap_neigh(vif_name, &neigh->neigh.bssid);
 }
+
+void
+ow_conf_vif_flush_ap_neigh_ft(const char *vif_name)
+{
+    struct ow_conf *self = &g_ow_conf;
+    struct ow_conf_vif *vif = ow_conf_vif_get(self, vif_name);
+    struct ow_conf_neigh_ft *neigh_ft;
+
+    while ((neigh_ft = ds_tree_head(&vif->ap_neigh_ft_tree)) != NULL)
+        ow_conf_vif_del_ap_neigh_ft(vif_name, &neigh_ft->neigh_ft.bssid);
+}
+
 
 static void
 ow_conf_radius_ref_free(struct ow_conf_radius_ref *ref)
@@ -1263,6 +1545,8 @@ ow_conf_vif_flush_radius_refs(const char *vif_name)
     struct ow_conf_vif *vif = ow_conf_vif_get(self, vif_name);
     struct ow_conf_radius_ref *ref;
 
+    if (ds_dlist_is_empty(&vif->ap_radius_list)) return;
+
     while ((ref = ds_dlist_remove_tail(&vif->ap_radius_list)) != NULL) {
         ow_conf_radius_ref_free(ref);
     }
@@ -1291,6 +1575,8 @@ ow_conf_vif_flush_radius_accounting_refs(const char *vif_name)
     struct ow_conf *self = &g_ow_conf;
     struct ow_conf_vif *vif = ow_conf_vif_get(self, vif_name);
     struct ow_conf_radius_ref *ref;
+
+    if (ds_dlist_is_empty(&vif->ap_acct_list)) return;
 
     while ((ref = ds_dlist_remove_tail(&vif->ap_acct_list)) != NULL) {
         ow_conf_radius_ref_free(ref);
@@ -1328,8 +1614,7 @@ ow_conf_passpoint_set_hessid(const char *ref_id,
     struct ow_conf_passpoint *p = ow_conf_passpoint_get(self, ref_id);
 
     if (hessid != NULL) {
-        STRSCPY_WARN(p->hessid.buf, hessid);
-        p->hessid.len = strlen(hessid);
+        WARN_ON(osw_hwaddr_from_cstr(hessid, &p->hessid) == false);
     } else {
         MEMZERO(p->hessid);
     }
@@ -1562,6 +1847,18 @@ ow_conf_passpoint_unset(char *ref_id)
     osw_conf_invalidate(&self->conf_mutator);
 }
 
+static struct ow_conf_net *
+ow_conf_sta_vif_lookup_sta_net(struct ds_tree *sta_net_tree,
+                               const struct osw_ssid *ssid,
+                               const struct osw_hwaddr *bssid)
+{
+    struct ow_conf_net tmp_net;
+    memcpy(&tmp_net.ssid, ssid, sizeof(*ssid));
+    memcpy(&tmp_net.bssid, bssid, sizeof(*bssid));
+
+    return ds_tree_find(sta_net_tree, &tmp_net);
+}
+
 void
 ow_conf_vif_set_sta_net(const char *vif_name,
                         const struct osw_ssid *ssid,
@@ -1569,48 +1866,41 @@ ow_conf_vif_set_sta_net(const char *vif_name,
                         const struct osw_psk *psk,
                         const struct osw_wpa *wpa,
                         const struct osw_ifname *bridge_if_name,
-                        const bool *multi_ap)
+                        const bool *multi_ap,
+                        const int *priority)
 {
     struct ow_conf *self = &g_ow_conf;
     struct ow_conf_vif *vif = ow_conf_vif_get(self, vif_name);
-    struct ow_conf_net *net = ds_tree_find(&vif->sta_net_tree, ssid);
+    struct ow_conf_net *net = ow_conf_sta_vif_lookup_sta_net(&vif->sta_net_tree, ssid, bssid);
 
     if (net == NULL) {
         net = CALLOC(1, sizeof(*net));
         memcpy(&net->ssid, ssid, sizeof(*ssid));
-        ds_tree_insert(&vif->sta_net_tree, net, &net->ssid);
-        LOGI("ow: conf: %s: net: adding: ssid=" OSW_SSID_FMT, vif_name, OSW_SSID_ARG(&net->ssid));
+        memcpy(&net->bssid, bssid, sizeof(*bssid));
+        ds_tree_insert(&vif->sta_net_tree, net, net);
+        LOGI("ow: conf: %s: net: adding: ssid=" OSW_SSID_FMT " bssid=" OSW_HWADDR_FMT, vif_name, OSW_SSID_ARG(&net->ssid), OSW_HWADDR_ARG(&net->bssid));
     }
 
     if (wpa != NULL) {
-        const struct osw_hwaddr prev_bssid = net->bssid;
         const struct osw_psk prev_psk = net->psk;
         const struct osw_wpa prev_wpa = net->wpa;
         const struct osw_ifname prev_bridge_if_name = net->bridge_if_name;
         const bool prev_multi_ap = net->multi_ap;
+        const int prev_priority = net->priority;
 
-        memset(&net->bssid, 0, sizeof(net->bssid));
         memset(&net->psk, 0, sizeof(net->psk));
-        if (bssid != NULL) memcpy(&net->bssid, bssid, sizeof(*bssid));
         if (psk != NULL) memcpy(&net->psk, psk, sizeof(*psk));
         if (bridge_if_name != NULL) memcpy(&net->bridge_if_name, bridge_if_name, sizeof(*bridge_if_name));
         if (multi_ap != NULL) net->multi_ap = *multi_ap;
+        if (priority != NULL) net->priority = *priority;
         memcpy(&net->wpa, wpa, sizeof(*wpa));
         net->bridge_if_name.buf[sizeof(net->bridge_if_name.buf) - 1] = '\0';
 
-        const bool bssid_changed = (memcmp(&prev_bssid, &net->bssid, sizeof(prev_bssid)) != 0);
         const bool psk_changed = (memcmp(&prev_psk, &net->psk, sizeof(prev_psk)) != 0);
         const bool wpa_changed = (memcmp(&prev_wpa, &net->wpa, sizeof(prev_wpa)) != 0);
         const bool bridge_changed = (memcmp(&prev_bridge_if_name, &net->bridge_if_name, sizeof(prev_bridge_if_name)) != 0);
         const bool multi_ap_changed = (prev_multi_ap != net->multi_ap);
-
-        if (bssid_changed) {
-            LOGI("ow: conf: %s: net: " OSW_SSID_FMT": bssid="OSW_HWADDR_FMT" -> "OSW_HWADDR_FMT,
-                 vif_name,
-                 OSW_SSID_ARG(&net->ssid),
-                 OSW_HWADDR_ARG(&prev_bssid),
-                 OSW_HWADDR_ARG(&net->bssid));
-        }
+        const bool priority_changed = (prev_priority != net->priority);
 
         if (psk_changed) {
             const size_t old_len = strnlen(prev_psk.str, sizeof(prev_psk.str));
@@ -1649,6 +1939,14 @@ ow_conf_vif_set_sta_net(const char *vif_name,
                  prev_multi_ap,
                  net->multi_ap);
         }
+        if (priority_changed) {
+            LOGI("ow: conf: %s: net: " OSW_SSID_FMT": priority=%d -> %d",
+                 vif_name,
+                 OSW_SSID_ARG(&net->ssid),
+                 prev_priority,
+                 net->priority);
+        }
+
     }
 
     if (wpa == NULL) {
@@ -1670,7 +1968,7 @@ ow_conf_vif_flush_sta_net(const char *vif_name)
     struct ow_conf_net *net;
 
     while ((net = ds_tree_head(&vif->sta_net_tree)) != NULL)
-        ow_conf_vif_set_sta_net(vif_name, &net->ssid, NULL, NULL, NULL, NULL, NULL);
+        ow_conf_vif_set_sta_net(vif_name, &net->ssid, &net->bssid, NULL, NULL, NULL, NULL, &net->priority);
 }
 
 
@@ -1683,7 +1981,7 @@ ow_conf_vif_flush_sta_net(const char *vif_name)
                        (obj->member != NULL && v != NULL && memcmp(obj->member, v, sizeof(*v)) != 0); \
         if (changed == true && obj->member != NULL && v != NULL) LOGI("ow: conf: %s: %s changed from " fmt " to " fmt, key, #member, arg(*obj->member), arg(*v)); \
         if (changed == true && v == NULL) LOGI("ow: conf: %s: %s unset from " fmt, key, #member, arg(*obj->member)); \
-        if (changed == true && obj->member == NULL) LOGI("ow: conf: %s: %s set to " fmt, key, #member, arg(*v)); \
+        if (changed == true && obj->member == NULL) LOGI("ow: conf: %s: %s set to " fmt, key ?: "", #member, arg(*v)); \
         FREE(obj->member); \
         obj->member = NULL; \
         if (v != NULL) { \
@@ -1783,18 +2081,40 @@ ow_conf_vif_flush_sta_net(const char *vif_name)
 #define ARG_vif_ap_pairwise_tkip(x) x
 #define FMT_vif_ap_pairwise_ccmp "%d"
 #define ARG_vif_ap_pairwise_ccmp(x) x
+#define FMT_vif_ap_pairwise_ccmp256 "%d"
+#define ARG_vif_ap_pairwise_ccmp256(x) x
+#define FMT_vif_ap_pairwise_gcmp "%d"
+#define ARG_vif_ap_pairwise_gcmp(x) x
+#define FMT_vif_ap_pairwise_gcmp256 "%d"
+#define ARG_vif_ap_pairwise_gcmp256(x) x
 #define FMT_vif_ap_akm_eap "%d"
 #define ARG_vif_ap_akm_eap(x) x
+#define FMT_vif_ap_akm_eap_sha256 "%d"
+#define ARG_vif_ap_akm_eap_sha256(x) x
+#define FMT_vif_ap_akm_eap_sha384 "%d"
+#define ARG_vif_ap_akm_eap_sha384(x) x
+#define FMT_vif_ap_akm_eap_suite_b "%d"
+#define ARG_vif_ap_akm_eap_suite_b(x) x
+#define FMT_vif_ap_akm_eap_suite_b192 "%d"
+#define ARG_vif_ap_akm_eap_suite_b192(x) x
+#define FMT_vif_ap_akm_psk_sha256 "%d"
+#define ARG_vif_ap_akm_psk_sha256(x) x
 #define FMT_vif_ap_akm_psk "%d"
 #define ARG_vif_ap_akm_psk(x) x
 #define FMT_vif_ap_akm_sae "%d"
 #define ARG_vif_ap_akm_sae(x) x
+#define FMT_vif_ap_akm_sae_ext "%d"
+#define ARG_vif_ap_akm_sae_ext(x) x
 #define FMT_vif_ap_akm_ft_eap "%d"
 #define ARG_vif_ap_akm_ft_eap(x) x
+#define FMT_vif_ap_akm_ft_eap_sha384 "%d"
+#define ARG_vif_ap_akm_ft_eap_sha384(x) x
 #define FMT_vif_ap_akm_ft_psk "%d"
 #define ARG_vif_ap_akm_ft_psk(x) x
 #define FMT_vif_ap_akm_ft_sae "%d"
 #define ARG_vif_ap_akm_ft_sae(x) x
+#define FMT_vif_ap_akm_ft_sae_ext "%d"
+#define ARG_vif_ap_akm_ft_sae_ext(x) x
 #define FMT_vif_ap_pmf "%s"
 #define ARG_vif_ap_pmf(x) ((x) == OSW_PMF_DISABLED ? "disabled" : \
                            (x) == OSW_PMF_OPTIONAL ? "optional" : \
@@ -1819,6 +2139,18 @@ ow_conf_vif_flush_sta_net(const char *vif_name)
 #define ARG_vif_ap_group_rekey_seconds(x) x
 #define FMT_vif_ap_ft_mobility_domain "0x%04x"
 #define ARG_vif_ap_ft_mobility_domain(x) x
+#define FMT_vif_ap_ft_encr_key "%s"
+#define ARG_vif_ap_ft_encr_key(x) (x).buf
+#define FMT_vif_ap_ft_over_ds "%d"
+#define ARG_vif_ap_ft_over_ds(x) x
+#define FMT_vif_ap_ft_pmk_r1_push "%d"
+#define ARG_vif_ap_ft_pmk_r1_push(x) x
+#define FMT_vif_ap_ft_psk_generate_local "%d"
+#define ARG_vif_ap_ft_psk_generate_local(x) x
+#define FMT_vif_ap_ft_pmk_r0_key_lifetime_sec "%d"
+#define ARG_vif_ap_ft_pmk_r0_key_lifetime_sec(x) x
+#define FMT_vif_ap_ft_pmk_r1_max_key_lifetime_sec "%d"
+#define ARG_vif_ap_ft_pmk_r1_max_key_lifetime_sec(x) x
 #define FMT_vif_ap_beacon_interval_tu "%d"
 #define ARG_vif_ap_beacon_interval_tu(x) x
 #define FMT_vif_ap_acl_policy "%s"
@@ -1937,14 +2269,31 @@ DEFINE_VIF_FIELD(ap_wpa);
 DEFINE_VIF_FIELD(ap_rsn);
 DEFINE_VIF_FIELD(ap_pairwise_tkip);
 DEFINE_VIF_FIELD(ap_pairwise_ccmp);
+DEFINE_VIF_FIELD(ap_pairwise_ccmp256);
+DEFINE_VIF_FIELD(ap_pairwise_gcmp);
+DEFINE_VIF_FIELD(ap_pairwise_gcmp256);
 DEFINE_VIF_FIELD(ap_akm_eap);
+DEFINE_VIF_FIELD(ap_akm_eap_sha256);
+DEFINE_VIF_FIELD(ap_akm_eap_sha384);
+DEFINE_VIF_FIELD(ap_akm_eap_suite_b);
+DEFINE_VIF_FIELD(ap_akm_eap_suite_b192);
 DEFINE_VIF_FIELD(ap_akm_psk);
+DEFINE_VIF_FIELD(ap_akm_psk_sha256);
 DEFINE_VIF_FIELD(ap_akm_sae);
+DEFINE_VIF_FIELD(ap_akm_sae_ext);
 DEFINE_VIF_FIELD(ap_akm_ft_eap);
+DEFINE_VIF_FIELD(ap_akm_ft_eap_sha384);
 DEFINE_VIF_FIELD(ap_akm_ft_psk);
 DEFINE_VIF_FIELD(ap_akm_ft_sae);
+DEFINE_VIF_FIELD(ap_akm_ft_sae_ext);
 DEFINE_VIF_FIELD(ap_group_rekey_seconds);
 DEFINE_VIF_FIELD(ap_ft_mobility_domain);
+DEFINE_VIF_FIELD(ap_ft_encr_key);
+DEFINE_VIF_FIELD(ap_ft_over_ds);
+DEFINE_VIF_FIELD(ap_ft_pmk_r1_push);
+DEFINE_VIF_FIELD(ap_ft_psk_generate_local);
+DEFINE_VIF_FIELD(ap_ft_pmk_r0_key_lifetime_sec);
+DEFINE_VIF_FIELD(ap_ft_pmk_r1_max_key_lifetime_sec);
 DEFINE_VIF_FIELD(ap_beacon_interval_tu);
 DEFINE_VIF_FIELD(ap_pmf);
 DEFINE_VIF_FIELD(ap_multi_ap);
@@ -1962,6 +2311,7 @@ ow_conf_vif_clear(const char *vif_name)
     ow_conf_vif_flush_ap_psk(vif_name);
     ow_conf_vif_flush_ap_acl(vif_name);
     ow_conf_vif_flush_ap_neigh(vif_name);
+    ow_conf_vif_flush_ap_neigh_ft(vif_name);
     ow_conf_vif_flush_sta_net(vif_name);
     ow_conf_vif_flush_radius_refs(vif_name);
     ow_conf_vif_flush_radius_accounting_refs(vif_name);
@@ -1987,6 +2337,9 @@ ow_conf_vif_clear(const char *vif_name)
     ow_conf_vif_set_ap_rsn(vif_name, NULL);
     ow_conf_vif_set_ap_pairwise_tkip(vif_name, NULL);
     ow_conf_vif_set_ap_pairwise_ccmp(vif_name, NULL);
+    ow_conf_vif_set_ap_pairwise_ccmp256(vif_name, NULL);
+    ow_conf_vif_set_ap_pairwise_gcmp(vif_name, NULL);
+    ow_conf_vif_set_ap_pairwise_gcmp256(vif_name, NULL);
     ow_conf_vif_set_ap_akm_eap(vif_name, NULL);
     ow_conf_vif_set_ap_akm_psk(vif_name, NULL);
     ow_conf_vif_set_ap_akm_sae(vif_name, NULL);
@@ -2006,6 +2359,12 @@ ow_conf_vif_clear(const char *vif_name)
     ow_conf_vif_set_ap_rrm_neighbor_report(vif_name, NULL);
     ow_conf_vif_set_ap_mcast2ucast(vif_name, NULL);
     ow_conf_vif_set_ap_passpoint_ref(vif_name, NULL);
+    ow_conf_vif_set_ap_ft_encr_key(vif_name, NULL);
+    ow_conf_vif_set_ap_ft_over_ds(vif_name, NULL);
+    ow_conf_vif_set_ap_ft_pmk_r1_push(vif_name, NULL);
+    ow_conf_vif_set_ap_ft_psk_generate_local(vif_name, NULL);
+    ow_conf_vif_set_ap_ft_pmk_r0_key_lifetime_sec(vif_name, NULL);
+    ow_conf_vif_set_ap_ft_pmk_r1_max_key_lifetime_sec(vif_name, NULL);
 }
 
 void
@@ -2377,3 +2736,18 @@ DEFINE_VIF_FIELD_UT(ap_ssid_hidden, bool, FIELD_EQ, true, false, true);
 DEFINE_VIF_FIELD_UT(ap_group_rekey_seconds, int, FIELD_EQ, 1, 2, 60, 3600, 0);
 DEFINE_VIF_FIELD_UT(ap_ft_mobility_domain, int, FIELD_EQ, 0x400, 0x1600, 0x1337);
 DEFINE_VIF_FIELD_UT(ap_pmf, enum osw_pmf, FIELD_EQ, OSW_PMF_DISABLED, OSW_PMF_OPTIONAL, OSW_PMF_REQUIRED);
+DEFINE_VIF_FIELD_UT(ap_akm_psk, bool, FIELD_EQ, true, false, true);
+DEFINE_VIF_FIELD_UT(ap_akm_psk_sha256, bool, FIELD_EQ, true, false, true);
+DEFINE_VIF_FIELD_UT(ap_akm_eap, bool, FIELD_EQ, true, false, true);
+DEFINE_VIF_FIELD_UT(ap_akm_eap_sha256, bool, FIELD_EQ, true, false, true);
+DEFINE_VIF_FIELD_UT(ap_akm_eap_sha384, bool, FIELD_EQ, true, false, true);
+DEFINE_VIF_FIELD_UT(ap_akm_eap_suite_b, bool, FIELD_EQ, true, false, true);
+DEFINE_VIF_FIELD_UT(ap_akm_eap_suite_b192, bool, FIELD_EQ, true, false, true);
+DEFINE_VIF_FIELD_UT(ap_akm_sae, bool, FIELD_EQ, true, false, true);
+DEFINE_VIF_FIELD_UT(ap_akm_sae_ext, bool, FIELD_EQ, true, false, true);
+DEFINE_VIF_FIELD_UT(ap_akm_ft_sae, bool, FIELD_EQ, true, false, true);
+DEFINE_VIF_FIELD_UT(ap_akm_ft_sae_ext, bool, FIELD_EQ, true, false, true);
+DEFINE_VIF_FIELD_UT(ap_akm_ft_psk, bool, FIELD_EQ, true, false, true);
+DEFINE_VIF_FIELD_UT(ap_akm_ft_eap, bool, FIELD_EQ, true, false, true);
+DEFINE_VIF_FIELD_UT(ap_akm_ft_eap_sha384, bool, FIELD_EQ, true, false, true);
+

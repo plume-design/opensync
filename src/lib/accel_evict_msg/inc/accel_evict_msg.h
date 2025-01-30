@@ -28,29 +28,29 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define ACCEL_EVICT_MESSAGE_H_INCLUDED
 
 #ifdef CONFIG_ACCEL_FLOW_EVICT_MESSAGE
-int accel_evict_msg(const char *ifname, const os_macaddr_t *target_mac, const uint8_t *data, size_t data_len);
-int accel_evict_with_context(const os_macaddr_t *target_mac, const uint8_t *data, size_t data_len);
-int accel_evict_init(const char *ifname);
-void accel_evict_exit(void);
+int accel_evict_msg_send(const char *ifname, const os_macaddr_t *target_mac, const uint8_t *data, size_t data_len);
+int accel_evict_msg_socket_send(const os_macaddr_t *target_mac, const uint8_t *data, size_t data_len);
+int accel_evict_msg_socket_init(const char *ifname);
+int accel_evict_msg_socket_exit(void);
 #else
 static inline int accel_evict_msg(const char *ifname, const os_macaddr_t *target_mac, const uint8_t *data, size_t data_len)
-{
-  return -EOPNOTSUPP;
-}
-
-static inline int accel_evict_with_context(const os_macaddr_t *target_mac, const uint8_t *data, size_t data_len)
-{
-  return -EOPNOTSUPP;
-}
-
-static inline int accel_evict_init(const char *ifname)
 {
     return 0;
 }
 
-static inline void accel_evict_exit(void)
+static inline int accel_evict_msg_socket_send(const os_macaddr_t *target_mac, const uint8_t *data, size_t data_len)
 {
-    return;
+    return 0;
+}
+
+static inline int accel_evict_msg_socket_init(const char *ifname)
+{
+    return 0;
+}
+
+static inline int accel_evict_msg_socket_exit(void)
+{
+    return 0;
 }
 
 #endif

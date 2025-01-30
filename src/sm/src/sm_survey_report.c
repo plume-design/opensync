@@ -1948,7 +1948,7 @@ bool sm_survey_report_request(
 
     /* Store and compare every request parameter */
     char param_str[32];
-    sprintf(param_str,
+    SPRINTF(param_str,
             "%s %s",
             radio_get_scan_name_from_type(scan_type),
             "survey");
@@ -1978,48 +1978,6 @@ bool sm_survey_report_request(
 
     if (true != status) {
         return false;
-    }
-
-    return true;
-}
-
-bool sm_survey_report_radio_change(
-        radio_entry_t              *radio_cfg)
-{
-    bool                            status;
-    sm_survey_ctx_t                *survey_ctx = NULL;
-    radio_scan_type_t               scan_type;
-    int                             scan_index;
-
-    if (NULL == radio_cfg) {
-        LOG(ERR,
-            "Changing survey reporting "
-            "(Invalid radio config)");
-        return false;
-    }
-
-    /* Update radio on all scan contexts. If initialized, reports will start */
-    for (   scan_index = 0;
-            scan_index < RADIO_SCAN_MAX_TYPE_QTY;
-            scan_index++
-        ) {
-        scan_type   = radio_get_scan_type_from_index(scan_index);
-        survey_ctx  = sm_survey_ctx_get(radio_cfg, scan_type);
-        if (NULL == survey_ctx) {
-            LOGE("Changing survey reporting "
-                 "(Invalid survey context)");
-            return false;
-        }
-
-        status =
-            sm_survey_stats_process (
-                    radio_cfg,
-                    scan_type,
-                    survey_ctx);
-
-        if (true != status) {
-            return false;
-        }
     }
 
     return true;

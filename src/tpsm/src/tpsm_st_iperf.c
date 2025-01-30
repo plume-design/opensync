@@ -32,6 +32,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
+#include <inttypes.h>
 
 #include "log.h"
 #include "ovsdb.h"
@@ -49,6 +50,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "module.h"
 #include "target.h"
 #include "tpsm.h"
+#include "tpsm_st_iperf_errors.h"
 
 #define ST_STATUS_OK (0)
 #define ST_STATUS_JSON (-1)
@@ -90,7 +92,7 @@ static bool iperf_parse_json(json_t *js_root, struct st_context *st_ctx)
     double duration;
     double bandwidth;
     int is_reverse;
-    int bytes;
+    int64_t bytes;
     char *host_remote = NULL;
     char *proto = NULL;
     bool is_udp;
@@ -173,7 +175,7 @@ static bool iperf_parse_json(json_t *js_root, struct st_context *st_ctx)
                 js,
                 &error,
                 0,
-                "{s:o, s:i, s:o, s?o, s?o}",
+                "{s:o, s:I, s:o, s?o, s?o}",
                 "seconds",
                 &js_sec,
                 "bytes",
@@ -322,6 +324,37 @@ static void iperf_on_timeout(struct ev_loop *loop, ev_timer *watcher, int revent
     }
 }
 
+static int iperf_err_status(const char *js_msg)
+{
+        int err_status = ST_STATUS_READ;
+        char iperf_error[256] = {0};
+        json_t *js_root = json_loads(js_msg, 0, NULL);
+        const char *js_error = json_string_value(json_object_get(js_root,"error"));
+        if (js_error == NULL)
+        {
+            LOG(ERR, "ST_IPERF: No error element found in json.");
+            if (js_root !=NULL) json_decref(js_root);
+            return err_status;
+        }
+        STRSCPY(iperf_error, js_error);
+        if (js_root !=NULL) json_decref(js_root);
+
+        LOG(INFO, "ST_IPERF: iperf_error: %s", iperf_error);
+
+        size_t i;
+        for (i = 0; i < ARRAY_SIZE(iperf_error_list); i++)
+        {
+            if (strstr(iperf_error, iperf_error_list[i].errmsg) != NULL)
+            {
+                LOG(INFO, "ST_IPERF: found error status %d, errmsg: %s",
+                    iperf_error_list[i].status, iperf_error_list[i].errmsg);
+                err_status = iperf_error_list[i].status;
+                break;
+            }
+        }
+        return err_status;
+}
+
 /* iperf speedtest at-exit callback. */
 static void iperf_speedtest_execsh_exit_fn(execsh_async_t *esa, int exit_status)
 {
@@ -342,10 +375,14 @@ static void iperf_speedtest_execsh_exit_fn(execsh_async_t *esa, int exit_status)
         {
             status = ST_STATUS_OK;
         }
+        else
+        {
+            status = iperf_err_status(st_ctx->msg);
+        }
     }
     else
     {
-        if (exit_status != 0) LOG(ERR, "ST_IPERF: Speedtest command failed with rc=%d", exit_status);
+        if (exit_status != 0) LOG(ERR, "ST_IPERF: Speedtest command failed with exit_status=%d", exit_status);
         if (buff_sz == 0) LOG(ERR, "ST_IPERF: No output from speedtest app received.");
     }
 
@@ -379,8 +416,8 @@ static void iperf_speedtest_execsh_exit_fn(execsh_async_t *esa, int exit_status)
 
     LOG(NOTICE,
         "ST_IPERF: Speedtest results:"
-        " DL: %f Mbit/s (bytes=%d, duration=%f s),"
-        " UL: %f Mbit/s (bytes=%d, duration=%f s),"
+        " DL: %f Mbit/s (bytes=%"PRId64", duration=%f s),"
+        " UL: %f Mbit/s (bytes=%"PRId64", duration=%f s),"
         " duration: %f s, remote_host: %s,"
         " testid: %d, status=%d, timestamp=%d",
         st_ctx->st_status.DL,
@@ -509,10 +546,19 @@ static bool iperf_run_async(struct st_context *st_ctx, bool run_reverse)
             // UL receiver is server.
             arg_get_server_output = run_reverse ? "" : " --get-server-output";
         }
-        if (st_ctx->st_config.st_bw_exists)  // target bandwidth [bits/sec]
+        if (st_ctx->st_config.st_bw_ul_exists && !run_reverse)  // target UL bandwidth [bits/sec]
         {
-            snprintf(arg_bw, sizeof(arg_bw), " -b %d", st_ctx->st_config.st_bw);
+            snprintf(arg_bw, sizeof(arg_bw), " -b %d", st_ctx->st_config.st_bw_ul);
         }
+	else if (st_ctx->st_config.st_bw_dl_exists)  // target DL bandwidth [bits/sec]
+	{
+            // if ul_bw is not configured, use dl bw for uplink
+            snprintf(arg_bw, sizeof(arg_bw), " -b %d", st_ctx->st_config.st_bw_dl);
+	}
+	else if (st_ctx->st_config.st_bw_exists)  // backward compatibility
+	{
+            snprintf(arg_bw, sizeof(arg_bw), " -b %d", st_ctx->st_config.st_bw);
+	}
 
         LOGI("ST_IPERF_C: Running command: %s -i 0 -O 2 -J -c %s %s%s%s%s%s%s%s",
              ST_EXE,

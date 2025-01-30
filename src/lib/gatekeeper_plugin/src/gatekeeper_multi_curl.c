@@ -757,7 +757,11 @@ gk_send_mcurl_request(struct fsm_gk_session *fsm_gk_session,
     curl_easy_setopt(conn->easy, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_2_0);
     curl_easy_setopt(conn->easy, CURLOPT_ERRORBUFFER, conn->error);
     curl_easy_setopt(conn->easy, CURLOPT_PRIVATE, conn);
-    curl_easy_setopt(conn->easy, CURLOPT_PROGRESSFUNCTION, prog_cb);
+    #if LIBCURL_VERSION_NUM >= 0x072000 /* version 7.32 */
+        curl_easy_setopt(conn->easy, CURLOPT_XFERINFOFUNCTION, prog_cb);
+    #else
+        curl_easy_setopt(conn->easy, CURLOPT_PROGRESSFUNCTION, prog_cb);
+    #endif
     curl_easy_setopt(conn->easy, CURLOPT_PROGRESSDATA, conn);
     curl_easy_setopt(conn->easy, CURLOPT_LOW_SPEED_TIME, 3L);
     curl_easy_setopt(conn->easy, CURLOPT_LOW_SPEED_LIMIT, 10L);

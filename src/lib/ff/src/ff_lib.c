@@ -56,8 +56,8 @@ static void lib_init(void)
 {
     static bool initialized = false;
     if (!initialized) {
-        module_init();
         initialized = true;
+        module_init();
     }
 }
 

@@ -485,6 +485,9 @@ void pm_tm_init(void *data)
         return;
     }
 
+    /* Set initial thermal state in OVSDB */
+    pm_tm_ovsdb_set_state(0);
+
     osp_tm_get_fan_rpm(tgt_priv, &tm_ctx.prev_fan_rpm);
 }
 

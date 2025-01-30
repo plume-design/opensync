@@ -44,6 +44,7 @@ struct nl_80211_phy_priv {
 
 struct nl_80211_vif_priv {
     struct nl_80211_vif pub;
+    struct nl_80211 *nl_80211;
     struct ds_tree_node node_name;
     struct ds_tree_node node_ifindex;
     struct nl_cmd *cmd_dump_station;
@@ -54,6 +55,7 @@ struct nl_80211_sta_priv {
     struct nl_80211_sta pub;
     struct ds_tree_node node;
     struct ds_tree sub_privs;
+    bool valid;
 };
 
 /* There are multiple scenarios where only some phy/vif/sta
@@ -91,6 +93,7 @@ struct nl_80211 {
     nl_80211_ready_fn_t *ready_fn;
     void *ready_fn_priv;
 
+    bool ready;
     int family_id;
     uint32_t feature_bitmask;
     bool recovering_from_overrun;

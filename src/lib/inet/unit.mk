@@ -42,9 +42,9 @@ UNIT_SRC += src/inet_routes.c
 UNIT_SRC += src/inet_routes6.c
 UNIT_SRC += src/inet_lte.c
 UNIT_SRC += src/inet_unmanaged.c
-UNIT_SRC += $(if $(CONFIG_TARGET_USE_NATIVE_BRIDGE), src/inet_tap.c)
-UNIT_SRC += $(if $(CONFIG_TARGET_USE_NATIVE_BRIDGE), src/inet_bridge.c)
-UNIT_SRC += $(if $(CONFIG_TARGET_USE_NATIVE_BRIDGE), src/inet_port.c)
+UNIT_SRC += src/inet_tap.c
+UNIT_SRC += src/inet_bridge.c
+UNIT_SRC += src/inet_port.c
 
 UNIT_EXPORT_CFLAGS := -I$(UNIT_PATH)/inc
 UNIT_CFLAGS := $(UNIT_EXPORT_CFLAGS)
@@ -82,6 +82,8 @@ $(eval $(if $(CONFIG_INET_DNS_RESOLVCONF),  UNIT_SRC += src/linux/inet_dns_resol
 
 $(eval $(if $(CONFIG_INET_DHSNIFF_NULL),    UNIT_SRC += src/null/inet_dhsnif_null.c))
 $(eval $(if $(CONFIG_INET_DHSNIFF_PCAP),    UNIT_SRC += src/linux/inet_dhsnif_pcap.c))
+
+$(eval $(if $(CONFIG_INET_SOFTWDS),         UNIT_SRC += src/inet_softwds.c))
 
 $(eval $(if $(CONFIG_INET_DHSNIFF_PCAP),    UNIT_LDFLAGS += -lpcap))
 

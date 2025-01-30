@@ -40,10 +40,32 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 void qosm_mgr_schedule_qos_config(const ovs_uuid_t *uuid);
 
 /**
+ * Schedule reconfiguration for this interface, where this interface
+ * also has Adaptive QoS config attached.
+ *
+ * The reconfiguration is marked as pending and will be
+ * executed with a debounce timer.
+ *
+ * @param[in]   uuid   OVSDB uuid of the interface
+ */
+void qosm_mgr_schedule_adaptive_qos_config(const ovs_uuid_t *uuid);
+
+/**
+ * Schedule Classifier reconfiguration for this interface.
+ *
+ * The reconfiguration is marked as pending and will be
+ * executed with a debounce timer.
+ *
+ * @param[in]   uuid   OVSDB uuid of the interface
+ */
+void qosm_mgr_schedule_classifier_qos_config(const ovs_uuid_t *uuid);
+
+/**
  * Cancel any pending reconfiguration for this interface.
  *
  * @param[in]   uuid   OVSDB uuid of the interface
  */
 void qosm_mgr_stop_qos_config(const ovs_uuid_t *uuid);
+
 
 #endif /* QOSM_H_INCLUDED */

@@ -29,6 +29,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 #include <stddef.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <string.h>
 #include <jansson.h>
 
@@ -43,6 +44,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * =============================================================
  */
 #define PJS_INT(name)                       "    int        "#name";\n"
+#define PJS_INT64(name)                     "    int64_t    "#name";\n"
 #define PJS_BOOL(name)                      "    bool       "#name";\n"
 #define PJS_REAL(name)                      "    double     "#name";\n"
 #define PJS_STRING(name, len)               "    char       "#name"["#len"];\n"
@@ -54,6 +56,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * =============================================================
  */
 #define PJS_INT_Q(name)                     "    int        "#name";\n"                     \
+                                            "    bool       "#name"_exists;\n"
+#define PJS_INT64_Q(name)                   "    int64_t    "#name";\n"                     \
                                             "    bool       "#name"_exists;\n"
 #define PJS_BOOL_Q(name)                    "    bool       "#name";\n"                     \
                                             "    bool       "#name"_exists;\n"
@@ -107,6 +111,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * =============================================================
  */
 #define PJS_OVS_INT(name)                   "    int        "#name";\n"
+#define PJS_OVS_INT64(name)                 "    int64_t    "#name";\n"
 #define PJS_OVS_BOOL(name)                  "    bool       "#name";\n"
 #define PJS_OVS_REAL(name)                  "    double     "#name";\n"
 #define PJS_OVS_STRING(name, len)           "    char       "#name"["#len"];\n"
@@ -118,6 +123,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * =============================================================
  */
 #define PJS_OVS_INT_Q(name)                 "    int        "#name";\n"                     \
+                                            "    bool       "#name"_exists;\n"
+#define PJS_OVS_INT64_Q(name)               "    int64_t    "#name";\n"                     \
                                             "    bool       "#name"_exists;\n"
 #define PJS_OVS_BOOL_Q(name)                "    bool       "#name";\n"                     \
                                             "    bool       "#name"_exists;\n"
@@ -203,4 +210,3 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define PJS_OVS_DMAP_UUID(name, sz)         "    ovs_uuid_t "#name"["#sz"];\n"              \
                                             "    int        "#name"_keys["#sz"];\n"         \
                                             "    int        "#name"_len;\n"
-

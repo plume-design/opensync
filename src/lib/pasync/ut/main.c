@@ -299,7 +299,7 @@ int main (int argc, char ** argv)
         }
     }
 
-    sprintf(st_cmd, CONFIG_INSTALL_PREFIX"/bin/ookla -t 2 -c http://www.speedtest.net/api/embed/plume/config");
+    SPRINTF(st_cmd, CONFIG_INSTALL_PREFIX"/bin/ookla -t 2 -c http://www.speedtest.net/api/embed/plume/config");
     if (false == pasync_ropen(loop, 1, st_cmd, st_cb))
     {
         LOG(ERR, "Error running pasync_ropen 1");
@@ -311,7 +311,7 @@ int main (int argc, char ** argv)
         LOG(ERR, "Error running pasync_ropen 2");
     }
 
-    sprintf(st_cmd, "%s/linkspeed", tools_dir);
+    SPRINTF(st_cmd, "%s/linkspeed", tools_dir);
     if (false == pasync_ropen(loop, 3, st_cmd, cb))
     {
         LOG(ERR, "Error running pasync_ropen 3");

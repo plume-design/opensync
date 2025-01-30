@@ -38,23 +38,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "execsh.h"
 #include "util.h"
 
-#if defined(CONFIG_TARGET_CAP_GATEWAY) || defined(CONFIG_TARGET_CAP_EXTENDER)
-int target_device_capabilities_get()
-{
-    int cap = 0;
-
-#if defined(CONFIG_TARGET_CAP_GATEWAY)
-    cap |= TARGET_GW_TYPE;
-#endif
-
-#if defined(CONFIG_TARGET_CAP_EXTENDER)
-    cap |= TARGET_EXTENDER_TYPE;
-#endif
-
-    return cap;
-}
-#endif
-
 #if defined(CONFIG_TARGET_LAN_BRIDGE_NAME)
 const char **target_ethclient_brlist_get()
 {
@@ -460,9 +443,10 @@ util_arping_cmd(const char *ipstr)
     if (!is_input_shell_safe(ipstr)) return false;
 
     snprintf(ARRAY_AND_SIZE(cmd),
-             "arping -I \"$(ip ro get %s"
+             "timeout %d arping -I \"$(ip ro get %s"
              " | cut -d' ' -f3"
              " | sed 1q)\" -c %d -w %d %s",
+             DEFAULT_PING_DEADLINE,
              ipstr,
              DEFAULT_PING_PACKET_CNT,
              DEFAULT_PING_DEADLINE,
@@ -494,8 +478,8 @@ util_ndisc6_cmd(const char *ipstr, const char *ifname)
     if (!is_input_shell_safe(ipstr) || !is_input_shell_safe(ifname)) return false;
 
     snprintf(ARRAY_AND_SIZE(cmd),
-             "ndisc6 %s %s",
-             ipstr, ifname);
+             "timeout %d ndisc6 %s %s",
+             DEFAULT_PING_DEADLINE, ipstr, ifname);
 
     ret = util_system_cmd(cmd);
     LOGI("%s ndisc6 %s result %d (cmd=%s)", ifname, ipstr, ret, cmd);

@@ -28,6 +28,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <util.h>
 #include <osw_module.h>
 #include <osw_state.h>
+#include <osw_etc.h>
 
 #define LOG_PREFIX "ow: csa xphy: ovsdb: "
 
@@ -48,7 +49,7 @@ ow_csa_xphy_ovsdb_cb(struct osw_state_observer *obs,
     const struct osw_hwaddr *bssid = connected ? &link->bssid : NULL;
     struct osw_hwaddr_str bssid_strbuf;
     const char *bssid_str = "";
-    const char *bssid_str_test = getenv("OW_XPHY_CSA_OVSDB_BSSID_TEST");
+    const char *bssid_str_test = osw_etc_get("OW_XPHY_CSA_OVSDB_BSSID_TEST");
     if (bssid != NULL) {
         bssid_str = osw_hwaddr2str(bssid, &bssid_strbuf);
     }

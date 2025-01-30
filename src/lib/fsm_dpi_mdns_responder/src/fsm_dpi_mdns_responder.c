@@ -310,7 +310,7 @@ fsm_dpi_mdns_process_record(struct fsm_session *session,
     ethertype = net_header_get_ethertype(net_parser);
     if (ethertype == ETH_P_IPV6)
     {
-        LOGT("MDNS responder does not support IPv6");
+        LOGT("%s: MDNS responder does not support IPv6", __func__);
         return rc;
     }
 
@@ -323,7 +323,13 @@ fsm_dpi_mdns_process_record(struct fsm_session *session,
     qname = STRDUP(rec->qname);
     LOGT("%s: Processing dpi mDNS request for %s expecting %scast response", __func__,
          rec->qname, rec->unicast ? "uni": "multi");
+
     name = strtok(qname, ".");
+    if (name == NULL)
+    {
+        LOGT("%s: dot delimiter not found in %s", __func__, qname);
+        goto err_qname;
+    }
 
     service = ds_tree_find(services, name);
     if(!service)
@@ -335,7 +341,7 @@ fsm_dpi_mdns_process_record(struct fsm_session *session,
     rc  = fsm_dpi_mdns_send_response(service, rec->unicast ? true : false, net_parser);
     if (!rc)
     {
-        LOGE("%s: Couldn't send mdns response for qname[%s]",__func__,rec->qname);
+        LOGE("%s: Couldn't send mdns response for qname[%s]", __func__, rec->qname);
         goto err_qname;
     }
 

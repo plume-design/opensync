@@ -203,8 +203,8 @@ int conf_init(mdns_daemon_t *d, char *path)
 
 		STRSCPY(pat, path);
 		if (pat[strlen(path) - 1] != '/')
-			strcat(pat, "/");
-		strcat(pat, "*.service");
+			STRSCAT(pat, "/");
+		STRSCAT(pat, "*.service");
 
 #ifdef GLOB_TILDE
 		/* E.g. musl libc < 1.1.21 does not have this GNU LIBC extension  */

@@ -196,6 +196,12 @@ struct ow_steer_bm_bss {
     struct ds_dlist_node node;
 };
 
+struct ow_steer_bm_vif_untracked_client {
+    struct ds_tree_node node;
+    struct osw_hwaddr addr;
+    struct ow_steer_bm_vif_stats *stats;
+};
+
 struct ow_steer_bm_vif {
     struct osw_ifname vif_name;
     bool removed;
@@ -205,6 +211,7 @@ struct ow_steer_bm_vif {
     struct ow_steer_bm_bss *bss;
     struct ow_steer_bm_group *group;
     struct ds_tree_node group_node;
+    struct ds_tree untracked_clients;
 
     struct osw_defer_vif_down_rule *defer_vif_down_rule;
     struct osw_defer_vif_down_observer *defer_vif_down_obs;

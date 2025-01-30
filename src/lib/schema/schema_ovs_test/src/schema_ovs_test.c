@@ -28,6 +28,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdlib.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <inttypes.h>
 #include <stdarg.h>
 #include <assert.h>
 #include <errno.h>
@@ -236,6 +237,7 @@ if (opt_partial) table_##TABLE.partial_update = true;
         #FIELD);
 
 #define PRINT_INT(name)         printf("%d", rec->name);
+#define PRINT_INT64(name)       printf("%"PRId64, rec->name);
 #define PRINT_BOOL(name)        printf("%s", rec->name ? "true" : "false");
 #define PRINT_REAL(name)        printf("%f", rec->name);
 #define PRINT_STRING(name)      printf("%s", rec->name);
@@ -305,12 +307,14 @@ bool print_condition(const char *name, bool present, bool changed, bool optional
     __VA_ARGS__ \
 
 #define PJS_OVS_INT(name)                   PRINT_BASIC(INT,name,0)
+#define PJS_OVS_INT64(name)                 PRINT_BASIC(INT64,name,0)
 #define PJS_OVS_BOOL(name)                  PRINT_BASIC(BOOL,name,0)
 #define PJS_OVS_REAL(name)                  PRINT_BASIC(REAL,name,0)
 #define PJS_OVS_STRING(name, len)           PRINT_BASIC(STRING,name,0)
 #define PJS_OVS_UUID(name)                  PRINT_BASIC(UUID,name,0)
 
 #define PJS_OVS_INT_Q(name)                 PRINT_BASIC(INT,name,1)
+#define PJS_OVS_INT64_Q(name)               PRINT_BASIC(INT64,name,1)
 #define PJS_OVS_BOOL_Q(name)                PRINT_BASIC(BOOL,name,1)
 #define PJS_OVS_REAL_Q(name)                PRINT_BASIC(REAL,name,1)
 #define PJS_OVS_STRING_Q(name, len)         PRINT_BASIC(STRING,name,1)
@@ -527,4 +531,3 @@ int main(int argc, char *argv[])
 
     return 0;
 }
-

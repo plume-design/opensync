@@ -27,6 +27,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "osw_ut.h"
 #include <osw_conf.h>
 #include <osw_mux.h>
+#include "util.h"
 
 static struct osw_drv_conf g_drv_conf = {
     .n_phy_list = 1,
@@ -74,6 +75,7 @@ static struct osw_drv_conf g_drv_conf = {
                                     .bssid = {
                                         .octet = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06 },
                                     },
+                                    .priority = 42,
                                     .next = NULL,
                                 },
                             },
@@ -176,6 +178,7 @@ OSW_UT(osw_wpas_conf_generate_sta_config_ut)
     OSW_UT_EVAL(strstr(conf, "\tpairwise=TKIP CCMP"));
     OSW_UT_EVAL(strstr(conf, "\tpsk=\"hello\""));
     OSW_UT_EVAL(strstr(conf, "\tbssid=01:02:03:04:05:06"));
+    OSW_UT_EVAL(strstr(conf, "\tpriority=42"));
 }
 
 OSW_UT(osw_wpas_conf_generate_sta_config_psk_ut)
@@ -184,7 +187,7 @@ OSW_UT(osw_wpas_conf_generate_sta_config_psk_ut)
     struct osw_hostap_conf_sta_config sta_conf;
     MEMZERO(sta_conf);
     char *conf = sta_conf.conf_buf;
-    char *psk = drv_conf->phy_list[0].vif_list.list[0].u.sta.network[0].psk.str;
+    struct osw_psk *psk = &drv_conf->phy_list[0].vif_list.list[0].u.sta.network[0].psk;
 
     /* Basic test */
     osw_hostap_conf_fill_sta_config(drv_conf,
@@ -195,7 +198,7 @@ OSW_UT(osw_wpas_conf_generate_sta_config_psk_ut)
     OSW_UT_EVAL(strstr(conf, "\tpsk=\"hello\""));
 
     /* Test special characters */
-    strcpy(psk, "!@#$%^&*()-={}?><");
+    STRSCPY(psk->str, "!@#$%^&*()-={}?><");
     osw_hostap_conf_fill_sta_config(drv_conf,
                                     "phy0",
                                     "vif0.10_sta",
@@ -204,7 +207,7 @@ OSW_UT(osw_wpas_conf_generate_sta_config_psk_ut)
     OSW_UT_EVAL(strstr(conf, "\tpsk=\"!@#$%^&*()-={}?><\""));
 
     /* Test long value passed in configuration file */
-    strcpy(psk, "1111111111222222222233333333334444444444555555555566666666667777");
+    STRSCPY(psk->str, "1111111111222222222233333333334444444444555555555566666666667777");
     osw_hostap_conf_fill_sta_config(drv_conf,
                                     "phy0",
                                     "vif0.10_sta",
@@ -221,11 +224,7 @@ OSW_UT(osw_wpas_conf_generate_sta_config_ssid_ut)
     struct osw_hostap_conf_sta_config sta_conf;
     MEMZERO(sta_conf);
     char *conf = sta_conf.conf_buf;
-    char *ssid;
-    size_t *len;
-
-    ssid = drv_conf->phy_list[0].vif_list.list[0].u.sta.network[0].ssid.buf;
-    len = &drv_conf->phy_list[0].vif_list.list[0].u.sta.network[0].ssid.len;
+    struct osw_ssid *ssid = &drv_conf->phy_list[0].vif_list.list[0].u.sta.network[0].ssid;
 
     /* Basic test */
     osw_hostap_conf_fill_sta_config(drv_conf,
@@ -236,7 +235,7 @@ OSW_UT(osw_wpas_conf_generate_sta_config_ssid_ut)
     OSW_UT_EVAL(strstr(conf, "\tssid=\"Dummy_ssid_vif0.0\""));
 
     /* Test special characters */
-    strcpy(ssid, "!@#$%^&*()-={}?><");
+    STRSCPY(ssid->buf, "!@#$%^&*()-={}?><");
     osw_hostap_conf_fill_sta_config(drv_conf,
                                     "phy0",
                                     "vif0.10_sta",
@@ -245,8 +244,8 @@ OSW_UT(osw_wpas_conf_generate_sta_config_ssid_ut)
     OSW_UT_EVAL(strstr(conf, "\tssid=\"!@#$%^&*()-={}?><\""));
 
     /* newline as part of ssid */
-    strcpy(ssid, "non_null_terminated_ssid\012\040\0");
-    *len = 25;
+    STRSCPY(ssid->buf, "non_null_terminated_ssid\012\040\0");
+    ssid->len = 25;
     osw_hostap_conf_fill_sta_config(drv_conf,
                                     "phy0",
                                     "vif0.10_sta",
@@ -255,8 +254,8 @@ OSW_UT(osw_wpas_conf_generate_sta_config_ssid_ut)
     OSW_UT_EVAL(strstr(conf, "\tssid=\"non_null_terminated_ssid\n\""));
 
     /* string too big. len limits the ssid */
-    strcpy(ssid, "123456789012345678901234567890");
-    *len = 5;
+    STRSCPY(ssid->buf, "123456789012345678901234567890");
+    ssid->len = 5;
     osw_hostap_conf_fill_sta_config(drv_conf,
                                     "phy0",
                                     "vif0.10_sta",
@@ -265,8 +264,8 @@ OSW_UT(osw_wpas_conf_generate_sta_config_ssid_ut)
     OSW_UT_EVAL(strstr(conf, "\tssid=\"12345\""));
 
     /* LEN to big. null termination limits the ssid */
-    strcpy(ssid, "abc\0\0\0");
-    *len = 5;
+    STRSCPY(ssid->buf, "abc\0\0\0");
+    ssid->len = 5;
     osw_hostap_conf_fill_sta_config(drv_conf,
                                     "phy0",
                                     "vif0.10_sta",
@@ -455,61 +454,6 @@ OSW_UT(osw_wpas_conf_generate_sta_state_status_ut)
     bufs.status = "wpa_state=UNKNOWN\n";
     osw_hostap_conf_fill_sta_state(&bufs, vstate);
     OSW_UT_EVAL(link->status == OSW_DRV_VIF_STATE_STA_LINK_UNKNOWN);
-}
-
-OSW_UT(osw_wpas_conf_generate_sta_state_list_networks_partial_ut)
-{
-    struct osw_hostap_conf_sta_state_bufs bufs = {0};
-    struct osw_drv_vif_state *vstate;
-    struct osw_drv_vif_sta_network *network;
-
-    const char *list_networks = "Selected interface 'bhaul-sta-60'\n"
-                                "network id / ssid / bssid / flags\n"
-                                "0\tDummy_ssid_vif0.0\tab:cd:ef:01:23:45\t[CURRENT]\n"
-                                "1\t!@#$%^&*()\"|\taa:bb:cc:dd:ee:ff\t[DISABLED]\n"
-                                "2\tsome_dummy_ssid\tff:bb:aa:dd:cc:ee\t[TEMP-DISABLED]\n"
-                                "3\tvery_very_very_very_very_very_long_ssid\tany\t\n"
-                                "4\tx\t00:00:00:00:00:00\t\n";
-
-    vstate = CALLOC(1, sizeof(struct osw_drv_vif_state));
-    bufs.list_networks = list_networks;
-
-    osw_hostap_conf_fill_sta_state(&bufs, vstate);
-    network = vstate->u.sta.network;
-
-    OSW_UT_EVAL(network != NULL);
-    OSW_UT_EVAL(strcmp(network->ssid.buf, "Dummy_ssid_vif0.0") == 0);
-    OSW_UT_EVAL(network->bssid.octet[0] == 0xab);
-    OSW_UT_EVAL(network->bssid.octet[1] == 0xcd);
-    OSW_UT_EVAL(network->bssid.octet[2] == 0xef);
-    OSW_UT_EVAL(network->bssid.octet[3] == 0x01);
-    OSW_UT_EVAL(network->bssid.octet[4] == 0x23);
-    OSW_UT_EVAL(network->bssid.octet[5] == 0x45);
-
-    network = network->next;
-    OSW_UT_EVAL(network != NULL);
-    OSW_UT_EVAL(strcmp(network->ssid.buf, "!@#$%^&*()\"|") == 0);
-
-    network = network->next;
-    OSW_UT_EVAL(network != NULL);
-    OSW_UT_EVAL(strcmp(network->ssid.buf, "some_dummy_ssid") == 0);
-
-    network = network->next;
-    OSW_UT_EVAL(network != NULL);
-    /* expect SSID to be truncated to 32 characters in this case! */
-    OSW_UT_EVAL(strcmp(network->ssid.buf, "very_very_very_very_very_very_lo") == 0);
-    /* BSSID = any -> 00:00:00:00:00:00 */
-    OSW_UT_EVAL(network->bssid.octet[0] == 0x00);
-    OSW_UT_EVAL(network->bssid.octet[1] == 0x00);
-    OSW_UT_EVAL(network->bssid.octet[2] == 0x00);
-    OSW_UT_EVAL(network->bssid.octet[3] == 0x00);
-    OSW_UT_EVAL(network->bssid.octet[4] == 0x00);
-    OSW_UT_EVAL(network->bssid.octet[5] == 0x00);
-
-    network = network->next;
-    OSW_UT_EVAL(network != NULL);
-    /* expect SSID to be truncated to 32 characters in this case! */
-    OSW_UT_EVAL(strcmp(network->ssid.buf, "x") == 0);
 }
 
 OSW_UT(osw_wpas_conf_generate_sta_state_list_networks_ut)

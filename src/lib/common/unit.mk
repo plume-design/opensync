@@ -39,11 +39,13 @@ UNIT_SRC += src/os.c
 UNIT_SRC += src/os_util.c
 UNIT_SRC += src/os_exec.c
 UNIT_SRC += src/memutil.c
+UNIT_SRC += src/netutil.c
 UNIT_SRC += src/sockaddr_storage.c
 UNIT_SRC += src/iso3166.c
 UNIT_SRC += src/os_send_raw.c
 UNIT_SRC += src/os_llc_snap.c
 UNIT_SRC += $(if $(CONFIG_OS_EV_TRACE), src/os_ev_trace.c)
+UNIT_SRC += src/kv_parser.c
 
 UNIT_CFLAGS := -I$(UNIT_PATH)/inc
 UNIT_CFLAGS += -fasynchronous-unwind-tables
@@ -56,3 +58,4 @@ UNIT_EXPORT_LDFLAGS := $(UNIT_LDFLAGS)
 # Other units that this unit may depend on
 UNIT_DEPS_CFLAGS := src/lib/log
 UNIT_DEPS := src/lib/ds
+UNIT_DEPS += src/lib/osa

@@ -192,12 +192,12 @@ test_fsm_dpi_adt_upnp_process_attr(void)
     ret = fsm_dpi_adt_upnp_process_attr(&this_session, NULL, 0, 0, NULL, NULL);
     TEST_ASSERT_EQUAL_INT(fail_return, ret);
 
-    strcpy(attribute, "key");
+    STRSCPY(attribute, "key");
     /* check on value */
     ret = fsm_dpi_adt_upnp_process_attr(&this_session, attribute, 0, 0, NULL, NULL);
     TEST_ASSERT_EQUAL_INT(fail_return, ret);
 
-    strcpy(value, "the_value");
+    STRSCPY(value, "the_value");
     ret = fsm_dpi_adt_upnp_process_attr(&this_session, attribute, 0, 0, value, NULL);
     TEST_ASSERT_EQUAL_INT(fail_return, ret);
 
@@ -282,7 +282,7 @@ test_fsm_dpi_adt_upnp_get_device(void)
     ret2 = fsm_dpi_adt_upnp_get_device(&adt_upnp_session, &mac2, url2);
     TEST_ASSERT_EQUAL_INT(FSM_DPI_ADT_UPNP_INIT, ret2->state);
 
-    strcpy(ret2->friendly_name, "My friendly name");
+    STRSCPY(ret2->friendly_name, "My friendly name");
     /* Using the oppoertunity to make sure the next function doesn't crash */
     /* Start with corner cases */
     dump_upnp_cache(NULL, NULL);

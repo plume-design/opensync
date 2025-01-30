@@ -44,6 +44,17 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ow_steer_policy_priv.h"
 #include "ow_steer_policy_pre_assoc.h"
 
+#define LOG_PREFIX(fmt, ...) "ow: steer: " fmt, ##__VA_ARGS__
+#define LOG_POLICY_PREFIX(policy, fmt, ...) \
+    "%s " fmt,                          \
+    ow_steer_policy_get_prefix(policy),  \
+    ##__VA_ARGS__
+#define LOG_POLICY_BSSID_PREFIX(policy, bssid, fmt, ...) \
+    "%s "OSW_HWADDR_FMT":" fmt,                          \
+    ow_steer_policy_get_prefix(policy),                  \
+    OSW_HWADDR_ARG(bssid),                               \
+    ##__VA_ARGS__
+
 struct ow_steer_policy_pre_assoc_persistent_state {
     unsigned int backoff_connect_cnt;
     unsigned int active_link_cnt;
@@ -74,6 +85,7 @@ struct ow_steer_policy_pre_assoc {
     struct ds_dlist local_bssids; /* struct ow_steer_policy_pre_assoc_neighbor */
     struct ow_steer_bm_observer bm_obs;
     struct ow_steer_bm_group *group;
+    char *log_prefix;
     struct osw_timer reconf_timer;
 };
 
@@ -116,13 +128,13 @@ ow_steer_policy_pre_assoc_reset_volatile_state(struct ow_steer_policy_pre_assoc 
     const bool dismiss_policy = reject_period;
 
     if (reject_period == true)
-        LOGD("%s rejecting period stopped", ow_steer_policy_get_prefix(pre_assoc_policy->base));
+        LOGD(LOG_POLICY_PREFIX(pre_assoc_policy->base, "rejecting period stopped"));
     if (backoff_period == true) {
         const double backoff_timeout_sec = ow_steer_policy_pre_assoc_compute_backoff_timeout(pre_assoc_policy);
         ow_steer_policy_notify_backoff(pre_assoc_policy->base,
                                        false,
                                        backoff_timeout_sec);
-        LOGD("%s backoff period stopped", ow_steer_policy_get_prefix(pre_assoc_policy->base));
+        LOGD(LOG_POLICY_PREFIX(pre_assoc_policy->base, "backoff period stopped"));
     }
 
     vstate->reject_cnt = 0;
@@ -143,30 +155,30 @@ ow_steer_policy_pre_assoc_sigusr1_dump_cb(osw_diag_pipe_t *pipe,
     const struct ow_steer_policy_pre_assoc *pre_assoc_policy = ow_steer_policy_get_priv(policy);
     const struct ow_steer_policy_pre_assoc_config *config = pre_assoc_policy->config;
 
-    osw_diag_pipe_writef(pipe, "ow: steer:         config: %s", config != NULL ? "" : "(nil)");
+    osw_diag_pipe_writef(pipe, LOG_PREFIX("        config: %s", config != NULL ? "" : "(nil)"));
     if (config != NULL) {
-        osw_diag_pipe_writef(pipe, "ow: steer:           backoff_timeout_sec: %u", config->backoff_timeout_sec);
-        osw_diag_pipe_writef(pipe, "ow: steer:           backoff_exp_base: %u", config->backoff_exp_base);
+        osw_diag_pipe_writef(pipe, LOG_PREFIX("          backoff_timeout_sec: %u", config->backoff_timeout_sec));
+        osw_diag_pipe_writef(pipe, LOG_PREFIX("          backoff_exp_base: %u", config->backoff_exp_base));
 
         switch (config->reject_condition.type) {
             case OW_STEER_POLICY_PRE_ASSOC_REJECT_CONDITION_COUNTER:
-                osw_diag_pipe_writef(pipe, "ow: steer:           reject condition: counter");
-                osw_diag_pipe_writef(pipe, "ow: steer:             reject_limit: %u", config->reject_condition.params.counter.reject_limit);
-                osw_diag_pipe_writef(pipe, "ow: steer:             reject_timeout_sec: %u", config->reject_condition.params.counter.reject_timeout_sec);
+                osw_diag_pipe_writef(pipe, LOG_PREFIX("          reject condition: counter"));
+                osw_diag_pipe_writef(pipe, LOG_PREFIX("            reject_limit: %u", config->reject_condition.params.counter.reject_limit));
+                osw_diag_pipe_writef(pipe, LOG_PREFIX("            reject_timeout_sec: %u", config->reject_condition.params.counter.reject_timeout_sec));
                 break;
             case OW_STEER_POLICY_PRE_ASSOC_REJECT_CONDITION_TIMER:
-                osw_diag_pipe_writef(pipe, "ow: steer:           reject condition: timer");
-                osw_diag_pipe_writef(pipe, "ow: steer:             reject_timeout_msec: %u", config->reject_condition.params.timer.reject_timeout_msec);
+                osw_diag_pipe_writef(pipe, LOG_PREFIX("          reject condition: timer"));
+                osw_diag_pipe_writef(pipe, LOG_PREFIX("            reject_timeout_msec: %u", config->reject_condition.params.timer.reject_timeout_msec));
                 break;
         }
 
         switch (config->backoff_condition.type) {
             case OW_STEER_POLICY_PRE_ASSOC_BACKOFF_CONDITION_NONE:
-                osw_diag_pipe_writef(pipe, "ow: steer:           backoff_condition: none");
+                osw_diag_pipe_writef(pipe, LOG_PREFIX("          backoff_condition: none"));
                 break;
             case OW_STEER_POLICY_PRE_ASSOC_BACKOFF_CONDITION_THRESHOLD_SNR:
-                osw_diag_pipe_writef(pipe, "ow: steer:           backoff_condition: threshold snr");
-                osw_diag_pipe_writef(pipe, "ow: steer:             threshold_snr: %u", config->backoff_condition.params.threshold_snr.threshold_snr);
+                osw_diag_pipe_writef(pipe, LOG_PREFIX("          backoff_condition: threshold snr"));
+                osw_diag_pipe_writef(pipe, LOG_PREFIX("            threshold_snr: %u", config->backoff_condition.params.threshold_snr.threshold_snr));
                 break;
         }
     }
@@ -174,10 +186,10 @@ ow_steer_policy_pre_assoc_sigusr1_dump_cb(osw_diag_pipe_t *pipe,
     struct ow_steer_policy_pre_assoc_neighbor *nbor;
     struct ow_steer_policy_pre_assoc *deconst_pre_assoc_policy = ow_steer_policy_get_priv(policy);
     const size_t local_bssids_count = ds_dlist_len(&deconst_pre_assoc_policy->local_bssids);
-    osw_diag_pipe_writef(pipe, "ow: steer:           local_bssids_count: %zu", local_bssids_count);
+    osw_diag_pipe_writef(pipe, LOG_PREFIX("          local_bssids_count: %zu", local_bssids_count));
     ds_dlist_foreach(&deconst_pre_assoc_policy->local_bssids, nbor) {
-        osw_diag_pipe_writef(pipe, "ow: steer:             neighbor: "OSW_HWADDR_FMT", band: %s",
-                OSW_HWADDR_ARG(&nbor->bssid), osw_band_to_str(nbor->band));
+        osw_diag_pipe_writef(pipe, LOG_PREFIX("            neighbor: "OSW_HWADDR_FMT", band: %s",
+                OSW_HWADDR_ARG(&nbor->bssid), osw_band_to_str(nbor->band)));
     }
 
     const struct ow_steer_policy_pre_assoc_volatile_state *vstate = &pre_assoc_policy->vstate;
@@ -186,15 +198,15 @@ ow_steer_policy_pre_assoc_sigusr1_dump_cb(osw_diag_pipe_t *pipe,
         strfmta("%.2lf sec remaining", OSW_TIME_TO_DBL(osw_timer_get_remaining_nsec(&vstate->reject_timer, now_nsec))) : "inactive";
     const char *backoff_timer_buf = osw_timer_is_armed(&vstate->backoff_timer) == true ?
         strfmta("%.2lf sec remaining", OSW_TIME_TO_DBL(osw_timer_get_remaining_nsec(&vstate->backoff_timer, now_nsec))) : "inactive";
-    osw_diag_pipe_writef(pipe, "ow: steer:         vstate:");
-    osw_diag_pipe_writef(pipe, "ow: steer:           reject_cnt: %u", vstate->reject_cnt);
-    osw_diag_pipe_writef(pipe, "ow: steer:           reject_timer: %s", reject_timer_buf);
-    osw_diag_pipe_writef(pipe, "ow: steer:           backoff_timer: %s", backoff_timer_buf);
+    osw_diag_pipe_writef(pipe, LOG_PREFIX("        vstate:"));
+    osw_diag_pipe_writef(pipe, LOG_PREFIX("          reject_cnt: %u", vstate->reject_cnt));
+    osw_diag_pipe_writef(pipe, LOG_PREFIX("          reject_timer: %s", reject_timer_buf));
+    osw_diag_pipe_writef(pipe, LOG_PREFIX("          backoff_timer: %s", backoff_timer_buf));
 
     const struct ow_steer_policy_pre_assoc_persistent_state *pstate = &pre_assoc_policy->pstate;
-    osw_diag_pipe_writef(pipe, "ow: steer:         pstate:");
-    osw_diag_pipe_writef(pipe, "ow: steer:           active_link_cnt: %u", pstate->active_link_cnt);
-    osw_diag_pipe_writef(pipe, "ow: steer:           backoff_connect_cnt: %u", pstate->backoff_connect_cnt);
+    osw_diag_pipe_writef(pipe, LOG_PREFIX("        pstate:"));
+    osw_diag_pipe_writef(pipe, LOG_PREFIX("          active_link_cnt: %u", pstate->active_link_cnt));
+    osw_diag_pipe_writef(pipe, LOG_PREFIX("          backoff_connect_cnt: %u", pstate->backoff_connect_cnt));
 }
 
 static void
@@ -203,7 +215,7 @@ ow_steer_policy_pre_assoc_reject_timer_cb(struct osw_timer *timer)
     struct ow_steer_policy_pre_assoc *pre_assoc_policy = container_of(timer, struct ow_steer_policy_pre_assoc, vstate.reject_timer);
     ASSERT(pre_assoc_policy->config != NULL, "");
 
-    LOGD("%s rejecting finished", ow_steer_policy_get_prefix(pre_assoc_policy->base));
+    LOGD(LOG_POLICY_PREFIX(pre_assoc_policy->base, "rejecting finished"));
 
     struct ow_steer_policy_pre_assoc_volatile_state *vstate = &pre_assoc_policy->vstate;
     const double backoff_timeout_sec = ow_steer_policy_pre_assoc_compute_backoff_timeout(pre_assoc_policy);
@@ -213,7 +225,7 @@ ow_steer_policy_pre_assoc_reject_timer_cb(struct osw_timer *timer)
                                    true,
                                    backoff_timeout_sec);
 
-    LOGD("%s backoff period started", ow_steer_policy_get_prefix(pre_assoc_policy->base));
+    LOGD(LOG_POLICY_PREFIX(pre_assoc_policy->base, "backoff period started"));
     ow_steer_policy_dismiss_executor(pre_assoc_policy->base);
     ow_steer_policy_schedule_stack_recalc(pre_assoc_policy->base);
 }
@@ -224,7 +236,7 @@ ow_steer_policy_pre_assoc_backoff_timer_cb(struct osw_timer *timer)
     struct ow_steer_policy_pre_assoc *pre_assoc_policy = container_of(timer, struct ow_steer_policy_pre_assoc, vstate.backoff_timer);
     ASSERT(pre_assoc_policy->config != NULL, "");
 
-    LOGI("%s backoff finished", ow_steer_policy_get_prefix(pre_assoc_policy->base));
+    LOGD(LOG_POLICY_PREFIX(pre_assoc_policy->base, "backoff finished"));
 
     ow_steer_policy_pre_assoc_reset_volatile_state(pre_assoc_policy);
     ow_steer_policy_schedule_stack_recalc(pre_assoc_policy->base);
@@ -250,10 +262,9 @@ ow_steer_policy_pre_assoc_auth_bypass_timer_cb(struct osw_timer *timer)
     const unsigned int prev_cnt = pstate->auth_bypass_fail_cnt;
     pstate->auth_bypass_fail_cnt++;
 
-    LOGN("%s failed to let client in through auth bypass (total occurances: %u -> %u)",
-         ow_steer_policy_get_prefix(pre_assoc_policy->base),
-         prev_cnt,
-         pstate->auth_bypass_fail_cnt);
+    LOGN(LOG_POLICY_PREFIX(pre_assoc_policy->base, "failed to let client in through auth bypass (total occurances: %u -> %u)",
+        prev_cnt,
+         pstate->auth_bypass_fail_cnt));
 }
 
 static void
@@ -273,7 +284,7 @@ ow_steer_policy_pre_assoc_sta_connected_cb(struct osw_state_observer *observer,
     const struct osw_hwaddr *vif_bssid = &sta_info->vif->drv_state->mac_addr;
     const struct ow_steer_policy_pre_assoc_config *config = pre_assoc_policy->config;
     if (config == NULL) {
-        LOGD("%s sta connected to bssid: "OSW_HWADDR_FMT", (no conf)", ow_steer_policy_get_prefix(pre_assoc_policy->base), OSW_HWADDR_ARG(vif_bssid));
+        LOGD(LOG_POLICY_PREFIX(pre_assoc_policy->base,"sta connected to bssid: "OSW_HWADDR_FMT", (no conf)", OSW_HWADDR_ARG(vif_bssid)));
         return;
     }
 
@@ -283,15 +294,15 @@ ow_steer_policy_pre_assoc_sta_connected_cb(struct osw_state_observer *observer,
     const bool backoff_period = osw_timer_is_armed(&vstate->backoff_timer) == true;
     if (backoff_period == true) {
         if (blocked_vif == true)
-            LOGD("%s sta connected to blocked vif, during backoff period", ow_steer_policy_get_prefix(pre_assoc_policy->base));
+            LOGD(LOG_POLICY_PREFIX(pre_assoc_policy->base, "sta connected to blocked vif, during backoff period"));
         else
-            LOGD("%s sta connected to allowed vif bssid: "OSW_HWADDR_FMT", during backoff period", ow_steer_policy_get_prefix(pre_assoc_policy->base), OSW_HWADDR_ARG(vif_bssid));
+            LOGD(LOG_POLICY_PREFIX(pre_assoc_policy->base, "sta connected to allowed vif bssid: "OSW_HWADDR_FMT", during backoff period", OSW_HWADDR_ARG(vif_bssid)));
     }
     else {
         if (blocked_vif == true)
-            LOGN("%s sta connected to blocked vif", ow_steer_policy_get_prefix(pre_assoc_policy->base));
+            LOGN(LOG_POLICY_PREFIX(pre_assoc_policy->base, "sta connected to blocked vif"));
         else
-            LOGD("%s sta connected to allowed vif bssid: "OSW_HWADDR_FMT, ow_steer_policy_get_prefix(pre_assoc_policy->base), OSW_HWADDR_ARG(vif_bssid));
+            LOGD(LOG_POLICY_PREFIX(pre_assoc_policy->base, "sta connected to allowed vif bssid: "OSW_HWADDR_FMT, OSW_HWADDR_ARG(vif_bssid)));
     }
 
     ow_steer_policy_pre_assoc_reset_volatile_state(pre_assoc_policy);
@@ -317,15 +328,15 @@ ow_steer_policy_pre_assoc_sta_disconnected_cb(struct osw_state_observer *observe
     const struct osw_hwaddr *vif_bssid = &sta_info->vif->drv_state->mac_addr;
     const struct ow_steer_policy_pre_assoc_config *config = pre_assoc_policy->config;
     if (config == NULL) {
-        LOGD("%s sta disconnected from vif bssid: "OSW_HWADDR_FMT", (no conf)", ow_steer_policy_get_prefix(pre_assoc_policy->base), OSW_HWADDR_ARG(vif_bssid));
+        LOGD(LOG_POLICY_PREFIX(pre_assoc_policy->base, "sta disconnected from vif bssid: "OSW_HWADDR_FMT", (no conf)", OSW_HWADDR_ARG(vif_bssid)));
         return;
     }
 
     const struct osw_hwaddr *policy_bssid = &config->bssid;
     if (osw_hwaddr_cmp(policy_bssid, vif_bssid) == 0)
-        LOGD("%s sta disconnected from blocked vif", ow_steer_policy_get_prefix(pre_assoc_policy->base));
+        LOGD(LOG_POLICY_PREFIX(pre_assoc_policy->base, "sta disconnected from blocked vif"));
     else
-        LOGD("%s sta disconnected from allowed vif bssid: "OSW_HWADDR_FMT, ow_steer_policy_get_prefix(pre_assoc_policy->base), OSW_HWADDR_ARG(vif_bssid));
+        LOGD(LOG_POLICY_PREFIX(pre_assoc_policy->base, "sta disconnected from allowed vif bssid: "OSW_HWADDR_FMT, OSW_HWADDR_ARG(vif_bssid)));
 
     if (pstate->active_link_cnt > 0)
         return;
@@ -367,12 +378,12 @@ ow_steer_policy_pre_assoc_vif_probe_reject_counter(struct ow_steer_policy_pre_as
             const uint64_t reject_period_end_nsec = osw_time_mono_clk() + OSW_TIME_SEC(reject_condition->reject_timeout_sec);
             osw_timer_arm_at_nsec(&vstate->reject_timer, reject_period_end_nsec);
             ow_steer_policy_notify_steering_attempt(pre_assoc_policy->base, vif_name);
-            LOGD("%s reject period started", ow_steer_policy_get_prefix(pre_assoc_policy->base));
+            LOGD(LOG_POLICY_PREFIX(pre_assoc_policy->base, "reject period started"));
             ow_steer_policy_trigger_executor(pre_assoc_policy->base);
         }
         else {
             osw_timer_disarm(&vstate->reject_timer);
-            LOGD("%s reject period stopped", ow_steer_policy_get_prefix(pre_assoc_policy->base));
+            LOGD(LOG_POLICY_PREFIX(pre_assoc_policy->base, "reject period stopped"));
             ow_steer_policy_dismiss_executor(pre_assoc_policy->base);
         }
     }
@@ -381,12 +392,12 @@ ow_steer_policy_pre_assoc_vif_probe_reject_counter(struct ow_steer_policy_pre_as
         if (need_backoff_period == true) {
             const double backoff_timeout_sec = ow_steer_policy_pre_assoc_compute_backoff_timeout(pre_assoc_policy);
             osw_timer_arm_at_nsec(&vstate->backoff_timer, osw_time_mono_clk() + OSW_TIME_SEC(backoff_timeout_sec));
-            LOGD("%s backoff period started", ow_steer_policy_get_prefix(pre_assoc_policy->base));
+            LOGD(LOG_POLICY_PREFIX(pre_assoc_policy->base, "backoff period started"));
             ow_steer_policy_notify_backoff(pre_assoc_policy->base, true, backoff_timeout_sec);
         }
         else {
             osw_timer_disarm(&vstate->backoff_timer);
-            LOGD("%s backoff period stopped", ow_steer_policy_get_prefix(pre_assoc_policy->base));
+            LOGD(LOG_POLICY_PREFIX(pre_assoc_policy->base, "backoff period stopped"));
         }
     }
 
@@ -420,7 +431,7 @@ ow_steer_policy_pre_assoc_vif_probe_reject_timer(struct ow_steer_policy_pre_asso
         const uint64_t reject_period_end_nsec = osw_time_mono_clk() + OSW_TIME_MSEC(reject_condition->reject_timeout_msec);
         osw_timer_arm_at_nsec(&vstate->reject_timer, reject_period_end_nsec);
         ow_steer_policy_notify_steering_attempt(pre_assoc_policy->base, vif_name);
-        LOGD("%s reject period started", ow_steer_policy_get_prefix(pre_assoc_policy->base));
+        LOGD(LOG_POLICY_PREFIX(pre_assoc_policy->base, "reject period started"));
         ow_steer_policy_trigger_executor(pre_assoc_policy->base);
     }
 }
@@ -448,12 +459,12 @@ ow_steer_policy_pre_assoc_vif_probe_backoff_threshold_snr(struct ow_steer_policy
         return;
 
     osw_timer_disarm(&vstate->reject_timer);
-    LOGD("%s reject period stopped", ow_steer_policy_get_prefix(pre_assoc_policy->base));
+    LOGD(LOG_POLICY_PREFIX(pre_assoc_policy->base, "reject period stopped"));
     ow_steer_policy_dismiss_executor(pre_assoc_policy->base);
 
     const double backoff_timeout_sec = ow_steer_policy_pre_assoc_compute_backoff_timeout(pre_assoc_policy);
     osw_timer_arm_at_nsec(&vstate->backoff_timer, osw_time_mono_clk() + OSW_TIME_SEC(backoff_timeout_sec));
-    LOGD("%s backoff period started", ow_steer_policy_get_prefix(pre_assoc_policy->base));
+    LOGD(LOG_POLICY_PREFIX(pre_assoc_policy->base, "backoff period started"));
     ow_steer_policy_notify_backoff(pre_assoc_policy->base, true, backoff_timeout_sec);
 
     ow_steer_policy_schedule_stack_recalc(pre_assoc_policy->base);
@@ -476,7 +487,7 @@ ow_steer_policy_pre_assoc_vif_probe_req_cb(struct osw_state_observer *observer,
     const char *probe_type = probe_req->ssid.len > 0 ? "direct" : "wildcard";
     const struct ow_steer_policy_pre_assoc_config *config = pre_assoc_policy->config;
     if (config == NULL) {
-        LOGD("%s probe req type: %s snr: %u, (no conf)", ow_steer_policy_get_prefix(pre_assoc_policy->base), probe_type, probe_req->snr);
+        LOGD(LOG_POLICY_PREFIX(pre_assoc_policy->base, "probe req type: %s snr: %u, (no conf)", probe_type, probe_req->snr));
         return;
     }
 
@@ -488,18 +499,18 @@ ow_steer_policy_pre_assoc_vif_probe_req_cb(struct osw_state_observer *observer,
 
     struct ow_steer_policy_pre_assoc_persistent_state *pstate = &pre_assoc_policy->pstate;
     if (pstate->active_link_cnt > 0) {
-        LOGD("%s probe req type: %s snr: %u, ignored, sta is already connected", ow_steer_policy_get_prefix(pre_assoc_policy->base),
-             probe_type, probe_req->snr);
+        LOGD(LOG_POLICY_PREFIX(pre_assoc_policy->base, "probe req type: %s snr: %u, ignored, sta is already connected",
+             probe_type, probe_req->snr));
         return;
     }
 
     struct ow_steer_policy_pre_assoc_volatile_state *vstate = &pre_assoc_policy->vstate;
     if (osw_timer_is_armed(&vstate->backoff_timer) == true) {
-        LOGD("%s probe req type: %s snr: %u, backoff in progress", ow_steer_policy_get_prefix(pre_assoc_policy->base), probe_type, probe_req->snr);
+        LOGD(LOG_POLICY_PREFIX(pre_assoc_policy->base, "probe req type: %s snr: %u, backoff in progress", probe_type, probe_req->snr));
         return;
     }
 
-    LOGD("%s probe req type: %s snr: %u", ow_steer_policy_get_prefix(pre_assoc_policy->base), probe_type, probe_req->snr);
+    LOGD(LOG_POLICY_PREFIX(pre_assoc_policy->base, "probe req type: %s snr: %u", probe_type, probe_req->snr));
 
     switch (config->reject_condition.type) {
         case OW_STEER_POLICY_PRE_ASSOC_REJECT_CONDITION_COUNTER:
@@ -530,7 +541,7 @@ ow_steer_policy_pre_assoc_try_auth_backoff(struct ow_steer_policy_pre_assoc *pre
     struct ow_steer_policy_pre_assoc_volatile_state *vstate = &pre_assoc_policy->vstate;
 
     if (osw_timer_is_armed(&vstate->backoff_timer)) {
-        LOGD("%s ignoring auth frame, already in backoff", ow_steer_policy_get_prefix(pre_assoc_policy->base));
+        LOGD(LOG_POLICY_PREFIX(pre_assoc_policy->base, "ignoring auth frame, already in backoff"));
         return;
     }
 
@@ -540,11 +551,10 @@ ow_steer_policy_pre_assoc_try_auth_backoff(struct ow_steer_policy_pre_assoc *pre
          * makes sense to abort reject timer and enter
          * backoff immediately.
          */
-        LOGI("%s auth attempt after probe request but before reject stopped",
-             ow_steer_policy_get_prefix(pre_assoc_policy->base));
+        LOGI(LOG_POLICY_PREFIX(pre_assoc_policy->base, "auth attempt after probe request but before reject stopped"));
 
         osw_timer_disarm(&vstate->reject_timer);
-        LOGD("%s reject period stopped", ow_steer_policy_get_prefix(pre_assoc_policy->base));
+        LOGD(LOG_POLICY_PREFIX(pre_assoc_policy->base, "reject period stopped"));
         ow_steer_policy_dismiss_executor(pre_assoc_policy->base);
     }
     else {
@@ -553,8 +563,7 @@ ow_steer_policy_pre_assoc_try_auth_backoff(struct ow_steer_policy_pre_assoc *pre
          * Beacon frame. In either case it can start
          * Authentication immediately. If so, unblock it.
          */
-        LOGI("%s auth attempt before probe request",
-             ow_steer_policy_get_prefix(pre_assoc_policy->base));
+        LOGI(LOG_POLICY_PREFIX(pre_assoc_policy->base, "auth attempt before probe request"));
 
         /* Simulate the reject timer being started and
          * immediatelly stopped to unify the handling of
@@ -567,7 +576,7 @@ ow_steer_policy_pre_assoc_try_auth_backoff(struct ow_steer_policy_pre_assoc *pre
     const double backoff_timeout_sec = ow_steer_policy_pre_assoc_compute_backoff_timeout(pre_assoc_policy);
     const uint64_t backoff_at_nsec = osw_time_mono_clk() + OSW_TIME_SEC(backoff_timeout_sec);
     osw_timer_arm_at_nsec(&vstate->backoff_timer, backoff_at_nsec);
-    LOGD("%s backoff period started", ow_steer_policy_get_prefix(pre_assoc_policy->base));
+    LOGD(LOG_POLICY_PREFIX(pre_assoc_policy->base, "backoff period started"));
 
     const double bypass_timeout_sec = ow_steer_policy_pre_assoc_compute_auth_bypass_timeout_sec(pre_assoc_policy);
     const uint64_t bypass_at_nsec = osw_time_mono_clk() + OSW_TIME_SEC(bypass_timeout_sec);
@@ -718,15 +727,15 @@ ow_steer_policy_pre_assoc_recalc_cb(struct ow_steer_policy *policy,
     const struct osw_hwaddr *policy_bssid = ow_steer_policy_get_bssid(policy);
     struct ow_steer_candidate *candidate = ow_steer_candidate_list_lookup(candidate_list, policy_bssid);
     if (candidate == NULL) {
-        LOGI("%s candidate bssid: "OSW_HWADDR_FMT" is missing", ow_steer_policy_get_prefix(policy), OSW_HWADDR_ARG(policy_bssid));
+        LOGI(LOG_POLICY_BSSID_PREFIX(policy, policy_bssid, "missing"));
         ow_steer_policy_pre_assoc_reset_volatile_state(pre_assoc_policy);
         return;
     }
 
     const enum ow_steer_candidate_preference preference = ow_steer_candidate_get_preference(candidate);
     if (preference != OW_STEER_CANDIDATE_PREFERENCE_NONE) {
-        LOGD("%s bssid: "OSW_HWADDR_FMT" preference: %s, already set", ow_steer_policy_get_prefix(policy), OSW_HWADDR_ARG(policy_bssid),
-             ow_steer_candidate_preference_to_cstr(preference));
+        LOGD(LOG_POLICY_BSSID_PREFIX(policy, policy_bssid, "preference: %s already set",
+             ow_steer_candidate_preference_to_cstr(preference)));
         ow_steer_policy_pre_assoc_reset_volatile_state(pre_assoc_policy);
         return;
     }
@@ -734,14 +743,12 @@ ow_steer_policy_pre_assoc_recalc_cb(struct ow_steer_policy *policy,
     struct ow_steer_policy_pre_assoc_volatile_state *vstate = &pre_assoc_policy->vstate;
 
     if (osw_timer_is_armed(&vstate->backoff_timer) == true) {
-        LOGD("%s policy in backoff. Candidate "OSW_HWADDR_FMT" marked as AVAILABLE",
-             ow_steer_policy_get_prefix(policy), OSW_HWADDR_ARG(policy_bssid));
+        LOGD(LOG_POLICY_BSSID_PREFIX(policy, policy_bssid, "marked as AVAILABLE, policy in backoff."));
         const char *reason = strfmta("%s: pre-assoc in backoff", ow_steer_policy_get_name(policy));
         ow_steer_candidate_set_preference(candidate, reason, OW_STEER_CANDIDATE_PREFERENCE_AVAILABLE);
     } else {
         if (ow_steer_policy_pre_assoc_is_other_band_candidate_available(pre_assoc_policy, candidate_list, candidate) == true) {
-            LOGD("%s policy acted. Candidate "OSW_HWADDR_FMT" marked SOFT_BLOCKED",
-                 ow_steer_policy_get_prefix(policy), OSW_HWADDR_ARG(policy_bssid));
+            LOGD(LOG_POLICY_BSSID_PREFIX(policy, policy_bssid, " marked as SOFT_BLOCKED, policy acted."));
             const char *reason = strfmta("%s: pre-assoc blocked", ow_steer_policy_get_name(policy));
             ow_steer_candidate_set_preference(candidate, reason, OW_STEER_CANDIDATE_PREFERENCE_SOFT_BLOCKED);
             ow_steer_policy_pre_assoc_set_preference(pre_assoc_policy, candidate_list, reason, OW_STEER_CANDIDATE_PREFERENCE_AVAILABLE);
@@ -750,15 +757,14 @@ ow_steer_policy_pre_assoc_recalc_cb(struct ow_steer_policy *policy,
              * the only possible one. Specifically designed **not** to leave candidate
              * list without any option for client to connect.
              */
-            LOGD("%s policy suspended. Candidate "OSW_HWADDR_FMT" is on the last available band!",
-                 ow_steer_policy_get_prefix(policy), OSW_HWADDR_ARG(policy_bssid));
-            const char *reason = strfmta("%s: pre-assoc has no other candidate", ow_steer_policy_get_name(policy));
+            LOGD(LOG_POLICY_BSSID_PREFIX(policy, policy_bssid, "last available band, policy suspended."));
+            const char *reason = strfmta(LOG_POLICY_PREFIX(policy, "pre-assoc has no other candidate"));
             ow_steer_policy_pre_assoc_set_preference(pre_assoc_policy, candidate_list, reason, OW_STEER_CANDIDATE_PREFERENCE_AVAILABLE);
         }
     }
 
-    LOGD("%s bssid: "OSW_HWADDR_FMT" preference: %s", ow_steer_policy_get_prefix(policy), OSW_HWADDR_ARG(policy_bssid),
-         ow_steer_candidate_preference_to_cstr(ow_steer_candidate_get_preference(candidate)));
+    LOGD(LOG_POLICY_BSSID_PREFIX(policy, policy_bssid, "preference: %s",
+         ow_steer_candidate_preference_to_cstr(ow_steer_candidate_get_preference(candidate))));
 }
 
 static void
@@ -774,11 +780,11 @@ ow_steer_policy_pre_assoc_reconf_timer_cb(struct osw_timer *timer)
         return;
     }
     else if (pre_assoc_policy->config == NULL && pre_assoc_policy->next_config != NULL) {
-        LOGI("%s config added", ow_steer_policy_get_prefix(pre_assoc_policy->base));
+        LOGI(LOG_POLICY_PREFIX(pre_assoc_policy->base, "config added"));
         register_observer = true;
     }
     else if (pre_assoc_policy->config != NULL && pre_assoc_policy->next_config == NULL) {
-        LOGI("%s config removed", ow_steer_policy_get_prefix(pre_assoc_policy->base));
+        LOGI(LOG_POLICY_PREFIX(pre_assoc_policy->base, "config removed"));
         unregister_observer = true;
     }
     else if (pre_assoc_policy->config != NULL && pre_assoc_policy->next_config != NULL) {
@@ -788,7 +794,7 @@ ow_steer_policy_pre_assoc_reconf_timer_cb(struct osw_timer *timer)
             return;
         }
 
-        LOGI("%s config changed", ow_steer_policy_get_prefix(pre_assoc_policy->base));
+        LOGI(LOG_POLICY_PREFIX(pre_assoc_policy->base, "config changed"));
         unregister_observer = true;
         register_observer = true;
     }
@@ -924,7 +930,8 @@ struct ow_steer_policy_pre_assoc*
 ow_steer_policy_pre_assoc_create(const char *name,
                                  struct ow_steer_bm_group *group,
                                  const struct osw_hwaddr *sta_addr,
-                                 const struct ow_steer_policy_mediator *mediator)
+                                 const struct ow_steer_policy_mediator *mediator,
+                                 const char *log_prefix)
 {
     ASSERT(sta_addr != NULL, "");
     ASSERT(mediator != NULL, "");
@@ -949,8 +956,10 @@ ow_steer_policy_pre_assoc_create(const char *name,
 
     struct ow_steer_policy_pre_assoc *pre_assoc_policy = CALLOC(1, sizeof(*pre_assoc_policy));
     memcpy(&pre_assoc_policy->state_observer, &state_observer, sizeof(pre_assoc_policy->state_observer));
-    pre_assoc_policy->base = ow_steer_policy_create(g_policy_name, sta_addr, &ops, mediator, pre_assoc_policy);
+    pre_assoc_policy->base = ow_steer_policy_create(g_policy_name, sta_addr, &ops, mediator, log_prefix, pre_assoc_policy);
     pre_assoc_policy->group = group;
+    pre_assoc_policy->log_prefix = STRDUP(log_prefix);
+
     pre_assoc_policy->bm_obs = bm_obs;
     osw_timer_init(&pre_assoc_policy->reconf_timer, ow_steer_policy_pre_assoc_reconf_timer_cb);
     ds_dlist_init(&pre_assoc_policy->local_bssids, struct ow_steer_policy_pre_assoc_neighbor, node);

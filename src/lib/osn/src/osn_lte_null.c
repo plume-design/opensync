@@ -30,6 +30,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "lnx_lte.h"
 
 #include "osn_lte.h"
+#include "osn_lte_modem.h"
 
 struct osn_lte
 {

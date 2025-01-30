@@ -661,29 +661,3 @@ bool sm_capacity_report_request(
 
     return true;
 }
-
-bool sm_capacity_report_radio_change(
-        radio_entry_t              *radio_cfg)
-{
-    bool                            status;
-    sm_capacity_ctx_t              *capacity_ctx = NULL;
-
-    if (NULL == radio_cfg) {
-        LOG(ERR,
-            "Initializing client reporting "
-            "(Invalid radio config)");
-        return false;
-    }
-
-    capacity_ctx = sm_capacity_ctx_get(radio_cfg);
-
-    status =
-        sm_capacity_stats_process (
-                radio_cfg,
-                capacity_ctx);
-    if (true != status) {
-        return false;
-    }
-
-    return true;
-}

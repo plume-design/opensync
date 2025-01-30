@@ -29,7 +29,7 @@
 ###############################################################################
 UNIT_NAME := fsm_arp
 
-UNIT_DISABLE := $(if $(CONFIG_FSM_DPI_NDP),y,n)
+UNIT_DISABLE := $(if $(CONFIG_LIB_LEGACY_FSM_ARP_PARSER),n,y)
 
 ifeq ($(CONFIG_FSM_NO_DSO),y)
 	UNIT_TYPE := LIB

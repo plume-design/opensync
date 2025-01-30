@@ -1,0 +1,5 @@
+menuconfig LIB_LEGACY_FSM_DNS_PARSER
+    bool "Enables Opensync legacy FSM DNS parser"
+    default n
+    help
+       N/A

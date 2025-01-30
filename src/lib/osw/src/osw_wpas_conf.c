@@ -44,21 +44,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <osw_wpas_conf.h>
 #include <osw_hostap_common.h>
 
-static bool
-osw_wpas_util_purge_network_list(struct osw_drv_vif_sta_network *list)
-{
-    struct osw_drv_vif_sta_network *next;
-
-    if (list == NULL) return false;
-
-    while (list != NULL) {
-        next = list->next;
-        FREE(list);
-        list = next;
-    }
-    return true;
-}
-
 /* STA config generation */
 static void
 osw_wpas_util_fill_global_block(struct osw_drv_vif_config_sta *sta,
@@ -85,6 +70,7 @@ osw_wpas_util_fill_network_block(struct osw_drv_vif_sta_network *network,
     OSW_HOSTAP_CONF_SET_VAL(conf->multi_ap_backhaul_sta, network->multi_ap ? 1 : 0);
     OSW_HOSTAP_CONF_SET_VAL(conf->ieee80211w, osw_hostap_conf_pmf_from_osw(&network->wpa));
     OSW_HOSTAP_CONF_SET_VAL(conf->scan_ssid, true);
+    OSW_HOSTAP_CONF_SET_VAL(conf->priority, network->priority);
 
     const char *proto = osw_hostap_conf_proto_from_osw(&network->wpa);
     if (proto != NULL) {
@@ -103,51 +89,6 @@ osw_wpas_util_fill_network_block(struct osw_drv_vif_sta_network *network,
         OSW_HOSTAP_CONF_SET_BUF(conf->pairwise, pairwise);
         FREE(pairwise);
     }
-}
-
-static void
-osw_wpas_util_parse_list_networks(const char *list_networks,
-                                  struct osw_drv_vif_sta_network **ppnetwork)
-{
-    char ssid[OSW_IEEE80211_SSID_LEN + 1];
-    char bssid[18];
-    char flags[52];
-    char *net;
-    int net_id = 0;
-    int matched = 0;
-
-    if (list_networks == NULL) return;
-    char *local_list_networks = STRDUP(list_networks);
-
-    for (net = strtok(local_list_networks,"\n");
-         net != NULL;
-         net = strtok(NULL, "\n")) {
-        if (strstr(net, "Selected interface") != NULL) continue;
-        if (strstr(net, "network id") != NULL) continue;
-        matched = sscanf(net,
-                "%d\t%32s\t%18s\t%s\n",
-                &net_id,
-                ssid,
-                bssid,
-                flags);
-        if (matched < 3) {
-            LOGW("%s: parsing this line failed: \"%s\"", __func__, net);
-            continue;
-        }
-
-        *ppnetwork = CALLOC(1, sizeof(struct osw_drv_vif_sta_network));
-
-        if (osw_hwaddr_from_cstr(bssid, &(*ppnetwork)->bssid) != true) {
-            /* bssid is not specified - ('any')*/
-            MEMZERO((*ppnetwork)->bssid);
-        }
-        STRSCPY_WARN((*ppnetwork)->ssid.buf, ssid);
-        (*ppnetwork)->ssid.len = strlen(ssid);
-
-        ppnetwork = &(*ppnetwork)->next;
-    }
-
-    FREE(local_list_networks);
 }
 
 static void
@@ -201,6 +142,9 @@ osw_wpas_util_parse_network_block(const char *network,
             }
             if (strcmp(k, "multi_ap_backhaul_sta") == 0) {
                 drv_network->multi_ap = atoi(v) ? true : false;
+            }
+            if (strcmp(k, "priority") == 0) {
+                drv_network->priority = atoi(v);
             }
         }
     }
@@ -372,64 +316,9 @@ static void
 osw_wpas_util_fill_network_list(const struct osw_hostap_conf_sta_state_bufs *bufs,
                                 struct osw_drv_vif_state *vstate)
 {
-    struct osw_drv_vif_sta_network *list_networks = NULL;
-    struct osw_drv_vif_sta_network *conf_networks = NULL;
-    struct osw_drv_vif_sta_network *network_l = NULL;
-    struct osw_drv_vif_sta_network *network_c = NULL;
-    struct osw_drv_vif_sta_network **ppnetwork = NULL;
-
-    if (bufs->list_networks == NULL) return;
-    /* Parse list_networks to create network objects on heap */
-    osw_wpas_util_parse_list_networks(bufs->list_networks, &list_networks);
-
-    if (bufs->config == NULL) {
-        LOGI("%s: parsing list_networks without config applied. "
-             "Expect incomplete results!", __func__);
-    }
-    /* Parse config to create network objects on heap */
-    osw_wpas_util_parse_config_to_networks(bufs->config, &conf_networks);
-
-    ppnetwork = &vstate->u.sta.network;
-
-    /* Combine both lists to fill in what's missing in list_networks */
-    for (network_l = list_networks;
-         network_l != NULL;
-         network_l = network_l->next)
-    {
-        if (!*ppnetwork)
-            *ppnetwork = CALLOC(1, sizeof(struct osw_drv_vif_sta_network));
-
-        memcpy(*ppnetwork, network_l, sizeof(struct osw_drv_vif_sta_network));
-        (*ppnetwork)->next = NULL;
-        /* Find matching conf_network */
-        for (network_c = conf_networks;
-             network_c != NULL;
-             network_c = network_c->next) {
-            /* list_networks prints bssid only when network entry is configured
-             * to filter scan results based on bssid. Therefore it's safe to
-             * assume, that mismatch between config and list_networks is caused
-             * by additional configuration (ctrl_interface command) */
-            if ((strncmp(network_l->ssid.buf,
-                         network_c->ssid.buf,
-                         network_l->ssid.len) == 0) &&
-                (memcmp(&network_l->bssid.octet,
-                        &network_c->bssid.octet,
-                        OSW_HWADDR_LEN) == 0)) {
-                /* Network from config found to match list_networks entry.
-                 * Supply missing information. */
-                memcpy(*ppnetwork, network_c, sizeof(struct osw_drv_vif_sta_network));
-                (*ppnetwork)->next = NULL;
-                break;
-            }
-        }
-        ppnetwork = &(*ppnetwork)->next;
-    }
+    osw_wpas_util_parse_config_to_networks(bufs->config, &vstate->u.sta.network);
     osw_wpas_util_net_list_set_bridge_if_name(vstate->u.sta.network,
                                               bufs->bridge_if_name);
-    /* FREE both temporary lists */
-    osw_wpas_util_purge_network_list(list_networks);
-    osw_wpas_util_purge_network_list(conf_networks);
-    return;
 }
 
 void

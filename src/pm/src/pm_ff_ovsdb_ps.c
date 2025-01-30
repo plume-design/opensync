@@ -40,11 +40,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define PM_MODULE_NAME "PM"
 #define LOG_PREFIX "[PM:FF] "
 
-MODULE(ff_update_flags_from_ovsdb, mod_init, mod_fini)
 
 static ff_provider_ps_t *ff_provider_ps = NULL;
-ovsdb_table_t table_Node_Config;
-ovsdb_table_t table_Node_State;
+static ovsdb_table_t table_Node_Config;
+static ovsdb_table_t table_Node_State;
 
 static void node_state_set(const char *key, const char *value, bool persist)
 {
@@ -112,7 +111,7 @@ static void callback_Node_Config(
     }
 }
 
-void mod_init(void *data)
+static void pm_ff_ovsdb_ps_init(void *data)
 {
     char *list_of_flags = NULL;
     (void)data;
@@ -131,7 +130,9 @@ void mod_init(void *data)
     OVSDB_TABLE_MONITOR(Node_Config, false);
 }
 
-void mod_fini(void *data)
+static void pm_ff_ovsdb_ps_fini(void *data)
 {
     (void)data;
 }
+
+MODULE(ff_update_flags_from_ovsdb, pm_ff_ovsdb_ps_init, pm_ff_ovsdb_ps_fini)

@@ -41,4 +41,14 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 bool qosm_qos_config_apply(const ovs_uuid_t *uuid, bool *qos_qdisc_cfg_exists);
 
+/**
+ * Apply Adaptive QoS.
+ */
+bool qosm_adaptive_qos_apply();
+
+/**
+ * Stop any existing Adaptive QoS.
+ */
+bool qosm_adaptive_qos_stop();
+
 #endif /* QOSM_QOS_H_INCLUDED */

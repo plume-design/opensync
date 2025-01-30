@@ -54,6 +54,23 @@ static const char lnx_tunnel_iface_vti_create[] = _S(
     fi;);
 
 /*
+ * Script for creating a VTI6 tunnel interface.
+ *
+ * Input parameters:
+ *
+ * $1 - Interface name
+ * $2 - local endpoint IP6 address
+ * $3 - remote endpoint IP6 address
+ * $4 - key (optional)
+ */
+static const char lnx_tunnel_iface_vti6_create[] = _S(
+    if [ -n "$4" ]; then
+        ip link add name "$1" type vti6 local "$2" remote "$3" key "$4";
+    else
+        ip link add name "$1" type vti6 local "$2" remote "$3";
+    fi;);
+
+/*
  * Script for creating an IP6TNL tunnel interface.
  *
  * Input parameters:
@@ -110,6 +127,7 @@ static const char lnx_tunnel_iface_delete[] = _S(
     fi;);
 
 static bool set_proc_sys_route_based_tweaks(lnx_tunnel_iface_t *self);
+static bool set_proc_sys_route_based_tweaks_ipv6(lnx_tunnel_iface_t *self);
 
 bool lnx_tunnel_iface_init(lnx_tunnel_iface_t *self, const char *ifname)
 {
@@ -288,8 +306,46 @@ bool lnx_tunnel_iface_apply(lnx_tunnel_iface_t *self)
             break;
 
         case OSN_TUNNEL_IFACE_TYPE_VTI6:
-            LOG(ERR, "lnx_tunnel_iface: %s: VTI6 type not currently supported", self->ti_ifname);
-            return false;
+            if (self->ti_local_endpoint.addr_type != AF_INET6 || self->ti_remote_endpoint.addr_type != AF_INET6)
+            {
+                LOG(ERR, "lnx_tunnel_iface: %s: type=VTI6: local or remote address not set or not IPv6 type", self->ti_ifname);
+                return false;
+            }
+
+            snprintf(slocal, sizeof(slocal), PRI_osn_ip6_addr, FMT_osn_ip6_addr(self->ti_local_endpoint.addr.ip6));
+            snprintf(sremote, sizeof(sremote), PRI_osn_ip6_addr, FMT_osn_ip6_addr(self->ti_remote_endpoint.addr.ip6));
+
+            if (self->ti_key != 0)
+            {
+                snprintf(skey, sizeof(skey), "%d", self->ti_key);
+            }
+            else
+            {
+                skey[0] = '\0';
+            }
+
+            rc = execsh_log(
+                    LOG_SEVERITY_DEBUG,
+                    lnx_tunnel_iface_vti6_create,
+                    self->ti_ifname,
+                    slocal,
+                    sremote,
+                    skey);
+            if (rc != 0)
+            {
+                LOG(ERR, "lnx_tunnel_iface: %s: Error creating VTI6 tunnel interface (local %s, remote %s, key '%s').",
+                        self->ti_ifname, slocal, sremote, skey);
+                return false;
+            }
+            LOG(INFO, "lnx_tunnel_iface: %s: vti6 tunnel interface created", self->ti_ifname);
+
+            /* Apply route-based tunnels tweaks to the created interface: */
+            if (kconfig_enabled(CONFIG_OSN_TUNNEL_IFACE_ROUTE_BASED_TWEAKS))
+            {
+                set_proc_sys_route_based_tweaks_ipv6(self);
+            }
+
+            self->ti_applied = true;
             break;
 
         case OSN_TUNNEL_IFACE_TYPE_IP6TNL:
@@ -445,6 +501,27 @@ static bool set_proc_sys_route_based_tweaks(lnx_tunnel_iface_t *self)
     if (rc != 0)
     {
         LOG(WARN, "lnx_tunnel_iface: %s: Failed applying /proc/sys route-based tweaks", self->ti_ifname);
+        return false;
+    }
+    return true;
+}
+
+static bool set_proc_sys_route_based_tweaks_ipv6(lnx_tunnel_iface_t *self)
+{
+    char shell_cmd[C_MAXPATH_LEN];
+    int rc;
+
+    snprintf(
+            shell_cmd,
+            sizeof(shell_cmd),
+            "sysctl -w net.ipv6.conf.%s.disable_policy=1",
+            self->ti_ifname
+            );
+
+    rc = execsh_log(LOG_SEVERITY_DEBUG, shell_cmd);
+    if (rc != 0)
+    {
+        LOG(WARN, "lnx_tunnel_iface: %s: Failed applying /proc/sys route-based ipv6 tweaks", self->ti_ifname);
         return false;
     }
     return true;

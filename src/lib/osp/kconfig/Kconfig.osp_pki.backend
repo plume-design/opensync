@@ -1,0 +1,4 @@
+config OSP_PKI_PS
+    bool "OpenSync Encrypted Persistent Storage"
+    help
+        Use OpenSync Encrypted persistent storage for certificate safekeeping.

@@ -47,6 +47,18 @@ do
         | grep -F -- "$($OVSH -rU s Wifi_VIF_Config _uuid -w if_name==$ifname)" \
         | awk -vifname="$ifname" '$1 != "true" {print ifname " skip check, phy is down"}' \
         | grep . && continue
+
+    # If the amount of channels is equal to the number of nop_started statuses
+    # then return pass
+    # else continue with healtcheck
+    N_STATES=$($OVSH -jU s Wifi_Radio_State -w if_name==$ifname channels \
+        | grep -E '"(1)?[0-9][0-9]",' \
+        | wc -l)
+    N_NOP_STARTED=$($OVSH -jU s Wifi_Radio_State -w if_name==$ifname channels \
+        | grep -E '\{\\"state\\": \\"nop_started\\"\}' \
+        | wc -l)
+    if [ $N_STATES -eq $N_NOP_STARTED ]; then continue; fi
+
     run_parts "$BSS_IS_UP_D" "$ifname" && continue
     log_warn "$ifname: bss is not up"
     exit 1

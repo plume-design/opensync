@@ -56,6 +56,7 @@ typedef struct flow_stats_
     uint32_t acc_ttl;
     uint16_t ct_zone; // CT_ZONE at connection level
     ds_dlist_t ctflow_list;
+    ds_dlist_t *ctflow_event_list;
     size_t index;
     bool active;
     ds_tree_node_t ct_stats_node;
@@ -123,6 +124,9 @@ ct_stats_plugin_exit(fcm_collect_plugin_t *collector);
 
 void
 ct_stats_exit_mgr(void);
+
+void
+ct_stats_process_ct_event(fcm_collect_plugin_t *collector, void *data);
 
 
 void

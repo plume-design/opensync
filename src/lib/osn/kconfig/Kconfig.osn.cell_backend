@@ -7,6 +7,6 @@ config OSN_BACKEND_CELL_NULL
 config OSN_BACKEND_CELL_LINUX
     bool "Linux"
     select OSN_LINUX_ENABLED
-    select OSN_LINUX_CELL
+    select OSN_LINUX_LTE
     help
-        Use the Linux CELL implementation that uses the 3rdparty apps to initialize CELL interfaces.
+        Use the Linux cellular implementation that uses the 3rdparty apps to initialize interfaces.

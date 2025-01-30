@@ -355,6 +355,7 @@ int main(int argc, char *argv[])
 
     ut_setUp_tearDown(test_name, NULL, NULL);
 
+#ifndef CONFIG_FCM_NO_DSO
     fcm_test_init();
     RUN_TEST(test_add_collect_config);
     RUN_TEST(test_add_report_config);
@@ -371,6 +372,7 @@ int main(int argc, char *argv[])
     RUN_TEST(test_fcm_set_gk_url_non_gatekeeper_handler);
     RUN_TEST(test_fcm_set_gk_url_null_gk_url);
     RUN_TEST(test_fcm_set_gk_url_success);
+#endif
 
     return ut_fini();
 }

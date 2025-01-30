@@ -189,14 +189,8 @@ int fsm_set_dpi_mark(struct net_header_parser *net_hdr,
 
     if (type != ETH_P_IP && type != ETH_P_IPV6) return 0;
 
-    if (kconfig_enabled(CONFIG_TARGET_USE_NATIVE_BRIDGE))
-    {
-        ret = nf_ct_set_flow_mark(net_hdr, mark_policy->flow_mark, 0);
-    }
-    else
-    {
-        ret = nf_ct_set_flow_mark(net_hdr, mark_policy->flow_mark, FSM_DPI_ZONE);
-    }
+    ret = nf_ct_set_flow_mark(net_hdr, mark_policy->flow_mark, 0);
+
     return ret;
 }
 

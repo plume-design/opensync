@@ -38,8 +38,6 @@ TARGET_COMMON_SRC += src/target_linux.c
 TARGET_COMMON_SRC += src/target_mac_learn.c
 TARGET_COMMON_SRC += src/target_om_hook.c
 TARGET_COMMON_SRC += src/target_kconfig.c
-TARGET_COMMON_SRC += $(if $(CONFIG_TARGET_HWSIM),src/target_hwsim.c,)
-TARGET_COMMON_SRC += $(if $(CONFIG_TARGET_BSAL_SIM),src/target_bsal_sim.c,)
 
 UNIT_SRC += $(TARGET_COMMON_SRC)
 ifeq ($(filter-out native,$(TARGET)),)
@@ -60,17 +58,14 @@ UNIT_DEPS += src/lib/ds
 UNIT_DEPS += src/lib/const
 UNIT_DEPS += src/lib/schema
 UNIT_DEPS += src/lib/log
-UNIT_DEPS += src/lib/ovs_mac_learn
 UNIT_DEPS += src/lib/osp
 UNIT_DEPS += src/lib/version
 UNIT_DEPS += src/lib/hw_acc
 UNIT_DEPS += src/lib/brctl_mac_learn
 UNIT_DEPS += src/lib/execsh
-UNIT_DEPS += $(if $(CONFIG_TARGET_HWSIM),src/lib/hostap,)
 
 UNIT_DEPS_CFLAGS += src/lib/datapipeline
 
-ifneq ($(CONFIG_TARGET_HWSIM),)
 ifneq ($(HOSTAP_SOURCE),)
 # Note: This requires hostapd to be built without
 # debugs/traces. Otherwise the two .o files will not be
@@ -92,7 +87,6 @@ $(UNIT_BUILD)/os_unix.o: $(HOSTAP_SOURCE)/build/hostapd/src/utils/os_unix.o
 
 $(UNIT_BUILD)/wpa_ctrl.o: $(HOSTAP_SOURCE)/build/hostapd/src/common/wpa_ctrl.o
 	cp $< $@
-endif
 endif
 
 #

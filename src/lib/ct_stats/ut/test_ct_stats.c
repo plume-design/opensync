@@ -173,7 +173,7 @@ ct_stats_setUp(void)
 
     neigh_table_init();
 
-    if (nf_ct_init(loop) < 0)
+    if (nf_ct_init(loop, NULL) < 0)
     {
         LOGE("Eror initializing conntrack");
         return;

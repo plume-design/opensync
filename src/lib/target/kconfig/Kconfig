@@ -3,20 +3,17 @@ TOOLS_DIR := $(OPENSYNC_DIR)/tools
 OPENSYNC_BIN := $(OPENSYNC_DIR)/bin
 LOG_DIR := /var/log/opensync
 
-menu "Capabilities"
-    config TARGET_CAP_GATEWAY
-        bool "Gateway"
-        default n
-        help
-            This device can act as a gateway (residential or otherwise).
-
-    config TARGET_CAP_EXTENDER
-        bool "Extender"
+menu "WAN link selection"
+    config TARGET_ENABLE_WAN_LINK_SELECTION
+        bool "Enable WAN link selection by CM"
         default y
-        select TARGET_CAP_GATEWAY
         help
-            This device can act as an extender.
+            If building an OpenSync extender, CM's WAN link selection logic
+            should probably be used, therefore this option should be enabled.
 
+            If building an OpenSync aware residential gateway this option
+            should probably not be set since these tend to run their own WAN
+            management software.
 endmenu
 
 menu "Target paths"
@@ -161,21 +158,6 @@ config TARGET_ETH_FOR_LAN_BRIDGE
         Provide ethernet port which should be used for LAN bridge
         The MAC of the selected port will be used on the LAN bridge
 
-config TARGET_USE_WAN_BRIDGE
-    bool "Use WAN bridge"
-    default y
-    depends on !MANAGER_WANO
-    help
-        Use additional bridge for WAN link
-
-if TARGET_USE_WAN_BRIDGE
-    config TARGET_WAN_BRIDGE_NAME
-        string "WAN bridge name"
-        default "br-wan"
-        help
-            WAN bridge name that will be used
-endif
-
 menu "Misc..."
 config TARGET_RESTART_SCRIPT
     bool "Use a script to restart managers"
@@ -219,21 +201,5 @@ config TARGET_IMC
     default n
     help
         Select this option if the platform enables zeromq
-
-config TARGET_HWSIM
-    bool "mac80211 hwsim target implementation"
-    default n
-    help
-        Intended for unit / function testing of WM2.
-
-        If unsure, leave as 'n'.
-
-config TARGET_BSAL_SIM
-    bool "BSAL target simulator implementation"
-    default n
-    help
-        Intended for unit / function testing of BM.
-
-        If unsure, leave as 'n'.
 
 endmenu

@@ -31,7 +31,8 @@ struct ow_steer_executor_action_btm;
 
 struct ow_steer_executor_action_btm*
 ow_steer_executor_action_btm_create(const struct osw_hwaddr *sta_addr,
-                                    const struct ow_steer_executor_action_mediator *mediator);
+                                    const struct ow_steer_executor_action_mediator *mediator,
+                                    const char *log_prefix);
 
 void
 ow_steer_executor_action_btm_free(struct ow_steer_executor_action_btm *btm_action);
@@ -42,13 +43,6 @@ ow_steer_executor_action_btm_get_base(struct ow_steer_executor_action_btm *btm_a
 void
 ow_steer_executor_action_btm_set_disassoc_imminent(struct ow_steer_executor_action_btm *btm_action,
                                                    const bool *b);
-
-typedef uint64_t ow_steer_executor_action_btm_get_shutdown_deadline_nsec_fn_t(void *priv);
-
-void
-ow_steer_executor_action_btm_set_get_shutdown_deadline_nsec_fn(struct ow_steer_executor_action_btm *btm_action,
-                                                               ow_steer_executor_action_btm_get_shutdown_deadline_nsec_fn_t *fn,
-                                                               void *fn_priv);
 
 /* Allows disabling execution, eg. when configured client is
  * not capable of BTM while keeping the executor ready to be

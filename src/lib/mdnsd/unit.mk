@@ -4,7 +4,7 @@
 #
 ###############################################################################
 UNIT_NAME := mdnsd
-UNIT_DISABLE := $(if $(CONFIG_MANAGER_FSM),n,y)
+UNIT_DISABLE := $(if $(CONFIG_LIB_FSM_MDNSD),n,y)
 
 # Template type:
 UNIT_TYPE := LIB

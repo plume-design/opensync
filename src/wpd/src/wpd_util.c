@@ -179,7 +179,11 @@ int daemonize(const char *pidfile)
     /* Set file permissions 750 */
     umask(027);
 
-    chdir("/");
+    if (chdir("/") != 0)
+    {
+        LOGE("Could not chdir(\"/\")");
+        exit(EXIT_FAILURE);
+    }
 
     if (pid_check(pidfile) != 0)
     {

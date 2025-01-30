@@ -36,6 +36,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <osw_time.h>
 #include <osw_timer.h>
 #include <osw_bss_map.h>
+#include <osw_defer_vif_down.h>
 #include "ow_steer_candidate_list.h"
 #include "ow_steer_executor_action.h"
 #include "ow_steer_executor_action_priv.h"
@@ -59,8 +60,6 @@ struct ow_steer_executor_action_btm {
     struct osw_btm_desc *btm_desc;
     struct osw_throttle *throttle;
     struct osw_timer throttle_timer;
-    ow_steer_executor_action_btm_get_shutdown_deadline_nsec_fn_t *get_shutdown_deadline_nsec_fn;
-    ow_steer_executor_action_btm_get_shutdown_deadline_nsec_fn_t *get_shutdown_deadline_nsec_fn_priv;
     bool *disassoc_imminent;
     bool enabled;
 };
@@ -79,16 +78,6 @@ ow_steer_executor_action_btm_req_tx_error_cb(struct osw_btm_sta_observer *observ
     struct ow_steer_executor_action_btm *btm_action = container_of(observer, struct ow_steer_executor_action_btm, btm_desc_observer);
     ow_steer_executor_action_sched_recall(btm_action->base);
     LOGD("%s request failed to submit", ow_steer_executor_action_get_prefix(btm_action->base));
-}
-
-static bool
-ow_steer_executor_action_btm_get_disassoc_imminent(const struct ow_steer_executor_action_btm *btm_action)
-{
-    if (btm_action->disassoc_imminent) {
-        return *btm_action->disassoc_imminent;
-    }
-
-    return OW_STEER_EXECUTOR_ACTION_BTM_DISASSOC_IMMINENT;
 }
 
 void
@@ -142,44 +131,36 @@ ow_steer_executor_action_btm_get_disassoc_timer(struct ow_steer_executor_action_
     return remaining_tbtts;
 }
 
-void
-ow_steer_executor_action_btm_set_get_shutdown_deadline_nsec_fn(struct ow_steer_executor_action_btm *btm_action,
-                                                               ow_steer_executor_action_btm_get_shutdown_deadline_nsec_fn_t *fn,
-                                                               void *fn_priv)
+static const char *
+ow_steer_executor_action_btm_vif_name_from_bssid(const struct osw_hwaddr *bssid)
 {
-    btm_action->get_shutdown_deadline_nsec_fn = fn;
-    btm_action->get_shutdown_deadline_nsec_fn_priv = fn_priv;
+    const struct osw_state_vif_info *info = osw_state_vif_lookup_by_mac_addr(bssid);
+    if (info == NULL) return NULL;
+    return info->vif_name;
 }
 
 static void
-ow_steer_executor_action_btm_handle_shutdown_deadline(struct ow_steer_executor_action_btm *btm_action,
-                                                      struct osw_btm_req_params *btm_req_params)
+ow_steer_executor_action_btm_params_set_disassoc_imminent(struct ow_steer_executor_action_btm *action,
+                                                          const struct osw_hwaddr *bssid,
+                                                          bool *disassoc_imminent,
+                                                          uint16_t *disassoc_timer)
 {
-    if (btm_action->get_shutdown_deadline_nsec_fn == NULL) return;
+    const char *vif_name = ow_steer_executor_action_btm_vif_name_from_bssid(bssid);
+    osw_defer_vif_down_t *defer_mod = OSW_MODULE_LOAD(osw_defer_vif_down);
+    const uint64_t remaining_nsec = osw_defer_vif_down_get_remaining_nsec(defer_mod, vif_name);
+    const bool disassoc_imm_from_action = (action->disassoc_imminent != NULL)
+                                        ? *action->disassoc_imminent
+                                        : OW_STEER_EXECUTOR_ACTION_BTM_DISASSOC_IMMINENT;
+    const bool disassoc_imm_from_defer = (remaining_nsec > 0);
+    const uint16_t disassoc_tm_from_defer = ow_steer_executor_action_btm_get_disassoc_timer(action, remaining_nsec);
+    const uint16_t disassoc_tm_from_default = OW_STEER_EXECUTOR_ACTION_BTM_DISASSOC_TIMER;
 
-    const uint64_t remaining_nsec = btm_action->get_shutdown_deadline_nsec_fn(btm_action->get_shutdown_deadline_nsec_fn_priv);
-    if (remaining_nsec == 0) return;
+    *disassoc_imminent = disassoc_imm_from_defer || disassoc_imm_from_action;
+    *disassoc_timer = disassoc_tm_from_defer || disassoc_tm_from_default;
 
-    btm_req_params->disassoc_imminent = true;
-    btm_req_params->disassoc_timer = ow_steer_executor_action_btm_get_disassoc_timer(btm_action, remaining_nsec);
-}
-
-static void
-ow_steer_executor_action_btm_fix_disassoc_timer(struct osw_btm_req_params *btm_req_params)
-{
-    if (btm_req_params->disassoc_imminent == false) return;
-    if (btm_req_params->disassoc_timer > 0) return;
-
-    /* At least one known roaming implementation -
-     * wpa_supplicant - is looking at the disassoc_timer
-     * field and acts on it. It makes sure it kicks off a
-     * scan. Given this goes hand in hand with
-     * disassoc_imminent it makes sense to make sure the
-     * client scans to increase the chance of successful
-     * roaming.
-     */
-
-    btm_req_params->disassoc_timer = 1;
+    if (*disassoc_timer == 0 && *disassoc_imminent) {
+        *disassoc_timer = true;
+    }
 }
 
 static struct osw_btm_req_params*
@@ -239,6 +220,12 @@ ow_steer_executor_action_btm_req_create_params(struct ow_steer_executor_action_b
         btm_neighbor->btmpreference = btmpreference;
         btm_neighbor->channel = osw_freq_to_chan(channel->control_freq_mhz);
         btm_neighbor->bssid_info = OW_STEER_BM_BTM_DEFAULT_NEIGH_BSS_INFO;
+        ow_steer_executor_action_btm_params_set_disassoc_imminent(
+                btm_action,
+                bssid,
+                &btm_neighbor->disassoc_imminent,
+                &btm_neighbor->disassoc_timer);
+
         /* TODO Set btm_neighbor->phy_type */
 
         neigh_i++;
@@ -249,12 +236,7 @@ ow_steer_executor_action_btm_req_create_params(struct ow_steer_executor_action_b
     btm_req_params.neigh_len = neigh_i;
     btm_req_params.valid_int = OW_STEER_EXECUTOR_ACTION_BTM_VALID_INT;
     btm_req_params.abridged = OW_STEER_EXECUTOR_ACTION_BTM_AIRBRIDGED;
-    btm_req_params.disassoc_imminent = ow_steer_executor_action_btm_get_disassoc_imminent(btm_action);
-    btm_req_params.disassoc_timer = OW_STEER_EXECUTOR_ACTION_BTM_DISASSOC_TIMER;
     btm_req_params.bss_term = OW_STEER_EXECUTOR_ACTION_BTM_BSS_TERM;
-
-    ow_steer_executor_action_btm_handle_shutdown_deadline(btm_action, &btm_req_params);
-    ow_steer_executor_action_btm_fix_disassoc_timer(&btm_req_params);
 
     return MEMNDUP(&btm_req_params, sizeof(btm_req_params));
 }
@@ -324,7 +306,8 @@ ow_steer_executor_action_btm_call_fn(struct ow_steer_executor_action *action,
 
 struct ow_steer_executor_action_btm*
 ow_steer_executor_action_btm_create(const struct osw_hwaddr *sta_addr,
-                                    const struct ow_steer_executor_action_mediator *mediator)
+                                    const struct ow_steer_executor_action_mediator *mediator,
+                                    const char *log_prefix)
 {
     ASSERT(sta_addr != NULL, "");
     ASSERT(mediator != NULL, "");
@@ -339,7 +322,7 @@ ow_steer_executor_action_btm_create(const struct osw_hwaddr *sta_addr,
     btm_action->throttle = osw_throttle_new_rate_limit(1, OSW_TIME_SEC(OW_STEER_EXECUTOR_ACTION_BTM_RETRY_INTERVAL_SEC));
     osw_timer_init(&btm_action->throttle_timer, ow_steer_executor_action_btm_throttle_timer_cb);
 
-    btm_action->base = ow_steer_executor_action_create("btm", sta_addr, &ops, mediator, btm_action);
+    btm_action->base = ow_steer_executor_action_create("btm", sta_addr, &ops, mediator, log_prefix, btm_action);
 
     return btm_action;
 }

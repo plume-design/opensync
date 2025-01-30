@@ -40,6 +40,7 @@ struct lnx_qos_queue
     int                     qq_id;          /* QoS queue ID as allocated by lnx_qos_id_get() */
     int                     qq_priority;    /* Queue priority */
     int                     qq_bandwidth;   /* Queue bandwidth */
+    int                     qq_bandwidth_ceil;   /* Queue ceil bandwidth */
     char                   *qq_shared;      /* Shared value */
 };
 
@@ -66,6 +67,7 @@ bool lnx_qos_queue_begin(
         lnx_qos_t *self,
         int priority,
         int bandwidth,
+        int bandwidth_ceil,
         const char *tag,
         const struct osn_qos_other_config *other_config,
         struct osn_qos_queue_status *qqs);

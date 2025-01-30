@@ -143,7 +143,7 @@ static void callback_Object_Store_State(
             return;
     }
 
-    LOG(DEBUG, "nfm_objm: update old=%s, new=%s", old_version, new_version);
+    LOG(DEBUG, "nfm_objm: update old=%s, new=%s", old_version ?: "(null)", new_version ?: "(null)");
 
     if (old_version != NULL)
     {

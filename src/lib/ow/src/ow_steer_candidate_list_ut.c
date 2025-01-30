@@ -66,7 +66,7 @@ ow_steer_candidate_list_ut_create_sort_assessor(const struct osw_hwaddr *sta_add
         .free_priv_fn = NULL,
     };
 
-    return ow_steer_candidate_assessor_create("ow_steer_candidate_list_ut_create_sort_assessor", sta_addr, &ops, NULL);
+    return ow_steer_candidate_assessor_create(sta_addr, &ops, "", NULL);
 }
 
 static void

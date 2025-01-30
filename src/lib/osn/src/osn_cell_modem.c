@@ -26,19 +26,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <unistd.h>
 #include <fcntl.h>
-#include <errno.h>
 #include <termios.h>
-#include <string.h>
-#include <errno.h>
 #include <sys/types.h>
 #include <unistd.h>
 
-#include "memutil.h"
-#include "cell_info.h"
 #include "osn_cell_modem.h"
-
-#include "log.h"
-#include "neigh_table.h"
 
 /*
  * ===========================================================================
@@ -48,86 +40,81 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 static osn_cell_modem_info_t modem_info;
 
-osn_cell_modem_info_t *
-osn_get_cell_modem_info(void)
+osn_cell_modem_info_t *osn_cell_get_modem_info(void)
 {
     return &modem_info;
 }
 
-void
-osn_cell_dump_modem_info(void)
+int osn_cell_parse_dynamic_pdp_context_info(char *buf, cell_pdp_ctx_dynamic_param_info_t *pdp_dyn_ctx)
+{
+    return 0;
+}
+
+void osn_cell_save_dynamic_pdp_context_info(
+        cell_pdp_ctx_dynamic_param_info_t *pdp_ctx,
+        osn_cell_modem_info_t *modem_info)
 {
     return;
 }
 
-int
-osn_cell_read_modem(void)
-{
-    return 0;
-}
-
-void
-osn_cell_start_modem(int source)
+void osn_cell_set_bands(char *bands)
 {
     return;
 }
 
-void
-osn_cell_stop_modem(void)
+void osn_cell_reset_modem(void)
 {
     return;
 }
 
-bool
-osn_cell_modem_init(void)
-{
-    return 0;
-}
-
-void
-osn_cell_modem_reset(void)
+void osn_cell_set_sim_slot(uint32_t slot)
 {
     return;
 }
 
-int
-osn_cell_set_apn(char *apn)
+void osn_lte_set_apn(char *apn)
+{
+    return;
+}
+
+void osn_cell_dump_modem_info(void)
+{
+    return;
+}
+
+void osn_cell_start_modem(int source)
+{
+    return;
+}
+
+void osn_cell_stop_modem(void)
+{
+    return;
+}
+
+int osn_cell_read_modem(void)
+{
+    return 0;
+}
+bool osn_cell_set_pdp_context_params(cell_pdp_context_params param_type, char *val)
+{
+    return true;
+}
+int osn_cell_parse_pdp_context(char *buf, cell_pdp_context_t *pdp_ctxt)
 {
     return 0;
 }
 
-int
-osn_cell_set_apn_username(char *apn_username)
+void osn_cell_start_vendor_daemon(int source)
 {
-    return 0;
+    return;
+}
+void osn_cell_stop_vendor_daemon(void)
+{
+    return;
 }
 
-int
-osn_cell_set_apn_password(char *apn_password)
-{
-    return 0;
-}
-
-int
-osn_cell_set_apn_prototype(enum cell_apn_proto_type apn_proto_type)
-{
-    return 0;
-}
-
-int
-osn_cell_set_apn_auth_proto(enum cell_apn_auth_proto apn_auth_proto)
-{
-    return 0;
-}
-
-int
-osn_cell_set_bands_enabled(char *bands)
-{
-    return 0;
-}
-
-int
-osn_cell_set_mode(enum cell_mode mode)
+bool osn_cell_modem_init(void)
 {
     return 0;
 }

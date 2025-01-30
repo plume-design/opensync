@@ -22,6 +22,7 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#include 
 ###############################################################################
 #
 # WAN Orchestrator
@@ -32,7 +33,9 @@ UNIT_DISABLE := $(if $(CONFIG_MANAGER_WANO),n,y)
 UNIT_NAME := wano
 UNIT_TYPE := BIN
 
+UNIT_SRC += src/wano_awlan_node.c
 UNIT_SRC += src/wano_connection_manager_uplink.c
+UNIT_SRC += src/wano_dns_probe.c
 UNIT_SRC += src/wano_inet_config.c
 UNIT_SRC += src/wano_inet_state.c
 UNIT_SRC += src/wano_main.c
@@ -40,7 +43,6 @@ UNIT_SRC += src/wano_ovs_port.c
 UNIT_SRC += src/wano_plugin.c
 UNIT_SRC += src/wano_ppline.c
 UNIT_SRC += src/wano_wan.c
-UNIT_SRC += src/wano_awlan_node.c
 
 UNIT_CFLAGS += -I$(UNIT_PATH)/src
 UNIT_CFLAGS += -I$(UNIT_PATH)/inc
@@ -61,9 +63,11 @@ UNIT_DEPS += src/lib/ovsdb
 UNIT_DEPS += src/lib/pjs
 UNIT_DEPS += src/lib/reflink
 UNIT_DEPS += src/lib/target
+UNIT_DEPS += src/lib/ovsdb_bridge
 
 # WANO pipeline state machine
 $(eval $(call stam_generate,src/wano_ppline.dot))
+$(eval $(call stam_generate,src/wano_plugin.dot))
 
 ###############################################################################
 # WAN Plug-ins

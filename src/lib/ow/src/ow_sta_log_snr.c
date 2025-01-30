@@ -37,6 +37,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <osw_stats.h>
 #include <osw_stats_defs.h>
 #include <osw_util.h>
+#include <osw_etc.h>
 
 /*
  * Purpose:
@@ -326,12 +327,12 @@ ow_sta_log_snr_sta_disconnected_cb(struct osw_state_observer *o,
 }
 
 #define SET_PARAM_F(w, n, e) do { \
-        const char *v = getenv(#e); \
+        const char *v = osw_etc_get(#e); \
         if (v != NULL) (w)->n = strtof(v, NULL); \
     } while (0)
 
 #define SET_PARAM_ULL(w, n, e) do { \
-        const char *v = getenv(#e); \
+        const char *v = osw_etc_get(#e); \
         if (v != NULL) (w)->n = strtoull(v, NULL, 10); \
     } while (0)
 

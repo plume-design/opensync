@@ -162,6 +162,16 @@ bool osp_unit_reboot_get(enum osp_reboot_type *type, char *reason, ssize_t reaso
     pmsg = NULL;
     while ((pde = readdir(psd)) != NULL)
     {
+        if (fnmatch(PSTORE_PMSG, pde->d_name, FNM_PATHNAME) == 0)
+        {
+            /* Save the pmsg for later processing */
+            if (pmsg == NULL)
+            {
+                pmsg = strdup(pde->d_name);
+            }
+            continue;
+        }
+
         if (fnmatch(PSTORE_DMESG, pde->d_name, FNM_PATHNAME) == 0)
         {
             /*
@@ -200,21 +210,6 @@ bool osp_unit_reboot_get(enum osp_reboot_type *type, char *reason, ssize_t reaso
             continue;
         }
 
-        if (fnmatch(PSTORE_PMSG, pde->d_name, FNM_PATHNAME) == 0)
-        {
-            /* Save the pmsg for later processing */
-            if (pmsg == NULL)
-            {
-                pmsg = strdup(pde->d_name);
-            }
-            continue;
-        }
-    }
-
-    if (*type != OSP_REBOOT_UNKNOWN)
-    {
-        retval = true;
-        goto exit;
     }
 
     if (pmsg != NULL)
@@ -224,14 +219,23 @@ bool osp_unit_reboot_get(enum osp_reboot_type *type, char *reason, ssize_t reaso
 
         if (!pstore_parse_reboot(fpath, type, reason, reason_sz))
         {
-            /* By default assume a type POWER_CYCLE */
-            *type = OSP_REBOOT_POWER_CYCLE;
-            if (reason != NULL)
+            if (*type != OSP_REBOOT_CRASH )
             {
-                strscpy(reason, "Power cycle.", reason_sz);
-            }
+                /* By default assume a type POWER_CYCLE */
+                *type = OSP_REBOOT_POWER_CYCLE;
+                if (reason != NULL)
+                {
+                    strscpy(reason, "Power cycle.", reason_sz);
+                }
+	    }
         }
 
+        retval = true;
+        goto exit;
+    }
+
+    if (*type != OSP_REBOOT_UNKNOWN)
+    {
         retval = true;
         goto exit;
     }
@@ -308,6 +312,9 @@ static os_reg_list_t dmesg_sig_pattern[] =
 
     /* panic_on_oom */
     OS_REG_LIST_ENTRY(12, "panic_on_oom is enabled"),
+
+    /* Kernel panic */
+    OS_REG_LIST_ENTRY(13, "Kernel panic - not syncing: "),
 
     OS_REG_LIST_END(0)
 };

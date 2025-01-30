@@ -325,7 +325,7 @@ test_nf_ct_get_flow(ds_dlist_t *ct_list)
 }
 
 void
-test_lan_stats_collect_native_flows(lan_stats_instance_t *lan_stats_instance)
+test_lan_stats_collect_flows(lan_stats_instance_t *lan_stats_instance)
 {
     ds_dlist_t *ct_list;
 
@@ -339,33 +339,6 @@ test_lan_stats_collect_native_flows(lan_stats_instance_t *lan_stats_instance)
 
     nf_free_ct_flow_list(ct_list);
     return;
-}
-
-static void
-test_lan_stats_collect_flows(lan_stats_instance_t *lan_stats_instance)
-{
-    FILE *fp = NULL;
-    char line_buf[LINE_BUFF_LEN] = {0,};
-    char *file_path;
-    dp_ctl_stats_t stats;
-
-    file_path = g_test_mgr.dpctl_file;
-    TEST_ASSERT_NOT_NULL(file_path);
-
-    fp = fopen(file_path, "r");
-    if (fp == NULL) return;
-
-    while (fgets(line_buf, LINE_BUFF_LEN, fp) != NULL)
-    {
-        LOGD("ovs-dpctl dump line %s", line_buf);
-        memset(&stats, 0, sizeof(dp_ctl_stats_t));
-        lan_stats_parse_flows(lan_stats_instance, line_buf, &stats);
-        lan_stats_add_uplink_info(lan_stats_instance, &stats);
-        lan_stats_flows_filter(lan_stats_instance, &stats);
-        memset(line_buf, 0, sizeof(line_buf));
-    }
-
-    fclose(fp);
 }
 
 
@@ -416,7 +389,7 @@ lan_stats_setUp(void)
     TEST_ASSERT_NOT_NULL(mgr);
 
 
-    nf_ct_init(loop);
+    nf_ct_init(loop, NULL);
     lan_stats_init_mgr(EV_DEFAULT);
     mgr->ovsdb_init = ut_ovsdb_init;
     mgr->ovsdb_exit = ut_ovsdb_exit;
@@ -501,9 +474,6 @@ test_active_session(void)
 
     lan_stats_instance = lan_stats_get_active_instance();
     TEST_ASSERT_NOT_NULL(lan_stats_instance);
-
-    /* Update the flow collector routine */
-    lan_stats_instance->collect_flows = test_lan_stats_collect_flows;
 
     /* Update the reporting routine */
     aggr = lan_stats_instance->aggr;
@@ -607,14 +577,7 @@ test_data_collection(void)
 
     /* Update the flow collector routine */
 
-    if (!kconfig_enabled(CONFIG_TARGET_USE_NATIVE_BRIDGE))
-    {
-        lan_stats_instance->collect_flows = test_lan_stats_collect_flows;
-    }
-    else
-    {
-        lan_stats_instance->collect_flows = test_lan_stats_collect_native_flows;
-    }
+    lan_stats_instance->collect_flows = test_lan_stats_collect_flows;
 
     /* Update the reporting routine */
     aggr = lan_stats_instance->aggr;
@@ -667,14 +630,8 @@ test_data_collection_v1(void)
     lan_stats_instance->c_client = c_client;
 
     /* Update the flow collector routine */
-    if (!kconfig_enabled(CONFIG_TARGET_USE_NATIVE_BRIDGE))
-    {
-        lan_stats_instance->collect_flows = test_lan_stats_collect_flows;
-    }
-    else
-    {
-        lan_stats_instance->collect_flows = test_lan_stats_collect_native_flows;
-    }
+    lan_stats_instance->collect_flows = test_lan_stats_collect_flows;
+
     /* Update the reporting routine */
     aggr = lan_stats_instance->aggr;
     TEST_ASSERT_NOT_NULL(aggr);
@@ -728,14 +685,8 @@ test_data_collection_v2(void)
     lan_stats_instance->c_client = c_client;
 
     /* Update the flow collector routine */
-    if (!kconfig_enabled(CONFIG_TARGET_USE_NATIVE_BRIDGE))
-    {
-        lan_stats_instance->collect_flows = test_lan_stats_collect_flows;
-    }
-    else
-    {
-        lan_stats_instance->collect_flows = test_lan_stats_collect_native_flows;
-    }
+    lan_stats_instance->collect_flows = test_lan_stats_collect_flows;
+
     /* Update the reporting routine */
     aggr = lan_stats_instance->aggr;
     TEST_ASSERT_NOT_NULL(aggr);
@@ -818,11 +769,6 @@ report_flow_stats_cb(EV_P_ ev_timer *w, int revents)
 
     collector->send_report(collector);
 
-    if (!kconfig_enabled(CONFIG_TARGET_USE_NATIVE_BRIDGE))
-    {
-        TEST_ASSERT_EQUAL_INT(1, aggr->total_eth_pairs);
-    }
-
     net_md_log_aggr(aggr);
 
 }
@@ -864,15 +810,7 @@ setup_add_and_let_age_flows(void)
     lan_stats_instance->c_client = c_client;
 
     /* Update the flow collector routine */
-    if (!kconfig_enabled(CONFIG_TARGET_USE_NATIVE_BRIDGE))
-    {
-        lan_stats_instance->collect_flows = test_lan_stats_collect_flows;
-    }
-    else
-    {
-        lan_stats_instance->collect_flows = test_lan_stats_collect_native_flows;
-    }
-
+    lan_stats_instance->collect_flows = test_lan_stats_collect_flows;
 
     /* Update the reporting routine */
     aggr = lan_stats_instance->aggr;
@@ -1087,11 +1025,8 @@ void
 validate_flow_packets_bytes(void)
 {
     lan_stats_instance_t *lan_stats_instance;
-    struct net_md_stats_accumulator *actual;
-    struct net_md_eth_pair *eth_pair;
     fcm_collect_plugin_t *collector;
     struct net_md_aggregator *aggr;
-    struct flow_counters expected;
     int rc;
 
     collector = &g_collector_tbl[0];
@@ -1119,14 +1054,7 @@ validate_flow_packets_bytes(void)
     lan_stats_instance->c_client = c_client;
 
     /* Update the flow collector routine */
-    if (!kconfig_enabled(CONFIG_TARGET_USE_NATIVE_BRIDGE))
-    {
-        lan_stats_instance->collect_flows = test_lan_stats_collect_flows;
-    }
-    else
-    {
-        lan_stats_instance->collect_flows = test_lan_stats_collect_native_flows;
-    }
+    lan_stats_instance->collect_flows = test_lan_stats_collect_flows;
 
     /* Update the reporting routine */
     aggr = lan_stats_instance->aggr;
@@ -1136,21 +1064,6 @@ validate_flow_packets_bytes(void)
     /* collect LAN stats and report it */
     collector->collect_periodic(collector);
     collector->send_report(collector);
-
-    /* both packets and bytes are 100 TB */
-    expected.packets_count = 100000053341680;
-    expected.bytes_count = 100000053341680;
-
-    eth_pair = ds_tree_head(&aggr->eth_pairs);
-    if (!kconfig_enabled(CONFIG_TARGET_USE_NATIVE_BRIDGE))
-    {
-        TEST_ASSERT_NOT_NULL(eth_pair);
-        actual = eth_pair->mac_stats;
-
-        /* validate the counters */
-        TEST_ASSERT_EQUAL_INT(expected.bytes_count, actual->report_counters.bytes_count);
-        TEST_ASSERT_EQUAL_INT(expected.packets_count, actual->report_counters.packets_count);
-    }
 
     FREE(session);
     FREE(c_client);
@@ -1167,7 +1080,6 @@ void
 parse_flow_packets_bytes(char *file)
 {
     lan_stats_instance_t *lan_stats_instance;
-    struct net_md_eth_pair *eth_pair;
     fcm_collect_plugin_t *collector;
     struct net_md_aggregator *aggr;
     int rc;
@@ -1197,14 +1109,7 @@ parse_flow_packets_bytes(char *file)
     lan_stats_instance->c_client = c_client;
 
     /* Update the flow collector routine */
-    if (!kconfig_enabled(CONFIG_TARGET_USE_NATIVE_BRIDGE))
-    {
-        lan_stats_instance->collect_flows = test_lan_stats_collect_flows;
-    }
-    else
-    {
-        lan_stats_instance->collect_flows = test_lan_stats_collect_native_flows;
-    }
+    lan_stats_instance->collect_flows = test_lan_stats_collect_flows;
 
     /* Update the reporting routine */
     aggr = lan_stats_instance->aggr;
@@ -1214,12 +1119,6 @@ parse_flow_packets_bytes(char *file)
     /* collect LAN stats and report it */
     collector->collect_periodic(collector);
     collector->send_report(collector);
-
-    eth_pair = ds_tree_head(&aggr->eth_pairs);
-    if (!kconfig_enabled(CONFIG_TARGET_USE_NATIVE_BRIDGE))
-    {
-        TEST_ASSERT_NOT_NULL(eth_pair);
-    }
 
     FREE(session);
     FREE(c_client);
@@ -1250,7 +1149,12 @@ main(int argc, char *argv[])
      * This is a requirement: Do NOT proceed if the file is missing.
      * File presence will not be tested any further.
      */
-    chdir(dirname(argv[0]));
+    if (chdir(dirname(argv[0])) != 0)
+    {
+        LOGW("chdir(\"%s\") failed", argv[0]);
+        return ut_fini();
+    }
+
     for (i = 0; i < 6; i++)
     {
         ret = access(g_default_dpctl_f[i], F_OK);

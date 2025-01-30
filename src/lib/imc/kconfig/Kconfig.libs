@@ -10,4 +10,9 @@ menu "IMC Configuration"
         default y
         help
             Enable multi curl support for Gatekeeper to send non blocking requests
+
+    config IMC_LIBOPENSYNC
+        depends on PLATFORM_IS_NATIVE
+        bool "Build IMC as part of libopensync as opposed to a DSO"
+        default y
 endmenu

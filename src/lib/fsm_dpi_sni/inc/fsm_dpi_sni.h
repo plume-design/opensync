@@ -176,6 +176,6 @@ struct fsm_policy_reply *dpi_sni_create_reply(struct fsm_request_args *request_a
 struct fsm_policy_req *dpi_sni_create_request(struct fsm_request_args *request_args, char *attr_value);
 
 bool
-dpi_sni_fetch_fqdn_from_url_attr(char *attribute_name, char *fqdn);
+dpi_sni_fetch_fqdn_from_url_attr(char *attribute_name, char *fqdn, int fqdn_size);
 
 #endif /* FSM_DPI_SNI_H_INCLUDED */

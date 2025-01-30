@@ -36,6 +36,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 /* opensync */
 #include <target.h>
 #include <module.h>
+#include <osw_module.h>
 #include <log.h>
 #include <ds_tree.h>
 #include <ds_list.h>
@@ -44,7 +45,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 /* osw */
 #include <osw_ut.h>
 #include <osw_thread.h>
-#include <osw_module.h>
 
 /* onewifi */
 #include "ow_conf.h"

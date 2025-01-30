@@ -1,0 +1,34 @@
+if OSP_PKI_PS
+    menu "PKI Persistent Storage Options"
+        choice
+            prompt "Public Key Algorithm"
+            help
+                Default algorithm used for public/private key generation
+
+            config OSP_PKI_PS_ALGO_P384
+                bool "NIST P-384"
+                help
+                    P-384 NIST curve
+
+            config OSP_PKI_PS_ALGO_P256
+                bool "NIST P-256"
+                help
+                    P-256 NIST curve
+
+            config OSP_PKI_PS_ALGO_ED25519
+                bool "ED25519"
+                help
+                    Edwards 25519 eliptic curve
+
+            config OSP_PKI_PS_ALGO_RSA4096
+                bool "RSA 4096"
+                help
+                    RSA 4096 bits
+
+            config OSP_PKI_PS_ALGO_RSA3072
+                bool "RSA 3072"
+                help
+                    RSA 3072 bits
+         endchoice
+    endmenu
+endif

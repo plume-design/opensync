@@ -82,12 +82,13 @@ struct execsh_async
     bool                    esa_running;
     struct ev_loop         *esa_loop;
     pid_t                   esa_child_pid;
+    const char            **esa_shell;
     ev_timer                esa_child_timer;
     ev_child                esa_child_ev;
     const char             *esa_pscript;
     execsh_async_fn_t      *esa_exit_fn;
     execsh_async_io_fn_t   *esa_io_fn;
-    char                   *esa_stdin_buf;
+    const char             *esa_stdin_buf;
     size_t                  esa_stdin_pos;
     int                     esa_stdin_fd;
     int                     esa_stdout_fd;
@@ -118,6 +119,15 @@ void execsh_async_set(
         execsh_async_t *esa,
         struct ev_loop *loop,
         execsh_async_io_fn_t *io_fn);
+
+/*
+ * Set alternative shell
+ *
+ * shell - argv-style NULL-terminated array of string pointers; this is the
+ *         command line that will be used to spawn the shell. Variable
+ *         arguments are added to this list.
+ */
+void execsh_async_shell_set(execsh_async_t *esa, const char *shell[]);
 
 /*
  * Start the script specified in `script` with the variable arguments in `vargs`

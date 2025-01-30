@@ -70,6 +70,7 @@ static int cr_sleep_timerfd(int msec)
 
 bool cr_sleep_run(cr_sleep_t *s)
 {
+    if (s == NULL) return true;
     CR_BEGIN(&s->state);
 
     s->fd = cr_sleep_timerfd(s->msec);
@@ -95,6 +96,7 @@ bool cr_sleep_run(cr_sleep_t *s)
         else
         {
             assert(s->len == sizeof(s->v));
+            break;
         }
     }
 

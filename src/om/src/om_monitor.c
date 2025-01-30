@@ -76,9 +76,9 @@ static ds_list_t                range_rules = DS_LIST_INIT(struct om_rule_node,
 
 static bool                     om_range_recurse_parse(struct schema_Openflow_Config *sflow);
 
-/******************************************************************************
- * Updates Openflow_State table to reflect the exit code of ovs-ofctl command
- *****************************************************************************/
+/*************************************************************************************
+ * Updates Openflow_State table to reflect the exit code of the OpenFlow config update
+ ************************************************************************************/
 static void
 om_monitor_update_openflow_state( struct schema_Openflow_Config *ofconf,
                                   om_action_t type, bool ret )
@@ -95,13 +95,13 @@ om_monitor_update_openflow_state( struct schema_Openflow_Config *ofconf,
     STRSCPY(ofstate.bridge, ofconf->bridge);
     STRSCPY(ofstate.token, ofconf->token);
 
-    // Reflect the result of ovs-ofctl command
+    // Reflect the result of the OpenFlow config update
     ofstate.success = ret;
     ofstate.success_exists = true;
 
     if( type == OM_ACTION_ADD ) {
         // A new flow was added successfully. Add a new row into Openflow_State so that
-        // the cloud knows ovs-ofctl succeeded.
+        // the cloud knows the OpenFlow config update succeeded.
         if( !( js_row = schema_Openflow_State_to_json( &ofstate, NULL ))) {
             LOGE( "Failed to convert to schema" );
             goto err_exit;
@@ -129,8 +129,8 @@ om_monitor_update_openflow_state( struct schema_Openflow_Config *ofconf,
         return;
     } else if( type == OM_ACTION_DELETE ) {
         if( ret ) {
-            // A flow was deleted successfully. Delete the corresponding
-            // row from Openflow_State so that cloud knows ovs-ofctl succeeded.
+            // A flow was deleted successfully. Delete the corresponding row from
+            // Openflow_State so that cloud knows the OpenFlow config update succeeded.
             if( !( js_where = ovsdb_tran_cond( OCLM_STR, "token", OFUNC_EQ,
                             ofstate.token ))) {
                 LOGE( "Failed to create DEL WHERE object" );
@@ -158,7 +158,7 @@ om_monitor_update_openflow_state( struct schema_Openflow_Config *ofconf,
 
             return;
         } else {
-            // ovs-ofctl failed to delete the flow. Don't delete the
+            // OpenFlow config update failed to delete the flow. Don't delete the
             // row from Openflow_State
         }
     }
@@ -316,7 +316,7 @@ om_range_extract(struct schema_Openflow_Config *sflow, char *pattern,
     strscpy(end, token, str_size);
 
     // Remove the range specification from the rule
-    sprintf(removing, ",%s%s-%s>", pattern, start, end);
+    SPRINTF(removing, ",%s%s-%s>", pattern, start, end);
     if ( strstr(sflow->rule, removing) != NULL ) {
         STRSCPY(out->rule, sflow->rule);
         om_range_rmv_substr(out->rule, removing);
@@ -354,9 +354,9 @@ om_range_generate_ipv6_rules( char *s, char *e, struct schema_Openflow_Config *s
         }
 
         if (is_src) {
-            sprintf(rule, "%s,ipv6_src=%s", sflow->rule, output);
+            SPRINTF(rule, "%s,ipv6_src=%s", sflow->rule, output);
         } else {
-            sprintf(rule, "%s,ipv6_dst=%s", sflow->rule, output);
+            SPRINTF(rule, "%s,ipv6_dst=%s", sflow->rule, output);
         }
 
         STRSCPY(out.rule, rule);
@@ -408,9 +408,9 @@ om_range_generate_ipv4_rules( char *start, char *end,
         ipv4buff = om_range_long_to_dot_ip(iterator);
 
         if (is_src) {
-            sprintf(rule, "%s,nw_src=%s", sflow->rule, ipv4buff);
+            SPRINTF(rule, "%s,nw_src=%s", sflow->rule, ipv4buff);
         } else {
-            sprintf(rule, "%s,nw_dst=%s", sflow->rule, ipv4buff);
+            SPRINTF(rule, "%s,nw_dst=%s", sflow->rule, ipv4buff);
         }
 
         FREE(ipv4buff);
@@ -438,9 +438,9 @@ om_range_generate_port_rules( int start, int end,
         memset(rule, 0, sizeof(char) * 1024);
 
         if (is_src) {
-            sprintf(rule, "%s,tp_src=%d", sflow->rule, i);
+            SPRINTF(rule, "%s,tp_src=%d", sflow->rule, i);
         } else {
-            sprintf(rule, "%s,tp_dst=%d", sflow->rule, i);
+            SPRINTF(rule, "%s,tp_dst=%d", sflow->rule, i);
         }
 
         STRSCPY(out.rule, rule);
@@ -544,142 +544,10 @@ om_range_generate_range_rules(struct schema_Openflow_Config *ofconf)
 }
 
 /******************************************************************************
- * Adds/deletes flows based on additions/deletions to Openflow_Config table
- *****************************************************************************/
-static bool
-om_monitor_update_flows_parsed(om_action_t type, struct schema_Openflow_Config *ofconf)
-{
-    bool                             is_template;
-    bool                             ret = false;
-
-    is_template = om_tflow_rule_is_template(ofconf->rule);
-
-    switch( type ) {
-        case OM_ACTION_ADD:
-            if (is_template) {
-                ret = om_tflow_add_from_schema(ofconf);
-            }
-            else {
-
-                ret = om_add_flow( ofconf->token, ofconf );
-                LOGN("[%s] Static flow insertion %s (%s, %u, %u, \"%s\", \"%s\")",
-                     ofconf->token,
-                     (ret == true) ? "succeeded" : "failed",
-                     ofconf->bridge, ofconf->table,
-                     ofconf->priority, ofconf->rule,
-                     ofconf->action);
-            }
-            break;
-
-        case OM_ACTION_UPDATE:
-            LOGE("Cloud attempted to update a flow (token '%s') -- this is not supported!", ofconf->token);
-            return false;
-
-        case OM_ACTION_DELETE:
-            if (is_template) {
-                ret = om_tflow_remove_from_schema(ofconf);
-            }
-            else {
-                ret = om_del_flow( ofconf->token, ofconf );
-                LOGN("[%s] Static flow deletion %s (%s, %u, %u, \"%s\", \"%s\")",
-                     ofconf->token,
-                     (ret == true) ? "succeeded" : "failed",
-                     ofconf->bridge, ofconf->table,
-                     ofconf->priority, ofconf->rule,
-                     ofconf->action);
-            }
-            break;
-    }
-
-    return ret;
-}
-
-static void
-om_monitor_update_flows(om_action_t type, json_t *js)
-{
-    struct  schema_Openflow_Config   ofconf;
-    struct  schema_Openflow_Config   ofconf_cpy;
-    struct  om_rule_node             *data;
-    ds_list_t                        *rules;
-    pjs_errmsg_t                     perr;
-    bool                             ret;
-
-    memset( &ofconf, 0, sizeof( ofconf ) );
-    memset( &ofconf_cpy, 0, sizeof( ofconf_cpy ) );
-
-    if( !schema_Openflow_Config_from_json( &ofconf, js, false, perr )) {
-        LOGE( "Failed to parse new Openflow_Config row: %s", perr );
-        return;
-    }
-
-    memcpy(&ofconf_cpy, &ofconf, sizeof(ofconf_cpy));
-
-    // Handle the condition where a range exists in the rule
-    if (om_range_is_range_specified(ofconf.rule)) {
-        (void)om_range_clear_range_rules();
-
-        ret = om_range_generate_range_rules(&ofconf);
-        if (ret) {
-            rules = om_range_get_range_rules();
-
-            ds_list_foreach(rules,data) {
-                /* NOTE: Due to the security aspect of the use case when ranges
-                 *       are involved, rules are still added partially when errors
-                 *       are encountered, and are not rolled back completely.
-                 *
-                 *       For eg: For rule: tcp,tp_src=$<1-5>, if addition "tcp, tp_src=3"
-                 *       fails, all others(1,2,4,5) are still added.
-                 *
-                 *       The arguement is, if ports 1-5 are to be allowed, and 3 fails,
-                 *       1,2,4,5 are still allowed. And similarly for blocked ports.
-                 *       For these use cases, something is always better than nothing.
-                 */
-                ret = ret && om_monitor_update_flows_parsed(type, &data->rule);
-            }
-        } else {
-            LOGE("%s: Failed to generate rules for insertion", __func__);
-            (void)om_range_clear_range_rules();
-        }
-    } else {
-        ret = om_monitor_update_flows_parsed(type, &ofconf);
-    }
-
-    // Update the result in Openflow_State table so the cloud knows
-    om_monitor_update_openflow_state(&ofconf, type, ret);
-
-    return;
-}
-
-/******************************************************************************
  * Takes appropriate actions based on cloud updates to Openflow_Config table
  *****************************************************************************/
 static void
 om_monitor_config_cb(ovsdb_update_monitor_t *self)
-{
-    switch(self->mon_type) {
-
-    case OVSDB_UPDATE_NEW:
-        om_monitor_update_flows(OM_ACTION_ADD, self->mon_json_new);
-        break;
-
-    case OVSDB_UPDATE_MODIFY:
-        om_monitor_update_flows(OM_ACTION_UPDATE, self->mon_json_new);
-        break;
-
-    case OVSDB_UPDATE_DEL:
-        om_monitor_update_flows(OM_ACTION_DELETE, self->mon_json_old);
-        break;
-
-    default:
-        break;
-
-    }
-
-    return;
-}
-
-static void
-om_monitor_config_native_cb(ovsdb_update_monitor_t *self)
 {
     struct schema_Openflow_Config ofconf;
     om_action_t type;
@@ -879,27 +747,13 @@ om_monitor_init(void)
 {
     LOGI( "Openflow Monitoring initialization" );
 
-    if (!kconfig_enabled(CONFIG_TARGET_USE_NATIVE_BRIDGE))
-    {
-        // Start OVSDB monitoring
-        if(!ovsdb_update_monitor(&om_monitor_config,
-                                 om_monitor_config_cb,
-                                 SCHEMA_TABLE(Openflow_Config),
-                                 OMT_ALL)) {
-            LOGE("Failed to monitor OVSDB table '%s'", SCHEMA_TABLE( Openflow_Config ) );
-            return false;
-        }
-    }
-    else
-    {
-        // Start OVSDB monitoring
-        if(!ovsdb_update_monitor(&om_monitor_config,
-                                 om_monitor_config_native_cb,
-                                 SCHEMA_TABLE(Openflow_Config),
-                                 OMT_ALL)) {
-            LOGE("Failed to monitor OVSDB table '%s'", SCHEMA_TABLE( Openflow_Config ) );
-            return false;
-        }
+    // Start OVSDB monitoring
+    if(!ovsdb_update_monitor(&om_monitor_config,
+                                om_monitor_config_cb,
+                                SCHEMA_TABLE(Openflow_Config),
+                                OMT_ALL)) {
+        LOGE("Failed to monitor OVSDB table '%s'", SCHEMA_TABLE( Openflow_Config ) );
+        return false;
     }
 
     if(!ovsdb_update_monitor(&om_monitor_tags,

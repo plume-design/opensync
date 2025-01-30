@@ -34,6 +34,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <osw_types.h>
 #include <ow_steer_bm.h>
 
+#define LOG_PREFIX(fmt, ...) "ow: ovsdb: steer: " fmt, ##__VA_ARGS__
+
 struct ow_ovsdb_steer {
     ovsdb_table_t neighbor_table;
     ovsdb_table_t config_table;
@@ -99,7 +101,7 @@ ow_ovsdb_steer_group_set(const struct schema_Band_Steering_Config *row)
     if (((row->ifnames_len > 0) && (row->if_name_2g_exists == true || row->if_name_5g_exists == true)) ||
         ((row->ifnames_len == 0) && row->if_name_2g_exists == false && row->if_name_5g_exists == false))
     {
-        LOGW("ow: steer: ovsdb: group uuid: %s cannot set group, invalid ifnames", row->_uuid.uuid);
+        LOGW(LOG_PREFIX("group uuid: %s cannot set group, invalid ifnames", row->_uuid.uuid));
         return;
     }
 
@@ -133,14 +135,14 @@ ow_ovsdb_steer_neighbor_set(const struct schema_Wifi_VIF_Neighbors *row)
     ASSERT(row != NULL, "");
 
     if (row->bssid_exists == false) {
-        LOGW("ow: steer: ovsdb: cannot set neighbor, bssid is missing");
+        LOGW(LOG_PREFIX("cannot set neighbor, bssid is missing"));
         return;
     }
 
     struct osw_hwaddr bssid;
     const bool addr_is_valid = osw_hwaddr_from_cstr(row->bssid, &bssid) == true;
     if (addr_is_valid == false) {
-        LOGW("ow: steer: ovsdb: neighbor: bssid: %s invalid value", row->bssid);
+        LOGW(LOG_PREFIX("neighbor: bssid: %s invalid value", row->bssid));
         return;
     }
 
@@ -208,7 +210,7 @@ ow_ovsdb_steer_neighbor_set(const struct schema_Wifi_VIF_Neighbors *row)
             ow_steer_bm_neighbor_set_ht_mode(neighbor, &ht_mode);
         }
         else {
-            LOGW("ow: steer: ovsdb: neighbor: bssid: "OSW_HWADDR_FMT" ht_mode: %s is invalid",
+            LOGW(LOG_PREFIX("neighbor: bssid: "OSW_HWADDR_FMT" ht_mode: %s is invalid"),
                  OSW_HWADDR_ARG(&bssid), row->ht_mode);
         }
     }
@@ -225,13 +227,13 @@ ow_ovsdb_steer_neighbor_unset(const struct schema_Wifi_VIF_Neighbors *row)
     struct osw_hwaddr bssid;
 
     if (row->bssid_exists == false) {
-        LOGW("ow: steer: ovsdb: cannot unset neighbor, bssid is missing");
+        LOGW(LOG_PREFIX("cannot unset neighbor, bssid is missing"));
         return;
     }
 
     const bool addr_is_valid = osw_hwaddr_from_cstr(row->bssid, &bssid) == true;
     if (addr_is_valid == false) {
-        LOGW("ow: steer: ovsdb: bssid: %s invalid value", row->bssid);
+        LOGW(LOG_PREFIX("bssid: %s invalid value", row->bssid));
         return;
     }
 
@@ -273,12 +275,12 @@ ow_steer_bm_client_set_btm_params(const struct osw_hwaddr *sta_addr,
             continue;
         }
         else {
-            LOGD("ow: steer: ovsdb: client: sta_addr: "OSW_HWADDR_FMT" btm_params: %s key: %s is not supported",
+            LOGD(LOG_PREFIX("client: sta: "OSW_HWADDR_FMT": btm_params: %s key: %s is not supported"),
                  OSW_HWADDR_ARG(sta_addr), btm_params_name, keys[i]);
              continue;
         }
 
-        LOGW("ow: steer: ovsdb: client: sta_addr: "OSW_HWADDR_FMT" btm_params: %s key: %s value: %s is invalid",
+        LOGW(LOG_PREFIX("client: sta: "OSW_HWADDR_FMT": btm_params: %s key: %s value: %s is invalid"),
              OSW_HWADDR_ARG(sta_addr), btm_params_name, key, value);
     }
 }
@@ -326,7 +328,7 @@ ow_steer_bm_client_set_cs_params(const struct osw_hwaddr *sta_addr,
                 continue;
             }
             else {
-                LOGW("ow: steer: ovsdb: cs_params: sta_addr: "OSW_HWADDR_FMT" key: %s has invalid value: %s",
+                LOGW(LOG_PREFIX("cs_params: sta: "OSW_HWADDR_FMT": key: %s has invalid value: %s"),
                      OSW_HWADDR_ARG(sta_addr), key, value);
                 continue;
             }
@@ -340,12 +342,12 @@ ow_steer_bm_client_set_cs_params(const struct osw_hwaddr *sta_addr,
             }
         }
         else {
-            LOGD("ow: steer: ovsdb: cs_params: sta_addr: "OSW_HWADDR_FMT" key: %s is not supported",
+            LOGD(LOG_PREFIX("cs_params: sta: "OSW_HWADDR_FMT": key: %s is not supported"),
                  OSW_HWADDR_ARG(sta_addr), key);
             continue;
         }
 
-        LOGW("ow: steer: ovsdb: cs_params: sta_addr: "OSW_HWADDR_FMT" key: %s value: %s are invalid",
+        LOGW(LOG_PREFIX("cs_params: sta: "OSW_HWADDR_FMT": key: %s value: %s are invalid"),
              OSW_HWADDR_ARG(sta_addr), key, value);
     }
 }
@@ -358,7 +360,7 @@ ow_ovsdb_steer_bm_client_set_cs_state_mutate_cb(const struct osw_hwaddr *client_
 
     const char *cs_state_cstr = ow_steer_bm_client_cs_state_to_cstr(cs_state);
     if (cs_state_cstr == NULL) {
-        LOGW("ow: steer: ovsdb: client: sta_addr: "OSW_HWADDR_FMT" cannot set cs_state, unknown enum value: %d", OSW_HWADDR_ARG(client_addr), cs_state);
+        LOGW(LOG_PREFIX("client: sta: "OSW_HWADDR_FMT": cannot set cs_state, unknown enum value: %d", OSW_HWADDR_ARG(client_addr), cs_state));
         return;
     }
 
@@ -378,7 +380,7 @@ ow_ovsdb_steer_bm_client_set_cs_state_mutate_cb(const struct osw_hwaddr *client_
     }
     ovsdb_table_update(&g_steering->client_table, &update);
 
-    LOGD("ow: steer: ovsdb: client: sta_addr: "OSW_HWADDR_FMT" set cs_state: %s", OSW_HWADDR_ARG(client_addr), cs_state_cstr);
+    LOGD(LOG_PREFIX("client: sta: "OSW_HWADDR_FMT": cs_state: %s", OSW_HWADDR_ARG(client_addr), cs_state_cstr));
 }
 
 enum ow_steer_bm_client_cs_mode
@@ -408,14 +410,14 @@ ow_ovsdb_steer_client_set(const struct schema_Band_Steering_Clients *row)
     ASSERT(row != NULL, "");
 
     if (row->mac_exists == false) {
-        LOGW("ow: steer: ovsdb: cannot set client, mac is missing");
+        LOGW(LOG_PREFIX("cannot set client, mac is missing"));
         return;
     }
 
     struct osw_hwaddr addr;
     const bool result = osw_hwaddr_from_cstr(row->mac, &addr);
     if (result == false) {
-        LOGW("ow: steer: ovsdb: client: addr: %s cannot set client, invalid sta addr", row->mac);
+        LOGW(LOG_PREFIX("client: addr: %s cannot set client, invalid sta addr", row->mac));
         return;
     }
 
@@ -463,8 +465,8 @@ ow_ovsdb_steer_client_set(const struct schema_Band_Steering_Clients *row)
              ow_steer_bm_client_set_pref_5g(client, &pref_5g);
         }
         else {
-            LOGW("ow: steer: ovsdb: client: sta_addr: "OSW_HWADDR_FMT" cannot add, unsupported pref_5g: %s",
-                 OSW_HWADDR_ARG(&addr), row->pref_5g);
+            LOGW(LOG_PREFIX("client: sta: "OSW_HWADDR_FMT" cannot add, unsupported pref_5g: %s",
+                 OSW_HWADDR_ARG(&addr), row->pref_5g));
             ow_steer_bm_client_set_pref_5g(client, NULL);
         }
     }
@@ -485,8 +487,8 @@ ow_ovsdb_steer_client_set(const struct schema_Band_Steering_Clients *row)
              ow_steer_bm_client_set_kick_type(client, NULL);
         }
         else {
-            LOGW("ow: steer: ovsdb: client: sta_addr: "OSW_HWADDR_FMT" cannot add, unsupported kick_type: %s",
-                 OSW_HWADDR_ARG(&addr), row->kick_type);
+            LOGW(LOG_PREFIX("client: sta: "OSW_HWADDR_FMT": cannot add, unsupported kick_type: %s",
+                 OSW_HWADDR_ARG(&addr), row->kick_type));
             ow_steer_bm_client_set_kick_type(client, NULL);
         }
     }
@@ -589,13 +591,13 @@ ow_ovsdb_steer_client_set(const struct schema_Band_Steering_Clients *row)
              const enum ow_steer_bm_client_sc_kick_type sc_kick_type = OW_STEER_BM_CLIENT_SC_KICK_TYPE_DEAUTH;
              ow_steer_bm_client_set_sc_kick_type(client, &sc_kick_type);
         }
-        else if (strcmp(row->kick_type, "btm_deauth") == 0) {
+        else if (strcmp(row->sc_kick_type, "btm_deauth") == 0) {
              const enum ow_steer_bm_client_sc_kick_type sc_kick_type = OW_STEER_BM_CLIENT_SC_KICK_TYPE_BTM_DEAUTH;
              ow_steer_bm_client_set_sc_kick_type(client, &sc_kick_type);
         }
         else {
-            LOGW("ow: steer: ovsdb: client: sta_addr: "OSW_HWADDR_FMT" cannot add, unsupported sc_kick_type: %s",
-                 OSW_HWADDR_ARG(&addr), row->sc_kick_type);
+            LOGW(LOG_PREFIX("client: sta: "OSW_HWADDR_FMT": cannot add, unsupported sc_kick_type: %s",
+                 OSW_HWADDR_ARG(&addr), row->sc_kick_type));
             ow_steer_bm_client_set_sc_kick_type(client, NULL);
         }
     }
@@ -608,13 +610,13 @@ ow_ovsdb_steer_client_set(const struct schema_Band_Steering_Clients *row)
              const enum ow_steer_bm_client_sticky_kick_type sticky_kick_type = OW_STEER_BM_CLIENT_STICKY_KICK_TYPE_DEAUTH;
              ow_steer_bm_client_set_sticky_kick_type(client, &sticky_kick_type);
         }
-        else if (strcmp(row->kick_type, "btm_deauth") == 0) {
+        else if (strcmp(row->sticky_kick_type, "btm_deauth") == 0) {
              const enum ow_steer_bm_client_sticky_kick_type sticky_kick_type = OW_STEER_BM_CLIENT_STICKY_KICK_TYPE_BTM_DEAUTH;
              ow_steer_bm_client_set_sticky_kick_type(client, &sticky_kick_type);
         }
         else {
-            LOGW("ow: steer: ovsdb: client: sta_addr: "OSW_HWADDR_FMT" unsupported sticky_kick_type: %s",
-                 OSW_HWADDR_ARG(&addr), row->sticky_kick_type);
+            LOGW(LOG_PREFIX("client: sta: "OSW_HWADDR_FMT": unsupported sticky_kick_type: %s",
+                 OSW_HWADDR_ARG(&addr), row->sticky_kick_type));
             ow_steer_bm_client_set_sticky_kick_type(client, NULL);
         }
     }
@@ -651,8 +653,8 @@ ow_ovsdb_steer_client_set(const struct schema_Band_Steering_Clients *row)
             ow_steer_bm_client_set_force_kick(client, &force_kick);
         }
         else{
-            LOGW("ow: steer: ovsdb: client: sta_addr: "OSW_HWADDR_FMT" unsupported force_kick: %s",
-                 OSW_HWADDR_ARG(&addr), row->force_kick);
+            LOGW(LOG_PREFIX("client: sta: "OSW_HWADDR_FMT": unsupported force_kick: %s",
+                 OSW_HWADDR_ARG(&addr), row->force_kick));
             ow_steer_bm_client_set_force_kick(client, NULL);
         }
     }
@@ -693,14 +695,14 @@ ow_ovsdb_steer_client_unset(const struct schema_Band_Steering_Clients *row)
     ASSERT(row != NULL, "");
 
     if (row->mac_exists == false) {
-        LOGW("ow: steer: ovsdb: cannot unset client, mac is missing");
+        LOGW(LOG_PREFIX("cannot unset client, mac is missing"));
         return;
     }
 
     struct osw_hwaddr addr;
     const bool result = osw_hwaddr_from_cstr(row->mac, &addr);
     if (result == false) {
-        LOGW("ow: steer: ovsdb: client: addr: %s cannot unset client, invalid sta addr", row->mac);
+        LOGW(LOG_PREFIX("client: addr: %s cannot unset client, invalid sta addr", row->mac));
         return;
     }
 
@@ -790,7 +792,7 @@ ow_ovsdb_steer_create(void)
     OVSDB_TABLE_VAR_INIT(&g_steering->client_table, Band_Steering_Clients, mac);
     ovsdb_cache_monitor(&g_steering->client_table, (void *)ow_ovsdb_steer_client_table_cb, true);
 
-    LOGI("ow: steer: ovsdb: initialized");
+    LOGI(LOG_PREFIX("initialized"));
 
     return g_steering;
 }

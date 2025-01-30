@@ -1,7 +1,0 @@
-config OSN_BACKEND_LTE_MODEM
-    bool "Linux"
-    select OSN_LINUX_ENABLED
-    select OSN_LINUX_LTE_MODEM
-    help
-        Use the Linux LTE implementation.
-

@@ -29,7 +29,7 @@ UNIT_TYPE := TEST_BIN
 
 UNIT_SRC := test_nm2_main.c
 UNIT_SRC += test_nm2_mac_tags.c
-UNIT_SRC += $(if $(CONFIG_TARGET_USE_NATIVE_BRIDGE), test_nm2_native_bridge.c)
+UNIT_SRC += test_nm2_native_bridge.c
 
 UNIT_SRC    += ../src/nm2_dhcp_lease.c
 UNIT_SRC    += ../src/nm2_dhcp_option.c
@@ -56,10 +56,9 @@ UNIT_SRC    += ../src/nm2_route6_config.c
 UNIT_SRC    += ../src/nm2_util.c
 UNIT_SRC    += ../src/nm2_probe_eth_clients.c
 
-UNIT_SRC    += $(if $(CONFIG_TARGET_USE_NATIVE_BRIDGE), ../src/nm2_nb_bridge.c)
-UNIT_SRC    += $(if $(CONFIG_TARGET_USE_NATIVE_BRIDGE), ../src/nm2_default_ovsdb_bridge.c)
-UNIT_SRC    += $(if $(CONFIG_TARGET_USE_NATIVE_BRIDGE), ../src/nm2_nb_interface.c)
-UNIT_SRC    += $(if $(CONFIG_TARGET_USE_NATIVE_BRIDGE), ../src/nm2_nb_port.c)
+UNIT_SRC    += ../src/nm2_nb_bridge.c
+UNIT_SRC    += ../src/nm2_nb_interface.c
+UNIT_SRC    += ../src/nm2_nb_port.c
 
 
 UNIT_CFLAGS := -I$(UNIT_PATH)/inc
@@ -77,3 +76,4 @@ UNIT_DEPS += src/lib/common
 UNIT_DEPS += src/lib/unity
 UNIT_DEPS += src/lib/unit_test_utils
 UNIT_DEPS += src/lib/os_fdbuf
+UNIT_DEPS += src/lib/ovsdb_bridge

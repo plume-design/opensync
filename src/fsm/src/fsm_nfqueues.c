@@ -198,7 +198,7 @@ fsm_nfq_tap_update(struct fsm_session *session)
     queue_num_str = fsm_get_other_config_val(session, "queue_num");
     if (queue_num_str != NULL)
     {
-        strcpy(buf, queue_num_str);
+        STRSCPY(buf, queue_num_str);
         ret_val = sscanf(buf, "%d-%d", &start_queue_num, &end_queue_num);
         if (ret_val == 2)
         {

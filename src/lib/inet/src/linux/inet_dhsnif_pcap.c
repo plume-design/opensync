@@ -713,7 +713,7 @@ void __inet_dhsnif_process_dhcp(
                 break;
 
             case DHCP_OPTION_LEASE_TIME:
-                lease->le_info.dl_leasetime = ntohl(*(uint32_t *)popt);
+                lease->le_info.dl_leasetime = (clock_real_ms() / 1000.0) + ntohl(*(uint32_t *)popt);
 #if 0
                 LOG(DEBUG, "inet_dhsnif: %s: "PRI(inet_macaddr_t)": Lease time =  %ds",
                         self->ds_ifname,
@@ -881,7 +881,7 @@ void __inet_dhsnif_process_dhcp(
             /* Update the IP address and timestamp */
             lease->le_info.dl_ipaddr = OSN_IP_ADDR_INIT;
             lease->le_info.dl_ipaddr.ia_addr = dhcp->dhcp_yiaddr;
-            lease->le_info.dl_leasetime = clock_mono_double();
+            lease->le_info.dl_leasetime = 0;
 
             LOG(NOTICE, "inet_dhsnif: ACK IP:"PRI_osn_ip_addr" MAC:"PRI_osn_mac_addr" Hostname:%s",
                     FMT_osn_ip_addr(lease->le_info.dl_ipaddr),

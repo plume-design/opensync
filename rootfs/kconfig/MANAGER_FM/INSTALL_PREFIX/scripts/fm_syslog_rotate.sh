@@ -53,7 +53,7 @@ INSTALL_PREFIX="${CONFIG_INSTALL_PREFIX}"
 #   with the lowest number is deleted before a new one is added.
 # - Once the logfile is archived, the original file is deleted.
 #
-# Syntax: fm_syslog_rotate.sh <filename> <archive_dir> <syslog_subdir> <syslog_copy_subdir> \
+# Syntax: fm_syslog_rotate.sh <filename> <archive_dir> <syslog_subdir> \
 #                             <rotate_max_files> {yes|no} <logs_dir>
 #
 # Parameters are positional:

@@ -64,8 +64,8 @@ ALL_SERVICE_PROVIDERS := $(sort $(notdir $(wildcard service-provider/*)))
 ifneq ($(SERVICE_PROVIDERS),)
 
 # set initial value
-BACKHAUL_SSID := ""
-BACKHAUL_PASS := ""
+BACKHAUL_SSID :=
+BACKHAUL_PASS :=
 
 define _sp_uniq
 $(if $1,$(firstword $1) $(call _sp_uniq,$(filter-out $(firstword $1),$1)))
@@ -108,7 +108,7 @@ $(foreach _SP,$(SERVICE_PROVIDERS),$(eval $(call include_sp,$(_SP))))
 _sp_multi_creds := $(strip $(call _sp_uniq,$(_sp_multi_creds)))
 
 # add quotes
-MULTI_BACKHAUL_CREDS := "$(_sp_multi_creds)"
+MULTI_BACKHAUL_CREDS := $(_sp_multi_creds)
 
 
 # check for duplicate profile names

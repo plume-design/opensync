@@ -27,4 +27,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifndef OW_OVSDB_H_INCLUDED
 #define OW_OVSDB_H_INCLUDED
 
+enum osw_channel_width ow_ovsdb_htmode2width(const char *ht_mode);
+
 #endif /* OW_OVSDB_H_INCLUDED */

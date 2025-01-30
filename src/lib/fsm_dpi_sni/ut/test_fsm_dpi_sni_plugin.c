@@ -435,7 +435,7 @@ test_redirected_flow_attr(void)
     MEMZERO(info);
     rc = net_md_get_flow_info(&acc, &info);
 
-    strcpy(val, "http://adult.com/show");
+    STRSCPY(val, "http://adult.com/show");
     request.acc = &acc;
     request.session = session;
     request.info = &info;
@@ -513,7 +513,7 @@ test_redirected_flow_attr_v6(void)
     MEMZERO(info);
     rc = net_md_get_flow_info(&acc, &info);
 
-    strcpy(val, "http://adult.com/show");
+    STRSCPY(val, "http://adult.com/show");
     request.acc = &acc;
     request.session = session;
     request.info = &info;
@@ -561,37 +561,37 @@ test_url_to_fqdn_regex_extract(void)
     bool rc;
 
     attribute_name  = "http://adult.com";
-    rc = dpi_sni_fetch_fqdn_from_url_attr(attribute_name, fqdn_val);
+    rc = dpi_sni_fetch_fqdn_from_url_attr(attribute_name, fqdn_val, sizeof(fqdn_val));
     if (rc) TEST_ASSERT_EQUAL_STRING("adult.com", fqdn_val);
 
     MEMZERO(fqdn_val);
     attribute_name  = "http://pornhub.com/show";
-    rc = dpi_sni_fetch_fqdn_from_url_attr(attribute_name, fqdn_val);
+    rc = dpi_sni_fetch_fqdn_from_url_attr(attribute_name, fqdn_val, sizeof(fqdn_val));
     if (rc) TEST_ASSERT_EQUAL_STRING("pornhub.com", fqdn_val);
 
     MEMZERO(fqdn_val);
     attribute_name  = "http://google.com";
-    rc = dpi_sni_fetch_fqdn_from_url_attr(attribute_name, fqdn_val);
+    rc = dpi_sni_fetch_fqdn_from_url_attr(attribute_name, fqdn_val, sizeof(fqdn_val));
     if (rc) TEST_ASSERT_EQUAL_STRING("google.com", fqdn_val);
 
     MEMZERO(fqdn_val);
     attribute_name  = "http://cplusplus.com";
-    rc = dpi_sni_fetch_fqdn_from_url_attr(attribute_name, fqdn_val);
+    rc = dpi_sni_fetch_fqdn_from_url_attr(attribute_name, fqdn_val, sizeof(fqdn_val));
     if (rc) TEST_ASSERT_EQUAL_STRING("cplusplus.com", fqdn_val);
 
     MEMZERO(fqdn_val);
     attribute_name  = "http://www.soccer.com/show";
-    rc = dpi_sni_fetch_fqdn_from_url_attr(attribute_name, fqdn_val);
+    rc = dpi_sni_fetch_fqdn_from_url_attr(attribute_name, fqdn_val, sizeof(fqdn_val));
     if (rc) TEST_ASSERT_EQUAL_STRING("www.soccer.com", fqdn_val);
 
     MEMZERO(fqdn_val);
     attribute_name  = "http://xadultadult.com";
-    rc = dpi_sni_fetch_fqdn_from_url_attr(attribute_name, fqdn_val);
+    rc = dpi_sni_fetch_fqdn_from_url_attr(attribute_name, fqdn_val, sizeof(fqdn_val));
     if (rc) TEST_ASSERT_EQUAL_STRING("xadultadult.com", fqdn_val);
 
     MEMZERO(fqdn_val);
     attribute_name  = "http://liberation.fr";
-    rc = dpi_sni_fetch_fqdn_from_url_attr(attribute_name, fqdn_val);
+    rc = dpi_sni_fetch_fqdn_from_url_attr(attribute_name, fqdn_val, sizeof(fqdn_val));
     if (rc) TEST_ASSERT_EQUAL_STRING("liberation.fr", fqdn_val);
 }
 

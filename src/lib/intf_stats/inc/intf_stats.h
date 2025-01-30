@@ -35,6 +35,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ds_dlist.h"
 #include "interface_stats.pb-c.h"
 #include "memutil.h"
+#include "fcm.h"
 
 /**
  * @brief container of information needed to set Intf Stats protobuf
@@ -151,6 +152,8 @@ void intf_stats_window_free(intf_stats_window_list_t *window)
 {
     if (window) FREE(window);
 }
+
+int intf_stats_plugin_init(fcm_collect_plugin_t *collector);
 
 /******************************************************************************/
 

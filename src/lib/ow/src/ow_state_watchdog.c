@@ -33,6 +33,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <osw_module.h>
 #include <osw_time.h>
 #include <osw_timer.h>
+#include <osw_etc.h>
 
 /* Purpose
  *
@@ -260,7 +261,7 @@ DO_WORK(period_cb, period);
 DO_WORK(postpone_cb, postpone);
 
 #define SET_PARAM(w, n, e) do { \
-        const char *v = getenv(#e); \
+        const char *v = osw_etc_get(#e); \
         if (v != NULL) (w)->n = strtoull(v, NULL, 10); \
     } while (0)
 

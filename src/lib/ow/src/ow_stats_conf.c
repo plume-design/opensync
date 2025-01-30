@@ -231,6 +231,7 @@ ow_stats_conf_width_to_dpp(const uint32_t mhz)
         case 80: return RADIO_CHAN_WIDTH_80MHZ;
         case 160: return RADIO_CHAN_WIDTH_160MHZ;
         case 8080: return RADIO_CHAN_WIDTH_80_PLUS_80MHZ;
+        case 320: return RADIO_CHAN_WIDTH_320MHZ;
     }
     return RADIO_CHAN_WIDTH_UNKNOWN;
 }

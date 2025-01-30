@@ -40,6 +40,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "os_backtrace.h"
 #include "json_util.h"
 #include "target.h"
+#include "kconfig.h"
 
 #define MODULE_ID LOG_MODULE_ID_MAIN
 
@@ -71,7 +72,10 @@ int main(int argc, char **argv)
     }
 
     vpnm_tunnel_init();
-    vpnm_ipsec_init();
+    if (kconfig_enabled(CONFIG_OSN_VPN_IPSEC))
+    {
+        vpnm_ipsec_init();
+    }
     vpnm_tunnel_iface_init();
 
     ev_run(loop, 0);

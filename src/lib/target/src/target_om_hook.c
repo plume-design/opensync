@@ -38,8 +38,6 @@ bool target_om_hook(target_om_hook_t hook, const char *openflow_rule)
 {
     char        *flow = strdupa(openflow_rule);
     char        *ptr;
-    const char  *k;
-    const char  *v;
     bool        flushed_mac = false;
 
     switch (hook)
@@ -47,28 +45,12 @@ bool target_om_hook(target_om_hook_t hook, const char *openflow_rule)
         case TARGET_OM_POST_ADD:
         case TARGET_OM_POST_DEL:
         {
-            if (!kconfig_enabled(CONFIG_TARGET_USE_NATIVE_BRIDGE)) {
-                // Examples of OpenFlow rules:
-                // "udp6,tp_dst=53,dl_src=a4:e9:75:48:a3:7f,dl_dst=aa:bb:cc:dd:ee:ff"
-                // "tcp,tp_dst=80,dl_src=ff:ff:ff:ff:ff:ff"
-                while ((ptr = strsep(&flow, ","))) {
-                    if ((k = strsep(&ptr, "=")) && (v = strsep(&ptr, ""))) {
-                        if (!strcmp(k, "dl_src") || !strcmp(k, "dl_dst")) {
-                            if (os_util_is_valid_mac_str(v)) {
-                                flushed_mac = hw_acc_flush_flow_per_mac(v);
-                            }
-                         }
-                     }
-                 }
-            }
-            else {
-                // Examples of iptables/ebtables rules
-                // "-m mac --mac-source e4:5f:01:81:64:ba"
-                // "-s e4:5f:01:81:64:ba" or "-d e4:5f:01:81:64:ba"
-                while ((ptr = strsep(&flow, " "))) {
-                    if (os_util_is_valid_mac_str(ptr)) {
-                        flushed_mac = hw_acc_flush_flow_per_mac(ptr);
-                    }
+            // Examples of iptables/ebtables rules
+            // "-m mac --mac-source e4:5f:01:81:64:ba"
+            // "-s e4:5f:01:81:64:ba" or "-d e4:5f:01:81:64:ba"
+            while ((ptr = strsep(&flow, " "))) {
+                if (os_util_is_valid_mac_str(ptr)) {
+                    flushed_mac = hw_acc_flush_flow_per_mac(ptr);
                 }
             }
 

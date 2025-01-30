@@ -38,6 +38,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <fcntl.h>
 #include <libgen.h>
 #include <limits.h>
+#include <netdb.h>
 #include "execsh.h"
 
 #include "sm.h"
@@ -49,6 +50,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define MODULE_ID LOG_MODULE_ID_MAIN
 #define SM_MAX_SECRET_LEN           65
 #define RADCLIENT_COMMAND           "echo \"Message-Authenticator = 0x00\" | radclient  %s:%d status %s"
+#define RADCLIENT_COMMAND_IPV6      "echo \"Message-Authenticator = 0x00\" | radclient -6 [%s]:%d status %s"
 
 struct sm_healthcheck_schedule_ctx
 {
@@ -157,17 +159,40 @@ void trigger_healthcheck_cb(EV_P_ ev_timer *w, int revents)
     char command[255] = {0};
     sm_healthcheck_ctx_p ctx = (sm_healthcheck_ctx_p)w->data;
 
+    struct addrinfo hints, *res;
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_socktype = SOCK_RAW;
+    hints.ai_flags = AI_NUMERICHOST;
+    int val = getaddrinfo(ctx->server, NULL, &hints, &res);
+    if (val) {
+        LOGW("RADIUS healthckech failed, unable to parse server address (%s)", ctx->server);
+        return;
+    }
+
     sm_healthcheck_schedule_stop(ctx);
 
-    snprintf(command,
-        sizeof(command),
-        RADCLIENT_COMMAND,
-        ctx->server,
-        ctx->port,
-        ctx->secret);
+    switch (res->ai_family) {
+        case AF_INET:
+            snprintf(command,
+                     sizeof(command),
+                     RADCLIENT_COMMAND,
+                     ctx->server,
+                     ctx->port,
+                     ctx->secret);
+            break;
+        case AF_INET6:
+            snprintf(command,
+                     sizeof(command),
+                     RADCLIENT_COMMAND_IPV6,
+                     ctx->server,
+                     ctx->port,
+                     ctx->secret);
+            break;
+    }
 
     LOGD("checking health of %s:%d", ctx->server, ctx->port);
     LOGT("triggering healthcheck command \"%s\"", command);
+    freeaddrinfo(res);
 
     execsh_async_init(&ctx->radclient_execsh, radclient_execsh_fn);
     execsh_async_start(&ctx->radclient_execsh, command);

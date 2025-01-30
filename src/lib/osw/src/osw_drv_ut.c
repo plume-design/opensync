@@ -1154,3 +1154,86 @@ OSW_UT(osw_drv_ut_csa_to_phy)
     osw_drv_report_vif_channel_change_advertised_xphy__(&drvs, &d1, p2.phy_name, v2.vif_name, &c2412, &phy, &vif);
     OSW_UT_EVAL(phy == &p1);
 }
+
+OSW_UT(osw_drv_ut_sta_net_1)
+{
+    struct osw_drv_vif_sta_network net1 = {
+        .ssid = { .buf = "hello", .len = 5 },
+        .bssid = { .octet = { 0, 0, 0, 0, 0, 1 } },
+    };
+    struct osw_drv_vif_sta_network net2 = {
+        .ssid = { .buf = "hello", .len = 5 },
+        .bssid = { .octet = { 0, 0, 0, 0, 0, 0 } },
+        .next = &net1,
+    };
+    struct osw_drv_vif_state_sta vsta = {
+        .link = {
+            .status = OSW_DRV_VIF_STATE_STA_LINK_CONNECTED,
+            .ssid = { .buf = "hello", .len = 5 },
+            .bssid = { .octet = { 0, 0, 0, 0, 0, 1 } },
+        },
+        .network = &net2,
+    };
+
+    assert(osw_drv_vif_sta_network_get(&vsta) == &net1);
+}
+
+OSW_UT(osw_drv_ut_sta_net_2)
+{
+    struct osw_drv_vif_sta_network net1 = {
+        .ssid = { .buf = "hello", .len = 5 },
+        .bssid = { .octet = { 0, 0, 0, 0, 0, 1 } },
+    };
+    struct osw_drv_vif_sta_network net2 = {
+        .ssid = { .buf = "hello", .len = 5 },
+        .bssid = { .octet = { 0, 0, 0, 0, 0, 0 } },
+        .next = &net1,
+    };
+    struct osw_drv_vif_state_sta vsta = {
+        .link = {
+            .status = OSW_DRV_VIF_STATE_STA_LINK_DISCONNECTED,
+            .ssid = { .buf = "hello", .len = 5 },
+            .bssid = { .octet = { 0, 0, 0, 0, 0, 1 } },
+        },
+        .network = &net2,
+    };
+
+    assert(osw_drv_vif_sta_network_get(&vsta) == NULL);
+}
+
+OSW_UT(osw_drv_ut_sta_net_3)
+{
+    struct osw_drv_vif_sta_network net1 = {
+        .ssid = { .buf = "hello", .len = 5 },
+        .bssid = { .octet = { 0, 0, 0, 0, 0, 0 } },
+    };
+    struct osw_drv_vif_sta_network net2 = {
+        .ssid = { .buf = "hello", .len = 5 },
+        .bssid = { .octet = { 0, 0, 0, 0, 0, 0 } },
+        .next = &net1,
+    };
+    struct osw_drv_vif_state_sta vsta = {
+        .link = {
+            .status = OSW_DRV_VIF_STATE_STA_LINK_CONNECTED,
+            .ssid = { .buf = "hello", .len = 5 },
+            .bssid = { .octet = { 0, 0, 0, 0, 0, 1 } },
+        },
+        .network = &net2,
+    };
+
+    assert((osw_drv_vif_sta_network_get(&vsta) == &net1) ||
+           (osw_drv_vif_sta_network_get(&vsta) == &net2));
+}
+
+OSW_UT(osw_drv_ut_sta_net_4)
+{
+    struct osw_drv_vif_state_sta vsta = {
+        .link = {
+            .status = OSW_DRV_VIF_STATE_STA_LINK_CONNECTED,
+            .ssid = { .buf = "hello", .len = 5 },
+            .bssid = { .octet = { 0, 0, 0, 0, 0, 1 } },
+        },
+    };
+
+    assert(osw_drv_vif_sta_network_get(&vsta) == NULL);
+}

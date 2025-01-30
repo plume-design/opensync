@@ -47,6 +47,7 @@ struct osw_bss {
     struct osw_timer work;
     bool worked_on_at_least_once;
 
+    struct ds_tree entry_observers;
     struct ds_tree_node node;
 };
 
@@ -56,6 +57,7 @@ struct osw_bss_entry {
     struct osw_ssid *ssid;
     struct osw_channel *channel;
     uint8_t *op_class;
+    struct osw_hwaddr *mld_addr;
 
     struct ds_tree_node bss_node;
     struct ds_dlist_node provider_node;
@@ -63,6 +65,7 @@ struct osw_bss_entry {
 
 struct osw_bss_map {
     struct ds_tree bss_tree;
+    struct ds_tree entry_observers;
     struct ds_dlist provider_list;
     ev_signal sigusr1;
 };
@@ -71,6 +74,16 @@ struct osw_bss_provider {
     struct ds_dlist entry_list;
 
     struct ds_dlist_node node;
+};
+
+struct osw_bss_map_entry_observer {
+    struct osw_bss *bss;
+    struct ds_tree_node node_map;
+    struct ds_tree_node node_bss;
+    struct osw_hwaddr bssid;
+    struct osw_channel last_reported;
+    osw_bss_map_entry_changed_fn_t *changed_fn;
+    void *changed_fn_priv;
 };
 
 static struct osw_bss_map g_bss_map;
@@ -103,12 +116,94 @@ osw_bss_has_entry(struct osw_bss *bss,
 }
 
 static void
+osw_bss_unlink_entry_observers(struct osw_bss *bss)
+{
+    struct osw_bss_map_entry_observer *obs;
+    while ((obs = ds_tree_remove_head(&bss->entry_observers)) != NULL) {
+        obs->bss = NULL;
+    }
+}
+
+static void
 osw_bss_free(struct osw_bss *bss)
 {
     ASSERT(bss != NULL, "");
 
+    osw_bss_unlink_entry_observers(bss);
     ASSERT(ds_dlist_is_empty(&bss->entry_list) == true, "");
     FREE(bss);
+}
+
+static void
+osw_bss_map_entry_observer_notify(osw_bss_map_entry_observer_t *obs)
+{
+    if (obs == NULL) return;
+    if (obs->changed_fn == NULL) return;
+
+    static struct osw_channel zero;
+    const struct osw_bss_entry *e = obs->bss ? ds_dlist_tail(&obs->bss->entry_list) : NULL;
+    const struct osw_channel *c = e ? (e->channel ?: &zero) : &zero;
+    if (osw_channel_is_equal(c, &obs->last_reported)) return;
+
+    obs->changed_fn(obs->changed_fn_priv, &obs->last_reported, c);
+    obs->last_reported = *c;
+}
+
+static void
+osw_bss_map_entry_observer_link(osw_bss_map_entry_observer_t *obs,
+                                struct osw_bss *bss)
+{
+    if (bss == NULL) return;
+    if (WARN_ON(obs->bss != NULL)) return;
+    obs->bss = bss;
+    ds_tree_insert(&bss->entry_observers, obs, obs);
+}
+
+osw_bss_map_entry_observer_t *
+osw_bss_map_entry_observer_alloc(const struct osw_hwaddr *bssid)
+{
+    if (bssid == NULL) return NULL;
+    osw_bss_map_entry_observer_t *obs = CALLOC(1, sizeof(*obs));
+    struct osw_bss *bss = ds_tree_find(&g_bss_map.bss_tree, bssid);
+    obs->bssid = *bssid;
+    ds_tree_insert(&g_bss_map.entry_observers, obs, obs);
+    osw_bss_map_entry_observer_link(obs, bss);
+    osw_bss_map_entry_observer_notify(obs);
+    return obs;
+}
+
+void
+osw_bss_map_entry_observer_set_changed_fn(osw_bss_map_entry_observer_t *obs,
+                                          osw_bss_map_entry_changed_fn_t *fn,
+                                          void *priv)
+{
+    if (obs == NULL) return;
+    if (fn == NULL) return;
+    obs->changed_fn = fn;
+    obs->changed_fn_priv = priv;
+    osw_bss_map_entry_observer_notify(obs);
+}
+
+void
+osw_bss_map_entry_observer_drop(osw_bss_map_entry_observer_t *obs)
+{
+    if (obs == NULL) return;
+    osw_bss_map_entry_observer_notify(obs);
+    if (obs->bss != NULL) {
+        ds_tree_remove(&obs->bss->entry_observers, obs);
+        obs->bss = NULL;
+    }
+    ds_tree_remove(&g_bss_map.entry_observers, obs);
+    FREE(obs);
+}
+
+static void
+osw_bss_notify_entry_observers(struct osw_bss *bss)
+{
+    struct osw_bss_map_entry_observer *obs;
+    ds_tree_foreach(&bss->entry_observers, obs) {
+        osw_bss_map_entry_observer_notify(obs);
+    }
 }
 
 static void
@@ -133,10 +228,22 @@ osw_bss_work_cb(struct osw_timer *t)
     }
 
     bss->worked_on_at_least_once = true;
+    osw_bss_notify_entry_observers(bss);
 
     if (removing) {
         ds_tree_remove(&g_bss_map.bss_tree, bss);
         osw_bss_free(bss);
+    }
+}
+
+static void
+osw_bss_link_entry_observers(struct osw_bss *bss)
+{
+    struct osw_bss_map_entry_observer *obs;
+    ds_tree_foreach(&g_bss_map.entry_observers, obs) {
+        if (osw_hwaddr_is_equal(&bss->bssid, &obs->bssid)) {
+            osw_bss_map_entry_observer_link(obs, bss);
+        }
     }
 }
 
@@ -147,6 +254,8 @@ osw_bss_alloc(const struct osw_hwaddr *bssid)
 
     memcpy(&bss->bssid, bssid, sizeof(bss->bssid));
     ds_dlist_init(&bss->entry_list, struct osw_bss_entry, bss_node);
+    ds_tree_init(&bss->entry_observers, ds_void_cmp, struct osw_bss_map_entry_observer, node_bss);
+    osw_bss_link_entry_observers(bss);
     osw_timer_init(&bss->work, osw_bss_work_cb);
 
     return bss;
@@ -160,6 +269,7 @@ osw_bss_entry_free(struct osw_bss_entry *entry)
     FREE(entry->ssid);
     FREE(entry->channel);
     FREE(entry->op_class);
+    FREE(entry->mld_addr);
 
     FREE(entry);
 }
@@ -225,6 +335,7 @@ static void
 osw_bss_map_init(void)
 {
     ds_tree_init(&g_bss_map.bss_tree, (ds_key_cmp_t*) osw_hwaddr_cmp, struct osw_bss, node);
+    ds_tree_init(&g_bss_map.entry_observers, ds_void_cmp, struct osw_bss_map_entry_observer, node_map);
     ds_dlist_init(&g_bss_map.provider_list, struct osw_bss_provider, node);
 
     ev_signal_init(&g_bss_map.sigusr1, osw_bss_map_sigusr1_cb, SIGUSR1);
@@ -321,6 +432,64 @@ osw_bss_map_entry_free(struct osw_bss_provider *provider,
     osw_bss_entry_free(entry);
 }
 
+static void
+osw_bss_map_get_channel(struct osw_bss *bss,
+                        const struct osw_channel **c,
+                        const uint8_t **op_class)
+{
+    struct osw_bss_entry *e;
+    ds_dlist_foreach(&bss->entry_list, e) {
+        if (e->channel == NULL) continue;
+        *c = e->channel;
+        *op_class = e->op_class;
+        break;
+    }
+}
+
+void
+osw_bss_map_iter(osw_bss_map_iter_fn_t *iter_fn, void *priv)
+{
+    struct osw_bss *bss;
+
+    ds_tree_foreach(&g_bss_map.bss_tree, bss) {
+        const struct osw_hwaddr *bssid = &bss->bssid;
+        const struct osw_channel *c = NULL;
+        const uint8_t *op = NULL;
+        osw_bss_map_get_channel(bss, &c, &op);
+        iter_fn(priv, bssid, c, op);
+    }
+}
+
+static const struct osw_hwaddr *
+osw_bss_map_get_mld_addr(struct osw_bss *bss)
+{
+    struct osw_bss_entry *e;
+    ds_dlist_foreach(&bss->entry_list, e) {
+        if (osw_hwaddr_is_zero(e->mld_addr ?: osw_hwaddr_zero())) continue;
+        return e->mld_addr;
+    }
+    return NULL;
+}
+
+void
+osw_bss_map_iter_mld(osw_bss_map_iter_fn_t *iter_fn,
+                     void *priv,
+                     const struct osw_hwaddr *mld_addr)
+{
+    struct osw_bss *bss;
+
+    ds_tree_foreach(&g_bss_map.bss_tree, bss) {
+        const struct osw_hwaddr *bssid = &bss->bssid;
+        const struct osw_hwaddr *mld = osw_bss_map_get_mld_addr(bss);
+        if (mld == NULL) continue;
+        if (osw_hwaddr_is_equal(mld, mld_addr) == false) continue;
+        const struct osw_channel *c = NULL;
+        const uint8_t *op = NULL;
+        osw_bss_map_get_channel(bss, &c, &op);
+        iter_fn(priv, bssid, c, op);
+    }
+}
+
 #define OSW_BSS_ENTRY_SET_DEFINITION(attr_type, attr)                       \
     void                                                                    \
     osw_bss_entry_set_ ## attr(struct osw_bss_entry* entry,                 \
@@ -372,10 +541,12 @@ osw_bss_map_entry_free(struct osw_bss_provider *provider,
 OSW_BSS_ENTRY_SET_DEFINITION(struct osw_ssid, ssid);
 OSW_BSS_ENTRY_SET_DEFINITION(struct osw_channel, channel);
 OSW_BSS_ENTRY_SET_DEFINITION(uint8_t, op_class);
+OSW_BSS_ENTRY_SET_DEFINITION(struct osw_hwaddr, mld_addr);
 
 OSW_BSS_GET_DEFINITION(struct osw_ssid, ssid);
 OSW_BSS_GET_DEFINITION(struct osw_channel, channel);
 OSW_BSS_GET_DEFINITION(uint8_t, op_class);
+OSW_BSS_GET_DEFINITION(struct osw_hwaddr, mld_addr);
 
 struct osw_bss_map_ut_lifecycle_observer {
     struct osw_bss_map_observer obs;

@@ -31,7 +31,8 @@ struct ow_steer_executor_action_acl;
 
 struct ow_steer_executor_action_acl*
 ow_steer_executor_action_acl_create(const struct osw_hwaddr *sta_addr,
-                                    const struct ow_steer_executor_action_mediator *mediator);
+                                    const struct ow_steer_executor_action_mediator *mediator,
+                                    const char *log_prefix);
 
 void
 ow_steer_executor_action_acl_free(struct ow_steer_executor_action_acl *acl_action);

@@ -26,6 +26,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <memutil.h>
 #include <const.h>
+#include <util.h>
 #include <log.h>
 #include <ds_tree.h>
 #include <osw_types.h>
@@ -47,6 +48,13 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ow_steer_executor.h"
 #include "ow_steer_priv.h"
 
+#define LOG_PREFIX(fmt, ...) "ow: steer: " fmt, ##__VA_ARGS__
+#define LOG_WITH_PREFIX(sta, fmt, ...)    \
+    LOG_PREFIX(                           \
+        "%s" fmt,                         \
+        ow_steer_sta_get_log_prefix(sta), \
+        ##__VA_ARGS__)
+
 struct ow_steer_sta_set {
     struct ds_tree sta_tree;
 };
@@ -62,15 +70,19 @@ ow_steer_sta_bss_set_cb(struct osw_bss_map_observer *observer,
 
     struct ow_steer_sta *sta = container_of(observer, struct ow_steer_sta, bss_map_observer);
     const struct osw_channel *channel = osw_bss_get_channel(bssid);
+    const struct osw_hwaddr *mld_addr = osw_bss_get_mld_addr(bssid);
 
     if (channel != NULL) {
-        LOGD("ow: steer: sta: "OSW_HWADDR_FMT" set candidate bssid: "OSW_HWADDR_FMT" channel: "OSW_CHANNEL_FMT,
-             OSW_HWADDR_ARG(&sta->mac_addr), OSW_HWADDR_ARG(bssid), OSW_CHANNEL_ARG(channel));
-        ow_steer_candidate_list_bss_set(sta->candidate_list, bssid, channel);
+        LOGD(LOG_WITH_PREFIX(sta,
+             "candidate: "OSW_HWADDR_FMT": channel: "OSW_CHANNEL_FMT,
+             OSW_HWADDR_ARG(bssid),
+             OSW_CHANNEL_ARG(channel)));
+        ow_steer_candidate_list_bss_mld_set(sta->candidate_list, bssid, channel, mld_addr);
     }
     else {
-        LOGD("ow: steer: sta: "OSW_HWADDR_FMT" unset candidate bssid: "OSW_HWADDR_FMT", missing channel",
-             OSW_HWADDR_ARG(&sta->mac_addr), OSW_HWADDR_ARG(bssid));
+        LOGD(LOG_WITH_PREFIX(sta,
+             "candidate: "OSW_HWADDR_FMT": channel: missing",
+             OSW_HWADDR_ARG(bssid)));
         ow_steer_candidate_list_bss_unset(sta->candidate_list, bssid);
     }
 
@@ -107,21 +119,20 @@ ow_steer_sta_log_candidate_list_delta(struct ow_steer_sta *sta)
                                             ? ow_steer_candidate_list_const_lookup(n, bssid)
                                             : NULL;
         if (ni == NULL) {
-            LOGI("ow: steer: sta: "OSW_HWADDR_FMT" candidate bssid: "OSW_HWADDR_FMT" %s -> null",
-                 OSW_HWADDR_ARG(&sta->mac_addr),
+            LOGI(LOG_WITH_PREFIX(sta,
+                 "candidate: "OSW_HWADDR_FMT": preference: %s -> null",
                  OSW_HWADDR_ARG(bssid),
-                 ow_steer_candidate_preference_to_cstr(opref));
+                 ow_steer_candidate_preference_to_cstr(opref)));
         }
         else {
             const enum ow_steer_candidate_preference npref = ow_steer_candidate_get_preference(ni);
             if (opref != npref) {
-                LOGI("ow: steer: sta: "OSW_HWADDR_FMT" candidate bssid: "OSW_HWADDR_FMT" %s -> %s (%s -> %s)",
-                     OSW_HWADDR_ARG(&sta->mac_addr),
+                LOGI(LOG_WITH_PREFIX(sta,"candidate: "OSW_HWADDR_FMT": preference: %s -> %s (%s -> %s)",
                      OSW_HWADDR_ARG(bssid),
                      ow_steer_candidate_preference_to_cstr(opref),
                      ow_steer_candidate_preference_to_cstr(npref),
                      ow_steer_candidate_get_reason(oi),
-                     ow_steer_candidate_get_reason(ni));
+                     ow_steer_candidate_get_reason(ni)));
             }
         }
     }
@@ -134,11 +145,10 @@ ow_steer_sta_log_candidate_list_delta(struct ow_steer_sta *sta)
                                             ? ow_steer_candidate_list_const_lookup(o, bssid)
                                             : NULL;
         if (oi == NULL) {
-            LOGI("ow: steer: sta: "OSW_HWADDR_FMT" candidate bssid: "OSW_HWADDR_FMT" null -> %s (%s)",
-                 OSW_HWADDR_ARG(&sta->mac_addr),
+            LOGI(LOG_WITH_PREFIX(sta,"candidate: "OSW_HWADDR_FMT": preference: null -> %s (%s)",
                  OSW_HWADDR_ARG(bssid),
                  ow_steer_candidate_preference_to_cstr(npref),
-                 ow_steer_candidate_get_reason(ni));
+                 ow_steer_candidate_get_reason(ni)));
         }
     }
 }
@@ -164,7 +174,7 @@ ow_steer_executor_timer_cb(struct osw_timer *timer)
 }
 
 struct ow_steer_sta*
-ow_steer_sta_create(const struct osw_hwaddr *mac_addr)
+ow_steer_sta_create(const struct osw_hwaddr *mac_addr, const char *log_prefix)
 {
     ASSERT(mac_addr != NULL, "");
 
@@ -178,9 +188,10 @@ ow_steer_sta_create(const struct osw_hwaddr *mac_addr)
 
     memcpy(&sta->mac_addr, mac_addr, sizeof(sta->mac_addr));
     sta->candidate_list = ow_steer_candidate_list_new();
-    sta->policy_stack = ow_steer_policy_stack_create(sta);
+    sta->policy_stack = ow_steer_policy_stack_create(sta, log_prefix);
     sta->executor = ow_steer_executor_create();
     sta->mutator = ow_steer_get_mutator();
+    sta->log_prefix = STRDUP(log_prefix);
     memcpy(&sta->bss_map_observer, &bss_map_observer, sizeof(sta->bss_map_observer));
 
     osw_bss_map_register_observer(&sta->bss_map_observer);
@@ -208,6 +219,7 @@ ow_steer_sta_free(struct ow_steer_sta *sta)
     osw_timer_disarm(&sta->executor_timer);
     ow_steer_candidate_assessor_free(sta->candidate_assessor);
     osw_conf_invalidate(sta->mutator);
+    FREE(sta->log_prefix);
     FREE(sta);
 }
 
@@ -237,6 +249,13 @@ ow_steer_sta_get_executor(struct ow_steer_sta *sta)
 {
     ASSERT(sta != NULL, "");
     return sta->executor;
+}
+
+const char*
+ow_steer_sta_get_log_prefix(struct ow_steer_sta *sta)
+{
+    ASSERT(sta != NULL, "");
+    return sta->log_prefix;
 }
 
 void
@@ -278,16 +297,15 @@ ow_steer_sta_sigusr1_dump(void)
 {
     osw_diag_pipe_t *pipe = osw_diag_pipe_open();
 
-    osw_diag_pipe_writef(pipe, "ow: steer: stas:");
+    osw_diag_pipe_writef(pipe, LOG_PREFIX("stas:"));
 
     struct ow_steer_sta *sta;
     ds_dlist_foreach(ow_steer_get_sta_list(), sta) {
-        osw_diag_pipe_writef(pipe, "ow: steer:   sta:");
-        osw_diag_pipe_writef(pipe, "ow: steer:     ptr: %p", sta);
-        osw_diag_pipe_writef(pipe, "ow: steer:     mac_addr: "OSW_HWADDR_FMT, OSW_HWADDR_ARG(&sta->mac_addr));
-        osw_diag_pipe_writef(pipe, "ow: steer:     candidate_list:");
+        osw_diag_pipe_writef(pipe, LOG_WITH_PREFIX(sta, "  sta:"));
+        osw_diag_pipe_writef(pipe, LOG_WITH_PREFIX(sta, "    ptr: %p", sta));
+        osw_diag_pipe_writef(pipe, LOG_WITH_PREFIX(sta, "    candidate_list:"));
         ow_steer_candidate_list_sigusr1_dump(pipe, sta->candidate_list);
-        osw_diag_pipe_writef(pipe, "ow: steer:     policy_stack:");
+        osw_diag_pipe_writef(pipe, LOG_WITH_PREFIX(sta, "    policy_stack:"));
         ow_steer_policy_stack_sigusr1_dump(pipe, sta->policy_stack);
     }
     osw_diag_pipe_close(pipe);

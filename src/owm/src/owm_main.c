@@ -31,9 +31,20 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 /* opensync */
 #include <log.h>
 #include <osw_ut.h>
+#include <memutil.h>
 
 /* onewifi */
 #include <ow_core.h>
+#include <osw_etc.h>
+#include <kv_parser.h>
+
+enum owm_cli_arg
+{
+    OWM_CLI_NONE = 0,
+    OWM_CLI_FAILURE,
+    OWM_CLI_GET,
+    OWM_CLI_EXPORT_SH
+};
 
 struct owm_main {
     bool ut_list_tests;
@@ -41,9 +52,57 @@ struct owm_main {
     bool ut_all;
     bool dont_fork;
     const char *ut_prefix;
+    enum owm_cli_arg cli_arg;
+    char *cli_key;
 };
 
 static struct owm_main g_owm_main = { 0, };
+
+static void
+print_usage(char **argv)
+{
+    fprintf(stderr, "Usage: %s [-h][-l][-t][-T][-u prefix][-U prefix] <args>\n\n", argv[0]);
+    fprintf(stderr, "Options:\n");
+    fprintf(stderr, "  -h          display this help message\n");
+    fprintf(stderr, "  -t          run all unit tests (silent)\n");
+    fprintf(stderr, "  -T          run all unit tests (verbose)\n");
+    fprintf(stderr, "  -u prefix   run unit tests starting with 'prefix' (silent)\n");
+    fprintf(stderr, "  -U prefix   rrun unit tests starting with 'prefix' (verbose)\n");
+    fprintf(stderr, "  -g          don't fork (simplify debugging with gdb) \n");
+    fprintf(stderr, "  -l          list unit tests\n");
+    fprintf(stderr, "Args:\n");
+    fprintf(stderr, "  get         get configuration value\n");
+    fprintf(stderr, "  export sh   export shell script with environment\n");
+}
+
+static void
+owm_parse_non_option_arg(struct owm_main *m, int argc, char **argv)
+{
+    if (optind >= argc)
+    {
+        m->cli_arg = OWM_CLI_NONE;
+        return;
+    }
+    if (strcmp(argv[optind], "get") == 0)
+    {
+        if (optind + 1 >= argc) goto error;
+        m->cli_arg = OWM_CLI_GET;
+        m->cli_key = argv[optind + 1];
+    }
+    else if (strcmp(argv[optind], "export") == 0)
+    {
+        if (optind + 1 >= argc) goto error;
+        if (strcmp(argv[optind + 1], "sh") == 0) m->cli_arg = OWM_CLI_EXPORT_SH;
+        else goto error;
+    }
+    else
+    {
+        goto error;
+    }
+    return;
+error:
+    m->cli_arg = OWM_CLI_FAILURE;
+}
 
 static void
 owm_main_parse_args(struct owm_main *m, int argc, char **argv)
@@ -76,18 +135,15 @@ owm_main_parse_args(struct owm_main *m, int argc, char **argv)
                 break;
             case 'h':
             default:
-                fprintf(stderr, "Usage: %s [-h][-l][-t][-T][-u prefix][-U prefix]\n\n", argv[0]);
-                fprintf(stderr, "Options:\n");
-                fprintf(stderr, "  -h          display this help message\n");
-                fprintf(stderr, "  -t          run all unit tests (silent)\n");
-                fprintf(stderr, "  -T          run all unit tests (verbose)\n");
-                fprintf(stderr, "  -u prefix   run unit tests starting with 'prefix' (silent)\n");
-                fprintf(stderr, "  -U prefix   rrun unit tests starting with 'prefix' (verbose)\n");
-                fprintf(stderr, "  -g          don't fork (simplify debugging with gdb) \n");
-                fprintf(stderr, "  -l          list unit tests\n");
-                exit(EXIT_SUCCESS);
+                goto usage;
         }
     }
+    owm_parse_non_option_arg(m, argc, argv);
+    if (m->cli_arg != OWM_CLI_FAILURE) return;
+
+usage:
+    print_usage(argv);
+    exit(EXIT_SUCCESS);
 }
 
 static void
@@ -111,11 +167,51 @@ owm_main_ut(struct owm_main *m)
     }
 }
 
+static void
+owm_main_run_get(struct owm_main *m)
+{
+    module_init();
+    OSW_MODULE_LOAD(osw_etc);
+    const char *value = osw_etc_get(m->cli_key);
+    if (value != NULL)
+        printf("%s\n", value);
+    else
+        exit(EXIT_FAILURE);
+}
+
+static void
+owm_main_run_export_sh(void)
+{
+    module_init();
+    OSW_MODULE_LOAD(osw_etc);
+    osw_etc_export_sh();
+}
+
+static void
+owm_main_run_cli(struct owm_main *m, char **argv)
+{
+    switch (m->cli_arg) {
+        case OWM_CLI_NONE:
+            return;
+        case OWM_CLI_GET:
+            owm_main_run_get(m);
+            break;
+        case OWM_CLI_EXPORT_SH:
+            owm_main_run_export_sh();
+            break;
+        case OWM_CLI_FAILURE:
+            print_usage(argv);
+            break;
+    }
+    exit(EXIT_SUCCESS);
+}
+
 int main(int argc, char **argv)
 {
     struct owm_main *m = &g_owm_main;
 
     owm_main_parse_args(m, argc, argv);
+    owm_main_run_cli(m, argv);
     ow_core_init(EV_DEFAULT);
     owm_main_ut(m);
     log_register_dynamic_severity(EV_DEFAULT);

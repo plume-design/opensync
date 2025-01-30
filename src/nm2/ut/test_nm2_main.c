@@ -44,14 +44,11 @@ int main(void)
     RUN_TEST(test_create_oftag);
     RUN_TEST(test_set_eth_devices);
     RUN_TEST(test_unset_eth_devices);
-    if (kconfig_enabled(CONFIG_TARGET_USE_NATIVE_BRIDGE))
-    {
-        RUN_TEST(test_port_table);
-        RUN_TEST(test_bridge_port_first);
-        RUN_TEST(test_bridge_port_second);
-        RUN_TEST(test_interface_table);
-        RUN_TEST(test_wifi_inet_table);
-    }
+    RUN_TEST(test_port_table);
+    RUN_TEST(test_bridge_port_first);
+    RUN_TEST(test_bridge_port_second);
+    RUN_TEST(test_interface_table);
+    RUN_TEST(test_wifi_inet_table);
 
     return ut_fini();
 }

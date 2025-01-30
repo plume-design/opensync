@@ -41,6 +41,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <osw_drv.h>
 #include <osw_drv_common.h>
 #include <osw_conf.h>
+#include <osw_etc.h>
 
 /* 3rd party */
 #include <ev.h>
@@ -182,7 +183,7 @@ sta_id_cmp(const void *a, const void *b)
 static bool
 drv_is_enabled(void)
 {
-    if (getenv("OSW_DRV_WIFIHAL_3_0_DISABLED") == NULL)
+    if (osw_etc_get("OSW_DRV_WIFIHAL_3_0_DISABLED") == NULL)
         return true;
     else
         return false;
@@ -1978,7 +1979,7 @@ try_csa(int rix, const char *phy_name, const struct osw_channel *c)
     int cn;
     int band;
 
-    if (getenv("OSW_DRV_WIFIHAL_DISABLE_PUSH_CHANNEL") != NULL)
+    if (osw_etc_get("OSW_DRV_WIFIHAL_DISABLE_PUSH_CHANNEL") != NULL)
         return false;
 
     if (WARN_ON(mhz_to_chan_band(c->control_freq_mhz, &cn, &band) == false))
@@ -2061,6 +2062,10 @@ osw_drv_request_config_cb(struct osw_drv *drv,
 
         if (pconf->tx_chainmask_changed) {
             // FIXME: Wifi HAL doesn't seem to support this.
+        }
+
+        if (pconf->radar_next_channel_changed) {
+            // FIXME: Wifi HAL doesn't seem to support this either.
         }
 
         if (pconf->radar_changed) {

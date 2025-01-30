@@ -490,7 +490,7 @@ upnp_portmap_dump_record(struct mapped_port_t *rec)
     snprintf(mac_str, sizeof(mac_str), PRI_os_macaddr_t, FMT_os_macaddr_t(rec->device_id));
 
     if (rec->intClient)
-        sockaddr_storage_str(rec->intClient, ip_str);
+        sockaddr_storage_str(rec->intClient, ip_str, sizeof(ip_str));
     else
         STRSCPY(ip_str, "NULL");
 

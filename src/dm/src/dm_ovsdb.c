@@ -291,47 +291,12 @@ bool act_check_id (void)
 
 bool dm_ovsdb_ovs_version_get(char *buff, size_t buffsz)
 {
-    FILE *fcmd = NULL;
-    bool ret = true;
-    char cmd[TARGET_BUFF_SZ];
-    pid_t     pid;
-
-    pid = os_name_to_pid("ovs-vswitchd");
-    if (pid == -1) {
-        // "N/A" - indicates that OpenSync node is running in Linux SDN mode
-        strscpy(buff, "N/A", buffsz);
-        return ret;
-    }
-
-    snprintf(cmd, sizeof(cmd), "ovs-vswitchd -V | awk '{print $NF}'");
-    fcmd = popen(cmd, "r");
-    if (fcmd ==  NULL) {
-        LOGN("%s(): Error executing command '%s' err: %s", __func__, cmd, strerror(errno));
-        ret = false;
-        goto exit;
-    }
-
-    LOGT("%s(): executing cmd: %s", __func__, cmd);
-    while (fgets(buff, buffsz, fcmd) != NULL) {
-        LOGI("%s: ovs version: %s", __func__, buff);
-    }
-
-    if (ferror(fcmd)) {
-        LOGN("%s(): fgets() failed", __func__);
-        ret = false;
-        goto exit;
-    }
-
-    pclose(fcmd);
-    fcmd = NULL;
-
-    strchomp(buff, " \t\r\n");
-
-exit:
-    if (fcmd != NULL) {
-        pclose(fcmd);
-    }
-    return ret;
+    /*
+     * OVS bridge support has been droped with OpenSync release 6.6,
+     * therefore we always return N/A as the OVS version.
+     */
+    strscpy(buff, "N/A", buffsz);
+    return true;
 }
 
 static void fill_entity_data(struct schema_AWLAN_Node *s_awlan_node)

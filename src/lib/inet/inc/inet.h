@@ -86,6 +86,8 @@ struct __inet_state
     osn_mac_addr_t          in_macaddr;
     int                     in_speed;
     osn_duplex_t            in_duplex;
+    osn_ip_addr_t           in_dns1;
+    osn_ip_addr_t           in_dns2;
 };
 
 #define INET_STATE_INIT (inet_state_t)  \
@@ -97,6 +99,8 @@ struct __inet_state
     .in_macaddr = OSN_MAC_ADDR_INIT,    \
     .in_speed = OSN_NETIF_SPEED_INIT,   \
     .in_duplex = OSN_NETIF_DUPLEX_INIT, \
+    .in_dns1 = OSN_IP_ADDR_INIT,        \
+    .in_dns2 = OSN_IP_ADDR_INIT,        \
 }
 
 typedef struct __inet inet_t;

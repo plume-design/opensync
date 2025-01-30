@@ -274,7 +274,7 @@ static inline char *radio_get_name_from_cfg(
     static char name[RADIO_IFNAME_LEN + 1 + RADIO_NAME_LEN]; // For space between the names
 
     if (NULL == radio_cfg) {
-        return NULL;
+        return "";
     }
     memset (name, 0, sizeof(name));
 
@@ -363,7 +363,7 @@ static inline char * radio_get_scan_name_from_type(
             break;
     }
 
-    return NULL;
+    return "";
 }
 
 static inline radio_scan_type_t radio_get_scan_type_from_index(

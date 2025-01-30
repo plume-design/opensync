@@ -50,13 +50,14 @@ static void nm2_port_release(struct nm2_port *port)
     /* destroy the reference link */
     reflink_fini(&port->port_reflink);
 
+    /* clean up */
+    ds_tree_remove(&nm2_port_list, port);
+    uuidset_fini(&port->port_interfaces);
+
     /* Destroy the inet object */
     LOGD("%s(): freeing port_inet %p for %s", __func__, port->port_inet, port->port_name);
     inet_del(port->port_inet);
 
-    /* clean up */
-    ds_tree_remove(&nm2_port_list, port);
-    uuidset_fini(&port->port_interfaces);
     nm2_port_free(port);
 }
 

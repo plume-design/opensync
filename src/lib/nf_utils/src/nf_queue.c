@@ -72,11 +72,11 @@ nf_ct_mark_str(uint8_t mark)
 
     if (mark == CT_MARK_INSPECT)
     {
-        sprintf(buf, "%d %s", mark, "Inspect");
+        SPRINTF(buf, "%d %s", mark, "Inspect");
     }
     else
     {
-        sprintf(buf, "%d %s", mark, (mark == CT_MARK_DROP ? "Drop" : "Allow"));
+        SPRINTF(buf, "%d %s", mark, (mark == CT_MARK_DROP ? "Drop" : "Allow"));
     }
 
     return buf;

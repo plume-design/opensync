@@ -101,7 +101,7 @@ static void callback_Node_Config(
     if (strcmp(config->key, KEY_HW_ACC_CFG) == 0)
     {
         if (mon->mon_type == OVSDB_UPDATE_DEL)
-            strcpy(config->value, VAL_HW_ACC_ON);
+            STRSCPY(config->value, VAL_HW_ACC_ON);
 
         // Set enable/disable flag:
         if (strcmp(config->value, VAL_HW_ACC_ON) == 0)

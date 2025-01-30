@@ -50,6 +50,13 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "fcm_filter.h"
 #include "memutil.h"
 #include "data_report_tags.h"
+#include "kconfig.h"
+
+#if defined(CONFIG_FCM_NO_DSO)
+#include "ct_stats.h"
+#include "lan_stats.h"
+#include "intf_stats.h"
+#endif
 
 static fcm_mgr_t fcm_mgr;
 
@@ -326,6 +333,59 @@ void init_collector_plugin(fcm_collector_t *collector)
     gk_curl_easy_init(&mgr->ecurl);
 }
 
+
+#if defined(CONFIG_FCM_NO_DSO)
+static struct plugin_init_table plugin_init_table[] =
+{
+    {
+        .name = "ct_stats",
+        .init = ct_stats_plugin_init,
+    },
+    {
+        .name = "intfstats",
+        .init = intf_stats_plugin_init,
+    },
+    {
+        .name = "lanstats",
+        .init = lan_stats_plugin_init,
+    }
+};
+
+static bool
+fcm_match_init(struct schema_FCM_Collector_Config *conf, fcm_collector_t *collector)
+{
+    char *prefix;
+    size_t i;
+    int ret;
+
+    if (conf == NULL) return false;
+
+    if (!strlen(conf->name)) return false;
+
+    for (i = 0; i < ARRAY_SIZE(plugin_init_table); i++)
+    {
+        prefix = plugin_init_table[i].name;
+        ret = strncmp(conf->name, prefix, strlen(prefix));
+        if (ret != 0) continue;
+
+        collector->plugin_init = plugin_init_table[i].init;
+        if (fcm_apply_report_config_changes(collector))
+            init_collector_plugin(collector);
+        else
+            LOGD("%s: Report config not available at plugin_init time: %s",
+                __func__, collector->collect_conf.name);
+    }
+
+    return true;
+}
+#else
+static bool
+fcm_match_init(struct schema_FCM_Collector_Config *conf, fcm_collector_t *collector)
+{
+    return false;
+}
+#endif
+
 void init_pending_collector_plugin(ds_tree_t *collect_tree)
 {
     fcm_collector_t *collector = NULL;
@@ -567,6 +627,11 @@ bool init_collect_config(struct schema_FCM_Collector_Config *conf)
     fcm_get_plugin_configs(collector, conf);
     collector_evinit(collector, collect_conf);
 
+    if (kconfig_enabled(CONFIG_FCM_NO_DSO))
+    {
+        return fcm_match_init(conf, collector);
+    }
+
     dlerror();
     collector->handle = dlopen(collector->dso_path, RTLD_NOW);
     if (collector->handle == NULL)
@@ -636,7 +701,7 @@ void delete_collect_config(struct schema_FCM_Collector_Config *conf)
         collector->plugin.close_plugin(&collector->plugin);
         LOGD("%s: Plugin %s is closed\n", __func__, conf->name);
     }
-    dlclose(collector->handle);
+    if (!kconfig_enabled(CONFIG_FCM_NO_DSO)) dlclose(collector->handle);
 
     session = collector->plugin.session;
     c_client = collector->plugin.collect_client;

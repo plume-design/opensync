@@ -154,7 +154,7 @@ int main(int argc, char ** argv)
 
     neigh_table_init_monitor(loop, false, neigh_table_events);
 
-    if (nf_ct_init(loop) < 0)
+    if (nf_ct_init(loop, NULL) < 0)
     {
         LOGE("Eror initializing conntrack\n");
         return -1;

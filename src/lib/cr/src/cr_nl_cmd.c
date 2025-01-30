@@ -128,7 +128,7 @@ static bool cr_nl_cmd_run_notimeout(cr_nl_cmd_t *cmd)
 
     while (cmd->finished == false)
     {
-        for (cmd->budget = cmd->budget_max; cmd->budget > 0; cmd->budget--)
+        for (cmd->budget = cmd->budget_max; cmd->budget > 0 && cmd->finished == false; cmd->budget--)
         {
             cmd->recv_err = nl_recvmsgs(cmd->sock, cmd->cb);
 
@@ -225,6 +225,7 @@ cr_nl_cmd_t *cr_nl_cmd(cr_context_t *context, int protocol, struct nl_msg *msg)
 
 bool cr_nl_cmd_is_ok(cr_nl_cmd_t *cmd)
 {
+    if (cmd == NULL) return false;
     return cmd->ok;
 }
 
@@ -249,13 +250,13 @@ void cr_nl_cmd_log(cr_nl_cmd_t *cmd, char *buf, size_t buf_len)
     }
     else if (cmd->recv_err < 0)
     {
-        snprintf(buf, buf_len, "%sfailed to send: %d", name, cmd->send_err);
+        snprintf(buf, buf_len, "%sfailed to recv: %d", name, cmd->recv_err);
     }
     else if (cmd->error != 0)
     {
         snprintf(buf, buf_len, "%serror response: %d", name, cmd->error);
     }
-    else if (cmd->finished != 0)
+    else if (cmd->finished != true)
     {
         snprintf(buf, buf_len, "%stimed out", name);
     }
@@ -291,4 +292,17 @@ struct nl_msg **cr_nl_cmd_resps(cr_nl_cmd_t *cmd)
 {
     if (cmd == NULL) return NULL;
     return cmd->msgs;
+}
+
+struct nlattr *cr_nl_cmd_genl_attr(cr_nl_cmd_t *cmd, int attr_max, int attr)
+{
+    struct nl_msg **msgs = cr_nl_cmd_resps(cmd);
+    struct nlattr *tb[attr_max + 1];
+    while (msgs && *msgs)
+    {
+        const int err = genlmsg_parse(nlmsg_hdr(*msgs), 0, tb, attr_max, NULL);
+        if (err == 0 && tb[attr] != NULL) return tb[attr];
+        msgs++;
+    }
+    return NULL;
 }

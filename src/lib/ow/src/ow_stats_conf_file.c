@@ -31,6 +31,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <log.h>
 #include <osw_module.h>
 #include <ow_stats_conf.h>
+#include <osw_etc.h>
 #include <ev.h>
 
 #define NOTE(fmt, ...) LOGI("%s:%d:%s(): " fmt, __FILE__, __LINE__, __func__, ##__VA_ARGS__)
@@ -172,7 +173,7 @@ ow_stats_conf_file_start(EV_P_ const char *path)
 
 OSW_MODULE(ow_stats_conf_file)
 {
-    const char *path = getenv("OW_STATS_CONF_FILE_PATH");
+    const char *path = osw_etc_get("OW_STATS_CONF_FILE_PATH");
     if (path == NULL) return NULL;
     if (strlen(path) == 0) return NULL;
     OSW_MODULE_LOAD(ow_stats_conf);

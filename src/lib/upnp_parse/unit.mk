@@ -29,7 +29,7 @@
 ###############################################################################
 UNIT_NAME := fsm_upnp
 
-UNIT_DISABLE := $(if $(CONFIG_MANAGER_FSM),n,y)
+UNIT_DISABLE := $(if $(CONFIG_LIB_LEGACY_FSM_UPNP_PARSER),n,y)
 
 ifeq ($(CONFIG_FSM_NO_DSO),y)
 	UNIT_TYPE := LIB

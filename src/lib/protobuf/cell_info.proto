@@ -36,6 +36,8 @@ message CellularCommonHeader {
   string imsi = 6;
   string iccid = 7;
   string modem_info = 8;
+  repeated int32 nrg5_bands = 9;
+  repeated int32 lte_bands = 10;
 }
 
 // Network Registration Status

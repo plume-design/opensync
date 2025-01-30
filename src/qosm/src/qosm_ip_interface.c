@@ -25,8 +25,13 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 #include "qosm.h"
-
+#include "qosm_qos.h"
 #include "qosm_internal.h"
+
+#include "osn_qos.h"
+#include "osn_qdisc.h"
+#include "osn_adaptive_qos.h"
+
 #include "memutil.h"
 
 static void callback_IP_Interface(
@@ -39,11 +44,15 @@ static reflink_fn_t qosm_ip_interface_reflink_fn;
 static reflink_fn_t qosm_ip_interface_qos_reflink_fn;
 static int qosm_ip_interface_queue_prio_cmp(const void *a, const void *b);
 static void qosm_on_qos_event(const char *if_name, enum osn_qos_event status);
+static bool qosm_ip_interface_has_adaptive_qos(struct qosm_ip_interface *ipi, const char *direction);
+static void qosm_ip_interface_schedule_reconfiguration(struct qosm_ip_interface *ipi);
 
 static ds_tree_t qosm_ip_interface_list = DS_TREE_INIT(
         ds_str_cmp,
         struct qosm_ip_interface,
         ipi_tnode);
+
+static osn_adaptive_qos_t *qosm_adpt_qos;
 
 void qosm_ip_interface_init(void)
 {
@@ -94,6 +103,27 @@ void qosm_ip_interface_reflink_fn(reflink_t *ref, reflink_t *sender)
         ipi->ipi_qos = NULL;
     }
 
+    if (ipi->ipi_qdisc_cfg != NULL)
+    {
+        LOG(DEBUG, "qosm: %s: Removing qdisc configuration.", ipi->ipi_ifname);
+        osn_qdisc_cfg_del(ipi->ipi_qdisc_cfg);
+        ipi->ipi_qdisc_cfg = NULL;
+    }
+
+    if (qosm_ip_interface_has_adaptive_qos(ipi, NULL))
+    {
+        LOG(DEBUG, "qosm: %s: IP_Interface deleted and had Adaptive QoS config: Stop Adaptive QoS", ipi->ipi_ifname);
+
+        /*
+         * If this interface has Adaptive QoS config, then stop Adaptive QoS.
+         *
+         * Note: Adaptive QoS is /not/ per interface, but is per 2 interfaces, but as soon
+         * as one interface that previously had Adaptive QoS config defined, the Adaptive QoS
+         * config needs to be stopped.
+        */
+        qosm_adaptive_qos_stop();
+    }
+
     if (ipi->ipi_interface_qos != NULL)
     {
         reflink_disconnect(
@@ -110,6 +140,25 @@ void qosm_ip_interface_reflink_fn(reflink_t *ref, reflink_t *sender)
     FREE(ipi);
 }
 
+/* Schedule reconfiguration for this interface. */
+static void qosm_ip_interface_schedule_reconfiguration(struct qosm_ip_interface *ipi)
+{
+    bool has_adaptive_qos_cfg;
+
+    /* Check if there is Adaptive QoS config for this interface: */
+    has_adaptive_qos_cfg = qosm_ip_interface_has_adaptive_qos(ipi, "DL") || qosm_ip_interface_has_adaptive_qos(ipi, "UL");
+
+    /* Schedule reconfiguration: */
+    if (has_adaptive_qos_cfg)
+    {
+        qosm_mgr_schedule_adaptive_qos_config(&ipi->ipi_uuid);
+    }
+    else
+    {
+        qosm_mgr_schedule_qos_config(&ipi->ipi_uuid);
+    }
+}
+
 void qosm_ip_interface_qos_reflink_fn(reflink_t *ref, reflink_t *sender)
 {
     struct qosm_ip_interface *ipi = CONTAINER_OF(ref, struct qosm_ip_interface, ipi_interface_qos_reflink);
@@ -122,7 +171,164 @@ void qosm_ip_interface_qos_reflink_fn(reflink_t *ref, reflink_t *sender)
     LOG(INFO, "qosm: QoS: %s: %s  Schedule reconfiguration", ipi->ipi_ifname, ipi->ipi_uuid.uuid);
 
     /* Schedule reconfiguration: */
-    qosm_mgr_schedule_qos_config(&ipi->ipi_uuid);
+    qosm_ip_interface_schedule_reconfiguration(ipi);
+}
+
+/* Apply Interface_QoS/Interface_Queue configuration. */
+static bool qosm_interface_queue_config_apply(
+        struct qosm_ip_interface *ipi,
+        struct qosm_interface_qos *qos,
+        bool *qos_qdisc_cfg_exists)
+{
+    struct qosm_interface_queue *que;
+    int qi;
+
+    /*
+     * Some backends require that queues are applied ordered by priority, where
+     * the highest priority (lowest number) comes first.
+     */
+    qsort(
+            qos->qos_interface_queue,
+            qos->qos_interface_queue_len,
+            sizeof(qos->qos_interface_queue[0]),
+            qosm_ip_interface_queue_prio_cmp);
+
+    /* OSN QoS config object: */
+    ipi->ipi_qos = osn_qos_new(ipi->ipi_ifname);
+    if (ipi->ipi_qos == NULL)
+    {
+        LOG(ERR, "qosm: %s: Error creating QoS configuration object.", ipi->ipi_ifname);
+        return false;
+    }
+
+    /* OVSDB QoS config exists && the underlying QoS backend is qdisc-based. */
+    *qos_qdisc_cfg_exists = osn_qos_is_qdisc_based(ipi->ipi_qos);
+
+    /* Set QoS notify event callback for this interface.
+     *
+     * This is currently needed only if the lower layer osn_qos reports an event
+     * that a reconfiguration may be needed for some reason. In that case we
+     * forward the reconfiguration request to the upper layer qosm_mgr that will
+     * do the reconfiguration (including any dependencies, for instance tc-filters).
+     */
+    osn_qos_notify_event_set(ipi->ipi_qos, qosm_on_qos_event);
+
+    if (!osn_qos_begin(ipi->ipi_qos, NULL))
+    {
+        LOG(ERR, "qosm: %s: Error initializing QoS configuration.", ipi->ipi_ifname);
+        return false;
+    }
+
+    for (qi = 0; qi < qos->qos_interface_queue_len; qi++)
+    {
+        struct osn_qos_queue_status qqs;
+        bool rc;
+
+        que = qos->qos_interface_queue[qi];
+
+        LOG(INFO, "qosm: %s: Adding queue tag:%s prio:%d bandwidth:%d bandwidth_ceil:%d",
+                ipi->ipi_ifname, que->que_tag, que->que_priority, que->que_bandwidth, que->que_bandwidth_ceil);
+
+        rc = osn_qos_queue_begin(
+                ipi->ipi_qos,
+                que->que_priority,
+                que->que_bandwidth,
+                que->que_bandwidth_ceil,
+                que->que_tag[0] == '\0' ? NULL : que->que_tag,
+                &que->que_other_config,
+                &qqs);
+
+        if (!qosm_interface_queue_set_status(que, rc, &qqs))
+        {
+            LOG(WARN, "qosm: %s: Error updating queue status.", ipi->ipi_ifname);
+        }
+
+        if (!rc)
+        {
+            LOG(ERR, "qosm: %s: Error adding queue with tag: %s.",
+                    ipi->ipi_ifname, que->que_tag);
+            return false;
+        }
+
+        LOG(INFO, "qosm: %s: Registered queue tag:%s mark:%u",
+                ipi->ipi_ifname, que->que_tag, qqs.qqs_fwmark);
+
+        if (!osn_qos_queue_end(ipi->ipi_qos))
+        {
+            LOG(ERR, "qosm: %s: Error finalizing queue (tag: %s) config.",
+                    ipi->ipi_ifname, que->que_tag);
+            return false;
+        }
+    }
+
+    if (!osn_qos_end(ipi->ipi_qos))
+    {
+        LOG(ERR, "qosm: %s: Error finalizing QoS configuration.", ipi->ipi_ifname);
+        return false;
+    }
+
+    if (!osn_qos_apply(ipi->ipi_qos))
+    {
+        LOG(ERR, "qosm: %s: Error applying QoS configuration.", ipi->ipi_ifname);
+        return false;
+    }
+    return true;
+}
+
+/* Apply Interface_QoS/Linux_Queue configuration. */
+static bool qosm_linux_queue_config_apply(
+        struct qosm_ip_interface *ipi,
+        struct qosm_interface_qos *qos,
+        bool *qos_qdisc_cfg_exists)
+{
+    struct qosm_linux_queue *que;
+    int qi;
+
+    /* OSN QDISC config object: */
+    ipi->ipi_qdisc_cfg = osn_qdisc_cfg_new(ipi->ipi_ifname);
+    if (ipi->ipi_qdisc_cfg == NULL)
+    {
+        LOG(ERR, "qosm: %s: Error creating QDISC configuration object.", ipi->ipi_ifname);
+        return false;
+    }
+
+    /* OVSDB QoS config exists && the underlying QoS backend is qdisc-based.
+     *
+     * In this case the underlying backend is inherently qdisc-based.
+     */
+    *qos_qdisc_cfg_exists = true;
+
+    /* Add all linux queues config parameters (all qdisc/class parameters)*/
+    for (qi = 0; qi < qos->qos_linux_queue_len; qi++)
+    {
+        que = qos->qos_linux_queue[qi];
+
+        struct osn_qdisc_params qdisc_params =
+            {
+                .oq_id = que->que_id,
+                .oq_parent_id = que->que_parent_id,
+                .oq_qdisc = que->que_qdisc,
+                .oq_params = que->que_params,
+                .oq_is_class = que->que_is_class
+            };
+
+        if (!osn_qdisc_cfg_add(ipi->ipi_qdisc_cfg, &qdisc_params))
+        {
+            LOG(ERR, "qosm: %s: Error adding qdisc config parameters: %s", ipi->ipi_ifname, FMT_osn_qdisc_params(qdisc_params));
+            return false;
+        }
+    }
+
+    /* Apply the QDISC configuration: */
+    if (!osn_qdisc_cfg_apply(ipi->ipi_qdisc_cfg))
+    {
+        LOG(ERR, "qosm: %s: Error applying qdisc configuration", ipi->ipi_ifname);
+
+        osn_qdisc_cfg_del(ipi->ipi_qdisc_cfg);
+        ipi->ipi_qdisc_cfg = NULL;
+        return false;
+    }
+    return true;
 }
 
 /**
@@ -137,9 +343,7 @@ bool qosm_qos_config_apply(const ovs_uuid_t *uuid, bool *qos_qdisc_cfg_exists)
 {
     struct qosm_ip_interface *ipi;
     struct qosm_interface_qos *qos;
-    struct qosm_interface_queue *que;
     bool qos_status = false;
-    int qi;
 
     *qos_qdisc_cfg_exists = false;
 
@@ -159,22 +363,20 @@ bool qosm_qos_config_apply(const ovs_uuid_t *uuid, bool *qos_qdisc_cfg_exists)
         ipi->ipi_qos = NULL;
     }
 
+    // If this interface has QDISC configuration applied from before, delete the old config first:
+    if (ipi->ipi_qdisc_cfg != NULL)
+    {
+        LOG(DEBUG, "qosm: %s: Removing old qdisc configuration.", ipi->ipi_ifname);
+        osn_qdisc_cfg_del(ipi->ipi_qdisc_cfg);
+        ipi->ipi_qdisc_cfg = NULL;
+    }
+
     qos = ipi->ipi_interface_qos; // QoS config from OVSDB
     if (qos == NULL)
     {
-        LOG(NOTICE, "qosm: %s: No QoS configuration.", ipi->ipi_ifname);
+        LOG(NOTICE, "qosm: %s: No Interface_QoS configuration.", ipi->ipi_ifname);
         return true;
     }
-
-    /*
-     * Some backends require that queues are applied ordered by priority, where
-     * the highest priority (lowest number) comes first.
-     */
-    qsort(
-            qos->qos_interface_queue,
-            qos->qos_interface_queue_len,
-            sizeof(qos->qos_interface_queue[0]),
-            qosm_ip_interface_queue_prio_cmp);
 
     /* Clear the current status */
     if (!qosm_interface_qos_set_status(qos, NULL))
@@ -182,92 +384,39 @@ bool qosm_qos_config_apply(const ovs_uuid_t *uuid, bool *qos_qdisc_cfg_exists)
         LOG(WARN, "qosm: %s: Error updating Interface_QoS status.", ipi->ipi_ifname);
     }
 
-    /* OSN QoS config object: */
-    ipi->ipi_qos = osn_qos_new(ipi->ipi_ifname);
-    if (ipi->ipi_qos == NULL)
+    /* Configurations of Interface_QoS->queues and Interface_QoS->lnx_queues are mutually exclusive: */
+    if (qos->qos_interface_queue_len > 0 && qos->qos_linux_queue_len > 0)
     {
-        LOG(ERR, "qosm: %s: Error creating QoS configuration object.", ipi->ipi_ifname);
+        LOG(ERR, "qosm: %s: Both Interface_QoS->queues and Interface_QoS->lnx_queues configured at the same time",
+                ipi->ipi_ifname);
+        qos_status = false;
         goto error;
     }
 
-    /* OVSDB QoS config exists && the underlying QoS backend is qdisc-based. */
-    *qos_qdisc_cfg_exists = osn_qos_is_qdisc_based(ipi->ipi_qos);
-
-    /* Set QoS notify event callback for this interface.
-     *
-     * This is currently needed only if the lower layer osn_qos reports an event
-     * that a reconfiguration may be needed for some reason. In that case we
-     * forward the reconfiguration request to the upper layer qosm_mgr that will
-     * do the reconfiguration (including any dependencies, for instance tc-filters).
-     */
-    osn_qos_notify_event_set(ipi->ipi_qos, qosm_on_qos_event);
-
-    if (!osn_qos_begin(ipi->ipi_qos, NULL))
+    /* Apply the configuration: */
+    if (qos->qos_interface_queue_len > 0)
     {
-        LOG(ERR, "qosm: %s: Error initializing QoS configuration.", ipi->ipi_ifname);
-        goto error;
+        LOG(INFO, "qosm: %s: Applying Interface_QoS/Interface_Queue configuration.", ipi->ipi_ifname);
+
+        qos_status = qosm_interface_queue_config_apply(ipi, qos, qos_qdisc_cfg_exists);
+    }
+    else if (qos->qos_linux_queue_len > 0)
+    {
+        LOG(INFO, "qosm: %s: Applying Interface_QoS/Linux_Queue configuration.", ipi->ipi_ifname);
+
+        qos_status = qosm_linux_queue_config_apply(ipi, qos, qos_qdisc_cfg_exists);
+    }
+    if (!qos_status)
+    {
+        LOG(ERROR, "qosm: %s: Error applying QoS configuration", ipi->ipi_ifname);
     }
 
-    for (qi = 0; qi < qos->qos_interface_queue_len; qi++)
-    {
-        struct osn_qos_queue_status qqs;
-        bool rc;
-
-        que = qos->qos_interface_queue[qi];
-
-        LOG(INFO, "qosm: %s: Adding queue tag:%s prio:%d bandwidth:%d",
-                ipi->ipi_ifname, que->que_tag, que->que_priority, que->que_bandwidth);
-
-        rc = osn_qos_queue_begin(
-                ipi->ipi_qos,
-                que->que_priority,
-                que->que_bandwidth,
-                que->que_tag[0] == '\0' ? NULL : que->que_tag,
-                &que->que_other_config,
-                &qqs);
-
-        if (!qosm_interface_queue_set_status(que, rc, &qqs))
-        {
-            LOG(WARN, "qosm: %s: Error updating queue status.", ipi->ipi_ifname);
-        }
-
-        if (!rc)
-        {
-            LOG(ERR, "qosm: %s: Error adding queue with tag: %s.",
-                    ipi->ipi_ifname, que->que_tag);
-            goto error;
-        }
-
-        LOG(INFO, "qosm: %s: Registered queue tag:%s mark:%u",
-                ipi->ipi_ifname, que->que_tag, qqs.qqs_fwmark);
-
-        if (!osn_qos_queue_end(ipi->ipi_qos))
-        {
-            LOG(ERR, "qosm: %s: Error finalizing queue (tag: %s) config.",
-                    ipi->ipi_ifname, que->que_tag);
-            goto error;
-        }
-    }
-
-    if (!osn_qos_end(ipi->ipi_qos))
-    {
-        LOG(ERR, "qosm: %s: Error finalizing QoS configuration.", ipi->ipi_ifname);
-        goto error;
-    }
-
-    if (!osn_qos_apply(ipi->ipi_qos))
-    {
-        LOG(ERR, "qosm: %s: Error applying QoS configuration.", ipi->ipi_ifname);
-        goto error;
-    }
-
-    qos_status = true;
 error:
+    /* Set Interface_QoS status: */
     if (!qosm_interface_qos_set_status(qos, qos_status ? "success" : "error"))
     {
         LOG(WARN, "qosm: %s: Error updating Interface_QoS status.", ipi->ipi_ifname);
     }
-
     return qos_status;
 }
 
@@ -331,7 +480,7 @@ void callback_IP_Interface(
     LOG(INFO, "qosm: QoS: %s: %s: Schedule reconfiguration", ipi->ipi_ifname, ipi->ipi_uuid.uuid);
 
     /* Schedule reconfiguration: */
-    qosm_mgr_schedule_qos_config(&ipi->ipi_uuid);
+    qosm_ip_interface_schedule_reconfiguration(ipi);
 }
 
 int qosm_ip_interface_queue_prio_cmp(
@@ -378,10 +527,187 @@ static void qosm_on_qos_event(const char *if_name, enum osn_qos_event event)
         /*
          * Schedule a reconfiguration for this interface with qosm_mgr:
          */
-        qosm_mgr_schedule_qos_config(&ipi->ipi_uuid);
+        qosm_ip_interface_schedule_reconfiguration(ipi);
     }
     else
     {
         LOG(WARN, "qosm: %s: Reconfiguration needed event: Unknown QoS status notification: %d", if_name, event);
     }
+}
+
+/* Does this interface has Adaptive QoS config attached/defined? */
+static bool qosm_ip_interface_has_adaptive_qos(struct qosm_ip_interface *ipi, const char *direction)
+{
+    bool has_adaptive_qos_cfg = false;
+
+    if (direction != NULL)
+    {
+        if (!(strcmp(direction, "UL") == 0 || strcmp(direction, "DL") == 0))
+        {
+            LOG(ERR, "qosm: Invalid direction for Adaptive QoS config: %s", direction);
+            return false;
+        }
+
+    }
+
+    if (ipi->ipi_interface_qos != NULL && ipi->ipi_interface_qos->qos_adaptive_qos != NULL)
+    {
+        ds_map_str_t *qos_adaptive_qos = ipi->ipi_interface_qos->qos_adaptive_qos;
+
+        if (!ds_map_str_empty(qos_adaptive_qos))
+        {
+            if (direction != NULL) // interested in specific direction
+            {
+                char *val;
+                if (ds_map_str_find(qos_adaptive_qos, "direction", &val) && strcmp(val, direction) == 0)
+                {
+                    has_adaptive_qos_cfg = true;
+                }
+            }
+            else // just check if adaptive_qos has any key/values defined
+            {
+                has_adaptive_qos_cfg = true;
+            }
+        }
+    }
+    return has_adaptive_qos_cfg;
+}
+
+/* Check if Adaptive QoS is defined for direction @param direction (possible values: "UL" or "DL").
+ * If such an interface found, return the qosm_ip_interface for it.
+ */
+static struct qosm_ip_interface *qosm_adaptive_qos_get_ipi(const char *direction)
+{
+    struct qosm_ip_interface *ipi;
+
+    if (direction == NULL) return NULL;
+
+    ds_tree_foreach(&qosm_ip_interface_list, ipi)
+    {
+        if (qosm_ip_interface_has_adaptive_qos(ipi, direction))
+        {
+            return ipi;
+        }
+    }
+    return NULL;
+}
+
+static bool qosm_adaptive_qos_get_config_int_param(ds_map_str_t *qos_adaptive_qos, const char *key, int *value)
+{
+    char *val;
+
+    if (ds_map_str_find(qos_adaptive_qos, key, &val))
+    {
+        *value = atoi(val);
+        return true;
+    }
+    return false;
+}
+
+/* Check if there are min_rate, base_rate, max_rate defined in adaptive_qos config for this interface,
+ * if yes, set them to OSN adaptive_qos config. */
+static bool qosm_adaptive_qos_config_set(struct qosm_ip_interface *ipi, const char *direction)
+{
+    int min_rate;
+    int base_rate;
+    int max_rate;
+    bool rv = true;
+
+    if (qosm_adpt_qos == NULL) return false;
+    if (ipi->ipi_interface_qos == NULL || ipi->ipi_interface_qos->qos_adaptive_qos == NULL) return false;
+
+    rv &= qosm_adaptive_qos_get_config_int_param(ipi->ipi_interface_qos->qos_adaptive_qos, "min_rate", &min_rate);
+    rv &= qosm_adaptive_qos_get_config_int_param(ipi->ipi_interface_qos->qos_adaptive_qos, "base_rate", &base_rate);
+    rv &= qosm_adaptive_qos_get_config_int_param(ipi->ipi_interface_qos->qos_adaptive_qos, "max_rate", &max_rate);
+    if (!rv)
+    {
+        LOG(INFO, "qosm: adaptive_qos: %s: direction=%s: min_rate/base_rate/max_rate not defined. Defaults will be used.", ipi->ipi_ifname, direction);
+        return true;
+    }
+
+    LOG(INFO, "qosm: adaptive_qos: %s: direction=%s: Setting shaper parameters: min_rate=%d, base_rate=%d, max_rate=%d",
+        ipi->ipi_ifname, direction, min_rate, base_rate, max_rate);
+
+    if (strcmp(direction, "DL") == 0)
+    {
+        rv &= osn_adaptive_qos_DL_shaper_params_set(qosm_adpt_qos, min_rate, base_rate, max_rate);
+    }
+    else if (strcmp(direction, "UL") == 0)
+    {
+        rv &= osn_adaptive_qos_UL_shaper_params_set(qosm_adpt_qos, min_rate, base_rate, max_rate);
+    }
+    else
+    {
+        rv = false;
+    }
+
+    if (!rv)
+    {
+        LOG(ERR, "qosm: adaptive_qos: %s: direction=%s: Error setting shaper parameters", ipi->ipi_ifname, direction);
+    }
+    return rv;
+}
+
+/* Apply Adaptive QoS (Interface_QoS->adaptive_qos) configuration. */
+bool qosm_adaptive_qos_apply()
+{
+    struct qosm_ip_interface *ipi_dl;
+    struct qosm_ip_interface *ipi_ul;
+
+    ipi_dl = qosm_adaptive_qos_get_ipi("DL");
+    ipi_ul = qosm_adaptive_qos_get_ipi("UL");
+
+    if (ipi_dl == NULL || ipi_ul == NULL)
+    {
+        LOG(DEBUG, "qosm: No Adaptive QoS configuration");
+        return true;
+    }
+
+    LOG(INFO, "qosm: Adaptive QoS defined: DL:%s, UL:%s. Applying.", ipi_dl->ipi_ifname, ipi_ul->ipi_ifname);
+
+    /* Just in case, if any previous Adaptive QoS still running: stop it: */
+    qosm_adaptive_qos_stop();
+
+    /* Create OSN Adaptive QoS object: */
+    qosm_adpt_qos = osn_adaptive_qos_new(ipi_dl->ipi_ifname, ipi_ul->ipi_ifname);
+    if (qosm_adpt_qos == NULL)
+    {
+        LOG(ERR, "qosm: Error creating OSN Adaptive QoS object");
+        return false;
+    }
+
+    /* Set adaptive shaper parameters: */
+    if (!qosm_adaptive_qos_config_set(ipi_dl, "DL") || !qosm_adaptive_qos_config_set(ipi_ul, "UL"))
+    {
+        LOG(ERR, "qosm: adaptive_qos: Error setting shaper parameters");
+        return false;
+    }
+
+    if (!osn_adaptive_qos_apply(qosm_adpt_qos))
+    {
+        LOG(ERR, "qosm: Error applying Adaptive QoS");
+
+        osn_adaptive_qos_del(qosm_adpt_qos);
+        qosm_adpt_qos = NULL;
+
+        return false;
+    }
+
+    return true;
+}
+
+/* Stop any Adaptive QoS config, if running. */
+bool qosm_adaptive_qos_stop()
+{
+    if (qosm_adpt_qos != NULL)
+    {
+        LOG(NOTICE, "qosm: Stopping Adaptive QoS");
+
+        if (!osn_adaptive_qos_del(qosm_adpt_qos))
+        {
+            LOG(ERR, "qosm: Error stopping Adaptive QoS");
+        }
+        qosm_adpt_qos = NULL;
+    }
+    return true;
 }

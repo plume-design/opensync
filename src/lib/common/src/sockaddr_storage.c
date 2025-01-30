@@ -186,7 +186,7 @@ sockaddr_storage_copy(struct sockaddr_storage *from, struct sockaddr_storage *to
 }
 
 void
-sockaddr_storage_str(struct sockaddr_storage *addr, char *output)
+sockaddr_storage_str(struct sockaddr_storage *addr, char *output, int output_size)
 {
     struct sockaddr_in6 *addr_v6;
     struct sockaddr_in *addr_v4;
@@ -195,20 +195,20 @@ sockaddr_storage_str(struct sockaddr_storage *addr, char *output)
     switch (addr->ss_family)
     {
         case AF_INET:
-            strcpy(output, "IPv4 : ");
+            strscpy(output, "IPv4 : ", output_size);
             addr_v4 = (struct sockaddr_in *)addr;
             inet_ntop(AF_INET, &addr_v4->sin_addr, ip_str, sizeof(ip_str));
-            strcat(output, ip_str);
+            strscat(output, ip_str, output_size);
             break;
 
         case AF_INET6:
-            strcpy(output, "IPv6 : ");
+            strscpy(output, "IPv6 : ", output_size);
             addr_v6 = (struct sockaddr_in6 *)addr;
             inet_ntop(AF_INET6, &addr_v6->sin6_addr, ip_str, sizeof(ip_str));
-            strcat(output, ip_str);
+            strscat(output, ip_str, output_size);
             break;
 
         default:
-           strcpy(output, "Wrong AF family");
+           strscpy(output, "Wrong AF family", output_size);
     }
 }

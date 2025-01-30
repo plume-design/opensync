@@ -33,6 +33,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <osw_mld_vif.h>
 #include <osw_timer.h>
 #include <ow_ovsdb_mld_onboard.h>
+#include <osw_etc.h>
 
 struct ow_ovsdb_mld_onboard
 {
@@ -50,7 +51,6 @@ struct ow_ovsdb_mld_onboard_mld
     struct ds_tree links;
     struct ow_ovsdb_mld_onboard *m;
     struct schema_Wifi_Inet_Config *template;
-    bool row_exists_in_ovsdb;
     bool handled;
 };
 
@@ -60,7 +60,6 @@ struct ow_ovsdb_mld_onboard_link
     struct ds_tree_node mld_node;
     struct ds_tree_node m_node;
     struct ow_ovsdb_mld_onboard_mld *mld;
-    bool row_exists_in_ovsdb;
     bool handled;
 };
 
@@ -166,11 +165,11 @@ static void ow_ovsdb_mld_onboard_link_try_set_template(struct ow_ovsdb_mld_onboa
     json_t *cond = ovsdb_tran_cond(OCLM_STR, col, OFUNC_EQ, l->link_if_name);
     struct schema_Wifi_Inet_Config row;
     struct ow_ovsdb_mld_onboard *m = l->mld->m;
-    l->row_exists_in_ovsdb = ovsdb_table_select_one_where(&m->table, cond, &row);
-    if (l->row_exists_in_ovsdb)
+    const bool row_exists_in_ovsdb = ovsdb_table_select_one_where(&m->table, cond, &row);
+    if (row_exists_in_ovsdb)
     {
         ow_ovsdb_mld_onboard_mld_set_template(l->mld, &row);
-        if (getenv("OW_OVSDB_MLD_ONBOARD_NO_DEL")) return;
+        if (osw_etc_get("OW_OVSDB_MLD_ONBOARD_NO_DEL")) return;
         LOGN(LOG_PREFIX_LINK(l, "removing"));
         const int count = ovsdb_table_delete(&m->table, &row);
         WARN_ON(count != 1);
@@ -197,7 +196,7 @@ static void ow_ovsdb_mld_onboard_mld_try_insert(struct ow_ovsdb_mld_onboard_mld 
     const bool need_insert = (row_exists_in_ovsdb == false);
     if (need_insert)
     {
-        if (getenv("OW_OVSDB_MLD_ONBOARD_NO_ADD")) return;
+        if (osw_etc_get("OW_OVSDB_MLD_ONBOARD_NO_ADD")) return;
         LOGN(LOG_PREFIX_MLD(mld, "inserting"));
         const bool inserted = ovsdb_table_insert(&m->table, mld->template);
         WARN_ON(inserted == false);
@@ -279,8 +278,8 @@ static void ow_ovsdb_mld_onboard_update(struct ow_ovsdb_mld_onboard *m, const ch
 
 static void ow_ovsdb_mld_onboard_wifi_inet_config_callback(
         ovsdb_update_monitor_t *mon,
-        struct schema_Wifi_Master_State *old,
-        struct schema_Wifi_Master_State *rec)
+        struct schema_Wifi_Inet_Config *old,
+        struct schema_Wifi_Inet_Config *rec)
 {
     ovsdb_table_t *table = mon->mon_data;
     struct ow_ovsdb_mld_onboard *m = container_of(table, struct ow_ovsdb_mld_onboard, table);
@@ -401,7 +400,7 @@ static void ow_ovsdb_mld_onboard_detach(struct ow_ovsdb_mld_onboard *m)
 
 ow_ovsdb_mld_onboard_t *ow_ovsdb_mld_onboard_alloc(void)
 {
-    if (getenv("OW_OVSDB_MLD_ONBOARD_DISABLE")) return NULL;
+    if (osw_etc_get("OW_OVSDB_MLD_ONBOARD_DISABLE")) return NULL;
     ow_ovsdb_mld_onboard_t *m = CALLOC(1, sizeof(*m));
     ow_ovsdb_mld_onboard_init(m);
     ow_ovsdb_mld_onboard_attach(m);

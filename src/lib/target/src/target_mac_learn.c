@@ -24,7 +24,6 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#include "ovs_mac_learn.h"
 #include "brctl_mac_learn.h"
 #include "kconfig.h"
 
@@ -36,12 +35,5 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 bool target_mac_learning_register(target_mac_learning_cb_t *omac_cb)
 {
-    if (kconfig_enabled(CONFIG_TARGET_USE_NATIVE_BRIDGE))
-    {
-        return brctl_mac_learning_register(omac_cb);
-    }
-    else
-    {
-        return ovs_mac_learning_register(omac_cb);
-    }
+    return brctl_mac_learning_register(omac_cb);
 }

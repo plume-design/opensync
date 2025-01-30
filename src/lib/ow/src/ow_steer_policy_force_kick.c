@@ -43,6 +43,19 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #define OW_STEER_POLICY_FORCE_KICK_ENFORCE_PERIOD_SEC 20
 
+#define LOG_PREFIX(fmt, ...) "ow: steer: " fmt, ##__VA_ARGS__
+#define LOG_WITH_PREFIX(prefix, fmt, ...) \
+    LOG_PREFIX(                           \
+        "%s " fmt,                        \
+        prefix,                           \
+        ##__VA_ARGS__)
+
+#define LOG_WITH_POLICY_PREFIX(policy, fmt, ...) \
+    LOG_WITH_PREFIX(                             \
+        ow_steer_policy_get_prefix(policy),      \
+        fmt,                                     \
+        ##__VA_ARGS__)
+
 struct ow_steer_policy_force_kick {
     struct ow_steer_policy *base;
     struct ow_steer_policy_force_kick_config *next_config;
@@ -63,7 +76,7 @@ ow_steer_policy_force_kick_reset(struct ow_steer_policy_force_kick *force_policy
     const bool enforce_period = osw_timer_is_armed(&force_policy->enforce_timer);
 
     if (enforce_period == true)
-        LOGI("%s enforce period stopped", ow_steer_policy_get_prefix(force_policy->base));
+        LOGI(LOG_WITH_POLICY_PREFIX(force_policy->base, "enforce period stopped"));
 
     osw_timer_disarm(&force_policy->enforce_timer);
     ow_steer_policy_force_kick_set_oneshot_config(force_policy, NULL);
@@ -98,7 +111,7 @@ ow_steer_policy_force_kick_recalc_cb(struct ow_steer_policy *policy,
     struct ow_steer_candidate *blocked_candidate = ow_steer_candidate_list_lookup(candidate_list, vif_bssid);
     const bool blocked_candidate_exists = blocked_candidate != NULL;
     if (blocked_candidate_exists == false)
-        LOGI("%s bssid: "OSW_HWADDR_FMT" preference: (nil), doesnt exist", ow_steer_policy_get_prefix(policy), OSW_HWADDR_ARG(vif_bssid));
+        LOGI(LOG_WITH_POLICY_PREFIX(policy, "bssid: "OSW_HWADDR_FMT" preference: (nil), doesnt exist", OSW_HWADDR_ARG(vif_bssid)));
 
     /* This is unlikely, but possible. For example if
      * interface gets stopped _and_ sta disconnection report
@@ -154,7 +167,7 @@ ow_steer_policy_force_kick_recalc_cb(struct ow_steer_policy *policy,
     }
 
     if (any_available_candidates == false)
-        LOGI("%s no other candidates available", ow_steer_policy_get_prefix(policy));
+        LOGI(LOG_WITH_POLICY_PREFIX(policy, "no other candidates available"));
 
     const bool continue_enforce = blocked_candidate_exists == true &&
                                   block_cancicdate_blockable == true &&
@@ -173,19 +186,18 @@ ow_steer_policy_force_kick_recalc_cb(struct ow_steer_policy *policy,
             continue;
 
         if (candidate_pref != OW_STEER_CANDIDATE_PREFERENCE_NONE) {
-            LOGD("%s bssid: "OSW_HWADDR_FMT" preference: %s cannot be set, already set to: %s",
-                 ow_steer_policy_get_prefix(policy),
+            LOGD(LOG_WITH_POLICY_PREFIX(policy, "bssid: "OSW_HWADDR_FMT" preference: %s cannot be set, already set to: %s",
                  OSW_HWADDR_ARG(bssid),
                  ow_steer_candidate_preference_to_cstr(blocked_pref),
-                 ow_steer_candidate_preference_to_cstr(candidate_pref));
+                 ow_steer_candidate_preference_to_cstr(candidate_pref)));
             continue;
         }
 
         const char *reason = ow_steer_policy_get_name(policy);
         ow_steer_candidate_set_preference(candidate, reason, blocked_pref);
 
-        LOGD("%s bssid: "OSW_HWADDR_FMT" preference: %s", ow_steer_policy_get_prefix(policy), OSW_HWADDR_ARG(bssid),
-             ow_steer_candidate_preference_to_cstr(ow_steer_candidate_get_preference(candidate)));
+        LOGD(LOG_WITH_POLICY_PREFIX(policy, "bssid: "OSW_HWADDR_FMT" preference: %s", OSW_HWADDR_ARG(bssid),
+             ow_steer_candidate_preference_to_cstr(ow_steer_candidate_get_preference(candidate))));
     }
 }
 
@@ -198,13 +210,13 @@ ow_steer_policy_force_kick_sigusr1_dump_cb(osw_diag_pipe_t *pipe,
     struct ow_steer_policy_force_kick *force_policy = ow_steer_policy_get_priv(policy);
     const struct ow_steer_policy_force_kick_config *config = force_policy->config;
 
-    osw_diag_pipe_writef(pipe, "ow: steer:         config: %s", config != NULL ? "" : "(nil)");
+    osw_diag_pipe_writef(pipe, LOG_PREFIX("        config: %s", config != NULL ? "" : "(nil)"));
 
     const uint64_t now_nsec = osw_time_mono_clk();
     const char *enforce_timer_buf = osw_timer_is_armed(&force_policy->enforce_timer) == true?
         strfmta("%.2lf sec remaining", OSW_TIME_TO_DBL(osw_timer_get_remaining_nsec(&force_policy->enforce_timer, now_nsec))) : "inactive";
 
-    osw_diag_pipe_writef(pipe, "ow: steer:         enforce_timer: %s", enforce_timer_buf);
+    osw_diag_pipe_writef(pipe, LOG_PREFIX("        enforce_timer: %s", enforce_timer_buf));
 }
 
 static void
@@ -222,15 +234,15 @@ ow_steer_policy_force_kick_reconf_timer_cb(struct osw_timer *timer)
         return;
     }
     else if (force_policy->config == NULL && force_policy->next_config != NULL) {
-        LOGI("%s config added", ow_steer_policy_get_prefix(force_policy->base));
+        LOGI(LOG_WITH_POLICY_PREFIX(force_policy->base, "config added"));
         register_observer = true;
     }
     else if (force_policy->config != NULL && force_policy->next_config == NULL) {
-        LOGI("%s config removed", ow_steer_policy_get_prefix(force_policy->base));
+        LOGI(LOG_WITH_POLICY_PREFIX(force_policy->base, "config removed"));
         unregister_observer = true;
     }
     else if (force_policy->config != NULL && force_policy->next_config != NULL) {
-        LOGI("%s config changed", ow_steer_policy_get_prefix(force_policy->base));
+        LOGI(LOG_WITH_POLICY_PREFIX(force_policy->base, "config changed"));
         unregister_observer = true;
         register_observer = true;
     }
@@ -252,10 +264,10 @@ ow_steer_policy_force_kick_reconf_timer_cb(struct osw_timer *timer)
 
         const uint64_t enforce_period_nsec = osw_time_mono_clk() + OSW_TIME_SEC(OW_STEER_POLICY_FORCE_KICK_ENFORCE_PERIOD_SEC);
         osw_timer_arm_at_nsec(&force_policy->enforce_timer, enforce_period_nsec);
-        LOGI("%s enforce period started", ow_steer_policy_get_prefix(force_policy->base));
+        LOGI(LOG_WITH_POLICY_PREFIX(force_policy->base, "enforce period started"));
 
         if (force_policy->sta_info == NULL) {
-            LOGI("%s aborted force kick, sta disconnected", ow_steer_policy_get_prefix(force_policy->base));
+            LOGI(LOG_WITH_POLICY_PREFIX(force_policy->base, "aborted force kick, sta disconnected"));
             ow_steer_policy_force_kick_reset(force_policy);
             return;
         }
@@ -271,7 +283,7 @@ ow_steer_policy_force_kick_enforce_timer_cb(struct osw_timer *timer)
 
     struct ow_steer_policy_force_kick *force_policy = container_of(timer, struct ow_steer_policy_force_kick, enforce_timer);
 
-    LOGI("%s enforce period finished", ow_steer_policy_get_prefix(force_policy->base));
+    LOGI(LOG_WITH_POLICY_PREFIX(force_policy->base, "enforce period finished"));
 
     ow_steer_policy_force_kick_reset(force_policy);
     ow_steer_policy_dismiss_executor(force_policy->base);
@@ -292,10 +304,10 @@ ow_steer_policy_force_kick_sta_connected_cb(struct osw_state_observer *observer,
     const struct ow_steer_policy_force_kick_config *config = force_policy->config;
     const struct osw_hwaddr *vif_bssid = &sta_info->vif->drv_state->mac_addr;
     if (config == NULL) {
-        LOGD("%s sta connected to bssid: "OSW_HWADDR_FMT", (no conf)", ow_steer_policy_get_prefix(force_policy->base), OSW_HWADDR_ARG(vif_bssid));
+        LOGI(LOG_WITH_POLICY_PREFIX(force_policy->base, "sta connected to bssid: "OSW_HWADDR_FMT", (no conf)", OSW_HWADDR_ARG(vif_bssid)));
     }
     else {
-        LOGI("%s sta connected from bssid: "OSW_HWADDR_FMT, ow_steer_policy_get_prefix(force_policy->base), OSW_HWADDR_ARG(vif_bssid));
+        LOGI(LOG_WITH_POLICY_PREFIX(force_policy->base, "sta connected from bssid: "OSW_HWADDR_FMT", (no conf)", OSW_HWADDR_ARG(vif_bssid)));
     }
 }
 
@@ -315,17 +327,18 @@ ow_steer_policy_force_kick_sta_disconnected_cb(struct osw_state_observer *observ
     const struct ow_steer_policy_force_kick_config *config = force_policy->config;
     const struct osw_hwaddr *vif_bssid = &sta_info->vif->drv_state->mac_addr;
     if (config == NULL) {
-        LOGD("%s sta disconnected from bssid: "OSW_HWADDR_FMT", (no conf)", ow_steer_policy_get_prefix(force_policy->base), OSW_HWADDR_ARG(vif_bssid));
+        LOGI(LOG_WITH_POLICY_PREFIX(force_policy->base, "sta disconnected from bssid: "OSW_HWADDR_FMT", (no conf)", OSW_HWADDR_ARG(vif_bssid)));
     }
     else {
-        LOGI("%s sta disconnected from bssid: "OSW_HWADDR_FMT, ow_steer_policy_get_prefix(force_policy->base), OSW_HWADDR_ARG(vif_bssid));
+        LOGI(LOG_WITH_POLICY_PREFIX(force_policy->base, "sta disconnected from bssid: "OSW_HWADDR_FMT, OSW_HWADDR_ARG(vif_bssid)));
         ow_steer_policy_force_kick_reset(force_policy);
     }
 }
 
 struct ow_steer_policy_force_kick*
 ow_steer_policy_force_kick_create(const struct osw_hwaddr *sta_addr,
-                                  const struct ow_steer_policy_mediator *mediator)
+                                  const struct ow_steer_policy_mediator *mediator,
+                                  const char *log_prefix)
 {
     ASSERT(sta_addr != NULL, "");
     ASSERT(mediator != NULL, "");
@@ -345,7 +358,7 @@ ow_steer_policy_force_kick_create(const struct osw_hwaddr *sta_addr,
     osw_timer_init(&force_policy->enforce_timer, ow_steer_policy_force_kick_enforce_timer_cb);
     memcpy(&force_policy->state_observer, &state_observer, sizeof(force_policy->state_observer));
 
-    force_policy->base = ow_steer_policy_create(g_policy_name, sta_addr, &ops, mediator, force_policy);
+    force_policy->base = ow_steer_policy_create(g_policy_name, sta_addr, &ops, mediator, log_prefix, force_policy);
 
     return force_policy;
 }

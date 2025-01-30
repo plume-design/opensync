@@ -89,4 +89,9 @@ endif
 UNIT_SRC += src/osp_temp.c
 UNIT_SRC += src/osp_temp_srcs.c
 
+ifeq ($(CONFIG_OSP_PKI_PS),y)
+UNIT_SRC += src/osp_pki_ps.c
+UNIT_DEPS += src/lib/execssl
+endif
+
 UNIT_SRC += $(if $(CONFIG_PM_ENABLE_TM),src/osp_tm.c,src/osp_tm_null.c)

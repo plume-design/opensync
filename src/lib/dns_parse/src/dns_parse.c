@@ -1270,9 +1270,7 @@ parse_questions(uint32_t pos, uint32_t id_pos,
             LOGD("DNS question error");
             char * buffer = escape_data(packet, start_pos, header->len);
             const char * msg = "Bad DNS question: ";
-            current->name = MALLOC(sizeof(char) * (strlen(buffer) +
-                                                   strlen(msg) + 1));
-            sprintf(current->name, "%s%s", msg, buffer);
+            current->name = strfmt("%s%s", msg, buffer);
             FREE(buffer);
             current->type = 0;
             current->cls = 0;
@@ -1319,10 +1317,7 @@ parse_rr(uint32_t pos, uint32_t id_pos, struct pcap_pkthdr *header,
      */
     if (rr->name == NULL)
     {
-        const char * msg = "Bad rr name: ";
-
-        rr->name = MALLOC(sizeof(char) * (strlen(msg) + 1));
-        sprintf(rr->name, "%s", "Bad rr name");
+        rr->name = STRDUP("Bad rr name");
         rr->type = 0;
         rr->rr_name = NULL;
         rr->cls = 0;
@@ -1370,13 +1365,10 @@ parse_rr(uint32_t pos, uint32_t id_pos, struct pcap_pkthdr *header,
      */
     if (header->len < (rr_start + 10 + rr->rdlength))
     {
-        char * buffer;
         const char * msg = "Truncated rr: ";
-        rr->data = escape_data(packet, rr_start, header->len);
-        buffer = MALLOC(sizeof(char) * (strlen(rr->data) + strlen(msg) + 1));
-        sprintf(buffer, "%s%s", msg, rr->data);
-        FREE(rr->data);
-        rr->data = buffer;
+        char *buffer = escape_data(packet, rr_start, header->len);
+        rr->data = strfmt("%s%s", msg, buffer);
+        FREE(buffer);
         return 0;
     }
     /* Parse the resource record data. */

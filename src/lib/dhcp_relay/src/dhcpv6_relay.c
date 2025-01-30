@@ -109,7 +109,7 @@ dhcp_relay_option37_insert(struct dhcp_relay_conf_options *opt,
             LOGT("%s: Remote id = " PRI_os_macaddr_lower_t ,
                  __func__, FMT_os_macaddr_pt(eth_header->srcmac));
 
-            sprintf (mac_str, PRI_os_macaddr_lower_t, FMT_os_macaddr_pt(eth_header->srcmac));
+            SPRINTF(mac_str, PRI_os_macaddr_lower_t, FMT_os_macaddr_pt(eth_header->srcmac));
             size += strlen(mac_str);
         }
 

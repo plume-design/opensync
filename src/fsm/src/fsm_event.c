@@ -44,7 +44,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 // Intervals and timeouts in seconds
 #define FSM_TIMER_INTERVAL 5
-#define FSM_MGR_INTERVAL 120
+#define FSM_MGR_INTERVAL CONFIG_FSM_MEM_CHECK_PERIOD
 
 /**
  * @brief periodic routine. Calls fsm sessions' periodic call backs

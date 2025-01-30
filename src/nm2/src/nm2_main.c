@@ -51,6 +51,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "nm2_nb_interface.h"
 #include "nm2_nb_bridge.h"
 #include "kconfig.h"
+#include "ovsdb_bridge.h"
 
 #define MODULE_ID LOG_MODULE_ID_MAIN
 
@@ -123,15 +124,10 @@ int main(int argc, char ** argv)
     nm2_route_rule_init();
     nm2_4in6_map_init();
     nm2_fqdn_resolve_init();
-
-    if(kconfig_enabled(CONFIG_TARGET_USE_NATIVE_BRIDGE))
-    {
-        nm2_bridge_init();
-        nm2_if_init();
-        nm2_default_br_init(CONFIG_TARGET_LAN_BRIDGE_NAME);
-        nm2_open_vswitch_init();
-    }
-
+    nm2_bridge_init();
+    nm2_if_init();
+    ovsdb_bridge_create(CONFIG_TARGET_LAN_BRIDGE_NAME);
+    nm2_open_vswitch_init();
 
     ev_run(loop, 0);
 

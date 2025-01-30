@@ -75,12 +75,6 @@ if MANAGER_FM
         help
             Crash log directory name
 
-    config FM_BT_PATH
-        string "Default path for backtrace logs"
-        default "/var/log/opensync/crash"
-        help
-            Path to a destination directory for backtrace logs
-
     config FM_LOG_CRASH_ARCHIVE_PATH
         string "Path where to keep archived logs on RAM"
         default "/var/log/opensync/log_archive/crash"

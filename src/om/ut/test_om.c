@@ -77,7 +77,7 @@ pattern_is_in_rules(ds_list_t *list, char *rule)
     {
         if ( strstr(data->rule.rule, rule) != NULL) {
             return true;
-        } 
+        }
     }
 
     return false;
@@ -97,7 +97,7 @@ test_linked_list_operations(void)
             .token = "12345",
             .rule = "tcp"
     };
-    
+
     struct schema_Openflow_Config second = {
             .table = 0,
             .bridge = CONFIG_TARGET_LAN_BRIDGE_NAME,
@@ -178,7 +178,7 @@ test_generate_ipv4_range_rules(void)
     exists          = false;
     exists          = pattern_is_in_rules(list, "nw_src=192.168.1.1");
     TEST_ASSERT_TRUE(exists);
-     
+
     exists          = pattern_is_in_rules(list, "nw_src=192.168.1.3");
     TEST_ASSERT_TRUE(exists);
 
@@ -222,7 +222,7 @@ test_generate_ipv6_range_rules(void)
     exists          = false;
     exists          = pattern_is_in_rules(list, "ipv6_src=2a03:6300:1:103:219:5bff:fe31:13e1");
     TEST_ASSERT_TRUE(exists);
-     
+
     exists          = pattern_is_in_rules(list, "ipv6_src=2a03:6300:1:103:219:5bff:fe31:13e3");
     TEST_ASSERT_TRUE(exists);
 
@@ -249,9 +249,8 @@ int main(int argc, char *argv[])
     ut_setUp_tearDown(test_name, NULL, NULL);
 
     memset(&tag_mgr, 0, sizeof(tag_mgr));
-    tag_mgr.service_tag_update = om_template_tag_update;
     om_tag_init(&tag_mgr);
-    
+
     RUN_TEST(test_linked_list_operations);
     RUN_TEST(test_generate_port_range_rules);
     RUN_TEST(test_generate_ipv4_range_rules);

@@ -1,0 +1,10 @@
+#
+# OpenSync Public Key Infrastracture
+#
+source "src/lib/osp/kconfig/Kconfig.osp_pki"
+
+#
+# Platform/vendor Public Key Infrastructure
+#
+osource "platform/*/kconfig/Kconfig.osp_pki"
+osource "vendor/*/kconfig/Kconfig.osp_pki"

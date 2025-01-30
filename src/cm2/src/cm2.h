@@ -36,6 +36,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "cm2_bh_dhcp.h"
 #include "cm2_bh_gre.h"
 #include "cm2_bh_cmu.h"
+#include "cm2_bh_mlo.h"
 
 #define IFTYPE_SIZE 128 + 1
 
@@ -47,15 +48,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define GRE_TYPE_NAME    "gre"
 #define BRIDGE_TYPE_NAME "bridge"
 
-#ifdef CONFIG_TARGET_USE_WAN_BRIDGE
-#ifdef CONFIG_TARGET_WAN_BRIDGE_NAME
-#define CM2_WAN_BRIDGE_NAME CONFIG_TARGET_WAN_BRIDGE_NAME
-#else
-#define CM2_WAN_BRIDGE_NAME SCHEMA_CONSTS_BR_NAME_WAN
-#endif /* CONFIG_TARGET_WAN_BRIDGE_NAME */
-#else
 #define CM2_WAN_BRIDGE_NAME ""
-#endif /* CONFIG_TARGET_USE_WAN_BRIDGE */
 
 #define CM2_METRIC_UPLINK_BLOCKED  999
 #define CM2_METRIC_UPLINK_DEFAULT    0
@@ -261,7 +254,6 @@ typedef struct
     int                min_backoff;
     int                max_backoff;
     bool               fast_backoff;
-    int                target_type;
     bool               skip_reconnect;
     bool               connected_at_least_once;
     bool               link_sel_due_to_priority;
@@ -274,6 +266,7 @@ typedef struct
     cm2_bh_dhcp_t     *bh_dhcp;
     cm2_bh_gre_t      *bh_gre;
     cm2_bh_cmu_t      *bh_cmu;
+    cm2_bh_mlo_t      *bh_mlo;
 } cm2_state_t;
 
 extern cm2_state_t g_state;
@@ -303,7 +296,7 @@ typedef enum {
 } cm2_connection_request;
 
 // misc
-bool cm2_is_extender(void);
+bool cm2_wan_link_selection_enabled(void);
 
 // event
 void cm2_event_init(struct ev_loop *loop);
@@ -556,11 +549,7 @@ static inline void cm2_wdt_close(struct ev_loop *loop)
 
 static inline bool cm2_is_wan_bridge(void)
 {
-#ifdef CONFIG_TARGET_USE_WAN_BRIDGE
-    return true;
-#else
     return false;
-#endif
 }
 
 static inline bool cm2_is_wan_link_management(void)
@@ -596,6 +585,7 @@ static inline bool cm2_link_is_bridge(const cm2_main_link_t *link)
 }
 
 // net
+bool cm2_update_mac_local_bit(const char *bridge, bool set);
 void cm2_update_bridge_cfg(char *bridge, char *port, bool brop,
                            cm2_par_state_t state, bool update_local_bit);
 void cm2_dhcpc_start_dryrun(char* ifname, char *iftype, int cnt);

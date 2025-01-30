@@ -29,6 +29,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <stdlib.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <jansson.h>
 
 #define PJS_OVS_MAP_KEYSZ           64      /* Default KEY size for OVS MAPs */
@@ -81,6 +82,33 @@ extern bool pjs_int_q_to_json(
 
 extern bool pjs_int_to_json(
         int in,
+        json_t *js,
+        const char *name,
+        pjs_errmsg_t err);
+
+extern bool pjs_int64_q_from_json(
+        int64_t *out,
+        bool *exists,
+        json_t *js,
+        const char *name,
+        bool update,
+        pjs_errmsg_t err);
+
+extern bool pjs_int64_from_json(
+        int64_t *out, json_t *js,
+        const char *name,
+        bool update,
+        pjs_errmsg_t err);
+
+extern bool pjs_int64_q_to_json(
+        int64_t in,
+        bool in_exists,
+        json_t *js,
+        const char *name,
+        pjs_errmsg_t err);
+
+extern bool pjs_int64_to_json(
+        int64_t in,
         json_t *js,
         const char *name,
         pjs_errmsg_t err);
@@ -437,6 +465,37 @@ extern bool pjs_ovs_int_q_to_json(
 
 extern bool pjs_ovs_int_to_json(
         int in,
+        json_t *js,
+        const char *name,
+        pjs_errmsg_t err);
+
+extern bool pjs_ovs_int64_q_from_json(
+        int64_t *out,
+        bool *exists,
+        bool *present,
+        json_t *js,
+        const char *name,
+        bool update,
+        pjs_errmsg_t err);
+
+extern bool pjs_ovs_int64_from_json(
+        int64_t *out,
+        bool *exists,
+        bool *present,
+        json_t *js,
+        const char *name,
+        bool update,
+        pjs_errmsg_t err);
+
+extern bool pjs_ovs_int64_q_to_json(
+        int64_t in,
+        bool in_exists,
+        json_t *js,
+        const char *name,
+        pjs_errmsg_t err);
+
+extern bool pjs_ovs_int64_to_json(
+        int64_t in,
         json_t *js,
         const char *name,
         pjs_errmsg_t err);

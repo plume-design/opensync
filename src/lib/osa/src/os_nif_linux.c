@@ -32,6 +32,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <arpa/inet.h>
 #include <net/if.h>
 #include <net/if_arp.h>
+#include <linux/sockios.h>
 #include <stdbool.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -332,6 +333,44 @@ bool os_nif_macaddr_set(const char *ifname, os_macaddr_t mac)
     return true;
 }
 
+static bool os_nif_br_cmd(const char *br_name, const char *port_name, const int cmd)
+{
+    const char *cmd_name = (cmd == SIOCBRADDIF) ? "SIOCBRADDIF" : "SIOCBRDELIF";
+    const char *action = (cmd == SIOCBRADDIF) ? "added" : "removed";
+    struct ifreq req;
+    int ifindex;
+    int rc;
+
+    ifindex = if_nametoindex(port_name);
+    if (ifindex == 0)
+    {
+        LOG(DEBUG, "%s: if_nametoindex() %s failed::br_name=%s, port_name=%s", __func__, cmd_name, br_name, port_name);
+        return false;
+    }
+
+    MEMZERO(req);
+    req.ifr_ifindex = ifindex;
+    rc = os_nif_ifreq(cmd, br_name, &req);
+    if (rc != 0)
+    {
+        LOG(DEBUG, "%s: %s failed::br_name=%s, port_name=%s", __func__, cmd_name, br_name, port_name);
+        return false;
+    }
+
+    LOG(DEBUG, "%s: %s::br_name=%s, port_name=%s", __func__, action, br_name, port_name);
+    return true;
+}
+
+bool os_nif_br_addif(const char *br_name, const char *port_name)
+{
+    return os_nif_br_cmd(br_name, port_name, SIOCBRADDIF);
+}
+
+bool os_nif_br_delif(const char *br_name, const char *port_name)
+{
+    return os_nif_br_cmd(br_name, port_name, SIOCBRDELIF);
+}
+
 bool os_nif_gateway_set(const char* ifname, os_ipaddr_t gwaddr)
 {
     char iproute[128];
@@ -403,21 +442,21 @@ bool os_nif_macaddr_from_str(os_macaddr_t* mac, const char* str)
  * Utility function to convert a os_macaddr_t type to string MAC address
  *
  * @param   mac[in]     MAC address
- * @param   str[out]    String MAC address
+ * @param   str[out]    String MAC address of min size OS_MACSTR_SZ
  * @param   format[in]  Desire MAC address format (PRI_os_macaddr_t, PRI_os_macaddr_lower_t, PRI_os_macaddr_plain_t)
  * @retval  true        On success
  * @retval  false       On error
  */
-bool os_nif_macaddr_to_str(const os_macaddr_t *mac, char *str, const char *format)
+bool os_nif_macaddr_to_str(const os_macaddr_t *mac, char str[OS_MACSTR_SZ], const char *format)
 {
 
-    if (!format && (sizeof(str) < OS_MACSTR_PLAIN_SZ)){
+    if (!format) {
         LOG(ERR, "Convert mac addr to string (verify params)");
         return false;
     }
 
-    int n = sprintf(str, format, FMT(os_macaddr_pt, mac));
-    if (n < OS_MACSTR_PLAIN_SZ)
+    int n = snprintf(str, OS_MACSTR_SZ, format, FMT(os_macaddr_pt, mac));
+    if (n < OS_MACSTR_PLAIN_SZ || n >= OS_MACSTR_SZ)
     {
         LOG(ERR, "Convert mac addr to string (write size)");
         return false;

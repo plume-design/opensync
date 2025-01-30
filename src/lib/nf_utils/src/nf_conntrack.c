@@ -608,17 +608,57 @@ get_counter(const struct nlattr *nest, ct_flow_t *_flow)
 }
 
 
+#define NFCT_SOCKBUF_LEN (1 * 1024 * 1024)
+
+/**
+ * @brief Set the netlink socket buffer for a given file descriptor.
+ * The system might allocate more than what is specified.
+ *
+ * @param fd The file descriptor of the socket.
+ * @return true if the buffer size was successfully set,false otherwise.
+ */
+static bool
+nf_ct_set_sockbuf_size(int fd)
+{
+    const int rcvbuf = NFCT_SOCKBUF_LEN;
+    socklen_t optlen;
+    int actual_size;
+    int ret;
+
+    optlen = sizeof(rcvbuf);
+    /* set the socket buffer size */
+    ret = setsockopt(fd, SOL_SOCKET, SO_RCVBUFFORCE, &rcvbuf, sizeof(rcvbuf));
+    if (ret == -1)
+    {
+        LOGN("%s: Failed to set buffer size. Error: %s", __func__, strerror(errno));
+        return false;
+    }
+
+    ret = getsockopt(fd, SOL_SOCKET, SO_RCVBUF, &actual_size, &optlen);
+    if (ret == -1)
+    {
+        LOGN("%s: Failed to read buffer size", __func__);
+        return false;
+    }
+
+    LOGI("%s: Netlink buffer size changed: configured size=%d set size=%d", __func__, rcvbuf, actual_size);
+    return true;
+}
+
 static void
 read_mnl_socket_cbk(struct ev_loop *loop, struct ev_io *watcher, int revents)
 {
     char rcv_buf[MNL_SOCKET_BUFFER_SIZE];
     struct nf_ct_context *nf_ct;
+    ds_dlist_t nf_ct_list;
     int portid;
     int ret;
 
     nf_ct = nf_ct_get_context();
     if (!nf_ct->initialized) return;
 
+    /* initialize list to store conntrack update events */
+    ds_dlist_init(&nf_ct_list, ctflow_info_t, ct_node);
     if (EV_ERROR & revents)
     {
         LOGE("%s: Invalid mnl socket event", __func__);
@@ -634,12 +674,24 @@ read_mnl_socket_cbk(struct ev_loop *loop, struct ev_io *watcher, int revents)
 
     portid = mnl_socket_get_portid(nf_ct->mnl);
 
-    ret = mnl_cb_run2(rcv_buf, ret, 0, portid, NULL, NULL, cb_ctl_array,
+    ret = mnl_cb_run2(rcv_buf, ret, 0, portid, nf_process_ct_cb, &nf_ct_list, cb_ctl_array,
                       MNL_ARRAY_SIZE(cb_ctl_array));
 
     if (ret == -1)
     {
         LOGE("%s: mnl_cb_run2 failed: %s", __func__, strerror(errno));
+    }
+
+    if (LOG_SEVERITY_ENABLED(LOG_SEVERITY_TRACE)) nf_ct_print_entries(&nf_ct_list);
+
+    /* Invoke the callback if set, nf_ct_list is cleared in the callback */
+    if (nf_ct->conntrack_update_cb)
+    {
+        nf_ct->conntrack_update_cb(&nf_ct_list);
+    }
+    else
+    {
+        nf_free_ct_flow_list(&nf_ct_list);
     }
 }
 
@@ -1193,10 +1245,11 @@ nf_ct_print_conntrack(ct_flow_t *flow)
     LOGT("%s: [ proto=%d tx src=%s dst=%s] ", __func__,
          flow->layer3_info.proto_type, src, dst);
 
-    LOGT("%s: [src port=%d dst port=%d] "
+    LOGT("%s: [src port=%d dst port=%d] start=%d, end=%d"
          "[packets=%" PRIu64 "  bytes=%" PRIu64 "]", __func__,
         ntohs(flow->layer3_info.src_port),
         ntohs(flow->layer3_info.dst_port),
+        flow->start, flow->end,
         flow->pkt_info.pkt_cnt, flow->pkt_info.bytes);
 }
 
@@ -1600,10 +1653,11 @@ nf_ct_get_flow_entries(int af_family, ds_dlist_t *nf_ct_list, uint16_t zone_id)
 }
 
 int
-nf_ct_init(struct ev_loop *loop)
+nf_ct_init(struct ev_loop *loop, void (*callback)(void *data))
 {
     struct mnl_socket *nl = NULL;
     struct nf_ct_context *nf_ct;
+    unsigned int group;
 
     nf_ct = nf_ct_get_context();
     if (nf_ct->initialized) return 0;
@@ -1614,19 +1668,24 @@ nf_ct_init(struct ev_loop *loop)
         LOGE("%s: mnl_socket_open", __func__);
         return -1;
     }
-    if (mnl_socket_bind(nl, 0, MNL_SOCKET_AUTOPID) < 0)
+
+    /* register for update event only if the callback is provided */
+    group = (callback == NULL) ? 0 : NF_NETLINK_CONNTRACK_UPDATE;
+    if (mnl_socket_bind(nl, group, MNL_SOCKET_AUTOPID) < 0)
     {
         LOGE("%s: mnl_socket_bind", __func__);
         goto err;
     }
+
     nf_ct->mnl = nl;
     nf_ct->loop = loop;
+    nf_ct->conntrack_update_cb = callback;
     nf_ct->fd = mnl_socket_get_fd(nl);
     os_ev_trace_map(read_mnl_socket_cbk, "read_mnl_socket_cbk");
     ev_io_init(&nf_ct->wmnl, read_mnl_socket_cbk, nf_ct->fd, EV_READ);
+    nf_ct_set_sockbuf_size(nf_ct->fd);
     ev_io_start(loop, &nf_ct->wmnl);
     nf_ct->initialized = true;
-
     LOGD("%s: nf_ct initialized", __func__);
     return 0;
 

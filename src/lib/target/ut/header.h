@@ -82,8 +82,6 @@ void test_target_radio_state_get();
 void test_target_vif_state_get();
 void test_target_radio_init();
 void test_target_device_connectivity_check();
-void test_target_device_capabilities_get();
 void test_target_device_restart_managers();
 void test_target_device_wdt_ping();
 void test_target_device_execute();
-

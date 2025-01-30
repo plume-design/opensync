@@ -167,7 +167,7 @@ dpp_get_report(uint8_t *buff,
                size_t sz,
                uint32_t *packed_sz)
 {
-    /* BM should never reeach this code */
+    /* This code should never get reached */
     exit(1);
 }
 
@@ -211,12 +211,12 @@ bool dpp_put_bs_client(dpp_bs_client_report_data_t *rpt)
             strgrow(&buffer, "    event_record=\n");
 
             if (band->num_event_records == 0)
-                strgrow(&buffer, "        none\n\n"); 
+                strgrow(&buffer, "        none\n\n");
 
             for (j = 0; j < band->num_event_records; j++) {
                 const dpp_bs_client_event_record_t *event = &band->event_record[j];
                 char assoc_ies_buffer[4096];
-                
+
                 if (bin2hex(event->assoc_ies, event->assoc_ies_len, assoc_ies_buffer, sizeof(assoc_ies_buffer)) < 0) {
                     LOGE("BSAL: Failed to compose DPP Client report: assoc_ies BIN -> HEX failed");
                     exit(1);

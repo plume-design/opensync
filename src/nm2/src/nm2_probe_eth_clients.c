@@ -55,10 +55,6 @@ Periodic probing to prevent ethernet clients being deleted from OVS_MAC_Learning
 Ethernet clients that have ageing time more than half of ageout timeout, are being probed for
 response, this way to reset their ageing time value in the FDB.
 Probing methods are arping (ARP Request) for IPv4 and ndisc6 (ICMP6 Neighbor Solicitation) for IPv6.
-
-For legacy OVS-bridge platforms, all ethernet clients are being probed regardless of their
-current ageing time. A big enough ageing time is set at client creation and then never updated
-with readings from FDB.
 */
 static ev_timer g_probe_eth_clients_timer;
 
@@ -99,32 +95,6 @@ struct solicit_packet
 static ds_tree_t g_ipv4_eth_clients = DS_TREE_INIT(ds_str_cmp, struct eth_client, tnode);
 static ds_tree_t g_ipv6_eth_clients = DS_TREE_INIT(ds_str_cmp, struct eth_client, tnode);
 
-static int ovs_mac_learn_aging_time_get(void)
-{
-    int ret = CONFIG_MANAGER_NM_PROBE_ETH_CLIENTS_PERIOD_DEFAULT * 2;
-    struct schema_Bridge *bridge = ovsdb_cache_find_by_key(&table_Bridge, CONFIG_TARGET_LAN_BRIDGE_NAME);
-    if (bridge != NULL)
-    {
-        int i;
-        for (i = 0; i < bridge->other_config_len; i++)
-        {
-            if (strcmp(bridge->other_config_keys[i], "mac-aging-time") == 0)
-            {
-                int mac_aging_time = atoi(bridge->other_config[i]);
-                if (mac_aging_time <= 0)
-                {
-                    LOGD("probe_eth_clients: could not convert %s to integer.", bridge->other_config_keys[i]);
-                    break;
-                }
-                ret = mac_aging_time;
-                LOGT("probe_eth_clients: found mac-aging-time in Bridge other_config: %d seconds.", ret);
-                break;
-            }
-        }
-    }
-    return ret;
-}
-
 static int brctl_mac_learn_aging_time_get(void)
 {
     int ret = CONFIG_MANAGER_NM_PROBE_ETH_CLIENTS_PERIOD_DEFAULT * 2;
@@ -143,17 +113,8 @@ static int brctl_mac_learn_aging_time_get(void)
 
 static int probe_period_get(void)
 {
-    int period = CONFIG_MANAGER_NM_PROBE_ETH_CLIENTS_PERIOD_DEFAULT;
-    if (kconfig_enabled(CONFIG_TARGET_USE_NATIVE_BRIDGE))
-    {
-        period = brctl_mac_learn_aging_time_get() / 2;
-        LOGT("probe_eth_clients: native bridge, period %d seconds", period);
-    }
-    else
-    {
-        period = ovs_mac_learn_aging_time_get() / 2;
-        LOGT("probe_eth_clients: ovs bridge, period %d seconds", period);
-    }
+    int period = brctl_mac_learn_aging_time_get() / 2;
+    LOGT("probe_eth_clients: native bridge, period %d seconds", period);
     return period;
 }
 
@@ -489,12 +450,6 @@ struct __fdb_entry
 
 static void update_ageing_times(void)
 {
-    if (!kconfig_enabled(CONFIG_TARGET_USE_NATIVE_BRIDGE))
-    {
-        LOGT("probe_eth_clients: ovs bridge, omitting update ageing times");
-        return;
-    }
-
     FILE *f;
     int n = 0;
     const size_t chunk = 128;

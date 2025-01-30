@@ -55,6 +55,8 @@ struct osw_btm_req_neigh {
     uint8_t channel;
     uint8_t btmpreference;
     uint8_t phy_type;
+    bool disassoc_imminent;
+    uint16_t disassoc_timer;
 };
 
 struct osw_btm_retry_neigh {
@@ -78,9 +80,7 @@ struct osw_btm_req_params {
     struct osw_btm_req_neigh neigh[OSW_BTM_REQ_NEIGH_SIZE];
     size_t neigh_len;
     uint8_t valid_int;
-    uint16_t disassoc_timer;
     bool abridged;
-    bool disassoc_imminent;
     bool bss_term;
 };
 

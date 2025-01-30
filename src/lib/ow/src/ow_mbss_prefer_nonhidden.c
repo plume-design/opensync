@@ -33,6 +33,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <osw_module.h>
 #include <osw_drv.h>
 #include <osw_state.h>
+#include <osw_etc.h>
 
 /**
  * Rationale
@@ -178,11 +179,11 @@ ow_mbss_prefer_nonhidden_init(struct ow_mbss_prefer_nonhidden *m)
     m->dryrun = OW_MBSS_PREFER_NONHIDDEN_DRYRUN_DEFAULT;
     m->mut = mut;
 
-    if (getenv("OW_MBSS_PREFER_NONHIDDEN_DISABLE")) {
+    if (osw_etc_get("OW_MBSS_PREFER_NONHIDDEN_DISABLE")) {
         m->enabled = false;
     }
 
-    if (getenv("OW_MBSS_PREFER_NONHIDDEN_DRYRUN")) {
+    if (osw_etc_get("OW_MBSS_PREFER_NONHIDDEN_DRYRUN")) {
         m->dryrun = true;
     }
 

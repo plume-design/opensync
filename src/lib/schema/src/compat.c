@@ -265,20 +265,21 @@ do { \
  \
     for (i = 0; i < vif->wpa_key_mgmt_len; i++) { \
         char *v = vif->wpa_key_mgmt[i]; \
+        int vsize = sizeof(vif->wpa_key_mgmt[i]); \
  \
         if (strcmp(v, SCHEMA_CONSTS_KEY_WPA_PSK) == 0) { \
             if ( wpa && rsn) SCHEMA_VAL_APPEND(vif->wpa_key_mgmt, SCHEMA_CONSTS_KEY_WPA2_PSK); \
-            if (!wpa && rsn) strcpy(v, SCHEMA_CONSTS_KEY_WPA2_PSK); \
+            if (!wpa && rsn) strscpy(v, SCHEMA_CONSTS_KEY_WPA2_PSK, vsize); \
         } \
  \
         if (strcmp(v, SCHEMA_CONSTS_KEY_WPA_EAP) == 0) { \
             if ( wpa && rsn) SCHEMA_VAL_APPEND(vif->wpa_key_mgmt, SCHEMA_CONSTS_KEY_WPA2_EAP); \
-            if (!wpa && rsn) strcpy(v, SCHEMA_CONSTS_KEY_WPA2_EAP); \
+            if (!wpa && rsn) strscpy(v, SCHEMA_CONSTS_KEY_WPA2_EAP, vsize); \
         } \
  \
         if (strcmp(v, SCHEMA_CONSTS_KEY_FT_PSK) == 0) { \
             if ( wpa && rsn) SCHEMA_VAL_APPEND(vif->wpa_key_mgmt, SCHEMA_CONSTS_KEY_FT_WPA2_PSK); \
-            if (!wpa && rsn) strcpy(v, SCHEMA_CONSTS_KEY_FT_WPA2_PSK); \
+            if (!wpa && rsn) strscpy(v, SCHEMA_CONSTS_KEY_FT_WPA2_PSK, vsize); \
         } \
     } \
 } while (0)
@@ -424,6 +425,7 @@ schema_vstate_gen1_sync_to_vconf(struct schema_Wifi_VIF_State *vstate,
 {
     char *s_mode = SCHEMA_KEY_VAL_NULL(vstate->security, SCHEMA_CONSTS_SECURITY_MODE);
     char *c_mode = SCHEMA_KEY_VAL_NULL(vconf->security, SCHEMA_CONSTS_SECURITY_MODE);
+    int s_mode_size = sizeof(vstate->security[0]);
 
     const bool strip_mode = (!c_mode && s_mode);
     if (strip_mode) {
@@ -449,7 +451,7 @@ schema_vstate_gen1_sync_to_vconf(struct schema_Wifi_VIF_State *vstate,
 
             const bool same_mode = (atoi(a) == atoi(b));
             if (same_mode) {
-                strcpy(s_mode, c_mode);
+                strscpy(s_mode, c_mode, s_mode_size);
             }
         }
     }
@@ -639,6 +641,7 @@ schema_vstate_sync_to_vconf(struct schema_Wifi_VIF_State *vstate,
         const bool akm_match = schema_vstate_vconf_akm_intersect(vstate, vconf);
         if (akm_match) {
             if (!WARN_ON(sizeof(vstate->wpa_key_mgmt) != sizeof(vconf->wpa_key_mgmt))) {
+                vstate->wpa_key_mgmt_len = vconf->wpa_key_mgmt_len;
                 memcpy(vstate->wpa_key_mgmt,
                        vconf->wpa_key_mgmt,
                        sizeof(vconf->wpa_key_mgmt));

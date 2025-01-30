@@ -213,7 +213,10 @@ bool net_md_add_sample(struct net_md_aggregator *aggr,
     if (key->fstart)
         acc->fkey->state.fstart = key->fstart;
     if (key->fend)
+    {
+        acc->fkey->state.fstart = false;
         acc->fkey->state.fend = key->fend;
+    }
     net_md_set_counters(aggr, acc, counters);
     acc->fkey->flowmarker = key->flowmarker;
 

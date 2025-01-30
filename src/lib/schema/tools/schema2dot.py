@@ -186,7 +186,7 @@ class OvsColumn:
             {
                 "string":   lambda: "PJS_OVS_STRING%s(%s, %d + 1)"          % (opt_mod, self.name, self.key.maxLength),
                 "uuid":     lambda: "PJS_OVS_UUID%s(%s)"                    % (opt_mod, self.name),
-                "integer":  lambda: "PJS_OVS_INT%s(%s)"                     % (opt_mod, self.name),
+                "integer":  lambda: "PJS_OVS_INT%s%s(%s)"                   % ("64" if self.key.max > (2**31 - 1) else "", opt_mod, self.name),
                 "boolean":  lambda: "PJS_OVS_BOOL%s(%s)"                    % (opt_mod, self.name),
                 "real":     lambda: "PJS_OVS_REAL%s(%s)"                    % (opt_mod, self.name),
             }

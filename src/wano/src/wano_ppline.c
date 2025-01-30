@@ -37,33 +37,29 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * plug-ins are capable of creating their own pipelines.
  * ===========================================================================
  */
-#include <inttypes.h>
-#include <unistd.h>
-#include <stdlib.h>
-#include <errno.h>
-
 #include <ev.h>
-#include <ares.h>
+#include <inttypes.h>
+#include <stdlib.h>
+#include <unistd.h>
 
 #include "evx.h"
-#include "os_time.h"
+#include "memutil.h"
 #include "os_random.h"
+#include "os_time.h"
 #include "osa_assert.h"
 #include "ovsdb_sync.h"
 #include "ovsdb_table.h"
-#include "memutil.h"
 #include "util.h"
 
 #include "wano.h"
 #include "wano_internal.h"
 #include "wano_wan.h"
+#include "wano_plugin_stam.h"
 
 #define WANO_PPLINE_RETRY_TIME      3       /* Retry time increment in seconds */
 #define WANO_PPLINE_RETRY_MAX       5       /* Maximum values of retries (for calculations) */
 #define WANO_PPLINE_RESTART_MIN     1.0     /* Pipeline restart debounce timer */
 #define WANO_PPLINE_RESTART_MAX     5.0     /* Pipeline restart maximum debounce timeout */
-
-#define WANO_DNS_PROBE_TIMEOUT_SEC 5
 
 #ifndef INET6_ADDRSTRLEN
 #define INET6_ADDRSTRLEN 46
@@ -74,10 +70,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 struct wano_ppline_plugin
 {
-    /** True if the plug-in has been started (wano_plugin_run() was called) */
-    bool                        wpp_running;
-    /** True if plug-in is detached */
-    bool                        wpp_detached;
+    /** Plug-in object state */
+    wano_plugin_state_t         wpp_state;
     /** Parent pipeline */
     wano_ppline_t              *wpp_ppline;
     /** Plug-in structure */
@@ -97,18 +91,12 @@ struct wano_ppline_plugin
 static ds_dlist_t g_wano_ppline_list = DS_DLIST_INIT(struct wano_ppline, wpl_dnode);
 
 static ev_debounce_fn_t wano_ppline_restart_debounce_fn;
-static void wano_ppline_start_queues(wano_ppline_t *self);
-static void wano_ppline_stop_queues(wano_ppline_t *self);
+static void wano_ppline_plugin_init(wano_ppline_t *self);
+static void wano_ppline_plugin_reset(wano_ppline_t *self, bool force);
 static void wano_ppline_schedule(wano_ppline_t *self);
-static bool wano_ppline_runq_add(wano_ppline_t *self, struct wano_ppline_plugin *wpp);
-static bool wano_ppline_runq_start_flagged(wano_ppline_t *self, bool run_dhcp);
-inline static bool wano_ppline_runq_start(wano_ppline_t *self);
-inline static bool wano_ppline_runq_start_dhcp(wano_ppline_t *self);
-static void __wano_ppline_runq_stop(wano_ppline_t *self, struct wano_ppline_plugin *wpp);
-static void wano_ppline_runq_del(wano_ppline_t *self, struct wano_ppline_plugin *wpp);
-static void wano_ppline_runq_flush(wano_ppline_t *self, bool flush_detached);
+static bool wano_ppline_run(wano_ppline_t *self);
 static struct wano_ppline_plugin *wano_ppline_plugin_new(wano_ppline_t *self, struct wano_plugin *wp);
-static void wano_ppline_plugin_del(struct wano_ppline_plugin *wpp);
+static void wano_ppline_plugin_del(wano_ppline_t *self, struct wano_ppline_plugin *wpp);
 static wano_inet_state_event_fn_t wano_ppline_inet_state_event_fn;
 static wano_plugin_status_fn_t wano_ppline_plugin_status_fn;
 static void wano_ppline_retry_timer_fn(struct ev_loop *loop, ev_timer *w, int revent);
@@ -118,7 +106,7 @@ static wano_connmgr_uplink_event_fn_t wano_ppline_cmu_event_fn;
 static wano_ovs_port_event_fn_t wano_ppline_ovs_port_event_fn;
 static void wano_ppline_check_freeze(wano_ppline_t *wpl);
 static void wano_ppline_reset_ipv6(wano_ppline_t *self);
-static void wano_ppline_map_iftype(const char *in_iftype, char *out_iftype);
+static void wano_ppline_map_iftype(const char *in_iftype, char *out_iftype, int out_size);
 
 bool wano_ppline_init(
         wano_ppline_t *self,
@@ -132,9 +120,8 @@ bool wano_ppline_init(
     STRSCPY_WARN(self->wpl_iftype, iftype);
     self->wpl_plugin_emask = emask;
 
-    ds_dlist_init(&self->wpl_event_list, wano_ppline_event_t, wpe_dnode);
     ds_dlist_init(&self->wpl_plugin_waitq, struct wano_ppline_plugin, wpp_dnode);
-    ds_dlist_init(&self->wpl_plugin_runq, struct wano_ppline_plugin, wpp_dnode);
+    ds_dlist_init(&self->wpl_event_list, wano_ppline_event_t, wpe_dnode);
 
     /* Subscribe to Wifi_Inet_State events */
     if (!wano_inet_state_event_init(
@@ -161,6 +148,9 @@ bool wano_ppline_init(
 
     ev_timer_init(&self->wpl_retry_timer, wano_ppline_retry_timer_fn, 0.0, 0.0);
 
+    /* Initialize plug-ins */
+    wano_ppline_plugin_init(self);
+
     self->wpl_init = true;
 
     ds_dlist_insert_tail(&g_wano_ppline_list, self);
@@ -175,6 +165,9 @@ bool wano_ppline_init(
  */
 void wano_ppline_fini(wano_ppline_t *self)
 {
+    struct wano_ppline_plugin *wpp;
+    ds_dlist_iter_t iter;
+
     if (!self->wpl_init)
     {
         return;
@@ -187,7 +180,11 @@ void wano_ppline_fini(wano_ppline_t *self)
     wano_connmgr_uplink_event_stop(&self->wpl_cmu_event);
     wano_inet_state_event_fini(&self->wpl_inet_state_event);
 
-    wano_ppline_stop_queues(self);
+    ds_dlist_foreach_iter(&self->wpl_plugin_waitq, wpp, iter)
+    {
+        ds_dlist_iremove(&iter);
+        wano_ppline_plugin_del(self, wpp);
+    }
 
     /*
      * Remove any entries that this interface might have in the
@@ -260,7 +257,6 @@ wano_wan_t *wano_wan_from_plugin_handle(wano_plugin_handle_t *plugin)
     return wano_ppline_wan_get(wpl);
 }
 
-
 /*
  * Initialize a plug-in pipeline event object
  */
@@ -302,16 +298,32 @@ void wano_ppline_event_dispatch(wano_ppline_t *self, enum wano_ppline_status sta
     }
 }
 
+struct wano_ppline_plugin *wano_ppline_plugin_new(wano_ppline_t *self, struct wano_plugin *wp)
+{
+    struct wano_ppline_plugin *wpp;
+
+    wpp = CALLOC(1, sizeof(struct wano_ppline_plugin));
+
+    wpp->wpp_ppline = self;
+    wpp->wpp_plugin = wp;
+    wpp->wpp_handle = NULL;
+
+    return wpp;
+}
+
+void wano_ppline_plugin_del(wano_ppline_t *self, struct wano_ppline_plugin *wpp)
+{
+    wano_plugin_state_do(&wpp->wpp_state, wano_plugin_exception_CANCEL, self);
+    FREE(wpp);
+}
+
 /*
- * Initialize the plug-in run and wait queue
+ * Initialize the plug-in list (waitq)
  */
-void wano_ppline_start_queues(wano_ppline_t *self)
+void wano_ppline_plugin_init(wano_ppline_t *self)
 {
     struct wano_plugin *wp;
     wano_plugin_iter_t wpi;
-
-    /* Destroy queues if they are active */
-    wano_ppline_stop_queues(self);
 
     /*
      * Populate the waitqueue
@@ -321,12 +333,18 @@ void wano_ppline_start_queues(wano_ppline_t *self)
         struct wano_ppline_plugin *wpp;
 
         /* Skip all plug-ins in the exclusion mask */
-        if (wp->wanp_mask & self->wpl_plugin_emask) continue;
+        if ((wp->wanp_mask & self->wpl_plugin_emask) != 0) continue;
 
         wpp = wano_ppline_plugin_new(self, wp);
-        if (wpp == NULL) continue;
+        if (wpp == NULL)
+        {
+            LOG(WARN, "Error allocating plugin: %s", wp->wanp_name);
+            continue;
+        }
 
         ds_dlist_insert_tail(&self->wpl_plugin_waitq, wpp);
+
+        wano_plugin_state_do(&wpp->wpp_state, wano_plugin_do_START, self);
     }
 
     if (ds_dlist_is_empty(&self->wpl_plugin_waitq))
@@ -336,250 +354,119 @@ void wano_ppline_start_queues(wano_ppline_t *self)
     }
 }
 
-void wano_ppline_stop_queues(wano_ppline_t *self)
+/*
+ * Move plug-ins to the PENDING state. If `force` is false, plug-ins in a
+ * running state (ACTIVE or DETACHED) are left intact. Other plug-ins are first
+ * forced to the IDLE state.
+ */
+void wano_ppline_plugin_reset(wano_ppline_t *self, bool force)
 {
-    ds_dlist_iter_t iter;
     struct wano_ppline_plugin *wpp;
 
-    /*
-     * Free the waiting queue
-     */
-    ds_dlist_foreach_iter(&self->wpl_plugin_waitq, wpp, iter)
+    ds_dlist_foreach(&self->wpl_plugin_waitq, wpp)
     {
-        ds_dlist_iremove(&iter);
-        wano_ppline_plugin_del(wpp);
+        LOG(DEBUG, "%s: Pluing %s state: %s",
+                self->wpl_ifname,
+                wpp->wpp_plugin->wanp_name,
+                wano_plugin_state_str(wano_plugin_state_get(&wpp->wpp_state)));
+        switch (wano_plugin_state_get(&wpp->wpp_state))
+        {
+            case wano_plugin_ACTIVE:
+            case wano_plugin_DETACHED:
+                if (!force) continue;
+                wano_plugin_state_do(&wpp->wpp_state, wano_plugin_exception_CANCEL, self);
+                break;
+
+            case wano_plugin_IDLE:
+                break;
+
+            default:
+                wano_plugin_state_do(&wpp->wpp_state, wano_plugin_exception_CANCEL, self);
+                break;
+        }
+
+        /* Skip plugins that match the exclude mask */
+        if ((self->wpl_plugin_emask & wpp->wpp_plugin->wanp_mask) != 0) continue;
+        wano_plugin_state_do(&wpp->wpp_state, wano_plugin_do_START, self);
     }
-
-    /*
-     * Free the running queue and terminate all currently running plug-ins
-     */
-    wano_ppline_runq_flush(self, true);
-
-    self->wpl_plugin_rmask = 0;
 }
 
 /*
- * Schedule next WAN plug-in on the interface.
+ * Find all plug-ins that are eligible for running and schedule them.
  *
- * @return
- * Return false if there's no more work present on the pipeline (all plug-ins
- * were executed and the wait queue is empty).
+ * The function below finds all plug-ins in the PENDING state that do not
+ * conflict with any currrently running plug-in (by checking the run-mask)
+ * and schedules them.
+ *
+ * Note that plug-ins that are in the SCHEDULED state are not started yet.
+ * This happens after the IPv4/IPv6 interface reset.
  */
 void wano_ppline_schedule(wano_ppline_t *self)
 {
     struct wano_ppline_plugin *wpp;
-    ds_dlist_iter_t iter;
 
-    /*
-     * Scan the current wait queue
-     */
-    ds_dlist_foreach_iter(&self->wpl_plugin_waitq, wpp, iter)
+    uint64_t rmask = 0;
+
+    /* Calculate the initial run mask from ACTIVE plug-ins */
+    ds_dlist_foreach(&self->wpl_plugin_waitq, wpp)
     {
-        /* Check if a plug-in can run according to the current run mask */
-        if (self->wpl_plugin_rmask & wpp->wpp_plugin->wanp_mask)
-        {
-            LOG(DEBUG, "wano: %s: Blocked plug-in %s",
-                    self->wpl_ifname,
-                    wpp->wpp_plugin->wanp_name);
-            continue;
-        }
-
-        ds_dlist_iremove(&iter);
-
-        if (!wano_ppline_runq_add(self, wpp))
-        {
-            /* Plug-in was unable to start, continue */
-            wano_ppline_plugin_del(wpp);
-            continue;
-        }
-
-        self->wpl_plugin_imask |= wpp->wpp_plugin->wanp_mask;
-    }
-}
-
-/*
- * Add plug-in to the run-queue
- */
-bool wano_ppline_runq_add(wano_ppline_t *self, struct wano_ppline_plugin *wpp)
-{
-    wpp->wpp_running = false;
-
-    self->wpl_plugin_rmask |= wpp->wpp_plugin->wanp_mask;
-    ds_dlist_insert_head(&self->wpl_plugin_runq, wpp);
-
-    return true;
-}
-
-/*
- * Scan the run-queue and start all plug-ins that are not yet started.
- * Boolean run_dhcp determines whether either DHCP or non-DHCP are run, exclusively.
- */
-static bool wano_ppline_runq_start_flagged(wano_ppline_t *self, bool run_dhcp)
-{
-    struct wano_ppline_plugin *wpp;
-
-    bool retval = false;
-    bool is_dhcp = false;
-
-    ds_dlist_foreach(&self->wpl_plugin_runq, wpp)
-    {
-        /* Do not count detached plug-in towards pipeline exhaustion */
-        if (wpp->wpp_detached)
-        {
-            continue;
-        }
-
-        is_dhcp = (
-          (strncmp("dhcpv4", wpp->wpp_plugin->wanp_name, sizeof("dhcpv4")) == 0) ||
-          (strncmp("dhcpv6", wpp->wpp_plugin->wanp_name, sizeof("dhcpv6")) == 0)
-        );
-
-        /* Are we running DHCP or non-DHCP plugins? */
-        if (is_dhcp != run_dhcp)
-        {
-            continue;
-        }
-
-        retval = true;
-
-        if (wpp->wpp_running)
-        {
-            continue;
-        }
-
-        LOG(NOTICE, "wano: %s: Starting plug-in %s",
-                    self->wpl_ifname,
-                    wpp->wpp_plugin->wanp_name);
-
-        ev_timer_init(&wpp->wpp_timeout, wano_ppline_plugin_timeout_fn, CONFIG_MANAGER_WANO_PLUGIN_TIMEOUT, 0.0);
-        ev_timer_start(EV_DEFAULT, &wpp->wpp_timeout);
-
-        ev_async_init(&wpp->wpp_status_async, wano_ppline_status_async_fn);
-        ev_async_start(EV_DEFAULT, &wpp->wpp_status_async);
-
-        wpp->wpp_running = true;
-        wano_plugin_run(wpp->wpp_handle);
+        if (wano_plugin_state_get(&wpp->wpp_state) != wano_plugin_ACTIVE) continue;
+        rmask |= wpp->wpp_plugin->wanp_mask;
     }
 
-    return retval;
-}
-
-/*
- * Scan the run-queue and start all *NON-DHCP* plug-ins that are not yet started
- */
-inline bool wano_ppline_runq_start(wano_ppline_t *self)
-{
-    return wano_ppline_runq_start_flagged(self, false);
-}
-
-/*
- * Scan the run-queue and start all *DHCP* plug-ins that are not yet started
- */
-inline bool wano_ppline_runq_start_dhcp(wano_ppline_t *self)
-{
-    return wano_ppline_runq_start_flagged(self, true);
-}
-
-/*
- * Remove a plug-in on the run queue; if the plug-in is running, terminate it
- */
-void __wano_ppline_runq_stop(wano_ppline_t *self, struct wano_ppline_plugin *wpp)
-{
-    /* If the plug-in was detached, the run mask was already cleared */
-    if (!wpp->wpp_detached)
+    ds_dlist_foreach(&self->wpl_plugin_waitq, wpp)
     {
-        self->wpl_plugin_rmask &= ~wpp->wpp_plugin->wanp_mask;
-    }
+        enum wano_plugin_state wpp_state = wano_plugin_state_get(&wpp->wpp_state);
 
-    /* If the plug-in reported its own interface for WAN, clear the uplink table */
-    if (wpp->wpp_status.ws_ifname[0] != '\0' &&
-            strcmp(wpp->wpp_ppline->wpl_ifname, wpp->wpp_status.ws_ifname) != 0)
-    {
-        if (!wano_connmgr_uplink_delete(wpp->wpp_status.ws_ifname))
-        {
-            LOG(ERR, "wano: %s: Error clearing Connection_Manager_Uplink.",
-                    wpp->wpp_status.ws_ifname);
-        }
-    }
-}
-
-void wano_ppline_runq_del(wano_ppline_t *self, struct wano_ppline_plugin *wpp)
-{
-    /* Remove the plug-in from the runqueue and clear the run mask */
-    __wano_ppline_runq_stop(self, wpp);
-    ds_dlist_remove(&self->wpl_plugin_runq, wpp);
-    wano_ppline_plugin_del(wpp);
-}
-
-void wano_ppline_runq_detach(wano_ppline_t *self, struct wano_ppline_plugin *wpp)
-{
-    wpp->wpp_detached = true;
-    self->wpl_plugin_rmask &= ~wpp->wpp_plugin->wanp_mask;
-
-    /* Stop the timeout handler */
-    ev_timer_stop(EV_DEFAULT, &wpp->wpp_timeout);
-}
-
-static void wano_ppline_runq_flush(wano_ppline_t *self, bool flush_detached)
-{
-    ds_dlist_iter_t iter;
-    struct wano_ppline_plugin *wpp;
-
-    ds_dlist_foreach_iter(&self->wpl_plugin_runq, wpp, iter)
-    {
-        /* Do not terminate detached plug-ins */
-        if (!flush_detached && wpp->wpp_detached)
-        {
-            continue;
-        }
-
-        __wano_ppline_runq_stop(self, wpp);
-        ds_dlist_iremove(&iter);
-        wano_ppline_plugin_del(wpp);
-    }
-}
-
-struct wano_ppline_plugin *wano_ppline_plugin_new(wano_ppline_t *self, struct wano_plugin *wp)
-{
-    struct wano_ppline_plugin *wpp;
-
-    wpp = CALLOC(1, sizeof(struct wano_ppline_plugin));
-
-    wpp->wpp_ppline = self;
-    wpp->wpp_plugin = wp;
-    /*
-     * Initialize the plug-in; plug-ins that return a NULL instance
-     * are skipped.
-     */
-    wpp->wpp_handle = wano_plugin_init(
-            wpp->wpp_plugin,
-            self->wpl_ifname,
-            wano_ppline_plugin_status_fn);
-    if (wpp->wpp_handle == NULL)
-    {
-        LOG(INFO, "wano: %s: Skipping plug-in %s",
+        LOG(DEBUG, "%s: Processing plugin: %s (state = %s)",
                 self->wpl_ifname,
-                wpp->wpp_plugin->wanp_name);
-        FREE(wpp);
-        return NULL;
-    }
-    wpp->wpp_handle->wh_data = wpp;
+                wpp->wpp_plugin->wanp_name,
+                wano_plugin_state_str(wano_plugin_state_get(&wpp->wpp_state)));
 
-    return wpp;
+        /* Skip plug-ins that are blocked on other plug-ins */
+        if ((rmask & wpp->wpp_plugin->wanp_mask) != 0) continue;
+
+        /* If a plug-in is pending schedule it now */
+        if (wpp_state == wano_plugin_PENDING)
+        {
+            LOG(DEBUG, "%s: Scheduling plug-in: %s", self->wpl_ifname, wpp->wpp_plugin->wanp_name);
+            wano_plugin_state_do(&wpp->wpp_state, wano_plugin_do_SCHEDULE, self);
+        }
+
+        /*
+         * Pending plug-ins revert back to the IDLE state on error, so the
+         * condition below covers both the cases of finished plug-ins and
+         * plug-ins that failed to be scheduled.
+         */
+        if (wpp_state == wano_plugin_IDLE) continue;
+        /* Detached plug-ins should not contribute to the run mask */
+        if (wpp_state == wano_plugin_DETACHED) continue;
+        rmask |= wpp->wpp_plugin->wanp_mask;
+    }
 }
 
-void wano_ppline_plugin_del(struct wano_ppline_plugin *wpp)
+/*
+ * Execute scheduled plug-ins and return true if any plug-ins are running
+ * at this moment.
+ */
+bool wano_ppline_run(wano_ppline_t *self)
 {
-    if (wpp->wpp_handle != NULL)
+    struct wano_ppline_plugin *wpp;
+
+    bool scheduled = false;
+
+    /*
+     * Run scheduled plug-ins
+     */
+    ds_dlist_foreach(&self->wpl_plugin_waitq, wpp)
     {
-        wano_plugin_fini(wpp->wpp_handle);
-        wpp->wpp_handle = NULL;
+        if (wano_plugin_state_get(&wpp->wpp_state) == wano_plugin_RUNNING) scheduled = true;
+        if (wano_plugin_state_get(&wpp->wpp_state) != wano_plugin_SCHEDULED) continue;
+        wano_plugin_state_do(&wpp->wpp_state, wano_plugin_do_RUN, self);
+        scheduled = true;
     }
 
-    ev_async_stop(EV_DEFAULT, &wpp->wpp_status_async);
-    ev_timer_stop(EV_DEFAULT, &wpp->wpp_timeout);
-
-    FREE(wpp);
+    return scheduled;
 }
 
 void wano_ppline_inet_state_event_fn(
@@ -602,241 +489,8 @@ void wano_ppline_inet_state_event_fn(
 void wano_ppline_plugin_status_fn(wano_plugin_handle_t *ph, struct wano_plugin_status *ps)
 {
     struct wano_ppline_plugin *wpp = ph->wh_data;
-
-    if (!wpp->wpp_running)
-    {
-        /*
-         * Calling the plug-in status function is valid only after a wano_plugin_run()
-         * was executed. Warn if it was called before that.
-         */
-        LOG(WARN, "wano: Plug-in %s requested status update (%d) while it's not running and will be ignored.",
-                wpp->wpp_plugin->wanp_name,
-                wpp->wpp_status.ws_type);
-        return;
-    }
-
-    /* Update local copy of the status and schedule an async event */
     wpp->wpp_status = *ps;
     ev_async_send(EV_DEFAULT, &wpp->wpp_status_async);
-}
-
-struct wano_wan_probe_status
-{
-    bool    probe_status;
-    int     probe_count;
-};
-
-static void wano_wan_probe_success_cb(void *arg, int ares_status, int timeouts, struct hostent *hostent)
-{
-    struct wano_wan_probe_status *status = arg;
-
-    switch (ares_status)
-    {
-        case ARES_SUCCESS:
-            LOG(INFO, "dns_probe: Host resolved.");
-            status->probe_status = true;
-            break;
-        /*
-         * The DNS probe is essentially pinging the server -- it doesn't matter if
-         * it was able to successfully resolve the host. The following error codes
-         * may be returned from the server even if it didn't resolve the host.
-         */
-        case ARES_ENODATA:
-        case ARES_EFORMERR:
-        case ARES_ESERVFAIL:
-        case ARES_ENOTFOUND:
-        case ARES_ENOTIMP:
-        case ARES_EREFUSED:
-            LOG(WARN, "dns_probe: DNS server was unable to resolve host, but seems to be working. Error: %s",
-                    ares_strerror(ares_status));
-            status->probe_status = true;
-            break;
-
-        case ARES_EDESTRUCTION:
-            /* This error happens when a channel is destroyed early, silence it */
-            break;
-
-        default:
-            LOG(WARN, "dns_probe: Ares error status(%d): %s", ares_status, ares_strerror(ares_status));
-            break;
-    }
-
-    status->probe_count++;
-}
-
-static bool wano_wan_probe_success(const char* if_name)
-{
-    ares_channel dnslist;
-    ares_channel dnsprobe[32];
-    int ndnsprobe;
-    struct ares_options options;
-    struct timeval tv;
-    fd_set read_fds, write_fds;
-    int64_t dns_timeout;
-    int optmask;
-    int ii;
-
-    struct wano_wan_probe_status status = { 0 };
-    int nfds = 0;
-    const char *dns_target = wano_awlan_redirector_addr();
-
-    if (dns_target == NULL || *dns_target == '\0')
-    {
-        LOGI("dns_probe: dns_target is null or empty, skipping DNS probe.");
-        return true;
-    }
-
-    /*
-     * Initialize a c-ares instance just to retrieve the server list -- the list
-     * from the custom resolv.conf file
-     */
-    optmask = ARES_OPT_RESOLVCONF;
-    options.resolvconf_path = CONFIG_WANO_DNS_PROBE_RESOLV_CONF_PATH;
-    if (ares_init_options(&dnslist, &options, optmask) != ARES_SUCCESS)
-    {
-        LOG(WARN, "dns_probe: Error initializing cares, skipping DNS probe.");
-        return true;
-    }
-
-    struct ares_addr_node *csrv;
-    if (ares_get_servers(dnslist, &csrv) != ARES_SUCCESS || csrv == NULL)
-    {
-        LOG(WARN, "dns_probe: Error retrieving list of DNS servers or no DNS servers defined, skipping DNS probe.");
-        ares_destroy(dnslist);
-        return true;
-    }
-
-    LOG(INFO, "dns_probe: DNS probe resolving host: %s", dns_target);
-    ndnsprobe = 0;
-    for (;csrv != NULL; csrv = csrv->next)
-    {
-        if (ndnsprobe >= ARRAY_LEN(dnsprobe))
-        {
-            LOG(NOTICE, "dns_probe: Maximum number of DNS probes reached (%d), skipping the rest.", ARRAY_LEN(dnsprobe));
-            break;
-        }
-
-        char ssrv[INET6_ADDRSTRLEN];
-        if (inet_ntop(csrv->family, (void *)&csrv->addr, ssrv, sizeof(ssrv)) == NULL)
-        {
-            LOG(NOTICE, "dns_probe: Error converting address (%d) to string, skipping: %s",
-                    ndnsprobe,
-                    strerror(errno));
-            continue;
-        }
-
-        LOG(INFO, "Probing DNS server: %s", ssrv);
-
-        optmask = 0;
-        optmask |= ARES_OPT_LOOKUPS;
-        options.lookups = "b";
-        optmask |= ARES_OPT_SERVERS;
-        options.nservers = 0;
-        options.servers = NULL;
-        /* Bind ares sockets to the provisioned interface */
-        ares_set_local_dev(dnslist, if_name);
-
-        if (ares_init_options(&dnsprobe[ndnsprobe], &options, optmask) != ARES_SUCCESS)
-        {
-            LOG(NOTICE, "dns_probe: Error initializing DNS probe for server: %s. Skipping.", ssrv);
-            continue;
-        }
-
-        if (ares_set_servers_csv(dnsprobe[ndnsprobe], ssrv) != ARES_SUCCESS)
-        {
-            LOG(NOTICE, "dns_probe: Error setting DNS probe server: %s. Skipping.", ssrv);
-            ares_destroy(dnsprobe[ndnsprobe]);
-            continue;
-        }
-
-        ares_gethostbyname(dnsprobe[ndnsprobe], dns_target, AF_INET, wano_wan_probe_success_cb, (void*) &status);
-        ndnsprobe++;
-    }
-
-    if (ndnsprobe == 0)
-    {
-        LOG(NOTICE, "No DNS servers found.");
-        goto exit;
-    }
-
-    nfds = 0;
-    FD_ZERO(&read_fds);
-    FD_ZERO(&write_fds);
-
-    for (ii = 0; ii < ndnsprobe; ii++)
-    {
-        nfds = ares_fds(dnsprobe[ii], &read_fds, &write_fds);
-    }
-
-    if (nfds == 0)
-    {
-        LOG(WARN, "dns_probe: DNS probes generated no descriptors, skipping DNS probe.");
-        status.probe_status = true;
-        goto exit;
-    }
-
-    /*
-     * Wait for the maximum of WANO_DNS_PROBE_TIMEOUT_SEC for the address
-     * lookup to complete. If select returns a non-negative value call
-     * ares_process which will invoke wano_wan_probe_success_cb that can
-     * report failure in cb_success.
-     */
-    dns_timeout = clock_mono_usec() + WANO_DNS_PROBE_TIMEOUT_SEC * 1000000LL;
-    while (!status.probe_status)
-    {
-        if (status.probe_count >= ndnsprobe)
-        {
-            LOG(INFO, "dns_probe: All probes completed without success.");
-            break;
-        }
-
-        int64_t to_remain = dns_timeout - clock_mono_usec();
-        if (to_remain <= 0)
-        {
-            LOG(NOTICE, "dns_probe: Timeout occurred. Terminating all probes.");
-            break;
-        }
-
-        tv.tv_sec = to_remain / 1000000LL;
-        tv.tv_usec = to_remain % 1000000LL;
-        int sel = select(nfds, &read_fds, &write_fds, NULL, &tv);
-        /* No retries on errors/signal interrupts, tv is no longer valid */
-        if (sel > 0)
-        {
-            for (ii = 0; ii < ndnsprobe; ii++)
-            {
-                ares_process(dnsprobe[ii], &read_fds, &write_fds);
-            }
-        }
-        else if (sel < 0)
-        {
-            LOG(WARN, "dns_probe: Error while waiting on probe results, skipping DNS probe: %s", strerror(errno));
-            status.probe_status = true;
-            break;
-        }
-        else
-        {
-            LOG(INFO, "dns_probe: No responses after timeout.");
-            break;
-        }
-    }
-
-exit:
-    for (ii = 0; ii < ndnsprobe; ii++) ares_destroy(dnsprobe[ii]);
-    ares_destroy(dnslist);
-
-    LOG(NOTICE, "DNS probe status: %s\n", status.probe_status ? "SUCCESS" : "ERROR");
-    return status.probe_status;
-}
-
-inline bool wano_ppline_wan_probe_setup(void)
-{
-    return (ares_library_init(ARES_LIB_INIT_ALL) == ARES_SUCCESS);
-}
-
-inline void wano_ppline_wan_probe_teardown(void)
-{
-    ares_library_cleanup();
 }
 
 /*
@@ -853,7 +507,7 @@ void wano_ppline_status_async_fn(struct ev_loop *loop, ev_async *ev, int revent)
     struct wano_ppline_plugin *wpp = CONTAINER_OF(ev, struct wano_ppline_plugin, wpp_status_async);
     wano_ppline_t *self = wpp->wpp_ppline;
 
-    wano_ppline_map_iftype(self->wpl_iftype, iftype);
+    wano_ppline_map_iftype(self->wpl_iftype, iftype, sizeof(iftype));
 
     switch (wpp->wpp_status.ws_type)
     {
@@ -862,17 +516,16 @@ void wano_ppline_status_async_fn(struct ev_loop *loop, ev_async *ev, int revent)
             char *update_ifname = (wpp->wpp_status.ws_ifname[0] != '\0') ?
                 wpp->wpp_status.ws_ifname : self->wpl_ifname;
 
-            /* Stop the timeout timer */
-            ev_timer_stop(EV_DEFAULT, &wpp->wpp_timeout);
+            /* Move the plug-in to the ACTIVE state */
+            wano_plugin_state_do(&wpp->wpp_state, wano_plugin_do_SUCCESS, self);
 
-            if (wano_wan_probe_success(update_ifname) != true)
+            if (!wano_dns_probe_run(update_ifname))
             {
                 LOG(WARN, "wano: %s: WAN Plug-in fail: %s, wan probe failed",
                     update_ifname, wano_plugin_name(wpp->wpp_handle));
-
-                /* Trigger plugin timeout */
-                ev_timer_set(&wpp->wpp_timeout, 0., 0.);
-                ev_timer_start(EV_DEFAULT, &wpp->wpp_timeout);
+                /* Cancel plug-in and reschedule an update */
+                wano_plugin_state_do(&wpp->wpp_state, wano_plugin_exception_CANCEL, self);
+                wano_ppline_state_do(&self->wpl_state, wano_ppline_do_PLUGIN_UPDATE, NULL);
                 break;
             }
 
@@ -956,7 +609,7 @@ void wano_ppline_status_async_fn(struct ev_loop *loop, ev_async *ev, int revent)
 
         case WANP_SKIP:
             LOG(INFO, "wano: %s: Plug-in requested skip: %s", self->wpl_ifname, wano_plugin_name(wpp->wpp_handle));
-            wano_ppline_runq_del(self, wpp);
+            wano_plugin_state_do(&wpp->wpp_state, wano_plugin_do_SKIP, self);
             wano_ppline_state_do(&self->wpl_state, wano_ppline_do_PLUGIN_UPDATE, NULL);
             break;
 
@@ -975,8 +628,7 @@ void wano_ppline_status_async_fn(struct ev_loop *loop, ev_async *ev, int revent)
         case WANP_ERROR:
             LOG(ERR, "wano: %s: Error detected running plug-in: %s. Skipping.",
                     self->wpl_ifname, wano_plugin_name(wpp->wpp_handle));
-
-            wano_ppline_runq_del(self, wpp);
+            wano_plugin_state_do(&wpp->wpp_state, wano_plugin_do_ERROR, self);
             wano_ppline_state_do(&self->wpl_state, wano_ppline_do_PLUGIN_UPDATE, NULL);
             break;
 
@@ -985,7 +637,7 @@ void wano_ppline_status_async_fn(struct ev_loop *loop, ev_async *ev, int revent)
                     self->wpl_ifname, wano_plugin_name(wpp->wpp_handle));
 
             ev_timer_stop(EV_DEFAULT, &wpp->wpp_timeout);
-            wano_ppline_runq_detach(self, wpp);
+            wano_plugin_state_do(&wpp->wpp_state, wano_plugin_do_DETACH, self);
             wano_ppline_state_do(&self->wpl_state, wano_ppline_do_PLUGIN_UPDATE, NULL);
             break;
 
@@ -1013,7 +665,7 @@ void wano_ppline_plugin_timeout_fn(struct ev_loop *loop, ev_timer *w, int revent
     LOG(NOTICE, "wano: %s: Plug-in timed out: %s. Terminating.",
             self->wpl_ifname, wano_plugin_name(wpp->wpp_handle));
 
-    wano_ppline_runq_del(self, wpp);
+    wano_plugin_state_do(&wpp->wpp_state, wano_plugin_do_TIMEOUT, self);
     wano_ppline_state_do(&self->wpl_state, wano_ppline_do_PLUGIN_UPDATE, NULL);
 }
 
@@ -1159,21 +811,21 @@ void wano_ppline_reset_ipv6(wano_ppline_t *self)
     }
 }
 
-void wano_ppline_map_iftype(const char *in_iftype, char *out_iftype)
+void wano_ppline_map_iftype(const char *in_iftype, char *out_iftype, int out_size)
 {
     if (strcmp(in_iftype, "unmanaged") == 0)
     {
-        strcpy(out_iftype, "eth");
+        strscpy(out_iftype, "eth", out_size);
     }
     else
     {
-        strcpy(out_iftype, in_iftype);
+        strscpy(out_iftype, in_iftype, out_size);
     }
 }
 
 /*
  * ===========================================================================
- *  State Machine
+ *  wano_ppline State Machine
  * ===========================================================================
  */
 enum wano_ppline_state wano_ppline_state_INIT(
@@ -1190,7 +842,7 @@ enum wano_ppline_state wano_ppline_state_INIT(
     wano_ppline_event_dispatch(self, WANO_PPLINE_RESTART);
 
     /* Destroy current plug-ins if they are left over from a restart */
-    wano_ppline_stop_queues(self);
+    wano_ppline_plugin_reset(self, true);
 
     /* Remove any entries in the Connection_Manager_Uplink table */
     if (wano_connmgr_uplink_delete(self->wpl_ifname))
@@ -1200,7 +852,7 @@ enum wano_ppline_state wano_ppline_state_INIT(
 
     self->wpl_immediate_timeout = clock_mono_double() + CONFIG_MANAGER_WANO_PLUGIN_IMMEDIATE_TIMEOUT;
 
-    wano_ppline_map_iftype(self->wpl_iftype, if_type);
+    wano_ppline_map_iftype(self->wpl_iftype, if_type, sizeof(if_type));
 
     if (!WANO_CONNMGR_UPLINK_UPDATE(
                 self->wpl_ifname,
@@ -1267,10 +919,6 @@ enum wano_ppline_state wano_ppline_state_IF_ENABLE(
             if (!is->is_network) break;
             if (!is->is_nat) break;
             if (strcmp(is->is_ip_assign_scheme, "none") != 0) break;
-
-            /* Interface is ready -- initialize plug-ins */
-            wano_ppline_start_queues(self);
-
             return wano_ppline_IF_CARRIER;
 
         default:
@@ -1361,14 +1009,21 @@ enum wano_ppline_state wano_ppline_state_IF_IPV4_RESET(
 
     wano_ppline_t *self = CONTAINER_OF(state, wano_ppline_t, wpl_state);
     struct wano_inet_state *is = data;
+    struct wano_ppline_plugin *wpp;
+    bool is_ipv4 = false;
 
     switch (action)
     {
         case wano_ppline_do_STATE_INIT:
-            if (!(self->wpl_plugin_imask & WANO_PLUGIN_MASK_IPV4))
+            ds_dlist_foreach(&self->wpl_plugin_waitq, wpp)
             {
-                return wano_ppline_IF_IPV6_RESET;
+                if (wano_plugin_state_get(&wpp->wpp_state) == wano_plugin_SCHEDULED)
+                {
+                    is_ipv4 |= wpp->wpp_plugin->wanp_mask & WANO_PLUGIN_MASK_IPV4;
+                }
             }
+
+            if (!is_ipv4) return wano_ppline_IF_IPV6_RESET;
 
             LOG(INFO, "wano: %s: An IPv4 plugin is scheduled to run, resetting IPv4 settings.",
                     self->wpl_ifname);
@@ -1381,8 +1036,6 @@ enum wano_ppline_state wano_ppline_state_IF_IPV4_RESET(
             if (strcmp(is->is_ip_assign_scheme, "none") != 0) break;
             if (osn_ip_addr_cmp(&is->is_ipaddr, &OSN_IP_ADDR_INIT) != 0
                 && strcmp(self->wpl_iftype, "unmanaged") != 0) break;
-
-            self->wpl_plugin_imask &= ~WANO_PLUGIN_MASK_IPV4;
             return wano_ppline_IF_IPV6_RESET;
 
         case wano_ppline_do_PLUGIN_UPDATE:
@@ -1403,22 +1056,27 @@ enum wano_ppline_state wano_ppline_state_IF_IPV6_RESET(
     (void)state;
     (void)data;
 
+    struct wano_ppline_plugin *wpp;
+
     wano_ppline_t *self = CONTAINER_OF(state, wano_ppline_t, wpl_state);
+    bool is_ipv6 = false;
 
     switch (action)
     {
         case wano_ppline_do_STATE_INIT:
-            if (!(self->wpl_plugin_imask & WANO_PLUGIN_MASK_IPV6))
+            ds_dlist_foreach(&self->wpl_plugin_waitq, wpp)
             {
-                return wano_ppline_PLUGIN_RUN;
+                if (wano_plugin_state_get(&wpp->wpp_state) == wano_plugin_SCHEDULED)
+                {
+                    is_ipv6 |= wpp->wpp_plugin->wanp_mask & WANO_PLUGIN_MASK_IPV6;
+                }
             }
+
+            if (!is_ipv6) return wano_ppline_PLUGIN_RUN;
 
             LOG(INFO, "wano: %s: An IPv6 plugin is scheduled to run, resetting IPv6 settings.",
                     self->wpl_ifname);
-
             wano_ppline_reset_ipv6(self);
-
-            self->wpl_plugin_imask &= ~WANO_PLUGIN_MASK_IPV6;
             return wano_ppline_PLUGIN_RUN;
 
         case wano_ppline_do_PLUGIN_UPDATE:
@@ -1444,18 +1102,11 @@ enum wano_ppline_state wano_ppline_state_PLUGIN_RUN(
     switch (action)
     {
         case wano_ppline_do_STATE_INIT:
-            if (wano_ppline_runq_start(self))
+            if (wano_ppline_run(self))
             {
                 break;
             }
-
-            /* Only upon exhaustion of all plugins for all configs, try with DHCP */
-            if (wano_wan_is_last_config(self->wpl_wan) && wano_ppline_runq_start_dhcp(self))
-            {
-                break;
-            }
-
-            LOG(NOTICE, "wano: %s: Pipeline has no active plug-ins.", self->wpl_ifname);
+            LOG(NOTICE, "wano: %s: Pipeline exhausted plug-ins.", self->wpl_ifname);
             return wano_ppline_IDLE;
 
         case wano_ppline_do_PLUGIN_UPDATE:
@@ -1479,16 +1130,36 @@ enum wano_ppline_state wano_ppline_state_IDLE(
     int retries;
     double maxtime;
     double rtime;
+    struct wano_ppline_plugin *wpp;
 
     wano_ppline_t *self = CONTAINER_OF(state, wano_ppline_t, wpl_state);
+    bool active = false;
+
+    /* Check if there are any active plug-ins */
+    ds_dlist_foreach(&self->wpl_plugin_waitq, wpp)
+    {
+        if (wano_plugin_state_get(&wpp->wpp_state) != wano_plugin_ACTIVE) continue;
+        active = true;
+        break;
+    }
 
     switch (action)
     {
         case wano_ppline_do_STATE_INIT:
-            /* Stop active plug-ins */
-            wano_ppline_runq_flush(self, false);
+            if (!active)
+            {
+                /*
+                 * This event signifies that there's no more work to do on the
+                 * pipeline. Historically this is also what the "IDLE" state menat.
+                 *
+                 * With recent changes, the IDLE state is just a sleeping state
+                 * so we need one extra cehck (!active) to figure out if we're
+                 * really idle.
+                 */
+                wano_ppline_event_dispatch(self, WANO_PPLINE_IDLE);
+            }
 
-            wano_ppline_event_dispatch(self, WANO_PPLINE_IDLE);
+            wano_ppline_plugin_reset(self, false);
 
             /*
              * Update connection manager table, has_L3 must be false and loop
@@ -1498,7 +1169,11 @@ enum wano_ppline_state wano_ppline_state_IDLE(
              * wait until a WAN rollover occurs before we flag the interface
              * as "exhasuted" (has_L3 = false).
              */
-            if (self->wpl_wan == NULL || wano_wan_rollover_get(self->wpl_wan) > 0)
+            if (active)
+            {
+                LOG(INFO, "wano: %s: Active plug-ins present, not resetting .has_L3.", self->wpl_ifname);
+            }
+            else if (self->wpl_wan == NULL || wano_wan_rollover_get(self->wpl_wan) > 0)
             {
                 if (!WANO_CONNMGR_UPLINK_UPDATE(
                         self->wpl_ifname,
@@ -1524,18 +1199,7 @@ enum wano_ppline_state wano_ppline_state_IDLE(
                  * START state only restarts the pipeline without touching the
                  * Connection_Manager_Uplink state
                  */
-                return wano_ppline_START;
-            }
-
-            /*
-             * Disable NAT
-             */
-            if (!WANO_INET_CONFIG_UPDATE(
-                        self->wpl_ifname,
-                        .ip_assign_scheme = "none",
-                        .nat = WANO_TRI_FALSE))
-            {
-                LOG(WARN, "wano: %s: Error disabling NAT.", self->wpl_ifname);
+                return (active ? wano_ppline_PLUGIN_SCHED : wano_ppline_START);
             }
 
             /* Calculate retry timer */
@@ -1559,7 +1223,7 @@ enum wano_ppline_state wano_ppline_state_IDLE(
         case wano_ppline_do_IDLE_TIMEOUT:
             LOG(INFO, "wano: %s: Idle timeout reached, restarting pipeline.", self->wpl_ifname);
             ev_timer_stop(EV_DEFAULT, &self->wpl_retry_timer);
-            return wano_ppline_START;
+            return (active ? wano_ppline_PLUGIN_SCHED : wano_ppline_START);
 
         default:
             break;
@@ -1584,10 +1248,8 @@ enum wano_ppline_state wano_ppline_state_ABORT(
     switch (action)
     {
         case wano_ppline_do_STATE_INIT:
-            /* Stop active plug-ins */
-            wano_ppline_runq_flush(self, false);
-
             wano_ppline_event_dispatch(self, WANO_PPLINE_ABORT);
+            wano_ppline_plugin_reset(self, true);
 
             if (!WANO_CONNMGR_UPLINK_UPDATE(
                     self->wpl_ifname,
@@ -1653,7 +1315,7 @@ enum wano_ppline_state wano_ppline_state_FREEZE(
             LOG(NOTICE, "wano: %s: Pipeline frozen.", self->wpl_ifname);
 
             wano_ppline_event_dispatch(self, WANO_PPLINE_FREEZE);
-            wano_ppline_stop_queues(self);
+            wano_ppline_plugin_reset(self, true);
 
             /*
              * If there was no successful WAN configuration found on the
@@ -1723,4 +1385,193 @@ enum wano_ppline_state wano_ppline_state_EXCEPTION(
     }
 
     return 0;
+}
+
+/*
+ * ===========================================================================
+ *  wano_plugin State Machine
+ * ===========================================================================
+ */
+enum wano_plugin_state wano_plugin_state_IDLE(
+        wano_plugin_state_t *state,
+        enum wano_plugin_action action,
+        void *data)
+{
+    (void)action;
+    (void)data;
+
+    struct wano_ppline_plugin *wpp = CONTAINER_OF(state, struct wano_ppline_plugin, wpp_state);
+
+    switch (action)
+    {
+        case wano_plugin_do_STATE_INIT:
+            if (wpp->wpp_handle != NULL) wano_plugin_fini(wpp->wpp_handle);
+            wpp->wpp_handle = NULL;
+
+            /* If the plug-in reported its own interface for WAN, clear the uplink table */
+            if (wpp->wpp_status.ws_ifname[0] != '\0' &&
+                    strcmp(wpp->wpp_ppline->wpl_ifname, wpp->wpp_status.ws_ifname) != 0)
+            {
+                wpp->wpp_status.ws_ifname[0] = '\0';
+                if (!wano_connmgr_uplink_delete(wpp->wpp_status.ws_ifname))
+                {
+                    LOG(ERR, "wano: %s: Error clearing Connection_Manager_Uplink.",
+                            wpp->wpp_status.ws_ifname);
+                }
+            }
+
+            ev_async_stop(EV_DEFAULT, &wpp->wpp_status_async);
+            ev_async_init(&wpp->wpp_status_async, wano_ppline_status_async_fn);
+            break;
+
+        case wano_plugin_do_START:
+            return wano_plugin_PENDING;
+
+        default:
+            break;
+    }
+
+    return 0;
+}
+
+enum wano_plugin_state wano_plugin_state_PENDING(
+        wano_plugin_state_t *state,
+        enum wano_plugin_action action,
+        void *data)
+{
+    (void)state;
+    (void)action;
+    (void)data;
+
+    switch (action)
+    {
+        case wano_plugin_do_SCHEDULE:
+            return wano_plugin_SCHEDULED;
+
+        default:
+            break;
+    }
+
+    return 0;
+}
+
+enum wano_plugin_state wano_plugin_state_SCHEDULED(
+        wano_plugin_state_t *state,
+        enum wano_plugin_action action,
+        void *data)
+{
+    struct wano_ppline_plugin *wpp = CONTAINER_OF(state, struct wano_ppline_plugin, wpp_state);
+    wano_ppline_t *self = data;
+
+    switch (action)
+    {
+        case wano_plugin_do_STATE_INIT:
+            /*
+             * Initialize the plug-in; plug-ins that return a NULL instance
+             * are skipped.
+             */
+            wpp->wpp_handle = wano_plugin_init(
+                    wpp->wpp_plugin,
+                    self->wpl_ifname,
+                    wano_ppline_plugin_status_fn);
+            if (wpp->wpp_handle == NULL)
+            {
+                LOG(INFO, "wano: %s: Skipping plug-in %s",
+                        self->wpl_ifname,
+                        wpp->wpp_plugin->wanp_name);
+                return wano_plugin_IDLE;
+            }
+            wpp->wpp_handle->wh_data = wpp;
+            break;
+
+        case wano_plugin_do_RUN:
+            return wano_plugin_RUNNING;
+
+        default:
+            break;
+    }
+
+    return 0;
+}
+
+enum wano_plugin_state wano_plugin_state_RUNNING(
+        wano_plugin_state_t *state,
+        enum wano_plugin_action action,
+        void *data)
+{
+    (void)action;
+    (void)data;
+
+    enum wano_plugin_state retval = 0;
+
+    struct wano_ppline_plugin *wpp = CONTAINER_OF(state, struct wano_ppline_plugin, wpp_state);
+
+    switch (action)
+    {
+        case wano_plugin_do_STATE_INIT:
+            ev_timer_init(&wpp->wpp_timeout, wano_ppline_plugin_timeout_fn, CONFIG_MANAGER_WANO_PLUGIN_TIMEOUT, 0.0);
+            ev_timer_start(EV_DEFAULT, &wpp->wpp_timeout);
+            ev_async_start(EV_DEFAULT, &wpp->wpp_status_async);
+            wano_plugin_run(wpp->wpp_handle);
+            return 0;
+
+        case wano_plugin_do_SUCCESS:
+            retval = wano_plugin_ACTIVE;
+            break;
+
+        case wano_plugin_do_DETACH:
+            retval = wano_plugin_DETACHED;
+            break;
+
+        case wano_plugin_do_SKIP:
+        case wano_plugin_do_TIMEOUT:
+        case wano_plugin_do_ERROR:
+            retval = wano_plugin_IDLE;
+            break;
+
+        default:
+            break;
+    }
+
+    ev_timer_stop(EV_DEFAULT, &wpp->wpp_timeout);
+
+    return retval;
+}
+
+enum wano_plugin_state wano_plugin_state_ACTIVE(
+        wano_plugin_state_t *state,
+        enum wano_plugin_action action,
+        void *data)
+{
+    return 0;
+}
+
+enum wano_plugin_state wano_plugin_state_DETACHED(
+        wano_plugin_state_t *state,
+        enum wano_plugin_action action,
+        void *data)
+{
+    switch (action)
+    {
+        case wano_plugin_do_SKIP:
+            return wano_plugin_IDLE;
+
+        default:
+            break;
+    }
+
+    return 0;
+}
+
+enum wano_plugin_state wano_plugin_state_EXCEPTION(
+        wano_plugin_state_t *state,
+        enum wano_plugin_action action,
+        void *data)
+{
+    (void)state;
+    (void)action;
+    (void)data;
+
+    /* Any exception forces a transition to the IDLE state */
+    return wano_plugin_IDLE;
 }

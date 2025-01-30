@@ -66,6 +66,7 @@ typedef struct fcm_collect_plugin_
     char * (*get_other_config)(struct fcm_collect_plugin_ *, char *);
     bool (*fcm_gk_request)(struct gk_request *req, struct gk_reply *rep);
     int  (*process_flush_cache)(struct fsm_policy *policy);
+    void (*process_ct_event)(struct fcm_collect_plugin_ *, void *data);
     struct ev_loop *loop;
     struct fcm_session *session;
     struct fcm_filter_client *collect_client;

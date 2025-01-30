@@ -51,6 +51,20 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define OSW_STEER_POLICY_SNR_XING_DELTA_BYTES_BUF_SIZE 2
 #define OSW_STEER_POLICY_SNR_XING_ENFORCE_PERIOD_SEC 5
 
+#define LOG_PREFIX(fmt, ...) "ow: steer: " fmt, ##__VA_ARGS__
+#define LOG_WITH_PREFIX(prefix, fmt, ...) \
+    LOG_PREFIX(                           \
+        "%s" fmt,                        \
+        prefix,                           \
+        ##__VA_ARGS__)
+
+#define LOG_WITH_POLICY_PREFIX(policy, fmt, ...) \
+    LOG_WITH_PREFIX(                             \
+        ow_steer_policy_get_prefix(policy),      \
+        fmt,                                     \
+        ##__VA_ARGS__)
+
+
 enum ow_steer_policy_snr_xing_chnage {
     OW_STEER_POLICY_SNR_XING_CHANGE_UP,
     OW_STEER_POLICY_SNR_XING_CHANGE_DOWN,
@@ -251,7 +265,7 @@ ow_steer_policy_snr_xing_state_reset(struct ow_steer_policy_snr_xing *xing_polic
     const bool enforce_period = osw_timer_is_armed(&state->enforce_timer) == true;
 
     if (enforce_period == true)
-        LOGI("%s enforce period stopped", ow_steer_policy_get_prefix(xing_policy->base));
+        LOGI(LOG_WITH_POLICY_PREFIX(xing_policy->base, "enforce period stopped"));
 
     osw_circ_buf_init(&state->snr_buf, OSW_STEER_POLICY_SNR_XING_SNR_BUF_SIZE);
     ow_steer_policy_snr_xing_activity_fini(&state->activity);
@@ -438,16 +452,16 @@ ow_steer_policy_snr_xing_recalc(struct ow_steer_policy_snr_xing *xing_policy)
 
     const bool enforce_pending_changed = prev_enforce_pending != state->enforce_pending;
     if (enforce_pending_changed == true)
-        LOGI("%s enforce pending: %s -> %s", ow_steer_policy_get_prefix(xing_policy->base),
-             prev_enforce_pending == true ? "true" : "false", state->enforce_pending == true ? "true" : "false");
+        LOGI(LOG_WITH_POLICY_PREFIX(xing_policy->base, "enforce pending: %s -> %s",
+             prev_enforce_pending == true ? "true" : "false", state->enforce_pending == true ? "true" : "false"));
 
     const enum ow_steer_policy_snr_txrx_state prev_txrx_state = state->txrx_state;
     state->txrx_state = ow_steer_policy_snr_xing_eval_txrx_state(xing_policy);
 
     const bool txrx_state_changed = prev_txrx_state != state->txrx_state;
     if (txrx_state_changed == true)
-        LOGD("%s txrx state: %s -> %s", ow_steer_policy_get_prefix(xing_policy->base),
-             ow_steer_policy_snr_txrx_state_to_cstr(prev_txrx_state), ow_steer_policy_snr_txrx_state_to_cstr(state->txrx_state));
+        LOGD(LOG_WITH_POLICY_PREFIX(xing_policy->base, "txrx state: %s -> %s",
+             ow_steer_policy_snr_txrx_state_to_cstr(prev_txrx_state), ow_steer_policy_snr_txrx_state_to_cstr(state->txrx_state)));
 
     switch (config->mode) {
         case OW_STEER_POLICY_SNR_XING_MODE_HWM:
@@ -496,7 +510,7 @@ ow_steer_policy_snr_xing_recalc(struct ow_steer_policy_snr_xing *xing_policy)
         osw_timer_arm_at_nsec(&state->enforce_timer, tstamp_nsec);
         ow_steer_policy_trigger_executor(xing_policy->base);
         ow_steer_policy_schedule_stack_recalc(xing_policy->base);
-        LOGI("%s enforce period started", ow_steer_policy_get_prefix(xing_policy->base));
+        LOGI(LOG_WITH_POLICY_PREFIX(xing_policy->base, "enforce period started"));
     }
 }
 
@@ -525,7 +539,7 @@ ow_steer_policy_snr_xing_recalc_cb(struct ow_steer_policy *policy,
     struct ow_steer_candidate *blocked_candidate = ow_steer_candidate_list_lookup(candidate_list, &config->bssid);
     const bool blocked_candidate_exists = blocked_candidate != NULL;
     if (blocked_candidate_exists == false)
-        LOGI("%s bssid: "OSW_HWADDR_FMT" preference: (nil), doesnt exist", ow_steer_policy_get_prefix(policy), OSW_HWADDR_ARG(&config->bssid));
+        LOGI(LOG_WITH_POLICY_PREFIX(xing_policy->base, "bssid: "OSW_HWADDR_FMT" preference: (nil), doesnt exist", OSW_HWADDR_ARG(&config->bssid)));
 
     bool block_cancicdate_blockable = true;
     if (blocked_candidate_exists == true) {
@@ -542,8 +556,8 @@ ow_steer_policy_snr_xing_recalc_cb(struct ow_steer_policy *policy,
                 break;
         }
         if (block_cancicdate_blockable == false) {
-            LOGI("%s bssid: "OSW_HWADDR_FMT" preference: %s, cannot block candidate", ow_steer_policy_get_prefix(policy), OSW_HWADDR_ARG(&config->bssid),
-                 ow_steer_candidate_preference_to_cstr(blocked_candidate_pref));
+            LOGI(LOG_WITH_POLICY_PREFIX(xing_policy->base, "bssid: "OSW_HWADDR_FMT" preference: %s, cannot block candidate", OSW_HWADDR_ARG(&config->bssid),
+                 ow_steer_candidate_preference_to_cstr(blocked_candidate_pref)));
         }
 
     }
@@ -574,7 +588,7 @@ ow_steer_policy_snr_xing_recalc_cb(struct ow_steer_policy *policy,
     }
 
     if (any_available_candidates == false)
-        LOGI("%s no other candidates available", ow_steer_policy_get_prefix(policy));
+        LOGI(LOG_WITH_POLICY_PREFIX(policy, "no other candidates available"));
 
     const bool continue_enforce = blocked_candidate_exists == true &&
                                   block_cancicdate_blockable == true &&
@@ -582,9 +596,9 @@ ow_steer_policy_snr_xing_recalc_cb(struct ow_steer_policy *policy,
 
     if (continue_enforce == false) {
         if (enforce_period == true)
-            LOGI("%s enforce period stopped", ow_steer_policy_get_prefix(xing_policy->base));
+            LOGI(LOG_WITH_POLICY_PREFIX(xing_policy->base, "enforce period stopped"));
         if (state->enforce_pending == true)
-            LOGI("%s pending enforce period cancelled", ow_steer_policy_get_prefix(xing_policy->base));
+            LOGI(LOG_WITH_POLICY_PREFIX(xing_policy->base, "pending enforce period cancelled"));
 
         osw_timer_disarm(&state->enforce_timer);
         return;
@@ -604,8 +618,8 @@ ow_steer_policy_snr_xing_recalc_cb(struct ow_steer_policy *policy,
         else
             ow_steer_candidate_set_preference(candidate, reason, OW_STEER_CANDIDATE_PREFERENCE_AVAILABLE);
 
-        LOGD("%s bssid: "OSW_HWADDR_FMT" preference: %s", ow_steer_policy_get_prefix(policy), OSW_HWADDR_ARG(bssid),
-             ow_steer_candidate_preference_to_cstr(ow_steer_candidate_get_preference(candidate)));
+        LOGD(LOG_WITH_POLICY_PREFIX(xing_policy->base, "bssid: "OSW_HWADDR_FMT" preference: %s", OSW_HWADDR_ARG(bssid),
+             ow_steer_candidate_preference_to_cstr(ow_steer_candidate_get_preference(candidate))));
     }
 }
 
@@ -623,7 +637,7 @@ ow_steer_policy_snr_xing_sta_connected_cb(struct osw_state_observer *observer,
     const struct ow_steer_policy_snr_xing_config *config = xing_policy->config;
     const struct osw_hwaddr *vif_bssid = &sta_info->vif->drv_state->mac_addr;
     if (config == NULL) {
-        LOGD("%s sta connected to vif bssid: "OSW_HWADDR_FMT", (no conf)", ow_steer_policy_get_prefix(xing_policy->base), OSW_HWADDR_ARG(vif_bssid));
+        LOGD(LOG_WITH_POLICY_PREFIX(xing_policy->base, "sta connected to vif bssid: "OSW_HWADDR_FMT", (no conf)", OSW_HWADDR_ARG(vif_bssid)));
         return;
     }
 
@@ -645,9 +659,9 @@ ow_steer_policy_snr_xing_sta_connected_cb(struct osw_state_observer *observer,
     if (assoc_req_info.rrm_neighbor_bcn_act_meas == true)
         state->rrm_neighbor_bcn_act_meas = true;
 
-    LOGI("%s sta connected, rrm_neighbor_bcn_act_meas: %s wnm_bss_trans: %s%s", ow_steer_policy_get_prefix(xing_policy->base),
+    LOGI(LOG_WITH_POLICY_PREFIX(xing_policy->base, "sta connected, rrm_neighbor_bcn_act_meas: %s, wnm_bss_trans: %s%s",
          state->rrm_neighbor_bcn_act_meas == true ? "true" : "false", state->wnm_bss_trans == true ? "true" : "false",
-         extra_log);
+         extra_log));
 }
 
 static void
@@ -664,7 +678,7 @@ ow_steer_policy_snr_xing_sta_disconnected_cb(struct osw_state_observer *observer
     const struct ow_steer_policy_snr_xing_config *config = xing_policy->config;
     const struct osw_hwaddr *vif_bssid = &sta_info->vif->drv_state->mac_addr;
     if (config == NULL) {
-        LOGD("%s sta disconnected from vif bssid: "OSW_HWADDR_FMT", (no conf)", ow_steer_policy_get_prefix(xing_policy->base), OSW_HWADDR_ARG(vif_bssid));
+        LOGD(LOG_WITH_POLICY_PREFIX(xing_policy->base, "sta disconnected from vif bssid: "OSW_HWADDR_FMT", (no conf)", OSW_HWADDR_ARG(vif_bssid)));
         return;
     }
 
@@ -678,7 +692,7 @@ ow_steer_policy_snr_xing_sta_disconnected_cb(struct osw_state_observer *observer
     ow_steer_policy_snr_xing_state_reset(xing_policy);
     ow_steer_policy_schedule_stack_recalc(xing_policy->base);
 
-    LOGI("%s sta disconnected", ow_steer_policy_get_prefix(xing_policy->base));
+    LOGI(LOG_WITH_POLICY_PREFIX(xing_policy->base, "sta disconnected"));
 }
 
 static void
@@ -698,7 +712,7 @@ ow_steer_policy_snr_xing_sta_snr_change_cb(struct ow_steer_policy *policy,
     if (osw_circ_buf_is_full(&state->snr_buf) == true) {
         const enum ow_steer_policy_snr_xing_chnage xing_change = ow_steer_policy_snr_xing_eval_xing_change(xing_policy);
         if (xing_change != OW_STEER_POLICY_SNR_XING_CHANGE_NONE)
-            LOGD("%s xing changed: %s", ow_steer_policy_get_prefix(xing_policy->base), ow_steer_policy_snr_xing_chnage_to_cstr(xing_change));
+            LOGD(LOG_WITH_POLICY_PREFIX(xing_policy->base, "xing changed: %s", ow_steer_policy_snr_xing_chnage_to_cstr(xing_change)));
     }
 
     ow_steer_policy_snr_xing_recalc(xing_policy);
@@ -813,11 +827,11 @@ ow_steer_policy_snr_xing_reconf_timer_cb(struct osw_timer *timer)
         return;
     }
     else if (xing_policy->config == NULL && xing_policy->next_config != NULL) {
-        LOGI("%s config added", ow_steer_policy_get_prefix(xing_policy->base));
+        LOGI(LOG_WITH_POLICY_PREFIX(xing_policy->base, "config added"));
         register_observer = true;
     }
     else if (xing_policy->config != NULL && xing_policy->next_config == NULL) {
-        LOGI("%s config removed", ow_steer_policy_get_prefix(xing_policy->base));
+        LOGI(LOG_WITH_POLICY_PREFIX(xing_policy->base, "config removed"));
         unregister_observer = true;
     }
     else if (xing_policy->config != NULL && xing_policy->next_config != NULL) {
@@ -827,7 +841,7 @@ ow_steer_policy_snr_xing_reconf_timer_cb(struct osw_timer *timer)
             return;
         }
 
-        LOGI("%s config changed", ow_steer_policy_get_prefix(xing_policy->base));
+        LOGI(LOG_WITH_POLICY_PREFIX(xing_policy->base, "config changed"));
         unregister_observer = true;
         register_observer = true;
     }
@@ -865,7 +879,7 @@ ow_steer_policy_snr_xing_enforce_timer_cb(struct osw_timer *timer)
     struct ow_steer_policy_snr_xing *xing_policy = container_of(timer, struct ow_steer_policy_snr_xing, state.enforce_timer);
 
     ow_steer_policy_snr_xing_state_reset(xing_policy);
-    LOGI("%s enforce period finished", ow_steer_policy_get_prefix(xing_policy->base));
+    LOGI(LOG_WITH_POLICY_PREFIX(xing_policy->base, "enforce period finished"));
     ow_steer_policy_dismiss_executor(xing_policy->base);
     ow_steer_policy_schedule_stack_recalc(xing_policy->base);
 }
@@ -873,7 +887,8 @@ ow_steer_policy_snr_xing_enforce_timer_cb(struct osw_timer *timer)
 struct ow_steer_policy_snr_xing*
 ow_steer_policy_snr_xing_create(const char *name,
                                 const struct osw_hwaddr *sta_addr,
-                                const struct ow_steer_policy_mediator *mediator)
+                                const struct ow_steer_policy_mediator *mediator,
+                                const char *log_prefix)
 {
     ASSERT(name != NULL, "");
     ASSERT(sta_addr != NULL, "");
@@ -898,7 +913,7 @@ ow_steer_policy_snr_xing_create(const char *name,
     struct ow_steer_policy_snr_xing_state *state = &xing_policy->state;
     osw_timer_init(&state->enforce_timer, ow_steer_policy_snr_xing_enforce_timer_cb);
 
-    xing_policy->base = ow_steer_policy_create(strfmta("%s_%s", g_policy_name, name), sta_addr, &policy_ops, mediator, xing_policy);
+    xing_policy->base = ow_steer_policy_create(strfmta("%s_%s", g_policy_name, name), sta_addr, &policy_ops, mediator, log_prefix, xing_policy);
 
     ow_steer_policy_snr_xing_activity_init(&state->activity,
             (ow_steer_policy_snr_xing_activity_fn_t *)ow_steer_policy_snr_xing_recalc,

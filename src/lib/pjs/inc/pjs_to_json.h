@@ -66,6 +66,9 @@ error:                                                                          
 #define PJS_INT(name)                                                                   \
     if (!pjs_int_to_json(in->name, js, #name, err)) goto error;
 
+#define PJS_INT64(name)                                                                 \
+    if (!pjs_int64_to_json(in->name, js, #name, err)) goto error;
+
 #define PJS_BOOL(name)                                                                  \
     if (!pjs_bool_to_json(in->name, js, #name, err)) goto error;
 
@@ -94,6 +97,9 @@ error:                                                                          
  */
 #define PJS_INT_Q(name)                                                                 \
     if (!pjs_int_q_to_json(in->name, in->name ## _exists, js, #name, err)) goto error;
+
+#define PJS_INT64_Q(name)                                                               \
+    if (!pjs_int64_q_to_json(in->name, in->name ## _exists, js, #name, err)) goto error;
 
 #define PJS_BOOL_Q(name)                                                                \
     if (!pjs_bool_q_to_json(in->name, in->name ## _exists, js, #name, err)) goto error;
@@ -212,6 +218,10 @@ error:                                                                          
     PJS_OVS_IF_PARTIAL_UPDATE(name)                                                     \
     if (!pjs_ovs_int_to_json(in->name, js, #name, err)) goto error;
 
+#define PJS_OVS_INT64(name)                                                             \
+    PJS_OVS_IF_PARTIAL_UPDATE(name)                                                     \
+    if (!pjs_ovs_int64_to_json(in->name, js, #name, err)) goto error;
+
 #define PJS_OVS_BOOL(name)                                                              \
     PJS_OVS_IF_PARTIAL_UPDATE(name)                                                     \
     if (!pjs_ovs_bool_to_json(in->name, js, #name, err)) goto error;
@@ -236,6 +246,16 @@ error:                                                                          
 #define PJS_OVS_INT_Q(name)                                                             \
     PJS_OVS_IF_PARTIAL_UPDATE(name)                                                     \
     if (!pjs_ovs_int_q_to_json(                                                         \
+            in->name,                                                                   \
+            in->name ## _exists,                                                        \
+            js,                                                                         \
+            #name,                                                                      \
+            err))                                                                       \
+        goto error;
+
+#define PJS_OVS_INT64_Q(name)                                                           \
+    PJS_OVS_IF_PARTIAL_UPDATE(name)                                                     \
+    if (!pjs_ovs_int64_q_to_json(                                                       \
             in->name,                                                                   \
             in->name ## _exists,                                                        \
             js,                                                                         \

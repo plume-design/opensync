@@ -25,6 +25,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 #include <stdbool.h>
+#include <stdint.h>
 #include <string.h>
 #include <jansson.h>
 
@@ -193,6 +194,24 @@ bool pjs_int_q_from_json(
             err);
 }
 
+bool pjs_int64_q_from_json(
+        int64_t *out,
+        bool *exists,
+        json_t *js,
+        const char *name,
+        bool update,
+        pjs_errmsg_t err)
+{
+    return pjs_basic_q_from_json(
+            pjs_int64_t_from_json,
+            out,
+            exists,
+            js,
+            name,
+            update,
+            err);
+}
+
 /**
  * Parse a non-optional JSON integer object into an int
  */
@@ -200,6 +219,17 @@ bool pjs_int_from_json(int *out, json_t *js, const char *name, bool update, pjs_
 {
     return pjs_basic_from_json(
             pjs_int_t_from_json,
+            out,
+            js,
+            name,
+            update,
+            err);
+}
+
+bool pjs_int64_from_json(int64_t *out, json_t *js, const char *name, bool update, pjs_errmsg_t err)
+{
+    return pjs_basic_from_json(
+            pjs_int64_t_from_json,
             out,
             js,
             name,
@@ -221,6 +251,17 @@ bool pjs_int_q_to_json(int in, bool in_exists, json_t *js, const char *name, pjs
             err);
 }
 
+bool pjs_int64_q_to_json(int64_t in, bool in_exists, json_t *js, const char *name, pjs_errmsg_t err)
+{
+    return pjs_basic_q_to_json(
+            pjs_int64_t_to_json,
+            &in,
+            in_exists,
+            js,
+            name,
+            err);
+}
+
 /**
  * Convert a integer to a json object
  */
@@ -228,6 +269,16 @@ bool pjs_int_to_json(int in, json_t *js, const char *name, pjs_errmsg_t err)
 {
     return pjs_basic_to_json(
             pjs_int_t_to_json,
+            &in,
+            js,
+            name,
+            err);
+}
+
+bool pjs_int64_to_json(int64_t in, json_t *js, const char *name, pjs_errmsg_t err)
+{
+    return pjs_basic_to_json(
+            pjs_int64_t_to_json,
             &in,
             js,
             name,

@@ -59,6 +59,8 @@ void cr_context_drop(cr_context_t *c);
 
 cr_task_t *cr_task(void *priv, cr_run_fn_t *run_fn, cr_drop_fn_t *drop_fn);
 
+bool cr_task_run(cr_task_t *t);
+
 void cr_task_set_done_fn(cr_task_t *t, void *priv, cr_done_fn_t *done_fn);
 
 void *cr_task_priv(cr_task_t *t);

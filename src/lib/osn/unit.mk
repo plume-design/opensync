@@ -35,8 +35,6 @@ UNIT_TYPE := LIB
 
 UNIT_CFLAGS += -I$(UNIT_PATH)/inc
 UNIT_CFLAGS += -I$(UNIT_PATH)/src
-UNIT_CFLAGS += -Isrc/lib/lte_info/inc
-UNIT_CFLAGS += -Isrc/lib/cell_info/inc
 
 UNIT_SRC += src/osn_types.c
 
@@ -83,6 +81,12 @@ UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_TAP_INTERFACE),src/osn_tap_linux.c)
 UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_QOS_NULL),src/osn_qos_null.c)
 UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_QOS_LINUX),src/osn_qos_linux.c)
 
+UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_QDISC_NULL),src/osn_qdisc_null.c)
+UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_QDISC_LINUX),src/osn_qdisc.c)
+
+UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_ADAPTIVE_QOS_NULL),src/osn_adaptive_qos_null.c)
+UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_ADAPTIVE_QOS_CAKE_AUTORATE),src/osn_cake_autorate.c)
+
 UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_FW_NULL),src/osn_fw_null.c)
 UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_FW_IPTABLES_FULL),src/osn_fw_iptables_full.c)
 UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_FW_IPTABLES_THIN),src/osn_fw_iptables_thin.c)
@@ -92,10 +96,10 @@ UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_FW_EBTABLES_THIN),src/osn_fw_ebtables_thin
 UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_IPSET_NULL),src/osn_ipset_null.c)
 UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_IPSET_LINUX),src/osn_ipset_linux.c)
 
-UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_LTE_NULL),src/osn_lte_null.c)
-UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_LTE_LINUX),src/osn_lte_linux.c)
-UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_LTE_LINUX),src/osn_lte_modem.c)
-UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_LTE_LINUX),src/osn_lte_esim.c)
+UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_CELL_NULL),src/osn_lte_null.c)
+UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_CELL_LINUX),src/osn_lte_linux.c)
+UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_CELL_LINUX),src/osn_cell_modem.c)
+UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_CELL_LINUX),src/osn_cell_esim.c)
 
 UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_NFLOG_NULL),src/osn_nflog_null.c)
 UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_NFLOG_LINUX),src/osn_nflog_linux.c)
@@ -125,8 +129,6 @@ UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_ROUTE_RULE_NULL),src/osn_route_rule_null.c
 UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_MAP_LINUX),src/osn_map_linux.c)
 UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_MAP_LINUX),src/osn_map_v6plus.c)
 UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_MAP_NULL),src/osn_map_null.c)
-
-UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_CELL_LINUX),src/osn_cell_modem.c)
 
 ifdef CONFIG_OSN_LINUX_ENABLED
 UNIT_CFLAGS += -I$(UNIT_PATH)/src/linux
@@ -158,6 +160,8 @@ UNIT_SRC += $(if $(CONFIG_OSN_LINUX_VLAN),src/linux/lnx_vlan.c)
 UNIT_SRC += $(if $(CONFIG_OSN_LINUX_BRIDGING),src/linux/lnx_bridge.c)
 UNIT_SRC += $(if $(CONFIG_OSN_LINUX_TAPIF),src/linux/lnx_tap.c)
 UNIT_SRC += $(if $(CONFIG_OSN_LINUX_QOS),src/linux/lnx_qos.c)
+UNIT_SRC += $(if $(CONFIG_OSN_LINUX_QDISC),src/linux/lnx_qdisc.c)
+UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_ADAPTIVE_QOS_CAKE_AUTORATE),src/linux/cake_autorate.c)
 UNIT_SRC += $(if $(CONFIG_OSN_LINUX_LTE),src/linux/lnx_lte.c)
 UNIT_SRC += $(if $(CONFIG_OSN_LINUX_IGMP),src/linux/lnx_igmp.c)
 UNIT_SRC += $(if $(CONFIG_OSN_LINUX_MLD),src/linux/lnx_mld.c)

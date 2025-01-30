@@ -51,6 +51,11 @@ struct osw_conf_neigh {
     struct osw_neigh neigh;
 };
 
+struct osw_conf_neigh_ft {
+    struct ds_tree_node node;
+    struct osw_neigh_ft neigh_ft;
+};
+
 struct osw_conf_wps_cred {
     struct ds_dlist_node node;
     struct osw_wps_cred cred;
@@ -66,6 +71,7 @@ struct osw_conf_vif_ap {
     struct ds_tree acl_tree; /* osw_conf_acl */
     struct ds_tree psk_tree; /* osw_conf_psk */
     struct ds_tree neigh_tree; /* osw_conf_neigh */
+    struct ds_tree neigh_ft_tree; /* osw_conf_neigh_ft */
     struct ds_dlist wps_cred_list; /* osw_conf_wps_cred */
     struct ds_dlist radius_list; /* osw_conf_radius */
     struct ds_dlist accounting_list; /* osw_conf_radius */
@@ -79,6 +85,12 @@ struct osw_conf_vif_ap {
     enum osw_mbss_vif_ap_mode mbss_mode;
     int mbss_group;
     struct osw_passpoint passpoint;
+    struct osw_ft_encr_key ft_encr_key;
+    bool ft_over_ds;
+    bool ft_pmk_r1_push;
+    bool ft_psk_generate_local;
+    int ft_pmk_r0_key_lifetime_sec;
+    int ft_pmk_r1_max_key_lifetime_sec;
 };
 
 struct osw_conf_net {
@@ -89,6 +101,7 @@ struct osw_conf_net {
     struct osw_wpa wpa;
     struct osw_ifname bridge_if_name;
     bool multi_ap;
+    int priority;
 };
 
 struct osw_conf_vif_sta {
@@ -115,6 +128,7 @@ struct osw_conf_phy {
     char *phy_name;
     bool enabled;
     int tx_chainmask;
+    struct osw_channel radar_next_channel;
     enum osw_radar_detect radar;
     struct osw_reg_domain reg_domain;
     struct ds_tree vif_tree;

@@ -33,6 +33,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "kconfig.h"
 #include "cm2_stability.h"
 #include "ds_tree.h"
+#include "cm2_uplink_event.h"
 
 
 #include "os_time.h"
@@ -158,47 +159,13 @@ void cm2_restore_switch_cfg_params(int counter, int thresh, cm2_restore_con_t *r
             *ropt |= (1 << CM2_RESTORE_SWITCH_FIX_AUTON);
     }
 }
-
-void cm2_restore_switch_cfg(cm2_restore_con_t opt)
-{
-    char command[128];
-    int  ret;
-
-    if (opt & (1 << CM2_RESTORE_SWITCH_DUMP_DATA)) {
-        LOGI("Switch: Dump debug data");
-        sprintf(command, "sh "CONFIG_INSTALL_PREFIX"/scripts/kick-ethernet.sh 2 ");
-        LOGD("%s: Command: %s", __func__, command);
-        ret = target_device_execute(command);
-        if (!ret)
-            LOGW("kick-ethernet.sh: Dump data failed");
-    }
-
-    if (opt & (1 << CM2_RESTORE_SWITCH_FIX_PORT_MAP)) {
-       LOGI("Switch: Trigger fixing port map");
-
-        if (!is_input_shell_safe(g_state.link.gateway_hwaddr)) return;
-
-       sprintf(command, "sh "CONFIG_INSTALL_PREFIX"/scripts/kick-ethernet.sh 3 %s",
-              g_state.link.gateway_hwaddr);
-       LOGD("%s: Command: %s", __func__, command);
-       ret = target_device_execute(command);
-       if (!ret)
-          LOGW("kick-ethernet.sh: Fixing port map failed");
-    }
-
-    if (opt & (1 << CM2_RESTORE_SWITCH_FIX_AUTON)) {
-        LOGI("Switch: Trigger autoneg restart");
-        sprintf(command, "sh "CONFIG_INSTALL_PREFIX"/scripts/kick-ethernet.sh 4 ");
-        LOGD("%s: Command: %s", __func__, command);
-        ret = target_device_execute(command);
-        if (!ret)
-            LOGW("kick-ethernet.sh: autoneg restart failed");
-    }
-}
 #endif /* CONFIG_CM2_STABILITY_USE_RESTORE_SWITCH_CFG */
 
 static void cm2_restore_connection(cm2_restore_con_t opt)
 {
+    if (!cm2_wan_link_selection_enabled())
+        return;
+
     if (opt == 0)
         return;
 
@@ -217,13 +184,13 @@ static void cm2_restore_connection(cm2_restore_con_t opt)
     else if (opt & (1 << CM2_RESTORE_MAIN_LINK)) {
         cm2_restart_iface(cm2_get_uplink_name());
     }
-    else {
-        cm2_restore_switch_cfg(opt);
-    }
 }
 
 static void cm2_stability_handle_fatal_state(int counter)
 {
+    if (!cm2_wan_link_selection_enabled())
+        return;
+
     // Resetting the restart timer when the counter starts incrementing
     if (counter == 0) {
         cm2_reset_restart_time();
@@ -412,6 +379,9 @@ void cm2_util_update_uplink_ip_state(struct schema_Connection_Manager_Uplink *co
                                       target_connectivity_check_option_t opts,
                                       target_connectivity_check_t *cstate)
 {
+    if (!cm2_wan_link_selection_enabled())
+        return;
+
     cm2_uplink_state_t ip;
 
     if (con->ipv4_exists) {
@@ -522,6 +492,12 @@ static bool cm2_connection_req_stability_process(const char *if_name,
             counter = con.unreachable_link_counter < 0 ? 1 : con.unreachable_link_counter + 1;
             LOGI("Detected broken link. Counter = %d", counter);
         }
+        else
+        {
+            // Corner case covering when device reboots during outage
+            cm2_uplink_event_add_event(time_real(), true, CM2_UPLINK_LINK);
+        }
+
         ret = cm2_ovsdb_connection_update_unreachable_link_counter(if_name, counter);
         if (!ret)
             LOGW("%s Failed update link counter in ovsdb table", __func__);
@@ -535,14 +511,29 @@ static bool cm2_connection_req_stability_process(const char *if_name,
             LOGI("Detected broken Router. Counter = %d", counter);
             cm2_restore_switch_cfg_params(counter, CONFIG_CM2_STABILITY_THRESH_ROUTER + 2, &ropt);
             if (counter % CONFIG_CM2_STABILITY_THRESH_ROUTER == 0)
+            {
                 ropt |= (1 << CM2_RESTORE_IP);
-            if (counter % CONFIG_CM2_STABILITY_THRESH_ROUTER + 1 == 0)
+                if (cm2_uplink_event_is_wan_iface(if_name))
+                {
+                    cm2_uplink_event_add_event(time_real(), false, CM2_UPLINK_ALL_ROUTER);
+                }
+            }
+            if (counter % (CONFIG_CM2_STABILITY_THRESH_ROUTER + 1) == 0)
                 ropt |= (1 << CM2_RESTORE_MAIN_LINK);
         }
         else if (muplink &&
                  kconfig_enabled(CONFIG_CM2_USE_TCPDUMP) &&
                  con.unreachable_router_counter >= CONFIG_CM2_STABILITY_THRESH_TCPDUMP) {
                     cm2_tcpdump_stop(muplink);
+        }
+        else
+        {
+            // This will triggeres the call periodically, actuall check if pod is in the
+            // middle of outage event is done in cm2_network_state_add_event function
+            if (cm2_uplink_event_is_wan_iface(if_name))
+            {
+                cm2_uplink_event_add_event(time_real(), true, CM2_UPLINK_ALL_ROUTER);
+            }
         }
 
         ret = cm2_ovsdb_connection_update_unreachable_router_counter(if_name, counter);
@@ -571,9 +562,24 @@ static bool cm2_connection_req_stability_process(const char *if_name,
             LOGI("Detected broken Internet. Counter = %d", counter);
             cm2_restore_switch_cfg_params(counter, CONFIG_CM2_STABILITY_THRESH_INTERNET + 2, &ropt);
             if (counter % CONFIG_CM2_STABILITY_THRESH_INTERNET == 0)
+            {
                 ropt |= (1 << CM2_RESTORE_IP);
-            if (counter % CONFIG_CM2_STABILITY_THRESH_INTERNET + 1 == 0)
+                if (cm2_uplink_event_is_wan_iface(if_name))
+                {
+                    cm2_uplink_event_add_event(time_real(), false, CM2_UPLINK_ALL_INTERNET);
+                }
+            }
+            if (counter % (CONFIG_CM2_STABILITY_THRESH_INTERNET + 1) == 0)
                    ropt |= (1 << CM2_RESTORE_MAIN_LINK);
+        }
+        else
+        {
+            // This will triggeres the call periodically, actuall check if pod is in the
+            // middle of outage event is done in cm2_network_state_add_event function
+            if (cm2_uplink_event_is_wan_iface(if_name))
+            {
+                cm2_uplink_event_add_event(time_real(), true, CM2_UPLINK_ALL_INTERNET);
+            }
         }
 
         ret = cm2_ovsdb_connection_update_unreachable_internet_counter(if_name, counter);
@@ -581,10 +587,14 @@ static bool cm2_connection_req_stability_process(const char *if_name,
             LOGW("%s Failed update internet counter in ovsdb table", __func__);
     }
     if (opts & NTP_CHECK) {
+        // This makes little to no sense. NTP check is currently implemented to just check if date is newer than 2014
+        // which is not of much use if ntp server goes down after date is already synced first time
         ret = cm2_ovsdb_connection_update_ntp_state(if_name,
                                                     cstate.ntp_state);
         if (!ret)
             LOGW("%s Failed update ntp state in ovsdb table", __func__);
+
+        cm2_uplink_event_add_event(time_real(), cstate.ntp_state, CM2_UPLINK_NTP);
     }
     cm2_restore_connection(ropt);
     return status;
@@ -599,8 +609,6 @@ bool cm2_connection_req_stability_check(const char *uname,
     target_connectivity_check_t cstate = {0};
     bool ok;
 
-    if (!cm2_is_extender())
-        return true;
 
     cm2_util_set_ip_opts(uname, utype, &opts);
     /* Ping WDT before run connectivity check */
@@ -798,8 +806,6 @@ void cm2_connection_req_stability_check_async(const char *uname,
                                               bool db_update,
                                               bool repeat)
 {
-    if (!cm2_is_extender())
-        return;
 
     cm2_util_set_ip_opts(uname, utype, &opts);
 
@@ -903,9 +909,6 @@ void cm2_stability_init(struct ev_loop *loop)
 {
     LOGD("Initializing stability connection check");
 
-    if (!cm2_is_extender())
-        return;
-
     ev_timer_init(&g_state.stability_timer,
                   cm2_stability_cb,
                   CONFIG_CM2_STABILITY_INTERVAL,
@@ -927,9 +930,6 @@ void cm2_stability_update_interval(struct ev_loop *loop, bool short_int)
 
 void cm2_stability_close(struct ev_loop *loop)
 {
-    if (!cm2_is_extender())
-        return;
-
     LOGD("Stopping stability check");
     ev_timer_stop (loop, &g_state.stability_timer);
 }

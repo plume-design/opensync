@@ -121,7 +121,7 @@ OSW_UT(ow_steer_policy_force_kick_successful_ut)
      */
     osw_ut_time_init();
 
-    force_policy = ow_steer_policy_force_kick_create(&g_sta_addr, &mediator);
+    force_policy = ow_steer_policy_force_kick_create(&g_sta_addr, &mediator, "");
     OSW_UT_EVAL(force_policy != NULL);
     OSW_UT_EVAL(mediator_cnt.schedule_recalc_cnt == 0);
     OSW_UT_EVAL(mediator_cnt.trigger_executor_cnt == 0);
@@ -226,7 +226,7 @@ OSW_UT(ow_steer_policy_force_kick_timeout_ut)
      */
     osw_ut_time_init();
 
-    force_policy = ow_steer_policy_force_kick_create(&g_sta_addr, &mediator);
+    force_policy = ow_steer_policy_force_kick_create(&g_sta_addr, &mediator, "");
     OSW_UT_EVAL(force_policy != NULL);
     OSW_UT_EVAL(mediator_cnt.schedule_recalc_cnt == 0);
     OSW_UT_EVAL(mediator_cnt.trigger_executor_cnt == 0);
@@ -330,7 +330,7 @@ OSW_UT(ow_steer_policy_force_kick_disconnected_sta_ut)
      */
     osw_ut_time_init();
 
-    force_policy = ow_steer_policy_force_kick_create(&g_sta_addr, &mediator);
+    force_policy = ow_steer_policy_force_kick_create(&g_sta_addr, &mediator, "");
     OSW_UT_EVAL(force_policy != NULL);
     OSW_UT_EVAL(mediator_cnt.schedule_recalc_cnt == 0);
     OSW_UT_EVAL(mediator_cnt.trigger_executor_cnt == 0);

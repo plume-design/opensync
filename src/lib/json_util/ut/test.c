@@ -143,43 +143,6 @@ end:
 }
 
 
-/*
- * test json_split library function
- */
-void testjsplit_regularjson(void)
-{
-    /* TEST_ASSERT_TRUE_MESSAGE(load_buff(JSON_REGULAR), "Reading json string"); */
-    STRSCPY(buff, "{ \"test\":\"plain string\"}");
-
-    TEST_ASSERT_NOT_NULL(json_split(buff));
-    TEST_ASSERT_NOT_EQUAL(json_split(buff), JSON_SPLIT_ERROR);
-}
-
-
-void testjsplit_specialcharjson1(void)
-{
-    STRSCPY(buff, "{ \"test\":\"special \bstring\"}");
-
-    TEST_ASSERT_NOT_NULL(json_split(buff));
-    TEST_ASSERT_NOT_EQUAL(json_split(buff), JSON_SPLIT_ERROR);
-}
-
-void testjsplit_specialcharjson2(void)
-{
-    STRSCPY(buff, "{ \"test\":\"special \\\\string\"}");
-
-    TEST_ASSERT_NOT_NULL(json_split(buff));
-    TEST_ASSERT_NOT_EQUAL(json_split(buff), JSON_SPLIT_ERROR);
-}
-
-void testjsplit_specialcharjson3(void)
-{
-    STRSCPY(buff, "{ \"test\":\"special \\\"string\"}");
-
-    TEST_ASSERT_NOT_NULL(json_split(buff));
-    TEST_ASSERT_NOT_EQUAL(json_split(buff), JSON_SPLIT_ERROR);
-}
-
 void testjgets_regularjson(void)
 {
     size_t len;
@@ -212,10 +175,6 @@ int main(int argc, char *argv[])
 
     ut_setUp_tearDown(test_name, json_util_setUp, NULL);
 
-    RUN_TEST(testjsplit_regularjson);
-    RUN_TEST(testjsplit_specialcharjson1);
-    RUN_TEST(testjsplit_specialcharjson2);
-    RUN_TEST(testjsplit_specialcharjson3);
     RUN_TEST(testjgets_regularjson);
 
     return ut_fini();

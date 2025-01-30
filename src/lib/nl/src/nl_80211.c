@@ -83,6 +83,8 @@ static void
 nl_80211_notify_ready_try(struct nl_80211 *nl_80211)
 {
     if (nl_80211_is_ready(nl_80211) == false) return;
+    if (nl_80211->ready) return;
+    nl_80211->ready = true;
     nl_80211->ready_fn(nl_80211, nl_80211->ready_fn_priv);
     nl_80211_overrun_recovery_complete(nl_80211);
 }
@@ -254,7 +256,10 @@ nl_80211_map_sta_set(struct nl_80211_map *map,
     struct nl_80211_sta_priv *sta = ds_tree_find(&map->sta_by_link, &lookup);
 
     if (sta == NULL && connected == false) return;
-    if (sta != NULL && connected == true) return;
+    if (sta != NULL && connected == true) {
+        sta->valid = true;
+        return;
+    }
 
     if (connected == true) {
         if (WARN_ON(sta != NULL)) return;
@@ -262,6 +267,7 @@ nl_80211_map_sta_set(struct nl_80211_map *map,
         sta = CALLOC(1, sizeof(*sta));
         sta->pub.ifindex = ifindex;
         sta->pub.addr = *addr;
+        sta->valid = true;
         ds_tree_init(&sta->sub_privs, ds_void_cmp, struct nl_80211_sub_priv, node);
         ds_tree_insert(&map->sta_by_link, sta, &sta->pub);
         NL_80211_SUB_NOTIFY(map, sta_added_fn, &sta->pub);
@@ -316,6 +322,34 @@ nl_80211_map_station(struct nl_80211_map *map,
 }
 
 static void
+nl_80211_vif_mark_stations_invalid(struct nl_80211 *nl,
+                                   const struct nl_80211_vif_priv *vif)
+{
+    const uint32_t ifindex = vif->pub.ifindex;
+    struct nl_80211_sta_priv *sta;
+    ds_tree_foreach(&nl->map.sta_by_link, sta) {
+        if (sta->pub.ifindex == ifindex) {
+            sta->valid = false;
+        }
+    }
+}
+
+static void
+nl_80211_vif_remove_invalid_stations(struct nl_80211 *nl,
+                                     const struct nl_80211_vif_priv *vif)
+{
+    const uint32_t ifindex = vif->pub.ifindex;
+    struct nl_80211_sta_priv *sta;
+    ds_tree_foreach(&nl->map.sta_by_link, sta) {
+        if (sta->pub.ifindex == ifindex) {
+            if (sta->valid == false) {
+                nl_80211_map_sta_set(&nl->map, ifindex, &sta->pub.addr, false);
+            }
+        }
+    }
+}
+
+static void
 nl_80211_cmd_dump_station_response_cb(struct nl_cmd *cmd,
                                       struct nl_msg *msg,
                                       void *priv)
@@ -328,8 +362,26 @@ static void
 nl_80211_cmd_dump_station_completed_cb(struct nl_cmd *cmd,
                                        void *priv)
 {
-    struct nl_80211 *nl_80211 = priv;
+    struct nl_80211_vif_priv *vif = priv;
+    struct nl_80211 *nl_80211 = vif->nl_80211;
+    nl_80211_vif_remove_invalid_stations(nl_80211, vif);
     nl_80211_notify_ready_try(nl_80211);
+}
+
+static void
+nl_80211_vif_dump_stations(struct nl_80211 *nl,
+                           struct nl_80211_vif_priv *vif)
+{
+    struct nl_80211_map *map = &nl->map;
+    struct nl_conn *conn = nl->conn;
+    struct nl_cmd *cmd = nl_conn_alloc_cmd(conn);
+    const uint32_t ifindex = vif->pub.ifindex;
+
+    nl_cmd_free(vif->cmd_dump_station);
+    vif->cmd_dump_station = cmd;
+    nl_cmd_set_response_fn(cmd, nl_80211_cmd_dump_station_response_cb, map);
+    nl_cmd_set_completed_fn(cmd, nl_80211_cmd_dump_station_completed_cb, vif);
+    nl_80211_cmd_dump_station_send(nl, vif->cmd_dump_station, ifindex);
 }
 
 static void
@@ -340,20 +392,16 @@ nl_80211_map_vif_set(struct nl_80211_map *map,
 {
     struct nl_80211_vif_priv *vif = ds_tree_find(&map->vif_by_ifindex, &ifindex);
     struct nl_80211 *nl = map_to_nl(map);
-    struct nl_conn *conn = map_to_conn(map);
 
     if (vif == NULL && vif_name == NULL) return;
 
     if (vif == NULL) {
         vif = CALLOC(1, sizeof(*vif));
+        vif->nl_80211 = nl;
         vif->pub.wiphy = wiphy;
         vif->pub.ifindex = ifindex;
         vif->pub.name = STRDUP(vif_name);
-        struct nl_cmd *cmd = nl_conn_alloc_cmd(conn);
-        vif->cmd_dump_station = cmd;
-        nl_cmd_set_response_fn(cmd, nl_80211_cmd_dump_station_response_cb, map);
-        nl_cmd_set_completed_fn(cmd, nl_80211_cmd_dump_station_completed_cb, nl);
-        nl_80211_cmd_dump_station_send(nl, vif->cmd_dump_station, ifindex);
+        nl_80211_vif_dump_stations(nl, vif);
         ds_tree_init(&vif->sub_privs, ds_void_cmp, struct nl_80211_sub_priv, node);
         ds_tree_insert(&map->vif_by_ifindex, vif, &vif->pub.ifindex);
         ds_tree_insert(&map->vif_by_name, vif, vif->pub.name);
@@ -981,6 +1029,19 @@ nl_80211_conn_subscribe(struct nl_80211 *nl_80211)
 }
 
 void
+nl_80211_poll_stas(struct nl_80211 *nl,
+                   const struct nl_80211_vif *pub)
+{
+    if (nl == NULL) return;
+    if (pub == NULL) return;
+
+    struct nl_80211_vif_priv *vif = container_of(pub, struct nl_80211_vif_priv, pub);
+
+    nl_80211_vif_mark_stations_invalid(nl, vif);
+    nl_80211_vif_dump_stations(nl, vif);
+}
+
+void
 nl_80211_set_conn(struct nl_80211 *nl_80211,
                   struct nl_conn *conn)
 {
@@ -1249,8 +1310,8 @@ nl_80211_alloc_get_reg(struct nl_80211 *nl_80211,
                        uint32_t wiphy)
 {
     struct nl_msg *msg = nlmsg_alloc();
-    assert(nla_put_u32(msg, NL80211_ATTR_WIPHY, wiphy) == 0);
     nl_80211_put_cmd(nl_80211, msg, 0, NL80211_CMD_GET_REG);
+    assert(nla_put_u32(msg, NL80211_ATTR_WIPHY, wiphy) == 0);
     return msg;
 }
 

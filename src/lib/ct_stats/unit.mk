@@ -31,7 +31,7 @@ UNIT_NAME := fcm_ct_stats
 
 UNIT_DISABLE := $(if $(CONFIG_MANAGER_FCM),n,y)
 
-ifeq ($(CONFIG_FSM_NO_DSO),y)
+ifeq ($(CONFIG_FCM_NO_DSO),y)
 	UNIT_TYPE := LIB
 else
 	UNIT_TYPE := SHLIB
@@ -54,7 +54,6 @@ UNIT_DEPS += src/lib/common
 UNIT_DEPS += src/lib/ovsdb
 UNIT_DEPS += src/lib/pjs
 UNIT_DEPS += src/lib/schema
-UNIT_DEPS += src/lib/evsched
 UNIT_DEPS += src/lib/datapipeline
 UNIT_DEPS += src/lib/json_util
 UNIT_DEPS += src/lib/network_metadata

@@ -336,6 +336,43 @@ notify_client(rts_stream_t stream, void *user, const char *key,
     fsm_dpi_set_plugin_decision(dpi->dpi_sess->session, &dpi->net_hdr, rc);
 }
 
+#define CMD_LEN (C_MAXPATH_LEN * 2 + 128)
+
+// Remove folder
+static void
+walleye_dpi_rmdir(char *path)
+{
+    char cmd[CMD_LEN];
+    if (strcmp(path, "/") == 0)
+    {
+        LOGE("%s: removing / is not allowed: '%s'", __func__, path);
+        return;
+    }
+    snprintf(cmd, sizeof(cmd), "rm -fr %s", path);
+
+    LOGT("%s: rmdir: %s", __func__, cmd);
+    if (cmd_log_check_safe(cmd))
+    {
+        return;
+    }
+    return;
+}
+
+
+// Create folder and subfolders
+static bool
+walleye_dpi_mkdir(char *path)
+{
+    char cmd[CMD_LEN];
+    snprintf(cmd, sizeof(cmd), "mkdir -p %s", path);
+
+    LOGT("%s: mkdir: %s", __func__, cmd);
+    if (cmd_log_check_safe(cmd))
+    {
+        return false;
+    }
+    return true;
+}
 
 static int
 load_signatures(struct fsm_session *session, char *store)
@@ -345,23 +382,75 @@ load_signatures(struct fsm_session *session, char *store)
     struct stat sb;
     void *sig;
     const char * const path = "/usr/walleye/etc/signature.bin";
+    const char * const compressed_file = "data.tar.gz";
+    char * decompress_path = "/tmp/walleye";
     char signature_file[PATH_MAX+128];
+    char compressed_signature[PATH_MAX+128];
+    char cmd[CMD_LEN];
+    bool compressed;
+    int rsz;
 
+    compressed = false;
     snprintf(signature_file, sizeof(signature_file), "%s/%s",
              store, path);
     fd = open(signature_file, O_RDONLY);
     if (fd == -1)
     {
-        LOGE("%s: failed to open '%s'\n", __func__, path);
-        return -1;
+        LOGI("%s: failed to open %s", __func__, signature_file);
+        snprintf(compressed_signature, sizeof(compressed_signature), "%s/%s",
+                 store, compressed_file);
+        fd = open(compressed_signature, O_RDONLY);
+        if (fd == -1)
+        {
+            LOGE("%s: failed to open %s", __func__, compressed_signature);
+            return -1;
+        }
+        else
+        {
+            compressed = true;
+        }
     }
+
+    if (compressed == true)
+    {
+        // Create decompress directory
+        if (!walleye_dpi_mkdir(decompress_path))
+        {
+            LOGE("%s: could not create decompression directory", __func__);
+            return -1;
+        }
+
+        // Extract data under /tmp
+        rsz = snprintf(cmd, sizeof(cmd), "tar -xozf %s -C %s", compressed_signature, decompress_path);
+        if (rsz >= (int)sizeof(cmd))
+        {
+            LOGE("%s: Error extracting to storage, command line too long.", __func__);
+            return -1;
+        }
+
+        LOGT("%s: Extract data command: %s", __func__, cmd);
+        if (cmd_log_check_safe(cmd))
+        {
+            LOG(ERR, "objmfs: Extraction of data failed: %s", cmd);
+            return -1;
+        }
+        snprintf(signature_file, sizeof(signature_file), "%s/%s",
+                 "/tmp/walleye", path);
+        fd = open(signature_file, O_RDONLY);
+        if (fd == -1)
+        {
+            LOGE("%s: failed to open %s", __func__, signature_file);
+        }
+    }
+
     fstat(fd, &sb);
     sig = mmap(NULL, sb.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
     if (sig == MAP_FAILED)
     {
         LOGE("%s: failed to mmap signatures\n", __func__);
         close(fd);
-        return -1;
+        res = -1;
+        goto cleanup;
     }
 
     dpi_plugin_ops = &session->p_ops->dpi_plugin_ops;
@@ -382,6 +471,8 @@ load_signatures(struct fsm_session *session, char *store)
         dpi_plugin_ops->register_clients(session);
     }
 
+cleanup:
+    walleye_dpi_rmdir("/tmp/walleye");
     return res;
 }
 
@@ -615,7 +706,7 @@ walleye_signature_load_best(struct fsm_session *session)
             FREE(object);
         }
         cnt--;
-    } while ((rc == 0) && (cnt != 0));
+    } while ((rc != 0) && (cnt != 0));
 }
 
 
@@ -1438,7 +1529,7 @@ dpi_plugin_handler(struct fsm_session *session,
          * Increase acc's ref count here.
          * It is decreased in nfe_ext_conn_free()
          */
-        dpi->net_hdr.acc->refcnt++;
+        if (dpi->net_hdr.acc != NULL) dpi->net_hdr.acc->refcnt++;
         dpi_session->connections++;
 
         /* NFQUEUE packets may not have src/dst mac address, hence condition */
@@ -1781,7 +1872,7 @@ nfe_ext_conn_free(void *p, const struct nfe_tuple *tuple)
     struct dpi_conn *dpi = container_of(p, struct dpi_conn, priv);
 
     dpi->dpi_sess->connections--;
-    dpi->net_hdr.acc->refcnt--;
+    if (dpi->net_hdr.acc != NULL) dpi->net_hdr.acc->refcnt--;
 
     /* destroy dpi context */
     if (dpi->stream) {

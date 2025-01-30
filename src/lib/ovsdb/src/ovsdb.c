@@ -45,13 +45,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "memutil.h"
 #include "os_ev_trace.h"
 
+#include "ovsdb_stream.h"
+
 /*****************************************************************************/
 
 #define MODULE_ID LOG_MODULE_ID_OVSDB
-
-#define MAX_BUFFER_SIZE     (1024*1024)
-#define CHUNK_SIZE          (8*1024)
-// typically ovs messages are below 4k, occasionally they are 6k, rarely more than 8k
 
 #define OVSDB_SLEEP_TIME             1
 #define OVSDB_WAIT_TIME              30   /* in s (0 = infinity) */
@@ -60,9 +58,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 /*global to avoid any potential issues with stack */
 struct ev_io wovsdb;
-/* Don't use this buffer unless you are cb_ovsdb_read */
-static char *ovs_buffer;
-static int ovs_buffer_size;
 const char *ovsdb_comment = NULL;
 
 int json_rpc_fd = -1;
@@ -97,174 +92,43 @@ static bool ovsdb_process_update(json_t *jsup);
 static bool ovsdb_rpc_callback(int id, bool is_error, json_t *jsmsg);
 
 static void cb_ovsdb_read(struct ev_loop *loop, struct ev_io *watcher, int revents);
-static bool cb_ovsdb_read_json(char *buffer);
 
 /******************************************************************************
  *  PROTECTED definitions
  *****************************************************************************/
 
-/* on-connection callback */
 static void cb_ovsdb_read(struct ev_loop *loop, struct ev_io *watcher, int revents)
 {
-    ssize_t nr = 0;
-    ssize_t used_size = ovs_buffer ? strlen(ovs_buffer) : 0;
-    ssize_t free_size = ovs_buffer_size - used_size;
-    ssize_t new_size;
-    char *new_buf;
-
+    struct ovsdb_stream *st = watcher->data;
     if (EV_ERROR & revents)
     {
         LOG(ERR,"cb_ovsdb_read: got invalid event");
         return;
     }
 
-    // resize buffer if neccesary
-    if (!ovs_buffer || (free_size < CHUNK_SIZE && ovs_buffer_size < MAX_BUFFER_SIZE)) {
-        new_size = ovs_buffer_size + CHUNK_SIZE;
-        new_buf = REALLOC(ovs_buffer, new_size);
-        if (ovs_buffer_size > 0) {
-            // only log trace when increasing size, skip initial allocs
-            LOG(TRACE,"cb_ovsdb_read: realloc(%p, %d -> %d) = %p",
-                    ovs_buffer, (int)ovs_buffer_size, (int)new_size, new_buf);
-        }
-        ovs_buffer = new_buf;
-        ovs_buffer_size = new_size;
-        free_size = ovs_buffer_size - used_size;
-    }
-    // check if buffer full (need at least 2 bytes free: 1 is for zero termination)
-    if (free_size < 2) {
-        LOG(ERR,"cb_ovsdb_read: buffer full %d/%d", (int)free_size, (int)ovs_buffer_size);
-        goto error;
-    }
-
-    // Receive message from client socket
-    nr = recv(watcher->fd, ovs_buffer + used_size, free_size - 1, 0);
-    if (nr < 0 && errno == EAGAIN)
+    int err = ovsdb_stream_run(st, watcher->fd, ovsdb_process_recv);
+    if (err)
     {
-        /* Need more data */
-        return;
-    }
-    else if (nr <= 0)
-    {
-        if (nr == 0)
-        {
-            LOG(INFO, "OVSDB read: EOF -- closing connection");
-        }
-        else
-        {
-            LOG(ERR, "OVSDB read: error -- closing connection.");
-        }
-
-        goto error;
-    }
-
-    /* Pad the buffer with \0 */
-    used_size += nr;
-    ovs_buffer[used_size] = '\0';
-
-    if (!cb_ovsdb_read_json(ovs_buffer))
-    {
-        LOG(WARNING, "OVSDB read: Error parsing JSON.");
-        goto error;
-    }
-
-    // free buffer if the contents were fully consumed
-    used_size = strlen(ovs_buffer);
-    if (used_size == 0) {
-        FREE(ovs_buffer);
-        ovs_buffer_size = 0;
-        ovs_buffer = NULL;
-    }
-    return;
-
-error:
-    /*
-     * Restart the connection and clear the buffer on errors
-     */
-    FREE(ovs_buffer);
-    ovs_buffer = NULL;
-    ovs_buffer_size = 0;
-
-    // peer closed, stop watching, close socket
-    ev_io_stop(loop, watcher);
-    close(watcher->fd);
-    /* try to restart connection */
-    int retry = 0;
-    while (retry < 3)
-    {
-        bool ret = ovsdb_init_loop(loop, NULL);
-        if ((ret == false) && (retry >= 2) && (nr == 0))
-        {
-            if (!strcmp(ovsdb_comment, "DM"))
-            {
-                /* ovsdb-server crashed -> execute the restart script */
-                LOGEM("Can't connect to ovsdb-server -> restarting managers");
-                target_managers_restart();
-            }
-        }
-        sleep(1);
-        retry++;
-    }
-
-    return;
-}
-
-static bool cb_ovsdb_read_json(char *buf)
-{
-    char *next;
-    json_error_t jerror;
-
-    json_t *js = NULL;
-    char *str = buf;
-
-    while ((next = json_split(str)) != NULL)
-    {
-        if (next == JSON_SPLIT_ERROR)
-        {
-            LOG(ERR, "OVSDB RECV: Error parsing input string.::json=%s", buf);
-            return false;
-        }
-
-        /*
-         * Note that "next" points to the end of the message, which might be the beginning of the next message. Pad it with \0, but
-         * remember the character that we overwrote. We will patch it back once we're json_dumps() has finished.
+        /* During Opensync restart OVSDB may end up getting
+         * stopped before Opensync itself. In such case the
+         * socket will be abruptly closed. To avoid
+         * restart-within-restart wait a few seconds to give
+         * Opensync itself a chance to stop its underlying
+         * processes.
          */
-        char save = *next;
-        *next = '\0';
+        sleep(10);
 
-        LOG(DEBUG, "JSON RECV: %s\n", str);
-        /*
-         * Convert string to json_t
+        /* Re-connecting is pointless because any and all
+         * monitor state is lost. All update notification
+         * handlers would need to be able to recover from
+         * this explicitly too..
+         *
+         * This isn't expected during normal operation so
+         * just restart everything.
          */
-        js = json_loads(str, 0, &jerror);
-        if (js == NULL)
-        {
-            LOG(ERR, "OVSB RECV: Error processing JSON message.::json=%s", str);
-            return false;
-        }
-
-        /* Patch it back */
-        *next = save;
-
-        if (!ovsdb_process_recv(js))
-        {
-            char *msg;
-
-            msg = json_dumps(js, JSON_COMPACT);
-            LOG(ERR, "JSON-RPC: Error processing message.::json=%s", msg);
-            json_free(msg);
-        }
-
-        json_decref(js);
-
-        /* Move buffer to the next one */
-        str = next;
+        LOGEM("Connection to OVSDB is lost, restarting OpenSync");
+        target_managers_restart();
     }
-
-    /* Shift the buffer */
-    memmove(buf, str, strlen(str) + 1);
-
-    return true;
 }
 
 /**
@@ -538,6 +402,7 @@ bool ovsdb_init_loop(struct ev_loop *loop, const char *name)
         OS_EV_TRACE_MAP(cb_ovsdb_read);
         ev_io_init(&wovsdb, cb_ovsdb_read, json_rpc_fd, EV_READ);
         ev_io_start(loop, &wovsdb);
+        wovsdb.data = ovsdb_stream_alloc();
 
         success = true;
         ovsdb_ready_notify();
@@ -581,6 +446,7 @@ bool ovsdb_init_loop_with_priority(struct ev_loop *loop, const char *name, int p
         LOGI("%s: Set ovsdb event priority for %s to %d", __func__,
              name, ev_priority(&wovsdb));
         ev_io_start(loop, &wovsdb);
+        wovsdb.data = ovsdb_stream_alloc();
 
         success = true;
         ovsdb_ready_notify();

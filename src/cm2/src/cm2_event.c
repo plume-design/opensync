@@ -31,7 +31,7 @@ Basic logic:
 Start by connecting to redirector_addr
 
 In any state:
-  if device type is TARGET_EXTENDER_TYPE
+  if device WAN is controlled by CM2
       start link selection process
   else
       go to init ovs state
@@ -50,7 +50,7 @@ In any state except if connected to manager:
   if manager_addr is updated then try to connect to manager.
 
 In connected state:
-   - if device can work as TARGET_EXTENDER_TYPE start stability check functionality
+   - if device WAN is controlled by CM2 start stability check functionality
 
 Each connect attempt goes through all resolved IPs until connection established
 
@@ -527,7 +527,7 @@ static void cm2_restart_ovs_connection(bool state) {
                             (g_state.cnts.ovs_resolve_fail < CONFIG_CM2_CLOUD_FATAL_THRESHOLD &&
                             g_state.cnts.ovs_con < CONFIG_CM2_CLOUD_FATAL_THRESHOLD));
 
-    if (cm2_is_extender())
+    if (cm2_wan_link_selection_enabled())
     {
         if (gw_offline_en) {
             cm2_enable_gw_offline();
@@ -726,9 +726,8 @@ start:
     {
         default:
         case CM2_STATE_INIT:
-            if (!cm2_is_extender()) {
-                LOGD("%s Skip onboarding process target_type = %d",
-                     __func__, g_state.target_type);
+            if (!cm2_wan_link_selection_enabled()) {
+                LOGD("%s Skip onboarding process", __func__);
                 cm2_ovs_connect();
             } else {
                 cm2_extender_init_state();
@@ -853,7 +852,7 @@ start:
                 g_state.fast_backoff = false;
                 cm2_dismiss_skip_reconnect("performing full reconnect");
             }
-            if (cm2_is_extender() && !g_state.link.is_used) {
+            if (cm2_wan_link_selection_enabled() && !g_state.link.is_used) {
                 LOGN("Main link is not used, move to link selection");
                 cm2_set_state(false, CM2_STATE_LINK_SEL);
                 break;
@@ -892,7 +891,7 @@ start:
                 g_state.link.ipv4.resolve_retry ||
                 g_state.link.ipv6.resolve_retry)
             {
-                if (cm2_is_extender()) {
+                if (cm2_wan_link_selection_enabled()) {
                     WARN_ON(cm2_update_main_link_ip(&g_state.link) < 0);
                     opts = LINK_CHECK | ROUTER_CHECK | INTERNET_CHECK;
                     cm2_connection_req_stability_check_async(g_state.link.if_name, g_state.link.if_type, uplink, opts, true, true);
@@ -963,7 +962,7 @@ start:
             break;
 
         case CM2_STATE_TRY_CONNECT:
-            if (cm2_is_extender())
+            if (cm2_wan_link_selection_enabled())
             {
                 cm2_ovsdb_connection_update_unreachable_cloud_counter(g_state.link.if_name, -1);
             }
@@ -978,7 +977,7 @@ start:
             }
             if (cm2_state_changed()) // first iteration
             {
-                if (cm2_is_extender()) {
+                if (cm2_wan_link_selection_enabled()) {
                     WARN_ON(cm2_update_main_link_ip(&g_state.link) < 0);
                     opts = LINK_CHECK | ROUTER_CHECK | INTERNET_CHECK;
                     cm2_connection_req_stability_check_async(g_state.link.if_name, g_state.link.if_type, uplink, opts, true, true);
@@ -999,7 +998,7 @@ start:
             }
             else if (cm2_timeout(false))
             {
-                if (cm2_is_extender()) {
+                if (cm2_wan_link_selection_enabled()) {
                     WARN_ON(cm2_update_main_link_ip(&g_state.link) < 0);
                     opts = LINK_CHECK | ROUTER_CHECK | INTERNET_CHECK;
                     cm2_connection_req_stability_check_async(g_state.link.if_name, g_state.link.if_type, uplink, opts, true, true);
@@ -1075,16 +1074,16 @@ start:
                 g_state.connected_at_least_once = true;
                 cm2_dismiss_skip_reconnect("skipped reconnect");
                 LOG(NOTICE, "===== Connected to: %s", cm2_curr_dest_name());
-                if (cm2_is_extender()) {
+                if (cm2_wan_link_selection_enabled()) {
                     opts = LINK_CHECK | ROUTER_CHECK | INTERNET_CHECK;
                     cm2_connection_req_stability_check_async(g_state.link.if_name, g_state.link.if_type, uplink, opts, true, false);
                     cm2_set_ble_state(true, BLE_ONBOARDING_STATUS_CLOUD_OK);
                     cm2_update_device_type(g_state.link.if_type);
                     g_state.restore_method = CM2_RESTORE_REFRESH_DHCP;
-                    g_state.run_stability = true;
                     cm2_stability_update_interval(g_state.loop, false);
                     cm2_ovsdb_connection_update_unreachable_cloud_counter(g_state.link.if_name, 0);
                 }
+                    g_state.run_stability = true;
                     g_state.cnts.ovs_con = 0;
                     cm2_disable_gw_offline_state();
             }
@@ -1115,7 +1114,7 @@ start:
         case CM2_STATE_QUIESCE_OVS:
             if (cm2_state_changed())
             {
-                if (cm2_is_extender()) {
+                if (cm2_wan_link_selection_enabled()) {
                     WARN_ON(cm2_update_main_link_ip(&g_state.link) < 0);
                     opts = LINK_CHECK | ROUTER_CHECK | INTERNET_CHECK;
                     cm2_connection_req_stability_check_async(g_state.link.if_name, g_state.link.if_type, uplink, opts, true, true);
@@ -1125,7 +1124,7 @@ start:
                 g_state.disconnects += 1;
                 cm2_set_ble_state(false, BLE_ONBOARDING_STATUS_CLOUD_OK);
 
-                if (cm2_is_extender()) {
+                if (cm2_wan_link_selection_enabled()) {
                     cm2_stability_update_interval(g_state.loop, true);
                     cm2_ovsdb_connection_update_unreachable_cloud_counter(g_state.link.if_name,
                                                                           g_state.disconnects);
@@ -1149,7 +1148,7 @@ start:
             if (cm2_timeout(true))
             {
                 g_state.disconnects += 1;
-                if (cm2_is_extender())
+                if (cm2_wan_link_selection_enabled())
                     cm2_ovsdb_connection_update_unreachable_cloud_counter(g_state.link.if_name,
                                                                           g_state.disconnects);
 
@@ -1177,7 +1176,7 @@ start:
         // unexpected, just in case
         LOG(ERROR, "Unhandled timeout");
         cm2_ovsdb_dump_debug_data();
-        if (cm2_is_extender())
+        if (cm2_wan_link_selection_enabled())
             cm2_trigger_restart_managers();
         cm2_set_state(false, CM2_STATE_INIT);
     }

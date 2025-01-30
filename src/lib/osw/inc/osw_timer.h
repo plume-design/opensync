@@ -27,6 +27,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifndef OSW_TIMER_H
 #define OSW_TIMER_H
 
+#include <ds_dlist.h>
+
 struct osw_timer_core;
 struct osw_timer;
 

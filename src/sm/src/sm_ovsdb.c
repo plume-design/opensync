@@ -49,12 +49,12 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "schema_consts.h"
 #include "policy_tags.h"
 #include "memutil.h"
-#include "ff_lib.h"
 
 #include "dpp_types.h"
 #include "dpp_client.h"
 
 #include "sm.h"
+#include "sm_lat_ovsdb.h"
 
 #define MODULE_ID LOG_MODULE_ID_MAIN
 
@@ -75,8 +75,12 @@ char *sm_report_type_str[STS_REPORT_MAX] =
     "radius_stats"
 };
 
-#ifndef CONFIG_MANAGER_QM
+static sm_lat_ovsdb_t *g_sm_lat_ovsdb;
+
+static ovsdb_update_monitor_t sm_update_wifi_vif_state;
+static ovsdb_update_monitor_t sm_update_wifi_inet_config;
 static ovsdb_update_monitor_t sm_update_awlan_node;
+#ifndef CONFIG_MANAGER_QM
 static struct schema_AWLAN_Node awlan_node;
 #endif
 
@@ -91,7 +95,6 @@ DS_TREE_INIT(
         sm_radio_state_t,
         node);
 
-static ovsdb_update_monitor_t sm_update_wifi_vif_state;
 static ds_tree_t sm_vif_list =
 DS_TREE_INIT(
         (ds_key_cmp_t*)strcmp,
@@ -127,19 +130,6 @@ DS_TREE_INIT(
         next);
 
 static bool
-sm_skip_wifi(void)
-{
-    const bool ff_use_onewifi = ff_is_flag_enabled("use_owm");
-
-    if (ff_use_onewifi == true) {
-        LOG(INFO, "Skipping Wifi Stats");
-        return true;
-    }
-
-    return false;
-}
-
-static bool
 sm_can_config_stats(sm_stats_config_t *cfg, sm_radio_state_t *rstate)
 {
     switch (cfg->sm_report_type) {
@@ -156,15 +146,7 @@ sm_can_config_stats(sm_stats_config_t *cfg, sm_radio_state_t *rstate)
         case STS_REPORT_CLIENT_AUTH_FAILS:  /* fall through */
         case STS_REPORT_RADIUS:             /* fall through */
         case STS_REPORT_MAX:                /* fall through */
-            if (sm_skip_wifi() == true)
-                return false;
-            /* Radio does not exist */
-            if (rstate == NULL) {
-                LOGW("Skip configuring stats (%s radio not present!)",
-                     radio_get_name_from_type(cfg->radio_type));
-                return false;
-            }
-            return true;
+            return false;
     }
 
     assert(0);
@@ -174,14 +156,16 @@ sm_can_config_stats(sm_stats_config_t *cfg, sm_radio_state_t *rstate)
 /******************************************************************************
  *                          AWLAN CONFIG
  *****************************************************************************/
-#ifndef CONFIG_MANAGER_QM
-// this is handled by QM if it's used
 static
 void sm_update_awlan_node_cbk(ovsdb_update_monitor_t *self)
 {
-    pjs_errmsg_t perr;
-
     LOG(DEBUG, "%s", __FUNCTION__);
+
+    sm_lat_ovsdb_update_awlan(g_sm_lat_ovsdb, self);
+
+#ifndef CONFIG_MANAGER_QM
+// this is handled by QM if it's used
+    pjs_errmsg_t perr;
 
     switch (self->mon_type)
     {
@@ -255,8 +239,24 @@ void sm_update_awlan_node_cbk(ovsdb_update_monitor_t *self)
     sm_mqtt_set(mqtt_broker, mqtt_port, mqtt_topic, mqtt_qos, mqtt_compress);
 
     return;
-}
 #endif // CONFIG_MANAGER_QM
+}
+
+static
+void sm_update_wifi_inet_config_cbk(ovsdb_update_monitor_t *self)
+{
+    LOG(DEBUG, "%s", __FUNCTION__);
+
+    sm_lat_ovsdb_update_wifi_inet_config(g_sm_lat_ovsdb, self);
+}
+
+static
+void sm_update_wifi_vif_state_cbk(ovsdb_update_monitor_t *self)
+{
+    LOG(DEBUG, "%s", __FUNCTION__);
+
+    sm_lat_ovsdb_update_wifi_vif_state(g_sm_lat_ovsdb, self);
+}
 
 /******************************************************************************
  *                          STATS CONFIG
@@ -503,6 +503,8 @@ void sm_update_wifi_stats_config_cb(ovsdb_update_monitor_t *self)
     sm_stats_config_t              *stats;
     bool                            ret;
 
+    if (sm_lat_ovsdb_update_stats(g_sm_lat_ovsdb, self)) return;
+
     switch (self->mon_type)
     {
         case OVSDB_UPDATE_NEW:
@@ -561,57 +563,10 @@ void sm_update_wifi_stats_config_cb(ovsdb_update_monitor_t *self)
  *                          RADIO CONFIG
  *****************************************************************************/
 static
-bool sm_is_radio_config_changed (
-        radio_entry_t              *old_cfg,
-        radio_entry_t              *new_cfg)
-{
-    if (old_cfg->chan != new_cfg->chan)
-    {
-        LOG(DEBUG,
-                "Radio Config: %s chan changed %d != %d",
-                radio_get_name_from_cfg(new_cfg),
-                old_cfg->chan,
-                new_cfg->chan);
-        return true;
-    }
-
-    if (strcmp(old_cfg->phy_name, new_cfg->phy_name))
-    {
-        LOG(DEBUG,
-                "Radio Config: %s phy_name changed %s != %s",
-                radio_get_name_from_cfg(new_cfg),
-                old_cfg->phy_name,
-                new_cfg->phy_name);
-        return true;
-    }
-
-    if (strcmp(old_cfg->if_name, new_cfg->if_name))
-    {
-        LOG(DEBUG,
-                "Radio Config: %s if_name changed %s != %s",
-                radio_get_name_from_cfg(new_cfg),
-                old_cfg->if_name,
-                new_cfg->if_name);
-        return true;
-    }
-
-    return false;
-}
-
-static
 void sm_radio_cfg_update(void)
 {
     sm_radio_state_t               *radio;
     radio_entry_t                   radio_cfg;
-
-    /* When OWM is used, it should handle all changes to wifi
-       driver settings instead of SM. However we still need to
-       perform some read operations on the driver in SM and update
-       the radio_cfg structure so that device data like radio temp
-       can be reported in MQTT messages. Only the non-read operations
-       should be skipped when OWM is used.
-     */
-    bool wifi_changes_are_allowed = !sm_skip_wifi();
 
     /* SM requires both radio and VIF information to
        access driver sublayer therefore join the schema
@@ -736,24 +691,6 @@ void sm_radio_cfg_update(void)
             int ii;
             sm_vif_state_t *vif = NULL;
 
-            /* Some platforms disable tx stats when
-             * last vap is deleted.
-             * Ideally this should be called per-radio
-             * whenever first vap is created (on given
-             * radio) but that's not easy because
-             * there's no reliable way of getting
-             * this out of OVSDB directly because
-             * OVSDB represents states and not
-             * state transitions. WM interprets
-             * different states into transitions.
-             *
-             * This results in a bit excessive
-             * driver config tweaking.
-             */
-            if (wifi_changes_are_allowed) {
-                sm_radio_config_enable_tx_stats(&radio_cfg);
-            }
-
             /* Lookup the first interface */
             for (ii = 0; ii < radio->schema.vif_states_len; ii++)
             {
@@ -777,10 +714,6 @@ void sm_radio_cfg_update(void)
 
                 /* Radio VIF/VAP interface name */
                 STRSCPY(radio_cfg.if_name, vif->schema.if_name);
-                if (wifi_changes_are_allowed) {
-                    /* Enable fast scanning on all ap interfaces */
-                    sm_radio_config_enable_fast_scan(&radio_cfg);
-                }
                 break;
             }
         }
@@ -790,34 +723,8 @@ void sm_radio_cfg_update(void)
                 radio_get_name_from_cfg(&radio_cfg));
         }
 
-        bool is_changed =
-            sm_is_radio_config_changed(
-                    &radio->config,
-                    &radio_cfg);
-
         /* Update cache config */
         radio->config = radio_cfg;
-
-        if(    wifi_changes_are_allowed
-            && is_changed
-            && radio->config.type
-            && (radio->config.chan != 0)
-            && (radio->config.if_name[0] != '\0')
-            && (radio->config.phy_name[0] != '\0')) {
-            /* Restart stats with new radio parameters when
-               type, chan, if_name and phy_name are configured or
-               change on those parameters is detected
-             */
-            sm_neighbor_report_radio_change(&radio->config);
-            sm_survey_report_radio_change(&radio->config);
-            sm_client_report_radio_change(&radio->config);
-            sm_rssi_report_radio_change(&radio->config);
-
-#ifdef CONFIG_SM_CAPACITY_QUEUE_STATS
-            sm_capacity_report_radio_change(&radio->config);
-#endif
-        }
-
     }
 }
 
@@ -875,73 +782,6 @@ static void sm_update_wifi_radio_state_cb(ovsdb_update_monitor_t *self)
 
         default:
             LOG(ERR, "Radio State: Unknown update notification type %d for UUID %s.", self->mon_type, self->mon_uuid);
-            return;
-    }
-
-    /* Update the global radio configuration */
-    sm_radio_cfg_update();
-}
-
-/******************************************************************************
- *                          VIF CONFIG
- *****************************************************************************/
-static
-void sm_update_wifi_vif_state_cb(ovsdb_update_monitor_t *self)
-{
-    pjs_errmsg_t                    perr;
-    sm_vif_state_t                 *vif = NULL;
-
-    switch (self->mon_type)
-    {
-        case OVSDB_UPDATE_NEW:
-            /*
-             * New row update notification -- create new row, parse it and insert it into the table
-             */
-            vif = CALLOC(1, sizeof(sm_vif_state_t));
-
-            if (!schema_Wifi_VIF_State_from_json(&vif->schema, self->mon_json_new, false, perr))
-            {
-                LOG(ERR, "NEW: VIF Config: Parsing Wifi_Radio_Config: %s", perr);
-                return;
-            }
-
-            /* The Radio config table is indexed by UUID */
-            ds_tree_insert(&sm_vif_list, vif, vif->schema._uuid.uuid);
-            break;
-
-        case OVSDB_UPDATE_MODIFY:
-            /* Find the row by UUID */
-            vif = ds_tree_find(&sm_vif_list, (void *)self->mon_uuid);
-            if (!vif)
-            {
-                LOG(ERR, "MODIFY: VIF Config: Update request for non-existent vif UUID: %s", self->mon_uuid);
-                return;
-            }
-
-            /* Update the row */
-            if (!schema_Wifi_VIF_State_from_json(&vif->schema, self->mon_json_new, true, perr))
-            {
-                LOG(ERR, "MODIFY: VIF Config: Parsing Wifi_Radio_Config: %s", perr);
-                return;
-            }
-            break;
-
-        case OVSDB_UPDATE_DEL:
-            vif = ds_tree_find(&sm_vif_list, (void *)self->mon_uuid);
-            if (!vif)
-            {
-                LOG(ERR, "DELETE: VIF Config: Delete request for non-existent stats- UUID: %s", self->mon_uuid);
-                return;
-            }
-
-            ds_tree_remove(&sm_vif_list, vif);
-
-            FREE(vif);
-
-            return;
-
-        default:
-            LOG(ERR, "VIF Config: Unknown update notification type %d for UUID %s.", self->mon_type, self->mon_uuid);
             return;
     }
 
@@ -1306,7 +1146,6 @@ int sm_setup_monitor(void)
     OVSDB_TABLE_MONITOR(Connection_Manager_Uplink, false);
 #endif /* CONFIG_SM_UPLINK_STATS */
 
-#ifndef CONFIG_MANAGER_QM
     /* Monitor AWLAN_Node */
     if (!ovsdb_update_monitor(
             &sm_update_awlan_node,
@@ -1318,7 +1157,30 @@ int sm_setup_monitor(void)
                 SCHEMA_TABLE(AWLAN_Node));
         return -1;
     }
-#endif // CONFIG_MANAGER_QM
+
+    /* Monitor Wifi_Inet_Config */
+    if (!ovsdb_update_monitor(
+            &sm_update_wifi_inet_config,
+            sm_update_wifi_inet_config_cbk,
+            SCHEMA_TABLE(Wifi_Inet_Config),
+            OMT_ALL))
+    {
+        LOGE("Error registering watcher for %s.",
+                SCHEMA_TABLE(Wifi_Inet_Config));
+        return -1;
+    }
+
+    /* Monitor Wifi_VIF_State */
+    if (!ovsdb_update_monitor(
+            &sm_update_wifi_vif_state,
+            sm_update_wifi_vif_state_cbk,
+            SCHEMA_TABLE(Wifi_VIF_State),
+            OMT_ALL))
+    {
+        LOGE("Error registering watcher for %s.",
+                SCHEMA_TABLE(Wifi_VIF_State));
+        return -1;
+    }
 
     /* Monitor Wifi_Radio_State */
     if (!ovsdb_update_monitor(
@@ -1332,23 +1194,6 @@ int sm_setup_monitor(void)
         return -1;
     }
 
-    LOGI("skip wifi stats: %s", sm_skip_wifi() ? "yes" : "no");
-    if (sm_skip_wifi())
-        goto stats_table;
-
-    /* Monitor Wifi_VIF_State  */
-    if (!ovsdb_update_monitor(
-            &sm_update_wifi_vif_state,
-            sm_update_wifi_vif_state_cb,
-            SCHEMA_TABLE(Wifi_VIF_State),
-            OMT_ALL))
-    {
-        LOGE("Error registering watcher for %s.",
-                SCHEMA_TABLE(Wifi_VIF_State));
-        return -1;
-    }
-
-stats_table:
     /* Monitor Wifi_Stats_Config */
     if (!ovsdb_update_monitor(
             &sm_update_wifi_stats_config,
@@ -1360,6 +1205,8 @@ stats_table:
                 SCHEMA_TABLE(Wifi_Stats_Config));
         return -1;
     }
+
+    g_sm_lat_ovsdb = sm_lat_ovsdb_alloc();
 
     /* Monitor RADIUS table */
     OVSDB_TABLE_INIT_NO_KEY(RADIUS);
@@ -1381,6 +1228,8 @@ stats_table:
 
 int sm_cancel_monitor(void)
 {
+    sm_lat_ovsdb_drop(g_sm_lat_ovsdb);
+    g_sm_lat_ovsdb = NULL;
     return 0;
 }
 

@@ -5,7 +5,7 @@
 ###############################################################################
 UNIT_NAME := fsm_dns
 
-UNIT_DISABLE := $(if $(CONFIG_MANAGER_FSM),n,y)
+UNIT_DISABLE := $(if $(CONFIG_LIB_LEGACY_FSM_DNS_PARSER),n,y)
 
 ifeq ($(CONFIG_FSM_NO_DSO),y)
     UNIT_TYPE := LIB

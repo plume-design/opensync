@@ -313,7 +313,7 @@ fsm_get_other_config_val(struct fsm_session *session, char *key)
 }
 
 static int
-get_native_home_bridge(char *if_name, char *bridge, size_t len)
+get_home_bridge(char *if_name, char *bridge, size_t len)
 {
     char shell_cmd[1024];
     char buf[1024];
@@ -362,54 +362,6 @@ exit:
     return rc;
 }
 
-static int
-get_home_bridge(char *if_name, char *bridge, size_t len)
-{
-    char shell_cmd[1024];
-    char buf[1024];
-
-    FILE *fcmd = NULL;
-    int rc =  -1;
-
-    if (if_name == NULL) return 0;
-    if (bridge == NULL) return -1;
-
-    snprintf(shell_cmd, sizeof(shell_cmd),
-             "ovs-vsctl port-to-br %s",
-             if_name);
-
-    if (!is_input_shell_safe(shell_cmd)) return -1;
-    fcmd = popen(shell_cmd, "r");
-    if (fcmd ==  NULL) {
-        LOG(DEBUG, "Error executing command.::shell_cmd=%s", shell_cmd);
-        goto exit;
-    }
-
-    LOGT("Executing command.::shell_cmd=%s ", shell_cmd);
-
-    while (fgets(buf, sizeof(buf), fcmd) != NULL) {
-        LOGI("%s: home bridge: %s", __func__, buf);
-    }
-
-    if (ferror(fcmd)) {
-        LOGE("%s: fgets() failed", __func__);
-        goto exit;
-    }
-
-    rc = pclose(fcmd);
-    fcmd = NULL;
-
-    strchomp(buf, " \t\r\n");
-    strscpy(bridge, buf, len);
-
-exit:
-    if (fcmd != NULL) {
-        pclose(fcmd);
-    }
-
-    return rc;
-}
-
 /**
  * @brief set the tx interface a plugin might use
  *
@@ -435,14 +387,7 @@ fsm_set_tx_intf(struct fsm_session *session)
     if ((name == NULL) || (name[0] == 0)) return;
 #endif
 
-    if (!kconfig_enabled(CONFIG_TARGET_USE_NATIVE_BRIDGE))
-    {
-        ret = snprintf(session->tx_intf, sizeof(session->tx_intf), "%s.tx", name);
-    }
-    else
-    {
-        ret = snprintf(session->tx_intf, sizeof(session->tx_intf), "%s", name);
-    }
+    ret = snprintf(session->tx_intf, sizeof(session->tx_intf), "%s", name);
 
     if (ret >= sizeof(session->tx_intf))
     {
@@ -751,26 +696,36 @@ fsm_parse_dso(struct fsm_session *session)
 
 static struct plugin_init_table plugin_init_table[] =
 {
+#if defined(CONFIG_LIB_LEGACY_FSM_HTTP_PARSER)
     {
         .handler = "http",
         .init = http_plugin_init,
     },
+#endif
+#if defined(CONFIG_LIB_LEGACY_FSM_DNS_PARSER)
     {
         .handler = "dns",
         .init = dns_plugin_init,
     },
+#endif
+#if defined(CONFIG_LIB_LEGACY_FSM_MDNS_PARSER)
     {
         .handler = "mdns",
         .init = mdns_plugin_init,
     },
+#endif
+#if defined(CONFIG_LIB_LEGACY_FSM_UPNP_PARSER)
     {
         .handler = "upnp",
         .init = upnp_plugin_init,
     },
+#endif
+#if defined(CONFIG_LIB_LEGACY_FSM_NDP_PARSER)
     {
         .handler = "ndp",
         .init = ndp_plugin_init,
     },
+#endif
     {
         .handler = "gatekeeper",
         .init = gatekeeper_plugin_init,
@@ -1719,13 +1674,9 @@ fsm_ovsdb_init(void)
     {
         mgr->get_br = fsm_get_no_bridge;
     }
-    else if (!kconfig_enabled(CONFIG_TARGET_USE_NATIVE_BRIDGE))
-    {
-        mgr->get_br = get_home_bridge;
-    }
     else
     {
-        mgr->get_br = get_native_home_bridge;
+        mgr->get_br = get_home_bridge;
     }
 
     return 0;

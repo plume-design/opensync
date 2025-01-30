@@ -71,14 +71,14 @@ static int open_unix_socket(const char *path, /*out*/struct sockaddr_un *p_addr)
     {
         // init abstract socket addr
         addr.sun_path[0] = '\0';
-        strcpy(addr.sun_path + 1, path);
+        strscpy(addr.sun_path + 1, path, sizeof(addr.sun_path) - 1);
         addr.sun_family = AF_UNIX;
         path_len += 1;
     }
     else
     {
         // init regular socket addr
-        strcpy(addr.sun_path, path);
+        STRSCPY(addr.sun_path, path);
         addr.sun_family = AF_UNIX;
 
         // only for FS paths take care of socket path location

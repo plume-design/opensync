@@ -58,6 +58,12 @@ ow_steer_candidate_list_cmp(const struct ow_steer_candidate_list *candidate_list
                             const struct ow_steer_candidate_list *candidate_list_b);
 
 void
+ow_steer_candidate_list_bss_mld_set(struct ow_steer_candidate_list *candidate_list,
+                                    const struct osw_hwaddr *bssid,
+                                    const struct osw_channel *channel,
+                                    const struct osw_hwaddr *mld_addr);
+
+void
 ow_steer_candidate_list_bss_set(struct ow_steer_candidate_list *candidate_list,
                                 const struct osw_hwaddr *bssid,
                                 const struct osw_channel *channel);
@@ -98,6 +104,9 @@ ow_steer_candidate_list_sort(struct ow_steer_candidate_list *candidate_list,
 
 const struct osw_hwaddr*
 ow_steer_candidate_get_bssid(const struct ow_steer_candidate *candidate);
+
+const struct osw_hwaddr*
+ow_steer_candidate_get_mld_addr(const struct ow_steer_candidate *candidate);
 
 enum ow_steer_candidate_preference
 ow_steer_candidate_get_preference(const struct ow_steer_candidate *candidate);

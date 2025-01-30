@@ -35,6 +35,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <osw_state.h>
 #include <osw_module.h>
 #include <osw_ut.h>
+#include <osw_etc.h>
 
 /* FIXME: For this module to actually do the right thing it
  * needs to provide a changed_fn() observer callback that is
@@ -105,6 +106,7 @@ osw_conf_build_vif_cb(const struct osw_state_vif_info *info,
             ds_tree_init(&vif->u.ap.acl_tree, (ds_key_cmp_t *)osw_hwaddr_cmp, struct osw_conf_acl, node);
             ds_tree_init(&vif->u.ap.psk_tree, ds_int_cmp, struct osw_conf_psk, node);
             ds_tree_init(&vif->u.ap.neigh_tree, (ds_key_cmp_t *)osw_hwaddr_cmp, struct osw_conf_neigh, node);
+            ds_tree_init(&vif->u.ap.neigh_ft_tree, (ds_key_cmp_t *)osw_hwaddr_cmp, struct osw_conf_neigh_ft, node);
             ds_dlist_init(&vif->u.ap.wps_cred_list, struct osw_conf_wps_cred, node);
             ds_dlist_init(&vif->u.ap.radius_list, struct osw_conf_radius, node);
             ds_dlist_init(&vif->u.ap.accounting_list, struct osw_conf_radius, node);
@@ -114,6 +116,7 @@ osw_conf_build_vif_cb(const struct osw_state_vif_info *info,
             vif->u.ap.mode = info->drv_state->u.ap.mode;
             STRSCPY_WARN(vif->u.ap.bridge_if_name.buf, info->drv_state->u.ap.bridge_if_name.buf ?: "");
             STRSCPY_WARN(vif->u.ap.nas_identifier.buf, info->drv_state->u.ap.nas_identifier.buf ?: "");
+            STRSCPY_WARN(vif->u.ap.ft_encr_key.buf, info->drv_state->u.ap.ft_encr_key.buf ?: "");
             vif->u.ap.wpa = info->drv_state->u.ap.wpa;
 
             for (i = 0; i < info->drv_state->u.ap.acl.count; i++) {
@@ -133,7 +136,11 @@ osw_conf_build_vif_cb(const struct osw_state_vif_info *info,
                 neigh->neigh = info->drv_state->u.ap.neigh_list.list[i];
                 ds_tree_insert(&vif->u.ap.neigh_tree, neigh, &neigh->neigh.bssid);
             }
-
+            for (i = 0; i < info->drv_state->u.ap.neigh_ft_list.count; i++) {
+                struct osw_conf_neigh_ft *neigh_ft = CALLOC(1, sizeof(*neigh_ft));
+                neigh_ft->neigh_ft = info->drv_state->u.ap.neigh_ft_list.list[i];
+                ds_tree_insert(&vif->u.ap.neigh_ft_tree, neigh_ft, &neigh_ft->neigh_ft.bssid);
+            }
             for (i = 0; i < info->drv_state->u.ap.wps_cred_list.count; i++) {
                 struct osw_conf_wps_cred *cred = CALLOC(1, sizeof(*cred));
                 cred->cred = info->drv_state->u.ap.wps_cred_list.list[i];
@@ -166,6 +173,11 @@ osw_conf_build_vif_cb(const struct osw_state_vif_info *info,
             vif->u.ap.multi_ap = info->drv_state->u.ap.multi_ap;
             vif->u.ap.mbss_mode = info->drv_state->u.ap.mbss_mode;
             vif->u.ap.mbss_group = info->drv_state->u.ap.mbss_group;
+            vif->u.ap.ft_over_ds = info->drv_state->u.ap.ft_over_ds;
+            vif->u.ap.ft_pmk_r0_key_lifetime_sec = info->drv_state->u.ap.ft_pmk_r0_key_lifetime_sec;
+            vif->u.ap.ft_pmk_r1_max_key_lifetime_sec = info->drv_state->u.ap.ft_pmk_r1_max_key_lifetime_sec;
+            vif->u.ap.ft_pmk_r1_push = info->drv_state->u.ap.ft_pmk_r1_push;
+            vif->u.ap.ft_psk_generate_local = info->drv_state->u.ap.ft_psk_generate_local;
             break;
         case OSW_VIF_AP_VLAN:
             break;
@@ -179,6 +191,7 @@ osw_conf_build_vif_cb(const struct osw_state_vif_info *info,
                 memcpy(&cnet->wpa, &snet->wpa, sizeof(snet->wpa));
                 memcpy(&cnet->bridge_if_name, &snet->bridge_if_name, sizeof(snet->bridge_if_name));
                 cnet->multi_ap = snet->multi_ap;
+                cnet->priority = snet->priority;
                 ds_dlist_insert_tail(&vif->u.sta.net_list, cnet);
             }
             break;
@@ -201,6 +214,7 @@ osw_conf_build_phy_cb(const struct osw_state_phy_info *info,
     phy->phy_name = STRDUP(info->phy_name);
     phy->enabled = info->drv_state->enabled;
     phy->tx_chainmask = info->drv_state->tx_chainmask;
+    phy->radar_next_channel = info->drv_state->radar_next_channel;
     phy->radar = info->drv_state->radar;
     phy->reg_domain = info->drv_state->reg_domain;
     ds_tree_init(&phy->vif_tree, ds_str_cmp, struct osw_conf_vif, phy_node);
@@ -333,6 +347,14 @@ osw_conf_free_vif_ap_neigh(struct osw_conf_vif *vif,
 }
 
 static void
+osw_conf_free_vif_ap_neigh_ft(struct osw_conf_vif *vif,
+                              struct osw_conf_neigh_ft *neigh_ft)
+{
+    ds_tree_remove(&vif->u.ap.neigh_ft_tree, neigh_ft);
+    FREE(neigh_ft);
+}
+
+static void
 osw_conf_free_vif_ap_radius(struct ds_dlist *dlist,
                             struct osw_conf_radius *rad)
 {
@@ -356,6 +378,7 @@ osw_conf_free_vif(struct osw_conf_vif *vif)
     struct osw_conf_acl *acl;
     struct osw_conf_psk *psk;
     struct osw_conf_neigh *neigh;
+    struct osw_conf_neigh_ft *neigh_ft;
     struct osw_conf_wps_cred *wps;
     struct osw_conf_net *net;
     struct osw_conf_radius *rad;
@@ -372,6 +395,9 @@ osw_conf_free_vif(struct osw_conf_vif *vif)
 
             while ((neigh = ds_tree_head(&vif->u.ap.neigh_tree)) != NULL)
                 osw_conf_free_vif_ap_neigh(vif, neigh);
+
+            while ((neigh_ft = ds_tree_head(&vif->u.ap.neigh_ft_tree)) != NULL)
+                osw_conf_free_vif_ap_neigh_ft(vif, neigh_ft);
 
             while ((rad = ds_dlist_head(&vif->u.ap.radius_list)) != NULL)
                 osw_conf_free_vif_ap_radius(&vif->u.ap.radius_list, rad);
@@ -665,6 +691,7 @@ osw_conf_clone_vif_net_list(struct ds_dlist *src, struct ds_dlist *dst)
         memcpy(&cnet->wpa, &src_cnet->wpa, sizeof(cnet->wpa));
         memcpy(&cnet->bridge_if_name, &src_cnet->bridge_if_name, sizeof(cnet->bridge_if_name));
         cnet->multi_ap = src_cnet->multi_ap;
+        cnet->priority = src_cnet->priority;
         ds_dlist_insert_tail(dst, cnet);
     }
 }
@@ -753,6 +780,7 @@ osw_conf_clone_phy(struct osw_conf_phy *src, struct ds_tree *phy_tree)
     phy->phy_name = STRDUP(src->phy_name);
     phy->enabled = src->enabled;
     phy->tx_chainmask = src->tx_chainmask;
+    phy->radar_next_channel = src->radar_next_channel;
     phy->radar = src->radar;
     phy->reg_domain = src->reg_domain;
     ds_tree_init(&phy->vif_tree, ds_str_cmp, struct osw_conf_vif, phy_node);
@@ -950,13 +978,24 @@ static int osw_wpa_compare(struct osw_wpa *a, struct osw_wpa *b)
     osw_int_compare(r, a->wpa, b->wpa);
     osw_int_compare(r, a->rsn, b->rsn);
     osw_int_compare(r, a->akm_eap, b->akm_eap);
+    osw_int_compare(r, a->akm_eap_sha256, b->akm_eap_sha256);
+    osw_int_compare(r, a->akm_eap_sha384, b->akm_eap_sha384);
+    osw_int_compare(r, a->akm_eap_suite_b, b->akm_eap_suite_b);
+    osw_int_compare(r, a->akm_eap_suite_b192, b->akm_eap_suite_b192);
     osw_int_compare(r, a->akm_psk, b->akm_psk);
+    osw_int_compare(r, a->akm_psk_sha256, b->akm_psk_sha256);
     osw_int_compare(r, a->akm_sae, b->akm_sae);
+    osw_int_compare(r, a->akm_sae_ext, b->akm_sae_ext);
     osw_int_compare(r, a->akm_ft_eap, b->akm_ft_eap);
+    osw_int_compare(r, a->akm_ft_eap_sha384, b->akm_ft_eap_sha384);
     osw_int_compare(r, a->akm_ft_psk, b->akm_ft_psk);
     osw_int_compare(r, a->akm_ft_sae, b->akm_ft_sae);
+    osw_int_compare(r, a->akm_ft_sae_ext, b->akm_ft_sae_ext);
     osw_int_compare(r, a->pairwise_tkip, b->pairwise_tkip);
     osw_int_compare(r, a->pairwise_ccmp, b->pairwise_ccmp);
+    osw_int_compare(r, a->pairwise_ccmp256, b->pairwise_ccmp256);
+    osw_int_compare(r, a->pairwise_gcmp, b->pairwise_gcmp);
+    osw_int_compare(r, a->pairwise_gcmp256, b->pairwise_gcmp256);
     osw_int_compare(r, a->pmf, b->pmf);
     osw_int_compare(r, a->group_rekey_seconds, b->group_rekey_seconds);
     osw_int_compare(r, a->ft_mobility_domain, b->ft_mobility_domain);
@@ -970,7 +1009,7 @@ static int osw_conf_cmp_vif_net(struct osw_conf_net *a, struct osw_conf_net *b)
     r = osw_ssid_cmp(&a->ssid, &b->ssid);
     if (r != 0) return r;
 
-    r = osw_hwaddr_cmp(&a->bssid, &a->bssid);
+    r = osw_hwaddr_cmp(&a->bssid, &b->bssid);
     if (r != 0) return r;
 
     osw_str_compare(r, a->psk.str, b->psk.str);
@@ -979,6 +1018,7 @@ static int osw_conf_cmp_vif_net(struct osw_conf_net *a, struct osw_conf_net *b)
 
     osw_str_compare(r, a->bridge_if_name.buf, b->bridge_if_name.buf);
     osw_int_compare(r, a->multi_ap, b->multi_ap);
+    osw_int_compare(r, a->priority, b->priority);
     return 0;
 }
 
@@ -1043,7 +1083,7 @@ static int osw_channel_compare(struct osw_channel *a, struct osw_channel *b)
     osw_int_compare(r, a->control_freq_mhz, b->control_freq_mhz);
     osw_int_compare(r, a->center_freq0_mhz, b->center_freq0_mhz);
     osw_int_compare(r, a->center_freq1_mhz, b->center_freq1_mhz);
-    osw_int_compare(r, a->puncture_bitmap, b->puncture_bitmap);
+    osw_mem_compare(r, &a->puncture_bitmap, &b->puncture_bitmap);
 
     return 0;
 }
@@ -1100,7 +1140,7 @@ static int osw_ap_mode_compare(struct osw_ap_mode *a, struct osw_ap_mode *b)
 static int osw_neigh_compare(struct osw_neigh *a, struct osw_neigh *b)
 {
     int r;
-    r = osw_hwaddr_cmp(&a->bssid, &a->bssid);
+    r = osw_hwaddr_cmp(&a->bssid, &b->bssid);
     if (r != 0) return r;
     osw_int_compare(r, a->bssid_info, b->bssid_info);
     osw_int_compare(r, a->op_class, b->op_class);
@@ -1110,11 +1150,25 @@ static int osw_neigh_compare(struct osw_neigh *a, struct osw_neigh *b)
     return 0;
 }
 
+static int osw_neigh_ft_compare(struct osw_neigh_ft *a, struct osw_neigh_ft *b)
+{
+    int r;
+    r = osw_hwaddr_cmp(&a->bssid, &b->bssid);
+    if (r != 0) return r;
+    r = osw_ft_encr_key_cmp(&a->ft_encr_key, &b->ft_encr_key);
+    if (r != 0) return r;
+    r = osw_nas_id_cmp(&a->nas_identifier, &b->nas_identifier);
+    if (r != 0) return r;
+
+    return 0;
+}
+
 static int osw_conf_cmp_vif(struct osw_conf_vif *a, struct osw_conf_vif *b)
 {
     struct osw_conf_acl *a_acl, *b_acl;
     struct osw_conf_psk *a_psk, *b_psk;
     struct osw_conf_neigh *a_neigh, *b_neigh;
+    struct osw_conf_neigh_ft *a_neigh_ft, *b_neigh_ft;
     int r;
 
     osw_check_null(r, a, b);
@@ -1159,6 +1213,10 @@ static int osw_conf_cmp_vif(struct osw_conf_vif *a, struct osw_conf_vif *b)
 
             osw_ds_tree_pair_each(&a->u.ap.neigh_tree, &b->u.ap.neigh_tree, a_neigh, b_neigh) {
                 r = osw_neigh_compare(&a_neigh->neigh, &b_neigh->neigh);
+                if (r != 0) return r;
+            }
+            osw_ds_tree_pair_each(&a->u.ap.neigh_ft_tree, &b->u.ap.neigh_ft_tree, a_neigh_ft, b_neigh_ft) {
+                r = osw_neigh_ft_compare(&a_neigh_ft->neigh_ft, &b_neigh_ft->neigh_ft);
                 if (r != 0) return r;
             }
             osw_ds_tree_pair_post(r, a_neigh, b_neigh);
@@ -1215,6 +1273,8 @@ static int osw_conf_cmp_phy(struct osw_conf_phy *a, struct osw_conf_phy *b)
     osw_str_compare(r, a->phy_name, b->phy_name);
     osw_int_compare(r, a->enabled, b->enabled);
     osw_int_compare(r, a->tx_chainmask, b->tx_chainmask);
+    r = osw_channel_compare(&a->radar_next_channel, &b->radar_next_channel);
+    if (r != 0) return r;
     osw_int_compare(r, a->radar, b->radar);
     r = osw_reg_domain_compare(&a->reg_domain, &b->reg_domain);
     if (r != 0) return r;
@@ -1449,7 +1509,7 @@ OSW_UT(osw_conf_ut_mutator_ordering_1)
 OSW_MODULE(osw_conf)
 {
     OSW_MODULE_LOAD(osw_state);
-    const char *ordering = getenv("OSW_CONF_MUTATOR_ORDERING");
+    const char *ordering = osw_etc_get("OSW_CONF_MUTATOR_ORDERING");
     if (ordering != NULL) {
         osw_conf_set_mutator_ordering(ordering);
     }

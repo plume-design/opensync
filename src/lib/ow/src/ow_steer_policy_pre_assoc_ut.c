@@ -143,6 +143,7 @@ OSW_UT(ow_steer_policy_pre_assoc_ut_always_success_steer)
         .dismiss_executor_fn = ow_steer_policy_pre_assoc_ut_mediator_dismis_executor,
         .priv = &mediator_cnt,
     };
+
     struct ow_steer_policy_pre_assoc *counter_policy;
     struct ow_steer_candidate *candidate_0 = NULL;
     struct ow_steer_candidate *candidate_1 = NULL;
@@ -155,7 +156,7 @@ OSW_UT(ow_steer_policy_pre_assoc_ut_always_success_steer)
     candidate_1 = ow_steer_candidate_list_lookup(ctx->candidate_list, &ctx->drv_vif_state_1.mac_addr);
 
     /* Create policy */
-    counter_policy = ow_steer_policy_pre_assoc_create("pre_assoc_test", NULL, &ctx->probe_req.sta_addr, &mediator);
+    counter_policy = ow_steer_policy_pre_assoc_create("pre_assoc_test", NULL, &ctx->probe_req.sta_addr, &mediator, "");
     OSW_UT_EVAL(counter_policy != NULL);
 
     ow_steer_candidate_list_clear(ctx->candidate_list);
@@ -250,7 +251,7 @@ OSW_UT(ow_steer_policy_pre_assoc_ut_always_backoff_connect_blocked_vif)
     candidate_0 = ow_steer_candidate_list_lookup(ctx->candidate_list, &ctx->drv_vif_state_0.mac_addr);
     candidate_1 = ow_steer_candidate_list_lookup(ctx->candidate_list, &ctx->drv_vif_state_1.mac_addr);
 
-    counter_policy = ow_steer_policy_pre_assoc_create("pre_assoc_test", NULL, &ctx->probe_req.sta_addr, &mediator);
+    counter_policy = ow_steer_policy_pre_assoc_create("pre_assoc_test", NULL, &ctx->probe_req.sta_addr, &mediator, "");
     OSW_UT_EVAL(counter_policy != NULL);
     OSW_UT_EVAL(mediator_cnt.trigger_executor_cnt == 0);
     OSW_UT_EVAL(mediator_cnt.schedule_recalc_cnt == 0);
@@ -343,7 +344,7 @@ OSW_UT(ow_steer_policy_pre_assoc_ut_always_backoff_connect_preferred_vif)
     candidate_0 = ow_steer_candidate_list_lookup(ctx->candidate_list, &ctx->drv_vif_state_0.mac_addr);
     candidate_1 = ow_steer_candidate_list_lookup(ctx->candidate_list, &ctx->drv_vif_state_1.mac_addr);
 
-    counter_policy = ow_steer_policy_pre_assoc_create("pre_assoc_test", NULL, &ctx->probe_req.sta_addr, &mediator);
+    counter_policy = ow_steer_policy_pre_assoc_create("pre_assoc_test", NULL, &ctx->probe_req.sta_addr, &mediator, "");
     OSW_UT_EVAL(counter_policy != NULL);
     OSW_UT_EVAL(mediator_cnt.trigger_executor_cnt == 0);
     OSW_UT_EVAL(mediator_cnt.schedule_recalc_cnt == 0);
@@ -436,7 +437,7 @@ OSW_UT(ow_steer_policy_pre_assoc_ut_always_backoff_no_connect)
     candidate_0 = ow_steer_candidate_list_lookup(ctx->candidate_list, &ctx->drv_vif_state_0.mac_addr);
     candidate_1 = ow_steer_candidate_list_lookup(ctx->candidate_list, &ctx->drv_vif_state_1.mac_addr);
 
-    counter_policy = ow_steer_policy_pre_assoc_create("pre_assoc_test", NULL, &ctx->probe_req.sta_addr, &mediator);
+    counter_policy = ow_steer_policy_pre_assoc_create("pre_assoc_test", NULL, &ctx->probe_req.sta_addr, &mediator, "");
     OSW_UT_EVAL(counter_policy != NULL);
     OSW_UT_EVAL(mediator_cnt.trigger_executor_cnt == 0);
     OSW_UT_EVAL(mediator_cnt.schedule_recalc_cnt == 0);
@@ -550,7 +551,7 @@ OSW_UT(ow_steer_policy_pre_assoc_ut_threshold_snr_success_steer)
     candidate_0 = ow_steer_candidate_list_lookup(ctx->candidate_list, &ctx->drv_vif_state_0.mac_addr);
     candidate_1 = ow_steer_candidate_list_lookup(ctx->candidate_list, &ctx->drv_vif_state_1.mac_addr);
 
-    counter_policy = ow_steer_policy_pre_assoc_create("pre_assoc_test", NULL, &ctx->probe_req.sta_addr, &mediator);
+    counter_policy = ow_steer_policy_pre_assoc_create("pre_assoc_test", NULL, &ctx->probe_req.sta_addr, &mediator, "");
     OSW_UT_EVAL(counter_policy != NULL);
     OSW_UT_EVAL(mediator_cnt.trigger_executor_cnt == 0);
     OSW_UT_EVAL(mediator_cnt.schedule_recalc_cnt == 0);
@@ -627,7 +628,7 @@ OSW_UT(ow_steer_policy_pre_assoc_ut_threshold_snr_enter_backoff)
     candidate_0 = ow_steer_candidate_list_lookup(ctx->candidate_list, &ctx->drv_vif_state_0.mac_addr);
     candidate_1 = ow_steer_candidate_list_lookup(ctx->candidate_list, &ctx->drv_vif_state_1.mac_addr);
 
-    counter_policy = ow_steer_policy_pre_assoc_create("pre_assoc_test", NULL, &ctx->probe_req.sta_addr, &mediator);
+    counter_policy = ow_steer_policy_pre_assoc_create("pre_assoc_test", NULL, &ctx->probe_req.sta_addr, &mediator, "");
     OSW_UT_EVAL(counter_policy != NULL);
     OSW_UT_EVAL(mediator_cnt.trigger_executor_cnt == 0);
     OSW_UT_EVAL(mediator_cnt.schedule_recalc_cnt == 0);
@@ -708,7 +709,7 @@ OSW_UT(ow_steer_policy_pre_assoc_ut_dormant_when_connected_to_desired_band)
     candidate_0 = ow_steer_candidate_list_lookup(ctx->candidate_list, &ctx->drv_vif_state_0.mac_addr);
     candidate_1 = ow_steer_candidate_list_lookup(ctx->candidate_list, &ctx->drv_vif_state_1.mac_addr);
 
-    counter_policy = ow_steer_policy_pre_assoc_create("pre_assoc_test", NULL, &ctx->probe_req.sta_addr, &mediator);
+    counter_policy = ow_steer_policy_pre_assoc_create("pre_assoc_test", NULL, &ctx->probe_req.sta_addr, &mediator, "");
     OSW_UT_EVAL(counter_policy != NULL);
     OSW_UT_EVAL(mediator_cnt.trigger_executor_cnt == 0);
     OSW_UT_EVAL(mediator_cnt.schedule_recalc_cnt == 0);
@@ -863,7 +864,7 @@ OSW_UT(ow_steer_policy_pre_assoc_ut_timer_mode_connect_to_blocked)
     candidate_0 = ow_steer_candidate_list_lookup(ctx->candidate_list, &ctx->drv_vif_state_0.mac_addr);
     candidate_1 = ow_steer_candidate_list_lookup(ctx->candidate_list, &ctx->drv_vif_state_1.mac_addr);
 
-    counter_policy = ow_steer_policy_pre_assoc_create("pre_assoc_test", NULL, &ctx->probe_req.sta_addr, &mediator);
+    counter_policy = ow_steer_policy_pre_assoc_create("pre_assoc_test", NULL, &ctx->probe_req.sta_addr, &mediator, "");
     OSW_UT_EVAL(counter_policy != NULL);
     OSW_UT_EVAL(mediator_cnt.trigger_executor_cnt == 0);
     OSW_UT_EVAL(mediator_cnt.schedule_recalc_cnt == 0);
@@ -953,7 +954,7 @@ OSW_UT(ow_steer_policy_pre_assoc_ut_timer_mode_connect_to_preferred)
     candidate_0 = ow_steer_candidate_list_lookup(ctx->candidate_list, &ctx->drv_vif_state_0.mac_addr);
     candidate_1 = ow_steer_candidate_list_lookup(ctx->candidate_list, &ctx->drv_vif_state_1.mac_addr);
 
-    counter_policy = ow_steer_policy_pre_assoc_create("pre_assoc_test", NULL, &ctx->probe_req.sta_addr, &mediator);
+    counter_policy = ow_steer_policy_pre_assoc_create("pre_assoc_test", NULL, &ctx->probe_req.sta_addr, &mediator, "");
     OSW_UT_EVAL(counter_policy != NULL);
     OSW_UT_EVAL(mediator_cnt.trigger_executor_cnt == 0);
     OSW_UT_EVAL(mediator_cnt.schedule_recalc_cnt == 0);
@@ -1033,7 +1034,7 @@ OSW_UT(ow_steer_policy_pre_assoc_ut_timer_mode_connect_to_blocked_auth_after_pro
     candidate_0 = ow_steer_candidate_list_lookup(ctx->candidate_list, &ctx->drv_vif_state_0.mac_addr);
     candidate_1 = ow_steer_candidate_list_lookup(ctx->candidate_list, &ctx->drv_vif_state_1.mac_addr);
 
-    counter_policy = ow_steer_policy_pre_assoc_create("pre_assoc_test", NULL, &ctx->probe_req.sta_addr, &mediator);
+    counter_policy = ow_steer_policy_pre_assoc_create("pre_assoc_test", NULL, &ctx->probe_req.sta_addr, &mediator, "");
     OSW_UT_EVAL(counter_policy != NULL);
     OSW_UT_EVAL(mediator_cnt.trigger_executor_cnt == 0);
     OSW_UT_EVAL(mediator_cnt.schedule_recalc_cnt == 0);
@@ -1124,7 +1125,7 @@ OSW_UT(ow_steer_policy_pre_assoc_ut_timer_mode_connect_to_blocked_auth_only)
     candidate_0 = ow_steer_candidate_list_lookup(ctx->candidate_list, &ctx->drv_vif_state_0.mac_addr);
     candidate_1 = ow_steer_candidate_list_lookup(ctx->candidate_list, &ctx->drv_vif_state_1.mac_addr);
 
-    counter_policy = ow_steer_policy_pre_assoc_create("pre_assoc_test", NULL, &ctx->probe_req.sta_addr, &mediator);
+    counter_policy = ow_steer_policy_pre_assoc_create("pre_assoc_test", NULL, &ctx->probe_req.sta_addr, &mediator, "");
     OSW_UT_EVAL(counter_policy != NULL);
     OSW_UT_EVAL(mediator_cnt.trigger_executor_cnt == 0);
     OSW_UT_EVAL(mediator_cnt.schedule_recalc_cnt == 0);
@@ -1207,7 +1208,7 @@ OSW_UT(ow_steer_policy_pre_assoc_ut_timer_mode_connect_to_blocked_auth_only_nega
     candidate_0 = ow_steer_candidate_list_lookup(ctx->candidate_list, &ctx->drv_vif_state_0.mac_addr);
     candidate_1 = ow_steer_candidate_list_lookup(ctx->candidate_list, &ctx->drv_vif_state_1.mac_addr);
 
-    counter_policy = ow_steer_policy_pre_assoc_create("pre_assoc_test", NULL, &ctx->probe_req.sta_addr, &mediator);
+    counter_policy = ow_steer_policy_pre_assoc_create("pre_assoc_test", NULL, &ctx->probe_req.sta_addr, &mediator, "");
     OSW_UT_EVAL(counter_policy != NULL);
     OSW_UT_EVAL(mediator_cnt.trigger_executor_cnt == 0);
     OSW_UT_EVAL(mediator_cnt.schedule_recalc_cnt == 0);
@@ -1264,7 +1265,7 @@ OSW_UT(ow_steer_policy_pre_assoc_ut_timer_mode_connect_to_blocked_auth_only_bypa
     candidate_0 = ow_steer_candidate_list_lookup(ctx->candidate_list, &ctx->drv_vif_state_0.mac_addr);
     candidate_1 = ow_steer_candidate_list_lookup(ctx->candidate_list, &ctx->drv_vif_state_1.mac_addr);
 
-    counter_policy = ow_steer_policy_pre_assoc_create("pre_assoc_test", NULL, &ctx->probe_req.sta_addr, &mediator);
+    counter_policy = ow_steer_policy_pre_assoc_create("pre_assoc_test", NULL, &ctx->probe_req.sta_addr, &mediator, "");
     OSW_UT_EVAL(counter_policy != NULL);
     OSW_UT_EVAL(mediator_cnt.trigger_executor_cnt == 0);
     OSW_UT_EVAL(mediator_cnt.schedule_recalc_cnt == 0);
@@ -1319,7 +1320,7 @@ OSW_UT(ow_steer_policy_pre_assoc_ut_add_remove_local_bssids)
     ow_steer_candidate_list_bss_set(ctx->candidate_list, &ctx->drv_vif_state_1.mac_addr, &channel5g);
 
     /* Create policy */
-    counter_policy = ow_steer_policy_pre_assoc_create("pre_assoc_test", NULL, &ctx->probe_req.sta_addr, &mediator);
+    counter_policy = ow_steer_policy_pre_assoc_create("pre_assoc_test", NULL, &ctx->probe_req.sta_addr, &mediator, "");
     OSW_UT_EVAL(counter_policy != NULL);
 
     /* Add potential candidates to the list of local_bssids */
@@ -1373,7 +1374,7 @@ OSW_UT(ow_steer_policy_pre_assoc_ut_prevent_blocking_last_candidate)
     candidate_1 = ow_steer_candidate_list_lookup(ctx->candidate_list, &ctx->drv_vif_state_1.mac_addr);
 
     /* Create policy */
-    counter_policy = ow_steer_policy_pre_assoc_create("pre_assoc_test", NULL, &ctx->probe_req.sta_addr, &mediator);
+    counter_policy = ow_steer_policy_pre_assoc_create("pre_assoc_test", NULL, &ctx->probe_req.sta_addr, &mediator, "");
     OSW_UT_EVAL(counter_policy != NULL);
 
     /* Add potential candidates to the list of local_bssids */

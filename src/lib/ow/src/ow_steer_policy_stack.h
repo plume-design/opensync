@@ -30,7 +30,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 struct ow_steer_policy_stack;
 
 struct ow_steer_policy_stack*
-ow_steer_policy_stack_create(struct ow_steer_sta *sta);
+ow_steer_policy_stack_create(struct ow_steer_sta *sta, const char* log_prefix);
 
 void
 ow_steer_policy_stack_free(struct ow_steer_policy_stack *stack);

@@ -347,6 +347,11 @@ ow_dfs_chan_clip_vif_any_widest(const struct osw_channel_state *channel_states,
             const int *chanlist = ow_dfs_chan_clip_get_chanlist(&cs->channel, c->width, &band);
             if (ow_dfs_chan_clip_chanlist_is_usable(chanlist, band, channel_states, n_channel_states)) {
                 c->control_freq_mhz = cs->channel.control_freq_mhz;
+                // Only control_freq_mhz parameter can be taken from channel_states
+                // as all the channel entries in there are 20MHz.
+                const int center_freq = osw_chan_avg(chanlist);
+                const int center_freq_chan = osw_chan_to_freq(band, center_freq);
+                c->center_freq0_mhz = center_freq_chan;
                 return true;
             }
         }
@@ -709,7 +714,8 @@ ow_dfs_chan_clip_postpone_process(struct ow_dfs_chan_clip *m,
                                          + OW_DFS_CHAN_CLIP_LAST_RESORT_BACKOFF_SEC;
             osw_timer_arm_at_nsec(&phy->postpone, postpone_until);
             osw_timer_arm_at_nsec(&phy->backoff, backoff_until);
-            LOGI(LOG_PREFIX_POSTPONE(phy_name, "waiting for all vifs to settle"));
+            LOGI(LOG_PREFIX_POSTPONE(phy_name, "starting wait for all vifs to settle"));
+            return;
         }
 
         if (osw_timer_is_armed(&phy->postpone)) {
@@ -724,14 +730,13 @@ ow_dfs_chan_clip_postpone_process(struct ow_dfs_chan_clip *m,
     }
     else {
         if (osw_timer_is_armed(&phy->postpone)) {
-            LOGI(LOG_PREFIX_POSTPONE(phy_name, "settled"));
+            return;
         }
         else if (osw_timer_is_armed(&phy->backoff)) {
-            LOGI(LOG_PREFIX_POSTPONE(phy_name, "settled at last possible moment"));
+            LOGI(LOG_PREFIX_POSTPONE(phy_name, "settled"));
         }
 
         osw_timer_disarm(&phy->backoff);
-        osw_timer_disarm(&phy->postpone);
     }
 }
 
@@ -890,6 +895,31 @@ OSW_UT(nol)
     const struct osw_channel ch56ht20 = { .control_freq_mhz = 5280, .center_freq0_mhz = 5280, .width = OSW_CHANNEL_20MHZ };
     const struct osw_channel ch56ht40 = { .control_freq_mhz = 5280, .center_freq0_mhz = 5270, .width = OSW_CHANNEL_40MHZ };
     const struct osw_channel ch56ht80 = { .control_freq_mhz = 5280, .center_freq0_mhz = 5290, .width = OSW_CHANNEL_80MHZ };
+
+    const struct osw_channel ch100 = { .control_freq_mhz = 5500, .center_freq0_mhz = 5500 };
+    const struct osw_channel ch104 = { .control_freq_mhz = 5520, .center_freq0_mhz = 5520 };
+    const struct osw_channel ch108 = { .control_freq_mhz = 5540, .center_freq0_mhz = 5540 };
+    const struct osw_channel ch112 = { .control_freq_mhz = 5560, .center_freq0_mhz = 5560 };
+    const struct osw_channel ch116 = { .control_freq_mhz = 5580, .center_freq0_mhz = 5580 };
+    const struct osw_channel ch120 = { .control_freq_mhz = 5600, .center_freq0_mhz = 5600 };
+    const struct osw_channel ch116ht40 = { .control_freq_mhz = 5580, .center_freq0_mhz = 5590, .width = OSW_CHANNEL_40MHZ };
+    const struct osw_channel ch108ht80 = { .control_freq_mhz = 5540, .center_freq0_mhz = 5530, .width = OSW_CHANNEL_80MHZ };
+    const struct osw_channel_state cs5gu_ht20[] = {
+        { .channel = ch100, .dfs_state = OSW_CHANNEL_DFS_NOL },
+        { .channel = ch104, .dfs_state = OSW_CHANNEL_DFS_NOL },
+        { .channel = ch108, .dfs_state = OSW_CHANNEL_DFS_NOL },
+        { .channel = ch112, .dfs_state = OSW_CHANNEL_DFS_NOL },
+        { .channel = ch116, .dfs_state = OSW_CHANNEL_DFS_CAC_COMPLETED },
+    };
+
+    const struct osw_channel_state cs5gu_ht40[] = {
+        { .channel = ch100, .dfs_state = OSW_CHANNEL_DFS_NOL },
+        { .channel = ch104, .dfs_state = OSW_CHANNEL_DFS_NOL },
+        { .channel = ch108, .dfs_state = OSW_CHANNEL_DFS_NOL },
+        { .channel = ch112, .dfs_state = OSW_CHANNEL_DFS_NOL },
+        { .channel = ch116, .dfs_state = OSW_CHANNEL_DFS_CAC_COMPLETED },
+        { .channel = ch120, .dfs_state = OSW_CHANNEL_DFS_CAC_COMPLETED },
+    };
     //const struct osw_channel ch60ht80no5256 = { .control_freq_mhz = 5280, .center_freq0_mhz = 5290, .width = OSW_CHANNEL_80MHZ, .puncture_bitmap = 0x0003 };
     //const struct osw_channel ch56ht80no60 = { .control_freq_mhz = 5280, .center_freq0_mhz = 5290, .width = OSW_CHANNEL_80MHZ, .puncture_bitmap = 0x0004 };
     struct osw_channel c;
@@ -921,6 +951,7 @@ OSW_UT(nol)
         == OW_DFS_CHAN_NARROWED);
     assert(enabled == true);
     assert(c.control_freq_mhz == ch52ht40.control_freq_mhz);
+    assert(c.center_freq0_mhz == ch52ht40.control_freq_mhz);
     assert(c.width == OSW_CHANNEL_20MHZ);
 
     c = ch52ht40;
@@ -929,7 +960,8 @@ OSW_UT(nol)
         == OW_DFS_CHAN_PUNCTURED);
     assert(enabled == true);
     assert(c.control_freq_mhz == ch52ht40.control_freq_mhz);
-    assert(c.width == OSW_CHANNEL_40MHZ);
+    assert(c.center_freq0_mhz == ch52ht40.center_freq0_mhz);
+    assert(c.width == ch52ht40.width);
     assert(c.puncture_bitmap == 0x0002);
 
     c = ch52ht40no56;
@@ -938,6 +970,7 @@ OSW_UT(nol)
         == OW_DFS_CHAN_ORIGINAL);
     assert(enabled == true);
     assert(c.control_freq_mhz == ch52ht40.control_freq_mhz);
+    assert(c.center_freq0_mhz == ch52ht40.center_freq0_mhz);
     assert(c.width == OSW_CHANNEL_40MHZ);
     assert(c.puncture_bitmap == 0x0002);
 
@@ -947,6 +980,7 @@ OSW_UT(nol)
         == OW_DFS_CHAN_INHERITED_STATE);
     assert(enabled == true);
     assert(c.control_freq_mhz == ch36ht40.control_freq_mhz);
+    assert(c.center_freq0_mhz == ch36ht40.center_freq0_mhz);
     assert(c.width == ch36ht40.width);
 
     c = ch56ht40;
@@ -955,6 +989,7 @@ OSW_UT(nol)
         == OW_DFS_CHAN_INHERITED_STATE);
     assert(enabled == true);
     assert(c.control_freq_mhz == ch36ht40.control_freq_mhz);
+    assert(c.center_freq0_mhz == ch36ht40.center_freq0_mhz);
     assert(c.width == ch36ht40.width);
 
     c = ch56ht40;
@@ -963,6 +998,7 @@ OSW_UT(nol)
         == OW_DFS_CHAN_LAST_RESORT_WIDEST);
     assert(enabled == true);
     assert(c.control_freq_mhz == ch52ht40.control_freq_mhz);
+    assert(c.center_freq0_mhz == ch52ht40.control_freq_mhz);
     assert(c.width == OSW_CHANNEL_20MHZ);
 
     c = ch56ht40;
@@ -977,7 +1013,8 @@ OSW_UT(nol)
         == OW_DFS_CHAN_LAST_RESORT_WIDEST);
     assert(enabled == true);
     assert(c.control_freq_mhz == ch36ht40.control_freq_mhz);
-    assert(c.width == OSW_CHANNEL_40MHZ);
+    assert(c.center_freq0_mhz == ch36ht40.center_freq0_mhz);
+    assert(c.width == ch36ht40.width);
 
     c = ch56ht80;
     enabled = true;
@@ -985,7 +1022,8 @@ OSW_UT(nol)
         == OW_DFS_CHAN_LAST_RESORT_WIDEST);
     assert(enabled == true);
     assert(c.control_freq_mhz == ch36ht40.control_freq_mhz);
-    assert(c.width == OSW_CHANNEL_40MHZ);
+    assert(c.center_freq0_mhz == ch36ht40.center_freq0_mhz);
+    assert(c.width == ch36ht40.width);
 
     c = ch56ht80;
     enabled = true;
@@ -993,6 +1031,7 @@ OSW_UT(nol)
         == OW_DFS_CHAN_LAST_RESORT_WIDEST);
     assert(enabled == true);
     assert(c.control_freq_mhz == ch36ht40.control_freq_mhz);
+    assert(c.center_freq0_mhz == ch36ht40.center_freq0_mhz);
     assert(c.width == ch36ht40.width);
 
     c = ch56ht80;
@@ -1001,6 +1040,7 @@ OSW_UT(nol)
         == OW_DFS_CHAN_INHERITED_STATE);
     assert(enabled == true);
     assert(c.control_freq_mhz == ch56ht20.control_freq_mhz);
+    assert(c.center_freq0_mhz == ch56ht20.center_freq0_mhz);
     assert(c.width == ch56ht20.width);
 
     c = ch56ht80;
@@ -1009,6 +1049,7 @@ OSW_UT(nol)
         == OW_DFS_CHAN_INHERITED_STATE_AND_NARROWED);
     assert(enabled == true);
     assert(c.control_freq_mhz == ch56ht40.control_freq_mhz);
+    assert(c.center_freq0_mhz == ch56ht40.center_freq0_mhz);
     assert(c.width == ch56ht40.width);
 
     c = ch56ht80;
@@ -1017,7 +1058,26 @@ OSW_UT(nol)
         == OW_DFS_CHAN_UNSPEC);
     assert(enabled == false);
     assert(c.control_freq_mhz == ch56ht80.control_freq_mhz);
+    assert(c.center_freq0_mhz == ch56ht80.center_freq0_mhz);
     assert(c.width == ch56ht80.width);
+
+    c = ch108ht80;
+    enabled = true;
+    assert(ow_dfs_chan_clip_vif_test(&m, cs5gu_ht20, ARRAY_SIZE(cs5gu_ht20), &ch108ht80, &c, &enabled, false, false)
+        == OW_DFS_CHAN_LAST_RESORT_WIDEST);
+    assert(enabled == true);
+    assert(c.control_freq_mhz == ch116.control_freq_mhz);
+    assert(c.center_freq0_mhz == ch116.center_freq0_mhz);
+    assert(c.width == ch116.width);
+
+    c = ch108ht80;
+    enabled = true;
+    assert(ow_dfs_chan_clip_vif_test(&m, cs5gu_ht40, ARRAY_SIZE(cs5gu_ht40), &ch108ht80, &c, &enabled, false, false)
+        == OW_DFS_CHAN_LAST_RESORT_WIDEST);
+    assert(enabled == true);
+    assert(c.control_freq_mhz == ch116ht40.control_freq_mhz);
+    assert(c.center_freq0_mhz == ch116ht40.center_freq0_mhz);
+    assert(c.width == ch116ht40.width);
 }
 
 OSW_MODULE(ow_dfs_chan_clip)

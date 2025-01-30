@@ -1,8 +1,15 @@
-menu "mdnsd Configuration"
+menuconfig LIB_FSM_MDNSD
+    bool "Enables Opensync FSM mDNSD library"
+    default y
+    help
+       N/A
+
+if LIB_FSM_MDNSD
     config MDNS_OPENSYNC_LOG
+        string "mdnsd Configuration"
         bool "Log mdnsd messages using OpenSync logger"
         default y
         help
             Log messages using OpenSync logger.
             If disabled, mdnsd will use its own logger.
-endmenu
+endif

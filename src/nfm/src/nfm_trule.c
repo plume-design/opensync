@@ -241,7 +241,7 @@ static char *nfm_trule_expand(struct nfm_trule *self, struct nfm_tdata *tdata)
 		}
 
 		*s = '\0';
-		strcat(erule, p);
+		strscat(erule, p, nlen);
 
 		s += 2;
 		if (*s == TEMPLATE_DEVICE_CHAR || *s == TEMPLATE_CLOUD_CHAR || *s == TEMPLATE_LOCAL_CHAR) {
@@ -258,13 +258,13 @@ static char *nfm_trule_expand(struct nfm_trule *self, struct nfm_tdata *tdata)
 			LOGE("[%s] Expand template rule: %stag '%s' not found", self->conf.name, group ? "group " : "", s);
 			goto error;
 		}
-		strcat(erule, nval);
+		strscat(erule, nval, nlen);
 
 		s = p;
 	}
 
 	if (*p != '\0') {
-		strcat(erule, p);
+		strscat(erule, p, nlen);
 	}
 	FREE(mrule);
 	return erule;

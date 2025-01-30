@@ -29,6 +29,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <ovsdb_table.h>
 #include <ovsdb_cache.h>
 #include <ovsdb_sync.h>
+#include <schema_consts.h>
 #include "ow_conf.h"
 
 static ovsdb_table_t table_Wifi_Credential_Config;
@@ -50,15 +51,33 @@ ow_ovsdb_cconf_apply_on_vif(const struct schema_Wifi_VIF_Config *vconf)
         ovsdb_cache_row_t *row = ovsdb_cache_find_row_by_uuid(&table_Wifi_Credential_Config, uuid);
         if (row == NULL) continue;
 
+        const struct schema_Wifi_Credential_Config *c = (const void *)row->record;
+
+        /* TODO: there might be potential benefit to propagate enablement flag
+         * to put it in wpa supplicant network block.
+         * It might allow dynamic (re-)enable, disable network for recovery mechanisms
+         * For now we disabled network will be skipped in defining network blocks */
+        if (!c->enabled) continue;
+
+        const int priority = c->priority_exists ? c->priority : 0;
+        const bool multi_ap = (strcmp(c->onboard_type, SCHEMA_CONSTS_ONBOARD_TYPE_MULTI_AP) == 0);
+        struct osw_ifname bridge;
+        MEMZERO(bridge);
+        if (multi_ap) STRSCPY_WARN(bridge.buf, CONFIG_TARGET_LAN_BRIDGE_NAME);
         struct osw_wpa wpa;
         MEMZERO(wpa);
         struct osw_psk psk;
         MEMZERO(psk);
         struct osw_ssid ssid;
         MEMZERO(ssid);
-        const struct osw_hwaddr bssid = {0};
-        const struct schema_Wifi_Credential_Config *c = (const void *)row->record;
         const char *pass = SCHEMA_KEY_VAL(c->security, "key");
+
+        struct osw_hwaddr bssid;
+        MEMZERO(bssid);
+        if (osw_hwaddr_from_cstr(c->bssid, &bssid) != true) {
+            /* bssid is not specified or malformed setting to "any" */
+            MEMZERO(bssid);
+        }
 
         /* FIXME: Wifi_Credential_Config doesn't support new
          * style wpa_key_mgmt etc.  columns like
@@ -84,7 +103,7 @@ ow_ovsdb_cconf_apply_on_vif(const struct schema_Wifi_VIF_Config *vconf)
         STRSCPY_WARN(ssid.buf, c->ssid);
         ssid.len = strlen(ssid.buf);
 
-        ow_conf_vif_set_sta_net(vif_name, &ssid, &bssid, &psk, &wpa, NULL, NULL);
+        ow_conf_vif_set_sta_net(vif_name, &ssid, &bssid, &psk, &wpa, multi_ap ? &bridge : NULL, &multi_ap, &priority);
     }
 }
 

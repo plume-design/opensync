@@ -249,7 +249,7 @@ bool sm_neighbor_report_send_diff(
 
     uint32_t                        found = 0;
 
-    /* Create new report for diff data (only add/remove 
+    /* Create new report for diff data (only add/remove
        compared to previous report)
      */
     dpp_neighbor_report_data_t      report_diff;
@@ -1161,7 +1161,7 @@ bool sm_neighbor_report_request(
        memcpy would be easier but we want some debug info
      */
     char param_str[32];
-    sprintf(param_str,
+    SPRINTF(param_str,
             "%s %s",
             radio_get_scan_name_from_type(scan_type),
             "neighbor");
@@ -1185,51 +1185,6 @@ bool sm_neighbor_report_request(
                 neighbor_ctx);
     if (true != status) {
         return false;
-    }
-
-    return true;
-}
-
-bool sm_neighbor_report_radio_change(
-        radio_entry_t              *radio_cfg)
-{
-    bool                            status;
-    sm_neighbor_ctx_t              *neighbor_ctx = NULL;
-    radio_scan_type_t               scan_type;
-    int                             scan_index;
-
-    if (NULL == radio_cfg) {
-        LOG(ERR,
-            "Changing neighbor reporting "
-            "(Invalid radio config)");
-        return false;
-    }
-
-    /* Update radio on all scan contexts and if initialized, the
-       reports will start. This is not ideal but needed to
-       simplify the design (since all report data is allocated
-       preallocation does not consume much memory)
-     */
-    for (   scan_index = 0;
-            scan_index < RADIO_SCAN_MAX_TYPE_QTY;
-            scan_index++
-        ) {
-        scan_type       = radio_get_scan_type_from_index(scan_index);
-        neighbor_ctx    = sm_neighbor_ctx_get(radio_cfg, scan_type);
-        if (NULL == neighbor_ctx) {
-            LOGE("Changing neighbor reporting "
-                 "(Invalid neighbor context)");
-            return false;
-        }
-
-        status =
-            sm_neighbor_stats_process (
-                    radio_cfg,
-                    scan_type,
-                    neighbor_ctx);
-        if (true != status) {
-            return false;
-        }
     }
 
     return true;

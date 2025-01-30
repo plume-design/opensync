@@ -77,6 +77,8 @@ fsm_pcap_handler(uint8_t * args, const struct pcap_pkthdr *header,
     struct fsm_session *session;
     size_t len;
 
+    if (header->caplen == 0) return;
+
     session = (struct fsm_session *)args;
 
     memset(&net_parser, 0, sizeof(net_parser));

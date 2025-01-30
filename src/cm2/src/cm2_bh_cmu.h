@@ -38,9 +38,13 @@ void cm2_bh_cmu_vif_drop(cm2_bh_cmu_vif_t *vif);
 
 cm2_bh_cmu_vif_t *cm2_bh_cmu_vif_alloc(cm2_bh_cmu_t *m, const char *vif_name);
 
+void cm2_bh_cmu_vif_report_wvs_sta(cm2_bh_cmu_vif_t *vif, bool v);
+
+void cm2_bh_cmu_vif_report_wvs_4addr(cm2_bh_cmu_vif_t *vif, bool v);
+
 void cm2_bh_cmu_gre_drop(cm2_bh_cmu_gre_t *gre);
 
-cm2_bh_cmu_gre_t *cm2_bh_cmu_gre_alloc(cm2_bh_cmu_vif_t *vif, const char *gre_name);
+cm2_bh_cmu_gre_t *cm2_bh_cmu_gre_alloc(cm2_bh_cmu_t *m, const char *gre_name, const char *parent_name);
 
 cm2_bh_cmu_t *cm2_bh_cmu_alloc(void);
 
@@ -51,6 +55,8 @@ void cm2_bh_cmu_drop(cm2_bh_cmu_t *m);
 cm2_bh_cmu_vif_t *cm2_bh_cmu_lookup_vif(cm2_bh_cmu_t *m, const char *vif_name);
 
 cm2_bh_cmu_gre_t *cm2_bh_cmu_lookup_gre(cm2_bh_cmu_t *m, const char *gre_name);
+
+cm2_bh_cmu_gre_t *cm2_bh_cmu_lookup_gre_by_parent(cm2_bh_cmu_t *m, const char *parent_name);
 
 void cm2_bh_cmu_WVS(
         cm2_bh_cmu_t *m,
@@ -69,5 +75,11 @@ void cm2_bh_cmu_CMU(
         ovsdb_update_monitor_t *mon,
         const struct schema_Connection_Manager_Uplink *old_row,
         const struct schema_Connection_Manager_Uplink *new_row);
+
+void cm2_bh_cmu_WIC(
+        cm2_bh_cmu_t *m,
+        ovsdb_update_monitor_t *mon,
+        const struct schema_Wifi_Inet_Config *old_row,
+        const struct schema_Wifi_Inet_Config *new_row);
 
 #endif /* CM2_BH_CMU_H_INCLUDED */

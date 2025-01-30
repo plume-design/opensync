@@ -31,7 +31,7 @@ UNIT_NAME := fcm_lanstats
 
 UNIT_DISABLE := $(if $(CONFIG_MANAGER_FCM),n,y)
 
-ifeq ($(CONFIG_FSM_NO_DSO),y)
+ifeq ($(CONFIG_FCM_NO_DSO),y)
     UNIT_TYPE := LIB
 else
     UNIT_TYPE := SHLIB
@@ -40,12 +40,6 @@ endif
 
 UNIT_SRC := src/lan_stats.c
 UNIT_SRC += src/lan_native_flows.c
-ifeq ($(CONFIG_FCM_LAN_STATS_COLLECT_METHOD),y)
-UNIT_SRC += src/lan_cmd_flows.c
-else
-UNIT_SRC += src/lan_dpctl.c
-OVS_PACKAGE_VERNUM:=$(if $(OVS_PACKAGE_VER),$(shell echo $(OVS_PACKAGE_VER) | (IFS=. read A B C; echo $$(($$A*10000+$$B*100+$$C)))),0)
-endif
 
 UNIT_CFLAGS := -I$(UNIT_PATH)/inc
 UNIT_CFLAGS += -Isrc/fcm/inc
@@ -53,10 +47,6 @@ UNIT_CFLAGS += -Isrc/fcm/inc
 UNIT_CFLAGS += --std=gnu99 -Wno-sign-compare
 ifneq ($(TARGET), native)
     UNIT_CFLAGS += -DOVS_PACKAGE_VERNUM=$(OVS_PACKAGE_VERNUM)
-endif
-
-ifneq ($(CONFIG_FCM_LAN_STATS_COLLECT_METHOD),y)
-UNIT_LDFLAGS += -lopenvswitch
 endif
 
 UNIT_EXPORT_CFLAGS := $(UNIT_CFLAGS)

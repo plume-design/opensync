@@ -376,6 +376,7 @@ ct_flow_add_sample(flow_stats_t *ct_stats)
     struct flow_counters pkts_ct;
     struct net_md_flow_key key;
     ctflow_info_t *flow_info;
+    ds_dlist_t *ctflow_list;
     int sample_count;
     ct_flow_t *flow;
     bool ret;
@@ -383,7 +384,8 @@ ct_flow_add_sample(flow_stats_t *ct_stats)
     aggr = ct_stats->aggr;
     sample_count = 0;
 
-    ds_dlist_foreach(&ct_stats->ctflow_list, flow_info)
+    ctflow_list = (ct_stats->ctflow_event_list != NULL) ? ct_stats->ctflow_event_list : &ct_stats->ctflow_list;
+    ds_dlist_foreach(ctflow_list, flow_info)
     {
         bool                     smac_lookup;
         bool                     dmac_lookup;
@@ -887,6 +889,36 @@ ct_stats_send_aggr_report(fcm_collect_plugin_t *collector)
     }
 }
 
+/**
+ * @brief Processes the update conntrack event and updates
+ * flow stats and end_flag for the flow in the aggregator.
+ *
+ * This function is called when the conntrack entry is updated.
+ * It retrieves the flow from the aggregator and updates the
+ * packet count, byte count and end flag.
+ * @param collector pointer to FCM plugin collector.
+ * @param data pointer the conntrack entry that is destoryed
+ */
+void
+ct_stats_process_ct_event(fcm_collect_plugin_t *collector, void *data)
+{
+    flow_stats_t *ct_stats;
+    flow_stats_mgr_t *mgr;
+
+    if (collector == NULL || data == NULL)
+    {
+        LOGD("%s: Invalid input parameters", __func__);
+        return;
+    }
+
+    mgr = ct_stats_get_mgr();
+    ct_stats = collector->plugin_ctx;
+    if (ct_stats != mgr->active) return;
+
+    ct_stats->ctflow_event_list = (ds_dlist_t *)data;
+    ct_flow_add_sample(ct_stats);
+    ct_stats->ctflow_event_list = NULL;
+}
 
 /**
  * @brief triggers conntrack records collection
@@ -913,6 +945,7 @@ ct_stats_collect_cb(fcm_collect_plugin_t *collector)
     ct_stats->collect_filter = collector->filters.collect;
 
     ct_flow_add_sample(ct_stats);
+
 }
 
 
@@ -1032,6 +1065,7 @@ ct_stats_plugin_init(fcm_collect_plugin_t *collector)
     collector->send_report = ct_stats_report_cb;
     collector->close_plugin = ct_stats_plugin_close_cb;
     collector->process_flush_cache = ct_stats_process_flush_cache;
+    collector->process_ct_event = ct_stats_process_ct_event;
 
     ct_stats->session = collector->session;
 

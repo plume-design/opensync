@@ -92,6 +92,7 @@ void ow_conf_phy_set_ap_channel(const char *phy_name, const struct osw_channel *
 bool ow_conf_phy_is_set(const char *phy_name);
 const bool *ow_conf_phy_get_enabled(const char *phy_name);
 const int *ow_conf_phy_get_tx_chainmask(const char *phy_name);
+const struct osw_channel *ow_conf_phy_get_ap_channel(const char *phy_name);
 void ow_conf_phy_set_ap_supp_rates(const char *phy_name, const uint16_t *supp_rates);
 void ow_conf_phy_set_ap_basic_rates(const char *phy_name, const uint16_t *basic_rates);
 void ow_conf_phy_set_ap_beacon_rate(const char *phy_name, const enum osw_rate_legacy *beacon_rate);
@@ -123,12 +124,23 @@ void ow_conf_vif_set_ap_wpa(const char *vif_name, const bool *wpa_enabled);
 void ow_conf_vif_set_ap_rsn(const char *vif_name, const bool *rsn_enabled);
 void ow_conf_vif_set_ap_pairwise_tkip(const char *vif_name, const bool *tkip_enabled);
 void ow_conf_vif_set_ap_pairwise_ccmp(const char *vif_name, const bool *ccmp_enabled);
+void ow_conf_vif_set_ap_pairwise_ccmp256(const char *vif_name, const bool *ccmp256_enabled);
+void ow_conf_vif_set_ap_pairwise_gcmp(const char *vif_name, const bool *gcmp_enabled);
+void ow_conf_vif_set_ap_pairwise_gcmp256(const char *vif_name, const bool *gcmp256_enabled);
 void ow_conf_vif_set_ap_akm_eap(const char *vif_name, const bool *eap_enabled);
-void ow_conf_vif_set_ap_akm_psk(const char *vif_name, const bool *psk_enabled);
-void ow_conf_vif_set_ap_akm_sae(const char *vif_name, const bool *sae_enabled);
+void ow_conf_vif_set_ap_akm_eap_sha256(const char *vif_name, const bool *eap_sha256_enabled);
+void ow_conf_vif_set_ap_akm_eap_sha384(const char *vif_name, const bool *eap_sha384_enabled);
+void ow_conf_vif_set_ap_akm_eap_suite_b(const char *vif_name, const bool *eap_suite_b_enabled);
+void ow_conf_vif_set_ap_akm_eap_suite_b192(const char *vif_name, const bool *eap_suite_b192_enabled);
 void ow_conf_vif_set_ap_akm_ft_eap(const char *vif_name, const bool *ft_eap_enabled);
+void ow_conf_vif_set_ap_akm_ft_eap_sha384(const char *vif_name, const bool *ft_eap_sha384_enabled);
 void ow_conf_vif_set_ap_akm_ft_psk(const char *vif_name, const bool *ft_psk_enabled);
 void ow_conf_vif_set_ap_akm_ft_sae(const char *vif_name, const bool *ft_sae_enabled);
+void ow_conf_vif_set_ap_akm_ft_sae_ext(const char *vif_name, const bool *ft_sae_ext_enabled);
+void ow_conf_vif_set_ap_akm_psk(const char *vif_name, const bool *psk_enabled);
+void ow_conf_vif_set_ap_akm_psk_sha256(const char *vif_name, const bool *psk_sha256_enabled);
+void ow_conf_vif_set_ap_akm_sae(const char *vif_name, const bool *sae_enabled);
+void ow_conf_vif_set_ap_akm_sae_ext(const char *vif_name, const bool *sae_ext_enabled);
 void ow_conf_vif_set_ap_pmf(const char *vif_name, const enum osw_pmf *pmf);
 void ow_conf_vif_set_ap_multi_ap(const char *vif_name, const struct osw_multi_ap *multi_ap);
 void ow_conf_vif_set_ap_group_rekey_seconds(const char *vif_name, const int *seconds);
@@ -141,6 +153,12 @@ void ow_conf_vif_set_ap_wmm_uapsd(const char *vif_name, const bool *wmm_uapsd_en
 void ow_conf_vif_set_ap_wnm_bss_trans(const char *vif_name, const bool *wnm_bss_trans_enabled);
 void ow_conf_vif_set_ap_rrm_neighbor_report(const char *vif_name, const bool *rmm_neighbor_report_enabled);
 void ow_conf_vif_set_ap_mcast2ucast(const char *vif_name, const bool *mcast2ucast_enabled);
+void ow_conf_vif_set_ap_ft_encr_key(const char *vif_name, const struct osw_ft_encr_key *ft_encr_key);
+void ow_conf_vif_set_ap_ft_over_ds(const char *vif_name, const bool *ft_over_ds);
+void ow_conf_vif_set_ap_ft_pmk_r1_push(const char *vif_name, const bool *ft_pmk_r1_push);
+void ow_conf_vif_set_ap_ft_psk_generate_local(const char *vif_name, const bool *ft_psk_generate_local);
+void ow_conf_vif_set_ap_ft_pmk_r0_key_lifetime_sec(const char *vif_name, const int *ft_pmk_r0_key_lifetime_sec);
+void ow_conf_vif_set_ap_ft_pmk_r1_max_key_lifetime_sec(const char *vif_name, const int *ft_pmk_r1_max_key_lifetime_sec);
 
 void ow_conf_vif_set_ap_psk(const char *vif_name, int key_id, const char *str);
 void ow_conf_vif_set_sta_net(const char *vif_name,
@@ -149,7 +167,8 @@ void ow_conf_vif_set_sta_net(const char *vif_name,
                              const struct osw_psk *psk,
                              const struct osw_wpa *wpa,
                              const struct osw_ifname *bridge_if_name,
-                             const bool *multi_ap);
+                             const bool *multi_ap,
+                             const int *priority);
 void ow_conf_vif_add_ap_acl(const char *vif_name, const struct osw_hwaddr *addr);
 void ow_conf_vif_del_ap_acl(const char *vif_name, const struct osw_hwaddr *addr);
 void ow_conf_vif_set_ap_neigh(const char *vif_name,
@@ -158,9 +177,15 @@ void ow_conf_vif_set_ap_neigh(const char *vif_name,
                               const uint8_t op_class,
                               const uint8_t channel,
                               const uint8_t phy_type);
+void ow_conf_vif_set_ap_neigh_ft(const char* vif_name,
+                                 const struct osw_hwaddr *addr,
+                                 const bool ft_enabled,
+                                 const char *ft_encr_key,
+                                 const char* nas_id);
 void ow_conf_vif_del_ap_neigh(const char *vif_name,
                               const struct osw_hwaddr *addr);
-
+void ow_conf_vif_del_ap_neigh_ft(const char *vif_name,
+                                 const struct osw_hwaddr *addr);
 void ow_conf_radius_add(const char *ref_id,
                         const char *ip_addr,
                         const char *secret,
@@ -185,6 +210,7 @@ void ow_conf_vif_flush_radius_accounting_refs(const char *vif_name);
 void ow_conf_vif_flush_ap_psk(const char *vif_name);
 void ow_conf_vif_flush_ap_acl(const char *vif_name);
 void ow_conf_vif_flush_ap_neigh(const char *vif_name);
+void ow_conf_vif_flush_ap_neigh_ft(const char *vif_name);
 void ow_conf_vif_flush_sta_net(const char *vif_name);
 
 bool ow_conf_vif_is_set(const char *vif_name);
@@ -192,14 +218,24 @@ const char *ow_conf_vif_get_phy_name(const char *vif_name);
 const bool *ow_conf_vif_get_enabled(const char *vif_name);
 const enum osw_acl_policy *ow_conf_vif_get_ap_acl_policy(const char *vif_name);
 const struct osw_ssid *ow_conf_vif_get_ap_ssid(const char *vif_name);
+const struct osw_channel *ow_conf_vif_get_ap_channel(const char *vif_name);
 const bool *ow_conf_vif_get_ap_wpa(const char *vif_name);
 const bool *ow_conf_vif_get_ap_rsn(const char *vif_name);
 const bool *ow_conf_vif_get_ap_pairwise_tkip(const char *vif_name);
 const bool *ow_conf_vif_get_ap_pairwise_ccmp(const char *vif_name);
 const bool *ow_conf_vif_get_ap_akm_psk(const char *vif_name);
+const bool *ow_conf_vif_get_ap_akm_psk_sha256(const char *vif_name);
+const bool *ow_conf_vif_get_ap_akm_eap(const char *vif_name);
+const bool *ow_conf_vif_get_ap_akm_eap_sha256(const char *vif_name);
+const bool *ow_conf_vif_get_ap_akm_eap_sha384(const char *vif_name);
+const bool *ow_conf_vif_get_ap_akm_eap_suite_b(const char *vif_name);
+const bool *ow_conf_vif_get_ap_akm_eap_suite_b192(const char *vif_name);
 const bool *ow_conf_vif_get_ap_akm_sae(const char *vif_name);
+const bool *ow_conf_vif_get_ap_akm_sae_ext(const char *vif_name);
 const bool *ow_conf_vif_get_ap_akm_ft_psk(const char *vif_name);
 const bool *ow_conf_vif_get_ap_akm_ft_sae(const char *vif_name);
+const bool *ow_conf_vif_get_ap_akm_ft_sae_ext(const char *vif_name);
+const bool *ow_conf_vif_get_ap_akm_ft_eap_sha384(const char *vif_name);
 const enum osw_pmf *ow_conf_vif_get_ap_pmf(const char *vif_name);
 const char *ow_conf_vif_get_ap_psk(const char *vif_name, int key_id);
 bool ow_conf_vif_has_ap_acl(const char *vif_name, const struct osw_hwaddr *addr);

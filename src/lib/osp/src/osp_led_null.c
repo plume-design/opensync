@@ -43,3 +43,32 @@ enum osp_led_state osp_led_str_to_state(const char *str)
 
     return OSP_LED_ST_LAST;
 }
+
+int osp_led_init(void)
+{
+    return -1;
+}
+
+enum osp_led_state osp_led_ovsdb_get_active_led_state(uint8_t position)
+{
+    (void)position;
+
+    return -1;
+}
+
+int osp_led_ovsdb_add_led_config(enum osp_led_state state, uint32_t priority, uint8_t position)
+{
+    (void)state;
+    (void)priority;
+    (void)position;
+
+    return -1;
+}
+
+int osp_led_ovsdb_delete_led_config(enum osp_led_state state, uint8_t position)
+{
+    (void)state;
+    (void)position;
+
+    return -1;
+}

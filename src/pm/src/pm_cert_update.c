@@ -41,6 +41,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "target.h"
 #include "util.h"
 #include <curl/curl.h>
+#include <openssl/evp.h>
 #include <openssl/md5.h>
 
 #include "ovsdb.h"
@@ -74,8 +75,14 @@ bool pm_calculate_md5(const char *file_path, unsigned char *digest)
         return false;
     }
 
+#if OPENSSL_VERSION_NUMBER >= 0x030000000  // 3.0.0
+    EVP_MD_CTX *md_ctx = EVP_MD_CTX_create();
+    const EVP_MD *md = EVP_md5();
+    EVP_DigestInit_ex(md_ctx, md, NULL);
+#else
     MD5_CTX context;
     MD5_Init(&context);
+#endif
 
     size_t buffer_size = 2048;
     unsigned char buffer[buffer_size];
@@ -83,12 +90,21 @@ bool pm_calculate_md5(const char *file_path, unsigned char *digest)
 
     while ((bytes_read = fread(buffer, 1, buffer_size, file)) != 0)
     {
+#if OPENSSL_VERSION_NUMBER >= 0x030000000  // 3.0.0
+        EVP_DigestUpdate(md_ctx, buffer, bytes_read);
+#else
         MD5_Update(&context, buffer, bytes_read);
+#endif
     }
 
     fclose(file);
 
+#if OPENSSL_VERSION_NUMBER >= 0x030000000  // 3.0.0
+    EVP_DigestFinal_ex(md_ctx, digest, 0);
+    EVP_MD_CTX_destroy(md_ctx);
+#else
     MD5_Final(digest, &context);
+#endif
     return true;
 }
 

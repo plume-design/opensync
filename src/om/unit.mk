@@ -36,9 +36,6 @@ UNIT_TYPE           := BIN
 
 UNIT_SRC            := src/om_main.c
 UNIT_SRC            += src/om_monitor.c
-UNIT_SRC            += src/om_tflows.c
-UNIT_SRC            += src/om_template.c
-UNIT_SRC            += src/om_ovs.c
 
 UNIT_CFLAGS         += -I$(TOP_DIR)/src/lib/common/inc/
 UNIT_CFLAGS         += -I$(TOP_DIR)/src/lib/tailf/inc/

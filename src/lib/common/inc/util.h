@@ -108,6 +108,7 @@ void fsa_copy(const void *array, int size, int len, int num, void *dest, int dsi
 char *str_tolower(char *str);
 char *str_toupper(char *str);
 char *str_trimws(char *s);
+char *strstrip(char *str, const char *chars);
 bool str_is_mac_address(const char *mac);
 bool parse_uri(char *uri, char *proto, size_t proto_size, char *host, size_t host_size, int *port);
 
@@ -125,6 +126,8 @@ bool parse_uri(char *uri, char *proto, size_t proto_size, char *host, size_t hos
 #define ASSERT_ARRAY(A) A
 #endif
 
+#define SPRINTF(dest, ...) snprintf(ASSERT_ARRAY(dest), sizeof(dest), ##__VA_ARGS__)
+
 #define STRSCMP(a, b) strcmp((a == NULL || WARN_ON(a == (void *)MEMUTIL_MAGIC)) ? "" : a, \
                              (b == NULL || WARN_ON(b == (void *)MEMUTIL_MAGIC)) ? "" : b)
 #define STRSLEN(a) strlen((a == NULL || WARN_ON(a == (void *)MEMUTIL_MAGIC)) ? "" : a)
@@ -133,7 +136,7 @@ bool parse_uri(char *uri, char *proto, size_t proto_size, char *host, size_t hos
 ssize_t strscpy(char *dest, const char *src, size_t size);
 #define STRSCPY_LEN(dest, src, len)  strscpy_len(ASSERT_ARRAY(dest), (src), sizeof(dest), len)
 ssize_t strscpy_len(char *dest, const char *src, size_t size, ssize_t src_len);
-#define STRSCAT(dest, src)  strscat((dest), (src), sizeof(dest))
+#define STRSCAT(dest, src)  strscat(ASSERT_ARRAY(dest), (src), sizeof(dest))
 ssize_t strscat(char *dest, const char *src, size_t size);
 char *strschr(const char *s, int c, size_t n);
 char *strsrchr(const char *s, int c, size_t n);
@@ -144,6 +147,7 @@ char *argvstr(const char *const*argv);
 #define argvstra(argv) strdupafree(argvstr(argv))
 char *strexread(const char *prog, const char *const*argv);
 #define strexreada(prog, argv) strdupafree(strexread(prog, argv))
+int strexread_spawn(const char *prog, const char *const*argv, pid_t *pid, int *read_fd);
 #define __strexa_arg1(x, ...) x
 #define strexa(...) strdupafree(strchomp(strexread(__strexa_arg1(__VA_ARGS__), (const char *[]){ __VA_ARGS__, NULL }), " \t\r\n"))
 #define strexpect(str, prog, ...) ({ char *__p = strexa(prog, ##__VA_ARGS__); __p && !strcmp(__p, str); })
@@ -230,5 +234,13 @@ bool __is_input_shell_safe(const char* input, const char *calling_func);
  * @return true if input string does not contain any dangerous characters, false otherwise
  */
 #define is_input_shell_safe(input) __is_input_shell_safe(input, __func__)
+
+/**
+ * os_readlink(): a safer readlink() alternative
+ * which takes care for NUL string termination
+ * returns -1 in case of truncation or other error
+ * suitable as a drop-in replacement for readlink()
+ */
+ssize_t os_readlink(const char *restrict pathname, char *restrict buf, size_t bufsiz);
 
 #endif /* UTIL_H_INCLUDED */

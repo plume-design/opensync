@@ -84,8 +84,8 @@ OSW_UT(ow_steer_executor_call)
      */
     candidate_list = ow_steer_candidate_list_new();
     executor = ow_steer_executor_create();
-    action1 = ow_steer_executor_action_create("action1", &sta_addr, &call_ops, &mediator, &action1_call_cnt);
-    action2 = ow_steer_executor_action_create("action2", &sta_addr, &call_ops, &mediator, &action2_call_cnt);
+    action1 = ow_steer_executor_action_create("action1", &sta_addr, &call_ops, &mediator, "", &action1_call_cnt);
+    action2 = ow_steer_executor_action_create("action2", &sta_addr, &call_ops, &mediator, "", &action2_call_cnt);
     action1_call_cnt = 0;
     action2_call_cnt = 0;
 
@@ -131,8 +131,8 @@ OSW_UT(ow_steer_executor_mutate)
      */
     candidate_list = ow_steer_candidate_list_new();
     executor = ow_steer_executor_create();
-    action1 = ow_steer_executor_action_create("action1", &sta_addr, &in_progress_ops, &mediator, &action1_mutate_cnt);
-    action2 = ow_steer_executor_action_create("action2", &sta_addr, &in_progress_ops, &mediator, &action2_mutate_cnt);
+    action1 = ow_steer_executor_action_create("action1", &sta_addr, &in_progress_ops, &mediator, "", &action1_mutate_cnt);
+    action2 = ow_steer_executor_action_create("action2", &sta_addr, &in_progress_ops, &mediator, "", &action2_mutate_cnt);
     action1_mutate_cnt = 0;
     action2_mutate_cnt = 0;
 

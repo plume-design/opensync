@@ -318,12 +318,6 @@ bool target_device_execute(const char *cmd)
     return true;
 }
 #endif
-#ifndef IMPL_target_device_capabilities_get
-int target_device_capabilities_get()
-{
-    return 0;
-}
-#endif
 #ifndef IMPL_target_device_connectivity_check
 bool target_device_connectivity_check(const char *ifname,
                                       target_connectivity_check_t *cstate,
@@ -366,7 +360,7 @@ void target_managers_restart(void)
 
     LOG(EMERG, "=======  GENERAL RESTART  ========");
 
-    sprintf(cmd, "%s/restart.sh", scripts_dir);
+    SPRINTF(cmd, "%s/restart.sh", scripts_dir);
 
     LOG(EMERG, "Plan B is executing restart script: %s", cmd);
 
@@ -551,20 +545,6 @@ bool target_stats_device_temp_get(
 }
 #endif
 
-#ifndef IMPL_target_stats_device_txchainmask_get
-bool target_stats_device_txchainmask_get(
-        radio_entry_t              *radio_cfg,
-        dpp_device_txchainmask_t   *txchainmask_entry)
-{
-    static bool printed = false;
-    if (!printed) {
-        LOG(DEBUG, "Sending device report: txchainmask not supported");
-        printed = true;
-    }
-    return false;
-}
-#endif
-
 #ifndef IMPL_target_stats_device_fanrpm_get
 bool target_stats_device_fanrpm_get(uint32_t        *fan_rpm)
 {
@@ -653,7 +633,7 @@ bool target_stats_scan_stop(
 #endif
 
 /******************************************************************************
- * BM and BSAL
+ * BSAL
  *****************************************************************************/
 #ifndef IMPL_target_bsal_init
 int target_bsal_init(bsal_event_cb_t event_cb, struct ev_loop* loop)

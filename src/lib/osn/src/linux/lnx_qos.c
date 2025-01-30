@@ -35,8 +35,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *  The HTB qdisc is attached to the root of the interface, qdisc classes are
  *  created for each queue definition and a fq_codel qdisc is attached to them.
  *
- *  Each queue also adds its own `tc filter` to forward any fw marks to the
- *  specific queue.
  * ===========================================================================
  */
 #include <net/if.h>
@@ -106,7 +104,8 @@ static char lnx_qos_qdisc_add[] = _S(
         mark="$3";
         priority="$4";
         bandwidth="$5";
-        shared="$6";
+        bandwidth_ceil="$6";
+        shared="$7";
 
         tc class add dev "$ifname" \
                 parent 1: \
@@ -114,18 +113,11 @@ static char lnx_qos_qdisc_add[] = _S(
                 htb \
                 prio "${priority}" \
                 rate "${bandwidth}kbit" \
+                ceil "${bandwidth_ceil}kbit" \
                 burst 15k \
                 ${shared:+shared ${shared}};
 
-        tc qdisc add dev "$ifname" parent "1:${qid}" fq_codel;
-
-        tc filter add dev "$ifname" \
-                protocol ip \
-                parent 1: \
-                prio 1 \
-                handle "${mark}" fw \
-                flowid "1:${qid}");
-
+        tc qdisc add dev "$ifname" parent "1:${qid}" fq_codel);
 
 static bool lnx_qos_reconfigure(lnx_qos_t *self);
 static int lnx_qos_id_get(const char *tag);
@@ -228,6 +220,7 @@ bool lnx_qos_queue_begin(
         lnx_qos_t *self,
         int priority,
         int bandwidth,
+        int bandwidth_ceil,
         const char *tag,
         const struct osn_qos_other_config *other_config,
         struct osn_qos_queue_status *qqs)
@@ -254,6 +247,7 @@ bool lnx_qos_queue_begin(
     qp = MEM_APPEND(&self->lq_queue, &self->lq_queue_e, sizeof(struct lnx_qos_queue));
     qp->qq_priority = priority;
     qp->qq_bandwidth = bandwidth;
+    qp->qq_bandwidth_ceil = bandwidth_ceil;
 
     qp->qq_id= lnx_qos_id_get(tag);
     if (qp->qq_id < 0)
@@ -313,6 +307,7 @@ bool lnx_qos_reconfigure(lnx_qos_t *self)
     char sqid[C_INT32_LEN];
     char sprio[C_INT32_LEN];
     char sbw[C_INT32_LEN];
+    char sbw_ceil[C_INT32_LEN];
     char smark[C_INT32_LEN];
     uint32_t mark;
     int rc;
@@ -342,6 +337,17 @@ bool lnx_qos_reconfigure(lnx_qos_t *self)
         snprintf(sbw, sizeof(sbw), "%d", qp->qq_bandwidth);
         snprintf(smark, sizeof(smark), "%u", mark);
 
+        if (qp->qq_bandwidth_ceil <= 0)
+        {
+            /* ceil not set: rate == ceil: */
+            snprintf(sbw_ceil, sizeof(sbw_ceil), "%d", qp->qq_bandwidth);
+        }
+        else
+        {
+            /* ceil set: */
+            snprintf(sbw_ceil, sizeof(sbw_ceil), "%d", qp->qq_bandwidth_ceil);
+        }
+
         rc = execsh_log(
                 LOG_SEVERITY_DEBUG,
                 lnx_qos_qdisc_add,
@@ -350,6 +356,7 @@ bool lnx_qos_reconfigure(lnx_qos_t *self)
                 smark,
                 sprio,
                 sbw,
+                sbw_ceil,
                 qp->qq_shared == NULL ? "" : qp->qq_shared);
         if (rc != 0)
         {
@@ -358,10 +365,11 @@ bool lnx_qos_reconfigure(lnx_qos_t *self)
             return false;
         }
 
-        LOG(INFO, "qos: %s: Configured Queue [%d]: bandwidth=%d priority=%d",
+        LOG(INFO, "qos: %s: Configured Queue [%d]: bandwidth=%d bandwidth_ceil=%d priority=%d",
                 self->lq_ifname,
                 qp->qq_id,
                 qp->qq_bandwidth,
+                qp->qq_bandwidth_ceil <= 0 ? qp->qq_bandwidth : qp->qq_bandwidth_ceil,
                 qp->qq_priority);
     }
 
@@ -383,13 +391,14 @@ int lnx_qos_id_get(const char *tag)
         }
     }
 
-    qi = CALLOC(1, sizeof(*qi) + ((tag == NULL) ? 0 : strlen(tag) + 1));
+    int qi_tag_size = (tag == NULL) ? 0 : strlen(tag) + 1;
+    qi = CALLOC(1, sizeof(*qi) + qi_tag_size);
 
     /* Remember the tag, if present */
     if (tag != NULL)
     {
         qi->qi_tag = (char *)qi + sizeof(*qi);
-        strcpy(qi->qi_tag, tag);
+        strscpy(qi->qi_tag, tag, qi_tag_size);
     }
 
     /* Allocate the ID; start counting from 1 as the tc class id cannot be 0 */
@@ -458,29 +467,10 @@ void lnx_qos_netlink_fn(lnx_netlink_t *nl, uint64_t event, const char *ifname)
     (void)ifname;
 
     unsigned int ifindex;
-    char master_path[C_MAXPATH_LEN];
 
     struct lnx_qos *self = CONTAINER_OF(nl, struct lnx_qos, lq_netlink);
 
     ifindex = if_nametoindex(self->lq_ifname);
-
-    if (!kconfig_enabled(CONFIG_TARGET_USE_NATIVE_BRIDGE))
-    {
-        /*
-        * OVS wipes the qdisc configuration when an interface is added to an OVS
-        * bridge. We need to re-apply the configuration when this happens.
-        *
-        * Adding/removing an interface to/from an OVS bridge generates a netlink
-        * event. To check if the interface was added to a bridge, we can simply check
-        * if the /sys/class/net/IF/master symbolic link exists.
-        */
-        snprintf(master_path, sizeof(master_path), "/sys/class/net/%s/master", self->lq_ifname);
-        if (access(master_path, F_OK) == 0)
-        {
-            /* Flip a bit, this will force an interface index change */
-            ifindex ^= 0x4000;
-        }
-    }
 
     LOG(DEBUG, "qosm: %s: Interface status changed, index %u->%u", self->lq_ifname, self->lq_ifindex, ifindex);
 

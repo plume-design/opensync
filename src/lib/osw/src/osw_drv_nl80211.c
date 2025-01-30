@@ -47,6 +47,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <osw_hostap.h>
 #include <osw_util.h>
 #include <osw_tlv.h>
+#include <osw_etc.h>
 
 #include <nl_cmd.h>
 #include <nl_cmd_task.h>
@@ -138,6 +139,8 @@ struct osw_drv_nl80211_sta {
     struct osw_drv_nl80211 *m;
     const struct nl_80211_sta *info;
     bool hostap;
+    bool authorized_valid;
+    bool authorized_set;
     struct osw_hostap_bss_sta hostap_info;
     struct osw_drv_sta_state state;
     struct rq q_req;
@@ -192,7 +195,7 @@ osw_drv_nl80211_phy_is_ignored(const char *phy_name)
     snprintf(env_name, sizeof(env_name),
              "OSW_DRV_NL80211_IGNORE_PHY_%s",
              phy_name);
-    return getenv(env_name) != NULL;
+    return osw_etc_get(env_name) != NULL;
 }
 
 static bool
@@ -208,7 +211,7 @@ osw_drv_nl80211_vif_is_ignored(const char *vif_name)
     snprintf(env_name, sizeof(env_name),
              "OSW_DRV_NL80211_IGNORE_VIF_%s",
              vif_name);
-    return getenv(env_name) != NULL;
+    return osw_etc_get(env_name) != NULL;
 }
 
 /* This includes grouped static helpers. There are
@@ -265,9 +268,11 @@ static void
 osw_drv_nl80211_scan_complete(struct osw_drv_nl80211_vif *vif,
                               enum osw_drv_scan_complete_reason reason)
 {
-    if (vif->scan_cmd == NULL) return;
-    nl_cmd_free(vif->scan_cmd);
-    vif->scan_cmd = NULL;
+    if (vif->scan_cmd != NULL) {
+        nl_cmd_free(vif->scan_cmd);
+        vif->scan_cmd = NULL;
+    }
+    
 
     struct osw_timer *timer = &vif->scan_timeout;
     osw_timer_disarm(timer);
@@ -282,10 +287,14 @@ osw_drv_nl80211_scan_complete(struct osw_drv_nl80211_vif *vif,
     const char *phy_name = phy_info ? phy_info->name : NULL;
     WARN_ON(vif_name == NULL);
     WARN_ON(phy_name == NULL);
-
+    struct rq *q = &vif->q_stats;
+    struct rq_task *dump_scan = &vif->task_nl_dump_scan_stats.task;
+    
     switch (reason) {
         case OSW_DRV_SCAN_DONE:
             LOGD(LOG_PREFIX_VIF(phy_name ?: "", vif_name ?: "", "scan done"));
+            rq_task_kill(dump_scan);
+            rq_add_task(q, dump_scan);
             break;
         case OSW_DRV_SCAN_FAILED:
             LOGI(LOG_PREFIX_VIF(phy_name ?: "", vif_name ?: "", "scan failed"));
@@ -468,6 +477,7 @@ osw_drv_nl80211_request_sta_state_cb(struct osw_drv *drv,
 
     struct osw_drv_nl80211 *m = osw_drv_get_priv(drv);
     struct osw_drv_nl80211_sta *sta = osw_drv_nl80211_sta_lookup(m, phy_name, vif_name, sta_addr);
+    struct osw_drv_nl80211_vif *vif = osw_drv_nl80211_vif_lookup(drv, vif_name);
     struct rq *q = &sta->q_req;
     struct rq_task *get_sta = &sta->task_nl_get_sta.task;
 
@@ -475,8 +485,11 @@ osw_drv_nl80211_request_sta_state_cb(struct osw_drv *drv,
         LOGI(LOG_PREFIX_STA(phy_name, vif_name, sta_addr, "does not exist, reporting empty"));
         struct osw_drv_sta_state state = {0};
         osw_drv_report_sta_state(drv, phy_name, vif_name, sta_addr, &state);
+        nl_80211_poll_stas(m->nl_80211, vif->info);
         return;
     }
+
+    sta->authorized_valid = false;
 
     rq_stop(q);
     rq_kill(q);
@@ -621,6 +634,7 @@ osw_drv_nl80211_request_config_base(struct osw_drv *drv,
                 case OSW_VIF_UNDEFINED:
                     break;
                 case OSW_VIF_AP:
+                    break;
                 case OSW_VIF_AP_VLAN:
                     os_nif_up(vif->vif_name, vif->enabled);
                     break;
@@ -633,7 +647,8 @@ osw_drv_nl80211_request_config_base(struct osw_drv *drv,
                     case OSW_VIF_UNDEFINED:
                         break;
                     case OSW_VIF_AP:
-                        os_nif_up(vif->vif_name, vif->enabled);
+                        /* Put interface down in case if hostapd was not stopped cleanely */
+                        if (!vif->enabled) os_nif_up(vif->vif_name, vif->enabled);
                         break;
                     case OSW_VIF_AP_VLAN:
                         break;
@@ -715,7 +730,7 @@ osw_drv_nl80211_get_phy_group_impl_type_from_cstr(const char *override)
 enum osw_drv_nl80211_phy_group_impl_type
 osw_drv_nl80211_get_phy_group_impl_type(const char *phy_name) {
     enum osw_drv_nl80211_phy_group_impl_type impl_type;
-    const char *override = getenv(strfmta("OSW_DRV_NL80211_PHY_GROUP_IMPL_PHY_%s", phy_name));
+    const char *override = osw_etc_get(strfmta("OSW_DRV_NL80211_PHY_GROUP_IMPL_PHY_%s", phy_name));
     if (override != NULL)
         impl_type = osw_drv_nl80211_get_phy_group_impl_type_from_cstr(override);
     else
@@ -738,7 +753,7 @@ osw_drv_nl80211_get_csa_impl_type_from_cstr(const char *override)
 enum osw_drv_nl80211_csa_impl_type
 osw_drv_nl80211_get_csa_impl_type(const char *phy_name) {
     enum osw_drv_nl80211_csa_impl_type impl_type;
-    const char *override = getenv(strfmta("OSW_DRV_NL80211_CSA_IMPL_PHY_%s", phy_name));
+    const char *override = osw_etc_get(strfmta("OSW_DRV_NL80211_CSA_IMPL_PHY_%s", phy_name));
     if (override != NULL)
         impl_type = osw_drv_nl80211_get_csa_impl_type_from_cstr(override);
     else
@@ -761,7 +776,7 @@ osw_drv_nl80211_get_acl_impl_type_from_cstr(const char *override)
 enum osw_drv_nl80211_acl_impl_type
 osw_drv_nl80211_get_acl_impl_type(const char *phy_name) {
     enum osw_drv_nl80211_acl_impl_type impl_type;
-    const char *override = getenv(strfmta("OSW_DRV_NL80211_ACL_IMPL_PHY_%s", phy_name));
+    const char *override = osw_etc_get(strfmta("OSW_DRV_NL80211_ACL_IMPL_PHY_%s", phy_name));
     if (override != NULL)
         impl_type = osw_drv_nl80211_get_acl_impl_type_from_cstr(override);
     else
@@ -788,7 +803,7 @@ osw_drv_nl80211_get_dump_survey_impl_type_from_cstr(const char *override)
 static enum osw_drv_nl80211_dump_survey_impl_type
 osw_drv_nl80211_get_dump_survey_impl_type(const char *phy_name) {
     enum osw_drv_nl80211_dump_survey_impl_type impl_type;
-    const char *override = getenv(strfmta("OSW_DRV_NL80211_DUMP_SURVEY_IMPL_PHY_%s", phy_name));
+    const char *override = osw_etc_get(strfmta("OSW_DRV_NL80211_DUMP_SURVEY_IMPL_PHY_%s", phy_name));
     if (override != NULL)
         impl_type = osw_drv_nl80211_get_dump_survey_impl_type_from_cstr(override);
     else
@@ -810,7 +825,7 @@ osw_drv_nl80211_get_dump_sta_impl_type_from_cstr(const char *override) {
 static enum osw_drv_nl80211_dump_sta_impl_type
 osw_drv_nl80211_get_dump_sta_impl_type(const char *phy_name) {
     enum osw_drv_nl80211_dump_sta_impl_type impl_type;
-    const char *override = getenv(strfmta("OSW_DRV_NL80211_DUMP_STA_IMPL_PHY_%s", phy_name));
+    const char *override = osw_etc_get(strfmta("OSW_DRV_NL80211_DUMP_STA_IMPL_PHY_%s", phy_name));
     if (override != NULL)
         impl_type = osw_drv_nl80211_get_dump_sta_impl_type_from_cstr(override);
     else
@@ -1288,14 +1303,22 @@ osw_drv_nl80211_sta_state_get_sta_resp_cb(struct nl_cmd *cmd,
 
     struct nlattr *nla = tb[NL80211_ATTR_STA_INFO];
     if (nla) {
+        const struct nl80211_sta_flag_update *flags;
         struct nla_policy policy[NL80211_STA_INFO_MAX + 1] = {
             [NL80211_STA_INFO_CONNECTED_TIME] = { .type = NLA_U32 },
+            [NL80211_STA_INFO_STA_FLAGS] = { .minlen = sizeof(*flags) },
         };
         struct nlattr *tb_info[NL80211_STA_INFO_MAX + 1];
         const int err = nla_parse_nested(tb_info, NL80211_STA_INFO_MAX, nla, policy);
         const bool ok = (err == 0);
         if (ok) {
             state->connected_duration_seconds = nla_get_u32_or(tb_info, NL80211_STA_INFO_CONNECTED_TIME, 0);
+            if (tb_info[NL80211_STA_INFO_STA_FLAGS]) {
+                flags = nla_data(tb_info[NL80211_STA_INFO_STA_FLAGS]);
+                const uint32_t bit = (1 << NL80211_STA_FLAG_AUTHORIZED);
+                sta->authorized_valid = (flags->mask & bit);
+                sta->authorized_set = (flags->set & bit);
+            }
         }
     }
 
@@ -1325,7 +1348,8 @@ osw_drv_nl80211_sta_state_report_cb(struct rq *q,
         /* FIXME:assoc time */
     }
 
-    state->connected = sta->hostap_info.authorized;
+    state->connected = sta->hostap_info.authorized
+                    || (sta->authorized_valid && sta->authorized_set);
 
     if (osw_timer_is_armed(&sta->delete_expiry)) {
         state->connected = true;
@@ -2935,7 +2959,7 @@ osw_drv_nl80211_start(struct osw_drv_nl80211 *m)
 static bool
 is_enabled(void)
 {
-    const bool skip = (getenv("OSW_DRV_NL80211_DISABLE") != NULL);
+    const bool skip = (osw_etc_get("OSW_DRV_NL80211_DISABLE") != NULL);
     const bool enabled = !skip;
     return enabled;
 }

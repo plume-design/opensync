@@ -317,6 +317,7 @@ bool dm_manager_stop_all(char *except_mgrs)
     struct schema_Node_Services *list;
     struct schema_Node_Services *manager;
     struct dm_manager *dm;
+    struct dm_manager *dm_tmp;
     struct dm_manager *mgr_ptr;
     int count;
     char *start;
@@ -389,7 +390,7 @@ bool dm_manager_stop_all(char *except_mgrs)
         }
     }
 
-    ds_tree_foreach(&dm_manager_list, dm)
+    ds_tree_foreach_safe(&dm_manager_list, dm, dm_tmp)
     {
         skip_kill = 0;
 

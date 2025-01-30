@@ -29,7 +29,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <string.h>
 #include <unistd.h>
 #include <stdlib.h>
-#include <protobuf-c.h>
+#include <protobuf-c/protobuf-c.h>
 
 #include "statssim.h"
 #include "ds_list.h"
@@ -164,7 +164,7 @@ void getClientReport(dpp_client_report_data_t *r, radio_type_t radio_type)
             mkRandMac(res->info.mac);
         }
         // ssid
-        sprintf(res->info.essid, "ssid%04ld", os_random()%10000);
+        SPRINTF(res->info.essid, "ssid%04ld", os_random()%10000);
 
         // stats
         res->stats.rssi = 50 - os_random() % 30;

@@ -232,14 +232,14 @@ test_sockaddr_storage_copy(void)
     TEST_ASSERT_EQUAL(0, cmp);
 
     /* Check output order */
-    sockaddr_storage_str(ip_v4_2, output_1);
+    sockaddr_storage_str(ip_v4_2, output_1, sizeof(output_1));
     sockaddr_storage_copy(ip_v4_2, dest);
-    sockaddr_storage_str(dest, output_2);
+    sockaddr_storage_str(dest, output_2, sizeof(output_2));
     TEST_ASSERT_EQUAL_STRING(output_1, output_2);
 
-    sockaddr_storage_str(ip_v6_2, output_1);
+    sockaddr_storage_str(ip_v6_2, output_1, sizeof(output_1));
     sockaddr_storage_copy(ip_v6_2, dest);
-    sockaddr_storage_str(dest, output_2);
+    sockaddr_storage_str(dest, output_2, sizeof(output_2));
     TEST_ASSERT_EQUAL_STRING(output_1, output_2);
 
     /* cleanup */

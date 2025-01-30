@@ -30,13 +30,14 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <osw_stats_defs.h>
 #include <osw_stats_subscriber.h>
 #include <osw_module.h>
+#include <osw_etc.h>
 
 #define NOTE(fmt, ...) LOGI("%s:%d:%s(): " fmt, __FILE__, __LINE__, __func__, ##__VA_ARGS__)
 
 static bool
 ow_demo_stats_is_enabled(void)
 {
-    return atoi(getenv("OW_DEMO_STATS_ENABLED") ?: "0") == 1;
+    return atoi(osw_etc_get("OW_DEMO_STATS_ENABLED") ?: "0") == 1;
 }
 
 static void

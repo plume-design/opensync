@@ -95,6 +95,7 @@ const struct osw_tlv_hdr *osw_tlv_find(const void *data, size_t len, uint32_t id
 static inline void *
 osw_tlv_get_data(const struct osw_tlv_hdr *hdr)
 {
+    if (hdr == NULL) return NULL;
     OSW_TLV_PTR_ALIGNED(hdr);
     return (void *)hdr + OSW_TLV_ALIGN(sizeof(*hdr));
 }

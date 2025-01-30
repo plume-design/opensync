@@ -54,6 +54,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #endif
 
 #if defined(CONFIG_OSP_UPG_CRC_MD5)
+#include <openssl/evp.h>
 #include <openssl/md5.h>
 #define OSP_UPG_GEN_CRC_EXT     ".md5"
 #define OSP_UPG_GEN_MD5_HEX_LEN (MD5_DIGEST_LENGTH * 2 + 1)
@@ -436,7 +437,6 @@ bool osp_upg_gen_download_verify(void)
     char md5_sum[OSP_UPG_GEN_MD5_HEX_LEN];
     char img_sum[OSP_UPG_GEN_MD5_HEX_LEN];
 
-    MD5_CTX md5_ctx;
     char buf[128];
     ssize_t nrd;
 
@@ -456,12 +456,23 @@ bool osp_upg_gen_download_verify(void)
         goto exit;
     }
 
+
+#if OPENSSL_VERSION_NUMBER >= 0x030000000  // 3.0.0
+    EVP_MD_CTX *md_ctx = EVP_MD_CTX_create();
+    const EVP_MD *md = EVP_md5();
+    EVP_DigestInit_ex(md_ctx, md, NULL);
+#else
+    MD5_CTX md5_ctx;
     MD5_Init(&md5_ctx);
+#endif
     while ((nrd = read(imgfd, buf, sizeof(buf))) > 0)
     {
+#if OPENSSL_VERSION_NUMBER >= 0x030000000  // 3.0.0
+        EVP_DigestUpdate(md_ctx, buf, nrd);
+#else
         MD5_Update(&md5_ctx, buf, nrd);
+#endif
     }
-
     if (nrd < 0)
     {
         LOG(ERR, "osp_upg_gen: Error reading image file %s: %s",
@@ -470,7 +481,12 @@ bool osp_upg_gen_download_verify(void)
         goto exit;
     }
 
+#if OPENSSL_VERSION_NUMBER >= 0x030000000  // 3.0.0
+    EVP_DigestFinal_ex(md_ctx, img_sum_raw, 0);
+    EVP_MD_CTX_destroy(md_ctx);
+#else
     MD5_Final(img_sum_raw, &md5_ctx);
+#endif
     bin2hex(img_sum_raw, MD5_DIGEST_LENGTH, img_sum, sizeof(img_sum));
 
     /*

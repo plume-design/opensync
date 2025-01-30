@@ -197,9 +197,6 @@ lan_stats_get_mgr(void);
 lan_stats_instance_t *
 lan_stats_get_active_instance(void);
 
-void
-lan_stats_parse_flows(lan_stats_instance_t *lan_stats_instance, char *buf, dp_ctl_stats_t *stats);
-
 int
 lan_stats_plugin_init(fcm_collect_plugin_t *collector);
 
@@ -214,9 +211,6 @@ lan_stats_flows_filter(lan_stats_instance_t *lan_stats_instance, dp_ctl_stats_t 
 
 void
 lan_stats_collect_flows(lan_stats_instance_t *lan_stats_instance);
-
-void
-lan_stats_collect_native_flows(lan_stats_instance_t *lan_stats_instance);
 
 void
 link_stats_collect_cb(uplink_iface_type uplink_if_type);

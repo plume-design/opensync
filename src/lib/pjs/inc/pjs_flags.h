@@ -50,6 +50,7 @@ struct name ## _flags                                                           
  * =============================================================
  */
 #define PJS_INT(name)                       PJS_FLAG(name)
+#define PJS_INT64(name)                     PJS_FLAG(name)
 #define PJS_BOOL(name)                      PJS_FLAG(name)
 #define PJS_REAL(name)                      PJS_FLAG(name)
 #define PJS_STRING(name, len)               PJS_FLAG(name)
@@ -61,6 +62,7 @@ struct name ## _flags                                                           
  * =============================================================
  */
 #define PJS_INT_Q(name)                     PJS_FLAG(name)
+#define PJS_INT64_Q(name)                   PJS_FLAG(name)
 #define PJS_BOOL_Q(name)                    PJS_FLAG(name)
 #define PJS_STRING_Q(name, sz)              PJS_FLAG(name)
 #define PJS_REAL_Q(name)                    PJS_FLAG(name)
@@ -94,6 +96,7 @@ struct name ## _flags                                                           
  * =============================================================
  */
 #define PJS_OVS_INT(name)                   PJS_FLAG(name)
+#define PJS_OVS_INT64(name)                 PJS_FLAG(name)
 #define PJS_OVS_BOOL(name)                  PJS_FLAG(name)
 #define PJS_OVS_REAL(name)                  PJS_FLAG(name)
 #define PJS_OVS_STRING(name, len)           PJS_FLAG(name)
@@ -105,6 +108,7 @@ struct name ## _flags                                                           
  * =============================================================
  */
 #define PJS_OVS_INT_Q(name)                 PJS_FLAG(name)
+#define PJS_OVS_INT64_Q(name)               PJS_FLAG(name)
 #define PJS_OVS_BOOL_Q(name)                PJS_FLAG(name)
 #define PJS_OVS_STRING_Q(name, sz)          PJS_FLAG(name)
 #define PJS_OVS_REAL_Q(name)                PJS_FLAG(name)

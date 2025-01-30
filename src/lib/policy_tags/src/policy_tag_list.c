@@ -321,20 +321,20 @@ om_tag_list_to_buf(ds_tree_t *list, uint8_t flags, char *buf, int buf_len)
         }
         else {
             if (tle->flags) {
-                strcat(fstr, "(");
+                STRSCAT(fstr, "(");
                 if (tle->flags & OM_TLE_FLAG_DEVICE) {
-                    strcat(fstr, "D");
+                    STRSCAT(fstr, "D");
                 }
                 if (tle->flags & OM_TLE_FLAG_CLOUD) {
-                    strcat(fstr, "C");
+                    STRSCAT(fstr, "C");
                 }
                 if (tle->flags & OM_TLE_FLAG_LOCAL) {
-                    strcat(fstr, "L");
+                    STRSCAT(fstr, "L");
                 }
                 if (tle->flags & OM_TLE_FLAG_GROUP) {
-                    strcat(fstr, "G");
+                    STRSCAT(fstr, "G");
                 }
-                strcat(fstr, ")");
+                STRSCAT(fstr, ")");
             }
         }
 

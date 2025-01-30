@@ -255,7 +255,8 @@ ow_steer_executor_action_acl_conf_mutate_fn(struct ow_steer_executor_action *act
 
 struct ow_steer_executor_action_acl*
 ow_steer_executor_action_acl_create(const struct osw_hwaddr *sta_addr,
-                                    const struct ow_steer_executor_action_mediator *mediator)
+                                    const struct ow_steer_executor_action_mediator *mediator,
+                                    const char* log_prefix)
 {
     ASSERT(sta_addr != NULL, "");
     ASSERT(mediator != NULL, "");
@@ -273,7 +274,7 @@ ow_steer_executor_action_acl_create(const struct osw_hwaddr *sta_addr,
 
     struct ow_steer_executor_action_acl *acl_action = CALLOC(1, sizeof(*acl_action));
 
-    acl_action->base = ow_steer_executor_action_create("acl", sta_addr, &ops, mediator, acl_action);
+    acl_action->base = ow_steer_executor_action_create("acl", sta_addr, &ops, mediator, log_prefix, acl_action);
     acl_action->state_obs = state_obs;
     osw_state_register_observer(&acl_action->state_obs);
 

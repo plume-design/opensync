@@ -311,6 +311,11 @@ enum STAM_state STAM_state_do(STAM_state_t *stam, enum STAM_action action, void 
     if (action > STAM_EXCEPTION__BEGIN)
     {
         next_state = STAM_STATE_EXCEPTION;
+        /*
+         * Notify the current state of an exception -- ignore returned
+         * state as a transition to the EXCEPTION state is *forced*.
+         */
+        (void)STAM_state_call(stam, stam->state, action, data);
     }
 #endif
 

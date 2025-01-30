@@ -35,7 +35,8 @@ struct ow_steer_policy_force_kick;
 
 struct ow_steer_policy_force_kick*
 ow_steer_policy_force_kick_create(const struct osw_hwaddr *sta_addr,
-                                  const struct ow_steer_policy_mediator *mediator);
+                                  const struct ow_steer_policy_mediator *mediator,
+                                  const char *log_prefix);
 
 void
 ow_steer_policy_force_kick_free(struct ow_steer_policy_force_kick *force_policy);

@@ -61,6 +61,15 @@ collect_linux()
         collect_cmd iwconfig
     fi
 
+    if ( which iw > /dev/null ); then
+        collect_cmd iw dev
+        collect_cmd iw list
+        collect_cmd iw reg get
+        for phy in $(ls /sys/class/ieee80211/); do
+            collect_cmd iw phy $phy channels
+        done
+    fi
+
     collect_cmd lsmod
     collect_cmd mpstat -A -I ALL
     collect_cmd pidstat -Ir -T ALL
@@ -81,6 +90,7 @@ collect_linux()
     collect_cmd netstat -nlp
     collect_cmd netstat -atp
     collect_cmd conntrack -L
+    collect_cmd conntrack -L -f ipv6
 
     collect_cmd $CONFIG_INSTALL_PREFIX/scripts/proc_mem.sh
 

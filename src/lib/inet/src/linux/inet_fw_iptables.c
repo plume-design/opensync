@@ -312,12 +312,9 @@ bool fw_nat_start(inet_fw_t *self)
                     FW_RULE_ALL, "filter", "NM_INPUT",
                     "-i", self->fw_ifname, "-j", "ACCEPT");
 
-            if (kconfig_enabled(CONFIG_TARGET_USE_NATIVE_BRIDGE))
-            {
-                retval &= fw_rule_add(self,
-                    FW_RULE_ALL, "filter", "NM_FORWARD",
-                    "-i", self->fw_ifname, "-j", "ACCEPT");
-            }
+            retval &= fw_rule_add(self,
+                FW_RULE_ALL, "filter", "NM_FORWARD",
+                "-i", self->fw_ifname, "-j", "ACCEPT");
         }
     }
     else

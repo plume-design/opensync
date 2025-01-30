@@ -78,6 +78,7 @@ static char *osfw_eb_target_builtin[] =
 	"mark",
 	"redirect",
 	"snat",
+	CONFIG_OSN_SKIP_ACCEL,
 };
 
 static const char *osfw_eb_convert_family(int family)

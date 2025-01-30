@@ -59,7 +59,7 @@ bool osp_ble_set_device_name(const char *device_name)
     return true;
 }
 
-bool osp_ble_set_advertising_data(const uint8_t payload[31], uint8_t len)
+bool osp_ble_set_advertising_data(const uint8_t payload[28], uint8_t len)
 {
     (void)payload;
     (void)len;

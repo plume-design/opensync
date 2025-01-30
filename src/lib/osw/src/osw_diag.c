@@ -26,6 +26,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <log.h>
 #include <osw_diag.h>
+#include <osw_etc.h>
 #include <memutil.h>
 
 #define LOG_PREFIX(fmt, ...) "osw: diag: " fmt, ## __VA_ARGS__
@@ -39,7 +40,7 @@ struct osw_diag_pipe {
 
 static const char *osw_diag_get_dbg_file_path(void)
 {
-    return getenv("OSW_DIAG_DBG_FILE") ?: OSW_DIAG_DBG_FILE_DEFAULT;
+    return osw_etc_get("OSW_DIAG_DBG_FILE") ?: OSW_DIAG_DBG_FILE_DEFAULT;
 }
 
 osw_diag_pipe_t *osw_diag_pipe_open(void)

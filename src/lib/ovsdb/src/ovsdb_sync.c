@@ -41,14 +41,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "ovsdb.h"
 #include "ovsdb_priv.h"
+#include "ovsdb_stream.h"
 
 /* Generate JSON parsers using PJS */
 #include "ovsdb_jsonrpc.pjs.h"
 #include "pjs_gen_c.h"
-
-
-/* OVSDB response buffers can be HUGE */
-static char ovsdb_write_buf[256*1024];
 
 /**
  * Callback for json_dump_callback() -- called from ovsb_write_s()
@@ -80,6 +77,7 @@ int ovsdb_sync_write_fn(const char *buf, size_t sz, void *self)
 
 json_t *ovsdb_write_s(json_t *jsdata)
 {
+    struct ovsdb_stream *st = ovsdb_stream_alloc();
     int     ovs_fd = -1;
     json_t *retval = NULL;
 
@@ -99,47 +97,17 @@ json_t *ovsdb_write_s(json_t *jsdata)
         goto error;
     }
 
-    /* Read a response and return */
-    size_t buflen = 0;
-    ssize_t nr;
-
-    while (buflen < sizeof(ovsdb_write_buf) - 1)
+    while (retval == NULL)
     {
-        nr = read(ovs_fd, &ovsdb_write_buf[buflen], sizeof(ovsdb_write_buf) - 1 - buflen);
-        if (nr <= 0)
-        {
-            /* Treat errors and short reads the same -- error while reading response. */
-            LOGE("Sync: Short read or EOF while waiting for JSON response.");
-            goto error;
-        }
+        int err = ovsdb_stream_recv(st, ovs_fd);
+        if (err) break;
 
-        buflen += nr;
-
-        ovsdb_write_buf[buflen] = '\0';
-
-        char *res = json_split(ovsdb_write_buf);
-        if (res == JSON_SPLIT_ERROR)
-        {
-            LOGE("Sync: Error parsing JSON-RPC response: %s\n", ovsdb_write_buf);
-            goto error;
-        }
-
-        if (res != NULL)
-        {
-            if (strlen(res))
-                LOGW("Sync: trailing garbage found: '%s'", res);
-            *res = 0;
-            /* Success */
-            break;
-        }
+        retval = ovsdb_stream_next_json(st);
     }
 
-    json_error_t err;
-    retval = json_loads(ovsdb_write_buf, 0, &err);
     if (retval == NULL)
     {
-        LOGE("Sync: Error parsing OVSDB response (%s):\n%s", err.text, ovsdb_write_buf);
-        goto error;
+        LOGE("SYNC: Failed to get a JSON response");
     }
 
 error:
@@ -148,6 +116,7 @@ error:
     {
         close(ovs_fd);
     }
+    ovsdb_stream_free(st);
 
     return retval;
 }

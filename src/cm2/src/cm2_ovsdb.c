@@ -56,6 +56,19 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ff_lib.h"
 #include "cm2_bh_dhcp.h"
 
+#ifdef CONFIG_CM2_USE_STABILITY_CHECK
+#include "cm2_uplink_event.h"
+#else
+bool cm2_uplink_event_add_event (int timestamp, bool connected, enum cm2_uplink_event_type type)
+{
+    return true;
+}
+bool cm2_uplink_event_is_wan_iface(const char *if_name_check)
+{
+    return true;
+}
+#endif
+
 #include <arpa/inet.h>
 
 
@@ -106,13 +119,13 @@ static ovsdb_table_t table_Open_vSwitch;
 static ovsdb_table_t table_Manager;
 static ovsdb_table_t table_SSL;
 static ovsdb_table_t table_AWLAN_Node;
-static ovsdb_table_t table_Wifi_Master_State;
-static ovsdb_table_t table_Connection_Manager_Uplink;
+ovsdb_table_t table_Wifi_Master_State;
+ovsdb_table_t table_Connection_Manager_Uplink;
 static ovsdb_table_t table_AW_Bluetooth_Config;
 ovsdb_table_t table_Wifi_Inet_Config;
-static ovsdb_table_t table_Wifi_Inet_State;
+ovsdb_table_t table_Wifi_Inet_State;
 static ovsdb_table_t table_Wifi_VIF_Config;
-static ovsdb_table_t table_Wifi_VIF_State;
+ovsdb_table_t table_Wifi_VIF_State;
 static ovsdb_table_t table_Wifi_Radio_State;
 static ovsdb_table_t table_Port;
 static ovsdb_table_t table_Bridge;
@@ -365,7 +378,7 @@ cm2_util_vif_is_sta(const char *ifname)
      * for station role.
      */
 
-    if (!cm2_is_extender())
+    if (!cm2_wan_link_selection_enabled())
         return false;
 
     if (ovsdb_table_select_one(&table_Wifi_VIF_Config,
@@ -991,7 +1004,7 @@ static bool cm2_util_set_dhcp_ipv4_cfg_from_inet(struct schema_Wifi_Inet_State *
 void
 cm2_ovsdb_refresh_dhcp(char *if_name)
 {
-    if (!cm2_is_extender())
+    if (!cm2_wan_link_selection_enabled())
         return;
 
     LOGI("%s: Trigger refresh dhcp", if_name);
@@ -1018,8 +1031,7 @@ cm2_util_get_gateway_ip(char *ip_addr, char *netmask)
      return inet_ntoa(remote_addr);
 }
 
-/* Function triggers creating GRE interfaces
- * In the second phase of implementation need to be moved to WM2 */
+/* Function triggers creating GRE interfaces */
 static int
 cm2_ovsdb_insert_Wifi_Inet_Config(struct schema_Wifi_Master_State *master)
 {
@@ -2559,6 +2571,14 @@ cm2_Connection_Manager_Uplink_handle_update(
             clean_up_counters = true;
 
         if (uplink->is_used) {
+            // Ignore if_name so the usecase when customer changes eth connected leaf
+            // to wifi connected leaf. This will create LINK event as disconnect on eth and
+            // would create a LINK event as conencted on wifi link which is ok.
+            if (uplink->has_L2)
+            {
+                cm2_uplink_event_add_event(time_real(), true, CM2_UPLINK_LINK);
+            }
+
             if (cm2_is_eth_type(uplink->if_type))
                 cm2_disable_loops_on_eth();
 
@@ -2643,6 +2663,10 @@ void callback_Connection_Manager_Uplink(ovsdb_update_monitor_t *mon,
         case OVSDB_UPDATE_DEL:
             if (cm2_util_get_link_is_used(uplink)) {
                 cm2_util_set_not_used_link();
+                if (cm2_uplink_event_is_wan_iface(uplink->if_name))
+                {
+                    cm2_uplink_event_add_event(time_real(), false, CM2_UPLINK_LINK);
+                }
             }
             cm2_dhcpc_stop_dryrun(uplink->if_name);
 
@@ -2747,6 +2771,7 @@ void callback_Wifi_VIF_State(ovsdb_update_monitor_t *mon,
 
     cm2_bh_dhcp_WVS(g_state.bh_dhcp, mon, old_row, vif_state);
     cm2_bh_cmu_WVS(g_state.bh_cmu, mon, old_row, vif_state);
+    cm2_bh_mlo_WVS(g_state.bh_mlo, mon, old_row, vif_state);
 }
 
 void callback_Wifi_Inet_Config(ovsdb_update_monitor_t *mon,
@@ -2756,6 +2781,7 @@ void callback_Wifi_Inet_Config(ovsdb_update_monitor_t *mon,
     LOGD("%s mon_type = %d", __func__, mon->mon_type);
 
     cm2_bh_dhcp_WIC(g_state.bh_dhcp, mon, old_row, inet_config);
+    cm2_bh_cmu_WIC(g_state.bh_cmu, mon, old_row, inet_config);
 }
 
 void callback_Wifi_Inet_State(ovsdb_update_monitor_t *mon,
@@ -3231,11 +3257,7 @@ static
 bool cm2_util_is_dump_master_links(const char *iftype,
                                    const char *ifname)
 {
-#ifdef CONFIG_TARGET_WAN_BRIDGE_NAME
-    char stypes[] = "eth vif gre "CONFIG_TARGET_WAN_BRIDGE_NAME;
-#else
     char stypes[] = "eth vif gre";
-#endif
 
     if (strstr(stypes, iftype) == NULL)
         return false;
@@ -3480,7 +3502,7 @@ int cm2_ovsdb_init(void)
     OVSDB_TABLE_MONITOR(AWLAN_Node, false);
 
     // Callback for EXTENDER
-    if (cm2_is_extender()) {
+    if (cm2_wan_link_selection_enabled()) {
         OVSDB_TABLE_MONITOR(Wifi_Master_State, false);
         OVSDB_TABLE_MONITOR(Wifi_VIF_State, false);
         OVSDB_TABLE_MONITOR(Wifi_Inet_Config, false);

@@ -40,7 +40,7 @@ struct ow_steer_policy {
     void *priv;
     struct ow_steer_policy_ops ops;
     struct ow_steer_policy_mediator mediator;
-    char *prefix;
+    char *log_prefix;
 
     struct ds_dlist_node stack_node;
 };

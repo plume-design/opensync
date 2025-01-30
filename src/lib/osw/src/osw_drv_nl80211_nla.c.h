@@ -246,6 +246,7 @@ nla_freq_to_osw_chan_state(struct osw_channel_state **cs,
     memset(last, 0, sizeof(*last));
     last->channel.width = OSW_CHANNEL_20MHZ;
     last->channel.control_freq_mhz = mhz;
+    last->channel.center_freq0_mhz = mhz;
     last->dfs_state = osw_dfs;
 
     /* FIXME: Figure out how to infer remaining NOL time for
@@ -307,6 +308,10 @@ nla_freq_to_osw_channel(struct nlattr *tb[],
         const int offset_mhz = nla_chan_type_to_offset_mhz(type);
         c->width = nla_chan_type_to_osw_width(type);
         c->center_freq0_mhz = freq_mhz + offset_mhz;
+    }
+    else {
+        c->width = OSW_CHANNEL_20MHZ;
+        c->center_freq0_mhz = freq_mhz;
     }
 }
 
@@ -396,7 +401,6 @@ nla_fill_reg_domain(char *ccode,
 {
     if (tb[NL80211_ATTR_WIPHY] != NULL) {
         if (nla_wiphy_equal(tb, wiphy) == false) return;
-        if (tb[NL80211_ATTR_WIPHY_SELF_MANAGED_REG] == NULL) return;
     }
     struct nlattr *reg = tb[NL80211_ATTR_REG_ALPHA2];
     if (reg == NULL) return;

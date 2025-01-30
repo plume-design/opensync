@@ -44,6 +44,12 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #define OW_STEER_POLICY_RESPONSE_RELEVANCE_SEC 10
 
+#define LOG_PREFIX(fmt, ...) "ow: steer: " fmt, ##__VA_ARGS__
+#define LOG_GET_PREFIX(policy, fmt, ...) \
+    "%s " fmt,                           \
+    ow_steer_policy_get_prefix(policy),  \
+    ##__VA_ARGS__
+
 static const char *g_policy_name = "btm_response";
 
 struct ow_steer_policy_btm_retry_neigh {
@@ -111,8 +117,7 @@ ow_steer_policy_btm_response_recalc_cb(struct ow_steer_policy *policy,
     const uint64_t response_t_delta = osw_time_mono_clk() - btm_response_policy->neigh_timestamp;
     const int response_age = OSW_TIME_SEC(response_t_delta);
     if (response_age > OW_STEER_POLICY_RESPONSE_RELEVANCE_SEC) {
-        LOGT("%s btm response too old - skipping",
-                ow_steer_policy_get_prefix(btm_response_policy->base));
+        LOGT(LOG_GET_PREFIX(btm_response_policy->base, "btm response too old - skipping"));
         return;
     }
 
@@ -128,11 +133,10 @@ ow_steer_policy_btm_response_recalc_cb(struct ow_steer_policy *policy,
             ow_steer_candidate_set_preference(candidate, reason, OW_STEER_CANDIDATE_PREFERENCE_OUT_OF_SCOPE);
         }
 
-        LOGD("%s bssid: "OSW_HWADDR_FMT
-             " preference: %s",
-             ow_steer_policy_get_prefix(policy),
+        LOGD(LOG_GET_PREFIX(policy,
+             "bssid: "OSW_HWADDR_FMT" preference: %s",
              OSW_HWADDR_ARG(bssid),
-             ow_steer_candidate_preference_to_cstr(ow_steer_candidate_get_preference(candidate)));
+             ow_steer_candidate_preference_to_cstr(ow_steer_candidate_get_preference(candidate))));
     }
 }
 
@@ -142,12 +146,12 @@ ow_steer_policy_btm_response_sigusr1_dump_cb(osw_diag_pipe_t *pipe,
 {
     ASSERT(policy != NULL, "");
 
-    osw_diag_pipe_writef(pipe, "ow: steer:         response neighbors:");
+    osw_diag_pipe_writef(pipe, LOG_PREFIX("        response neighbors:"));
     struct ow_steer_policy_btm_response *btm_response_policy = ow_steer_policy_get_priv(policy);
     struct ow_steer_policy_btm_retry_neigh *neigh;
     ds_dlist_foreach(&btm_response_policy->neigh_list, neigh) {
-        osw_diag_pipe_writef(pipe, "ow: steer:           bssid: "OSW_HWADDR_FMT, OSW_HWADDR_ARG(&neigh->bssid));
-        osw_diag_pipe_writef(pipe, "ow: steer:             preference: %d", neigh->preference);
+        osw_diag_pipe_writef(pipe, LOG_PREFIX("          bssid: "OSW_HWADDR_FMT, OSW_HWADDR_ARG(&neigh->bssid)));
+        osw_diag_pipe_writef(pipe, LOG_PREFIX("            preference: %d", neigh->preference));
     }
 }
 
@@ -160,7 +164,7 @@ ow_steer_policy_btm_response_cb(struct osw_btm_response_observer *observer,
                                                                             struct ow_steer_policy_btm_response,
                                                                             btm_resp_obs);
 
-    LOGD("%s backoff period stopped", ow_steer_policy_get_prefix(btm_response_policy->base));
+    LOGD(LOG_GET_PREFIX(btm_response_policy->base, "backoff period stopped"));
 
     unsigned int i;
     for  (i = 0; i < retry_neigh_list->neigh_len; i++) {
@@ -181,7 +185,8 @@ ow_steer_policy_btm_response_cb(struct osw_btm_response_observer *observer,
 struct ow_steer_policy_btm_response*
 ow_steer_policy_btm_response_create(const char *name,
                                     const struct osw_hwaddr *sta_addr,
-                                    const struct ow_steer_policy_mediator *mediator)
+                                    const struct ow_steer_policy_mediator *mediator,
+                                    const char *log_prefix)
 {
     ASSERT(name != NULL, "");
     ASSERT(sta_addr != NULL, "");
@@ -197,6 +202,7 @@ ow_steer_policy_btm_response_create(const char *name,
                                                        sta_addr,
                                                        &policy_ops,
                                                        mediator,
+                                                       log_prefix,
                                                        btm_response_policy);
 
     struct osw_btm_response_observer *btm_resp_obs = &btm_response_policy->btm_resp_obs;

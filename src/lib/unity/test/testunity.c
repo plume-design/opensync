@@ -4140,7 +4140,7 @@ static void AllFloatPrinting_LessThan32Bits(void)
         startPutcharSpy();
 
         UnityPrintFloat(u.f_value); /*1.5x as fast as sprintf 5e-7f - 0.01f, 20s vs 30s*/
-        int len = sprintf(expected, "%.6f", u.f_value);
+        int len = SPRINTF(expected, "%.6f", u.f_value);
 
         while (expected[len - 1] == '0' && expected[len - 2] != '.') { len--; }
         expected[len] = '\0'; /* delete trailing 0's */
@@ -4172,7 +4172,7 @@ static void AllFloatPrinting_Larger(const float start, const float end)
         startPutcharSpy();
 
         UnityPrintFloat(u.f_value); /*Twice as fast as sprintf 2**32-1e12, 10s vs 21s*/
-        sprintf(expected, "%.8e", u.f_value);
+        SPRINTF(expected, "%.8e", u.f_value);
 
         int len = 11 - 1; /* 11th char is 'e' in exponential format */
         while (expected[len - 1] == '0' && expected[len - 2] != '.') { len --; }

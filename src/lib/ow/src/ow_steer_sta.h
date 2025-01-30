@@ -30,7 +30,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 struct ow_steer_sta;
 
 struct ow_steer_sta*
-ow_steer_sta_create(const struct osw_hwaddr *sta_addr);
+ow_steer_sta_create(const struct osw_hwaddr *sta_addr, const char *log_prefix);
 
 void
 ow_steer_sta_free(struct ow_steer_sta *sta);

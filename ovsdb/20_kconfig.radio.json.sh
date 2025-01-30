@@ -54,6 +54,7 @@ cat <<CRED
     "row": {
         "onboard_type": "gre",
         "ssid": "$ssid",
+        "enabled": true,
         "security": ["map", [
             ["encryption", "WPA-PSK"],
             ["key", "$psk"]

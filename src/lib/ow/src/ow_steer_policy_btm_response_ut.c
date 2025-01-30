@@ -47,7 +47,8 @@ OSW_UT(ow_steer_policy_btm_response_ut_with_preferences)
     ow_steer_candidate_list_bss_set(candidate_list, &bssid_6g, &channel_6g);
     btm_response_policy = ow_steer_policy_btm_response_create("btm_response",
                                                               &addr,
-                                                              &mediator);
+                                                              &mediator,
+                                                              "");
     OSW_UT_EVAL(btm_response_policy != NULL);
 
     /* btm response with preferences */
@@ -93,7 +94,8 @@ OSW_UT(ow_steer_policy_btm_response_ut_without_preferences)
     ow_steer_candidate_list_bss_set(candidate_list, &bssid_6g, &channel_6g);
     btm_response_policy = ow_steer_policy_btm_response_create("btm_response",
                                                               &addr,
-                                                              &mediator);
+                                                              &mediator,
+                                                              "");
     OSW_UT_EVAL(btm_response_policy != NULL);
 
     /* btm response with preferences */

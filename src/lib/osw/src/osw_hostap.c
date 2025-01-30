@@ -51,6 +51,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <osw_hostap.h>
 #include <osw_hostap_conf.h>
 #include <osw_wpas_conf.h> // FIXME
+#include <osw_etc.h>
 
 struct osw_hostap {
     struct ds_tree bsses;
@@ -74,6 +75,7 @@ struct osw_hostap_bss_hapd {
     struct osw_hostap_conf_ap_config conf;
     char path_config[4096];
     char path_psk_file[4096];
+    char path_rxkh[4096];
 
     struct ds_tree stas;
 
@@ -87,10 +89,12 @@ struct osw_hostap_bss_hapd {
     struct hostap_rq_task *task_neigh_add;
     struct hostap_rq_task *task_neigh_mod;
     struct hostap_rq_task *task_neigh_del;
+    struct hostap_rq_task *task_neigh_fill;
     size_t n_task_neigh_add;
     size_t n_task_neigh_mod;
     size_t n_task_neigh_del;
-    //struct hostap_rq_task task_reload_rxkh;
+    size_t n_task_neigh_fill;
+    struct hostap_rq_task task_reload_rxkh;
     struct hostap_rq_task task_wps_pbc;
     struct hostap_rq_task task_wps_cancel;
 
@@ -100,7 +104,7 @@ struct osw_hostap_bss_hapd {
     struct hostap_rq_task task_get_mib;
     struct hostap_rq_task task_get_wps_status;
     struct hostap_rq_task task_get_neigh;
-    //struct hostap_rq_task task_get_rxkhs;
+    struct hostap_rq_task task_get_rxkhs;
     bool   csa_by_hostap;
     struct hostap_rq_task task_csa;
 
@@ -337,7 +341,7 @@ osw_hostap_get_hapd_path(const char *phy_name,
     return osw_hostap_get_tmpl_path(phy_name,
                                     vif_name,
                                     OSW_HOSTAP_HAPD_PATH,
-                                    getenv("OSW_HOSTAP_HAPD_PATH"));
+                                    osw_etc_get("OSW_HOSTAP_HAPD_PATH"));
 }
 
 static char *
@@ -347,13 +351,13 @@ osw_hostap_get_wpas_path(const char *phy_name,
     return osw_hostap_get_tmpl_path(phy_name,
                                     vif_name,
                                     OSW_HOSTAP_WPAS_PATH,
-                                    getenv("OSW_HOSTAP_WPAS_PATH"));
+                                    osw_etc_get("OSW_HOSTAP_WPAS_PATH"));
 }
 
 static const char *
 osw_hostap_get_global_hapd_path(void)
 {
-    const char *path = getenv("OSW_HOSTAP_GLOBAL_HAPD_PATH");
+    const char *path = osw_etc_get("OSW_HOSTAP_GLOBAL_HAPD_PATH");
     if (path) return path;
     return "/var/run/hostapd/global";
 }
@@ -361,7 +365,7 @@ osw_hostap_get_global_hapd_path(void)
 static const char *
 osw_hostap_get_global_wpas_path(void)
 {
-    const char *path = getenv("OSW_HOSTAP_GLOBAL_WPAS_PATH");
+    const char *path = osw_etc_get("OSW_HOSTAP_GLOBAL_WPAS_PATH");
     if (path) return path;
     return "/var/run/wpa_supplicant/global";
 }
@@ -453,6 +457,46 @@ osw_hostap_bss_cmd_warn_on_err(struct rq_task *task,
 }
 
 static void
+osw_hostap_bss_cmd_reconfigure_done(struct rq_task *task,
+                                    void *priv)
+{
+    struct hostap_rq_task *t = container_of(task, struct hostap_rq_task, task);
+    struct osw_hostap_bss_wpas *wpas = priv;
+
+    if (task->timed_out || task->cancel_timed_out) {
+        LOGW(LOG_PREFIX_TASK(t, "timed out"));
+    }
+    else if (task->cancelled) {
+        LOGI(LOG_PREFIX_TASK(t, "cancelled"));
+    }
+    else if (task->killed) {
+        LOGI(LOG_PREFIX_TASK(t, "killed"));
+    }
+    else {
+        if (t->reply == NULL) {
+            /* This can happen when commands get cancelled
+             * even before they get a chance to be started.
+             */
+            LOGD(LOG_PREFIX_TASK(t, "no reply"));
+        }
+        else if (strstr(t->reply, "FAIL") == t->reply) {
+            LOGI(LOG_PREFIX_TASK(t, "failed"));
+        }
+        else {
+            LOGD(LOG_PREFIX_TASK(t, "ok"));
+            return;
+        }
+    }
+
+    /* If reconfigure failed it means that whatever was in
+     * the config file did _not_ apply. This needs to be
+     * reflected in subsequent state reports until this
+     * resolves itself.
+     */
+    WARN_ON(file_put(wpas->path_config, "") != 0);
+}
+
+static void
 osw_hostap_bss_remove_done_cb(struct rq_task *task,
                               void *priv)
 {
@@ -480,6 +524,15 @@ osw_hostap_bss_hapd_update_add_task(struct osw_hostap_bss_hapd *hapd,
              hapd->path_config);
     hostap_rq_task_fini(&hapd->task_add);
     hostap_rq_task_init(&hapd->task_add, hostap->ghapd.txq, cmd_add);
+}
+
+static void
+osw_hostap_bss_hapd_neigh_fill_free(struct osw_hostap_bss_hapd *hapd)
+{
+    osw_hostap_fini_task_array(hapd->task_neigh_fill, hapd->n_task_neigh_fill);
+    FREE(hapd->task_neigh_fill);
+    hapd->task_neigh_fill = NULL;
+    hapd->n_task_neigh_fill = 0;
 }
 
 static void
@@ -548,6 +601,27 @@ osw_hostap_bss_hapd_neigh_prep_del(char *buf,
     snprintf(buf, buf_size,
              "REMOVE_NEIGHBOR "OSW_HWADDR_FMT,
              OSW_HWADDR_ARG(&n->bssid));
+}
+
+static void osw_hostap_bss_hapd_neigh_fill_prep(struct osw_hostap_bss_hapd *hapd,
+                                                struct osw_drv_vif_config_ap *ap)
+{
+    const struct osw_ssid *ssid = &ap->ssid;
+    const size_t n_add = ap->neigh_list.count;
+    struct hostap_rq_task *add = CALLOC(n_add, sizeof(*add));
+    size_t i;
+
+    for (i = 0; i < n_add; i++) {
+        const struct osw_neigh *n = &ap->neigh_list.list[i];
+        char cmd[1024];
+
+        osw_hostap_bss_hapd_neigh_prep_set(cmd, sizeof(cmd), ssid, n);
+        hostap_rq_task_init(&add[i], hapd->ctrl.txq, cmd);
+        add[i].task.completed_fn = osw_hostap_bss_cmd_warn_on_fail;
+    }
+
+    hapd->n_task_neigh_fill = n_add;
+    hapd->task_neigh_fill = add;
 }
 
 static void
@@ -815,6 +889,7 @@ osw_hostap_bss_hapd_flush_state_replies(struct osw_hostap_bss_hapd *hapd)
     hapd->task_get_mib.reply = NULL;
     hapd->task_get_wps_status.reply = NULL;
     hapd->task_get_neigh.reply = NULL;
+    hapd->task_get_rxkhs.reply = NULL;
     hapd->task_get_accept_acl_list.reply = NULL;
     hapd->task_get_deny_acl_list.reply = NULL;
 }
@@ -833,6 +908,7 @@ osw_hostap_bss_hapd_prep_state_task(struct osw_hostap_bss_hapd *hapd)
     rq_add_task(q, &hapd->task_get_mib.task);
     rq_add_task(q, &hapd->task_get_wps_status.task);
     rq_add_task(q, &hapd->task_get_neigh.task);
+    rq_add_task(q, &hapd->task_get_rxkhs.task);
     rq_add_task(q, &hapd->task_get_accept_acl_list.task);
     rq_add_task(q, &hapd->task_get_deny_acl_list.task);
     rq_stop(q);
@@ -844,10 +920,15 @@ osw_hostap_bss_hapd_fill_state(struct osw_hostap_bss_hapd *hapd,
 {
     char *config = file_get(hapd->path_config);
     char *psk_file = file_get(hapd->path_psk_file);
+    char *rxkh_file = NULL;
+    if (osw_wpa_is_ft(&state->u.ap.wpa)) {
+        rxkh_file = file_get(hapd->path_rxkh);
+    }
 
     struct osw_hostap_conf_ap_state_bufs bufs = {
         .config = config ?: "",
         .wpa_psk_file = psk_file ?: "",
+        .rxkh_file = rxkh_file ?: "",
         .get_config = hapd->task_get_config.reply ?: "",
         .status = hapd->task_get_status.reply ?: "",
         .mib = hapd->task_get_mib.reply ?: "",
@@ -855,12 +936,14 @@ osw_hostap_bss_hapd_fill_state(struct osw_hostap_bss_hapd *hapd,
         .show_neighbor = hapd->task_get_neigh.reply ?: "",
         .show_accept_acl =  hapd->task_get_accept_acl_list.reply ?: "",
         .show_deny_acl = hapd->task_get_deny_acl_list.reply ?: "",
+        .show_rxkhs = hapd->task_get_rxkhs.reply ?: "",
     };
 
     osw_hostap_conf_fill_ap_state(&bufs, state);
 
     FREE(config);
     FREE(psk_file);
+    FREE(rxkh_file);
 }
 
 static void
@@ -1140,6 +1223,10 @@ osw_hostap_bss_hapd_init(struct hostap_ev_ctrl *ghapd,
              "/var/run/hostapd-%s.pskfile",
              vif_name);
 
+    snprintf(hapd->path_rxkh, sizeof(hapd->path_rxkh),
+             "/var/run/hostapd-%s.rxkh",
+             vif_name);
+
     snprintf(cmd_remove, sizeof(cmd_remove),
              "REMOVE %s",
              vif_name);
@@ -1164,6 +1251,8 @@ osw_hostap_bss_hapd_init(struct hostap_ev_ctrl *ghapd,
     hostap_rq_task_init(&hapd->task_set_deny_acl_policy, hapd->ctrl.txq, "SET macaddr_acl 0");
     hostap_rq_task_init(&hapd->task_get_accept_acl_list, hapd->ctrl.txq, "ACCEPT_ACL SHOW");
     hostap_rq_task_init(&hapd->task_get_deny_acl_list, hapd->ctrl.txq, "DENY_ACL SHOW");
+    hostap_rq_task_init(&hapd->task_get_rxkhs, hapd->ctrl.txq, "GET_RXKHS");
+    hostap_rq_task_init(&hapd->task_reload_rxkh, hapd->ctrl.txq, "RELOAD_RXKHS");
 
     hapd->task_add.task.completed_fn = osw_hostap_bss_cmd_warn_on_fail;
     hapd->task_remove.task.completed_fn = osw_hostap_bss_remove_done_cb;
@@ -1187,6 +1276,8 @@ osw_hostap_bss_hapd_init(struct hostap_ev_ctrl *ghapd,
     hapd->task_set_deny_acl_policy.task.completed_fn = osw_hostap_bss_cmd_warn_on_err;
     hapd->task_get_accept_acl_list.task.completed_fn = osw_hostap_bss_cmd_warn_on_err;
     hapd->task_get_deny_acl_list.task.completed_fn = osw_hostap_bss_cmd_warn_on_err;
+    hapd->task_get_rxkhs.task.completed_fn = osw_hostap_bss_cmd_warn_on_fail;
+    hapd->task_reload_rxkh.task.completed_fn = osw_hostap_bss_cmd_warn_on_err;
 }
 
 static void
@@ -1215,8 +1306,11 @@ osw_hostap_bss_hapd_fini(struct osw_hostap_bss_hapd *hapd)
     hostap_rq_task_fini(&hapd->task_set_deny_acl_policy);
     hostap_rq_task_fini(&hapd->task_get_accept_acl_list);
     hostap_rq_task_fini(&hapd->task_get_deny_acl_list);
+    hostap_rq_task_fini(&hapd->task_get_rxkhs);
+    hostap_rq_task_fini(&hapd->task_reload_rxkh);
     osw_hostap_bss_hapd_acl_free(hapd);
     osw_hostap_bss_hapd_neigh_free(hapd);
+    osw_hostap_bss_hapd_neigh_fill_free(hapd);
     hostap_ev_ctrl_fini(&hapd->ctrl);
     assert(ds_tree_is_empty(&hapd->stas));
 }
@@ -1474,7 +1568,8 @@ osw_hostap_bss_wpas_init(struct hostap_ev_ctrl *gwpas,
     wpas->task_remove.task.completed_fn = osw_hostap_bss_remove_done_cb;
     wpas->task_remove.task.priv = wpas->ctrl.conn;
     wpas->task_log_level.task.completed_fn = osw_hostap_bss_cmd_warn_on_fail;
-    wpas->task_reconfigure.task.completed_fn = osw_hostap_bss_cmd_warn_on_fail;
+    wpas->task_reconfigure.task.completed_fn = osw_hostap_bss_cmd_reconfigure_done;
+    wpas->task_reconfigure.task.priv = wpas;
     wpas->task_reassociate.task.completed_fn = osw_hostap_bss_cmd_warn_on_fail;
     wpas->task_disconnect.task.completed_fn = osw_hostap_bss_cmd_warn_on_fail;
     wpas->task_get_status.task.completed_fn = osw_hostap_bss_cmd_warn_on_fail;
@@ -1667,7 +1762,14 @@ osw_hostap_set_conf_ap_write(const struct osw_hostap_bss_hapd *hapd)
 
     file_put(hapd->path_config, conf->conf_buf);
     file_put(hapd->path_psk_file, conf->psks_buf);
-    /* FIXME: rxkh */
+}
+
+static void
+osw_hostap_set_conf_ap_write_ft(const struct osw_hostap_bss_hapd *hapd)
+{
+    const struct osw_hostap_conf_ap_config *conf = &hapd->conf;
+
+    file_put(hapd->path_rxkh, conf->rxkh_buf);
 }
 
 static struct rq_task *
@@ -1692,9 +1794,10 @@ osw_hostap_set_conf_ap(struct osw_hostap *hostap,
     const bool failed = !ok;
     WARN_ON(failed);
 
+    const bool is_ft = osw_wpa_is_ft(&dvif->u.ap.wpa);
 
     OSW_HOSTAP_CONF_SET_BUF(conf->wpa_psk_file, hapd->path_psk_file);
-    /* FIXME: rxkh */
+    if (is_ft) OSW_HOSTAP_CONF_SET_BUF(conf->rxkh_file, hapd->path_rxkh);
 
     const struct hostap_sock *sock = hostap_conn_get_sock(hapd->ctrl.conn);
     const char *path_sock = hostap_sock_get_path(sock);
@@ -1709,6 +1812,7 @@ osw_hostap_set_conf_ap(struct osw_hostap *hostap,
 
     osw_hostap_conf_generate_ap_config_bufs(conf);
     osw_hostap_set_conf_ap_write(hapd);
+    if (is_ft) osw_hostap_set_conf_ap_write_ft(hapd);
 
     osw_hostap_conf_list_free(conf);
     /* FIXME: This could/should rely on hostapd
@@ -1738,6 +1842,12 @@ osw_hostap_set_conf_ap(struct osw_hostap *hostap,
                           || dvif->u.ap.acct_list_changed
                           || dvif->u.ap.passpoint_changed
                           || dvif->u.ap.multi_ap_changed
+                          || dvif->u.ap.ft_encr_key_changed
+                          || dvif->u.ap.ft_over_ds_changed
+                          || dvif->u.ap.ft_pmk_r0_key_lifetime_sec_changed
+                          || dvif->u.ap.ft_pmk_r1_max_key_lifetime_sec_changed
+                          || dvif->u.ap.ft_pmk_r1_push_changed
+                          || dvif->u.ap.ft_psk_generate_local_changed
                           || dphy->reg_domain_changed;
     const bool psk_file_invalidated = (dvif->u.ap.psk_list_changed
                                     || dvif->u.ap.wps_cred_list_changed);
@@ -1760,6 +1870,8 @@ osw_hostap_set_conf_ap(struct osw_hostap *hostap,
     const bool do_acl = want_running && (dvif->u.ap.acl_changed || dvif->u.ap.acl_policy_changed) &&
                      hapd->acl_by_hostap;
 
+    const bool do_ft = is_running && dvif->u.ap.neigh_ft_list_changed;
+
     rq_resume(q);
 
     if (do_remove) {
@@ -1774,6 +1886,11 @@ osw_hostap_set_conf_ap(struct osw_hostap *hostap,
         rq_add_task(q, &hapd->task_log_level.task);
         rq_add_task(q, &hapd->task_init_bssid.task);
         rq_add_task(q, &hapd->task_init_neigh.task);
+
+        /* fill neigh on add */
+        osw_hostap_bss_hapd_neigh_fill_free(hapd);
+        osw_hostap_bss_hapd_neigh_fill_prep(hapd, &dvif->u.ap);
+        osw_hostap_add_task_array(q, hapd->task_neigh_fill, hapd->n_task_neigh_fill);
     }
 
     if (do_reload_psk) {
@@ -1808,6 +1925,12 @@ osw_hostap_set_conf_ap(struct osw_hostap *hostap,
         osw_hostap_bss_hapd_acl_free(hapd);
         osw_hostap_bss_hapd_acl_update(hapd, &dvif->u.ap, q);
     }
+
+    if (do_ft) {
+        LOGD(LOG_PREFIX_HAPD(hapd, "do ft"));
+        rq_add_task(q, &hapd->task_reload_rxkh.task);
+    }
+
     rq_stop(q);
     return t;
 }

@@ -55,7 +55,6 @@ UNIT_SRC += src/ow_steer_candidate_list.c
 UNIT_SRC += src/ow_steer_policy.c
 UNIT_SRC += src/ow_steer_policy_stack.c
 UNIT_SRC += src/ow_steer_policy_bss_filter.c
-UNIT_SRC += src/ow_steer_policy_band_filter.c
 UNIT_SRC += src/ow_steer_policy_chan_cap.c
 UNIT_SRC += src/ow_steer_policy_force_kick.c
 UNIT_SRC += src/ow_steer_policy_pre_assoc.c
@@ -87,6 +86,7 @@ UNIT_SRC += src/ow_l2uf_kick.c
 UNIT_SRC += src/ow_steer_local_neigh.c
 UNIT_SRC += src/ow_mbss_prefer_nonhidden.c
 UNIT_SRC += src/ow_telog.c
+UNIT_SRC += src/ow_radar_next_channel.c
 
 UNIT_EXPORT_CFLAGS += -I$(UNIT_PATH)/inc
 UNIT_CFLAGS += -I$(UNIT_PATH)/inc

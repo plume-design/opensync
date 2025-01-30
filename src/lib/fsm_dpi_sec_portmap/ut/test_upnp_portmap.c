@@ -250,8 +250,8 @@ test_callback_IP_Port_Forward(void)
     cache->initialized = true;
 
     MEMZERO(rec_one);
-    strcpy(rec_one.protocol, "tcp");
-    strcpy(rec_one.dst_ipaddr, "10.0.0.1");
+    STRSCPY(rec_one.protocol, "tcp");
+    STRSCPY(rec_one.dst_ipaddr, "10.0.0.1");
     rec_one.dst_port = 12345;
     rec_one.src_port = 9876;
 
@@ -263,8 +263,8 @@ test_callback_IP_Port_Forward(void)
 
     /* Perform the update using rec_two */
     MEMZERO(rec_one);
-    strcpy(rec_one.protocol, "tcp");
-    strcpy(rec_one.dst_ipaddr, "10.0.0.1");
+    STRSCPY(rec_one.protocol, "tcp");
+    STRSCPY(rec_one.dst_ipaddr, "10.0.0.1");
     rec_one.dst_port = 12345;
     rec_one.src_port = 9876;
 
@@ -272,13 +272,13 @@ test_callback_IP_Port_Forward(void)
     callback_IP_Port_Forward(&mon, NULL, &rec_one);
 
     MEMZERO(rec_one);
-    strcpy(rec_one.protocol, "tcp");
-    strcpy(rec_one.dst_ipaddr, "10.0.0.1");
+    STRSCPY(rec_one.protocol, "tcp");
+    STRSCPY(rec_one.dst_ipaddr, "10.0.0.1");
     rec_one.src_port = 9876;
     rec_one.dst_port = 12345;
 
     MEMZERO(rec_two);
-    strcpy(rec_two.dst_ipaddr, "192.168.0.1");
+    STRSCPY(rec_two.dst_ipaddr, "192.168.0.1");
     rec_two.dst_ipaddr_changed = true;
 
     mon.mon_type = OVSDB_UPDATE_MODIFY;
@@ -308,8 +308,8 @@ test_upnp_portmap_fetch_static(void)
     cache->initialized = true;
 
     MEMZERO(rec_one);
-    strcpy(rec_one.protocol, "tcp");
-    strcpy(rec_one.dst_ipaddr, "10.0.0.1");
+    STRSCPY(rec_one.protocol, "tcp");
+    STRSCPY(rec_one.dst_ipaddr, "10.0.0.1");
     rec_one.dst_port = 12345;
     rec_one.src_port = 9876;
 
@@ -317,8 +317,8 @@ test_upnp_portmap_fetch_static(void)
     callback_IP_Port_Forward(&mon, NULL, &rec_one);
 
     MEMZERO(rec_one);
-    strcpy(rec_one.protocol, "udp");
-    strcpy(rec_one.dst_ipaddr, "10.0.0.222");
+    STRSCPY(rec_one.protocol, "udp");
+    STRSCPY(rec_one.dst_ipaddr, "10.0.0.222");
     rec_one.dst_port = 12345;
     rec_one.src_port = 9876;
 

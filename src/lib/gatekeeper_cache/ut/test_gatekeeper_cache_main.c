@@ -102,9 +102,9 @@ populate_sample_flow_entries(void)
 
     for (i = 0; i < OVER_MAX_CACHE_ENTRIES; i++)
     {
-        strcpy(test_flow_entries[i].mac_str, test_attr_entries[i].mac_str);
-        strcpy(test_flow_entries[i].src_ip_addr, "1.1.1.1");
-        strcpy(test_flow_entries[i].dst_ip_addr, "2.2.2.2");
+        STRSCPY(test_flow_entries[i].mac_str, test_attr_entries[i].mac_str);
+        STRSCPY(test_flow_entries[i].src_ip_addr, "1.1.1.1");
+        STRSCPY(test_flow_entries[i].dst_ip_addr, "2.2.2.2");
         test_flow_entries[i].ip_version = 4;
         test_flow_entries[i].src_port = 443;
         test_flow_entries[i].dst_port = 8888;
@@ -543,7 +543,12 @@ main(int argc, char *argv[])
      * This is a requirement: Do NOT proceed if the file is missing.
      * File presence will not be tested any further.
      */
-    chdir(dirname(argv[0]));
+    if (chdir(dirname(argv[0])) != 0)
+    {
+        LOGW("chdir(\"%s\") failed", argv[0]);
+        return ut_fini();
+    }
+
     ret = access(g_genmac_filename, F_OK);
     if (ret != 0)
     {

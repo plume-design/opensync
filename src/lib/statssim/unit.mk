@@ -36,6 +36,7 @@ UNIT_SRC += src/statssim.c
 
 UNIT_CFLAGS := -I$(UNIT_PATH)/inc
 UNIT_CFLAGS += $(WLAN_INCLUDES)
+UNIT_CFLAGS += $(shell pkg-config --cflags libprotobuf-c 2>/dev/null)
 
 UNIT_EXPORT_CFLAGS := $(UNIT_CFLAGS)
 

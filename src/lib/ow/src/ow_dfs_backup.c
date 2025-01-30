@@ -33,9 +33,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "ow_dfs_backup.h"
 #include <osw_module.h>
+#include <osw_time.h>
 #include <osw_timer.h>
 #include <osw_cqm.h>
 #include <osw_ut.h>
+#include <osw_etc.h>
 
 #define LOG_PREFIX "ow: dfs backup: "
 
@@ -90,6 +92,8 @@ struct ow_dfs_backup_phy {
     struct ow_dfs_backup_phy_sm sm;
     struct osw_cqm_notify *notify;
     struct osw_timer work;
+    struct osw_timer was_dfs_expire;
+    bool was_dfs;
 };
 
 struct ow_dfs_backup_notify {
@@ -162,12 +166,22 @@ phy_filter_link(const char *vif_name,
         case OSW_CQM_LINK_DECONFIGURED: return NULL;
         case OSW_CQM_LINK_DISCONNECTED: return NULL;
         case OSW_CQM_LINK_CONNECTED: return NULL;
+        case OSW_CQM_LINK_CHANNEL_CHANGED: return NULL;
         case OSW_CQM_LINK_TIMING_OUT: return NULL;
         case OSW_CQM_LINK_RECOVERING: return NULL;
         case OSW_CQM_LINK_TIMED_OUT: return is_dfs ? vif_name : NULL;
     }
 
     return NULL;
+}
+
+static void
+phy_was_dfs_expire_cb(struct osw_timer *t)
+{
+    struct ow_dfs_backup_phy *phy = container_of(t, struct ow_dfs_backup_phy, was_dfs_expire);
+    if (phy->was_dfs == false) return;
+    LOGD(LOG_PREFIX"phy: %s: was_dfs: expired", phy->phy_name ?: "");
+    phy->was_dfs = false;
 }
 
 static void
@@ -178,8 +192,18 @@ phy_set_link(struct ow_dfs_backup_phy *phy,
 {
     const struct osw_channel chan0 = {0};
     const struct osw_channel *chan = c ?: &chan0;
-    const bool always = getenv("OW_DFS_BACKUP_ALWAYS") ? true : false;
+    const bool always = osw_etc_get("OW_DFS_BACKUP_ALWAYS") ? true : false;
     const bool is_dfs = osw_channel_overlaps_dfs(chan) || always;
+    const bool was_dfs = phy->was_dfs;
+
+    if ((state == OSW_CQM_LINK_CHANNEL_CHANGED) && (is_dfs == true)) {
+        const uint64_t at = osw_time_mono_clk() + OSW_TIME_SEC(30);
+        LOGD(LOG_PREFIX"phy: %s: was_dfs: %sarming",
+             phy->phy_name ?: "",
+             osw_timer_is_armed(&phy->was_dfs_expire) ? "re-" : "");
+        phy->was_dfs = true;
+        osw_timer_arm_at_nsec(&phy->was_dfs_expire, at);
+    }
 
     LOGT(LOG_PREFIX"phy: %s: set link: %s state: %d chan: "OSW_CHANNEL_FMT,
          phy ? phy->phy_name : "",
@@ -187,12 +211,12 @@ phy_set_link(struct ow_dfs_backup_phy *phy,
          state,
          OSW_CHANNEL_ARG(chan));
 
-    if (is_dfs == true &&
+    if ((is_dfs == true || was_dfs == true) &&
         state == OSW_CQM_LINK_RECOVERING) {
         LOGN(LOG_PREFIX"link: %s: recovered before timeout", vif_name ?: "");
     }
 
-    vif_name = phy_filter_link(vif_name, state, is_dfs);
+    vif_name = phy_filter_link(vif_name, state, (is_dfs || was_dfs));
     if (vif_name != NULL && phy == NULL) {
         LOGN(LOG_PREFIX"link: %s: cannot recover, no backup phy bound",
              vif_name);
@@ -349,6 +373,7 @@ phy_free(struct ow_dfs_backup_phy *phy)
 {
     LOGD(LOG_PREFIX"phy: %s: freeing", phy->phy_name);
     osw_timer_disarm(&phy->work);
+    osw_timer_disarm(&phy->was_dfs_expire);
     assert(phy->sm.link_vif_name == NULL);
     ds_tree_remove(&phy->b->phys, phy);
     FREE(phy->phy_name);
@@ -394,6 +419,7 @@ ow_dfs_backup_get_phy(struct ow_dfs_backup *b,
         phy->b = b;
         phy->phy_name = STRDUP(phy_name);
         phy->work.cb = phy_work_cb;
+        osw_timer_init(&phy->was_dfs_expire, phy_was_dfs_expire_cb);
         ds_tree_insert(&b->phys, phy, phy->phy_name);
     }
     return phy;

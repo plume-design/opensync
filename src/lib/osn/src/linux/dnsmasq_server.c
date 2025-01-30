@@ -75,7 +75,7 @@ static char dnsmasq_server_conf_header[] =
     "server=/lan/\n"
     "dhcp-leasefile="CONFIG_OSN_DNSMASQ_LEASE_PATH"\n"
     "resolv-file="CONFIG_OSN_DNSMASQ_RESOLV_CONF_PATH"\n"
-    "no-dhcp-interface=br-wan,eth0,eth1\n"
+    "no-dhcp-interface=eth0,eth1\n"
     "address=/osync.lan/192.168.1.1\n"
     "ptr-record=1.1.168.192.in-addr.arpa,osync.lan\n"
     //>>SIT-18: VU#598349
@@ -929,4 +929,3 @@ void dnsmasq_lease_onchange(struct ev_loop *loop, ev_stat *w, int revent)
     /* Send out status change notifications */
     dnsmasq_server_status_dispatch();
 }
-

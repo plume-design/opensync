@@ -62,6 +62,10 @@ ifeq ($(CONFIG_PM_GW_OFFLINE_CFG),y)
 UNIT_SRC += src/pm_gw_offline_cfg.c
 endif
 
+ifeq ($(CONFIG_PM_TS_CFG),y)
+UNIT_SRC += src/pm_topology_snapshot.c
+endif
+
 UNIT_CFLAGS  += -I$(UNIT_PATH)/inc
 UNIT_LDFLAGS += -lev -lcurl
 
@@ -70,3 +74,4 @@ UNIT_DEPS += src/lib/osp
 UNIT_DEPS += src/lib/ovsdb
 UNIT_DEPS += src/lib/schema
 UNIT_DEPS += src/lib/module
+UNIT_DEPS += src/lib/ff

@@ -49,6 +49,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "target.h"
 #include "kconfig.h"
 #include "cm2.h"
+#include "cm2_uplink_event.h"
 
 /******************************************************************************/
 
@@ -64,14 +65,6 @@ static log_severity_t   cm2_log_severity = LOG_SEVERITY_INFO;
 /******************************************************************************
  *  PROTECTED definitions
  *****************************************************************************/
-
-void cm2_init_capabilities(void)
-{
-    g_state.target_type = target_device_capabilities_get();
-    LOGI("Device caps: 0x%x %s%s", g_state.target_type,
-            g_state.target_type & TARGET_GW_TYPE ? "[GW]" : "",
-            g_state.target_type & TARGET_EXTENDER_TYPE ? "[EXT]" : "");
-}
 
 static void dump_proc_mem_usage(void)
 {
@@ -123,9 +116,9 @@ static const char *cm2_sta_list(void)
  *  PUBLIC API definitions
  *****************************************************************************/
 
-bool cm2_is_extender(void)
+bool cm2_wan_link_selection_enabled(void)
 {
-    return g_state.target_type & TARGET_EXTENDER_TYPE ? true : false;
+    return kconfig_enabled(CONFIG_TARGET_ENABLE_WAN_LINK_SELECTION);
 }
 
 int main(int argc, char ** argv)
@@ -162,7 +155,6 @@ int main(int argc, char ** argv)
         return -1;
     }
 
-    cm2_init_capabilities();
     cm2_event_init(loop);
 
     if (cm2_ovsdb_init()) {
@@ -171,14 +163,17 @@ int main(int argc, char ** argv)
         return -1;
     }
 
-    if (cm2_is_extender()) {
+    if (cm2_wan_link_selection_enabled()) {
         g_state.bh_dhcp = cm2_bh_dhcp_from_list(cm2_sta_list());
         g_state.bh_gre = cm2_bh_gre_from_list(cm2_sta_list());
         g_state.bh_cmu = cm2_bh_cmu_from_list(cm2_sta_list());
+        g_state.bh_mlo = cm2_bh_mlo_alloc(g_state.bh_dhcp, g_state.bh_gre, g_state.bh_cmu);
         cm2_wdt_init(loop);
-        cm2_stability_init(loop);
         cm2_update_uplinks_init(loop);
     }
+
+    cm2_stability_init(loop);
+    cm2_uplink_event_init();
 
     if (cm2_start_cares()) {
         LOGW("Ares init failed");
@@ -191,12 +186,13 @@ int main(int argc, char ** argv)
 
     ev_run(loop, 0);
 
-    if (cm2_is_extender()) {
+    if (cm2_wan_link_selection_enabled()) {
         cm2_wdt_close(loop);
-        cm2_stability_close(loop);
         cm2_update_uplinks_close(loop);
     }
 
+    cm2_stability_close(loop);
+    cm2_uplink_event_close();
     cm2_event_close(loop);
 
     target_close(TARGET_INIT_MGR_CM, loop);

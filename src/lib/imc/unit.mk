@@ -31,7 +31,7 @@ UNIT_NAME := imc
 
 UNIT_DISABLE := $(if $(CONFIG_TARGET_IMC),n,y)
 
-ifeq ($(CONFIG_FSM_NO_DSO),y)
+ifeq ($(CONFIG_IMC_LIBOPENSYNC),y)
 	UNIT_TYPE := LIB
 else
 	UNIT_TYPE := SHLIB

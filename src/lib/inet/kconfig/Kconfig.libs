@@ -54,6 +54,24 @@ menu "libinet Configuration"
             option in IPv4 so that packets greater than MTU size will get fragmented.
             If not selected, GRETAP tunnel should be created without the ignore-df flag.
 
+    config INET_SOFTWDS
+        bool "Static GRE/SoftWDS"
+        default n
+        help
+            Add support for the SoftWDS driver (aka Static GRE).
+
+    config INET_GRE_USE_SOFTWDS
+        bool "Use SoftWDS as default GRE protocol implementation"
+        default n
+        depends on !INET_GRE_USE_GRETAP
+        depends on INET_SOFTWDS
+        help
+            Use the inet_softwds_t class as the default GRE implementation.
+            This options redefines the inet_gre_new() function to return
+            a inet_softwds_t class. The function may fallback to the linux
+            GRETAP provider if selected via the environment and if inet_gretap_t
+            is compiled in.
+
     menuconfig INET_FW_ENABLED
         bool "Firewall"
         default y

@@ -1,0 +1,16 @@
+config OSN_BACKEND_ADAPTIVE_QOS_NULL
+    bool "Null"
+
+    help
+        Use dummy implementation
+
+config OSN_BACKEND_ADAPTIVE_QOS_CAKE_AUTORATE
+    bool "cake-autorate"
+
+    select OSN_LINUX_ENABLED
+    select OSN_BACKEND_QDISC_LINUX
+    select OSN_ADAPTIVE_QOS_CAKE_AUTORATE
+    help
+        Enable the Adaptive QoS backend that uses the cake-autorate
+        script to adaptively adjust the cake shaper settings.
+

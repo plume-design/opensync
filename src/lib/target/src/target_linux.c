@@ -919,6 +919,7 @@ static bool linux_device_file_handles_get(dpp_device_record_t *record)
     FILE *fp = NULL;
     char buf[128];
     bool retval = false;
+    size_t len;
     uint32_t used, total;
 
     used = total = 0;
@@ -930,7 +931,8 @@ static bool linux_device_file_handles_get(dpp_device_record_t *record)
     }
 
     /* Read the stream and check there was no error and everything was read */
-    fread(buf, sizeof(*buf), sizeof(buf), fp);
+    len = fread(buf, sizeof(*buf), sizeof(buf), fp);
+    (void)len;
     if (ferror(fp) || !feof(fp))
     {
         goto cleanup;

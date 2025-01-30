@@ -219,16 +219,23 @@ int main(int argc, char *argv[])
             get_nameserver(&ns, LOCAL_HOST);
         }
 
-        if (!lookup_hostname(argv[1], &ns, T_A))
-            ret = -1;
+        if (!lookup_hostname(argv[1], &ns, T_A)) {
+            LOGN("Failed to obtain A record for %s", argv[1]);
+            ret++;
+        }
 
-        if (!lookup_hostname(argv[1], &ns, T_AAAA))
-            ret = -1;
+        if (!lookup_hostname(argv[1], &ns, T_AAAA)) {
+            LOGN("Failed to obtain AAAA record for %s", argv[1]);
+            ret++;
+        }
 
-        if (ret < 0)
+        /* Both queries failed */
+        if (ret == 2) {
             LOGE("Unable to resolve: %s [%s]", argv[1], strerror(errno));
+            return -1;
+        }
 
-        return ret;
+        return 0;
     } else {
         usage();
     }

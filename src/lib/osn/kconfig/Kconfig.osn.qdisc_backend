@@ -1,0 +1,14 @@
+config OSN_BACKEND_QDISC_NULL
+    bool "Null"
+
+    help
+        Use dummy implementation
+
+config OSN_BACKEND_QDISC_LINUX
+    bool "Linux"
+
+    select OSN_LINUX_ENABLED
+    select OSN_LINUX_QDISC
+    help
+        Enable the generic Linux qdisc-based QoS that uses the tc tool
+        to configure interface qdiscs.

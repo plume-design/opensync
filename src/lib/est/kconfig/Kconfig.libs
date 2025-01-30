@@ -1,0 +1,6 @@
+menuconfig EST_CLIENT_LIB
+    bool "EST Client library"
+    default y
+    depends on MANAGER_PKIM
+    help
+        EST Client library will be build EST

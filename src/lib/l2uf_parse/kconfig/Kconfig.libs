@@ -1,0 +1,5 @@
+menuconfig LIB_LEGACY_FSM_L2UF_PARSER
+    bool "Enables Opensync legacy FSM L2UF parser"
+    default n
+    help
+       N/A

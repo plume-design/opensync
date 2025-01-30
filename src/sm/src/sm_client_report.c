@@ -702,7 +702,7 @@ static void sm_client_report_update_uplink_type(
         return;
 
     if (sm_client_report_get_uplink_type(client_ctx))
-        strcpy(report_ctx->uplink_type, client_ctx->uplink.type);
+        STRSCPY(report_ctx->uplink_type, client_ctx->uplink.type);
 
     report_ctx->uplink_changed = client_ctx->uplink.changed;
 
@@ -1745,32 +1745,6 @@ bool sm_client_report_request(
     REQUEST_PARAM_UPDATE("client", reporting_interval, "%d");
     REQUEST_PARAM_UPDATE("client", sampling_interval, "%d");
     REQUEST_PARAM_UPDATE("client", reporting_timestamp, "%"PRIu64"");
-
-    status =
-        sm_client_stats_process (
-                radio_cfg,
-                client_ctx);
-    if (true != status) {
-        return false;
-    }
-
-    return true;
-}
-
-bool sm_client_report_radio_change(
-        radio_entry_t              *radio_cfg)
-{
-    bool                            status;
-    sm_client_ctx_t                *client_ctx = NULL;
-
-    if (NULL == radio_cfg) {
-        LOG(ERR,
-            "Initializing client reporting "
-            "(Invalid radio config)");
-        return false;
-    }
-
-    client_ctx = sm_client_ctx_get(radio_cfg);
 
     status =
         sm_client_stats_process (

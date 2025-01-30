@@ -85,5 +85,6 @@ export OS_LDFLAGS
 export LIBS
 
 # enable use of netlink lib for native build
-LIBNL3_HEADERS = -I/usr/include/libnl3
+LIBNL3_HEADERS_PKGCONFIG = $(shell pkg-config --cflags libnl-3.0 2>/dev/null)
+LIBNL3_HEADERS = $(if $(LIBNL3_HEADERS_PKGCONFIG),$(LIBNL3_HEADERS_PKGCONFIG),-I/usr/include/libnl3)
 export LIBNL3_HEADERS

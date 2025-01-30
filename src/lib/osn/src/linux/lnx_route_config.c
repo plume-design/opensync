@@ -40,8 +40,9 @@ struct osn_route4_cfg
 
 osn_route4_cfg_t *lnx_route4_cfg_new(const char *if_name)
 {
-    struct osn_route4_cfg *self = MALLOC(sizeof(*self) + strlen(if_name) + 1/*null*/);
-    strcpy(self->if_name, if_name);
+    int if_name_size = strlen(if_name) + 1;
+    osn_route4_cfg_t *self = MALLOC(sizeof(*self) + if_name_size);
+    strscpy(self->if_name, if_name, if_name_size);
     return self;
 }
 

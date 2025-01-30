@@ -64,17 +64,13 @@ static bool inet_eth_network_start(inet_eth_t *self, bool enable);
  */
 
 /*
- * Command for enabling the "no-flood" option for OVS interfaces
+ * Command for enabling the "no-flood" option for interfaces
  */
-static char inet_eth_native_noflood_cmd[] = _S(
+static char inet_eth_noflood_cmd[] = _S(
         ifname="$1";
         flood="$2";
         cd /sys/class/net/"$ifname"/brport;
         for file in *_flood; do echo "$flood" > "$file"; done);
-static char inet_eth_ovs_noflood_cmd[] = _S(
-        ifname="$1";
-        flood="$2";
-        bridge=$(ovs-vsctl port-to-br "$ifname") && ovs-ofctl mod-port "$bridge" "$ifname" "$flood");
 
 
 /*
@@ -373,6 +369,9 @@ bool inet_eth_scheme_static_start(inet_eth_t *self, bool enable)
                     FMT_osn_ip_addr(self->base.in_static_gwaddr));
             return false;
         }
+
+        /* Update gateway status */
+        self->base.in_state.in_gateway = self->base.in_static_gwaddr;
     }
 
     if (!osn_ip_apply(self->in_ip))
@@ -399,22 +398,12 @@ bool inet_eth_mtu_start(inet_eth_t *self, bool enable)
     {
         int rc;
 
-        if (kconfig_enabled(CONFIG_TARGET_USE_NATIVE_BRIDGE))
-        {
-            rc = execsh_log(
-                    LOG_SEVERITY_INFO,
-                    inet_eth_native_noflood_cmd,
-                    self->inet.in_ifname,
-                    self->in_noflood ? "0" : "1");
-        }
-        else
-        {
-            rc = execsh_log(
-                    LOG_SEVERITY_INFO,
-                    inet_eth_ovs_noflood_cmd,
-                    self->inet.in_ifname,
-                    self->in_noflood ? "no-flood" : "flood");
-        }
+        rc = execsh_log(
+                LOG_SEVERITY_INFO,
+                inet_eth_noflood_cmd,
+                self->inet.in_ifname,
+                self->in_noflood ? "0" : "1");
+
         if (rc != 0)
         {
             LOG(WARN, "inet_eth: %s: Error setting no-flood.",

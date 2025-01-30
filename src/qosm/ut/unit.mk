@@ -36,6 +36,7 @@ UNIT_SRC += ../src/qosm_interface_classifier.c
 UNIT_SRC += ../src/qosm_ic_template.c
 UNIT_SRC += ../src/qosm_interface_qos.c
 UNIT_SRC += ../src/qosm_interface_queue.c
+UNIT_SRC += ../src/qosm_linux_queue.c
 UNIT_SRC += ../src/qosm_ip_interface.c
 
 

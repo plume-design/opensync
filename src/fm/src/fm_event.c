@@ -388,7 +388,7 @@ static void fm_backtrace_do_rotation(void)
             sizeof(shell_cmd),
             "sh %s/scripts/fm_crash_bt_rotate.sh %s %s %s %d",
             CONFIG_INSTALL_PREFIX,
-            CONFIG_FM_BT_PATH,
+            CONFIG_OS_BACKTRACE_DUMP_PATH,
             CONFIG_FM_CRASH_COUNT_PATH,
             CONFIG_FM_LOG_CRASH_ARCHIVE_PATH,
             CONFIG_FM_CRASH_FILE_COUNT);

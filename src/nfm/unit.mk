@@ -58,7 +58,6 @@ endif
 UNIT_EXPORT_CFLAGS := $(UNIT_CFLAGS)
 UNIT_EXPORT_LDFLAGS := $(UNIT_LDFLAGS)
 
-UNIT_DEPS := src/lib/evsched
 UNIT_DEPS += src/lib/osn
 UNIT_DEPS += src/lib/pjs
 UNIT_DEPS += src/lib/policy_tags

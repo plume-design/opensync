@@ -74,6 +74,9 @@ UNIT_SRC += src/osw_l2uf.c
 UNIT_SRC += src/osw_defer_vif_down.c
 UNIT_SRC += src/osw_diag.c
 UNIT_SRC += src/osw_mld_vif.c
+UNIT_SRC += src/osw_etc.c
+UNIT_SRC += src/osw_phy_chan_observer.c
+UNIT_SRC += src/osw_sta_assoc.c
 
 UNIT_CFLAGS := -I$(UNIT_PATH)/inc
 UNIT_CFLAGS += -D_GNU_SOURCE

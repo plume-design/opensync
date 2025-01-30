@@ -65,10 +65,9 @@ UNIT_SRC    += src/nm2_ipv6_relay.c
 UNIT_SRC    += src/nm2_probe_eth_clients.c
 UNIT_SRC    += src/nm2_fqdn.c
 
-UNIT_SRC    += $(if $(CONFIG_TARGET_USE_NATIVE_BRIDGE), src/nm2_nb_bridge.c)
-UNIT_SRC    += $(if $(CONFIG_TARGET_USE_NATIVE_BRIDGE), src/nm2_default_ovsdb_bridge.c)
-UNIT_SRC    += $(if $(CONFIG_TARGET_USE_NATIVE_BRIDGE), src/nm2_nb_interface.c)
-UNIT_SRC    += $(if $(CONFIG_TARGET_USE_NATIVE_BRIDGE), src/nm2_nb_port.c)
+UNIT_SRC    += src/nm2_nb_bridge.c
+UNIT_SRC    += src/nm2_nb_interface.c
+UNIT_SRC    += src/nm2_nb_port.c
 
 
 UNIT_CFLAGS := -I$(UNIT_PATH)/inc
@@ -94,4 +93,5 @@ UNIT_DEPS += src/lib/synclist
 UNIT_DEPS += src/lib/timevt
 UNIT_DEPS += src/lib/os_fdbuf
 UNIT_DEPS += src/lib/ds_util
+UNIT_DEPS += src/lib/ovsdb_bridge
 UNIT_DEPS_CFLAGS += src/lib/version

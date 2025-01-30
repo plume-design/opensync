@@ -29,7 +29,7 @@
 DEFAULT_SUCCESS_INTERVAL=1  # dnscheck once per 1 minutes
 DEFAULT_FAIL_INTERVAL=1     # dnscheck once per 1 minute after 1st failure
 LOG_MODULE="DNS"
-RESOLV_CONF="/etc/resolv.conf"
+RESOLV_CONF=$CONFIG_WANO_DNS_PROBE_RESOLV_CONF_PATH
 TMP_COUNTER="/tmp/dnscheck_counter"
 LOOKUP_HOST={{CONTROLLER_ADDR.split(':')[1]}}
 DNS_SERVERS="209.244.0.3 64.6.64.6 84.200.69.80"

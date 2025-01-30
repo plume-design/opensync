@@ -119,3 +119,10 @@ menuconfig MANAGER_FSM
         default y
         help
             Allow the management of debugging knobs
+
+    config FSM_MEM_CHECK_PERIOD
+        depends on MANAGER_FSM
+        int "Set FSM memory check periodicity"
+        default 120
+        help
+            Set FSM memory check periodicity.

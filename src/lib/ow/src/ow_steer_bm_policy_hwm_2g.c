@@ -37,12 +37,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ow_steer_policy_snr_level.h"
 #include "ow_steer_bm_policy_hwm_2g.h"
 
-#define LOG_PREFIX(hwm, fmt, ...) \
-    "ow: steer: bm: %s %s: " fmt, \
-    ow_steer_policy_get_prefix((hwm)->policy->base), \
-    ow_steer_policy_snr_level_state_to_cstr((hwm)->policy->state), \
-    ## __VA_ARGS__
-
 #define OW_STEER_BM_POLICY_HWM_ACTIVE_BYTES 2000
 
 /* The high level idea is that all 2.4GHz
@@ -203,7 +197,8 @@ struct ow_steer_bm_policy_hwm_2g *
 ow_steer_bm_policy_hwm_2g_alloc(const char *name,
                                 struct ow_steer_bm_group *group,
                                 const struct osw_hwaddr *sta_addr,
-                                const struct ow_steer_policy_mediator *mediator)
+                                const struct ow_steer_policy_mediator *mediator,
+                                const char *log_prefix)
 {
     static const struct ow_steer_bm_observer bm_obs = {
         .vif_up_fn = ow_steer_bm_policy_hwm_2g_vif_up_cb,
@@ -216,7 +211,7 @@ ow_steer_bm_policy_hwm_2g_alloc(const char *name,
     };
     struct ow_steer_bm_policy_hwm_2g *hwm = CALLOC(1, sizeof(*hwm));
     const enum ow_steer_policy_snr_level_mode mode = OW_STEER_POLICY_SNR_LEVEL_BLOCK_FROM_BSSIDS_WHEN_ABOVE;
-    hwm->policy = ow_steer_policy_snr_level_alloc(name, sta_addr, mode, mediator);
+    hwm->policy = ow_steer_policy_snr_level_alloc(name, sta_addr, mode, mediator, log_prefix);
     hwm->bm_obs = bm_obs;
     hwm->group = group;
 

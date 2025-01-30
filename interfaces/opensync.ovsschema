@@ -1,7 +1,7 @@
 {
   "name": "Open_vSwitch",
-  "version": "7.11.395",
-  "cksum": "4195976828 347636",
+  "version": "7.11.413",
+  "cksum": "4238288704 360529",
   "tables": {
     "AWLAN_Node": {
       "columns": {
@@ -279,6 +279,35 @@
       },
       "isRoot": true,
       "maxRows": 1
+    },
+    "PKI_Config": {
+      "columns": {
+        "server_url": {
+          "type": {
+            "key": {
+              "type": "string",
+              "maxLength": 400
+            }
+          }
+        },
+        "status": {
+          "type": {
+            "key": {
+              "type": "string",
+              "maxLength": 50
+            }
+          }
+        },
+        "auth_method": {
+          "type": {
+            "key": {
+              "type": "string",
+              "maxLength": 20
+            }
+          }
+        }
+      },
+      "isRoot": true
     },
     "Alarms": {
       "columns": {
@@ -2612,6 +2641,17 @@
             "min": 0,
             "max": 1
           }
+        },
+        "tpc_uuid": {
+          "type": {
+            "key": {
+              "type": "uuid",
+              "refTable": "Wifi_Transmit_Power_Constraints",
+              "refType": "weak"
+            },
+            "min": 0,
+            "max": 150
+          }
         }
       },
       "isRoot": true,
@@ -2635,6 +2675,36 @@
             "value": "string",
             "min": 0,
             "max": "unlimited"
+          }
+        },
+        "bssid": {
+          "type": {
+            "key": {
+              "type": "string",
+              "maxLength": 17
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "priority": {
+          "type": {
+            "key": {
+              "type": "integer",
+              "minInteger": 0,
+              "maxInteger": 100
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "enabled": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            },
+            "min": 0,
+            "max": 1
           }
         },
         "onboard_type": {
@@ -3191,6 +3261,33 @@
             "max": 1
           }
         },
+        "rsn_pairwise_ccmp256": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "rsn_pairwise_gcmp": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "rsn_pairwise_gcmp256": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
         "wpa_key_mgmt": {
           "type": {
             "key": {
@@ -3203,12 +3300,16 @@
                   "wpa2-psk",
                   "wpa2-eap",
                   "sae",
+                  "sae-ext",
                   "wpa-psk-sha256",
                   "wpa-eap",
                   "wpa-eap-sha256",
+                  "wpa-eap-sha384",
+                  "wpa-eap-suite-b",
                   "wpa-eap-suite-b-192",
                   "ft-wpa2-psk",
                   "ft-sae",
+                  "ft-sae-ext",
                   "ft-psk",
                   "ft-eap",
                   "ft-eap-sha384"
@@ -3899,6 +4000,33 @@
             "max": 1
           }
         },
+        "rsn_pairwise_ccmp256": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "rsn_pairwise_gcmp": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "rsn_pairwise_gcmp256": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
         "wpa_key_mgmt": {
           "type": {
             "key": {
@@ -3911,12 +4039,16 @@
                   "wpa2-psk",
                   "wpa2-eap",
                   "sae",
+                  "sae-ext",
                   "wpa-psk-sha256",
                   "wpa-eap",
                   "wpa-eap-sha256",
+                  "wpa-eap-sha384",
+                  "wpa-eap-suite-b",
                   "wpa-eap-suite-b-192",
                   "ft-wpa2-psk",
                   "ft-sae",
+                  "ft-sae-ext",
                   "ft-psk",
                   "ft-eap",
                   "ft-eap-sha384"
@@ -4220,11 +4352,15 @@
                   "dpp",
                   "wpa-psk",
                   "sae",
+                  "sae-ext",
                   "wpa-psk-sha256",
                   "wpa-eap",
                   "wpa-eap-sha256",
+                  "wpa-eap-sha384",
+                  "wpa-eap-suite-b",
                   "wpa-eap-suite-b-192",
                   "ft-sae",
+                  "ft-sae-ext",
                   "ft-psk",
                   "ft-eap",
                   "ft-eap-sha384"
@@ -4245,6 +4381,9 @@
                   "rsn-none",
                   "rsn-tkip",
                   "rsn-ccmp",
+                  "rsn-ccmp256",
+                  "rsn-gcmp",
+                  "rsn-gcmp256",
                   "wpa-none",
                   "wpa-tkip",
                   "wpa-ccmp",
@@ -6279,6 +6418,7 @@
               "enum": [
                 "set",
                 [
+                  "latency",
                   "neighbor",
                   "survey",
                   "client",
@@ -6329,7 +6469,9 @@
                   "6G"
                 ]
               ]
-            }
+            },
+            "min": 0,
+            "max": 1
           }
         },
         "survey_type": {
@@ -6342,6 +6484,68 @@
                   "on-chan",
                   "off-chan",
                   "full"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "latency_dscp": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "do_not_report",
+                  "report_per_dscp"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "latency_kinds": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "min",
+                  "max",
+                  "avg",
+                  "last",
+                  "num"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": 64
+          }
+        },
+        "if_name": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 16
+            },
+            "min": 0,
+            "max": 64
+          }
+        },
+        "sample_policy": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "separate",
+                  "merge"
                 ]
               ]
             },
@@ -6686,6 +6890,26 @@
             "max": 1
           }
         },
+        "st_bw_dl": {
+          "type": {
+            "key": {
+              "type": "integer",
+              "minInteger": 0
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "st_bw_ul": {
+          "type": {
+            "key": {
+              "type": "integer",
+              "minInteger": 0
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
         "st_pkt_len": {
           "type": {
             "key": {
@@ -6850,7 +7074,8 @@
         "DL_bytes": {
           "type": {
             "key": {
-              "type": "integer"
+              "type": "integer",
+              "maxInteger": 9223372036854775807
             },
             "min": 0,
             "max": 1
@@ -6859,7 +7084,8 @@
         "UL_bytes": {
           "type": {
             "key": {
-              "type": "integer"
+              "type": "integer",
+              "maxInteger": 9223372036854775807
             },
             "min": 0,
             "max": 1
@@ -7079,6 +7305,78 @@
           "type": {
             "key": {
               "type": "integer"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "RTT_min": {
+          "type": {
+            "key": {
+              "type": "real"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "RTT_max": {
+          "type": {
+            "key": {
+              "type": "real"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "DL_RTT": {
+          "type": {
+            "key": {
+              "type": "real"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "UL_RTT": {
+          "type": {
+            "key": {
+              "type": "real"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "DL_RTT_min": {
+          "type": {
+            "key": {
+              "type": "real"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "DL_RTT_max": {
+          "type": {
+            "key": {
+              "type": "real"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "UL_RTT_min": {
+          "type": {
+            "key": {
+              "type": "real"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "UL_RTT_max": {
+          "type": {
+            "key": {
+              "type": "real"
             },
             "min": 0,
             "max": 1
@@ -8567,64 +8865,6 @@
                     },
                     "min": 0,
                     "max": 1
-                }
-            }
-        },
-        "isRoot": true
-    },
-    "Wifi_Channels": {
-        "columns": {
-            "channel": {
-                "type": {
-                    "key": {
-                        "type": "integer",
-                        "minInteger": 1
-                    },
-                    "min": 0,
-                    "max": 1
-                }
-            },
-            "radio_ifname": {
-                "type": {
-                    "key": {
-                        "type": "string"
-                    },
-                    "min": 0,
-                    "max": 1
-                }
-            },
-            "tx_power": {
-                "type": {
-                    "key": {
-                        "type": "integer",
-                        "minInteger": 1
-                    },
-                    "min": 0,
-                    "max": 1
-                }
-            },
-            "max_tx_power_allowed": {
-                "type": {
-                    "key": {
-                        "type": "integer",
-                        "minInteger": 1
-                    },
-                    "min": 0,
-                    "max": 1
-                }
-            },
-            "acs_enable": {
-                "type": {
-                    "key": {
-                        "type": "boolean"
-                    }
-                }
-            },
-            "acs_is_enabled": {
-                "type": {
-                    "key": {
-                        "type": "boolean"
-                    }
                 }
             }
         },
@@ -11500,6 +11740,18 @@
             "min": 0,
             "max": 1
           }
+        },
+        "alias": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "min": 0,
+            "max": 1
+          },
+          "mutable" : false
         }
       },
       "isRoot": true
@@ -15775,6 +16027,382 @@
           "type": {
             "key": {
               "type": "boolean"
+            },
+            "min": 0,
+            "max": 1
+          }
+        }
+      },
+      "isRoot": true
+    },
+    "Uplink_Events": {
+      "columns": {
+        "timestamp": {
+          "type": {
+            "key": {
+              "type": "integer",
+              "minInteger": 1,
+              "maxInteger": 4294967295
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "connected": {
+          "type": "boolean"
+        },
+        "type": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "UNKNOWN",
+                  "LINK",
+                  "IPALL_ROUTER",
+                  "IPALL_INTERNET",
+                  "NTP"
+                ]
+              ]
+            }
+          }
+        }
+      },
+      "isRoot": true
+    },
+    "Wifi_AFC": {
+      "columns": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "server_url": {
+          "type": {
+            "key": {
+              "type": "string",
+              "maxLength": 256
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "oem_id": {
+          "type": {
+            "key": {
+              "type": "string",
+              "maxLength": 256
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "product_id": {
+          "type": {
+            "key": {
+              "type": "string",
+              "maxLength": 256
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "location_uuid": {
+          "type": {
+            "key": {
+              "type": "uuid",
+              "refTable": "Location",
+              "refType": "weak"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "tpc_uuid": {
+          "type": {
+            "key": {
+              "type": "uuid",
+              "refTable": "Wifi_Transmit_Power_Constraints",
+              "refType": "weak"
+            },
+            "min": 0,
+            "max": 150
+          }
+        }
+      },
+      "isRoot": true
+    },
+    "Location": {
+      "columns": {
+        "object_ellipse": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "object_linear_polygon": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "object_radial_polygon": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "height": {
+          "type": {
+            "key": {
+              "type": "real"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "vertical_uncertainity": {
+          "type": {
+            "key": {
+              "type": "real"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "ellipse_minor_axis": {
+          "type": {
+            "key": {
+              "type": "real"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "ellipse_major_axis": {
+          "type": {
+            "key": {
+              "type": "real"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "ellipse_orientation": {
+          "type": {
+            "key": {
+              "type": "real"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "ellipse_longitude": {
+          "type": {
+            "key": {
+              "type": "real"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "ellipse_latitude": {
+          "type": {
+            "key": {
+              "type": "real"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "radial_polygon_longitude": {
+          "type": {
+            "key": {
+              "type": "real"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "radial_polygon_lattitude": {
+          "type": {
+            "key": {
+              "type": "real"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "radial_polygon_length": {
+          "type": {
+            "key": "string",
+            "value": "string",
+            "min": 0,
+            "max": "unlimited"
+          }
+        },
+        "radial_polygon_angle": {
+          "type": {
+            "key": "string",
+            "value": "string",
+            "min": 0,
+            "max": "unlimited"
+          }
+        },
+        "linear_polygon_latitude": {
+          "type": {
+            "key": "string",
+            "value": "string",
+            "min": 0,
+            "max": "unlimited"
+          }
+        },
+        "linear_polygon_longitude": {
+          "type": {
+            "key": "string",
+            "value": "string",
+            "min": 0,
+            "max": "unlimited"
+          }
+        }
+      },
+      "isRoot": true
+    },
+    "Wifi_Transmit_Power_Constraints": {
+      "columns": {
+        "channels": {
+          "type": {
+            "key": "string",
+            "value": "string",
+            "min": 0,
+            "max": "unlimited"
+          }
+        },
+        "opclass": {
+          "type": {
+            "key": {
+              "type": "integer"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "eirp": {
+          "type": {
+            "key": {
+              "type": "real"
+            },
+            "min": 0,
+            "max": 1
+          }
+        }
+      },
+      "isRoot": true
+    },
+    "GPS_Device": {
+      "columns": {
+        "device_name": {
+          "type": {
+            "key": {
+              "type": "string",
+              "maxLength": 256
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "location_uuid": {
+          "type": {
+            "key": {
+              "type": "uuid",
+              "refTable": "Location",
+              "refType": "weak"
+            },
+            "min": 0,
+            "max": 1
+          }
+        }
+      },
+      "isRoot": true
+    },
+    "Wifi_Scan_Location": {
+      "columns": {
+        "location_uuid": {
+          "type": {
+            "key": {
+              "type": "uuid",
+              "refTable": "Location",
+              "refType": "weak"
+            },
+            "min": 0,
+            "max": 1
+          }
+        }
+      },
+      "isRoot": true
+    },
+    "Location_Manual": {
+      "columns": {
+        "location_uuid": {
+          "type": {
+            "key": {
+              "type": "uuid",
+              "refTable": "Location",
+              "refType": "weak"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "longitude": {
+          "type": {
+            "key": {
+              "type": "real"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "latitude": {
+          "type": {
+            "key": {
+              "type": "real"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "altitude": {
+          "type": {
+            "key": {
+              "type": "real"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "radius": {
+          "type": {
+            "key": {
+              "type": "real"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "source": {
+          "type": {
+            "key": {
+              "type": "string",
+              "maxLength": 256
             },
             "min": 0,
             "max": 1

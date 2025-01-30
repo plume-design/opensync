@@ -90,3 +90,12 @@ collect_dir()
         ln -sf "$1"/* $LOGPULL_TMP_DIR/
     fi
 }
+
+
+collect_and_delete_dir_files()
+{
+    # Moves directory files so that they are deleted after requested logpull
+    if [ -d "$1" ] && [ -n "$(ls -A $1)" ]; then
+        mv "$1"/* $LOGPULL_TMP_DIR/
+    fi
+}

@@ -379,7 +379,7 @@ error:
 }
 
 bool
-dpi_sni_fetch_fqdn_from_url_attr(char *attribute_name, char *fqdn)
+dpi_sni_fetch_fqdn_from_url_attr(char *attribute_name, char *fqdn, int fqdn_size)
 {
     /*
      * http.url of the following format:
@@ -407,14 +407,13 @@ dpi_sni_fetch_fqdn_from_url_attr(char *attribute_name, char *fqdn)
 
     if (pattern_end == NULL)
     {
-        strcpy(fqdn, pattern_start);
+        strscpy(fqdn, pattern_start, fqdn_size);
         return true;
     }
 
     pattern_len = pattern_end - pattern_start;
 
-    strncpy(fqdn, pattern_start, pattern_len);
-    fqdn[pattern_len + 1] = '\0';
+    strscpy_len(fqdn, pattern_start, fqdn_size, pattern_len);
 
     return true;
 }
@@ -504,7 +503,7 @@ bool dpi_sni_is_redirected_attr(struct fsm_dpi_sni_redirect_flow_request *param)
 
         case FSM_URL_REQ:
         {
-            rc = dpi_sni_fetch_fqdn_from_url_attr(attr_value, fqdn_value);
+            rc = dpi_sni_fetch_fqdn_from_url_attr(attr_value, fqdn_value, sizeof(fqdn_value));
             if (rc == false) return redirect;
             break;
         }

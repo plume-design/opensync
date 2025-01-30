@@ -200,8 +200,7 @@ void callback_Port(
         osp_l2switch_del(old->name);
     }
 
-    if (kconfig_enabled(CONFIG_TARGET_USE_NATIVE_BRIDGE))
-        nm2_nb_port_process_update(mon, old, new);
+    nm2_nb_port_process_update(mon, old, new);
 
     return;
 }

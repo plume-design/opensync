@@ -28,9 +28,6 @@ UNIT_TYPE := TEST_BIN
 
 UNIT_SRC            := test_om.c
 UNIT_SRC            += ../src/om_monitor.c
-UNIT_SRC            += ../src/om_tflows.c
-UNIT_SRC            += ../src/om_template.c
-UNIT_SRC            += ../src/om_ovs.c
 
 
 UNIT_CFLAGS := -I$(UNIT_PATH)/../src

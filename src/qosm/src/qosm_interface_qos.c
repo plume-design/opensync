@@ -26,6 +26,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "osa_assert.h"
 #include "qosm_internal.h"
+#include "qosm_qos.h"
 #include "memutil.h"
 
 static void callback_Interface_QoS(
@@ -36,7 +37,9 @@ static void callback_Interface_QoS(
 static ovsdb_table_t table_Interface_QoS;
 static reflink_fn_t qosm_interface_qos_reflink_fn;
 static reflink_fn_t qosm_interface_qos_queue_reflink_fn;
+static reflink_fn_t qosm_interface_qos_linux_queue_reflink_fn;
 static void qosm_interface_qos_queue_free(struct qosm_interface_qos *qos);
+static void qosm_interface_qos_linux_queue_free(struct qosm_interface_qos *qos);
 
 static ds_tree_t qosm_interface_qos_list = DS_TREE_INIT(
         ds_str_cmp,
@@ -69,6 +72,9 @@ struct qosm_interface_qos *qosm_interface_qos_get(ovs_uuid_t *uuid)
     reflink_init(&qos->qos_interface_queue_reflink, "Interface_QoS.queues");
     reflink_set_fn(&qos->qos_interface_queue_reflink, qosm_interface_qos_queue_reflink_fn);
 
+    reflink_init(&qos->qos_linux_queue_reflink, "Interface_QoS.lnx_queues");
+    reflink_set_fn(&qos->qos_linux_queue_reflink, qosm_interface_qos_linux_queue_reflink_fn);
+
     ds_tree_insert(&qosm_interface_qos_list, qos, qos->qos_uuid.uuid);
 
     return qos;
@@ -91,6 +97,23 @@ void qosm_interface_qos_queue_free(struct qosm_interface_qos *qos)
     qos->qos_interface_queue = NULL;
 }
 
+void qosm_interface_qos_linux_queue_free(struct qosm_interface_qos *qos)
+{
+    int qi;
+
+    /* Disconnect current linux_queues reflinks */
+    for (qi = 0; qi < qos->qos_linux_queue_len; qi++)
+    {
+        reflink_disconnect(
+                &qos->qos_linux_queue_reflink,
+                &qos->qos_linux_queue[qi]->que_reflink);
+    }
+
+    FREE(qos->qos_linux_queue);
+    qos->qos_linux_queue_len = 0;
+    qos->qos_linux_queue = NULL;
+}
+
 void qosm_interface_qos_reflink_fn(reflink_t *ref, reflink_t *sender)
 {
     struct qosm_interface_qos *qos = CONTAINER_OF(ref, struct qosm_interface_qos, qos_reflink);
@@ -103,6 +126,7 @@ void qosm_interface_qos_reflink_fn(reflink_t *ref, reflink_t *sender)
     LOG(DEBUG, "qosm: Interface_QoS reached 0 refcount.");
 
     qosm_interface_qos_queue_free(qos);
+    qosm_interface_qos_linux_queue_free(qos);
 
     ds_tree_remove(&qosm_interface_qos_list, qos);
 
@@ -112,6 +136,19 @@ void qosm_interface_qos_reflink_fn(reflink_t *ref, reflink_t *sender)
 void qosm_interface_qos_queue_reflink_fn(reflink_t *ref, reflink_t *sender)
 {
     struct qosm_interface_qos *qos = CONTAINER_OF(ref, struct qosm_interface_qos, qos_interface_queue_reflink);
+
+    if (sender == NULL)
+    {
+        return;
+    }
+
+    /* Just forward the update notification upstream */
+    reflink_signal(&qos->qos_reflink);
+}
+
+void qosm_interface_qos_linux_queue_reflink_fn(reflink_t *ref, reflink_t *sender)
+{
+    struct qosm_interface_qos *qos = CONTAINER_OF(ref, struct qosm_interface_qos, qos_linux_queue_reflink);
 
     if (sender == NULL)
     {
@@ -149,9 +186,27 @@ void callback_Interface_QoS(
             break;
 
         case OVSDB_UPDATE_MODIFY:
+            if (old->adaptive_qos_len != 0)
+            {
+                /*
+                 * MODIFY with previously defined Adaptive QoS config for this interface.
+                 * No matter what the new config is, we need to stop any running Adaptive QoS config first.
+                */
+               qosm_adaptive_qos_stop();
+            }
+
             break;
 
         case OVSDB_UPDATE_DEL:
+            if (old->adaptive_qos_len != 0)
+            {
+                /*
+                 * DELETE with previously defined Adaptive QoS config for this interface.
+                 * Stop Adaptive QoS.
+                */
+               qosm_adaptive_qos_stop();
+            }
+
             reflink_ref(&qos->qos_reflink, -1);
             return;
 
@@ -161,8 +216,12 @@ void callback_Interface_QoS(
     }
 
     qosm_interface_qos_queue_free(qos);
+    qosm_interface_qos_linux_queue_free(qos);
+    ds_map_str_delete(&qos->qos_adaptive_qos);
 
     qos->qos_interface_queue = CALLOC(new->queues_len, sizeof(struct qosm_interface_queue *));
+    qos->qos_linux_queue = CALLOC(new->lnx_queues_len, sizeof(struct qosm_linux_queue *));
+    qos->qos_adaptive_qos = ds_map_str_new();
 
     /* Rebuild the queues array */
     for (qi = 0; qi < new->queues_len; qi++)
@@ -182,6 +241,29 @@ void callback_Interface_QoS(
 
         qos->qos_interface_queue[qos->qos_interface_queue_len++] = que;
     }
+
+    /* Rebuild the lnx_queues array */
+    for (qi = 0; qi < new->lnx_queues_len; qi++)
+    {
+        struct qosm_linux_queue *que;
+
+        que = qosm_linux_queue_get(&new->lnx_queues[qi]);
+        if (que == NULL)
+        {
+            LOG(WARN, "qosm: Error acquiring object for Linux_Queue with uuid %s.", new->lnx_queues[qi].uuid);
+            continue;
+        }
+
+        reflink_connect(
+                &qos->qos_linux_queue_reflink,
+                &que->que_reflink);
+
+        qos->qos_linux_queue[qos->qos_linux_queue_len++] = que;
+    }
+
+    /* Rebuild the adaptive_qos map: */
+    ds_map_str_insert_schema_map(qos->qos_adaptive_qos, new->adaptive_qos,
+            LOG_SEVERITY_WARN, "Interface_QoS.adaptive_qos duplicate key");
 
     /* Signal to listeners that the configuration may have changed */
     reflink_signal(&qos->qos_reflink);

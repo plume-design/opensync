@@ -1,3 +1,4 @@
+#!/usr/bin/env sh
 
 # Copyright (c) 2015, Plume Design Inc. All rights reserved.
 # 

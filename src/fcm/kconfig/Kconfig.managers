@@ -27,10 +27,17 @@ menuconfig MANAGER_FCM
             FCM will be restarted once this threshold is reached.
             This value can be overridden through the ovsdb Node_Config table.
 
-    config FCM_LAN_STATS_COLLECT_METHOD
+    config FCM_NO_DSO
         depends on MANAGER_FCM
-        bool "Lan Stats collection method config"
-        default n
+        depends on PLATFORM_IS_NATIVE
+        bool "Compile all FCM plugins as part of libopensync as opposed to DSOs"
+        default y if $(shell, echo $(CC) | grep -qw ^clang && echo "yes" || echo "no") = "yes"
         help
-            Default to collect lan stats through APIs, Disabling switches
-            the collection method through parsing of ovs command output.
+            Compile FCM plugins as part of libopensync in native mode if the compiler is clang
+
+    config FCM_MEM_CHECK_PERIOD
+        depends on MANAGER_FCM
+        int "Set FCM memory check periodicity"
+        default 120
+        help
+            Set FCM memory check periodicity.

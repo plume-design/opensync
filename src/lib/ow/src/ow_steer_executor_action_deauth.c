@@ -198,7 +198,8 @@ ow_steer_executor_action_deauth_delay_timer_cb(struct osw_timer *timer)
 
 struct ow_steer_executor_action_deauth*
 ow_steer_executor_action_deauth_create(const struct osw_hwaddr *sta_addr,
-                                       const struct ow_steer_executor_action_mediator *mediator)
+                                       const struct ow_steer_executor_action_mediator *mediator,
+                                       const char *log_prefix)
 {
     ASSERT(sta_addr != NULL, "");
     ASSERT(mediator != NULL, "");
@@ -208,7 +209,7 @@ ow_steer_executor_action_deauth_create(const struct osw_hwaddr *sta_addr,
     };
     struct ow_steer_executor_action_deauth *deauth_action = CALLOC(1, sizeof(*deauth_action));
     osw_timer_init(&deauth_action->delay_timer, ow_steer_executor_action_deauth_delay_timer_cb);
-    deauth_action->base = ow_steer_executor_action_create("deauth", sta_addr, &ops, mediator, deauth_action);
+    deauth_action->base = ow_steer_executor_action_create("deauth", sta_addr, &ops, mediator, log_prefix, deauth_action);
     ow_steer_executor_action_deauth_set_delay_sec(deauth_action, OW_STEER_EXECUTOR_ACTION_DEAUTH_DELAY_SEC);
 
     return deauth_action;

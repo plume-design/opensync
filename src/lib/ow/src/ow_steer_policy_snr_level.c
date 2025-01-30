@@ -42,11 +42,14 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ow_steer_policy_priv.h"
 #include "ow_steer_policy_snr_level.h"
 
-#define LOG_PREFIX(policy, fmt, ...) \
-    "%s %s: " fmt, \
+#define LOG_PREFIX(fmt, ...) \
+    "ow: steer: " fmt, ##__VA_ARGS__
+
+#define LOG_WITH_PREFIX(policy, fmt, ...) \
+    LOG_PREFIX("%s%s: " fmt, \
     ow_steer_policy_get_prefix((policy)->base), \
     ow_steer_policy_snr_level_state_to_cstr((policy)->state), \
-    ## __VA_ARGS__
+    ## __VA_ARGS__)
 
 #define OW_STEER_POLICY_SNR_LEVEL_ENFORCE_DURATION_SEC 5
 #define OW_STEER_POLICY_SNR_LEVEL_BACKOFF_DURATION_SEC 60
@@ -189,7 +192,7 @@ ow_steer_policy_snr_level_arm_enforce(struct ow_steer_policy_snr_level *policy)
     const uint64_t at = osw_time_mono_clk()
                       + OSW_TIME_SEC(policy->enforce_duration_seconds);
     osw_timer_arm_at_nsec(&policy->enforce, at);
-    LOGT(LOG_PREFIX(policy, "arming enforce"));
+    LOGT(LOG_WITH_PREFIX(policy, "arming enforce"));
 }
 
 static void
@@ -199,7 +202,7 @@ ow_steer_policy_snr_level_arm_backoff(struct ow_steer_policy_snr_level *policy)
     const uint64_t at = osw_time_mono_clk()
                       + OSW_TIME_SEC(sec);
     osw_timer_arm_at_nsec(&policy->backoff, at);
-    LOGI(LOG_PREFIX(policy, "arming backoff in %"PRIu64" seconds", sec));
+    LOGI(LOG_WITH_PREFIX(policy, "arming backoff in %"PRIu64" seconds", sec));
 }
 
 static void
@@ -208,13 +211,13 @@ ow_steer_policy_snr_level_arm_ageout(struct ow_steer_policy_snr_level *policy)
     const uint64_t at = osw_time_mono_clk()
                       + OSW_TIME_SEC(policy->ageout_duration_seconds);
     osw_timer_arm_at_nsec(&policy->ageout, at);
-    LOGT(LOG_PREFIX(policy, "arming ageout"));
+    LOGT(LOG_WITH_PREFIX(policy, "arming ageout"));
 }
 
 static void
 ow_steer_policy_snr_level_enter_backoff(struct ow_steer_policy_snr_level *policy)
 {
-    LOGT(LOG_PREFIX(policy, "starting backoff"));
+    LOGT(LOG_WITH_PREFIX(policy, "starting backoff"));
     policy->state = OW_STEER_POLICY_SNR_LEVEL_STATE_BACKOFF;
 
     if (osw_timer_is_armed(&policy->ageout) == false) {
@@ -227,13 +230,13 @@ ow_steer_policy_snr_level_enter_backoff(struct ow_steer_policy_snr_level *policy
 
     ow_steer_policy_snr_level_arm_backoff(policy);
     if (osw_timer_is_armed(&policy->ageout)) {
-        LOGT(LOG_PREFIX(policy, "disarming ageout"));
+        LOGT(LOG_WITH_PREFIX(policy, "disarming ageout"));
         osw_timer_disarm(&policy->ageout);
     }
 
     policy->backoff_pow *= policy->backoff_exp_base;
     if (policy->backoff_pow > UINT32_MAX) {
-        LOGD(LOG_PREFIX(policy, "clamping backoff time"));
+        LOGD(LOG_WITH_PREFIX(policy, "clamping backoff time"));
         policy->backoff_pow = UINT32_MAX;
     }
 }
@@ -241,7 +244,7 @@ ow_steer_policy_snr_level_enter_backoff(struct ow_steer_policy_snr_level *policy
 static void
 ow_steer_policy_snr_level_recalc(struct ow_steer_policy_snr_level *policy)
 {
-    LOGT(LOG_PREFIX(policy, "recalc"));
+    LOGT(LOG_WITH_PREFIX(policy, "recalc"));
     for (;;) {
         switch (policy->state) {
             case OW_STEER_POLICY_SNR_LEVEL_STATE_IDLE:
@@ -249,23 +252,23 @@ ow_steer_policy_snr_level_recalc(struct ow_steer_policy_snr_level *policy)
                     struct ow_steer_policy_snr_level_sta_info *info = ds_tree_head(&policy->sta_infos);
 
                     if (ow_steer_policy_snr_level_sta_connected_on_poor_bssid(policy) == false) {
-                        LOGT(LOG_PREFIX(policy, "not connected"));
+                        LOGT(LOG_WITH_PREFIX(policy, "not connected"));
                         return;
                     }
 
                     if (ow_steer_policy_snr_level_should_consider_moving(policy) == false) {
-                        LOGT(LOG_PREFIX(policy, "co-located AP criteria not met"));
+                        LOGT(LOG_WITH_PREFIX(policy, "co-located AP criteria not met"));
                         return;
                     }
 
                     if (ow_steer_policy_snr_level_better_bssids_exist(policy) == false) {
-                        LOGT(LOG_PREFIX(policy, "no suitable co-located APs"));
+                        LOGT(LOG_WITH_PREFIX(policy, "no suitable co-located APs"));
                         return;
                     }
 
                     ASSERT(osw_timer_is_armed(&policy->enforce) == false, "");
                     ASSERT(info != NULL, "");
-                    LOGT(LOG_PREFIX(policy, "staring enforce"));
+                    LOGT(LOG_WITH_PREFIX(policy, "staring enforce"));
                     ow_steer_policy_snr_level_arm_enforce(policy);
                     ow_steer_policy_trigger_executor(policy->base);
                     ow_steer_policy_schedule_stack_recalc(policy->base);
@@ -276,8 +279,8 @@ ow_steer_policy_snr_level_recalc(struct ow_steer_policy_snr_level *policy)
             case OW_STEER_POLICY_SNR_LEVEL_STATE_ENFORCE:
                 {
                     if (osw_timer_is_armed(&policy->enforce)) return;
-                    LOGT(LOG_PREFIX(policy, "stopping enforce"));
-                    LOGT(LOG_PREFIX(policy, "starting settling"));
+                    LOGT(LOG_WITH_PREFIX(policy, "stopping enforce"));
+                    LOGT(LOG_WITH_PREFIX(policy, "starting settling"));
                     ow_steer_policy_dismiss_executor(policy->base);
                     ow_steer_policy_schedule_stack_recalc(policy->base);
                     policy->no_alternatives = false;
@@ -306,10 +309,10 @@ ow_steer_policy_snr_level_recalc(struct ow_steer_policy_snr_level *policy)
                     const bool connected = (info != NULL);
 
                     if (connected_to_better_bssid) {
-                        LOGN(LOG_PREFIX(policy, "steered to better co-located AP "OSW_HWADDR_FMT" on %s",
+                        LOGN(LOG_WITH_PREFIX(policy, "steered to better co-located AP "OSW_HWADDR_FMT" on %s",
                                                 OSW_HWADDR_ARG(bssid), vif_name));
-                        LOGT(LOG_PREFIX(policy, "stopping settling"));
-                        LOGT(LOG_PREFIX(policy, "starting idle"));
+                        LOGT(LOG_WITH_PREFIX(policy, "stopping settling"));
+                        LOGT(LOG_WITH_PREFIX(policy, "starting idle"));
                         policy->state = OW_STEER_POLICY_SNR_LEVEL_STATE_IDLE;
                     }
                     else {
@@ -322,31 +325,31 @@ ow_steer_policy_snr_level_recalc(struct ow_steer_policy_snr_level *policy)
                              */
                             if (info->enforced) {
                                 if (policy->no_alternatives) {
-                                    LOGN(LOG_PREFIX(policy, "remained on poor bssid "OSW_HWADDR_FMT
+                                    LOGN(LOG_WITH_PREFIX(policy, "remained on poor bssid "OSW_HWADDR_FMT
                                                             " on %s because there were no target BSSIDs available",
                                                             OSW_HWADDR_ARG(bssid),
                                                             vif_name));
                                 }
                                 else {
-                                    LOGN(LOG_PREFIX(policy, "remained on poor bssid "OSW_HWADDR_FMT" on %s",
+                                    LOGN(LOG_WITH_PREFIX(policy, "remained on poor bssid "OSW_HWADDR_FMT" on %s",
                                                             OSW_HWADDR_ARG(bssid), vif_name));
                                 }
                                 info->enforced = false;
                             }
                             else {
-                                LOGN(LOG_PREFIX(policy, "reconnected back to poor bssid "OSW_HWADDR_FMT" on %s",
+                                LOGN(LOG_WITH_PREFIX(policy, "reconnected back to poor bssid "OSW_HWADDR_FMT" on %s",
                                                         OSW_HWADDR_ARG(bssid), vif_name));
                             }
                         }
                         else if (connected) {
-                            LOGN(LOG_PREFIX(policy, "steered to out-of-group AP "OSW_HWADDR_FMT" on %s",
+                            LOGN(LOG_WITH_PREFIX(policy, "steered to out-of-group AP "OSW_HWADDR_FMT" on %s",
                                                     OSW_HWADDR_ARG(bssid), vif_name));
                         }
                         else {
-                            LOGN(LOG_PREFIX(policy, "steered away to different AP perhaps"));
+                            LOGN(LOG_WITH_PREFIX(policy, "steered away to different AP perhaps"));
                         }
 
-                        LOGT(LOG_PREFIX(policy, "stopping settling"));
+                        LOGT(LOG_WITH_PREFIX(policy, "stopping settling"));
                         ow_steer_policy_snr_level_enter_backoff(policy);
                     }
                     break;
@@ -354,9 +357,9 @@ ow_steer_policy_snr_level_recalc(struct ow_steer_policy_snr_level *policy)
             case OW_STEER_POLICY_SNR_LEVEL_STATE_BACKOFF:
                 {
                     if (osw_timer_is_armed(&policy->backoff)) return;
-                    LOGT(LOG_PREFIX(policy, "stopping backoff"));
+                    LOGT(LOG_WITH_PREFIX(policy, "stopping backoff"));
                     ow_steer_policy_snr_level_arm_ageout(policy);
-                    LOGT(LOG_PREFIX(policy, "starting idle"));
+                    LOGT(LOG_WITH_PREFIX(policy, "starting idle"));
                     policy->state = OW_STEER_POLICY_SNR_LEVEL_STATE_IDLE;
                     break;
                 }
@@ -368,7 +371,7 @@ static void
 ow_steer_policy_snr_level_enforce_expire_cb(struct osw_timer *t)
 {
     struct ow_steer_policy_snr_level *policy = container_of(t, struct ow_steer_policy_snr_level, enforce);
-    LOGT(LOG_PREFIX(policy, "enforce expired"));
+    LOGT(LOG_WITH_PREFIX(policy, "enforce expired"));
     ow_steer_policy_snr_level_recalc(policy);
 }
 
@@ -376,7 +379,7 @@ static void
 ow_steer_policy_snr_level_backoff_expire_cb(struct osw_timer *t)
 {
     struct ow_steer_policy_snr_level *policy = container_of(t, struct ow_steer_policy_snr_level, backoff);
-    LOGI(LOG_PREFIX(policy, "backoff expired"));
+    LOGI(LOG_WITH_PREFIX(policy, "backoff expired"));
     ow_steer_policy_snr_level_recalc(policy);
 }
 
@@ -384,7 +387,7 @@ static void
 ow_steer_policy_snr_level_ageout_expire_cb(struct osw_timer *t)
 {
     struct ow_steer_policy_snr_level *policy = container_of(t, struct ow_steer_policy_snr_level, ageout);
-    LOGT(LOG_PREFIX(policy, "ageout expired"));
+    LOGT(LOG_WITH_PREFIX(policy, "ageout expired"));
     ow_steer_policy_snr_level_recalc(policy);
 }
 
@@ -393,10 +396,14 @@ ow_steer_policy_snr_level_set_sta_info(struct ow_steer_policy_snr_level *policy,
                                        const struct osw_state_sta_info *sta_info,
                                        const bool connected)
 {
+    const struct osw_hwaddr *sta_addr = ow_steer_policy_get_sta_addr(policy->base);
+    const bool other_sta = (osw_hwaddr_is_equal(sta_addr, sta_info->mac_addr) == false);
+    if (other_sta) return;
+
     const struct osw_hwaddr *bssid = &sta_info->vif->drv_state->mac_addr;
     const char *vif_name = sta_info->vif->vif_name;
     struct ow_steer_policy_snr_level_sta_info *info = ds_tree_find(&policy->sta_infos, bssid);
-            LOGT(LOG_PREFIX(policy, "station on %s ("OSW_HWADDR_FMT") info=%p bssid=%p connected=%d",
+            LOGT(LOG_WITH_PREFIX(policy, "station on %s ("OSW_HWADDR_FMT") info=%p bssid=%p connected=%d",
                             vif_name,
                             OSW_HWADDR_ARG(bssid),
                             info,
@@ -406,13 +413,13 @@ ow_steer_policy_snr_level_set_sta_info(struct ow_steer_policy_snr_level *policy,
         if (connected) {
             info = CALLOC(1, sizeof(*info));
             info->sta_info = sta_info;
-            LOGT(LOG_PREFIX(policy, "station connected to %s ("OSW_HWADDR_FMT")",
+            LOGT(LOG_WITH_PREFIX(policy, "station connected to %s ("OSW_HWADDR_FMT")",
                             vif_name,
                             OSW_HWADDR_ARG(bssid)));
             ds_tree_insert(&policy->sta_infos, info, bssid);
         }
         else {
-            LOGW(LOG_PREFIX(policy, "station disconnected from %s ("OSW_HWADDR_FMT"), "
+            LOGW(LOG_WITH_PREFIX(policy, "station disconnected from %s ("OSW_HWADDR_FMT"), "
                                     "but was never seen connect",
                                     vif_name,
                                     OSW_HWADDR_ARG(bssid)));
@@ -420,19 +427,20 @@ ow_steer_policy_snr_level_set_sta_info(struct ow_steer_policy_snr_level *policy,
     }
     else {
         if (connected) {
-            LOGW(LOG_PREFIX(policy, "station re-connected to %s ("OSW_HWADDR_FMT"), "
+            LOGW(LOG_WITH_PREFIX(policy, "station re-connected to %s ("OSW_HWADDR_FMT"), "
                                     "but was never seen disconnect",
                                     vif_name,
                                     OSW_HWADDR_ARG(bssid)));
         }
         else {
-            LOGT(LOG_PREFIX(policy, "station disconnected from %s ("OSW_HWADDR_FMT")",
+            LOGT(LOG_WITH_PREFIX(policy, "station disconnected from %s ("OSW_HWADDR_FMT")",
                             vif_name,
                             OSW_HWADDR_ARG(bssid)));
             ds_tree_remove(&policy->sta_infos, info);
             FREE(info);
         }
     }
+    ow_steer_policy_snr_level_recalc(policy);
 }
 
 static void
@@ -447,7 +455,7 @@ ow_steer_policy_snr_level_set_sta_snr(struct ow_steer_policy_snr_level *policy,
                         && (info->sta_snr == snr);
     if (unchanged) return;
 
-    LOGT(LOG_PREFIX(policy, "sta: snr: %"PRIu32" (%s)",
+    LOGT(LOG_WITH_PREFIX(policy, "sta: snr: %"PRIu32" (%s)",
                     info->sta_snr,
                     info->sta_snr_valid ? "valid" : "invalid"));
 
@@ -468,7 +476,7 @@ ow_steer_policy_snr_level_set_sta_bytes(struct ow_steer_policy_snr_level *policy
                         && (info->sta_bytes == bytes);
     if (unchanged) return;
 
-    LOGT(LOG_PREFIX(policy, "sta: bytes: %"PRIu64" (%s)",
+    LOGT(LOG_WITH_PREFIX(policy, "sta: bytes: %"PRIu64" (%s)",
                     info->sta_bytes,
                     info->sta_bytes_valid ? "valid" : "invalid"));
 
@@ -487,7 +495,7 @@ ow_steer_policy_snr_level_set_sta_threshold_snr(struct ow_steer_policy_snr_level
 
     policy->threshold_snr = snr ? *snr : 0;
     policy->threshold_snr_valid = snr ? true : false;
-    LOGT(LOG_PREFIX(policy, "threshold: snr: %"PRIu32" (%s)",
+    LOGT(LOG_WITH_PREFIX(policy, "threshold: snr: %"PRIu32" (%s)",
                     policy->threshold_snr,
                     policy->threshold_snr_valid ? "valid" : "invalid"));
     ow_steer_policy_snr_level_recalc(policy);
@@ -503,7 +511,7 @@ ow_steer_policy_snr_level_set_sta_threshold_bytes(struct ow_steer_policy_snr_lev
 
     policy->threshold_bytes = bytes ? *bytes : 0;
     policy->threshold_bytes_valid = bytes ? true : false;
-    LOGT(LOG_PREFIX(policy, "threshold: bytes: %"PRIu64" (%s)",
+    LOGT(LOG_WITH_PREFIX(policy, "threshold: bytes: %"PRIu64" (%s)",
                     policy->threshold_bytes,
                     policy->threshold_bytes_valid ? "valid" : "invalid"));
     ow_steer_policy_snr_level_recalc(policy);
@@ -525,7 +533,7 @@ ow_steer_policy_snr_level_set_from_bssids(struct ow_steer_policy_snr_level *poli
         strchomp(list, ",");
     }
 
-    LOGT(LOG_PREFIX(policy, "from_bssids: %s", list ? list : "empty"));
+    LOGT(LOG_WITH_PREFIX(policy, "from_bssids: %s", list ? list : "empty"));
     FREE(list);
 
     FREE(policy->from_bssids.list);
@@ -557,7 +565,7 @@ ow_steer_policy_snr_level_set_to_bssids(struct ow_steer_policy_snr_level *policy
         strchomp(list, ",");
     }
 
-    LOGT(LOG_PREFIX(policy, "to_bssids: %s", list ? list : "empty"));
+    LOGT(LOG_WITH_PREFIX(policy, "to_bssids: %s", list ? list : "empty"));
     FREE(list);
 
     FREE(policy->to_bssids.list);
@@ -578,11 +586,6 @@ ow_steer_policy_snr_level_sta_connected_cb(struct osw_state_observer *obs,
                                            const struct osw_state_sta_info *sta_info)
 {
     struct ow_steer_policy_snr_level *policy = container_of(obs, struct ow_steer_policy_snr_level, state_obs);
-
-    const struct osw_hwaddr *sta_addr = ow_steer_policy_get_sta_addr(policy->base);
-    const bool other_sta = (osw_hwaddr_is_equal(sta_addr, sta_info->mac_addr) == false);
-    if (other_sta) return;
-
     ow_steer_policy_snr_level_set_sta_info(policy, sta_info, true);
 }
 
@@ -591,11 +594,6 @@ ow_steer_policy_snr_level_sta_disconnected_cb(struct osw_state_observer *obs,
                                               const struct osw_state_sta_info *sta_info)
 {
     struct ow_steer_policy_snr_level *policy = container_of(obs, struct ow_steer_policy_snr_level, state_obs);
-
-    const struct osw_hwaddr *sta_addr = ow_steer_policy_get_sta_addr(policy->base);
-    const bool other_sta = (osw_hwaddr_is_equal(sta_addr, sta_info->mac_addr) == false);
-    if (other_sta) return;
-
     ow_steer_policy_snr_level_set_sta_info(policy, sta_info, false);
 }
 
@@ -718,7 +716,7 @@ ow_steer_policy_snr_level_recalc_cb(struct ow_steer_policy *base,
      */
     policy->no_alternatives = (available_to_bssids == 0);
     if (policy->no_alternatives) {
-        LOGI(LOG_PREFIX(policy, "no to_bssids candidate is available, won't block from_bssids"));
+        LOGI(LOG_WITH_PREFIX(policy, "no to_bssids candidate is available, won't block from_bssids"));
         return;
     }
 
@@ -739,7 +737,7 @@ ow_steer_policy_snr_level_recalc_cb(struct ow_steer_policy *base,
                  * (inbound, kick). At least log the
                  * occurance.
                  */
-                LOGI(LOG_PREFIX(policy, "candidate "OSW_HWADDR_FMT
+                LOGI(LOG_WITH_PREFIX(policy, "candidate "OSW_HWADDR_FMT
                                         " is already marked as %s, can't hard block",
                                         OSW_HWADDR_ARG(bssid),
                                         p_str));
@@ -755,7 +753,8 @@ struct ow_steer_policy_snr_level *
 ow_steer_policy_snr_level_alloc(const char *name,
                                 const struct osw_hwaddr *sta_addr,
                                 enum ow_steer_policy_snr_level_mode mode,
-                                const struct ow_steer_policy_mediator *mediator)
+                                const struct ow_steer_policy_mediator *mediator,
+                                const char *log_prefix)
 {
     static const struct ow_steer_policy_ops ops = {
         .sigusr1_dump_fn = ow_steer_policy_snr_level_sigusr1_dump_cb,
@@ -773,7 +772,7 @@ ow_steer_policy_snr_level_alloc(const char *name,
     osw_timer_init(&policy->backoff, ow_steer_policy_snr_level_backoff_expire_cb);
     osw_timer_init(&policy->ageout, ow_steer_policy_snr_level_ageout_expire_cb);
     ds_tree_init(&policy->sta_infos, (ds_key_cmp_t *)osw_hwaddr_cmp, struct ow_steer_policy_snr_level_sta_info, node);
-    policy->base = ow_steer_policy_create(name, sta_addr, &ops, mediator, policy);
+    policy->base = ow_steer_policy_create(name, sta_addr, &ops, mediator, log_prefix, policy);
     policy->enforce_duration_seconds = OW_STEER_POLICY_SNR_LEVEL_ENFORCE_DURATION_SEC;
     policy->backoff_duration_seconds = OW_STEER_POLICY_SNR_LEVEL_BACKOFF_DURATION_SEC;
     policy->ageout_duration_seconds = OW_STEER_POLICY_SNR_LEVEL_AGEOUT_DURATION_SEC;

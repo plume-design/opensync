@@ -53,6 +53,7 @@ struct pjs_sub_args
  * Type handlers
  */
 extern pjs_type_from_json_t pjs_int_t_from_json;
+extern pjs_type_from_json_t pjs_int64_t_from_json;
 extern pjs_type_from_json_t pjs_bool_t_from_json;
 extern pjs_type_from_json_t pjs_real_t_from_json;
 extern pjs_type_from_json_t pjs_string_t_from_json;
@@ -60,6 +61,7 @@ extern pjs_type_from_json_t pjs_sub_t_from_json;
 extern pjs_type_from_json_t  pjs_ovs_uuid_t_from_json;
 
 extern pjs_type_to_json_t pjs_int_t_to_json;
+extern pjs_type_to_json_t pjs_int64_t_to_json;
 extern pjs_type_to_json_t pjs_bool_t_to_json;
 extern pjs_type_to_json_t pjs_real_t_to_json;
 extern pjs_type_to_json_t pjs_string_t_to_json;

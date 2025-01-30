@@ -38,3 +38,4 @@ UNIT_DEPS += src/lib/const
 UNIT_DEPS += src/lib/common
 UNIT_DEPS += src/lib/fsm_utils
 UNIT_DEPS += src/lib/unit_test_utils
+UNIT_DEPS += $(if $(CONFIG_IMC_LIBOPENSYNC), src/lib/imc)

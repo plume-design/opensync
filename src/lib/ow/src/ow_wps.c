@@ -41,10 +41,15 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ow_conf.h"
 #include "ow_wps.h"
 
+struct ow_wps_counters {
+    int cancelled;
+};
+
 struct ow_wps {
     struct ow_wps_ops ops;
     struct ds_dlist jobs;
     struct osw_timer work;
+    struct ow_wps_counters counters;
 };
 
 enum ow_wps_job_sm_state {
@@ -299,6 +304,24 @@ ow_wps_job_set_cancelled(struct ow_wps_job *job)
 }
 
 static void
+ow_wps_counters_update(struct ow_wps_counters *counters,
+                       const enum ow_wps_job_result result)
+{
+    switch (result) {
+        case OW_WPS_JOB_CANCELLED:
+            counters->cancelled++;
+            break;
+        case OW_WPS_JOB_UNSPECIFIED:
+        case OW_WPS_JOB_TIMED_OUT_INTERNALLY:
+        case OW_WPS_JOB_TIMED_OUT_EXTERNALLY:
+        case OW_WPS_JOB_INTERRUPTED:
+        case OW_WPS_JOB_OVERLAPPED:
+        case OW_WPS_JOB_SUCCEEDED:
+            break;
+    }
+}
+
+static void
 ow_wps_job_set_completed(struct ow_wps_job *job,
                          const enum ow_wps_job_result result)
 {
@@ -311,6 +334,7 @@ ow_wps_job_set_completed(struct ow_wps_job *job,
         }
         return;
     }
+    ow_wps_counters_update(&job->wps->counters, result);
     job->completed = true;
     job->result = result;
     LOGI(LOG_PREFIX_JOB(job, "completed: %s",

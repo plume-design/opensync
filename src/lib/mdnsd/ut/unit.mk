@@ -1,4 +1,4 @@
-UNIT_DISABLE := $(if $(CONFIG_MANAGER_FSM),n,y)
+UNIT_DISABLE := $(if $(CONFIG_LIB_LEGACY_FSM_MDNSD),n,y)
 
 UNIT_NAME := test_mdnsd
 

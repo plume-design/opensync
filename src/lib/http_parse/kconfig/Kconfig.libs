@@ -1,0 +1,5 @@
+menuconfig LIB_LEGACY_FSM_HTTP_PARSER
+    bool "Enables Opensync legacy FSM HTTP parser"
+    default n
+    help
+       N/A

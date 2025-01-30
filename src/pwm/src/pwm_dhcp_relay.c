@@ -56,7 +56,7 @@ static char *pwm_dhcp_relay_read_ssid(struct schema_Public_Wifi_Config *conf)
     bool ret_bool;
     struct schema_Wifi_VIF_Config vconf;
 
-    strcpy(g_pwm_ssid, "");
+    STRSCPY(g_pwm_ssid, "");
     MEMZERO(vconf);
     ret_bool = ovsdb_table_select_one(&table_Wifi_VIF_Config,
                                       SCHEMA_COLUMN(Wifi_VIF_Config,

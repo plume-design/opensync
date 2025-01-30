@@ -67,6 +67,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #define CM2_BH_DHCP_NO_IP "0.0.0.0"
 
+extern ovsdb_table_t table_Wifi_Master_State;
+extern ovsdb_table_t table_Wifi_VIF_State;
+extern ovsdb_table_t table_Wifi_Inet_State;
+extern ovsdb_table_t table_Wifi_Inet_Config;
+
 struct cm2_bh_dhcp_vif_state
 {
     bool is_active;          // Wifi_Master_State
@@ -425,6 +430,10 @@ cm2_bh_dhcp_vif_t *cm2_bh_dhcp_vif_alloc(cm2_bh_dhcp_t *m, const char *vif_name)
     vif->deadline.data = vif;
     ds_tree_insert(&m->vifs, vif, vif->vif_name);
     LOGI(LOG_PREFIX_VIF(vif, "allocated"));
+    CM2_BH_OVS_INIT(m, cm2_bh_dhcp_WMS, Wifi_Master_State, if_name, vif->vif_name);
+    CM2_BH_OVS_INIT(m, cm2_bh_dhcp_WVS, Wifi_VIF_State, if_name, vif->vif_name);
+    CM2_BH_OVS_INIT(m, cm2_bh_dhcp_WIC, Wifi_Inet_Config, if_name, vif->vif_name);
+    CM2_BH_OVS_INIT(m, cm2_bh_dhcp_WIS, Wifi_Inet_State, if_name, vif->vif_name);
     return vif;
 }
 

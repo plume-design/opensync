@@ -54,3 +54,7 @@ UNIT_DEPS += src/lib/unit_test_utils
 UNIT_DEPS += src/lib/data_report_tags
 UNIT_DEPS += src/lib/gatekeeper_msg
 UNIT_DEPS += src/lib/fsm_policy
+
+UNIT_DEPS += $(if $(CONFIG_FCM_NO_DSO), src/lib/ct_stats)
+UNIT_DEPS += $(if $(CONFIG_FCM_NO_DSO), src/lib/lan_stats)
+UNIT_DEPS += $(if $(CONFIG_FCM_NO_DSO), src/lib/intf_stats)

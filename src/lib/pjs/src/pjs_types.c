@@ -25,6 +25,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 #include <stdbool.h>
+#include <stdint.h>
 #include <string.h>
 
 #include <jansson.h>
@@ -62,6 +63,27 @@ bool pjs_int_t_from_json(void *data, int idx, json_t *jsdata)
     return true;
 }
 
+bool pjs_int64_t_from_json(void *data, int idx, json_t *jsdata)
+{
+    int64_t *out = data;
+
+    /* Initialize default value */
+    if (jsdata == NULL)
+    {
+        out[idx] = 0;
+        return true;
+    }
+
+    if (!json_is_integer(jsdata))
+    {
+        return false;
+    }
+
+    out[idx] = json_integer_value(jsdata);
+
+    return true;
+}
+
 /**
  * Convert a integer to a JSON value
  */
@@ -69,6 +91,16 @@ json_t *pjs_int_t_to_json(void *data, int idx)
 {
     int *in = data;
 
+    return json_integer(in[idx]);
+}
+
+json_t *pjs_int64_t_to_json(void *data, int idx)
+{
+    int64_t *in = data;
+
+#if !defined(JANSSON_USING_CMAKE) && !JSON_INTEGER_IS_LONG_LONG
+#error "Jansson library does not support long long"
+#endif
     return json_integer(in[idx]);
 }
 

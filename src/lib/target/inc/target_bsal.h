@@ -31,7 +31,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * @file target_bsal.h
  * @brief Band Steering target API subset
  *
- * This is mostly used by BM (Band Steering Manager) to
+ * This is mostly used by OWM (One Wifi Manager) to
  * interact with the target for the purpose of performing
  * Wireless client steering.
  *
@@ -352,12 +352,12 @@ typedef void (*bsal_event_cb_t)(bsal_event_t *event);
 /**
  * @brief Gives target a chance to hook and initialize * internals
  * @param event_cb Target shall call this to report events
- *      back to BM. It is safe to call this from other
+ *      back to OWM. It is safe to call this from other
  *      threads. Thread safety is a subject to change in the
  *      future so using threads is highly discouraged.
  *      Target implementation is free to use ev_async over
  *      provided mainloop.
- * @param loop Mainloop pointer of BM. Target can use it as
+ * @param loop Mainloop pointer of OWM. Target can use it as
  *      long as it accesses it from the same thread the
  *      function was originally called from.
  * @return 0 is treated as success, anything else is an error

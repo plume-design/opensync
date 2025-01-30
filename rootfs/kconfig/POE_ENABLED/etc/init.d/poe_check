@@ -29,16 +29,6 @@ logd()
     log_debug "$@"
 }
 
-get_wifi_ctl_manager()
-{
-    if $POE_TOOLS_PATH/osff_get "use_owm" > /dev/null 2>&1
-    then
-        echo "owm"
-    else
-        echo "wm"
-    fi
-}
-
 start_power_save_mode()
 {
     WIFI_CTL_MANAGER=${1}
@@ -151,7 +141,7 @@ start()
     # implemented per platform, default value is false
     if poe_low_power_detected
     then
-        WIFI_CTL_MANAGER=$(get_wifi_ctl_manager)
+        WIFI_CTL_MANAGER="owm"
         start_power_save_mode "$WIFI_CTL_MANAGER"
         # Attempt to negotiate with the switch for PoE+ power using LLDP messages. If negotiation was
         # not successful, OpenSync services need to be stopped and the device rebooted, else the device

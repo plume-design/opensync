@@ -1,0 +1,5 @@
+menuconfig LIB_LEGACY_FSM_ARP_PARSER
+    bool "Enables Opensync legacy FSM ARP parser"
+    default n
+    help
+       N/A

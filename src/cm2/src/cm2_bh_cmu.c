@@ -46,29 +46,36 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define LOG_PREFIX_VIF(vif, fmt, ...)             \
     LOG_PREFIX(                                   \
             (vif)->m,                             \
-            "%s [%s%s%s%s%s%s%s]: " fmt,          \
+            "%s [%s%s%s%s%s%s%s%s]: " fmt,        \
             (vif)->vif_name,                      \
             (vif)->work ? "W" : " ",              \
             (vif)->report.wvs_sta ? "S" : " ",    \
             (vif)->report.wvs_4addr ? "4" : " ",  \
+            (vif)->report.wvs_mld ? "M" : " ",    \
             (vif)->report.wms_active ? "A" : " ", \
             (vif)->report.cmu_exists ? "E" : " ", \
             (vif)->report.cmu_has_l2 ? "2" : " ", \
             (vif)->report.cmu_has_l3 ? "3" : " ", \
             ##__VA_ARGS__)
 
-#define LOG_PREFIX_GRE(gre, fmt, ...)             \
-    LOG_PREFIX(                                   \
-            (gre)->m,                             \
-            "%s [%s%s%s%s%s] (%s): " fmt,         \
-            (gre)->gre_name,                      \
-            (gre)->work ? "W" : " ",              \
-            (gre)->report.wms_active ? "A" : " ", \
-            (gre)->report.cmu_exists ? "E" : " ", \
-            (gre)->report.cmu_has_l2 ? "2" : " ", \
-            (gre)->report.cmu_has_l3 ? "3" : " ", \
-            (gre)->vif->vif_name,                 \
+#define LOG_PREFIX_GRE(gre, fmt, ...)                    \
+    LOG_PREFIX(                                          \
+            (gre)->m,                                    \
+            "%s [%s%s%s%s%s%s%s]: " fmt,                 \
+            (gre)->gre_name,                             \
+            (gre)->work ? "W" : " ",                     \
+            (gre)->report.wic_exists ? "E" : " ",        \
+            (gre)->report.wms_active ? "A" : " ",        \
+            (gre)->report.parent_wms_active ? "P" : " ", \
+            (gre)->report.cmu_exists ? "E" : " ",        \
+            (gre)->report.cmu_has_l2 ? "2" : " ",        \
+            (gre)->report.cmu_has_l3 ? "3" : " ",        \
             ##__VA_ARGS__)
+
+extern ovsdb_table_t table_Wifi_VIF_State;
+extern ovsdb_table_t table_Wifi_Master_State;
+extern ovsdb_table_t table_Connection_Manager_Uplink;
+extern ovsdb_table_t table_Wifi_Inet_Config;
 
 /* The `need_delete` is a workaround against current CM link
  * selection logic implementation. It's non-trivial to
@@ -77,17 +84,21 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 struct cm2_bh_cmu_gre
 {
-    cm2_bh_cmu_vif_t *vif;
+    cm2_bh_cmu_t *m;
     ds_tree_node_t node;
+    ds_tree_node_t node_by_parent;
     ev_idle recalc;
     ev_timer deadline;
     ev_timer backoff;
     char *gre_name;
+    char *parent_name;
     bool work;
     bool need_delete;
 
     struct
     {
+        bool wic_exists;
+        bool parent_wms_active;
         bool wms_active;
         bool cmu_exists;
         bool cmu_has_l2;
@@ -102,7 +113,6 @@ struct cm2_bh_cmu_vif
     ev_idle recalc;
     ev_timer deadline;
     ev_timer backoff;
-    cm2_bh_cmu_gre_t *gre;
     char *vif_name;
     bool work;
     bool need_delete;
@@ -111,6 +121,7 @@ struct cm2_bh_cmu_vif
     {
         bool wvs_sta;
         bool wvs_4addr;
+        bool wvs_mld;
         bool wms_active;
         bool cmu_exists;
         bool cmu_has_l2;
@@ -123,6 +134,7 @@ struct cm2_bh_cmu
     struct ev_loop *loop;
     ds_tree_t vifs;
     ds_tree_t gres;
+    ds_tree_t gres_by_parent;
 };
 
 static bool cm2_bh_cmu_wms_active_to_need_delete(bool active)
@@ -140,13 +152,13 @@ static void cm2_bh_cmu_gre_deadline_arm(cm2_bh_cmu_gre_t *gre)
 {
     if (ev_is_active(&gre->deadline)) return;
     ev_timer_set(&gre->deadline, CM2_BH_CMU_DEADLINE_SEC, 0);
-    ev_timer_start(gre->vif->m->loop, &gre->deadline);
+    ev_timer_start(gre->m->loop, &gre->deadline);
 }
 
 static void cm2_bh_cmu_gre_recalc_arm(cm2_bh_cmu_gre_t *gre)
 {
     cm2_bh_cmu_gre_deadline_arm(gre);
-    ev_idle_start(gre->vif->m->loop, &gre->recalc);
+    ev_idle_start(gre->m->loop, &gre->recalc);
 }
 
 static void cm2_bh_cmu_gre_schedule(cm2_bh_cmu_gre_t *gre)
@@ -174,7 +186,6 @@ static void cm2_bh_cmu_vif_schedule(cm2_bh_cmu_vif_t *vif)
 {
     vif->work = true;
     cm2_bh_cmu_vif_recalc_arm(vif);
-    cm2_bh_cmu_gre_schedule(vif->gre);
 }
 
 static void cm2_bh_cmu_vif_set_need_delete(cm2_bh_cmu_vif_t *vif, bool v)
@@ -235,13 +246,27 @@ static bool cm2_bh_cmu_insert(const char *if_name, const char *if_type, bool has
 
 static void cm2_bh_cmu_delete(const char *if_name)
 {
-    const int num_changed = ovsdb_sync_delete_where(
+    ovsdb_sync_delete_where(
             SCHEMA_TABLE(Connection_Manager_Uplink),
             json_pack("[[s, s, s]]", SCHEMA_COLUMN(Connection_Manager_Uplink, if_name), "==", if_name));
-    WARN_ON(num_changed != 1);
 }
 
-static void cm2_bh_cmu_vif_report_wvs_sta(cm2_bh_cmu_vif_t *vif, bool v)
+static void cm2_bh_cmu_flush_type(cm2_bh_cmu_t *m, const char *if_type)
+{
+    const int num_changed = ovsdb_sync_delete_where(
+            SCHEMA_TABLE(Connection_Manager_Uplink),
+            json_pack("[[s, s, s]]", SCHEMA_COLUMN(Connection_Manager_Uplink, if_type), "==", if_type));
+    LOGI(LOG_PREFIX(m, "flushed: %d '%s'", num_changed, if_type));
+}
+
+static void cm2_bh_cmu_flush(cm2_bh_cmu_t *m)
+{
+    LOGI(LOG_PREFIX(m, "flushing"));
+    cm2_bh_cmu_flush_type(m, SCHEMA_CONSTS_IF_TYPE_GRE);
+    cm2_bh_cmu_flush_type(m, SCHEMA_CONSTS_IF_TYPE_VIF);
+}
+
+void cm2_bh_cmu_vif_report_wvs_sta(cm2_bh_cmu_vif_t *vif, bool v)
 {
     if (vif == NULL) return;
     if (vif->report.wvs_sta == v) return;
@@ -250,12 +275,21 @@ static void cm2_bh_cmu_vif_report_wvs_sta(cm2_bh_cmu_vif_t *vif, bool v)
     cm2_bh_cmu_vif_schedule(vif);
 }
 
-static void cm2_bh_cmu_vif_report_wvs_4addr(cm2_bh_cmu_vif_t *vif, bool v)
+void cm2_bh_cmu_vif_report_wvs_4addr(cm2_bh_cmu_vif_t *vif, bool v)
 {
     if (vif == NULL) return;
     if (vif->report.wvs_4addr == v) return;
     LOGI(LOG_PREFIX_VIF(vif, "report: wvs_4addr: %s -> %s", BOOL_CSTR(vif->report.wvs_4addr), BOOL_CSTR(v)));
     vif->report.wvs_4addr = v;
+    cm2_bh_cmu_vif_schedule(vif);
+}
+
+void cm2_bh_cmu_vif_report_wvs_mld(cm2_bh_cmu_vif_t *vif, bool v)
+{
+    if (vif == NULL) return;
+    if (vif->report.wvs_mld == v) return;
+    LOGI(LOG_PREFIX_VIF(vif, "report: wvs_mld: %s -> %s", BOOL_CSTR(vif->report.wvs_mld), BOOL_CSTR(v)));
+    vif->report.wvs_mld = v;
     cm2_bh_cmu_vif_schedule(vif);
 }
 
@@ -266,7 +300,6 @@ static void cm2_bh_cmu_vif_report_wms_active(cm2_bh_cmu_vif_t *vif, bool v)
     LOGI(LOG_PREFIX_VIF(vif, "report: wms_active: %s -> %s", BOOL_CSTR(vif->report.wms_active), BOOL_CSTR(v)));
     vif->report.wms_active = v;
     cm2_bh_cmu_vif_set_need_delete(vif, cm2_bh_cmu_wms_active_to_need_delete(v));
-    cm2_bh_cmu_gre_set_need_delete(vif->gre, cm2_bh_cmu_wms_active_to_need_delete(v));
     cm2_bh_cmu_vif_schedule(vif);
 }
 
@@ -299,12 +332,12 @@ static void cm2_bh_cmu_vif_report_cmu_has_l3(cm2_bh_cmu_vif_t *vif, bool v)
 
 static bool cm2_bh_cmu_vif_derive_cmu_exists(cm2_bh_cmu_vif_t *vif)
 {
-    return vif->report.wvs_sta && vif->report.wvs_4addr;
+    return vif->report.wvs_sta && vif->report.wvs_4addr && (vif->report.wvs_mld == false);
 }
 
 static bool cm2_bh_cmu_vif_derive_has_l2(cm2_bh_cmu_vif_t *vif)
 {
-    return vif->report.wvs_sta && vif->report.wvs_4addr && vif->report.wms_active;
+    return cm2_bh_cmu_vif_derive_cmu_exists(vif) && vif->report.wms_active;
 }
 
 static bool cm2_bh_cmu_vif_derive_has_l3(cm2_bh_cmu_vif_t *vif)
@@ -384,6 +417,29 @@ static void cm2_bh_cmu_vif_backoff_cb(struct ev_loop *l, ev_timer *t, int mask)
     cm2_bh_cmu_vif_recalc_arm(vif);
 }
 
+static void cm2_bh_cmu_gre_report_wic_exists(cm2_bh_cmu_gre_t *gre, bool v)
+{
+    if (gre == NULL) return;
+    if (gre->report.wic_exists == v) return;
+    LOGI(LOG_PREFIX_GRE(gre, "report: wic_exists: %s -> %s", BOOL_CSTR(gre->report.wic_exists), BOOL_CSTR(v)));
+    gre->report.wic_exists = v;
+    cm2_bh_cmu_gre_schedule(gre);
+}
+
+static void cm2_bh_cmu_gre_report_parent_wms_active(cm2_bh_cmu_gre_t *gre, bool v)
+{
+    if (gre == NULL) return;
+    if (gre->report.parent_wms_active == v) return;
+    LOGI(LOG_PREFIX_GRE(
+            gre,
+            "report: parent_wms_active: %s -> %s",
+            BOOL_CSTR(gre->report.parent_wms_active),
+            BOOL_CSTR(v)));
+    gre->report.parent_wms_active = v;
+    cm2_bh_cmu_gre_set_need_delete(gre, cm2_bh_cmu_wms_active_to_need_delete(v));
+    cm2_bh_cmu_gre_schedule(gre);
+}
+
 static void cm2_bh_cmu_gre_report_wms_active(cm2_bh_cmu_gre_t *gre, bool v)
 {
     if (gre == NULL) return;
@@ -423,13 +479,12 @@ static void cm2_bh_cmu_gre_report_cmu_has_l3(cm2_bh_cmu_gre_t *gre, bool v)
 
 static bool cm2_bh_cmu_gre_derive_cmu_exists(cm2_bh_cmu_gre_t *gre)
 {
-    return gre->vif->report.wvs_sta && (gre->vif->report.wvs_4addr == false);
+    return gre->report.wic_exists;
 }
 
 static bool cm2_bh_cmu_gre_derive_has_l2(cm2_bh_cmu_gre_t *gre)
 {
-    return gre->vif->report.wvs_sta && (gre->vif->report.wvs_4addr == false) && gre->vif->report.wms_active
-           && gre->report.wms_active;
+    return cm2_bh_cmu_gre_derive_cmu_exists(gre) && gre->report.wms_active;
 }
 
 static bool cm2_bh_cmu_gre_derive_has_l3(cm2_bh_cmu_gre_t *gre)
@@ -444,7 +499,7 @@ static void cm2_bh_cmu_gre_recalc(cm2_bh_cmu_gre_t *gre)
 
     gre->work = false;
     ev_timer_set(&gre->backoff, CM2_BH_CMU_BACKOFF_SEC, 0);
-    ev_timer_start(gre->vif->m->loop, &gre->backoff);
+    ev_timer_start(gre->m->loop, &gre->backoff);
 
     const bool cmu_exists = cm2_bh_cmu_gre_derive_cmu_exists(gre);
     const bool has_l2 = cm2_bh_cmu_gre_derive_has_l2(gre);
@@ -492,7 +547,7 @@ static void cm2_bh_cmu_gre_recalc_cb(struct ev_loop *l, ev_idle *i, int mask)
 {
     ev_idle_stop(l, i);
     cm2_bh_cmu_gre_t *gre = i->data;
-    ev_timer_stop(gre->vif->m->loop, &gre->deadline);
+    ev_timer_stop(gre->m->loop, &gre->deadline);
     cm2_bh_cmu_gre_recalc(gre);
 }
 
@@ -530,6 +585,12 @@ void cm2_bh_cmu_WVS(
         const bool v = new_row && new_row->wds_exists && new_row->wds;
         cm2_bh_cmu_vif_report_wvs_4addr(vif, v);
     }
+
+    if (ovsdb_update_changed(mon, SCHEMA_COLUMN(Wifi_VIF_State, mld_if_name)))
+    {
+        const bool v = new_row && new_row->mld_if_name_exists && (strlen(new_row->mld_if_name) > 0);
+        cm2_bh_cmu_vif_report_wvs_mld(vif, v);
+    }
 }
 
 void cm2_bh_cmu_WMS(
@@ -542,12 +603,14 @@ void cm2_bh_cmu_WMS(
     const char *if_name = CM2_OVS_COL(mon, old_row->if_name, new_row->if_name);
     cm2_bh_cmu_vif_t *vif = cm2_bh_cmu_lookup_vif(m, if_name);
     cm2_bh_cmu_gre_t *gre = cm2_bh_cmu_lookup_gre(m, if_name);
+    cm2_bh_cmu_gre_t *gre_by_parent = cm2_bh_cmu_lookup_gre_by_parent(m, if_name);
 
     if (ovsdb_update_changed(mon, SCHEMA_COLUMN(Wifi_Master_State, port_state)))
     {
         const bool v = new_row && new_row->port_state_exists && (strcmp(new_row->port_state, "active") == 0);
         cm2_bh_cmu_vif_report_wms_active(vif, v);
         cm2_bh_cmu_gre_report_wms_active(gre, v);
+        cm2_bh_cmu_gre_report_parent_wms_active(gre_by_parent, v);
     }
 }
 
@@ -593,10 +656,36 @@ void cm2_bh_cmu_CMU(
     }
 }
 
+void cm2_bh_cmu_WIC(
+        cm2_bh_cmu_t *m,
+        ovsdb_update_monitor_t *mon,
+        const struct schema_Wifi_Inet_Config *old_row,
+        const struct schema_Wifi_Inet_Config *new_row)
+{
+    if (mon->mon_type == OVSDB_UPDATE_DEL) new_row = NULL;
+    const char *if_name = CM2_OVS_COL(mon, old_row->if_name, new_row->if_name);
+    cm2_bh_cmu_gre_t *gre = cm2_bh_cmu_lookup_gre(m, if_name);
+
+    switch (mon->mon_type)
+    {
+        case OVSDB_UPDATE_NEW:
+            cm2_bh_cmu_gre_report_wic_exists(gre, true);
+            break;
+        case OVSDB_UPDATE_MODIFY:
+            break;
+        case OVSDB_UPDATE_DEL:
+            cm2_bh_cmu_gre_report_wic_exists(gre, false);
+            break;
+        case OVSDB_UPDATE_ERROR:
+            break;
+    }
+}
+
 void cm2_bh_cmu_vif_drop(cm2_bh_cmu_vif_t *vif)
 {
     if (vif == NULL) return;
     LOGI(LOG_PREFIX_VIF(vif, "dropping"));
+    cm2_bh_cmu_delete(vif->vif_name);
     ev_idle_stop(vif->m->loop, &vif->recalc);
     ev_timer_stop(vif->m->loop, &vif->deadline);
     ev_timer_stop(vif->m->loop, &vif->backoff);
@@ -623,32 +712,37 @@ cm2_bh_cmu_vif_t *cm2_bh_cmu_vif_alloc(cm2_bh_cmu_t *m, const char *vif_name)
     vif->vif_name = STRDUP(vif_name);
     ds_tree_insert(&m->vifs, vif, vif->vif_name);
     LOGI(LOG_PREFIX_VIF(vif, "allocated"));
+    CM2_BH_OVS_INIT(m, cm2_bh_cmu_WVS, Wifi_VIF_State, if_name, vif->vif_name);
+    CM2_BH_OVS_INIT(m, cm2_bh_cmu_WMS, Wifi_Master_State, if_name, vif->vif_name);
+    CM2_BH_OVS_INIT(m, cm2_bh_cmu_CMU, Connection_Manager_Uplink, if_name, vif->vif_name);
+    CM2_BH_OVS_INIT(m, cm2_bh_cmu_WIC, Wifi_Inet_Config, if_name, vif->vif_name);
     return vif;
 }
 
 void cm2_bh_cmu_gre_drop(cm2_bh_cmu_gre_t *gre)
 {
     if (gre == NULL) return;
-    if (WARN_ON(gre->vif == NULL)) return;
     LOGI(LOG_PREFIX_GRE(gre, "dropping"));
-    ev_idle_stop(gre->vif->m->loop, &gre->recalc);
-    ev_timer_stop(gre->vif->m->loop, &gre->backoff);
-    ev_timer_stop(gre->vif->m->loop, &gre->deadline);
-    ds_tree_remove(&gre->vif->m->gres, gre);
+    cm2_bh_cmu_delete(gre->gre_name);
+    ev_idle_stop(gre->m->loop, &gre->recalc);
+    ev_timer_stop(gre->m->loop, &gre->backoff);
+    ev_timer_stop(gre->m->loop, &gre->deadline);
+    ds_tree_remove(&gre->m->gres, gre);
+    ds_tree_remove(&gre->m->gres_by_parent, gre);
+    FREE(gre->parent_name);
     FREE(gre->gre_name);
     FREE(gre);
 }
 
-cm2_bh_cmu_gre_t *cm2_bh_cmu_gre_alloc(cm2_bh_cmu_vif_t *vif, const char *gre_name)
+cm2_bh_cmu_gre_t *cm2_bh_cmu_gre_alloc(cm2_bh_cmu_t *m, const char *gre_name, const char *parent_name)
 {
-    if (vif == NULL) return NULL;
-    if (vif->m == NULL) return NULL;
+    if (m == NULL) return NULL;
 
-    const bool already_exists = (ds_tree_find(&vif->m->gres, gre_name) != NULL);
+    const bool already_exists = (ds_tree_find(&m->gres, gre_name) != NULL);
     if (already_exists) return NULL;
 
-    const bool already_bound = (vif->gre != NULL);
-    if (already_bound) return NULL;
+    const bool parent_already_exists = (ds_tree_find(&m->gres_by_parent, parent_name) != NULL);
+    if (parent_already_exists) return NULL;
 
     cm2_bh_cmu_gre_t *gre = CALLOC(1, sizeof(*gre));
     ev_idle_init(&gre->recalc, cm2_bh_cmu_gre_recalc_cb);
@@ -657,11 +751,16 @@ cm2_bh_cmu_gre_t *cm2_bh_cmu_gre_alloc(cm2_bh_cmu_vif_t *vif, const char *gre_na
     gre->recalc.data = gre;
     gre->backoff.data = gre;
     gre->deadline.data = gre;
-    gre->vif = vif;
+    gre->m = m;
     gre->gre_name = STRDUP(gre_name);
-    vif->gre = gre;
-    ds_tree_insert(&vif->m->gres, gre, gre->gre_name);
+    gre->parent_name = STRDUP(parent_name);
+    ds_tree_insert(&m->gres, gre, gre->gre_name);
+    ds_tree_insert(&m->gres_by_parent, gre, gre->parent_name);
     LOGI(LOG_PREFIX_GRE(gre, "allocated"));
+    CM2_BH_OVS_INIT(m, cm2_bh_cmu_WVS, Wifi_VIF_State, if_name, gre->gre_name);
+    CM2_BH_OVS_INIT(m, cm2_bh_cmu_WMS, Wifi_Master_State, if_name, gre->gre_name);
+    CM2_BH_OVS_INIT(m, cm2_bh_cmu_CMU, Connection_Manager_Uplink, if_name, gre->gre_name);
+    CM2_BH_OVS_INIT(m, cm2_bh_cmu_WIC, Wifi_Inet_Config, if_name, gre->gre_name);
     return gre;
 }
 
@@ -671,7 +770,9 @@ cm2_bh_cmu_t *cm2_bh_cmu_alloc(void)
     m->loop = EV_DEFAULT;
     ds_tree_init(&m->vifs, ds_str_cmp, cm2_bh_cmu_vif_t, node);
     ds_tree_init(&m->gres, ds_str_cmp, cm2_bh_cmu_gre_t, node);
+    ds_tree_init(&m->gres_by_parent, ds_str_cmp, cm2_bh_cmu_gre_t, node_by_parent);
     LOGI(LOG_PREFIX(m, "allocated"));
+    cm2_bh_cmu_flush(m);
     return m;
 }
 
@@ -686,9 +787,9 @@ cm2_bh_cmu_t *cm2_bh_cmu_from_list(const char *list)
         const char *vif_name = strsep(&entry, ":");
         if (phy_name == NULL) continue;
         if (vif_name == NULL) continue;
-        const char *gre_name = strfmta("g-%s", vif_name);
-        cm2_bh_cmu_vif_t *vif = cm2_bh_cmu_vif_alloc(m, vif_name);
-        cm2_bh_cmu_gre_alloc(vif, gre_name);
+        const char *gre_name = strfmta(CM2_BH_GRE_PREFIX "%s", vif_name);
+        cm2_bh_cmu_vif_alloc(m, vif_name);
+        cm2_bh_cmu_gre_alloc(m, gre_name, vif_name);
     }
     return m;
 }
@@ -730,4 +831,10 @@ cm2_bh_cmu_gre_t *cm2_bh_cmu_lookup_gre(cm2_bh_cmu_t *m, const char *gre_name)
 {
     if (m == NULL) return NULL;
     return ds_tree_find(&m->gres, gre_name);
+}
+
+cm2_bh_cmu_gre_t *cm2_bh_cmu_lookup_gre_by_parent(cm2_bh_cmu_t *m, const char *parent_name)
+{
+    if (m == NULL) return NULL;
+    return ds_tree_find(&m->gres_by_parent, parent_name);
 }

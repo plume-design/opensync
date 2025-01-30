@@ -35,7 +35,8 @@ struct ow_steer_policy_mediator;
 struct ow_steer_policy_chan_cap *
 ow_steer_policy_chan_cap_alloc(const char *name,
                                const struct osw_hwaddr *sta_addr,
-                               const struct ow_steer_policy_mediator *mediator);
+                               const struct ow_steer_policy_mediator *mediator,
+                               const char *log_prefix);
 
 void
 ow_steer_policy_chan_cap_free(struct ow_steer_policy_chan_cap *policy);

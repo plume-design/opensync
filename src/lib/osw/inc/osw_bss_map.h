@@ -50,6 +50,10 @@ struct osw_bss_map_observer {
     struct ds_dlist_node node;
 };
 
+struct osw_bss_map_entry_observer;
+typedef struct osw_bss_map_entry_observer osw_bss_map_entry_observer_t;
+typedef void osw_bss_map_entry_changed_fn_t(void *priv, const struct osw_channel *c_old, const struct osw_channel *c_new);
+
 struct osw_bss_provider*
 osw_bss_map_register_provider(void);
 
@@ -62,6 +66,17 @@ osw_bss_map_register_observer(struct osw_bss_map_observer *observer);
 void
 osw_bss_map_unregister_observer(struct osw_bss_map_observer *observer);
 
+osw_bss_map_entry_observer_t *
+osw_bss_map_entry_observer_alloc(const struct osw_hwaddr *bssid);
+
+void
+osw_bss_map_entry_observer_set_changed_fn(osw_bss_map_entry_observer_t *obs,
+                                          osw_bss_map_entry_changed_fn_t *fn,
+                                          void *priv);
+
+void
+osw_bss_map_entry_observer_drop(osw_bss_map_entry_observer_t *obs);
+
 struct osw_bss_entry*
 osw_bss_map_entry_new(struct osw_bss_provider *provider,
                       const struct osw_hwaddr *bssid);
@@ -69,6 +84,21 @@ osw_bss_map_entry_new(struct osw_bss_provider *provider,
 void
 osw_bss_map_entry_free(struct osw_bss_provider *provider,
                        struct osw_bss_entry* entry);
+
+typedef void
+osw_bss_map_iter_fn_t(
+        void *priv,
+        const struct osw_hwaddr *bssid,
+        const struct osw_channel *c,
+        const uint8_t *op_class);
+
+void
+osw_bss_map_iter(osw_bss_map_iter_fn_t *iter_fn, void *priv);
+
+void
+osw_bss_map_iter_mld(osw_bss_map_iter_fn_t *iter_fn,
+                     void *priv,
+                     const struct osw_hwaddr *mld_addr);
 
 #define OSW_BSS_ENTRY_SET_PROTOTYPE(attr_type, attr)                        \
     void                                                                    \
@@ -82,10 +112,12 @@ osw_bss_map_entry_free(struct osw_bss_provider *provider,
 OSW_BSS_ENTRY_SET_PROTOTYPE(struct osw_ssid, ssid);
 OSW_BSS_ENTRY_SET_PROTOTYPE(struct osw_channel, channel);
 OSW_BSS_ENTRY_SET_PROTOTYPE(uint8_t, op_class);
+OSW_BSS_ENTRY_SET_PROTOTYPE(struct osw_hwaddr, mld_addr);
 
 OSW_BSS_GET_PROTOTYPE(struct osw_ssid, ssid);
 OSW_BSS_GET_PROTOTYPE(struct osw_channel, channel);
 OSW_BSS_GET_PROTOTYPE(uint8_t, op_class);
+OSW_BSS_GET_PROTOTYPE(struct osw_hwaddr, mld_addr);
 
 #undef OSW_BSS_SET_PROTOTYPE
 #undef OSW_BSS_GET_PROTOTYPE

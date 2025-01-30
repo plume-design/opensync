@@ -45,7 +45,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 extern double qm_conn_default_timeout;
 
 const char *qm_conn_osbus_known_topics[] = {
-    "other", "SM", "BM", "OW", "FSM", "FCM"
+    "other", "SM", "OW", "FSM", "FCM"
 };
 int qm_conn_osbus_known_topics_n = ARRAY_LEN(qm_conn_osbus_known_topics);
 
@@ -316,4 +316,3 @@ bool qm_conn_osbus_init(void)
 {
     return osbus_init();
 }
-
