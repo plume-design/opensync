@@ -1249,8 +1249,8 @@ nl_80211_alloc_get_reg(struct nl_80211 *nl_80211,
                        uint32_t wiphy)
 {
     struct nl_msg *msg = nlmsg_alloc();
-    assert(nla_put_u32(msg, NL80211_ATTR_WIPHY, wiphy) == 0);
     nl_80211_put_cmd(nl_80211, msg, 0, NL80211_CMD_GET_REG);
+    assert(nla_put_u32(msg, NL80211_ATTR_WIPHY, wiphy) == 0);
     return msg;
 }
 

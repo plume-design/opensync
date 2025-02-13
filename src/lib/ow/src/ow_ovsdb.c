@@ -1236,6 +1236,7 @@ ow_ovsdb_vifstate_sta_derive_pmf(const struct schema_Wifi_VIF_Config *vconf,
                                  const enum osw_pmf pmf)
 {
     if (vconf == NULL) return NULL;
+    if (vconf->pmf_exists == false) return NULL;
     /* The link->pmf actually reports true/false. */
     switch (pmf) {
         case OSW_PMF_DISABLED: return SCHEMA_CONSTS_SECURITY_PMF_DISABLED;

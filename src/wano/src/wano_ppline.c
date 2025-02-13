@@ -1450,7 +1450,9 @@ enum wano_ppline_state wano_ppline_state_PLUGIN_RUN(
             }
 
             /* Only upon exhaustion of all plugins for all configs, try with DHCP */
-            if (wano_wan_is_last_config(self->wpl_wan) && wano_ppline_runq_start_dhcp(self))
+            if ((wano_wan_is_last_config(self->wpl_wan) ||
+                        wano_wan_config_get(self->wpl_wan, WC_TYPE_DHCP, &(struct wano_wan_config){0})) &&
+                    wano_ppline_runq_start_dhcp(self))
             {
                 break;
             }

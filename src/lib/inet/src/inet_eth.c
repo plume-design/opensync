@@ -373,6 +373,9 @@ bool inet_eth_scheme_static_start(inet_eth_t *self, bool enable)
                     FMT_osn_ip_addr(self->base.in_static_gwaddr));
             return false;
         }
+
+        /* Update gateway status */
+        self->base.in_state.in_gateway = self->base.in_static_gwaddr;
     }
 
     if (!osn_ip_apply(self->in_ip))

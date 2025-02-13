@@ -223,15 +223,32 @@ void nm2_inet_state_to_schema(
         STRSCPY(pstate->if_type, if_type);
     }
 
+    pstate->dns_present = true;
+    int di = 0;
+
+    if (osn_ip_addr_cmp(&OSN_IP_ADDR_INIT, &piface->if_inet_state.in_dns1) != 0)
+    {
+        STRSCPY(pstate->dns_keys[di], "primary");
+        snprintf(pstate->dns[di], sizeof(pstate->dns[di]), PRI_osn_ip_addr,
+                FMT_osn_ip_addr(piface->if_inet_state.in_dns1));
+        di++;
+    }
+
+    if (osn_ip_addr_cmp(&OSN_IP_ADDR_INIT, &piface->if_inet_state.in_dns2) != 0)
+    {
+        STRSCPY(pstate->dns_keys[di], "secondary");
+        snprintf(pstate->dns[di], sizeof(pstate->dns[di]), PRI_osn_ip_addr,
+                FMT_osn_ip_addr(piface->if_inet_state.in_dns2));
+        di++;
+    }
+
+    pstate->dns_len = di;
+
     //NM2_IFACE_INET_CONFIG_COPY(pstate->if_uuid, piface->if_cache.if_uuid);
     /* XXX: if_uuid must be populated from the _uuid field of Inet_Config -- if_uuid is not an uuid type though */
     strscpy(pstate->if_uuid, (char *)piface->if_cache._uuid, sizeof(pstate->if_uuid));
 
     NM2_IFACE_INET_CONFIG_COPY(pstate->inet_config, piface->if_cache._uuid);
-    NM2_IFACE_INET_CONFIG_COPY(pstate->gateway, piface->if_cache.gateway);
-    NM2_IFACE_INET_CONFIG_COPY(pstate->dns, piface->if_cache.dns);
-    NM2_IFACE_INET_CONFIG_COPY(pstate->dns_keys, piface->if_cache.dns_keys);
-    pstate->dns_len = piface->if_cache.dns_len;
     NM2_IFACE_INET_CONFIG_COPY(pstate->dhcpd, piface->if_cache.dhcpd);
     NM2_IFACE_INET_CONFIG_COPY(pstate->dhcpd_keys, piface->if_cache.dhcpd_keys);
     pstate->dhcpd_len = piface->if_cache.dhcpd_len;

@@ -84,3 +84,13 @@ bool inet_dns_server_set(
 
     return true;
 }
+
+void inet_dns_status_notify(
+        inet_dns_t *self,
+        inet_dns_status_fn_t *fn,
+        void *ctx)
+{
+    (void)self;
+    (void)fn;
+    (void)ctx;
+}
