@@ -37,6 +37,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdlib.h>
 #include <stdarg.h>
 
+#include "inet_dns.h"
 #include "log.h"
 #include "telog.h"
 #include "util.h"
@@ -69,6 +70,7 @@ static bool inet_base_upnp_start_stop(inet_base_t *self);
 static osn_route_status_fn_t inet_base_route_status;
 static osn_route6_status_fn_t inet_base_route6_status;
 static osn_dhcp_client_opt_notify_fn_t inet_base_dhcp_client_option_fn;
+static inet_dns_status_fn_t inet_base_dns_status_fn;
 
 static osn_dhcpv6_client_status_fn_t inet_base_dhcp6_client_notify_fn;
 static osn_dhcpv6_server_status_fn_t inet_base_dhcp6_server_notify_fn;
@@ -397,6 +399,8 @@ bool inet_base_init(inet_base_t *self, const char *ifname)
         LOG(ERR, "inet_base: %s: Error creating DNS instance.", self->inet.in_ifname);
         goto error;
     }
+
+    inet_dns_status_notify(self->in_dns, inet_base_dns_status_fn, self);
 
     self->in_route = osn_route_new(self->inet.in_ifname);
     if (self->in_route == NULL)
@@ -3292,4 +3296,12 @@ bool inet_mld_set_config(struct osn_mld_snooping_config *snooping_config,
     osn_mld_apply(mld);
 
     return true;
+}
+
+void inet_base_dns_status_fn(struct inet_dns_status *status, void *ctx)
+{
+    inet_base_t *self = ctx;
+    self->in_state.in_dns1 = status->primary;
+    self->in_state.in_dns2 = status->secondary;
+    inet_base_state_update(self);
 }

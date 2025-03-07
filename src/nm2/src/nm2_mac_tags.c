@@ -54,9 +54,11 @@ bool lan_clients_check_oftag(char *oftag)
     row = ovsdb_sync_select(OVSDB_OPENFLOW_TAG_TABLE, "name", OFTAG_LOCAL_ETH_DEVICES);
     if (json_array_size(row) > 0) {
         LOGD("%s: tag is present", oftag);
+        json_decref(row);
         return true;
     }
 
+    json_decref(row);
     return false;
 }
 

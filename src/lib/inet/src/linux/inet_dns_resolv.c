@@ -46,10 +46,13 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 struct __inet_dns
 {
-    char                dns_ifname[C_IFNAME_LEN];       /* Interface name */
-    bool                dns_enabled;                    /* True if service has been started */
-    osn_ip_addr_t       dns_primary;                    /* Primary DNS addrss */
-    osn_ip_addr_t       dns_secondary;                  /* Secondary DNS addrss */
+    char                    dns_ifname[C_IFNAME_LEN];       /* Interface name */
+    bool                    dns_enabled;                    /* True if service has been started */
+    osn_ip_addr_t           dns_primary;                    /* Primary DNS addrss */
+    osn_ip_addr_t           dns_secondary;                  /* Secondary DNS addrss */
+    inet_dns_status_fn_t   *dns_status_fn;                  /* Status update function */
+    void                   *dns_status_ctx;                 /* Status context */
+    ds_dlist_node_t         dns_dnode;
 };
 
 static bool inet_dns_init(inet_dns_t *self, const char *ifname);
@@ -60,8 +63,11 @@ static bool inet_dns_path(inet_dns_t *self, char *dest, ssize_t destsz);
 static ev_debounce inet_dns_update_timer;
 static bool inet_dns_update(inet_dns_t *self);
 static void __inet_dns_update(EV_P_ ev_debounce *w, int revent);
+static void inet_dns_status_dispatch(void);
 
 static bool __inet_dns_global_init = false;
+
+ds_dlist_t inet_dns_list = DS_DLIST_INIT(struct __inet_dns, dns_dnode);
 
 /*
  * ===========================================================================
@@ -118,6 +124,8 @@ bool inet_dns_init(inet_dns_t *self, const char *ifname)
         return false;
     }
 
+    ds_dlist_insert_tail(&inet_dns_list, self);
+
     return true;
 }
 
@@ -126,7 +134,16 @@ bool inet_dns_init(inet_dns_t *self, const char *ifname)
  */
 bool inet_dns_fini(inet_dns_t *self)
 {
-    return inet_dns_stop(self);
+    ds_dlist_remove(&inet_dns_list, self);
+
+    bool rc = inet_dns_stop(self);
+
+    if (self->dns_status_fn != NULL)
+    {
+        self->dns_status_fn(&INET_DNS_STATUS_INIT, self->dns_status_ctx);
+    }
+
+    return rc;
 }
 
 /*
@@ -224,7 +241,6 @@ bool inet_dns_stop(inet_dns_t *self)
     char presolv[C_MAXPATH_LEN];
 
     if (!self->dns_enabled) return true;
-
     self->dns_enabled = false;
 
     if (!inet_dns_path(self, presolv, sizeof(presolv)))
@@ -253,6 +269,15 @@ bool inet_dns_server_set(
     self->dns_secondary = secondary;
 
     return true;
+}
+
+void inet_dns_status_notify(
+        inet_dns_t *self,
+        inet_dns_status_fn_t *fn,
+        void *ctx)
+{
+    self->dns_status_fn = fn;
+    self->dns_status_ctx = ctx;
 }
 
 /*
@@ -371,6 +396,8 @@ void __inet_dns_update(EV_P_ ev_debounce *w, int revent)
         fclose(ftmp);
     }
 
+    inet_dns_status_dispatch();
+
     retval = true;
 
 exit:
@@ -404,5 +431,23 @@ exit:
                         strerror(errno));
             }
         }
+    }
+}
+
+void inet_dns_status_dispatch(void)
+{
+    struct __inet_dns *dns;
+
+    ds_dlist_foreach(&inet_dns_list, dns)
+    {
+        if (dns->dns_status_fn == NULL) continue;
+
+        struct inet_dns_status st = INET_DNS_STATUS_INIT;
+        if (dns->dns_enabled)
+        {
+            st.primary = dns->dns_primary;
+            st.secondary = dns->dns_secondary;
+        }
+        dns->dns_status_fn(&st, dns->dns_status_ctx);
     }
 }
