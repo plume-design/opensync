@@ -1497,6 +1497,12 @@ osw_drv_nl80211_sta_init(struct osw_drv_nl80211_sta *sta,
 static void
 osw_drv_nl80211_sta_fini(struct osw_drv_nl80211_sta *sta)
 {
+    const char *phy_name = sta->id.phy_name.buf;
+    const char *vif_name = sta->id.vif_name.buf;
+    const struct osw_hwaddr *sta_addr = &sta->id.sta_addr;
+    struct osw_drv_nl80211 *m = sta->m;
+    struct osw_drv *drv = m->drv;
+
     osw_drv_nl80211_sta_notify_changed(sta);
 
     osw_timer_disarm(&sta->delete_expiry);
@@ -1512,6 +1518,9 @@ osw_drv_nl80211_sta_fini(struct osw_drv_nl80211_sta *sta)
     rq_stop(&sta->q_deauth);
     rq_kill(&sta->q_deauth);
     rq_fini(&sta->q_deauth);
+
+    MEMZERO(sta->state);
+    osw_drv_report_sta_state(drv, phy_name, vif_name, sta_addr, &sta->state);
 }
 
 static struct osw_drv_nl80211_sta *
@@ -1553,7 +1562,7 @@ osw_drv_nl80211_sta_can_free(struct osw_drv_nl80211_sta *sta)
 static void
 osw_drv_nl80211_sta_maybe_free(struct osw_drv_nl80211_sta *sta)
 {
-    if (osw_drv_nl80211_sta_can_free(sta) ==false) return;
+    if (osw_drv_nl80211_sta_can_free(sta) == false) return;
 
     const char *phy_name = sta->id.phy_name.buf;
     const char *vif_name = sta->id.vif_name.buf;
@@ -2763,7 +2772,6 @@ osw_drv_nl80211_sta_removed_cb(const struct nl_80211_sta *info,
                                void *priv)
 {
     struct osw_drv_nl80211 *m = priv;
-    struct osw_drv *drv = m->drv;
     struct nl_80211 *nl = m->nl_80211;
 
     const struct osw_hwaddr *sta_addr = (const void *)info->addr.addr;
@@ -2781,7 +2789,6 @@ osw_drv_nl80211_sta_removed_cb(const struct nl_80211_sta *info,
     if (WARN_ON(sta == NULL)) return;
 
     osw_drv_sta_state_report_free(&sta->state);
-    osw_drv_report_sta_state(drv, phy_name, vif_name, sta_addr, &sta->state);
     osw_drv_nl80211_sta_fini_nl(sta);
     osw_drv_nl80211_sta_maybe_free(sta);
 }

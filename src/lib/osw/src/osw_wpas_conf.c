@@ -64,13 +64,22 @@ osw_wpas_util_fill_network_block(struct osw_drv_vif_sta_network *network,
         OSW_HOSTAP_CONF_SET_BUF(conf->bssid, hwaddr.buf);
     }
 
+    enum osw_hostap_conf_pmf pmf = osw_hostap_conf_pmf_from_osw(&network->wpa);
     /* FIXME - conversion assumes null-terminated ssid! */
     OSW_HOSTAP_CONF_SET_BUF_Q_LEN(conf->ssid, network->ssid.buf, network->ssid.len);
     OSW_HOSTAP_CONF_SET_BUF_Q(conf->psk, network->psk.str);
     OSW_HOSTAP_CONF_SET_VAL(conf->multi_ap_backhaul_sta, network->multi_ap ? 1 : 0);
-    OSW_HOSTAP_CONF_SET_VAL(conf->ieee80211w, osw_hostap_conf_pmf_from_osw(&network->wpa));
+    OSW_HOSTAP_CONF_SET_VAL(conf->ieee80211w, pmf);
     OSW_HOSTAP_CONF_SET_VAL(conf->scan_ssid, true);
     OSW_HOSTAP_CONF_SET_VAL(conf->priority, network->priority);
+
+    if (network->wpa.beacon_protection == true) {
+        if (pmf == OSW_HOSTAP_CONF_PMF_DISABLED) {
+            LOGW("osw: wpas: conf: misconfiguration. Beacon Protection enabled with PMF disabled!");
+        } else {
+            OSW_HOSTAP_CONF_SET_VAL(conf->beacon_prot, network->wpa.beacon_protection);
+        }
+    }
 
     const char *proto = osw_hostap_conf_proto_from_osw(&network->wpa);
     if (proto != NULL) {
@@ -145,6 +154,9 @@ osw_wpas_util_parse_network_block(const char *network,
             }
             if (strcmp(k, "priority") == 0) {
                 drv_network->priority = atoi(v);
+            }
+            if (strcmp(k, "beacon_prot") == 0) {
+                drv_network->wpa.beacon_protection = atoi(v);
             }
         }
     }
@@ -528,6 +540,14 @@ osw_wpas_util_fill_link_details(const struct osw_hostap_conf_sta_state_bufs *buf
     STATE_GET_BY_FN(link->wpa, status, "pmf", osw_hostap_util_ieee80211w_to_osw);
     STATE_GET_BY_FN(link->wpa, status, "pairwise_cipher", osw_hostap_util_pairwise_to_osw);
     STATE_GET_BY_FN(link->wpa, status, "key_mgmt", osw_hostap_util_key_mgmt_to_osw);
+    /* Beacon Protection feature, if set on AP, appends MIC Information Element
+     * to the Beacon frame. It's a kind of signed checksum, signed with BIGTK.
+     * On STA, if enabled, BIGTK is exchanged in a 4-way handshake and allows
+     * STA to verify contents of the original beacon from the discovery phase.
+     * bigtk_set=1 in status indicates that BIGTK is installed and Beacon has
+     * been verified, and therefore that Beacon Protection feature is in use.
+     */
+    STATE_GET_BOOL(link->wpa.beacon_protection, status, "bigtk_set");
 
     id = ini_geta(status, "id_str");
     if (id == NULL) return;

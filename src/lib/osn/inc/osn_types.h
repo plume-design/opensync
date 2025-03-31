@@ -633,7 +633,7 @@ typedef enum osn_duplex
 } osn_duplex_t;
 
 #define OSN_NETIF_DUPLEX_INIT (OSN_DUPLEX_UNKNOWN)
-#define OSN_NETIF_SPEED_INIT (-1)
+#define OSN_NETIF_SPEED_INIT (0)
 
 /** @} OSN_COMMON_osn_duplex_mode_t */
 

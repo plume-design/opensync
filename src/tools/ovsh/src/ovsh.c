@@ -50,6 +50,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define OVSH_COL_NUM    256
 #define OVSH_COL_STR   4096
 #define UUID_STR_LEN     36
+#define CHUNK_SIZE     1024 * 64
 
 #define DEBUG(...) if (ovsh_opt_verbose) { fprintf(stderr, "[DEBUG] "); fprintf(stderr, __VA_ARGS__); }
 
@@ -1529,8 +1530,8 @@ void ovsdb_close(int fd)
  */
 json_t *ovsdb_json_exec(char *method, json_t *params)
 {
-    char buf[128*1024];
-
+    char   *buf = NULL;
+    size_t  bufsz = 0;
     char   *str = NULL;
     json_t *jres = NULL;
     int     db = -1;
@@ -1554,13 +1555,18 @@ json_t *ovsdb_json_exec(char *method, json_t *params)
     }
 
     ssize_t nrd;
-    nrd = read(db, buf, sizeof(buf));
-    if (nrd < 0)
+    do
     {
-        goto error;
+        buf = REALLOC(buf, bufsz + CHUNK_SIZE + 1);
+        do {  
+            nrd = read(db, buf + bufsz, CHUNK_SIZE);  
+        } while (nrd == -1 && errno == EINTR);
+        if (nrd < 0) goto error;
+        bufsz += nrd;
     }
+    while (nrd == CHUNK_SIZE);
 
-    buf[nrd] = '\0';
+    buf[bufsz] = '\0';
 
     DEBUG("<<<<<<< %s\n", buf);
 
@@ -1568,6 +1574,7 @@ json_t *ovsdb_json_exec(char *method, json_t *params)
 
 error:
     if (str != NULL) FREE(str);
+    if (buf != NULL) FREE(buf);
     if (db > 0) ovsdb_close(db);
 
     return jres;
@@ -2350,4 +2357,3 @@ int systemvp(const char *file, char *argv[])
 
     return WEXITSTATUS(status);
 }
-

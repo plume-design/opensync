@@ -109,6 +109,7 @@ void ow_conf_vif_set_ap_channel(const char *vif_name, const struct osw_channel *
 void ow_conf_vif_set_ap_ssid(const char *vif_name, const struct osw_ssid *ssid);
 void ow_conf_vif_set_ap_bridge_if_name(const char *vif_name, const struct osw_ifname *bridge_if_name);
 void ow_conf_vif_set_ap_nas_identifier(const char *vif_name, const struct osw_nas_id *nas_id);
+void ow_conf_vif_set_ap_beacon_protection(const char *vif_name, const bool *enabled);
 void ow_conf_vif_set_ap_ssid_hidden(const char *vif_name, const bool *hidden);
 void ow_conf_vif_set_ap_isolated(const char *vif_name, const bool *isolated);
 void ow_conf_vif_set_ap_ht_enabled(const char *vif_name, const bool *ht_enabled);

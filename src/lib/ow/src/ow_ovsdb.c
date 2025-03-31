@@ -98,6 +98,7 @@ struct ow_ovsdb_phy {
     struct osw_timer last_channel_expiry;
     char *phy_name;
     ev_timer work;
+    ev_timer deadline;
 };
 
 struct ow_ovsdb_vif {
@@ -110,6 +111,7 @@ struct ow_ovsdb_vif {
     char *phy_name;
     char *vif_name;
     ev_timer work;
+    ev_timer deadline;
 };
 
 struct ow_ovsdb_sta_mld_oftag {
@@ -125,6 +127,7 @@ struct ow_ovsdb_sta_mld {
     struct ow_ovsdb *root;
     struct osw_hwaddr mld_addr;
     ev_timer work;
+    ev_timer deadline;
 };
 
 struct ow_ovsdb_sta {
@@ -140,6 +143,7 @@ struct ow_ovsdb_sta {
     char *oftag;
     time_t connected_at;
     ev_timer work;
+    ev_timer deadline;
 };
 
 static int
@@ -574,11 +578,32 @@ ow_ovsdb_phystate_get_channel_iter_cb(const struct osw_state_vif_info *info,
 }
 
 static void
+ow_ovsdb_sync_sched(struct ev_timer *work, struct ev_timer *deadline)
+{
+    if (ev_is_active(work)) {
+        ev_timer_stop(EV_DEFAULT_ work);
+    }
+    else {
+        ev_timer_stop(EV_DEFAULT_ deadline);
+        ev_timer_set(deadline, 3, 0);
+        ev_timer_start(EV_DEFAULT_ deadline);
+    }
+
+    ev_timer_set(work, 0.1, 5);
+    ev_timer_start(EV_DEFAULT_ work);
+}
+
+static bool
+ow_ovsdb_sync_allowed(struct ow_ovsdb *root, struct ev_timer *deadline)
+{
+    const bool deadline_reached = !ev_is_active(deadline);
+    return root->idle || deadline_reached;
+}
+
+static void
 ow_ovsdb_phy_work_sched(struct ow_ovsdb_phy *phy)
 {
-    ev_timer_stop(EV_DEFAULT_ &phy->work);
-    ev_timer_set(&phy->work, 0.1, 5);
-    ev_timer_start(EV_DEFAULT_ &phy->work);
+    ow_ovsdb_sync_sched(&phy->work, &phy->deadline);
 }
 
 static void
@@ -1242,6 +1267,7 @@ ow_ovsdb_vifstate_fill_akm(struct schema_Wifi_VIF_State *schema,
     SCHEMA_SET_BOOL(schema->rsn_pairwise_gcmp, wpa->rsn && wpa->pairwise_gcmp);
     SCHEMA_SET_BOOL(schema->rsn_pairwise_gcmp256, wpa->rsn && wpa->pairwise_gcmp256);
     SCHEMA_SET_STR(schema->pmf, pmf_to_str(wpa->pmf));
+    SCHEMA_SET_BOOL(schema->beacon_protection, wpa->beacon_protection);
 }
 
 static void
@@ -1283,6 +1309,7 @@ ow_ovsdb_vifstate_fill_akm_sta(struct schema_Wifi_VIF_State *schema,
         SCHEMA_SET_BOOL(schema->rsn_pairwise_gcmp256, wpa->rsn && wpa->pairwise_gcmp256);
 
         SCHEMA_SET_STR(schema->pmf, pmf_to_str(wpa->pmf));
+        SCHEMA_SET_BOOL(schema->beacon_protection, wpa->beacon_protection);
     }
 }
 
@@ -1709,7 +1736,7 @@ ow_ovsdb_phy_sync_vifs(struct ow_ovsdb_phy *phy)
 static bool
 ow_ovsdb_phy_sync(struct ow_ovsdb_phy *phy)
 {
-    if (phy->root->idle == false) return false;
+    if (ow_ovsdb_sync_allowed(phy->root, &phy->deadline) == false) return false;
 
     if (phy->info == NULL) {
         if (strlen(phy->state_cur.if_name) == 0) return true;
@@ -1741,9 +1768,10 @@ ow_ovsdb_phy_sync(struct ow_ovsdb_phy *phy)
 static void
 ow_ovsdb_phy_work_cb(EV_P_ ev_timer *arg, int events)
 {
-    struct ow_ovsdb_phy *phy = container_of(arg, struct ow_ovsdb_phy, work);
+    struct ow_ovsdb_phy *phy = arg->data;
     if (ow_ovsdb_phy_sync(phy) == false) return;
-    ev_timer_stop(EV_A_ arg);
+    ev_timer_stop(EV_A_ &phy->work);
+    ev_timer_stop(EV_A_ &phy->deadline);
     ow_ovsdb_phy_gc(phy);
 }
 
@@ -1755,6 +1783,9 @@ ow_ovsdb_phy_init(struct ow_ovsdb *root,
     phy->root = root;
     phy->phy_name = STRDUP(phy_name);
     ev_timer_init(&phy->work, ow_ovsdb_phy_work_cb, 0, 0);
+    ev_timer_init(&phy->deadline, ow_ovsdb_phy_work_cb, 0, 0);
+    phy->work.data = phy;
+    phy->deadline.data = phy;
     osw_timer_init(&phy->last_channel_expiry, ow_ovsdb_phy_last_channel_expiry_cb);
     ds_tree_insert(&root->phy_tree, phy, phy->phy_name);
 }
@@ -1946,7 +1977,7 @@ ow_ovsdb_vif_sync_deleted_as_disabled(struct ow_ovsdb_vif *vif)
 static bool
 ow_ovsdb_vif_sync(struct ow_ovsdb_vif *vif)
 {
-    if (vif->root->idle == false) return false;
+    if (ow_ovsdb_sync_allowed(vif->root, &vif->deadline) == false) return false;
 
     ow_ovsdb_vif_sync_deleted_as_disabled(vif);
 
@@ -1993,18 +2024,17 @@ ow_ovsdb_vif_sync(struct ow_ovsdb_vif *vif)
 static void
 ow_ovsdb_vif_work_cb(EV_P_ ev_timer *arg, int events)
 {
-    struct ow_ovsdb_vif *vif = container_of(arg, struct ow_ovsdb_vif, work);
+    struct ow_ovsdb_vif *vif = arg->data;
     if (ow_ovsdb_vif_sync(vif) == false) return;
-    ev_timer_stop(EV_A_ arg);
+    ev_timer_stop(EV_A_ &vif->work);
+    ev_timer_stop(EV_A_ &vif->deadline);
     ow_ovsdb_vif_gc(vif);
 }
 
 static void
 ow_ovsdb_vif_work_sched(struct ow_ovsdb_vif *vif)
 {
-    ev_timer_stop(EV_DEFAULT_ &vif->work);
-    ev_timer_set(&vif->work, 0.1, 5);
-    ev_timer_start(EV_DEFAULT_ &vif->work);
+    ow_ovsdb_sync_sched(&vif->work, &vif->deadline);
 
     if (vif->phy_name != NULL) {
         struct ow_ovsdb *root = &g_ow_ovsdb;
@@ -2023,6 +2053,9 @@ ow_ovsdb_vif_init(struct ow_ovsdb *root,
     vif->root = root;
     vif->vif_name = STRDUP(vif_name);
     ev_timer_init(&vif->work, ow_ovsdb_vif_work_cb, 0, 0);
+    ev_timer_init(&vif->deadline, ow_ovsdb_vif_work_cb, 0, 0);
+    vif->work.data = vif;
+    vif->deadline.data = vif;
     ds_tree_insert(&root->vif_tree, vif, vif->vif_name);
 }
 
@@ -2329,7 +2362,7 @@ ow_ovsdb_sta_tag_mutate(const struct osw_hwaddr *addr,
 static bool
 ow_ovsdb_sta_mld_sync(struct ow_ovsdb_sta_mld *mld)
 {
-    if (mld->root->idle == false) return false;
+    if (ow_ovsdb_sync_allowed(mld->root, &mld->deadline) == false) return false;
 
     struct ow_ovsdb_sta *sta;
     struct ow_ovsdb_sta_mld_oftag *oftag;
@@ -2398,9 +2431,10 @@ ow_ovsdb_sta_mld_gc(struct ow_ovsdb_sta_mld *mld)
 static void
 ow_ovsdb_sta_mld_work_cb(EV_P_ ev_timer *arg, int events)
 {
-    struct ow_ovsdb_sta_mld *mld = container_of(arg, struct ow_ovsdb_sta_mld, work);
+    struct ow_ovsdb_sta_mld *mld = arg->data;
     if (ow_ovsdb_sta_mld_sync(mld) == false) return;
-    ev_timer_stop(EV_A_ arg);
+    ev_timer_stop(EV_A_ &mld->work);
+    ev_timer_stop(EV_A_ &mld->deadline);
     ow_ovsdb_sta_mld_gc(mld);
 }
 
@@ -2413,6 +2447,9 @@ ow_ovsdb_sta_mld_alloc(struct ow_ovsdb *root, const struct osw_hwaddr *mld_addr)
     ds_tree_init(&mld->oftags, ds_str_cmp, struct ow_ovsdb_sta_mld_oftag, node);
     ds_tree_init(&mld->links, ds_void_cmp, struct ow_ovsdb_sta, node_mld);
     ev_timer_init(&mld->work, ow_ovsdb_sta_mld_work_cb, 0, 0);
+    ev_timer_init(&mld->deadline, ow_ovsdb_sta_mld_work_cb, 0, 0);
+    mld->work.data = mld;
+    mld->deadline.data = mld;
     ds_tree_insert(&root->mld_tree, mld, &mld->mld_addr);
     return mld;
 }
@@ -2434,9 +2471,7 @@ ow_ovsdb_sta_mld_work_sched(struct ow_ovsdb_sta_mld *mld)
 {
     if (mld == NULL) return;
 
-    ev_timer_stop(EV_DEFAULT_ &mld->work);
-    ev_timer_set(&mld->work, 0.1, 5);
-    ev_timer_start(EV_DEFAULT_ &mld->work);
+    ow_ovsdb_sync_sched(&mld->work, &mld->deadline);
 }
 
 static bool
@@ -2576,7 +2611,7 @@ ow_ovsdb_sta_roamed(struct ow_ovsdb_sta *sta)
 static bool
 ow_ovsdb_sta_sync(struct ow_ovsdb_sta *sta)
 {
-    if (sta->root->idle == false) return false;
+    if (ow_ovsdb_sync_allowed(sta->root, &sta->deadline) == false) return false;
 
     bool ok = true;
     bool roamed = ow_ovsdb_sta_roamed(sta);
@@ -2603,18 +2638,17 @@ ow_ovsdb_sta_sync(struct ow_ovsdb_sta *sta)
 static void
 ow_ovsdb_sta_work_cb(EV_P_ ev_timer *arg, int events)
 {
-    struct ow_ovsdb_sta *sta = container_of(arg, struct ow_ovsdb_sta, work);
+    struct ow_ovsdb_sta *sta = arg->data;
     if (ow_ovsdb_sta_sync(sta) == false) return;
-    ev_timer_stop(EV_A_ arg);
+    ev_timer_stop(EV_A_ &sta->work);
+    ev_timer_stop(EV_A_ &sta->deadline);
     ow_ovsdb_sta_gc(sta);
 }
 
 static void
 ow_ovsdb_sta_work_sched(struct ow_ovsdb_sta *sta)
 {
-    ev_timer_stop(EV_DEFAULT_ &sta->work);
-    ev_timer_set(&sta->work, 0.1, 5);
-    ev_timer_start(EV_DEFAULT_ &sta->work);
+    ow_ovsdb_sync_sched(&sta->work, &sta->deadline);
 
     if (sta->info != NULL) {
         struct ow_ovsdb *root = &g_ow_ovsdb;
@@ -2633,6 +2667,9 @@ ow_ovsdb_sta_init(struct ow_ovsdb *root,
     sta->root = root;
     sta->sta_addr = *sta_addr;
     ev_timer_init(&sta->work, ow_ovsdb_sta_work_cb, 0, 0);
+    ev_timer_init(&sta->deadline, ow_ovsdb_sta_work_cb, 0, 0);
+    sta->work.data = sta;
+    sta->deadline.data = sta;
     ds_tree_insert(&root->sta_tree, sta, &sta->sta_addr);
 }
 
@@ -3248,6 +3285,7 @@ ow_ovsdb_vconf_to_ow_conf_ap_wpa(const struct schema_Wifi_VIF_Config *vconf)
     bool ft_psk = false;
     bool ft_sae = false;
     bool ft_sae_ext = false;
+    bool beacon_protection = vconf->beacon_protection;
 
     for (i = 0; i < vconf->wpa_key_mgmt_len; i++) {
         const char *akm = vconf->wpa_key_mgmt[i];
@@ -3298,6 +3336,7 @@ ow_ovsdb_vconf_to_ow_conf_ap_wpa(const struct schema_Wifi_VIF_Config *vconf)
         ow_conf_vif_set_ap_pmf(vconf->if_name, NULL);
         ow_conf_vif_set_ap_rsn(vconf->if_name, NULL);
         ow_conf_vif_set_ap_wpa(vconf->if_name, NULL);
+        ow_conf_vif_set_ap_beacon_protection(vconf->if_name, NULL);
         return;
     }
 
@@ -3323,6 +3362,7 @@ ow_ovsdb_vconf_to_ow_conf_ap_wpa(const struct schema_Wifi_VIF_Config *vconf)
     ow_conf_vif_set_ap_pmf(vconf->if_name, &pmf);
     ow_conf_vif_set_ap_wpa(vconf->if_name, &wpa);
     ow_conf_vif_set_ap_rsn(vconf->if_name, &rsn);
+    ow_conf_vif_set_ap_beacon_protection(vconf->if_name, &beacon_protection);
 }
 
 static void
@@ -3426,6 +3466,16 @@ ow_ovsdb_vconf_to_ow_conf_ap(const struct schema_Wifi_VIF_Config *vconf,
         }
         else {
             ow_conf_vif_set_ap_wnm_bss_trans(vconf->if_name, NULL);
+        }
+    }
+
+    if (is_new == true || vconf->beacon_protection_changed == true) {
+        if (vconf->beacon_protection_exists == true) {
+            bool x = vconf->beacon_protection;
+            ow_conf_vif_set_ap_beacon_protection(vconf->if_name, &x);
+        }
+        else {
+            ow_conf_vif_set_ap_beacon_protection(vconf->if_name, NULL);
         }
     }
 
@@ -3724,6 +3774,7 @@ ow_ovsdb_vconf_to_ow_conf_sta(const struct schema_Wifi_VIF_Config *vconf,
         wpa.pairwise_gcmp = vconf->rsn_pairwise_gcmp;
         wpa.pairwise_gcmp256 = vconf->rsn_pairwise_gcmp256;
         wpa.pmf = pmf_from_str(vconf->pmf);
+        wpa.beacon_protection = vconf->beacon_protection;
 
         /* FIXME: Optimize to not overwrite it all the time */
         ow_conf_vif_flush_sta_net(vconf->if_name);

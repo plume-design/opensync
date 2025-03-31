@@ -87,6 +87,7 @@ struct ow_conf_vif {
     struct ds_dlist ap_radius_list; /* ow_conf_radius */
     struct ds_dlist ap_acct_list; /* ow_conf_radius */
     char *ap_passpoint_ref;
+    bool *ap_beacon_protection;
     bool *ap_ssid_hidden;
     bool *ap_isolated;
     bool *ap_ht_enabled;
@@ -674,6 +675,7 @@ ow_conf_conf_mutate_vif_ap(struct ow_conf *self,
     if (ow_vif->ap_bridge_if_name != NULL) osw_vif->u.ap.bridge_if_name = *ow_vif->ap_bridge_if_name;
     if (ow_vif->ap_nas_identifier != NULL) osw_vif->u.ap.nas_identifier = *ow_vif->ap_nas_identifier;
     if (ow_vif->ap_ft_encr_key != NULL) osw_vif->u.ap.ft_encr_key = *ow_vif->ap_ft_encr_key;
+    if (ow_vif->ap_beacon_protection != NULL) osw_vif->u.ap.wpa.beacon_protection = *ow_vif->ap_beacon_protection;
     if (ow_vif->ap_ssid_hidden != NULL) osw_vif->u.ap.ssid_hidden = *ow_vif->ap_ssid_hidden;
     if (ow_vif->ap_isolated != NULL) osw_vif->u.ap.isolated = *ow_vif->ap_isolated;
     if (ow_vif->ap_ht_enabled != NULL) osw_vif->u.ap.mode.ht_enabled = *ow_vif->ap_ht_enabled;
@@ -2051,6 +2053,8 @@ ow_conf_vif_flush_sta_net(const char *vif_name)
 #define ARG_vif_ap_bridge_if_name(x) (x).buf
 #define FMT_vif_ap_nas_identifier "%s"
 #define ARG_vif_ap_nas_identifier(x) (x).buf
+#define FMT_vif_ap_beacon_protection "%d"
+#define ARG_vif_ap_beacon_protection(x) x
 #define FMT_vif_ap_ssid_hidden "%d"
 #define ARG_vif_ap_ssid_hidden(x) x
 #define FMT_vif_ap_isolated "%d"
@@ -2254,6 +2258,7 @@ DEFINE_VIF_FIELD(ap_channel);
 DEFINE_VIF_FIELD(ap_ssid);
 DEFINE_VIF_FIELD(ap_bridge_if_name);
 DEFINE_VIF_FIELD(ap_nas_identifier);
+DEFINE_VIF_FIELD(ap_beacon_protection);
 DEFINE_VIF_FIELD(ap_ssid_hidden);
 DEFINE_VIF_FIELD(ap_isolated);
 DEFINE_VIF_FIELD(ap_ht_enabled);
@@ -2322,6 +2327,7 @@ ow_conf_vif_clear(const char *vif_name)
     ow_conf_vif_set_ap_ssid(vif_name, NULL);
     ow_conf_vif_set_ap_bridge_if_name(vif_name, NULL);
     ow_conf_vif_set_ap_nas_identifier(vif_name, NULL);
+    ow_conf_vif_set_ap_beacon_protection(vif_name, NULL);
     ow_conf_vif_set_ap_ssid_hidden(vif_name, NULL);
     ow_conf_vif_set_ap_isolated(vif_name, NULL);
     ow_conf_vif_set_ap_ht_enabled(vif_name, NULL);
@@ -2732,6 +2738,7 @@ DEFINE_VIF_FIELD_UT(ap_channel, struct osw_channel, FIELD_MEM_EQ,
                     { .control_freq_mhz = 2412, .width = OSW_CHANNEL_20MHZ, .center_freq0_mhz = 2412 });
 DEFINE_VIF_FIELD_UT(ap_ssid, struct osw_ssid, FIELD_MEM_EQ, { .buf = "ssid1", .len = 5 }, { .buf = "ssid22", .len = 6 });
 DEFINE_VIF_FIELD_UT(ap_bridge_if_name, struct osw_ifname, FIELD_MEM_EQ, { .buf = "br0" }, { .buf = "br1" });
+DEFINE_VIF_FIELD_UT(ap_beacon_protection, bool, FIELD_EQ, true, false, true);
 DEFINE_VIF_FIELD_UT(ap_ssid_hidden, bool, FIELD_EQ, true, false, true);
 DEFINE_VIF_FIELD_UT(ap_group_rekey_seconds, int, FIELD_EQ, 1, 2, 60, 3600, 0);
 DEFINE_VIF_FIELD_UT(ap_ft_mobility_domain, int, FIELD_EQ, 0x400, 0x1600, 0x1337);

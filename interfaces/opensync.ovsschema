@@ -1,7 +1,7 @@
 {
   "name": "Open_vSwitch",
-  "version": "7.11.413",
-  "cksum": "4238288704 360529",
+  "version": "7.11.414",
+  "cksum": "1239352003 360899",
   "tables": {
     "AWLAN_Node": {
       "columns": {
@@ -3137,6 +3137,15 @@
             "max": 1
           }
         },
+        "beacon_protection": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
         "dynamic_beacon": {
           "type": {
             "key": {
@@ -3861,6 +3870,15 @@
           "type": {
             "key": {
               "type": "integer"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "beacon_protection": {
+          "type": {
+            "key": {
+              "type": "boolean"
             },
             "min": 0,
             "max": 1

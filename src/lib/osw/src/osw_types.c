@@ -341,6 +341,7 @@ osw_wpa_to_str(char *out, size_t len, const struct osw_wpa *wpa)
     if (wpa->akm_ft_eap_sha384) csnprintf(&out, &len, "ft_eap_sha384 ");
     csnprintf(&out, &len, "pmf=%s ", osw_pmf_to_str(wpa->pmf));
     csnprintf(&out, &len, "mdid=%04x ", wpa->ft_mobility_domain);
+    if (wpa->beacon_protection) csnprintf(&out, &len, "b_prot ");
     csnprintf(&out, &len, "gtk=%d ", wpa->group_rekey_seconds);
     strip_trailing_whitespace(out);
 }

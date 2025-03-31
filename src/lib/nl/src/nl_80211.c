@@ -343,6 +343,7 @@ nl_80211_vif_remove_invalid_stations(struct nl_80211 *nl,
     ds_tree_foreach(&nl->map.sta_by_link, sta) {
         if (sta->pub.ifindex == ifindex) {
             if (sta->valid == false) {
+                LOGT("nl: 80211: removing invalid station: "PRI(os_macaddr_t), FMT(os_macaddr_t, sta->pub.addr));
                 nl_80211_map_sta_set(&nl->map, ifindex, &sta->pub.addr, false);
             }
         }

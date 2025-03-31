@@ -277,7 +277,7 @@ fsm_walk_sessions_tree(void)
 bool
 fsm_core_check_conversion(void *converted, int len)
 {
-    if (len == 0) return true;
+    if (len == 0) return false;
     if (converted == NULL) return false;
 
     return true;
@@ -486,6 +486,67 @@ fsm_get_no_bridge(char *if_name, char *bridge, size_t len)
 }
 
 
+static int
+fsm_check_config_update(struct fsm_session *session,
+                        struct schema_Flow_Service_Manager_Config *conf)
+{
+    ds_tree_t *other_config;
+    struct str_pair *pair;
+    char *keep_config;
+    bool check;
+    int ret;
+
+    ret = 0;
+
+    other_config = schema2tree(sizeof(conf->other_config_keys[0]),
+                               sizeof(conf->other_config[0]),
+                               conf->other_config_len,
+                               conf->other_config_keys,
+                               conf->other_config);
+    check = fsm_core_check_conversion(other_config, conf->other_config_len);
+    if (!check)
+    {
+        ret = (session->keep_config == FSM_KEEP_CONFIG ? 0 : 1);
+        goto exit;
+    }
+
+    keep_config = NULL;
+    pair = ds_tree_find(other_config, "keep_config");
+    if (pair != NULL) keep_config = pair->value;
+
+    if (!keep_config)
+    {
+        ret = (session->keep_config == FSM_KEEP_CONFIG ? 0 : 1);
+        goto exit;
+    }
+
+    /* Check if keep_config is set to true */
+    ret = strncmp(keep_config, "true", strlen("true"));
+    if (ret == 0)
+    {
+        /*
+         * If the session transitions to a keep config state,
+         * apply the updated config first
+         */
+        ret = (session->keep_config == FSM_KEEP_CONFIG ? 0 : 1);
+         session->keep_config = FSM_KEEP_CONFIG;
+        goto exit;
+    }
+
+    ret = strncmp(keep_config, "false", strlen("false"));
+    if (ret == 0)
+    {
+        session->keep_config = FSM_UPDATE_CONFIG;
+        ret = 1;
+        goto exit;
+    }
+
+exit:
+    free_str_tree(other_config);
+    return ret;
+}
+
+
 /**
  * @brief update the ovsdb configuration of the session
  *
@@ -505,6 +566,23 @@ fsm_session_update(struct fsm_session *session,
     bool check;
     bool ret;
 
+    char *session_name = NULL;
+
+    if (session->conf)
+    {
+        session_name = session->conf->handler;
+    }
+
+    ret = fsm_check_config_update(session, conf);
+    if (ret == 0)
+    {
+        LOGI("%s: session %s: keep_config set to true, skipping update",
+             __func__, session_name ? session_name : "None");
+
+        return true;
+    }
+    LOGI("%s: session %s: keep_config not enabled, proceeding", __func__,
+         session_name ? session_name : "None");
     mgr = fsm_get_mgr();
 
     fconf = session->conf;
@@ -546,7 +624,7 @@ fsm_session_update(struct fsm_session *session,
                                conf->other_config_len,
                                conf->other_config_keys,
                                conf->other_config);
-    check = fsm_core_check_conversion(session->conf, conf->other_config_len);
+    check = fsm_core_check_conversion(other_config, conf->other_config_len);
     if (!check) goto err_free_fconf;
 
     fconf->other_config = other_config;
@@ -1048,6 +1126,7 @@ fsm_alloc_session(struct schema_Flow_Service_Manager_Config *conf)
     session->node_id = mgr->node_id;
     session->loop = mgr->loop;
     session->flood_tap = false;
+    session->keep_config = FSM_KEEP_CONFIG_NOT_SET;
 
     fsm_set_session_ops(session);
 

@@ -198,8 +198,8 @@ config TARGET_CM_LINUX_SUPPORT_PACKAGE
 
 config TARGET_IMC
     bool "Inter manager communication"
-    default n
+    default y
     help
-        Select this option if the platform enables zeromq
+        Select this option to enable communication between the FSM and FCM managers
 
 endmenu

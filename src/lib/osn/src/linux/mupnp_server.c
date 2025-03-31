@@ -354,6 +354,11 @@ bool mupnp_server_start(mupnp_server_t *self)
         return false;
     }
 
+    if (kconfig_enabled(CONFIG_OPENSYNC_LEGACY_FIREWALL))
+    {
+        execsh_log(LOG_SEVERITY_DEBUG, "iptables -t filter -N MINIUPNPD; iptables -t nat -N MINIUPNPD");
+    }
+
     LOG(INFO, "miniupnp: %s server start", self->config->name);
     if (!daemon_start(&self->server_process))
     {

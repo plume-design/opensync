@@ -339,6 +339,16 @@ enum
     FSM_OSBUS_FCM = 1 << 1,
 };
 
+/*
+ * For debug purposes.
+ * Do not honor controller updates when the other_config map says so.
+ */
+enum fsm_keep_config
+{
+    FSM_KEEP_CONFIG_NOT_SET = 0,
+    FSM_UPDATE_CONFIG = 1 << 0,
+    FSM_KEEP_CONFIG = 1 << 1,
+};
 
 /**
  * @brief dpi dispatcher specifics
@@ -444,6 +454,7 @@ struct fsm_session
     struct fsm_forward_context forward_ctx;
     struct str_set *dpi_attributes;
     enum fsm_plugin_id plugin_id;
+    int keep_config;                 /* keep the current config despite updates */
 };
 
 

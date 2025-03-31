@@ -793,6 +793,14 @@ osw_hostap_conf_osw_wpa_to_pmf(const struct osw_drv_vif_config_ap *ap,
     pmf = osw_hostap_conf_pmf_from_osw(&ap->wpa);
     /* commit */
     OSW_HOSTAP_CONF_SET_VAL(conf->ieee80211w, pmf);
+
+    if (ap->wpa.beacon_protection) {
+        if (pmf == OSW_HOSTAP_CONF_PMF_DISABLED) {
+            LOGW("osw: hostap: conf: misconfiguration. Beacon Protection enabled with PMF disabled");
+        } else {
+            OSW_HOSTAP_CONF_SET_VAL(conf->beacon_prot, ap->wpa.beacon_protection);
+        }
+    }
 }
 
 static void
@@ -1511,6 +1519,7 @@ osw_hostap_conf_generate_ap_config_bufs(struct osw_hostap_conf_ap_config *conf)
     CONF_APPEND(sae_password, "%s");
     CONF_APPEND(sae_require_mfp, "%d");
     CONF_APPEND(sae_pwe, "%d");
+    CONF_APPEND(beacon_prot, "%d");
 
     /* IEEE 802.11r configuration */
     CONF_APPEND(mobility_domain, "%04x");
@@ -1904,6 +1913,7 @@ osw_hostap_conf_fill_ap_state(const struct osw_hostap_conf_ap_state_bufs *bufs,
 
     STATE_GET_BY_FN(ap->wpa,                     config, "ieee80211w",
                     osw_hostap_util_ieee80211w_to_osw);
+    STATE_GET_BOOL(ap->wpa.beacon_protection,    config, "beacon_prot");
 
     hapd_util_hapd_psk_file_to_osw(wpa_psk_file,
                                    &ap->psk_list,

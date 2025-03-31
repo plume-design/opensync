@@ -769,11 +769,6 @@ dpi_stats_store_nfq_err_cnt(int queue_num)
     for (i = 0; i < report->count; i++)
     {
         report_counter = report->counters[i];
-        LOGI("%s: nf queue id %d: error %d: %s, count: %" PRIu64, __func__,
-             queue_num, report_counter->error,
-             report_counter->error == 159 ? "backoff error indicator" : strerror(report_counter->error),
-             report_counter->counter);
-
         rc = dpi_stats_update_nfq_err_entry(report_counter, stats);
         if (!rc) dpi_stats_insert_nfq_err_entry(report_counter, stats);
     }

@@ -1635,12 +1635,34 @@ osw_confsync_build_drv_conf_vif_sta_op(struct osw_drv_vif_config *dvif,
         const bool crypto_match = (ccmp || tkip)
                                && (wpa || rsn)
                                && (psk || sae);
+        /* PMF needs reconnection on these events:
+         * ┌───────────────┬───────────┬─────────────┐
+         * │ Network block │ STA state │    Action   │
+         * │  ieee80211w   │   report  │             │
+         * ├───────────────┼───────────┼─────────────┤
+         * │       0       │     0     │     OK      │
+         * │       0       │     1     │  RECONNECT  │
+         * │       0       │     2     │  RECONNECT  │
+         * │       1       │     0     │     OK      │
+         * │       1       │     1     │     OK      │
+         * │       1       │     2     │     OK      │
+         * │       2       │     0     │  RECONNECT  │
+         * │       2       │     1     │     OK      │
+         * │       2       │     2     │     OK      │
+         * └───────────────┴───────────┴─────────────┘
+         * Beacon protection is not handled here, which means
+         * a runtime change of this parameter will not trigger
+         * STA reconnection!
+         */
+        const bool pmf_match = ((dnet->wpa.pmf == OSW_PMF_OPTIONAL) ||
+                                (!!dnet->wpa.pmf == !!ssta->link.wpa.pmf));
         const bool net_match = (bssid_valid == true && bssid_match == true)
                             || (bssid_valid == false && ssid_match == true);
         const bool match = net_match
                         && crypto_match
                         && multi_ap_match
-                        && bridge_match;
+                        && bridge_match
+                        && pmf_match;
 
         if (match) {
             return OSW_DRV_VIF_CONFIG_STA_NOP;

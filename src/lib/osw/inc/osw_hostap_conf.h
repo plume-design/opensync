@@ -49,6 +49,7 @@ struct osw_hostap_conf_ap_config {
     OSW_HOSTAP_CONF_DECL_INT (beacon_int);
     OSW_HOSTAP_CONF_DECL_STR (supported_rates, 128);
     OSW_HOSTAP_CONF_DECL_STR (basic_rates, 128);
+    OSW_HOSTAP_CONF_DECL_BOOL(beacon_prot);
     OSW_HOSTAP_CONF_DECL_STR (beacon_rate, 32);
     OSW_HOSTAP_CONF_DECL_INT (macaddr_acl);
     OSW_HOSTAP_CONF_DECL_STR (accept_mac_file, 64);

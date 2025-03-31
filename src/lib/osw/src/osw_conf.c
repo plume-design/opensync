@@ -997,6 +997,7 @@ static int osw_wpa_compare(struct osw_wpa *a, struct osw_wpa *b)
     osw_int_compare(r, a->pairwise_gcmp, b->pairwise_gcmp);
     osw_int_compare(r, a->pairwise_gcmp256, b->pairwise_gcmp256);
     osw_int_compare(r, a->pmf, b->pmf);
+    osw_int_compare(r, a->beacon_protection, b->beacon_protection);
     osw_int_compare(r, a->group_rekey_seconds, b->group_rekey_seconds);
     osw_int_compare(r, a->ft_mobility_domain, b->ft_mobility_domain);
 
@@ -1245,8 +1246,8 @@ static int osw_conf_cmp_vif(struct osw_conf_vif *a, struct osw_conf_vif *b)
         case OSW_VIF_AP_VLAN:
             break;
         case OSW_VIF_STA:
-            osw_conf_cmp_vif_net_list(&a->u.sta.net_list, &b->u.sta.net_list);
-            break;
+            r = osw_conf_cmp_vif_net_list(&a->u.sta.net_list, &b->u.sta.net_list);
+            if (r != 0) return r;
     }
 
     return 0;

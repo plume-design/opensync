@@ -51,13 +51,15 @@ do
     # If the amount of channels is equal to the number of nop_started statuses
     # then return pass
     # else continue with healtcheck
-    N_STATES=$($OVSH -jU s Wifi_Radio_State -w if_name==$ifname channels \
+    radio_name=$(cat /sys/class/net/$ifname/parent)
+
+    N_STATES=$($OVSH -jU s Wifi_Radio_State -w if_name==$radio_name channels \
         | grep -E '"(1)?[0-9][0-9]",' \
         | wc -l)
-    N_NOP_STARTED=$($OVSH -jU s Wifi_Radio_State -w if_name==$ifname channels \
+    N_NOP_STARTED=$($OVSH -jU s Wifi_Radio_State -w if_name==$radio_name channels \
         | grep -E '\{\\"state\\": \\"nop_started\\"\}' \
         | wc -l)
-    if [ $N_STATES -eq $N_NOP_STARTED ]; then continue; fi
+    if [ $N_STATES -eq $N_NOP_STARTED ]; then log_warn "$radio_name: All channels are nop_started"; continue; fi
 
     run_parts "$BSS_IS_UP_D" "$ifname" && continue
     log_warn "$ifname: bss is not up"

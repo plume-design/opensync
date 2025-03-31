@@ -520,6 +520,7 @@ struct osw_wpa {
     bool pairwise_gcmp;
     bool pairwise_gcmp256;
     enum osw_pmf pmf;
+    bool beacon_protection;
     int group_rekey_seconds;
     int ft_mobility_domain;
 };

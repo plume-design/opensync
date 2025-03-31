@@ -758,7 +758,7 @@ static void revssh_client_execsh_io_fn(execsh_async_t *esa, enum execsh_io io_ty
     const char *err_str_auth = "exited: No auth methods could be used";
     const char *err_str_idle_timeout = "exited: Idle timeout";
     const char *err_str_remote_forward_fail = "Remote TCP forward request failed";
-    const char *str_key_accepted = "key accepted unconditionally";
+    const char *str_auth_success = "Authentication succeeded.";
     const char *str_terminated = "Terminated";
     const char *str_exited_generic = "exited: ";
 
@@ -813,17 +813,15 @@ static void revssh_client_execsh_io_fn(execsh_async_t *esa, enum execsh_io io_ty
     {
         self->rs_tun_status = REVSSH_TUN_STATUS_REMOTE_FWD_FAILURE;
     }
-    else if (strstr(msg, str_key_accepted) != NULL)
+    else if (strstr(msg, str_auth_success) != NULL)
     {
-        /* On ""key accepted unconditionally." msg, first assume the tunnel was established.
+        /*
+         * On "Authentication succeeded" msg, first assume the tunnel was established.
          *
          * If it really was established, this will be the only and last message printed.
          *
-         * If it actually will be a failure (auth failure, remote TCP forward failure, etc), the
+         * If it actually will be a failure (e.g. further remote TCP forward failure, etc), the
          * "established" status will get overwritten promptly afterwards.
-         *
-         * Due to lack of different status codes this hacky way seems the only working (and reliable)
-         * way to to determine the "established" status.
          */
         self->rs_tun_status = REVSSH_TUN_STATUS_ESTABLISHED;
     }
@@ -872,16 +870,21 @@ static bool revssh_dropbear_client_start(revssh_t *self, int delay)
     /* Or start immediately: */
 
     /*
-     * drobear client: connect to ssh server with remote port forwarding: cmd such as:
+     * drobear client: connect to ssh server with remote port forwarding: Started in the following way:
+     *
      * dbclient -i <keyfile> -l <user> -N -T -R<bind_addr>:<port>:<local_addr>:<local_port> <server_host> \
-     *         -y -p <server_port> -I <idle_timeout>
+     *         -y -p <server_port> -I <idle_timeout> -o UseSyslog=yes
+     *
+     * The -o UseSyslog=yes is important to get the "Authentication succeeded" msg to reliably
+     * determine the tunnel/session established status. Note: For the UseSyslog extended option to
+     * be available, Drobear must NOT be configured with --disable-syslog.
      */
 
     memset(revssh_client_cmd, 0, sizeof(revssh_client_cmd));
     snprintf(
             revssh_client_cmd,
             sizeof(revssh_client_cmd),
-            "%s -i %s -l %s -N -T -R%s:%d:%s:%d %s -y -p %d -I %d",
+            "%s -i %s -l %s -N -T -R%s:%d:%s:%d %s -y -p %d -I %d -o UseSyslog=yes",
             CONFIG_REVSSH_DROPBEAR_CLIENT,
             self->rs_keyfile,
             self->rs_server_user,
