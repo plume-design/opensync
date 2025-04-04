@@ -914,6 +914,52 @@ osw_drv_vif_set_recent_channel(struct osw_drv_vif *vif,
     osw_timer_arm_at_nsec(&vif->recent_channel_timeout, at);
 }
 
+static void
+osw_drv_debug_passpoint_list(const struct osw_drv_vif *vif,
+                             char **const o, const size_t o_len,
+                             char **const n, const size_t n_len, char name[])
+{
+    size_t i, len;
+    if (osw_passpoint_str_list_is_equal(o, n, o_len, n_len)) return;
+
+    len = (o_len > n_len)
+          ? o_len
+          : n_len;
+
+    for (i = 0; i < len; i++) {
+        LOGI("osw: drv: %s/%s/%s: passpoint: %s[%zu]: %s -> %s",
+             vif->phy->drv->ops->name,
+             vif->phy->phy_name,
+             vif->vif_name,
+             name, i,
+             (o_len > i) ? o[i] : "",
+             (n_len > i) ? n[i] : "");
+    }
+}
+
+static void
+osw_drv_debug_passpoint_list_int(const struct osw_drv_vif *vif,
+                                 const int *o, const size_t o_len,
+                                 const int *n, const size_t n_len, char name[])
+{
+    size_t i, len;
+    if (o_len == n_len && memcmp(o, n, sizeof(*o) * o_len) == 0) return;
+
+    len = (o_len > n_len)
+          ? o_len
+          : n_len;
+
+    for (i = 0; i < len; i++) {
+        LOGI("osw: drv: %s/%s/%s: passpoint: %s[%zu]: %d -> %d",
+             vif->phy->drv->ops->name,
+             vif->phy->phy_name,
+             vif->vif_name,
+             name, i,
+             (o_len > i) ? o[i] : 0,
+             (n_len > i) ? n[i] : 0);
+    }
+}
+
 static bool
 osw_drv_vif_state_is_changed_ap(const struct osw_drv_vif *vif)
 {
@@ -1423,13 +1469,13 @@ osw_drv_vif_state_is_changed_ap(const struct osw_drv_vif *vif)
                  vif->vif_name,
                  o->passpoint.anqp_elem,
                  n->passpoint.anqp_elem);
-        if (osw_ssid_cmp(&o->passpoint.hessid, &n->passpoint.hessid) != 0)
-            LOGI("osw: drv: %s/%s/%s: passpoint: hessid: %s -> %s",
+        if (!osw_hwaddr_is_equal(&o->passpoint.hessid, &n->passpoint.hessid))
+            LOGI("osw: drv: %s/%s/%s: passpoint: hessid: "OSW_HWADDR_FMT" -> "OSW_HWADDR_FMT"",
                  vif->phy->drv->ops->name,
                  vif->phy->phy_name,
                  vif->vif_name,
-                 o->passpoint.hessid.buf,
-                 n->passpoint.hessid.buf);
+                 OSW_HWADDR_ARG(&o->passpoint.hessid),
+                 OSW_HWADDR_ARG(&n->passpoint.hessid));
         if (osw_ssid_cmp(&o->passpoint.osu_ssid, &n->passpoint.osu_ssid) != 0)
             LOGI("osw: drv: %s/%s/%s: passpoint: osu_ssid: %s -> %s",
                  vif->phy->drv->ops->name,
@@ -1437,14 +1483,31 @@ osw_drv_vif_state_is_changed_ap(const struct osw_drv_vif *vif)
                  vif->vif_name,
                  o->passpoint.osu_ssid.buf,
                  n->passpoint.osu_ssid.buf);
-        /* TODO domain_list
-         *      roamc_list,
-         *      oper_fname_list,
-         *      venue_name_list,
-         *      venue_url_list
-         *      list_3gpp_list,
-         *      net_auth_type_list
-         */
+
+        osw_drv_debug_passpoint_list(vif, o->passpoint.domain_list, o->passpoint.domain_list_len,
+                                     n->passpoint.domain_list, n->passpoint.domain_list_len,
+                                     "domain_list");
+        osw_drv_debug_passpoint_list(vif, o->passpoint.nairealm_list, o->passpoint.nairealm_list_len,
+                                     n->passpoint.nairealm_list, n->passpoint.nairealm_list_len,
+                                     "nairealm_list");
+        osw_drv_debug_passpoint_list(vif, o->passpoint.roamc_list, o->passpoint.roamc_list_len,
+                                     n->passpoint.roamc_list, n->passpoint.roamc_list_len,
+                                     "roamc_list");
+        osw_drv_debug_passpoint_list(vif, o->passpoint.oper_fname_list, o->passpoint.oper_fname_list_len,
+                                     n->passpoint.oper_fname_list, n->passpoint.oper_fname_list_len,
+                                     "oper_fname_list");
+        osw_drv_debug_passpoint_list(vif, o->passpoint.venue_name_list, o->passpoint.venue_name_list_len,
+                                     n->passpoint.venue_name_list, n->passpoint.venue_name_list_len,
+                                     "venue_name_list");
+        osw_drv_debug_passpoint_list(vif, o->passpoint.venue_url_list, o->passpoint.venue_url_list_len,
+                                     n->passpoint.venue_url_list, n->passpoint.venue_url_list_len,
+                                     "venue_url_list");
+        osw_drv_debug_passpoint_list(vif, o->passpoint.list_3gpp_list, o->passpoint.list_3gpp_list_len,
+                                     n->passpoint.list_3gpp_list, n->passpoint.list_3gpp_list_len,
+                                     "list_3gpp_list");
+        osw_drv_debug_passpoint_list_int(vif, o->passpoint.net_auth_type_list, o->passpoint.net_auth_type_list_len,
+                                         n->passpoint.net_auth_type_list, n->passpoint.net_auth_type_list_len,
+                                         "net_auth_type_list");
     }
 
     if (changed_radius) {
@@ -1796,6 +1859,156 @@ osw_drv_vif_process_state_vsta(struct osw_drv_vif *vif)
 }
 
 static void
+osw_drv_vif_dump_passpoint(struct osw_drv_vif *vif)
+{
+    size_t i;
+    const struct osw_passpoint *passpoint = &vif->cur_state.u.ap.passpoint;
+    LOGI("osw: drv: %s/%s/%s: passpoint: enabled: %d",
+         vif->phy->drv->ops->name,
+         vif->phy->phy_name,
+         vif->vif_name,
+         passpoint->hs20_enabled);
+
+    LOGI("osw: drv: %s/%s/%s: passpoint: hessid: "OSW_HWADDR_FMT,
+         vif->phy->drv->ops->name,
+         vif->phy->phy_name,
+         vif->vif_name,
+         OSW_HWADDR_ARG(&passpoint->hessid));
+
+    LOGI("osw: drv: %s/%s/%s: passpoint: osu_ssid: %s",
+         vif->phy->drv->ops->name,
+         vif->phy->phy_name,
+         vif->vif_name,
+         passpoint->osu_ssid.buf);
+
+    LOGI("osw: drv: %s/%s/%s: passpoint: adv_wan: %d/%d/%d",
+         vif->phy->drv->ops->name,
+         vif->phy->phy_name,
+         vif->vif_name,
+         passpoint->adv_wan_status ? 1 : 0,
+         passpoint->adv_wan_symmetric ? 1 : 0,
+         passpoint->adv_wan_at_capacity ? 1 : 0);
+
+    LOGI("osw: drv: %s/%s/%s: passpoint: osen: %d",
+         vif->phy->drv->ops->name,
+         vif->phy->phy_name,
+         vif->vif_name,
+         passpoint->osen ? 1 : 0);
+
+    LOGI("osw: drv: %s/%s/%s: passpoint: asra: %d",
+         vif->phy->drv->ops->name,
+         vif->phy->phy_name,
+         vif->vif_name,
+         passpoint->asra ? 1 : 0);
+
+    LOGI("osw: drv: %s/%s/%s: passpoint: ant: %d",
+         vif->phy->drv->ops->name,
+         vif->phy->phy_name,
+         vif->vif_name,
+         passpoint->ant);
+
+    LOGI("osw: drv: %s/%s/%s: passpoint: venue_group: %d",
+         vif->phy->drv->ops->name,
+         vif->phy->phy_name,
+         vif->vif_name,
+         passpoint->venue_group);
+
+    LOGI("osw: drv: %s/%s/%s: passpoint: venue_type: %d",
+         vif->phy->drv->ops->name,
+         vif->phy->phy_name,
+         vif->vif_name,
+         passpoint->venue_type);
+
+    LOGI("osw: drv: %s/%s/%s: passpoint: anqp_domain_id: %d",
+         vif->phy->drv->ops->name,
+         vif->phy->phy_name,
+         vif->vif_name,
+         passpoint->anqp_domain_id);
+
+    LOGI("osw: drv: %s/%s/%s: passpoint: t_c_filename: %s",
+         vif->phy->drv->ops->name,
+         vif->phy->phy_name,
+         vif->vif_name,
+         passpoint->t_c_filename);
+
+    LOGI("osw: drv: %s/%s/%s: passpoint: t_c_timestamp: %d",
+         vif->phy->drv->ops->name,
+         vif->phy->phy_name,
+         vif->vif_name,
+         passpoint->t_c_timestamp);
+
+    for (i = 0; i < passpoint->domain_list_len; i++) {
+        LOGI("osw: drv: %s/%s/%s: passpoint: domain_list[%zu]: %s",
+             vif->phy->drv->ops->name,
+             vif->phy->phy_name,
+             vif->vif_name,
+             i, passpoint->domain_list[i]);
+    }
+
+    for (i = 0; i < passpoint->nairealm_list_len; i++) {
+        LOGI("osw: drv: %s/%s/%s: passpoint: nairealm_list[%zu]: %s",
+             vif->phy->drv->ops->name,
+             vif->phy->phy_name,
+             vif->vif_name,
+             i, passpoint->nairealm_list[i]);
+    }
+
+    for (i = 0; i < passpoint->roamc_list_len; i++) {
+        LOGI("osw: drv: %s/%s/%s: passpoint: roamc_list[%zu]: %s",
+             vif->phy->drv->ops->name,
+             vif->phy->phy_name,
+             vif->vif_name,
+             i, passpoint->roamc_list[i]);
+    }
+
+    for (i = 0; i < passpoint->oper_fname_list_len; i++) {
+        LOGI("osw: drv: %s/%s/%s: passpoint: oper_fname_list[%zu]: %s",
+             vif->phy->drv->ops->name,
+             vif->phy->phy_name,
+             vif->vif_name,
+             i, passpoint->oper_fname_list[i]);
+    }
+
+    for (i = 0; i < passpoint->venue_name_list_len; i++) {
+        LOGI("osw: drv: %s/%s/%s: passpoint: venue_name_list[%zu]: %s",
+             vif->phy->drv->ops->name,
+             vif->phy->phy_name,
+             vif->vif_name,
+             i, passpoint->venue_name_list[i]);
+    }
+
+    for (i = 0; i < passpoint->venue_url_list_len; i++) {
+        LOGI("osw: drv: %s/%s/%s: passpoint: venue_url_list[%zu]: %s",
+             vif->phy->drv->ops->name,
+             vif->phy->phy_name,
+             vif->vif_name,
+             i, passpoint->venue_url_list[i]);
+    }
+
+    for (i = 0; i < passpoint->list_3gpp_list_len; i++) {
+        LOGI("osw: drv: %s/%s/%s: passpoint: list_3gpp_list[%zu]: %s",
+             vif->phy->drv->ops->name,
+             vif->phy->phy_name,
+             vif->vif_name,
+             i, passpoint->list_3gpp_list[i]);
+    }
+
+    for (i = 0; i < passpoint->net_auth_type_list_len; i++) {
+        LOGI("osw: drv: %s/%s/%s: passpoint: net_auth_type_list[%zu]: %d",
+             vif->phy->drv->ops->name,
+             vif->phy->phy_name,
+             vif->vif_name,
+             i, passpoint->net_auth_type_list[i]);
+    }
+
+    LOGI("osw: drv: %s/%s/%s: passpoint: anqp_elem: %s",
+         vif->phy->drv->ops->name,
+         vif->phy->phy_name,
+         vif->vif_name,
+         passpoint->anqp_elem);
+}
+
+static void
 osw_drv_vif_dump_ap(struct osw_drv_vif *vif)
 {
     const struct osw_drv_vif_state_ap *ap = &vif->cur_state.u.ap;
@@ -1853,6 +2066,7 @@ osw_drv_vif_dump_ap(struct osw_drv_vif *vif)
          vif->phy->phy_name,
          vif->vif_name,
          mbss_mode_str);
+    osw_drv_vif_dump_passpoint(vif);
 }
 
 static void

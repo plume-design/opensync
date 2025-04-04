@@ -425,7 +425,7 @@ struct osw_passpoint {
     char *t_c_filename;
     char *anqp_elem;
 
-    struct osw_ssid hessid;
+    struct osw_hwaddr hessid;
     struct osw_ssid osu_ssid;
 
     char **domain_list;
@@ -473,6 +473,10 @@ osw_passpoint_copy(const struct osw_passpoint *src, struct osw_passpoint *dst);
 
 bool
 osw_passpoint_is_equal(const struct osw_passpoint *a, const struct osw_passpoint *b);
+
+bool
+osw_passpoint_str_list_is_equal(char **const a, char **const b,
+                                const size_t a_len, const size_t b_len);
 
 #define OSW_WPA_GROUP_REKEY_UNDEFINED -1
 

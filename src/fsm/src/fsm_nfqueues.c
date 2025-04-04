@@ -117,6 +117,7 @@ fsm_nfq_net_header_parse(struct nfq_pkt_info *pkt_info, void *data)
     net_parser.caplen += ETH_HLEN;
     net_parser.packet_len += ETH_HLEN;
     net_parser.parsed += ETH_HLEN;
+    net_parser.offset += ETH_HLEN;
     memset(net_parser.start, 0, ETH_HLEN);
 
     rc_lookup = neigh_table_lookup_af(domain, src_ip, &src_mac);

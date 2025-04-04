@@ -359,8 +359,7 @@ hapd_util_hapd_conf_to_passpoint(const struct osw_hostap_conf_ap_state_bufs *buf
 
     const char *hessid = ini_geta(conf_buf, "hessid");
     if (hessid != NULL) {
-        STRSCPY_WARN(passpoint->hessid.buf, hessid);
-        passpoint->hessid.len = strlen(hessid);
+        WARN_ON(osw_hwaddr_from_cstr(hessid, &passpoint->hessid) == false);
         passpoint->hs20_enabled = true;
     }
     const char *osu_ssid = ini_geta(conf_buf, "osu_ssid");
@@ -1002,8 +1001,10 @@ osw_hostap_conf_osw_wpa_to_passpoint(const struct osw_drv_vif_config_ap *ap,
     OSW_HOSTAP_CONF_SET_VAL(conf->hs20, ap->passpoint.hs20_enabled);
     OSW_HOSTAP_CONF_SET_VAL(conf->interworking, true);
 
-    if (ap->passpoint.hessid.len > 0)
-        OSW_HOSTAP_CONF_SET_BUF(conf->hessid, ap->passpoint.hessid.buf);
+    if (!osw_hwaddr_is_zero(&ap->passpoint.hessid)) {
+        struct osw_hwaddr_str hessid;
+        OSW_HOSTAP_CONF_SET_BUF(conf->hessid, osw_hwaddr2str(&ap->passpoint.hessid, &hessid));
+    }
 
     if (ap->passpoint.osu_ssid.len > 0)
         OSW_HOSTAP_CONF_SET_BUF(conf->osu_ssid, ap->passpoint.osu_ssid.buf);

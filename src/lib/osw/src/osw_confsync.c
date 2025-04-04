@@ -24,6 +24,7 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+#include "osw_types.h"
 #include <util.h>
 #include <os.h>
 #include <log.h>
@@ -311,6 +312,47 @@ osw_confsync_build_phy_debug(const struct osw_drv_phy_config *cmd,
 }
 
 static void
+osw_confsync_debug_passpoint_list(const char *phy, const char *vif,
+                                  char **state, const size_t state_len,
+                                  char **cmd, const size_t cmd_len, char name[])
+{
+    size_t i, len;
+    if (osw_passpoint_str_list_is_equal(state, cmd, state_len, cmd_len)) return;
+
+    len = (state_len > cmd_len)
+          ? state_len
+          : cmd_len;
+
+    for (i = 0; i < len; i++) {
+        LOGI("osw: confsync: %s/%s: passpoint_config: %s[%zu] \'%s\' -> \'%s\'",
+             phy, vif, name, i,
+             (state_len > i) ? state[i] : NULL,
+             (cmd_len > i) ? cmd[i] : NULL);
+    }
+}
+
+static void
+osw_confsync_debug_passpoint_list_int(const char *phy, const char *vif,
+                                      int *state, const size_t state_len,
+                                      int *cmd, const size_t cmd_len, char name[])
+{
+    size_t i, len;
+    if (state_len == cmd_len && memcmp(state, cmd, sizeof(*state) * state_len) == 0)
+        return;
+
+    len = (state_len > cmd_len)
+          ? state_len
+          : cmd_len;
+
+    for (i = 0; i < len; i++) {
+        LOGI("osw: confsync: %s/%s: passpoint_config: %s[%zu] \'%d\' -> \'%d\'",
+             phy, vif, name, i,
+             (state_len > i) ? state[i] : 0,
+             (cmd_len > i) ? cmd[i] : 0);
+    }
+}
+
+static void
 osw_confsync_build_vif_ap_debug(const char *phy,
                                 const char *vif,
                                 const struct osw_drv_vif_config_ap *cmd,
@@ -518,9 +560,9 @@ osw_confsync_build_vif_ap_debug(const char *phy,
     }
 
     if (cmd->passpoint_changed) {
-        if (osw_ssid_cmp(&state->passpoint.hessid, &cmd->passpoint.hessid) != 0)
-            LOGI("osw: confsync: %s/%s: passpoint_config: hessid \'%s\' -> \'%s\'",
-             phy, vif, state->passpoint.hessid.buf, cmd->passpoint.hessid.buf);
+        if (!osw_hwaddr_is_equal(&state->passpoint.hessid, &cmd->passpoint.hessid))
+            LOGI("osw: confsync: %s/%s: passpoint_config: hessid \'"OSW_HWADDR_FMT"\' -> \'"OSW_HWADDR_FMT"\'",
+             phy, vif, OSW_HWADDR_ARG(&state->passpoint.hessid), OSW_HWADDR_ARG(&cmd->passpoint.hessid));
         if (state->passpoint.hs20_enabled != cmd->passpoint.hs20_enabled)
             LOGI("osw: confsync: %s/%s: passpoint_config: hs20 \'%d\' -> \'%d\'",
              phy, vif, state->passpoint.hs20_enabled, cmd->passpoint.hs20_enabled);
@@ -567,6 +609,32 @@ osw_confsync_build_vif_ap_debug(const char *phy,
             LOGI("osw: confsync: %s/%s: passpoint_config: anqp_elem \'%s\' -> \'%s\'",
              phy, vif, state->passpoint.anqp_elem, cmd->passpoint.anqp_elem);
         /* TODO debug lists */
+        osw_confsync_debug_passpoint_list(phy, vif, state->passpoint.domain_list, state->passpoint.domain_list_len,
+                                          cmd->passpoint.domain_list, cmd->passpoint.domain_list_len,
+                                          "domain_list");
+        osw_confsync_debug_passpoint_list(phy, vif, state->passpoint.nairealm_list, state->passpoint.nairealm_list_len,
+                                          cmd->passpoint.nairealm_list, cmd->passpoint.nairealm_list_len,
+                                          "nairealm_list");
+        osw_confsync_debug_passpoint_list(phy, vif, state->passpoint.roamc_list, state->passpoint.roamc_list_len,
+                                          cmd->passpoint.roamc_list, cmd->passpoint.roamc_list_len,
+                                          "roamc_list");
+        osw_confsync_debug_passpoint_list(phy, vif, state->passpoint.oper_fname_list, state->passpoint.oper_fname_list_len,
+                                          cmd->passpoint.oper_fname_list, cmd->passpoint.oper_fname_list_len,
+                                          "oper_fname_list");
+        osw_confsync_debug_passpoint_list(phy, vif, state->passpoint.venue_name_list, state->passpoint.venue_name_list_len,
+                                          cmd->passpoint.venue_name_list, cmd->passpoint.venue_name_list_len,
+                                          "venue_name_list");
+        osw_confsync_debug_passpoint_list(phy, vif, state->passpoint.venue_url_list, state->passpoint.venue_url_list_len,
+                                          cmd->passpoint.venue_url_list, cmd->passpoint.venue_url_list_len,
+                                          "venue_url_list");
+        osw_confsync_debug_passpoint_list(phy, vif, state->passpoint.list_3gpp_list, state->passpoint.list_3gpp_list_len,
+                                          cmd->passpoint.list_3gpp_list, cmd->passpoint.list_3gpp_list_len,
+                                          "3gpp_list");
+        osw_confsync_debug_passpoint_list_int(phy, vif, state->passpoint.net_auth_type_list,
+                                              state->passpoint.net_auth_type_list_len,
+                                              cmd->passpoint.net_auth_type_list,
+                                              cmd->passpoint.net_auth_type_list_len,
+                                              "net_auth_type_list");
         *notified = true;
     }
 }
