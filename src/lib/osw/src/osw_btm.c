@@ -68,7 +68,13 @@ osw_btm_mux_frame_tx_schedule_fn_t(const char *phy_name,
                                    const char *vif_name,
                                    struct osw_drv_frame_tx_desc *desc);
 
+struct osw_btm_sta_info {
+    struct ds_tree_node node;
+    const struct osw_state_sta_info *info;
+};
+
 struct osw_btm_sta {
+    struct ds_tree infos;
     struct osw_hwaddr mac_addr;
     struct osw_state_observer observer;
     struct osw_throttle *throttle;
@@ -89,6 +95,43 @@ struct osw_btm_sta {
 
 static struct ds_dlist g_btm_response_observer_list = DS_DLIST_INIT(struct osw_btm_response_observer, node);
 static struct ds_tree g_sta_tree = DS_TREE_INIT((ds_key_cmp_t*) osw_hwaddr_cmp, struct osw_btm_sta, node);
+
+static const struct osw_state_sta_info *
+osw_btm_sta_infos_find_newest(struct osw_btm_sta *sta)
+{
+    struct osw_btm_sta_info *newest = ds_tree_head(&sta->infos);
+    struct osw_btm_sta_info *info;
+    ds_tree_foreach(&sta->infos, info) {
+        if (info->info->connected_at > newest->info->connected_at) {
+            newest = info;
+        }
+    }
+    return (newest != NULL) ? newest->info : NULL;
+}
+
+static void
+osw_btm_sta_infos_add(struct osw_btm_sta *sta,
+                      const struct osw_state_sta_info *info)
+{
+    const bool already_added = (ds_tree_find(&sta->infos, info) == info);
+    if (WARN_ON(already_added)) return;
+
+    struct osw_btm_sta_info *i = CALLOC(1, sizeof(*i));
+    i->info = info;
+    ds_tree_insert(&sta->infos, i, info);
+}
+
+static void
+osw_btm_sta_infos_del(struct osw_btm_sta *sta,
+                      const struct osw_state_sta_info *info)
+{
+    struct osw_btm_sta_info *i = ds_tree_find(&sta->infos, info);
+    const bool does_not_exist = (i == NULL);
+    if (WARN_ON(does_not_exist)) return;
+
+    ds_tree_remove(&sta->infos, i);
+    FREE(i);
+}
 
 void
 osw_btm_register_btm_response_observer(struct osw_btm_response_observer *observer)
@@ -417,8 +460,8 @@ osw_btm_sta_connected_cb(struct osw_state_observer *observer,
                          const struct osw_state_sta_info *sta_info)
 {
     struct osw_btm_sta *btm_sta = container_of(observer, struct osw_btm_sta, observer);
-    const struct osw_state_sta_info *newest_sta_info = osw_state_sta_lookup_newest(&btm_sta->mac_addr);
-
+    osw_btm_sta_infos_add(btm_sta, sta_info);
+    const struct osw_state_sta_info *newest_sta_info = osw_btm_sta_infos_find_newest(btm_sta);
     osw_btm_sta_set_info(btm_sta, newest_sta_info);
 }
 
@@ -427,8 +470,8 @@ osw_btm_sta_disconnected_cb(struct osw_state_observer *observer,
                             const struct osw_state_sta_info *sta_info)
 {
     struct osw_btm_sta *btm_sta = container_of(observer, struct osw_btm_sta, observer);
-    const struct osw_state_sta_info *newest_sta_info = osw_state_sta_lookup_newest(&btm_sta->mac_addr);
-
+    osw_btm_sta_infos_del(btm_sta, sta_info);
+    const struct osw_state_sta_info *newest_sta_info = osw_btm_sta_infos_find_newest(btm_sta);
     osw_btm_sta_set_info(btm_sta, newest_sta_info);
 }
 
@@ -505,6 +548,7 @@ osw_btm_get_sta(const struct osw_hwaddr *sta_addr,
     osw_timer_init(&sta->work_timer, osw_btm_sta_work_timer_cb);
     sta->frame_tx_desc = osw_drv_frame_tx_desc_new(osw_btm_drv_frame_tx_result_cb, sta);
     sta->sta_info = osw_state_sta_lookup_newest(&sta->mac_addr);
+    ds_tree_init(&sta->infos, ds_void_cmp, struct osw_btm_sta_info, node);
     ds_dlist_init(&sta->desc_list, struct osw_btm_desc, node);
     sta->mux_frame_tx_schedule_fn = mux_frame_tx_schedule_fn;
 
@@ -525,6 +569,10 @@ osw_btm_sta_free(struct osw_btm_sta *sta)
     osw_timer_disarm(&sta->throttle_timer);
     osw_timer_disarm(&sta->work_timer);
     osw_drv_frame_tx_desc_free(sta->frame_tx_desc);
+
+    ASSERT(ds_tree_is_empty(&sta->infos), "");
+    ASSERT(sta->sta_info == NULL, "");
+    ASSERT(sta->pool_ref == NULL, "");
 
     ds_tree_remove(&g_sta_tree, sta);
     FREE(sta);

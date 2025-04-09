@@ -36,6 +36,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <osw_time.h>
 #include <osw_timer.h>
 #include <osw_state.h>
+#include <osw_diag.h>
 #include "ow_steer_candidate_list.h"
 #include "ow_steer_policy.h"
 #include "ow_steer_policy_priv.h"
@@ -122,37 +123,38 @@ ow_steer_policy_pre_assoc_reset_volatile_state(struct ow_steer_policy_pre_assoc 
 }
 
 static void
-ow_steer_policy_pre_assoc_sigusr1_dump_cb(struct ow_steer_policy *policy)
+ow_steer_policy_pre_assoc_sigusr1_dump_cb(osw_diag_pipe_t *pipe,
+                                          struct ow_steer_policy *policy)
 {
     ASSERT(policy != NULL, "");
 
     const struct ow_steer_policy_pre_assoc *pre_assoc_policy = ow_steer_policy_get_priv(policy);
     const struct ow_steer_policy_pre_assoc_config *config = pre_assoc_policy->config;
 
-    LOGI("ow: steer:         config: %s", config != NULL ? "" : "(nil)");
+    osw_diag_pipe_writef(pipe, "ow: steer:         config: %s", config != NULL ? "" : "(nil)");
     if (config != NULL) {
-        LOGI("ow: steer:           backoff_timeout_sec: %u", config->backoff_timeout_sec);
-        LOGI("ow: steer:           backoff_exp_base: %u", config->backoff_exp_base);
+        osw_diag_pipe_writef(pipe, "ow: steer:           backoff_timeout_sec: %u", config->backoff_timeout_sec);
+        osw_diag_pipe_writef(pipe, "ow: steer:           backoff_exp_base: %u", config->backoff_exp_base);
 
         switch (config->reject_condition.type) {
             case OW_STEER_POLICY_PRE_ASSOC_REJECT_CONDITION_COUNTER:
-                LOGI("ow: steer:           reject condition: counter");
-                LOGI("ow: steer:             reject_limit: %u", config->reject_condition.params.counter.reject_limit);
-                LOGI("ow: steer:             reject_timeout_sec: %u", config->reject_condition.params.counter.reject_timeout_sec);
+                osw_diag_pipe_writef(pipe, "ow: steer:           reject condition: counter");
+                osw_diag_pipe_writef(pipe, "ow: steer:             reject_limit: %u", config->reject_condition.params.counter.reject_limit);
+                osw_diag_pipe_writef(pipe, "ow: steer:             reject_timeout_sec: %u", config->reject_condition.params.counter.reject_timeout_sec);
                 break;
             case OW_STEER_POLICY_PRE_ASSOC_REJECT_CONDITION_TIMER:
-                LOGI("ow: steer:           reject condition: timer");
-                LOGI("ow: steer:             reject_timeout_msec: %u", config->reject_condition.params.timer.reject_timeout_msec);
+                osw_diag_pipe_writef(pipe, "ow: steer:           reject condition: timer");
+                osw_diag_pipe_writef(pipe, "ow: steer:             reject_timeout_msec: %u", config->reject_condition.params.timer.reject_timeout_msec);
                 break;
         }
 
         switch (config->backoff_condition.type) {
             case OW_STEER_POLICY_PRE_ASSOC_BACKOFF_CONDITION_NONE:
-                LOGI("ow: steer:           backoff_condition: none");
+                osw_diag_pipe_writef(pipe, "ow: steer:           backoff_condition: none");
                 break;
             case OW_STEER_POLICY_PRE_ASSOC_BACKOFF_CONDITION_THRESHOLD_SNR:
-                LOGI("ow: steer:           backoff_condition: threshold snr");
-                LOGI("ow: steer:             threshold_snr: %u", config->backoff_condition.params.threshold_snr.threshold_snr);
+                osw_diag_pipe_writef(pipe, "ow: steer:           backoff_condition: threshold snr");
+                osw_diag_pipe_writef(pipe, "ow: steer:             threshold_snr: %u", config->backoff_condition.params.threshold_snr.threshold_snr);
                 break;
         }
     }
@@ -163,15 +165,15 @@ ow_steer_policy_pre_assoc_sigusr1_dump_cb(struct ow_steer_policy *policy)
         strfmta("%.2lf sec remaining", OSW_TIME_TO_DBL(osw_timer_get_remaining_nsec(&vstate->reject_timer, now_nsec))) : "inactive";
     const char *backoff_timer_buf = osw_timer_is_armed(&vstate->backoff_timer) == true ?
         strfmta("%.2lf sec remaining", OSW_TIME_TO_DBL(osw_timer_get_remaining_nsec(&vstate->backoff_timer, now_nsec))) : "inactive";
-    LOGI("ow: steer:         vstate:");
-    LOGI("ow: steer:           reject_cnt: %u", vstate->reject_cnt);
-    LOGI("ow: steer:           reject_timer: %s", reject_timer_buf);
-    LOGI("ow: steer:           backoff_timer: %s", backoff_timer_buf);
+    osw_diag_pipe_writef(pipe, "ow: steer:         vstate:");
+    osw_diag_pipe_writef(pipe, "ow: steer:           reject_cnt: %u", vstate->reject_cnt);
+    osw_diag_pipe_writef(pipe, "ow: steer:           reject_timer: %s", reject_timer_buf);
+    osw_diag_pipe_writef(pipe, "ow: steer:           backoff_timer: %s", backoff_timer_buf);
 
     const struct ow_steer_policy_pre_assoc_persistent_state *pstate = &pre_assoc_policy->pstate;
-    LOGI("ow: steer:         pstate:");
-    LOGI("ow: steer:           active_link_cnt: %u", pstate->active_link_cnt);
-    LOGI("ow: steer:           backoff_connect_cnt: %u", pstate->backoff_connect_cnt);
+    osw_diag_pipe_writef(pipe, "ow: steer:         pstate:");
+    osw_diag_pipe_writef(pipe, "ow: steer:           active_link_cnt: %u", pstate->active_link_cnt);
+    osw_diag_pipe_writef(pipe, "ow: steer:           backoff_connect_cnt: %u", pstate->backoff_connect_cnt);
 }
 
 static void

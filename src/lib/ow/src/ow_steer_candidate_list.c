@@ -33,6 +33,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <osw_ut.h>
 #include <osw_types.h>
 #include <osw_bss_map.h>
+#include <osw_diag.h>
 #include "ow_steer_candidate_assessor.h"
 #include "ow_steer_candidate_list.h"
 
@@ -267,15 +268,16 @@ ow_steer_candidate_list_get_length(const struct ow_steer_candidate_list *candida
 }
 
 void
-ow_steer_candidate_list_sigusr1_dump(struct ow_steer_candidate_list *candidate_list)
+ow_steer_candidate_list_sigusr1_dump(osw_diag_pipe_t *pipe,
+                                     struct ow_steer_candidate_list *candidate_list)
 {
     assert(candidate_list != NULL);
 
     size_t i = 0;
     for (i = 0; i < candidate_list->set_size; i++) {
-        LOGI("ow: steer:      candidate:");
-        LOGI("ow: steer:        bssid: "OSW_HWADDR_FMT, OSW_HWADDR_ARG(&candidate_list->set[i].bssid));
-        LOGI("ow: steer:        preference: %s", ow_steer_candidate_preference_to_cstr(candidate_list->set[i].preference));
+        osw_diag_pipe_writef(pipe, "ow: steer:      candidate:");
+        osw_diag_pipe_writef(pipe, "ow: steer:        bssid: "OSW_HWADDR_FMT, OSW_HWADDR_ARG(&candidate_list->set[i].bssid));
+        osw_diag_pipe_writef(pipe, "ow: steer:        preference: %s", ow_steer_candidate_preference_to_cstr(candidate_list->set[i].preference));
     }
 }
 

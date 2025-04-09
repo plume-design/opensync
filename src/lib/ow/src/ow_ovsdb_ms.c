@@ -29,6 +29,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ow_ovsdb_ms.h"
 #include <ovsdb_cache.h>
 #include <ev.h>
+#include <osw_diag.h>
 
 /**
  * OneWifi OVSDB Wifi_Master_State synchronization
@@ -259,10 +260,12 @@ ow_ovsdb_ms_dump(struct ow_ovsdb_ms_root *root)
 {
     struct ow_ovsdb_ms *ms;
 
-    LOGI("ow: ovsdb: ms: dumping");
+    osw_diag_pipe_t *pipe = osw_diag_pipe_open();
+
+    osw_diag_pipe_writef(pipe, "ow: ovsdb: ms: dumping");
 
     ds_tree_foreach(&root->tree, ms) {
-        LOGI("ow: ovsdb: ms: %s: exists=%d/%d active=%d/%d disconnect=%d sync=%d work=%d/%d",
+        osw_diag_pipe_writef(pipe, "ow: ovsdb: ms: %s: exists=%d/%d active=%d/%d disconnect=%d sync=%d work=%d/%d",
              ms->vif_name,
              ms->vif_exists,
              ms->ovsdb_exists,
@@ -273,6 +276,7 @@ ow_ovsdb_ms_dump(struct ow_ovsdb_ms_root *root)
              ev_is_active(&ms->work),
              ev_is_pending(&ms->work));
     }
+    osw_diag_pipe_close(pipe);
 }
 
 static void

@@ -37,6 +37,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <osw_types.h>
 #include <osw_state.h>
 #include <osw_sta_cache.h>
+#include <osw_diag.h>
 #include "osw_sta_i.h"
 #include "osw_sta_link_i.h"
 
@@ -205,7 +206,8 @@ osw_sta_cache_sta_connected_cb(struct osw_state_observer *self,
     link->connected = true;
     link->last_connect_tstamp_nsec = OSW_TIME_SEC(sta_info->connected_at);
     FREE(link->assoc_req_ies);
-    if (link->assoc_req_ies != NULL && link->assoc_req_ies_len > 0) {
+    link->assoc_req_ies = NULL;
+    if (sta_info->assoc_req_ies != NULL && sta_info->assoc_req_ies_len > 0) {
         link->assoc_req_ies = MEMNDUP(sta_info->assoc_req_ies, sta_info->assoc_req_ies_len);
         link->assoc_req_ies_len = sta_info->assoc_req_ies_len;
     }
@@ -299,16 +301,18 @@ osw_sta_cache_dump(struct osw_sta_cache *cache)
 {
     ASSERT(cache != NULL, "");
 
+    osw_diag_pipe_t *pipe = osw_diag_pipe_open();
+
     struct osw_sta *sta;
 
-    LOGI("osw: sta_cache: ");
-    LOGI("osw: sta_cache: sta_tree:");
+    osw_diag_pipe_writef(pipe, "osw: sta_cache: ");
+    osw_diag_pipe_writef(pipe, "osw: sta_cache: sta_tree:");
 
     ds_tree_foreach(&cache->sta_tree, sta) {
         struct osw_sta_link *link;
 
-        LOGI("osw: sta_cache:   sta: "OSW_HWADDR_FMT, OSW_HWADDR_ARG(&sta->mac_addr));
-        LOGI("osw: sta_cache:     link_tree:");
+        osw_diag_pipe_writef(pipe, "osw: sta_cache:   sta: "OSW_HWADDR_FMT, OSW_HWADDR_ARG(&sta->mac_addr));
+        osw_diag_pipe_writef(pipe, "osw: sta_cache:     link_tree:");
 
         ds_tree_foreach(&sta->link_tree, link) {
             char last_connect_tstamp_buf[64] = { 0 };
@@ -327,14 +331,15 @@ osw_sta_cache_dump(struct osw_sta_cache *cache)
             else
                 STRSCPY(last_probe_req_tstamp_buf, "(nil)");
 
-            LOGI("osw: sta_cache:       link: vif: %s", link->vif_name.buf);
-            LOGI("osw: sta_cache:         connected: %s", link->connected == true ? "true" : "false");
-            LOGI("osw: sta_cache:         assoc_req_ies: (%s)", link->assoc_req_ies != NULL ? "present" : "nil");
-            LOGI("osw: sta_cache:         assoc_req_ies_len: %zu", link->assoc_req_ies_len);
-            LOGI("osw: sta_cache:         last_connect_tstamp: %s", last_connect_tstamp_buf);
-            LOGI("osw: sta_cache:         last_probe_req_tstamp: %s", last_probe_req_tstamp_buf);
+            osw_diag_pipe_writef(pipe, "osw: sta_cache:       link: vif: %s", link->vif_name.buf);
+            osw_diag_pipe_writef(pipe, "osw: sta_cache:         connected: %s", link->connected == true ? "true" : "false");
+            osw_diag_pipe_writef(pipe, "osw: sta_cache:         assoc_req_ies: (%s)", link->assoc_req_ies != NULL ? "present" : "nil");
+            osw_diag_pipe_writef(pipe, "osw: sta_cache:         assoc_req_ies_len: %zu", link->assoc_req_ies_len);
+            osw_diag_pipe_writef(pipe, "osw: sta_cache:         last_connect_tstamp: %s", last_connect_tstamp_buf);
+            osw_diag_pipe_writef(pipe, "osw: sta_cache:         last_probe_req_tstamp: %s", last_probe_req_tstamp_buf);
         }
     }
+    osw_diag_pipe_close(pipe);
 }
 
 static void
@@ -503,7 +508,7 @@ osw_sta_cache_ut_lifecycle_sta_vanished_cb(struct osw_sta_cache_observer *self,
     struct osw_sta_cache_ut_lifecycle_ctx *ctx = container_of(self, struct osw_sta_cache_ut_lifecycle_ctx, sta_cache_observer);
 
     assert(osw_sta_get_mac_addr(sta) != NULL);
-    
+
     if (osw_hwaddr_cmp(osw_sta_get_mac_addr(sta), &ctx->sta_addr_a) == 0) {
         ctx->sta_a_cnt.vanished_cnt++;
         osw_sta_register_observer(sta, &ctx->sta_a_observer);

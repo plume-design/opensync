@@ -1,4 +1,3 @@
-#!/bin/sh
 
 # Copyright (c) 2015, Plume Design Inc. All rights reserved.
 # 
@@ -24,40 +23,4 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#
-# Collect common OpenSync info
-#
-. "$LOGPULL_LIB"
-. "$CONFIG_INSTALL_PREFIX/scripts/functions.d/52_owm_diag.sh"
-
-collect_osync()
-{
-    collect_cmd  $CONFIG_INSTALL_PREFIX/bin/dm --show-info
-    collect_file $CONFIG_INSTALL_PREFIX/etc/kconfig
-    if [ -e $CONFIG_INSTALL_PREFIX/.version ]; then
-        collect_file $CONFIG_INSTALL_PREFIX/.version
-    fi
-    if [ -e $CONFIG_INSTALL_PREFIX/.versions ]; then
-        collect_file $CONFIG_INSTALL_PREFIX/.versions
-    fi
-}
-
-collect_bm()
-{
-    # This will put dbg events in syslog
-    killall -s SIGUSR1 bm
-    sleep 1
-    cat /var/log/messages | grep "BM\[" > "$LOGPULL_TMP_DIR"/_bm_dbg_events
-}
-
-collect_owm()
-{
-    # This will put dbg events in syslog
-    killall -s SIGUSR1 owm
-    sleep 1
-    collect_file $OSW_DIAG_DBG_FILE && rm -f $OSW_DIAG_DBG_FILE
-}
-
-collect_osync
-collect_bm
-collect_owm
+export OSW_DIAG_DBG_FILE=/tmp/owm_dbg_logs

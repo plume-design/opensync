@@ -46,7 +46,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 /* FIXME Some defauls */
 #define OW_STEER_EXECUTOR_ACTION_BTM_NEIGHS_LIMIT 6
 #define OW_STEER_EXECUTOR_ACTION_BTM_VALID_INT 255
-#define OW_STEER_EXECUTOR_ACTION_BTM_DISASSOC_IMMINENT 0
+#define OW_STEER_EXECUTOR_ACTION_BTM_DISASSOC_IMMINENT 1
 #define OW_STEER_EXECUTOR_ACTION_BTM_AIRBRIDGED 1
 #define OW_STEER_EXECUTOR_ACTION_BTM_BSS_TERM 0
 
@@ -59,6 +59,7 @@ struct ow_steer_executor_action_btm {
     struct osw_throttle *throttle;
     struct osw_timer throttle_timer;
     bool *disassoc_imminent;
+    bool enabled;
 };
 
 static void
@@ -172,6 +173,20 @@ ow_steer_executor_action_btm_throttle_timer_cb(struct osw_timer *timer)
     ow_steer_executor_action_sched_recall(btm_action->base);
 }
 
+void
+ow_steer_executor_action_btm_set_enabled(struct ow_steer_executor_action_btm *btm_action,
+                                         bool enabled)
+{
+    if (btm_action->enabled == enabled) return;
+
+    LOGD("%s enabled set from %d to %d",
+         ow_steer_executor_action_get_prefix(btm_action->base),
+         btm_action->enabled,
+         enabled);
+
+    btm_action->enabled = enabled;
+}
+
 static void
 ow_steer_executor_action_btm_call_fn(struct ow_steer_executor_action *action,
                                      const struct ow_steer_candidate_list *candidate_list,
@@ -180,6 +195,7 @@ ow_steer_executor_action_btm_call_fn(struct ow_steer_executor_action *action,
     struct ow_steer_executor_action_btm *btm_action = ow_steer_executor_action_get_priv(action);
     const bool need_kick = ow_steer_executor_action_check_kick_needed(action, candidate_list);
     if (need_kick == true) {
+        if (btm_action->enabled == false) return;
         uint64_t next_attempt_tstamp_nsec = 0;
         const bool can_issue_req = osw_throttle_tap(btm_action->throttle, &next_attempt_tstamp_nsec);
         if (can_issue_req == true) {

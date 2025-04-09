@@ -539,7 +539,10 @@ fsm_update_neigh_cache(void *ipaddr, os_macaddr_t *mac, int domain)
     sockaddr_storage_populate(domain, ipaddr, entry.ipaddr);
 
     rc = neigh_table_add(&entry);
-    if (rc == false) LOGE("%s: Failed to add neighbor entry for: %s",__func__, buf);
+    if (rc == false && ((entry.flags & NEIGH_CACHED) == 0))
+    {
+        LOGE("%s: Failed to add neighbor entry for: %s",__func__, buf);
+    }
 
     return rc;
 }

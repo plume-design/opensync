@@ -1151,7 +1151,7 @@ cm2_ovsdb_util_handle_master_sta_port_state(struct schema_Wifi_Master_State *mas
                 cm2_ovsdb_set_dhcp_client(g_state.link.bridge_name, false);
                 cm2_ovsdb_set_dhcpv6_client(g_state.link.bridge_name, false);
                 cm2_update_bridge_cfg(g_state.link.bridge_name, g_state.link.if_name, false,
-                                      CM2_PAR_NOT_SET);
+                                      CM2_PAR_NOT_SET, false);
             }
             cm2_ovsdb_connection_remove_uplink(uplink_removed);
         }
@@ -1583,10 +1583,23 @@ int cm2_ovsdb_get_connection_uplinks(struct schema_Connection_Manager_Uplink **u
             break;
         case CM2_CONNECTION_REQ_ALL_ACTIVE_UPLINKS:
             where = json_array();
-            con = ovsdb_tran_cond_single_json("has_L2", OFUNC_EQ, json_boolean("true"));
+            con = ovsdb_tran_cond_single_json("has_L2", OFUNC_EQ, json_true());
             json_array_append_new(where, con);
 
-            con = ovsdb_tran_cond_single_json("has_L3", OFUNC_EQ, json_boolean("true"));
+            con = ovsdb_tran_cond_single_json("has_L3", OFUNC_EQ, json_true());
+            json_array_append_new(where, con);
+
+            *uplink_p = ovsdb_table_select_where(&table_Connection_Manager_Uplink, where, &count);
+            break;
+        case CM2_CONNECTION_REQ_LAN_ACTIVE_UPLINKS:
+            where = json_array();
+            con = ovsdb_tran_cond_single_json("has_L2", OFUNC_EQ, json_true());
+            json_array_append_new(where, con);
+
+            con = ovsdb_tran_cond_single_json("has_L3", OFUNC_EQ, json_false());
+            json_array_append_new(where, con);
+
+            con = ovsdb_tran_cond_single_json("if_type", OFUNC_EQ, json_string("eth"));
             json_array_append_new(where, con);
 
             *uplink_p = ovsdb_table_select_where(&table_Connection_Manager_Uplink, where, &count);
@@ -1727,7 +1740,7 @@ void cm2_connection_set_L3(struct schema_Connection_Manager_Uplink *uplink) {
 
     if (cm2_is_eth_type(uplink->if_type))
         cm2_update_bridge_cfg(CONFIG_TARGET_LAN_BRIDGE_NAME, uplink->if_name, false,
-                              CM2_PAR_FALSE);
+                              CM2_PAR_FALSE, true);
 
     if (cm2_util_block_udhcpc_on_gre(uplink->if_name, uplink->if_type) ||
 	 cm2_util_is_wds_station(uplink->if_name))
@@ -1757,13 +1770,13 @@ static void cm2_connection_clear_used(void)
             if (cm2_is_eth_type(g_state.link.if_type)) {
                 macrep = CM2_PAR_TRUE;
                 WARN_ON(cm2_ovsdb_inherit_ip_bridge_conf(g_state.link.bridge_name, g_state.link.if_name));
+                cm2_update_bridge_cfg(g_state.link.bridge_name, g_state.link.if_name, false, macrep, true);
             } else {
                 macrep = CM2_PAR_NOT_SET;
                 cm2_ovsdb_set_dhcp_client(g_state.link.bridge_name, false);
                 cm2_ovsdb_set_dhcpv6_client(g_state.link.bridge_name, false);
+                cm2_update_bridge_cfg(g_state.link.bridge_name, g_state.link.if_name, false, macrep, false);
             }
-            cm2_update_bridge_cfg(g_state.link.bridge_name, g_state.link.if_name, false,
-                                  macrep);
         }
 
         ret = cm2_ovsdb_connection_update_used_state(g_state.link.if_name, false);
@@ -2163,7 +2176,7 @@ cm2_util_update_bridge_handle(
 
     if (old_uplink->bridge_exists) {
         /* Remove uplink from previous bridge */
-        cm2_update_bridge_cfg(old_uplink->bridge, uplink->if_name, false, macrep);
+        cm2_update_bridge_cfg(old_uplink->bridge, uplink->if_name, false, macrep, cm2_is_eth_type(uplink->if_type));
     }
 
     /* Main uplink in bridge */
@@ -2175,14 +2188,12 @@ cm2_util_update_bridge_handle(
         if (old_uplink->bridge_exists) {
             /* Inherit IP configuration from old bridge */
             WARN_ON(cm2_ovsdb_inherit_ip_bridge_conf(old_uplink->bridge, uplink->bridge));
-            /* Add new uplink to new bridge */
-            cm2_update_bridge_cfg(uplink->bridge, uplink->if_name, true, macrep);
        } else {
             /* Inherit IP configuration from interface */
             WARN_ON(cm2_ovsdb_inherit_ip_bridge_conf(uplink->if_name, uplink->bridge));
-            /* Add new uplink to new bridge */
-            cm2_update_bridge_cfg(uplink->bridge, uplink->if_name, true, macrep);
        }
+       /* Add new uplink to new bridge */
+       cm2_update_bridge_cfg(uplink->bridge, uplink->if_name, true, macrep, cm2_is_eth_type(uplink->if_type));
     } else {
         g_state.link.is_bridge = false;
         cm2_util_sync_limp_state(uplink->bridge, uplink->if_name, false);
@@ -2209,43 +2220,59 @@ cm2_uplink_skip_L2_handle(struct schema_Connection_Manager_Uplink *uplink)
 static void
 cm2_util_handling_loop_state(struct schema_Connection_Manager_Uplink *uplink)
 {
-    bool delayed_update;
-    int  eth_timeout;
+    if (cm2_is_wan_link_management())
+       return;
 
     if (!cm2_is_eth_type(uplink->if_type))
         return;
 
-    if (!g_state.link.is_used) {
-        if (uplink->loop_exists && uplink->loop) {
-            cm2_delayed_eth_update(uplink->if_name, CONFIG_CM2_ETHERNET_SHORT_DELAY);
-        }
+    if (!g_state.link.is_used)
         return;
-    }
 
     if (cm2_is_lte_type(g_state.link.if_type) &&
         !strcmp(uplink->if_name, CONFIG_CM2_ETH_WAN_INTERFACE_NAME)) {
         cm2_ovsdb_connection_update_loop_state(uplink->if_name, CM2_PAR_TRUE);
-        cm2_delayed_eth_update(uplink->if_name, CONFIG_CM2_ETHERNET_LONG_DELAY);
         return;
     }
 
-    delayed_update = uplink->has_L2_exists && uplink->has_L2 &&
-                     uplink->has_L3_exists && !uplink->has_L3 &&
-                     uplink->loop_exists && uplink->loop &&
-                     cm2_is_wifi_type(g_state.link.if_type);
-
-    if (delayed_update) {
-        LOGI("%s: Detected Leaf with plugged ethernet, connected = %d",
-             uplink->if_name, g_state.connected);
-        eth_timeout = g_state.connected ? CONFIG_CM2_ETHERNET_SHORT_DELAY : CONFIG_CM2_ETHERNET_LONG_DELAY;
-        cm2_delayed_eth_update(uplink->if_name, eth_timeout);
+    if (!uplink->has_L2_exists || !uplink->has_L2 ||
+        !uplink->has_L3_exists || uplink->has_L3) {
+        LOGI("Invalid state configuration: L2 = %d, L3 = %d", uplink->has_L2, uplink->has_L3);
         return;
     }
 
-    if (!uplink->loop_exists || uplink->loop)
+    if (!uplink->loop)
+       return;
+
+    if (cm2_is_eth_type(g_state.link.if_type)) {
         cm2_ovsdb_connection_update_loop_state(uplink->if_name, CM2_PAR_FALSE);
+    } else if (cm2_is_wifi_type(g_state.link.if_type)) {
+        LOGI("%s: Detected Leaf with plugged ethernet, connected = %d",
+              uplink->if_name, g_state.connected);
+        //cm2_delayed_eth_update(uplink->if_name, CONFIG_CM2_ETHERNET_LONG_DELAY * 100);
+    }
 
     return;
+}
+
+static void cm2_disable_loops_on_eth(void)
+{
+    struct schema_Connection_Manager_Uplink *uplink_p;
+    struct schema_Connection_Manager_Uplink *uplink_i;
+    int                                     count;
+    int                                     i;
+
+    count = cm2_ovsdb_get_connection_uplinks(&uplink_p, CM2_CONNECTION_REQ_LAN_ACTIVE_UPLINKS);
+    if (uplink_p) {
+        uplink_i = uplink_p;
+        for (i = 0; i < count && uplink_i; i++, uplink_i++) {
+            if (!uplink_i->loop_exists || !uplink_i->loop)
+                continue;
+
+            cm2_ovsdb_connection_update_loop_state(uplink_i->if_name, CM2_PAR_FALSE);
+        }
+        free(uplink_p);
+    }
 }
 
 static void cm2_util_update_ip_link_state(struct schema_Connection_Manager_Uplink *uplink) {
@@ -2333,8 +2360,7 @@ cm2_Connection_Manager_Uplink_handle_update(
     }
     if (ovsdb_update_changed(mon, SCHEMA_COLUMN(Connection_Manager_Uplink, loop))) {
         LOGN("%s: Uplink table: detected loop change = %d", uplink->if_name, uplink->loop);
-        if (!cm2_is_wan_link_management())
-            cm2_util_handling_loop_state(uplink);
+        cm2_util_handling_loop_state(uplink);
     }
 
     if (ovsdb_update_changed(mon, SCHEMA_COLUMN(Connection_Manager_Uplink, bridge))) {
@@ -2363,7 +2389,7 @@ cm2_Connection_Manager_Uplink_handle_update(
                         WARN_ON(cm2_ovsdb_inherit_ip_bridge_conf(uplink->bridge, uplink->if_name));
                     }
                     cm2_update_bridge_cfg(CONFIG_TARGET_LAN_BRIDGE_NAME, uplink->if_name, false,
-                                          CM2_PAR_FALSE);
+                                          CM2_PAR_FALSE, true);
                 }
 
                 if (cm2_util_get_link_is_used(uplink)) {
@@ -2394,7 +2420,7 @@ cm2_Connection_Manager_Uplink_handle_update(
     if (ovsdb_update_changed(mon, SCHEMA_COLUMN(Connection_Manager_Uplink, has_L3))) {
         LOGN("%s: Uplink table: detected has_L3 change = %d", uplink->if_name, uplink->has_L3);
 
-        if (!cm2_connection_set_is_used(uplink) && cm2_is_wan_link_management())
+        if (!cm2_connection_set_is_used(uplink))
             cm2_util_handling_loop_state(uplink);
     }
 
@@ -2405,8 +2431,12 @@ cm2_Connection_Manager_Uplink_handle_update(
         if (!uplink->is_used && !cm2_util_get_link_is_used(uplink))
             clean_up_counters = true;
 
-        if (uplink->is_used)
-            cm2_update_state(CM2_REASON_LINK_USED);
+        if (uplink->is_used) {
+           if (cm2_is_eth_type(uplink->if_type))
+                cm2_disable_loops_on_eth();
+
+           cm2_update_state(CM2_REASON_LINK_USED);
+        }
     }
 
     if (ovsdb_update_changed(mon, SCHEMA_COLUMN(Connection_Manager_Uplink, ipv4)) ||
@@ -2488,7 +2518,7 @@ void callback_Connection_Manager_Uplink(ovsdb_update_monitor_t *mon,
 
             if (cm2_is_eth_type(uplink->if_type))
                 cm2_update_bridge_cfg(CONFIG_TARGET_LAN_BRIDGE_NAME, uplink->if_name, false,
-                                      CM2_PAR_FALSE);
+                                      CM2_PAR_FALSE, true);
             break;
         case OVSDB_UPDATE_NEW:
         case OVSDB_UPDATE_MODIFY:

@@ -39,6 +39,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <osw_bss_map.h>
 #include <osw_module.h>
 #include <osw_timer.h>
+#include <osw_diag.h>
 
 struct osw_bss {
     struct osw_hwaddr bssid;
@@ -190,23 +191,26 @@ osw_bss_map_dump(const struct osw_bss_map *bss_map)
 {
     assert(bss_map != NULL);
 
+    osw_diag_pipe_t *pipe = osw_diag_pipe_open();
+
     struct osw_bss *bss;
 
-    LOGI("osw: bss_map: ");
-    LOGI("osw: bss_map: bss_tree:");
+    osw_diag_pipe_writef(pipe, "osw: bss_map: ");
+    osw_diag_pipe_writef(pipe, "osw: bss_map: bss_tree:");
 
     ds_tree_foreach(&g_bss_map.bss_tree, bss) {
         struct osw_bss_entry *entry;
-        LOGI("osw: bss_map:   bss: bssid: "OSW_HWADDR_FMT, OSW_HWADDR_ARG(&bss->bssid));
+        osw_diag_pipe_writef(pipe, "osw: bss_map:   bss: bssid: "OSW_HWADDR_FMT, OSW_HWADDR_ARG(&bss->bssid));
         ds_dlist_foreach(&bss->entry_list, entry) {
             const char *ssid = entry->ssid ? strfmta(OSW_SSID_FMT, OSW_SSID_ARG(entry->ssid)) : "(nil)";
             const char *channel = entry->channel ? strfmta(OSW_CHANNEL_FMT, OSW_CHANNEL_ARG(entry->channel)) : "(nil)";
             const char *op_class = entry->op_class ? strfmta("%"PRIu8, *entry->op_class) : "(nil)";
-            LOGI("osw: bss_map:     ssid: %s", ssid);
-            LOGI("osw: bss_map:     channel: %s", channel);
-            LOGI("osw: bss_map:     op_class: %s", op_class);
+            osw_diag_pipe_writef(pipe, "osw: bss_map:     ssid: %s", ssid);
+            osw_diag_pipe_writef(pipe, "osw: bss_map:     channel: %s", channel);
+            osw_diag_pipe_writef(pipe, "osw: bss_map:     op_class: %s", op_class);
         }
     }
+    osw_diag_pipe_close(pipe);
 }
 
 static void

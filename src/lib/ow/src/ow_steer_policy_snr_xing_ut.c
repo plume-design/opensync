@@ -25,6 +25,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 #include <osw_ut.h>
+#include <os.h>
 #include "ow_steer_policy_i.h"
 
 /* From osw_util */
@@ -151,105 +152,131 @@ OSW_UT(ow_steer_policy_snr_xing_ut_eval_xing_change)
 
 OSW_UT(ow_steer_policy_snr_xing_ut_eval_txrx_state)
 {
-    struct ow_steer_policy_snr_xing_config config_buf;
-    memset(&config_buf, 0, sizeof(config_buf));
+    struct ow_steer_policy_snr_xing_config enabled;
+    struct ow_steer_policy_snr_xing_config disabled;
+    struct ow_steer_policy_mediator mediator;
+    struct osw_hwaddr addr;
+    MEMZERO(enabled);
+    MEMZERO(disabled);
+    MEMZERO(mediator);
+    MEMZERO(addr);
 
-    struct ow_steer_policy_snr_xing xing_policy;
-    memset(&xing_policy, 0, sizeof(xing_policy));
-    xing_policy.config = &config_buf;
-
-    struct ow_steer_policy_snr_xing_config *config = xing_policy.config;
-    struct ow_steer_policy_snr_xing_state *state = &xing_policy.state;
-    size_t i = 0;
+    struct ow_steer_policy_snr_xing *xing = ow_steer_policy_snr_xing_create("test", &addr, &mediator);
+    struct ow_steer_policy_snr_xing_state *state = &xing->state;
 
     /*
      * HWM
      */
-    memset(&config_buf, 0, sizeof(config_buf));
-    ow_steer_policy_snr_xing_state_reset(&xing_policy);
+    enabled.mode = OW_STEER_POLICY_SNR_XING_MODE_HWM;
+    enabled.mode_config.hwm.txrx_bytes_limit.active = true;
+    enabled.mode_config.hwm.txrx_bytes_limit.delta = 1000;
 
-    config->mode = OW_STEER_POLICY_SNR_XING_MODE_HWM;
-    config->mode_config.hwm.txrx_bytes_limit.active = true;
-    config->mode_config.hwm.txrx_bytes_limit.delta = 1000;
+    disabled.mode = OW_STEER_POLICY_SNR_XING_MODE_HWM;
+    disabled.mode_config.hwm.txrx_bytes_limit.active = false;
+    disabled.mode_config.hwm.txrx_bytes_limit.delta = 1000;
 
     /* Empty buffer */
-    config->mode_config.hwm.txrx_bytes_limit.active = true;
-    OSW_UT_EVAL(ow_steer_policy_snr_xing_eval_txrx_state(&xing_policy) == OW_STEER_POLICY_SNR_XING_TXRX_STATE_ACTIVE);
-    config->mode_config.hwm.txrx_bytes_limit.active = false;
-    OSW_UT_EVAL(ow_steer_policy_snr_xing_eval_txrx_state(&xing_policy) == OW_STEER_POLICY_SNR_XING_TXRX_STATE_IDLE);
+    ow_steer_policy_snr_xing_set_config(xing, MEMNDUP(&enabled, sizeof(enabled)));
+    osw_ut_time_advance(0);
+    OSW_UT_EVAL(ow_steer_policy_snr_xing_eval_txrx_state(xing) == OW_STEER_POLICY_SNR_XING_TXRX_STATE_ACTIVE);
+    ow_steer_policy_snr_xing_set_config(xing, MEMNDUP(&disabled, sizeof(disabled)));
+    osw_ut_time_advance(0);
+    OSW_UT_EVAL(ow_steer_policy_snr_xing_eval_txrx_state(xing) == OW_STEER_POLICY_SNR_XING_TXRX_STATE_IDLE);
 
     /* Below threshold */
-    i = osw_circ_buf_push_rotate(&state->delta_bytes_buf);
-    state->delta_bytes[i] = 500;
+    ow_steer_policy_snr_xing_set_config(xing, MEMNDUP(&enabled, sizeof(enabled)));
+    osw_ut_time_advance(0);
+    ow_steer_policy_snr_xing_activity_feed(&state->activity, 500);
+    osw_ut_time_advance(OSW_TIME_SEC(1));
+    OSW_UT_EVAL(ow_steer_policy_snr_xing_eval_txrx_state(xing) == OW_STEER_POLICY_SNR_XING_TXRX_STATE_IDLE);
 
-    config->mode_config.hwm.txrx_bytes_limit.active = true;
-    OSW_UT_EVAL(ow_steer_policy_snr_xing_eval_txrx_state(&xing_policy) == OW_STEER_POLICY_SNR_XING_TXRX_STATE_IDLE);
-    config->mode_config.hwm.txrx_bytes_limit.active = false;
-    OSW_UT_EVAL(ow_steer_policy_snr_xing_eval_txrx_state(&xing_policy) == OW_STEER_POLICY_SNR_XING_TXRX_STATE_IDLE);
+    ow_steer_policy_snr_xing_set_config(xing, MEMNDUP(&disabled, sizeof(disabled)));
+    osw_ut_time_advance(0);
+    ow_steer_policy_snr_xing_activity_feed(&state->activity, 500);
+    osw_ut_time_advance(OSW_TIME_SEC(1));
+    OSW_UT_EVAL(ow_steer_policy_snr_xing_eval_txrx_state(xing) == OW_STEER_POLICY_SNR_XING_TXRX_STATE_IDLE);
 
     /* Above threshold */
-    i = osw_circ_buf_push_rotate(&state->delta_bytes_buf);
-    state->delta_bytes[i] = 7000;
+    ow_steer_policy_snr_xing_set_config(xing, MEMNDUP(&enabled, sizeof(enabled)));
+    osw_ut_time_advance(0);
+    ow_steer_policy_snr_xing_activity_feed(&state->activity, 7000);
+    osw_ut_time_advance(OSW_TIME_SEC(1));
+    OSW_UT_EVAL(ow_steer_policy_snr_xing_eval_txrx_state(xing) == OW_STEER_POLICY_SNR_XING_TXRX_STATE_ACTIVE);
 
-    config->mode_config.hwm.txrx_bytes_limit.active = true;
-    OSW_UT_EVAL(ow_steer_policy_snr_xing_eval_txrx_state(&xing_policy) == OW_STEER_POLICY_SNR_XING_TXRX_STATE_ACTIVE);
-    config->mode_config.hwm.txrx_bytes_limit.active = false;
-    OSW_UT_EVAL(ow_steer_policy_snr_xing_eval_txrx_state(&xing_policy) == OW_STEER_POLICY_SNR_XING_TXRX_STATE_IDLE);
+    ow_steer_policy_snr_xing_set_config(xing, MEMNDUP(&disabled, sizeof(disabled)));
+    osw_ut_time_advance(0);
+    ow_steer_policy_snr_xing_activity_feed(&state->activity, 7000);
+    osw_ut_time_advance(OSW_TIME_SEC(1));
+    OSW_UT_EVAL(ow_steer_policy_snr_xing_eval_txrx_state(xing) == OW_STEER_POLICY_SNR_XING_TXRX_STATE_IDLE);
 
     /*
      * LWM
      */
-    memset(&config_buf, 0, sizeof(config_buf));
-    ow_steer_policy_snr_xing_state_reset(&xing_policy);
+    enabled.mode = OW_STEER_POLICY_SNR_XING_MODE_LWM;
+    enabled.mode_config.hwm.txrx_bytes_limit.active = true;
+    enabled.mode_config.hwm.txrx_bytes_limit.delta = 1000;
 
-    config->mode = OW_STEER_POLICY_SNR_XING_MODE_LWM;
-    config->mode_config.lwm.txrx_bytes_limit.active = true;
-    config->mode_config.lwm.txrx_bytes_limit.delta = 1000;
+    disabled.mode = OW_STEER_POLICY_SNR_XING_MODE_LWM;
+    disabled.mode_config.hwm.txrx_bytes_limit.active = false;
+    disabled.mode_config.hwm.txrx_bytes_limit.delta = 1000;
 
     /* Empty buffer */
-    config->mode_config.lwm.txrx_bytes_limit.active = true;
-    OSW_UT_EVAL(ow_steer_policy_snr_xing_eval_txrx_state(&xing_policy) == OW_STEER_POLICY_SNR_XING_TXRX_STATE_ACTIVE);
-    config->mode_config.lwm.txrx_bytes_limit.active = false;
-    OSW_UT_EVAL(ow_steer_policy_snr_xing_eval_txrx_state(&xing_policy) == OW_STEER_POLICY_SNR_XING_TXRX_STATE_IDLE);
+    ow_steer_policy_snr_xing_set_config(xing, MEMNDUP(&enabled, sizeof(enabled)));
+    osw_ut_time_advance(0);
+    OSW_UT_EVAL(ow_steer_policy_snr_xing_eval_txrx_state(xing) == OW_STEER_POLICY_SNR_XING_TXRX_STATE_ACTIVE);
+    ow_steer_policy_snr_xing_set_config(xing, MEMNDUP(&disabled, sizeof(disabled)));
+    osw_ut_time_advance(0);
+    OSW_UT_EVAL(ow_steer_policy_snr_xing_eval_txrx_state(xing) == OW_STEER_POLICY_SNR_XING_TXRX_STATE_IDLE);
 
     /* Below threshold */
-    i = osw_circ_buf_push_rotate(&state->delta_bytes_buf);
-    state->delta_bytes[i] = 500;
+    ow_steer_policy_snr_xing_set_config(xing, MEMNDUP(&enabled, sizeof(enabled)));
+    osw_ut_time_advance(0);
+    ow_steer_policy_snr_xing_activity_feed(&state->activity, 500);
+    osw_ut_time_advance(OSW_TIME_SEC(1));
+    OSW_UT_EVAL(ow_steer_policy_snr_xing_eval_txrx_state(xing) == OW_STEER_POLICY_SNR_XING_TXRX_STATE_IDLE);
 
-    config->mode_config.lwm.txrx_bytes_limit.active = true;
-    OSW_UT_EVAL(ow_steer_policy_snr_xing_eval_txrx_state(&xing_policy) == OW_STEER_POLICY_SNR_XING_TXRX_STATE_IDLE);
-    config->mode_config.lwm.txrx_bytes_limit.active = false;
-    OSW_UT_EVAL(ow_steer_policy_snr_xing_eval_txrx_state(&xing_policy) == OW_STEER_POLICY_SNR_XING_TXRX_STATE_IDLE);
+    ow_steer_policy_snr_xing_set_config(xing, MEMNDUP(&disabled, sizeof(disabled)));
+    osw_ut_time_advance(0);
+    ow_steer_policy_snr_xing_activity_feed(&state->activity, 500);
+    osw_ut_time_advance(OSW_TIME_SEC(1));
+    OSW_UT_EVAL(ow_steer_policy_snr_xing_eval_txrx_state(xing) == OW_STEER_POLICY_SNR_XING_TXRX_STATE_IDLE);
 
     /* Above threshold */
-    i = osw_circ_buf_push_rotate(&state->delta_bytes_buf);
-    state->delta_bytes[i] = 7000;
+    ow_steer_policy_snr_xing_set_config(xing, MEMNDUP(&enabled, sizeof(enabled)));
+    osw_ut_time_advance(0);
+    ow_steer_policy_snr_xing_activity_feed(&state->activity, 7000);
+    osw_ut_time_advance(OSW_TIME_SEC(1));
+    OSW_UT_EVAL(ow_steer_policy_snr_xing_eval_txrx_state(xing) == OW_STEER_POLICY_SNR_XING_TXRX_STATE_ACTIVE);
 
-    config->mode_config.lwm.txrx_bytes_limit.active = true;
-    OSW_UT_EVAL(ow_steer_policy_snr_xing_eval_txrx_state(&xing_policy) == OW_STEER_POLICY_SNR_XING_TXRX_STATE_ACTIVE);
-    config->mode_config.lwm.txrx_bytes_limit.active = false;
-    OSW_UT_EVAL(ow_steer_policy_snr_xing_eval_txrx_state(&xing_policy) == OW_STEER_POLICY_SNR_XING_TXRX_STATE_IDLE);
+    ow_steer_policy_snr_xing_set_config(xing, MEMNDUP(&disabled, sizeof(disabled)));
+    osw_ut_time_advance(0);
+    ow_steer_policy_snr_xing_activity_feed(&state->activity, 7000);
+    osw_ut_time_advance(OSW_TIME_SEC(1));
+    OSW_UT_EVAL(ow_steer_policy_snr_xing_eval_txrx_state(xing) == OW_STEER_POLICY_SNR_XING_TXRX_STATE_IDLE);
 
     /*
      * Bottom LWM
      */
-    memset(&config_buf, 0, sizeof(config_buf));
-    ow_steer_policy_snr_xing_state_reset(&xing_policy);
-
-    config->mode = OW_STEER_POLICY_SNR_XING_MODE_BOTTOM_LWM;
+    enabled.mode = OW_STEER_POLICY_SNR_XING_MODE_BOTTOM_LWM;
 
     /* Empty buffer */
-    OSW_UT_EVAL(ow_steer_policy_snr_xing_eval_txrx_state(&xing_policy) == OW_STEER_POLICY_SNR_XING_TXRX_STATE_IDLE);
+    ow_steer_policy_snr_xing_set_config(xing, MEMNDUP(&disabled, sizeof(disabled)));
+    osw_ut_time_advance(0);
+    OSW_UT_EVAL(ow_steer_policy_snr_xing_eval_txrx_state(xing) == OW_STEER_POLICY_SNR_XING_TXRX_STATE_IDLE);
 
     /* Low delta */
-    i = osw_circ_buf_push_rotate(&state->delta_bytes_buf);
-    state->delta_bytes[i] = 50;
-    OSW_UT_EVAL(ow_steer_policy_snr_xing_eval_txrx_state(&xing_policy) == OW_STEER_POLICY_SNR_XING_TXRX_STATE_IDLE);
+    ow_steer_policy_snr_xing_set_config(xing, MEMNDUP(&enabled, sizeof(enabled)));
+    osw_ut_time_advance(0);
+    ow_steer_policy_snr_xing_activity_feed(&state->activity, 50);
+    osw_ut_time_advance(OSW_TIME_SEC(1));
+    OSW_UT_EVAL(ow_steer_policy_snr_xing_eval_txrx_state(xing) == OW_STEER_POLICY_SNR_XING_TXRX_STATE_IDLE);
 
     /* High delta */
-    i = osw_circ_buf_push_rotate(&state->delta_bytes_buf);
-    state->delta_bytes[i] = 70000;
-    OSW_UT_EVAL(ow_steer_policy_snr_xing_eval_txrx_state(&xing_policy) == OW_STEER_POLICY_SNR_XING_TXRX_STATE_IDLE);
+    ow_steer_policy_snr_xing_set_config(xing, MEMNDUP(&enabled, sizeof(enabled)));
+    osw_ut_time_advance(0);
+    ow_steer_policy_snr_xing_activity_feed(&state->activity, 70000);
+    osw_ut_time_advance(OSW_TIME_SEC(1));
+    OSW_UT_EVAL(ow_steer_policy_snr_xing_eval_txrx_state(xing) == OW_STEER_POLICY_SNR_XING_TXRX_STATE_IDLE);
 }
 
 OSW_UT(ow_steer_policy_snr_xing_ut_check_sta_caps)
@@ -407,6 +434,7 @@ OSW_UT(ow_steer_policy_snr_xing_ut_hwm)
      */
     xing_policy->base->ops.sta_snr_change_fn(xing_policy->base, &bssid, 40);
     xing_policy->base->ops.sta_data_vol_change_fn(xing_policy->base, &bssid, 3000);
+    osw_ut_time_advance(OSW_TIME_SEC(1));
     OSW_UT_EVAL(mediator_cnt.trigger_executor_cnt == 0);
     OSW_UT_EVAL(mediator_cnt.schedule_recalc_cnt == 1);
     OSW_UT_EVAL(mediator_cnt.dismiss_executor_cnt == 0);
@@ -421,6 +449,7 @@ OSW_UT(ow_steer_policy_snr_xing_ut_hwm)
      */
     xing_policy->base->ops.sta_snr_change_fn(xing_policy->base, &bssid, 40);
     xing_policy->base->ops.sta_data_vol_change_fn(xing_policy->base, &bssid, 3000);
+    osw_ut_time_advance(OSW_TIME_SEC(1));
     OSW_UT_EVAL(mediator_cnt.trigger_executor_cnt == 0);
     OSW_UT_EVAL(mediator_cnt.schedule_recalc_cnt == 1);
     OSW_UT_EVAL(mediator_cnt.dismiss_executor_cnt == 0);
@@ -432,6 +461,7 @@ OSW_UT(ow_steer_policy_snr_xing_ut_hwm)
 
     xing_policy->base->ops.sta_snr_change_fn(xing_policy->base, &bssid, 35);
     xing_policy->base->ops.sta_data_vol_change_fn(xing_policy->base, &bssid, 3200);
+    osw_ut_time_advance(OSW_TIME_SEC(1));
     OSW_UT_EVAL(mediator_cnt.trigger_executor_cnt == 0);
     OSW_UT_EVAL(mediator_cnt.schedule_recalc_cnt == 1);
     OSW_UT_EVAL(mediator_cnt.dismiss_executor_cnt == 0);
@@ -443,6 +473,7 @@ OSW_UT(ow_steer_policy_snr_xing_ut_hwm)
 
     xing_policy->base->ops.sta_snr_change_fn(xing_policy->base, &bssid, 38);
     xing_policy->base->ops.sta_data_vol_change_fn(xing_policy->base, &bssid, 3800);
+    osw_ut_time_advance(OSW_TIME_SEC(1));
     OSW_UT_EVAL(mediator_cnt.trigger_executor_cnt == 0);
     OSW_UT_EVAL(mediator_cnt.schedule_recalc_cnt == 1);
     OSW_UT_EVAL(mediator_cnt.dismiss_executor_cnt == 0);
@@ -456,6 +487,7 @@ OSW_UT(ow_steer_policy_snr_xing_ut_hwm)
      * Report high SNR (>HWM)
      */
     xing_policy->base->ops.sta_snr_change_fn(xing_policy->base, &bssid, 60);
+    osw_ut_time_advance(0);
     OSW_UT_EVAL(mediator_cnt.trigger_executor_cnt == 0);
     OSW_UT_EVAL(mediator_cnt.schedule_recalc_cnt == 1);
     OSW_UT_EVAL(mediator_cnt.dismiss_executor_cnt == 0);
@@ -469,6 +501,7 @@ OSW_UT(ow_steer_policy_snr_xing_ut_hwm)
      * Report low SNR (<HWM)
      */
     xing_policy->base->ops.sta_snr_change_fn(xing_policy->base, &bssid, 20);
+    osw_ut_time_advance(0);
     OSW_UT_EVAL(mediator_cnt.trigger_executor_cnt == 0);
     OSW_UT_EVAL(mediator_cnt.schedule_recalc_cnt == 1);
     OSW_UT_EVAL(mediator_cnt.dismiss_executor_cnt == 0);
@@ -480,6 +513,7 @@ OSW_UT(ow_steer_policy_snr_xing_ut_hwm)
 
 
     xing_policy->base->ops.sta_snr_change_fn(xing_policy->base, &bssid, 30);
+    osw_ut_time_advance(0);
     OSW_UT_EVAL(mediator_cnt.trigger_executor_cnt == 0);
     OSW_UT_EVAL(mediator_cnt.schedule_recalc_cnt == 1);
     OSW_UT_EVAL(mediator_cnt.dismiss_executor_cnt == 0);
@@ -493,6 +527,7 @@ OSW_UT(ow_steer_policy_snr_xing_ut_hwm)
      * Report high SNR (>HWM)
      */
     xing_policy->base->ops.sta_snr_change_fn(xing_policy->base, &bssid, 60);
+    osw_ut_time_advance(0);
     OSW_UT_EVAL(mediator_cnt.trigger_executor_cnt == 0);
     OSW_UT_EVAL(mediator_cnt.schedule_recalc_cnt == 1);
     OSW_UT_EVAL(mediator_cnt.dismiss_executor_cnt == 0);
@@ -506,6 +541,8 @@ OSW_UT(ow_steer_policy_snr_xing_ut_hwm)
      * Report low data vol diff
      */
     xing_policy->base->ops.sta_data_vol_change_fn(xing_policy->base, &bssid, 1000);
+    osw_ut_time_advance(OSW_TIME_SEC(1));
+    osw_ut_time_advance(OSW_TIME_SEC(xing_policy->state.activity.grace_seconds + 1));
     OSW_UT_EVAL(mediator_cnt.trigger_executor_cnt == 1);
     OSW_UT_EVAL(mediator_cnt.schedule_recalc_cnt == 2);
     OSW_UT_EVAL(mediator_cnt.dismiss_executor_cnt == 0);
@@ -516,6 +553,7 @@ OSW_UT(ow_steer_policy_snr_xing_ut_hwm)
     OSW_UT_EVAL(ow_steer_candidate_get_preference(candidate_other) == OW_STEER_CANDIDATE_PREFERENCE_AVAILABLE);
 
     xing_policy->base->ops.sta_data_vol_change_fn(xing_policy->base, &bssid, 700);
+    osw_ut_time_advance(OSW_TIME_SEC(1));
     OSW_UT_EVAL(mediator_cnt.trigger_executor_cnt == 1);
     OSW_UT_EVAL(mediator_cnt.schedule_recalc_cnt == 2);
     OSW_UT_EVAL(mediator_cnt.dismiss_executor_cnt == 0);
@@ -526,6 +564,7 @@ OSW_UT(ow_steer_policy_snr_xing_ut_hwm)
     OSW_UT_EVAL(ow_steer_candidate_get_preference(candidate_other) == OW_STEER_CANDIDATE_PREFERENCE_AVAILABLE);
 
     xing_policy->base->ops.sta_data_vol_change_fn(xing_policy->base, &bssid, 800);
+    osw_ut_time_advance(OSW_TIME_SEC(1));
     OSW_UT_EVAL(mediator_cnt.trigger_executor_cnt == 1);
     OSW_UT_EVAL(mediator_cnt.schedule_recalc_cnt == 2);
     OSW_UT_EVAL(mediator_cnt.dismiss_executor_cnt == 0);
@@ -627,6 +666,7 @@ OSW_UT(ow_steer_policy_snr_xing_ut_lwm)
      */
     xing_policy->base->ops.sta_snr_change_fn(xing_policy->base, &bssid, 65);
     xing_policy->base->ops.sta_data_vol_change_fn(xing_policy->base, &bssid, 3000);
+    osw_ut_time_advance(OSW_TIME_SEC(1));
     OSW_UT_EVAL(mediator_cnt.trigger_executor_cnt == 0);
     OSW_UT_EVAL(mediator_cnt.schedule_recalc_cnt == 1);
     OSW_UT_EVAL(mediator_cnt.dismiss_executor_cnt == 0);
@@ -641,6 +681,7 @@ OSW_UT(ow_steer_policy_snr_xing_ut_lwm)
      */
     xing_policy->base->ops.sta_snr_change_fn(xing_policy->base, &bssid, 65);
     xing_policy->base->ops.sta_data_vol_change_fn(xing_policy->base, &bssid, 3000);
+    osw_ut_time_advance(OSW_TIME_SEC(1));
     OSW_UT_EVAL(mediator_cnt.trigger_executor_cnt == 0);
     OSW_UT_EVAL(mediator_cnt.schedule_recalc_cnt == 1);
     OSW_UT_EVAL(mediator_cnt.dismiss_executor_cnt == 0);
@@ -654,6 +695,7 @@ OSW_UT(ow_steer_policy_snr_xing_ut_lwm)
      * Report low SNR (<LWM)
      */
     xing_policy->base->ops.sta_snr_change_fn(xing_policy->base, &bssid, 40);
+    osw_ut_time_advance(0);
     OSW_UT_EVAL(mediator_cnt.trigger_executor_cnt == 0);
     OSW_UT_EVAL(mediator_cnt.schedule_recalc_cnt == 1);
     OSW_UT_EVAL(mediator_cnt.dismiss_executor_cnt == 0);
@@ -667,6 +709,8 @@ OSW_UT(ow_steer_policy_snr_xing_ut_lwm)
      * Report low data vol diff
      */
     xing_policy->base->ops.sta_data_vol_change_fn(xing_policy->base, &bssid, 1000);
+    osw_ut_time_advance(OSW_TIME_SEC(1));
+    osw_ut_time_advance(OSW_TIME_SEC(xing_policy->state.activity.grace_seconds + 1));
     OSW_UT_EVAL(mediator_cnt.trigger_executor_cnt == 1);
     OSW_UT_EVAL(mediator_cnt.schedule_recalc_cnt == 2);
     OSW_UT_EVAL(mediator_cnt.dismiss_executor_cnt == 0);

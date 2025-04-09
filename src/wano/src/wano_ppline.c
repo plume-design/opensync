@@ -616,7 +616,8 @@ void wano_ppline_status_async_fn(struct ev_loop *loop, ev_async *ev, int revent)
                         update_ifname,
                         .if_type = iftype,
                         .has_L2 = WANO_TRI_TRUE,
-                        .has_L3 = WANO_TRI_TRUE))
+                        .has_L3 = WANO_TRI_TRUE,
+                        .loop = WANO_TRI_FALSE))
             {
                 LOG(WARN, "wano: %s: Error updating Connection_Manager_Uplink (plugin interface) table (has_L3 = true).",
                         self->wpl_ifname);
@@ -1216,8 +1217,7 @@ enum wano_ppline_state wano_ppline_state_IDLE(
             {
                 if (!WANO_CONNMGR_UPLINK_UPDATE(
                         self->wpl_ifname,
-                        .has_L3 = WANO_TRI_FALSE,
-                        .loop = WANO_TRI_TRUE))
+                        .has_L3 = WANO_TRI_FALSE))
                 {
                     LOG(WARN, "wano: %s: Error updating the Connection_Manager_Uplink table (has_L3 = false)",
                             self->wpl_ifname);

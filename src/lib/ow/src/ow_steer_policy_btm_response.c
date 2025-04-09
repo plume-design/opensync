@@ -34,6 +34,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <osw_btm.h>
 #include <osw_time.h>
 #include <osw_timer.h>
+#include <osw_diag.h>
 #include <const.h>
 #include "ow_steer_candidate_list.h"
 #include "ow_steer_policy.h"
@@ -134,16 +135,17 @@ ow_steer_policy_btm_response_recalc_cb(struct ow_steer_policy *policy,
 }
 
 static void
-ow_steer_policy_btm_response_sigusr1_dump_cb(struct ow_steer_policy *policy)
+ow_steer_policy_btm_response_sigusr1_dump_cb(osw_diag_pipe_t *pipe,
+                                             struct ow_steer_policy *policy)
 {
     ASSERT(policy != NULL, "");
 
-    LOGI("ow: steer:         response neighbors:");
+    osw_diag_pipe_writef(pipe, "ow: steer:         response neighbors:");
     struct ow_steer_policy_btm_response *btm_response_policy = ow_steer_policy_get_priv(policy);
     struct ow_steer_policy_btm_retry_neigh *neigh;
     ds_dlist_foreach(&btm_response_policy->neigh_list, neigh) {
-        LOGI("ow: steer:           bssid: "OSW_HWADDR_FMT, OSW_HWADDR_ARG(&neigh->bssid));
-        LOGI("ow: steer:             preference: %d", neigh->preference);
+        osw_diag_pipe_writef(pipe, "ow: steer:           bssid: "OSW_HWADDR_FMT, OSW_HWADDR_ARG(&neigh->bssid));
+        osw_diag_pipe_writef(pipe, "ow: steer:             preference: %d", neigh->preference);
     }
 }
 

@@ -49,6 +49,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <osw_stats.h>
 #include <osw_stats_defs.h>
 #include <osw_stats_subscriber.h>
+#include <osw_diag.h>
 #include <ow_steer_bm.h>
 #include "ow_steer_candidate_list.h"
 #include "ow_steer_sta.h"
@@ -2184,6 +2185,18 @@ ow_steer_bm_sta_update_info(struct ow_steer_bm_sta *sta,
 
         struct ow_steer_bm_sta_rrm *rrm = ds_tree_find(&sta->vif_rrm_tree, sta_info);
         ow_steer_bm_sta_rrm_scan_link_band_try(rrm);
+
+        /* FIXME: This should probably be controlled more
+         * tightly with regards to kick_type but that is
+         * almost never really changed and makes little
+         * sense to change.
+         */
+        ow_steer_executor_action_btm_set_enabled(sta->btm_executor_action,
+                                                 sta->assoc_req_info.wnm_bss_trans);
+        ow_steer_executor_action_deauth_set_delay_sec(sta->deauth_executor_action,
+                                                      sta->assoc_req_info.wnm_bss_trans
+                                                      ? 10
+                                                      : 0);
     }
 }
 
@@ -2668,7 +2681,7 @@ ow_steer_bm_sta_recalc_lwm_2g_xing_policy_config(struct ow_steer_bm_sta *sta)
     policy_config.snr = *client->lwm.cur;
     policy_config.mode = OW_STEER_POLICY_SNR_XING_MODE_LWM;
     policy_config.mode_config.lwm.txrx_bytes_limit.active = *client->kick_upon_idle.cur;
-    policy_config.mode_config.lwm.txrx_bytes_limit.delta = 2000;
+    policy_config.mode_config.lwm.txrx_bytes_limit.delta = OW_STEER_BM_DEFAULT_BITRATE_THRESHOLD / 8;
     memcpy(&policy_config.bssid, &vif_2g->vif_info->drv_state->mac_addr, sizeof(policy_config.bssid));
 
     return MEMNDUP(&policy_config, sizeof(policy_config));
@@ -2700,7 +2713,7 @@ ow_steer_bm_sta_recalc_lwm_5g_xing_policy_config(struct ow_steer_bm_sta *sta)
     policy_config.snr = *client->lwm.cur;
     policy_config.mode = OW_STEER_POLICY_SNR_XING_MODE_LWM;
     policy_config.mode_config.lwm.txrx_bytes_limit.active = *client->kick_upon_idle.cur;
-    policy_config.mode_config.lwm.txrx_bytes_limit.delta = 2000;
+    policy_config.mode_config.lwm.txrx_bytes_limit.delta = OW_STEER_BM_DEFAULT_BITRATE_THRESHOLD / 8;
     memcpy(&policy_config.bssid, &vif_5g->vif_info->drv_state->mac_addr, sizeof(policy_config.bssid));
 
     return MEMNDUP(&policy_config, sizeof(policy_config));
@@ -2732,7 +2745,7 @@ ow_steer_bm_sta_recalc_lwm_6g_xing_policy_config(struct ow_steer_bm_sta *sta)
     policy_config.snr = *client->lwm.cur;
     policy_config.mode = OW_STEER_POLICY_SNR_XING_MODE_LWM;
     policy_config.mode_config.lwm.txrx_bytes_limit.active = *client->kick_upon_idle.cur;
-    policy_config.mode_config.lwm.txrx_bytes_limit.delta = 2000;
+    policy_config.mode_config.lwm.txrx_bytes_limit.delta = OW_STEER_BM_DEFAULT_BITRATE_THRESHOLD / 8;
     memcpy(&policy_config.bssid, &vif_6g->vif_info->drv_state->mac_addr, sizeof(policy_config.bssid));
 
     return MEMNDUP(&policy_config, sizeof(policy_config));
@@ -3208,6 +3221,35 @@ ow_steer_bm_vif_set_vif_info(struct ow_steer_bm_vif *vif,
 {
     ASSERT(vif != NULL, "");
 
+    const bool adding = (vif->vif_info == NULL)
+                     && (vif_info != NULL);
+    const bool changing = (vif->vif_info != NULL)
+                       && (vif_info != NULL);
+    const bool removing = (vif->vif_info != NULL)
+                       && (vif_info == NULL);
+
+    if (adding) {
+        LOGD("ow: steer: bm: vif: %s claimed to group %s",
+             vif->vif_name.buf,
+             vif->group->id);
+    }
+
+    if (changing) {
+        LOGD("ow: steer: bm: vif: %s still claimed to group %s",
+             vif->vif_name.buf,
+             vif->group->id);
+    }
+
+    if (removing) {
+        LOGD("ow: steer: bm: vif: %s unclaimed from group %s",
+             vif->vif_name.buf,
+             vif->group->id);
+
+        const bool unset_bss = ow_steer_bm_vif_is_up(vif) == true;
+        if (unset_bss == true)
+            ow_steer_bm_bss_unset(vif->bss);
+    }
+
     vif->vif_info = vif_info;
 
     OW_STEER_BM_SCHEDULE_WORK;
@@ -3539,6 +3581,8 @@ ow_steer_bm_stats_free_dpp_report(dpp_bs_client_report_data_t *dpp_report)
     while ((client = ds_dlist_remove_head(&dpp_report->list)) != NULL) {
         dpp_bs_client_record_free(client);
     }
+
+    FREE(dpp_report);
 }
 
 static void
@@ -3754,69 +3798,49 @@ ow_steer_bm_work_timer_cb(struct osw_timer *timer)
     ow_steer_bm_recalc_groups();
 }
 
-static bool
-ow_steer_bm_state_obs_vif_is_matching(struct ow_steer_bm_vif *vif,
-                                      const struct osw_state_vif_info *info)
+enum ow_steer_bm_vif_usability {
+    OW_STEER_BM_VIF_NOT_MATCHING,
+    OW_STEER_BM_VIF_NOT_USABLE,
+    OW_STEER_BM_VIF_USABLE,
+};
+
+static void
+ow_steer_bm_state_obs_vif_update_cb(struct osw_state_observer *self,
+                                    const struct osw_state_vif_info *vif_info,
+                                    const bool exists)
 {
-    ASSERT(info != NULL, "");
+    struct ow_steer_bm_vif *vif = container_of(self, struct ow_steer_bm_vif, state_obs);
+    const bool other_vif = (strcmp(vif->vif_name.buf, vif_info->vif_name) != 0);
+    if (other_vif) return;
 
-    if (WARN_ON(info->vif_name == NULL)) return false;
-    if (info->drv_state == NULL) return false;
-    if (info->drv_state->vif_type != OSW_VIF_AP) return false;
+    if ((vif_info->drv_state == NULL)
+    ||  (vif_info->drv_state->vif_type != OSW_VIF_AP)
+    ||  (exists == false)) {
+        vif_info = NULL;
+    }
 
-    const char *vif_name = info->vif_name;
-    const bool other_vif = (strcmp(vif_name, vif->vif_name.buf) != 0);
-    if (other_vif) return false;
-
-    return true;
+    ow_steer_bm_vif_set_vif_info(vif, vif_info);
 }
 
 static void
 ow_steer_bm_state_obs_vif_added_cb(struct osw_state_observer *self,
                                    const struct osw_state_vif_info *vif_info)
 {
-    struct ow_steer_bm_vif *vif = container_of(self, struct ow_steer_bm_vif, state_obs);
-    const bool not_matching = (ow_steer_bm_state_obs_vif_is_matching(vif, vif_info) == false);
-    if (not_matching) return;
-
-    LOGD("ow: steer: bm: vif: %s bound to group %s",
-         vif->vif_name.buf,
-         vif->group->id);
-
-    ow_steer_bm_vif_set_vif_info(vif, vif_info);
+    ow_steer_bm_state_obs_vif_update_cb(self, vif_info, true);
 }
 
 static void
 ow_steer_bm_state_obs_vif_changed_cb(struct osw_state_observer *self,
                                      const struct osw_state_vif_info *vif_info)
 {
-    struct ow_steer_bm_vif *vif = container_of(self, struct ow_steer_bm_vif, state_obs);
-    const bool not_matching = (ow_steer_bm_state_obs_vif_is_matching(vif, vif_info) == false);
-    if (not_matching) return;
-
-    LOGD("ow: steer: bm: vif: %s still bound to group %s",
-         vif->vif_name.buf,
-         vif->group->id);
-
-    ow_steer_bm_vif_set_vif_info(vif, vif_info);
+    ow_steer_bm_state_obs_vif_update_cb(self, vif_info, true);
 }
 
 static void
 ow_steer_bm_state_obs_vif_removed_cb(struct osw_state_observer *self,
                                      const struct osw_state_vif_info *vif_info)
 {
-    struct ow_steer_bm_vif *vif = container_of(self, struct ow_steer_bm_vif, state_obs);
-    const bool not_matching = (ow_steer_bm_state_obs_vif_is_matching(vif, vif_info) == false);
-    if (not_matching) return;
-
-    LOGD("ow: steer: bm: vif: %s unbound from group %s",
-         vif->vif_name.buf,
-         vif->group->id);
-
-    ow_steer_bm_vif_set_vif_info(vif, NULL);
-    const bool unset_bss = ow_steer_bm_vif_is_up(vif) == true;
-    if (unset_bss == true)
-        ow_steer_bm_bss_unset(vif->bss);
+    ow_steer_bm_state_obs_vif_update_cb(self, vif_info, false);
 }
 
 static bool
@@ -4374,52 +4398,58 @@ ow_steer_bm_group_client_removed_cb(struct ow_steer_bm_observer *observer,
 static void
 ow_steer_bm_sigusr1_dump_neighbors(void)
 {
-    LOGI("ow: steer: bm: neighbors:");
+    osw_diag_pipe_t *pipe = osw_diag_pipe_open();
+
+    osw_diag_pipe_writef(pipe, "ow: steer: bm: neighbors:");
 
     struct ow_steer_bm_neighbor *neighbor;
     ds_tree_foreach(&g_neighbor_tree, neighbor) {
-        LOGI("ow: steer: bm:   neighbors:");
-        LOGI("ow: steer: bm:     ptr: %p", neighbor);
-        LOGI("ow: steer: bm:     bssid: "OSW_HWADDR_FMT, OSW_HWADDR_ARG(&neighbor->bssid));
-        LOGI("ow: steer: bm:     removed: %s", neighbor->removed == true ? "true" : "false");
-        LOGI("ow: steer: bm:     vif_name: %s", neighbor->vif_name.cur == NULL ? "(nil)" : neighbor->vif_name.cur->buf);
-        LOGI("ow: steer: bm:     channel_number: %s", neighbor->channel_number.cur == NULL ? "(nil)" : strfmta("%u", *neighbor->channel_number.cur));
-        LOGI("ow: steer: bm:     ht_mode: %s", neighbor->ht_mode.cur == NULL ? "(nil)" : ow_steer_bm_neighbor_ht_mode_to_str(*neighbor->ht_mode.cur));
-        LOGI("ow: steer: bm:     op_class: %s", neighbor->op_class.cur == NULL ? "(nil)" : strfmta("%u", *neighbor->op_class.cur));
-        LOGI("ow: steer: bm:     channel: %s", neighbor->channel.cur == NULL ? "(nil)" : strfmta(OSW_CHANNEL_FMT, OSW_CHANNEL_ARG(neighbor->channel.cur)));
-        LOGI("ow: steer: bm:     vif: %s", neighbor->vif.cur == NULL ? "(nil)" : strfmta("%s", neighbor->vif.cur->vif_name.buf));
+        osw_diag_pipe_writef(pipe, "ow: steer: bm:   neighbors:");
+        osw_diag_pipe_writef(pipe, "ow: steer: bm:     ptr: %p", neighbor);
+        osw_diag_pipe_writef(pipe, "ow: steer: bm:     bssid: "OSW_HWADDR_FMT, OSW_HWADDR_ARG(&neighbor->bssid));
+        osw_diag_pipe_writef(pipe, "ow: steer: bm:     removed: %s", neighbor->removed == true ? "true" : "false");
+        osw_diag_pipe_writef(pipe, "ow: steer: bm:     vif_name: %s", neighbor->vif_name.cur == NULL ? "(nil)" : neighbor->vif_name.cur->buf);
+        osw_diag_pipe_writef(pipe, "ow: steer: bm:     channel_number: %s", neighbor->channel_number.cur == NULL ? "(nil)" : strfmta("%u", *neighbor->channel_number.cur));
+        osw_diag_pipe_writef(pipe, "ow: steer: bm:     ht_mode: %s", neighbor->ht_mode.cur == NULL ? "(nil)" : ow_steer_bm_neighbor_ht_mode_to_str(*neighbor->ht_mode.cur));
+        osw_diag_pipe_writef(pipe, "ow: steer: bm:     op_class: %s", neighbor->op_class.cur == NULL ? "(nil)" : strfmta("%u", *neighbor->op_class.cur));
+        osw_diag_pipe_writef(pipe, "ow: steer: bm:     channel: %s", neighbor->channel.cur == NULL ? "(nil)" : strfmta(OSW_CHANNEL_FMT, OSW_CHANNEL_ARG(neighbor->channel.cur)));
+        osw_diag_pipe_writef(pipe, "ow: steer: bm:     vif: %s", neighbor->vif.cur == NULL ? "(nil)" : strfmta("%s", neighbor->vif.cur->vif_name.buf));
 
-        LOGI("ow: steer: bm:     bss: %s", neighbor->bss == NULL ? "(nil)" : "");
+        osw_diag_pipe_writef(pipe, "ow: steer: bm:     bss: %s", neighbor->bss == NULL ? "(nil)" : "");
         if (neighbor->bss != NULL) {
-            LOGI("ow: steer: bm:         ptr: %p", neighbor->bss);
-            LOGI("ow: steer: bm:         bssid: "OSW_HWADDR_FMT, OSW_HWADDR_ARG(&neighbor->bss->bssid));
+            osw_diag_pipe_writef(pipe, "ow: steer: bm:         ptr: %p", neighbor->bss);
+            osw_diag_pipe_writef(pipe, "ow: steer: bm:         bssid: "OSW_HWADDR_FMT, OSW_HWADDR_ARG(&neighbor->bss->bssid));
          }
     }
+    osw_diag_pipe_close(pipe);
 }
 
 static void
 ow_steer_bm_sigusr1_dump_vifs(void)
 {
-    LOGI("ow: steer: bm: vifs:");
+    osw_diag_pipe_t *pipe = osw_diag_pipe_open();
+
+    osw_diag_pipe_writef(pipe, "ow: steer: bm: vifs:");
 
     struct ow_steer_bm_vif *vif;
     ds_tree_foreach(&g_vif_tree, vif) {
-        LOGI("ow: steer: bm:   vif:");
-        LOGI("ow: steer: bm:     ptr: %p", vif);
-        LOGI("ow: steer: bm:     vif_name: %s", vif->vif_name.buf);
-        LOGI("ow: steer: bm:     removed: %s", vif->removed == true ? "true" : "false");
-        LOGI("ow: steer: bm:     vif_info: %s", vif->vif_info == NULL ? "(nil)" : "(set)");
+        osw_diag_pipe_writef(pipe, "ow: steer: bm:   vif:");
+        osw_diag_pipe_writef(pipe, "ow: steer: bm:     ptr: %p", vif);
+        osw_diag_pipe_writef(pipe, "ow: steer: bm:     vif_name: %s", vif->vif_name.buf);
+        osw_diag_pipe_writef(pipe, "ow: steer: bm:     removed: %s", vif->removed == true ? "true" : "false");
+        osw_diag_pipe_writef(pipe, "ow: steer: bm:     vif_info: %s", vif->vif_info == NULL ? "(nil)" : "(set)");
 
-        LOGI("ow: steer: bm:     bss: %s", vif->bss == NULL ? "(nil)" : "");
+        osw_diag_pipe_writef(pipe, "ow: steer: bm:     bss: %s", vif->bss == NULL ? "(nil)" : "");
         if (vif->bss != NULL) {
-            LOGI("ow: steer: bm:         ptr: %p", vif->bss);
-            LOGI("ow: steer: bm:         bssid: "OSW_HWADDR_FMT, OSW_HWADDR_ARG(&vif->bss->bssid));
+            osw_diag_pipe_writef(pipe, "ow: steer: bm:         ptr: %p", vif->bss);
+            osw_diag_pipe_writef(pipe, "ow: steer: bm:         bssid: "OSW_HWADDR_FMT, OSW_HWADDR_ARG(&vif->bss->bssid));
          }
 
-        LOGI("ow: steer: bm:     group: %s", vif->group == NULL ? "(nil)" : "");
+        osw_diag_pipe_writef(pipe, "ow: steer: bm:     group: %s", vif->group == NULL ? "(nil)" : "");
         if (vif->group != NULL)
-            LOGI("ow: steer: bm:       id: %s", vif->group->id);
+            osw_diag_pipe_writef(pipe, "ow: steer: bm:       id: %s", vif->group->id);
     }
+    osw_diag_pipe_close(pipe);
 }
 
 static void
@@ -4428,7 +4458,9 @@ ow_steer_bm_btm_params_sigusr1_dump(const struct ow_steer_bm_btm_params *btm_par
     if (btm_params == NULL)
         return;
 
-    LOGI("ow: steer: bm:       bssid: %s", btm_params->bssid.cur == NULL ? "(nil)" : strfmta(OSW_HWADDR_FMT, OSW_HWADDR_ARG(btm_params->bssid.cur)));
+    osw_diag_pipe_t *pipe = osw_diag_pipe_open();
+    osw_diag_pipe_writef(pipe, "ow: steer: bm:       bssid: %s", btm_params->bssid.cur == NULL ? "(nil)" : strfmta(OSW_HWADDR_FMT, OSW_HWADDR_ARG(btm_params->bssid.cur)));
+    osw_diag_pipe_close(pipe);
 }
 
 static void
@@ -4437,156 +4469,166 @@ ow_steer_bm_cs_params_sigusr1_dump(const struct ow_steer_bm_cs_params *cs_params
     if (cs_params == NULL)
         return;
 
-    LOGI("ow: steer: bm:       band: %s", cs_params->band.cur == NULL ? "(nil)" : ow_steer_bm_cs_params_band_to_str(*cs_params->band.cur));
-    LOGI("ow: steer: bm:       enforce_period_secs: %s", cs_params->enforce_period_secs.cur == NULL ? "(nil)" : strfmta("%u", *cs_params->enforce_period_secs.cur));
+    osw_diag_pipe_t *pipe = osw_diag_pipe_open();
+    osw_diag_pipe_writef(pipe, "ow: steer: bm:       band: %s", cs_params->band.cur == NULL ? "(nil)" : ow_steer_bm_cs_params_band_to_str(*cs_params->band.cur));
+    osw_diag_pipe_writef(pipe, "ow: steer: bm:       enforce_period_secs: %s", cs_params->enforce_period_secs.cur == NULL ? "(nil)" : strfmta("%u", *cs_params->enforce_period_secs.cur));
+    osw_diag_pipe_close(pipe);
 }
 
 static void
 ow_steer_bm_sigusr1_dump_clients(void)
 {
-    LOGI("ow: steer: bm: clients:");
+    osw_diag_pipe_t *pipe = osw_diag_pipe_open();
+    osw_diag_pipe_writef(pipe, "ow: steer: bm: clients:");
 
     struct ow_steer_bm_client *client;
     ds_tree_foreach(&g_client_tree, client) {
-        LOGI("ow: steer: bm:   client:");
-        LOGI("ow: steer: bm:     ptr: %p", client);
-        LOGI("ow: steer: bm:     addr: "OSW_HWADDR_FMT, OSW_HWADDR_ARG(&client->addr));
-        LOGI("ow: steer: bm:     removed: %s", client->removed == true ? "true" : "false");
-        LOGI("ow: steer: bm:     lwm: %s", client->lwm.cur == NULL ? "(nil)" : strfmta("%u", *client->lwm.cur));
-        LOGI("ow: steer: bm:     hwm: %s", client->hwm.cur == NULL ? "(nil)" : strfmta("%u", *client->hwm.cur));
-        LOGI("ow: steer: bm:     bottom_lwm: %s", client->bottom_lwm.cur == NULL ? "(nil)" : strfmta("%u", *client->bottom_lwm.cur));
-        LOGI("ow: steer: bm:     pref_5g: %s", client->pref_5g.cur == NULL ? "(nil)" : ow_steer_bm_client_pref_5g_to_str(*client->pref_5g.cur));
-        LOGI("ow: steer: bm:     kick_type: %s", client->kick_type.cur == NULL ? "(nil)" : ow_steer_bm_client_kick_type_to_str(*client->kick_type.cur));
-        LOGI("ow: steer: bm:     pre_assoc_auth_block: %s", client->pre_assoc_auth_block.cur == NULL ? "(nil)" : (*client->pre_assoc_auth_block.cur ? "true" : "false"));
-        LOGI("ow: steer: bm:     kick_upon_idle: %s", client->kick_upon_idle.cur == NULL ? "(nil)" : (*client->kick_upon_idle.cur ? "true" : "false"));
-        LOGI("ow: steer: bm:     send_rrm_after_assoc: %s", client->send_rrm_after_assoc.cur == NULL ? "(nil)" : (*client->send_rrm_after_assoc.cur ? "true" : "false"));
-        LOGI("ow: steer: bm:     backoff_secs: %s", client->backoff_secs.cur == NULL ? "(nil)":  strfmta("%u", *client->backoff_secs.cur));
-        LOGI("ow: steer: bm:     backoff_exp_base: %s", client->backoff_exp_base.cur == NULL ? "(nil)" : strfmta("%u", *client->backoff_exp_base.cur));
-        LOGI("ow: steer: bm:     max_rejects: %s", client->max_rejects.cur == NULL ? "(nil)" : strfmta("%u", *client->max_rejects.cur));
-        LOGI("ow: steer: bm:     rejects_tmout_secs: %s", client->rejects_tmout_secs.cur == NULL ? "(nil)" : strfmta("%u", *client->rejects_tmout_secs.cur));
-        LOGI("ow: steer: bm:     force_kick: %s", client->force_kick.cur == NULL ? "(nil)" : ow_steer_bm_client_force_kick_to_str(*client->force_kick.cur));
-        LOGI("ow: steer: bm:     sc_kick_type: %s", client->sc_kick_type.cur == NULL ? "(nil)" : ow_steer_bm_client_sc_kick_type_to_str(*client->sc_kick_type.cur));
-        LOGI("ow: steer: bm:     sticky_kick_type: %s", client->sticky_kick_type.cur == NULL ? "(nil)" :
+        osw_diag_pipe_writef(pipe, "ow: steer: bm:   client:");
+        osw_diag_pipe_writef(pipe, "ow: steer: bm:     ptr: %p", client);
+        osw_diag_pipe_writef(pipe, "ow: steer: bm:     addr: "OSW_HWADDR_FMT, OSW_HWADDR_ARG(&client->addr));
+        osw_diag_pipe_writef(pipe, "ow: steer: bm:     removed: %s", client->removed == true ? "true" : "false");
+        osw_diag_pipe_writef(pipe, "ow: steer: bm:     lwm: %s", client->lwm.cur == NULL ? "(nil)" : strfmta("%u", *client->lwm.cur));
+        osw_diag_pipe_writef(pipe, "ow: steer: bm:     hwm: %s", client->hwm.cur == NULL ? "(nil)" : strfmta("%u", *client->hwm.cur));
+        osw_diag_pipe_writef(pipe, "ow: steer: bm:     bottom_lwm: %s", client->bottom_lwm.cur == NULL ? "(nil)" : strfmta("%u", *client->bottom_lwm.cur));
+        osw_diag_pipe_writef(pipe, "ow: steer: bm:     pref_5g: %s", client->pref_5g.cur == NULL ? "(nil)" : ow_steer_bm_client_pref_5g_to_str(*client->pref_5g.cur));
+        osw_diag_pipe_writef(pipe, "ow: steer: bm:     kick_type: %s", client->kick_type.cur == NULL ? "(nil)" : ow_steer_bm_client_kick_type_to_str(*client->kick_type.cur));
+        osw_diag_pipe_writef(pipe, "ow: steer: bm:     pre_assoc_auth_block: %s", client->pre_assoc_auth_block.cur == NULL ? "(nil)" : (*client->pre_assoc_auth_block.cur ? "true" : "false"));
+        osw_diag_pipe_writef(pipe, "ow: steer: bm:     kick_upon_idle: %s", client->kick_upon_idle.cur == NULL ? "(nil)" : (*client->kick_upon_idle.cur ? "true" : "false"));
+        osw_diag_pipe_writef(pipe, "ow: steer: bm:     send_rrm_after_assoc: %s", client->send_rrm_after_assoc.cur == NULL ? "(nil)" : (*client->send_rrm_after_assoc.cur ? "true" : "false"));
+        osw_diag_pipe_writef(pipe, "ow: steer: bm:     backoff_secs: %s", client->backoff_secs.cur == NULL ? "(nil)":  strfmta("%u", *client->backoff_secs.cur));
+        osw_diag_pipe_writef(pipe, "ow: steer: bm:     backoff_exp_base: %s", client->backoff_exp_base.cur == NULL ? "(nil)" : strfmta("%u", *client->backoff_exp_base.cur));
+        osw_diag_pipe_writef(pipe, "ow: steer: bm:     max_rejects: %s", client->max_rejects.cur == NULL ? "(nil)" : strfmta("%u", *client->max_rejects.cur));
+        osw_diag_pipe_writef(pipe, "ow: steer: bm:     rejects_tmout_secs: %s", client->rejects_tmout_secs.cur == NULL ? "(nil)" : strfmta("%u", *client->rejects_tmout_secs.cur));
+        osw_diag_pipe_writef(pipe, "ow: steer: bm:     force_kick: %s", client->force_kick.cur == NULL ? "(nil)" : ow_steer_bm_client_force_kick_to_str(*client->force_kick.cur));
+        osw_diag_pipe_writef(pipe, "ow: steer: bm:     sc_kick_type: %s", client->sc_kick_type.cur == NULL ? "(nil)" : ow_steer_bm_client_sc_kick_type_to_str(*client->sc_kick_type.cur));
+        osw_diag_pipe_writef(pipe, "ow: steer: bm:     sticky_kick_type: %s", client->sticky_kick_type.cur == NULL ? "(nil)" :
                                                         ow_steer_bm_client_sticky_kick_type_to_str(*client->sticky_kick_type.cur));
-        LOGI("ow: steer: bm:     neighbor_list_filter_by_beacon_report: %s", client->neighbor_list_filter_by_beacon_report.cur == NULL ? "(nil)" :
+        osw_diag_pipe_writef(pipe, "ow: steer: bm:     neighbor_list_filter_by_beacon_report: %s", client->neighbor_list_filter_by_beacon_report.cur == NULL ? "(nil)" :
                                                                              strfmta("%s", *client->neighbor_list_filter_by_beacon_report.cur == true ? "true" : "false"));
-        LOGI("ow: steer: bm:     cs_mode: %s", client->cs_mode.cur == NULL ? "(nil)" : ow_steer_bm_client_cs_mode_to_str(*client->cs_mode.cur));
-        LOGI("ow: steer: bm:     sc_btm_params: %s", client->sc_btm_params == NULL ? "(nil)" : "");
-        LOGI("ow: steer: bm:     pref_5g_pre_assoc_block_timeout_msecs: %s", client->pref_5g_pre_assoc_block_timeout_msecs.cur == NULL ? "(nil)" :
+        osw_diag_pipe_writef(pipe, "ow: steer: bm:     cs_mode: %s", client->cs_mode.cur == NULL ? "(nil)" : ow_steer_bm_client_cs_mode_to_str(*client->cs_mode.cur));
+        osw_diag_pipe_writef(pipe, "ow: steer: bm:     sc_btm_params: %s", client->sc_btm_params == NULL ? "(nil)" : "");
+        osw_diag_pipe_writef(pipe, "ow: steer: bm:     pref_5g_pre_assoc_block_timeout_msecs: %s", client->pref_5g_pre_assoc_block_timeout_msecs.cur == NULL ? "(nil)" :
                                                                                   strfmta("%u", *client->pref_5g_pre_assoc_block_timeout_msecs.cur));
         ow_steer_bm_btm_params_sigusr1_dump(client->sc_btm_params);
-        LOGI("ow: steer: bm:     steering_btm_params: %s", client->steering_btm_params == NULL ? "(nil)" : "");
+        osw_diag_pipe_writef(pipe, "ow: steer: bm:     steering_btm_params: %s", client->steering_btm_params == NULL ? "(nil)" : "");
         ow_steer_bm_btm_params_sigusr1_dump(client->steering_btm_params);
-        LOGI("ow: steer: bm:     cs_params: %s", client->cs_params == NULL ? "(nil)" : "");
+        osw_diag_pipe_writef(pipe, "ow: steer: bm:     cs_params: %s", client->cs_params == NULL ? "(nil)" : "");
         ow_steer_bm_cs_params_sigusr1_dump(client->cs_params);
 
-        LOGI("ow: steer: bm:     sta_tree:");
+        osw_diag_pipe_writef(pipe, "ow: steer: bm:     sta_tree:");
         struct ow_steer_bm_sta *sta;
         ds_dlist_foreach(&client->sta_list, sta) {
-             LOGI("ow: steer: bm:       sta:");
-             LOGI("ow: steer: bm:         ptr: %p", sta);
-             LOGI("ow: steer: bm:         addr: "OSW_HWADDR_FMT, OSW_HWADDR_ARG(&sta->addr));
+             osw_diag_pipe_writef(pipe, "ow: steer: bm:       sta:");
+             osw_diag_pipe_writef(pipe, "ow: steer: bm:         ptr: %p", sta);
+             osw_diag_pipe_writef(pipe, "ow: steer: bm:         addr: "OSW_HWADDR_FMT, OSW_HWADDR_ARG(&sta->addr));
         }
     }
+    osw_diag_pipe_close(pipe);
 }
 
 static void
 ow_steer_bm_sigusr1_dump_groups(void)
 {
-    LOGI("ow: steer: bm: groups:");
+    osw_diag_pipe_t *pipe = osw_diag_pipe_open();
+    osw_diag_pipe_writef(pipe, "ow: steer: bm: groups:");
 
     struct ow_steer_bm_group *group;
     ds_tree_foreach(&g_group_tree, group) {
-        LOGI("ow: steer: bm:   group:");
-        LOGI("ow: steer: bm:     ptr: %p", group);
-        LOGI("ow: steer: bm:     id: %s", group->id);
-        LOGI("ow: steer: bm:     removed: %s", group->removed == true ? "true" : "false");
+        osw_diag_pipe_writef(pipe, "ow: steer: bm:   group:");
+        osw_diag_pipe_writef(pipe, "ow: steer: bm:     ptr: %p", group);
+        osw_diag_pipe_writef(pipe, "ow: steer: bm:     id: %s", group->id);
+        osw_diag_pipe_writef(pipe, "ow: steer: bm:     removed: %s", group->removed == true ? "true" : "false");
 
-        LOGI("ow: steer: bm:     vif_tree:");
+        osw_diag_pipe_writef(pipe, "ow: steer: bm:     vif_tree:");
         struct ow_steer_bm_vif *vif;
         ds_tree_foreach(&group->vif_tree, vif) {
-             LOGI("ow: steer: bm:       vif:");
-             LOGI("ow: steer: bm:         ptr: %p", vif);
-             LOGI("ow: steer: bm:         vif_name: %s", vif->vif_name.buf);
+             osw_diag_pipe_writef(pipe, "ow: steer: bm:       vif:");
+             osw_diag_pipe_writef(pipe, "ow: steer: bm:         ptr: %p", vif);
+             osw_diag_pipe_writef(pipe, "ow: steer: bm:         vif_name: %s", vif->vif_name.buf);
         }
 
-        LOGI("ow: steer: bm:     sta_tree:");
+        osw_diag_pipe_writef(pipe, "ow: steer: bm:     sta_tree:");
         struct ow_steer_bm_sta *sta;
         ds_tree_foreach(&group->sta_tree, sta) {
-             LOGI("ow: steer: bm:       sta:");
-             LOGI("ow: steer: bm:         ptr: %p", sta);
-             LOGI("ow: steer: bm:         addr: "OSW_HWADDR_FMT, OSW_HWADDR_ARG(&sta->addr));
+             osw_diag_pipe_writef(pipe, "ow: steer: bm:       sta:");
+             osw_diag_pipe_writef(pipe, "ow: steer: bm:         ptr: %p", sta);
+             osw_diag_pipe_writef(pipe, "ow: steer: bm:         addr: "OSW_HWADDR_FMT, OSW_HWADDR_ARG(&sta->addr));
         }
 
-        LOGI("ow: steer: bm:     bss_tree:");
+        osw_diag_pipe_writef(pipe, "ow: steer: bm:     bss_tree:");
         struct ow_steer_bm_bss *bss;
         ds_tree_foreach(&group->bss_tree, bss) {
-             LOGI("ow: steer: bm:       bss:");
-             LOGI("ow: steer: bm:         ptr: %p", bss);
-             LOGI("ow: steer: bm:         bssid: "OSW_HWADDR_FMT, OSW_HWADDR_ARG(&bss->bssid));
+             osw_diag_pipe_writef(pipe, "ow: steer: bm:       bss:");
+             osw_diag_pipe_writef(pipe, "ow: steer: bm:         ptr: %p", bss);
+             osw_diag_pipe_writef(pipe, "ow: steer: bm:         bssid: "OSW_HWADDR_FMT, OSW_HWADDR_ARG(&bss->bssid));
         }
     }
+    osw_diag_pipe_close(pipe);
 }
 
 static void
 ow_steer_bm_sigusr1_dump_bsses(void)
 {
-    LOGI("ow: steer: bm: bsses:");
+    osw_diag_pipe_t *pipe = osw_diag_pipe_open();
+    osw_diag_pipe_writef(pipe, "ow: steer: bm: bsses:");
 
     struct ow_steer_bm_bss *bss;
     ds_dlist_foreach(&g_bss_list, bss) {
-        LOGI("ow: steer: bm:   bss:");
-        LOGI("ow: steer: bm:     ptr: %p", bss);
-        LOGI("ow: steer: bm:     bssid: "OSW_HWADDR_FMT, OSW_HWADDR_ARG(&bss->bssid));
-        LOGI("ow: steer: bm:     removed: %s", bss->removed == true ? "true" : "false");
+        osw_diag_pipe_writef(pipe, "ow: steer: bm:   bss:");
+        osw_diag_pipe_writef(pipe, "ow: steer: bm:     ptr: %p", bss);
+        osw_diag_pipe_writef(pipe, "ow: steer: bm:     bssid: "OSW_HWADDR_FMT, OSW_HWADDR_ARG(&bss->bssid));
+        osw_diag_pipe_writef(pipe, "ow: steer: bm:     removed: %s", bss->removed == true ? "true" : "false");
 
-        LOGI("ow: steer: bm:     neighbor: %s", bss->neighbor != NULL ? "" : "(nill)");
+        osw_diag_pipe_writef(pipe, "ow: steer: bm:     neighbor: %s", bss->neighbor != NULL ? "" : "(nill)");
         if (bss->neighbor != NULL) {
-            LOGI("ow: steer: bm:        ptr: %p", bss->neighbor);
-            LOGI("ow: steer: bm:        bssid: "OSW_HWADDR_FMT, OSW_HWADDR_ARG(&bss->neighbor->bssid));
+            osw_diag_pipe_writef(pipe, "ow: steer: bm:        ptr: %p", bss->neighbor);
+            osw_diag_pipe_writef(pipe, "ow: steer: bm:        bssid: "OSW_HWADDR_FMT, OSW_HWADDR_ARG(&bss->neighbor->bssid));
         }
 
-        LOGI("ow: steer: bm:     vif: %s", bss->vif != NULL ? "" : "(nill)");
+        osw_diag_pipe_writef(pipe, "ow: steer: bm:     vif: %s", bss->vif != NULL ? "" : "(nill)");
         if (bss->vif != NULL) {
-            LOGI("ow: steer: bm:        ptr: %p", bss->vif);
-            LOGI("ow: steer: bm:        vif_name: %s", bss->vif->vif_name.buf);
+            osw_diag_pipe_writef(pipe, "ow: steer: bm:        ptr: %p", bss->vif);
+            osw_diag_pipe_writef(pipe, "ow: steer: bm:        vif_name: %s", bss->vif->vif_name.buf);
         }
 
-        LOGI("ow: steer: bm:     bss_entry: %s", bss->bss_entry != NULL ? "(set)" : "(nill)");
-        LOGI("ow: steer: bm:     group:");
-        LOGI("ow: steer: bm:       id: %s", bss->group->id);
+        osw_diag_pipe_writef(pipe, "ow: steer: bm:     bss_entry: %s", bss->bss_entry != NULL ? "(set)" : "(nill)");
+        osw_diag_pipe_writef(pipe, "ow: steer: bm:     group:");
+        osw_diag_pipe_writef(pipe, "ow: steer: bm:       id: %s", bss->group->id);
     }
+    osw_diag_pipe_close(pipe);
 }
 
 static void
 ow_steer_bm_sigusr1_dump_stas(void)
 {
-    LOGI("ow: steer: bm: stas:");
+    osw_diag_pipe_t *pipe = osw_diag_pipe_open();
+    osw_diag_pipe_writef(pipe, "ow: steer: bm: stas:");
 
     struct ow_steer_bm_sta *sta;
     ds_dlist_foreach(&g_sta_list, sta) {
-        LOGI("ow: steer: bm:   sta:");
-        LOGI("ow: steer: bm:     ptr: %p", sta);
-        LOGI("ow: steer: bm:     addr: "OSW_HWADDR_FMT, OSW_HWADDR_ARG(&sta->addr));
-        LOGI("ow: steer: bm:     removed: %s", sta->removed == true ? "true" : "false");
-        LOGI("ow: steer: bm:     steer_sta: %s", sta->steer_sta == NULL ? "(nil)" : "(set)");
-        LOGI("ow: steer: bm:     bss_filter_policy: %s", sta->bss_filter_policy == NULL ? "(nil)" : "(set)");
-        LOGI("ow: steer: bm:     pre_assoc_2g_policy: %s", sta->pre_assoc_2g_policy == NULL ? "(nil)" : "(set)");
-        LOGI("ow: steer: bm:     bottom_lwm_2g_xing_policy: %s", sta->bottom_lwm_2g_xing_policy == NULL ? "(nil)" : "(set)");
-        LOGI("ow: steer: bm:     lwm_2g_xing_policy: %s", sta->lwm_2g_xing_policy == NULL ? "(nil)" : "(set)");
-        LOGI("ow: steer: bm:     lwm_5g_xing_policy: %s", sta->lwm_5g_xing_policy == NULL ? "(nil)" : "(set)");
-        LOGI("ow: steer: bm:     lwm_6g_xing_policy: %s", sta->lwm_6g_xing_policy == NULL ? "(nil)" : "(set)");
-        LOGI("ow: steer: bm:     hwm_2g_xing_policy: %s", sta->hwm_2g_xing_policy == NULL ? "(nil)" : "(set)");
-        LOGI("ow: steer: bm:     force_kick_policy: %s", sta->force_kick_policy == NULL ? "(nil)" : "(set)");
-        LOGI("ow: steer: bm:     client: %s", sta->client == NULL ? "(nil)" : "");
+        osw_diag_pipe_writef(pipe, "ow: steer: bm:   sta:");
+        osw_diag_pipe_writef(pipe, "ow: steer: bm:     ptr: %p", sta);
+        osw_diag_pipe_writef(pipe, "ow: steer: bm:     addr: "OSW_HWADDR_FMT, OSW_HWADDR_ARG(&sta->addr));
+        osw_diag_pipe_writef(pipe, "ow: steer: bm:     removed: %s", sta->removed == true ? "true" : "false");
+        osw_diag_pipe_writef(pipe, "ow: steer: bm:     steer_sta: %s", sta->steer_sta == NULL ? "(nil)" : "(set)");
+        osw_diag_pipe_writef(pipe, "ow: steer: bm:     bss_filter_policy: %s", sta->bss_filter_policy == NULL ? "(nil)" : "(set)");
+        osw_diag_pipe_writef(pipe, "ow: steer: bm:     pre_assoc_2g_policy: %s", sta->pre_assoc_2g_policy == NULL ? "(nil)" : "(set)");
+        osw_diag_pipe_writef(pipe, "ow: steer: bm:     bottom_lwm_2g_xing_policy: %s", sta->bottom_lwm_2g_xing_policy == NULL ? "(nil)" : "(set)");
+        osw_diag_pipe_writef(pipe, "ow: steer: bm:     lwm_2g_xing_policy: %s", sta->lwm_2g_xing_policy == NULL ? "(nil)" : "(set)");
+        osw_diag_pipe_writef(pipe, "ow: steer: bm:     lwm_5g_xing_policy: %s", sta->lwm_5g_xing_policy == NULL ? "(nil)" : "(set)");
+        osw_diag_pipe_writef(pipe, "ow: steer: bm:     lwm_6g_xing_policy: %s", sta->lwm_6g_xing_policy == NULL ? "(nil)" : "(set)");
+        osw_diag_pipe_writef(pipe, "ow: steer: bm:     hwm_2g_xing_policy: %s", sta->hwm_2g_xing_policy == NULL ? "(nil)" : "(set)");
+        osw_diag_pipe_writef(pipe, "ow: steer: bm:     force_kick_policy: %s", sta->force_kick_policy == NULL ? "(nil)" : "(set)");
+        osw_diag_pipe_writef(pipe, "ow: steer: bm:     client: %s", sta->client == NULL ? "(nil)" : "");
         if (sta->client != NULL) {
-            LOGI("ow: steer: bm:        ptr: %p", sta->client);
-            LOGI("ow: steer: bm:        bssid: "OSW_HWADDR_FMT, OSW_HWADDR_ARG(&sta->client->addr));
+            osw_diag_pipe_writef(pipe, "ow: steer: bm:        ptr: %p", sta->client);
+            osw_diag_pipe_writef(pipe, "ow: steer: bm:        bssid: "OSW_HWADDR_FMT, OSW_HWADDR_ARG(&sta->client->addr));
         }
 
-        LOGI("ow: steer: bm:     group:");
-        LOGI("ow: steer: bm:       id: %s", sta->group->id);
+        osw_diag_pipe_writef(pipe, "ow: steer: bm:     group:");
+        osw_diag_pipe_writef(pipe, "ow: steer: bm:       id: %s", sta->group->id);
     }
+    osw_diag_pipe_close(pipe);
 }
 
 static void

@@ -605,9 +605,9 @@ nl_80211_map_sta_flush(struct nl_80211_map *map)
 static void
 nl_80211_map_flush(struct nl_80211_map *map)
 {
-    nl_80211_map_phy_flush(map);
-    nl_80211_map_vif_flush(map);
     nl_80211_map_sta_flush(map);
+    nl_80211_map_vif_flush(map);
+    nl_80211_map_phy_flush(map);
 }
 
 static void

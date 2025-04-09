@@ -30,6 +30,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <module.h>
 #include <osw_types.h>
 #include <osw_state.h>
+#include <osw_diag.h>
 #include "ow_steer_candidate_list.h"
 #include "ow_steer_policy.h"
 #include "ow_steer_policy_priv.h"
@@ -137,23 +138,24 @@ ow_steer_policy_band_filter_recalc_cb(struct ow_steer_policy *policy,
 }
 
 static void
-ow_steer_policy_band_filter_sigusr1_dump_cb(struct ow_steer_policy *policy)
+ow_steer_policy_band_filter_sigusr1_dump_cb(osw_diag_pipe_t *pipe,
+                                            struct ow_steer_policy *policy)
 {
     ASSERT(policy != NULL, "");
 
     struct ow_steer_policy_band_filter *filter_policy = ow_steer_policy_get_priv(policy);
 
-    LOGI("ow: steer:         included_preference:");
-    LOGI("ow: steer:           override: %s", filter_policy->included_preference.override == true ? "true" : "false");
-    LOGI("ow: steer:           preference: %s", ow_steer_candidate_preference_to_cstr(filter_policy->included_preference.value));
-    LOGI("ow: steer:         excluded_preference:");
-    LOGI("ow: steer:           override: %s", filter_policy->excluded_preference.override == true ? "true" : "false");
-    LOGI("ow: steer:           preference: %s", ow_steer_candidate_preference_to_cstr(filter_policy->excluded_preference.value));
-    LOGI("ow: steer:         bands:%s", ds_tree_is_empty(&filter_policy->band_tree) == true ? " (none)" : "");
+    osw_diag_pipe_writef(pipe, "ow: steer:         included_preference:");
+    osw_diag_pipe_writef(pipe, "ow: steer:           override: %s", filter_policy->included_preference.override == true ? "true" : "false");
+    osw_diag_pipe_writef(pipe, "ow: steer:           preference: %s", ow_steer_candidate_preference_to_cstr(filter_policy->included_preference.value));
+    osw_diag_pipe_writef(pipe, "ow: steer:         excluded_preference:");
+    osw_diag_pipe_writef(pipe, "ow: steer:           override: %s", filter_policy->excluded_preference.override == true ? "true" : "false");
+    osw_diag_pipe_writef(pipe, "ow: steer:           preference: %s", ow_steer_candidate_preference_to_cstr(filter_policy->excluded_preference.value));
+    osw_diag_pipe_writef(pipe, "ow: steer:         bands:%s", ds_tree_is_empty(&filter_policy->band_tree) == true ? " (none)" : "");
 
     struct ow_steer_policy_band_filter_band *entry;
     ds_tree_foreach(&filter_policy->band_tree, entry)
-        LOGI("ow: steer:           band: %s", osw_band_to_str(entry->band));
+        osw_diag_pipe_writef(pipe, "ow: steer:           band: %s", osw_band_to_str(entry->band));
 }
 
 struct ow_steer_policy_band_filter*

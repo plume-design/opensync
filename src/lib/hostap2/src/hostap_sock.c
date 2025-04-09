@@ -84,44 +84,9 @@ hostap_sock_set_bufsize(int fd)
     return 0;
 }
 
-static bool
-hostap_sock_pid_is_alive(int pid)
-{
-    const pid_t dead = (pid_t)-1;
-    return getpgid(pid) != dead;
-}
-
-static void
-hostap_sock_purge_old(void)
-{
-    glob_t g = {0};
-    const int err = glob(HOSTAP_SOCK_CLI_PREFIX"*", 0, NULL, &g);
-    if (err) return;
-
-    size_t i;
-    for (i = 0; i < g.gl_pathc; i++) {
-        const char *path = g.gl_pathv[i];
-        const char *pattern = HOSTAP_SOCK_CLI_PREFIX HOSTAP_SOCK_CLI_SUFFIX;
-        int pid;
-        int counter;
-        const int n = sscanf(path, pattern, &pid, &counter);
-        if (n != 2) continue;
-        if (hostap_sock_pid_is_alive(pid)) continue;
-        unlink(path);
-    }
-
-    globfree(&g);
-}
-
 static int
 hostap_sock_bind(struct hostap_sock *sock)
 {
-    /* This is intended to be best effort. It can still
-     * leave files if pids wrap around. This can certainly
-     * be made more reliable but is good enough for now.
-     */
-    hostap_sock_purge_old();
-
     struct sockaddr_un local = {0};
     const struct sockaddr *addr = (struct sockaddr *)&local;
     size_t addr_len = sizeof(local);
@@ -130,13 +95,22 @@ hostap_sock_bind(struct hostap_sock *sock)
     static int counter = 0;
     int tries_left = 10;
     do {
-        const size_t max_len = sizeof(local.sun_path);
-        const int len = snprintf(local.sun_path,
+        const size_t max_len = sizeof(local.sun_path) - 1;
+        const int len = snprintf(local.sun_path + 1,
                                  max_len,
                                  HOSTAP_SOCK_CLI_PREFIX
                                  HOSTAP_SOCK_CLI_SUFFIX,
                                  (int)getpid(),
                                  counter);
+        /* First byte \0 means it's an abstract socket that
+         * does _not_ reside on the VFS. This has the
+         * benefit of not needing to perform unlink() /
+         * cleanup - which is a problem when considering a
+         * program can abrubtly crash, or close the socket,
+         * but forget to unlink it. Abstract socket closing
+         * is visible to the sender gracefully too.
+         */
+        local.sun_path[0] = '\0';
         const bool snprintf_failed = (len < 0);
         if (WARN_ON(snprintf_failed)) return -EINVAL;
         const size_t need_len = len;

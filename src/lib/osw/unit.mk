@@ -70,6 +70,7 @@ UNIT_SRC += src/osw_rrm.c
 UNIT_SRC += src/osw_rrm_bcn_meas_rpt_cache.c
 UNIT_SRC += src/osw_token.c
 UNIT_SRC += src/osw_l2uf.c
+UNIT_SRC += src/osw_diag.c
 
 UNIT_CFLAGS := -I$(UNIT_PATH)/inc
 UNIT_CFLAGS += -D_GNU_SOURCE

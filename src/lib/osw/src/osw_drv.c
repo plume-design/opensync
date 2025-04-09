@@ -689,7 +689,7 @@ osw_drv_vif_chan_sync_cb(EV_P_ ev_timer *arg, int events)
     struct osw_drv_phy *phy = vif->phy;
     struct osw_drv *drv = phy->drv;
 
-    LOGI("osw: drv: %s/%s: syncing channel state",
+    LOGD("osw: drv: %s/%s: syncing channel state",
          phy->phy_name, vif->vif_name);
 
     osw_drv_report_vif_changed(drv, phy->phy_name, vif->vif_name);
@@ -717,7 +717,7 @@ osw_drv_set_chan_sync(struct osw_drv *drv, const struct osw_drv_conf *conf)
             if (cvif->vif_type != OSW_VIF_AP) continue;
             if (cvif->u.ap.channel_changed == false) continue;
 
-            LOGI("osw: drv: %s/%s: scheduling channel state sync",
+            LOGD("osw: drv: %s/%s: scheduling channel state sync",
                  phy->phy_name, vif->vif_name);
 
             ev_timer_stop(EV_DEFAULT_ &vif->chan_sync);
@@ -3400,6 +3400,7 @@ osw_drv_conf_free(struct osw_drv_conf *conf)
                     FREE(vif->u.ap.neigh_add_list.list);
                     FREE(vif->u.ap.neigh_mod_list.list);
                     FREE(vif->u.ap.neigh_del_list.list);
+                    FREE(vif->u.ap.wps_cred_list.list);
                     break;
                 case OSW_VIF_AP_VLAN:
                     break;
@@ -3410,7 +3411,7 @@ osw_drv_conf_free(struct osw_drv_conf *conf)
         }
 
         FREE(phy->phy_name);
-        FREE(phy->vif_list);
+        FREE(phy->vif_list.list);
     }
 
     FREE(conf->phy_list);

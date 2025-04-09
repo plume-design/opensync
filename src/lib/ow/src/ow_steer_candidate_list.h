@@ -27,6 +27,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifndef OW_STEER_CANDIDATE_LIST_H
 #define OW_STEER_CANDIDATE_LIST_H
 
+#include <osw_diag.h>
+
 struct ow_steer_candidate_list;
 struct ow_steer_candidate;
 struct ow_steer_candidate_assessor; /* extern */
@@ -87,7 +89,8 @@ size_t
 ow_steer_candidate_list_get_length(const struct ow_steer_candidate_list *candidate_list);
 
 void
-ow_steer_candidate_list_sigusr1_dump(struct ow_steer_candidate_list *candidate_list);
+ow_steer_candidate_list_sigusr1_dump(osw_diag_pipe_t *pipe,
+                                     struct ow_steer_candidate_list *candidate_list);
 
 void
 ow_steer_candidate_list_sort(struct ow_steer_candidate_list *candidate_list,

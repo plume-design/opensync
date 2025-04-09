@@ -35,6 +35,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <osw_timer.h>
 #include <osw_stats.h>
 #include <osw_stats_defs.h>
+#include <osw_diag.h>
 #include "ow_steer_candidate_list.h"
 #include "ow_steer_candidate_assessor.h"
 #include "ow_steer_policy.h"
@@ -112,7 +113,7 @@ ow_steer_sta_create(const struct osw_hwaddr *mac_addr)
         .set_fn = ow_steer_sta_bss_set_cb,
         .unset_fn = ow_steer_sta_bss_unset_cb,
     };
-    
+
     struct ow_steer_sta *sta = CALLOC(1, sizeof(*sta));
 
     memcpy(&sta->mac_addr, mac_addr, sizeof(sta->mac_addr));
@@ -213,16 +214,19 @@ ow_steer_sta_conf_mutate(struct ow_steer_sta *sta,
 void
 ow_steer_sta_sigusr1_dump(void)
 {
-    LOGI("ow: steer: stas:");
+    osw_diag_pipe_t *pipe = osw_diag_pipe_open();
+
+    osw_diag_pipe_writef(pipe, "ow: steer: stas:");
 
     struct ow_steer_sta *sta;
     ds_dlist_foreach(ow_steer_get_sta_list(), sta) {
-        LOGI("ow: steer:   sta:");
-        LOGI("ow: steer:     ptr: %p", sta);
-        LOGI("ow: steer:     mac_addr: "OSW_HWADDR_FMT, OSW_HWADDR_ARG(&sta->mac_addr));
-        LOGI("ow: steer:     candidate_list:");
-        ow_steer_candidate_list_sigusr1_dump(sta->candidate_list);
-        LOGI("ow: steer:     policy_stack:");
-        ow_steer_policy_stack_sigusr1_dump(sta->policy_stack);
+        osw_diag_pipe_writef(pipe, "ow: steer:   sta:");
+        osw_diag_pipe_writef(pipe, "ow: steer:     ptr: %p", sta);
+        osw_diag_pipe_writef(pipe, "ow: steer:     mac_addr: "OSW_HWADDR_FMT, OSW_HWADDR_ARG(&sta->mac_addr));
+        osw_diag_pipe_writef(pipe, "ow: steer:     candidate_list:");
+        ow_steer_candidate_list_sigusr1_dump(pipe, sta->candidate_list);
+        osw_diag_pipe_writef(pipe, "ow: steer:     policy_stack:");
+        ow_steer_policy_stack_sigusr1_dump(pipe, sta->policy_stack);
     }
+    osw_diag_pipe_close(pipe);
 }

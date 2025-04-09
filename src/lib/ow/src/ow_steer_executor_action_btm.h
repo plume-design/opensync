@@ -43,4 +43,12 @@ void
 ow_steer_executor_action_btm_set_disassoc_imminent(struct ow_steer_executor_action_btm *btm_action,
                                                    const bool *b);
 
+/* Allows disabling execution, eg. when configured client is
+ * not capable of BTM while keeping the executor ready to be
+ * enabled.
+ */
+void
+ow_steer_executor_action_btm_set_enabled(struct ow_steer_executor_action_btm *btm_action,
+                                         bool enabled);
+
 #endif /* OW_STEER_EXECUTOR_ACTION_BTM_H */

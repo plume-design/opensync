@@ -27,10 +27,13 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifndef OW_STEER_POLICY_H
 #define OW_STEER_POLICY_H
 
+#include <osw_diag.h>
+
 struct ow_steer_policy;
 
 typedef void
-ow_steer_policy_sigusr1_dump_fn_t(struct ow_steer_policy *policy);
+ow_steer_policy_sigusr1_dump_fn_t(osw_diag_pipe_t *pipe,
+                                  struct ow_steer_policy *policy);
 
 typedef void
 ow_steer_policy_recalc_fn_t(struct ow_steer_policy *policy,

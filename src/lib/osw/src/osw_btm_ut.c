@@ -237,6 +237,7 @@ OSW_UT(osw_btm_ut_send_single_btm)
     assert(frame->u.action.u.bss_tm_req.dialog_token == (OSW_TOKEN_MAX - 1));
 
     /* Recreate desc, but with failing drv tx */
+    osw_btm_sta_set_info(btm_sta, NULL);
     osw_btm_desc_free(desc);
 
     desc = osw_btm_get_desc_internal(&sta_addr, &sta_observer.observer, osw_btm_ut_mux_frame_tx_schedule_error);
@@ -254,5 +255,5 @@ OSW_UT(osw_btm_ut_send_single_btm)
     assert(sta_observer.tx_error_cnt == 1);
     assert(g_dummy_drv.frame_tx_cnt == 3);
     frame = (const struct osw_drv_dot11_frame*) &g_dummy_drv.frame_buf;
-    assert(frame->u.action.u.bss_tm_req.dialog_token == (OSW_TOKEN_MAX - 2));
+    assert(frame->u.action.u.bss_tm_req.dialog_token == OSW_TOKEN_MAX);
 }

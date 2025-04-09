@@ -247,5 +247,11 @@ if MANAGER_CM
         help
             Connection manager will control also Bluetooth by enable/disable beacons and state.
 
+    config CM2_SET_LOCAL_MAC_BIT_ON_LAN
+        bool "Local MAC bit on LAN bridge interface"
+        default n
+        help
+            Toggle of whether setting local bit on MAC address of LAN bridge to avoid having the same MAC address on ethernet interfaces.
+
 
 endif

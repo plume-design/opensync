@@ -290,6 +290,7 @@ typedef enum {
     CM2_CONNECTION_REQ_UNBLOCKING_IPV4,
     CM2_CONNECTION_REQ_UNBLOCKING_IPV6,
     CM2_CONNECTION_REQ_ALL_ACTIVE_UPLINKS,
+    CM2_CONNECTION_REQ_LAN_ACTIVE_UPLINKS,
 } cm2_connection_request;
 
 // misc
@@ -559,9 +560,18 @@ static inline bool cm2_is_config_via_ble_enabled(void)
 #endif
 }
 
+static inline bool cm2_is_set_local_bit_mac_on_lan(void)
+{
+#ifdef CONFIG_CM2_SET_LOCAL_MAC_BIT_ON_LAN
+    return true;
+#else
+    return false;
+#endif
+}
+
 // net
 void cm2_update_bridge_cfg(char *bridge, char *port, bool brop,
-                           cm2_par_state_t state);
+                           cm2_par_state_t state, bool update_local_bit);
 void cm2_dhcpc_start_dryrun(char* ifname, char *iftype, int cnt);
 void cm2_dhcpc_stop_dryrun(char* ifname);
 bool cm2_is_eth_type(const char *if_type);

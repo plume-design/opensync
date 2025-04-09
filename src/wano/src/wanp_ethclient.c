@@ -613,8 +613,23 @@ void wanp_ethclient_dhcp_process(
         LOG(NOTICE, "ethclient: %s: Remote OpenSync device detected. Disabling fast client detection.",
                 self->ec_handle.wh_ifname);
         wanp_ethclient_set_status(self, &WANO_PLUGIN_STATUS(WANP_SKIP));
+        if (!WANO_CONNMGR_UPLINK_UPDATE(
+                self->ec_handle.wh_ifname,
+                .loop = WANO_TRI_TRUE))
+                {
+                    LOG(WARN, "wano: %s: Error updating the Connection_Manager_Uplink table (loop = true)",
+                            self->ec_handle.wh_ifname);
+                }
         goto abort;
     }
+
+    if (!WANO_CONNMGR_UPLINK_UPDATE(
+            self->ec_handle.wh_ifname,
+            .loop = WANO_TRI_FALSE))
+            {
+                LOG(WARN, "wano: %s: Error updating the Connection_Manager_Uplink table (loop = false)",
+                        self->ec_handle.wh_ifname);
+            }
 
     /* Remember the first seen MAC, start the timer */
     if (osn_mac_addr_cmp(&self->ec_client_mac, &OSN_MAC_ADDR_INIT) == 0)

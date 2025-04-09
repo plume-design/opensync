@@ -24,34 +24,22 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef OSW_L2UF_H_INCLUDED
-#define OSW_L2UF_H_INCLUDED
+#ifndef OSW_DIAG_INCLUDED
+#define OSW_DIAG_INCLUDED
 
-#include <stdbool.h>
-#include <osw_types.h>
+#include <stdio.h>
+#include <stdarg.h>
 
-struct osw_l2uf;
-struct osw_l2uf_if;
+struct osw_diag_pipe;
+typedef struct osw_diag_pipe osw_diag_pipe_t;
 
-typedef void osw_l2uf_seen_fn_t(struct osw_l2uf_if *i,
-                                const struct osw_hwaddr *sa_addr);
+osw_diag_pipe_t *osw_diag_pipe_open(void);
 
-struct osw_l2uf_if *
-osw_l2uf_if_alloc(struct osw_l2uf *m,
-                  const char *if_name);
+osw_diag_pipe_t *osw_diag_pipe_prefix(osw_diag_pipe_t *pipe);
 
-void
-osw_l2uf_if_free(struct osw_l2uf_if *i);
+void osw_diag_pipe_writef(osw_diag_pipe_t *pipe, const char *format, ...)
+    __attribute__((format(printf, 2, 3)));
 
-void
-osw_l2uf_if_set_data(struct osw_l2uf_if *i,
-                     void *data);
+void osw_diag_pipe_close(osw_diag_pipe_t *pipe);
 
-void *
-osw_l2uf_if_get_data(struct osw_l2uf_if *i);
-
-void
-osw_l2uf_if_set_seen_fn(struct osw_l2uf_if *i,
-                        osw_l2uf_seen_fn_t *fn);
-
-#endif
+#endif /* OSW_DIAG_INCLUDED */

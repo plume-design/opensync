@@ -816,6 +816,8 @@ osw_hostap_bss_hapd_init_bssid_cb(struct rq_task *task,
     struct osw_hwaddr bssid;
 
     MEMZERO(bssid);
+    if (task->cancelled) return;
+    if (task->killed) return;
     if (WARN_ON(t->reply == NULL)) return;
 
     char *copy = STRDUP(t->reply);

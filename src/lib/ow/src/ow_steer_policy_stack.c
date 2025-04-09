@@ -35,6 +35,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <osw_state.h>
 #include <osw_bss_map.h>
 #include <osw_conf.h>
+#include <osw_diag.h>
 #include "ow_steer_candidate_list.h"
 #include "ow_steer_policy.h"
 #include "ow_steer_policy_i.h"
@@ -174,16 +175,17 @@ ow_steer_policy_stack_schedule_recalc(struct ow_steer_policy_stack *stack)
 }
 
 void
-ow_steer_policy_stack_sigusr1_dump(struct ow_steer_policy_stack *stack)
+ow_steer_policy_stack_sigusr1_dump(osw_diag_pipe_t *pipe,
+                                   struct ow_steer_policy_stack *stack)
 {
     assert(stack != NULL);
 
     struct ow_steer_policy *policy;
     ds_dlist_foreach(&stack->policy_list, policy) {
-        LOGI("ow: steer:       policy: name: %s", policy->name);
-        LOGI("ow: steer:         bssid: "OSW_HWADDR_FMT, OSW_HWADDR_ARG(ow_steer_policy_get_bssid(policy)));
+        osw_diag_pipe_writef(pipe, "ow: steer:       policy: name: %s", policy->name);
+        osw_diag_pipe_writef(pipe, "ow: steer:         bssid: "OSW_HWADDR_FMT, OSW_HWADDR_ARG(ow_steer_policy_get_bssid(policy)));
         if (policy->ops.sigusr1_dump_fn != NULL)
-            policy->ops.sigusr1_dump_fn(policy);
+            policy->ops.sigusr1_dump_fn(pipe, policy);
     }
 }
 

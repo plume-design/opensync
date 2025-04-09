@@ -1,7 +1,7 @@
 {
   "name": "Open_vSwitch",
-  "version": "7.11.349",
-  "cksum": "1857677778 298901",
+  "version": "7.11.350",
+  "cksum": "56986432 298989",
   "tables": {
     "AWLAN_Node": {
       "columns": {
@@ -11533,6 +11533,7 @@
               "enum": [
                 "set",
                 [
+                  "",
                   "ipv4",
                   "ipv6",
                   "ipv4v6"
@@ -11548,6 +11549,7 @@
               "enum": [
                 "set",
                 [
+                  "",
                   "CHAP",
                   "PAP"
                 ]
@@ -11894,6 +11896,7 @@
               "enum": [
                 "set",
                 [
+                  "",
                   "ipv4",
                   "ipv6",
                   "ipv4v6"
@@ -11909,6 +11912,7 @@
               "enum": [
                 "set",
                 [
+                  "",
                   "CHAP",
                   "PAP"
                 ]

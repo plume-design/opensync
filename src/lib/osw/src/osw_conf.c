@@ -214,11 +214,20 @@ osw_conf_free_vif_ap_neigh(struct osw_conf_vif *vif,
 }
 
 static void
+osw_conf_free_vif_ap_wps(struct osw_conf_vif *vif,
+                         struct osw_conf_wps_cred *wps)
+{
+    ds_dlist_remove(&vif->u.ap.wps_cred_list, wps);
+    FREE(wps);
+}
+
+static void
 osw_conf_free_vif(struct osw_conf_vif *vif)
 {
     struct osw_conf_acl *acl;
     struct osw_conf_psk *psk;
     struct osw_conf_neigh *neigh;
+    struct osw_conf_wps_cred *wps;
     struct osw_conf_net *net;
 
     switch (vif->vif_type) {
@@ -233,6 +242,9 @@ osw_conf_free_vif(struct osw_conf_vif *vif)
 
             while ((neigh = ds_tree_head(&vif->u.ap.neigh_tree)) != NULL)
                 osw_conf_free_vif_ap_neigh(vif, neigh);
+
+            while ((wps = ds_dlist_head(&vif->u.ap.wps_cred_list)) != NULL)
+                osw_conf_free_vif_ap_wps(vif, wps);
             break;
         case OSW_VIF_AP_VLAN:
             break;

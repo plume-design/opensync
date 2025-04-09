@@ -133,6 +133,7 @@ ow_l2uf_kick_mux_delete_fn_t(const char *phy_name,
 struct ow_l2uf_kick {
     struct osw_state_observer obs;
     struct ds_tree vifs;
+    struct osw_l2uf *l2uf;
     ow_l2uf_kick_mux_deauth_fn_t *mux_deauth_fn;
     ow_l2uf_kick_mux_delete_fn_t *mux_delete_fn;
 };
@@ -370,7 +371,7 @@ ow_l2uf_kick_vif_update(struct ow_l2uf_kick *m,
     if (need_alloc) {
         WARN_ON(vif != NULL);
 
-        struct osw_l2uf_if *i = osw_l2uf_if_alloc(vif_name);
+        struct osw_l2uf_if *i = osw_l2uf_if_alloc(m->l2uf, vif_name);
         if (WARN_ON(i == NULL)) return;
 
         vif = CALLOC(1, sizeof(*vif));
@@ -497,7 +498,7 @@ ow_l2uf_kick_init(struct ow_l2uf_kick *m)
 static void
 ow_l2uf_kick_attach(struct ow_l2uf_kick *m)
 {
-    OSW_MODULE_LOAD(osw_l2uf);
+    m->l2uf = OSW_MODULE_LOAD(osw_l2uf);
     osw_state_register_observer(&m->obs);
     m->mux_deauth_fn = osw_mux_request_sta_deauth;
     m->mux_delete_fn = osw_mux_request_sta_delete;

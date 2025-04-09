@@ -614,7 +614,7 @@ start:
                     cm2_ovsdb_inherit_ip_bridge_conf(g_state.link.if_name, g_state.link.bridge_name);
                 }
                 cm2_update_bridge_cfg(g_state.link.bridge_name, g_state.link.if_name, true,
-                                      CM2_PAR_FALSE);
+                                      CM2_PAR_FALSE, cm2_is_eth_type(g_state.link.if_type));
             } else {
                 cm2_ovsdb_set_default_wan_bridge(g_state.link.if_name, g_state.link.if_type);
             }

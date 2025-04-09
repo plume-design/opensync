@@ -34,6 +34,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <osw_state.h>
 #include <osw_time.h>
 #include <osw_timer.h>
+#include <osw_diag.h>
 #include "ow_steer_candidate_list.h"
 #include "ow_steer_policy.h"
 #include "ow_steer_policy_priv.h"
@@ -188,20 +189,21 @@ ow_steer_policy_force_kick_recalc_cb(struct ow_steer_policy *policy,
 }
 
 static void
-ow_steer_policy_force_kick_sigusr1_dump_cb(struct ow_steer_policy *policy)
+ow_steer_policy_force_kick_sigusr1_dump_cb(osw_diag_pipe_t *pipe,
+                                           struct ow_steer_policy *policy)
 {
     ASSERT(policy != NULL, "");
 
     struct ow_steer_policy_force_kick *force_policy = ow_steer_policy_get_priv(policy);
     const struct ow_steer_policy_force_kick_config *config = force_policy->config;
 
-    LOGI("ow: steer:         config: %s", config != NULL ? "" : "(nil)");
+    osw_diag_pipe_writef(pipe, "ow: steer:         config: %s", config != NULL ? "" : "(nil)");
 
     const uint64_t now_nsec = osw_time_mono_clk();
     const char *enforce_timer_buf = osw_timer_is_armed(&force_policy->enforce_timer) == true?
         strfmta("%.2lf sec remaining", OSW_TIME_TO_DBL(osw_timer_get_remaining_nsec(&force_policy->enforce_timer, now_nsec))) : "inactive";
 
-    LOGI("ow: steer:         enforce_timer: %s", enforce_timer_buf);
+    osw_diag_pipe_writef(pipe, "ow: steer:         enforce_timer: %s", enforce_timer_buf);
 }
 
 static void
