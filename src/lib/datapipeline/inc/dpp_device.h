@@ -138,6 +138,7 @@ typedef struct
     dpp_device_txchainmask_t        radio_txchainmasks[DPP_DEVICE_TX_CHAINMASK_MAX];
     uint32_t                        txchainmask_qty;
     int32_t                         fan_rpm;
+    int16_t                         fan_duty_cycle;
     uint64_t                        timestamp_ms;
     ds_dlist_node_t                 node;
 } dpp_device_thermal_record_t;

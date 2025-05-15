@@ -556,6 +556,21 @@ bool target_stats_device_fanrpm_get(uint32_t        *fan_rpm)
 }
 #endif
 
+#ifndef IMPL_target_stats_device_fandutycycle_get
+bool target_stats_device_fandutycycle_get(uint16_t *fan_duty_cycle)
+{
+    static bool printed = false;
+    (void)fan_duty_cycle;
+
+    if (!printed) {
+        LOG(DEBUG, "Sending device report: FAN duty cycle not supported");
+        printed = true;
+    }
+
+    return false;
+}
+#endif
+
 #ifndef IMPL_target_get_btrace_type
 btrace_type target_get_btrace_type()
 {

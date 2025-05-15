@@ -1547,6 +1547,12 @@ static void dppline_add_stat_device(Sts__Report *r, dppline_stats_t *s)
             sr->thermal_stats[i]->has_fan_rpm = true;
         }
 
+        if(device->thermal_list[i].fan_duty_cycle >= 0)
+        {
+            sr->thermal_stats[i]->fan_duty_cycle = device->thermal_list[i].fan_duty_cycle;
+            sr->thermal_stats[i]->has_fan_duty_cycle = true;
+        }
+
         sr->thermal_stats[i]->timestamp_ms = device->thermal_list[i].timestamp_ms;
         sr->thermal_stats[i]->has_timestamp_ms = true;
 

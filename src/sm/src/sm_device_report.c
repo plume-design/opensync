@@ -265,6 +265,7 @@ void sm_device_thermal_report (EV_P_ ev_timer *w, int revents)
     dpp_device_thermal_record_t    *thermal_record;
     dpp_device_txchainmask_t        tx_chainmask;
     uint32_t                        fan_rpm;
+    uint16_t                        fan_duty_cycle;
     int                             radio_idx = 0;
 
     thermal_record = dpp_device_thermal_record_alloc();
@@ -272,7 +273,7 @@ void sm_device_thermal_report (EV_P_ ev_timer *w, int revents)
     {
         if(radio_idx >= DPP_DEVICE_TX_CHAINMASK_MAX)
         {
-            LOG(ERROR, "Not enough space to hold all txchainmask stats"); 
+            LOG(ERROR, "Not enough space to hold all txchainmask stats");
             break;
         }
 
@@ -307,6 +308,20 @@ void sm_device_thermal_report (EV_P_ ev_timer *w, int revents)
     else
     {
         thermal_record->fan_rpm = -1;
+    }
+
+    rc = target_stats_device_fandutycycle_get(&fan_duty_cycle);
+    if(true == rc)
+    {
+        thermal_record->fan_duty_cycle = (int16_t)fan_duty_cycle;
+        thermal_valid = true;
+        LOG(DEBUG,
+            "Sending device stats fan duty cycle=%u",
+            thermal_record->fan_duty_cycle);
+    }
+    else
+    {
+        thermal_record->fan_duty_cycle = -1;
     }
 
     /* Insert thermal data only if data is valid, some devices like PIRANHAV1 doesn't

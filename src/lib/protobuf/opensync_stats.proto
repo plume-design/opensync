@@ -372,6 +372,7 @@ message Device {
         repeated RadioTxChainMask txchainmask      = 1;
         optional uint32           fan_rpm          = 2;
         optional uint64           timestamp_ms     = 3;
+        optional uint32           fan_duty_cycle   = 4;
     }
     repeated Thermal        thermal_stats          = 5;
 

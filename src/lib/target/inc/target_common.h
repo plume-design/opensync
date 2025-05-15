@@ -770,6 +770,16 @@ bool target_stats_device_txchainmask_get(
  */
 bool target_stats_device_fanrpm_get(uint32_t *fan_rpm);
 
+/**
+ * @brief Get the device fan duty cycle
+ *
+ * @param fan_duty_cycle Currently set fan duty cycle in per mille (‰),
+ *                       0 meaning the fan is turned off and
+ *                       1000 meaning the fan is at full power.
+ * @return true on success
+ */
+bool target_stats_device_fandutycycle_get(uint16_t *fan_duty_cycle);
+
 /// @} LIB_TARGET_DEVICE_STATS
 
 /// @cond INTERNAL
