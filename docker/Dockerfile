@@ -81,8 +81,8 @@ RUN chmod 0777 /usr/var/run/openvswitch
 
 # Install miniupnpc 2.2.1 from source (apt-get pulls V. 1.9)
 WORKDIR /usr/src
-RUN wget -O miniupnpc-2.2.1.tar.gz http://miniupnp.free.fr/files/download.php?file=miniupnpc-2.2.1.tar.gz && tar xf miniupnpc-2.2.1.tar.gz
-WORKDIR /usr/src/miniupnpc-2.2.1
+RUN wget -O miniupnpc-2.2.1.tar.gz https://github.com/miniupnp/miniupnp/archive/refs/tags/miniupnpc_2_2_1.tar.gz && tar xf miniupnpc-2.2.1.tar.gz
+WORKDIR /usr/src/miniupnp-miniupnpc_2_2_1/miniupnpc
 RUN make install
 
 # UBUS

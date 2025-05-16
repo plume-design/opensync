@@ -407,7 +407,8 @@ ct_flow_add_sample(flow_stats_t *ct_stats)
         smac_lookup = neigh_table_lookup(ssrc, &smac);
         dmac_lookup = neigh_table_lookup(sdst, &dmac);
 
-        if (!smac_lookup && !dmac_lookup)
+        /* add only if smac or dmac is present */
+        if (!(smac_lookup ^ dmac_lookup))
         {
             LOGD("%s failed to lookup macs", __func__);
             continue;

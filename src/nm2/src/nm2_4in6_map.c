@@ -56,6 +56,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define NM2_V6PLUS_STORE_RULES   "nm2_4in6_map_v6plus_rules"
 
 #define NM2_V6PLUS_HGW_STATUS_RECHECK_TIME   5
+#define NM2_V6PLUS_HGW_STATUS_RECONFIRM_NUM  4
 
 typedef enum
 {
@@ -104,6 +105,7 @@ struct nm2_mapcfg
                      *mc_v6plus_saved_rules;      /* v6plus saved MAP rules */
     osn_map_v6plus_hgw_status_t
                       mc_v6plus_hgw_status;       /* Last determined HGW status */
+    unsigned          mc_v6plus_hgw_failed_detect_cnt;
 
     ev_timer          mc_v6plus_hgw_checker;      /* Continuous HGW status checker */
     bool              mc_v6plus_hgw_checker_inited;
@@ -1878,10 +1880,23 @@ static const char *util_v6plus_hgw_status_to_str(osn_map_v6plus_hgw_status_t hgw
     else return "HGW_STATUS_UNSET";
 }
 
+/*
+ * HGW status change action handler: To be called when the actual HGW status change is determined
+ * to take apropriate actions: restart MAP configuration to reconfigure according to the
+ * new HGW status.
+ */
+static void nm2_mapcfg_v6plus_hgw_status_change_action(struct nm2_mapcfg *mapcfg)
+{
+    LOG(NOTICE, "nm2_4in6_map: v6plus: Restarting v6plus MAP configuration ... restart v6plus job handler");
+    nm2_mapcfg_v6plus_job_stop(mapcfg);
+    nm2_mapcfg_v6plus_job_schedule(mapcfg, 0.25);
+}
+
 /* Acquire current HGW status and take actions if needed. */
 bool nm2_mapcfg_v6plus_hgw_status_handle(struct nm2_mapcfg *mapcfg)
 {
     osn_map_v6plus_hgw_status_t hgw_status_prev;
+    osn_map_v6plus_hgw_status_t hgw_status_curr;
 
     LOG(TRACE, "nm2_4in6_map: v6plus: HGW status check started");
 
@@ -1889,27 +1904,85 @@ bool nm2_mapcfg_v6plus_hgw_status_handle(struct nm2_mapcfg *mapcfg)
     hgw_status_prev = mapcfg->mc_v6plus_hgw_status;
 
     /* Get current NTT HGW status: */
-    if (!osn_map_v6plus_ntt_hgw_status_get(&mapcfg->mc_v6plus_hgw_status, NULL))
+    if (!osn_map_v6plus_ntt_hgw_status_get(&hgw_status_curr, NULL))
     {
         LOG(ERR, "nm2_4in6_map: v6plus: Error checking NTT HGW status");
         return false;
     }
+    LOG(TRACE, "nm2_4in6_map: v6plus: HGW status determined as: %s",
+        util_v6plus_hgw_status_to_str(hgw_status_curr));
 
-    if (hgw_status_prev != OSN_MAP_V6PLUS_UNSET && mapcfg->mc_v6plus_hgw_status != hgw_status_prev)
+    if (hgw_status_curr != OSN_MAP_V6PLUS_UNKNOWN)
     {
-        LOG(NOTICE, "nm2_4in6_map: v6plus: Detected HGW status change: %s --> %s",
-                util_v6plus_hgw_status_to_str(hgw_status_prev),
-                util_v6plus_hgw_status_to_str(mapcfg->mc_v6plus_hgw_status));
-
-        LOG(NOTICE, "nm2_4in6_map: v6plus: Restarting v6plus MAP configuration ... restart v6plus job handler");
-        nm2_mapcfg_v6plus_job_stop(mapcfg);
-        nm2_mapcfg_v6plus_job_schedule(mapcfg, 0.25);
+        /* current status "HGW detected", reset "HGW failed detect counter": */
+        mapcfg->mc_v6plus_hgw_failed_detect_cnt = 0;
     }
 
-    if (mapcfg->mc_v6plus_hgw_status != hgw_status_prev)
+    /* If HGW status changed (but not initial HGW status determination): */
+    if (hgw_status_prev != OSN_MAP_V6PLUS_UNSET && hgw_status_curr != hgw_status_prev)
     {
-        /* At HGW status change, determine the new IPv6 relay enablement config: */
-        nm2_mapcfg_v6plus_ipv6_relay_manage(mapcfg);
+        if (hgw_status_curr != OSN_MAP_V6PLUS_UNKNOWN)
+        {
+            LOG(NOTICE,
+                "nm2_4in6_map: v6plus: Detected HGW status change: %s --> %s",
+                util_v6plus_hgw_status_to_str(hgw_status_prev),
+                util_v6plus_hgw_status_to_str(hgw_status_curr));
+
+            mapcfg->mc_v6plus_hgw_status = hgw_status_curr;
+
+            /* Status change to --> HGW now detected: Take immediate action: */
+            nm2_mapcfg_v6plus_hgw_status_change_action(mapcfg);
+        }
+        else
+        {
+            LOG(INFO,
+                "nm2_4in6_map: v6plus: Potential HGW status change: %s --> %s (needs to be confirmed)",
+                util_v6plus_hgw_status_to_str(hgw_status_prev),
+                util_v6plus_hgw_status_to_str(hgw_status_curr));
+
+            /* Status change --> HGW NOT detected: Postpone action, reconfirm HGW NOT detected. */
+            if (mapcfg->mc_v6plus_hgw_failed_detect_cnt == 0)
+            {
+                mapcfg->mc_v6plus_hgw_failed_detect_cnt = 1;
+            }
+        }
+    }
+
+    LOG(TRACE, "nm2_4in6_map: v6plus: HGW status check: failed_detect_cnt=%u",
+            mapcfg->mc_v6plus_hgw_failed_detect_cnt);
+
+    /* Handle reconfirming of current status HGW not detected. */
+    if (hgw_status_curr == OSN_MAP_V6PLUS_UNKNOWN
+        && mapcfg->mc_v6plus_hgw_failed_detect_cnt >= 1
+        && mapcfg->mc_v6plus_hgw_failed_detect_cnt <= NM2_V6PLUS_HGW_STATUS_RECONFIRM_NUM)
+    {
+        if (mapcfg->mc_v6plus_hgw_failed_detect_cnt++ == NM2_V6PLUS_HGW_STATUS_RECONFIRM_NUM)
+        {
+            LOG(NOTICE,
+                "nm2_4in6_map: v6plus: HGW status change to %s confirmed for %d times (recheck interval %d seconds).",
+                util_v6plus_hgw_status_to_str(hgw_status_curr),
+                NM2_V6PLUS_HGW_STATUS_RECONFIRM_NUM, NM2_V6PLUS_HGW_STATUS_RECHECK_TIME);
+
+            /* 'HGW NOT detected' confirmed. Take status change action: */
+            mapcfg->mc_v6plus_hgw_status = OSN_MAP_V6PLUS_UNKNOWN;
+
+            nm2_mapcfg_v6plus_hgw_status_change_action(mapcfg);
+            nm2_mapcfg_v6plus_ipv6_relay_manage(mapcfg);
+        }
+    }
+
+    if (hgw_status_curr != hgw_status_prev)
+    {
+        /* On any change, but not to --> HGW not detected (needs to be reconfirmed):
+         * Unless initial HGW not detected determination: */
+        if (hgw_status_curr != OSN_MAP_V6PLUS_UNKNOWN
+            || (hgw_status_prev == OSN_MAP_V6PLUS_UNSET && hgw_status_curr == OSN_MAP_V6PLUS_UNKNOWN))
+        {
+            mapcfg->mc_v6plus_hgw_status = hgw_status_curr;
+
+            /* At HGW status change, determine the new IPv6 relay enablement config: */
+            nm2_mapcfg_v6plus_ipv6_relay_manage(mapcfg);
+        }
     }
 
     return true;

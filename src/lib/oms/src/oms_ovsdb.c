@@ -176,13 +176,11 @@ oms_modify_state_entry(struct oms_state_entry *entry, bool update_only)
     {
         /*
          * Only update not upsert. In case that this entry is already gone
-         * usert will triggere error of missing name and version. Avoid with
+         * usert will triggers error of missing name and version. Avoid with
          * using update instead of upsert.
          */
         rc = ovsdb_table_update_where(&table_Object_Store_State, where, &state);
     }
-
-    json_decref(where);
 
     ret = rc ? 0 : -1;
 

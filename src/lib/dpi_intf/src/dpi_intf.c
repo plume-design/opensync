@@ -319,7 +319,11 @@ dpi_intf_pcap_recv_fn(EV_P_ ev_io *ev, int revents)
     pcap_t *pcap;
 
     entry = ev->data;
+    if (entry == NULL) return;
+
     pcaps = entry->pcaps;
+    if (pcaps == NULL) return;
+
     pcap = pcaps->pcap;
     pcap_dispatch(pcap, pcaps->cnt, dpi_intf_pcap_handler, (void *)entry);
 }
@@ -342,7 +346,10 @@ dpi_intf_pcap_open(struct dpi_intf_entry *entry)
     if (iface == NULL) return false;
 
     mgr = dpi_intf_get_mgr();
+
     pcaps = entry->pcaps;
+    if (pcaps == NULL) return false;
+
     pcaps->pcap = pcap_create(iface, pcap_err);
     if (pcaps->pcap == NULL)
     {
@@ -449,7 +456,10 @@ dpi_intf_pcap_close(struct dpi_intf_entry *entry)
     pcap_t *pcap;
 
     mgr = dpi_intf_get_mgr();
+
     pcaps = entry->pcaps;
+    if (pcaps == NULL) return;
+
     pcap = pcaps->pcap;
 
     if (ev_is_active(&pcaps->dpi_intf_evio))
@@ -499,9 +509,12 @@ dpi_intf_enable_pcap(struct dpi_intf_entry *entry)
     ret = dpi_intf_pcap_open(entry);
     if (!ret)
     {
-        LOGE("%s: pcap open failed for interface %s", __func__,
+        LOGE("%s: pcap open failed for interface %s, restarting fsm", __func__,
              entry->tap_if_name);
-        goto err_free_bpf;
+
+        /* interface might not be configured yet, wait and restart fsm */
+        sleep(4);
+        exit(EXIT_SUCCESS);
     }
 
     entry->active = true;

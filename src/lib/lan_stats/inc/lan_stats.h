@@ -56,6 +56,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define OVS_DUMP_VLAN_ETH_TYPE_PREFIX_LEN  (15) // Length of "encap(eth_type("
 #define MAX_HISTOGRAMS               (1)
 
+#define ETH_DEVICES_TAG "${@eth_devices}"
+
 typedef union ovs_u128 {
     os_ufid_t id;
     struct {
@@ -221,5 +223,8 @@ link_stats_collect_cb(uplink_iface_type uplink_if_type);
 
 void
 lan_stats_add_uplink_info(lan_stats_instance_t *lan_stats_instance, dp_ctl_stats_t *stats);
+
+bool
+lan_stats_is_mac_in_tag(char *tag, os_macaddr_t *mac);
 
 #endif /* LAN_STATS_H_INCLUDED */

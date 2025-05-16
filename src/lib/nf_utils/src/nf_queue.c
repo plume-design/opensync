@@ -402,6 +402,8 @@ nf_queue_open(struct nfq_settings *nfq_set)
     struct nfqueue_ctxt *nfq;
     int ret;
 
+    MEMZERO(buf);
+
     ctxt = nf_queue_get_context();
     if (ctxt->initialized == false) return false;
 

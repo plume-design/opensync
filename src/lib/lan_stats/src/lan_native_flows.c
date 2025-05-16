@@ -67,16 +67,58 @@ generate_os_ufid(ctflow_info_t *ct_entry, dp_ctl_stats_t *stats)
 }
 
 
-bool
-lan_stats_parse_ct(ctflow_info_t *ct_entry, dp_ctl_stats_t *stats)
+/**
+ * Determines whether to include a contrack entry in the LAN statistics.
+ *
+ * @param lan_stats_instance The LAN statistics instance.
+ * @param ct_entry The contrack entry.
+ * @param stats flow stats
+ * @return Returns true if the ct entry should be included, false otherwise.
+ */
+static bool
+lan_stats_include_ct_entry(lan_stats_instance_t *lan_stats_instance, ctflow_info_t *ct_entry, dp_ctl_stats_t *stats)
 {
     struct sockaddr_storage *ssrc;
     struct sockaddr_storage *sdst;
-    pkts_ct_info_t  *pkt_info;
-    ct_flow_t *flow;
+    char *device_tag;
     bool smac_lookup;
     bool dmac_lookup;
+    ct_flow_t *flow;
+    bool is_eth_dev;
+
+    flow = &ct_entry->flow;
+    ssrc = &flow->layer3_info.src_ip;
+    sdst = &flow->layer3_info.dst_ip;
+
+    /* populates smac_key and dmac_key */
+    smac_lookup = neigh_table_lookup(ssrc, &stats->smac_key);
+    dmac_lookup = neigh_table_lookup(sdst, &stats->dmac_key);
+
+    /* include ct entry if both smac and dmac is present (LAN to LAN traffic)*/
+    if (smac_lookup && dmac_lookup) return true;
+
+    /* check if it is ethernet traffic */
+    device_tag = (lan_stats_instance->parent_tag != NULL) ?
+                  lan_stats_instance->parent_tag : ETH_DEVICES_TAG;
+
+    /* Check if the device is an ethernet device */
+    is_eth_dev = (lan_stats_is_mac_in_tag(device_tag, &stats->smac_key) ||
+                  lan_stats_is_mac_in_tag(device_tag, &stats->dmac_key));
+
+    /* if ethernet device include the entry */
+    if (is_eth_dev) return true;
+
+    /* ignore this ct entry */
+    return false;
+}
+
+bool
+lan_stats_parse_ct(lan_stats_instance_t *lan_stats_instance, ctflow_info_t *ct_entry, dp_ctl_stats_t *stats)
+{
+    pkts_ct_info_t  *pkt_info;
+    ct_flow_t *flow;
     bool rc = false;
+    bool include_entry;
     int  af;
 
     flow = &ct_entry->flow;
@@ -84,16 +126,8 @@ lan_stats_parse_ct(ctflow_info_t *ct_entry, dp_ctl_stats_t *stats)
 
     af = flow->layer3_info.src_ip.ss_family;
 
-    ssrc = &flow->layer3_info.src_ip;
-    sdst = &flow->layer3_info.dst_ip;
-
-    // Lookup source ip.
-    smac_lookup = neigh_table_lookup(ssrc, &stats->smac_key);
-
-    // Lookup dest ip.
-    dmac_lookup = neigh_table_lookup(sdst, &stats->dmac_key);
-
-    if (!smac_lookup && !dmac_lookup) return rc;
+    include_entry = lan_stats_include_ct_entry(lan_stats_instance, ct_entry, stats);
+    if (include_entry == false) return rc;
 
     stats->eth_val = (af == AF_INET ? 0x0800 : 0x86DD);
     stats->pkts = pkt_info->pkt_cnt;
@@ -162,17 +196,19 @@ lan_stats_process_ct_flows(lan_stats_instance_t *lan_stats_instance)
 
     ct_list = &lan_stats_instance->ct_list;
 
+
     ds_dlist_foreach(ct_list, ct_entry)
     {
         MEMZERO(stats);
         if (lan_stats_filter_flow(lan_stats_instance, ct_entry)) continue;
 
-        if (!lan_stats_parse_ct(ct_entry, &stats)) return false;
+        if (!lan_stats_parse_ct(lan_stats_instance, ct_entry, &stats)) continue;
 
         lan_stats_add_uplink_info(lan_stats_instance, &stats);
 
         lan_stats_flows_filter(lan_stats_instance, &stats);
     }
+
     return rc;
 }
 
