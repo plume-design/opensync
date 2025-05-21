@@ -296,12 +296,12 @@ static void nm2_port_update(struct nm2_port *port, struct schema_Port *schema)
  *  public api definitions
  *****************************************************************************/
 
-void nm2_nb_port_cfg_reapply(const char *port_name, bool add)
+void nm2_nb_port_cfg_reapply(const char *port_name)
 {
     struct nm2_port *port;
     struct nm2_bridge *br;
 
-    LOGT("%s(): reapplying port configuration for %s (add %d)", __func__, port_name, add);
+    LOGT("%s(): reapplying port configuration for %s", __func__, port_name);
     /* check if the port is present in the port list */
     port = nm2_port_get_by_name(port_name);
     if (port == NULL) return;
@@ -309,12 +309,12 @@ void nm2_nb_port_cfg_reapply(const char *port_name, bool add)
     br = port->port_bridge;
     if (br == NULL)
     {
-        LOGD("%s(): parent bridge address is NULL, not configuring ports", __func__);
+        nm2_inet_bridge_port_set(port, false);
         return;
     }
 
     /* port information is present in the Port config, so create the port */
-    nm2_inet_bridge_port_set(port, add);
+    nm2_inet_bridge_port_set(port, true);
 }
 
 
@@ -330,23 +330,6 @@ static void nm2_inet_bridge_port_set(struct nm2_port *port, bool add)
     }
     inet_br_port_set(br->br_inet, port->port_inet, add);
     inet_commit(br->br_inet);
-}
-
-void nm2_port_config_hairpin(const char *port_name)
-{
-    struct nm2_port *port;
-    int configured;
-
-    port = nm2_port_get_by_name(port_name);
-    if (port == NULL) return;
-
-    configured = osn_bridge_get_hairpin(port_name);
-    if (configured == -1) return;
-
-    /* return if the device is already configured with the specified value */
-    if (port->port_hairpin == configured) return;
-
-    osn_bridge_set_hairpin((char *)port_name, port->port_hairpin);
 }
 
 void nm2_inet_bridge_config_reapply(struct nm2_iface *pif)

@@ -1051,6 +1051,31 @@ ow_ovsdb_vifstate_fill_akm(struct schema_Wifi_VIF_State *schema,
     SCHEMA_SET_STR(schema->pmf, pmf_to_str(wpa->pmf));
 }
 
+static const char *
+ow_ovsdb_vifstate_sta_derive_pmf(const struct schema_Wifi_VIF_Config *vconf,
+                                 const enum osw_pmf pmf)
+{
+    if (vconf == NULL) return NULL;
+    /* The link->pmf actually reports true/false. */
+    switch (pmf) {
+        case OSW_PMF_DISABLED: return SCHEMA_CONSTS_SECURITY_PMF_DISABLED;
+        case OSW_PMF_OPTIONAL: return vconf->pmf;
+        case OSW_PMF_REQUIRED: return vconf->pmf;
+    }
+    return NULL;
+}
+
+static void
+ow_ovsdb_vifstate_fill_sta_pmf(struct schema_Wifi_VIF_State *schema,
+                               const struct schema_Wifi_VIF_Config *vconf,
+                               const enum osw_pmf pmf)
+{
+    SCHEMA_UNSET_FIELD(schema->pmf);
+    const char *str = ow_ovsdb_vifstate_sta_derive_pmf(vconf, pmf);
+    if (str == NULL) return;
+    SCHEMA_SET_STR(schema->pmf, str);
+}
+
 static int
 ow_ovsdb_str2keyid(const char *key_id)
 {
@@ -1247,6 +1272,7 @@ ow_ovsdb_vifstate_to_schema(struct schema_Wifi_VIF_State *schema,
                     }
                     ow_ovsdb_vifstate_fill_akm(schema, &vsta->link.wpa);
                     ow_ovsdb_vifstate_fill_mld(schema, &vsta->mld);
+                    ow_ovsdb_vifstate_fill_sta_pmf(schema, vconf, vsta->link.wpa.pmf);
 
                     SCHEMA_SET_STR(schema->bridge,vsta->link.bridge_if_name.buf);
                     SCHEMA_SET_STR(schema->multi_ap, ow_ovsdb_sta_multi_ap_to_cstr(vsta->link.multi_ap));

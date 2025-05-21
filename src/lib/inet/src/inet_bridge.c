@@ -231,19 +231,19 @@ static void inet_bridge_port_add(inet_bridge_t *self, inet_port_t *in_port)
     node = ds_tree_find(&self->in_br_port_list, in_port);
     if (node != NULL)
     {
-        LOGD("%s() port %s already present not adding", __func__,
+        LOGD("%s() port %s already present, reconfiguring", __func__,
              in_port->in_port_ifname);
-        return;
     }
 
     LOGD("%s(): marking port %s for adding to bridge", __func__, in_port->in_port_ifname);
     /* mark this node for deletion */
-    in_port->in_add = true;
+     in_port->in_add = true;
 
-    /* set flag for reconfiguring */
-    in_port->in_port_configured = false;
+     /* set flag for reconfiguring */
+     in_port->in_port_configured = false;
 
-    ds_tree_insert(&self->in_br_port_list, in_port, in_port);
+    if (node == NULL)
+        ds_tree_insert(&self->in_br_port_list, in_port, in_port);
 }
 
 static void inet_bridge_port_del(inet_bridge_t *self, inet_port_t *in_port)

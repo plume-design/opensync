@@ -83,7 +83,7 @@ struct fcm_filter_client *c_client = NULL;
 struct fcm_filter_client *r_client = NULL;
 
 void
-lan_stats_parse_ct(ctflow_info_t *ct_entry, dp_ctl_stats_t *stats);
+lan_stats_parse_ct(lan_stats_instance_t *lan_stats_instance, ctflow_info_t *ct_entry, dp_ctl_stats_t *stats);
 
 bool
 lan_stats_process_ct_flows(lan_stats_instance_t *lan_stats_instance);

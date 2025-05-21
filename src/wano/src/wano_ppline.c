@@ -106,6 +106,8 @@ inline static bool wano_ppline_runq_start_dhcp(wano_ppline_t *self);
 static void __wano_ppline_runq_stop(wano_ppline_t *self, struct wano_ppline_plugin *wpp);
 static void wano_ppline_runq_del(wano_ppline_t *self, struct wano_ppline_plugin *wpp);
 static void wano_ppline_runq_flush(wano_ppline_t *self, bool flush_detached);
+static struct wano_ppline_plugin *wano_ppline_plugin_new(wano_ppline_t *self, struct wano_plugin *wp);
+static void wano_ppline_plugin_del(struct wano_ppline_plugin *wpp);
 static wano_inet_state_event_fn_t wano_ppline_inet_state_event_fn;
 static wano_plugin_status_fn_t wano_ppline_plugin_status_fn;
 static void wano_ppline_retry_timer_fn(struct ev_loop *loop, ev_timer *w, int revent);
@@ -320,28 +322,8 @@ void wano_ppline_start_queues(wano_ppline_t *self)
         /* Skip all plug-ins in the exclusion mask */
         if (wp->wanp_mask & self->wpl_plugin_emask) continue;
 
-        wpp = CALLOC(1, sizeof(struct wano_ppline_plugin));
-
-        wpp->wpp_ppline = self;
-        wpp->wpp_plugin = wp;
-
-        /*
-         * Initialize the plug-in; plug-ins that return a NULL instance
-         * are skipped.
-         */
-        wpp->wpp_handle = wano_plugin_init(
-                wpp->wpp_plugin,
-                self->wpl_ifname,
-                wano_ppline_plugin_status_fn);
-        if (wpp->wpp_handle == NULL)
-        {
-            LOG(INFO, "wano: %s: Skipping plug-in %s",
-                    self->wpl_ifname,
-                    wpp->wpp_plugin->wanp_name);
-            FREE(wpp);
-            continue;
-        }
-        wpp->wpp_handle->wh_data = wpp;
+        wpp = wano_ppline_plugin_new(self, wp);
+        if (wpp == NULL) continue;
 
         ds_dlist_insert_tail(&self->wpl_plugin_waitq, wpp);
     }
@@ -364,7 +346,7 @@ void wano_ppline_stop_queues(wano_ppline_t *self)
     ds_dlist_foreach_iter(&self->wpl_plugin_waitq, wpp, iter)
     {
         ds_dlist_iremove(&iter);
-        FREE(wpp);
+        wano_ppline_plugin_del(wpp);
     }
 
     /*
@@ -406,7 +388,7 @@ void wano_ppline_schedule(wano_ppline_t *self)
         if (!wano_ppline_runq_add(self, wpp))
         {
             /* Plug-in was unable to start, continue */
-            FREE(wpp);
+            wano_ppline_plugin_del(wpp);
             continue;
         }
 
@@ -518,18 +500,6 @@ void __wano_ppline_runq_stop(wano_ppline_t *self, struct wano_ppline_plugin *wpp
                     wpp->wpp_status.ws_ifname);
         }
     }
-
-    if (wpp->wpp_handle != NULL)
-    {
-        wano_plugin_fini(wpp->wpp_handle);
-        wpp->wpp_handle = NULL;
-    }
-
-    /* Stop the async status handler */
-    ev_async_stop(EV_DEFAULT, &wpp->wpp_status_async);
-
-    /* Stop the timeout handler */
-    ev_timer_stop(EV_DEFAULT, &wpp->wpp_timeout);
 }
 
 void wano_ppline_runq_del(wano_ppline_t *self, struct wano_ppline_plugin *wpp)
@@ -537,6 +507,7 @@ void wano_ppline_runq_del(wano_ppline_t *self, struct wano_ppline_plugin *wpp)
     /* Remove the plug-in from the runqueue and clear the run mask */
     __wano_ppline_runq_stop(self, wpp);
     ds_dlist_remove(&self->wpl_plugin_runq, wpp);
+    wano_ppline_plugin_del(wpp);
 }
 
 void wano_ppline_runq_detach(wano_ppline_t *self, struct wano_ppline_plugin *wpp)
@@ -561,10 +532,53 @@ static void wano_ppline_runq_flush(wano_ppline_t *self, bool flush_detached)
             continue;
         }
 
-        ds_dlist_iremove(&iter);
         __wano_ppline_runq_stop(self, wpp);
-        FREE(wpp);
+        ds_dlist_iremove(&iter);
+        wano_ppline_plugin_del(wpp);
     }
+}
+
+struct wano_ppline_plugin *wano_ppline_plugin_new(wano_ppline_t *self, struct wano_plugin *wp)
+{
+    struct wano_ppline_plugin *wpp;
+
+    wpp = CALLOC(1, sizeof(struct wano_ppline_plugin));
+
+    wpp->wpp_ppline = self;
+    wpp->wpp_plugin = wp;
+    /*
+     * Initialize the plug-in; plug-ins that return a NULL instance
+     * are skipped.
+     */
+    wpp->wpp_handle = wano_plugin_init(
+            wpp->wpp_plugin,
+            self->wpl_ifname,
+            wano_ppline_plugin_status_fn);
+    if (wpp->wpp_handle == NULL)
+    {
+        LOG(INFO, "wano: %s: Skipping plug-in %s",
+                self->wpl_ifname,
+                wpp->wpp_plugin->wanp_name);
+        FREE(wpp);
+        return NULL;
+    }
+    wpp->wpp_handle->wh_data = wpp;
+
+    return wpp;
+}
+
+void wano_ppline_plugin_del(struct wano_ppline_plugin *wpp)
+{
+    if (wpp->wpp_handle != NULL)
+    {
+        wano_plugin_fini(wpp->wpp_handle);
+        wpp->wpp_handle = NULL;
+    }
+
+    ev_async_stop(EV_DEFAULT, &wpp->wpp_status_async);
+    ev_timer_stop(EV_DEFAULT, &wpp->wpp_timeout);
+
+    FREE(wpp);
 }
 
 void wano_ppline_inet_state_event_fn(
@@ -902,7 +916,6 @@ void wano_ppline_status_async_fn(struct ev_loop *loop, ev_async *ev, int revent)
         case WANP_SKIP:
             LOG(INFO, "wano: %s: Plug-in requested skip: %s", self->wpl_ifname, wano_plugin_name(wpp->wpp_handle));
             wano_ppline_runq_del(self, wpp);
-            FREE(wpp);
             wano_ppline_state_do(&self->wpl_state, wano_ppline_do_PLUGIN_UPDATE, NULL);
             break;
 
@@ -923,7 +936,6 @@ void wano_ppline_status_async_fn(struct ev_loop *loop, ev_async *ev, int revent)
                     self->wpl_ifname, wano_plugin_name(wpp->wpp_handle));
 
             wano_ppline_runq_del(self, wpp);
-            FREE(wpp);
             wano_ppline_state_do(&self->wpl_state, wano_ppline_do_PLUGIN_UPDATE, NULL);
             break;
 
@@ -961,8 +973,6 @@ void wano_ppline_plugin_timeout_fn(struct ev_loop *loop, ev_timer *w, int revent
             self->wpl_ifname, wano_plugin_name(wpp->wpp_handle));
 
     wano_ppline_runq_del(self, wpp);
-    FREE(wpp);
-
     wano_ppline_state_do(&self->wpl_state, wano_ppline_do_PLUGIN_UPDATE, NULL);
 }
 

@@ -1230,7 +1230,8 @@ osw_hostap_conf_fill_ap_state_acl(const struct osw_hostap_conf_ap_state_bufs *bu
     acl_list->list = CALLOC(1, sizeof(struct osw_hwaddr));
 
     if (cpy_deny_acl != NULL) {
-        while ((line = strsep(&cpy_deny_acl, "\n")) != NULL) {
+        char *tokens = cpy_deny_acl;
+        while ((line = strsep(&tokens, "\n")) != NULL) {
             if (cpy_accept_acl == NULL ||
                 (cpy_accept_acl != NULL && strstr(cpy_accept_acl, line) == NULL)) {
                 acl_list->list = REALLOC(acl_list->list,
@@ -1243,7 +1244,8 @@ osw_hostap_conf_fill_ap_state_acl(const struct osw_hostap_conf_ap_state_bufs *bu
             }
         }
     } else if (cpy_accept_acl != NULL) {
-        while ((line = strsep(&cpy_accept_acl, "\n")) != NULL) {
+        char *tokens = cpy_accept_acl;
+        while ((line = strsep(&tokens, "\n")) != NULL) {
             acl_list->list = REALLOC(acl_list->list,
                                      (acl_list->count + 1) * sizeof(struct osw_hwaddr));
             acl = &acl_list->list[acl_list->count];

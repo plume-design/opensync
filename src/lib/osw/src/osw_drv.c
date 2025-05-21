@@ -3069,6 +3069,7 @@ osw_drv_report_vif_channel_change_started(struct osw_drv *drv,
 
     osw_drv_obj_set_state(&phy->obj, OSW_DRV_OBJ_INVALID);
     osw_drv_obj_set_state(&vif->obj, OSW_DRV_OBJ_INVALID);
+    osw_drv_work_all_schedule();
 
     if (target_channel != NULL)
         vif->csa_channel = *target_channel;

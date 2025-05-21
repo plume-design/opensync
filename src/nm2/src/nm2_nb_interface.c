@@ -156,9 +156,7 @@ static void nm2_if_netif_status_fn(osn_netif_t *netif, struct osn_netif_status *
 
     nm2_if_config_apply(intf);
 
-    nm2_nb_port_cfg_reapply(status->ns_ifname, status->ns_up);
-
-    nm2_port_config_hairpin(status->ns_ifname);
+    nm2_nb_port_cfg_reapply(status->ns_ifname);
 }
 
 struct nm2_interface *nm2_if_get_from_uuid(const ovs_uuid_t *uuid)

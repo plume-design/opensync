@@ -49,8 +49,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "data_report_tags.h"
 #include "nf_utils.h"
 
-#define ETH_DEVICES_TAG "${@eth_devices}"
-
 ovsdb_table_t table_Connection_Manager_Uplink;
 
 static char *dflt_fltr_name = "none";
@@ -701,7 +699,7 @@ set_filter_info(fcm_filter_l2_info_t *l2_filter_info,
     l2_filter_pkts->bytes = stats->bytes;
 }
 
-static bool
+bool
 lan_stats_is_mac_in_tag(char *tag, os_macaddr_t *mac)
 {
     char mac_s[32] = { 0 };
@@ -863,7 +861,6 @@ lan_stats_flows_filter(lan_stats_instance_t *lan_stats_instance, dp_ctl_stats_t 
 
         if (allow)
         {
-
             MEMZERO(stats->smac_addr);
             MEMZERO(stats->dmac_addr);
             snprintf(stats->smac_addr, sizeof(stats->smac_addr), PRI_os_macaddr_lower_t,
