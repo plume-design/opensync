@@ -833,8 +833,8 @@ void dm_manager_child_fn(struct ev_loop *loop, ev_child *w, int revents)
         {
             /* Slow restart if exited with error code */
             LOG(INFO, "Manager failed to start, restart in %d seconds: name=%s pid=%d",
-                      TM_OUT_SLOW, dm->dm_name, w->rpid);
-            dm_manager_restart(dm, TM_OUT_SLOW);
+                      delay, dm->dm_name, w->rpid);
+            dm_manager_restart(dm, delay);
             return;
         }
     }
