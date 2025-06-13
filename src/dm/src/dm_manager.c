@@ -846,9 +846,9 @@ void dm_manager_child_fn(struct ev_loop *loop, ev_child *w, int revents)
         LOG(NOTICE, "Manager '%s' terminated, signal: %d, restarting in %d seconds.",
                     dm->dm_name,
                     WTERMSIG(w->rstatus),
-                    TM_OUT_FAST);
+                    delay);
 
-        dm_manager_restart(dm, TM_OUT_FAST);
+        dm_manager_restart(dm, delay);
         return;
     }
 
