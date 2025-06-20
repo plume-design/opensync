@@ -841,7 +841,7 @@ void dm_manager_child_fn(struct ev_loop *loop, ev_child *w, int revents)
 
     /* check if the on of the manager processes had crashed     */
     /* ignore managers stop due to user actions                 */
-    if (!ignore_signal(w->rstatus) || dm->dm_restart_always)
+    if (!ignore_signal(w->rstatus) || dm->dm_restart_always || dm->dm_plan_b)
     {
         LOG(NOTICE, "Manager '%s' terminated, signal: %d, restarting in %d seconds.",
                     dm->dm_name,
