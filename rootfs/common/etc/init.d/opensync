@@ -36,6 +36,28 @@ opensync_dm_start()
     start-stop-daemon -S -p $PID_FILE -x ${BIN_DIR}/dm -b -m
 }
 
+# Writes information related to the OpenSync restart into a designated crash file
+# directory which is later reported to the cloud by DM's crash reporting module
+dump_manager_restart()
+{
+    {% if CONFIG_DM_OSYNC_CRASH_REPORTS %}
+    CRASH_REPORTS_TMP_DIR={{CONFIG_DM_CRASH_REPORTS_TMP_DIR}}
+    NOT_AVAILABLE_STR="<NA>"
+
+    mkdir -m 755 -p "$CRASH_REPORTS_TMP_DIR"
+    crashfile=$(mktemp "$CRASH_REPORTS_TMP_DIR/crashed_XXXXXX")
+
+    # Append manager restart data to crash file in the same format as in os_backtrace
+    echo "pid $NOT_AVAILABLE_STR" > $crashfile
+    echo "name OpenSync" >> $crashfile
+    echo "reason OpenSync restarted by $(readlink -f ${0})" >> $crashfile
+    echo "timestamp $(date +%s | awk '{print $1 * 1000}')" >> $crashfile  # multiply by 1000 because time in ms is expected
+    echo "backtrace $NOT_AVAILABLE_STR" >> $crashfile
+    {% else %}
+    :
+    {% endif %}
+}
+
 # include functions.sh after the above function definitions
 # so that they can be overrided with platform specifics
 
@@ -64,6 +86,6 @@ case "$1" in
     boot) start ;;
     start) opensync_dm_running || start ;;
     stop) stop ;;
-    restart) "$0" stop && "$0" start ;;
+    restart) "$0" stop && "$0" start && dump_manager_restart;;
     *) exit 1 ;;
 esac

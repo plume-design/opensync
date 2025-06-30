@@ -37,6 +37,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 void (*g_setUp)(void) = NULL;
 void (*g_tearDown)(void) = NULL;
 
+#define MEMPOOL_SIZE (1024 * 1024 * 3) /* 3MB */
+
 void setUp(void)
 {
 }
@@ -48,7 +50,7 @@ void tearDown(void)
 static void test_create_and_destroy()
 {
     we_state_t state;
-    TEST_ASSERT_TRUE(we_create(&state, 32) == 0);
+    TEST_ASSERT_TRUE(we_create(&state, 32, MEMPOOL_SIZE) == 0);
     TEST_ASSERT_TRUE(we_destroy(state) == 0);
 }
 
@@ -57,7 +59,7 @@ static void test_add()
     int64_t result;
     const uint8_t insn[] = {WE_OP_ADD, WE_OP_HLT};
     we_state_t state;
-    TEST_ASSERT_TRUE(we_create(&state, 32) == 0);
+    TEST_ASSERT_TRUE(we_create(&state, 32, MEMPOOL_SIZE) == 0);
     TEST_ASSERT_TRUE(we_pushbuf(state, 2, (void *)insn) == 0);
     TEST_ASSERT_TRUE(we_pushnum(state, 11) == 1);
     TEST_ASSERT_TRUE(we_pushnum(state, 39) == 2);
@@ -73,7 +75,7 @@ static void test_sub()
     int64_t result;
     const uint8_t insn[] = {WE_OP_SUB, WE_OP_HLT};
     we_state_t state;
-    TEST_ASSERT_TRUE(we_create(&state, 32) == 0);
+    TEST_ASSERT_TRUE(we_create(&state, 32, MEMPOOL_SIZE) == 0);
     TEST_ASSERT_TRUE(we_pushbuf(state, 2, (void *)insn) == 0);
     TEST_ASSERT_TRUE(we_pushnum(state, 11) == 1);
     TEST_ASSERT_TRUE(we_pushnum(state, 39) == 2);
@@ -89,7 +91,7 @@ static void test_mul()
     int64_t result;
     const uint8_t insn[] = {WE_OP_MUL, WE_OP_HLT};
     we_state_t state;
-    TEST_ASSERT_TRUE(we_create(&state, 32) == 0);
+    TEST_ASSERT_TRUE(we_create(&state, 32, MEMPOOL_SIZE) == 0);
     TEST_ASSERT_TRUE(we_pushbuf(state, 2, (void *)insn) == 0);
     TEST_ASSERT_TRUE(we_pushnum(state, 11) == 1);
     TEST_ASSERT_TRUE(we_pushnum(state, 39) == 2);
@@ -105,7 +107,7 @@ static void test_cmp()
     int64_t result;
     const uint8_t insn[] = {WE_OP_CMP, WE_OP_HLT};
     we_state_t state;
-    TEST_ASSERT_TRUE(we_create(&state, 32) == 0);
+    TEST_ASSERT_TRUE(we_create(&state, 32, MEMPOOL_SIZE) == 0);
     TEST_ASSERT_TRUE(we_pushbuf(state, 2, (void *)insn) == 0);
     TEST_ASSERT_TRUE(we_pushnum(state, 11) == 1);
     TEST_ASSERT_TRUE(we_pushnum(state, 39) == 2);
@@ -130,7 +132,7 @@ static void test_ext()
     we_state_t state;
     int64_t userdata = 8;
     we_setup(42, test_ext_cb);
-    TEST_ASSERT_TRUE(we_create(&state, 32) == 0);
+    TEST_ASSERT_TRUE(we_create(&state, 32, MEMPOOL_SIZE) == 0);
     TEST_ASSERT_TRUE(we_pushbuf(state, 2, (void *)insn) == 0);
     TEST_ASSERT_TRUE(we_call(&state, &userdata) == 0);
     TEST_ASSERT_TRUE(we_destroy(state) == 0);
@@ -140,7 +142,7 @@ static void test_ext()
 static void test_einval()
 {
     we_state_t state;
-    TEST_ASSERT_TRUE(we_create(&state, 32) == 0);
+    TEST_ASSERT_TRUE(we_create(&state, 32, MEMPOOL_SIZE) == 0);
     TEST_ASSERT_TRUE(we_pushnum(state, 1) == 0);
     TEST_ASSERT_TRUE(we_move(state, -100) == -EINVAL);
     TEST_ASSERT_TRUE(we_top(state) == 0);

@@ -196,16 +196,12 @@ int fsm_set_dpi_mark(struct net_header_parser *net_hdr,
 
 void fsm_dpi_set_plugin_decision(
         struct fsm_session *session,
-        struct net_header_parser *net_parser,
+        struct net_md_stats_accumulator *acc,
         enum fsm_dpi_state state)
 {
-    struct net_md_stats_accumulator *acc;
     struct fsm_dpi_flow_info *info;
 
-    if (session == NULL) return;
-
-    acc = net_parser->acc;
-    if (acc == NULL) return;
+    if (session == NULL || acc == NULL) return;
 
     if (acc->dpi_plugins == NULL) return;
 

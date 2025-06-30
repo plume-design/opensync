@@ -23,4 +23,26 @@ if MANAGER_DM
         help
             If an OpenSync process crashes, a concise crash report
             will be generated and sent to the cloud.
+
+    config DM_CRASH_REPORTS_TMP_DIR
+        string "Temporary directory for storing OpenSync crash reports"
+        default "/tmp/osync_crash_reports"
+        help
+            The directory in which to store crash report files before
+            they are sent to the cloud and deleted.
+
+    config DM_DEFAULT_MAX_MEMORY
+        int "Default high memory usage limit in kB"
+        default 10000
+        help
+            DM will abort the manager when its memory limit (in kB) is exceeded
+            DM_DEFAULT_MAX_MEMORY_CNT times. If the process does not have custom
+            memory limit defined, this default value will be used instead.
+
+    config DM_DEFAULT_MAX_MEMORY_CNT
+        int "Default high memory exceeded counter"
+        default 10
+        help
+            The number of times the DM_DEFAULT_MAX_MEMORY limit must be exceeded
+            before DM takes any action.
 endif

@@ -192,6 +192,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
     if (__buf) { FN(__buf, &DST); } \
     } while(0)
 
+#define STATE_GET_HEX(DST, SRC, OPT) do { \
+    __STATE_GET(SRC, OPT); \
+    if (__buf) { DST = strtol(__buf, NULL, 16); } \
+    } while(0)
+
 #define OSW_HOSTAP_CONF_WPA_KEY_MGMT_MAX_LEN 128
 #define OSW_HOSTAP_CONF_RADIUS_MAX_COUNT 6
 

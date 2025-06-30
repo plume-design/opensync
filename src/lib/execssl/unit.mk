@@ -38,6 +38,7 @@ UNIT_SRC += src/execssl.c
 UNIT_CFLAGS += -I$(UNIT_PATH)/inc
 UNIT_EXPORT_CFLAGS := $(UNIT_CFLAGS)
 
+UNIT_DEPS += src/lib/arena
 UNIT_DEPS += src/lib/common
 UNIT_DEPS += src/lib/ds
 UNIT_DEPS += src/lib/execsh

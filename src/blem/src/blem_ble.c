@@ -591,10 +591,7 @@ bool blem_ble_init(struct ev_loop *p_loop)
     adv_data->service.uuids[0] = TO_LE16(uuid);
 
     /* Also prepare scan response data if eventually used */
-    SPRINTF(sr_data->cln.name,
-            "Pod %.*s",
-            (int)strnlen(adv_data->serial_num, sizeof(adv_data->serial_num)),
-            adv_data->serial_num);
+    SPRINTF(sr_data->cln.name, "Pod %.*s", sizeof(adv_data->serial_num), adv_data->serial_num);
     sr_data->cln.len = (uint8_t)(1 + strnlen(sr_data->cln.name, sizeof(sr_data->cln.name)));
 
 #if defined(CONFIG_BLEM_ADVERTISE_NAME_WHEN_CONNECTABLE) || defined(CONFIG_BLEM_ADVERTISE_NAME_WHEN_BROADCASTING)

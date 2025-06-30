@@ -63,8 +63,7 @@ gkc_flush_url(struct per_device_cache *cache, struct fsm_policy_rules *rules)
         del_entry = entry;
         entry = ds_tree_next(url_cache, entry);
         gkc_free_attr_entry(del_entry, GK_CACHE_REQ_TYPE_URL);
-        ds_tree_remove(url_cache, del_entry);
-        FREE(del_entry);
+        gkc_remove_entry(url_cache, del_entry);
         count++;
     }
 
@@ -140,8 +139,7 @@ gkc_flush_hostname(struct per_device_cache *cache, struct fsm_policy_rules *rule
         if (need_delete)
         {
             gkc_free_attr_entry(checked_entry, GK_CACHE_REQ_TYPE_HOST);
-            ds_tree_remove(hostname_cache, checked_entry);
-            FREE(checked_entry);
+            gkc_remove_entry(hostname_cache, checked_entry);
 
             total_count++;
         }
@@ -214,8 +212,7 @@ gkc_flush_app(struct per_device_cache *cache, struct fsm_policy_rules *rules)
         {
             /* delete this entry */
             gkc_free_attr_entry(checked_entry, GK_CACHE_REQ_TYPE_APP);
-            ds_tree_remove(app_cache, checked_entry);
-            FREE(checked_entry);
+            gkc_remove_entry(app_cache, checked_entry);
 
             total_count++;
         }
@@ -305,8 +302,7 @@ gkc_flush_ipv4(struct per_device_cache *cache, struct fsm_policy_rules *rules)
         if (need_delete)
         {
             gkc_free_attr_entry(checked_entry, GK_CACHE_REQ_TYPE_IPV4);
-            ds_tree_remove(ipv4_cache, checked_entry);
-            FREE(checked_entry);
+            gkc_remove_entry(ipv4_cache, checked_entry);
 
             total_count++;
         }
@@ -394,8 +390,7 @@ gkc_flush_ipv6(struct per_device_cache *cache, struct fsm_policy_rules *rules)
         if (need_delete)
         {
             gkc_free_attr_entry(checked_entry, GK_CACHE_REQ_TYPE_IPV4);
-            ds_tree_remove(ipv6_cache, checked_entry);
-            FREE(checked_entry);
+            gkc_remove_entry(ipv6_cache, checked_entry);
 
             total_count++;
         }
@@ -637,8 +632,8 @@ gkc_flush_all(struct fsm_policy_rules *rules)
     return num_entries;
 }
 
-int
-gkc_flush_client(void *context, struct fsm_policy *policy)
+
+static int gk_flush_cache(void *context, struct fsm_policy *policy)
 {
     struct fsm_session *session;
     int num_hero_stats_records;
@@ -711,4 +706,18 @@ gkc_flush_client(void *context, struct fsm_policy *policy)
 
     LOGD("%s(): Unsupported action %d", __func__, policy->action);
     return -1;
+}
+
+int gkc_flush_client(void *context, struct fsm_policy *policy)
+{
+    int flushed_entries;
+
+    flushed_entries = gk_flush_cache(context, policy);
+    if (flushed_entries >= 0)
+    {
+        LOGD("Triggering persistence cache store");
+        gk_store_cache_in_persistence();
+    }
+
+    return flushed_entries;
 }

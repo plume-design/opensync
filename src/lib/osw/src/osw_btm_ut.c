@@ -24,8 +24,14 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+/* Conflicts with osw_drv_i. This file shouldn't be
+ * including that...
+ */
+#undef LOG_PREFIX
+
 #include <osw_ut.h>
 #include <osw_drv_common.h>
+#include <osw_drv_dummy.h>
 #include "osw_drv_i.h"
 
 struct osw_btm_ut_dummy_drv {
@@ -35,7 +41,6 @@ struct osw_btm_ut_dummy_drv {
 };
 
 struct osw_btm_ut_sta_observer {
-    struct osw_btm_sta_observer observer;
     unsigned int tx_complete_cnt;
     unsigned int tx_error_cnt;
 };
@@ -141,17 +146,17 @@ osw_btm_ut_mux_frame_tx_schedule_error(const char *phy_name,
 }
 
 static void
-osw_btm_req_tx_complete_cb(struct osw_btm_sta_observer *observer)
+osw_btm_req_completed_cb(void *priv, enum osw_btm_req_result result)
 {
-    struct osw_btm_ut_sta_observer *sta_observer = (struct osw_btm_ut_sta_observer*) container_of(observer, struct osw_btm_ut_sta_observer, observer);
-    sta_observer->tx_complete_cnt++;
-}
-
-static void
-osw_btm_req_tx_error_cb(struct osw_btm_sta_observer *observer)
-{
-    struct osw_btm_ut_sta_observer *sta_observer = (struct osw_btm_ut_sta_observer*) container_of(observer, struct osw_btm_ut_sta_observer, observer);
-    sta_observer->tx_error_cnt++;
+    struct osw_btm_ut_sta_observer *sta_observer = priv;
+    switch (result) {
+        case OSW_BTM_REQ_RESULT_SENT:
+            sta_observer->tx_complete_cnt++;
+            break;
+        case OSW_BTM_REQ_RESULT_FAILED:
+            sta_observer->tx_error_cnt++;
+            break;
+    }
 }
 
 OSW_UT(osw_btm_ut_send_single_btm)
@@ -183,88 +188,215 @@ OSW_UT(osw_btm_ut_send_single_btm)
     };
 
     struct osw_drv_vif_state drv_vif_state = {
+        .exists = true,
         .mac_addr = { .octet = { 0xac, 0x4c, 0x56, 0x03, 0xd2, 0x1b }, },
     };
-    struct osw_state_phy_info phy = {
-        .phy_name = "phy0",
-    };
-    struct osw_state_vif_info vif = {
-        .vif_name = "vif0",
-        .phy = &phy,
-        .drv_state = &drv_vif_state,
-    };
-    struct osw_state_sta_info sta_info = {
-        .mac_addr = &sta_addr,
-        .vif = &vif,
-    };
 
-    struct osw_btm_desc *desc = NULL;
     struct osw_btm_ut_sta_observer sta_observer = {
-        .observer = {
-            .req_tx_complete_fn = osw_btm_req_tx_complete_cb,
-            .req_tx_error_fn = osw_btm_req_tx_error_cb,
-        },
         .tx_complete_cnt = 0,
         .tx_error_cnt = 0,
     };
-    bool result;
 
+    struct osw_drv_dummy dummy = {
+        .name = "dummy",
+    };
+
+    osw_btm_t *m = OSW_MODULE_LOAD(osw_btm);
+    osw_btm_sta_t *sta = osw_btm_sta_alloc(m, &sta_addr);
+    osw_btm_req_t *r;
+
+    m->mux_frame_tx_schedule_fn = osw_btm_ut_mux_frame_tx_schedule_success;
     osw_time_set_mono_clk(0);
     osw_time_set_wall_clk(0);
 
-    desc = osw_btm_get_desc_internal(&sta_addr, &sta_observer.observer, osw_btm_ut_mux_frame_tx_schedule_success);
-    assert(desc != NULL);
+    osw_drv_dummy_init(&dummy);
+    osw_drv_dummy_set_phy(&dummy, "phy1", (struct osw_drv_phy_state []) {{ .exists = true }});
+    osw_drv_dummy_set_vif(&dummy, "phy1", "vif1", &drv_vif_state);
+    osw_ut_time_advance(0);
+    assert(osw_state_vif_lookup_by_mac_addr(&drv_vif_state.mac_addr) != NULL);
 
     /* Cannot queue BTM Request for disconnected STA */
-    result = osw_btm_desc_set_req_params(desc, &req_params);
-    osw_ut_time_advance(0);
-
-    assert(result == false);
+    r = osw_btm_req_alloc(sta);
+    assert(osw_btm_req_set_completed_fn(r, osw_btm_req_completed_cb, &sta_observer) == true);
+    assert(osw_btm_req_set_params(r, &req_params) == true);
+    assert(osw_btm_req_submit(r) == false);
     assert(sta_observer.tx_complete_cnt == 0);
     assert(sta_observer.tx_error_cnt == 0);
+    osw_btm_req_drop(r);
 
     /* Schedule BTM Request for connected STA */
-    struct osw_btm_sta *btm_sta = desc->sta;
-    osw_btm_sta_set_info(btm_sta, &sta_info);
-    result = osw_btm_desc_set_req_params(desc, &req_params);
-    osw_ut_time_advance(0);
-
-    assert(result == true);
+    sta->assoc.links.array[0].local_sta_addr = drv_vif_state.mac_addr;
+    sta->assoc.links.array[0].remote_sta_addr = sta_addr;
+    sta->assoc.links.count = 1;
+    sta->assoc.links.local_mld_addr = *osw_hwaddr_zero();
+    r = osw_btm_req_alloc(sta);
+    assert(osw_btm_req_set_completed_fn(r, osw_btm_req_completed_cb, &sta_observer) == true);
+    assert(osw_btm_req_set_params(r, &req_params) == true);
+    assert(osw_btm_req_submit(r) == true);
     assert(sta_observer.tx_complete_cnt == 1);
     assert(sta_observer.tx_error_cnt == 0);
     assert(g_dummy_drv.frame_tx_cnt == 1);
     frame = (const struct osw_drv_dot11_frame*) &g_dummy_drv.frame_buf;
     assert(frame->u.action.u.bss_tm_req.dialog_token == OSW_TOKEN_MAX);
+    osw_btm_req_drop(r);
 
     /* Schedule BTM Request again for connected STA */
-    result = osw_btm_desc_set_req_params(desc, &req_params);
-    osw_ut_time_advance(0);
-
-    assert(result == true);
+    r = osw_btm_req_alloc(sta);
+    assert(osw_btm_req_set_completed_fn(r, osw_btm_req_completed_cb, &sta_observer) == true);
+    assert(osw_btm_req_set_params(r, &req_params) == true);
+    assert(osw_btm_req_submit(r) == true);
     assert(sta_observer.tx_complete_cnt == 2);
     assert(sta_observer.tx_error_cnt == 0);
     assert(g_dummy_drv.frame_tx_cnt == 2);
     frame = (const struct osw_drv_dot11_frame*) &g_dummy_drv.frame_buf;
     assert(frame->u.action.u.bss_tm_req.dialog_token == (OSW_TOKEN_MAX - 1));
+    osw_btm_req_drop(r);
 
-    /* Recreate desc, but with failing drv tx */
-    osw_btm_sta_set_info(btm_sta, NULL);
-    osw_btm_desc_free(desc);
-
-    desc = osw_btm_get_desc_internal(&sta_addr, &sta_observer.observer, osw_btm_ut_mux_frame_tx_schedule_error);
-    assert(desc != NULL);
+    /* Now simulate tx failures */
+    m->mux_frame_tx_schedule_fn = osw_btm_ut_mux_frame_tx_schedule_error;
 
     /* Schedule BTM Request again for connected STA */
-    btm_sta = desc->sta;
-    osw_btm_sta_set_info(btm_sta, &sta_info);
-
-    result = osw_btm_desc_set_req_params(desc, &req_params);
-    osw_ut_time_advance(0);
-
-    assert(result == true);
+    sta->assoc.links.array[0].local_sta_addr = drv_vif_state.mac_addr;
+    sta->assoc.links.array[0].remote_sta_addr = sta_addr;
+    sta->assoc.links.count = 1;
+    sta->assoc.links.local_mld_addr = *osw_hwaddr_zero();
+    r = osw_btm_req_alloc(sta);
+    assert(osw_btm_req_set_completed_fn(r, osw_btm_req_completed_cb, &sta_observer) == true);
+    assert(osw_btm_req_set_params(r, &req_params) == true);
+    assert(osw_btm_req_submit(r) == true);
     assert(sta_observer.tx_complete_cnt == 2);
     assert(sta_observer.tx_error_cnt == 1);
     assert(g_dummy_drv.frame_tx_cnt == 3);
     frame = (const struct osw_drv_dot11_frame*) &g_dummy_drv.frame_buf;
-    assert(frame->u.action.u.bss_tm_req.dialog_token == OSW_TOKEN_MAX);
+    assert(frame->u.action.u.bss_tm_req.dialog_token == (OSW_TOKEN_MAX - 2));
+    osw_btm_req_drop(r);
+}
+
+OSW_UT(osw_btm_ut_resp_parse)
+{
+    static const unsigned char ref_frame1[] = {
+        0xd0, 0x00, // frame control
+        0x00, 0x00, // duration
+        0x11, 0xaa, 0xaa, 0xaa, 0xaa, 0x44, // ra
+        0x22, 0xaa, 0xaa, 0xaa, 0xaa, 0x55, // ta
+        0x33, 0xaa, 0xaa, 0xaa, 0xaa, 0x66, // bssid
+        0x00, 0x00, // sequence
+
+        0x0A, // category
+        0x08, // action
+        0x99, // dialog token
+        0x88, // status code
+        0x00, // bss termination delay
+
+        // neighbor 1
+        0x34, // nr element id
+        0x10, // length
+        0x01, 0x02, 0x03, 0x04, 0x05, 0x06, // bssid
+        0x01, 0x02, 0x03, 0x04, // bssid info
+        0x01, // op class
+        0x02, // channel
+        0x03, // phy_type
+
+        0x00, // preference sub elem id
+        0x01, // length
+        0x42, // preference value
+
+        // neighbor 2
+        0x34, // nr element id
+        0x10, // length
+        0x11, 0x22, 0x33, 0x44, 0x55, 0x66, // bssid
+        0x05, 0x06, 0x07, 0x08, // bssid info
+        0x04, // op class
+        0x05, // channel
+        0x06, // phy_type
+
+        0x00, // preference sub elem id
+        0x01, // length
+        0x24, // preference value
+    };
+    const struct osw_hwaddr sta1 = { .octet = { 0x11, 0xaa, 0xaa, 0xaa, 0xaa, 0x44 } };
+    const struct osw_hwaddr ap1 = { .octet = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06 } };
+    const struct osw_hwaddr ap2 = { .octet = { 0x11, 0x22, 0x33, 0x44, 0x55, 0x66 } };
+
+    osw_btm_resp_t resp;
+    MEMZERO(resp);
+    const bool ok = osw_btm_resp_parse(ref_frame1, sizeof(ref_frame1), &resp);
+
+    assert(ok);
+    assert(resp.status_code == 0x88);
+    assert(resp.dialog_token == 0x99);
+    assert(osw_hwaddr_is_equal(&resp.sta_addr, &sta1));
+
+    assert(resp.n_neighs == 2);
+
+    assert(osw_hwaddr_is_equal(&resp.neighs[0].neigh.bssid, &ap1));
+    assert(resp.neighs[0].neigh.bssid_info == 0x04030201);
+    assert(resp.neighs[0].neigh.op_class == 0x01);
+    assert(resp.neighs[0].neigh.channel == 0x02);
+    assert(resp.neighs[0].neigh.phy_type == 0x03);
+    assert(resp.neighs[0].preference == 0x42);
+
+    assert(osw_hwaddr_is_equal(&resp.neighs[1].neigh.bssid, &ap2));
+    assert(resp.neighs[1].neigh.bssid_info == 0x08070605);
+    assert(resp.neighs[1].neigh.op_class == 0x04);
+    assert(resp.neighs[1].neigh.channel == 0x05);
+    assert(resp.neighs[1].neigh.phy_type == 0x06);
+    assert(resp.neighs[1].preference == 0x24);
+}
+
+OSW_UT(osw_btm_ut_mbo)
+{
+    char buf[64];
+    ssize_t rem = sizeof(buf);
+    void *tail = buf;
+    struct osw_btm_req_params params = {
+        .mbo = {
+            .cell_preference = OSW_BTM_MBO_CELL_PREF_NONE,
+            .reason = OSW_BTM_MBO_REASON_NONE,
+        },
+    };
+
+    /* Test: no MBO params should yield no MBO elements */
+    osw_btm_mbo_put(&tail, &rem, &params);
+    assert(buf_len(tail, buf) == 0);
+
+    /* Test: Check if at least one of the attributes sets up MBO elements as expected */
+    params.mbo.cell_preference = OSW_BTM_MBO_CELL_PREF_EXCLUDE_CELL;
+    osw_btm_mbo_put(&tail, &rem, &params);
+    {
+        ssize_t len = buf_len(buf, tail);
+        const void *head = buf;
+
+        uint8_t eid;
+        uint8_t elen;
+        assert(buf_get_u8(&head, &len, &eid));
+        assert(buf_get_u8(&head, &len, &elen));
+        assert(eid == C_IEEE80211_EID_VENDOR);
+
+        const void *data;
+        ssize_t datalen = elen;
+        assert(buf_get_as_ptr(&head, &len, &data, elen));
+
+        uint8_t oui[3];
+        uint8_t oui_type;
+        assert(buf_get_u8(&data, &datalen, &oui[0]));
+        assert(buf_get_u8(&data, &datalen, &oui[1]));
+        assert(buf_get_u8(&data, &datalen, &oui[2]));
+        assert(buf_get_u8(&data, &datalen, &oui_type));
+        assert(oui[0] == C_IEEE80211_WFA_OUI_BYTE0);
+        assert(oui[1] == C_IEEE80211_WFA_OUI_BYTE1);
+        assert(oui[2] == C_IEEE80211_WFA_OUI_BYTE2);
+        assert(oui_type == C_IEEE80211_MBO_OUI_TYPE);
+
+        uint8_t aid;
+        uint8_t alen;
+        uint8_t attr;
+        assert(buf_get_u8(&data, &datalen, &aid));
+        assert(buf_get_u8(&data, &datalen, &alen));
+        assert(buf_get_u8(&data, &datalen, &attr));
+
+        assert(aid == C_IEEE80211_MBO_ATTR_CELL_PREF);
+        assert(alen == 1);
+        assert(attr == C_IEEE80211_MBO_CELL_PREF_EXCLUDE);
+    }
 }

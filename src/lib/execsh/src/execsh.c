@@ -427,9 +427,9 @@ void execsh_async_cleanup(execsh_async_t *esa)
     ev_io_stop(esa->esa_loop, &esa->esa_stdout_ev);
     ev_io_stop(esa->esa_loop, &esa->esa_stderr_ev);
 
-    close(esa->esa_stdin_fd);
-    close(esa->esa_stdout_fd);
-    close(esa->esa_stderr_fd);
+    if (esa->esa_stdin_fd >= 0) close(esa->esa_stdin_fd);
+    if (esa->esa_stdout_fd >= 0) close(esa->esa_stdout_fd);
+    if (esa->esa_stderr_fd >= 0) close(esa->esa_stderr_fd);
 
     esa->esa_stdin_fd = -1;
     esa->esa_stdout_fd = -1;

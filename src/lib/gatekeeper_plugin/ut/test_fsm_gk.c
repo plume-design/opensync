@@ -60,7 +60,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 char *g_location_id = "foo";
 char *g_node_id = "bar";
 
-static const char *g_server_url = "https://dev_gatekeeper_container.opensync.io:443/";
+static const char *g_server_url = "https://dev_gatekeeper_container.opensync.io:5000/";
 static char *g_ssl_certs_file = "/tmp/client.pem";
 static char *g_ssl_key_file = "/tmp/client_dec.key";
 static bool g_is_connected;
@@ -77,7 +77,7 @@ char g_other_configs[][3][OTHER_CONFIG_NELEMS][OTHER_CONFIG_NELEM_SIZE] =
             "mqtt_v"
         },
         {
-            "https://dev_gatekeeper_container.opensync.io:443/",
+            "https://dev_gatekeeper_container.opensync.io:5000/",
             "./data/cacert.pem",
             "dev-test/gk_ut_topic",
         },
@@ -90,10 +90,24 @@ void send_report(struct fsm_session *session, char *report)
 
 }
 
+static void
+test_gk_monitor_object(struct fsm_session *session,
+                       char *attribute)
+{}
+
+static struct fsm_object *
+test_gk_best_object_cb(struct fsm_session *session,
+                        char *attribute)
+{
+    return NULL;
+}
+
 struct fsm_session_ops g_ops =
 {
     .get_config = gk_get_other_config_val,
     .send_report = send_report,
+    .monitor_object = test_gk_monitor_object,
+    .best_obj_cb = test_gk_best_object_cb,
 };
 
 struct fsm_session_conf g_confs[1] =

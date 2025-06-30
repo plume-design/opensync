@@ -33,11 +33,13 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ow_conf.h"
 
 static ovsdb_table_t table_Wifi_Credential_Config;
+static ovsdb_table_t *table_Wifi_Radio_Config;
 static ovsdb_table_t *table_Wifi_VIF_Config;
 static ev_timer g_ow_ovsdb_cconf_timer;
 
 static void
-ow_ovsdb_cconf_apply_on_vif(const struct schema_Wifi_VIF_Config *vconf)
+ow_ovsdb_cconf_apply_on_vif(const struct schema_Wifi_Radio_Config *rconf,
+                            const struct schema_Wifi_VIF_Config *vconf)
 {
     const char *vif_name = vconf->if_name;
 
@@ -99,6 +101,16 @@ ow_ovsdb_cconf_apply_on_vif(const struct schema_Wifi_VIF_Config *vconf)
         wpa.akm_sae = true;
         wpa.pmf = OSW_PMF_OPTIONAL;
 
+        /* EHT (and MLO) requires a different SAE AKM and
+         * additional ciphers.
+         */
+        if (strcmp(rconf->hw_mode, "11be") == 0) {
+            wpa.akm_sae_ext = true;
+            wpa.pairwise_gcmp = true;
+            wpa.pairwise_gcmp256 = true;
+            wpa.beacon_protection = true;
+        }
+
         STRSCPY_WARN(psk.str, pass);
         STRSCPY_WARN(ssid.buf, c->ssid);
         ssid.len = strlen(ssid.buf);
@@ -107,8 +119,25 @@ ow_ovsdb_cconf_apply_on_vif(const struct schema_Wifi_VIF_Config *vconf)
     }
 }
 
+static const struct schema_Wifi_Radio_Config *
+ow_ovsdb_cconf_rconf_for_vconf(struct ds_tree *r_rows,
+                               const struct schema_Wifi_VIF_Config *v)
+{
+    ovsdb_cache_row_t *i;
+    ds_tree_foreach(r_rows, i) {
+        const struct schema_Wifi_Radio_Config *r = (const void *)i->record;
+        int i;
+        for (i = 0; i < r->vif_configs_len; i++) {
+            if (strcmp(r->vif_configs[i].uuid, v->_uuid.uuid) == 0) {
+                return r;
+            }
+        }
+    }
+    return NULL;
+}
+
 static void
-ow_ovsdb_cconf_apply(struct ds_tree *v_rows)
+ow_ovsdb_cconf_apply(struct ds_tree *r_rows, struct ds_tree *v_rows)
 {
     LOGD("ow: ovsdb: cconf: applying");
 
@@ -122,15 +151,19 @@ ow_ovsdb_cconf_apply(struct ds_tree *v_rows)
         if (is_sta == false) continue;
         if (has_ssid == true) continue;
 
-        ow_ovsdb_cconf_apply_on_vif(v);
+        const struct schema_Wifi_Radio_Config *r = ow_ovsdb_cconf_rconf_for_vconf(r_rows, v);
+        if (WARN_ON(r == NULL)) continue;
+
+        ow_ovsdb_cconf_apply_on_vif(r, v);
     }
 }
 
 static void
 ow_ovsdb_cconf_timer_cb(EV_P_ ev_timer *arg, int events)
 {
+    struct ds_tree *r_rows = &table_Wifi_Radio_Config->rows;
     struct ds_tree *v_rows = &table_Wifi_VIF_Config->rows;
-    ow_ovsdb_cconf_apply(v_rows);
+    ow_ovsdb_cconf_apply(r_rows, v_rows);
 }
 
 void
@@ -153,10 +186,11 @@ callback_Wifi_Credential_Config(ovsdb_update_monitor_t *mon,
 }
 
 void
-ow_ovsdb_cconf_init(ovsdb_table_t *vconft)
+ow_ovsdb_cconf_init(ovsdb_table_t *rconft, ovsdb_table_t *vconft)
 {
     struct ev_timer *t = &g_ow_ovsdb_cconf_timer;
     ev_timer_init(t, ow_ovsdb_cconf_timer_cb, 0, 0);
+    table_Wifi_Radio_Config = rconft;
     table_Wifi_VIF_Config = vconft;
     OVSDB_TABLE_INIT(Wifi_Credential_Config, _uuid);
     OVSDB_CACHE_MONITOR(Wifi_Credential_Config, true);

@@ -233,6 +233,7 @@ static void sm_lat_mqtt_report_send(sm_lat_mqtt_t *m)
     qm_response_t res;
     const bool sent = qm_conn_send_direct(QM_REQ_COMPRESS_IF_CFG, m->topic, buf, len, &res);
     WARN_ON(sent == false);
+    FREE(buf);
 }
 
 static void sm_lat_mqtt_report_drop(sm_lat_mqtt_t *m)

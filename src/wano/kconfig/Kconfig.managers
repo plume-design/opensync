@@ -7,7 +7,7 @@ menuconfig MANAGER_WANO
 if MANAGER_WANO
     config MANAGER_WANO_CFG
         string "WANO Startup configuration"
-        default "wano;true;needs_plan_b=true"
+        default "wano;true;needs_plan_b=true;max_memory=20000"
         help
             WAN Orchestrator startup configuration
 

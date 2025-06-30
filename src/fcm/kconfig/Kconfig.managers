@@ -7,7 +7,7 @@ menuconfig MANAGER_FCM
     config MANAGER_FCM_CFG
         depends on MANAGER_FCM
         string "FCM Startup configuration"
-        default "fcm;true;always_restart=true;restart_delay=-1"
+        default "fcm;true;always_restart=true;restart_delay=-1;max_memory=100000"
         help
             Flow Collection Manager startup configuration
 
@@ -41,3 +41,4 @@ menuconfig MANAGER_FCM
         default 120
         help
             Set FCM memory check periodicity.
+

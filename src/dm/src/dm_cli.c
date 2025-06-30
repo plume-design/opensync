@@ -29,6 +29,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <getopt.h>
 
 #include "osp_unit.h"
+#include "reboot_flags.h"
+#include "target.h"
 
 #include "dm.h"
 
@@ -96,10 +98,10 @@ static int dm_cli_show_info(char *opt)
         printf(DM_CLI_SHOW_INFO_MFG_DATE"=%s\n", osp_unit_mfg_date_get(buf, buflen) ? buf : "?");
     }
 
-    return DM_CLI_DONE;
+    return DM_CLI_DONE_OK;
 }
 
-static bool dm_cli_help()
+static int dm_cli_help()
 {
     printf("Usage:\n");
     printf("  dm [options]\n");
@@ -113,13 +115,18 @@ static bool dm_cli_help()
     printf("                      list of except killing managers\n");
     printf("                      ex: --stop-all --except cm,nm,fsm\n");
     printf("                      ex: -k -e cm,nm\n");
-    return DM_CLI_DONE;
-}
+    printf("  -n -s, --no-reboot --set <module name>\n");
+    printf("  -n -c, --no-reboot --clear <module name>\n");
+    printf("  -n -g, --no-reboot --get <module name>\n");
+    printf("  -n -C, --no-reboot --clear-all\n");
+    printf("  -n -L, --no-reboot --list\n");
+    return DM_CLI_DONE_OK;
+} 
 
 /**
  * dm_cli - handles DM command line arguments
  */
-bool dm_cli(int argc, char *argv[], log_severity_t *log_severity)
+int dm_cli(int argc, char *argv[], log_severity_t *log_severity)
 {
 
     int opt;
@@ -127,7 +134,7 @@ bool dm_cli(int argc, char *argv[], log_severity_t *log_severity)
     bool stop_all = false;
     bool except = false;
     char *except_mgr_list = NULL;
-    bool done = DM_CLI_CONTINUE;
+    bool no_reboot = false;
     struct option long_options[] =
     {
         { .name = "help",          .has_arg = no_argument,       .val = 'h', },
@@ -135,13 +142,22 @@ bool dm_cli(int argc, char *argv[], log_severity_t *log_severity)
         { .name = "show-info",     .has_arg = optional_argument, .val = 'i', },
         { .name = "stop-all",      .has_arg = optional_argument, .val = 'k', },
         { .name = "except",        .has_arg = optional_argument, .val = 'e', },
+        { .name = "no-reboot",     .has_arg = no_argument,       .val = 'n', },
+        { .name = "set",           .has_arg = required_argument, .val = 's'  },
+        { .name = "clear",         .has_arg = required_argument, .val = 'c'  },
+        { .name = "get",           .has_arg = required_argument, .val = 'g'  },
+        { .name = "clear-all",     .has_arg = no_argument,       .val = 'C'  },
+        { .name = "list",          .has_arg = no_argument,       .val = 'L'  },
         { NULL, 0, 0, 0},
     };
 
-    while ((opt = getopt_long(argc, argv, "hvike::", long_options, NULL)) != -1)
+    while ((opt = getopt_long(argc, argv, "hvike::ns:c:g:CL", long_options, NULL)) != -1)
     {
         switch (opt)
         {
+            case 'h':
+                dm_cli_help();
+                return DM_CLI_DONE_OK;
             case 'v':
                 /* Handle log verbositiy level. This keeps compatibility with
                  * other managers that use os_opt_get().
@@ -153,7 +169,8 @@ bool dm_cli(int argc, char *argv[], log_severity_t *log_severity)
                 /* This options allows DM to run as a daemon */
                 break;
             case 'i':
-                return dm_cli_show_info(optind < argc ? argv[optind] : NULL);
+                dm_cli_show_info(optind < argc ? argv[optind] : NULL);
+                return DM_CLI_DONE_OK;
             case 'k':
                 stop_all = true;
                 break;
@@ -161,22 +178,92 @@ bool dm_cli(int argc, char *argv[], log_severity_t *log_severity)
                 except = true;
                 except_mgr_list = argv[optind];
                 break;
+            case 'n' :
+                if (!stop_all && !except)
+                {
+                    no_reboot = true;
+                    target_log_open("DM_CLI_NO_REBOOT", 0);
+                    break;
+                }
+                dm_cli_help();
+                return DM_CLI_DONE_ERR;
+            case 's' :
+                if (no_reboot)
+                {
+                    if (dm_no_reboot_set(optarg))
+                    {
+                        return DM_CLI_DONE_OK;
+                    }
+                    return DM_CLI_DONE_ERR;
+                }
+                dm_cli_help();
+                return DM_CLI_DONE_ERR;
+            case 'c' :
+                if (no_reboot)
+                {
+                    if (dm_no_reboot_clear(optarg))
+                    {
+                        return DM_CLI_DONE_OK;
+                    }
+                    return DM_CLI_DONE_ERR;
+                }
+                dm_cli_help();
+                return DM_CLI_DONE_ERR;
+            case 'g' :
+                if (no_reboot)
+                {
+                    if (dm_no_reboot_get(optarg))
+                    {
+                        return DM_CLI_DONE_OK;
+                    }
+                    return DM_CLI_DONE_ERR;
+                }
+                dm_cli_help();
+                return DM_CLI_DONE_ERR;
+            case 'C' :
+                if (no_reboot)
+                {
+                    if (dm_no_reboot_clear_all())
+                    {
+                        return DM_CLI_DONE_OK;
+                    }
+                    return DM_CLI_DONE_ERR;
+                }
+                dm_cli_help();
+                return DM_CLI_DONE_ERR;
+            case 'L' :
+                if (no_reboot)
+                {
+                    if (dm_no_reboot_list())
+                    {
+                        return DM_CLI_DONE_OK;
+                    }
+                    return DM_CLI_DONE_ERR;
+                }
+                dm_cli_help();
+                return DM_CLI_DONE_ERR;
             case '?':
-            case 'h':
+            case ':':
             default:
-                return dm_cli_help();
+                dm_cli_help();
+                return DM_CLI_DONE_ERR;
         }
     }
 
     if (stop_all)
     {
-        return dm_manager_stop_all(except_mgr_list);
+        if (dm_manager_stop_all(except_mgr_list))
+        {
+            return DM_CLI_DONE_OK;
+        }
+        return DM_CLI_DONE_ERR;
     }
 
     if (except && !stop_all)
     {
-        return dm_cli_help();
+        dm_cli_help();
+        return DM_CLI_DONE_ERR;
     }
 
-    return done;
+    return DM_CLI_CONTINUE;
 }

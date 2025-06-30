@@ -27,26 +27,37 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifndef OSW_BTM_H
 #define OSW_BTM_H
 
-#include <osw_throttle.h>
+#include <osw_module.h>
 
 #define OSW_BTM_REQ_NEIGH_SIZE 16 /* TODO Check! */
 
-struct osw_btm_sta_observer;
+struct osw_btm;
 struct osw_btm_sta;
-struct osw_btm_desc;
+struct osw_btm_req;
 struct osw_btm_req_neigh;
 struct osw_btm_req_params;
+struct osw_btm_obs;
 
-typedef void
-osw_btm_req_tx_complete_fn_t(struct osw_btm_sta_observer *observer);
+typedef struct osw_btm osw_btm_t;
+typedef struct osw_btm_sta osw_btm_sta_t;
+typedef struct osw_btm_req osw_btm_req_t;
+typedef struct osw_btm_obs osw_btm_obs_t;
 
-typedef void
-osw_btm_req_tx_error_fn_t(struct osw_btm_sta_observer *observer);
-
-struct osw_btm_sta_observer {
-    osw_btm_req_tx_complete_fn_t *req_tx_complete_fn;
-    osw_btm_req_tx_error_fn_t *req_tx_error_fn;
+enum osw_btm_req_result {
+    OSW_BTM_REQ_RESULT_SENT,
+    OSW_BTM_REQ_RESULT_FAILED,
 };
+
+typedef struct osw_btm_resp osw_btm_resp_t;
+
+uint8_t
+osw_btm_resp_get_status(const osw_btm_resp_t *resp);
+
+typedef void
+osw_btm_req_completed_fn_t(void *priv, enum osw_btm_req_result result);
+
+typedef void
+osw_btm_req_response_fn_t(void *priv, const osw_btm_resp_t *resp);
 
 struct osw_btm_req_neigh {
     struct osw_hwaddr bssid;
@@ -61,20 +72,21 @@ struct osw_btm_req_neigh {
 
 struct osw_btm_retry_neigh {
     struct osw_btm_req_neigh neigh;
-    int preference;
+    uint8_t preference;
 };
 
-struct osw_btm_retry_neigh_list {
-    struct osw_btm_retry_neigh neigh[OSW_BTM_REQ_NEIGH_SIZE];
-    unsigned int neigh_len;
+enum osw_btm_mbo_cell_preference {
+    OSW_BTM_MBO_CELL_PREF_NONE,           /* Do not include preference in BTM */
+    OSW_BTM_MBO_CELL_PREF_EXCLUDE_CELL,   /* STA shall not use Cellular */
+    OSW_BTM_MBO_CELL_PREF_AVOID_CELL,     /* STA shall avoid Cellular */
+    OSW_BTM_MBO_CELL_PREF_RECOMMEND_CELL, /* STA shall prefer Cellular */
 };
 
-struct osw_btm_response_observer;
-
-typedef void
-osw_btm_response_fn_t(struct osw_btm_response_observer *observer,
-                      const int response_code,
-                      const struct osw_btm_retry_neigh_list *retry_neigh_list);
+enum osw_btm_mbo_reason {
+    OSW_BTM_MBO_REASON_NONE,         /* Do not include reason in BTM */
+    OSW_BTM_MBO_REASON_LOW_RSSI,     /* AP considers STA's signal low */
+    /* More can be added later */
+};
 
 struct osw_btm_req_params {
     struct osw_btm_req_neigh neigh[OSW_BTM_REQ_NEIGH_SIZE];
@@ -82,39 +94,68 @@ struct osw_btm_req_params {
     uint8_t valid_int;
     bool abridged;
     bool bss_term;
+    bool disassoc_imminent;
+    uint16_t disassoc_timer;
+    struct {
+        enum osw_btm_mbo_cell_preference cell_preference;
+        enum osw_btm_mbo_reason reason;
+    } mbo;
 };
 
-struct osw_btm_response_observer {
-    struct ds_dlist_node node;
-    struct osw_hwaddr sta_addr;
-    osw_btm_response_fn_t *btm_response_fn;
-};
+typedef void
+osw_btm_obs_received_fn_t(void *priv,
+                          const int response_code,
+                          const struct osw_btm_retry_neigh *list,
+                          size_t count);
+
+osw_btm_obs_t *
+osw_btm_obs_alloc(osw_btm_t *m);
 
 void
-osw_btm_register_btm_response_observer(struct osw_btm_response_observer *observer);
+osw_btm_obs_set_sta_addr(osw_btm_obs_t *obs,
+                              const struct osw_hwaddr *addr);
 
 void
-osw_btm_unregister_btm_response_observer(struct osw_btm_response_observer *observer);
-
-struct osw_btm_desc*
-osw_btm_get_desc(const struct osw_hwaddr *sta_addr,
-                 struct osw_btm_sta_observer *observer);
+osw_btm_obs_set_received_fn(osw_btm_obs_t *obs,
+                            osw_btm_obs_received_fn_t *fn,
+                            void *priv);
 
 void
-osw_btm_desc_free(struct osw_btm_desc *desc);
+osw_btm_obs_drop(osw_btm_obs_t *obs);
+
+osw_btm_sta_t *
+osw_btm_sta_alloc(osw_btm_t *m,
+                  const struct osw_hwaddr *addr);
+
+void
+osw_btm_sta_drop(osw_btm_sta_t *sta);
+
+void
+osw_btm_req_params_log(const struct osw_btm_req_params *params);
+
+osw_btm_req_t  *
+osw_btm_req_alloc(osw_btm_sta_t *sta);
+
+void
+osw_btm_req_drop(osw_btm_req_t *r);
 
 bool
-osw_btm_desc_set_req_params(struct osw_btm_desc *desc,
-                            const struct osw_btm_req_params *req_params);
+osw_btm_req_set_completed_fn(osw_btm_req_t *r, osw_btm_req_completed_fn_t *fn, void *priv);
 
-void
-osw_btm_sta_log_req_params(const struct osw_btm_req_params *params);
+bool
+osw_btm_req_set_response_fn(osw_btm_req_t *r, osw_btm_req_response_fn_t *fn, void *priv);
 
-struct osw_btm_sta*
-osw_btm_desc_get_sta(struct osw_btm_desc *desc);
+bool
+osw_btm_req_set_params(osw_btm_req_t *r,
+                       const struct osw_btm_req_params *params);
 
-void
-osw_btm_sta_set_throttle(struct osw_btm_sta *btm_sta,
-                         struct osw_throttle *throttle);
+bool
+osw_btm_req_submit(osw_btm_req_t *r);
+
+static inline osw_btm_t *
+osw_btm(void)
+{
+    return OSW_MODULE_LOAD(osw_btm);
+}
 
 #endif /* OSW_BTM_H */

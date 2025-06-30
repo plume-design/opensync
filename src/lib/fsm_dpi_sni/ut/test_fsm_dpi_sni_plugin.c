@@ -318,7 +318,7 @@ test_redirected_flow_gatekeeper_cache(void)
     TEST_ASSERT_TRUE(rc);
 
     /* Init gatekeeper cache */
-    gk_cache_init();
+    gk_cache_init(CONFIG_GATEKEEPER_CACHE_LRU_SIZE);
 
     inet_pton(AF_INET, "1.2.3.4", cache_ip);
     sockaddr_storage_populate(AF_INET, cache_ip, &ipaddr);

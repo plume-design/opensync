@@ -849,6 +849,10 @@ static struct plugin_init_table plugin_init_table[] =
         .init = dpi_mdns_responder_plugin_init,
     },
     {
+        .handler = "dpi_dhcp_relay",
+        .init = dpi_dhcp_relay_plugin_init,
+    },
+    {
         .handler = "wc_null",
         .init = fsm_wc_null_plugin_init,
     },
@@ -1238,6 +1242,7 @@ fsm_add_session(struct schema_Flow_Service_Manager_Config *conf)
     ds_tree_t *sessions;
     bool ret;
 
+    fsm_mem_monitor_plugin_init_enter(conf->handler);
     mgr = fsm_get_mgr();
     sessions = fsm_get_sessions();
     session = ds_tree_find(sessions, conf->handler);
@@ -1281,6 +1286,7 @@ fsm_add_session(struct schema_Flow_Service_Manager_Config *conf)
     fsm_notify_dispatcher_tap_type(session);
 
     fsm_walk_sessions_tree();
+    fsm_mem_monitor_plugin_init_exit(conf->handler);
 
     return;
 

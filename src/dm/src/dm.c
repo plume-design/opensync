@@ -94,8 +94,14 @@ int main (int argc, char ** argv)
     struct ev_loop *loop;
 
     // Parse command-line arguments
-    if (dm_cli(argc, argv, &dm_log_severity) == DM_CLI_DONE) {
+    int dm_cli_status = dm_cli(argc, argv, &dm_log_severity);
+    if (dm_cli_status == DM_CLI_DONE_OK)
+    {
         return 0;
+    }
+    if (dm_cli_status == DM_CLI_DONE_ERR)
+    {
+        return 1;
     }
 
     /* Log all errors, warnings, etc. */
@@ -155,6 +161,8 @@ int main (int argc, char ** argv)
     /* Start all modules */
     LOG(NOTICE, "Initializing modules...");
     module_init();
+
+    chkmem_init();
 
     /* start main loop and wait for event to come */
     ev_run(loop, 0);

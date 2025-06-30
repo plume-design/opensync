@@ -28,7 +28,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define OW_OVSDB_CCONF_H_INCLUDED
 
 void
-ow_ovsdb_cconf_init(ovsdb_table_t *vconft);
+ow_ovsdb_cconf_init(ovsdb_table_t *rconft, ovsdb_table_t *vconft);
 
 void
 ow_ovsdb_cconf_sched(void);

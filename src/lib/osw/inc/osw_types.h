@@ -33,6 +33,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <string.h>
 #include <inttypes.h>
 
+#define OSW_NEIGH_FT_FMT OSW_HWADDR_FMT"/id=%s/keylen=%zu"
+#define OSW_NEIGH_FT_ARG(n) OSW_HWADDR_ARG(&(n)->bssid), (n)->nas_identifier.buf, strlen((n)->ft_encr_key.buf)
+
 enum osw_vif_status {
     OSW_VIF_UNKNOWN,
     OSW_VIF_DISABLED,
@@ -212,6 +215,12 @@ enum osw_mbss_vif_ap_mode {
     OSW_MBSS_NONE,
     OSW_MBSS_TX_VAP,
     OSW_MBSS_NON_TX_VAP,
+};
+
+enum osw_sta_cell_cap {
+    OSW_STA_CELL_UNKNOWN,
+    OSW_STA_CELL_AVAILABLE,
+    OSW_STA_CELL_NOT_AVAILABLE,
 };
 
 struct osw_reg_domain {
@@ -522,7 +531,6 @@ struct osw_wpa {
     enum osw_pmf pmf;
     bool beacon_protection;
     int group_rekey_seconds;
-    int ft_mobility_domain;
 };
 
 enum osw_rate_legacy {
@@ -972,6 +980,18 @@ osw_neigh_list_to_str(char *out,
                       size_t len,
                       const struct osw_neigh_list *neigh);
 
+int
+osw_neigh_ft_cmp(const struct osw_neigh_ft *a,
+                 const struct osw_neigh_ft *b);
+
+int
+osw_neigh_ft_list_cmp(const struct osw_neigh_ft_list *a,
+                      const struct osw_neigh_ft_list *b);
+
+const struct osw_neigh_ft *
+osw_neigh_ft_list_lookup(const struct osw_neigh_ft_list *l,
+                         const struct osw_hwaddr *bssid);
+
 const char *
 osw_mbss_vif_ap_mode_to_str(enum osw_mbss_vif_ap_mode mbss_mode);
 
@@ -1072,6 +1092,8 @@ osw_ft_encr_key_is_equal(const struct osw_ft_encr_key *a,
 
 bool
 osw_wpa_is_ft(const struct osw_wpa *wpa);
+
+const char *osw_sta_cell_cap_to_cstr(enum osw_sta_cell_cap cap);
 
 #define OSW_HWADDR_WRITE(addr, buf) osw_hwaddr_write(addr, buf, sizeof(buf))
 

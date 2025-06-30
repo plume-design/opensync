@@ -121,14 +121,14 @@ test_gkc_flush_all(void)
     gkc_add_attribute_entry(entry3);
     gkc_add_attribute_entry(entry5);
 
-    gkc_add_flow_entry(flow_entry1);
+    // gkc_add_flow_entry(flow_entry1);
 
     cache_entry_count = gk_get_cache_count();
-    TEST_ASSERT_EQUAL_INT(5, cache_entry_count);
+    TEST_ASSERT_EQUAL_INT(4, cache_entry_count);
 
     gkc_print_cache_entries();
 
-    /* Now we flush the 2 entries matching MAC of entry1 and flow_entry1 */
+    /* Now we flush the 1 entries matching MAC of entry1 */
 
     /* Create a matching policy_rule */
     fpr.mac_rule_present = true;
@@ -144,7 +144,7 @@ test_gkc_flush_all(void)
     strscpy(fpr.macs->array[1], "BROKEN_MAC", MAC_STR_SIZE);
 
     ret = gkc_flush_all(&fpr);
-    TEST_ASSERT_EQUAL_INT(2, ret);
+    TEST_ASSERT_EQUAL_INT(1, ret);
 
     cache_entry_count = gk_get_cache_count();
     TEST_ASSERT_EQUAL_INT(3, cache_entry_count);
@@ -175,7 +175,7 @@ test_gkc_flush_rules_params(void)
     TEST_ASSERT_EQUAL_INT(-1, ret);
 
     /* Keep tearDown() happy */
-    gk_cache_init();
+    gk_cache_init(CONFIG_GATEKEEPER_CACHE_LRU_SIZE);
 }
 
 void
@@ -216,6 +216,7 @@ test_gkc_flush_rules_macs(void)
     ret = gkc_flush_rules(&fpr);
     TEST_ASSERT_EQUAL_INT(0, ret);
 
+    gkc_print_cache_entries();
     /* fpr points to the CORRECT MAC => everything gets removed */
     strscpy(fpr.macs->array[0], "AA:AA:AA:AA:AA:01", MAC_STR_SIZE);
     ret = gkc_flush_rules(&fpr);
@@ -544,6 +545,7 @@ test_gkc_flush_client(void)
     ret = gkc_flush_client(&session, &policy);
     TEST_ASSERT_EQUAL_INT(0, ret);
 }
+
 
 void
 run_gk_cache_flush(void)

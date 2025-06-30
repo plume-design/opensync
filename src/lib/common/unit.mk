@@ -46,6 +46,7 @@ UNIT_SRC += src/os_send_raw.c
 UNIT_SRC += src/os_llc_snap.c
 UNIT_SRC += $(if $(CONFIG_OS_EV_TRACE), src/os_ev_trace.c)
 UNIT_SRC += src/kv_parser.c
+UNIT_SRC += $(if $(CONFIG_MEM_MONITOR), src/mem_monitor.c)
 
 UNIT_CFLAGS := -I$(UNIT_PATH)/inc
 UNIT_CFLAGS += -fasynchronous-unwind-tables
@@ -59,3 +60,4 @@ UNIT_EXPORT_LDFLAGS := $(UNIT_LDFLAGS)
 UNIT_DEPS_CFLAGS := src/lib/log
 UNIT_DEPS := src/lib/ds
 UNIT_DEPS += src/lib/osa
+

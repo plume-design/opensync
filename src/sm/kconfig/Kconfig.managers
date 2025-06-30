@@ -8,7 +8,7 @@ menuconfig MANAGER_SM
     config MANAGER_SM_CFG
         depends on MANAGER_SM
         string "SM Startup configuration"
-        default "sm;true"
+        default "sm;true;max_memory=20000"
         help
             Statistics Manager startup configuration
 

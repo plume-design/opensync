@@ -1255,12 +1255,45 @@ osw_hostap_conf_osw_wpa_to_enterprise(const struct osw_drv_vif_config_ap *ap,
 
     OSW_HOSTAP_CONF_SET_VAL(conf->ieee8021x, 1);
     OSW_HOSTAP_CONF_SET_VAL(conf->auth_algs, 1);
+
+    /* RADIUS protocol (RFC 2865) requires NAS-Identifier to be 3-253 octets long */
+    /* The upper boundary is set by the ap->nas_identifier.buf length OSW_NAS_ID_LEN (48) */
+    size_t nasid_len = strlen(ap->nas_identifier.buf);
+    if (nasid_len < 3) {
+        LOGE("osw: hostap: conf: NAS-Identifier is too short for RADIUS (len=%zu)!", nasid_len);
+        return;
+    }
+
+    OSW_HOSTAP_CONF_SET_BUF(conf->nas_identifier, ap->nas_identifier.buf);
+}
+
+void
+osw_hostap_conf_osw_wpa_to_ft(const struct osw_drv_vif_config_ap *ap,
+                              struct osw_hostap_conf_ap_config *conf)
+{
+    if (!(ap->wpa.akm_ft_eap ||
+          ap->wpa.akm_ft_psk ||
+          ap->wpa.akm_ft_sae ||
+          ap->wpa.akm_ft_eap_sha384 ||
+          ap->wpa.akm_ft_sae_ext ||
+          false))
+        return;
+
+    /* IEEE 802.11r requires NAS-Identifier to be 1-48 octets long. */
+    /* The upper boundary is set by the ap->nas_identifier.buf length OSW_NAS_ID_LEN (48) */
+    size_t nasid_len = strlen(ap->nas_identifier.buf);
+    if (nasid_len < 1) {
+        LOGE("osw: hostap: conf: NAS-Identifier length too short for FT (len=%zu)!", nasid_len);
+        return;
+    }
+
     OSW_HOSTAP_CONF_SET_BUF(conf->nas_identifier, ap->nas_identifier.buf);
     OSW_HOSTAP_CONF_SET_VAL(conf->ft_over_ds, ap->ft_over_ds);
     OSW_HOSTAP_CONF_SET_VAL(conf->ft_r0_key_lifetime, ap->ft_pmk_r0_key_lifetime_sec);
     OSW_HOSTAP_CONF_SET_VAL(conf->r1_max_key_lifetime, ap->ft_pmk_r1_max_key_lifetime_sec);
     OSW_HOSTAP_CONF_SET_VAL(conf->pmk_r1_push, ap->ft_pmk_r1_push);
     OSW_HOSTAP_CONF_SET_VAL(conf->ft_psk_generate_local, ap->ft_psk_generate_local);
+    OSW_HOSTAP_CONF_SET_VAL(conf->mobility_domain, ap->ft_mobility_domain);
 }
 
 void
@@ -1404,6 +1437,9 @@ osw_hostap_conf_fill_ap_config(struct osw_drv_conf *drv_conf,
     /*  WPA/IEEE 802.11kv configuration       */
     osw_hostap_conf_osw_wpa_to_btm         (ap, conf);
     osw_hostap_conf_osw_wpa_to_rrm         (ap, conf);
+
+    /* WPA/IEEE 802.11r configuration         */
+    osw_hostap_conf_osw_wpa_to_ft          (ap, conf);
 
     return true;
 }
@@ -1652,47 +1688,38 @@ static void
 osw_hostap_conf_fill_ap_state_neighbors_ft(const struct osw_hostap_conf_ap_state_bufs *bufs,
                                            struct osw_drv_vif_state *vstate)
 {
-    const char *show_rxkhs = bufs->show_rxkhs;
     struct osw_drv_vif_state_ap *ap = &vstate->u.ap;
-    struct osw_neigh_ft_list *neighbor_ft_list;
-    struct osw_neigh_ft *neighbor_ft;
-    char *cpy_show_rxkhs = NULL;
+    const char *orig = bufs->show_rxkhs;
+    char *lines = strdupa(orig ?: "");
     char *line;
+    struct osw_neigh_ft *list = NULL;
+    size_t count = 0;
 
-    if (show_rxkhs != NULL && strlen(show_rxkhs) > 0) {
-        cpy_show_rxkhs = STRDUP(show_rxkhs);
-    }
+    while ((line = strsep(&lines, "\n")) != NULL) {
+        const char *prefix = strsep(&line, "=");
+        if (prefix == NULL) continue;
+        const bool is_not_r0kh = (strcmp(prefix, "r0kh") != 0);
+        if (is_not_r0kh) continue;
 
-    neighbor_ft_list = &ap->neigh_ft_list;
-    neighbor_ft_list->count = 0;
-    neighbor_ft_list->list = CALLOC(1, sizeof(struct osw_neigh_ft));
+        struct osw_hwaddr bssid;
+        const char *bssid_str = strsep(&line, " ");
+        const char *nas_id = strsep(&line, " ");
+        const char *ft_encr_key = strsep(&line, " ");
+        const bool bssid_ok = osw_hwaddr_from_cstr(bssid_str ?: "", &bssid);
 
-    if (cpy_show_rxkhs != NULL) {
-        neighbor_ft_list->list = REALLOC(neighbor_ft_list->list,
-        (neighbor_ft_list->count + 1) * sizeof(struct osw_neigh_ft));
-
-        neighbor_ft = &neighbor_ft_list->list[neighbor_ft_list->count];
-        MEMZERO(*neighbor_ft);
-
-        char *tokens = cpy_show_rxkhs;
-        while ((line = strsep(&tokens, "\n")) != NULL) {
-            const char *prefix = strsep(&line, "=");
-            if (prefix && strcmp(prefix, "r0kh") == 0) {
-                const char *bssid = strsep(&line, " ");
-                const char *nas_id = strsep(&line, " ");
-                const char *ft_encr_key = strsep(&line, " ");
-                const bool bssid_ok = osw_hwaddr_from_cstr(bssid ?: "", &neighbor_ft->bssid);
-
-                if (nas_id && ft_encr_key && bssid_ok) {
-                    STRSCPY(neighbor_ft->nas_identifier.buf, nas_id);
-                    STRSCPY(neighbor_ft->ft_encr_key.buf, ft_encr_key);
-                    neighbor_ft_list->count++;
-                }
-            }
+        if (nas_id && ft_encr_key && bssid_ok) {
+            count++;
+            const size_t size = count * sizeof(*list);
+            list = REALLOC(list, size);
+            MEMZERO(list[count - 1]);
+            memcpy(&list[count - 1].bssid, &bssid, sizeof(bssid));
+            STRSCPY_WARN(list[count - 1].nas_identifier.buf, nas_id);
+            STRSCPY_WARN(list[count - 1].ft_encr_key.buf, ft_encr_key);
         }
     }
 
-    FREE(cpy_show_rxkhs);
+    ap->neigh_ft_list.count = count;
+    ap->neigh_ft_list.list = list;
 }
 
 static void
@@ -1719,7 +1746,7 @@ hapd_util_hapd_conf_ft_encry_key_get(const struct osw_hostap_conf_ap_state_bufs 
                 const char *ft_encr_key = strsep(&line, " ");
                 const bool bssid_ok = osw_hwaddr_from_cstr(bssid ?: "", &bssid_tmp);
 
-                if (nas_id && ft_encr_key && bssid_ok && osw_hwaddr_cmp(&bssid_tmp, &vstate->mac_addr)) {
+                if (nas_id && ft_encr_key && bssid_ok && osw_hwaddr_is_equal(&bssid_tmp, &vstate->mac_addr)) {
                     STRSCPY(ap->ft_encr_key.buf, ft_encr_key);
                 }
             }
@@ -1903,7 +1930,7 @@ osw_hostap_conf_fill_ap_state(const struct osw_hostap_conf_ap_state_bufs *bufs,
                     osw_hostap_util_pairwise_to_osw);
 
     STATE_GET_INT(ap->wpa.group_rekey_seconds,   config, "wpa_group_rekey");
-    STATE_GET_INT(ap->wpa.ft_mobility_domain,    config, "mobility_domain");
+    STATE_GET_HEX(ap->ft_mobility_domain,    config, "mobility_domain");
 
     STATE_GET_INT(ap->ft_pmk_r0_key_lifetime_sec, config, "ft_r0_key_lifetime");
     STATE_GET_INT(ap->ft_pmk_r1_max_key_lifetime_sec, config, "r1_max_key_lifetime");

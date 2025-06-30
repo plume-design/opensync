@@ -32,5 +32,6 @@ extern int nfe_conntrack_udp_timeout;
 extern int nfe_conntrack_tcp_midflow;
 extern int nfe_conntrack_tcp_timeout_syn;
 extern int nfe_conntrack_tcp_timeout_est;
+extern int nfe_conntrack_ether_timeout;
 
 #endif

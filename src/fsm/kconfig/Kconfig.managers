@@ -7,7 +7,7 @@ menuconfig MANAGER_FSM
     config MANAGER_FSM_CFG
         depends on MANAGER_FSM
         string "FSM Startup configuration"
-        default "fsm;true;always_restart=true;restart_delay=-1"
+        default "fsm;true;always_restart=true;restart_delay=-1;max_memory=160000"
         help
             Flow Service Manager startup configuration
 
@@ -77,7 +77,6 @@ menuconfig MANAGER_FSM
     config FSM_NF_CONNTRACK
         depends on MANAGER_FSM
         bool "Access netfilter conntrack API"
-        default n if PLATFORM_IS_NATIVE
         default y
         help
             Enable access netfilter conntrack API
@@ -116,7 +115,7 @@ menuconfig MANAGER_FSM
     config FSM_ENABLE_DBG
         depends on MANAGER_FSM
         bool "Debug configuration only"
-        default y
+        default n
         help
             Allow the management of debugging knobs
 
@@ -126,3 +125,21 @@ menuconfig MANAGER_FSM
         default 120
         help
             Set FSM memory check periodicity.
+
+    config FSM_MEM_LOG_PATH
+        depends on MANAGER_FSM
+        depends on MEM_MONITOR
+        string "Set the directory where FSM memory logs are saved"
+        default "/tmp"
+        help
+            Set the directory where FSM memory logs are saved
+
+    config FSM_MEM_LOG_NUMLINES
+        depends on MANAGER_FSM
+        depends on MEM_MONITOR
+        int "Set the maximum number of lines for FSM memory log file"
+        default 32000
+        help
+            Set the maximum number of lines for FSM memory log file
+            
+            

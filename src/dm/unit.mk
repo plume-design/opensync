@@ -42,12 +42,14 @@ UNIT_SRC += src/dm_hook.c
 UNIT_SRC += src/dm_manager.c
 UNIT_SRC += src/statem.c
 UNIT_SRC += src/dm_reboot.c
+UNIT_SRC += src/dm_chkmem.c
 ifeq ($(CONFIG_DM_OSYNC_CRASH_REPORTS),y)
 UNIT_SRC += src/dm_crash.c
 endif
 UNIT_SRC += src/dm_mod.c
 UNIT_SRC += src/dm_sipalg.c
 UNIT_SRC += $(if $(CONFIG_REVSSH_ENABLED), src/dm_revssh.c)
+UNIT_SRC += src/dm_no_reboot.c
 
 # Unit specific CFLAGS
 UNIT_CFLAGS := -I$(UNIT_PATH)/inc
@@ -62,7 +64,6 @@ UNIT_EXPORT_LDFLAGS := $(UNIT_LDFLAGS)
 UNIT_DEPS := src/lib/common
 UNIT_DEPS += src/lib/ds
 UNIT_DEPS += src/lib/osa
-UNIT_DEPS += src/lib/ds
 UNIT_DEPS += src/lib/ovsdb
 UNIT_DEPS += src/lib/schema
 UNIT_DEPS += src/lib/mosqev
@@ -73,5 +74,6 @@ UNIT_DEPS += src/lib/module
 UNIT_DEPS += src/lib/evx
 UNIT_DEPS += src/lib/pasync
 UNIT_DEPS += $(if $(CONFIG_REVSSH_ENABLED), src/lib/revssh)
+UNIT_DEPS += src/lib/reboot_flags
 
 UNIT_DEPS_CFLAGS += src/lib/version

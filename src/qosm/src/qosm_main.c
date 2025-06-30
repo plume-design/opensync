@@ -85,6 +85,7 @@ int main(int argc, char *argv[])
     qosm_interface_qos_init();
     qosm_interface_queue_init();
     qosm_linux_queue_init();
+    qosm_adaptive_qos_init();
 
     ev_run(EV_DEFAULT, 0);
 

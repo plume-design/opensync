@@ -34,7 +34,7 @@ nf_process_ct_cb(const struct nlmsghdr *nlh, void *data)
 
 
 int
-nf_ct_init(struct ev_loop *loop, void (*callback)(void *data))
+nf_ct_init(struct ev_loop *loop, struct net_md_aggregator *aggr)
 {
     return 0;
 }
@@ -70,7 +70,7 @@ nf_ct_set_flow_mark(struct net_header_parser *net_pkt,
 
 
 bool
-nf_ct_get_flow_entries(int af_family, ds_dlist_t *g_nf_ct_list, uint16_t zone_id)
+nf_ct_get_flow_entries(int af_family, struct net_md_aggregator *aggr)
 {
     return 0;
 }

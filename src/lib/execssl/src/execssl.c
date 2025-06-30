@@ -31,6 +31,16 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "execssl.h"
 #include "log.h"
 #include "memutil.h"
+#include "arena.h"
+
+/* OpenSSL execution context */
+struct execssl_ctx
+{
+    execsh_async_t os_esa;
+    char *os_stdout;
+    char *os_stdout_e;
+    int os_retval;
+};
 
 /*
  * Prevent the compiler from optimizing out the call to memset()/bzero()
@@ -124,4 +134,18 @@ char *execssl_a(const char *cstdin, const char *argv[])
     *cbuf = '\0';
 
     return os.os_stdout;
+}
+
+/*
+ * Arena allocator wrapper around execssl_a()
+ */
+char *execssl_arena_a(arena_t *arena, const char *cstdin, const char *argv[])
+{
+    char *out = execssl_a(cstdin, argv);
+    if (out == NULL) return NULL;
+
+    char *retval = arena_strdup(arena, out);
+    FREE(out);
+
+    return retval;
 }

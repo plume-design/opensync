@@ -32,6 +32,8 @@ ROOTFS_TARGET_COMPONENTS    ?= target/$(TARGET)
 ROOTFS_COMPONENTS           ?= common $(ROOTFS_KCONFIG_COMPONENTS) $(ROOTFS_PLATFORM_COMPONENTS) $(ROOTFS_TARGET_COMPONENTS) $(ROOTFS_PROFILE_COMPONENTS)
 WORKDIR                     ?= work/$(TARGET)
 KCONFIG_ENV_FILE            ?= $(INSTALL_PREFIX)/etc/kconfig
+LIBNL3_HEADERS               = $(if $(STAGING_DIR),-I$(STAGING_DIR)/usr/include/libnl3,)
+
 export INSTALL_PREFIX
 
 # make goals that don't require the TARGET to be set

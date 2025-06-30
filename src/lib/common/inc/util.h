@@ -61,6 +61,7 @@ char *__FMT_int(char *buf, size_t size, int *value);
 
 int bin2hex(const unsigned char *in, size_t in_size, char *out, size_t out_size);
 ssize_t hex2bin(const char *in, size_t in_size, unsigned char *out, size_t out_size);
+uint32_t bin2oui24(const uint8_t *in, size_t in_size);
 bool ascii2hex(const char *input, char *output, size_t size);
 int csnprintf(char **str, size_t *size, const char *fmt, ...);
 #define append_snprintf csnprintf

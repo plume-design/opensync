@@ -38,9 +38,19 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "fsm.h"
 #include "fsm_policy.h"
 #include "ds_tree.h"
+#include "ds_dlist.h"
 #include "util.h"
 #include "os.h"
 #include "network_metadata_report.h"
+#include "gatekeeper.pb-c.h"
+#include "gatekeeper_msg.h"
+
+
+/* persistent store name */
+#define GATEKEEPER_CACHE_STORE_NAME "gatekeeper_cache_store"
+
+/* cache data key */
+#define GATEKEEPER_CACHE_DATA_KEY "cache_data"
 
 /* enum with supported request types */
 enum gk_cache_request_type
@@ -59,6 +69,9 @@ enum gk_cache_request_type
     GK_CACHE_INTERNAL_TYPE_HOSTNAME,  /* This is an internal type */
     GK_CACHE_MAX_REQ_TYPES,
 };
+
+typedef enum gk_cache_request_type gk_cache_request_type_t;
+
 #define CHECK_GK_CACHE_REQ_TYPE(t) \
         ((t >= GK_CACHE_REQ_TYPE_FQDN) && (t < GK_CACHE_MAX_REQ_TYPES))
 
@@ -88,6 +101,7 @@ struct attr_hostname_s
     struct counter_s  count_fqdn;
     struct counter_s  count_host;
     struct counter_s  count_sni;
+    int added_by;
 };
 
 union attribute_type
@@ -158,6 +172,9 @@ struct attr_cache
     ds_tree_node_t          attr_tnode;
     uint32_t                flow_marker;
     char                    *network_id;
+    ds_dlist_node_t         lru_node;
+    ds_tree_t               *attr_tree;
+    gk_cache_request_type_t type; /* request type */
 };
 
 /**
@@ -185,6 +202,7 @@ struct ip_flow_cache
     char *network_id;
     ds_tree_node_t ipflow_tnode;
 };
+
 
 /**
  * @brief device instance storing attributes and flows
@@ -218,6 +236,7 @@ struct per_device_cache
     ds_tree_t outbound_tree;   /* ip_flow_cache */
     ds_tree_t inbound_tree;    /* ip_flow_cache */
     ds_tree_node_t perdevice_tnode;
+    struct attr_cache *category_cache;
 };
 
 /**
@@ -229,6 +248,15 @@ struct gk_cache_mgr
     bool initialized;
     uint64_t total_entry_count;
     ds_tree_t per_device_tree; /* per_device_cache */
+    ds_dlist_t lru_list;       /* LRU of attr_cache */
+    size_t lru_size;
+    struct attr_cache *attr_cache_array;
+    struct attr_cache *lru_free;
+    size_t lru_available;
+    size_t lru_recycled;
+    ds_tree_t location_wide_cache;
+    int category_ids[96];
+    int location_categories;
 };
 
 /**
@@ -242,7 +270,7 @@ struct gk_cache_mgr
 struct gk_attr_cache_interface
 {
     os_macaddr_t *device_mac;         /* device mac address */
-    enum gk_cache_request_type attribute_type; /* request type */
+    gk_cache_request_type_t attribute_type; /* request type */
     char *attr_name;                  /* attribute name */
     struct sockaddr_storage *ip_addr; /* attribute ip address if used */
     uint64_t cache_ttl;               /* TTL value that should be set */
@@ -311,7 +339,7 @@ gk_cache_init_mgr(struct gk_cache_mgr *mgr);
  * @return true for success and false for failure.
  */
 bool
-gk_cache_init(void);
+gk_cache_init(size_t lru_size);
 
 /**
  * @brief setter for the number of entries in the cache
@@ -577,6 +605,21 @@ unsigned long
 gk_get_cache_count(void);
 
 /**
+ * @brief returns the number of recycled cache entries
+ *
+ * @return number of recycled cache entries
+ */
+size_t
+gk_cache_get_recycled_count(void);
+
+/**
+ * @brief reset the number of recycled cache entries
+ *
+ */
+void
+gk_cache_reset_recycled_count(void);
+
+/**
  * @brief Deletes any/all entries in the cache
  */
 void
@@ -614,7 +657,7 @@ gkc_free_flow_members(struct ip_flow_cache *flow_entry);
  *         NULL on failure
  */
 struct attr_cache*
-gkc_new_attr_entry(struct gk_attr_cache_interface *entry);
+gkc_new_attr_entry(ds_tree_t *cache, struct gk_attr_cache_interface *entry);
 
 /**
  * @brief frees memory used by attribute when it is deleted.
@@ -689,5 +732,59 @@ gkc_flush_client(void *context, struct fsm_policy *policy);
 uint64_t
 get_attr_key(struct gk_attr_cache_interface *req);
 
+void
+gkc_remove_entry(ds_tree_t *tree, struct attr_cache *entry);
+
+void
+dump_attr_entry(struct attr_cache *attr_entry, enum gk_cache_request_type req_type);
+/*
+ * gk_store_cache_in_persistence - Store the current cache in persistent storage
+ *
+ * This function serializes the current cache entries and stores them in
+ * persistent storage for later retrieval.
+ */
+void gk_store_cache_in_persistence();
+
+/**
+    * @brief Restore cache from persistent storage
+    *
+    * This function attempts to restore the cache from the persistent storage.
+    * It reads the serialized cache data and populates the cache entries.
+*/
+void gk_restore_cache_from_persistance();
+
+/**
+ * @brief Serialize the current cache entries into a buffer
+ *
+ * @return a pointer to the serialized buffer or NULL on failure
+ */
+void gk_store_serialized_cache(ds_tree_t *tree);
+
+bool gk_populate_bulk_reply_arrays(ds_tree_t *device_tree, Gatekeeper__Southbound__V1__GatekeeperBulkReply *bulk_reply);
+
+void gk_free_cache_interface_entry(struct gk_attr_cache_interface *entry);
+
+
+/**
+ * @brief Clean up allocated resources in bulk reply on error
+ *
+ * @param bulk_reply pointer to the bulk reply to clean up
+ */
+void gk_cleanup_bulk_reply(Gatekeeper__Southbound__V1__GatekeeperBulkReply *bulk_reply);
+
+/**
+    * @brief Restore cache from a packed buffer
+    *
+    * This function restores the cache from a packed buffer containing serialized cache data.
+    * It populates the gk_reply structure and adds the entries to the cache.
+    *
+    * @param pb Pointer to the packed buffer containing serialized cache data.
+    * @return true if successful, false otherwise.
+*/
+bool gk_restore_cache_from_buffer(struct gk_packed_buffer *pb);
+
+void gk_cache_sync_location_entries(void);
+
+bool gk_populate_cache_entry(struct gk_device2app_repl *dev_repl, struct gk_attr_cache_interface *entry);
 
 #endif /* GK_CACHE_H_INCLUDED */

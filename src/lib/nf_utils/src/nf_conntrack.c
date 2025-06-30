@@ -32,6 +32,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <netinet/in.h>
 #include <netinet/ip_icmp.h>
 #include <netdb.h>
+#include <errno.h>
 
 #include "sockaddr_storage.h"
 #include "log.h"
@@ -39,6 +40,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "nf_utils.h"
 #include "os_types.h"
 #include "os_ev_trace.h"
+#include "neigh_table.h"
 
 #if defined(CONFIG_PLATFORM_IS_BCM)
 // on BCM the kernel header is missing CTA_TUPLE_ZONE
@@ -73,28 +75,6 @@ nf_ct_get_context(void)
  *  Private implementation
  * ===========================================================================
  */
-
-/**
- * @brief compare flows.
- *
- * @param a flow pointer
- * @param b flow pointer
- * @return 0 if flows match
- */
-static int
-flow_cmp (const void *a, const void *b)
-{
-    const layer3_ct_info_t  *l3_a = (const layer3_ct_info_t *)a;
-    const layer3_ct_info_t  *l3_b = (const layer3_ct_info_t *)b;
-
-    return memcmp(l3_a, l3_b, sizeof(layer3_ct_info_t));
-}
-
-/**
- * Temporary list to merge similar flows across zones.
- */
-ds_tree_t flow_tracker_list = DS_TREE_INIT(flow_cmp, struct flow_tracker, ft_tnode);
-
 /**
  * @brief validates and stores conntrack network proto
  *
@@ -292,13 +272,11 @@ data_attr_cb(const struct nlattr *attr, void *data)
  * @return MNL_CB_OK when successful, -1 otherwise
  */
 static int
-get_tuple(const struct nlattr *nest, ct_flow_t *flow)
+get_tuple(const struct nlattr *nest, struct net_md_flow_key *key)
 {
     struct nlattr *proto_tb[CTA_PROTO_MAX+1];
     struct nlattr *tb[CTA_TUPLE_MAX+1];
     struct nlattr *ip_tb[CTA_IP_MAX+1];
-    struct in6_addr *in6;
-    struct in_addr *in;
     int rc;
 
     memset(tb, 0, (CTA_TUPLE_MAX+1) * sizeof(tb[0]));
@@ -315,29 +293,25 @@ get_tuple(const struct nlattr *nest, ct_flow_t *flow)
 
         if (ip_tb[CTA_IP_V4_SRC] != NULL)
         {
-            in = mnl_attr_get_payload(ip_tb[CTA_IP_V4_SRC]);
-            sockaddr_storage_populate(AF_INET, &in->s_addr,
-                                      &flow->layer3_info.src_ip);
+            key->src_ip = mnl_attr_get_payload(ip_tb[CTA_IP_V4_SRC]);
+            key->ip_version = 4;
         }
 
         if (ip_tb[CTA_IP_V4_DST] != NULL)
         {
-            in = mnl_attr_get_payload(ip_tb[CTA_IP_V4_DST]);
-            sockaddr_storage_populate(AF_INET, &in->s_addr,
-                                      &flow->layer3_info.dst_ip);
+            key->dst_ip = mnl_attr_get_payload(ip_tb[CTA_IP_V4_DST]);
+            key->ip_version = 4;
         }
 
         if (ip_tb[CTA_IP_V6_SRC] != NULL)
         {
-            in6 = mnl_attr_get_payload(ip_tb[CTA_IP_V6_SRC]);
-            sockaddr_storage_populate(AF_INET6, in6->s6_addr,
-                                      &flow->layer3_info.src_ip);
+            key->src_ip = mnl_attr_get_payload(ip_tb[CTA_IP_V6_SRC]);
+            key->ip_version = 6;
         }
         if (ip_tb[CTA_IP_V6_DST] != NULL)
         {
-           in6 = mnl_attr_get_payload(ip_tb[CTA_IP_V6_DST]);
-           sockaddr_storage_populate(AF_INET6, in6->s6_addr,
-                                     &flow->layer3_info.dst_ip);
+            key->dst_ip = mnl_attr_get_payload(ip_tb[CTA_IP_V6_DST]);
+           key->ip_version = 6;
         }
     }
 
@@ -355,19 +329,19 @@ get_tuple(const struct nlattr *nest, ct_flow_t *flow)
         if (proto_tb[CTA_PROTO_NUM] != NULL)
         {
             val8 = mnl_attr_get_u8(proto_tb[CTA_PROTO_NUM]);
-            flow->layer3_info.proto_type = val8;
+            key->ipprotocol = val8;
         }
 
         if (proto_tb[CTA_PROTO_SRC_PORT] != NULL)
         {
             val16 = mnl_attr_get_u16(proto_tb[CTA_PROTO_SRC_PORT]);
-            flow->layer3_info.src_port = val16;
+            key->sport = val16;
         }
 
         if (proto_tb[CTA_PROTO_DST_PORT] != NULL)
         {
             val16 = mnl_attr_get_u16(proto_tb[CTA_PROTO_DST_PORT]);
-            flow->layer3_info.dst_port = val16;
+            key->dport = val16;
         }
 
 #ifdef CT_ICMP_SUPPORT
@@ -392,8 +366,8 @@ get_tuple(const struct nlattr *nest, ct_flow_t *flow)
     }
     if (tb[CTA_TUPLE_ZONE] != NULL)
     {
-        flow->ct_zone = mnl_attr_get_u16(tb[CTA_TUPLE_ZONE]);
-        LOGD("%s: Tuple ct_zone: %d", __func__, ntohs(flow->ct_zone));
+        key->ct_zone = mnl_attr_get_u16(tb[CTA_TUPLE_ZONE]);
+        LOGD("%s: Tuple ct_zone: %d", __func__, ntohs(key->ct_zone));
     }
     return MNL_CB_OK;
 }
@@ -511,7 +485,7 @@ parse_protoinfo(const struct nlattr *attr, void *data)
  * @return MNL_CB_OK when successful, -1 otherwise
  */
 static int
-get_protoinfo(const struct nlattr *nest, ct_flow_t *flow)
+get_protoinfo(const struct nlattr *nest, struct net_md_flow_key *key)
 {
     struct nlattr *tb[CTA_PROTOINFO_MAX + 1];
     int rc;
@@ -539,7 +513,7 @@ get_protoinfo(const struct nlattr *nest, ct_flow_t *flow)
                 case TCP_CONNTRACK_SYN_SENT:
                 case TCP_CONNTRACK_SYN_RECV:
                 case TCP_CONNTRACK_ESTABLISHED:
-                    flow->start = true;
+                    key->fstart = true;
                     break;
 
                 case TCP_CONNTRACK_FIN_WAIT:
@@ -548,7 +522,7 @@ get_protoinfo(const struct nlattr *nest, ct_flow_t *flow)
                 case TCP_CONNTRACK_TIME_WAIT:
                 case TCP_CONNTRACK_CLOSE:
                 case TCP_CONNTRACK_TIMEOUT_MAX:
-                    flow->end = true;
+                    key->fend = true;
                     break;
 
                 default:
@@ -569,7 +543,7 @@ get_protoinfo(const struct nlattr *nest, ct_flow_t *flow)
  * @return MNL_CB_OK when successful, -1 otherwise
  */
 static int
-get_counter(const struct nlattr *nest, ct_flow_t *_flow)
+get_counter(const struct nlattr *nest, struct flow_counters *counters)
 {
     struct nlattr *count_tb[CTA_COUNTERS_MAX+1];
     uint64_t val64;
@@ -583,25 +557,25 @@ get_counter(const struct nlattr *nest, ct_flow_t *_flow)
     if (count_tb[CTA_COUNTERS32_PACKETS] != NULL)
     {
         val32 = ntohl(mnl_attr_get_u32(count_tb[CTA_COUNTERS32_PACKETS]));
-        _flow->pkt_info.pkt_cnt = val32;
+        counters->packets_count = val32;
     }
 
     if (count_tb[CTA_COUNTERS_PACKETS] != NULL)
     {
         val64 = be64toh(mnl_attr_get_u64(count_tb[CTA_COUNTERS_PACKETS]));
-        _flow->pkt_info.pkt_cnt = val64;
+        counters->packets_count = val64;
     }
 
     if (count_tb[CTA_COUNTERS32_BYTES] != NULL)
     {
         val32 = ntohl(mnl_attr_get_u32(count_tb[CTA_COUNTERS32_BYTES]));
-        _flow->pkt_info.bytes = val32;
+        counters->bytes_count = val32;
     }
 
     if (count_tb[CTA_COUNTERS_BYTES] != NULL)
     {
         val64 = be64toh(mnl_attr_get_u64(count_tb[CTA_COUNTERS_BYTES]));
-        _flow->pkt_info.bytes = val64;
+        counters->bytes_count = val64;
     }
 
     return MNL_CB_OK;
@@ -650,48 +624,36 @@ read_mnl_socket_cbk(struct ev_loop *loop, struct ev_io *watcher, int revents)
 {
     char rcv_buf[MNL_SOCKET_BUFFER_SIZE];
     struct nf_ct_context *nf_ct;
-    ds_dlist_t nf_ct_list;
     int portid;
     int ret;
 
     nf_ct = nf_ct_get_context();
     if (!nf_ct->initialized) return;
 
-    /* initialize list to store conntrack update events */
-    ds_dlist_init(&nf_ct_list, ctflow_info_t, ct_node);
+    MEMZERO(rcv_buf);
     if (EV_ERROR & revents)
     {
-        LOGE("%s: Invalid mnl socket event", __func__);
+        LOGT("%s: Invalid mnl socket event", __func__);
         return;
     }
 
     ret = mnl_socket_recvfrom(nf_ct->mnl, rcv_buf, sizeof(rcv_buf));
     if (ret == -1)
     {
-        LOGE("%s: mnl_socket_recvfrom failed: %s", __func__, strerror(errno));
+        LOGT("%s: mnl_socket_recvfrom failed: %s", __func__, strerror(errno));
         return;
     }
+    struct nlmsghdr *nlh = (struct nlmsghdr *)rcv_buf;
 
     portid = mnl_socket_get_portid(nf_ct->mnl);
-
-    ret = mnl_cb_run2(rcv_buf, ret, 0, portid, nf_process_ct_cb, &nf_ct_list, cb_ctl_array,
+    LOGT("%s: Got message from PID: %u, expected: %u\n",
+          __func__,nlh->nlmsg_pid, portid);
+    ret = mnl_cb_run2(rcv_buf, ret, 0, portid, nf_process_ct_cb, nf_ct->aggr, cb_ctl_array,
                       MNL_ARRAY_SIZE(cb_ctl_array));
 
     if (ret == -1)
     {
-        LOGE("%s: mnl_cb_run2 failed: %s", __func__, strerror(errno));
-    }
-
-    if (LOG_SEVERITY_ENABLED(LOG_SEVERITY_TRACE)) nf_ct_print_entries(&nf_ct_list);
-
-    /* Invoke the callback if set, nf_ct_list is cleared in the callback */
-    if (nf_ct->conntrack_update_cb)
-    {
-        nf_ct->conntrack_update_cb(&nf_ct_list);
-    }
-    else
-    {
-        nf_free_ct_flow_list(&nf_ct_list);
+        LOGT("%s: mnl_cb_run2 failed: %s", __func__, strerror(errno));
     }
 }
 
@@ -1087,7 +1049,7 @@ nf_build_icmp_nl_msg_alt(char *buf, void *src_ip, void *dst_ip, uint16_t id, uin
 }
 
 static int
-nf_ct_recv_data(void *buf, size_t buf_size, ds_dlist_t *nf_ct_list)
+nf_ct_recv_data(void *buf, size_t buf_size, struct net_md_aggregator *aggr)
 {
     struct nf_ct_context *nf_ct;
     unsigned int portid;
@@ -1105,14 +1067,14 @@ nf_ct_recv_data(void *buf, size_t buf_size, ds_dlist_t *nf_ct_list)
         ret = mnl_socket_recvfrom(nf_ct->mnl, buf, buf_size);
         if (ret <= 0)
         {
-            LOGE("%s: mnl_socket_recvfrom failed: %s", __func__, strerror(errno));
+            LOGT("%s: mnl_socket_recvfrom failed: %s", __func__, strerror(errno));
             break;
         }
 
-        ret = mnl_cb_run(buf, ret, nlh->nlmsg_seq, portid, nf_process_ct_cb, nf_ct_list);
+        ret = mnl_cb_run(buf, ret, nlh->nlmsg_seq, portid, nf_process_ct_cb, aggr);
         if (ret == -1)
         {
-            LOGE("%s: mnl_cb_run failed: %s", __func__, strerror(errno));
+            LOGT("%s: mnl_cb_run failed: %s", __func__, strerror(errno));
             break;
         }
         if (ret <= MNL_CB_STOP) break;
@@ -1122,102 +1084,6 @@ nf_ct_recv_data(void *buf, size_t buf_size, ds_dlist_t *nf_ct_list)
 }
 
 
-/*
- * WAR ESW-5906. Need to be removed
- * Process all collected and merged
- * flows and drop flows which are only
- * in zone1.
- */
-static void
-process_merged_multi_zonestats(ds_dlist_t *list, ds_tree_t *tree)
-{
-    struct flow_tracker *ft, *next;
-    int count = 0;
-
-    if (tree == NULL || list == NULL) return;
-
-    ft = ds_tree_head(tree);
-    while (ft != NULL)
-    {
-        count++;
-        if (ft->zone_id == 1)
-        {
-            ds_dlist_remove(list, ft->flowptr);
-            FREE(ft->flowptr);
-        }
-        next = ds_tree_next(tree, ft);
-        ft = next;
-    }
-    LOGT("%s: Total merged flows alloc'd: %d\n", __func__, count);
-    return;
-}
-
-static void
-flow_free_merged_multi_zonestats(ds_tree_t *tree)
-{
-    struct flow_tracker *ft, *next;
-    int count = 0;
-
-    if (tree == NULL) return;
-
-    ft = ds_tree_head(tree);
-    while (ft != NULL)
-    {
-        next = ds_tree_next(tree, ft);
-        ds_tree_remove(tree, ft);
-        FREE(ft);
-        ft = next;
-        count++;
-    }
-    LOGT("%s: Total merged flows freed: %d\n", __func__, count);
-    return;
-}
-
-/**
- * @brief merge multiple zone stats.
- *
- * @param flow key to look for.
- * @return true if inserted/merged.
- */
-static bool
-flow_merge_multi_zonestats(ctflow_info_t *flow, uint16_t zone_id)
-{
-    layer3_ct_info_t *l3_key = &flow->flow.layer3_info;
-    struct flow_tracker *ft;
-    pkts_ct_info_t  *ft_pkts;
-    pkts_ct_info_t  *ct_pkts;
-
-    ft = ds_tree_find(&flow_tracker_list, l3_key);
-
-    if (ft == NULL)
-    {
-        // Allocate for the flow.
-        ft = CALLOC(1, sizeof(struct flow_tracker));
-        ft->flowptr = flow;
-        ft->zone_id = zone_id;
-        ds_tree_insert(&flow_tracker_list, ft, &flow->flow.layer3_info);
-    }
-    else
-    {
-        ct_pkts = &ft->flowptr->flow.pkt_info;
-        ft_pkts = &flow->flow.pkt_info;
-
-        if (ft_pkts->pkt_cnt > ct_pkts->pkt_cnt &&
-            ft_pkts->bytes > ct_pkts->bytes)
-        {
-            ct_pkts->pkt_cnt = ft_pkts->pkt_cnt;
-            ct_pkts->bytes = ft_pkts->bytes;
-        }
-        else if (ft_pkts->pkt_cnt < ct_pkts->pkt_cnt &&
-                 ft_pkts->bytes < ct_pkts->bytes)
-        {
-            ft_pkts->pkt_cnt = ct_pkts->pkt_cnt;
-            ft_pkts->bytes = ct_pkts->bytes;
-        }
-        ft->zone_id = USHRT_MAX;
-    }
-    return true;
-}
 
 
 /**
@@ -1225,7 +1091,7 @@ flow_merge_multi_zonestats(ctflow_info_t *flow, uint16_t zone_id)
  *
  * @param flow the flow to log
  */
-static void
+void
 nf_ct_print_conntrack(ct_flow_t *flow)
 {
     char src[INET6_ADDRSTRLEN];
@@ -1245,13 +1111,55 @@ nf_ct_print_conntrack(ct_flow_t *flow)
     LOGT("%s: [ proto=%d tx src=%s dst=%s] ", __func__,
          flow->layer3_info.proto_type, src, dst);
 
-    LOGT("%s: [src port=%d dst port=%d] start=%d, end=%d"
+    LOGT("%s: [af: %d src port=%d dst port=%d] start=%d, end=%d"
          "[packets=%" PRIu64 "  bytes=%" PRIu64 "]", __func__,
+        flow->layer3_info.src_ip.ss_family,
         ntohs(flow->layer3_info.src_port),
         ntohs(flow->layer3_info.dst_port),
         flow->start, flow->end,
         flow->pkt_info.pkt_cnt, flow->pkt_info.bytes);
 }
+
+
+
+static void
+generate_os_ufid(struct net_md_flow_key *key)
+{
+    os_macaddr_t *smac;
+    os_macaddr_t *dmac;
+    uint16_t sport;
+    uint16_t dport;
+    uint8_t proto;
+    os_ufid_t *id;
+    
+    if (!key)
+    {
+        LOGD("%s: Invalid key", __func__);
+        return;
+    }
+
+    sport = ntohs(key->sport);
+    dport = ntohs(key->dport);
+    proto = key->ipprotocol;
+
+    smac = key->smac;
+    dmac = key->dmac;
+    id = key->ufid;
+
+    id->u32[0] = smac->addr[0] ^ smac->addr[1] ^
+                 smac->addr[2] ^ smac->addr[3] ^
+                 smac->addr[4] ^ smac->addr[5] ^
+                 sport;
+    id->u32[2] = dmac->addr[0] ^ dmac->addr[1] ^
+                 dmac->addr[2] ^ dmac->addr[3] ^
+                 dmac->addr[4] ^ dmac->addr[5] ^
+                 dport ^ proto;     
+
+    LOGD("%s: Generated ufid: "PRI_os_ufid_t,
+          __func__, FMT_os_ufid_t_pt(id));
+    return;
+}
+
 
 /*
  * ===========================================================================
@@ -1272,62 +1180,187 @@ nf_ct_print_conntrack(ct_flow_t *flow)
 bool
 nf_ct_filter_ip(int af, void *ip)
 {
+
     if (af == AF_INET)
     {
-        struct sockaddr_in *in4 = (struct sockaddr_in *)ip;
-        if (((in4->sin_addr.s_addr & htonl(0xE0000000)) == htonl(0xE0000000) ||
-            (in4->sin_addr.s_addr & htonl(0xF0000000)) == htonl(0xF0000000)))
+        struct in_addr *in4 = (struct in_addr *)ip;
+        if (((in4->s_addr & htonl(0xE0000000)) == htonl(0xE0000000) ||
+            (in4->s_addr & htonl(0xF0000000)) == htonl(0xF0000000)))
         {
-            LOGD("%s: Dropping ipv4 broadcast/multicast[%x]\n",
-                  __func__, in4->sin_addr.s_addr);
             return true;
         }
-        else if ((in4->sin_addr.s_addr & htonl(0x7F000000)) == htonl(0x7F000000))
+        else if ((in4->s_addr & htonl(0x7F000000)) == htonl(0x7F000000))
         {
-            LOGD("%s: Dropping ipv4 localhost[%x]\n",
-                  __func__, in4->sin_addr.s_addr);
             return true;
         }
     }
     else if (af == AF_INET6)
     {
-        struct sockaddr_in6 *in6 = (struct sockaddr_in6 *)ip;
-        if ((in6->sin6_addr.s6_addr[0] & 0xF0) == 0xF0)
+        struct in6_addr *in6 = (struct in6_addr *)ip;
+        if ((in6->s6_addr[0] & 0xF0) == 0xF0)
         {
-            LOGD("%s: Dropping ipv6 multicast starting with [%x%x]\n",
-                  __func__, in6->sin6_addr.s6_addr[0], in6->sin6_addr.s6_addr[1]);
             return true;
         }
-        else if (memcmp(&in6->sin6_addr, &in6addr_loopback,
+        else if (memcmp(&in6->s6_addr, &in6addr_loopback,
                         sizeof(struct in6_addr)) == 0)
         {
-            LOGD("%s: Dropping ipv6 localhost [::%x]\n",
-                  __func__, in6->sin6_addr.s6_addr[15]);
             return true;
         }
     }
     return false;
 }
 
+
+static void
+nf_process_ct_flow(struct nlattr *tb[], struct net_md_aggregator *aggr, bool dir)
+{
+    
+    struct flow_counters counters;
+    struct net_md_flow_key key;
+    struct net_md_flow_key rev_key;
+    bool smac_lookup = false;
+    bool dmac_lookup = false;
+    uint16_t ct_zone;
+    os_macaddr_t smac;
+    os_macaddr_t dmac;
+    os_ufid_t ufid;
+    int rc;
+    int af;
+
+    MEMZERO(key);
+    MEMZERO(rev_key);
+    MEMZERO(ufid);
+    MEMZERO(counters);
+    MEMZERO(smac);
+    MEMZERO(dmac);
+
+    ct_zone = 0; /* Zone = 0 flows will not have CTA_ZONE */
+    if (tb[CTA_ZONE] != NULL)
+    {
+        key.ct_zone = ntohs(mnl_attr_get_u16(tb[CTA_ZONE]));
+    }
+
+    if (dir)
+    {
+        if (tb[CTA_TUPLE_ORIG])
+        {
+            get_tuple(tb[CTA_TUPLE_ORIG], &key);
+        }
+
+        if (tb[CTA_COUNTERS_ORIG])
+        {
+           get_counter(tb[CTA_COUNTERS_ORIG], &counters);
+        }
+        if (tb[CTA_TUPLE_REPLY])
+        {
+            get_tuple(tb[CTA_TUPLE_REPLY], &rev_key);
+        }
+        af = key.ip_version == 4 ? AF_INET : AF_INET6;
+        /* Getting the original ip for v4 NAT'ed case */
+        if (af == AF_INET)
+        {
+            key.dst_ip = rev_key.src_ip;
+        }
+    }
+    else
+    {
+        if (tb[CTA_TUPLE_REPLY])
+        {
+            get_tuple(tb[CTA_TUPLE_REPLY], &key);
+        }
+
+        if (tb[CTA_COUNTERS_REPLY])
+        {
+            get_counter(tb[CTA_COUNTERS_REPLY], &counters);
+        }
+
+        if (tb[CTA_TUPLE_ORIG])
+        {
+            get_tuple(tb[CTA_TUPLE_ORIG], &rev_key);
+        }
+
+        af = key.ip_version == 4 ? AF_INET : AF_INET6;
+        /* Getting the original ip for v4 NAT'ed case */
+        if (af == AF_INET)
+        {
+            key.dst_ip = rev_key.src_ip;
+        }
+    }
+
+    af = key.ip_version == 4 ? AF_INET : AF_INET6;
+
+    /* Filter out broadcast/multicast/loopback ip */
+    if (nf_ct_filter_ip(af, key.src_ip) ||
+        nf_ct_filter_ip(af, key.dst_ip))
+    {
+        return;
+    }
+    
+    if (tb[CTA_PROTOINFO] && key.ipprotocol != 17)
+    {
+        rc = get_protoinfo(tb[CTA_PROTOINFO], &key);
+        if (rc < 0)
+        {
+            LOGD("%s: Couldn't get proto info", __func__);
+            return;
+        }
+    }
+
+    if (tb[CTA_MARK] != NULL)
+    {
+        key.flowmarker = ntohl(mnl_attr_get_u32(tb[CTA_MARK]));
+    }
+
+    smac_lookup = neigh_table_lookup_af(af, key.src_ip, &smac);
+    dmac_lookup = neigh_table_lookup_af(af, key.dst_ip, &dmac);
+
+    if (!smac_lookup && !dmac_lookup) return;
+
+    if (smac_lookup) key.smac = &smac;
+    if (dmac_lookup) key.dmac = &dmac;
+    if (smac_lookup && dmac_lookup)
+    {
+        LOGT("%s: Setting flag eth_access", __func__);
+        key.flags |= NET_MD_ACC_ETH;
+    }
+
+    key.ct_zone = ct_zone;
+
+    if (key.flags & NET_MD_ACC_ETH)
+    {
+        key.ufid = &ufid;
+        generate_os_ufid(&key);
+        key.flags = 0;
+        key.ip_version = 0;
+        key.src_ip = NULL;
+        key.dst_ip = NULL;
+        key.sport = 0;
+        key.dport = 0;
+    }
+    net_md_log_key(&key, __func__);
+    /* Add flow*/
+    rc = net_md_add_sample(aggr, &key, &counters);
+    if (!rc)
+    {
+        LOGW("%s: Couldn't add sample", __func__);
+        return;
+    }
+}
+
+
 int
 nf_process_ct_cb(const struct nlmsghdr *nlh, void *data)
 {
-    ctflow_info_t *forward_entry;
-    ctflow_info_t *reverse_entry;
+    struct net_md_aggregator *aggr;
     struct nf_ct_context *nf_ct;
     struct nlattr *tb[CTA_MAX+1];
-    ct_flow_t *forward_flow;
-    ct_flow_t *reverse_flow;
-    ds_dlist_t *nf_ct_list;
     struct nfgenmsg *nfg;
-    uint16_t ct_zone;
     int rc;
-    int af;
 
     nf_ct = nf_ct_get_context();
     if (!nf_ct->initialized) return MNL_CB_ERROR;
 
-    nf_ct_list = (ds_dlist_t *)data;
+    aggr = (struct net_md_aggregator *)data;
 
     memset(tb, 0, (CTA_MAX+1) * sizeof(tb[0]));
     nfg = mnl_nlmsg_get_payload(nlh);
@@ -1335,87 +1368,9 @@ nf_process_ct_cb(const struct nlmsghdr *nlh, void *data)
     rc = mnl_attr_parse(nlh, sizeof(*nfg), data_attr_cb, tb);
     if (rc < 0) return MNL_CB_ERROR;
 
-    ct_zone = 0; /* Zone = 0 flows will not have CTA_ZONE */
-    if (tb[CTA_ZONE] != NULL)
-    {
-        ct_zone = ntohs(mnl_attr_get_u16(tb[CTA_ZONE]));
-    }
-
-    if (nf_ct->zone_id != USHRT_MAX && (nf_ct->zone_id != ZONE_2) &&
-        nf_ct->zone_id != ct_zone) return MNL_CB_OK;
-
-
-    forward_entry = CALLOC(1, sizeof(struct ctflow_info));
-    forward_flow =  &forward_entry->flow;
-
-    reverse_entry = CALLOC(1, sizeof(struct ctflow_info));
-    reverse_flow =  &reverse_entry->flow;
-
-    if (tb[CTA_TUPLE_ORIG])
-    {
-        rc = get_tuple(tb[CTA_TUPLE_ORIG], forward_flow);
-        if (rc < 0) goto error;
-    }
-
-    if (tb[CTA_TUPLE_REPLY])
-    {
-        rc = get_tuple(tb[CTA_TUPLE_REPLY], reverse_flow);
-        if (rc < 0) goto error;
-    }
-
-    if (tb[CTA_COUNTERS_ORIG])
-    {
-        rc =  get_counter(tb[CTA_COUNTERS_ORIG], forward_flow);
-        if (rc < 0) goto error;
-    }
-
-    if (tb[CTA_COUNTERS_REPLY])
-    {
-        rc =  get_counter(tb[CTA_COUNTERS_REPLY], reverse_flow);
-        if (rc < 0) goto error;
-    }
-
-    af = forward_flow->layer3_info.src_ip.ss_family;
-
-    /* Getting the original ip for v4 NAT'ed case */
-    if (af == AF_INET)
-    {
-        forward_flow->layer3_info.dst_ip = reverse_flow->layer3_info.src_ip;
-        reverse_flow->layer3_info.dst_ip = forward_flow->layer3_info.src_ip;
-    }
-
-    if (tb[CTA_PROTOINFO] && forward_flow->layer3_info.proto_type != 17)
-    {
-        rc = get_protoinfo(tb[CTA_PROTOINFO], forward_flow);
-        if (rc < 0) goto error;
-    }
-
-    if (tb[CTA_MARK] != NULL)
-    {
-        forward_flow->ct_mark = ntohl(mnl_attr_get_u32(tb[CTA_MARK]));
-        reverse_flow->ct_mark = forward_flow->ct_mark;
-    }
-
-
-
-    if ((nf_ct->zone_id == USHRT_MAX) ||
-        (nf_ct->zone_id == ZONE_2))
-    {
-        flow_merge_multi_zonestats(forward_entry, ct_zone);
-        flow_merge_multi_zonestats(reverse_entry, ct_zone);
-    }
-
-    forward_flow->ct_zone = ct_zone;
-    reverse_flow->ct_zone = ct_zone;
-
-    ds_dlist_insert_tail(nf_ct_list, forward_entry);
-    ds_dlist_insert_tail(nf_ct_list, reverse_entry);
-
-    return MNL_CB_OK;
-
-error:
-    FREE(forward_entry);
-    FREE(reverse_entry);
+    if (!aggr) return MNL_CB_OK;
+    nf_process_ct_flow(tb, aggr, true);
+    nf_process_ct_flow(tb, aggr, false);
 
     return MNL_CB_OK;
 }
@@ -1617,7 +1572,7 @@ nf_ct_print_entries(ds_dlist_t *nf_ct_list)
 }
 
 bool
-nf_ct_get_flow_entries(int af_family, ds_dlist_t *nf_ct_list, uint16_t zone_id)
+nf_ct_get_flow_entries(int af_family, struct net_md_aggregator *aggr)
 {
     char buf[MNL_SOCKET_BUFFER_SIZE];
     struct nf_ct_context *nf_ct;
@@ -1635,25 +1590,17 @@ nf_ct_get_flow_entries(int af_family, ds_dlist_t *nf_ct_list, uint16_t zone_id)
     ret = mnl_socket_sendto(nl, nlh, nlh->nlmsg_len);
     if (ret == -1)
     {
-        LOGE("%s: mnl_socket_sendto", __func__);
+        LOGI("%s: mnl_socket_sendto %s", __func__, strerror(errno));
         return false;
     }
-
-    nf_ct->zone_id = zone_id;
     nf_ct->nlh = nlh;
-    ret = nf_ct_recv_data(buf, sizeof(buf), nf_ct_list);
+    ret = nf_ct_recv_data(buf, sizeof(buf), aggr);
     if (ret < 0) return false;
-
-    if (nf_ct->zone_id == USHRT_MAX)
-        process_merged_multi_zonestats(nf_ct_list,
-                                       &flow_tracker_list);
-
-    flow_free_merged_multi_zonestats(&flow_tracker_list);
     return true;
 }
 
 int
-nf_ct_init(struct ev_loop *loop, void (*callback)(void *data))
+nf_ct_init(struct ev_loop *loop, struct net_md_aggregator *aggr)
 {
     struct mnl_socket *nl = NULL;
     struct nf_ct_context *nf_ct;
@@ -1665,23 +1612,23 @@ nf_ct_init(struct ev_loop *loop, void (*callback)(void *data))
     nl = mnl_socket_open(NETLINK_NETFILTER);
     if (nl == NULL)
     {
-        LOGE("%s: mnl_socket_open", __func__);
+        LOGI("%s: mnl_socket_open %s", __func__,strerror(errno));
         return -1;
     }
 
-    /* register for update event only if the callback is provided */
-    group = (callback == NULL) ? 0 : NF_NETLINK_CONNTRACK_UPDATE;
+    /* register for update event only if the aggr is provided */
+    group = (aggr == NULL) ? 0 : NF_NETLINK_CONNTRACK_UPDATE;
     if (mnl_socket_bind(nl, group, MNL_SOCKET_AUTOPID) < 0)
     {
-        LOGE("%s: mnl_socket_bind", __func__);
+        LOGI("%s: mnl_socket_bind %s", __func__,strerror(errno));
         goto err;
     }
 
     nf_ct->mnl = nl;
     nf_ct->loop = loop;
-    nf_ct->conntrack_update_cb = callback;
+    nf_ct->aggr = aggr;
     nf_ct->fd = mnl_socket_get_fd(nl);
-    os_ev_trace_map(read_mnl_socket_cbk, "read_mnl_socket_cbk");
+    OS_EV_TRACE_MAP(read_mnl_socket_cbk);
     ev_io_init(&nf_ct->wmnl, read_mnl_socket_cbk, nf_ct->fd, EV_READ);
     nf_ct_set_sockbuf_size(nf_ct->fd);
     ev_io_start(loop, &nf_ct->wmnl);

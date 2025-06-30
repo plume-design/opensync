@@ -6,4 +6,10 @@ menu "OS Common configuration"
     help
         Enable libev tracing. libev must have support for it.
 
+    config MEM_MONITOR
+    bool "dynamic memory allocation monitoring"
+    default n
+    help
+            Enable dynamic memory allocation monitoring
+
 endmenu

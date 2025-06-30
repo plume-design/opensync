@@ -72,13 +72,20 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "fsm_fn_trace.h"
 
 #include "accel_evict_msg.h"
+#include "nfe.h"
 
 
 #define MAX_RESERVED_PORT_NUM 1023
 #define NON_RESERVED_PORT_START_NUM MAX_RESERVED_PORT_NUM + 1
 #define DHCP_SERVER_PORT_NUM 67
 #define DHCP_CLIENT_PORT_NUM 68
+#define MAX_CONNTRACK_ENTRIES 8192
 
+extern int nfe_conntrack_tcp_timeout_est;
+nfe_conntrack_t nfe_ct;
+extern nfe_conn_t nfe_conn_lookup_by_tuple(nfe_conntrack_t conntrack,
+                                           const struct nfe_tuple *tuple,
+                                           uint64_t timestamp, int *dir);
 bool
 fsm_is_dns(struct net_header_parser *net_parser)
 {
@@ -173,6 +180,22 @@ fsm_is_dpi(struct fsm_session *session)
     if (session->type == FSM_DPI_PLUGIN) return true;
 
     return false;
+}
+
+
+static int
+fsm_get_max_conntrack_entries(struct fsm_session *session)
+{
+    char *max_entries;
+    int max;
+
+    max_entries = session->ops.get_config(session, "max_conntrack_entries");
+    if (max_entries == NULL) return MAX_CONNTRACK_ENTRIES;
+
+    max = strtoul(max_entries, NULL, 10);
+    if (max <= 0) return MAX_CONNTRACK_ENTRIES;
+
+    return max;
 }
 
 
@@ -349,13 +372,13 @@ fsm_dpi_add_plugin_to_flows(struct fsm_session *session,
 {
     struct net_md_eth_pair *pair;
 
-    pair = ds_tree_head(&aggr->eth_pairs);
+    pair = ds_tree_head(aggr->eth_pairs);
     while (pair != NULL)
     {
         fsm_dpi_add_plugin_to_tree(session, &pair->five_tuple_flows);
-        pair = ds_tree_next(&aggr->eth_pairs, pair);
+        pair = ds_tree_next(aggr->eth_pairs, pair);
     }
-    fsm_dpi_add_plugin_to_tree(session, &aggr->five_tuple_flows);
+    fsm_dpi_add_plugin_to_tree(session, aggr->five_tuple_flows);
 }
 
 
@@ -412,6 +435,18 @@ fsm_dpi_del_plugin_from_tree(struct fsm_session *session,
 }
 
 
+void fsm_dpi_cleanup_acc(nfe_conn_t conn, void *data)
+{
+    struct net_md_stats_accumulator *acc;
+    struct fsm_session *session;
+
+    session = (struct fsm_session *)data;
+    acc = container_of(conn, struct net_md_stats_accumulator, priv);
+    if (acc == NULL) return;
+
+    fsm_dpi_del_plugin_from_acc(session, acc);
+    return;
+}
 /**
  * @brief delete a plugin's pointer from current flows
  *
@@ -425,7 +460,13 @@ fsm_dpi_del_plugin_from_flows(struct fsm_session *session,
     struct net_md_stats_accumulator *acc;
     struct net_md_eth_pair *pair;
 
-    pair = ds_tree_head(&aggr->eth_pairs);
+    if (aggr->nfe_ct)
+    {
+        nfe_conntrack_dump(aggr->nfe_ct, fsm_dpi_cleanup_acc, session);
+        return;
+    }
+
+    pair = ds_tree_head(aggr->eth_pairs);
     while (pair != NULL)
     {
         fsm_dpi_del_plugin_from_tree(session, &pair->ethertype_flows);
@@ -433,9 +474,9 @@ fsm_dpi_del_plugin_from_flows(struct fsm_session *session,
         acc = pair->mac_stats;
         fsm_dpi_del_plugin_from_acc(session, acc);
 
-        pair = ds_tree_next(&aggr->eth_pairs, pair);
+        pair = ds_tree_next(aggr->eth_pairs, pair);
     }
-    fsm_dpi_del_plugin_from_tree(session, &aggr->five_tuple_flows);
+    fsm_dpi_del_plugin_from_tree(session, aggr->five_tuple_flows);
 }
 
 
@@ -1137,10 +1178,7 @@ void
 fsm_dpi_on_acc_creation(struct net_md_aggregator *aggr,
                         struct net_md_stats_accumulator *acc)
 {
-    struct net_md_stats_accumulator *rev_acc;
     struct fsm_dpi_dispatcher *dispatch;
-    struct flow_key *rev_fkey;
-    struct flow_key *fkey;
 
     bool rc;
 
@@ -1149,31 +1187,8 @@ fsm_dpi_on_acc_creation(struct net_md_aggregator *aggr,
     dispatch = aggr->context;
     if (acc->direction != NET_MD_ACC_UNSET_DIR) return;
 
-    rev_acc = net_md_lookup_reverse_acc(aggr, acc);
-    if (rev_acc != NULL)
-    {
-        acc->rev_acc = rev_acc;
-        acc->flags |= NET_MD_ACC_SECOND_LEG;
-        rev_acc->rev_acc = acc;
-    }
-    else
-    {
-        acc->flags |= NET_MD_ACC_FIRST_LEG;
-    }
+    acc->flags |= NET_MD_ACC_FIRST_LEG;
     acc->dpi_always = false;
-    if ((rev_acc != NULL) && (rev_acc->direction != NET_MD_ACC_UNSET_DIR))
-    {
-        acc->direction = rev_acc->direction;
-        acc->originator = (rev_acc->originator == NET_MD_ACC_ORIGINATOR_SRC ?
-                           NET_MD_ACC_ORIGINATOR_DST : NET_MD_ACC_ORIGINATOR_SRC);
-
-        /* update the networkid for the reverse acc */
-        rev_fkey = rev_acc->fkey;
-        fkey = acc->fkey;
-        if (fkey && rev_fkey && rev_fkey->networkid) fkey->networkid = STRDUP(rev_fkey->networkid);
-        fsm_dpi_mark_acc_for_report(aggr, acc);
-        return;
-    }
 
     rc = fsm_dpi_set_acc_direction(dispatch, acc);
     if (!rc) return;
@@ -1183,15 +1198,6 @@ fsm_dpi_on_acc_creation(struct net_md_aggregator *aggr,
     fsm_dpi_set_uplink_name(acc);
 
     fsm_dpi_mark_acc_for_report(aggr, acc);
-
-    if ((rev_acc != NULL) && (rev_acc->direction == NET_MD_ACC_UNSET_DIR))
-    {
-        rev_acc->direction = acc->direction;
-        rev_acc->originator = (acc->originator == NET_MD_ACC_ORIGINATOR_SRC ?
-                               NET_MD_ACC_ORIGINATOR_DST : NET_MD_ACC_ORIGINATOR_SRC);
-        fsm_dpi_mark_acc_for_report(aggr, rev_acc);
-        return;
-    }
 }
 
 
@@ -1265,6 +1271,8 @@ fsm_init_dpi_dispatcher(struct fsm_session *session)
     struct fsm_mgr *mgr;
     bool ret;
     int rc;
+    int res;
+    int max_conntrack_entries = 0;
 
     dpi_context = session->dpi;
     if (dpi_context == NULL) return false;
@@ -1330,6 +1338,18 @@ fsm_init_dpi_dispatcher(struct fsm_session *session)
     }
 
     fsm_set_dpi_health_stats_cfg(session);
+
+    /* NFE Initialization */
+    nfe_conntrack_tcp_timeout_est = 300;
+
+    max_conntrack_entries = fsm_get_max_conntrack_entries(session);
+
+    if ((res = nfe_conntrack_create(&nfe_ct, max_conntrack_entries)) != 0)
+    {
+        LOGE("%s: failed to allocate conntrack: %d\n", __func__, res);
+        return false;
+    }
+    aggr->nfe_ct = nfe_ct;
     return true;
 }
 
@@ -1376,6 +1396,7 @@ fsm_free_dpi_plugins_resources(struct fsm_session *session)
 void
 fsm_free_dpi_dispatcher(struct fsm_session *session)
 {
+    struct net_md_aggregator *aggr;
     struct fsm_dpi_dispatcher *dispatch;
     union fsm_dpi_context *dpi_context;
     struct dpi_node *dpi_plugin;
@@ -1396,8 +1417,11 @@ fsm_free_dpi_dispatcher(struct fsm_session *session)
         ds_tree_remove(dpi_sessions, remove);
         dpi_plugin = next;
     }
-    net_md_free_aggregator(dispatch->aggr);
-    FREE(dispatch->aggr);
+
+    aggr = dispatch->aggr;
+    nfe_conntrack_destroy(aggr->nfe_ct);
+    net_md_free_aggregator(aggr);
+    FREE(aggr);
 
     accel_evict_msg_socket_exit();
 
@@ -1511,6 +1535,7 @@ fsm_update_dpi_dispatcher(struct fsm_session *session)
 {
     struct fsm_dpi_dispatcher *dispatch;
     union fsm_dpi_context *dpi_context;
+    char *mem_monitor_restart;
     char *recv_str;
 
     dpi_context = session->dpi;
@@ -1529,6 +1554,11 @@ fsm_update_dpi_dispatcher(struct fsm_session *session)
     recv_str = fsm_get_other_config_val(session, "recv_method");
     if (recv_str && strcmp(recv_str, "buffer") == 0) dispatch->recv_method = BUFFER;
 
+    mem_monitor_restart = fsm_get_other_config_val(session, "mem_monitor_restart");
+    if (mem_monitor_restart && strcmp(mem_monitor_restart, "true") == 0)
+    {
+        fsm_reinit_mem_monitor();
+    }
 }
 
 
@@ -1731,58 +1761,55 @@ fsm_set_ip_tuple_key(struct net_header_parser *net_parser,
 
 
 /**
- * @brief retrieves the flow accumulator from a parsed packet
+ * @brief retrieves the nfe conn from the packet
  *
  * @param net_parser the parsing info
  * @param aggr the dispatcher's aggregator
  * @return the flow accumulator
  */
-struct net_md_stats_accumulator *
-fsm_net_parser_to_acc(struct net_header_parser *net_parser,
-                      struct net_md_aggregator *aggr)
+nfe_conn_t
+fsm_net_parser_to_conn(struct net_header_parser *net_parser)
 {
-    struct net_md_stats_accumulator *rev_acc;
+
     struct net_md_stats_accumulator *acc;
     struct eth_header *eth_hdr;
-    struct net_md_flow_key key;
     uint16_t ethertype;
-    bool is_ip;
-    bool ret;
 
-    eth_hdr = &net_parser->eth_header;
 
-    memset(&key, 0, sizeof(key));
-    key.smac = eth_hdr->srcmac;
-    key.dmac = eth_hdr->dstmac;
-    key.vlan_id = eth_hdr->vlan_id;
-    ethertype = eth_hdr->ethertype;
-    key.ethertype = ethertype;
-    is_ip = ((ethertype == ETH_P_IP) || (ethertype == ETH_P_IPV6));
-    if (!is_ip)
+    nfe_conn_t conn;
+    struct nfe_packet packet;
+    struct timespec now;
+    uint64_t timestamp;
+    int res;
+
+    ethertype = 0;
+
+    eth_hdr = net_header_get_eth(net_parser);
+
+    if (net_parser->source == PKT_SOURCE_SOCKET)
     {
-        key.flags |= NET_MD_ACC_ETH;
-    }
-    else
-    {
-        ret = fsm_set_ip_tuple_key(net_parser, &key);
-        if (!ret) return NULL;
+        ethertype = eth_hdr->ethertype;
     }
 
-    acc = net_md_lookup_acc(aggr, &key);
-    if (acc == NULL)
+
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    timestamp = ((uint64_t)now.tv_sec * 1000) + (now.tv_nsec / 1000000);
+
+    res = nfe_packet_hash(&packet, ethertype, net_parser->start,
+                          net_parser->caplen, timestamp);
+    if (res)
     {
+        LOGE("%s: failed to hash packet\n", __func__);
         return NULL;
     }
 
-    if (acc->flags & NET_MD_ACC_FIRST_LEG) return acc;
-
-    rev_acc = acc->rev_acc;
-    if ((acc->flags & NET_MD_ACC_SECOND_LEG) && (rev_acc != NULL))
-    {
-        return rev_acc;
-    }
-
-    return acc;
+    conn = nfe_conn_lookup(nfe_ct, &packet);
+    if (!conn) return NULL;
+    acc = container_of(conn, struct net_md_stats_accumulator, priv);
+    acc->packet = CALLOC(1, sizeof(struct nfe_packet));
+    if (!acc->packet) return NULL;
+    memcpy(acc->packet, &packet, sizeof(struct nfe_packet));
+    return conn;
 }
 
 
@@ -2152,6 +2179,34 @@ fsm_dpi_filter_packet(struct net_header_parser *net_parser)
 }
 
 
+void
+fsm_net_parser_to_key(struct net_header_parser *net_parser, struct net_md_flow_key *key) {
+
+    struct eth_header *eth_hdr;
+    uint16_t ethertype;
+    bool is_ip;
+    bool ret;
+
+    eth_hdr = &net_parser->eth_header;
+    memset(key, 0, sizeof(struct net_md_flow_key));
+    key->smac = eth_hdr->srcmac;
+    key->dmac = eth_hdr->dstmac;
+    key->vlan_id = eth_hdr->vlan_id;
+    ethertype = eth_hdr->ethertype;
+    key->ethertype = ethertype;
+    is_ip = ((ethertype == ETH_P_IP) || (ethertype == ETH_P_IPV6));
+    if (!is_ip)
+    {
+        key->flags |= NET_MD_ACC_ETH;
+    }
+    else
+    {
+        ret = fsm_set_ip_tuple_key(net_parser, key);
+        if (!ret) return;
+    }
+    return;
+}
+
 /**
  * @brief the dispatcher plugin's packet handler
  *
@@ -2169,6 +2224,8 @@ fsm_dpi_handler(struct fsm_session *session,
     struct fsm_dpi_dispatcher *dispatch;
     union fsm_dpi_context *dpi_context;
     struct flow_counters counters;
+    struct net_md_flow_key key;
+    nfe_conn_t conn;
     size_t payload_len;
     bool process;
 
@@ -2202,8 +2259,21 @@ fsm_dpi_handler(struct fsm_session *session,
         return;
     }
 
-    acc = fsm_net_parser_to_acc(net_parser, dispatch->aggr);
+    conn = fsm_net_parser_to_conn(net_parser);
+    if (conn == NULL) return;
+
+    acc = container_of(conn, struct net_md_stats_accumulator, priv);
     if (acc == NULL) return;
+
+    if (!acc->initialized)
+    {
+        fsm_net_parser_to_key(net_parser, &key);
+        net_md_populate_acc(dispatch->aggr, &key, acc);
+        fsm_dpi_alloc_flow_context(session, acc);
+        acc->initialized = true;
+        acc->aggr = dispatch->aggr;
+        dispatch->aggr->nfe_ct = nfe_ct;
+    }
 
     counters.packets_count = acc->counters.packets_count + 1;
     counters.bytes_count = acc->counters.bytes_count + net_parser->packet_len;
@@ -2211,7 +2281,6 @@ fsm_dpi_handler(struct fsm_session *session,
     counters.payload_bytes_count = acc->counters.payload_bytes_count + payload_len;
     net_md_set_counters(dispatch->aggr, acc, &counters);
 
-    fsm_dpi_alloc_flow_context(session, acc);
     net_parser->acc = acc;
 
     process = fsm_dpi_filter_packet(net_parser);
@@ -2219,6 +2288,7 @@ fsm_dpi_handler(struct fsm_session *session,
 
     net_header_logt(net_parser);
     fsm_dispatch_pkt(session, net_parser);
+    FREE(acc->packet);
 }
 
 /**
@@ -2233,6 +2303,7 @@ fsm_dpi_free_flow_context(struct net_md_stats_accumulator *acc)
 {
     struct fsm_dpi_flow_info *dpi_flow_info;
     struct fsm_dpi_flow_info *remove;
+    struct fsm_session *session;
     ds_tree_t *dpi_sessions;
 
     dpi_sessions = acc->dpi_plugins;
@@ -2242,6 +2313,11 @@ fsm_dpi_free_flow_context(struct net_md_stats_accumulator *acc)
     while (dpi_flow_info != NULL)
     {
         remove = dpi_flow_info;
+        session = remove->session;
+        if (session->ops.dpi_free_conn_ctxt != NULL)
+        {
+            session->ops.dpi_free_conn_ctxt(acc);
+        }
         dpi_flow_info = ds_tree_next(dpi_sessions, dpi_flow_info);
         ds_tree_remove(dpi_sessions, remove);
         FREE(remove);
@@ -2355,6 +2431,54 @@ fsm_get_intf_pcap_stats(void)
 }
 
 
+static void nfe_log_acc_cb(nfe_conn_t conn, void *data)
+{
+    struct net_md_stats_accumulator *acc;
+
+    if (!conn) return;
+
+    acc = container_of(conn, struct net_md_stats_accumulator, priv);
+    if (!acc) return;
+ 
+    net_md_log_acc(acc, __func__);
+}
+
+void
+fsm_dpi_recycle_nfe_conns(void)
+{
+    struct nfe_tuple tuple;
+    struct timespec now;
+    nfe_conn_t conn;
+    int dir = 0;
+
+    uint64_t ts;
+
+    /* Expire idle nfe connections */
+
+    LOGT("%s: Expiring idle nfe connections", __func__);
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    ts = ((uint64_t)now.tv_sec * 1000) + (now.tv_nsec / 1000000);
+    MEMZERO(tuple);
+    tuple.proto = IPPROTO_ICMP;
+    conn = nfe_conn_lookup_by_tuple(nfe_ct, &tuple, ts, &dir);
+    nfe_conn_release(conn);
+
+    tuple.proto = IPPROTO_TCP;
+    conn = nfe_conn_lookup_by_tuple(nfe_ct, &tuple, ts, &dir);
+    nfe_conn_release(conn);
+
+    tuple.proto = IPPROTO_UDP;
+    conn = nfe_conn_lookup_by_tuple(nfe_ct, &tuple, ts, &dir);
+    nfe_conn_release(conn);
+
+    tuple.proto = 0;
+    conn = nfe_conn_lookup_by_tuple(nfe_ct, &tuple, ts, &dir);
+    nfe_conn_release(conn);
+
+    LOGT("%s: Number of active flows: %d",__func__, nfe_conntrack_dump(nfe_ct, nfe_log_acc_cb, NULL));
+}
+
+
 #define FSM_DPI_STATS_REPORT_INTERVAL 120
 #define FSM_DPI_BACKOFF_INTERVAL 30
 /**
@@ -2374,11 +2498,10 @@ fsm_dpi_periodic(struct fsm_session *session)
     struct flow_window **windows;
     struct flow_window *window;
     struct flow_report *report;
-    int long dpi_report_conf_intvl;
-    int long dpi_backoff_conf_intvl;
+    int long dpi_report_conf_intvl = 0;
+    int long dpi_backoff_conf_intvl = 0;
     time_t now;
     int rc;
-
     dpi_context = session->dpi;
     if (dpi_context == NULL) return;
 
@@ -2429,6 +2552,8 @@ fsm_dpi_periodic(struct fsm_session *session)
 
         session->ops.send_pb_report(session, session->dpi_stats_report_topic, pb->buf, pb->len);
         dpi_stats_free_packed_buffer(pb);
+        
+        fsm_dpi_recycle_nfe_conns();
     }
 
     if ((now - dispatch->periodic_backoff_ts) >= dpi_backoff_conf_intvl)
@@ -2476,4 +2601,40 @@ fsm_dispatch_set_ops(struct fsm_session *session)
     session_ops->periodic = fsm_dpi_periodic;
 
     return 0;
+}
+
+
+/* nfe_ext_conn_alloc()
+ *
+ * libnfe provides weak symbols for connection allocation and deallocation
+ * through nfe_ext_conn_alloc() and nfe_ext_conn_free() making them easy to
+ * intercept. In this example, the connection is expanded to contain extra
+ * stuff for dpi.
+ */
+void *
+nfe_ext_conn_alloc(size_t size, const struct nfe_tuple *tuple)
+{
+    struct net_md_stats_accumulator *acc;
+
+    if (!(acc = CALLOC(1, sizeof(*acc) + size)))
+        return NULL;
+    return acc->priv;
+}
+
+/* nfe_ext_conn_free()
+ *
+ * The counter-part to nfe_ext_conn_alloc().
+ */
+void
+nfe_ext_conn_free(void *p, const struct nfe_tuple *tuple)
+{
+    struct net_md_stats_accumulator *acc;
+    struct net_md_aggregator *aggr;
+
+    acc = container_of(p, struct net_md_stats_accumulator, priv);
+
+    aggr = acc->aggr;
+    aggr->total_flows--;
+    net_md_free_acc(acc);
+    FREE(acc);
 }

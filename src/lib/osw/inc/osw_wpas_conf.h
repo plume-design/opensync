@@ -65,7 +65,7 @@ struct osw_hostap_conf_sta_network_config {
     OSW_HOSTAP_CONF_DECL_INT (ieee80211w);
     OSW_HOSTAP_CONF_DECL_BOOL(ocv);
     OSW_HOSTAP_CONF_DECL_STR (auth_alg, 16);
-    OSW_HOSTAP_CONF_DECL_STR (pairwise, 16);
+    OSW_HOSTAP_CONF_DECL_STR (pairwise, 64);
     OSW_HOSTAP_CONF_DECL_STR (group, 16);
     OSW_HOSTAP_CONF_DECL_STR (group_mgmt, 48);
     OSW_HOSTAP_CONF_DECL_STR (psk, 64 + 2 + 1); /* 64 for hex, 2 for ", 1 for \0 */

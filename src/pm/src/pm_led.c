@@ -90,7 +90,7 @@ static enum osp_led_state pm_led_translate_led_config(struct schema_AWLAN_Node *
         }
     }
 
-    LOGE("LEDM: Could not translate from mode to state");
+    LOGD("LEDM: Legacy AWLAN_Node:led_config 'mode' key not set");
     return OSP_LED_ST_IDLE;
 }
 #endif
@@ -291,7 +291,7 @@ static int pm_led_update_connected(bool connected)
  * `osp_led_pattern_el` structs.
  * The input string format should be: "1000,255;255;255,0 1000,255;255;255,0"
  * with up to PM_LED_MAX_PATTERN_ELEMENTS elements. Returns the number of elements
- * parsed or a negative value on error.
+ * parsed or 0 on error.
  */
 static int pm_led_parse_pattern(char *pattern, struct osp_led_pattern_el *pattern_els)
 {
@@ -302,7 +302,7 @@ static int pm_led_parse_pattern(char *pattern, struct osp_led_pattern_el *patter
 
     if (strlen(pattern) == 0) {
         LOGE("LEDM: LED pattern is empty");
-        return -1;
+        return 0;
     }
 
     /* Do not modify the original string but instead create a copy */
@@ -313,7 +313,7 @@ static int pm_led_parse_pattern(char *pattern, struct osp_led_pattern_el *patter
     {
         if (count == PM_LED_MAX_PATTERN_ELEMENTS) {
             LOGE("LEDM: Count of pattern elements exceeds maximum value: %d", count);
-            return -1;
+            return 0;
         }
 
         /*
@@ -323,33 +323,33 @@ static int pm_led_parse_pattern(char *pattern, struct osp_led_pattern_el *patter
          */
         if (!os_strtoul(token, &parsed_val, 0)) {
             LOGE("LEDM: Error parsing 'duration': '%s'", token);
-            return -1;
+            return 0;
         }
         pattern_els[count].duration = (uint16_t)parsed_val;
 
         token = strtok(NULL, ",; ");
         if (!os_strtoul(token, &parsed_val, 0)) {
             LOGE("LEDM: Error parsing 'color.r': '%s'", token);
-            return -1;
+            return 0;
         }
         pattern_els[count].color.r = (uint8_t)parsed_val;
         token = strtok(NULL, ",; ");
         if (!os_strtoul(token, &parsed_val, 0)) {
             LOGE("LEDM: Error parsing 'color.g': '%s'", token);
-            return -1;
+            return 0;
         }
         pattern_els[count].color.g = (uint8_t)parsed_val;
         token = strtok(NULL, ",; ");
         if (!os_strtoul(token, &parsed_val, 0)) {
             LOGE("LEDM: Error parsing 'color.b': '%s'", token);
-            return -1;
+            return 0;
         }
         pattern_els[count].color.b = (uint8_t)parsed_val;
 
         token = strtok(NULL, ",; ");
         if (!os_strtoul(token, &parsed_val, 0)) {
             LOGE("LEDM: Error parsing 'fade': '%s'", token);
-            return -1;
+            return 0;
         }
         pattern_els[count].fade = (uint16_t)parsed_val;
 
@@ -357,7 +357,7 @@ static int pm_led_parse_pattern(char *pattern, struct osp_led_pattern_el *patter
         if (pattern_els[count].fade > pattern_els[count].duration) {
             LOGE("LEDM: Fade [%ums] is longer than entire duration [%ums]",
                 pattern_els[count].fade, pattern_els[count].duration);
-            return -1;
+            return 0;
         }
 
         /* If element was parsed correctly increment count by 1 */
@@ -369,7 +369,7 @@ static int pm_led_parse_pattern(char *pattern, struct osp_led_pattern_el *patter
     }
 
     LOGE("LEDM: Incorrect pattern format: '%s'", pattern);
-    return -1;
+    return 0;
 }
 
 static void pm_led_clear_related_states(enum osp_led_state state, uint8_t position)
@@ -432,7 +432,7 @@ static int pm_led_update_led_config(
         && mon->mon_type != OVSDB_UPDATE_DEL)
     {
         pattern_els_count = pm_led_parse_pattern(pattern, pattern_els);
-        if (pattern_els_count < 0) {
+        if (pattern_els_count == 0) {
             LOGI("LEDM: Could not parse custom LED pattern: %s", pattern);
             ovsdb_table_delete_where(&table_LED_Config, ovsdb_where_uuid("_uuid", mon->mon_uuid));
         }

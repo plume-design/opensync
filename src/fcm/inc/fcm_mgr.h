@@ -60,6 +60,7 @@ typedef struct fcm_mgr_
     ds_tree_t collect_tree;      // Holds fcm_collector_t
     ds_tree_t report_conf_tree;  // Holds fcm_report_conf_t
     ev_timer timer;              // manager's event timer
+    ev_timer aggr_purge_timer;
     time_t periodic_ts;          // periodic timestamp
     char pid[16];                // manager's pid
     int64_t neigh_cache_ttl;     // neighbour table cache ttl
@@ -67,7 +68,11 @@ typedef struct fcm_mgr_
     struct gk_curl_easy_info ecurl; // gatekeeper curl info
     struct gk_server_info gk_conf; // gatekeeper server configuration
     uint64_t max_mem;            // max amount of memory allowed in kB
+    unsigned int aggr_purge_interval; // it is the max report interval of all plugins in seconds
+    time_t purge_periodic_ts;
     bool (*cb_ovsdb_table_upsert_where)(ovsdb_table_t *, json_t *, void *, bool );
+    struct net_md_aggregator *dummy_aggr;
+    int node_count;
 } fcm_mgr_t;
 
 bool fcm_init_mgr(struct ev_loop *loop);

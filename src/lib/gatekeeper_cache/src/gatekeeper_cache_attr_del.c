@@ -30,6 +30,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "memutil.h"
 #include "sockaddr_storage.h"
 
+
+
 /**
  * @brief frees memory used by attribute when it is deleted
  * @params: tree pointer to attribute tree
@@ -40,15 +42,20 @@ gkc_free_attr_entry(struct attr_cache *attr_entry, enum gk_cache_request_type at
 {
     union attribute_type *attr;
 
+    if (!IS_NULL_PTR(attr_entry->gk_policy))  FREE(attr_entry->gk_policy);
+    if (!IS_NULL_PTR(attr_entry->network_id)) FREE(attr_entry->network_id);
+
     attr = &attr_entry->attr;
     switch (attr_type)
     {
     /* the 3 entries are now folded into the 'internal' type */
     case GK_CACHE_INTERNAL_TYPE_HOSTNAME:
     case GK_CACHE_REQ_TYPE_FQDN:
-        if (attr_entry->fqdn_redirect != NULL)
+        if (!IS_NULL_PTR(attr_entry->fqdn_redirect))
+        {
             FREE(attr_entry->fqdn_redirect->redirect_cname);
-        FREE(attr_entry->fqdn_redirect);
+            FREE(attr_entry->fqdn_redirect);
+        }
 
         /* fallthru */
     case GK_CACHE_REQ_TYPE_HOST:
@@ -78,8 +85,6 @@ gkc_free_attr_entry(struct attr_cache *attr_entry, enum gk_cache_request_type at
     default:
         break;
     }
-    FREE(attr_entry->gk_policy);
-    FREE(attr_entry->network_id);
 }
 
 /**
@@ -91,9 +96,6 @@ static void
 gk_clean_attribute_tree(ds_tree_t *tree, enum gk_cache_request_type attr_type)
 {
     struct attr_cache *attr_entry, *remove;
-    struct gk_cache_mgr *mgr;
-
-    mgr = gk_cache_get_mgr();
 
     attr_entry = ds_tree_head(tree);
     while (attr_entry != NULL)
@@ -101,11 +103,7 @@ gk_clean_attribute_tree(ds_tree_t *tree, enum gk_cache_request_type attr_type)
         remove = attr_entry;
         attr_entry = ds_tree_next(tree, attr_entry);
         gkc_free_attr_entry(remove, attr_type);
-        ds_tree_remove(tree, remove);
-        FREE(remove);
-
-        /* Update cache counter accordingly */
-        mgr->total_entry_count--;
+        gkc_remove_entry(tree, remove);
     }
 }
 
@@ -168,6 +166,7 @@ gk_clean_per_device_entry(struct per_device_cache *pd_cache)
     gk_clean_flow_tree(&pd_cache->inbound_tree, GK_CACHE_REQ_TYPE_INBOUND);
     gk_clean_flow_tree(&pd_cache->outbound_tree, GK_CACHE_REQ_TYPE_OUTBOUND);
     FREE(pd_cache->device_mac);
+    FREE(pd_cache->category_cache);
 
     pdevice_count -= gk_get_cache_count();
 
@@ -201,6 +200,7 @@ gk_free_cache_tree(ds_tree_t *tree)
 void
 gk_cache_cleanup(void)
 {
+    struct attr_cache *attr_entry;
     struct gk_cache_mgr *mgr;
     ds_tree_t *tree;
 
@@ -209,7 +209,17 @@ gk_cache_cleanup(void)
 
     tree = &mgr->per_device_tree;
     gk_free_cache_tree(tree);
+    tree = &mgr->location_wide_cache;
+    ds_tree_foreach(tree, attr_entry)
+    {
+        gkc_free_attr_entry(attr_entry, attr_entry->type);
+        ds_tree_remove(tree, attr_entry);
+    }
+
     mgr->total_entry_count = 0;
+    mgr->lru_available = mgr->lru_size;
+    mgr->lru_free = ds_dlist_head(&mgr->lru_list);
+    mgr->lru_recycled = 0;
 }
 
 /**
@@ -347,9 +357,8 @@ gkc_cleanup_ttl_attribute_tree(struct gkc_del_info_s *gk_del_info)
         gk_del_info->attr_del_count++;
 
         /* decrement the cache entries counter */
+        gkc_remove_entry(gk_del_info->tree, remove);
         mgr->total_entry_count--;
-        ds_tree_remove(gk_del_info->tree, remove);
-        FREE(remove);
     }
 }
 
@@ -426,59 +435,6 @@ gk_cache_check_ttl_device_tree(ds_tree_t *tree)
     LOGT("%s(): cache entries after flushing expired TTL entries: %lu", __func__, gk_get_cache_count());
 }
 
-static int
-gkc_cmp_attr_name(const char *a, const char *b)
-{
-    if (IS_NULL_PTR(a) || IS_NULL_PTR(b)) return 1;
-    return strcmp(a, b);
-}
-
-
-static bool
-gkc_is_attr_present(struct attr_cache *attr_entry, struct gk_attr_cache_interface *req)
-{
-    union attribute_type *attr;
-    bool ret = false;
-    int rc;
-
-    attr = &attr_entry->attr;
-
-    switch (req->attribute_type)
-    {
-        case GK_CACHE_INTERNAL_TYPE_HOSTNAME:
-            LOGD("%s(): Checking attr using GK_CACHE_INTERNAL_TYPE_HOSTNAME", __func__);
-            /* fallthru */
-        case GK_CACHE_REQ_TYPE_FQDN:
-        case GK_CACHE_REQ_TYPE_HOST:
-        case GK_CACHE_REQ_TYPE_SNI:
-            rc = gkc_cmp_attr_name(attr->host_name->name, req->attr_name);
-            ret = (rc == 0);
-            break;
-
-        case GK_CACHE_REQ_TYPE_URL:
-            rc = gkc_cmp_attr_name(attr->url->name, req->attr_name);
-            ret = (rc == 0);
-            break;
-
-        case GK_CACHE_REQ_TYPE_IPV4:
-            ret = sockaddr_storage_equals(&attr->ipv4->ip_addr, req->ip_addr);
-            break;
-
-        case GK_CACHE_REQ_TYPE_IPV6:
-            ret = sockaddr_storage_equals(&attr->ipv6->ip_addr, req->ip_addr);
-            break;
-
-        case GK_CACHE_REQ_TYPE_APP:
-            rc = gkc_cmp_attr_name(attr->app_name->name, req->attr_name);
-            ret = (rc == 0);
-            break;
-
-        default:
-            ;
-    }
-
-    return ret;
-}
 
 /**
  * @brief deletes the attribute from the attr
@@ -492,30 +448,24 @@ gkc_is_attr_present(struct attr_cache *attr_entry, struct gk_attr_cache_interfac
 static bool
 gkc_del_attr(ds_tree_t *attr_tree, struct gk_attr_cache_interface *req)
 {
-    struct attr_cache *attr_entry, *remove;
-    int rc;
+    struct attr_cache *attr_entry;
 
-    attr_entry = ds_tree_head(attr_tree);
-    while (attr_entry != NULL)
+    attr_entry = ds_tree_find(attr_tree, &req->cache_key);
+    if (attr_entry == NULL)
     {
-        remove = attr_entry;
-        attr_entry = ds_tree_next(attr_tree, attr_entry);
-
-        rc = gkc_is_attr_present(remove, req);
-        if (rc == false) continue;
-
-        LOGT("%s(): deleting attribute %s for device " PRI_os_macaddr_lower_t " ",
-             __func__,
-             gk_get_attribute_value(remove, req->attribute_type),
-             FMT_os_macaddr_pt(req->device_mac));
-
-        gkc_free_attr_entry(remove, req->attribute_type);
-        ds_tree_remove(attr_tree, remove);
-        FREE(remove);
-        return true;
+        LOGD("%s(): attribute not found in the tree", __func__);
+        return false;
     }
 
-    return false;
+    LOGT("%s: deleting attribute %s for device " PRI_os_macaddr_lower_t " ",
+         __func__,
+         gk_get_attribute_value(attr_entry, req->attribute_type),
+         FMT_os_macaddr_pt(req->device_mac));
+
+    gkc_free_attr_entry(attr_entry, req->attribute_type);
+    gkc_remove_entry(attr_tree, attr_entry);
+
+    return true;
 }
 
 /**

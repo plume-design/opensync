@@ -126,6 +126,8 @@ struct osw_confsync_arg {
     struct osw_conf_phy *cphy;
     struct osw_conf_vif *cvif;
     struct ds_tree *phy_tree;
+    bool channel_changed;
+    bool skip_sta;
     bool cac_planned;
     bool cac_ongoing;
     bool mbss_ongoing;
@@ -379,6 +381,48 @@ osw_confsync_debug_passpoint_list_int(const char *phy, const char *vif,
 }
 
 static void
+osw_confsync_build_vif_ap_neigh_ft_debug(const char *phy,
+                                         const char *vif,
+                                         const struct osw_neigh_ft_list *from,
+                                         const struct ds_tree *to)
+{
+    size_t i;
+
+    for (i = 0; i < from->count; i++) {
+        const struct osw_neigh_ft *fi = &from->list[i];
+        const struct osw_conf_neigh_ft *ti = ds_tree_find((struct ds_tree *)to, &fi->bssid);
+        const bool removed = (ti == NULL);
+        if (removed) {
+            LOGI("osw: confsync: %s/%s: neigh_ft: "OSW_NEIGH_FT_FMT": removed",
+                 phy,
+                 vif,
+                 OSW_NEIGH_FT_ARG(fi));
+        }
+    }
+
+    struct osw_conf_neigh_ft *ti;
+    ds_tree_foreach((struct ds_tree *)to, ti) {
+        const struct osw_neigh_ft *fi = osw_neigh_ft_list_lookup(from, &ti->neigh_ft.bssid);
+        const bool added = (fi == NULL);
+        const bool changed = (fi != NULL)
+                          && (osw_neigh_ft_cmp(fi, &ti->neigh_ft) != 0);
+        if (added) {
+            LOGI("osw: confsync: %s/%s: neigh_ft: "OSW_NEIGH_FT_FMT": added",
+                 phy,
+                 vif,
+                 OSW_NEIGH_FT_ARG(&ti->neigh_ft));
+        }
+        if (changed) {
+            LOGI("osw: confsync: %s/%s: neigh_ft: "OSW_NEIGH_FT_FMT" -> "OSW_NEIGH_FT_FMT,
+                 phy,
+                 vif,
+                 OSW_NEIGH_FT_ARG(fi),
+                 OSW_NEIGH_FT_ARG(&ti->neigh_ft));
+        }
+    }
+}
+
+static void
 osw_confsync_build_vif_ap_debug(const char *phy,
                                 const char *vif,
                                 const struct osw_drv_vif_config_ap *cmd,
@@ -420,6 +464,42 @@ osw_confsync_build_vif_ap_debug(const char *phy,
     if (cmd->ssid_hidden_changed) {
         LOGI("osw: confsync: %s/%s: ssid_hidden: %d -> %d",
              phy, vif, state->ssid_hidden, conf->ssid_hidden);
+        *notified = true;
+    }
+
+    if (cmd->mbo_changed) {
+        LOGI("osw: confsync: %s/%s: mbo: %d -> %d",
+             phy, vif, state->mbo, conf->mbo);
+        *notified = true;
+    }
+
+    if (cmd->oce_changed) {
+        LOGI("osw: confsync: %s/%s: oce: %d -> %d",
+             phy, vif, state->oce, conf->oce);
+        *notified = true;
+    }
+
+    if (cmd->oce_min_rssi_dbm_changed) {
+        LOGI("osw: confsync: %s/%s: oce_min_rssi_dbm: %d -> %d",
+             phy, vif, state->oce_min_rssi_dbm, conf->oce_min_rssi_dbm);
+        *notified = true;
+    }
+
+    if (cmd->oce_min_rssi_enable_changed) {
+        LOGI("osw: confsync: %s/%s: oce_min_rssi_enable: %d -> %d",
+             phy, vif, state->oce_min_rssi_enable, conf->oce_min_rssi_enable);
+        *notified = true;
+    }
+
+    if (cmd->oce_retry_delay_sec_changed) {
+        LOGI("osw: confsync: %s/%s: oce_retry_delay_sec: %d -> %d",
+             phy, vif, state->oce_retry_delay_sec, conf->oce_retry_delay_sec);
+        *notified = true;
+    }
+
+    if (cmd->max_sta_changed) {
+        LOGI("osw: confsync: %s/%s: max_sta: %d -> %d",
+             phy, vif, state->max_sta, conf->max_sta);
         *notified = true;
     }
 
@@ -530,6 +610,14 @@ osw_confsync_build_vif_ap_debug(const char *phy,
         if (strlen(add) > 0) LOGI("osw: confsync: %s/%s: neigh: add: %s", phy, vif, add);
         if (strlen(mod) > 0) LOGI("osw: confsync: %s/%s: neigh: mod: %s", phy, vif, mod);
         if (strlen(del) > 0) LOGI("osw: confsync: %s/%s: neigh: del: %s", phy, vif, del);
+        *notified = true;
+    }
+
+    if (cmd->neigh_ft_list_changed) {
+        osw_confsync_build_vif_ap_neigh_ft_debug(phy,
+                                                 vif,
+                                                 &state->neigh_ft_list,
+                                                 &conf->neigh_ft_tree);
         *notified = true;
     }
 
@@ -673,7 +761,7 @@ osw_confsync_build_vif_ap_debug(const char *phy,
     }
 
     if (cmd->ft_over_ds_changed) {
-        LOGI("osw: confsync: %s/%s: ssid_hidden: %d -> %d",
+        LOGI("osw: confsync: %s/%s: ft_over_ds: %d -> %d",
              phy, vif, state->ft_over_ds, conf->ft_over_ds);
         *notified = true;
     }
@@ -699,6 +787,12 @@ osw_confsync_build_vif_ap_debug(const char *phy,
     if (cmd->ft_pmk_r1_max_key_lifetime_sec_changed) {
         LOGI("osw: confsync: %s/%s: ft_pmk_r1_max_key_lifetime_sec: %d -> %d",
              phy, vif, state->ft_pmk_r1_max_key_lifetime_sec, conf->ft_pmk_r1_max_key_lifetime_sec);
+        *notified = true;
+    }
+
+    if (cmd->ft_mobility_domain_changed) {
+        LOGI("osw: confsync: %s/%s: ft_mobility_domain: %d -> %d",
+             phy, vif, state->ft_mobility_domain, conf->ft_mobility_domain);
         *notified = true;
     }
 }
@@ -1131,6 +1225,13 @@ osw_confsync_vif_ap_mark_changed(struct osw_drv_vif_config *dvif,
     dvif->u.ap.ft_pmk_r1_max_key_lifetime_sec_changed = all || (svif->u.ap.ft_pmk_r1_max_key_lifetime_sec != cvif->u.ap.ft_pmk_r1_max_key_lifetime_sec);
     dvif->u.ap.ft_pmk_r1_push_changed = all || (svif->u.ap.ft_pmk_r1_push != cvif->u.ap.ft_pmk_r1_push);
     dvif->u.ap.ft_psk_generate_local_changed = all || (svif->u.ap.ft_psk_generate_local != cvif->u.ap.ft_psk_generate_local);
+    dvif->u.ap.ft_mobility_domain_changed = all || (svif->u.ap.ft_mobility_domain != cvif->u.ap.ft_mobility_domain);
+    dvif->u.ap.mbo_changed = all || (svif->u.ap.mbo != cvif->u.ap.mbo);
+    dvif->u.ap.oce_changed = all || (svif->u.ap.oce != cvif->u.ap.oce);
+    dvif->u.ap.oce_min_rssi_dbm_changed = all || (cvif->u.ap.oce && (svif->u.ap.oce_min_rssi_dbm != cvif->u.ap.oce_min_rssi_dbm));
+    dvif->u.ap.oce_min_rssi_enable_changed = all || (cvif->u.ap.oce && (svif->u.ap.oce_min_rssi_enable != cvif->u.ap.oce_min_rssi_enable));
+    dvif->u.ap.oce_retry_delay_sec_changed = all || (cvif->u.ap.oce && (svif->u.ap.oce_retry_delay_sec != cvif->u.ap.oce_retry_delay_sec));
+    dvif->u.ap.max_sta_changed = all || (svif->u.ap.max_sta != cvif->u.ap.max_sta);
 
     dvif->changed |= dvif->u.ap.beacon_interval_tu_changed;
     dvif->changed |= dvif->u.ap.isolated_changed;
@@ -1161,6 +1262,13 @@ osw_confsync_vif_ap_mark_changed(struct osw_drv_vif_config *dvif,
     dvif->changed |= dvif->u.ap.ft_pmk_r1_max_key_lifetime_sec_changed;
     dvif->changed |= dvif->u.ap.ft_pmk_r1_push_changed;
     dvif->changed |= dvif->u.ap.ft_psk_generate_local_changed;
+    dvif->changed |= dvif->u.ap.ft_mobility_domain_changed;
+    dvif->changed |= dvif->u.ap.mbo_changed;
+    dvif->changed |= dvif->u.ap.oce_changed;
+    dvif->changed |= dvif->u.ap.oce_min_rssi_dbm_changed;
+    dvif->changed |= dvif->u.ap.oce_min_rssi_enable_changed;
+    dvif->changed |= dvif->u.ap.oce_retry_delay_sec_changed;
+    dvif->changed |= dvif->u.ap.max_sta_changed;
 
     if (all == false && dvif->enabled && dvif->u.ap.channel.control_freq_mhz != 0 && svif->status == OSW_VIF_ENABLED) {
         const struct osw_channel_state *cs = sphy->channel_states;
@@ -1381,6 +1489,13 @@ osw_confsync_build_drv_conf_vif_ap(struct osw_drv_vif_config *dvif,
     dvif->u.ap.acl_policy = cvif->u.ap.acl_policy;
     dvif->u.ap.ssid = cvif->u.ap.ssid;
     dvif->u.ap.wpa = cvif->u.ap.wpa;
+    dvif->u.ap.mbo = cvif->u.ap.mbo;
+    dvif->u.ap.oce = cvif->u.ap.oce;
+    dvif->u.ap.oce_min_rssi_dbm = cvif->u.ap.oce_min_rssi_dbm;
+    dvif->u.ap.oce_min_rssi_enable = cvif->u.ap.oce_min_rssi_enable;
+    dvif->u.ap.oce_retry_delay_sec = cvif->u.ap.oce_retry_delay_sec;
+    dvif->u.ap.max_sta = cvif->u.ap.max_sta;
+
     dvif->u.ap.wps_pbc = cvif->u.ap.wps_pbc;
     dvif->u.ap.multi_ap = cvif->u.ap.multi_ap;
     dvif->u.ap.mbss_mode = cvif->u.ap.mbss_mode;
@@ -1391,6 +1506,7 @@ osw_confsync_build_drv_conf_vif_ap(struct osw_drv_vif_config *dvif,
     dvif->u.ap.ft_pmk_r1_max_key_lifetime_sec = cvif->u.ap.ft_pmk_r1_max_key_lifetime_sec;
     dvif->u.ap.ft_pmk_r1_push = cvif->u.ap.ft_pmk_r1_push;
     dvif->u.ap.ft_psk_generate_local = cvif->u.ap.ft_psk_generate_local;
+    dvif->u.ap.ft_mobility_domain = cvif->u.ap.ft_mobility_domain;
 
     if (dvif->enabled && dvif->u.ap.channel.control_freq_mhz != 0) {
         ASSERT(dvif->u.ap.channel.center_freq0_mhz != 0, "center freq required");
@@ -1568,6 +1684,7 @@ osw_confsync_build_drv_conf_vif_ap(struct osw_drv_vif_config *dvif,
 static enum osw_drv_vif_config_sta_operation
 osw_confsync_build_drv_conf_vif_sta_op(struct osw_drv_vif_config *dvif,
                                        const struct osw_drv_vif_state *svif,
+                                       bool channel_changed,
                                        bool network_changed)
 {
     const struct osw_drv_vif_state_sta *ssta = &svif->u.sta;
@@ -1578,15 +1695,19 @@ osw_confsync_build_drv_conf_vif_sta_op(struct osw_drv_vif_config *dvif,
 
     switch (desired) {
         case OSW_DRV_VIF_STATE_STA_LINK_UNKNOWN:
-            break;
+            WARN_ON(1);
+            return OSW_DRV_VIF_CONFIG_STA_NOP;
         case OSW_DRV_VIF_STATE_STA_LINK_CONNECTED:
             switch (ssta->link.status) {
                 case OSW_DRV_VIF_STATE_STA_LINK_UNKNOWN:
-                    break;
+                    return OSW_DRV_VIF_CONFIG_STA_NOP;
                 case OSW_DRV_VIF_STATE_STA_LINK_CONNECTED:
                     /* subsequent check will verify if the network matches */
                     break;
                 case OSW_DRV_VIF_STATE_STA_LINK_CONNECTING:
+                    if (channel_changed) {
+                        return OSW_DRV_VIF_CONFIG_STA_DISCONNECT;
+                    }
                     if (network_changed) {
                         return OSW_DRV_VIF_CONFIG_STA_CONNECT;
                     }
@@ -1594,15 +1715,27 @@ osw_confsync_build_drv_conf_vif_sta_op(struct osw_drv_vif_config *dvif,
                         return OSW_DRV_VIF_CONFIG_STA_NOP;
                     }
                 case OSW_DRV_VIF_STATE_STA_LINK_DISCONNECTED:
-                    return OSW_DRV_VIF_CONFIG_STA_CONNECT;
+                    if (channel_changed) {
+                        LOGI("osw: confsync: %s: postponing connect (from disconnected) due to channel change",
+                             dvif->vif_name);
+                        /* This is intentionally doing DISCONNECT
+                         * instead of NOP in order to allow the tandem
+                         * MLO re-connect.
+                         */
+                        return OSW_DRV_VIF_CONFIG_STA_DISCONNECT;
+                    }
+                    else {
+                        return OSW_DRV_VIF_CONFIG_STA_CONNECT;
+                    }
             }
             break;
         case OSW_DRV_VIF_STATE_STA_LINK_CONNECTING:
-            break;
+            WARN_ON(1);
+            return OSW_DRV_VIF_CONFIG_STA_NOP;
         case OSW_DRV_VIF_STATE_STA_LINK_DISCONNECTED:
             switch (ssta->link.status) {
                 case OSW_DRV_VIF_STATE_STA_LINK_UNKNOWN:
-                    break;
+                    return OSW_DRV_VIF_CONFIG_STA_NOP;
                 case OSW_DRV_VIF_STATE_STA_LINK_CONNECTED:
                     return OSW_DRV_VIF_CONFIG_STA_DISCONNECT;
                 case OSW_DRV_VIF_STATE_STA_LINK_CONNECTING:
@@ -1610,7 +1743,7 @@ osw_confsync_build_drv_conf_vif_sta_op(struct osw_drv_vif_config *dvif,
                 case OSW_DRV_VIF_STATE_STA_LINK_DISCONNECTED:
                     return OSW_DRV_VIF_CONFIG_STA_NOP;
             }
-            break;
+            return OSW_DRV_VIF_CONFIG_STA_NOP;
     }
 
     struct osw_drv_vif_sta_network *dnet;
@@ -1626,15 +1759,19 @@ osw_confsync_build_drv_conf_vif_sta_op(struct osw_drv_vif_config *dvif,
         const bool bssid_match = memcmp(&dnet->bssid, &ssta->link.bssid, bssid_len) == 0;
         const bool ssid_match = strncmp(dnet->ssid.buf, ssta->link.ssid.buf, ssid_max) == 0;
         const bool ccmp = dnet->wpa.pairwise_ccmp && ssta->link.wpa.pairwise_ccmp;
+        const bool ccmp256 = dnet->wpa.pairwise_ccmp256 && ssta->link.wpa.pairwise_ccmp256;
+        const bool gcmp = dnet->wpa.pairwise_gcmp && ssta->link.wpa.pairwise_gcmp;
+        const bool gcmp256 = dnet->wpa.pairwise_gcmp256 && ssta->link.wpa.pairwise_gcmp256;
         const bool tkip = dnet->wpa.pairwise_tkip && ssta->link.wpa.pairwise_tkip;
         const bool wpa = dnet->wpa.wpa && ssta->link.wpa.wpa;
         const bool rsn = dnet->wpa.rsn && ssta->link.wpa.rsn;
         const bool psk = dnet->wpa.akm_psk && ssta->link.wpa.akm_psk;
         const bool sae = dnet->wpa.akm_sae && ssta->link.wpa.akm_sae;
+        const bool sae_ext = dnet->wpa.akm_sae_ext && ssta->link.wpa.akm_sae_ext;
         /* FIXME: FT? */
-        const bool crypto_match = (ccmp || tkip)
+        const bool crypto_match = (ccmp || tkip || ccmp256 || gcmp || gcmp256)
                                && (wpa || rsn)
-                               && (psk || sae);
+                               && (psk || sae || sae_ext);
         /* PMF needs reconnection on these events:
          * ┌───────────────┬───────────┬─────────────┐
          * │ Network block │ STA state │    Action   │
@@ -1677,7 +1814,54 @@ osw_confsync_build_drv_conf_vif_sta_op(struct osw_drv_vif_config *dvif,
          */
     }
 
-    return OSW_DRV_VIF_CONFIG_STA_RECONNECT;
+    /* This originally was RECONNECT but it must not be.
+     *
+     * If there's a planned channel + parent then it is
+     * possible that the channel change is temporarily
+     * stunted by ow_sta_channel_override.
+     *
+     * ow_sta_channel_override stunts any cloud-driven
+     * channel changes as long as there's an active STA
+     * link.
+     *
+     * As such on first pass the derivec configuration will
+     * not have the channel changed. However for the parent
+     * change to succeed it is necessary to first let go of
+     * the current channel before it can be changed.  For
+     * that to happen the STA link needs to be dropped.
+     *
+     * RECONNECT would do that, but it would immediatelly
+     * start connecting. Normally this would result in no
+     * link for some time, and channel would eventually be
+     * changed before the target parent can actually be
+     * found.
+     *
+     * However for MLO it's different. If a given link isn't
+     * becoming available/ getting discovered, the system
+     * will try to best-effort associate with whatever
+     * subset of links is ready.
+     *
+     * Doing DISCONNECT gives a chance the channel to be
+     * changed before an actual CONNECT is committed to/
+     * started. This doesn't _guarantee_ success, but it
+     * makes it far more likely to result in full
+     * association (all configured MLO links) instead of a
+     * subset.
+     *
+     * The other crucial part of the solution is the
+     * "channel_changed" boolean that stunts CONNECT until
+     * after channel is finished changing.
+     *
+     * This works because when STA link is dropped
+     * ow_sta_channel_override will invalidate currently
+     * derived configuration and confsync will re-evaluate
+     * and re-build the osw_drv_conf. When its doing that
+     * it'll see the channel being changed. Once channel
+     * change finishes, the channel will change via
+     * osw_state, invalidate osw_conf again, and re-build
+     * the config _again_, this time with CONNECT.
+     */
+    return OSW_DRV_VIF_CONFIG_STA_DISCONNECT;
 }
 
 static bool
@@ -1769,6 +1953,7 @@ static void
 osw_confsync_build_drv_conf_vif_sta(struct osw_drv_vif_config *dvif,
                                     const struct osw_drv_vif_state *svif,
                                     struct osw_conf_vif *cvif,
+                                    const bool channel_changed,
                                     const bool allow_changed)
 {
     const struct osw_drv_vif_state_sta *ssta = &svif->u.sta;
@@ -1778,20 +1963,7 @@ osw_confsync_build_drv_conf_vif_sta(struct osw_drv_vif_config *dvif,
     dsta->network = osw_confsync_build_drv_conf_vif_sta_net_list(csta);
     dsta->network_changed = osw_confsync_vif_sta_net_list_changed(ssta, dsta);
     dsta->network_changed &= allow_changed;
-    dsta->operation = osw_confsync_build_drv_conf_vif_sta_op(dvif, svif, dsta->network_changed);
-
-    if (dsta->operation == OSW_DRV_VIF_CONFIG_STA_NOP) {
-        /* Don't bother reconfiguring interface if it's
-         * connected to something that is intended to be a
-         * target. This relaxes driver implementations so
-         * they don't really need to report network blocks
-         * back in state for onboarding purposes in most
-         * cases.
-         */
-        if (osw_etc_get("OSW_CONFSYNC_STRICT_NETWORK_CHANGES") == NULL) {
-            dsta->network_changed = false;
-        }
-    }
+    dsta->operation = osw_confsync_build_drv_conf_vif_sta_op(dvif, svif, channel_changed, dsta->network_changed);
 
     dvif->changed |= dsta->network_changed;
     dvif->changed |= (dsta->operation != OSW_DRV_VIF_CONFIG_STA_NOP);
@@ -1873,6 +2045,11 @@ osw_confsync_build_drv_conf_vif(struct osw_confsync_arg *arg,
     const struct osw_drv_phy_state *sphy = arg->sphy;
     const struct osw_drv_vif_state *svif = vif->drv_state;
     struct osw_drv_phy_config *dphy = arg->dphy;
+    const bool is_sta = (svif->vif_type == OSW_VIF_STA)
+                     || (cvif->vif_type == OSW_VIF_STA);
+
+    if (arg->skip_sta == is_sta)
+        return;
 
     struct osw_drv_vif_config *dvif;
     dphy->vif_list.count++;
@@ -1906,7 +2083,7 @@ osw_confsync_build_drv_conf_vif(struct osw_confsync_arg *arg,
         const bool enabled_changed = osw_confsync_vif_enabled_changed(svif->status, dvif->enabled);
         dvif->changed |= (dvif->enabled_changed = enabled_changed);
         dvif->changed |= (dvif->vif_type_changed = (cvif->vif_type != svif->vif_type));
-        dphy->changed |= (dvif->tx_power_dbm_changed = cvif->tx_power_dbm != svif->tx_power_dbm);
+        dvif->changed |= (dvif->tx_power_dbm_changed = cvif->tx_power_dbm != svif->tx_power_dbm);
     }
 
     if (arg->cac_planned) {
@@ -1932,11 +2109,14 @@ osw_confsync_build_drv_conf_vif(struct osw_confsync_arg *arg,
             if (skip == false && dvif->u.ap.mbss_mode_changed) {
                 osw_confsync_mbss_start(arg->confsync, cvif->phy->phy_name);
             }
+            if (skip == false && dvif->u.ap.channel_changed) {
+                arg->channel_changed = true;
+            }
             break;
         case OSW_VIF_AP_VLAN:
             break;
         case OSW_VIF_STA:
-            osw_confsync_build_drv_conf_vif_sta(dvif, svif, cvif, !skip);
+            osw_confsync_build_drv_conf_vif_sta(dvif, svif, cvif, arg->channel_changed, !skip);
             break;
     }
 
@@ -1945,7 +2125,7 @@ osw_confsync_build_drv_conf_vif(struct osw_confsync_arg *arg,
              cvif->phy->phy_name,
              cvif->vif_name,
              osw_vif_status_into_cstr(svif->status),
-             cvif->enabled ? "enabled" : "disabled");
+             dvif->enabled ? "enabled" : "disabled");
     }
 
     if (skip) {
@@ -2057,13 +2237,136 @@ osw_confsync_build_drv_conf_phy_cb(const struct osw_state_phy_info *phy,
     arg->cphy = ds_tree_find(phy_tree, phy->phy_name);
     arg->sphy = phy->drv_state;
     arg->cac_planned = false;
+    arg->channel_changed = false;
     arg->mbss_ongoing = osw_confsync_mbss_is_ongoing(arg->confsync, phy->phy_name);
     arg->cac_ongoing = (osw_confsync_cac_is_ongoing(phy) == true)
                     && (osw_confsync_cac_is_timed_out(arg->confsync, phy) == false);
     assert(arg->cphy != NULL);
 
     osw_confsync_build_drv_conf_phy(arg, phy);
+
+    /* Non-STA interfaces are processed first in order to
+     * make sure that if there's a channel switch needed,
+     * then it can stunt the CONNECT command until after
+     * channel switch is completed.
+     */
+    arg->skip_sta = true;
     osw_state_vif_get_list(osw_confsync_build_drv_conf_vif_cb, phy->phy_name, arg);
+
+    arg->skip_sta = false;
+    osw_state_vif_get_list(osw_confsync_build_drv_conf_vif_cb, phy->phy_name, arg);
+}
+
+static void
+osw_confsync_build_mld_sta_tandem_op(struct osw_confsync_arg *arg)
+{
+    size_t n_connect = 0;
+    size_t n_disconnect = 0;
+    size_t n_reconnect = 0;
+    size_t i;
+    for (i = 0; i < arg->drv_conf->n_phy_list; i++) {
+        struct osw_drv_phy_config *phy = &arg->drv_conf->phy_list[i];
+        size_t j;
+
+        for (j = 0; j < phy->vif_list.count; j++) {
+            struct osw_drv_vif_config *vif = &phy->vif_list.list[j];
+            if (vif->vif_type != OSW_VIF_STA) continue;
+            if (vif->enabled == false) continue;
+
+            const char *vif_name = vif->vif_name;
+            const struct osw_state_vif_info *vif_info = osw_state_vif_lookup_by_vif_name(vif_name);
+            const struct osw_drv_vif_state *svif = vif_info ? vif_info->drv_state : NULL;
+            const struct osw_drv_mld_state *mld_state = osw_drv_vif_state_get_mld_state(svif);
+            const struct osw_hwaddr *mld_addr = mld_state ? &mld_state->addr : osw_hwaddr_zero();
+            const bool not_mld = osw_hwaddr_is_zero(mld_addr);
+            if (not_mld) continue;
+
+            switch (vif->u.sta.operation) {
+                case OSW_DRV_VIF_CONFIG_STA_NOP: break;
+                case OSW_DRV_VIF_CONFIG_STA_CONNECT: n_connect++; break;
+                case OSW_DRV_VIF_CONFIG_STA_RECONNECT: n_reconnect++; break;
+                case OSW_DRV_VIF_CONFIG_STA_DISCONNECT: n_disconnect++; break;
+            }
+
+            size_t k;
+            for (k = 0; k < arg->drv_conf->n_phy_list; k++) {
+                struct osw_drv_phy_config *other_phy = &arg->drv_conf->phy_list[k];
+                if (other_phy == phy) continue;
+
+                size_t l;
+                for (l = 0; l < other_phy->vif_list.count; l++) {
+                    struct osw_drv_vif_config *other_vif = &other_phy->vif_list.list[l];
+                    if (other_vif == vif) continue;
+                    if (other_vif->vif_type != OSW_VIF_STA) continue;
+                    if (other_vif->enabled == false) continue;
+
+                    const char *other_vif_name = other_vif->vif_name;
+                    const struct osw_state_vif_info *other_vif_info = osw_state_vif_lookup_by_vif_name(other_vif_name);
+                    const struct osw_drv_vif_state *other_svif = other_vif_info ? other_vif_info->drv_state : NULL;
+                    const struct osw_drv_mld_state *other_mld_state = osw_drv_vif_state_get_mld_state(other_svif);
+                    const struct osw_hwaddr *other_mld_addr = other_mld_state ? &other_mld_state->addr : osw_hwaddr_zero();
+                    const bool different_mld = (osw_hwaddr_is_equal(mld_addr, other_mld_addr) == false);
+                    if (different_mld) continue;
+
+                    switch (other_vif->u.sta.operation) {
+                        case OSW_DRV_VIF_CONFIG_STA_NOP: break;
+                        case OSW_DRV_VIF_CONFIG_STA_CONNECT: n_connect++; break;
+                        case OSW_DRV_VIF_CONFIG_STA_RECONNECT: n_reconnect++; break;
+                        case OSW_DRV_VIF_CONFIG_STA_DISCONNECT: n_disconnect++; break;
+                    }
+                }
+            }
+
+            const bool need_disconnect = (n_disconnect);
+            const bool need_connect = !need_disconnect && (n_connect || n_reconnect);
+            const enum osw_drv_vif_config_sta_operation op = need_disconnect ? OSW_DRV_VIF_CONFIG_STA_DISCONNECT :
+                                                             need_connect ? OSW_DRV_VIF_CONFIG_STA_CONNECT :
+                                                             OSW_DRV_VIF_CONFIG_STA_NOP;
+
+            if (vif->u.sta.operation != op) {
+                const char *phy_name = phy->phy_name;
+                LOGI("osw: confsync: "OSW_HWADDR_FMT": %s/%s: op: override: %s -> %s",
+                     OSW_HWADDR_ARG(mld_addr),
+                     phy_name,
+                     vif_name,
+                     osw_confsync_sta_op_to_str(vif->u.sta.operation) ?: "",
+                     osw_confsync_sta_op_to_str(op) ?: "");
+                vif->u.sta.operation = op;
+            }
+
+            for (k = 0; k < arg->drv_conf->n_phy_list; k++) {
+                struct osw_drv_phy_config *other_phy = &arg->drv_conf->phy_list[k];
+                if (other_phy == phy) continue;
+
+                size_t l;
+                for (l = 0; l < other_phy->vif_list.count; l++) {
+                    struct osw_drv_vif_config *other_vif = &other_phy->vif_list.list[l];
+                    if (other_vif == vif) continue;
+                    if (other_vif->vif_type != OSW_VIF_STA) continue;
+                    if (other_vif->enabled == false) continue;
+
+                    const char *other_vif_name = other_vif->vif_name;
+                    const struct osw_state_vif_info *other_vif_info = osw_state_vif_lookup_by_vif_name(other_vif_name);
+                    const struct osw_drv_vif_state *other_svif = other_vif_info ? other_vif_info->drv_state : NULL;
+                    const struct osw_drv_mld_state *other_mld_state = osw_drv_vif_state_get_mld_state(other_svif);
+                    const struct osw_hwaddr *other_mld_addr = other_mld_state ? &other_mld_state->addr : osw_hwaddr_zero();
+                    const bool different_mld = (osw_hwaddr_is_equal(mld_addr, other_mld_addr) == false);
+                    if (different_mld) continue;
+
+                    if (other_vif->u.sta.operation != op) {
+                        const char *other_phy_name = other_phy->phy_name;
+                        LOGI("osw: confsync: "OSW_HWADDR_FMT": %s/%s: op: override: %s -> %s",
+                             OSW_HWADDR_ARG(mld_addr),
+                             other_phy_name,
+                             other_vif_name,
+                             osw_confsync_sta_op_to_str(other_vif->u.sta.operation) ?: "",
+                             osw_confsync_sta_op_to_str(op) ?: "");
+                        other_vif->u.sta.operation = op;
+                    }
+                }
+            }
+        }
+    }
 }
 
 static struct osw_drv_conf *
@@ -2076,6 +2379,7 @@ osw_confsync_build_drv_conf(struct osw_confsync *cs, const bool debug, struct ds
         .debug = debug,
     };
     osw_state_phy_get_list(osw_confsync_build_drv_conf_phy_cb, &arg);
+    osw_confsync_build_mld_sta_tandem_op(&arg);
     return arg.drv_conf;
 }
 
@@ -2111,7 +2415,7 @@ osw_confsync_set_state(struct osw_confsync *cs, enum osw_confsync_state s)
         case OSW_CONFSYNC_REQUESTING:
             osw_confsync_defer_flush_expired(cs);
             ev_timer_stop(EV_DEFAULT_ &cs->retry);
-            ev_timer_start(EV_DEFAULT_ &cs->deadline);
+            ev_timer_again(EV_DEFAULT_ &cs->deadline);
             ev_idle_start(EV_DEFAULT_ &cs->work);
             break;
         case OSW_CONFSYNC_WAITING:
@@ -2119,11 +2423,11 @@ osw_confsync_set_state(struct osw_confsync *cs, enum osw_confsync_state s)
             cs->settled = false;
             ev_idle_stop(EV_DEFAULT_ &cs->work);
             ev_timer_stop(EV_DEFAULT_ &cs->deadline);
-            ev_timer_start(EV_DEFAULT_ &cs->retry);
+            ev_timer_again(EV_DEFAULT_ &cs->retry);
             break;
         case OSW_CONFSYNC_VERIFYING:
             ev_idle_start(EV_DEFAULT_ &cs->work);
-            ev_timer_start(EV_DEFAULT_ &cs->deadline);
+            ev_timer_again(EV_DEFAULT_ &cs->deadline);
             break;
     }
     osw_confsync_notify_changed(cs);

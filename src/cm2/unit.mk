@@ -74,18 +74,13 @@ UNIT_SRC    += src/cm2_stability.c
 UNIT_SRC    += src/cm2_uplink_event.c
 endif
 
-ifeq ($(CONFIG_CM2_BT_BEACON_HANDLER),y)
-UNIT_SRC    += src/cm2_blem.c
-else ifeq ($(CONFIG_CM2_BT_CONNECTABLE),y)
-UNIT_SRC    += src/cm2_blem.c
-endif
-
 UNIT_EXPORT_CFLAGS := $(UNIT_CFLAGS)
 UNIT_EXPORT_LDFLAGS := $(UNIT_LDFLAGS)
 
 UNIT_DEPS := src/lib/ovsdb
 UNIT_DEPS += src/lib/pjs
 UNIT_DEPS += src/lib/schema
+UNIT_DEPS += src/lib/kconfig
 UNIT_DEPS += src/lib/osn
 ifeq ($(CONFIG_LIBEVX_USE_CARES),y)
 UNIT_DEPS += src/lib/evx

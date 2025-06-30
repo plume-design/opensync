@@ -139,8 +139,6 @@ void fcm_get_memory(struct mem_usage *mem);
 int fcm_ovsdb_init(void);
 void fcm_event_init(void);
 
-void fcm_conntrack_event_cb(void *data);
-
 /**
  * @brief Set the initial memory usage threshold.
  *
@@ -154,5 +152,11 @@ fcm_set_max_mem(void);
  */
 bool
 fcm_tag_update_init(void);
+
+void
+fcm_init_purge_timer(void);
+
+void
+fcm_stop_purge_timer(void);
 
 #endif /* FCM_PRIV_H_INCLUDED */

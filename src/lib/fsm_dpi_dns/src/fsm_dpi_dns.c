@@ -822,7 +822,7 @@ fsm_dpi_dns_process_dns_record(struct fsm_session *session,
     rc = is_valid_qtype(qtype);
     if (!rc)
     {
-        LOGI("%s: not processing query type: %d ", __func__,
+        LOGT("%s: not processing query type: %d ", __func__,
              rec->resp[0].type);
         return FSM_DPI_IGNORED;
     }

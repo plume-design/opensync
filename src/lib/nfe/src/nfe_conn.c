@@ -50,7 +50,6 @@ nfe_conn_alloc(struct nfe_packet *packet, bool invert)
     conn = nfe_ext_conn_alloc(sizeof(*conn), conn_tuple);
     if (conn) {
         __builtin_memset(conn, 0, sizeof(*conn));
-        conn->lockref = 1;
         nfe_list_init(&conn->list);
         nfe_list_init(&conn->lru);
         nfe_tuple_copy(&conn->tuple, conn_tuple, false);
@@ -71,7 +70,7 @@ nfe_conn_lookup_next(struct nfe_conntrack *ct, struct nfe_packet *packet)
         case NEXT_BYPASS_ICMP:
             return nfe_icmp_bypass(ct, packet);
         case NEXT_BYPASS_ETH:
-            return nfe_eth_bypass(ct, packet);
+            return nfe_ether_lookup(ct, packet);
         default:
             return NULL;
     }

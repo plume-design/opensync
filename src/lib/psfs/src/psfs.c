@@ -535,10 +535,14 @@ ssize_t psfs_set(psfs_t *ps, const char *key, const void *value, size_t value_sz
 {
     struct psfs_record *pr;
 
+    void *enc_data = NULL;
+    ssize_t enc_sz = 0;
+    ssize_t retval = -1;
+
     if ((ps->psfs_flags & OSP_PS_WRITE) == 0)
     {
         /* osp_ps_set() not supported in read-only mode */
-        return -1;
+        goto out;
     }
 
     if (value == NULL) value_sz = 0;
@@ -546,86 +550,43 @@ ssize_t psfs_set(psfs_t *ps, const char *key, const void *value, size_t value_sz
     pr = ds_tree_find(&ps->psfs_root, (void *)key);
     if (pr != NULL)
     {
-        void *dec_data = pr->pr_data;
-        ssize_t dec_datasz = pr->pr_datasz;
-        bool decrypt_ok = true;
-
-        if (ps->psfs_flags & OSP_PS_ENCRYPTION)
-        {
-            dec_datasz = osp_sec_decrypt(NULL, 0, pr->pr_data, pr->pr_datasz);
-            dec_data = MALLOC(dec_datasz);
-
-            dec_datasz = osp_sec_decrypt(dec_data, dec_datasz, pr->pr_data, pr->pr_datasz);
-            if (dec_datasz < 0)
-            {
-                LOG(WARN, "Failed decrypting value for key %s. Value not encrypted?", key);
-
-                /* Decryption failed: Assume data is not encrypted: */
-                FREE(dec_data);
-                dec_data = pr->pr_data;
-                dec_datasz = pr->pr_datasz;
-
-                decrypt_ok = false;
-            }
-        }
-
-        /* Compare data, if it is the same do nothing */
-        if ((size_t)dec_datasz == value_sz && memcmp(dec_data, value, value_sz) == 0)
-        {
-            if (ps->psfs_flags & OSP_PS_ENCRYPTION && dec_data != pr->pr_data)
-                FREE(dec_data);
-
-            if (decrypt_ok)
-                return value_sz;
-
-            /* Unless if decryption failed. In this case we're assuming old value
-             * is plaintext and equals the new value, but we want to encrypt
-             * it bellow and now have it stored encrypted. */
-        }
-
         /* Remove old entry */
         psfs_drop_record(ps, pr, NULL);
     }
     else if (value_sz == 0)
     {
         /* Key does not exists, and value_sz is 0 (delete key) -- nothing to do */
-        return 0;
+        retval = 0;
+        goto out;
     }
 
-    if (ps->psfs_flags & OSP_PS_ENCRYPTION)
+    if ((ps->psfs_flags & OSP_PS_ENCRYPTION) && (value_sz > 0))
     {
-        void *enc_value;
-        ssize_t enc_value_sz;
-
-        enc_value_sz = osp_sec_encrypt(NULL, 0, value, value_sz);
-        enc_value = MALLOC(enc_value_sz);
-
-        enc_value_sz = osp_sec_encrypt(enc_value, enc_value_sz, value, value_sz);
-        if (enc_value_sz < 0)
+        enc_sz = osp_sec_encrypt(NULL, 0, value, value_sz);
+        enc_data = MALLOC(enc_sz);
+        enc_sz = osp_sec_encrypt(enc_data, enc_sz, value, value_sz);
+        if (enc_sz < 0)
         {
-            LOG(ERR, "Failed to encrypt value for key %s", key);
-            FREE(enc_value);
-            return -1;
+            LOG(ERR, "osp_ps: Encryption error during osp_ps_set().");
+            goto out;
         }
-        value = enc_value;
-        value_sz = enc_value_sz;
+        value = enc_data;
+        value_sz = enc_sz;
     }
 
     pr = CALLOC(1, sizeof(*pr));
     psfs_record_init(pr, key, value, value_sz);
-
     /* Flag this record as dirty */
     pr->pr_dirty = true;
-
     ds_tree_insert(&ps->psfs_root, pr, pr->pr_key);
-
     /* Update byte count */
     ps->psfs_used += pr->pr_used;
 
-    if (ps->psfs_flags & OSP_PS_ENCRYPTION)
-        FREE(value);
+    retval = value_sz;
 
-    return value_sz;
+out:
+    if (enc_data != NULL) FREE(enc_data);
+    return retval;
 }
 
 /**

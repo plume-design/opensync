@@ -1,0 +1,22 @@
+menuconfig LIB_WE
+    bool "WE library for the agent"
+    default y
+    depends on WE_DPI_ENGINE
+    help
+        Enable WE library for the agent
+
+    config WE_AGENT_MEMPOOL
+        depends on LIB_WE
+        bool "Use a memory pool for WE memory allocations"
+        default y
+        help
+            To improve performance, a pre-allocated memory pool will
+            be used for WE. During initialization, this pool is created, 
+            and subsequent memory requests will be fulfilled from it,
+            replacing calls to malloc and calloc.
+
+    config WE_MEMPOOL_SIZE
+        int "WE memory pool size in MB"
+        default 10
+        help
+            Specifies the size of the WE memory pool in megabytes.

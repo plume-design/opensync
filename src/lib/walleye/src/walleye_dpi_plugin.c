@@ -62,13 +62,6 @@ extern int rts_handle_isolate;
 extern int rts_handle_memory_size;
 extern int rts_handle_dict_hash_expiry;
 extern int rts_handle_dict_hash_bucket;
-extern int nfe_conntrack_tcp_timeout_est;
-extern nfe_conn_t nfe_conn_lookup_by_tuple(nfe_conntrack_t conntrack,
-                                           const struct nfe_tuple *tuple,
-                                           uint64_t timestamp, int *dir);
-
-/* The maximum number of tags to be reported */
-#define NUM_TAGS 3
 
 /* Mapping of scan errors */
 #define SCAN_ERROR_INCOMPLETE (1 << 0)
@@ -76,56 +69,8 @@ extern nfe_conn_t nfe_conn_lookup_by_tuple(nfe_conntrack_t conntrack,
 #define SCAN_ERROR_CREATE     (1 << 2)
 #define SCAN_ERROR_SCAN       (1 << 3)
 
-/* Service level priorities
- * network (used for CDNs) is purposely put below protocol
- */
-enum service_level {
-    service_none = 0,
-    service_network,
-    service_protocol,
-    service_platform,
-    service_application,
-    service_feature
-};
 
 /* A connection, defined by 6-tuple (vlan, saddr, daddr, sport, dport, prot) */
-struct dpi_conn {
-    /* An rts stream is connection specific context for the scan */
-    rts_stream_t stream;
-
-    /* Connection context for tracking time online */
-    uint64_t toldata;
-
-    /* The service determined from dpi. */
-    uint16_t service;
-    enum service_level service_level;
-
-    uint16_t tags[NUM_TAGS];
-    os_macaddr_t src_mac;
-    os_macaddr_t dst_mac;
-
-    uint32_t bytes[2];
-    uint32_t packets[2];
-    uint32_t data_packets[2];
-
-    char server_name[256];
-    struct net_header_parser net_hdr;
-    struct dpi_session *dpi_sess;
-
-    int flow_action;
-
-    uint32_t scan_error;
-
-    bool inverted;
-    bool initialized;
-    bool tag_flow;
-
-    uint64_t tcp_syn_delay;
-    uint64_t tcp_ack_delay;
-
-    /* The private nfe conn data */
-    unsigned char priv[] __attribute__((aligned(sizeof(ptrdiff_t))));
-};
 
 static struct dpi_plugin_cache
 cache_mgr =
@@ -158,7 +103,6 @@ dpi_session_cmp(const void *a, const void *b)
     if (p_a < p_b) return -1;
     return 1;
 }
-
 
 static void
 save_service(rts_stream_t stream, void *user, const char *key,
@@ -214,7 +158,11 @@ static void
 save_toldata(rts_stream_t stream, void *user, const char *key,
              uint8_t type, uint16_t length, const void *value)
 {
-    struct dpi_conn *dpi = user;
+    struct net_md_stats_accumulator *acc;
+    struct dpi_conn *dpi;
+
+    acc = (struct net_md_stats_accumulator *)user;
+    dpi = acc->dpi;
     __builtin_memcpy(&dpi->toldata, value, length);
 }
 
@@ -223,7 +171,12 @@ static void
 save_tcp_syn_delay(rts_stream_t stream, void *user, const char *key,
                    uint8_t type, uint16_t length, const void *value)
 {
-    struct dpi_conn *dpi = user;
+    struct net_md_stats_accumulator *acc;
+    struct dpi_conn *dpi;
+
+    acc = (struct net_md_stats_accumulator *)user;
+    dpi = acc->dpi;
+
     __builtin_memcpy(&dpi->tcp_syn_delay, value, length);
 }
 
@@ -232,7 +185,12 @@ static void
 save_tcp_ack_delay(rts_stream_t stream, void *user, const char *key,
                    uint8_t type, uint16_t length, const void *value)
 {
-    struct dpi_conn *dpi = user;
+    struct net_md_stats_accumulator *acc;
+    struct dpi_conn *dpi;
+
+    acc = (struct net_md_stats_accumulator *)user;
+    dpi = acc->dpi;
+
     __builtin_memcpy(&dpi->tcp_ack_delay, value, length);
 }
 
@@ -241,7 +199,11 @@ static void
 save_server_name(rts_stream_t stream, void *user, const char *key,
                  uint8_t type, uint16_t length, const void *value)
 {
-    struct dpi_conn *dpi = user;
+    struct net_md_stats_accumulator *acc;
+    struct dpi_conn *dpi;
+
+    acc = (struct net_md_stats_accumulator *)user;
+    dpi = acc->dpi;
 
     if (sizeof(dpi->server_name) <= length)
         length = sizeof(dpi->server_name) - 1;
@@ -297,8 +259,8 @@ notify_client(rts_stream_t stream, void *user, const char *key,
         save_tcp_ack_delay(stream, user, key, type, length, value);
         return;
     }
-
-    dpi = user;
+    acc = user;
+    dpi = acc->dpi;
 
     if (dpi->flow_action == FSM_DPI_DROP)
     {
@@ -314,13 +276,12 @@ notify_client(rts_stream_t stream, void *user, const char *key,
      * net_parser details may not available if walleye destroys stream
      *  prior to callback.
      */
-    pkt_info.acc = dpi->net_hdr.acc;
+    pkt_info.acc = acc;
     pkt_info.parser = dpi_session->parser.net_parser;
 
     rc = dpi_plugin_ops->notify_client(dpi_plugin, key, type, length, value,
                                        &pkt_info);
     dpi->flow_action = rc;
-    acc = dpi->net_hdr.acc;
     fkey = acc->fkey;
     if (rc == FSM_DPI_DROP)
     {
@@ -333,7 +294,7 @@ notify_client(rts_stream_t stream, void *user, const char *key,
             fkey->sport,
             fkey->dport);
     }
-    fsm_dpi_set_plugin_decision(dpi->dpi_sess->session, &dpi->net_hdr, rc);
+    fsm_dpi_set_plugin_decision(dpi->dpi_sess->session, acc, rc);
 }
 
 #define CMD_LEN (C_MAXPATH_LEN * 2 + 128)
@@ -676,7 +637,7 @@ walleye_signature_load_highest(struct fsm_session *session)
         {
             LOGI("%s: installing %s version %s succeeded", __func__,
                  object->object, object->version);
-            free(object);
+            FREE(object);
             return;
         }
     }
@@ -895,12 +856,6 @@ void walleye_dpi_free_resources(struct fsm_session *dpi_plugin_session)
     {
         dpi_plugin_ops->unregister_clients(dpi_plugin);
     }
-
-    if (dpi_session->ct)
-    {
-        nfe_conntrack_destroy(dpi_session->ct);
-        dpi_session->ct = NULL;
-    }
 }
 
 
@@ -953,6 +908,7 @@ walleye_dpi_plugin_init(struct fsm_session *session)
     session->ops.exit = dpi_plugin_exit;
     session->ops.object_cb = walleye_signature_update;
     session->ops.version_cmp_cb = walleye_signature_cmp;
+    session->ops.dpi_free_conn_ctxt = dpi_plugin_free_conn_ctxt;
     session->handler_ctxt = dpi_session;
 
     /* Set the plugin specific ops */
@@ -978,7 +934,6 @@ walleye_dpi_plugin_init(struct fsm_session *session)
     dpi_session->session = session;
 
     rts_handle_isolate = 1;
-    nfe_conntrack_tcp_timeout_est = 300;
 
     /* Configurable dns expiry (default to 30 seconds) */
     dpi_session->rts_dict_expiry = 30;
@@ -990,12 +945,6 @@ walleye_dpi_plugin_init(struct fsm_session *session)
 
     rts_handle_dict_hash_expiry = dpi_session->rts_dict_expiry * 1000;
     rts_handle_dict_hash_bucket = dpi_session->rts_dict_expiry * 30;
-
-    if ((res = nfe_conntrack_create(&dpi_session->ct, 8192)) != 0)
-    {
-        LOGE("%s: failed to allocate conntrack: %d\n", __func__, res);
-        goto error;
-    }
 
     if ((res = rts_handle_create(&dpi_session->handle)) != 0)
     {
@@ -1315,6 +1264,7 @@ err_free_key_tags:
 static void
 walleye_app_check(struct fsm_session *session,
                   struct dpi_conn *dpi_conn,
+                  struct net_md_stats_accumulator *acc,
                   const char *app)
 {
     struct fsm_dpi_plugin_client_pkt_info pkt_info;
@@ -1340,7 +1290,7 @@ walleye_app_check(struct fsm_session *session,
      *  prior to callback.
      */
     pkt_info.tag_flow = false;
-    pkt_info.acc = dpi_conn->net_hdr.acc;
+    pkt_info.acc = acc;
     pkt_info.parser = dpi_session->parser.net_parser;
 
     action = dpi_plugin_ops->notify_client(session, "tag",
@@ -1363,10 +1313,8 @@ walleye_app_check(struct fsm_session *session,
 static void
 tag_session(struct dpi_session *dpi_session,
             struct dpi_conn *dpi_conn,
-            const struct nfe_tuple *tuple,
-            int dir)
+            struct net_md_stats_accumulator *acc)
 {
-    struct net_md_stats_accumulator *acc;
     struct fsm_session *fsm_session;
     struct fsm_dpi_plugin_ops *ops;
     struct flow_key *fkey;
@@ -1378,8 +1326,6 @@ tag_session(struct dpi_session *dpi_session,
     if (dpi_conn == NULL) return;
 
     fsm_session = dpi_session->session;
-
-    acc = dpi_conn->net_hdr.acc;
 
     /* Access the flow report key */
     fkey = acc->fkey;
@@ -1399,7 +1345,7 @@ tag_session(struct dpi_session *dpi_session,
     LOGD("%s: matched connection with %s (%s %s %s)", __func__,
          service, tags[0], tags[1], tags[2]);
 
-    walleye_app_check(fsm_session, dpi_conn, service);
+    walleye_app_check(fsm_session, dpi_conn, acc, service);
     if (dpi_conn->tag_flow)
     {
         LOGT("%s: tagging flow", __func__);
@@ -1414,21 +1360,16 @@ tag_session(struct dpi_session *dpi_session,
 
 
 static void
-destroy_stream(struct dpi_session *dpi_session,
+dpi_plugin_tag_stream(struct dpi_session *dpi_session,
                struct net_header_parser *net_parser,
-               struct dpi_conn *dpi_conn,
-               const struct nfe_tuple *tuple,
-               int dir)
+               struct dpi_conn *dpi_conn)
 {
     struct flow_key *fkey;
     struct net_md_stats_accumulator *acc;
     bool rc;
 
-    acc = dpi_conn->net_hdr.acc;
-    tag_session(dpi_session, dpi_conn, tuple, dir);
-    rts_stream_destroy(dpi_conn->stream);
-    dpi_conn->stream = NULL;
-    dpi_conn->dpi_sess->streams--;
+    acc = net_parser->acc;
+    tag_session(dpi_session, dpi_conn, net_parser->acc);
 
     fkey = acc->fkey;
 
@@ -1447,12 +1388,12 @@ destroy_stream(struct dpi_session *dpi_session,
 
     /* We have a match. No more packets are necessary */
     fsm_dpi_set_plugin_decision(dpi_conn->dpi_sess->session,
-                                &dpi_conn->net_hdr, dpi_conn->flow_action);
+                                acc, dpi_conn->flow_action);
 
     /* If the flow is to be blocked, just block it here */
     if (dpi_conn->flow_action == FSM_DPI_DROP)
     {
-        LOGI(
+        LOGT(
             "%s: blocking the flow src: %s, dst: %s, proto: %d, sport: %d, dport: %d",
             __func__,
             fkey->src_ip,
@@ -1473,16 +1414,15 @@ void
 dpi_plugin_handler(struct fsm_session *session,
                    struct net_header_parser *net_parser)
 {
+    struct net_md_stats_accumulator *acc;
+    struct dpi_session *dpi_session;
     struct dpi_conn *dpi = NULL;
-    struct nfe_packet packet;
-    nfe_conn_t conn;
+    struct nfe_packet *packet;
     struct timespec now;
     uint64_t timestamp;
-    struct dpi_session *dpi_session;
     struct eth_header *eth;
-    size_t len, olen;
+    size_t len;
     int res, src, dst;
-    uint16_t ethertype;
 
     dpi_session = (struct dpi_session *)session->handler_ctxt;
     if (!dpi_session->signature_loaded)
@@ -1491,45 +1431,31 @@ dpi_plugin_handler(struct fsm_session *session,
         return;
     }
 
+    acc = net_parser->acc;
+    if (acc == NULL) return;
+
+    dpi = (struct dpi_conn *)acc->dpi;
+    if (dpi == NULL)
+    {
+        dpi = dpi_conn_alloc(dpi_session);
+        if (!dpi) return;
+        acc->dpi = (void *)dpi;
+    }
+
     clock_gettime(CLOCK_MONOTONIC, &now);
     timestamp = ((uint64_t)now.tv_sec * 1000) + (now.tv_nsec / 1000000);
-
-    ethertype = 0;
     eth = net_header_get_eth(net_parser);
-    if (net_parser->source == PKT_SOURCE_SOCKET)
-    {
-        ethertype = eth->ethertype;
-    }
 
-    res = nfe_packet_hash(&packet, ethertype, net_parser->start,
-                          net_parser->caplen, timestamp);
-    olen = packet.tail - packet.data;
+    packet = acc->packet;
+    if (!packet) return;
 
-    if (res)
-    {
-        LOGE("%s: failed to hash packet\n", __func__);
-        return;
-    }
-
-    conn = nfe_conn_lookup(dpi_session->ct, &packet);
-    if (!conn) return;
-
-    dpi = container_of(conn, struct dpi_conn, priv);
-    len = packet.tail - packet.data;
+    len = packet->tail - packet->data;
 
     if (!dpi->initialized)
     {
         dpi_session->parser.net_parser = net_parser;
         dpi->dpi_sess = dpi_session;
 
-        /* Get a hold on the flow accumulator. */
-        dpi->net_hdr.acc = net_parser->acc;
-
-        /*
-         * Increase acc's ref count here.
-         * It is decreased in nfe_ext_conn_free()
-         */
-        if (dpi->net_hdr.acc != NULL) dpi->net_hdr.acc->refcnt++;
         dpi_session->connections++;
 
         /* NFQUEUE packets may not have src/dst mac address, hence condition */
@@ -1548,13 +1474,13 @@ dpi_plugin_handler(struct fsm_session *session,
         dpi->inverted = false;
         dpi->initialized = true;
 
-        src = packet.direction;
-        dst = 1 - packet.direction;
+        src = packet->direction;
+        dst = 1 - packet->direction;
         res = rts_stream_create(&dpi->stream, dpi_session->handle,
-                                packet.tuple.domain, packet.tuple.proto,
-                                &packet.tuple.addr[src], packet.tuple.port[src],
-                                &packet.tuple.addr[dst], packet.tuple.port[dst],
-                                dpi);
+                                packet->tuple.domain, packet->tuple.proto,
+                                &packet->tuple.addr[src], packet->tuple.port[src],
+                                &packet->tuple.addr[dst], packet->tuple.port[dst],
+                                acc);
 
         if (res)
         {
@@ -1562,56 +1488,60 @@ dpi_plugin_handler(struct fsm_session *session,
             dpi->scan_error |= SCAN_ERROR_CREATE;
 
             /* Mark the flow as passthrough as no resource is available */
-            fsm_dpi_set_plugin_decision(session, net_parser, FSM_DPI_PASSTHRU);
+            fsm_dpi_set_plugin_decision(session, acc, FSM_DPI_PASSTHRU);
         }
         else
         {
             dpi_session->streams++;
             if (rts_stream_matching(dpi->stream) == 0)
             {
-                destroy_stream(dpi_session, net_parser, dpi,
-                               &packet.tuple, packet.direction);
+                dpi_plugin_tag_stream(dpi_session, net_parser, dpi);
+                dpi_conn_free(dpi);
+                acc->dpi = NULL;
+                return;
             }
         }
     }
 
-    dpi->packets[packet.direction] += 1;
+    dpi->packets[packet->direction] += 1;
 
-    if (len != olen) {
-        dpi_session->err_length++;
-        dpi->scan_error |= SCAN_ERROR_LENGTH;
-    }
+    dpi->inverted = (dpi->bytes[0] == 0 && packet->direction == 1);
 
-    dpi->inverted = (dpi->bytes[0] == 0 && packet.direction == 1);
-
-    dpi->bytes[packet.direction] += len;
-    dpi->data_packets[packet.direction] += 1;
+    dpi->bytes[packet->direction] += len;
+    dpi->data_packets[packet->direction] += 1;
     dpi->dpi_sess->parser.net_parser = net_parser;
 
-    if (!dpi->stream) goto free_conn;
+    if (!dpi->stream)
+    {
+        LOGT("%s: Stream not created", __func__);
+        dpi_conn_free(dpi);
+        acc->dpi = NULL;
+        return;
+    }
 
-    res = rts_stream_scan(dpi->stream, packet.data, len,
-                          packet.direction, timestamp);
+    res = rts_stream_scan(dpi->stream, packet->data, len,
+                          packet->direction, timestamp);
     if (res < 0)
     {
         LOGE("%s: error %d in rts_stream_scan\n", __func__, res);
         dpi->dpi_sess->err_scan++;
         dpi->scan_error |= SCAN_ERROR_SCAN;
-        goto free_conn;
+        return;
     }
 
     /* Exit here if the flow requires more packets for classification */
     res = rts_stream_matching(dpi->stream);
-    if (res != 0) goto free_conn;
+    if (res != 0)
+    {
+        LOGT("%s: stream matching needs more packets", __func__);
+        return;
+    }
 
     /* We are done matching, so tag it and remove context */
-    destroy_stream(dpi_session, net_parser, dpi,
-                   &packet.tuple, packet.direction);
-
-free_conn:
-    dpi->dpi_sess->parser.net_parser = NULL;
-    dpi->dpi_sess->conn_releasing = true;
-    nfe_conn_release(conn);
+    dpi_plugin_tag_stream(dpi_session, net_parser, dpi);
+    dpi_conn_free(dpi);
+    acc->dpi = NULL;
+    return;
 }
 
 void
@@ -1680,12 +1610,8 @@ dpi_plugin_periodic(struct fsm_session *session)
 {
     struct dpi_session *dpi_session;
     struct dpi_plugin_cache *mgr;
-    struct nfe_tuple tuple;
     struct timespec now;
-    nfe_conn_t conn;
     int threshold;
-    uint64_t ts;
-    int dir = 0;
 
     mgr = dpi_get_mgr();
     clock_gettime(CLOCK_MONOTONIC, &now);
@@ -1697,25 +1623,8 @@ dpi_plugin_periodic(struct fsm_session *session)
 
     if ((now.tv_sec - mgr->periodic_ts) < threshold) return;
 
-    ts = ((uint64_t)now.tv_sec * 1000) + (now.tv_nsec / 1000000);
-
-    memset(&tuple, 0, sizeof(tuple));
-
-    /* Expire idle nfe connections */
-    tuple.proto = IPPROTO_ICMP;
-    conn = nfe_conn_lookup_by_tuple(dpi_session->ct, &tuple, ts, &dir);
-    nfe_conn_release(conn);
-
-    tuple.proto = IPPROTO_TCP;
-    conn = nfe_conn_lookup_by_tuple(dpi_session->ct, &tuple, ts, &dir);
-    nfe_conn_release(conn);
-
-    tuple.proto = IPPROTO_UDP;
-    conn = nfe_conn_lookup_by_tuple(dpi_session->ct, &tuple, ts, &dir);
-    nfe_conn_release(conn);
-
-    LOGI("%s:%s: active connections: %u", __func__,
-         session->name, dpi_session->connections);
+    LOGI("%s: %s: active connections: %u active streams: %u", __func__,
+        session->name, dpi_session->connections,dpi_session->streams);
 
     if (dpi_session->err_incomplete > 0)
     {
@@ -1746,6 +1655,29 @@ dpi_plugin_periodic(struct fsm_session *session)
     dpi_report_kpis(dpi_session);
 
     mgr->periodic_ts = now.tv_sec;
+}
+
+
+/**
+ * @brief free dpi resources 
+ *
+ * called by the fsm manager when acc is deleted.
+ * @param acc of the dpi resource.
+ */
+void
+dpi_plugin_free_conn_ctxt(struct net_md_stats_accumulator *acc)
+{
+    struct dpi_conn *dpi_conn;
+
+    if (acc == NULL) return;
+
+    dpi_conn = (struct dpi_conn *)acc->dpi;
+    if (dpi_conn == NULL) return;
+
+    LOGT("%s: freeing dpi connection %p", __func__, dpi_conn);
+    /* Free the dpi connection */
+    dpi_conn_free(dpi_conn);
+    acc->dpi = NULL;
 }
 
 
@@ -1800,12 +1732,6 @@ dpi_free_session(struct dpi_session *dpi_session)
         dpi_plugin_ops->unregister_clients(dpi_plugin);
     }
 
-    if (dpi_session->ct)
-    {
-        nfe_conntrack_destroy(dpi_session->ct);
-        dpi_session->ct = NULL;
-    }
-
     if (dpi_session->handle) rts_handle_destroy(dpi_session->handle);
 
     FREE(dpi_session);
@@ -1842,47 +1768,39 @@ dpi_delete_session(struct fsm_session *session)
     return;
 }
 
-/* nfe_ext_conn_alloc()
- *
- * libnfe provides weak symbols for connection allocation and deallocation
- * through nfe_ext_conn_alloc() and nfe_ext_conn_free() making them easy to
- * intercept. In this example, the connection is expanded to contain extra
- * stuff for dpi.
+/* 
+ * dpi_conn_alloc()
  */
-void *
-nfe_ext_conn_alloc(size_t size, const struct nfe_tuple *tuple)
+struct dpi_conn *
+dpi_conn_alloc(struct dpi_session *dpi_session)
 {
     struct dpi_conn *dpi;
 
-    if (!(dpi = calloc(1, sizeof(*dpi) + size)))
-        return NULL;
+    if (!dpi_session) return NULL;
+
+    if (!(dpi = CALLOC(1, sizeof(*dpi)))) return NULL;
 
     dpi->initialized = false;
-
-    return dpi->priv;
+    dpi->last_updated = time(NULL);
+    dpi->conn_ttl = dpi_session->rts_dict_expiry;
+    return dpi;
 }
 
-/* nfe_ext_conn_free()
+/* dpi_conn_free()
  *
- * The counter-part to nfe_ext_conn_alloc().
+ * The counter-part to dpi_conn_alloc().
  */
 void
-nfe_ext_conn_free(void *p, const struct nfe_tuple *tuple)
+dpi_conn_free(struct dpi_conn *dpi)
 {
-    struct dpi_conn *dpi = container_of(p, struct dpi_conn, priv);
+    struct dpi_session *dpi_sess;
 
-    dpi->dpi_sess->connections--;
-    if (dpi->net_hdr.acc != NULL) dpi->net_hdr.acc->refcnt--;
-
-    /* destroy dpi context */
-    if (dpi->stream) {
-        /* if a conn is not being released, then it expired due to a timeout */
-        if (!dpi->dpi_sess->conn_releasing) {
-            dpi->dpi_sess->err_incomplete++;
-            dpi->scan_error |= SCAN_ERROR_INCOMPLETE;
-        }
-        destroy_stream(dpi->dpi_sess, NULL, dpi, tuple, 0);
+    dpi_sess = dpi->dpi_sess;
+    if (dpi->stream)
+    {
+        rts_stream_destroy(dpi->stream);
+        dpi_sess->streams--;
     }
-
-    free(dpi);
+    dpi_sess->connections--;
+    FREE(dpi);
 }

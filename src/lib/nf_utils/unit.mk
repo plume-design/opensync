@@ -52,3 +52,5 @@ UNIT_EXPORT_LDFLAGS := $(UNIT_LDFLAGS)
 UNIT_DEPS := src/lib/log
 UNIT_DEPS += src/lib/common
 UNIT_DEPS += src/lib/ustack
+UNIT_DEPS += src/lib/neigh_table
+UNIT_DEPS += src/lib/network_metadata

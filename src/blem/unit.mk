@@ -33,9 +33,11 @@ UNIT_DISABLE := $(if $(CONFIG_MANAGER_BLEM),n,y)
 
 
 UNIT_SRC := src/blem_main.c
-UNIT_SRC += src/blem_ovsdb.c
+UNIT_SRC += src/blem_ovsdb_onboarding.c
+UNIT_SRC += src/blem_ovsdb_proximity.c
 UNIT_SRC += src/blem_ble.c
 UNIT_SRC += src/ble_adv_data.c
+UNIT_SRC += src/blem_connectivity_status.c
 
 UNIT_SRC += $(if $(CONFIG_BLEM_CONFIG_VIA_BLE_ENABLED),src/blem_wan_config.c)
 

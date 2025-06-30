@@ -280,7 +280,7 @@ update_ipv4_neigh_in_ovsdb(struct neighbour_entry *key, bool remove)
         return false;
     }
 
-    cond = ovsdb_tran_cond_single("address", OFUNC_EQ, ipv4entry.address);
+    cond = ovsdb_tran_cond_single("hwaddr", OFUNC_EQ, ipv4entry.hwaddr);
     json_array_append_new(where, cond);
 
     if (key->ifname)

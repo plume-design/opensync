@@ -1,0 +1,12 @@
+menuconfig FCM_CT_STATS
+    bool "Connection tracking statistics collection module"
+    default y
+    depends on MANAGER_FCM
+    help
+        Enables collection of connection track statistics
+
+    config FCM_PROXIMITY_SUPPORT
+        bool "Enable collecting all current apps and updating live flows for proximity use case"
+        default n
+        help
+            Enable collecting all current apps and updating live flows for proximity use case

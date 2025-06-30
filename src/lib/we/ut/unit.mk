@@ -31,6 +31,15 @@ UNIT_TYPE := TEST_BIN
 UNIT_SRC := test_we.c
 
 UNIT_CFLAGS += -Isrc/lib/we
+UNIT_CFLAGS += -I$(UNIT_PATH)/inc
+UNIT_CFLAGS += -I$(TOP_DIR)/src/lib/we/inc
+UNIT_CFLAGS += -I$(TOP_DIR)/src/lib/rts/inc
+
+UNIT_LDFLAGS := -Wl,--whole-archive
+UNIT_LDFLAGS += $(UNIT_FILES_/src/lib/we)
+UNIT_LDFLAGS += $(UNIT_FILES_/src/lib/rts)
+UNIT_LDFLAGS += -Wl,--no-whole-archive
 
 UNIT_DEPS += src/lib/unity
 UNIT_DEPS += src/lib/we
+UNIT_DEPS += src/lib/rts

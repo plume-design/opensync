@@ -60,7 +60,7 @@ struct ow_steer_policy_btm_retry_neigh {
 
 struct ow_steer_policy_btm_response {
     struct ow_steer_policy *base;
-    struct osw_btm_response_observer btm_resp_obs;
+    osw_btm_obs_t *resp_obs;
     struct ds_dlist neigh_list;
     uint64_t neigh_timestamp;
 };
@@ -83,7 +83,7 @@ ow_steer_policy_btm_response_free(struct ow_steer_policy_btm_response *btm_respo
         FREE(neigh);
     }
 
-    osw_btm_unregister_btm_response_observer(&btm_response_policy->btm_resp_obs);
+    osw_btm_obs_drop(btm_response_policy->resp_obs);
     ow_steer_policy_free(btm_response_policy->base);
     FREE(btm_response_policy);
 }
@@ -156,30 +156,28 @@ ow_steer_policy_btm_response_sigusr1_dump_cb(osw_diag_pipe_t *pipe,
 }
 
 static void
-ow_steer_policy_btm_response_cb(struct osw_btm_response_observer *observer,
+ow_steer_policy_btm_response_cb(void *priv,
                                 const int response_code,
-                                const struct osw_btm_retry_neigh_list *retry_neigh_list)
+                                const struct osw_btm_retry_neigh *list,
+                                size_t count)
 {
-    struct ow_steer_policy_btm_response *btm_response_policy = container_of(observer,
-                                                                            struct ow_steer_policy_btm_response,
-                                                                            btm_resp_obs);
+    struct ow_steer_policy_btm_response *policy = priv;
 
-    LOGD(LOG_GET_PREFIX(btm_response_policy->base, "backoff period stopped"));
+    LOGD(LOG_GET_PREFIX(policy->base, "backoff period stopped"));
 
     unsigned int i;
-    for  (i = 0; i < retry_neigh_list->neigh_len; i++) {
-        const struct osw_btm_retry_neigh *retry_neigh = &retry_neigh_list->neigh[i];
+    for  (i = 0; i < count; i++) {
+        const struct osw_btm_retry_neigh *retry_neigh = &list[i];
         struct ow_steer_policy_btm_retry_neigh *new_retry_neigh = CALLOC(1, sizeof(*new_retry_neigh));
         new_retry_neigh->preference = retry_neigh->preference;
         memcpy(&new_retry_neigh->bssid,
                &retry_neigh->neigh.bssid,
                sizeof(new_retry_neigh->bssid));
 
-        struct ow_steer_policy_btm_response *brp = (struct ow_steer_policy_btm_response *)btm_response_policy;
-        ds_dlist_insert_tail(&brp->neigh_list, new_retry_neigh);
+        ds_dlist_insert_tail(&policy->neigh_list, new_retry_neigh);
     }
 
-    btm_response_policy->neigh_timestamp = osw_time_mono_clk();
+    policy->neigh_timestamp = osw_time_mono_clk();
 }
 
 struct ow_steer_policy_btm_response*
@@ -205,10 +203,10 @@ ow_steer_policy_btm_response_create(const char *name,
                                                        log_prefix,
                                                        btm_response_policy);
 
-    struct osw_btm_response_observer *btm_resp_obs = &btm_response_policy->btm_resp_obs;
-    memcpy(&btm_resp_obs->sta_addr, sta_addr, sizeof(btm_resp_obs->sta_addr));
-    btm_resp_obs->btm_response_fn = ow_steer_policy_btm_response_cb;
-    osw_btm_register_btm_response_observer(btm_resp_obs);
+    osw_btm_obs_t *obs = osw_btm_obs_alloc(osw_btm());
+    osw_btm_obs_set_sta_addr(obs, sta_addr);
+    osw_btm_obs_set_received_fn(obs, ow_steer_policy_btm_response_cb, btm_response_policy);
+    btm_response_policy->resp_obs = obs;
 
     ds_dlist_init(&btm_response_policy->neigh_list, struct ow_steer_policy_btm_retry_neigh, node);
 

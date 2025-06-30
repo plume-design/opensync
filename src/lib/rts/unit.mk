@@ -27,7 +27,7 @@
 # Library to enable runtime scanner
 #
 ###############################################################################
-UNIT_NAME := fsm_rts
+UNIT_NAME := rts
 
 UNIT_TYPE := STATIC_LIB
 
@@ -55,4 +55,9 @@ UNIT_CFLAGS += -DNDEBUG # Disable asserts
 UNIT_CFLAGS += -O2 -nostdlib -nodefaultlibs -fno-stack-protector # optimization
 endif
 
+UNIT_DEPS := src/lib/log
+
 UNIT_EXPORT_CFLAGS := $(UNIT_CFLAGS)
+
+UNIT_DEPS := src/lib/common
+UNIT_DEPS := src/lib/log

@@ -90,8 +90,27 @@ struct osn_qdisc_params
 
     bool _configured;
 
+    void *oq_ctx; /**< Arbitrary API user context object */
+
     ds_tree_t oq_tnode;
 };
+
+/**
+ * Qdisc status.
+ */
+struct osn_qdisc_status
+{
+    bool qs_applied; /**< qdisc/class successfully applied to the system */
+
+    void *qs_ctx; /**< Upper layer context object for this qdisc */
+};
+
+/**
+ * Qdisc notification callback function type.
+ *
+ * @param[in] qdisc_status    New qdisc status report.
+ */
+typedef void osn_qdisc_status_fn_t(const struct osn_qdisc_status *qdisc_status);
 
 /**
  * Create a new qdisc_cfg object for an interface @p if_name.
@@ -119,6 +138,22 @@ osn_qdisc_cfg_t *osn_qdisc_cfg_new(const char *if_name);
  * @return true on success
  */
 bool osn_qdisc_cfg_add(osn_qdisc_cfg_t *self, const struct osn_qdisc_params *qdisc);
+
+/**
+ * Set notification callback function to be called to report qdisc statuses.
+ *
+ * Note: Implementation may choose to only report status when a qdisc is successfully applied,
+ * so if callback is not called, it is best to assume the qdisc was not applied.
+ *
+ * The callback will be called only from @ref osn_qdisc_cfg_apply().
+ *
+ * @param[in] self           A valid @ref osn_qdisc_cfg_t object
+ * @param[in] status_fn_cb   Qdisc status update function callback pointer or
+ *                           NULL to unset.
+ *
+ * @return true on success
+ */
+bool osn_qdisc_cfg_notify_status_set(osn_qdisc_cfg_t *self, osn_qdisc_status_fn_t *status_fn_cb);
 
 /**
  * Apply the configuration.

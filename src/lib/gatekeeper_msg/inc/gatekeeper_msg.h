@@ -32,6 +32,16 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "gatekeeper.pb-c.h"
 #include "os_types.h"
 
+
+/* Entry type definitions for gk_device2app_repl */
+#define GK_ENTRY_TYPE_APP     1
+#define GK_ENTRY_TYPE_IPV4    2
+#define GK_ENTRY_TYPE_IPV6    3
+#define GK_ENTRY_TYPE_URL     4
+#define GK_ENTRY_TYPE_FQDN     5
+#define GK_ENTRY_TYPE_HOST     6
+#define GK_ENTRY_TYPE_SNI     7
+
 /**
  * @brief Container of protobuf serialization output
  *
@@ -175,6 +185,7 @@ struct gk_reply_header
     uint32_t category_id;
     uint32_t confidence_level;
     uint32_t flow_marker;
+    char *network_id;
 };
 
 
@@ -182,6 +193,17 @@ struct gk_device2app_repl
 {
     struct gk_reply_header *header;
     char *app_name;
+    char *url;
+    char *fqdn;
+    char *http_host;          /* For GK_ENTRY_TYPE_HOST */
+    char *https_sni;          /* For GK_ENTRY_TYPE_SNI */
+    uint32_t ipv4_addr;
+    struct fqdn_redirect_s *fqdn_redirect;
+    struct {
+        void *data;                  /* IPv6 address data */
+        size_t len;                  /* IPv6 address length */
+    } ipv6_addr;
+    int type;
 };
 
 struct gk_bulk_reply
@@ -224,4 +246,7 @@ gk_free_packed_buffer(struct gk_packed_buffer *buffer);
 
 int
 gk_get_fsm_action(Gatekeeper__Southbound__V1__GatekeeperCommonReply *header);
+
+Gatekeeper__Southbound__V1__GatekeeperBulkReply *gk_cache_to_bulk_reply(void);
+
 #endif /* GATEKEEPER_MSG_H_INCLUDED */

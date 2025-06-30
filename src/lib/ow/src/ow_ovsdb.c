@@ -44,6 +44,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ow_ovsdb_steer.h"
 #include "ow_ovsdb_cconf.h"
 #include "ow_ovsdb_stats.h"
+#include "ow_ovsdb_hs.h"
+#include "ow_mld_redir.h"
 #include <ovsdb.h>
 #include <ovsdb_table.h>
 #include <ovsdb_cache.h>
@@ -82,6 +84,8 @@ struct ow_ovsdb {
     struct ow_ovsdb_wps_changed *wps_changed;
     struct ow_ovsdb_steer *steering;
     ow_ovsdb_mld_onboard_t *mld_onboard;
+    ow_mld_redir_t *ow_mld_redir;
+    ow_mld_redir_observer_t *mld_redir_obs;
     bool idle;
 };
 
@@ -251,7 +255,7 @@ ow_ovsdb_freq_to_chan(int freq)
     return 0;
 }
 
-static const char *
+const char *
 ow_ovsdb_width_to_htmode(enum osw_channel_width w)
 {
     switch (w) {
@@ -1501,11 +1505,40 @@ ow_ovsdb_vifstate_fill_ft_encr_key(struct schema_Wifi_VIF_State *schema,
     }
 }
 
+static enum osw_drv_vif_state_sta_link_status
+ow_ovsdb_vistate_get_link_status(struct ow_ovsdb *m,
+                                 const char *vif_name,
+                                 const struct osw_drv_vif_state_sta *vsta)
+{
+    switch (vsta->link.status) {
+        case OSW_DRV_VIF_STATE_STA_LINK_UNKNOWN:
+        case OSW_DRV_VIF_STATE_STA_LINK_CONNECTING:
+        case OSW_DRV_VIF_STATE_STA_LINK_DISCONNECTED:
+            break;
+        case OSW_DRV_VIF_STATE_STA_LINK_CONNECTED:
+            {
+                ow_mld_redir_t *redir = m->ow_mld_redir;
+                const char *redir_vif_name = ow_mld_redir_get_mld_redir_vif_name(redir, vsta->mld.if_name.buf);
+                const bool is_part_of_mld = (osw_hwaddr_is_zero(&vsta->mld.addr) == false)
+                                         && (strlen(vsta->mld.if_name.buf) > 0);
+                const bool is_link_non_mlo = osw_hwaddr_is_zero(&vsta->link.mld_addr);
+                const bool is_redir_target = (redir_vif_name != NULL) && (strcmp(redir_vif_name, vif_name) == 0);
+                const bool report_as_not_connected = (is_part_of_mld && is_link_non_mlo && !is_redir_target);
+                if (report_as_not_connected) {
+                    return OSW_DRV_VIF_STATE_STA_LINK_DISCONNECTED;
+                }
+            }
+            break;
+    }
+    return vsta->link.status;
+}
+
 static void
 ow_ovsdb_vifstate_to_schema(struct schema_Wifi_VIF_State *schema,
                             const struct schema_Wifi_VIF_Config *vconf,
                             const struct osw_state_vif_info *vif)
 {
+    struct ow_ovsdb *m = &g_ow_ovsdb;
     const struct osw_drv_vif_state_ap *ap = &vif->drv_state->u.ap;
     const struct osw_drv_vif_state_ap_vlan *ap_vlan = &vif->drv_state->u.ap_vlan;
     const struct osw_drv_vif_state_sta *vsta = &vif->drv_state->u.sta;
@@ -1535,8 +1568,12 @@ ow_ovsdb_vifstate_to_schema(struct schema_Wifi_VIF_State *schema,
             SCHEMA_SET_STR(schema->ssid, ap->ssid.buf);
             SCHEMA_SET_STR(schema->ssid_broadcast, ap->ssid_hidden ? "disabled" : "enabled");
             SCHEMA_SET_STR(schema->bridge, ap->bridge_if_name.buf);
-            SCHEMA_SET_STR(schema->nas_identifier, ap->nas_identifier.buf);
-            SCHEMA_SET_INT(schema->ft_mobility_domain, ap->wpa.ft_mobility_domain);
+            if (strlen(ap->nas_identifier.buf) > 1) {
+                SCHEMA_SET_STR(schema->nas_identifier, ap->nas_identifier.buf);
+            } else {
+                SCHEMA_UNSET_FIELD(schema->nas_identifier);
+            }
+            SCHEMA_SET_INT(schema->ft_mobility_domain, ap->ft_mobility_domain);
             SCHEMA_SET_BOOL(schema->wpa, ap->wpa.wpa || ap->wpa.rsn);
             SCHEMA_SET_BOOL(schema->ap_bridge, ap->isolated ? false : true);
             SCHEMA_SET_BOOL(schema->btm, ap->mode.wnm_bss_trans);
@@ -1551,6 +1588,21 @@ ow_ovsdb_vifstate_to_schema(struct schema_Wifi_VIF_State *schema,
             SCHEMA_SET_BOOL(schema->ft_psk_generate_local, ap->ft_psk_generate_local);
             SCHEMA_SET_INT(schema->ft_pmk_r0_key_lifetime_sec, ap->ft_pmk_r0_key_lifetime_sec);
             SCHEMA_SET_INT(schema->ft_pmk_r1_max_key_lifetime_sec, ap->ft_pmk_r1_max_key_lifetime_sec);
+            /* oce parameter is 'hidden' from OVSDB and for this reason
+             * state of either one shall impact mbo in the state table */
+            if (ap->mbo != ap->oce) {
+                SCHEMA_UNSET_FIELD(schema->mbo);
+            } else {
+                SCHEMA_SET_BOOL(schema->mbo, ap->mbo);
+            }
+            if (ap->oce != true) {
+                SCHEMA_UNSET_FIELD(schema->oce_min_rssi_dbm);
+                SCHEMA_UNSET_FIELD(schema->oce_retry_delay_sec);
+            } else {
+                SCHEMA_SET_INT(schema->oce_min_rssi_dbm, ap->oce_min_rssi_dbm);
+                SCHEMA_SET_INT(schema->oce_retry_delay_sec, ap->oce_retry_delay_sec);
+            }
+            SCHEMA_SET_INT(schema->max_sta, ap->max_sta);
             /* FIXME - passpoint is being read from config, not state in state report! */
             const char *passpoint_ref = ow_conf_vif_get_ap_passpoint_ref(vif->vif_name);
             if (passpoint_ref != NULL) SCHEMA_SET_UUID (schema->passpoint_config, passpoint_ref);
@@ -1594,7 +1646,7 @@ ow_ovsdb_vifstate_to_schema(struct schema_Wifi_VIF_State *schema,
             break;
         case OSW_VIF_STA:
             SCHEMA_SET_STR(schema->mode, "sta");
-            switch (vsta->link.status) {
+            switch (ow_ovsdb_vistate_get_link_status(m, vif->vif_name, vsta)) {
                 case OSW_DRV_VIF_STATE_STA_LINK_CONNECTED:
                     SCHEMA_SET_STR(schema->ssid, vsta->link.ssid.buf);
                     if (osw_hwaddr_is_zero(&vsta->link.bssid) == false) {
@@ -2034,6 +2086,8 @@ ow_ovsdb_vif_work_cb(EV_P_ ev_timer *arg, int events)
 static void
 ow_ovsdb_vif_work_sched(struct ow_ovsdb_vif *vif)
 {
+    if (vif == NULL) return;
+
     ow_ovsdb_sync_sched(&vif->work, &vif->deadline);
 
     if (vif->phy_name != NULL) {
@@ -3215,6 +3269,7 @@ callback_Wifi_Radio_Config(ovsdb_update_monitor_t *mon,
     }
 
     ow_ovsdb_link_phy_vif();
+    ow_ovsdb_cconf_sched();
 }
 
 static void
@@ -3529,6 +3584,52 @@ ow_ovsdb_vconf_to_ow_conf_ap(const struct schema_Wifi_VIF_Config *vconf,
         }
     }
 
+    /* schema value for MBO controlls also OCE internally */
+    if (is_new == true || vconf->mbo_changed == true) {
+        if (vconf->mbo_exists == true) {
+            const bool x = vconf->mbo;
+            ow_conf_vif_set_ap_mbo(vconf->if_name, &x);
+            ow_conf_vif_set_ap_oce(vconf->if_name, &x);
+        }
+        else {
+            ow_conf_vif_set_ap_mbo(vconf->if_name, NULL);
+            ow_conf_vif_set_ap_oce(vconf->if_name, NULL);
+        }
+    }
+
+    if (is_new == true || vconf->oce_min_rssi_dbm_changed == true) {
+        if (vconf->oce_min_rssi_dbm_exists == true) {
+            const int x = vconf->oce_min_rssi_dbm;
+            const bool y = true;
+            ow_conf_vif_set_ap_oce_min_rssi_dbm(vconf->if_name, &x);
+            ow_conf_vif_set_ap_oce_min_rssi_enable(vconf->if_name, &y);
+        }
+        else {
+            ow_conf_vif_set_ap_oce_min_rssi_dbm(vconf->if_name, NULL);
+            ow_conf_vif_set_ap_oce_min_rssi_enable(vconf->if_name, NULL);
+        }
+    }
+
+    if (is_new == true || vconf->oce_retry_delay_sec_changed == true) {
+        if (vconf->oce_retry_delay_sec_exists == true) {
+            const int x = vconf->oce_retry_delay_sec;
+            ow_conf_vif_set_ap_oce_retry_delay_sec(vconf->if_name, &x);
+        }
+        else {
+            ow_conf_vif_set_ap_oce_retry_delay_sec(vconf->if_name, NULL);
+        }
+    }
+
+    if (is_new == true || vconf->max_sta_changed == true) {
+        if (vconf->max_sta_exists == true) {
+            const int x = vconf->max_sta;
+            ow_conf_vif_set_ap_max_sta(vconf->if_name, &x);
+        }
+        else {
+            ow_conf_vif_set_ap_max_sta(vconf->if_name, NULL);
+        }
+    }
+
     if (is_new == true || vconf->min_hw_mode_changed == true) {
         ow_ovsdb_vconf_to_min_hw_mode(vconf);
     }
@@ -3673,30 +3774,105 @@ ow_ovsdb_vconf_to_ow_conf_ap(const struct schema_Wifi_VIF_Config *vconf,
 }
 
 static void
+ow_ovsdb_vneigh_update_ft(ovsdb_update_monitor_t *mon,
+                          struct schema_Wifi_VIF_Neighbors *wvn_old,
+                          struct schema_Wifi_VIF_Neighbors *wvn,
+                          ovsdb_cache_row_t *row)
+{
+    switch (mon->mon_type) {
+        case OVSDB_UPDATE_NEW:
+            /* fall through */
+        case OVSDB_UPDATE_MODIFY:
+            if (mon->mon_type == OVSDB_UPDATE_MODIFY) {
+                /* If BSSID or vif_name changes this is virtually just removing
+                 * an entry, and then inserting a completely new one, assuming
+                 * the new one has a bssid.
+                 */
+                struct osw_hwaddr bssid;
+                const char *bssid_str = ovsdb_update_changed(mon, SCHEMA_COLUMN(Wifi_VIF_Neighbors, bssid))
+                                      ? wvn_old->bssid
+                                      : wvn->bssid;
+                const bool bssid_ok = (osw_hwaddr_from_cstr(bssid_str, &bssid) == true);
+                const char *vif_name_old = wvn_old->if_name_exists && strlen(wvn_old->if_name) > 0
+                                         ? wvn_old->if_name
+                                         : NULL;
+                const char *vif_name_new = wvn->if_name_exists && strlen(wvn->if_name) > 0
+                                         ? wvn->if_name
+                                         : NULL;
+                const char *vif_name = ovsdb_update_changed(mon, SCHEMA_COLUMN(Wifi_VIF_Neighbors, if_name))
+                                     ? vif_name_old
+                                     : vif_name_new;
+                if (WARN_ON(vif_name == NULL)) break;
+                if (WARN_ON(bssid_ok == false)) break;
+                const bool changed = false
+                    || ovsdb_update_changed(mon, SCHEMA_COLUMN(Wifi_VIF_Neighbors, bssid))
+                    || ovsdb_update_changed(mon, SCHEMA_COLUMN(Wifi_VIF_Neighbors, if_name))
+                    ;
+                if (changed) {
+                    ow_conf_vif_del_ap_neigh_ft(&bssid, vif_name);
+                }
+            }
+            struct osw_hwaddr bssid;
+            const bool bssid_ok = (osw_hwaddr_from_cstr(wvn->bssid, &bssid) == true);
+            const char *vif_name = wvn->if_name_exists && strlen(wvn->if_name) > 0
+                                   ? wvn->if_name
+                                   : NULL;
+            const bool vif_name_ok = (vif_name != NULL);
+            const bool changed = false
+                || ovsdb_update_changed(mon, SCHEMA_COLUMN(Wifi_VIF_Neighbors, bssid))
+                || ovsdb_update_changed(mon, SCHEMA_COLUMN(Wifi_VIF_Neighbors, ft_enabled))
+                || ovsdb_update_changed(mon, SCHEMA_COLUMN(Wifi_VIF_Neighbors, if_name))
+                || ovsdb_update_changed(mon, SCHEMA_COLUMN(Wifi_VIF_Neighbors, ft_encr_key))
+                || ovsdb_update_changed(mon, SCHEMA_COLUMN(Wifi_VIF_Neighbors, nas_identifier));
+
+            if (bssid_ok && vif_name_ok && changed) {
+                ow_conf_vif_set_ap_neigh_ft(&bssid,
+                                            vif_name,
+                                            wvn->ft_enabled_exists ? wvn->ft_enabled : false,
+                                            wvn->ft_encr_key_exists ?  wvn->ft_encr_key : "",
+                                            wvn->nas_identifier_exists ? wvn->nas_identifier : "");
+            }
+            break;
+        case OVSDB_UPDATE_DEL:
+            {
+                struct osw_hwaddr bssid;
+                const bool bssid_ok = (osw_hwaddr_from_cstr(wvn->bssid, &bssid) == true);
+                const char *vif_name = wvn->if_name_exists && strlen(wvn->if_name) > 0
+                                       ? wvn->if_name
+                                       : NULL;
+                const bool vif_name_ok = (vif_name != NULL);
+                if (bssid_ok && vif_name_ok) {
+                    ow_conf_vif_del_ap_neigh_ft(&bssid, vif_name);
+                }
+            }
+            break;
+        case OVSDB_UPDATE_ERROR:
+            break;
+    }
+}
+
+static void
 ow_ovsdb_vneigh_to_ow_conf_ap(const struct schema_Wifi_VIF_Neighbors *vneigh,
                               const bool is_new)
 {
     const bool changed = (is_new == true) ||
                          (vneigh->bssid_changed == true) ||
                          (vneigh->op_class_changed == true) ||
-                         (vneigh->channel_changed == true) ||
-                         (vneigh->phy_type_changed == true) ||
                          (vneigh->ft_enabled_changed == true) ||
-                         (vneigh->ft_encr_key_changed == true) ||
-                         (vneigh->nas_identifier_changed == true);
+                         (vneigh->channel_changed == true) ||
+                         (vneigh->phy_type_changed == true);
 
     const bool req_params_set = (vneigh->bssid_exists == true) ||
                                 (vneigh->op_class_exists == true) ||
                                 (vneigh->channel_exists == true) ||
-                                (vneigh->phy_type_exists) ||
-                                (vneigh->ft_enabled_exists == true) ||
-                                (vneigh->ft_encr_key_exists == true) ||
-                                (vneigh->nas_identifier_exists == true);
+                                (vneigh->phy_type_exists);
 
 
     if (changed == false || req_params_set == false) return;
 
-    const uint32_t default_bssid_info = 0x0000008f;
+    const uint32_t ft_mobility = vneigh->ft_enabled ? 0x00000400 : 0;
+    const uint32_t default_bssid_info = 0x0000008f
+                                      | ft_mobility;
     struct osw_hwaddr bssid;
     osw_hwaddr_from_cstr(vneigh->bssid, &bssid);
 
@@ -3706,12 +3882,6 @@ ow_ovsdb_vneigh_to_ow_conf_ap(const struct schema_Wifi_VIF_Neighbors *vneigh,
                              vneigh->op_class,
                              vneigh->channel,
                              vneigh->phy_type);
-
-    ow_conf_vif_set_ap_neigh_ft(vneigh->if_name,
-                                &bssid,
-                                vneigh->ft_enabled,
-                                vneigh->ft_encr_key,
-                                vneigh->nas_identifier);
 }
 
 static void
@@ -3883,6 +4053,8 @@ callback_Wifi_VIF_Neighbors(ovsdb_update_monitor_t *mon,
           mon->mon_type == OVSDB_UPDATE_DEL ? "del" :
           mon->mon_type == OVSDB_UPDATE_ERROR ? "error" :
           ""));
+
+    ow_ovsdb_vneigh_update_ft(mon, old, vneigh, row);
 
     switch (mon->mon_type) {
         case OVSDB_UPDATE_NEW:
@@ -4165,6 +4337,38 @@ ow_ovsdb_reattach_wps(struct ow_ovsdb *m)
 }
 
 static void
+ow_ovsdb_mld_redir_changed_cb(void *priv, const char *mld_name, const char *vif_redir, char **vifs)
+{
+    struct ow_ovsdb *m = priv;
+    struct ow_ovsdb_vif *vif;
+    /* Whenever redirection changes, all affected VIFs within an MLD
+     * must be re-evaluated and re-reported. The non-redirected
+     * (silenced) VIFs need to be reported as non-associated for
+     * controller to make sense out of this.
+     *
+     * This only applies to non-MLO associations that happen on an
+     * MLD. Some platforms require extra work to get these to work as
+     * they use the underlying VIFs separately for multiple non-MLO
+     * associations.
+     */
+    while (vifs && *vifs) {
+        vif = ds_tree_find(&m->vif_tree, *vifs);
+        ow_ovsdb_vif_work_sched(vif);
+        vifs++;
+    }
+}
+
+static void
+ow_ovsdb_mld_redir_reattach(struct ow_ovsdb *m)
+{
+    m->ow_mld_redir = OSW_MODULE_LOAD(ow_mld_redir);
+    ow_mld_redir_observer_drop(m->mld_redir_obs);
+    m->mld_redir_obs = ow_mld_redir_observer_alloc(m->ow_mld_redir,
+                                                   ow_ovsdb_mld_redir_changed_cb,
+                                                   m);
+}
+
+static void
 ow_ovsdb_retry_cb(EV_P_ ev_timer *arg, int events)
 {
     if (ovsdb_init_loop(EV_A_ "OW") == false) {
@@ -4179,12 +4383,14 @@ ow_ovsdb_retry_cb(EV_P_ ev_timer *arg, int events)
     OVSDB_CACHE_MONITOR(RADIUS, true);
     OVSDB_CACHE_MONITOR(Passpoint_Config, true);
 
+    ow_ovsdb_mld_redir_reattach(&g_ow_ovsdb);
     ow_ovsdb_mld_onboard_drop(g_ow_ovsdb.mld_onboard);
     g_ow_ovsdb.mld_onboard = ow_ovsdb_mld_onboard_alloc();
     ow_ovsdb_ms_init(&g_ow_ovsdb.ms, OW_OVSDB_CM_NEEDS_PORT_STATE_BLIP);
     ow_ovsdb_reattach_wps(&g_ow_ovsdb);
-    ow_ovsdb_cconf_init(&table_Wifi_VIF_Config);
+    ow_ovsdb_cconf_init(&table_Wifi_Radio_Config, &table_Wifi_VIF_Config);
     ow_ovsdb_stats_init();
+    ow_ovsdb_hs_start(OSW_MODULE_LOAD(ow_ovsdb_hs));
     g_ow_ovsdb.steering = ow_ovsdb_steer_create();
     ow_ovsdb_flush();
     osw_state_register_observer(&g_ow_ovsdb_osw_state_obs);

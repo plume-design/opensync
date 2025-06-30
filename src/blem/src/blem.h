@@ -62,9 +62,28 @@ typedef struct
 } blem_ble_proximity_config_t;
 
 /**
- * Initialize BLEM OVSDB tables
+ * Initialize OVSDB tables related to BLE onboarding
+ *
+ * @see blem_ovsdb_onboarding_fini
  */
-void blem_ovsdb_init(void);
+void blem_ovsdb_onboarding_init(void);
+
+/**
+ * Cleanup resources initialized by @ref blem_ovsdb_onboarding_init
+ */
+void blem_ovsdb_onboarding_fini(void);
+
+/**
+ * Initialize OVSDB tables related to BLE proximity beacons
+ *
+ * @see blem_ovsdb_proximity_fini
+ */
+void blem_ovsdb_proximity_init(void);
+
+/**
+ * Cleanup resources initialized by @ref blem_ovsdb_proximity_init
+ */
+void blem_ovsdb_proximity_fini(void);
 
 /**
  * Initialize the Bluetooth peripheral

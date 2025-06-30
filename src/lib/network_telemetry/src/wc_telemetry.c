@@ -368,6 +368,9 @@ wc_set_health_stats(struct wc_health_stats *hs)
     pb->has_cachesize = true;
     pb->cachesize = hs->cache_size;
 
+    pb->has_cacheentriesrecycled = true;
+    pb->cacheentriesrecycled = hs->lru_recycle_count;
+
     return pb;
 }
 

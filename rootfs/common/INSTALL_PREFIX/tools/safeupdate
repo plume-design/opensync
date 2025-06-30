@@ -1,0 +1,168 @@
+#!/bin/sh
+# {# jinja-parse #}
+INSTALL_PREFIX={{INSTALL_PREFIX}}
+
+UPG_IMAGE=""
+UPG_ACTION=""
+UPG_PASSWORD=""
+
+# Subset of OSP error codes, see core/src/lib/osp/inc/osp_upg.h for more info
+OSP_UPG_IMG_FAIL=7
+OSP_UPG_FL_WRITE=9
+OSP_UPG_INTERNAL=18
+OSP_UPG_INSTANCE=19
+
+LOCKFILE="/var/lock/safeupdate.lock"
+LOCK_FD=200
+
+SAFEUPDATE_FUNCS_SRC="${INSTALL_PREFIX}/scripts/safeupdate.funcs.sh"
+
+upg_image_write()
+{
+    echo "upg_image_write(): stub, override with platform-specific implementation in $SAFEUPDATE_FUNCS_SRC"
+}
+
+upg_image_commit()
+{
+    echo "upg_image_commit(): stub, override with platform-specific implementation in $SAFEUPDATE_FUNCS_SRC"
+}
+
+# include safeupdate.funcs.sh after the above function definitions
+# so that they can be overridden with platform specifics
+. ${SAFEUPDATE_FUNCS_SRC}
+
+# Decrypt an encrypted image:
+
+# $1 - input file
+# $2 - output file
+# $3 - password
+
+# Note: This function exports the password via the environment
+upg_image_decrypt()
+{
+    _PASS="$3"
+    export _PASS
+    openssl enc -d -pass env:_PASS -nosalt -aes-256-cbc -md sha256 -in "$1" -out "$2"
+    rc="$?"
+    unset _PASS
+    return "$rc"
+}
+
+help()
+{
+    cat << EOF
+
+safeupdate OPTIONS [-P password] [[-u|-w] IMAGE]
+
+options are:
+   -u|--upgrade [IMAGE]  - Upgrade alternate flash partition
+   -w|--write [IMAGE]    - Upgrade alternate flash partition without rebooting
+   -P|--password [P]     - Image decryption password
+
+EOF
+    exit 1
+}
+
+# Only one instance of safeupdate is expected to be running;
+# otherwise, the results are unpredictable, and the device could be
+# 'bricked'. To avoid this, a lock mechanism is implemented.
+# When the lock is acquired, it will be automatically released
+# when the instance terminates, so no explicit unlock call is required.
+lock_instance() {
+    [ ! -d "$(dirname ${LOCKFILE})" ] && mkdir -p "$(dirname ${LOCKFILE})"
+    eval "exec ${LOCK_FD}>${LOCKFILE}" || { echo "Cannot open lock file."; exit ${OSP_UPG_INTERNAL}; }
+    flock -n ${LOCK_FD} || { echo "Another instance of $0 is already running."; exit ${OSP_UPG_INSTANCE}; }
+}
+
+lock_instance
+while [ -n "$1" ]
+do
+    case "$1" in
+        -P|--password)
+            UPG_PASSWORD="$2"
+            shift 2
+            ;;
+
+        -u|--upgrade)
+            UPG_IMAGE="$2"
+            UPG_ACTION="u"
+            shift 2
+            ;;
+
+        -w|--write)
+            UPG_IMAGE="$2"
+            UPG_ACTION="w"
+            shift 2
+            ;;
+
+        *)
+            [ -n "$1" ] && echo "Unknown option: $1"
+            help
+        ;;
+    esac
+done
+
+[ -z "$UPG_IMAGE" -o -z "$UPG_ACTION" ] && help
+
+if [ ! -f "$UPG_IMAGE" -o ! -r "$UPG_IMAGE" ]
+then
+    echo "Cannot access image file: $UPG_IMAGE"
+    exit $OSP_UPG_IMG_FAIL
+fi
+
+#
+# Decrypt phase; When calculating the output (unencrypted) filename, if the
+# encrypted image ends in .eim, simply remove the extension.  Otherwise
+# add ".img" to the output filename. A package .eospkg is decrypted to .ospkg.
+#
+if [ -n "$UPG_PASSWORD" ]
+then
+    UPG_EIM="$UPG_IMAGE"
+    if [ "${UPG_EIM##*.}" == "eim" ]; then
+        UPG_IMAGE="${UPG_EIM%%.eim}"
+    elif [ "${UPG_EIM##*.}" == "eospkg" ]; then
+        UPG_IMAGE="${UPG_EIM%%.eospkg}".ospkg
+    else
+        UPG_IMAGE="${UPG_EIM}.img"
+    fi
+
+    # Verify and decrypt image
+    echo "Verifying image: $UPG_EIM"
+    upg_image_decrypt "$UPG_EIM" "/dev/null" "$UPG_PASSWORD" || exit $OSP_UPG_IMG_FAIL
+    echo "Verification OK."
+
+    echo "Decrypting image: $UPG_EIM"
+    upg_image_decrypt "$UPG_EIM" "$UPG_IMAGE" "$UPG_PASSWORD" || exit $OSP_UPG_IMG_FAIL
+    echo "Decryption OK."
+fi
+
+#
+# Upgrade phase
+#
+do_upgrade()
+{
+    # Check if file is a package
+    if [ "${UPG_IMAGE##*.}" == "ospkg" ]; then
+        echo "Upgrading using package: $UPG_IMAGE"
+        ospkg install "$UPG_IMAGE" || exit $OSP_UPG_FL_WRITE
+    else
+        echo "Upgrading using image: $UPG_IMAGE"
+        upg_image_write "$UPG_IMAGE"
+        upg_image_commit
+    fi
+    echo "Upgrade OK"
+}
+
+case "$UPG_ACTION" in
+    *u*|*w*) do_upgrade ;;
+esac
+
+#
+# Reboot phase
+#
+case "$UPG_ACTION" in
+    *u*)
+        echo "Rebooting."
+        reboot -Rtype=upgrade -Rreason="System upgrade"
+        ;;
+esac

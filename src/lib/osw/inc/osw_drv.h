@@ -179,6 +179,9 @@ struct osw_drv_vif_config_ap {
     int ft_pmk_r1_max_key_lifetime_sec;
     bool ft_pmk_r1_max_key_lifetime_sec_changed;
 
+    int ft_mobility_domain;
+    bool ft_mobility_domain_changed;
+
     struct osw_neigh_list neigh_list;
     struct osw_neigh_list neigh_add_list;
     struct osw_neigh_list neigh_mod_list;
@@ -202,6 +205,24 @@ struct osw_drv_vif_config_ap {
 
     int mbss_group;
     bool mbss_group_changed;
+
+    bool mbo;
+    bool mbo_changed;
+
+    bool oce;
+    bool oce_changed;
+
+    int oce_min_rssi_dbm;
+    bool oce_min_rssi_dbm_changed;
+
+    bool oce_min_rssi_enable;
+    bool oce_min_rssi_enable_changed;
+
+    int oce_retry_delay_sec;
+    bool oce_retry_delay_sec_changed;
+
+    int max_sta;
+    bool max_sta_changed;
 };
 
 struct osw_drv_vif_sta_network {
@@ -284,6 +305,13 @@ struct osw_drv_vif_state_ap {
     bool ft_psk_generate_local;
     int ft_pmk_r0_key_lifetime_sec;
     int ft_pmk_r1_max_key_lifetime_sec;
+    int ft_mobility_domain;
+    bool mbo;
+    bool oce;
+    int oce_min_rssi_dbm;
+    bool oce_min_rssi_enable;
+    int oce_retry_delay_sec;
+    int max_sta;
 };
 
 struct osw_drv_vif_state_ap_vlan {
@@ -649,6 +677,25 @@ osw_drv_report_stats_reset(enum osw_stats_id id);
 void
 osw_drv_conf_free(struct osw_drv_conf *conf);
 
+/**
+ * Lookup a matching osw_drv_vif_config per requested
+ * phy_name and vif_name, within the osw_drv_conf.
+ *
+ * The phy_name can be omitted by passing NULL to match
+ * based on vif_name only.
+ *
+ * vif_name is osw_drv is guaranteed to be unique. The
+ * phy_name filtering is for increased consistency
+ * guarantees for callers.
+ *
+ * @return a pointer to osw_drv_vif_config if a match is
+ * found or NULL if no match is found.
+ */
+struct osw_drv_vif_config *
+osw_drv_conf_lookup_vif(struct osw_drv_conf *conf,
+                        const char *phy_name,
+                        const char *vif_name);
+
 bool
 osw_drv_work_is_settled(void);
 
@@ -684,6 +731,9 @@ osw_drv_scan_reason_to_str(enum osw_drv_scan_complete_reason reason);
 
 void
 osw_drv_report_overrun(struct osw_drv *drv);
+
+void
+osw_drv_invalidate(struct osw_drv *drv);
 
 void
 osw_drv_phy_state_report_free(struct osw_drv_phy_state *state);

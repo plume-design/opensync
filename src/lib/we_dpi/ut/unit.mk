@@ -32,7 +32,18 @@ UNIT_SRC := test_we_dpi_main.c
 
 UNIT_CFLAGS += -Isrc/fsm/inc
 
+UNIT_CFLAGS += -I$(UNIT_PATH)/inc
+UNIT_CFLAGS += -I$(TOP_DIR)/src/lib/we/inc
+UNIT_CFLAGS += -I$(TOP_DIR)/src/lib/rts/inc
+
+UNIT_LDFLAGS := -Wl,--whole-archive
+UNIT_LDFLAGS += $(UNIT_FILES_/src/lib/we)
+UNIT_LDFLAGS += $(UNIT_FILES_/src/lib/rts)
+UNIT_LDFLAGS += -Wl,--no-whole-archive
+
 UNIT_DEPS := src/lib/log
 UNIT_DEPS += src/lib/common
 UNIT_DEPS += src/lib/unity
 UNIT_DEPS += src/lib/we_dpi
+UNIT_DEPS += src/lib/we
+UNIT_DEPS += src/lib/rts

@@ -45,7 +45,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define NEXTHDR_MAX      255
 #define NEXTHDR_INVALID  NEXTHDR_MAX
 
-static uint8_t ipv6_skip_extension(const struct ipv6hdr *ip6, uint32_t size, uint32_t *offset)
+static uint8_t ipv6_skip_extension(const struct nfe_ipv6hdr *ip6, uint32_t size, uint32_t *offset)
 {
     const struct ipv6hdr_ext *ext;
     
@@ -95,12 +95,12 @@ ipv6_extension(uint8_t value)
 int
 nfe_input_ipv6(struct nfe_packet *p)
 {
-    const struct ipv6hdr *ip6;
+    const struct nfe_ipv6hdr *ip6;
     uint8_t nhdr;
     uint32_t offset, size;
 
     size = (uint32_t)(p->tail - p->data);
-    ip6 = (const struct ipv6hdr *)p->data;
+    ip6 = (const struct nfe_ipv6hdr *)p->data;
 
     if (size < sizeof(*ip6))
         return -1;

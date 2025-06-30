@@ -1,0 +1,7 @@
+menu "lib reboot_flags Configuration"
+    config NO_REBOOT_DIR
+    string 'no_reboot directory'
+    default "/tmp/.no_reboot"
+    help
+        Full path to the no_reboot working directory
+endmenu

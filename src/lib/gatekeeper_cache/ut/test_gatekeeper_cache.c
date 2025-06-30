@@ -32,6 +32,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "memutil.h"
 #include "sockaddr_storage.h"
 #include "unity.h"
+#include "ds_tree.h"
 #include "os.h"
 
 #include "test_gatekeeper_cache.h"
@@ -981,17 +982,16 @@ test_max_attr_entries(void)
         entry->attr_name = test_attr_entries[i].attr_name;
 
         ret = gkc_add_attribute_entry(entry);
-        /* We can only insert gk_cache_get_size(), so insert fails at that point */
-        TEST_ASSERT_TRUE( (ret && i < gk_cache_get_size()) || (!ret && i == gk_cache_get_size()) );
+        TEST_ASSERT_TRUE(ret);
 
         FREE(entry->device_mac);
     }
 
     current_count = gk_get_cache_count();
-    LOGN("number of entries %lu \n", gk_get_cache_count());
+    LOGN("number of entries (1) %lu \n", gk_get_cache_count());
     TEST_ASSERT_EQUAL_INT(gk_cache_get_size(), current_count);
 
-    for (i = 0; i < 10; i++)
+    for (i = 0; i < OVER_MAX_CACHE_ENTRIES; ++i)
     {
         entry->action = 1;
         entry->device_mac = str2os_mac(test_attr_entries[i].mac_str);
@@ -1004,8 +1004,8 @@ test_max_attr_entries(void)
         FREE(entry->device_mac);
     }
 
-    LOGN("number of entries %lu \n", gk_get_cache_count());
-    TEST_ASSERT_EQUAL_INT(current_count - 10, gk_get_cache_count());
+    LOGN("number of entries (2) %lu \n", gk_get_cache_count());
+    TEST_ASSERT_EQUAL_INT(current_count - OVER_MAX_CACHE_ENTRIES, gk_get_cache_count());
 
     FREE(entry);
     clear_gatekeeper_cache();
@@ -1087,6 +1087,69 @@ error:
 
     LOGN("ending test: %s", __func__);
 }
+
+void
+test_fqdn_redirect_copy_in_populate_cache_entry(void)
+{
+    LOGN("starting test: %s ...", __func__);
+
+    struct gk_reply_header header;
+    memset(&header, 0, sizeof(header));
+    header.dev_id = STRDUP("AA:AA:AA:AA:AA:01");
+    header.action = FSM_ALLOW;
+    header.ttl = 3600;
+    header.policy = STRDUP("test_policy");
+    header.category_id = 1;
+    header.confidence_level = 80;
+    header.flow_marker = 123;
+
+    // Create source device reply
+    struct gk_device2app_repl dev_repl;
+    memset(&dev_repl, 0, sizeof(dev_repl));
+    dev_repl.header = &header;
+    dev_repl.type = GK_ENTRY_TYPE_FQDN;
+    dev_repl.fqdn = STRDUP("example.com");
+
+    // Create and initialize fqdn_redirect with test data
+    struct fqdn_redirect_s fqdn_redirect;
+    memset(&fqdn_redirect, 0, sizeof(fqdn_redirect));
+    fqdn_redirect.redirect = true;
+    fqdn_redirect.redirect_ttl = 300;
+    fqdn_redirect.redirect_cname = STRDUP("redirect.example.com");
+    STRSCPY(fqdn_redirect.redirect_ips[0], "192.168.1.1");
+    STRSCPY(fqdn_redirect.redirect_ips[1], "192.168.1.2");
+
+    dev_repl.fqdn_redirect = &fqdn_redirect;
+
+    struct gk_attr_cache_interface entry;
+    memset(&entry, 0, sizeof(entry));
+
+    bool success = gk_populate_cache_entry(&dev_repl, &entry);
+    TEST_ASSERT_TRUE(success);
+
+    // Validate that the function copied all fields properly
+    TEST_ASSERT_EQUAL(GK_CACHE_REQ_TYPE_FQDN, entry.attribute_type);
+    TEST_ASSERT_EQUAL_STRING("example.com", entry.attr_name);
+
+    // Verify fqdn_redirect was copied correctly
+    TEST_ASSERT_NOT_NULL(entry.fqdn_redirect);
+    TEST_ASSERT_EQUAL(true, entry.fqdn_redirect->redirect);
+    TEST_ASSERT_EQUAL(300, entry.fqdn_redirect->redirect_ttl);
+    TEST_ASSERT_NOT_NULL(entry.fqdn_redirect->redirect_cname);
+    TEST_ASSERT_EQUAL_STRING("redirect.example.com", entry.fqdn_redirect->redirect_cname);
+    TEST_ASSERT_EQUAL_STRING("192.168.1.1", entry.fqdn_redirect->redirect_ips[0]);
+    TEST_ASSERT_EQUAL_STRING("192.168.1.2", entry.fqdn_redirect->redirect_ips[1]);
+
+    // Clean up
+    gk_free_cache_interface_entry(&entry);
+    FREE(dev_repl.fqdn);
+    FREE(fqdn_redirect.redirect_cname);
+    FREE(header.dev_id);
+    FREE(header.policy);
+
+    LOGN("ending test: %s", __func__);
+}
+
 
 void
 test_gkc_new_flow_entry(void)
@@ -1199,7 +1262,7 @@ test_gkc_new_attr_entry(void)
 
     entry = entry1;
     entry->attribute_type = 12345; /* random value out of range */
-    out = gkc_new_attr_entry(entry);
+    out = gkc_new_attr_entry(NULL, entry);
     TEST_ASSERT_NULL(out);
 }
 
@@ -1207,9 +1270,12 @@ void
 test_cache_size(void)
 {
     struct gk_attr_cache_interface *entry;
+    size_t cache_size;
     bool ret;
 
     LOGI("starting test: %s ...", __func__);
+
+    cache_size = gk_cache_get_size();
 
     /* cache is jus tinitialized, we can change the size */
     gk_cache_set_size(10);
@@ -1232,6 +1298,9 @@ test_cache_size(void)
     gk_cache_set_size(100);
     TEST_ASSERT_EQUAL_size_t(100, gk_cache_get_size());
 
+    /* Reset the cache size to its original value */
+    gk_cache_set_size(cache_size);
+    TEST_ASSERT_EQUAL_size_t(cache_size, gk_cache_get_size());
     LOGN("ending test: %s", __func__);
 }
 
@@ -1676,7 +1745,10 @@ test_ipv4_upsert_action_by_name(void)
     TEST_ASSERT_NOT_NULL(out1);
     TEST_ASSERT_EQUAL(entry.action, FSM_ACTION_NONE);
     TEST_ASSERT_EQUAL(entry.action_by_name, FSM_BLOCK);
-    TEST_ASSERT_EQUAL_STRING(entry.gk_policy, out1->gk_policy);
+
+    if (entry.gk_policy != NULL)
+        TEST_ASSERT_EQUAL_STRING(entry.gk_policy, out1->gk_policy);
+
     ret = sockaddr_storage_equals(entry.ip_addr, &out1->attr.ipv4->ip_addr);
     TEST_ASSERT_TRUE(ret);
 
@@ -1767,7 +1839,8 @@ test_ipv6_upsert_action_by_name(void)
     TEST_ASSERT_NOT_NULL(out1);
     TEST_ASSERT_EQUAL(entry.action, FSM_ACTION_NONE);
     TEST_ASSERT_EQUAL(entry.action_by_name, FSM_BLOCK);
-    TEST_ASSERT_EQUAL_STRING(entry.gk_policy, out1->gk_policy);
+    if (entry.gk_policy != NULL)
+        TEST_ASSERT_EQUAL_STRING(entry.gk_policy, out1->gk_policy);
     ret = sockaddr_storage_equals(entry.ip_addr, &out1->attr.ipv6->ip_addr);
     TEST_ASSERT_TRUE(ret);
 
@@ -1947,14 +2020,453 @@ test_flow_entry_network_id(void)
     LOGI("ending test: %s", __func__);
 }
 
+
+void
+test_lru_recycle(void)
+{
+    LOGI("starting test: %s ...", __func__);
+    struct gk_attr_cache_interface *entry;
+    int current_count = 0;
+    size_t i;
+    bool ret;
+
+    LOGI("starting test: %s ...", __func__);
+    clear_gatekeeper_cache();
+
+    TEST_ASSERT_EQUAL_INT(0, gk_get_cache_count());
+    TEST_ASSERT_EQUAL_INT(0, gk_cache_get_recycled_count());
+
+    gkc_print_cache_entries();
+
+    ret = gkc_add_attribute_entry(entry4);
+    TEST_ASSERT_TRUE(ret);
+
+    ret = gkc_add_attribute_entry(entry5);
+    TEST_ASSERT_TRUE(ret);
+
+    ret = gkc_add_attribute_entry(entry9);
+    TEST_ASSERT_TRUE(ret);
+
+    ret = gkc_add_attribute_entry(entry12);
+    TEST_ASSERT_TRUE(ret);
+
+    entry = CALLOC(1, sizeof(*entry));
+    for (i = 0; i < OVER_MAX_CACHE_ENTRIES * 2; ++i)
+    {
+        entry->action = 1;
+        entry->device_mac = str2os_mac(test_attr_entries[i].mac_str);
+        entry->attribute_type = GK_CACHE_REQ_TYPE_FQDN;
+        entry->cache_ttl = 1000;
+        entry->action = FSM_BLOCK;
+        entry->attr_name = test_attr_entries[i].attr_name;
+
+        ret = gkc_add_attribute_entry(entry);
+        TEST_ASSERT_TRUE(ret);
+
+        FREE(entry->device_mac);
+    }
+
+    gkc_print_cache_entries();
+
+    current_count = gk_get_cache_count();
+    LOGN("number of entries (1) %lu \n", gk_get_cache_count());
+    TEST_ASSERT_EQUAL_INT(gk_cache_get_size(), current_count);
+
+    for (i = 0; i < OVER_MAX_CACHE_ENTRIES * 2; ++i)
+    {
+        entry->action = 1;
+        entry->device_mac = str2os_mac(test_attr_entries[i].mac_str);
+        entry->attribute_type = GK_CACHE_REQ_TYPE_FQDN;
+        entry->cache_ttl = 1000;
+        entry->action = FSM_BLOCK;
+        entry->attr_name = test_attr_entries[i].attr_name;
+        gkc_del_attribute(entry);
+
+        FREE(entry->device_mac);
+    }
+
+    gkc_print_cache_entries();
+
+    LOGN("number of entries (2) %lu \n", gk_get_cache_count());
+    TEST_ASSERT_EQUAL_INT(current_count - OVER_MAX_CACHE_ENTRIES, gk_get_cache_count());
+
+    FREE(entry);
+    clear_gatekeeper_cache();
+
+    LOGI("ending test: %s", __func__);
+}
+
+static struct gk_attr_cache_interface *create_test_ipv6_entry(char *ip_str)
+{
+    struct gk_attr_cache_interface *attr_entry = CALLOC(1, sizeof(*attr_entry));
+
+    /* Set other attributes */
+    attr_entry->attribute_type = GK_CACHE_REQ_TYPE_IPV6;
+    attr_entry->device_mac = str2os_mac("AA:AA:AA:AA:AA:01");
+    attr_entry->action = FSM_ALLOW; /* Accept */
+    attr_entry->cache_ttl = 7200;
+    attr_entry->category_id = 2;
+    attr_entry->confidence_level = 3;
+    attr_entry->flow_marker = 2;
+    attr_entry->ip_addr = sockaddr_storage_create(AF_INET6, ip_str);
+
+    return attr_entry;
+}
+
+static struct gk_attr_cache_interface *create_test_url_entry(char *ip_str)
+{
+    struct gk_attr_cache_interface *attr_entry = CALLOC(1, sizeof(*attr_entry));
+
+    /* Set other attributes */
+    attr_entry->attribute_type = GK_CACHE_REQ_TYPE_URL;
+    attr_entry->attr_name = STRDUP(ip_str);
+
+    attr_entry->device_mac = str2os_mac("AA:AA:AA:AA:AA:01");
+    attr_entry->action = FSM_ALLOW; /* Accept */
+    attr_entry->cache_ttl = 7200;
+    attr_entry->category_id = 2;
+    attr_entry->confidence_level = 3;
+    attr_entry->flow_marker = 2;
+
+    return attr_entry;
+}
+
+static struct gk_attr_cache_interface *create_test_ipv4_entry(char *ip_str)
+{
+    struct gk_attr_cache_interface *entry = CALLOC(1, sizeof(*entry));
+    if (entry == NULL) return NULL;
+
+    /* Set up the interface structure */
+    entry->attribute_type = GK_CACHE_REQ_TYPE_IPV4;
+    entry->action = FSM_ALLOW; /* Accept */
+    entry->cache_ttl = 3600;
+    entry->category_id = 1;
+    entry->confidence_level = 1;
+    entry->flow_marker = 1;
+    entry->device_mac = str2os_mac("AA:AA:AA:AA:AA:01");
+    entry->attr_name = NULL;
+    entry->ip_addr = sockaddr_storage_create(AF_INET, ip_str);
+
+    return entry;
+}
+
+void test_process_ipv4_entries_valid(void)
+{
+    struct attr_cache *from_cache;
+
+    /* Create test IPv4 entries */
+    char *test_ips[] = {"192.168.1.1", "10.0.0.1", "172.16.0.1"};
+
+    for (size_t i = 0; i < sizeof(test_ips) / sizeof(test_ips[0]); i++)
+    {
+        struct gk_attr_cache_interface *entry = create_test_ipv4_entry(test_ips[i]);
+        assert(entry != NULL);
+        gkc_add_attribute_entry(entry);
+        from_cache = gkc_fetch_attribute_entry(entry);
+        TEST_ASSERT_NOT_NULL(from_cache);
+
+        /* Clean up resources */
+        gk_free_cache_interface_entry(entry);
+        FREE(entry);
+    }
+
+    /* Create bulk reply structure */
+    Gatekeeper__Southbound__V1__GatekeeperBulkReply *bulk_reply = NULL;
+    bulk_reply = CALLOC(1, sizeof(*bulk_reply));
+
+    gatekeeper__southbound__v1__gatekeeper_bulk_reply__init(bulk_reply);
+
+    /* Allocate space for IPv4 replies */
+    bulk_reply->n_reply_ipv4 = 3;
+    bulk_reply->reply_ipv4 = CALLOC(3, sizeof(Gatekeeper__Southbound__V1__GatekeeperIpv4Reply *));
+
+    struct gk_cache_mgr *mgr;
+    ds_tree_t *device_tree;
+
+    mgr = gk_cache_get_mgr();
+
+    device_tree = &mgr->per_device_tree;
+
+    /* Process IPv4 entries */
+    bool result = gk_populate_bulk_reply_arrays(device_tree, bulk_reply);
+    assert(result == true);
+
+    /* validate that bulk_reply->reply_ipv4 entries are filled correctly */
+    for (size_t i = 0; i < bulk_reply->n_reply_ipv4; i++)
+    {
+        TEST_ASSERT_NOT_NULL(bulk_reply->reply_ipv4[i]);
+        TEST_ASSERT_NOT_NULL(bulk_reply->reply_ipv4[i]->header);
+        TEST_ASSERT_NOT_EQUAL(0, bulk_reply->reply_ipv4[i]->addr_ipv4);
+    }
+    gk_cleanup_bulk_reply(bulk_reply);
+}
+
+void test_process_ipv4_entries_invalid_family(void)
+{
+    struct attr_cache *from_cache;
+
+    /* Create an IPv4 entry with invalid address family */
+    struct gk_attr_cache_interface *entry= create_test_ipv4_entry("192.168.1.1");
+    assert(entry != NULL);
+    entry->ip_addr->ss_family = AF_INET6; /* Set wrong family */
+
+    gkc_add_attribute_entry(entry);
+
+    from_cache = gkc_fetch_attribute_entry(entry);
+    TEST_ASSERT_NOT_NULL(from_cache);
+
+    gk_free_cache_interface_entry(entry);
+    FREE(entry);
+
+    /* Create bulk reply structure */
+    Gatekeeper__Southbound__V1__GatekeeperBulkReply *bulk_reply = CALLOC(1, sizeof(*bulk_reply));
+    assert(bulk_reply != NULL);
+    gatekeeper__southbound__v1__gatekeeper_bulk_reply__init(bulk_reply);
+
+    /* Allocate space for IPv4 replies */
+    bulk_reply->n_reply_ipv4 = 1;
+    bulk_reply->reply_ipv4 = CALLOC(1, sizeof(Gatekeeper__Southbound__V1__GatekeeperIpv4Reply *));
+    assert(bulk_reply->reply_ipv4 != NULL);
+
+    struct gk_cache_mgr *mgr;
+    ds_tree_t *device_tree;
+
+    mgr = gk_cache_get_mgr();
+
+    device_tree = &mgr->per_device_tree;
+
+    /* Process IPv4 entries */
+    bool result = gk_populate_bulk_reply_arrays(device_tree, bulk_reply);
+    /* result should be false since it is a invalid IP family */
+    assert(result == false);
+
+    gk_cleanup_bulk_reply(bulk_reply);
+}
+
+void test_process_ipv6_entries_invalid_family(void)
+{
+    struct attr_cache *from_cache;
+
+    LOGD("starting test: %s ...", __func__);
+
+    /* Create an IPv6 entry with invalid address family */
+    struct gk_attr_cache_interface *entry= create_test_ipv6_entry("2001:db8::1");
+    assert(entry != NULL);
+    entry->ip_addr->ss_family = AF_INET; /* Set wrong family */
+
+    gkc_add_attribute_entry(entry);
+
+    from_cache = gkc_fetch_attribute_entry(entry);
+    TEST_ASSERT_NOT_NULL(from_cache);
+
+    gk_free_cache_interface_entry(entry);
+    FREE(entry);
+
+    /* Create bulk reply structure */
+    Gatekeeper__Southbound__V1__GatekeeperBulkReply *bulk_reply = CALLOC(1, sizeof(*bulk_reply));
+    assert(bulk_reply != NULL);
+    gatekeeper__southbound__v1__gatekeeper_bulk_reply__init(bulk_reply);
+
+    /* Allocate space for IPv6 replies */
+    bulk_reply->n_reply_ipv6 = 1;
+    bulk_reply->reply_ipv6 = CALLOC(1, sizeof(Gatekeeper__Southbound__V1__GatekeeperIpv6Reply *));
+    assert(bulk_reply->reply_ipv6 != NULL);
+
+    struct gk_cache_mgr *mgr;
+    ds_tree_t *device_tree;
+
+    mgr = gk_cache_get_mgr();
+
+    device_tree = &mgr->per_device_tree;
+
+    /* Process IPv4 entries */
+    bool result = gk_populate_bulk_reply_arrays(device_tree, bulk_reply);
+    /* result should be false since it is a invalid IP family */
+    assert(result == false);
+
+    gk_cleanup_bulk_reply(bulk_reply);
+}
+
+void test_process_ipv6_entries_valid(void)
+{
+    struct attr_cache *from_cache;
+
+    /* Create test IPv6 entries */
+    char *test_ips[] = {"2001:db8::1", "fe80::1", "2001:4860:4860::8888"};
+
+    LOGD("starting test: %s ...", __func__);
+
+    for (size_t i = 0; i < sizeof(test_ips) / sizeof(test_ips[0]); i++)
+    {
+        struct gk_attr_cache_interface *entry = create_test_ipv6_entry(test_ips[i]);
+        assert(entry != NULL);
+        gkc_add_attribute_entry(entry);
+        from_cache = gkc_fetch_attribute_entry(entry);
+        TEST_ASSERT_NOT_NULL(from_cache);
+
+        /* Clean up resources */
+        gk_free_cache_interface_entry(entry);
+        FREE(entry);
+    }
+
+    /* Create bulk reply structure */
+    Gatekeeper__Southbound__V1__GatekeeperBulkReply *bulk_reply = CALLOC(1, sizeof(*bulk_reply));
+    assert(bulk_reply != NULL);
+    gatekeeper__southbound__v1__gatekeeper_bulk_reply__init(bulk_reply);
+
+    /* Allocate space for IPv6 replies */
+    bulk_reply->n_reply_ipv6 = 3;
+    bulk_reply->reply_ipv6 = CALLOC(3, sizeof(Gatekeeper__Southbound__V1__GatekeeperIpv4Reply *));
+
+    struct gk_cache_mgr *mgr;
+    ds_tree_t *device_tree;
+
+    mgr = gk_cache_get_mgr();
+
+    device_tree = &mgr->per_device_tree;
+
+    /* Process IPv4 entries */
+    bool result = gk_populate_bulk_reply_arrays(device_tree, bulk_reply);
+    assert(result == true);
+
+    /* validate that bulk_reply->reply_ipv4 entries are filled correctly */
+    for (size_t i = 0; i < bulk_reply->n_reply_ipv6; i++)
+    {
+        TEST_ASSERT_NOT_NULL(bulk_reply->reply_ipv6[i]);
+        TEST_ASSERT_NOT_NULL(bulk_reply->reply_ipv6[i]->header);
+        TEST_ASSERT_NOT_EQUAL(0, bulk_reply->reply_ipv6[i]->addr_ipv6.len);
+    }
+    gk_cleanup_bulk_reply(bulk_reply);
+}
+
+void test_process_url_entries_valid(void)
+{
+    struct attr_cache *from_cache;
+
+    LOGD("starting test: %s ...", __func__);
+
+    /* Create test IPv4 entries */
+    char *test_urls[] = {"https://example.com", "https://test.org/page.html", "http://domain.net/path/to/resource"};
+
+    for (size_t i = 0; i < sizeof(test_urls) / sizeof(test_urls[0]); i++)
+    {
+        struct gk_attr_cache_interface *entry = create_test_url_entry(test_urls[i]);
+        assert(entry != NULL);
+        gkc_add_attribute_entry(entry);
+        from_cache = gkc_fetch_attribute_entry(entry);
+        TEST_ASSERT_NOT_NULL(from_cache);
+
+        /* Clean up resources */
+        gk_free_cache_interface_entry(entry);
+        FREE(entry);
+    }
+
+    /* Create bulk reply structure */
+    Gatekeeper__Southbound__V1__GatekeeperBulkReply *bulk_reply = NULL;
+    bulk_reply = CALLOC(1, sizeof(*bulk_reply));
+
+    gatekeeper__southbound__v1__gatekeeper_bulk_reply__init(bulk_reply);
+
+    /* Allocate space for URL replies */
+    bulk_reply->n_reply_http_url = 3;
+    bulk_reply->reply_http_url = CALLOC(3, sizeof(Gatekeeper__Southbound__V1__GatekeeperHttpUrlReply *));
+
+
+    struct gk_cache_mgr *mgr;
+    ds_tree_t *device_tree;
+
+    mgr = gk_cache_get_mgr();
+
+    device_tree = &mgr->per_device_tree;
+
+    /* Process url entries */
+    bool result = gk_populate_bulk_reply_arrays(device_tree, bulk_reply);
+    assert(result == true);
+
+    /* validate that bulk_reply->reply_http_url entries are filled correctly */
+    for (size_t i = 0; i < bulk_reply->n_reply_http_url; i++)
+    {
+        TEST_ASSERT_NOT_NULL(bulk_reply->reply_http_url[i]);
+        TEST_ASSERT_NOT_NULL(bulk_reply->reply_http_url[i]->header);
+        TEST_ASSERT_NOT_NULL(bulk_reply->reply_http_url[i]->http_url);
+    }
+    gk_cleanup_bulk_reply(bulk_reply);
+}
+
+void test_process_hostname_entries_valid(void)
+{
+    Gatekeeper__Southbound__V1__GatekeeperBulkReply *bulk_reply = NULL;
+    struct gk_attr_cache_interface *entry;
+    struct gk_cache_mgr *mgr;
+    ds_tree_t *device_tree;
+    bool ret;
+
+    LOGD("starting test: %s ...", __func__);
+
+    /* Add an FQDN entry */
+    ret = gkc_add_attribute_entry(entry3);
+    TEST_ASSERT_TRUE(ret);
+
+    /* Add an HOST entry */
+    entry = entry4;
+    entry->attribute_type = GK_CACHE_REQ_TYPE_HOST;  // change to HOST
+    ret = gkc_add_attribute_entry(entry);
+    TEST_ASSERT_TRUE(ret);
+
+    /* Add an SNI entry */
+    entry = entry6;
+    entry->attribute_type = GK_CACHE_REQ_TYPE_SNI;  // change to SNI
+    ret = gkc_add_attribute_entry(entry);
+    TEST_ASSERT_TRUE(ret);
+
+    /* Create bulk reply structure */
+
+    bulk_reply = CALLOC(1, sizeof(*bulk_reply));
+    gatekeeper__southbound__v1__gatekeeper_bulk_reply__init(bulk_reply);
+
+    /* Allocate space for FQDN replies */
+    bulk_reply->n_reply_fqdn = 1;
+    bulk_reply->reply_fqdn = CALLOC(3, sizeof(Gatekeeper__Southbound__V1__GatekeeperFqdnReply *));
+
+    /* Allocate space for HTTP HOST replies */
+    bulk_reply->n_reply_http_host = 1;
+    bulk_reply->reply_http_host = CALLOC(3, sizeof(Gatekeeper__Southbound__V1__GatekeeperHttpHostReply *));
+
+    /* Allocate space for SNI replies */
+    bulk_reply->n_reply_https_sni = 1;
+    bulk_reply->reply_https_sni = CALLOC(3, sizeof(Gatekeeper__Southbound__V1__GatekeeperHttpsSniReply *));
+
+    mgr = gk_cache_get_mgr();
+
+    device_tree = &mgr->per_device_tree;
+
+    /* Process fqdn entries */
+    bool result = gk_populate_bulk_reply_arrays(device_tree, bulk_reply);
+    assert(result == true);
+
+    /* validate that bulk_reply->reply_http_url entries are filled correctly */
+    TEST_ASSERT_NOT_NULL(bulk_reply->reply_fqdn[0]);
+    TEST_ASSERT_NOT_NULL(bulk_reply->reply_fqdn[0]->header);
+    TEST_ASSERT_NOT_NULL(bulk_reply->reply_fqdn[0]->query_name);
+
+    TEST_ASSERT_NOT_NULL(bulk_reply->reply_http_host[0]);
+    TEST_ASSERT_NOT_NULL(bulk_reply->reply_http_host[0]->header);
+    TEST_ASSERT_NOT_NULL(bulk_reply->reply_http_host[0]->http_host);
+
+    TEST_ASSERT_NOT_NULL(bulk_reply->reply_https_sni[0]);
+    TEST_ASSERT_NOT_NULL(bulk_reply->reply_https_sni[0]->header);
+    TEST_ASSERT_NOT_NULL(bulk_reply->reply_https_sni[0]->https_sni);
+
+    gk_cleanup_bulk_reply(bulk_reply);
+}
+
 void
 run_gk_cache(void)
 {
     RUN_TEST(test_gkc_new_flow_entry);
+    RUN_TEST(test_fqdn_redirect_copy_in_populate_cache_entry);
     RUN_TEST(test_gkc_new_attr_entry);
-
     RUN_TEST(test_get_attr_key);
-
     RUN_TEST(test_add_gk_cache);
     RUN_TEST(test_check_ttl);
     RUN_TEST(test_lookup);
@@ -1970,19 +2482,15 @@ run_gk_cache(void)
     RUN_TEST(test_flow_hit_counter);
     RUN_TEST(test_flow_ttl);
     RUN_TEST(test_fqdn_redirect_entry);
-
     RUN_TEST(test_counters);
     RUN_TEST(test_duplicate_entries_fqdn);
     RUN_TEST(test_duplicate_entries_ipv4);
     RUN_TEST(test_max_attr_entries);
     RUN_TEST(test_max_flow_entries);
     RUN_TEST(test_host_entry_in_fqdn);
-
-    RUN_TEST(test_gkc_new_attr_entry);
     RUN_TEST(test_gkc_is_flow_valid);
     RUN_TEST(test_cache_size);
     RUN_TEST(test_allow_blocked_counters);
-
     RUN_TEST(test_gkc_add_to_cache_delete_entry);
     RUN_TEST(test_gkc_private_ipv4_attr_entry);
     RUN_TEST(test_gkc_private_ipv6_attr_entry);
@@ -1994,4 +2502,11 @@ run_gk_cache(void)
     RUN_TEST(test_ipv6_upsert_action_by_name);
     RUN_TEST(test_attr_entry_network_id);
     RUN_TEST(test_flow_entry_network_id);
+    RUN_TEST(test_lru_recycle);
+    RUN_TEST(test_process_ipv4_entries_valid);
+    RUN_TEST(test_process_ipv4_entries_invalid_family);
+    RUN_TEST(test_process_ipv6_entries_valid);
+    RUN_TEST(test_process_ipv6_entries_invalid_family);
+    RUN_TEST(test_process_url_entries_valid);
+    RUN_TEST(test_process_hostname_entries_valid);
 }

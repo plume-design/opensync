@@ -46,6 +46,13 @@ bool dm_hook_close();
 void dm_st_in_progress_set(bool value);
 bool dm_st_in_progress_get();
 bool dm_manager_stop_all(char *except_mgrs);
+void chkmem_init(void);
+int chkmem_check_pss(int pid, char *pname, int memmax, int maxmem_cnt, int *highest, int *cnt);
+bool dm_no_reboot_set(char *module);
+bool dm_no_reboot_clear(char *module);
+bool dm_no_reboot_get(char *module);
+bool dm_no_reboot_clear_all();
+bool dm_no_reboot_list();
 
 
 /**
@@ -58,15 +65,18 @@ bool dm_manager_stop_all(char *except_mgrs);
  *                              trigger a restart
  * @param[in]   restart_timer   Restart timer in seconds or 0 to use default
  */
-bool dm_manager_register(const char *path, bool plan_b, bool always_restart, int restart_timer);
+bool dm_manager_register(const char *path, bool plan_b, bool always_restart, int restart_timer, int memmax, int memmax_cnt);
 
 /*
  * DM cli
  */
+enum dm_cli_status
+{
+    DM_CLI_CONTINUE,
+    DM_CLI_DONE_OK,
+    DM_CLI_DONE_ERR,
+};
 
-#define DM_CLI_DONE     true
-#define DM_CLI_CONTINUE false
-
-bool dm_cli(int argc, char *argv[], log_severity_t *log_severity);
+int dm_cli(int argc, char *argv[], log_severity_t *log_severity);
 
 #endif /* DM_H_INCLUDED */

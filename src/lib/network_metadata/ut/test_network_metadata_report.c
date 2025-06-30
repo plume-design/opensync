@@ -157,7 +157,7 @@ struct in_key in_keys[] =
         .src_ip = "192.168.40.1",
         .dst_ip = "32.33.34.35",
         .ipprotocol = 17,
-        .sport = 12345,
+        .sport = 12346,
         .dport = 53,
     },
     {   /* 11 */
@@ -642,6 +642,7 @@ void activate_add_samples_close_send_report(int report_type)
     /* Allocate aggregator */
     aggr_set = &g_nd_test.aggr_set;
     aggr_set->report_type = report_type;
+    aggr_set->report_stats_type = NET_MD_LAN_FLOWS | NET_MD_IP_FLOWS;
     aggr = net_md_allocate_aggregator(aggr_set);
     TEST_ASSERT_NOT_NULL(aggr);
 
@@ -700,6 +701,7 @@ void test_add_2_samples_all_keys(void)
 
     /* Allocate aggregator */
     aggr_set = &g_nd_test.aggr_set;
+    aggr_set->report_stats_type = NET_MD_LAN_FLOWS | NET_MD_IP_FLOWS;
     aggr_set->report_type = NET_MD_REPORT_RELATIVE;
     aggr = net_md_allocate_aggregator(aggr_set);
     TEST_ASSERT_NOT_NULL(aggr);
@@ -827,6 +829,7 @@ void test_ethernet_aggregate_one_key(void)
 
     /* Allocate aggregator */
     aggr_set = &g_nd_test.aggr_set;
+    aggr_set->report_stats_type = NET_MD_LAN_FLOWS | NET_MD_IP_FLOWS;
     aggr_set->report_type = NET_MD_REPORT_RELATIVE;
     relative_aggr = net_md_allocate_aggregator(aggr_set);
 
@@ -864,6 +867,7 @@ void test_ethernet_aggregate_one_key_lower_values(void)
 
     /* Allocate aggregator */
     aggr_set = &g_nd_test.aggr_set;
+    aggr_set->report_stats_type = NET_MD_LAN_FLOWS | NET_MD_IP_FLOWS;
     aggr_set->report_type = NET_MD_REPORT_RELATIVE;
     relative_aggr = net_md_allocate_aggregator(aggr_set);
 
@@ -1036,6 +1040,7 @@ void test_ethernet_aggregate_two_keys(void)
 
     /* Allocate aggregator */
     aggr_set = &g_nd_test.aggr_set;
+    aggr_set->report_stats_type = NET_MD_LAN_FLOWS | NET_MD_IP_FLOWS;
     aggr_set->report_type = NET_MD_REPORT_RELATIVE;
     relative_aggr = net_md_allocate_aggregator(aggr_set);
     aggr_set->report_type = NET_MD_REPORT_ABSOLUTE;
@@ -1105,6 +1110,7 @@ void test_ethernet_aggregate_two_keys_lower_values(void)
 
     /* Allocate aggregator */
     aggr_set = &g_nd_test.aggr_set;
+    aggr_set->report_stats_type = NET_MD_LAN_FLOWS | NET_MD_IP_FLOWS;
     aggr_set->report_type = NET_MD_REPORT_RELATIVE;
     relative_aggr = net_md_allocate_aggregator(aggr_set);
     aggr_set->report_type = NET_MD_REPORT_ABSOLUTE;
@@ -1146,6 +1152,7 @@ void test_large_loop(void)
 
     /* Allocate aggregator */
     aggr_set = &g_nd_test.aggr_set;
+    aggr_set->report_stats_type = NET_MD_LAN_FLOWS | NET_MD_IP_FLOWS;
     aggr_set->report_type = NET_MD_REPORT_RELATIVE;
     aggr = net_md_allocate_aggregator(aggr_set);
     TEST_ASSERT_NOT_NULL(aggr);
@@ -1207,6 +1214,7 @@ void test_add_remove_flows(void)
 
     /* Allocate aggregator with a time-to-live set to 1 second */
     aggr_set = &g_nd_test.aggr_set;
+    aggr_set->report_stats_type = NET_MD_LAN_FLOWS | NET_MD_IP_FLOWS;
     aggr_set->report_type = NET_MD_REPORT_RELATIVE;
     aggr_set->acc_ttl = 1;
     aggr = net_md_allocate_aggregator(aggr_set);
@@ -1290,6 +1298,7 @@ void test_multiple_windows(void)
 
     /* Allocate aggregator */
     aggr_set = &g_nd_test.aggr_set;
+    aggr_set->report_stats_type = NET_MD_LAN_FLOWS | NET_MD_IP_FLOWS;
     aggr_set->num_windows = g_nd_test.nelems;
     aggr_set->report_type = NET_MD_REPORT_RELATIVE;
     aggr = net_md_allocate_aggregator(aggr_set);
@@ -1375,6 +1384,7 @@ void test_report_filter(void)
 
     /* Allocate aggregator, set a report_filter routine */
     aggr_set = &g_nd_test.aggr_set;
+    aggr_set->report_stats_type = NET_MD_LAN_FLOWS | NET_MD_IP_FLOWS;
     aggr_set->report_type = NET_MD_REPORT_RELATIVE;
     aggr_set->report_filter = report_filter;
     aggr = net_md_allocate_aggregator(aggr_set);
@@ -1430,6 +1440,7 @@ void test_activate_and_free_aggr(void)
 
     /* Allocate aggregator */
     aggr_set = &g_nd_test.aggr_set;
+    aggr_set->report_stats_type = NET_MD_LAN_FLOWS | NET_MD_IP_FLOWS;
     aggr_set->report_type = NET_MD_REPORT_RELATIVE;
     aggr = net_md_allocate_aggregator(aggr_set);
     TEST_ASSERT_NOT_NULL(aggr);
@@ -1462,6 +1473,7 @@ void test_bogus_ttl(void)
 
     /* Allocate aggregator with a time-to-live set to 1 second */
     aggr_set = &g_nd_test.aggr_set;
+    aggr_set->report_stats_type = NET_MD_LAN_FLOWS | NET_MD_IP_FLOWS;
     aggr_set->acc_ttl = 1;
     aggr_set->report_type = NET_MD_REPORT_RELATIVE;
     aggr = net_md_allocate_aggregator(aggr_set);
@@ -1521,6 +1533,7 @@ test_flow_tags_one_key(void)
 
     /* Allocate aggregator */
     aggr_set = &g_nd_test.aggr_set;
+    aggr_set->report_stats_type = NET_MD_LAN_FLOWS | NET_MD_IP_FLOWS;
     aggr_set->report_type = NET_MD_REPORT_RELATIVE;
     aggr = net_md_allocate_aggregator(aggr_set);
     TEST_ASSERT_NOT_NULL(aggr);
@@ -1598,6 +1611,7 @@ test_report_tags_one_key(void)
 
     /* Allocate aggregator */
     aggr_set = &g_nd_test.aggr_set;
+    aggr_set->report_stats_type = NET_MD_LAN_FLOWS | NET_MD_IP_FLOWS;
     aggr_set->report_type = NET_MD_REPORT_RELATIVE;
     aggr = net_md_allocate_aggregator(aggr_set);
     TEST_ASSERT_NOT_NULL(aggr);
@@ -1745,6 +1759,7 @@ test_vendor_data_one_key(void)
 
     /* Allocate aggregator */
     aggr_set = &g_nd_test.aggr_set;
+    aggr_set->report_stats_type = NET_MD_LAN_FLOWS | NET_MD_IP_FLOWS;
     aggr_set->report_type = NET_MD_REPORT_RELATIVE;
     aggr = net_md_allocate_aggregator(aggr_set);
     TEST_ASSERT_NOT_NULL(aggr);
@@ -2111,6 +2126,7 @@ test_vendor_data_serialize_deserialize(void)
 
     /* Allocate aggregator */
     aggr_set = &g_nd_test.aggr_set;
+    aggr_set->report_stats_type = NET_MD_LAN_FLOWS | NET_MD_IP_FLOWS;
     aggr_set->report_type = NET_MD_REPORT_RELATIVE;
     aggr_in = net_md_allocate_aggregator(aggr_set);
     TEST_ASSERT_NOT_NULL(aggr_in);
@@ -2296,6 +2312,7 @@ test_report_data_serialize_deserialize(void)
 
     /* Allocate aggregator */
     aggr_set = &g_nd_test.aggr_set;
+    aggr_set->report_stats_type = NET_MD_LAN_FLOWS | NET_MD_IP_FLOWS;
     aggr_set->report_type = NET_MD_REPORT_RELATIVE;
     aggr_in = net_md_allocate_aggregator(aggr_set);
     TEST_ASSERT_NOT_NULL(aggr_in);
@@ -2430,6 +2447,7 @@ test_update_flow_tags(void)
 
     /* Allocate aggregator */
     aggr_set = &g_nd_test.aggr_set;
+    aggr_set->report_stats_type = NET_MD_LAN_FLOWS | NET_MD_IP_FLOWS;
     aggr_set->report_type = NET_MD_REPORT_RELATIVE;
     aggr = net_md_allocate_aggregator(aggr_set);
     TEST_ASSERT_NOT_NULL(aggr);
@@ -2649,6 +2667,7 @@ test_update_vendor_data(void)
 
     /* Allocate aggregator */
     aggr_set = &g_nd_test.aggr_set;
+    aggr_set->report_stats_type = NET_MD_LAN_FLOWS | NET_MD_IP_FLOWS;
     aggr_set->report_type = NET_MD_REPORT_RELATIVE;
     aggr_in = net_md_allocate_aggregator(aggr_set);
     TEST_ASSERT_NOT_NULL(aggr_in);
@@ -2858,6 +2877,7 @@ test_update_filter_flow_tags(void)
 
     /* Allocate aggregator */
     aggr_set = &g_nd_test.aggr_set;
+    aggr_set->report_stats_type = NET_MD_LAN_FLOWS | NET_MD_IP_FLOWS;
     aggr_set->report_type = NET_MD_REPORT_RELATIVE;
     aggr_set->collect_filter = test_collect_filter_flow;
     aggr = net_md_allocate_aggregator(aggr_set);
@@ -3035,6 +3055,7 @@ test_reverse_lookup_acc(void)
 
     /* Allocate aggregator */
     aggr_set = &g_nd_test.aggr_set;
+    aggr_set->report_stats_type = NET_MD_LAN_FLOWS | NET_MD_IP_FLOWS;
     aggr_set->report_type = NET_MD_REPORT_RELATIVE;
     aggr_set->collect_filter = test_collect_filter_flow;
     aggr = net_md_allocate_aggregator(aggr_set);
@@ -3108,6 +3129,7 @@ test_direction_originator_data_serialize_deserialize(void)
 
     /* Allocate aggregator */
     aggr_set = &g_nd_test.aggr_set;
+    aggr_set->report_stats_type = NET_MD_LAN_FLOWS | NET_MD_IP_FLOWS;
     aggr_set->report_type = NET_MD_REPORT_RELATIVE;
     aggr_in = net_md_allocate_aggregator(aggr_set);
     TEST_ASSERT_NOT_NULL(aggr_in);
@@ -3198,6 +3220,7 @@ test_acc_flow_info_report(void)
 
     /* Allocate aggregator */
     aggr_set = &g_nd_test.aggr_set;
+    aggr_set->report_stats_type = NET_MD_LAN_FLOWS | NET_MD_IP_FLOWS;
     aggr_set->report_type = NET_MD_REPORT_RELATIVE;
     aggr = net_md_allocate_aggregator(aggr_set);
     TEST_ASSERT_NOT_NULL(aggr);
@@ -3258,6 +3281,7 @@ test_net_md_ufid(void)
 
     /* Allocate aggregator */
     aggr_set = &g_nd_test.aggr_set;
+    aggr_set->report_stats_type = NET_MD_LAN_FLOWS | NET_MD_IP_FLOWS;
     aggr_set->report_type = NET_MD_REPORT_RELATIVE;
     aggr = net_md_allocate_aggregator(aggr_set);
 
@@ -3371,6 +3395,169 @@ test_net_md_ufid(void)
     FREE(aggr);
 }
 
+/**
+ * @brief Test net_md_purge_aggr with NULL aggregator
+ */
+void test_net_md_purge_aggr_null_aggregator(void)
+{
+    net_md_purge_aggr(NULL);
+}
+
+/**
+ * @brief Test net_md_purge_aggr with fresh flows (should not purge)
+ */
+void test_net_md_purge_aggr_fresh_flows(void)
+{
+    struct net_md_aggregator_set *aggr_set;
+    struct flow_counters counters[2];
+    struct net_md_aggregator *aggr;
+    size_t initial_flows;
+    size_t key_idx;
+
+    TEST_ASSERT_TRUE(g_nd_test.initialized);
+
+    /* Allocate aggregator */
+    aggr_set = &g_nd_test.aggr_set;
+    aggr_set->acc_ttl = 120; /* 120 seconds */
+    aggr_set->report_stats_type = NET_MD_LAN_FLOWS | NET_MD_IP_FLOWS;
+    aggr = net_md_allocate_aggregator(aggr_set);
+    TEST_ASSERT_NOT_NULL(aggr);
+
+    /* Activate aggregator window */
+    net_md_activate_window(aggr);
+
+    for (key_idx = 0; key_idx < g_nd_test.nelems; key_idx++)
+    {
+        struct net_md_flow_key *key;
+
+        LOGD("%s:%d: key idx: %zu", __func__, __LINE__, key_idx);
+        key = g_nd_test.net_md_keys[key_idx];
+        validate_sampling_one_key(aggr, key, counters);
+    }
+
+    initial_flows = aggr->total_flows;
+    LOGD("%s:%d: flows in aggregator: %zu", __func__, __LINE__, initial_flows);
+
+    net_md_purge_aggr(aggr);
+
+    TEST_ASSERT_EQUAL_UINT(initial_flows, aggr->total_flows);
+
+    /* Free the aggregator */
+    net_md_free_aggregator(aggr);
+    FREE(aggr);
+}
+
+/**
+ * @brief Test net_md_purge_aggr with old flows (should purge)
+ */
+void test_net_md_purge_aggr_old_flows(void)
+{
+    struct net_md_aggregator_set *aggr_set;
+    struct flow_counters counters[2];
+    struct net_md_aggregator *aggr;
+    time_t now = time(NULL);
+    time_t old_time = now - 200; /* 200 seconds ago */
+    size_t key_idx;
+
+    TEST_ASSERT_TRUE(g_nd_test.initialized);
+
+    /* Allocate aggregator */
+    aggr_set = &g_nd_test.aggr_set;
+    aggr_set->acc_ttl = 10; /* 10 seconds */
+    aggr_set->report_stats_type = NET_MD_LAN_FLOWS | NET_MD_IP_FLOWS;
+    aggr = net_md_allocate_aggregator(aggr_set);
+    TEST_ASSERT_NOT_NULL(aggr);
+
+    /* Activate aggregator window */
+    net_md_activate_window(aggr);
+
+    for (key_idx = 0; key_idx < g_nd_test.nelems; key_idx++)
+    {
+        struct net_md_stats_accumulator *acc;
+        struct net_md_flow_key *key;
+
+        LOGD("%s:%d: key idx: %zu", __func__, __LINE__, key_idx);
+        key = g_nd_test.net_md_keys[key_idx];
+
+        validate_sampling_one_key(aggr, key, counters);
+        acc = net_md_lookup_acc(aggr, key);
+        acc->last_updated = old_time; /* Make the flow old */
+        TEST_ASSERT_NOT_NULL(acc);
+    }
+
+    LOGD("%s:%d: flows in aggregator: %zu", __func__, __LINE__, aggr->total_flows);
+
+    net_md_purge_aggr(aggr);
+
+    TEST_ASSERT_EQUAL_UINT(0, aggr->total_flows);
+
+    /* Free the aggregator */
+    net_md_free_aggregator(aggr);
+    FREE(aggr);
+}
+
+/**
+ * @brief Test net_md_purge_aggr with mixed fresh and old flows
+ */
+void test_net_md_purge_aggr_mixed_flows(void)
+{
+    struct net_md_aggregator_set *aggr_set;
+    struct flow_counters counters[2];
+    struct net_md_aggregator *aggr;
+    time_t now = time(NULL);
+    time_t old_time = now - 200; /* 200 seconds ago */
+    size_t key_idx;
+
+    TEST_ASSERT_TRUE(g_nd_test.initialized);
+
+    /* Allocate aggregator */
+    aggr_set = &g_nd_test.aggr_set;
+    aggr_set->acc_ttl = 10; /* 10 seconds */
+    aggr_set->report_stats_type = NET_MD_LAN_FLOWS | NET_MD_IP_FLOWS;
+    aggr = net_md_allocate_aggregator(aggr_set);
+    TEST_ASSERT_NOT_NULL(aggr);
+
+    /* Activate aggregator window */
+    net_md_activate_window(aggr);
+
+    /* update  acc->last_updated to only the 1st 5 flows */
+    for (key_idx = 0; key_idx < 5; key_idx++)
+    {
+        struct net_md_stats_accumulator *acc;
+        struct net_md_flow_key *key;
+
+        LOGD("%s:%d: key idx: %zu", __func__, __LINE__, key_idx);
+        key = g_nd_test.net_md_keys[key_idx];
+
+        validate_sampling_one_key(aggr, key, counters);
+        acc = net_md_lookup_acc(aggr, key);
+        acc->last_updated = old_time; /* Make the flow old */
+        TEST_ASSERT_NOT_NULL(acc);
+    }
+
+    for (key_idx = 5; key_idx < g_nd_test.nelems; key_idx++)
+    {
+        struct net_md_stats_accumulator *acc;
+        struct net_md_flow_key *key;
+
+        LOGD("%s:%d: key idx: %zu", __func__, __LINE__, key_idx);
+        key = g_nd_test.net_md_keys[key_idx];
+
+        validate_sampling_one_key(aggr, key, counters);
+        acc = net_md_lookup_acc(aggr, key);
+        // acc->last_updated = old_time; /* Make the flow old */
+        TEST_ASSERT_NOT_NULL(acc);
+    }
+
+    net_md_purge_aggr(aggr);
+
+    /* only the first 5 flows should be removed */
+    TEST_ASSERT_EQUAL_UINT(g_nd_test.nelems - 5, aggr->total_flows);
+
+    net_md_free_aggregator(aggr);
+    FREE(aggr);
+}
+
 
 void
 test_network_metadata_reports(void)
@@ -3383,7 +3570,7 @@ test_network_metadata_reports(void)
     /* Sampling and reporting testing */
     RUN_TEST(test_net_md_allocate_aggregator);
     RUN_TEST(test_activate_add_samples_close_send_report);
-    // RUN_TEST(test_add_2_samples_all_keys);
+    RUN_TEST(test_add_2_samples_all_keys);
     RUN_TEST(test_ethernet_aggregate_one_key);
     RUN_TEST(test_ethernet_aggregate_two_keys);
     RUN_TEST(test_ethernet_aggregate_one_key_lower_values);
@@ -3407,6 +3594,10 @@ test_network_metadata_reports(void)
     RUN_TEST(test_direction_originator_data_serialize_deserialize);
     RUN_TEST(test_acc_flow_info_report);
     RUN_TEST(test_net_md_ufid);
+    RUN_TEST(test_net_md_purge_aggr_null_aggregator);
+    RUN_TEST(test_net_md_purge_aggr_fresh_flows);
+    RUN_TEST(test_net_md_purge_aggr_old_flows);
+    RUN_TEST(test_net_md_purge_aggr_mixed_flows);
 
     UnitySetTestFile(old_filename);
     FREE(filename);

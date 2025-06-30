@@ -245,7 +245,16 @@ static bool lnx_map_mape_ip6tnl_create(lnx_map_t *self)
 
     nla_put_u8(nlm, IFLA_IPTUN_PROTO, IPPROTO_IPIP);
     nla_put_u8(nlm, IFLA_IPTUN_TTL, 64);
-    nla_put_u8(nlm, IFLA_IPTUN_ENCAP_LIMIT, 4);
+
+    if (CONFIG_OSN_LINUX_MAPE_IP6TNL_ENCAPLIMIT >= 0)
+    {
+        nla_put_u8(nlm, IFLA_IPTUN_ENCAP_LIMIT, CONFIG_OSN_LINUX_MAPE_IP6TNL_ENCAPLIMIT);
+    }
+    else
+    {
+        nla_put_u32(nlm, IFLA_IPTUN_FLAGS, IP6_TNL_F_IGN_ENCAP_LIMIT);
+    }
+
 
     LOG(INFO, "lnx_map_mape: %s: Creating MAP-E ip6tnl interface: local=%s, remote=%s, link=%s",
             self->lm_if_name,

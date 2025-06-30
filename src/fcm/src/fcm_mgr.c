@@ -48,9 +48,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "fcm_mgr.h"
 #include "fcm_gatekeeper.h"
 #include "fcm_filter.h"
+#include "fcm_stats.h"
 #include "memutil.h"
 #include "data_report_tags.h"
 #include "kconfig.h"
+#include "nf_utils.h"
 
 #if defined(CONFIG_FCM_NO_DSO)
 #include "ct_stats.h"
@@ -179,6 +181,24 @@ static void fcm_set_report_params(fcm_collector_t *collector,
     }
 }
 
+static unsigned int fcm_return_min_timer(fcm_mgr_t *mgr)
+{
+    fcm_collector_t *collector = NULL;
+    fcm_collect_conf_t *collect_conf = NULL;
+    ds_tree_t *collectors = NULL;
+    unsigned int min_timer = INT_MAX;
+
+    collectors = &mgr->collect_tree;
+    collector = ds_tree_head(collectors);
+    while (collector != NULL)
+    {
+        collect_conf = &collector->collect_conf;
+        min_timer = MIN(min_timer, collect_conf->sample_time);
+        collector = ds_tree_next(collectors, collector);
+    }
+    return min_timer;
+}
+
 static void fcm_reset_collect_interval(ev_timer *timer, unsigned int val)
 {
     fcm_mgr_t *mgr = NULL;
@@ -187,17 +207,89 @@ static void fcm_reset_collect_interval(ev_timer *timer, unsigned int val)
     ev_timer_again(mgr->loop, timer);
 }
 
+/**
+ * @brief Callback function for libev timer to purge aggregated data.
+ *
+ * This function is triggered periodically by a libev timer to purge
+ * the aggregated data stored in the dummy aggregator.
+ * @param loop   Pointer to the libev event loop.
+ * @param w      Pointer to the ev_timer watcher.
+ * @param revents Event flags (unused).
+ */
+static void fcm_purge_aggr_cb(struct ev_loop *loop, ev_timer *w, int revents)
+{
+    fcm_mgr_t *mgr;
+
+    mgr = fcm_get_mgr();
+    if (mgr == NULL) return;
+
+    if (mgr->dummy_aggr == NULL) return;
+
+    net_md_purge_aggr(mgr->dummy_aggr);
+}
+
+/**
+ * @brief Restart the aggregator purge timer using the configured interval.
+ */
+static void fcm_restart_purge_timer(void)
+{
+    fcm_mgr_t *mgr;
+
+    mgr = fcm_get_mgr();
+    if (mgr == NULL) return;
+
+    if (mgr->aggr_purge_interval == 0) return;
+
+    mgr->aggr_purge_timer.repeat = mgr->aggr_purge_interval;
+    ev_timer_again(mgr->loop, &mgr->aggr_purge_timer);
+}
+
+static void fcm_set_aggr_purge_interval(void)
+{
+    fcm_report_conf_t *report_conf;
+    unsigned int max_interval = 0;
+    ds_tree_t *report_tree;
+    fcm_mgr_t *mgr;
+
+    mgr = fcm_get_mgr();
+    if (mgr == NULL) return;
+
+    report_tree = &mgr->report_conf_tree;
+    if (report_tree == NULL) return;
+
+    // Find maximum report time across all configurations
+    report_conf = ds_tree_head(report_tree);
+    while (report_conf != NULL)
+    {
+        if (report_conf->report_time > max_interval)
+            max_interval = report_conf->report_time;
+        report_conf = ds_tree_next(report_tree, report_conf);
+    }
+
+    LOGD("%s: Maximum report interval found: %u seconds", __func__, max_interval);
+    // Only update if interval changed
+    if (mgr->aggr_purge_interval != max_interval)
+    {
+        mgr->aggr_purge_interval = max_interval;
+        LOGT("%s: Aggregator purge interval set to %u seconds\n", __func__, mgr->aggr_purge_interval);
+
+        fcm_restart_purge_timer();
+    }
+}
+
 static bool fcm_apply_report_config_changes(fcm_collector_t *collector)
 {
     fcm_collect_conf_t *collect_conf =  NULL;
     fcm_report_conf_t *report_conf = NULL;
+    fcm_collect_plugin_t *plugin = NULL;
     bool ret = false;
 
     collect_conf = &collector->collect_conf;
+    plugin = &collector->plugin;
     report_conf =  fcm_get_report_config(collect_conf->report_name);
     if (report_conf)
     {
-         fcm_set_plugin_params(&collector->plugin, collect_conf, report_conf);
+         fcm_set_plugin_params(plugin, collect_conf, report_conf);
          // update sample interval & report ticks
          fcm_set_report_params(collector, report_conf);
          ret = true;
@@ -205,19 +297,23 @@ static bool fcm_apply_report_config_changes(fcm_collector_t *collector)
     else
     {
         // No report_config found may be deleted. Reset to zero
-        fcm_clear_plugin_params(&collector->plugin);
+        fcm_clear_plugin_params(plugin);
         fcm_clear_report_ticks(collector);
         LOGD("%s: report config not found for collector : %s", \
               __func__, collector->collect_conf.name);
         ret = false;
     }
+
+    fcm_set_aggr_purge_interval();
     return ret;
 }
 
 static void fcm_sample_timer_cb(struct ev_loop *loop, ev_timer *w, int revents)
 {
-    LOGD("%s: ***fcm sample timer expired***", __func__);
+    fcm_collect_plugin_t *plugin = NULL;
     fcm_collector_t *collector = NULL;
+    fcm_mgr_t *mgr = NULL;
+    bool rc;
 
     collector = w->data;
     if (!collector) return;
@@ -227,8 +323,19 @@ static void fcm_sample_timer_cb(struct ev_loop *loop, ev_timer *w, int revents)
      */
     fcm_apply_report_config_changes(collector);
 
-    if (collector->plugin.collect_periodic)
-        collector->plugin.collect_periodic(&collector->plugin);
+    mgr = fcm_get_mgr();
+    if (mgr == NULL) return;
+
+    rc = fcm_stats_get_flows(mgr);
+    if (rc == false)
+    {
+        LOGD("%s: Failed to get flows", __func__);
+        return;
+    }
+
+    plugin = &collector->plugin;
+    if (plugin->collect_periodic) plugin->collect_periodic(plugin);
+
 
     if (collector->report.ticks == 0)
     {
@@ -242,17 +349,33 @@ static void fcm_sample_timer_cb(struct ev_loop *loop, ev_timer *w, int revents)
     // report tick count reached
     if (collector->report.curr_ticks >= collector->report.ticks)
     {
-        if (collector->plugin.send_report)
+        if (plugin->send_report)
         {
             LOGD("%s: Send mqtt collector: %s report ticks: %d\n",
                  __func__, collector->collect_conf.name,
                  collector->report.curr_ticks);
-          collector->plugin.send_report(&collector->plugin);
+          plugin->send_report(plugin);
           collector->report.count++;
         }
         collector->report.curr_ticks = 0;
     }
 }
+
+void fcm_init_purge_timer(void)
+{
+    fcm_mgr_t *mgr;
+
+    mgr = fcm_get_mgr();
+    if (mgr == NULL) return;
+
+    /* Return if the purge timer is already active */
+    if (ev_is_active(&mgr->aggr_purge_timer)) return;
+
+    LOGD("%s: Initializing aggregator purge event", __func__);
+    ev_init(&mgr->aggr_purge_timer, fcm_purge_aggr_cb);
+    mgr->aggr_purge_timer.data = NULL;
+}
+
 
 static void collector_evinit(fcm_collector_t *collector,
                              fcm_collect_conf_t *collect_conf)
@@ -261,32 +384,50 @@ static void collector_evinit(fcm_collector_t *collector,
     collector->sample_timer.data = collector;
 }
 
+void fcm_stop_purge_timer(void)
+{
+    fcm_mgr_t *mgr;
+
+    mgr = fcm_get_mgr();
+    if (mgr == NULL) return;
+
+    if (!ev_is_active(&mgr->aggr_purge_timer)) return;
+
+    ev_timer_stop(mgr->loop, &mgr->aggr_purge_timer);
+}
+
 void init_collector_plugin(fcm_collector_t *collector)
 {
     void (*plugin_init)(fcm_collect_plugin_t *collector_plugin);
+    struct net_md_aggregator *aggr = NULL;
+    fcm_collect_plugin_t *plugin = NULL;
     struct fcm_filter_client *c_client = NULL;
     struct fcm_filter_client *r_client = NULL;
-    fcm_collect_conf_t *collect_conf = NULL;
     struct fcm_session *session;
     fcm_mgr_t *mgr;
 
     mgr = fcm_get_mgr();
     if (collector->plugin_init == NULL) return;
+
+    aggr = mgr->dummy_aggr;
     *(void **)(&plugin_init) = collector->plugin_init;
-    collect_conf = &collector->collect_conf;
-    collector->plugin.fcm = collector;
-    collector->plugin.loop = mgr->loop;
-    collector->plugin.get_mqtt_hdr_node_id = fcm_get_mqtt_hdr_node_id;
-    collector->plugin.get_mqtt_hdr_loc_id = fcm_get_mqtt_hdr_loc_id;
-    collector->plugin.get_other_config = fcm_plugin_get_other_config;
-    collector->plugin.name = collector->collect_conf.name;
-    collector->plugin.fcm_gk_request = fcm_gk_lookup;
+
+    plugin = &collector->plugin;
+
+    plugin->fcm = collector;
+    plugin->loop = mgr->loop;
+    plugin->get_mqtt_hdr_node_id = fcm_get_mqtt_hdr_node_id;
+    plugin->get_mqtt_hdr_loc_id = fcm_get_mqtt_hdr_loc_id;
+    plugin->get_other_config = fcm_plugin_get_other_config;
+    plugin->name = collector->collect_conf.name;
+    plugin->fcm_gk_request = fcm_gk_lookup;
+    plugin->aggr = aggr;
 
     session = CALLOC(1, sizeof(*session));
     if (session == NULL) return;
 
     /** collect client */
-    if (collector->plugin.filters.collect != NULL)
+    if (plugin->filters.collect != NULL)
     {
         c_client = CALLOC(1, sizeof(*c_client));
         if (c_client == NULL)
@@ -296,13 +437,13 @@ void init_collector_plugin(fcm_collector_t *collector)
         }
 
         c_client->session = session;
-        c_client->name = STRDUP(collector->plugin.filters.collect);
+        c_client->name = STRDUP(plugin->filters.collect);
         fcm_filter_register_client(c_client);
-        collector->plugin.collect_client = c_client;
+        plugin->collect_client = c_client;
     }
 
     /** report client */
-    if (collector->plugin.filters.report != NULL)
+    if (plugin->filters.report != NULL)
     {
         r_client = CALLOC(1, sizeof(*r_client));
         if (r_client == NULL)
@@ -315,17 +456,17 @@ void init_collector_plugin(fcm_collector_t *collector)
         }
 
         r_client->session = session;
-        r_client->name = STRDUP(collector->plugin.filters.report);
+        r_client->name = STRDUP(plugin->filters.report);
         fcm_filter_register_client(r_client);
-        collector->plugin.report_client = r_client;
+        plugin->report_client = r_client;
     }
 
-    collector->plugin.session = session;
-
+    plugin->session = session;
     /* call the init function of plugin */
-    plugin_init(&collector->plugin);
+    plugin_init(plugin);
+
     fcm_reset_collect_interval(&collector->sample_timer,
-                               collect_conf->sample_time);
+                            fcm_return_min_timer(mgr));
     collector->initialized = true;
 
     /* initialize curl */
@@ -493,6 +634,7 @@ static fcm_rpt_fmt_t fmt_string_to_enum (char *format)
     return fmt;
 }
 
+
 static void init_report_conf_node(fcm_report_conf_t *report_conf,
                                   struct schema_FCM_Report_Config *schema_conf)
 {
@@ -568,6 +710,8 @@ void init_report_config(struct schema_FCM_Report_Config *conf)
     ds_tree_t *report_conf_tree = NULL;
     fcm_report_conf_t *report_conf_node = NULL;
 
+    fcm_init_purge_timer();
+
     mgr = fcm_get_mgr();
     report_conf_tree = &mgr->report_conf_tree;
     report_conf_node = lookup_report_config(report_conf_tree, conf->name);
@@ -575,6 +719,9 @@ void init_report_config(struct schema_FCM_Report_Config *conf)
     init_report_conf_node(report_conf_node, conf);
     // call any pending collector_plugin init waiting for report_config
     init_pending_collector_plugin(&mgr->collect_tree);
+
+    //Set the purge interval taking the max report value
+    fcm_set_aggr_purge_interval();
 }
 
 
@@ -591,6 +738,8 @@ void update_report_config(struct schema_FCM_Report_Config *conf)
     if (report_conf_node == NULL) return;
 
     update_report_conf_node(report_conf_node, conf);
+    /* Update the purge interval taking the max report value */
+    fcm_set_aggr_purge_interval();
 }
 
 void delete_report_config(struct schema_FCM_Report_Config *conf)
@@ -676,13 +825,14 @@ void update_collect_config(struct schema_FCM_Collector_Config *conf)
     // <TBD>: For config specific changes
     fcm_apply_report_config_changes(collector);
     fcm_reset_collect_interval(&collector->sample_timer,
-                               collect_conf->sample_time);
+                            fcm_return_min_timer(mgr));
 }
 
 void delete_collect_config(struct schema_FCM_Collector_Config *conf)
 {
     struct fcm_filter_client *c_client, *r_client;
     fcm_collector_t *collector = NULL;
+    fcm_collect_plugin_t *plugin = NULL;
     ds_tree_t *collect_tree = NULL;
     struct fcm_session *session;
     fcm_mgr_t *mgr = NULL;
@@ -693,18 +843,19 @@ void delete_collect_config(struct schema_FCM_Collector_Config *conf)
     collector = lookup_collect_config(collect_tree, conf->name);
     if (collector == NULL) return;
 
+    plugin = &collector->plugin;
     // stop the sample timer
     fcm_reset_collect_interval(&collector->sample_timer, 0);
     ev_timer_stop(mgr->loop, &collector->sample_timer);
-    if (collector->plugin.close_plugin)
+    if (plugin->close_plugin)
     {
-        collector->plugin.close_plugin(&collector->plugin);
+        plugin->close_plugin(plugin);
         LOGD("%s: Plugin %s is closed\n", __func__, conf->name);
     }
     if (!kconfig_enabled(CONFIG_FCM_NO_DSO)) dlclose(collector->handle);
 
-    session = collector->plugin.session;
-    c_client = collector->plugin.collect_client;
+    session = plugin->session;
+    c_client = plugin->collect_client;
     if (c_client != NULL)
     {
         fcm_filter_deregister_client(c_client);
@@ -712,7 +863,7 @@ void delete_collect_config(struct schema_FCM_Collector_Config *conf)
         FREE(c_client);
     }
 
-    r_client = collector->plugin.report_client;
+    r_client = plugin->report_client;
     if (r_client != NULL)
     {
         fcm_filter_deregister_client(r_client);
@@ -730,6 +881,8 @@ void delete_collect_config(struct schema_FCM_Collector_Config *conf)
 
 bool fcm_init_mgr(struct ev_loop *loop)
 {
+    struct net_md_aggregator_set aggr_set;
+    struct net_md_aggregator *aggr;
     fcm_mgr_t *mgr;
 
     mgr = fcm_get_mgr();
@@ -751,6 +904,20 @@ bool fcm_init_mgr(struct ev_loop *loop)
 
     /* Set the default timer for neigh_table entries*/
     mgr->neigh_cache_ttl = FCM_NEIGH_SYS_ENTRY_TTL;
+
+    memset(&aggr_set, 0, sizeof(aggr_set));
+    aggr_set.num_windows = 1;
+    aggr_set.acc_ttl = 120;
+    aggr_set.report_type = NET_MD_REPORT_ABSOLUTE;
+    aggr = net_md_allocate_aggregator(&aggr_set);
+    if (aggr == NULL) return false;
+    mgr->dummy_aggr = aggr;
+
+    if (nf_ct_init(loop, mgr->dummy_aggr) < 0)
+    {
+        LOGE("Eror initializing conntrack");
+        return -1;
+    }
 
     LOGI("FCM Manager Initialized\n");
     return true;

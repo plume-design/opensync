@@ -113,6 +113,16 @@ define ospkg_build_cmd
 	$(Q)rm -rf $(BUILD_OSPKG_SDK_ROOTFS_DELTA)
 endef
 
+# encrypt .ospkg to .eospkg and .eospkg.key
+BUILD_OSPKG_PKG_ENC_FILE ?= $(addsuffix .eospkg,$(basename $(BUILD_OSPKG_PKG_FILE)))
+define ospkg_build_post_cmd
+	@echo "ospkg: encrypt $(BUILD_OSPKG_PKG_FILE) -> $(BUILD_OSPKG_PKG_ENC_FILE)"
+	@ENCKEY="$$(openssl rand -base64 32)" && \
+		openssl enc -aes-256-cbc -pass pass:$${ENCKEY} -md sha256 -nosalt -in "$(BUILD_OSPKG_PKG_FILE)" -out "$(BUILD_OSPKG_PKG_ENC_FILE)" && \
+		echo $${ENCKEY} > "$(BUILD_OSPKG_PKG_ENC_FILE).key" && \
+		(cd $(dir $(BUILD_OSPKG_PKG_ENC_FILE)) && md5sum "$(notdir $(BUILD_OSPKG_PKG_ENC_FILE))" > "$(notdir $(BUILD_OSPKG_PKG_ENC_FILE)).md5.save")
+endef
+
 define ospkg_install_to_rootfs_cmd
 	@echo "rootfs: install ospkg to $(INSTALL_ROOTFS_DIR)"
 	@# copy unpacked package info + rootfs
@@ -151,10 +161,7 @@ endef
 
 ospkg-build:
 	$(call ospkg_build_cmd)
-ifdef ospkg_build_post_cmd
 	$(call ospkg_build_post_cmd)
-endif
 
 ospkg-install-to-rootfs:
 	$(call ospkg_install_to_rootfs_cmd)
-

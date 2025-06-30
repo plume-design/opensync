@@ -28,10 +28,28 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "nfe_conn.h"
 #include "nfe_conntrack.h"
 #include "nfe_proto.h"
-
+#include "log.h"
 #ifndef IPPROTO_ETHERIP
     #define IPPROTO_ETHERIP 97
 #endif
+
+struct nfe_conn *
+nfe_ether_lookup(struct nfe_conntrack *conntrack, struct nfe_packet *packet)
+{
+    struct nfe_conn *conn;
+
+    nfe_conntrack_lru_expire(conntrack, LRU_PROTO_ETHER, packet->timestamp);
+    conn = nfe_conntrack_lookup(conntrack, packet, NFE_ALLOC_POLICY_CREATE);
+    if (conn) {
+        conn->timestamp = packet->timestamp;
+        nfe_conntrack_lru_update(conntrack, LRU_PROTO_ETHER, &conn->lru);
+    }
+
+    packet->next = 0;
+    packet->prot = NULL;
+
+    return conn;
+}
 
 int
 nfe_proto_eth(struct nfe_packet *p)

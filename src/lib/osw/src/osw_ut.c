@@ -281,4 +281,6 @@ osw_ut_time_advance(uint64_t delta_nsec)
 
     osw_time_set_mono_clk(new_now_nsec);
     osw_time_set_wall_clk(new_now_nsec);
+
+    WARN_ON(osw_drv_poll() == false);
 }

@@ -468,3 +468,51 @@ bool is_memzero(const void *mem, size_t size)
     }
     return true;
 }
+
+/*
+ *  Retrieves the physical memory usage of the process (pss) by parsing smaps.
+ */
+int os_proc_get_pss(pid_t pid, uint32_t *pss)
+{
+    char filename[32];
+    FILE *proc_file = NULL;
+    char buf[512];
+    uint32_t pss_total;
+
+    SPRINTF(filename, "/proc/%d/smaps", pid); /* 2.6.14+ & PROC_PAGE_MONITOR */
+    proc_file = fopen(filename, "r");
+    if (proc_file == NULL)
+    {
+        /* Try opening the stat file instead to check if process hasn't already exited. */
+        SPRINTF(filename, "/proc/%d/stat", pid);
+        proc_file = fopen(filename, "r");
+        if (proc_file != NULL)
+        {
+            fclose(proc_file);
+            return -ENOENT; /* /proc/[pid]/smaps not supported on this kernel. */
+        }
+
+        /* Process probably already exited */
+        return -ESRCH;
+    }
+
+    pss_total = 0;
+    while (fgets(buf, sizeof(buf), proc_file) != NULL)
+    {
+        uint32_t pss_parc;
+        if (str_startswith(buf, "Pss:"))
+        {
+            if (sscanf(buf, "Pss: %u", &pss_parc) != 1)
+            {
+                LOG(ERROR, "Error parsing %s: %s.", filename, buf);
+                fclose(proc_file);
+                return -1;
+            }
+            pss_total += pss_parc;
+        }
+    }
+
+    fclose(proc_file);
+    *pss = pss_total;
+    return 0;
+}

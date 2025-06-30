@@ -73,6 +73,9 @@ message WCHealthStats {
 
     // total cache size in number of allocated entries
     optional uint32 cacheSize                          = 11;
+
+    // Number of cache entries recycled
+    optional uint32 cacheEntriesRecycled               = 12;
 }
 
 

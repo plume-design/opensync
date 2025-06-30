@@ -1661,6 +1661,19 @@ ssize_t hex2bin(const char *in, size_t in_size, unsigned char *out, size_t out_s
     return j;
 }
 
+uint32_t bin2oui24(const uint8_t *in, size_t in_size)
+{
+    uint32_t oui = 0;
+
+    if (in_size < 3) return 0;
+
+    oui = ((uint32_t)((in[0] << 16)) |
+           (uint32_t)((in[1] << 8))  |
+           (uint32_t)((in[2] << 0)));
+
+    return oui;
+}
+
 bool ascii2hex(const char *input, char *output, size_t size)
 {
     return bin2hex((unsigned char *)input, strlen(input), output, size) == 0;

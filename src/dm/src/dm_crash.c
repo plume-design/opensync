@@ -220,11 +220,11 @@ static void handle_new_crash_reports(void)
 
     LOG(TRACE, LTAG"%s", __func__);
 
-    d = opendir(CRASH_REPORTS_TMP_DIR);
+    d = opendir(CONFIG_DM_CRASH_REPORTS_TMP_DIR);
     if (d == NULL)
     {
         if (errno != ENOENT) LOG(ERROR, LTAG"Error opening directory %s: %s",
-                                        CRASH_REPORTS_TMP_DIR, strerror(errno));
+                                        CONFIG_DM_CRASH_REPORTS_TMP_DIR, strerror(errno));
         return;
     }
 
@@ -235,7 +235,7 @@ static void handle_new_crash_reports(void)
                 && strncmp(dir->d_name, "crashed_", strlen("crashed_")) == 0) )
             continue;
 
-        snprintf(crash_file, sizeof(crash_file), "%s/%s", CRASH_REPORTS_TMP_DIR, dir->d_name);
+        snprintf(crash_file, sizeof(crash_file), "%s/%s", CONFIG_DM_CRASH_REPORTS_TMP_DIR, dir->d_name);
         LOG(INFO, LTAG"Found new crash report: %s", crash_file);
 
         // Check if we're in back off:
@@ -305,9 +305,9 @@ static void crash_reports_start(void)
 
     LOG(DEBUG, LTAG"%s", __func__);
 
-    /* Monitor CRASH_REPORTS_TMP_DIR for changes. When a crash happens, a
+    /* Monitor CONFIG_DM_CRASH_REPORTS_TMP_DIR for changes. When a crash happens, a
      * crash report is written into a temporary directory inside this dir. */
-    ev_stat_init(&crash_reports_stat, crash_reports_stat_callback, CRASH_REPORTS_TMP_DIR, 0.0);
+    ev_stat_init(&crash_reports_stat, crash_reports_stat_callback, CONFIG_DM_CRASH_REPORTS_TMP_DIR, 0.0);
     ev_debounce_init(&crash_reports_debounce, crash_reports_debounce_fn, 1.5);
     ev_stat_start(loop, &crash_reports_stat);
 
@@ -318,7 +318,7 @@ static void crash_reports_start(void)
      * crashing. Use a backoff debouncer for this purpose. */
     ev_debounce_start(EV_DEFAULT, &backoff_debounce);
 
-    LOG(INFO, LTAG"Started monitoring crash reports tmp dir: %s", CRASH_REPORTS_TMP_DIR);
+    LOG(INFO, LTAG"Started monitoring crash reports tmp dir: %s", CONFIG_DM_CRASH_REPORTS_TMP_DIR);
     started = true;
 }
 
@@ -387,4 +387,3 @@ void dm_crash_fini(void *data)
 {
     LOG(INFO, LTAG"Finishing.");
 }
-

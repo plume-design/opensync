@@ -28,6 +28,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define OSW_DRV_NL80211_H_INCLUDED
 
 #include <nl.h>
+#include <rq.h>
 #include <osw_drv.h>
 
 enum osw_drv_nl80211_phy_group_impl_type {
@@ -55,6 +56,11 @@ enum osw_drv_nl80211_dump_survey_impl_type {
 enum osw_drv_nl80211_dump_sta_impl_type {
   OSW_DRV_NL80211_DUMP_STA_IMPL_NONE,
   OSW_DRV_NL80211_DUMP_STA_IMPL_DEFAULT
+};
+
+enum osw_drv_nl80211_hook_result {
+  OSW_DRV_NL80211_HOOK_BREAK,
+  OSW_DRV_NL80211_HOOK_CONTINUE,
 };
 
 struct osw_drv_nl80211_ops;
@@ -105,6 +111,19 @@ osw_drv_nl80211_hook_get_vif_state_fn_t(struct osw_drv_nl80211_hook *hook,
                                         struct osw_drv_vif_state *state,
                                         void *priv);
 
+typedef void
+osw_drv_nl80211_hook_post_request_config_fn_t(struct osw_drv_nl80211_hook *hook,
+                                              struct osw_drv_conf *drv_conf,
+                                              struct rq *q,
+                                              void *priv);
+
+typedef enum osw_drv_nl80211_hook_result 
+osw_drv_nl80211_hook_delete_sta_fn_t(struct osw_drv_nl80211_hook *hook,
+                                     const char *phy_name,
+                                     const char *vif_name,
+                                     const struct osw_hwaddr *sta_addr,
+                                     void *priv);
+
 struct osw_drv_nl80211_hook_ops {
     osw_drv_nl80211_hook_fix_phy_state_fn_t *fix_phy_state_fn;
     osw_drv_nl80211_hook_fix_vif_state_fn_t *fix_vif_state_fn;
@@ -113,6 +132,8 @@ struct osw_drv_nl80211_hook_ops {
     osw_drv_nl80211_hook_pre_request_stats_fn_t *pre_request_stats_fn;
     osw_drv_nl80211_hook_get_vif_list_fn_t *get_vif_list_fn;
     osw_drv_nl80211_hook_get_vif_state_fn_t *get_vif_state_fn;
+    osw_drv_nl80211_hook_post_request_config_fn_t *post_request_config_fn;
+    osw_drv_nl80211_hook_delete_sta_fn_t *delete_sta_fn;
 };
 
 typedef struct nl_80211 *

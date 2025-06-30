@@ -32,6 +32,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "const.h"
 #include "evx.h"
 #include "log.h"
+#include "osn_types.h"
 #include "osn_qos.h"
 #include "osn_qdisc.h"
 #include "osn_adaptive_qos.h"
@@ -83,7 +84,7 @@ struct qosm_interface_qos
     int                 qos_linux_queue_len;        /**< Length of the lnx_queues array */
     reflink_t           qos_linux_queue_reflink;    /**< Reflink to Linux_Queue */
 
-    ds_map_str_t       *qos_adaptive_qos;           /**< Adaptive QoS key-value map configuration */
+    ds_map_str_t       *qos_adaptive_qos;           /**< Per-interface adaptive QoS key-value map configuration */
 
     ds_tree_node_t      qos_tnode;                  /**< Tree node */
 };
@@ -136,10 +137,35 @@ struct qosm_linux_queue
 
     char                que_params[256];            /**  qdisc-specific parameters */
 
+    bool                que_applied;                /**< Successfully aplied? */
+
     ds_tree_node_t      que_tnode;                  /**< Tree node */
 
 };
 
+#define QOSM_ADAPTIVE_QOS_MAX_REFLECTORS    64
+
+/*
+ * ===========================================================================
+ *  AdaptiveQoS table  - global adaptive QoS configuration
+ * ===========================================================================
+ */
+struct qosm_adaptive_qos_cfg
+{
+    osn_ipany_addr_t    reflectors[QOSM_ADAPTIVE_QOS_MAX_REFLECTORS]; /**< Custom reflectors list */
+
+    int                 num_reflectors;     /**< Number of custom reflectors */
+
+    bool                rand_reflectors;    /**< Enable or disable randomization of reflectors at startup */
+    int                 ping_interval;      /**< Interval time for ping, milliseconds */
+
+    int                 num_pingers;        /**< Number of pingers to maintain */
+
+    int                 active_thresh;      /**< Threshold in Kbit/s below which dl/ul is considered idle */
+
+    ds_map_str_t       *other_config;
+
+};
 
 void qosm_interface_queue_init(void);
 struct qosm_interface_queue *qosm_interface_queue_get(ovs_uuid_t *uuid);
@@ -150,5 +176,10 @@ bool qosm_interface_queue_set_status(
 
 void qosm_linux_queue_init(void);
 struct qosm_linux_queue *qosm_linux_queue_get(ovs_uuid_t *uuid);
+bool qosm_linux_queue_set_status(struct qosm_linux_queue *lnx_queue, const char *status);
+bool qosm_linux_queue_set_status_all(struct qosm_interface_qos *qos, const char *status);
+
+void qosm_adaptive_qos_init(void);
+struct qosm_adaptive_qos_cfg *qosm_adaptive_qos_cfg_get(void);
 
 #endif /* QOSM_INTERNAL_H_INCLUDED */

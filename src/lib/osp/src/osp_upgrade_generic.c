@@ -163,6 +163,9 @@ bool osp_upg_dl(char *url, uint32_t timeout, osp_upg_cb dl_cb)
         return false;
     }
 
+    /* Reset the error status since it may be left in an error state from previous calls to upg and dl functions */
+    g_osp_upg_gen_errno = OSP_UPG_OK;
+
     char crc_url[strlen(url) + strlen(OSP_UPG_GEN_CRC_EXT) + 1];
     if (!osp_upg_gen_crc_url(crc_url, sizeof(crc_url), url))
     {
@@ -219,6 +222,9 @@ bool osp_upg_upgrade(char *password, osp_upg_cb upg_cb)
         g_osp_upg_gen_errno = OSP_UPG_SU_RUN;
         return false;
     }
+
+    /* Reset the error status since it may be left in an error state from previous calls to upg and dl functions */
+    g_osp_upg_gen_errno = OSP_UPG_OK;
 
     if (access(g_osp_upg_gen_img_path, R_OK) != 0)
     {
@@ -321,13 +327,17 @@ void osp_upg_gen_download_check(void)
     {
         g_osp_upg_gen_errno = OSP_UPG_DL_MD5;
     }
-
-    /*
-     * Do the integrity verification
-     */
-    if (!osp_upg_gen_download_verify())
+    else
     {
-        g_osp_upg_gen_errno = OSP_UPG_MD5_FAIL;
+        /*
+         * Do the integrity verification only if both the image and the CRC
+         * file have been downloaded successfully. If OSP_UPG_CRC_NONE is set,
+         * the crc download status code will be set to OK from the start.
+         */
+        if (!osp_upg_gen_download_verify())
+        {
+            g_osp_upg_gen_errno = OSP_UPG_MD5_FAIL;
+        }
     }
 
     g_osp_upg_gen_in_progress = false;
@@ -537,7 +547,7 @@ exit:
  * function. There are two main reasons to do this. The first one is to filter
  * out any passwords that may leak to the log file. The second one is that by
  * default execsh logs with a DEBUG level. Since upgrade is a rather critical
- * component, log the ooutput all upgrade scripts with an INFO logging level.
+ * component, log the output from all upgrade scripts with an INFO logging level.
  */
  void osp_upg_gen_execsh_io_fn(
         execsh_async_t *esa,
@@ -595,4 +605,3 @@ void osp_upg_gen_execsh_fn(execsh_async_t *esa, int exit_status)
 
     g_osp_upg_gen_fn(OSP_UPG_UPG, exit_status, 100);
 }
-

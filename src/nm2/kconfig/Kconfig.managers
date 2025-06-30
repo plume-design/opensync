@@ -7,7 +7,7 @@ menuconfig MANAGER_NM
     config MANAGER_NM_CFG
         depends on MANAGER_NM
         string "NM Startup configuration"
-        default "nm;true;needs_plan_b=true"
+        default "nm;true;needs_plan_b=true;max_memory=20000"
         help
             Network Manager startup configuration
 

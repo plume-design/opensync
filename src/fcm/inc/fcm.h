@@ -71,6 +71,7 @@ typedef struct fcm_collect_plugin_
     struct fcm_session *session;
     struct fcm_filter_client *collect_client;
     struct fcm_filter_client *report_client;
+    struct net_md_aggregator *aggr;
 } fcm_collect_plugin_t;
 
 /**

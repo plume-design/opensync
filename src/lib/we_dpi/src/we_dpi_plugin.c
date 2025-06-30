@@ -44,6 +44,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "we_dpi_conntrack.h"
 #include "we_dpi_externals.h"
 #include "we_dpi_plugin.h"
+#include "kconfig.h"
 
 #include "we.h"
 
@@ -135,7 +136,7 @@ static int update_coroutine_resume(
     we_pop(s);
 
     r = we_read(coroutine, we_top(coroutine), WE_BUF, &str);
-    if (version) *version = strndup(str, r);
+    if (version) *version = STRNDUP(str, r);
     /* pop the value that the coroutine yielded */
     we_pop(coroutine);
     /* push the path for the new binary */
@@ -166,7 +167,7 @@ static int update_agent(struct fsm_session *fsm, struct we_dpi_session *dpi, str
     char binary_path[WE_AGENT_BIN_PATH_LEN] = {0};
     size_t pathlen;
     we_state_t agent;
-    struct we_dpi_agent_userdata user = {.fsm = fsm, .np = NULL};
+    struct we_dpi_agent_userdata user = {.fsm = fsm, .acc = NULL};
 
     obj->state = FSM_OBJ_LOAD_FAILED;
 
@@ -185,7 +186,7 @@ static int update_agent(struct fsm_session *fsm, struct we_dpi_session *dpi, str
         LOGE("%s: Failed to run the update coroutine (%d)", __func__, res);
         exit(EXIT_SUCCESS);
     }
-    free(version);
+    FREE(version);
 err:
     fsm->ops.state_cb(fsm, obj);
     return res;
@@ -235,7 +236,7 @@ static int load_agent(struct we_dpi_session *dpi, char *path)
         return -1;
     }
 
-    res = we_create(&dpi->we_state, AGENT_REGISTERS_MAX);
+    res = we_create(&dpi->we_state, AGENT_REGISTERS_MAX, dpi->mempool_size);
     if (res < 0)
     {
         LOGE("%s: failed to create we_state: %d", __func__, res);
@@ -479,6 +480,77 @@ int we_dpi_ovsdb_init()
     return 0;
 }
 
+/**
+ * Get the memory pool size from configuration
+ *
+ * Retrieves the memory pool size from OVSDB configuration or uses the default.
+ * The function validates the provided size against limits and returns a safe value.
+ *
+ * @param session FSM session containing configuration
+ * @return Memory pool size in bytes
+ */
+static int
+we_dpi_get_mempool_size(struct fsm_session *session)
+{
+    int default_size;
+    long value;
+    char *str;
+    char *endptr;
+    int ret;
+
+    /* Compute the default mempool size from Kconfig */
+    default_size = CONFIG_WE_MEMPOOL_SIZE * 1024 * 1024;
+    if (session == NULL) return default_size;
+
+    /* Check if the OVSDB config provides a custom size */
+    str = session->ops.get_config(session, "mempool_size");
+    if (str == NULL) return default_size;
+
+    /* Parse and validate the configured size */
+    errno = 0;
+    value = strtol(str, &endptr, 10);
+    if (errno != 0 || str == endptr || value <= 0)
+    {
+        LOGW("%s: Invalid mempool_size value '%s', using default size %dMB",
+            __func__, str, default_size / (1024 * 1024));
+        return default_size;
+    }
+
+    /* Ensure value doesn't exceed half of FSM's total memory limit */
+    if (value >= CONFIG_FSM_MEM_MAX / 2)
+    {
+        LOGW("%s: mempool_size %ldMB is too large, using default size %dMB",
+             __func__, value, default_size / (1024 * 1024));
+        return default_size;
+    }
+
+    ret = (int)value * 1024 * 1024;
+    return ret;
+}
+
+/**
+ * Configure the memory pool size for the DPI session
+ *
+ * Retrieves the configured memory pool size and sets it in the DPI session.
+ *
+ * @param session FSM session containing configuration
+ */
+static void
+we_dpi_set_mempool_size(struct fsm_session *session)
+{
+    struct we_dpi_session *dpi_session;
+    struct we_dpi_plugin_cache *mgr;
+
+    mgr = we_dpi_get_mgr();
+    if (!mgr->initialized) return;
+
+    dpi_session = &mgr->dpi_session;
+    dpi_session->mempool_size = we_dpi_get_mempool_size(session);
+
+    LOGI("%s: Memory pool size set to %dMB", __func__,
+        dpi_session->mempool_size / (1024 * 1024));
+}
+
 /* Initialization and data path */
 
 static bool dpi_manager_init(struct we_dpi_plugin_cache *mgr)
@@ -528,6 +600,8 @@ int we_dpi_plugin_init(struct fsm_session *fsm)
     fsm->ops.exit = we_dpi_plugin_exit;
     fsm->handler_ctxt = dpi_session;
 
+    we_dpi_set_mempool_size(fsm);
+
     /* Set the plugin specific ops */
     dpi_plugin_ops = &fsm->p_ops->dpi_plugin_ops;
     FSM_FN_MAP(we_dpi_plugin_handler);
@@ -565,7 +639,7 @@ void we_dpi_plugin_handler(struct fsm_session *fsm, struct net_header_parser *np
     int res;
     int mutex_status;
     struct we_dpi_session *dpi;
-    struct we_dpi_agent_userdata user = {.fsm = fsm, .np = np};
+    struct we_dpi_agent_userdata user = {.fsm = fsm, .acc = np->acc};
 
     dpi = (struct we_dpi_session *)fsm->handler_ctxt;
     if (!dpi->initialized) return;
@@ -579,7 +653,7 @@ void we_dpi_plugin_handler(struct fsm_session *fsm, struct net_header_parser *np
     res = we_call(&dpi->we_state, &user);
     if (res != 0)
     {
-        LOGE("%s: Failed to process a packet (%d)", __func__, res);
+        LOGT("%s: Failed to process a packet (%d)", __func__, res);
         exit(EXIT_SUCCESS);
     }
     /* Sync the packet if necessary */
@@ -589,7 +663,7 @@ void we_dpi_plugin_handler(struct fsm_session *fsm, struct net_header_parser *np
     mutex_status = pthread_mutex_unlock(&dpi->lock);
     if (mutex_status != 0)
     {
-        LOGE("%s: Failed to release the mutex (%d)", __func__, mutex_status);
+        LOGT("%s: Failed to release the mutex (%d)", __func__, mutex_status);
         exit(EXIT_SUCCESS);
     }
 }
@@ -606,7 +680,7 @@ void we_dpi_plugin_periodic(struct fsm_session *fsm)
     struct we_dpi_session *dpi;
     int result;
     int mutex_status;
-    struct we_dpi_agent_userdata user = {.fsm = fsm, .np = NULL};
+    struct we_dpi_agent_userdata user = {.fsm = fsm, .acc = NULL};
 
     dpi = (struct we_dpi_session *)fsm->handler_ctxt;
     if (dpi == NULL) return;
@@ -619,13 +693,13 @@ void we_dpi_plugin_periodic(struct fsm_session *fsm)
     result = handle_we_call_result(dpi->we_state, &user, result);
     if (result != 0)
     {
-        LOGE("Failed to run the agent periodic");
+        LOGT("Failed to run the agent periodic");
         exit(EXIT_SUCCESS);
     }
     mutex_status = pthread_mutex_unlock(&dpi->lock);
     if (mutex_status != 0)
     {
-        LOGE("%s: Failed to release the mutex (%d)", __func__, mutex_status);
+        LOGT("%s: Failed to release the mutex (%d)", __func__, mutex_status);
         exit(EXIT_SUCCESS);
     }
 }
@@ -712,7 +786,7 @@ static void *we_ct_task(void *args)
     struct timespec end;
     int64_t duration;
     const int64_t interval_seconds = 15;
-    struct we_dpi_agent_userdata user = {.fsm = dpi->fsm, .np = NULL};
+    struct we_dpi_agent_userdata user = {.fsm = dpi->fsm, .acc = NULL};
     int mutex_status;
 
     while (true)
@@ -720,7 +794,7 @@ static void *we_ct_task(void *args)
         mutex_status = pthread_mutex_lock(&dpi->lock);
         if (mutex_status != 0)
         {
-            LOGE("%s: Failed to acquire the mutex (%d)", __func__, mutex_status);
+            LOGT("%s: Failed to acquire the mutex (%d)", __func__, mutex_status);
             exit(EXIT_SUCCESS);
         }
         if (dpi->we_state == NULL)
@@ -728,7 +802,7 @@ static void *we_ct_task(void *args)
             mutex_status = pthread_mutex_unlock(&dpi->lock);
             if (mutex_status != 0)
             {
-                LOGE("%s: Failed to release the mutex (%d)", __func__, mutex_status);
+                LOGT("%s: Failed to release the mutex (%d)", __func__, mutex_status);
                 exit(EXIT_SUCCESS);
             }
             break;
@@ -740,14 +814,14 @@ static void *we_ct_task(void *args)
                 WE_AGENT_SLEN(WE_AGENT_CORO_CONNTRACK_PERIODIC),
                 &user);
         if (res != 0) {
-            LOGE("%s: Failed to resume conntrack coroutine (%d)", __func__, res);
+            LOGT("%s: Failed to resume conntrack coroutine (%d)", __func__, res);
             exit(EXIT_SUCCESS);
         }
         clock_gettime(CLOCK_MONOTONIC, &end);
         mutex_status = pthread_mutex_unlock(&dpi->lock);
         if (mutex_status != 0)
         {
-            LOGE("%s: Failed to release the mutex (%d)", __func__, mutex_status);
+            LOGT("%s: Failed to release the mutex (%d)", __func__, mutex_status);
             exit(EXIT_SUCCESS);
         }
         duration = end.tv_sec - start.tv_sec;

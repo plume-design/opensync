@@ -53,6 +53,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <kconfig.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <dirent.h>
+#include <fcntl.h>
 
 #if defined(WITH_LIBGCC_BACKTRACE)
 #include <unwind.h>
@@ -62,6 +64,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "os_time.h"
 #include "os_proc.h"
 #include "osp_unit.h"
+#include "util.h"
 
 #include "log.h"
 #include "os.h"
@@ -75,6 +78,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #define BACKTRACE_MAX_ITERATIONS 20
 #define BACKTRACE_CRASH_TIMEOUT 3
+#define FILENAME_MEM_MAX_PREFIX "mem_max_"
+
 
 /**
  * Stack-trace functions, mostly inspired from libubacktrace
@@ -94,6 +99,7 @@ static struct sigaction g_save_alarm_sa;
 static int g_save_alarm_time;
 
 #define VALID_FD(FD) ((FD) >= 0)
+#define NOT_AVAILABLE_STR "<NA>"
 
 /**
  * Install crash handlers that dump the current stack in the log file
@@ -282,15 +288,92 @@ void os_backtrace_dump_generic(btrace_type btrace)
     }
 }
 
+
+void sig_crash_report_mem_max(pid_t pid, uint32_t pss)
+{
+    char template[128] = CONFIG_DM_CRASH_REPORTS_TMP_DIR "/" FILENAME_MEM_MAX_PREFIX "XXXXXX";
+    int fd;
+
+    if (kconfig_enabled(CONFIG_DM_OSYNC_CRASH_REPORTS))
+    {
+        mkdir(CONFIG_DM_CRASH_REPORTS_TMP_DIR, 0755);
+        fd = mkstemp(template);
+        if (!VALID_FD(fd))
+        {
+            LOG(ERR, "Error creating temporary file: %s", strerror(errno));
+        }
+        else
+        {
+            fd_printf(fd, "pid:%d\n", pid);
+            fd_printf(fd, "pss:%d", pss);
+            close(fd);
+        }
+    }
+
+}
+
+
+static bool sig_crash_report_mem_max_exists(pid_t pid, int32_t *pss)
+{
+    DIR *dir;
+    FILE *fp;
+    struct dirent *entry;
+    pid_t pid_tmp;
+    char filepath[PATH_MAX];
+    int scanned;
+    bool found = false;
+
+    dir = opendir(CONFIG_DM_CRASH_REPORTS_TMP_DIR);
+    if (dir == NULL)
+    {
+        LOG(ERR, "Error opening crash report dir: %s", strerror(errno));
+        return false;
+    }
+
+    while ((entry = readdir(dir)) != NULL)
+    {
+        if (!str_startswith(entry->d_name, FILENAME_MEM_MAX_PREFIX)) continue;
+
+        snprintf(filepath, sizeof(filepath), "%s/%s", CONFIG_DM_CRASH_REPORTS_TMP_DIR, entry->d_name);
+        fp = fopen (filepath , "r");
+
+        if (fp == NULL)
+        {
+            LOG(ERR, "Error opening temporary file: %s", strerror(errno));
+            continue;
+        }
+
+        scanned = fscanf(fp, "pid:%d\npss:%d", &pid_tmp, pss);
+        fclose(fp);
+
+        if (scanned != 2) {
+            LOG(ERR, "Error parsing temporay file: %s\n", strerror(errno));
+            continue;
+        }
+
+        if (pid == pid_tmp) {
+            found = true;
+            unlink(filepath);
+            break;
+        }
+    }
+    closedir(dir);
+
+    return found;
+}
+
+
 void sig_crash_report(int signum)
 {
-    char template[128] = CRASH_REPORTS_TMP_DIR "/crashed_XXXXXX";
-    char pname[64] = "<NA>";
+    char template[128] = CONFIG_DM_CRASH_REPORTS_TMP_DIR "/crashed_XXXXXX";
+    char pname[64] = NOT_AVAILABLE_STR;
     int32_t pid;
+    int32_t pss;
+    bool mem_max_exists = false;
 
     if (kconfig_enabled(CONFIG_DM_OSYNC_CRASH_REPORTS) && signum != SIGUSR2)
     {
-        mkdir(CRASH_REPORTS_TMP_DIR, 0755);
+        mkdir(CONFIG_DM_CRASH_REPORTS_TMP_DIR, 0755);
 
         fd_crash_report = mkstemp(template);
         if (!VALID_FD(fd_crash_report))
@@ -300,12 +383,20 @@ void sig_crash_report(int signum)
         else
         {
             pid = getpid();
+            mem_max_exists = sig_crash_report_mem_max_exists(pid, &pss);
             os_pid_to_name(pid, pname, sizeof(pname));
 
             fd_printf(fd_crash_report, "pid %d\n", pid);
             fd_printf(fd_crash_report, "name %s\n", pname);
-            fd_printf(fd_crash_report, "reason SIG %d (%s)\n",
-                      signum, strsignal(signum));
+            if (mem_max_exists)
+            {
+                fd_printf(fd_crash_report, "reason Maximum memory limit exceeded (%d kB)\n", pss);
+            }
+            else
+            {
+                fd_printf(fd_crash_report, "reason SIG %d (%s)\n",
+                          signum, strsignal(signum));
+            }
             fd_printf(fd_crash_report, "timestamp %lld\n", (long long)clock_real_ms());
             fd_printf(fd_crash_report, "backtrace ");
         }
@@ -495,6 +586,41 @@ bool os_backtrace_resolve(void *addr, const char **func, const char **fname)
     return false;
 }
 
+void os_backtrace_dump_manager_restart(const char *calling_func)
+{
+    char template[128] = CONFIG_DM_CRASH_REPORTS_TMP_DIR "/crashed_XXXXXX";
+
+    if (kconfig_enabled(CONFIG_DM_OSYNC_CRASH_REPORTS))
+    {
+        LOGI("Creating OpenSync restart crash file!");
+        mkdir(CONFIG_DM_CRASH_REPORTS_TMP_DIR, 0755);
+
+        fd_crash_report = mkstemp(template);
+        if (!VALID_FD(fd_crash_report))
+        {
+            LOG(ERR, "Error creating temporary file: %s", strerror(errno));
+        }
+        else
+        {
+            fd_printf(fd_crash_report, "pid %s\n", NOT_AVAILABLE_STR);
+            fd_printf(fd_crash_report, "name OpenSync\n");
+            fd_printf(fd_crash_report, "reason OpenSync restarted by %s\n", calling_func);
+            fd_printf(fd_crash_report, "timestamp %lld\n", (long long)clock_real_ms());
+            fd_printf(fd_crash_report, "backtrace ");
+        }
+    }
+
+    /* This dumps the backtrace in logs and writes it into the crash file */
+    os_backtrace_dump();
+
+    if (VALID_FD(fd_crash_report))
+    {
+        fd_printf(fd_crash_report, "\n");
+        close(fd_crash_report);
+        fd_crash_report = -1;
+    }
+}
+
 #else
 
 void os_backtrace_init(void)
@@ -510,6 +636,11 @@ void os_backtrace_dump(void)
 bool os_backtrace(os_backtrace_func_t *func, void *ctx)
 {
     return false;
+}
+
+void os_backtrace_dump_manager_restart(const char *calling_func)
+{
+    return;
 }
 
 #endif /* WITH_LIBGCC_BACKTRACE */

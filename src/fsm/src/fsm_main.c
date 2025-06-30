@@ -55,6 +55,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "kconfig.h"
 #include "qm_conn.h"
 #include "fsm_fn_trace.h"
+#include "mem_monitor.h"
+#include "fsm_internal.h"
 
 /******************************************************************************/
 
@@ -97,11 +99,12 @@ int main(int argc, char ** argv)
     /* Register to dynamic severity updates */
     log_register_dynamic_severity(loop);
 
+    fsm_init_mgr(loop);
+    fsm_init_mem_monitor();
+
     backtrace_init();
 
     json_memdbg_init(loop);
-
-    fsm_init_mgr(loop);
 
     if (!target_init(TARGET_INIT_MGR_FSM, loop)) {
         return -1;

@@ -81,17 +81,17 @@ if MANAGER_FM
         help
             Path where to keep archived logs on RAM when logging to RAM is enabled
 
-    config FM_MAX_ROTATION_SYSLOG_FLASH_CNT
-        int "Maximum number of syslog files in flash"
-        default 8
+    config FM_MAX_ROTATION_SYSLOG_RAM_TOTAL_SIZE
+        int "Maximum total size of syslog files in RAM"
+        default 8192
         help
-            Maximum number of rotated syslog files to keep in flash
+            Maximum total size of syslog files in RAM
 
-    config FM_MAX_ROTATION_SYSLOG_RAM_CNT
-        int "Maximum number of syslog files in RAM"
-        default 8
+    config FM_MAX_ROTATION_SYSLOG_FLASH_TOTAL_SIZE
+        int "Maximum total size of syslog files in flash"
+        default 8192
         help
-            Maximum number of rotated syslog files to keep in RAM
+            Maximum total size of syslog files in flash
 
     config FM_RAM_SYSLOG_SIZE
         int "RAM: syslog size"
@@ -130,4 +130,5 @@ if MANAGER_FM
         default 100
         help
             Maximum number of rotated crash syslog files to keep
+
 endif

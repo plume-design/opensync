@@ -36,4 +36,6 @@ EXPORT int nfe_conntrack_tcp_timeout_est = 3600;
 EXPORT int nfe_conntrack_udp_timeout = 180;
 /* Timeout idle icmp connections */
 EXPORT int nfe_conntrack_icmp_timeout = 30;
+/* Timeout idle ether connections */
+EXPORT int nfe_conntrack_ether_timeout = 30;
 

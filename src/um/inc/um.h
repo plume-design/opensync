@@ -32,7 +32,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #define UM_STS_FW_DL_START     (10)    /* FW download started                      */
 #define UM_STS_FW_DL_END       (11)    /* FW download successfully completed       */
-#define UM_STS_FW_WR_START     (20)    /* FW write on alt partition started        */
+#define UM_STS_FW_WR_START     (20)    /* FW image write started                   */
 #define UM_STS_FW_WR_END       (21)    /* FW image write successfully completed    */
 #define UM_STS_FW_BC_START     (30)    /* Bootconfig partition update started      */
 #define UM_STS_FW_BC_END       (31)    /* Bootconfig partition update completed    */

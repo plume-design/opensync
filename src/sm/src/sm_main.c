@@ -118,13 +118,6 @@ int main (int argc, char **argv)
         return -1;
     }
 
-    if (!sm_scan_schedule_init())
-    {
-        LOG(ERR,"Initializing SM"
-            "(Failed to init scanning)");
-        return -1;
-    }
-
     sm_healthcheck_schedule_init(&update_RADIUS_health);
 
     // Connect to ovsdb

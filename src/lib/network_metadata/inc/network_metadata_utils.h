@@ -145,6 +145,11 @@ void net_md_report_accs(struct net_md_aggregator *aggr);
 void net_md_free_flow_report(struct flow_report *report);
 void net_md_reset_aggregator(struct net_md_aggregator *aggr);
 
+void
+net_md_populate_acc(struct net_md_aggregator *aggr,
+                    struct net_md_flow_key *key,
+                    struct net_md_stats_accumulator *acc);
+
 /**
  * @brief: translates protobuf key structure in a net_md_flow_key
  *
@@ -164,5 +169,7 @@ pbkey2net_md_key(struct net_md_aggregator *aggr, Traffic__FlowKey *pb_key);
  */
 void
 net_md_update_aggr(struct net_md_aggregator *aggr, struct packed_buffer *pb);
+
+void net_md_purge_aggr(struct net_md_aggregator *aggr);
 
 #endif /* NETWORK_METADATA_UTILS_H_INCLUDED */

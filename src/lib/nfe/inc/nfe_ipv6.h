@@ -29,7 +29,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "nfe_ipaddr.h"
 
-struct ipv6hdr {
+struct nfe_ipv6hdr {
     unsigned char pri_ver;
     unsigned char flbl[3];
     unsigned short plen;

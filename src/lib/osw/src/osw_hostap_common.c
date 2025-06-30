@@ -345,6 +345,7 @@ osw_hostap_util_sta_state_to_osw(const char *wpa_state,
         (strcmp(wpa_state, "ASSOCIATING") == 0) ||
         (strcmp(wpa_state, "ASSOCIATED") == 0) ||
         (strcmp(wpa_state, "SCANNING") == 0) ||
+        (strcmp(wpa_state, "MLO_WAIT") == 0) ||
         (strcmp(wpa_state, "4WAY_HANDSHAKE") == 0) ||
         (strcmp(wpa_state, "GROUP_HANDSHAKE") == 0) ) {
         *status = OSW_DRV_VIF_STATE_STA_LINK_CONNECTING;

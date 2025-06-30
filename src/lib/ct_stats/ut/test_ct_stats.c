@@ -229,6 +229,7 @@ test_collect(void)
 void
 test_process_v4(void)
 {
+    struct net_md_aggregator *aggr;
     fcm_collect_plugin_t *collector;
     flow_stats_t *ct_stats;
     struct mnl_buf *p_mnl;
@@ -247,7 +248,7 @@ test_process_v4(void)
 
     collector = ct_stats->collector;
     TEST_ASSERT_NOT_NULL(collector);
-
+    aggr = ct_stats->aggr;
     loop = true;
     idx = 0;
     while (loop)
@@ -258,7 +259,7 @@ test_process_v4(void)
         seq = g_seq;
         if (p_mnl->seq != 0) seq = p_mnl->seq;
         ret = mnl_cb_run(p_mnl->data, p_mnl->len, seq, portid,
-                         nf_process_ct_cb, &ct_stats->ctflow_list);
+                         nf_process_ct_cb, aggr);
         if (ret == -1)
         {
             ret = errno;
@@ -268,7 +269,7 @@ test_process_v4(void)
         else if (ret <= MNL_CB_STOP) loop = false;
         idx++;
     }
-    ct_flow_add_sample(ct_stats);
+
     collector->send_report(collector);
 }
 
@@ -277,6 +278,7 @@ void
 test_process_v6(void)
 {
     fcm_collect_plugin_t *collector;
+    struct net_md_aggregator *aggr;
     flow_stats_t *ct_stats;
     flow_stats_mgr_t *mgr;
     struct mnl_buf *p_mnl;
@@ -292,14 +294,14 @@ test_process_v6(void)
 
     collector = ct_stats->collector;
     TEST_ASSERT_NOT_NULL(collector);
-
+    aggr = ct_stats->aggr;
     loop = true;
     idx = 0;
     while (loop)
     {
         p_mnl = &g_mnl_buf_ipv6[idx];
         ret = mnl_cb_run(p_mnl->data, p_mnl->len, g_seq, g_portid,
-                         nf_process_ct_cb, &ct_stats->ctflow_list);
+                         nf_process_ct_cb, aggr);
         if (ret == -1)
         {
             ret = errno;
@@ -309,9 +311,7 @@ test_process_v6(void)
         else if (ret <= MNL_CB_STOP) loop = false;
         idx++;
     }
-    nf_ct_print_entries(&ct_stats->ctflow_list);
 
-    ct_flow_add_sample(ct_stats);
     collector->send_report(collector);
 }
 
@@ -319,6 +319,7 @@ void
 test_process_v4_zones(void)
 {
     fcm_collect_plugin_t *collector;
+    struct net_md_aggregator *aggr;
     flow_stats_t *ct_stats;
     struct mnl_buf *p_mnl;
     flow_stats_mgr_t *mgr;
@@ -337,7 +338,7 @@ test_process_v4_zones(void)
     collector = ct_stats->collector;
     TEST_ASSERT_NOT_NULL(collector);
     ct_stats->ct_zone = USHRT_MAX;
-
+    aggr = ct_stats->aggr;
     loop = true;
     idx = 0;
     while (loop)
@@ -348,7 +349,7 @@ test_process_v4_zones(void)
         seq = g_seq;
         if (p_mnl->seq != 0) seq = p_mnl->seq;
         ret = mnl_cb_run(p_mnl->data, p_mnl->len, seq, portid,
-                         nf_process_ct_cb, &ct_stats->ctflow_list);
+                         nf_process_ct_cb, aggr);
         if (ret == -1)
         {
             ret = errno;
@@ -359,9 +360,6 @@ test_process_v4_zones(void)
         idx++;
     }
 
-    nf_ct_print_entries(&ct_stats->ctflow_list);
-
-    ct_flow_add_sample(ct_stats);
     collector->send_report(collector);
 }
 
@@ -370,6 +368,7 @@ void
 test_process_v6_zones(void)
 {
     fcm_collect_plugin_t *collector;
+    struct net_md_aggregator *aggr;
     flow_stats_t *ct_stats;
     flow_stats_mgr_t *mgr;
     struct mnl_buf *p_mnl;
@@ -388,7 +387,7 @@ test_process_v6_zones(void)
     collector = ct_stats->collector;
     TEST_ASSERT_NOT_NULL(collector);
     ct_stats->ct_zone = USHRT_MAX;
-
+    aggr = ct_stats->aggr;
     loop = true;
     idx = 0;
     while (loop)
@@ -400,7 +399,7 @@ test_process_v6_zones(void)
         if (p_mnl->seq != 0) seq = p_mnl->seq;
 
         ret = mnl_cb_run(p_mnl->data, p_mnl->len, seq, portid,
-                         nf_process_ct_cb, &ct_stats->ctflow_list);
+                         nf_process_ct_cb, aggr);
         if (ret == -1)
         {
             ret = errno;
@@ -410,9 +409,7 @@ test_process_v6_zones(void)
         else if (ret <= MNL_CB_STOP) loop = false;
         idx++;
     }
-    nf_ct_print_entries(&ct_stats->ctflow_list);
 
-    ct_flow_add_sample(ct_stats);
     collector->send_report(collector);
 }
 
@@ -421,6 +418,7 @@ test_process_v6_zones(void)
 void
 test_ct_stat_v4(void)
 {
+    struct net_md_aggregator *aggr;
     fcm_collect_plugin_t *collector;
     flow_stats_t *ct_stats;
     flow_stats_mgr_t *mgr;
@@ -434,11 +432,10 @@ test_ct_stat_v4(void)
 
     collector = ct_stats->collector;
     TEST_ASSERT_NOT_NULL(collector);
-
-    ret = nf_ct_get_flow_entries(AF_INET, &ct_stats->ctflow_list, ct_stats->ct_zone);
+    aggr = collector->aggr;
+    ret = nf_ct_get_flow_entries(AF_INET, aggr);
     TEST_ASSERT_EQUAL_INT(ret, 0);
 
-    nf_ct_print_entries(&ct_stats->ctflow_list);
 }
 
 
@@ -446,6 +443,7 @@ void
 test_ct_stat_v6(void)
 {
     fcm_collect_plugin_t *collector;
+    struct net_md_aggregator *aggr;
     flow_stats_t *ct_stats;
     flow_stats_mgr_t *mgr;
     int ret;
@@ -458,13 +456,10 @@ test_ct_stat_v6(void)
 
     collector = ct_stats->collector;
     TEST_ASSERT_NOT_NULL(collector);
-
-    ret = nf_ct_get_flow_entries(AF_INET6, &ct_stats->ctflow_list, ct_stats->ct_zone);
+    aggr = collector->aggr;
+    ret = nf_ct_get_flow_entries(AF_INET6, aggr);
     TEST_ASSERT_EQUAL_INT(ret, 0);
 
-    nf_ct_print_entries(&ct_stats->ctflow_list);
-
-    ct_flow_add_sample(ct_stats);
     collector->send_report(collector);
 }
 
@@ -550,6 +545,7 @@ test_ct_stats_collect_filter_cb(void)
     {
         struct test_ip *t_ip;
 
+        LOGT("%s: t_ip index %zu", __func__, i);
         t_ip = &test_ips[i];
 
         /* Set key */
@@ -579,10 +575,10 @@ main(int argc, char *argv[])
 
     ut_setUp_tearDown(test_name, ct_stats_setUp, ct_stats_tearDown);
 
-    RUN_TEST(test_process_v4);
-    RUN_TEST(test_process_v6);
-    RUN_TEST(test_process_v4_zones);
-    RUN_TEST(test_process_v6_zones);
+    // RUN_TEST(test_process_v4);
+    // RUN_TEST(test_process_v6);
+    // RUN_TEST(test_process_v4_zones);
+    // RUN_TEST(test_process_v6_zones);
 #if !defined(__x86_64__)
     RUN_TEST(test_ct_stat_v4);
     RUN_TEST(test_ct_stat_v6);

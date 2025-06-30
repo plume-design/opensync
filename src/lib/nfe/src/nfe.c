@@ -43,6 +43,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdio.h>
 #include <ctype.h>
 
+#include "memutil.h"
+#include "log.h"
+
 static uint32_t
 clp2(uint32_t n)
 {
@@ -54,6 +57,43 @@ clp2(uint32_t n)
     n |= (n >> 16);
     return ++n;
 }
+
+
+EXPORT int
+nfe_conntrack_dump(nfe_conntrack_t conntrack, nfe_get_conntrack_cb_t cb, void *data)
+{
+    struct nfe_conn *conn, *tmp;
+    unsigned i;
+    int cnt = 0;
+    if (!conntrack || !cb)
+        return -EINVAL;
+
+    for (i = 0; i < LRU_PROTO_MAX; i++) {
+
+        nfe_list_for_each_entry_safe(conn, tmp, &conntrack->lru[i].list, lru) {
+            
+            cb(conn, data);
+            cnt++;
+        }
+    }
+    return cnt;
+}
+
+
+EXPORT int
+nfe_conntrack_update_timeouts(nfe_conntrack_t ct)
+{
+    if (!ct)
+        return -EINVAL;
+
+    ct->lru[LRU_PROTO_ICMP].expiry = nfe_conntrack_icmp_timeout * 1000;
+    ct->lru[LRU_PROTO_TCP_SYN].expiry = nfe_conntrack_tcp_timeout_syn * 1000;
+    ct->lru[LRU_PROTO_TCP_EST].expiry = nfe_conntrack_tcp_timeout_est * 1000;
+    ct->lru[LRU_PROTO_UDP].expiry = nfe_conntrack_udp_timeout * 1000;
+    ct->lru[LRU_PROTO_ETHER].expiry = nfe_conntrack_ether_timeout * 1000;
+    return 0;
+}
+
 
 EXPORT int
 nfe_conntrack_create(nfe_conntrack_t *h, uint32_t size)
@@ -84,6 +124,9 @@ nfe_conntrack_create(nfe_conntrack_t *h, uint32_t size)
 
     ct->lru[LRU_PROTO_UDP].expiry = nfe_conntrack_udp_timeout * 1000;
     nfe_list_init(&ct->lru[LRU_PROTO_UDP].list);
+
+    ct->lru[LRU_PROTO_ETHER].expiry = nfe_conntrack_ether_timeout * 1000;
+    nfe_list_init(&ct->lru[LRU_PROTO_ETHER].list);
 
     for (i = 0; i < size; i++) {
         nfe_list_init(&ct->bucket[i].list);
@@ -167,9 +210,10 @@ nfe_conn_lookup(nfe_conntrack_t conntrack, struct nfe_packet *packet)
         if (packet->type != NFE_PACKET_TYPE_BROADCAST) {
             return nfe_conn_lookup_next(conntrack, packet);
         } else {
-            return nfe_conn_alloc(packet, false);
+            return nfe_ether_lookup(conntrack, packet);
         }
     }
+
     return NULL;
 }
 
@@ -182,7 +226,6 @@ nfe_conn_lookup_by_tuple(nfe_conntrack_t conntrack,
 
     if (!conntrack || !tuple)
         return NULL;
-
     switch (tuple->proto) {
         case IPPROTO_ICMP:
             lru = LRU_PROTO_ICMP;
@@ -193,6 +236,9 @@ nfe_conn_lookup_by_tuple(nfe_conntrack_t conntrack,
             break;
         case IPPROTO_UDP:
             lru = LRU_PROTO_UDP;
+            break;
+        case IPPROTO_IP:
+            lru = LRU_PROTO_ETHER;
             break;
         default:
             return NULL;
@@ -218,7 +264,6 @@ nfe_conn_release(nfe_conn_t conn)
         return;
 
     nfe_assert(conn->lockref >= 1);
-
     if (--(conn->lockref) == 0) {
         nfe_list_remove(&conn->list);
         nfe_list_remove(&conn->lru);
@@ -229,12 +274,12 @@ nfe_conn_release(nfe_conn_t conn)
 #ifndef KERNEL
 EXPORT __attribute__((weak)) void *
 nfe_ext_alloc(size_t size) {
-    return malloc(size);
+    return MALLOC(size);
 }
 
 EXPORT __attribute__((weak)) void
 nfe_ext_free(void *p) {
-    free(p);
+    FREE(p);
 }
 
 #ifndef OPTION_NWEAK

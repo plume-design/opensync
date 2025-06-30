@@ -52,8 +52,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *  TARGET definitions
  */
 
-void target_managers_restart(void)
+void target_managers_restart_helper(const char *calling_func)
 {
+    (void)calling_func;
 }
 
 bool target_is_radio_interface_ready(char *phy_name)
@@ -87,4 +88,3 @@ bool target_stats_capacity_get(radio_entry_t *radio_cfg,
     return true;
 }
 //    (void)
-

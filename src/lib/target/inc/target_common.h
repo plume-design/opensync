@@ -905,7 +905,8 @@ bool target_device_connectivity_check(const char *ifname,
  *  @brief Restart plume managers
  *  @return true on success
  */
-bool target_device_restart_managers();
+bool target_device_restart_managers_helper(const char *calling_func);
+#define target_device_restart_managers(void) target_device_restart_managers_helper(__func__)
 
 /**
  *  @brief Ping watchdog system

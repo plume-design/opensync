@@ -46,7 +46,7 @@ typedef enum
 typedef struct we_arr *we_state_t;
 
 /* we_create() - Allocate state */
-int we_create(we_state_t *s, size_t stacksize);
+int we_create(we_state_t *s, size_t stacksize, size_t mempool_size);
 
 /* we_destroy() - Free state */
 int we_destroy(we_state_t s);

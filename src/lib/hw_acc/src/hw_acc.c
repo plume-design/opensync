@@ -59,3 +59,8 @@ void hw_acc_disable()
 {
     return;
 }
+
+bool hw_acc_mode_set(hw_acc_ctrl_flags_t flags)
+{
+    return true;
+}

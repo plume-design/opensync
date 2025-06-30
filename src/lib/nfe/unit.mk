@@ -27,9 +27,9 @@
 # Library to enable network flow engine
 #
 ###############################################################################
-UNIT_NAME := fsm_nfe
+UNIT_NAME := nfe
 
-UNIT_TYPE := STATIC_LIB
+UNIT_TYPE := LIB
 
 UNIT_SRC := src/nfe.c
 UNIT_SRC += src/nfe_conntrack.c
@@ -47,11 +47,10 @@ UNIT_SRC += src/nfe_gre.c
 UNIT_SRC += src/nfe_ipv4.c
 UNIT_SRC += src/nfe_tcp.c
 
-UNIT_CFLAGS += -I$(UNIT_PATH)/inc
+UNIT_CFLAGS := -I$(UNIT_PATH)/inc
 UNIT_CFLAGS += -fPIC
 
-ifeq ($(CONFIG_WALLEYE_NFE_RELEASE_BUILD),y)
-UNIT_CFLAGS += -O2 -nostdlib -nodefaultlibs -fno-stack-protector # optimization
-endif
-
 UNIT_EXPORT_CFLAGS := $(UNIT_CFLAGS)
+
+UNIT_DEPS := src/lib/common
+UNIT_DEPS := src/lib/log

@@ -41,6 +41,9 @@ int nfe_input_eth(struct nfe_packet *p);
 int nfe_proto_eth(struct nfe_packet *p);
 struct nfe_conn *nfe_eth_bypass(struct nfe_conntrack *ct, struct nfe_packet *p);
 
+struct nfe_conn *
+nfe_ether_lookup(struct nfe_conntrack *conntrack, struct nfe_packet *packet);
+
 struct ethhdr {
     unsigned char dst[ETH_ALEN];
     unsigned char src[ETH_ALEN];

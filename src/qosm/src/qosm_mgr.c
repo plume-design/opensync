@@ -251,6 +251,17 @@ void qosm_mgr_schedule_adaptive_qos_config(const ovs_uuid_t *uuid)
 }
 
 /**
+ * Schedule *global* AdaptiveQoS configuration change (new or modify).
+ * If there is existing per-interface adaptive QoS config defined, it will
+ * be reapplied. Nothing happens yet if there is no existing per-interface adaptive
+ * QoS config yet, as those are a predonditions for Adaptive QoS.
+ */
+void qosm_mgr_schedule_adaptive_qos_config_change(void)
+{
+    qosm_mgr_adaptive_qos_debounce();
+}
+
+/**
  * Schedule Classifier reconfiguration for this interface.
  *
  * The reconfiguration is marked as pending and will be
@@ -328,4 +339,3 @@ static void qosm_mgr_adaptive_qos_debounce()
 
     ev_debounce_start(EV_DEFAULT, &qosm_adpt_qos_debouncer);
 }
-

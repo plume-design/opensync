@@ -150,6 +150,12 @@ void ow_conf_vif_set_ap_beacon_interval_tu(const char *vif_name, const int *tu);
 void ow_conf_vif_set_ap_acl_policy(const char *vif_name, const enum osw_acl_policy *policy);
 void ow_conf_vif_set_ap_wps(const char *vif_name, const bool *wps_enabled);
 void ow_conf_vif_set_ap_wmm(const char *vif_name, const bool *wmm_enabled);
+void ow_conf_vif_set_ap_mbo(const char *vif_name, const bool *mbo_enabled);
+void ow_conf_vif_set_ap_oce(const char *vif_name, const bool *oce_enabled);
+void ow_conf_vif_set_ap_oce_min_rssi_dbm(const char *vif_name, const int *oce_min_rssi_dbm);
+void ow_conf_vif_set_ap_oce_min_rssi_enable(const char *vif_name, const bool *oce_min_rssi_enable);
+void ow_conf_vif_set_ap_oce_retry_delay_sec(const char *vif_name, const int *oce_retry_delay_sec);
+void ow_conf_vif_set_ap_max_sta(const char *vif_name, const int *max_sta);
 void ow_conf_vif_set_ap_wmm_uapsd(const char *vif_name, const bool *wmm_uapsd_enabled);
 void ow_conf_vif_set_ap_wnm_bss_trans(const char *vif_name, const bool *wnm_bss_trans_enabled);
 void ow_conf_vif_set_ap_rrm_neighbor_report(const char *vif_name, const bool *rmm_neighbor_report_enabled);
@@ -178,15 +184,15 @@ void ow_conf_vif_set_ap_neigh(const char *vif_name,
                               const uint8_t op_class,
                               const uint8_t channel,
                               const uint8_t phy_type);
-void ow_conf_vif_set_ap_neigh_ft(const char* vif_name,
-                                 const struct osw_hwaddr *addr,
+void ow_conf_vif_set_ap_neigh_ft(const struct osw_hwaddr *addr,
+                                 const char *vif_name,
                                  const bool ft_enabled,
                                  const char *ft_encr_key,
                                  const char* nas_id);
 void ow_conf_vif_del_ap_neigh(const char *vif_name,
                               const struct osw_hwaddr *addr);
-void ow_conf_vif_del_ap_neigh_ft(const char *vif_name,
-                                 const struct osw_hwaddr *addr);
+void ow_conf_vif_del_ap_neigh_ft(const struct osw_hwaddr *addr,
+                                 const char *vif_name);
 void ow_conf_radius_add(const char *ref_id,
                         const char *ip_addr,
                         const char *secret,

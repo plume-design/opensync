@@ -56,8 +56,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 struct ow_steer_executor_action_btm {
     struct ow_steer_executor_action *base;
-    struct osw_btm_sta_observer btm_desc_observer;
-    struct osw_btm_desc *btm_desc;
+    osw_btm_sta_t *sta;
+    osw_btm_req_t *req;
     struct osw_throttle *throttle;
     struct osw_timer throttle_timer;
     bool *disassoc_imminent;
@@ -65,19 +65,18 @@ struct ow_steer_executor_action_btm {
 };
 
 static void
-ow_steer_executor_action_btm_req_tx_complete_cb(struct osw_btm_sta_observer *observer)
+ow_steer_executor_action_btm_req_completed_cb(void *priv, enum osw_btm_req_result result)
 {
-    struct ow_steer_executor_action_btm *btm_action = container_of(observer, struct ow_steer_executor_action_btm, btm_desc_observer);
+    struct ow_steer_executor_action_btm *btm_action = priv;
+    switch (result) {
+        case OSW_BTM_REQ_RESULT_SENT:
+            LOGD("%s request submitted", ow_steer_executor_action_get_prefix(btm_action->base));
+            break;
+        case OSW_BTM_REQ_RESULT_FAILED:
+            LOGD("%s request failed to submit", ow_steer_executor_action_get_prefix(btm_action->base));
+            break;
+    }
     ow_steer_executor_action_sched_recall(btm_action->base);
-    LOGD("%s request submitted", ow_steer_executor_action_get_prefix(btm_action->base));
-}
-
-static void
-ow_steer_executor_action_btm_req_tx_error_cb(struct osw_btm_sta_observer *observer)
-{
-    struct ow_steer_executor_action_btm *btm_action = container_of(observer, struct ow_steer_executor_action_btm, btm_desc_observer);
-    ow_steer_executor_action_sched_recall(btm_action->base);
-    LOGD("%s request failed to submit", ow_steer_executor_action_get_prefix(btm_action->base));
 }
 
 void
@@ -278,9 +277,13 @@ ow_steer_executor_action_btm_call_fn(struct ow_steer_executor_action *action,
         const bool can_issue_req = osw_throttle_tap(btm_action->throttle, &next_attempt_tstamp_nsec);
         if (can_issue_req == true) {
             struct osw_btm_req_params* btm_req_params = ow_steer_executor_action_btm_req_create_params(btm_action, candidate_list);
-            osw_btm_sta_log_req_params(btm_req_params);
-            const bool params_set = osw_btm_desc_set_req_params(btm_action->btm_desc, btm_req_params);
-            if (params_set == true) {
+            osw_btm_req_params_log(btm_req_params);
+            osw_btm_req_drop(btm_action->req);
+            btm_action->req = osw_btm_req_alloc(btm_action->sta);
+            const bool ok = osw_btm_req_set_completed_fn(btm_action->req, ow_steer_executor_action_btm_req_completed_cb, btm_action)
+                         && osw_btm_req_set_params(btm_action->req, btm_req_params)
+                         && osw_btm_req_submit(btm_action->req);
+            if (ok == true) {
                 LOGI("%s submitting btm req", ow_steer_executor_action_get_prefix(btm_action->base));
                 ow_steer_executor_action_notify_data_sent(action);
             }
@@ -299,6 +302,8 @@ ow_steer_executor_action_btm_call_fn(struct ow_steer_executor_action *action,
         }
     }
     else {
+        osw_btm_req_drop(btm_action->req);
+        btm_action->req = NULL;
         osw_timer_disarm(&btm_action->throttle_timer);
     }
     return true;
@@ -316,9 +321,7 @@ ow_steer_executor_action_btm_create(const struct osw_hwaddr *sta_addr,
         .call_fn = ow_steer_executor_action_btm_call_fn,
     };
     struct ow_steer_executor_action_btm *btm_action = CALLOC(1, sizeof(*btm_action));
-    btm_action->btm_desc_observer.req_tx_complete_fn = ow_steer_executor_action_btm_req_tx_complete_cb;
-    btm_action->btm_desc_observer.req_tx_error_fn = ow_steer_executor_action_btm_req_tx_error_cb;
-    btm_action->btm_desc = osw_btm_get_desc(sta_addr, &btm_action->btm_desc_observer);
+    btm_action->sta = osw_btm_sta_alloc(osw_btm(), sta_addr);
     btm_action->throttle = osw_throttle_new_rate_limit(1, OSW_TIME_SEC(OW_STEER_EXECUTOR_ACTION_BTM_RETRY_INTERVAL_SEC));
     osw_timer_init(&btm_action->throttle_timer, ow_steer_executor_action_btm_throttle_timer_cb);
 
@@ -335,7 +338,8 @@ ow_steer_executor_action_btm_free(struct ow_steer_executor_action_btm *btm_actio
     ow_steer_executor_action_notify_going_idle(btm_action->base);
 
     ow_steer_executor_action_btm_set_disassoc_imminent(btm_action, NULL);
-    osw_btm_desc_free(btm_action->btm_desc);
+    osw_btm_req_drop(btm_action->req);
+    osw_btm_sta_drop(btm_action->sta);
     osw_throttle_free(btm_action->throttle);
     osw_timer_disarm(&btm_action->throttle_timer);
     ow_steer_executor_action_free(btm_action->base);

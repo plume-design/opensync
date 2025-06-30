@@ -60,6 +60,11 @@ bool osn_qdisc_cfg_add(osn_qdisc_cfg_t *self, const struct osn_qdisc_params *qdi
     return lnx_qdisc_cfg_add(self->oqc_lnx_qdisc, qdisc);
 }
 
+bool osn_qdisc_cfg_notify_status_set(osn_qdisc_cfg_t *self, osn_qdisc_status_fn_t *status_fn_cb)
+{
+    return lnx_qdisc_cfg_notify_status_set(self->oqc_lnx_qdisc, status_fn_cb);
+}
+
 bool osn_qdisc_cfg_apply(osn_qdisc_cfg_t *self)
 {
     return lnx_qdisc_cfg_apply(self->oqc_lnx_qdisc);
@@ -94,6 +99,8 @@ struct osn_qdisc_params *osn_qdisc_params_clone(const struct osn_qdisc_params *q
     qdisc_clone->oq_params = qdisc->oq_params != NULL ? STRDUP(qdisc->oq_params) : NULL;
 
     qdisc_clone->oq_is_class = qdisc->oq_is_class;
+
+    qdisc_clone->oq_ctx = qdisc->oq_ctx;
 
     return qdisc_clone;
 }

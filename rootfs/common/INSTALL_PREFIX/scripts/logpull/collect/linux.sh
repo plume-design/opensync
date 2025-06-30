@@ -96,6 +96,10 @@ collect_linux()
 
     collect_cmd lsof
     collect_file /proc/sys/fs/file-nr
+
+    for f in $(ls -A $CONFIG_CPM_TINYPROXY_ETC); do
+        collect_file $CONFIG_CPM_TINYPROXY_ETC/$f
+    done
 }
 
 collect_ethernet()

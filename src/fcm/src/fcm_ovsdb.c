@@ -50,6 +50,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "gatekeeper_ecurl.h"
 
 #include "fsm_policy.h"
+#include "kconfig.h"
 
 /* Log entries from this file will contain "OVSDB" */
 #define MODULE_ID LOG_MODULE_ID_OVSDB
@@ -591,8 +592,12 @@ int fcm_ovsdb_init(void)
         return -1;
     }
 
-    fsm_policy_init();
-    fcm_register_policy_client();
+    if (kconfig_enabled(CONFIG_FCM_PROXIMITY_SUPPORT))
+    {
+        LOGT("%s: Proximity support enabled",__func__);
+        fsm_policy_init();
+        fcm_register_policy_client();
+    }
 
     return 0;
 }

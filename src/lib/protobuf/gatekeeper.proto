@@ -63,7 +63,7 @@ message GatekeeperHttpHostReq {
 
 // HTTP URL gatekeeper request
 message GatekeeperHttpUrlReq {
-        GatekeeperCommonRequest header = 1;
+    GatekeeperCommonRequest header = 1;
     string http_url = 2;
 }
 
@@ -182,6 +182,7 @@ message GatekeeperCommonReply {
     uint32 confidence_level = 6;
     uint32 flow_marker = 7;
     bytes  device_id = 8; // MAC address
+    string network_id = 9;
 }
 
 message GatekeeperFqdnRedirectReply {
@@ -204,14 +205,17 @@ message GatekeeperFqdnReply {
     GatekeeperCommonReply header = 1;
     GatekeeperFqdnRedirectReply redirect = 2;
     GatekeeperFqdnNxdomainReply nxdomain = 3;
+    string query_name = 4;
 }
 
 message GatekeeperIpv4Reply {
     GatekeeperCommonReply header = 1;
+    uint32 addr_ipv4 = 2;
 }
 
 message GatekeeperIpv6Reply {
     GatekeeperCommonReply header = 1;
+    bytes addr_ipv6 = 2;
 }
 
 message GatekeeperIpv4TupleReply {
@@ -232,17 +236,20 @@ message GatekeeperAppReply {
 message GatekeeperHttpsSniReply {
     GatekeeperCommonReply header = 1;
     GatekeeperRedirectReply redirect = 2;
+    string https_sni = 3;
 }
 
 // HTTP Host gatekeeper reply
 message GatekeeperHttpHostReply {
     GatekeeperCommonReply header = 1;
     GatekeeperRedirectReply redirect = 2;
+    string http_host = 3;
 }
 
 // HTTP URL gatekeeper reply
 message GatekeeperHttpUrlReply {
     GatekeeperCommonReply header = 1;
+    string http_url = 2;
 }
 
 message GatekeeperBulkReply {

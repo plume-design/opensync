@@ -44,6 +44,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "dpp_device.h"
 #include "osp_power.h"
 #include "memutil.h"
+#include "os.h"
 
 
 #define MODULE_ID LOG_MODULE_ID_TARGET
@@ -634,48 +635,7 @@ read_error:
 /* For pid get/calculate its total PSS from per-mapping PSS values from proc. */
 static int proc_parse_pid_smaps(uint32_t pid, pid_util_t *pid_util)
 {
-    char filename[32];
-    FILE *proc_file = NULL;
-    char buf[512];
-    uint32_t pss_total;
-
-
-    snprintf(filename, sizeof(filename), "/proc/%u/smaps", pid);  /* 2.6.14+ & PROC_PAGE_MONITOR */
-    proc_file = fopen(filename, "r");
-    if (proc_file == NULL)
-    {
-        /* Try opening the stat file instead to check if process hasn't already exited. */
-        snprintf(filename, sizeof(filename), "/proc/%u/stat", pid);
-        proc_file = fopen(filename, "r");
-        if (proc_file != NULL)
-        {
-            fclose(proc_file);
-            return -ENOENT; /* /proc/[pid]/smaps not supported on this kernel. */
-        }
-
-        /* Process probably already exited */
-        return -ESRCH;
-    }
-
-    pss_total = 0;
-    while (fgets(buf, sizeof(buf), proc_file) != NULL)
-    {
-        uint32_t pss;
-        if (STR_BEGINS_WITH(buf, "Pss:"))
-        {
-            if (sscanf(buf, "Pss: %u", &pss) != 1)
-            {
-                LOG(ERROR, "Error parsing %s: %s.", filename, buf);
-                fclose(proc_file);
-                return -1;
-            }
-            pss_total += pss;
-        }
-    }
-
-    pid_util->pss = pss_total;
-    fclose(proc_file);
-    return 0;
+    return os_proc_get_pss (pid, &(pid_util->pss));
 }
 
 

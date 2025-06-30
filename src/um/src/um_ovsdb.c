@@ -333,21 +333,13 @@ static void callback_AWLAN_Node(
                     }
                     else
                     {
-                        LOG(NOTICE, "Upgrade already in progress");
+                        LOG(NOTICE, "System check before upgrade failed");
                     }
                 }
                 else
                 {
                     LOG(NOTICE, "URL is empty");
                 }
-            }
-
-            if(awlan_node->firmware_pass_changed){
-                //TODO Is there something that needs to be done here?
-            }
-
-            if(awlan_node->upgrade_dl_timer_changed){
-                //TODO Is there something that needs to be done here?
             }
 
             if(awlan_node->upgrade_timer_changed){

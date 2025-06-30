@@ -35,6 +35,10 @@ ow_steer_executor_action_acl_create(const struct osw_hwaddr *sta_addr,
                                     const char *log_prefix);
 
 void
+ow_steer_executor_action_acl_set_enabled(struct ow_steer_executor_action_acl *acl_action,
+                                         const bool enabled);
+
+void
 ow_steer_executor_action_acl_free(struct ow_steer_executor_action_acl *acl_action);
 
 struct ow_steer_executor_action*

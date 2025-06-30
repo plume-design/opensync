@@ -36,6 +36,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define KEY_ERASE_WAN_PS                "erase_wan_ps"
 #define KEY_ERASE_LTE_PS                "erase_lte_ps"
 #define KEY_ERASE_GW_OFF_PS             "erase_gw_offline_ps"
+#define KEY_ERASE_TS_PS                 "erase_topology_snapshot_ps"
 #define KEY_ERASE_ALL_PS                "erase_all_ps"
 #define KEY_ERASE_OP_STATUS             "erase_op_status"
 #define VAL_ERASE_PS_TRUE               "true"
@@ -135,6 +136,14 @@ void callback_Node_Config(ovsdb_update_monitor_t *mon,
         if (!ps_mgmt_erase_gw_offline_config()) {
             LOG(ERR, "Failed to erase GW Offline config from persistent storage.");
             error_cnt++;
+        }
+    }
+
+    if (strcmp(config->key, KEY_ERASE_ALL_PS) == 0 || strcmp(config->key, KEY_ERASE_TS_PS) == 0)
+    {
+        if(!ps_mgmt_erase_last_parent_store()) {
+           LOG(ERR, "Failed to erase topology snapshot config from persistent storage.");
+           error_cnt++;
         }
     }
 

@@ -36,6 +36,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 typedef struct
 {
     uint32_t                        chan;
+    uint32_t                        chan_width;
+    uint32_t                        center0_freq_mhz;
+    uint8_t                         *puncture;
+    size_t                          puncture_len;
     uint64_t                        timestamp_ms;
 } dpp_survey_info_t;
 

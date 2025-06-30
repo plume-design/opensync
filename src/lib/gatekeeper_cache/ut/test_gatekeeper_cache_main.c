@@ -54,7 +54,7 @@ struct sample_flow_entries *test_flow_entries;
 
 struct gk_attr_cache_interface *entry1, *entry2, *entry3, *entry4;
 struct gk_attr_cache_interface *entry5, *entry6, *entry7, *entry8;
-struct gk_attr_cache_interface *entry9, *entry10, *entry11;
+struct gk_attr_cache_interface *entry9, *entry10, *entry11, *entry12;
 struct gkc_ip_flow_interface *flow_entry1, *flow_entry2, *flow_entry3, *flow_entry4;
 struct gkc_ip_flow_interface *flow_entry5, *flow_entry6, *flow_entry7, *flow_entry8;
 
@@ -87,7 +87,7 @@ populate_sample_attribute_entries(void)
 
     while (fgets(line, 100, fp))
     {
-        if (i >= OVER_MAX_CACHE_ENTRIES) return;
+        if (i >= OVER_MAX_CACHE_ENTRIES * 2) return;
 
         sscanf(line, "%s %d %s ", test_attr_entries[i].mac_str, &test_attr_entries[i].attribute_type,
                test_attr_entries[i].attr_name);
@@ -184,7 +184,7 @@ create_default_attr_entries(void)
     entry8->attr_name = strdup("https://www.google.com");
     entry8->network_id = "home--3";
 
-    entry9 = CALLOC(1, sizeof(*entry5));
+    entry9 = CALLOC(1, sizeof(*entry9));
     entry9->action = 1;
     entry9->device_mac = str2os_mac("AA:AA:AA:AA:AA:04");
     entry9->attribute_type = GK_CACHE_REQ_TYPE_IPV4;
@@ -208,13 +208,25 @@ create_default_attr_entries(void)
     entry11->cache_ttl = 1000;
     entry11->action = FSM_BLOCK;
     entry11->attr_name = strdup("http://yahoo.com/");
+
+    entry12 = CALLOC(1, sizeof(*entry12));
+    entry12->action = 1;
+    entry12->device_mac = str2os_mac("AA:AA:AA:AA:AA:04");
+    entry12->attribute_type = GK_CACHE_REQ_TYPE_IPV6;
+    entry12->cache_ttl = 1000;
+    entry12->action = FSM_BLOCK;
+    entry12->ip_addr = sockaddr_storage_create(AF_INET6, "::1");
+    entry12->direction = NET_MD_ACC_INBOUND_DIR;
+
+
+
 }
 
 static void
 create_default_flow_entries(void)
 {
     flow_entry1 = CALLOC(1, sizeof(*flow_entry1));
-    flow_entry1->device_mac = str2os_mac("AA:AA:AA:AA:AA:01");
+    flow_entry1->device_mac = str2os_mac("AA:AA:AA:AA:AF:01");
     flow_entry1->direction = GKC_FLOW_DIRECTION_INBOUND;
     flow_entry1->src_port = 80;
     flow_entry1->dst_port = 8002;
@@ -228,7 +240,7 @@ create_default_flow_entries(void)
     inet_pton(AF_INET, "10.2.4.3", flow_entry1->dst_ip_addr);
 
     flow_entry2 = CALLOC(1, sizeof(*flow_entry2));
-    flow_entry2->device_mac = str2os_mac("AA:AA:AA:AA:AA:02");
+    flow_entry2->device_mac = str2os_mac("AA:AA:AA:AA:AF:02");
     flow_entry2->direction = GKC_FLOW_DIRECTION_INBOUND;
     flow_entry2->src_port = 443;
     flow_entry2->dst_port = 8888;
@@ -242,7 +254,7 @@ create_default_flow_entries(void)
     inet_pton(AF_INET, "10.2.2.2", flow_entry2->dst_ip_addr);
 
     flow_entry3 = CALLOC(1, sizeof(*flow_entry3));
-    flow_entry3->device_mac = str2os_mac("AA:AA:AA:AA:AA:02");
+    flow_entry3->device_mac = str2os_mac("AA:AA:AA:AA:AF:02");
     flow_entry3->direction = GKC_FLOW_DIRECTION_INBOUND;
     flow_entry3->src_port = 22;
     flow_entry3->dst_port = 3333;
@@ -272,7 +284,7 @@ create_default_flow_entries(void)
     inet_pton(AF_INET, "10.2.4.3", flow_entry4->dst_ip_addr);
 
     flow_entry5 = CALLOC(1, sizeof(*flow_entry3));
-    flow_entry5->device_mac = str2os_mac("AA:AA:AA:AA:AA:05");
+    flow_entry5->device_mac = str2os_mac("AA:AA:AA:AA:AF:05");
     flow_entry5->direction = GKC_FLOW_DIRECTION_INBOUND;
     flow_entry5->src_port = 22;
     flow_entry5->dst_port = 3333;
@@ -285,7 +297,7 @@ create_default_flow_entries(void)
     inet_pton(AF_INET, "10.2.2.1", flow_entry5->src_ip_addr);
 
     flow_entry6 = CALLOC(1, sizeof(*flow_entry6));
-    flow_entry6->device_mac = str2os_mac("AA:AA:AA:AA:AA:06");
+    flow_entry6->device_mac = str2os_mac("AA:AA:AA:AA:AF:06");
     flow_entry6->direction = GKC_FLOW_DIRECTION_INBOUND;
     flow_entry6->src_port = 22;
     flow_entry6->dst_port = 3333;
@@ -299,7 +311,7 @@ create_default_flow_entries(void)
     flow_entry6->network_id = "home--1";
 
     flow_entry7 = CALLOC(1, sizeof(*flow_entry7));
-    flow_entry7->device_mac = str2os_mac("AA:AA:AA:AA:AA:07");
+    flow_entry7->device_mac = str2os_mac("AA:AA:AA:AA:AF:07");
     flow_entry7->direction = GKC_FLOW_DIRECTION_OUTBOUND;
     flow_entry7->src_port = 22;
     flow_entry7->dst_port = 3333;
@@ -313,7 +325,7 @@ create_default_flow_entries(void)
     flow_entry7->network_id = "home--2";
 
     flow_entry8 = CALLOC(1, sizeof(*flow_entry8));
-    flow_entry8->device_mac = str2os_mac("AA:AA:AA:AA:AA:08");
+    flow_entry8->device_mac = str2os_mac("AA:AA:AA:AA:AF:08");
     flow_entry8->direction = GKC_FLOW_DIRECTION_INBOUND;
     flow_entry8->src_port = 22;
     flow_entry8->dst_port = 3333;
@@ -330,13 +342,13 @@ create_default_flow_entries(void)
 void
 gatekeeper_cache_setUp(void)
 {
-    OVER_MAX_CACHE_ENTRIES = gk_cache_get_size() + 1;
-    test_attr_entries = CALLOC(OVER_MAX_CACHE_ENTRIES, sizeof(*test_attr_entries));
+    OVER_MAX_CACHE_ENTRIES = CONFIG_GATEKEEPER_CACHE_LRU_SIZE;
+    test_attr_entries = CALLOC(OVER_MAX_CACHE_ENTRIES * 2, sizeof(*test_attr_entries));
     test_flow_entries = CALLOC(OVER_MAX_CACHE_ENTRIES, sizeof(*test_flow_entries));
 
     create_default_attr_entries();
     create_default_flow_entries();
-    gk_cache_init();
+    gk_cache_init(OVER_MAX_CACHE_ENTRIES);
     populate_sample_attribute_entries();
     populate_sample_flow_entries();
 }
@@ -391,6 +403,7 @@ del_default_attr_entries(void)
     free_cache_interface(entry9);
     free_cache_interface(entry10);
     free_cache_interface(entry11);
+    free_cache_interface(entry12);
 }
 
 void

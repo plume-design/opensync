@@ -82,11 +82,6 @@ struct fcm_session *session = NULL;
 struct fcm_filter_client *c_client = NULL;
 struct fcm_filter_client *r_client = NULL;
 
-void
-lan_stats_parse_ct(lan_stats_instance_t *lan_stats_instance, ctflow_info_t *ct_entry, dp_ctl_stats_t *stats);
-
-bool
-lan_stats_process_ct_flows(lan_stats_instance_t *lan_stats_instance);
 
 /* Gathered at sample colletion. See mnl_cb_run() implementation for details */
 int g_portid = 18404;
@@ -293,8 +288,9 @@ test_get_mqtt_hdr_loc_id(void)
 }
 
 void
-test_nf_ct_get_flow(ds_dlist_t *ct_list)
+test_nf_ct_get_flow(struct net_md_aggregator *aggr)
 {
+
     struct mnl_buf *p_mnl;
     uint32_t portid;
     uint32_t seq;
@@ -312,7 +308,7 @@ test_nf_ct_get_flow(ds_dlist_t *ct_list)
         seq = g_seq;
         if (p_mnl->seq != 0) seq = p_mnl->seq;
         ret = mnl_cb_run(p_mnl->data, p_mnl->len, seq, portid,
-                         nf_process_ct_cb, ct_list);
+                         nf_process_ct_cb, aggr);
         if (ret == -1)
         {
             ret = errno;
@@ -325,19 +321,10 @@ test_nf_ct_get_flow(ds_dlist_t *ct_list)
 }
 
 void
-test_lan_stats_collect_flows(lan_stats_instance_t *lan_stats_instance)
+test_lan_stats_collect_flows(struct net_md_aggregator *aggr)
 {
-    ds_dlist_t *ct_list;
+    test_nf_ct_get_flow(aggr);
 
-    if (lan_stats_instance == NULL) return;
-
-    ct_list = &lan_stats_instance->ct_list;
-
-    test_nf_ct_get_flow(ct_list);
-
-    lan_stats_process_ct_flows(lan_stats_instance);
-
-    nf_free_ct_flow_list(ct_list);
     return;
 }
 
@@ -576,12 +563,13 @@ test_data_collection(void)
     lan_stats_instance->c_client = c_client;
 
     /* Update the flow collector routine */
-
-    lan_stats_instance->collect_flows = test_lan_stats_collect_flows;
-
-    /* Update the reporting routine */
     aggr = lan_stats_instance->aggr;
     TEST_ASSERT_NOT_NULL(aggr);
+
+    test_lan_stats_collect_flows(aggr);
+    lan_stats_collect_cb(collector);
+
+    /* Update the reporting routine */
     aggr->send_report = test_emit_report;
 
     /* collect LAN stats and report it */
@@ -630,11 +618,13 @@ test_data_collection_v1(void)
     lan_stats_instance->c_client = c_client;
 
     /* Update the flow collector routine */
-    lan_stats_instance->collect_flows = test_lan_stats_collect_flows;
-
-    /* Update the reporting routine */
     aggr = lan_stats_instance->aggr;
     TEST_ASSERT_NOT_NULL(aggr);
+    test_lan_stats_collect_flows(aggr);
+
+    lan_stats_collect_cb(collector);
+
+    /* Update the reporting routine */
     aggr->send_report = test_emit_report;
 
     /* collect LAN stats and report it */
@@ -684,12 +674,12 @@ test_data_collection_v2(void)
     lan_stats_instance->r_client = r_client;
     lan_stats_instance->c_client = c_client;
 
-    /* Update the flow collector routine */
-    lan_stats_instance->collect_flows = test_lan_stats_collect_flows;
-
-    /* Update the reporting routine */
     aggr = lan_stats_instance->aggr;
     TEST_ASSERT_NOT_NULL(aggr);
+
+    test_lan_stats_collect_flows(aggr);
+    lan_stats_collect_cb(collector);
+
     aggr->send_report = test_emit_report;
 
     /* collect LAN stats and report it */
@@ -809,12 +799,9 @@ setup_add_and_let_age_flows(void)
     lan_stats_instance->r_client =  r_client;
     lan_stats_instance->c_client = c_client;
 
-    /* Update the flow collector routine */
-    lan_stats_instance->collect_flows = test_lan_stats_collect_flows;
-
-    /* Update the reporting routine */
     aggr = lan_stats_instance->aggr;
     TEST_ASSERT_NOT_NULL(aggr);
+    test_lan_stats_collect_flows(aggr);
     aggr->send_report = test_emit_report;
 
     /* Prepare the testing sequence */
@@ -1053,12 +1040,9 @@ validate_flow_packets_bytes(void)
     lan_stats_instance->r_client =  r_client;
     lan_stats_instance->c_client = c_client;
 
-    /* Update the flow collector routine */
-    lan_stats_instance->collect_flows = test_lan_stats_collect_flows;
-
-    /* Update the reporting routine */
     aggr = lan_stats_instance->aggr;
     TEST_ASSERT_NOT_NULL(aggr);
+    test_lan_stats_collect_flows(aggr);
     aggr->send_report = test_emit_report;
 
     /* collect LAN stats and report it */
@@ -1108,12 +1092,9 @@ parse_flow_packets_bytes(char *file)
     lan_stats_instance->r_client =  r_client;
     lan_stats_instance->c_client = c_client;
 
-    /* Update the flow collector routine */
-    lan_stats_instance->collect_flows = test_lan_stats_collect_flows;
-
-    /* Update the reporting routine */
     aggr = lan_stats_instance->aggr;
     TEST_ASSERT_NOT_NULL(aggr);
+    test_lan_stats_collect_flows(aggr);
     aggr->send_report = test_emit_report;
 
     /* collect LAN stats and report it */

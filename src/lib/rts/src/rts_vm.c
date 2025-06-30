@@ -1321,7 +1321,9 @@ rts_vm_exec(struct rts_vm *vm, unsigned pc, struct rts_data *data, struct rts_bu
                 ctx_id = read32(&code[pc]); pc += sizeof(ctx_id);
                 if (ctx_id) {
                     struct rts_value ctx;
-                    rts_assert(BUFFER_GET_TYPE(ctx_id) == RTS_VALUE_TYPE_NUMBER);
+                    if (BUFFER_GET_TYPE(ctx_id) != RTS_VALUE_TYPE_NUMBER) {
+                        return RTS_VM_ERROR;
+                    }
                     if (!heap_load(&vm->list, &ctx, ctx_id, mp))
                         return RTS_VM_ERROR;
                     ctx_value = ctx.number.data;

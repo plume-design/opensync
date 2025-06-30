@@ -59,6 +59,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #define TM_OUT_FAST     (5)
 #define TM_OUT_SLOW     (60)
+#define TM_CHKMEM       (30)
 
 struct dm_manager
 {
@@ -67,6 +68,10 @@ struct dm_manager
     bool                dm_plan_b;                  /* Requires Plan-B on crash */
     bool                dm_restart_always;          /* Always restart */
     int                 dm_restart_delay;           /* Restart delay in ms */
+    int                 dm_mem_max;                 /* Max memory in kB */
+    int                 dm_mem_max_cnt;             /* Max memory exceed counter limit */
+    int                 dm_mem_highest;             /* Higest memory in kB */
+    int                 dm_mem_exceed_cnt;          /* Memory limit exceeded counter */
     ds_tree_node_t      dm_tnode;                   /* Linked list node */
     pid_t               dm_pid;                     /* Manager process ID or <0 if not started */
     bool                dm_enable;                  /* True if enabled */
@@ -111,7 +116,9 @@ static bool dm_manager_update(
         bool enable,
         bool plan_b,
         bool always_restart,
-        int restart_timer);
+        int restart_timer,
+        int memmax,
+        int memmax_cnt);
 
 static void dm_manager_kill(struct dm_manager *dm);
 static bool dm_manager_start(struct dm_manager *dm);
@@ -143,6 +150,23 @@ bool pid_dir(void)
 
     LOG(DEBUG, "pid_dir creation  isdir=%s", isdir ? "true" : "false");
     return isdir;
+}
+
+static void chkmem_timer_cb(struct ev_loop *loop, ev_timer *w, int events)
+{
+    (void)events;
+    (void)loop;
+    struct dm_manager *dm;
+
+    LOG(DEBUG, "Checking for process memory:");
+
+    ds_tree_foreach(&dm_manager_list, dm)
+    {
+        if (dm->dm_pid != -1) /* only enabled services can be examined */
+        {
+            chkmem_check_pss(dm->dm_pid, dm->dm_name, dm->dm_mem_max, dm->dm_mem_max_cnt, &(dm->dm_mem_highest), &(dm->dm_mem_exceed_cnt));
+        }
+    }
 }
 
 bool init_managers()
@@ -182,6 +206,15 @@ bool act_init_managers (void)
     return retval;
 }
 
+void chkmem_init(void)
+{
+    static ev_timer chkmem_timer;
+
+    LOG(DEBUG, "Initializing chkmem timer");
+    ev_timer_init(&chkmem_timer, chkmem_timer_cb, 0., (double) TM_CHKMEM);
+    ev_timer_start (EV_DEFAULT, &chkmem_timer);
+}
+
 /**
  * Register a manager
  */
@@ -189,7 +222,9 @@ bool dm_manager_register(
         const char *path,
         bool plan_b,
         bool restart,
-        int restart_delay)
+        int restart_delay,
+        int memmax,
+        int memmax_cnt)
 {
     const char *name;
     struct dm_manager *dm;
@@ -219,6 +254,10 @@ bool dm_manager_register(
     dm->dm_plan_b = plan_b;
     dm->dm_restart_always = restart;
     dm->dm_restart_delay = restart_delay;
+    dm->dm_mem_max = memmax;
+    dm->dm_mem_max_cnt = memmax_cnt;
+    dm->dm_mem_highest = 0;
+    dm->dm_mem_exceed_cnt = 0;
 
     ds_tree_insert(&dm_manager_list, dm, (char *)dm->dm_name);
 
@@ -236,7 +275,9 @@ bool dm_manager_update(
         bool enable,
         bool plan_b,
         bool restart_always,
-        int restart_delay)
+        int restart_delay,
+        int memmax,
+        int memmax_cnt)
 {
    const  char *name;
     struct dm_manager *dm;
@@ -254,6 +295,8 @@ bool dm_manager_update(
     dm->dm_restart_always = restart_always;
     dm->dm_restart_delay = restart_delay;
     dm->dm_enable = enable;
+    dm->dm_mem_max = memmax;
+    dm->dm_mem_max_cnt = memmax_cnt;
 
     if (enable)
     {
@@ -911,12 +954,30 @@ void callback_Node_Services(
     bool restart_always = false;
     bool restart_delay = 0;
     bool retval = false;
+    int memmax = CONFIG_DM_DEFAULT_MAX_MEMORY;
+    int memmax_cnt = CONFIG_DM_DEFAULT_MAX_MEMORY_CNT;
 
     /* Deletions not yet supported */
     if (mon->mon_type == OVSDB_UPDATE_DEL)
     {
         LOG(ERR, "Manager deletion not supported: %s", old->service);
         return;
+    }
+
+    /*
+     * Hold the old max_memory value when it is removed
+     * from the config until a new value is provided.
+     */
+    for (ii = 0; ii < old->other_config_len; ii++)
+    {
+        if (strcmp(old->other_config_keys[ii], "max_memory") == 0)
+        {
+            memmax = atoi(old->other_config[ii]);
+        }
+        if (strcmp(old->other_config_keys[ii], "max_memory_cnt") == 0)
+        {
+            memmax_cnt = atoi(old->other_config[ii]);
+        }
     }
 
     /* Parse other config */
@@ -934,6 +995,14 @@ void callback_Node_Services(
         {
             restart_delay = atoi(new->other_config[ii]);
         }
+        else if (strcmp(new->other_config_keys[ii], "max_memory") == 0)
+        {
+            memmax = atoi(new->other_config[ii]);
+        }
+        else if (strcmp(new->other_config_keys[ii], "max_memory_cnt") == 0)
+        {
+            memmax_cnt = atoi(new->other_config[ii]);
+        }
     }
 
     enable = new->enable_exists && new->enable;
@@ -948,10 +1017,10 @@ void callback_Node_Services(
 
     if (mon->mon_type == OVSDB_UPDATE_NEW)
     {
-        (void)dm_manager_register(new->service, plan_b, restart_always, restart_delay);
+        (void)dm_manager_register(new->service, plan_b, restart_always, restart_delay, memmax, memmax_cnt);
     }
 
-    if (!dm_manager_update(new->service, enable, plan_b, restart_always, restart_delay))
+    if (!dm_manager_update(new->service, enable, plan_b, restart_always, restart_delay, memmax, memmax_cnt))
     {
         goto error;
     }

@@ -36,6 +36,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "log.h"
 #include "network_metadata_report.h"
 #include "network_metadata.h"
+#include "fcm_report_filter.h"
 #include "fcm.h"
 #include "fcm_filter.h"
 #include "lan_stats.h"
@@ -50,8 +51,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "nf_utils.h"
 
 ovsdb_table_t table_Connection_Manager_Uplink;
-
-static char *dflt_fltr_name = "none";
 
 /**
  * Singleton tracking the plugin state
@@ -316,6 +315,7 @@ lan_stats_alloc_aggr(lan_stats_instance_t *lan_stats_instance)
     aggr_set.acc_ttl = (2 * collector->report_interval);
     aggr_set.send_report = net_md_send_report;
     aggr_set.on_acc_report = lan_stats_on_acc_report;
+    aggr_set.report_stats_type = NET_MD_LAN_FLOWS;
     aggr = net_md_allocate_aggregator(&aggr_set);
     if (aggr == NULL)
     {
@@ -387,7 +387,6 @@ lan_stats_close_window(fcm_collect_plugin_t *collector)
     {
         LOGT("%s: Failed to add uplink to window", __func__);
     }
-
     ret = net_md_close_active_window(aggr);
     if (!ret)
     {
@@ -441,20 +440,6 @@ lan_stats_send_aggr_report(lan_stats_instance_t *lan_stats_instance)
     }
 }
 
-static void
-set_filter_info(fcm_filter_l2_info_t *l2_filter_info,
-                fcm_filter_stats_t *l2_filter_pkts,
-                dp_ctl_stats_t *stats)
-{
-    STRSCPY(l2_filter_info->src_mac, stats->smac_addr);
-    STRSCPY(l2_filter_info->dst_mac, stats->dmac_addr);
-    l2_filter_info->vlan_id = stats->vlan_id;
-    l2_filter_info->eth_type = stats->eth_val;
-
-    l2_filter_pkts->pkt_cnt = stats->pkts;
-    l2_filter_pkts->bytes = stats->bytes;
-}
-
 bool
 lan_stats_is_mac_in_tag(char *tag, os_macaddr_t *mac)
 {
@@ -465,52 +450,6 @@ lan_stats_is_mac_in_tag(char *tag, os_macaddr_t *mac)
 
     return om_tag_in(mac_s, tag);
 
-}
-
-static void
-lan_stats_aggr_add_sample(fcm_collect_plugin_t *collector, dp_ctl_stats_t *stats)
-{
-    lan_stats_instance_t *lan_stats_instance;
-    struct net_md_aggregator *aggr;
-    struct flow_counters pkts_ct;
-    struct net_md_flow_key key;
-    char *device_tag;
-    bool ret = false;
-
-    lan_stats_instance = collector->plugin_ctx;
-    aggr = lan_stats_instance->aggr;
-    if (aggr == NULL)
-    {
-        LOGE("%s: Aggr is NULL", __func__);
-        return;
-    }
-
-    device_tag = (lan_stats_instance->parent_tag != NULL) ?
-                  lan_stats_instance->parent_tag : ETH_DEVICES_TAG;
-    memset(&key, 0, sizeof(struct net_md_flow_key));
-    memset(&pkts_ct, 0, sizeof(struct flow_counters));
-    key.ufid = &stats->ufid.id;
-    key.smac = &stats->smac_key;
-    key.isparent_of_smac = lan_stats_is_mac_in_tag(device_tag, key.smac);
-    key.dmac = &stats->dmac_key;
-    key.isparent_of_dmac = lan_stats_is_mac_in_tag(device_tag, key.dmac);
-    key.ethertype = stats->eth_val;
-
-    if (stats->vlan_id > 0)
-    {
-        key.vlan_id = stats->vlan_id;
-        // use vlan eth type if vlan is present
-        key.ethertype = stats->vlan_eth_val;
-    }
-    pkts_ct.packets_count = stats->pkts;
-    pkts_ct.bytes_count = stats->bytes;
-
-    ret = net_md_add_sample(aggr, &key, &pkts_ct);
-    if (!ret)
-    {
-        LOGD("%s: Add sample to aggregator failed", __func__);
-        return;
-    }
 }
 
 static void
@@ -550,112 +489,6 @@ lan_stats_send_report_cb(fcm_collect_plugin_t *collector)
     lan_stats_activate_window(collector);
 }
 
-/**
- * @brief updating uplink info to "dp_ctl_stats_t"
- */
-void
-lan_stats_add_uplink_info(lan_stats_instance_t *lan_stats_instance, dp_ctl_stats_t *stats)
-{
-    lan_stats_mgr_t *mgr;
-
-    if (lan_stats_instance == NULL) return;
-
-    mgr = lan_stats_get_mgr();
-    if (!mgr->initialized) return;
-
-    if (mgr->uplink_if_type != IFTYPE_ETH &&
-        mgr->uplink_if_type != IFTYPE_LTE) return;
-
-    if ((mgr->uplink_if_type == stats->uplink_if_type) && (mgr->report))
-    {
-       stats->uplink_changed = false;
-    }
-    else
-    {
-       stats->uplink_if_type = mgr->uplink_if_type;
-       stats->uplink_changed = mgr->uplink_changed;
-    }
-    mgr->curr_uplinked_changed = stats->uplink_changed;
-}
-
-
-void
-lan_stats_flows_filter(lan_stats_instance_t *lan_stats_instance, dp_ctl_stats_t *stats)
-{
-    fcm_filter_l2_info_t l2_filter_info;
-    fcm_filter_stats_t   l2_filter_pkts;
-    struct fcm_filter_client *client;
-    fcm_collect_plugin_t *collector;
-    struct fcm_session *session;
-    struct fcm_filter_req *req;
-    bool allow;
-
-    if (lan_stats_instance == NULL) return;
-
-    collector = lan_stats_instance->collector;
-    if (collector == NULL) return;
-
-    session = lan_stats_instance->session;
-    if (session == NULL) return;
-
-    set_filter_info(&l2_filter_info, &l2_filter_pkts, stats);
-
-    client = lan_stats_instance->c_client;
-    if (client == NULL) return;
-
-    req = CALLOC(1, sizeof(struct fcm_filter));
-    if (req == NULL) return;
-
-    req->pkts =  &l2_filter_pkts;
-    req->l2_info = &l2_filter_info;
-    req->table = client->table;
-
-    if (collector->filters.collect != NULL)
-    {
-        fcm_apply_filter(session, req);
-        allow = req->action;
-
-        if (allow)
-        {
-            MEMZERO(stats->smac_addr);
-            MEMZERO(stats->dmac_addr);
-            snprintf(stats->smac_addr, sizeof(stats->smac_addr), PRI_os_macaddr_lower_t,
-                     FMT_os_macaddr_t(stats->smac_key));
-            snprintf(stats->dmac_addr, sizeof(stats->dmac_addr), PRI_os_macaddr_lower_t,
-                     FMT_os_macaddr_t(stats->dmac_key));
-            LOGD("%s: Flow collect allowed: filter_name: %s, ufid: "PRI_os_ufid_t \
-                    " smac: %s, dmac: %s, vlan_id: %d, eth_type: %d, pks: %lld, " \
-                    "bytes: %lld, uplink_if_type: %s, uplink_changed: %s", __func__,
-                    collector->filters.collect ?
-                    collector->filters.collect : dflt_fltr_name,
-                    FMT_os_ufid_t_pt(&stats->ufid.id),
-                    stats->smac_addr,
-                    stats->dmac_addr, stats->vlan_id, stats->eth_val,
-                    stats->pkts, stats->bytes,
-                    ((stats->uplink_if_type) ?
-                    uplink_iface_type_to_str(stats->uplink_if_type) : NULL),
-                    (stats->uplink_changed ? "true" : "false"));
-
-            lan_stats_aggr_add_sample(collector, stats);
-        }
-        else
-            LOGD("%s: Flow collect dropped: filter_name: %s, smac: %s, "\
-                    "dmac: %s, vlan_id: %d, eth_type: %d, pks: %lld, "\
-                    "bytes: %lld, uplink_if_type: %s, uplink_changed: %s", __func__,
-                    collector->filters.collect ?
-                    collector->filters.collect : dflt_fltr_name,
-                    stats->smac_addr, stats->dmac_addr,
-                    stats->vlan_id, stats->eth_val, stats->pkts, stats->bytes,
-                    ((stats->uplink_if_type) ?
-                    uplink_iface_type_to_str(stats->uplink_if_type) : NULL),
-                    (stats->uplink_changed ? "true" : "false"));
-    }
-    else
-    {
-        lan_stats_aggr_add_sample(collector, stats);
-    }
-    FREE(req);
-}
 
 void
 lan_stats_collect_cb(fcm_collect_plugin_t *collector)
@@ -671,7 +504,7 @@ lan_stats_collect_cb(fcm_collect_plugin_t *collector)
     /* collect stats only for active instance. */
     if (lan_stats_instance != mgr->active) return;
 
-    lan_stats_instance->collect_flows(lan_stats_instance);
+    lan_stats_process_aggr(lan_stats_instance->aggr, collector->aggr);
 }
 
 
@@ -705,6 +538,8 @@ void lan_stats_plugin_exit(fcm_collect_plugin_t *collector)
         return;
     }
     net_md_close_active_window(aggr);
+    aggr->five_tuple_flows = NULL;
+    aggr->eth_pairs = NULL;
     net_md_free_aggregator(aggr);
     FREE(aggr);
 
@@ -814,8 +649,6 @@ int lan_stats_plugin_init(fcm_collect_plugin_t *collector)
     }
 
     lan_stats_activate_window(collector);
-
-    lan_stats_instance->collect_flows = lan_stats_collect_flows;
 
     ds_dlist_init(&lan_stats_instance->ct_list, ctflow_info_t, ct_node);
 

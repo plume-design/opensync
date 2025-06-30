@@ -27,6 +27,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifndef OW_STEER_EXECUTOR_ACTION_I_H
 #define OW_STEER_EXECUTOR_ACTION_I_H
 
+#include <osw_sta_assoc.h>
+
 enum ow_steer_executor_action_kick_action {
     OW_STEER_EXECUTOR_ACTION_KICK_HARD_BLOCK,
     OW_STEER_EXECUTOR_ACTION_KICK_BETTER_METRIC,
@@ -48,6 +50,7 @@ struct ow_steer_executor_action {
     struct ow_steer_executor_action_mediator mediator;
     void *priv;
     enum ow_steer_executor_action_kick_action last_kick_action;
+    osw_sta_assoc_observer_t *sta_obs;
 
     struct ds_dlist_node node;
 };

@@ -41,6 +41,7 @@ enum {
     LRU_PROTO_TCP_SYN = 1,
     LRU_PROTO_TCP_EST = 2,
     LRU_PROTO_UDP     = 3,
+    LRU_PROTO_ETHER  = 4,
 
     LRU_PROTO_MAX
 };

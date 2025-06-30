@@ -58,6 +58,7 @@ struct osw_bss_entry {
     struct osw_channel *channel;
     uint8_t *op_class;
     struct osw_hwaddr *mld_addr;
+    int *ft_mobility_domain;
 
     struct ds_tree_node bss_node;
     struct ds_dlist_node provider_node;
@@ -270,6 +271,7 @@ osw_bss_entry_free(struct osw_bss_entry *entry)
     FREE(entry->channel);
     FREE(entry->op_class);
     FREE(entry->mld_addr);
+    FREE(entry->ft_mobility_domain);
 
     FREE(entry);
 }
@@ -315,9 +317,11 @@ osw_bss_map_dump(const struct osw_bss_map *bss_map)
             const char *ssid = entry->ssid ? strfmta(OSW_SSID_FMT, OSW_SSID_ARG(entry->ssid)) : "(nil)";
             const char *channel = entry->channel ? strfmta(OSW_CHANNEL_FMT, OSW_CHANNEL_ARG(entry->channel)) : "(nil)";
             const char *op_class = entry->op_class ? strfmta("%"PRIu8, *entry->op_class) : "(nil)";
+            const char *ft_mobility_domain = entry->ft_mobility_domain ? strfmta("%"PRIu16, *entry->ft_mobility_domain) : "(nil)";
             osw_diag_pipe_writef(pipe, "osw: bss_map:     ssid: %s", ssid);
             osw_diag_pipe_writef(pipe, "osw: bss_map:     channel: %s", channel);
             osw_diag_pipe_writef(pipe, "osw: bss_map:     op_class: %s", op_class);
+            osw_diag_pipe_writef(pipe, "osw: bss_map:     ft_mobility_domain: %s", ft_mobility_domain);
         }
     }
     osw_diag_pipe_close(pipe);
@@ -542,11 +546,13 @@ OSW_BSS_ENTRY_SET_DEFINITION(struct osw_ssid, ssid);
 OSW_BSS_ENTRY_SET_DEFINITION(struct osw_channel, channel);
 OSW_BSS_ENTRY_SET_DEFINITION(uint8_t, op_class);
 OSW_BSS_ENTRY_SET_DEFINITION(struct osw_hwaddr, mld_addr);
+OSW_BSS_ENTRY_SET_DEFINITION(int, ft_mobility_domain);
 
 OSW_BSS_GET_DEFINITION(struct osw_ssid, ssid);
 OSW_BSS_GET_DEFINITION(struct osw_channel, channel);
 OSW_BSS_GET_DEFINITION(uint8_t, op_class);
 OSW_BSS_GET_DEFINITION(struct osw_hwaddr, mld_addr);
+OSW_BSS_GET_DEFINITION(int, ft_mobility_domain);
 
 struct osw_bss_map_ut_lifecycle_observer {
     struct osw_bss_map_observer obs;

@@ -363,6 +363,7 @@ int dpi_adt_plugin_init(struct fsm_session *session);
 int dpi_sni_plugin_init(struct fsm_session *session);
 int dpi_ndp_plugin_init(struct fsm_session *session);
 int dpi_mdns_responder_plugin_init(struct fsm_session *session);
+int dpi_dhcp_relay_plugin_init(struct fsm_session *session);
 int fsm_wc_null_plugin_init(struct fsm_session *session);
 int we_dpi_plugin_init(struct fsm_session *session);
 #endif
@@ -372,5 +373,36 @@ fsm_collect_pcap_stats(struct fsm_session *session);
 
 int
 flush_accel_flows(struct net_md_stats_accumulator *acc);
+
+#ifdef CONFIG_MEM_MONITOR
+void fsm_init_mem_monitor(void);
+
+void fsm_reinit_mem_monitor(void);
+
+void fsm_mem_monitor_plugin_init_enter(char *session);
+
+void fsm_mem_monitor_plugin_init_exit(char *session);
+
+#else /* CONFIG_MEM_MONITOR */
+static inline void fsm_init_mem_monitor(void)
+{
+    return;
+}
+
+static inline void fsm_reinit_mem_monitor(void)
+{
+    return;
+}
+
+static inline void fsm_mem_monitor_plugin_init_enter(char *session)
+{
+    return;
+}
+
+static inline void fsm_mem_monitor_plugin_init_exit(char *session)
+{
+    return;
+}
+#endif /* CONFIG_MEM_MONITOR */
 
 #endif /* FSM_INTERNAL_H_INCLUDED */

@@ -242,249 +242,101 @@ ct_stats_filter_ip(int af, void *ip)
     return false;
 }
 
-
-int
-ct_get_stats(void)
+static bool
+ct_stats_process_acc(struct net_md_stats_accumulator *acc)
 {
+    fcm_collect_plugin_t *collector;
+    struct net_md_flow_key *key;
     flow_stats_t *ct_stats;
-    int rc;
+    bool rc  = false;
+
+    if (!acc) return rc;
 
     ct_stats = ct_stats_get_active_instance();
-    if (ct_stats == NULL) return -1;
-
-    /* get IPv4 conntrack entries from kernel */
-    rc = nf_ct_get_flow_entries(AF_INET, &ct_stats->ctflow_list, ct_stats->ct_zone);
-    if (rc == -1)
+    if (ct_stats == NULL)
     {
-        LOGE("%s: IPV4 conntrack flow collection error", __func__);
-        return -1;
+        LOGD("%s: no active instance", __func__);
+        return false;
     }
 
-    /* get IPv6 conntrack entries from kernel */
-    rc = nf_ct_get_flow_entries(AF_INET6, &ct_stats->ctflow_list, ct_stats->ct_zone);
-    if (rc == -1)
-    {
-        LOGE("%s: IPv6 conntrack flow collection error", __func__);
-        return -1;
-    }
+    collector = ct_stats->collector;
 
-    if (LOG_SEVERITY_ENABLED(LOG_SEVERITY_TRACE)) nf_ct_print_entries(&ct_stats->ctflow_list);
-
-    return 0;
+    fcm_filter_context_init(collector);
+    key = acc->key;
+    net_md_log_key(key, __func__);
+    rc = fcm_collect_filter_nmd_callback(key);
+    LOGD("%s: flow %s", __func__, rc ? "included" : "filtered out");
+    return rc;
 }
 
-/**
- * @brief frees the temporary list of parsed flows
- *
- * @param ct_stats the container of the list
- */
-static void
-free_ct_flow_list(flow_stats_t *ct_stats)
+bool
+ct_stats_process_accs(ds_tree_t *tree)
 {
-    ct_flow_t *flow;
-    int del_count;
+    struct net_md_stats_accumulator *acc;
+    struct net_md_flow_key *key;
+    struct net_md_flow *flow;
+    bool smac = false;
+    bool dmac = false;
+    bool rc = true;
+    int count = 0;
 
-    del_count = 0;
-    while (!ds_dlist_is_empty(&ct_stats->ctflow_list))
+    if (!tree) return false;
+
+    flow = ds_tree_head(tree);
+    while (flow != NULL)
     {
-        flow = ds_dlist_remove_tail(&ct_stats->ctflow_list);
-        FREE(flow);
-        ct_stats->node_count--;
-        del_count++;
-    }
+        struct net_md_flow *next;
+        struct net_md_flow *remove;
 
-    if (LOG_SEVERITY_ENABLED(LOG_SEVERITY_TRACE))
-    {
-        LOGT("%s: del_count %d node_count %d", __func__,
-             del_count, ct_stats->node_count);
-    }
-    ct_stats->node_count = 0;
-}
-
-
-/**
- * @brief apply the named filter to the given flow
- *
- * @param filter_name the filter name
- * @param mac_filter the mac filter
- * @param flow the flow to filter
- */
-static bool
-apply_filter(flow_stats_t *ct_stats, fcm_filter_l2_info_t *mac_filter,
-             ct_flow_t *flow)
-{
-    struct fcm_filter_client *client;
-    struct fcm_session *session;
-    fcm_filter_l3_info_t filter;
-    struct fcm_filter_req *req;
-    fcm_filter_stats_t pkt;
-    bool action;
-    int rc;
-
-    if (ct_stats == NULL) return true;
-
-    session = ct_stats->session;
-    if (session == NULL) return true;
-
-    rc = getnameinfo((struct sockaddr *)&flow->layer3_info.src_ip,
-                     sizeof(struct sockaddr_storage),
-                     filter.src_ip, sizeof(filter.src_ip),
-                     0, 0, NI_NUMERICHOST);
-    if (rc < 0) return false;
-
-    rc = getnameinfo((struct sockaddr *)&flow->layer3_info.dst_ip,
-                     sizeof(struct sockaddr_storage),
-                     filter.dst_ip, sizeof(filter.dst_ip),
-                     0, 0, NI_NUMERICHOST);
-    if (rc < 0) return false;
-
-    filter.sport = ntohs(flow->layer3_info.src_port);
-    filter.dport = ntohs(flow->layer3_info.dst_port);
-    filter.l4_proto = flow->layer3_info.proto_type;
-    filter.ip_type = flow->layer3_info.family_type;
-
-    pkt.pkt_cnt = flow->pkt_info.pkt_cnt;
-    pkt.bytes = flow->pkt_info.bytes;
-
-    client = ct_stats->c_client;
-    if (client == NULL) return true;
-
-    req = CALLOC(1, sizeof(struct fcm_filter));
-    if (req == NULL) return true;
-
-    req->pkts = &pkt;
-    req->l3_info = &filter;
-    req->l2_info = mac_filter;
-    req->table = client->table;
-
-    fcm_apply_filter(session, req);
-    action = req->action;
-    FREE(req);
-
-    return action;
-}
-
-/**
- * @brief adds collected conntrack info to the plugin aggregator
- *
- * @param ct_stats the aggregator container
- */
-void
-ct_flow_add_sample(flow_stats_t *ct_stats)
-{
-    struct net_md_aggregator *aggr;
-    struct flow_counters pkts_ct;
-    struct net_md_flow_key key;
-    ctflow_info_t *flow_info;
-    ds_dlist_t *ctflow_list;
-    int sample_count;
-    ct_flow_t *flow;
-    bool ret;
-
-    aggr = ct_stats->aggr;
-    sample_count = 0;
-
-    ctflow_list = (ct_stats->ctflow_event_list != NULL) ? ct_stats->ctflow_event_list : &ct_stats->ctflow_list;
-    ds_dlist_foreach(ctflow_list, flow_info)
-    {
-        bool                     smac_lookup;
-        bool                     dmac_lookup;
-        bool                     skip_flow;
-        fcm_filter_l2_info_t     mac_filter;
-        struct sockaddr_storage *ssrc;
-        struct sockaddr_storage *sdst;
-        os_macaddr_t             smac;
-        os_macaddr_t             dmac;
-        int                      af;
-
-        memset(&smac, 0, sizeof(os_macaddr_t));
-        memset(&dmac, 0, sizeof(os_macaddr_t));
-
-        flow = &flow_info->flow;
-        af = flow->layer3_info.src_ip.ss_family;
-
-        ssrc = &flow->layer3_info.src_ip;
-        sdst = &flow->layer3_info.dst_ip;
-
-        // Lookup source ip.
-        smac_lookup = neigh_table_lookup(ssrc, &smac);
-        dmac_lookup = neigh_table_lookup(sdst, &dmac);
-
-        ct_stats->node_count++;
-        /* add only if smac or dmac is present */
-        if (!(smac_lookup ^ dmac_lookup)) continue;
-
-        snprintf(mac_filter.src_mac, sizeof(mac_filter.src_mac),
-                 "%02x:%02x:%02x:%02x:%02x:%02x",
-                 smac.addr[0], smac.addr[1],
-                 smac.addr[2], smac.addr[3],
-                 smac.addr[4], smac.addr[5]);
-        snprintf(mac_filter.dst_mac, sizeof(mac_filter.src_mac),
-                 "%02x:%02x:%02x:%02x:%02x:%02x",
-                 dmac.addr[0], dmac.addr[1],
-                 dmac.addr[2], dmac.addr[3],
-                 dmac.addr[4], dmac.addr[5]);
-
-
-        skip_flow = nf_ct_filter_ip(af, &flow->layer3_info.dst_ip);
-        if (skip_flow) continue;
-
-        skip_flow = nf_ct_filter_ip(af, &flow->layer3_info.src_ip);
-        if (skip_flow) continue;
-
-        if (apply_filter(ct_stats, &mac_filter, flow))
+        acc = flow->tuple_stats;
+        key = acc->key;
+        smac = false;
+        dmac = false;
+        
+        next = ds_tree_next(tree, flow);
+        count++;
+        if (key->smac) smac = true;
+        if (key->dmac) dmac = true;
+        if (!(smac ^ dmac))
         {
-            memset(&key, 0, sizeof(struct net_md_flow_key));
-            memset(&pkts_ct, 0, sizeof(struct flow_counters));
-            if (smac_lookup) key.smac = &smac;
-            if (dmac_lookup) key.dmac = &dmac;
-
-            key.ip_version = (af == AF_INET ? 4 : 6);
-            if (af == AF_INET)
-            {
-                struct sockaddr_in *ssrc;
-                struct sockaddr_in *sdst;
-
-                ssrc = (struct sockaddr_in *)&flow->layer3_info.src_ip;
-                sdst = (struct sockaddr_in *)&flow->layer3_info.dst_ip;
-                key.src_ip = (uint8_t *)&ssrc->sin_addr.s_addr;
-                key.dst_ip = (uint8_t *)&sdst->sin_addr.s_addr;
-            }
-            else if (af == AF_INET6)
-            {
-                struct sockaddr_in6 *ssrc;
-                struct sockaddr_in6 *sdst;
-
-                ssrc = (struct sockaddr_in6 *)&flow->layer3_info.src_ip;
-                sdst = (struct sockaddr_in6 *)&flow->layer3_info.dst_ip;
-                key.src_ip = ssrc->sin6_addr.s6_addr;
-                key.dst_ip = sdst->sin6_addr.s6_addr;
-            }
-            key.ipprotocol = flow->layer3_info.proto_type;
-            key.sport = flow->layer3_info.src_port;
-            key.dport = flow->layer3_info.dst_port;
-            key.flowmarker = flow->ct_mark;
-            pkts_ct.packets_count = flow->pkt_info.pkt_cnt;
-            pkts_ct.bytes_count = flow->pkt_info.bytes;
-            if (flow->start) key.fstart = true;
-            if (flow->end) key.fend = true;
-            sample_count++;
-
-            ret = net_md_add_sample(aggr, &key, &pkts_ct);
-            if (!ret)
-            {
-                LOGW("%s: some error with net_md_add_sample", __func__);
-                break;
-            }
+            flow = next;
+            continue;
         }
+        rc = ct_stats_process_acc(acc);
+        if (rc == false)
+        {
+            remove = flow;
+            ds_tree_remove(tree, remove);
+            net_md_free_flow(remove);
+            FREE(remove);
+        }
+        flow = next;
     }
+    LOGT("%s: %d flows processed", __func__, count);
+    return true;
+}
 
-    if (LOG_SEVERITY_ENABLED(LOG_SEVERITY_TRACE))
-    {
-        LOGT("%s: sample add %d count %d", __func__,
-             sample_count, ct_stats->node_count);
-    }
-    free_ct_flow_list(ct_stats);
+void
+ct_stats_process_aggr(struct net_md_aggregator *to, struct net_md_aggregator *from)
+{
+    ds_tree_t *tree;
+
+    if (!to || !from) return;
+
+
+    to->total_flows = from->total_flows;
+    to->total_eth_pairs = from->total_eth_pairs;
+    to->eth_pairs = from->eth_pairs;
+    to->five_tuple_flows = from->five_tuple_flows;
+    to->active_accs = from->active_accs;
+
+    tree = to->five_tuple_flows;
+
+    ct_stats_process_accs(tree);
+
+    return;
+
+
 }
 
 void
@@ -776,9 +628,17 @@ ct_stats_alloc_aggr(flow_stats_t *ct_stats)
     aggr_set.report_filter = fcm_report_filter_nmd_callback;
     aggr_set.collect_filter = ct_stats_collect_filter_cb;
     aggr_set.neigh_lookup = neigh_table_lookup_af;
+    aggr_set.report_stats_type = NET_MD_IP_FLOWS;
+
     aggr_set.on_acc_report = ct_stats_on_acc_report;
-    aggr_set.process = ct_stats_get_dev2apps;
-    aggr_set.on_acc_destroy = ct_stats_on_destroy_acc;
+
+    if (kconfig_enabled(CONFIG_FCM_PROXIMITY_SUPPORT))
+    {
+        LOGT("%s: Proximity support enabled", __func__);
+        aggr_set.process = ct_stats_get_dev2apps;
+        aggr_set.on_acc_destroy = ct_stats_on_destroy_acc;
+    }
+
     aggr = net_md_allocate_aggregator(&aggr_set);
     if (aggr == NULL)
     {
@@ -889,36 +749,6 @@ ct_stats_send_aggr_report(fcm_collect_plugin_t *collector)
     }
 }
 
-/**
- * @brief Processes the update conntrack event and updates
- * flow stats and end_flag for the flow in the aggregator.
- *
- * This function is called when the conntrack entry is updated.
- * It retrieves the flow from the aggregator and updates the
- * packet count, byte count and end flag.
- * @param collector pointer to FCM plugin collector.
- * @param data pointer the conntrack entry that is destoryed
- */
-void
-ct_stats_process_ct_event(fcm_collect_plugin_t *collector, void *data)
-{
-    flow_stats_t *ct_stats;
-    flow_stats_mgr_t *mgr;
-
-    if (collector == NULL || data == NULL)
-    {
-        LOGD("%s: Invalid input parameters", __func__);
-        return;
-    }
-
-    mgr = ct_stats_get_mgr();
-    ct_stats = collector->plugin_ctx;
-    if (ct_stats != mgr->active) return;
-
-    ct_stats->ctflow_event_list = (ds_dlist_t *)data;
-    ct_flow_add_sample(ct_stats);
-    ct_stats->ctflow_event_list = NULL;
-}
 
 /**
  * @brief triggers conntrack records collection
@@ -930,7 +760,6 @@ ct_stats_collect_cb(fcm_collect_plugin_t *collector)
 {
     flow_stats_t *ct_stats;
     flow_stats_mgr_t *mgr;
-    int rc;
 
     if (collector == NULL) return;
 
@@ -938,14 +767,8 @@ ct_stats_collect_cb(fcm_collect_plugin_t *collector)
     ct_stats = collector->plugin_ctx;
     if (ct_stats != mgr->active) return;
 
-    rc = ct_get_stats();
-    if (rc == -1) return;
-
-    ct_stats = collector->plugin_ctx;
-    ct_stats->collect_filter = collector->filters.collect;
-
-    ct_flow_add_sample(ct_stats);
-
+    ct_stats_process_aggr(ct_stats->aggr, collector->aggr);
+    return;
 }
 
 
@@ -1065,7 +888,6 @@ ct_stats_plugin_init(fcm_collect_plugin_t *collector)
     collector->send_report = ct_stats_report_cb;
     collector->close_plugin = ct_stats_plugin_close_cb;
     collector->process_flush_cache = ct_stats_process_flush_cache;
-    collector->process_ct_event = ct_stats_process_ct_event;
 
     ct_stats->session = collector->session;
 
@@ -1081,7 +903,6 @@ ct_stats_plugin_init(fcm_collect_plugin_t *collector)
 
     fcm_filter_context_init(collector);
 
-    ds_dlist_init(&ct_stats->ctflow_list, ctflow_info_t, ct_node);
     ds_tree_init(&ct_stats->device2apps, ds_str_cmp, struct ct_device2apps, d2a_node);
 
     ct_zone = collector->get_other_config(collector, "ct_zone");
@@ -1180,6 +1001,8 @@ ct_stats_plugin_exit(fcm_collect_plugin_t *collector)
     /* free the aggregator */
     aggr = ct_stats->aggr;
     net_md_close_active_window(aggr);
+    aggr->five_tuple_flows = NULL;
+    aggr->eth_pairs = NULL;
     net_md_free_aggregator(aggr);
     FREE(aggr);
 

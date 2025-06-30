@@ -57,8 +57,10 @@ struct wano_dns_probe_server_list
     size_t sl_nservers;
 };
 
-static bool wano_dns_probe_server_list(struct wano_dns_probe_server_list *sl);
+static bool wano_dns_probe_servers_get(struct wano_dns_probe_server_list *sl);
+static bool wano_dns_probe_servers_update(struct wano_dns_probe_server_list *sl);
 static bool wano_dns_probe_add(struct wano_dns_probe *probe, const char *ifname, const char *server);
+static void wano_dns_probe_stop(struct wano_dns_probe *probe);
 static void wano_dns_probe_wait_multi(struct wano_dns_probe *probe, uint32_t timeout_ms);
 static void wano_dns_probe_ares_fn(void *arg, int ares_status, int timeouts, struct hostent *hostent);
 
@@ -86,6 +88,8 @@ bool wano_dns_probe_run(const char *ifname)
     struct wano_dns_probe_server_list sl;
     const char *dns_target = wano_awlan_redirector_addr();
 
+    double probe_timeout = clock_mono_double() + WANO_DNS_PROBE_TIMEOUT_SEC;
+
     MEMZERO(probe);
 
     if (dns_target == NULL || *dns_target == '\0')
@@ -94,12 +98,13 @@ bool wano_dns_probe_run(const char *ifname)
         return true;
     }
 
-    if (!wano_dns_probe_server_list(&sl))
+    if (!wano_dns_probe_servers_get(&sl))
     {
         LOGW("dns_probe: Unable to retrieve DNS server list, skipping DNS probe.");
         return true;
     }
 
+refresh:
     for (size_t sli = 0; sli < sl.sl_nservers; sli++)
     {
         if (probe.dp_nprobes >= ARRAY_LEN(probe.dp_probes))
@@ -120,8 +125,7 @@ bool wano_dns_probe_run(const char *ifname)
 
     if (probe.dp_nprobes == 0)
     {
-        LOG(NOTICE, "No usable DNS servers found.");
-        goto exit;
+        LOG(WARN, "No DNS servers configured.");
     }
 
     /*
@@ -130,7 +134,7 @@ bool wano_dns_probe_run(const char *ifname)
      * ares_process which will invoke wano_wan_probe_success_cb that can
      * report failure in cb_success.
      */
-    for (int ntries = 0; ntries < WANO_DNS_PROBE_TIMEOUT_SEC; ntries++)
+    while (probe_timeout > clock_mono_double())
     {
         for (size_t ii = 0; ii < probe.dp_nprobes; ii++)
         {
@@ -142,25 +146,42 @@ bool wano_dns_probe_run(const char *ifname)
                     (void *)&probe.dp_probes[ii]);
         }
 
-        wano_dns_probe_wait_multi(&probe, 1000);
-
+        wano_dns_probe_wait_multi(&probe, 500);
         if (probe.dp_status) break; /* At least one probe was successful, we're done */
+        /*
+         * The DNS server list may change during probing (some plug-ins may take a while
+         * to configure the DNS servers). In this case refresh the list and restart the
+         * probes
+         */
+        if (wano_dns_probe_servers_update(&sl))
+        {
+            LOG(NOTICE, "dns_probe: %s: DNS server list updated, restarting probes.", ifname);
+            wano_dns_probe_stop(&probe);
+            goto refresh;
+        }
     }
 
-exit:
-    for (size_t ii = 0; ii < probe.dp_nprobes; ii++)
-        ares_destroy(probe.dp_probes[ii].pe_cares);
+    wano_dns_probe_stop(&probe);
 
     LOG(NOTICE, "DNS probe status: %s\n", probe.dp_status ? "SUCCESS" : "ERROR");
     return probe.dp_status;
 }
 
+void wano_dns_probe_stop(struct wano_dns_probe *dp)
+{
+    for (size_t ii = 0; ii < dp->dp_nprobes; ii++)
+    {
+        ares_destroy(dp->dp_probes[ii].pe_cares);
+    }
+    dp->dp_nprobes = 0;
+}
+
 /*
  * Retrieve current DNS server list
  */
-bool wano_dns_probe_server_list(struct wano_dns_probe_server_list *sl)
+bool wano_dns_probe_servers_get(struct wano_dns_probe_server_list *sl)
 {
-    struct ares_options options;
+    struct ares_options options = {0};
     int optmask;
 
     ares_channel dnslist = NULL;
@@ -174,6 +195,9 @@ bool wano_dns_probe_server_list(struct wano_dns_probe_server_list *sl)
      */
     optmask = ARES_OPT_RESOLVCONF;
     options.resolvconf_path = CONFIG_WANO_DNS_PROBE_RESOLV_CONF_PATH;
+    /* ARES_OPT_FLAGS will disable EDNS if not set explicitly in flags */
+    optmask |= ARES_OPT_FLAGS;
+    options.flags = 0;
     if (ares_init_options(&dnslist, &options, optmask) != ARES_SUCCESS)
     {
         LOG(DEBUG, "dns_probe: Error initializing cares, skipping DNS probe.");
@@ -216,12 +240,55 @@ error:
 }
 
 /*
+ * Update the DNS server list. Return true if the list was updated, false
+ * otherwise
+ */
+bool wano_dns_probe_servers_update(struct wano_dns_probe_server_list *sl)
+{
+    struct wano_dns_probe_server_list nl;
+
+    if (!wano_dns_probe_servers_get(&nl))
+    {
+        /* Error fetching new list, keep the old one */
+        return false;
+    }
+
+    if (nl.sl_nservers != sl->sl_nservers)
+    {
+        /* Different server count, list definitely changed */
+        goto update_list;
+    }
+
+    /* Ensure that every server from the old list is also present in the new list */
+    for (size_t si = 0; si < sl->sl_nservers; si++)
+    {
+        bool found = false;
+        for (size_t ci = 0; ci < nl.sl_nservers; ci++)
+        {
+            if (strcmp(sl->sl_servers[si], nl.sl_servers[ci]) == 0)
+            {
+                found = true;
+                break;
+            }
+        }
+
+        if (!found) goto update_list;
+    }
+
+    return false;
+
+update_list:
+    memcpy(sl, &nl, sizeof(*sl));
+    return true;
+}
+
+/*
  * Add the interface/server combination to probe
  */
 bool wano_dns_probe_add(struct wano_dns_probe *probe, const char *ifname, const char *server)
 {
     int optmask;
-    struct ares_options options;
+    struct ares_options options = {0};
 
     optmask = 0;
     optmask |= ARES_OPT_LOOKUPS;
@@ -233,6 +300,9 @@ bool wano_dns_probe_add(struct wano_dns_probe *probe, const char *ifname, const 
     options.tries = 1;
     optmask |= ARES_OPT_TIMEOUT;
     options.timeout = WANO_DNS_PROBE_TIMEOUT_SEC;
+    /* ARES_OPT_FLAGS will disable EDNS if not set explicitly in flags */
+    optmask |= ARES_OPT_FLAGS;
+    options.flags = 0;
 
     if (ares_init_options(&probe->dp_probes[probe->dp_nprobes].pe_cares, &options, optmask) != ARES_SUCCESS)
     {

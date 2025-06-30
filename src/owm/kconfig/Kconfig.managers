@@ -12,7 +12,7 @@ menuconfig MANAGER_OWM
     config MANAGER_OWM_CFG
         depends on MANAGER_OWM
         string "Startup configuration"
-        default "owm;true;needs_plan_b=false"
+        default "owm;true;needs_plan_b=false;max_memory=100000"
         help
             Opensync Wireless Manager / One Wifi Manager
             startup configuration for DM. This provides the

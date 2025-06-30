@@ -41,6 +41,7 @@ struct we_dpi_session
 {
     struct fsm_session *fsm;
     we_state_t we_state;
+    int mempool_size;
     /* for our conntrack thread */
     pthread_t thread;
     /* for the conntrack thread, packet path, config callback, and FSM periodic */
@@ -56,7 +57,7 @@ struct we_dpi_session
 struct we_dpi_agent_userdata
 {
     struct fsm_session *fsm;
-    struct net_header_parser *np;
+    struct net_md_stats_accumulator *acc;
 };
 
 /**

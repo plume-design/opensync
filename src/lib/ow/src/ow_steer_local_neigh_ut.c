@@ -62,6 +62,8 @@ OSW_UT(ow_steer_local_neigh_ut_typical_usage)
                                                   vif.vif_name.buf,
                                                   &bss.bssid,
                                                   &channel,
+                                                  false,
+                                                  0,
                                                   &op_class);
     is_neigh_complete = ow_steer_local_neigh_is_neigh_complete(local_neigh);
     OSW_UT_EVAL(is_neigh_complete == true);

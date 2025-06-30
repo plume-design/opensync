@@ -71,6 +71,7 @@ struct wc_health_stats
     uint32_t avg_latency;
     uint32_t cached_entries;
     uint32_t cache_size;
+    uint32_t lru_recycle_count;
 };
 
 

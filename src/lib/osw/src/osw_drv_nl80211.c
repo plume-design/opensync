@@ -177,6 +177,21 @@ struct osw_drv_nl80211_hook {
         } \
     } while (0)
 
+#define CALL_RETURN_HOOK(hook, fn, res, ...) \
+    do { \
+        if (hook->ops->fn != NULL) { \
+            if (hook->ops->fn(hook, ##__VA_ARGS__, hook->priv) == OSW_DRV_NL80211_HOOK_BREAK) res = true; \
+        } \
+    } while (0)
+
+#define CALL_RETURN_HOOKS(m, fn, res, ...) \
+    do { \
+        struct osw_drv_nl80211_hook *hook; \
+        ds_dlist_foreach(&m->hooks, hook) { \
+            CALL_RETURN_HOOK(hook, fn, res, ##__VA_ARGS__); \
+        } \
+    } while (0)
+
 #define LOG_PREFIX(fmt, ...) "osw: drv: nl80211: " fmt, ##__VA_ARGS__
 #define LOG_PREFIX_PHY(phy, fmt, ...) LOG_PREFIX("%s: " fmt,  phy, ##__VA_ARGS__)
 #define LOG_PREFIX_VIF(phy, vif, fmt, ...) LOG_PREFIX_PHY(phy, "%s: " fmt, vif, ##__VA_ARGS__)
@@ -709,6 +724,8 @@ osw_drv_nl80211_request_config_cb(struct osw_drv *drv,
         LOGD(LOG_PREFIX("hostap: not configuring because "
                         "it is unavailable"));
     }
+
+    CALL_HOOKS(m, post_request_config_fn, conf, q);
 
     /* FIXME: This should live through to completion so that
      * post_request_config_fn hook can be implemented.
@@ -1254,7 +1271,12 @@ osw_drv_nl80211_request_sta_delete_cb(struct osw_drv *drv,
     rq_kill(q);
     rq_resume(q);
 
-    if (t != NULL) rq_add_task(q, t);
+    bool hook_result = false;
+    CALL_RETURN_HOOKS(m, delete_sta_fn, hook_result, phy_name, vif_name, sta_addr);
+
+    if (!hook_result) {
+        if (t != NULL) rq_add_task(q, t);
+    }
 }
 
 static void
@@ -1855,8 +1877,12 @@ osw_drv_nl80211_vif_state_dump_scan_stats_resp_cb(struct nl_cmd *cmd,
     struct nlattr *nla_freq = tb_bss[NL80211_BSS_FREQUENCY];
     struct nlattr *nla_signal = tb_bss[NL80211_BSS_SIGNAL_MBM];
     struct nlattr *nla_ies = tb_bss[NL80211_BSS_INFORMATION_ELEMENTS];
-
     const char *phy_name = phy->name;
+    if (nla_bssid == NULL) {
+        LOGW(LOG_PREFIX_PHY(phy_name, "stats: driver reported bss with empty bssid"));
+        return;
+    }
+
     const struct osw_hwaddr *bssid = nla_bssid ? nla_data(nla_bssid) : NULL;
     const uint32_t freq_mhz = nla_freq ? nla_get_u32(nla_freq) : 0;
     const int32_t mdbm = nla_signal ? nla_get_u32(nla_signal) : 0;
@@ -2272,6 +2298,14 @@ osw_drv_nl80211_vif_hostap_event_cb(const char *msg,
         osw_drv_report_vif_changed(drv, phy_name, vif_name);
     }
     else if (strcmp(event_name, "AP-DISABLED") == 0) {
+        if (drv == NULL) return;
+        osw_drv_report_vif_changed(drv, phy_name, vif_name);
+    }
+    else if (strcmp(event_name, "INTERFACE-DISABLED") == 0) {
+        if (drv == NULL) return;
+        osw_drv_report_vif_changed(drv, phy_name, vif_name);
+    }
+    else if (strcmp(event_name, "INTERFACE-ENABLED") == 0) {
         if (drv == NULL) return;
         osw_drv_report_vif_changed(drv, phy_name, vif_name);
     }
@@ -2935,6 +2969,7 @@ osw_drv_nl80211_init(struct osw_drv_nl80211 *m)
 
     m->drv_ops = drv_ops;
     m->mod_ops = mod_ops;
+    m->q_request_config.max_running = 1;
 
     m->nl_conn = nl_conn_alloc();
     m->nl_conn_sub = nl_conn_subscription_alloc();

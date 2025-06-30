@@ -37,6 +37,7 @@ UNIT_SRC += src/fcm_ovsdb.c
 UNIT_SRC += src/fcm_mgr.c
 UNIT_SRC += src/fcm_event.c
 UNIT_SRC += src/fcm_gatekeeper.c
+UNIT_SRC += src/fcm_stats.c
 
 UNIT_CFLAGS := -I$(UNIT_PATH)/inc
 

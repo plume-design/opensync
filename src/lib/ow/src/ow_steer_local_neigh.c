@@ -72,6 +72,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 struct ow_steer_local_neigh_vif_neigh {
     struct osw_ifname vif_name;
     struct osw_neigh neigh;
+    bool ft_enabled;
+    int ft_mobility_domain;
     struct ds_tree_node node;
 };
 
@@ -227,6 +229,7 @@ ow_steer_local_neigh_remove_neigh_in_group(const char *id,
 
 static void
 ow_steer_local_neigh_conf_mutate_upsert_neigh(const struct osw_neigh *neigh,
+                                              const bool ft_enabled,
                                               struct ds_tree *osw_neigh_tree)
 {
     ASSERT(neigh != NULL, "");
@@ -239,6 +242,8 @@ ow_steer_local_neigh_conf_mutate_upsert_neigh(const struct osw_neigh *neigh,
 
     dest_neigh = CALLOC(1, sizeof(*dest_neigh));
     memcpy(&dest_neigh->neigh, neigh, sizeof(dest_neigh->neigh));
+    dest_neigh->neigh.bssid_info &= ~0x400;
+    dest_neigh->neigh.bssid_info |= ft_enabled ? 0x400 : 0;
     ds_tree_insert(osw_neigh_tree,
                    dest_neigh,
                    &dest_neigh->neigh.bssid);
@@ -297,6 +302,8 @@ ow_steer_local_neigh_conf_mutate_vif(struct ow_steer_local_neigh *self,
             return;
     }
 
+    const bool self_ft_enabled = osw_wpa_is_ft(&osw_vif->u.ap.wpa);
+
     /* upsert all local vifs as neighbors */
     ds_tree_foreach(&group->vif_neigh_tree, neigh) {
         LOGD(LOG_VIF_PREFIX(vif_name, "bssid: "OSW_HWADDR_FMT": "
@@ -314,7 +321,12 @@ ow_steer_local_neigh_conf_mutate_vif(struct ow_steer_local_neigh *self,
                                       neigh->neigh.channel,
                                       neigh->neigh.phy_type));
 
+        const bool ft_enabled = self_ft_enabled
+                             && neigh->ft_enabled
+                             && (osw_vif->u.ap.ft_mobility_domain ==
+                                 neigh->ft_mobility_domain);
         ow_steer_local_neigh_conf_mutate_upsert_neigh(&neigh->neigh,
+                                                      ft_enabled,
                                                       &osw_vif->u.ap.neigh_tree);
     }
 }
@@ -385,6 +397,8 @@ ow_steer_local_neigh_update_local_neigh_cache(const char *group_id,
                                               const char *vif_name,
                                               const struct osw_hwaddr *bssid,
                                               const struct osw_channel *channel,
+                                              const bool ft_enabled,
+                                              const int ft_mobility_domain,
                                               const uint8_t *op_class)
 {
     ASSERT(group_id != NULL, "");
@@ -401,9 +415,12 @@ ow_steer_local_neigh_update_local_neigh_cache(const char *group_id,
 
     const bool hwaddr_same = (osw_hwaddr_cmp(&local_neigh->neigh.bssid, bssid) == 0);
     const bool op_class_same = (local_neigh->neigh.op_class == *op_class);
+    const bool ft_same = (local_neigh->ft_enabled == ft_enabled)
+                      && (local_neigh->ft_mobility_domain == ft_mobility_domain);
     const bool channel_same = (local_neigh->neigh.channel == osw_freq_to_chan(channel->control_freq_mhz));
     if ((hwaddr_same == true) &&
         (op_class_same == true) &&
+        (ft_same == true) &&
         (channel_same == true))
         return;
 
@@ -412,10 +429,13 @@ ow_steer_local_neigh_update_local_neigh_cache(const char *group_id,
     local_neigh->neigh.channel = osw_freq_to_chan(channel->control_freq_mhz);
     local_neigh->neigh.bssid_info = OW_STEER_LOCAL_NEIGH_DEFAULT_BSSID_INFO; /* FIXME */
     local_neigh->neigh.phy_type = 0x00; /* FIXME */
+    local_neigh->ft_enabled = ft_enabled;
+    local_neigh->ft_mobility_domain = ft_mobility_domain;
 
     LOGI(LOG_VIF_PREFIX(vif_name, 
                     "bssid: "OSW_HWADDR_FMT": "
                     "bssid_info: %02x%02x%02x%02x: "
+                    "ft_mobility_domain: %d: "
                     "op_class: %u: "
                     "channel: %u: "
                     "phy_type: %u: "
@@ -425,6 +445,7 @@ ow_steer_local_neigh_update_local_neigh_cache(const char *group_id,
                     (local_neigh->neigh.bssid_info & 0x00ff0000) >> 16,
                     (local_neigh->neigh.bssid_info & 0x0000ff00) >> 8,
                     (local_neigh->neigh.bssid_info & 0x000000ff),
+                    local_neigh->ft_enabled ? (int)local_neigh->ft_mobility_domain : -1,
                     local_neigh->neigh.op_class,
                     local_neigh->neigh.channel,
                     local_neigh->neigh.phy_type));
@@ -453,6 +474,8 @@ ow_steer_local_neigh_bm_vif_up_changed_cb(struct ow_steer_bm_observer *observer,
     if (op_class == NULL)
         return;
 
+    const int *ft_mobility_domain = osw_bss_get_ft_mobility_domain(bssid);
+
     /* update local cache */
     const struct ow_steer_bm_group *group = bss->group;
     if (WARN_ON(group == NULL)) return;
@@ -463,6 +486,8 @@ ow_steer_local_neigh_bm_vif_up_changed_cb(struct ow_steer_bm_observer *observer,
                                                   vif_name,
                                                   bssid,
                                                   channel,
+                                                  ft_mobility_domain ? true : false,
+                                                  ft_mobility_domain ? *ft_mobility_domain : 0,
                                                   op_class);
 }
 

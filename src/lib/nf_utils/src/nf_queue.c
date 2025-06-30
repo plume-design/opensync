@@ -228,7 +228,9 @@ nf_queue_cb(const struct nlmsghdr *nlh, void *data)
 
     if (nfq->backoff_nfq)
     {
-        LOGI("%s: NFQ buffer full on queue: %d, backing off processing packets on all queues", __func__, nfq->queue_num);
+        LOG_ONCE(INFO,
+                 "%s: NFQ buffer full on queue: %d, backing off processing packets on all queues",
+                 __func__, nfq->queue_num);
         pkt_info->flow_mark = CT_MARK_ACCEPT;
         return MNL_CB_OK;
     }

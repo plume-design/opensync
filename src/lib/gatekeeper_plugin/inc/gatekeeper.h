@@ -40,6 +40,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "wc_telemetry.h"
 #include "gatekeeper_ecurl.h"
 
+#define GK_CACHE_PERSISTENCE_INTERVAL (60*60*24) /* 24 hours */
 #define GK_PERIODIC_INTERVAL 120
 #define GK_UNCATEGORIZED_ID 15
 #define GK_CURL_TIMEOUT      (2*60)
@@ -88,11 +89,13 @@ struct fsm_gk_mgr
 {
     bool initialized;
     time_t gk_time;
+    time_t last_persistence_store;
     struct gk_req_ids req_ids;
     int (*getaddrinfo)(const char *node, const char *service,
                        const struct addrinfo *hints,
                        struct addrinfo **res);
     ds_tree_t fsm_sessions;
+    char *cache_seed_version;
 };
 
 struct fsm_gk_verdict

@@ -43,11 +43,16 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "unit_test_utils.h"
 #include "fsm_fn_trace.h"
 #include "kconfig.h"
+#include "nfe.h"
 
 #include "pcap.c"
 
 const char *ut_name = "fsm_core_tests";
-
+extern int nfe_conntrack_icmp_timeout;
+extern int nfe_conntrack_udp_timeout;
+extern int nfe_conntrack_tcp_midflow;
+extern int nfe_conntrack_tcp_timeout_est;
+extern int nfe_conntrack_ether_timeout;
 struct fsm_mgr *g_mgr;
 uint32_t g_dispatch_tap_type;
 bool g_identical_plugin_enabled = false;
@@ -58,13 +63,15 @@ struct schema_Openflow_Tag g_tags[] =
     {
         .name_exists = true,
         .name = "tag_1",
-        .device_value_len = 4,
+        .device_value_len = 6,
         .device_value =
         {
+            "00:50:b6:0d:b4:fa",
             "00:25:90:87:17:5c",
             "00:25:90:87:17:5b",
             "44:32:c8:80:00:7c",
             "50:6a:03:ba:67:fb",
+            "da:89:0c:05:39:50",
         },
         .cloud_value_len = 4,
         .cloud_value =
@@ -78,12 +85,13 @@ struct schema_Openflow_Tag g_tags[] =
     {
         .name_exists = true,
         .name = "tag_2",
-        .device_value_len = 3,
+        .device_value_len = 4,
         .device_value =
         {
             "21:21:21:21:21:21",
             "22:22:22:22:22:22",
             "a0:ce:c8:d6:66:7f",
+            "e6:26:86:f1:0d:cf",
         },
         .cloud_value_len = 5,
         .cloud_value =
@@ -1000,6 +1008,9 @@ fsm_core_setUp(void)
 
     /* This will be creating a temp folder for each of the tests in the UT */
     ut_prepare_pcap(Unity.CurrentTestName);
+
+    /* Enable tcp  mid flow processing by nfe*/
+    nfe_conntrack_tcp_midflow = 1;
 }
 
 
@@ -1718,7 +1729,10 @@ test_4_dpi_dispatcher_and_plugin(void)
 
     /* Set the acc ttl to 1 second */
     aggr->acc_ttl = 1;
-
+    nfe_conntrack_icmp_timeout = 1;
+    nfe_conntrack_udp_timeout = 1;
+    nfe_conntrack_tcp_timeout_est = 1;
+    nfe_conntrack_update_timeouts(aggr->nfe_ct);
     /* Set the send_report routine of the aggregator */
     aggr->send_report = test_send_report;
 
@@ -1750,6 +1764,7 @@ test_4_dpi_dispatcher_and_plugin(void)
 
     /* call the periodic routine, the original accumulator should be removed */
     fsm_dpi_periodic(dispatcher);
+    fsm_dpi_recycle_nfe_conns();
 
     TEST_ASSERT_EQUAL_INT(0, aggr->total_flows);
 
@@ -1822,7 +1837,10 @@ test_5_dpi_dispatcher_and_plugin(void)
 
     /* Set the acc ttl to 1 second */
     aggr->acc_ttl = 1;
-
+    nfe_conntrack_icmp_timeout = 1;
+    nfe_conntrack_udp_timeout = 1;
+    nfe_conntrack_tcp_timeout_est = 1;
+    nfe_conntrack_update_timeouts(aggr->nfe_ct);
     /* Set the send_report routine of the aggregator */
     aggr->send_report = test_send_report;
 
@@ -1847,9 +1865,6 @@ test_5_dpi_dispatcher_and_plugin(void)
     TEST_ASSERT_NOT_NULL(info);
     TEST_ASSERT_TRUE(info->session == plugin);
 
-    /* Bump up the acc's ref count */
-    acc->refcnt++;
-
     /* call the periodic routine to trigger a report */
     fsm_dpi_periodic(dispatcher);
 
@@ -1869,10 +1884,7 @@ test_5_dpi_dispatcher_and_plugin(void)
 
     /* Validate that the accumulator is the same as  the original */
     TEST_ASSERT_NOT_NULL(net_parser->acc);
-    TEST_ASSERT_TRUE(acc == net_parser->acc);
-
-    /* Reset the the acc's ref count */
-    acc->refcnt--;
+    TEST_ASSERT_FALSE(acc == net_parser->acc);
 
     /* call the periodic routine to trigger a report */
     fsm_dpi_periodic(dispatcher);
@@ -1885,6 +1897,7 @@ test_5_dpi_dispatcher_and_plugin(void)
      * as its ref count is not null
      */
     fsm_dpi_periodic(dispatcher);
+    fsm_dpi_recycle_nfe_conns();
     TEST_ASSERT_EQUAL_INT(0, aggr->total_flows);
 
     /* Remove the dpi plugin session */
@@ -1961,7 +1974,6 @@ test_7_dpi_dispatcher_and_plugin(void)
     union fsm_dpi_context *dispatcher_dpi_context;
     union fsm_dpi_context *plugin_dpi_context;
     struct fsm_dpi_dispatcher *dpi_dispatcher;
-    struct net_md_stats_accumulator *rev_acc;
     struct net_md_stats_accumulator *acc;
     struct fsm_dpi_plugin *plugin_lookup;
     struct net_header_parser *net_parser;
@@ -2067,15 +2079,8 @@ test_7_dpi_dispatcher_and_plugin(void)
 
     /* Validate the originator for SYN ACK packet */
     acc = net_parser->acc;
-    rev_acc = acc->rev_acc;
-    TEST_ASSERT_NOT_NULL(rev_acc);
     TEST_ASSERT_EQUAL_INT(NET_MD_ACC_FIRST_LEG, acc->flags & NET_MD_ACC_FIRST_LEG);
-    TEST_ASSERT_EQUAL_INT(NET_MD_ACC_SECOND_LEG, rev_acc->flags & NET_MD_ACC_SECOND_LEG);
-    originator = rev_acc->originator;
-    TEST_ASSERT_EQUAL_INT(originator, NET_MD_ACC_ORIGINATOR_DST);
 
-    direction = rev_acc->direction;
-    TEST_ASSERT_EQUAL_INT(direction, NET_MD_ACC_OUTBOUND_DIR);
 
     net_parser->acc->report = true;
 
@@ -2148,12 +2153,7 @@ test_7_dpi_dispatcher_and_plugin(void)
 
     /* Validate the originator and direction */
     acc = net_parser->acc;
-    rev_acc = acc->rev_acc;
-    TEST_ASSERT_NOT_NULL(rev_acc);
     TEST_ASSERT_EQUAL_INT(NET_MD_ACC_FIRST_LEG, acc->flags & NET_MD_ACC_FIRST_LEG);
-    TEST_ASSERT_EQUAL_INT(NET_MD_ACC_SECOND_LEG, rev_acc->flags & NET_MD_ACC_SECOND_LEG);
-    originator = rev_acc->originator;
-    TEST_ASSERT_EQUAL_INT(originator, NET_MD_ACC_ORIGINATOR_DST);
     direction = net_parser->acc->direction;
     TEST_ASSERT_EQUAL_INT(direction, NET_MD_ACC_LAN2LAN_DIR);
 
@@ -2169,14 +2169,19 @@ test_7_dpi_dispatcher_and_plugin(void)
     conf = &g_confs[11];
     fsm_delete_session(conf);
     acc = net_parser->acc;
-    rev_acc = acc->rev_acc;
-    TEST_ASSERT_NOT_NULL(rev_acc);
     TEST_ASSERT_EQUAL_INT(NET_MD_ACC_FIRST_LEG,  acc->flags & NET_MD_ACC_FIRST_LEG);
-    TEST_ASSERT_EQUAL_INT(NET_MD_ACC_SECOND_LEG, rev_acc->flags & NET_MD_ACC_SECOND_LEG);
     TEST_ASSERT_NOT_NULL(acc->dpi_plugins);
-    TEST_ASSERT_NULL(rev_acc->dpi_plugins);
     info = ds_tree_find(net_parser->acc->dpi_plugins, plugin);
     TEST_ASSERT_NULL(info);
+
+    /* Force to expire lingering connections.*/
+    nfe_conntrack_icmp_timeout = 0;
+    nfe_conntrack_udp_timeout = 0;
+    nfe_conntrack_tcp_timeout_est = 0;
+    nfe_conntrack_ether_timeout = 0;
+    nfe_conntrack_update_timeouts(aggr->nfe_ct);
+    fsm_dpi_periodic(dispatcher);
+    fsm_dpi_recycle_nfe_conns();
 }
 
 /**
@@ -2323,6 +2328,14 @@ test_8_dpi_dispatcher_udp_non_reserved(void)
     /* Remove the dpi plugin session */
     conf = &g_confs[11];
     fsm_delete_session(conf);
+
+    /* Force to expire lingering connections.*/
+    nfe_conntrack_icmp_timeout = 0;
+    nfe_conntrack_udp_timeout = 0;
+    nfe_conntrack_tcp_timeout_est = 0;
+    nfe_conntrack_update_timeouts(aggr->nfe_ct);
+    fsm_dpi_periodic(dispatcher);
+    fsm_dpi_recycle_nfe_conns();
 }
 
 /**
@@ -3309,7 +3322,6 @@ test_12_dpi_dispatcher_icmp_req_reply(void)
     union fsm_dpi_context *dispatcher_dpi_context;
     union fsm_dpi_context *plugin_dpi_context;
     struct fsm_dpi_dispatcher *dpi_dispatcher;
-    struct net_md_stats_accumulator *rev_acc;
     struct fsm_dpi_plugin *plugin_lookup;
     struct net_header_parser *net_parser;
     struct fsm_parser_ops *dispatch_ops;
@@ -3438,20 +3450,6 @@ test_12_dpi_dispatcher_icmp_req_reply(void)
     protocol = net_parser->acc->key->ipprotocol;
     TEST_ASSERT_EQUAL_INT(protocol, IPPROTO_ICMP);
 
-    /* Validate that the rev_acc is found */
-    rev_acc = net_parser->acc->rev_acc;
-    TEST_ASSERT_NOT_NULL(rev_acc);
-
-    /* Validate ICMP type */
-    icmp_type = rev_acc->key->icmp_type;
-    TEST_ASSERT_EQUAL_INT(icmp_type, ICMP_ECHOREPLY);
-
-    originator = rev_acc->originator;
-    TEST_ASSERT_EQUAL_INT(originator, NET_MD_ACC_ORIGINATOR_DST);
-
-    direction = rev_acc->direction;
-    TEST_ASSERT_EQUAL_INT(direction, NET_MD_ACC_OUTBOUND_DIR);
-
     net_parser->acc->report = true;
 
     /* Close the flows observation window */
@@ -3531,19 +3529,6 @@ test_12_dpi_dispatcher_icmp_req_reply(void)
     protocol = net_parser->acc->key->ipprotocol;
     TEST_ASSERT_EQUAL_INT(protocol, IPPROTO_ICMP);
 
-    /* Validate that the rev_acc is found */
-    rev_acc = net_parser->acc->rev_acc;
-    TEST_ASSERT_NOT_NULL(rev_acc);
-
-    /* Validate ICMP type */
-    icmp_type = rev_acc->key->icmp_type;
-    TEST_ASSERT_EQUAL_INT(icmp_type, ICMP_ECHOREPLY);
-
-    originator = rev_acc->originator;
-    TEST_ASSERT_EQUAL_INT(originator, NET_MD_ACC_ORIGINATOR_DST);
-
-    direction = net_parser->acc->direction;
-    TEST_ASSERT_EQUAL_INT(direction, NET_MD_ACC_INBOUND_DIR);
 
     net_parser->acc->report = true;
 
@@ -3580,7 +3565,6 @@ test_13_dpi_dispatcher_icmpv6_req_reply(void)
     union fsm_dpi_context *dispatcher_dpi_context;
     union fsm_dpi_context *plugin_dpi_context;
     struct fsm_dpi_dispatcher *dpi_dispatcher;
-    struct net_md_stats_accumulator *rev_acc;
     struct fsm_dpi_plugin *plugin_lookup;
     struct net_header_parser *net_parser;
     struct fsm_parser_ops *dispatch_ops;
@@ -3702,23 +3686,6 @@ test_13_dpi_dispatcher_icmpv6_req_reply(void)
     TEST_ASSERT_NOT_NULL(info);
     TEST_ASSERT_TRUE(info->session == plugin);
 
-    /* Validate that the rev_acc is found */
-    rev_acc = net_parser->acc->rev_acc;
-    TEST_ASSERT_NOT_NULL(rev_acc);
-
-    /* Validate packet is ICMPv6 or not */
-    protocol = rev_acc->key->ipprotocol;
-    TEST_ASSERT_EQUAL_INT(protocol, IPPROTO_ICMPV6);
-
-    /* Validate ICMPv6 type */
-    icmp_type = rev_acc->key->icmp_type;
-    TEST_ASSERT_EQUAL_INT(icmp_type, ICMP6_ECHO_REPLY);
-
-    originator = rev_acc->originator;
-    TEST_ASSERT_EQUAL_INT(originator, NET_MD_ACC_ORIGINATOR_DST);
-
-    direction = rev_acc->direction;
-    TEST_ASSERT_EQUAL_INT(direction, NET_MD_ACC_OUTBOUND_DIR);
 
     net_parser->acc->report = true;
 
@@ -3795,23 +3762,6 @@ test_13_dpi_dispatcher_icmpv6_req_reply(void)
     TEST_ASSERT_NOT_NULL(info);
     TEST_ASSERT_TRUE(info->session == plugin);
 
-    /* Validate that the rev_acc is found */
-    rev_acc = net_parser->acc->rev_acc;
-    TEST_ASSERT_NOT_NULL(rev_acc);
-
-    /* Validate packet is ICMPv6 or not */
-    protocol = rev_acc->key->ipprotocol;
-    TEST_ASSERT_EQUAL_INT(protocol, IPPROTO_ICMPV6);
-
-    /* Validate ICMPv6 type */
-    icmp_type = rev_acc->key->icmp_type;
-    TEST_ASSERT_EQUAL_INT(icmp_type, ICMP6_ECHO_REPLY);
-
-    originator = rev_acc->originator;
-    TEST_ASSERT_EQUAL_INT(originator, NET_MD_ACC_ORIGINATOR_DST);
-
-    direction = rev_acc->direction;
-    TEST_ASSERT_EQUAL_INT(direction, NET_MD_ACC_INBOUND_DIR);
 
     net_parser->acc->report = true;
 
@@ -3827,6 +3777,14 @@ test_13_dpi_dispatcher_icmpv6_req_reply(void)
     fsm_delete_session(conf);
     info = ds_tree_find(net_parser->acc->dpi_plugins, plugin);
     TEST_ASSERT_NULL(info);
+
+    /* Force to expire lingering connections.*/
+    nfe_conntrack_icmp_timeout = 0;
+    nfe_conntrack_udp_timeout = 0;
+    nfe_conntrack_tcp_timeout_est = 0;
+    nfe_conntrack_update_timeouts(aggr->nfe_ct);
+    fsm_dpi_periodic(dispatcher);
+    fsm_dpi_recycle_nfe_conns();
 }
 
 void
@@ -3976,9 +3934,7 @@ test_dpi_dispatcher_udp_reserved(void)
     /* Validate that an accumulator was created */
     TEST_ASSERT_NOT_NULL(net_parser->acc);
 
-    /* Validate the originator and direction */
-    originator = net_parser->acc->originator;
-    TEST_ASSERT_EQUAL_INT(originator, NET_MD_ACC_ORIGINATOR_DST);
+
     direction = net_parser->acc->direction;
     TEST_ASSERT_EQUAL_INT(direction, NET_MD_ACC_OUTBOUND_DIR);
 
@@ -3995,6 +3951,15 @@ test_dpi_dispatcher_udp_reserved(void)
     fsm_delete_session(conf);
     info = ds_tree_find(net_parser->acc->dpi_plugins, plugin);
     TEST_ASSERT_NULL(info);
+
+    /* Force to expire lingering connections.*/
+    nfe_conntrack_icmp_timeout = 0;
+    nfe_conntrack_udp_timeout = 0;
+    nfe_conntrack_tcp_timeout_est = 0;
+    nfe_conntrack_update_timeouts(aggr->nfe_ct);
+
+    fsm_dpi_periodic(dispatcher);
+    fsm_dpi_recycle_nfe_conns();
 }
 
 /**
@@ -4399,6 +4364,16 @@ test_dpi_dispatcher_tcp_http_req_response(void)
     fsm_delete_session(conf);
     info = ds_tree_find(net_parser->acc->dpi_plugins, plugin);
     TEST_ASSERT_NULL(info);
+
+
+    /* Force to expire lingering connections.*/
+    nfe_conntrack_icmp_timeout = 0;
+    nfe_conntrack_udp_timeout = 0;
+    nfe_conntrack_tcp_timeout_est = 0;
+    nfe_conntrack_update_timeouts(aggr->nfe_ct);
+
+    fsm_dpi_periodic(dispatcher);
+    fsm_dpi_recycle_nfe_conns();
 }
 
 /**
@@ -4566,6 +4541,16 @@ test_dpi_dispatcher_tcp_https_req_response(void)
     fsm_delete_session(conf);
     info = ds_tree_find(net_parser->acc->dpi_plugins, plugin);
     TEST_ASSERT_NULL(info);
+
+
+    /* Force to expire lingering connections.*/
+    nfe_conntrack_icmp_timeout = 0;
+    nfe_conntrack_udp_timeout = 0;
+    nfe_conntrack_tcp_timeout_est = 0;
+    nfe_conntrack_update_timeouts(aggr->nfe_ct);
+
+    fsm_dpi_periodic(dispatcher);
+    fsm_dpi_recycle_nfe_conns();
 }
 
 /**
@@ -4710,11 +4695,8 @@ test_dpi_dispatcher_udp_https_req_response(void)
     TEST_ASSERT_EQUAL_INT(protocol, IPPROTO_UDP);
 
     /** Validate http src port number */
-    port_num = net_parser->acc->key->dport;
+    port_num = net_parser->acc->key->sport;
     TEST_ASSERT_EQUAL_INT(htons(port_num), 443);
-
-    originator = net_parser->acc->originator;
-    TEST_ASSERT_EQUAL_INT(originator, NET_MD_ACC_ORIGINATOR_SRC);
 
     direction = net_parser->acc->direction;
     TEST_ASSERT_EQUAL_INT(direction, NET_MD_ACC_OUTBOUND_DIR);
@@ -4733,6 +4715,16 @@ test_dpi_dispatcher_udp_https_req_response(void)
     fsm_delete_session(conf);
     info = ds_tree_find(net_parser->acc->dpi_plugins, plugin);
     TEST_ASSERT_NULL(info);
+
+    /* Force to expire lingering connections.*/
+    nfe_conntrack_icmp_timeout = 0;
+    nfe_conntrack_udp_timeout = 0;
+    nfe_conntrack_tcp_timeout_est = 0;
+    nfe_conntrack_update_timeouts(aggr->nfe_ct);
+
+    fsm_dpi_periodic(dispatcher);
+    fsm_dpi_recycle_nfe_conns();
+
 }
 
 /**
@@ -5005,6 +4997,7 @@ test_dpi_dispatcher_no_ip_pkt(void)
     size_t len;
     bool ret;
 
+    log_severity_set(LOG_SEVERITY_TRACE);
     /* Add a dpi plugin session */
     conf = &g_confs[17];
     fsm_add_session(conf);
@@ -5054,14 +5047,8 @@ test_dpi_dispatcher_no_ip_pkt(void)
     conf = &g_confs[17];
     fsm_delete_session(conf);
 
-    UT_CREATE_PCAP_PAYLOAD(pkt100, net_parser);
-    len = net_header_parse(net_parser);
-    TEST_ASSERT_TRUE(len != 0);
-
-    /* Call the dispatcher's packet handler */
-    dispatch_ops = &dispatcher->p_ops->parser_ops;
-    TEST_ASSERT_NOT_NULL(dispatch_ops->handler);
-    dispatch_ops->handler(dispatcher, net_parser);
+    fsm_dpi_periodic(dispatcher);
+    fsm_dpi_recycle_nfe_conns();
 }
 
 

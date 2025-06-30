@@ -27,6 +27,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <ev.h>
 #include <log.h>
 #include <const.h>
+#include <os.h>
 #include <util.h>
 #include <ds_dlist.h>
 #include <ds_tree.h>
@@ -125,9 +126,12 @@ osw_token_vif_sta_to_key(const struct osw_ifname *vif_name,
                          const struct osw_hwaddr *sta_addr,
                          struct osw_token_pool_key *key)
 {
-    ASSERT(vif_name != NULL, "");
+    /* vif_name is ignored intentionally, these really don't
+     * need to be per link, or per assoc - it just makes it
+     * harder to manage
+     */
     ASSERT(sta_addr != NULL, "");
-    STRSCPY_WARN(key->vif_name.buf, vif_name->buf);
+    MEMZERO(key->vif_name);
     memcpy(&key->sta_addr, sta_addr, sizeof(key->sta_addr));
 }
 
@@ -135,7 +139,6 @@ struct osw_token_pool_reference *
 osw_token_pool_ref_get(const struct osw_ifname *vif_name,
                        const struct osw_hwaddr *sta_addr)
 {
-    ASSERT(vif_name != NULL, "");
     ASSERT(sta_addr != NULL, "");
 
     struct osw_token_pool_key key;
@@ -249,7 +252,7 @@ osw_token_pool_free_token(struct osw_token_pool_reference *pool_ref,
     if (WARN_ON(pool_ref == NULL)) return;
     struct osw_token_pool *pool = pool_ref->pool;
     if (WARN_ON(pool == NULL)) return;
-    if (WARN_ON(token == OSW_TOKEN_INVALID)) return;
+    if (token == OSW_TOKEN_INVALID) return;
 
     LOGT("osw: token: pool_free_token: free dialog token,"
          " token: %d"

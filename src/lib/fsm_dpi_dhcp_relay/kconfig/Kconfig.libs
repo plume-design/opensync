@@ -1,0 +1,14 @@
+menu "DHCP Relay Configuration"
+    config DHCP_RELAY_SPOOF_SOURCE_MAC
+        bool "Spoof source MAC"
+        default y
+        help
+            When relaying a DHCP message, the Ethernet source MAC address
+            will be the MAC address of the relay instead of the DHCP client.
+            Some DHCP servers will reject DHCP messages if the client's MAC
+            address doesn't match the Ethernet source address.
+
+            This option enables 'source MAC address spoofing', meaning that
+            the Ethernet source MAC address is replaced with the MAC address
+            of the DHCP client.
+endmenu

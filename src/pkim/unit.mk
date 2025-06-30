@@ -32,23 +32,28 @@ UNIT_DISABLE := $(if $(CONFIG_MANAGER_PKIM),n,y)
 UNIT_NAME := pkim
 
 UNIT_TYPE := BIN
-UNIT_SRC := src/pkim_main.c
 
-UNIT_CFLAGS := -I$(UNIT_PATH)/inc
-UNIT_CFLAGS  += -I$(TOP_DIR)/src/lib/common/inc/
-UNIT_CFLAGS  += -I$(TOP_DIR)/src/lib/est/inc
+UNIT_SRC += src/pkim_cert.c
+UNIT_SRC += src/pkim_main.c
+UNIT_SRC += src/pkim_ovsdb.c
 
-UNIT_LDFLAGS := -lcurl
-UNIT_LDFLAGS += -lssl
-UNIT_LDFLAGS += -lcrypto
+UNIT_CFLAGS += -I$(UNIT_PATH)/inc
+UNIT_CFLAGS += -I$(UNIT_PATH)/src
+UNIT_CFLAGS += -I$(TOP_DIR)/src/lib/common/inc/
+UNIT_CFLAGS += -I$(TOP_DIR)/src/lib/est/inc
+
 UNIT_LDFLAGS += -lev
+UNIT_LDFLAGS += -lcurl
 
 UNIT_EXPORT_CFLAGS := $(UNIT_CFLAGS)
 UNIT_EXPORT_LDFLAGS := $(UNIT_LDFLAGS)
 
+UNIT_DEPS    += src/lib/arena
 UNIT_DEPS    += src/lib/common
 UNIT_DEPS    += src/lib/est
 UNIT_DEPS    += src/lib/osa
 UNIT_DEPS    += src/lib/ovsdb
 UNIT_DEPS    += src/lib/pjs
 UNIT_DEPS    += src/lib/schema
+
+$(eval $(call stam_generate,src/pkim_cert.dot))

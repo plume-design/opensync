@@ -30,6 +30,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <osw_state.h>
 #include <ovsdb_table.h>
 #include <ovsdb_sync.h>
+#include "ow_ovsdb.h"
 
 /**
  * Purpose:
@@ -94,22 +95,57 @@ ow_ovsdb_csa_fix_rconf(struct ow_ovsdb_csa *m,
                        const char *phy_name,
                        const struct osw_channel *channel)
 {
+    struct schema_Wifi_Radio_Config current_rconf = {0};
     struct schema_Wifi_Radio_Config rconf = {0};
     const int freq = channel->control_freq_mhz;
     const int chan = osw_freq_to_chan(freq);
+    const int center_freq = channel->center_freq0_mhz;
+    const int center_chan = osw_freq_to_chan(center_freq);
+    const char *ht_mode = ow_ovsdb_width_to_htmode(channel->width);
+
+    WARN_ON(ht_mode == NULL);
 
     json_t *where = ow_ovsdb_csa_where_rconf(phy_name, chan);
     if (WARN_ON(where == NULL)) return;
 
+    /* the `where` is used twice: for select and later for
+     * update, so bump the refcount from 1 to 2.
+     */
+    json_incref(where);
+
+    ovsdb_table_select_one_where(&m->table, where, &current_rconf);
+    /* `where` has refcount=1 now */
+
     rconf._partial_update = true;
     SCHEMA_SET_STR(rconf.if_name, phy_name);
     SCHEMA_SET_INT(rconf.channel, chan);
+    /* Controller can update the center_freq0_chan only on
+     * select radios. Hence device needs to be careful where
+     * it updates it too. If it were to update an entry
+     * where controller doesn't manage this it would result
+     * in mismatched channel when controller wants to update
+     * the channel (without the center_freq0_chan)
+     * subsequently. This is currently being controlled on
+     * 6G radios, notably the 11be capable ones (where the
+     * center chan location can be ambiguous), but might
+     * change in the future.
+     */
+    if (current_rconf.center_freq0_chan_exists)
+        SCHEMA_SET_INT(rconf.center_freq0_chan, center_chan);
+    if (ht_mode != NULL)
+        SCHEMA_SET_STR(rconf.ht_mode, ht_mode);
 
     const bool ok = ovsdb_table_update_where(&m->table, where, &rconf);
+    /* `where` has refcount=0, it has been freed */
 
     if (ok == false) return;
 
-    LOGN(LOG_PREFIX"%s: overriding channel: %d", phy_name, chan);
+    LOGN(LOG_PREFIX"%s: overriding channel: %d %s (%s center %d)",
+         phy_name,
+         chan,
+         ht_mode ?: "unknown-width",
+         rconf.center_freq0_chan_exists ? "with" : "without",
+         center_chan);
 
     return;
 

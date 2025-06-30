@@ -52,18 +52,18 @@ OSW_UT(ow_steer_policy_btm_response_ut_with_preferences)
     OSW_UT_EVAL(btm_response_policy != NULL);
 
     /* btm response with preferences */
-    struct osw_btm_retry_neigh_list retry_neigh_list;
-    retry_neigh_list.neigh[0].neigh.bssid = bssid_2g;
-    retry_neigh_list.neigh[1].neigh.bssid = bssid_5g;
-    retry_neigh_list.neigh[0].preference = 1;
-    retry_neigh_list.neigh[1].preference = 2;
-    retry_neigh_list.neigh_len = 2;
+    struct osw_btm_retry_neigh list[2];
+    const size_t count = ARRAY_SIZE(list);
+    list[0].neigh.bssid = bssid_2g;
+    list[1].neigh.bssid = bssid_5g;
+    list[0].preference = 1;
+    list[1].preference = 2;
 
     ow_steer_candidate_list_clear(candidate_list);
-    struct osw_btm_response_observer *btm_response_observer = &btm_response_policy->btm_resp_obs;
-    ow_steer_policy_btm_response_cb(btm_response_observer,
+    ow_steer_policy_btm_response_cb(btm_response_policy,
                                     DOT11_BTM_RESPONSE_CODE_REJECT_CAND_LIST_PROVIDED,
-                                    &retry_neigh_list);
+                                    list,
+                                    count);
 
     btm_response_policy->base->ops.recalc_fn(btm_response_policy->base,
                                              candidate_list);
@@ -99,16 +99,16 @@ OSW_UT(ow_steer_policy_btm_response_ut_without_preferences)
     OSW_UT_EVAL(btm_response_policy != NULL);
 
     /* btm response with preferences */
-    struct osw_btm_retry_neigh_list retry_neigh_list;
-    retry_neigh_list.neigh[0].neigh.bssid = bssid_2g;
-    retry_neigh_list.neigh[1].neigh.bssid = bssid_6g;
-    retry_neigh_list.neigh_len = 2;
+    struct osw_btm_retry_neigh list[2];
+    const size_t count = ARRAY_SIZE(list);
+    list[0].neigh.bssid = bssid_2g;
+    list[1].neigh.bssid = bssid_6g;
 
     ow_steer_candidate_list_clear(candidate_list);
-    struct osw_btm_response_observer *btm_response_observer = &btm_response_policy->btm_resp_obs;
-    ow_steer_policy_btm_response_cb(btm_response_observer,
+    ow_steer_policy_btm_response_cb(btm_response_policy,
                                     DOT11_BTM_RESPONSE_CODE_REJECT_CAND_LIST_PROVIDED,
-                                    &retry_neigh_list);
+                                    list,
+                                    count);
 
     btm_response_policy->base->ops.recalc_fn(btm_response_policy->base,
                                              candidate_list);

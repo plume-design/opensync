@@ -40,6 +40,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "fcm_priv.h"
 #include "fcm_mgr.h"
 #include "fcm_filter.h"
+#include "fcm_stats.h"
 #include "neigh_table.h"
 #include "data_report_tags.h"
 #include "qm_conn.h"
@@ -155,11 +156,7 @@ int main(int argc, char ** argv)
         return -1;
     }
 
-    if (nf_ct_init(loop, fcm_conntrack_event_cb) < 0)
-    {
-        LOGE("Eror initializing conntrack");
-        return -1;
-    }
+    fcm_init_purge_timer();
 
     // Start the event loop
     ev_run(loop, 0);
@@ -170,6 +167,8 @@ int main(int argc, char ** argv)
 
     // De-init FCM filter manager
     fcm_filter_cleanup();
+
+    fcm_stop_purge_timer();
 
     data_report_tags_exit();
 

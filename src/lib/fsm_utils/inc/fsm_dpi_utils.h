@@ -66,7 +66,7 @@ int fsm_set_dpi_mark(
 
 void fsm_dpi_set_plugin_decision(
         struct fsm_session *session,
-        struct net_header_parser *net_parser,
+        struct net_md_stats_accumulator *acc,
         enum fsm_dpi_state state);
 
 char *

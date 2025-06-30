@@ -212,6 +212,7 @@ extern bool os_pid_wait(pid_t pid, int timeout_ms);
 extern bool os_pid_terminate(pid_t, int timeout_ms);
 extern bool os_pid_exists(pid_t pid);
 extern pid_t os_pid_from_file(char *pid_file);
+extern int os_proc_get_pss(pid_t pid, uint32_t *pss);
 
 #define OS_CMD_FLAG_ANY_EXIT_CODE   1 // do not assume exit_code=0 for success
 #define OS_CMD_FLAG_NO_LOG_OUTPUT   2 // do not log each line of command output

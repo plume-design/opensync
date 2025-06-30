@@ -136,56 +136,11 @@ void sm_mqtt_set(const char *broker, const char *port, const char *topic, const 
 void sm_mqtt_interval_set(int interval);
 void sm_mqtt_stop(void);
 
-#ifdef CONFIG_SM_CAPACITY_QUEUE_STATS
-/******************************************************************************
- *  CAPACITY REPORT definitions
- *****************************************************************************/
-bool sm_capacity_report_request(
-        radio_entry_t              *radio_cfg,
-        sm_stats_request_t         *request);
-#endif
-
 /******************************************************************************
  *  DEVICE REPORT definitions
  *****************************************************************************/
 bool sm_device_report_request(
         sm_stats_request_t         *request);
-
-/******************************************************************************
- *  SURVEY_REPORT definitions
- *****************************************************************************/
-bool sm_survey_report_request(
-        radio_entry_t              *radio_cfg,
-        sm_stats_request_t         *request);
-
-/******************************************************************************
- *  CLIENT REPORT definitions
- *****************************************************************************/
-bool sm_client_report_request(
-        radio_entry_t              *radio_cfg,
-        sm_stats_request_t         *request);
-
-#ifdef CONFIG_SM_UPLINK_STATS
-bool sm_client_report_uplink_change(
-        radio_entry_t              *radio_cfg,
-        const char                 *uplink);
-bool sm_cmu_get_type_for_used_link(
-        char                       *iftype,
-        size_t                     size);
-#endif /* CONFIG_SM_UPLINK_STATS */
-
-/******************************************************************************
- *  NEIGHBOR REPORT definitions
- *****************************************************************************/
-bool sm_neighbor_report_request(
-        radio_entry_t              *radio_cfg,
-        sm_stats_request_t         *request);
-
-/* Special case update neighbor through survey to minimize scans */
-bool sm_neighbor_stats_results_update(
-        radio_entry_t              *radio_cfg,
-        radio_scan_type_t           scan_type,
-        int                         success);
 
 /******************************************************************************
  *  RSSI definitions

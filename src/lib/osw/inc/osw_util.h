@@ -36,8 +36,8 @@ struct element {
 } __attribute__ ((packed));
 
 /* element iteration helpers */
-#define for_each_ie(_elem, _data, _datalen)                                                                             \
-    for (_elem = (const struct element *) (_data);                                                                  \
+#define for_each_ie(_elem, _data, _datalen)                                                                        \
+    for (_elem = (const struct element *) (_data);                                                                 \
         (const uint8_t *) (_data) + (_datalen) - (const uint8_t *) _elem >= (int) sizeof(*_elem) &&                \
         (const uint8_t *) (_data) + (_datalen) - (const uint8_t *) _elem >= (int) sizeof(*_elem) + _elem->datalen; \
         _elem = (const struct element *) (_elem->data + _elem->datalen))
@@ -166,6 +166,10 @@ struct osw_assoc_req_info {
     uint8_t eht_cap_nss;
     enum osw_channel_width eht_cap_chwidth;
     enum osw_channel_width eht_op_chwidth;
+    uint8_t per_sta_profiles;
+    bool mbo_capable;
+    enum osw_sta_cell_cap mbo_cell_capability;
+    /* TODO Implement MBO non-preferred channels */
 };
 
 bool
@@ -291,5 +295,60 @@ osw_circ_buf_push_rotate(struct osw_circ_buf *circ_buf)
     for(i = osw_circ_buf_head(circ_buf);        \
         i != osw_circ_buf_tail(circ_buf);       \
         i = osw_circ_buf_next(circ_buf, i))
+
+void *buf_pull(void **buf, ssize_t *remaining, ssize_t how_much);
+const void *buf_pull_const(const void **buf, ssize_t *remaining, ssize_t how_much);
+bool buf_write(void *dst, const void *src, size_t len);
+ssize_t buf_len(const void *start, const void *end);
+bool buf_ok(const void **buf, ssize_t *remaining);
+bool buf_restore(void **buf, ssize_t *remaining, void *old_buf);
+
+#define buf_write_val(dst, value) ({ typeof(value) x = value; buf_write(dst, &x, sizeof(x)); })
+#define buf_write_u8(dst, value) buf_write_val(dst, (uint8_t)(value))
+#define buf_write_u16(dst, value) buf_write_val(dst, (uint16_t)(value))
+#define buf_write_u32(dst, value) buf_write_val(dst, (uint32_t)(value))
+
+#define buf_put(buf, remaining, data, len) buf_write(buf_pull(buf, remaining, len), data, len)
+#define buf_put_ptr(buf, remaining, ptr) buf_write(buf_pull(buf, remaining, sizeof(*ptr)), ptr, sizeof(*ptr))
+#define buf_put_val(buf, remaining, value) buf_write_val(buf_pull(buf, remaining, sizeof(value)), value)
+#define buf_put_u8(buf, remaining, value) buf_write_u8(buf_pull(buf, remaining, sizeof(uint8_t)), value)
+#define buf_put_u16(buf, remaining, value) buf_write_u16(buf_pull(buf, remaining, sizeof(uint16_t)), value)
+#define buf_put_u32(buf, remaining, value) buf_write_u32(buf_pull(buf, remaining, sizeof(uint32_t)), value)
+
+#define buf_pull_type(buf, remaining, type) ((type)buf_pull(buf, remaining, sizeof(type)))
+#define buf_pull_u8(buf, remaining) buf_pull_type(buf, remaining, uint8_t)
+#define buf_pull_u16(buf, remaining) buf_pull_type(buf, remaining, uint16_t)
+#define buf_pull_u32(buf, remaining) buf_pull_type(buf, remaining, uint32_t)
+
+#define buf_put_attr_u8(buf, remaining, id, value) \
+    (buf_put_u8(buf, remaining, id) && \
+     buf_put_u8(buf, remaining, 1) && \
+     buf_put_u8(buf, remaining, value))
+
+#define buf_get(buf, rem, dst, len) buf_write(dst, buf_pull_const(buf, rem, len), len)
+
+static inline bool buf_get_u8(const void **buf, ssize_t *rem, uint8_t *dst)
+{
+    return buf_get(buf, rem, dst, sizeof(*dst));
+}
+
+static inline bool buf_get_u16(const void **buf, ssize_t *rem, uint16_t *dst)
+{
+    return buf_get(buf, rem, dst, sizeof(*dst));
+}
+
+static inline bool buf_get_u32(const void **buf, ssize_t *rem, uint32_t *dst)
+{
+    return buf_get(buf, rem, dst, sizeof(*dst));
+}
+
+static inline bool buf_get_as_ptr(const void **buf, ssize_t *rem, const void **ptr, ssize_t len)
+{
+    if (ptr == NULL) return false;
+    *ptr = buf_pull_const(buf, rem, len);
+    return (*ptr != NULL);
+}
+
+#define buf_get_into(buf, rem, ptr) buf_write(ptr, buf_pull_const(buf, rem, sizeof(*ptr)), sizeof(*ptr))
 
 #endif /* OSW_UTIL_H_INCLUDED */

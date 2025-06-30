@@ -53,5 +53,6 @@ UNIT_DEPS += src/lib/gatekeeper_msg
 UNIT_DEPS += src/lib/fsm_policy
 UNIT_DEPS += src/lib/network_metadata
 UNIT_DEPS += src/lib/unit_test_utils
+UNIT_DEPS += src/lib/gatekeeper_msg
 
 # data/genmac.txt is copied automatically

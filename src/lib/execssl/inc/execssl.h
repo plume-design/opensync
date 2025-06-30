@@ -27,8 +27,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifndef EXECSSL_H_INCLUDED
 #define EXECSSL_H_INCLUDED
 
+#include "arena.h"
 #include "const.h"
-#include "execsh.h"
 
 /*
  * Convenient wrapper for sslwrap_a(), which packs the variable arguments
@@ -44,14 +44,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 #define execssl(stdin, ...) execssl_a((stdin), C_CVPACK(__VA_ARGS__))
 
-/* OpenSSL execution context */
-struct execssl_ctx
-{
-    execsh_async_t os_esa;
-    char *os_stdout;
-    char *os_stdout_e;
-    int os_retval;
-};
+/*
+ * Arena variant wrapper
+ */
+#define execssl_arena(arena, stdin, ...) execssl_arena_a((arena), (stdin), C_CVPACK(__VA_ARGS__))
 
 /*
  * Execute `openssl` with arguments `args`. `cstdin` is used as openssl's
@@ -63,5 +59,10 @@ struct execssl_ctx
  * In case openssl exits a non-zero return value, this function returns NULL.
  */
 char *execssl_a(const char *cstdin, const char *argv[]);
+
+/*
+ * Arena allocator variant of execcsl_a()
+ */
+char *execssl_arena_a(arena_t *arena, const char *cstdin, const char *argv[]);
 
 #endif /* EXECSSL_H */

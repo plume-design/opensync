@@ -40,6 +40,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "log.h"
 #include "ev.h"
 #include "evx.h"
+#include "os.h"
 
 /* Linux qdisc configuration for an interface */
 struct lnx_qdisc_cfg
@@ -49,6 +50,8 @@ struct lnx_qdisc_cfg
     ds_tree_t lq_qdiscs; /* qdisc definitions inventory for this interface (osn_qdisc_params) */
 
     bool lq_applied; /* qdisc definitions applied to system ? */
+
+    osn_qdisc_status_fn_t *lq_status_fn_cb; /* qdisc status notification callback */
 
     ds_tree_node_t lq_tnode;
 };
@@ -247,6 +250,12 @@ static bool lnx_qdisc_configure(lnx_qdisc_cfg_t *self, struct osn_qdisc_params *
     return true;
 }
 
+bool lnx_qdisc_cfg_notify_status_set(lnx_qdisc_cfg_t *self, osn_qdisc_status_fn_t *status_fn_cb)
+{
+    self->lq_status_fn_cb = status_fn_cb;
+    return true;
+}
+
 bool lnx_qdisc_cfg_apply(lnx_qdisc_cfg_t *self)
 {
     struct osn_qdisc_params *qdisc;
@@ -256,6 +265,7 @@ bool lnx_qdisc_cfg_apply(lnx_qdisc_cfg_t *self)
 
     LOG(DEBUG, "%s: %s: num qdiscs = %zu", __func__, self->lq_if_name, ds_tree_len(&self->lq_qdiscs));
 
+    self->lq_applied = true;
     ds_tree_foreach (&self->lq_qdiscs, qdisc)
     {
         LOG(DEBUG, "%s: %s: ds_tree_foreach() at: %s", __func__, self->lq_if_name, FMT_osn_qdisc_params(*qdisc));
@@ -263,9 +273,17 @@ bool lnx_qdisc_cfg_apply(lnx_qdisc_cfg_t *self)
         if (!lnx_qdisc_configure(self, qdisc))
         {
             LOG(ERR, "lnx_qdisc: %s: Error configuring qdiscs", self->lq_if_name);
+            self->lq_applied = false;
             break;
         }
-        self->lq_applied = true;
+
+        /* Notify qdisc as successfully applied: */
+        if (self->lq_status_fn_cb != NULL)
+        {
+            struct osn_qdisc_status qdisc_status = {.qs_applied = true, .qs_ctx = qdisc->oq_ctx};
+
+            self->lq_status_fn_cb(&qdisc_status);
+        }
     }
     return (self->lq_applied);
 }

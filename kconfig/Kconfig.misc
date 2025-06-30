@@ -16,3 +16,9 @@ config IN_PLACE_UPGRADE
         modify the boot process to allow for in-place
         upgrade of OpenSync
 
+config RUN_IN_LXC
+    bool "Run in LXC container"
+    default n
+    help
+        Run OpenSync in an LXC container
+

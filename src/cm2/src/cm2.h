@@ -243,7 +243,6 @@ typedef struct
     ev_child           stability_child;
     cm2_main_link_t    link;
     cm2_main_link_t    old_link;
-    uint8_t            ble_status;
     bool               ntp_check;
     struct ev_loop     *loop;
 #ifdef CONFIG_LIBEVX_USE_CARES
@@ -272,17 +271,6 @@ typedef struct
 extern cm2_state_t g_state;
 
 typedef enum {
-    BLE_ONBOARDING_STATUS_ETHERNET_LINK= 0, // Bit 0
-    BLE_ONBOARDING_STATUS_WIFI_LINK,        // Bit 1
-    BLE_ONBOARDING_STATUS_ETHERNET_BACKHAUL,// Bit 2
-    BLE_ONBOARDING_STATUS_WIFI_BACKHAUL,    // Bit 3
-    BLE_ONBOARDING_STATUS_ROUTER_OK,        // Bit 4
-    BLE_ONBOARDING_STATUS_INTERNET_OK,      // Bit 5
-    BLE_ONBOARDING_STATUS_CLOUD_OK,         // Bit 6
-    BLE_ONBOARDING_STATUS_MAX
-} cm2_ble_onboarding_status_t;
-
-typedef enum {
     CM2_PAR_NOT_SET,
     CM2_PAR_TRUE,
     CM2_PAR_FALSE
@@ -308,65 +296,6 @@ char* cm2_curr_dest_name(void);
 bool cm2_enable_gw_offline(void);
 void cm2_trigger_restart_managers(void);
 void cm2_set_dst_type(cm2_dest_e dst);
-
-//blem
-#ifdef CONFIG_CM2_BT_BEACON_HANDLER
-
-void cm2_ble_onboarding_apply_config(void);
-void cm2_set_ble_onboarding_link_state(bool state, char *if_type, char *if_name);
-void cm2_set_backhaul_update_ble_state(void);
-void cm2_set_ble_state(bool state, cm2_ble_onboarding_status_t status);
-void cm2_ble_onboarding_set_status(bool state, cm2_ble_onboarding_status_t status);
-void cm2_ovsdb_connection_update_ble_phy_link(void);
-int  cm2_ovsdb_ble_config_update(uint8_t ble_status);
-void cm2_ovsdb_ble_init(void);
-
-#ifdef CONFIG_CM2_BT_CONNECTABLE
-int cm2_ovsdb_ble_set_connectable(bool state);
-#else
-static inline int  cm2_ovsdb_ble_set_connectable(bool state)
-{
-    return 0;
-}
-#endif
-
-#else /* CONFIG_CM2_BT_BEACON_HANDLER (else) */
-
-static inline int  cm2_ovsdb_ble_set_connectable(bool state)
-{
-    return 0;
-}
-
-static inline void cm2_ble_onboarding_apply_config(void)
-{
-}
-static inline void cm2_set_ble_onboarding_link_state(bool state, char *if_type, char *if_name)
-{
-}
-static inline void cm2_set_backhaul_update_ble_state(void)
-{
-}
-static inline void cm2_set_ble_state(bool state, cm2_ble_onboarding_status_t status)
-{
-}
-static inline void cm2_ble_onboarding_set_status(bool state, cm2_ble_onboarding_status_t status)
-{
-}
-static inline void cm2_ovsdb_connection_update_ble_phy_link(void)
-{
-}
-static inline int cm2_ovsdb_ble_config_update(uint8_t ble_status)
-{
-    return 0;
-}
-
-static inline void cm2_ovsdb_ble_init(void)
-{
-    return;
-}
-
-#endif /* CONFIG_CM2_BT_BEACON_HANDLER (else) */
-
 
 // ovsdb
 int cm2_ovsdb_init(void);
@@ -561,15 +490,6 @@ static inline bool cm2_is_wan_link_management(void)
 #endif
 }
 
-static inline bool cm2_is_config_via_ble_enabled(void)
-{
-#ifdef CONFIG_BLEM_CONFIG_VIA_BLE_ENABLED
-    return true;
-#else
-    return false;
-#endif
-}
-
 static inline bool cm2_is_set_local_bit_mac_on_lan(void)
 {
 #ifdef CONFIG_TARGET_LAN_SET_LOCAL_MAC_BIT
@@ -599,6 +519,7 @@ char* cm2_get_uplink_name(void);
 void cm2_update_device_type(const char *iftype);
 bool cm2_ovsdb_set_dhcpv6_client(char *ifname, bool enable);
 bool cm2_osn_is_ipv6_global_link(const char *ifname, const char *ipv6_addr);
+bool cm2_osn_is_ipv6_ULA_link(const char *ifname, const char *ipv6_addr);
 void cm2_restart_iface(char *ifname);
 bool cm2_add_port_to_br(char *port_name, char *br_name);
 bool cm2_del_port_from_br(char *port_name, char *br_name);

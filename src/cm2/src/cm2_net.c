@@ -612,6 +612,24 @@ bool cm2_osn_is_ipv6_global_link(const char *ifname, const char *ipv6_addr)
     return true;
 }
 
+bool cm2_osn_is_ipv6_ULA_link(const char *ifname, const char *ipv6_addr)
+{
+    osn_ip6_addr_t addr;
+
+    if (!osn_ip6_addr_from_str(&addr, ipv6_addr)) {
+        LOGW("%s: Invalid IPv6 address: %s", ifname, ipv6_addr);
+        return false;
+    }
+
+    if (osn_ip6_addr_type(&addr) != OSN_IP6_ADDR_LOCAL_UNIQUE) {
+        LOGI("%s: Not an ULA IPv6 address: %s", ifname, ipv6_addr);
+        return false;
+    }
+
+    LOGI("%s: ULA IPv6 address: %s", ifname, ipv6_addr);
+    return true;
+}
+
 void cm2_restart_iface(char *ifname)
 {
     WARN_ON(!cm2_ovsdb_set_Wifi_Inet_Config_interface_enabled(false, ifname));

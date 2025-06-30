@@ -42,6 +42,8 @@ osw_mld_vif_observer_t *osw_mld_vif_observer_alloc(osw_mld_vif_t *m);
 
 void osw_mld_vif_observer_drop(osw_mld_vif_observer_t *obs);
 
+const struct osw_hwaddr *osw_mld_vif_get_mld_addr(osw_mld_vif_observer_t *o, const char *mld_if_name);
+
 void osw_mld_vif_observer_set_mld_added_fn(osw_mld_vif_observer_t *obs, osw_mld_vif_mld_fn_t *fn, void *fn_priv);
 
 void osw_mld_vif_observer_set_mld_connected_fn(osw_mld_vif_observer_t *obs, osw_mld_vif_mld_fn_t *fn, void *fn_priv);

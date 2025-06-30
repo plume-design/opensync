@@ -118,6 +118,9 @@ struct fsm_session_ops
 
     /* notify if identical session loaded/unloaded */
     void (*notify_identical_sessions)(struct fsm_session *, bool);
+
+    /* notify of dpi connetion to free.*/
+    void (*dpi_free_conn_ctxt)(struct net_md_stats_accumulator *);
 };
 
 
@@ -482,6 +485,7 @@ struct fsm_mgr
     bool (*update_session_tap)(struct fsm_session *); /* session tap update */
     ds_tree_t objects_to_monitor;
     uint32_t osbus_flags;
+    int mem_monitor_fd;
 };
 
 
@@ -924,5 +928,8 @@ fsm_set_session_ops(struct fsm_session *session);
 
 bool
 fsm_dpi_is_multicast_ip(struct net_md_flow_key *key);
+
+void
+fsm_dpi_recycle_nfe_conns(void);
 
 #endif /* FSM_H_INCLUDED */

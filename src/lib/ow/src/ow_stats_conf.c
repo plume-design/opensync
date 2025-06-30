@@ -117,7 +117,7 @@ struct ow_stats_conf_vif {
     char *vif_name;
     bool enabled;
     enum osw_vif_type vif_type;
-    uint32_t freq_mhz;
+    struct osw_channel channel;
 };
 
 struct ow_stats_conf_sta_id {
@@ -529,11 +529,44 @@ ow_stats_conf_get_oper_mhz(struct ow_stats_conf *c,
 
     struct ow_stats_conf_vif *fv;
     ds_tree_foreach(&fp->vifs, fv) {
-        if (fv->freq_mhz != 0) {
-            return fv->freq_mhz;
+        if (fv->channel.control_freq_mhz != 0) {
+            return fv->channel.control_freq_mhz;
         }
     }
 
+    return 0;
+}
+
+const struct osw_channel *
+ow_stats_conf_get_oper_channel(struct ow_stats_conf *c,
+                               const char *phy_name)
+{
+    struct ow_stats_conf_phy *fp = ds_tree_find(&c->phys, phy_name);
+    const struct osw_channel *ch = NULL;
+    if (fp == NULL) return ch;
+
+    struct ow_stats_conf_vif *fv;
+    ds_tree_foreach(&fp->vifs, fv) {
+        if (fv->channel.center_freq0_mhz != 0) {
+            ch = &fv->channel;
+            return ch;
+        }
+    }
+
+    return ch;
+}
+
+static int
+ow_stats_conf_chan_width_to_sts(const enum osw_channel_width w)
+{
+    switch (w) {
+        case OSW_CHANNEL_20MHZ: return STS__CHAN_WIDTH__CHAN_WIDTH_20MHZ;
+        case OSW_CHANNEL_40MHZ: return STS__CHAN_WIDTH__CHAN_WIDTH_40MHZ;
+        case OSW_CHANNEL_80MHZ: return STS__CHAN_WIDTH__CHAN_WIDTH_80MHZ;
+        case OSW_CHANNEL_160MHZ: return STS__CHAN_WIDTH__CHAN_WIDTH_160MHZ;
+        case OSW_CHANNEL_80P80MHZ: return STS__CHAN_WIDTH__CHAN_WIDTH_80_PLUS_80MHZ;
+        case OSW_CHANNEL_320MHZ: return STS__CHAN_WIDTH__CHAN_WIDTH_320MHZ;
+    }
     return 0;
 }
 
@@ -648,8 +681,33 @@ ow_stats_conf_sub_report_survey(struct ow_stats_conf_entry *e,
 
     dpp_survey_record_t *r = dpp_survey_record_alloc();
     ds_dlist_insert_tail(&e->surveys, r);
-
     r->info.chan = ow_stats_conf_freq_to_chan(e->params.radio_type, freq_mhz);
+
+    char puncture_buffer[64];
+    puncture_buffer[0] = '\0';
+    if (e->params.scan_type == OW_STATS_CONF_SCAN_TYPE_ON_CHAN) {
+        const struct osw_channel *oper_channel = ow_stats_conf_get_oper_channel(e->conf, phy_name) ?: osw_channel_none();
+        if (osw_channel_is_none(oper_channel) == false) {
+            const int ch_w = ow_stats_conf_chan_width_to_sts(oper_channel->width);
+            r->info.chan_width = ch_w;
+            if (oper_channel->width != OSW_CHANNEL_20MHZ) {
+                r->info.center0_freq_mhz = oper_channel->center_freq0_mhz;
+                r->info.puncture_len = 0;
+                const uint16_t p = oper_channel->puncture_bitmap;
+                if (p) {
+                    const uint16_t p_le = htole16(p);
+                    r->info.puncture = MALLOC(sizeof(p));
+                    r->info.puncture_len = sizeof(p);
+                    memcpy(r->info.puncture, &p_le, sizeof(p_le));
+                }
+                if (bin2hex(r->info.puncture, r->info.puncture_len, puncture_buffer, sizeof(puncture_buffer)) < 0) {
+                    puncture_buffer[0] = '\0';
+                    LOGE("ow_stats_conf: Failed to compose puncture_buffer buffer: puncture BIN -> HEX failed");
+                }
+            }
+        }
+    }
+
     r->info.timestamp_ms = now * 1e3;
     r->duration_ms = active_msec;
 
@@ -662,6 +720,9 @@ ow_stats_conf_sub_report_survey(struct ow_stats_conf_entry *e,
     LOGT("ow: stats: conf: report: survey:"
          " type=%s"
          " chan=%"PRIu32
+         " center0_freq_mhz=%"PRIu32
+         " chan_width=%"PRIu32
+         " puncture=%s"
          " ts=%"PRIu64
          " msec=%"PRIu32
          " nf=%"PRId32
@@ -671,6 +732,9 @@ ow_stats_conf_sub_report_survey(struct ow_stats_conf_entry *e,
          " busy=%"PRIu32,
          ow_stats_conf_scan_type_to_str(e->params.scan_type),
          r->info.chan,
+         r->info.center0_freq_mhz,
+         r->info.chan_width,
+         puncture_buffer,
          r->info.timestamp_ms,
          r->duration_ms,
          r->chan_noise,
@@ -2103,17 +2167,20 @@ ow_stats_conf_phy_removed_cb(struct osw_state_observer *self,
     ow_stats_conf_band_set(self, phy, true);
 }
 
-static int
-ow_stats_conf_vif_get_freq_mhz(const struct osw_state_vif_info *vif)
+const struct osw_channel *
+ow_stats_conf_vif_get_channel(const struct osw_state_vif_info *vif)
 {
-    if (vif->drv_state->status != OSW_VIF_ENABLED) return 0;
+    const struct osw_channel *ch = NULL;
+    if (vif->drv_state->status != OSW_VIF_ENABLED) return ch;
     switch (vif->drv_state->vif_type) {
-        case OSW_VIF_UNDEFINED: return 0;
-        case OSW_VIF_AP: return vif->drv_state->u.ap.channel.control_freq_mhz;
-        case OSW_VIF_AP_VLAN: return 0;
-        case OSW_VIF_STA: return 0; /* FIXME */
+        case OSW_VIF_UNDEFINED: return ch;
+        case OSW_VIF_AP:
+            ch = &vif->drv_state->u.ap.channel;
+            return ch;
+        case OSW_VIF_AP_VLAN: return ch;
+        case OSW_VIF_STA: return ch; /* FIXME */
     }
-    return 0;
+    return ch;
 }
 
 static void
@@ -2122,7 +2189,7 @@ ow_stats_conf_vif_set__(struct ow_stats_conf *c,
                         const char *vif_name,
                         bool enabled,
                         enum osw_vif_type vif_type,
-                        uint32_t freq_mhz)
+                        const struct osw_channel *channel)
 {
     struct ow_stats_conf_vif *fv = ds_tree_find(&c->vifs, vif_name);
     struct ow_stats_conf_phy *fp = ds_tree_find(&c->phys, phy_name);
@@ -2147,7 +2214,7 @@ ow_stats_conf_vif_set__(struct ow_stats_conf *c,
 
     fv->enabled = enabled;
     fv->vif_type = vif_type;
-    fv->freq_mhz = freq_mhz;
+    fv->channel = *(channel ?: osw_channel_none());
 
     if (del_vif) {
         ds_tree_remove(&fp->vifs, fv);
@@ -2194,8 +2261,9 @@ ow_stats_conf_vif_set(struct osw_state_observer *self,
     const enum osw_vif_type vif_type = removing
                                      ? OSW_VIF_UNDEFINED
                                      : vif->drv_state->vif_type;
-    const int freq_mhz = valid ? ow_stats_conf_vif_get_freq_mhz(vif) : 0;
-    ow_stats_conf_vif_set__(c, vif->phy->phy_name, vif->vif_name, enabled, vif_type, freq_mhz);
+    const struct osw_channel *ch = valid ? ow_stats_conf_vif_get_channel(vif) : NULL;
+    ow_stats_conf_vif_set__(c, vif->phy->phy_name, vif->vif_name, enabled, vif_type, ch);
+
 }
 
 static void

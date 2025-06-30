@@ -36,6 +36,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <osw_types.h>
 #include <osw_util.h>
 #include <osw_state.h>
+#include <osw_sta_assoc.h>
 #include <osw_sta_chan_cap.h>
 
 enum osw_sta_chan_cap_sta_chan_flag {
@@ -52,9 +53,10 @@ enum osw_sta_chan_cap_sta_chan_flag {
     ## __VA_ARGS__
 
 #define LOG_PREFIX_STA(sta, fmt, ...) \
-    LOG_PREFIX(OSW_HWADDR_FMT" [links=%zu]: " fmt, \
+    LOG_PREFIX(OSW_HWADDR_FMT" [links=%zu%s]: " fmt, \
         OSW_HWADDR_ARG(&(sta)->addr), \
         osw_sta_chan_cap_sta_get_num_links(sta), \
+        sta->connected ? " connected" : "", \
         ## __VA_ARGS__)
 
 #define LOG_PREFIX_CHAN(c, fmt, ...) \
@@ -86,6 +88,7 @@ struct osw_sta_chan_cap_sta {
     struct osw_hwaddr addr;
     struct ds_tree chans;
     struct ds_tree links;
+    bool connected;
     bool known;
     struct osw_timer ageout;
 };
@@ -102,6 +105,7 @@ struct osw_sta_chan_cap {
     struct ds_tree stas;
     struct ds_tree obs;
     struct osw_state_observer state_obs;
+    osw_sta_assoc_observer_t *sta_obs;
 };
 
 static uint64_t
@@ -277,7 +281,7 @@ osw_sta_chan_cap_sta_ageout_cb(struct osw_timer *t)
 static void
 osw_sta_chan_cap_sta_gc(struct osw_sta_chan_cap_sta *sta)
 {
-    if (osw_sta_chan_cap_sta_get_num_links(sta) > 0) {
+    if (osw_sta_chan_cap_sta_get_num_links(sta) > 0 || sta->connected) {
         if (osw_timer_is_armed(&sta->ageout) == true) {
             osw_timer_disarm(&sta->ageout);
             LOGT(LOG_PREFIX_STA(sta, "disarming ageout"));
@@ -508,10 +512,31 @@ osw_sta_chan_cap_init(struct osw_sta_chan_cap *m)
 }
 
 static void
+osw_sta_chan_cap_assoc_cb(void *priv,
+                          const osw_sta_assoc_entry_t *e,
+                          osw_sta_assoc_event_e ev)
+{
+    const struct osw_hwaddr *sta_addr = osw_sta_assoc_entry_get_addr(e);
+    struct osw_sta_chan_cap *m = priv;
+    struct osw_sta_chan_cap_sta *sta = osw_sta_chan_cap_sta_get_or_alloc(m, sta_addr);
+    sta->connected = osw_sta_assoc_entry_is_connected(e);
+    osw_sta_chan_cap_sta_gc(sta);
+}
+
+static osw_sta_assoc_observer_t *
+osw_sta_chan_cap_alloc_sta_obs(struct osw_sta_chan_cap *m)
+{
+    osw_sta_assoc_observer_params_t *p = osw_sta_assoc_observer_params_alloc();
+    osw_sta_assoc_observer_params_set_changed_fn(p, osw_sta_chan_cap_assoc_cb, m);
+    return osw_sta_assoc_observer_alloc(OSW_MODULE_LOAD(osw_sta_assoc), p);
+}
+
+static void
 osw_sta_chan_cap_attach(struct osw_sta_chan_cap *m)
 {
     OSW_MODULE_LOAD(osw_state);
     osw_state_register_observer(&m->state_obs);
+    m->sta_obs = osw_sta_chan_cap_alloc_sta_obs(m);
 }
 
 static struct osw_sta_chan_cap *

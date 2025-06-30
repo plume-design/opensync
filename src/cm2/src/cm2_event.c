@@ -106,6 +106,7 @@ Note-1: the wait for re-connect back to same manager addr because
 #include "cm2_stability.h"
 #include "target.h"
 #include "telog.h"
+#include "kconfig.h"
 
 #define MODULE_ID LOG_MODULE_ID_EVENT
 
@@ -427,10 +428,8 @@ void cm2_trigger_restart_managers(void) {
         goto restart;
     }
 
-    if (cm2_is_config_via_ble_enabled() &&
-        g_state.dev_type == CM2_DEVICE_NONE) {
-        LOGI("Enable two way mode communication, skip restart managers");
-        cm2_ovsdb_ble_set_connectable(true);
+    if (kconfig_enabled(CONFIG_CM2_BT_CONNECTABLE) && (g_state.dev_type == CM2_DEVICE_NONE)) {
+        LOGI("Config via BLE enabled, skip restart managers");
         skip_restart = true;
     }
 
@@ -653,7 +652,6 @@ start:
             break;
         case CM2_REASON_LINK_USED:
             WARN_ON(cm2_update_main_link_ip(&g_state.link) < 0);
-            cm2_set_backhaul_update_ble_state();
             cm2_restore_bridge_config();
 
             if (cm2_link_is_bridge(&g_state.link)) {
@@ -756,13 +754,10 @@ start:
                 cm2_connection_clear_used();
                 LOGI("Waiting for finish link selection");
                 g_state.run_stability = false;
-                g_state.ble_status = 0;
-                cm2_ovsdb_connection_update_ble_phy_link();
             }
             if (g_state.link.is_used_echoed)
             {
                 cm2_connection_req_stability_check_async(g_state.link.if_name, g_state.link.if_type, uplink, LINK_CHECK, false, false);
-                cm2_set_backhaul_update_ble_state();
                 g_state.skip_reconnect = (g_state.is_previous_if_type_wifi
                                       && cm2_is_wifi_type(g_state.link.if_type)
                                       && g_state.link_sel_due_to_priority);
@@ -816,10 +811,6 @@ start:
                 LOGI("Ipv6: %d", ipv6);
             }
 
-            if (g_state.link.ipv4.is_ip || g_state.link.ipv6.is_ip) {
-                cm2_set_ble_state(ipv4 || ipv6, BLE_ONBOARDING_STATUS_ROUTER_OK);
-            }
-
             if (ipv4 || ipv6) {
                 cm2_set_state(true, CM2_STATE_NTP_CHECK);
             }
@@ -838,7 +829,6 @@ start:
 
             if (cm2_connection_req_stability_check(g_state.link.if_name, g_state.link.if_type, uplink, NTP_CHECK, false))
             {
-                cm2_set_ble_state(true, BLE_ONBOARDING_STATUS_INTERNET_OK);
                 cm2_ovs_connect();
             }
             else if (cm2_timeout(false))
@@ -1077,7 +1067,6 @@ start:
                 if (cm2_wan_link_selection_enabled()) {
                     opts = LINK_CHECK | ROUTER_CHECK | INTERNET_CHECK;
                     cm2_connection_req_stability_check_async(g_state.link.if_name, g_state.link.if_type, uplink, opts, true, false);
-                    cm2_set_ble_state(true, BLE_ONBOARDING_STATUS_CLOUD_OK);
                     cm2_update_device_type(g_state.link.if_type);
                     g_state.restore_method = CM2_RESTORE_REFRESH_DHCP;
                     cm2_stability_update_interval(g_state.loop, false);
@@ -1096,9 +1085,6 @@ start:
                     g_state.is_con_stable = true;
                     g_state.disconnects = 0;
                     g_state.fast_backoff = false;
-
-                    if (cm2_is_config_via_ble_enabled())
-                        cm2_ovsdb_ble_set_connectable(false);
 
                     if (g_state.link.vtag.state == CM2_VTAG_PENDING) {
                         LOGI("vtag: %d: set as used", g_state.link.vtag.tag);
@@ -1122,7 +1108,6 @@ start:
                 // quiesce ovsdb-server, wait for timeout
                 cm2_ovsdb_set_Manager_target("");
                 g_state.disconnects += 1;
-                cm2_set_ble_state(false, BLE_ONBOARDING_STATUS_CLOUD_OK);
 
                 if (cm2_wan_link_selection_enabled()) {
                     cm2_stability_update_interval(g_state.loop, true);

@@ -8,7 +8,7 @@ menuconfig MANAGER_CM
 if MANAGER_CM
     config MANAGER_CM_CFG
         string "Startup options"
-        default "cm;true;needs_plan_b=true"
+        default "cm;true;needs_plan_b=true;max_memory=20000"
         help
             Manager startup options
 
@@ -186,13 +186,13 @@ if MANAGER_CM
 
         config CM2_STABILITY_THRESH_FATAL
             int "Threshold of OpenSync restart"
-            default 8
+            default 16
             help
                 Threshold of subsequent check failures to restart OpenSync
 
         config CM2_STABILITY_THRESH_ROUTER
             int "Threshold of restore connection"
-            default 4
+            default 8
             help
                 Threshold of subsequent router check failures to trigger restore connection
 
@@ -234,17 +234,12 @@ if MANAGER_CM
         help
            Enable additional debug logs
 
-    config CM2_BT_BEACON_HANDLER
-        bool "Bluetooth beacon manager"
-        default y
-        help
-            Connection manager will control also Bluetooth by enable/disable beacons and state.
-
     config CM2_BT_CONNECTABLE
-        bool "Bluetooth connection manager"
-        depends on (CM2_BT_BEACON_HANDLER)
+        bool "Configuration via Bluetooth connection"
+        depends on (BLEM_CONFIG_VIA_BLE_ENABLED)
         default y
         help
-            Connection manager will control also Bluetooth by enable/disable beacons and state.
+            If enabled, managers will not be restarted when no connectivity is
+            available, expecting configuration via Bluetooth connection instead.
 
 endif

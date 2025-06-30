@@ -26,6 +26,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <stdio.h>
+#include <sys/types.h>
+#include <unistd.h>
+#include "inttypes.h"
 #include <errno.h>
 
 #include "fsm_internal.h"
@@ -36,6 +40,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "fsm_dpi_utils.h"
 #include "network_zone.h"
 #include "kconfig.h"
+#include "os_file_ops.h"
+#include "mem_monitor.h"
 
 static const struct fsm_tap_type
 {
@@ -663,3 +669,141 @@ fsm_notify_identical_sessions(struct fsm_session *session, bool enabled)
         }
     }
 }
+
+#ifdef CONFIG_MEM_MONITOR
+void
+fsm_init_mem_monitor(void)
+{
+    char log[MEM_LOG_ITEM_LEN];
+    char version[] = "1.0";
+    struct timespec now;
+    struct fsm_mgr *mgr;
+    uint64_t ts;
+    int ret;
+    int fd;
+
+    mgr = fsm_get_mgr();
+    mgr->mem_monitor_fd = -1;
+
+    if (!kconfig_enabled(CONFIG_MEM_MONITOR)) return;
+
+    fd = os_file_open_fd(CONFIG_FSM_MEM_LOG_PATH, "mem_monitor");
+    if (fd < 0) return;
+
+    mgr->mem_monitor_fd = fd;
+
+    MEMZERO(log);
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    ts = ((uint64_t)now.tv_sec * 1000000) + (now.tv_nsec / 1000);
+
+    snprintf(log, sizeof(log), "%s,%" PRIu64 ",%s\n", __func__, ts, version);
+    ret = write(fd, log, strlen(log));
+    if (ret == -1)
+    {
+        LOGE("%s: could not  write log: %s", __func__, strerror(errno));
+        return;
+    }
+
+    LOGI("%s: fd = %d", __func__, mgr->mem_monitor_fd);
+    mem_monitor_init(fd, CONFIG_FSM_MEM_LOG_NUMLINES);
+
+    return;
+}
+
+
+void
+fsm_reinit_mem_monitor(void)
+{
+    char log[MEM_LOG_ITEM_LEN];
+    char version[] = "1.0";
+    struct timespec now;
+    struct fsm_mgr *mgr;
+    uint64_t ts;
+    int ret;
+    int fd;
+
+    mgr = fsm_get_mgr();
+    if (mgr->mem_monitor_fd > 0)
+    {
+        close(mgr->mem_monitor_fd);
+        mgr->mem_monitor_fd = -1;
+    }
+
+    fd = os_file_open_fd(CONFIG_FSM_MEM_LOG_PATH, "mem_monitor");
+    if (fd < 0) return;
+
+    mgr->mem_monitor_fd = fd;
+
+    MEMZERO(log);
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    ts = ((uint64_t)now.tv_sec * 1000000) + (now.tv_nsec / 1000);
+
+    snprintf(log, sizeof(log), "%s,%" PRIu64 ",%s\n", __func__, ts, version);
+    ret = write(fd, log, strlen(log));
+    if (ret == -1)
+    {
+        LOGE("%s: could not  write log: %s", __func__, strerror(errno));
+        return;
+    }
+
+    LOGI("%s: fd = %d", __func__, mgr->mem_monitor_fd);
+    mem_monitor_init(fd, CONFIG_FSM_MEM_LOG_NUMLINES);
+
+    return;
+}
+
+
+void
+fsm_mem_monitor_plugin_init_enter(char *session)
+{
+    char log[MEM_LOG_ITEM_LEN];
+    struct mem_usage mem;
+    struct timespec now;
+    struct fsm_mgr *mgr;
+    uint64_t ts;
+    int ret;
+
+    MEMZERO(mem);
+    fsm_get_memory(&mem);
+
+    MEMZERO(log);
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    ts = ((uint64_t)now.tv_sec * 1000000) + (now.tv_nsec / 1000);
+
+    snprintf(log, sizeof(log), "%s,%" PRIu64 ",%s,%u,%u\n",
+             __func__, ts, session, mem.curr_real_mem, mem.curr_virt_mem);
+
+    mgr = fsm_get_mgr();
+    LOGI("%s: fd = %d", __func__, mgr->mem_monitor_fd);
+
+    ret = write(mgr->mem_monitor_fd, log, strlen(log));
+    if (ret == -1) LOGE("%s: could not  write log: %s", __func__, strerror(errno));
+}
+
+
+void
+fsm_mem_monitor_plugin_init_exit(char *session)
+{
+    char log[MEM_LOG_ITEM_LEN];
+    struct mem_usage mem;
+    struct fsm_mgr *mgr;
+    struct timespec now;
+    uint64_t ts;
+    int ret;
+
+    MEMZERO(mem);
+    fsm_get_memory(&mem);
+
+    MEMZERO(log);
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    ts = ((uint64_t)now.tv_sec * 1000000) + (now.tv_nsec / 1000);
+
+    snprintf(log, sizeof(log), "%s,%" PRIu64 ",%s,%u,%u\n",
+             __func__, ts, session, mem.curr_real_mem, mem.curr_virt_mem);
+
+    mgr = fsm_get_mgr();
+    ret = write(mgr->mem_monitor_fd, log, strlen(log));
+    if (ret == -1) LOGE("%s: could not  write log: %s", __func__, strerror(errno));
+}
+
+#endif /* CONFIG_MEM_MONITOR */

@@ -1,7 +1,7 @@
 {
   "name": "Open_vSwitch",
-  "version": "7.11.414",
-  "cksum": "1239352003 360899",
+  "version": "7.11.420",
+  "cksum": "3924835079 366093",
   "tables": {
     "AWLAN_Node": {
       "columns": {
@@ -282,6 +282,16 @@
     },
     "PKI_Config": {
       "columns": {
+        "label": {
+          "type": {
+            "key": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "min": 1,
+            "max": 1
+          }
+        },
         "server_url": {
           "type": {
             "key": {
@@ -290,23 +300,73 @@
             }
           }
         },
-        "status": {
-          "type": {
-            "key": {
-              "type": "string",
-              "maxLength": 50
-            }
-          }
-        },
         "auth_method": {
-          "type": {
-            "key": {
+           "type": {
+             "key": {
               "type": "string",
               "maxLength": 20
             }
           }
+        },
+        "auth_config": {
+          "type": {
+            "key": {
+                "type": "string",
+                "maxLength": 64
+            },
+            "value": {
+                "type": "string",
+                "maxLength": 512
+            },
+            "min": 0,
+            "max": "unlimited"
+          }
+        },
+        "renew": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "status": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "enrolling",
+                  "overdue",
+                  "expired",
+                  "success",
+                  "error_timeout",
+                  "error_enroll",
+                  "error_cert",
+                  "error_device"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": 1
+          },
+          "ephemeral": true
+        },
+        "os_persist": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            }
+          }
         }
       },
+      "indexes": [
+        [
+          "label"
+        ]
+      ],
       "isRoot": true
     },
     "Alarms": {
@@ -2988,6 +3048,37 @@
             "max": 1
           }
         },
+        "mbo": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "oce_min_rssi_dbm": {
+          "type": {
+            "key": {
+              "type": "integer",
+              "minInteger": -127,
+              "maxInteger": 127
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "oce_retry_delay_sec": {
+          "type": {
+            "key": {
+              "type": "integer",
+              "minInteger": 0,
+              "maxInteger": 255
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
         "min_hw_mode": {
           "type": {
             "key": {
@@ -3721,6 +3812,37 @@
               "type": "integer",
               "minInteger": 1,
               "maxInteger": 4096
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "mbo": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "oce_min_rssi_dbm": {
+          "type": {
+            "key": {
+              "type": "integer",
+              "minInteger": -127,
+              "maxInteger": 127
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "oce_retry_delay_sec": {
+          "type": {
+            "key": {
+              "type": "integer",
+              "minInteger": 0,
+              "maxInteger": 255
             },
             "min": 0,
             "max": 1
@@ -7398,6 +7520,42 @@
             },
             "min": 0,
             "max": 1
+          }
+        }
+      },
+      "isRoot": true
+    },
+    "Hotspot_Steering": {
+      "columns": {
+        "soft_snr_dbm": {
+          "type": {
+            "key": {
+              "type": "integer",
+              "minInteger": -127,
+              "maxInteger": 127
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "hard_snr_dbm": {
+          "type": {
+            "key": {
+              "type": "integer",
+              "minInteger": -127,
+              "maxInteger": 127
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "if_name": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 0,
+              "maxLength": 32
+            }
           }
         }
       },
@@ -11375,7 +11533,7 @@
                 "type": {
                     "key": {
                         "type": "string",
-                        "maxLength": 512
+                        "maxLength": 10240
                     },
                     "min": 0,
                     "max": 1
@@ -16428,6 +16586,89 @@
         }
       },
       "isRoot": true
+    },
+    "AdaptiveQoS": {
+      "columns": {
+        "reflectors_list": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2048
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "rand_reflectors": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "num_pingers": {
+          "type": {
+            "key": {
+              "type": "integer",
+              "minInteger": 1
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "ping_interval": {
+          "type": {
+            "key": {
+              "type": "integer",
+              "minInteger": 1
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "active_thresh_kbps": {
+            "type": {
+              "key": {
+                "type": "integer",
+                "minInteger": 1
+              },
+              "min": 0,
+              "max": 1
+            }
+          },
+        "other_config": {
+          "type": {
+            "key": "string",
+              "value": {
+               "type": "string",
+               "maxLength": 128
+              },
+              "min": 0,
+              "max": 32
+          }
+        },
+        "latency_measure_type": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "active",
+                  "passive"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": 1
+          }
+        }
+       },
+       "isRoot": true,
+       "maxRows": 1
     }
   }
 }

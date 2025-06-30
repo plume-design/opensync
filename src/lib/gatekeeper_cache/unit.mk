@@ -40,6 +40,8 @@ UNIT_SRC += src/gatekeeper_cache_flow_add.c
 UNIT_SRC += src/gatekeeper_cache_flow_lookup.c
 UNIT_SRC += src/gatekeeper_cache_flow_del.c
 UNIT_SRC += src/gatekeeper_cache_flush.c
+UNIT_SRC += src/gatekeeper_cache_persistence.c
+UNIT_SRC += src/gatekeeper_restore_cache.c
 UNIT_SRC += src/gatekeeper_cache_cmp.c
 
 UNIT_CFLAGS := -I$(UNIT_PATH)/inc
@@ -54,3 +56,4 @@ UNIT_DEPS += src/lib/log
 UNIT_DEPS += src/lib/ds
 UNIT_DEPS += src/lib/ovsdb
 UNIT_DEPS += src/lib/fsm_policy
+UNIT_DEPS += src/lib/gatekeeper_msg

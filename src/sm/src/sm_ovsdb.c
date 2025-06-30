@@ -84,10 +84,6 @@ static ovsdb_update_monitor_t sm_update_awlan_node;
 static struct schema_AWLAN_Node awlan_node;
 #endif
 
-#ifdef CONFIG_SM_UPLINK_STATS
-ovsdb_table_t table_Connection_Manager_Uplink;
-#endif /* CONFIG_SM_UPLINK_STATS */
-
 static ovsdb_update_monitor_t sm_update_wifi_radio_state;
 static ds_tree_t sm_radio_list =
 DS_TREE_INIT(
@@ -436,23 +432,15 @@ bool sm_update_stats_config(sm_stats_config_t *stats_cfg,
     switch(stats_cfg->sm_report_type)
     {
         case STS_REPORT_NEIGHBOR:
-            sm_neighbor_report_request(&radio->config, &req);
             break;
         case STS_REPORT_CLIENT:
-            sm_client_report_request(&radio->config, &req);
             break;
         case STS_REPORT_SURVEY:
-            sm_survey_report_request(&radio->config, &req);
             break;
         case STS_REPORT_DEVICE:
             sm_device_report_request(&req);
             break;
         case STS_REPORT_CAPACITY:
-#ifdef CONFIG_SM_CAPACITY_QUEUE_STATS
-            sm_capacity_report_request(&radio->config, &req);
-#else
-            LOGW("Skip configuring capacity stats (stats not supported!)");
-#endif
             break;
         case STS_REPORT_RSSI:
             sm_rssi_report_request(&radio->config, &req);
@@ -789,77 +777,6 @@ static void sm_update_wifi_radio_state_cb(ovsdb_update_monitor_t *self)
     sm_radio_cfg_update();
 }
 
-#ifdef CONFIG_SM_UPLINK_STATS
-
-/******************************************************************************
- *                          CONNECTION MANAGER UPLINK
- *****************************************************************************/
-
-static
-bool sm_util_is_supported_iftype(const char *if_type)
-{
-    bool ret;
-
-    ret = !strcmp(if_type, SCHEMA_CONSTS_IF_TYPE_ETH) ||
-          !strcmp(if_type, SCHEMA_CONSTS_IF_TYPE_LTE) ||
-          !strcmp(if_type, SCHEMA_CONSTS_IF_TYPE_VLAN) ||
-          !strcmp(if_type, SCHEMA_CONSTS_IF_TYPE_PPPOE);
-
-    return ret;
-}
-
-void callback_Connection_Manager_Uplink(ovsdb_update_monitor_t *mon,
-                                        struct schema_Connection_Manager_Uplink *old_row,
-                                        struct schema_Connection_Manager_Uplink *uplink)
-{
-    sm_radio_state_t               *radio;
-
-    LOGD("%s mon_type = %d", __func__, mon->mon_type);
-
-    switch (mon->mon_type) {
-        default:
-        case OVSDB_UPDATE_ERROR:
-            LOGW("%s: mon upd error: %d", __func__, mon->mon_type);
-            return;
-
-        case OVSDB_UPDATE_DEL:
-            break;
-        case OVSDB_UPDATE_NEW:
-        case OVSDB_UPDATE_MODIFY:
-            if (ovsdb_update_changed(mon, SCHEMA_COLUMN(Connection_Manager_Uplink, is_used)))
-            {
-               if ((uplink->is_used_exists && uplink->is_used) &&
-                    sm_util_is_supported_iftype(uplink->if_type))
-               {
-                   ds_tree_foreach(&sm_radio_list, radio)
-                   {
-                       WARN_ON(!sm_client_report_uplink_change(&radio->config, uplink->if_type));
-                   }
-               }
-            }
-            break;
-    }
-}
-
-bool
-sm_cmu_get_type_for_used_link(char *iftype, size_t size)
-{
-    struct schema_Connection_Manager_Uplink  uplink;
-    json_t                                   *where;
-    bool                                     r;
-
-    memset(&uplink, 0, sizeof(uplink));
-
-    where = ovsdb_where_simple_typed(SCHEMA_COLUMN(Connection_Manager_Uplink, is_used), "true", OCLM_BOOL);
-    r = ovsdb_table_select_one_where(&table_Connection_Manager_Uplink, where, &uplink);
-    if (r)
-        strscpy(iftype, uplink.if_type, size);
-
-    return r;
-}
-
-#endif /* CONFIG_SM_UPLINK_STATS */
-
 static void
 callback_RADIUS(
         ovsdb_update_monitor_t  *mon,
@@ -1141,11 +1058,6 @@ oom:
  *****************************************************************************/
 int sm_setup_monitor(void)
 {
-#ifdef CONFIG_SM_UPLINK_STATS
-    OVSDB_TABLE_INIT(Connection_Manager_Uplink, is_used);
-    OVSDB_TABLE_MONITOR(Connection_Manager_Uplink, false);
-#endif /* CONFIG_SM_UPLINK_STATS */
-
     /* Monitor AWLAN_Node */
     if (!ovsdb_update_monitor(
             &sm_update_awlan_node,

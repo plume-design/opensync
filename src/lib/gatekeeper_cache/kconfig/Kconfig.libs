@@ -4,4 +4,10 @@ menu "lib_gatekeeper_cache Configuration"
         default y
         help
             Library for caching Gatekeeper Service (IP flows and flow attributes)
+
+    config GATEKEEPER_CACHE_LRU_SIZE
+        depends on LIBGATEKEEPER_CACHE
+        int "Set gatekeeper cache LRU size"
+        default 8 if PLATFORM_IS_NATIVE
+        default 32000
 endmenu

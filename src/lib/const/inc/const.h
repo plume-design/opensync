@@ -314,6 +314,27 @@ extern bool             _c_get_param_by_key(c_item_t *list, int list_sz, int key
  */
 #define C_FIELD_SZ(type, field)     sizeof(((type *)NULL)->field)
 
+
+/*
+ * These are used to help working with bit-packed values.
+ * Bit-packed values are often found in protocol headers, hw
+ * register definitions, etc.
+ *
+ * #define REG_CHAN C_MASK_GEN(7, 2) // =0xfc
+ * #define REG_WIDTH 0x03
+ *
+ * int reg = C_MASK_PREP(REG_CHAN, 4)
+ *         | C_MASK_PREP(REG_WIDTH, 1);
+ *
+ * int chan = C_MASK_GET(REG_CHAN, reg); // =4
+ * int width = C_MASK_GET(REG_WIDTH, reg); // =1
+ */
+#define __bf_shf(x) (__builtin_ffsll(x) - 1)
+#define C_BIT(x) (1ULL << (x))
+#define C_MASK_GEN(high_, low_) (((1 << (high_)) - 1) + (1 << (high_)) - ((1 << (low_)) - 1))
+#define C_MASK_PREP(mask_, value_) (((typeof(mask_))(value_) << __bf_shf(mask_)) & (mask_))
+#define C_MASK_GET(mask_, value) ((typeof(mask_))(((value) & (mask_)) >> __bf_shf(mask_)))
+
 /*
  * Bound checking helpers for nested, and variable-length
  * encoded structures.
@@ -360,5 +381,81 @@ extern bool             _c_get_param_by_key(c_item_t *list, int list_sz, int key
         rem = (len) - C_FIELD_END(type, field); \
         buf_safe; \
     })
+
+/*
+ * =============================================================================
+ * c_fmt(), c_fmt_arg() is used to annotate functions that accept a printf-like
+ * syntax. Used for enriched compiler warnings.
+ */
+#if defined(__GNUC__)
+/* `fmt` specifies the argument number that accepts a printf-like format string */
+#define c_fmt_arg(fmt) __attribute__((format_arg(fmt)))
+/*
+ * `fmt` specifies the argument number that accepts a printf-like format, arg is
+ * the first argument of the variable argument list
+ */
+#define c_fmt(fmt, arg) __attribute__((format(printf, fmt, arg)))
+
+#else
+#define c_fmt_arg(fmt)
+#define c_fmt(fmt, arg)
+#endif /* defined(__GNUC__) */
+
+/*
+ * =============================================================================
+ * c_auto() and c_auto_ptr() are used to define auto-cleanup types. For example:
+ *
+ * c_auto(int) socket;
+ * c_auto_ptr(FILE) f;
+ *
+ * In the above example, int_cleanup() and FILE_ptr_cleanup() will be called when
+ * the variables go out of scope.
+ *
+ * c_weak is used for defining weak symbols.
+ * =============================================================================
+ */
+#if defined(__GNUC__)
+#define c_auto(x) x __attribute__((cleanup(x##_cleanup), unused))
+#define c_auto_ptr(x) *x __attribute__((cleanup(x##_ptr_##_cleanup), unused))
+#define c_weak __attribute__((weak))
+#else
+#warn GCC attributes not supported by compiler, c_auto(), c_auto_ptr(), c_weak will not be available.
+#endif
+
+/*
+ * =============================================================================
+ * Thread local definitions
+ * =============================================================================
+ */
+#if __STDC_VERSION__ >= 201112L /* C11 and above */
+#define c_thread_local _Thread_local
+#elif defined(__GNUC__)
+#define c_thread_local __thread
+#else
+#error Unsupported compiler, c_thread_local will not be available.
+#endif
+
+/*
+ * =============================================================================
+ * max_align_t was introduced in C11, defined it for compilers <C11
+ * =============================================================================
+ */
+#if __STDC_VERSION__ < 201112L /* below C11 */
+union __max_align_t
+{
+        void *__ptr;
+        long double __ld;
+        long long __ll;
+};
+typedef union __max_align_t max_align_t;
+#endif
+
+/*
+ * =============================================================================
+ * Concatenation macro, useful for append line __LINE__
+ * =============================================================================
+ */
+#define __C_CONCAT(x, y) x ## y
+#define C_CONCAT(x, y) __C_CONCAT(x, y)
 
 #endif /* CONST_H_INCLUDED */

@@ -27,6 +27,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifndef VM_H_INCLUDED
 #define VM_H_INCLUDED
 
+#include <stdbool.h>
+#include "rts_slob.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -87,9 +90,19 @@ extern "C" {
 #define WE_OP_WEA 48
 #define WE_OP_RES 49
 #define WE_OP_EVA 50
+#define WE_OP_RUS 51
+
+struct we_mem_pool
+{
+    bool initialized;
+    struct rts_pool we_mem_pool;
+};
+
+struct we_mem_pool *we_get_mem_pool_mgr(void);
 
 #ifdef __cplusplus
 }
+
 #endif
 
 #endif /* VM_H_INCLUDED */

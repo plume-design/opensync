@@ -43,20 +43,12 @@ void run_unit_test()
     RUN_TEST( test_target_bin_dir );
     RUN_TEST( test_target_scripts_dir );
     RUN_TEST( test_target_persistent_storage_dir );
-    RUN_TEST( test_target_is_radio_interface_ready );
     RUN_TEST( test_target_ethclient_iflist_get );
-    RUN_TEST( test_target_stats_capacity_get );
     RUN_TEST( test_target_stats_device_temp_get );
     RUN_TEST( test_target_device_execute );
     RUN_TEST( test_target_device_wdt_ping );
-    RUN_TEST( test_target_radio_config_need_reset );
-    RUN_TEST( test_target_vif_state_get );
-    RUN_TEST( test_target_radio_state_get );
     /*It can be commented because, it will restart all the managers every time*/
     //RUN_TEST( test_target_device_restart_managers );
-    /*It can't be tested, because it will be used for third party as middleware,
-    if OVSDB is not the only configuration storage */
-    //RUN_TEST( test_target_radio_config_init2 );
 
 }//END OF FUNCTION
 

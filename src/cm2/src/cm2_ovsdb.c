@@ -1363,8 +1363,11 @@ cm2_ovsdb_is_ipv6_global_link(const char *if_name)
 
         if (ipv6_addr.address_exists) {
             LOGD("%s: ipv6 addr: %s", if_name, ipv6_addr.address);
-            if (!cm2_osn_is_ipv6_global_link(if_name, ipv6_addr.address))
+            if (!cm2_osn_is_ipv6_global_link(if_name, ipv6_addr.address)
+                    && !cm2_osn_is_ipv6_ULA_link(if_name, ipv6_addr.address))
+            {
                 continue;
+            }
 
             return true;
         }
@@ -2510,13 +2513,10 @@ cm2_Connection_Manager_Uplink_handle_update(
     if (ovsdb_update_changed(mon, SCHEMA_COLUMN(Connection_Manager_Uplink, has_L2))) {
         LOGN("%s: Uplink table: detected has_L2 change = %d", uplink->if_name, uplink->has_L2);
 
-        if (uplink->has_L2) {
-            if (!uplink->priority_exists) {
-                def_priority = cm2_util_set_defined_priority(uplink->if_name, uplink->if_type);
-                LOGI("%s: Set default priority: %d", uplink->if_name, def_priority);
-                cm2_ovsdb_connection_update_priority(uplink->if_name, def_priority);
-            }
-            cm2_set_ble_onboarding_link_state(true, uplink->if_type, uplink->if_name);
+        if (uplink->has_L2 && !uplink->priority_exists) {
+            def_priority = cm2_util_set_defined_priority(uplink->if_name, uplink->if_type);
+            LOGI("%s: Set default priority: %d", uplink->if_name, def_priority);
+            cm2_ovsdb_connection_update_priority(uplink->if_name, def_priority);
         }
 
         if (!cm2_uplink_skip_L2_handle(uplink)) {
@@ -2598,28 +2598,6 @@ cm2_Connection_Manager_Uplink_handle_update(
     if (ovsdb_update_changed(mon, SCHEMA_COLUMN(Connection_Manager_Uplink, unblock_ts))) {
         LOGN("%s: Uplink table: detected unblock_ts change = %s", uplink->if_name, uplink->unblock_ts);
         cm2_update_unblock_ts(uplink);
-    }
-
-    if (uplink->is_used && !g_state.connected) {
-        bool ble_update = false;
-
-        if (ovsdb_update_changed(mon, SCHEMA_COLUMN(Connection_Manager_Uplink, unreachable_router_counter))) {
-            cm2_ble_onboarding_set_status(uplink->unreachable_router_counter == 0, BLE_ONBOARDING_STATUS_ROUTER_OK);
-            ble_update = true;
-        }
-
-        if (ovsdb_update_changed(mon, SCHEMA_COLUMN(Connection_Manager_Uplink, unreachable_cloud_counter))) {
-            cm2_ble_onboarding_set_status(uplink->unreachable_cloud_counter == 0, BLE_ONBOARDING_STATUS_CLOUD_OK);
-            ble_update = true;
-        }
-
-        if (ovsdb_update_changed(mon, SCHEMA_COLUMN(Connection_Manager_Uplink, unreachable_internet_counter))) {
-            cm2_ble_onboarding_set_status(uplink->unreachable_internet_counter == 0, BLE_ONBOARDING_STATUS_INTERNET_OK);
-            ble_update = true;
-        }
-
-        if (ble_update)
-            cm2_ble_onboarding_apply_config();
     }
     /* End of State part */
 
@@ -2990,8 +2968,11 @@ void callback_IP_Interface(ovsdb_update_monitor_t *mon,
                         strlen(ipv6_addr.address) >= 4) {
                         LOGI("%s: get ipv6 addr from IPv6_Address table: %s", ip->if_name, ipv6_addr.address);
 
-                        if (!cm2_osn_is_ipv6_global_link(ip->if_name, ipv6_addr.address))
+                        if (!cm2_osn_is_ipv6_global_link(ip->if_name, ipv6_addr.address)
+                                && !(cm2_osn_is_ipv6_ULA_link(ip->if_name, ipv6_addr.address)))
+                        {
                             continue;
+                        }
 
                         ipv6 = true;
                    }
@@ -3523,8 +3504,6 @@ int cm2_ovsdb_init(void)
              "(Failed to setup tables)");
         return -1;
     }
-
-    cm2_ovsdb_ble_init();
 
     return 0;
 }

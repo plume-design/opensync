@@ -676,7 +676,7 @@ ipthreat_process_action(struct fsm_session *session, int action,
         net_header_logt(net_parser);
     }
 
-    fsm_dpi_set_plugin_decision(session, net_parser, state);
+    fsm_dpi_set_plugin_decision(session, acc, state);
 }
 
 
@@ -791,7 +791,7 @@ ipthreat_dpi_process_message(struct ipthreat_dpi_session *ds_session)
     if (acc->direction == NET_MD_ACC_LAN2LAN_DIR)
     {
         LOGD("%s: Ignoring lan2lan direction packets.",__func__);
-        fsm_dpi_set_plugin_decision(session, net_parser, FSM_DPI_PASSTHRU);
+        fsm_dpi_set_plugin_decision(session, acc, FSM_DPI_PASSTHRU);
         return;
     }
 
@@ -864,7 +864,7 @@ clean_policy_req:
     fsm_policy_free_request(policy_request);
 
 error:
-    fsm_dpi_set_plugin_decision(session, net_parser, FSM_DPI_PASSTHRU);
+    fsm_dpi_set_plugin_decision(session, acc, FSM_DPI_PASSTHRU);
 }
 
 

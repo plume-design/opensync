@@ -37,23 +37,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define LINE_BUFF_LEN        (2048)
 #define MAX_TOKENS           (30)
 
-#define OVS_DUMP_UFID_PREFIX   "ufid:"
-#define OVS_DUMP_ETH_SRC_PREFIX   "eth(src="
-#define OVS_DUMP_ETH_DST_PREFIX   "dst="
-#define OVS_DUMP_ETH_TYPE_PREFIX  "eth_type("
-#define OVS_DUMP_PKTS_PREFIX      " packets:"
-#define OVS_DUMP_BYTES_PREFIX     " bytes:"
-#define OVS_DUMP_VLAN_ID_PREFIX   "vlan(vid="
-#define OVS_DUMP_VLAN_ETH_TYPE_PREFIX "encap(eth_type("
-
-#define OVS_DUMP_UFID_PREFIX_LEN (5) // Length of "ufid:"
-#define OVS_DUMP_ETH_SRC_PREFIX_LEN  (8) // Length of "eth(src="
-#define OVS_DUMP_ETH_DST_PREFIX_LEN  (4) // Length of "dst="
-#define OVS_DUMP_ETH_TYPE_PREFIX_LEN (9) // Length of "eth_type("
-#define OVS_DUMP_PKTS_PREFIX_LEN     (9) // Length of "packets:"
-#define OVS_DUMP_BYTES_PREFIX_LEN    (7) // Length of "bytes:"
-#define OVS_DUMP_VLAN_ID_PREFIX_LEN  (9) // Lenghth of "vlan(vid="
-#define OVS_DUMP_VLAN_ETH_TYPE_PREFIX_LEN  (15) // Length of "encap(eth_type("
 #define MAX_HISTOGRAMS               (1)
 
 #define ETH_DEVICES_TAG "${@eth_devices}"
@@ -86,8 +69,6 @@ struct iface_type
 };
 
 struct lan_stats_instance;
-
-typedef void (*collect_flows_fn)(struct lan_stats_instance *);
 
 static const struct iface_type iface_type_map[] =
 {
@@ -133,27 +114,6 @@ static const struct iface_type iface_type_map[] =
     },
 };
 
-typedef struct dp_ctl_stats_
-{
-    ovs_u128_                 ufid;
-    char                      smac_addr[MAC_ADDR_STR_LEN];
-    char                      dmac_addr[MAC_ADDR_STR_LEN];
-    os_macaddr_t              smac_key;
-    os_macaddr_t              dmac_key;
-    char                      eth_type[16];
-    char                      vlan_eth_type[16];
-    unsigned int              eth_val;
-    unsigned int              vlan_eth_val;
-    unsigned int              vlan_id;
-    unsigned long long        pkts;
-    unsigned long long        bytes;
-    uplink_iface_type         uplink_if_type;
-    bool                      uplink_changed;
-    time_t                    stime;
-
-    ds_tree_node_t  dp_tnode;
-} dp_ctl_stats_t;
-
 typedef struct lan_stats_instance
 {
     fcm_collect_plugin_t *collector;
@@ -161,7 +121,6 @@ typedef struct lan_stats_instance
     char            *name;
     char            *parent_tag;
     struct net_md_aggregator *aggr;
-    collect_flows_fn collect_flows;
     ds_tree_node_t  lan_stats_node;
     struct fcm_session *session;
     struct fcm_filter_client *c_client;
@@ -207,18 +166,13 @@ void
 lan_stats_exit_mgr(void);
 
 void
-lan_stats_flows_filter(lan_stats_instance_t *lan_stats_instance, dp_ctl_stats_t *stats);
-
-void
-lan_stats_collect_flows(lan_stats_instance_t *lan_stats_instance);
-
-void
 link_stats_collect_cb(uplink_iface_type uplink_if_type);
-
-void
-lan_stats_add_uplink_info(lan_stats_instance_t *lan_stats_instance, dp_ctl_stats_t *stats);
 
 bool
 lan_stats_is_mac_in_tag(char *tag, os_macaddr_t *mac);
 
+void lan_stats_process_aggr(struct net_md_aggregator *to, struct net_md_aggregator *from);
+
+void
+lan_stats_collect_cb(fcm_collect_plugin_t *collector);
 #endif /* LAN_STATS_H_INCLUDED */

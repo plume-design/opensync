@@ -52,6 +52,7 @@ enum osw_stats_sta_id {
     OSW_STATS_STA_RX_RETRIES,
     OSW_STATS_STA_RX_ERRORS,
     OSW_STATS_STA_RX_RATE_MBPS,
+    OSW_STATS_STA_VIF_ADDRESS,
 
     OSW_STATS_STA_MAX__, /* keep last */
 };

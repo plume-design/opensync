@@ -178,6 +178,13 @@ osw_conf_build_vif_cb(const struct osw_state_vif_info *info,
             vif->u.ap.ft_pmk_r1_max_key_lifetime_sec = info->drv_state->u.ap.ft_pmk_r1_max_key_lifetime_sec;
             vif->u.ap.ft_pmk_r1_push = info->drv_state->u.ap.ft_pmk_r1_push;
             vif->u.ap.ft_psk_generate_local = info->drv_state->u.ap.ft_psk_generate_local;
+            vif->u.ap.ft_mobility_domain = info->drv_state->u.ap.ft_mobility_domain;
+            vif->u.ap.mbo = info->drv_state->u.ap.mbo;
+            vif->u.ap.oce = info->drv_state->u.ap.oce;
+            vif->u.ap.oce_min_rssi_enable = info->drv_state->u.ap.oce_min_rssi_enable;
+            vif->u.ap.oce_min_rssi_dbm = info->drv_state->u.ap.oce_min_rssi_dbm;
+            vif->u.ap.oce_retry_delay_sec = info->drv_state->u.ap.oce_retry_delay_sec;
+            vif->u.ap.max_sta = info->drv_state->u.ap.max_sta;
             break;
         case OSW_VIF_AP_VLAN:
             break;
@@ -807,23 +814,28 @@ struct ds_tree *osw_conf_clone(struct ds_tree *src)
     return phy_tree;
 }
 
+#define osw_check_null_exit(a, b) \
+    if ((a) == NULL && (b) == NULL) return 0; \
+    if ((a) == NULL && (b) != NULL) return -1; \
+    if ((a) != NULL && (b) == NULL) return 1;
+
+#define osw_check_null(r, a, b) \
+    r = (a) == NULL ? -1 \
+      : (b) == NULL ? 1 \
+      : 0; \
+    if (r != 0) return r;
+
 /* This helper can be used to compare 2 trees
  * built in the same way and in the same order
  * it will return non equal 2 trees that contains
  * equal elements but in different order.
  */
-#define osw_check_null(r, a, b) \
-    r = a == NULL ? -1 \
-      : b == NULL ? 1 \
-      : 0; \
-    if (r != 0) return r;
-
 #define osw_ds_tree_pair_each(ta, tb, pa, pb)       \
     osw_check_null(r, ta, tb) \
     if (ds_tree_is_empty(ta) == true) { \
-        if(ds_tree_is_empty(tb) == true) \
-            return 0;\
-        return -1;\
+        if(ds_tree_is_empty(tb) == false) \
+            return -1;\
+        /* both empty => nop */ \
     } else { \
         if(ds_tree_is_empty(tb) == true)\
             return 1;\
@@ -831,14 +843,14 @@ struct ds_tree *osw_conf_clone(struct ds_tree *src)
     for (pa = ds_tree_head(ta), pb = ds_tree_head(tb) ; pa != NULL && pb != NULL; pa = ds_tree_next(ta, pa), pb = ds_tree_next(tb, pb))
 
 #define osw_ds_tree_pair_post(r, pa, pb)     \
-    r = pa != NULL ? 1 \
-      : pb != NULL ? -1 \
+    r = (pa) != NULL ? 1 \
+      : (pb) != NULL ? -1 \
       : 0; \
     if (r != 0) return r;
 
 #define osw_int_compare(r, a, b) \
-     r = a < b ? -1 \
-       : a > b ? 1 \
+     r = (a) < (b) ? -1 \
+       : (a) > (b) ? 1 \
        : 0; \
        if (r != 0) return r;
 
@@ -849,7 +861,7 @@ struct ds_tree *osw_conf_clone(struct ds_tree *src)
 
 #define osw_str_compare(r, a, b) \
      osw_check_null(r, a, b) \
-     r = strncmp(a, b, sizeof(*(a))); \
+     r = STRSCMP(a, b); \
      if (r != 0) return r;
 
 static int osw_conf_cmp_vif_wps_cred_list(struct ds_dlist *a, struct ds_dlist *b)
@@ -999,7 +1011,6 @@ static int osw_wpa_compare(struct osw_wpa *a, struct osw_wpa *b)
     osw_int_compare(r, a->pmf, b->pmf);
     osw_int_compare(r, a->beacon_protection, b->beacon_protection);
     osw_int_compare(r, a->group_rekey_seconds, b->group_rekey_seconds);
-    osw_int_compare(r, a->ft_mobility_domain, b->ft_mobility_domain);
 
     return 0;
 }
@@ -1151,19 +1162,6 @@ static int osw_neigh_compare(struct osw_neigh *a, struct osw_neigh *b)
     return 0;
 }
 
-static int osw_neigh_ft_compare(struct osw_neigh_ft *a, struct osw_neigh_ft *b)
-{
-    int r;
-    r = osw_hwaddr_cmp(&a->bssid, &b->bssid);
-    if (r != 0) return r;
-    r = osw_ft_encr_key_cmp(&a->ft_encr_key, &b->ft_encr_key);
-    if (r != 0) return r;
-    r = osw_nas_id_cmp(&a->nas_identifier, &b->nas_identifier);
-    if (r != 0) return r;
-
-    return 0;
-}
-
 static int osw_conf_cmp_vif(struct osw_conf_vif *a, struct osw_conf_vif *b)
 {
     struct osw_conf_acl *a_acl, *b_acl;
@@ -1172,7 +1170,7 @@ static int osw_conf_cmp_vif(struct osw_conf_vif *a, struct osw_conf_vif *b)
     struct osw_conf_neigh_ft *a_neigh_ft, *b_neigh_ft;
     int r;
 
-    osw_check_null(r, a, b);
+    osw_check_null_exit(a, b);
 
     osw_int_compare(r, a->enabled, b->enabled);
 
@@ -1216,12 +1214,13 @@ static int osw_conf_cmp_vif(struct osw_conf_vif *a, struct osw_conf_vif *b)
                 r = osw_neigh_compare(&a_neigh->neigh, &b_neigh->neigh);
                 if (r != 0) return r;
             }
-            osw_ds_tree_pair_each(&a->u.ap.neigh_ft_tree, &b->u.ap.neigh_ft_tree, a_neigh_ft, b_neigh_ft) {
-                r = osw_neigh_ft_compare(&a_neigh_ft->neigh_ft, &b_neigh_ft->neigh_ft);
-                if (r != 0) return r;
-            }
             osw_ds_tree_pair_post(r, a_neigh, b_neigh);
 
+            osw_ds_tree_pair_each(&a->u.ap.neigh_ft_tree, &b->u.ap.neigh_ft_tree, a_neigh_ft, b_neigh_ft) {
+                r = osw_neigh_ft_cmp(&a_neigh_ft->neigh_ft, &b_neigh_ft->neigh_ft);
+                if (r != 0) return r;
+            }
+            osw_ds_tree_pair_post(r, a_neigh_ft, b_neigh_ft);
 
             osw_conf_cmp_vif_wps_cred_list(&a->u.ap.wps_cred_list, &b->u.ap.wps_cred_list);
             osw_conf_cmp_vif_radius_list(&a->u.ap.radius_list, &b->u.ap.radius_list);
@@ -1236,6 +1235,21 @@ static int osw_conf_cmp_vif(struct osw_conf_vif *a, struct osw_conf_vif *b)
             osw_int_compare(r, a->u.ap.multi_ap.backhaul_bss, b->u.ap.multi_ap.backhaul_bss);
             osw_int_compare(r, a->u.ap.mbss_mode, b->u.ap.mbss_mode);
             osw_int_compare(r, a->u.ap.mbss_group, b->u.ap.mbss_group);
+            osw_int_compare(r, a->u.ap.ft_over_ds, b->u.ap.ft_over_ds);
+            osw_int_compare(r, a->u.ap.ft_pmk_r0_key_lifetime_sec, b->u.ap.ft_pmk_r0_key_lifetime_sec);
+            osw_int_compare(r, a->u.ap.ft_pmk_r1_max_key_lifetime_sec, b->u.ap.ft_pmk_r1_max_key_lifetime_sec);
+            osw_int_compare(r, a->u.ap.ft_pmk_r1_push, b->u.ap.ft_pmk_r1_push);
+            osw_int_compare(r, a->u.ap.ft_psk_generate_local, b->u.ap.ft_psk_generate_local);
+            osw_int_compare(r, a->u.ap.ft_mobility_domain, b->u.ap.ft_mobility_domain);
+            osw_int_compare(r, a->u.ap.mbo, b->u.ap.mbo);
+            osw_int_compare(r, a->u.ap.oce, b->u.ap.oce);
+            osw_int_compare(r, a->u.ap.oce_min_rssi_enable, b->u.ap.oce_min_rssi_enable);
+            osw_int_compare(r, a->u.ap.oce_min_rssi_dbm, b->u.ap.oce_min_rssi_dbm);
+            osw_int_compare(r, a->u.ap.oce_retry_delay_sec, b->u.ap.oce_retry_delay_sec);
+            osw_int_compare(r, a->u.ap.max_sta, b->u.ap.max_sta);
+
+            r = osw_ft_encr_key_cmp(&a->u.ap.ft_encr_key, &b->u.ap.ft_encr_key);
+            if (r != 0) return r;
 
             /* FIXME: Currently there is only is equal funciton, there is no cmp function */
             r = osw_passpoint_is_equal(&a->u.ap.passpoint, &b->u.ap.passpoint) ? 0 : 1;
@@ -1269,7 +1283,7 @@ static int osw_conf_cmp_phy(struct osw_conf_phy *a, struct osw_conf_phy *b)
     struct osw_conf_vif *va, *vb;
     int r;
 
-    osw_check_null(r, a, b);
+    osw_check_null_exit(a, b);
 
     osw_str_compare(r, a->phy_name, b->phy_name);
     osw_int_compare(r, a->enabled, b->enabled);
@@ -1301,9 +1315,7 @@ static int osw_conf_cmp(struct ds_tree *a, struct ds_tree *b)
     struct osw_conf_phy *pa, *pb;
     int r = 0;
 
-    if (a == NULL && b == NULL) return 0;
-
-    osw_check_null(r, a, b);
+    osw_check_null_exit(a, b);
     osw_ds_tree_pair_each(a, b, pa, pb) {
         r = osw_conf_cmp_phy(pa,pb);
         if (r != 0) {

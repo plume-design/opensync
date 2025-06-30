@@ -1028,22 +1028,13 @@ OSW_UT(ow_steer_bm_stats_connect)
         .phy = &phy_info,
     };
     ow_steer_bm_vif_set_vif_info(vif, &vif_info);
-    struct osw_drv_sta_state drv_sta_state = { 0 };
-    struct osw_state_sta_info sta_info = {
-        .mac_addr = &sta_addr,
-        .vif = &vif_info,
-        .drv_state = &drv_sta_state,
-        .connected_at = 1234,
-        .assoc_req_ies = NULL,
-        .assoc_req_ies_len = 0
-    };
     struct ow_steer_bm_sta *bm_sta;
     ds_dlist_foreach(&g_sta_list, bm_sta) {
         if (memcmp(&bm_sta->addr, &sta_addr, OSW_HWADDR_LEN) == 0) break;
     }
     OSW_UT_EVAL(bm_sta != NULL);
 
-    ow_steer_bm_sta_state_sta_connected_cb(&bm_sta->state_observer, &sta_info);
+    ow_steer_bm_sta_state_sta_link_add(bm_sta, &bssid, &sta_addr);
 
     struct ow_steer_bm_vif_stats *client_vif_stats = ds_tree_find(&client->stats_tree, vif_name);
     OSW_UT_EVAL(client_vif_stats != NULL);
@@ -1092,22 +1083,13 @@ OSW_UT(ow_steer_bm_stats_connect_snr)
     };
     ow_steer_bm_vif_set_vif_info(vif, &vif_info);
     vif->bss = &bss;
-    struct osw_drv_sta_state drv_sta_state = { 0 };
-    struct osw_state_sta_info sta_info = {
-        .mac_addr = &sta_addr,
-        .vif = &vif_info,
-        .drv_state = &drv_sta_state,
-        .connected_at = 1234,
-        .assoc_req_ies = NULL,
-        .assoc_req_ies_len = 0
-    };
     struct ow_steer_bm_sta *bm_sta;
     ds_dlist_foreach(&g_sta_list, bm_sta) {
         if (memcmp(&bm_sta->addr, &sta_addr, OSW_HWADDR_LEN) == 0) break;
     }
     OSW_UT_EVAL(bm_sta != NULL);
 
-    ow_steer_bm_sta_state_sta_connected_cb(&bm_sta->state_observer, &sta_info);
+    ow_steer_bm_sta_state_sta_link_add(bm_sta, &bssid, &sta_addr);
 
     struct ow_steer_bm_vif_stats *client_vif_stats = ds_tree_find(&client->stats_tree, vif_name);
     OSW_UT_EVAL(client_vif_stats != NULL);
@@ -1160,23 +1142,14 @@ OSW_UT(ow_steer_bm_stats_disconnect)
         .phy = &phy_info,
     };
     ow_steer_bm_vif_set_vif_info(vif, &vif_info);
-    struct osw_drv_sta_state drv_sta_state = { 0 };
-    struct osw_state_sta_info sta_info = {
-        .mac_addr = &sta_addr,
-        .vif = &vif_info,
-        .drv_state = &drv_sta_state,
-        .connected_at = 1234,
-        .assoc_req_ies = NULL,
-        .assoc_req_ies_len = 0
-    };
     struct ow_steer_bm_sta *bm_sta;
     ds_dlist_foreach(&g_sta_list, bm_sta) {
         if (memcmp(&bm_sta->addr, &sta_addr, OSW_HWADDR_LEN) == 0) break;
     }
     OSW_UT_EVAL(bm_sta != NULL);
 
-    ow_steer_bm_sta_state_sta_connected_cb(&bm_sta->state_observer, &sta_info);
-    ow_steer_bm_sta_state_sta_disconnected_cb(&bm_sta->state_observer, &sta_info);
+    struct ow_steer_bm_sta_link *link = ow_steer_bm_sta_state_sta_link_add(bm_sta, &bssid, &sta_addr);
+    ow_steer_bm_sta_state_sta_link_del(link);
 
     struct ow_steer_bm_vif_stats *client_vif_stats = ds_tree_find(&client->stats_tree, vif_name);
     OSW_UT_EVAL(client_vif_stats != NULL);
@@ -1230,22 +1203,13 @@ OSW_UT(ow_steer_bm_stats_disconnect_snr)
     };
     ow_steer_bm_vif_set_vif_info(vif, &vif_info);
     vif->bss = &bss;
-    struct osw_drv_sta_state drv_sta_state = { 0 };
-    struct osw_state_sta_info sta_info = {
-        .mac_addr = &sta_addr,
-        .vif = &vif_info,
-        .drv_state = &drv_sta_state,
-        .connected_at = 1234,
-        .assoc_req_ies = NULL,
-        .assoc_req_ies_len = 0
-    };
     struct ow_steer_bm_sta *bm_sta;
     ds_dlist_foreach(&g_sta_list, bm_sta) {
         if (memcmp(&bm_sta->addr, &sta_addr, OSW_HWADDR_LEN) == 0) break;
     }
     OSW_UT_EVAL(bm_sta != NULL);
 
-    ow_steer_bm_sta_state_sta_connected_cb(&bm_sta->state_observer, &sta_info);
+    struct ow_steer_bm_sta_link *link = ow_steer_bm_sta_state_sta_link_add(bm_sta, &bssid, &sta_addr);
 
     ow_steer_bm_snr_obs_report_cb(NULL, &sta_addr, &bssid, 11);
     ow_steer_bm_snr_obs_report_cb(NULL, &sta_addr, &bssid, 22);
@@ -1253,7 +1217,7 @@ OSW_UT(ow_steer_bm_stats_disconnect_snr)
     ow_steer_bm_snr_obs_report_cb(NULL, &sta_addr, &bssid, 44);
     ow_steer_bm_snr_obs_report_cb(NULL, &sta_addr, &bssid, 55);
 
-    ow_steer_bm_sta_state_sta_disconnected_cb(&bm_sta->state_observer, &sta_info);
+    ow_steer_bm_sta_state_sta_link_del(link);
 
     struct ow_steer_bm_vif_stats *client_vif_stats = ds_tree_find(&client->stats_tree, vif_name);
     OSW_UT_EVAL(client_vif_stats != NULL);
@@ -1358,10 +1322,10 @@ OSW_UT(ow_steer_bm_stats_sticky_kick_2g)
     OSW_UT_EVAL(bm_sta != NULL);
 
     /* first try */
-    struct ow_steer_policy *sticky_kick_policy_base_2g = ow_steer_policy_snr_xing_get_base(bm_sta->lwm_2g_xing_policy);
-    OSW_UT_EVAL(sticky_kick_policy_base_2g != NULL);
+    struct ow_steer_policy *sticky_kick_policy_base = ow_steer_policy_snr_xing_get_base(bm_sta->lwm_xing_policy);
+    OSW_UT_EVAL(sticky_kick_policy_base != NULL);
 
-    ow_steer_bm_policy_mediator_trigger_executor_cb(sticky_kick_policy_base_2g,
+    ow_steer_bm_policy_mediator_trigger_executor_cb(sticky_kick_policy_base,
                                                     bm_sta);
     ow_steer_bm_sta_kick_state_send_btm_event(bm_sta,
                                               vif_name);
@@ -1422,66 +1386,6 @@ OSW_UT(ow_steer_bm_stats_sticky_kick_bottom_2g)
     OSW_UT_EVAL(sticky_kick_policy_base_bot2g != NULL);
 
     ow_steer_bm_policy_mediator_trigger_executor_cb(sticky_kick_policy_base_bot2g,
-                                                    bm_sta);
-    ow_steer_bm_sta_kick_state_send_btm_event(bm_sta,
-                                              vif_name);
-
-    struct ow_steer_bm_vif_stats *client_vif_stats = ds_tree_find(&client->stats_tree, vif_name);
-    OSW_UT_EVAL(client_vif_stats != NULL);
-    OSW_UT_EVAL(client_vif_stats->event_stats_count == 1);
-    OSW_UT_EVAL(client_vif_stats->sticky_kick_cnt == 1);
-
-    struct ow_steer_bm_event_stats *client_event_stats = &client_vif_stats->event_stats[0];
-    OSW_UT_EVAL(client_event_stats->type == CLIENT_STICKY_BTM);
-
-    /* retry */
-    ow_steer_bm_sta_kick_state_send_btm_event(bm_sta,
-                                              vif_name);
-
-    client_vif_stats = ds_tree_find(&client->stats_tree, vif_name);
-    OSW_UT_EVAL(client_vif_stats != NULL);
-    OSW_UT_EVAL(client_vif_stats->event_stats_count == 2);
-    OSW_UT_EVAL(client_vif_stats->sticky_kick_cnt == 2);
-
-    client_event_stats = &client_vif_stats->event_stats[1];
-    OSW_UT_EVAL(client_event_stats->type == CLIENT_STICKY_BTM_RETRY);
-}
-
-OSW_UT(ow_steer_bm_stats_sticky_kick_5g)
-{
-    OSW_MODULE_LOAD(ow_steer_bm);
-    osw_ut_time_init();
-    osw_timer_disarm(&g_stats_timer);
-
-    const struct osw_hwaddr sta_addr = { .octet = { 0xBA, 0xDC, 0x0D, 0xEB, 0xAD, 0xC0 }, };
-    const struct osw_hwaddr bssid = { .octet = { 0xCA, 0xFE, 0xCA, 0xFE, 0xF0, 0x0D }, };
-    const char *group_id = "00000000-0000-0000-0000-000000000000";
-    const char *vif_name = "vif_0";
-    struct ow_steer_bm_group *group = ow_steer_bm_get_group(group_id);
-    OSW_UT_EVAL(group != NULL);
-    struct ow_steer_bm_vif *vif = ow_steer_bm_group_get_vif(group, vif_name);
-    OSW_UT_EVAL(vif != NULL);
-    struct ow_steer_bm_client *client = ow_steer_bm_get_client(sta_addr.octet);
-    OSW_UT_EVAL(client != NULL);
-    struct osw_drv_vif_state drv_vif_state = {
-        .mac_addr = bssid,
-    };
-    struct osw_state_vif_info vif_info = {
-        .vif_name = vif_name,
-        .drv_state = &drv_vif_state,
-    };
-    ow_steer_bm_vif_set_vif_info(vif, &vif_info);
-    struct ow_steer_bm_sta *bm_sta;
-    ds_dlist_foreach(&g_sta_list, bm_sta) {
-        if (memcmp(&bm_sta->addr, &sta_addr, OSW_HWADDR_LEN) == 0) break;
-    }
-    OSW_UT_EVAL(bm_sta != NULL);
-
-    /* first try */
-    struct ow_steer_policy *sticky_kick_policy_base_5g = ow_steer_policy_snr_xing_get_base(bm_sta->lwm_5g_xing_policy);
-    OSW_UT_EVAL(sticky_kick_policy_base_5g != NULL);
-
-    ow_steer_bm_policy_mediator_trigger_executor_cb(sticky_kick_policy_base_5g,
                                                     bm_sta);
     ow_steer_bm_sta_kick_state_send_btm_event(bm_sta,
                                               vif_name);

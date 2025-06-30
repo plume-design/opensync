@@ -27,6 +27,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdlib.h>
 #include <stddef.h>
 #include <time.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 
 #include "dns_cache.h"
 #include "fsm_dpi_utils.h"
@@ -40,6 +43,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ovsdb_sync.h"
 #include "ovsdb_table.h"
 #include "ovsdb_update.h"
+#include "osp_objm.h"
 #include "wc_telemetry.h"
 #include "gatekeeper.h"
 #include "ds_tree.h"
@@ -112,6 +116,8 @@ gatekeeper_log_health_stats(struct fsm_gk_session *fsm_gk_session,
          hs->avg_latency);
     LOGI("%s: dns cache hit count: %u", __func__,
          fsm_gk_session->dns_cache_hit_count);
+    LOGI("%s: recycled LRU entries: %u", __func__,
+         hs->lru_recycle_count);
 }
 
 /**
@@ -189,6 +195,10 @@ gatekeeper_report_compute_health_stats(struct fsm_gk_session *fsm_gk_session,
     stats->cache_size = gk_cache_get_size();
     count = (uint32_t)(stats->cache_size);
     hs->cache_size = count;
+
+    /* Compute recycled cached entries delta  */
+    hs->lru_recycle_count = gk_cache_get_recycled_count();
+    gk_cache_reset_recycled_count();
 }
 
 static void
@@ -1243,6 +1253,159 @@ gatekeeper_unmonitor_ssl_table(void)
     ovsdb_table_fini(&table_SSL);
 }
 
+static int
+gatekeeper_load_cache_seed(struct fsm_session *session,
+                           struct fsm_object *object)
+{
+    const char * const path = "gatekeeper_cache_seed.bin";
+    char cache_seed_file[PATH_MAX+128];
+    char store[PATH_MAX] = { 0 };
+    struct gk_packed_buffer pb;
+    struct fsm_object stale;
+    struct fsm_gk_mgr *mgr;
+    void *buf = NULL;
+    ssize_t size = 0;
+    struct stat sb;
+    bool ret;
+    int fd;
+    int rc;
+
+    mgr = gatekeeper_get_mgr();
+
+    ret = IS_NULL_PTR(mgr->cache_seed_version);
+    /* Bail if the cache seed to add is already the active cache seed */
+    if (!ret)
+    {
+        rc = strcmp(mgr->cache_seed_version, object->version);
+        if (!rc)
+        {
+            LOGI("%s: cache seed version already loaded: %s", __func__,
+                 object->version);
+            return 0;
+        }
+    }
+
+    rc = -1;
+    object->state = FSM_OBJ_LOAD_FAILED;
+    ret = osp_objm_path(store, sizeof(store),
+                        object->object, object->version);
+    if (!ret) goto err;
+
+    LOGI("%s: retrieved store path: %s", __func__, store);
+    snprintf(cache_seed_file, sizeof(cache_seed_file), "%s/%s",
+             store, path);
+    fd = open(cache_seed_file, O_RDONLY);
+    if (fd == -1)
+    {
+        LOGE("%s: failed to open %s", __func__, cache_seed_file);
+    }
+    fstat(fd, &sb);
+    if (sb.st_size == 0)
+    {
+        LOGE("%s: empty file %s", __func__, cache_seed_file);
+        close(fd);
+        goto err;
+    }
+
+    buf = MALLOC(sb.st_size);
+    size = read(fd, buf, sb.st_size);
+    if (size != sb.st_size)
+    {
+        LOGE("%s: failed to read %s", __func__, cache_seed_file);
+        close(fd);
+        goto err;
+    }
+    close(fd);
+
+    LOGT("%s:Restoring Cache entries", __func__);
+    pb.buf = buf;
+    pb.len = sb.st_size;
+
+    gk_restore_cache_from_buffer(&pb);
+    gk_cache_sync_location_entries();
+
+    LOGT("dumping cache entries after seeding");
+    gkc_print_cache_entries();
+
+    LOGI("%s: loaded cache seed version: %s", __func__, object->version);
+    object->state = FSM_OBJ_ACTIVE;
+
+    ret = IS_NULL_PTR(mgr->cache_seed_version);
+    if (!ret)
+    {
+        stale.object = object->object;
+        stale.version = mgr->cache_seed_version;
+        stale.state = FSM_OBJ_OBSOLETE;
+        session->ops.state_cb(session, &stale);
+        FREE(mgr->cache_seed_version);
+    }
+    mgr->cache_seed_version = STRDUP(object->version);
+    LOGI("%s: %s: cache seed version is now %s", __func__, object->object,
+         mgr->cache_seed_version == NULL ? "None" : mgr->cache_seed_version);
+    rc = 0;
+
+err:
+    session->ops.state_cb(session, object);
+    FREE(buf);
+
+    return rc;
+}
+
+
+static void
+gatekeeper_seed_load_best(struct fsm_session *session)
+{
+    struct fsm_object *object;
+    int cnt;
+    int rc;
+
+    /* Put a hard limit to the loop */
+    cnt = 4;
+    do
+    {
+        /* Retrieve the best version of the cache seed */
+        object = session->ops.best_obj_cb(session, "gatekeeper_cache_seed");
+        if (object == NULL) return;
+
+        /* Apply the best cache seed */
+        rc = gatekeeper_load_cache_seed(session, object);
+        if (!rc)
+        {
+            LOGI("%s: installing %s version %s succeeded", __func__,
+                 object->object, object->version);
+            FREE(object);
+        }
+        cnt--;
+    } while ((rc != 0) && (cnt != 0));
+}
+
+
+static void
+gatekeeper_seed_store_update(struct fsm_session *session,
+                             struct fsm_object *object,
+                             int ovsdb_event)
+{
+    int rc;
+
+    switch(ovsdb_event)
+    {
+        case OVSDB_UPDATE_NEW:
+            LOGI("%s: gatekeeer cache seed version %s",
+                 __func__, object->version);
+            rc = gatekeeper_load_cache_seed(session, object);
+            if (rc != 0) gatekeeper_seed_load_best(session);
+            break;
+
+        case OVSDB_UPDATE_DEL:
+            break;
+
+        case OVSDB_UPDATE_MODIFY:
+            break;
+
+        default:
+            return;
+    }
+}
 
 
 static const char pattern_fqdn[] =
@@ -1278,16 +1441,29 @@ gatekeeper_module_init(struct fsm_session *session)
     /* Initialize the manager on first call */
     if (!mgr->initialized)
     {
+        char *lru_size_str;
+        size_t lru_size;
         bool ret;
 
         ret = gatekeeper_init(session);
         if (!ret) return 0;
 
-        gk_cache_init();
+        lru_size_str = session->ops.get_config(session, "lru_size");
+        if (lru_size_str != NULL)
+        {
+            lru_size = strtoul(lru_size_str, NULL, 0);
+        }
+        else
+        {
+            lru_size = CONFIG_GATEKEEPER_CACHE_LRU_SIZE;
+        }
+
+        gk_cache_init(lru_size);
 
         ds_tree_init(&mgr->fsm_sessions, fsm_gk_session_cmp,
                      struct fsm_gk_session, session_node);
         mgr->gk_time = time(NULL);
+        mgr->last_persistence_store = time(NULL);
         mgr->initialized = true;
     }
 
@@ -1309,6 +1485,7 @@ gatekeeper_module_init(struct fsm_session *session)
     /* Set the fsm session */
     session->ops.periodic = gatekeeper_periodic;
     session->ops.update = gatekeeper_update;
+    session->ops.object_cb = gatekeeper_seed_store_update;
     session->ops.exit = gatekeeper_exit;
     session->handler_ctxt = fsm_gk_session;
 
@@ -1383,12 +1560,19 @@ gatekeeper_module_init(struct fsm_session *session)
         gkhc_init_aggregator(fsm_gk_session->hero_stats, session);
     gkhc_activate_window(fsm_gk_session->hero_stats);
 
+    /* Register cache seed object monitoring */
+    session->ops.monitor_object(session, "gatekeeper_cache_seed");
+
     fsm_gk_session->initialized = true;
     LOGD("%s: added session %s", __func__, session->name);
     LOGT("%s: session %s is multi-curl %s", __func__, session->name,
          fsm_gk_session->enable_multi_curl ? "enabled" : "disabled");
 
     FSM_FN_MAP(gk_gatekeeper_lookup);
+
+    /* Load best cache seed version */
+    gatekeeper_seed_load_best(session);
+
     return 0;
 
 err:
@@ -1571,6 +1755,15 @@ gatekeeper_periodic(struct fsm_session *session)
              __func__, num_hero_stats_records);
     else if (num_hero_stats_records < 0)
         LOGD("%s: Failed to report hero_stats", __func__);
+
+    /* Store cache in persistence every 24 hours */
+
+    if ((now - mgr->last_persistence_store) >= GK_CACHE_PERSISTENCE_INTERVAL)
+    {
+        LOGD("storing cache in persistence !!");
+        gk_store_cache_in_persistence();
+        mgr->last_persistence_store = now;
+    }
 
     /* Proceed to other periodic tasks */
     if ((now - mgr->gk_time) < GK_PERIODIC_INTERVAL) return;
@@ -1785,3 +1978,4 @@ gatekeeper_delete_session(struct fsm_session *session)
     gk_clean_mcurl_tree(&gk_session->mcurl_data_tree);
     gatekeeper_free_session(gk_session);
 }
+

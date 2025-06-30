@@ -55,10 +55,10 @@ extern bool         os_backtrace(os_backtrace_func_t *handler, void *ctx);
 extern bool         os_backtrace_copy(void **addr, int size, int *count, int *all);
 extern bool         os_backtrace_resolve(void *addr, const char **func, const char **fname);
 extern void         sig_crash_report(int signum);
+extern void         sig_crash_report_mem_max(pid_t pid, uint32_t pss);
+extern void         os_backtrace_dump_manager_restart(const char *calling_func);
 
 // legacy compatibility
 #define backtrace_init os_backtrace_init
-
-#define CRASH_REPORTS_TMP_DIR    "/tmp/osync_crash_reports"
 
 #endif /* OS_BACKTRACE_H_INCLUDED */

@@ -308,6 +308,9 @@ message Survey {
         optional uint32     offset_ms       = 9;
         optional uint32     busy_ext        = 10;   /* 40MHz extention channel busy */
         optional int32      noise_floor     = 11;   /* dBm */
+        optional ChanWidth  chan_width      = 12;
+        optional uint32     center0_freq_mhz= 13;
+        optional bytes      puncture        = 14;
     }
     message SurveyAvg {
         required uint32        channel         = 1;

@@ -61,12 +61,31 @@ if MANAGER_BLEM
                 This is usually required so the users are able to connect to the device.
     endmenu
 
-    config BLEM_CONFIG_VIA_BLE_ENABLED
+    config BLEM_CONNECTIVITY_STATUS_DEBOUNCE_TIME
+        int "Connectivity status bitmask debounce time (in ms)"
+        default 2000
+        help
+            Time in milliseconds for which the connectivity status must remain unchanged
+            before the new status is advertised via BLE. This is to prevent rapid status
+            changes from being advertised, which could cause issues with BLE scanners
+            that are not able to keep up with the changes.
+            Setting this to 0 will disable debouncing and the new status value will
+            be advertised immediately after it changes.
+
+    menuconfig BLEM_CONFIG_VIA_BLE_ENABLED
         bool "Enable support for connectable mode for editing persistent configuration via BLE"
         default n
         help
             If enabled, device supports entering BLE Peripheral role, enabling BLE Central
             devices (usually smartphone) to connect to it and edit persistent WAN configuration
             via Plume Design Inc. JSON service (0xFE71).
+
+        config BLEM_CONFIG_VIA_BLE_OFFLINE_TIMEOUT
+            int "Enable BLE connectable mode after this many seconds of no internet connection"
+            depends on BLEM_CONFIG_VIA_BLE_ENABLED
+            default 60
+            help
+                If defined, then the device will enable BLE connectable mode for local
+                configuration editing if the internet connection is lost for this many seconds.
 
 endif

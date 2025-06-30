@@ -25,6 +25,15 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 # {# jinja-parse #}
+#
+# Performs a DNS health check on a gateway node by verifying name resolution
+# against the configured DNS servers on the system and a few reference global
+# DNS servers. If at least one such DNS lookup succeedes the health check passes.
+#
+# If there is no internet connectivity at all (check performed by pinging a few
+# random global root DNS servers) and/or there is no IP address assigned on the
+# node's uplink, then this health check is skipped.
+#
 
 DEFAULT_SUCCESS_INTERVAL=1  # dnscheck once per 1 minutes
 DEFAULT_FAIL_INTERVAL=1     # dnscheck once per 1 minute after 1st failure

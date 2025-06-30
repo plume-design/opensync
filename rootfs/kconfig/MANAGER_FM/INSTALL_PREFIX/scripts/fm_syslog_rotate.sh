@@ -72,10 +72,10 @@ log() {
     logger "[${myname}] $@"
 }
 
-LOG_FILE=${1:-messages.*}
+LOG_FILE=${1:-messages}
 LOGS_ARCHIVE=${2:-${INSTALL_PREFIX}/log_archive/}
 SYSLOG_SUBDIR=${3:-syslog}
-ROTATION_MAX_FILES=${4:-8}
+ROTATION_MAX_FILES_SIZE_KB=${4:-8192} # 8MB, originally that was 8 * 1MB
 LOGS_LOCATION=${5:-/var/log}
 
 SYSLOG_ARCHIVE=${LOGS_ARCHIVE}/${SYSLOG_SUBDIR}/
@@ -84,23 +84,14 @@ SYSLOG_ARCHIVE=${LOGS_ARCHIVE}/${SYSLOG_SUBDIR}/
 # here we deduce the base name (instead of hard-coding it):
 PREFIX=${LOG_FILE%%.*}
 
-
-# This function counts the archived logs, finds the lowest and highest
-# postfix number, and then deletes the archived log with the lowest number
-# if the maximum number of archived logs has already been reached.
-# All findings are available in variables, and can be examined afterwards.
-syslog_archive_rotate()
+determine_last_log_number()
 {
-    NUMBER_OF_LOG_FILES=0
-    LAST_LOG_NUMBER=0
-    FIRST_LOG_NUMBER=
-    LOG_FILE_TO_BE_DELETED=
-
     cd ${SYSLOG_ARCHIVE}
 
+    LAST_LOG_NUMBER=0
+
     for FILENAME in ${PREFIX}_*.gz; do
-        [ -e "${FILENAME}" ] || continue  # poor man's 'shopt -s nullglob'
-        #echo "FILENAME = ${FILENAME}"
+        [ -e "${FILENAME}" ] || continue  # equivalent of 'shopt -s nullglob'
 
         PARSED=${FILENAME%.gz}  # left of .gz
         PARSED=${PARSED%.tar}  # left of .tar (or leave as-is if it's not there)
@@ -109,32 +100,50 @@ syslog_archive_rotate()
         PARSED=$(expr ${PARSED} + 0)  # strips leading zeros and verifies it is a number
         if [ $? -ge 2 ]; then
             log "WARNING: Unexpected archived log file postfix (in '${FILENAME}')"
-            # optionally, delete the file
-            #rm -fv ${FILENAME}
-            continue
-        fi
-        #echo "Parsed postfix number = ${PARSED}"
-
-        if [ "${PARSED}" -gt "${LAST_LOG_NUMBER}" ]; then
+        else
             LAST_LOG_NUMBER=${PARSED}
         fi
-        if [ -z "${FIRST_LOG_NUMBER}" ] || [ "${PARSED}" -lt "${FIRST_LOG_NUMBER}" ]; then
-            FIRST_LOG_NUMBER=${PARSED}
-            LOG_FILE_TO_BE_DELETED=${FILENAME}
-        fi
-
-        NUMBER_OF_LOG_FILES=$((NUMBER_OF_LOG_FILES + 1))
     done
-
-    if [ "${NUMBER_OF_LOG_FILES}" -ge "${ROTATION_MAX_FILES}" ]; then
-        log "Deleting oldest archive: '${LOG_FILE_TO_BE_DELETED}'"
-        rm -fv ${LOG_FILE_TO_BE_DELETED}
-        NUMBER_OF_LOG_FILES=$((NUMBER_OF_LOG_FILES - 1))
-    fi
 
     cd - > /dev/null
 }
 
+# This function counts the total size of already archived logs, finds the
+# lowest and highest postfix number, and then deletes the archived log with
+# the lowest number
+# if the maximum size of archived logs has already been reached.
+# All findings are available in variables, and can be examined afterwards.
+syslog_archive_rotate()
+{
+    LOG_FILES_SIZE_KB=0
+
+    cd ${SYSLOG_ARCHIVE}
+
+    # Loop below will uses $@ as queue
+    set -- # clean the queue
+
+    for FILENAME in ${PREFIX}_*.gz; do
+        [ -e "${FILENAME}" ] || continue  # equivalent of 'shopt -s nullglob'
+        set -- "$@" $FILENAME  # push to the end of queue
+
+        SIZE_OF_CURRENT_FILE_KB=$(du -k "$FILENAME" | awk '{print $1}')
+        LOG_FILES_SIZE_KB=$((LOG_FILES_SIZE_KB+SIZE_OF_CURRENT_FILE_KB))
+    done
+
+    # if size is exceeded delete as many log files as possible,
+    # leaving at least one (break if queue has one element left)
+    while [ "${LOG_FILES_SIZE_KB}" -ge "${ROTATION_MAX_FILES_SIZE_KB}" ] && [ "$#" -gt 1 ]; do
+        # pop from the front of the queue
+        LOG_FILE_TO_BE_DELETED=$1
+        shift
+        log "Deleting oldest archive: '${LOG_FILE_TO_BE_DELETED} because total size = $LOG_FILES_SIZE_KB"
+        LOG_FILE_TO_BE_DELETED_SIZE_KB=$(du -k "$LOG_FILE_TO_BE_DELETED" | awk '{print $1}')
+        LOG_FILES_SIZE_KB=$((LOG_FILES_SIZE_KB-LOG_FILE_TO_BE_DELETED_SIZE_KB))
+        rm -fv ${LOG_FILE_TO_BE_DELETED}
+    done
+
+    cd - > /dev/null
+}
 
 # Main
 
@@ -143,15 +152,7 @@ if [ ! -e "${LOGS_LOCATION}/${LOG_FILE}" ]; then
     exit 1
 fi
 
-syslog_archive_rotate
-
-if [ "${NUMBER_OF_LOG_FILES}" -ge "${ROTATION_MAX_FILES}" ]; then
-    # If we're still not below the maximum allowed number, then the 'max' must
-    # have changed. Instead of looping, just delete one more and rely on further
-    # invocations of the script to gradually reduce the number (two at a time).
-    log "WARNING: Maximum number of log files (${NUMBER_OF_LOG_FILES}) still exceeded"
-    syslog_archive_rotate
-fi
+determine_last_log_number
 
 # Prepare the suffix as NNNNN_YYYYmmdd_HHMMSS
 LAST_LOG_NUMBER=$((LAST_LOG_NUMBER + 1))
@@ -172,6 +173,12 @@ tar -C ${LOGS_LOCATION} -cvzf ${SYSLOG_ARCHIVE}/${OUT_FILE}.tar.gz ${OUT_FILE}
 EXIT_CODE=$?
 
 rm ${LOGS_LOCATION}/${OUT_FILE}
+
+syslog_archive_rotate
+
+if [ "${LOG_FILES_SIZE_KB}" -ge "${ROTATION_MAX_FILES_SIZE_KB}" ]; then
+    log "WARNING: Maximum size of log files (${LOG_FILES_SIZE_KB} / ${ROTATION_MAX_FILES_SIZE_KB}) is exceeded"
+fi
 
 
 if [ "${EXIT_CODE}" -ne 0 ]; then

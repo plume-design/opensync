@@ -51,6 +51,14 @@ void qosm_mgr_schedule_qos_config(const ovs_uuid_t *uuid);
 void qosm_mgr_schedule_adaptive_qos_config(const ovs_uuid_t *uuid);
 
 /**
+ * Schedule *global* AdaptiveQoS configuration change (new or modify).
+ * If there is existing per-interface adaptive QoS config defined, it will
+ * be reapplied. Nothing happens yet if there is no existing per-interface adaptive
+ * QoS config yet, as those are a predonditions for Adaptive QoS.
+ */
+void qosm_mgr_schedule_adaptive_qos_config_change(void);
+
+/**
  * Schedule Classifier reconfiguration for this interface.
  *
  * The reconfiguration is marked as pending and will be
@@ -66,6 +74,5 @@ void qosm_mgr_schedule_classifier_qos_config(const ovs_uuid_t *uuid);
  * @param[in]   uuid   OVSDB uuid of the interface
  */
 void qosm_mgr_stop_qos_config(const ovs_uuid_t *uuid);
-
 
 #endif /* QOSM_H_INCLUDED */

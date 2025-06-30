@@ -70,7 +70,7 @@ rts_ext_alloc(void *p, size_t size, int type)
     stats.bin[type].alloc++;
     stats.bin[type].total += size;
 
-    h_curr = (struct memhdr *)malloc(sizeof(*h_curr) + size);
+    h_curr = (struct memhdr *)MALLOC(sizeof(*h_curr) + size);
     h_curr->type = type;
     h_curr->size = size;
 
@@ -90,7 +90,7 @@ rts_ext_free(void *p)
 {
     struct memhdr *h_curr = container_of(p, struct memhdr, data);
     stats.bin[h_curr->type].free++;
-    free(h_curr);
+    FREE(h_curr);
 }
 
 uint64_t

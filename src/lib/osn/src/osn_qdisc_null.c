@@ -56,6 +56,14 @@ bool osn_qdisc_cfg_add(osn_qdisc_cfg_t *self, const struct osn_qdisc_params *qdi
     return true;
 }
 
+bool osn_qdisc_cfg_notify_status_set(osn_qdisc_cfg_t *self, osn_qdisc_status_fn_t *status_fn_cb)
+{
+    (void)self;
+    (void)status_fn_cb;
+
+    return true;
+}
+
 bool osn_qdisc_cfg_apply(osn_qdisc_cfg_t *self)
 {
     (void)self;

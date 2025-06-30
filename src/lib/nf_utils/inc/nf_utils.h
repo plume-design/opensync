@@ -165,9 +165,7 @@ struct nf_ct_context
     int fd;
 
     /* for reading conntrack events */
-    void (*conntrack_update_cb)(void *data);
-
-    uint16_t zone_id;
+    struct net_md_aggregator *aggr;
 };
 
 
@@ -274,7 +272,7 @@ bool nf_queue_backoff_update(bool enable, uint32_t queue_num);
 /* NF CONNTRACK APIs */
 int nf_process_ct_cb(const struct nlmsghdr *nlh, void *data);
 
-int nf_ct_init(struct ev_loop *loop, void(*callback)(void *data));
+int nf_ct_init(struct ev_loop *loop, struct net_md_aggregator *aggr);
 
 int nf_ct_exit(void);
 
@@ -285,7 +283,9 @@ int nf_ct_set_mark_timeout(nf_flow_t *flow, uint32_t timeout);
 int nf_ct_set_flow_mark(struct net_header_parser *net_pkt,
                         uint32_t mark, uint16_t zone);
 
-bool nf_ct_get_flow_entries(int af_family, ds_dlist_t *g_nf_ct_list, uint16_t zone_id);
+bool nf_ct_get_flow_entries(int af_family, struct net_md_aggregator *aggr);
+
+void nf_ct_print_conntrack(ct_flow_t *flow);
 
 void nf_ct_print_entries(ds_dlist_t *g_nf_ct_list);
 

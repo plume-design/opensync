@@ -45,6 +45,14 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
         prefix,                           \
         ##__VA_ARGS__)
 
+static osw_sta_assoc_observer_t *
+ow_steer_executor_action_create_sta_obs(struct ow_steer_executor_action *action)
+{
+    osw_sta_assoc_observer_params_t *p = osw_sta_assoc_observer_params_alloc();
+    osw_sta_assoc_observer_params_set_addr(p, &action->sta_addr);
+    return osw_sta_assoc_observer_alloc(OSW_MODULE_LOAD(osw_sta_assoc), p);
+}
+
 struct ow_steer_executor_action*
 ow_steer_executor_action_create(const char *name,
                                 const struct osw_hwaddr *sta_addr,
@@ -67,6 +75,7 @@ ow_steer_executor_action_create(const char *name,
     memcpy(&action->ops, ops, sizeof(action->ops));
     memcpy(&action->mediator, mediator, sizeof(action->mediator));
     action->priv = priv;
+    action->sta_obs = ow_steer_executor_action_create_sta_obs(action);
 
     return action;
 }
@@ -75,6 +84,7 @@ void
 ow_steer_executor_action_free(struct ow_steer_executor_action *action)
 {
     ASSERT(action != NULL, "");
+    osw_sta_assoc_observer_drop(action->sta_obs);
     FREE(action->log_prefix);
     FREE(action);
 }
@@ -166,43 +176,16 @@ ow_steer_executor_action_kick_action_to_bool(enum ow_steer_executor_action_kick_
 }
 
 static enum ow_steer_executor_action_kick_action
-ow_steer_executor_action_get_kick_action(const struct ow_steer_executor_action *action,
-                                         const struct ow_steer_candidate_list *candidate_list)
+ow_steer_executor_action_get_kick_action_bss(const struct ow_steer_executor_action *action,
+                                             const struct ow_steer_candidate_list *candidate_list,
+                                             const struct osw_hwaddr *vif_bssid)
 {
     ASSERT(action != NULL, "");
     ASSERT(candidate_list != NULL, "");
 
-    /* Check if STA is connected to pod */
-    const struct osw_state_sta_info *sta_info = osw_state_sta_lookup_newest(&action->sta_addr);
-    const bool sta_is_disconnected = sta_info == NULL;
-    if (sta_is_disconnected == true) {
-        return OW_STEER_EXECUTOR_ACTION_SKIP_DISCONNECTED;
-    }
-    if (WARN_ON(sta_info->vif == NULL)) {
-        return OW_STEER_EXECUTOR_ACTION_SKIP_STA_MISSING_VIF;
-    }
-    if (WARN_ON(sta_info->vif->phy == NULL)) {
-        return OW_STEER_EXECUTOR_ACTION_SKIP_STA_VIF_MISSING_PHY;
-    }
-
-    const struct osw_hwaddr *vif_bssid = &sta_info->vif->drv_state->mac_addr;
     const struct ow_steer_candidate *vif_candidate = ow_steer_candidate_list_const_lookup(candidate_list, vif_bssid);
     if (vif_candidate == NULL) {
         return OW_STEER_EXECUTOR_ACTION_SKIP_LINK_TO_NON_CANDIDATE;
-    }
-
-    /* Validate candidate list */
-    size_t i = 0;
-    unsigned int available_candidates_cnt = 0;
-    for (i = 0; i < ow_steer_candidate_list_get_length(candidate_list); i++) {
-        const struct ow_steer_candidate *candidate = ow_steer_candidate_list_const_get(candidate_list, i);
-        const enum ow_steer_candidate_preference preference = ow_steer_candidate_get_preference(candidate);
-        if (preference == OW_STEER_CANDIDATE_PREFERENCE_AVAILABLE)
-            available_candidates_cnt++;
-    }
-
-    if (available_candidates_cnt == 0) {
-        return OW_STEER_EXECUTOR_ACTION_SKIP_NO_CANDIDATES_LEFT;
     }
 
     /* Check if STA has to be kicked regardless of metric */
@@ -222,6 +205,7 @@ ow_steer_executor_action_get_kick_action(const struct ow_steer_executor_action *
 
     /* Check if there's a avaiable candidate with higher metric */
     const unsigned int vif_candidate_metric = ow_steer_candidate_get_metric(vif_candidate);
+    size_t i;
     for (i = 0; i < ow_steer_candidate_list_get_length(candidate_list); i++) {
         const struct ow_steer_candidate *candidate = ow_steer_candidate_list_const_get(candidate_list, i);
         const enum ow_steer_candidate_preference preference = ow_steer_candidate_get_preference(candidate);
@@ -252,6 +236,61 @@ ow_steer_executor_action_get_kick_action(const struct ow_steer_executor_action *
     }
 
     return OW_STEER_EXECUTOR_ACTION_SKIP_LINK_GOOD_ENOUGH;
+}
+
+static enum ow_steer_executor_action_kick_action
+ow_steer_executor_action_get_kick_action(const struct ow_steer_executor_action *action,
+                                         const struct ow_steer_candidate_list *candidate_list)
+{
+    /* Validate candidate list */
+    size_t i = 0;
+    unsigned int available_candidates_cnt = 0;
+    for (i = 0; i < ow_steer_candidate_list_get_length(candidate_list); i++) {
+        const struct ow_steer_candidate *candidate = ow_steer_candidate_list_const_get(candidate_list, i);
+        const enum ow_steer_candidate_preference preference = ow_steer_candidate_get_preference(candidate);
+        if (preference == OW_STEER_CANDIDATE_PREFERENCE_AVAILABLE)
+            available_candidates_cnt++;
+    }
+
+    if (available_candidates_cnt == 0) {
+        return OW_STEER_EXECUTOR_ACTION_SKIP_NO_CANDIDATES_LEFT;
+    }
+
+    const osw_sta_assoc_entry_t *entry = osw_sta_assoc_observer_get_entry(action->sta_obs);
+    const osw_sta_assoc_links_t *links = osw_sta_assoc_entry_get_active_links(entry);
+    size_t block = 0;
+    size_t better = 0;
+    for (i = 0; links && i < links->count; i++) {
+        const struct osw_hwaddr *bssid = &links->links[i].local_sta_addr;
+        const enum ow_steer_executor_action_kick_action kick = ow_steer_executor_action_get_kick_action_bss(action, candidate_list, bssid);
+        switch (kick) {
+            case OW_STEER_EXECUTOR_ACTION_SKIP_LINK_GOOD_ENOUGH:
+            case OW_STEER_EXECUTOR_ACTION_SKIP_LINK_TO_NON_CANDIDATE:
+            case OW_STEER_EXECUTOR_ACTION_SKIP_LINK_TO_OUT_OF_SCOPE:
+            case OW_STEER_EXECUTOR_ACTION_SKIP_LINK_TO_NO_PREFERENCE:
+            case OW_STEER_EXECUTOR_ACTION_SKIP_STA_MISSING_VIF:
+            case OW_STEER_EXECUTOR_ACTION_SKIP_STA_VIF_MISSING_PHY:
+                return kick;
+            case OW_STEER_EXECUTOR_ACTION_KICK_HARD_BLOCK:
+                block++;
+                break;
+            case OW_STEER_EXECUTOR_ACTION_KICK_BETTER_METRIC:
+                better++;
+                break;
+            case OW_STEER_EXECUTOR_ACTION_SKIP_DISCONNECTED:
+            case OW_STEER_EXECUTOR_ACTION_SKIP_NO_CANDIDATES_LEFT:
+                WARN_ON(1); /* shouldnt happen */
+                return kick;
+        }
+    }
+    if (block && !better)
+        return OW_STEER_EXECUTOR_ACTION_KICK_HARD_BLOCK;
+    else if (!block && better)
+        return OW_STEER_EXECUTOR_ACTION_KICK_BETTER_METRIC;
+    else if (block && better) /* welp hard block better tested */
+        return OW_STEER_EXECUTOR_ACTION_KICK_HARD_BLOCK;
+    else
+        return OW_STEER_EXECUTOR_ACTION_SKIP_DISCONNECTED;
 }
 
 bool

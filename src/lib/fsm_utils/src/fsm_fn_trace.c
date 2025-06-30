@@ -32,12 +32,14 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdlib.h>
 #include <unistd.h>
 
+#include "kconfig.h"
 #include "dpi_stats.h"
 #include "ds_tree.h"
 #include "log.h"
 #include "memutil.h"
 #include "os.h"
 #include "os_ev_trace.h"
+#include "mem_monitor.h"
 
 struct fsm_fn_tracer
 {
@@ -112,6 +114,23 @@ void fsm_fn_trace(void *p, int trace)
         }
         tracer->period_time_spent += time_spent;
         tracer->counter++;
+    }
+
+    if (kconfig_enabled(CONFIG_MEM_MONITOR))
+    {
+        char to_log[MEM_LOG_ITEM_LEN];
+
+        MEMZERO(to_log);
+        snprintf(
+                to_log,
+                MEM_LOG_ITEM_LEN,
+                "%s,%" PRIu64 ",%s,%p,%s\n",
+                __func__,
+                ts,
+                tracer->fn_name,
+                tracer->fn_ptr,
+                trace == OS_EV_ENTER ? "enter" : "exit");
+        mem_monitor_log(to_log);
     }
 }
 

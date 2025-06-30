@@ -34,6 +34,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <time.h>
 #include <unistd.h>
 
+#include "arena.h"
+#include "arena_util.h"
 #include "execssl.h"
 #include "kconfig.h"
 #include "log.h"
@@ -43,65 +45,68 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "util.h"
 
 /* OpenSync persistent store name */
-#define PKI_PS_STORE_NAME       "certs"
-#define PKI_PS_STORE_KEY        "key"
-#define PKI_PS_STORE_PUB        "pub"
-#define PKI_PS_STORE_CRT        "crt"
-#define PKI_PS_STORE_NEW_EXT    ".new"
-#define PKI_PS_STORE_RENAME_EXT ".default"
+#define PKI_PS_STORE      "certs"
+#define PKI_PS_STORE_KEY  "key"
+#define PKI_PS_STORE_PUB  "pub"
+#define PKI_PS_STORE_CRT  "crt"
+#define PKI_PS_STORE_CA   "ca"
+#define PKI_PS_EXT_NEW    ".new"
+#define PKI_PS_EXT_RENAME ".default"
 
-static bool pki_ps_get_string(const char *key, char **dest);
-static bool pki_ps_set_string(const char *key, const char *val);
+#define PKI_LABEL_STR(x) ((x) == NULL ? "<default>" : (x))
 
-static char *pki_key_gen(void);
-static char *pki_pub_gen(const char *key);
+static void defer_osp_ps_fn(void *data);
+static osp_ps_t *pki_ps_open(arena_t *a, int flags);
+static bool pki_ps_get_string(arena_t *a, const char *label, const char *key, char **dest);
+static bool pki_ps_set_string(const char *label, const char *key, const char *val);
+
+static char *pki_key_gen(arena_t *arena);
+static char *pki_pub_gen(arena_t *arena, const char *key);
 static bool pki_cert_verify(const char *crt);
 static bool pki_cert_info(const char *crt, time_t *expire_date, char *sub, size_t sub_sz);
-static bool pki_ps_write(int cert_dir, const char *path, const char *key);
+static bool pki_ps_write(int cert_dir, const char *path, const char *label, const char *key);
 static bool pki_safe_rename(int dir, const char *path);
-
-static void strcfree(char *buf);
+static void pdefer_memset_fn(void *data);
+static bool arena_defer_memset(arena_t *arena, void *data, size_t sz);
+static bool arena_defer_sigblock(arena_t *arena);
 
 /*
  * ======================================================================
  * Main API
  * ======================================================================
  */
-bool osp_pki_cert_info(time_t *expire_date, char *sub, size_t sub_sz)
+bool osp_pki_cert_info(const char *label, time_t *expire_date, char *sub, size_t sub_sz)
 {
-    char *crt = NULL;
-    char *key = NULL;
-    bool retval = false;
-    time_t enddate;
+    ARENA_SCRATCH(scratch);
 
-    time_t cvalid;
-
-    if (!pki_ps_get_string(PKI_PS_STORE_CRT, &crt) || crt == NULL)
+    char *crt;
+    if (!pki_ps_get_string(scratch, label, PKI_PS_STORE_CRT, &crt) || crt == NULL)
     {
-        /* No certificate, return false */
-        goto exit;
+        LOG(INFO, "osp_pki: %s: No certificate present.", PKI_LABEL_STR(label));
+        return false;
     }
 
     /* Verify the crt */
     if (!pki_cert_verify(crt))
     {
-        goto exit;
+        return false;
     }
 
     /* Verify the date and time */
+    time_t enddate;
     if (!pki_cert_info(crt, &enddate, sub, sub_sz))
     {
-        LOG(ERR, "Unable to verify certificate expire date.");
-        goto exit;
+        LOG(ERR, "osp_pki: %s: Unable to verify certificate expire date.", PKI_LABEL_STR(label));
+        return false;
     }
 
-    cvalid = enddate - time(NULL);
-
+    time_t cvalid = enddate - time(NULL);
     if (cvalid < 0)
     {
         time_t etime = -cvalid;
         LOG(NOTICE,
-            "Certificate expired %" PRId64 " days %" PRId64 " hours and %" PRId64 " minutes ago.",
+            "osp_pki: %s: Certificate expired %" PRId64 " days %" PRId64 " hours and %" PRId64 " minutes ago.",
+            PKI_LABEL_STR(label),
             (int64_t)etime / (24 * 60 * 60),
             ((int64_t)etime / 60 / 60) % 24,
             ((int64_t)etime / 60) % 60);
@@ -109,7 +114,8 @@ bool osp_pki_cert_info(time_t *expire_date, char *sub, size_t sub_sz)
     else
     {
         LOG(NOTICE,
-            "Certificate expires in %" PRId64 " days %" PRId64 " hours and %" PRId64 " minutes.",
+            "osp_pki: %s: Certificate expires in %" PRId64 " days %" PRId64 " hours and %" PRId64 " minutes.",
+            PKI_LABEL_STR(label),
             (int64_t)cvalid / (24 * 60 * 60),
             ((int64_t)cvalid / 60 / 60) % 24,
             ((int64_t)cvalid / 60) % 60);
@@ -117,32 +123,35 @@ bool osp_pki_cert_info(time_t *expire_date, char *sub, size_t sub_sz)
 
     if (expire_date != NULL) *expire_date = enddate;
 
-    retval = true;
-
-exit:
-    FREE(crt);
-    if (key != NULL) strcfree(key);
-
-    return retval;
+    return true;
 }
 
-char *osp_pki_cert_request(const char *subject)
+char *osp_pki_cert_request(const char *label, const char *subject)
 {
-    LOG(INFO, "Generating CSR: %s", subject);
+    ARENA_SCRATCH(scratch);
 
-    char *key = NULL;
-    char *csr = NULL;
-    char *bder = NULL;
+    LOG(INFO, "osp_pki: %s: Generating CSR: %s", PKI_LABEL_STR(label), subject);
 
-    if (!pki_ps_get_string(PKI_PS_STORE_KEY, &key) || key == NULL)
+    char *key;
+    /*
+     * It is intentional that NULL is used here for the label as we want just
+     * a single private key.
+     */
+    if (!pki_ps_get_string(scratch, NULL, PKI_PS_STORE_KEY, &key) || key == NULL)
     {
-        LOG(NOTICE, "Generating new private key...");
-        key = pki_key_gen();
+        LOG(NOTICE, "osp_pki: Generating new private key...");
+        key = pki_key_gen(scratch);
         if (key == NULL)
         {
-            LOG(ERR, "Private key generation failed.");
-            goto exit;
+            LOG(ERR, "osp_pki: Private key generation failed.");
+            return NULL;
         }
+    }
+
+    if (!arena_defer_memset(scratch, key, strlen(key)))
+    {
+        LOG(ERR, "osp_pki: %s: Error deferring cleanup function (memset).", PKI_LABEL_STR(label));
+        return NULL;
     }
 
     /*
@@ -150,57 +159,152 @@ char *osp_pki_cert_request(const char *subject)
      * as `-key -` does not work. The workaround is to use `-key /dev/stdin`, however, `/dev/stdin` is not present
      * on many systems. Since `/dev/stdin` is usually just a symlink to `/proc/self/fd/0`, just use that directly.
      */
-    bder =
-            execssl(key,
-                    "req",
-                    "-subj",
-                    subject,
-                    "-new",
-                    "-key",
-                    "/proc/self/fd/0",
-                    "-outform",
-                    "DER",
-                    "-out",
-                    "/tmp/csr.tmp");
+    char *bder = execssl_arena(
+            scratch,
+            key,
+            "req",
+            "-subj",
+            subject,
+            "-new",
+            "-key",
+            "/proc/self/fd/0",
+            "-outform",
+            "DER",
+            "-out",
+            "/tmp/csr.tmp");
     if (bder == NULL)
     {
-        LOG(ERR, "Error generating CSR.");
-        goto exit;
+        LOG(ERR, "osp_pki: %s: Error generating CSR.", PKI_LABEL_STR(label));
+        return NULL;
     }
 
     /* Convert to base64 */
-    csr = execssl(NULL, "base64", "-in", "/tmp/csr.tmp");
+    char *csr = execssl_arena(scratch, NULL, "base64", "-in", "/tmp/csr.tmp");
     if (csr == NULL)
     {
-        LOG(ERR, "Error converting to base64");
+        LOG(ERR, "osp_pki: %s: Error converting CSR to base64.", PKI_LABEL_STR(label));
+        return NULL;
     }
 
     /* Strip \r and \n */
     strstrip(csr, "\r\n");
 
-exit:
-    if (key != NULL) strcfree(key);
-    if (bder != NULL) FREE(bder);
     (void)unlink("/tmp/csr.tmp");
-    return csr;
+    return STRDUP(csr);
 }
 
-bool osp_pki_cert_update(const char *crt)
+bool osp_pki_cert_update(const char *label, const char *crt)
 {
+    ARENA_SCRATCH(scratch);
+
     if (!pki_cert_verify(crt))
     {
-        LOG(ERR, "Certificate verification failed.");
+        LOG(ERR, "osp_pki: %s: Certificate verification failed.", PKI_LABEL_STR(label));
         return false;
     }
 
     /* Certificate seems ok, write it to persistent storage */
-    if (!pki_ps_set_string(PKI_PS_STORE_CRT, crt))
+    if (!pki_ps_set_string(label, PKI_PS_STORE_CRT, crt))
     {
-        LOG(EMERG, "Unable to write certificate to store.");
+        LOG(EMERG, "osp_pki: %s: Unable to write certificate to store.", PKI_LABEL_STR(label));
+        return false;
+    }
+    LOG(INFO, "osp_pki: %s: Certificate successfully updated.", PKI_LABEL_STR(label));
+
+    return true;
+}
+
+bool osp_pki_cert_remove(const char *label)
+{
+    ARENA_SCRATCH(scratch);
+
+    if (!arena_defer_sigblock(scratch))
+    {
+        LOG(WARN, "osp_pki: %s: Error blocking signals during certificate removal.", PKI_LABEL_STR(label));
+    }
+
+    if (label == NULL)
+    {
+        LOG(WARN, "osp_pki: The default certificate cannot be removed. Ignoring request.");
         return false;
     }
 
-    LOG(NOTICE, "Certificate successfully updated.");
+    osp_ps_t *ps = pki_ps_open(scratch, OSP_PS_WRITE | OSP_PS_PRESERVE | OSP_PS_ENCRYPTION);
+    if (ps == NULL)
+    {
+        LOG(ERR, "osp_pki: %s: Error deleting certificate: Unable to open store.", PKI_LABEL_STR(label));
+        return false;
+    }
+
+    char *key = arena_sprintf(scratch, "%s:%s", label, PKI_PS_STORE_CRT);
+    if (key == NULL)
+    {
+        LOG(ERR, "osp_pki: %s: Error deleting certificate: Unable to create key.", PKI_LABEL_STR(label));
+        return false;
+    }
+
+    ssize_t rc = osp_ps_set(ps, key, NULL, 0);
+    if (rc != 0)
+    {
+        LOG(ERR, "osp_pki: %s: Error deleting certificate key: %s (%zd)", PKI_LABEL_STR(label), key, rc);
+        return false;
+    }
+
+    /* Delete file structure -- this might cause soft errors, can be safely ignored */
+    char *cert_path = arena_sprintf(scratch, "%s/%s", CONFIG_TARGET_PATH_CERT, label);
+    if (cert_path == NULL)
+    {
+        LOG(ERR, "osp_pki: %s: Error deleting certificate: Unable to construct folder path.", PKI_LABEL_STR(label));
+        return false;
+    }
+
+    int cert_dir = open(cert_path, O_RDONLY);
+    if (cert_dir < 0 && errno == ENOENT)
+    {
+        LOG(DEBUG, "osp_pki: %s: Folder %s doesn't seem to exist, skipping.", PKI_LABEL_STR(label), cert_path);
+        return true;
+    }
+    else if (cert_dir < 0)
+    {
+        LOG(ERR,
+            "osp_pki: %s: Error deleting certificate: Unable to open folder '%s': %s",
+            PKI_LABEL_STR(label),
+            cert_path,
+            strerror(errno));
+        return false;
+    }
+
+    if (!arena_defer_close(scratch, cert_dir))
+    {
+        LOG(ERR, "osp_pki: %s: Error deleting certificate: Unable to defer close().", PKI_LABEL_STR(label));
+        return false;
+    }
+
+    char *unlinks[] = {
+        CONFIG_TARGET_PATH_PRIV_KEY,
+        CONFIG_TARGET_PATH_PRIV_CERT,
+        CONFIG_TARGET_PATH_PRIV_KEY "" PKI_PS_EXT_NEW,
+        CONFIG_TARGET_PATH_PRIV_CERT "" PKI_PS_EXT_NEW,
+        CONFIG_TARGET_PATH_PRIV_KEY "" PKI_PS_EXT_RENAME,
+        CONFIG_TARGET_PATH_PRIV_CERT "" PKI_PS_EXT_RENAME,
+    };
+
+    for (int ii = 0; ii < ARRAY_LEN(unlinks); ii++)
+    {
+        if (unlinkat(cert_dir, unlinks[ii], 0) != 0)
+        {
+            LOG(DEBUG,
+                "osp_pki: %s: Error deleting certificate: Unable to unlink '%s': %s",
+                PKI_LABEL_STR(label),
+                unlinks[ii],
+                CONFIG_TARGET_PATH_PRIV_KEY);
+        }
+    }
+
+    if (rmdir(cert_path) != 0)
+    {
+        LOG(WARN, "osp_pki: %s: Unable to remove folder '%s': %s", PKI_LABEL_STR(label), cert_path, strerror(errno));
+    }
 
     return true;
 }
@@ -212,40 +316,68 @@ bool osp_pki_cert_update(const char *crt)
  * extension. Finally it will symlink the certificate/private keys filenames
  * to the ".new" files.
  */
-bool osp_pki_setup(void)
+bool osp_pki_cert_install(const char *label)
 {
-    int cert_dir = -1;
-    bool retval = false;
+    ARENA_SCRATCH(scratch);
+    char *cert_path;
+    int cert_dir;
 
     /* First, check if we have a valid certificate and private key */
-    if (!osp_pki_cert_info(NULL, NULL, 0))
+    if (!osp_pki_cert_info(label, NULL, NULL, 0))
     {
         /* No valid certificate yet, nothing to do */
-        return true;
+        return false;
     }
 
-    LOG(INFO, "Certificate check passed, installing...");
+    LOG(INFO, "osp_pki: %s: Certificate check passed, installing...", PKI_LABEL_STR(label));
 
-    cert_dir = open(CONFIG_TARGET_PATH_CERT, O_RDONLY);
+    if (!arena_defer_sigblock(scratch))
+    {
+        LOG(WARN, "osp_pki: %s: Error blocking signals during certificate installation.", PKI_LABEL_STR(label));
+    }
+
+    /* Generate the destination folder name */
+    if (label == NULL)
+    {
+        cert_path = CONFIG_TARGET_PATH_CERT;
+    }
+    else
+    {
+        cert_path = arena_sprintf(scratch, CONFIG_TARGET_PATH_CERT "/%s", label);
+        /* Create the target folder, if it does not exist */
+        if (access(cert_path, R_OK) != 0 && mkdir(cert_path, 0755) != 0)
+        {
+            LOG(ERR, "osp_pki: %s: Error creating certificate: %s", PKI_LABEL_STR(label), cert_path);
+            return false;
+        }
+    }
+
+    cert_dir = open(cert_path, O_RDONLY);
     if (cert_dir < 0)
     {
-        LOG(ERR, "Unable to open certificate folder: %s\n", strerror(errno));
-        goto exit;
+        LOG(ERR, "osp_pki: %s: Unable to open certificate folder: %s", PKI_LABEL_STR(label), strerror(errno));
+        return false;
+    }
+
+    if (!arena_defer_close(scratch, cert_dir))
+    {
+        LOG(ERR, "osp_pki: %s: Unable to defer cert dir close.", PKI_LABEL_STR(label));
+        return false;
     }
 
     /*
      * Write out the certificates and keys to filesystem
      */
-    if (!pki_ps_write(cert_dir, CONFIG_TARGET_PATH_PRIV_KEY "" PKI_PS_STORE_NEW_EXT, PKI_PS_STORE_KEY))
+    if (!pki_ps_write(cert_dir, CONFIG_TARGET_PATH_PRIV_KEY "" PKI_PS_EXT_NEW, NULL, PKI_PS_STORE_KEY))
     {
-        LOG(ERR, "Error writing private key.");
-        goto exit;
+        LOG(ERR, "osp_pki: %s: Error writing private key.", PKI_LABEL_STR(label));
+        return false;
     }
 
-    if (!pki_ps_write(cert_dir, CONFIG_TARGET_PATH_PRIV_CERT "" PKI_PS_STORE_NEW_EXT, PKI_PS_STORE_CRT))
+    if (!pki_ps_write(cert_dir, CONFIG_TARGET_PATH_PRIV_CERT "" PKI_PS_EXT_NEW, label, PKI_PS_STORE_CRT))
     {
-        LOG(ERR, "Error writing certificate.");
-        goto exit;
+        LOG(ERR, "osp_pki: %s: Error writing certificate.", PKI_LABEL_STR(label));
+        return false;
     }
 
     /*
@@ -254,35 +386,74 @@ bool osp_pki_setup(void)
      */
     if (!pki_safe_rename(cert_dir, CONFIG_TARGET_PATH_PRIV_KEY))
     {
-        LOG(ERR, "Error renaming private key.");
-        goto exit;
+        LOG(ERR, "osp_pki: %s: Error renaming private key.", PKI_LABEL_STR(label));
+        return false;
     }
 
     if (!pki_safe_rename(cert_dir, CONFIG_TARGET_PATH_PRIV_CERT))
     {
-        LOG(ERR, "Error renaming certificate.");
-        goto exit;
+        LOG(ERR, "osp_pki: %s: Error renaming certificate.", PKI_LABEL_STR(label));
+        return false;
     }
 
     /*
      * Create the symbolic links
      */
-    if (symlinkat(CONFIG_TARGET_PATH_PRIV_KEY "" PKI_PS_STORE_NEW_EXT, cert_dir, CONFIG_TARGET_PATH_PRIV_KEY) != 0)
+    if (symlinkat(CONFIG_TARGET_PATH_PRIV_KEY "" PKI_PS_EXT_NEW, cert_dir, CONFIG_TARGET_PATH_PRIV_KEY) != 0)
     {
-        LOG(WARN, "Error creating symbolic link to private key.");
+        LOG(WARN, "osp_pki: %s: Error creating symbolic link to private key.", PKI_LABEL_STR(label));
     }
 
-    if (symlinkat(CONFIG_TARGET_PATH_PRIV_CERT "" PKI_PS_STORE_NEW_EXT, cert_dir, CONFIG_TARGET_PATH_PRIV_CERT) != 0)
+    if (symlinkat(CONFIG_TARGET_PATH_PRIV_CERT "" PKI_PS_EXT_NEW, cert_dir, CONFIG_TARGET_PATH_PRIV_CERT) != 0)
     {
-        LOG(WARN, "Error creating symbolic link to certificate.");
+        LOG(WARN, "osp_pki: %s: Error creating symbolic link to certificate.", PKI_LABEL_STR(label));
     }
 
-    LOG(INFO, "Certificate successfully updated.");
+    LOG(INFO, "osp_pki: %s: Certificate successfully installed.", PKI_LABEL_STR(label));
 
-    retval = true;
+    return true;
+}
 
-exit:
-    if (cert_dir >= 0) close(cert_dir);
+bool osp_pki_setup(void)
+{
+    ARENA_SCRATCH(scratch);
+
+    bool retval = true;
+
+    osp_ps_t *ps = pki_ps_open(scratch, OSP_PS_READ | OSP_PS_PRESERVE | OSP_PS_ENCRYPTION);
+    if (ps == NULL) return false;
+
+    const char *key;
+    while ((key = osp_ps_next(ps)) != NULL)
+    {
+        /* Reset arena frame each iteration */
+        arena_frame_auto_t af = arena_save(scratch);
+
+        char *label;
+        char *type;
+
+        char *pkey = arena_strdup(scratch, key);
+
+        /* Look for keys that match the "crt" or "LABEL:crt" pattern */
+        if (strchr(pkey, ':') == NULL)
+        {
+            label = NULL;
+            type = pkey;
+        }
+        else
+        {
+            label = strsep(&pkey, ":");
+            type = strsep(&pkey, ":");
+        }
+
+        if (strcmp(type, PKI_PS_STORE_CRT) != 0) continue;
+
+        if (!osp_pki_cert_install(label))
+        {
+            LOG(WARN, "osp_pki: %s: Error installing certificate.", PKI_LABEL_STR(label));
+            retval = false;
+        }
+    }
 
     return retval;
 }
@@ -292,114 +463,122 @@ exit:
  * Persistent store function
  * ======================================================================
  */
-bool pki_ps_set_string(const char *key, const char *val)
+void defer_osp_ps_fn(void *data)
 {
-    osp_ps_t *ps = NULL;
-    bool retval = false;
+    osp_ps_t *ps = data;
 
-    ps = osp_ps_open(PKI_PS_STORE_NAME, OSP_PS_WRITE | OSP_PS_PRESERVE | OSP_PS_ENCRYPTION);
+    if (!osp_ps_close(ps))
+    {
+        LOG(WARN, "osp_pki: Error closing persistent store in defer function.");
+    }
+}
+
+osp_ps_t *pki_ps_open(arena_t *a, int flags)
+{
+    osp_ps_t *ps = osp_ps_open(PKI_PS_STORE, flags);
+    if (ps == NULL || !arena_defer(a, defer_osp_ps_fn, ps))
+    {
+        LOG(DEBUG, "osp_pki: Error opening persistent storage for reading: %s", PKI_PS_STORE);
+        return NULL;
+    }
+    return ps;
+}
+
+bool pki_ps_set_string(const char *label, const char *key, const char *val)
+{
+    ARENA_SCRATCH(scratch);
+    osp_ps_t *ps;
+
+    if (label != NULL)
+    {
+        key = arena_sprintf(scratch, "%s:%s", label, key);
+        if (key == NULL) return false;
+    }
+
+    ps = pki_ps_open(scratch, OSP_PS_WRITE | OSP_PS_PRESERVE | OSP_PS_ENCRYPTION);
     if (ps == NULL)
     {
-        LOG(EMERG, "Error opening OpenSync persistent storage.");
-        goto exit;
+        LOG(EMERG, "osp_pki: %s: Error opening OpenSync persistent storage.", PKI_LABEL_STR(label));
+        return false;
     }
 
     if (osp_ps_set(ps, key, (char *)val, strlen(val)) <= 0)
     {
-        LOG(EMERG, "Error storing key to private store.");
-        goto exit;
+        LOG(EMERG, "osp_pki: %s: Error storing key to private store.", PKI_LABEL_STR(label));
+        return false;
     }
-
-    retval = true;
-
-exit:
-    if (ps != NULL) osp_ps_close(ps);
-    return retval;
+    return true;
 }
 
-bool pki_ps_get_string(const char *key, char **val)
+bool pki_ps_get_string(arena_t *arena, const char *label, const char *key, char **val)
 {
+    ARENA_SCRATCH(scratch, arena);
+
+    osp_ps_t *ps;
     ssize_t rc;
 
-    osp_ps_t *ps = NULL;
-    bool retval = false;
-
-    *val = NULL;
-
-    ps = osp_ps_open(PKI_PS_STORE_NAME, OSP_PS_READ | OSP_PS_PRESERVE | OSP_PS_ENCRYPTION);
-    if (ps == NULL)
+    if (label != NULL)
     {
-        LOG(DEBUG, "Error opening persistent storage for reading.");
-        goto exit;
+        key = arena_sprintf(scratch, "%s:%s", label, key);
+        if (key == NULL) return false;
     }
+
+    ps = pki_ps_open(scratch, OSP_PS_READ | OSP_PS_PRESERVE | OSP_PS_ENCRYPTION);
+    if (ps == NULL) return false;
 
     rc = osp_ps_get(ps, key, NULL, 0);
-    if (rc < 0)
+    if (rc < 0) return false;
+
+    if (rc == 0)
     {
-        goto exit;
-    }
-    else if (rc == 0)
-    {
-        retval = true;
-        goto exit;
+        *val = NULL;
+        return true;
     }
 
-    *val = MALLOC(rc + 1);
+    *val = arena_push(arena, rc + 1);
     if (osp_ps_get(ps, key, *val, rc) != rc)
     {
-        LOG(NOTICE, "PS Key size changed. Data may be truncated.");
+        LOG(NOTICE, "osp_pki: %s: PS Key size changed. Data may be truncated.", PKI_LABEL_STR(label));
     }
 
-    /* Pad the string with */
+    /* Pad the string with \0 */
     (*val)[rc] = '\0';
 
-    retval = true;
-
-exit:
-    if (ps != NULL) osp_ps_close(ps);
-    return retval;
+    return true;
 }
 
 /*
  * Write the data associated with @p key to the file represented by @p path
  */
-bool pki_ps_write(int cert_dir, const char *path, const char *key)
+bool pki_ps_write(int cert_dir, const char *path, const char *label, const char *key)
 {
-    bool retval = false;
-    char *data = NULL;
-    int fd = -1;
-    ssize_t rc;
+    ARENA_SCRATCH(scratch);
 
-    if (!pki_ps_get_string(key, &data) || data == NULL)
+    char *data;
+    if (!pki_ps_get_string(scratch, label, key, &data) || data == NULL)
     {
-        LOG(DEBUG, "%s: Error retrieving data or data does not exist.", path);
-        goto exit;
+        LOG(DEBUG, "osp_pki: %s: Error retrieving data or data does not exist: %s", PKI_LABEL_STR(label), path);
+        return false;
     }
 
-    fd = openat(cert_dir, path, O_WRONLY | O_CREAT | O_TRUNC, 0660);
+    int fd = openat(cert_dir, path, O_WRONLY | O_CREAT | O_TRUNC, 0660);
     if (fd < 0)
     {
-        LOG(DEBUG, "%s: Error opening file.", path);
-        goto exit;
+        LOG(DEBUG, "osp_pki: %s: Error opening file: %s", PKI_LABEL_STR(label), path);
+        return false;
     }
-
-    rc = write(fd, data, strlen(data));
+    ssize_t rc = write(fd, data, strlen(data));
     if (rc < 0)
     {
-        LOG(DEBUG, "%s: Error writing data.", path);
+        LOG(DEBUG, "osp_pki: %s: Error writing data: %s", PKI_LABEL_STR(label), path);
     }
     else if ((size_t)rc != strlen(data))
     {
-        LOG(DEBUG, "%s: Short write.", path);
+        LOG(DEBUG, "osp_pki: %s: Short write: %s", PKI_LABEL_STR(label), path);
     }
+    close(fd);
 
-    retval = true;
-
-exit:
-    if (fd >= 0) close(fd);
-    if (data != NULL) strcfree(data);
-
-    return retval;
+    return true;
 }
 
 /*
@@ -412,10 +591,10 @@ exit:
 bool pki_safe_rename(int dir, const char *path)
 {
     struct stat st;
-    char target_path[strlen(path) + strlen(PKI_PS_STORE_RENAME_EXT) + sizeof(char)];
+    char target_path[strlen(path) + strlen(PKI_PS_EXT_RENAME) + sizeof(char)];
 
     /* Construct the target_path by append PKI_STORE_RENAME_EXT to the original filename */
-    snprintf(target_path, sizeof(target_path), "%s%s", path, PKI_PS_STORE_RENAME_EXT);
+    snprintf(target_path, sizeof(target_path), "%s%s", path, PKI_PS_EXT_RENAME);
 
     /* Check if the current file exists and/or is a regular file */
     if (fstatat(dir, path, &st, AT_SYMLINK_NOFOLLOW) != 0)
@@ -423,7 +602,7 @@ bool pki_safe_rename(int dir, const char *path)
         /* File does not exist -- nothing to do */
         if (errno == ENOENT) return true;
 
-        LOG(ERR, "%s: Error stating source file: %s\n", path, strerror(errno));
+        LOG(ERR, "osp_pki: %s: Error stating source file: %s\n", path, strerror(errno));
         return false;
     }
     else if (S_ISLNK(st.st_mode))
@@ -438,7 +617,7 @@ bool pki_safe_rename(int dir, const char *path)
          * At this point we know the file exists and is not a symbolic link,
          * so it should be a regular file. However, if it is not, bail out.
          */
-        LOG(ERR, "%s: Not a regular file.", path);
+        LOG(ERR, "osp_pki: %s: Not a regular file.", path);
         return false;
     }
 
@@ -452,10 +631,10 @@ bool pki_safe_rename(int dir, const char *path)
      * Target path does not exist and the source is a regular file. Rename
      * the files
      */
-    LOG(DEBUG, "Renaming %s -> %s\n", path, target_path);
+    LOG(DEBUG, "osp_pki: Renaming %s -> %s\n", path, target_path);
     if (renameat(dir, path, dir, target_path) != 0)
     {
-        LOG(ERR, "%s: Error renaming file: %s\n", path, strerror(errno));
+        LOG(ERR, "osp_pki: %s: Error renaming file: %s\n", path, strerror(errno));
         return false;
     }
 
@@ -471,99 +650,110 @@ bool pki_safe_rename(int dir, const char *path)
 /*
  * Generate the private key and store it to persistent storage
  */
-char *pki_key_gen(void)
+char *pki_key_gen(arena_t *arena)
 {
-    char *key = NULL;
-    char *pub = NULL;
-    char *retval = NULL;
+    ARENA_SCRATCH(scratch, arena);
 
+    char *key;
     if (kconfig_enabled(CONFIG_OSP_PKI_PS_ALGO_RSA4096))
     {
-        key = execssl(NULL, "genpkey", "-algorithm", "RSA", "-pkeyopt", "rsa_keygen_bits:4096", "-out", "-");
+        key = execssl_arena(
+                arena,
+                NULL,
+                "genpkey",
+                "-algorithm",
+                "RSA",
+                "-pkeyopt",
+                "rsa_keygen_bits:4096",
+                "-out",
+                "-");
     }
     else if (kconfig_enabled(CONFIG_OSP_PKI_PS_ALGO_RSA3072))
     {
-        key = execssl(NULL, "genpkey", "-algorithm", "RSA", "-pkeyopt", "rsa_keygen_bits:3072", "-out", "-");
+        key = execssl_arena(
+                arena,
+                NULL,
+                "genpkey",
+                "-algorithm",
+                "RSA",
+                "-pkeyopt",
+                "rsa_keygen_bits:3072",
+                "-out",
+                "-");
     }
     else if (kconfig_enabled(CONFIG_OSP_PKI_PS_ALGO_ED25519))
     {
-        key = execssl(NULL, "genpkey", "-algorithm", "ed25519", "-out", "-");
+        key = execssl_arena(arena, NULL, "genpkey", "-algorithm", "ed25519", "-out", "-");
     }
     else if (kconfig_enabled(CONFIG_OSP_PKI_PS_ALGO_P256))
     {
-        key =
-                execssl(NULL,
-                        "genpkey",
-                        "-algorithm",
-                        "EC",
-                        "-pkeyopt",
-                        "ec_paramgen_curve:P-256",
-                        "-pkeyopt",
-                        "ec_param_enc:named_curve",
-                        "-out",
-                        "-");
+        key = execssl_arena(
+                arena,
+                NULL,
+                "genpkey",
+                "-algorithm",
+                "EC",
+                "-pkeyopt",
+                "ec_paramgen_curve:P-256",
+                "-pkeyopt",
+                "ec_param_enc:named_curve",
+                "-out",
+                "-");
     }
     else
     {
         if (!kconfig_enabled(CONFIG_OSP_PKI_PS_ALGO_P384))
         {
-            LOG(WARN, "Invalid or no PK algorithm selected, using EC:P384 as default.");
+            LOG(WARN, "osp_pki: Invalid or no PK algorithm selected, using EC:P384 as default.");
         }
 
-        key =
-                execssl(NULL,
-                        "genpkey",
-                        "-algorithm",
-                        "EC",
-                        "-pkeyopt",
-                        "ec_paramgen_curve:P-384",
-                        "-pkeyopt",
-                        "ec_param_enc:named_curve",
-                        "-out",
-                        "-");
+        key = execssl_arena(
+                arena,
+                NULL,
+                "genpkey",
+                "-algorithm",
+                "EC",
+                "-pkeyopt",
+                "ec_paramgen_curve:P-384",
+                "-pkeyopt",
+                "ec_param_enc:named_curve",
+                "-out",
+                "-");
     }
-
     if (key == NULL)
     {
-        LOG(EMERG, "Unable to generate private key. Aborting.");
-        goto exit;
+        LOG(EMERG, "osp_pki: Unable to generate private key. Aborting.");
+        return NULL;
     }
 
-    pub = pki_pub_gen(key);
+    char *pub = pki_pub_gen(scratch, key);
     if (pub == NULL)
     {
-        LOG(EMERG, "Unable to verify private key. Aborting.");
-        goto exit;
+        LOG(EMERG, "osp_pki: Unable to verify private key. Aborting.");
+        return NULL;
     }
 
-    if (!pki_ps_set_string(PKI_PS_STORE_PUB, pub))
+    if (!pki_ps_set_string(NULL, PKI_PS_STORE_PUB, pub))
     {
-        LOG(EMERG, "Error writing public key to persistent storage.");
-        goto exit;
+        LOG(EMERG, "osp_pki: Error writing public key to persistent storage.");
+        return NULL;
     }
 
-    if (!pki_ps_set_string(PKI_PS_STORE_KEY, key))
+    if (!pki_ps_set_string(NULL, PKI_PS_STORE_KEY, key))
     {
-        LOG(EMERG, "Error writing private key to persistent storage.");
-        goto exit;
+        LOG(EMERG, "osp_pki: Error writing private key to persistent storage.");
+        return NULL;
     }
 
-    retval = key;
-    key = NULL;
-
-exit:
-    if (pub != NULL) FREE(pub);
-    if (key != NULL) strcfree(key);
-
-    return retval;
+    return key;
 }
 
 /*
  * Derive the public key from the private key
  */
-char *pki_pub_gen(const char *key)
+char *pki_pub_gen(arena_t *arena, const char *key)
 {
-    return execssl(key, "pkey", "-pubout");
+    return execssl_arena(arena, key, "pkey", "-pubout");
 }
 
 /*
@@ -572,47 +762,44 @@ char *pki_pub_gen(const char *key)
  */
 bool pki_cert_verify(const char *crt)
 {
-    char *key = NULL;
-    char *pub_key = NULL;
-    char *pub_crt = NULL;
-    bool retval = false;
+    ARENA_SCRATCH(scratch);
 
     /* Extract the public key from the certificate */
-    pub_crt = execssl(crt, "x509", "-pubkey", "-noout");
+    char *pub_crt = execssl_arena(scratch, crt, "x509", "-pubkey", "-noout");
     if (pub_crt == NULL)
     {
-        LOG(INFO, "Unable to verify certificate: Error extracting public key from certificate.");
-        goto exit;
+        LOG(INFO, "osp_pki: Unable to verify certificate: Error extracting public key from certificate.");
+        return false;
     }
 
     /* Verify the certificate using the private key */
-    if (!pki_ps_get_string(PKI_PS_STORE_KEY, &key) || key == NULL)
+    char *key;
+    if (!pki_ps_get_string(scratch, NULL, PKI_PS_STORE_KEY, &key) || key == NULL)
     {
-        LOG(ERR, "Unable to verify certificate: Private key missing.");
-        goto exit;
+        LOG(ERR, "osp_pki: Unable to verify certificate: Private key missing.");
+        return false;
     }
 
-    pub_key = pki_pub_gen(key);
+    if (!arena_defer_memset(scratch, key, strlen(key)))
+    {
+        LOG(ERR, "osp_pki: Error deferring memset (pki_cert_verify).");
+        return false;
+    }
+
+    char *pub_key = pki_pub_gen(scratch, key);
     if (pub_key == NULL)
     {
-        LOG(ERR, "Unable to verify certificate: Error deriving public key from private key.");
-        goto exit;
+        LOG(ERR, "osp_pki: Unable to verify certificate: Error deriving public key from private key.");
+        return false;
     }
 
     if (strcmp(pub_key, pub_crt) != 0)
     {
-        LOG(ERR, "Certificate verification failed: Public keys mismatch.");
-        goto exit;
+        LOG(ERR, "osp_pki: Certificate verification failed: Public keys mismatch.");
+        return false;
     }
 
-    retval = true;
-
-exit:
-    if (key != NULL) strcfree(key);
-    if (pub_key != NULL) FREE(pub_key);
-    if (pub_crt != NULL) FREE(pub_crt);
-
-    return retval;
+    return true;
 }
 
 /*
@@ -620,36 +807,31 @@ exit:
  */
 bool pki_cert_info(const char *crt, time_t *expire_date, char *sub, size_t sub_sz)
 {
+    ARENA_SCRATCH(scratch);
     struct tm tm;
     time_t edate;
-    char *p;
 
-    char *crtinfo = NULL;
-    char *dateinfo = NULL;
-    char *subinfo = NULL;
-    bool retval = false;
-
-    crtinfo = execssl(crt, "x509", "-enddate", "-subject", "-nameopt", "compat", "-noout");
+    char *crtinfo = execssl_arena(scratch, crt, "x509", "-enddate", "-subject", "-nameopt", "compat", "-noout");
     if (crtinfo == NULL)
     {
-        LOG(ERR, "Error retriving certificate information.");
-        goto exit;
+        LOG(ERR, "osp_pki: Error retriving certificate information.");
+        return false;
     }
 
     /* Extract the end date and subject from the openssl output */
-    p = crtinfo;
-    dateinfo = strsep(&p, "\n");
-    subinfo = strsep(&p, "\n");
+    char *p = crtinfo;
+    char *dateinfo = strsep(&p, "\n");
+    char *subinfo = strsep(&p, "\n");
     if (dateinfo == NULL || subinfo == NULL)
     {
-        LOG(ERR, "Error parsing certificate information.");
-        goto exit;
+        LOG(ERR, "osp_pki: Error parsing certificate information.");
+        return false;
     }
 
     if (strptime(dateinfo, "notAfter=%b %d %H:%M:%S %Y", &tm) == NULL)
     {
-        LOG(ERR, "Error parsing certificate expiration date: %s", dateinfo);
-        goto exit;
+        LOG(ERR, "osp_pki: Error parsing certificate expiration date: %s", dateinfo);
+        return false;
     }
 
     /*
@@ -662,14 +844,14 @@ bool pki_cert_info(const char *crt, time_t *expire_date, char *sub, size_t sub_s
     edate = timegm(&tm);
     if (edate == -1)
     {
-        LOG(ERR, "Error converting certificate expire date to Unix time.");
-        goto exit;
+        LOG(ERR, "osp_pki: Error converting certificate expire date to Unix time.");
+        return false;
     }
 
     if (strncmp(subinfo, "subject=", strlen("subject=")) != 0)
     {
-        LOG(ERR, "Error parsing subject line: %s\n", subinfo);
-        goto exit;
+        LOG(ERR, "osp_pki: Error parsing subject line: %s\n", subinfo);
+        return false;
     }
 
     subinfo += strlen("subject=");
@@ -677,11 +859,7 @@ bool pki_cert_info(const char *crt, time_t *expire_date, char *sub, size_t sub_s
     if (expire_date != NULL) *expire_date = edate;
     if (sub != NULL && sub_sz != 0) strscpy(sub, subinfo, sub_sz);
 
-    retval = true;
-
-exit:
-    FREE(crtinfo);
-    return retval;
+    return true;
 }
 
 /*
@@ -689,10 +867,74 @@ exit:
  * Miscellaneous
  * ======================================================================
  */
-
-/* Clear and free a string */
-void strcfree(char *buf)
+struct defer_memset_ctx
 {
-    memset(buf, 0xCC, strlen(buf));
-    FREE(buf);
+    void *data;
+    size_t datasz;
+};
+
+void pdefer_memset_fn(void *data)
+{
+    struct defer_memset_ctx *ctx = data;
+    memset(ctx->data, 0, ctx->datasz);
+}
+
+bool arena_defer_memset(arena_t *arena, void *data, size_t datasz)
+{
+    struct defer_memset_ctx ctx = {
+        .data = data,
+        .datasz = datasz,
+    };
+
+    return arena_defer_copy(arena, pdefer_memset_fn, &ctx, sizeof(ctx));
+}
+
+struct defer_sigblock
+{
+    sigset_t ds_oldmask;
+};
+
+void defer_sigblock_fn(void *data)
+{
+    struct defer_sigblock *ctx = data;
+
+    if (sigprocmask(SIG_SETMASK, &ctx->ds_oldmask, NULL) != 0)
+    {
+        LOG(WARN, "osp_pki: sigprocmask() failed to restore signals.");
+    }
+}
+
+/*
+ * Block signals until the arena defer function is called.
+ *
+ * This function blocks several signals that may interrupt the execution of the
+ * process, but the most important signal to block is SIGTERM. Blocking signals
+ * prevents from writing a partial certificate state to the filesystem (for
+ * example, the process writes the private key, but is killed before it can
+ * write the public key).
+ */
+bool arena_defer_sigblock(arena_t *arena)
+{
+    sigset_t block_mask;
+
+    struct defer_sigblock ds = {0};
+
+    /*
+     * SIGTERM - Normal manager shutdown
+     * SIGINT - CTRL-C
+     * SIGQUIT - CTRL-\
+     * SIGHUP - Usually config reload, block it just in case
+     */
+    sigemptyset(&block_mask);
+    sigaddset(&block_mask, SIGTERM);
+    sigaddset(&block_mask, SIGINT);
+    sigaddset(&block_mask, SIGQUIT);
+    sigaddset(&block_mask, SIGHUP);
+    if (sigprocmask(SIG_BLOCK, &block_mask, &ds.ds_oldmask) != 0)
+    {
+        LOG(WARN, "osp_pki: Unable to block signals, sigprocmask() failed: %s", strerror(errno));
+        return false;
+    }
+
+    return arena_defer_copy(arena, defer_sigblock_fn, &ds, sizeof(ds));
 }

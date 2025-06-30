@@ -1,6 +1,6 @@
 menuconfig MANAGER_PKIM
     bool "PKI Manager (PKIM)"
-    default n
+    default y
     help
         Enable PKI Manager (PKIM)
 

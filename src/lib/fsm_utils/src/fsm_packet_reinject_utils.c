@@ -253,7 +253,10 @@ fsm_forward_pkt(struct fsm_session *session,
 
     if (net_parser->source == PKT_SOURCE_NFQ)
     {
-        rc = nf_queue_update_payload(net_parser->packet_id, net_parser->nfq_queue_num, net_parser->caplen);
+        size_t len;
+
+        len = net_parser->caplen - net_parser->offset;
+        rc = nf_queue_update_payload(net_parser->packet_id, net_parser->nfq_queue_num, len);
         if (!rc)
         {
             LOGE("%s: Failed to update nfqueue payload", __func__);

@@ -31,9 +31,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <osw_drv.h>
 #include <osw_etc.h>
 #include <osw_module.h>
+#include <osw_phy_chan_observer.h>
 #include <osw_state.h>
 #include <osw_types.h>
-#include <osw_phy_chan_observer.h>
+#include <osw_ut.h>
 
 #include "ow_conf.h"
 #include "ds_tree.h"
@@ -183,6 +184,24 @@ struct ow_radar_next_channel_sieve
 #define state_obs_to_m(obs_)                  container_of(obs_, struct ow_radar_next_channel, state_obs)
 #define conf_obs_to_m(obs_)                   container_of(obs_, struct ow_radar_next_channel, conf_obs)
 
+static char *ow_radar_next_channel_priority_to_str(enum ow_radar_next_channel_priority priority)
+{
+    switch (priority)
+    {
+        case OW_RADAR_NEXT_CHANNEL_UNSET:
+            return "unset";
+        case OW_RADAR_NEXT_CHANNEL_UNUSABLE:
+            return "unusable";
+        case OW_RADAR_NEXT_CHANNEL_NON_DFS_OR_CAC_COMPLETED:
+            return "non_dfs_or_cac_completed";
+        case OW_RADAR_NEXT_CHANNEL_NON_DFS:
+            return "non_dfs";
+        case OW_RADAR_NEXT_CHANNEL_NON_DFS_AND_OPERATING:
+            return "non_dfs_and_operating";
+    }
+    return "unknown";
+}
+
 static struct ow_radar_next_channel_phy *ow_radar_next_channel_alloc_new_phy(
         struct ow_radar_next_channel *m,
         const char *phy_name)
@@ -197,8 +216,25 @@ static struct ow_radar_next_channel_phy *ow_radar_next_channel_alloc_new_phy(
     p->n_channel_states = 0;
     ds_tree_insert(&m->phy_tree, p, p->phy_name);
 
+    return p;
+}
+
+static struct ow_radar_next_channel_phy *ow_radar_next_channel_create_new_phy(
+        struct ow_radar_next_channel *m,
+        const char *phy_name)
+{
+    struct ow_radar_next_channel_phy *p;
+    p = ow_radar_next_channel_alloc_new_phy(m, phy_name);
     osw_conf_invalidate(&m->mut);
     return p;
+}
+
+static void ow_radar_next_channel_update_configured_channel_set(
+        struct ow_radar_next_channel_phy *phy,
+        const struct osw_channel *c)
+{
+    if (osw_channel_is_equal(&phy->configured_channel, c)) return;
+    phy->configured_channel = c ? *c : *osw_channel_none();
 }
 
 static void ow_radar_next_channel_update_configured_channel(
@@ -206,11 +242,17 @@ static void ow_radar_next_channel_update_configured_channel(
         const struct osw_channel *c)
 {
     if (WARN_ON(phy == NULL)) return;
-    if (osw_channel_is_equal(&phy->configured_channel, c)) return;
-
-    phy->configured_channel = c ? *c : *osw_channel_none();
+    ow_radar_next_channel_update_configured_channel_set(phy, c);
 
     osw_conf_invalidate(&phy->m->mut);
+}
+
+static void ow_radar_next_channel_update_operating_channel(
+        struct ow_radar_next_channel_phy *phy,
+        const struct osw_channel *c)
+{
+    if (WARN_ON(phy == NULL)) return;
+    phy->operating_channel = c ? *c : *osw_channel_none();
 }
 
 static void ow_radar_next_channel_update_operating_channel_cb(void *data, const struct osw_channel *c)
@@ -218,7 +260,7 @@ static void ow_radar_next_channel_update_operating_channel_cb(void *data, const 
     if (WARN_ON(data == NULL)) return;
 
     struct ow_radar_next_channel_phy *phy = (struct ow_radar_next_channel_phy *)data;
-    phy->operating_channel = c ? *c : *osw_channel_none();
+    ow_radar_next_channel_update_operating_channel(phy, c);
 
     osw_conf_invalidate(&phy->m->mut);
 }
@@ -293,7 +335,7 @@ static void ow_radar_next_channel_conf_phy_changed_cb(struct ow_conf_observer *o
     struct ow_radar_next_channel_phy *phy;
     phy = ds_tree_find(&m->phy_tree, phy_name);
 
-    if (phy == NULL) phy = ow_radar_next_channel_alloc_new_phy(m, phy_name);
+    if (phy == NULL) phy = ow_radar_next_channel_create_new_phy(m, phy_name);
     if (WARN_ON(phy == NULL)) return;
 
     ow_radar_next_channel_update_configured_channel(phy, conf_chan);
@@ -311,7 +353,7 @@ static void ow_radar_next_channel_state_phy_added_cb(
     struct ow_radar_next_channel_phy *phy;
     phy = ds_tree_find(&phy_tree, phy_name);
 
-    if (phy == NULL) phy = ow_radar_next_channel_alloc_new_phy(m, phy_name);
+    if (phy == NULL) phy = ow_radar_next_channel_create_new_phy(m, phy_name);
     if (WARN_ON(phy == NULL)) return;
 
     if (phy_info->drv_state != NULL)
@@ -486,13 +528,16 @@ static void ow_radar_next_channel_fill_sieve_priorities_update(
             {
                 sieve_elem->priority = OW_RADAR_NEXT_CHANNEL_NON_DFS_AND_OPERATING;
                 sieve_elem->channel.control_freq_mhz = operating_channel->control_freq_mhz;
+                // TODO: this loop requires a refactor
+                // TODO: and this module requires UTs
+                break;
             }
             else
             {
                 sieve_elem->priority = OW_RADAR_NEXT_CHANNEL_NON_DFS;
             }
         }
-        else if (segments[i].dfs_state == OSW_CHANNEL_DFS_CAC_COMPLETED)
+        else if (segments[i].dfs_state == OSW_CHANNEL_DFS_CAC_COMPLETED || segments[i].dfs_state == OSW_CHANNEL_NON_DFS)
         {
             sieve_elem->priority = OW_RADAR_NEXT_CHANNEL_NON_DFS_OR_CAC_COMPLETED;
         }
@@ -566,17 +611,30 @@ static struct osw_channel *ow_radar_next_channel_select_first_with_priority(
     return NULL;
 }
 
-static struct osw_channel ow_radar_next_channel_select(struct ow_radar_next_channel *m, const char *phy_name)
+static const struct ow_radar_next_channel_phy *ow_radar_next_channel_get_phy(
+        struct ow_radar_next_channel *m,
+        const char *phy_name)
 {
-    const struct osw_state_phy_info *phy_info = osw_state_phy_lookup(phy_name);
-    const struct osw_drv_phy_state *phy_state = phy_info ? phy_info->drv_state : NULL;
-    if (phy_state == NULL || !phy_state->exists) return *osw_channel_none();
-
     const struct ow_radar_next_channel_phy *phy = ds_tree_find(&m->phy_tree, phy_name);
-    if (phy == NULL)
-        // can't mutate without data
-        return *osw_channel_none();
+    return phy;
+}
 
+static bool ow_radar_next_channel_preliminary_check(const struct ow_radar_next_channel_phy *phy)
+{
+    if (phy == NULL) return false;
+
+    const struct osw_state_phy_info *phy_info = osw_state_phy_lookup(phy->phy_name);
+    const struct osw_drv_phy_state *phy_state = phy_info ? phy_info->drv_state : NULL;
+    if (phy_state == NULL || !phy_state->exists) return false;
+    if (phy_state->radar != OSW_RADAR_DETECT_ENABLED) return false;
+    return true;
+}
+
+static struct osw_channel ow_radar_next_channel_select(
+        struct ow_radar_next_channel *m,
+        const struct ow_radar_next_channel_phy *phy)
+{
+    const char *phy_name = phy->phy_name;
     const struct osw_channel_state *channel_states = phy->channel_states;
     const int n_channel_states = phy->n_channel_states;
     if (channel_states == NULL || n_channel_states == 0)  // This module can't help without channel_states
@@ -600,8 +658,6 @@ static struct osw_channel ow_radar_next_channel_select(struct ow_radar_next_chan
     if (currently_operating_channel == NULL) return *osw_channel_none();
     // Skip NON-DFS parts of bands 5G band
     if (!osw_channel_overlaps_dfs(currently_operating_channel)) return *osw_channel_none();
-
-    if (phy_state->radar != OSW_RADAR_DETECT_ENABLED) return *osw_channel_none();
 
     int first_chan_num, last_chan_num;
     osw_channel_state_get_min_max(channel_states, n_channel_states, &first_chan_num, &last_chan_num);
@@ -633,6 +689,15 @@ static struct osw_channel ow_radar_next_channel_select(struct ow_radar_next_chan
                 n_channel_states,
                 currently_operating_channel);
 
+        for (size_t i = 0; i < n_sieve; i++)
+        {
+            LOGT(LOG_PREFIX_PHY(phy_name, "sieve[%zu]: control_freq_mhz: %d, width: %s, priority: %s"),
+                 i,
+                 sieve[i].channel.control_freq_mhz,
+                 osw_channel_width_to_str(sieve[i].channel.width),
+                 ow_radar_next_channel_priority_to_str(sieve[i].priority));
+        }
+
         const enum ow_radar_next_channel_priority priorities[] = {
             OW_RADAR_NEXT_CHANNEL_NON_DFS_AND_OPERATING,
             OW_RADAR_NEXT_CHANNEL_NON_DFS,
@@ -654,12 +719,16 @@ static void ow_radar_next_channel_mutate_cb(struct osw_conf_mutator *mut, struct
     if (m == NULL) return;
     if (m->enabled == false) return;
 
-    struct osw_conf_phy *phy;
-    ds_tree_foreach (phy_tree, phy)
-
+    struct osw_conf_phy *conf_phy;
+    ds_tree_foreach (phy_tree, conf_phy)
     {
-        const struct osw_channel c = ow_radar_next_channel_select(m, phy->phy_name);
-        phy->radar_next_channel = c;
+        const struct ow_radar_next_channel_phy *phy = ow_radar_next_channel_get_phy(m, conf_phy->phy_name);
+        struct osw_channel c = *osw_channel_none();
+        if (ow_radar_next_channel_preliminary_check(phy))
+        {
+            c = ow_radar_next_channel_select(m, phy);
+        }
+        conf_phy->radar_next_channel = c;
     }
 }
 
@@ -688,10 +757,6 @@ static void ow_radar_next_channel_init(struct ow_radar_next_channel *m)
     m->state_obs = state_obs;
     m->mut = mut;
     ds_tree_init(&m->phy_tree, ds_str_cmp, struct ow_radar_next_channel_phy, node);
-
-    if (osw_etc_get("OW_RADAR_NEXT_CHANNEL_DISABLE")) m->enabled = false;
-
-    LOGI(LOG_PREFIX("enabled: %d", m->enabled));
 }
 
 static void ow_radar_next_channel_attach(struct ow_radar_next_channel *m)
@@ -706,6 +771,371 @@ OSW_MODULE(ow_radar_next_channel)
 {
     static struct ow_radar_next_channel m;
     ow_radar_next_channel_init(&m);
+
+    if (osw_etc_get("OW_RADAR_NEXT_CHANNEL_DISABLE")) m.enabled = false;
+    LOGI(LOG_PREFIX("enabled: %d", m.enabled));
+
     ow_radar_next_channel_attach(&m);
     return &m;
+}
+
+OSW_UT(ow_radar_next_channel_36_40)
+{
+    struct ow_radar_next_channel m = {0};
+    ow_radar_next_channel_init(&m);
+
+    struct ow_radar_next_channel_phy *phy = ow_radar_next_channel_alloc_new_phy(&m, "UT_PHY");
+
+    struct osw_channel operating =
+            {.control_freq_mhz = 5260, .center_freq0_mhz = 5270, .width = OSW_CHANNEL_40MHZ, .puncture_bitmap = 0};
+    const struct osw_channel expected =
+            {.control_freq_mhz = 5180, .center_freq0_mhz = 5190, .width = OSW_CHANNEL_40MHZ, .puncture_bitmap = 0};
+
+    ow_radar_next_channel_update_operating_channel(phy, &operating);
+    ow_radar_next_channel_update_configured_channel_set(phy, &operating);
+
+    phy->channel_states = NULL;
+    phy->n_channel_states = 0;
+
+    struct osw_channel_state cs_5gl[] = {
+        {.channel = {.control_freq_mhz = 5180}, .dfs_state = OSW_CHANNEL_NON_DFS, .dfs_nol_remaining_seconds = 0},
+        {.channel = {.control_freq_mhz = 5200}, .dfs_state = OSW_CHANNEL_NON_DFS, .dfs_nol_remaining_seconds = 0},
+        {.channel = {.control_freq_mhz = 5220}, .dfs_state = OSW_CHANNEL_NON_DFS, .dfs_nol_remaining_seconds = 0},
+        {.channel = {.control_freq_mhz = 5240}, .dfs_state = OSW_CHANNEL_NON_DFS, .dfs_nol_remaining_seconds = 0},
+        {.channel = {.control_freq_mhz = 5260},
+         .dfs_state = OSW_CHANNEL_DFS_CAC_COMPLETED,
+         .dfs_nol_remaining_seconds = 0},
+        {.channel = {.control_freq_mhz = 5280},
+         .dfs_state = OSW_CHANNEL_DFS_CAC_COMPLETED,
+         .dfs_nol_remaining_seconds = 0},
+        {.channel = {.control_freq_mhz = 5300},
+         .dfs_state = OSW_CHANNEL_DFS_CAC_COMPLETED,
+         .dfs_nol_remaining_seconds = 0},
+        {.channel = {.control_freq_mhz = 5320},
+         .dfs_state = OSW_CHANNEL_DFS_CAC_COMPLETED,
+         .dfs_nol_remaining_seconds = 0}};
+    phy->channel_states = cs_5gl;
+    phy->n_channel_states = ARRAY_SIZE(cs_5gl);
+
+    const struct osw_channel c = ow_radar_next_channel_select(&m, phy);
+    assert(osw_channel_cmp(&c, &expected) == 0);
+}
+
+OSW_UT(ow_radar_next_channel_44_80)
+{
+    struct ow_radar_next_channel m = {0};
+    ow_radar_next_channel_init(&m);
+
+    struct ow_radar_next_channel_phy *phy = ow_radar_next_channel_alloc_new_phy(&m, "UT_PHY");
+
+    struct osw_channel operating =
+            {.control_freq_mhz = 5220, .center_freq0_mhz = 5250, .width = OSW_CHANNEL_160MHZ, .puncture_bitmap = 0};
+    const struct osw_channel expected =
+            {.control_freq_mhz = 5220, .center_freq0_mhz = 5210, .width = OSW_CHANNEL_80MHZ, .puncture_bitmap = 0};
+
+    ow_radar_next_channel_update_operating_channel(phy, &operating);
+    ow_radar_next_channel_update_configured_channel_set(phy, &operating);
+
+    phy->channel_states = NULL;
+    phy->n_channel_states = 0;
+
+    struct osw_channel_state cs_5gl[] = {
+        {.channel = {.control_freq_mhz = 5180}, .dfs_state = OSW_CHANNEL_NON_DFS, .dfs_nol_remaining_seconds = 0},
+        {.channel = {.control_freq_mhz = 5200}, .dfs_state = OSW_CHANNEL_NON_DFS, .dfs_nol_remaining_seconds = 0},
+        {.channel = {.control_freq_mhz = 5220}, .dfs_state = OSW_CHANNEL_NON_DFS, .dfs_nol_remaining_seconds = 0},
+        {.channel = {.control_freq_mhz = 5240}, .dfs_state = OSW_CHANNEL_NON_DFS, .dfs_nol_remaining_seconds = 0},
+        {.channel = {.control_freq_mhz = 5260},
+         .dfs_state = OSW_CHANNEL_DFS_CAC_COMPLETED,
+         .dfs_nol_remaining_seconds = 0},
+        {.channel = {.control_freq_mhz = 5280},
+         .dfs_state = OSW_CHANNEL_DFS_CAC_COMPLETED,
+         .dfs_nol_remaining_seconds = 0},
+        {.channel = {.control_freq_mhz = 5300},
+         .dfs_state = OSW_CHANNEL_DFS_CAC_COMPLETED,
+         .dfs_nol_remaining_seconds = 0},
+        {.channel = {.control_freq_mhz = 5320},
+         .dfs_state = OSW_CHANNEL_DFS_CAC_COMPLETED,
+         .dfs_nol_remaining_seconds = 0}};
+    phy->channel_states = cs_5gl;
+    phy->n_channel_states = ARRAY_SIZE(cs_5gl);
+
+    const struct osw_channel c = ow_radar_next_channel_select(&m, phy);
+    assert(osw_channel_cmp(&c, &expected) == 0);
+}
+
+OSW_UT(ow_radar_next_channel_120_160)
+{
+    struct ow_radar_next_channel m = {0};
+    ow_radar_next_channel_init(&m);
+
+    struct ow_radar_next_channel_phy *phy = ow_radar_next_channel_alloc_new_phy(&m, "UT_PHY");
+
+    struct osw_channel operating =
+            {.control_freq_mhz = 5600, .center_freq0_mhz = 5570, .width = OSW_CHANNEL_160MHZ, .puncture_bitmap = 0};
+    const struct osw_channel expected =
+            {.control_freq_mhz = 5180, .center_freq0_mhz = 5250, .width = OSW_CHANNEL_160MHZ, .puncture_bitmap = 0};
+
+    ow_radar_next_channel_update_operating_channel(phy, &operating);
+    ow_radar_next_channel_update_configured_channel_set(phy, &operating);
+
+    phy->channel_states = NULL;
+    phy->n_channel_states = 0;
+
+    struct osw_channel_state cs_5gl[] = {
+        {.channel = {.control_freq_mhz = 5180}, .dfs_state = OSW_CHANNEL_NON_DFS, .dfs_nol_remaining_seconds = 0},
+        {.channel = {.control_freq_mhz = 5200}, .dfs_state = OSW_CHANNEL_NON_DFS, .dfs_nol_remaining_seconds = 0},
+        {.channel = {.control_freq_mhz = 5220}, .dfs_state = OSW_CHANNEL_NON_DFS, .dfs_nol_remaining_seconds = 0},
+        {.channel = {.control_freq_mhz = 5240}, .dfs_state = OSW_CHANNEL_NON_DFS, .dfs_nol_remaining_seconds = 0},
+        {.channel = {.control_freq_mhz = 5260},
+         .dfs_state = OSW_CHANNEL_DFS_CAC_COMPLETED,
+         .dfs_nol_remaining_seconds = 0},
+        {.channel = {.control_freq_mhz = 5280},
+         .dfs_state = OSW_CHANNEL_DFS_CAC_COMPLETED,
+         .dfs_nol_remaining_seconds = 0},
+        {.channel = {.control_freq_mhz = 5300},
+         .dfs_state = OSW_CHANNEL_DFS_CAC_COMPLETED,
+         .dfs_nol_remaining_seconds = 0},
+        {.channel = {.control_freq_mhz = 5320},
+         .dfs_state = OSW_CHANNEL_DFS_CAC_COMPLETED,
+         .dfs_nol_remaining_seconds = 0}};
+    phy->channel_states = cs_5gl;
+    phy->n_channel_states = ARRAY_SIZE(cs_5gl);
+
+    const struct osw_channel c = ow_radar_next_channel_select(&m, phy);
+    assert(osw_channel_cmp(&c, &expected) == 0);
+}
+
+OSW_UT(ow_radar_next_channel_116_40)
+{
+    struct ow_radar_next_channel m = {0};
+    ow_radar_next_channel_init(&m);
+
+    struct ow_radar_next_channel_phy *phy = ow_radar_next_channel_alloc_new_phy(&m, "UT_PHY");
+
+    struct osw_channel operating =
+            {.control_freq_mhz = 5500, .center_freq0_mhz = 5530, .width = OSW_CHANNEL_80MHZ, .puncture_bitmap = 0};
+    const struct osw_channel expected =
+            {.control_freq_mhz = 5580, .center_freq0_mhz = 5590, .width = OSW_CHANNEL_40MHZ, .puncture_bitmap = 0};
+
+    ow_radar_next_channel_update_operating_channel(phy, &operating);
+    ow_radar_next_channel_update_configured_channel_set(phy, &operating);
+
+    phy->channel_states = NULL;
+    phy->n_channel_states = 0;
+
+    struct osw_channel_state cs_5gl[] = {
+        {.channel = {.control_freq_mhz = 5500},
+         .dfs_state = OSW_CHANNEL_DFS_CAC_COMPLETED,
+         .dfs_nol_remaining_seconds = 0},
+        {.channel = {.control_freq_mhz = 5520},
+         .dfs_state = OSW_CHANNEL_DFS_CAC_COMPLETED,
+         .dfs_nol_remaining_seconds = 0},
+        {.channel = {.control_freq_mhz = 5540},
+         .dfs_state = OSW_CHANNEL_DFS_CAC_COMPLETED,
+         .dfs_nol_remaining_seconds = 0},
+        {.channel = {.control_freq_mhz = 5560},
+         .dfs_state = OSW_CHANNEL_DFS_CAC_COMPLETED,
+         .dfs_nol_remaining_seconds = 0},
+        {.channel = {.control_freq_mhz = 5580},
+         .dfs_state = OSW_CHANNEL_DFS_CAC_COMPLETED,
+         .dfs_nol_remaining_seconds = 0},
+        {.channel = {.control_freq_mhz = 5600},
+         .dfs_state = OSW_CHANNEL_DFS_CAC_COMPLETED,
+         .dfs_nol_remaining_seconds = 0},
+        {.channel = {.control_freq_mhz = 5620},
+         .dfs_state = OSW_CHANNEL_DFS_CAC_POSSIBLE,
+         .dfs_nol_remaining_seconds = 0},
+        {.channel = {.control_freq_mhz = 5640},
+         .dfs_state = OSW_CHANNEL_DFS_CAC_POSSIBLE,
+         .dfs_nol_remaining_seconds = 0}};
+    phy->channel_states = cs_5gl;
+    phy->n_channel_states = ARRAY_SIZE(cs_5gl);
+
+    const struct osw_channel c = ow_radar_next_channel_select(&m, phy);
+    assert(osw_channel_cmp(&c, &expected) == 0);
+}
+
+OSW_UT(ow_radar_next_channel_116_80)
+{
+    struct ow_radar_next_channel m = {0};
+    ow_radar_next_channel_init(&m);
+
+    struct ow_radar_next_channel_phy *phy = ow_radar_next_channel_alloc_new_phy(&m, "UT_PHY");
+
+    struct osw_channel operating =
+            {.control_freq_mhz = 5560, .center_freq0_mhz = 5530, .width = OSW_CHANNEL_80MHZ, .puncture_bitmap = 0};
+    const struct osw_channel expected =
+            {.control_freq_mhz = 5580, .center_freq0_mhz = 5610, .width = OSW_CHANNEL_80MHZ, .puncture_bitmap = 0};
+
+    ow_radar_next_channel_update_operating_channel(phy, &operating);
+    ow_radar_next_channel_update_configured_channel_set(phy, &operating);
+
+    phy->channel_states = NULL;
+    phy->n_channel_states = 0;
+
+    struct osw_channel_state cs_5gl[] = {
+        {.channel = {.control_freq_mhz = 5500},
+         .dfs_state = OSW_CHANNEL_DFS_CAC_COMPLETED,
+         .dfs_nol_remaining_seconds = 0},
+        {.channel = {.control_freq_mhz = 5520},
+         .dfs_state = OSW_CHANNEL_DFS_CAC_COMPLETED,
+         .dfs_nol_remaining_seconds = 0},
+        {.channel = {.control_freq_mhz = 5540},
+         .dfs_state = OSW_CHANNEL_DFS_CAC_COMPLETED,
+         .dfs_nol_remaining_seconds = 0},
+        {.channel = {.control_freq_mhz = 5560},
+         .dfs_state = OSW_CHANNEL_DFS_CAC_COMPLETED,
+         .dfs_nol_remaining_seconds = 0},
+        {.channel = {.control_freq_mhz = 5580},
+         .dfs_state = OSW_CHANNEL_DFS_CAC_COMPLETED,
+         .dfs_nol_remaining_seconds = 0},
+        {.channel = {.control_freq_mhz = 5600},
+         .dfs_state = OSW_CHANNEL_DFS_CAC_COMPLETED,
+         .dfs_nol_remaining_seconds = 0},
+        {.channel = {.control_freq_mhz = 5620},
+         .dfs_state = OSW_CHANNEL_DFS_CAC_COMPLETED,
+         .dfs_nol_remaining_seconds = 0},
+        {.channel = {.control_freq_mhz = 5640},
+         .dfs_state = OSW_CHANNEL_DFS_CAC_COMPLETED,
+         .dfs_nol_remaining_seconds = 0},
+        {.channel = {.control_freq_mhz = 5745}, .dfs_state = OSW_CHANNEL_NON_DFS, .dfs_nol_remaining_seconds = 0}};
+    phy->channel_states = cs_5gl;
+    phy->n_channel_states = ARRAY_SIZE(cs_5gl);
+
+    const struct osw_channel c = ow_radar_next_channel_select(&m, phy);
+    assert(osw_channel_cmp(&c, &expected) == 0);
+}
+
+OSW_UT(ow_radar_next_channel_149_40)
+{
+    struct ow_radar_next_channel m = {0};
+    ow_radar_next_channel_init(&m);
+
+    struct ow_radar_next_channel_phy *phy = ow_radar_next_channel_alloc_new_phy(&m, "UT_PHY");
+
+    struct osw_channel operating =
+            {.control_freq_mhz = 5540, .center_freq0_mhz = 5550, .width = OSW_CHANNEL_40MHZ, .puncture_bitmap = 0};
+    const struct osw_channel expected =
+            {.control_freq_mhz = 5745, .center_freq0_mhz = 5755, .width = OSW_CHANNEL_40MHZ, .puncture_bitmap = 0};
+
+    ow_radar_next_channel_update_operating_channel(phy, &operating);
+    ow_radar_next_channel_update_configured_channel_set(phy, &operating);
+
+    phy->channel_states = NULL;
+    phy->n_channel_states = 0;
+
+    struct osw_channel_state cs_5gl[] = {
+        {.channel = {.control_freq_mhz = 5500},
+         .dfs_state = OSW_CHANNEL_DFS_CAC_COMPLETED,
+         .dfs_nol_remaining_seconds = 0},
+        {.channel = {.control_freq_mhz = 5520},
+         .dfs_state = OSW_CHANNEL_DFS_CAC_COMPLETED,
+         .dfs_nol_remaining_seconds = 0},
+        {.channel = {.control_freq_mhz = 5540},
+         .dfs_state = OSW_CHANNEL_DFS_CAC_COMPLETED,
+         .dfs_nol_remaining_seconds = 0},
+        {.channel = {.control_freq_mhz = 5560},
+         .dfs_state = OSW_CHANNEL_DFS_CAC_COMPLETED,
+         .dfs_nol_remaining_seconds = 0},
+        {.channel = {.control_freq_mhz = 5580},
+         .dfs_state = OSW_CHANNEL_DFS_CAC_COMPLETED,
+         .dfs_nol_remaining_seconds = 0},
+        {.channel = {.control_freq_mhz = 5600},
+         .dfs_state = OSW_CHANNEL_DFS_CAC_COMPLETED,
+         .dfs_nol_remaining_seconds = 0},
+        {.channel = {.control_freq_mhz = 5620},
+         .dfs_state = OSW_CHANNEL_DFS_CAC_COMPLETED,
+         .dfs_nol_remaining_seconds = 0},
+        {.channel = {.control_freq_mhz = 5640},
+         .dfs_state = OSW_CHANNEL_DFS_CAC_COMPLETED,
+         .dfs_nol_remaining_seconds = 0},
+        {.channel = {.control_freq_mhz = 5745}, .dfs_state = OSW_CHANNEL_NON_DFS, .dfs_nol_remaining_seconds = 0},
+        {.channel = {.control_freq_mhz = 5765}, .dfs_state = OSW_CHANNEL_NON_DFS, .dfs_nol_remaining_seconds = 0}};
+    phy->channel_states = cs_5gl;
+    phy->n_channel_states = ARRAY_SIZE(cs_5gl);
+
+    const struct osw_channel c = ow_radar_next_channel_select(&m, phy);
+    assert(osw_channel_cmp(&c, &expected) == 0);
+}
+
+OSW_UT(ow_radar_next_channel_108_20)
+{
+    struct ow_radar_next_channel m = {0};
+    ow_radar_next_channel_init(&m);
+
+    struct ow_radar_next_channel_phy *phy = ow_radar_next_channel_alloc_new_phy(&m, "UT_PHY");
+
+    struct osw_channel operating =
+            {.control_freq_mhz = 5500, .center_freq0_mhz = 5510, .width = OSW_CHANNEL_40MHZ, .puncture_bitmap = 0};
+    const struct osw_channel expected =
+            {.control_freq_mhz = 5540, .center_freq0_mhz = 5540, .width = OSW_CHANNEL_20MHZ, .puncture_bitmap = 0};
+
+    ow_radar_next_channel_update_operating_channel(phy, &operating);
+    ow_radar_next_channel_update_configured_channel_set(phy, &operating);
+
+    phy->channel_states = NULL;
+    phy->n_channel_states = 0;
+
+    struct osw_channel_state cs_5gl[] = {
+        {.channel = {.control_freq_mhz = 5500},
+         .dfs_state = OSW_CHANNEL_DFS_CAC_COMPLETED,
+         .dfs_nol_remaining_seconds = 0},
+        {.channel = {.control_freq_mhz = 5520}, .dfs_state = OSW_CHANNEL_DFS_NOL, .dfs_nol_remaining_seconds = 1800},
+        {.channel = {.control_freq_mhz = 5540},
+         .dfs_state = OSW_CHANNEL_DFS_CAC_COMPLETED,
+         .dfs_nol_remaining_seconds = 0},
+        {.channel = {.control_freq_mhz = 5560},
+         .dfs_state = OSW_CHANNEL_DFS_CAC_IN_PROGRESS,
+         .dfs_nol_remaining_seconds = 0},
+        {.channel = {.control_freq_mhz = 5580},
+         .dfs_state = OSW_CHANNEL_DFS_CAC_POSSIBLE,
+         .dfs_nol_remaining_seconds = 0},
+        {.channel = {.control_freq_mhz = 5600},
+         .dfs_state = OSW_CHANNEL_DFS_CAC_IN_PROGRESS,
+         .dfs_nol_remaining_seconds = 0}};
+    phy->channel_states = cs_5gl;
+    phy->n_channel_states = ARRAY_SIZE(cs_5gl);
+
+    const struct osw_channel c = ow_radar_next_channel_select(&m, phy);
+    assert(osw_channel_cmp(&c, &expected) == 0);
+}
+
+OSW_UT(ow_radar_next_channel_116_20)
+{
+    struct ow_radar_next_channel m = {0};
+    ow_radar_next_channel_init(&m);
+
+    struct ow_radar_next_channel_phy *phy = ow_radar_next_channel_alloc_new_phy(&m, "UT_PHY");
+
+    struct osw_channel operating =
+            {.control_freq_mhz = 5500, .center_freq0_mhz = 5530, .width = OSW_CHANNEL_80MHZ, .puncture_bitmap = 0};
+    const struct osw_channel expected =
+            {.control_freq_mhz = 5600, .center_freq0_mhz = 5600, .width = OSW_CHANNEL_20MHZ, .puncture_bitmap = 0};
+
+    ow_radar_next_channel_update_operating_channel(phy, &operating);
+    ow_radar_next_channel_update_configured_channel_set(phy, &operating);
+
+    phy->channel_states = NULL;
+    phy->n_channel_states = 0;
+
+    struct osw_channel_state cs_5gl[] = {
+        {.channel = {.control_freq_mhz = 5500},
+         .dfs_state = OSW_CHANNEL_DFS_CAC_COMPLETED,
+         .dfs_nol_remaining_seconds = 0},
+        {.channel = {.control_freq_mhz = 5520}, .dfs_state = OSW_CHANNEL_DFS_NOL, .dfs_nol_remaining_seconds = 1800},
+        {.channel = {.control_freq_mhz = 5540},
+         .dfs_state = OSW_CHANNEL_DFS_CAC_COMPLETED,
+         .dfs_nol_remaining_seconds = 0},
+        {.channel = {.control_freq_mhz = 5560}, .dfs_state = OSW_CHANNEL_DFS_NOL, .dfs_nol_remaining_seconds = 0},
+        {.channel = {.control_freq_mhz = 5580},
+         .dfs_state = OSW_CHANNEL_DFS_CAC_POSSIBLE,
+         .dfs_nol_remaining_seconds = 0},
+        {.channel = {.control_freq_mhz = 5600},
+         .dfs_state = OSW_CHANNEL_DFS_CAC_COMPLETED,
+         .dfs_nol_remaining_seconds = 0}};
+    phy->channel_states = cs_5gl;
+    phy->n_channel_states = ARRAY_SIZE(cs_5gl);
+
+    const struct osw_channel c = ow_radar_next_channel_select(&m, phy);
+    assert(osw_channel_cmp(&c, &expected) == 0);
 }

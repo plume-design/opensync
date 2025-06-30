@@ -60,10 +60,19 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define DOT11_RRM_MEAS_REP_IE_TYPE_BEACON 0x05
 #define DOT11_RRM_MEAS_REP_IE_REP_MODE_REFUSED_MSK 0x04
 
+#define DOT11_BTM_QUERY_IE_ACTION_CODE 0x06
+#define DOT11_BTM_REQUEST_IE_ACTION_CODE 0x07
 #define DOT11_BTM_RESPONSE_IE_ACTION_CODE 0x08
 #define DOT11_BTM_RESPONSE_CODE_REJECT_CAND_LIST_PROVIDED 6
 #define DOT11_NEIGHBOR_REPORT_IE_TAG 0x34
 #define DOT11_NEIGHBOR_REPORT_CANDIDATE_PREFERENCE 0x03
+
+#define DOT11_WNM_NOTIF_REQUEST_IE_ACTION_CODE 0x1A
+#define DOT11_WNM_NOTIF_REQUEST_TYPE_VENDOR_SPECIFIC 0xDD
+
+#define DOT11_VENDOR_SPECIFIC_IE_WFA_MBO_OCE 0x16
+#define WFA_MBO_ATTR_ID_NON_PREF_CHAN_REP 0x02
+#define WFA_MBO_ATTR_ID_CELL_DATA_PREF 0x03
 
 struct osw_drv;
 struct osw_drv_frame;
@@ -135,6 +144,15 @@ struct osw_drv_dot11_frame_action_rrm_meas_rep {
     uint8_t variable[];
 } __attribute__((__packed__));
 
+struct osw_drv_dot11_frame_action_wnm_req {
+    uint8_t action;
+    uint8_t dialog_token;
+    uint8_t type;
+    /*
+     * Optional subelements
+     */
+    uint8_t variable[];
+} __attribute__((__packed__));
 
 struct osw_drv_dot11_frame_action {
     uint8_t category;
@@ -143,6 +161,7 @@ struct osw_drv_dot11_frame_action {
         struct osw_drv_dot11_frame_action_bss_tm_resp bss_tm_resp;
         struct osw_drv_dot11_frame_action_rrm_meas_req rrm_meas_req;
         struct osw_drv_dot11_frame_action_rrm_meas_rep rrm_meas_rep;
+        struct osw_drv_dot11_frame_action_wnm_req wnm_notif_req;
     } u;
 } __attribute__((__packed__));
 

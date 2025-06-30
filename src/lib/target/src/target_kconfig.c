@@ -129,17 +129,18 @@ const char *target_opensync_ca_filename(void)
 }
 
 #if defined(CONFIG_TARGET_RESTART_SCRIPT)
-bool target_device_restart_managers()
+bool target_device_restart_managers_helper(const char *calling_func)
 {
     if (access(CONFIG_TARGET_PATH_DISABLE_FATAL_STATE, F_OK) == 0) {
-        LOGEM("FATAL condition triggered, not restarting managers by request "
-        "(%s exists)", CONFIG_TARGET_PATH_DISABLE_FATAL_STATE);
+        LOGEM("FATAL condition triggered by %s, not restarting managers by request "
+            "(%s exists)", calling_func, CONFIG_TARGET_PATH_DISABLE_FATAL_STATE);
     }
     else {
         pid_t pid;
         char *argv[] = {NULL} ;
 
-        LOGI("FATAL condition triggered, restarting managers...");
+        LOGI("FATAL condition triggered by %s, restarting managers...", calling_func);
+        os_backtrace_dump_manager_restart(calling_func);
         pid = fork();
         if (pid == 0) {
             int rc = execvp(CONFIG_TARGET_RESTART_SCRIPT_CMD, argv);
@@ -390,7 +391,7 @@ util_set_timeout_cmd_arg(char *arg, size_t s, int timeout)
     snprintf(arg, s, "%s %d", t, timeout);
 }
 
-static int
+static bool
 util_system_cmd(const char *cmd)
 {
     char command[512];
@@ -444,8 +445,8 @@ util_arping_cmd(const char *ipstr)
 
     snprintf(ARRAY_AND_SIZE(cmd),
              "timeout %d arping -I \"$(ip ro get %s"
-             " | cut -d' ' -f3"
-             " | sed 1q)\" -c %d -w %d %s",
+             " | awk '{for(i=1;i<=NF;i++){if($i==\"dev\"){print $(i+1)}}}')\""
+             " -c %d -w %d %s",
              DEFAULT_PING_DEADLINE,
              ipstr,
              DEFAULT_PING_PACKET_CNT,
@@ -453,8 +454,8 @@ util_arping_cmd(const char *ipstr)
              ipstr);
 
     ret = util_system_cmd(cmd);
-
-    LOGI("Arping %s result %d (cmd=%s)", ipstr, ret, cmd);
+    const char *res = ret ? "succeeded" : "failed";
+    LOGI("Arping %s: %s result %d (cmd=%s)", res, ipstr, ret, cmd);
     return ret;
 }
 
@@ -482,7 +483,8 @@ util_ndisc6_cmd(const char *ipstr, const char *ifname)
              DEFAULT_PING_DEADLINE, ipstr, ifname);
 
     ret = util_system_cmd(cmd);
-    LOGI("%s ndisc6 %s result %d (cmd=%s)", ifname, ipstr, ret, cmd);
+    const char *res = ret ? "succeeded" : "failed";
+    LOGI("%s ndisc6 %s: %s result %d (cmd=%s)", ifname, res, ipstr, ret, cmd);
     return ret;
 }
 

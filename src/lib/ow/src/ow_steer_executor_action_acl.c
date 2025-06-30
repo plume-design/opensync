@@ -41,6 +41,7 @@ struct ow_steer_executor_action_acl {
     struct ow_steer_candidate_list *candidate_list;
     struct osw_state_observer state_obs;
     bool syncing;
+    bool enabled;
 };
 
 static bool
@@ -138,7 +139,7 @@ ow_steer_executor_action_acl_call_fn(struct ow_steer_executor_action *action,
 {
     struct ow_steer_executor_action_acl *acl_action = ow_steer_executor_action_get_priv(action);
 
-    ow_steer_executor_action_acl_set_candidates(acl_action, candidate_list);
+    ow_steer_executor_action_acl_set_candidates(acl_action, acl_action->enabled ? candidate_list : NULL);
 
     if (ow_steer_executor_action_acl_in_sync(acl_action)) {
         if (acl_action->syncing) {
@@ -276,9 +277,25 @@ ow_steer_executor_action_acl_create(const struct osw_hwaddr *sta_addr,
 
     acl_action->base = ow_steer_executor_action_create("acl", sta_addr, &ops, mediator, log_prefix, acl_action);
     acl_action->state_obs = state_obs;
+    acl_action->enabled = true;
     osw_state_register_observer(&acl_action->state_obs);
 
     return acl_action;
+}
+
+void
+ow_steer_executor_action_acl_set_enabled(struct ow_steer_executor_action_acl *acl_action,
+                                         const bool enabled)
+{
+    if (acl_action == NULL) return;
+    struct ow_steer_executor_action *action = acl_action->base;
+    if (acl_action->enabled == enabled) return;
+    LOGI("%s enabled: %d -> %d",
+         ow_steer_executor_action_get_prefix(action),
+         acl_action->enabled,
+         enabled);
+    acl_action->enabled = enabled;
+    ow_steer_executor_action_sched_recall(action);
 }
 
 void

@@ -343,6 +343,7 @@ free_flow_key_tag(struct flow_tags *tag)
 {
     size_t i;
 
+    if (tag == NULL) return;
     CHECK_DOUBLE_FREE(tag);
 
     FREE(tag->vendor);
@@ -724,6 +725,34 @@ void net_md_free_acc(struct net_md_stats_accumulator *acc)
 }
 
 
+void
+net_md_populate_acc(struct net_md_aggregator *aggr,
+                    struct net_md_flow_key *key,
+                    struct net_md_stats_accumulator *acc)
+{
+
+    if (key == NULL || aggr == NULL || acc == NULL) return;
+
+    acc->key = set_net_md_flow_key(key);
+    if (acc->key == NULL) return;
+
+    acc->fkey = net_md_set_flow_key(acc->key);
+    if (acc->fkey == NULL) goto err_free_md_flow_key;
+    
+    acc->fkey->acc = acc;
+    acc->fkey->state.report_attrs = true;
+    acc->flags = (key->flags & (NET_MD_ACC_ETH | NET_MD_ACC_FIVE_TUPLE));
+    if (aggr->on_acc_create != NULL) aggr->on_acc_create(aggr, acc);    
+    aggr->total_flows++;
+    return;
+
+err_free_md_flow_key:
+    free_net_md_flow_key(acc->key);
+    FREE(acc->key);
+    return;
+}
+
+
 struct net_md_stats_accumulator *
 net_md_set_acc(struct net_md_aggregator *aggr,
                struct net_md_flow_key *key)
@@ -909,7 +938,7 @@ bool has_eth_info(struct net_md_flow_key *key)
     bool ret;
 
     ret = (key->smac != NULL);
-    ret |= (key->dmac != NULL);
+    ret &= (key->dmac != NULL);
 
     return ret;
 }
@@ -926,7 +955,7 @@ struct net_md_eth_pair * net_md_lookup_eth_pair(struct net_md_aggregator *aggr,
     has_eth = has_eth_info(key);
     if (!has_eth) return NULL;
 
-    eth_pair = ds_tree_find(&aggr->eth_pairs, key);
+    eth_pair = ds_tree_find(aggr->eth_pairs, key);
     if (eth_pair != NULL) return eth_pair;
 
     if (key->flags & NET_MD_ACC_LOOKUP_ONLY) return NULL;
@@ -944,7 +973,7 @@ struct net_md_eth_pair * net_md_lookup_eth_pair(struct net_md_aggregator *aggr,
     }
     if (eth_pair == NULL) return NULL;
 
-    ds_tree_insert(&aggr->eth_pairs, eth_pair, eth_pair->mac_stats->key);
+    ds_tree_insert(aggr->eth_pairs, eth_pair, eth_pair->mac_stats->key);
 
     return eth_pair;
 }
@@ -987,7 +1016,7 @@ net_md_lookup_acc(struct net_md_aggregator *aggr,
 
     if (has_eth_info(key)) return net_md_lookup_eth_acc(aggr, key);
 
-    acc = net_md_tree_lookup_acc(aggr, &aggr->five_tuple_flows, key);
+    acc = net_md_tree_lookup_acc(aggr, aggr->five_tuple_flows, key);
     if (acc != NULL) acc->aggr = aggr;
 
     return acc;
@@ -1308,19 +1337,63 @@ void net_md_report_eth_acc(struct net_md_aggregator *aggr,
 }
 
 
+void net_md_report_acc(nfe_conn_t conn, void *data)
+{
+    struct net_md_stats_accumulator *acc;
+    struct net_md_aggregator *aggr;
+    bool active_flow;
+
+    if (!conn) return;
+
+    acc = container_of(conn, struct net_md_stats_accumulator, priv);
+    if (!acc) return;
+
+    aggr = acc->aggr;
+    if (aggr == NULL) return;
+
+    active_flow = (acc->state == ACC_STATE_WINDOW_ACTIVE);
+    active_flow |= acc->report;
+    if (active_flow)
+    {
+        net_md_close_counters(aggr, acc);
+        net_md_add_sample_to_window(aggr, acc);
+        acc->state = ACC_STATE_WINDOW_RESET;
+    }
+
+    /* Clear the reporting request */
+    acc->report = false;
+    return;
+}
+
+
 void net_md_report_accs(struct net_md_aggregator *aggr)
 {
     struct net_md_eth_pair *eth_pair;
 
-    eth_pair = ds_tree_head(&aggr->eth_pairs);
-    while (eth_pair != NULL)
+    if (aggr->nfe_ct)
     {
-        net_md_report_eth_acc(aggr, eth_pair);
-        net_md_report_5tuples_accs(aggr, &eth_pair->five_tuple_flows);
-        eth_pair = ds_tree_next(&aggr->eth_pairs, eth_pair);
+        nfe_conntrack_dump(aggr->nfe_ct, net_md_report_acc, NULL);
+        return;
     }
 
-    net_md_report_5tuples_accs(aggr, &aggr->five_tuple_flows);
+
+    /* Report LAN flows */
+    if (aggr->report_flow_type & NET_MD_LAN_FLOWS)
+    {
+        eth_pair = ds_tree_head(aggr->eth_pairs);
+        while (eth_pair != NULL)
+        {
+            net_md_report_eth_acc(aggr, eth_pair);
+            net_md_report_5tuples_accs(aggr, &eth_pair->five_tuple_flows);
+            eth_pair = ds_tree_next(aggr->eth_pairs, eth_pair);
+        }
+    }
+
+    /* Report ipflows */
+    if (aggr->report_flow_type & NET_MD_IP_FLOWS)
+    {
+        net_md_report_5tuples_accs(aggr, aggr->five_tuple_flows);
+    }
 }
 
 
@@ -2431,77 +2504,15 @@ void net_md_log_aggr(struct net_md_aggregator *aggr)
 {
     struct net_md_eth_pair *eth_pair;
 
-    eth_pair = ds_tree_head(&aggr->eth_pairs);
+    eth_pair = ds_tree_head(aggr->eth_pairs);
     while (eth_pair != NULL)
     {
         net_md_log_eth_acc(aggr, eth_pair);
         net_md_log_accs(aggr, &eth_pair->five_tuple_flows);
-        eth_pair = ds_tree_next(&aggr->eth_pairs, eth_pair);
+        eth_pair = ds_tree_next(aggr->eth_pairs, eth_pair);
     }
 
-    net_md_log_accs(aggr, &aggr->five_tuple_flows);
-}
-
-/**
- * @brief log the content of accumulators in the given tree
- *
- * @param aggr the aggregator containing the accumulators
- * @tree the tree of accumulators
- */
-void
-net_md_process_accs(struct net_md_aggregator *aggr,
-                    ds_tree_t *tree)
-{
-    struct net_md_flow *flow;
-
-    flow = ds_tree_head(tree);
-    while (flow != NULL)
-    {
-        struct net_md_stats_accumulator *acc;
-        struct net_md_flow *next;
-
-        acc = flow->tuple_stats;
-        aggr->process(acc);
-        next = ds_tree_next(tree, flow);
-        flow = next;
-    }
-}
-
-void
-net_md_process_eth_acc(struct net_md_aggregator *aggr,
-                       struct net_md_eth_pair *eth_pair)
-{
-    struct net_md_stats_accumulator *eth_acc;
-    ds_tree_t *tree;
-
-    eth_acc = eth_pair->mac_stats;
-    aggr->process(eth_acc);
-    tree = &eth_pair->ethertype_flows;
-    net_md_process_accs(aggr, tree);
-}
-
-
-/**
- * @brief process an accumulator
- *
- * Process an accumulator
- * @param acc the accumulator to process
- */
-void net_md_process_aggr(struct net_md_aggregator *aggr)
-{
-    struct net_md_eth_pair *eth_pair;
-
-    if (aggr->process == NULL) return;
-
-    eth_pair = ds_tree_head(&aggr->eth_pairs);
-    while (eth_pair != NULL)
-    {
-        net_md_process_eth_acc(aggr, eth_pair);
-        net_md_process_accs(aggr, &eth_pair->five_tuple_flows);
-        eth_pair = ds_tree_next(&aggr->eth_pairs, eth_pair);
-    }
-
-    net_md_process_accs(aggr, &aggr->five_tuple_flows);
+    net_md_log_accs(aggr, aggr->five_tuple_flows);
 }
 
 
@@ -2537,19 +2548,19 @@ net_md_get_flow_info(struct net_md_stats_accumulator *acc,
         {
             if (acc->originator == NET_MD_ACC_ORIGINATOR_SRC)
             {
-                info->local_mac = key->smac;
+                info->local_mac = key->smac ? key->smac : key->dmac;
                 info->local_ip = key->src_ip;
                 info->local_port = key->sport;
-                info->remote_mac = key->dmac;
+                info->remote_mac = key->dmac ? key->dmac : key->smac;
                 info->remote_ip = key->dst_ip;
                 info->remote_port = key->dport;
             }
             else if (acc->originator == NET_MD_ACC_ORIGINATOR_DST)
             {
-                info->local_mac = key->dmac;
+                info->local_mac = key->dmac ? key->dmac : key->smac;
                 info->local_ip = key->dst_ip;
                 info->local_port = key->dport;
-                info->remote_mac = key->smac;
+                info->remote_mac = key->smac ? key->smac : key->dmac;
                 info->remote_ip = key->src_ip;
                 info->remote_port = key->sport;
             }
@@ -2559,19 +2570,19 @@ net_md_get_flow_info(struct net_md_stats_accumulator *acc,
         {
             if (acc->originator == NET_MD_ACC_ORIGINATOR_SRC)
             {
-                info->local_mac = key->dmac;
+                info->local_mac = key->dmac ? key->dmac : key->smac;
                 info->local_ip = key->dst_ip;
                 info->local_port = key->dport;
-                info->remote_mac = key->smac;
+                info->remote_mac = key->smac ? key->smac : key->dmac;
                 info->remote_ip = key->src_ip;
                 info->remote_port = key->sport;
             }
             else if (acc->originator == NET_MD_ACC_ORIGINATOR_DST)
             {
-                info->local_mac = key->smac;
+                info->local_mac = key->smac ? key->smac : key->dmac;
                 info->local_ip = key->src_ip;
                 info->local_port = key->sport;
-                info->remote_mac = key->dmac;
+                info->remote_mac = key->dmac ? key->dmac : key->smac;
                 info->remote_ip = key->dst_ip;
                 info->remote_port = key->dport;
             }
@@ -2685,4 +2696,85 @@ net_md_get_key_info(struct net_md_flow_key *key,
     }
 
     return true;
+}
+
+static void net_md_purge_flow_tree(struct net_md_aggregator *aggr, ds_tree_t *tree, time_t now)
+{
+    struct net_md_flow *flow;
+
+    if (aggr == NULL || tree == NULL) return;
+
+    flow = ds_tree_head(tree);
+    while (flow != NULL)
+    {
+        struct net_md_stats_accumulator *acc;
+        struct net_md_flow *next;
+        bool should_retire;
+        double age;
+
+        acc = flow->tuple_stats;
+        next = ds_tree_next(tree, flow);
+
+        age = difftime(now, acc->last_updated);
+        should_retire = (age >= aggr->acc_ttl) && (acc->refcnt == 0);
+
+        if (should_retire)
+        {
+            ds_tree_remove(tree, flow);
+            net_md_free_flow(flow);
+            FREE(flow);
+            aggr->total_flows--;
+        }
+
+        flow = next;
+    }
+}
+
+static void net_md_purge_eth_acc(struct net_md_aggregator *aggr, struct net_md_eth_pair *eth_pair)
+{
+    time_t now = time(NULL);
+    net_md_purge_flow_tree(aggr, &eth_pair->ethertype_flows, now);
+}
+
+static void net_md_purge_5tuples_accs(struct net_md_aggregator *aggr, ds_tree_t *tree)
+{
+    time_t now = time(NULL);
+    net_md_purge_flow_tree(aggr, tree, now);
+}
+
+void net_md_purge_aggr(struct net_md_aggregator *aggr)
+{
+    struct net_md_eth_pair *eth_pair;
+    size_t init_aggr_count;
+    size_t final_aggr_count;
+    size_t purged_count;
+
+    if (aggr == NULL) return;
+    if (aggr->eth_pairs == NULL && aggr->five_tuple_flows == NULL) return;
+
+    init_aggr_count = aggr->total_flows;
+    if (init_aggr_count == 0) return;
+
+    LOGD("%s: purging accumulators, initial count: %zu", __func__, init_aggr_count);
+
+    /* Purge LAN flows */
+    if (aggr->report_flow_type)
+    {
+        eth_pair = ds_tree_head(aggr->eth_pairs);
+        while (eth_pair != NULL)
+        {
+            net_md_purge_eth_acc(aggr, eth_pair);
+            net_md_purge_5tuples_accs(aggr, &eth_pair->five_tuple_flows);
+            eth_pair = ds_tree_next(aggr->eth_pairs, eth_pair);
+        }
+    }
+
+    /* Purge ipflows */
+    net_md_purge_5tuples_accs(aggr, aggr->five_tuple_flows);
+
+    final_aggr_count = aggr->total_flows;
+    purged_count = (init_aggr_count > final_aggr_count) ? init_aggr_count - final_aggr_count : 0;
+
+    LOGD("%s: %spurged %zu flows, %zu remaining", __func__,
+         purged_count > 0 ? "" : "no flows ", purged_count, final_aggr_count);
 }

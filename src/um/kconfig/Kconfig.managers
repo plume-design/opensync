@@ -7,6 +7,6 @@ menuconfig MANAGER_UM
     config MANAGER_UM_CFG
         depends on MANAGER_UM
         string "UM Startup configuration"
-        default "um;true;needs_plan_b=true"
+        default "um;true;needs_plan_b=true;max_memory=100000"
         help
             Upgrade Manager startup configuration

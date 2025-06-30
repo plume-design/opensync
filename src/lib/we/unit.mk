@@ -26,12 +26,18 @@ UNIT_NAME := we
 
 UNIT_DISABLE := $(if $(CONFIG_MANAGER_FSM),n,y)
 
-UNIT_TYPE := LIB
+UNIT_TYPE := STATIC_LIB
 
 UNIT_DIR := lib
 
 UNIT_SRC := vm.c
 UNIT_SRC += os.c
+UNIT_CFLAGS += -I$(UNIT_PATH)/inc
+UNIT_CFLAGS += -I$(TOP_DIR)/src/lib/rts/inc
+
+UNIT_LDFLAGS := -Wl,--whole-archive
+UNIT_LDFLAGS += $(UNIT_FILES_/src/lib/rts)
+UNIT_LDFLAGS += -Wl,--no-whole-archive
 
 UNIT_DEPS := src/lib/common
 

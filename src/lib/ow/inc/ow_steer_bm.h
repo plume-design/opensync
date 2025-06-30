@@ -205,13 +205,16 @@ struct ow_steer_bm_vif_untracked_client {
 struct ow_steer_bm_vif {
     struct osw_ifname vif_name;
     bool removed;
+    bool is_mlo;
 
     const struct osw_state_vif_info *vif_info;
     struct osw_state_observer state_obs;
     struct ow_steer_bm_bss *bss;
     struct ow_steer_bm_group *group;
     struct ds_tree_node group_node;
+    struct ds_tree_node bssid_node;
     struct ds_tree untracked_clients;
+    struct osw_hwaddr bssid;
 
     struct osw_defer_vif_down_rule *defer_vif_down_rule;
     struct osw_defer_vif_down_observer *defer_vif_down_obs;

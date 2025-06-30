@@ -36,11 +36,7 @@ UNIT_TYPE    := BIN
 
 UNIT_SRC     := src/sm_main.c
 UNIT_SRC     += src/sm_ovsdb.c
-UNIT_SRC     += src/sm_neighbor_report.c
-UNIT_SRC     += src/sm_client_report.c
 UNIT_SRC     += src/sm_device_report.c
-UNIT_SRC     += src/sm_survey_report.c
-UNIT_SRC     += src/sm_scan_schedule.c
 UNIT_SRC     += src/sm_healthcheck_schedule.c
 UNIT_SRC     += src/sm_rssi_report.c
 UNIT_SRC     += src/sm_common.c
@@ -55,10 +51,6 @@ UNIT_SRC     += $(if $(CONFIG_SM_LATENCY_STATS),src/sm_lat_core.c)
 UNIT_SRC     += $(if $(CONFIG_SM_LATENCY_STATS),src/sm_lat_ovsdb.c)
 UNIT_SRC     += $(if $(CONFIG_SM_LATENCY_IMPL_NONE),src/sm_lat_sys_none.c)
 UNIT_SRC     += $(if $(CONFIG_SM_LATENCY_IMPL_EPPING),src/sm_lat_sys_epping.c)
-
-ifeq ($(CONFIG_SM_CAPACITY_QUEUE_STATS),y)
-UNIT_SRC     += src/sm_capacity_report.c
-endif
 
 UNIT_SRC     += $(if $(CONFIG_SM_BACKEND_RADIUS_STATS_NULL),src/sm_radius_stats_null.c)
 UNIT_SRC     += $(if $(CONFIG_SM_BACKEND_RADIUS_STATS_HAPD),src/sm_radius_stats_hapd.c)

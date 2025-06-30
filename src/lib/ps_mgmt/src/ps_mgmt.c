@@ -31,6 +31,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "log.h"
 
 #define PS_STORE_GW_OFFLINE             "pm_gw_offline_store"
+#define PS_LAST_PARENT_STORE            "pm_last_parent_store"
 
 static ovsdb_table_t table_WAN_Config;
 static ovsdb_table_t table_Lte_Config;
@@ -79,4 +80,10 @@ bool ps_mgmt_erase_gw_offline_config(void)
 {
     LOG(INFO, "Erasing GW Offline config from persistent storage.");
     return osp_ps_erase_store_name(PS_STORE_GW_OFFLINE, 0);
+}
+
+bool ps_mgmt_erase_last_parent_store(void)
+{
+    LOG(INFO, "Erasing last parent store: %s", PS_LAST_PARENT_STORE);
+    return osp_ps_erase_store_name(PS_LAST_PARENT_STORE, 0);
 }

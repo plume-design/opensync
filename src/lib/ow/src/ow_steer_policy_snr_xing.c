@@ -32,23 +32,21 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <const.h>
 #include <util.h>
 #include <log.h>
-#include <ds_dlist.h>
+#include <ds_tree.h>
 #include <osw_util.h>
 #include <osw_types.h>
 #include <osw_time.h>
 #include <osw_timer.h>
-#include <osw_state.h>
-#include <osw_stats.h>
-#include <osw_stats_defs.h>
 #include <osw_diag.h>
+#include <osw_sta_assoc.h>
+#include <osw_sta_snr.h>
+#include <osw_sta_idle.h>
 #include "ow_steer_candidate_list.h"
 #include "ow_steer_policy.h"
 #include "ow_steer_policy_priv.h"
 #include "ow_steer_sta.h"
 #include "ow_steer_policy_snr_xing.h"
 
-#define OSW_STEER_POLICY_SNR_XING_SNR_BUF_SIZE 3
-#define OSW_STEER_POLICY_SNR_XING_DELTA_BYTES_BUF_SIZE 2
 #define OSW_STEER_POLICY_SNR_XING_ENFORCE_PERIOD_SEC 5
 
 #define LOG_PREFIX(fmt, ...) "ow: steer: " fmt, ##__VA_ARGS__
@@ -64,672 +62,399 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
         fmt,                                     \
         ##__VA_ARGS__)
 
-
-enum ow_steer_policy_snr_xing_chnage {
+enum ow_steer_policy_snr_xing_change {
+    OW_STEER_POLICY_SNR_XING_CHANGE_NONE,
     OW_STEER_POLICY_SNR_XING_CHANGE_UP,
     OW_STEER_POLICY_SNR_XING_CHANGE_DOWN,
-    OW_STEER_POLICY_SNR_XING_CHANGE_NONE,
+    OW_STEER_POLICY_SNR_XING_CHANGE_RESET,
 };
 
-enum ow_steer_policy_snr_txrx_state {
-    OW_STEER_POLICY_SNR_XING_TXRX_STATE_ACTIVE,
-    OW_STEER_POLICY_SNR_XING_TXRX_STATE_IDLE,
+enum ow_steer_policy_snr_xing_level {
+    OW_STEER_POLICY_SNR_XING_LEVEL_NONE,
+    OW_STEER_POLICY_SNR_XING_LEVEL_ABOVE,
+    OW_STEER_POLICY_SNR_XING_LEVEL_BELOW,
 };
 
-/* Once a client is seen as active keep it as such
- * for at least X seconds. This mitigates possible
- * flapping when client comes in and out of
- * activity with periodic, but bursty traffic.
- */
-#define OW_STEER_POLICY_SNR_XING_ACTIVITY_GRACE_SEC 5
-
-typedef void ow_steer_policy_snr_xing_activity_fn_t(void *priv);
-
-enum ow_steer_policy_snr_xing_activity_state {
-    OW_STEER_POLICY_SNR_XING_ACTIVITY_NOT_CONFIGURED,
-    OW_STEER_POLICY_SNR_XING_ACTIVITY_NOT_READY_YET,
-    OW_STEER_POLICY_SNR_XING_ACTIVITY_IDLE,
-    OW_STEER_POLICY_SNR_XING_ACTIVITY_ACTIVE,
-};
-
-/* This is designed so that once activity
- * threshold is exceeded, it starts a timer. The
- * timer is re-armed if another exceed event
- * happens before timer expiry. This helps
- * avoiding flapping of idle/active when a device
- * has bursty traffic.
- */
-struct ow_steer_policy_snr_xing_activity {
-    struct osw_timer active;
-
-    /* This accumulates bytes within a collect
-     * period. In practice this tracks "bytes per
-     * second".
-     */
-    struct osw_timer collect;
-    int bytes;
-
-    ow_steer_policy_snr_xing_activity_fn_t *idle_cb;
-    ow_steer_policy_snr_xing_activity_fn_t *active_cb;
-    void *priv;
-    int grace_seconds;
-    int threshold;
-};
-
-struct ow_steer_policy_snr_xing_state {
-    unsigned int snr[OSW_STEER_POLICY_SNR_XING_SNR_BUF_SIZE];
-    struct osw_circ_buf snr_buf;
-
-    struct ow_steer_policy_snr_xing_activity activity;
-
-    bool rrm_neighbor_bcn_act_meas;
-    bool wnm_bss_trans;
-    struct osw_timer enforce_timer;
-    bool enforce_pending;
-    enum ow_steer_policy_snr_txrx_state txrx_state;
+struct ow_steer_policy_snr_xing_link {
+    ds_tree_node_t node;
+    struct osw_hwaddr bssid;
+    struct osw_hwaddr addr;
+    osw_sta_snr_observer_t *snr_obs;
+    uint8_t snr_db;
+    bool snr_valid;
+    struct ow_steer_policy_snr_xing *xing;
 };
 
 struct ow_steer_policy_snr_xing {
     struct ow_steer_policy *base;
-    struct ow_steer_policy_snr_xing_config *next_config;
     struct ow_steer_policy_snr_xing_config *config;
-    struct ow_steer_policy_snr_xing_state state;
-    struct osw_timer reconf_timer;
-    struct osw_state_observer state_observer;
-    const struct osw_state_sta_info *sta_info;
+    osw_sta_assoc_observer_t *sta_obs;
+    osw_sta_idle_observer_t *idle_obs;
+    ds_tree_t links;
+    bool rrm;
+    bool btm;
+    bool idle;
+    struct osw_timer enforce;
+    bool latched;
+    enum ow_steer_policy_snr_xing_level level;
+    osw_sta_assoc_t *m_sta;
+    osw_sta_idle_t *m_idle;
+    osw_sta_snr_t *m_snr;
 };
 
-static void
-int_saturating_add_u64(int *x, uint64_t y)
-{
-    if (y > INT_MAX) y = INT_MAX;
-    *x += y;
-    if (y > 0 && *x < 0) *x = INT_MAX;
-}
-
-static void
-ow_steer_policy_snr_xing_activity_feed(struct ow_steer_policy_snr_xing_activity *a,
-                                       uint64_t bytes)
-{
-    int_saturating_add_u64(&a->bytes, bytes);
-    if (osw_timer_is_armed(&a->collect)) return;
-    const uint64_t at = osw_time_mono_clk() + OSW_TIME_SEC(1);
-    osw_timer_arm_at_nsec(&a->collect, at);
-}
-
-static void
-ow_steer_policy_snr_xing_activity_arm_active(struct ow_steer_policy_snr_xing_activity *a)
-{
-    if (osw_timer_is_armed(&a->active) == false) {
-        a->active_cb(a->priv);
-    }
-    const uint64_t at = osw_time_mono_clk() + OSW_TIME_SEC(a->grace_seconds);
-    osw_timer_arm_at_nsec(&a->active, at);
-}
-
-static void
-ow_steer_policy_snr_xing_activity_collect_cb(struct osw_timer *t)
-{
-    struct ow_steer_policy_snr_xing_activity *a = container_of(t, struct ow_steer_policy_snr_xing_activity, collect);
-    const bool starting_up = (a->bytes < 0);
-    const bool threshold_is_configured = (a->threshold >= 0);
-
-    if (threshold_is_configured && (a->bytes >= a->threshold)) {
-        ow_steer_policy_snr_xing_activity_arm_active(a);
-    }
-    else if (starting_up) {
-        a->idle_cb(a->priv);
-    }
-
-    a->bytes = 0;
-}
-
 static const char *
-ow_steer_policy_snr_xing_activity_state_to_cstr(enum ow_steer_policy_snr_xing_activity_state s)
+ow_steer_policy_snr_xing_level_get_cstr(enum ow_steer_policy_snr_xing_level level)
 {
-    switch (s) {
-        case OW_STEER_POLICY_SNR_XING_ACTIVITY_NOT_CONFIGURED: return "not configured";
-        case OW_STEER_POLICY_SNR_XING_ACTIVITY_NOT_READY_YET: return "not ready yet";
-        case OW_STEER_POLICY_SNR_XING_ACTIVITY_IDLE: return "idle";
-        case OW_STEER_POLICY_SNR_XING_ACTIVITY_ACTIVE: return "active";
+    switch (level) {
+        case OW_STEER_POLICY_SNR_XING_LEVEL_NONE: return "none";
+        case OW_STEER_POLICY_SNR_XING_LEVEL_ABOVE: return "above";
+        case OW_STEER_POLICY_SNR_XING_LEVEL_BELOW: return "below";
     }
     return "";
 }
 
-static enum ow_steer_policy_snr_xing_activity_state
-ow_steer_policy_snr_xing_activity_get_state(const struct ow_steer_policy_snr_xing_activity *a)
+static void
+ow_steer_policy_snr_xing_set_latched(struct ow_steer_policy_snr_xing *xing,
+                                     bool latched)
 {
-    if (a->threshold < 0) return OW_STEER_POLICY_SNR_XING_ACTIVITY_NOT_CONFIGURED;
-    if (a->bytes < 0) return OW_STEER_POLICY_SNR_XING_ACTIVITY_NOT_READY_YET;
-    if (osw_timer_is_armed(&a->active)) return OW_STEER_POLICY_SNR_XING_ACTIVITY_ACTIVE;
-    return OW_STEER_POLICY_SNR_XING_ACTIVITY_IDLE;
-}
-
-static int
-ow_steer_policy_snr_xing_activity_get_threshold(const struct ow_steer_policy_snr_xing_activity *a)
-{
-    return a->threshold;
-}
-
-static int
-ow_steer_policy_snr_xing_activity_get_grace_seconds(const struct ow_steer_policy_snr_xing_activity *a)
-{
-    return a->grace_seconds;
+    if (xing->latched == latched) return;
+    LOGI(LOG_WITH_POLICY_PREFIX(xing->base, "latched: %d -> %d",
+                                xing->latched,
+                                latched));
+    xing->latched = latched;
 }
 
 static void
-ow_steer_policy_snr_xing_activity_active_cb(struct osw_timer *t)
+ow_steer_policy_snr_xing_enforce_finish(struct ow_steer_policy_snr_xing *xing)
 {
-    struct ow_steer_policy_snr_xing_activity *a = container_of(t, struct ow_steer_policy_snr_xing_activity, active);
-    a->idle_cb(a->priv);
+    LOGI(LOG_WITH_POLICY_PREFIX(xing->base, "enforce: finishing"));
+    ow_steer_policy_dismiss_executor(xing->base);
+    ow_steer_policy_schedule_stack_recalc(xing->base);
 }
 
 static void
-ow_steer_policy_snr_xing_activity_set_threshold(struct ow_steer_policy_snr_xing_activity *a,
-                                                int threshold)
+ow_steer_policy_snr_xing_enforce_try_start(struct ow_steer_policy_snr_xing *xing)
 {
-    a->threshold = threshold;
+    if (xing->latched == true) return;
+    if (osw_timer_is_armed(&xing->enforce) == true) return;
+    LOGI(LOG_WITH_POLICY_PREFIX(xing->base, "enforce: starting"));
+    const uint64_t duration_nsec = OSW_TIME_SEC(OSW_STEER_POLICY_SNR_XING_ENFORCE_PERIOD_SEC);
+    const uint64_t tstamp_nsec = osw_time_mono_clk() + duration_nsec;
+    osw_timer_arm_at_nsec(&xing->enforce, tstamp_nsec);
+    ow_steer_policy_trigger_executor(xing->base);
+    ow_steer_policy_schedule_stack_recalc(xing->base);
+    ow_steer_policy_snr_xing_set_latched(xing, true);
 }
 
 static void
-ow_steer_policy_snr_xing_activity_init(struct ow_steer_policy_snr_xing_activity *a,
-                                       ow_steer_policy_snr_xing_activity_fn_t *idle_cb,
-                                       ow_steer_policy_snr_xing_activity_fn_t *active_cb,
-                                       void *priv)
+ow_steer_policy_snr_xing_enforce_try_stop(struct ow_steer_policy_snr_xing *xing)
 {
-    osw_timer_init(&a->active, ow_steer_policy_snr_xing_activity_active_cb);
-    osw_timer_init(&a->collect, ow_steer_policy_snr_xing_activity_collect_cb);
-    a->idle_cb = idle_cb;
-    a->active_cb = active_cb;
-    a->priv = priv;
-    a->bytes = -1;
-    a->grace_seconds = OW_STEER_POLICY_SNR_XING_ACTIVITY_GRACE_SEC;
-}
-
-static void
-ow_steer_policy_snr_xing_activity_fini(struct ow_steer_policy_snr_xing_activity *a)
-{
-    osw_timer_disarm(&a->active);
-    osw_timer_disarm(&a->collect);
-    a->bytes = -1;
-}
-
-static const char *g_policy_name = "snr_xing";
-
-static void
-ow_steer_policy_snr_xing_state_reset(struct ow_steer_policy_snr_xing *xing_policy)
-{
-    ASSERT(xing_policy != NULL, "");
-
-    struct ow_steer_policy_snr_xing_state *state = &xing_policy->state;
-    const bool enforce_period = osw_timer_is_armed(&state->enforce_timer) == true;
-
-    if (enforce_period == true)
-        LOGI(LOG_WITH_POLICY_PREFIX(xing_policy->base, "enforce period stopped"));
-
-    osw_circ_buf_init(&state->snr_buf, OSW_STEER_POLICY_SNR_XING_SNR_BUF_SIZE);
-    ow_steer_policy_snr_xing_activity_fini(&state->activity);
-    state->rrm_neighbor_bcn_act_meas = false;
-    state->wnm_bss_trans = false;
-    osw_timer_disarm(&state->enforce_timer);
-    state->enforce_pending = false;
-    state->txrx_state = OW_STEER_POLICY_SNR_XING_TXRX_STATE_ACTIVE;
-
-    if (enforce_period == true)
-        ow_steer_policy_dismiss_executor(xing_policy->base);
-}
-
-static const char*
-ow_steer_policy_snr_xing_mode_to_cstr(enum ow_steer_policy_snr_xing_mode mode) {
-    switch (mode) {
-        case OW_STEER_POLICY_SNR_XING_MODE_HWM:
-            return "hmw";
-        case OW_STEER_POLICY_SNR_XING_MODE_LWM:
-            return "lwm";
-        case OW_STEER_POLICY_SNR_XING_MODE_BOTTOM_LWM:
-            return "bottom_lwm";
-    }
-
-    return "unknown";
-}
-
-static const char*
-ow_steer_policy_snr_xing_chnage_to_cstr(enum ow_steer_policy_snr_xing_chnage xing_change)
-{
-    switch (xing_change) {
-        case OW_STEER_POLICY_SNR_XING_CHANGE_UP:
-            return "up";
-        case OW_STEER_POLICY_SNR_XING_CHANGE_DOWN:
-            return "down";
-        case OW_STEER_POLICY_SNR_XING_CHANGE_NONE:
-            return "none";
-    }
-
-    return "unknown";
-}
-
-static const char*
-ow_steer_policy_snr_txrx_state_to_cstr(enum ow_steer_policy_snr_txrx_state txrx_state)
-{
-    switch (txrx_state) {
-        case OW_STEER_POLICY_SNR_XING_TXRX_STATE_ACTIVE:
-            return "active";
-        case OW_STEER_POLICY_SNR_XING_TXRX_STATE_IDLE:
-            return "idle";
-    }
-
-    return "unknown";
-}
-
-static enum ow_steer_policy_snr_xing_chnage
-ow_steer_policy_snr_xing_eval_xing_change(const struct ow_steer_policy_snr_xing *xing_policy)
-{
-    ASSERT(xing_policy != NULL, "");
-    ASSERT(xing_policy->config != NULL, "");
-
-    const struct ow_steer_policy_snr_xing_config *config = xing_policy->config;
-    const struct ow_steer_policy_snr_xing_state *state = &xing_policy->state;
-
-    if (osw_circ_buf_is_full(&state->snr_buf) == false)
-        return OW_STEER_POLICY_SNR_XING_CHANGE_NONE;
-
-    const size_t prev_i = osw_circ_buf_head(&state->snr_buf);
-    const size_t cur_i = osw_circ_buf_next(&state->snr_buf, prev_i);
-    const unsigned int prev_snr = state->snr[prev_i];
-    const unsigned int cur_snr = state->snr[cur_i];
-    const unsigned int threshold = config->snr;
-
-    if (prev_snr < threshold && cur_snr < threshold)
-        return OW_STEER_POLICY_SNR_XING_CHANGE_NONE;
-    else if (prev_snr >= threshold && cur_snr >= threshold)
-        return OW_STEER_POLICY_SNR_XING_CHANGE_NONE;
-    else if (prev_snr < threshold && cur_snr >= threshold)
-        return OW_STEER_POLICY_SNR_XING_CHANGE_UP;
-    else if (prev_snr >= threshold && cur_snr < threshold)
-        return OW_STEER_POLICY_SNR_XING_CHANGE_DOWN;
-    else
-        return WARN_ON(OW_STEER_POLICY_SNR_XING_CHANGE_NONE);
-}
-
-static enum ow_steer_policy_snr_txrx_state
-ow_steer_policy_snr_xing_eval_txrx_state(const struct ow_steer_policy_snr_xing *xing_policy)
-{
-    ASSERT(xing_policy != NULL, "");
-
-    const struct ow_steer_policy_snr_xing_state *state = &xing_policy->state;
-
-    switch (ow_steer_policy_snr_xing_activity_get_state(&state->activity)) {
-        case OW_STEER_POLICY_SNR_XING_ACTIVITY_NOT_CONFIGURED: return OW_STEER_POLICY_SNR_XING_TXRX_STATE_IDLE;
-        case OW_STEER_POLICY_SNR_XING_ACTIVITY_NOT_READY_YET: return OW_STEER_POLICY_SNR_XING_TXRX_STATE_ACTIVE;
-        case OW_STEER_POLICY_SNR_XING_ACTIVITY_IDLE: return OW_STEER_POLICY_SNR_XING_TXRX_STATE_IDLE;
-        case OW_STEER_POLICY_SNR_XING_ACTIVITY_ACTIVE: return OW_STEER_POLICY_SNR_XING_TXRX_STATE_ACTIVE;
-    }
-
-    return OW_STEER_POLICY_SNR_XING_TXRX_STATE_IDLE;
+    if (osw_timer_is_armed(&xing->enforce) == false) return;
+    LOGI(LOG_WITH_POLICY_PREFIX(xing->base, "enforce: stopping"));
+    osw_timer_disarm(&xing->enforce);
+    ow_steer_policy_snr_xing_enforce_finish(xing);
 }
 
 static bool
-ow_steer_policy_snr_xing_check_sta_caps(struct ow_steer_policy_snr_xing *xing_policy)
+ow_steer_policy_snr_xing_sta_is_legacy(struct ow_steer_policy_snr_xing *xing)
 {
-    ASSERT(xing_policy != NULL, "");
-    ASSERT(xing_policy->config != NULL, "");
+    return (xing->rrm == false) && (xing->btm == false);
+}
 
-    const struct ow_steer_policy_snr_xing_config *config = xing_policy->config;
-    const struct ow_steer_policy_snr_xing_state *state = &xing_policy->state;
+static bool
+ow_steer_policy_snr_xing_links_are_enforcable(struct ow_steer_policy_snr_xing *xing)
+{
+    size_t i;
+    for (i = 0; i < xing->config->bssids.count; i++) {
+        const struct osw_hwaddr *bssid = &xing->config->bssids.list[i];
+        const struct ow_steer_policy_snr_xing_link *link = ds_tree_find(&xing->links, bssid);
+        if (link != NULL)
+            return true;
+    }
+    return false;
+}
 
-    bool sta_caps_ok = false;
-    switch (config->mode) {
-        case OW_STEER_POLICY_SNR_XING_MODE_HWM:
-            sta_caps_ok = true;
+static bool
+ow_steer_policy_snr_xing_enforce_is_needed(struct ow_steer_policy_snr_xing *xing)
+{
+    const struct ow_steer_policy_snr_xing_config *config = xing->config;
+    if (config == NULL)
+        return false;
+
+    const bool bowm = (config->mode == OW_STEER_POLICY_SNR_XING_MODE_BOTTOM_LWM);
+    const bool active = (xing->idle == false);
+    const bool legacy = ow_steer_policy_snr_xing_sta_is_legacy(xing);
+
+    if (bowm && !legacy)
+        return false;
+
+    if (legacy && active)
+        return false;
+
+    if (ow_steer_policy_snr_xing_links_are_enforcable(xing) == false)
+        return false;
+
+    switch (xing->level) {
+        case OW_STEER_POLICY_SNR_XING_LEVEL_NONE:
+            return false;
+        case OW_STEER_POLICY_SNR_XING_LEVEL_ABOVE:
+            switch (config->mode) {
+                case OW_STEER_POLICY_SNR_XING_MODE_HWM:
+                    return true;
+                case OW_STEER_POLICY_SNR_XING_MODE_LWM:
+                    return false;
+                case OW_STEER_POLICY_SNR_XING_MODE_BOTTOM_LWM:
+                    return false;
+            }
             break;
-        case OW_STEER_POLICY_SNR_XING_MODE_LWM:
-            sta_caps_ok = true;
-            break;
-        case OW_STEER_POLICY_SNR_XING_MODE_BOTTOM_LWM:
-            if (state->rrm_neighbor_bcn_act_meas == false && state->wnm_bss_trans == false)
-                sta_caps_ok = true;
+        case OW_STEER_POLICY_SNR_XING_LEVEL_BELOW:
+            switch (config->mode) {
+                case OW_STEER_POLICY_SNR_XING_MODE_HWM:
+                    return false;
+                case OW_STEER_POLICY_SNR_XING_MODE_LWM:
+                    return true;
+                case OW_STEER_POLICY_SNR_XING_MODE_BOTTOM_LWM:
+                    return true;
+            }
             break;
     }
 
-    return sta_caps_ok;
+    return false;
 }
 
 static void
-ow_steer_policy_snr_xing_recalc(struct ow_steer_policy_snr_xing *xing_policy)
+ow_steer_policy_snr_xing_update_enforce(struct ow_steer_policy_snr_xing *xing)
 {
-    ASSERT(xing_policy != NULL, "");
+    if (ow_steer_policy_snr_xing_enforce_is_needed(xing)) {
+        ow_steer_policy_snr_xing_enforce_try_start(xing);
+    }
+    else {
+        ow_steer_policy_snr_xing_enforce_try_stop(xing);
+    }
+}
 
-    if (xing_policy->sta_info == NULL)
-        return;
+static void
+ow_steer_policy_snr_xing_set_level(struct ow_steer_policy_snr_xing *xing,
+                                   enum ow_steer_policy_snr_xing_level level)
+{
+    if (xing->level == level) return;
+    LOGI(LOG_WITH_POLICY_PREFIX(xing->base, "level: %s -> %s",
+                                ow_steer_policy_snr_xing_level_get_cstr(xing->level),
+                                ow_steer_policy_snr_xing_level_get_cstr(level)));
+    xing->level = level;
+    ow_steer_policy_snr_xing_set_latched(xing, false);
+    ow_steer_policy_snr_xing_update_enforce(xing);
+}
 
-    const struct ow_steer_policy_snr_xing_config *config = xing_policy->config;
+static void
+ow_steer_policy_snr_xing_set_idle(struct ow_steer_policy_snr_xing *xing,
+                                  bool idle)
+{
+    if (xing->idle == idle) return;
+    LOGI(LOG_WITH_POLICY_PREFIX(xing->base, "idle: %d -> %d", xing->idle, idle));
+    xing->idle = idle;
+    ow_steer_policy_snr_xing_update_enforce(xing);
+}
+
+static const char *
+ow_steer_policy_snr_xing_mode_to_cstr(enum ow_steer_policy_snr_xing_mode mode)
+{
+    switch (mode) {
+        case OW_STEER_POLICY_SNR_XING_MODE_HWM: return "hmw";
+        case OW_STEER_POLICY_SNR_XING_MODE_LWM: return "lwm";
+        case OW_STEER_POLICY_SNR_XING_MODE_BOTTOM_LWM: return "bottom_lwm";
+    }
+    return "unknown";
+}
+
+static enum ow_steer_policy_snr_xing_level
+ow_steer_policy_snr_xing_next_level(struct ow_steer_policy_snr_xing *xing)
+{
+    const struct ow_steer_policy_snr_xing_config *config = xing->config;
     if (config == NULL)
-        return;
+        return OW_STEER_POLICY_SNR_XING_LEVEL_NONE;
 
-    struct ow_steer_policy_snr_xing_state *state = &xing_policy->state;
-    const bool enforce_in_progress = osw_timer_is_armed(&state->enforce_timer);
-    if (enforce_in_progress == true)
-        return;
+    const bool is_hwm = (xing->config->mode == OW_STEER_POLICY_SNR_XING_MODE_HWM);
+    const bool is_lwm = (xing->config->mode == OW_STEER_POLICY_SNR_XING_MODE_LWM);
+    const uint8_t hyst_below = (xing->config->snr_hysteresis >= xing->config->snr) ? 1 : xing->config->snr_hysteresis;
+    const uint8_t hyst_above = xing->config->snr_hysteresis;
+    const uint8_t below_thr = config->snr - (is_hwm ? hyst_below : 0);
+    const uint8_t above_thr = config->snr + (is_lwm ? hyst_above : 0);
 
-    const bool sta_caps_ok = ow_steer_policy_snr_xing_check_sta_caps(xing_policy);
-    if (sta_caps_ok == false)
-        return;
+    size_t n = 0;
+    size_t below = 0;
+    size_t above = 0;
+    size_t none = 0;
+    struct ow_steer_policy_snr_xing_link *link;
+    bool connected = false;
+    ds_tree_foreach(&xing->links, link) {
+        connected = true;
+        if (link->snr_valid) {
+            n++;
+            if (link->snr_db < below_thr) below++;
+            else if (link->snr_db > above_thr) above++;
+            else none++;
+        }
+    }
 
-    const bool prev_enforce_pending = state->enforce_pending;
-    const enum ow_steer_policy_snr_xing_chnage xing_change = ow_steer_policy_snr_xing_eval_xing_change(xing_policy);
-
-    switch (xing_change) {
-        case OW_STEER_POLICY_SNR_XING_CHANGE_UP:
-            switch (config->mode) {
-                case OW_STEER_POLICY_SNR_XING_MODE_HWM:
-                    state->enforce_pending = true;
-                    break;
-                case OW_STEER_POLICY_SNR_XING_MODE_LWM:
-                    state->enforce_pending = false;
-                    break;
-                case OW_STEER_POLICY_SNR_XING_MODE_BOTTOM_LWM:
-                    state->enforce_pending = false;
-                    break;
-            }
+    switch (xing->level) {
+        case OW_STEER_POLICY_SNR_XING_LEVEL_ABOVE:
+            above += none;
+            none = 0;
             break;
-        case OW_STEER_POLICY_SNR_XING_CHANGE_DOWN:
-            switch (config->mode) {
-                case OW_STEER_POLICY_SNR_XING_MODE_HWM:
-                    state->enforce_pending = false;
-                    break;
-                case OW_STEER_POLICY_SNR_XING_MODE_LWM:
-                    state->enforce_pending = true;
-                    break;
-                case OW_STEER_POLICY_SNR_XING_MODE_BOTTOM_LWM:
-                    state->enforce_pending = true;
-                    break;
-            }
+        case OW_STEER_POLICY_SNR_XING_LEVEL_BELOW:
+            below += none;
+            none = 0;
             break;
-        case OW_STEER_POLICY_SNR_XING_CHANGE_NONE:
-            /* nop */
+        case OW_STEER_POLICY_SNR_XING_LEVEL_NONE:
             break;
     }
 
-    const bool enforce_pending_changed = prev_enforce_pending != state->enforce_pending;
-    if (enforce_pending_changed == true)
-        LOGI(LOG_WITH_POLICY_PREFIX(xing_policy->base, "enforce pending: %s -> %s",
-             prev_enforce_pending == true ? "true" : "false", state->enforce_pending == true ? "true" : "false"));
+    if (above && above == n) {
+        if (is_hwm && xing->level != OW_STEER_POLICY_SNR_XING_LEVEL_BELOW)
+            return xing->level;
+        else
+            return OW_STEER_POLICY_SNR_XING_LEVEL_ABOVE;
+    }
+    else if (below && below == n) {
+        if (is_lwm && xing->level != OW_STEER_POLICY_SNR_XING_LEVEL_ABOVE)
+            return xing->level;
+        else
+            return OW_STEER_POLICY_SNR_XING_LEVEL_BELOW;
+    }
+    else if (!connected)
+        return OW_STEER_POLICY_SNR_XING_LEVEL_NONE;
+    else
+        return xing->level;
+}
 
-    const enum ow_steer_policy_snr_txrx_state prev_txrx_state = state->txrx_state;
-    state->txrx_state = ow_steer_policy_snr_xing_eval_txrx_state(xing_policy);
+static void
+ow_steer_policy_snr_xing_update_level(struct ow_steer_policy_snr_xing *xing)
+{
+    ow_steer_policy_snr_xing_set_level(xing, ow_steer_policy_snr_xing_next_level(xing));
+}
 
-    const bool txrx_state_changed = prev_txrx_state != state->txrx_state;
-    if (txrx_state_changed == true)
-        LOGD(LOG_WITH_POLICY_PREFIX(xing_policy->base, "txrx state: %s -> %s",
-             ow_steer_policy_snr_txrx_state_to_cstr(prev_txrx_state), ow_steer_policy_snr_txrx_state_to_cstr(state->txrx_state)));
+static bool
+ow_steer_policy_snr_xing_bssid_is_blocked(struct ow_steer_policy_snr_xing *xing,
+                                          const struct osw_hwaddr *bssid)
+{
+    struct ow_steer_policy_snr_xing_config *config = xing->config;
+    if (config == NULL)
+        return false;
 
-    switch (config->mode) {
-        case OW_STEER_POLICY_SNR_XING_MODE_HWM:
-            if (state->txrx_state == OW_STEER_POLICY_SNR_XING_TXRX_STATE_ACTIVE)
-                return;
-            break;
-        case OW_STEER_POLICY_SNR_XING_MODE_LWM:
-            /* Workaround: Original intention for
-             * activity-based deferal was targeting
-             * deauth-type kicks only. BTM should not be
-             * affected by this.
-             *
-             * However OW design is to keep policies and
-             * executors separate. A proper fix needs to
-             * move activity deferral to the executor
-             * itself, along with Bottom LWM which works as
-             * an exception against the deferral. The fix is
-             * on the way, but carries a risk of regression
-             * that can't be taken now.
-             *
-             * This assumes that if a client is found to
-             * supoprt BTM then BTM executor will actually
-             * be run. This is always true right now,
-             * although it doesn't need to be in the future.
-             */
-            if (state->wnm_bss_trans)
+    struct ow_steer_policy_snr_xing_link *link = ds_tree_find(&xing->links, bssid);
+    if (link == NULL) return false;
+
+    return osw_hwaddr_list_contains(config->bssids.list, config->bssids.count, bssid);
+}
+
+static bool
+ow_steer_policy_snr_xing_alternatives_avalable(struct ow_steer_policy_snr_xing *xing,
+                                               struct ow_steer_candidate_list *candidates)
+{
+    struct ow_steer_policy_snr_xing_config *config = xing->config;
+    if (config == NULL)
+        return false;
+
+    size_t others = 0;
+    size_t i;
+    for (i = 0; i < ow_steer_candidate_list_get_length(candidates); i++) {
+        struct ow_steer_candidate *c = ow_steer_candidate_list_get(candidates, i);
+        const struct osw_hwaddr *bssid = ow_steer_candidate_get_bssid(c);
+        const enum ow_steer_candidate_preference pref = ow_steer_candidate_get_preference(c);
+        switch (pref) {
+            case OW_STEER_CANDIDATE_PREFERENCE_NONE:
+                if (ow_steer_policy_snr_xing_bssid_is_blocked(xing, bssid) == false)
+                    others++;
                 break;
+            case OW_STEER_CANDIDATE_PREFERENCE_AVAILABLE:
+                others++;
+                break;
+            case OW_STEER_CANDIDATE_PREFERENCE_OUT_OF_SCOPE:
+            case OW_STEER_CANDIDATE_PREFERENCE_SOFT_BLOCKED:
+            case OW_STEER_CANDIDATE_PREFERENCE_HARD_BLOCKED:
+                break;
+        }
+    }
+    return others > 0;
+}
 
-            /* Otherwise (client does not support BTM and
-             * needs Deauth to be done to move it away)
-             * defer policing if client is active and it's
-             * desired for it to not be active.
-             */
-            if (state->txrx_state == OW_STEER_POLICY_SNR_XING_TXRX_STATE_ACTIVE)
-                return;
-            break;
-        case OW_STEER_POLICY_SNR_XING_MODE_BOTTOM_LWM:
-            /* no TX/RX delta limit */
-            break;
+static bool
+ow_steer_policy_snr_xing_blockable(struct ow_steer_policy_snr_xing *xing,
+                                   struct ow_steer_candidate_list *candidates)
+{
+    struct ow_steer_policy_snr_xing_config *config = xing->config;
+    if (config == NULL)
+        return false;
+
+    size_t blocked = 0;
+    size_t blockable = 0;
+    size_t non_blockable = 0;
+    size_t i;
+    for (i = 0; i < ow_steer_candidate_list_get_length(candidates); i++) {
+        struct ow_steer_candidate *c = ow_steer_candidate_list_get(candidates, i);
+        const struct osw_hwaddr *bssid = ow_steer_candidate_get_bssid(c);
+        const enum ow_steer_candidate_preference pref = ow_steer_candidate_get_preference(c);
+        if (ow_steer_policy_snr_xing_bssid_is_blocked(xing, bssid) == false) continue;
+        blocked++;
+        switch (pref) {
+            case OW_STEER_CANDIDATE_PREFERENCE_NONE:
+            case OW_STEER_CANDIDATE_PREFERENCE_HARD_BLOCKED:
+                blockable++;
+                break;
+            case OW_STEER_CANDIDATE_PREFERENCE_AVAILABLE:
+            case OW_STEER_CANDIDATE_PREFERENCE_OUT_OF_SCOPE:
+            case OW_STEER_CANDIDATE_PREFERENCE_SOFT_BLOCKED:
+                non_blockable++;
+                break;
+        }
     }
 
-    if (state->enforce_pending == true) {
-        state->enforce_pending = false;
-
-        const uint64_t tstamp_nsec = osw_time_mono_clk() + OSW_TIME_SEC(OSW_STEER_POLICY_SNR_XING_ENFORCE_PERIOD_SEC);
-        osw_timer_arm_at_nsec(&state->enforce_timer, tstamp_nsec);
-        ow_steer_policy_trigger_executor(xing_policy->base);
-        ow_steer_policy_schedule_stack_recalc(xing_policy->base);
-        LOGI(LOG_WITH_POLICY_PREFIX(xing_policy->base, "enforce period started"));
-    }
+    return (non_blockable == 0) && (blockable > 0) && (blockable == blocked);
 }
 
 static void
 ow_steer_policy_snr_xing_recalc_cb(struct ow_steer_policy *policy,
-                                   struct ow_steer_candidate_list *candidate_list)
+                                   struct ow_steer_candidate_list *candidates)
 {
     ASSERT(policy != NULL, "");
-    ASSERT(candidate_list != NULL, "");
+    ASSERT(candidates != NULL, "");
 
-    struct ow_steer_policy_snr_xing *xing_policy = ow_steer_policy_get_priv(policy);
+    struct ow_steer_policy_snr_xing *xing = ow_steer_policy_get_priv(policy);
+    struct ow_steer_policy_snr_xing_config *config = xing->config;
+    const char *reason = ow_steer_policy_get_name(policy);
 
-    /* No config -> nop */
-    const struct ow_steer_policy_snr_xing_config *config = xing_policy->config;
     if (config == NULL)
         return;
 
-    if (xing_policy->sta_info == NULL)
+    if (osw_timer_is_armed(&xing->enforce) == false)
         return;
 
-    struct ow_steer_policy_snr_xing_state *state = &xing_policy->state;
-    const bool enforce_period = osw_timer_is_armed(&state->enforce_timer) == true;
-    if (enforce_period == false)
+    if (ow_steer_policy_snr_xing_alternatives_avalable(xing, candidates) == false)
         return;
 
-    struct ow_steer_candidate *blocked_candidate = ow_steer_candidate_list_lookup(candidate_list, &config->bssid);
-    const bool blocked_candidate_exists = blocked_candidate != NULL;
-    if (blocked_candidate_exists == false)
-        LOGI(LOG_WITH_POLICY_PREFIX(xing_policy->base, "bssid: "OSW_HWADDR_FMT" preference: (nil), doesnt exist", OSW_HWADDR_ARG(&config->bssid)));
+    if (ow_steer_policy_snr_xing_blockable(xing, candidates) == false)
+        return;
 
-    bool block_cancicdate_blockable = true;
-    if (blocked_candidate_exists == true) {
-        const enum ow_steer_candidate_preference blocked_candidate_pref = ow_steer_candidate_get_preference(blocked_candidate);
-        switch (blocked_candidate_pref) {
+    size_t i;
+    for (i = 0; i < ow_steer_candidate_list_get_length(candidates); i++) {
+        struct ow_steer_candidate *c = ow_steer_candidate_list_get(candidates, i);
+        const struct osw_hwaddr *bssid = ow_steer_candidate_get_bssid(c);
+        const enum ow_steer_candidate_preference pref = ow_steer_candidate_get_preference(c);
+        const enum ow_steer_candidate_preference wanted_pref = ow_steer_policy_snr_xing_bssid_is_blocked(xing, bssid)
+                                                             ? OW_STEER_CANDIDATE_PREFERENCE_HARD_BLOCKED
+                                                             : OW_STEER_CANDIDATE_PREFERENCE_AVAILABLE;
+        switch (pref) {
             case OW_STEER_CANDIDATE_PREFERENCE_OUT_OF_SCOPE:
             case OW_STEER_CANDIDATE_PREFERENCE_SOFT_BLOCKED:
             case OW_STEER_CANDIDATE_PREFERENCE_AVAILABLE:
-                block_cancicdate_blockable = false;
-                break;
             case OW_STEER_CANDIDATE_PREFERENCE_HARD_BLOCKED:
-            case OW_STEER_CANDIDATE_PREFERENCE_NONE:
-                block_cancicdate_blockable = true;
-                break;
-        }
-        if (block_cancicdate_blockable == false) {
-            LOGI(LOG_WITH_POLICY_PREFIX(xing_policy->base, "bssid: "OSW_HWADDR_FMT" preference: %s, cannot block candidate", OSW_HWADDR_ARG(&config->bssid),
-                 ow_steer_candidate_preference_to_cstr(blocked_candidate_pref)));
-        }
-
-    }
-
-    bool any_available_candidates = false;
-    size_t i = 0;
-    for (i = 0; i < ow_steer_candidate_list_get_length(candidate_list); i++) {
-        struct ow_steer_candidate *candidate = ow_steer_candidate_list_get(candidate_list, i);
-        const enum ow_steer_candidate_preference candidate_pref = ow_steer_candidate_get_preference(candidate);
-
-        if (blocked_candidate == candidate)
-            continue;
-
-        switch (candidate_pref) {
-            case OW_STEER_CANDIDATE_PREFERENCE_OUT_OF_SCOPE:
-            case OW_STEER_CANDIDATE_PREFERENCE_HARD_BLOCKED:
-            case OW_STEER_CANDIDATE_PREFERENCE_SOFT_BLOCKED:
-                any_available_candidates = false;
                 break;
             case OW_STEER_CANDIDATE_PREFERENCE_NONE:
-            case OW_STEER_CANDIDATE_PREFERENCE_AVAILABLE:
-                any_available_candidates = true;
+                ow_steer_candidate_set_preference(c, reason, wanted_pref);
                 break;
         }
-
-        if (any_available_candidates == true)
-            break;
     }
-
-    if (any_available_candidates == false)
-        LOGI(LOG_WITH_POLICY_PREFIX(policy, "no other candidates available"));
-
-    const bool continue_enforce = blocked_candidate_exists == true &&
-                                  block_cancicdate_blockable == true &&
-                                  any_available_candidates == true;
-
-    if (continue_enforce == false) {
-        if (enforce_period == true)
-            LOGI(LOG_WITH_POLICY_PREFIX(xing_policy->base, "enforce period stopped"));
-        if (state->enforce_pending == true)
-            LOGI(LOG_WITH_POLICY_PREFIX(xing_policy->base, "pending enforce period cancelled"));
-
-        osw_timer_disarm(&state->enforce_timer);
-        return;
-    }
-
-    for (i = 0; i < ow_steer_candidate_list_get_length(candidate_list); i++) {
-        struct ow_steer_candidate *candidate = ow_steer_candidate_list_get(candidate_list, i);
-        const struct osw_hwaddr *bssid = ow_steer_candidate_get_bssid(candidate);
-        const enum ow_steer_candidate_preference candidate_pref = ow_steer_candidate_get_preference(candidate);
-
-        if (candidate_pref != OW_STEER_CANDIDATE_PREFERENCE_NONE)
-            continue;
-
-        const char *reason = ow_steer_policy_get_name(policy);
-        if (blocked_candidate == candidate)
-            ow_steer_candidate_set_preference(candidate, reason, OW_STEER_CANDIDATE_PREFERENCE_HARD_BLOCKED);
-        else
-            ow_steer_candidate_set_preference(candidate, reason, OW_STEER_CANDIDATE_PREFERENCE_AVAILABLE);
-
-        LOGD(LOG_WITH_POLICY_PREFIX(xing_policy->base, "bssid: "OSW_HWADDR_FMT" preference: %s", OSW_HWADDR_ARG(bssid),
-             ow_steer_candidate_preference_to_cstr(ow_steer_candidate_get_preference(candidate))));
-    }
-}
-
-static void
-ow_steer_policy_snr_xing_sta_connected_cb(struct osw_state_observer *observer,
-                                          const struct osw_state_sta_info *sta_info)
-{
-    struct ow_steer_policy_snr_xing *xing_policy = container_of(observer, struct ow_steer_policy_snr_xing, state_observer);
-
-    const struct osw_hwaddr *policy_sta_addr = ow_steer_policy_get_sta_addr(xing_policy->base);
-    if (osw_hwaddr_cmp(sta_info->mac_addr, policy_sta_addr) != 0)
-        return;
-
-    /* No config -> nop */
-    const struct ow_steer_policy_snr_xing_config *config = xing_policy->config;
-    const struct osw_hwaddr *vif_bssid = &sta_info->vif->drv_state->mac_addr;
-    if (config == NULL) {
-        LOGD(LOG_WITH_POLICY_PREFIX(xing_policy->base, "sta connected to vif bssid: "OSW_HWADDR_FMT", (no conf)", OSW_HWADDR_ARG(vif_bssid)));
-        return;
-    }
-
-    const struct osw_hwaddr *policy_bssid = &config->bssid;
-    if (osw_hwaddr_cmp(vif_bssid, policy_bssid) != 0)
-        return;
-
-    xing_policy->sta_info = sta_info;
-
-    struct osw_assoc_req_info assoc_req_info;
-    const char *extra_log = "";
-    const bool parsed = osw_parse_assoc_req_ies(sta_info->assoc_req_ies, sta_info->assoc_req_ies_len, &assoc_req_info);
-    if (parsed == false)
-        extra_log = ", failed to parse assoc req ies, assume non-rrm_neighbor_bcn_act_meas non-wnm_bss_trans";
-
-    struct ow_steer_policy_snr_xing_state *state = &xing_policy->state;
-    if (assoc_req_info.wnm_bss_trans == true)
-        state->wnm_bss_trans = true;
-    if (assoc_req_info.rrm_neighbor_bcn_act_meas == true)
-        state->rrm_neighbor_bcn_act_meas = true;
-
-    LOGI(LOG_WITH_POLICY_PREFIX(xing_policy->base, "sta connected, rrm_neighbor_bcn_act_meas: %s, wnm_bss_trans: %s%s",
-         state->rrm_neighbor_bcn_act_meas == true ? "true" : "false", state->wnm_bss_trans == true ? "true" : "false",
-         extra_log));
-}
-
-static void
-ow_steer_policy_snr_xing_sta_disconnected_cb(struct osw_state_observer *observer,
-                                             const struct osw_state_sta_info *sta_info)
-{
-    struct ow_steer_policy_snr_xing *xing_policy = container_of(observer, struct ow_steer_policy_snr_xing, state_observer);
-
-    const struct osw_hwaddr *policy_sta_addr = ow_steer_policy_get_sta_addr(xing_policy->base);
-    if (osw_hwaddr_cmp(sta_info->mac_addr, policy_sta_addr) != 0)
-        return;
-
-    /* No config -> nop */
-    const struct ow_steer_policy_snr_xing_config *config = xing_policy->config;
-    const struct osw_hwaddr *vif_bssid = &sta_info->vif->drv_state->mac_addr;
-    if (config == NULL) {
-        LOGD(LOG_WITH_POLICY_PREFIX(xing_policy->base, "sta disconnected from vif bssid: "OSW_HWADDR_FMT", (no conf)", OSW_HWADDR_ARG(vif_bssid)));
-        return;
-    }
-
-    const struct osw_hwaddr *policy_bssid = &config->bssid;
-    if (osw_hwaddr_cmp(vif_bssid, policy_bssid) != 0)
-        return;
-
-    WARN_ON(xing_policy->sta_info != sta_info);
-    xing_policy->sta_info = NULL;
-
-    ow_steer_policy_snr_xing_state_reset(xing_policy);
-    ow_steer_policy_schedule_stack_recalc(xing_policy->base);
-
-    LOGI(LOG_WITH_POLICY_PREFIX(xing_policy->base, "sta disconnected"));
-}
-
-static void
-ow_steer_policy_snr_xing_sta_snr_change_cb(struct ow_steer_policy *policy,
-                                           const struct osw_hwaddr *bssid,
-                                           uint32_t snr_db)
-{
-    ASSERT(policy != NULL, "");
-    ASSERT(bssid != NULL, "");
-
-    struct ow_steer_policy_snr_xing *xing_policy = ow_steer_policy_get_priv(policy);
-    struct ow_steer_policy_snr_xing_state *state = &xing_policy->state;
-
-    const size_t i = osw_circ_buf_push_rotate(&state->snr_buf);
-    state->snr[i] = snr_db;
-
-    if (osw_circ_buf_is_full(&state->snr_buf) == true) {
-        const enum ow_steer_policy_snr_xing_chnage xing_change = ow_steer_policy_snr_xing_eval_xing_change(xing_policy);
-        if (xing_change != OW_STEER_POLICY_SNR_XING_CHANGE_NONE)
-            LOGD(LOG_WITH_POLICY_PREFIX(xing_policy->base, "xing changed: %s", ow_steer_policy_snr_xing_chnage_to_cstr(xing_change)));
-    }
-
-    ow_steer_policy_snr_xing_recalc(xing_policy);
-}
-
-static void
-ow_steer_policy_snr_xing_sta_data_vol_change_cb(struct ow_steer_policy *policy,
-                                                const struct osw_hwaddr *bssid,
-                                                uint64_t data_vol_bytes)
-{
-    ASSERT(policy != NULL, "");
-    ASSERT(bssid != NULL, "");
-
-    struct ow_steer_policy_snr_xing *xing_policy = ow_steer_policy_get_priv(policy);
-    struct ow_steer_policy_snr_xing_state *state = &xing_policy->state;
-
-    ow_steer_policy_snr_xing_activity_feed(&state->activity, data_vol_bytes);
 }
 
 static void
@@ -738,17 +463,35 @@ ow_steer_policy_snr_xing_sigusr1_dump_cb(osw_diag_pipe_t *pipe,
 {
     ASSERT(policy != NULL, "");
 
-    struct ow_steer_policy_snr_xing *xing_policy = ow_steer_policy_get_priv(policy);
-    const struct ow_steer_policy_snr_xing_config *config = xing_policy->config;
-    const struct ow_steer_policy_snr_xing_state *state = &xing_policy->state;
-    size_t i = 0;
-    char *buf = NULL;
+    struct ow_steer_policy_snr_xing *xing = ow_steer_policy_get_priv(policy);
+    struct ow_steer_policy_snr_xing_link *link;
+    const struct ow_steer_policy_snr_xing_config *config = xing->config;
 
-    osw_diag_pipe_writef(pipe, "ow: steer:         sta_info: %s", xing_policy->sta_info != NULL ? "set" : "not set");
+    osw_diag_pipe_writef(pipe, "ow: steer:         sta_obs: %p", xing->sta_obs);
+    osw_diag_pipe_writef(pipe, "ow: steer:         links: %zu", ds_tree_len(&xing->links));
+    ds_tree_foreach(&xing->links, link) {
+        const char *snr_str = link->snr_valid ? strfmta("%hhu dB", link->snr_db) : "unknown";
+        osw_diag_pipe_writef(pipe, "ow: steer:           bssid: "OSW_HWADDR_FMT" addr: "OSW_HWADDR_FMT" snr: %s",
+                             OSW_HWADDR_ARG(&link->bssid),
+                             OSW_HWADDR_ARG(&link->addr),
+                             snr_str);
+    }
+    osw_diag_pipe_writef(pipe, "ow: steer:         btm: %d", xing->btm);
+    osw_diag_pipe_writef(pipe, "ow: steer:         rrm: %d", xing->rrm);
+    osw_diag_pipe_writef(pipe, "ow: steer:         idle_obs: %p", xing->idle_obs);
+    osw_diag_pipe_writef(pipe, "ow: steer:           idle: %d", xing->idle);
+    osw_diag_pipe_writef(pipe, "ow: steer:         level: %s", ow_steer_policy_snr_xing_level_get_cstr(xing->level));
+    osw_diag_pipe_writef(pipe, "ow: steer:         latched: %s", xing->latched ? "yes" : "no");
+    osw_diag_pipe_writef(pipe, "ow: steer:         enforcing: %s", osw_timer_is_armed(&xing->enforce) ? "yes" : "no");
     osw_diag_pipe_writef(pipe, "ow: steer:         config: %s", config != NULL ? "" : "(nil)");
 
     if (config != NULL) {
-        osw_diag_pipe_writef(pipe, "ow: steer:           bssid: "OSW_HWADDR_FMT, OSW_HWADDR_ARG(&config->bssid));
+        osw_diag_pipe_writef(pipe, "ow: steer:           bssids: %zu", config->bssids.count);
+        size_t i;
+        for (i = 0; i < config->bssids.count; i++) {
+            const struct osw_hwaddr *bssid = &config->bssids.list[i];
+            osw_diag_pipe_writef(pipe, "ow: steer:             %zu: "OSW_HWADDR_FMT, i, OSW_HWADDR_ARG(bssid));
+        }
         osw_diag_pipe_writef(pipe, "ow: steer:           mode: %s", ow_steer_policy_snr_xing_mode_to_cstr(config->mode));
         osw_diag_pipe_writef(pipe, "ow: steer:           snr: %u", config->snr);
 
@@ -774,117 +517,288 @@ ow_steer_policy_snr_xing_sigusr1_dump_cb(osw_diag_pipe_t *pipe,
         }
     }
 
-    osw_diag_pipe_writef(pipe, "ow: steer:         state:");
-
-    OSW_CIRC_BUF_FOREACH(&state->snr_buf, i)
-        strgrow(&buf, "%s%u", buf != NULL ? " " : "", state->snr[i]);
-
-    osw_diag_pipe_writef(pipe, "ow: steer:           snr: %s", buf);
-    FREE(buf);
-    buf = NULL;
-
-    osw_diag_pipe_writef(pipe, "ow: steer:           rrm_neighbor_bcn_act_meas: %s", state->rrm_neighbor_bcn_act_meas == true ? "true" : "false");
-    osw_diag_pipe_writef(pipe, "ow: steer:           wnm_bss_trans: %s", state->wnm_bss_trans == true ? "true" : "false");
-    osw_diag_pipe_writef(pipe, "ow: steer:           activity:");
-    osw_diag_pipe_writef(pipe, "ow: steer:             state: %s", ow_steer_policy_snr_xing_activity_state_to_cstr(ow_steer_policy_snr_xing_activity_get_state(&state->activity)));
-    osw_diag_pipe_writef(pipe, "ow: steer:             threshold: %d", ow_steer_policy_snr_xing_activity_get_threshold(&state->activity));
-    osw_diag_pipe_writef(pipe, "ow: steer:             grace_seconds: %d", ow_steer_policy_snr_xing_activity_get_grace_seconds(&state->activity));
 }
 
-static int
-ow_steer_policy_snr_xing_config_get_activity_threshold(const struct ow_steer_policy_snr_xing_config *config)
+static void
+ow_steer_policy_snr_xing_idle_changed_cb(void *priv, bool idle)
 {
-    if (config == NULL) {
-        return -1;
-    }
-    switch (config->mode) {
+    struct ow_steer_policy_snr_xing *xing = priv;
+    ow_steer_policy_snr_xing_set_idle(xing, idle);
+}
+
+static osw_sta_idle_observer_t *
+ow_steer_policy_snr_xing_alloc_idle_obs_with_bps(struct ow_steer_policy_snr_xing *xing,
+                                                 const struct osw_hwaddr *sta_addr,
+                                                 uint64_t bytes_per_second)
+{
+    osw_sta_idle_params_t *p = osw_sta_idle_params_alloc();
+    osw_sta_idle_params_set_sta_addr(p, sta_addr);
+    osw_sta_idle_params_set_bytes_per_sec(p, bytes_per_second);
+    osw_sta_idle_params_set_notify_fn(p, ow_steer_policy_snr_xing_idle_changed_cb, xing);
+    return osw_sta_idle_observer_alloc(xing->m_idle, p);
+}
+
+static const uint64_t *
+ow_steer_policy_snr_xing_get_bps(struct ow_steer_policy_snr_xing *xing)
+{
+    if (xing == NULL)
+        return NULL;
+
+    struct ow_steer_policy_snr_xing_config *config = xing->config;
+    if (config == NULL)
+        return NULL;
+
+    switch (xing->config->mode) {
         case OW_STEER_POLICY_SNR_XING_MODE_HWM:
-            return config->mode_config.hwm.txrx_bytes_limit.active
-                 ? (int)config->mode_config.hwm.txrx_bytes_limit.delta
-                 : -1;
+             if (config->mode_config.hwm.txrx_bytes_limit.active == false)
+                 return NULL;
+             return &config->mode_config.hwm.txrx_bytes_limit.delta;
         case OW_STEER_POLICY_SNR_XING_MODE_LWM:
-            return config->mode_config.lwm.txrx_bytes_limit.active
-                 ? (int)config->mode_config.lwm.txrx_bytes_limit.delta
-                 : -1;
+             if (config->mode_config.lwm.txrx_bytes_limit.active == false)
+                 return NULL;
+             return &config->mode_config.lwm.txrx_bytes_limit.delta;
         case OW_STEER_POLICY_SNR_XING_MODE_BOTTOM_LWM:
-            return -1;
+             break;
     }
-    return -1;
+
+    return NULL;
+}
+
+static osw_sta_idle_observer_t *
+ow_steer_policy_snr_xing_alloc_idle_obs(struct ow_steer_policy_snr_xing *xing)
+{
+    const struct osw_hwaddr *sta_addr = ow_steer_policy_get_sta_addr(xing->base) ?: osw_hwaddr_zero();
+    if (osw_hwaddr_is_zero(sta_addr))
+        return NULL;
+
+    const uint64_t *bps = ow_steer_policy_snr_xing_get_bps(xing);
+    if (bps == NULL) return NULL;
+
+    return ow_steer_policy_snr_xing_alloc_idle_obs_with_bps(xing, sta_addr, *bps);
 }
 
 static void
-ow_steer_policy_snr_xing_reconf_timer_cb(struct osw_timer *timer)
+ow_steer_policy_snr_xing_update_idle(struct ow_steer_policy_snr_xing *xing)
 {
-    ASSERT(timer != NULL, "");
+    osw_sta_idle_observer_drop(xing->idle_obs);
+    xing->idle_obs = ow_steer_policy_snr_xing_alloc_idle_obs(xing);
+    ow_steer_policy_snr_xing_set_idle(xing, false);
+}
 
-    struct ow_steer_policy_snr_xing *xing_policy = container_of(timer, struct ow_steer_policy_snr_xing, reconf_timer);
+static bool
+ow_steer_policy_snr_xing_config_is_equal(const struct ow_steer_policy_snr_xing_config *a,
+                                         const struct ow_steer_policy_snr_xing_config *b)
+{
+    if (a == NULL && b == NULL) return true;
+    if (a == NULL && b != NULL) return false;
+    if (a != NULL && b == NULL) return false;
+    if (osw_hwaddr_list_is_equal(&a->bssids, &b->bssids) == false) return false;
+    if (a->mode != b->mode) return false;
+    if (a->snr != b->snr) return false;
+    switch (a->mode) { /* b->mode is guaranteed identical already */
+        case OW_STEER_POLICY_SNR_XING_MODE_HWM:
+            if (a->mode_config.hwm.txrx_bytes_limit.delta !=
+                b->mode_config.hwm.txrx_bytes_limit.delta) return false;
+            break;
+        case OW_STEER_POLICY_SNR_XING_MODE_LWM:
+            if (a->mode_config.lwm.txrx_bytes_limit.delta !=
+                b->mode_config.lwm.txrx_bytes_limit.delta) return false;
+            break;
+        case OW_STEER_POLICY_SNR_XING_MODE_BOTTOM_LWM:
+            break;
+    }
+    return true;
+}
 
-    bool unregister_observer = false;
-    bool register_observer = false;
+static void
+ow_steer_policy_snr_xing_enforce_cb(struct osw_timer *t)
+{
+    struct ow_steer_policy_snr_xing *xing = container_of(t, typeof(*xing), enforce);
+    ow_steer_policy_snr_xing_enforce_finish(xing);
+}
 
-    if (xing_policy->config == NULL && xing_policy->next_config == NULL) {
-        /* nop */
-        return;
+static struct ow_steer_policy_snr_xing_link *
+ow_steer_policy_snr_xing_alloc_link(struct ow_steer_policy_snr_xing *xing,
+                                    const struct osw_hwaddr *bssid)
+{
+    struct ow_steer_policy_snr_xing_link *link = CALLOC(1, sizeof(*link));
+    link->xing = xing;
+    link->bssid = *bssid;
+    ds_tree_insert(&xing->links, link, &link->bssid);
+    return link;
+}
+
+static void
+ow_steer_policy_snr_xing_link_drop(struct ow_steer_policy_snr_xing_link *link)
+{
+    if (WARN_ON(link == NULL)) return;
+    if (WARN_ON(link->xing == NULL)) return;
+    ds_tree_remove(&link->xing->links, link);
+    ow_steer_policy_snr_xing_update_level(link->xing);
+    FREE(link);
+}
+
+static void
+ow_steer_policy_snr_xing_link_snr_set(struct ow_steer_policy_snr_xing_link *link, const uint8_t *snr_db)
+{
+    const uint8_t *current_snr_db = link->snr_valid ? &link->snr_db : NULL;
+    if (current_snr_db == NULL && snr_db == NULL) return;
+    if (current_snr_db != NULL && snr_db != NULL && (*current_snr_db == *snr_db)) return;
+    LOGD(LOG_WITH_POLICY_PREFIX(link->xing->base, OSW_HWADDR_FMT": "OSW_HWADDR_FMT": snr: %d -> %d",
+                                OSW_HWADDR_ARG(&link->bssid),
+                                OSW_HWADDR_ARG(&link->addr),
+                                link->snr_valid ? (int)link->snr_db : -1,
+                                snr_db ? (int)*snr_db : -1));
+    link->snr_valid = snr_db != NULL;
+    link->snr_db = snr_db ? *snr_db : 0;
+    ow_steer_policy_snr_xing_update_level(link->xing);
+}
+
+static void
+ow_steer_policy_snr_xing_link_snr_changed_cb(void *priv, const uint8_t *snr_db)
+{
+    struct ow_steer_policy_snr_xing_link *link = priv;
+    ow_steer_policy_snr_xing_link_snr_set(link, snr_db);
+}
+
+static osw_sta_snr_observer_t *
+ow_steer_policy_snr_xing_link_alloc_snr(struct ow_steer_policy_snr_xing_link *link)
+{
+    if (link->xing->config == NULL) return NULL;
+    if (osw_hwaddr_is_zero(&link->addr)) return NULL;
+    osw_sta_snr_params_t *p = osw_sta_snr_params_alloc();
+    osw_sta_snr_params_set_sta_addr(p, &link->addr);
+    osw_sta_snr_params_set_vif_addr(p, &link->bssid);
+    osw_sta_snr_params_set_ageout_sec(p, link->xing->config->snr_ageout_sec);
+    osw_sta_snr_params_set_notify_fn(p, ow_steer_policy_snr_xing_link_snr_changed_cb, link);
+    return osw_sta_snr_observer_alloc(link->xing->m_snr, p);
+}
+
+static struct ow_steer_policy_snr_xing_link *
+ow_steer_policy_snr_xing_get_link(struct ow_steer_policy_snr_xing *xing,
+                                  const struct osw_hwaddr *bssid)
+{
+    return ds_tree_find(&xing->links, bssid) ?: ow_steer_policy_snr_xing_alloc_link(xing, bssid);
+}
+
+static struct ow_steer_policy_snr_xing_link *
+ow_steer_policy_snr_xing_set_link(struct ow_steer_policy_snr_xing *xing,
+                                  const struct osw_hwaddr *bssid,
+                                  const struct osw_hwaddr *addr)
+{
+    if (WARN_ON(osw_hwaddr_is_zero(bssid))) return NULL;
+
+    struct ow_steer_policy_snr_xing_link *link = ow_steer_policy_snr_xing_get_link(xing, bssid);
+
+    const bool changed = (osw_hwaddr_is_equal(&link->addr, addr) == false);
+    LOGD(LOG_WITH_POLICY_PREFIX(xing->base, "link: "OSW_HWADDR_FMT": "OSW_HWADDR_FMT" -> "OSW_HWADDR_FMT,
+                                OSW_HWADDR_ARG(bssid),
+                                OSW_HWADDR_ARG(&link->addr),
+                                OSW_HWADDR_ARG(addr)));
+    link->addr = *addr;
+
+    if (changed) {
+        osw_sta_snr_observer_drop(link->snr_obs);
+        link->snr_obs = ow_steer_policy_snr_xing_link_alloc_snr(link);
+        ow_steer_policy_snr_xing_set_idle(link->xing, false);
+        ow_steer_policy_snr_xing_update_level(link->xing);
     }
-    else if (xing_policy->config == NULL && xing_policy->next_config != NULL) {
-        LOGI(LOG_WITH_POLICY_PREFIX(xing_policy->base, "config added"));
-        register_observer = true;
+
+    if (osw_hwaddr_is_zero(&link->addr)) {
+        ow_steer_policy_snr_xing_link_drop(link);
+        return NULL;
     }
-    else if (xing_policy->config != NULL && xing_policy->next_config == NULL) {
-        LOGI(LOG_WITH_POLICY_PREFIX(xing_policy->base, "config removed"));
-        unregister_observer = true;
-    }
-    else if (xing_policy->config != NULL && xing_policy->next_config != NULL) {
-        if (memcmp(xing_policy->config, xing_policy->next_config, sizeof(*xing_policy->config)) == 0) {
-            FREE(xing_policy->next_config);
-            xing_policy->next_config = NULL;
-            return;
+
+    return link;
+}
+
+static void
+ow_steer_policy_snr_xing_update_links(struct ow_steer_policy_snr_xing *xing,
+                                      const osw_sta_assoc_links_t *links)
+{
+    /* This adds or updates existing entries. The case for
+     * updates is when client stays on the same BSSID(s) but
+     * re-randomizes link addresses on re-association.
+     */
+    if (links != NULL) {
+        size_t i;
+        for (i = 0; i < links->count; i++) {
+            const osw_sta_assoc_link_t *link = &links->links[i];
+            const struct osw_hwaddr *bssid = &link->local_sta_addr;
+            const struct osw_hwaddr *addr = &link->remote_sta_addr;
+            ow_steer_policy_snr_xing_set_link(xing, bssid, addr);
         }
-
-        LOGI(LOG_WITH_POLICY_PREFIX(xing_policy->base, "config changed"));
-        unregister_observer = true;
-        register_observer = true;
-    }
-    else {
-        ASSERT(false, "");
     }
 
-    const bool reset_policy_state = unregister_observer || register_observer;
-    if (reset_policy_state == true) {
-        ow_steer_policy_snr_xing_state_reset(xing_policy);
-        ow_steer_policy_schedule_stack_recalc(xing_policy->base);
+    /* This removes links that are no longer present in the
+     * association.
+     */
+    struct ow_steer_policy_snr_xing_link *tmp;
+    struct ow_steer_policy_snr_xing_link *link;
+    ds_tree_foreach_safe(&xing->links, link, tmp) {
+        const osw_sta_assoc_link_t *match = osw_sta_assoc_links_lookup(links, &link->bssid, &link->addr);
+        if (match == NULL) {
+            /* virtually drops it */
+            ow_steer_policy_snr_xing_set_link(xing, &link->bssid, osw_hwaddr_zero());
+        }
     }
-
-    FREE(xing_policy->config);
-    xing_policy->config = NULL;
-    if (unregister_observer == true)
-        osw_state_unregister_observer(&xing_policy->state_observer);
-
-    xing_policy->config = xing_policy->next_config;
-    xing_policy->next_config = NULL;
-
-    const int threshold = ow_steer_policy_snr_xing_config_get_activity_threshold(xing_policy->config);
-    ow_steer_policy_snr_xing_activity_set_threshold(&xing_policy->state.activity, threshold);
-
-    const struct osw_hwaddr *bssid = xing_policy->config != NULL ? &xing_policy->config->bssid : NULL;
-    ow_steer_policy_set_bssid(xing_policy->base, bssid);
-
-    if (register_observer == true)
-        osw_state_register_observer(&xing_policy->state_observer);
 }
 
 static void
-ow_steer_policy_snr_xing_enforce_timer_cb(struct osw_timer *timer)
+ow_steer_policy_snr_xing_set_rrm(struct ow_steer_policy_snr_xing *xing, const bool rrm)
 {
-    struct ow_steer_policy_snr_xing *xing_policy = container_of(timer, struct ow_steer_policy_snr_xing, state.enforce_timer);
-
-    ow_steer_policy_snr_xing_state_reset(xing_policy);
-    LOGI(LOG_WITH_POLICY_PREFIX(xing_policy->base, "enforce period finished"));
-    ow_steer_policy_dismiss_executor(xing_policy->base);
-    ow_steer_policy_schedule_stack_recalc(xing_policy->base);
+    if (xing->rrm == rrm) return;
+    LOGD(LOG_WITH_POLICY_PREFIX(xing->base, "rrm: %d -> %d", xing->rrm, rrm));
+    xing->rrm = rrm;
+    ow_steer_policy_snr_xing_update_enforce(xing);
 }
 
-struct ow_steer_policy_snr_xing*
+static void
+ow_steer_policy_snr_xing_set_btm(struct ow_steer_policy_snr_xing *xing, const bool btm)
+{
+    if (xing->btm == btm) return;
+    LOGD(LOG_WITH_POLICY_PREFIX(xing->base, "btm: %d -> %d", xing->btm, btm));
+    xing->btm = btm;
+    ow_steer_policy_snr_xing_update_enforce(xing);
+}
+
+static void
+ow_steer_policy_snr_xing_update_sta_caps(struct ow_steer_policy_snr_xing *xing,
+                                         const void *ies,
+                                         const size_t ies_len)
+{
+    struct osw_assoc_req_info info;
+    const bool parsed = osw_parse_assoc_req_ies(ies, ies_len, &info);
+    const bool btm = parsed && info.wnm_bss_trans;
+    const bool rrm = parsed && info.rrm_neighbor_bcn_act_meas;
+    ow_steer_policy_snr_xing_set_btm(xing, btm);
+    ow_steer_policy_snr_xing_set_rrm(xing, rrm);
+}
+static void
+ow_steer_policy_snr_xing_assoc_changed_cb(void *priv,
+                                          const osw_sta_assoc_entry_t *entry,
+                                          osw_sta_assoc_event_e ev)
+{
+    struct ow_steer_policy_snr_xing *xing = priv;
+    const osw_sta_assoc_links_t *links = osw_sta_assoc_entry_get_active_links(entry);
+    const void *ies = osw_sta_assoc_entry_get_assoc_ies_data(entry);
+    const size_t ies_len = osw_sta_assoc_entry_get_assoc_ies_len(entry);
+    ow_steer_policy_snr_xing_update_sta_caps(xing, ies, ies_len);
+    ow_steer_policy_snr_xing_update_links(xing, links);
+}
+
+static osw_sta_assoc_observer_t *
+ow_steer_policy_snr_xing_alloc_sta_obs(struct ow_steer_policy_snr_xing *xing,
+                                       const struct osw_hwaddr *sta_addr)
+{
+    if (osw_hwaddr_is_zero(sta_addr)) return NULL;
+    osw_sta_assoc_observer_params_t *p = osw_sta_assoc_observer_params_alloc();
+    osw_sta_assoc_observer_params_set_changed_fn(p, ow_steer_policy_snr_xing_assoc_changed_cb, xing);
+    osw_sta_assoc_observer_params_set_addr(p, sta_addr);
+    return osw_sta_assoc_observer_alloc(xing->m_sta, p);
+}
+
+struct ow_steer_policy_snr_xing *
 ow_steer_policy_snr_xing_create(const char *name,
                                 const struct osw_hwaddr *sta_addr,
                                 const struct ow_steer_policy_mediator *mediator,
@@ -897,69 +811,83 @@ ow_steer_policy_snr_xing_create(const char *name,
     const struct ow_steer_policy_ops policy_ops = {
         .sigusr1_dump_fn = ow_steer_policy_snr_xing_sigusr1_dump_cb,
         .recalc_fn = ow_steer_policy_snr_xing_recalc_cb,
-        .sta_snr_change_fn = ow_steer_policy_snr_xing_sta_snr_change_cb,
-        .sta_data_vol_change_fn = ow_steer_policy_snr_xing_sta_data_vol_change_cb,
-    };
-    const struct osw_state_observer state_observer = {
-        .name = g_policy_name,
-        .sta_connected_fn = ow_steer_policy_snr_xing_sta_connected_cb,
-        .sta_disconnected_fn = ow_steer_policy_snr_xing_sta_disconnected_cb,
     };
 
-    struct ow_steer_policy_snr_xing *xing_policy = CALLOC(1, sizeof(*xing_policy));
-    memcpy(&xing_policy->state_observer, &state_observer, sizeof(xing_policy->state_observer));
-    osw_timer_init(&xing_policy->reconf_timer, ow_steer_policy_snr_xing_reconf_timer_cb);
+    const char *pname = strfmta("%s_%s", "snr_xing", name);
+    struct ow_steer_policy_snr_xing *xing = CALLOC(1, sizeof(*xing));
+    osw_timer_init(&xing->enforce, ow_steer_policy_snr_xing_enforce_cb);
+    ds_tree_init(&xing->links, (ds_key_cmp_t *)osw_hwaddr_cmp, struct ow_steer_policy_snr_xing_link, node);
+    xing->m_sta = OSW_MODULE_LOAD(osw_sta_assoc);
+    xing->m_snr = OSW_MODULE_LOAD(osw_sta_snr);
+    xing->m_idle = OSW_MODULE_LOAD(osw_sta_idle);
+    xing->base = ow_steer_policy_create(pname, sta_addr, &policy_ops, mediator, log_prefix, xing);
 
-    struct ow_steer_policy_snr_xing_state *state = &xing_policy->state;
-    osw_timer_init(&state->enforce_timer, ow_steer_policy_snr_xing_enforce_timer_cb);
-
-    xing_policy->base = ow_steer_policy_create(strfmta("%s_%s", g_policy_name, name), sta_addr, &policy_ops, mediator, log_prefix, xing_policy);
-
-    ow_steer_policy_snr_xing_activity_init(&state->activity,
-            (ow_steer_policy_snr_xing_activity_fn_t *)ow_steer_policy_snr_xing_recalc,
-            (ow_steer_policy_snr_xing_activity_fn_t *)ow_steer_policy_snr_xing_recalc,
-            xing_policy);
-
-    return xing_policy;
+    return xing;
 }
 
-void
-ow_steer_policy_snr_xing_free(struct ow_steer_policy_snr_xing *xing_policy)
+static void
+ow_steer_policy_snr_xing_free_config(struct ow_steer_policy_snr_xing_config *config)
 {
-    if (xing_policy == NULL)
+    if (config == NULL)
         return;
 
-    const bool unregister_observer = xing_policy->config != NULL;
-
-    ow_steer_policy_snr_xing_state_reset(xing_policy);
-    osw_timer_disarm(&xing_policy->reconf_timer);
-    FREE(xing_policy->next_config);
-    xing_policy->next_config = NULL;
-    FREE(xing_policy->config);
-    xing_policy->config = NULL;
-    if (unregister_observer == true)
-        osw_state_unregister_observer(&xing_policy->state_observer);
-    ow_steer_policy_free(xing_policy->base);
-    FREE(xing_policy);
-}
-
-struct ow_steer_policy*
-ow_steer_policy_snr_xing_get_base(struct ow_steer_policy_snr_xing *xing_policy)
-{
-    ASSERT(xing_policy != NULL, "");
-    return xing_policy->base;
+    osw_hwaddr_list_flush(&config->bssids);
+    FREE(config);
 }
 
 void
-ow_steer_policy_snr_xing_set_config(struct ow_steer_policy_snr_xing *xing_policy,
+ow_steer_policy_snr_xing_free(struct ow_steer_policy_snr_xing *xing)
+{
+    if (xing == NULL)
+        return;
+
+    ow_steer_policy_snr_xing_set_config(xing, NULL);
+    ow_steer_policy_free(xing->base);
+    ASSERT(ds_tree_is_empty(&xing->links), "should be emptied by osw_sta_assoc_observer_drop()");
+    ASSERT(xing->idle_obs == NULL, "should be emptied by ow_steer_policy_snr_xing_set_config()");
+    ASSERT(xing->sta_obs == NULL, "should be emptied by ow_steer_policy_snr_xing_set_config()");
+    ASSERT(xing->config == NULL, "should be emptied by ow_steer_policy_snr_xing_set_config()");
+    FREE(xing);
+}
+
+struct ow_steer_policy *
+ow_steer_policy_snr_xing_get_base(struct ow_steer_policy_snr_xing *xing)
+{
+    ASSERT(xing != NULL, "");
+    return xing->base;
+}
+
+void
+ow_steer_policy_snr_xing_set_config(struct ow_steer_policy_snr_xing *xing,
                                     struct ow_steer_policy_snr_xing_config *config)
 {
-    ASSERT(xing_policy != NULL, "");
+    ASSERT(xing != NULL, "");
 
-    FREE(xing_policy->next_config);
-    xing_policy->next_config = config;
+    const bool changed = (ow_steer_policy_snr_xing_config_is_equal(xing->config, config) == false);
+    if (changed == false)
+        return;
 
-    osw_timer_arm_at_nsec(&xing_policy->reconf_timer, 0);
+    LOGI(LOG_WITH_POLICY_PREFIX(xing->base, "reconfiguring"));
+
+    if (config == NULL) {
+        osw_sta_assoc_observer_drop(xing->sta_obs);
+        xing->sta_obs = NULL;
+        ow_steer_policy_snr_xing_update_links(xing, NULL);
+    }
+
+    ow_steer_policy_snr_xing_free_config(xing->config);
+    xing->config = config;
+
+    if (config != NULL) {
+        if (xing->sta_obs == NULL) {
+            const struct osw_hwaddr *sta_addr = ow_steer_policy_get_sta_addr(xing->base) ?: osw_hwaddr_zero();
+            xing->sta_obs = ow_steer_policy_snr_xing_alloc_sta_obs(xing, sta_addr);
+        }
+    }
+
+    ow_steer_policy_snr_xing_update_idle(xing);
+    ow_steer_policy_snr_xing_update_level(xing);
+    ow_steer_policy_schedule_stack_recalc(xing->base);
 }
 
 #include "ow_steer_policy_snr_xing_ut.c"

@@ -557,8 +557,6 @@ intf_stats_fetch_stats(bool set_baseline)
 {
     intf_stats_t     *stats_old = NULL;
     struct  ifaddrs  *ifaddr, *ifa;
-    int               family, s;
-    char              host[NI_MAXHOST];
 
     if (getifaddrs(&ifaddr) == -1 )
     {
@@ -568,7 +566,6 @@ intf_stats_fetch_stats(bool set_baseline)
 
     for (ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next)
     {
-        if (ifa->ifa_addr == NULL) continue;
 
         stats_old = intf_stats_find_by_ifname(&cloud_intf_list, ifa->ifa_name);
         if (!stats_old)
@@ -577,30 +574,7 @@ intf_stats_fetch_stats(bool set_baseline)
             continue;
         }
 
-        family = ifa->ifa_addr->sa_family;
-        LOGT("%-8s %s (%d)", ifa->ifa_name,
-                             (family == AF_PACKET) ? "AF_PACKET" :
-                             (family == AF_INET)   ? "AF_INET"   :
-                             (family == AF_INET6)  ? "AF_INET6"  : "??",
-                             family);
-
-        if (family == AF_INET || family == AF_INET6)
-        {
-            s = getnameinfo(ifa->ifa_addr,
-                            (family == AF_INET) ? sizeof(struct sockaddr_in) :
-                                                  sizeof(struct sockaddr_in6),
-                            host, NI_MAXHOST,
-                            NULL, 0, NI_NUMERICHOST);
-
-            if (s != 0)
-            {
-                LOGE("getnameinfo() failed: %s", gai_strerror(s));
-                goto exit;
-            }
-
-            LOGT("address: <%s>", host);
-        } 
-        else if (family == AF_PACKET && ifa->ifa_data != NULL)
+        if (ifa->ifa_data != NULL)
         {
             struct rtnl_link_stats *stats_new = ifa->ifa_data;
 

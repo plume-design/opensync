@@ -50,20 +50,23 @@ void net_md_free_aggregator(struct net_md_aggregator *aggr)
 
     net_md_free_flow_report(aggr->report);
     FREE(aggr->report);
-
-    pair = ds_tree_head(&aggr->eth_pairs);
+    if (!aggr->eth_pairs) return;
+    pair = ds_tree_head(aggr->eth_pairs);
     while (pair != NULL)
     {
         struct net_md_eth_pair *next;
 
-        next = ds_tree_next(&aggr->eth_pairs, pair);
-        ds_tree_remove(&aggr->eth_pairs, pair);
+        next = ds_tree_next(aggr->eth_pairs, pair);
+        ds_tree_remove(aggr->eth_pairs, pair);
         net_md_free_eth_pair(pair);
         FREE(pair);
         pair = next;
     }
 
-    net_md_free_flow_tree(&aggr->five_tuple_flows);
+    if (!aggr->five_tuple_flows) return;
+    net_md_free_flow_tree(aggr->five_tuple_flows);
+    FREE(aggr->eth_pairs);
+    FREE(aggr->five_tuple_flows);
 }
 
 /**
@@ -87,34 +90,33 @@ net_md_allocate_aggregator(struct net_md_aggregator_set *aggr_set)
 
     /* Allocate aggregator memory */
     aggr = CALLOC(1, sizeof(*aggr));
-    if (aggr == NULL) return NULL;
 
     /* Allocate aggregator's report memory */
     report = CALLOC(1, sizeof(*report));
-    if (report == NULL) goto err_free_aggr;
 
     aggr->report = report;
 
     /* Set aggregator's node info */
     node = net_md_set_node_info(aggr_set->info);
-    if (node == NULL) goto err_free_report;
 
     report->node_info = node;
 
     /* Allocate aggregator's report's windows */
     windows_array = CALLOC(aggr_set->num_windows, sizeof(*windows_array));
-    if (windows_array == NULL) goto err_free_node;
 
     report->flow_windows = windows_array;
     report->num_windows = 0;
+
+    aggr->five_tuple_flows = CALLOC(1, sizeof(*aggr->five_tuple_flows));
+    aggr->eth_pairs = CALLOC(1, sizeof(*aggr->eth_pairs));
 
     aggr->max_windows = aggr_set->num_windows;
     aggr->report_all_samples = false;
     aggr->acc_ttl = aggr_set->acc_ttl;
     aggr->report_type = aggr_set->report_type;
-    ds_tree_init(&aggr->eth_pairs, net_md_eth_cmp,
+    ds_tree_init(aggr->eth_pairs, net_md_eth_cmp,
                  struct net_md_eth_pair, eth_pair_node);
-    ds_tree_init(&aggr->five_tuple_flows, net_md_5tuple_cmp,
+    ds_tree_init(aggr->five_tuple_flows, net_md_5tuple_cmp,
                  struct net_md_flow, flow_node);
     aggr->collect_filter = aggr_set->collect_filter;
     aggr->report_filter = aggr_set->report_filter;
@@ -126,6 +128,7 @@ net_md_allocate_aggregator(struct net_md_aggregator_set *aggr_set)
     aggr->on_acc_report = aggr_set->on_acc_report;
     aggr->context = aggr_set->context;
     aggr->process = aggr_set->process;
+    aggr->report_flow_type = aggr_set->report_stats_type;
 
     return aggr;
 

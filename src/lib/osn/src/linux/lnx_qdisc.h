@@ -39,6 +39,8 @@ bool lnx_qdisc_cfg_fini(lnx_qdisc_cfg_t *qdisc_cfg);
 
 bool lnx_qdisc_cfg_add(lnx_qdisc_cfg_t *self, const struct osn_qdisc_params *qdisc);
 
+bool lnx_qdisc_cfg_notify_status_set(lnx_qdisc_cfg_t *self, osn_qdisc_status_fn_t *status_fn_cb);
+
 bool lnx_qdisc_cfg_apply(lnx_qdisc_cfg_t *self);
 
 bool lnx_qdisc_cfg_reset(lnx_qdisc_cfg_t *self);

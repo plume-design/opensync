@@ -51,6 +51,9 @@ endif
 
 ifeq ($(CONFIG_PM_HW_ACC),y)
 UNIT_SRC += src/pm_hw_acc.c
+UNIT_SRC += src/pm_hw_acc_load.c
+UNIT_SRC += src/pm_hw_acc_load_netstats.c
+UNIT_SRC += src/pm_hw_acc_load_cpustats.c
 endif
 
 ifeq ($(CONFIG_PM_ENABLE_OBJM),y)

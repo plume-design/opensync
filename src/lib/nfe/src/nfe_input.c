@@ -31,11 +31,14 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "nfe_ipv4.h"
 #include "nfe_ipv6.h"
 #include "nfe_flow.h"
+#include "nfe_conn.h"
+#include "log.h"
 
 static int 
 nfe_input_unknown(struct nfe_packet *p)
 {
     (void) p;
+    p->next = NEXT_BYPASS_ETH;
     return 0;
 }
 

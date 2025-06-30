@@ -55,6 +55,8 @@ create_default_attr_entries(void)
 {
     bool ret;
 
+    gk_cache_cleanup();
+
     entry = CALLOC(num_attr_entries, sizeof(*entry));
 
     entry[0] = CALLOC(1, sizeof(*entry[0]));

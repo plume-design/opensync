@@ -146,12 +146,14 @@ struct osn_igmp_querier_config
 /**
  * Create a new instance of an IGMP configuration object.
  *
+ * @param[in]   ifname          Interface name
+ *
  * @return
  * This function returns NULL if an error occurs, otherwise a valid @ref
  * osn_igmp_t object is returned.
  */
 
-osn_igmp_t *osn_igmp_new();
+osn_igmp_t *osn_igmp_new(const char *ifname);
 
 /**
  * Destroy a valid osn_igmp_t object.

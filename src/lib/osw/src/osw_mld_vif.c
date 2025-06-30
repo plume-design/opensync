@@ -71,6 +71,7 @@ struct osw_mld_vif_mld
     struct ds_tree_node node;
     struct ds_tree links;
     struct osw_mld_vif *m;
+    struct osw_hwaddr mld_addr;
     bool was_connected;
 };
 
@@ -129,11 +130,23 @@ void osw_mld_vif_observer_drop(osw_mld_vif_observer_t *obs)
     FREE(obs);
 }
 
-static struct osw_mld_vif_mld *osw_mld_vif_mld_alloc(struct osw_mld_vif *m, const char *mld_if_name)
+const struct osw_hwaddr *osw_mld_vif_get_mld_addr(osw_mld_vif_observer_t *o, const char *mld_if_name)
+{
+    if (o == NULL) return NULL;
+    if (o->m == NULL) return NULL;
+
+    struct osw_mld_vif_mld *mld = (mld_if_name == NULL) ? NULL : ds_tree_find(&o->m->mlds, mld_if_name);
+    if (mld == NULL) return NULL;
+
+    return &mld->mld_addr;
+}
+
+static struct osw_mld_vif_mld *osw_mld_vif_mld_alloc(struct osw_mld_vif *m, const char *mld_if_name, const struct osw_hwaddr *mld_addr)
 {
     struct osw_mld_vif_mld *mld = CALLOC(1, sizeof(*mld));
     mld->m = m;
     mld->mld_if_name = STRDUP(mld_if_name);
+    mld->mld_addr = *mld_addr;
     ds_tree_insert(&m->mlds, mld, mld->mld_if_name);
     ds_tree_init(&mld->links, ds_str_cmp, struct osw_mld_vif_link, node);
     LOGD(LOG_PREFIX_MLD(mld, "allocated"));
@@ -228,42 +241,13 @@ static void osw_mld_vif_link_drop(struct osw_mld_vif_link *l)
     FREE(l);
 }
 
-static const char *osw_mld_vif_state_get_mld_if_name(const struct osw_state_vif_info *info)
-{
-    switch (info->drv_state->vif_type)
-    {
-        case OSW_VIF_AP:
-            if (osw_hwaddr_is_zero(&info->drv_state->u.ap.mld.addr))
-            {
-                return NULL;
-            }
-            if (strlen(info->drv_state->u.ap.mld.if_name.buf) > 0)
-            {
-                return info->drv_state->u.ap.mld.if_name.buf;
-            }
-        case OSW_VIF_AP_VLAN:
-            break;
-        case OSW_VIF_STA:
-            if (osw_hwaddr_is_zero(&info->drv_state->u.sta.mld.addr))
-            {
-                return NULL;
-            }
-            if (strlen(info->drv_state->u.sta.mld.if_name.buf) > 0)
-            {
-                return info->drv_state->u.sta.mld.if_name.buf;
-            }
-            break;
-        case OSW_VIF_UNDEFINED:
-            break;
-    }
-    return NULL;
-}
-
 static void osw_mld_vif_state_vif_update(struct osw_state_observer *obs, const struct osw_state_vif_info *info)
 {
     struct osw_mld_vif *m = container_of(obs, struct osw_mld_vif, state_obs);
-    const char *mld_if_name = osw_mld_vif_state_get_mld_if_name(info);
+    const struct osw_drv_mld_state *mld_state = osw_drv_vif_state_get_mld_state(info->drv_state);
+    const char *mld_if_name = osw_drv_mld_state_get_name(mld_state);
     const char *link_if_name = info->vif_name;
+    const struct osw_hwaddr *mld_addr = mld_if_name ? &mld_state->addr : NULL;
 
     struct osw_mld_vif_mld *mld = (mld_if_name == NULL) ? NULL : ds_tree_find(&m->mlds, mld_if_name);
     struct osw_mld_vif_link *l = osw_mld_vif_link_get(mld, link_if_name) ?: osw_mld_vif_link_get_any(m, link_if_name);
@@ -278,7 +262,7 @@ static void osw_mld_vif_state_vif_update(struct osw_state_observer *obs, const s
         {
             if (mld == NULL)
             {
-                mld = osw_mld_vif_mld_alloc(m, mld_if_name);
+                mld = osw_mld_vif_mld_alloc(m, mld_if_name, mld_addr);
             }
             l = osw_mld_vif_link_alloc(mld, info);
         }

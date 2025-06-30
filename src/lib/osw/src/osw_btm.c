@@ -28,7 +28,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <ev.h>
 #include <log.h>
 #include <const.h>
+#include <const_ieee80211.h>
 #include <util.h>
+#include <os.h>
 #include <ds_dlist.h>
 #include <ds_tree.h>
 #include <memutil.h>
@@ -39,29 +41,61 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <osw_drv_mediator.h>
 #include <osw_drv.h>
 #include <osw_mux.h>
-#include <osw_throttle.h>
-#include <osw_state.h>
 #include <osw_state.h>
 #include <osw_token.h>
 #include <osw_util.h>
 #include <osw_btm.h>
+#include <osw_sta_assoc.h>
 
-enum osw_btm_desc_state {
-    OSW_BTM_DESC_STATE_EMPTY = 0,
-    OSW_BTM_DESC_STATE_PENDING,
-    OSW_BTM_DESC_STATE_IN_TRANSIT,
+#define LOG_PREFIX(fmt, ...) \
+    "osw: btm: " fmt, ##__VA_ARGS__
+
+#define LOG_PREFIX_STA(sta, fmt, ...) \
+    LOG_PREFIX(OSW_HWADDR_FMT ": " fmt, OSW_HWADDR_ARG(&(sta)->mac_addr), ##__VA_ARGS__)
+
+#define LOG_PREFIX_REQ(req, fmt, ...) \
+    LOG_PREFIX_STA((req)->sta, "%p: " fmt, (req), ##__VA_ARGS__)
+
+enum osw_btm_req_state {
+    OSW_BTM_REQ_STATE_INIT,
+    OSW_BTM_REQ_STATE_READY,
+    OSW_BTM_REQ_STATE_SUBMITTED,
+    OSW_BTM_REQ_STATE_COMPLETED,
 };
 
-struct osw_btm_desc {
-    struct osw_btm_sta *sta;
-    struct osw_btm_sta_observer *observer;
-    enum osw_btm_desc_state state;
-    struct osw_btm_req_params params;
-    uint8_t frame_buf [OSW_DRV_FRAME_TX_DESC_BUF_SIZE];
-    ssize_t frame_len;
-    int dialog_token;
+typedef struct osw_btm_req_link osw_btm_req_link_t;
 
-    struct ds_dlist_node node;
+struct osw_btm_req_link {
+    ds_tree_node_t node;
+    osw_btm_req_t *req;
+    struct osw_drv_frame_tx_desc *frame_tx_desc;
+    uint8_t frame_buf[OSW_DRV_FRAME_TX_DESC_BUF_SIZE];
+    ssize_t frame_len;
+    char *phy_name;
+    char *vif_name;
+    enum osw_btm_req_result result;
+};
+
+struct osw_btm_req {
+    osw_btm_sta_t *sta;
+    ds_tree_node_t node;
+    ds_tree_t links;
+    enum osw_btm_req_state state;
+    osw_btm_req_completed_fn_t *completed_fn;
+    void *completed_fn_priv;
+    osw_btm_req_response_fn_t *response_fn;
+    void *response_fn_priv;
+    struct osw_btm_req_params *params;
+    int dialog_token;
+};
+
+struct osw_btm_resp {
+    struct osw_hwaddr sta_addr;
+    struct osw_hwaddr target_bssid;
+    uint8_t status_code;
+    uint8_t dialog_token;
+    struct osw_btm_retry_neigh *neighs;
+    size_t n_neighs;
 };
 
 typedef bool
@@ -69,136 +103,141 @@ osw_btm_mux_frame_tx_schedule_fn_t(const char *phy_name,
                                    const char *vif_name,
                                    struct osw_drv_frame_tx_desc *desc);
 
-struct osw_btm_sta_link {
-    struct ds_tree_node node;
-    const struct osw_state_sta_info *info;
+struct osw_btm_sta_assoc_link {
+    struct osw_hwaddr remote_sta_addr;
+    struct osw_hwaddr local_sta_addr;
+};
+
+struct osw_btm_sta_assoc_links {
+    struct osw_btm_sta_assoc_link array[OSW_STA_MAX_LINKS];
+    struct osw_hwaddr local_mld_addr;
+    size_t count;
+};
+
+struct osw_btm_sta_assoc {
+    struct osw_btm_sta_assoc_links links;
+    osw_sta_assoc_observer_t *obs;
 };
 
 struct osw_btm_sta {
-    struct ds_tree links;
+    osw_btm_t *m;
+    ds_tree_node_t node;
+    ds_tree_t reqs;
+
     struct osw_hwaddr mac_addr;
-    struct osw_state_observer observer;
-    struct osw_throttle *throttle;
-    struct osw_timer throttle_timer;
-    struct osw_timer work_timer;
-    struct osw_drv_frame_tx_desc *frame_tx_desc;
-    struct osw_state_observer state_observer;
-    struct osw_btm_desc *desc_in_flight;
-    bool in_flight;
-    const struct osw_state_sta_info *sta_info;
-    struct ds_dlist desc_list;
+    struct osw_btm_sta_assoc assoc;
     struct osw_token_pool_reference *pool_ref;
-
-    osw_btm_mux_frame_tx_schedule_fn_t *mux_frame_tx_schedule_fn;
-
-    struct ds_tree_node node;
+    int refcount;
 };
 
-static struct ds_dlist g_btm_response_observer_list = DS_DLIST_INIT(struct osw_btm_response_observer, node);
-static struct ds_tree g_sta_tree = DS_TREE_INIT((ds_key_cmp_t*) osw_hwaddr_cmp, struct osw_btm_sta, node);
+struct osw_btm_obs_assoc {
+    struct osw_hwaddr_list addrs;
+    osw_sta_assoc_observer_t *obs;
+};
 
-static const struct osw_state_sta_info *
-osw_btm_sta_links_find_newest(struct osw_btm_sta *sta)
+struct osw_btm_obs {
+    osw_btm_t *m;
+    ds_tree_node_t node;
+    struct osw_hwaddr sta_addr;
+    struct osw_btm_obs_assoc assoc;
+    osw_btm_obs_received_fn_t *received_fn;
+    void *received_fn_priv;
+};
+
+struct osw_btm {
+    ds_tree_t stas;
+    ds_tree_t obs;
+    struct osw_state_observer state_obs;
+    osw_btm_mux_frame_tx_schedule_fn_t *mux_frame_tx_schedule_fn;
+};
+
+osw_btm_obs_t *
+osw_btm_obs_alloc(osw_btm_t *m)
 {
-    struct osw_btm_sta_link *newest = ds_tree_head(&sta->links);
-    struct osw_btm_sta_link *link;
-    ds_tree_foreach(&sta->links, link) {
-        if (link->info->connected_at > newest->info->connected_at) {
-            newest = link;
-        }
+    if (m == NULL) return NULL;
+
+    osw_btm_obs_t *o = CALLOC(1, sizeof(*o));
+    o->m = m;
+    ds_tree_insert(&m->obs, o, o);
+    return o;
+}
+
+static void
+osw_btm_obs_sta_changed_cb(void *priv, const osw_sta_assoc_entry_t *e, const osw_sta_assoc_event_e ev)
+{
+    struct osw_btm_obs *o = priv;
+    const osw_sta_assoc_links_t *l = osw_sta_assoc_entry_get_active_links(e);
+
+    osw_hwaddr_list_flush(&o->assoc.addrs);
+
+    if (l->count > 0) {
+        const struct osw_hwaddr *addr = osw_sta_assoc_entry_get_addr(e);
+        osw_hwaddr_list_append(&o->assoc.addrs, addr);
     }
-    return (newest != NULL) ? newest->info : NULL;
+
+    osw_sta_assoc_links_append_remote_to(l, &o->assoc.addrs);
 }
 
-static void
-osw_btm_sta_links_add(struct osw_btm_sta *sta,
-                      const struct osw_state_sta_info *info)
+static osw_sta_assoc_observer_params_t *
+osw_btm_obs_alloc_observer_params(osw_btm_obs_t *obs)
 {
-    const bool different_sta = (osw_hwaddr_is_equal(&sta->mac_addr, info->mac_addr) == false);
-    if (different_sta) return;
-
-    const bool already_added = (ds_tree_find(&sta->links, info) == info);
-    if (WARN_ON(already_added)) return;
-
-    struct osw_btm_sta_link *i = CALLOC(1, sizeof(*i));
-    i->info = info;
-    ds_tree_insert(&sta->links, i, info);
+    if (osw_hwaddr_is_zero(&obs->sta_addr)) return NULL;
+    osw_sta_assoc_observer_params_t *p = osw_sta_assoc_observer_params_alloc();
+    osw_sta_assoc_observer_params_set_addr(p, &obs->sta_addr);
+    osw_sta_assoc_observer_params_set_changed_fn(p, osw_btm_obs_sta_changed_cb, obs);
+    return p;
 }
 
-static void
-osw_btm_sta_links_del(struct osw_btm_sta *sta,
-                      const struct osw_state_sta_info *info)
+static osw_sta_assoc_observer_t *
+osw_btm_obs_alloc_sta_assoc_obs(osw_btm_obs_t *obs)
 {
-    const bool different_sta = (osw_hwaddr_is_equal(&sta->mac_addr, info->mac_addr) == false);
-    if (different_sta) return;
-
-    struct osw_btm_sta_link *link = ds_tree_find(&sta->links, info);
-    const bool does_not_exist = (link == NULL);
-    if (WARN_ON(does_not_exist)) return;
-
-    ds_tree_remove(&sta->links, link);
-    FREE(link);
+    osw_sta_assoc_t *am = OSW_MODULE_LOAD(osw_sta_assoc);
+    osw_sta_assoc_observer_params_t *p = osw_btm_obs_alloc_observer_params(obs);
+    return osw_sta_assoc_observer_alloc(am, p);
 }
 
 void
-osw_btm_register_btm_response_observer(struct osw_btm_response_observer *observer)
+osw_btm_obs_set_sta_addr(osw_btm_obs_t *obs,
+                         const struct osw_hwaddr *addr)
 {
-    ASSERT(observer != NULL, "");
-
-    LOGD("osw: btm: registering observer,"
-         " sta: "OSW_HWADDR_FMT,
-         OSW_HWADDR_ARG(&observer->sta_addr));
-    ds_dlist_insert_tail(&g_btm_response_observer_list, observer);
+    if (obs == NULL) return;
+    osw_sta_assoc_observer_drop(obs->assoc.obs);
+    obs->sta_addr = *(addr ?: osw_hwaddr_zero());
+    obs->assoc.obs = osw_hwaddr_is_zero(&obs->sta_addr)
+                   ? NULL
+                   : osw_btm_obs_alloc_sta_assoc_obs(obs);
 }
 
 void
-osw_btm_unregister_btm_response_observer(struct osw_btm_response_observer *observer)
+osw_btm_obs_set_received_fn(osw_btm_obs_t *obs,
+                            osw_btm_obs_received_fn_t *fn,
+                            void *priv)
 {
-    ASSERT(observer != NULL, "");
+    if (obs == NULL) return;
+    obs->received_fn = fn;
+    obs->received_fn_priv = priv;
+}
 
-    LOGD("osw: btm: unregistering observer,"
-         " sta: "OSW_HWADDR_FMT,
-         OSW_HWADDR_ARG(&observer->sta_addr));
-    ds_dlist_remove(&g_btm_response_observer_list, observer);
+void
+osw_btm_obs_drop(osw_btm_obs_t *obs)
+{
+    if (obs == NULL) return;
+    osw_sta_assoc_observer_drop(obs->assoc.obs);
+    ds_tree_remove(&obs->m->obs, obs);
+    FREE(obs);
 }
 
 static void
-osw_btm_notify_btm_response(const struct osw_hwaddr *sta_addr,
-                            const int response_code,
-                            const struct osw_btm_retry_neigh_list *retry_neigh_list)
+osw_btm_obs_notify_received(osw_btm_t *m,
+                            const osw_btm_resp_t *resp)
 {
-    struct osw_btm_response_observer *observer;
-    ds_dlist_foreach(&g_btm_response_observer_list, observer) {
-        if (osw_hwaddr_cmp(&observer->sta_addr, sta_addr) != 0) continue;
-        if (observer->btm_response_fn == NULL) continue;
-        LOGT("osw: btm: notify observer about btm response,"
-             " sta: "OSW_HWADDR_FMT,
-             OSW_HWADDR_ARG(&observer->sta_addr));
-        observer->btm_response_fn(observer,
-                                  response_code,
-                                  retry_neigh_list);
-    }
-}
-
-static void
-osw_btm_desc_reset(struct osw_btm_desc *desc)
-{
-    ASSERT(desc != NULL, "");
-    ASSERT(desc->sta != NULL, "");
-
-    if (desc->sta->desc_in_flight == desc) {
-        desc->sta->desc_in_flight = NULL;
-    }
-
-    desc->state = OSW_BTM_DESC_STATE_EMPTY;
-    memset(&desc->frame_buf, 0, sizeof(desc->frame_buf));
-    desc->frame_len = 0;
-
-    if ((desc->sta->pool_ref != NULL) &&
-        (desc->dialog_token != OSW_TOKEN_INVALID)) {
-        osw_token_pool_free_token(desc->sta->pool_ref,
-                                  desc->dialog_token);
-        desc->dialog_token = OSW_TOKEN_INVALID;
+    osw_btm_obs_t *o;
+    ds_tree_foreach(&m->obs, o) {
+        const struct osw_hwaddr *addrs = o->assoc.addrs.list;
+        const size_t count = o->assoc.addrs.count;
+        if (osw_hwaddr_list_contains(addrs, count, &resp->sta_addr) == false) continue;
+        if (o->received_fn == NULL) continue;
+        o->received_fn(o->received_fn_priv, resp->status_code, resp->neighs, resp->n_neighs);
     }
 }
 
@@ -208,6 +247,8 @@ osw_btm_req_get_disassoc_imminent(const struct osw_btm_req_params *params,
                                   uint16_t *disassoc_timer)
 {
     size_t i;
+    *disassoc_imminent = params->disassoc_imminent;
+    *disassoc_timer = params->disassoc_timer;
     for (i = 0; i < params->neigh_len; i ++) {
         const struct osw_btm_req_neigh *n = &params->neigh[i];
         if (n->disassoc_imminent) {
@@ -217,6 +258,64 @@ osw_btm_req_get_disassoc_imminent(const struct osw_btm_req_params *params,
             *disassoc_timer = n->disassoc_timer ?: 1;
         }
     }
+}
+
+static bool
+osw_btm_mbo_put_cell_pref(void **tail, ssize_t *rem, enum osw_btm_mbo_cell_preference pref)
+{
+    const uint8_t attr = C_IEEE80211_MBO_ATTR_CELL_PREF;
+    switch (pref)
+    {
+        case OSW_BTM_MBO_CELL_PREF_NONE:
+            break;
+        case OSW_BTM_MBO_CELL_PREF_EXCLUDE_CELL:
+            return buf_put_attr_u8(tail, rem, attr, C_IEEE80211_MBO_CELL_PREF_EXCLUDE);
+        case OSW_BTM_MBO_CELL_PREF_AVOID_CELL:
+            return buf_put_attr_u8(tail, rem, attr, C_IEEE80211_MBO_CELL_PREF_SHOULD_NOT_USE);
+        case OSW_BTM_MBO_CELL_PREF_RECOMMEND_CELL:
+            return buf_put_attr_u8(tail, rem, attr, C_IEEE80211_MBO_CELL_PREF_SHOULD_USE);
+    }
+    return true;
+}
+
+static bool
+osw_btm_mbo_put_reason(void **tail, ssize_t *rem, enum osw_btm_mbo_reason reason)
+{
+    const uint8_t attr = C_IEEE80211_MBO_ATTR_BTM_REASON;
+    switch (reason)
+    {
+        case OSW_BTM_MBO_REASON_NONE:
+            break;
+        case OSW_BTM_MBO_REASON_LOW_RSSI:
+            return buf_put_attr_u8(tail, rem, attr, C_IEEE80211_MBO_BTM_REASON_LOW_RSSI);
+    }
+    return true;
+}
+
+static bool
+osw_btm_mbo_put(void **tail, ssize_t *rem, const struct osw_btm_req_params *req_params)
+{
+    void *old = *tail;
+    bool ok = true;
+
+    ok &= buf_put_u8(tail, rem, C_IEEE80211_EID_VENDOR);
+    uint8_t *vendor_len = buf_pull(tail, rem, sizeof(uint8_t));
+    ok &= buf_put_u8(tail, rem, C_IEEE80211_WFA_OUI_BYTE0);
+    ok &= buf_put_u8(tail, rem, C_IEEE80211_WFA_OUI_BYTE1);
+    ok &= buf_put_u8(tail, rem, C_IEEE80211_WFA_OUI_BYTE2);
+    ok &= buf_put_u8(tail, rem, C_IEEE80211_MBO_OUI_TYPE);
+    const void *start = *tail;
+    ok &= osw_btm_mbo_put_cell_pref(tail, rem, req_params->mbo.cell_preference);
+    ok &= osw_btm_mbo_put_reason(tail, rem, req_params->mbo.reason);
+    const void *end = *tail;
+    if (!ok) return false;
+
+    *vendor_len = buf_len(vendor_len, *tail) - 1;
+    if (start == end) {
+        ok &= buf_restore(tail, rem, old);
+    }
+
+    return ok;
 }
 
 static ssize_t
@@ -232,89 +331,73 @@ osw_btm_build_frame(const struct osw_btm_req_params *req_params,
     ASSERT(frame_buf != NULL, "");
     ASSERT(frame_buf_size > 0, "");
 
-    static const uint8_t dot11_pref_list_incl = 0x01;
-    static const uint8_t dot11_abridged = 0x02;
-    static const uint8_t dot11_disassoc_imminent = 0x04;
-    static const uint8_t dot11_bss_term_incl = 0x08;
-    static const uint16_t dot11_frame_control = 0xd0;
-    static const uint8_t dot11_category = 0x0A;
-    static const uint8_t dot11_action_code = 0x07;
-    static const uint8_t dot11_neigh_report_tag = 0x34;
-    static const uint8_t dot11_neigh_pref_tag = 0x03;
+    LOGT("osw: btm: build: "OSW_HWADDR_FMT": frame_size=%zu",
+         OSW_HWADDR_ARG(sta_addr),
+         frame_buf_size);
 
-    static const uint16_t duration = 60;
-    static const uint8_t neigh_report_tag_len = 16;
-    static const uint8_t neigh_report_pref_len = 1;
-
-    struct osw_drv_dot11_frame *frame = (struct osw_drv_dot11_frame*) frame_buf;
-    size_t frame_len = 0;
-    uint8_t options = 0;
-    uint8_t *neigh_list = NULL;
-    size_t i = 0;
-
-    /* compute frame length first */
-    frame_len += offsetof(struct osw_drv_dot11_frame, u.action.u.bss_tm_req);
-    frame_len += C_FIELD_SZ(struct osw_drv_dot11_frame, u.action.u.bss_tm_req);
-    frame_len += req_params->neigh_len * sizeof(struct osw_drv_dot11_neighbor_report);
-    frame_len += req_params->neigh_len * sizeof(struct osw_drv_dot11_neighbor_preference);
-
-    if (frame_len > frame_buf_size) {
-        LOGW("osw: btm: [sta: "OSW_HWADDR_FMT"] failed to build frame, to small buffer (len: %zu size: %zu)",
-             OSW_HWADDR_ARG(sta_addr), frame_len, frame_buf_size);
-        return -1;
-    }
-
-    /* Build frame */
-    frame->header.frame_control = htole16(dot11_frame_control);
-    frame->header.duration = htole16(duration);
-    memcpy(&frame->header.da, &sta_addr->octet, sizeof(frame->header.da));
-    memcpy(&frame->header.sa, &bssid->octet, sizeof(frame->header.sa));
-    memcpy(&frame->header.bssid, &bssid->octet, sizeof(frame->header.bssid));
-    frame->header.seq_ctrl = 0;
+    void *tail = frame_buf;
+    ssize_t rem = frame_buf_size;
 
     bool disassoc_imminent = false;
     uint16_t disassoc_timer = 0;
     osw_btm_req_get_disassoc_imminent(req_params, &disassoc_imminent, &disassoc_timer);
 
-    options |= req_params->neigh_len > 0 ? dot11_pref_list_incl : 0;
-    options |= req_params->abridged == true ? dot11_abridged : 0;
-    options |= disassoc_imminent == true ? dot11_disassoc_imminent : 0;
-    options |= req_params->bss_term == true ? dot11_bss_term_incl : 0;
+    uint8_t options = 0;
+    options |= (req_params->neigh_len > 0 ? C_IEEE80211_BTM_REQ_PREF_CAND : 0);
+    options |= (req_params->abridged == true ? C_IEEE80211_BTM_REQ_ABRIDGED : 0);
+    options |= (disassoc_imminent == true ? C_IEEE80211_BTM_REQ_DISASSOC_IMMINENT : 0);
+    options |= (req_params->bss_term == true ? C_IEEE80211_BTM_REQ_BSS_TERM : 0);
 
-    frame->u.action.category = dot11_category;
-    frame->u.action.u.bss_tm_req.action = dot11_action_code;
-    frame->u.action.u.bss_tm_req.dialog_token = dialog_token;
-    frame->u.action.u.bss_tm_req.options = options;
-    frame->u.action.u.bss_tm_req.disassoc_timer = htole16(disassoc_timer);
-    frame->u.action.u.bss_tm_req.validity_interval = req_params->valid_int;
+    uint16_t fc = 0;
+    fc |= C_MASK_PREP(C_IEEE80211_FC_TYPE, C_IEEE80211_FC_TYPE_MGMT);
+    fc |= C_MASK_PREP(C_IEEE80211_FC_SUBTYPE, C_IEEE80211_FC_MGMT_SUBTYPE_ACTION);
 
-    neigh_list = frame->u.action.u.bss_tm_req.variable;
+    bool ok = true;
+    ok &= buf_put_u16(&tail, &rem, htole16(fc));
+    ok &= buf_put_u16(&tail, &rem, htole16(60)); /* duration */
+    ok &= buf_put_ptr(&tail, &rem, sta_addr);
+    ok &= buf_put_ptr(&tail, &rem, bssid);
+    ok &= buf_put_ptr(&tail, &rem, bssid);
+    ok &= buf_put_u16(&tail, &rem, htole16(0)); /* seq */
+
+    ok &= buf_put_u8(&tail, &rem, C_IEEE80211_ACTION_CAT_WNM);
+    ok &= buf_put_u8(&tail, &rem, C_IEEE80211_WNM_BTM_REQ);
+    ok &= buf_put_u8(&tail, &rem, dialog_token);
+    ok &= buf_put_u8(&tail, &rem, options);
+    ok &= buf_put_u16(&tail, &rem, htole16(disassoc_timer));
+    ok &= buf_put_u8(&tail, &rem, req_params->valid_int);
+
+    size_t i;
     for (i = 0; i < req_params->neigh_len; i ++) {
-        const struct osw_btm_req_neigh *neigh = &req_params->neigh[i];
-        struct osw_drv_dot11_neighbor_report *entry = (struct osw_drv_dot11_neighbor_report*) neigh_list;
-        struct osw_drv_dot11_neighbor_preference *pref = (struct osw_drv_dot11_neighbor_preference*) entry->variable;
+        const struct osw_btm_req_neigh *n = &req_params->neigh[i];
 
-        entry->tag = dot11_neigh_report_tag;
-        entry->tag_len = neigh_report_tag_len;
-        memcpy(&entry->bssid, &neigh->bssid, sizeof(entry->bssid));
-        entry->bssid_info = htole32(neigh->bssid_info);
-        entry->op_class = neigh->op_class;
-        entry->channel = neigh->channel;
-        entry->phy_type = neigh->phy_type;
+        ok &= buf_put_u8(&tail, &rem, C_IEEE80211_EID_NEIGH_REPORT);
+        uint8_t *n_len = buf_pull(&tail, &rem, sizeof(uint8_t));
+        ok &= buf_put(&tail, &rem, &n->bssid, 6);
+        ok &= buf_put_u32(&tail, &rem, htole32(n->bssid_info));
+        ok &= buf_put_u8(&tail, &rem, n->op_class);
+        ok &= buf_put_u8(&tail, &rem, n->channel);
+        ok &= buf_put_u8(&tail, &rem, n->phy_type);
+        ok &= buf_put_attr_u8(&tail, &rem, C_IEEE80211_NR_EID_BSS_TRANS_CAND_PREF, n->btmpreference);
 
-        pref->eid = dot11_neigh_pref_tag;
-        pref->len = neigh_report_pref_len;
-        pref->preference = neigh->btmpreference;
-
-        neigh_list += sizeof(*entry);
-        neigh_list += sizeof(*pref);
+        if (n_len) *n_len = buf_len(n_len, tail) - 1;
     }
 
-    return frame_len;
+    ok &= osw_btm_mbo_put(&tail, &rem, req_params);
+
+    LOGT("osw: btm: build: "OSW_HWADDR_FMT": remaining=%zd",
+         OSW_HWADDR_ARG(sta_addr),
+         rem);
+
+    if (WARN_ON(!ok)) {
+        return -1;
+    }
+
+    return buf_len(frame_buf, tail);
 }
 
 void
-osw_btm_sta_log_req_params(const struct osw_btm_req_params *params)
+osw_btm_req_params_log(const struct osw_btm_req_params *params)
 {
     size_t i;
     bool disassoc_imminent = false;
@@ -358,608 +441,576 @@ osw_btm_sta_log_req_params(const struct osw_btm_req_params *params)
 }
 
 static void
-osw_btm_sta_schedule_work(struct osw_btm_sta *btm_sta)
+osw_btm_sta_changed_cb(void *priv, const osw_sta_assoc_entry_t *e, const osw_sta_assoc_event_e ev)
 {
-    ASSERT(btm_sta != NULL, "");
-    osw_timer_arm_at_nsec(&btm_sta->work_timer, osw_time_mono_clk());
+    struct osw_btm_sta *sta = priv;
+    const osw_sta_assoc_links_t *l = osw_sta_assoc_entry_get_active_links(e);
+    sta->assoc.links.count = l->count;
+    sta->assoc.links.local_mld_addr = *(osw_sta_assoc_entry_get_local_mld_addr(e) ?: osw_hwaddr_zero());
+    size_t i;
+    for (i = 0; i < sta->assoc.links.count; i++) {
+        if (WARN_ON(i >= ARRAY_SIZE(sta->assoc.links.array))) break;
+        sta->assoc.links.array[i].local_sta_addr = l->links[i].local_sta_addr;
+        sta->assoc.links.array[i].remote_sta_addr = l->links[i].remote_sta_addr;
+    }
+}
+
+static enum osw_btm_req_result
+osw_btm_tx_result_to_result(enum osw_frame_tx_result result)
+{
+    switch (result) {
+        case OSW_FRAME_TX_RESULT_SUBMITTED:
+            return OSW_BTM_REQ_RESULT_SENT;
+        case OSW_FRAME_TX_RESULT_FAILED:
+            return OSW_BTM_REQ_RESULT_FAILED;
+        case OSW_FRAME_TX_RESULT_DROPPED:
+            return OSW_BTM_REQ_RESULT_FAILED;
+    }
+    return OSW_BTM_REQ_RESULT_FAILED;
 }
 
 static bool
-osw_btm_desc_build_frame(struct osw_btm_desc *desc)
+osw_btm_req_link_expects_tx_result(const osw_btm_req_link_t *l)
 {
-    const struct osw_state_sta_info *info = desc->sta->sta_info;
-    if (info == NULL) return false;
-
-    const struct osw_hwaddr *bssid = &desc->sta->sta_info->vif->drv_state->mac_addr;
-    int dtoken = 0;
-    struct osw_token_pool_reference *pool_ref = desc->sta->pool_ref;
-    if (pool_ref != NULL) dtoken = osw_token_pool_fetch_token(desc->sta->pool_ref);
-    const bool fetch_token_failed = (dtoken == OSW_TOKEN_INVALID);
-    if (WARN_ON(fetch_token_failed == true)) dtoken = 0;
-
-
-    desc->dialog_token = dtoken;
-    desc->frame_len = osw_btm_build_frame(&desc->params,
-                                          &desc->sta->mac_addr,
-                                          bssid,
-                                          desc->dialog_token,
-                                          desc->frame_buf,
-                                          sizeof(desc->frame_buf));
-    if (desc->frame_len < 0) {
-        if (desc->observer->req_tx_error_fn != NULL) {
-            desc->observer->req_tx_error_fn(desc->observer);
-        }
-
-        osw_btm_desc_reset(desc);
-        return false;
-    }
-
-    return true;
-}
-
-static void
-osw_btm_sta_try_req_tx(struct osw_btm_sta *btm_sta)
-{
-    ASSERT(btm_sta != NULL, "");
-
-    if (btm_sta->sta_info == NULL) {
-        LOGT("osw: btm: [sta: "OSW_HWADDR_FMT"] cannot tx req to disconnected sta",
-             OSW_HWADDR_ARG(&btm_sta->mac_addr));
-        goto cease_tx_attempt;
-    }
-
-    const struct osw_state_vif_info *vif_info = btm_sta->sta_info->vif;
-    const struct osw_drv_dot11_frame *frame = NULL;
-    struct osw_btm_desc *desc;
-
-    if (ds_dlist_is_empty(&btm_sta->desc_list) == true) {
-        goto cease_tx_attempt;
-    }
-
-    desc = ds_dlist_head(&btm_sta->desc_list);
-    frame = (const struct osw_drv_dot11_frame*) &desc->frame_buf;
-    switch (desc->state) {
-        case OSW_BTM_DESC_STATE_PENDING:
-            if (osw_btm_desc_build_frame(desc) == false) {
-                LOGW("osw: btm: [sta: "OSW_HWADDR_FMT"] req failed to build the frame",
-                     OSW_HWADDR_ARG(&btm_sta->mac_addr));
-                goto cease_tx_attempt;
-            }
+    switch (l->req->state) {
+        case OSW_BTM_REQ_STATE_INIT:
             break;
-        case OSW_BTM_DESC_STATE_IN_TRANSIT:
-            LOGT("osw: btm: [sta: "OSW_HWADDR_FMT" dialog_token: %u] req already in transit",
-                 OSW_HWADDR_ARG(&btm_sta->mac_addr), frame->u.action.u.bss_tm_req.dialog_token);
-            goto cease_tx_attempt;
-        case OSW_BTM_DESC_STATE_EMPTY:
-            LOGT("osw: btm: [sta: "OSW_HWADDR_FMT" dialog_token: %u] cannot tx empty req",
-                 OSW_HWADDR_ARG(&btm_sta->mac_addr), frame->u.action.u.bss_tm_req.dialog_token);
-            goto cease_tx_attempt;
+        case OSW_BTM_REQ_STATE_READY:
+            break;
+        case OSW_BTM_REQ_STATE_SUBMITTED:
+            return (l->frame_tx_desc != NULL);
+        case OSW_BTM_REQ_STATE_COMPLETED:
+            break;
     }
+    return false;
+}
 
-    if (btm_sta->in_flight) {
-        LOGT("osw: btm: [sta: "OSW_HWADDR_FMT" dialog_token: ?] req already in transit (freed)",
-             OSW_HWADDR_ARG(&btm_sta->mac_addr));
-        goto cease_tx_attempt;
+static const char *
+osw_btm_req_state_to_cstr(enum osw_btm_req_state s)
+{
+    switch (s) {
+        case OSW_BTM_REQ_STATE_INIT:
+            return "init";
+        case OSW_BTM_REQ_STATE_READY:
+            return "ready";
+        case OSW_BTM_REQ_STATE_SUBMITTED:
+            return "submitted";
+        case OSW_BTM_REQ_STATE_COMPLETED:
+            return "completed";
     }
+    return "";
+}
 
-    if (btm_sta->desc_in_flight != NULL) {
-        frame = (const struct osw_drv_dot11_frame*) &btm_sta->desc_in_flight->frame_buf;
-        LOGT("osw: btm: [sta: "OSW_HWADDR_FMT" dialog_token: %u] req already in transit (non-head)",
-             OSW_HWADDR_ARG(&btm_sta->mac_addr), frame->u.action.u.bss_tm_req.dialog_token);
-        goto cease_tx_attempt;
+static const char *
+osw_btm_req_result_to_cstr(enum osw_btm_req_result r)
+{
+    switch (r) {
+        case OSW_BTM_REQ_RESULT_SENT:
+            return "sent";
+        case OSW_BTM_REQ_RESULT_FAILED:
+            return "failed";
     }
+    return "";
+}
 
-    if (btm_sta->throttle != NULL) {
-        uint64_t next_at_nsec;
-        bool result;
-
-        result = osw_throttle_tap(btm_sta->throttle, &next_at_nsec);
-        if (result == false) {
-            osw_timer_arm_at_nsec(&btm_sta->throttle_timer, next_at_nsec);
-            LOGT("osw: btm: [sta: "OSW_HWADDR_FMT"] cease req tx attempt due to throttle condition",
-                 OSW_HWADDR_ARG(&btm_sta->mac_addr));
-            goto cease_tx_attempt;
+static bool
+osw_btm_req_is_completed(osw_btm_req_t *r, enum osw_btm_req_result *rr)
+{
+    osw_btm_req_link_t *l;
+    size_t sent = 0;
+    ds_tree_foreach(&r->links, l) {
+        if (l->frame_tx_desc != NULL) {
+            return false;
+        }
+        switch (l->result) {
+            case OSW_BTM_REQ_RESULT_SENT: sent++; break;
+            case OSW_BTM_REQ_RESULT_FAILED: break;
         }
     }
-
-    desc->state = OSW_BTM_DESC_STATE_IN_TRANSIT;
-
-    osw_drv_frame_tx_desc_set_frame(btm_sta->frame_tx_desc, desc->frame_buf, desc->frame_len);
-    btm_sta->desc_in_flight = desc;
-    btm_sta->in_flight = true;
-    ASSERT(btm_sta->mux_frame_tx_schedule_fn != NULL, "");
-    btm_sta->mux_frame_tx_schedule_fn(vif_info->phy->phy_name, vif_info->vif_name, btm_sta->frame_tx_desc);
-
-    LOGD("osw: btm: [sta: "OSW_HWADDR_FMT" dialog_token: %u] req was passed to drv",
-         OSW_HWADDR_ARG(&btm_sta->mac_addr), frame->u.action.u.bss_tm_req.dialog_token);
-
-    return;
-
-    cease_tx_attempt:
-        LOGD("osw: btm: [sta: "OSW_HWADDR_FMT"] req tx attempt was cease", OSW_HWADDR_ARG(&btm_sta->mac_addr));
-}
-
-static void
-osw_btm_sta_throttle_timer_cb(struct osw_timer *timer)
-{
-    struct osw_btm_sta *sta = (struct osw_btm_sta*) container_of(timer, struct osw_btm_sta, throttle_timer);
-    osw_btm_sta_schedule_work(sta);
-}
-
-static void
-osw_btm_sta_work_timer_cb(struct osw_timer *timer)
-{
-    struct osw_btm_sta *sta = (struct osw_btm_sta*) container_of(timer, struct osw_btm_sta, work_timer);
-    osw_btm_sta_try_req_tx(sta);
-}
-
-static void
-osw_btm_sta_set_info(struct osw_btm_sta *btm_sta,
-                     const struct osw_state_sta_info *sta_info)
-{
-    if (btm_sta->sta_info == sta_info) return;
-
-    if (btm_sta->pool_ref != NULL) {
-        /* free all dialog tokens */
-        struct osw_btm_desc *desc;
-        ds_dlist_foreach(&btm_sta->desc_list, desc) {
-            if (desc->dialog_token != OSW_TOKEN_INVALID) {
-                osw_token_pool_free_token(btm_sta->pool_ref,
-                                          desc->dialog_token);
-                desc->dialog_token = OSW_TOKEN_INVALID;
-            }
-        }
-
-        /* free pool reference */
-        osw_token_pool_ref_free(btm_sta->pool_ref);
-        btm_sta->pool_ref = NULL;
-    }
-
-    if (sta_info == NULL) {
-        /* FIXME: This probably shouldn't really reset throttle just yet ? */
-        if (btm_sta->throttle != NULL) {
-            osw_throttle_reset(btm_sta->throttle);
-            osw_timer_disarm(&btm_sta->throttle_timer);
-        }
-    }
-    else {
-        const struct osw_hwaddr *sta_addr = &btm_sta->mac_addr;
-        const char *vif_name_cstr = sta_info->vif->vif_name;
-        struct osw_ifname vif_name;
-        STRSCPY_WARN(vif_name.buf, vif_name_cstr);
-        btm_sta->pool_ref = osw_token_pool_ref_get(&vif_name, sta_addr);
-    }
-
-    if (btm_sta->frame_tx_desc != NULL) {
-        osw_drv_frame_tx_desc_cancel(btm_sta->frame_tx_desc);
-    }
-
-    btm_sta->sta_info = sta_info;
-    osw_btm_sta_schedule_work(btm_sta);
-}
-
-static void
-osw_btm_sta_connected_cb(struct osw_state_observer *observer,
-                         const struct osw_state_sta_info *sta_info)
-{
-    struct osw_btm_sta *btm_sta = container_of(observer, struct osw_btm_sta, observer);
-    osw_btm_sta_links_add(btm_sta, sta_info);
-    const struct osw_state_sta_info *newest_sta_info = osw_btm_sta_links_find_newest(btm_sta);
-    osw_btm_sta_set_info(btm_sta, newest_sta_info);
-}
-
-static void
-osw_btm_sta_disconnected_cb(struct osw_state_observer *observer,
-                            const struct osw_state_sta_info *sta_info)
-{
-    struct osw_btm_sta *btm_sta = container_of(observer, struct osw_btm_sta, observer);
-    osw_btm_sta_links_del(btm_sta, sta_info);
-    const struct osw_state_sta_info *newest_sta_info = osw_btm_sta_links_find_newest(btm_sta);
-    osw_btm_sta_set_info(btm_sta, newest_sta_info);
+    *rr = sent ? OSW_BTM_REQ_RESULT_SENT : OSW_BTM_REQ_RESULT_FAILED;
+    return true;
 }
 
 static void
 osw_btm_drv_frame_tx_result_cb(struct osw_drv_frame_tx_desc *tx_desc,
-                               enum osw_frame_tx_result result,
+                               enum osw_frame_tx_result tr,
                                void *caller_priv)
 {
-    const struct osw_drv_dot11_frame *btm_frame = NULL;
-    struct osw_btm_sta *sta = (struct osw_btm_sta *) caller_priv;
-    struct osw_btm_desc *btm_desc = sta->desc_in_flight;
+    osw_btm_req_link_t *l = caller_priv;
+    osw_btm_req_t *r = l->req;
 
-    const bool unexpected = (sta->in_flight == false);
-    if (WARN_ON(unexpected))
-        goto ignore_tx_report;
-
-    sta->in_flight = false;
-
-    const bool was_freed_while_in_transit = (btm_desc == NULL);
-    if (was_freed_while_in_transit)
-        goto ignore_tx_report;
-
-    const bool invalid_desc_state = (btm_desc->state != OSW_BTM_DESC_STATE_IN_TRANSIT);
-    if (WARN_ON(invalid_desc_state))
-        goto ignore_tx_report;
-
-    btm_frame = (const struct osw_drv_dot11_frame*) &btm_desc->frame_buf;
-
-    LOGD("osw: btm: [sta: "OSW_HWADDR_FMT" dialog token: %u] drv reported req tx result: %s",
-         OSW_HWADDR_ARG(&sta->mac_addr), btm_frame->u.action.u.bss_tm_req.dialog_token,
-         osw_frame_tx_result_to_cstr(result));
-
-    switch (result) {
-        case OSW_FRAME_TX_RESULT_SUBMITTED:
-            if (btm_desc->observer->req_tx_complete_fn != NULL)
-                btm_desc->observer->req_tx_complete_fn(btm_desc->observer);
-            break;
-        case OSW_FRAME_TX_RESULT_FAILED:
-        case OSW_FRAME_TX_RESULT_DROPPED:
-            if (btm_desc->observer->req_tx_error_fn != NULL)
-                btm_desc->observer->req_tx_error_fn(btm_desc->observer);
-            break;
+    if (osw_btm_req_link_expects_tx_result(l) == false) {
+        LOGD(LOG_PREFIX_REQ(r, "unexpected tx result while in %s state",
+             osw_btm_req_state_to_cstr(r->state)));
+        return;
     }
 
-    osw_btm_desc_reset(btm_desc);
-    return;
+    l->result = osw_btm_tx_result_to_result(tr);
+    osw_drv_frame_tx_desc_free(l->frame_tx_desc);
+    l->frame_tx_desc = NULL;
 
-ignore_tx_report:
-    LOGD("osw: btm: [sta: "OSW_HWADDR_FMT"] ignored drv req tx report result: %s",
-         OSW_HWADDR_ARG(&sta->mac_addr), osw_frame_tx_result_to_cstr(result));
+    enum osw_btm_req_result rr;
+    if (osw_btm_req_is_completed(r, &rr) == false)
+        return;
+
+    r->state = OSW_BTM_REQ_STATE_COMPLETED;
+    if (r->completed_fn != NULL) {
+        r->completed_fn(r->completed_fn_priv, rr);
+    }
+
+    LOGD(LOG_PREFIX_REQ(r, "completed: result=%s (from:%s)",
+         osw_btm_req_result_to_cstr(rr),
+         osw_frame_tx_result_to_cstr(tr)));
 }
 
-static struct osw_btm_sta*
-osw_btm_get_sta(const struct osw_hwaddr *sta_addr,
-                osw_btm_mux_frame_tx_schedule_fn_t *mux_frame_tx_schedule_fn)
+static bool
+osw_btm_req_tx_build(osw_btm_req_t *r)
 {
-    ASSERT(sta_addr != NULL, "");
+    /* Arguably, this is not correct. The driver really
+     * should be able to provide means to sending out MLD
+     * addressed frames by automatically submitting them
+     * onto the best/available link. Userspace has either no
+     * means, or its way too racy, to know what link is
+     * active and to select which one to use.
+     *
+     * For now, just spray-and-pray. This doesn't need to be
+     * perfect, it needs to mostly work. 11be link removal
+     * handling can't be done in userspace properly anyway.
+     *
+     * FIXME: Revisit later to allow submitting MLD
+     * addressed frames unto mld_if_name perhaps?
+     */
+    size_t i;
+    for (i = 0; i < r->sta->assoc.links.count; i++) {
+        const struct osw_btm_sta_assoc_link *link = &r->sta->assoc.links.array[i];
+        const struct osw_hwaddr *bssid = &link->local_sta_addr;
+        const struct osw_hwaddr *sta_addr = &link->remote_sta_addr;
+        const struct osw_state_vif_info *vif_info = osw_state_vif_lookup_by_mac_addr(bssid);
+        if (WARN_ON(vif_info == NULL)) return false;
 
-    const struct osw_state_observer observer = {
-        .name = "osw_btm",
-        .sta_connected_fn = osw_btm_sta_connected_cb,
-        .sta_disconnected_fn = osw_btm_sta_disconnected_cb,
-    };
+        osw_btm_req_link_t *l = CALLOC(1, sizeof(*l));
+        ds_tree_insert(&r->links, l, l);
+        l->req = r;
+        l->vif_name = STRDUP(vif_info->vif_name);
+        l->phy_name = STRDUP(vif_info->phy->phy_name);
+        l->frame_len = osw_btm_build_frame(r->params,
+                                           sta_addr,
+                                           bssid,
+                                           r->dialog_token,
+                                           l->frame_buf,
+                                           sizeof(l->frame_buf));
+        if (l->frame_len < 0) return false;
 
-    struct osw_btm_sta *sta = ds_tree_find(&g_sta_tree, sta_addr);
+        l->frame_tx_desc = osw_drv_frame_tx_desc_new(osw_btm_drv_frame_tx_result_cb, l);
+        osw_drv_frame_tx_desc_set_frame(l->frame_tx_desc, l->frame_buf, l->frame_len);
+    }
+    return true;
+}
 
-    if (sta != NULL)
+static void
+osw_btm_req_tx_submit(osw_btm_req_t *r)
+{
+    /* State is set before calling schedule_fn because the
+     * result callback may be fired before returning.
+     */
+    r->state = OSW_BTM_REQ_STATE_SUBMITTED;
+
+    osw_btm_req_link_t *l;
+    ds_tree_foreach(&r->links, l) {
+        l->req->sta->m->mux_frame_tx_schedule_fn(l->phy_name, l->vif_name, l->frame_tx_desc);
+        LOGI(LOG_PREFIX_REQ(r, "%s/%s: submitted: token=%d",
+                            l->phy_name,
+                            l->vif_name,
+                            r->dialog_token));
+    }
+}
+
+static void
+osw_btm_req_drop_links(osw_btm_req_t *r)
+{
+    osw_btm_req_link_t *l;
+    while ((l = ds_tree_remove_head(&r->links)) != NULL) {
+        osw_drv_frame_tx_desc_free(l->frame_tx_desc);
+        FREE(l->phy_name);
+        FREE(l->vif_name);
+        FREE(l);
+    }
+}
+
+static bool
+osw_btm_req_tx(osw_btm_req_t *r)
+{
+    r->dialog_token = osw_token_pool_fetch_token(r->sta->pool_ref);
+    if (r->dialog_token == OSW_TOKEN_INVALID) {
+        LOGW(LOG_PREFIX_REQ(r, "cannot tx: out of tokens"));
+        return false;
+    }
+
+    if (osw_btm_req_tx_build(r) == false) {
+        LOGW(LOG_PREFIX_REQ(r, "cannot tx: failed to build"));
+        osw_btm_req_drop_links(r);
+        osw_token_pool_free_token(r->sta->pool_ref, r->dialog_token);
+        r->dialog_token = OSW_TOKEN_INVALID;
+        return false;
+    }
+
+    osw_btm_req_tx_submit(r);
+    return true;
+}
+
+osw_btm_sta_t *
+osw_btm_sta_alloc(osw_btm_t *m, const struct osw_hwaddr *addr)
+{
+    if (m == NULL) return NULL;
+    if (WARN_ON(addr == NULL)) return NULL;
+
+    osw_btm_sta_t *sta = ds_tree_find(&m->stas, addr);
+    if (sta) {
+        sta->refcount++;
         return sta;
+    }
 
     sta = CALLOC(1, sizeof(*sta));
-    memcpy(&sta->mac_addr, sta_addr, sizeof(sta->mac_addr));
-    memcpy(&sta->observer, &observer, sizeof(sta->observer));
-    osw_timer_init(&sta->throttle_timer, osw_btm_sta_throttle_timer_cb);
-    osw_timer_init(&sta->work_timer, osw_btm_sta_work_timer_cb);
-    sta->frame_tx_desc = osw_drv_frame_tx_desc_new(osw_btm_drv_frame_tx_result_cb, sta);
-    sta->sta_info = osw_state_sta_lookup_newest(&sta->mac_addr);
-    ds_tree_init(&sta->links, ds_void_cmp, struct osw_btm_sta_link, node);
-    ds_dlist_init(&sta->desc_list, struct osw_btm_desc, node);
-    sta->mux_frame_tx_schedule_fn = mux_frame_tx_schedule_fn;
+    ds_tree_init(&sta->reqs, ds_void_cmp, osw_btm_req_t, node);
+    sta->refcount = 1;
+    sta->m = m;
+    sta->mac_addr = *addr;
+    sta->pool_ref = osw_token_pool_ref_get(NULL, addr);
 
-    osw_state_register_observer(&sta->observer);
+    osw_sta_assoc_t *am = OSW_MODULE_LOAD(osw_sta_assoc);
+    osw_sta_assoc_observer_params_t *p = osw_sta_assoc_observer_params_alloc();
+    osw_sta_assoc_observer_params_set_addr(p, addr);
+    osw_sta_assoc_observer_params_set_changed_fn(p, osw_btm_sta_changed_cb, sta);
+    sta->assoc.obs = osw_sta_assoc_observer_alloc(am, p);
 
-    ds_tree_insert(&g_sta_tree, sta, &sta->mac_addr);
+    ds_tree_insert(&m->stas, sta, &sta->mac_addr);
 
     return sta;
 }
 
-static void
-osw_btm_sta_free(struct osw_btm_sta *sta)
+void
+osw_btm_sta_drop(osw_btm_sta_t *sta)
 {
-    ASSERT(sta != NULL, "");
+    if (sta == NULL) return;
+    if (WARN_ON(sta->refcount == 0)) return;
+    sta->refcount--;
+    if (sta->refcount > 0) return;
+    if (WARN_ON(ds_tree_is_empty(&sta->reqs) == false)) return;
 
-    osw_state_unregister_observer(&sta->observer);
-    osw_throttle_free(sta->throttle);
-    osw_timer_disarm(&sta->throttle_timer);
-    osw_timer_disarm(&sta->work_timer);
-    osw_drv_frame_tx_desc_free(sta->frame_tx_desc);
+    osw_sta_assoc_observer_drop(sta->assoc.obs);
+    osw_token_pool_ref_free(sta->pool_ref);
 
-    ASSERT(ds_tree_is_empty(&sta->links), "");
-    ASSERT(sta->sta_info == NULL, "");
-    ASSERT(sta->pool_ref == NULL, "");
-
-    ds_tree_remove(&g_sta_tree, sta);
+    ds_tree_remove(&sta->m->stas, sta);
     FREE(sta);
 }
 
-struct osw_btm_desc*
-osw_btm_get_desc_internal(const struct osw_hwaddr *sta_addr,
-                          struct osw_btm_sta_observer *observer,
-                          osw_btm_mux_frame_tx_schedule_fn_t *mux_frame_tx_schedule_fn)
+osw_btm_req_t *
+osw_btm_req_alloc(osw_btm_sta_t *sta)
 {
-    ASSERT(sta_addr != NULL, "");
-    ASSERT(observer != NULL, "");
-    ASSERT(mux_frame_tx_schedule_fn != NULL, "");
+    if (sta == NULL) return NULL;
 
-    struct osw_btm_sta *sta = osw_btm_get_sta(sta_addr, mux_frame_tx_schedule_fn);
-    struct osw_btm_desc *desc = CALLOC(1, sizeof(*desc));
-
-    desc->sta = sta;
-    desc->observer = observer;
-
-    ds_dlist_insert_tail(&sta->desc_list, desc);
-
-    return desc;
-}
-
-struct osw_btm_desc*
-osw_btm_get_desc(const struct osw_hwaddr *sta_addr,
-                 struct osw_btm_sta_observer *observer)
-{
-    ASSERT(sta_addr != NULL, "");
-    ASSERT(observer != NULL, "");
-    return osw_btm_get_desc_internal(sta_addr, observer, osw_mux_frame_tx_schedule);
+    osw_btm_req_t *r = CALLOC(1, sizeof(*r));
+    ds_tree_init(&r->links, ds_void_cmp, osw_btm_req_link_t, node);
+    r->sta = sta;
+    r->dialog_token = OSW_TOKEN_INVALID;
+    ds_tree_insert(&sta->reqs, r, r);
+    return r;
 }
 
 void
-osw_btm_desc_free(struct osw_btm_desc *desc)
+osw_btm_req_drop(osw_btm_req_t *r)
 {
-    if (desc == NULL)
-        return;
+    if (r == NULL) return;
 
-    struct osw_btm_sta *btm_sta = desc->sta;
-
-    osw_btm_desc_reset(desc);
-    ds_dlist_remove(&btm_sta->desc_list, desc);
-    FREE(desc);
-
-    if (ds_dlist_is_empty(&btm_sta->desc_list) == true)
-        osw_btm_sta_free(btm_sta);
+    osw_btm_req_drop_links(r);
+    osw_token_pool_free_token(r->sta->pool_ref, r->dialog_token);
+    ds_tree_remove(&r->sta->reqs, r);
+    FREE(r->params);
+    FREE(r);
 }
 
 static bool
-osw_btm_desc_can_set_req_params(struct osw_btm_desc *desc)
+osw_btm_req_is_configurable(const osw_btm_req_t *r)
 {
-    if (WARN_ON(desc->sta == NULL)) return false;
-    if (desc->sta->desc_in_flight != NULL) return false;
-    if (desc->sta->in_flight) return false;
-
-    switch (desc->state) {
-        case OSW_BTM_DESC_STATE_IN_TRANSIT:
+    switch (r->state) {
+        case OSW_BTM_REQ_STATE_INIT:
+        case OSW_BTM_REQ_STATE_READY:
+            break;
+        case OSW_BTM_REQ_STATE_SUBMITTED:
+        case OSW_BTM_REQ_STATE_COMPLETED:
+            LOGD(LOG_PREFIX_REQ(r, "already in %s state",
+                 osw_btm_req_state_to_cstr(r->state)));
             return false;
-        case OSW_BTM_DESC_STATE_PENDING:
-            return true;
-        case OSW_BTM_DESC_STATE_EMPTY:
-            return true;
     }
+    return true;
+}
 
-    WARN_ON(1);
+static bool
+osw_btm_req_is_ready(const osw_btm_req_t *r)
+{
+    switch (r->state) {
+        case OSW_BTM_REQ_STATE_READY:
+            return true;
+        case OSW_BTM_REQ_STATE_INIT:
+        case OSW_BTM_REQ_STATE_SUBMITTED:
+        case OSW_BTM_REQ_STATE_COMPLETED:
+            break;
+    }
     return false;
 }
 
 bool
-osw_btm_desc_set_req_params(struct osw_btm_desc *desc,
-                            const struct osw_btm_req_params *params)
+osw_btm_req_set_completed_fn(osw_btm_req_t *r, osw_btm_req_completed_fn_t *fn, void *priv)
 {
-    ASSERT(desc != NULL, "");
-    ASSERT(desc->sta != NULL, "");
+    if (r == NULL) return false;
+    LOGD(LOG_PREFIX_REQ(r, "setting: completed_fn: '%p' -> '%p'",
+         r->completed_fn,
+         fn));
+    if (osw_btm_req_is_configurable(r) == false) return false;
+    r->completed_fn = fn;
+    r->completed_fn_priv = priv;
+    return true;
+}
 
-    const bool can_set = osw_btm_desc_can_set_req_params(desc);
-    const bool cannot_set = !can_set;
-    if (cannot_set) {
-        return false;
+bool
+osw_btm_req_set_response_fn(osw_btm_req_t *r, osw_btm_req_response_fn_t *fn, void *priv)
+{
+    if (r == NULL) return false;
+    LOGD(LOG_PREFIX_REQ(r, "setting: response_fn: '%p' -> '%p'",
+         r->response_fn,
+         fn));
+    if (osw_btm_req_is_configurable(r) == false) return false;
+    r->response_fn = fn;
+    r->response_fn_priv = priv;
+    return true;
+}
+
+bool
+osw_btm_req_set_params(osw_btm_req_t *r, const struct osw_btm_req_params *params)
+{
+    if (r == NULL) return false;
+
+    LOGD(LOG_PREFIX_REQ(r, "setting: params: %p", params));
+    if (osw_btm_req_is_configurable(r) == false) return false;
+
+    FREE(r->params);
+    r->params = NULL;
+    r->state = OSW_BTM_REQ_STATE_INIT;
+    if (params == NULL) return true;
+
+    r->params = MEMNDUP(params, sizeof(*params));
+    r->state = OSW_BTM_REQ_STATE_READY;
+    return true;
+}
+
+bool
+osw_btm_req_submit(osw_btm_req_t *r)
+{
+    if (r == NULL) return false;
+    if (osw_btm_req_is_ready(r) == false) return false;
+    if (r->sta->assoc.links.count == 0) return false;
+
+    /* This is intended to, possibly in the future, offload
+     * spawning multiple BTM Req frames per MLO link when
+     * Affiliated APs are being removed. Current 802.11be
+     * drafts are a bit unclear on some of the details on
+     * that, and whether it'll be even feasible to generate
+     * BTM Req outside of SME of the WLAN driver itself is
+     * still an open question. In such case the idea is to
+     * move the r->params to sta->params and to program it
+     * in the WLAN driver so it can gracefully provide AP
+     * Candidates properly autonomously when needed.
+     */
+
+    return osw_btm_req_tx(r);
+}
+
+uint8_t
+osw_btm_resp_get_status(const osw_btm_resp_t *resp)
+{
+    if (resp == NULL) return 0;
+    return resp->status_code;
+}
+
+static void
+osw_btm_req_report_response(struct osw_btm *m, const osw_btm_resp_t *resp)
+{
+    /* FIXME: This isn't really efficient, but doing this
+     * efficiently requires more extensive rework of a lot
+     * of code in here. This isn't performance critical, so
+     * it should be fine for now.
+     */
+    const struct osw_hwaddr *bssid = NULL;
+    struct osw_btm_sta *sta;
+    ds_tree_foreach(&m->stas, sta) {
+        const osw_sta_assoc_entry_t *e = osw_sta_assoc_observer_get_entry(sta->assoc.obs);
+        const osw_sta_assoc_links_t *links = osw_sta_assoc_entry_get_active_links(e);
+        const osw_sta_assoc_link_t *link = osw_sta_assoc_links_lookup(links, bssid, &resp->sta_addr);
+        if (link == NULL) continue;
+
+        osw_btm_req_t *req;
+        ds_tree_foreach(&sta->reqs, req) {
+            if (req->dialog_token != resp->dialog_token) continue;
+            if (req->response_fn == NULL) continue;
+            req->response_fn(req->response_fn_priv, resp);
+        }
     }
+}
 
-    osw_btm_desc_reset(desc);
-    desc->params = *params;
+static bool
+osw_btm_resp_parse_nr(const void **buf,
+                      ssize_t *rem,
+                      struct osw_btm_req_neigh *n,
+                      uint8_t *preference)
+{
+    uint32_t info_le32;
 
-    struct osw_btm_sta *btm_sta = desc->sta;
-    if (btm_sta->sta_info == NULL) {
-        return false;
-    }
+    if (!buf_get_into(buf, rem, &n->bssid)) return false;
+    if (!buf_get_u32(buf, rem, &info_le32)) return false;
+    if (!buf_get_u8(buf, rem, &n->op_class)) return false;
+    if (!buf_get_u8(buf, rem, &n->channel)) return false;
+    if (!buf_get_u8(buf, rem, &n->phy_type)) return false;
+    n->bssid_info = le32toh(info_le32);
 
-    ds_dlist_remove(&btm_sta->desc_list, desc);
-    ds_dlist_insert_head(&btm_sta->desc_list, desc);
+    uint8_t aid;
+    uint8_t alen;
+    const void *attr;
 
-    desc->state = OSW_BTM_DESC_STATE_PENDING;
-    osw_btm_sta_schedule_work(btm_sta);
+    if (!buf_get_u8(buf, rem, &aid)) return true;
+    if (!buf_get_u8(buf, rem, &alen)) return false;
+    if (!buf_get_as_ptr(buf, rem, &attr, alen)) return false;
+
+    ssize_t attr_len = alen;
+    if (!buf_get_u8(&attr, &attr_len, preference)) return false;
 
     return true;
 }
 
-struct osw_btm_sta*
-osw_btm_desc_get_sta(struct osw_btm_desc *desc)
+static bool
+osw_btm_resp_get_neighs(const void **buf,
+                        ssize_t *rem,
+                        struct osw_btm_retry_neigh **list,
+                        size_t *count)
 {
-    ASSERT(desc != NULL, "");
-    ASSERT(desc->sta != NULL, "");
-    return desc->sta;
-}
+    while (*rem > 0)
+    {
+        uint8_t eid;
+        uint8_t elen;
+        const void *elem;
 
-void
-osw_btm_sta_set_throttle(struct osw_btm_sta *btm_sta,
-                         struct osw_throttle *throttle)
-{
-    ASSERT(btm_sta != NULL, "");
+        if (!buf_get_u8(buf, rem, &eid)) break;
+        if (!buf_get_u8(buf, rem, &elen)) break;
+        if (!buf_get_as_ptr(buf, rem, &elem, elen)) break;
+        if (eid != C_IEEE80211_EID_NEIGH_REPORT) continue;
 
-    osw_throttle_free(btm_sta->throttle);
-    if (throttle !=  NULL)
-        btm_sta->throttle = throttle;
+        struct osw_btm_retry_neigh n;
+        MEMZERO(n);
+        ssize_t len = elen;
+        if (!osw_btm_resp_parse_nr(&elem, &len, &n.neigh, &n.preference)) continue;
 
-    osw_btm_sta_schedule_work(btm_sta);
+        const size_t last = (*count)++;
+        const size_t size = sizeof(**list) * (*count);
+        (*list) = REALLOC(*list, size);
+        (*list)[last] = n;
+    }
+    WARN_ON(*rem != 0);
+    return true;
 }
 
 static bool
-osw_btm_parse_neighbor_report(const struct osw_hwaddr *sta_addr,
-                              struct osw_btm_retry_neigh *retry_neigh,
-                              const struct osw_drv_dot11_neighbor_report *neighbor_element)
+osw_btm_resp_parse(const void *buf,
+                   ssize_t rem,
+                   osw_btm_resp_t *resp)
 {
-    /* validate tag length */
-    const unsigned int neigh_elem_len_w_hdr = neighbor_element->tag_len + 2;
-    const unsigned int neigh_elem_struct_size = sizeof(*neighbor_element);
-    if (neigh_elem_len_w_hdr < neigh_elem_struct_size) {
-        LOGI("osw: btm_parse_neighbor_report: neighbor report element too small,"
-             " neigh_elem_len_w_hdr: %d"
-             " neigh_elem_struct_size: %d",
-             neigh_elem_len_w_hdr,
-             neigh_elem_struct_size);
-        return false;
+    uint16_t fc_le16;
+    uint16_t dur_le16;
+    uint16_t seq_le16;
+    struct osw_hwaddr ta;
+    struct osw_hwaddr bssid;
+
+    if (!buf_get_u16(&buf, &rem, &fc_le16)) return false;
+    if (!buf_get_u16(&buf, &rem, &dur_le16)) return false;
+    if (!buf_get_into(&buf, &rem, &resp->sta_addr)) return false;
+    if (!buf_get_into(&buf, &rem, &ta)) return false;
+    if (!buf_get_into(&buf, &rem, &bssid)) return false;
+    if (!buf_get_u16(&buf, &rem, &seq_le16)) return false;
+
+    const uint16_t fc = le16toh(fc_le16);
+    const uint16_t type = C_MASK_GET(C_IEEE80211_FC_TYPE, fc);
+    const uint16_t subtype = C_MASK_GET(C_IEEE80211_FC_SUBTYPE, fc);
+
+    if (type != C_IEEE80211_FC_TYPE_MGMT) return false;
+    if (subtype != C_IEEE80211_FC_MGMT_SUBTYPE_ACTION) return false;
+
+    uint8_t category;
+    uint8_t action;
+    uint8_t bss_term_delay;
+
+    if (!buf_get_u8(&buf, &rem, &category)) return false;
+    if (!buf_get_u8(&buf, &rem, &action)) return false;
+    if (category != C_IEEE80211_ACTION_CAT_WNM) return false;
+    if (action != C_IEEE80211_WNM_BTM_RESP) return false;
+
+    if (!buf_get_u8(&buf, &rem, &resp->dialog_token)) return false;
+    if (!buf_get_u8(&buf, &rem, &resp->status_code)) return false;
+    if (!buf_get_u8(&buf, &rem, &bss_term_delay)) return false;
+
+    if (resp->status_code == C_IEEE80211_BTM_RESP_STATUS_ACCEPT) {
+        if (!buf_get_into(&buf, &rem, &resp->target_bssid)) return false;
     }
 
-    /* determine neighbor preference */
-    int neigh_pref = -1;
-    const struct element *subelem;
-    const uint8_t *subelems = neighbor_element->variable;
-    const size_t subelems_len = neigh_elem_len_w_hdr - neigh_elem_struct_size;
-    for_each_ie(subelem, subelems, subelems_len) {
+    if (!osw_btm_resp_get_neighs(&buf, &rem, &resp->neighs, &resp->n_neighs)) return false;
 
-        if (subelem->id != DOT11_NEIGHBOR_REPORT_CANDIDATE_PREFERENCE) continue;
-
-        if (subelem->datalen == 1) {
-            LOGT("osw: btm_parse_neighbor_report: candidate preference subelement present");
-            struct osw_drv_dot11_neighbor_preference *neigh_pref_sub = (struct osw_drv_dot11_neighbor_preference *)subelem;
-            neigh_pref = neigh_pref_sub->preference;
-            break;
-        }
-    }
-
-    struct osw_btm_req_neigh *retry_neigh_n = &retry_neigh->neigh;
-    memcpy(&retry_neigh_n->bssid, neighbor_element->bssid, sizeof(retry_neigh_n->bssid));
-    retry_neigh_n->bssid_info = neighbor_element->bssid_info;
-    retry_neigh_n->op_class = neighbor_element->op_class;
-    retry_neigh_n->channel = neighbor_element->channel;
-    retry_neigh_n->phy_type = neighbor_element->phy_type;
-    retry_neigh->preference = neigh_pref;
-
-    LOGI("osw: btm: neigh_reject_candidates: parsed neighbor from btm reject,"
-         " sta: " OSW_HWADDR_FMT
-         " bssid: " OSW_HWADDR_FMT
-         " bssid_info: %02x%02x%02x%02x"
-         " op_class: %hhu"
-         " channel: %hhu"
-         " phy_type: %hhu"
-         " preference: %d",
-         OSW_HWADDR_ARG(sta_addr),
-         OSW_HWADDR_ARG(&retry_neigh_n->bssid),
-         (retry_neigh_n->bssid_info >> 24) & 0xff,
-         (retry_neigh_n->bssid_info >> 16) & 0xff,
-         (retry_neigh_n->bssid_info >> 8) & 0xff,
-         (retry_neigh_n->bssid_info) & 0xff,
-         retry_neigh_n->op_class,
-         retry_neigh_n->channel,
-         retry_neigh_n->phy_type,
-         retry_neigh->preference);
-
+    WARN_ON(rem != 0);
     return true;
 }
 
 static void
-osw_btm_resp_parse_neigh_reject_candidates(const struct osw_hwaddr *sta_addr,
-                                           const uint8_t *ies,
-                                           const size_t ies_len)
-{
-    struct osw_btm_retry_neigh_list retry_neigh_list;
-    retry_neigh_list.neigh_len = 0;
-
-    const struct element *elem;
-    for_each_ie(elem, ies, ies_len) {
-        if (elem->id != DOT11_NEIGHBOR_REPORT_IE_TAG) continue;
-
-        LOGT("osw: btm: neigh_reject_candidates: parsing neigbor report from btm response reject");
-        const bool ok = osw_btm_parse_neighbor_report(sta_addr,
-                                                      &retry_neigh_list.neigh[retry_neigh_list.neigh_len],
-                                                      (struct osw_drv_dot11_neighbor_report *)elem);
-
-        if (ok == true) retry_neigh_list.neigh_len++;
-        if (retry_neigh_list.neigh_len >= OSW_BTM_REQ_NEIGH_SIZE) {
-            LOGN("osw: btm: neigh_reject_candidates: response neighbors list full");
-            break;
-        }
-    }
-
-    osw_btm_notify_btm_response(sta_addr,
-                                DOT11_BTM_RESPONSE_CODE_REJECT_CAND_LIST_PROVIDED,
-                                &retry_neigh_list);
-}
-
-static bool
-osw_btm_frame_is_action(const struct osw_drv_dot11_frame *frame)
-{
-    ASSERT(frame != NULL, "");
-
-    const struct osw_drv_dot11_frame_header *header = &frame->header;
-    const bool is_mgmt = ((le16toh(header->frame_control) & DOT11_FRAME_CTRL_TYPE_MASK) ==
-                           DOT11_FRAME_CTRL_TYPE_MGMT);
-    const bool is_action = ((le16toh(header->frame_control) & DOT11_FRAME_CTRL_SUBTYPE_MASK) ==
-                             DOT11_FRAME_CTRL_SUBTYPE_ACTION);
-
-    if (is_mgmt == false) return false;
-    if (is_action == false) return false;
-    return true;
-}
-
-static bool
-osw_btm_action_frame_is_btm_response(const struct osw_drv_dot11_frame_action *action)
-{
-    ASSERT(action != NULL, "");
-
-    const struct osw_drv_dot11_frame_action_bss_tm_resp *bss_tm_resp = &action->u.bss_tm_resp;
-    const bool is_wnm = (action->category == DOT11_ACTION_CATEGORY_WNM_CODE);
-    const bool is_btm_response = (bss_tm_resp->action == DOT11_BTM_RESPONSE_IE_ACTION_CODE);
-
-    if (is_wnm == false) return false;
-    if (is_btm_response == false) return false;
-    return true;
-}
-
-static void
-osw_btm_frame_rx_cb(struct osw_state_observer *self,
-                    const struct osw_state_vif_info *vif,
-                    const uint8_t *data,
-                    size_t len)
+osw_btm_resp_frame_rx_cb(struct osw_state_observer *obs,
+                         const struct osw_state_vif_info *vif,
+                         const uint8_t *data,
+                         size_t len)
 {
     if (WARN_ON(data == NULL)) return;
     if (WARN_ON(vif == NULL)) return;
     if (WARN_ON(vif->vif_name == NULL)) return;
 
-    /* filter out btm response frames and validate data length */
-    const struct osw_drv_dot11_frame *frame = (const struct osw_drv_dot11_frame *)data;
-    const size_t dot11_header_len = sizeof(frame->header);
-    if (WARN_ON(len < dot11_header_len)) return;
+    osw_btm_t *m = container_of(obs, typeof(*m), state_obs);
+    osw_btm_resp_t resp;
+    MEMZERO(resp);
 
-    const bool is_action = osw_btm_frame_is_action((const struct osw_drv_dot11_frame *) data);
-    if (is_action == false) return;
+    const bool ok = osw_btm_resp_parse(data, len, &resp);
+    if (ok)
+    {
+        LOGI(LOG_PREFIX("resp: "OSW_HWADDR_FMT": token=%hhu target="OSW_HWADDR_FMT" status=%hhu neighs=%zu",
+                        OSW_HWADDR_ARG(&resp.sta_addr),
+                        resp.dialog_token,
+                        OSW_HWADDR_ARG(&resp.target_bssid),
+                        resp.status_code,
+                        resp.n_neighs));
+        osw_btm_req_report_response(m, &resp);
+        osw_btm_obs_notify_received(m, &resp);
+    }
+    FREE(resp.neighs);
+}
 
-    const struct osw_drv_dot11_frame_action *action = &frame->u.action;
-    const size_t dot11_action_len = sizeof(action->category);
-    if (WARN_ON(len < dot11_header_len + dot11_action_len)) return;
-
-    const bool is_btm_response = osw_btm_action_frame_is_btm_response(action);
-    if (is_btm_response == false) return;
-
-    const struct osw_drv_dot11_frame_action_bss_tm_resp *bss_tm_resp = &action->u.bss_tm_resp;
-    const size_t dot11_btm_resp_min_len = sizeof(*bss_tm_resp);
-    if (WARN_ON(len < dot11_header_len + dot11_action_len + dot11_btm_resp_min_len)) return;
-
-    const struct osw_drv_dot11_frame_header *header = &frame->header;
-    const uint8_t *sa = header->sa;
-    struct osw_hwaddr sta_addr;
-    memcpy(sta_addr.octet, sa, OSW_HWADDR_LEN);
-    LOGI("osw: btm_frame_rep_cb: received btm response,"
-         " vif_name: %s"
-         " sta: "OSW_HWADDR_FMT
-         " status_code: %d",
-         vif->vif_name,
-         OSW_HWADDR_ARG(&sta_addr),
-         bss_tm_resp->status_code);
-
-    /* proceed only with response containing neighbor list */
-    const bool cand_list_provided = (bss_tm_resp->status_code == DOT11_BTM_RESPONSE_CODE_REJECT_CAND_LIST_PROVIDED);
-    if (cand_list_provided == false) return;
-
-    const uint8_t *ies = bss_tm_resp->variable;
-    const size_t ies_len = data + len - ies;
-    osw_btm_resp_parse_neigh_reject_candidates(&sta_addr,
-                                               ies,
-                                               ies_len);
+static osw_btm_t *
+osw_btm_alloc(void)
+{
+    osw_btm_t *m = CALLOC(1, sizeof(*m));
+    ds_tree_init(&m->stas, (ds_key_cmp_t *)osw_hwaddr_cmp, osw_btm_sta_t, node);
+    ds_tree_init(&m->obs, ds_void_cmp, osw_btm_obs_t, node);
+    m->state_obs.name = __FILE__;
+    m->state_obs.vif_frame_rx_fn = osw_btm_resp_frame_rx_cb;
+    m->mux_frame_tx_schedule_fn = osw_mux_frame_tx_schedule;
+    osw_state_register_observer(&m->state_obs);
+    return m;
 }
 
 OSW_MODULE(osw_btm)
 {
     OSW_MODULE_LOAD(osw_token);
-    struct osw_state_observer *state_observer = CALLOC(1, sizeof(*state_observer));
-    state_observer->name = "g_osw_btm";
-    state_observer->vif_frame_rx_fn = osw_btm_frame_rx_cb;
-    osw_state_register_observer(state_observer);
-    return NULL;
+    return osw_btm_alloc();
 }
 
 #include "osw_btm_ut.c"

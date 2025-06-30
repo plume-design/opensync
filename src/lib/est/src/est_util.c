@@ -41,13 +41,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * This function returns an allocated string representing the PEM certificate
  * or NULL on error.
  */
-char *est_util_pkcs7_to_pem(const char *pkcs7)
+char *est_util_pkcs7_to_pem(arena_t *arena, const char *pkcs7)
 {
-    char *retval = NULL;
-    char *bdec = NULL;
-    char *pem = NULL;
+    ARENA_SCRATCH(scratch, arena);
 
-    char spkcs7[strlen(pkcs7) + 1];
+    char *spkcs7 = arena_strdup(scratch, pkcs7);
 
     /*
      * Remove "\n\r" from the input string -- the reason for this is that
@@ -56,7 +54,6 @@ char *est_util_pkcs7_to_pem(const char *pkcs7)
      * Since the EST server can send either, remove the "\n\r" and treat it
      * as a single line base64 encoded string.
      */
-    STRSCPY(spkcs7, pkcs7);
     strstrip(spkcs7, "\r\n");
 
     /*
@@ -65,19 +62,19 @@ char *est_util_pkcs7_to_pem(const char *pkcs7)
      * designed to handle binary data, we must use a temporary file. This is
      * acceptable since the certificate doesn't contain any sentivie data.
      */
-    bdec = execssl(spkcs7, "base64", "-A", "-d", "-out", PKIM_UTIL_PKCS7_TMP);
+    char *bdec = execssl_arena(scratch, spkcs7, "base64", "-A", "-d", "-out", PKIM_UTIL_PKCS7_TMP);
     if (bdec == NULL)
     {
         LOG(ERR, "Error base64 decoding PKCS7 certificate.");
-        goto error;
+        return NULL;
     }
 
     /* Convert PKCS7 to PEM */
-    pem = execssl(NULL, "pkcs7", "-in", PKIM_UTIL_PKCS7_TMP, "-inform", "DER", "-print_certs");
+    char *pem = execssl_arena(scratch, NULL, "pkcs7", "-in", PKIM_UTIL_PKCS7_TMP, "-inform", "DER", "-print_certs");
     if (pem == NULL)
     {
         LOG(ERR, "Error converting PKCS7 certificate.");
-        goto error;
+        return NULL;
     }
 
     /*
@@ -88,96 +85,8 @@ char *est_util_pkcs7_to_pem(const char *pkcs7)
     if (pem_hdr == NULL)
     {
         LOG(ERR, "Unable to find the PEM header.");
-        goto error;
+        return NULL;
     }
 
-    retval = STRDUP(pem_hdr);
-
-error:
-    if (bdec != NULL) FREE(bdec);
-    if (pem != NULL) FREE(pem);
-    (void)unlink(PKIM_UTIL_PKCS7_TMP);
-
-    return retval;
-}
-
-#define STR_APPEND(b, e, str)               \
-    do                                      \
-    {                                       \
-        char *cs;                           \
-        cs = MEM_APPEND(b, e, strlen(str)); \
-        memcpy(cs, (str), strlen(str));     \
-        strcpy(cs, (str));                  \
-    } while (false)
-
-char *est_util_csr_subject(void)
-{
-    char buf[1024];
-    char *send;
-
-    char *subj = NULL;
-    char *subj_e = NULL;
-
-    if (osp_unit_id_get(buf, sizeof(buf)))
-    {
-        STR_APPEND(&subj, &subj_e, "/commonName=");
-        STR_APPEND(&subj, &subj_e, buf);
-    }
-
-    if (osp_unit_serial_get(buf, sizeof(buf)))
-    {
-        STR_APPEND(&subj, &subj_e, "/serialNumber=");
-        STR_APPEND(&subj, &subj_e, buf);
-    }
-
-    if (osp_unit_model_get(buf, sizeof(buf)))
-    {
-        STR_APPEND(&subj, &subj_e, "/title=");
-        STR_APPEND(&subj, &subj_e, buf);
-    }
-
-    if (osp_unit_sku_get(buf, sizeof(buf)))
-    {
-        STR_APPEND(&subj, &subj_e, "/surname=");
-        STR_APPEND(&subj, &subj_e, buf);
-    }
-
-    if (osp_unit_hw_revision_get(buf, sizeof(buf)))
-    {
-        STR_APPEND(&subj, &subj_e, "/supportedApplicationContext=");
-        STR_APPEND(&subj, &subj_e, buf);
-    }
-
-    if (osp_unit_manufacturer_get(buf, sizeof(buf)))
-    {
-        STR_APPEND(&subj, &subj_e, "/localityName=");
-        STR_APPEND(&subj, &subj_e, buf);
-    }
-
-    if (osp_unit_vendor_name_get(buf, sizeof(buf)))
-    {
-        STR_APPEND(&subj, &subj_e, "/organizationName=");
-        STR_APPEND(&subj, &subj_e, buf);
-    }
-
-    if (osp_unit_vendor_part_get(buf, sizeof(buf)))
-    {
-        STR_APPEND(&subj, &subj_e, "/givenName=");
-        STR_APPEND(&subj, &subj_e, buf);
-    }
-
-    if (osp_unit_factory_get(buf, sizeof(buf)))
-    {
-        STR_APPEND(&subj, &subj_e, "/stateOrProvinceName=");
-        STR_APPEND(&subj, &subj_e, buf);
-    }
-
-    /*
-     * STR_APPEND() doesn't pad the string with \0, so we need to add it here.
-     * Additionally, add the subject ending '/'
-     */
-    send = MEM_APPEND(&subj, &subj_e, sizeof("/"));
-    memcpy(send, "/", sizeof("/"));
-
-    return subj;
+    return arena_strdup(arena, pem_hdr);
 }

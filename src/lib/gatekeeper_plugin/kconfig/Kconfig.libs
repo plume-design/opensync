@@ -10,4 +10,11 @@ menu "libgatekeeper_plugin Configuration"
         default n
         help
             Enable multi curl support for Gatekeeper to send non blocking requests
+
+    config GATEKEEPER_SEED_CACHE
+        bool "Enable seeding the gatekeeper cache"
+        default y
+        help
+            Enable seeding the gatekeeper cache"
+
 endmenu

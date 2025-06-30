@@ -83,6 +83,63 @@ bool osn_adaptive_qos_UL_shaper_params_set(osn_adaptive_qos_t *self, int min_rat
     return true;
 }
 
+bool osn_adaptive_qos_reflector_add(osn_adaptive_qos_t *self, const osn_ipany_addr_t *ip_addr)
+{
+    (void)self;
+    (void)ip_addr;
+
+    return true;
+}
+
+bool osn_adaptive_qos_reflector_list_add(osn_adaptive_qos_t *self, const osn_ipany_addr_t ip_addr_list[], int num)
+{
+    (void)self;
+    (void)ip_addr_list;
+    (void)num;
+
+    return true;
+}
+
+void osn_adaptive_qos_reflectors_list_clear(osn_adaptive_qos_t *self)
+{
+    (void)self;
+}
+
+bool osn_adaptive_qos_reflectors_randomize_set(osn_adaptive_qos_t *self, bool randomize)
+{
+    (void)self;
+    (void)randomize;
+    return true;
+}
+
+bool osn_adaptive_qos_reflectors_ping_interval_set(osn_adaptive_qos_t *self, int ping_interval)
+{
+    (void)self;
+    (void)ping_interval;
+    return true;
+}
+
+bool osn_adaptive_qos_num_pingers_set(osn_adaptive_qos_t *self, int num_pingers)
+{
+    (void)self;
+    (void)num_pingers;
+    return true;
+}
+
+bool osn_adaptive_qos_active_threshold_set(osn_adaptive_qos_t *self, int threshold)
+{
+    (void)self;
+    (void)threshold;
+    return true;
+}
+
+bool osn_adaptive_qos_other_config_set(osn_adaptive_qos_t *self, const ds_map_str_t *other_config)
+{
+    (void)self;
+    (void)other_config;
+    return true;
+}
+
 bool osn_adaptive_qos_apply(osn_adaptive_qos_t *self)
 {
     (void)self;

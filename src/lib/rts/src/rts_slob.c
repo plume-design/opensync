@@ -161,7 +161,7 @@ rts_slob_expand(struct rts_pool *pool, struct rts_slob *slob, size_t n)
     size_t capacity = rts_slob_capacity(slob);
     size_t m = n - get_nslobs(capacity);
 
-    rts_assert(m);
+    if (!m) return NULL;
 
     /* Attempt to grow if the adjacent higher address blocks are free */
     tail = rts_container_of(slob->list.prev, struct rts_slob, list);
@@ -196,7 +196,6 @@ rts_pool_alloc(struct rts_pool *pool, size_t size)
     struct rts_slob *slob;
     if ((slob = rts_slob_alloc(pool, get_nslobs(size))) == NULL) {
         pool->stats.fail_alloc++;
-        rts_assert_msg(0, "fail_alloc: size %zu", size);
         return NULL;
     }
     return slob->data;
@@ -212,7 +211,7 @@ rts_pool_realloc(struct rts_pool *pool, void *data, size_t size, size_t *alloc)
     if (!data) {
         if ((slob = rts_slob_alloc(pool, n)) == NULL) {
             pool->stats.fail_alloc++;
-            rts_assert_msg(0, "fail_alloc: size %zu", size);
+
             return NULL;
         }
         *alloc = rts_slob_capacity(slob);
@@ -228,18 +227,30 @@ rts_pool_realloc(struct rts_pool *pool, void *data, size_t size, size_t *alloc)
         return data;
     }
 
-    rts_assert(n > 0);
+    if (!(n > 0))
+    {
+        pool->stats.fail_alloc++;
+        return NULL;
+    }
 
     /* Expansion */
     if ((next = rts_slob_expand(pool, slob, n)) != NULL) {
-        rts_assert(slob == next);
+        if (!(slob == next)) {
+            pool->stats.fail_alloc++;
+            return NULL;
+        }
+
         *alloc = rts_slob_capacity(slob);
         return slob->data;
     }
 
     /* Reallocation */
     if ((next = rts_slob_alloc(pool, n)) != NULL) {
-        rts_assert(rts_slob_capacity(next) > cap);
+        if (!(rts_slob_capacity(next) > cap)) {
+            rts_slob_free(pool, next);
+            pool->stats.fail_alloc++;
+            return NULL;
+        }
         __builtin_memcpy(next->data, slob->data, cap);
         rts_slob_free(pool, slob);
         *alloc = rts_slob_capacity(next);
@@ -247,7 +258,7 @@ rts_pool_realloc(struct rts_pool *pool, void *data, size_t size, size_t *alloc)
     }
 
     pool->stats.fail_alloc++;
-    rts_assert_msg(0, "fail_alloc: size %zu", size);
+
     return NULL;
 }
 

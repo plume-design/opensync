@@ -1,0 +1,33 @@
+menuconfig LOGREAD_OSYNC
+    bool "Logread OpenSync"
+    default y
+    help
+        This option enables the logread OpenSync tool. The logread tool is used
+        to read syslog messages from the systemd log file.
+
+    config LOGREAD_OSYNC_LOG_HAS_HOSTNAME
+        bool "The syslog log message contains the hostname"
+        default n
+        help
+            This option is required to parse system logs that include a hostname
+            in each log line. For example:
+                n: 'Jan  1 12:00:00 systemd[1]: Starting Service...'
+                y: 'Jan  1 12:00:00 my-hostname systemd[1]: Starting Service...'
+
+    config LOGREAD_OSYNC_LOG_HAS_YEAR
+        bool "The syslog timestamp includes the year"
+        default n
+        help
+            This option is required to parse system logs where the timestamp
+            includes the year. For example:
+                n: 'Jan  1 12:00:00 systemd[1]: Starting Service...'
+                y: '2023 Jan  1 12:00:00 systemd[1]: Starting Service...'
+
+    config LOGREAD_OSYNC_LOG_HAS_LEVEL
+        bool "The syslog log message contains the log level"
+        default n
+        help
+            This option is required to parse system logs that include a log level
+            field (e.g., INFO, ERROR, DEBUG) in each log line. For example:
+                n: 'Jan  1 12:00:00 systemd[1]: Starting Service...'
+                y: 'Jan  1 12:00:00 INFO systemd[1]: Starting Service...'

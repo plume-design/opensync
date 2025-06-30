@@ -67,6 +67,8 @@ UNIT_DEPS += src/lib/unit_test_utils
 UNIT_DEPS += src/lib/network_zone
 UNIT_DEPS += src/lib/dpi_intf
 UNIT_DEPS += src/lib/accel_evict_msg
+UNIT_DEPS += src/lib/nfe
+
 ifeq ($(CONFIG_FSM_NO_DSO),y)
 	UNIT_DEPS += $(if $(CONFIG_LIB_LEGACY_FSM_HTTP_PARSER), src/lib/http_parse)
 	UNIT_DEPS += $(if $(CONFIG_LIB_LEGACY_FSM_DNS_PARSER), src/lib/dns_parse)
@@ -83,6 +85,7 @@ ifeq ($(CONFIG_FSM_NO_DSO),y)
 	UNIT_DEPS += $(if $(CONFIG_FSM_NO_DSO), src/lib/fsm_dpi_ndp)
 	UNIT_DEPS += $(if $(CONFIG_FSM_NO_DSO), src/lib/fsm_dpi_mdns_responder)
 	UNIT_DEPS += $(if $(CONFIG_FSM_NO_DSO), src/lib/fsm_dpi_adt_upnp)
+	UNIT_DEPS += $(if $(CONFIG_FSM_NO_DSO), src/lib/fsm_dpi_dhcp_relay)
 	UNIT_DEPS += $(if $(CONFIG_FSM_NO_DSO), src/lib/wc_null_plugin)
 	UNIT_DEPS += $(if $(CONFIG_FSM_NO_DSO), src/lib/we_dpi)
 endif

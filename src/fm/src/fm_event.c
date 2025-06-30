@@ -72,10 +72,10 @@ static void fm_livecopy_timer_callback(struct ev_loop *loop, ev_timer *watcher, 
 static void fm_backtrace_do_rotation(void);
 static void fm_crash_bt_rotation_stat_callback(struct ev_loop *loop, ev_stat *watcher, int revents);
 static void fm_crash_bt_update_log_options(const fm_log_type_t options);
-static void fm_execute_syslog_rotate(const char *logs_path, const int rotation_cnt, const char *logs_location);
+static void fm_execute_syslog_rotate(const char *logs_path, const unsigned int max_size, const char *logs_location);
 static void fm_update_syslog_size(const int syslog_size);
 
-static void fm_execute_syslog_rotate(const char *logs_path, const int rotation_cnt, const char *logs_location)
+static void fm_execute_syslog_rotate(const char *logs_path, const unsigned int max_size, const char *logs_location)
 {
     char shell_cmd[256];
 
@@ -87,7 +87,7 @@ static void fm_execute_syslog_rotate(const char *logs_path, const int rotation_c
             CONFIG_FM_LOGFILE_MONITOR,
             logs_path,
             CONFIG_FM_LOG_ARCHIVE_SUBDIRECTORY,
-            rotation_cnt,
+            max_size,
             logs_location);
 
     LOGI("Log rotation initiated!");
@@ -98,7 +98,7 @@ static void fm_execute_syslog_rotate(const char *logs_path, const int rotation_c
 static void fm_do_rotation(void)
 {
     const char *logs_path;
-    int rotation_cnt;
+    unsigned int max_size;
 
     // Check if file was really rotated
     if (access(FM_MESSAGES_ORIGINAL_ROTATED, F_OK) != 0)
@@ -109,14 +109,14 @@ static void fm_do_rotation(void)
     if (g_state.log_options.fm_log_flash)
     {
         logs_path = CONFIG_FM_LOG_FLASH_ARCHIVE_PATH;
-        rotation_cnt = CONFIG_FM_MAX_ROTATION_SYSLOG_FLASH_CNT;
+        max_size = CONFIG_FM_MAX_ROTATION_SYSLOG_FLASH_TOTAL_SIZE;
     }
     else
     {
         logs_path = CONFIG_FM_LOG_RAM_ARCHIVE_PATH;
-        rotation_cnt = CONFIG_FM_MAX_ROTATION_SYSLOG_RAM_CNT;
+        max_size = CONFIG_FM_MAX_ROTATION_SYSLOG_RAM_TOTAL_SIZE;
     }
-    fm_execute_syslog_rotate(logs_path, rotation_cnt, CONFIG_FM_LOG_PATH);
+    fm_execute_syslog_rotate(logs_path, max_size, CONFIG_FM_LOG_PATH);
 }
 
 static int fm_ramoops_write(const char *buf, size_t size)
@@ -505,7 +505,6 @@ void fm_set_logging(const fm_log_type_t options)
 {
     char *syslog_src;
     char *syslog_dst;
-    int syslog_cnt;
     char shell_cmd[256];
     bool sync_syslog;
 
@@ -518,14 +517,12 @@ void fm_set_logging(const fm_log_type_t options)
     {
         syslog_src = CONFIG_FM_LOG_RAM_ARCHIVE_PATH "/" CONFIG_FM_LOG_ARCHIVE_SUBDIRECTORY;
         syslog_dst = CONFIG_FM_LOG_FLASH_ARCHIVE_PATH "/" CONFIG_FM_LOG_ARCHIVE_SUBDIRECTORY;
-        syslog_cnt = CONFIG_FM_MAX_ROTATION_SYSLOG_FLASH_CNT;
         fm_update_syslog_size(CONFIG_FM_FLASH_SYSLOG_SIZE);
     }
     else if (g_state.log_options.fm_log_ramoops)
     {
         syslog_src = CONFIG_FM_LOG_FLASH_ARCHIVE_PATH "/" CONFIG_FM_LOG_ARCHIVE_SUBDIRECTORY;
         syslog_dst = CONFIG_FM_LOG_RAM_ARCHIVE_PATH "/" CONFIG_FM_LOG_ARCHIVE_SUBDIRECTORY;
-        syslog_cnt = CONFIG_FM_MAX_ROTATION_SYSLOG_RAM_CNT;
         fm_update_syslog_size(CONFIG_FM_RAM_SYSLOG_SIZE);
     }
     else
@@ -538,10 +535,9 @@ void fm_set_logging(const fm_log_type_t options)
         snprintf(
                 shell_cmd,
                 sizeof(shell_cmd),
-                "mv $(ls %s/%s* -r | head -n %d) %s; rm %s/*",
+                "mv $(ls %s/%s* -r) %s; rm %s/*",
                 syslog_src,
                 CONFIG_FM_LOG_FILE,
-                syslog_cnt,
                 syslog_dst,
                 syslog_src);
         LOGD("Execute shell command: %s", shell_cmd);

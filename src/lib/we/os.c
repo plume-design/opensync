@@ -26,18 +26,91 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "memutil.h"
 #include <stdint.h>
+#include <kconfig.h>
+#include "vm.h"
+#include "log.h"
+
+/**
+ * Allocate memory from the WE memory pool
+ *
+ * @param sz Size in bytes to allocate
+ * @return Pointer to allocated memory or NULL if allocation failed
+ */
+static void *we_allocate_using_mem_pool(size_t sz)
+{
+    struct we_mem_pool *mem_pool;
+    void *ptr;
+
+    mem_pool = we_get_mem_pool_mgr();
+    ptr = rts_pool_alloc(&mem_pool->we_mem_pool, sz);
+
+    return ptr;
+}
+
+/**
+ * Allocate and zero-initialize memory from the WE memory pool
+ *
+ * @param sz Size in bytes to allocate
+ * @return Pointer to allocated memory or NULL if allocation failed
+ */
+static void *we_calloc_using_mem_pool(size_t sz)
+{
+    void *ptr;
+
+    ptr = we_allocate_using_mem_pool(sz);
+    if (ptr == NULL) return NULL;
+
+    memset(ptr, 0, sz);
+    return ptr;
+}
+
+/**
+ * Free memory previously allocated from the WE memory pool
+ *
+ * @param data Pointer to memory to free
+ */
+static void we_mem_pool_free(void *data)
+{
+    struct we_mem_pool *mem_pool;
+
+    if (data == NULL) return;
+
+    mem_pool = we_get_mem_pool_mgr();
+    rts_pool_free(&mem_pool->we_mem_pool, data);
+}
 
 __attribute__((weak)) void *we_malloc(size_t sz)
 {
-    return MALLOC(sz);
+    if (kconfig_enabled(CONFIG_WE_AGENT_MEMPOOL))
+    {
+        return we_allocate_using_mem_pool(sz);
+    }
+    else
+    {
+        return MALLOC(sz);
+    }
 }
 
 __attribute__((weak)) void *we_calloc(size_t nmemb, size_t sz)
 {
-    return CALLOC(nmemb, sz);
+    if (kconfig_enabled(CONFIG_WE_AGENT_MEMPOOL))
+    {
+        return we_calloc_using_mem_pool(sz * nmemb);
+    }
+    else
+    {
+        return CALLOC(nmemb, sz);
+    }
 }
 
 __attribute__((weak)) void we_free(void *p)
 {
-    FREE(p);
+    if (kconfig_enabled(CONFIG_WE_AGENT_MEMPOOL))
+    {
+        we_mem_pool_free(p);
+    }
+    else
+    {
+        FREE(p);
+    }
 }

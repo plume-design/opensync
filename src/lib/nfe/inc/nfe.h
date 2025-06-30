@@ -33,6 +33,8 @@ extern "C" {
 
 #include "nfe_types.h"
 
+int nfe_conntrack_dump(nfe_conntrack_t conntrack, nfe_get_conntrack_cb_t cb, void *data);
+
 /* nfe_conntrack_create()
  *
  * Create a conntrack for use by a thread, where @param size is the number of
@@ -100,6 +102,8 @@ nfe_conn_t nfe_conn_lookup(nfe_conntrack_t conntrack, struct nfe_packet *packet)
  */
 void nfe_conn_release(nfe_conn_t conn);
 
+
+int nfe_conntrack_update_timeouts(nfe_conntrack_t ct);
 
 /* Optionally, an integration may intercept these functions to control the
  * allocation strategy.

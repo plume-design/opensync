@@ -1,6 +1,6 @@
 menuconfig MANAGER_VPNM
     bool "Virtual Private Network Manager (VPNM)"
-    default n
+    default y
     help
         Enable Virtual Private Network Manager (VPNM)
 

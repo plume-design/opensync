@@ -27,30 +27,103 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifndef EST_CLIENT_H_INCLUDED
 #define EST_CLIENT_H_INCLUDED
 
-#include "const.h"
+#include "arena.h"
+#include "est_request.h"
 
-#define MAX_URL_LENGTH 500
+/*
+ * Issue an asynchronous "cacerts" request to the EST server defined by
+ * `set_server`. When the request is complete, `cacerts_fn` is called with
+ * the returned error code and data from the request.
+ *
+ * @param[in]   arena           arena used for allocations
+ * @param[in]   loop            libev loop used for callback registration
+ * @param[in]   est_server      URL of the EST server
+ * @param[in]   cacerts_fn      function callback
+ * @param[in]   ctx             `cacerts_fn` context
+ *
+ * This function issues an asynchronous cURL request to
+ * "https://est_server/.well-known/est/cacaerts". All data pertaining the
+ * request is allocated on `arena`. Simply destroying/freeing the arena
+ * will stop all timers and async function.
+ *
+ * @return This function returns `true` whether the request was successfully
+ * scheduled or `false` if it was not.
+ *
+ * Note that even if the function returns `true`, the request may still fail
+ * and the error code will be passed down to the callback.
+ *
+ */
+bool est_client_cacerts(
+        arena_t *arena,
+        struct ev_loop *loop,
+        const char *est_server,
+        est_request_fn_t *cacerts_fn,
+        void *ctx);
 
-typedef void est_client_retry_cb_t(long retry_after, long http_rsp_code);
+/*
+ * Issue an asynchronous "simpleenroll" request to the EST server defined by
+ * `set_server`. When the request is complete, `enroll_fn` is called with
+ * the returned error code and data from the request. You need to pass a valid
+ * certificate signing request in the `csr` variable.
+ *
+ * @param[in]   arena           arena used for allocations
+ * @param[in]   loop            libev loop used for callback registration
+ * @param[in]   est_server      URL of the EST server
+ * @param[in]   csr             Certificate signing request
+ * @param[in]   enroll_fn       function callback
+ * @param[in]   ctx             `enroll_fn` context
+ *
+ * This function issues an asynchronous cURL request to
+ * "https://est_server/.well-known/est/simpleenroll". All data pertaining the
+ * request is allocated on `arena`. Simply destroying/freeing the arena
+ * will stop all timers and async function.
+ *
+ * @return This function returns `true` whether the request was successfully
+ * scheduled or `false` if it was not.
+ *
+ * Note that even if the function returns `true`, the request may still fail
+ * and the error code will be passed down to the callback.
+ *
+ */
+bool est_client_simple_enroll(
+        arena_t *arena,
+        struct ev_loop *loop,
+        const char *est_server,
+        const char *csr,
+        est_request_fn_t *enroll_fn,
+        void *ctx);
 
-typedef enum
-{
-    AUTH_BASIC = 0,
-    AUTH_DIGEST
-} est_client_auth_method_t;
-
-struct est_client_cfg
-{
-    char server_url[MAX_URL_LENGTH];
-    est_client_auth_method_t auth_method;
-    char uname[C_USERNAME_LEN];
-    char pwd[C_PASSWORD_LEN];
-    char *subject;
-    est_client_retry_cb_t *update_response_cb;
-};
-
-int est_client_cert_renew(struct est_client_cfg *est_cfg);
-int est_client_get_cert(struct est_client_cfg *est_cfg);
-void est_client_get_cacerts(struct est_client_cfg *est_cfg);
+/*
+ * Issue an asynchronous "simplereenroll" request to the EST server defined by
+ * `set_server`. When the request is complete, `enroll_fn` is called with
+ * the returned error code and data from the request. You need to pass a valid
+ * certificate signing request in the `csr` variable.
+ *
+ * @param[in]   arena           arena used for allocations
+ * @param[in]   loop            libev loop used for callback registration
+ * @param[in]   est_server      URL of the EST server
+ * @param[in]   csr             Certificate signing request
+ * @param[in]   enroll_fn       function callback
+ * @param[in]   ctx             `enroll_fn` context
+ *
+ * This function issues an asynchronous cURL request to
+ * "https://est_server/.well-known/est/simplereenroll". All data pertaining the
+ * request is allocated on `arena`. Simply destroying/freeing the arena
+ * will stop all timers and async function.
+ *
+ * @return This function returns `true` whether the request was successfully
+ * scheduled or `false` if it was not.
+ *
+ * Note that even if the function returns `true`, the request may still fail
+ * and the error code will be passed down to the callback.
+ *
+ */
+bool est_client_simple_reenroll(
+        arena_t *arena,
+        struct ev_loop *loop,
+        const char *est_server,
+        const char *csr,
+        est_request_fn_t *enroll_fn,
+        void *ctx);
 
 #endif /* EST_CLIENT_H_INCLUDED */

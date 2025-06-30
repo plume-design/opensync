@@ -27,7 +27,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifndef EST_UTIL_H_INCLUDED
 #define EST_UTIL_H_INCLUDED
 
-char *est_util_pkcs7_to_pem(const char *pkcs7);
-char *est_util_csr_subject(void);
+#include "arena.h"
+
+char *est_util_pkcs7_to_pem(arena_t *aut, const char *pkcs7);
 
 #endif /* EST_UTIL_H_INCLUDED */

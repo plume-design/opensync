@@ -34,202 +34,154 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "neigh_table.h"
 #include "log.h"
 #include "os_random.h"
+#include "fcm_report_filter.h"
 
 
-static void
-generate_os_ufid(ctflow_info_t *ct_entry, dp_ctl_stats_t *stats)
-{
-    uint16_t sport;
-    uint16_t dport;
-    uint8_t proto;
-    ct_flow_t *flow;
-    os_ufid_t *id;
-
-    id = &stats->ufid.id;
-    flow = &ct_entry->flow;
-
-    sport = ntohs(flow->layer3_info.src_port);
-    dport = ntohs(flow->layer3_info.dst_port);
-    proto = flow->layer3_info.proto_type;
-
-    id->u32[0] = stats->smac_key.addr[0] ^ stats->smac_key.addr[1] ^
-                 stats->smac_key.addr[2] ^ stats->smac_key.addr[3] ^
-                 stats->smac_key.addr[4] ^ stats->smac_key.addr[5] ^
-                 sport;
-    id->u32[2] = stats->dmac_key.addr[0] ^ stats->dmac_key.addr[1] ^
-                 stats->dmac_key.addr[2] ^ stats->dmac_key.addr[3] ^
-                 stats->dmac_key.addr[4] ^ stats->dmac_key.addr[5] ^
-                 dport ^ proto;
-
-    LOGD("%s: Generated ufid: "PRI_os_ufid_t,
-          __func__, FMT_os_ufid_t_pt(&stats->ufid.id));
-    return;
-}
-
-
-/**
- * Determines whether to include a contrack entry in the LAN statistics.
- *
- * @param lan_stats_instance The LAN statistics instance.
- * @param ct_entry The contrack entry.
- * @param stats flow stats
- * @return Returns true if the ct entry should be included, false otherwise.
- */
 static bool
-lan_stats_include_ct_entry(lan_stats_instance_t *lan_stats_instance, ctflow_info_t *ct_entry, dp_ctl_stats_t *stats)
+lan_stats_select_acc(struct net_md_stats_accumulator *acc)
 {
-    struct sockaddr_storage *ssrc;
-    struct sockaddr_storage *sdst;
+    lan_stats_instance_t *lan_stats_instance;
+    fcm_collect_plugin_t *collector;
+    struct net_md_flow_key *key;
+    struct flow_key *fkey;
     char *device_tag;
-    bool smac_lookup;
-    bool dmac_lookup;
-    ct_flow_t *flow;
     bool is_eth_dev;
+    bool rc;
 
-    flow = &ct_entry->flow;
-    ssrc = &flow->layer3_info.src_ip;
-    sdst = &flow->layer3_info.dst_ip;
+    if (acc == NULL) return false;
 
-    /* populates smac_key and dmac_key */
-    smac_lookup = neigh_table_lookup(ssrc, &stats->smac_key);
-    dmac_lookup = neigh_table_lookup(sdst, &stats->dmac_key);
+    lan_stats_instance = lan_stats_get_active_instance();
+    if (lan_stats_instance == NULL)
+    {
+        LOGD("%s: No active instance found", __func__);
+        return false;
+    }
 
-    /* include ct entry if both smac and dmac are present (LAN to LAN traffic) */
-    if (smac_lookup && dmac_lookup) return true;
+    collector = lan_stats_instance->collector;
+    if (collector == NULL) return false;
+    fcm_filter_context_init(collector);
 
-    /* check if it is ethernet traffic */
+        /* check if it is ethernet traffic */
     device_tag = (lan_stats_instance->parent_tag != NULL) ?
                   lan_stats_instance->parent_tag : ETH_DEVICES_TAG;
 
-    /* Check if the device is an ethernet device */
-    is_eth_dev = (lan_stats_is_mac_in_tag(device_tag, &stats->smac_key) ||
-                  lan_stats_is_mac_in_tag(device_tag, &stats->dmac_key));
+    key = acc->key;
+    fkey = acc->fkey;
+    if (key == NULL || fkey == NULL) return false;
 
-    /* if ethernet device include the entry */
-    if (is_eth_dev) return true;
+                      /* Check if the device is an ethernet device */
+    is_eth_dev = (lan_stats_is_mac_in_tag(device_tag, key->smac) ||
+                  lan_stats_is_mac_in_tag(device_tag, key->dmac));
 
-    /* ignore this ct entry */
-    return false;
-}
+    if (!is_eth_dev) return false;
 
-bool
-lan_stats_parse_ct(lan_stats_instance_t *lan_stats_instance, ctflow_info_t *ct_entry, dp_ctl_stats_t *stats)
-{
-    pkts_ct_info_t  *pkt_info;
-    ct_flow_t *flow;
-    bool rc = false;
-    bool include_entry;
-    int  af;
+    key->isparent_of_smac = lan_stats_is_mac_in_tag(device_tag, key->smac);
+    key->isparent_of_dmac = lan_stats_is_mac_in_tag(device_tag, key->dmac);
+    fkey->isparent_of_smac = key->isparent_of_smac;
+    fkey->isparent_of_dmac = key->isparent_of_dmac;
 
-    flow = &ct_entry->flow;
-    pkt_info = &flow->pkt_info;
-
-    af = flow->layer3_info.src_ip.ss_family;
-
-    include_entry = lan_stats_include_ct_entry(lan_stats_instance, ct_entry, stats);
-    if (include_entry == false) return rc;
-
-    stats->eth_val = (af == AF_INET ? 0x0800 : 0x86DD);
-    stats->pkts = pkt_info->pkt_cnt;
-    stats->bytes = pkt_info->bytes;
-    generate_os_ufid(ct_entry, stats);
-    rc = true;
-    return rc;
-}
-
-
-static bool
-lan_stats_get_flows(lan_stats_instance_t *lan_stats_instance)
-{
-    ds_dlist_t *ct_list;
-    bool rc = false;
-
-    if (lan_stats_instance == NULL) return rc;
-    ct_list = &lan_stats_instance->ct_list;
-
-    rc = nf_ct_get_flow_entries(AF_INET, ct_list, lan_stats_instance->ct_zone);
-    if (rc == false)
-    {
-        LOGE("%s: Failed to collect IPv4 conntrack flows.", __func__);
-        return rc;
-
-    }
-
-    rc = nf_ct_get_flow_entries(AF_INET6, ct_list, lan_stats_instance->ct_zone);
-    if (rc == false)
-    {
-        LOGE("%s: Failed to collect IPv6 conntrack flows.", __func__);
-        return rc;
-
-    }
-    return rc;
-}
-
-
-static bool
-lan_stats_filter_flow(lan_stats_instance_t *lan_stats_instance, ctflow_info_t *ct_entry)
-{
-    bool skip_flow;
-    int af;
-
-    af = ct_entry->flow.layer3_info.dst_ip.ss_family;
-    skip_flow = nf_ct_filter_ip(af, &ct_entry->flow.layer3_info.dst_ip);
-    if (skip_flow) return true;
-
-    skip_flow = nf_ct_filter_ip(af, &ct_entry->flow.layer3_info.src_ip);
-    if (skip_flow) return true;
-
-    lan_stats_instance->node_count++;
-    return false;
-}
-
-
-bool
-lan_stats_process_ct_flows(lan_stats_instance_t *lan_stats_instance)
-{
-    ctflow_info_t *ct_entry;
-    dp_ctl_stats_t stats;
-    ds_dlist_t *ct_list;
-    bool rc = false;
-
-    if (lan_stats_instance == NULL) return rc;
-
-    ct_list = &lan_stats_instance->ct_list;
-
-
-    ds_dlist_foreach(ct_list, ct_entry)
-    {
-        MEMZERO(stats);
-        if (lan_stats_filter_flow(lan_stats_instance, ct_entry)) continue;
-
-        if (!lan_stats_parse_ct(lan_stats_instance, ct_entry, &stats)) continue;
-
-        lan_stats_add_uplink_info(lan_stats_instance, &stats);
-
-        lan_stats_flows_filter(lan_stats_instance, &stats);
-    }
+    rc = fcm_collect_filter_nmd_callback(key);
+    LOGT("%s: flow %s", __func__, rc ? "included" : "filtered out");
 
     return rc;
 }
 
-
-void
-lan_stats_collect_flows(lan_stats_instance_t *lan_stats_instance)
+void lan_stats_process_flows(ds_tree_t *tree)
 {
-    ds_dlist_t *ct_list;
-    bool rc = false;
+    struct net_md_flow *flow;
 
-    if (lan_stats_instance == NULL) return;
+    flow = ds_tree_head(tree);
+    while (flow != NULL)
+    {
+        struct net_md_stats_accumulator *acc;
+        struct net_md_flow *next;
+        bool select;
 
-    ct_list = &lan_stats_instance->ct_list;
+        next = ds_tree_next(tree, flow);
+        acc = flow->tuple_stats;
 
-    rc = lan_stats_get_flows(lan_stats_instance);
-    if (rc == false) return;
+        /* process only if it is a LAN-LAN traffic */
+        if (acc->key->smac == NULL || acc->key->dmac == NULL)
+        {
+            flow = next;
+            continue;
+        }
 
-    lan_stats_process_ct_flows(lan_stats_instance);
+        select = lan_stats_select_acc(acc);
+        if (!select)
+        {
+            ds_tree_remove(tree, flow);
+            net_md_free_flow(flow);
+            FREE(flow);
+        }
+        flow = next;
+    }
+}
 
-    if (LOG_SEVERITY_ENABLED(LOG_SEVERITY_TRACE)) nf_ct_print_entries(ct_list);
+static void
+lan_stats_process_eth_acc(struct net_md_eth_pair *eth_pair)
+{
+    struct net_md_stats_accumulator *eth_acc;
+    bool select;
 
-    nf_free_ct_flow_list(ct_list);
-    return;
+    if (eth_pair == NULL || eth_pair->mac_stats == NULL) return;
+
+    eth_acc = eth_pair->mac_stats;
+    /* process only if it is a LAN-LAN traffic */
+    if (eth_acc->key == NULL || eth_acc->key->smac == NULL || eth_acc->key->dmac == NULL) return;
+
+     /* check if acc should be selected for processing */
+    select = lan_stats_select_acc(eth_acc);
+    if (!select)
+    {
+         /* Not selected, free the ethernet pair*/
+        net_md_free_flow_tree(&eth_pair->ethertype_flows);
+        net_md_free_flow_tree(&eth_pair->five_tuple_flows);
+        return;
+    }
+    lan_stats_process_flows(&eth_pair->ethertype_flows);
+}
+
+void lan_stats_process_aggr(struct net_md_aggregator *to, struct net_md_aggregator *from)
+{
+    struct net_md_eth_pair *eth_pair;
+    u_int64_t eth_pairs_count;
+    u_int64_t five_tuple_flows_count;
+
+    if (from == NULL || to == NULL) return;
+    eth_pairs_count = 0;
+    five_tuple_flows_count = 0;
+
+    to->total_flows = from->total_flows;
+    to->total_eth_pairs = from->total_eth_pairs;
+    to->eth_pairs = from->eth_pairs;
+    to->five_tuple_flows = from->five_tuple_flows;
+    to->active_accs = from->active_accs;
+
+    LOGN("%s: processing lan stats aggregator", __func__);
+    net_md_log_aggr(to);
+
+    /* Process eth_pairs in the aggregator */
+    eth_pair = ds_tree_head(to->eth_pairs);
+    while (eth_pair != NULL)
+    {
+        eth_pairs_count += 1;
+        /* Process ethernet flows */
+        lan_stats_process_eth_acc(eth_pair);
+
+        /* Process 5-tuple flows within the eth_pair */
+        lan_stats_process_flows(&eth_pair->five_tuple_flows);
+
+        eth_pair = ds_tree_next(to->eth_pairs, eth_pair);
+    }
+
+    struct net_md_flow *flow;
+    flow = ds_tree_head(to->five_tuple_flows);
+    while (flow != NULL)
+    {
+        five_tuple_flows_count += 1;
+        flow = ds_tree_next(to->five_tuple_flows, flow);
+    }
+    LOGN("%s: processed %llu eth pairs and %llu five tuple flows",
+         __func__, (unsigned long long)eth_pairs_count, (unsigned long long)five_tuple_flows_count);
 }

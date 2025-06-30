@@ -340,7 +340,6 @@ osw_wpa_to_str(char *out, size_t len, const struct osw_wpa *wpa)
     if (wpa->akm_ft_eap) csnprintf(&out, &len, "ft_eap ");
     if (wpa->akm_ft_eap_sha384) csnprintf(&out, &len, "ft_eap_sha384 ");
     csnprintf(&out, &len, "pmf=%s ", osw_pmf_to_str(wpa->pmf));
-    csnprintf(&out, &len, "mdid=%04x ", wpa->ft_mobility_domain);
     if (wpa->beacon_protection) csnprintf(&out, &len, "b_prot ");
     csnprintf(&out, &len, "gtk=%d ", wpa->group_rekey_seconds);
     strip_trailing_whitespace(out);
@@ -1383,6 +1382,62 @@ osw_ap_psk_list_to_str(char *out,
         out[-1] = 0;
 }
 
+int
+osw_neigh_ft_cmp(const struct osw_neigh_ft *a,
+                 const struct osw_neigh_ft *b)
+{
+    if (a == NULL && b == NULL) return 0;
+    if (a == NULL && b != NULL) return -1;
+    if (a != NULL && b == NULL) return 1;
+
+    const int r1 = osw_hwaddr_cmp(&a->bssid, &b->bssid);
+    const int r2 = osw_ft_encr_key_cmp(&a->ft_encr_key, &b->ft_encr_key);
+    const int r3 = osw_nas_id_cmp(&a->nas_identifier, &b->nas_identifier);
+    if (r1) return r1;
+    if (r2) return r2;
+    if (r3) return r3;
+    return 0;
+}
+
+int
+osw_neigh_ft_list_cmp(const struct osw_neigh_ft_list *a,
+                      const struct osw_neigh_ft_list *b)
+{
+    if (a == NULL && b == NULL) return 0;
+    if (a == NULL && b != NULL) return -1;
+    if (a != NULL && b == NULL) return 1;
+
+    const int r = (int)a->count - (int)b->count;
+    if (r) return r;
+
+    size_t i;
+    for (i = 0; i < a->count; i++) {
+        const struct osw_neigh_ft *x = &a->list[i];
+        const struct osw_neigh_ft *y = osw_neigh_ft_list_lookup(b, &x->bssid);
+        const int r = osw_neigh_ft_cmp(x, y);
+        if (r) return r;
+    }
+
+    return 0;
+}
+
+const struct osw_neigh_ft *
+osw_neigh_ft_list_lookup(const struct osw_neigh_ft_list *l,
+                         const struct osw_hwaddr *bssid)
+{
+    if (l == NULL) return NULL;
+    if (bssid == NULL) return NULL;
+
+    size_t i;
+    for (i = 0; i < l->count; i++) {
+        const struct osw_neigh_ft *li = &l->list[i];
+        if (osw_hwaddr_is_equal(&li->bssid, bssid)) {
+            return li;
+        }
+    }
+    return NULL;
+}
+
 void
 osw_neigh_list_to_str(char *out,
                       size_t len,
@@ -2322,6 +2377,17 @@ osw_wpa_is_ft(const struct osw_wpa *wpa)
 {
     return wpa->akm_ft_eap || wpa->akm_ft_psk || wpa->akm_ft_sae ||
            wpa->akm_ft_sae_ext || wpa->akm_ft_eap_sha384;
+}
+
+const char *osw_sta_cell_cap_to_cstr(enum osw_sta_cell_cap cap)
+{
+    switch (cap)
+    {
+        case OSW_STA_CELL_UNKNOWN: return "unknown";
+        case OSW_STA_CELL_AVAILABLE: return "available";
+        case OSW_STA_CELL_NOT_AVAILABLE: return "not available";
+    }
+    return "";
 }
 
 #include "osw_types_ut.c"

@@ -1020,14 +1020,23 @@ static void sm_lat_core_vif_invalidate(sm_lat_core_vif_t *vif)
     sm_lat_core_ifname_enable(i, true);
 }
 
+static void sm_lat_core_vif_set_exists(sm_lat_core_vif_t *vif, bool exists)
+{
+    const bool changed = (vif->exists != exists);
+    vif->exists = exists;
+    if (changed)
+    {
+        sm_lat_core_vif_invalidate(vif);
+    }
+}
+
 static void sm_lat_core_vif_netif_status_cb(osn_netif_t *netif, struct osn_netif_status *status)
 {
     sm_lat_core_vif_t *vif = osn_netif_data_get(netif);
     const bool wrong_ifname = (strcmp(vif->name, status->ns_ifname) != 0);
     if (wrong_ifname) return;
 
-    vif->exists = status->ns_exists;
-    sm_lat_core_vif_invalidate(vif);
+    sm_lat_core_vif_set_exists(vif, status->ns_exists);
 }
 
 static sm_lat_core_vif_t *sm_lat_core_vif_alloc(sm_lat_core_t *c, const char *vif_name)
@@ -1103,6 +1112,8 @@ static void sm_lat_core_vif_detach_mld(sm_lat_core_vif_t *vif)
     LOGD(LOG_PREFIX_VIF(vif, "detaching"));
     osn_netif_status_notify(vif->netif, NULL);
     osn_netif_del(vif->netif);
+    vif->netif = NULL;
+    sm_lat_core_vif_set_exists(vif, false);
 
     ds_tree_remove(&vif->mld->vifs, vif);
     sm_lat_core_mld_gc(vif->mld);

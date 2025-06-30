@@ -83,11 +83,15 @@ int main(int argc, char ** argv)
         return -1;
     }
 
-    blem_ovsdb_init();
+    blem_ovsdb_onboarding_init();
+    blem_ovsdb_proximity_init();
 
     ev_run(loop, 0);
 
     // Exit
+    blem_ovsdb_proximity_fini();
+    blem_ovsdb_onboarding_fini();
+
     blem_ble_close();
     target_close(TARGET_INIT_MGR_BLEM, loop);
 

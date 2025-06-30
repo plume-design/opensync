@@ -249,6 +249,12 @@ static void dppline_free_stat(dppline_stats_t * s)
         switch (s->type)
         {
             case DPP_T_SURVEY:
+                for (i=0; i<s->u.survey.qty; i++)
+                {
+                    if (s->u.survey.list[i].info.puncture_len && s->u.survey.list[i].info.puncture != NULL) {
+                        FREE(s->u.survey.list[i].info.puncture);
+                    }
+                }
                 FREE(s->u.survey.list);
                 FREE(s->u.survey.avg);
                 break;
@@ -998,7 +1004,19 @@ static void dppline_add_stat_survey(Sts__Report *r, dppline_stats_t *s)
             sts__survey__survey_sample__init(dr);
 
             dr->channel = rec->info.chan;
-
+            if (sr->survey_type == STS__SURVEY_TYPE__ON_CHANNEL && rec->info.chan_width != STS__CHAN_WIDTH__CHAN_WIDTH_UNKNOWN) {
+                dr->chan_width = rec->info.chan_width;
+                dr->has_chan_width = true;
+            }
+            if (rec->info.chan_width > STS__CHAN_WIDTH__CHAN_WIDTH_20MHZ) {
+                dr->center0_freq_mhz = rec->info.center0_freq_mhz;
+                dr->has_center0_freq_mhz = true;
+                if (rec->info.puncture_len) {
+                    dr->puncture.data = MEMNDUP(rec->info.puncture, rec->info.puncture_len);
+                    dr->puncture.len = rec->info.puncture_len;
+                    dr->has_puncture = true;
+                }
+            }
 #define CP_OPT(_name, _name1) do { \
         if (rec->_name1) { \
             dr->_name = rec->_name1; \

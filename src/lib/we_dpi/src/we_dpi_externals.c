@@ -32,6 +32,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "we.h"
 #include "we_dpi_conntrack.h"
 #include "we_dpi_plugin.h"
+#include "memutil.h"
 
 int dpi_ext_exec(we_state_t s, void *arg)
 {
@@ -95,7 +96,7 @@ static char *_we_strdup(we_state_t s, int r)
     char *str;
     int len = we_read(s, r, WE_BUF, &str);
     if (len < 0) return NULL;
-    return strndup(str, len);
+    return STRNDUP(str, len);
 }
 
 /* int open(str file, str mode) */
@@ -113,7 +114,7 @@ int dpi_ext_open(we_state_t s, void *user)
     file = _we_strdup(s, we_top(s));
     if (file == NULL)
     {
-        free(mode);
+        FREE(mode);
         return -ENOMEM;
     }
     we_pop(s);
@@ -134,7 +135,8 @@ int dpi_ext_open(we_state_t s, void *user)
     {
         fp = fopen(file, mode);
     }
-    free(mode), free(file);
+    FREE(mode);
+    FREE(file);
     we_pushnum(s, (intptr_t)fp);
     return 0;
 }
@@ -337,7 +339,7 @@ int dpi_ext_ps_open(we_state_t s, void *arg)
         LOGE("%s: failed to osp_ps_open\n", __func__);
     }
 
-    free(store);
+    FREE(store);
 end:
     we_pushnum(s, (intptr_t)ps);
     return 0;
@@ -415,10 +417,10 @@ int dpi_ext_ps_get(we_state_t s, void *arg)
         we_pushstr(s, 0, NULL);
     }
 
-    free(key);
+    FREE(key);
     return 0;
 cleanup:
-    free(key);
+    FREE(key);
     we_pushstr(s, 0, NULL);
     return 0;
 }
@@ -447,7 +449,7 @@ int dpi_ext_ps_set(we_state_t s, void *arg)
     }
 
 cleanup:
-    free(key);
+    FREE(key);
     we_pop(s); /* value */
     we_pop(s); /* key */
     we_pop(s); /* ptr */
@@ -470,7 +472,7 @@ int dpi_ext_set_plugin_decision(we_state_t s, void *arg)
     /* return 0 */
     we_pushnum(s, 0);
 
-    if (user) fsm_dpi_set_plugin_decision(user->fsm, user->np, decision);
+    if (user) fsm_dpi_set_plugin_decision(user->fsm, user->acc, decision);
 
     return 0;
 }

@@ -56,9 +56,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 static char lnx_tc_qdisc_egress_reset[] = _S(tc qdisc del dev "$1" root || true);
 
-static char lnx_tc_qdisc_ingress_reset[] = _S(tc qdisc del dev "$1" ingress || true);
-
 static char lnx_tc_qdisc_ingress_set[] = _S(tc qdisc add dev "$1" ingress handle ffff:fff1);
+
+static char lnx_tc_qdisc_clsact_reset[] = _S(tc qdisc del dev "$1" parent ffff:fff1);
+
+static char lnx_tc_qdisc_clsact_set[] = _S(tc qdisc add dev "$1" clsact);
 
 static char lnx_tc_qdisc_egress_set[] = _S(
         tc qdisc add dev "$1" \
@@ -77,6 +79,18 @@ static char lnx_tc_qdisc_ingress_filter_add[] = _S(
 
         tc filter add dev "$ifname" \
                 parent ffff: \
+                prio ${priority} \
+                ${match} \
+                ${action});
+
+static char lnx_tc_qdisc_clsact_filter_add[] = _S(
+        ifname="$1";
+        match="$2";
+        action="$3";
+        priority="$4";
+
+        tc filter add dev "$ifname" \
+                ingress \
                 prio ${priority} \
                 ${match} \
                 ${action});
@@ -178,17 +192,22 @@ static bool lnx_tc_reset_if_needed(lnx_tc_t *self)
      * Always reset ingress qdiscs. Ingress qdiscs are used only by tc-filters (this module),
      * thus they can alway be reset independently of egress qdiscs.
      */
-    LOG(INFO, "tc: %s: Resetting ingress", self->lt_ifname);
-    rc = execsh_log(LOG_SEVERITY_DEBUG, lnx_tc_qdisc_ingress_reset, self->lt_ifname);
+    LOG(INFO, "tc: %s: Resetting clsact/ingress", self->lt_ifname);
+    rc = execsh_log(LOG_SEVERITY_DEBUG, lnx_tc_qdisc_clsact_reset, self->lt_ifname);
     if (rc != 0)
     {
-        LOG(INFO, "tc: %s: Error resetting ingress TC.", self->lt_ifname);
+        LOG(INFO, "tc: %s: Error resetting clsact/ingress TC or nothing to reset.", self->lt_ifname);
     }
-    rc = execsh_log(LOG_SEVERITY_DEBUG, lnx_tc_qdisc_ingress_set, self->lt_ifname);
+    rc = execsh_log(LOG_SEVERITY_DEBUG, lnx_tc_qdisc_clsact_set, self->lt_ifname);
     if (rc != 0)
     {
-        LOG(ERR, "tc: %s: Error setting ingress TC.", self->lt_ifname);
-        return false;
+        LOG(INFO, "tc: %s: Error setting clsact TC, setting ingress as fallback.", self->lt_ifname);
+        rc = execsh_log(LOG_SEVERITY_DEBUG, lnx_tc_qdisc_ingress_set, self->lt_ifname);
+        if (rc != 0)
+        {
+            LOG(ERR, "tc: %s: Error setting ingress TC.", self->lt_ifname);
+            return false;
+        }
     }
 
     return true;
@@ -307,14 +326,22 @@ bool lnx_tc_apply(lnx_tc_t *self)
         snprintf(priority, sizeof(priority), "%d", tf->priority);
         if (tf->ingress)
         {
-           rc = execsh_log(LOG_SEVERITY_DEBUG, lnx_tc_qdisc_ingress_filter_add,
+           rc = execsh_log(LOG_SEVERITY_DEBUG, lnx_tc_qdisc_clsact_filter_add,
                            self->lt_ifname,
                            tf->match,
                            tf->action ? tf->action : "",
                            priority);
            if (rc != 0)
            {
-                LOG(ERR, "tc: %s: Error setting TC filter configuration.", self->lt_ifname);
+                rc = execsh_log(LOG_SEVERITY_DEBUG, lnx_tc_qdisc_ingress_filter_add,
+                               self->lt_ifname,
+                               tf->match,
+                               tf->action ? tf->action : "",
+                               priority);
+                if (rc != 0)
+                {
+                    LOG(ERR, "tc: %s: Error setting TC filter configuration.", self->lt_ifname);
+                }
            }
         }
         else

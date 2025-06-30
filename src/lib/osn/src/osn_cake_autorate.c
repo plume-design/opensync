@@ -29,6 +29,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <memutil.h>
 #include <log.h>
 
+#include "osn_types.h"
+#include "ds_dlist.h"
+#include "ds_map_str.h"
+
 #include "osn_adaptive_qos.h"
 #include "cake_autorate.h"
 
@@ -72,6 +76,46 @@ bool osn_adaptive_qos_UL_shaper_adjust_set(osn_adaptive_qos_t *self, bool shaper
 bool osn_adaptive_qos_UL_shaper_params_set(osn_adaptive_qos_t *self, int min_rate, int base_rate, int max_rate)
 {
     return cake_autorate_UL_shaper_params_set(&self->cake_autorate, min_rate, base_rate, max_rate);
+}
+
+bool osn_adaptive_qos_reflector_add(osn_adaptive_qos_t *self, const osn_ipany_addr_t *ip_addr)
+{
+    return cake_autorate_reflector_add(&self->cake_autorate, ip_addr);
+}
+
+bool osn_adaptive_qos_reflector_list_add(osn_adaptive_qos_t *self, const osn_ipany_addr_t ip_addr_list[], int num)
+{
+    return cake_autorate_reflector_list_add(&self->cake_autorate, ip_addr_list, num);
+}
+
+void osn_adaptive_qos_reflectors_list_clear(osn_adaptive_qos_t *self)
+{
+    return cake_autorate_reflector_list_clear(&self->cake_autorate);
+}
+
+bool osn_adaptive_qos_reflectors_randomize_set(osn_adaptive_qos_t *self, bool randomize)
+{
+    return cake_autorate_reflectors_randomize_set(&self->cake_autorate, randomize);
+}
+
+bool osn_adaptive_qos_reflectors_ping_interval_set(osn_adaptive_qos_t *self, int ping_interval)
+{
+    return cake_autorate_reflectors_ping_interval_set(&self->cake_autorate, ping_interval);
+}
+
+bool osn_adaptive_qos_num_pingers_set(osn_adaptive_qos_t *self, int num_pingers)
+{
+    return cake_autorate_num_pingers_set(&self->cake_autorate, num_pingers);
+}
+
+bool osn_adaptive_qos_active_threshold_set(osn_adaptive_qos_t *self, int threshold)
+{
+    return cake_autorate_active_threshold_set(&self->cake_autorate, threshold);
+}
+
+bool osn_adaptive_qos_other_config_set(osn_adaptive_qos_t *self, const ds_map_str_t *other_config)
+{
+    return cake_autorate_other_config_set(&self->cake_autorate, other_config);
 }
 
 bool osn_adaptive_qos_apply(osn_adaptive_qos_t *self)

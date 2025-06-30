@@ -201,31 +201,3 @@ err_scan:
     LOGD("%s: error scanning %s: %s", __func__, fname, strerror(errno));
     fclose(file);
 }
-
-/**
- * @brief Handle connection tracking events by dispatching them to
- *        the registered plugins.
- * This function is called when the conntrack update event occurs.
- * @param data pointer to the data corresponding to the deleted
- * conntrack entry
- */
-void fcm_conntrack_event_cb(void *data)
-{
-    fcm_collector_t *collector = NULL;
-    ds_tree_t *collect_tree = NULL;
-    fcm_collect_plugin_t *plugin;
-    fcm_mgr_t *mgr = NULL;
-
-    mgr = fcm_get_mgr();
-    collect_tree = &mgr->collect_tree;
-
-    ds_tree_foreach (collect_tree, collector)
-    {
-        plugin = &collector->plugin;
-
-        if (plugin->process_ct_event)
-        {
-            plugin->process_ct_event(plugin, data);
-        }
-    }
-}

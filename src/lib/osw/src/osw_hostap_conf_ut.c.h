@@ -355,7 +355,6 @@ static struct osw_drv_conf g_drv_conf = {
                                 .pairwise_ccmp = true,
                                 .pmf = OSW_PMF_REQUIRED,
                                 .group_rekey_seconds = 3600,
-                                .ft_mobility_domain = 0xddf7,
                             },
                             .psk_list = {
                                 .count = 3,
@@ -695,7 +694,6 @@ OSW_UT(osw_hostap_conf_parse_ap_state_ut)
     OSW_UT_EVAL(ap->wpa.pairwise_ccmp == true);
     OSW_UT_EVAL(ap->wpa.pmf == OSW_PMF_OPTIONAL);
     OSW_UT_EVAL(ap->wpa.group_rekey_seconds == 86400);
-    OSW_UT_EVAL(ap->wpa.ft_mobility_domain == 0x00);
 }
 
 OSW_UT(osw_hostap_conf_parse_ap_state_ssid_ut)

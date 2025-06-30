@@ -26,6 +26,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 /* FIXME: Use U64 for some of the stats */
 
+#include <osw_state.h>
+
 static const struct osw_tlv_policy
 g_osw_stats_tp_sta[OSW_STATS_STA_MAX__] = {
     [OSW_STATS_STA_PHY_NAME] = { .type = OSW_TLV_STRING },
@@ -62,7 +64,30 @@ g_osw_stats_mp_sta[OSW_STATS_STA_MAX__] = {
     [OSW_STATS_STA_RX_RATE_MBPS] = { .type = OSW_TLV_OP_OVERWRITE },
 };
 
+static void
+osw_stats_defs_sta_postprocess_cb(struct osw_tlv *data)
+{
+    const struct osw_tlv_hdr *tb[OSW_STATS_STA_MAX__] = {0};
+    const size_t left = osw_tlv_parse(data->data,
+                                      data->used,
+                                      g_osw_stats_tp_sta,
+                                      tb,
+                                      OSW_STATS_STA_MAX__);
+    (void)left;
+    const struct osw_tlv_hdr *vif_name_hdr = tb[OSW_STATS_STA_VIF_NAME];
+    const struct osw_tlv_hdr *vif_addr_hdr = tb[OSW_STATS_STA_VIF_ADDRESS];
+    if ((vif_name_hdr != NULL) && (vif_addr_hdr == NULL)) {
+        const char *vif_name = osw_tlv_get_string(vif_name_hdr);
+        const struct osw_state_vif_info *vif_info = osw_state_vif_lookup_by_vif_name(vif_name);
+        if (vif_info != NULL) {
+            const struct osw_hwaddr *vif_addr = &vif_info->drv_state->mac_addr;
+            osw_tlv_put_hwaddr(data, OSW_STATS_STA_VIF_ADDRESS, vif_addr);
+        }
+    }
+}
+
 static const struct osw_stats_defs g_osw_stats_defs_sta = {
+    .postprocess_fn = osw_stats_defs_sta_postprocess_cb,
     .tpolicy = g_osw_stats_tp_sta,
     .mpolicy = g_osw_stats_mp_sta,
     .size = OSW_STATS_STA_MAX__,

@@ -69,7 +69,6 @@ static struct osw_drv_conf g_drv_conf = {
                                         .pairwise_ccmp = true,
                                         .pmf = OSW_PMF_REQUIRED,
                                         .group_rekey_seconds = 3600,
-                                        .ft_mobility_domain = 0xddf7,
                                     },
                                     .psk.str = "hello",
                                     .bssid = {

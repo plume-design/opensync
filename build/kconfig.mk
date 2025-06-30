@@ -138,6 +138,14 @@ _menuconfig: $(KCONFIG_WORK)
 .PHONY: menuconfig
 menuconfig: _kconfig_target_check _menuconfig _kconfig_update
 
+# defconfig can be used to refresh a KCONFIG file with the current defaults
+.PHONY: _defconfig
+_defconfig: $(KCONFIG_WORK)
+	$(Q)KCONFIG_CONFIG="$(KCONFIG_WORK)" defconfig --kconfig kconfig/Kconfig "$(KCONFIG_WORK)"
+
+.PHONY: defconfig
+defconfig: _kconfig_target_check _defconfig _kconfig_update
+
 kconfig_install:
 	pip3 install --user kconfiglib==10.40.0
 

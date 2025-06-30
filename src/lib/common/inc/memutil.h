@@ -51,9 +51,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define MALLOC(sz)        memutil_inline_malloc(sz, __func__, __FILE__, __LINE__)
 #define CALLOC(n, sz)     memutil_inline_calloc(n, sz, __func__, __FILE__, __LINE__)
 #define REALLOC(ptr, sz)  memutil_inline_realloc(ptr, sz, __func__, __FILE__, __LINE__)
-#define STRDUP(sz)        memutil_inline_strdup(sz, __func__, __FILE__, __LINE__)
-#define STRNDUP(sz, n)    memutil_inline_strndup(sz, n, __func__, __FILE__, __LINE__)
-#define MEMNDUP(sz, n)    memutil_inline_memndup(sz, n, __func__, __FILE__, __LINE__)
+#define STRDUP(str)       memutil_inline_strdup(str, __func__, __FILE__, __LINE__)
+#define STRNDUP(str, n)   memutil_inline_strndup(str, n, __func__, __FILE__, __LINE__)
+#define MEMNDUP(data, n)  memutil_inline_memndup(data, n, __func__, __FILE__, __LINE__)
 
 /**
  * Perform a double free sanity check by setting the freed pointer value to
@@ -157,5 +157,7 @@ void* mem_append(void **base, void **cur, size_t sz);
 
 /* Pull in static inline functions */
 #include "../src/memutil.c.h"
+
+#include "mem_monitor.h"
 
 #endif /* MEMUTIL_H_INCLUDED */

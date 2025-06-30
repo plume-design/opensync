@@ -82,9 +82,8 @@ typedef enum {
     TARGET_INIT_MGR_NFM             = 19,
     TARGET_INIT_MGR_MAPTM           = 20,
     TARGET_INIT_MGR_CELLM           = 21,
-    TARGET_INIT_MGR_PWM             = 22,
-    TARGET_INIT_MGR_IOTM            = 23,
-    TARGET_INIT_MGR_TPSM            = 24
+    TARGET_INIT_MGR_IOTM            = 22,
+    TARGET_INIT_MGR_TPSM            = 23
 } target_init_opt_t;
 
 /**
@@ -354,7 +353,8 @@ btrace_type target_get_btrace_type(void);
  *
  * @return true on success
  */
-void target_managers_restart(void);
+void target_managers_restart_helper(const char *calling_func);
+#define target_managers_restart(void) target_managers_restart_helper(__func__)
 
 /// @} LIB_TARGET_OTHER
 

@@ -28,6 +28,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * MAC learning of wired clients on the native linux bridge
  */
 
+#include <ctype.h>
 #include <ev.h>
 #include <net/if.h>
 #include <stdlib.h>
@@ -89,12 +90,12 @@ static ds_dlist_t   g_mac_learning_flt = DS_DLIST_INIT(struct mac_learning_flt_t
  *  PROTECTED definitions
  *****************************************************************************/
 
-static struct mac_learning_flt_t *mac_learning_flt_find(int ifnum)
+static struct mac_learning_flt_t *mac_learning_flt_find(int ifnum, const char *brname)
 {
     struct mac_learning_flt_t *flt;
 
     ds_dlist_foreach(&g_mac_learning_flt, flt) {
-        if (flt->ifnum == ifnum) {
+        if ((flt->ifnum == ifnum) && (strcmp(flt->brname, brname) == 0)) {
             return flt;
         }
     }
@@ -121,7 +122,7 @@ static bool mac_learning_flt_get(const char *brname)
      * lan0 (5)
      * ...
      */
-    snprintf(cmd, sizeof(cmd), "brctl showstp %s | grep '^[eth|lan]'", brname);
+    snprintf(cmd, sizeof(cmd), "brctl showstp %s | grep -E '^(eth|lan)'", brname);
 
     fp = popen(cmd, "r");
     if (!fp)
@@ -150,6 +151,16 @@ static bool mac_learning_flt_get(const char *brname)
             {
                 break;
             }
+            /* For vlan, interface from the list must be found at the very beginning
+               of the ifname. Also both brname and ifname must contain dot.
+               For example: br-home.600, eth1.600, eth1 */
+            if ((strchr(brname, '.') != NULL) &&
+                (strchr(ifname, '.') != NULL) &&
+                (strstr(ifname, iflist[ifidx]) == ifname))
+            {
+                LOGT("BRCTLMAC: Found vlan interface %s matching %s", ifname, iflist[ifidx]);
+                break;
+            }
         }
         if (iflist[ifidx] == NULL)
         {
@@ -157,7 +168,7 @@ static bool mac_learning_flt_get(const char *brname)
             continue;
         }
 
-        flt = mac_learning_flt_find(ifnum);
+        flt = mac_learning_flt_find(ifnum, brname);
         if (flt != NULL) {
             LOGT("BRCTLMAC: Already exists %s @ %s :: ifnum=%d", flt->ifname, brname, flt->ifnum);
             if (strcmp(flt->ifname, ifname) != 0) {
@@ -227,7 +238,7 @@ static bool mac_learning_parse(const char *brname)
         }
 
         // Look only at eth interfaces
-        struct mac_learning_flt_t *flt = mac_learning_flt_find(ifnum);
+        struct mac_learning_flt_t *flt = mac_learning_flt_find(ifnum, brname);
         if (flt == NULL)
         {
             continue;
@@ -236,8 +247,15 @@ static bool mac_learning_parse(const char *brname)
         struct schema_OVS_MAC_Learning oml;
         memset(&oml, 0, sizeof(oml));
         strscpy(oml.hwaddr, mac, sizeof(oml.hwaddr));
-        strscpy(oml.brname, BRCTL_LAN_BRIDGE, sizeof(oml.brname));
+        strscpy(oml.brname, brname, sizeof(oml.brname));
         strscpy(oml.ifname, flt->ifname, sizeof(oml.ifname));
+        char *str_vlanid = strchr(brname, '.');
+        if (str_vlanid != NULL)
+        {
+            int vlanid = atoi(str_vlanid + 1);
+            LOGT("BRCTLMAC: Setting vlan %d for %s", vlanid, brname);
+            oml.vlan = vlanid;
+        }
 
         // New entry
         bool update = false;
@@ -321,18 +339,78 @@ static int mac_learning_cmp(const void *_a, const void *_b)
     return strcmp(a->ifname, b->ifname);
 }
 
+static void mac_learning_parse_vlanids(char *brname, int vlanids[], int *vlanids_len)
+{
+    char *brctl_show_output = strexa("brctl", "show");
+    if (brctl_show_output == NULL)
+    {
+        LOGE("BRCTLMAC: Unable to check for vlans on home bridge");
+        return;
+    }
+    char *line, *p;
+    size_t brname_length;
+    while ((line = strsep(&brctl_show_output, "\n")))
+    {
+        if (strstr(line, brname) == line) {
+            brname_length = 0;
+            p = line;
+            while ((!isspace(p[0])) && (p[0] != '\0'))
+            {
+                brname_length++;
+                p++;
+            }
+            if (brname_length > IFNAMSIZ)
+            {
+                LOGE("BRCTLMAC: Unexpected bridge name: %s", line);
+                continue;
+            }
+            char brname_vlanid[IFNAMSIZ] = {'\0'};
+            strncpy(brname_vlanid, line, brname_length);
+            LOGT("BRCTLMAC: bridge name: %s", brname_vlanid);
+            int vlan_id = atoi(brname_vlanid + strlen(brname) + 1);
+            if ((vlan_id != 0) && ((*vlanids_len) < C_VLAN_MAX))
+            {
+                LOGD("BRCTLMAC: Adding %d to the vlan list", vlan_id);
+                vlanids[*vlanids_len] = vlan_id;
+                (*vlanids_len)++;
+            }
+        }
+    }
+}
+
 static void mac_learing_timer_cb(struct ev_loop *loop, ev_timer *watcher, int revents)
 {
+    int vlanids[C_VLAN_MAX] = {0};
+    int vlanids_len = 0;
+    mac_learning_parse_vlanids(BRCTL_LAN_BRIDGE, vlanids, &vlanids_len);
+
     // Some vendors add/remove ethernet interface in runtime
     if (!mac_learning_flt_get(BRCTL_LAN_BRIDGE))
     {
         LOGE("BRCTLMAC: Unable to create MAC learning filter!");
         return;
     }
+    int i;
+    for (i=0; i < vlanids_len; i++)
+    {
+        char brname_vlanid[IFNAMSIZ] = {'\0'};
+        snprintf(brname_vlanid, IFNAMSIZ, BRCTL_LAN_BRIDGE ".%d", vlanids[i]);
+        if (!mac_learning_flt_get(brname_vlanid))
+        {
+            LOGE("BRCTLMAC: Unable to create MAC learning filter for %s", brname_vlanid);
+            return;
+        }
+    }
 
     LOGD("BRCTLMAC: refreshing mac learning table");
     mac_learning_invalidate();
     mac_learning_parse(BRCTL_LAN_BRIDGE);
+    for (i=0; i < vlanids_len; i++)
+    {
+        char brname_vlanid[IFNAMSIZ] = {'\0'};
+        snprintf(brname_vlanid, IFNAMSIZ, BRCTL_LAN_BRIDGE ".%d", vlanids[i]);
+        mac_learning_parse(brname_vlanid);
+    }
     mac_learning_flush();
 }
 

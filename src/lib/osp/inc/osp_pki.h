@@ -31,40 +31,64 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <time.h>
 
 /**
- * Check if the currently installed certificate and return the expire date
+ * Check if the certificate denoted by `label` and return the expire date
  * and subject line.
+ *
+ * If `label` is NULL, the defualt certificate is checked.
  *
  * @return It returns true if the certificate exists and is correct,
  *         otherwise it returns false.
  */
-bool osp_pki_cert_info(time_t *expire_date, char *sub, size_t sub_sz);
+bool osp_pki_cert_info(const char *label, time_t *expire_date, char *sub, size_t sub_sz);
 
 /**
- * Generate and return a new CSR (certificate signing request). This function
- * may generate a new private key.
+ * Generate and return a new CSR (certificate signing request) for certificates
+ * associated with `label`. This function may generate a new private key.
+ *
+ * If `label` is NULL, the default certificate is used for generating new the
+ * CSR.
  *
  * @return This function returns an allocated string pointing to the
  *         certificate request. The caller is responsible for freeing
  *         the string.
  */
-char *osp_pki_cert_request(const char *subject);
+char *osp_pki_cert_request(const char *label, const char *subject);
 
 /**
- * Update and install new certificate. This function installs a new certificate
- * that was previously generated using `osp_pki_cert_request()`.
+ * Update and install new certificate associated with `label`. This function
+ * installs a new certificate that was previously generated using
+ * `osp_pki_cert_request()`.
+ *
+ * If `label` is NULL, the default certificate is updated.
  *
  * @return True on success, false on error.
- *
- * @note This function may trigger an OpenSync restart.
  */
-bool osp_pki_cert_update(const char *cert);
+bool osp_pki_cert_update(const char *label, const char *crt);
+
+/**
+ * Apply certificates to the system. This function will configure a single
+ * certificate to be used on the system.
+ *
+ * `label` must refer to a valid (present, not expired) certificate.
+ *
+ * @return True on success, false on error.
+ */
+bool osp_pki_cert_install(const char *label);
+
+/**
+ * Remove a previously installed certificate with under `label`.
+ * The default certificate cannot be removed and when `label` is
+ * NULL, this function always returns an error.
+ *
+ * @return True on success, false on error.
+ */
+bool osp_pki_cert_remove(const char *label);
 
 /**
  * Setup the PKI infrastructure. This function can be called in one of the
  * following scenarios:
  *  - Right after boot before managers start
  *  - Before a manager restart (between stop and start)
- *  - When the certificate was updated
  *
  * @return Returns false if setup has failed.
  */

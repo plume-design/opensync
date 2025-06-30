@@ -410,8 +410,6 @@ static bool cm2_connection_req_stability_process(const char *if_name,
 
     if (!g_state.link.is_used) {
         LOGN("Waiting for new active link");
-        g_state.ble_status = 0;
-        cm2_ovsdb_connection_update_ble_phy_link();
         return false;
     }
 

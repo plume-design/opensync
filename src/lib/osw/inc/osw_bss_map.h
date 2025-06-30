@@ -113,11 +113,13 @@ OSW_BSS_ENTRY_SET_PROTOTYPE(struct osw_ssid, ssid);
 OSW_BSS_ENTRY_SET_PROTOTYPE(struct osw_channel, channel);
 OSW_BSS_ENTRY_SET_PROTOTYPE(uint8_t, op_class);
 OSW_BSS_ENTRY_SET_PROTOTYPE(struct osw_hwaddr, mld_addr);
+OSW_BSS_ENTRY_SET_PROTOTYPE(int, ft_mobility_domain);
 
 OSW_BSS_GET_PROTOTYPE(struct osw_ssid, ssid);
 OSW_BSS_GET_PROTOTYPE(struct osw_channel, channel);
 OSW_BSS_GET_PROTOTYPE(uint8_t, op_class);
 OSW_BSS_GET_PROTOTYPE(struct osw_hwaddr, mld_addr);
+OSW_BSS_GET_PROTOTYPE(int, ft_mobility_domain);
 
 #undef OSW_BSS_SET_PROTOTYPE
 #undef OSW_BSS_GET_PROTOTYPE

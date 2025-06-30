@@ -171,6 +171,8 @@ static bool iperf_parse_json(json_t *js_root, struct st_context *st_ctx)
     json_t *js_pkt_loss = NULL;
     double jitter = 0.0;
     json_t *js_jitter = NULL;
+    double mean_rtt = 0.0;
+    json_t *js_mean_rtt = NULL;
     if (json_unpack_ex(
                 js,
                 &error,
@@ -242,6 +244,21 @@ static bool iperf_parse_json(json_t *js_root, struct st_context *st_ctx)
         st_ctx->st_status.host_remote_exists = true;
     }
 
+    if (is_UL && !is_udp) /* mean rtt for iperf client as sender using TCP */
+    {
+       if (json_unpack_ex(js_root, &error, 0, "{s:{s:[{s:{s:o}}]}}", "end", "streams", "sender",
+              "mean_rtt", &js_mean_rtt) != 0)
+       {
+           LOG(ERR, "ST_IPERF: JSON parse error (end, streams, mean_rtt): %d:%d: %s",
+                error.line, error.column, error.text);
+           return false;
+       }
+
+       mean_rtt = json_is_real(js_mean_rtt) ?
+                json_real_value(js_mean_rtt) : (double) json_integer_value(js_mean_rtt);
+
+    }
+
     if (is_UL)
     {
         st_ctx->st_status.UL_duration = duration;
@@ -257,6 +274,11 @@ static bool iperf_parse_json(json_t *js_root, struct st_context *st_ctx)
             st_ctx->st_status.UL_jitter = jitter;
             st_ctx->st_status.UL_jitter_exists = true;
         }
+	else
+	{
+	    st_ctx->st_status.RTT = mean_rtt;
+	    st_ctx->st_status.RTT_exists = true;
+	}
     }
     else
     {

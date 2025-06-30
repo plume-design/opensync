@@ -1,6 +1,7 @@
 #
 # Include common tools configs
 #
+source "src/tools/logread-osync/kconfig/Kconfig.tools"
 source "src/tools/osps/kconfig/Kconfig.tools"
 source "src/tools/plookup/kconfig/Kconfig.tools"
 

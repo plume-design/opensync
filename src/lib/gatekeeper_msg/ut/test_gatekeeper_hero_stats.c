@@ -380,7 +380,7 @@ test_gk_serialize_cache_no_mgr(void)
     TEST_ASSERT_FALSE(ret);
 
     /* Initialize the cache and check for success */
-    gk_cache_init();
+    gk_cache_init(num_attr_entries);
     ret = gkhc_serialize_cache_entries(aggr);
     TEST_ASSERT_TRUE(ret);
 
@@ -423,7 +423,7 @@ test_gk_serialize_cache_no_entries(void)
 
     aggr = gkhc_get_aggregator();
 
-    gk_cache_init();
+    gk_cache_init(num_attr_entries);
 
     /* We'll use the locally defined value in mock_get_config */
     g_session.ops = g_ops;
@@ -501,7 +501,7 @@ test_release_aggregator(void)
     gkhc_activate_window(aggr);
     TEST_ASSERT_NOT_EQUAL_INT(0, aggr->start_observation_window);
 
-    gk_cache_init();
+    gk_cache_init(num_attr_entries);
 
     gkc_add_attribute_entry(entry[1]);
     entry[1]->attribute_type = GK_CACHE_REQ_TYPE_URL;
@@ -530,7 +530,7 @@ test_gk_serialize_cache_add_entries(void)
 
     aggr = gkhc_get_aggregator();
 
-    gk_cache_init();
+    gk_cache_init(num_attr_entries);
 
     /* use a fairly small size so we have more than one record per
      * report sent and a few files for the records in the cache
@@ -630,7 +630,7 @@ test_gk_serialize_cache_redirect_cname_entries(void)
 
     aggr = gkhc_get_aggregator();
 
-    gk_cache_init();
+    gk_cache_init(num_attr_entries);
 
     /* use a fairly small size so we have more than one record per
      * report sent and a few files for the records in the cache
@@ -673,7 +673,7 @@ test_gk_serialize_cache_redirect_ip_entries(void)
 
     aggr = gkhc_get_aggregator();
 
-    gk_cache_init();
+    gk_cache_init(num_attr_entries);
 
     /* use a fairly small size so we have more than one record per
      * report sent and a few files for the records in the cache
@@ -746,7 +746,7 @@ test_gk_serialize_cache_action_by_name_entries(void)
 
     aggr = gkhc_get_aggregator();
 
-    gk_cache_init();
+    gk_cache_init(num_attr_entries);
 
     /* use a fairly small size so we have more than one record per
      * report sent and a few files for the records in the cache

@@ -72,11 +72,9 @@ struct dpi_session
     struct fsm_session *session;
     bool initialized;
     bool signature_loaded;
-    bool conn_releasing;
     bool scan_dbg_enable;
     struct dpi_parser parser;
     rts_handle_t handle;
-    nfe_conntrack_t ct;
     uint32_t rts_dict_expiry;
     uint32_t connections;
     uint32_t streams;
@@ -86,6 +84,7 @@ struct dpi_session
     uint32_t err_scan;
     char *wc_topic;
     int wc_interval;
+    ds_tree_t dpi_conns;
     ds_tree_node_t session_node;
 };
 
@@ -102,6 +101,62 @@ struct dpi_plugin_cache
     ds_tree_t fsm_sessions;
     time_t periodic_ts;
     char *signature_version;
+};
+
+
+/* The maximum number of tags to be reported */
+#define NUM_TAGS 3
+
+/* Service level priorities
+ * network (used for CDNs) is purposely put below protocol
+ */
+enum service_level {
+    service_none = 0,
+    service_network,
+    service_protocol,
+    service_platform,
+    service_application,
+    service_feature
+};
+
+
+struct dpi_conn {
+    /* An rts stream is connection specific context for the scan */
+    rts_stream_t stream;
+
+    /* Connection context for tracking time online */
+    uint64_t toldata;
+
+    /* The service determined from dpi. */
+    uint16_t service;
+    enum service_level service_level;
+
+    uint16_t tags[NUM_TAGS];
+    os_macaddr_t src_mac;
+    os_macaddr_t dst_mac;
+
+    uint32_t bytes[2];
+    uint32_t packets[2];
+    uint32_t data_packets[2];
+
+    char server_name[256];
+    struct net_header_parser net_hdr;
+    struct dpi_session *dpi_sess;
+
+    int flow_action;
+
+    uint32_t scan_error;
+
+    bool inverted;
+    bool initialized;
+    bool tag_flow;
+
+    uint64_t tcp_syn_delay;
+    uint64_t tcp_ack_delay;
+
+    uint32_t conn_ttl;
+    time_t last_updated;
+    ds_tree_node_t conn_node;
 };
 
 
@@ -150,6 +205,8 @@ void
 dpi_plugin_periodic(struct fsm_session *session);
 
 
+void
+dpi_plugin_free_conn_ctxt(struct net_md_stats_accumulator *acc);
 /**
  * @brief looks up a session
  *
@@ -185,6 +242,11 @@ dpi_delete_session(struct fsm_session *session);
  */
 struct dpi_plugin_cache *
 dpi_get_mgr(void);
+
+struct dpi_conn *
+dpi_conn_alloc(struct dpi_session *dpi_session);
+
+void dpi_conn_free(struct dpi_conn *dpi);
 
 
 #endif /* __WALLEYE_PLUGIN_H__ */

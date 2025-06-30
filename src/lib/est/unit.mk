@@ -32,9 +32,9 @@ UNIT_NAME := est_client
 UNIT_DISABLE := $(if $(CONFIG_EST_CLIENT_LIB),n,y)
 
 UNIT_TYPE := LIB
-#UNIT_DIR := lib
-UNIT_SRC := src/est_client.c
+UNIT_SRC += src/est_client.c
 UNIT_SRC += src/est_util.c
+UNIT_SRC += src/est_request.c
 
 UNIT_CFLAGS := -I$(UNIT_PATH)/inc
 UNIT_CFLAGS  += -I$(TOP_DIR)/src/lib/common/inc/
@@ -47,6 +47,7 @@ UNIT_LDFLAGS += -lev
 UNIT_EXPORT_CFLAGS := $(UNIT_CFLAGS)
 UNIT_EXPORT_LDFLAGS := $(UNIT_LDFLAGS)
 
+UNIT_DEPS    += src/lib/arena
 UNIT_DEPS    += src/lib/common
 UNIT_DEPS    += src/lib/const
 UNIT_DEPS    += src/lib/execssl

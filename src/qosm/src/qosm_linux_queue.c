@@ -27,6 +27,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "osa_assert.h"
 #include "qosm_internal.h"
 #include "memutil.h"
+#include "os.h"
 
 static void callback_Linux_Queue(
         ovsdb_update_monitor_t *mon,
@@ -42,7 +43,7 @@ static ds_tree_t qosm_linux_queue_list = DS_TREE_INIT(ds_str_cmp, struct qosm_li
 void qosm_linux_queue_init(void)
 {
     OVSDB_TABLE_INIT_NO_KEY(Linux_Queue);
-    OVSDB_TABLE_MONITOR_F(Linux_Queue, C_VPACK("-", "_version", "mark"));
+    OVSDB_TABLE_MONITOR_F(Linux_Queue, C_VPACK("-", "_version", "status"));
 }
 
 struct qosm_linux_queue *qosm_linux_queue_get(ovs_uuid_t *uuid)
@@ -129,4 +130,54 @@ static void callback_Linux_Queue(
 
     /* Signal to listeners that the configuration may have changed */
     reflink_signal(&que->que_reflink);
+}
+
+/* Set (or clear) status for this particular Linux_Queue row. */
+bool qosm_linux_queue_set_status(struct qosm_linux_queue *lnx_queue, const char *status)
+{
+    struct schema_Linux_Queue schema_lnx_queue;
+    int rc;
+
+    /*
+     * Update the Linux_Queue:status field
+     */
+    MEMZERO(schema_lnx_queue);
+    schema_lnx_queue._partial_update = true;
+
+    if (status != NULL)
+    {
+        SCHEMA_SET_STR(schema_lnx_queue.status, status);
+    }
+    else
+    {
+        SCHEMA_UNSET_FIELD(schema_lnx_queue.status);
+    }
+
+    rc = ovsdb_table_update_where(
+            &table_Linux_Queue,
+            ovsdb_tran_cond(OCLM_UUID, "_uuid", OFUNC_EQ, lnx_queue->que_uuid.uuid),
+            &schema_lnx_queue);
+    if (rc <= 0)
+    {
+        return false;
+    }
+
+    return true;
+}
+
+/* Set (or clear) status for all Linux_Queue rows for an interface. */
+bool qosm_linux_queue_set_status_all(struct qosm_interface_qos *qos, const char *status)
+{
+    struct qosm_linux_queue *que;
+    int qi;
+    bool rv = true;
+
+    for (qi = 0; qi < qos->qos_linux_queue_len; qi++)
+    {
+        que = qos->qos_linux_queue[qi];
+
+        rv &= qosm_linux_queue_set_status(que, status);
+    }
+
+    return rv;
 }

@@ -81,6 +81,12 @@ struct osw_conf_vif_ap {
     bool isolated;
     bool mcast2ucast;
     bool wps_pbc;
+    bool mbo;
+    bool oce;
+    int oce_min_rssi_dbm;
+    bool oce_min_rssi_enable;
+    int oce_retry_delay_sec;
+    int max_sta;
     struct osw_multi_ap multi_ap;
     enum osw_mbss_vif_ap_mode mbss_mode;
     int mbss_group;
@@ -91,6 +97,7 @@ struct osw_conf_vif_ap {
     bool ft_psk_generate_local;
     int ft_pmk_r0_key_lifetime_sec;
     int ft_pmk_r1_max_key_lifetime_sec;
+    int ft_mobility_domain;
 };
 
 struct osw_conf_net {

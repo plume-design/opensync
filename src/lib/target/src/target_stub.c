@@ -327,8 +327,8 @@ bool target_device_connectivity_check(const char *ifname,
 }
 #endif
 
-#ifndef IMPL_target_device_restart_managers
-bool target_device_restart_managers()
+#ifndef IMPL_target_device_restart_managers_helper
+bool target_device_restart_managers_helper(const char *calling_func)
 {
     return true;
 }
@@ -349,8 +349,8 @@ bool target_device_wdt_ping()
  * Give up on everything and just call the restart.sh script. This should reset the system
  * to a clean slate, restart OVSDB and kick off a new instance of DM.
  */
-#ifndef IMPL_target_managers_restart
-void target_managers_restart(void)
+#ifndef IMPL_target_managers_restart_helper
+void target_managers_restart_helper(const char *calling_func)
 {
     int fd;
     char cmd[TARGET_BUFF_SZ];
@@ -367,6 +367,7 @@ void target_managers_restart(void)
     /* Close file descriptors from 3 and above */
     for(fd = 3; fd < max_fd; fd++) close(fd);
 
+    os_backtrace_dump_manager_restart(calling_func);
     /* When the parent process exits, the child will get disowned */
     if (fork() != 0)
     {

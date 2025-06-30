@@ -165,6 +165,7 @@ end:
 
 bool cr_nl_cmd_run(cr_nl_cmd_t *cmd)
 {
+    if (cmd == NULL) return true;
     CR_BEGIN(&cmd->state_timeout);
     while (cr_nl_cmd_run_notimeout(cmd) == false)
     {
@@ -231,7 +232,7 @@ bool cr_nl_cmd_is_ok(cr_nl_cmd_t *cmd)
 
 void cr_nl_cmd_log(cr_nl_cmd_t *cmd, char *buf, size_t buf_len)
 {
-    const char *name = cmd->name ?: "";
+    const char *name = cmd ? (cmd->name ?: "") : "";
     if (cmd == NULL)
     {
         if (buf_len > 0) buf[0] = 0;
@@ -273,6 +274,7 @@ void cr_nl_cmd_log(cr_nl_cmd_t *cmd, char *buf, size_t buf_len)
 
 void cr_nl_cmd_set_name(cr_nl_cmd_t *cmd, const char *name)
 {
+    if (cmd == NULL) return;
     FREE(cmd->name);
     cmd->name = NULL;
     if (name != NULL)

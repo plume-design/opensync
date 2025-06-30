@@ -1,0 +1,44 @@
+#!/bin/sh
+# LXC OpenSync service
+# {# jinja-parse #}
+INSTALL_PREFIX={{INSTALL_PREFIX}}
+BIN_DM=${INSTALL_PREFIX}/bin/dm
+
+# source default env variables such as PATH
+source /etc/profile
+
+# LXC sends SIGPWR on stop and SIGINT on "reboot"
+sigpwr()
+{
+    logger "$0: stop"
+    /etc/init.d/opensync stop
+    exit
+}
+
+sigint()
+{
+    logger "$0: restart"
+    /etc/init.d/opensync restart
+}
+
+trap sigpwr PWR
+trap sigint INT
+
+/etc/init.d/opensync start
+
+# opensync can self-restart so check for running
+# within a time period
+COUNT=0
+while true; do
+    sleep 2
+    if pgrep ${BIN_DM} >/dev/null; then
+        COUNT=0
+    else
+        let COUNT=$((COUNT+1))
+        if [ "$COUNT" -gt 10 ]; then
+            logger "$0: opensync exited"
+            exit
+        fi
+    fi
+done
+

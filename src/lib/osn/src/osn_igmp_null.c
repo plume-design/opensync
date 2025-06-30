@@ -38,8 +38,10 @@ struct osn_igmp
 };
 
 
-osn_igmp_t *osn_igmp_new()
+osn_igmp_t *osn_igmp_new(const char *ifname)
 {
+    (void)ifname;
+
     osn_igmp_t *self = calloc(1, sizeof(*self));
 
     return self;

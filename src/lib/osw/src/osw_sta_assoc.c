@@ -137,6 +137,7 @@ struct osw_sta_assoc_entry
     size_t ies_len;
     time_t connected_at;
     bool is_mlo;
+    bool is_notifying;
 };
 
 struct osw_sta_assoc_params
@@ -213,6 +214,7 @@ static void osw_sta_assoc_entry_drop(osw_sta_assoc_entry_t *entry)
     ds_tree_remove(&entry->m->entries, entry);
     osw_timer_disarm(&entry->settle);
     osw_timer_disarm(&entry->deadline);
+    entry->m = NULL;
     FREE(entry->ies);
     FREE(entry);
 }
@@ -235,6 +237,8 @@ static bool osw_sta_assoc_entry_settling(osw_sta_assoc_entry_t *entry)
 static void osw_sta_assoc_entry_gc(osw_sta_assoc_entry_t *entry)
 {
     if (entry == NULL) return;
+    if (WARN_ON(entry->m == NULL)) return;
+    if (entry->is_notifying) return;
     if (ds_tree_is_empty(&entry->link_infos) == false) return;
     if (ds_tree_is_empty(&entry->observers) == false) return;
     if (osw_sta_assoc_global_observers_present(entry->m) && osw_sta_assoc_entry_settling(entry)) return;
@@ -359,12 +363,14 @@ static bool osw_sta_assoc_entry_stale_changed(
 
 static void osw_sta_assoc_observer_notify(
         osw_sta_assoc_observer_t *o,
-        const osw_sta_assoc_entry_t *entry,
+        osw_sta_assoc_entry_t *entry,
         osw_sta_assoc_event_e ev)
 {
     if (o == NULL) return;
     if (o->p.notify_fn == NULL) return;
+    entry->is_notifying = true;
     o->p.notify_fn(o->p.notify_fn_priv, entry, ev);
+    entry->is_notifying = false;
 }
 
 const char *osw_sta_assoc_event_to_cstr(osw_sta_assoc_event_e ev)
@@ -385,13 +391,14 @@ const char *osw_sta_assoc_event_to_cstr(osw_sta_assoc_event_e ev)
 
 static void osw_sta_assoc_entry_notify_global_observers(
         osw_sta_assoc_t *m,
-        const osw_sta_assoc_entry_t *entry,
+        osw_sta_assoc_entry_t *entry,
         osw_sta_assoc_event_e ev)
 {
     osw_sta_assoc_entry_t *assoc0 = ds_tree_find(&m->entries, osw_hwaddr_zero());
     if (assoc0 == NULL) return;
     osw_sta_assoc_observer_t *o;
-    ds_tree_foreach (&assoc0->observers, o)
+    osw_sta_assoc_observer_t *tmp;
+    ds_tree_foreach_safe (&assoc0->observers, o, tmp)
     {
         osw_sta_assoc_observer_notify(o, entry, ev);
     }
@@ -401,7 +408,8 @@ static void osw_sta_assoc_entry_notify_observers(osw_sta_assoc_entry_t *entry, o
 {
     LOGT(LOG_PREFIX_ENTRY(entry, "notify: %s", osw_sta_assoc_event_to_cstr(ev)));
     osw_sta_assoc_observer_t *o;
-    ds_tree_foreach (&entry->observers, o)
+    osw_sta_assoc_observer_t *tmp;
+    ds_tree_foreach_safe (&entry->observers, o, tmp)
     {
         osw_sta_assoc_observer_notify(o, entry, ev);
     }
@@ -772,6 +780,7 @@ const osw_sta_assoc_link_t *osw_sta_assoc_links_lookup(
         const struct osw_hwaddr *local_sta_addr,
         const struct osw_hwaddr *remote_sta_addr)
 {
+    if (l == NULL) return NULL;
     size_t i;
     const bool local_wildcard = (local_sta_addr == NULL);
     const bool remote_wildcard = (remote_sta_addr == NULL);

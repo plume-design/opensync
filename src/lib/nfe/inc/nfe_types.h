@@ -40,6 +40,8 @@ typedef struct nfe_conntrack *nfe_conntrack_t;
 /* connection handle */
 typedef struct nfe_conn *nfe_conn_t;
 
+typedef void (*nfe_get_conntrack_cb_t)(nfe_conn_t conn, void *data);
+
 /* 16 bytes */
 struct nfe_ipaddr {
     union {

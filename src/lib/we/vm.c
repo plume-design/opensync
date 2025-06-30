@@ -31,7 +31,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include "memutil.h"
 #include <string.h>
+#include <kconfig.h>
+#include "log.h"
 
 struct we_obj
 {
@@ -88,6 +91,15 @@ void we_free(void *p);
 
 static struct we_obj *we_obj_acquire(struct we_obj *);
 static void we_obj_release(struct we_obj *);
+
+static struct we_mem_pool we_mem_pool_mgr = {
+    .initialized = false,
+};
+
+struct we_mem_pool *we_get_mem_pool_mgr(void)
+{
+    return &we_mem_pool_mgr;
+}
 
 static bool we_nil(struct we_obj *a)
 {
@@ -323,6 +335,7 @@ static void we_arr_release(struct we_obj *a)
         we_free(arr);
     }
 }
+
 
 static bool we_arr(struct we_obj *obj)
 {
@@ -1623,6 +1636,40 @@ static bool we_op_val(struct we_obj *obj, struct we_obj *idx, struct we_obj *dst
     }
 }
 
+static int we_op_rusage(struct we_obj *obj)
+{
+    struct we_obj key, val;
+    struct we_mem_pool *mem_pool;
+    struct rts_memstats *stats;
+
+    if (!we_tab(obj)) return -ENOMEM;
+
+    mem_pool = we_get_mem_pool_mgr();
+    if (!mem_pool->initialized) return 0;
+
+    stats = &mem_pool->we_mem_pool.stats;
+
+    we_buf_ptr(&key, 10, "curr_alloc");
+    we_num(&val, stats->curr_alloc);
+    we_tab_set(obj, &key, &val);
+    we_obj_release(&key);
+    we_obj_release(&val);
+
+    we_buf_ptr(&key, 10, "peak_alloc");
+    we_num(&val, stats->peak_alloc);
+    we_tab_set(obj, &key, &val);
+    we_obj_release(&key);
+    we_obj_release(&val);
+
+    we_buf_ptr(&key, 10, "fail_alloc");
+    we_num(&val, stats->fail_alloc);
+    we_tab_set(obj, &key, &val);
+    we_obj_release(&key);
+    we_obj_release(&val);
+
+    return 0;
+}
+
 static inline int16_t read16(const unsigned char *src)
 {
     return ((int16_t)src[0] << 8) | ((int16_t)src[1]);
@@ -1654,20 +1701,18 @@ int we_call(struct we_arr **state, void *arg)
         &&we_op_ext, &&we_op_tid, &&we_op_len, &&we_op_ref, &&we_op_siz, &&we_op_ord, &&we_op_chr, &&we_op_int,
         &&we_op_str, &&we_op_cat, &&we_op_com, &&we_op_sel, &&we_op_idx, &&we_op_val, &&we_op_tie, &&we_op_off,
         &&we_op_oid, &&we_op_csp, &&we_op_bin, &&we_op_gmt, &&we_op_smt, &&we_op_lbf, &&we_op_lbt, &&we_op_rsz,
-        &&we_op_wea, &&we_op_res, &&we_op_eva};
+        &&we_op_wea, &&we_op_res, &&we_op_eva, &&we_op_rus};
 
     if (!s[0].len)
     {
         return -EINVAL;
     }
-
 #define DISPATCH() goto *dispatch[prog[pc++] & 0x3f]
 #define RETURN(err) \
     { \
         (*state)->items = sp; \
         return -(err); \
     }
-
     DISPATCH();
 /* Memory */
 we_op_nil:
@@ -1934,6 +1979,10 @@ we_op_eva:
     prog = s[0].u.buf->data + s[0].off;
 
     DISPATCH();
+we_op_rus:
+    if ((err = we_op_rusage(&s[sp++])))
+        RETURN(err);
+    DISPATCH();
 }
 
 #define XLATE_REG_OR_EINVAL(s, r) \
@@ -2035,11 +2084,38 @@ int we_pop(struct we_arr *s)
     return 0;
 }
 
-int we_create(struct we_arr **s, size_t nr)
+/**
+ * Initialize the WE memory pool
+ *
+ * This function allocates and initializes the global memory pool used by WE.
+ * The pool is only initialized once, subsequent calls are ignored.
+ *
+ * @param mempool_size Size of the memory pool in bytes
+ */
+void we_init_mempool(size_t mempool_size)
+{
+    struct we_mem_pool *mem_pool;
+    uint8_t *mem;
+
+    mem_pool = we_get_mem_pool_mgr();
+    if (mem_pool->initialized) return;
+
+    mem = CALLOC(1, mempool_size);
+
+    rts_pool_init(&mem_pool->we_mem_pool, mem, mempool_size);
+    LOGI("%s: Successfully initialized WE memory pool with size %zu bytes", __func__, mempool_size);
+    mem_pool->initialized = true;
+}
+
+int we_create(struct we_arr **s, size_t nr, size_t mempool_size)
 {
     struct we_obj obj;
 
     if (nr > 255) return -EINVAL;
+
+    if (kconfig_enabled(CONFIG_WE_AGENT_MEMPOOL)) {
+        we_init_mempool(mempool_size);
+    }
 
     if (we_arr(&obj))
     {

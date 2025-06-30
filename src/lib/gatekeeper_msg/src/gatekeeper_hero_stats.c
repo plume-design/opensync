@@ -496,7 +496,7 @@ get_blank_hero_stats_attr(os_macaddr_t *device_id, struct attr_cache *entry)
     pb->action = get_protobuf_action_value(entry->action);
     pb->direction = get_protobuf_direction_value(entry->direction);
     pb->category_id = entry->category_id;
-    if (entry->gk_policy)
+    if (!IS_NULL_PTR(entry->gk_policy))
     {
         pb->policy = STRDUP(entry->gk_policy);
     }
@@ -505,7 +505,7 @@ get_blank_hero_stats_attr(os_macaddr_t *device_id, struct attr_cache *entry)
         pb->policy = STRDUP("Not GK policy");
     }
     pb->last_access_ts = entry->cache_ts;
-    if (entry->network_id)
+    if (!IS_NULL_PTR(entry->network_id))
     {
         pb->network_zone = STRDUP(entry->network_id);
     }
@@ -657,7 +657,7 @@ serialize_hostname_tree(ds_tree_t *tree, os_macaddr_t *device_id, struct gkc_rep
         new_pb->hostname->count_sni  = count_sni;
         fqdn_redirect = entry->fqdn_redirect;
 
-        if ((fqdn_redirect != NULL) && (fqdn_redirect->redirect))
+        if (!IS_NULL_PTR(fqdn_redirect) && (fqdn_redirect->redirect))
         {
             new_pb->redirect = CALLOC(1, sizeof(*new_pb->redirect));
             if (new_pb->redirect == NULL) continue;

@@ -39,6 +39,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "network_metadata.h"
 #include "network_metadata_utils.h"
+#include "nfe.h"
 
 /**
  * @brief flow key lookup structure
@@ -69,6 +70,7 @@ struct net_md_flow_key
     uint8_t icmp_type;
     uint32_t icmp_idt;
     uint32_t flowmarker;  /* ct_mark */
+    uint16_t ct_zone;    /* CT_ZONE at connection level */
     uint16_t rx_idx;
     uint16_t tx_idx;
 };
@@ -113,6 +115,13 @@ struct net_md_stats_accumulator
     struct net_md_stats_accumulator *rev_acc;
     uint32_t flags;
     bool dpi_always;
+    bool initialized;
+    void *dpi;
+    struct nfe_packet *packet;
+    uint16_t ct_zone; /* CT_ZONE at connection level */
+
+    /* The private nfe conn data */
+    unsigned char priv[] __attribute__((aligned(sizeof(ptrdiff_t))));
 };
 
 
@@ -175,8 +184,8 @@ enum {
  */
 struct net_md_aggregator
 {
-    ds_tree_t eth_pairs;          /* tracked flows projected at the eth level */
-    ds_tree_t five_tuple_flows;   /* 5 tuple only flows */
+    ds_tree_t *eth_pairs;         /* tracked flows projected at the eth level */
+    ds_tree_t *five_tuple_flows;  /* 5 tuple only flows */
     bool report_all_samples;      /* Do not aggregate ethernet samples */
     struct flow_report *report;   /* report to serialize */
     size_t max_windows;           /* maximum number of windows */
@@ -190,6 +199,7 @@ struct net_md_aggregator
     size_t held_flows;            /* # of inactive flows with a ref count > 0 */
     size_t max_reports;           /* Max # of flows to report per window */
     size_t total_eth_pairs;       /* # of eth pairs tracked by the aggregator */
+    int report_flow_type;
     bool (*report_filter)(struct net_md_stats_accumulator *);
     bool (*collect_filter)(struct net_md_aggregator *, struct net_md_flow_key *, char *);
     bool (*send_report)(struct net_md_aggregator *, char *);
@@ -199,8 +209,13 @@ struct net_md_aggregator
     void (*on_acc_destroy)(struct net_md_aggregator *, struct net_md_stats_accumulator *);
     void (*on_acc_report)(struct net_md_aggregator *, struct net_md_stats_accumulator *);
     void *context;
+    nfe_conntrack_t nfe_ct;
 };
 
+enum net_md_report_stats_type {
+    NET_MD_LAN_FLOWS = (1 << 1),
+    NET_MD_IP_FLOWS = (1 << 2),
+};
 
 /**
  * @brief aggregator init structure
@@ -214,6 +229,7 @@ struct net_md_aggregator_set
     size_t num_windows;     /* the max # of windows the report will contain */
     int acc_ttl;            /* how long an incative accumulator is kept around */
     int report_type;        /* absolute or relative */
+    int report_stats_type;
 
     /* a collector filter routine */
     bool (*collect_filter)(struct net_md_aggregator *aggr,
@@ -346,26 +362,6 @@ net_md_log_acc(struct net_md_stats_accumulator *acc, const char *caller);
  */
 void
 net_md_log_aggr(struct net_md_aggregator *aggr);
-
-/**
- * @brief process an accumulator
- *
- * Process an accumulator
- * @param aggr the accumulator to process
- * @param acc the accumulator to process
- */
-void
-net_md_process_acc(struct net_md_aggregator *aggr,
-                   struct net_md_stats_accumulator *acc);
-
-/**
- * @brief logs the content of an accumulator
- *
- * Walks an aggregator and processes its accumulators
- * @param acc the accumulator to process
- */
-void
-net_md_process_aggr(struct net_md_aggregator *aggr);
 
 /**
  * @brief provides local and remote info

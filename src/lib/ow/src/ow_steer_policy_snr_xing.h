@@ -51,9 +51,11 @@ struct ow_steer_policy_snr_xing_mode_bottom_lwm {
 };
 
 struct ow_steer_policy_snr_xing_config {
-    struct osw_hwaddr bssid;
+    struct osw_hwaddr_list bssids;
     enum ow_steer_policy_snr_xing_mode mode;
     unsigned int snr;
+    unsigned int snr_hysteresis;
+    unsigned int snr_ageout_sec;
     union {
         struct ow_steer_policy_snr_xing_mode_hwm hwm;
         struct ow_steer_policy_snr_xing_mode_lwm lwm;

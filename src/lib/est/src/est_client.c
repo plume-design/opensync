@@ -31,249 +31,424 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <curl/curl.h>
 
-#include <openssl/evp.h>
-#include <openssl/pem.h>
-#include <openssl/rsa.h>
-#include <openssl/x509.h>
-
+#include "arena.h"
+#include "arena_util.h"
 #include "est_client.h"
+#include "est_request.h"
 #include "est_util.h"
 #include "log.h"
-#include "memutil.h"
 #include "osp_pki.h"
 #include "target.h"
 
-#define MAX_EST_OPERATION_LEN      50
-#define CURL_RETRY_AFTER_SUPPORTED (LIBCURL_VERSION_NUM >= 0x074200)
-
-struct cert_data_buf
+/*
+ * Context for the cacerts callback
+ */
+struct est_client_cacerts_ctx
 {
-    char *cert;
-    unsigned int size;
+    arena_t *cc_arena;       /* Arena used for this request */
+    const char *cc_url;      /* Request URL */
+    est_request_fn_t *cc_fn; /* Request completion callback */
+    void *cc_ctx;            /* Completion callback context */
 };
 
-size_t cacert_write_cb(void *ptr, size_t size, size_t nmemb, void *data)
+/*
+ * Context for the simpleenroll/simplereenroll callback
+ */
+struct est_client_simpleenroll_ctx
 {
-    int *recving = (int *)data;
-    size_t realsize = CURLE_WRITE_ERROR;
-    FILE *pFile;
-    const char *cacert_file = target_tls_cacert_filename();
+    arena_t *se_arena;       /* Arena used for this request */
+    const char *se_url;      /* Request URL */
+    est_request_fn_t *se_fn; /* Request completion callback */
+    void *se_ctx;            /* Completion callback context */
+};
 
-    LOGI("Receivd CA certificate %s\n", (char *)ptr);
+static bool est_client_do_enroll(
+        arena_t *arena,
+        struct ev_loop *loop,
+        const char *url,
+        const char *csr,
+        est_request_fn_t *enroll_fn,
+        void *ctx);
 
-    /* Store the cacert */
-    if (*recving == 0)
+static est_request_fn_t est_client_cacerts_fn;
+static est_request_fn_t est_client_simple_enroll_fn;
+static CURL *est_client_get_curl(arena_t *arena, const char *url);
+static void defer_CURL_fn(void *defer);
+static void defer_curl_slist_fn(void *data);
+static bool defer_curl_slist(arena_t *arena, struct curl_slist *list);
+static char *est_client_url_concat(arena_t *arena, const char *base, const char *path);
+
+/*
+ * =============================================================================
+ * Public functions
+ * =============================================================================
+ */
+bool est_client_cacerts(
+        arena_t *arena,
+        struct ev_loop *loop,
+        const char *est_server,
+        est_request_fn_t *cacerts_fn,
+        void *ctx)
+{
+    arena_frame_auto_t af = arena_save(arena);
+
+    struct est_client_cacerts_ctx *self = arena_malloc(arena, sizeof(*self));
+    if (self == NULL)
     {
-        pFile = fopen(cacert_file, "w+b");
+        LOG(ERR, "est: Error allocating context for cacerts: %s", est_server);
+        return false;
     }
-    else
+
+    self->cc_url = est_client_url_concat(arena, est_server, "/.well-known/est/cacerts");
+    if (self->cc_url == NULL)
     {
-        pFile = fopen(cacert_file, "a+b");
+        LOG(ERR, "est: Error creating cacerts URL from server URL: %s", est_server);
+        return false;
     }
+    self->cc_arena = arena;
+    self->cc_fn = cacerts_fn;
+    self->cc_ctx = ctx;
 
-    if (pFile == NULL)
+    LOG(INFO, "est: Requesting cacerts from: %s", self->cc_url);
+
+    CURL *curl = est_client_get_curl(arena, self->cc_url);
+    if (curl == NULL)
     {
-        return CURLE_WRITE_ERROR;
+        LOG(ERR, "est: ca_certs failed to create CURL object.");
+        return false;
     }
 
-    realsize = fwrite(ptr, 1, size * nmemb, pFile);
+    if (!est_request_curl_async(arena, loop, curl, est_client_cacerts_fn, self))
+    {
+        LOG(ERR, "est: Error creating async request during simpleenroll.");
+        return false;
+    }
 
-    fclose(pFile);
-    *recving = 1;
-
-    return realsize;
+    af = arena_save(arena);
+    return true;
 }
 
-/* Update the trusted CA store after every simple/re enroll */
-void est_client_get_cacerts(struct est_client_cfg *est_cfg)
+bool est_client_simple_enroll(
+        arena_t *arena,
+        struct ev_loop *loop,
+        const char *est_server,
+        const char *csr,
+        est_request_fn_t *enroll_fn,
+        void *ctx)
 {
-    CURL *curl = curl_easy_init();
-    CURLcode res;
-    char server_url[sizeof(est_cfg->server_url) + MAX_URL_LENGTH];
-    size_t rc;
+    ARENA_SCRATCH(scratch, arena);
 
-    /* Create Server URL adding cacerts */
-    rc = snprintf(server_url, sizeof(server_url), "%s/.well-known/est/cacerts", est_cfg->server_url);
-    if (rc >= (ssize_t)sizeof(server_url))
+    const char *url = est_client_url_concat(scratch, est_server, "/.well-known/est/simpleenroll");
+    if (url == NULL)
     {
-        LOGE("Server URL is too long. Error updating cacerts.");
-        return;
+        LOG(ERR, "est: Error creating simpleenroll URL from server: %s", est_server);
+        return false;
     }
 
-    if (curl)
-    {
-        LOGI("Update CA certs from server");
-        curl_easy_setopt(curl, CURLOPT_URL, server_url);
+    return est_client_do_enroll(arena, loop, url, csr, enroll_fn, ctx);
+}
 
-        int recving = 0;
-        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, cacert_write_cb);
-        curl_easy_setopt(curl, CURLOPT_WRITEDATA, &recving);
-        res = curl_easy_perform(curl);
-        if (res != CURLE_OK)
+bool est_client_simple_reenroll(
+        arena_t *arena,
+        struct ev_loop *loop,
+        const char *est_server,
+        const char *csr,
+        est_request_fn_t *enroll_fn,
+        void *ctx)
+{
+    ARENA_SCRATCH(scratch, arena);
+
+    const char *url = est_client_url_concat(scratch, est_server, "/.well-known/est/simplereenroll");
+    if (url == NULL)
+    {
+        LOG(ERR, "est:  Error creating simplereenroll URL from server: %s", est_server);
+        return false;
+    }
+
+    return est_client_do_enroll(arena, loop, url, csr, enroll_fn, ctx);
+}
+
+/*
+ * =============================================================================
+ * Private functions
+ * =============================================================================
+ */
+
+CURL *est_client_get_curl(arena_t *arena, const char *url)
+{
+    arena_frame_auto_t af = arena_save(arena);
+
+    CURL *curl = curl_easy_init();
+    if (curl == NULL || !arena_defer(arena, defer_CURL_fn, curl))
+    {
+        LOG(ERR, "est: Error acquiring cURL handle.");
+        return NULL;
+    }
+    if (curl_easy_setopt(curl, CURLOPT_URL, url) != CURLE_OK)
+    {
+        LOG(ERR, "est: Error setting cURL option CURLOPT_URL.");
+        return NULL;
+    }
+    if (curl_easy_setopt(curl, CURLOPT_SSLKEY, target_tls_privkey_filename()) != CURLE_OK)
+    {
+        LOG(ERR, "est: Error setting cURL option CURLOPT_SSLKEY.");
+        return NULL;
+    }
+    if (curl_easy_setopt(curl, CURLOPT_SSLCERT, target_tls_mycert_filename()) != CURLE_OK)
+    {
+        LOG(ERR, "est: Error setting cURL option CURLOPT_SSLCERT.");
+        return NULL;
+    }
+    if (curl_easy_setopt(curl, CURLOPT_CAINFO, target_tls_cacert_filename()) != CURLE_OK)
+    {
+        LOG(ERR, "est: Error setting cURL option CURLOPT_CAINFO.");
+        return NULL;
+    }
+
+    /*
+     * Enable debug mode -- mainly used by unit tests
+     */
+    if (access(CONFIG_TARGET_PATH_CERT "/.debug", R_OK) == 0)
+    {
+        LOG(NOTICE, "Running in debug mode.");
+        /*
+         * This is required for the EST mock server as it has a self-signed
+         * certificate. Disable it in release builds.
+         */
+        if (curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0) != CURLE_OK)
         {
-            LOGI("Update cacerts failed");
+            LOG(ERR, "est_request: Error setting CURLOPT_SSL_VERIFYPEER");
+            return false;
         }
 
-        curl_easy_cleanup(curl);
+        if (curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0) != CURLE_OK)
+        {
+            LOG(ERR, "est_request: Error setting CURLOPT_SSL_VERIFYHOST");
+            return false;
+        }
     }
 
+    af = arena_save(arena);
+
+    return curl;
+}
+
+/*
+ * Function callback for a completed `cacerts` request.
+ */
+void est_client_cacerts_fn(const struct est_request_status ers, const char *data, void *ctx)
+{
+    struct est_client_cacerts_ctx *self = ctx;
+    struct est_request_status status = ers;
+
+    if (ers.status != ER_STATUS_OK)
+    {
+        LOG(ERR, "est: Cacerts request failed: %s", self->cc_url);
+        goto error;
+    }
+
+    if (data == NULL)
+    {
+        LOG(ERR, "est: Cacerts didn't receive any data: %s", self->cc_url);
+        status.status = ER_STATUS_ERROR;
+        goto error;
+    }
+
+    /*
+     * Convert the certificate from PKCS7 to PEM
+     */
+    char *cabuf = est_util_pkcs7_to_pem(self->cc_arena, data);
+    if (cabuf == NULL)
+    {
+        LOG(ERR, "est: Failed to convert CACERT to PEM during cacert request: %s", self->cc_url);
+        status.status = ER_STATUS_ERROR;
+        goto error;
+    }
+
+    self->cc_fn(status, cabuf, self->cc_ctx);
+    return;
+
+error:
+    self->cc_fn(status, NULL, self->cc_ctx);
     return;
 }
 
-size_t enroll_write_cb(void *ptr, size_t size, size_t nmemb, void *data)
+/*
+ * Issue a EST enroll request to server `est_server` using the certificate
+ * signing request in `csr.
+ *
+ * Input parameters:
+ *
+ *  arena - memory arena for storing results, destroying the arena will cancel
+ *      the request without calling `enroll_fn`
+ *  loop - libev event loop
+ *  est_server - EST server URL
+ *  renew - whether this is a simpleenroll or simpleenroll request
+ *  csr - certificate signing request
+ *  enroll_fn - request completion callback
+ *  enroll_data - callback context data
+ *
+ * On error this function will return `false` and `enroll_fn` will not be
+ * called.
+ */
+bool est_client_do_enroll(
+        arena_t *arena,
+        struct ev_loop *loop,
+        const char *url,
+        const char *csr,
+        est_request_fn_t *enroll_fn,
+        void *ctx)
 {
-    size_t realsize = size * nmemb;
-    struct cert_data_buf *cert_data = data;
+    arena_frame_auto_t af = arena_save(arena);
 
-    LOGT("Received Certificate");
+    struct est_client_simpleenroll_ctx *self = arena_malloc(arena, sizeof(*self));
+    if (self == NULL)
+    {
+        LOG(ERR, "est: Error allocating context during enroll: %s", url);
+        return false;
+    }
+    self->se_url = arena_strdup(arena, url);
+    if (self->se_url == NULL)
+    {
+        LOG(ERR, "est: Error creating simpleenroll URL from server URL: %s", url);
+        return false;
+    }
+    self->se_arena = arena;
+    self->se_fn = enroll_fn;
+    self->se_ctx = ctx;
 
-    cert_data->cert = REALLOC(cert_data->cert, cert_data->size + realsize + 1);
-    memcpy(&cert_data->cert[cert_data->size], ptr, realsize);
-    cert_data->size += realsize;
-    cert_data->cert[cert_data->size] = 0;
+    CURL *curl = est_client_get_curl(arena, self->se_url);
+    if (curl == NULL)
+    {
+        LOG(ERR, "est: enroll failed to create CURL object.");
+        return false;
+    }
+    if (curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, strlen(csr)) != CURLE_OK)
+    {
+        LOG(ERR, "est: Error setting cURL option CURLOPT_POSTFIELDSIZE.");
+        return false;
+    }
+    if (curl_easy_setopt(curl, CURLOPT_POSTFIELDS, csr) != CURLE_OK)
+    {
+        LOG(ERR, "est: Error setting cURL option CURLOPT_POSTFIELDS.");
+        return false;
+    }
 
-    return realsize;
-}
-
-/* Get client certificate from EST server */
-static int get_certificate(struct est_client_cfg *est_cfg, bool renew)
-{
-    CURLcode res;
-    char server_url[sizeof(est_cfg->server_url) + MAX_URL_LENGTH];
-    size_t rc;
-    struct cert_data_buf cert_data = {0};
-
-    CURL *curl = curl_easy_init();
     struct curl_slist *slist = NULL;
-    char *subj = NULL;
-    char *csr = NULL;
-    char *certbuf = NULL;
-    int retval = -1;
-
-    /* Create Server URL to simpleenroll or reenroll */
-    if (renew)
-    {
-        rc = snprintf(server_url, sizeof(server_url), "%s/.well-known/est/simplereenroll", est_cfg->server_url);
-    }
-    else
-    {
-        rc = snprintf(server_url, sizeof(server_url), "%s/.well-known/est/simpleenroll", est_cfg->server_url);
-    }
-
-    if (rc >= sizeof(server_url))
-    {
-        LOGE("Server URL too long. Error during simpleenroll/simplereenroll.");
-        goto error;
-    }
-
-    LOGT("Generated server url = %s", server_url);
-
-    if (est_cfg->subject == NULL)
-    {
-        subj = est_util_csr_subject();
-        if (subj == NULL)
-        {
-            LOGE("Error generating subject line.");
-            goto error;
-        }
-    }
-    else
-    {
-        subj = strdup(est_cfg->subject);
-    }
-
-    csr = osp_pki_cert_request(subj);
-    if (!csr)
-    {
-        LOGI("CSR get failed");
-        goto error;
-    }
-    LOGT("CSR = %s", csr);
-
-    curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, strlen(csr));
-    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, csr);
-    curl_easy_setopt(curl, CURLOPT_URL, server_url);
-
     slist = curl_slist_append(slist, "Content-Type:application/pkcs10");
     slist = curl_slist_append(slist, "Content-Transfer-Encoding:base64");
-
-    /* client_key and client_cert will be retrieved from osps */
-    curl_easy_setopt(curl, CURLOPT_SSLKEY, target_tls_privkey_filename());
-    curl_easy_setopt(curl, CURLOPT_SSLCERT, target_tls_mycert_filename());
-
-    curl_easy_setopt(curl, CURLOPT_CERTINFO, 1L);
-    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, slist);
-    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, enroll_write_cb);
-    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &cert_data);
-
-    /* TODO: Verify peer does not work currently because we dont have the EST proxy */
-    // curl_easy_setopt(curl, CURLOPT_CAINFO, target_tls_cacert_filename);
-    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
-
-    /*
-     * return  0 - Success
-     * return -1 - If curl fails to connect to the server
-     * return -2 - Error code sent by the server
-     */
-    if ((res = curl_easy_perform(curl)) == CURLE_OK)
+    if (!defer_curl_slist(arena, slist))
     {
-        curl_off_t wait = 0;
-        long http_code = 0;
-        curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
-
-#if CURL_RETRY_AFTER_SUPPORTED
-        curl_easy_getinfo(curl, CURLINFO_RETRY_AFTER, &wait);
-#endif
-
-        if (wait || http_code != 200)
-        {
-            LOGI("Retry from server");
-            if (est_cfg->update_response_cb) est_cfg->update_response_cb(wait, http_code);
-            retval = -2;
-            goto error;
-        }
+        LOG(ERR, "est: Error deferring cURL slist.");
+        return false;
     }
-    else
+    if (curl_easy_setopt(curl, CURLOPT_HTTPHEADER, slist) != CURLE_OK)
     {
-        LOGN("curl_easy_perform() failed: %d\n", res);
+        LOG(ERR, "est: Error setting cURL option CURLOPT_HTTPHEADER.");
+        return false;
+    }
+
+    if (!est_request_curl_async(arena, loop, curl, est_client_simple_enroll_fn, self))
+    {
+        LOG(ERR, "est: Error creating async request during simpleenroll.");
+        return false;
+    }
+
+    af = arena_save(arena);
+    return true;
+}
+
+void est_client_simple_enroll_fn(const struct est_request_status ers, const char *data, void *ctx)
+{
+    struct est_client_simpleenroll_ctx *self = ctx;
+    struct est_request_status status = ers;
+
+    if (ers.status != ER_STATUS_OK)
+    {
+        LOG(ERR, "est: Simpleenroll request failed: %s", self->se_url);
         goto error;
     }
 
-    cert_data.size = 0;
-    LOGT("Cert received = %s", cert_data.cert);
-    certbuf = est_util_pkcs7_to_pem(cert_data.cert);
+    if (data == NULL)
+    {
+        LOG(ERR, "est: Simpleenroll didn't receive any data: %s", self->se_url);
+        goto error;
+    }
 
-    /* Save the client certificate to the device */
-    if (!osp_pki_cert_update(certbuf)) LOGI("osp_pki_cert_update Failed");
+    /*
+     * Convert the certificate from PKCS7 to PEM
+     */
+    char *certbuf = est_util_pkcs7_to_pem(self->se_arena, data);
+    if (certbuf == NULL)
+    {
+        LOG(ERR, "est: Failed to convert certificate to PEM during simpleenroll: %s", self->se_url);
+        goto error;
+    }
 
-    retval = 0;
+    self->se_fn(status, certbuf, self->se_ctx);
+    return;
 
 error:
-    if (slist != NULL) curl_slist_free_all(slist);
-    if (curl != NULL) curl_easy_cleanup(curl);
-    if (cert_data.cert != NULL) FREE(cert_data.cert);
-    FREE(certbuf);
-    FREE(csr);
-    FREE(subj);
-
-    return retval;
+    status.status = ER_STATUS_ERROR;
+    self->se_fn(status, NULL, self->se_ctx);
+    return;
 }
 
-int est_client_get_ca_certs()
+struct est_request_fn_ctx
 {
-    /* TBD */
-    return 0;
+    struct est_request_status rf_status;
+    const char *rf_data;
+};
+
+void est_request_fn(struct est_request_status errcode, const char *data, void *ctx)
+{
+    struct est_request_fn_ctx *rf = ctx;
+
+    rf->rf_status = errcode;
+    rf->rf_data = data;
 }
 
-int est_client_cert_renew(struct est_client_cfg *est_cfg)
+/*
+ * Concatenate `base` and `path` to create a new URL. Trailing slashes from
+ * `base` are stripped before `path` is appended.
+ *
+ * The new URL is allocated on `arena`.
+ */
+char *est_client_url_concat(arena_t *arena, const char *base, const char *path)
 {
-    LOGI("EST LIB Re enrolling");
-    return get_certificate(est_cfg, true);
+    ARENA_SCRATCH(scratch, arena);
+
+    char *url = arena_strdup(scratch, base);
+    if (url == NULL) return NULL;
+
+    /* Strip trailing slashes */
+    strchomp(url, "/");
+
+    return arena_sprintf(arena, "%s%s", url, path);
 }
 
-int est_client_get_cert(struct est_client_cfg *est_cfg)
+/*
+ * =============================================================================
+ * ARENA support functions
+ * =============================================================================
+ */
+void defer_CURL_fn(void *defer)
 {
-    if (strlen(est_cfg->server_url) == 0) return -1;
+    LOG(DEBUG, "est_request: Delete cURL easy handle.");
+    curl_easy_cleanup(defer);
+}
 
-    return get_certificate(est_cfg, false);
+void defer_curl_slist_fn(void *data)
+{
+    struct curl_slist *slist = data;
+
+    if (slist != NULL)
+    {
+        curl_slist_free_all(slist);
+    }
+}
+
+bool defer_curl_slist(arena_t *arena, struct curl_slist *list)
+{
+    return arena_defer(arena, defer_curl_slist_fn, list);
 }

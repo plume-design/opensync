@@ -215,7 +215,6 @@ bool qosm_filter_config_apply(const ovs_uuid_t *uuid, bool reset_egress)
     if (!qosm_intf_has_classifier_config(ipi))
     {
         LOGN("qosm: tc-filter: %s: No Classifier configuration", ipi->ipi_ifname);
-        return true;
     }
 
     /* create new tc object */
