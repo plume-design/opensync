@@ -24,18 +24,21 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+#include <unistd.h>
+
+#include "const.h"
+#include "execsh.h"
+#include "memutil.h"
 #include "module.h"
-#include "osa_assert.h"
+#include "os_time.h"
 #include "ovsdb_sync.h"
 #include "ovsdb_table.h"
 
 #include "wano.h"
-
 #include "wanp_dhcpv6_stam.h"
-#include "memutil.h"
-#include "const.h"
 
-#include <unistd.h>
+/* Time to wait for Duplicate Address Detection to resolve, in seconds */
+#define WANP_DHCPV6_DAD_TIMEOUT 60.0
 
 /*
  * Structure representing a single DHCPv6 plug-in instance
@@ -50,6 +53,8 @@ struct wanp_dhcpv6
     bool                        wd6_has_global_ip;
     bool                        wd6_is_ip_unnumbered; // Is in IP unnumbered mode?
     bool                        wd6_ovsdb_subscribed;
+    ev_timer                    wd6_timer;
+    double                      wd6_dad_ts;
     ds_tree_node_t              wd6_tnode;
 };
 
@@ -61,6 +66,9 @@ static wano_plugin_ops_fini_fn_t wanp_dhcpv6_fini;
 static void wanp_dhcpv6_ovsdb_reset(struct wanp_dhcpv6 *self);
 static bool wanp_dhcpv6_ovsdb_enable(struct wanp_dhcpv6 *self);
 static bool wanp_dhcpv6_ip_unnumbered_ovsdb_enable(struct wanp_dhcpv6 *self);
+static void wanp_dhcpv6_timer_start(struct wanp_dhcpv6 *self);
+static void wanp_dhcpv6_timer_stop(struct wanp_dhcpv6 *self);
+static void wanp_dhcpv6_dad_status(const char *ifname, bool *tentative, bool *dadfailed);
 
 void callback_IP_Interface(
         ovsdb_update_monitor_t *self,
@@ -114,6 +122,8 @@ void wanp_dhcpv6_run(wano_plugin_handle_t *wh)
 void wanp_dhcpv6_fini(wano_plugin_handle_t *wh)
 {
     struct wanp_dhcpv6 *self = CONTAINER_OF(wh, struct wanp_dhcpv6, wd6_handle);
+
+    wanp_dhcpv6_timer_stop(self);
 
     if (self->wd6_ovsdb_subscribed)
     {
@@ -433,13 +443,95 @@ enum wanp_dhcpv6_state wanp_dhcpv6_state_ENABLE(
             {
                 return 0;
             }
-            return wanp_dhcpv6_IDLE;
+            return wanp_dhcpv6_TENTATIVE;
 
         default:
             break;
     }
 
     return 0;
+}
+
+enum wanp_dhcpv6_state wanp_dhcpv6_state_TENTATIVE(
+        wanp_dhcpv6_state_t *state,
+        enum wanp_dhcpv6_action action,
+        void *data)
+{
+    struct wanp_dhcpv6 *self = CONTAINER_OF(state, struct wanp_dhcpv6, wd6_state);
+    bool tentative;
+    bool failed;
+
+    enum wanp_dhcpv6_state retval = 0;
+
+    switch (action)
+    {
+        case wanp_dhcpv6_do_STATE_INIT:
+            wanp_dhcpv6_dad_status(self->wd6_handle.wh_ifname, &tentative, &failed);
+            if (failed)
+            {
+                LOG(ERR, "wano_dhcpv6: %s: Interface is in DAD failed status.", self->wd6_handle.wh_ifname);
+                return wanp_dhcpv6_ERROR;
+            }
+            else if (!tentative)
+            {
+                LOG(INFO, "wanp_dhcpv6: %s: IPv6 global address is ready.", self->wd6_handle.wh_ifname);
+                return wanp_dhcpv6_IDLE;
+            }
+
+            /*
+             * Interface is in tentative state:
+             *    - notify WANO that the plug-in is busy (WANP_BUSY)
+             *    - start the polling timer
+             */
+            LOG(INFO, "wanp_dhcpv6: %s: IPv6 global address is in tentative state: "PRI_osn_ip6_addr,
+                    self->wd6_handle.wh_ifname,
+                    FMT_osn_ip6_addr(self->wd6_ip6addr));
+            self->wd6_dad_ts = clock_mono_double();
+            wanp_dhcpv6_timer_start(self);
+            self->wd6_status_fn(&self->wd6_handle, &WANO_PLUGIN_STATUS(WANP_BUSY));
+            return 0;
+
+        case wanp_dhcpv6_do_OVSDB_UPDATE:
+            if (self->wd6_has_global_ip || self->wd6_is_ip_unnumbered) return 0;
+            LOG(ERR, "wano_dhcpv6: %s: Lost IPv6 address in tentative state.", self->wd6_handle.wh_ifname);
+            retval = wanp_dhcpv6_ERROR;
+            break;
+
+        case wanp_dhcpv6_do_TIMER:
+            if (clock_mono_double() - self->wd6_dad_ts > WANP_DHCPV6_DAD_TIMEOUT)
+            {
+                LOG(ERR, "wan_dhcpv6: %s: Timeout waiting on DAD.", self->wd6_handle.wh_ifname);
+                retval = wanp_dhcpv6_ERROR;
+                break;
+             }
+
+            wanp_dhcpv6_dad_status(self->wd6_handle.wh_ifname, &tentative, &failed);
+            if (failed)
+            {
+                LOG(ERR, "wano_dhcpv6: %s: DAD failed.", self->wd6_handle.wh_ifname);
+                retval = wanp_dhcpv6_ERROR;
+                break;
+            }
+            else if (tentative)
+            {
+                /* Interface still in tentative state, do nothing */
+                return 0;
+            }
+
+            LOG(INFO, "wanp_dhcpv6: %s: IPv6 global address is ready.", self->wd6_handle.wh_ifname);
+            retval = wanp_dhcpv6_IDLE;
+            break;
+
+        default:
+            LOG(DEBUG, "wano_dhcpv6: %s: Unhandled action or exception '%s' in state '%s'",
+                    self->wd6_handle.wh_ifname,
+                    wanp_dhcpv6_state_str(state->state),
+                    wanp_dhcpv6_action_str(action));
+            break;
+    }
+
+    wanp_dhcpv6_timer_stop(self);
+    return retval;
 }
 
 enum wanp_dhcpv6_state wanp_dhcpv6_state_IDLE(
@@ -468,8 +560,7 @@ enum wanp_dhcpv6_state wanp_dhcpv6_state_IDLE(
                             FMT_osn_ip6_addr(self->wd6_ip_unnumbered_addr));
             }
 
-            struct wano_plugin_status ws = WANO_PLUGIN_STATUS(WANP_OK);
-            self->wd6_status_fn(&self->wd6_handle, &ws);
+            self->wd6_status_fn(&self->wd6_handle, &WANO_PLUGIN_STATUS(WANP_OK));
             break;
 
         case wanp_dhcpv6_do_OVSDB_UPDATE:
@@ -504,6 +595,95 @@ enum wanp_dhcpv6_state wanp_dhcpv6_state_IDLE(
     }
 
     return 0;
+}
+
+enum wanp_dhcpv6_state wanp_dhcpv6_state_ERROR(
+        wanp_dhcpv6_state_t *state,
+        enum wanp_dhcpv6_action action,
+        void *data)
+{
+    (void)data;
+    (void)state;
+    (void)action;
+
+    struct wanp_dhcpv6 *self = CONTAINER_OF(state, struct wanp_dhcpv6, wd6_state);
+    /*
+     * Signal WANO that the plug-in failed -- the error should be reported
+     * before entering this state
+     */
+    self->wd6_status_fn(&self->wd6_handle, &WANO_PLUGIN_STATUS(WANP_ERROR));
+    return 0;
+}
+
+/*
+ * ===========================================================================
+ * Support functions
+ * ===========================================================================
+ */
+
+/*
+ * The DHCPv6 plug-in timer -- periodically send the TIMER action to the
+ * state machine
+ */
+void wanp_dhcpv6_timer(struct ev_loop *loop, ev_timer *ev, int revent)
+{
+    struct wanp_dhcpv6 *self = CONTAINER_OF(ev, struct wanp_dhcpv6, wd6_timer);
+    wanp_dhcpv6_state_do(&self->wd6_state, wanp_dhcpv6_do_TIMER, NULL);
+}
+
+void wanp_dhcpv6_timer_start(struct wanp_dhcpv6 *self)
+{
+    ev_timer_init(&self->wd6_timer, wanp_dhcpv6_timer, 0.0, 1.0);
+    ev_timer_start(EV_DEFAULT, &self->wd6_timer);
+}
+
+void wanp_dhcpv6_timer_stop(struct wanp_dhcpv6 *self)
+{
+    ev_timer_stop(EV_DEFAULT, &self->wd6_timer);
+}
+
+/*
+ * Return the current DAD status on the interface:
+ *   - tentative: indicates whether the interface is in `tentative` mode
+ *   - failed: indicates whether the Duplicate Address Detection failed
+ */
+struct wanp_dhcpv6_dad_status_ctx
+{
+    bool tentative;             /* Interface is in tentative mode */
+    bool failed;                /* Duplicate Address Detection failed on interface */
+};
+
+bool wanp_dhcpv6_dad_status_fn(void *ctx, enum execsh_io type, const char *msg)
+{
+    struct wanp_dhcpv6_dad_status_ctx *status = ctx;
+
+    if (type != EXECSH_IO_STDOUT) return true;
+
+    if (strstr(msg, "tentative") != NULL)
+    {
+        status->tentative = true;
+    }
+
+    if (strstr(msg, "dadfailed") != NULL)
+    {
+        status->failed = true;
+    }
+
+    return true;
+}
+
+void wanp_dhcpv6_dad_status(const char *ifname, bool *tentative, bool *failed)
+{
+    struct wanp_dhcpv6_dad_status_ctx status = {0};
+
+    int rc = execsh_fn(wanp_dhcpv6_dad_status_fn, &status, SHELL(ip -6 addr show dev "$1" scope global), (char *)ifname);
+    if (rc != 0)
+    {
+        LOG(WARN, "wano_dhcpv6: %s: IP address tentative status poll failed: %d", ifname, rc);
+    }
+
+    *tentative = status.tentative;
+    *failed = status.failed;
 }
 
 /*

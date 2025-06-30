@@ -695,6 +695,15 @@ if OSN_LINUX_ENABLED
             help
                 Use the MAP-E backend implementation using ip6tnl
 
+            if OSN_LINUX_MAPE_IP6TNL
+                config OSN_LINUX_MAPE_IP6TNL_ENCAPLIMIT
+                int "Encapsulation limit for the MAP-E tunnel interface"
+                default 4
+                help
+                    Encapsulation limit for the ip6tnl MAP-E tunnel interface.
+                    Set it to -1 to configure "encaplimit none".
+            endif
+
         config OSN_LINUX_MAPE_NULL
             bool "null"
             help

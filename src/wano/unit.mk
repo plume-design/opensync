@@ -53,6 +53,7 @@ UNIT_EXTERN_CFLAGS += -I$(UNIT_PATH)/inc
 UNIT_EXPORT_CFLAGS += $(UNIT_CFLAGS)
 
 UNIT_DEPS += src/lib/common
+UNIT_DEPS += src/lib/execsh
 UNIT_DEPS += src/lib/json_util
 UNIT_DEPS += src/lib/log
 UNIT_DEPS += src/lib/module
