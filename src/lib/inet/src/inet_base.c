@@ -350,7 +350,7 @@ bool inet_base_init(inet_base_t *self, const char *ifname)
         goto error;
     }
 
-    self->in_igmp = osn_igmp_new();
+    self->in_igmp = osn_igmp_new(self->inet.in_ifname);
     if (self->in_igmp == NULL)
     {
         LOG(ERR, "inet_base: %s: Error creating IGMP instance. ", self->inet.in_ifname);
@@ -3282,7 +3282,7 @@ bool inet_igmp_set_config(struct osn_igmp_snooping_config *snooping_config,
 
     if (igmp == NULL)
     {
-        igmp = osn_igmp_new();
+        igmp = osn_igmp_new("lo");
     }
 
     /* Push config down to osn layer */

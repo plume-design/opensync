@@ -61,4 +61,13 @@ bool wano_ovs_port_init(void);
  */
 bool wano_wan_ovsdb_init();
 
+/*
+ * ===========================================================================
+ *  WANO DNS probing
+ * ===========================================================================
+ */
+bool wano_dns_probe_init(void);
+void wano_dns_probe_fini(void);
+bool wano_dns_probe_run(const char *ifname);
+
 #endif /* WANO_INTERNAL_H_INCLUDED */

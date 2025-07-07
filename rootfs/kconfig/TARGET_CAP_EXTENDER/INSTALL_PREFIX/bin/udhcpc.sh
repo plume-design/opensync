@@ -123,8 +123,12 @@ setup_interface()
 {
     _subnet=${subnet:-255.255.255.0}
     _addr="$ip/$_subnet"
-    echo "$interface: adding ipv4 addr $_addr"
-    ip addr replace dev "$interface" "$_addr" broadcast "${broadcast:-+}"
+    echo "$interface: adding ipv4 addr $_addr lease $lease"
+    if [ -n "$lease" ]; then
+        ip addr replace "$_addr" broadcast "${broadcast:-+}" dev "$interface" valid_lft "$lease" preferred_lft "$lease"
+    else
+        ip addr replace dev "$interface" "$_addr" broadcast "${broadcast:-+}"
+    fi
 
     [ "$set_gateway" = true ] && {
         [ -n "$router" ] && [ "$router" != "0.0.0.0" ] && [ "$router" != "255.255.255.255" ] && {
@@ -159,10 +163,13 @@ case "$1" in
             [ -w "$OPTS_FILE" ] && rm -f "$OPTS_FILE"
         ;;
         renew)
-                setup_interface update
+            setup_interface update
         ;;
         bound)
-                setup_interface ifup
+            ip -4 addr flush dev "$interface"
+            route_default_flush "$interface"
+            [ -w "$OPTS_FILE" ] && rm -f "$OPTS_FILE"
+            setup_interface ifup
         ;;
 esac
 

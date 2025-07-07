@@ -24,6 +24,7 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+#include "osw_types.h"
 #include <util.h>
 #include <os.h>
 #include <log.h>
@@ -562,9 +563,9 @@ osw_confsync_build_vif_ap_debug(const char *phy,
     }
 
     if (cmd->passpoint_changed) {
-        if (osw_ssid_cmp(&state->passpoint.hessid, &cmd->passpoint.hessid) != 0)
-            LOGI("osw: confsync: %s/%s: passpoint_config: hessid \'%s\' -> \'%s\'",
-             phy, vif, state->passpoint.hessid.buf, cmd->passpoint.hessid.buf);
+        if (!osw_hwaddr_is_equal(&state->passpoint.hessid, &cmd->passpoint.hessid))
+            LOGI("osw: confsync: %s/%s: passpoint_config: hessid \'"OSW_HWADDR_FMT"\' -> \'"OSW_HWADDR_FMT"\'",
+             phy, vif, OSW_HWADDR_ARG(&state->passpoint.hessid), OSW_HWADDR_ARG(&cmd->passpoint.hessid));
         if (state->passpoint.hs20_enabled != cmd->passpoint.hs20_enabled)
             LOGI("osw: confsync: %s/%s: passpoint_config: hs20 \'%d\' -> \'%d\'",
              phy, vif, state->passpoint.hs20_enabled, cmd->passpoint.hs20_enabled);

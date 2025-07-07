@@ -118,6 +118,7 @@ struct net_header_parser
     uint8_t *data;
     uint8_t *start;
     size_t caplen;
+    int offset;
     int flow_action;
     struct flow_tags tags;
     struct flow_vendor_data_container vendor_data;

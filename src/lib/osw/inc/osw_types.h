@@ -425,7 +425,7 @@ struct osw_passpoint {
     char *t_c_filename;
     char *anqp_elem;
 
-    struct osw_ssid hessid;
+    struct osw_hwaddr hessid;
     struct osw_ssid osu_ssid;
 
     char **domain_list;

@@ -245,7 +245,7 @@ int main(int argc, char *argv[])
     }
 
     // Initialize WAN probe
-    if (!wano_ppline_wan_probe_setup())
+    if (!wano_dns_probe_init())
     {
         LOG(EMERG, "Error initializing WAN probe.");
         return 1;
@@ -282,7 +282,7 @@ int main(int argc, char *argv[])
         LOG(ERR, "Stopping WANO (Failed to stop OVSDB");
     }
 
-    wano_ppline_wan_probe_teardown();
+    wano_dns_probe_fini();
 
     module_fini();
 

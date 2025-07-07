@@ -1884,8 +1884,7 @@ osw_passpoint_is_equal(const struct osw_passpoint *a,
                        const struct osw_passpoint *b)
 {
     if (a->hs20_enabled != b->hs20_enabled) return false;
-    if (a->hessid.len != b->hessid.len) return false;
-    if (STRSCMP(a->hessid.buf, b->hessid.buf) != 0) return false;
+    if (!osw_hwaddr_is_equal(&a->hessid, &b->hessid)) return false;
     if (a->osu_ssid.len != b->osu_ssid.len) return false;
     if (STRSCMP(a->osu_ssid.buf, b->osu_ssid.buf) != 0) return false;
     if (STRSCMP(a->t_c_filename, b->t_c_filename) != 0) return false;

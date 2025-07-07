@@ -118,9 +118,10 @@ static bool mac_learning_flt_get(const char *brname)
      * eth1 (2)
      * eth2 (3)
      * eth3 (4)
+     * lan0 (5)
      * ...
      */
-    snprintf(cmd, sizeof(cmd), "brctl showstp %s | grep eth", brname);
+    snprintf(cmd, sizeof(cmd), "brctl showstp %s | grep '^[eth|lan]'", brname);
 
     fp = popen(cmd, "r");
     if (!fp)
@@ -131,17 +132,17 @@ static bool mac_learning_flt_get(const char *brname)
 
     while (fgets(buf, sizeof(buf), fp))
     {
-        int                         eth;
         int                         ifnum;
+        char                        eth[IFNAMSIZ];
         struct mac_learning_flt_t  *flt;
 
-        if (2 != sscanf(buf, "eth%d (%d)", &eth, &ifnum))
+        if (2 != sscanf(buf, "%s (%d)", eth, &ifnum))
         {
             continue;
         }
 
         // Skip non ethernet clients ports
-        snprintf(ifname, sizeof(ifname), "eth%d", eth);
+        snprintf(ifname, sizeof(ifname), "%s", eth);
         iflist = target_ethclient_iflist_get();
         for (ifidx=0; iflist[ifidx]; ifidx++)
         {
@@ -170,7 +171,7 @@ static bool mac_learning_flt_get(const char *brname)
             flt = CALLOC(1, sizeof(*flt));
         }
 
-        snprintf(flt->ifname, sizeof(flt->ifname), "eth%d", eth);
+        snprintf(flt->ifname, sizeof(flt->ifname), "%s", eth);
         snprintf(flt->brname, sizeof(flt->brname), "%s", brname);
         flt->ifnum = ifnum;
 

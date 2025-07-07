@@ -33,6 +33,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <osw_ut.h>
 #include <osw_drv_dummy.h>
 #include "ow_conf.h"
+#include "osw_types.h"
 #include <module.h>
 #include <memutil.h>
 #include <ds_tree.h>
@@ -183,7 +184,7 @@ struct ow_conf_passpoint {
     char *t_c_filename;
     char *anqp_elem;
 
-    struct osw_ssid hessid;
+    struct osw_hwaddr hessid;
     struct osw_ssid osu_ssid;
 
     char **domain_list;
@@ -428,7 +429,7 @@ ow_conf_conf_mutate_passpoint(struct ow_conf *self,
     if (STRSLEN(p->anqp_elem) > 0)
         out->anqp_elem = STRDUP(p->anqp_elem);
 
-    if (p->hessid.len > 0)
+    if (!osw_hwaddr_is_zero(&p->hessid))
         memcpy(&out->hessid, &p->hessid, sizeof(out->hessid));
 
     if (p->osu_ssid.len > 0)
@@ -1328,8 +1329,7 @@ ow_conf_passpoint_set_hessid(const char *ref_id,
     struct ow_conf_passpoint *p = ow_conf_passpoint_get(self, ref_id);
 
     if (hessid != NULL) {
-        STRSCPY_WARN(p->hessid.buf, hessid);
-        p->hessid.len = strlen(hessid);
+        WARN_ON(osw_hwaddr_from_cstr(hessid, &p->hessid) == false);
     } else {
         MEMZERO(p->hessid);
     }

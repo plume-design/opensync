@@ -150,7 +150,13 @@ update_resolv()
         return 0
     fi
     dns_reset "$1_ipv6"
-    [ -n "$2" ] && dns_add "$1_ipv6" "nameserver $2"
+
+    if [ -n "$2" ]; then
+        for dns in $2; do
+            dns_add "$1_ipv6" "nameserver $dns"
+        done
+    fi
+
     dns_apply "$1_ipv6"
 }
 
@@ -236,16 +242,7 @@ setup_interface()
         [ "$duplicate" = 0 ] && RDNSS="$RDNSS $radns"
     done
 
-    local dnspart=""
-    for dns in $RDNSS; do
-        if [ -z "$dnspart" ]; then
-            dnspart="\"$dns\""
-        else
-            dnspart="$dnspart, \"$dns\""
-        fi
-    done
-
-    update_resolv "$device" "$dns"
+    update_resolv "$device" "$RDNSS"
 
     local prefixpart=""
     for entry in $PREFIXES; do

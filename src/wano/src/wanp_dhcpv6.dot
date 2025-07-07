@@ -1,6 +1,8 @@
 digraph {
     INIT[init=true];
     INIT -> ENABLE [label="INIT"];
-    ENABLE -> IDLE [label="OVSDB_UPDATE"];
-    IDLE -> IDLE [label="OVSDB_UPDATE"];
+    ENABLE -> TENTATIVE [label="OVSDB_UPDATE"];
+    TENTATIVE -> IDLE [labe="STATE_INIT,TIMER"];
+    TENTATIVE -> ERROR [label="STATE_INIT,TIMER,OVSDB_UPDATE"];
+    IDLE -> IDLE [label="OVSDB_UPDATE"]
 }

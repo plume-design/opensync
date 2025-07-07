@@ -1475,13 +1475,13 @@ osw_drv_vif_state_is_changed_ap(const struct osw_drv_vif *vif)
                  vif->vif_name,
                  o->passpoint.anqp_elem,
                  n->passpoint.anqp_elem);
-        if (osw_ssid_cmp(&o->passpoint.hessid, &n->passpoint.hessid) != 0)
-            LOGI("osw: drv: %s/%s/%s: passpoint: hessid: %s -> %s",
+        if (!osw_hwaddr_is_equal(&o->passpoint.hessid, &n->passpoint.hessid))
+            LOGI("osw: drv: %s/%s/%s: passpoint: hessid: "OSW_HWADDR_FMT" -> "OSW_HWADDR_FMT"",
                  vif->phy->drv->ops->name,
                  vif->phy->phy_name,
                  vif->vif_name,
-                 o->passpoint.hessid.buf,
-                 n->passpoint.hessid.buf);
+                 OSW_HWADDR_ARG(&o->passpoint.hessid),
+                 OSW_HWADDR_ARG(&n->passpoint.hessid));
         if (osw_ssid_cmp(&o->passpoint.osu_ssid, &n->passpoint.osu_ssid) != 0)
             LOGI("osw: drv: %s/%s/%s: passpoint: osu_ssid: %s -> %s",
                  vif->phy->drv->ops->name,
@@ -1875,11 +1875,11 @@ osw_drv_vif_dump_passpoint(struct osw_drv_vif *vif)
          vif->vif_name,
          passpoint->hs20_enabled);
 
-    LOGI("osw: drv: %s/%s/%s: passpoint: hessid: %s",
+    LOGI("osw: drv: %s/%s/%s: passpoint: hessid: "OSW_HWADDR_FMT,
          vif->phy->drv->ops->name,
          vif->phy->phy_name,
          vif->vif_name,
-         passpoint->hessid.buf);
+         OSW_HWADDR_ARG(&passpoint->hessid));
 
     LOGI("osw: drv: %s/%s/%s: passpoint: osu_ssid: %s",
          vif->phy->drv->ops->name,

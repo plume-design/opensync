@@ -55,4 +55,6 @@ UNIT_CFLAGS += -DNDEBUG # Disable asserts
 UNIT_CFLAGS += -O2 -nostdlib -nodefaultlibs -fno-stack-protector # optimization
 endif
 
+UNIT_DEPS := src/lib/log
+
 UNIT_EXPORT_CFLAGS := $(UNIT_CFLAGS)

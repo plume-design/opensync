@@ -103,6 +103,7 @@ static bool service_init(mupnp_server_t *self, const mupnp_config_t *cfg)
     if(NULL == path_pid) goto oom_err;
 
     daemon_atexit(&self->server_process, &upnp_process_on_exit);
+    daemon_arg_add(&self->server_process, "-d"); // Run in foreground
     daemon_arg_add(&self->server_process, "-f", path_cfg); // add config file path
     daemon_arg_add(&self->server_process, "-P", path_pid); // add PID file path
 

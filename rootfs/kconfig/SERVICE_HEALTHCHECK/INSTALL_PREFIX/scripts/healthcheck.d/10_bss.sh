@@ -24,6 +24,16 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+# Checks if BSS is up by execution of platform-specific scripts,
+# but there are multiple exceptions to such simple check; this script handles
+# those exceptions using platform-agnostic tools.
+#
+# BSS may be down, when:
+#   1. All channels are in NOP state
+#   2. Radio is misconfigured (e.g. channel is not set)
+#   3. Other VIF in the same MLD group is up
+
+
 OVSH=$CONFIG_INSTALL_PREFIX/tools/ovsh
 BSS_IS_UP_D=$CONFIG_INSTALL_PREFIX/scripts/healthcheck.bss.d
 
