@@ -484,5 +484,6 @@ cm2_bh_dhcp_t *cm2_bh_dhcp_from_list(const char *list)
 
 cm2_bh_dhcp_vif_t *cm2_bh_dhcp_lookup(cm2_bh_dhcp_t *m, const char *vif_name)
 {
+    if (m == NULL) return NULL;
     return ds_tree_find(&m->vifs, vif_name);
 }

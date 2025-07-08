@@ -909,13 +909,8 @@ ow_l2uf_kick_alloc_sta_assoc_obs(struct ow_l2uf_kick *m)
 static void
 ow_l2uf_kick_attach(struct ow_l2uf_kick *m)
 {
-    const bool delete_enabled = osw_etc_get("OW_L2UF_KICK_DELETE_DISABLE") ? false : true;
-
     m->mux_deauth_fn = osw_mux_request_sta_deauth;
-
-    if (delete_enabled) {
-        m->mux_delete_fn = osw_mux_request_sta_delete;
-    }
+    m->mux_delete_fn = osw_mux_request_sta_delete;
 
     m->l2uf = OSW_MODULE_LOAD(osw_l2uf);
     m->sta_assoc = OSW_MODULE_LOAD(osw_sta_assoc);

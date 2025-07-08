@@ -3215,6 +3215,7 @@ callback_Wifi_Radio_Config(ovsdb_update_monitor_t *mon,
     }
 
     ow_ovsdb_link_phy_vif();
+    ow_ovsdb_cconf_sched();
 }
 
 static void
@@ -4183,7 +4184,7 @@ ow_ovsdb_retry_cb(EV_P_ ev_timer *arg, int events)
     g_ow_ovsdb.mld_onboard = ow_ovsdb_mld_onboard_alloc();
     ow_ovsdb_ms_init(&g_ow_ovsdb.ms, OW_OVSDB_CM_NEEDS_PORT_STATE_BLIP);
     ow_ovsdb_reattach_wps(&g_ow_ovsdb);
-    ow_ovsdb_cconf_init(&table_Wifi_VIF_Config);
+    ow_ovsdb_cconf_init(&table_Wifi_Radio_Config, &table_Wifi_VIF_Config);
     ow_ovsdb_stats_init();
     g_ow_ovsdb.steering = ow_ovsdb_steer_create();
     ow_ovsdb_flush();

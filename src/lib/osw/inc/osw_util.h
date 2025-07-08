@@ -166,6 +166,7 @@ struct osw_assoc_req_info {
     uint8_t eht_cap_nss;
     enum osw_channel_width eht_cap_chwidth;
     enum osw_channel_width eht_op_chwidth;
+    uint8_t per_sta_profiles;
 };
 
 bool

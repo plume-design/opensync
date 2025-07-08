@@ -2448,11 +2448,6 @@ static void
 ow_steer_bm_sta_state_sta_link_del(struct ow_steer_bm_sta *sta,
                                    const struct osw_state_sta_info *info)
 {
-    const bool other_sta = (osw_state_sta_info_has_addr(info, &sta->addr) == false);
-    if (other_sta) {
-        return;
-    }
-
     struct ow_steer_bm_sta_link *link = ds_tree_find(&sta->links, info);
     if (link == NULL) return;
     ds_tree_remove(&sta->links, link);

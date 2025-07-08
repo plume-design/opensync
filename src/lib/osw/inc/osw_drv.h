@@ -686,6 +686,9 @@ void
 osw_drv_report_overrun(struct osw_drv *drv);
 
 void
+osw_drv_invalidate(struct osw_drv *drv);
+
+void
 osw_drv_phy_state_report_free(struct osw_drv_phy_state *state);
 
 void

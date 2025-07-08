@@ -122,6 +122,7 @@ struct osw_drv_vif {
     bool sta_list_valid;
     bool radar_detected;
     ev_timer chan_sync; /* used for CSA state invalidation */
+    ev_timer resync; /* used to resync after any state change */
 };
 
 struct osw_drv_sta {
@@ -163,9 +164,6 @@ osw_drv_work_is_settled(void);
 
 void
 osw_drv_unregister_all(void);
-
-void
-osw_drv_invalidate(struct osw_drv *drv);
 
 void
 osw_drv_set_chan_sync(struct osw_drv *drv, const struct osw_drv_conf *conf);

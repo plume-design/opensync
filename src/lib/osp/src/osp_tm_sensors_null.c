@@ -24,17 +24,19 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef OW_OVSDB_CCONF_H_INCLUDED
-#define OW_OVSDB_CCONF_H_INCLUDED
+#include "osp_tm_sensors.h"
 
-void
-ow_ovsdb_cconf_init(ovsdb_table_t *rconft, ovsdb_table_t *vconft);
+bool osp_tm_sensors_is_temp_snsr_present(int idx)
+{
+    (void)idx;
 
-void
-ow_ovsdb_cconf_sched(void);
+    return false;
+}
 
-bool
-ow_ovsdb_cconf_use_vconf(const struct schema_Wifi_VIF_Config *vconf);
+bool osp_tm_sensors_get_temp_snsr_val(int idx, int *temp)
+{
+    (void)idx;
+    (void)temp;
 
-#endif /* OW_OVSDB_CCONF_H_INCLUDED */
-
+    return false;
+}

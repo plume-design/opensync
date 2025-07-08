@@ -24,6 +24,10 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+# Checks if hostapd and wpa_supplicant are running and responsive.
+# This is done by pinging the hostapd and wpa_supplicant control sockets.
+
+
 die() { log_warn "$*"; Healthcheck_Fail; }
 pidof hostapd || die hostapd not found
 pidof wpa_supplicant || die wpa_supplicant not found

@@ -144,6 +144,7 @@ ow_sta_channel_override_ap_get_sta_chan(const struct ow_sta_channel_override_ap 
 {
     struct ow_sta_channel_override_sta *sta = ow_sta_channel_override_ap_get_sta(ap);
     if (sta == NULL) return NULL;
+    if (sta->info->drv_state->vif_type != OSW_VIF_STA) return NULL;
     return &sta->info->drv_state->u.sta.link.channel;
 }
 
@@ -287,7 +288,9 @@ ow_sta_channel_override_sta_set_info__(struct ow_sta_channel_override_sta *sta,
                                    ? &sta->prev_channel
                                    : NULL;
     const struct osw_channel *next = info != NULL
-                                   ? &info->drv_state->u.sta.link.channel
+                                   ? (info->drv_state->vif_type == OSW_VIF_STA
+                                      ? &info->drv_state->u.sta.link.channel
+                                      : NULL)
                                    : NULL;
     const bool channel_changed = (prev == NULL && next != NULL)
                               || (prev != NULL && next == NULL)
@@ -310,7 +313,9 @@ ow_sta_channel_override_sta_set_info__(struct ow_sta_channel_override_sta *sta,
 
     if (channel_changed) {
         const struct osw_channel *ap_chan = (sta->ap->info != NULL)
-                                          ? &sta->ap->info->drv_state->u.ap.channel
+                                          ? (sta->ap->info->drv_state->vif_type == OSW_VIF_AP
+                                             ? &sta->ap->info->drv_state->u.ap.channel
+                                             : NULL)
                                           : NULL;
         const bool converged_channels = (next != NULL)
                                      && (ap_chan != NULL)
@@ -425,8 +430,10 @@ ow_sta_channel_override_action_get_channel(const struct ow_sta_channel_override_
 {
     switch (action) {
         case OW_STA_CHANNEL_OVERRIDE_DONT_CHANGE:
+            if (vif->vif_type != OSW_VIF_AP) return NULL;
             return &vif->u.ap.channel;
         case OW_STA_CHANNEL_OVERRIDE_USE_AP_STATE_CHAN:
+            if (ap->info->drv_state->vif_type != OSW_VIF_AP) return NULL;
             return &ap->info->drv_state->u.ap.channel;
         case OW_STA_CHANNEL_OVERRIDE_USE_STA_STATE_CHAN:
             return ow_sta_channel_override_ap_get_sta_chan(ap);

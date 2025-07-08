@@ -253,6 +253,11 @@ menu "Common"
 
             menu "OSP TM"
                 source "kconfig/Kconfig.osp_tm"
+                choice
+                    prompt "OSP TM temperature sensors backend"
+                    default OSP_TM_SENSORS_NULL
+                    source "kconfig/Kconfig.osp_tm_sensors.backend"
+                endchoice
             endmenu
 
             menu "Layer 2 Switch Control"

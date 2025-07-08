@@ -1626,15 +1626,19 @@ osw_confsync_build_drv_conf_vif_sta_op(struct osw_drv_vif_config *dvif,
         const bool bssid_match = memcmp(&dnet->bssid, &ssta->link.bssid, bssid_len) == 0;
         const bool ssid_match = strncmp(dnet->ssid.buf, ssta->link.ssid.buf, ssid_max) == 0;
         const bool ccmp = dnet->wpa.pairwise_ccmp && ssta->link.wpa.pairwise_ccmp;
+        const bool ccmp256 = dnet->wpa.pairwise_ccmp256 && ssta->link.wpa.pairwise_ccmp256;
+        const bool gcmp = dnet->wpa.pairwise_gcmp && ssta->link.wpa.pairwise_gcmp;
+        const bool gcmp256 = dnet->wpa.pairwise_gcmp256 && ssta->link.wpa.pairwise_gcmp256;
         const bool tkip = dnet->wpa.pairwise_tkip && ssta->link.wpa.pairwise_tkip;
         const bool wpa = dnet->wpa.wpa && ssta->link.wpa.wpa;
         const bool rsn = dnet->wpa.rsn && ssta->link.wpa.rsn;
         const bool psk = dnet->wpa.akm_psk && ssta->link.wpa.akm_psk;
         const bool sae = dnet->wpa.akm_sae && ssta->link.wpa.akm_sae;
+        const bool sae_ext = dnet->wpa.akm_sae_ext && ssta->link.wpa.akm_sae_ext;
         /* FIXME: FT? */
-        const bool crypto_match = (ccmp || tkip)
+        const bool crypto_match = (ccmp || tkip || ccmp256 || gcmp || gcmp256)
                                && (wpa || rsn)
-                               && (psk || sae);
+                               && (psk || sae || sae_ext);
         /* PMF needs reconnection on these events:
          * ┌───────────────┬───────────┬─────────────┐
          * │ Network block │ STA state │    Action   │
@@ -1906,7 +1910,7 @@ osw_confsync_build_drv_conf_vif(struct osw_confsync_arg *arg,
         const bool enabled_changed = osw_confsync_vif_enabled_changed(svif->status, dvif->enabled);
         dvif->changed |= (dvif->enabled_changed = enabled_changed);
         dvif->changed |= (dvif->vif_type_changed = (cvif->vif_type != svif->vif_type));
-        dphy->changed |= (dvif->tx_power_dbm_changed = cvif->tx_power_dbm != svif->tx_power_dbm);
+        dvif->changed |= (dvif->tx_power_dbm_changed = cvif->tx_power_dbm != svif->tx_power_dbm);
     }
 
     if (arg->cac_planned) {
@@ -1945,7 +1949,7 @@ osw_confsync_build_drv_conf_vif(struct osw_confsync_arg *arg,
              cvif->phy->phy_name,
              cvif->vif_name,
              osw_vif_status_into_cstr(svif->status),
-             cvif->enabled ? "enabled" : "disabled");
+             dvif->enabled ? "enabled" : "disabled");
     }
 
     if (skip) {

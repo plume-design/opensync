@@ -1412,12 +1412,12 @@ enum wano_plugin_state wano_plugin_state_IDLE(
             if (wpp->wpp_status.ws_ifname[0] != '\0' &&
                     strcmp(wpp->wpp_ppline->wpl_ifname, wpp->wpp_status.ws_ifname) != 0)
             {
-                wpp->wpp_status.ws_ifname[0] = '\0';
                 if (!wano_connmgr_uplink_delete(wpp->wpp_status.ws_ifname))
                 {
                     LOG(ERR, "wano: %s: Error clearing Connection_Manager_Uplink.",
                             wpp->wpp_status.ws_ifname);
                 }
+                wpp->wpp_status.ws_ifname[0] = '\0';
             }
 
             ev_async_stop(EV_DEFAULT, &wpp->wpp_status_async);

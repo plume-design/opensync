@@ -48,6 +48,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 /* unit */
 #include <osw_module.h>
 #include <osw_ut.h>
+#include <osw_state.h>
 #include <osw_hostap.h>
 #include <osw_hostap_conf.h>
 #include <osw_wpas_conf.h> // FIXME
@@ -71,6 +72,12 @@ struct osw_hostap_bss_hapd_sta {
 
 struct osw_hostap_bss_hapd {
     struct hostap_ev_ctrl ctrl;
+    bool shutting_down;
+
+    struct osw_hwaddr bssid;
+    struct osw_neigh bssid_neigh;
+    struct osw_ssid ssid;
+    struct hostap_txq_req *bssid_neigh_req;
 
     struct osw_hostap_conf_ap_config conf;
     char path_config[4096];
@@ -128,6 +135,7 @@ struct osw_hostap_bss_hapd {
 
 struct osw_hostap_bss_wpas {
     struct hostap_ev_ctrl ctrl;
+    bool shutting_down;
 
     struct osw_hostap_conf_sta_config conf;
     char path_config[4096];
@@ -900,6 +908,7 @@ osw_hostap_bss_hapd_prep_state_task(struct osw_hostap_bss_hapd *hapd)
     osw_hostap_bss_hapd_flush_state_replies(hapd);
 
     if (hapd->ctrl.opened == false) return;
+    if (hapd->shutting_down) return;
 
     struct rq *q = &hapd->q_state.q;
     rq_resume(q);
@@ -947,6 +956,77 @@ osw_hostap_bss_hapd_fill_state(struct osw_hostap_bss_hapd *hapd,
 }
 
 static void
+osw_hostap_bss_notify_changed(struct osw_hostap_bss *bss)
+{
+    const struct osw_hostap_bss_ops *ops = bss->ops;
+    void *ops_priv = bss->ops_priv;
+
+    if (ops->bss_changed_fn != NULL) {
+        ops->bss_changed_fn(ops_priv);
+    }
+}
+
+static void
+osw_hostap_bss_hapd_notify_changed(struct osw_hostap_bss_hapd *hapd)
+{
+    struct osw_hostap_bss *bss = container_of(hapd, struct osw_hostap_bss, hapd);
+    osw_hostap_bss_notify_changed(bss);
+}
+
+static void
+osw_hostap_bss_wpas_notify_changed(struct osw_hostap_bss_wpas *wpas)
+{
+    struct osw_hostap_bss *bss = container_of(wpas, struct osw_hostap_bss, wpas);
+    osw_hostap_bss_notify_changed(bss);
+}
+
+static void
+osw_hostap_bss_hapd_set_bssid_neigh_cb(struct hostap_txq_req *req,
+                                       void *priv)
+{
+    struct osw_hostap_bss_hapd *hapd = priv;
+    osw_hostap_bss_hapd_notify_changed(hapd);
+}
+
+static void
+osw_hostap_bss_hapd_set_bssid_neigh(struct osw_hostap_bss_hapd *hapd,
+                                    const char *msg)
+{
+    char buf[1024];
+    STRSCPY_WARN(buf, msg);
+    char *p = buf;
+    char *event_name = strsep(&p, " ");
+    if (event_name == NULL) return;
+
+    const bool match = (strcmp(event_name, "CTRL-EVENT-CHANNEL-SWITCH") == 0)
+                    || (strcmp(event_name, "CTRL-EVENT-STARTED-CHANNEL-SWITCH") == 0);
+    if (!match) return;
+    if (osw_hwaddr_is_zero(&hapd->bssid)) return;
+
+    hostap_txq_req_free(hapd->bssid_neigh_req);
+    char req_str[1024];
+
+    if (osw_hwaddr_is_zero(&hapd->bssid_neigh.bssid)) {
+        struct osw_neigh n;
+        MEMZERO(n);
+        n.bssid = hapd->bssid;
+        osw_hostap_bss_hapd_neigh_prep_del(req_str,
+                                           sizeof(req_str),
+                                           &n);
+    }
+    else {
+        osw_hostap_bss_hapd_neigh_prep_set(req_str,
+                                           sizeof(req_str),
+                                           &hapd->ssid,
+                                           &hapd->bssid_neigh);
+    }
+    hapd->bssid_neigh_req = hostap_txq_request(hapd->ctrl.txq,
+                                               req_str,
+                                               osw_hostap_bss_hapd_set_bssid_neigh_cb,
+                                               hapd);
+}
+
+static void
 osw_hostap_bss_hapd_msg_cb(struct hostap_conn_ref *ref,
                            const void *msg,
                            size_t msg_len,
@@ -967,6 +1047,8 @@ osw_hostap_bss_hapd_msg_cb(struct hostap_conn_ref *ref,
         msg_len -= skip_len;
     }
 
+    osw_hostap_bss_hapd_set_bssid_neigh(hapd, msg);
+
     if (bss->ops->event_fn != NULL) {
         bss->ops->event_fn(msg, msg_len, bss->ops_priv);
         CALL_HOOKS(bss->owner, event_fn, bss->phy_name, bss->vif_name, msg, msg_len);
@@ -978,13 +1060,7 @@ osw_hostap_bss_hapd_opened_cb(struct hostap_ev_ctrl *ctrl,
                               void *priv)
 {
     struct osw_hostap_bss_hapd *hapd = priv;
-    struct osw_hostap_bss *bss = container_of(hapd, struct osw_hostap_bss, hapd);
-    const struct osw_hostap_bss_ops *ops = bss->ops;
-    void *ops_priv = bss->ops_priv;
-
-    if (ops->bss_changed_fn != NULL) {
-        ops->bss_changed_fn(ops_priv);
-    }
+    osw_hostap_bss_hapd_notify_changed(hapd);
 }
 
 static void
@@ -993,15 +1069,10 @@ osw_hostap_bss_hapd_closed_cb(struct hostap_ev_ctrl *ctrl,
 {
     struct osw_hostap_bss_hapd *hapd = priv;
     struct osw_hostap_bss *bss = container_of(hapd, struct osw_hostap_bss, hapd);
-    const struct osw_hostap_bss_ops *ops = bss->ops;
-    void *ops_priv = bss->ops_priv;
 
     rq_task_kill(&bss->q_state.task);
     rq_kill(&bss->q_state.q);
-
-    if (ops->bss_changed_fn != NULL) {
-        ops->bss_changed_fn(ops_priv);
-    }
+    osw_hostap_bss_notify_changed(bss);
 }
 
 static void
@@ -1286,6 +1357,7 @@ osw_hostap_bss_hapd_fini(struct osw_hostap_bss_hapd *hapd)
     rq_task_kill(&hapd->q_config.task);
     rq_task_kill(&hapd->q_state.task);
 
+    hostap_txq_req_free(hapd->bssid_neigh_req);
     hostap_rq_task_fini(&hapd->task_add);
     hostap_rq_task_fini(&hapd->task_remove);
     hostap_rq_task_fini(&hapd->task_log_level);
@@ -1329,6 +1401,7 @@ osw_hostap_bss_wpas_prep_state_task(struct osw_hostap_bss_wpas *wpas)
     osw_hostap_bss_wpas_flush_state_replies(wpas);
 
     if (wpas->ctrl.opened == false) return;
+    if (wpas->shutting_down) return;
 
     struct rq *q = &wpas->q_state.q;
     rq_resume(q);
@@ -1439,13 +1512,7 @@ osw_hostap_bss_wpas_opened_cb(struct hostap_ev_ctrl *ctrl,
                               void *priv)
 {
     struct osw_hostap_bss_wpas *wpas = priv;
-    struct osw_hostap_bss *bss = container_of(wpas, struct osw_hostap_bss, wpas);
-    const struct osw_hostap_bss_ops *ops = bss->ops;
-    void *ops_priv = bss->ops_priv;
-
-    if (ops->bss_changed_fn != NULL) {
-        ops->bss_changed_fn(ops_priv);
-    }
+    osw_hostap_bss_wpas_notify_changed(wpas);
 }
 
 static void
@@ -1454,16 +1521,11 @@ osw_hostap_bss_wpas_closed_cb(struct hostap_ev_ctrl *ctrl,
 {
     struct osw_hostap_bss_wpas *wpas = priv;
     struct osw_hostap_bss *bss = container_of(wpas, struct osw_hostap_bss, wpas);
-    const struct osw_hostap_bss_ops *ops = bss->ops;
-    void *ops_priv = bss->ops_priv;
 
     osw_hostap_bss_wpas_psk_invalidate(wpas);
     rq_task_kill(&bss->q_state.task);
     rq_kill(&bss->q_state.q);
-
-    if (ops->bss_changed_fn != NULL) {
-        ops->bss_changed_fn(ops_priv);
-    }
+    osw_hostap_bss_notify_changed(bss);
 }
 
 static void
@@ -1772,6 +1834,36 @@ osw_hostap_set_conf_ap_write_ft(const struct osw_hostap_bss_hapd *hapd)
     file_put(hapd->path_rxkh, conf->rxkh_buf);
 }
 
+static void
+osw_hostap_set_conf_ap_neigh(struct osw_hostap_bss_hapd *hapd,
+                             struct osw_drv_vif_config *dvif)
+{
+    if (dvif->vif_type != OSW_VIF_AP) return;
+    if (osw_hwaddr_is_zero(&hapd->bssid)) {
+        struct osw_hostap_bss *bss = container_of(hapd, typeof(*bss), hapd);
+        const char *vif_name = bss->vif_name;
+        if (vif_name == NULL) return;
+        const struct osw_state_vif_info *info = osw_state_vif_lookup_by_vif_name(vif_name);
+        if (info == NULL) return;
+
+        const struct osw_drv_vif_state *state = info->drv_state;
+        hapd->bssid = state->mac_addr;
+        if (osw_hwaddr_is_zero(&hapd->bssid)) return;
+    }
+
+    size_t i;
+    MEMZERO(hapd->bssid_neigh);
+    for (i = 0; i < dvif->u.ap.neigh_list.count; i++) {
+        const struct osw_neigh *n = &dvif->u.ap.neigh_list.list[i];
+        if (osw_hwaddr_is_equal(&hapd->bssid, &n->bssid)) {
+            hapd->bssid_neigh = *n;
+            break;
+        }
+    }
+
+    hapd->ssid = dvif->u.ap.ssid;
+}
+
 static struct rq_task *
 osw_hostap_set_conf_ap(struct osw_hostap *hostap,
                        struct osw_drv_conf *drv_conf,
@@ -1808,11 +1900,16 @@ osw_hostap_set_conf_ap(struct osw_hostap *hostap,
     FREE(path_ctrl);
 
     MEMZERO(conf->extra_buf);
-    CALL_HOOKS(hostap, ap_conf_mutate_fn, phy_name, vif_name, drv_conf, conf);
+
+    if (dvif->vif_type == OSW_VIF_AP) {
+        CALL_HOOKS(hostap, ap_conf_mutate_fn, phy_name, vif_name, drv_conf, conf);
+    }
 
     osw_hostap_conf_generate_ap_config_bufs(conf);
     osw_hostap_set_conf_ap_write(hapd);
     if (is_ft) osw_hostap_set_conf_ap_write_ft(hapd);
+
+    osw_hostap_set_conf_ap_neigh(hapd, dvif);
 
     osw_hostap_conf_list_free(conf);
     /* FIXME: This could/should rely on hostapd
@@ -1931,6 +2028,12 @@ osw_hostap_set_conf_ap(struct osw_hostap *hostap,
         rq_add_task(q, &hapd->task_reload_rxkh.task);
     }
 
+    hapd->shutting_down = (do_remove && !do_add);
+    if (hapd->shutting_down) {
+        rq_task_kill(&hapd->q_state.task);
+        osw_hostap_bss_hapd_notify_changed(hapd);
+    }
+
     rq_stop(q);
     return t;
 }
@@ -1983,7 +2086,10 @@ osw_hostap_set_conf_sta(struct osw_hostap *hostap,
     FREE(path_ctrl);
 
     MEMZERO(conf->extra_buf);
-    CALL_HOOKS(hostap, sta_conf_mutate_fn, phy_name, vif_name, drv_conf, conf);
+
+    if (dvif->vif_type == OSW_VIF_STA) {
+        CALL_HOOKS(hostap, sta_conf_mutate_fn, phy_name, vif_name, drv_conf, conf);
+    }
 
     osw_hostap_conf_generate_sta_config_bufs(conf);
     osw_hostap_set_conf_sta_write(wpas);
@@ -2045,6 +2151,12 @@ osw_hostap_set_conf_sta(struct osw_hostap *hostap,
         rq_add_task(q, &wpas->task_disconnect.task);
     }
 
+    wpas->shutting_down = (do_remove && !do_add);
+    if (wpas->shutting_down) {
+        rq_task_kill(&wpas->q_state.task);
+        osw_hostap_bss_wpas_notify_changed(wpas);
+    }
+
     rq_stop(q);
     return t;
 }
@@ -2054,14 +2166,8 @@ osw_hostap_bss_config_complete_cb(struct rq_task *task,
                                   void *priv)
 {
     struct osw_hostap_bss *bss = priv;
-    const struct osw_hostap_bss_ops *ops = bss->ops;
-    void *ops_priv = bss->ops_priv;
-
     LOGD(LOG_PREFIX_BSS(bss, "config complete"));
-
-    if (ops->bss_changed_fn != NULL) {
-        ops->bss_changed_fn(ops_priv);
-    }
+    osw_hostap_bss_notify_changed(bss);
 }
 
 static struct rq_task *
@@ -2252,6 +2358,7 @@ osw_hostap_start(struct osw_hostap *m)
 OSW_MODULE(osw_hostap)
 {
     struct osw_hostap *m = CALLOC(1, sizeof(*m));
+    OSW_MODULE_LOAD(osw_state);
     osw_hostap_init(m);
     osw_hostap_start(m);
     return m;

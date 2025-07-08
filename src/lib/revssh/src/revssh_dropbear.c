@@ -60,6 +60,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #define REVSSH_STATUS_REPORT_DEBOUNCE                 1.2  /* Seconds */
 
+#define REVSSH_DBCLIENT_IO_TIMEOUT                    25   /* Seconds */
+
 struct revssh
 {
     char                      *rs_server_host;
@@ -109,6 +111,10 @@ struct revssh
 
     int                        rs_session_user_cnt;     /* Counter of logged in users. */
 
+    bool                       rs_dbclient_io;
+
+    ev_timer                   rs_dbclient_io_guard;
+
 };
 
 static bool revssh_tmpdir_create(revssh_t *self);
@@ -126,6 +132,8 @@ static void revssh_tunnel_status_report(revssh_t *self, bool debounced);
 static void revssh_tunnel_status_report_stop(revssh_t *self);
 static void revssh_maxtime_guard_start(revssh_t *self);
 static void revssh_maxtime_guard_stop(revssh_t *self);
+static void revssh_dbclient_io_guard_start(revssh_t *self);
+static void revssh_dbclient_io_guard_stop(revssh_t *self);
 static void revssh_stop_cleanup_all(revssh_t *self);
 
 static void revssh_server_execsh_exit_fn(execsh_async_t *esa, int exit_status);
@@ -135,6 +143,7 @@ static void revssh_client_execsh_io_fn(execsh_async_t *esa, enum execsh_io io_ty
 static void revssh_client_start_debounced(struct ev_loop *loop, struct ev_debounce *ev, int revent);
 static void revssh_tunnel_status_report_debounced(struct ev_loop *loop, struct ev_debounce *ev, int revent);
 static void revssh_maxtime_guard_evtimer(struct ev_loop *loop, ev_timer *watcher, int revents);
+static void revssh_dbclient_io_guard_evtimer(struct ev_loop *loop, ev_timer *watcher, int revents);
 
 static bool revssh_pidfile_write(const char *pidfile_path, pid_t pid);
 static bool revssh_pidfile_exists(const char *pidfile_path);
@@ -194,6 +203,11 @@ static bool revssh_init(revssh_t *self)
      * the session is destroyed. */
     ev_timer_init(&self->rs_maxtime_guard, revssh_maxtime_guard_evtimer, self->rs_session_max_time, 0.0);
 
+    /* Initialize dbclient IO guard timer. If, after starting, no output from dbclient in the
+     * specified timeout, the tunnel status is considered as "connect failure"
+     * and the whole session is destroyed. */
+    ev_timer_init(&self->rs_dbclient_io_guard, revssh_dbclient_io_guard_evtimer, REVSSH_DBCLIENT_IO_TIMEOUT, 0.0);
+
     return true;
 }
 
@@ -232,6 +246,9 @@ static void revssh_stop_cleanup_all(revssh_t *self)
     self->rs_session_orphaned = true;
 
     LOG(NOTICE, "revssh: Breaking down and cleaning up the session");
+
+    /* Stop dbclient io time guard: */
+    revssh_dbclient_io_guard_stop(self);
 
     /* Stop session max time guard: */
     revssh_maxtime_guard_stop(self);
@@ -766,6 +783,14 @@ static void revssh_client_execsh_io_fn(execsh_async_t *esa, enum execsh_io io_ty
     {
         return;
     }
+    if (msg[0] != '+' && !self->rs_dbclient_io)
+    {
+        /* If the msg not from execsh DEBUG,
+         * i.e is the first actual output from dbclient,
+         * then cancel the dbclient io guard: */
+        revssh_dbclient_io_guard_stop(self);
+        self->rs_dbclient_io = true;
+    }
 
     LOG(INFO, "revssh: dropbear client: '%s'", msg);
 
@@ -909,6 +934,9 @@ static bool revssh_dropbear_client_start(revssh_t *self, int delay)
         LOG(WARN, "revssh: Failed writing dropbear client pidfile");
     }
 
+    /* After a successful start of dbclient, set tunnel status to "connecting": */
+    self->rs_tun_status = REVSSH_TUN_STATUS_CONNECTING;
+
     LOG(INFO, "revssh: Started revssh client: pid=%d", client_pid);
     return true;
 }
@@ -932,6 +960,39 @@ static bool revssh_dropbear_client_stop(revssh_t *self)
     revssh_pidfile_delete(REVSSH_DROPBEAR_CLIENT_PIDFILE);
 
     return true;
+}
+
+/* dbclient io guard timer expired handler: */
+static void revssh_dbclient_io_guard_evtimer(struct ev_loop *loop, ev_timer *watcher, int revents)
+{
+    revssh_t *self = CONTAINER_OF(watcher, revssh_t, rs_dbclient_io_guard);
+
+    LOG(INFO, "revssh: dbclient timeout (%d seconds) reached", REVSSH_DBCLIENT_IO_TIMEOUT);
+
+    self->rs_tun_status = REVSSH_TUN_STATUS_CONNECT_FAILURE;
+
+    /* One final and immediate (non-debounced) tunnel status report callback notification: */
+    revssh_tunnel_status_report(self, false);
+
+    /* Break up the session and cleanup everything: */
+    revssh_stop_cleanup_all(self);
+}
+
+/* Start dbclient io time guard. */
+static void revssh_dbclient_io_guard_start(revssh_t *self)
+{
+    LOG(DEBUG, "revssh: Starting dbclient io time guard");
+
+    ev_timer_set(&self->rs_dbclient_io_guard, REVSSH_DBCLIENT_IO_TIMEOUT, 0.0);
+    ev_timer_start(EV_DEFAULT, &self->rs_dbclient_io_guard);
+}
+
+/* Stop dbclient io time guard. */
+static void revssh_dbclient_io_guard_stop(revssh_t *self)
+{
+    LOG(DEBUG, "revssh: Stopping dbclient io time guard");
+
+    ev_timer_stop(EV_DEFAULT, &self->rs_dbclient_io_guard);
 }
 
 /* Session max time guard timer expired handler: */
@@ -1029,6 +1090,7 @@ bool revssh_start(revssh_t *self)
         LOG(ERR, "revssh: Error starting dropbear revssh client");
         goto end;
     }
+    revssh_dbclient_io_guard_start(self);
     revssh_maxtime_guard_start(self);
 
     rv = true;

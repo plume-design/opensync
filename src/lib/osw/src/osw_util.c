@@ -45,6 +45,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define DOT11_EID_EXT_HE_OP 36
 #define DOT11_EID_EXT_EHT_OP 106
 
+#define DOT11_FRAGMENT 0xf2
 #define DOT11_EXTENDED_CAPS_TAG 0x7f
 #define DOT11_EXTENDED_CAPS_BTM (1 << 3)
 #define DOT11_RM_ENABLED_CAPS_TAG 0x46
@@ -78,6 +79,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define DOT11_EXT_EHT_CAP_PHY_320MHZ (1 << 1)
 #define DOT11_EXT_EHT_OP_INFO (1 << 0)
 #define DOT11_EXT_EHT_OP_INFO_CTL_WIDTH (0x1 + 0x2 + 0x4)
+#define DOT11_EXT_ML 107
 
 #define DOT11_AS_LE32(ptr) ((((uint8_t *)(ptr))[0] >> 0) \
                           | (((uint8_t *)(ptr))[1] >> 8) \
@@ -725,15 +727,17 @@ osw_parse_eht_cap(struct osw_assoc_req_info *info,
     const uint8_t *mcs_set = eht_cap
                        + DOT11_EXT_EHT_CAP_MAC_LEN
                        + DOT11_EXT_EHT_CAP_PHY_LEN;
-    size_t len = eht_cap_len;
+    size_t len = eht_cap_len
+               - DOT11_EXT_EHT_CAP_MAC_LEN
+               - DOT11_EXT_EHT_CAP_PHY_LEN;
 
     const uint8_t *mcs_20only_non_ap = NULL;
     if (is_mcs_20only_non_ap) {
-        if (len < 4) return;
-
-        mcs_20only_non_ap = mcs_set;
-        mcs_set += 4;
-        len -= 4;
+        if (len >= 4) {
+            mcs_20only_non_ap = mcs_set;
+            mcs_set += 4;
+            len -= 4;
+        }
     }
 
     const uint8_t *mcs_80 = NULL;
@@ -889,6 +893,92 @@ osw_parse_eht_op(struct osw_assoc_req_info *info,
     }
 }
 
+static void
+osw_parse_mle(struct osw_assoc_req_info *info,
+              const uint8_t *mle,
+              size_t mle_len)
+{
+    if (mle == NULL) return;
+    if (mle_len < 2) return;
+    const uint16_t mle_ctrl = le16toh(*(const uint16_t *)mle);
+    const uint16_t mle_ctrl_type = (mle_ctrl & 0x0007) >> 0;
+    const uint16_t mle_ctrl_rsvd = (mle_ctrl & 0x0008) >> 3;
+    const uint16_t mle_ctrl_presence = (mle_ctrl & 0xfff0) >> 4;
+    (void)mle_ctrl_type;
+    mle_len -= 2;
+    mle += 2;
+    (void)mle_ctrl_rsvd;
+    const bool mle_ctrl_has_link_info = !!(mle_ctrl_presence & BIT(0));
+    const bool mle_ctrl_has_bss_param = !!(mle_ctrl_presence & BIT(1));
+    const bool mle_ctrl_has_medium_sync = !!(mle_ctrl_presence & BIT(2));
+    const bool mle_ctrl_has_eml_cap = !!(mle_ctrl_presence & BIT(3));
+    const bool mle_ctrl_has_mld_cap = !!(mle_ctrl_presence & BIT(4));
+    const bool mle_ctrl_has_ap_mld_id = !!(mle_ctrl_presence & BIT(5));
+    const bool mle_ctrl_has_ext_mld_cap = !!(mle_ctrl_presence & BIT(6));
+    /* 5 remaining bits are unused */
+    (void)mle_ctrl_has_link_info;
+    (void)mle_ctrl_has_bss_param;
+    (void)mle_ctrl_has_medium_sync;
+    (void)mle_ctrl_has_eml_cap;
+    (void)mle_ctrl_has_mld_cap;
+    (void)mle_ctrl_has_ap_mld_id;
+    (void)mle_ctrl_has_ext_mld_cap;
+
+    if (mle_len < 1) return;
+    const uint8_t common_len = mle[0];
+
+    if (mle_len < common_len) return;
+    /* can parse common info here */
+    mle_len -= common_len;
+    mle += common_len;
+
+    while (mle_len >= 2) {
+        uint8_t subelem_id = mle[0];
+        uint8_t subelem_len = mle[1];
+        const uint8_t *subelem = &mle[2];
+        mle += 2;
+        mle_len -= 2;
+        if (mle_len < subelem_len) return;
+        mle += subelem_len;
+        mle_len -= subelem_len;
+
+        switch (subelem_id) {
+            case 0: /* per-sta profile */
+                {
+                    if (subelem_len < 2) return;
+                    const uint16_t sta_ctrl = le16toh(*(const uint16_t *)subelem);
+                    subelem_len -= 2;
+                    subelem += 2;
+
+                    const uint16_t link_id = (sta_ctrl & 0x000f) >> 0;
+                    (void)link_id;
+
+                    if (subelem_len < 1) return;
+                    const uint8_t sta_info_len = subelem[0];
+                    if (subelem_len < sta_info_len) return;
+                    subelem_len -= sta_info_len;
+                    subelem += sta_info_len;
+
+                    if (subelem_len < 2) return;
+                    const uint16_t capab_info = le16toh(*(const uint16_t *)subelem);
+                    (void)capab_info;
+                    subelem_len -= 2;
+                    subelem += 2;
+
+                    struct osw_assoc_req_info info_partner;
+                    const bool ok = osw_parse_assoc_req_ies(subelem, subelem_len, &info_partner);
+                    if (ok) {
+                        info->eht_cap_mcs = MAX(info->eht_cap_mcs, info_partner.eht_cap_mcs);
+                        info->eht_cap_nss = MAX(info->eht_cap_nss, info_partner.eht_cap_nss);
+                        info->eht_cap_chwidth = MAX(info->eht_cap_chwidth, info_partner.eht_cap_chwidth);
+                        info->per_sta_profiles++;
+                    }
+                }
+                break;
+        }
+    }
+}
+
 bool
 osw_parse_assoc_req_ies(const void *assoc_req_ies,
                         size_t assoc_req_ies_len,
@@ -910,11 +1000,34 @@ osw_parse_assoc_req_ies(const void *assoc_req_ies,
     const uint8_t *he_cap = NULL;
     const uint8_t *eht_op = NULL;
     const uint8_t *eht_cap = NULL;
+    uint8_t *mle = NULL;
+    uint8_t **frag = NULL;
     uint8_t he_cap_len = 0;
     uint8_t eht_op_len = 0;
     uint8_t eht_cap_len = 0;
+    size_t mle_len = 0;
+    size_t *frag_len = NULL;
 
     for_each_ie(elem, ies, len) {
+        if (elem->id == DOT11_FRAGMENT) {
+            const size_t datalen = elem->datalen;
+            const void *data = &elem->data[0];
+            if (datalen > 0) {
+                const size_t new_len = (*frag_len) + datalen;
+                *frag = REALLOC(*frag, new_len);
+                void *tail = (*frag) + (*frag_len);
+                *frag_len = new_len;
+                memcpy(tail, data, datalen);
+            }
+            if (datalen < 255) {
+                frag = NULL;
+                frag_len = NULL;
+            }
+        }
+        else {
+            frag = NULL;
+            frag_len = NULL;
+        }
         switch(elem->id) {
             case DOT11_EXTENDED_CAPS_TAG:
                 info->wnm_bss_trans = ((elem->data[2] & DOT11_EXTENDED_CAPS_BTM) != 0);
@@ -969,6 +1082,14 @@ osw_parse_assoc_req_ies(const void *assoc_req_ies,
                         eht_cap = data;
                         eht_cap_len = datalen;
                         break;
+                    case DOT11_EXT_ML:
+                        mle = MEMNDUP(data, datalen);
+                        mle_len = datalen;
+                        if (datalen == 254) {
+                            frag = &mle;
+                            frag_len = &mle_len;
+                        }
+                        break;
                 }
                 break;
         }
@@ -979,6 +1100,8 @@ osw_parse_assoc_req_ies(const void *assoc_req_ies,
 
     osw_parse_eht_cap(info, is_2ghz, is_non_ap, he_cap, eht_cap, he_cap_len, eht_cap_len);
     osw_parse_eht_op(info, eht_op, eht_op_len);
+    osw_parse_mle(info, mle, mle_len);
+    FREE(mle);
 
     /* FIXME:
      *  - add ccfs support?

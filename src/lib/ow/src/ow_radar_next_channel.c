@@ -183,6 +183,24 @@ struct ow_radar_next_channel_sieve
 #define state_obs_to_m(obs_)                  container_of(obs_, struct ow_radar_next_channel, state_obs)
 #define conf_obs_to_m(obs_)                   container_of(obs_, struct ow_radar_next_channel, conf_obs)
 
+static char *ow_radar_next_channel_priority_to_str(enum ow_radar_next_channel_priority priority)
+{
+    switch (priority)
+    {
+        case OW_RADAR_NEXT_CHANNEL_UNSET:
+            return "unset";
+        case OW_RADAR_NEXT_CHANNEL_UNUSABLE:
+            return "unusable";
+        case OW_RADAR_NEXT_CHANNEL_NON_DFS_OR_CAC_COMPLETED:
+            return "non_dfs_or_cac_completed";
+        case OW_RADAR_NEXT_CHANNEL_NON_DFS:
+            return "non_dfs";
+        case OW_RADAR_NEXT_CHANNEL_NON_DFS_AND_OPERATING:
+            return "non_dfs_and_operating";
+    }
+    return "unknown";
+}
+
 static struct ow_radar_next_channel_phy *ow_radar_next_channel_alloc_new_phy(
         struct ow_radar_next_channel *m,
         const char *phy_name)
@@ -486,6 +504,9 @@ static void ow_radar_next_channel_fill_sieve_priorities_update(
             {
                 sieve_elem->priority = OW_RADAR_NEXT_CHANNEL_NON_DFS_AND_OPERATING;
                 sieve_elem->channel.control_freq_mhz = operating_channel->control_freq_mhz;
+                // TODO: this loop requires a refactor
+                // TODO: and this module requires UTs
+                break;
             }
             else
             {
@@ -632,6 +653,15 @@ static struct osw_channel ow_radar_next_channel_select(struct ow_radar_next_chan
                 channel_states,
                 n_channel_states,
                 currently_operating_channel);
+
+        for (size_t i = 0; i < n_sieve; i++)
+        {
+            LOGT(LOG_PREFIX_PHY(phy_name, "sieve[%zu]: control_freq_mhz: %d, width: %s, priority: %s"),
+                 i,
+                 sieve[i].channel.control_freq_mhz,
+                 osw_channel_width_to_str(sieve[i].channel.width),
+                 ow_radar_next_channel_priority_to_str(sieve[i].priority));
+        }
 
         const enum ow_radar_next_channel_priority priorities[] = {
             OW_RADAR_NEXT_CHANNEL_NON_DFS_AND_OPERATING,

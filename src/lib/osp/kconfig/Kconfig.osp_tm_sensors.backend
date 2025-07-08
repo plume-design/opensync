@@ -1,0 +1,6 @@
+config OSP_TM_SENSORS_NULL
+    bool "Null"
+    help
+        This backend implements a dummy implementation of the tm_sensors API.
+        All functions in this implementation do nothing and return false so
+        that the on-chip sensors are used by default.

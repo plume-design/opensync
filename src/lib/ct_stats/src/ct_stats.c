@@ -776,9 +776,16 @@ ct_stats_alloc_aggr(flow_stats_t *ct_stats)
     aggr_set.report_filter = fcm_report_filter_nmd_callback;
     aggr_set.collect_filter = ct_stats_collect_filter_cb;
     aggr_set.neigh_lookup = neigh_table_lookup_af;
+
     aggr_set.on_acc_report = ct_stats_on_acc_report;
-    aggr_set.process = ct_stats_get_dev2apps;
-    aggr_set.on_acc_destroy = ct_stats_on_destroy_acc;
+
+    if (kconfig_enabled(CONFIG_FCM_PROXIMITY_SUPPORT))
+    {
+        LOGT("%s: Proximity support enabled", __func__);
+        aggr_set.process = ct_stats_get_dev2apps;
+        aggr_set.on_acc_destroy = ct_stats_on_destroy_acc;
+    }
+
     aggr = net_md_allocate_aggregator(&aggr_set);
     if (aggr == NULL)
     {

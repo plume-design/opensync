@@ -44,6 +44,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ovsdb.h"
 #include "ovsdb_sync.h"
 #include "memutil.h"
+#include "os_time.h"
 
 /*
  * WAR: Never populate DHCP_leased_IP with duplicate MAC entries, even if they
@@ -62,11 +63,12 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 struct dhcp_lease_node
 {
-    struct osn_dhcp_server_lease    dl_lease;   /* Lease data */
-    bool                            dl_sync;    /* Present on synclist */
-    bool                            dl_updated; /* Update pending */
-    ds_tree_node_t                  dl_tnode;   /* tree node */
-    synclist_node_t                 dl_snode;   /* synclist node */
+    struct osn_dhcp_server_lease    dl_lease;       /* Lease data */
+    bool                            dl_sync;        /* Present on synclist */
+    bool                            dl_updated;     /* Update pending */
+    ds_tree_node_t                  dl_tnode;       /* tree node */
+    synclist_node_t                 dl_snode;       /* synclist node */
+    double                          dl_timestamp;   /* first seen timestamp */
 };
 
 void *dhcp_lease_synclist_data = NULL;
@@ -136,7 +138,7 @@ void *osn_dhcp_server_lease_sync(synclist_t *sync, void *_old, void *_new)
     }
 
     /* Compare the two elements, if pnew is "fresher", replace it */
-    if (pnew->dl_lease.dl_leasetime > pold->dl_lease.dl_leasetime)
+    if (pnew->dl_timestamp > pold->dl_timestamp)
     {
         return pnew;
     }
@@ -198,17 +200,22 @@ bool nm2_dhcp_lease_notify(
         }
 
         FREE(node);
+        node = NULL;
     }
     else if (node == NULL)
     {
         node = CALLOC(1, sizeof(struct dhcp_lease_node));
-        node->dl_lease = *dl;
         ds_tree_insert(&dhcp_lease_list, node, &node->dl_lease);
     }
     else
     {
-        node->dl_lease = *dl;
         node->dl_updated = true;
+    }
+
+    if (node != NULL)
+    {
+        node->dl_lease = *dl;
+        node->dl_timestamp = clock_mono_double();
     }
 
     /*

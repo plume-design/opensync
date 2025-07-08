@@ -2432,8 +2432,21 @@ ow_conf_ut_run(void)
 {
     struct ev_idle idle;
     ev_idle_init(&idle, ow_conf_ut_ev_idle_cb);
-    ev_idle_start(EV_DEFAULT_ &idle);
-    ev_run(EV_DEFAULT_ 0);
+    size_t i;
+    /* The osw_drv uses ev_async under the hood. It doesn't
+     * properly allow relying on ev_run() terminating when
+     * "no work is pending". It is ev_unref()-ed for that
+     * purpose. However that also means that osw_drv
+     * business is not really properly waited for. There are
+     * cases where it is legit that it needs to be run a few
+     * more times to _properly_ settle. This is really a
+     * problem with the way these UTs are designed.
+     */
+    for (i = 0; i < 3; i++) {
+        ev_idle_start(EV_DEFAULT_ &idle);
+        ev_run(EV_DEFAULT_ 0);
+        if (ow_conf_is_settled() == true) break;
+    }
     assert(ow_conf_is_settled() == true);
 }
 

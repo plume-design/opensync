@@ -55,6 +55,7 @@ static bool g_osw_drv_settled;
 
 #define OSW_DRV_WORK_ALL_WATCHDOG_SECONDS 60.0
 #define OSW_DRV_CHAN_SYNC_SECONDS 5.0
+#define OSW_DRV_RESYNC_SECONDS 3.0
 #define OSW_DRV_CAC_SYNC_SECONDS 3.0
 #define OSW_DRV_NOL_SYNC_SECONDS 30.0
 #define OSW_DRV_TX_TIMEOUT_SECONDS 10.0
@@ -699,6 +700,32 @@ osw_drv_vif_assert_unique(const char *vif_name)
 }
 
 static void
+osw_drv_vif_resync_cb(EV_P_ ev_timer *arg, int events)
+{
+    struct osw_drv_vif *vif = container_of(arg, struct osw_drv_vif, resync);
+    struct osw_drv_phy *phy = vif->phy;
+    struct osw_drv *drv = phy->drv;
+
+    LOGD("osw: drv: %s/%s: re-syncing state",
+         phy->phy_name, vif->vif_name);
+
+    osw_drv_report_vif_changed(drv, phy->phy_name, vif->vif_name);
+}
+
+static void
+osw_drv_set_resync(struct osw_drv_vif *vif)
+{
+    struct osw_drv_phy *phy = vif->phy;
+
+    LOGD("osw: drv: %s/%s: scheduling state re-sync",
+         phy->phy_name, vif->vif_name);
+
+    ev_timer_stop(EV_DEFAULT_ &vif->resync);
+    ev_timer_set(&vif->resync, OSW_DRV_RESYNC_SECONDS, 0);
+    ev_timer_start(EV_DEFAULT_ &vif->resync);
+}
+
+static void
 osw_drv_vif_chan_sync_cb(EV_P_ ev_timer *arg, int events)
 {
     struct osw_drv_vif *vif = container_of(arg, struct osw_drv_vif, chan_sync);
@@ -759,6 +786,7 @@ osw_drv_vif_alloc(struct osw_drv_phy *phy, const char *vif_name)
     vif->phy = phy;
     osw_timer_init(&vif->recent_channel_timeout, osw_drv_vif_recent_channel_timeout_cb);
     ev_timer_init(&vif->chan_sync, osw_drv_vif_chan_sync_cb, 0, 0);
+    ev_timer_init(&vif->resync, osw_drv_vif_resync_cb, 0, 0);
     ds_tree_init(&vif->sta_tree, osw_drv_sta_addr_cmp, struct osw_drv_sta, node);
     ds_tree_insert(&phy->vif_tree, vif, vif->vif_name);
     return vif;
@@ -770,6 +798,7 @@ osw_drv_vif_free(struct osw_drv_vif *vif)
     g_osw_drv_work_done = true;
     osw_timer_disarm(&vif->recent_channel_timeout);
     ev_timer_stop(EV_DEFAULT_ &vif->chan_sync);
+    ev_timer_stop(EV_DEFAULT_ &vif->resync);
     ds_tree_remove(&vif->phy->vif_tree, vif);
     FREE(vif->vif_name);
     FREE(vif);
@@ -2391,6 +2420,7 @@ osw_drv_vif_process_state(struct osw_drv_vif *vif)
     if (added == true) osw_drv_vif_dump(vif);
     if (added == true) OSW_STATE_NOTIFY(vif_added_fn, &vif->pub);
     if (changed == true) OSW_STATE_NOTIFY(vif_changed_fn, &vif->pub);
+    if (changed == true) osw_drv_set_resync(vif);
     if (notify_channel_changed == true) OSW_STATE_NOTIFY(vif_channel_changed_fn, &vif->pub, &new_channel, &old_channel);
     if (removed == true) OSW_STATE_NOTIFY(vif_removed_fn, &vif->pub);
     if (vif->radar_detected == true) OSW_STATE_NOTIFY(vif_radar_detected_fn, &vif->pub, &vif->radar_channel);
@@ -4364,10 +4394,12 @@ osw_drv_invalidate(struct osw_drv *drv)
         struct osw_drv_vif *vif;
 
         osw_drv_report_phy_changed(drv, phy_name);
+        osw_drv_phy_set_vif_list_valid(phy, false);
         ds_tree_foreach(&phy->vif_tree, vif) {
             const char *vif_name = vif->vif_name;
             osw_drv_report_vif_changed(drv, phy_name, vif_name);
 
+            osw_drv_vif_set_sta_list_valid(vif, false);
             struct osw_drv_sta *sta;
             ds_tree_foreach(&vif->sta_tree, sta) {
                 const struct osw_hwaddr *sta_addr = &sta->mac_addr;

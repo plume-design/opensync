@@ -95,3 +95,7 @@ UNIT_DEPS += src/lib/execssl
 endif
 
 UNIT_SRC += $(if $(CONFIG_PM_ENABLE_TM),src/osp_tm.c,src/osp_tm_null.c)
+
+ifeq ($(CONFIG_OSP_TM_SENSORS_NULL),y)
+UNIT_SRC += src/osp_tm_sensors_null.c
+endif

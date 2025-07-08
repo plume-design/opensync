@@ -127,7 +127,7 @@ struct osw_hostap_conf_ap_config {
     OSW_HOSTAP_CONF_DECL_INT (wpa);
     OSW_HOSTAP_CONF_DECL_STR (wpa_psk_file , 64);
     OSW_HOSTAP_CONF_DECL_STR (wpa_key_mgmt, OSW_HOSTAP_CONF_WPA_KEY_MGMT_MAX_LEN);
-    OSW_HOSTAP_CONF_DECL_STR (wpa_pairwise, 32);
+    OSW_HOSTAP_CONF_DECL_STR (wpa_pairwise, 64);
     OSW_HOSTAP_CONF_DECL_INT (wpa_group_rekey);
     OSW_HOSTAP_CONF_DECL_BOOL(rsn_preauth);
     OSW_HOSTAP_CONF_DECL_INT (ieee80211w);

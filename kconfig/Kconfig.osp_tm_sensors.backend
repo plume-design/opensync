@@ -1,0 +1,14 @@
+#
+# Vendor OSP temperature sensors backends (default, if available)
+#
+osource "vendor/*/kconfig/Kconfig.osp_tm_sensors.backend"
+
+#
+# Platform OSP temperature sensors backends
+#
+osource "platform/*/kconfig/Kconfig.osp_tm_sensors.backend"
+
+#
+# OpenSync core platform OSP temperature sensors backend
+#
+source "src/lib/osp/kconfig/Kconfig.osp_tm_sensors.backend"

@@ -35,6 +35,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "rts_ft.h"
 #include "rts_slob.h"
 #include "rts_lock.h"
+#include "log.h"
 
 #ifdef KERNEL
 #include <linux/errno.h>
@@ -395,13 +396,16 @@ bundle_load(struct rts_bundle **bundlep, const unsigned char *buf, size_t len)
     }
 
     if (!set_bundle_var_names(bundle))
+    {
+        res = -1;
         goto bundle_cleanup;
+    }
 
     *bundlep = bundle;
     return 0;
 
 bundle_cleanup:
-    rts_assert(0 && "bundle_load error");
+    LOGE("%s:%d: error: bundle_load failed", __func__, __LINE__);
     if (bundle->vars)
         rts_ext_free(bundle->vars);
     if (bundle->code)
@@ -857,7 +861,12 @@ rts_load(const void *sig, size_t siglen)
     if ((res = bundle_load(&next, sig, siglen)) != 0)
         return res;
 
-    rts_assert(next->refcount == 0);
+    if (next->refcount != 0)
+    {
+        LOGE("%s:%d: Unable to read the signature", __func__, __LINE__);
+        return -1;
+    }
+
     rts_bundle_get(next);
 
     /* The queue must not be pushed to unless there are active consumers, and we

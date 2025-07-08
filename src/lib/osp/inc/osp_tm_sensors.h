@@ -24,17 +24,52 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef OW_OVSDB_CCONF_H_INCLUDED
-#define OW_OVSDB_CCONF_H_INCLUDED
+#ifndef OSP_TM_SENSORS_H_INCLUDED
+#define OSP_TM_SENSORS_H_INCLUDED
 
-void
-ow_ovsdb_cconf_init(ovsdb_table_t *rconft, ovsdb_table_t *vconft);
+#include <stdbool.h>
+#include <stdint.h>
+#include <ev.h>
 
-void
-ow_ovsdb_cconf_sched(void);
+#include "osn_types.h"
 
-bool
-ow_ovsdb_cconf_use_vconf(const struct schema_Wifi_VIF_Config *vconf);
+/// @file
+/// @brief Thermal Management Sensors API
+///
+/// @addtogroup OSP
+/// @{
 
-#endif /* OW_OVSDB_CCONF_H_INCLUDED */
+// ===========================================================================
+//  Thermal Management Sensors API
+// ===========================================================================
 
+/// @defgroup OSP_TMS  Thermal Management Sensors API
+/// OpenSync Thermal Management Sensors API
+/// @{
+
+/**
+ * Check if the external temperature sensor is present on index `idx` which
+ * corresponds to the `osp_temp_srcs` array index in osp_temp_srcs.c.
+ *
+ * @param idx Index of the temperature source
+ *
+ * @return true if the sensor is present, false otherwise
+ */
+bool osp_tm_sensors_is_temp_snsr_present(int idx);
+
+/**
+ * Get the temperature from the external sensor on index `idx` which
+ * corresponds to the `osp_temp_srcs` array index in osp_temp_srcs.c
+ * in degrees Celsius.
+ *
+ * @param idx Index of the temperature source
+ * @param temp Pointer to store the temperature value
+ *
+ * @return true on success, false on failure
+ */
+bool osp_tm_sensors_get_temp_snsr_val(int idx, int *temp);
+
+/// @} OSP_TMS
+/// @} OSP
+
+#endif /* OSP_TM_SENSORS_H_INCLUDED */

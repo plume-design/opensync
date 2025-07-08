@@ -481,6 +481,7 @@ void lnx_qos_netlink_fn(lnx_netlink_t *nl, uint64_t event, const char *ifname)
     else if (ifindex == 0)
     {
         LOG(NOTICE, "qos: %s: Interface ceased to exist.", self->lq_ifname);
+        ifindex = -1; /* Marks it as "existed before" */
     }
     else
     {
@@ -491,7 +492,7 @@ void lnx_qos_netlink_fn(lnx_netlink_t *nl, uint64_t event, const char *ifname)
          */
         if (self->lq_ifindex != 0)
         {
-            LOG(NOTICE, "qos: %s: Interface exists. Trigger QoS reconfiguration needed event.", self->lq_ifname);
+            LOG(NOTICE, "qos: %s: Interface exists again. Trigger QoS reconfiguration needed event.", self->lq_ifname);
 
             if (self->lq_event_cb != NULL)
             {
