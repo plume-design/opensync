@@ -189,7 +189,6 @@ static void evx_ares_sock_state_cb(void *data, int s, int read, int write)
 
 int evx_init_ares(struct ev_loop * loop, struct evx_ares *eares_p, void (*timeout_user_cb)())
 {
-    int optmask;
     int status;
 
     memset(eares_p, 0,sizeof(*eares_p));
@@ -203,11 +202,13 @@ int evx_init_ares(struct ev_loop * loop, struct evx_ares *eares_p, void (*timeou
     if (status != ARES_SUCCESS)
             return -1;
 
-    optmask = ARES_OPT_SOCK_STATE_CB;
     eares_p->loop = loop;
+    eares_p->ares.optmask = ARES_OPT_SOCK_STATE_CB;
     eares_p->ares.options.sock_state_cb_data = eares_p;
     eares_p->ares.options.sock_state_cb = evx_ares_sock_state_cb;
-    eares_p->ares.options.flags =  optmask;
+    /* ARES_OPT_FLAGS will disable EDNS if not set explicitly in flags */
+    eares_p->ares.optmask |= ARES_OPT_FLAGS;
+    eares_p->ares.options.flags =  0;
 
     ev_timer_init(&eares_p->tw, timeout_cb, 0, ARES_PROCESS_TIMEOUT);
     eares_p->chan_initialized = 0;
@@ -241,7 +242,7 @@ int evx_start_ares(struct evx_ares *eares_p)
     if (!eares_p->chan_initialized) {
         status = ares_init_options(&eares_p->ares.channel,
                                    &eares_p->ares.options,
-                                   ARES_OPT_SOCK_STATE_CB);
+                                   eares_p->ares.optmask);
         if (status != ARES_SUCCESS) {
             LOGW("%s ares[%s] failed = %d", __func__, eares_p->server, status);
             return -1;

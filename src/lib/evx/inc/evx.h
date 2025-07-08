@@ -109,6 +109,7 @@ struct evx_ares {
     struct ev_loop  *loop;
     struct {
         ares_channel        channel;
+        int                 optmask;
         struct ares_options options;
     } ares;
     int chan_initialized;

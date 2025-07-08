@@ -32,5 +32,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 int ps_mgmt_erase_wan_config(void);
 int ps_mgmt_erase_lte_config(void);
 bool ps_mgmt_erase_gw_offline_config(void);
+bool ps_mgmt_erase_last_parent_store(void);
 
 #endif /* PS_MGMT_H_INCLUDED */

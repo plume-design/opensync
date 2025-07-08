@@ -1,6 +1,6 @@
 menuconfig MANAGER_QOSM
     bool "QoS Manager (QoSM)"
-    default n
+    default y
     help
         Enable QoS Manager (QoSM)
 
