@@ -999,6 +999,7 @@ osw_hostap_bss_hapd_set_bssid_neigh(struct osw_hostap_bss_hapd *hapd,
     if (event_name == NULL) return;
 
     const bool match = (strcmp(event_name, "CTRL-EVENT-CHANNEL-SWITCH") == 0)
+                    || (strcmp(event_name, "DFS-CAC-COMPLETED") == 0)
                     || (strcmp(event_name, "CTRL-EVENT-STARTED-CHANNEL-SWITCH") == 0);
     if (!match) return;
     if (osw_hwaddr_is_zero(&hapd->bssid)) return;

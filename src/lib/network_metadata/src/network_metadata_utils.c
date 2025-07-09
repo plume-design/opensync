@@ -343,6 +343,7 @@ free_flow_key_tag(struct flow_tags *tag)
 {
     size_t i;
 
+    if (tag == NULL) return;
     CHECK_DOUBLE_FREE(tag);
 
     FREE(tag->vendor);
