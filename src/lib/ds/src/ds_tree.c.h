@@ -186,7 +186,7 @@ static inline void *ds_tree_remove_tail(ds_tree_t *root)
  */
 
 /**
- * Initialize the @p iter strucure, @p iter will point to the first element in the tree
+ * Initialize the @p iter structure, @p iter will point to the first element in the tree
  */
 static inline void* ds_tree_ifirst(ds_tree_iter_t *iter, ds_tree_t *root)
 {

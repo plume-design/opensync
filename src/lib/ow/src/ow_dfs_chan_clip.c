@@ -51,13 +51,13 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  * Description:
  *
- * Sometimes the configuraton data model will end
+ * Sometimes the configuration data model will end
  * up requesting an invalid channel, most often
  * tied to DFS NOL states.
  *
  * Sometimes the PHY will run away to an undesired
  * channel, whereas it could've kept some
- * resemblence to the original config.
+ * resemblance to the original config.
  *
  * As such it is always preferred to maintain the
  * primary channel of the original configuration
@@ -430,7 +430,7 @@ ow_dfs_chan_clip_vif_chan(struct ow_dfs_chan_clip *m,
     /* PHY channel states are reported independently to VIF
      * channels. When DFS radar is seen VIFs can report
      * channel updates as staggered. osw_confsync could see
-     * this incosistency and start reconfiguring channels
+     * this inconsistency and start reconfiguring channels
      * unnecessarily. This below is used to temporarily
      * ignore DFS NOL states and stick to the VIF's channel
      * states to keep osw_confsync idle. Once system

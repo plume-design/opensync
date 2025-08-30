@@ -30,7 +30,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * @brief Lookup the given flow in the flow tree.
  *
  * @params: tree: tree containing the flows
- * @params: req: interface structure specifing the attribute request
+ * @params: req: interface structure specifying the attribute request
  *
  * @return true if found false if not found.
  */
@@ -73,7 +73,7 @@ gkc_lookup_flows_tree(ds_tree_t *tree, struct gkc_ip_flow_interface *req, int up
  *
  * @params: pdevice: tree having the device entries along with
  *         attributes and flows associated with it
- * @params: req: interface structure specifing the attribute request
+ * @params: req: interface structure specifying the attribute request
  *
  * @return true if found false if not found.
  */

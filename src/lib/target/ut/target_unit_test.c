@@ -233,7 +233,7 @@ void test_target_map_ifname_exists()
     ret = target_map_ifname_exists(if_name);
     test_target_map_init();
     TEST_ASSERT_FALSE_MESSAGE(ret, "Failed, to check existence of if_name, because map is closed");
-    /*Input is correct and map is openned*/
+    /*Input is correct and map is opened*/
     ret = target_map_insert(if_name, map_name);
     TEST_ASSERT_FALSE_MESSAGE(!ret, "Failed, map is not initialized");
     ret = target_map_ifname_exists(if_name);

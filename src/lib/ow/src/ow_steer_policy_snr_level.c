@@ -735,7 +735,7 @@ ow_steer_policy_snr_level_recalc_cb(struct ow_steer_policy *base,
                 /* This could collide with other policies,
                  * eg. cloud controller client steering
                  * (inbound, kick). At least log the
-                 * occurance.
+                 * occurrence.
                  */
                 LOGI(LOG_WITH_PREFIX(policy, "candidate "OSW_HWADDR_FMT
                                         " is already marked as %s, can't hard block",

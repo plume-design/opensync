@@ -347,7 +347,7 @@ static bool sig_crash_report_mem_max_exists(pid_t pid, int32_t *pss)
         fclose(fp);
 
         if (scanned != 2) {
-            LOG(ERR, "Error parsing temporay file: %s\n", strerror(errno));
+            LOG(ERR, "Error parsing temporary file: %s\n", strerror(errno));
             continue;
         }
 

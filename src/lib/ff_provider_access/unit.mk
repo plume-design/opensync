@@ -24,7 +24,7 @@
 
 ###############################################################################
 #
-# Feature flag provider access - obtains feature flags from file existance
+# Feature flag provider access - obtains feature flags from file existence
 #
 ###############################################################################
 UNIT_NAME := ff_provider_access

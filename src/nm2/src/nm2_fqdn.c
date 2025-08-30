@@ -160,7 +160,7 @@ fqdn_entry_t *nm2_fqdn_entry_new(struct schema_FQDN_Resolve *rec)
     if (rec->interval_exists)
     {
         // interval defined: override ttl value,
-        // inverval 0 means never update
+        // interval 0 means never update
         e->interval = rec->interval;
     }
     else
@@ -584,7 +584,7 @@ bool nm2_fqdn_update_active_entry(fqdn_entry_t *e, double *delay)
             // resolve error, check schedule for retry
             goto L_check_schedule;
         default:
-            LOGW("%s unexpeted state %d '%s'", __func__, e->state, e->fqdn);
+            LOGW("%s unexpected state %d '%s'", __func__, e->state, e->fqdn);
     }
     return true;
 

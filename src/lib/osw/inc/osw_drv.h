@@ -630,7 +630,7 @@ osw_drv_report_vif_channel_change_started(struct osw_drv *drv,
 /* When STA link is active and the root AP advertises a CSA
  * - either through Beacon or Action frame - then this
  * function shall be called, regardless of whether the
- * target channel is serviciable by the STA link's radio or
+ * target channel is serviceable by the STA link's radio or
  * not.
  */
 void

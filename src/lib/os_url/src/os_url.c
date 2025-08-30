@@ -65,7 +65,7 @@ static const CURLcode curl_stop_list[] =
  * it is a zero terminated string holding the list of ciphers to use
  * for the SSL connection. The list must be syntactically correct, it
  * consists of one or more cipher strings separated by commas, spaces
- * or colons (prefered). !, -, + can be used as operators
+ * or colons (preferred). !, -, + can be used as operators
  */
 static const char enforce_cipher_list[] =        TLS1_TXT_DHE_DSS_WITH_AES_128_SHA256
                                               ":"TLS1_TXT_DHE_RSA_WITH_AES_128_SHA256

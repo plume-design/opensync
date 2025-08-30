@@ -70,7 +70,7 @@ struct dm_manager
     int                 dm_restart_delay;           /* Restart delay in ms */
     int                 dm_mem_max;                 /* Max memory in kB */
     int                 dm_mem_max_cnt;             /* Max memory exceed counter limit */
-    int                 dm_mem_highest;             /* Higest memory in kB */
+    int                 dm_mem_highest;             /* Highest memory in kB */
     int                 dm_mem_exceed_cnt;          /* Memory limit exceeded counter */
     ds_tree_node_t      dm_tnode;                   /* Linked list node */
     pid_t               dm_pid;                     /* Manager process ID or <0 if not started */

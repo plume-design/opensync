@@ -255,7 +255,7 @@ struct fsm_policy_reply
     int req_id;          /* request id, used for mapping request */
     int req_type;        /* fsm request type, same as in policy request */
     int cat_match;       /* category match */
-    int reply_type;      /* is policy check processed using blocking or aysnc*/
+    int reply_type;      /* is policy check processed using blocking or async*/
     int action;          /* action to take */
     char *log_action;    /* action to log mqtt report */
     int rd_ttl;          /* redirected response's ttl */

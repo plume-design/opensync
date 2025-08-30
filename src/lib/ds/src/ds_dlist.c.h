@@ -138,7 +138,7 @@ static inline void ds_dlist_insert_before(ds_dlist_t *list, void *before, void *
 }
 
 /**
- * Insert elemt @p cont at the tail of the list; @p cont becomes the new tail
+ * Insert element @p cont at the tail of the list; @p cont becomes the new tail
  */
 static inline void ds_dlist_insert_tail(ds_dlist_t* list, void *data)
 {

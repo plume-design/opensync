@@ -107,7 +107,7 @@ void test_dns()
         /* Stop DNS1 now see if the entries for dns1 disappear, check if entries for dns2 are still there */
         TEST_ASSERT_TRUE_MESSAGE(
                 inet_dns_stop(dns1),
-                "Error stoppping DNS service");
+                "Error stopping DNS service");
 
         PR("Stopping dns1");
         /* Wait for the debounce to happen */
@@ -219,7 +219,7 @@ void test_external()
         /* Stop DNS1 now see if the entries for dns1 disappear, check if entries for dns2 are still there */
         TEST_ASSERT_TRUE_MESSAGE(
                 inet_dns_stop(dns1),
-                "Error stoppping DNS service");
+                "Error stopping DNS service");
     }
 
     if (dns1 != NULL)

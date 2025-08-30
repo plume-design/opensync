@@ -1078,7 +1078,7 @@ static Interfaces__LteInfo__LteNetInfo *lte_info_set_lte_net_info(struct lte_inf
     lte_net_info = report->lte_net_info;
     if (lte_net_info == NULL) return NULL;
 
-    /* Allocate the signal quality mesage */
+    /* Allocate the signal quality message */
     pb = CALLOC(1, sizeof(*pb));
 
     /* Initialize the message */
@@ -1115,7 +1115,7 @@ static Interfaces__LteInfo__LteDataUsage *lte_info_set_lte_data_usage(struct lte
     lte_data_usage = report->lte_data_usage;
     if (lte_data_usage == NULL) return NULL;
 
-    /* Allocate the signal quality mesage */
+    /* Allocate the signal quality message */
     pb = CALLOC(1, sizeof(*pb));
 
     /* Initialize the message */
@@ -1146,7 +1146,7 @@ static Interfaces__LteInfo__LteNetServingCellInfo *lte_info_set_srv_cell(struct 
     cell = report->lte_srv_cell;
     if (cell == NULL) return NULL;
 
-    /* Allocate the signal quality mesage */
+    /* Allocate the signal quality message */
     pb = CALLOC(1, sizeof(*pb));
 
     /* Initialize the message */
@@ -1299,7 +1299,7 @@ static Interfaces__LteInfo__LteNetCarrierAggInfo *lte_info_set_pb_primary_carrie
     pca = report->lte_pca_info;
     if (pca == NULL) return NULL;
 
-    /* Allocate the signal quality mesage */
+    /* Allocate the signal quality message */
     pb = CALLOC(1, sizeof(*pb));
 
     /* Initialize the message */
@@ -1334,7 +1334,7 @@ static Interfaces__LteInfo__LteNetCarrierAggInfo *lte_info_set_pb_secondary_carr
     sca = report->lte_sca_info;
     if (sca == NULL) return NULL;
 
-    /* Allocate the signal quality mesage */
+    /* Allocate the signal quality message */
     pb = CALLOC(1, sizeof(*pb));
 
     /* Initialize the message */
@@ -1369,7 +1369,7 @@ static Interfaces__LteInfo__LtePDPContextInfo *lte_info_set_pb_pdp_ctx_param(str
     pdp_ctx = report->lte_pdp_ctx_info;
     if (pdp_ctx == NULL) return NULL;
 
-    /* Allocate the signal quality mesage */
+    /* Allocate the signal quality message */
     pb = CALLOC(1, sizeof(*pb));
 
     /* Initialize the message */
@@ -1410,7 +1410,7 @@ static Interfaces__LteInfo__CellularNr5gSaServingCellInfo *cellular_info_set_pb_
     cell = report->nr5g_sa_srv_cell;
     if (cell == NULL) return NULL;
 
-    /* Allocate the signal quality mesage */
+    /* Allocate the signal quality message */
     pb = CALLOC(1, sizeof(*pb));
 
     /* Initialize the message */
@@ -1474,7 +1474,7 @@ static Interfaces__LteInfo__CellularNr5gNsaServingCellInfo *cellular_info_set_pb
     cell = report->nr5g_nsa_srv_cell;
     if (cell == NULL) return NULL;
 
-    /* Allocate the signal quality mesage */
+    /* Allocate the signal quality message */
     pb = CALLOC(1, sizeof(*pb));
 
     /* Initialize the message */
@@ -1665,7 +1665,7 @@ error:
  * @brief Generates a lte info serialized protobuf
  *
  * Uses the information pointed by the info parameter to generate
- * a serialized obervation point buffer.
+ * a serialized observation point buffer.
  * The caller is responsible for freeing to the returned serialized data,
  * @see lte_info_free_packed_buffer() for this purpose.
  *

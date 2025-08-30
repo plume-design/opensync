@@ -64,7 +64,7 @@ struct my_data
      * Data structure nodes
      */
     ds_list_node_t      lnode;              /* Single list node data    */
-    ds_dlist_node_t     dnode;              /* Dobule list data         */
+    ds_dlist_node_t     dnode;              /* Double list data         */
     ds_tree_node_t      tnode;              /* Tree node data           */
 };
 
@@ -109,7 +109,7 @@ ds_list_t list = DS_LIST_INIT(struct my_data, lnode);
 /* Declare an iterator */
 ds_list_iter_t iter;
 
-/* Run-time initilizer */
+/* Run-time initializer */
 ds_list_init(&list, struct my_data, lnode);
 
 ```
@@ -171,7 +171,7 @@ ds_dlist_t dlist = DS_DLIST_INIT(struct my_data, dnode);
 /* Declare an iterator */
 ds_dlist_iter_t iter;
 
-/* Run-time initilizer */
+/* Run-time initializer */
 ds_dlist_init(&dlist, struct my_data, dnode);
 ```
 

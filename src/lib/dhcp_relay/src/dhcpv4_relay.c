@@ -137,7 +137,7 @@ dhcp_relay_option82_insert(struct dhcp_relay_conf_options *opt,
     /* Set the Option Agent Information ID */
     *popt++ = DHCP_OPTION_AGENT_INFORMATION;
 
-    /* Set the Option Agent Information ID Legth */
+    /* Set the Option Agent Information ID Length */
     *popt++ =  size_option;
 
     /* Set Sub Option Cuircuit ID*/

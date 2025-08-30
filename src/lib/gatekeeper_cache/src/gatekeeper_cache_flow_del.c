@@ -81,7 +81,7 @@ gkc_free_flow_members(struct ip_flow_cache *flow_entry)
  *
  * @params: flow_tree: pointer to flow tree from which flow is to be
  *          removed
- * @params: req: interface structure specifing the flow request
+ * @params: req: interface structure specifying the flow request
  * @return true for success and false for failure.
  */
 static bool
@@ -120,7 +120,7 @@ gkc_del_flow_from_tree(ds_tree_t *flow_tree, struct gkc_ip_flow_interface *req)
 /**
  * @brief delete the given flow from the device cache
  *
- * @params: req: interface structure specifing the flow request
+ * @params: req: interface structure specifying the flow request
  * @params: pdevice: pointer to device from which flow is to be
  *          removed
  * @return true for success and false for failure.

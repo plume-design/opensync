@@ -228,7 +228,7 @@ struct target_radio_ops {
      *  MHz operation use chan_width_mhz=8080.
      *  When this is not NULL the target implementation shall no
      *  longer perform any implicit CSA between PHYs. It may, but does
-     *  not need to, still perform inheritence of CSA from STA to AP
+     *  not need to, still perform inheritance of CSA from STA to AP
      *  interfaces.
      */
     void (*op_csa_rx)(const char *phy_name,

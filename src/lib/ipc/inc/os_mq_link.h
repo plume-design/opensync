@@ -90,7 +90,7 @@ const char *mq_link_name(const mq_link_t *self);
 bool mq_link_can_send(const mq_link_t *self);
 
 /**
- * @brief Gets MQ receving capability
+ * @brief Gets MQ receiving capability
  * @param self ptr to ipc msg link object
  * @return true when link can receive messages; false otherwise
  */
@@ -128,13 +128,13 @@ bool mq_link_subscribe_receive(mq_link_t *self, void *subscr, mq_msg_received_fu
 
 /**
  * @brief Sends message to specified destination. Function may block when
- * there is no space for new message in the underlaying driver
+ * there is no space for new message in the underlying driver
  * 
  * @param self ptr to MQ object
  * @param msg ptr to buffer with message to send
  * @param mlen message length in bytes
  * @param mpri MQ message priority in MQ_PRI_MIN..MQ_PRI_MAX range
- * @return true 'true' when message succesfully sent; 'false' otherwise
+ * @return true 'true' when message successfully sent; 'false' otherwise
  */
 bool mq_link_sendto(mq_link_t *self, const uint8_t *msg, size_t mlen, mq_priority_t mpri);
 
@@ -143,7 +143,7 @@ bool mq_link_sendto(mq_link_t *self, const uint8_t *msg, size_t mlen, mq_priorit
  * Note: use only if you don't subscribe for receive event
  * 
  * Message structure shall contain ptr to buffer for receiving message and
- * size shall be set to max size of this buffer. On succesfull reception
+ * size shall be set to max size of this buffer. On successful reception
  * buffer contains the message and size is updated to contain real length
  * of received message.
  * 
@@ -151,7 +151,7 @@ bool mq_link_sendto(mq_link_t *self, const uint8_t *msg, size_t mlen, mq_priorit
  * @param msg ptr to msg buffer in & out
  * @param p_mlen ptr to message buffer size (in) / message length (out)
  * @param p_mpri ptr to message priority field (out) or NULL
- * @return true when message succefully read; false on error
+ * @return true when message successfully read; false on error
  */
 bool mq_link_receive(mq_link_t *self, uint8_t *msg, size_t *p_mlen, mq_priority_t *p_mpri);
 

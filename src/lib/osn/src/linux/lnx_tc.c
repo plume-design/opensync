@@ -190,7 +190,7 @@ static bool lnx_tc_reset_if_needed(lnx_tc_t *self)
 
     /*
      * Always reset ingress qdiscs. Ingress qdiscs are used only by tc-filters (this module),
-     * thus they can alway be reset independently of egress qdiscs.
+     * thus they can always be reset independently of egress qdiscs.
      */
     LOG(INFO, "tc: %s: Resetting clsact/ingress", self->lt_ifname);
     rc = execsh_log(LOG_SEVERITY_DEBUG, lnx_tc_qdisc_clsact_reset, self->lt_ifname);

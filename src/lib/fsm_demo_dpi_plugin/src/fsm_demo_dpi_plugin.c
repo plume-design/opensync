@@ -338,7 +338,7 @@ void fsm_demo_app_detector(struct net_header_parser *net_parser, struct net_md_f
        flow_stream = "Not identified flow";
 
     fsm_demo_alloc_flow_tag(&net_parser->tags, flow_stream);
-    // Application is detected ino need furthur packets
+    // Application is detected ino need further packets
     net_parser->flow_action = FLOW_PASSTHROUGH;
 }
 
@@ -359,7 +359,7 @@ void fsm_demo_flow_analyser(struct net_header_parser *net_parser, struct net_md_
      * rules that are configured in pod using script - create_fsm_demo_dpi.sh
      * Check the destination ip of flow
      * against blocked ip. If true block the flow.
-     * If false don't inspect the furthur packets
+     * If false don't inspect the further packets
      * in the flow, just passthrough it (i.e. not tapped).
      */
     if ((*((uint32_t *)key->src_ip) == addr.s_addr) ||

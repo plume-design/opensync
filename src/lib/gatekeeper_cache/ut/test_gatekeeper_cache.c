@@ -1277,7 +1277,7 @@ test_cache_size(void)
 
     cache_size = gk_cache_get_size();
 
-    /* cache is jus tinitialized, we can change the size */
+    /* cache is just tinitialized, we can change the size */
     gk_cache_set_size(10);
     TEST_ASSERT_EQUAL_size_t(10, gk_cache_get_size());
 

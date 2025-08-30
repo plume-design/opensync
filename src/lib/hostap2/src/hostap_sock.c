@@ -106,7 +106,7 @@ hostap_sock_bind(struct hostap_sock *sock)
          * does _not_ reside on the VFS. This has the
          * benefit of not needing to perform unlink() /
          * cleanup - which is a problem when considering a
-         * program can abrubtly crash, or close the socket,
+         * program can abruptly crash, or close the socket,
          * but forget to unlink it. Abstract socket closing
          * is visible to the sender gracefully too.
          */

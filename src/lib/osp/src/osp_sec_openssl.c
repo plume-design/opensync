@@ -47,7 +47,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define AES256_IV_SIZE      16
 
 /**
- * Get a random initialization vector to be used for encription.
+ * Get a random initialization vector to be used for encryption.
  *
  */
 static bool osp_sec_get_iv(void *iv, int iv_len)
@@ -117,7 +117,7 @@ static ssize_t osp_sec_cipher(void *out, size_t out_len,
         return out_needed_len;
     }
 
-    /* Get encription key (assumed to be unique per device): */
+    /* Get encryption key (assumed to be unique per device): */
     if (!osp_sec_get_key(key, sizeof(key)))
     {
         LOG(ERROR, "Failed to get encryption key");

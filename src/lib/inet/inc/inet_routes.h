@@ -111,7 +111,7 @@ bool inet_routes_is_enabled(const inet_routes_t * self);
  * @param self ptr to inet routes object
  * @return false when inet routes object is disabled
  * @return true when reapply request was accepted. Note that actual routing
- * update may be asynchonous.
+ * update may be asynchronous.
  */
 bool inet_routes_reapply(inet_routes_t *self);
 

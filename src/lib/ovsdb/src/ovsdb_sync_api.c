@@ -414,7 +414,7 @@ int ovsdb_sync_update_where(const char *table, json_t *where, json_t *row)
     json_get_str(where, where_str, sizeof(where_str));
     LOG(DEBUG, "Table %s where: '%s' update: %s", table, where_str, json_dumps_static(row, 0));
     result = ovsdb_tran_call_s(table, OTR_UPDATE, where, row);
-    // successfull result: [{}, {"count": 1}]
+    // successful result: [{}, {"count": 1}]
     // errors handled by:
     rc =  ovsdb_get_update_result_count(result, table, "update");
     if (rc == 0)

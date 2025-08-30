@@ -38,9 +38,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define PSM_DEBOUNCE_TIME_MAX       3.0
 /*
  * The first debounce interval must way larger in order to absorb in all OVS
- * changes without cuasing too much rewrites of the current persistent data.
+ * changes without causing too much rewrites of the current persistent data.
  * This is the factor that PSM_DEBOUNCE_TIME and PSM_DEBOUNCE_TIME_MAX are
- * multiplied to caclulate the initial timers.
+ * multiplied to calculate the initial timers.
  */
 #define PSM_DEBOUNCE_INIT_FACTOR    10.0
 

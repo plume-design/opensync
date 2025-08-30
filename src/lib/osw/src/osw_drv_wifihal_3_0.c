@@ -269,7 +269,7 @@ osw_conf_mutate_errata_2ghz_vht(struct wifihal_3_0_priv *priv,
             const enum osw_band band = osw_freq_to_band(freq);
 
             /* FIXME: 11ac is not allowed on 2.4G by the
-             * vanilla spec but vendors have extenstions to do that
+             * vanilla spec but vendors have extensions to do that
              * anyway. Setting 11ac alone (without 11ax) variant to
              * Wifi HAL works as expected, but setting both 11ax and
              * 11ac flags ends up with 11ax being reported back, but
@@ -280,7 +280,7 @@ osw_conf_mutate_errata_2ghz_vht(struct wifihal_3_0_priv *priv,
              * specific 11ac mode).
              *
              * This should be addressed by allowing OSW drivers to
-             * advertise capabilites so that osw_confsync can make an
+             * advertise capabilities so that osw_confsync can make an
              * educated decision on what to do with a setup like this.
              *
              * This override makes sure that only a valid config will
@@ -1538,7 +1538,7 @@ osw_drv_request_vif_state_cb(struct osw_drv *drv,
     // WIFI_80211_VARIANT_AD = 0x40,
     // mode.wps
 
-    /* FIXME: Is the radio_params using Transmision Units or Milliseconds? */
+    /* FIXME: Is the radio_params using Transmission Units or Milliseconds? */
     ap->beacon_interval_tu = radio_params.beaconInterval;
     ap->channel = radio_build_chan(&radio_params);
 
@@ -2101,7 +2101,7 @@ osw_drv_request_config_cb(struct osw_drv *drv,
             };
             /* FIXME: Some of the actions taken by vap_configure_cb()
              * call wifi hal api - this might not be a good idea
-             * because some parameters may only be changable when
+             * because some parameters may only be changeable when
              * interface is already UP, ie. bringing interface up
              * would require 2 rounds of reconfigs (with 30s timeout
              * in between by osw_confsync). This is fine for initial

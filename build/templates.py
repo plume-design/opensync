@@ -128,7 +128,7 @@ def process_rootfs(dirname):
             if filename.endswith(TEMPLATE_SUFFIX):
                 # Preserve original file permission
                 os.chmod(dst, os.stat(src).st_mode)
-                # Clenaup source template file
+                # Cleanup source template file
                 os.unlink(src)
 
 def process_ovsdb(filename):

@@ -49,7 +49,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  * What it does
  *
- * It applies a mutation somwhere at the end of osw_conf
+ * It applies a mutation somewhere at the end of osw_conf
  * mutation chain making sure that the configuration is
  * pointing to a non-hidden AP VIF if Multi BSSID is
  * detected to be operational.

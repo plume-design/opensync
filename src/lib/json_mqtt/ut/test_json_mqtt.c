@@ -112,7 +112,7 @@ test_jencode_user_agent(void)
     out = jencode_user_agent(&session, NULL);
     TEST_ASSERT_NULL(out);
 
-    /* our session is now complete, proceed wih the UA test */
+    /* our session is now complete, proceed with the UA test */
     out = jencode_user_agent(&session, &http_report);
     TEST_ASSERT_NOT_NULL(out);
 

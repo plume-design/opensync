@@ -143,7 +143,7 @@ mq_link_t *mq_link_open(const char *addr, struct ev_loop *evloop,
     attr.mq_msgsize = max_msize > 0 ? max_msize : 8192 /*default*/;
     attr.mq_maxmsg = max_mcount > 0 ? max_mcount : 10 /*default*/;
 
-    /* When opening already exisiting queue, message size limits are ignored. Only first
+    /* When opening already existing queue, message size limits are ignored. Only first
      * mq_open() call which creates the queue applies the limits for all other queue users */
     mqd_t mqh = mq_open(addr, oflag, mode, &attr);
     if (mqh < 0)

@@ -175,7 +175,7 @@ ct_stats_setUp(void)
 
     if (nf_ct_init(loop, NULL) < 0)
     {
-        LOGE("Eror initializing conntrack");
+        LOGE("Error initializing conntrack");
         return;
     }
 

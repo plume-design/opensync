@@ -328,7 +328,7 @@ bool wanp_dhcpv6_ovsdb_enable(struct wanp_dhcpv6 *self)
 }
 
 /* Enable IP unnumbered option: In this case, the WAN DHPCv6 plugin could succeed even if no
- * global IPv6 address (recived and assigned) on the interface, but a route-able prefix was
+ * global IPv6 address (received and assigned) on the interface, but a route-able prefix was
  * received and a global IPv6 address from the prefix was assigned to the LAN interface.
  *
  * To enable that we need an IP_Interface row for the LAN interface to get LAN interface IPv6

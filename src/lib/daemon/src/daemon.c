@@ -48,7 +48,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "read_until.h"
 #include "memutil.h"
 
-#define DAEMON_DEFAULT_RESTART_DELAY      1.0   /* Default delay between daemon restarts in secods */
+#define DAEMON_DEFAULT_RESTART_DELAY      1.0   /* Default delay between daemon restarts in seconds */
 #define DAEMON_DEFAULT_RESTART_MAX        5     /* Number of retries before giving up */
 #define DAEMON_DEFAULT_KILL_TIMEOUT       10.0   /* Seconds to wait for child termination */
 
@@ -671,7 +671,7 @@ bool daemon_waitpid(
         /* Check if we can reap the status */
         if (waitpid(pid, wstatus, WNOHANG) == pid)
         {
-            /* Sucess, return the status */
+            /* Success, return the status */
             retval = true;
             goto exit;
         }
@@ -693,7 +693,7 @@ exit:
 /**
  * Kill an unrelated process
  *
- * This function fails to detect if the process-to-be-terminatd is a zombie. In such case it will
+ * This function fails to detect if the process-to-be-terminated is a zombie. In such case it will
  * return false (termination failed).
  *
  * TODO Add some /proc magic to determine if the process is a zombie or not.

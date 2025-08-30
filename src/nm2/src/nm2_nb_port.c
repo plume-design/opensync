@@ -338,7 +338,7 @@ void nm2_inet_bridge_config_reapply(struct nm2_iface *pif)
     struct nm2_port *port;
 
     TRACE();
-    /* If the interface is found in Ports table, that means Bridge update is recevied,
+    /* If the interface is found in Ports table, that means Bridge update is received,
      * before being added Wifi_inet table.  So it needs to be configured */
     port = nm2_port_get_by_name(pif->if_name);
     if (port == NULL) return;

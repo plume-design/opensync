@@ -1783,7 +1783,7 @@ test_4_dpi_dispatcher_and_plugin(void)
  * Bump up the flow's ref count so it's not removed when outdated.
  * The periodic routine is called twice with a delay greater than the
  * the programmed life of a flow. Validate that the flow is not removed.
- * Reset the flow' refcount. Validate it's gettting removed once outdated.
+ * Reset the flow' refcount. Validate it's getting removed once outdated.
  * The dpi plugin is then removed.
  */
 void
@@ -2763,7 +2763,7 @@ free_client_plugin_session(void)
 /**
  * @brief test if new flow attribute is registered
  *        with dpi plugin
- * inital flow attribute values:
+ * initial flow attribute values:
  * foo.http_dev, foo.sni_dev, foo.http_cloud, foo.sni_cloud
  * foo.app_cloud
  */
@@ -2798,7 +2798,7 @@ test_add_new_tag_value(void)
 /**
  * @brief test if deleted flow attribute is unregistered
  *        with dpi plugin
- * inital flow attribute values:
+ * initial flow attribute values:
  * foo.http_dev, foo.sni_dev, foo.http_cloud, foo.sni_cloud
  * foo.app_cloud
  */
@@ -2834,7 +2834,7 @@ test_del_tag_value(void)
  * @brief test for update flow attributes
  *        deleted attributes should be unregistered
  *        added attributes should be registered
- * inital flow attribute values:
+ * initial flow attribute values:
  * foo.http_dev, foo.sni_dev, foo.http_cloud, foo.sni_cloud
  * foo.app_cloud
  */
@@ -3060,7 +3060,7 @@ test_10_dpi_dispatcher_included_excluded_devices(void)
     TEST_ASSERT_NOT_NULL(dispatch_ops->handler);
     dispatch_ops->handler(dispatcher, net_parser);
 
-    /* source mac is in the excluded devcies */
+    /* source mac is in the excluded devices */
     /* Validate that an accumulator not was created */
     TEST_ASSERT_NULL(net_parser->acc);
 

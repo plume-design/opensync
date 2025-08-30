@@ -467,7 +467,7 @@ void wanp_static_ipv4_run(wano_plugin_handle_t *wh)
     wanp_static_ipv4_handle_t *wsh = CONTAINER_OF(wh, wanp_static_ipv4_handle_t, handle);
 
     /*
-     * Load static configration
+     * Load static configuration
      */
     wsh->have_config = wano_wan_config_get(
                 wano_wan_from_plugin_handle(wh),

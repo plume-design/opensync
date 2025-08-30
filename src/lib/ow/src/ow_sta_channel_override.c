@@ -41,7 +41,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * This module provides logic that mutates the
  * osw_conf/osw_confsync so that if there's an active
  * OSW_VIF_STA link then any OSW_VIF_AP channel
- * configurations will be overriden with the root AP
+ * configurations will be overridden with the root AP
  * operational channel.
  *
  * Rationale:
@@ -160,7 +160,7 @@ ow_sta_channel_override_ap_settling_cb(struct osw_timer *t)
      * - that is expected to disarm the settling.
      */
     ap->settle_timeout_count++;
-    LOGN(LOG_PREFIX_AP(ap, "failed to converge channels (total occurances = %lu",
+    LOGN(LOG_PREFIX_AP(ap, "failed to converge channels (total occurrences = %lu",
                        ap->settle_timeout_count));
 }
 

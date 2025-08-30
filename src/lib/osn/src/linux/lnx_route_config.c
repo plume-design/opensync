@@ -155,7 +155,7 @@ static char *find_dev_name(char *str)
 
 bool lnx_route_find_dev(osn_ip_addr_t addr, char *buf, size_t bufSize)
 {
-    /* Get interafce name from linux routing table */
+    /* Get interface name from linux routing table */
     char cmd[256];
     (void)snprintf(cmd, sizeof(cmd), 
         "ip -4 -o route get %s 2>&1",

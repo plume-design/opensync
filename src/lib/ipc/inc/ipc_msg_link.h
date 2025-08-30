@@ -76,7 +76,7 @@ IPC_MSG_LINK_STORAGE const char *ipc_msg_link_addr(const ipc_msg_link_t *self);
 IPC_MSG_LINK_STORAGE bool ipc_msg_link_can_send(const ipc_msg_link_t *self);
 
 /**
- * @brief Gets message link receving capability
+ * @brief Gets message link receiving capability
  * @param self ptr to ipc msg link object
  * @return true when link can receive messages; false otherwise
  */
@@ -112,11 +112,11 @@ IPC_MSG_LINK_STORAGE bool ipc_msg_link_subscribe_receive(ipc_msg_link_t *self, v
 
 /**
  * @brief Sends message to specified destination. Function may block when
- * there is no space for new message in the underlaying driver
+ * there is no space for new message in the underlying driver
  * 
  * @param self ptr to message link object
  * @param msg ptr to message with data and optional destination addr
- * @return true 'true' when message succesfully sent; 'false' otherwise
+ * @return true 'true' when message successfully sent; 'false' otherwise
  */
 IPC_MSG_LINK_STORAGE bool ipc_msg_link_sendto(ipc_msg_link_t *self, const ipc_msg_t *msg);
 
@@ -125,7 +125,7 @@ IPC_MSG_LINK_STORAGE bool ipc_msg_link_sendto(ipc_msg_link_t *self, const ipc_ms
  * Note: use only if you don't subscribe for receive event
  * 
  * Message structure shall contain ptr to buffer for receiving message and
- * size shall be set to max size of this buffer. On succesfull reception
+ * size shall be set to max size of this buffer. On successful reception
  * buffer contains the message and size is updated to contain real length
  * of received message.
  * If the caller want to have an address of the sender, it shall provide
@@ -134,7 +134,7 @@ IPC_MSG_LINK_STORAGE bool ipc_msg_link_sendto(ipc_msg_link_t *self, const ipc_ms
  * 
  * @param self ptr to ipc message link object
  * @param msg ptr to msg buffer in & out
- * @return true when message succefully read; false on error
+ * @return true when message successfully read; false on error
  */
 IPC_MSG_LINK_STORAGE bool ipc_msg_link_receive(ipc_msg_link_t *self, ipc_msg_t *msg);
 

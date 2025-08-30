@@ -421,7 +421,7 @@ static void cm2_dhcpc_dryrun_cb(struct ev_loop *loop, ev_child *w, int revents)
         if (cm2_is_eth_type(dhcp_dryrun->if_type) &&
                    g_state.link.is_used &&
                    cm2_is_wifi_type(g_state.link.if_type)) {
-            LOGI("%s: Detected Leaf with pluged ethernet, connected = %d",
+            LOGI("%s: Detected Leaf with plugged ethernet, connected = %d",
                  dhcp_dryrun->if_name, g_state.connected);
             eth_timeout = g_state.connected ? CONFIG_CM2_ETHERNET_SHORT_DELAY : CONFIG_CM2_ETHERNET_LONG_DELAY;
             cm2_delayed_eth_update(dhcp_dryrun->if_name, eth_timeout);

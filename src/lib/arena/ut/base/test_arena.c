@@ -126,7 +126,7 @@ void test_arena_set_get(void)
     p1 = arena_get(c);
     TEST_ASSERT_FALSE(p1 == NULL);
 
-    /* Allocate a region that is larger than the defualt chunk size so push
+    /* Allocate a region that is larger than the default chunk size so push
      * is force to allocate a new chunk */
     p2 = arena_push(c, ARENA_GROW_SIZE);
     TEST_ASSERT_FALSE(p2 == NULL);
@@ -622,7 +622,7 @@ void test_arena_defer(void)
     TEST_ASSERT_TRUE(a == 0);
     TEST_ASSERT_TRUE(arena_pop(c, SIZE_MAX) != ARENA_ERROR);
 
-    /* Test deferal on arena delete */
+    /* Test deferral on arena delete */
     a = 0;
     TEST_ASSERT_TRUE(arena_defer(c, test_arena_defer_fn, &a));
     TEST_ASSERT_TRUE(arena_del(c) != ARENA_ERROR);

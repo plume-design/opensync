@@ -182,7 +182,7 @@ static void lnx_route6_state_poll_ev(struct ev_loop *loop, struct ev_debounce *e
     lnx_route6_cache_reset();
 
     /* Poll for route states. Existing routes present in our cache will be simply
-     * flaged as valid again and no further action taken. New routes will be
+     * flagged as valid again and no further action taken. New routes will be
      * added into the cache and reported upstream via notification callback. */
     lnx_route6_state_poll(route_state);
 

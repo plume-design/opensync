@@ -29,7 +29,7 @@ if MANAGER_CM
         bool "Set default uplink priority based on radio band"
         default n
         help
-            Use dafault uplink priority based on radio type for WiFi links, using during onboarding
+            Use default uplink priority based on radio type for WiFi links, using during onboarding
 
     config CM2_USE_DRYRUN_ON_GRE
         bool "Use udhcpc dryrun on gre interfaces"

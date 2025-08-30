@@ -7,7 +7,7 @@ if OSN_BACKEND_MAP_LINUX
                 v6Plus Manufacturer code string used to construct the URL
                 for fetching MAP rules from a rule distribution server.
                 The Kconfig-configured manufacturer code is used by default,
-                unless overriden by OVSDB setting in MAP_Config.
+                unless overridden by OVSDB setting in MAP_Config.
 
                 Manufacturer code is issued for each manufacturer,
                 and universal for a product.

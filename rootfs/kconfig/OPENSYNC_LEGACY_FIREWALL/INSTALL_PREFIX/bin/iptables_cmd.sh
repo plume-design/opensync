@@ -206,7 +206,7 @@ ip6tables_boot()
 
 #
 # - Clear all wavering rules
-# - Stop the upnp deamon and flush its rules
+# - Stop the upnp daemon and flush its rules
 #
 iptables_flush()
 {

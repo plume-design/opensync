@@ -33,7 +33,7 @@
 #                  distilled version of the file (diff), meaning that it
 #                  doesn't contain options that are not different from the
 #                  defaults
-# KCONFIG_DEFAULT- Path to the defualt kconfig file, if none is set
+# KCONFIG_DEFAULT- Path to the default kconfig file, if none is set
 #
 # KCONFIG        - This either points to KCONFIG_TARGET or KCONFIG_DEFAULT
 #
@@ -90,7 +90,7 @@ $(info Using configuration file: $(KCONFIG_TARGET))
 KCONFIG:=$(KCONFIG_TARGET)
 endif
 
-# KCONFIG_WORK is the full (it includes defualt options) configuration file that will be generated from KCONFIG.
+# KCONFIG_WORK is the full (it includes default options) configuration file that will be generated from KCONFIG.
 KCONFIG_WORK:=$(KWORKDIR)/$(notdir $(KCONFIG))
 
 # skip including and generating kconfig if goal is to cleanup

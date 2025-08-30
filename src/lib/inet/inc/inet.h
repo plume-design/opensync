@@ -283,7 +283,7 @@ struct __inet
     /* True if DHCP server should be enabled on this interface */
     bool        (*in_dhcps_enable_fn)(inet_t *self, bool enabled);
 
-    /* DHCP server otpions */
+    /* DHCP server options */
     bool        (*in_dhcps_lease_set_fn)(inet_t *self, int lease_time_s);
     bool        (*in_dhcps_range_set_fn)(inet_t *self, osn_ip_addr_t start, osn_ip_addr_t stop);
     bool        (*in_dhcps_option_set_fn)(inet_t *self, enum osn_dhcp_option opt, const char *value);
@@ -344,7 +344,7 @@ struct __inet
      * ===========================================================================
      */
 
-    /* Static IPv6 configuration: Add/remove IP addresess */
+    /* Static IPv6 configuration: Add/remove IP addresses */
     bool        (*in_ip6_addr_fn)(
                         inet_t *self,
                         bool add,
@@ -853,7 +853,7 @@ static inline bool inet_state_notify(inet_t *self, inet_state_fn_t *fn)
  *  IPv6 support
  * ===========================================================================
  */
-/* Static IPv6 configuration: Add/remove IP addresess */
+/* Static IPv6 configuration: Add/remove IP addresses */
 static inline bool inet_ip6_addr(inet_t *self, bool add, osn_ip6_addr_t *addr)
 {
     if (self->in_ip6_addr_fn == NULL) return false;

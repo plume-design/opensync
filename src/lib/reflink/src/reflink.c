@@ -107,7 +107,7 @@ bool reflink_connect(reflink_t *src, reflink_t *dst)
 }
 
 /*
- * Sever the connection between a and b, decrese the reference count
+ * Sever the connection between a and b, decrease the reference count
  *
  * src will no longer be subscribed to events from dst.
  */

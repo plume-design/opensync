@@ -313,7 +313,7 @@ void test_bridge_port_first(void)
     TEST_ASSERT_NOT_NULL(br);
 
     /* Modify Bridge port uuid_port_1 is removed */
-    LOGT("%s(): modifing bridge port", __func__);
+    LOGT("%s(): modifying bridge port", __func__);
     g_mon.mon_type = OVSDB_UPDATE_MODIFY;
     callback_Bridge(&g_mon, &br_schema[0], &modify_br);
 
@@ -381,7 +381,7 @@ void test_bridge_port_second(void)
     TEST_ASSERT_NOT_NULL(port);
 
     /* Modify Bridge port uuid_port_1 is removed */
-    LOGT("%s(): modifing bridge port", __func__);
+    LOGT("%s(): modifying bridge port", __func__);
     g_mon.mon_type = OVSDB_UPDATE_MODIFY;
     callback_Bridge(&g_mon, &br_schema[0], &modify_br);
 
@@ -448,7 +448,7 @@ void test_interface_table(void)
     TEST_ASSERT_NOT_NULL(port);
 
     /* Modify Port both the interfaces are removed.*/
-    LOGT("%s(): modifing bridge port", __func__);
+    LOGT("%s(): modifying bridge port", __func__);
     g_mon.mon_type = OVSDB_UPDATE_MODIFY;
     callback_Port(&g_mon, &port_schema[0], &modify_port);
 
@@ -540,7 +540,7 @@ void test_wifi_inet_table(void)
     ev_wait1(NULL, 10.0);
 
     /* Modify Bridge port uuid_port_1 is removed */
-    LOGT("%s(): modifing bridge port", __func__);
+    LOGT("%s(): modifying bridge port", __func__);
     g_mon.mon_type = OVSDB_UPDATE_MODIFY;
     callback_Bridge(&g_mon, &br_schema[0], &modify_br);
 

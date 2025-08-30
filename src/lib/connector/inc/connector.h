@@ -182,7 +182,7 @@ bool connector_dhcp_reservation_del(const struct schema_DHCP_reserved_IP *rip);
  *              update info in external database
  * @param[in] pschema - IP port reservation row
  *
- * @retun success of synchronization
+ * @return success of synchronization
  */
 bool connector_portforward_add(const struct schema_IP_Port_Forward *pschema);
 
@@ -193,7 +193,7 @@ bool connector_portforward_add(const struct schema_IP_Port_Forward *pschema);
  *              update info in external database
  * @param[in] pschema - IP port reservation row
  *
- * @retun success of synchronization
+ * @return success of synchronization
  */
 bool connector_portforward_modify(const struct schema_IP_Port_Forward *pschema);
 
@@ -204,7 +204,7 @@ bool connector_portforward_modify(const struct schema_IP_Port_Forward *pschema);
  *              update info in external database
  * @param[in] pschema - IP port reservation row
  *
- * @retun success of synchronization
+ * @return success of synchronization
  */
 bool connector_portforward_del(const struct schema_IP_Port_Forward *pschema);
 #endif /* CONNECTOR_H_INCLUDED */

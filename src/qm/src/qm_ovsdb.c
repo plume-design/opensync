@@ -112,7 +112,7 @@ void callback_AWLAN_Node(ovsdb_update_monitor_t *mon,
             }
             else
             {
-                LOG(ERR, "Unkown MQTT option: %s", key);
+                LOG(ERR, "Unknown MQTT option: %s", key);
             }
         }
     }

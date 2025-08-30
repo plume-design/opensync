@@ -159,7 +159,7 @@ int main(int argc, char ** argv)
 
     if (nf_ct_init(loop, NULL) < 0)
     {
-        LOGE("Eror initializing conntrack\n");
+        LOGE("Error initializing conntrack\n");
         return -1;
     }
 

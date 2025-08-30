@@ -72,7 +72,7 @@ typedef ds_dlist_t      intf_stats_list_t;
 /**
  * @brief container of information needed to set a ObservationWindow protobuf
  *
- * Stashes information related to acitivity on interfaces within a time window
+ * Stashes information related to activity on interfaces within a time window
  * The per-interface stats are presented as an double-link list of intf stat nodes
  */
 typedef struct
@@ -86,7 +86,7 @@ typedef struct
 } intf_stats_window_t;
 
 /**
- * @brief container to desribe each element of a Observation Window list
+ * @brief container to describe each element of a Observation Window list
  *
  */
 typedef struct
@@ -99,7 +99,7 @@ typedef struct
  * @brief container of information needed to set a Intf Stats report protobuf
  *
  * Stashes information related to the activity of multiple interfaces over the
- * course of mulitple time windows.
+ * course of multiple time windows.
  * The observation windows are presented as an double-linked list of Observation
  * window nodes.
  */

@@ -4,5 +4,5 @@ menu "libff: Feature Flag (FF) configuration"
         default "$(INSTALL_PREFIX)/etc/ff"
         help
             Files from this path will be checked by access provider to consider flags as enabled.
-            To set flag as ENABLED by this provider create a coresponding "flag_name" file in that path.
+            To set flag as ENABLED by this provider create a corresponding "flag_name" file in that path.
 endmenu

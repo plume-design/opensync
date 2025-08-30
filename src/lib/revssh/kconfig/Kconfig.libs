@@ -19,16 +19,16 @@ if REVSSH_ENABLED
     help
         Default RevSSH session inactivity/idle timeout.
         In minutes. This configures the default, the value can be
-        overriden by OVSDB config. If a user ssh session is idle
+        overridden by OVSDB config. If a user ssh session is idle
         (inactive) for this amount of time, it is automatically closed.
 
     config REVSSH_DEFAULT_SESSION_MAX_TIME
     int "Default RevSSH session maximum time"
     default 480
     help
-        Default RevSSH session maximum time regardles if active or not.
+        Default RevSSH session maximum time regardless if active or not.
         In minutes. This configures the default, the value can be
-        overriden by OVSDB config. If this time is reached, regardless
+        overridden by OVSDB config. If this time is reached, regardless
         if user session is active or not, the whole RevSSH session is
         destroyed and resources cleaned up.
 

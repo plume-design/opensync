@@ -247,7 +247,7 @@ static uint32_t gen_local_port(void)
 
 /**
  * Poll route states with netlink/libnl3. This should:
- * - Provide addtional info such as report routes from non-main routing tables
+ * - Provide additional info such as report routes from non-main routing tables
  *   and report other route attributes (preferred src IP, etc).
  * - Provide better performance.
  */

@@ -81,7 +81,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 /* FIXME: This is temporary solution to avoid changing too
  * many things at once.  Before OSW_MODULE can be fully
- * utilized a way to mock-up for UT is necessarry.
+ * utilized a way to mock-up for UT is necessary.
  */
 typedef struct ds_tree *osw_confsync_build_conf_fn_t(void);
 
@@ -1294,7 +1294,7 @@ osw_confsync_vif_ap_mark_changed(struct osw_drv_vif_config *dvif,
                                && (dvif->u.ap.mode_changed == false);
 
         if (csa_eligible && (cac_running || cac_bugged)) {
-            /* This shouldn't be a common occurance, so keep it
+            /* This shouldn't be a common occurrence, so keep it
              * at INFO so it's visible when it happens.
              */
             const char *vif_name = cvif->vif_name;
@@ -1830,7 +1830,7 @@ osw_confsync_build_drv_conf_vif_sta_op(struct osw_drv_vif_config *dvif,
      * the current channel before it can be changed.  For
      * that to happen the STA link needs to be dropped.
      *
-     * RECONNECT would do that, but it would immediatelly
+     * RECONNECT would do that, but it would immediately
      * start connecting. Normally this would result in no
      * link for some time, and channel would eventually be
      * changed before the target parent can actually be
@@ -2540,7 +2540,7 @@ osw_confsync_state_changed(struct osw_confsync *cs)
      * may go through transient state changes before
      * reaching a final state. To avoid needlessly
      * re-issuing configuration commands, and possibly
-     * making configuration inadvertantly longer, move to
+     * making configuration inadvertently longer, move to
      * CHECKING only when IDLE.
      */
     switch (cs->state) {
@@ -2754,7 +2754,7 @@ osw_confsync_conf_mutated_cb(struct osw_conf_observer *o)
 static void osw_confsync_phy_tree_timeout_cb(EV_P_  ev_timer *arg, int events)
 {
     struct osw_confsync *cs = container_of(arg, struct osw_confsync, last_phy_tree_timeout);
-    LOGT("osw: confsync: last phy tree timer expired, flusing last phy_tree");
+    LOGT("osw: confsync: last phy tree timer expired, flushing last phy_tree");
     osw_conf_free(cs->last_phy_tree);
     cs->last_phy_tree = NULL;
     ev_timer_stop(EV_DEFAULT_ &cs->last_phy_tree_timeout);

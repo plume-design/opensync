@@ -29,7 +29,7 @@
 # and thus causing ct overflow condition. When this condition is active
 # no new connections will be allowed.
 #
-# To avoid loosing connectivity ct table will be flushed when reaching
+# To avoid losing connectivity ct table will be flushed when reaching
 # CT_ALLOWED. While condition may be recurring, at least
 # clients and device should not permanently loose connectivity.
 #

@@ -510,7 +510,7 @@ network_zone_add_mac(struct network_zone_mac *mac)
     entry = CALLOC(1, sizeof(*entry));
     if (entry == NULL) return false;
 
-    /* Convert the mac adress from a string to a os_macaddr_t structure */
+    /* Convert the mac address from a string to a os_macaddr_t structure */
     ret = os_nif_macaddr_from_str(&entry->mac, mac->val);
     if (ret == false) goto out_on_err;
 

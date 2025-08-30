@@ -54,7 +54,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 typedef ds_dlist_t          mdns_records_list_t;
 
 /**
- * @brief container to desribe each element of a mdns record list
+ * @brief container to describe each element of a mdns record list
  *
  */
 typedef struct

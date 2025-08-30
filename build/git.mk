@@ -101,7 +101,7 @@ git-status:
 	$(Q) echo "$(call COLOR_GRAY,LOCAL) - on local branch"
 	$(Q) echo -n "$(call COLOR_RED,PUSH) - push needed; "
 	$(Q) echo -n "$(call COLOR_MAGENTA,MERGE) - branch diverged; "
-	$(Q) echo  "! - there are uncommited files"
+	$(Q) echo  "! - there are uncommitted files"
 	$(Q) echo
 	$(Q) (cd .. ; $(call GIT_STATUS,Master))
 	$(Q) git -C "$(MASTER_REPO)" submodule --quiet foreach --recursive '$(call GIT_STATUS,$$path)'

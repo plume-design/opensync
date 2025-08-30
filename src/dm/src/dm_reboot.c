@@ -317,7 +317,7 @@ bool dm_reboot_store(struct dm_reboot *dr)
     }
 
     /*
-     * Store the string representation to peristent storage
+     * Store the string representation to persistent storage
      */
     rstrsz = (ssize_t)strlen(rstr) + 1;
     if (osp_ps_set(ps, DM_REBOOT_KEY, rstr, (size_t)rstrsz) < rstrsz)

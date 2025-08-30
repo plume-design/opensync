@@ -1882,7 +1882,7 @@ static const char *util_v6plus_hgw_status_to_str(osn_map_v6plus_hgw_status_t hgw
 
 /*
  * HGW status change action handler: To be called when the actual HGW status change is determined
- * to take apropriate actions: restart MAP configuration to reconfigure according to the
+ * to take appropriate actions: restart MAP configuration to reconfigure according to the
  * new HGW status.
  */
 static void nm2_mapcfg_v6plus_hgw_status_change_action(struct nm2_mapcfg *mapcfg)

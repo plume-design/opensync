@@ -578,7 +578,7 @@ intf_stats_fetch_stats(bool set_baseline)
         {
             struct rtnl_link_stats *stats_new = ifa->ifa_data;
 
-            LOGT("------Stats retreived from getifaddrs()-------");
+            LOGT("------Stats retrieved from getifaddrs()-------");
             LOGT("tx_packets = %10u; rx_packets = %10u\n",
                                         stats_new->tx_packets, stats_new->rx_packets);
             LOGT("tx_bytes   = %10u; rx_bytes   = %10u\n",
@@ -689,7 +689,7 @@ intf_stats_plugin_close_cb(fcm_collect_plugin_t *collector)
 
 int intf_stats_plugin_init(fcm_collect_plugin_t *collector)
 {
-    LOGN("Interface Stats plugin intialization");
+    LOGN("Interface Stats plugin initialization");
 
     if (!collector)
     {

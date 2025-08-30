@@ -227,7 +227,7 @@ struct net_md_aggregator_set
 {
     struct node_info *info; /* pointer to the node info */
     size_t num_windows;     /* the max # of windows the report will contain */
-    int acc_ttl;            /* how long an incative accumulator is kept around */
+    int acc_ttl;            /* how long an inactive accumulator is kept around */
     int report_type;        /* absolute or relative */
     int report_stats_type;
 

@@ -45,7 +45,7 @@ enum acc_state
 {
     ACC_STATE_INIT = 0,           /* Not accessed yet */
     ACC_STATE_WINDOW_ACTIVE = 1,  /* Updated in the current observation window */
-    ACC_STATE_WINDOW_RESET = 2,   /* Resetted for the current window */
+    ACC_STATE_WINDOW_RESET = 2,   /* Reset for the current window */
 };
 
 

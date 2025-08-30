@@ -900,7 +900,7 @@ OSW_UT(ow_steer_policy_pre_assoc_ut_timer_mode_connect_to_blocked)
     OSW_UT_EVAL(ow_steer_candidate_get_preference(candidate_0) == OW_STEER_CANDIDATE_PREFERENCE_SOFT_BLOCKED);
     OSW_UT_EVAL(ow_steer_candidate_get_preference(candidate_1) == OW_STEER_CANDIDATE_PREFERENCE_NONE);
 
-    /* Wait unitl backoff */
+    /* Wait until backoff */
     osw_ut_time_advance(OSW_TIME_SEC(4));
     counter_policy->state_observer.vif_probe_req_fn(&counter_policy->state_observer, &ctx->vif_0, &ctx->probe_req);
     ow_steer_candidate_list_clear(ctx->candidate_list);
@@ -1137,7 +1137,7 @@ OSW_UT(ow_steer_policy_pre_assoc_ut_timer_mode_connect_to_blocked_auth_only)
     OSW_UT_EVAL(mediator_cnt.schedule_recalc_cnt == 1);
     OSW_UT_EVAL(mediator_cnt.dismiss_executor_cnt == 0);
 
-    /* STA send auth to initiate backoff immediatelly period */
+    /* STA send auth to initiate backoff immediately period */
     counter_policy->state_observer.vif_frame_rx_fn(&counter_policy->state_observer,
                                                    &ctx->vif_0,
                                                    (const void *)&ctx->auth_frame,
@@ -1277,7 +1277,7 @@ OSW_UT(ow_steer_policy_pre_assoc_ut_timer_mode_connect_to_blocked_auth_only_bypa
     OSW_UT_EVAL(mediator_cnt.schedule_recalc_cnt == 1);
     OSW_UT_EVAL(mediator_cnt.dismiss_executor_cnt == 0);
 
-    /* STA send auth to initiate backoff immediatelly period */
+    /* STA send auth to initiate backoff immediately period */
     counter_policy->state_observer.vif_frame_rx_fn(&counter_policy->state_observer,
                                                    &ctx->vif_0,
                                                    (const void *)&ctx->auth_frame,

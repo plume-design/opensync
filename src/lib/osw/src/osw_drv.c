@@ -76,7 +76,7 @@ static bool g_osw_drv_settled;
     LOGI("osw: drv: retrying sta state request: drv=%s phy=%s vif=%s sta=" OSW_HWADDR_FMT, \
          sta->vif->phy->drv->ops->name, sta->vif->phy->phy_name, sta->vif->vif_name, OSW_HWADDR_ARG(&(sta)->mac_addr));
 #define osw_log_drv_watchdog() \
-    LOGW("osw: drv: watchdog trigerred: system has not settled for %.2f seconds", \
+    LOGW("osw: drv: watchdog triggered: system has not settled for %.2f seconds", \
          OSW_DRV_WORK_ALL_WATCHDOG_SECONDS);
 
 #define ARRDUP(src, dst, memb_ptr, memb_len) \
@@ -3458,7 +3458,7 @@ osw_drv_frame_tx_process_frames(struct osw_drv *drv)
 
         switch (desc->state) {
             case OSW_DRV_FRAME_TX_STATE_UNUSED:
-                LOGD("osw: drv: unused frame tx on pedning list, resetting frame");
+                LOGD("osw: drv: unused frame tx on pending list, resetting frame");
                 break;
             case OSW_DRV_FRAME_TX_STATE_PENDING:
                 vif_name = strlen(desc->vif_name.buf) > 0 ? desc->vif_name.buf : NULL;
@@ -3482,7 +3482,7 @@ osw_drv_frame_tx_process_frames(struct osw_drv *drv)
                 break;
             case OSW_DRV_FRAME_TX_STATE_SUBMITTED:
             case OSW_DRV_FRAME_TX_STATE_FAILED:
-                LOGD("osw: drv: submitted/failed frame tx at the beginning of pedning list, resetting frame");
+                LOGD("osw: drv: submitted/failed frame tx at the beginning of pending list, resetting frame");
                 osw_timer_disarm(&desc->expiry);
                 break;
         }

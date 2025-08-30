@@ -119,7 +119,7 @@ struct fsm_session_ops
     /* notify if identical session loaded/unloaded */
     void (*notify_identical_sessions)(struct fsm_session *, bool);
 
-    /* notify of dpi connetion to free.*/
+    /* notify of dpi connection to free.*/
     void (*dpi_free_conn_ctxt)(struct net_md_stats_accumulator *);
 };
 
@@ -441,7 +441,7 @@ struct fsm_session
     int64_t report_count;            /* mqtt reports counter */
     struct ev_loop *loop;            /* event loop */
     struct fsm_session *service;     /* service provider */
-    ds_tree_node_t fsm_node;         /* Seesion manager node handle */
+    ds_tree_node_t fsm_node;         /* Session manager node handle */
     char bridge[64];                 /* underlying bridge name */
     char tx_intf[64];                /* plugin's TX interface */
     long dpi_stats_report_interval;  /* dpi stats reporting interval */
@@ -737,7 +737,7 @@ fsm_is_dpi(struct fsm_session *session);
  * @brief initializes the dpi resources of a dispatcher session
  *
  * @param session the dispatcher session
- * @return true if the initialization succeeeded, false otherwise
+ * @return true if the initialization succeeded, false otherwise
  */
 bool
 fsm_init_dpi_dispatcher(struct fsm_session *session);

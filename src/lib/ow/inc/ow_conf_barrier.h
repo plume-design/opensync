@@ -33,7 +33,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * This is intended to be called from a non-mainloop threads
  * to synchronize against osw_confsync and ow_conf work.
  *
- * It is safe to call this immediatelly after ow_conf_*()
+ * It is safe to call this immediately after ow_conf_*()
  * calls that modify a steady-state system into possible
  * non-steady state that needs a reconfig.
  *

@@ -389,7 +389,7 @@ message CellularInfoReport {
   NetCarrierAggInfo lte_primary_carrier_agg_info = 6; // "Primary" is actually the serving cell
 
   /* Secondary LTE cells */
-  repeated NetCarrierAggInfo lte_secondary_carrier_agg_info = 7; // Currrently up to 4
+  repeated NetCarrierAggInfo lte_secondary_carrier_agg_info = 7; // Currently up to 4
 
   /* PDP context info */
   repeated PdpContextInfo pdp_context = 8; // PDP/PDU

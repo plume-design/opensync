@@ -72,7 +72,7 @@ typedef void osp_dl_curl_dl_fn_t(struct osp_dl_curl *dc, enum osp_dl_status stat
 /*
  * Curl I/O callback.
  *
- * This funciton must return the number of bytes written. If this value is lower
+ * This function must return the number of bytes written. If this value is lower
  * than `data_sz` it assumes an error occurred and the download is aborted.
  *
  * Note: data or data_sz may be NULL or 0 respectively when downloading a file
@@ -201,7 +201,7 @@ bool osp_dl_download(char *url, char *dst_dir, int timeout, osp_dl_cb dl_cb, voi
             url,
             dd->dd_dst_path);
 
-    /* Start asynchronous downloas */
+    /* Start asynchronous downloads */
     if (!osp_dl_curl_start(&dd->dd_curl))
     {
         LOG(ERR, "curl: Error starting download of: %s", url);
@@ -274,7 +274,7 @@ bool osp_dl_download_init_files(struct osp_dl_download *dd, const char *dst_dir)
     }
 
     /*
-     * Deleteing the file is safer than using O_TRUNC as O_TRUNC may fail if the
+     * Deleting the file is safer than using O_TRUNC as O_TRUNC may fail if the
      * file is read-only
      */
     (void)unlink(dst_dir);
@@ -457,7 +457,7 @@ bool osp_dl_curl_start(struct osp_dl_curl *dc)
     }
 
     /*
-     * Create a cURL multi handle -- mutli handles are the only way cURL can
+     * Create a cURL multi handle -- multi handles are the only way cURL can
      * work truly asynchronously.
      */
     dc->dc_multi = curl_multi_init();
@@ -546,7 +546,7 @@ void osp_dl_curl_stop_download(struct osp_dl_curl *dc)
      * The proper teardown sequence of a multi curl handle is as follows:
      *
      * - remove all easy handles using curl_multi_remove_handle()
-     * - destroy the multi handle using curl_mutli_cleanup()
+     * - destroy the multi handle using curl_multi_cleanup()
      * - destroy individual easy handles using curl_easy_cleanup()
      */
     if (dc->dc_multi != NULL)

@@ -63,7 +63,7 @@ arena_t *__arena_scratch(arena_t **conflicts)
             {
                 if (*c == arena_scratch_list[s]) break;
             }
-            /* No conflcits found, break out */
+            /* No conflicts found, break out */
             if (*c == NULL) break;
         }
         if (s >= ARENA_SCRATCH_NUM)

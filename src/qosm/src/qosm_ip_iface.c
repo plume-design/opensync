@@ -142,7 +142,7 @@ qosm_os_tc_commit(osn_tc_t *ipi_tc, struct qosm_intf_classifier *ic, bool ingres
     ret |= osn_tc_filter_end(ipi_tc);
 
 done:
-    LOGT("%s(): commiting TC configuration for %s %s",
+    LOGT("%s(): committing TC configuration for %s %s",
          __func__, ic->ic_token,
          (ret != 0 ? "success" : "failed"));
 

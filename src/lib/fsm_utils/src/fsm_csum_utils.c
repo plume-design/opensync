@@ -136,7 +136,7 @@ uint16_t fsm_compute_ip_checksum(struct iphdr *ip_header)
         sum += word;
     }
 
-    /* handle odd-lenght header */
+    /* handle odd-length header */
     if (len & 1) {
         sum += (header[len - 1] << 8);
     }

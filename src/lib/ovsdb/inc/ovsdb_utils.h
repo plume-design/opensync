@@ -77,7 +77,7 @@ struct str_ipair
  *
  * @param a the first string of the comparison
  * @param b the second string of the comparison
- * @return the string comparision result
+ * @return the string comparison result
  */
 int
 str_tree_cmp(const void *a, const void *b);
@@ -132,7 +132,7 @@ schema2tree(size_t key_size, size_t val_size, size_t nelems,
  *
  * @param key the key element of the pair
  * @param value the value element of the pair
- * @return a string pair pointer if successfull, NULL otherwise.
+ * @return a string pair pointer if successful, NULL otherwise.
  */
 struct str_pair *
 get_pair(const char *key, const char *value);

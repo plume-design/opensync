@@ -92,7 +92,7 @@ void execssl_io(execsh_async_t *esa, enum execsh_io io_type, const char *buf)
  * it is fed into the command's stdin. The stdout of the process is returned
  * as an allocated string buffer. NULL is returned in case the return code != 0
  *
- * The code is mostly based around libexecsh, except the defualt shell is
+ * The code is mostly based around libexecsh, except the default shell is
  * replaced by the openssl command. In this case this works well since execsh
  * is made to work around piping stuff to and back to a shell process. If we
  * replace the shell with openssl, it is just as useful passing data to openssl.

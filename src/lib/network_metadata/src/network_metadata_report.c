@@ -327,7 +327,7 @@ bool net_md_send_report(struct net_md_aggregator *aggr, char *mqtt_topic)
 
     /*
      * Reset the counter indicating the # of inactive flows with
-     * a reference count. It will be updateed while building the report.
+     * a reference count. It will be updated while building the report.
      */
     aggr->held_flows = 0;
 

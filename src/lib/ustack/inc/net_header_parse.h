@@ -330,7 +330,7 @@ net_header_log(int log_level, struct net_header_parser *parser);
 
 
 /**
- * @brief logs the network header contetn at LOG_SEVERITY_INFO level
+ * @brief logs the network header content at LOG_SEVERITY_INFO level
  *
  * @param parser the parsed data container
  * @return none

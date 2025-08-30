@@ -395,7 +395,7 @@ void wano_ppline_plugin_reset(wano_ppline_t *self, bool force)
  * Find all plug-ins that are eligible for running and schedule them.
  *
  * The function below finds all plug-ins in the PENDING state that do not
- * conflict with any currrently running plug-in (by checking the run-mask)
+ * conflict with any currently running plug-in (by checking the run-mask)
  * and schedules them.
  *
  * Note that plug-ins that are in the SCHEDULED state are not started yet.

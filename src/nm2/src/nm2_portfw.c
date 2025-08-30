@@ -86,7 +86,7 @@ bool nm2_portfw_init(void)
 }
 
 /*
- * OVSDB monitoring functon for the IP_Port_Forward table
+ * OVSDB monitoring function for the IP_Port_Forward table
  */
 void nm2_portfw_monitor_fn(ovsdb_update_monitor_t *self)
 {

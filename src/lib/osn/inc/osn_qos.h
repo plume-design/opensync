@@ -96,13 +96,13 @@ struct osn_qos_other_config
 struct osn_qos_queue_status
 {
     uint32_t    qqs_fwmark;                         /**< The firewall mark */
-    char        qqs_class[OSN_QOS_QUEUE_CLASS_LEN]; /**< Class definiton, to be used with CLASSIFY iptables rules */
+    char        qqs_class[OSN_QOS_QUEUE_CLASS_LEN]; /**< Class definition, to be used with CLASSIFY iptables rules */
 };
 
 /**
  * QoS event reporting callback type
  *
- * @param[in]   if_name      Interface for which the event occured
+ * @param[in]   if_name      Interface for which the event occurred
  * @param[in]   event        QoS event
  */
 typedef void osn_qos_event_fn_t(const char *if_name, enum osn_qos_event event);

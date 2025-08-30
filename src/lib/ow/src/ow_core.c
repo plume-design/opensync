@@ -82,7 +82,7 @@ ow_core_run(EV_P)
 
     /* FIXME: This is a little clunky. osw_ev is supposed to
      * be _the_ ev loop provider. However with the current
-     * state of affiars it needs a bit more work to clean
+     * state of affairs it needs a bit more work to clean
      * this up.
     */
     assert(OSW_MODULE_LOAD(osw_ev) == EV_A);

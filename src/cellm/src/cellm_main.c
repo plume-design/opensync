@@ -160,7 +160,7 @@ int main(int argc, char **argv)
         return -1;
     }
 
-    // Initialzie CELLM
+    // Initialize CELLM
     cellm_info_event_init();
 
     // Create client table

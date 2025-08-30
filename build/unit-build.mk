@@ -119,7 +119,7 @@ $(UNIT_BUILD)/.target: $(TESTBINDIR)/$(UNIT_BIN)/unit $(TESTBINDIR)/$(UNIT_BIN)/
 
 # Use the .target file to actually see if any of the libraries changed
 # Use -Wl,--start-group to force GNU LD to ignore the link order; this might be slower for larger projects
-# Special naming convetion for unit testing $(UNIT_BIN)/unit instead of $(UNIT_BIN)
+# Special naming convention for unit testing $(UNIT_BIN)/unit instead of $(UNIT_BIN)
 $(TESTBINDIR)/$(UNIT_BIN): | $(TESTBINDIR)
 
 # In case data folder exist in UNIT_PATH, copy directory and its content to bin folder
@@ -769,7 +769,7 @@ unit-run: unit-run-cleanup
 	    echo "$(call COLOR_GREEN,Unit-test complete)";\
 	fi
 
-# For coverage execution, we must intially check if we have properly set up CLANG
+# For coverage execution, we must initially check if we have properly set up CLANG
 # and the associated tools.
 #
 unit-coverage-prerequisite:

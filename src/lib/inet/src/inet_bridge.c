@@ -419,7 +419,7 @@ bool inet_bridge_commit(inet_t *super)
     bool retval;
 
     inet_base_t *self = (inet_base_t *)super;
-    LOG(INFO, "inet_base: Commiting new bridge configuration.");
+    LOG(INFO, "inet_base: Committing new bridge configuration.");
 
     /* Commit all pending units */
     retval = inet_unit_commit(self->in_units, __inet_base_bridge_commit, self);

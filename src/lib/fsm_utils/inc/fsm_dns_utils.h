@@ -144,7 +144,7 @@ fsm_dns_cache_flush_ttl();
 /**
  * @brief Prints the content of the used DNS cache.
  *
- * @param param is used to establish which cache imlementation is
+ * @param param is used to establish which cache implementation is
  *        actually used.
  */
 void

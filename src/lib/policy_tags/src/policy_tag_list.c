@@ -195,7 +195,7 @@ om_tag_list_apply_diff(ds_tree_t *list, om_tag_list_diff_t *diff)
         }
     }
 
-    // Update entires
+    // Update entries
     ds_tree_foreach(&diff->updated, dtle) {
         if ((tle = om_tag_list_entry_find_by_value(list, dtle->value))) {
             tle->flags = dtle->flags;

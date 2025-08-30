@@ -202,7 +202,7 @@ bool pasync_ropen(struct ev_loop *loop,
 /*
  * Open the process, and get its output in callback.
  *
- * The callback will additionaly pass user context data
+ * The callback will additionally pass user context data
  * and cmd exit code.
  */
 bool pasync_ropenx(struct ev_loop *loop,

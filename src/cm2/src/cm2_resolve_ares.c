@@ -415,7 +415,7 @@ void cm2_move_next_target_addr(void)
     else
         addr->ipv4_addr_list.h_cur_idx++;
 
-    // Flip it so everytime we tend to try a diffirent one
+    // Flip it so everytime we tend to try a different one
     addr->ipv6_pref = !addr->ipv6_pref;
 }
 

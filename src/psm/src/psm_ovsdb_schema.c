@@ -108,7 +108,7 @@ exit:
 }
 
 /*
- * Return true wheter table:column exists in the schema definition
+ * Return true whether table:column exists in the schema definition
  */
 bool psm_ovsdb_schema_column_exists(const char *table, const char *column)
 {
@@ -125,7 +125,7 @@ bool psm_ovsdb_schema_column_exists(const char *table, const char *column)
 }
 
 /*
- * Return true wheter table:column is an ephemeral column
+ * Return true whether table:column is an ephemeral column
  *
  * This function returns false if the column doesn't exist
  */

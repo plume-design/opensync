@@ -31,7 +31,7 @@ menuconfig WPD_ENABLED
             int "Watchdog timeout"
             default 30
             help
-                WPD will setup watchdog device to trigger a harware reset after
+                WPD will setup watchdog device to trigger a hardware reset after
                 this number of seconds, if WPD crashes and stops pinging the
                 device.
 

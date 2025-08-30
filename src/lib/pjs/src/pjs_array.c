@@ -620,7 +620,7 @@ bool pjs_string_array_to_json(
  */
 
 /**
- * Optinal Sub ARRAY handler
+ * Optional Sub ARRAY handler
  */
 bool pjs_sub_array_q_from_json(
         pjs_sub_from_json_cb_t *out_cb,

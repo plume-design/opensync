@@ -48,8 +48,8 @@ struct __inet_dns
 {
     char                    dns_ifname[C_IFNAME_LEN];       /* Interface name */
     bool                    dns_enabled;                    /* True if service has been started */
-    osn_ip_addr_t           dns_primary;                    /* Primary DNS addrss */
-    osn_ip_addr_t           dns_secondary;                  /* Secondary DNS addrss */
+    osn_ip_addr_t           dns_primary;                    /* Primary DNS address */
+    osn_ip_addr_t           dns_secondary;                  /* Secondary DNS address */
     inet_dns_status_fn_t   *dns_status_fn;                  /* Status update function */
     void                   *dns_status_ctx;                 /* Status context */
     ds_dlist_node_t         dns_dnode;
@@ -293,7 +293,7 @@ bool inet_dns_path(inet_dns_t *self, char *dest, ssize_t destsz)
 {
     int psz;
 
-    /* XXX: Prefix the name with a _ -- this way NM set hostnames have a higher precedence (comapred to UDHCPC obtained DNS settings) */
+    /* XXX: Prefix the name with a _ -- this way NM set hostnames have a higher precedence (compared to UDHCPC obtained DNS settings) */
     psz = snprintf(dest, destsz, "%s/_%s.resolv",
              CONFIG_INET_RESOLVCONF_TMP,
             self->dns_ifname);

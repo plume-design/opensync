@@ -156,7 +156,7 @@ void execsh_async_stop(execsh_async_t *esa);
  * Execute a shell script specified by @p script synchronously,
  * redirect outputs to the logger.
  *
- * The script specified in @p script is piped to a forked shell proces
+ * The script specified in @p script is piped to a forked shell process
  * which is executed by passing the variable length arguments as its
  * parameters.
  */

@@ -155,7 +155,7 @@ gk_cache_get_size(void)
 }
 
 /**
- * @brief comparator function for comparing mac adress
+ * @brief comparator function for comparing mac address
  *
  * @params: _a: first MAC address to compare
  * @params: _b: second MAC address to compare
@@ -562,7 +562,7 @@ gkc_interface_to_attr_cache(struct gk_attr_cache_interface *entry, struct attr_c
  * @brief create a new attribute entry fo the given attribute type.
  *        We have previously ensured the manager is initialized.
  *
- * @params: entry: specifing the attribute type
+ * @params: entry: specifying the attribute type
  *
  * @return return pointer to created attribute struct
  *         NULL on failure
@@ -1599,9 +1599,9 @@ gkc_fetch_attribute_entry(struct gk_attr_cache_interface *req)
 
 
 /**
- * @brief upate or add the given attribute to the cache.
+ * @brief update or add the given attribute to the cache.
  *
- * @params: req: interface structure specifing the attribute request
+ * @params: req: interface structure specifying the attribute request
  *
  * @return true for success and false for failure.
  */
@@ -1852,7 +1852,7 @@ gkc_get_allowed_counter(os_macaddr_t *device_mac, enum gk_cache_request_type att
 }
 
 /**
- * @brief check ttl value for the given attribue
+ * @brief check ttl value for the given attribute
  *        or flow tree
  *
  * @params: attribute or flow tree

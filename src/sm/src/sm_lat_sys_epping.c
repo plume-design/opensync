@@ -345,7 +345,7 @@ static void sm_lat_sys_ifname_retry_cb(EV_P_ ev_timer *arg, int events)
 
 static void sm_lat_sys_ifname_kill_cb(EV_P_ ev_timer *arg, int events)
 {
-    /* If SIGTERM and child_cb were succesful we don't enter here due to ev_timer_stop() */
+    /* If SIGTERM and child_cb were successful we don't enter here due to ev_timer_stop() */
     struct sm_lat_sys_ifname *sif = CONTAINER_OF(arg, struct sm_lat_sys_ifname, kill);
 
     /* SIGTERM worked and child_cb() is pending */
@@ -539,7 +539,7 @@ static int sm_lat_sys_ifname_buf_read(struct sm_lat_sys_ifname *sif, int fd)
     /* Read chunk of data from process pipe
      * if failed there are 2 scenarios:
      * - process is already dead, stopping it makes no harm
-     * - other error occured; if service is enabled, stop will initiate process restart
+     * - other error occurred; if service is enabled, stop will initiate process restart
      */
     n = read(fd, chunk, sizeof(chunk));
     if (n <= 0)

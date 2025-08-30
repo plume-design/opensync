@@ -72,7 +72,7 @@ typedef struct dpp_radius_stats_rec
 
     /*
     * The function that allocated the data object provides the cleanup function.
-    * As the data object pointer is passed, the ownership is transfered and the
+    * As the data object pointer is passed, the ownership is transferred and the
     * last owner, that is, the function that does not transfer the ownership,
     * "promises" that it will call the cleanup function by passing to it the
     * pointer to the data object it inherited.

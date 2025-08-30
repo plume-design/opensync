@@ -377,7 +377,7 @@ test_gkc_flush_rules_app(void)
     /* re-add the entry */
     gkc_add_attribute_entry(entry5);
 
-    /* Now wirh _OUT */
+    /* Now with _OUT */
     fpr.app_op = APP_OP_OUT;
     strscpy(fpr.apps->array[0], entry5->attr_name, NAME_STR_SIZE);
     ret = gkc_flush_rules(&fpr);

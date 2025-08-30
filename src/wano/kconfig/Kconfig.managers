@@ -37,7 +37,7 @@ if MANAGER_WANO
             This is the amount of time that the pipeline is allowed to do an
             immediate restart without using a backoff timer. After the amount of
             seconds defined in this variable, the pipeline will sleep for an
-            increasing amout of time before restarting plug-ins.
+            increasing amount of time before restarting plug-ins.
 
     config MANAGER_WANO_PLUGIN_DHCPV4
         bool "WANO IPv4 DHCP plugin"
@@ -70,7 +70,7 @@ if MANAGER_WANO
         default y
         help
             WANO pppoe plug-in for interface configuration via the pppoe
-            protocol. Configuration is read from persistant storage.
+            protocol. Configuration is read from persistent storage.
 
     config MANAGER_WANO_PLUGIN_VLAN
         bool "WANO VLAN plugin"

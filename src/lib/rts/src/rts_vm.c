@@ -533,7 +533,7 @@ rts_vm_exit(struct rts_vm *vm)
 
     rts_assert(vm->sp == 0 || vm->resume_fun);
 
-    /* The eval stack wasn't clean on exit. Should be a rare occurance
+    /* The eval stack wasn't clean on exit. Should be a rare occurrence
      * but difficult to prevent when binops that rely on memory fail.
      */
     while (vm->sp) {
@@ -887,7 +887,7 @@ eop(struct rts_states *s, unsigned sid, struct rts_trans *t, unsigned *dst, unsi
     /* Unlike next(), eop() must return NULL if there isn't
      * actually a eop transition, otherwise we cannot detect
      * the difference between no-eop and eop-with-code-jump
-     * becuase in both cases, t->dst is 0. */
+     * because in both cases, t->dst is 0. */
     if (!(tid & F_EOP))
         return -1;
 
@@ -1009,7 +1009,7 @@ rts_vm_scan_buffer_forward(struct rts_vm *vm, struct rts_data *data, struct rts_
         if (vm->resume) {
 
             /* The value of @vm->resume is the vm instruction pointer to resume after
-             * the skip is fullfilled; */
+             * the skip is fulfilled; */
             rts_assert(rts_buffer_empty(buffer));
 
         /* Done */

@@ -83,7 +83,7 @@ struct fcm_filter_client *c_client = NULL;
 struct fcm_filter_client *r_client = NULL;
 
 
-/* Gathered at sample colletion. See mnl_cb_run() implementation for details */
+/* Gathered at sample collection. See mnl_cb_run() implementation for details */
 int g_portid = 18404;
 int g_seq = 1581959512;
 
@@ -332,7 +332,7 @@ test_lan_stats_collect_flows(struct net_md_aggregator *aggr)
 /**
  * @brief emits a protobuf report
  *
- * Assumes the presenece of QM to send the report on non native platforms,
+ * Assumes the presence of QM to send the report on non native platforms,
  * simply resets the aggregator content for native target.
  * @param aggr the aggregator
  */

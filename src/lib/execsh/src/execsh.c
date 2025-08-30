@@ -370,7 +370,7 @@ void execsh_async_stop(execsh_async_t *esa)
 
         if (retry == 0)
         {
-            LOG(NOTICE, "execsh_async: Process %jd stil alive. Killing with SIGTERM",
+            LOG(NOTICE, "execsh_async: Process %jd still alive. Killing with SIGTERM",
                     (intmax_t)esa->esa_child_pid);
             /* Kill with negative pid -PID: This way the termination signal is sent to every
              * process in the process group whose ID is -PID. */
@@ -379,7 +379,7 @@ void execsh_async_stop(execsh_async_t *esa)
         }
         else if (retry == (EXECSH_WAITPID_MAX / 2))
         {
-            LOG(WARN, "execsh_async: Process %jd stil alive after SIGTERM. Killing with SIGKILL",
+            LOG(WARN, "execsh_async: Process %jd still alive after SIGTERM. Killing with SIGKILL",
                     (intmax_t)esa->esa_child_pid);
             /* Kill with negative pid -PID: This way the termination signal is sent to every
              * process in the process group whose ID is -PID. */

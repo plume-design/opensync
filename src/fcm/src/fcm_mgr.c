@@ -899,7 +899,7 @@ bool fcm_init_mgr(struct ev_loop *loop)
     /* Set the initial max memory threshold */
     fcm_set_max_mem();
 
-    LOGT("%s(): initializing curl hanlder", __func__);
+    LOGT("%s(): initializing curl handler", __func__);
     gk_curl_easy_init(&mgr->ecurl);
 
     /* Set the default timer for neigh_table entries*/
@@ -915,7 +915,7 @@ bool fcm_init_mgr(struct ev_loop *loop)
 
     if (nf_ct_init(loop, mgr->dummy_aggr) < 0)
     {
-        LOGE("Eror initializing conntrack");
+        LOGE("Error initializing conntrack");
         return -1;
     }
 

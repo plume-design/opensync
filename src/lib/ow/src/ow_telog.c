@@ -227,7 +227,7 @@ static void ow_telog_vif_free(struct ow_telog *telog, char *vif_name)
 {
     /* When interface is removed from state, there is no need to keep it
      * in the ow_telog->vifs list.
-     * Since conf is based on state, if an interface dissapears
+     * Since conf is based on state, if an interface disappears
      * from state, it should also be removed from conf, so there will
      * be no more subsequent config entries for this interface.
      * Even if the telog_vif was created implicitly on conf_completed,

@@ -249,7 +249,7 @@ bool inet_fw_portforward_set(inet_fw_t *self, const struct inet_portforward *pf)
 }
 
 
-/* Delete port forwarding entry -- a firewall restart is requried for the change to take effect */
+/* Delete port forwarding entry -- a firewall restart is required for the change to take effect */
 bool inet_fw_portforward_del(inet_fw_t *self, const struct inet_portforward *pf)
 {
     struct fw_portfw_entry *pe = NULL;

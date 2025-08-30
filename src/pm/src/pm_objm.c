@@ -536,7 +536,7 @@ static bool install(struct pm_objm_ctx_t *d_ctx)
     {
         if (!oms_ps_save_last_downloaded_version(&s_entry))
         {
-            LOGE("%s: failed to save last downlaod", __func__);
+            LOGE("%s: failed to save last download", __func__);
         }
     }
 
@@ -777,7 +777,7 @@ static void callback_Object_Store_Config(ovsdb_update_monitor_t *mon,
     {
         case OVSDB_UPDATE_NEW:
             // If dl_url is empty assume loading object info from
-            // persistance storage (at boot), no action needed.
+            // persistence storage (at boot), no action needed.
             if (strcmp(new->dl_url, "") == 0)
             {
                 break;
@@ -861,7 +861,7 @@ static void oms_state_cb(struct oms_state_entry *entry, int event)
 
     if (strncmp(entry->state, PM_OBJS_ACTIVE, strlen(PM_OBJS_ACTIVE)) == 0)
     {
-        // Save last active version to persistant storage
+        // Save last active version to persistent storage
         oms_ps_save_last_active_version(entry);
     }
 

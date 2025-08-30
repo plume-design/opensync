@@ -18,7 +18,7 @@ if OSP_PKI_PS
             config OSP_PKI_PS_ALGO_ED25519
                 bool "ED25519"
                 help
-                    Edwards 25519 eliptic curve
+                    Edwards 25519 elliptic curve
 
             config OSP_PKI_PS_ALGO_RSA4096
                 bool "RSA 4096"

@@ -363,7 +363,7 @@ bool psfs_sync(psfs_t *ps, bool force_prune)
             return false;
         }
         /*
-         * If we're getting short on filesystem space, start prunning more aggresively
+         * If we're getting short on filesystem space, start prunning more aggressively
          */
         else if (fs_avail < (ps->psfs_used * 2) && ps->psfs_wasted > 0)
         {
@@ -1108,7 +1108,7 @@ ssize_t psfs_record_read(int fd, struct psfs_record *pr)
     if ((coff & 0x3) != 0)
     {
         padlen = PSFS_PAD_LEN(coff);
-        /* Align to 4 byets */
+        /* Align to 4 bytes */
         rc = read(fd, &wdata, (size_t)padlen);
         if (rc == 0)
         {

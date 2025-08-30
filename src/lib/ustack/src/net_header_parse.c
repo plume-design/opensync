@@ -401,7 +401,7 @@ bool net_header_ip_str(struct net_header_parser *parser, bool src,
     }
     if (ip == NULL) return false;
 
-    /* Get the source IP as a string for furthe message content lookup */
+    /* Get the source IP as a string for further message content lookup */
     ret = inet_ntop(parser->ip_version == 4 ? AF_INET : AF_INET6,
                     ip, ip_buf, ip_buf_len);
 

@@ -183,7 +183,7 @@ def parse_column_type(obj):
 def parse_column_value(obj):
     if isinstance(obj, dict):
         if not 'type' in obj:
-            print("Object does not contain required 'type' vlaue:", str(obj))
+            print("Object does not contain required 'type' value:", str(obj))
 
         return obj['type']
     else:

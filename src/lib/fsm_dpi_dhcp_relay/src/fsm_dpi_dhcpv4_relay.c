@@ -138,7 +138,7 @@ static uint8_t dhcp_relay_option82_insert(
     /* Set the Option Agent Information ID */
     *popt++ = DHCP_OPTION_AGENT_INFORMATION;
 
-    /* Set the Option Agent Information ID Legth */
+    /* Set the Option Agent Information ID Length */
     *popt++ = size_option;
 
     /* Set Sub Option Cuircuit ID*/

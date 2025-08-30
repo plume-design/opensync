@@ -378,7 +378,7 @@ void
 gk_cache_cleanup(void);
 
 /**
- * @brief check ttl value for the given attribue
+ * @brief check ttl value for the given attribute
  *        or flow tree
  *
  * @params: attribute or flow tree
@@ -400,7 +400,7 @@ gkc_get_allowed_counter(os_macaddr_t *device_mac,
                         enum gk_cache_request_type attr_type);
 
 /**
- * @brief check ttl value for the given attribue
+ * @brief check ttl value for the given attribute
  *        or flow tree
  *
  * @params: attribute or flow tree
@@ -441,7 +441,7 @@ gk_get_device_count(void);
 /**
  * @brief Lookup the given attribute in cache.
  *
- * @params: req: interface structure specifing the attribute request
+ * @params: req: interface structure specifying the attribute request
  *
  * @return true for success and false for failure.
  */
@@ -449,9 +449,9 @@ bool
 gkc_lookup_attribute_entry(struct gk_attr_cache_interface *req, bool update_count);
 
 /**
- * @brief add the given attribue to cache.
+ * @brief add the given attribute to cache.
  *
- * @params: req: interface structure specifing the attribute request
+ * @params: req: interface structure specifying the attribute request
  *
  * @return true for success and false for failure.
  */
@@ -460,9 +460,9 @@ gkc_add_attribute_entry(struct gk_attr_cache_interface *entry);
 
 
 /**
- * @brief upate or add the given attribute to the cache.
+ * @brief update or add the given attribute to the cache.
  *
- * @params: req: interface structure specifing the attribute request
+ * @params: req: interface structure specifying the attribute request
  *
  * @return true for success and false for failure.
  */
@@ -472,7 +472,7 @@ gkc_upsert_attribute_entry(struct gk_attr_cache_interface *entry);
 /**
  * @brief delete the given attribute from cache
  *
- * @params req: interface structure specifing the attribute request
+ * @params req: interface structure specifying the attribute request
  * @return true for success and false for failure.
  */
 bool
@@ -503,7 +503,7 @@ gkc_ttl_cleanup(void);
 /**
  * @brief add the given IP tuple flow to cache.
  *
- * @params: req: interface structure specifing the flow request
+ * @params: req: interface structure specifying the flow request
  *
  * @return true for success and false for failure.
  */
@@ -513,7 +513,7 @@ gkc_add_flow_entry(struct gkc_ip_flow_interface *entry);
 /**
  * @brief lookup the given IP tuple flow to cache.
  *
- * @params: req: interface structure specifing the flow request
+ * @params: req: interface structure specifying the flow request
  *
  * @return true for success and false for failure.
  */
@@ -523,7 +523,7 @@ gkc_lookup_flow(struct gkc_ip_flow_interface *req, bool update_count);
 /**
  * @brief delete the given IP tuple flow to cache.
  *
- * @params: req: interface structure specifing the flow request
+ * @params: req: interface structure specifying the flow request
  *
  * @return true for success and false for failure.
  */
@@ -581,7 +581,7 @@ gkc_flow_entry_cmp(const void *_a, const void *_b);
 /**
  * @brief validate the request input.
  *
- * @params: req: interface structure specifing the attribute request
+ * @params: req: interface structure specifying the attribute request
  * @return true for success and false for failure.
  */
 bool
@@ -630,7 +630,7 @@ clear_gatekeeper_cache(void);
  *        from input.
  *        (Exposed for testing)
  *
- * @params: req: interface structure specifing the attribute request.
+ * @params: req: interface structure specifying the attribute request.
  *
  * @return ip_flow_cache pointer on success or NULL on failure.
  */
@@ -651,7 +651,7 @@ gkc_free_flow_members(struct ip_flow_cache *flow_entry);
  * @brief create a new attribute entry fo the given attribute type.
  *        (Exposed for testing)
  *
- * @params: entry: specifing the attribute type
+ * @params: entry: specifying the attribute type
  *
  * @return return pointer to created attribute struct
  *         NULL on failure

@@ -160,7 +160,7 @@ void mdnsd_register_receive_callback(mdns_daemon_t *d, mdnsd_record_received_cal
 int mdnsd_in(mdns_daemon_t *d, struct message *m, struct sockaddr_storage *from);
 
 /**
- * Outgoing messge to be delivered to host, returns >0 if one was
+ * Outgoing message to be delivered to host, returns >0 if one was
  * returned and m/ip/port set
  */
 int mdnsd_out(mdns_daemon_t *d, struct message *m, struct in_addr *ip, unsigned short *port);

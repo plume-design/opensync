@@ -69,7 +69,7 @@ typedef struct lnx_route6_state lnx_route6_state_t;
  *                                    for each route on the system. In that callback
  *                                    the API user has a chance to update its
  *                                    cache of the routes on the system and perform
- *                                    any other neccessary actions (for instance
+ *                                    any other necessary actions (for instance
  *                                    notify the upper layer of any new or deleted
  *                                    routes).
  *

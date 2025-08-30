@@ -198,7 +198,7 @@ ssize_t tailf_read(tailf_t *self, void *buf, ssize_t bufsz)
             /*   File was rotated, close current file and restart the loop */
             PRIV(tailf_end)(self);
 
-            /*If return on truncate is set, return currenly read bytes from previous file*/
+            /*If return on truncate is set, return currently read bytes from previous file*/
             if(!self->tf_ret_trunc)
             {
                 continue;

@@ -178,7 +178,7 @@ OSW_UT(ow_steer_policy_force_kick_successful_ut)
     OSW_UT_EVAL(ow_steer_candidate_get_preference(neighbor_candidate) == OW_STEER_CANDIDATE_PREFERENCE_NONE);
 
     /*
-     * Disonnect STA
+     * Disconnect STA
      */
     force_policy->state_observer.sta_disconnected_fn(&force_policy->state_observer, &g_sta_info_1);
     osw_ut_time_advance(0);

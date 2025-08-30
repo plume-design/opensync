@@ -449,7 +449,7 @@ void test_inet_base_assign_scheme(void)
                 inet_network_enable(&it.inet, true),
                 "Error enabling network");
 
-        PR("Setting assing_scheme -> None");
+        PR("Setting assign_scheme -> None");
         TEST_ASSERT_TRUE_MESSAGE(
                 inet_assign_scheme_set(&it.inet, INET_ASSIGN_NONE),
                 "Error setting assign scheme");

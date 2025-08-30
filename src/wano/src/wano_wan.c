@@ -326,7 +326,7 @@ void wano_wan_status_set(
 }
 
 /*
- * Udpate the status of the WAN type `type` with priority `priority`
+ * Update the status of the WAN type `type` with priority `priority`
  */
 bool wano_wan_status_update(enum wano_wan_config_type type, int64_t priority)
 {

@@ -125,7 +125,7 @@ bool cm2_uplink_event_store (struct cm2_uplink_events *cm2_uplink)
         goto exit;
     }
 
-    // Store the string representation to peristent storage
+    // Store the string representation to persistent storage
     rstrsz = (ssize_t)strlen(rstr) + 1;
     if (osp_ps_set(ps, CM2_UPLINK_EVENT_KEY, rstr, (size_t)rstrsz) < rstrsz)
     {

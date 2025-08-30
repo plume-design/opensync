@@ -138,7 +138,7 @@ oms_report_free_pb_op(ObjectManager__Status__ObservationPoint *pb)
  * @brief Generates an observation point serialized protobuf
  *
  * Uses the information pointed by the info parameter to generate
- * a serialized obervation point buffer.
+ * a serialized observation point buffer.
  * The caller is responsible for freeing to the returned serialized data,
  * @see free_packed_buffer() for this purpose.
  *

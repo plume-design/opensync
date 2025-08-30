@@ -76,7 +76,7 @@ struct oms_mgr
     ds_tree_t config;               /* DS tree of configs */
     ds_tree_t state;                /* DS tree of states */
     ds_tree_t *mqtt_headers;        /* DS tree of mqtt info */
-    char *location_id;              /* platfrom's location id */
+    char *location_id;              /* platform's location id */
     char *node_id;                  /* platform's node id */
     size_t num_states;              /* Number of status nodes in the DS tree */
     size_t num_reports;             /* Number of status node to report */
@@ -89,7 +89,7 @@ struct oms_mgr
 
 
 /**
- * oms initialization paramaters container
+ * oms initialization parameters container
  */
 struct oms_ovsdb_set
 {

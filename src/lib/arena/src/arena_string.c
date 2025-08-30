@@ -110,7 +110,7 @@ char *arena_vprintf(arena_t *arena, const char *fmt, va_list va)
      * just copy it to the arena.
      *
      * If it fails, we know the size of the string, so we can allocate the right
-     * amount of memory and do a 2nd call to vsnprintf() with the correct lenght.
+     * amount of memory and do a 2nd call to vsnprintf() with the correct length.
      */
     len = vsnprintf(sbuf, sizeof(sbuf), fmt, va);
     if (len < 0) return NULL;
@@ -167,7 +167,7 @@ char *arena_vcprintf(arena_t *arena, char *str, const char *fmt, va_list va)
      * just copy it to the arena.
      *
      * If it fails, we know the size of the string, so we can allocate the right
-     * amount of memory and do a 2nd call to vsnprintf() with the correct lenght.
+     * amount of memory and do a 2nd call to vsnprintf() with the correct length.
      */
     len = vsnprintf(sbuf, sizeof(sbuf), fmt, va);
     if (len < 0)

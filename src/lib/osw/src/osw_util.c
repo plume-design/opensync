@@ -555,7 +555,7 @@ osw_parse_supported_op_classes(const struct element *elem,
          * also a valid opclass. Some client STAs do not take it into account
          * and simply list supported op classes which might include 130.
          * It creates ambiguity as it is not always possible to detect
-         * if it is a valid Current Operating Class Extention Sequence
+         * if it is a valid Current Operating Class Extension Sequence
          * or simply a continuation of such (spec incompliant) op class list.
          * Example Supported Operating Classes IE dump with malformed list from
          * Samsung Galaxy phone:

@@ -8,7 +8,7 @@ if MANAGER_DM
         default "$(INSTALL_PREFIX)/bin"
         help
             Search path that will be used to locate managers. Multiple paths
-            can be specified by using ; as seperator.
+            can be specified by using ; as separator.
 
     config DM_PID_PATH
         string "Path to the PID folder"

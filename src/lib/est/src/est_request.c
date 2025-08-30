@@ -197,7 +197,7 @@ bool est_request_curl_async(arena_t *arena, struct ev_loop *loop, CURL *c_req, e
  */
 
 /*
- * CURLM socket function -- used to manage I/O watchers on socekts
+ * CURLM socket function -- used to manage I/O watchers on sockets
  */
 int est_request_cmulti_socket_fn(CURL *easy, curl_socket_t s, int what, void *data, void *sock_data)
 {

@@ -28,7 +28,7 @@ menuconfig MANAGER_NM
             value, calculate the metric value by using the interface type and the
             the value of this option.
 
-            A metric modifier is calcualted from the interface type in this
+            A metric modifier is calculated from the interface type in this
             order of priority:
                 - bridge, eth, vlan
                 - gre
@@ -38,7 +38,7 @@ menuconfig MANAGER_NM
                 - LTE
                 - Everything else
 
-            The metric is then calculated by adding the modifer to the
+            The metric is then calculated by adding the modifier to the
             MANAGER_NM_ROUTE_BASE_METRIC value.
 
             This ensures proper WAN priority across different interface types.

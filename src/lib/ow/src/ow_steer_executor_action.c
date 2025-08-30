@@ -203,7 +203,7 @@ ow_steer_executor_action_get_kick_action_bss(const struct ow_steer_executor_acti
             break;
     };
 
-    /* Check if there's a avaiable candidate with higher metric */
+    /* Check if there's a available candidate with higher metric */
     const unsigned int vif_candidate_metric = ow_steer_candidate_get_metric(vif_candidate);
     size_t i;
     for (i = 0; i < ow_steer_candidate_list_get_length(candidate_list); i++) {

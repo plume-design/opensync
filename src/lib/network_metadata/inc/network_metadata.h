@@ -250,7 +250,7 @@ void free_packed_buffer(struct packed_buffer *pb);
  * @brief Generates an observation point serialized protobuf
  *
  * Uses the information pointed by the info parameter to generate
- * a serialized obervation point buffer.
+ * a serialized observation point buffer.
  * The caller is responsible for freeing to the returned serialized data,
  * @see free_packed_buffer() for this purpose.
  *
@@ -524,7 +524,7 @@ void free_pb_flowstats(Traffic__FlowStats *pb);
  * @brief Generates a flow stats serialized protobuf
  *
  * Uses the information pointed by the stats parameter to generate
- * a serialized obervation point buffer.
+ * a serialized observation point buffer.
  * The caller is responsible for freeing to the returned serialized data,
  * @see free_packed_buffer() for this purpose.
  *
@@ -538,7 +538,7 @@ struct packed_buffer * serialize_flow_stats(struct flow_stats *stats);
  * @brief Generates an observation window serialized protobuf
  *
  * Uses the information pointed by the window parameter to generate
- * a serialized obervation window buffer.
+ * a serialized observation window buffer.
  * The caller is responsible for freeing to the returned serialized data,
  * @see free_packed_buffer() for this purpose.
  *

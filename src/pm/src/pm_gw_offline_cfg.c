@@ -824,7 +824,7 @@ static void callback_Node_Config(
 
             if (gw_offline_stat == status_active)
             {
-                /* If active gw_offline mode successfuly entered, enable
+                /* If active gw_offline mode successfully entered, enable
                  * eth clients handling:  */
                 gw_offline_enable_eth_clients_handling();
 
@@ -941,7 +941,7 @@ static bool gw_offline_cfg_set_radio_if_names(struct gw_offline_cfg *cfg)
         const char *radio_if_name = find_radio_if_name_for_vif_with_uuid(cfg, vif_str_uuid);
         if (radio_if_name == NULL)
         {
-            /* A valid VIF that is up should have a correspoinding radio that
+            /* A valid VIF that is up should have a corresponding radio that
              * is referencing that VIF with uuiid, so issue at least a warning. */
             LOG(WARN, "offline_cfg: NOT FOUND radio if_name for VIF with uuid=%s", vif_str_uuid);
             return false;

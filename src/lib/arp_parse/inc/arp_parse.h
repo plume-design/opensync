@@ -38,7 +38,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "os_types.h"
 
 /**
- * @brief ehternet ARP
+ * @brief ethernet ARP
  */
 struct eth_arp
 {

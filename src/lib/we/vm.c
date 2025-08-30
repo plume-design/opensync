@@ -972,7 +972,7 @@ static int we_op_res(struct we_arr **arr, void *arg)
  *
  * An extension should return 0 to continue execution of the program. Positive
  * return values are treated as the posix errno. These errors will be
- * propogated to the host program.
+ * propagated to the host program.
  */
 static int (*we_ext[256])(struct we_arr *, void *) = {};
 

@@ -368,7 +368,7 @@ pm_hw_acc_ovsdb_enable_set(ovsdb_update_monitor_t *mon, const char *value)
 
     /* FIXME: It is unclear to me what to do here. This
      * is adapting prior iteration of the code that
-     * automatically implied peristence reporting only
+     * automatically implied persistence reporting only
      * in the status with nothing to respect the Config
      * input.
      *

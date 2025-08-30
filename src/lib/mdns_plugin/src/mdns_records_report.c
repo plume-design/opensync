@@ -49,7 +49,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * Uses the node info to fill a dynamically allocated
  * observation point protobuf.
  * The caller is responsible for freeing the returned pointer,
- * @see mdns_recrods_free_pb_op() for this purpose.
+ * @see mdns_records_free_pb_op() for this purpose.
  *
  * @param node info used to fill up the protobuf.
  * @return a pointer to a observation point protobuf structure
@@ -107,7 +107,7 @@ mdns_records_free_pb_op(Interfaces__MdnsRecordsTelemetry__ObservationPoint *pb)
  * @brief Generates an observation point serialized protobuf
  *
  * Uses the information pointed by the info parameter to generate
- * a serialized obervation point buffer.
+ * a serialized observation point buffer.
  * The caller is responsible for freeing to the returned serialized data,
  * @see free_packed_buffer() for this purpose.
  *
@@ -217,7 +217,7 @@ mdns_records_free_pb_window(Interfaces__MdnsRecordsTelemetry__ObservationWindow 
  * @brief Generates an observation window serialized protobuf
  *
  * Uses the information pointed by the window parameter to generate
- * a serialized obervation window buffer.
+ * a serialized observation window buffer.
  * The caller is responsible for freeing to the returned serialized data,
  * @see free_packed_buffer() for this purpose.
  *
@@ -733,12 +733,12 @@ err_free_pb_clients:
  ****************************************************************************/
 
 /**
- * @brief Allocates and sets a mdns recrods report protobuf.
+ * @brief Allocates and sets a mdns records report protobuf.
  *
  * Uses the clients tree info to fill a dynamically allocated
  * mdns records report protobuf.
  * The caller is responsible for freeing the returned pointer,
- * @see mdns_recrods_free_pb_report() for this purpose.
+ * @see mdns_records_free_pb_report() for this purpose.
  *
  * @param node info used to fill up the protobuf
  * @return a pointer to a MdnsRecordReport protobuf structure

@@ -158,7 +158,7 @@ fsm_wc_null_report_cat(struct fsm_session *session,
  * @brief check if a fqdn category matches the policy's category rule
  *
  * @param session the request being processed
- * @param req the policy beig processed
+ * @param req the policy being processed
  * @param policy the policy being checked against
  *
  */
@@ -172,7 +172,7 @@ fsm_wc_null_cat_check(struct fsm_policy_req *req,
  * @brief check if a fqdn risk level matches the policy's category rule
  *
  * @param session the request being processed
- * @param req the policy beig processed
+ * @param req the policy being processed
  * @param policy the policy being checked against
  *
  */

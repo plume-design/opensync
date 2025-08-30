@@ -61,7 +61,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  * The (B) case means "start".
  *  - If WPS PBC job is already under way it is cancelled
- *    and a new one is startd.
+ *    and a new one is started.
  *  - If WPS PBC job was not running a new job is started.
  *  - Wifi_VIF_Config::wps_pbc is self-cleared
  *

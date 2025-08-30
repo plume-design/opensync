@@ -144,7 +144,7 @@ void *osn_dhcp_server_lease_sync(synclist_t *sync, void *_old, void *_new)
     }
 
     /*
-     * Comapre hostname, vendorclass and fingerprint, issue an update if they
+     * Compare hostname, vendorclass and fingerprint, issue an update if they
      * differ
      */
     if (pold->dl_updated)
@@ -167,7 +167,7 @@ static synclist_t dhcp_lease_synclist = SYNCLIST_INIT(
         dl_snode,
         osn_dhcp_server_lease_sync);
 /*
- * Hijack the nm2_dhcp_lease_notify funciton to handle unique macs properly.
+ * Hijack the nm2_dhcp_lease_notify function to handle unique macs properly.
  */
 bool nm2_dhcp_lease_notify(
         void *data,
@@ -298,7 +298,7 @@ bool nm2_dhcp_lease_notify(
 
     if (!nm2_dhcp_table_update(&sdl))
     {
-        LOG(WARN, "dhcp_lease: Error processing DCHP lease entry "PRI_osn_mac_addr" ("PRI_osn_ip_addr"), %s)",
+        LOG(WARN, "dhcp_lease: Error processing DHCP lease entry "PRI_osn_mac_addr" ("PRI_osn_ip_addr"), %s)",
                 FMT_osn_mac_addr(dl->dl_hwaddr),
                 FMT_osn_ip_addr(dl->dl_ipaddr),
                 dl->dl_hostname);

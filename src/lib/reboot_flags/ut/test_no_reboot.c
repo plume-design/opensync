@@ -86,7 +86,7 @@ void test_set_two_clear_one()
     TEST_ASSERT_TRUE(!directory_is_empty("/tmp/.no_reboot"));
 }
 
-/* Creates two diffeent files, then deletes all */
+/* Creates two different files, then deletes all */
 void test_set_two_clear_all()
 {
     no_reboot_set("module_ut1");

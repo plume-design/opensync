@@ -185,7 +185,7 @@ static bool nm2_route_rule_remove(struct nm2_route_rule_cfg *nm2_rrule_cfg)
 
     if (rv)
     {
-        /* Not really neccessary as this rule config will be removed
+        /* Not really necessary as this rule config will be removed
          * from our cache anyway, but set the flag for consistency: */
         nm2_rrule_cfg->nr_enabled = false;
     }

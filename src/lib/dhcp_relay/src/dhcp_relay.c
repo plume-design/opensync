@@ -227,7 +227,7 @@ dhcp_relay_relay_options_init(void)
         char *str = NULL;
         char *value = NULL;
 
-        /* Check IPv6 or IPv4 option and select versio */
+        /* Check IPv6 or IPv4 option and select version */
         rc = strncmp(p, "DHCPv4_OPTION:", strlen("DHCPv4_OPTION:"));
         if (!rc)
         {

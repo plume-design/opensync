@@ -47,7 +47,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *   exit_code : command exit code
  * return:
  *   true on success
- * default behvaiour (flags=0):
+ * default behaviour (flags=0):
  *   log all output
  *   require exit_code = 0 or return failure
  *   on failure use error log severity

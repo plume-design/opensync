@@ -45,10 +45,10 @@
 /**
  * Messy, but it's the best/simplest balance I can find at the moment
  *
- * Some internal data types, and a few hashes: querys, answers, cached,
+ * Some internal data types, and a few hashes: queries, answers, cached,
  * and records (published, unique and shared).  Each type has different
  * semantics for processing, both for timeouts, incoming, and outgoing
- * I/O.  They inter-relate too, like records affect the querys they are
+ * I/O.  They inter-relate too, like records affect the queries they are
  * relevant to.  Nice things about MDNS: we only publish once (and then
  * ask asked), and only query once, then just expire records we've got
  * cached
@@ -66,7 +66,7 @@ struct query {
 
 struct unicast {
     int id;
-    unsigned long to;    /* Modifed by Plume */
+    unsigned long to;    /* Modified by Plume */
     unsigned short port;
     mdns_record_t *r;
     struct unicast *next;
@@ -515,7 +515,7 @@ static int _cache(mdns_daemon_t *d, struct resource *r)
      */
     ttl = (unsigned long)d->now.tv_sec + (r->ttl / 2) + 8;
 
-    /* If entry already exists, only udpate TTL value */
+    /* If entry already exists, only update TTL value */
     c = NULL;
     while ((c = _c_next(d, c, r->name, r->type))) {
         if (r->type == QTYPE_PTR && strcmp(c->rr.rdname, r->known.ns.name)) {
@@ -716,7 +716,7 @@ void mdnsd_shutdown(mdns_daemon_t *d)
 void mdnsd_flush(mdns_daemon_t *d)
 {
     (void)d;
-    /* - Set all querys to 0 tries
+    /* - Set all queries to 0 tries
      * - Free whole cache
      * - Set all mdns_record_t *to probing
      * - Reset all answer lists
@@ -857,7 +857,7 @@ int mdnsd_in(mdns_daemon_t *d, struct message *m, struct sockaddr_storage *from)
 
                 DBG("Should we send answer? j: %d, m->ancount: %d", j, m->ancount);
                 if (j == m->ancount) {
-                    DBG("Yes we should, enquing %s for outbound", r->rr.name);
+                    DBG("Yes we should, enqueuing %s for outbound", r->rr.name);
                     _r_send(d, r);
                 }
             }

@@ -310,7 +310,7 @@ void test_val_in_tag_group(void)
 
     /*
      * tag_1 is listed in the tag group for its cloud values,
-     * tag_2 is listed in the tag group for its device vaues,
+     * tag_2 is listed in the tag group for its device values,
      * tag_3 is listed in the tag group for all its values
      */
 

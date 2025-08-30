@@ -34,7 +34,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * Check if the certificate denoted by `label` and return the expire date
  * and subject line.
  *
- * If `label` is NULL, the defualt certificate is checked.
+ * If `label` is NULL, the default certificate is checked.
  *
  * @return It returns true if the certificate exists and is correct,
  *         otherwise it returns false.

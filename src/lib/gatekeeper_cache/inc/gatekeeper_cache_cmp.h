@@ -55,7 +55,7 @@ risk_comparator get_risk_cmp(int risk_op);
  * Category comparison
  *
  * Since we are passing all possible categories to the comparison,
- * we can immediately handle IN/OUT as part of the comparaison function.
+ * we can immediately handle IN/OUT as part of the comparison function.
  */
 typedef bool (*cat_comparator)(int c, struct int_set *s);
 bool cat_cmp_eval(int c, struct int_set *s);

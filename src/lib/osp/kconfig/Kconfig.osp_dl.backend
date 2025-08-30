@@ -11,4 +11,4 @@ config OSP_DL_CURL
 
         Note: cURL to be fully asynchronous must be compiled with c-ares
         support. Otherwise it will use the system resolver which may block on
-        DNS quieries.
+        DNS queries.

@@ -101,7 +101,7 @@ bool udhcp_client_is_supported_option(int id);
 /**
  * @brief Gets option name for specified option index
  * @param opt_id option index in 1..255 range
- * @return ptr to opton name string or empty string when not found
+ * @return ptr to option name string or empty string when not found
  */
 const char* dhcp_option_name(int opt_id);
 

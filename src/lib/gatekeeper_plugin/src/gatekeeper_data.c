@@ -55,7 +55,7 @@ gatekeeper_validate_fqdn(struct fsm_session *session, char *site)
     gk_session = session->handler_ctxt;
     if (gk_session == NULL) return false;
 
-    /* returns false upon emptry string */
+    /* returns false upon empty string */
     if (site == NULL)
     {
         LOGD("%s: string is NULL", __func__);
@@ -190,7 +190,7 @@ gatekeeper_add_netid(struct gk_req_header *header, struct gk_request_data *req_d
 /**
  * @brief allocates and fills up a gatekeeper request header
  *
- * @param req_data gatekeepr requet context
+ * @param req_data gatekeepr request context
  * @return a pointer to an allocated header
  */
 static struct gk_req_header *

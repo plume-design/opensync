@@ -64,7 +64,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * This does 2 things actually, arguably unnecessarily. It
  * feeds ow_dfs_backup with ovsdb (data model) configuration
  * _and_ acts upon backup trigger. These could be done
- * separately, but given how tighly coupled these are it
+ * separately, but given how tightly coupled these are it
  * would probably be problematic to consider them separate
  * anyway.
  */

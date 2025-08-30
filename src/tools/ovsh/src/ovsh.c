@@ -1952,7 +1952,7 @@ bool ovsdb_json_show_result_output(json_t *jrows, json_t *columns)
 
         if (systemvp("printf", argv) != 0)
         {
-            fprintf(stderr, "Exernal command failed: printf");
+            fprintf(stderr, "External command failed: printf");
             return false;
         }
     }

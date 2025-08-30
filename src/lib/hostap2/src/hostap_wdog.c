@@ -72,7 +72,7 @@ hostap_wdog_panic(struct hostap_wdog *wdog)
      * the socket as soon as it's ev_io calls back after
      * socket is closed.
      */
-    LOGI(HOSTAP_WDOG_LOG(wdog, "panicing, resetting conn"));
+    LOGI(HOSTAP_WDOG_LOG(wdog, "panicking, resetting conn"));
     hostap_conn_reset(conn);
 }
 
@@ -107,7 +107,7 @@ hostap_wdog_pong_cb(struct hostap_txq_req *req,
          * request-response pairs would shift. That is a
          * reason to panic and re-start the txq.
          */
-        LOGI(HOSTAP_WDOG_LOG(wdog, "pong malformed ('%.*s' len=%zu ok=%d), panicing",
+        LOGI(HOSTAP_WDOG_LOG(wdog, "pong malformed ('%.*s' len=%zu ok=%d), panicking",
                              (int)reply_len,
                              reply ?: "",
                              reply_len,
@@ -134,7 +134,7 @@ hostap_wdog_ping_cb(struct ev_loop *loop,
          * interval. Perhaps if mainloop gets stalled really
          * bandly?
          */
-        LOGI(HOSTAP_WDOG_LOG(wdog, "previous ping still ongoing, panicing"));
+        LOGI(HOSTAP_WDOG_LOG(wdog, "previous ping still ongoing, panicking"));
         hostap_wdog_free_req(wdog);
         hostap_wdog_panic(wdog);
         return;

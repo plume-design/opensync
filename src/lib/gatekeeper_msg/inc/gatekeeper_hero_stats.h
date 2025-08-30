@@ -72,7 +72,7 @@ struct gkc_report_aggregator *
 gkhc_get_aggregator(void);
 
 /**
- * @brief Initiliazes the global aggregator for hero cache
+ * @brief Initializes the global aggregator for hero cache
  *
  * @param aggr a pointer to the aggregator to initialize
  * @param session contains the @see node_id and @see location_id
@@ -81,20 +81,20 @@ gkhc_get_aggregator(void);
  *         false if anything when wrong
  *
  * @remark while the aggregator should always be a singleton,
- *         it is prefered to not use it directly .
+ *         it is preferred to not use it directly .
  */
 bool
 gkhc_init_aggregator(struct gkc_report_aggregator *aggr,
                      struct fsm_session *session);
 
 /**
- * @brief Releases and un-initilizes the global allocator.
+ * @brief Releases and un-initializes the global allocator.
  *        After the call, all allocated memory has been released.
  *
  * @param aggr a pointer to the aggregator to initialize
  *
   @remark while the aggregator should always be a singleton,
- *         it is prefered to not use it directly .
+ *         it is preferred to not use it directly .
  */
 void
 gkhc_release_aggregator(struct gkc_report_aggregator *aggr);

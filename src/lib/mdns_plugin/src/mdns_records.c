@@ -231,7 +231,7 @@ mdns_records_get_mac(struct sockaddr_storage *from, char *mac_str)
    ret = os_nif_macaddr_to_str(&mac, mac_str, PRI_os_macaddr_lower_t);
    if (!ret)
    {
-       LOGE("%s: Failed to convert mac addres to str", __func__);
+       LOGE("%s: Failed to convert mac address to str", __func__);
        return false;
    }
 
@@ -640,7 +640,7 @@ mdns_records_clean_stale_records(void)
             /* Clean the record only after it has been reported to the cloud.
                Due to reasons such as:
                     - QM erroring out
-                    - MAC address of the client not retreived from neigh_table
+                    - MAC address of the client not retrieved from neigh_table
                the record may not have been reported before it's TTL expired. To
                avoid this, check if it has been reported here */
             if (!rec->reported) continue;
@@ -766,7 +766,7 @@ void
 mdns_records_collect_record(const struct resource *r, void *data, struct sockaddr_storage *from)
 {
     /* If report is not initialized, the cloud doesn't want the records to be reported.
-     * (report_records is false). If not intitialized, don't collect the record */
+     * (report_records is false). If not initialized, don't collect the record */
     if (!g_report.initialized) return;
 
     switch (r->type)
@@ -827,7 +827,7 @@ mdns_records_send_records(struct mdns_session *md_session)
             mdns_records_mark_records_as_reported();
         }
 
-        /* Clean the staging tree. In case of error in reporing the
+        /* Clean the staging tree. In case of error in reporting the
            records to the cloud, the records will not be marked as 'reported'
            and will be staged again. So no harming in cleaning the staging
            tree always */
@@ -864,7 +864,7 @@ mdns_records_init(struct mdns_session *md_session)
         return true;
     }
 
-    /* Intialize the report */
+    /* Initialize the report */
     ds_tree_init(&g_report.stored_clients, (ds_key_cmp_t *)strcmp, mdns_client_t, dst_node);
     ds_tree_init(&g_report.staged_clients, (ds_key_cmp_t *)strcmp, mdns_client_t, dst_node);
 

@@ -47,7 +47,7 @@ struct psm_ovsdb_row_key
 
 /*
  * The in memory representation of a single row. Each row has an associated key
- * (which is calulated from the data).
+ * (which is calculated from the data).
  *
  * The pr_uuid field is valid only when there's an associated table in OVSDB. A
  * row with an empty UUID is considered "orphaned" -- scheduled for deletion.
@@ -126,7 +126,7 @@ bool psm_ovsdb_row_init(void)
  *      - compare key values, if they are the same return
  *      - orphan the current entry (unset uuid) so a sync operation will remove
  *        it from persistent storage and memory
- *  - if os_presist is false, return now
+ *  - if os_persist is false, return now
  *  - lookup by key and if a row with the same key is found:
  *      - if the row uuid is empty (orphaned entry), assign the uuid to this
  *        row and return
@@ -212,7 +212,7 @@ bool psm_ovsdb_row_update(const char *table, json_t *row)
         {
             /*
              * Same uuid and same key -- in theory this should never happen.
-             * In the future we can skip a resync operation and exit immediatelly.
+             * In the future we can skip a resync operation and exit immediately.
              */
             LOG(NOTICE, "Identical row update with uuid: %s", uuid.uuid);
         }
@@ -698,7 +698,7 @@ delete:
 }
 
 /*
- * Exctract the uuid from the row data
+ * Extract the uuid from the row data
  */
 bool psm_ovsdb_row_uuid_get(ovs_uuid_t *uuid, json_t *row)
 {

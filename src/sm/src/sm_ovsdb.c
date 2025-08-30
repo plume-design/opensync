@@ -228,7 +228,7 @@ void sm_update_awlan_node_cbk(ovsdb_update_monitor_t *self)
         }
         else
         {
-            LOG(ERR, "Unkown MQTT option: %s", key);
+            LOG(ERR, "Unknown MQTT option: %s", key);
         }
     }
 
@@ -297,7 +297,7 @@ bool sm_enumerate_stats_config(sm_stats_config_t *stats)
         stats->radio_type = RADIO_TYPE_NONE;
     }
 
-    /* All reprots are raw by default */
+    /* All reports are raw by default */
     stats->report_type = REPORT_TYPE_RAW;
     if (strcmp(schema->report_type, "average") == 0) {
         stats->report_type = REPORT_TYPE_AVERAGE;
@@ -666,7 +666,7 @@ void sm_radio_cfg_update(void)
         }
         else {
             LOG(DEBUG,
-                "Radio Config: Unkown protocol: %s",
+                "Radio Config: Unknown protocol: %s",
                 radio->schema.hw_mode);
             radio_cfg.protocol = RADIO_802_11_AUTO;
         }

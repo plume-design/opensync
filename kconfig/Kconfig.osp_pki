@@ -1,5 +1,5 @@
 #
-# OpenSync Public Key Infrastracture
+# OpenSync Public Key Infrastructure
 #
 source "src/lib/osp/kconfig/Kconfig.osp_pki"
 

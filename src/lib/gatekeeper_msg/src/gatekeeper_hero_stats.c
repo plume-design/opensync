@@ -201,7 +201,7 @@ gkhc_release_aggregator(struct gkc_report_aggregator *aggr)
     }
     FREE(aggr->windows);
 
-    /* The content of stats gets transfered over to windows, so all
+    /* The content of stats gets transferred over to windows, so all
      * that's left to be freed is the array itself.
      */
     FREE(aggr->stats);
@@ -469,7 +469,7 @@ finalize_observation_window(struct gkc_report_aggregator *aggr)
         FREE(new_window);
     }
 
-    /* We have tranferred ownership of all stats to observation windows,
+    /* We have transferred ownership of all stats to observation windows,
      * so clean up the stats array now, and resize to the basic size.
      */
     FREE(aggr->stats);

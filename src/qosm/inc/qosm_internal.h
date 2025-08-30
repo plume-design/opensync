@@ -137,7 +137,7 @@ struct qosm_linux_queue
 
     char                que_params[256];            /**  qdisc-specific parameters */
 
-    bool                que_applied;                /**< Successfully aplied? */
+    bool                que_applied;                /**< Successfully applied? */
 
     ds_tree_node_t      que_tnode;                  /**< Tree node */
 

@@ -178,7 +178,7 @@ static void print_usage(void)
     fprintf(stderr, 
          "Pwdmask password masking utility\n"
          "This tool is used to fetch Passwords from the OVSDB tables\n"
-         "and masks every occurence of password inside of provided files.\n"
+         "and masks every occurrence of password inside of provided files.\n"
          "If file is a symlink, it gets replaced by masked\n"
          "copy of the file symlink was pointing to.\n"
          "Usage: pwdmask [-h] [-o OBFUSCSTR] [--] <FILE>...\n"

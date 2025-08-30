@@ -64,7 +64,7 @@ struct qosm_intf_classifier
 {
     ovs_uuid_t ic_uuid;           /* UUID of this object */
     reflink_t ic_reflink;         /* Reflink of this object */
-    struct qosm_ip_iface *parent; /* backpointer reference to nmb_ip_iface struc */
+    struct qosm_ip_iface *parent; /* backpointer reference to nmb_ip_iface struct */
     char *ic_token;               /* token name */
     char *ic_match;               /* match to be applied to TC */
     char *ic_action;              /* action parameter required for TC command */

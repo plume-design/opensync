@@ -184,7 +184,7 @@ bool ovsdb_update_monitor_ex(
     memset(self, 0, sizeof(*self));
     self->mon_cb = callback;
 
-    /* Regiter update handler */
+    /* Register update handler */
     int monid = ovsdb_register_update_cb(
             ovsdb_update_monitor_call_cbk,
             self);

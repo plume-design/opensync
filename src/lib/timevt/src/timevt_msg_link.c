@@ -49,7 +49,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define TECLI_SOCKET_ADDR "@timevt-client"
 #endif
 
-/* Implemntation of the factory of ipc_msg_link_t objects for unix datagram sockets
+/* Implementation of the factory of ipc_msg_link_t objects for unix datagram sockets
  * Objects are specialized for use in time-event logging application */
 
 static ipc_msg_link_t *te_uds_link_open(const char *addr, void *data, int link_id)
@@ -87,7 +87,7 @@ static ipc_msg_link_t *te_uds_link_open(const char *addr, void *data, int link_i
 #define TE_MQ_LINK_FILE "/telog.mq"
 #endif
 
-/* Implemntation of the factory of ipc_msg_link_t objects for unix message queue
+/* Implementation of the factory of ipc_msg_link_t objects for unix message queue
  * Objects are specialized for use in time-event logging application */
 
 static ipc_msg_link_t *te_mq_link_open(const char *addr, void *data, int link_id)

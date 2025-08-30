@@ -53,7 +53,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * used to auto-tune tx power on backhaul links when "too
  * strong" signal condition is detected. This is beyond just
  * steering. If possible, per-sta tx power could be also
- * adjusted (if supported by unerlying driver) not only for
+ * adjusted (if supported by underlying driver) not only for
  * backhaul links, but also for regular clients if they
  * happen to find themselves too close to the AP.
  */

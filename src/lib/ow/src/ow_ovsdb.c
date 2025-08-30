@@ -1130,7 +1130,7 @@ ow_ovsdb_phystate_to_schema(struct ow_ovsdb_phy *owo_phy,
     /* FIXME: Some parameters don't really are driver-driven
      * states, but will be handled internally in OW, eg.
      * fallback_parents, so there can be just copied.
-     * However some arguably should be dervied from the
+     * However some arguably should be derived from the
      * state, eg. freq_band.
      */
     if (rconf != NULL) {
@@ -3584,7 +3584,7 @@ ow_ovsdb_vconf_to_ow_conf_ap(const struct schema_Wifi_VIF_Config *vconf,
         }
     }
 
-    /* schema value for MBO controlls also OCE internally */
+    /* schema value for MBO controls also OCE internally */
     if (is_new == true || vconf->mbo_changed == true) {
         if (vconf->mbo_exists == true) {
             const bool x = vconf->mbo;
@@ -4302,7 +4302,7 @@ static void
 ow_ovsdb_flush(void)
 {
     /* FIXME: This shouldn't be necessary. The code should actually sync not
-     * only rows, but also (non)existance of rows. One idea would be to employ
+     * only rows, but also (non)existence of rows. One idea would be to employ
      * ovsdb ping and/or ev_idle (to allow real ovsdb transactions to be
      * delivered to the process) and then - based on what rows are reported -
      * remove those that shouldn't be there.

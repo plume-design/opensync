@@ -292,7 +292,7 @@ bool act_check_id (void)
 bool dm_ovsdb_ovs_version_get(char *buff, size_t buffsz)
 {
     /*
-     * OVS bridge support has been droped with OpenSync release 6.6,
+     * OVS bridge support has been dropped with OpenSync release 6.6,
      * therefore we always return N/A as the OVS version.
      */
     strscpy(buff, "N/A", buffsz);

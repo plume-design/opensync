@@ -147,7 +147,7 @@ int pm_tm_ovsdb_thermtbl_get_radio_temp(unsigned int state, unsigned int radio_i
     struct schema_Node_Config *node_config;
     char key[TM_OVSDBG_MAX_KEY_LEN];
 
-    /* If Node_Config overrride is disabled, return */
+    /* If Node_Config override is disabled, return */
     if (kconfig_enabled(CONFIG_PM_TM_DISABLE_NODE_CONFIG_OVERRIDE))  return -1;
 
     snprintf(key, TM_OVSDBG_MAX_KEY_LEN, "%s_%s%d_%s%d_%s",
@@ -172,7 +172,7 @@ int pm_tm_ovsdb_thermtbl_get_radio_txchainmask(unsigned int state, unsigned int 
     struct schema_Node_Config *node_config;
     char key[TM_OVSDBG_MAX_KEY_LEN];
 
-    /* If Node_Config overrride is disabled, return */
+    /* If Node_Config override is disabled, return */
     if (kconfig_enabled(CONFIG_PM_TM_DISABLE_NODE_CONFIG_OVERRIDE))  return -1;
 
     snprintf(key, sizeof(key), "%s_%s%d_%s%d_%s",
@@ -197,7 +197,7 @@ int pm_tm_ovsdb_thermtbl_get_fan_rpm(unsigned int state, unsigned int *rpm)
     struct schema_Node_Config *node_config;
     char key[TM_OVSDBG_MAX_KEY_LEN];
 
-    /* If Node_Config overrride is disabled, return */
+    /* If Node_Config override is disabled, return */
     if (kconfig_enabled(CONFIG_PM_TM_DISABLE_NODE_CONFIG_OVERRIDE))  return -1;
 
     snprintf(key, sizeof(key), "%s_%s%d_%s",

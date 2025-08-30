@@ -24,7 +24,7 @@
 
 ###############################################################################
 #
-# MAC Learning library - BRCTL implementaion
+# MAC Learning library - BRCTL implementation
 #
 ###############################################################################
 UNIT_NAME := brctl_mac_learn

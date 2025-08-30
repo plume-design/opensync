@@ -259,11 +259,11 @@ gatekeeper_init(struct fsm_session *session);
 
 
 /**
- * @brief perfroms check whether to allow or block this packet.
+ * @brief performs check whether to allow or block this packet.
  *        by connecting ot the guard server.
  *
  * @param session the request being processed
- * @param req the policy beig processed
+ * @param req the policy being processed
  * @param policy the policy being checked against
  *
  */

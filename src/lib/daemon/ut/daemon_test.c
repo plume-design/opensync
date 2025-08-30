@@ -151,7 +151,7 @@ void test_daemon_wait(void)
 
     TEST_ASSERT_TRUE_MESSAGE(
             daemon_stop(&pr),
-            "Unalbe to stop process");
+            "Unable to stop process");
 
     daemon_fini(&pr);
 }
@@ -180,7 +180,7 @@ void test_daemon_wait_neg(void)
 
     TEST_ASSERT_TRUE_MESSAGE(
             daemon_stop(&pr),
-            "Unalbe to stop process");
+            "Unable to stop process");
 
     daemon_fini(&pr);
 }

@@ -51,7 +51,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifdef CONFIG_MANAGER_QM
 // QM does queue-ing of reports when offline on it's own, so dpp needs
 // a smaller queue size - only to merge multiple stats to single report
-// 30 is requierd for mqttsim --rpm 2 to work properly
+// 30 is required for mqttsim --rpm 2 to work properly
 #define DPP_MAX_QUEUE_DEPTH (30)
 #else
 #define DPP_MAX_QUEUE_DEPTH (200)

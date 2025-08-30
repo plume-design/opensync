@@ -1372,7 +1372,7 @@ static Interfaces__CellInfo__CellularNetInfo *cellm_info_set_cell_net_info(struc
     cell_net_info = report->cell_net_info;
     if (cell_net_info == NULL) return NULL;
 
-    /* Allocate the signal quality mesage */
+    /* Allocate the signal quality message */
     pb = CALLOC(1, sizeof(*pb));
 
     /* Initialize the message */
@@ -1422,7 +1422,7 @@ static Interfaces__CellInfo__CellularDataUsage *cellm_info_set_cell_data_usage(s
     cell_data_usage = report->cell_data_usage;
     if (cell_data_usage == NULL) return NULL;
 
-    /* Allocate the signal quality mesage */
+    /* Allocate the signal quality message */
     pb = CALLOC(1, sizeof(*pb));
 
     /* Initialize the message */
@@ -1452,7 +1452,7 @@ static Interfaces__CellInfo__LteNetServingCellInfo *cellm_info_set_srv_cell(stru
     cell = report->cell_srv_cell;
     if (cell == NULL) return NULL;
 
-    /* Allocate the signal quality mesage */
+    /* Allocate the signal quality message */
     pb = CALLOC(1, sizeof(*pb));
 
     /* Initialize the message */
@@ -1629,7 +1629,7 @@ static Interfaces__CellInfo__NetCarrierAggInfo *cellm_info_set_pb_primary_carrie
     pca = report->cell_pca_info;
     if (pca == NULL) return NULL;
 
-    /* Allocate the signal quality mesage */
+    /* Allocate the signal quality message */
     pb = CALLOC(1, sizeof(*pb));
 
     /* Initialize the message */
@@ -1671,7 +1671,7 @@ static Interfaces__CellInfo__NetCarrierAggInfo *cellm_info_set_pb_lte_secondary_
 {
     Interfaces__CellInfo__NetCarrierAggInfo *pb;
 
-    /* Allocate the signal quality mesage */
+    /* Allocate the signal quality message */
     pb = CALLOC(1, sizeof(*pb));
 
     /* Initialize the message */
@@ -1752,7 +1752,7 @@ static Interfaces__CellInfo__PdpContextInfo *cellm_info_set_pb_pdp_ctx_param(
 {
     Interfaces__CellInfo__PdpContextInfo *pb;
 
-    /* Allocate the signal quality mesage */
+    /* Allocate the signal quality message */
     pb = CALLOC(1, sizeof(*pb));
 
     /* Initialize the message */
@@ -1832,7 +1832,7 @@ static Interfaces__CellInfo__CellularNr5gCellInfo *cellular_info_set_pb_nr5g_sa_
     cell = report->nr5g_sa_srv_cell;
     if (cell == NULL) return NULL;
 
-    /* Allocate the signal quality mesage */
+    /* Allocate the signal quality message */
     pb = CALLOC(1, sizeof(*pb));
 
     /* Initialize the message */
@@ -1896,7 +1896,7 @@ static Interfaces__CellInfo__CellularNr5gCellInfo *cellular_info_set_pb_nr5g_nsa
     cell = report->nr5g_nsa_srv_cell;
     if (cell == NULL) return NULL;
 
-    /* Allocate the signal quality mesage */
+    /* Allocate the signal quality message */
     pb = CALLOC(1, sizeof(*pb));
 
     /* Initialize the message */
@@ -1956,7 +1956,7 @@ static Interfaces__CellInfo__CellularNr5gCellInfo *cellm_info_set_pb_nrg_seconda
 
     if (cell == NULL) return NULL;
 
-    /* Allocate the signal quality mesage */
+    /* Allocate the signal quality message */
     pb = CALLOC(1, sizeof(*pb));
 
     /* Assign the message fields */
@@ -2290,7 +2290,7 @@ error:
  * @brief Generates a cell info serialized protobuf
  *
  * Uses the information pointed by the info parameter to generate
- * a serialized obervation point buffer.
+ * a serialized observation point buffer.
  * The caller is responsible for freeing to the returned serialized data,
  * @see cell_info_free_packed_buffer() for this purpose.
  *

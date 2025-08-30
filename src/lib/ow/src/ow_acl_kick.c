@@ -47,7 +47,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * This modules makes sure that ACLs configured via ow_conf
  * are enforced at all times, ie. regardless of the ordering
  * of ACL mutation and stations connecting/disconnecting, a
- * client that is effectivelly banned through the ACL, will
+ * client that is effectively banned through the ACL, will
  * be kicked if necessary.
  *
  * This could be improved by looking at osw_state as well.

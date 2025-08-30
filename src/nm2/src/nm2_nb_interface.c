@@ -222,7 +222,7 @@ void nm2_if_update_netif_obj(struct nm2_interface *intf, char *if_name)
         return;
     }
 
-    /* register for notifing us when interface config changes */
+    /* register for notifying us when interface config changes */
     osn_netif_status_notify(intf->if_netif, nm2_if_netif_status_fn);
 }
 

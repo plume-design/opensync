@@ -87,7 +87,7 @@ drt_op_to_str(enum drt_precedence op)
     {
         if (drt_op_str[i].op == op) return drt_op_str[i].str_op;
     }
-    return "unkown";
+    return "unknown";
 }
 
 

@@ -439,7 +439,7 @@ bool osn_map_v6plus_operation_report(
     long response_code;
     char status_str[32];
 
-    /* Prepare URL paramters: */
+    /* Prepare URL parameters: */
     STRSCAT(cfg.vp_endpoint_url, "?action=");
     snprintf(status_str, sizeof(status_str), "%d", status_action);
     STRSCAT(cfg.vp_endpoint_url, status_str);

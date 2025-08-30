@@ -39,7 +39,7 @@ enum pm_hw_acc_load_mode
 
     /* The system had reached a level of activity high
      * enough and is not considered busy. The suggestion is
-     * to keep the accelerato _enabled_ while in this state.
+     * to keep the acceleration _enabled_ while in this state.
      */
     PM_HW_ACC_LOAD_ACTIVE,
 

@@ -569,7 +569,7 @@ void wanp_ethclient_handle_detected(struct wanp_ethclient *self)
      * Due to packet injection, the client might be incorrectly shown as being
      * connected to one of the parent nodes instead of the current one.
      *
-     * This happens becuase the DHCP packet is re-injected with the the FLOOD
+     * This happens because the DHCP packet is re-injected with the the FLOOD
      * action, which bypasses the FDB. This also means that the FDB database
      * (and consequentially the OVS_MAC_Learning table) is not updated until
      * the client actually sends a real packet.
@@ -710,7 +710,7 @@ void wanp_ethclient_dhcp_timeout(struct ev_loop *loop, ev_timer *ev, int revent)
  */
 
 /*
- * Schedule packet for re-inejction; currently there can be only one packet
+ * Schedule packet for re-injection; currently there can be only one packet
  * scheduled per interface. If there's a packet already scheduled, overwrite it
  * with the most recent packet.
  *

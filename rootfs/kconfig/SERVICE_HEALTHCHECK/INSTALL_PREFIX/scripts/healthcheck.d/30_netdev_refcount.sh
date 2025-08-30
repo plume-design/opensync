@@ -42,7 +42,7 @@ REGEX="unregister_netdevice: waiting for .* to become free. Usage count"
 # timestamps this will detect false positives
 # really easily. If that happens it is preferred
 # to enable kernel log timestamps on the given
-# paltform. Reworking the logic in the script to
+# platform. Reworking the logic in the script to
 # work with no timestamps is not trivial.
 dmesg | awk -v "LASTLINE=$LASTLINE" '
 	/'"$REGEX"'/ { FOUND=$0 }

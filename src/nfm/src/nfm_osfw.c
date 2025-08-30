@@ -175,7 +175,7 @@ static void nfm_osfw_hook_schedule(osfw_hook_target_t target)
     ds_list_t *list;
 
     /*
-     * When NFM starts, it clears all previous rules in the sytem.
+     * When NFM starts, it clears all previous rules in the system.
      * At that time rules cache is empty (there is no specific rule addition/removal
      * caused by Netfilter or Openflow_Tag callback) so there is no MAC to flush.
      */
@@ -269,7 +269,7 @@ bool nfm_osfw_fini(void)
 
 	errcode = osfw_fini();
 	if (!errcode) {
-		LOGE("Finilize the OpenSync firewall API failed");
+		LOGE("Finalize the OpenSync firewall API failed");
 		return false;
 	}
 
@@ -285,7 +285,7 @@ bool nfm_osfw_eb_fini(void)
 
 	errcode = osfw_eb_fini();
 	if (!errcode) {
-		LOGE("Finilize the OpenSync firewall API failed");
+		LOGE("Finalize the OpenSync firewall API failed");
 		return false;
 	}
 

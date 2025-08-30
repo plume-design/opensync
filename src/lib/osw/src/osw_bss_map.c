@@ -379,7 +379,7 @@ osw_bss_map_register_observer(struct osw_bss_map_observer *observer)
      * worked_on_at_least_once is true, because otherwise
      * the set_fn/unset_fn would go out of whack between
      * different observers if some bss entries are
-     * immediatelly removed. Better safe then
+     * immediately removed. Better safe then
      * sorry. The set_fn() callee needs to be
      * prepared for repeated calls, even when
      * there are no changes, anyway.

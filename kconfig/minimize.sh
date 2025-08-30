@@ -36,7 +36,7 @@
 # - enter the name of the base config in Common/INCLUDE
 # - upon exiting the minimized config will contain the include directive
 #   and the file will contain just the delta against the base
-# To dissasociate from the base config:
+# To disassociate from the base config:
 # - run make menuconfig
 # - delete the Common/INCLUDE value
 # - upon exiting the minimized config will be a delta against the default config.

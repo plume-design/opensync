@@ -373,7 +373,7 @@ test_gk_serialize_cache_no_mgr(void)
     ret = gkhc_serialize_cache_entries(aggr);
     TEST_ASSERT_FALSE(ret);
 
-    /* Try again after intializing */
+    /* Try again after initializing */
     ret = gkhc_init_aggregator(aggr, &g_session);
     TEST_ASSERT_TRUE(ret);
     ret = gkhc_serialize_cache_entries(aggr);
@@ -396,7 +396,7 @@ test_send_report_param(void)
     int num_reports;
     bool ret;
 
-    /* no aggr initalized */
+    /* no aggr initialized */
     num_reports = gkhc_build_and_send_report(NULL, "valid_mqtt_topic");
     TEST_ASSERT_EQUAL_INT(-1, num_reports);
 
@@ -496,7 +496,7 @@ test_release_aggregator(void)
     gkhc_release_aggregator(aggr);
     TEST_ASSERT_FALSE(aggr->initialized);
 
-    /* Now add a few cache entries and verify _realease_aggregator */
+    /* Now add a few cache entries and verify _release_aggregator */
     gkhc_init_aggregator(aggr, &g_session);
     gkhc_activate_window(aggr);
     TEST_ASSERT_NOT_EQUAL_INT(0, aggr->start_observation_window);

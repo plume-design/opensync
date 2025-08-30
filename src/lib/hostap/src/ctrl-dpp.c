@@ -503,7 +503,7 @@ ctrl_dpp_cb(struct ctrl *ctrl, int level, const char *buf, size_t len)
     }
 
     if (!strcmp(event, EV(DPP_EVENT_CONFOBJ_AKM))) {
-        LOGI("%s: dpp: conf recieved: akm=%s", ctrl->bss, args);
+        LOGI("%s: dpp: conf received: akm=%s", ctrl->bss, args);
         STRSCPY_WARN(dpp->conf_rx_akm, args);
         ctrl_dpp_conf_rx_cb(ctrl);
         return 0;
@@ -517,21 +517,21 @@ ctrl_dpp_cb(struct ctrl *ctrl, int level, const char *buf, size_t len)
     }
 
     if (!strcmp(event, EV(DPP_EVENT_C_SIGN_KEY))) {
-        LOGI("%s: dpp: conf recieved: csignkey=%s", ctrl->bss, args);
+        LOGI("%s: dpp: conf received: csignkey=%s", ctrl->bss, args);
         STRSCPY_WARN(dpp->conf_rx_csign_hex, args);
         ctrl_dpp_conf_rx_cb(ctrl);
         return 0;
     }
 
     if (!strcmp(event, EV(DPP_EVENT_NET_ACCESS_KEY))) {
-        LOGI("%s: dpp: conf recieved: netaccesskey=%s", ctrl->bss, args);
+        LOGI("%s: dpp: conf received: netaccesskey=%s", ctrl->bss, args);
         STRSCPY_WARN(dpp->conf_rx_netaccesskey_hex, args);
         ctrl_dpp_conf_rx_cb(ctrl);
         return 0;
     }
 
     if (!strcmp(event, EV(DPP_EVENT_CONF_REQ_RX))) {
-        LOGI("%s: dpp conf request recieved", ctrl->bss);
+        LOGI("%s: dpp conf request received", ctrl->bss);
         if (!dpp->conf_req_rx) {
             dpp->conf_req_rx = 1;
             while ((kv = strsep(&args, " "))) {
@@ -541,7 +541,7 @@ ctrl_dpp_cb(struct ctrl *ctrl, int level, const char *buf, size_t len)
                 }
             }
             STRSCPY_WARN(dpp->conf_tx_sta, mac);
-            LOGI("%s: dpp conf request recieved from: %s", ctrl->bss, dpp->conf_tx_sta);
+            LOGI("%s: dpp conf request received from: %s", ctrl->bss, dpp->conf_tx_sta);
         }
         else {
             LOGW("%s: dpp conf already in progress, igorning", ctrl->bss);

@@ -583,7 +583,7 @@ void test_dnsmasq_errfn(void)
             if (ii == 1)
             {
                 /*
-                 * For one interface, set invalid optins -- this should case dnsmasq to fail and options should
+                 * For one interface, set invalid options -- this should case dnsmasq to fail and options should
                  * propagate to all instances
                  */
                 TEST_ASSERT_TRUE_MESSAGE(

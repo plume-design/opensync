@@ -261,7 +261,7 @@ fsm_dpi_add_plugin_to_dispatcher(struct fsm_session *session)
     /* Get the dpi plugin context */
     dpi_plugin = &session->dpi->plugin;
 
-    /* Check if the dpi plugin is alread bound to a dispatcher */
+    /* Check if the dpi plugin is already bound to a dispatcher */
     if (dpi_plugin->bound) return false;
 
     /* Retrieve the dispatcher session */
@@ -628,7 +628,7 @@ fsm_dpi_sessions_cmp(const void *a, const void *b)
 /**
  * @brief report filter routine
  *
- * @param acc the accumulater checked to be reported
+ * @param acc the accumulator checked to be reported
  * @return true if the flow should be reported, false otherwise
  */
 static bool
@@ -1256,7 +1256,7 @@ fsm_dispatcher_init_tap_intfs(struct fsm_session *dispatcher)
  * @brief initializes the dpi resources of a dispatcher session
  *
  * @param session the dispatcher session
- * @return true if the initialization succeeeded, false otherwise
+ * @return true if the initialization succeeded, false otherwise
  */
 bool
 fsm_init_dpi_dispatcher(struct fsm_session *session)

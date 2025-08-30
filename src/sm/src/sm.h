@@ -348,7 +348,7 @@ unsigned int sm_radius_collect_data (const char *vif_name);
 sm_radius_stats_t* sm_radius_new_stats_object (const char *vifname);
 
 /* If data is successfully obtained it shall the implementation shall call
- * sm_radius_add_stats_object, if failure occurrs after new stats object was
+ * sm_radius_add_stats_object, if failure occurs after new stats object was
  * acquired, it shall call sm_radius_del_stats_object, passing the received
  * stats object pointer to any of the two.
  */

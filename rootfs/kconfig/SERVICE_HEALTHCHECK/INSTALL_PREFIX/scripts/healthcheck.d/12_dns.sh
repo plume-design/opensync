@@ -28,7 +28,7 @@
 #
 # Performs a DNS health check on a gateway node by verifying name resolution
 # against the configured DNS servers on the system and a few reference global
-# DNS servers. If at least one such DNS lookup succeedes the health check passes.
+# DNS servers. If at least one such DNS lookup succeeds the health check passes.
 #
 # If there is no internet connectivity at all (check performed by pinging a few
 # random global root DNS servers) and/or there is no IP address assigned on the

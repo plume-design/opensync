@@ -31,7 +31,7 @@ OVSH=$CONFIG_INSTALL_PREFIX/tools/ovsh
 # active (enabled) radio. Not having any AP interfaces is considered
 # an error and may need a recovery.
 
-# Skip healtcheck when all radios are disbaled
+# Skip healtcheck when all radios are disabled
 [ -z "$($OVSH -r s Wifi_Radio_Config -w enabled==true if_name)" ] && Healthcheck_Pass
 
 for vif_uuid in $($OVSH -rU s Wifi_VIF_Config _uuid -w enabled==true -w mode==ap)

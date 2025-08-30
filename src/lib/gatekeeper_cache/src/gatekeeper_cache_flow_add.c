@@ -32,7 +32,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 /**
  * @brief create a new flow entry initializing with 5-tuple values
  *        from input.
- * @params: req: interface structure specifing the attribute request
+ * @params: req: interface structure specifying the attribute request
  *
  * @return ip_flow_cache pointer on success or NULL on failure
  */
@@ -99,7 +99,7 @@ err_free_fentry:
 /**
  * @brief validate the request input.
  *
- * @params: req: interface structure specifing the attribute request
+ * @params: req: interface structure specifying the attribute request
  * @return true for success and false for failure.
  */
 bool
@@ -120,9 +120,9 @@ gkc_is_flow_valid(struct gkc_ip_flow_interface *req)
 }
 
 /**
- * @brief add the given attribue to the device cache.
+ * @brief add the given attribute to the device cache.
  *
- * @params: req: interface structure specifing the attribute request
+ * @params: req: interface structure specifying the attribute request
  * @params: pdevice pointer to device tree to which the
  *          attribute is added
  * @return true for success and false for failure.

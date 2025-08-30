@@ -127,7 +127,7 @@ void wano_start_builtin_ifaces(void)
     /*
      * ii != wano_builtin_len if, for some reason, some pipelines failed to
      * initialize where ii contains the number of successfully initialized
-     * pipeliens
+     * pipelines
      */
     wano_builtin_len = ii;
 }

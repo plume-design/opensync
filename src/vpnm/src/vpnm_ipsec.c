@@ -644,7 +644,7 @@ static bool vpnm_ipsec_config_set(
         }
         else
         {
-            LOG(WARN, "vpnm_ipsec: Invalid mark value specified: %d. Setting ingored.", new->mark);
+            LOG(WARN, "vpnm_ipsec: Invalid mark value specified: %d. Setting ignored.", new->mark);
         }
     }
     else

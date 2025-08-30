@@ -30,7 +30,7 @@ LOG_MODULE="TMP_DF"
 # Check free space on /tmp. If tmp free space is bellow the configured limit,
 # the check fails with logging the top offenders.
 
-# Calcualte free space on /tmp, express it as %
+# Calculate free space on /tmp, express it as %
 DF=$(df -k /tmp | tail -n +2 | awk '{printf("%0.0f", $4 / $2 * 100.0)}')
 
 if [ "${DF}" -le ${DF_CRIT_LOW} ]

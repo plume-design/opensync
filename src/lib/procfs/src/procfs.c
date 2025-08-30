@@ -91,7 +91,7 @@ procfs_entry_t *procfs_read(procfs_t *self)
 
         if (!__procfs_entry_getpid(&self->pf_entry, pid))
         {
-            /* XXX: The error below may happen if a PID disappers as we're reading it, silently ignore such cases */
+            /* XXX: The error below may happen if a PID disappears as we're reading it, silently ignore such cases */
             //LOG(ERR, "procfs: Error retrieving entry for pid %jd.", (intmax_t)pid);
             continue;
         }

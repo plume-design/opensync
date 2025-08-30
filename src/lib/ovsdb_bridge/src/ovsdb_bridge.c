@@ -131,7 +131,7 @@ static json_t *ovsdb_bridge_br_name(void)
  *
  * @param if_name   Interface name
  *
- * @return json object specifing default Interface table vales
+ * @return json object specifying default Interface table vales
  */
 static json_t *ovsdb_bridge_interface_row(const char *if_name)
 {
@@ -167,7 +167,7 @@ static json_t *ovsdb_bridge_interface_row(const char *if_name)
  *
  * @param port_name   Port name
  *
- * @return json object specifing default Port table vales
+ * @return json object specifying default Port table vales
  */
 static json_t *ovsdb_bridge_port_row(const char *port_name)
 {
@@ -183,7 +183,7 @@ static json_t *ovsdb_bridge_port_row(const char *port_name)
  *
  * @param br_name   Bridge name
  *
- * @return json object specifing default Bridge table vales
+ * @return json object specifying default Bridge table vales
  */
 static json_t *ovsdb_bridge_br_row(const char *br_name)
 {
@@ -213,10 +213,10 @@ static json_t *ovsdb_bridge_br_row(const char *br_name)
 }
 
 /**
- * @brief creates the row parameter value for modifing the Open_vSwitch table.
+ * @brief creates the row parameter value for modifying the Open_vSwitch table.
  * Open_vSwitch table's "bridges" will be set to the default bridge name
  *
- * @return json object specifing the bridges value
+ * @return json object specifying the bridges value
  */
 static json_t *ovsdb_bridge_ovswitch_row(void)
 {

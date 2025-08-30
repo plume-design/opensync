@@ -149,7 +149,7 @@ const char *otbr_cli_cmd(const char *const fmt, ...)
  *
  * @param[in]  line   Response line to check.
  * @param[out] error  Where to write the beginning of the error message located in `line`.
- *                    Only writen this line is an error/status line or if the error message is not empty.
+ *                    Only written this line is an error/status line or if the error message is not empty.
  *
  * @return `OT_ERROR_INVALID` if this line is not a status line, any other value if
  *         this is a status line representing a final line of a complete response.

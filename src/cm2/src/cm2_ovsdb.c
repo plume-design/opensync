@@ -2573,7 +2573,7 @@ cm2_Connection_Manager_Uplink_handle_update(
         if (uplink->is_used) {
             // Ignore if_name so the usecase when customer changes eth connected leaf
             // to wifi connected leaf. This will create LINK event as disconnect on eth and
-            // would create a LINK event as conencted on wifi link which is ok.
+            // would create a LINK event as connected on wifi link which is ok.
             if (uplink->has_L2)
             {
                 cm2_uplink_event_add_event(time_real(), true, CM2_UPLINK_LINK);
@@ -2830,7 +2830,7 @@ static void cm2_reconfigure_ethernet_states(bool blocked)
                                   ETH_TYPE_NAME,
                                   &count);
     if (!uplink_p) {
-        LOGD("%s: Ethernet uplinks no avaialble", __func__);
+        LOGD("%s: Ethernet uplinks no available", __func__);
         return;
     }
 
@@ -2854,7 +2854,7 @@ static void cm2_reconfigure_ethernet_states(bool blocked)
         }
 
         if (!uplink->has_L3) {
-            LOGI("%s: Ethernet link must be examinated once again", uplink->if_name);
+            LOGI("%s: Ethernet link must be examined once again", uplink->if_name);
             cm2_dhcpc_start_dryrun(uplink->if_name, uplink->if_type, 0);
             cm2_delayed_eth_update(uplink->if_name, CONFIG_CM2_ETHERNET_LONG_DELAY);
         }

@@ -84,7 +84,7 @@ struct fsm_dpi_adt_upnp_root_desc
     ds_tree_node_t next_node;
 };
 
-/* Structure aggregating all the devices and their root desciption(s) */
+/* Structure aggregating all the devices and their root description(s) */
 struct upnp_device
 {
     os_macaddr_t device_mac;  /*!< the device MAC */

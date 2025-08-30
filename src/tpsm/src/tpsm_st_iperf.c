@@ -101,7 +101,7 @@ static bool iperf_parse_json(json_t *js_root, struct st_context *st_ctx)
     json_t *js_sec;
     json_t *js_bw;
 
-    /* If "error" key present in json, an error occured, log the error string: */
+    /* If "error" key present in json, an error occurred, log the error string: */
     const char *str_error = NULL;
     if (json_unpack(js_root, "{s:s}", "error", &str_error) == 0)
     {

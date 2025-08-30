@@ -45,7 +45,7 @@ ssize_t read_until(read_until_t *self, char **out, int fd, char *dm)
     {
         self->tail[0] = '\0';
 
-        /* Find first occurence of a delimiter character */
+        /* Find first occurrence of a delimiter character */
         ns = strcspn(self->head, dm);
         if (self->head[ns] != '\0')
         {

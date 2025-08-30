@@ -415,7 +415,7 @@ action must be issued.
 digraph {
     ....
 
-    EX_TIMEOUT[label="The TIMEOUT exceptions occurrs after 30 seconds."];
+    EX_TIMEOUT[label="The TIMEOUT exceptions occurs after 30 seconds."];
     EX_TIMEOUT -> EXCEPTION [label="!TIMEOUT"];
     EX_HARD_RESET[label="Forcibly restart the sequence."];
     EX_HARD_RESET -> EXCEPTION [label="!HARD_RESET"];

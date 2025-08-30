@@ -336,7 +336,7 @@ test_jencode_adt_upnp_report(void)
     FREE(to_report.url->udev);
 }
 
-/* Trully nothing much to test except the absence of a crash */
+/* Truly nothing much to test except the absence of a crash */
 void
 test_hex_dump(void)
 {

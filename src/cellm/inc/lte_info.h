@@ -254,7 +254,7 @@ static inline bool lte_info_set_string(char *source, char **dest)
 {
     if (dest == NULL) return false;
 
-    /* Bail if the destination is alreay allocated */
+    /* Bail if the destination is already allocated */
     if (*dest != NULL) return false;
 
     if (source == NULL) return true;
@@ -482,7 +482,7 @@ struct lte_info_packed_buffer
  * @brief Generates a lte info serialized protobuf
  *
  * Uses the information pointed by the info parameter to generate
- * a serialized obervation point buffer.
+ * a serialized observation point buffer.
  * The caller is responsible for freeing to the returned serialized data,
  * @see lte_info_free_packed_buffer() for this purpose.
  *

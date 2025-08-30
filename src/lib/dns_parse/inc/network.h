@@ -48,12 +48,12 @@ typedef struct
 
 /*
  *Compare IP header length with Packet size
- *if IP header length is greather than Packet size
- *then we have recieved malformed packet
+ *if IP header length is greater than Packet size
+ *then we have received malformed packet
  */
 #define HEADER_LEN_CHECK(h_len, p_len, p_packet)                        \
     if (h_len > p_len) {                                                \
-        LOGD("%s: %s: recieved Malformed packet ", __FILE__, __func__); \
+        LOGD("%s: %s: received Malformed packet ", __FILE__, __func__); \
         p_packet = NULL;                                                \
         return 0;                                                       \
     }

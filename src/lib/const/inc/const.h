@@ -202,7 +202,7 @@ extern bool             _c_get_param_by_key(c_item_t *list, int list_sz, int key
  *      MY_OPTION_MAX,
  * };
  *
- * uint8_t  my_option_bytes[C_SET_LEN(MY_OPTION_MAX, uint8_t)]; // ARRAY_LEN(my_option_byets) == 2
+ * uint8_t  my_option_bytes[C_SET_LEN(MY_OPTION_MAX, uint8_t)]; // ARRAY_LEN(my_option_bytes) == 2
  * uint32_t my_option_ints[C_SET_LEN(MY_OPTION_MAX, uint32_t)]; // ARRAY_LEN(my_option_ints) == 1
  *
  * CSET_ADD(my_option_bytes, MY_OPTION_3);

@@ -131,7 +131,7 @@ fsm_forward(struct fsm_session *session,
 
     if (net_parser->raw_dst != NULL)
     {
-        /* The net parser is explicitely providing the TX interface to use */
+        /* The net parser is explicitly providing the TX interface to use */
         return fsm_net_parser_forward(net_parser);
     }
 
@@ -178,7 +178,7 @@ fsm_prepare_net_parser_forward(struct net_header_parser *net_parser)
 /**
  * @brief prepare packet forward
  *
- * Initiliase forward cts if it is not initilaized
+ * Initialise forward cts if it is not initilaized
  * - replace smac with pod mac address.
  * @param session the dpi_dispatcher session
  * @param net_parser modified packet
@@ -196,7 +196,7 @@ fsm_prepare_forward(struct fsm_session *session,
 
     if (net_parser->raw_dst != NULL)
     {
-        /* The net parser is explicitely providing the TX interface to use */
+        /* The net parser is explicitly providing the TX interface to use */
         return fsm_prepare_net_parser_forward(net_parser);
     }
 

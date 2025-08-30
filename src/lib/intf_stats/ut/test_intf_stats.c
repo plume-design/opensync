@@ -479,7 +479,7 @@ test_intf_stats(intf_stats_t *intf)
     nread    = file2pb(g_test_mgr.f_name, &pb_r);
     stats_pb = interfaces__intf_stats__intf_stats__unpack(NULL, nread, rbuf);
 
-    /* Validate the deserialzed content */
+    /* Validate the deserialized content */
     TEST_ASSERT_NOT_NULL(stats_pb);
     validate_intf_stats(intf, stats_pb);
 
@@ -589,7 +589,7 @@ test_observation_window(intf_stats_window_t *window)
     nread     = file2pb(g_test_mgr.f_name, &pb_r);
     window_pb = interfaces__intf_stats__observation_window__unpack(NULL, nread, rbuf);
 
-    /* Validate the deserialized contetn */
+    /* Validate the deserialized content */
     TEST_ASSERT_NOT_NULL(window_pb);
     validate_observation_window(window, window_pb);
 
@@ -843,7 +843,7 @@ intf_stats_setUp(void)
     report = &g_test_mgr.report;
     node_info = &report->node_info;
 
-    /* Initilize the report */
+    /* Initialize the report */
     ds_dlist_init(&report->window_list, intf_stats_window_list_t, node);
     report->num_windows = 0;
 

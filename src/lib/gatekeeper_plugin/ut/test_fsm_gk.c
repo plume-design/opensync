@@ -2127,7 +2127,7 @@ test_mcurl_config(void)
     /* remove existing other config values */
     free_str_tree(session->conf->other_config);
 
-    /* set new other config with mulit_curl = enable */
+    /* set new other config with multi_curl = enable */
     other_config = schema2tree(OTHER_CONFIG_NELEM_SIZE,
                                 2,
                                 OTHER_CONFIG_NELEMS,
@@ -2138,7 +2138,7 @@ test_mcurl_config(void)
     gatekeeper_update(session);
     TEST_ASSERT_EQUAL_INT(1,fsm_gk_session->enable_multi_curl);
 
-    /* set new other config with mulit_curl = disable */
+    /* set new other config with multi_curl = disable */
     free_str_tree(session->conf->other_config);
     other_config = schema2tree(OTHER_CONFIG_NELEM_SIZE,
                                 2,

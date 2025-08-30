@@ -8,4 +8,4 @@ config OSP_L2UF_LIBPCAP
     bool "libpcap"
 
     help
-        Use the libpcap l2uf imlementation
+        Use the libpcap l2uf implementation

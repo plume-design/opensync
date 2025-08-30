@@ -157,7 +157,7 @@ ospkg_select_active_mount_layer()
         fi
         # get current after eventual changes
         local CURR_NAME_2=$(ospkg_get_current_name)
-        # if curent changed reset overlay/upper
+        # if current changed reset overlay/upper
         if [ "$CURR_NAME_1" != "$CURR_NAME_2" ]; then
             ospkg_reset_overlay_upper "$OVERLAY_UPPER"
         fi

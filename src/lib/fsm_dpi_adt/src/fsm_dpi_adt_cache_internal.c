@@ -27,7 +27,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "fsm_dpi_adt_cache_internal.h"
 
 /**
- * @brief comparator function for comparing mac adress
+ * @brief comparator function for comparing mac address
  *
  * @params: _a: first MAC address to compare
  * @params: _b: second MAC address to compare

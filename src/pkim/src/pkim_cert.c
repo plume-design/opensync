@@ -270,7 +270,7 @@ enum pkim_cert_state pkim_cert_state_EST_RESET(pkim_cert_state_t *state, enum pk
 
     if (!pkim_cert_timeout(self, pkim_cert_do_TIMEOUT, (double)PKIM_CERT_EST_TIMEOUT))
     {
-        LOG(ERR, "pkim: %s: Error initializing timout handler.", self->pc_label);
+        LOG(ERR, "pkim: %s: Error initializing timeout handler.", self->pc_label);
         return pkim_cert_EST_RETRY;
     }
 
@@ -278,7 +278,7 @@ enum pkim_cert_state pkim_cert_state_EST_RESET(pkim_cert_state_t *state, enum pk
 }
 
 /*
- * Fetch certificate authority and move to EST_ENROLL if successfull. Otherwise
+ * Fetch certificate authority and move to EST_ENROLL if successful. Otherwise
  * move to EST_RETRY.
  */
 enum pkim_cert_state pkim_cert_state_EST_CACERTS(pkim_cert_state_t *state, enum pkim_cert_action action, void *data)
@@ -352,7 +352,7 @@ enum pkim_cert_state pkim_cert_state_EST_ENROLL(pkim_cert_state_t *state, enum p
             return pkim_cert_EST_DONE;
 
         case pkim_cert_do_EST_ERROR:
-            LOG(ERR, "pkim: %s: EST request error ocurred on server: %s", self->pc_label, self->pc_est_server);
+            LOG(ERR, "pkim: %s: EST request error occurred on server: %s", self->pc_label, self->pc_est_server);
             pkim_ovsdb_status_set(self->pc_label, "error_enroll");
             break;
 
@@ -443,7 +443,7 @@ enum pkim_cert_state pkim_cert_state_EST_RETRY(pkim_cert_state_t *state, enum pk
 
             if (!pkim_cert_timeout(self, pkim_cert_do_TIMEOUT, retry_timeout))
             {
-                LOG(ERR, "pkim: %s: Error initializing timout handler.", self->pc_label);
+                LOG(ERR, "pkim: %s: Error initializing timeout handler.", self->pc_label);
                 break;
             }
 
@@ -698,7 +698,7 @@ char *pkim_cert_get_subject(arena_t *arena)
 
     if (subj == NULL)
     {
-        LOG(ERR, "est_util: Error allocating subject stirng.");
+        LOG(ERR, "est_util: Error allocating subject string.");
         return NULL;
     }
 
@@ -794,7 +794,7 @@ uint32_t pkim_cert_get_stable_random(struct pkim_cert *self)
 
     /*
      * Concatenate the bootid and the certificate label and calculate a FNV-1a
-     * hash. This should yield a pesudo random number that stays stable across
+     * hash. This should yield a pseudo random number that stays stable across
      * reboots and is unique for each certificate.
      */
     char *hstr = arena_sprintf(scratch, "%s.%s", self->pc_label, buf);

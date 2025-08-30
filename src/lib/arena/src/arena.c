@@ -354,7 +354,7 @@ void *arena_mresize(arena_t *arena, void *ptr, size_t ptrsz, size_t newsz)
     }
 
     /*
-     * Not enoguh space in the curernt chunk, we need to move the data to a new
+     * Not enough space in the current chunk, we need to move the data to a new
      * chunk. Allocate a chunk that is at least 1.5 times bigger than `newsz`.
      */
     size_t rsz = (SIZE_MAX - (newsz >> 1)) < newsz ? SIZE_MAX : (newsz + (newsz >> 1));
@@ -388,7 +388,7 @@ void *arena_mresize(arena_t *arena, void *ptr, size_t ptrsz, size_t newsz)
 /*
  * Append memory to the buffer pointed to by `ptr`. The ergonomics of this
  * function are designed for resizing growable arrays. If `ptr` is NULL
- * a new memmory-aligned buffer is allocated.
+ * a new memory-aligned buffer is allocated.
  *
  * `ptr` + `membsz` * `cur` must point exactly to the end of arena. The buffer
  * is expanded by `grow` * `membsz` bytes.

@@ -76,13 +76,13 @@ threshold          : ["map",[["max_delay",600],["util",10]]]
  *
  * This is intended to simplify integration to some
  * configuration systems like OVSDB (Wifi_Stats_Config).
- * It bakes in some of the pecularities of how the
+ * It bakes in some of the peculiarities of how the
  * polling/sampling/reporting times are set.
  *
  * Ideally this should be renamed to ow_stats_pb (protobuf)
  * and the publishing should be abstracted, so that
  * ow_stats_pb_qm could be used to publish the generated
- * protobuf over QM (unix socket). The alternate trasnport
+ * protobuf over QM (unix socket). The alternate transport
  * would be ow_stats_pb_rbus for example.
  */
 
@@ -892,7 +892,7 @@ ow_stats_conf_sub_report_sta(struct ow_stats_conf_entry *e,
      * connects as report is about to be scheduled it's
      * possible that driver will deliver stats, but won't go
      * through all the motions of reporting sta_state. In
-     * that case the report will be posponed until another
+     * that case the report will be postponed until another
      * report target time. This could be re-tried sooner
      * upon sta_connected_cb, although that would violate
      * the reporting interval a little bit.

@@ -754,7 +754,7 @@ fsm_parse_dso(struct fsm_session *session)
     }
     else
     {
-        LOGD("%s: plugin: No explicit plugin DSO. Infering from name: %s",
+        LOGD("%s: plugin: No explicit plugin DSO. Inferring from name: %s",
              __func__, session->name);
         if (session->name)
         {
@@ -882,7 +882,7 @@ fsm_match_init(struct fsm_session *session)
         ret = plugin_init_table[i].init(session);
         if (ret != 0) return false;
 
-        /* Wrap up initialization now that the plugin itsef is fully initialized */
+        /* Wrap up initialization now that the plugin itself is fully initialized */
         ret = fsm_wrap_init_plugin(session);
         return ret;
     }
@@ -950,7 +950,7 @@ fsm_init_plugin(struct fsm_session *session)
     rc = init(session);
     if (rc != 0) return false;
 
-    /* Wrap up initialization now that the plugin itsef is fully initialized */
+    /* Wrap up initialization now that the plugin itself is fully initialized */
     ret = fsm_wrap_init_plugin(session);
 
     return ret;

@@ -100,7 +100,7 @@ OSW_UT(osw_rrm_bcn_meas_rpt_cache_lifetime)
                                        &meas_rpt_ie_fixed_bssid1_rpt,
                                        &meas_rpt_ie_beacon_bssid1_rpt);
 
-    /* Both BSSID 0 and 1 should be availabe for STA 0 */
+    /* Both BSSID 0 and 1 should be available for STA 0 */
     rpt = osw_rrm_bcn_meas_rpt_cache_lookup(&cache, &ref_sta_addr, &ref_bssid0);
     OSW_UT_EVAL(rpt != NULL);
     OSW_UT_EVAL(rpt->op_class == meas_rpt_ie_beacon_bssid0_rpt.op_class);

@@ -66,7 +66,7 @@ typedef void
 rq_task_cancel_fn_t(struct rq_task *task);
 
 /** Called when task needs to be killed without waiting for
- *  anything. The task will immediatelly be
+ *  anything. The task will immediately be
  *  rq_task_complete() too. Can be either explicitly killed
  *  via rq_task_kill() or when cancel_timeout_msec elapses.
  */

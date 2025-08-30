@@ -114,7 +114,7 @@ free_str_set(struct str_set *set)
  *
  * @param a the first string of the comparison
  * @param b the second string of the comparison
- * @return the string comparision result
+ * @return the string comparison result
  */
 int
 str_tree_cmp(const void *a, const void *b)
@@ -131,7 +131,7 @@ str_tree_cmp(const void *a, const void *b)
  *
  * @param key the key element of the pair
  * @param value the value element of the pair
- * @return a string pair pointer if successfull, NULL otherwise
+ * @return a string pair pointer if successful, NULL otherwise
  */
 struct str_pair *
 get_pair(const char *key, const char *value)
@@ -312,7 +312,7 @@ free_int_set(struct int_set *set)
  *
  * @param key the key element of the pair
  * @param value the value element of the pair
- * @return a string pair pointer if successfull, NULL otherwise
+ * @return a string pair pointer if successful, NULL otherwise
  */
 struct str_ipair *
 get_ipair(const char *key, int value)

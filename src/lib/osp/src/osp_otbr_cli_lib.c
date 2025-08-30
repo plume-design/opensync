@@ -354,7 +354,7 @@ static bool NONNULL(1, 3) parse_network_diag_peer_tlvs(
                 {
                     const otIp6Address *const addr = &tlv->mData.mIp6AddrList.mList[i_addr];
                     osn_ip6_addr_t ip_addr = OSN_IP6_ADDR_INIT;
-                    C_STATIC_ASSERT(sizeof(ip_addr.ia6_addr) == sizeof(addr->mFields), "IPv6 address struct missmatch");
+                    C_STATIC_ASSERT(sizeof(ip_addr.ia6_addr) == sizeof(addr->mFields), "IPv6 address struct mismatch");
 
                     memcpy(&ip_addr.ia6_addr, addr->mFields.m8, sizeof(ip_addr.ia6_addr));
                     ARRAY_APPEND_COPY(device->ip_addresses.addr, device->ip_addresses.count, ip_addr);

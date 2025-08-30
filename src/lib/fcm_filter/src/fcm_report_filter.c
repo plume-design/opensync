@@ -68,7 +68,7 @@ void fcm_filter_context_init(fcm_collect_plugin_t *collector)
 }
 
 /**
- * @brief print function net_md_stats_accumulator paramter.
+ * @brief print function net_md_stats_accumulator parameter.
  *
  * @param valid pointer to net_md_stats_accumulator.
  * @return void.

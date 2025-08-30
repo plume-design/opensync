@@ -762,7 +762,7 @@ char *str_trimws(char *s)
 }
 
 /*
- * Delete all occurences or characters `chars` in string
+ * Delete all occurrences or characters `chars` in string
  * `str`
  *
  * Note: This function modifies the input string.

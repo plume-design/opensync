@@ -255,7 +255,7 @@ validate_clients(mdns_records_report_data_t *report, Interfaces__MdnsRecordsTele
         client = ds_tree_inext(&client_iter);
     }
 
-    /* Free validation structre */
+    /* Free validation structure */
     for (i = 0; i < num_clients; i++)
     {
         mdns_records_free_pb_client(clients_pb_tbl[i]);

@@ -401,7 +401,7 @@ bool _osbus_msg_append_item(osbus_msg_t *data, osbus_msg_t *e)
     if (!data || !e) return false;
     if (!osbus_msg_is_container(data)) return false;
     // val.list array is used also for object properties, so that
-    // the order is maintaned - same behvaiour as in jansson
+    // the order is maintained - same behaviour as in jansson
     // resize
     data->val.list = REALLOC(data->val.list, sizeof(osbus_msg_t*) * (data->num + 1));
     // append item
@@ -535,7 +535,7 @@ osbus_msg_t* osbus_msg_set_prop(osbus_msg_t *data, const char *name, osbus_msg_t
     osbus_msg_t *x;
     x = osbus_msg_get_prop(data, name);
     if (x != NULL) {
-        // overwite existing key
+        // overwrite existing key
         i = x->idx;
         ASSERT(data->val.list[i] == x, "idx %d", i);
         osbus_msg_free(x);

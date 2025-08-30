@@ -178,7 +178,7 @@ fsm_dpi_dns_send_report(struct fsm_policy_req *policy_request,
  * @brief: In case of gatekeeper policy, check if event
  * reporting is required. Gatekeeper policy triggers
  * reporting only for BLOCKED and REDIRECT action.
- * But if reporing is required for other action, then
+ * But if reporting is required for other action, then
  * reporting flag is set and the policy name is updated.
  */
 static void
@@ -502,7 +502,7 @@ static bool fsm_dpi_dns_set_noerror_noanswer(struct net_header_parser *net_heade
 }
 
 /**
- * @brief Skip sthe domain name in the DNS packet.
+ * @brief Skip the domain name in the DNS packet.
  * @param packet The DNS packet.
  * @param offset The offset of the domain name section.
  * @param length The length of the packet.
@@ -868,7 +868,7 @@ fsm_dpi_dns_process_dns_record(struct fsm_session *session,
      * We can have responses without `answers`.
      * Skip updating the information for the IPs.
      * The actual action returned in this case must be fully over-written,
-     * since we want to _always_ finsih processing of DNS transaction.
+     * since we want to _always_ finish processing of DNS transaction.
      */
     if (rec->idx == 0 || action == FSM_NOANSWER)
     {

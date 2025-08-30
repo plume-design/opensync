@@ -32,7 +32,7 @@ menuconfig MANAGER_SM
                 It does nothing. Just satisfying build time and
                 linking mechanics.
 
-                This isn't all that useful except for developent and
+                This isn't all that useful except for development and
                 testing of core logic that ingests configuration and
                 to check plumbing.
 

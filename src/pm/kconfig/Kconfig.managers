@@ -31,7 +31,7 @@ if MANAGER_PM
             Enable or disable acceleration.
 
     config PM_ENABLE_FF_OVSDB_PS
-        bool "Enable support for feature flags persitent storage to be updated by OVSDB"
+        bool "Enable support for feature flags persistent storage to be updated by OVSDB"
         default y
         help
            Monitor OVSDB for changes in feature flags and reflect them in persistent storage
@@ -120,7 +120,7 @@ if MANAGER_PM
                 default n
                 help
                     Thermal states table(which is usually compiled into the Platform
-                    Manager) can be overriden by writing the fields into Node_Config
+                    Manager) can be overridden by writing the fields into Node_Config
                     OVSDB table. This option disables the ability to override the
                     default configuration values.
 
@@ -132,14 +132,14 @@ if MANAGER_PM
 
                 if PM_ENABLE_FAN_DUTY_CYCLE
                     config PM_TM_FAN_DUTY_CYCLE_ON_PERIOD
-                        int "Fan duty cyle on period"
+                        int "Fan duty cycle on period"
                         default 270
                         help
                             The amount of seconds the fan should be turned on in a state when
                             duty cycling for that state is enabled.
 
                     config PM_TM_FAN_DUTY_CYCLE_OFF_PERIOD
-                        int "Fan duty cyle off period"
+                        int "Fan duty cycle off period"
                         default 240
                         help
                             The amount of seconds the fan should be turned off in a state when

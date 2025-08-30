@@ -358,7 +358,7 @@ bool fsm_set_cats_rules(struct fsm_policy_rules *rules,
  * attributes in its policy representation
  * @param rules the policy rule representation
  * @param spolicy the ovsdb rule representation
- * @return true if the translation succeeeded, false otherwise.
+ * @return true if the translation succeeded, false otherwise.
  */
 bool
 fsm_set_risk_level_rules(struct fsm_policy_rules *rules,
@@ -404,7 +404,7 @@ fsm_set_risk_level_rules(struct fsm_policy_rules *rules,
  * attributes in its policy representation
  * @param rules the policy rule representation
  * @param spolicy the ovsdb rule representation
- * @return true if the translation succeeeded, false otherwise.
+ * @return true if the translation succeeded, false otherwise.
  */
 bool
 fsm_set_ip_rules(struct fsm_policy_rules *rules,
@@ -465,7 +465,7 @@ bool fsm_set_app_rules(struct fsm_policy_rules *rules,
  * fsm representation
  * @param rules the policy rule representation
  * @param spolicy the ovsdb rule representation
- * @return true if the translation succeeeded, false otherwise.
+ * @return true if the translation succeeded, false otherwise.
  */
 bool
 fsm_set_rules(struct fsm_policy_rules *rules,
@@ -666,7 +666,7 @@ struct fsm_policy *fsm_policy_insert_schema_p(struct policy_table *table,
     fpolicy->table = table;
     table->lookup_array[idx] = fpolicy;
 
-    /* Set lookup indeces */
+    /* Set lookup indices */
     fsm_policy_get_prev(table, fpolicy);
     fsm_policy_get_next(table, fpolicy);
 

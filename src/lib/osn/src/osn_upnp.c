@@ -153,7 +153,7 @@ static bool prepare_start(osn_upnp_t *self)
             break;
     }
 
-    // update real active status when attachment succesfull
+    // update real active status when attachment successful
     if (rv)
     {
         self->mode_a = self->mode_p;

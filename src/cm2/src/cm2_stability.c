@@ -526,7 +526,7 @@ static bool cm2_connection_req_stability_process(const char *if_name,
         }
         else
         {
-            // This will triggeres the call periodically, actuall check if pod is in the
+            // This will triggers the call periodically, actuall check if pod is in the
             // middle of outage event is done in cm2_network_state_add_event function
             if (cm2_uplink_event_is_wan_iface(if_name))
             {
@@ -572,7 +572,7 @@ static bool cm2_connection_req_stability_process(const char *if_name,
         }
         else
         {
-            // This will triggeres the call periodically, actuall check if pod is in the
+            // This will triggers the call periodically, actuall check if pod is in the
             // middle of outage event is done in cm2_network_state_add_event function
             if (cm2_uplink_event_is_wan_iface(if_name))
             {

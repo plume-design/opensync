@@ -145,7 +145,7 @@ void test_inet_eth_assign_scheme(void)
                 inet_network_enable(self, true),
                 "Error enabling network");
 
-        PR("Setting assing_scheme -> None");
+        PR("Setting assign_scheme -> None");
         TEST_ASSERT_TRUE_MESSAGE(
                 inet_assign_scheme_set(self, INET_ASSIGN_NONE),
                 "Error setting assign scheme");
@@ -268,7 +268,7 @@ void test_inet_eth_mtu(void)
                 "Error enabling network");
 
 
-        PR("Setting assing_scheme -> None");
+        PR("Setting assign_scheme -> None");
         TEST_ASSERT_TRUE_MESSAGE(
                 inet_mtu_set(self, 1450),
                 "Error setting assign scheme");

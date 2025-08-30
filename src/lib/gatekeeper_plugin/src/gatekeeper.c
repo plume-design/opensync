@@ -1665,7 +1665,7 @@ gatekeeper_exit(struct fsm_session *session)
 /**
  * @brief close curl connection if it is ideal for more then
  *        set GK_CURL_TIMEOUT value. When curl request
- *        is made, the ecurl_connection_time value is udpated.
+ *        is made, the ecurl_connection_time value is updated.
  *
  * @param ctime current time value
  */
@@ -1827,7 +1827,7 @@ gatekeeper_update(struct fsm_session *session)
         fsm_gk_session->enable_multi_curl = false;
     }
 
-    /* currently overwritting ovsdb config with kconfig value */
+    /* currently overwriting ovsdb config with kconfig value */
     fsm_gk_session->enable_multi_curl = kconfig_enabled(CONFIG_GATEKEEPER_MULTI_CURL);
 
     server_info->server_url = session->ops.get_config(session, "gk_url");

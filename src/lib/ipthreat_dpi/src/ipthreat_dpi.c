@@ -115,7 +115,7 @@ ipthreat_dpi_plugin_periodic(struct fsm_session *session)
 
 
 /**
- * @brief session configuration uodate handler
+ * @brief session configuration update handler
  *
  * @param session the fsm session to update
  */
@@ -127,7 +127,7 @@ ipthreat_dpi_plugin_update(struct fsm_session *session)
 
 
 /**
- * @brief session configuration uodate handler
+ * @brief session configuration update handler
  *
  * @param session the fsm session to update
  */

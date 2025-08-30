@@ -1175,7 +1175,7 @@ void callback_Wifi_Inet_State(
             rc = strncmp(old_inet_state->if_type, LTE_TYPE_NAME, strlen(old_inet_state->if_type));
             if (!rc)
             {
-                LOGI("%s: OVSDB_UDATE_DEL: %s, CELLM_STATE_DOWN", __func__, old_inet_state->if_name);
+                LOGI("%s: OVSDB_UPDATE_DEL: %s, CELLM_STATE_DOWN", __func__, old_inet_state->if_name);
                 cellm_set_state(CELLM_STATE_DOWN);
             }
             break;

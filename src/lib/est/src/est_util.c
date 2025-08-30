@@ -78,7 +78,7 @@ char *est_util_pkcs7_to_pem(arena_t *arena, const char *pkcs7)
     }
 
     /*
-     * openssl pkcs7 prints certificte information before dumping the PEM
+     * openssl pkcs7 prints certificate information before dumping the PEM
      * certificate, try to find the PEM signature.
      */
     char *pem_hdr = strstr(pem, "-----BEGIN CERTIFICATE-----");

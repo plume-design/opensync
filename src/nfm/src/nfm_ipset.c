@@ -439,7 +439,7 @@ bool nfm_ipset_objm_json_parse(struct nfm_ipset *ips, json_t *jvalues)
 
     if (!nfm_ipset_type_from_str(&type, stype))
     {
-        LOG(DEBUG, "nfm_ipset: %s: Unkown IPSET type: %s (from json).",
+        LOG(DEBUG, "nfm_ipset: %s: Unknown IPSET type: %s (from json).",
                 ips->ni_name, stype);
         return false;
     }

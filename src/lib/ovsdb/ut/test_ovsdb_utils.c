@@ -99,7 +99,7 @@ test_schema2str_set(void)
     char **out;
     size_t i;
 
-    /* Gather the conversion paramters */
+    /* Gather the conversion parameters */
     elem_size = sizeof(str_arrays[0][0]);
     nelems = 3;
 
@@ -137,7 +137,7 @@ test_schema2tree(void)
     char *in_key;
     size_t i;
 
-    /* Gather the conversion paramters */
+    /* Gather the conversion parameters */
     elem_size = sizeof(str_pairs[0][0][0]);
     nelems = 3;
 
@@ -176,7 +176,7 @@ test_schema2int_set(void)
     size_t i;
     int *out;
 
-    /* Gather the conversion paramters */
+    /* Gather the conversion parameters */
     nelems = 3;
 
     /* Execute the conversion */
@@ -200,7 +200,7 @@ test_schema2int_set(void)
 /**
  * @brief test schema2itree
  *
- * Validates the conversion of an OVSDB interger map to a str_ipair structure.
+ * Validates the conversion of an OVSDB integer map to a str_ipair structure.
  */
 void
 test_schema2itree(void)
@@ -211,7 +211,7 @@ test_schema2itree(void)
     int in_value;
     char *in_key;
 
-    /* Gather the conversion paramters */
+    /* Gather the conversion parameters */
     elem_size = sizeof(str_pairs[0][0][0]);
     nelems = 3;
 

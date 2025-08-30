@@ -216,7 +216,7 @@ hostap_txq_requeue_sent(struct hostap_txq *q)
                 hostap_txq_req_complete(req, NULL, 0);
             }
             else {
-                LOGT(LOG_PREFIX_REQ(req, "requeueing"));
+                LOGT(LOG_PREFIX_REQ(req, "requeuing"));
                 req->list = &q->cmds_queued;
                 ds_dlist_insert_head(&q->cmds_queued, req);
             }

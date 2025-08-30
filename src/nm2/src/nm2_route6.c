@@ -101,7 +101,7 @@ void nm2_route6_update(struct schema_Wifi_Route6_State *rts)
      *
      * An update or delete with where by cached _uuid. Alternatively we could
      * do a where by columns that determine equal routes (dest_addr, dest_mask,
-     * gateway, interface, routing table), however in the schema 'table' columnn
+     * gateway, interface, routing table), however in the schema 'table' column
      * is optional and due to a bug (or limitation) in OVSDB implementation
      * ["table", "==", ["set", []]] condition does not match.
      */

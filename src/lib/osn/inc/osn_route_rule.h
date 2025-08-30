@@ -181,7 +181,7 @@ bool osn_route_rule_del(osn_route_rule_t *self);
  * Add a policy routing rule.
  *
  * @note After adding rules with this function you should call @ref osn_route_rule_apply()
- * to ensure the configuration has been commited to the system.
+ * to ensure the configuration has been committed to the system.
  *
  * @param[in] self            A valid @ref osn_route_rule_t object
  *
@@ -195,7 +195,7 @@ bool osn_route_rule_add(osn_route_rule_t *self, const osn_route_rule_cfg_t *rout
  * Remove/delete a policy routing rule.
  *
  * @note After removing rules with this function you should call @ref osn_route_rule_apply()
- * to ensure the configuration has been commited to the system.
+ * to ensure the configuration has been committed to the system.
  *
  * @param[in] self            A valid @ref osn_route_rule_t object
  *

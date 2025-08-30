@@ -181,7 +181,7 @@ const int *unii_5g_chan2list(int chan, int width);
  */
 const int *unii_6g_chan2list(int chan, int width);
 /*
- * Gets 6GHz channels list for requied segment.
+ * Gets 6GHz channels list for required segment.
  * Functions below are specialised for 320MHz
  * channels with respect to band scheme (_1/_2)
  * @param channel

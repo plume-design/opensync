@@ -1916,7 +1916,7 @@ test_process_link_event(void)
     cache_size = neigh_table_get_cache_size();
     TEST_ASSERT_EQUAL(1, cache_size);
 
-    /* Now we whould be removing the entry */
+    /* Now we would be removing the entry */
     process_link_event(&neigh_info);
     cache_size = neigh_table_get_cache_size();
     TEST_ASSERT_EQUAL(0, cache_size);

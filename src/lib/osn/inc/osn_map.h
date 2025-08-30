@@ -216,7 +216,7 @@ bool osn_map_rule_set(osn_map_t *self, const osn_map_rule_t *bmr);
 /**
  * Set end-user IPv6 prefix.
  *
- * Typically, but not neccessarily, the end-user IPv6 prefix configured for MAP would be
+ * Typically, but not necessarily, the end-user IPv6 prefix configured for MAP would be
  * a delegated IPv6 prefix (IA_PD).
  *
  * @param[in] self           A valid @ref osn_map_t object.
@@ -228,7 +228,7 @@ bool osn_map_enduser_IPv6_prefix_set(osn_map_t *self, const osn_ip6_addr_t *ipv6
 
 /**
  * Use legacy MAP RFC draft3 when calculating MAP IPv6 address
- * (it's interface-indentifier part).
+ * (it's interface-identifier part).
  *
  * @param[in] self          A valid @ref osn_map_t object.
  * @param[in] use_draft3    If true MAP IPv6 address will be calculated according to legacy
@@ -280,7 +280,7 @@ bool osn_map_uplink_set(osn_map_t *self, const char *uplink_if_name);
 bool osn_map_apply(osn_map_t *self);
 
 /**
- * Get the mathing MAP rule i.e. the configured MAP rule that matched to the configured End-user
+ * Get the matching MAP rule i.e. the configured MAP rule that matched to the configured End-user
  * IPv6 prefix.
  *
  * @param[in]  self           A valid @ref osn_map_t object.

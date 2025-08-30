@@ -155,7 +155,7 @@ char *osp_pki_cert_request(const char *label, const char *subject)
     }
 
     /*
-     * Genereate the CSR -- in newer version of openssl (3.x) it is impossible to read the private key from stdin
+     * Generate the CSR -- in newer version of openssl (3.x) it is impossible to read the private key from stdin
      * as `-key -` does not work. The workaround is to use `-key /dev/stdin`, however, `/dev/stdin` is not present
      * on many systems. Since `/dev/stdin` is usually just a symlink to `/proc/self/fd/0`, just use that directly.
      */
@@ -311,7 +311,7 @@ bool osp_pki_cert_remove(const char *label)
 
 /*
  * Install certificates and keys to tmpfs. This function will rename existing
- * certficates/keys by adding the ".defualt" extension. Certificates from the
+ * certficates/keys by adding the ".default" extension. Certificates from the
  * persistent store will be copied to the destination folder using the ".new"
  * extension. Finally it will symlink the certificate/private keys filenames
  * to the ".new" files.
@@ -814,7 +814,7 @@ bool pki_cert_info(const char *crt, time_t *expire_date, char *sub, size_t sub_s
     char *crtinfo = execssl_arena(scratch, crt, "x509", "-enddate", "-subject", "-nameopt", "compat", "-noout");
     if (crtinfo == NULL)
     {
-        LOG(ERR, "osp_pki: Error retriving certificate information.");
+        LOG(ERR, "osp_pki: Error retrieving certificate information.");
         return false;
     }
 
