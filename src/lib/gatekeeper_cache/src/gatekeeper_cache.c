@@ -34,7 +34,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "gatekeeper_cache.h"
 
 #include "gatekeeper.pb-c.h"
-#include "gatekeeper_bulk_reply_msg.h"
+#include "gatekeeper_bulk_msg.h"
 
 #include "log.h"
 #include "os_types.h"
@@ -515,6 +515,7 @@ gkc_interface_to_attr_cache(struct gk_attr_cache_interface *entry, struct attr_c
             break;
 
         case GK_CACHE_REQ_TYPE_APP:
+        case GK_CACHE_REQ_TYPE_TRAFFIC_CLASS:
             attr->app_name = CALLOC(1, sizeof(*attr->app_name));
             attr->app_name->name = STRDUP(entry->attr_name);
             attr->app_name->hit_count.total = 1;
@@ -573,7 +574,7 @@ gkc_new_attr_entry(ds_tree_t *cache, struct gk_attr_cache_interface *entry)
     struct attr_cache *new_attr_cache;
     struct gk_cache_mgr *mgr;
 
-    if (entry->attribute_type < GK_CACHE_REQ_TYPE_FQDN  || entry->attribute_type > GK_CACHE_REQ_TYPE_APP) return NULL;
+    if (entry->attribute_type < GK_CACHE_REQ_TYPE_FQDN  || entry->attribute_type > GK_CACHE_REQ_TYPE_TRAFFIC_CLASS) return NULL;
 
     mgr = gk_cache_get_mgr();
     if (!mgr->initialized) return NULL;
@@ -760,6 +761,7 @@ gkc_add_attr_tree(struct per_device_cache *pdevice_cache, struct gk_attr_cache_i
             break;
 
         case GK_CACHE_REQ_TYPE_APP:
+        case GK_CACHE_REQ_TYPE_TRAFFIC_CLASS:
             was_inserted = gkc_insert_generic(&pdevice_cache->app_tree, entry);
             break;
 
@@ -791,7 +793,7 @@ gkc_add_attribute_entry(struct gk_attr_cache_interface *entry)
     if (!mgr->initialized) return false;
 
     /* return if attribute type is not valid */
-    if (entry->attribute_type < GK_CACHE_REQ_TYPE_FQDN  || entry->attribute_type > GK_CACHE_REQ_TYPE_APP) return false;
+    if (entry->attribute_type < GK_CACHE_REQ_TYPE_FQDN  || entry->attribute_type > GK_CACHE_REQ_TYPE_TRAFFIC_CLASS) return false;
 
     /* Pre-compute the key */
     if (entry->cache_key == 0)
@@ -830,6 +832,7 @@ gkc_add_attribute_entry(struct gk_attr_cache_interface *entry)
             case GK_CACHE_REQ_TYPE_IPV4:
             case GK_CACHE_REQ_TYPE_IPV6:
             case GK_CACHE_REQ_TYPE_APP:
+            case GK_CACHE_REQ_TYPE_TRAFFIC_CLASS:
                 ret = gkc_insert_generic(tree, entry);
                 break;
 
@@ -1221,6 +1224,7 @@ gkc_lookup_attr_tree(ds_tree_t *tree, struct gk_attr_cache_interface *req, bool 
                 break;
 
             case GK_CACHE_REQ_TYPE_APP:
+            case GK_CACHE_REQ_TYPE_TRAFFIC_CLASS:
                 attr->app_name->hit_count.total++;
                 hit_count = attr->app_name->hit_count.total;
                 break;
@@ -1328,6 +1332,7 @@ gkc_lookup_attributes_tree(struct per_device_cache *pdevice, struct gk_attr_cach
             break;
 
         case GK_CACHE_REQ_TYPE_APP:
+        case GK_CACHE_REQ_TYPE_TRAFFIC_CLASS:
             ret = gkc_lookup_attr_tree(&pdevice->app_tree, req, update_count);
             break;
 
@@ -1369,6 +1374,7 @@ gkc_attr_cache_to_interface(struct attr_cache *attr_entry, struct gk_attr_cache_
             break;
 
         case GK_CACHE_REQ_TYPE_APP:
+        case GK_CACHE_REQ_TYPE_TRAFFIC_CLASS:
             req->attr_name = attr_entry->attr.app_name->name;
             break;
 
@@ -1421,8 +1427,10 @@ gkc_compare_attr_type(struct gk_attr_cache_interface *req, struct attr_cache *at
     attr_is_url = (attr_entry->type == GK_CACHE_REQ_TYPE_URL);
     if (req_is_url && attr_is_url) return true;
 
-    req_is_app = (req->attribute_type == GK_CACHE_REQ_TYPE_APP);
-    attr_is_app = (attr_entry->type == GK_CACHE_REQ_TYPE_APP);
+    req_is_app = (req->attribute_type == GK_CACHE_REQ_TYPE_APP ||
+                  req->attribute_type == GK_CACHE_REQ_TYPE_TRAFFIC_CLASS);
+    attr_is_app = (attr_entry->type == GK_CACHE_REQ_TYPE_APP ||
+                   attr_entry->type == GK_CACHE_REQ_TYPE_TRAFFIC_CLASS);
     if (req_is_app && attr_is_app) return true;
 
     return false;
@@ -1514,8 +1522,7 @@ gkc_lookup_attribute_entry(struct gk_attr_cache_interface *req, bool update_coun
         if (!ret) return false;
     }
 
-
-    /* update the time statmp */
+    /* update the request counter */
     pdevice->req_counter[req->attribute_type] += 1;
 
     return ret;
@@ -1578,6 +1585,7 @@ gkc_fetch_attribute_entry(struct gk_attr_cache_interface *req)
             break;
 
         case GK_CACHE_REQ_TYPE_APP:
+        case GK_CACHE_REQ_TYPE_TRAFFIC_CLASS:
             tree = has_device ? &pdevice->app_tree : &mgr->location_wide_cache;
             cache_entry = ds_tree_find(tree, &key);
             break;
@@ -1956,12 +1964,14 @@ dump_attr_entry(struct attr_cache *entry, enum gk_cache_request_type req_type)
             break;
 
         case GK_CACHE_REQ_TYPE_APP:
-            LOGT("\t\t\t %s, %s, %s, %" PRId64 " network_id: %s",
+        case GK_CACHE_REQ_TYPE_TRAFFIC_CLASS:
+            LOGT("\t\t\t %s, %s, %s, %" PRId64 " network_id: %s flow_marker: %d",
                     attr->app_name->name,
                     dir2str(entry->direction),
                     fsm_policy_get_action_str(entry->action),
                     attr->app_name->hit_count.total,
-                    IS_NULL_PTR(entry->network_id) ? "NULL" : entry->network_id);
+                    IS_NULL_PTR(entry->network_id) ? "NULL" : entry->network_id,
+                    entry->flow_marker);
             break;
 
         default:
@@ -2079,6 +2089,7 @@ gkc_print_cache_parts(enum gk_cache_request_type cache_type)
         PRINT_ATTR_CACHE(GK_CACHE_REQ_TYPE_IPV4, ipv4_tree, "IPv4");
         PRINT_ATTR_CACHE(GK_CACHE_REQ_TYPE_IPV6, ipv6_tree, "IPv6");
         PRINT_ATTR_CACHE(GK_CACHE_REQ_TYPE_APP, app_tree, "APP Name");
+        PRINT_ATTR_CACHE(GK_CACHE_REQ_TYPE_TRAFFIC_CLASS, app_tree, "TRAFFIC CLASS");
 
         PRINT_FLOW_CACHE(GK_CACHE_REQ_TYPE_INBOUND, inbound_tree, "Inbound Entries");
         PRINT_FLOW_CACHE(GK_CACHE_REQ_TYPE_OUTBOUND, outbound_tree, "Outbound Entries");

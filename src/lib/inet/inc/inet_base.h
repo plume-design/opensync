@@ -183,7 +183,7 @@ struct __inet_base
     inet_dhcp_lease_fn_t   *in_dhsnif_lease_fn;
 
     /* Tree of configured IPv6 addresses */
-    ds_tree_t               in_ip6addr_list;
+    ds_tree_t               in_ip6addr_list;            /* config: "origin==static" */
     ds_tree_t               in_ip6dns_list;
 
     inet_ip6_addr_status_fn_t
@@ -191,7 +191,7 @@ struct __inet_base
     inet_ip6_neigh_status_fn_t
                            *in_ip6_neigh_status_fn;
 
-    synclist_t              in_ip6_addr_status_list;
+    synclist_t              in_ip6_addr_status_list;    /* state "origin==auto" and "origin==static" */
     synclist_t              in_ip6_neigh_status_list;
 
     bool                    in_dhcp6_client_enable;

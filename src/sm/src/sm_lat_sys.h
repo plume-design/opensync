@@ -52,6 +52,7 @@ const uint32_t *sm_lat_sys_sample_get_max(const sm_lat_sys_sample_t *s);
 const uint32_t *sm_lat_sys_sample_get_avg(const sm_lat_sys_sample_t *s);
 const uint32_t *sm_lat_sys_sample_get_last(const sm_lat_sys_sample_t *s);
 const uint32_t *sm_lat_sys_sample_get_num_pkts(const sm_lat_sys_sample_t *s);
+const uint32_t *sm_lat_sys_sample_get_rtts(const sm_lat_sys_sample_t *s);
 
 void sm_lat_sys_ifname_set(sm_lat_sys_t *s, const char *if_name, bool enable);
 void sm_lat_sys_ifname_flush(sm_lat_sys_t *s);
@@ -63,6 +64,7 @@ void sm_lat_sys_kind_set_max(sm_lat_sys_t *s, bool enable);
 void sm_lat_sys_kind_set_avg(sm_lat_sys_t *s, bool enable);
 void sm_lat_sys_kind_set_last(sm_lat_sys_t *s, bool enable);
 void sm_lat_sys_kind_set_num_pkts(sm_lat_sys_t *s, bool enable);
+void sm_lat_sys_kind_set_perc(sm_lat_sys_t *s, bool enable);
 
 void sm_lat_sys_set_report_fn_t(sm_lat_sys_t *s, sm_lat_sys_report_fn_t *fn, void *priv);
 

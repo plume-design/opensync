@@ -490,7 +490,7 @@ void dhcp_relay_tearDown(void)
     ut_cleanup_pcap();
 }
 
-const char *g_dhcp_relay_conf = "/tmp/dhcp_relay.conf";
+const char *g_dhcp_relay_conf = DHCP_RELAY_CONF_FILE;
 
 int main(int argc, char *argv[])
 {

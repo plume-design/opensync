@@ -30,7 +30,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "fsm_policy.h"
 #include "gatekeeper.pb-c.h"
 #include "gatekeeper_single_curl.h"
-#include "gatekeeper_bulk_reply_msg.h"
+#include "gatekeeper_bulk_msg.h"
+#include "gatekeeper_ecurl.h"
 #include "gatekeeper_msg.h"
 #include "gatekeeper_cache.h"
 #include "log.h"
@@ -41,7 +42,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *  PRIVATE definitions
  *****************************************************************************/
 
-static struct gk_device2app_repl *gk_create_common_entry(
+static Gatekeeper__Southbound__V1__GatekeeperAppReq **gk_set_pb_bulk_app(struct gk_bulk_request *request);
+
+static struct gk_device2app_repl *gk_create_common_reply_entry(
         Gatekeeper__Southbound__V1__GatekeeperCommonReply *header,
         int entry_type)
 {
@@ -67,7 +70,7 @@ static struct gk_device2app_repl *gk_create_common_entry(
     dev_entry->header->network_id = header->network_id ? STRDUP(header->network_id) : NULL;
 
     /* Set device id if available */
-    if (header->device_id.data)
+    if (header->device_id.data && entry_type != GK_ENTRY_TYPE_TRAFFIC_CLASS)
     {
         os_nif_macaddr_to_str((os_macaddr_t *)header->device_id.data, mac_str, PRI_os_macaddr_lower_t);
         dev_entry->header->dev_id = STRDUP(mac_str);
@@ -86,6 +89,7 @@ static bool gk_parse_bulk_reply(struct gk_bulk_reply *bulk_reply, Gatekeeper__So
     struct in_addr ipv4_addr;
     size_t total_entries = 0;
     size_t entry_idx = 0;
+    int entry_type = 0;
 
     LOGD("%s: Starting to parse bulk reply", __func__);
 
@@ -124,17 +128,30 @@ static bool gk_parse_bulk_reply(struct gk_bulk_reply *bulk_reply, Gatekeeper__So
         app_reply = src->reply_app[i];
         if (app_reply == NULL) continue;
 
-        dev_entry = gk_create_common_entry(app_reply->header, GK_ENTRY_TYPE_APP);
+        if (app_reply->traffic_class)
+        {
+            entry_type = GK_ENTRY_TYPE_TRAFFIC_CLASS;
+        }
+        else
+        {
+            entry_type = GK_ENTRY_TYPE_APP;
+        }
+        dev_entry = gk_create_common_reply_entry(app_reply->header, entry_type);
         if (dev_entry == NULL)
         {
-            LOGD("%s: Failed to create common entry for APP entry %zu", __func__, i);
+            LOGD("%s: Failed to create common entry for APP/TRAFFIC_CLASS entry %zu", __func__, i);
             continue;
         }
-
         /* Copy APP-specific data */
-        dev_entry->app_name = app_reply->app_name ? STRDUP(app_reply->app_name) : NULL;
-        if (app_reply->app_name)
+        LOGT("%s: APP entry %zu - traffic class:%s", __func__, i, app_reply->traffic_class);
+        if (entry_type == GK_ENTRY_TYPE_TRAFFIC_CLASS)
         {
+            dev_entry->traffic_class = app_reply->traffic_class ? STRDUP(app_reply->traffic_class) : NULL;
+            LOGD("%s: APP entry %zu - traffic class:%s", __func__, i, app_reply->traffic_class);
+        }
+        else
+        {
+            dev_entry->app_name = app_reply->app_name ? STRDUP(app_reply->app_name) : NULL;
             LOGD("%s: APP entry %zu - name:%s, action:%d", __func__, i, app_reply->app_name, dev_entry->header->action);
         }
 
@@ -153,7 +170,7 @@ static bool gk_parse_bulk_reply(struct gk_bulk_reply *bulk_reply, Gatekeeper__So
 
         header = ipv4_reply->header;
 
-        dev_entry = gk_create_common_entry(header, GK_ENTRY_TYPE_IPV4);
+        dev_entry = gk_create_common_reply_entry(header, GK_ENTRY_TYPE_IPV4);
         if (dev_entry == NULL)
         {
             LOGD("%s: Failed to create common entry for IPv4 entry %zu", __func__, i);
@@ -185,7 +202,7 @@ static bool gk_parse_bulk_reply(struct gk_bulk_reply *bulk_reply, Gatekeeper__So
         if (ipv6_reply == NULL) continue;
 
         header = ipv6_reply->header;
-        dev_entry = gk_create_common_entry(header, GK_ENTRY_TYPE_IPV6);
+        dev_entry = gk_create_common_reply_entry(header, GK_ENTRY_TYPE_IPV6);
         if (dev_entry == NULL)
         {
             LOGD("%s: Failed to create common entry for IPv6 entry %zu", __func__, i);
@@ -222,7 +239,7 @@ static bool gk_parse_bulk_reply(struct gk_bulk_reply *bulk_reply, Gatekeeper__So
 
         header = url_reply->header;
 
-        dev_entry = gk_create_common_entry(header, GK_ENTRY_TYPE_URL);
+        dev_entry = gk_create_common_reply_entry(header, GK_ENTRY_TYPE_URL);
         if (dev_entry == NULL)
         {
             LOGD("%s: Failed to create common entry for URL entry %zu", __func__, i);
@@ -243,7 +260,7 @@ static bool gk_parse_bulk_reply(struct gk_bulk_reply *bulk_reply, Gatekeeper__So
         if (fqdn_reply == NULL) continue;
 
         header = fqdn_reply->header;
-        dev_entry = gk_create_common_entry(header, GK_ENTRY_TYPE_FQDN);
+        dev_entry = gk_create_common_reply_entry(header, GK_ENTRY_TYPE_FQDN);
         if (dev_entry == NULL)
         {
             LOGD("%s: Failed to create common entry for FQDN entry %zu", __func__, i);
@@ -323,7 +340,7 @@ static bool gk_parse_bulk_reply(struct gk_bulk_reply *bulk_reply, Gatekeeper__So
         if (http_host_reply == NULL) continue;
 
         header = http_host_reply->header;
-        dev_entry = gk_create_common_entry(header, GK_ENTRY_TYPE_HOST);
+        dev_entry = gk_create_common_reply_entry(header, GK_ENTRY_TYPE_HOST);
         if (dev_entry == NULL)
         {
             LOGD("%s: Failed to create common entry for Host entry %zu", __func__, i);
@@ -344,7 +361,7 @@ static bool gk_parse_bulk_reply(struct gk_bulk_reply *bulk_reply, Gatekeeper__So
         if (https_sni_reply == NULL) continue;
 
         header = https_sni_reply->header;
-        dev_entry = gk_create_common_entry(header, GK_ENTRY_TYPE_SNI);
+        dev_entry = gk_create_common_reply_entry(header, GK_ENTRY_TYPE_SNI);
         if (dev_entry == NULL)
         {
             LOGD("%s: Failed to create common entry for SNI entry %zu", __func__, i);
@@ -361,6 +378,18 @@ static bool gk_parse_bulk_reply(struct gk_bulk_reply *bulk_reply, Gatekeeper__So
     LOGN("%s: Completed parsing bulk reply - processed %zu/%zu entries", __func__, entry_idx, total_entries);
 
     return true;
+}
+
+static void gk_free_bulk_app_req(Gatekeeper__Southbound__V1__GatekeeperBulkRequest *bulk_req)
+{
+    size_t i;
+
+    for (i = 0; i < bulk_req->n_req_app; i++)
+    {
+        gk_free_app_req(bulk_req->req_app[i]);
+    }
+
+    FREE(bulk_req->req_app);
 }
 
 static void gk_free_bulk_response(struct gk_reply *reply)
@@ -463,9 +492,47 @@ static void gk_free_bulk_request(struct gk_request *req)
     return;
 }
 
+static size_t gk_get_bulk_app_count(struct gk_bulk_request *remark_req)
+{
+    size_t count = 0;
+    size_t i;
+
+    /* loop through each device to get the total number of apps request
+     * of all device */
+    for (i = 0; i < remark_req->n_devices; i++)
+    {
+        count += remark_req->devices[i]->n_apps;
+    }
+    return count;
+}
 /******************************************************************************
  *  PUBLIC definitions
  *****************************************************************************/
+
+Gatekeeper__Southbound__V1__GatekeeperBulkRequest *gk_set_pb_bulk_app_request(struct gk_bulk_request *request)
+{
+    Gatekeeper__Southbound__V1__GatekeeperBulkRequest *pb;
+    if (request->n_devices == 0) return NULL;
+
+    pb = CALLOC(1, sizeof(*pb));
+    gatekeeper__southbound__v1__gatekeeper_bulk_request__init(pb);
+    pb->n_req_app = gk_get_bulk_app_count(request);
+    pb->req_app = gk_set_pb_bulk_app(request);
+
+    return pb;
+}
+
+void gk_free_bulk_req(Gatekeeper__Southbound__V1__GatekeeperReq *pb)
+{
+    Gatekeeper__Southbound__V1__GatekeeperBulkRequest *bulk_req;
+
+    bulk_req = pb->req_bulk;
+    if (bulk_req == NULL) return;
+
+    if (bulk_req->n_req_app) gk_free_bulk_app_req(bulk_req);
+
+    FREE(bulk_req);
+}
 
 /**
  * @brief Parses the protobuf reply and populates the corresponding gk_reply structure.
@@ -552,4 +619,157 @@ void gk_clear_bulk_requests(struct gk_request *req)
     {
         gk_free_bulk_request(req);
     }
+}
+
+bool gk_set_pb_bulk_request(Gatekeeper__Southbound__V1__GatekeeperReq *gk_req_pb, struct gk_bulk_request *request)
+{
+    if (request == NULL || gk_req_pb == NULL) return false;
+    switch (request->req_type)
+    {
+        case FSM_APP_REQ:
+        case FSM_TRAFFIC_CLASS_REQ:
+            gk_req_pb->req_bulk = gk_set_pb_bulk_app_request(request);
+            return (gk_req_pb->req_bulk != NULL) ? true : false;
+        default:
+            LOGN("%s():%d Invalid bulk request type: %d", __func__, __LINE__, request->req_type);
+            return false;
+    }
+}
+
+Gatekeeper__Southbound__V1__GatekeeperAppReq **gk_set_pb_bulk_app(struct gk_bulk_request *request)
+{
+    Gatekeeper__Southbound__V1__GatekeeperAppReq **pb_tbl;
+    struct gk_device2app_req *dev_apps;
+    struct gk_app_request *app_req;
+    union gk_data_req *data_req;
+    struct gk_request gk_req;
+    size_t allocated;
+    char *app_name;
+    int count;
+    size_t i;
+    size_t j;
+
+    MEMZERO(gk_req);
+    gk_req.type = request->req_type;
+    data_req = &gk_req.req;
+    app_req = &data_req->gk_app_req;
+
+    count = gk_get_bulk_app_count(request);
+    pb_tbl = CALLOC(count, sizeof(Gatekeeper__Southbound__V1__GatekeeperAppReq *));
+
+    allocated = 0;
+    for (i = 0; i < request->n_devices; i++)
+    {
+        dev_apps = request->devices[i];
+        if (dev_apps == NULL || dev_apps->header == NULL)
+        {
+            LOGD("%s(): request header or device id is not set", __func__);
+            goto free_pb;
+        }
+
+        /* set the header */
+        app_req->header = dev_apps->header;
+
+        for (j = 0; j < dev_apps->n_apps; j++)
+        {
+            app_name = dev_apps->apps[j];
+            if (app_name == NULL)
+            {
+                LOGD("%s(): Invalid app or app name", __func__);
+                goto free_pb;
+            }
+
+            if (request->req_type == FSM_APP_REQ)
+                app_req->appname = app_name;
+            else
+                app_req->traffic_class = app_name;
+            pb_tbl[allocated] = gk_set_pb_app_req(app_req);
+            allocated++;
+        }
+    }
+    return pb_tbl;
+
+free_pb:
+    for (i = 0; i < allocated; i++)
+    {
+        gk_free_app_req(pb_tbl[i]);
+    }
+
+    FREE(pb_tbl);
+    return NULL;
+}
+
+/**
+ * @brief Perform a bulk lookup request to gatekeeper
+ *
+ * This is a convenience wrapper that handles the complete request/response cycle:
+ * - Serializes the request
+ * - Sends it to gatekeeper via curl
+ * - Parses the response
+ *
+ * @param conn_info Connection information (curl handle, server config)
+ * @param req The request to send
+ * @param reply The reply structure to populate
+ * @return true on success, false on failure
+ */
+bool gk_perform_bulk_lookup(struct gk_connection_info *conn_info, struct gk_request *req, struct gk_reply *reply)
+{
+    struct gk_curl_data curl_response;
+    struct gk_packed_buffer *pb;
+    long response_code;
+    int result;
+    bool ret;
+
+    if (conn_info == NULL || req == NULL || reply == NULL)
+    {
+        LOGE("%s: Invalid parameters", __func__);
+        return false;
+    }
+
+    ret = true;
+
+    /* Create the packed buffer for the gatekeeper request */
+    pb = gk_serialize_request(req);
+    if (pb == NULL)
+    {
+        LOGE("%s: Failed to serialize request", __func__);
+        return false;
+    }
+
+    /* Set the packed buffer in the connection info */
+    conn_info->pb = pb;
+
+    /* Allocate memory for curl response */
+    curl_response.memory = MALLOC(1);
+    if (curl_response.memory == NULL)
+    {
+        LOGE("%s: Failed to allocate memory for curl response", __func__);
+        gk_free_packed_buffer(pb);
+        return false;
+    }
+    curl_response.size = 0;
+
+    /* Send the request to gatekeeper */
+    result = gk_handle_curl_request(conn_info, &curl_response, &response_code);
+    if (result != GK_LOOKUP_SUCCESS)
+    {
+        LOGW("%s: Failed to get response from gatekeeper (result=%d)", __func__, result);
+        ret = false;
+        goto cleanup;
+    }
+
+    /* Process the curl response */
+    LOGT("%s: Received response from gatekeeper", __func__);
+    reply->type = FSM_BULK_REQ;
+    ret = gk_parse_curl_response(reply, &curl_response);
+    if (ret == false)
+    {
+        LOGE("%s: Failed to parse curl response", __func__);
+        goto cleanup;
+    }
+
+cleanup:
+    FREE(curl_response.memory);
+    gk_free_packed_buffer(pb);
+    return ret;
 }

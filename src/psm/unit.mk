@@ -44,6 +44,7 @@ UNIT_EXTERN_CFLAGS += -I$(UNIT_PATH)/inc
 UNIT_DEPS += src/lib/common
 UNIT_DEPS += src/lib/evx
 UNIT_DEPS += src/lib/json_util
+UNIT_DEPS += src/lib/manager_watchdog
 UNIT_DEPS += src/lib/ovsdb
 UNIT_DEPS += src/lib/target
 UNIT_DEPS += src/lib/ps_mgmt

@@ -397,6 +397,24 @@ fsm_set_tx_intf(struct fsm_session *session)
     }
 }
 
+/**
+ * @brief set the rx interface a plugin might use
+ *
+ * @param session the fsm session
+ */
+static void
+fsm_set_rx_intf(struct fsm_session *session)
+{
+    const char *name;
+
+    name = fsm_get_other_config_val(session, "rx_intf");
+    if (name != NULL)
+    {
+        STRSCPY(session->rx_intf, name);
+        return;
+    }
+}
+
 
 void
 fsm_process_provider(struct fsm_session *session)
@@ -674,6 +692,7 @@ fsm_session_update(struct fsm_session *session,
 
     fsm_process_provider(session);
     fsm_set_tx_intf(session);
+    fsm_set_rx_intf(session);
     fsm_set_dpi_health_stats_cfg(session);
 
     ret = fsm_is_dpi(session);
@@ -1653,6 +1672,9 @@ fsm_enable_ct_stats_comms(struct schema_FCM_Collector_Config *node_cfg)
 
     /* Check if the fcm feature is of interest */
     cmp = strcmp(node_cfg->name, "ct_stats");
+
+    if (cmp != 0) cmp = strcmp(node_cfg->name, "traffic_class_stats");
+    /* If the feature is not of interest, bail */
     if (cmp != 0) return;
 
     /* Initialize the FSM osbus end point */

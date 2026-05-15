@@ -952,6 +952,8 @@ bool risk_level_compare(struct fsm_url_reply *reply,
 bool
 fsm_dns_cache_lookup(struct fsm_policy_req *req, struct fsm_policy_reply *policy_reply)
 {
+    (void)req;
+    (void)policy_reply;
     struct net_md_stats_accumulator *acc;
     struct ip2action_req  lkp_req;
     struct fsm_url_reply *reply;

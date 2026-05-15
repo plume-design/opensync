@@ -55,6 +55,13 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define LNX_QOS_ID_MAX          1024            /**< Maximum ID as allocated by lnx_qos_begin() */
 #define LNX_QOS_MARK_BASE       0x44000000      /**< Base mask for calculating the fwmark. The fwmark is calculated
                                                      from the lnx_qos_t ID, the qos ID and the queue ID */
+
+#ifdef CONFIG_OSN_LINUX_QOS_QDISCS_EGRESS_ROOT_HANDLE
+#define QDISC_ROOT_HANDLE   CONFIG_OSN_LINUX_QOS_QDISCS_EGRESS_ROOT_HANDLE
+#else
+#define QDISC_ROOT_HANDLE   "1:"
+#endif
+
 /*
  * Structure representing an allocated Queue ID
  *
@@ -85,31 +92,32 @@ static ds_tree_t lnx_qos_qid_map = DS_TREE_INIT(ds_int_cmp, struct lnx_qos_qid, 
 static char lnx_qos_qdisc_reset[] = _S(tc qdisc del dev "$1" root || true);
 
 static char lnx_qos_qdisc_set[] = _S(
-        tc qdisc add dev "$1" root handle 1: htb default fffe;
+        tc qdisc add dev "$1" root handle "$2" htb default fffe;
 
         tc class add dev "$1" \
-                parent 1: \
-                classid "1:fffe" \
+                parent "$2" \
+                classid "${2}fffe" \
                 htb \
                 prio 0 \
                 rate "3.5gbit" \
                 burst 15k;
 
-        tc qdisc add dev "$1" parent "1:fffe" fq_codel;
+        tc qdisc add dev "$1" parent "${2}fffe" fq_codel;
         );
 
 static char lnx_qos_qdisc_add[] = _S(
         ifname="$1";
-        qid="$2";
-        mark="$3";
-        priority="$4";
-        bandwidth="$5";
-        bandwidth_ceil="$6";
-        shared="$7";
+        root_handle="$2";
+        qid="$3";
+        mark="$4";
+        priority="$5";
+        bandwidth="$6";
+        bandwidth_ceil="$7";
+        shared="$8";
 
         tc class add dev "$ifname" \
-                parent 1: \
-                classid "1:${qid}" \
+                parent "$root_handle" \
+                classid "${root_handle}${qid}" \
                 htb \
                 prio "${priority}" \
                 rate "${bandwidth}kbit" \
@@ -117,7 +125,7 @@ static char lnx_qos_qdisc_add[] = _S(
                 burst 15k \
                 ${shared:+shared ${shared}};
 
-        tc qdisc add dev "$ifname" parent "1:${qid}" fq_codel);
+        tc qdisc add dev "$ifname" parent "${root_handle}${qid}" fq_codel);
 
 static bool lnx_qos_reconfigure(lnx_qos_t *self);
 static int lnx_qos_id_get(const char *tag);
@@ -269,7 +277,7 @@ bool lnx_qos_queue_begin(
 
     mark = LNX_QOS_MARK_BASE | qp->qq_id;
     qqs->qqs_fwmark = mark;
-    snprintf(qqs->qqs_class, sizeof(qqs->qqs_class), "1:%d", qp->qq_id);
+    snprintf(qqs->qqs_class, sizeof(qqs->qqs_class), QDISC_ROOT_HANDLE"%d", qp->qq_id);
 
     return true;
 }
@@ -314,18 +322,25 @@ bool lnx_qos_reconfigure(lnx_qos_t *self)
 
     LOG(INFO, "qos: %s: Initializing QoS configuration.", self->lq_ifname);
 
-    rc = execsh_log(LOG_SEVERITY_DEBUG, lnx_qos_qdisc_reset, self->lq_ifname);
-    if (rc != 0)
+    /*
+     * In case CONFIG_OSN_LINUX_QOS_PRECONFIG is defined, nothing is never reset as it is expected
+     * for the custom external preconfig script to reset and set initial qdisc/tc-filter config.
+     */
+    if (!kconfig_enabled(CONFIG_OSN_LINUX_QOS_PRECONFIG))
     {
-        LOG(ERR, "qos: %s: Error resetting QoS configuration.", self->lq_ifname);
-        return false;
-    }
+        rc = execsh_log(LOG_SEVERITY_DEBUG, lnx_qos_qdisc_reset, self->lq_ifname);
+        if (rc != 0)
+        {
+            LOG(ERR, "qos: %s: Error resetting QoS configuration.", self->lq_ifname);
+            return false;
+        }
 
-    rc = execsh_log(LOG_SEVERITY_DEBUG, lnx_qos_qdisc_set, self->lq_ifname);
-    if (rc != 0)
-    {
-        LOG(ERR, "qos: %s: Error setting QoS configuration.", self->lq_ifname);
-        return false;
+        rc = execsh_log(LOG_SEVERITY_DEBUG, lnx_qos_qdisc_set, self->lq_ifname, QDISC_ROOT_HANDLE);
+        if (rc != 0)
+        {
+            LOG(ERR, "qos: %s: Error setting QoS configuration.", self->lq_ifname);
+            return false;
+        }
     }
 
     for (qp = self->lq_queue; qp < self->lq_queue_e; qp++)
@@ -352,6 +367,7 @@ bool lnx_qos_reconfigure(lnx_qos_t *self)
                 LOG_SEVERITY_DEBUG,
                 lnx_qos_qdisc_add,
                 self->lq_ifname,
+                QDISC_ROOT_HANDLE,
                 sqid,
                 smark,
                 sprio,

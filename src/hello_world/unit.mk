@@ -53,3 +53,4 @@ UNIT_DEPS += src/lib/schema
 UNIT_DEPS += src/lib/datapipeline
 UNIT_DEPS += src/lib/json_util
 UNIT_DEPS += src/lib/schema
+UNIT_DEPS += src/lib/manager_watchdog

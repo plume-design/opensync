@@ -37,7 +37,7 @@ UNIT_TYPE := BIN
 UNIT_SRC    := src/cm2_main.c
 UNIT_SRC    += src/cm2_ovsdb.c
 UNIT_SRC    += src/cm2_event.c
-ifeq ($(CONFIG_LIBEVX_USE_CARES),y)
+ifeq ($(CONFIG_CM2_USE_CARES),y)
 UNIT_SRC    += src/cm2_resolve_ares.c
 else
 UNIT_SRC    += src/cm2_resolve_sync.c
@@ -82,10 +82,11 @@ UNIT_DEPS += src/lib/pjs
 UNIT_DEPS += src/lib/schema
 UNIT_DEPS += src/lib/kconfig
 UNIT_DEPS += src/lib/osn
-ifeq ($(CONFIG_LIBEVX_USE_CARES),y)
+ifeq ($(CONFIG_CM2_USE_CARES),y)
 UNIT_DEPS += src/lib/evx
 endif
 UNIT_DEPS += src/lib/timevt
 UNIT_DEPS += src/lib/os_fdbuf
 UNIT_DEPS += src/lib/ff
 UNIT_DEPS += src/lib/ovsdb_bridge
+UNIT_DEPS += src/lib/manager_watchdog

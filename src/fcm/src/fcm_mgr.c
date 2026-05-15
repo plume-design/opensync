@@ -58,6 +58,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ct_stats.h"
 #include "lan_stats.h"
 #include "intf_stats.h"
+#include "tc_stats.h"
 #endif
 
 static fcm_mgr_t fcm_mgr;
@@ -489,6 +490,10 @@ static struct plugin_init_table plugin_init_table[] =
     {
         .name = "lanstats",
         .init = lan_stats_plugin_init,
+    },
+    {
+        .name = "tc_stats",
+        .init = tc_stats_plugin_init,
     }
 };
 

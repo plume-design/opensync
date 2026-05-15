@@ -228,7 +228,7 @@ void nm2_ip_interface_release(struct nm2_ip_interface *ipi)
 }
 
 /*
- * IP_Interface -> IPv6_Address uuidset
+ * IP_Interface -> IPv6_Address uuidset: static IPv6 address configuring/deconfiguring
  */
 void nm2_ip_interface_ipv6_addr_update(uuidset_t *us, enum uuidset_event type, reflink_t *remote)
 {
@@ -262,6 +262,7 @@ void nm2_ip_interface_ipv6_addr_update(uuidset_t *us, enum uuidset_event type, r
             return;
     }
 
+    /* Check if not static: */
     if (ip6->ip6_origin != INET_IP6_ORIGIN_STATIC)
     {
         LOG(DEBUG, "IP_Interface: %s: Skipping IPv6 address: "PRI_osn_ip6_addr". Origin not static.",
@@ -270,11 +271,10 @@ void nm2_ip_interface_ipv6_addr_update(uuidset_t *us, enum uuidset_event type, r
         return;
     }
 
-    /* FIXME: Print out the actual IPv6 address */
-    LOG(INFO, "IP_Interface: %s: Adding IPv6 address (%p).",
-            ipi->ipi_ifname,
-            ipi->ipi_iface);
+    LOG(INFO, "IP_Interface: %s: IPv6 STATIC address: %s: %s",
+            ipi->ipi_ifname, FMT_osn_ip6_addr(ip6->ip6_addr), add ? "ADD" : "REMOVE");
 
+    /* Add or remove the static IPv6 address config via inet: */
     if (!inet_ip6_addr(ipi->ipi_iface->if_inet, add, &ip6->ip6_addr))
     {
         LOG(ERR, "IP_Interface: %s: Unable to add/del(%d) IPv6_Address.",
@@ -283,6 +283,7 @@ void nm2_ip_interface_ipv6_addr_update(uuidset_t *us, enum uuidset_event type, r
         return;
     }
 
+    /* Reapply config for the interface: */
     nm2_iface_apply(ipi->ipi_iface);
 }
 

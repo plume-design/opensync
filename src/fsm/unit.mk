@@ -80,6 +80,7 @@ UNIT_DEPS += src/lib/accel_evict_msg
 UNIT_DEPS += src/lib/osa
 UNIT_DEPS += src/lib/nfe
 UNIT_DEPS += src/lib/rts
+UNIT_DEPS += src/lib/manager_watchdog
 ifeq ($(CONFIG_FSM_NO_DSO),y)
 	UNIT_DEPS += $(if $(CONFIG_LIB_LEGACY_FSM_HTTP_PARSER), src/lib/http_parse)
 	UNIT_DEPS += $(if $(CONFIG_LIB_LEGACY_FSM_DNS_PARSER), src/lib/dns_parse)
@@ -100,5 +101,3 @@ ifeq ($(CONFIG_FSM_NO_DSO),y)
 	UNIT_DEPS += $(if $(CONFIG_FSM_NO_DSO), src/lib/wc_null_plugin)
 	UNIT_DEPS += $(if $(CONFIG_FSM_NO_DSO), src/lib/we_dpi)
 endif
-
-

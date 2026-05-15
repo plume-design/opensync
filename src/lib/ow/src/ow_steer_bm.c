@@ -216,6 +216,7 @@ struct ow_steer_bm_client {
     OW_STEER_BM_ATTR_DECL(bool, neighbor_list_filter_by_beacon_report);
     OW_STEER_BM_ATTR_DECL(enum ow_steer_bm_client_cs_mode, cs_mode);
     OW_STEER_BM_ATTR_DECL(unsigned int, pref_5g_pre_assoc_block_timeout_msecs);
+    OW_STEER_BM_ATTR_DECL(bool, allow_acl);
 
     ow_steer_bm_client_set_cs_state_mutate_fn_t *cs_state_mutate_fn;
 
@@ -256,6 +257,7 @@ struct ow_steer_bm_sta {
     bool removed;
     bool disarmed;
     bool is_mlo;
+    bool allow_acl;
 
     struct osw_sta_assoc_observer *sta_obs;
     struct ds_tree links;
@@ -299,7 +301,6 @@ struct ow_steer_bm_sta {
 };
 
 struct ow_steer_bm_sta_link {
-    struct osw_assoc_req_info assoc_req_info;
     struct ow_steer_bm_sta_rrm *rrm;
     struct ow_steer_snr_observer *snr_observer;
     struct ow_steer_bm_sta *sta;
@@ -312,6 +313,8 @@ struct ow_steer_bm_btm_params {
     const char *name;
     struct osw_hwaddr sta_addr;
 
+    struct osw_hwaddr_list bssid_list;
+    bool bssid_list_changed;
     OW_STEER_BM_ATTR_DECL(struct osw_hwaddr, bssid);
     OW_STEER_BM_ATTR_DECL(bool, disassoc_imminent);
 };
@@ -1655,11 +1658,21 @@ ow_steer_bm_schedule_work_impl(void)
     osw_timer_arm_at_nsec(&g_work_timer, 0);
 }
 
+void
+ow_steer_bm_btm_params_free_bssid_list(struct ow_steer_bm_btm_params *btm_params)
+{
+    if (btm_params == NULL) return;
+
+    osw_hwaddr_list_flush(&btm_params->bssid_list);
+    btm_params->bssid_list_changed = true;
+}
+
 static void
 ow_steer_bm_btm_params_free(struct ow_steer_bm_btm_params *btm_params)
 {
     if (btm_params == NULL) return;
 
+    ow_steer_bm_btm_params_free_bssid_list(btm_params);
     OW_STEER_BM_MEM_ATTR_FREE(btm_params, bssid);
     OW_STEER_BM_MEM_ATTR_FREE(btm_params, disassoc_imminent);
     FREE(btm_params);
@@ -1680,9 +1693,12 @@ ow_steer_bm_btm_params_update(struct ow_steer_bm_btm_params *btm_params,
     OW_STEER_BM_MEM_ATTR_UPDATE(btm_params, disassoc_imminent);
 
     state->changed = false;
-    state->changed |= (bssid_state.changed == true);
     state->changed |= (disassoc_imminent_state.changed == true);
+    state->changed |= (bssid_state.changed == true);
+    state->changed |= (btm_params->bssid_list_changed == true);
     state->present = true;
+
+    btm_params->bssid_list_changed = false;
 }
 
 static void
@@ -2137,7 +2153,7 @@ ow_steer_bm_sta_rrm_scan_link_band_try(struct ow_steer_bm_sta_rrm *rrm)
 
     const bool enabled = (client->send_rrm_after_assoc.cur != NULL)
                       && (*client->send_rrm_after_assoc.cur == true);
-    const bool supported_by_sta = link->assoc_req_info.rrm_neighbor_bcn_act_meas;
+    const bool supported_by_sta = sta->assoc_req_info.rrm_neighbor_bcn_act_meas;
     const bool not_handled_yet = (rrm->handled == false);
     const bool handle = (enabled && supported_by_sta && not_handled_yet);
     const bool dont_handle = !handle;
@@ -2973,6 +2989,29 @@ ow_steer_bm_sta_get_force_kick_policy_config(struct ow_steer_bm_sta *sta)
     return MEMNDUP(&config, sizeof(config));
 }
 
+static void
+ow_steer_bm_sta_set_directed_kick_bssids(struct ow_steer_policy_bss_filter_config *bss_filter_policy_config,
+                                         const struct ow_steer_bm_btm_params *btm_params)
+{
+    if (btm_params == NULL) return;
+    struct osw_hwaddr_list bssid_list = btm_params->bssid_list;
+    struct osw_hwaddr *bssid = btm_params->bssid.cur;
+    if (bssid_list.count > 0) {
+        for (size_t idx = 0; idx < bssid_list.count; idx++) {
+            const size_t max = ARRAY_SIZE(bss_filter_policy_config->bssid_list);
+            const size_t idx = bss_filter_policy_config->bssid_list_len;
+            if (WARN_ON(idx >= max)) break;
+
+            memcpy(&bss_filter_policy_config->bssid_list[idx], &bssid_list.list[idx], sizeof(bss_filter_policy_config->bssid_list[0]));
+            bss_filter_policy_config->bssid_list_len++;
+        }
+    }
+    else if (bssid != NULL) {
+        memcpy(&bss_filter_policy_config->bssid_list[0], bssid, sizeof(bss_filter_policy_config->bssid_list[0]));
+        bss_filter_policy_config->bssid_list_len = 1;
+    }
+}
+
 static struct ow_steer_policy_bss_filter_config*
 ow_steer_bm_sta_get_directed_kick_policy_config(struct ow_steer_bm_sta *sta)
 {
@@ -2994,7 +3033,8 @@ ow_steer_bm_sta_get_directed_kick_policy_config(struct ow_steer_bm_sta *sta)
     }
 
     const struct osw_hwaddr *bssid = sc_btm_params->bssid.cur;
-    if (bssid == NULL) {
+    const struct osw_hwaddr_list *bssid_list = &sc_btm_params->bssid_list;
+    if (bssid_list->count == 0 && bssid == NULL) {
         LOGW(LOG_WITH_PREFIX(sta, "cannot issue directed kick, no bssid in sc_btm_params"));
         return NULL;
     }
@@ -3039,8 +3079,7 @@ ow_steer_bm_sta_get_directed_kick_policy_config(struct ow_steer_bm_sta *sta)
                 bss_filter_policy_config->included_preference.value = OW_STEER_CANDIDATE_PREFERENCE_AVAILABLE;
                 bss_filter_policy_config->excluded_preference.override = true;
                 bss_filter_policy_config->excluded_preference.value = OW_STEER_CANDIDATE_PREFERENCE_HARD_BLOCKED;
-                memcpy(&bss_filter_policy_config->bssid_list[0], bssid, sizeof(bss_filter_policy_config->bssid_list[0]));
-                bss_filter_policy_config->bssid_list_len = 1;
+                ow_steer_bm_sta_set_directed_kick_bssids(bss_filter_policy_config, sc_btm_params);
                 return bss_filter_policy_config;
             }
             break;
@@ -3311,7 +3350,16 @@ ow_steer_bm_sta_recalc_acl_exec(struct ow_steer_bm_sta *sta)
             is_mlo = vif->is_mlo;
         }
     }
-    ow_steer_executor_action_acl_set_enabled(sta->acl_executor_action, is_mlo ? false : true);
+
+    /*
+     * For connected clients using MLO or in steering group using MLO,
+     * ACL is only enabled if explicitly allowed with allow_acl.
+     * For non-MLO clients, ACL is always enabled.
+     */
+
+    const bool acl_enabled = !is_mlo || sta->allow_acl;
+
+    ow_steer_executor_action_acl_set_enabled(sta->acl_executor_action, acl_enabled);
 }
 
 static void
@@ -3368,8 +3416,10 @@ ow_steer_bm_sta_recalc(struct ow_steer_bm_sta *sta)
                 {
                     struct ow_steer_policy_bss_filter_config *cs_kick_filter_policy_config = ow_steer_bm_sta_get_directed_kick_policy_config(sta);
                     if (cs_kick_filter_policy_config != NULL) {
-                        LOGN(LOG_WITH_PREFIX(sta, "issuing force directed kick to bssid: "OSW_HWADDR_FMT" using cs_kick_filter_policy",
-                             OSW_HWADDR_ARG(&cs_kick_filter_policy_config->bssid_list[0])));
+                        for (size_t i = 0; i < cs_kick_filter_policy_config->bssid_list_len; i++) {
+                            LOGN(LOG_WITH_PREFIX(sta, "issuing force directed kick to bssid: "OSW_HWADDR_FMT" using cs_kick_filter_policy",
+                             OSW_HWADDR_ARG(&cs_kick_filter_policy_config->bssid_list[i])));
+                        }
                         ow_steer_policy_bss_filter_set_config(sta->cs_kick_filter_policy, cs_kick_filter_policy_config);
                     }
                     else {
@@ -4074,6 +4124,7 @@ ow_steer_bm_client_free(struct ow_steer_bm_client *client)
     OW_STEER_BM_MEM_ATTR_FREE(client, neighbor_list_filter_by_beacon_report);
     OW_STEER_BM_MEM_ATTR_FREE(client, pref_5g_pre_assoc_block_timeout_msecs);
     OW_STEER_BM_MEM_ATTR_FREE(client, cs_mode);
+    OW_STEER_BM_MEM_ATTR_FREE(client, allow_acl);
     ow_steer_bm_client_free_stats(client);
     ow_steer_bm_btm_params_free(client->sc_btm_params);
     ow_steer_bm_btm_params_free(client->steering_btm_params);
@@ -4145,6 +4196,7 @@ ow_steer_bm_client_recalc(struct ow_steer_bm_client *client)
     OW_STEER_BM_MEM_ATTR_UPDATE(client, neighbor_list_filter_by_beacon_report);
     OW_STEER_BM_MEM_ATTR_UPDATE(client, cs_mode);
     OW_STEER_BM_MEM_ATTR_UPDATE(client, pref_5g_pre_assoc_block_timeout_msecs);
+    OW_STEER_BM_MEM_ATTR_UPDATE(client, allow_acl);
     struct ow_steer_bm_attr_state sc_btm_params_state;
     ow_steer_bm_btm_params_update(client->sc_btm_params, &sc_btm_params_state);
     struct ow_steer_bm_attr_state steering_btm_params_state;
@@ -4163,6 +4215,8 @@ ow_steer_bm_client_recalc(struct ow_steer_bm_client *client)
 
     struct ow_steer_bm_sta *sta;
     ds_dlist_foreach(&client->sta_list, sta) {
+        if (allow_acl_state.changed == true && allow_acl_state.present == true)
+            sta->allow_acl = *client->allow_acl.cur;
         if (schedule_force_kick == true)
             sta->issue_force_kick = true;
         if (schedule_client_steering_recalc == true)
@@ -4190,6 +4244,7 @@ ow_steer_bm_client_recalc(struct ow_steer_bm_client *client)
                                   sc_btm_params_state.changed == true ||
                                   steering_btm_params_state.changed == true ||
                                   sticky_btm_params_state.changed == true ||
+                                  allow_acl_state.changed == true ||
                                   cs_params_state.changed == true;
 
     const bool schedule_work = any_attr_changed == true ||
@@ -5117,7 +5172,12 @@ ow_steer_bm_btm_params_sigusr1_dump(const struct ow_steer_bm_btm_params *btm_par
         return;
 
     osw_diag_pipe_t *pipe = osw_diag_pipe_open();
-    osw_diag_pipe_writef(pipe, LOG_PREFIX("      bssid: %s", btm_params->bssid.cur == NULL ? "(nil)" : strfmta(OSW_HWADDR_FMT, OSW_HWADDR_ARG(btm_params->bssid.cur))));
+    osw_diag_pipe_writef(pipe, LOG_PREFIX(" bssid: %s", btm_params->bssid.cur == NULL ? "(nil)" : strfmta(OSW_HWADDR_FMT, OSW_HWADDR_ARG(btm_params->bssid.cur))));
+    osw_diag_pipe_writef(pipe, LOG_PREFIX("     from_bssids:"));
+    for (size_t i = 0; i < btm_params->bssid_list.count; i++) {
+        const struct osw_hwaddr *bssid = &btm_params->bssid_list.list[i];
+        osw_diag_pipe_writef(pipe, "     bssid:"OSW_HWADDR_FMT, OSW_HWADDR_ARG(bssid));
+    }
     osw_diag_pipe_close(pipe);
 }
 
@@ -5167,6 +5227,7 @@ ow_steer_bm_sigusr1_dump_clients(void)
         osw_diag_pipe_writef(pipe, LOG_PREFIX("    sc_btm_params: %s", client->sc_btm_params == NULL ? "(nil)" : ""));
         osw_diag_pipe_writef(pipe, LOG_PREFIX("    pref_5g_pre_assoc_block_timeout_msecs: %s", client->pref_5g_pre_assoc_block_timeout_msecs.cur == NULL ? "(nil)" :
                                                                                   strfmta("%u", *client->pref_5g_pre_assoc_block_timeout_msecs.cur)));
+        osw_diag_pipe_writef(pipe, LOG_PREFIX("    allow_acl: %s", client->allow_acl.cur == NULL ? "(nil)" : (*client->allow_acl.cur ? "true" : "false")));
         ow_steer_bm_btm_params_sigusr1_dump(client->sc_btm_params);
         osw_diag_pipe_writef(pipe, LOG_PREFIX("    steering_btm_params: %s", client->steering_btm_params == NULL ? "(nil)" : ""));
         ow_steer_bm_btm_params_sigusr1_dump(client->steering_btm_params);
@@ -6081,6 +6142,14 @@ ow_steer_bm_client_set_cs_state_mutate_cb(struct ow_steer_bm_client *client,
     client->cs_state_mutate_fn = cs_state_mutate_fn;
 }
 
+void
+ow_steer_bm_client_set_allow_acl(struct ow_steer_bm_client *client,
+                                 const bool *allow_acl)
+{
+    OW_STEER_BM_MEM_ATTR_SET_BODY(client, allow_acl);
+    OW_STEER_BM_CLIENT_ATTR_PRINT_CHANGE_BOOL(client, allow_acl);
+}
+
 struct ow_steer_bm_btm_params*
 ow_steer_bm_client_get_sc_btm_params(struct ow_steer_bm_client *client)
 {
@@ -6200,6 +6269,23 @@ ow_steer_bm_btm_params_set_bssid(struct ow_steer_bm_btm_params *btm_params,
 {
     OW_STEER_BM_MEM_ATTR_SET_BODY(btm_params, bssid);
     OW_STEER_BM_BTM_PARAMS_ATTR_PRINT_CHANGE_HWADDR(btm_params, bssid);
+}
+
+void
+ow_steer_bm_btm_params_set_bssids(struct ow_steer_bm_btm_params *btm_params,
+                                  const char *value)
+{
+    osw_hwaddr_list_flush(&btm_params->bssid_list);
+    char *value_copy = strdupa(value);
+    char *token;
+    while ((token = strsep(&value_copy, " \r\t,")) != NULL) {
+        struct osw_hwaddr bssid;
+        bool parsed = osw_hwaddr_from_cstr(token, &bssid);
+        if (parsed) {
+            osw_hwaddr_list_append(&btm_params->bssid_list, &bssid);
+        }
+    }
+    btm_params->bssid_list_changed = true;
 }
 
 void

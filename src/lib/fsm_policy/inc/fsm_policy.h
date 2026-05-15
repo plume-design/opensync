@@ -217,6 +217,7 @@ enum
     FSM_IPV4_FLOW_REQ,
     FSM_IPV6_FLOW_REQ,
     FSM_BULK_REQ,
+    FSM_TRAFFIC_CLASS_REQ,
 };
 
 

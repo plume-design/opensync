@@ -26,6 +26,14 @@
 # native configuration
 #
 
+.PHONY: workdirs
+
+workdirs:
+	@if [ ! -z $(HOST_OS) ] && [ "$(HOST_OS)" = "Darwin" ] && [ $(shell id -u) -eq 0 ]; then \
+		echo "Building as root no allowed on MacOSX"; \
+		exit 1; \
+	fi
+
 BUILD_SHARED_LIB = n
 
 SDK_ROOTFS     = $(OBJDIR)/rootfs

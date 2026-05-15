@@ -46,9 +46,8 @@ UNIT_LDFLAGS += -ljansson
 UNIT_LDFLAGS += -lev
 
 UNIT_DEPS += src/lib/common
+UNIT_DEPS += src/lib/manager_watchdog
 UNIT_DEPS += src/lib/target
 UNIT_DEPS += src/lib/ovsdb
 UNIT_DEPS += src/lib/schema
 UNIT_DEPS += src/lib/osn
-
-

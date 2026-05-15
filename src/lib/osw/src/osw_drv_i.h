@@ -119,8 +119,8 @@ struct osw_drv_vif {
     const struct osw_hwaddr *vsta_root_ap;
     bool scan_started;
     bool connected;
-    bool sta_list_valid;
     bool radar_detected;
+    struct osw_drv_obj sta_list;
     ev_timer chan_sync; /* used for CSA state invalidation */
     ev_timer resync; /* used to resync after any state change */
 };

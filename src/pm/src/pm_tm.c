@@ -34,6 +34,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "module.h"
 
 #include "pm_tm.h"
+#include "pm_erp.h"
 #include "osp_reboot.h"
 #include "osp_tm.h"
 #include "osp_temp.h"
@@ -68,7 +69,6 @@ static void pm_detect_fan_failure(
 static void pm_detect_over_temperature(struct osp_tm_ctx *ctx, unsigned int current_state, int temperature, int idx);
 static void pm_set_new_state(struct osp_tm_ctx *ctx, unsigned int new_state);
 static int pm_calc_temp_moving_avg(struct osp_tm_ctx *ctx, unsigned int temp_src, int temperature);
-static bool pm_is_temp_src_enabled(struct osp_tm_ctx *ctx, int idx);
 static void pm_therm_cb(struct ev_loop *loop, ev_timer *timer, int revents);
 static void pm_tm_reboot(struct osp_tm_ctx *ctx, int temperature, int idx);
 
@@ -260,10 +260,13 @@ static void pm_set_new_state(struct osp_tm_ctx *ctx, unsigned int new_state)
 
             // TODO: it might happen that radio will be torn down already
 
-            LOGI("TM: Setting txchainmask on radio %d txchainmask %d", temp_src, txchainmask_new);
-            rv = pm_tm_ovsdb_set_radio_txchainmask(if_name, txchainmask_new);
-            if (rv != 0) {
-                LOGE("TM: Could not set radio txchainmask; %s;%d", if_name, rv);
+            if (!pm_erp_is_active())
+            {
+                LOGI("TM: Setting txchainmask on radio %d txchainmask %d", temp_src, txchainmask_new);
+                rv = pm_tm_ovsdb_set_radio_txchainmask(if_name, txchainmask_new);
+                if (rv != 0) {
+                    LOGE("TM: Could not set radio txchainmask; %s;%d", if_name, rv);
+                }
             }
         }
     }
@@ -316,22 +319,6 @@ static int pm_calc_temp_moving_avg(struct osp_tm_ctx *ctx, unsigned int temp_src
     return temp_avg;
 }
 
-static bool pm_is_temp_src_enabled(struct osp_tm_ctx *ctx, int idx)
-{
-    const char *if_name;
-
-    if_name = osp_temp_get_temp_src_name(idx);
-    if (if_name == NULL) {
-        return false;
-    }
-
-    if (pm_tm_ovsdb_is_radio_enabled(if_name) == false) {
-        return false;
-    }
-
-    return true;
-}
-
 static void pm_therm_cb(struct ev_loop *loop, ev_timer *timer, int revents)
 {
     (void)loop;
@@ -365,11 +352,6 @@ static void pm_therm_cb(struct ev_loop *loop, ev_timer *timer, int revents)
     {
         int temp;
         unsigned int state;
-
-        if (pm_is_temp_src_enabled(ctx, temp_src) != true) {
-            LOGN("TM: Temperature src %d is not enabled", temp_src);
-            continue;
-        }
 
         rv = pm_get_temperature(temp_src, &temp);
 

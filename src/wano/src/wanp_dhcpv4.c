@@ -220,11 +220,15 @@ void wanp_dhcpv4_run(wano_plugin_handle_t *wh)
             WC_TYPE_DHCP,
             &self->wd4_wan_config);
 
-    if (!self->wd4_have_config && !wano_wan_is_last_config(wan))
+    if (!self->wd4_have_config && !wano_wan_is_last_config(wan) && !wano_wan_vlan_implies_dhcp(wan))
     {
-        LOG(INFO, "wanp_dhcpv4: %s: WAN config not exhausted yet, skipping.", wh->wh_ifname);
+        LOG(NOTICE, "wanp_dhcpv4: %s: WAN config not exhausted yet, skipping.", wh->wh_ifname);
         self->wd4_status_fn(wh, &WANO_PLUGIN_STATUS(WANP_SKIP));
         return;
+    }
+    else
+    {
+        LOG(NOTICE, "wanp_dhcpv4: %s: Proceeding with dhcpv4", wh->wh_ifname);
     }
 
     /* Register to Wifi_Inet_State events, this will also kick-off the state machine */

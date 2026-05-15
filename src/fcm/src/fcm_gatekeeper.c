@@ -28,7 +28,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "fcm_mgr.h"
 #include "fsm_policy.h"
 #include "gatekeeper.pb-c.h"
-#include "gatekeeper_bulk_reply_msg.h"
+#include "gatekeeper_bulk_msg.h"
 #include "gatekeeper_ecurl.h"
 #include "gatekeeper_msg.h"
 #include "log.h"
@@ -73,54 +73,31 @@ static bool fcm_initialize_curl_handler(void)
 bool fcm_gk_lookup(struct gk_request *req, struct gk_reply *reply)
 {
     struct gk_connection_info conn_info;
-    struct gk_curl_data curl_response;
-    struct gk_packed_buffer *pb;
-    long response_code;
     fcm_mgr_t *mgr;
-    int result;
     bool ret;
 
-    ret = true;
     mgr = fcm_get_mgr();
 
     /* initialize curl handler */
-    result = fcm_initialize_curl_handler();
-    if (result == false)
+    ret = fcm_initialize_curl_handler();
+    if (ret == false)
     {
         LOGN("%s(): Failed to initialize curl handler", __func__);
         return false;
     }
 
-    /* Create the packed buffer for the gatekeeper request */
-    pb = gk_serialize_request(req);
-    if (pb == NULL) return false;
-
     /* set the connection info */
     conn_info.ecurl = &mgr->ecurl;
     conn_info.server_conf = &mgr->gk_conf;
-    conn_info.pb = pb;
+    conn_info.pb = NULL; /* Will be set by gk_perform_bulk_lookup */
 
-    /* Allocate memory for curl response */
-    curl_response.memory = MALLOC(1);
-    curl_response.size = 0;
-
-    /* send the request to gatekeeper */
-    result = gk_handle_curl_request(&conn_info, &curl_response, &response_code);
-    if (result != GK_LOOKUP_SUCCESS)
+    /* Perform the bulk lookup using the gatekeeper_msg API */
+    ret = gk_perform_bulk_lookup(&conn_info, req, reply);
+    if (ret == false)
     {
-        LOGW("%s: Failed to get response from gatekeeper", __func__);
-        ret = false;
-        goto error;
+        LOGW("%s: Bulk lookup failed", __func__);
+        return false;
     }
 
-    /* process the curl response */
-    LOGT("%s: Received response from gatekeeper", __func__);
-    reply->type = FSM_BULK_REQ;
-    ret = gk_parse_curl_response(reply, &curl_response);
-    if (ret == false) goto error;
-
-error:
-    FREE(curl_response.memory);
-    gk_free_packed_buffer(pb);
     return ret;
 }

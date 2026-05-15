@@ -48,7 +48,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define CMD_BUF_LEN 1024
 
 struct gk_attr_cache_interface **entry;
-size_t num_attr_entries = 3;
+size_t num_attr_entries = 5;
 
 static void
 create_default_attr_entries(void)
@@ -89,6 +89,28 @@ create_default_attr_entries(void)
     entry[2]->attr_name = STRDUP("testapp_1");
     entry[2]->gk_policy = "GK_POLICY";
     ret = gkc_add_attribute_entry(entry[2]);
+    TEST_ASSERT_TRUE(ret);
+
+    // Add traffic class test cases
+    entry[3] = CALLOC(1, sizeof(*entry[3]));
+    entry[3]->device_mac = NULL;
+    entry[3]->attribute_type = GK_CACHE_REQ_TYPE_TRAFFIC_CLASS;
+    entry[3]->cache_ttl = 1000;
+    entry[3]->action = FSM_BLOCK;
+    entry[3]->attr_name = STRDUP("testtrafficclass_0");
+    entry[3]->gk_policy = "GK_POLICY";
+    ret = gkc_add_attribute_entry(entry[3]);
+    TEST_ASSERT_TRUE(ret);
+
+    entry[4] = CALLOC(1, sizeof(*entry[4]));
+    entry[4]->action = 1;
+    entry[4]->device_mac = NULL;
+    entry[4]->attribute_type = GK_CACHE_REQ_TYPE_TRAFFIC_CLASS;
+    entry[4]->cache_ttl = 1000;
+    entry[4]->action = FSM_BLOCK;
+    entry[4]->attr_name = STRDUP("testtrafficclass_1");
+    entry[4]->gk_policy = "GK_POLICY";
+    ret = gkc_add_attribute_entry(entry[4]);
     TEST_ASSERT_TRUE(ret);
 }
 

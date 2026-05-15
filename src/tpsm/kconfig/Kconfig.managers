@@ -16,4 +16,56 @@ if MANAGER_TPSM
             This is the folder where PID files of the started processes will
             be stored. The files will be named [MANAGER_NAME].pid
 
+    config SPEEDTEST_RT_RUNTIME
+        int "RT_RUNTIME in [%] of maximum"
+        default 95
+        help
+            Sets the RT_RUNTIME for speedtest priority.
+
+    menuconfig IPERF_SPEEDTEST
+        bool "Iperf SpeedTest"
+        default y
+
+        if IPERF_SPEEDTEST
+            config IPERF_NICE
+                string "Optional command to set process priority of speedtest"
+                default "$(INSTALL_PREFIX)/bin/runprio.sh"
+
+            config IPERF_BIN_ARGUMENTS
+                string "Additional iperf binary arguments"
+                default "-P16 -Z -O2"
+                help
+                    "These are mutable -> will be overridden by the cloud config"
+
+            config IPERF_PARAM
+                string "Additional parameters for iperf"
+                default ""
+                help
+                    "These are immutable -> will override cloud config"
+
+            config IPERF_OPT_TCP_IGNORE_CSUM
+                bool "iperf perf optimization: sysctl ipv4/tcp_ignore_csum"
+                default y
+                help
+                    Use sysctl ipv4/tcp_ignore_csum for iperf performance improvement
+
+            config IPERF_OPT_GRO
+                bool "iperf perf optimization: ethtool gro"
+                default n
+                help
+                    Use ethtool gro for iperf performance improvement
+
+            config IPERF_OPT_MODULE
+                bool "iperf perf optimization: kernel parameters"
+                default n
+                help
+                    Use kernel parameters for iperf performance improvement
+
+            config IPERF_LHOST_ACCEL
+                bool "iperf perf optimization: lhost_accel"
+                default y
+                help
+                    Use kernel module lhost_accel for iperf performance improvement
+
+        endif
 endif

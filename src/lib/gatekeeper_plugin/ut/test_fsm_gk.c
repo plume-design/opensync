@@ -60,7 +60,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 char *g_location_id = "foo";
 char *g_node_id = "bar";
 
-static const char *g_server_url = "https://dev_gatekeeper_container.opensync.io:5000/";
+static const char *g_server_url = "https://dev_gatekeeper_container.opensync.io:5001/";
 static char *g_ssl_certs_file = "/tmp/client.pem";
 static char *g_ssl_key_file = "/tmp/client_dec.key";
 static bool g_is_connected;
@@ -77,7 +77,7 @@ char g_other_configs[][3][OTHER_CONFIG_NELEMS][OTHER_CONFIG_NELEM_SIZE] =
             "mqtt_v"
         },
         {
-            "https://dev_gatekeeper_container.opensync.io:5000/",
+            "https://dev_gatekeeper_container.opensync.io:5001/",
             "./data/cacert.pem",
             "dev-test/gk_ut_topic",
         },
@@ -1341,7 +1341,11 @@ test_health_stats_report(void)
     TEST_ASSERT_EQUAL_INT(1, hs.total_lookups);
     TEST_ASSERT_EQUAL_INT(1, hs.remote_lookups);
     TEST_ASSERT_EQUAL_INT(0, hs.connectivity_failures);
-    TEST_ASSERT_EQUAL_INT(100000, hs.cache_size);
+#if defined(__x86_64__)
+    TEST_ASSERT_EQUAL_INT(8, hs.cache_size);
+#else
+    TEST_ASSERT_EQUAL_INT(32000, hs.cache_size);
+#endif
 
     /* doing a lookup again should return the action
      * from cache, the cache count should be the same
@@ -1385,7 +1389,7 @@ test_health_stats_report(void)
     /* providing invalid endpoint will result in
      * service failure
      */
-    server_info->server_url = "https://dev_gatekeeper_container.opensync.io:443/xyz";
+    server_info->server_url = "https://dev_gatekeeper_container.opensync.io:5001/xyz";
     test_curl_host();
     gatekeeper_report_compute_health_stats(fsm_gk_session, &hs);
     TEST_ASSERT_EQUAL_INT(0, hs.connectivity_failures);
@@ -1711,7 +1715,7 @@ test_categorization_count(void)
 
     server_info = &fsm_gk_session->gk_server_info;
     /* invalid end point */
-    server_info->server_url = "https://dev_gatekeeper_container.opensync.io:443/xxxx";
+    server_info->server_url = "https://dev_gatekeeper_container.opensync.io:5001/xxxx";
 
     test_curl_host();
     gatekeeper_report_compute_health_stats(fsm_gk_session, &hs);
@@ -1765,7 +1769,11 @@ test_cache_entry_report(void)
     test_curl_app();
     gatekeeper_report_compute_health_stats(fsm_gk_session, &hs);
     TEST_ASSERT_EQUAL_INT(1, hs.cached_entries);
-    TEST_ASSERT_EQUAL_INT(100000, hs.cache_size);
+#if defined(__x86_64__)
+    TEST_ASSERT_EQUAL_INT(8, hs.cache_size);
+#else
+    TEST_ASSERT_EQUAL_INT(32000, hs.cache_size);
+#endif
 
     /* doing a lookup again should return the action
      * from cache, the cache count should be the same
@@ -1773,7 +1781,11 @@ test_cache_entry_report(void)
     test_curl_app();
     gatekeeper_report_compute_health_stats(fsm_gk_session, &hs);
     TEST_ASSERT_EQUAL_INT(1, hs.cached_entries);
-    TEST_ASSERT_EQUAL_INT(100000, hs.cache_size);
+#if defined(__x86_64__)
+    TEST_ASSERT_EQUAL_INT(8, hs.cache_size);
+#else
+    TEST_ASSERT_EQUAL_INT(32000, hs.cache_size);
+#endif
 
     /* checking for new attribute type should
      * trigger cloud lookup and add to cache.
@@ -1782,7 +1794,11 @@ test_cache_entry_report(void)
     test_curl_url();
     gatekeeper_report_compute_health_stats(fsm_gk_session, &hs);
     TEST_ASSERT_EQUAL_INT(2, hs.cached_entries);
-    TEST_ASSERT_EQUAL_INT(100000, hs.cache_size);
+#if defined(__x86_64__)
+    TEST_ASSERT_EQUAL_INT(8, hs.cache_size);
+#else
+    TEST_ASSERT_EQUAL_INT(32000, hs.cache_size);
+#endif
 
     /* doing a lookup again should return the action
      * from cache, the cache count should be the same
@@ -1790,7 +1806,11 @@ test_cache_entry_report(void)
     test_curl_url();
     gatekeeper_report_compute_health_stats(fsm_gk_session, &hs);
     TEST_ASSERT_EQUAL_INT(2, hs.cached_entries);
-    TEST_ASSERT_EQUAL_INT(100000, hs.cache_size);
+#if defined(__x86_64__)
+    TEST_ASSERT_EQUAL_INT(8, hs.cache_size);
+#else
+    TEST_ASSERT_EQUAL_INT(32000, hs.cache_size);
+#endif
 
     LOGN("**** Ending test %s ***** ", __func__);
 }
@@ -2110,7 +2130,7 @@ test_mcurl_config(void)
                 "mqtt_v"
             },
             {
-                "https://dev_gatekeeper_container.opensync.io:443/",
+                "https://dev_gatekeeper_container.opensync.io:5001/",
                 "dev-test/gk_ut_topic",
             },
         },

@@ -812,3 +812,124 @@ OSW_UT(osw_hostap_conf_parse_funky_psks)
     assert(strcmp(psks.list[4].psk.str, "one\"two") == 0);
     FREE(psks.list);
 }
+
+OSW_UT(osw_hostap_conf_sae_via_rsno)
+{
+    struct osw_ap_psk psk;
+    MEMZERO(psk);
+    psk.key_id = 1;
+    STRSCPY(psk.psk.str, "rsno_test_pass");
+
+    struct osw_hostap_conf_ap_config conf;
+    struct osw_drv_vif_config_ap ap;
+
+    /* No SAE anywhere -> sae fields must not be emitted */
+    MEMZERO(ap);
+    MEMZERO(conf);
+    ap.channel.control_freq_mhz = 5220;
+    ap.psk_list.count = 1;
+    ap.psk_list.list = &psk;
+    ap.wpa.akm_psk = true;
+
+    osw_hostap_conf_osw_wpa_to_sae(&ap, &conf);
+    OSW_UT_EVAL(conf.sae_password_exists == false);
+    OSW_UT_EVAL(conf.sae_require_mfp_exists == false);
+    OSW_UT_EVAL(conf.sae_pwe_exists == false);
+
+    /* SAE only via rsn_override_1, base wpa has no SAE */
+    MEMZERO(ap);
+    MEMZERO(conf);
+    ap.channel.control_freq_mhz = 5220;
+    ap.psk_list.count = 1;
+    ap.psk_list.list = &psk;
+    ap.wpa.akm_psk = true;
+    ap.rsn_override_1.enabled = true;
+    ap.rsn_override_1.akm = (1 << OSW_AKM_RSN_SAE);
+    ap.rsn_override_1.pairwise = (1 << OSW_CIPHER_RSN_CCMP_128);
+    ap.rsn_override_1.pmf = OSW_PMF_REQUIRED;
+
+    osw_hostap_conf_osw_wpa_to_sae(&ap, &conf);
+    OSW_UT_EVAL(conf.sae_password_exists == true);
+    OSW_UT_EVAL(strcmp(conf.sae_password, "rsno_test_pass") == 0);
+    OSW_UT_EVAL(conf.sae_require_mfp_exists == true);
+    OSW_UT_EVAL(conf.sae_require_mfp == true);
+    OSW_UT_EVAL(conf.sae_pwe_exists == true);
+    OSW_UT_EVAL(conf.sae_pwe == 2);
+
+    /* SAE-EXT only via rsn_override_2, base wpa has no SAE */
+    MEMZERO(ap);
+    MEMZERO(conf);
+    ap.channel.control_freq_mhz = 5220;
+    ap.psk_list.count = 1;
+    ap.psk_list.list = &psk;
+    ap.wpa.akm_psk = true;
+    ap.rsn_override_2.enabled = true;
+    ap.rsn_override_2.akm = (1 << OSW_AKM_RSN_SAE_EXT);
+    ap.rsn_override_2.pairwise = (1 << OSW_CIPHER_RSN_GCMP_256);
+    ap.rsn_override_2.pmf = OSW_PMF_REQUIRED;
+
+    osw_hostap_conf_osw_wpa_to_sae(&ap, &conf);
+    OSW_UT_EVAL(conf.sae_password_exists == true);
+    OSW_UT_EVAL(strcmp(conf.sae_password, "rsno_test_pass") == 0);
+    OSW_UT_EVAL(conf.sae_require_mfp_exists == true);
+    OSW_UT_EVAL(conf.sae_require_mfp == true);
+    OSW_UT_EVAL(conf.sae_pwe_exists == true);
+    OSW_UT_EVAL(conf.sae_pwe == 2);
+
+    /* SAE in rsn_override_1 + SAE-EXT in rsn_override_2, base wpa has no SAE */
+    MEMZERO(ap);
+    MEMZERO(conf);
+    ap.channel.control_freq_mhz = 5220;
+    ap.psk_list.count = 1;
+    ap.psk_list.list = &psk;
+    ap.wpa.akm_psk = true;
+    ap.rsn_override_1.enabled = true;
+    ap.rsn_override_1.akm = (1 << OSW_AKM_RSN_SAE);
+    ap.rsn_override_1.pairwise = (1 << OSW_CIPHER_RSN_CCMP_128);
+    ap.rsn_override_1.pmf = OSW_PMF_REQUIRED;
+    ap.rsn_override_2.enabled = true;
+    ap.rsn_override_2.akm = (1 << OSW_AKM_RSN_SAE_EXT);
+    ap.rsn_override_2.pairwise = (1 << OSW_CIPHER_RSN_GCMP_256);
+    ap.rsn_override_2.pmf = OSW_PMF_REQUIRED;
+
+    osw_hostap_conf_osw_wpa_to_sae(&ap, &conf);
+    OSW_UT_EVAL(conf.sae_password_exists == true);
+    OSW_UT_EVAL(strcmp(conf.sae_password, "rsno_test_pass") == 0);
+    OSW_UT_EVAL(conf.sae_require_mfp_exists == true);
+    OSW_UT_EVAL(conf.sae_require_mfp == true);
+    OSW_UT_EVAL(conf.sae_pwe_exists == true);
+    OSW_UT_EVAL(conf.sae_pwe == 2);
+
+    /* Multiple PSKs with both RSNO overrides: sae_password uses first PSK */
+    struct osw_ap_psk psk_list[3];
+    MEMZERO(psk_list);
+    psk_list[0].key_id = 1;
+    STRSCPY(psk_list[0].psk.str, "first_pass");
+    psk_list[1].key_id = 2;
+    STRSCPY(psk_list[1].psk.str, "second_pass");
+    psk_list[2].key_id = 3;
+    STRSCPY(psk_list[2].psk.str, "third_pass");
+
+    MEMZERO(ap);
+    MEMZERO(conf);
+    ap.channel.control_freq_mhz = 5220;
+    ap.psk_list.count = 3;
+    ap.psk_list.list = psk_list;
+    ap.wpa.akm_psk = true;
+    ap.rsn_override_1.enabled = true;
+    ap.rsn_override_1.akm = (1 << OSW_AKM_RSN_SAE);
+    ap.rsn_override_1.pairwise = (1 << OSW_CIPHER_RSN_CCMP_128);
+    ap.rsn_override_1.pmf = OSW_PMF_REQUIRED;
+    ap.rsn_override_2.enabled = true;
+    ap.rsn_override_2.akm = (1 << OSW_AKM_RSN_SAE_EXT);
+    ap.rsn_override_2.pairwise = (1 << OSW_CIPHER_RSN_GCMP_256);
+    ap.rsn_override_2.pmf = OSW_PMF_REQUIRED;
+
+    osw_hostap_conf_osw_wpa_to_sae(&ap, &conf);
+    OSW_UT_EVAL(conf.sae_password_exists == true);
+    OSW_UT_EVAL(strcmp(conf.sae_password, "first_pass") == 0);
+    OSW_UT_EVAL(conf.sae_require_mfp_exists == true);
+    OSW_UT_EVAL(conf.sae_require_mfp == true);
+    OSW_UT_EVAL(conf.sae_pwe_exists == true);
+    OSW_UT_EVAL(conf.sae_pwe == 2);
+}

@@ -11,4 +11,11 @@ menu "DHCP Relay Configuration"
             This option enables 'source MAC address spoofing', meaning that
             the Ethernet source MAC address is replaced with the MAC address
             of the DHCP client.
+
+    config DHCP_RELAY_CONF
+        string "DHCP relay configuration file"
+        default "ut/dhcp_relay.conf" if PLATFORM_IS_NATIVE
+        default "/tmp/dhcp_relay.conf"
+        help
+            Location of the DHCP relay configuration file
 endmenu

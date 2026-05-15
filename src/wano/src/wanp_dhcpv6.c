@@ -117,13 +117,16 @@ void wanp_dhcpv6_run(wano_plugin_handle_t *wh)
     struct wanp_dhcpv6 *self = CONTAINER_OF(wh, struct wanp_dhcpv6, wd6_handle);
     wano_wan_t *wan = wano_wan_from_plugin_handle(wh);
 
-    if (!wano_wan_is_last_config(wan))
+    if (!wano_wan_is_last_config(wan) && !wano_wan_vlan_implies_dhcp(wan))
     {
-        LOG(INFO, "wanp_dhcpv6: %s: WAN config not exhausted yet, skipping.", wh->wh_ifname);
+        LOG(NOTICE, "wanp_dhcpv6: %s: WAN config not exhausted yet, skipping.", wh->wh_ifname);
         self->wd6_status_fn(wh, &WANO_PLUGIN_STATUS(WANP_SKIP));
         return;
     }
-
+    else
+    {
+        LOG(NOTICE, "wanp_dhcpv6: %s: Proceeding with dhcpv6", wh->wh_ifname);
+    }
 
     wanp_dhcpv6_state_do(&self->wd6_state, wanp_dhcpv6_do_INIT, NULL);
 }

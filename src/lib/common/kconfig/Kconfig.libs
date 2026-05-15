@@ -10,6 +10,6 @@ menu "OS Common configuration"
     bool "dynamic memory allocation monitoring"
     default n
     help
-            Enable dynamic memory allocation monitoring
-
+        Enable dynamic memory allocation monitoring
 endmenu
+

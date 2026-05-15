@@ -99,11 +99,11 @@ rts_bitset_equal(struct bitset *lhs, struct bitset *rhs)
 {
     return (
         lhs->bits[0] == rhs->bits[0] &&
-        lhs->bits[1] == rhs->bits[1] && 
+        lhs->bits[1] == rhs->bits[1] &&
         lhs->bits[2] == rhs->bits[2] &&
         lhs->bits[3] == rhs->bits[3] &&
         lhs->bits[4] == rhs->bits[4] &&
-        lhs->bits[5] == rhs->bits[5] && 
+        lhs->bits[5] == rhs->bits[5] &&
         lhs->bits[6] == rhs->bits[6] &&
         lhs->bits[7] == rhs->bits[7]
     );
@@ -127,7 +127,7 @@ rts_bitset_popcount_nth(struct bitset *set, int bit)
     return c;
 }
 
-static inline void 
+static inline void
 rts_bitset_add(struct bitset *set, int bit)
 {
     uint64_t oldval, newval;

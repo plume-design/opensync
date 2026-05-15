@@ -33,12 +33,15 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <sys/inotify.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <sys/vfs.h>
 #include <unistd.h>
 
 #include "log.h"
 #include "os_util.h"
 #include "tailf.h"
 
+// Leaving 1.0M flash buffer space
+#define FM_EVENT_UNTOUCHED_FLASH_SIZE 1000
 typedef struct
 {
     int dst_fd;
@@ -63,6 +66,7 @@ typedef struct
 static state_t g_state;
 
 static void fm_do_rotation(void);
+static void fm_archive_flash_file(const int src_fd);
 static int fm_ramoops_write(const char *buf, size_t size);
 static void fm_do_livecopy(void);
 static void fm_rotation_stat_callback(struct ev_loop *loop, ev_stat *watcher, int revents);
@@ -94,6 +98,20 @@ static void fm_execute_syslog_rotate(const char *logs_path, const unsigned int m
     LOGI("Execute shell command: %s", shell_cmd);
     cmd_log(shell_cmd);
 }
+/* returns size in kilobytes or zero otherwise
+   Corresponds to '1K-blocks' value of the below command
+   'df /usr/opensync/log_archive/syslog' */
+static unsigned int fm_get_syslog_flash_total_size(void)
+{
+    const char *syslog_dst = CONFIG_FM_LOG_FLASH_ARCHIVE_PATH "/" CONFIG_FM_LOG_ARCHIVE_SUBDIRECTORY;
+    struct statfs fs_info;
+    unsigned int retval = 0;
+    if (statfs(syslog_dst, &fs_info) == 0)
+    {
+        retval = (unsigned int)((fs_info.f_blocks * fs_info.f_bsize) / 1024);
+    }
+    return retval;
+}
 
 static void fm_do_rotation(void)
 {
@@ -110,6 +128,15 @@ static void fm_do_rotation(void)
     {
         logs_path = CONFIG_FM_LOG_FLASH_ARCHIVE_PATH;
         max_size = CONFIG_FM_MAX_ROTATION_SYSLOG_FLASH_TOTAL_SIZE;
+
+        unsigned int flash_size = fm_get_syslog_flash_total_size();
+        if ((flash_size < max_size) && (flash_size > FM_EVENT_UNTOUCHED_FLASH_SIZE))
+        {
+            max_size = flash_size - FM_EVENT_UNTOUCHED_FLASH_SIZE;
+            LOGI("Syslog flash total size reduced from default %dK to %dK",
+                 CONFIG_FM_MAX_ROTATION_SYSLOG_FLASH_TOTAL_SIZE,
+                 max_size);
+        }
     }
     else
     {
@@ -117,6 +144,73 @@ static void fm_do_rotation(void)
         max_size = CONFIG_FM_MAX_ROTATION_SYSLOG_RAM_TOTAL_SIZE;
     }
     fm_execute_syslog_rotate(logs_path, max_size, CONFIG_FM_LOG_PATH);
+}
+
+static void fm_archive_flash_file(const int src_fd)
+{
+    char copy_buffer[FM_READ_BLOCK_SIZE];
+    int archive_fd;
+    char *logs_path;
+    unsigned int max_size;
+    ssize_t src_no;
+
+    // Create copy of archive file (rotate livecopy)
+    archive_fd = open(FM_MESSAGES_LIVECOPY_ROTATED, O_CREAT | O_RDWR, S_IROTH | S_IRUSR | S_IWUSR | S_IRGRP);
+    if (archive_fd < 0)
+    {
+        LOGE("Failed to open flash backup destination file %s", strerror(errno));
+        return;
+    }
+
+    do
+    {
+        // Copy file to archive
+        src_no = read(src_fd, copy_buffer, FM_READ_BLOCK_SIZE);
+        if (src_no < 0)
+        {
+            LOGE("Error reading from file %s", strerror(errno));
+            close(archive_fd);
+            unlink(FM_MESSAGES_LIVECOPY_ROTATED);
+            return;
+        }
+
+        if (write(archive_fd, copy_buffer, src_no) < src_no)
+        {
+            LOGE("Write to flash archive failed %s", strerror(errno));
+            close(archive_fd);
+            unlink(FM_MESSAGES_LIVECOPY_ROTATED);
+            return;
+        }
+    } while (src_no > 0);
+
+    int err = fsync(archive_fd);
+    if (err != 0)
+    {
+        LOGE("Error syncing archive file %s", strerror(errno));
+    }
+
+    close(archive_fd);
+
+    if (g_state.log_options.fm_log_flash)
+    {
+        logs_path = CONFIG_FM_LOG_FLASH_ARCHIVE_PATH;
+        max_size = CONFIG_FM_MAX_ROTATION_SYSLOG_FLASH_TOTAL_SIZE;
+
+        unsigned int flash_size = fm_get_syslog_flash_total_size();
+        if ((flash_size < max_size) && (flash_size > FM_EVENT_UNTOUCHED_FLASH_SIZE))
+        {
+            max_size = flash_size - FM_EVENT_UNTOUCHED_FLASH_SIZE;
+            LOGI("Syslog flash total size reduced from default %dK to %dK",
+                 CONFIG_FM_MAX_ROTATION_SYSLOG_FLASH_TOTAL_SIZE,
+                 max_size);
+        }
+    }
+    else
+    {
+        logs_path = CONFIG_FM_LOG_RAM_ARCHIVE_PATH;
+        max_size = CONFIG_FM_MAX_ROTATION_SYSLOG_RAM_TOTAL_SIZE;
+    }
+    fm_execute_syslog_rotate(logs_path, max_size, FM_MESSAGES_ROTATED_TMP_DIR);
 }
 
 static int fm_ramoops_write(const char *buf, size_t size)
@@ -300,8 +394,8 @@ static void fm_do_livecopy(void)
             {
                 match = 0;
                 lseek(g_state.livecopy.dst_fd, block * FM_READ_BLOCK_SIZE + i, SEEK_SET);
-                LOGI("Temporary and flash file differs, writing differences to flash");
-                fm_do_rotation();
+                LOGI("Temporary and flash file differs, archiving old flash file and writing differences to flash");
+                fm_archive_flash_file(g_state.livecopy.dst_fd);
                 lseek(g_state.livecopy.dst_fd, block * FM_READ_BLOCK_SIZE + i, SEEK_SET);
                 ftruncate(g_state.livecopy.dst_fd, block * FM_READ_BLOCK_SIZE + i);
                 break;

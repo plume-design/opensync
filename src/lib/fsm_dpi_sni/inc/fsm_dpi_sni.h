@@ -67,6 +67,7 @@ struct fsm_dpi_sni_session
 struct fsm_dpi_sni_cache
 {
     bool initialized;
+    bool app_decision_local;
     ds_tree_t fsm_sessions;
 };
 

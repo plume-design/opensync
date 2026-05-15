@@ -52,6 +52,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "osbus_msg_rbus.h"
 #endif
 
+#ifdef CONFIG_OSBUS_MSG_AMXC
+#include <amxc/amxc.h>
+#include "osbus_msg_amxc.h"
+#endif
+
 osbus_msg_t *g_msg = NULL;
 log_severity_t opt_severity = LOG_SEVERITY_WARN;
 
@@ -307,6 +312,41 @@ out:
 #endif
 }
 
+#ifdef CONFIG_OSBUS_MSG_AMXC
+void data_test_amxc(void)
+{
+    osbus_msg_t *d = g_msg;
+    char *str;
+    osbus_msg_t *d5 = NULL;
+    amxc_var_t *var = NULL;
+    bool res;
+    LOGN("\n\n === data_to_amxc_var === \n\n");
+
+    res = osbus_msg_to_amxc_var(d, &var);
+    TEST_ASSERT_TRUE(res && var != NULL);
+    if (!var) goto out;
+
+    if (opt_severity >= LOG_SEVERITY_NOTICE) {
+        amxc_var_dump(var, STDOUT_FILENO);
+    }
+
+    LOGN("\n\n === data_from_amxc_var === \n\n");
+    res = osbus_msg_from_amxc_var(&d5, var);
+    TEST_ASSERT_TRUE(res && d5 != NULL);
+    if (!d5) goto out;
+
+    str = osbus_msg_to_dbg_str_indent(d5, 4);
+    LOGN("%s\n\n", str);
+    free(str);
+    LOGN("prop_bin type = %s\n", osbus_msg_type_str(
+                osbus_msg_get_type(osbus_msg_get_prop(d5, "prop_bin"))));
+    LOGN("\n\n");
+out:
+    if (var) amxc_var_delete(&var);
+    osbus_msg_free(d5);
+}
+#endif
+
 #define _QUOTE(...) #__VA_ARGS__
 
 void data_test_util(void)
@@ -359,6 +399,9 @@ void data_test(void)
     RUN_TEST(data_test_json);
     RUN_TEST(data_test_ubus);
     RUN_TEST(data_test_rbus);
+#ifdef CONFIG_OSBUS_MSG_AMXC
+    RUN_TEST(data_test_amxc);
+#endif
     RUN_TEST(data_test_util);
     osbus_msg_free(g_msg);
 }

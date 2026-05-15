@@ -78,6 +78,7 @@ gkc_free_attr_entry(struct attr_cache *attr_entry, enum gk_cache_request_type at
         break;
 
     case GK_CACHE_REQ_TYPE_APP:
+    case GK_CACHE_REQ_TYPE_TRAFFIC_CLASS:
         FREE(attr->app_name->name);
         FREE(attr->app_name);
         break;
@@ -163,6 +164,7 @@ gk_clean_per_device_entry(struct per_device_cache *pd_cache)
     gk_clean_attribute_tree(&pd_cache->ipv4_tree, GK_CACHE_REQ_TYPE_IPV4);
     gk_clean_attribute_tree(&pd_cache->ipv6_tree, GK_CACHE_REQ_TYPE_IPV6);
     gk_clean_attribute_tree(&pd_cache->app_tree, GK_CACHE_REQ_TYPE_APP);
+    gk_clean_attribute_tree(&pd_cache->app_tree, GK_CACHE_REQ_TYPE_TRAFFIC_CLASS);
     gk_clean_flow_tree(&pd_cache->inbound_tree, GK_CACHE_REQ_TYPE_INBOUND);
     gk_clean_flow_tree(&pd_cache->outbound_tree, GK_CACHE_REQ_TYPE_OUTBOUND);
     FREE(pd_cache->device_mac);
@@ -280,6 +282,7 @@ gk_get_attribute_value(struct attr_cache *attr_entry, enum gk_cache_request_type
             return ip_str;
 
         case GK_CACHE_REQ_TYPE_APP:
+        case GK_CACHE_REQ_TYPE_TRAFFIC_CLASS:
             return attr->app_name->name;
 
         default:
@@ -316,6 +319,7 @@ gk_get_attribute_tree(struct per_device_cache *pdevice, int attr_type)
             break;
 
         case GK_CACHE_REQ_TYPE_APP:
+        case GK_CACHE_REQ_TYPE_TRAFFIC_CLASS:
             attr_tree = &pdevice->app_tree;
             break;
 
@@ -376,7 +380,7 @@ gk_cache_check_ttl_per_device(struct per_device_cache *pdevice)
     struct gkc_del_info_s *gk_del_info;
     int attr_types[] = { GK_CACHE_INTERNAL_TYPE_HOSTNAME, GK_CACHE_REQ_TYPE_URL,
                          GK_CACHE_REQ_TYPE_IPV4, GK_CACHE_REQ_TYPE_IPV6,
-                         GK_CACHE_REQ_TYPE_APP };
+                         GK_CACHE_REQ_TYPE_APP, GK_CACHE_REQ_TYPE_TRAFFIC_CLASS };
     size_t i;
 
     gk_del_info = CALLOC(1, sizeof(*gk_del_info));
@@ -509,6 +513,7 @@ gkc_del_attr_from_dev(struct per_device_cache *pdevice, struct gk_attr_cache_int
             break;
 
         case GK_CACHE_REQ_TYPE_APP:
+        case GK_CACHE_REQ_TYPE_TRAFFIC_CLASS:
             ret = gkc_del_attr(&pdevice->app_tree, req);
             break;
 

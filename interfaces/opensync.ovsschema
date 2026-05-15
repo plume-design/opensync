@@ -1,7 +1,7 @@
 {
   "name": "Open_vSwitch",
-  "version": "7.11.420",
-  "cksum": "3924835079 366093",
+  "version": "7.11.426",
+  "cksum": "2743806155 368428",
   "tables": {
     "AWLAN_Node": {
       "columns": {
@@ -1824,6 +1824,15 @@
             "max": 1
           }
         },
+        "atf_enabled": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
         "dfs_demo": {
           "type": {
             "key": {
@@ -2261,6 +2270,15 @@
           }
         },
         "enabled": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "atf_enabled": {
           "type": {
             "key": {
               "type": "boolean"
@@ -3613,6 +3631,41 @@
             "min": 0,
             "max": 1
           }
+        },
+        "proxy_arp": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "dgaf_disable": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "rsno": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "disabled",
+                  "wpa3_compat",
+                  "wpa3_compat_transition"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": 1
+          }
         }
       },
       "isRoot": true,
@@ -4378,6 +4431,41 @@
           "type": {
             "key": {
               "type": "string"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "proxy_arp": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "dgaf_disable": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "rsno": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "disabled",
+                  "wpa3_compat",
+                  "wpa3_compat_transition"
+                ]
+              ]
             },
             "min": 0,
             "max": 1
@@ -6658,12 +6746,24 @@
                   "max",
                   "avg",
                   "last",
-                  "num"
+                  "num",
+                  "perc"
                 ]
               ]
             },
             "min": 0,
             "max": 64
+          }
+        },
+        "latency_percentiles": {
+          "type": {
+            "key": {
+              "type": "integer",
+              "minInteger": 0,
+              "maxInteger": 100
+            },
+            "min": 0,
+            "max": 8
           }
         },
         "if_name": {
@@ -7704,6 +7804,15 @@
             "lwm": {
                 "type": "integer"
             },
+            "allow_acl": {
+                "type": {
+                  "key": {
+                      "type": "boolean"
+                  },
+                  "min": 0,
+                  "max": 1
+                }
+            },
             "kick_type": {
                 "type": {
                     "key": {
@@ -8022,7 +8131,7 @@
                     },
                     "value": {
                         "type": "string",
-                        "maxLength": 32
+                        "maxLength": 128
                     },
                     "min": 0,
                     "max": 32
@@ -8036,7 +8145,7 @@
                     },
                     "value": {
                         "type": "string",
-                        "maxLength": 32
+                        "maxLength": 128
                     },
                     "min": 0,
                     "max": 32
@@ -8050,7 +8159,7 @@
                     },
                     "value": {
                         "type": "string",
-                        "maxLength": 32
+                        "maxLength": 128
                     },
                     "min": 0,
                     "max": 32

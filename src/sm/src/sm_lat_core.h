@@ -41,6 +41,12 @@ enum sm_lat_core_sampling
     SM_LAT_CORE_SAMPLING_MERGE,
 };
 
+struct sm_lat_core_percentile
+{
+    uint32_t p_val;
+    uint32_t p_ms;
+};
+
 struct sm_lat_core_sample
 {
     uint32_t *min_ms;
@@ -50,6 +56,9 @@ struct sm_lat_core_sample
     uint32_t *avg_cnt;
     uint32_t *num_pkts;
     uint64_t timestamp_ms;
+    uint32_t *bins;
+    struct sm_lat_core_percentile *percentiles;
+    size_t n_percentiles;
 };
 
 struct sm_lat_core_host
@@ -64,7 +73,9 @@ struct sm_lat_core_host
 typedef struct sm_lat_core sm_lat_core_t;
 typedef struct sm_lat_core_stream sm_lat_core_stream_t;
 typedef struct sm_lat_core_sample sm_lat_core_sample_t;
+typedef struct sm_lat_core_percentile sm_lat_core_percentile_t;
 typedef struct sm_lat_core_host sm_lat_core_host_t;
+typedef struct sm_lat_core_bins_config sm_lat_core_bins_config_t;
 typedef void sm_lat_core_report_fn_t(void *priv, const sm_lat_core_host_t *const *hosts, size_t count);
 
 sm_lat_core_t *sm_lat_core_alloc(void);
@@ -73,6 +84,8 @@ void sm_lat_core_set_vif_mld_if_name(sm_lat_core_t *c, const char *vif_name, con
 
 sm_lat_core_stream_t *sm_lat_core_stream_alloc(sm_lat_core_t *c);
 void sm_lat_core_stream_drop(sm_lat_core_stream_t *st);
+sm_lat_core_bins_config_t *sm_lat_core_stream_bins_config_alloc(const uint32_t len);
+void sm_lat_core_stream_bins_config_drop(sm_lat_core_bins_config_t *bconf);
 void sm_lat_core_stream_set_report_fn(sm_lat_core_stream_t *st, sm_lat_core_report_fn_t *fn, void *priv);
 void sm_lat_core_stream_set_report_ms(sm_lat_core_stream_t *st, uint32_t ms);
 void sm_lat_core_stream_set_poll_ms(sm_lat_core_stream_t *st, uint32_t ms);
@@ -83,6 +96,11 @@ void sm_lat_core_stream_set_kind_max(sm_lat_core_stream_t *st, bool enable);
 void sm_lat_core_stream_set_kind_avg(sm_lat_core_stream_t *st, bool enable);
 void sm_lat_core_stream_set_kind_num_pkts(sm_lat_core_stream_t *st, bool enable);
 void sm_lat_core_stream_set_kind_last(sm_lat_core_stream_t *st, bool enable);
+void sm_lat_core_stream_set_kind_perc(sm_lat_core_stream_t *st, bool enable);
 void sm_lat_core_stream_set_ifname(sm_lat_core_stream_t *st, const char *if_name, bool enable);
+void sm_lat_core_stream_set_percentiles(
+        sm_lat_core_stream_t *st,
+        const uint32_t *latency_percentiles,
+        const uint32_t len);
 
 #endif /* SM_LAT_CORE_H_INCLUDED */

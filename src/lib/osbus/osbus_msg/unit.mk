@@ -34,6 +34,7 @@ UNIT_NAME := osbus_msg
 UNIT_TYPE := LIB
 
 UNIT_SRC += src/osbus_msg.c
+UNIT_SRC += src/osbus_msg_json.c
 
 UNIT_CFLAGS := -I$(UNIT_PATH)/inc
 

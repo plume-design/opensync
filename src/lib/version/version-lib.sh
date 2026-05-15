@@ -128,12 +128,10 @@ fi
 
 APP_VERSION="${VERSION}"
 
-if [ "${VERSION_NO_BUILDNUM}" != "1" ]; then
+# Always keep build number and git hash strings together for version strings
+if [ "${VERSION_NO_BUILDNUM}" != "1" -a "${VERSION_NO_SHA1}" != "1" ]; then
     # append build number
     APP_VERSION="${APP_VERSION}-${BUILD_NUMBER}"
-fi
-
-if [ "${VERSION_NO_SHA1}" != "1" ]; then
     # append SHA1
     APP_VERSION="${APP_VERSION}-${SHA1}"
 fi

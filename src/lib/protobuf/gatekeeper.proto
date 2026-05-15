@@ -47,6 +47,7 @@ message GatekeeperFqdnReq {
 message GatekeeperAppReq {
     GatekeeperCommonRequest header = 1;
     string app_name = 2;
+    string traffic_class = 3;
 }
 
 // HTTPS SNI gatekeeper request
@@ -172,6 +173,11 @@ enum GatekeeperAction {
     GATEKEEPER_ACTION_NOANSWER = 5;
 }
 
+enum GatekeeperFlags {
+    GATEKEEPER_FLAG_UNSPECIFIED = 0;
+    GATEKEEPER_TRAFFIC_CLASS = 0x00000001; // Traffic class is set
+}
+
 // Gatekeeper Reply common fields
 message GatekeeperCommonReply {
     uint32 request_id = 1;
@@ -183,6 +189,7 @@ message GatekeeperCommonReply {
     uint32 flow_marker = 7;
     bytes  device_id = 8; // MAC address
     string network_id = 9;
+    uint64 flags = 10;
 }
 
 message GatekeeperFqdnRedirectReply {
@@ -230,6 +237,7 @@ message GatekeeperIpv6TupleReply {
 message GatekeeperAppReply {
     GatekeeperCommonReply header = 1;
     string app_name = 2;
+    string traffic_class = 3;
 }
 
 // HTTPS SNI gatekeeper reply

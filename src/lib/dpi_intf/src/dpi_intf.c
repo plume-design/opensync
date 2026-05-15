@@ -734,9 +734,12 @@ dpi_intf_get_pcap_stats(void)
     ds_tree_foreach(tree, entry)
     {
         pcaps = entry->pcaps;
-        if (pcaps == NULL) continue;
+        if (IS_NULL_PTR(pcaps)) continue;
+        if (!pcaps->started) continue;
 
         pcap = pcaps->pcap;
+        if (IS_NULL_PTR(pcap)) continue;
+
         memset(&stats, 0, sizeof(stats));
         /* get the pcap stats */
         rc = pcap_stats(pcap, &stats);

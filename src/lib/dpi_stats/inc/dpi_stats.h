@@ -90,6 +90,15 @@ struct pcap_stats_counters
     ds_tree_node_t  pcap_node;
 };
 
+struct conntrack_err_counters
+{
+    int error_no;
+    uint64_t count;
+    uint64_t to_report;
+
+    ds_tree_node_t  conn_err_node;
+};
+
 
 struct dpi_stats
 {
@@ -101,6 +110,7 @@ struct dpi_stats
     ds_tree_t  nfq_stats;          /* nfqueue_node */
     ds_tree_t  pcap_stats;         /* pcap_node */
     ds_tree_t  fn_tracer_stats;    /* fn_trace node */
+    ds_tree_t  conntrack_err_counters; /* conntrack errors */
 };
 /* stores function trace stats for later reporting */
 struct fn_tracer_stats
@@ -120,6 +130,7 @@ struct dpi_stats_report
     char *node_id;
     char *location_id;
     char *plugin;
+    uint64_t timestamp;
     struct dpi_engine_counters counters;
 };
 
@@ -176,6 +187,22 @@ void dpi_stats_store_nfq_stats(struct nfqnl_counters *nfq_stats);
  */
 void
 dpi_stats_store_nfq_err_cnt(int queue_num);
+
+/**
+ * @brief stores the conntrack error count
+ * @param error_no the error number (errno value)
+ * @return void
+ */
+void
+dpi_stats_store_conntrack_errs(int error_no);
+
+/**
+ * @brief logs all stored conntrack error counts
+ * @param void
+ * @return void
+ */
+void
+dpi_stats_log_conntrack_errs(void);
 
 
 /**

@@ -483,6 +483,45 @@ osn_ip6_addr_t osn_ip6_addr_from_prefix(int prefix)
 }
 
 /*
+ * Compute the bitwise OR of the two addresses
+ */
+osn_ip6_addr_t osn_ip6_addr_or(const osn_ip6_addr_t *a, const osn_ip6_addr_t *b)
+{
+    osn_ip6_addr_t result;
+
+    result = *a;
+
+    uint8_t *out = (uint8_t *)&result.ia6_addr;
+    uint8_t *in = (uint8_t *)&b->ia6_addr;
+    for (size_t x = 0; x < sizeof(result.ia6_addr); x++)
+    {
+        out[x] |= in[x];
+    }
+
+    return result;
+}
+
+/*
+ * Compute the bitwise XOR of the two addresses
+ */
+osn_ip6_addr_t osn_ip6_addr_xor(const osn_ip6_addr_t *a, const osn_ip6_addr_t *b)
+{
+    osn_ip6_addr_t result;
+
+    result = *a;
+
+    uint8_t *out = (uint8_t *)&result.ia6_addr;
+    uint8_t *in = (uint8_t *)&b->ia6_addr;
+    for (size_t x = 0; x < sizeof(result.ia6_addr); x++)
+    {
+        out[x] ^= in[x];
+    }
+
+    return result;
+}
+
+
+/*
  * Parse the @p ip6 address and return osn_ip6_addr_type enum representing
  * its type
  */

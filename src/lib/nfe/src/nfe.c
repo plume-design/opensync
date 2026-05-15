@@ -71,7 +71,7 @@ nfe_conntrack_dump(nfe_conntrack_t conntrack, nfe_get_conntrack_cb_t cb, void *d
     for (i = 0; i < LRU_PROTO_MAX; i++) {
 
         nfe_list_for_each_entry_safe(conn, tmp, &conntrack->lru[i].list, lru) {
-            
+
             cb(conn, data);
             cnt++;
         }

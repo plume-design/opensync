@@ -189,8 +189,11 @@ static void osw_mld_vif_mld_gc(struct osw_mld_vif_mld *mld)
 {
     if (mld == NULL) return;
     if (ds_tree_len(&mld->links) > 0) return;
+    if (WARN_ON(mld->m == NULL)) return;
     LOGD(LOG_PREFIX_MLD(mld, "freeing"));
     OSW_MLD_VIF_NOTIFY(mld->m, mld_removed_fn, mld->mld_if_name);
+    ds_tree_remove(&mld->m->mlds, mld);
+    mld->m = NULL;
     FREE(mld->mld_if_name);
     FREE(mld);
 }
@@ -235,8 +238,8 @@ static void osw_mld_vif_link_drop(struct osw_mld_vif_link *l)
     if (l == NULL) return;
     LOGD(LOG_PREFIX_LINK(l, "freeing"));
     OSW_MLD_VIF_NOTIFY(l->mld->m, link_removed_fn, l->mld->mld_if_name, l->info);
-    osw_mld_vif_mld_gc(l->mld);
     ds_tree_remove(&l->mld->links, l);
+    osw_mld_vif_mld_gc(l->mld);
     FREE(l->link_if_name);
     FREE(l);
 }
@@ -257,6 +260,7 @@ static void osw_mld_vif_state_vif_update(struct osw_state_observer *obs, const s
         if (mld_if_name == NULL)
         {
             osw_mld_vif_link_drop(l);
+            l = NULL;
         }
         else if (l == NULL)
         {
@@ -293,6 +297,10 @@ static void osw_mld_vif_state_vif_update(struct osw_state_observer *obs, const s
         if (l != NULL)
         {
             osw_mld_vif_link_drop(l);
+            /* if `l` was last link in `l->mld`, then `mld` just become a dangling pointer
+             * so make sure to re-read it in case it's no longer there.
+             */
+            mld = (mld_if_name == NULL) ? NULL : ds_tree_find(&m->mlds, mld_if_name);
         }
     }
 

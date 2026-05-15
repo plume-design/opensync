@@ -84,7 +84,6 @@ menuconfig MANAGER_FSM
     config FSM_TAP_INTF
         depends on MANAGER_FSM
         bool "Enable tap interfaces"
-        default n if PLATFORM_IS_NATIVE
         default y
         help
             Enable tap interfaces
@@ -141,5 +140,4 @@ menuconfig MANAGER_FSM
         default 32000
         help
             Set the maximum number of lines for FSM memory log file
-            
-            
+

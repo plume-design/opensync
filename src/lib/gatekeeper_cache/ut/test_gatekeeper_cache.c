@@ -509,6 +509,9 @@ test_get_attr_key(void)
     entry.attribute_type = GK_CACHE_REQ_TYPE_APP;
     ret = get_attr_key(&entry);
     TEST_ASSERT_NOT_EQUAL(0, ret);
+    entry.attribute_type = GK_CACHE_REQ_TYPE_TRAFFIC_CLASS;
+    ret = get_attr_key(&entry);
+    TEST_ASSERT_NOT_EQUAL(0, ret);
     entry.attribute_type = GK_CACHE_REQ_TYPE_IPV4;
     ret = get_attr_key(&entry);
     TEST_ASSERT_NOT_EQUAL(0, ret);
@@ -2358,6 +2361,7 @@ void test_process_url_entries_valid(void)
 
         /* Clean up resources */
         gk_free_cache_interface_entry(entry);
+        FREE(entry->attr_name);
         FREE(entry);
     }
 

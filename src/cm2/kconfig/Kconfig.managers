@@ -49,6 +49,15 @@ if MANAGER_CM
        help
           Enable vendor classId option in udhcpc during link examination"
 
+    config CM2_USE_CARES
+        bool "Use c-ares DNS resolver library"
+        depends on TARGET_ENABLE_WAN_LINK_SELECTION && LIBEVX_USE_CARES
+        default y
+        help
+            This option enables the use of the c-ares library for asynchronous
+            DNS lookups. It requires both TARGET_ENABLE_WAN_LINK_SELECTION and
+            LIBEVX_USE_CARES to be selected.
+
     config CM2_MTU_ON_GRE
         int "MTU on GRE interface"
         default 1500

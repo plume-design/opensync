@@ -80,7 +80,7 @@ nfe_input_ipv4(struct nfe_packet *p)
  *
  * 3.) Do nothing, overwrite the outer encapsulation ntuple, and continue on.
  *
- */ 
+ */
 int
 nfe_proto_ipv4(struct nfe_packet *p)
 {

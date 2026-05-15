@@ -97,30 +97,34 @@ struct net_md_stats_accumulator
     struct net_md_aggregator *aggr;
     struct net_md_flow_key *key;
     struct flow_key *fkey;
-    ds_tree_node_t net_md_acc_node;
-    struct flow_counters first_counters;   /* first reported counters */
-    struct flow_counters counters;         /* current accumulated stats */
-    struct flow_counters report_counters;  /* reported stats */
-    int state;                             /* State in the current window */
-    uint32_t flow_marker;                  /* conntrack mark for the flow */
-    time_t last_updated;
+    struct net_md_stats_accumulator *rev_acc;
     void (*free_plugins)(struct net_md_stats_accumulator *);
     ds_tree_t *dpi_plugins;
-    int dpi_done;                          /* All dpi engines are done */
-    int mark_done;                         /* last known pushed mark to ct() */
-    int refcnt;                            /* # of entities accessing the acc */
-    bool report;                           /* send a report */
-    uint16_t direction;                    /* flow direction */
-    uint16_t originator;                   /* flow originator */
-    struct net_md_stats_accumulator *rev_acc;
-    uint32_t flags;
-    bool dpi_always;
-    bool initialized;
     void *dpi;
     struct nfe_packet *packet;
-    uint16_t ct_zone; /* CT_ZONE at connection level */
 
-    /* The private nfe conn data */
+    time_t last_updated;
+
+    struct flow_counters first_counters;
+    struct flow_counters counters;
+    struct flow_counters report_counters;
+
+    uint32_t flow_marker;
+    uint32_t flags;
+    int state;
+    int dpi_done;
+    int mark_done;
+    int refcnt;
+
+    uint16_t direction;
+    uint16_t originator;
+    uint16_t ct_zone;
+    bool report;
+    bool dpi_always;
+    bool initialized;
+
+    ds_tree_node_t net_md_acc_node;
+
     unsigned char priv[] __attribute__((aligned(sizeof(ptrdiff_t))));
 };
 
@@ -210,11 +214,16 @@ struct net_md_aggregator
     void (*on_acc_report)(struct net_md_aggregator *, struct net_md_stats_accumulator *);
     void *context;
     nfe_conntrack_t nfe_ct;
+
+    /* ds_tree of tc_aggregated_bucket, indexed by (traffic_class, direction, originator).
+     * Used for aggregating flows by traffic class*/
+    ds_tree_t *tc_bucket_tree;
 };
 
 enum net_md_report_stats_type {
     NET_MD_LAN_FLOWS = (1 << 1),
     NET_MD_IP_FLOWS = (1 << 2),
+    NET_MD_TC_FLOWS = (1 << 3),
 };
 
 /**

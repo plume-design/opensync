@@ -233,7 +233,7 @@ void ow_conf_rsno_mutate_vif_ap(struct osw_conf_vif *osw_vif, ow_conf_rsno_mode_
     const uint32_t rsno_2_pairwise_allowed = ow_conf_rsno_2_pairwise_allowed(mode);
     const uint32_t rsno_2_pairwise = (pairwise & rsno_2_pairwise_allowed);
 
-    if (rsno_1_akm != 0 && pmf_not_disabled)
+    if (rsno_1_akm != 0 && rsno_1_pairwise != 0 && pmf_not_disabled)
     {
         ap->rsn_override_1.enabled = true;
         ap->rsn_override_1.akm = rsno_1_akm;
@@ -241,7 +241,7 @@ void ow_conf_rsno_mutate_vif_ap(struct osw_conf_vif *osw_vif, ow_conf_rsno_mode_
         ap->rsn_override_1.pmf = OSW_PMF_REQUIRED;
     }
 
-    if (rsno_2_akm != 0 && pmf_not_disabled)
+    if (rsno_2_akm != 0 && rsno_2_pairwise != 0 && pmf_not_disabled)
     {
         ap->rsn_override_2.enabled = true;
         ap->rsn_override_2.akm = rsno_2_akm;

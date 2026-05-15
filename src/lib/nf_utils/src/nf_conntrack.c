@@ -41,6 +41,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "os_types.h"
 #include "os_ev_trace.h"
 #include "neigh_table.h"
+#include "dpi_stats.h"
 
 #if defined(CONFIG_PLATFORM_IS_BCM)
 // on BCM the kernel header is missing CTA_TUPLE_ZONE
@@ -1072,6 +1073,7 @@ nf_ct_recv_data(void *buf, size_t buf_size, struct net_md_aggregator *aggr)
         if (ret == -1)
         {
             LOGT("%s: mnl_cb_run failed: %s", __func__, strerror(errno));
+            dpi_stats_store_conntrack_errs(errno);
             break;
         }
         if (ret <= MNL_CB_STOP) break;
@@ -1214,7 +1216,7 @@ nf_ct_filter_ip(int af, void *ip)
 static void
 nf_process_ct_flow(struct nlattr *tb[], struct net_md_aggregator *aggr, bool dir)
 {
-    
+
     struct flow_counters counters;
     struct net_md_flow_key key;
     struct net_md_flow_key rev_key;
@@ -1295,7 +1297,7 @@ nf_process_ct_flow(struct nlattr *tb[], struct net_md_aggregator *aggr, bool dir
     {
         return;
     }
-    
+
     if (tb[CTA_PROTOINFO] && key.ipprotocol != 17)
     {
         rc = get_protoinfo(tb[CTA_PROTOINFO], &key);
@@ -1334,7 +1336,7 @@ nf_process_ct_flow(struct nlattr *tb[], struct net_md_aggregator *aggr, bool dir
             return;
         }
     }
-    
+
     // Add ethertype flows.
     if (!key.smac && key.dmac)
     {
@@ -1346,7 +1348,7 @@ nf_process_ct_flow(struct nlattr *tb[], struct net_md_aggregator *aggr, bool dir
         key.dmac = &dmac;
     }
 
-       
+
     key.ufid = &ufid;
     generate_os_ufid(&key);
     key.flags = 0;

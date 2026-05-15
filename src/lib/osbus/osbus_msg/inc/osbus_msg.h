@@ -24,8 +24,8 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef OSBUS_DATA_H_INCLUDED
-#define OSBUS_DATA_H_INCLUDED
+#ifndef OSBUS_MSG_H_INCLUDED
+#define OSBUS_MSG_H_INCLUDED
 
 #include <stdint.h>
 #include <stdbool.h>
@@ -202,14 +202,6 @@ char*           osbus_msg_to_dbg_str_compact(const osbus_msg_t *d);
 char*           osbus_msg_to_dbg_str        (const osbus_msg_t *d);
 bool            osbus_msg_to_dbg_str_fixed  (const osbus_msg_t *d, char *str, int size);
 
-char*           osbus_msg_to_json_string_flags(const osbus_msg_t *data, size_t jansson_dumps_flags);
-char*           osbus_msg_to_json_string      (const osbus_msg_t *data);
-osbus_msg_t*    osbus_msg_from_json_string    (const char *str);
-osbus_msg_t*    osbus_msg_from_json_string_buf(const char *str, int size);
-
-json_t*         osbus_msg_to_json  (const osbus_msg_t *data);
-osbus_msg_t*    osbus_msg_from_json(const json_t *json);
-
 osbus_msg_t* osbus_msg_lookup_ex(const osbus_msg_t *msg, const char *path, const char *dobj, const char *darr);
 osbus_msg_t* osbus_msg_lookup(const osbus_msg_t *msg, const char *path);
 osbus_msg_t* osbus_msg_mkpath_ex(osbus_msg_t *msg, const char *path, const char *dobj, const char *darr);
@@ -232,5 +224,7 @@ osbus_msg_t* osbus_msg_mkpath(osbus_msg_t *msg, const char *path);
             _i < osbus_msg_item_count(DATA); \
             E = osbus_msg_get_item(DATA, ++_i), KEY = osbus_msg_get_name(E))
 
-#endif /* OSBUS_DATA_H_INCLUDED */
+#include "osbus_msg_json.h"
+
+#endif /* OSBUS_MSG_H_INCLUDED */
 

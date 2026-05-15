@@ -50,6 +50,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "kconfig.h"
 #include "cm2.h"
 #include "cm2_uplink_event.h"
+#include "manager_watchdog.h"
 
 /******************************************************************************/
 
@@ -140,6 +141,8 @@ int main(int argc, char ** argv)
 
     (void)te_client_init(NULL);
     TELOG_STEP("MANAGER", argv[0], "start", NULL);
+
+    manager_watchdog_init(loop, CONFIG_MANAGER_WATCHDOG_TIMEOUT_SEC);
 
     backtrace_init();
 

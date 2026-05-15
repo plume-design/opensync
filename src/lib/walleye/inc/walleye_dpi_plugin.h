@@ -76,6 +76,7 @@ struct dpi_session
     struct dpi_parser parser;
     rts_handle_t handle;
     uint32_t rts_dict_expiry;
+    uint32_t tcpip_hdr_scan;
     uint32_t connections;
     uint32_t streams;
     uint32_t err_incomplete;
@@ -121,41 +122,34 @@ enum service_level {
 
 
 struct dpi_conn {
-    /* An rts stream is connection specific context for the scan */
     rts_stream_t stream;
-
-    /* Connection context for tracking time online */
+    struct dpi_session *dpi_sess;
     uint64_t toldata;
-
-    /* The service determined from dpi. */
-    uint16_t service;
-    enum service_level service_level;
-
-    uint16_t tags[NUM_TAGS];
-    os_macaddr_t src_mac;
-    os_macaddr_t dst_mac;
+    uint64_t tcp_syn_delay;
+    uint64_t tcp_ack_delay;
+    time_t last_updated;
 
     uint32_t bytes[2];
     uint32_t packets[2];
     uint32_t data_packets[2];
-
-    char server_name[256];
-    struct net_header_parser net_hdr;
-    struct dpi_session *dpi_sess;
-
-    int flow_action;
-
     uint32_t scan_error;
+    uint32_t conn_ttl;
+    int flow_action;
+    enum service_level service_level;
 
+    uint16_t service;
+    uint16_t tags[NUM_TAGS];
+    os_macaddr_t src_mac;
+    os_macaddr_t dst_mac;
     bool inverted;
     bool initialized;
     bool tag_flow;
+    bool app_decision_local;
+    uint8_t _reserved[4];
 
-    uint64_t tcp_syn_delay;
-    uint64_t tcp_ack_delay;
-
-    uint32_t conn_ttl;
-    time_t last_updated;
+    char server_name[256];
+    char traffic_class[256];
+    struct net_header_parser net_hdr;
     ds_tree_node_t conn_node;
 };
 

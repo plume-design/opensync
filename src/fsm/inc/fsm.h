@@ -177,6 +177,7 @@ struct fsm_dpi_plugin_client_pkt_info
     struct net_md_stats_accumulator *acc;
     struct net_header_parser *parser;
     bool tag_flow;
+    bool app_decision_local;
 };
 
 
@@ -444,6 +445,7 @@ struct fsm_session
     ds_tree_node_t fsm_node;         /* Seesion manager node handle */
     char bridge[64];                 /* underlying bridge name */
     char tx_intf[64];                /* plugin's TX interface */
+    char rx_intf[64];                /* plugin's RX interface */
     long dpi_stats_report_interval;  /* dpi stats reporting interval */
     long dpi_backoff_interval;       /* dpi backoff interval */
     char *dpi_stats_report_topic;    /* mqtt topic for reporting dpi stats */

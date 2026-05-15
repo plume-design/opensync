@@ -2180,10 +2180,10 @@ void inet_base_state_update_fn(struct ev_loop *ev, ev_debounce *w, int revent)
     inet_base_t *self = (inet_base_t *)w->data;
 
     {
-        /* TODO: This is temporary solution to detect when IPv4 interface config is ready 
-         * In the future it should be replaced with inet_unit logic which handles transition 
+        /* TODO: This is temporary solution to detect when IPv4 interface config is ready
+         * In the future it should be replaced with inet_unit logic which handles transition
          * STARTED -> READY to control dependent units correctly */
-        
+
         static const osn_ip_addr_t empty_addr = OSN_IP_ADDR_INIT;
         bool valid_ipv4_addr = (0 != memcmp(&self->in_state.in_ipaddr, &empty_addr, sizeof(empty_addr)));
 
@@ -2343,24 +2343,38 @@ void inet_base_osn_ip6_status_fn(
         struct ip6_addr_status_node as;
         struct osn_ip6_addr_node *on;
 
-        /* If an address matches a configured address, skip it -- we do not want to overwrite the list */
+        /* If an address matches a configured address, add it to status list with
+         * origin INET_IP6_ORIGIN_STATIC, else with origin INET_IP6_ORIGIN_AUTO_CONFIGURED.
+         * Both autoconfigured and static IPv6 addresses need to be on the status list so that
+         * callback notification reporting works for both (so that upper layers can detect
+         * if a statically configured IPv6 address was inadvertently deleted from the system).
+         */
         on = ds_tree_find(&self->in_ip6addr_list, &status->is6_addr[ii].ia6_addr);
         if (on != NULL)
         {
-            continue;
+            LOG(DEBUG, "inet_base: %s: Found IPv6 STATIC address: %s", self->inet.in_ifname, FMT_osn_ip6_addr(status->is6_addr[ii]));
+
+            as.as_addr.is_addr = status->is6_addr[ii];
+            as.as_addr.is_origin = INET_IP6_ORIGIN_STATIC;
+            synclist_add(&self->in_ip6_addr_status_list, &as);
+
         }
+        else
+        {
+            LOG(DEBUG, "inet_base: %s: Found IPv6 AUTO_CONFIGURED address: %s", self->inet.in_ifname, FMT_osn_ip6_addr(status->is6_addr[ii]));
 
-        as.as_addr.is_addr = status->is6_addr[ii];
-        as.as_addr.is_origin = INET_IP6_ORIGIN_AUTO_CONFIGURED;
-        /*
-         * TODO: If we need to add DHCP addresses, the DHCP module must be
-         * changed to actually report back the acquired DHCP address.
-         *
-         * For the time being, just use AUTO_CONFIGURED which should cover
-         * most cases.
-         */
+            /*
+            * TODO: If we need to add DHCP addresses, the DHCP module must be
+            * changed to actually report back the acquired DHCP address.
+            *
+            * For the time being, just use AUTO_CONFIGURED which should cover
+            * most cases.
+            */
 
-        synclist_add(&self->in_ip6_addr_status_list, &as);
+            as.as_addr.is_addr = status->is6_addr[ii];
+            as.as_addr.is_origin = INET_IP6_ORIGIN_AUTO_CONFIGURED;
+            synclist_add(&self->in_ip6_addr_status_list, &as);
+        }
     }
     synclist_end(&self->in_ip6_addr_status_list);
 

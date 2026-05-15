@@ -38,6 +38,17 @@ typedef enum
     FCM_RPT_FMT_RAW    =  2
 } fcm_rpt_fmt_t;
 
+/**
+ * @brief parent plugin type
+ *
+ * Identifies which plugin is delegating/calling this plugin
+ */
+typedef enum
+{
+    FCM_PARENT_NONE = 0,         // Direct call, not delegated
+    FCM_PARENT_TC_STATS,         // Called from tc_stats
+} fcm_parent_plugin_t;
+
 typedef struct fcm_plugin_filter_
 {
     char *collect;
@@ -55,6 +66,7 @@ typedef struct fcm_collect_plugin_
     char *mqtt_topic;
     void *fcm;
     char *name;
+    fcm_parent_plugin_t parent_plugin;  // Identifies delegating/parent plugin
     int sample_interval;
     int report_interval;
     void (*collect_periodic)(struct fcm_collect_plugin_ *);

@@ -44,6 +44,7 @@ UNIT_CFLAGS := -I$(UNIT_PATH)/inc
 UNIT_CFLAGS += -Isrc/fsm/inc
 UNIT_CFLAGS += -Isrc/lib/dns_parse/inc
 UNIT_CFLAGS += -Isrc/lib/imc/inc
+UNIT_CFLAGS += $(if $(CONFIG_LIBDNS_CACHE), -Isrc/lib/dns_cache/inc)
 UNIT_LDFLAGS :=
 
 UNIT_EXPORT_CFLAGS := $(UNIT_CFLAGS)
@@ -61,5 +62,6 @@ UNIT_DEPS += src/lib/gatekeeper_cache
 UNIT_DEPS += src/lib/neigh_table
 UNIT_DEPS += src/lib/dpi_stats
 UNIT_DEPS += src/lib/osn
+UNIT_DEPS += $(if $(CONFIG_LIBDNS_CACHE), src/lib/dns_cache)
 UNIT_DEPS += $(if $(CONFIG_FSM_IPC_USE_OSBUS), src/lib/osbus)
 UNIT_DEPS += $(if $(CONFIG_IMC_LIBOPENSYNC), src/lib/imc)

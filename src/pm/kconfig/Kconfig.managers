@@ -24,6 +24,29 @@ if MANAGER_PM
             Enable client nickname feature Web UI synchronization
 
 
+    menuconfig PM_ENABLE_ERP_MODE
+        bool "Enable ErP low-power mode"
+        default n
+        help
+           Enable ErP low-power mode when no clients have been connected for more than 20 minutes
+        if PM_ENABLE_ERP_MODE
+            config PM_ERP_TIMEOUT
+                int "ERP timeout in seconds when no clients are connected"
+                default 1180
+                help
+                    After a timeout when no clients are connected, the device enters ERP mode.
+            config PM_ERP_CFG_TOOL
+                string "Path to the WiFi configuration tool"
+                help
+                    Optional path to configuration tool.
+                    Leave unset if not needed.
+            config PM_ERP_MODE_PATH
+                string "Sysfs kernel interface path"
+                default "/sys/kernel/opensync/os_erp_mode"
+                help
+                    Sysfs kernel interface that enables changing the RX chain masks.
+        endif
+
     config PM_HW_ACC
         bool "Enable or disable acceleration for testing purposes."
         default y

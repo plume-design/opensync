@@ -1231,6 +1231,15 @@ fsm_dpi_on_acc_destruction(struct net_md_aggregator *aggr,
     acc->rev_acc = NULL;
 }
 
+#if defined (CONFIG_OS_EV_TRACE)
+static void wrap_fsm_pcap_dispatcher_handler(void *context,
+                                              struct net_header_parser *net_parser)
+{
+    fsm_fn_trace(fsm_pcap_dispatcher_handler, FSM_FN_ENTER);
+    fsm_pcap_dispatcher_handler(context, net_parser);
+    fsm_fn_trace(fsm_pcap_dispatcher_handler, FSM_FN_EXIT);
+}
+#endif
 
 static void
 fsm_dispatcher_init_tap_intfs(struct fsm_session *dispatcher)
@@ -1246,7 +1255,12 @@ fsm_dispatcher_init_tap_intfs(struct fsm_session *dispatcher)
     registrar.loop = mgr->loop;
     registrar.context = dispatcher;
     registrar.id = dispatcher->name;
+    FSM_FN_MAP(fsm_pcap_dispatcher_handler);
+#if defined (CONFIG_OS_EV_TRACE)
+    registrar.handler = wrap_fsm_pcap_dispatcher_handler;
+#else
     registrar.handler = fsm_pcap_dispatcher_handler;
+#endif
 
     dpi_intf_register_context(&registrar);
 }
@@ -2241,7 +2255,9 @@ fsm_dpi_handler(struct fsm_session *session,
         if (mapped == NULL) return;
 
         parser_ops = &mapped->p_ops->parser_ops;
+        fsm_fn_trace(parser_ops->handler, FSM_FN_ENTER);
         parser_ops->handler(mapped, net_parser);
+        fsm_fn_trace(parser_ops->handler, FSM_FN_EXIT);
 
         return;
     }
@@ -2385,9 +2401,12 @@ fsm_pcap_stats(struct fsm_session *session)
     if (session->conf == NULL) return;
 
     pcaps = session->pcaps;
-    if (pcaps == NULL) return;
+    if (IS_NULL_PTR(pcaps)) return;
+    if (!pcaps->started) return;
 
     pcap = pcaps->pcap;
+    if (IS_NULL_PTR(pcap)) return;
+
     memset(&stats, 0, sizeof(stats));
 
     rc = pcap_stats(pcap, &stats);
@@ -2439,7 +2458,7 @@ static void nfe_log_acc_cb(nfe_conn_t conn, void *data)
 
     acc = container_of(conn, struct net_md_stats_accumulator, priv);
     if (!acc) return;
- 
+
     net_md_log_acc(acc, __func__);
 }
 
@@ -2502,6 +2521,7 @@ fsm_dpi_periodic(struct fsm_session *session)
     int long dpi_backoff_conf_intvl = 0;
     time_t now;
     int rc;
+
     dpi_context = session->dpi;
     if (dpi_context == NULL) return;
 
@@ -2552,7 +2572,7 @@ fsm_dpi_periodic(struct fsm_session *session)
 
         session->ops.send_pb_report(session, session->dpi_stats_report_topic, pb->buf, pb->len);
         dpi_stats_free_packed_buffer(pb);
-        
+
         fsm_dpi_recycle_nfe_conns();
     }
 
@@ -2595,6 +2615,7 @@ fsm_dispatch_set_ops(struct fsm_session *session)
 
     /* Set the plugin specific ops */
     dispatch_ops = &session->p_ops->parser_ops;
+    FSM_FN_MAP(fsm_dpi_handler);
     dispatch_ops->handler = fsm_dpi_handler;
 
     session_ops = &session->ops;

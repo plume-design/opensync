@@ -40,7 +40,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * (although the "curl" command in Linux works)
  */
 #define OS_URL_FAKE_USER_AGENT      "Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/41.0.2227.0 Safari/537.36"
-#define OS_AUTHORITY                CONFIG_TARGET_PATH_OPENSYNC_CERTS"/auth.pem"
+#define OS_AUTHORITY                CONFIG_TARGET_PATH_OPENSYNC_CERTS"/"CONFIG_TARGET_OPENSYNC_CAFILE
 #define OS_01012016                 (1451606400)    /* Linux epoch 2016-01-01   GMT    */
 
 static CURLcode curl_err;

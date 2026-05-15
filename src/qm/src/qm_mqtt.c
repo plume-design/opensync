@@ -27,6 +27,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <limits.h>
 #include <stdio.h>
 #include <zlib.h>
+#include <sys/socket.h>
+#include <netdb.h>
+#include <arpa/inet.h>
 
 #include "os_time.h"
 #include "os_nif.h"
@@ -54,6 +57,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define QM_PM_STRING_LENGTH     1025 /* power mode string length */
                                      /* max length defined in schema */
 
+#define QM_MQTT_MAX_ADDRS       12
+
 /* Global MQTT instance */
 static mosqev_t         qm_mqtt;
 static bool             qm_mosquitto_init = false;
@@ -64,6 +69,9 @@ static struct ev_timer  qm_mqtt_timer_log;
 #endif
 static int64_t          qm_mqtt_reconnect_ts = 0;
 static char             qm_mqtt_broker[HOST_NAME_MAX];
+static char             qm_mqtt_addrs[QM_MQTT_MAX_ADDRS][INET6_ADDRSTRLEN];
+static int              qm_mqtt_addr_count = 0;
+static int              qm_mqtt_addr_idx   = 0;
 static char             qm_mqtt_topic[HOST_NAME_MAX];
 static int              qm_mqtt_port = STATS_MQTT_PORT;
 static int              qm_mqtt_qos = STATS_MQTT_QOS;
@@ -150,12 +158,22 @@ bool qm_mqtt_set(const char *broker, const char *port, const char *topic, const 
         goto error;
     }
 
+    /*
+     * We connect by resolved IP address rather than FQDN.  Register the FQDN
+     * as the expected TLS hostname so that OpenSSL verifies both the CA chain
+     * and the peer certificate's CN/SAN against qm_mqtt_broker even though
+     * mosquitto_connect() receives a raw IP address string.
+     */
+    mosqev_tls_hostname_set(&qm_mqtt, qm_mqtt_broker);
+
     LOGN("MQTT broker: '%s' port: %d topic: '%s' qos: %d compress: %d",
             qm_mqtt_broker, qm_mqtt_port, qm_mqtt_topic, qm_mqtt_qos, qm_mqtt_compress);
 
     // reconnect if broker changed
     if (broker_changed) {
         LOGN("MQTT broker changed - reconnecting...");
+        qm_mqtt_addr_count = 0;
+        qm_mqtt_addr_idx = 0;
         if (qm_mqtt_is_connected()) {
             // if already connected, disconnect first.
             mosqev_disconnect(&qm_mqtt);
@@ -410,6 +428,71 @@ void qm_mqtt_publish_queue()
     }
 }
 
+static bool qm_mqtt_resolve(void)
+{
+    struct addrinfo hints;
+    struct addrinfo *res;
+    struct addrinfo *rp;
+    char addr_str[INET6_ADDRSTRLEN];
+    int rc;
+
+    qm_mqtt_addr_count = 0;
+    qm_mqtt_addr_idx = 0;
+
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+
+    rc = getaddrinfo(qm_mqtt_broker, NULL, &hints, &res);
+    if (rc != 0)
+    {
+        LOGE("MQTT: Failed to resolve broker '%s': %s", qm_mqtt_broker, gai_strerror(rc));
+        return false;
+    }
+
+    for (rp = res; rp != NULL && qm_mqtt_addr_count < QM_MQTT_MAX_ADDRS; rp = rp->ai_next)
+    {
+        void *addr_ptr;
+        if (rp->ai_family == AF_INET)
+        {
+            addr_ptr = &((struct sockaddr_in *)rp->ai_addr)->sin_addr;
+        }
+        else if (rp->ai_family == AF_INET6)
+        {
+            addr_ptr = &((struct sockaddr_in6 *)rp->ai_addr)->sin6_addr;
+        }
+        else
+        {
+            continue;
+        }
+
+        if (inet_ntop(rp->ai_family, addr_ptr, addr_str, sizeof(addr_str)) == NULL)
+        {
+            LOGW("MQTT: inet_ntop failed for a resolved address");
+            continue;
+        }
+
+        STRSCPY(qm_mqtt_addrs[qm_mqtt_addr_count], addr_str);
+        qm_mqtt_addr_count++;
+    }
+
+    freeaddrinfo(res);
+
+    if (qm_mqtt_addr_count == 0)
+    {
+        LOGE("MQTT: No addresses resolved for broker '%s'", qm_mqtt_broker);
+        return false;
+    }
+
+    LOGN("MQTT: Resolved broker '%s' to %d address(es):", qm_mqtt_broker, qm_mqtt_addr_count);
+    for (int i = 0; i < qm_mqtt_addr_count; i++)
+    {
+        LOGI("MQTT:   [%d] %s", i, qm_mqtt_addrs[i]);
+    }
+
+    return true;
+}
+
 void qm_mqtt_reconnect()
 {
     mosqev_t *mqtt = &qm_mqtt;
@@ -424,12 +507,27 @@ void qm_mqtt_reconnect()
         {
             if (qm_mqtt_reconnect_ts < ticks())
             {
-                LOG(DEBUG, "Connecting to %s ...\n", qm_mqtt_broker);
-                result = mosqev_connect(&qm_mqtt, qm_mqtt_broker, qm_mqtt_port);
+                /* If the address list is exhausted or empty, re-resolve the broker FQDN */
+                if (qm_mqtt_addr_idx >= qm_mqtt_addr_count)
+                {
+                    LOGN("MQTT: Resolving broker '%s'...", qm_mqtt_broker);
+                    if (!qm_mqtt_resolve())
+                    {
+                        qm_mqtt_reconnect_ts = ticks() + TICKS_S(STATS_MQTT_RECONNECT);
+                        return;
+                    }
+                }
+
+                LOGN("MQTT: Connecting to %s [%d/%d] (broker: %s) ...",
+                     qm_mqtt_addrs[qm_mqtt_addr_idx],
+                     qm_mqtt_addr_idx + 1, qm_mqtt_addr_count,
+                     qm_mqtt_broker);
+                result = mosqev_connect(mqtt, qm_mqtt_addrs[qm_mqtt_addr_idx], qm_mqtt_port);
+                qm_mqtt_addr_idx++;
                 qm_mqtt_reconnect_ts = ticks() + TICKS_S(STATS_MQTT_RECONNECT);
                 if (!result)
                 {
-                    LOGE("Connecting.\n");
+                    LOGE("MQTT: Connecting failed.\n");
                     return;
                 }
             }

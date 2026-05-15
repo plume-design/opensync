@@ -1236,8 +1236,18 @@ osw_hostap_conf_osw_wpa_to_sae(const struct osw_drv_vif_config_ap *ap,
                                struct osw_hostap_conf_ap_config *conf)
 {
     enum osw_band band = osw_freq_to_band(ap->channel.control_freq_mhz);
+    const struct osw_wpa *wpa = &ap->wpa;
+    const struct osw_rsn_override *rsno1 = &ap->rsn_override_1;
+    const struct osw_rsn_override *rsno2 = &ap->rsn_override_2;
 
-    if (!ap->wpa.akm_sae) return;
+    const uint32_t sae_akm_bits = (1 << OSW_AKM_RSN_SAE)
+                                | (1 << OSW_AKM_RSN_SAE_EXT);
+    const bool has_sae = wpa->akm_sae
+                      || wpa->akm_sae_ext
+                      || (rsno1 && rsno1->enabled && (rsno1->akm & sae_akm_bits))
+                      || (rsno2 && rsno2->enabled && (rsno2->akm & sae_akm_bits));
+
+    if (!has_sae) return;
     if (ap->psk_list.list == NULL) return;
     if (ap->psk_list.count < 1) return;
 
@@ -1314,6 +1324,20 @@ osw_hostap_conf_osw_wpa_to_ft(const struct osw_drv_vif_config_ap *ap,
     OSW_HOSTAP_CONF_SET_VAL(conf->pmk_r1_push, ap->ft_pmk_r1_push);
     OSW_HOSTAP_CONF_SET_VAL(conf->ft_psk_generate_local, ap->ft_psk_generate_local);
     OSW_HOSTAP_CONF_SET_VAL(conf->mobility_domain, ap->ft_mobility_domain);
+}
+
+void
+osw_hostap_conf_proxy_arp(const struct osw_drv_vif_config_ap *ap,
+                          struct osw_hostap_conf_ap_config *conf)
+{
+    OSW_HOSTAP_CONF_SET_VAL(conf->proxy_arp, ap->proxy_arp);
+}
+
+void
+osw_hostap_conf_dgaf_disable(const struct osw_drv_vif_config_ap *ap,
+                             struct osw_hostap_conf_ap_config *conf)
+{
+    OSW_HOSTAP_CONF_SET_VAL(conf->disable_dgaf, ap->dgaf_disable);
 }
 
 void
@@ -1519,14 +1543,18 @@ osw_hostap_conf_fill_ap_config(struct osw_drv_conf *drv_conf,
     /* WPA/IEEE 802.11r configuration         */
     osw_hostap_conf_osw_wpa_to_ft          (ap, conf);
 
+    /* Proxy ARP and disable DGAF */
+    osw_hostap_conf_proxy_arp              (ap, conf);
+    osw_hostap_conf_dgaf_disable           (ap, conf);
+
     /* WFA WPA3 RSNO */
     if (ap->rsn_override_1.enabled) {
         const struct osw_wpa wpa = { .pmf = ap->rsn_override_1.pmf };
         const char *akms = strdupafree(osw_hostap_conf_key_mgmt_from_osw_bitmask(ap->rsn_override_1.akm));
         const char *ciphers = strdupafree(osw_hostap_conf_pairwise_from_osw_bitmask(ap->rsn_override_1.pairwise));
         const enum osw_hostap_conf_pmf mfp = osw_hostap_conf_pmf_from_osw(&wpa);
-        OSW_HOSTAP_CONF_SET_BUF(conf->rsn_override_key_mgmt, akms);
-        OSW_HOSTAP_CONF_SET_BUF(conf->rsn_override_pairwise, ciphers);
+        OSW_HOSTAP_CONF_SET_BUF(conf->rsn_override_key_mgmt, akms ?: "");
+        OSW_HOSTAP_CONF_SET_BUF(conf->rsn_override_pairwise, ciphers ?: "");
         OSW_HOSTAP_CONF_SET_VAL(conf->rsn_override_mfp, mfp);
     }
 
@@ -1535,8 +1563,8 @@ osw_hostap_conf_fill_ap_config(struct osw_drv_conf *drv_conf,
         const char *akms = strdupafree(osw_hostap_conf_key_mgmt_from_osw_bitmask(ap->rsn_override_2.akm));
         const char *ciphers = strdupafree(osw_hostap_conf_pairwise_from_osw_bitmask(ap->rsn_override_2.pairwise));
         const enum osw_hostap_conf_pmf mfp = osw_hostap_conf_pmf_from_osw(&wpa);
-        OSW_HOSTAP_CONF_SET_BUF(conf->rsn_override_key_mgmt_2, akms);
-        OSW_HOSTAP_CONF_SET_BUF(conf->rsn_override_pairwise_2, ciphers);
+        OSW_HOSTAP_CONF_SET_BUF(conf->rsn_override_key_mgmt_2, akms ?: "");
+        OSW_HOSTAP_CONF_SET_BUF(conf->rsn_override_pairwise_2, ciphers ?: "");
         OSW_HOSTAP_CONF_SET_VAL(conf->rsn_override_mfp_2, mfp);
     }
 
@@ -1560,6 +1588,7 @@ osw_hostap_conf_generate_ap_config_bufs(struct osw_hostap_conf_ap_config *conf)
     CONF_APPEND(ctrl_interface, "%s");
 
     /* IEEE 802.11 related configuration */
+    CONF_APPEND(bssid, "%s");
     CONF_APPEND(ssid, "%s");
     CONF_APPEND(country_code, "%s");
     CONF_APPEND(ieee80211d, "%d");
@@ -1704,6 +1733,9 @@ osw_hostap_conf_generate_ap_config_bufs(struct osw_hostap_conf_ap_config *conf)
     CONF_APPEND_BUF(conf->extra_buf);
     /* osw_hwaddr_list (acl) - not handled by hostapd */
 
+    CONF_APPEND(proxy_arp, "%d");
+    CONF_APPEND(disable_dgaf, "%d");
+
     CONF_FINI();
     return ;
 }
@@ -1739,61 +1771,91 @@ compare_configs(const char* old_config, const char* new_config)
     return 0;
 }
 
+void
+osw_hostap_conf_fill_ap_neigh(struct osw_neigh_list *list,
+                              const char *show_neighbor)
+{
+    if (list == NULL) return;
+    if (show_neighbor == NULL) return;
+
+    char *cpy_show_neighbor = strdupa(show_neighbor ?: "");
+    char *line;
+
+    /* 22:6a:81:ff:d3:30 ssid=706c706c nr=226a81ffd3308f000000802c00 */
+    while ((line = strsep(&cpy_show_neighbor, "\n")) != NULL) {
+        if (strlen(line) == 0) continue; /* skip empty lines */
+
+        struct osw_neigh neigh = {0};
+
+        const char *bssid = strsep(&line, " ");
+        if (bssid == NULL) continue; /* skip lines without BSSID */
+        char *word;
+
+        const bool bssid_ok = osw_hwaddr_from_cstr(bssid ?: "", &neigh.bssid);
+        if (bssid_ok == false) {
+            continue; /* skip lines with invalid BSSID */
+        }
+
+        bool ok = false;
+        while ((word = strsep(&line, " ")) != NULL) {
+            const char *key = strsep(&word, "=");
+            const char *value = word;
+
+            if (strcmp(key, "ssid") == 0) {
+                /* ignore */
+            } else if (strcmp(key, "nr") == 0) {
+                uint8_t bssid_info[4] = {0};
+                int matched = sscanf(value,
+                        /* BSSID */
+                        "%02hhx%02hhx%02hhx%02hhx%02hhx%02hhx"
+                        /* BSSID info */
+                        "%02hhx%02hhx%02hhx%02hhx"
+                        /* op class */
+                        "%02hhx "
+                        /* channel */
+                        "%02hhx "
+                        /* phy type */
+                        "%02hhx",
+                        &neigh.bssid.octet[0], /* Yes, this re-reads the BSSID */
+                        &neigh.bssid.octet[1],
+                        &neigh.bssid.octet[2],
+                        &neigh.bssid.octet[3],
+                        &neigh.bssid.octet[4],
+                        &neigh.bssid.octet[5],
+                        &bssid_info[0],
+                        &bssid_info[1],
+                        &bssid_info[2],
+                        &bssid_info[3],
+                        &neigh.op_class,
+                        &neigh.channel,
+                        &neigh.phy_type);
+                WARN_ON(matched != 13);
+                if (matched == 13) {
+                    ok = true;
+                    neigh.bssid_info = ((bssid_info[0]) |
+                                        (bssid_info[1] << 8 ) |
+                                        (bssid_info[2] << 16 ) |
+                                        (bssid_info[3] << 24 ));
+                    continue;
+                }
+            }
+        }
+
+        if (!ok) {
+            continue;
+        }
+
+        list->list = REALLOC(list->list, (list->count + 1) * sizeof(struct osw_neigh));
+        list->list[list->count] = neigh;
+        list->count++;
+    }
+}
+
 static void
 osw_hostap_conf_fill_ap_state_neighbors(const struct osw_hostap_conf_ap_state_bufs *bufs,
                                         struct osw_drv_vif_state *vstate)
 {
-    const char *show_neighbor = bufs->show_neighbor;
-    struct osw_drv_vif_state_ap *ap = &vstate->u.ap;
-    struct osw_neigh_list *neighbor_list;
-    struct osw_neigh *neighbor;
-    uint32_t bssid_info[4];
-    char *cpy_show_neighbor;
-    char *line;
-    int matched = 0;
-
-    if (show_neighbor == NULL) return;
-
-    MEMZERO(bssid_info);
-
-    neighbor_list = &ap->neigh_list;
-    neighbor_list->count = 0;
-    neighbor_list->list = CALLOC(1, sizeof(struct osw_neigh));
-    cpy_show_neighbor = STRDUP(show_neighbor);
-
-    for (line = strtok(cpy_show_neighbor, "\n");
-         line != NULL;
-         line = strtok(NULL, "\n")) {
-
-        neighbor_list->list = REALLOC(neighbor_list->list,
-                                     (neighbor_list->count + 1) * sizeof(struct osw_neigh));
-
-        neighbor = &neighbor_list->list[neighbor_list->count];
-        MEMZERO(*neighbor);
-
-        matched = sscanf(line,
-                         "%*s ssid=%*s "
-                         "nr=%02hhx%02hhx%02hhx%02hhx%02hhx%02hhx"
-                         "%02x%02x%02x%02x"
-                         "%02hhx%02hhx%02hhx",
-                         OSW_HWADDR_SARG(&neighbor->bssid),
-                         &bssid_info[0],
-                         &bssid_info[1],
-                         &bssid_info[2],
-                         &bssid_info[3],
-                         &neighbor->op_class,
-                         &neighbor->channel,
-                         &neighbor->phy_type);
-
-        neighbor->bssid_info = ((bssid_info[0]) |
-                                (bssid_info[1] << 8 ) |
-                                (bssid_info[2] << 16 ) |
-                                (bssid_info[3] << 24 ));
-
-        if (matched != 13) continue; /* FIXME - print error message */
-        neighbor_list->count++;
-    }
-    FREE(cpy_show_neighbor);
+    osw_hostap_conf_fill_ap_neigh(&vstate->u.ap.neigh_list, bufs->show_neighbor);
 }
 
 static void
@@ -2025,6 +2087,8 @@ osw_hostap_conf_fill_ap_state(const struct osw_hostap_conf_ap_state_bufs *bufs,
     STATE_GET_BOOL(ap->mode.eht_enabled,         status, "ieee80211be");
     STATE_GET_BOOL(ap->mode.ht_required,         config, "require_ht");
     STATE_GET_BOOL(ap->mode.vht_required,        config, "require_vht");
+    STATE_GET_BOOL(ap->proxy_arp,                config, "proxy_arp");
+    STATE_GET_BOOL(ap->dgaf_disable,             config, "disable_dgaf");
 
     if (osw_freq_to_band(ap->channel.control_freq_mhz) == OSW_BAND_6GHZ) {
         /* FIXME: It looks like hostapd mis-advertises what

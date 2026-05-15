@@ -139,7 +139,7 @@ int main(int argc, char *argv[])
         }
     }
 
-    log_open(name, LOG_OPEN_DEFAULT);
+    log_open(name, LOG_OPEN_DEFAULT | LOG_OPEN_STDOUT);
 
     if (te_client_init(NULL))
     {

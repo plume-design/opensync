@@ -50,23 +50,40 @@ void net_md_free_aggregator(struct net_md_aggregator *aggr)
 
     net_md_free_flow_report(aggr->report);
     FREE(aggr->report);
-    if (!aggr->eth_pairs) return;
-    pair = ds_tree_head(aggr->eth_pairs);
-    while (pair != NULL)
+    
+    /* Free eth_pairs tree if it exists */
+    if (aggr->eth_pairs != NULL)
     {
-        struct net_md_eth_pair *next;
+        pair = ds_tree_head(aggr->eth_pairs);
+        while (pair != NULL)
+        {
+            struct net_md_eth_pair *next;
 
-        next = ds_tree_next(aggr->eth_pairs, pair);
-        ds_tree_remove(aggr->eth_pairs, pair);
-        net_md_free_eth_pair(pair);
-        FREE(pair);
-        pair = next;
+            next = ds_tree_next(aggr->eth_pairs, pair);
+            ds_tree_remove(aggr->eth_pairs, pair);
+            net_md_free_eth_pair(pair);
+            FREE(pair);
+            pair = next;
+        }
     }
 
-    if (!aggr->five_tuple_flows) return;
-    net_md_free_flow_tree(aggr->five_tuple_flows);
+    /* Free five_tuple_flows tree if it exists */
+    if (aggr->five_tuple_flows != NULL)
+    {
+        net_md_free_flow_tree(aggr->five_tuple_flows);
+    }
+
+    /* Free traffic class aggregation buckets if they exist */
+    if (aggr->tc_bucket_tree != NULL)
+    {
+        net_md_free_tc_aggregated_buckets(aggr->tc_bucket_tree);
+        aggr->tc_bucket_tree = NULL;
+    }
+
+    /* Always free hash table and allocated pointers */
     FREE(aggr->eth_pairs);
     FREE(aggr->five_tuple_flows);
+
 }
 
 /**

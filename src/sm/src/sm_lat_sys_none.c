@@ -66,6 +66,10 @@ const uint32_t *sm_lat_sys_sample_get_num_pkts(const sm_lat_sys_sample_t *s)
 {
     return NULL;
 }
+const uint32_t *sm_lat_sys_sample_get_rtts(const sm_lat_sys_sample_t *s)
+{
+    return NULL;
+}
 
 void sm_lat_sys_ifname_set(sm_lat_sys_t *s, const char *if_name, bool enable)
 {
@@ -91,6 +95,9 @@ void sm_lat_sys_kind_set_last(sm_lat_sys_t *s, bool enable)
 {
 }
 void sm_lat_sys_kind_set_num_pkts(sm_lat_sys_t *s, bool enable)
+{
+}
+void sm_lat_sys_kind_set_perc(sm_lat_sys_t *s, bool enable)
 {
 }
 

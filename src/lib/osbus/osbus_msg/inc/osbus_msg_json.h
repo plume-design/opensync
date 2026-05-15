@@ -24,16 +24,20 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef GATEKEEPER_BLK_REPLY_MSG_H_INCLUDED
-#define GATEKEEPER_BLK_REPLY_MSG_H_INCLUDED
+#ifndef OSBUS_MSG_JSON_H_INCLUDED
+#define OSBUS_MSG_JSON_H_INCLUDED
 
-#include "gatekeeper_ecurl.h"
-#include "gatekeeper.pb-c.h"
-#include "os_types.h"
+#include <stdint.h>
+#include <stdbool.h>
+#include <inttypes.h>
+#include <jansson.h>
 
-bool gk_parse_reply(struct gk_reply *reply, Gatekeeper__Southbound__V1__GatekeeperReply *pb_reply);
-bool gk_parse_curl_response(struct gk_reply *reply, struct gk_curl_data *data);
-void gk_clear_bulk_responses(struct gk_reply *reply);
-void gk_clear_bulk_requests(struct gk_request *req);
+char *osbus_msg_to_json_string_flags(const osbus_msg_t *data, size_t jansson_dumps_flags);
+char *osbus_msg_to_json_string(const osbus_msg_t *data);
+osbus_msg_t *osbus_msg_from_json_string(const char *str);
+osbus_msg_t *osbus_msg_from_json_string_buf(const char *str, int size);
 
-#endif /* GATEKEEPER_BLK_REPLY_MSG_H_INCLUDED */
+json_t *osbus_msg_to_json(const osbus_msg_t *data);
+osbus_msg_t *osbus_msg_from_json(const json_t *json);
+
+#endif /* OSBUS_MSG_JSON_H_INCLUDED */

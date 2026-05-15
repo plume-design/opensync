@@ -48,7 +48,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 static uint8_t ipv6_skip_extension(const struct nfe_ipv6hdr *ip6, uint32_t size, uint32_t *offset)
 {
     const struct ipv6hdr_ext *ext;
-    
+
     ext = (const struct ipv6hdr_ext *)((const char *)ip6 + *offset);
 
     if (ip6->nhdr != NEXTHDR_ESP) {
@@ -69,14 +69,14 @@ static uint8_t ipv6_skip_extension(const struct nfe_ipv6hdr *ip6, uint32_t size,
 
 static inline bool
 ipv6_extension(uint8_t value)
-{ 
+{
     switch (value)
     {
         case NEXTHDR_HOP:
 /*        NEXTHDR_TCP: */
 /*        NEXTHDR_UDP: */
 /*        NEXTHDR_IPV6: */
-        case NEXTHDR_ROUTING: 
+        case NEXTHDR_ROUTING:
 /*        NEXTHDR_FRAGMENT: */
 /*        NEXTHDR_GRE: */
         case NEXTHDR_ESP:

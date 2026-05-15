@@ -319,4 +319,12 @@ gk_update_uncategorized_count(struct fsm_gk_session *fsm_gk_session,
 void
 gk_update_categorization_count(struct fsm_gk_session *fsm_gk_session);
 
+bool gk_get_traffic_class(struct fsm_session *session);
+
+struct gk_request *gk_get_request(struct fsm_session *session);
+
+bool gk_bulk_lookup(struct fsm_session *session, struct gk_request *req,
+                    struct gk_reply *reply);
+
+
 #endif /* GATEKEEPER_H_INCLUDED */

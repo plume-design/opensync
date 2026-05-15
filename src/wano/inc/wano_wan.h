@@ -145,6 +145,13 @@ void wano_wan_next(wano_wan_t *ww);
 bool wano_wan_is_last_config(const wano_wan_t *ww);
 
 /*
+ * Return true if the current priority group has a VLAN config but no
+ * explicit DHCP/PPPoE/static_ipv4 config at the same priority, implying
+ * that DHCP should be attempted unconditionally on the VLAN interface.
+ */
+bool wano_wan_vlan_implies_dhcp(const wano_wan_t *ww);
+
+/*
  * Signal whether WAN processing for the current WAN object has been stopped.
  */
 void wano_wan_pause(wano_wan_t *wan, bool pause);

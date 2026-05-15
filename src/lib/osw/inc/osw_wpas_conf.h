@@ -54,6 +54,8 @@ struct osw_hostap_conf_sta_network_config {
     OSW_HOSTAP_CONF_DECL_STR (ssid, 32 + 2 + 1);
     OSW_HOSTAP_CONF_DECL_BOOL(scan_ssid);
     OSW_HOSTAP_CONF_DECL_STR (bssid, 18);
+    OSW_HOSTAP_CONF_DECL_STR (bssid_accept, 256);
+    OSW_HOSTAP_CONF_DECL_STR (bssid_ignore, 256);
     OSW_HOSTAP_CONF_DECL_INT (ignore_broadcast_ssid);
     OSW_HOSTAP_CONF_DECL_INT (priority);
     OSW_HOSTAP_CONF_DECL_INT (mode);

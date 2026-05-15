@@ -30,7 +30,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "gatekeeper_cache.h"
 #include "osp_ps.h"
 #include "gatekeeper.pb-c.h"
-#include "gatekeeper_bulk_reply_msg.h"
+#include "gatekeeper_bulk_msg.h"
 
 void gk_free_cache_interface_entry(struct gk_attr_cache_interface *entry)
 {
@@ -77,6 +77,12 @@ bool gk_populate_cache_entry(struct gk_device2app_repl *dev_repl, struct gk_attr
             LOGT("%s: Processing APP entry: %s", __func__, dev_repl->app_name);
             entry->attribute_type = GK_CACHE_REQ_TYPE_APP;
             entry->attr_name = dev_repl->app_name;
+            break;
+
+        case GK_ENTRY_TYPE_TRAFFIC_CLASS:
+            LOGT("%s: Processing TRAFFIC_CLASS entry: %s", __func__, dev_repl->traffic_class);
+            entry->attribute_type = GK_CACHE_REQ_TYPE_TRAFFIC_CLASS;
+            entry->attr_name = dev_repl->traffic_class;
             break;
 
         case GK_ENTRY_TYPE_URL:

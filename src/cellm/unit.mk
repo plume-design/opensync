@@ -61,6 +61,7 @@ UNIT_DEPS += src/lib/ds
 UNIT_DEPS += src/lib/fcm_filter
 UNIT_DEPS += src/lib/inet
 UNIT_DEPS += src/lib/json_util
+UNIT_DEPS += src/lib/manager_watchdog
 UNIT_DEPS += src/lib/neigh_table
 UNIT_DEPS += src/lib/network_metadata
 UNIT_DEPS += src/lib/nf_utils

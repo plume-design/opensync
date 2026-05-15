@@ -34,7 +34,7 @@ MODE_PREFIX_NO_ADDRESS={{CONFIG_OSN_ODHCP6_MODE_PREFIX_NO_ADDRESS}}
 . ${INSTALL_PREFIX}/bin/dns_sub.sh
 
 OPTS_FILE=/var/run/odhcp6c_$1.opts
-RAND_ADDR_FILE=/var/run/odhcp6c_$1.rand_addr
+RAND_IID_SAVED=/var/run/odhcp6c_rand_iid
 IP_UNNUMBERED_MODE_FILE=/var/run/odhcp6c_$1.ip_unnumbered
 
 #
@@ -171,57 +171,61 @@ log_dhcp6_time_event()
 #
 # From the delegated prefix generate a random IPv6 address.
 #
-rand_addr_gen_from_prefix()
+rand_addr_get_from_prefix()
 {
-    local prefix=${1%::*}
-    local prefix_len=$2
+    local device=$1         # device for which we need random address
+    local prefix=${2%::*}   # prefix
+    local prefix_len=$3     # prefix len
+    local rand_IID=""       # random interface identifier
+
+    if [ -e "$RAND_IID_SAVED.$device" ]; then
+        rand_IID=$(cat "$RAND_IID_SAVED.$device")
+    else
+        rand_IID="$(dd if=/dev/urandom bs=8 count=1 2>/dev/null | hexdump | sed 's/^0*//;s/ *$//;s/ /:/g;q')"
+
+        echo "$rand_IID" > "$RAND_IID_SAVED.$device"
+    fi
+
+    # build the random address from prefix and random IID:
     local addr=$prefix
     [ $prefix_len -le 48 ] && addr="$addr:"
-    addr="${addr}$(dd if=/dev/urandom bs=8 count=1 2>/dev/null | hexdump | sed 's/^0*//;s/ *$//;s/ /:/g;q')"
+    addr="${addr}${rand_IID}"
+
     echo "${addr}"
 }
 
 #
-# Generate a random address from the prefix and
-# assign it to the interface.
+# Generate a random address from the prefix and assign it to the interface.
 #
 rand_addr_assign_from_prefix()
 {
-    local device=$1
-    local prefix=$2
+    local device=$1         # interface to assign generated address to
+    local prefix=$2         # prefix
+    local addr_plen=$3      # prefix length for generated address
     local rand_addr=""
 
     local paddr="${prefix%%,*}"
     local plen="${paddr#*/}"    # prefix length
-    local pref="${paddr%/*}"    # prefix
+    local pref="${paddr%/*}"    # prefix w/o length
 
-    if [ -e "$RAND_ADDR_FILE" ]; then
-        rand_addr=$(cat "$RAND_ADDR_FILE")
-    else
-        rand_addr=$(rand_addr_gen_from_prefix "$pref" "$plen")
-        echo "$rand_addr" > $RAND_ADDR_FILE
-    fi
+    rand_addr=$(rand_addr_get_from_prefix "$device" "$pref" "$plen")
 
-    ip -6 addr replace "${rand_addr}/128" dev "$device"
-    ip -6 neigh add proxy "$rand_addr" dev "$LAN_INTF"
+    ip -6 addr replace "${rand_addr}/${addr_plen}" dev "$device"
+
+    echo "${rand_addr}"
 }
 
 #
-# Generate a ::1/64 address from prefix
-# and assign it to the LAN interface.
+# Generate a /64 address from prefix and assign it to the LAN interface.
+# The address must be different from the prefix::1/64 address the controller
+# will later configure as static address on the LAN interface.
 #
 ip_unnumbered_assign_addr_from_prefix()
 {
-    local device=$1
-    local prefix=$2
-    local addr=""
+    local prefix=$1
 
-    local paddr="${prefix%%,*}"
-    local pref="${paddr%/*}"
+    rand_addr_assign_from_prefix "$LAN_INTF" "$prefix" "64"
 
-    addr="${pref}1/64"
-
-    ip -6 addr replace "$addr" dev "$LAN_INTF"
     ip link set up dev "$LAN_INTF"  # LAN interface may be down, bring it up
 
     # Mark the interface in IP unnumbered mode:
@@ -350,17 +354,19 @@ setup_interface()
         local prefix=$(echo "$PREFIXES" | cut -d ' ' -f 1)
 
         if [ "$MODE_PREFIX_NO_ADDRESS" == "RAND_ADDRESS" ]; then
-            # Take (the first) prefix, generate a random address from it
+            # Take (the first) prefix, generate a random /128 address from it
             # and assign it to the interface to allow connectivity:
-            rand_addr_assign_from_prefix "$device" "$prefix"
+            local rand_addr=$(rand_addr_assign_from_prefix "$device" "$prefix" "128")
+
+            ip -6 neigh add proxy "$rand_addr" dev "$LAN_INTF"
 
         elif [ "$MODE_PREFIX_NO_ADDRESS" == "IP_UNNUMBERED" ]; then
             # IP unnumbered: The interface "borrows" an IP address
             # from another interface.
             #
-            # Take (the first) prefix, generate a ::1/64 address from it
+            # Take (the first) prefix, generate a /64 address from it
             # and assign it to the LAN interface to allow connectivity:
-            ip_unnumbered_assign_addr_from_prefix "$device" "$prefix"
+            ip_unnumbered_assign_addr_from_prefix "$prefix"
         fi
     fi
 
@@ -381,6 +387,7 @@ teardown_interface()
     ip -6 route flush dev "$device" proto ra
     ip -6 address flush dev "$device" scope global
     update_resolv "$device" ""
+    ip_unnumbered_teardown "$device"
 }
 
 ip_unnumbered_teardown()
@@ -405,11 +412,9 @@ ip_unnumbered_teardown()
         ;;
         stopped|unbound)
             teardown_interface "$1"
-            ip_unnumbered_teardown "$1"
         ;;
         started)
             teardown_interface "$1"
-            ip_unnumbered_teardown "$1"
         ;;
     esac
 

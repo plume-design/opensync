@@ -150,6 +150,10 @@ gatekeeper_req_type_to_str(int req_type)
             .req_type_str = "app",
         },
         {
+            .req_type = FSM_TRAFFIC_CLASS_REQ,
+            .req_type_str = "traffic_class",
+        },
+        {
             .req_type = FSM_IPV4_FLOW_REQ,
             .req_type_str = "ipv4_tuple",
         },
@@ -663,8 +667,14 @@ gatekeeper_get_app_req(struct gk_request_data *request_data)
 
     gk_app_req = &req_data->gk_app_req;
     gk_app_req->header = header;
-    gk_app_req->appname = policy_req->url;
-
+    if (req->req.gk_app_req.traffic_class)
+    {
+        gk_app_req->traffic_class = policy_req->url;
+    }
+    else
+    {
+        gk_app_req->appname = policy_req->url;
+    }
     return true;
 }
 
@@ -734,6 +744,10 @@ gatekeeper_get_req(struct fsm_session *session,
             break;
 
         case FSM_APP_REQ:
+            rc = gatekeeper_get_app_req(&request_data);
+            break;
+        case FSM_TRAFFIC_CLASS_REQ:
+            gk_req->req.gk_app_req.traffic_class = req->url;
             rc = gatekeeper_get_app_req(&request_data);
             break;
 

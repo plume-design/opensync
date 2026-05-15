@@ -345,6 +345,8 @@ bool nm2_iface_apply(struct nm2_iface *piface)
 {
     TRACE();
 
+    LOG(DEBUG, "nm2_iface: %s %s", piface->if_name, __func__);
+
     static ev_debounce apply_timer;
 
     static bool apply_init = false;

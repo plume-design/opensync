@@ -60,6 +60,7 @@ struct ow_conf_phy {
     bool *ap_vht_enabled;
     bool *ap_he_enabled;
     bool *ap_eht_enabled;
+    bool *ap_atf_enabled;
     int *tx_chainmask;
     int *tx_power_dbm;
     int *thermal_tx_chainmask;
@@ -70,6 +71,7 @@ struct ow_conf_phy {
     enum osw_rate_legacy *ap_mcast_rate;
     enum osw_rate_legacy *ap_mgmt_rate;
     struct osw_channel *ap_channel;
+    enum osw_zero_wait_dfs *ap_zero_wait_dfs;
 };
 
 struct ow_conf_vif {
@@ -138,6 +140,9 @@ struct ow_conf_vif {
     bool *ap_oce_min_rssi_enable;
     int *ap_oce_retry_delay_sec;
     int *ap_max_sta;
+    bool *ap_proxy_arp;
+    bool *ap_dgaf_disable;
+    enum osw_airtime_precedence *ap_airtime_precedence;
     int *ap_group_rekey_seconds;
     int *ap_ft_mobility_domain;
     int *ap_beacon_interval_tu;
@@ -149,6 +154,7 @@ struct ow_conf_vif {
     enum osw_pmf *ap_pmf;
     struct osw_multi_ap *ap_multi_ap;
     enum osw_acl_policy *ap_acl_policy;
+    ow_conf_rsno_mode_t *ap_rsno_mode;
     struct ds_tree sta_net_tree;
 };
 
@@ -365,6 +371,37 @@ ow_conf_conf_mutate_phy(struct ow_conf *self,
     else if (ow_phy->tx_chainmask != NULL) {
         osw_phy->tx_chainmask = *ow_phy->tx_chainmask;
     }
+
+    if (ow_phy->ap_zero_wait_dfs != NULL) {
+        osw_phy->zero_wait_dfs = *ow_phy->ap_zero_wait_dfs;
+    }
+
+    if (ow_phy->ap_atf_enabled != NULL) {
+        osw_phy->atf_enabled = *ow_phy->ap_atf_enabled;
+    }
+}
+
+/* TODO:
+ * Add unit tests to cover all cases 
+ */
+static void
+ow_conf_conf_mutate_airtime_precedence(struct ow_conf_phy *ow_phy,
+                                       struct ow_conf_vif *ow_vif,
+                                       struct osw_conf_vif *osw_vif)
+{
+    if (ow_phy->ap_atf_enabled == NULL) {
+        return;
+    }
+
+    if (*ow_phy->ap_atf_enabled == false) {
+        osw_vif->u.ap.airtime_precedence = OSW_AIRTIME_PRECEDENCE_DISABLED;
+    }
+    else if (ow_vif->ap_airtime_precedence != NULL) {
+        osw_vif->u.ap.airtime_precedence = *ow_vif->ap_airtime_precedence;
+    }
+    else if (*ow_phy->ap_atf_enabled == true) {
+        osw_vif->u.ap.airtime_precedence = OSW_AIRTIME_PRECEDENCE_DEFAULT;
+    }
 }
 
 static void
@@ -542,6 +579,12 @@ ow_conf_conf_mutate_vif_ap_neigh_ft(struct ow_conf *m,
     ow_conf_conf_mutate_neigh_ft_add_local(osw_phy_tree, vif);
 }
 
+static struct ow_conf_passpoint *
+ow_conf_passpoint_get_ro(struct ow_conf *self, const char *ref_id)
+{
+    return ds_tree_find(&self->passpoint_tree, ref_id);
+}
+
 static void
 ow_conf_conf_mutate_passpoint(struct ow_conf *self,
                               char *in_ref_id,
@@ -552,7 +595,7 @@ ow_conf_conf_mutate_passpoint(struct ow_conf *self,
         return;
     }
 
-    struct ow_conf_passpoint *p = ds_tree_find(&self->passpoint_tree, in_ref_id);
+    struct ow_conf_passpoint *p = ow_conf_passpoint_get_ro(self, in_ref_id);
     size_t i;
 
     if (p == NULL) {
@@ -696,6 +739,47 @@ ow_conf_phy_is_rsno_supported(const struct ow_conf_phy *ow_phy)
 }
 
 static void
+ow_conf_conf_mutate_proxy_arp(struct ow_conf *self,
+                              struct ow_conf_vif *ow_vif,
+                              bool *proxy_arp)
+{
+    if (proxy_arp == NULL) return;
+    if (ow_vif->ap_proxy_arp != NULL) {
+        *proxy_arp = *(ow_vif->ap_proxy_arp);
+        return;
+    }
+    /* If ap_proxy_arp is unset, hs20_enabled overrides it */
+    if (ow_vif->ap_passpoint_ref == NULL) return;
+
+    struct ow_conf_passpoint *passpoint = ow_conf_passpoint_get_ro(self, ow_vif->ap_passpoint_ref);
+    if (passpoint == NULL) return;
+    if (passpoint->hs20_enabled == NULL) return;
+
+    *proxy_arp = *(passpoint->hs20_enabled);
+}
+
+
+static void
+ow_conf_conf_mutate_dgaf_disable(struct ow_conf *self,
+                              struct ow_conf_vif *ow_vif,
+                              bool *dgaf_disable)
+{
+    if (dgaf_disable == NULL) return;
+    if (ow_vif->ap_dgaf_disable != NULL) {
+        *dgaf_disable = *(ow_vif->ap_dgaf_disable);
+        return;
+    }
+    /* If ap_dgaf_disable is unset, hs20_enabled overrides it */
+    if (ow_vif->ap_passpoint_ref == NULL) return;
+
+    struct ow_conf_passpoint *passpoint = ow_conf_passpoint_get_ro(self, ow_vif->ap_passpoint_ref);
+    if (passpoint == NULL) return;
+    if (passpoint->hs20_enabled == NULL) return;
+
+    *dgaf_disable = *(passpoint->hs20_enabled);
+}
+
+static void
 ow_conf_conf_mutate_vif_ap(struct ow_conf *self,
                            struct ow_conf_phy *ow_phy,
                            struct ow_conf_vif *ow_vif,
@@ -721,6 +805,7 @@ ow_conf_conf_mutate_vif_ap(struct ow_conf *self,
         if (ow_phy->ap_mcast_rate != NULL) osw_vif->u.ap.mode.mcast_rate = *ow_phy->ap_mcast_rate;
         if (ow_phy->ap_mgmt_rate != NULL) osw_vif->u.ap.mode.mgmt_rate = *ow_phy->ap_mgmt_rate;
         if (ow_phy->tx_power_dbm != NULL) osw_vif->tx_power_dbm = *ow_phy->tx_power_dbm;
+        ow_conf_conf_mutate_airtime_precedence(ow_phy, ow_vif, osw_vif);
     }
     if (ow_vif->ap_channel != NULL) osw_vif->u.ap.channel = *ow_vif->ap_channel;
     if (ow_vif->ap_ssid != NULL) osw_vif->u.ap.ssid = *ow_vif->ap_ssid;
@@ -787,6 +872,8 @@ ow_conf_conf_mutate_vif_ap(struct ow_conf *self,
     ow_conf_conf_mutate_radius(self, &ow_vif->ap_acct_list, &osw_vif->u.ap.accounting_list);
     ow_conf_conf_mutate_passpoint(self, ow_vif->ap_passpoint_ref, &osw_vif->u.ap.passpoint);
     ow_conf_conf_mutate_fast_transition(ow_vif, osw_vif);
+    ow_conf_conf_mutate_proxy_arp(self, ow_vif, &osw_vif->u.ap.proxy_arp);
+    ow_conf_conf_mutate_dgaf_disable(self, ow_vif, &osw_vif->u.ap.dgaf_disable);
 
     if (osw_vif->u.ap.beacon_interval_tu == 0) {
         osw_vif->u.ap.beacon_interval_tu = OW_CONF_DEFAULT_BEACON_INTERVAL_TU;
@@ -797,7 +884,9 @@ ow_conf_conf_mutate_vif_ap(struct ow_conf *self,
 
     const bool rsno_supported = ow_conf_phy_is_rsno_supported(ow_phy);
     if (rsno_supported) {
-        const ow_conf_rsno_mode_t rsno_mode = ow_conf_rsno_mode_get(osw_vif);
+        const ow_conf_rsno_mode_t rsno_mode = ow_vif->ap_rsno_mode != NULL
+                                            ? *ow_vif->ap_rsno_mode
+                                            : ow_conf_rsno_mode_get(osw_vif);
         ow_conf_rsno_mutate_vif_ap(osw_vif, rsno_mode);
     }
 }
@@ -1122,6 +1211,7 @@ ow_conf_phy_unset(const char *phy_name)
     ds_tree_remove(&self->phy_tree, phy);
     FREE(phy->phy_name);
     FREE(phy->enabled);
+    FREE(phy->ap_atf_enabled);
     FREE(phy->ap_wmm_enabled);
     FREE(phy->ap_ht_enabled);
     FREE(phy->ap_vht_enabled);
@@ -1137,6 +1227,7 @@ ow_conf_phy_unset(const char *phy_name)
     FREE(phy->ap_beacon_rate);
     FREE(phy->ap_mcast_rate);
     FREE(phy->ap_mgmt_rate);
+    FREE(phy->ap_zero_wait_dfs);
     FREE(phy);
 }
 
@@ -1659,11 +1750,6 @@ ow_conf_passpoint_get(struct ow_conf *self, const char *ref_id)
     return ds_tree_find(&self->passpoint_tree, ref_id) ?: ow_conf_passpoint_alloc(self, ref_id);
 }
 
-static struct ow_conf_passpoint *
-ow_conf_passpoint_get_ro(struct ow_conf *self, const char *ref_id)
-{
-    return ds_tree_find(&self->passpoint_tree, ref_id);
-}
 
 void
 ow_conf_passpoint_set_hessid(const char *ref_id,
@@ -2089,8 +2175,12 @@ ow_conf_vif_flush_sta_net(const char *vif_name)
 #define ARG_phy_ap_mcast_rate(x) (osw_rate_legacy_to_halfmbps(x) * 500)
 #define FMT_phy_ap_mgmt_rate "%d kbps"
 #define ARG_phy_ap_mgmt_rate(x) (osw_rate_legacy_to_halfmbps(x) * 500)
+#define FMT_phy_ap_zero_wait_dfs "%s"
+#define ARG_phy_ap_zero_wait_dfs(x) osw_zero_wait_dfs_to_str(x)
 #define FMT_phy_ap_channel OSW_CHANNEL_FMT
 #define ARG_phy_ap_channel(x) OSW_CHANNEL_ARG(&(x))
+#define FMT_phy_ap_atf_enabled "%d"
+#define ARG_phy_ap_atf_enabled(x) x
 
 #define FMT_vif_enabled "%d"
 #define ARG_vif_enabled(x) x
@@ -2219,6 +2309,8 @@ ow_conf_vif_flush_sta_net(const char *vif_name)
                                   (x) == OSW_ACL_ALLOW_LIST ? "allow" : \
                                   (x) == OSW_ACL_DENY_LIST ? "deny" : \
                                   "undefined")
+#define FMT_vif_ap_rsno_mode "%s"
+#define ARG_vif_ap_rsno_mode(x) (ow_conf_rsno_mode_to_cstr(x) ?: "undefined")
 
 #define FMT_ap_passpoint_hessid OSW_SSID_FMT
 #define ARG_ap_passpoint_hessid(x) OSW_SSID_ARG(&(x))
@@ -2258,6 +2350,12 @@ ow_conf_vif_flush_sta_net(const char *vif_name)
 #define ARG_vif_ap_oce_retry_delay_sec(x) x
 #define FMT_vif_ap_max_sta "%d"
 #define ARG_vif_ap_max_sta(x) x
+#define FMT_vif_ap_proxy_arp "%d"
+#define ARG_vif_ap_proxy_arp(x) x
+#define FMT_vif_ap_dgaf_disable "%d"
+#define ARG_vif_ap_dgaf_disable(x) x
+#define FMT_vif_ap_airtime_precedence "%s"
+#define ARG_vif_ap_airtime_precedence(x) osw_airtime_precedence_to_str(x)
 
 #define DEFINE_PHY_FIELD(name) \
     DEFINE_FIELD(name, \
@@ -2318,6 +2416,8 @@ DEFINE_PHY_FIELD(ap_basic_rates);
 DEFINE_PHY_FIELD(ap_beacon_rate);
 DEFINE_PHY_FIELD(ap_mcast_rate);
 DEFINE_PHY_FIELD(ap_mgmt_rate);
+DEFINE_PHY_FIELD(ap_zero_wait_dfs);
+DEFINE_PHY_FIELD(ap_atf_enabled);
 
 DEFINE_VIF_FIELD(type);
 DEFINE_VIF_FIELD(enabled);
@@ -2372,6 +2472,7 @@ DEFINE_VIF_FIELD(ap_beacon_interval_tu);
 DEFINE_VIF_FIELD(ap_pmf);
 DEFINE_VIF_FIELD(ap_multi_ap);
 DEFINE_VIF_FIELD(ap_acl_policy);
+DEFINE_VIF_FIELD(ap_rsno_mode);
 DEFINE_VIF_FIELD(ap_wps);
 DEFINE_VIF_FIELD(ap_wmm);
 DEFINE_VIF_FIELD(ap_wmm_uapsd);
@@ -2384,6 +2485,9 @@ DEFINE_VIF_FIELD(ap_oce_min_rssi_dbm);
 DEFINE_VIF_FIELD(ap_oce_min_rssi_enable);
 DEFINE_VIF_FIELD(ap_oce_retry_delay_sec);
 DEFINE_VIF_FIELD(ap_max_sta);
+DEFINE_VIF_FIELD(ap_proxy_arp);
+DEFINE_VIF_FIELD(ap_dgaf_disable);
+DEFINE_VIF_FIELD(ap_airtime_precedence);
 
 void
 ow_conf_vif_clear(const char *vif_name)
@@ -2432,6 +2536,7 @@ ow_conf_vif_clear(const char *vif_name)
     ow_conf_vif_set_ap_pmf(vif_name, NULL);
     ow_conf_vif_set_ap_multi_ap(vif_name, NULL);
     ow_conf_vif_set_ap_acl_policy(vif_name, NULL);
+    ow_conf_vif_set_ap_rsno_mode(vif_name, NULL);
     ow_conf_vif_set_ap_wps(vif_name, NULL);
     ow_conf_vif_set_ap_wmm(vif_name, NULL);
     ow_conf_vif_set_ap_wmm_uapsd(vif_name, NULL);
@@ -2451,6 +2556,9 @@ ow_conf_vif_clear(const char *vif_name)
     ow_conf_vif_set_ap_oce_min_rssi_enable(vif_name, NULL);
     ow_conf_vif_set_ap_oce_retry_delay_sec(vif_name, NULL);
     ow_conf_vif_set_ap_max_sta(vif_name, NULL);
+    ow_conf_vif_set_ap_proxy_arp(vif_name, NULL);
+    ow_conf_vif_set_ap_dgaf_disable(vif_name, NULL);
+    ow_conf_vif_set_ap_airtime_precedence(vif_name, NULL);
 }
 
 void

@@ -40,6 +40,7 @@ UNIT_SRC += $(if $(CONFIG_IOTM_ENABLE_THREAD),src/iotm_thread_otbr.c)
 UNIT_DEPS := src/lib/common
 UNIT_DEPS += src/lib/json_util
 UNIT_DEPS += src/lib/log
+UNIT_DEPS += src/lib/manager_watchdog
 UNIT_DEPS += src/lib/osa
 UNIT_DEPS += src/lib/osp
 UNIT_DEPS += src/lib/ovsdb

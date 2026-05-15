@@ -78,7 +78,7 @@ rts_buffer_push_capacity(struct rts_buffer *b, struct rts_pool *mp)
 
     if (b->len + 1 > (int)rts_buffer_capacity(b))
         return rts_buffer_reserve(b, b->len + 1, mp);
-        
+
     return true;
 }
 

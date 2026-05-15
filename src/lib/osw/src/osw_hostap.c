@@ -256,7 +256,7 @@ osw_hostap_cipher_selector_to_osw(const char *s)
     return cipher;
 }
 
-static void
+void
 osw_hostap_bss_sta_parse(const char *buf,
                          struct osw_hostap_bss_sta *sta)
 {
@@ -989,19 +989,8 @@ osw_hostap_bss_hapd_set_bssid_neigh_cb(struct hostap_txq_req *req,
 }
 
 static void
-osw_hostap_bss_hapd_set_bssid_neigh(struct osw_hostap_bss_hapd *hapd,
-                                    const char *msg)
+osw_hostap_bss_hapd_set_bssid_neigh(struct osw_hostap_bss_hapd *hapd)
 {
-    char buf[1024];
-    STRSCPY_WARN(buf, msg);
-    char *p = buf;
-    char *event_name = strsep(&p, " ");
-    if (event_name == NULL) return;
-
-    const bool match = (strcmp(event_name, "CTRL-EVENT-CHANNEL-SWITCH") == 0)
-                    || (strcmp(event_name, "DFS-CAC-COMPLETED") == 0)
-                    || (strcmp(event_name, "CTRL-EVENT-STARTED-CHANNEL-SWITCH") == 0);
-    if (!match) return;
     if (osw_hwaddr_is_zero(&hapd->bssid)) return;
 
     hostap_txq_req_free(hapd->bssid_neigh_req);
@@ -1027,6 +1016,22 @@ osw_hostap_bss_hapd_set_bssid_neigh(struct osw_hostap_bss_hapd *hapd,
                                                hapd);
 }
 
+static bool osw_hostap_bss_hapd_set_bssid_neigh_match_event(const char *msg)
+{
+    if (msg == NULL) return false;
+
+    char buf[1024];
+    STRSCPY_WARN(buf, msg);
+    char *p = buf;
+    char *event_name = strsep(&p, " ");
+    if (event_name == NULL) return false;
+
+    return (strcmp(event_name, "CTRL-EVENT-CHANNEL-SWITCH") == 0)
+        || (strcmp(event_name, "DFS-CAC-COMPLETED") == 0)
+        || (strcmp(event_name, "AP-CSA-FINISHED") == 0)
+        || (strcmp(event_name, "CTRL-EVENT-STARTED-CHANNEL-SWITCH") == 0);
+}
+
 static void
 osw_hostap_bss_hapd_msg_cb(struct hostap_conn_ref *ref,
                            const void *msg,
@@ -1048,7 +1053,9 @@ osw_hostap_bss_hapd_msg_cb(struct hostap_conn_ref *ref,
         msg_len -= skip_len;
     }
 
-    osw_hostap_bss_hapd_set_bssid_neigh(hapd, msg);
+    if (osw_hostap_bss_hapd_set_bssid_neigh_match_event(msg)) {
+        osw_hostap_bss_hapd_set_bssid_neigh(hapd);
+    }
 
     if (bss->ops->event_fn != NULL) {
         bss->ops->event_fn(msg, msg_len, bss->ops_priv);
@@ -1062,6 +1069,7 @@ osw_hostap_bss_hapd_opened_cb(struct hostap_ev_ctrl *ctrl,
 {
     struct osw_hostap_bss_hapd *hapd = priv;
     osw_hostap_bss_hapd_notify_changed(hapd);
+    osw_hostap_bss_hapd_set_bssid_neigh(hapd);
 }
 
 static void
@@ -1948,6 +1956,8 @@ osw_hostap_set_conf_ap(struct osw_hostap *hostap,
                           || dvif->u.ap.ft_pmk_r1_push_changed
                           || dvif->u.ap.ft_psk_generate_local_changed
                           || dvif->u.ap.ft_mobility_domain_changed
+                          || dvif->u.ap.proxy_arp_changed
+                          || dvif->u.ap.dgaf_disable_changed
                           || dphy->reg_domain_changed;
     const bool psk_file_invalidated = (dvif->u.ap.psk_list_changed
                                     || dvif->u.ap.wps_cred_list_changed);
@@ -2362,6 +2372,10 @@ osw_hostap_start(struct osw_hostap *m)
 
 OSW_MODULE(osw_hostap)
 {
+    if (osw_etc_get("OSW_HOSTAP_DISABLE")) {
+        LOGD(LOG_PREFIX("osw_hostap module is disabled"));
+        return NULL;
+    }
     struct osw_hostap *m = CALLOC(1, sizeof(*m));
     OSW_MODULE_LOAD(osw_state);
     osw_hostap_init(m);

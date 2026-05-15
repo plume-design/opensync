@@ -104,13 +104,14 @@ void qm_enqueue_and_reply(int fd, qm_item_t *qi)
 {
     qm_request_t *req = &qi->req;
     qm_response_t res;
+    uint32_t req_flags = req->flags;
 
     LOG(TRACE, "%s", __FUNCTION__);
     qm_res_init(&res, req);
-    // enqueue
+    // enqueue (may free qi; req is invalid after this call)
     qm_enqueue_or_send(qi, &res);
     // reply
-    if (!(req->flags & QM_REQ_FLAG_NO_RESPONSE)) {
+    if (!(req_flags & QM_REQ_FLAG_NO_RESPONSE)) {
         // send response if not disabled by flag
         qm_res_status(&res);
         qm_conn_write_res(fd, &res);

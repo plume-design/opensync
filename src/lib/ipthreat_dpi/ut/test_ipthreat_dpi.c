@@ -498,7 +498,7 @@ void ipthreat_dpi_setUp(void)
     g_v6_outbound_key.sport = htons(g_v6_tuple.src_port);
     g_v6_outbound_key.dport = htons(g_v6_tuple.dst_port);
     g_v6_outbound_key.dmac = &g_dst_mac;
-    g_v6_outbound_key.smac = &g_src_mac;    
+    g_v6_outbound_key.smac = &g_src_mac;
 
     g_v6_outbound_acc.key = &g_v6_outbound_key;
     g_v6_outbound_acc.direction = g_v6_tuple.direction;

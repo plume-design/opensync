@@ -541,7 +541,7 @@ int main(int argc, char *argv[])
     argc -= optind;
     argv += optind;
 
-    log_open("osps", verbose ? LOG_OPEN_DEFAULT : LOG_OPEN_SYSLOG);
+    log_open("osps", verbose ? LOG_OPEN_DEFAULT | LOG_OPEN_STDOUT : LOG_OPEN_SYSLOG);
 
     if (debug)
     {

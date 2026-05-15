@@ -59,6 +59,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "os_socket.h"
 #include "ovsdb.h"
 #include "target.h"
+#include "manager_watchdog.h"
 
 #include "fm.h"
 
@@ -103,6 +104,9 @@ int main(int argc, char **argv)
 
     // Enable runtime severity updates
     log_register_dynamic_severity(loop);
+
+    // Initialize manager watchdog
+    manager_watchdog_init(loop, CONFIG_MANAGER_WATCHDOG_TIMEOUT_SEC);
 
     // Install crash handlers that dump the stack to the log file
     backtrace_init();

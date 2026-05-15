@@ -26,6 +26,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <stdio.h>
 
+#include <openssl/x509_vfy.h>
+
 #include "os.h"
 #include "log.h"
 #include "mosqev.h"
@@ -96,6 +98,7 @@ static void mosqev_init_cbk(mosqev_t *self)
     mosquitto_unsubscribe_callback_set(self->me_mosq, mosqev_mosquitto_unsubscribe_cbk);
 }
 
+/* Reinit mosqev. Must be called after mosquitto_reinitialise(). */
 static int mosqev_reinit_settings(mosqev_t *self)
 {
     int rc;
@@ -128,6 +131,63 @@ static int mosqev_reinit_settings(mosqev_t *self)
     if (rc) {
         LOG(ERR, "Failed to set tls opts: %s", mosquitto_strerror(rc));
         return rc;
+    }
+
+    if (self->me_tls_hostname[0] != '\0') {
+        /* The assumption is: We've just called mosquitto_reinitialise() which
+         * called mosquitto_destroy() which already freed any previously set SSL CTX.
+         *
+         * Build a fresh SSL_CTX carrying the FQDN hostname check.
+         */
+        self->me_ssl_ctx = SSL_CTX_new(TLS_client_method());
+        if (self->me_ssl_ctx == NULL) {
+            LOG(ERR, "Failed to allocate SSL_CTX for hostname verification");
+            return MOSQ_ERR_NOMEM;
+        }
+
+        /*
+         * Embed the expected FQDN in the SSL CTX verify parameters.
+         * Every SSL* created via SSL_new(me_ssl_ctx) inherits this via
+         * X509_VERIFY_PARAM_inherit(), so OpenSSL will check the peer cert
+         * hostname even though mosquitto_connect() is given a raw IP address instead of FQDN.
+         */
+        if (X509_VERIFY_PARAM_set1_host(SSL_CTX_get0_param(self->me_ssl_ctx),
+                                        self->me_tls_hostname, 0) != 1) {
+            LOG(ERR, "Failed to set verification of hostname '%s' on SSL_CTX", self->me_tls_hostname);
+            SSL_CTX_free(self->me_ssl_ctx);
+            self->me_ssl_ctx = NULL;
+            return MOSQ_ERR_TLS;
+        }
+
+        /*
+         * Hand the SSL CTX to mosquitto with defaults=1 so that mosquitto still
+         * loads the CA, client cert, and key (from mosqev_tls_set/opts_set)
+         * onto our CTX.
+         *
+         * We set tls_insecure=true so that mosquitto's net__init_ssl_hostname()
+         * does NOT override the FQDN param we just set with the raw IP address
+         * (Verified by testing w/ "fake FQDN": In such a case peer verification is indeed still done))
+         */
+        rc = mosquitto_int_option(self->me_mosq, MOSQ_OPT_SSL_CTX_WITH_DEFAULTS, 1);
+        if (rc) {
+            LOG(ERR, "Failed to set MOSQ_OPT_SSL_CTX_WITH_DEFAULTS: %s", mosquitto_strerror(rc));
+            SSL_CTX_free(self->me_ssl_ctx);
+            self->me_ssl_ctx = NULL;
+            return rc;
+        }
+        rc = mosquitto_void_option(self->me_mosq, MOSQ_OPT_SSL_CTX, self->me_ssl_ctx);
+        if (rc) {
+            LOG(ERR, "Failed to set MOSQ_OPT_SSL_CTX: %s", mosquitto_strerror(rc));
+            SSL_CTX_free(self->me_ssl_ctx);
+            self->me_ssl_ctx = NULL;
+            return rc;
+        }
+        rc = mosquitto_tls_insecure_set(self->me_mosq, true);
+        if (rc) {
+            LOG(ERR, "Failed to set tls insecure (custom hostname SSL CTX override): %s",
+                mosquitto_strerror(rc));
+            return rc;
+        }
     }
 
     return 0;
@@ -223,6 +283,7 @@ void mosqev_del(mosqev_t *self)
         }
 
         mosquitto_destroy(self->me_mosq);
+        self->me_ssl_ctx = NULL; /* mosquitto_destroy() has already freed the SSL CTX */
     }
 }
 
@@ -256,6 +317,21 @@ bool mosqev_tls_set(mosqev_t *self,
         return false;
     }
 
+    return true;
+}
+
+/*
+ * Set the FQDN to verify against the peer certificate's CN/SAN when
+ * connecting by raw IP address.
+ *
+ * The setting is remembered; on every mosqev_connect() a fresh SSL_CTX is built
+ * with the FQDN embedded in its X509_VERIFY_PARAM so that OpenSSL performs full
+ * hostname verification even though mosquitto_connect() receives an IP string.
+ * CA chain validation remains active.  Passing NULL or "" clears the feature.
+ */
+bool mosqev_tls_hostname_set(mosqev_t *self, const char *hostname)
+{
+    STRSCPY(self->me_tls_hostname, hostname ? hostname : "");
     return true;
 }
 

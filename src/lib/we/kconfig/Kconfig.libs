@@ -8,7 +8,7 @@ menuconfig LIB_WE
     config WE_AGENT_MEMPOOL
         depends on LIB_WE
         bool "Use a memory pool for WE memory allocations"
-        default y
+        default n
         help
             To improve performance, a pre-allocated memory pool will
             be used for WE. During initialization, this pool is created,

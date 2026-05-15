@@ -41,6 +41,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <ds_tree.h>
 #include <ds_list.h>
 #include <os_backtrace.h>
+#include <manager_watchdog.h>
 
 /* osw */
 #include <osw_ut.h>
@@ -72,6 +73,7 @@ ow_core_init(EV_P)
     log_severity_set(ow_core_get_log_severity());
     osw_thread_init();
     module_init();
+    manager_watchdog_init(EV_A_ CONFIG_MANAGER_WATCHDOG_TIMEOUT_SEC);
     assert(ev_run(EV_A_ EVRUN_ONCE | EVRUN_NOWAIT) == 0);
 }
 

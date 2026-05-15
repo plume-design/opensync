@@ -53,6 +53,7 @@ struct sm_lat_core
     uint32_t avg_enabled_count;
     uint32_t num_pkts_enabled_count;
     uint32_t last_enabled_count;
+    uint32_t perc_enabled_count;
 };
 
 struct sm_lat_core_netdev
@@ -93,6 +94,16 @@ struct sm_lat_core_vif
 };
 typedef struct sm_lat_core_vif sm_lat_core_vif_t;
 
+struct sm_lat_core_bins_config
+{
+    uint16_t range_min;
+    uint16_t range_max;
+    uint16_t width;
+    uint16_t n_bins;
+    uint8_t *percentiles;
+    uint8_t percentiles_cnt;
+};
+
 struct sm_lat_core_stream
 {
     ds_tree_node_t node; /* sm_lat_core_t (streams) */
@@ -115,7 +126,9 @@ struct sm_lat_core_stream
     bool avg_enabled;
     bool num_pkts_enabled;
     bool last_enabled;
+    bool perc_enabled;
     enum sm_lat_core_sampling sampling;
+    sm_lat_core_bins_config_t *bconf;
 
     /* sys report_fn can be called multiple times
      * for the same host within a single poll
@@ -430,6 +443,7 @@ DEFINE_SET_BOOL(
         num_pkts_enabled_count,
         num_pkts_enabled,
         sm_lat_sys_kind_set_num_pkts);
+DEFINE_SET_BOOL(sm_lat_core_stream_set_kind_perc, "perc", perc_enabled_count, perc_enabled, sm_lat_sys_kind_set_perc);
 
 static void sm_lat_core_sample_u32_add(uint32_t **dst, const uint32_t *src)
 {
@@ -457,6 +471,160 @@ static void sm_lat_core_sample_u32_set_if_gt(uint32_t **dst, const uint32_t *src
     if (src == NULL) return;
     if (*dst == NULL) *dst = MEMNDUP(src, sizeof(*src));
     if (*src > **dst) **dst = *src;
+}
+
+static void sm_lat_core_sample_fill_bins(
+        const sm_lat_core_bins_config_t *bconf,
+        uint32_t *bins,
+        const uint32_t *rtt,
+        const uint32_t rtt_cnt)
+{
+    if (bins == NULL) return;
+    size_t i, idx;
+
+    /* rtt represent individual latency values that are put
+     * into a histogram
+     */
+    for (i = 0; i < rtt_cnt; i++)
+    {
+        if (rtt[i] <= bconf->range_min)
+            idx = 0;
+        else if (rtt[i] >= bconf->range_max)
+            idx = bconf->n_bins - 1;
+        else
+            idx = (rtt[i] - bconf->range_min) / bconf->width;
+        bins[idx]++;
+    }
+}
+
+#define SWAP(a, b)         \
+    do                     \
+    {                      \
+        typeof(a) tmp = a; \
+        a = b;             \
+        b = tmp;           \
+    } while (0)
+
+void sm_lat_core_stream_set_percentiles(
+        sm_lat_core_stream_t *st,
+        const uint32_t *latency_percentiles,
+        const uint32_t len)
+{
+    size_t i, j, min;
+
+    if (st == NULL) return;
+    if (latency_percentiles == NULL || len == 0)
+    {
+        sm_lat_core_stream_bins_config_drop(st->bconf);
+        return;
+    }
+
+    st->bconf = sm_lat_core_stream_bins_config_alloc(len);
+    for (i = 0; i < len; i++)
+    {
+        st->bconf->percentiles[i] = (uint8_t)latency_percentiles[i];
+    }
+    st->bconf->percentiles_cnt = (uint8_t)len;
+
+    /* Selection sort
+     * This step is crucial for calculating percentiles faster with
+     * every report generation and is done only once with OVSDB update
+     * on small number of elements.
+     * The main idea is that once percentile config is sorted eg.
+     * [50, 75, 95] instead of [95, 50, 75], then we can scan all the bins
+     * of the histogram once iteratively. This is a minor optimization
+     * which simplifies code as well.
+     */
+    uint8_t *dst = st->bconf->percentiles;
+    for (i = 0; i < len; i++)
+    {
+        min = i;
+        for (j = i + 1; j < len; j++)
+        {
+            if (dst[j] < dst[min]) min = j;
+        }
+        SWAP(dst[i], dst[min]);
+    }
+}
+
+sm_lat_core_bins_config_t *sm_lat_core_stream_bins_config_alloc(const uint32_t len)
+{
+    sm_lat_core_bins_config_t *bconf = MALLOC(sizeof(*bconf));
+    /* default config */
+    bconf->range_min = 1;
+    bconf->range_max = 1000;
+    bconf->width = 1;
+    bconf->n_bins = 1000;
+    bconf->percentiles = MALLOC(len * sizeof(*bconf->percentiles));
+    bconf->percentiles_cnt = len;
+
+    LOGI(LOG_PREFIX("bins allocated"));
+    return bconf;
+}
+
+void sm_lat_core_stream_bins_config_drop(sm_lat_core_bins_config_t *bconf)
+{
+    if (bconf == NULL) return;
+    FREE(bconf->percentiles);
+    FREE(bconf);
+    bconf = NULL;
+    LOGI(LOG_PREFIX("bins dropping"));
+}
+
+static void sm_lat_core_host_calc_percentiles(sm_lat_core_host_t *h, const sm_lat_core_bins_config_t *bconf)
+{
+    if (h == NULL || bconf == NULL) return;
+    if (bconf->percentiles == NULL) return;
+
+    size_t i, j;
+
+    for (i = 0; i < h->n_samples; i++)
+    {
+        sm_lat_core_sample_t *s = &h->samples[i];
+
+        /* Since histogram (bins) represent number of elements in each bin
+         * we need to convert given percentiles config to specific number, which
+         * will tell us when to stop traversing the histogram
+         */
+        uint32_t *perc_num = MALLOC(bconf->percentiles_cnt * sizeof(*perc_num));
+        for (j = 0; j < bconf->percentiles_cnt; j++)
+        {
+            uint32_t mult = *s->num_pkts * bconf->percentiles[j];
+            perc_num[j] = mult / 100;
+            /* We need to round up to the nearest integer */
+            if (mult % 100 != 0)
+            {
+                perc_num[j]++;
+            }
+        }
+
+        /* Scan all the bins once using cumulative sum to keep track of how
+         * many elements we traversed so far. We do it as long as there are
+         * bins to visit and percentiles to calculate */
+        uint32_t cum_sum = 0;
+        uint8_t perc_idx = 0;
+        for (j = 0; j < bconf->n_bins && perc_idx < bconf->percentiles_cnt; j++)
+        {
+            cum_sum += s->bins[j];
+            /* It could be that most if not all percentiles are from one bin */
+            while (perc_idx < bconf->percentiles_cnt && perc_num[perc_idx] <= cum_sum)
+            {
+                s->percentiles[perc_idx].p_val = bconf->percentiles[perc_idx];
+                s->percentiles[perc_idx].p_ms = bconf->range_min + (j * bconf->width);
+                perc_idx++;
+            }
+        }
+
+        /* If some percentiles still remain, set to last bin (shouldn't happen) */
+        while (perc_idx < bconf->percentiles_cnt)
+        {
+            s->percentiles[perc_idx].p_val = bconf->percentiles[perc_idx];
+            s->percentiles[perc_idx].p_ms = bconf->range_max;
+            perc_idx++;
+        }
+
+        FREE(perc_num);
+    }
 }
 
 static sm_lat_core_sample_t *sm_lat_core_host_grow_samples(sm_lat_core_host_t *h)
@@ -515,6 +683,8 @@ static void sm_lat_core_sample_drop(sm_lat_core_sample_t *s)
     FREE(s->avg_cnt);
     FREE(s->last_ms);
     FREE(s->num_pkts);
+    FREE(s->bins);
+    FREE(s->percentiles);
     MEMZERO(*s);
 }
 
@@ -568,6 +738,23 @@ static void sm_lat_core_entry_update(sm_lat_core_entry_t *e, const sm_lat_sys_sa
             sm_lat_core_sample_u32_add(&cs->avg_sum_ms, &sum);
             sm_lat_core_sample_u32_add(&cs->avg_cnt, &cnt);
         }
+    }
+    if (e->st->perc_enabled)
+    {
+        /* If this is new sample we need to allocate memory for histogram */
+        if (cs->bins == NULL)
+        {
+            /* Check if percentiles config was defined */
+            if (e->st->bconf != NULL && e->st->bconf->percentiles_cnt > 0)
+            {
+                cs->bins = CALLOC(e->st->bconf->n_bins, sizeof(*cs->bins));
+                cs->percentiles = MALLOC(e->st->bconf->percentiles_cnt * sizeof(*cs->percentiles));
+                cs->n_percentiles = e->st->bconf->percentiles_cnt;
+            }
+        }
+        const uint32_t *rtt = sm_lat_sys_sample_get_rtts(ss);
+        const uint32_t rtt_cnt = *(sm_lat_sys_sample_get_num_pkts(ss));
+        sm_lat_core_sample_fill_bins(e->st->bconf, cs->bins, rtt, rtt_cnt);
     }
 }
 
@@ -753,6 +940,15 @@ static void sm_lat_core_entry_log(sm_lat_core_entry_t *e, const sm_lat_core_host
         if (s->avg_cnt != NULL) csnprintf(&log, &len, " avg_cnt: %" PRIu32, *s->avg_cnt);
         if (s->last_ms != NULL) csnprintf(&log, &len, " last: %" PRIu32, *s->last_ms);
         if (s->num_pkts != NULL) csnprintf(&log, &len, " pkts: %" PRIu32, *s->num_pkts);
+        if (s->percentiles != NULL)
+        {
+            size_t j;
+            csnprintf(&log, &len, " percentiles:");
+            for (j = 0; j < s->n_percentiles; j++)
+            {
+                csnprintf(&log, &len, " p%" PRIu32 ":%" PRIu32 "ms", s->percentiles[j].p_val, s->percentiles[j].p_ms);
+            }
+        }
         LOGT(LOG_PREFIX_ENTRY(e, "%s", buf));
     }
 }
@@ -783,6 +979,7 @@ static void sm_lat_core_stream_report(sm_lat_core_stream_t *st)
             sm_lat_core_stream_report_hosts(st, (const sm_lat_core_host_t *const *)hosts, count);
             count = 0;
         }
+        sm_lat_core_host_calc_percentiles(&e->host, st->bconf);
         sm_lat_core_entry_log(e, &e->host);
         hosts[count] = &e->host;
         count++;
@@ -951,6 +1148,8 @@ static void sm_lat_core_stream_reset(sm_lat_core_stream_t *st)
     sm_lat_core_stream_set_kind_avg(st, false);
     sm_lat_core_stream_set_kind_last(st, false);
     sm_lat_core_stream_set_kind_num_pkts(st, false);
+    sm_lat_core_stream_set_kind_perc(st, false);
+    sm_lat_core_stream_set_percentiles(st, NULL, 0);
     sm_lat_core_stream_drop_ifnames(st);
 }
 
@@ -964,6 +1163,7 @@ void sm_lat_core_stream_drop(sm_lat_core_stream_t *st)
     ds_tree_remove(&st->c->streams, st);
     WARN_ON(ds_tree_is_empty(&st->hosts_open) == false);
     WARN_ON(ds_tree_is_empty(&st->hosts_closed) == false);
+    sm_lat_core_stream_bins_config_drop(st->bconf);
     FREE(st);
 }
 

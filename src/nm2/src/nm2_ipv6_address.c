@@ -277,9 +277,40 @@ error:
     return retval;
 }
 
+struct nm2_ipv6_address *nm2_ip6_ovsdb_addr_find(struct nm2_ip_interface *parent, osn_ip6_addr_t *ip6addr)
+{
+    struct nm2_ipv6_address *addr = NULL;
+    struct uuidset_node *us;
+
+    /* Traverse the uuidset of the parent interface and try to find the IPv6 address */
+    synclist_foreach(&parent->ipi_ipv6_addr.us_list, us)
+    {
+        addr = nm2_ipv6_address_get(&us->un_uuid);
+        if (addr == NULL)
+        {
+            LOG(DEBUG, "ipv6_address: %s: Cannot find IPv6_Address with uuid: %s",
+                    parent->ipi_ifname,
+                    us->un_uuid.uuid);
+            continue;
+        }
+
+        LOG(DEBUG, "ipv6_address: %s: IPv6 compare "PRI_osn_ip6_addr" == "PRI_osn_ip6_addr,
+                parent->ipi_ifname,
+                FMT_osn_ip6_addr(*ip6addr),
+                FMT_osn_ip6_addr(addr->ip6_addr));
+        /* Check if we have a match */
+        if (osn_ip6_addr_nolft_cmp(ip6addr, &addr->ip6_addr) == 0) break;
+
+        addr = NULL;
+    }
+
+    return addr;
+}
+
 /**
  * IPv6 address update callback from libinet; take the address report from
- * libinet and fill in the schema structure
+ * libinet, update OVSDB for autoconfigured addresses and handle
+ * inadvertenly removed IPv6 static addresses.
  */
 void nm2_ip6_addr_status_fn(
         inet_t *inet,
@@ -302,6 +333,34 @@ void nm2_ip6_addr_status_fn(
 
     parent = piface->if_ipi;
 
+    /* Handle a callback from lower layers reporting an origin=static IPv6 address removed
+     * from the system in case where it's OVSDB config is still present: */
+    if (as->is_origin == INET_IP6_ORIGIN_STATIC && remove && nm2_ip6_ovsdb_addr_find(parent, &as->is_addr) != NULL)
+    {
+        LOG(NOTICE, "ipv6_address: %s: IPv6 static address %s inadvertenly removed: reapplying",
+                parent->ipi_ifname, FMT_osn_ip6_addr(as->is_addr));
+
+        /* Re-add the address via inet: This will mark the IPv6 networking service
+         * for a restart, so that config reapply that follows will have an effect.  */
+        if (!inet_ip6_addr(piface->if_inet, true, &as->is_addr))
+        {
+            LOG(ERR, "ipv6_address: %s: Unable to add IPv6_Address.", piface->if_name);
+            return;
+        }
+        /* Reapply interface configuration: */
+        nm2_iface_apply(piface);
+    }
+
+    /* The rest of the code is about status reporting and we report only autoconfigured IPv6
+     * addresses in OVSDB. (origin=static IPv6 addresses only have config entries in OVSDB and
+     * their status is assumed to be configured) */
+    if (as->is_origin != INET_IP6_ORIGIN_AUTO_CONFIGURED)
+    {
+        LOG(TRACE, "ipv6_address: %s: %s: IPv6 address %s origin != auto_configured, Skipping OVSDB update",
+                parent->ipi_ifname, __func__, FMT_osn_ip6_addr(as->is_addr));
+        return;
+    }
+
     LOG(INFO, "ipv6_address: %s: Updating IPv6_Address table: %s address="PRI_osn_ip6_addr" origin=%d parent=%s",
             parent->ipi_ifname,
             remove ? "DEL" : "ADD",
@@ -311,31 +370,8 @@ void nm2_ip6_addr_status_fn(
 
     if (remove)
     {
-        struct uuidset_node *us;
-
-        struct nm2_ipv6_address *addr = NULL;
-
-        /* Traverse the uuidset of the parent interface and try to find the IPv6 address */
-        synclist_foreach(&parent->ipi_ipv6_addr.us_list, us)
-        {
-            addr = nm2_ipv6_address_get(&us->un_uuid);
-            if (addr == NULL)
-            {
-                LOG(DEBUG, "ipv6_address: %s: Cannot find IPv6_Address with uuid: %s",
-                        parent->ipi_ifname,
-                        us->un_uuid.uuid);
-                continue;
-            }
-
-            LOG(DEBUG, "ipv6_address: %s: IPv6 compare "PRI_osn_ip6_addr" == "PRI_osn_ip6_addr,
-                    parent->ipi_ifname,
-                    FMT_osn_ip6_addr(as->is_addr),
-                    FMT_osn_ip6_addr(addr->ip6_addr));
-            /* Check if we have a match */
-            if (osn_ip6_addr_nolft_cmp(&as->is_addr, &addr->ip6_addr) == 0) break;
-
-            addr = NULL;
-        }
+        /* Find the address in OVSDB config: */
+        struct nm2_ipv6_address *addr = nm2_ip6_ovsdb_addr_find(parent, &as->is_addr);
 
         if (addr == NULL)
         {

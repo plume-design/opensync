@@ -54,7 +54,7 @@ rts_ipaddr_unspec(struct rts_ipaddr *addr)
 static inline bool
 rts_ipaddr_v4(struct rts_ipaddr *addr)
 {
-    return addr->addr64[0] == 0 && addr->addr16[4] == 0 && 
+    return addr->addr64[0] == 0 && addr->addr16[4] == 0 &&
         addr->addr16[5] == 0xffff;
 }
 

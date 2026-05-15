@@ -98,9 +98,12 @@ struct osw_conf_vif_ap {
     int ft_pmk_r0_key_lifetime_sec;
     int ft_pmk_r1_max_key_lifetime_sec;
     int ft_mobility_domain;
+    bool proxy_arp;
+    bool dgaf_disable;
     struct osw_rsn_override rsn_override_1;
     struct osw_rsn_override rsn_override_2;
     bool rsn_override_omit_rsnxe;
+    enum osw_airtime_precedence airtime_precedence;
 };
 
 struct osw_conf_net {
@@ -137,10 +140,12 @@ struct osw_conf_phy {
     struct ds_tree *phy_tree;
     char *phy_name;
     bool enabled;
+    bool atf_enabled;
     int tx_chainmask;
     struct osw_channel radar_next_channel;
     enum osw_radar_detect radar;
     struct osw_reg_domain reg_domain;
+    enum osw_zero_wait_dfs zero_wait_dfs;
     struct ds_tree vif_tree;
 };
 

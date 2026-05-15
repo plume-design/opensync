@@ -30,6 +30,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <inttypes.h>
 
 #include "dns_cache.h"
 #include "fsm_dpi_utils.h"
@@ -37,6 +38,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "gatekeeper_single_curl.h"
 #include "gatekeeper_cache.h"
 #include "gatekeeper_hero_stats.h"
+#include "gatekeeper_bulk_msg.h"
 #include "gatekeeper_data.h"
 #include "gatekeeper_msg.h"
 #include "gatekeeper_ecurl.h"
@@ -266,6 +268,7 @@ callback_SSL(ovsdb_update_monitor_t *mon,
     ds_tree_t *sessions;
     struct fsm_gk_session *fsm_gk_session;
     struct gk_server_info *server_info;
+    bool ret;
 
     if (!ssl->certificate_exists || !ssl->private_key_exists) return;
 
@@ -288,7 +291,11 @@ callback_SSL(ovsdb_update_monitor_t *mon,
              server_info->ssl_cert,
              server_info->ssl_key,
              server_info->ca_path);
-
+        // All certs are loaded, trigger bulk request
+        /* Get traffic class prio from gatekeeper */
+        LOGT("%s: Triggering bulk request after SSL certs update", __func__);
+        ret = gk_get_traffic_class(fsm_gk_session->session);
+        if (ret == false) LOGD("%s: Failed to get traffic class", __func__);
         fsm_gk_session = ds_tree_next(sessions, fsm_gk_session);
     }
 }
@@ -487,7 +494,7 @@ gk_check_policy_in_cache(struct fsm_policy_req *req,
     if (!cache_mgr->initialized) return false;
 
     req_type = fsm_policy_get_req_type(req);
-    if (req_type >= FSM_FQDN_REQ && req_type <= FSM_APP_REQ)
+    if (req_type >= FSM_FQDN_REQ && req_type <= FSM_TRAFFIC_CLASS_REQ)
     {
         LOGT("%s(): checking attribute cache", __func__);
         ret = gatekeeper_check_attr_cache(req, policy_reply);
@@ -777,7 +784,7 @@ gk_add_policy_to_cache(struct fsm_policy_req *req, struct fsm_policy_reply *poli
     gk_fsm_adjust_cache_ttl(req, policy_reply);
 
     req_type = fsm_policy_get_req_type(req);
-    if (req_type >= FSM_FQDN_REQ && req_type <= FSM_APP_REQ)
+    if (req_type >= FSM_FQDN_REQ && req_type <= FSM_TRAFFIC_CLASS_REQ)
     {
         ret = gatekeeper_add_attr_cache(req, policy_reply);
     }
@@ -1046,10 +1053,16 @@ gatekeeper_get_verdict(struct fsm_policy_req *req,
     {
         time_t now = time(NULL);
         bool backoff;
+        intmax_t time_left = offline->check_offline - (now - offline->offline_ts);
+        backoff = (time_left > 0);
 
-        backoff = ((now - offline->offline_ts) < offline->check_offline);
-
-        if (backoff) return false;
+        if (backoff)
+        {
+            LOGT("%s: provider offline, backing off for  next %" PRIdMAX " seconds",
+                 __func__,
+                 time_left);
+            return false;
+        }
         offline->provider_offline = false;
     }
 
@@ -1064,7 +1077,14 @@ gatekeeper_get_verdict(struct fsm_policy_req *req,
     gk_verdict->gk_session_context = fsm_gk_session;
 
     LOGT("%s: url:%s path:%s", __func__, server_info->server_url, server_info->ca_path);
-
+    if (req->req_type == FSM_BULK_REQ)
+    {
+        /* Get traffic class prio from gatekeeper */
+        req->device_id = NULL;
+        ret = gk_get_traffic_class(fsm_gk_session->session);
+        if (ret == false) LOGD("%s: Failed to get traffic class", __func__);
+        return ret;
+    }
     gk_verdict->gk_pb = gatekeeper_get_req(session, req, NULL);
     if (gk_verdict->gk_pb == NULL)
     {
@@ -1416,6 +1436,40 @@ static const char pattern_fqdn_lan[] =
     "^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9_-]*[a-zA-Z0-9])\\.){1,}"
     "(lan)$";
 
+bool gk_get_traffic_class(struct fsm_session *session)
+{
+    struct gk_request *gk_request;
+    struct gk_reply *gk_reply;
+    bool rc;
+    
+    gk_request = gk_get_request(session);
+    if (gk_request == NULL)
+    {
+        LOGD("%s: Failed to get gk request", __func__);
+        return false;
+    }
+
+    gk_reply = CALLOC(1, sizeof(struct gk_reply));
+    rc = gk_serialize_request(gk_request);
+    if (rc == false)
+    {
+        LOGD("%s: Failed to serialize gk request", __func__);
+        goto fail_request;
+    }
+    gk_bulk_lookup(session, gk_request, gk_reply);
+    gk_clear_bulk_responses(gk_reply);
+    FREE(gk_reply);
+    FREE(gk_request);
+    return rc;
+
+fail_request:
+    gk_clear_bulk_requests(gk_request);
+    FREE(gk_request);
+    FREE(gk_reply);
+    return rc;
+}
+
+
 /**
  * @brief initialized gatekeeper plugin module
  *
@@ -1547,6 +1601,9 @@ gatekeeper_module_init(struct fsm_session *session)
     /* Initialize dns cache hit count */
     fsm_gk_session->dns_cache_hit_count = 0;
 
+    /* Register callback for gatekeeper_cache to trigger traffic class refresh */
+    gkc_register_traffic_class_refresh_cb(gk_get_traffic_class);
+
     /* register our cache flush client */
     fsm_client = &fsm_gk_session->cache_flush_client;
     fsm_client->session = session;
@@ -1616,7 +1673,8 @@ gatekeeper_plugin_init(struct fsm_session *session)
         gatekeeper_monitor_ssl_table();
     }
 
-    return ret;
+    LOGD("%s: Added session '%s'", __func__, session->name);
+    return 0;
 }
 
 
@@ -1638,6 +1696,9 @@ gatekeeper_exit(struct fsm_session *session)
 
     fsm_gk_session = (struct fsm_gk_session *)session->handler_ctxt;
     if (!fsm_gk_session) return;
+
+    /* Unregister the traffic class refresh callback */
+    gkc_register_traffic_class_refresh_cb(NULL);
 
     fsm_client = &fsm_gk_session->cache_flush_client;
     fsm_policy_deregister_client(fsm_client);
@@ -1979,3 +2040,223 @@ gatekeeper_delete_session(struct fsm_session *session)
     gatekeeper_free_session(gk_session);
 }
 
+
+static void gk_set_dev2app_req(struct fsm_session *session, struct gk_device2app_req *devices)
+{
+    struct gk_req_header *hdr;
+
+    if (!devices) return;
+ 
+    devices->header = CALLOC(1, sizeof(struct gk_req_header));
+    hdr = devices->header;
+    hdr->dev_id = NULL;
+    hdr->dev_id = CALLOC(1, sizeof(*hdr->dev_id));
+    if (!str2os_mac_ref("00:00:00:00:00:00", hdr->dev_id))
+    {
+        LOGD("%s: Failed to convert mac address string to octets", __func__);
+        return;
+    }
+    hdr->node_id = session->node_id;
+    hdr->location_id = session->location_id;
+
+    devices->apps = CALLOC(1, sizeof(char *));
+    devices->n_apps = 1;
+    devices->apps[0] = "ALL_TRAFFIC_CLASSES";
+    return;
+}
+
+struct gk_request *gk_get_request(struct fsm_session *session)
+{
+    struct gk_device2app_req *gappreq;
+    struct gk_bulk_request *gbreq;
+    union gk_data_req *udreq;
+    struct gk_request *req;
+
+    req = CALLOC(1, sizeof(struct gk_request));
+    req->type = FSM_BULK_REQ;
+    udreq = &req->req;
+    gbreq = &udreq->gk_bulk_req;
+    gbreq->req_type = FSM_TRAFFIC_CLASS_REQ;
+    gbreq->n_devices = 1;
+    gbreq->devices = CALLOC(1, sizeof(struct gk_device2app_req *));
+
+    gappreq = CALLOC(1, sizeof(struct gk_device2app_req));
+    gbreq->devices[0] = gappreq;
+    gk_set_dev2app_req(session, gappreq);
+    return req;
+}
+
+
+/**
+ * @brief Dumps the gatekeeper bulk response for debugging
+ *
+ * @param reply Pointer to the gk_reply structure containing the bulk response
+ */
+static void gk_dump_bulk_response(struct gk_reply *reply)
+{
+    struct gk_bulk_reply *bulk_reply;
+    struct gk_device2app_repl *device;
+    struct gk_reply_header *header;
+    char ipv4_str[INET_ADDRSTRLEN];
+    char ipv6_str[INET6_ADDRSTRLEN];
+    const char *entry_type_str[] = {
+        "UNKNOWN",
+        "APP",
+        "IPV4",
+        "IPV6",
+        "URL",
+        "FQDN",
+        "HOST",
+        "SNI",
+        "TRAFFIC_CLASS"
+    };
+
+    if (reply == NULL || reply->type != FSM_BULK_REQ)
+    {
+        LOGD("%s: Invalid reply or reply type", __func__);
+        return;
+    }
+
+    bulk_reply = &reply->data_reply.bulk_reply;
+    if (bulk_reply == NULL || bulk_reply->devices == NULL)
+    {
+        LOGD("%s: Invalid bulk reply or devices array", __func__);
+        return;
+    }
+
+    LOGT("%s: Dumping bulk response with %zu entries", __func__, bulk_reply->n_devices);
+
+    for (size_t i = 0; i < bulk_reply->n_devices; i++)
+    {
+        device = bulk_reply->devices[i];
+        if (device == NULL) continue;
+
+        header = device->header;
+        if (header == NULL) continue;
+
+        LOGT("Entry %zu:", i);
+        LOGT("  Type: %s (%d)", 
+             (device->type < GK_ENTRY_TYPE_MAX) ? entry_type_str[device->type] : "UNKNOWN",
+             device->type);
+        
+        if (header->dev_id)
+            LOGT("  Device ID: %s", header->dev_id);
+        
+        LOGT("  Action: %d", header->action);
+        LOGT("  TTL: %u", header->ttl);
+        LOGT("  Category ID: %u", header->category_id);
+        LOGT("  Confidence Level: %u", header->confidence_level);
+        LOGT("  Flow Marker: %u", header->flow_marker);
+        
+        if (header->policy)
+            LOGT("  Policy: %s", header->policy);
+        
+        if (header->network_id)
+            LOGT("  Network ID: %s", header->network_id);
+
+        if (device->app_name)
+            LOGT("  App Name: %s", device->app_name);
+        
+        if (device->traffic_class)
+            LOGT("  Traffic Class: %s", device->traffic_class);
+        
+        if (device->url)
+            LOGT("  URL: %s", device->url);
+        
+        if (device->fqdn)
+            LOGT("  FQDN: %s", device->fqdn);
+        
+        if (device->http_host)
+            LOGT("  HTTP Host: %s", device->http_host);
+        
+        if (device->https_sni)
+            LOGT("  HTTPS SNI: %s", device->https_sni);
+        
+        if (device->ipv4_addr != 0)
+        {
+            struct in_addr addr;
+            addr.s_addr = device->ipv4_addr;
+            inet_ntop(AF_INET, &addr, ipv4_str, sizeof(ipv4_str));
+            LOGT("  IPv4: %s", ipv4_str);
+        }
+        
+        if (device->ipv6_addr.data && device->ipv6_addr.len > 0)
+        {
+            inet_ntop(AF_INET6, device->ipv6_addr.data, ipv6_str, sizeof(ipv6_str));
+            LOGT("  IPv6: %s", ipv6_str);
+        }
+
+        if (device->fqdn_redirect && device->fqdn_redirect->redirect)
+        {
+            LOGT("  Redirect: enabled");
+            LOGT("  Redirect TTL: %u", device->fqdn_redirect->redirect_ttl);
+            if (device->fqdn_redirect->redirect_cname)
+                LOGT("  Redirect CNAME: %s", device->fqdn_redirect->redirect_cname);
+            if (device->fqdn_redirect->redirect_ips[0][0] != '\0')
+                LOGT("  Redirect IP[0]: %s", device->fqdn_redirect->redirect_ips[0]);
+            if (device->fqdn_redirect->redirect_ips[1][0] != '\0')
+                LOGT("  Redirect IP[1]: %s", device->fqdn_redirect->redirect_ips[1]);
+        }
+    }
+}
+
+
+bool gk_bulk_lookup(struct fsm_session *session, struct gk_request *req, struct gk_reply *reply)
+{
+    struct fsm_gk_session *fsm_gk_session;
+    struct gk_connection_info conn_info;
+    bool ret;
+
+    /* Look up the fsm gatekeeper session */
+    fsm_gk_session = gatekeeper_lookup_session(session);
+    if (fsm_gk_session == NULL)
+    {
+        LOGN("%s(): Failed to lookup gatekeeper session", __func__);
+        return false;
+    }
+
+    /* Initialize curl handler if not already active */
+    if (fsm_gk_session->ecurl.ecurl_connection_active == false)
+    {
+        LOGT("%s(): creating new curl handler", __func__);
+        gk_curl_easy_init(&fsm_gk_session->ecurl);
+    }
+    
+    /* Set the URL - for bulk requests, use the base server URL */
+    if (fsm_gk_session->gk_server_info.server_url != NULL)
+    {
+        strncpy(fsm_gk_session->gk_server_info.gk_url, 
+                fsm_gk_session->gk_server_info.server_url, 
+                MAX_GK_URL_LEN - 1);
+        fsm_gk_session->gk_server_info.gk_url[MAX_GK_URL_LEN - 1] = '\0';
+    }
+
+    /* Set the connection info */
+    conn_info.ecurl = &fsm_gk_session->ecurl;
+    conn_info.server_conf = &fsm_gk_session->gk_server_info;
+    conn_info.pb = NULL; /* Will be set by gk_perform_bulk_lookup */
+
+    /* Perform the bulk lookup using the gatekeeper_msg API */
+    ret = gk_perform_bulk_lookup(&conn_info, req, reply);
+    if (ret == false)
+    {
+        LOGW("%s: Bulk lookup failed", __func__);
+        return false;
+    }
+
+    /* Dump bulk response for debugging */
+    gk_dump_bulk_response(reply);
+
+    /* Add entries to cache */
+    if (reply->data_reply.bulk_reply.n_devices > 0 &&
+        reply->data_reply.bulk_reply.devices[0] != NULL &&
+        reply->data_reply.bulk_reply.devices[0]->header != NULL)
+    {
+        FREE(reply->data_reply.bulk_reply.devices[0]->header->dev_id);
+        reply->data_reply.bulk_reply.devices[0]->header->dev_id = NULL;
+    }
+    gk_add_reply_entries_to_cache(reply);
+    gkc_print_cache_parts(GK_CACHE_REQ_TYPE_TRAFFIC_CLASS);
+
+    return ret;
+}

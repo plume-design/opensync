@@ -39,6 +39,10 @@ collect_osync()
     if [ -e $CONFIG_INSTALL_PREFIX/.versions ]; then
         collect_file $CONFIG_INSTALL_PREFIX/.versions
     fi
+    # Collect quilt patch series info file which should be added during SDK buildtime
+    if [ -e /etc/quilt-series.txt ]; then
+        collect_file /etc/quilt-series.txt
+    fi
 }
 
 collect_owm()

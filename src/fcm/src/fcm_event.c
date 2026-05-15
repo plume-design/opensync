@@ -38,6 +38,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "fcm_mgr.h"
 #include "log.h"
 #include "neigh_table.h"
+#include "dpi_stats.h"
 
 // Intervals and timeouts in seconds
 #define FCM_TIMER_INTERVAL   5
@@ -51,7 +52,7 @@ fcm_event_cb(struct ev_loop *loop, ev_timer *watcher, int revents)
     fcm_collect_plugin_t *plugin;
     fcm_collector_t *collector;
     ds_tree_t *collectors;
-    struct mem_usage mem = { 0 };
+    struct fcm_mem_usage mem = { 0 };
     fcm_mgr_t *mgr;
     time_t now;
     bool reset;
@@ -67,6 +68,13 @@ fcm_event_cb(struct ev_loop *loop, ev_timer *watcher, int revents)
     if ((now - mgr->periodic_ts) < FCM_MGR_INTERVAL) return;
 
     mgr->periodic_ts = now;
+
+    /* Log stored nfq error counts */
+    dpi_stats_log_conntrack_errs();
+
+    /* clear the counts */
+    dpi_stats_cleanup_record();
+
     fcm_get_memory(&mem);
     LOGI("%s: pid %s: mem usage: real mem: %u, virt mem %u", __func__,
          mgr->pid, mem.curr_real_mem, mem.curr_virt_mem);
@@ -146,7 +154,7 @@ fcm_mem_adjust_counter(FILE *file, int counter, char *unit)
  * @param mem memory usage counters container
  */
 void
-fcm_get_memory(struct mem_usage *mem)
+fcm_get_memory(struct fcm_mem_usage *mem)
 {
     fcm_mgr_t *mgr = fcm_get_mgr();
     char buffer[1024] = "";

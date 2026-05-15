@@ -39,6 +39,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "osw_drv_i.h"
 #include "osw_state_i.h"
 #include "osw_stats_i.h"
+#include "osw_types.h"
 
 /* TODO
  * - use macros to automate value/string/list comparisons for "is changed", along with dumping to logs/traces
@@ -287,19 +288,13 @@ osw_drv_phy_set_vif_list_valid(struct osw_drv_phy *phy, bool valid)
 }
 
 static void
-osw_drv_vif_set_sta_list_valid(struct osw_drv_vif *vif, bool valid)
-{
-    if (vif->sta_list_valid == valid) return;
-
-    vif->sta_list_valid = valid;
-    g_osw_drv_work_done = true;
-    osw_drv_work_all_schedule();
-}
-
-static void
 osw_drv_obj_set_state(struct osw_drv_obj *obj, enum osw_drv_obj_state state)
 {
     if (obj->state == OSW_DRV_OBJ_REQUESTED && state == OSW_DRV_OBJ_INVALID) {
+        state = OSW_DRV_OBJ_REQUESTED_AND_INVALIDATED;
+    }
+
+    if (obj->state == OSW_DRV_OBJ_REQUESTED_AND_INVALIDATED && state == OSW_DRV_OBJ_INVALID) {
         state = OSW_DRV_OBJ_REQUESTED_AND_INVALIDATED;
     }
 
@@ -519,6 +514,13 @@ osw_drv_sta_state_is_changed(const struct osw_drv_sta *sta)
 }
 
 static void
+osw_drv_vif_set_sta_list_state(struct osw_drv_vif *vif,
+                               enum osw_drv_obj_state state)
+{
+    osw_drv_obj_set_state(&vif->sta_list, state);
+}
+
+static void
 osw_drv_sta_process_state(struct osw_drv_sta *sta)
 {
     bool added = sta->cur_state.connected == false
@@ -548,7 +550,7 @@ osw_drv_sta_process_state(struct osw_drv_sta *sta)
     }
 
     if (removed == true) {
-        osw_drv_vif_set_sta_list_valid(sta->vif, false);
+        osw_drv_vif_set_sta_list_state(sta->vif, OSW_DRV_OBJ_INVALID);
     }
 
     if (sta->new_state.connected == false &&
@@ -639,41 +641,111 @@ osw_drv_sta_work(struct osw_drv_sta *sta)
 static void
 osw_drv_sta_enumerate_cb(const struct osw_hwaddr *mac_addr, void *data)
 {
-    struct osw_drv_sta *sta = osw_drv_sta_get(data, mac_addr);
-    sta->obj.exists = true;
+    struct osw_hwaddr_list *sta_list = data;
+
+    if (osw_hwaddr_list_contains(sta_list->list, sta_list->count, mac_addr) == false) {
+        osw_hwaddr_list_append(sta_list, mac_addr);
+    }
 }
 
 static void
-osw_drv_sta_enumerate(struct osw_drv_vif *vif)
+osw_drv_vif_set_sta_list(struct osw_drv_vif *vif,
+                         const struct osw_hwaddr_list *sta_list)
 {
-    struct osw_drv_phy *phy = vif->phy;
-    struct osw_drv *drv = phy->drv;
     struct osw_drv_sta *sta;
-    const char *drv_name = drv->ops->name ?: "";
-    const char *phy_name = phy->phy_name;
-    const char *vif_name = vif->vif_name;
-
     ds_tree_foreach(&vif->sta_tree, sta) {
         sta->obj.existed = sta->obj.exists;
         sta->obj.exists = false;
     }
 
-    if (drv->unregistered == false) {
-        drv->ops->get_sta_list_fn(drv, phy_name, vif_name, osw_drv_sta_enumerate_cb, vif);
-        if (vif->vsta_root_ap != NULL) {
-            LOGT("osw: drv %s/%s/%s: adding extra sta "OSW_HWADDR_FMT,
-                 drv_name,
-                 phy_name,
-                 vif_name,
-                 OSW_HWADDR_ARG(vif->vsta_root_ap));
-            osw_drv_sta_enumerate_cb(vif->vsta_root_ap, vif);
-        }
+    if (vif->vsta_root_ap != NULL) {
+        const char *drv_name = vif->phy->drv->ops->name ?: "";
+        const char *phy_name = vif->phy->phy_name;
+        const char *vif_name = vif->vif_name;
+        LOGT("osw: drv %s/%s/%s: adding extra sta "OSW_HWADDR_FMT,
+             drv_name,
+             phy_name,
+             vif_name,
+             OSW_HWADDR_ARG(vif->vsta_root_ap));
+        struct osw_drv_sta *sta = osw_drv_sta_get(vif, vif->vsta_root_ap);
+        sta->obj.exists = true;
+    }
+
+    for (size_t i = 0; i < sta_list->count; i++) {
+        const struct osw_hwaddr *mac_addr = &sta_list->list[i];
+        struct osw_drv_sta *sta = osw_drv_sta_get(vif, mac_addr);
+        sta->obj.exists = true;
     }
 
     ds_tree_foreach(&vif->sta_tree, sta) {
         if (sta->obj.existed != sta->obj.exists) {
             osw_drv_obj_set_state(&sta->obj, OSW_DRV_OBJ_INVALID);
         }
+    }
+
+    osw_drv_vif_set_sta_list_state(vif, OSW_DRV_OBJ_VALID);
+}
+
+void
+osw_drv_report_sta_enumeration(struct osw_drv *drv,
+                               const char *phy_name,
+                               const char *vif_name,
+                               const struct osw_hwaddr_list *sta_list)
+{
+    struct osw_drv_phy *phy = ds_tree_find(&drv->phy_tree, phy_name);
+    if (WARN_ON(phy == NULL)) return;
+
+    struct osw_drv_vif *vif = ds_tree_find(&phy->vif_tree, vif_name);
+    if (WARN_ON(vif == NULL)) return;
+
+    switch (vif->sta_list.state) {
+        case OSW_DRV_OBJ_INVALID:
+            break;
+        case OSW_DRV_OBJ_REQUESTED_AND_INVALIDATED:
+            osw_drv_vif_set_sta_list(vif, sta_list);
+            break;
+        case OSW_DRV_OBJ_REQUESTED:
+            osw_drv_vif_set_sta_list(vif, sta_list);
+            break;
+        case OSW_DRV_OBJ_VALID:
+            break;
+        case OSW_DRV_OBJ_PROCESSED:
+            break;
+    }
+
+    g_osw_drv_work_done = true;
+    osw_drv_work_all_schedule();
+}
+
+static void
+osw_drv_vif_request_sta_list(struct osw_drv_vif *vif)
+{
+    struct osw_drv_phy *phy = vif->phy;
+    struct osw_drv *drv = phy->drv;
+
+    if (drv->unregistered == true) {
+        struct osw_hwaddr_list empty = {0};
+        osw_drv_vif_set_sta_list(vif, &empty);
+        return;
+    }
+
+    osw_drv_vif_set_sta_list_state(vif, OSW_DRV_OBJ_REQUESTED);
+
+    if (drv->ops->request_sta_list_fn != NULL) {
+        /* preferred */
+        drv->ops->request_sta_list_fn(drv, phy->phy_name, vif->vif_name);
+    }
+    else if (drv->ops->get_sta_list_fn != NULL) {
+        /* fallback */
+        struct osw_hwaddr_list sta_list = {0};
+        drv->ops->get_sta_list_fn(drv, phy->phy_name, vif->vif_name, osw_drv_sta_enumerate_cb, &sta_list);
+        osw_drv_report_sta_enumeration(drv, phy->phy_name, vif->vif_name, &sta_list);
+        osw_hwaddr_list_flush(&sta_list);
+    }
+    else {
+        /* huh */
+        WARN_ON(1);
+        osw_drv_vif_set_sta_list_state(vif, OSW_DRV_OBJ_VALID);
     }
 }
 
@@ -1126,9 +1198,12 @@ osw_drv_vif_state_is_changed_ap(const struct osw_drv_vif *vif)
     const bool changed_oce_min_rssi_dbm = o->oce_min_rssi_dbm != n->oce_min_rssi_dbm;
     const bool changed_oce_retry_delay_sec = o->oce_retry_delay_sec != n->oce_retry_delay_sec;
     const bool changed_max_sta = o->max_sta != n->max_sta;
+    const bool changed_proxy_arp = o->proxy_arp != n->proxy_arp;
+    const bool changed_dgaf_disable = o->dgaf_disable != n->dgaf_disable;
     const bool changed_rsn_override_1 = (memcmp(&o->rsn_override_1, &n->rsn_override_1, sizeof(o->rsn_override_1)) != 0);
     const bool changed_rsn_override_2 = (memcmp(&o->rsn_override_2, &n->rsn_override_2, sizeof(o->rsn_override_2)) != 0);
     const bool changed_rsn_override_omit_rsnxe = o->rsn_override_omit_rsnxe != n->rsn_override_omit_rsnxe;
+    const bool changed_airtime_precedence = !osw_airtime_precedence_is_equal(&o->airtime_precedence, &n->airtime_precedence);
 
     bool changed_acl = false;
     bool changed_psk = false;
@@ -1281,9 +1356,12 @@ osw_drv_vif_state_is_changed_ap(const struct osw_drv_vif *vif)
     changed |= changed_oce_min_rssi_dbm;
     changed |= changed_oce_retry_delay_sec;
     changed |= changed_max_sta;
+    changed |= changed_proxy_arp;
+    changed |= changed_dgaf_disable;
     changed |= changed_rsn_override_1;
     changed |= changed_rsn_override_2;
     changed |= changed_rsn_override_omit_rsnxe;
+    changed |= changed_airtime_precedence;
 
     if (changed_bridge) {
         const int max = ARRAY_SIZE(o->bridge_if_name.buf);
@@ -1368,6 +1446,24 @@ osw_drv_vif_state_is_changed_ap(const struct osw_drv_vif *vif)
              n->max_sta);
     }
 
+    if (changed_proxy_arp) {
+        LOGI("osw: drv: %s/%s/%s: proxy_arp: %d -> %d",
+             vif->phy->drv->ops->name,
+             vif->phy->phy_name,
+             vif->vif_name,
+             o->proxy_arp,
+             n->proxy_arp);
+    }
+
+    if (changed_dgaf_disable) {
+        LOGI("osw: drv: %s/%s/%s: dgaf_disable: %d -> %d",
+             vif->phy->drv->ops->name,
+             vif->phy->phy_name,
+             vif->vif_name,
+             o->dgaf_disable,
+             n->dgaf_disable);
+    }
+
     if (changed_rsn_override_1) {
         LOGI("osw: drv: %s/%s/%s: rsn_override_1: "OSW_RSN_OVERRIDE_FMT" -> "OSW_RSN_OVERRIDE_FMT,
              vif->phy->drv->ops->name,
@@ -1393,6 +1489,15 @@ osw_drv_vif_state_is_changed_ap(const struct osw_drv_vif *vif)
              vif->vif_name,
              o->rsn_override_omit_rsnxe,
              n->rsn_override_omit_rsnxe);
+    }
+
+    if (changed_airtime_precedence) {
+        LOGI("osw: drv: %s/%s/%s: airtime_precedence: %s -> %s",
+             vif->phy->drv->ops->name,
+             vif->phy->phy_name,
+             vif->vif_name,
+             osw_airtime_precedence_to_str(o->airtime_precedence),
+             osw_airtime_precedence_to_str(n->airtime_precedence));
     }
 
     if (changed_isolated) {
@@ -2166,7 +2271,7 @@ osw_drv_vif_process_state_vsta(struct osw_drv_vif *vif)
          OSW_HWADDR_ARG(vsta_root_ap ?: &zero));
 
     vif->vsta_root_ap = vsta_root_ap;
-    osw_drv_vif_set_sta_list_valid(vif, false);
+    osw_drv_vif_set_sta_list_state(vif, OSW_DRV_OBJ_INVALID);
     if (vsta_root_ap != NULL) {
         osw_drv_report_sta_changed(drv, phy_name, vif_name, vsta_root_ap);
     }
@@ -2469,6 +2574,18 @@ osw_drv_vif_dump_ap(struct osw_drv_vif *vif)
          vif->vif_name,
          ap->max_sta);
 
+    LOGI("osw: drv: %s/%s/%s: ap: proxy_arp: %d",
+        vif->phy->drv->ops->name,
+        vif->phy->phy_name,
+        vif->vif_name,
+        ap->proxy_arp);
+
+    LOGI("osw: drv: %s/%s/%s: ap: dgaf_disable: %d",
+        vif->phy->drv->ops->name,
+        vif->phy->phy_name,
+        vif->vif_name,
+        ap->dgaf_disable);
+
     LOGI("osw: drv: %s/%s/%s: ap: rsn_override_1: "OSW_RSN_OVERRIDE_FMT,
          vif->phy->drv->ops->name,
          vif->phy->phy_name,
@@ -2494,6 +2611,13 @@ osw_drv_vif_dump_ap(struct osw_drv_vif *vif)
          osw_acl_policy_to_str(ap->acl_policy));
 
     osw_drv_vif_dump_acl(vif);
+
+    LOGI("osw: drv: %s/%s/%s: ap: airtime_precedence: %s",
+         vif->phy->drv->ops->name,
+         vif->phy->phy_name,
+         vif->vif_name,
+         osw_airtime_precedence_to_str(ap->airtime_precedence));
+
     osw_drv_vif_dump_neigh_ft(vif);
     osw_drv_vif_dump_passpoint(vif);
 }
@@ -2663,7 +2787,7 @@ osw_drv_vif_process_state(struct osw_drv_vif *vif)
         }
 
         if (ds_tree_is_empty(&vif->sta_tree) == false) {
-            osw_drv_vif_set_sta_list_valid(vif, false);
+            osw_drv_vif_set_sta_list_state(vif, OSW_DRV_OBJ_INVALID);
             return;
         }
     }
@@ -2689,7 +2813,7 @@ osw_drv_vif_process_state(struct osw_drv_vif *vif)
     struct osw_channel new_channel = {0};
 
     if (sta_vif_link_changed) {
-        osw_drv_vif_set_sta_list_valid(vif, false);
+        osw_drv_vif_set_sta_list_state(vif, OSW_DRV_OBJ_INVALID);
         struct osw_drv_sta *sta;
         ds_tree_foreach(&vif->sta_tree, sta) {
             osw_drv_obj_set_state(&sta->obj, OSW_DRV_OBJ_INVALID);
@@ -2764,9 +2888,32 @@ osw_drv_vif_work(struct osw_drv_vif *vif)
             break;
     }
 
-    if (vif->sta_list_valid == false) {
-        osw_drv_sta_enumerate(vif);
-        osw_drv_vif_set_sta_list_valid(vif, true);
+    switch (vif->sta_list.state) {
+        case OSW_DRV_OBJ_INVALID:
+            osw_drv_vif_request_sta_list(vif);
+            /* It is possible that the list will be fetched immediately, either
+             * due to unregister or in-sync implementation of the enumeration.
+             */
+            switch (vif->sta_list.state) {
+                case OSW_DRV_OBJ_INVALID:
+                case OSW_DRV_OBJ_REQUESTED_AND_INVALIDATED:
+                case OSW_DRV_OBJ_REQUESTED:
+                    return;
+                case OSW_DRV_OBJ_VALID:
+                    /* Actually continue on to process the STAs */
+                    break;
+                case OSW_DRV_OBJ_PROCESSED:
+                    /* Huh */
+                    break;
+            }
+            break;
+        case OSW_DRV_OBJ_REQUESTED_AND_INVALIDATED:
+            return;
+        case OSW_DRV_OBJ_REQUESTED:
+            return;
+        case OSW_DRV_OBJ_VALID:
+        case OSW_DRV_OBJ_PROCESSED:
+            break;
     }
 
     ds_tree_foreach_safe(&vif->sta_tree, sta, tmp)
@@ -3174,6 +3321,7 @@ osw_drv_phy_state_is_changed(const struct osw_drv_phy *phy)
 {
     bool changed = false;
     const bool changed_enabled = phy->cur_state.enabled != phy->new_state.enabled;
+    const bool changed_atf_enabled = phy->cur_state.atf_enabled != phy->new_state.atf_enabled;
     const bool changed_tx_chainmask = phy->cur_state.tx_chainmask != phy->new_state.tx_chainmask;
     const bool changed_radar = phy->cur_state.radar != phy->new_state.radar;
     const bool changed_channels = osw_drv_phy_state_is_channels_changed(phy);
@@ -3181,6 +3329,7 @@ osw_drv_phy_state_is_changed(const struct osw_drv_phy *phy)
                                                                   &(phy->new_state.radar_next_channel));
 
     changed |= changed_enabled;
+    changed |= changed_atf_enabled;
     changed |= changed_tx_chainmask;
     changed |= changed_radar;
     changed |= changed_channels;
@@ -3192,6 +3341,14 @@ osw_drv_phy_state_is_changed(const struct osw_drv_phy *phy)
              phy->phy_name,
              phy->cur_state.enabled,
              phy->new_state.enabled);
+    }
+
+    if (changed_atf_enabled) {
+        LOGI("osw: drv: %s/%s: atf_enabled: %d -> %d",
+             phy->drv->ops->name,
+             phy->phy_name,
+             phy->cur_state.atf_enabled,
+             phy->new_state.atf_enabled);
     }
 
     if (changed_tx_chainmask) {
@@ -3245,6 +3402,11 @@ osw_drv_phy_dump(struct osw_drv_phy *phy)
          phy->phy_name,
          phy->cur_state.enabled);
 
+    LOGI("osw: drv: %s/%s: atf_enabled: %d",
+         phy->drv->ops->name,
+         phy->phy_name,
+         phy->cur_state.atf_enabled);
+
     LOGI("osw: drv: %s/%s: tx_chainmask: 0x%04x",
          phy->drv->ops->name,
          phy->phy_name,
@@ -3259,6 +3421,11 @@ osw_drv_phy_dump(struct osw_drv_phy *phy)
          phy->drv->ops->name,
          phy->phy_name,
          osw_radar_to_str(phy->cur_state.radar));
+
+    LOGI("osw: drv: %s/%s: puncture_supported: %s",
+         phy->drv->ops->name,
+         phy->phy_name,
+         phy->cur_state.puncture_supported ? "yes" : "no");
 
     LOGI("osw: drv: %s/%s: mac_addr: "OSW_HWADDR_FMT,
          phy->drv->ops->name,
@@ -3826,7 +3993,7 @@ osw_drv_work_dump_debug(void)
                  phy->phy_name, phy->vif_list_valid, ds_tree_is_empty(&phy->vif_tree), phy->obj.state, osw_drv_phy_is_settled(phy));
             ds_tree_foreach(&phy->vif_tree, vif) {
                 LOGI("osw: drv: settled debug: vif=%s list=%d empty=%d state=%d settled=%d",
-                     vif->vif_name, vif->sta_list_valid, ds_tree_is_empty(&vif->sta_tree), vif->obj.state, osw_drv_vif_is_settled(vif));
+                     vif->vif_name, vif->sta_list.state, ds_tree_is_empty(&vif->sta_tree), vif->obj.state, osw_drv_vif_is_settled(vif));
                 ds_tree_foreach(&vif->sta_tree, sta) {
                     LOGI("osw: drv: settled debug: sta=" OSW_HWADDR_FMT " state=%d settled=%d",
                          OSW_HWADDR_ARG(&sta->mac_addr), sta->obj.state, osw_drv_sta_is_settled(sta));
@@ -3896,7 +4063,7 @@ osw_drv_sta_from_report(struct osw_drv *drv,
 
     struct osw_drv_sta *sta = ds_tree_find(&vif->sta_tree, sta_addr);
     if (sta == NULL) {
-        osw_drv_vif_set_sta_list_valid(vif, false);
+        osw_drv_vif_set_sta_list_state(vif, OSW_DRV_OBJ_INVALID);
         sta = osw_drv_sta_get(vif, sta_addr);
     }
 
@@ -4363,7 +4530,7 @@ osw_drv_register_ops(const struct osw_drv_ops *ops)
     assert(ops->init_fn != NULL);
     assert(ops->get_phy_list_fn != NULL);
     assert(ops->get_vif_list_fn != NULL);
-    assert(ops->get_sta_list_fn != NULL);
+    assert(ops->get_sta_list_fn != NULL || ops->request_sta_list_fn != NULL);
     assert(ops->request_sta_state_fn != NULL);
     assert(ops->request_vif_state_fn != NULL);
     assert(ops->request_phy_state_fn != NULL);
@@ -4762,7 +4929,7 @@ osw_drv_invalidate(struct osw_drv *drv)
             const char *vif_name = vif->vif_name;
             osw_drv_report_vif_changed(drv, phy_name, vif_name);
 
-            osw_drv_vif_set_sta_list_valid(vif, false);
+            osw_drv_vif_set_sta_list_state(vif, OSW_DRV_OBJ_INVALID);
             struct osw_drv_sta *sta;
             ds_tree_foreach(&vif->sta_tree, sta) {
                 const struct osw_hwaddr *sta_addr = &sta->mac_addr;

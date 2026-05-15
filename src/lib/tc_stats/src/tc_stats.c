@@ -24,58 +24,37 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-/* libc */
-#include <unistd.h>
-#include <stdio.h>
+#include <stdbool.h>
 
-/* 3rd party */
-#include <ev.h>
+#include "log.h"
+#include "fcm.h"
+#include "ct_stats.h"
 
-/* opensync */
-#include <log.h>
-#include <osw_module.h>
+/**
+ * @brief Traffic Class Stats plugin - delegates to CT Stats
+ *
+ * This plugin acts as a thin wrapper that delegates all functionality
+ * to ct_stats with the parent_plugin field set to FCM_PARENT_TC_STATS.
+ */
 
-#define OW_SIGALRM_WDOG_SECONDS 90.0
-#define OW_SIGALRM_WDOG_KICK_SECONDS (OW_SIGALRM_WDOG_SECONDS / 2.0)
-
-struct ev_timer g_ow_sigalrm_kick;
-
-static void
-ow_sigalrm_defer(void)
+int tc_stats_plugin_init(fcm_collect_plugin_t *collector)
 {
-    alarm(OW_SIGALRM_WDOG_SECONDS);
-}
+    int rc;
 
-static void
-ow_sigalrm_sig_cb(int signum)
-{
-    if (signum != SIGALRM) return;
+    LOGI("%s: Traffic Class Stats plugin initialization", __func__);
 
-    LOGEM("main loop was no entered for too long, "
-          "possible infinite loop or blocking call");
-    assert(0);
-}
+    if (collector == NULL) return -1;
 
-static void
-ow_sigalrm_kick_cb(EV_P_ ev_timer *arg, int events)
-{
-    ow_sigalrm_defer();
-}
+    /* Set parent plugin to indicate it's being called from tc_stats */
+    collector->parent_plugin = FCM_PARENT_TC_STATS;
 
-static void
-ow_sigalrm_init(EV_P)
-{
-    const ev_tstamp sec = OW_SIGALRM_WDOG_KICK_SECONDS;
-    ev_timer_init(&g_ow_sigalrm_kick, ow_sigalrm_kick_cb, sec, sec);
-    ev_timer_start(EV_A_ &g_ow_sigalrm_kick);
-    ev_unref(EV_A);
-    signal(SIGALRM, ow_sigalrm_sig_cb);
-    ow_sigalrm_defer();
-}
+    rc = ct_stats_plugin_init(collector);
+    if (rc != 0)
+    {
+        LOGN("%s: ct_stats_plugin_init failed with rc=%d", __func__, rc);
+        return rc;
+    }
 
-OSW_MODULE(ow_sigalrm)
-{
-    struct ev_loop *loop = OSW_MODULE_LOAD(osw_ev);
-    ow_sigalrm_init(loop);
-    return NULL;
+    LOGI("%s: Successfully initialized via ct_stats_plugin_init", __func__);
+    return 0;
 }

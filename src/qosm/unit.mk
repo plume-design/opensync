@@ -52,6 +52,7 @@ UNIT_EXTERN_CFLAGS += -I$(UNIT_PATH)/inc
 UNIT_DEPS += src/lib/common
 UNIT_DEPS += src/lib/evx
 UNIT_DEPS += src/lib/log
+UNIT_DEPS += src/lib/manager_watchdog
 UNIT_DEPS += src/lib/module
 UNIT_DEPS += src/lib/osn
 UNIT_DEPS += src/lib/ovsdb

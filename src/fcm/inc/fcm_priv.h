@@ -125,7 +125,7 @@ typedef struct fcm_collector_
 /**
  * @brief manager's memory usage counters
  */
-struct mem_usage
+struct fcm_mem_usage
 {
     int curr_real_mem;
     char curr_real_mem_unit[8];
@@ -135,7 +135,7 @@ struct mem_usage
     int peak_virt_mem;
 };
 
-void fcm_get_memory(struct mem_usage *mem);
+void fcm_get_memory(struct fcm_mem_usage *mem);
 int fcm_ovsdb_init(void);
 void fcm_event_init(void);
 

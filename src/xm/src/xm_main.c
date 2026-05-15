@@ -46,6 +46,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "os_backtrace.h"
 #include "json_util.h"
 #include "target.h"
+#include "manager_watchdog.h"
 #include "xm.h"
 
 /*****************************************************************************/
@@ -78,6 +79,9 @@ int main(int argc, char ** argv)
 
     // Enable runtime severity updates
     log_register_dynamic_severity(loop);
+
+    /* Init the manager watchdog */
+    manager_watchdog_init(loop, CONFIG_MANAGER_WATCHDOG_TIMEOUT_SEC);
 
     backtrace_init();
 

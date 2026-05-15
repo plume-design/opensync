@@ -1,0 +1,86 @@
+Adds tr181 access libraries (ccsp, ambiorix) that can facilitate local development.
+
+diff --git a/docker/Dockerfile b/docker/Dockerfile
+index a67e6d3cf..9c571bfbb 100644
+--- a/docker/Dockerfile
++++ b/docker/Dockerfile
+@@ -120,20 +120,20 @@ RUN cmake \
+ RUN make install
+ 
+ # RBUS
+-ARG LIBRBUS=rbus-2.0.2
++RUN $PKGINSTALL libsafec-dev liblog4c-dev libcurl4-openssl-dev libmsgpack-dev libcjson-dev
++ARG LIBRBUS=rbus-2.11.0
+ WORKDIR /usr/src
+-RUN wget https://github.com/rdkcentral/rbus/archive/refs/tags/v2.0.2.tar.gz -O $LIBRBUS.tar.gz
++RUN wget https://github.com/rdkcentral/rbus/archive/refs/tags/v2.11.0.tar.gz -O $LIBRBUS.tar.gz
+ RUN tar xf $LIBRBUS.tar.gz
+ RUN mkdir $LIBRBUS/build
+ WORKDIR /usr/src/$LIBRBUS/build
+ RUN cmake \
+-        -D CC=$(CC) \
+         -D BUILD_FOR_DESKTOP=ON \
+         -D CMAKE_BUILD_TYPE=Debug \
+         -D CMAKE_FIND_ROOT_PATH=/usr \
+         -D CMAKE_INSTALL_PREFIX=/usr \
+         ..
+-RUN make install
++RUN make install && cp ../src/rbus/*.h /usr/include/rbus/
+ 
+ # Install clang
+ ENV LLVM_VERSION=17
+@@ -159,5 +159,54 @@ RUN $PKGINSTALL doxygen
+ RUN $PKGINSTALL texlive
+ RUN $PKGINSTALL texlive-full
+ 
++# ambiorix libs
++RUN $PKGINSTALL bison flex liburiparser-dev libcap-ng-dev libevent-dev libyajl-dev
++WORKDIR /usr/src/ambiorix
++RUN REPO=$(mktemp /tmp/repo.XXXXXXXXX) && \
++    curl -o ${REPO} https://storage.googleapis.com/git-repo-downloads/repo && \
++    gpg --recv-keys 8BB9AD793E8E6153AF0F9A4416530D5E920F5C65 && \
++    curl -s https://storage.googleapis.com/git-repo-downloads/repo.asc | gpg --verify - ${REPO} && \
++    install -m 755 ${REPO} /usr/local/bin/repo
++RUN repo init -u https://gitlab.com/prpl-foundation/components/ambiorix/ambiorix.git && \
++    repo sync && \
++    repo forall -c "git checkout main" && \
++    make -C libraries/libamxc install && \
++    make -C libraries/libamxp install && \
++    make -C libraries/libamxd install && \
++    make -C libraries/libamxb install && \
++    make -C libraries/libamxs install && \
++    make -C libraries/libamxo install && \
++    make -C libraries/libamxj install && \
++    make -C libraries/libamxrt install && \
++    make -C bus_adaptors/amxb_ubus install
++
++# ccsp common lib
++WORKDIR /usr/src/ccsp
++ENV DBUS_VER=1.12.16
++RUN git clone https://code.rdkcentral.com/r/rdk/components/generic/rdk-oe/meta-rdk-ext && \
++    curl -o dbus-${DBUS_VER}.tar.gz https://dbus.freedesktop.org/releases/dbus/dbus-${DBUS_VER}.tar.gz && \
++    tar xvf dbus-${DBUS_VER}.tar.gz && \
++    cd dbus-${DBUS_VER} && \
++    patch -p1 < ../meta-rdk-ext/recipes-core/dbus/dbus/01-dbus-ccsp-apis-${DBUS_VER}.patch && \
++    ./configure --prefix=/usr/local --disable-tests --disable-xml-docs --disable-doxygen-docs \
++                --disable-libaudit --enable-largefile && \
++    make -j && make install
++RUN git clone https://code.rdkcentral.com/r/rdk/components/generic/rdk_logger && \
++    cd rdk_logger && autoreconf --force --install --verbose && ./configure && make install
++RUN git clone https://code.rdkcentral.com/r/rdk/components/opensource/rtmessage && \
++    mkdir rtmessage/build && cd rtmessage/build && \
++    cmake -DBUILD_RTMESSAGE_LIB=ON -DBUILD_RTMESSAGE_SAMPLE_APP=ON -DBUILD_FOR_DESKTOP=ON \
++    -DBUILD_DATAPROVIDER_LIB=ON -DCMAKE_BUILD_TYPE=release -DCMAKE_INSTALL_PREFIX=/usr/local .. && \
++    make -j && make install
++RUN git clone https://github.com/Comcast/trower-base64.git -b v1.1.1 && \
++    mkdir trower-base64/build && cd trower-base64/build && cmake -DBUILD_TESTING=OFF .. &&  make -j && make install
++RUN git clone https://code.rdkcentral.com/r/rdkb/components/opensource/ccsp/CcspCommonLibrary -b rdkb-2025q2-kirkstone && \
++    cd CcspCommonLibrary && \
++     ./autogen.sh --prefix=/usr/local CFLAGS="-I/usr/include/libsafec -I/usr/local/include/dbus-1.0 -I/usr/local/lib/dbus-1.0/include/ -I/usr/include/rbus -I/usr/include/rtmessage -D_ANSC_USE_OPENSSL_ -D_NO_PKI_KB5_SUPPORT -DHAVE_C99 -Wno-error" LDFLAGS="-Wl,-rpath=/usr/local/lib" && \
++     make -j && make install && mkdir /usr/local/include/ccsp && \
++     find source -name include -exec cp -r '{}'/. /usr/local/include/ccsp/. ';'
++
++#RUN $PKGINSTALL strace ltrace
++
+ # Open interactive bash
+ CMD bash -i

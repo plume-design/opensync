@@ -97,6 +97,7 @@ void free_flow_counters(struct flow_counters *counters);
 void free_flow_counters(struct flow_counters *counters);
 void free_flow_key(struct flow_key *key);
 void free_flow_key_vdr_data(struct flow_key *key);
+int net_md_copy_flow_key_vdr_data(struct flow_key *dst_fkey, struct flow_key *src_fkey);
 void free_node_info(struct node_info *node);
 struct net_md_stats_accumulator *
 net_md_treelookup_acc(struct net_md_eth_pair *pair,
@@ -142,6 +143,40 @@ void net_md_set_counters(struct net_md_aggregator *aggr,
                          struct net_md_stats_accumulator *acc,
                          struct flow_counters *counters);
 void net_md_report_accs(struct net_md_aggregator *aggr);
+
+
+/**
+ * @brief Traffic Class aggregation bucket
+ *
+ * Aggregates flow statistics by (traffic_class, direction, originator) tuple.
+ * Also stores flow_marker from the most recent flow added to the bucket.
+ * Stored in a ds_tree for O(log n) lookup and insertion.
+ * Vendor and vendor_key are extracted from fkey->vdr_data during bucket creation.
+ */
+struct tc_aggregated_bucket
+{
+    char *traffic_class;
+    char *vendor;
+    char *vendor_key;
+    uint8_t direction;
+    uint8_t originator;
+    uint8_t flow_marker;
+    uint64_t total_bytes;
+    uint64_t total_pkts;
+    uint64_t flow_count;
+    ds_tree_node_t bucket_node;
+};
+
+/**
+ * @brief Reports aggregated statistics to the current window
+ *
+ * Iterates through aggregation buckets and reports non-empty buckets
+ * to the active flow window. Applies report_filter callback if configured.
+ * 
+ * @param aggr the aggregator
+ */
+void net_md_report_aggregate_stats(struct net_md_aggregator *aggr);
+
 void net_md_free_flow_report(struct flow_report *report);
 void net_md_reset_aggregator(struct net_md_aggregator *aggr);
 
@@ -170,6 +205,52 @@ pbkey2net_md_key(struct net_md_aggregator *aggr, Traffic__FlowKey *pb_key);
 void
 net_md_update_aggr(struct net_md_aggregator *aggr, struct packed_buffer *pb);
 
+
 void net_md_purge_aggr(struct net_md_aggregator *aggr);
+
+/**
+ * @brief Aggregate flows by (traffic_class, direction, originator) into buckets
+ *
+ * Adds a single flow's statistics (bytes, packets) to the appropriate
+ * traffic_class + direction + originator bucket in aggr->tc_bucket_tree.
+ * Creates the bucket if it doesn't exist. Also stores the flow_marker in the bucket.
+ *
+ * @param aggr the aggregator (results stored in aggr->tc_bucket_tree)
+ * @param flow the flow to add to aggregation buckets
+ * @return 0 on success, -1 on error
+ */
+int
+net_md_add_flow_to_aggregated_buckets(struct net_md_aggregator *aggr,
+                                       struct net_md_flow *flow);
+
+/**
+ * @brief Free all traffic class aggregation buckets
+ *
+ * @param bucket_tree tree of tc_aggregated_bucket to free
+ */
+void
+net_md_free_tc_aggregated_buckets(ds_tree_t *bucket_tree);
+
+/**
+ * @brief Add traffic class aggregated bucket to flow window
+ *
+ * @param aggr the aggregator
+ * @param tc_bucket the traffic class aggregation bucket to add
+ * @return true if successfully added, false otherwise
+ */
+bool
+net_md_add_tc_bucket_to_window(struct net_md_aggregator *aggr,
+                                struct tc_aggregated_bucket *tc_bucket);
+
+/**
+ * @brief Add traffic class aggregated buckets to window
+ *
+ * Iterates through aggr->tc_bucket_tree and adds all buckets to the window.
+ * Similar to net_md_add_sample_to_window but for aggregated TC buckets.
+ *
+ * @param aggr the aggregator containing tc_bucket_tree
+ */
+void
+net_md_add_tc_aggregated_to_window(struct net_md_aggregator *aggr);
 
 #endif /* NETWORK_METADATA_UTILS_H_INCLUDED */

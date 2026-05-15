@@ -185,9 +185,12 @@ osw_conf_build_vif_cb(const struct osw_state_vif_info *info,
             vif->u.ap.oce_min_rssi_dbm = info->drv_state->u.ap.oce_min_rssi_dbm;
             vif->u.ap.oce_retry_delay_sec = info->drv_state->u.ap.oce_retry_delay_sec;
             vif->u.ap.max_sta = info->drv_state->u.ap.max_sta;
+            vif->u.ap.proxy_arp = info->drv_state->u.ap.proxy_arp;
+            vif->u.ap.dgaf_disable = info->drv_state->u.ap.dgaf_disable;
             vif->u.ap.rsn_override_1 = info->drv_state->u.ap.rsn_override_1;
             vif->u.ap.rsn_override_2 = info->drv_state->u.ap.rsn_override_2;
             vif->u.ap.rsn_override_omit_rsnxe = info->drv_state->u.ap.rsn_override_omit_rsnxe;
+            vif->u.ap.airtime_precedence = info->drv_state->u.ap.airtime_precedence;
             break;
         case OSW_VIF_AP_VLAN:
             break;
@@ -223,6 +226,7 @@ osw_conf_build_phy_cb(const struct osw_state_phy_info *info,
     phy->phy_tree = phy_tree;
     phy->phy_name = STRDUP(info->phy_name);
     phy->enabled = info->drv_state->enabled;
+    phy->atf_enabled = info->drv_state->atf_enabled;
     phy->tx_chainmask = info->drv_state->tx_chainmask;
     phy->radar_next_channel = info->drv_state->radar_next_channel;
     phy->radar = info->drv_state->radar;
@@ -768,6 +772,9 @@ osw_conf_clone_vif(struct osw_conf_vif *src, struct osw_conf_phy *phy)
             vif->u.ap.multi_ap = src->u.ap.multi_ap;
             vif->u.ap.mbss_mode = src->u.ap.mbss_mode;
             vif->u.ap.mbss_group = src->u.ap.mbss_group;
+            vif->u.ap.proxy_arp = src->u.ap.proxy_arp;
+            vif->u.ap.dgaf_disable = src->u.ap.dgaf_disable;
+            vif->u.ap.airtime_precedence = src->u.ap.airtime_precedence;
             break;
         case OSW_VIF_AP_VLAN:
             break;
@@ -793,6 +800,8 @@ osw_conf_clone_phy(struct osw_conf_phy *src, struct ds_tree *phy_tree)
     phy->radar_next_channel = src->radar_next_channel;
     phy->radar = src->radar;
     phy->reg_domain = src->reg_domain;
+    phy->zero_wait_dfs = src->zero_wait_dfs;
+    phy->atf_enabled = src->atf_enabled;
     ds_tree_init(&phy->vif_tree, ds_str_cmp, struct osw_conf_vif, phy_node);
 
     ds_tree_foreach(&src->vif_tree, vif)
@@ -1250,6 +1259,8 @@ static int osw_conf_cmp_vif(struct osw_conf_vif *a, struct osw_conf_vif *b)
             osw_int_compare(r, a->u.ap.oce_min_rssi_dbm, b->u.ap.oce_min_rssi_dbm);
             osw_int_compare(r, a->u.ap.oce_retry_delay_sec, b->u.ap.oce_retry_delay_sec);
             osw_int_compare(r, a->u.ap.max_sta, b->u.ap.max_sta);
+            osw_int_compare(r, a->u.ap.proxy_arp, b->u.ap.proxy_arp);
+            osw_int_compare(r, a->u.ap.dgaf_disable, b->u.ap.dgaf_disable);
 
             r = osw_ft_encr_key_cmp(&a->u.ap.ft_encr_key, &b->u.ap.ft_encr_key);
             if (r != 0) return r;
@@ -1258,6 +1269,9 @@ static int osw_conf_cmp_vif(struct osw_conf_vif *a, struct osw_conf_vif *b)
             r = osw_passpoint_is_equal(&a->u.ap.passpoint, &b->u.ap.passpoint) ? 0 : 1;
             if (r != 0)
                 return r;
+
+            r = (!osw_airtime_precedence_is_equal(&a->u.ap.airtime_precedence, &b->u.ap.airtime_precedence));
+            if (r != 0) return r;
 
             break;
         case OSW_VIF_AP_VLAN:

@@ -36,6 +36,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "log.h"
 #include "ovsdb.h"
 #include "target.h"
+#include "manager_watchdog.h"
 
 #include "psm.h"
 
@@ -109,6 +110,9 @@ int main(int argc, char *argv[])
     LOG(NOTICE, "Starting Persistent Storage Manager - PSM");
     log_severity_set(psm_log_severity);
     log_register_dynamic_severity(EV_DEFAULT);
+
+    /* Init the manager watchdog */
+    manager_watchdog_init(EV_DEFAULT, CONFIG_MANAGER_WATCHDOG_TIMEOUT_SEC);
 
     backtrace_init();
 

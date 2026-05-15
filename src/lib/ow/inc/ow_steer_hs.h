@@ -37,5 +37,7 @@ void ow_steer_hs_vif_drop(ow_steer_hs_vif_t *vif);
 void ow_steer_hs_vif_set_soft_snr_db(ow_steer_hs_vif_t *vif, uint8_t soft_snr_db);
 void ow_steer_hs_vif_set_hard_snr_db(ow_steer_hs_vif_t *vif, uint8_t hard_snr_db);
 void ow_steer_hs_reset(ow_steer_hs_t *hs);
+void ow_steer_hs_set_mqtt_topic(ow_steer_hs_t *hs, const char *topic);
+void ow_steer_hs_set_mqtt_interval(ow_steer_hs_t *hs, uint32_t interval_sec);
 
 #endif /* OW_STEER_HS_H_INCLUDED */

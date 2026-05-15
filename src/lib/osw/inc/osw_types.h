@@ -231,6 +231,22 @@ enum osw_sta_cell_cap {
     OSW_STA_CELL_NOT_AVAILABLE,
 };
 
+#define OSW_AIRTIME_PRECEDENCE_DEFAULT OSW_AIRTIME_PRECEDENCE_MEDIUM
+enum osw_airtime_precedence {
+  OSW_AIRTIME_PRECEDENCE_UNSUPPORTED,
+  OSW_AIRTIME_PRECEDENCE_DISABLED,
+  OSW_AIRTIME_PRECEDENCE_LOW,
+  OSW_AIRTIME_PRECEDENCE_MEDIUM,
+  OSW_AIRTIME_PRECEDENCE_HIGH,
+};
+
+enum osw_zero_wait_dfs {
+    OSW_ZERO_WAIT_DFS_UNSET,
+    OSW_ZERO_WAIT_DFS_DISABLE,
+    OSW_ZERO_WAIT_DFS_ENABLE,
+    OSW_ZERO_WAIT_DFS_PRECAC,
+};
+
 struct osw_reg_domain {
     char ccode[3]; /* 2-letter ISO name, \0-terminated */
     int iso3166_num;
@@ -238,10 +254,11 @@ struct osw_reg_domain {
     enum osw_reg_dfs dfs;
 };
 
-#define OSW_REG_DOMAIN_FMT "ccode %.*s rev %d dfs %s"
+#define OSW_REG_DOMAIN_FMT "ccode %.*s iso3166 %d rev %d dfs %s"
 #define OSW_REG_DOMAIN_ARG(rd) \
     (int)sizeof((rd)->ccode) - 1, \
     (rd)->ccode, \
+    (rd)->iso3166_num, \
     (rd)->revision, \
     osw_reg_dfs_to_str((rd)->dfs)
 
@@ -683,7 +700,13 @@ enum osw_rate_legacy {
 #define OSW_RATES_ARG(x) ((uint16_t)(x))
 
 int
+osw_rate_legacy_to_kbps(enum osw_rate_legacy rate);
+
+int
 osw_rate_legacy_to_halfmbps(enum osw_rate_legacy rate);
+
+enum osw_rate_legacy
+osw_rate_legacy_from_kbps(int kbps);
 
 enum osw_rate_legacy
 osw_rate_legacy_from_halfmbps(int halfmbps);
@@ -913,6 +936,12 @@ osw_radar_to_str(enum osw_radar_detect r);
 const char *
 osw_band_to_str(enum osw_band b);
 
+const char *
+osw_airtime_precedence_to_str(const enum osw_airtime_precedence p);
+
+const char *
+osw_zero_wait_dfs_to_str(const enum osw_zero_wait_dfs zwd);
+
 void
 osw_wpa_to_str(char *out, size_t len, const struct osw_wpa *wpa);
 
@@ -1105,6 +1134,10 @@ osw_neigh_list_to_str(char *out,
                       const struct osw_neigh_list *neigh);
 
 int
+osw_neigh_cmp(const struct osw_neigh *a,
+              const struct osw_neigh *b);
+
+int
 osw_neigh_ft_cmp(const struct osw_neigh_ft *a,
                  const struct osw_neigh_ft *b);
 
@@ -1209,6 +1242,13 @@ osw_nas_id_is_equal(const struct osw_nas_id *a,
 int
 osw_ft_encr_key_cmp(const struct osw_ft_encr_key *a,
                     const struct osw_ft_encr_key *b);
+
+bool
+osw_airtime_precedence_is_equal(const enum osw_airtime_precedence *a,
+                                const enum osw_airtime_precedence *b);
+
+int osw_airtime_precedence_cmp(const enum osw_airtime_precedence *a,
+                               const enum osw_airtime_precedence *b);
 
 bool
 osw_ft_encr_key_is_equal(const struct osw_ft_encr_key *a,

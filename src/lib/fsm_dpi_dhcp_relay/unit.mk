@@ -42,7 +42,14 @@ UNIT_SRC := src/fsm_dpi_dhcp_relay.c
 UNIT_SRC += src/fsm_dpi_dhcpv4_relay.c
 UNIT_SRC += src/fsm_dpi_dhcpv6_relay.c
 
-UNIT_CFLAGS := -I$(UNIT_PATH)/inc
+ifeq ($(TARGET),native)
+    DHCP_RELAY_CONF_FILE=$(shell realpath $(UNIT_PATH)/$(CONFIG_DHCP_RELAY_CONF))
+else
+    DHCP_RELAY_CONF_FILE=$(CONFIG_DHCP_RELAY_CONF)
+endif
+
+UNIT_CFLAGS := -DDHCP_RELAY_CONF_FILE='"$(DHCP_RELAY_CONF_FILE)"'
+UNIT_CFLAGS += -I$(UNIT_PATH)/inc
 UNIT_CFLAGS += -Isrc/fsm/inc
 
 # This is REQUIRED so we can find libfsm_dpi_client.so

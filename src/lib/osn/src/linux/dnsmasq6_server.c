@@ -34,13 +34,16 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <errno.h>
 
+#include "const.h"
 #include "ds.h"
 #include "log.h"
+#include "osn_types.h"
 #include "util.h"
 #include "memutil.h"
 #include "daemon.h"
 #include "evx.h"
 #include "kconfig.h"
+#include "string.h"
 
 #include "dnsmasq6_server.h"
 
@@ -116,7 +119,7 @@ bool dnsmasq6_server_init(dnsmasq6_server_t *self, const char *ifname)
 
     if (first_run)
     {
-        LOG(INFO, "dhcpv6_server: Global initialization.");
+        LOG(INFO, "dnsmasq6_server: Global initialization.");
         /* Global initialization */
         ev_stat_init(&dnsmasq6_server_lease_stat, dnsmasq6_server_lease_stat_fn, CONFIG_OSN_DNSMASQ6_LEASE_PATH, 0.0);
         ev_debounce_init(&dnsmasq6_server_lease_debounce, dnsmasq6_server_lease_debounce_fn, 0.3);
@@ -129,7 +132,7 @@ bool dnsmasq6_server_init(dnsmasq6_server_t *self, const char *ifname)
 
     if (STRSCPY(self->d6s_ifname, ifname) < 0)
     {
-        LOG(ERR, "dhcpv6_server: Interface name too long: %s", ifname);
+        LOG(ERR, "dnsmasq6_server: Interface name too long: %s", ifname);
         return NULL;
     }
 
@@ -171,7 +174,7 @@ bool dnsmasq6_server_fini(dnsmasq6_server_t *self)
         self->d6s_options[tag] = NULL;
     }
 
-    /* Clear the leases list */
+    /* Clear the static leases list */
     ds_tree_foreach_iter(&self->d6s_leases, lease, &iter)
     {
         ds_tree_iremove(&iter);
@@ -187,7 +190,7 @@ bool dnsmasq6_server_fini(dnsmasq6_server_t *self)
     /* Schedule a reconfiguration so the current config is removed from the system settings */
     if (!dnsmasq6_server_global_apply())
     {
-        LOG(ERR, "dhcpv6_server: Unable to apply dnsmasq configuration.");
+        LOG(ERR, "dnsmasq6_server: Unable to apply dnsmasq configuration.");
         return false;
     }
 
@@ -232,7 +235,7 @@ bool dnsmasq6_server_prefix_del(dnsmasq6_server_t *self, struct osn_dhcpv6_serve
     node = ds_tree_find(&self->d6s_prefixes, &prefix->d6s_prefix);
     if (node == NULL)
     {
-        LOG(ERR, "dhcpv6_server: %s: Unable to remove prefix: "PRI_osn_ip6_addr,
+        LOG(ERR, "dnsmasq6_server: %s: Unable to remove prefix: "PRI_osn_ip6_addr,
                 self->d6s_ifname,
                 FMT_osn_ip6_addr(prefix->d6s_prefix));
         return false;
@@ -251,7 +254,7 @@ bool dnsmasq6_server_option_send(dnsmasq6_server_t *self, int tag, const char *d
 {
     if (tag <= 0 || tag >= OSN_DHCP_OPTIONS_MAX)
     {
-        LOG(ERR, "dhcpv6_server: %s: Invalid tag: %d (data: %s).",
+        LOG(ERR, "dnsmasq6_server: %s: Invalid tag: %d (data: %s).",
                 self->d6s_ifname,
                 tag,
                 data);
@@ -276,6 +279,9 @@ bool dnsmasq6_server_lease_add(dnsmasq6_server_t *self, struct osn_dhcpv6_server
 {
     struct dnsmasq6_server_lease *node;
 
+    LOG(DEBUG, "dnsmasq6_server: %s: duid='%s', ip6_addr=%s, hostname='%s'",
+            __func__, lease->d6s_duid, FMT_osn_ip6_addr(lease->d6s_addr), lease->d6s_hostname);
+
     node = ds_tree_find(&self->d6s_leases, lease);
     if (node == NULL)
     {
@@ -298,10 +304,13 @@ bool dnsmasq6_server_lease_del(dnsmasq6_server_t *self, struct osn_dhcpv6_server
 {
     struct dnsmasq6_server_lease *node;
 
+    LOG(DEBUG, "dnsmasq6_server: %s: duid='%s', ip6_addr=%s, hostname='%s'",
+            __func__, lease->d6s_duid, FMT_osn_ip6_addr(lease->d6s_addr), lease->d6s_hostname);
+
     node = ds_tree_find(&self->d6s_leases, lease);
     if (node == NULL)
     {
-        LOG(ERR, "dhcpv6_server: %s: Unable to remove lease: "PRI_osn_ip6_addr,
+        LOG(ERR, "dnsmasq6_server: %s: Unable to remove lease: "PRI_osn_ip6_addr,
                 self->d6s_ifname,
                 FMT_osn_ip6_addr(lease->d6s_addr));
         return false;
@@ -723,18 +732,60 @@ bool dnsmasq6_server_write_config(void)
         /* Add prefixes */
         ds_tree_foreach(&d6s->d6s_prefixes, d6s_prefix)
         {
+            osn_ip6_addr_t prefix;
+            osn_ip6_addr_t addr_start;
+            osn_ip6_addr_t addr_end;
+            osn_ip6_addr_t full_mask;
+
             char prfx_valid_timer[32] = {0};
             int  pf_vld_tmr = d6s_prefix->dp_prefix.d6s_prefix.ia6_valid_lft;
 
             if(pf_vld_tmr == -1)
-                SPRINTF(prfx_valid_timer, ",%s", "infinite");
+                SPRINTF(prfx_valid_timer, "%s", "infinite");
             else if(pf_vld_tmr > 0)
-                SPRINTF(prfx_valid_timer, ",%d", pf_vld_tmr);
+                SPRINTF(prfx_valid_timer, "%d", pf_vld_tmr);
 
-            fprintf(f, "dhcp-range=%s,::1,::FFFF:FFFF,constructor:%s%s%s\n",
+            /* Calculate the start address by ORing the prefix with "::2" */
+            prefix = osn_ip6_addr_subnet(&d6s_prefix->dp_prefix.d6s_prefix);
+            prefix.ia6_prefix = -1;
+            if (!osn_ip6_addr_from_str(&addr_start, "::2"))
+            {
+                LOG(ERR, "dnsmasq6: Error creating ::2 address.");
+                continue;
+            }
+            addr_start = osn_ip6_addr_or(&prefix, &addr_start);
+
+            /* In most practical cases LAN prefix /64 is the only thing you would want.
+             *
+             * dnsmasq does not work if prefix < 64, it complains and does not even start.
+             * Funny, on the other hand, it does work if configured prefix is > 64, but that
+             * would also be mostly of no use, since it would break SLAAC for the clients.
+             *
+             * Still, controller could wrongly configure a smaller prefix (larger subnet)
+             * (e.g. /63) and attach it to DHCPv6_Server row and this is what our code takes as
+             * input. Since we are using dnsmasq, to make such cases functional, we ignore such
+             * configuration request with a big WARN and still configure /64 for the LAN.
+             */
+            int dhcp_prefix = d6s_prefix->dp_prefix.d6s_prefix.ia6_prefix;
+            if (dhcp_prefix != 64)
+            {
+                LOG(WARN, "IPv6_Prefix attached to DHCPv6_Server with prefix length != 64 (%d)"
+                            " but LAN requires prefix length == 64. Force /64 prefix.", dhcp_prefix);
+                dhcp_prefix = 64;
+            }
+
+            /* Calculate the end address by ORing the start address with the inverse subnet */
+            full_mask = osn_ip6_addr_from_prefix(128);
+            addr_end = osn_ip6_addr_from_prefix(dhcp_prefix);
+            addr_end = osn_ip6_addr_xor(&addr_end, &full_mask);
+            addr_end = osn_ip6_addr_or(&addr_start, &addr_end);
+
+            fprintf(f, "dhcp-range=%s,"PRI(osn_ip6_addr)","PRI(osn_ip6_addr)"%s,%d,%s\n",
                     d6s->d6s_ifname,
-                    d6s->d6s_ifname,
+                    FMT(osn_ip6_addr, addr_start),
+                    FMT(osn_ip6_addr, addr_end),
                     d6s_prefix->dp_prefix.ds6_onlink ? "" : ",off-link",
+                    dhcp_prefix,
                     prfx_valid_timer);
         }
 
@@ -752,7 +803,7 @@ bool dnsmasq6_server_write_config(void)
         /* Add static leases */
         ds_tree_foreach(&d6s->d6s_leases, d6s_lease)
         {
-            fprintf(f, "dhcp-host=%s,uid:%s,["PRI_osn_ip6_addr"]\n",
+            fprintf(f, "dhcp-host=%s,id:%s,["PRI_osn_ip6_addr"]",
                     d6s->d6s_ifname,
                     d6s_lease->dl_lease.d6s_duid,
                     FMT_osn_ip6_addr(d6s_lease->dl_lease.d6s_addr));
@@ -827,26 +878,26 @@ bool dnsmasq6_server_global_apply(void)
         {
             if (mkdir(*pvar, 0755) != 0 && errno != EEXIST)
             {
-                LOG(CRIT, "dhcpv6_server: Unable to create folder %s", *pvar);
+                LOG(CRIT, "dnsmasq6_server: Unable to create folder %s", *pvar);
                 return false;
             }
         }
 
         if (!daemon_init(&dnsmasq6_server_daemon, CONFIG_OSN_DNSMASQ6_PATH, DAEMON_LOG_ALL))
         {
-            LOG(ERR, "dhcpv6_server: Unable to initialize global daemon object.");
+            LOG(ERR, "dnsmasq6_server: Unable to initialize global daemon object.");
             return false;
         }
 
         /* Set the PID file location -- necessary to kill stale instances */
         if (!daemon_pidfile_set(&dnsmasq6_server_daemon, CONFIG_OSN_DNSMASQ6_PID_PATH, false))
         {
-            LOG(WARN, "dhcpv6_server: Error setting the PID file path.");
+            LOG(WARN, "dnsmasq6_server: Error setting the PID file path.");
         }
 
         if (!daemon_restart_set(&dnsmasq6_server_daemon, true, 3.0, 10))
         {
-            LOG(WARN, "dhcpv6_server: Error enabling daemon auto-restart on global instance.");
+            LOG(WARN, "dnsmasq6_server: Error enabling daemon auto-restart on global instance.");
         }
 
         daemon_arg_add(&dnsmasq6_server_daemon, "--keep-in-foreground");                /* Do not fork to background */
@@ -894,13 +945,13 @@ void dnsmasq6_server_lease_debounce_fn(struct ev_loop *loop, ev_debounce *w, int
     char buf[1024];
     FILE *fl;
 
-    LOG(INFO, "dhcpv6_server: Lease file changed: %s. Updating all leases.", CONFIG_OSN_DNSMASQ6_LEASE_PATH);
+    LOG(INFO, "dnsmasq6_server: Lease file changed: %s. Updating all leases.", CONFIG_OSN_DNSMASQ6_LEASE_PATH);
 
     /* Process the lease file */
     fl = fopen(CONFIG_OSN_DNSMASQ6_LEASE_PATH, "r");
     if (fl == NULL)
     {
-        LOG(DEBUG, "dhcpv6_server: Error opening lease file: %s", CONFIG_OSN_DNSMASQ6_LEASE_PATH);
+        LOG(DEBUG, "dnsmasq6_server: Error opening lease file: %s", CONFIG_OSN_DNSMASQ6_LEASE_PATH);
         goto error;
     }
 
@@ -947,6 +998,8 @@ void dnsmasq6_server_lease_debounce_fn(struct ev_loop *loop, ev_debounce *w, int
         char *phostname;
         char *pduid;
 
+        buf[strcspn(buf, "\n")] = '\0';   // trim trailing newline
+
         /* Skip the duid line */
         if (strncmp(buf, "duid", strlen("duid")) == 0)
         {
@@ -984,7 +1037,7 @@ void dnsmasq6_server_lease_debounce_fn(struct ev_loop *loop, ev_debounce *w, int
         /* Parse the IPv6 address */
         if (!osn_ip6_addr_from_str(&addr6, pipv6))
         {
-            LOG(ERR, "dhcpv6_server: lease_file: Error parsing IPv6 address"PRI_osn_ip6_addr", skipping.",
+            LOG(ERR, "dnsmasq6_server: lease_file: Error parsing IPv6 address"PRI_osn_ip6_addr", skipping.",
                     FMT_osn_ip6_addr(addr6));
             continue;
         }
@@ -993,7 +1046,7 @@ void dnsmasq6_server_lease_debounce_fn(struct ev_loop *loop, ev_debounce *w, int
         d6s = dnsmasq6_server_find_by_prefix(&addr6);
         if (d6s == NULL)
         {
-            LOG(WARN, "dhcpv6_server: lease_file: Stale IPv6 entry: "PRI_osn_ip6_addr,
+            LOG(WARN, "dnsmasq6_server: lease_file: Stale IPv6 entry: "PRI_osn_ip6_addr,
                     FMT_osn_ip6_addr(addr6));
             continue;
         }
@@ -1010,13 +1063,13 @@ void dnsmasq6_server_lease_debounce_fn(struct ev_loop *loop, ev_debounce *w, int
 
         if (STRSCPY(lease.d6s_hostname, phostname) < 0)
         {
-            LOG(WARN, "dhcpv6_server: lease_file: Hostname too long: %s", phostname);
+            LOG(WARN, "dnsmasq6_server: lease_file: Hostname too long: %s", phostname);
             continue;
         }
 
         if (STRSCPY(lease.d6s_duid, pduid) < 0)
         {
-            LOG(WARN, "dhcpv6_server: lease_file: DUID too long: %s", pduid);
+            LOG(WARN, "dnsmasq6_server: lease_file: DUID too long: %s", pduid);
             continue;
         }
 

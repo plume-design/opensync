@@ -925,14 +925,14 @@ osw_btm_resp_parse(const void *buf,
     uint16_t fc_le16;
     uint16_t dur_le16;
     uint16_t seq_le16;
-    struct osw_hwaddr ta;
+    struct osw_hwaddr da;
     struct osw_hwaddr bssid;
 
     if (!buf_get_u16(&buf, &rem, &fc_le16)) return false;
     if (!buf_get_u16(&buf, &rem, &dur_le16)) return false;
-    if (!buf_get_into(&buf, &rem, &resp->sta_addr)) return false;
-    if (!buf_get_into(&buf, &rem, &ta)) return false;
     if (!buf_get_into(&buf, &rem, &bssid)) return false;
+    if (!buf_get_into(&buf, &rem, &resp->sta_addr)) return false;
+    if (!buf_get_into(&buf, &rem, &da)) return false;
     if (!buf_get_u16(&buf, &rem, &seq_le16)) return false;
 
     const uint16_t fc = le16toh(fc_le16);

@@ -32,6 +32,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ovsdb.h"
 #include "os_backtrace.h"
 #include "target.h"
+#include "manager_watchdog.h"
 
 /******************************************************************************/
 
@@ -60,6 +61,9 @@ int main(int argc, char ** argv)
 
     // From this point on log severity can change in runtime.
     log_register_dynamic_severity(loop);
+
+    /* Init the manager watchdog */
+    manager_watchdog_init(loop, CONFIG_MANAGER_WATCHDOG_TIMEOUT_SEC);
 
     backtrace_init();
 

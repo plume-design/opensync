@@ -224,6 +224,12 @@ struct osw_drv_vif_config_ap {
     int max_sta;
     bool max_sta_changed;
 
+    bool proxy_arp;
+    bool proxy_arp_changed;
+
+    bool dgaf_disable;
+    bool dgaf_disable_changed;
+
     struct osw_rsn_override rsn_override_1;
     bool rsn_override_1_changed;
 
@@ -232,6 +238,9 @@ struct osw_drv_vif_config_ap {
 
     bool rsn_override_omit_rsnxe;
     bool rsn_override_omit_rsnxe_changed;
+
+    enum osw_airtime_precedence airtime_precedence;
+    bool airtime_precedence_changed;
 };
 
 struct osw_drv_vif_sta_network {
@@ -321,9 +330,12 @@ struct osw_drv_vif_state_ap {
     bool oce_min_rssi_enable;
     int oce_retry_delay_sec;
     int max_sta;
+    bool proxy_arp;
+    bool dgaf_disable;
     struct osw_rsn_override rsn_override_1;
     struct osw_rsn_override rsn_override_2;
     bool rsn_override_omit_rsnxe;
+    enum osw_airtime_precedence airtime_precedence;
 };
 
 struct osw_drv_vif_state_ap_vlan {
@@ -391,6 +403,9 @@ struct osw_drv_phy_config {
     bool enabled;
     bool enabled_changed;
 
+    bool atf_enabled;
+    bool atf_enabled_changed;
+
     int tx_chainmask;
     bool tx_chainmask_changed;
 
@@ -402,6 +417,8 @@ struct osw_drv_phy_config {
 
     struct osw_reg_domain reg_domain;
     bool reg_domain_changed;
+
+    enum osw_zero_wait_dfs zero_wait_dfs;
 
     struct osw_drv_vif_config_list vif_list;
 };
@@ -423,6 +440,7 @@ struct osw_drv_phy_state {
     struct osw_hwaddr mac_addr;
     bool exists;
     bool enabled;
+    bool atf_enabled;
     int tx_chainmask;
     struct osw_channel radar_next_channel;
     enum osw_radar_detect radar;
@@ -494,6 +512,11 @@ osw_drv_request_vif_state_fn_t(struct osw_drv *drv,
                                const char *vif_name);
 
 typedef void
+osw_drv_request_sta_list_fn_t(struct osw_drv *drv,
+                              const char *phy_name,
+                              const char *vif_name);
+
+typedef void
 osw_drv_request_sta_state_fn_t(struct osw_drv *drv,
                                const char *phy_name,
                                const char *vif_name,
@@ -554,6 +577,7 @@ struct osw_drv_ops {
     osw_drv_get_sta_list_fn_t *get_sta_list_fn;
     osw_drv_request_phy_state_fn_t *request_phy_state_fn;
     osw_drv_request_vif_state_fn_t *request_vif_state_fn;
+    osw_drv_request_sta_list_fn_t *request_sta_list_fn;
     osw_drv_request_sta_state_fn_t *request_sta_state_fn;
     osw_drv_request_sta_deauth_fn_t *request_sta_deauth_fn;
     osw_drv_request_sta_delete_fn_t *request_sta_delete_fn;
@@ -666,6 +690,12 @@ void
 osw_drv_report_vif_wps_pbc_timeout(struct osw_drv *drv,
                                    const char *phy_name,
                                    const char *vif_name);
+
+void
+osw_drv_report_sta_enumeration(struct osw_drv *drv,
+                               const char *phy_name,
+                               const char *vif_name,
+                               const struct osw_hwaddr_list *sta_list);
 
 void
 osw_drv_report_sta_changed(struct osw_drv *drv,

@@ -82,4 +82,5 @@ message DpiStatsReport {
   repeated NfqueueStatsCounters nfqueue_stats = 4;
   repeated PcapStatsCounters pcap_stats = 5;
   repeated CallTraceCounters call_stats = 6;
+  uint64 timestamp = 7;
 }

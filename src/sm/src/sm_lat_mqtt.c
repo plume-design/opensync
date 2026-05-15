@@ -139,6 +139,18 @@ static Latency__Sample *sm_lat_mqtt_grow_sample(Latency__Host *h)
     return *s;
 }
 
+static Latency__Percentile *sm_lat_mqtt_grow_percentile(Latency__Sample *s)
+{
+    const size_t last = s->n_percentiles++;
+    const size_t elem_size = sizeof(s->percentiles[0]);
+    const size_t new_size = s->n_percentiles * elem_size;
+    s->percentiles = REALLOC(s->percentiles, new_size);
+    Latency__Percentile **p = &s->percentiles[last];
+    *p = MALLOC(sizeof(**p));
+    latency__percentile__init(*p);
+    return *p;
+}
+
 static void sm_lat_mqtt_fill_hdr(sm_lat_mqtt_t *m, Latency__Host *dst, const sm_lat_core_host_t *src)
 {
     const char *if_name = (const char *)src->if_name;
@@ -197,6 +209,16 @@ static void sm_lat_mqtt_fill_sample(Latency__Sample *dst, const sm_lat_core_samp
     {
         dst->has_timestamp_ms = true;
         dst->timestamp_ms = src->timestamp_ms;
+    }
+    if (src->percentiles)
+    {
+        size_t i;
+        for (i = 0; i < src->n_percentiles; i++)
+        {
+            Latency__Percentile *p = sm_lat_mqtt_grow_percentile(dst);
+            p->p_val = src->percentiles[i].p_val;
+            p->p_ms = src->percentiles[i].p_ms;
+        }
     }
 }
 

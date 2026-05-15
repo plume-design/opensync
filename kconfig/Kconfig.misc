@@ -22,3 +22,14 @@ config RUN_IN_LXC
     help
         Run OpenSync in an LXC container
 
+config MANAGER_WATCHDOG_TIMEOUT_SEC
+    int "Manager watchdog timeout in seconds"
+    default 90
+    help
+        Timeout for the manager watchdog that monitors the main event loop
+        of a manager process. If the main loop does not process events within
+        this timeout period, the watchdog will crash the process in order to
+        prevent infinite loops or blocking calls.
+        Runs on all managers, except ones that are expected to run system
+        commands for an extended period of time like Upgrade Manager (UM).
+        Set to 0 to disable the feature on all managers.

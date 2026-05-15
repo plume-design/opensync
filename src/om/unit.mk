@@ -53,3 +53,4 @@ UNIT_DEPS := src/lib/ovsdb
 UNIT_DEPS += src/lib/pjs
 UNIT_DEPS += src/lib/schema
 UNIT_DEPS += src/lib/policy_tags
+UNIT_DEPS += src/lib/manager_watchdog

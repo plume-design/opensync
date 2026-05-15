@@ -34,6 +34,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "os.h"          // OS helpers
 #include "ovsdb.h"       // OVSDB helpers
 #include "target.h"      // target API
+#include "manager_watchdog.h"  // manager watchdog
 #include "network_metadata.h"  // network metadata API
 
 #include "fcm.h"         // module header
@@ -76,6 +77,9 @@ int main(int argc, char ** argv)
 
     // Enable runtime severity updates
     log_register_dynamic_severity(loop);
+
+    // Initialize manager watchdog
+    manager_watchdog_init(loop, CONFIG_MANAGER_WATCHDOG_TIMEOUT_SEC);
 
     // Install crash handlers that dump the stack to the log file
     backtrace_init();

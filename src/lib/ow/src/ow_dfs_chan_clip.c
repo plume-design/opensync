@@ -251,6 +251,7 @@ ow_dfs_chan_clip_vif_try_narrow(const struct osw_channel_state *channel_states,
                                 bool *punctured,
                                 bool *narrowed)
 {
+    if (osw_channel_is_none(c)) return false;
     while (osw_cs_chan_is_usable(channel_states, n_channel_states, c) == false) {
         if (puncture) {
             struct osw_channel new_c;
@@ -276,7 +277,7 @@ ow_dfs_chan_clip_vif_inherit_state(const struct osw_channel_state *channel_state
                                    bool *punctured,
                                    bool *narrowed)
 {
-    if (state_c == NULL) return false;
+    if (osw_channel_is_none(state_c)) return false;
     *c = *state_c;
     return ow_dfs_chan_clip_vif_try_narrow(channel_states, n_channel_states, c, puncture, punctured, narrowed);
 }

@@ -94,4 +94,5 @@ UNIT_DEPS += src/lib/timevt
 UNIT_DEPS += src/lib/os_fdbuf
 UNIT_DEPS += src/lib/ds_util
 UNIT_DEPS += src/lib/ovsdb_bridge
+UNIT_DEPS += src/lib/manager_watchdog
 UNIT_DEPS_CFLAGS += src/lib/version

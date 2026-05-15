@@ -46,7 +46,8 @@ UNIT_EXPORT_CFLAGS := $(UNIT_CFLAGS)
 UNIT_EXPORT_LDFLAGS := $(UNIT_LDFLAGS)
 
 UNIT_DEPS    := src/lib/log
-UNIT_DEPS    := src/lib/ovsdb
+UNIT_DEPS    += src/lib/manager_watchdog
+UNIT_DEPS    += src/lib/ovsdb
 UNIT_DEPS    += src/lib/pjs
 UNIT_DEPS    += src/lib/schema
 UNIT_DEPS    += src/lib/connector

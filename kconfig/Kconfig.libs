@@ -45,6 +45,7 @@ source "src/lib/ct_stats/kconfig/Kconfig.libs"
 source "src/lib/reboot_flags/kconfig/Kconfig.libs"
 source "src/lib/we/kconfig/Kconfig.libs"
 source "src/lib/fsm_dpi_dhcp_relay/kconfig/Kconfig.libs"
+source "src/lib/os_tr181/kconfig/Kconfig.libs"
 
 osource "platform/*/kconfig/Kconfig.libs"
 osource "vendor/*/kconfig/Kconfig.libs"

@@ -54,3 +54,4 @@ UNIT_DEPS += src/lib/common
 UNIT_DEPS += src/lib/ustack
 UNIT_DEPS += src/lib/neigh_table
 UNIT_DEPS += src/lib/network_metadata
+UNIT_DEPS += $(if $(CONFIG_MANAGER_FSM), src/lib/dpi_stats)

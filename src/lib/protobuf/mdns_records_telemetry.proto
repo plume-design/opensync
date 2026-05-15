@@ -47,7 +47,7 @@ message MdnsRecord {
   optional  uint32 weight = 7;
   optional  uint32 port = 8;
 }
-    
+
 
 message MdnsClient {
   optional string mac = 1;

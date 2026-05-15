@@ -437,6 +437,75 @@ free_flow_key_vdr_data(struct flow_key *key)
     FREE(key->vdr_data);
 }
 
+/**
+ * @brief Copy vendor data from source flow_key to destination flow_key
+ *
+ * Performs a deep copy of all vendor data entries from src_fkey to dst_fkey.
+ * The destination flow_key must not already have vendor data allocated.
+ *
+ * @param dst_fkey destination flow key (must have num_vendor_data == 0)
+ * @param src_fkey source flow key to copy vendor data from
+ * @return 0 on success, -1 on failure
+ */
+int
+net_md_copy_flow_key_vdr_data(struct flow_key *dst_fkey, struct flow_key *src_fkey)
+{
+    struct flow_vendor_data *src_vd, *dst_vd;
+    struct vendor_data_kv_pair *src_kvp, *dst_kvp;
+    size_t i, j;
+
+    if (dst_fkey == NULL || src_fkey == NULL) return -1;
+    if (src_fkey->num_vendor_data == 0) return 0;
+    if (dst_fkey->num_vendor_data != 0) return -1; /* dst must be empty */
+
+    /* Allocate vendor data array */
+    dst_fkey->vdr_data = CALLOC(src_fkey->num_vendor_data, sizeof(struct flow_vendor_data *));
+
+    dst_fkey->num_vendor_data = src_fkey->num_vendor_data;
+
+    /* Copy each vendor data container */
+    for (i = 0; i < src_fkey->num_vendor_data; i++)
+    {
+        src_vd = src_fkey->vdr_data[i];
+        if (src_vd == NULL) continue;
+
+        dst_vd = CALLOC(1, sizeof(struct flow_vendor_data));
+
+        /* Copy vendor name */
+        if (src_vd->vendor != NULL) dst_vd->vendor = STRDUP(src_vd->vendor);
+
+        /* Copy key-value pairs */
+        dst_vd->nelems = src_vd->nelems;
+        if (src_vd->nelems > 0)
+        {
+            dst_vd->kv_pairs = CALLOC(src_vd->nelems, sizeof(struct vendor_data_kv_pair *));
+
+            for (j = 0; j < src_vd->nelems; j++)
+            {
+                src_kvp = src_vd->kv_pairs[j];
+                if (src_kvp == NULL) continue;
+
+                dst_kvp = CALLOC(1, sizeof(struct vendor_data_kv_pair));
+
+                /* Copy key */
+                if (src_kvp->key != NULL) dst_kvp->key = STRDUP(src_kvp->key);
+
+                /* Copy value based on type */
+                dst_kvp->value_type = src_kvp->value_type;
+                if (src_kvp->str_value != NULL) dst_kvp->str_value = STRDUP(src_kvp->str_value);
+                dst_kvp->u32_value = src_kvp->u32_value;
+                dst_kvp->u64_value = src_kvp->u64_value;
+
+                dst_vd->kv_pairs[j] = dst_kvp;
+            }
+        }
+
+        dst_fkey->vdr_data[i] = dst_vd;
+    }
+
+    return 0;
+}
+
 void
 free_flow_key(struct flow_key *key)
 {
@@ -738,11 +807,11 @@ net_md_populate_acc(struct net_md_aggregator *aggr,
 
     acc->fkey = net_md_set_flow_key(acc->key);
     if (acc->fkey == NULL) goto err_free_md_flow_key;
-    
+
     acc->fkey->acc = acc;
     acc->fkey->state.report_attrs = true;
     acc->flags = (key->flags & (NET_MD_ACC_ETH | NET_MD_ACC_FIVE_TUPLE));
-    if (aggr->on_acc_create != NULL) aggr->on_acc_create(aggr, acc);    
+    if (aggr->on_acc_create != NULL) aggr->on_acc_create(aggr, acc);
     aggr->total_flows++;
     return;
 
@@ -1217,7 +1286,15 @@ void net_md_report_5tuples_accs(struct net_md_aggregator *aggr,
         if (active_flow)
         {
             net_md_close_counters(aggr, acc);
-            net_md_add_sample_to_window(aggr, acc);
+            if (aggr->report_flow_type & NET_MD_TC_FLOWS)
+            {
+                /* Add this flow to the aggregation buckets */
+                net_md_add_flow_to_aggregated_buckets(aggr, flow);
+            }
+            else
+            {
+                net_md_add_sample_to_window(aggr, acc);
+            }
             acc->state = ACC_STATE_WINDOW_RESET;
         }
 
@@ -1249,6 +1326,159 @@ void net_md_report_5tuples_accs(struct net_md_aggregator *aggr,
 
         flow = next;
     }
+
+    /* After processing all flows, report the aggregated TC buckets to the window */
+    if (aggr->report_flow_type & NET_MD_TC_FLOWS)
+    {
+        /* report the aggregated TC buckets to the window */
+        LOGD("%s: Reporting all TC aggregated buckets to window", __func__);
+        net_md_add_tc_aggregated_to_window(aggr);
+
+        /* Free the traffic class aggregation buckets */
+        net_md_free_tc_aggregated_buckets(aggr->tc_bucket_tree);
+        aggr->tc_bucket_tree = NULL;
+    }
+}
+
+
+/**
+ * @brief Add traffic class aggregated bucket to flow window
+ *
+ * Takes a tc_aggregated_bucket and adds it to the window's flow_stats array.
+ * Creates a synthetic flow_key with traffic_class vendor data.
+ *
+ * @param aggr the aggregator
+ * @param tc_bucket the traffic class aggregation bucket to add
+ * @return true if successfully added, false otherwise
+ */
+bool net_md_add_tc_bucket_to_window(struct net_md_aggregator *aggr,
+                                    struct tc_aggregated_bucket *tc_bucket)
+{
+    struct flow_window *window;
+    struct flow_stats *stats;
+    struct flow_key *fkey;
+    struct flow_vendor_data *vd;
+    struct vendor_data_kv_pair *kvp;
+    size_t stats_idx;
+
+    if (aggr == NULL) return false;
+    if (tc_bucket == NULL) return false;
+
+    /* Get active window */
+    window = net_md_active_window(aggr);
+    if (window == NULL) return false;
+
+    if (IS_NULL_PTR(window->flow_stats)) return false;
+
+    /* Check window capacity */
+    stats_idx = aggr->stats_cur_idx;
+    if (stats_idx >= window->provisioned_stats)
+    {
+        window->dropped_stats++;
+        return false;
+    }
+
+    /* Create synthetic flow_key for this traffic class bucket */
+    fkey = CALLOC(1, sizeof(*fkey));
+    fkey->direction = tc_bucket->direction;
+    fkey->originator = tc_bucket->originator;
+    fkey->flowmarker = tc_bucket->flow_marker;
+
+    /* Add TrafficClass vendor data from bucket */
+    fkey->num_vendor_data = 1;
+    fkey->vdr_data = CALLOC(1, sizeof(struct flow_vendor_data *));
+
+    vd = CALLOC(1, sizeof(struct flow_vendor_data));
+    vd->vendor = tc_bucket->vendor ? STRDUP(tc_bucket->vendor) : STRDUP("unknown");
+    vd->nelems = 1;
+
+    vd->kv_pairs = CALLOC(1, sizeof(struct vendor_data_kv_pair *));
+    vd->kv_pairs[0] = CALLOC(1, sizeof(struct vendor_data_kv_pair));
+
+    kvp = vd->kv_pairs[0];
+    kvp->key = tc_bucket->vendor_key ? STRDUP(tc_bucket->vendor_key) : STRDUP("traffic_class");
+    kvp->value_type = NET_VENDOR_STR;
+    kvp->str_value = STRDUP(tc_bucket->traffic_class);
+
+    fkey->vdr_data[0] = vd;
+    fkey->state.report_attrs = true;
+
+    /* Get flow_stats slot from window */
+    stats = window->flow_stats[stats_idx];
+
+    /* Set ownership and key */
+    stats->owns_key = true;
+    stats->key = fkey;
+
+    /* Allocate and set counters */
+    stats->counters = CALLOC(1, sizeof(*stats->counters));
+    stats->counters->packets_count = tc_bucket->total_pkts;
+    stats->counters->bytes_count = tc_bucket->total_bytes;
+    stats->counters->payload_bytes_count = 0;
+
+    /* Update aggregator indices */
+    aggr->stats_cur_idx++;
+    aggr->total_report_flows++;
+
+    return true;
+}
+
+/**
+ * @brief Add traffic class aggregated buckets to window
+ *
+ * Iterates through aggr->tc_bucket_tree and adds all buckets
+ * to the active flow window. Similar to net_md_add_sample_to_window
+ * but for aggregated TC buckets.
+ *
+ * @param aggr the aggregator containing tc_bucket_tree
+ */
+void net_md_add_tc_aggregated_to_window(struct net_md_aggregator *aggr)
+{
+    struct tc_aggregated_bucket *tc_bucket;
+    size_t reported_buckets = 0;
+    size_t skipped_buckets = 0;
+    bool added;
+
+    if (aggr == NULL) return;
+    if (aggr->tc_bucket_tree == NULL)
+    {
+        LOGD("%s: no traffic class buckets", __func__);
+        return;
+    }
+
+    LOGI("%s: Reporting traffic class aggregated buckets (tree_size=%zu)",
+         __func__, ds_tree_len(aggr->tc_bucket_tree));
+
+    /* Iterate through all traffic class buckets */
+    tc_bucket = ds_tree_head(aggr->tc_bucket_tree);
+    while (tc_bucket != NULL)
+    {
+        /* Skip empty buckets */
+        if (tc_bucket->flow_count == 0 ||
+            (tc_bucket->total_bytes == 0 && tc_bucket->total_pkts == 0))
+        {
+            skipped_buckets++;
+            tc_bucket = ds_tree_next(aggr->tc_bucket_tree, tc_bucket);
+            continue;
+        }
+
+        /* Add bucket to window, which will be reported */
+        added = net_md_add_tc_bucket_to_window(aggr, tc_bucket);
+        if (added)
+        {
+            reported_buckets++;
+        }
+        else
+        {
+            LOGW("%s: Failed to add TC bucket to window: traffic_class='%s' direction=%u originator=%u",
+                 __func__, tc_bucket->traffic_class, tc_bucket->direction, tc_bucket->originator);
+        }
+
+        tc_bucket = ds_tree_next(aggr->tc_bucket_tree, tc_bucket);
+    }
+
+    LOGD("%s: Reported %zu TC buckets, skipped %zu empty buckets",
+         __func__, reported_buckets, skipped_buckets);
 }
 
 void net_md_update_eth_acc(struct net_md_stats_accumulator *eth_acc,
@@ -1389,8 +1619,8 @@ void net_md_report_accs(struct net_md_aggregator *aggr)
         }
     }
 
-    /* Report ipflows */
-    if (aggr->report_flow_type & NET_MD_IP_FLOWS)
+    /* Report ipflows or aggregated tc flows */
+    if ((aggr->report_flow_type & NET_MD_IP_FLOWS) || (aggr->report_flow_type & NET_MD_TC_FLOWS))
     {
         net_md_report_5tuples_accs(aggr, aggr->five_tuple_flows);
     }
@@ -1399,7 +1629,12 @@ void net_md_report_accs(struct net_md_aggregator *aggr)
 
 static void net_md_free_stats(struct flow_stats *stats)
 {
-    /* Don't free the key, it is a reference */
+    /* Free the key if we own it (e.g., synthetic keys for aggregated buckets) */
+    if (stats->owns_key)
+    {
+        free_flow_key(stats->key);
+        FREE(stats->key);
+    }
     FREE(stats->counters);
 }
 
@@ -2003,6 +2238,53 @@ err_free_new_vds:
 
 
 /**
+ * @brief Get traffic_class from vendor data
+ *
+ * Searches through flow key vendor data from any vendor and returns
+ * the traffic_class value if present.
+ *
+ * @param fkey the flow key to search
+ * @return pointer to traffic_class string (do not free), or NULL if not found
+ */
+static const char *
+net_md_get_traffic_class(struct flow_key *fkey)
+{
+    struct flow_vendor_data *vd;
+    struct vendor_data_kv_pair *kvp;
+    size_t i, j;
+
+    if (fkey == NULL) return NULL;
+    if (fkey->num_vendor_data == 0) return NULL;
+
+    /* Search all vendor data for traffic_class */
+    for (i = 0; i < fkey->num_vendor_data; i++)
+    {
+        vd = fkey->vdr_data[i];
+        if (vd == NULL || vd->vendor == NULL) continue;
+
+        /* Search for traffic_class key-value pair in this vendor's data */
+        for (j = 0; j < vd->nelems; j++)
+        {
+            kvp = vd->kv_pairs[j];
+            if (kvp == NULL || kvp->key == NULL) continue;
+            
+            if (strcmp(kvp->key, "traffic_class") == 0)
+            {
+                if (kvp->str_value != NULL && kvp->str_value[0] != '\0')
+                {
+                    LOGT("%s: Found traffic_class='%s' from vendor='%s'",
+                         __func__, kvp->str_value, vd->vendor);
+                    return kvp->str_value;
+                }
+                return NULL;
+            }
+        }
+    }
+    return NULL;
+}
+
+
+/**
  * @brief check flowkey info
  *
  * @param report_pb flow report protobuf
@@ -2088,8 +2370,6 @@ net_md_update_flow_key(struct net_md_aggregator *aggr,
 
     fkey->flowmarker = key->flowmarker;
     if (aggr->process) aggr->process(acc);
-
-    LOGD("%s: acc updated", __func__);
 
 free_flow_key:
     /* Free the lookup key */
@@ -2761,15 +3041,12 @@ void net_md_purge_aggr(struct net_md_aggregator *aggr)
     LOGD("%s: purging accumulators, initial count: %zu", __func__, init_aggr_count);
 
     /* Purge LAN flows */
-    if (aggr->report_flow_type)
+    eth_pair = ds_tree_head(aggr->eth_pairs);
+    while (eth_pair != NULL)
     {
-        eth_pair = ds_tree_head(aggr->eth_pairs);
-        while (eth_pair != NULL)
-        {
-            net_md_purge_eth_acc(aggr, eth_pair);
-            net_md_purge_5tuples_accs(aggr, &eth_pair->five_tuple_flows);
-            eth_pair = ds_tree_next(aggr->eth_pairs, eth_pair);
-        }
+        net_md_purge_eth_acc(aggr, eth_pair);
+        net_md_purge_5tuples_accs(aggr, &eth_pair->five_tuple_flows);
+        eth_pair = ds_tree_next(aggr->eth_pairs, eth_pair);
     }
 
     /* Purge ipflows */
@@ -2780,4 +3057,199 @@ void net_md_purge_aggr(struct net_md_aggregator *aggr)
 
     LOGD("%s: %spurged %zu flows, %zu remaining", __func__,
          purged_count > 0 ? "" : "no flows ", purged_count, final_aggr_count);
+}
+
+/**
+ * @brief Comparator for tc_aggregated_bucket tree
+ *
+ * Compares by traffic_class string first, then by direction, then by originator.
+ * Optimized with early returns.
+ */
+static int
+tc_bucket_cmp(const void *a, const void *b)
+{
+    const struct tc_aggregated_bucket *bucket_a = a;
+    const struct tc_aggregated_bucket *bucket_b = b;
+    int cmp;
+
+    /* Compare traffic_class strings */
+    cmp = strcmp(bucket_a->traffic_class, bucket_b->traffic_class);
+    if (cmp != 0) return cmp;
+
+    /* If traffic_class matches, compare direction */
+    cmp = (int)bucket_a->direction - (int)bucket_b->direction;
+    if (cmp != 0) return cmp;
+
+    /* If direction matches, compare originator */
+    return (int)bucket_a->originator - (int)bucket_b->originator;
+}
+
+/**
+ * @brief Get or create traffic class aggregation bucket
+ *
+ * Helper function that finds or creates a bucket for the given
+ * (traffic_class, direction, originator) tuple. Extracts vendor and vendor_key
+ * directly from fkey->vdr_data[] by searching for the traffic_class key.
+ *
+ * @param bucket_tree ds_tree of tc_aggregated_bucket
+ * @param fkey flow key containing traffic_class and vendor data
+ * @param direction flow direction (0 or 1)
+ * @param originator flow originator (0 or 1)
+ * @return pointer to bucket (existing or newly created), NULL on error
+ */
+static struct tc_aggregated_bucket *
+net_md_get_or_create_tc_bucket(ds_tree_t *bucket_tree,
+                                struct flow_key *fkey,
+                                uint16_t direction,
+                                uint16_t originator)
+{
+    struct tc_aggregated_bucket *bucket;
+    struct tc_aggregated_bucket lookup_key;
+    struct flow_vendor_data *vd;
+    struct vendor_data_kv_pair *kvp;
+    const char *traffic_class;
+    size_t i, j;
+
+    if (bucket_tree == NULL) return NULL;
+    if (fkey == NULL) return NULL;
+
+    /* Get traffic_class from vendor data */
+    traffic_class = net_md_get_traffic_class(fkey);
+    if (traffic_class == NULL) return NULL;
+
+
+    /* Setup lookup key (stack allocation for search) */
+    lookup_key.traffic_class = (char *)traffic_class;
+    lookup_key.direction = (uint8_t)direction;
+    lookup_key.originator = (uint8_t)originator;
+
+    /* Search for existing bucket */
+    bucket = ds_tree_find(bucket_tree, &lookup_key);
+    if (bucket != NULL) return bucket;
+
+    /* New bucket needed - allocate and insert */
+    bucket = CALLOC(1, sizeof(*bucket));
+    bucket->traffic_class = STRDUP(traffic_class);
+    bucket->direction = (uint8_t)direction;
+    bucket->originator = (uint8_t)originator;
+    bucket->total_bytes = 0;
+    bucket->total_pkts = 0;
+    bucket->flow_count = 0;
+
+    /* Extract vendor and vendor_key from fkey->vdr_data[] */
+    for (i = 0; i < fkey->num_vendor_data; i++)
+    {
+        vd = fkey->vdr_data[i];
+        if (vd == NULL || vd->vendor == NULL) continue;
+
+        /* Search for traffic_class key-value pair in this vendor's data */
+        for (j = 0; j < vd->nelems; j++)
+        {
+            kvp = vd->kv_pairs[j];
+            if (kvp == NULL || kvp->key == NULL) continue;
+            
+            if (strcmp(kvp->key, "traffic_class") == 0)
+            {
+                if (kvp->str_value != NULL && 
+                    strcmp(kvp->str_value, traffic_class) == 0)
+                {
+                    bucket->vendor = STRDUP(vd->vendor);
+                    bucket->vendor_key = STRDUP(kvp->key);
+                    LOGT("%s: Extracted vendor info: vendor='%s', vendor_key='%s'",
+                         __func__, vd->vendor, kvp->key);
+                    break;
+                }
+            }
+        }
+        if (bucket->vendor != NULL) break;
+    }
+
+    /* Insert into tree */
+    ds_tree_insert(bucket_tree, bucket, bucket);
+
+    return bucket;
+}
+
+/**
+ * @brief Aggregate a single flow by (traffic_class, direction, originator) into buckets
+ *
+ * Adds a single flow's statistics to the appropriate bucket.
+ * Creates the bucket if it doesn't exist.
+ * The bucket tree must be initialized before calling this function.
+ */
+int
+net_md_add_flow_to_aggregated_buckets(struct net_md_aggregator *aggr, struct net_md_flow *flow)
+{
+    struct net_md_stats_accumulator *acc;
+    struct tc_aggregated_bucket *bucket;
+    struct flow_key *fkey;
+    ds_tree_t *bucket_tree;
+
+    if (aggr == NULL) return -1;
+    if (flow == NULL) return -1;
+
+    /* Ensure bucket tree is initialized */
+    if (aggr->tc_bucket_tree == NULL)
+    {
+        aggr->tc_bucket_tree = CALLOC(1, sizeof(*aggr->tc_bucket_tree));
+        ds_tree_init(aggr->tc_bucket_tree, tc_bucket_cmp, struct tc_aggregated_bucket, bucket_node);
+    }
+
+    bucket_tree = aggr->tc_bucket_tree;
+
+    /* Get flow accumulator */
+    acc = flow->tuple_stats;
+    if (acc == NULL || acc->fkey == NULL) return 0;
+
+    fkey = acc->fkey;
+
+    /* sets the traffic class in the flow key */
+    if (aggr->on_acc_report != NULL) aggr->on_acc_report(aggr, acc);
+
+    /* Get or create bucket for this (traffic_class, direction, originator) tuple */
+    /* net_md_get_or_create_tc_bucket will return NULL if no traffic_class found */
+    bucket = net_md_get_or_create_tc_bucket(bucket_tree, fkey, acc->direction, acc->originator);
+    if (bucket != NULL)
+    {
+        /* update the bucket with the flow statistics */
+        bucket->flow_marker = fkey->flowmarker;
+        bucket->total_bytes += acc->report_counters.bytes_count;
+        bucket->total_pkts += acc->report_counters.packets_count;
+        bucket->flow_count++;
+        LOGT("%s: Updated bucket '%s': flows=%d, bytes=%d, pkts=%d, flow_marker=%u",
+             __func__, bucket->traffic_class, (int)bucket->flow_count,
+             (int)bucket->total_bytes, (int)bucket->total_pkts, bucket->flow_marker);
+    }
+
+    return 0;
+}
+
+/**
+ * @brief Free all traffic class aggregation buckets
+ */
+void
+net_md_free_tc_aggregated_buckets(ds_tree_t *bucket_tree)
+{
+    struct tc_aggregated_bucket *bucket;
+
+    if (bucket_tree == NULL) return;
+
+    /* Free all buckets in tree */
+    bucket = ds_tree_head(bucket_tree);
+    while (bucket != NULL)
+    {
+        struct tc_aggregated_bucket *next = ds_tree_next(bucket_tree, bucket);
+
+        ds_tree_remove(bucket_tree, bucket);
+
+        FREE(bucket->traffic_class);
+        FREE(bucket->vendor);
+        FREE(bucket->vendor_key);
+        FREE(bucket);
+
+        bucket = next;
+    }
+
+    /* Free tree itself */
+    FREE(bucket_tree);
 }

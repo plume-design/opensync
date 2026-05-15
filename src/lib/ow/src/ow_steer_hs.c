@@ -24,11 +24,14 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+#include "ow_hs_mqtt.h"
 #include <memutil.h>
 #include <ds_tree.h>
 #include <ds_dlist.h>
 #include <const.h>
+#include <const_ieee80211.h>
 #include <os.h>
+#include <osp_unit.h>
 
 #include <osw_sta_snr.h>
 #include <osw_sta_assoc.h>
@@ -42,8 +45,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <osw_wnm.h>
 
 #include <ow_steer_hs.h>
+#include <stdint.h>
 
 #define OW_STEER_HS_DISASSOC_IMMINENT_DELAY_SEC 5
+#define OW_STEER_HS_IF_NAME_CHECK_DELAY_SEC     10
 
 enum ow_steer_hs_level
 {
@@ -100,6 +105,7 @@ struct ow_steer_hs_sta
     osw_btm_req_t *btm_req;
     osw_btm_sta_t *btm_sta;
     osw_wnm_sta_observer_t *wnm_sta;
+    ow_hs_mqtt_steer_builder_t *steer_mqtt_builder;
 };
 
 struct ow_steer_hs_vif
@@ -109,6 +115,7 @@ struct ow_steer_hs_vif
     ds_tree_t links;
     ow_steer_hs_t *hs;
     char *vif_name;
+    struct osw_timer if_name_check_timer;
     uint8_t soft_snr_db;
     uint8_t hard_snr_db;
     struct osw_hwaddr bssid;
@@ -126,6 +133,7 @@ struct ow_steer_hs
     osw_sta_assoc_t *m_sta_assoc;
     osw_wnm_t *m_wnm;
     osw_btm_t *m_btm;
+    ow_hs_mqtt_t *m_mqtt;
 };
 
 static ow_steer_hs_level_e ow_steer_hs_sta_derive_level(ow_steer_hs_sta_t *sta)
@@ -166,7 +174,7 @@ static void ow_steer_hs_sta_steer_disassoc_arm(ow_steer_hs_sta_t *sta)
     if (osw_timer_is_armed(&sta->disassoc_timer) == true) return;
     const uint64_t delay = OW_STEER_HS_DISASSOC_IMMINENT_DELAY_SEC;
     const uint64_t when = osw_time_mono_clk() + OSW_TIME_SEC(delay);
-    LOGI(LOG_PREFIX_STA(sta, "disassoc: arming in %" PRIu64 " seconds", delay));
+    LOGI(LOG_PREFIX_STA(sta, "disassoc: arming for %" PRIu64 " seconds", delay));
     osw_timer_arm_at_nsec(&sta->disassoc_timer, when);
 }
 
@@ -262,6 +270,7 @@ static void ow_steer_hs_sta_steer_req_complete_cb(void *priv, enum osw_btm_req_r
     switch (result)
     {
         case OSW_BTM_REQ_RESULT_SENT:
+            ow_hs_mqtt_steer_builder_btm_sent(sta->steer_mqtt_builder);
             LOGI(LOG_PREFIX_STA(sta, "steer: sent"));
             break;
         case OSW_BTM_REQ_RESULT_FAILED:
@@ -273,7 +282,10 @@ static void ow_steer_hs_sta_steer_req_complete_cb(void *priv, enum osw_btm_req_r
 static void ow_steer_hs_sta_steer_req_response_cb(void *priv, const osw_btm_resp_t *resp)
 {
     ow_steer_hs_sta_t *sta = priv;
-    LOGI(LOG_PREFIX_STA(sta, "steer: response: %u", osw_btm_resp_get_status(resp)));
+
+    const uint8_t status_code = osw_btm_resp_get_status(resp);
+    ow_hs_mqtt_steer_builder_btm_response(sta->steer_mqtt_builder, status_code);
+    LOGI(LOG_PREFIX_STA(sta, "steer: response: %u", status_code));
 }
 
 static void ow_steer_hs_sta_steer_submit_btm(ow_steer_hs_sta_t *sta)
@@ -285,13 +297,42 @@ static void ow_steer_hs_sta_steer_submit_btm(ow_steer_hs_sta_t *sta)
                     && osw_btm_req_set_completed_fn(sta->btm_req, ow_steer_hs_sta_steer_req_complete_cb, sta)
                     && osw_btm_req_set_response_fn(sta->btm_req, ow_steer_hs_sta_steer_req_response_cb, sta)
                     && osw_btm_req_set_params(sta->btm_req, &params) && osw_btm_req_submit(sta->btm_req);
-    if (ok) return;
+    if (ok)
+    {
+        ow_hs_mqtt_steer_builder_btm_submitted(sta->steer_mqtt_builder);
+        return;
+    }
     LOGI(LOG_PREFIX_STA(sta, "steer: failed to submit"));
+}
+
+static void ow_steer_hs_sta_mqtt_set_snr_on_start(ow_steer_hs_sta_t *sta)
+{
+    ow_hs_mqtt_steer_builder_t *builder = sta->steer_mqtt_builder;
+    ow_steer_hs_sta_link_t *link;
+    ds_tree_foreach (&sta->links, link)
+    {
+        if (link->snr_valid == false) continue;
+        ow_hs_mqtt_steer_builder_set_snr_on_start(
+                builder,
+                &link->bssid,
+                &link->addr,
+                link->snr_db,
+                0 /* channel_mhz */);
+    }
 }
 
 static void ow_steer_hs_sta_steer_soft(ow_steer_hs_sta_t *sta)
 {
     ow_steer_hs_sta_steer_cancel(sta);
+    ow_hs_mqtt_steer_builder_event_preempted_by_soft_steer(sta->steer_mqtt_builder);
+    ow_hs_mqtt_steer_builder_report_submit(sta->steer_mqtt_builder);
+    ow_hs_mqtt_steer_builder_drop(&sta->steer_mqtt_builder);
+
+    sta->steer_mqtt_builder = ow_hs_mqtt_steer_builder_alloc_soft_event(sta->hs->m_mqtt);
+    ow_hs_mqtt_steer_builder_set_mac(sta->steer_mqtt_builder, &sta->addr);
+
+    ow_steer_hs_sta_mqtt_set_snr_on_start(sta);
+    ow_hs_mqtt_steer_builder_set_cell_mbo(sta->steer_mqtt_builder, (uint32_t)sta->cell_status);
     ow_steer_hs_sta_steer_submit_btm(sta);
 }
 
@@ -320,21 +361,46 @@ static void ow_steer_hs_sta_steer_disassoc_timer_cb(struct osw_timer *t)
 {
     ow_steer_hs_sta_t *sta = container_of(t, typeof(*sta), disassoc_timer);
     ow_steer_hs_sta_steer_disassoc(sta);
+    ow_hs_mqtt_steer_builder_deauth_sent(sta->steer_mqtt_builder);
 }
 
 static void ow_steer_hs_sta_steer_hard(ow_steer_hs_sta_t *sta)
 {
     ow_steer_hs_sta_steer_cancel(sta);
+    ow_hs_mqtt_steer_builder_event_preempted_by_hard_steer(sta->steer_mqtt_builder);
+    ow_hs_mqtt_steer_builder_report_submit(sta->steer_mqtt_builder);
+    ow_hs_mqtt_steer_builder_drop(&sta->steer_mqtt_builder);
+
+    sta->steer_mqtt_builder = ow_hs_mqtt_steer_builder_alloc_hard_event(sta->hs->m_mqtt);
+    ow_hs_mqtt_steer_builder_set_mac(sta->steer_mqtt_builder, &sta->addr);
+
+    ow_steer_hs_sta_mqtt_set_snr_on_start(sta);
+    ow_hs_mqtt_steer_builder_set_cell_mbo(sta->steer_mqtt_builder, (uint32_t)sta->cell_status);
+
     ow_steer_hs_sta_steer_submit_btm(sta);
     ow_steer_hs_sta_steer_disassoc_arm(sta);
 }
 
+static void ow_steer_hs_dump_sta_links(ow_steer_hs_sta_t *sta)
+{
+    ow_steer_hs_sta_link_t *link;
+    ds_tree_foreach (&sta->links, link)
+    {
+        if (link->snr_valid == false) continue;
+        LOGI(LOG_PREFIX_STA(sta, "bssid:" OSW_HWADDR_FMT " snr: %u dB", OSW_HWADDR_ARG(&link->bssid), link->snr_db));
+    }
+}
+
 static void ow_steer_hs_sta_steer(ow_steer_hs_sta_t *sta)
 {
+    ow_steer_hs_dump_sta_links(sta);
     switch (sta->level)
     {
         case OW_STEER_HS_GOOD:
             ow_steer_hs_sta_steer_cancel(sta);
+            ow_hs_mqtt_steer_builder_event_preempted_by_link_is_good(sta->steer_mqtt_builder);
+            ow_hs_mqtt_steer_builder_report_submit(sta->steer_mqtt_builder);
+            ow_hs_mqtt_steer_builder_drop(&sta->steer_mqtt_builder);
             break;
         case OW_STEER_HS_SOFT:
             ow_steer_hs_sta_steer_soft(sta);
@@ -457,6 +523,8 @@ static void ow_steer_hs_sta_drop(ow_steer_hs_sta_t *sta)
     LOGT(LOG_PREFIX_STA(sta, "dropping"));
     ow_steer_hs_sta_drop_links(sta);
     ow_steer_hs_sta_steer_cancel(sta);
+    ow_steer_hs_sta_steer_disassoc_disarm(sta);
+    ow_hs_mqtt_steer_builder_drop(&sta->steer_mqtt_builder);
     ds_tree_remove(&sta->hs->stas, sta);
     osw_wnm_sta_observer_drop(sta->wnm_sta);
     osw_btm_sta_drop(sta->btm_sta);
@@ -583,6 +651,11 @@ static void ow_steer_hs_update_sta(ow_steer_hs_t *hs, const osw_sta_assoc_entry_
     const osw_sta_assoc_links_t *links = osw_sta_assoc_entry_get_active_links(entry);
     if (links == NULL) return;
 
+    if (ev == OSW_STA_ASSOC_DISCONNECTED || ev == OSW_STA_ASSOC_RECONNECTED)
+    {
+        ow_hs_mqtt_steer_builder_sta_disconnected(sta->steer_mqtt_builder);
+        ow_hs_mqtt_steer_builder_report_submit(sta->steer_mqtt_builder);
+    }
     ow_steer_hs_sta_set_links(sta, links);
     ow_steer_hs_sta_gc(sta);
 }
@@ -629,6 +702,7 @@ static void ow_steer_hs_drop_stas(ow_steer_hs_t *hs)
     while ((sta = ds_tree_head(&hs->stas)) != NULL)
     {
         LOGI(LOG_PREFIX("sta_obs: flushing: " OSW_HWADDR_FMT, OSW_HWADDR_ARG(&sta->addr)));
+        ow_hs_mqtt_steer_builder_report_submit(sta->steer_mqtt_builder);
         ow_steer_hs_sta_drop(sta);
     }
 }
@@ -673,6 +747,32 @@ static void ow_steer_hs_sta_obs_update(ow_steer_hs_t *hs)
     }
 }
 
+static void ow_steer_hs_vif_alloc_vif_check_arm(ow_steer_hs_vif_t *vif)
+{
+    if (osw_timer_is_armed(&vif->if_name_check_timer) == true) return;
+    const uint64_t delay = OW_STEER_HS_IF_NAME_CHECK_DELAY_SEC;
+    const uint64_t when = osw_time_mono_clk() + OSW_TIME_SEC(delay);
+    LOGD(LOG_PREFIX_VIF(vif, "vif_name check: arming in %" PRIu64 " seconds", delay));
+    osw_timer_arm_at_nsec(&vif->if_name_check_timer, when);
+}
+
+static void ow_steer_hs_vif_alloc_vif_check_disarm(ow_steer_hs_vif_t *vif)
+{
+    if (osw_timer_is_armed(&vif->if_name_check_timer) == false) return;
+    LOGD(LOG_PREFIX_VIF(vif, "if_name_check_timer: disarming"));
+    osw_timer_disarm(&vif->if_name_check_timer);
+}
+
+static void ow_steer_hs_vif_alloc_vif_check_cb(struct osw_timer *t)
+{
+    ow_steer_hs_vif_t *vif = container_of(t, typeof(*vif), if_name_check_timer);
+    const struct osw_state_vif_info *corresponding_vif = osw_state_vif_lookup_by_vif_name(vif->vif_name);
+    if (corresponding_vif == NULL)
+    {
+        LOGW(LOG_PREFIX_VIF(vif, "Hotspot_Steering::if_name is configured for vif that is not present in the system."));
+    }
+}
+
 ow_steer_hs_vif_t *ow_steer_hs_vif_alloc(ow_steer_hs_t *hs, const char *vif_name)
 {
     if (hs == NULL) return NULL;
@@ -690,6 +790,8 @@ ow_steer_hs_vif_t *ow_steer_hs_vif_alloc(ow_steer_hs_t *hs, const char *vif_name
     LOGT(LOG_PREFIX_VIF(vif, "allocated"));
     osw_state_register_observer(&vif->state_obs);
     ow_steer_hs_sta_obs_update(hs);
+    osw_timer_init(&vif->if_name_check_timer, ow_steer_hs_vif_alloc_vif_check_cb);
+    ow_steer_hs_vif_alloc_vif_check_arm(vif);
     return vif;
 }
 
@@ -702,6 +804,7 @@ void ow_steer_hs_vif_drop(ow_steer_hs_vif_t *vif)
     assert(ds_tree_is_empty(&vif->links));
     ds_tree_remove(&vif->hs->vifs_by_name, vif);
     ow_steer_hs_sta_obs_update(vif->hs);
+    ow_steer_hs_vif_alloc_vif_check_disarm(vif);
     FREE(vif->vif_name);
     FREE(vif);
 }
@@ -732,6 +835,20 @@ void ow_steer_hs_reset(ow_steer_hs_t *hs)
     {
         ow_steer_hs_vif_drop(vif);
     }
+    ow_hs_mqtt_drop(hs->m_mqtt);
+}
+
+void ow_steer_hs_set_mqtt_topic(ow_steer_hs_t *hs, const char *topic)
+{
+    if (hs == NULL || hs->m_mqtt == NULL) return;
+    ow_hs_mqtt_set_topic(hs->m_mqtt, topic);
+}
+
+void ow_steer_hs_set_mqtt_interval(ow_steer_hs_t *hs, uint32_t interval_sec)
+{
+    if (hs == NULL || hs->m_mqtt == NULL) return;
+    ow_hs_mqtt_set_interval_secs(hs->m_mqtt, interval_sec);
+    if (interval_sec == 0) ow_hs_mqtt_report_drop(hs->m_mqtt);
 }
 
 static void ow_steer_hs_init(ow_steer_hs_t *hs)
@@ -739,6 +856,12 @@ static void ow_steer_hs_init(ow_steer_hs_t *hs)
     ds_tree_init(&hs->stas, (ds_key_cmp_t *)osw_hwaddr_cmp, ow_steer_hs_sta_t, node);
     ds_tree_init(&hs->vifs_by_name, ds_str_cmp, ow_steer_hs_vif_t, node_by_name);
     ds_tree_init(&hs->vifs_by_bssid, (ds_key_cmp_t *)osw_hwaddr_cmp, ow_steer_hs_vif_t, node_by_bssid);
+    hs->m_mqtt = ow_hs_mqtt_alloc();
+    char node_id[128];
+    MEMZERO(node_id);
+    const bool node_id_ok = osp_unit_id_get(node_id, sizeof(node_id) - 1);
+    if (WARN_ON(node_id_ok == false)) return;
+    ow_hs_mqtt_set_node_id(hs->m_mqtt, node_id);
 }
 
 static void ow_steer_hs_attach(ow_steer_hs_t *hs)

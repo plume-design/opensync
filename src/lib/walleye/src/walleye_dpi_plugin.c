@@ -220,6 +220,26 @@ save_server_name(rts_stream_t stream, void *user, const char *key,
     dpi->server_name[length] = '\0';
 }
 
+
+static void
+save_traffic_class(rts_stream_t stream, void *user, const char *key,
+                   uint8_t type, uint16_t length, const void *value)
+{
+    struct net_md_stats_accumulator *acc;
+    struct dpi_conn *dpi;
+
+    acc = (struct net_md_stats_accumulator *)user;
+    dpi = acc->dpi;
+
+    if (sizeof(dpi->traffic_class) <= length)
+        length = sizeof(dpi->traffic_class) - 1;
+
+    strncpy(dpi->traffic_class, value, length);
+    dpi->traffic_class[length] = '\0';
+    LOGT("%s: traffic_class: %s", __func__, dpi->traffic_class);
+}
+
+
 static void
 notify_client(rts_stream_t stream, void *user, const char *key,
               uint8_t type, uint16_t length, const void *value)
@@ -267,6 +287,14 @@ notify_client(rts_stream_t stream, void *user, const char *key,
         save_tcp_ack_delay(stream, user, key, type, length, value);
         return;
     }
+
+    else if (strncmp(key, "traffic_class", strlen("traffic_class")) == 0)
+    {
+        LOGT("%s: traffic_class: %s value: %s", __func__, key, (char *) value);
+        save_traffic_class(stream, user, key, type, length, value);
+        return;
+    }
+
     acc = (struct net_md_stats_accumulator *)user;
     dpi = acc->dpi;
 
@@ -502,6 +530,12 @@ dpi_plugin_update(struct fsm_session *session)
                 exit(EXIT_SUCCESS);
             }
         }
+    }
+
+    str = session->ops.get_config(session, "tcpip_hdr_scan");
+    if (str != NULL)
+    {
+        dpi_session->tcpip_hdr_scan = (uint32_t)atoi(str);
     }
 
     fsm_set_dpi_health_stats_cfg(session);
@@ -962,6 +996,14 @@ walleye_dpi_plugin_init(struct fsm_session *session)
 
     fsm_set_dpi_health_stats_cfg(session);
 
+    /* Configurable number of tcp/ip headers to scan for each flow (off by default) */
+    dpi_session->tcpip_hdr_scan = 0;
+    str = session->ops.get_config(session, "tcpip_hdr_scan");
+    if (str != NULL)
+    {
+        dpi_session->tcpip_hdr_scan = (uint32_t)atoi(str);
+    }
+
     dpi_session->wc_topic = session->dpi_stats_report_topic;
     dpi_session->wc_interval = session->dpi_stats_report_interval;
 
@@ -1098,6 +1140,8 @@ add_vendor_data(struct dpi_session *dpi_session, struct flow_key *fkey,
         nelems += 1;
     if (dpi_conn->tcp_ack_delay != 0)
         nelems += 1;
+    if (dpi_conn->traffic_class[0] != '\0')
+        nelems += 1;
 
     kvps = CALLOC(nelems, sizeof(struct vendor_data_kv_pair *));
     if (kvps == NULL) goto err_alloc_kvps;
@@ -1127,6 +1171,11 @@ add_vendor_data(struct dpi_session *dpi_session, struct flow_key *fkey,
 
     if (dpi_conn->tcp_ack_delay) {
         kvps[++i] = set_vendor_kvp_u64("tcp_client_ack_delay", dpi_conn->tcp_ack_delay);
+        if (kvps[i] == NULL) goto err_alloc_pairs;
+    }
+
+    if (dpi_conn->traffic_class[0] != '\0') {
+        kvps[++i] = set_vendor_kvp_str("traffic_class", dpi_conn->traffic_class);
         if (kvps[i] == NULL) goto err_alloc_pairs;
     }
 
@@ -1307,6 +1356,7 @@ walleye_app_check(struct fsm_session *session,
 
     /* Check if the flow should be tagged */
     dpi_conn->tag_flow = pkt_info.tag_flow;
+    dpi_conn->app_decision_local = pkt_info.app_decision_local;
 
     if (action == FSM_DPI_DROP)
     {
@@ -1317,6 +1367,50 @@ walleye_app_check(struct fsm_session *session,
     return;
 }
 
+
+static void
+walleye_traffic_class_check(struct fsm_session *session,
+                  struct dpi_conn *dpi_conn,
+                  struct net_md_stats_accumulator *acc,
+                  const char *traffic_class)
+{
+    struct fsm_dpi_plugin_client_pkt_info pkt_info;
+    struct fsm_dpi_plugin_ops *dpi_plugin_ops;
+    struct dpi_session *dpi_session;
+    int action;
+
+    /* Don't bother if the flow is to be dropped already */
+    if (dpi_conn->flow_action == FSM_DPI_DROP) return;
+
+    /* No traffic class to check, allow the flow */
+    if (traffic_class == NULL)
+    {
+        dpi_conn->flow_action = FSM_DPI_PASSTHRU;
+        return;
+    }
+
+    dpi_session = dpi_conn->dpi_sess;
+    dpi_plugin_ops = &session->p_ops->dpi_plugin_ops;
+
+    /**
+     * net_parser details may not available if walleye destroys stream
+     *  prior to callback.
+     */
+    pkt_info.acc = acc;
+    pkt_info.parser = dpi_session->parser.net_parser;
+
+    action = dpi_plugin_ops->notify_client(session, "traffic_class",
+                                           RTS_TYPE_STRING, (uint16_t)strlen(traffic_class), traffic_class,
+                                           &pkt_info);
+
+    if (action == FSM_DPI_DROP)
+    {
+        LOGI("%s: blocking traffic_class %s", __func__, traffic_class);
+    }
+    dpi_conn->flow_action = action;
+
+    return;
+}
 
 static void
 tag_session(struct dpi_session *dpi_session,
@@ -1350,17 +1444,26 @@ tag_session(struct dpi_session *dpi_session,
         }
     }
 
-    LOGD("%s: matched connection with %s (%s %s %s)", __func__,
-         service, tags[0], tags[1], tags[2]);
+    LOGD("%s: matched connection with %s (%s %s %s) and traffic class %s", __func__,
+         service, tags[0], tags[1], tags[2], dpi_conn->traffic_class);
 
     walleye_app_check(fsm_session, dpi_conn, acc, service);
+
+    walleye_traffic_class_check(fsm_session, dpi_conn, acc, dpi_conn->traffic_class);
     if (dpi_conn->tag_flow)
     {
         LOGT("%s: tagging flow", __func__);
         add_tag(fkey, service, num_tags, tags);
-        add_vendor_data(dpi_session, fkey, dpi_conn);\
+        add_vendor_data(dpi_session, fkey, dpi_conn);
     }
     else LOGT("%s: Not tagging flow", __func__);
+
+    if (dpi_conn->app_decision_local)
+    {
+        LOGT("%s: tagging traffic class", __func__);
+        add_vendor_data(dpi_session, fkey, dpi_conn);
+    }
+
 
     ops = &fsm_session->p_ops->dpi_plugin_ops;
     if (ops->mark_flow) ops->mark_flow(fsm_session, acc);
@@ -1519,6 +1622,28 @@ dpi_plugin_handler(struct fsm_session *session,
     dpi->data_packets[packet->direction] += 1;
     dpi->dpi_sess->parser.net_parser = net_parser;
 
+    if (packet->tuple.proto == IPPROTO_TCP && dpi->packets[0] + dpi->packets[1] <= dpi_session->tcpip_hdr_scan)
+    {
+        rts_stream_t hdr_stream;
+        res = rts_stream_create(&hdr_stream, dpi_session->handle, 0, IPPROTO_IPIP, 0, 0, 0, 0, acc);
+
+        if (res == 0)
+        {
+            if (net_parser->eth_pld.payload >= packet->head && net_parser->eth_pld.payload < packet->tail)
+            {
+                res = rts_stream_scan(hdr_stream, net_parser->eth_pld.payload,
+                                      packet->tail - net_parser->eth_pld.payload,
+                                      packet->direction, timestamp);
+                if (res < 0)
+                {
+                    LOGW("%s: error %d in header rts_stream_scan\n", __func__, res);
+                }
+           }
+
+            rts_stream_destroy(hdr_stream);
+        }
+    }
+
     if (!dpi->stream)
     {
         LOGT("%s: Stream not created", __func__);
@@ -1572,7 +1697,8 @@ dpi_report_kpis(struct dpi_session *dpi_session)
     memset(&report, 0, sizeof(report));
     report.location_id = session->location_id;
     report.node_id = session->node_id;
-
+    report.timestamp = time(NULL);
+    report.plugin = (!(IS_NULL_PTR(session->name)) ? session->name : "walleye_dpi");
     counters = &report.counters;
     counters->curr_alloc = stats.curr_alloc;
     counters->peak_alloc = stats.peak_alloc;
@@ -1667,7 +1793,7 @@ dpi_plugin_periodic(struct fsm_session *session)
 
 
 /**
- * @brief free dpi resources 
+ * @brief free dpi resources
  *
  * called by the fsm manager when acc is deleted.
  * @param acc of the dpi resource.
@@ -1776,7 +1902,7 @@ dpi_delete_session(struct fsm_session *session)
     return;
 }
 
-/* 
+/*
  * dpi_conn_alloc()
  */
 struct dpi_conn *

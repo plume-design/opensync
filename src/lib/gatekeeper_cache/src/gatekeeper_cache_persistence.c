@@ -29,7 +29,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "gatekeeper_cache.h"
 #include "osp_ps.h"
 #include "gatekeeper.pb-c.h"
-#include "gatekeeper_bulk_reply_msg.h"
+#include "gatekeeper_bulk_msg.h"
 
 /* Entry type indices for counts array */
 #define URL_IDX   0

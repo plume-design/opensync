@@ -114,7 +114,7 @@ os_fdbuf_flush_bridge_ports()
 static void
 os_fdbuf_flush_linux(const char *if_name)
 {
-    const char *result = strexa("bridge", "fdb", "flush", "dev", if_name);
+    const char *result = strexa("bridge", "fdb", "flush", "dev", if_name, "dynamic");
     LOGD(LOG_PREFIX_FDB_LINUX(if_name, "%s", result == NULL ? "not flushed" : "flushed"));
     if (result == NULL) {
         os_fdbuf_flush_bridge_ports();

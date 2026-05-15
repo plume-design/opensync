@@ -38,10 +38,10 @@ int nfe_conntrack_dump(nfe_conntrack_t conntrack, nfe_get_conntrack_cb_t cb, voi
 /* nfe_conntrack_create()
  *
  * Create a conntrack for use by a thread, where @param size is the number of
- * hash buckets to use, increased to the next power of 2 when necessary. 
+ * hash buckets to use, increased to the next power of 2 when necessary.
  *
  * This operation will allocate memory through nfe_ext_alloc().
- * 
+ *
  * Returns 0 on success or a negative error code on failure.
  *
  * An error code can have the following value:

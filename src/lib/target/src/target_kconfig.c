@@ -146,7 +146,7 @@ bool target_device_restart_managers_helper(const char *calling_func)
             int rc = execvp(CONFIG_TARGET_RESTART_SCRIPT_CMD, argv);
             exit((rc == 0) ? 0 : 1);
         }
-        while(1); // Sit in loop and wait to be restarted
+        while(1) sleep(1); // Sit in loop and wait to be restarted
     }
     return true;
 }

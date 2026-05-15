@@ -42,6 +42,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "memutil.h"
 #include "dpi_intf.h"
 #include "os_ev_trace.h"
+#include "fsm_fn_trace.h"
 
 /* Set of default values for pcaps settings */
 static int g_buf_size = 0;
@@ -278,7 +279,9 @@ fsm_pcap_recv_fn(EV_P_ ev_io *ev, int revents)
     pcap_t *pcap = pcaps->pcap;
 
     /* Ready to receive packets */
+    fsm_fn_trace(fsm_pcap_handler, FSM_FN_ENTER);
     pcap_dispatch(pcap, pcaps->cnt, fsm_pcap_handler, (void *)session);
+    fsm_fn_trace(fsm_pcap_handler, FSM_FN_EXIT);
 }
 
 

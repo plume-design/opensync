@@ -46,8 +46,15 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "log.h"
 #include "util.h"
 #include "memutil.h"
+#include "kconfig.h"
 
 #include "lnx_tc.h"
+
+#ifdef CONFIG_OSN_LINUX_QOS_QDISCS_EGRESS_ROOT_HANDLE
+#define QDISC_ROOT_HANDLE   CONFIG_OSN_LINUX_QOS_QDISCS_EGRESS_ROOT_HANDLE
+#else
+#define QDISC_ROOT_HANDLE   "1:"
+#endif
 
 /*
  * "tc qdisc del" may return an error if there's no qdisc configured on the
@@ -64,11 +71,11 @@ static char lnx_tc_qdisc_clsact_set[] = _S(tc qdisc add dev "$1" clsact);
 
 static char lnx_tc_qdisc_egress_set[] = _S(
         tc qdisc add dev "$1" \
-                handle 1:0 \
+                handle "$2" \
                 root prio;
-        tc qdisc add dev "$1" parent 1:1 handle 10: sfq limit 1024;
-        tc qdisc add dev "$1" parent 1:2 handle 20: sfq limit 1024;
-        tc qdisc add dev "$1" parent 1:3 handle 30: sfq limit 1024;
+        tc qdisc add dev "$1" parent "${2}1" handle 10: sfq limit 1024;
+        tc qdisc add dev "$1" parent "${2}2" handle 20: sfq limit 1024;
+        tc qdisc add dev "$1" parent "${2}3" handle 30: sfq limit 1024;
 
         );
 static char lnx_tc_qdisc_ingress_filter_add[] = _S(
@@ -97,12 +104,13 @@ static char lnx_tc_qdisc_clsact_filter_add[] = _S(
 
 static char lnx_tc_qdisc_egress_filter_add[] = _S(
         ifname="$1";
-        match="$2";
-        action="$3";
-        priority="$4";
+        root_handle="$2";
+        match="$3";
+        action="$4";
+        priority="$5";
 
         tc filter add dev "$ifname" \
-                parent 1: \
+                parent "$root_handle" \
                 prio ${priority} \
                 ${match} \
                 ${action});
@@ -170,44 +178,64 @@ static bool lnx_tc_reset_if_needed(lnx_tc_t *self)
     /*
      * Reset egress qdiscs, unless reset disabled (usually in cases where another
      * module (for instance QoS module) is expected to reset/set initial egress qdiscs).
+     *
+     * In case CONFIG_OSN_LINUX_QOS_PRECONFIG is defined, nothing is never reset as it is expected
+     * for the custom external preconfig script to reset and set initial qdisc/tc-filter config.
      */
     if (self->lt_reset_egress)
     {
-        LOG(INFO, "tc: %s: Resetting egress", self->lt_ifname);
+        if (!kconfig_enabled(CONFIG_OSN_LINUX_QOS_PRECONFIG))
+        {
+            LOG(INFO, "tc: %s: Resetting egress", self->lt_ifname);
 
-        rc = execsh_log(LOG_SEVERITY_DEBUG, lnx_tc_qdisc_egress_reset, self->lt_ifname);
-        if (rc != 0)
-        {
-            LOG(INFO, "tc: %s: Error resetting egress TC.", self->lt_ifname);
+            rc = execsh_log(LOG_SEVERITY_DEBUG, lnx_tc_qdisc_egress_reset, self->lt_ifname);
+            if (rc != 0)
+            {
+                LOG(INFO, "tc: %s: Error resetting egress TC.", self->lt_ifname);
+            }
+            rc = execsh_log(LOG_SEVERITY_DEBUG, lnx_tc_qdisc_egress_set, self->lt_ifname, QDISC_ROOT_HANDLE);
+            if (rc != 0)
+            {
+                LOG(ERR, "tc: %s: Error Setting egress TC.", self->lt_ifname);
+                return false;
+            }
         }
-        rc = execsh_log(LOG_SEVERITY_DEBUG, lnx_tc_qdisc_egress_set, self->lt_ifname);
-        if (rc != 0)
+        else
         {
-            LOG(ERR, "tc: %s: Error Setting egress TC.", self->lt_ifname);
-            return false;
+            LOG(NOTICE, "tc: %s: External preconfig defined. NOT resetting egress", self->lt_ifname);
         }
     }
 
     /*
      * Always reset ingress qdiscs. Ingress qdiscs are used only by tc-filters (this module),
      * thus they can alway be reset independently of egress qdiscs.
+     *
+     * In case CONFIG_OSN_LINUX_QOS_PRECONFIG is defined, nothing is never reset as it is expected
+     * for the custom external preconfig script to reset and set initial qdisc/tc-filter config.
      */
-    LOG(INFO, "tc: %s: Resetting clsact/ingress", self->lt_ifname);
-    rc = execsh_log(LOG_SEVERITY_DEBUG, lnx_tc_qdisc_clsact_reset, self->lt_ifname);
-    if (rc != 0)
+    if (!kconfig_enabled(CONFIG_OSN_LINUX_QOS_PRECONFIG))
     {
-        LOG(INFO, "tc: %s: Error resetting clsact/ingress TC or nothing to reset.", self->lt_ifname);
-    }
-    rc = execsh_log(LOG_SEVERITY_DEBUG, lnx_tc_qdisc_clsact_set, self->lt_ifname);
-    if (rc != 0)
-    {
-        LOG(INFO, "tc: %s: Error setting clsact TC, setting ingress as fallback.", self->lt_ifname);
-        rc = execsh_log(LOG_SEVERITY_DEBUG, lnx_tc_qdisc_ingress_set, self->lt_ifname);
+        LOG(INFO, "tc: %s: Resetting clsact/ingress", self->lt_ifname);
+        rc = execsh_log(LOG_SEVERITY_DEBUG, lnx_tc_qdisc_clsact_reset, self->lt_ifname);
         if (rc != 0)
         {
-            LOG(ERR, "tc: %s: Error setting ingress TC.", self->lt_ifname);
-            return false;
+            LOG(INFO, "tc: %s: Error resetting clsact/ingress TC or nothing to reset.", self->lt_ifname);
         }
+        rc = execsh_log(LOG_SEVERITY_DEBUG, lnx_tc_qdisc_clsact_set, self->lt_ifname);
+        if (rc != 0)
+        {
+            LOG(INFO, "tc: %s: Error setting clsact TC, setting ingress as fallback.", self->lt_ifname);
+            rc = execsh_log(LOG_SEVERITY_DEBUG, lnx_tc_qdisc_ingress_set, self->lt_ifname);
+            if (rc != 0)
+            {
+                LOG(ERR, "tc: %s: Error setting ingress TC.", self->lt_ifname);
+                return false;
+            }
+        }
+    }
+    else
+    {
+        LOG(NOTICE, "tc: %s: External preconfig defined. NOT resetting clsact/ingress", self->lt_ifname);
     }
 
     return true;
@@ -278,7 +306,7 @@ bool lnx_tc_filter_begin(lnx_tc_t *self, bool ingress, int priority, const char 
     key->ingress = ingress;
     key->priority = priority;
     key->match = STRDUP(match);
-    if (!strcmp(action, "pass")) key->action = STRDUP("action classid 1:");
+    if (!strcmp(action, "pass")) key->action = STRDUP("action classid "QDISC_ROOT_HANDLE);
     else key->action = STRDUP(action);
     lkp = ds_tree_find(&self->lt_filters, key);
     if (lkp == NULL)
@@ -348,6 +376,7 @@ bool lnx_tc_apply(lnx_tc_t *self)
         {
            rc = execsh_log(LOG_SEVERITY_DEBUG, lnx_tc_qdisc_egress_filter_add,
                            self->lt_ifname,
+                           QDISC_ROOT_HANDLE,
                            tf->match,
                            tf->action ? tf->action : "",
                            priority);

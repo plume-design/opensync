@@ -40,13 +40,13 @@ struct vlan_ethhdr {
     unsigned short type;
 };
 
-static inline uint16_t 
+static inline uint16_t
 vlan_id(unsigned short tci)
 {
     return tci & 0x0fff;
 }
 
-int 
+int
 nfe_input_vlan(struct nfe_packet *p)
 {
     unsigned short tci, tpid;

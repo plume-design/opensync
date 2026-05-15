@@ -123,7 +123,9 @@ Note-1: the wait for re-connect back to same manager addr because
 #define CM2_MAX_DISCONNECTS             10
 #define CM2_STABLE_PERIOD               300 // 5 min
 #define CM2_RESOLVE_RETRY_THRESHOLD     10
-#define CM2_GW_SKIP_RESTART_TIMEOUT     86400 // 1 hour
+#define CM2_GW_SKIP_RESTART_TIMEOUT     86400 // 1 day
+
+#define CM2_GW_OFFLINE_TIMEOUT          180
 
 // state info
 #define CM2_STATE_DIR  "/tmp/opensync/"
@@ -379,7 +381,7 @@ static void cm2_gw_offline_start_cb(struct ev_loop *loop, ev_timer *t, int event
     if (!r) {
         LOGW("Enabling GW offline configuration failed");
     } else {
-        LOGI("GW offline configuration enabled");
+        LOGN("GW offline configuration enabled");
     }
 }
 
@@ -395,7 +397,7 @@ bool cm2_enable_gw_offline()
         return false;
 
     if (cm2_ovsdb_is_gw_offline_active()) {
-        LOGI("GW offline in active state");
+        LOGD("GW offline in active state");
         return true;
     }
 
@@ -405,9 +407,19 @@ bool cm2_enable_gw_offline()
     }
 
     if (!ev_is_active(&g_state.gw_offline_start)) {
+        ev_timer_set(&g_state.gw_offline_start, CM2_GW_OFFLINE_TIMEOUT, 0.0);
         ev_timer_start(g_state.loop, &g_state.gw_offline_start);
         LOGI("GW offline starting timer");
     }
+
+    return true;
+}
+
+bool cm2_cancel_gw_offline()
+{
+    ev_timer_stop(g_state.loop, &g_state.gw_offline_start);
+
+    LOGI("GW offline stopping timer");
 
     return true;
 }
@@ -589,7 +601,7 @@ static void cm2_disable_gw_offline_state(void)
         return;
 
     if (cm2_ovsdb_disable_gw_offline_conf()) {
-        LOGI("GW offline configuration disabled");
+        LOGN("GW offline configuration disabled");
     } else {
         LOGW("Disabling GW offline configuration failed");
     }
@@ -698,6 +710,11 @@ start:
 
         cm2_set_state(true, CM2_STATE_TRY_RESOLVE);
         cm2_set_dst_type(CM2_DEST_MANAGER);
+    }
+
+    if (g_state.state != CM2_STATE_CONNECTED)
+    {
+        cm2_enable_gw_offline();
     }
 
     switch (g_state.state)
@@ -1040,7 +1057,7 @@ start:
         case CM2_STATE_CONNECTED:
             if (cm2_state_changed()) // first iteration
             {
-                ev_timer_stop(g_state.loop, &g_state.gw_offline_start);
+                cm2_cancel_gw_offline();
                 g_state.connected_at_least_once = true;
                 cm2_dismiss_skip_reconnect("skipped reconnect");
                 LOG(NOTICE, "===== Connected to: %s", cm2_curr_dest_name());
@@ -1184,11 +1201,11 @@ void cm2_event_init(struct ev_loop *loop)
     ev_timer_init(&g_state.timer, cm2_event_cb, CM2_EVENT_INTERVAL, CM2_EVENT_INTERVAL);
     g_state.timer.data = NULL;
     ev_timer_start(g_state.loop, &g_state.timer);
-    ev_timer_init(&g_state.gw_offline_start, cm2_gw_offline_start_cb, 180, 0);
+    ev_timer_init(&g_state.gw_offline_start, cm2_gw_offline_start_cb, CM2_GW_OFFLINE_TIMEOUT, 0);
 }
 
 void cm2_event_close(struct ev_loop *loop)
 {
     LOGI("Stopping CM event");
-    ev_timer_stop(g_state.loop, &g_state.gw_offline_start);
+    cm2_cancel_gw_offline();
 }

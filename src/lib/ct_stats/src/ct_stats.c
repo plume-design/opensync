@@ -40,10 +40,12 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "log.h"
 #include "ds.h"
 #include "fcm.h"
+#include "fcm_mgr.h"
 #include "ct_stats.h"
 #include "ct_stats_remark.h"
 #include "network_metadata_report.h"
 #include "network_metadata.h"
+#include "network_metadata_utils.h"
 #include "fcm_filter.h"
 #include "fcm_report_filter.h"
 #include "neigh_table.h"
@@ -292,7 +294,7 @@ ct_stats_process_accs(ds_tree_t *tree)
         key = acc->key;
         smac = false;
         dmac = false;
-        
+
         next = ds_tree_next(tree, flow);
         count++;
         if (key->smac) smac = true;
@@ -573,6 +575,20 @@ ct_stats_on_acc_report(struct net_md_aggregator *aggr,
         }
     }
 
+    /* Copy vendor data from reverse flow if not present */
+    if (fkey && (fkey->num_vendor_data == 0))
+    {
+        rev_fkey = rev_acc->fkey;
+        if (rev_fkey && rev_fkey->num_vendor_data > 0)
+        {
+            int rc = net_md_copy_flow_key_vdr_data(fkey, rev_fkey);
+            if (rc == 0)
+            {
+                LOGT("%s: Copied %zu vendor data entries from reverse flow",
+                     __func__, fkey->num_vendor_data);
+            }
+        }
+    }
     /* update the direction */
     if (acc->direction != NET_MD_ACC_UNSET_DIR) return;
 
@@ -582,8 +598,6 @@ ct_stats_on_acc_report(struct net_md_aggregator *aggr,
         acc->originator = (rev_acc->originator == NET_MD_ACC_ORIGINATOR_SRC ?
                            NET_MD_ACC_ORIGINATOR_DST : NET_MD_ACC_ORIGINATOR_SRC);
     }
-
-    return;
 }
 
 
@@ -628,7 +642,15 @@ ct_stats_alloc_aggr(flow_stats_t *ct_stats)
     aggr_set.report_filter = fcm_report_filter_nmd_callback;
     aggr_set.collect_filter = ct_stats_collect_filter_cb;
     aggr_set.neigh_lookup = neigh_table_lookup_af;
-    aggr_set.report_stats_type = NET_MD_IP_FLOWS;
+
+    if (collector->parent_plugin == FCM_PARENT_TC_STATS)
+    {
+        aggr_set.report_stats_type = NET_MD_TC_FLOWS;
+    }
+    else
+    {
+        aggr_set.report_stats_type = NET_MD_IP_FLOWS;
+    }
 
     aggr_set.on_acc_report = ct_stats_on_acc_report;
 

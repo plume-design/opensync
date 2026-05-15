@@ -275,11 +275,11 @@ test_cat_comparator(void)
     cat_cmp_fct = get_cat_cmp(CAT_OP_IN);
     ret = cat_cmp_fct(2, NULL);
     TEST_ASSERT_FALSE(ret);
-     
+
     cat_cmp_fct = get_cat_cmp(CAT_OP_OUT);
     ret = cat_cmp_fct(2, NULL);
     TEST_ASSERT_TRUE(ret);
-  
+
     /* IN and OUT do not behave the same !! */
     /* CAT_OP_IN */
     cat_cmp_fct = get_cat_cmp(CAT_OP_IN);

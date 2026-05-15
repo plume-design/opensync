@@ -41,6 +41,7 @@
 #include "nfm_nflog.h"
 #include "os.h"
 #include "target.h"
+#include "manager_watchdog.h"
 #include "os_backtrace.h"
 #include "json_util.h"
 #include "ovsdb.h"
@@ -85,6 +86,9 @@ int main(int argc, char **argv)
 	log_severity_set(nfm_log_severity);
 	log_register_dynamic_severity(loop);
 
+	/* Init the manager watchdog */
+	manager_watchdog_init(loop, CONFIG_MANAGER_WATCHDOG_TIMEOUT_SEC);
+
 	backtrace_init();
 	json_memdbg_init(loop);
 
@@ -124,4 +128,3 @@ int main(int argc, char **argv)
 	LOGN("Exiting Netfilter manager - NFM");
 	return 0;
 }
-

@@ -35,6 +35,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "os.h"
 #include "os_backtrace.h"
 #include "target.h"
+#include "manager_watchdog.h"
 
 #include "qosm_internal.h"
 
@@ -59,6 +60,9 @@ int main(int argc, char *argv[])
     LOG(NOTICE, "Starting QoS Manager - QOSM");
     log_severity_set(qosm_log_severity);
     log_register_dynamic_severity(EV_DEFAULT);
+
+    /* Init the manager watchdog */
+    manager_watchdog_init(EV_DEFAULT, CONFIG_MANAGER_WATCHDOG_TIMEOUT_SEC);
 
     backtrace_init();
 

@@ -283,6 +283,39 @@ bool wano_wan_is_last_config(const wano_wan_t *ww)
     return true;
 }
 
+/*
+ * Return true if the current priority group contains a VLAN config but no
+ * other connection-type config (DHCP, PPPoE, static_ipv4). In that case DHCP
+ * is implied and should always be attempted on the VLAN interface, even if
+ * this is not the last (lowest) priority config.
+ */
+bool wano_wan_vlan_implies_dhcp(const wano_wan_t *ww)
+{
+    struct wano_wan_config_cache *wcc;
+    bool have_vlan = false;
+
+    if (ww == NULL) return false;
+
+    ds_tree_foreach(&g_wano_wan_config_cache, wcc)
+    {
+        if (wcc->wcc_wan_config.wc_priority != ww->ww_priority) continue;
+
+        switch (wcc->wcc_wan_config.wc_type)
+        {
+            case WC_TYPE_VLAN:
+                have_vlan = true;
+                break;
+
+            case WC_TYPE_DHCP:
+            case WC_TYPE_STATIC_IPV4:
+            case WC_TYPE_PPPOE:
+                return false;
+        }
+    }
+
+    return have_vlan;
+}
+
 bool wano_wan_config_get(wano_wan_t *ww, enum wano_wan_config_type type, struct wano_wan_config *wc_out)
 {
     struct wano_wan_config wc_key;

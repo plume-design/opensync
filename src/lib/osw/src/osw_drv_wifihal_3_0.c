@@ -42,6 +42,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <osw_drv_common.h>
 #include <osw_conf.h>
 #include <osw_etc.h>
+#include <osw_drv_wifihal_3_0.h>
 
 /* 3rd party */
 #include <ev.h>
@@ -69,6 +70,26 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define STEERING_EVENT_QUEUE_CAPACITY 256
 #define MAX_IES_LEN 4096
 
+static osw_drv_wifihal_fixup_vif_fn *g_wifihal_fixup_vif_cb = NULL;
+static void *g_wifihal_fixup_vif_priv = NULL;
+
+osw_drv_wifihal_fixup_vif_fn *osw_drv_wifihal_fix_vif_set_cb(
+    osw_drv_wifihal_fixup_vif_fn *new_cb,
+    void *new_priv,
+    void **old_priv_out)
+{
+    osw_drv_wifihal_fixup_vif_fn *old_cb = g_wifihal_fixup_vif_cb;
+
+    if (old_priv_out) {
+        *old_priv_out = g_wifihal_fixup_vif_priv;
+    }
+
+    g_wifihal_fixup_vif_cb = new_cb;
+    g_wifihal_fixup_vif_priv = new_priv;
+
+    return old_cb;
+}
+
 INT wifihal_stub() /* () means any argument list is valid */
 {
     return RETURN_ERR;
@@ -95,6 +116,13 @@ struct wifihal_3_0_steering_event {
     wifi_steering_event_t hal_event;
 };
 
+struct wifihal_3_0_vap_info {
+    struct ds_dlist_node node;
+    wifi_vap_index_t vap_index;
+    char vap_name[MAXIFACENAMESIZE];
+    UINT radio_index;
+};
+
 struct wifihal_3_0_priv {
     struct ev_loop *loop;
     struct osw_drv *drv;
@@ -108,6 +136,7 @@ struct wifihal_3_0_priv {
     struct ds_dlist steering_events_queue;
     size_t steering_events_queue_len;
     int n_events;
+    struct ds_dlist vap_info_cache_list;
 
     INT (*wifi_getRadioIfName)(INT radioIndex, CHAR *output_string);
     INT (*wifi_getApAssociatedDeviceDiagnosticResult3)(INT apIndex, wifi_associated_dev3_t **associated_dev_array, UINT *output_array_size);
@@ -140,6 +169,7 @@ struct wifihal_3_0_priv {
     void (*wifi_newApAssociatedDevice_callback_register)(wifi_newApAssociatedDevice_callback callback_proc);
     void (*wifi_apDisassociatedDevice_callback_register)(wifi_apDisassociatedDevice_callback callback_proc);
     void (*wifi_apDeAuthEvent_callback_register)(wifi_apDeAuthEvent_callback callback_proc);
+    INT (*wifi_setNeighborReports)(UINT apIndex, UINT numNeighborReports, wifi_NeighborReport_t *neighborReports);
 
     /* FIXME: This structure could be used to keep a local
      * working copy of vap map for easier lookups as well as
@@ -316,6 +346,7 @@ static struct wifihal_3_0_priv g_priv = {
         .name = DRV_NAME,
         .mutate_fn = osw_conf_mutate_cb,
     },
+    .vap_info_cache_list = DS_DLIST_INIT(struct wifihal_3_0_vap_info, node),
 };
 
 static struct wifihal_3_0_sta *
@@ -411,27 +442,6 @@ vap_walk_radio(const struct wifihal_3_0_priv *priv,
     vap_walk_buf(&map, fn, fn_priv);
 }
 
-static void
-vap_walk(const struct wifihal_3_0_priv *priv,
-         vap_walk_fn_t *fn,
-         void *fn_priv)
-{
-    unsigned int i;
-    for (i = 0; i < MAX_NUM_RADIOS; i++)
-        vap_walk_radio(priv, i, fn, fn_priv);
-}
-
-static bool
-vap_walk_index_to_info_cb(wifi_vap_info_t *vap, void *fn_priv)
-{
-    void **p = fn_priv;
-    const wifi_vap_index_t *ap_index = p[0];
-    if (vap->vap_index != *ap_index) return false;
-
-    memcpy(p[1], vap, sizeof(wifi_vap_info_t));
-    return true;
-}
-
 static bool
 vap_walk_name_to_info_cb(wifi_vap_info_t *vap, void *fn_priv)
 {
@@ -443,21 +453,62 @@ vap_walk_name_to_info_cb(wifi_vap_info_t *vap, void *fn_priv)
     return true;
 }
 
+static const struct wifihal_3_0_vap_info *
+get_cached_vap_info_from_ap_index(const struct wifihal_3_0_priv *p, UINT ap_index)
+{
+    /* Removed const due to ds_dlist_foreach() */
+    struct wifihal_3_0_priv *priv = (struct wifihal_3_0_priv *)p;
+    struct wifihal_3_0_vap_info *vap_info = NULL;
+    ds_dlist_foreach(&priv->vap_info_cache_list, vap_info) {
+         if (vap_info->vap_index == ap_index)
+
+
+            return vap_info;
+    }
+    return NULL;
+}
+
+static const struct wifihal_3_0_vap_info *
+get_cached_vap_info_from_vif_name(const struct wifihal_3_0_priv *p, const char *vif_name)
+{
+    /* Removed const due to ds_dlist_foreach() */
+    struct wifihal_3_0_priv *priv = (struct wifihal_3_0_priv *)p;
+    struct wifihal_3_0_vap_info *vap_info = NULL;
+    ds_dlist_foreach(&priv->vap_info_cache_list, vap_info) {
+        if (strncmp(vap_info->vap_name, vif_name, sizeof(vap_info->vap_name)) == 0)
+            return vap_info;
+    }
+    return NULL;
+}
+
+static void
+set_cache_vap_info(struct wifihal_3_0_priv *priv, const wifi_vap_info_t *info)
+{
+    const struct wifihal_3_0_vap_info *vap_info = get_cached_vap_info_from_ap_index(priv, info->vap_index);
+    if (vap_info != NULL)
+    {
+        if (WARN_ON(vap_info->radio_index != info->radio_index)) return;
+        if (WARN_ON(strncmp(vap_info->vap_name, info->vap_name, sizeof(vap_info->vap_name)) != 0)) return;
+        return;
+    }
+
+    struct wifihal_3_0_vap_info *new_vap_info = CALLOC(1, sizeof(*new_vap_info));
+    new_vap_info->vap_index = info->vap_index;
+    STRSCPY_WARN(new_vap_info->vap_name, info->vap_name);
+    new_vap_info->radio_index = info->radio_index;
+    ds_dlist_insert_tail(&priv->vap_info_cache_list, new_vap_info);
+}
+
 static char *
 ap_index_to_phy_name(const struct wifihal_3_0_priv *priv,
                      UINT ap_index)
 {
-    wifi_vap_info_t vap_arg;
-    vap_arg.radio_index = MAX_NUM_RADIOS;
-
-    void *p[2] = { &ap_index, &vap_arg };
-    vap_walk(priv, vap_walk_index_to_info_cb, p);
-
-    const wifi_vap_info_t *vap = p[1];
-    if (vap->radio_index == MAX_NUM_RADIOS) return NULL;
+    const struct wifihal_3_0_vap_info *vap_info = get_cached_vap_info_from_ap_index(priv, ap_index);
+    if (vap_info == NULL)
+        return NULL;
 
     char buf[MAXIFACENAMESIZE];
-    if (MEASURE(priv->wifi_getRadioIfName, (vap->radio_index, buf)) != RETURN_OK)
+    if (MEASURE(priv->wifi_getRadioIfName, (vap_info->radio_index, buf)) != RETURN_OK)
         return NULL;
 
     buf[MAXIFACENAMESIZE - 1] = 0;
@@ -471,15 +522,10 @@ static char *
 ap_index_to_vif_name(const struct wifihal_3_0_priv *priv,
                      UINT ap_index)
 {
-    unsigned int i;
-    for (i = 0; i < MAX_NUM_RADIOS; i++) {
-        wifi_vap_info_map_t map = {0};
-        if (MEASURE(priv->wifi_getRadioVapInfoMap, (i, &map)) != RETURN_OK) continue;
-        unsigned int j;
-        for (j = 0; j < map.num_vaps; j++) {
-            const wifi_vap_info_t *vap = &map.vap_array[j];
-            if (vap->vap_index == ap_index) return STRDUP(vap->vap_name);
-        }
+    const struct wifihal_3_0_vap_info *vap_info = get_cached_vap_info_from_ap_index(priv, ap_index);
+    if (vap_info != NULL)
+    {
+        return STRDUP(vap_info->vap_name);
     }
     return NULL;
 }
@@ -488,15 +534,10 @@ int
 vif_name_to_ap_index(const struct wifihal_3_0_priv *priv,
                      const char *vif_name)
 {
-    wifi_vap_info_t vap_arg;
-    vap_arg.radio_index = MAX_NUM_RADIOS;
-
-    const void *p[2] = { vif_name, &vap_arg };
-    vap_walk(priv, vap_walk_name_to_info_cb, p);
-
-    const wifi_vap_info_t *vap = p[1];
-    if (vap->radio_index == MAX_NUM_RADIOS) return -1;
-    return vap->vap_index;
+    const struct wifihal_3_0_vap_info *vap_info = get_cached_vap_info_from_vif_name(priv, vif_name);
+    if (vap_info != NULL)
+        return vap_info->vap_index;
+    return -1;
 }
 
 static bool
@@ -693,6 +734,8 @@ steering_report_event(struct wifihal_3_0_priv *priv)
         }
 
 free:
+        FREE(phy_name);
+        FREE(vif_name);
         FREE(event);
     }
     pthread_cond_signal(cond);
@@ -779,6 +822,26 @@ unlock:
 }
 
 static void
+generate_vap_cache(struct wifihal_3_0_priv *priv)
+{
+    UINT max_rnum = MAX_NUM_RADIOS;
+
+    for (UINT i = 0; i < max_rnum; i++) {
+        wifi_vap_info_map_t map = {0};
+        if (MEASURE(priv->wifi_getRadioVapInfoMap, (i, &map)) != RETURN_OK)
+            continue;
+
+        unsigned int j;
+        for (j = 0; j < map.num_vaps; j++) {
+            const wifi_vap_info_t *vap = &map.vap_array[j];
+            if (vap == NULL) continue;
+            if (WARN_ON(vap->radio_index >= max_rnum)) continue;
+            set_cache_vap_info(priv, vap);
+        }
+    }
+}
+
+static void
 osw_drv_init_cb(struct osw_drv *drv)
 {
     struct wifihal_3_0_priv *priv = &g_priv;
@@ -827,6 +890,7 @@ osw_drv_init_cb(struct osw_drv *drv)
     DLSYM(steering_eventRegister, wifihal_stub);
     DLSYM(sendActionFrame, wifihal_stub);
     DLSYM(mgmt_frame_callbacks_register, wifihal_stub);
+    DLSYM(setNeighborReports, wifihal_stub);
 
     priv->wifi_newApAssociatedDevice_callback_register(sta_connect_cb);
     priv->wifi_apDisassociatedDevice_callback_register(sta_disconnect_cb);
@@ -845,6 +909,8 @@ osw_drv_init_cb(struct osw_drv *drv)
     LOGI("osw: drv: wifihal: version '%s'%s advertised", ver, is_phase2() ? " phase2" : "");
     if (strstr(ver, "3.0") != ver)
         LOGI("osw: drv: wifihal: only API 3.0.x is supported");
+
+    generate_vap_cache(priv);
 
     osw_conf_register_mutator(&priv->conf_mut);
 }
@@ -1543,6 +1609,9 @@ osw_drv_request_vif_state_cb(struct osw_drv *drv,
     ap->channel = radio_build_chan(&radio_params);
 
 report:
+    if (g_wifihal_fixup_vif_cb != NULL) {
+        g_wifihal_fixup_vif_cb(phy_name, vif_name, &vif, g_wifihal_fixup_vif_priv);
+    }
     osw_drv_report_vif_state(drv, phy_name, vif_name, &vif);
     osw_drv_vif_state_report_free(&vif);
 }
@@ -1692,6 +1761,31 @@ get_sec_mfp(const enum osw_pmf pmf)
 
     LOGW("%s: unhandled mfp: pmf=%d", __func__, pmf);
     return wifi_mfp_cfg_disabled;
+}
+
+static void
+send_update_neighbor_list(const struct wifihal_3_0_priv *priv, const struct osw_drv_vif_config_ap *ap, int vix)
+{
+    size_t i;
+    const size_t neigh_number = ap->neigh_list.count;
+    const struct osw_neigh *neigh_list = ap->neigh_list.list;
+
+    wifi_NeighborReport_t *neighbor_reports = CALLOC(neigh_number, sizeof(*neighbor_reports));
+
+    for (i = 0; i < neigh_number; i++) {
+        const struct osw_neigh *neigh_iter = &neigh_list[i];
+        memcpy(neighbor_reports[i].bssid, neigh_iter->bssid.octet, sizeof(neighbor_reports[i].bssid));
+        neighbor_reports[i].info = neigh_iter->bssid_info;
+        neighbor_reports[i].opClass = neigh_iter->op_class;
+        neighbor_reports[i].channel = neigh_iter->channel;
+        neighbor_reports[i].phyTable = neigh_iter->phy_type;
+    }
+
+    if (MEASURE(priv->wifi_setNeighborReports, ((UINT)vix, neigh_number, neighbor_reports)) != RETURN_OK)
+    {
+        LOGE("%s: unable to setNeighborReports for vif with index %d", __func__, vix);
+    }
+    FREE(neighbor_reports);
 }
 
 static void
@@ -1848,6 +1942,11 @@ vap_configure_ap(const struct wifihal_3_0_priv *priv,
         }
 
         *changed = true;
+    }
+
+    if(ap->neigh_list_changed == true)
+    {
+        send_update_neighbor_list(priv, ap, vix);
     }
 
     /* FIXME: add handling of wifi_vap_info_t:
@@ -2391,18 +2490,16 @@ osw_drv_fill_tlv_sta_stats(const struct wifihal_3_0_priv *priv,
                            struct osw_tlv *t,
                            int rix)
 {
-    wifi_vap_info_map_t map = {0};
     char phy_name[MAXIFACENAMESIZE] = {0};
+    struct wifihal_3_0_priv *priv_nonconst = (struct wifihal_3_0_priv *)priv;
 
     if (MEASURE(priv->wifi_getRadioIfName, (rix, phy_name)) != RETURN_OK) return;
-    if (MEASURE(priv->wifi_getRadioVapInfoMap, (rix, &map)) != RETURN_OK) return;
-    if (WARN_ON(map.num_vaps > ARRAY_SIZE(map.vap_array))) return;
+    struct wifihal_3_0_vap_info *vap_info_cached = NULL;
+    ds_dlist_foreach(&priv_nonconst->vap_info_cache_list, vap_info_cached) {
+        if (vap_info_cached->radio_index != (UINT)rix) continue;
 
-    unsigned int i;
-    for (i = 0; i < map.num_vaps; i++) {
-        const wifi_vap_info_t *vap = &map.vap_array[i];
-        const char *vif_name = vap->vap_name;
-        const wifi_vap_index_t vix = vap->vap_index;
+        const char *vif_name = vap_info_cached->vap_name;
+        const wifi_vap_index_t vix = vap_info_cached->vap_index;
         wifi_associated_dev3_t *stas = NULL;
         UINT n_sta = 0;
 
@@ -2524,19 +2621,34 @@ osw_drv_push_frame_tx_cb(struct osw_drv *drv,
     FREE(hal_payload);
 }
 
-const struct osw_drv_ops g_wifihal_3_0_ops = {
-    .name = DRV_NAME,
-    .init_fn = osw_drv_init_cb,
-    .get_phy_list_fn = osw_drv_get_phy_list_cb,
-    .get_vif_list_fn = osw_drv_get_vif_list_cb,
-    .get_sta_list_fn = osw_drv_get_sta_list_cb,
-    .request_phy_state_fn = osw_drv_request_phy_state_cb,
-    .request_vif_state_fn = osw_drv_request_vif_state_cb,
-    .request_sta_state_fn = osw_drv_request_sta_state_cb,
-    .request_config_fn = osw_drv_request_config_cb,
-    .request_sta_deauth_fn = osw_drv_request_sta_deauth_cb,
-    .request_stats_fn = osw_drv_request_stats_cb,
-    .push_frame_tx_fn = osw_drv_push_frame_tx_cb,
+struct osw_drv_wifihal_3_0 {
+    struct osw_drv_ops wifihal_3_0_ops;
 };
 
-OSW_DRV_DEFINE(g_wifihal_3_0_ops);
+static void osw_drv_wifihal_3_0_init(struct osw_drv_wifihal_3_0 *m)
+{
+    static const struct osw_drv_ops wifihal_3_0_ops = {
+        .name = DRV_NAME,
+        .init_fn = osw_drv_init_cb,
+        .get_phy_list_fn = osw_drv_get_phy_list_cb,
+        .get_vif_list_fn = osw_drv_get_vif_list_cb,
+        .get_sta_list_fn = osw_drv_get_sta_list_cb,
+        .request_phy_state_fn = osw_drv_request_phy_state_cb,
+        .request_vif_state_fn = osw_drv_request_vif_state_cb,
+        .request_sta_state_fn = osw_drv_request_sta_state_cb,
+        .request_config_fn = osw_drv_request_config_cb,
+        .request_sta_deauth_fn = osw_drv_request_sta_deauth_cb,
+        .request_stats_fn = osw_drv_request_stats_cb,
+        .push_frame_tx_fn = osw_drv_push_frame_tx_cb,
+    };
+    m->wifihal_3_0_ops = wifihal_3_0_ops;
+    osw_drv_register_ops(&m->wifihal_3_0_ops);
+}
+
+OSW_MODULE(osw_drv_wifihal_3_0)
+{
+    static struct osw_drv_wifihal_3_0 m;
+    osw_drv_wifihal_3_0_init(&m);
+
+    return NULL;
+}

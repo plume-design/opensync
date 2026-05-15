@@ -209,7 +209,7 @@ void neigh_global_test_teardown(void)
 }
 
 
-void 
+void
 neigh_table_setUp(void)
 {
     struct neigh_table_mgr *mgr = neigh_table_get_mgr();
@@ -1884,7 +1884,7 @@ test_process_neigh_event(void)
     /* Delete the entry */
     neigh_info.add = false;
     neigh_info.delete = true;
-    
+
     process_neigh_event(&neigh_info);
     cache_size = neigh_table_get_cache_size();
     TEST_ASSERT_EQUAL(0, cache_size);

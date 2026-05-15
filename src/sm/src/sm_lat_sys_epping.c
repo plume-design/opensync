@@ -47,6 +47,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define EPPING_LOADER  EPPING_PATH "ld-musl-armhf.so.1"
 #define EPPING_PID_DIR "/tmp/epping"
 
+#define DEST_INIT_CAPACITY 64
+
 #define LOG_PREFIX(fmt, ...) "sm: lat: sys: " fmt, ##__VA_ARGS__
 
 #define LOG_PREFIX_IFNAME(i, fmt, ...) LOG_PREFIX("ifname: %s: " fmt, (i)->name, ##__VA_ARGS__)
@@ -79,6 +81,8 @@ struct sm_lat_sys_dest
     uint32_t avg_ms;
     uint32_t last_ms;
     uint32_t num_pkts;
+    uint32_t *rtt;
+    uint32_t capacity;
     struct sm_lat_sys_ifname *sif;
 };
 
@@ -112,6 +116,7 @@ struct sm_lat_sys
     bool avg_enabled;
     bool last_enabled;
     bool num_enabled;
+    bool perc_enabled;
 };
 
 struct sm_lat_sys_poll
@@ -160,6 +165,10 @@ const uint32_t *sm_lat_sys_sample_get_num_pkts(const sm_lat_sys_sample_t *s)
 {
     return s->sys->num_enabled ? &s->dest->num_pkts : NULL;
 }
+const uint32_t *sm_lat_sys_sample_get_rtts(const sm_lat_sys_sample_t *s)
+{
+    return s->sys->perc_enabled ? s->dest->rtt : NULL;
+}
 
 #define SYS_SET_ENABLED(sys, var, toggle)                                          \
     if (sys == NULL) return;                                                       \
@@ -190,6 +199,10 @@ void sm_lat_sys_kind_set_last(sm_lat_sys_t *s, bool enable)
 void sm_lat_sys_kind_set_num_pkts(sm_lat_sys_t *s, bool enable)
 {
     SYS_SET_ENABLED(s, num, enable)
+}
+void sm_lat_sys_kind_set_perc(sm_lat_sys_t *s, bool enable)
+{
+    SYS_SET_ENABLED(s, perc, enable)
 }
 
 static int sm_lat_sys_flow_cmp(const void *a, const void *b)
@@ -300,6 +313,16 @@ static struct sm_lat_sys_dest *sm_lat_sys_dest_alloc(struct sm_lat_sys_ifname *s
     memcpy(&dest->flow, flow, sizeof(dest->flow));
     dest->sif = sif;
     dest->min_ms = UINT32_MAX;
+    if (sif->sys->perc_enabled)
+    {
+        dest->capacity = DEST_INIT_CAPACITY;
+        dest->rtt = CALLOC(DEST_INIT_CAPACITY, sizeof(*dest->rtt));
+    }
+    else
+    {
+        dest->capacity = 0;
+        dest->rtt = NULL;
+    }
     ds_tree_insert(&sif->dests, dest, &dest->flow);
     LOGD(LOG_PREFIX_DEST(dest, "allocated"));
     return dest;
@@ -315,6 +338,7 @@ static struct sm_lat_sys_dest *sm_lat_sys_dest_lookup_or_alloc(
 static void sm_lat_sys_dest_drop(struct sm_lat_sys_dest *dest)
 {
     ds_tree_remove(&dest->sif->dests, dest);
+    FREE(dest->rtt);
     FREE(dest);
 }
 
@@ -512,7 +536,6 @@ static void sm_lat_sys_parse_line(struct sm_lat_sys_ifname *sif, const char *lin
      * reported values eg. average
      */
     struct sm_lat_sys_dest *dest = sm_lat_sys_dest_lookup_or_alloc(sif, &flow);
-    dest->num_pkts++;
     dest->last_ms = rtt;
     if (dest->min_ms > rtt) dest->min_ms = rtt;
     if (dest->max_ms < rtt) dest->max_ms = rtt;
@@ -520,6 +543,19 @@ static void sm_lat_sys_parse_line(struct sm_lat_sys_ifname *sif, const char *lin
      * number of packets
      */
     dest->avg_ms += rtt;
+
+    if (dest->capacity != 0)
+    {
+        if (dest->num_pkts == dest->capacity)
+        {
+            uint32_t new_cap = dest->capacity << 1;
+            dest->rtt = REALLOC(dest->rtt, new_cap * sizeof(*dest->rtt));
+            dest->capacity = new_cap;
+        }
+        dest->rtt[dest->num_pkts] = rtt;
+    }
+    dest->num_pkts++;
+
     LOGT(LOG_PREFIX_DEST(
             dest,
             "min:%" PRIu32 " max:%" PRIu32 " avg:%" PRIu32 " lst:%" PRIu32 " num:%" PRIu32 "",

@@ -76,12 +76,14 @@ void callback_DHCPv6_Lease(
     switch (mon->mon_type)
     {
         case OVSDB_UPDATE_NEW:
+            LOG(INFO, "dhcpv6_lease: NEW");
             /* Insert case */
             d6l = nm2_dhcpv6_lease_get(&new->_uuid);
             reflink_ref(&d6l->d6l_reflink, 1);
             break;
 
         case OVSDB_UPDATE_MODIFY:
+            LOG(INFO, "dhcpv6_lease: MODIFY");
             /* Update case */
             d6l = ds_tree_find(&nm2_dhcpv6_lease_list, new->_uuid.uuid);
             if (d6l == NULL)
@@ -92,6 +94,7 @@ void callback_DHCPv6_Lease(
             break;
 
         case OVSDB_UPDATE_DEL:
+            LOG(INFO, "dhcpv6_lease: DEL");
             d6l = ds_tree_find(&nm2_dhcpv6_lease_list, old->_uuid.uuid);
             if (d6l == NULL)
             {
@@ -213,10 +216,13 @@ bool nm2_dhcpv6_lease_update(
         goto error;
     }
 
-    if (schema->hwaddr_exists && !osn_mac_addr_from_str(&d6l->d6l_hwaddr, schema->hwaddr))
+    if (schema->hwaddr_exists)
     {
-        LOG(ERR, "dhcpv6_lease: Error, IPv6_Lease.hwaddr is invalid: %s", schema->hwaddr);
-        goto error;
+        if (!osn_mac_addr_from_str(&d6l->d6l_hwaddr, schema->hwaddr))
+        {
+            LOG(ERR, "dhcpv6_lease: Error, IPv6_Lease.hwaddr is invalid: %s", schema->hwaddr);
+            goto error;
+        }
     }
     else
     {
@@ -229,20 +235,26 @@ bool nm2_dhcpv6_lease_update(
         goto error;
     }
 
-    if (schema->duid_exists && strscpy(d6l->d6l_duid, schema->duid, sizeof(d6l->d6l_duid)) < 0)
+    if (schema->duid_exists)
     {
-        LOG(ERR, "dhcpv6_lease: Error, IPv6_Lease.duid is too long: %s", schema->duid);
-        goto error;
+        if (strscpy(d6l->d6l_duid, schema->duid, sizeof(d6l->d6l_duid)) < 0)
+        {
+            LOG(ERR, "dhcpv6_lease: Error, IPv6_Lease.duid is too long: %s", schema->duid);
+            goto error;
+        }
     }
     else
     {
         d6l->d6l_duid[0] = '\0';
     }
 
-    if (schema->hostname_exists && strscpy(d6l->d6l_hostname, schema->hostname, sizeof(d6l->d6l_hostname)) < 0)
+    if (schema->hostname_exists)
     {
-        LOG(ERR, "dhcpv6_lease: Error, IPv6_Lease.hostname is too long: %s", schema->hostname);
-        goto error;
+        if (strscpy(d6l->d6l_hostname, schema->hostname, sizeof(d6l->d6l_hostname)) < 0)
+        {
+            LOG(ERR, "dhcpv6_lease: Error, IPv6_Lease.hostname is too long: %s", schema->hostname);
+            goto error;
+        }
     }
     else
     {
@@ -251,6 +263,7 @@ bool nm2_dhcpv6_lease_update(
 
     d6l->d6l_leased_time = schema->leased_time_exists ? schema->leased_time : -1;
 
+    LOG(DEBUG, "dhcpv6_lease: Parsing successful, notify listeners");
     /*
      * Parsing successful, notify listeners that we have a valid structure now
      */

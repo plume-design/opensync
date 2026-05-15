@@ -66,8 +66,6 @@ UNIT_DEPS += src/lib/const
 UNIT_DEPS += src/lib/module
 UNIT_DEPS += src/lib/evx
 UNIT_DEPS += src/lib/pasync
+UNIT_DEPS += src/lib/manager_watchdog
 
 UNIT_DEPS_CFLAGS += src/lib/version
-
-
-

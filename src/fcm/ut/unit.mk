@@ -59,3 +59,4 @@ UNIT_DEPS += src/lib/fsm_policy
 UNIT_DEPS += $(if $(CONFIG_FCM_NO_DSO), src/lib/ct_stats)
 UNIT_DEPS += $(if $(CONFIG_FCM_NO_DSO), src/lib/lan_stats)
 UNIT_DEPS += $(if $(CONFIG_FCM_NO_DSO), src/lib/intf_stats)
+UNIT_DEPS += $(if $(CONFIG_FCM_NO_DSO), src/lib/tc_stats)

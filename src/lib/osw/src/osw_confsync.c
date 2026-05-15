@@ -305,6 +305,12 @@ osw_confsync_build_phy_debug(const struct osw_drv_phy_config *cmd,
         notified = true;
     }
 
+    if (cmd->atf_enabled_changed) {
+        LOGI("osw: confsync: %s: atf_enabled: %d -> %d",
+             phy, state->atf_enabled, conf->atf_enabled);
+        notified = true;
+    }
+
     if (cmd->tx_chainmask_changed) {
         LOGI("osw: confsync: %s: tx_chainmask: 0x%04x -> 0x%04x",
              phy, state->tx_chainmask, conf->tx_chainmask);
@@ -503,6 +509,18 @@ osw_confsync_build_vif_ap_debug(const char *phy,
         *notified = true;
     }
 
+    if (cmd->proxy_arp_changed) {
+        LOGI("osw: confsync: %s/%s: proxy_arp: %d -> %d",
+             phy, vif, state->proxy_arp, conf->proxy_arp);
+        *notified = true;
+    }
+
+    if (cmd->dgaf_disable_changed) {
+        LOGI("osw: confsync: %s/%s: dgaf_disable: %d -> %d",
+             phy, vif, state->dgaf_disable, conf->dgaf_disable);
+        *notified = true;
+    }
+
     if (cmd->rsn_override_1_changed) {
         LOGI("osw: confsync: %s/%s: rsn_override_1: "OSW_RSN_OVERRIDE_FMT" -> "OSW_RSN_OVERRIDE_FMT,
              phy, vif,
@@ -522,6 +540,15 @@ osw_confsync_build_vif_ap_debug(const char *phy,
     if (cmd->rsn_override_omit_rsnxe_changed) {
         LOGI("osw: confsync: %s/%s: rsn_override_omit_rsnxe: %d -> %d",
              phy, vif, state->rsn_override_omit_rsnxe, conf->rsn_override_omit_rsnxe);
+        *notified = true;
+    }
+
+    if (cmd->airtime_precedence_changed) {
+        LOGI("osw: confsync: %s/%s: airtime_precedence: %s -> %s",
+             phy,
+             vif,
+             osw_airtime_precedence_to_str(state->airtime_precedence),
+             osw_airtime_precedence_to_str(conf->airtime_precedence));
         *notified = true;
     }
 
@@ -984,7 +1011,9 @@ osw_confsync_vif_ap_channel_changed(const struct osw_channel *a,
 static bool
 osw_confsync_vif_ap_psk_tree_changed(struct ds_tree *a,
                                      const struct osw_ap_psk_list *b,
-                                     const struct osw_wpa *wpa)
+                                     const struct osw_wpa *wpa,
+                                     const struct osw_rsn_override *rsno1,
+                                     const struct osw_rsn_override *rsno2)
 {
     const size_t n = ds_tree_len(a);
     size_t i;
@@ -1001,7 +1030,14 @@ osw_confsync_vif_ap_psk_tree_changed(struct ds_tree *a,
      * properties. As such consider single passphrase with
      * SAE involved as a special case.
      */
-    if (wpa->akm_sae) {
+    const uint32_t sae_akm_bits = (1 << OSW_AKM_RSN_SAE)
+                                | (1 << OSW_AKM_RSN_SAE_EXT);
+    const bool has_sae = wpa->akm_sae
+                      || wpa->akm_sae_ext
+                      || (rsno1 && rsno1->enabled && (rsno1->akm & sae_akm_bits))
+                      || (rsno2 && rsno2->enabled && (rsno2->akm & sae_akm_bits));
+
+    if (has_sae) {
         WARN_ON(n > 1);
         if (n == 1) {
             const struct osw_ap_psk *p = &b->list[0];
@@ -1198,6 +1234,7 @@ osw_confsync_vif_ap_wps_cred_list_changed(struct ds_dlist *a, const struct osw_w
 static void
 osw_confsync_vif_ap_mark_changed(struct osw_drv_vif_config *dvif,
                                  const struct osw_drv_phy_state *sphy,
+                                 const struct osw_drv_phy_config *dphy,
                                  const struct osw_drv_vif_state *svif,
                                  struct osw_conf_vif *cvif,
                                  const bool all)
@@ -1219,7 +1256,7 @@ osw_confsync_vif_ap_mark_changed(struct osw_drv_vif_config *dvif,
     const size_t acl_count = svif->u.ap.acl.count ?: ds_tree_len(&cvif->u.ap.acl_tree);
 
     dvif->u.ap.ssid_changed = all || osw_confsync_vif_ap_ssid_changed(&cvif->u.ap.ssid, &svif->u.ap.ssid);
-    dvif->u.ap.psk_list_changed = all || osw_confsync_vif_ap_psk_tree_changed(&cvif->u.ap.psk_tree, &svif->u.ap.psk_list, &dvif->u.ap.wpa);
+    dvif->u.ap.psk_list_changed = all || osw_confsync_vif_ap_psk_tree_changed(&cvif->u.ap.psk_tree, &svif->u.ap.psk_list, &dvif->u.ap.wpa, &dvif->u.ap.rsn_override_1, &dvif->u.ap.rsn_override_2);
     dvif->u.ap.neigh_list_changed = all || neigh_changed;
     dvif->u.ap.neigh_ft_list_changed = all || osw_confsync_vif_ap_neigh_ft_tree_changed(&cvif->u.ap.neigh_ft_tree, &svif->u.ap.neigh_ft_list);
     dvif->u.ap.wps_cred_list_changed = all || osw_confsync_vif_ap_wps_cred_list_changed(&cvif->u.ap.wps_cred_list, &svif->u.ap.wps_cred_list);
@@ -1254,9 +1291,15 @@ osw_confsync_vif_ap_mark_changed(struct osw_drv_vif_config *dvif,
     dvif->u.ap.oce_min_rssi_enable_changed = all || (cvif->u.ap.oce && (svif->u.ap.oce_min_rssi_enable != cvif->u.ap.oce_min_rssi_enable));
     dvif->u.ap.oce_retry_delay_sec_changed = all || (cvif->u.ap.oce && (svif->u.ap.oce_retry_delay_sec != cvif->u.ap.oce_retry_delay_sec));
     dvif->u.ap.max_sta_changed = all || (svif->u.ap.max_sta != cvif->u.ap.max_sta);
+    dvif->u.ap.proxy_arp_changed = all || (svif->u.ap.proxy_arp != cvif->u.ap.proxy_arp);
+    dvif->u.ap.dgaf_disable_changed = all || (svif->u.ap.dgaf_disable != cvif->u.ap.dgaf_disable);
     dvif->u.ap.rsn_override_1_changed = all || (memcmp(&svif->u.ap.rsn_override_1, &cvif->u.ap.rsn_override_1, sizeof(svif->u.ap.rsn_override_1)) != 0);
     dvif->u.ap.rsn_override_2_changed = all || (memcmp(&svif->u.ap.rsn_override_2, &cvif->u.ap.rsn_override_2, sizeof(svif->u.ap.rsn_override_2)) != 0);
     dvif->u.ap.rsn_override_omit_rsnxe_changed = all || (svif->u.ap.rsn_override_omit_rsnxe != cvif->u.ap.rsn_override_omit_rsnxe);
+    if (dphy->atf_enabled == true)
+    {
+        dvif->u.ap.airtime_precedence_changed = all || (!osw_airtime_precedence_is_equal(&svif->u.ap.airtime_precedence, &cvif->u.ap.airtime_precedence));
+    }
 
     dvif->changed |= dvif->u.ap.beacon_interval_tu_changed;
     dvif->changed |= dvif->u.ap.isolated_changed;
@@ -1294,11 +1337,19 @@ osw_confsync_vif_ap_mark_changed(struct osw_drv_vif_config *dvif,
     dvif->changed |= dvif->u.ap.oce_min_rssi_enable_changed;
     dvif->changed |= dvif->u.ap.oce_retry_delay_sec_changed;
     dvif->changed |= dvif->u.ap.max_sta_changed;
+    dvif->changed |= dvif->u.ap.proxy_arp_changed;
+    dvif->changed |= dvif->u.ap.dgaf_disable_changed;
     dvif->changed |= dvif->u.ap.rsn_override_1_changed;
     dvif->changed |= dvif->u.ap.rsn_override_2_changed;
     dvif->changed |= dvif->u.ap.rsn_override_omit_rsnxe_changed;
+    if (dphy->atf_enabled == true)
+        dvif->changed |= dvif->u.ap.airtime_precedence_changed;
 
-    if (all == false && dvif->enabled && dvif->u.ap.channel.control_freq_mhz != 0 && svif->status == OSW_VIF_ENABLED) {
+    if (all == false
+            && dvif->enabled
+            && svif->u.ap.channel.control_freq_mhz != 0
+            && dvif->u.ap.channel.control_freq_mhz != 0
+            && svif->status == OSW_VIF_ENABLED) {
         const struct osw_channel_state *cs = sphy->channel_states;
         const size_t n_cs = sphy->n_channel_states;
         const struct osw_channel *c = &svif->u.ap.channel;
@@ -1502,6 +1553,7 @@ osw_confsync_build_drv_conf_vif_ap_acl_del(struct osw_drv_vif_config *dvif,
 static void
 osw_confsync_build_drv_conf_vif_ap(struct osw_drv_vif_config *dvif,
                                    const struct osw_drv_phy_state *sphy,
+                                   const struct osw_drv_phy_config *dphy,
                                    const struct osw_drv_vif_state *svif,
                                    struct osw_conf_vif *cvif,
                                    const bool allow_changed)
@@ -1538,6 +1590,10 @@ osw_confsync_build_drv_conf_vif_ap(struct osw_drv_vif_config *dvif,
     dvif->u.ap.ft_pmk_r1_push = cvif->u.ap.ft_pmk_r1_push;
     dvif->u.ap.ft_psk_generate_local = cvif->u.ap.ft_psk_generate_local;
     dvif->u.ap.ft_mobility_domain = cvif->u.ap.ft_mobility_domain;
+    dvif->u.ap.proxy_arp = cvif->u.ap.proxy_arp;
+    dvif->u.ap.dgaf_disable = cvif->u.ap.dgaf_disable;
+    if (dphy->atf_enabled)
+        dvif->u.ap.airtime_precedence = cvif->u.ap.airtime_precedence;
 
     if (dvif->enabled && dvif->u.ap.channel.control_freq_mhz != 0) {
         ASSERT(dvif->u.ap.channel.center_freq0_mhz != 0, "center freq required");
@@ -1691,7 +1747,7 @@ osw_confsync_build_drv_conf_vif_ap(struct osw_drv_vif_config *dvif,
 
     if (allow_changed) {
         const bool all_changed = (allow_changed && dvif->vif_type_changed == true);
-        osw_confsync_vif_ap_mark_changed(dvif, sphy, svif, cvif, all_changed);
+        osw_confsync_vif_ap_mark_changed(dvif, sphy, dphy, svif, cvif, all_changed);
     }
 
     if (dvif->u.ap.neigh_list_changed) {
@@ -2041,6 +2097,7 @@ static void
 osw_confsync_mbss_start(struct osw_confsync *cs,
                         const char *phy_name)
 {
+    if (osw_etc_get("OSW_CONFSYNC_DISABLE_MBSS")) return;
     struct osw_confsync_phy *cs_phy = ds_tree_find(&cs->phys, phy_name);
     if (cs_phy == NULL) {
         cs_phy = osw_confsync_phy_new(cs, phy_name);
@@ -2133,7 +2190,7 @@ osw_confsync_build_drv_conf_vif(struct osw_confsync_arg *arg,
         case OSW_VIF_UNDEFINED:
             break;
         case OSW_VIF_AP:
-            osw_confsync_build_drv_conf_vif_ap(dvif, sphy, svif, cvif, !skip);
+            osw_confsync_build_drv_conf_vif_ap(dvif, sphy, dphy, svif, cvif, !skip);
             if (skip == false && osw_confsync_cac_is_planned(sphy, dvif)) {
                 arg->cac_planned = true;
             }
@@ -2184,18 +2241,21 @@ osw_confsync_build_drv_conf_phy(struct osw_confsync_arg *arg,
 
     dphy->phy_name = STRDUP(cphy->phy_name);
     dphy->enabled = cphy->enabled;
+    dphy->atf_enabled = cphy->atf_enabled;
     dphy->tx_chainmask = tx_chain_supported || true
                        ? cphy->tx_chainmask
                        : sphy->tx_chainmask;
     dphy->radar_next_channel = cphy->radar_next_channel;
     dphy->radar = cphy->radar;
     dphy->reg_domain = cphy->reg_domain;
+    dphy->zero_wait_dfs = cphy->zero_wait_dfs;
 
     const bool skip = (dphy->enabled == false && sphy->enabled == false);
 
     dphy->changed = false;
     if (skip == false) {
         dphy->changed |= (dphy->enabled_changed = cphy->enabled != sphy->enabled);
+        dphy->changed |= (dphy->atf_enabled_changed = cphy->atf_enabled != sphy->atf_enabled);
         dphy->changed |= (dphy->tx_chainmask_changed = cphy->tx_chainmask != sphy->tx_chainmask);
         dphy->changed |= (dphy->radar_next_channel_changed = !osw_channel_is_equal(&(cphy->radar_next_channel),
                                                                                    &(sphy->radar_next_channel)));

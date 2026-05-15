@@ -385,6 +385,8 @@ osw_hostap_conf_generate_sta_config_bufs(struct osw_hostap_conf_sta_config *conf
             CONF_APPEND(ssid, "%s");
             CONF_APPEND(scan_ssid, "%d");
             CONF_APPEND(bssid, "%s");
+            CONF_APPEND(bssid_accept, "%s");
+            CONF_APPEND(bssid_ignore, "%s");
             CONF_APPEND(ignore_broadcast_ssid, "%d");
             CONF_APPEND(priority, "%d");
             CONF_APPEND(mode, "%d");

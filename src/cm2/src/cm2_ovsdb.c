@@ -134,6 +134,7 @@ static ovsdb_table_t table_IPv6_Address;
 static ovsdb_table_t table_DHCPv6_Client;
 static ovsdb_table_t table_Wifi_Route_Config;
 static ovsdb_table_t table_Wifi_Route_State;
+static ovsdb_table_t table_Wifi_Route6_State;
 static ovsdb_table_t table_Node_Config;
 static ovsdb_table_t table_Node_State;
 static ovsdb_table_t table_Tunnel_Interface;
@@ -815,7 +816,7 @@ int cm2_update_main_link_ip(cm2_main_link_t *link)
     g_state.link.ipv6.blocked = (ipv6 == CM2_UPLINK_BLOCKED || ipv6 == CM2_UPLINK_UNBLOCKING);
 
     uplink = cm2_get_uplink_name();
-    if (cm2_ovsdb_is_ipv6_global_link(uplink) &&
+    if ((cm2_ovsdb_has_ipv6_routable_addr(uplink) || cm2_ovsdb_is_ipv6_ip_unnumbered(uplink)) &&
         !g_state.link.ipv6.blocked) {
         link->ipv6.is_ip = true;
         link->ipv6.assign_scheme = CM2_IPV6_DHCP;
@@ -1340,7 +1341,39 @@ cm2_ovsdb_get_port_by_uuid(struct schema_Port *port, char *port_uuid)
 }
 
 bool
-cm2_ovsdb_is_ipv6_global_link(const char *if_name)
+cm2_ovsdb_is_ipv6_ip_unnumbered(const char *uplink)
+{
+    if (strcmp(uplink, CONFIG_TARGET_LAN_BRIDGE_NAME) == 0)
+    {
+        /* An uplink (not the LAN interface itself) may have IP unnumbered connectivity
+         * through a routable IP address on the LAN interface.  */
+        return false;
+    }
+    if (cm2_ovsdb_has_ipv6_routable_addr(uplink))
+    {
+        /* If the uplink already has IPv6 routable addresss, well then it's not IP unnumbered. */
+        return false;
+    }
+    /* Check if the LAN interface has a routable IPv6 address: */
+    if (!cm2_ovsdb_has_ipv6_routable_addr(CONFIG_TARGET_LAN_BRIDGE_NAME))
+    {
+        return false;
+    }
+    /* Check if there is default IPv6 route over this uplink candidate: */
+    if (!cm2_ovsdb_has_ipv6_default_route(uplink))
+    {
+        return false;
+    }
+
+    /* We have IP unnumbered connectivity. */
+    LOGI("IP unnumbered connectivity. Uplink %s: no address, LAN interface %s: routable IPv6 address",
+            uplink, CONFIG_TARGET_LAN_BRIDGE_NAME);
+
+    return true;
+}
+
+bool
+cm2_ovsdb_has_ipv6_routable_addr(const char *if_name)
 {
     struct schema_IPv6_Address ipv6_addr;
     struct schema_IP_Interface ip;
@@ -1373,6 +1406,30 @@ cm2_ovsdb_is_ipv6_global_link(const char *if_name)
         }
     }
     return false;
+}
+
+bool cm2_ovsdb_has_ipv6_default_route(const char *if_name)
+{
+    struct schema_Wifi_Route6_State *routes6 = NULL;
+    bool have_default_route6 = false;
+    int count = 0;
+
+    routes6 = ovsdb_table_select(&table_Wifi_Route6_State,
+                                SCHEMA_COLUMN(Wifi_Route6_State, if_name),
+                                (char *)if_name,
+                                &count);
+
+    for (int i = 0; routes6 != NULL && i < count; i++)
+    {
+        if (routes6[i].dest_addr_exists && strcmp(routes6[i].dest_addr, "::/0") == 0)
+        {
+            have_default_route6 = true;
+            break;
+        }
+    }
+
+    FREE(routes6);
+    return have_default_route6;
 }
 
 /* GW offline functionality */
@@ -1461,7 +1518,7 @@ cm2_ovsdb_is_gw_offline_enabled(void)
     memset(&nstate, 0, sizeof(nstate));
     ret = ovsdb_table_select_one_where(&table_Node_State, where, &nstate);
     if (!ret) {
-        LOGI("GW offline not configured");
+        LOGD("GW offline not configured");
         return false;
     }
 
@@ -3491,6 +3548,7 @@ int cm2_ovsdb_init(void)
     OVSDB_TABLE_INIT_NO_KEY(IPv6_Address);
     OVSDB_TABLE_INIT_NO_KEY(DHCPv6_Client);
     OVSDB_TABLE_INIT_NO_KEY(Wifi_Route_State);
+    OVSDB_TABLE_INIT_NO_KEY(Wifi_Route6_State);
     OVSDB_TABLE_INIT_NO_KEY(Node_Config);
     OVSDB_TABLE_INIT_NO_KEY(Node_State);
     OVSDB_TABLE_INIT_NO_KEY(Wifi_Route_Config);

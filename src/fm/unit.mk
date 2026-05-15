@@ -43,3 +43,4 @@ UNIT_DEPS += src/lib/schema
 UNIT_DEPS += src/lib/ovsdb
 UNIT_DEPS += src/lib/tailf
 UNIT_DEPS += src/lib/target
+UNIT_DEPS += src/lib/manager_watchdog

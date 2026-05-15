@@ -379,11 +379,18 @@ void
 ow_steer_bm_client_set_cs_state_mutate_cb(struct ow_steer_bm_client *client,
                                           ow_steer_bm_client_set_cs_state_mutate_fn_t *cs_state_mutate_fn);
 
+void
+ow_steer_bm_client_set_allow_acl(struct ow_steer_bm_client *client,
+                                 const bool *allow_acl);
+
 struct ow_steer_bm_btm_params*
 ow_steer_bm_client_get_sc_btm_params(struct ow_steer_bm_client *client);
 
 void
 ow_steer_bm_client_unset_sc_btm_params(struct ow_steer_bm_client *client);
+
+void
+ow_steer_bm_btm_params_free_bssid_list(struct ow_steer_bm_btm_params *btm_params);
 
 struct ow_steer_bm_btm_params*
 ow_steer_bm_client_get_steering_btm_params(struct ow_steer_bm_client *client);
@@ -403,6 +410,10 @@ ow_steer_bm_btm_params_reset(struct ow_steer_bm_btm_params *btm_params);
 void
 ow_steer_bm_btm_params_set_bssid(struct ow_steer_bm_btm_params *btm_params,
                                  const struct osw_hwaddr *bssid);
+
+void
+ow_steer_bm_btm_params_set_bssids(struct ow_steer_bm_btm_params *btm_params,
+                                  const char *value);
 
 void
 ow_steer_bm_btm_params_set_disassoc_imminent(struct ow_steer_bm_btm_params *btm_params,

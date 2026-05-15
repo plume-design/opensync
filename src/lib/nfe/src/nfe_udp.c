@@ -44,7 +44,7 @@ nfe_udp_lookup(struct nfe_conntrack *conntrack, struct nfe_packet *packet)
 
         nfe_conntrack_lru_update(conntrack, LRU_PROTO_UDP, &conn->lru);
     }
-    
+
     packet->next = 0;
     packet->prot = NULL;
 

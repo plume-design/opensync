@@ -56,6 +56,7 @@ UNIT_DEPS += src/lib/mosqev
 UNIT_DEPS += src/lib/datapipeline
 UNIT_DEPS += src/lib/timevt
 UNIT_DEPS += src/qm/qm_conn
+UNIT_DEPS += src/lib/manager_watchdog
 
 UNIT_EXPORT_CFLAGS := $(UNIT_CFLAGS)
 UNIT_EXPORT_LDFLAGS := $(UNIT_LDFLAGS)

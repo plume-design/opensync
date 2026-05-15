@@ -36,6 +36,14 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "memutil.h"
 #include "sockaddr_storage.h"
 
+/* Optional callback for traffic class refresh, registered by gatekeeper_plugin */
+static gkc_traffic_class_refresh_cb_t g_traffic_class_refresh_cb = NULL;
+
+void gkc_register_traffic_class_refresh_cb(gkc_traffic_class_refresh_cb_t cb)
+{
+    g_traffic_class_refresh_cb = cb;
+}
+
 static struct str_set *
 allocated_empty_str_set()
 {
@@ -211,7 +219,7 @@ gkc_flush_app(struct per_device_cache *cache, struct fsm_policy_rules *rules)
         if (need_delete)
         {
             /* delete this entry */
-            gkc_free_attr_entry(checked_entry, GK_CACHE_REQ_TYPE_APP);
+            gkc_free_attr_entry(checked_entry, checked_entry->type);
             gkc_remove_entry(app_cache, checked_entry);
 
             total_count++;
@@ -710,13 +718,26 @@ static int gk_flush_cache(void *context, struct fsm_policy *policy)
 
 int gkc_flush_client(void *context, struct fsm_policy *policy)
 {
+    struct fsm_session *session;
     int flushed_entries;
+    bool ret;
 
     flushed_entries = gk_flush_cache(context, policy);
     if (flushed_entries >= 0)
     {
         LOGD("Triggering persistence cache store");
         gk_store_cache_in_persistence();
+    }
+
+    /* Trigger bulk request to get traffic class from gatekeeper (if callback registered) */
+    session = (struct fsm_session *)context;
+    if (session != NULL && g_traffic_class_refresh_cb != NULL)
+    {
+        ret = g_traffic_class_refresh_cb(session);
+        if (ret == false)
+        {
+            LOGD("%s: Failed to get traffic class", __func__);
+        }
     }
 
     return flushed_entries;

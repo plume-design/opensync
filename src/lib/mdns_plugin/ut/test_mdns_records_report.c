@@ -282,7 +282,7 @@ validate_report(mdns_records_report_data_t *report, Interfaces__MdnsRecordsTelem
  * Test functions
  ***********************************************************************************************************/
 
-// Node info 
+// Node info
 
 /**
  * @brief tests serialize_node_info() when passed a NULL pointer
@@ -883,7 +883,7 @@ test_Mdns_Records_Report(void)
 }
 
 /***********************************************************************************************************
- * Setup and Tear down 
+ * Setup and Tear down
  ***********************************************************************************************************/
 
 static void
@@ -973,7 +973,7 @@ setup_mdns_report_clients(void)
     res->ttl   = 1200;
 
     ds_dlist_insert_tail(records_list, rec);
-    
+
     /* Allocate the second record */
     rec = mdns_records_alloc_record();
     res = &rec->resource;

@@ -25,14 +25,21 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 #define _GNU_SOURCE
+#include <dirent.h>
+#include <errno.h>
 #include <ev.h>
+#include <fcntl.h>
 #include <limits.h>
+#include <signal.h>
 #include <stdbool.h>
+#include <stdint.h>
+#include <inttypes.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
-#include <inttypes.h>
+#include <float.h>
 
 #include "log.h"
 #include "ovsdb.h"
@@ -40,16 +47,18 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "execsh.h"
 #include "json_util.h"
-#include "memutil.h"
+#include "kconfig.h"
 #include "monitor.h"
 #include "os_util.h"
 #include "ovsdb_sync.h"
 #include "ovsdb_update.h"
+#include "schema_consts.h"
 #include "util.h"
 
 #include "module.h"
 #include "target.h"
 #include "tpsm.h"
+#include "daemon.h"
 #include "tpsm_st_iperf_errors.h"
 
 #define ST_STATUS_OK (0)
@@ -57,18 +66,26 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define ST_STATUS_READ (-2)
 
 #define ST_EXE "iperf3"
+#define ST_IPERF_CMD CONFIG_IPERF_NICE " " ST_EXE " " CONFIG_IPERF_BIN_ARGUMENTS
+
 #define ST_DEBUG_JSON_PATH "/tmp/debug_iperf_out.log"
-#define ST_DEF_LEN (10)      /* default speedtest duration, seconds */
+#define ST_DEFAULT_RUN_DURATION	(10)
 #define ST_WAIT_TIMEOUT (30) /* st wait timeout in addition to duration */
 
 #define ST_IS_IPERF3_S(st_ctx) (strcmp(st_ctx->st_config.test_type, "IPERF3_S") == 0)
-
 #define ST_IS_IPERF3_C(st_ctx) (strcmp(st_ctx->st_config.test_type, "IPERF3_C") == 0)
-
-#define ST_IS_DLUL(st_ctx) (strcmp(st_ctx->st_config.st_dir, "DL_UL") == 0)
 
 #define ST_IS_DL(st_ctx) (strcmp(st_ctx->st_config.st_dir, "DL") == 0)
 #define ST_IS_UL(st_ctx) (strcmp(st_ctx->st_config.st_dir, "UL") == 0)
+#define ST_IS_DLUL(st_ctx) (strcmp(st_ctx->st_config.st_dir, "DL_UL") == 0)
+
+#define PATH_SYS_MODULES "/sys/module"
+#define PATH_PARAM_IGNORE_CSUM "parameters/ignore_csum"
+
+#define TPSM_ST_BCM_LC_BYPASS "/proc/lcbypass/operate"
+#define TPSM_ST_BCM_SW_GSO "/proc/sw_gso/operate"
+#define TPSM_ST_BCM_SW_RTPOLICY "/bin/rtpolicy"
+#define TPSM_ST_LKM_PERF_BOOST CONFIG_INSTALL_PREFIX "/scripts/speedtest_perf_boost.sh"
 
 struct st_context
 {
@@ -83,9 +100,261 @@ struct st_context
 };
 
 static ev_timer st_timeout;
+static daemon_t tpsm_st_boost_daemon;
+static bool tpsm_optimization_enabled = false;
 
 static bool iperf_run_async(struct st_context *st_ctx, bool run_reverse);
 static bool iperf_debug_log(const char *buff, size_t buff_sz);
+
+/* helper function for writing an integer to a proc/sysfs file */
+bool sysfs_write(const char *path, int value)
+{
+    char buf[16];
+    bool retval = false;
+    int fd = -1;
+
+    fd = open(path, O_WRONLY);
+    if (fd < 0)
+    {
+        goto error;
+    }
+
+    snprintf(buf, sizeof(buf), "%d\n", value);
+
+    if (write(fd, buf, strlen(buf)) <= 0)
+    {
+        goto error;
+    }
+
+    retval = true;
+error:
+    if (fd >= 0)
+    {
+        close(fd);
+    }
+
+    return retval;
+}
+
+static bool pir_opt_set(bool enable)
+{
+    char pname[PATH_MAX];
+
+    struct dirent *de;
+
+    DIR *dir = NULL;
+    bool retval = false;
+    int val = (enable == true) ? 1 : 0;
+
+    dir = opendir(PATH_SYS_MODULES);
+    if (dir == NULL)
+    {
+        LOG(WARN, "Error opening: %s. optimisation for PIR-10476 will not be enabled.\n", PATH_SYS_MODULES);
+        goto error;
+    }
+
+    /* Scan the /sys/modules folder, check if there's a module that has the "parameters/ignore_csum" file entry */
+    while (errno = 0, (de = readdir(dir)) != NULL)
+    {
+        snprintf(pname, sizeof(pname), "%s/%s/%s", PATH_SYS_MODULES, de->d_name, PATH_PARAM_IGNORE_CSUM);
+
+        if (access(pname, W_OK) != 0) continue;
+
+        LOG(INFO, "%s optimisation for PIR-10476 on interface: %s", enable ? "Enabling" : "Disabling", de->d_name);
+
+        if (!sysfs_write(pname, val))
+        {
+            LOG(INFO, "Error writing to %s. optimisation for PIR-10476 won't be enabled/disabled.", pname);
+        }
+    }
+
+    if (errno != 0)
+    {
+        LOG(WARN, "Error scanning %s.\n", PATH_SYS_MODULES);
+        goto error;
+    }
+
+    retval = true;
+
+error:
+    if (dir != NULL)
+    {
+        closedir(dir);
+    }
+
+    return retval;
+}
+
+
+static void tpsm_st_iperf_bcm_archer_enable_perf(void)
+{
+    char *uplink = NULL;
+    char cmd[256];
+
+    if (access(TPSM_ST_BCM_LC_BYPASS, W_OK) != 0) return;
+
+    uplink =
+            strexa("ovsh",
+                   "s",
+                   "Connection_Manager_Uplink",
+                   "-w",
+                   "is_used==true",
+                   "-w",
+                   "if_type==" SCHEMA_CONSTS_IF_TYPE_VIF,
+                   "if_name",
+                   "-r");
+    if (uplink[0] == '\0')
+    {
+        uplink =
+                strexa("ovsh",
+                       "s",
+                       "Connection_Manager_Uplink",
+                       "-w",
+                       "is_used==true",
+                       "-w",
+                       "if_type==" SCHEMA_CONSTS_IF_TYPE_GRE,
+                       "if_name",
+                       "-r");
+
+        if (strncmp(uplink, "g-wl", strlen("g-wl")) == 0)
+        {
+            uplink += strlen("g-");
+        }
+    }
+
+    if (uplink[0] != '\0')
+    {
+        if (!is_input_shell_safe(uplink)) return;
+
+        snprintf(cmd, sizeof(cmd), "echo A/%s > " TPSM_ST_BCM_LC_BYPASS, uplink);
+        cmd_log(cmd);
+    }
+}
+
+static void tpsm_st_iperf_bcm_sw_gso_enable(void)
+{
+    /*
+    * The sw_gso (Generic Segmentation Offload) feature is disabled by default.
+    * The feature is enabled by the following command
+    */
+    if (access(TPSM_ST_BCM_SW_GSO, W_OK) == 0)
+    {
+        cmd_log("echo 1 > " TPSM_ST_BCM_SW_GSO);
+
+        /*
+        * Only modify GSO if it wasn't set by TPSM_ST_BCM_SW_RTPOLICY
+        */
+        if (access(TPSM_ST_BCM_SW_RTPOLICY, X_OK) != 0)
+        {
+            // Set priority for the sw_gso threads.
+            // clang-format off
+            execsh_log (LOG_SEVERITY_DEBUG, _S(
+                    gso_pid=` ps | grep "sw_gso_" |
+                    grep -v grep | grep -o "^[ 0-9]\+"` ;
+                    for pid in $gso_pid ; do  chrt -r -p 20 $pid ; done ;),
+                    "SW_GSO priority set to 20");
+            // clang-format on
+        }
+    }
+}
+
+static void enable_perf_opt(void)
+{
+    if (tpsm_optimization_enabled) return;
+
+    if (kconfig_enabled(CONFIG_IPERF_OPT_TCP_IGNORE_CSUM))
+    {
+        if (access("/proc/sys/net/ipv4/tcp_ignore_csum", W_OK) >= 0)
+        {
+            if (sysfs_write("/proc/sys/net/ipv4/tcp_ignore_csum", 1) != true)
+            {
+                LOGE("Failed to set sysctl ignore TCP checksums");
+            }
+        }
+    }
+    else if (kconfig_enabled(CONFIG_IPERF_OPT_MODULE))
+    {
+        pir_opt_set(true);
+    }
+    else if (kconfig_enabled(CONFIG_IPERF_OPT_GRO))
+    {
+        int rc;
+
+        rc = system("ethtool -K eth0 gro on; ethtool -K eth1 gro on");
+        if (rc < 0 || WEXITSTATUS(rc) != 0)
+        {
+            LOGE("Failed to turn on GRO");
+        }
+    }
+
+    if (kconfig_enabled(CONFIG_PLATFORM_IS_BCM))
+    {
+        tpsm_st_iperf_bcm_archer_enable_perf();
+        tpsm_st_iperf_bcm_sw_gso_enable();
+    }
+
+    if (kconfig_enabled(CONFIG_IPERF_LHOST_ACCEL))
+    {
+        daemon_init(&tpsm_st_boost_daemon, TPSM_ST_LKM_PERF_BOOST, DAEMON_LOG_ALL);
+        LOGI("Initializing Daemon for speedtest performance.");
+        daemon_start(&tpsm_st_boost_daemon);
+        LOGI("Starting daemon for speedtest performance.");
+    }
+
+    tpsm_optimization_enabled = true;
+}
+
+static void disable_perf_opt(void)
+{
+    if (!tpsm_optimization_enabled) return;
+
+    if (kconfig_enabled(CONFIG_IPERF_OPT_TCP_IGNORE_CSUM))
+    {
+        if (access("/proc/sys/net/ipv4/tcp_ignore_csum", W_OK) >= 0)
+        {
+            if (sysfs_write("/proc/sys/net/ipv4/tcp_ignore_csum", 0) != true)
+            {
+                LOGE("Failed to set sysctl ignore TCP checksums");
+            }
+        }
+    }
+    else if (kconfig_enabled(CONFIG_IPERF_OPT_MODULE))
+    {
+        pir_opt_set(false);
+    }
+    else if (kconfig_enabled(CONFIG_IPERF_OPT_GRO))
+    {
+        int rc;
+
+        rc = system("ethtool -K eth0 gro off; ethtool -K eth1 gro off");
+        if (rc < 0 || WEXITSTATUS(rc) != 0)
+        {
+            LOGE("Failed to turn off GRO");
+        }
+    }
+
+    if (kconfig_enabled(CONFIG_PLATFORM_IS_BCM))
+    {
+        if (access(TPSM_ST_BCM_LC_BYPASS, W_OK) == 0)
+        {
+            cmd_log("echo D > " TPSM_ST_BCM_LC_BYPASS);
+        }
+        if (access(TPSM_ST_BCM_SW_GSO, W_OK) == 0)
+        {
+            cmd_log("echo 0 > " TPSM_ST_BCM_SW_GSO);
+        }
+    }
+
+    if (kconfig_enabled(CONFIG_IPERF_LHOST_ACCEL))
+    {
+        LOGI("Stopping Daemon for Iperf speedtest performance.");
+        daemon_stop(&tpsm_st_boost_daemon);
+        daemon_fini(&tpsm_st_boost_daemon);
+        LOGI("Stopped and cleared Daemon for Iperf speedtest performance.");
+    }
+
+    tpsm_optimization_enabled = false;
+}
 
 static bool iperf_parse_json(json_t *js_root, struct st_context *st_ctx)
 {
@@ -274,11 +543,11 @@ static bool iperf_parse_json(json_t *js_root, struct st_context *st_ctx)
             st_ctx->st_status.UL_jitter = jitter;
             st_ctx->st_status.UL_jitter_exists = true;
         }
-	else
-	{
-	    st_ctx->st_status.RTT = mean_rtt;
-	    st_ctx->st_status.RTT_exists = true;
-	}
+    else
+    {
+        st_ctx->st_status.RTT = mean_rtt;
+        st_ctx->st_status.RTT_exists = true;
+    }
     }
     else
     {
@@ -343,6 +612,9 @@ static void iperf_on_timeout(struct ev_loop *loop, ev_timer *watcher, int revent
         if (!(WIFEXITED(rc) && WEXITSTATUS(rc) == 0)) LOG(ERR, "Error executing system command: %s", cmd);
 
         tpsm_st_in_progress_set(false);
+
+        /* disable temporary performance optimizations */
+        disable_perf_opt();
     }
 }
 
@@ -384,15 +656,36 @@ static void iperf_speedtest_execsh_exit_fn(execsh_async_t *esa, int exit_status)
     int status = ST_STATUS_READ;
     pjs_errmsg_t err;
     ovs_uuid_t uuid = {{'\0'}};
-    int buff_sz;
+    char *buff, *json = NULL;
+    int buff_sz, json_sz = 0;
 
-    buff_sz = strlen(st_ctx->msg);
+    buff = st_ctx->msg;
+    buff_sz = (buff) ? strlen(st_ctx->msg) : 0;
 
-    LOG(DEBUG, "ST_IPERF: %s: buff_size=%d", __func__, buff_sz);
-    if (buff_sz > 0)
+    if (!buff_sz || !buff)
+    {
+        LOG(DEBUG, "ST_IPERF: %s: empty output, buff: %p buff_size=%d", __func__, buff, buff_sz);
+    }
+    else
+    {
+        /* find json (skip scripts or iperf custom messages not part of output) */
+        json = strchr(buff, '{');
+        if (json == NULL)
+        {
+            LOG(ERR, "ST_IPERF: %s: buff: %p buff_size=%d not a json", __func__, buff, buff_sz);
+        }
+        else
+        {
+            json_sz = strlen(json);
+        }
+    }
+
+    LOG(DEBUG, "ST_IPERF: %s: buff: %p (len: %d) -> %p (len: %d)", __func__, buff, buff_sz, json, json_sz);
+
+    if (json && (json_sz > 0))
     {
         /* parse iperf results */
-        if (iperf_parse_json_output(st_ctx->msg, (size_t)buff_sz, st_ctx)
+        if (iperf_parse_json_output(json, (size_t)json_sz, st_ctx)
             && (st_ctx->st_status.UL_exists || st_ctx->st_status.DL_exists))
         {
             status = ST_STATUS_OK;
@@ -477,6 +770,9 @@ st_end:
     /* signal that ST has completed: */
     tpsm_st_in_progress_set(false);
 
+    /* disable temporary performance optimizations */
+    disable_perf_opt();
+
     /* free execsh user data context: */
     FREE(st_ctx->msg);
     FREE(st_ctx);
@@ -505,6 +801,7 @@ static void iperf_speedtest_execsh_io_fn(execsh_async_t *esa, enum execsh_io io_
 static bool iperf_run_async(struct st_context *st_ctx, bool run_reverse)
 {
     char arg_port[64] = {0};
+    char iperf_cmd[512] = {0};
 
     if (st_ctx->run_cnt >= st_ctx->run_cnt_max)
     {
@@ -528,14 +825,15 @@ static bool iperf_run_async(struct st_context *st_ctx, bool run_reverse)
     if (ST_IS_IPERF3_S(st_ctx))  // iperf server
     {
         char *arg_bind = "";
-
         if (st_ctx->st_config.st_server_exists)  // bind to a specific interface
         {
             arg_bind = strfmta(" -B %s", st_ctx->st_config.st_server);
         }
 
-        LOGI("ST_IPERF_S: Running command: %s -s -1 -i 0 -J %s%s", ST_EXE, arg_bind, arg_port);
-        server_pid = execsh_async_start(&st_ctx->speedtest_esa, _S($1 -s -1 -i 0 -J $2$3), ST_EXE, arg_bind, arg_port);
+        snprintf(iperf_cmd, sizeof(iperf_cmd), "%s -s -1 -i 0 -J %s%s %s", ST_IPERF_CMD, arg_bind, arg_port, CONFIG_IPERF_PARAM);
+
+        LOGI("ST_IPERF_S: Running command: %s", iperf_cmd);
+        server_pid = execsh_async_start(&st_ctx->speedtest_esa, iperf_cmd);
     }
     else if (ST_IS_IPERF3_C(st_ctx))  // iperf client
     {
@@ -564,26 +862,23 @@ static bool iperf_run_async(struct st_context *st_ctx, bool run_reverse)
         if (st_ctx->st_config.st_udp_exists && st_ctx->st_config.st_udp)  // use UDP rather than TCP
         {
             arg_udp = " -u";
-            // UDP test result should get from receiver.
-            // UL receiver is server.
             arg_get_server_output = run_reverse ? "" : " --get-server-output";
         }
         if (st_ctx->st_config.st_bw_ul_exists && !run_reverse)  // target UL bandwidth [bits/sec]
         {
             snprintf(arg_bw, sizeof(arg_bw), " -b %d", st_ctx->st_config.st_bw_ul);
         }
-	else if (st_ctx->st_config.st_bw_dl_exists)  // target DL bandwidth [bits/sec]
-	{
-            // if ul_bw is not configured, use dl bw for uplink
+        else if (st_ctx->st_config.st_bw_dl_exists)  // target DL bandwidth [bits/sec]
+        {
             snprintf(arg_bw, sizeof(arg_bw), " -b %d", st_ctx->st_config.st_bw_dl);
-	}
-	else if (st_ctx->st_config.st_bw_exists)  // backward compatibility
-	{
+        }
+        else if (st_ctx->st_config.st_bw_exists)  // backward compatibility
+        {
             snprintf(arg_bw, sizeof(arg_bw), " -b %d", st_ctx->st_config.st_bw);
-	}
+        }
 
-        LOGI("ST_IPERF_C: Running command: %s -i 0 -O 2 -J -c %s %s%s%s%s%s%s%s",
-             ST_EXE,
+        snprintf(iperf_cmd, sizeof(iperf_cmd), "%s -i 0 -O 2 -J -c %s %s%s%s%s%s%s%s %s",
+             ST_IPERF_CMD,
              st_ctx->st_config.st_server,
              arg_reverse,
              arg_port,
@@ -591,19 +886,14 @@ static bool iperf_run_async(struct st_context *st_ctx, bool run_reverse)
              arg_parallel,
              arg_udp,
              arg_bw,
-             arg_get_server_output);
-        server_pid = execsh_async_start(
-                &st_ctx->speedtest_esa,
-                _S($1 -i 0 -O 2 -J -c $2 $3$4$5$6$7$8$9),
-                   ST_EXE,
-                   st_ctx->st_config.st_server,
-                   (char *)arg_reverse,
-                   arg_port,
-                   arg_len,
-                   arg_parallel,
-                   (char *)arg_udp,
-                   arg_bw,
-                   arg_get_server_output);
+             arg_get_server_output,
+             CONFIG_IPERF_PARAM);
+
+        /* enable temporary performance optimizations */
+        enable_perf_opt();
+
+        LOGI("ST_IPERF_C: Running command: \"%s\"", iperf_cmd);
+        server_pid = execsh_async_start(&st_ctx->speedtest_esa, iperf_cmd);
     }
     else
     {
@@ -611,14 +901,15 @@ static bool iperf_run_async(struct st_context *st_ctx, bool run_reverse)
         return false;
     }
 
-    LOG(DEBUG,
-        "ST_IPERF: Executing speedtest: test_type=%s, run_cnt=%u, is_reverse=%d",
+    LOG(DEBUG, "ST_IPERF: Executing speedtest: (PID: %d) test_type=%s, run_cnt=%u, is_reverse=%d",
+        server_pid,
         st_ctx->st_config.test_type,
         st_ctx->run_cnt,
         run_reverse);
 
     if (server_pid == -1)
     {
+        disable_perf_opt();
         LOG(ERR, "Error running execsh_async_start");
     }
     else
@@ -672,9 +963,9 @@ bool iperf_run_speedtest(struct schema_Wifi_Speedtest_Config *st_config)
 
     /* ST timeout: timeout for each direction + "wait timeout": */
     if (st_ctx->st_config.st_len_exists)
-        timeout = st_ctx->run_cnt_max * st_ctx->st_config.st_len + ST_WAIT_TIMEOUT;
+        timeout = (st_ctx->run_cnt_max * st_ctx->st_config.st_len) + ST_WAIT_TIMEOUT;
     else
-        timeout = st_ctx->run_cnt_max * ST_DEF_LEN + ST_WAIT_TIMEOUT;
+        timeout = (st_ctx->run_cnt_max * ST_DEFAULT_RUN_DURATION) + ST_WAIT_TIMEOUT;
 
     ev_timer_init(&st_timeout, iperf_on_timeout, timeout, 0.0);
     ev_timer_start(EV_DEFAULT, &st_timeout);

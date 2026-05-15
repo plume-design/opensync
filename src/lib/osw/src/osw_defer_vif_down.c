@@ -180,9 +180,10 @@ osw_defer_vif_down_csa_will_interrupt_service(struct osw_conf_phy *phy,
     if (cannot_be_a_csa) return false;
     if (WARN_ON(invalid_chan)) return false;
 
-    /* FIXME: If/when Zero Wait DFS support is added this
-     * should be made aware of that.
-     */
+    const bool zero_wait_dfs = (phy->zero_wait_dfs == OSW_ZERO_WAIT_DFS_ENABLE);
+    if (zero_wait_dfs)
+        return false;
+
     const bool some_channels_arent_ready = osw_cs_chan_intersects_state(cs, n_cs, c, OSW_CHANNEL_DFS_CAC_POSSIBLE)
                                         || osw_cs_chan_intersects_state(cs, n_cs, c, OSW_CHANNEL_DFS_CAC_IN_PROGRESS)
                                         || osw_cs_chan_intersects_state(cs, n_cs, c, OSW_CHANNEL_DFS_NOL);

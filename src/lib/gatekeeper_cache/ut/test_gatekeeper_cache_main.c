@@ -54,7 +54,7 @@ struct sample_flow_entries *test_flow_entries;
 
 struct gk_attr_cache_interface *entry1, *entry2, *entry3, *entry4;
 struct gk_attr_cache_interface *entry5, *entry6, *entry7, *entry8;
-struct gk_attr_cache_interface *entry9, *entry10, *entry11, *entry12;
+struct gk_attr_cache_interface *entry9, *entry10, *entry11, *entry12, *entry13;
 struct gkc_ip_flow_interface *flow_entry1, *flow_entry2, *flow_entry3, *flow_entry4;
 struct gkc_ip_flow_interface *flow_entry5, *flow_entry6, *flow_entry7, *flow_entry8;
 
@@ -218,6 +218,15 @@ create_default_attr_entries(void)
     entry12->ip_addr = sockaddr_storage_create(AF_INET6, "::1");
     entry12->direction = NET_MD_ACC_INBOUND_DIR;
 
+    // Add traffic class test case
+    entry13 = CALLOC(1, sizeof(*entry13));
+    entry13->action = 1;
+    entry13->device_mac = NULL;
+    entry13->attribute_type = GK_CACHE_REQ_TYPE_TRAFFIC_CLASS;
+    entry13->cache_ttl = 1000;
+    entry13->action = FSM_BLOCK;
+    entry13->attr_name = strdup("testtrafficclass");
+    entry13->network_id = "home--3";
 
 
 }
@@ -404,6 +413,7 @@ del_default_attr_entries(void)
     free_cache_interface(entry10);
     free_cache_interface(entry11);
     free_cache_interface(entry12);
+    free_cache_interface(entry13);
 }
 
 void

@@ -56,7 +56,7 @@ ingest(const char *if_name)
 int main(int argc, char **argv)
 {
     if (argc != 3) return usage(argv[0]);
-    log_open("os_fdbuf", LOG_OPEN_DEFAULT);
+    log_open("os_fdbuf", LOG_OPEN_DEFAULT | LOG_OPEN_STDOUT);
     log_severity_set(LOG_SEVERITY_DEBUG);
     const char *if_name = argv[1];
     const char *action = argv[2];

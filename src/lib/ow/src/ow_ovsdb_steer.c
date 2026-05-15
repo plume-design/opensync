@@ -246,13 +246,14 @@ ow_steer_bm_client_set_btm_params(const struct osw_hwaddr *sta_addr,
                                   struct ow_steer_bm_btm_params *btm_params,
                                   const char *btm_params_name,
                                   const char keys[][64],
-                                  const char values[][32 + 1],
+                                  const char values[][128 + 1],
                                   int len)
 {
     ASSERT(sta_addr != NULL, "");
     ASSERT(btm_params != NULL, "");
     ASSERT(btm_params_name != NULL, "");
     ASSERT(len > 0, "");
+    ow_steer_bm_btm_params_free_bssid_list(btm_params);
 
     int i;
     for (i = 0; i < len; i++) {
@@ -266,6 +267,9 @@ ow_steer_bm_client_set_btm_params(const struct osw_hwaddr *sta_addr,
                 ow_steer_bm_btm_params_set_bssid(btm_params, &bssid);
                 continue;
             }
+        }
+        else if (strcmp(key, "bssids") == 0) {
+            ow_steer_bm_btm_params_set_bssids(btm_params, value);
         }
         else if (strcmp(key, "disassoc_imminent") == 0) {
             const bool b = (atoi(value) == 0)
@@ -422,6 +426,14 @@ ow_ovsdb_steer_client_set(const struct schema_Band_Steering_Clients *row)
     }
 
     struct ow_steer_bm_client *client = ow_steer_bm_get_client(addr.octet);
+
+    if (row->allow_acl_exists == true) {
+        const bool allow_acl = row->allow_acl;
+        ow_steer_bm_client_set_allow_acl(client, &allow_acl);
+    }
+    else {
+        ow_steer_bm_client_set_allow_acl(client, NULL);
+    }
 
     if (row->hwm_exists == true) {
         const unsigned int hwm = row->hwm;

@@ -64,6 +64,7 @@ enum gk_cache_request_type
     GK_CACHE_REQ_TYPE_IPV4     = FSM_IPV4_REQ,
     GK_CACHE_REQ_TYPE_IPV6     = FSM_IPV6_REQ,
     GK_CACHE_REQ_TYPE_APP      = FSM_APP_REQ,
+    GK_CACHE_REQ_TYPE_TRAFFIC_CLASS = FSM_TRAFFIC_CLASS_REQ,
     GK_CACHE_REQ_TYPE_INBOUND,
     GK_CACHE_REQ_TYPE_OUTBOUND,
     GK_CACHE_INTERNAL_TYPE_HOSTNAME,  /* This is an internal type */
@@ -785,6 +786,24 @@ bool gk_restore_cache_from_buffer(struct gk_packed_buffer *pb);
 
 void gk_cache_sync_location_entries(void);
 
-bool gk_populate_cache_entry(struct gk_device2app_repl *dev_repl, struct gk_attr_cache_interface *entry);
+bool gk_populate_cache_entry(struct gk_device2app_repl *dev_repl,
+                             struct gk_attr_cache_interface *entry);
+                             
+void gk_add_reply_entries_to_cache(struct gk_reply *reply);
+
+/**
+ * @brief Callback type for traffic class refresh operations
+ *
+ * This callback is optionally registered by gatekeeper_plugin to trigger
+ * bulk traffic class updates after cache flush operations.
+ */
+typedef bool (*gkc_traffic_class_refresh_cb_t)(struct fsm_session *session);
+
+/**
+ * @brief Register a callback for traffic class refresh
+ *
+ * @param cb the callback function to be called, or NULL to unregister
+ */
+void gkc_register_traffic_class_refresh_cb(gkc_traffic_class_refresh_cb_t cb);
 
 #endif /* GK_CACHE_H_INCLUDED */

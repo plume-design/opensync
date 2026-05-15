@@ -43,6 +43,7 @@ struct osw_hostap_conf_ap_config {
     OSW_HOSTAP_CONF_DECL_STR (country_code, 3);
     OSW_HOSTAP_CONF_DECL_BOOL(ieee80211d);
     OSW_HOSTAP_CONF_DECL_BOOL(ieee80211h);
+    OSW_HOSTAP_CONF_DECL_STR (bssid, 18);
     OSW_HOSTAP_CONF_DECL_STR (hw_mode, 4);
     OSW_HOSTAP_CONF_DECL_INT (channel);
     OSW_HOSTAP_CONF_DECL_INT (op_class);
@@ -158,6 +159,9 @@ struct osw_hostap_conf_ap_config {
     OSW_HOSTAP_CONF_DECL_BOOL(bss_transition);
     /* Radio measurements / location */
     OSW_HOSTAP_CONF_DECL_BOOL(rrm_neighbor_report);
+    /* Proxy ARP and disable DGAF */
+    OSW_HOSTAP_CONF_DECL_BOOL(proxy_arp);
+    OSW_HOSTAP_CONF_DECL_BOOL(disable_dgaf);
     /* WFA WPA3 RSNO */
     OSW_HOSTAP_CONF_DECL_STR (rsn_override_key_mgmt, 256);
     OSW_HOSTAP_CONF_DECL_STR (rsn_override_pairwise, 256);

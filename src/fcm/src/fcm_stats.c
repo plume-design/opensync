@@ -54,13 +54,13 @@ bool fcm_stats_get_flows(fcm_mgr_t *fcm_mgr)
     rc = nf_ct_get_flow_entries(AF_INET, aggr);
     if (rc == false)
     {
-        LOGE("%s: Failed to collect IPv4 conntrack flows.", __func__);
+        LOGD("%s: Failed to collect IPv4 conntrack flows.", __func__);
         return rc;
     }
     rc = nf_ct_get_flow_entries(AF_INET6, aggr);
     if (rc == false)
     {
-        LOGE("%s: Failed to collect IPv6 conntrack flows.", __func__);
+        LOGD("%s: Failed to collect IPv6 conntrack flows.", __func__);
         return rc;
     }
 

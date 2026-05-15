@@ -215,6 +215,7 @@ void sm_lat_ovsdb_entry_apply(
                 if (!strcmp(s, SCHEMA_CONSTS_LATENCY_KIND_AVG)) sm_lat_core_stream_set_kind_avg(st, false);
                 if (!strcmp(s, SCHEMA_CONSTS_LATENCY_KIND_NUM)) sm_lat_core_stream_set_kind_num_pkts(st, false);
                 if (!strcmp(s, SCHEMA_CONSTS_LATENCY_KIND_LAST)) sm_lat_core_stream_set_kind_last(st, false);
+                if (!strcmp(s, SCHEMA_CONSTS_LATENCY_KIND_PERC)) sm_lat_core_stream_set_kind_perc(st, false);
             }
         }
         for (i = 0; i < new_row->latency_kinds_len; i++)
@@ -225,6 +226,7 @@ void sm_lat_ovsdb_entry_apply(
             if (!strcmp(s, SCHEMA_CONSTS_LATENCY_KIND_AVG)) sm_lat_core_stream_set_kind_avg(st, true);
             if (!strcmp(s, SCHEMA_CONSTS_LATENCY_KIND_NUM)) sm_lat_core_stream_set_kind_num_pkts(st, true);
             if (!strcmp(s, SCHEMA_CONSTS_LATENCY_KIND_LAST)) sm_lat_core_stream_set_kind_last(st, true);
+            if (!strcmp(s, SCHEMA_CONSTS_LATENCY_KIND_PERC)) sm_lat_core_stream_set_kind_perc(st, true);
         }
         updated = true;
     }
@@ -242,6 +244,17 @@ void sm_lat_ovsdb_entry_apply(
         {
             sm_lat_core_stream_set_ifname(e->st, new_row->if_name[i], true);
         }
+        updated = true;
+    }
+    if (ovsdb_update_changed(mon, SCHEMA_COLUMN(Wifi_Stats_Config, latency_percentiles)))
+    {
+        if (old_row != NULL)
+        {
+            sm_lat_core_stream_set_percentiles(st, NULL, 0);
+        }
+        const uint32_t *lat_percentiles = (const uint32_t *)new_row->latency_percentiles;
+        const uint32_t lat_percentiles_len = (const uint32_t)new_row->latency_percentiles_len;
+        sm_lat_core_stream_set_percentiles(st, lat_percentiles, lat_percentiles_len);
         updated = true;
     }
     if (updated == false)

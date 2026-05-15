@@ -28,10 +28,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include "fsm_dpi_utils.h"
+#include "fsm_fn_trace.h"
 #include "fsm_internal.h"
 #include "neigh_table.h"
 #include "sockaddr_storage.h"
-
 
 /**
  * @brief nfqueue network header parser
@@ -148,9 +148,19 @@ fsm_nfq_net_header_parse(struct nfq_pkt_info *pkt_info, void *data)
 
     session = (struct fsm_session *)data;
     parser_ops = &session->p_ops->parser_ops;
+    fsm_fn_trace(parser_ops->handler, FSM_FN_ENTER);
     parser_ops->handler(session, &net_parser);
+    fsm_fn_trace(parser_ops->handler, FSM_FN_EXIT);
 }
 
+#if defined(CONFIG_OS_EV_TRACE)
+static void wrap_fsm_nfq_net_header_parse(struct nfq_pkt_info *pkt_info, void *data)
+{
+    fsm_fn_trace(fsm_nfq_net_header_parse, FSM_FN_ENTER);
+    fsm_nfq_net_header_parse(pkt_info, data);
+    fsm_fn_trace(fsm_nfq_net_header_parse, FSM_FN_EXIT);
+}
+#endif
 
 /**
  * @brief update nfqueues settings for the given session
@@ -210,8 +220,14 @@ fsm_nfq_tap_update(struct fsm_session *session)
 
     mgr = fsm_get_mgr();
     nfqs.loop = mgr->loop;
+#if defined(CONFIG_OS_EV_TRACE)
+    nfqs.nfq_cb = wrap_fsm_nfq_net_header_parse;
+#else
     nfqs.nfq_cb = fsm_nfq_net_header_parse;
+#endif
     nfqs.data = session;
+
+    FSM_FN_MAP(fsm_nfq_net_header_parse);
 
     buf_size_str = fsm_get_other_config_val(session, "nfqueue_buff_size");
     if (buf_size_str != NULL)
@@ -236,12 +252,6 @@ fsm_nfq_tap_update(struct fsm_session *session)
                  buf_size_str, strerror(errno));
         }
     }
-
-
-    mgr = fsm_get_mgr();
-    nfqs.loop = mgr->loop;
-    nfqs.nfq_cb = fsm_nfq_net_header_parse;
-    nfqs.data = session;
 
     for (index = 0; index < num_of_queues ; index++)
     {

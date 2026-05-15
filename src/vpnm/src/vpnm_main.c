@@ -40,6 +40,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "os_backtrace.h"
 #include "json_util.h"
 #include "target.h"
+#include "manager_watchdog.h"
 #include "kconfig.h"
 
 #define MODULE_ID LOG_MODULE_ID_MAIN
@@ -60,6 +61,9 @@ int main(int argc, char **argv)
     LOG(NOTICE, "Starting VPN manager - VPNM");
     log_severity_set(vpnm_log_severity);
     log_register_dynamic_severity(loop);
+
+    /* Init the manager watchdog */
+    manager_watchdog_init(loop, CONFIG_MANAGER_WATCHDOG_TIMEOUT_SEC);
 
     backtrace_init();
 

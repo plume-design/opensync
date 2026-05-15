@@ -47,6 +47,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "json_util.h"
 #include "nm2.h"
 #include "target.h"
+#include "manager_watchdog.h"
 #include "timevt.h"
 #include "nm2_nb_interface.h"
 #include "nm2_nb_bridge.h"
@@ -80,6 +81,8 @@ int main(int argc, char ** argv)
     LOGN("Starting network manager - NM");
     log_severity_set(nm2_log_severity);
     log_register_dynamic_severity(loop);
+
+    manager_watchdog_init(loop, CONFIG_MANAGER_WATCHDOG_TIMEOUT_SEC);
 
     te_client_init(NULL);
     TELOG_STEP("MANAGER", argv[0], "start", NULL);
@@ -118,6 +121,7 @@ int main(int argc, char ** argv)
     nm2_ipv6_prefix_init();
     nm2_dhcpv6_client_init();
     nm2_dhcpv6_server_init();
+    nm2_dhcpv6_lease_init();
     nm2_dhcp_option_init();
     nm2_ipv6_routeadv_init();
     nm2_mcast_init();

@@ -50,6 +50,7 @@ UNIT_DEPS += src/lib/const
 UNIT_DEPS += src/lib/json_util
 UNIT_DEPS += src/lib/osp
 UNIT_DEPS += src/lib/target
+UNIT_DEPS += src/lib/manager_watchdog
 
 
 # JSON library is required for parsing received configuration

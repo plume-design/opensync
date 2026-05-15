@@ -27,7 +27,7 @@ VERSION_GIT_SHA1 := $(shell \
 	( git -C .. log --pretty=oneline --abbrev-commit -1 2>/dev/null || \
 	  git -C .  log --pretty=oneline --abbrev-commit -1 2>/dev/null ) \
 	| awk '{ print "g" $$1 }' | cut -b1-7 \
-	| grep . || echo nogit)
+	| grep . || echo notgit)
 export VERSION_GIT_SHA1
 endif
 ifeq ($(VERSION_GIT_DIRTY),)

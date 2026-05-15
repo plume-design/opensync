@@ -62,7 +62,7 @@ struct fsm_session_ops g_ops =
 };
 
 struct gk_attr_cache_interface **entry;
-size_t num_attr_entries = 8;
+size_t num_attr_entries = 9;
 struct gkc_ip_flow_interface **flow_entry;
 size_t num_flow_entries = 4;
 
@@ -227,6 +227,16 @@ create_default_attr_entries(void)
     entry[7]->action_by_name = FSM_BLOCK;
     entry[7]->ip_addr = sockaddr_storage_create(AF_INET6, "0:0:0:0:0:FFFF:204.152.189.117");
     entry[7]->direction = GKC_FLOW_DIRECTION_INBOUND;
+
+   // Add traffic class test case
+   entry[8] = CALLOC(1, sizeof(*entry[8]));
+   entry[8]->action = 1;
+   entry[8]->device_mac = NULL;
+   entry[8]->attribute_type = GK_CACHE_REQ_TYPE_TRAFFIC_CLASS;
+   entry[8]->cache_ttl = 1000;
+   entry[8]->action = FSM_BLOCK;
+   entry[8]->attr_name = STRDUP("testtrafficclass");
+   entry[8]->gk_policy = "GK_POLICY";
 }
 
 static void

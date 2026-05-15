@@ -65,7 +65,7 @@ test_neigh_table_lookup_intf(void)
     TEST_ASSERT_EQUAL(0, ret);
     ret = neigh_table_init();
     TEST_ASSERT_EQUAL(0, ret);
-    
+
     intf = neigh_table_lookup_intf(0);
     TEST_ASSERT_NULL(intf);
 

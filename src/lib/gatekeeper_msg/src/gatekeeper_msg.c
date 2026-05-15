@@ -30,6 +30,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "fsm_policy.h"
 #include "gatekeeper_msg.h"
+#include "gatekeeper_bulk_msg.h"
 #include "gatekeeper.pb-c.h"
 #include "memutil.h"
 #include "log.h"
@@ -146,7 +147,7 @@ gk_free_http_url_req(Gatekeeper__Southbound__V1__GatekeeperReq *pb)
  * @param pb the app name request container to free
  * @return none
  */
-static void
+void
 gk_free_app_req(Gatekeeper__Southbound__V1__GatekeeperAppReq *app_req)
 {
     if (app_req == NULL) return;
@@ -244,31 +245,8 @@ gk_free_ipv6_tuple_req(Gatekeeper__Southbound__V1__GatekeeperReq *pb)
     pb->req_ipv6_tuple = NULL;
 }
 
-static void gk_free_bulk_app_req(Gatekeeper__Southbound__V1__GatekeeperBulkRequest *bulk_req)
-{
-    size_t i;
 
-    for (i = 0; i < bulk_req->n_req_app; i++)
-    {
-        gk_free_app_req(bulk_req->req_app[i]);
-    }
-
-    FREE(bulk_req->req_app);
-}
-
-static void gk_free_bulk_req(Gatekeeper__Southbound__V1__GatekeeperReq *pb)
-{
-    Gatekeeper__Southbound__V1__GatekeeperBulkRequest *bulk_req;
-
-    bulk_req = pb->req_bulk;
-    if (bulk_req == NULL) return;
-
-    if (bulk_req->n_req_app) gk_free_bulk_app_req(bulk_req);
-
-    FREE(bulk_req);
-}
-
-static void
+void
 gk_free_pb_request(Gatekeeper__Southbound__V1__GatekeeperReq *pb)
 {
     gk_free_fqdn_req(pb);
@@ -324,7 +302,7 @@ gk_set_pb_common_req(struct gk_req_header *header)
  * @param request the external representation of a gatekeeper request
  * @return a filled up protobuf fqdn request
  */
-static Gatekeeper__Southbound__V1__GatekeeperFqdnReq *
+Gatekeeper__Southbound__V1__GatekeeperFqdnReq *
 gk_set_pb_fqdn_req(struct gk_fqdn_request *fqdn_req)
 {
     Gatekeeper__Southbound__V1__GatekeeperFqdnReq *pb;
@@ -350,7 +328,7 @@ gk_set_pb_fqdn_req(struct gk_fqdn_request *fqdn_req)
  * @param request the external representation of a gatekeeper sni request
  * @return a filled up protobuf https sni request
  */
-static Gatekeeper__Southbound__V1__GatekeeperHttpsSniReq *
+Gatekeeper__Southbound__V1__GatekeeperHttpsSniReq *
 gk_set_pb_sni_req(struct gk_sni_request *sni_req)
 {
     Gatekeeper__Southbound__V1__GatekeeperHttpsSniReq *pb;
@@ -376,7 +354,7 @@ gk_set_pb_sni_req(struct gk_sni_request *sni_req)
  * @param request the external representation of a gatekeeper host request
  * @return a filled up protobuf http host request
  */
-static Gatekeeper__Southbound__V1__GatekeeperHttpHostReq *
+Gatekeeper__Southbound__V1__GatekeeperHttpHostReq *
 gk_set_pb_host_req(struct gk_host_request *host_req)
 {
     Gatekeeper__Southbound__V1__GatekeeperHttpHostReq *pb;
@@ -402,7 +380,7 @@ gk_set_pb_host_req(struct gk_host_request *host_req)
  * @param request the external representation of a gatekeeper url request
  * @return a filled up protobuf http url request
  */
-static Gatekeeper__Southbound__V1__GatekeeperHttpUrlReq *
+Gatekeeper__Southbound__V1__GatekeeperHttpUrlReq *
 gk_set_pb_url_req(struct gk_url_request *url_req)
 {
     Gatekeeper__Southbound__V1__GatekeeperHttpUrlReq *pb;
@@ -428,7 +406,7 @@ gk_set_pb_url_req(struct gk_url_request *url_req)
  * @param request the external representation of a gatekeeper app request
  * @return a filled up protobuf app request
  */
-static Gatekeeper__Southbound__V1__GatekeeperAppReq *
+Gatekeeper__Southbound__V1__GatekeeperAppReq *
 gk_set_pb_app_req(struct gk_app_request *app_req)
 {
     Gatekeeper__Southbound__V1__GatekeeperAppReq *pb;
@@ -442,7 +420,8 @@ gk_set_pb_app_req(struct gk_app_request *app_req)
     pb->header = gk_set_pb_common_req(app_req->header);
     if (pb->header == NULL) return NULL;
 
-    pb->app_name = app_req->appname;
+    if (app_req->traffic_class) pb->traffic_class = app_req->traffic_class;
+    else pb->app_name = app_req->appname;
 
     return pb;
 }
@@ -806,7 +785,7 @@ out_err:
  * @param ip_req the external representation of an gatekeeper ipv4/ipv6 request
  * @return a filled up protobuf ipv4/ipv6 request
  */
-static bool
+bool
 gk_set_pb_ip_req(Gatekeeper__Southbound__V1__GatekeeperReq *gk_req_pb,
                  struct gk_ip_request *gk_ip_req)
 {
@@ -928,7 +907,7 @@ out_err:
 }
 
 
-static bool
+bool
 gk_set_pb_ip_flow_req(Gatekeeper__Southbound__V1__GatekeeperReq *gk_req_pb,
                       struct gk_ip_flow_request *gk_ip_flow_req)
 {
@@ -969,81 +948,6 @@ gk_set_pb_ip_flow_req(Gatekeeper__Southbound__V1__GatekeeperReq *gk_req_pb,
     return true;
 }
 
-static size_t
-gk_get_bulk_app_count(struct gk_bulk_request *remark_req)
-{
-    size_t count = 0;
-    size_t i;
-
-    /* loop through each device to get the total number of apps request
-    * of all device */
-    for (i = 0; i < remark_req->n_devices; i++)
-    {
-        count += remark_req->devices[i]->n_apps;
-    }
-    return count;
-}
-
-Gatekeeper__Southbound__V1__GatekeeperAppReq **
-gk_set_pb_bulk_app(struct gk_bulk_request *request)
-{
-    Gatekeeper__Southbound__V1__GatekeeperAppReq **pb_tbl;
-    struct gk_device2app_req *dev_apps;
-    struct gk_app_request *app_req;
-    union gk_data_req *data_req;
-    struct gk_request gk_req;
-    size_t allocated;
-    char *app_name;
-    int count;
-    size_t i;
-    size_t j;
-
-    MEMZERO(gk_req);
-    gk_req.type = FSM_APP_REQ;
-    data_req = &gk_req.req;
-    app_req = &data_req->gk_app_req;
-
-    count = gk_get_bulk_app_count(request);
-    pb_tbl = CALLOC(count, sizeof(Gatekeeper__Southbound__V1__GatekeeperAppReq *));
-
-    allocated = 0;
-    for (i = 0; i < request->n_devices; i++)
-    {
-        dev_apps = request->devices[i];
-        if (dev_apps == NULL || dev_apps->header == NULL)
-        {
-            LOGD("%s(): request header or device id is not set", __func__);
-            goto free_pb;
-        }
-
-        /* set the header */
-        app_req->header = dev_apps->header;
-
-        for (j = 0; j < dev_apps->n_apps; j++)
-        {
-            app_name = dev_apps->apps[j];
-            if (app_name == NULL)
-            {
-                LOGD("%s(): Invalid app or app name", __func__);
-                goto free_pb;
-            }
-
-            app_req->appname = app_name;
-            pb_tbl[allocated] = gk_set_pb_app_req(app_req);
-            allocated++;
-        }
-    }
-    return pb_tbl;
-
-free_pb:
-    for (i = 0; i < allocated; i++)
-    {
-        gk_free_app_req(pb_tbl[i]);
-    }
-
-    FREE(pb_tbl);
-    return NULL;
-}
 
 int
 gk_get_fsm_action(Gatekeeper__Southbound__V1__GatekeeperCommonReply *header)
@@ -1088,43 +992,12 @@ gk_get_fsm_action(Gatekeeper__Southbound__V1__GatekeeperCommonReply *header)
     return action;
 }
 
-static Gatekeeper__Southbound__V1__GatekeeperBulkRequest *
-gk_set_pb_bulk_app_request(struct gk_bulk_request *request)
-{
-    Gatekeeper__Southbound__V1__GatekeeperBulkRequest *pb;
-    if (request->n_devices == 0) return NULL;
-
-    pb = CALLOC(1, sizeof(*pb));
-    gatekeeper__southbound__v1__gatekeeper_bulk_request__init(pb);
-    pb->n_req_app = gk_get_bulk_app_count(request);
-    pb->req_app = gk_set_pb_bulk_app(request);
-
-    return pb;
-}
-
-static bool
-gk_set_pb_bulk_request(Gatekeeper__Southbound__V1__GatekeeperReq *gk_req_pb,
-                       struct gk_bulk_request *request)
-{
-    if (request == NULL || gk_req_pb == NULL) return false;
-    switch (request->req_type)
-    {
-        case FSM_APP_REQ:
-            gk_req_pb->req_bulk = gk_set_pb_bulk_app_request(request);
-            return (gk_req_pb->req_bulk != NULL) ? true : false;
-
-        default:
-            LOGN("%s():%d Invalid remark request type: %d", __func__, __LINE__, request->req_type);
-            return false;
-    }
-}
-
 /**
  * @brief fills up a gatekeeper protobuf request
  *
  * @param request the external representation of a gatekeeprer request
  * @return a filled up protobuf request
- */
+*/
 static Gatekeeper__Southbound__V1__GatekeeperReq *
 gk_set_pb_request(struct gk_request *request)
 {

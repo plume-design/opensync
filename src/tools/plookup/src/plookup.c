@@ -208,7 +208,7 @@ int main(int argc, char *argv[])
     int ret = 0;
     struct name_server ns = {0};
 
-    target_log_open("PLOOKUP", LOG_OPEN_STDOUT);
+    target_log_open("PLOOKUP", LOG_OPEN_DEFAULT | LOG_OPEN_STDOUT);
 
     log_severity_set(LOG_SEVERITY_INFO);
     if (argc == 2 || argc == 3) {

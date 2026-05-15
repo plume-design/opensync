@@ -58,7 +58,7 @@ struct dnsmasq6_server
                                 d6s_status;         /* Cached server status */
     dnsmasq6_server_status_fn_t
                                *d6s_notify_fn;      /* Notification callback */
-    ds_tree_t                   d6s_leases;
+    ds_tree_t                   d6s_leases;         /* Static leases */
     ds_tree_node_t              d6s_tnode;
 };
 

@@ -53,7 +53,7 @@ struct wano_dns_probe
 
 struct wano_dns_probe_server_list
 {
-    char sl_servers[INET6_ADDRSTRLEN][WANO_DNS_PROBE_MAX];
+    char sl_servers[WANO_DNS_PROBE_MAX][INET6_ADDRSTRLEN];
     size_t sl_nservers;
 };
 

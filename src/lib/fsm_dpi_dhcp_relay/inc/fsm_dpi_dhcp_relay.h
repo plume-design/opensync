@@ -89,7 +89,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define DHCP_FIXED_LEN      (DHCP_FIXED_NON_UDP + DHCP_UDP_OVERHEAD)
 #define DHCP_MAX_OPTION_LEN (DHCP_MTU_MAX - DHCP_FIXED_LEN)
 
-#define DHCP_RELAY_CONF_FILE          "/tmp/dhcp_relay.conf"
 #define DHCP_OPTION_AGENT_INFORMATION 82
 #define RAI_CIRCUIT_ID                1
 #define RAI_REMOTE_ID                 2
@@ -276,6 +275,7 @@ void fsm_dpi_dhcp_relay_process_dhcpv4_message(struct dhcp_relay_session *d_sess
 void fsm_dpi_dhcp_relay_process_dhcpv6_message(struct dhcp_relay_session *d_session);
 
 size_t fsm_dpi_dhcp_parse_message(struct dhcp_parser *parser);
+int fsm_dpi_dhcp_get_message_type(struct net_header_parser *net_parser);
 bool dhcp_relay_check_option82(struct dhcp_relay_session *d_session);
 bool dhcp_relay_check_dhcpv6_option(struct dhcp_relay_session *d_session, int dhcpv6_option);
 

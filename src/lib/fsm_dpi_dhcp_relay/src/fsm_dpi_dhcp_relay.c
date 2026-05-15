@@ -482,6 +482,69 @@ size_t fsm_dpi_dhcp_parse_message(struct dhcp_parser *parser)
 }
 
 /**
+ * @brief extracts the DHCP message type from a DHCP packet
+ *
+ * @param net_parser the network parser containing the packet
+ * @return the DHCP message type, or -1 if not found or invalid
+ */
+int fsm_dpi_dhcp_get_message_type(struct net_header_parser *net_parser)
+{
+    if (net_parser->ip_version == 4)
+    {
+        struct dhcp_hdr *dhcp;
+        uint8_t *popt;
+
+        dhcp = (void *)(net_parser->data);
+
+        // Check magic number
+        if (ntohl(dhcp->dhcp_magic) != DHCP_MAGIC)
+        {
+            return -1;
+        }
+
+        // Parse DHCP options to find message type
+        popt = dhcp->dhcp_options;
+        while (popt < ((uint8_t *)net_parser->data + net_parser->packet_len))
+        {
+            uint8_t optid, optlen;
+
+            // End option, break out
+            if (*popt == 255) break;
+
+            // Pad option, continue
+            if (*popt == 0)
+            {
+                popt++;
+                continue;
+            }
+
+            if (popt + 2 > ((uint8_t *)net_parser->data + net_parser->packet_len)) break;
+
+            optid = *popt++;
+            optlen = *popt++;
+
+            if ((popt + optlen) > ((uint8_t *)net_parser->data + net_parser->packet_len)) break;
+
+            if (optid == 53 && optlen == 1)  // DHCP_OPTION_MSG_TYPE
+            {
+                return *popt;
+            }
+
+            popt += optlen;
+        }
+    }
+    else if (net_parser->ip_version == 6)
+    {
+        struct dhcpv6_hdr *dhcpv6;
+
+        dhcpv6 = (void *)(net_parser->data);
+        return dhcpv6->msg_type;
+    }
+
+    return -1;
+}
+
+/**
  * @brief deletes a session
  *
  * @param session the fsm session keying the dhcp session to delete
@@ -639,6 +702,7 @@ bool fsm_dpi_process_dhcp_packet(struct fsm_session *session, struct net_header_
     struct dpi_dhcp_client *mgr;
     ds_tree_t *sessions;
     size_t len;
+    int msg_type;
 
     mgr = fsm_dpi_dhcp_get_mgr();
     sessions = &mgr->fsm_sessions;
@@ -650,8 +714,42 @@ bool fsm_dpi_process_dhcp_packet(struct fsm_session *session, struct net_header_
     parser->caplen = net_parser->caplen;
 
     parser->net_parser = net_parser;
+
+    /* Check if session->rx_intf is configured */
+    if (session->rx_intf[0] != '\0')
+    {
+        /* If session->rx_intf != parser->tap_intf, return without processing */
+        if (net_parser->tap_intf == NULL || strcmp(session->rx_intf, net_parser->tap_intf) != 0)
+        {
+            LOGT("%s: rx_intf (%s) does not match tap_intf (%s), skipping",
+                 __func__,
+                 session->rx_intf,
+                 net_parser->tap_intf ? net_parser->tap_intf : "NULL");
+            return false;
+        }
+    }
+
     len = fsm_dpi_dhcp_parse_message(parser);
     if (len == 0) return false;
+
+    /* Check DHCP message type early */
+    msg_type = fsm_dpi_dhcp_get_message_type(net_parser);
+    if (net_parser->ip_version == 4)
+    {
+        if (msg_type != DHCP_MSG_DISCOVER && msg_type != DHCP_MSG_REQUEST)
+        {
+            LOGT("%s: DHCPv4 message type %d not DISCOVER or REQUEST, skipping", __func__, msg_type);
+            return false;
+        }
+    }
+    else if (net_parser->ip_version == 6)
+    {
+        if (msg_type != DHCPV6_SOLICIT && msg_type != DHCPV6_REQUEST)
+        {
+            LOGT("%s: DHCPv6 message type %d not SOLICIT or REQUEST, skipping", __func__, msg_type);
+            return false;
+        }
+    }
 
     /* Process the DHCP message, and insert required options */
     if (net_parser->ip_version == 4)

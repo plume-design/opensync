@@ -164,6 +164,10 @@ void
 osw_hostap_bss_fill_acl_by_hostap(struct osw_hostap_bss *hostap_bss,
                                   bool acl_by_hostap);
 
+void
+osw_hostap_conf_fill_ap_neigh(struct osw_neigh_list *list,
+                              const char *show_neighbor);
+
 struct rq_task *
 osw_hostap_bss_prep_state_task(struct osw_hostap_bss *bss);
 
@@ -182,5 +186,9 @@ osw_hostap_set_conf(struct osw_hostap *hostap,
 
 struct rq_task *
 osw_hostap_prep_config_task(struct osw_hostap *hostap);
+
+void
+osw_hostap_bss_sta_parse(const char *buf,
+                         struct osw_hostap_bss_sta *sta);
 
 #endif /* OSW_HOSTAP_H_INCLUDED */

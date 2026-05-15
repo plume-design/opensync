@@ -390,13 +390,14 @@ gk_set_policy(Gatekeeper__Southbound__V1__GatekeeperReply *response,
             break;
 
         case FSM_APP_REQ:
+        case FSM_TRAFFIC_CLASS_REQ:
             if (response->reply_app != NULL)
             {
                 header = response->reply_app->header;
             }
             else
             {
-                LOGD("%s: no app data available", __func__);
+                LOGD("%s: no app/traffic_class data available", __func__);
             }
             break;
 

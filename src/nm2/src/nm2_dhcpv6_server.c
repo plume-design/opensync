@@ -423,10 +423,42 @@ void nm2_dhcpv6_server_lease_prefix_update(uuidset_t *us, enum uuidset_event typ
     /* Dereference classes */
     struct nm2_dhcpv6_server *ds6 = CONTAINER_OF(us, struct nm2_dhcpv6_server, ds6_lease_prefix);
     struct nm2_dhcpv6_lease *d6l = CONTAINER_OF(remote, struct nm2_dhcpv6_lease, d6l_reflink);
+    struct nm2_iface *piface;
 
-    bool add;
+    piface = nm2_ip_interface_iface_get(&ds6->ds6_ip_interface_uuid);
+    if (piface == NULL)
+    {
+        LOG(ERR, "dhcpv6_server: lease_prefix update: Unable to resolve interface");
+        return;
+    }
 
     (void)ds6;
+
+    LOG(TRACE, "dhcpv6_server: %s: d6l->d6l_valid=%d, type=%d", __func__, d6l->d6l_valid, type);
+
+    /* Nothing to do actually. */
+    return;
+}
+
+/*
+ * DHCPv6_Server.static_prefix update  -- static DHCPv6 lease
+ */
+void nm2_dhcpv6_server_static_prefix_update(uuidset_t *us, enum uuidset_event type, reflink_t *remote)
+{
+    /* Dereference classes */
+    struct nm2_dhcpv6_server *ds6 = CONTAINER_OF(us, struct nm2_dhcpv6_server, ds6_static_prefix);
+    struct nm2_dhcpv6_lease *d6l = CONTAINER_OF(remote, struct nm2_dhcpv6_lease, d6l_reflink);
+    struct nm2_iface *piface;
+    bool add;
+
+    piface = nm2_ip_interface_iface_get(&ds6->ds6_ip_interface_uuid);
+    if (piface == NULL)
+    {
+        LOG(ERR, "dhcpv6_server: static_prefix update: Unable to resolve interface");
+        return;
+    }
+
+    LOG(TRACE, "dhcpv6_server: %s: d6l->d6l_valid=%d, type=%d", __func__, d6l->d6l_valid, type);
 
     switch (type)
     {
@@ -448,18 +480,29 @@ void nm2_dhcpv6_server_lease_prefix_update(uuidset_t *us, enum uuidset_event typ
             return;
     }
 
-    struct nm2_iface *piface = nm2_ip_interface_iface_get(&ds6->ds6_ip_interface_uuid);
-    if (piface == NULL)
+    if (add)
     {
-        LOG(DEBUG, "dhcpv6_server: prefix_update: Unable to resolve interface.");
-        return;
+        LOG(NOTICE, "dhcpv6_server: %s: Adding static lease: duid=%s, addr=%s, hostname=%s",
+            piface->if_name,
+            d6l->d6l_duid,
+            FMT_osn_ip6_addr(d6l->d6l_prefix),
+            d6l->d6l_hostname);
+    }
+    else
+    {
+        LOG(NOTICE, "dhcpv6_server: %s: Removing static lease, duid=%s, addr=%s, hostname=%s",
+            piface->if_name,
+            d6l->d6l_duid,
+            FMT_osn_ip6_addr(d6l->d6l_prefix),
+            d6l->d6l_hostname);
     }
 
+    /* Prepare OSN dhcpv6 lease structure to configure static lease in the lower layers: */
     struct osn_dhcpv6_server_lease lease;
-
     memset(&lease, 0, sizeof(lease));
 
-    lease.d6s_addr = d6l->d6l_prefix;
+    lease.d6s_addr = d6l->d6l_prefix;   /* For some reason OVSDB calls this 'prefix' but it's actually an address */
+
     if (STRSCPY(lease.d6s_hostname, d6l->d6l_hostname) < 0)
     {
         LOG(ERR, "dhcpv6_server: %s: Error updating lease, hostname too long: %s",
@@ -478,59 +521,13 @@ void nm2_dhcpv6_server_lease_prefix_update(uuidset_t *us, enum uuidset_event typ
 
     if (!inet_dhcp6_server_lease(piface->if_inet, add, &lease))
     {
-        LOG(ERR, "dhcpv6_server: %s: Error adding/removing(%d) prefix.",
+        LOG(ERR, "dhcpv6_server: %s: Error adding/removing(%d) static lease.",
                 piface->if_name,
                 add);
         return;
     }
 
     nm2_iface_apply(piface);
-}
-
-/*
- * DHCPv6_Server.static_prefix update
- */
-void nm2_dhcpv6_server_static_prefix_update(uuidset_t *us, enum uuidset_event type, reflink_t *remote)
-{
-    /* Dereference classes */
-    struct nm2_dhcpv6_server *ds6 = CONTAINER_OF(us, struct nm2_dhcpv6_server, ds6_prefixes);
-    struct nm2_dhcpv6_lease *d6l = CONTAINER_OF(remote, struct nm2_dhcpv6_lease, d6l_reflink);
-
-    bool add;
-
-    (void)ds6;
-
-    switch (type)
-    {
-        case UUIDSET_NEW:
-            if (!d6l->d6l_valid) return;
-            add = true;
-            break;
-
-        case UUIDSET_MOD:
-            add = d6l->d6l_valid;
-            break;
-
-        case UUIDSET_DEL:
-            if (!d6l->d6l_valid) return;
-            add = false;
-            break;
-
-        default:
-            return;
-    }
-
-    /* Process new entry */
-    if (add)
-    {
-        LOG(NOTICE, "ADD DHCPV6SERVER-STATIC_PREFIX");
-        /* Add to lower layer */
-    }
-    else
-    {
-        LOG(NOTICE, "REMOVE DHCPV6SERVER-STATIC_PREFIX");
-        /* Remove from lower layer */
-    }
 }
 
 /*
@@ -646,7 +643,7 @@ void nm2_dhcpv6_server_notify(inet_t *inet, struct osn_dhcpv6_server_status *sta
     struct nm2_iface *piface = inet->in_data;
     struct nm2_dhcpv6_server *ds6 = piface->if_dhcpv6_server;
 
-    LOG(DEBUG, "dhcpv6_server: Update: Number of leases: %d.", status->d6st_leases_len);
+    LOG(DEBUG, "dhcpv6_server: %s: Update: Number of leases: %d.", __func__, status->d6st_leases_len);
 
     synclist_begin(&ds6->ds6_lease_list);
 
@@ -675,7 +672,8 @@ void nm2_dhcpv6_server_notify(inet_t *inet, struct osn_dhcpv6_server_status *sta
         dl.d6l_addr = status->d6st_leases[ii].d6s_addr;
         dl.d6l_lease_time = status->d6st_leases[ii].d6s_leased_time;
 
-        LOG(TRACE, "dhcpv6_server: Lease for: hostname=%s, duid=%s", dl.d6l_hostname, dl.d6l_duid);
+        LOG(DEBUG, "dhcpv6_server: %s: Lease: duid='%s', addr=%s, hostname='%s'",
+            __func__, dl.d6l_duid, FMT_osn_ip6_addr(dl.d6l_addr), dl.d6l_hostname);
 
         synclist_add(&ds6->ds6_lease_list, &dl);
     }
@@ -693,6 +691,8 @@ void *dhcpv6_server_lease_list_fn(synclist_t *list, void *_old, void *_new)
 
     struct nm2_dhcpv6_server *ds6 = CONTAINER_OF(list, struct nm2_dhcpv6_server, ds6_lease_list);
     (void)list;
+
+    LOG(TRACE, "%s", __func__);
 
     /* Insert case */
     if (_old == NULL)

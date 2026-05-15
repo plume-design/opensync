@@ -176,6 +176,7 @@ struct flow_tags
 {
     char *vendor;
     char *app_name;
+    char *traffic_class;
     size_t nelems;
     char **tags;
 };

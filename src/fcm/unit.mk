@@ -62,7 +62,10 @@ UNIT_DEPS += src/lib/data_report_tags
 UNIT_DEPS += src/lib/gatekeeper_msg
 UNIT_DEPS += src/qm/qm_conn
 UNIT_DEPS += src/lib/fsm_policy
+UNIT_DEPS += src/lib/dpi_stats
+UNIT_DEPS += src/lib/manager_watchdog
 
 UNIT_DEPS += $(if $(CONFIG_FCM_NO_DSO), src/lib/ct_stats)
 UNIT_DEPS += $(if $(CONFIG_FCM_NO_DSO), src/lib/lan_stats)
 UNIT_DEPS += $(if $(CONFIG_FCM_NO_DSO), src/lib/intf_stats)
+UNIT_DEPS += $(if $(CONFIG_FCM_NO_DSO), src/lib/tc_stats)

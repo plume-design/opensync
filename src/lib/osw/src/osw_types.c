@@ -145,11 +145,18 @@ osw_channel_width_offsets(const enum osw_channel_width w)
 }
 
 static void
-strip_trailing_whitespace(char *str)
+osw_strip_whitespace(char *str)
 {
-    char *p;
-    while ((p = strrchr(str, ' ')) != NULL)
-        *p = '\0';
+    size_t len = strlen(str);
+    while (len > 0 && str[len - 1] == ' ')
+        len--;
+    str[len] = '\0';
+
+    char *start = str;
+    while (*start == ' ')
+        start++;
+    if (start != str)
+        memmove(str, start, strlen(start) + 1);
 }
 
 int
@@ -313,9 +320,35 @@ osw_band_to_str(enum osw_band b)
     return "";
 }
 
+const char *
+osw_airtime_precedence_to_str(const enum osw_airtime_precedence p)
+{
+    switch (p) {
+        case OSW_AIRTIME_PRECEDENCE_UNSUPPORTED: return "unsupported";
+        case OSW_AIRTIME_PRECEDENCE_DISABLED: return "disabled";
+        case OSW_AIRTIME_PRECEDENCE_LOW: return "low";
+        case OSW_AIRTIME_PRECEDENCE_MEDIUM: return "medium";
+        case OSW_AIRTIME_PRECEDENCE_HIGH: return "high";
+    }
+    return "";
+}
+
+const char *
+osw_zero_wait_dfs_to_str(const enum osw_zero_wait_dfs zwd)
+{
+    switch (zwd) {
+        case OSW_ZERO_WAIT_DFS_UNSET: return "";
+        case OSW_ZERO_WAIT_DFS_DISABLE: return "disable";
+        case OSW_ZERO_WAIT_DFS_ENABLE: return "enable";
+        case OSW_ZERO_WAIT_DFS_PRECAC: return "precac";
+    }
+    return "";
+}
+
 void
 osw_wpa_to_str(char *out, size_t len, const struct osw_wpa *wpa)
 {
+    char *beginning = out;
     out[0] = 0;
     csnprintf(&out, &len, " wpa=");
     if (wpa->wpa) csnprintf(&out, &len, "wpa ");
@@ -342,12 +375,13 @@ osw_wpa_to_str(char *out, size_t len, const struct osw_wpa *wpa)
     csnprintf(&out, &len, "pmf=%s ", osw_pmf_to_str(wpa->pmf));
     if (wpa->beacon_protection) csnprintf(&out, &len, "b_prot ");
     csnprintf(&out, &len, "gtk=%d ", wpa->group_rekey_seconds);
-    strip_trailing_whitespace(out);
+    osw_strip_whitespace(beginning);
 }
 
 void
 osw_ap_mode_to_str(char *out, size_t len, const struct osw_ap_mode *mode)
 {
+    char *beginning = out;
     out[0] = 0;
     if (mode->wnm_bss_trans) csnprintf(&out, &len, "btm ");
     if (mode->rrm_neighbor_report) csnprintf(&out, &len, "rrm ");
@@ -367,7 +401,7 @@ osw_ap_mode_to_str(char *out, size_t len, const struct osw_ap_mode *mode)
     if (mode->beacon_rate.type != OSW_BEACON_RATE_UNSPEC) csnprintf(&out, &len, "bcn:"OSW_BEACON_RATE_FMT " ", OSW_BEACON_RATE_ARG(&mode->beacon_rate));
     if (mode->mgmt_rate != OSW_RATE_UNSPEC) csnprintf(&out, &len, "mgmt:%d kbps ", osw_rate_legacy_to_halfmbps(mode->mgmt_rate) * 500);
     if (mode->mcast_rate != OSW_RATE_UNSPEC) csnprintf(&out, &len, "mcast:%d kbps ", osw_rate_legacy_to_halfmbps(mode->mcast_rate) * 500);
-    strip_trailing_whitespace(out);
+    osw_strip_whitespace(beginning);
 }
 
 char *
@@ -1383,6 +1417,29 @@ osw_ap_psk_list_to_str(char *out,
 }
 
 int
+osw_neigh_cmp(const struct osw_neigh *a,
+              const struct osw_neigh *b)
+{
+    if (a == NULL && b == NULL) return 0;
+    if (a == NULL && b != NULL) return -1;
+    if (a != NULL && b == NULL) return 1;
+
+    const int r1 = osw_hwaddr_cmp(&a->bssid, &b->bssid);
+    const int r2 = a->bssid_info - b->bssid_info;
+    const int r3 = a->op_class - b->op_class;
+    const int r4 = a->channel - b->channel;
+    const int r5 = a->phy_type - b->phy_type;
+
+    if (r1) return r1;
+    if (r2) return r2;
+    if (r3) return r3;
+    if (r4) return r4;
+    if (r5) return r5;
+
+    return 0;
+}
+
+int
 osw_neigh_ft_cmp(const struct osw_neigh_ft *a,
                  const struct osw_neigh_ft *b)
 {
@@ -1654,6 +1711,12 @@ osw_cs_chan_get_band(const struct osw_channel_state *cs, const int n_cs)
 }
 
 int
+osw_rate_legacy_to_kbps(enum osw_rate_legacy rate)
+{
+    return osw_rate_legacy_to_halfmbps(rate) * 500;
+}
+
+int
 osw_rate_legacy_to_halfmbps(enum osw_rate_legacy rate)
 {
     switch (rate) {
@@ -1673,6 +1736,18 @@ osw_rate_legacy_to_halfmbps(enum osw_rate_legacy rate)
         case OSW_RATE_COUNT: return 0;
     }
     return 0;
+}
+
+enum osw_rate_legacy
+osw_rate_legacy_from_kbps(int kbps)
+{
+    const int halfmbps = kbps / 500;
+    const bool exact = (kbps % 500) == 0;
+    if (!exact) {
+        return OSW_RATE_UNSPEC;
+    }
+
+    return osw_rate_legacy_from_halfmbps(halfmbps);
 }
 
 enum osw_rate_legacy
@@ -2114,6 +2189,24 @@ osw_ft_encr_key_is_equal(const struct osw_ft_encr_key *a,
                          const struct osw_ft_encr_key *b)
 {
     return (osw_ft_encr_key_cmp(a, b) == 0);
+}
+
+int osw_airtime_precedence_cmp(const enum osw_airtime_precedence *a,
+                               const enum osw_airtime_precedence *b)
+{
+    if (a == NULL && b == NULL) return 0;
+    if (a == NULL) return -1;
+    if (b == NULL) return 1;
+    if (*a < *b) return -1;
+    if (*a > *b) return 1;
+    return 0;
+}
+
+bool
+osw_airtime_precedence_is_equal(const enum osw_airtime_precedence *a,
+                                const enum osw_airtime_precedence *b)
+{
+    return (osw_airtime_precedence_cmp(a, b) == 0);
 }
 
 bool

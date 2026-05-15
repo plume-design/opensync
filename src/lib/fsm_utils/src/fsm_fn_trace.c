@@ -87,6 +87,7 @@ void fsm_fn_trace(void *p, int trace)
             to_add->fn_name = default_fn_name;
             ds_tree_insert(&fsm_tracer.tracer_tree, to_add, to_add->fn_ptr);
 
+            LOGI("%s: function: %s (%p): enter", __func__, to_add->fn_name, to_add->fn_ptr);
             tracer = to_add;
         }
         fsm_tracer.tracer = tracer;
@@ -206,6 +207,8 @@ void fsm_fn_periodic(struct fsm_session *session)
     MEMZERO(report);
     report.location_id = session->location_id;
     report.node_id = session->node_id;
+    report.timestamp = time(NULL);
+    report.plugin = (!(IS_NULL_PTR(session->name)) ? session->name : "core_dpi_dispatch");
 
     while (tracer != NULL)
     {

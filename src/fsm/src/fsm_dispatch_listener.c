@@ -279,7 +279,9 @@ net_recv_cb(struct msg *receiver)
 
     session = g_sock_context.session;
     parser_ops = &session->p_ops->parser_ops;
+    fsm_fn_trace(parser_ops->handler, FSM_FN_ENTER);
     parser_ops->handler(session, &net_parser);
+    fsm_fn_trace(parser_ops->handler, FSM_FN_EXIT);
 }
 
 void parse_recv_buf_data(uint8_t *bytes, int len)
@@ -393,7 +395,9 @@ net_recv_data_from_iov(ev_io *ev)
     /* Call the user receive routine */
     receiver->rcvd_len = rc;
     receiver->len = receiver->rcvd_len - (6 + 2 + 4); /* remove iov[0-2].len */
+    fsm_fn_trace(context->recv_fn, FSM_FN_ENTER);
     context->recv_fn(receiver);
+    fsm_fn_trace(context->recv_fn, FSM_FN_EXIT);
 }
 
 
@@ -493,6 +497,7 @@ fsm_dispatch_init_listener(struct fsm_session *session)
     memset(&g_sock_context, 0, sizeof(g_sock_context));
     g_sock_context.sock_fd = sockfd;
     g_sock_context.recv_method = dispatch->recv_method;
+    FSM_FN_MAP(net_recv_cb);
     g_sock_context.recv_fn = net_recv_cb;
     g_sock_context.session = session;
     g_sock_context.loop = session->loop;

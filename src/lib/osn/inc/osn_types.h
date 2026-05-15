@@ -273,6 +273,7 @@ typedef struct osn_ip6_addr
     .ia6_prefix = -1,                       \
     .ia6_pref_lft = INT_MIN,                \
     .ia6_valid_lft = INT_MIN,               \
+    .ia6_addr = { 0 },                      \
 }
 
 /**
@@ -383,6 +384,28 @@ int osn_ip6_addr_nolft_cmp(const void *_a, const void *_b);
  * set to all zeroes i.e. the IPv6 prefix of the provided address.
  */
 osn_ip6_addr_t osn_ip6_addr_subnet(const osn_ip6_addr_t *addr);
+
+/**
+ * Do a bitwise OR operation on two IPv6 addresses and return the result.
+ *
+ * @param[in]   a       IPv6 address
+ * @param[in]   b       IPv6 address
+ *
+ * @return
+ * Returns the ORed value of address `a` and `b`
+ */
+osn_ip6_addr_t osn_ip6_addr_or(const osn_ip6_addr_t *a, const osn_ip6_addr_t *b);
+
+/**
+ * Do a bitwise XOR operation on two IPv6 addresses and return the result.
+ *
+ * @param[in]   a       IPv6 address
+ * @param[in]   b       IPv6 address
+ *
+ * @return
+ * Returns the XORed value of address `a` and `b`
+ */
+osn_ip6_addr_t osn_ip6_addr_xor(const osn_ip6_addr_t *a, const osn_ip6_addr_t *b);
 
 /**
  * Converts a subnet IPv6 representation to a prefix integer.

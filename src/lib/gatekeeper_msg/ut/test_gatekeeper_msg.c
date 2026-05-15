@@ -39,7 +39,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "gatekeeper.pb-c.h"
 #include "gatekeeper_msg.h"
-#include "gatekeeper_bulk_reply_msg.h"
+#include "gatekeeper_bulk_msg.h"
 
 #include "test_gatekeeper_msg.h"
 #include "gatekeeper_cache.h"
@@ -725,22 +725,22 @@ void test_bulk_verdict(void)
 
     // Initialize devices
     bulk_request->n_devices = 1;
-    bulk_request->devices = MALLOC(sizeof(struct gk_device2app_req*) * bulk_request->n_devices);
+    bulk_request->devices = CALLOC(bulk_request->n_devices, sizeof(struct gk_device2app_req*));
 
     // Initialize a single gk_device2app_req
-    bulk_request->devices[0] = MALLOC(sizeof(struct gk_device2app_req));
+    bulk_request->devices[0] = CALLOC(1, sizeof(struct gk_device2app_req));
     bulk_request->devices[0]->n_apps = 1;
-    bulk_request->devices[0]->apps = MALLOC(sizeof(struct gk_app_info*) * bulk_request->devices[0]->n_apps);
+    bulk_request->devices[0]->apps = CALLOC(bulk_request->devices[0]->n_apps, sizeof(struct gk_app_info*));
     bulk_request->devices[0]->apps[0] = app;
 
 
     gk_reply.bulk_reply = CALLOC(1, sizeof(Gatekeeper__Southbound__V1__GatekeeperBulkReply));
     gk_reply.bulk_reply->n_reply_app = 1;
-    gk_reply.bulk_reply->reply_app = MALLOC(sizeof(Gatekeeper__Southbound__V1__GatekeeperAppReply*) * gk_reply.bulk_reply->n_reply_app);
+    gk_reply.bulk_reply->reply_app = CALLOC(gk_reply.bulk_reply->n_reply_app, sizeof(Gatekeeper__Southbound__V1__GatekeeperAppReply*));
 
-    gk_reply.bulk_reply->reply_app[0] = MALLOC(sizeof(Gatekeeper__Southbound__V1__GatekeeperAppReply));
+    gk_reply.bulk_reply->reply_app[0] = CALLOC(1, sizeof(Gatekeeper__Southbound__V1__GatekeeperAppReply));
     gk_reply.bulk_reply->reply_app[0]->app_name = app;
-    gk_reply.bulk_reply->reply_app[0]->header = MALLOC(sizeof(Gatekeeper__Southbound__V1__GatekeeperCommonReply));
+    gk_reply.bulk_reply->reply_app[0]->header = CALLOC(1, sizeof(Gatekeeper__Southbound__V1__GatekeeperCommonReply));
     gk_reply.bulk_reply->reply_app[0]->header->request_id = 1234;
     gk_reply.bulk_reply->reply_app[0]->header->action = 1;
     gk_reply.bulk_reply->reply_app[0]->header->ttl = 60;
@@ -858,8 +858,8 @@ static void test_populate_bulk_reply(Gatekeeper__Southbound__V1__GatekeeperReply
 
 /**
  * @brief Test populating and parsing HTTP URL entries in a bulk reply
- * 
- * This test validates that HTTP URL entries can be correctly populated 
+ *
+ * This test validates that HTTP URL entries can be correctly populated
  * in a bulk reply and then parsed by gk_parse_reply.
  */
 void test_populate_http_host_bulk_reply(void)
@@ -872,111 +872,111 @@ void test_populate_http_host_bulk_reply(void)
 
     /* Initialize the reply structure */
     memset(&gk_pb_reply, 0, sizeof(gk_pb_reply));
-    
+
     /* Create bulk reply structure */
     gk_pb_reply.bulk_reply = CALLOC(1, sizeof(Gatekeeper__Southbound__V1__GatekeeperBulkReply));
     TEST_ASSERT_NOT_NULL(gk_pb_reply.bulk_reply);
-    
+
     /* Prepare the HTTP URL entries */
     gk_pb_reply.bulk_reply->n_reply_http_url = 2;
-    gk_pb_reply.bulk_reply->reply_http_url = 
-        CALLOC(gk_pb_reply.bulk_reply->n_reply_http_url, 
+    gk_pb_reply.bulk_reply->reply_http_url =
+        CALLOC(gk_pb_reply.bulk_reply->n_reply_http_url,
                sizeof(Gatekeeper__Southbound__V1__GatekeeperHttpUrlReply *));
     TEST_ASSERT_NOT_NULL(gk_pb_reply.bulk_reply->reply_http_url);
-    
+
     /* Create first URL entry */
-    gk_pb_reply.bulk_reply->reply_http_url[0] = 
+    gk_pb_reply.bulk_reply->reply_http_url[0] =
         CALLOC(1, sizeof(Gatekeeper__Southbound__V1__GatekeeperHttpUrlReply));
     TEST_ASSERT_NOT_NULL(gk_pb_reply.bulk_reply->reply_http_url[0]);
-    
+
     gk_pb_reply.bulk_reply->reply_http_url[0]->http_url = STRDUP(url1);
-    gk_pb_reply.bulk_reply->reply_http_url[0]->header = 
+    gk_pb_reply.bulk_reply->reply_http_url[0]->header =
         CALLOC(1, sizeof(Gatekeeper__Southbound__V1__GatekeeperCommonReply));
     TEST_ASSERT_NOT_NULL(gk_pb_reply.bulk_reply->reply_http_url[0]->header);
-    
+
     /* Set header fields for first URL */
-    gk_pb_reply.bulk_reply->reply_http_url[0]->header->action = 
+    gk_pb_reply.bulk_reply->reply_http_url[0]->header->action =
         GATEKEEPER__SOUTHBOUND__V1__GATEKEEPER_ACTION__GATEKEEPER_ACTION_ACCEPT;
     gk_pb_reply.bulk_reply->reply_http_url[0]->header->category_id = 123;
     gk_pb_reply.bulk_reply->reply_http_url[0]->header->confidence_level = 90;
     gk_pb_reply.bulk_reply->reply_http_url[0]->header->ttl = 3600;
     gk_pb_reply.bulk_reply->reply_http_url[0]->header->policy = STRDUP("test_policy");
-    
+
     memcpy(device_id_data, g_test_mac.addr, sizeof(g_test_mac.addr));
-    gk_pb_reply.bulk_reply->reply_http_url[0]->header->device_id = 
+    gk_pb_reply.bulk_reply->reply_http_url[0]->header->device_id =
         create_protobuf_c_binary_data(device_id_data, sizeof(device_id_data));
-    
+
     /* Create second URL entry */
-    gk_pb_reply.bulk_reply->reply_http_url[1] = 
+    gk_pb_reply.bulk_reply->reply_http_url[1] =
         CALLOC(1, sizeof(Gatekeeper__Southbound__V1__GatekeeperHttpUrlReply));
     TEST_ASSERT_NOT_NULL(gk_pb_reply.bulk_reply->reply_http_url[1]);
-    
+
     gk_pb_reply.bulk_reply->reply_http_url[1]->http_url = STRDUP(url2);
-    gk_pb_reply.bulk_reply->reply_http_url[1]->header = 
+    gk_pb_reply.bulk_reply->reply_http_url[1]->header =
         CALLOC(1, sizeof(Gatekeeper__Southbound__V1__GatekeeperCommonReply));
     TEST_ASSERT_NOT_NULL(gk_pb_reply.bulk_reply->reply_http_url[1]->header);
-    
+
     /* Set header fields for second URL */
-    gk_pb_reply.bulk_reply->reply_http_url[1]->header->action = 
+    gk_pb_reply.bulk_reply->reply_http_url[1]->header->action =
         GATEKEEPER__SOUTHBOUND__V1__GATEKEEPER_ACTION__GATEKEEPER_ACTION_BLOCK;
     gk_pb_reply.bulk_reply->reply_http_url[1]->header->category_id = 456;
     gk_pb_reply.bulk_reply->reply_http_url[1]->header->confidence_level = 95;
     gk_pb_reply.bulk_reply->reply_http_url[1]->header->ttl = 7200;
     gk_pb_reply.bulk_reply->reply_http_url[1]->header->policy = STRDUP("block_policy");
-    
+
     memcpy(device_id_data, g_test_mac2.addr, sizeof(g_test_mac2.addr));
-    gk_pb_reply.bulk_reply->reply_http_url[1]->header->device_id = 
+    gk_pb_reply.bulk_reply->reply_http_url[1]->header->device_id =
         create_protobuf_c_binary_data(device_id_data, sizeof(device_id_data));
-    
+
     /* Set up the reply to parse with FSM_BULK_REQ type */
     reply.type = FSM_BULK_REQ;
-    
+
     /* Parse the reply */
     bool result = gk_parse_reply(&reply, &gk_pb_reply);
     TEST_ASSERT_TRUE(result);
-    
+
     /* Validate the parse results */
     struct gk_bulk_reply *bulk_reply = &reply.data_reply.bulk_reply;
     TEST_ASSERT_EQUAL_INT(2, bulk_reply->n_devices);
-    
+
     /* Validate first URL entry */
     TEST_ASSERT_NOT_NULL(bulk_reply->devices[0]);
     TEST_ASSERT_EQUAL_INT(GK_ENTRY_TYPE_URL, bulk_reply->devices[0]->type);
     TEST_ASSERT_EQUAL_STRING(url1, bulk_reply->devices[0]->url);
     TEST_ASSERT_EQUAL_INT(FSM_ALLOW, bulk_reply->devices[0]->header->action);
     TEST_ASSERT_EQUAL_INT(123, bulk_reply->devices[0]->header->category_id);
-    
+
     /* Validate second URL entry */
     TEST_ASSERT_NOT_NULL(bulk_reply->devices[1]);
     TEST_ASSERT_EQUAL_INT(GK_ENTRY_TYPE_URL, bulk_reply->devices[1]->type);
     TEST_ASSERT_EQUAL_STRING(url2, bulk_reply->devices[1]->url);
     TEST_ASSERT_EQUAL_INT(FSM_BLOCK, bulk_reply->devices[1]->header->action);
     TEST_ASSERT_EQUAL_INT(456, bulk_reply->devices[1]->header->category_id);
-    
+
     /* Clean up */
     gk_clear_bulk_responses(&reply);
-    
+
     /* Clean up protobuf structures */
     FREE(gk_pb_reply.bulk_reply->reply_http_url[0]->header->device_id.data);
     FREE(gk_pb_reply.bulk_reply->reply_http_url[0]->header->policy);
     FREE(gk_pb_reply.bulk_reply->reply_http_url[0]->header);
     FREE(gk_pb_reply.bulk_reply->reply_http_url[0]->http_url);
     FREE(gk_pb_reply.bulk_reply->reply_http_url[0]);
-    
+
     FREE(gk_pb_reply.bulk_reply->reply_http_url[1]->header->device_id.data);
     FREE(gk_pb_reply.bulk_reply->reply_http_url[1]->header->policy);
     FREE(gk_pb_reply.bulk_reply->reply_http_url[1]->header);
     FREE(gk_pb_reply.bulk_reply->reply_http_url[1]->http_url);
     FREE(gk_pb_reply.bulk_reply->reply_http_url[1]);
-    
+
     FREE(gk_pb_reply.bulk_reply->reply_http_url);
     FREE(gk_pb_reply.bulk_reply);
 }
 
 /**
  * @brief Test populating and parsing HTTPS SNI entries in a bulk reply
- * 
- * This test validates that HTTPS SNI entries can be correctly populated 
+ *
+ * This test validates that HTTPS SNI entries can be correctly populated
  * in a bulk reply and then parsed by gk_parse_reply.
  */
 void test_populate_sni_bulk_reply(void)
@@ -986,91 +986,91 @@ void test_populate_sni_bulk_reply(void)
     uint8_t device_id_data[6];
     char *sni1 = "example.com";
     char *sni2 = "secure.test.org";
-    
+
     /* Initialize the reply structure */
     memset(&gk_pb_reply, 0, sizeof(gk_pb_reply));
-    
+
     /* Create bulk reply structure */
     gk_pb_reply.bulk_reply = CALLOC(1, sizeof(Gatekeeper__Southbound__V1__GatekeeperBulkReply));
     TEST_ASSERT_NOT_NULL(gk_pb_reply.bulk_reply);
-    
+
     /* Prepare the HTTPS SNI entries */
     gk_pb_reply.bulk_reply->n_reply_https_sni = 2;
-    gk_pb_reply.bulk_reply->reply_https_sni = 
-        CALLOC(gk_pb_reply.bulk_reply->n_reply_https_sni, 
+    gk_pb_reply.bulk_reply->reply_https_sni =
+        CALLOC(gk_pb_reply.bulk_reply->n_reply_https_sni,
                sizeof(Gatekeeper__Southbound__V1__GatekeeperHttpsSniReply *));
     TEST_ASSERT_NOT_NULL(gk_pb_reply.bulk_reply->reply_https_sni);
-    
+
     /* Create first SNI entry */
-    gk_pb_reply.bulk_reply->reply_https_sni[0] = 
+    gk_pb_reply.bulk_reply->reply_https_sni[0] =
         CALLOC(1, sizeof(Gatekeeper__Southbound__V1__GatekeeperHttpsSniReply));
     TEST_ASSERT_NOT_NULL(gk_pb_reply.bulk_reply->reply_https_sni[0]);
-    
+
     gk_pb_reply.bulk_reply->reply_https_sni[0]->https_sni = STRDUP(sni1);
-    gk_pb_reply.bulk_reply->reply_https_sni[0]->header = 
+    gk_pb_reply.bulk_reply->reply_https_sni[0]->header =
         CALLOC(1, sizeof(Gatekeeper__Southbound__V1__GatekeeperCommonReply));
     TEST_ASSERT_NOT_NULL(gk_pb_reply.bulk_reply->reply_https_sni[0]->header);
-    
+
     /* Set header fields for first SNI */
-    gk_pb_reply.bulk_reply->reply_https_sni[0]->header->action = 
+    gk_pb_reply.bulk_reply->reply_https_sni[0]->header->action =
         GATEKEEPER__SOUTHBOUND__V1__GATEKEEPER_ACTION__GATEKEEPER_ACTION_ACCEPT;
     gk_pb_reply.bulk_reply->reply_https_sni[0]->header->category_id = 123;
     gk_pb_reply.bulk_reply->reply_https_sni[0]->header->confidence_level = 90;
     gk_pb_reply.bulk_reply->reply_https_sni[0]->header->ttl = 3600;
     gk_pb_reply.bulk_reply->reply_https_sni[0]->header->flow_marker = 1001;
     gk_pb_reply.bulk_reply->reply_https_sni[0]->header->policy = STRDUP("sni_allow_policy");
-    
+
     memcpy(device_id_data, g_test_mac.addr, sizeof(g_test_mac.addr));
-    gk_pb_reply.bulk_reply->reply_https_sni[0]->header->device_id = 
+    gk_pb_reply.bulk_reply->reply_https_sni[0]->header->device_id =
         create_protobuf_c_binary_data(device_id_data, sizeof(device_id_data));
-    
+
     /* Create second SNI entry */
-    gk_pb_reply.bulk_reply->reply_https_sni[1] = 
+    gk_pb_reply.bulk_reply->reply_https_sni[1] =
         CALLOC(1, sizeof(Gatekeeper__Southbound__V1__GatekeeperHttpsSniReply));
     TEST_ASSERT_NOT_NULL(gk_pb_reply.bulk_reply->reply_https_sni[1]);
-    
+
     gk_pb_reply.bulk_reply->reply_https_sni[1]->https_sni = STRDUP(sni2);
-    gk_pb_reply.bulk_reply->reply_https_sni[1]->header = 
+    gk_pb_reply.bulk_reply->reply_https_sni[1]->header =
         CALLOC(1, sizeof(Gatekeeper__Southbound__V1__GatekeeperCommonReply));
     TEST_ASSERT_NOT_NULL(gk_pb_reply.bulk_reply->reply_https_sni[1]->header);
-    
+
     /* Set header fields for second SNI */
-    gk_pb_reply.bulk_reply->reply_https_sni[1]->header->action = 
+    gk_pb_reply.bulk_reply->reply_https_sni[1]->header->action =
         GATEKEEPER__SOUTHBOUND__V1__GATEKEEPER_ACTION__GATEKEEPER_ACTION_BLOCK;
     gk_pb_reply.bulk_reply->reply_https_sni[1]->header->category_id = 456;
     gk_pb_reply.bulk_reply->reply_https_sni[1]->header->confidence_level = 95;
     gk_pb_reply.bulk_reply->reply_https_sni[1]->header->ttl = 7200;
     gk_pb_reply.bulk_reply->reply_https_sni[1]->header->flow_marker = 1002;
     gk_pb_reply.bulk_reply->reply_https_sni[1]->header->policy = STRDUP("sni_block_policy");
-    
+
     memcpy(device_id_data, g_test_mac2.addr, sizeof(g_test_mac2.addr));
-    gk_pb_reply.bulk_reply->reply_https_sni[1]->header->device_id = 
+    gk_pb_reply.bulk_reply->reply_https_sni[1]->header->device_id =
         create_protobuf_c_binary_data(device_id_data, sizeof(device_id_data));
-    
+
     /* Set up the reply to parse with FSM_BULK_REQ type */
     reply.type = FSM_BULK_REQ;
-    
+
     /* Parse the reply */
     bool result = gk_parse_reply(&reply, &gk_pb_reply);
     TEST_ASSERT_TRUE(result);
-    
+
     /* Validate the parse results */
     struct gk_bulk_reply *bulk_reply = &reply.data_reply.bulk_reply;
     TEST_ASSERT_EQUAL_INT(2, bulk_reply->n_devices);
-    
-    /* Check that entries are created as expected - should be handled using a lookup by type 
+
+    /* Check that entries are created as expected - should be handled using a lookup by type
        since gk_parse_bulk_reply doesn't guarantee any specific order */
     int sni_entries_found = 0;
-    
+
     for (size_t i = 0; i < bulk_reply->n_devices; i++) {
         struct gk_device2app_repl *entry = bulk_reply->devices[i];
         TEST_ASSERT_NOT_NULL(entry);
-        
+
         /* Skip non-SNI entries */
         if (entry->type != GK_ENTRY_TYPE_SNI) continue;
-        
+
         sni_entries_found++;
-        
+
         /* Check if this is the first or second SNI entry based on the name */
         if (strcmp(entry->https_sni, sni1) == 0) {
             TEST_ASSERT_EQUAL_INT(FSM_ALLOW, entry->header->action);
@@ -1089,34 +1089,34 @@ void test_populate_sni_bulk_reply(void)
             TEST_FAIL_MESSAGE("Unexpected SNI name in parsed result");
         }
     }
-    
+
     /* Verify we found both SNI entries */
     TEST_ASSERT_EQUAL_INT(2, sni_entries_found);
-    
+
     /* Clean up */
     gk_clear_bulk_responses(&reply);
-    
+
     /* Clean up protobuf structures */
     FREE(gk_pb_reply.bulk_reply->reply_https_sni[0]->header->device_id.data);
     FREE(gk_pb_reply.bulk_reply->reply_https_sni[0]->header->policy);
     FREE(gk_pb_reply.bulk_reply->reply_https_sni[0]->header);
     FREE(gk_pb_reply.bulk_reply->reply_https_sni[0]->https_sni);
     FREE(gk_pb_reply.bulk_reply->reply_https_sni[0]);
-    
+
     FREE(gk_pb_reply.bulk_reply->reply_https_sni[1]->header->device_id.data);
     FREE(gk_pb_reply.bulk_reply->reply_https_sni[1]->header->policy);
     FREE(gk_pb_reply.bulk_reply->reply_https_sni[1]->header);
     FREE(gk_pb_reply.bulk_reply->reply_https_sni[1]->https_sni);
     FREE(gk_pb_reply.bulk_reply->reply_https_sni[1]);
-    
+
     FREE(gk_pb_reply.bulk_reply->reply_https_sni);
     FREE(gk_pb_reply.bulk_reply);
 }
 
 /**
  * @brief Test populating and parsing HTTP Host entries in a bulk reply
- * 
- * This test validates that HTTP Host entries can be correctly populated 
+ *
+ * This test validates that HTTP Host entries can be correctly populated
  * in a bulk reply and then parsed by gk_parse_reply.
  */
 void test_populate_reply_host_reply(void)
@@ -1126,91 +1126,91 @@ void test_populate_reply_host_reply(void)
     uint8_t device_id_data[6];
     char *host1 = "host1.example.com";
     char *host2 = "host2.test.org";
-    
+
     /* Initialize the reply structure */
     memset(&gk_pb_reply, 0, sizeof(gk_pb_reply));
-    
+
     /* Create bulk reply structure */
     gk_pb_reply.bulk_reply = CALLOC(1, sizeof(Gatekeeper__Southbound__V1__GatekeeperBulkReply));
     TEST_ASSERT_NOT_NULL(gk_pb_reply.bulk_reply);
-    
+
     /* Prepare the HTTP Host entries */
     gk_pb_reply.bulk_reply->n_reply_http_host = 2;
-    gk_pb_reply.bulk_reply->reply_http_host = 
-        CALLOC(gk_pb_reply.bulk_reply->n_reply_http_host, 
+    gk_pb_reply.bulk_reply->reply_http_host =
+        CALLOC(gk_pb_reply.bulk_reply->n_reply_http_host,
                sizeof(Gatekeeper__Southbound__V1__GatekeeperHttpHostReply *));
     TEST_ASSERT_NOT_NULL(gk_pb_reply.bulk_reply->reply_http_host);
-    
+
     /* Create first HTTP Host entry */
-    gk_pb_reply.bulk_reply->reply_http_host[0] = 
+    gk_pb_reply.bulk_reply->reply_http_host[0] =
         CALLOC(1, sizeof(Gatekeeper__Southbound__V1__GatekeeperHttpHostReply));
     TEST_ASSERT_NOT_NULL(gk_pb_reply.bulk_reply->reply_http_host[0]);
-    
+
     gk_pb_reply.bulk_reply->reply_http_host[0]->http_host = STRDUP(host1);
-    gk_pb_reply.bulk_reply->reply_http_host[0]->header = 
+    gk_pb_reply.bulk_reply->reply_http_host[0]->header =
         CALLOC(1, sizeof(Gatekeeper__Southbound__V1__GatekeeperCommonReply));
     TEST_ASSERT_NOT_NULL(gk_pb_reply.bulk_reply->reply_http_host[0]->header);
-    
+
     /* Set header fields for first HTTP Host */
-    gk_pb_reply.bulk_reply->reply_http_host[0]->header->action = 
+    gk_pb_reply.bulk_reply->reply_http_host[0]->header->action =
         GATEKEEPER__SOUTHBOUND__V1__GATEKEEPER_ACTION__GATEKEEPER_ACTION_ACCEPT;
     gk_pb_reply.bulk_reply->reply_http_host[0]->header->category_id = 123;
     gk_pb_reply.bulk_reply->reply_http_host[0]->header->confidence_level = 90;
     gk_pb_reply.bulk_reply->reply_http_host[0]->header->ttl = 3600;
     gk_pb_reply.bulk_reply->reply_http_host[0]->header->flow_marker = 2001;
     gk_pb_reply.bulk_reply->reply_http_host[0]->header->policy = STRDUP("host_allow_policy");
-    
+
     memcpy(device_id_data, g_test_mac.addr, sizeof(g_test_mac.addr));
-    gk_pb_reply.bulk_reply->reply_http_host[0]->header->device_id = 
+    gk_pb_reply.bulk_reply->reply_http_host[0]->header->device_id =
         create_protobuf_c_binary_data(device_id_data, sizeof(device_id_data));
-    
+
     /* Create second HTTP Host entry */
-    gk_pb_reply.bulk_reply->reply_http_host[1] = 
+    gk_pb_reply.bulk_reply->reply_http_host[1] =
         CALLOC(1, sizeof(Gatekeeper__Southbound__V1__GatekeeperHttpHostReply));
     TEST_ASSERT_NOT_NULL(gk_pb_reply.bulk_reply->reply_http_host[1]);
-    
+
     gk_pb_reply.bulk_reply->reply_http_host[1]->http_host = STRDUP(host2);
-    gk_pb_reply.bulk_reply->reply_http_host[1]->header = 
+    gk_pb_reply.bulk_reply->reply_http_host[1]->header =
         CALLOC(1, sizeof(Gatekeeper__Southbound__V1__GatekeeperCommonReply));
     TEST_ASSERT_NOT_NULL(gk_pb_reply.bulk_reply->reply_http_host[1]->header);
-    
+
     /* Set header fields for second HTTP Host */
-    gk_pb_reply.bulk_reply->reply_http_host[1]->header->action = 
+    gk_pb_reply.bulk_reply->reply_http_host[1]->header->action =
         GATEKEEPER__SOUTHBOUND__V1__GATEKEEPER_ACTION__GATEKEEPER_ACTION_BLOCK;
     gk_pb_reply.bulk_reply->reply_http_host[1]->header->category_id = 456;
     gk_pb_reply.bulk_reply->reply_http_host[1]->header->confidence_level = 95;
     gk_pb_reply.bulk_reply->reply_http_host[1]->header->ttl = 7200;
     gk_pb_reply.bulk_reply->reply_http_host[1]->header->flow_marker = 2002;
     gk_pb_reply.bulk_reply->reply_http_host[1]->header->policy = STRDUP("host_block_policy");
-    
+
     memcpy(device_id_data, g_test_mac2.addr, sizeof(g_test_mac2.addr));
-    gk_pb_reply.bulk_reply->reply_http_host[1]->header->device_id = 
+    gk_pb_reply.bulk_reply->reply_http_host[1]->header->device_id =
         create_protobuf_c_binary_data(device_id_data, sizeof(device_id_data));
-    
+
     /* Set up the reply to parse with FSM_BULK_REQ type */
     reply.type = FSM_BULK_REQ;
-    
+
     /* Parse the reply */
     bool result = gk_parse_reply(&reply, &gk_pb_reply);
     TEST_ASSERT_TRUE(result);
-    
+
     /* Validate the parse results */
     struct gk_bulk_reply *bulk_reply = &reply.data_reply.bulk_reply;
     TEST_ASSERT_EQUAL_INT(2, bulk_reply->n_devices);
-    
+
     /* Check that entries are created as expected - should be handled using a lookup by type
        since gk_parse_bulk_reply doesn't guarantee any specific order */
     int host_entries_found = 0;
-    
+
     for (size_t i = 0; i < bulk_reply->n_devices; i++) {
         struct gk_device2app_repl *entry = bulk_reply->devices[i];
         TEST_ASSERT_NOT_NULL(entry);
-        
+
         /* Skip non-HOST entries */
         if (entry->type != GK_ENTRY_TYPE_HOST) continue;
-        
+
         host_entries_found++;
-        
+
         /* Check if this is the first or second HTTP Host entry based on the name */
         if (strcmp(entry->http_host, host1) == 0) {
             TEST_ASSERT_EQUAL_INT(FSM_ALLOW, entry->header->action);
@@ -1229,34 +1229,34 @@ void test_populate_reply_host_reply(void)
             TEST_FAIL_MESSAGE("Unexpected HTTP Host name in parsed result");
         }
     }
-    
+
     /* Verify we found both HTTP Host entries */
     TEST_ASSERT_EQUAL_INT(2, host_entries_found);
-    
+
     /* Clean up */
     gk_clear_bulk_responses(&reply);
-    
+
     /* Clean up protobuf structures */
     FREE(gk_pb_reply.bulk_reply->reply_http_host[0]->header->device_id.data);
     FREE(gk_pb_reply.bulk_reply->reply_http_host[0]->header->policy);
     FREE(gk_pb_reply.bulk_reply->reply_http_host[0]->header);
     FREE(gk_pb_reply.bulk_reply->reply_http_host[0]->http_host);
     FREE(gk_pb_reply.bulk_reply->reply_http_host[0]);
-    
+
     FREE(gk_pb_reply.bulk_reply->reply_http_host[1]->header->device_id.data);
     FREE(gk_pb_reply.bulk_reply->reply_http_host[1]->header->policy);
     FREE(gk_pb_reply.bulk_reply->reply_http_host[1]->header);
     FREE(gk_pb_reply.bulk_reply->reply_http_host[1]->http_host);
     FREE(gk_pb_reply.bulk_reply->reply_http_host[1]);
-    
+
     FREE(gk_pb_reply.bulk_reply->reply_http_host);
     FREE(gk_pb_reply.bulk_reply);
 }
 
 /**
  * @brief Test populating and parsing FQDN entries in a bulk reply
- * 
- * This test validates that FQDN entries can be correctly populated 
+ *
+ * This test validates that FQDN entries can be correctly populated
  * in a bulk reply and then parsed by gk_parse_reply.
  */
 void test_populate_bulk_fqdn_reply(void)
@@ -1266,116 +1266,116 @@ void test_populate_bulk_fqdn_reply(void)
     uint8_t device_id_data[6];
     char *fqdn1 = "example.com";
     char *fqdn2 = "test.org";
-    
+
     /* Initialize the reply structure */
     memset(&gk_pb_reply, 0, sizeof(gk_pb_reply));
-    
+
     /* Create bulk reply structure */
     gk_pb_reply.bulk_reply = CALLOC(1, sizeof(Gatekeeper__Southbound__V1__GatekeeperBulkReply));
     TEST_ASSERT_NOT_NULL(gk_pb_reply.bulk_reply);
-    
+
     /* Prepare the FQDN entries */
     gk_pb_reply.bulk_reply->n_reply_fqdn = 2;
-    gk_pb_reply.bulk_reply->reply_fqdn = 
-        CALLOC(gk_pb_reply.bulk_reply->n_reply_fqdn, 
+    gk_pb_reply.bulk_reply->reply_fqdn =
+        CALLOC(gk_pb_reply.bulk_reply->n_reply_fqdn,
                sizeof(Gatekeeper__Southbound__V1__GatekeeperFqdnReply *));
     TEST_ASSERT_NOT_NULL(gk_pb_reply.bulk_reply->reply_fqdn);
-    
+
     /* Create first FQDN entry */
-    gk_pb_reply.bulk_reply->reply_fqdn[0] = 
+    gk_pb_reply.bulk_reply->reply_fqdn[0] =
         CALLOC(1, sizeof(Gatekeeper__Southbound__V1__GatekeeperFqdnReply));
     TEST_ASSERT_NOT_NULL(gk_pb_reply.bulk_reply->reply_fqdn[0]);
-    
+
     gk_pb_reply.bulk_reply->reply_fqdn[0]->query_name = STRDUP(fqdn1);
-    gk_pb_reply.bulk_reply->reply_fqdn[0]->header = 
+    gk_pb_reply.bulk_reply->reply_fqdn[0]->header =
         CALLOC(1, sizeof(Gatekeeper__Southbound__V1__GatekeeperCommonReply));
     TEST_ASSERT_NOT_NULL(gk_pb_reply.bulk_reply->reply_fqdn[0]->header);
-    
+
     /* Set header fields for first FQDN */
-    gk_pb_reply.bulk_reply->reply_fqdn[0]->header->action = 
+    gk_pb_reply.bulk_reply->reply_fqdn[0]->header->action =
         GATEKEEPER__SOUTHBOUND__V1__GATEKEEPER_ACTION__GATEKEEPER_ACTION_ACCEPT;
     gk_pb_reply.bulk_reply->reply_fqdn[0]->header->category_id = 123;
     gk_pb_reply.bulk_reply->reply_fqdn[0]->header->confidence_level = 90;
     gk_pb_reply.bulk_reply->reply_fqdn[0]->header->ttl = 3600;
     gk_pb_reply.bulk_reply->reply_fqdn[0]->header->flow_marker = 3001;
     gk_pb_reply.bulk_reply->reply_fqdn[0]->header->policy = STRDUP("fqdn_allow_policy");
-    
+
     memcpy(device_id_data, g_test_mac.addr, sizeof(g_test_mac.addr));
-    gk_pb_reply.bulk_reply->reply_fqdn[0]->header->device_id = 
+    gk_pb_reply.bulk_reply->reply_fqdn[0]->header->device_id =
         create_protobuf_c_binary_data(device_id_data, sizeof(device_id_data));
 
     /* Create FQDN redirect for first entry */
-    gk_pb_reply.bulk_reply->reply_fqdn[0]->redirect = 
+    gk_pb_reply.bulk_reply->reply_fqdn[0]->redirect =
         CALLOC(1, sizeof(Gatekeeper__Southbound__V1__GatekeeperFqdnRedirectReply));
     TEST_ASSERT_NOT_NULL(gk_pb_reply.bulk_reply->reply_fqdn[0]->redirect);
-    
+
     gatekeeper__southbound__v1__gatekeeper_fqdn_redirect_reply__init(
         gk_pb_reply.bulk_reply->reply_fqdn[0]->redirect);
-        
+
     gk_pb_reply.bulk_reply->reply_fqdn[0]->redirect->redirect_cname = STRDUP("redirect.example.com");
-    
+
     /* Set redirect IPv4 address */
     struct in_addr ipv4_addr;
     inet_pton(AF_INET, "192.168.1.1", &ipv4_addr);
     gk_pb_reply.bulk_reply->reply_fqdn[0]->redirect->redirect_ipv4 = ipv4_addr.s_addr;
-    
+
     /* Create second FQDN entry */
-    gk_pb_reply.bulk_reply->reply_fqdn[1] = 
+    gk_pb_reply.bulk_reply->reply_fqdn[1] =
         CALLOC(1, sizeof(Gatekeeper__Southbound__V1__GatekeeperFqdnReply));
     TEST_ASSERT_NOT_NULL(gk_pb_reply.bulk_reply->reply_fqdn[1]);
-    
+
     gk_pb_reply.bulk_reply->reply_fqdn[1]->query_name = STRDUP(fqdn2);
-    gk_pb_reply.bulk_reply->reply_fqdn[1]->header = 
+    gk_pb_reply.bulk_reply->reply_fqdn[1]->header =
         CALLOC(1, sizeof(Gatekeeper__Southbound__V1__GatekeeperCommonReply));
     TEST_ASSERT_NOT_NULL(gk_pb_reply.bulk_reply->reply_fqdn[1]->header);
-    
+
     /* Set header fields for second FQDN */
-    gk_pb_reply.bulk_reply->reply_fqdn[1]->header->action = 
+    gk_pb_reply.bulk_reply->reply_fqdn[1]->header->action =
         GATEKEEPER__SOUTHBOUND__V1__GATEKEEPER_ACTION__GATEKEEPER_ACTION_BLOCK;
     gk_pb_reply.bulk_reply->reply_fqdn[1]->header->category_id = 456;
     gk_pb_reply.bulk_reply->reply_fqdn[1]->header->confidence_level = 95;
     gk_pb_reply.bulk_reply->reply_fqdn[1]->header->ttl = 7200;
     gk_pb_reply.bulk_reply->reply_fqdn[1]->header->flow_marker = 3002;
     gk_pb_reply.bulk_reply->reply_fqdn[1]->header->policy = STRDUP("fqdn_block_policy");
-    
+
     memcpy(device_id_data, g_test_mac2.addr, sizeof(g_test_mac2.addr));
-    gk_pb_reply.bulk_reply->reply_fqdn[1]->header->device_id = 
+    gk_pb_reply.bulk_reply->reply_fqdn[1]->header->device_id =
         create_protobuf_c_binary_data(device_id_data, sizeof(device_id_data));
-    
+
     /* Set up the reply to parse with FSM_BULK_REQ type */
     reply.type = FSM_BULK_REQ;
-    
+
     /* Parse the reply */
     bool result = gk_parse_reply(&reply, &gk_pb_reply);
     TEST_ASSERT_TRUE(result);
-    
+
     /* Validate the parse results */
     struct gk_bulk_reply *bulk_reply = &reply.data_reply.bulk_reply;
     TEST_ASSERT_EQUAL_INT(2, bulk_reply->n_devices);
-    
-    /* Check that entries are created as expected - should be handled using a lookup by type 
+
+    /* Check that entries are created as expected - should be handled using a lookup by type
        since gk_parse_bulk_reply doesn't guarantee any specific order */
     int fqdn_entries_found = 0;
-    
+
     for (size_t i = 0; i < bulk_reply->n_devices; i++) {
         struct gk_device2app_repl *entry = bulk_reply->devices[i];
         TEST_ASSERT_NOT_NULL(entry);
-        
+
         /* Skip non-FQDN entries */
         if (entry->type != GK_ENTRY_TYPE_FQDN) continue;
-        
+
         fqdn_entries_found++;
-        
+
         /* Check if this is the first or second FQDN entry based on the name */
         if (strcmp(entry->fqdn, fqdn1) == 0) {
             TEST_ASSERT_EQUAL_INT(FSM_ALLOW, entry->header->action);
             TEST_ASSERT_EQUAL_INT(123, entry->header->category_id);
             // TEST_ASSERT_EQUAL_INT(90, entry->header->confidence_level);
             TEST_ASSERT_EQUAL_INT(3001, entry->header->flow_marker);
-            
+
             /* Check redirect info */
             TEST_ASSERT_NOT_NULL(entry->fqdn_redirect);
-            
+
             /* The A- prefix is added by the parsing function */
             char expected_redirect[256];
             snprintf(expected_redirect, sizeof(expected_redirect), "A-192.168.1.1");
@@ -1392,13 +1392,13 @@ void test_populate_bulk_fqdn_reply(void)
             TEST_FAIL_MESSAGE("Unexpected FQDN name in parsed result");
         }
     }
-    
+
     /* Verify we found both FQDN entries */
     TEST_ASSERT_EQUAL_INT(2, fqdn_entries_found);
-    
+
     /* Clean up */
     gk_clear_bulk_responses(&reply);
-    
+
     /* Clean up protobuf structures */
     FREE(gk_pb_reply.bulk_reply->reply_fqdn[0]->redirect->redirect_cname);
     FREE(gk_pb_reply.bulk_reply->reply_fqdn[0]->redirect);
@@ -1407,21 +1407,21 @@ void test_populate_bulk_fqdn_reply(void)
     FREE(gk_pb_reply.bulk_reply->reply_fqdn[0]->header);
     FREE(gk_pb_reply.bulk_reply->reply_fqdn[0]->query_name);
     FREE(gk_pb_reply.bulk_reply->reply_fqdn[0]);
-    
+
     FREE(gk_pb_reply.bulk_reply->reply_fqdn[1]->header->device_id.data);
     FREE(gk_pb_reply.bulk_reply->reply_fqdn[1]->header->policy);
     FREE(gk_pb_reply.bulk_reply->reply_fqdn[1]->header);
     FREE(gk_pb_reply.bulk_reply->reply_fqdn[1]->query_name);
     FREE(gk_pb_reply.bulk_reply->reply_fqdn[1]);
-    
+
     FREE(gk_pb_reply.bulk_reply->reply_fqdn);
     FREE(gk_pb_reply.bulk_reply);
 }
 
 /**
  * @brief Test populating and parsing IPv4 entries in a bulk reply
- * 
- * This test validates that IPv4 entries can be correctly populated 
+ *
+ * This test validates that IPv4 entries can be correctly populated
  * in a bulk reply and then parsed by gk_parse_reply.
  */
 void test_populate_bulk_ipv4_reply(void)
@@ -1432,104 +1432,104 @@ void test_populate_bulk_ipv4_reply(void)
     struct in_addr ipv4_addr1, ipv4_addr2;
     char ipv4_str1[INET_ADDRSTRLEN];
     char ipv4_str2[INET_ADDRSTRLEN];
-    
+
     /* Initialize the IPv4 addresses */
     inet_pton(AF_INET, "192.168.1.10", &ipv4_addr1);
     inet_pton(AF_INET, "10.0.0.1", &ipv4_addr2);
-    
+
     /* Save string representations for test verification */
     inet_ntop(AF_INET, &ipv4_addr1, ipv4_str1, sizeof(ipv4_str1));
     inet_ntop(AF_INET, &ipv4_addr2, ipv4_str2, sizeof(ipv4_str2));
-    
+
     /* Initialize the reply structure */
     memset(&gk_pb_reply, 0, sizeof(gk_pb_reply));
-    
+
     /* Create bulk reply structure */
     gk_pb_reply.bulk_reply = CALLOC(1, sizeof(Gatekeeper__Southbound__V1__GatekeeperBulkReply));
     TEST_ASSERT_NOT_NULL(gk_pb_reply.bulk_reply);
-    
+
     /* Prepare the IPv4 entries */
     gk_pb_reply.bulk_reply->n_reply_ipv4 = 2;
-    gk_pb_reply.bulk_reply->reply_ipv4 = 
-        CALLOC(gk_pb_reply.bulk_reply->n_reply_ipv4, 
+    gk_pb_reply.bulk_reply->reply_ipv4 =
+        CALLOC(gk_pb_reply.bulk_reply->n_reply_ipv4,
                sizeof(Gatekeeper__Southbound__V1__GatekeeperIpv4Reply *));
     TEST_ASSERT_NOT_NULL(gk_pb_reply.bulk_reply->reply_ipv4);
-    
+
     /* Create first IPv4 entry */
-    gk_pb_reply.bulk_reply->reply_ipv4[0] = 
+    gk_pb_reply.bulk_reply->reply_ipv4[0] =
         CALLOC(1, sizeof(Gatekeeper__Southbound__V1__GatekeeperIpv4Reply));
     TEST_ASSERT_NOT_NULL(gk_pb_reply.bulk_reply->reply_ipv4[0]);
-    
+
     gk_pb_reply.bulk_reply->reply_ipv4[0]->addr_ipv4 = ipv4_addr1.s_addr;
-    gk_pb_reply.bulk_reply->reply_ipv4[0]->header = 
+    gk_pb_reply.bulk_reply->reply_ipv4[0]->header =
         CALLOC(1, sizeof(Gatekeeper__Southbound__V1__GatekeeperCommonReply));
     TEST_ASSERT_NOT_NULL(gk_pb_reply.bulk_reply->reply_ipv4[0]->header);
-    
+
     /* Set header fields for first IPv4 */
-    gk_pb_reply.bulk_reply->reply_ipv4[0]->header->action = 
+    gk_pb_reply.bulk_reply->reply_ipv4[0]->header->action =
         GATEKEEPER__SOUTHBOUND__V1__GATEKEEPER_ACTION__GATEKEEPER_ACTION_ACCEPT;
     gk_pb_reply.bulk_reply->reply_ipv4[0]->header->category_id = 111;
     gk_pb_reply.bulk_reply->reply_ipv4[0]->header->confidence_level = 85;
     gk_pb_reply.bulk_reply->reply_ipv4[0]->header->ttl = 1800;
     gk_pb_reply.bulk_reply->reply_ipv4[0]->header->flow_marker = 4001;
     gk_pb_reply.bulk_reply->reply_ipv4[0]->header->policy = STRDUP("ipv4_allow_policy");
-    
+
     memcpy(device_id_data, g_test_mac.addr, sizeof(g_test_mac.addr));
-    gk_pb_reply.bulk_reply->reply_ipv4[0]->header->device_id = 
+    gk_pb_reply.bulk_reply->reply_ipv4[0]->header->device_id =
         create_protobuf_c_binary_data(device_id_data, sizeof(device_id_data));
-    
+
     /* Create second IPv4 entry */
-    gk_pb_reply.bulk_reply->reply_ipv4[1] = 
+    gk_pb_reply.bulk_reply->reply_ipv4[1] =
         CALLOC(1, sizeof(Gatekeeper__Southbound__V1__GatekeeperIpv4Reply));
     TEST_ASSERT_NOT_NULL(gk_pb_reply.bulk_reply->reply_ipv4[1]);
-    
+
     gk_pb_reply.bulk_reply->reply_ipv4[1]->addr_ipv4 = ipv4_addr2.s_addr;
-    gk_pb_reply.bulk_reply->reply_ipv4[1]->header = 
+    gk_pb_reply.bulk_reply->reply_ipv4[1]->header =
         CALLOC(1, sizeof(Gatekeeper__Southbound__V1__GatekeeperCommonReply));
     TEST_ASSERT_NOT_NULL(gk_pb_reply.bulk_reply->reply_ipv4[1]->header);
-    
+
     /* Set header fields for second IPv4 */
-    gk_pb_reply.bulk_reply->reply_ipv4[1]->header->action = 
+    gk_pb_reply.bulk_reply->reply_ipv4[1]->header->action =
         GATEKEEPER__SOUTHBOUND__V1__GATEKEEPER_ACTION__GATEKEEPER_ACTION_BLOCK;
     gk_pb_reply.bulk_reply->reply_ipv4[1]->header->category_id = 222;
     gk_pb_reply.bulk_reply->reply_ipv4[1]->header->confidence_level = 98;
     gk_pb_reply.bulk_reply->reply_ipv4[1]->header->ttl = 3600;
     gk_pb_reply.bulk_reply->reply_ipv4[1]->header->flow_marker = 4002;
     gk_pb_reply.bulk_reply->reply_ipv4[1]->header->policy = STRDUP("ipv4_block_policy");
-    
+
     memcpy(device_id_data, g_test_mac2.addr, sizeof(g_test_mac2.addr));
-    gk_pb_reply.bulk_reply->reply_ipv4[1]->header->device_id = 
+    gk_pb_reply.bulk_reply->reply_ipv4[1]->header->device_id =
         create_protobuf_c_binary_data(device_id_data, sizeof(device_id_data));
-    
+
     /* Set up the reply to parse with FSM_BULK_REQ type */
     reply.type = FSM_BULK_REQ;
-    
+
     /* Parse the reply */
     bool result = gk_parse_reply(&reply, &gk_pb_reply);
     TEST_ASSERT_TRUE(result);
-    
+
     /* Validate the parse results */
     struct gk_bulk_reply *bulk_reply = &reply.data_reply.bulk_reply;
     TEST_ASSERT_EQUAL_INT(2, bulk_reply->n_devices);
-    
+
     /* Check that entries are created as expected */
     int ipv4_entries_found = 0;
-    
+
     for (size_t i = 0; i < bulk_reply->n_devices; i++) {
         struct gk_device2app_repl *entry = bulk_reply->devices[i];
         TEST_ASSERT_NOT_NULL(entry);
-        
+
         /* Skip non-IPv4 entries */
         if (entry->type != GK_ENTRY_TYPE_IPV4) continue;
-        
+
         ipv4_entries_found++;
-        
+
         /* Check IPv4 address and other fields */
         struct in_addr addr;
         addr.s_addr = entry->ipv4_addr;
         char curr_addr[INET_ADDRSTRLEN];
         inet_ntop(AF_INET, &addr, curr_addr, sizeof(curr_addr));
-        
+
         if (addr.s_addr == ipv4_addr1.s_addr) {
             TEST_ASSERT_EQUAL_STRING(ipv4_str1, curr_addr);
             TEST_ASSERT_EQUAL_INT(FSM_ALLOW, entry->header->action);
@@ -1549,32 +1549,32 @@ void test_populate_bulk_ipv4_reply(void)
             TEST_FAIL_MESSAGE("Unexpected IPv4 address in parsed result");
         }
     }
-    
+
     /* Verify we found both IPv4 entries */
     TEST_ASSERT_EQUAL_INT(2, ipv4_entries_found);
-    
+
     /* Clean up */
     gk_clear_bulk_responses(&reply);
-    
+
     /* Clean up protobuf structures */
     FREE(gk_pb_reply.bulk_reply->reply_ipv4[0]->header->device_id.data);
     FREE(gk_pb_reply.bulk_reply->reply_ipv4[0]->header->policy);
     FREE(gk_pb_reply.bulk_reply->reply_ipv4[0]->header);
     FREE(gk_pb_reply.bulk_reply->reply_ipv4[0]);
-    
+
     FREE(gk_pb_reply.bulk_reply->reply_ipv4[1]->header->device_id.data);
     FREE(gk_pb_reply.bulk_reply->reply_ipv4[1]->header->policy);
     FREE(gk_pb_reply.bulk_reply->reply_ipv4[1]->header);
     FREE(gk_pb_reply.bulk_reply->reply_ipv4[1]);
-    
+
     FREE(gk_pb_reply.bulk_reply->reply_ipv4);
     FREE(gk_pb_reply.bulk_reply);
 }
 
 /**
  * @brief Test populating and parsing IPv6 entries in a bulk reply
- * 
- * This test validates that IPv6 entries can be correctly populated 
+ *
+ * This test validates that IPv6 entries can be correctly populated
  * in a bulk reply and then parsed by gk_parse_reply.
  */
 void test_populate_bulk_ipv6_reply(void)
@@ -1585,114 +1585,114 @@ void test_populate_bulk_ipv6_reply(void)
     struct in6_addr ipv6_addr1, ipv6_addr2;
     char ipv6_str1[INET6_ADDRSTRLEN];
     char ipv6_str2[INET6_ADDRSTRLEN];
-    
+
     /* Initialize the IPv6 addresses */
     inet_pton(AF_INET6, "2001:db8::1", &ipv6_addr1);
     inet_pton(AF_INET6, "fe80::1234:5678:9abc:def0", &ipv6_addr2);
-    
+
     /* Save string representations for test verification */
     inet_ntop(AF_INET6, &ipv6_addr1, ipv6_str1, sizeof(ipv6_str1));
     inet_ntop(AF_INET6, &ipv6_addr2, ipv6_str2, sizeof(ipv6_str2));
-    
+
     /* Initialize the reply structure */
     memset(&gk_pb_reply, 0, sizeof(gk_pb_reply));
-    
+
     /* Create bulk reply structure */
     gk_pb_reply.bulk_reply = CALLOC(1, sizeof(Gatekeeper__Southbound__V1__GatekeeperBulkReply));
     TEST_ASSERT_NOT_NULL(gk_pb_reply.bulk_reply);
-    
+
     /* Prepare the IPv6 entries */
     gk_pb_reply.bulk_reply->n_reply_ipv6 = 2;
-    gk_pb_reply.bulk_reply->reply_ipv6 = 
-        CALLOC(gk_pb_reply.bulk_reply->n_reply_ipv6, 
+    gk_pb_reply.bulk_reply->reply_ipv6 =
+        CALLOC(gk_pb_reply.bulk_reply->n_reply_ipv6,
                sizeof(Gatekeeper__Southbound__V1__GatekeeperIpv6Reply *));
     TEST_ASSERT_NOT_NULL(gk_pb_reply.bulk_reply->reply_ipv6);
-    
+
     /* Create first IPv6 entry */
-    gk_pb_reply.bulk_reply->reply_ipv6[0] = 
+    gk_pb_reply.bulk_reply->reply_ipv6[0] =
         CALLOC(1, sizeof(Gatekeeper__Southbound__V1__GatekeeperIpv6Reply));
     TEST_ASSERT_NOT_NULL(gk_pb_reply.bulk_reply->reply_ipv6[0]);
-    
+
     /* Set IPv6 address data */
     gk_pb_reply.bulk_reply->reply_ipv6[0]->addr_ipv6.len = sizeof(ipv6_addr1);
     gk_pb_reply.bulk_reply->reply_ipv6[0]->addr_ipv6.data = MALLOC(sizeof(ipv6_addr1));
     memcpy(gk_pb_reply.bulk_reply->reply_ipv6[0]->addr_ipv6.data, &ipv6_addr1, sizeof(ipv6_addr1));
-    
+
     /* Create and set header fields for first IPv6 */
-    gk_pb_reply.bulk_reply->reply_ipv6[0]->header = 
+    gk_pb_reply.bulk_reply->reply_ipv6[0]->header =
         CALLOC(1, sizeof(Gatekeeper__Southbound__V1__GatekeeperCommonReply));
     TEST_ASSERT_NOT_NULL(gk_pb_reply.bulk_reply->reply_ipv6[0]->header);
-    
-    gk_pb_reply.bulk_reply->reply_ipv6[0]->header->action = 
+
+    gk_pb_reply.bulk_reply->reply_ipv6[0]->header->action =
         GATEKEEPER__SOUTHBOUND__V1__GATEKEEPER_ACTION__GATEKEEPER_ACTION_ACCEPT;
     gk_pb_reply.bulk_reply->reply_ipv6[0]->header->category_id = 11;
     gk_pb_reply.bulk_reply->reply_ipv6[0]->header->confidence_level = 75;
     gk_pb_reply.bulk_reply->reply_ipv6[0]->header->ttl = 1800;
     gk_pb_reply.bulk_reply->reply_ipv6[0]->header->flow_marker = 5001;
     gk_pb_reply.bulk_reply->reply_ipv6[0]->header->policy = STRDUP("ipv6_allow_policy");
-    
+
     memcpy(device_id_data, g_test_mac.addr, sizeof(g_test_mac.addr));
-    gk_pb_reply.bulk_reply->reply_ipv6[0]->header->device_id = 
+    gk_pb_reply.bulk_reply->reply_ipv6[0]->header->device_id =
         create_protobuf_c_binary_data(device_id_data, sizeof(device_id_data));
-    
+
     /* Create second IPv6 entry */
-    gk_pb_reply.bulk_reply->reply_ipv6[1] = 
+    gk_pb_reply.bulk_reply->reply_ipv6[1] =
         CALLOC(1, sizeof(Gatekeeper__Southbound__V1__GatekeeperIpv6Reply));
     TEST_ASSERT_NOT_NULL(gk_pb_reply.bulk_reply->reply_ipv6[1]);
-    
+
     /* Set IPv6 address data */
     gk_pb_reply.bulk_reply->reply_ipv6[1]->addr_ipv6.len = sizeof(ipv6_addr2);
     gk_pb_reply.bulk_reply->reply_ipv6[1]->addr_ipv6.data = MALLOC(sizeof(ipv6_addr2));
     memcpy(gk_pb_reply.bulk_reply->reply_ipv6[1]->addr_ipv6.data, &ipv6_addr2, sizeof(ipv6_addr2));
-    
+
     /* Create and set header fields for second IPv6 */
-    gk_pb_reply.bulk_reply->reply_ipv6[1]->header = 
+    gk_pb_reply.bulk_reply->reply_ipv6[1]->header =
         CALLOC(1, sizeof(Gatekeeper__Southbound__V1__GatekeeperCommonReply));
     TEST_ASSERT_NOT_NULL(gk_pb_reply.bulk_reply->reply_ipv6[1]->header);
-    
-    gk_pb_reply.bulk_reply->reply_ipv6[1]->header->action = 
+
+    gk_pb_reply.bulk_reply->reply_ipv6[1]->header->action =
         GATEKEEPER__SOUTHBOUND__V1__GATEKEEPER_ACTION__GATEKEEPER_ACTION_BLOCK;
     gk_pb_reply.bulk_reply->reply_ipv6[1]->header->category_id = 22;
     gk_pb_reply.bulk_reply->reply_ipv6[1]->header->confidence_level = 88;
     gk_pb_reply.bulk_reply->reply_ipv6[1]->header->ttl = 3600;
     gk_pb_reply.bulk_reply->reply_ipv6[1]->header->flow_marker = 5002;
     gk_pb_reply.bulk_reply->reply_ipv6[1]->header->policy = STRDUP("ipv6_block_policy");
-    
+
     memcpy(device_id_data, g_test_mac2.addr, sizeof(g_test_mac2.addr));
-    gk_pb_reply.bulk_reply->reply_ipv6[1]->header->device_id = 
+    gk_pb_reply.bulk_reply->reply_ipv6[1]->header->device_id =
         create_protobuf_c_binary_data(device_id_data, sizeof(device_id_data));
-    
+
     /* Set up the reply to parse with FSM_BULK_REQ type */
     reply.type = FSM_BULK_REQ;
-    
+
     /* Parse the reply */
     bool result = gk_parse_reply(&reply, &gk_pb_reply);
     TEST_ASSERT_TRUE(result);
-    
+
     /* Validate the parse results */
     struct gk_bulk_reply *bulk_reply = &reply.data_reply.bulk_reply;
     TEST_ASSERT_EQUAL_INT(2, bulk_reply->n_devices);
-    
+
     /* Check that entries are created as expected */
     int ipv6_entries_found = 0;
-    
+
     for (size_t i = 0; i < bulk_reply->n_devices; i++) {
         struct gk_device2app_repl *entry = bulk_reply->devices[i];
         TEST_ASSERT_NOT_NULL(entry);
-        
+
         /* Skip non-IPv6 entries */
         if (entry->type != GK_ENTRY_TYPE_IPV6) continue;
-        
+
         ipv6_entries_found++;
-        
+
         /* Check that IPv6 data exists */
         TEST_ASSERT_NOT_NULL(entry->ipv6_addr.data);
         TEST_ASSERT_EQUAL_INT(sizeof(struct in6_addr), entry->ipv6_addr.len);
-        
+
         /* Convert entry IPv6 to string for comparison */
         char curr_addr[INET6_ADDRSTRLEN];
         inet_ntop(AF_INET6, entry->ipv6_addr.data, curr_addr, sizeof(curr_addr));
-        
+
         /* Check which IPv6 entry this is */
         if (strcmp(curr_addr, ipv6_str1) == 0) {
             TEST_ASSERT_EQUAL_INT(FSM_ALLOW, entry->header->action);
@@ -1711,26 +1711,26 @@ void test_populate_bulk_ipv6_reply(void)
             TEST_FAIL_MESSAGE("Unexpected IPv6 address in parsed result");
         }
     }
-    
+
     /* Verify we found both IPv6 entries */
     TEST_ASSERT_EQUAL_INT(2, ipv6_entries_found);
-    
+
     /* Clean up */
     gk_clear_bulk_responses(&reply);
-    
+
     /* Clean up protobuf structures */
     FREE(gk_pb_reply.bulk_reply->reply_ipv6[0]->addr_ipv6.data);
     FREE(gk_pb_reply.bulk_reply->reply_ipv6[0]->header->device_id.data);
     FREE(gk_pb_reply.bulk_reply->reply_ipv6[0]->header->policy);
     FREE(gk_pb_reply.bulk_reply->reply_ipv6[0]->header);
     FREE(gk_pb_reply.bulk_reply->reply_ipv6[0]);
-    
+
     FREE(gk_pb_reply.bulk_reply->reply_ipv6[1]->addr_ipv6.data);
     FREE(gk_pb_reply.bulk_reply->reply_ipv6[1]->header->device_id.data);
     FREE(gk_pb_reply.bulk_reply->reply_ipv6[1]->header->policy);
     FREE(gk_pb_reply.bulk_reply->reply_ipv6[1]->header);
     FREE(gk_pb_reply.bulk_reply->reply_ipv6[1]);
-    
+
     FREE(gk_pb_reply.bulk_reply->reply_ipv6);
     FREE(gk_pb_reply.bulk_reply);
 }
@@ -1743,25 +1743,25 @@ test_populate_bulk_app_reply(void)
     Gatekeeper__Southbound__V1__GatekeeperReply gk_pb_reply = GATEKEEPER__SOUTHBOUND__V1__GATEKEEPER_REPLY__INIT;
     uint8_t device_id_data[6];
     bool result;
-    
+
     /* Initialize the reply structure */
     memset(&reply, 0, sizeof(reply));
-    
+
     /* Create the bulk reply */
     gk_pb_reply.bulk_reply = CALLOC(1, sizeof(Gatekeeper__Southbound__V1__GatekeeperBulkReply));
     TEST_ASSERT_NOT_NULL(gk_pb_reply.bulk_reply);
-    
+
     /* Set up empty arrays */
     gk_pb_reply.bulk_reply->n_reply_app = 2;
-    gk_pb_reply.bulk_reply->reply_app = CALLOC(gk_pb_reply.bulk_reply->n_reply_app, 
+    gk_pb_reply.bulk_reply->reply_app = CALLOC(gk_pb_reply.bulk_reply->n_reply_app,
                                               sizeof(Gatekeeper__Southbound__V1__GatekeeperAppReply *));
     TEST_ASSERT_NOT_NULL(gk_pb_reply.bulk_reply->reply_app);
-    
+
     /* Create first App entry */
-    gk_pb_reply.bulk_reply->reply_app[0] = 
+    gk_pb_reply.bulk_reply->reply_app[0] =
         CALLOC(1, sizeof(Gatekeeper__Southbound__V1__GatekeeperAppReply));
     TEST_ASSERT_NOT_NULL(gk_pb_reply.bulk_reply->reply_app[0]);
-    
+
     /* Set App name data */
     gk_pb_reply.bulk_reply->reply_app[0]->app_name = STRDUP("Facebook");
 
@@ -1769,7 +1769,7 @@ test_populate_bulk_app_reply(void)
     gk_pb_reply.bulk_reply->reply_app[0]->header =
         CALLOC(1, sizeof(Gatekeeper__Southbound__V1__GatekeeperCommonReply));
     TEST_ASSERT_NOT_NULL(gk_pb_reply.bulk_reply->reply_app[0]->header);
-    
+
     gk_pb_reply.bulk_reply->reply_app[0]->header->action =
     GATEKEEPER__SOUTHBOUND__V1__GATEKEEPER_ACTION__GATEKEEPER_ACTION_ACCEPT;
     gk_pb_reply.bulk_reply->reply_app[0]->header->category_id = 10;
@@ -1777,62 +1777,62 @@ test_populate_bulk_app_reply(void)
     gk_pb_reply.bulk_reply->reply_app[0]->header->ttl = 3600;
     gk_pb_reply.bulk_reply->reply_app[0]->header->flow_marker = 7001;
     gk_pb_reply.bulk_reply->reply_app[0]->header->policy = STRDUP("app_allow_policy");
-    
+
     memcpy(device_id_data, g_test_mac.addr, sizeof(g_test_mac.addr));
-    gk_pb_reply.bulk_reply->reply_app[0]->header->device_id = 
+    gk_pb_reply.bulk_reply->reply_app[0]->header->device_id =
         create_protobuf_c_binary_data(device_id_data, sizeof(device_id_data));
-    
+
     /* Create second App entry */
-    gk_pb_reply.bulk_reply->reply_app[1] = 
+    gk_pb_reply.bulk_reply->reply_app[1] =
         CALLOC(1, sizeof(Gatekeeper__Southbound__V1__GatekeeperAppReply));
     TEST_ASSERT_NOT_NULL(gk_pb_reply.bulk_reply->reply_app[1]);
-    
+
     /* Set App name data */
     gk_pb_reply.bulk_reply->reply_app[1]->app_name = STRDUP("YouTube");
-    
+
     /* Create and set header fields for second App */
-    gk_pb_reply.bulk_reply->reply_app[1]->header = 
+    gk_pb_reply.bulk_reply->reply_app[1]->header =
         CALLOC(1, sizeof(Gatekeeper__Southbound__V1__GatekeeperCommonReply));
     TEST_ASSERT_NOT_NULL(gk_pb_reply.bulk_reply->reply_app[1]->header);
-    
-    gk_pb_reply.bulk_reply->reply_app[1]->header->action = 
+
+    gk_pb_reply.bulk_reply->reply_app[1]->header->action =
         GATEKEEPER__SOUTHBOUND__V1__GATEKEEPER_ACTION__GATEKEEPER_ACTION_BLOCK;
     gk_pb_reply.bulk_reply->reply_app[1]->header->category_id = 20;
     gk_pb_reply.bulk_reply->reply_app[1]->header->confidence_level = 85;
     gk_pb_reply.bulk_reply->reply_app[1]->header->ttl = 7200;
     gk_pb_reply.bulk_reply->reply_app[1]->header->flow_marker = 7002;
     gk_pb_reply.bulk_reply->reply_app[1]->header->policy = STRDUP("app_block_policy");
-    
+
     memcpy(device_id_data, g_test_mac2.addr, sizeof(g_test_mac2.addr));
-    gk_pb_reply.bulk_reply->reply_app[1]->header->device_id = 
+    gk_pb_reply.bulk_reply->reply_app[1]->header->device_id =
         create_protobuf_c_binary_data(device_id_data, sizeof(device_id_data));
-    
+
     /* Set up the reply to parse with FSM_BULK_REQ type */
     reply.type = FSM_BULK_REQ;
-    
+
     /* Parse the reply */
     result = gk_parse_reply(&reply, &gk_pb_reply);
     TEST_ASSERT_TRUE(result);
-    
+
     /* Validate the parse results */
     struct gk_bulk_reply *bulk_reply = &reply.data_reply.bulk_reply;
     TEST_ASSERT_EQUAL_INT(2, bulk_reply->n_devices);
-    
+
     /* Check that entries are created as expected */
     int app_entries_found = 0;
-    
+
     for (size_t i = 0; i < bulk_reply->n_devices; i++) {
         struct gk_device2app_repl *entry = bulk_reply->devices[i];
         TEST_ASSERT_NOT_NULL(entry);
-        
+
         /* Skip non-App entries */
         if (entry->type != GK_ENTRY_TYPE_APP) continue;
-        
+
         app_entries_found++;
-        
+
         /* Check that App name exists */
         TEST_ASSERT_NOT_NULL(entry->app_name);
-        
+
         /* Check which App entry this is */
         if (strcmp(entry->app_name, "Facebook") == 0) {
             TEST_ASSERT_EQUAL_INT(FSM_ALLOW, entry->header->action);
@@ -1857,26 +1857,26 @@ test_populate_bulk_app_reply(void)
             TEST_FAIL_MESSAGE("Unexpected app name in parsed result");
         }
     }
-    
+
     /* Verify we found both App entries */
     TEST_ASSERT_EQUAL_INT(2, app_entries_found);
-    
+
     /* Clean up */
     gk_clear_bulk_responses(&reply);
-    
+
     /* Clean up protobuf structures */
     FREE(gk_pb_reply.bulk_reply->reply_app[0]->app_name);
     FREE(gk_pb_reply.bulk_reply->reply_app[0]->header->device_id.data);
     FREE(gk_pb_reply.bulk_reply->reply_app[0]->header->policy);
     FREE(gk_pb_reply.bulk_reply->reply_app[0]->header);
     FREE(gk_pb_reply.bulk_reply->reply_app[0]);
-    
+
     FREE(gk_pb_reply.bulk_reply->reply_app[1]->app_name);
     FREE(gk_pb_reply.bulk_reply->reply_app[1]->header->device_id.data);
     FREE(gk_pb_reply.bulk_reply->reply_app[1]->header->policy);
     FREE(gk_pb_reply.bulk_reply->reply_app[1]->header);
     FREE(gk_pb_reply.bulk_reply->reply_app[1]);
-    
+
     FREE(gk_pb_reply.bulk_reply->reply_app);
     FREE(gk_pb_reply.bulk_reply);
 }
@@ -1906,7 +1906,7 @@ test_populate_empty_bulk_reply(void)
 
     /* Set up the reply to parse with FSM_BULK_REQ type */
     reply.type = FSM_BULK_REQ;
-    
+
     /* Parse the reply */
     result = gk_parse_reply(&reply, &gk_pb_reply);
     TEST_ASSERT_TRUE(result);
@@ -1954,10 +1954,10 @@ test_populate_mixed_bulk_reply(void)
     uint8_t device_id_data[6];
     uint32_t ipv4_addr = 0x01020304; /* 1.2.3.4 */
     bool result;
-    
+
     /* Initialize the reply structure */
     memset(&reply, 0, sizeof(reply));
-    
+
     /* Create the bulk reply */
     gk_pb_reply.bulk_reply = CALLOC(1, sizeof(Gatekeeper__Southbound__V1__GatekeeperBulkReply));
     TEST_ASSERT_NOT_NULL(gk_pb_reply.bulk_reply);
@@ -1966,12 +1966,12 @@ test_populate_mixed_bulk_reply(void)
     gk_pb_reply.bulk_reply->n_reply_http_url = 1;
     gk_pb_reply.bulk_reply->reply_http_url = CALLOC(1, sizeof(Gatekeeper__Southbound__V1__GatekeeperHttpUrlReply *));
     TEST_ASSERT_NOT_NULL(gk_pb_reply.bulk_reply->reply_http_url);
-    
+
     gk_pb_reply.bulk_reply->reply_http_url[0] = CALLOC(1, sizeof(Gatekeeper__Southbound__V1__GatekeeperHttpUrlReply));
     TEST_ASSERT_NOT_NULL(gk_pb_reply.bulk_reply->reply_http_url[0]);
-    
+
     gk_pb_reply.bulk_reply->reply_http_url[0]->http_url = STRDUP("https://www.example.com/page");
-    
+
     gk_pb_reply.bulk_reply->reply_http_url[0]->header =
         CALLOC(1, sizeof(Gatekeeper__Southbound__V1__GatekeeperCommonReply));
     TEST_ASSERT_NOT_NULL(gk_pb_reply.bulk_reply->reply_http_url[0]->header);
@@ -1983,83 +1983,83 @@ test_populate_mixed_bulk_reply(void)
     gk_pb_reply.bulk_reply->reply_http_url[0]->header->ttl = 3600;
     gk_pb_reply.bulk_reply->reply_http_url[0]->header->flow_marker = 8001;
     gk_pb_reply.bulk_reply->reply_http_url[0]->header->policy = STRDUP("url_policy");
-    
+
     memcpy(device_id_data, g_test_mac.addr, sizeof(g_test_mac.addr));
     gk_pb_reply.bulk_reply->reply_http_url[0]->header->device_id =
         create_protobuf_c_binary_data(device_id_data, sizeof(device_id_data));
-    
+
     /* Create one App entry */
     gk_pb_reply.bulk_reply->n_reply_app = 1;
     gk_pb_reply.bulk_reply->reply_app = CALLOC(1, sizeof(Gatekeeper__Southbound__V1__GatekeeperAppReply *));
     TEST_ASSERT_NOT_NULL(gk_pb_reply.bulk_reply->reply_app);
-    
+
     gk_pb_reply.bulk_reply->reply_app[0] = CALLOC(1, sizeof(Gatekeeper__Southbound__V1__GatekeeperAppReply));
     TEST_ASSERT_NOT_NULL(gk_pb_reply.bulk_reply->reply_app[0]);
-    
+
     gk_pb_reply.bulk_reply->reply_app[0]->app_name = STRDUP("Twitter");
-    
-    gk_pb_reply.bulk_reply->reply_app[0]->header = 
+
+    gk_pb_reply.bulk_reply->reply_app[0]->header =
         CALLOC(1, sizeof(Gatekeeper__Southbound__V1__GatekeeperCommonReply));
     TEST_ASSERT_NOT_NULL(gk_pb_reply.bulk_reply->reply_app[0]->header);
-    
-    gk_pb_reply.bulk_reply->reply_app[0]->header->action = 
+
+    gk_pb_reply.bulk_reply->reply_app[0]->header->action =
         GATEKEEPER__SOUTHBOUND__V1__GATEKEEPER_ACTION__GATEKEEPER_ACTION_BLOCK;
     gk_pb_reply.bulk_reply->reply_app[0]->header->category_id = 40;
     gk_pb_reply.bulk_reply->reply_app[0]->header->confidence_level = 80;
     gk_pb_reply.bulk_reply->reply_app[0]->header->ttl = 7200;
     gk_pb_reply.bulk_reply->reply_app[0]->header->flow_marker = 8002;
     gk_pb_reply.bulk_reply->reply_app[0]->header->policy = STRDUP("app_policy");
-    
+
     memcpy(device_id_data, g_test_mac2.addr, sizeof(g_test_mac2.addr));
-    gk_pb_reply.bulk_reply->reply_app[0]->header->device_id = 
+    gk_pb_reply.bulk_reply->reply_app[0]->header->device_id =
         create_protobuf_c_binary_data(device_id_data, sizeof(device_id_data));
-    
+
     /* Create one IPv4 entry */
     gk_pb_reply.bulk_reply->n_reply_ipv4 = 1;
     gk_pb_reply.bulk_reply->reply_ipv4 = CALLOC(1, sizeof(Gatekeeper__Southbound__V1__GatekeeperIpv4Reply *));
     TEST_ASSERT_NOT_NULL(gk_pb_reply.bulk_reply->reply_ipv4);
-    
+
     gk_pb_reply.bulk_reply->reply_ipv4[0] = CALLOC(1, sizeof(Gatekeeper__Southbound__V1__GatekeeperIpv4Reply));
     TEST_ASSERT_NOT_NULL(gk_pb_reply.bulk_reply->reply_ipv4[0]);
-    
+
     gk_pb_reply.bulk_reply->reply_ipv4[0]->addr_ipv4 = ipv4_addr;
-    
-    gk_pb_reply.bulk_reply->reply_ipv4[0]->header = 
+
+    gk_pb_reply.bulk_reply->reply_ipv4[0]->header =
         CALLOC(1, sizeof(Gatekeeper__Southbound__V1__GatekeeperCommonReply));
     TEST_ASSERT_NOT_NULL(gk_pb_reply.bulk_reply->reply_ipv4[0]->header);
-    
-    gk_pb_reply.bulk_reply->reply_ipv4[0]->header->action = 
+
+    gk_pb_reply.bulk_reply->reply_ipv4[0]->header->action =
     GATEKEEPER__SOUTHBOUND__V1__GATEKEEPER_ACTION__GATEKEEPER_ACTION_ACCEPT;
     gk_pb_reply.bulk_reply->reply_ipv4[0]->header->category_id = 50;
     gk_pb_reply.bulk_reply->reply_ipv4[0]->header->confidence_level = 70;
     gk_pb_reply.bulk_reply->reply_ipv4[0]->header->ttl = 3600;
     gk_pb_reply.bulk_reply->reply_ipv4[0]->header->flow_marker = 8003;
     gk_pb_reply.bulk_reply->reply_ipv4[0]->header->policy = STRDUP("ipv4_policy");
-    
+
     memcpy(device_id_data, g_test_mac.addr, sizeof(g_test_mac.addr));
-    gk_pb_reply.bulk_reply->reply_ipv4[0]->header->device_id = 
+    gk_pb_reply.bulk_reply->reply_ipv4[0]->header->device_id =
         create_protobuf_c_binary_data(device_id_data, sizeof(device_id_data));
-    
+
     /* Set up the reply to parse with FSM_BULK_REQ type */
     reply.type = FSM_BULK_REQ;
-    
+
     /* Parse the reply */
     result = gk_parse_reply(&reply, &gk_pb_reply);
     TEST_ASSERT_TRUE(result);
-    
+
     /* Validate the parse results */
     struct gk_bulk_reply *bulk_reply = &reply.data_reply.bulk_reply;
     TEST_ASSERT_EQUAL_INT(3, bulk_reply->n_devices);
-    
+
     /* Check that all entries are created as expected */
     int url_entries_found = 0;
     int app_entries_found = 0;
     int ipv4_entries_found = 0;
-    
+
     for (size_t i = 0; i < bulk_reply->n_devices; i++) {
         struct gk_device2app_repl *entry = bulk_reply->devices[i];
         TEST_ASSERT_NOT_NULL(entry);
-        
+
         if (entry->type == GK_ENTRY_TYPE_URL) {
             url_entries_found++;
             TEST_ASSERT_NOT_NULL(entry->url);
@@ -2087,15 +2087,15 @@ test_populate_mixed_bulk_reply(void)
             TEST_ASSERT_EQUAL_INT(8003, entry->header->flow_marker);
         }
     }
-    
+
     /* Verify we found all entries */
     TEST_ASSERT_EQUAL_INT(1, url_entries_found);
     TEST_ASSERT_EQUAL_INT(1, app_entries_found);
     TEST_ASSERT_EQUAL_INT(1, ipv4_entries_found);
-    
+
     /* Clean up */
     gk_clear_bulk_responses(&reply);
-    
+
     /* Clean up URL protobuf structures */
     FREE(gk_pb_reply.bulk_reply->reply_http_url[0]->http_url);
     FREE(gk_pb_reply.bulk_reply->reply_http_url[0]->header->device_id.data);
@@ -2103,7 +2103,7 @@ test_populate_mixed_bulk_reply(void)
     FREE(gk_pb_reply.bulk_reply->reply_http_url[0]->header);
     FREE(gk_pb_reply.bulk_reply->reply_http_url[0]);
     FREE(gk_pb_reply.bulk_reply->reply_http_url);
-    
+
     /* Clean up App protobuf structures */
     FREE(gk_pb_reply.bulk_reply->reply_app[0]->app_name);
     FREE(gk_pb_reply.bulk_reply->reply_app[0]->header->device_id.data);
@@ -2111,14 +2111,14 @@ test_populate_mixed_bulk_reply(void)
     FREE(gk_pb_reply.bulk_reply->reply_app[0]->header);
     FREE(gk_pb_reply.bulk_reply->reply_app[0]);
     FREE(gk_pb_reply.bulk_reply->reply_app);
-    
+
     /* Clean up IPv4 protobuf structures */
     FREE(gk_pb_reply.bulk_reply->reply_ipv4[0]->header->device_id.data);
     FREE(gk_pb_reply.bulk_reply->reply_ipv4[0]->header->policy);
     FREE(gk_pb_reply.bulk_reply->reply_ipv4[0]->header);
     FREE(gk_pb_reply.bulk_reply->reply_ipv4[0]);
     FREE(gk_pb_reply.bulk_reply->reply_ipv4);
-    
+
     FREE(gk_pb_reply.bulk_reply);
 }
 
@@ -2136,7 +2136,7 @@ void test_fqdn_redirect_with_ipv6(void)
     struct in_addr ipv4_addr;
     struct in6_addr ipv6_addr;
     uint8_t ipv6_bytes[16];
-    
+
     memset(&gk_pb_reply, 0, sizeof(gk_pb_reply));
 
     gk_pb_reply.bulk_reply = CALLOC(1, sizeof(Gatekeeper__Southbound__V1__GatekeeperBulkReply));
@@ -2165,33 +2165,33 @@ void test_fqdn_redirect_with_ipv6(void)
     gk_pb_reply.bulk_reply->reply_fqdn[0]->header->ttl = 1800;
     gk_pb_reply.bulk_reply->reply_fqdn[0]->header->flow_marker = 4001;
     gk_pb_reply.bulk_reply->reply_fqdn[0]->header->policy = STRDUP("dual_stack_redirect_policy");
-    
+
     memcpy(device_id_data, g_test_mac.addr, sizeof(g_test_mac.addr));
-    gk_pb_reply.bulk_reply->reply_fqdn[0]->header->device_id = 
+    gk_pb_reply.bulk_reply->reply_fqdn[0]->header->device_id =
         create_protobuf_c_binary_data(device_id_data, sizeof(device_id_data));
-    
+
     /* Create FQDN redirect with both IPv4 and IPv6 addresses */
-    gk_pb_reply.bulk_reply->reply_fqdn[0]->redirect = 
+    gk_pb_reply.bulk_reply->reply_fqdn[0]->redirect =
         CALLOC(1, sizeof(Gatekeeper__Southbound__V1__GatekeeperFqdnRedirectReply));
     TEST_ASSERT_NOT_NULL(gk_pb_reply.bulk_reply->reply_fqdn[0]->redirect);
-    
+
     gatekeeper__southbound__v1__gatekeeper_fqdn_redirect_reply__init(
         gk_pb_reply.bulk_reply->reply_fqdn[0]->redirect);
-        
+
     inet_pton(AF_INET, "203.0.113.42", &ipv4_addr);
     gk_pb_reply.bulk_reply->reply_fqdn[0]->redirect->redirect_ipv4 = ipv4_addr.s_addr;
-    
+
     inet_pton(AF_INET6, "2001:db8::42", &ipv6_addr);
     memcpy(ipv6_bytes, &ipv6_addr, sizeof(ipv6_bytes));
-    gk_pb_reply.bulk_reply->reply_fqdn[0]->redirect->redirect_ipv6 = 
+    gk_pb_reply.bulk_reply->reply_fqdn[0]->redirect->redirect_ipv6 =
         create_protobuf_c_binary_data(ipv6_bytes, sizeof(ipv6_bytes));
-    
+
     reply.type = FSM_BULK_REQ;
 
     /* Parse the reply */
     bool result = gk_parse_reply(&reply, &gk_pb_reply);
     TEST_ASSERT_TRUE(result);
-    
+
     /* Validate the parse results */
     struct gk_bulk_reply *bulk_reply = &reply.data_reply.bulk_reply;
     TEST_ASSERT_EQUAL_INT(1, bulk_reply->n_devices);
@@ -2201,25 +2201,25 @@ void test_fqdn_redirect_with_ipv6(void)
     TEST_ASSERT_NOT_NULL(entry);
     TEST_ASSERT_EQUAL_INT(GK_ENTRY_TYPE_FQDN, entry->type);
     TEST_ASSERT_EQUAL_STRING(fqdn, entry->fqdn);
-    
+
     TEST_ASSERT_EQUAL_INT(FSM_REDIRECT, entry->header->action);
     TEST_ASSERT_EQUAL_INT(789, entry->header->category_id);
     TEST_ASSERT_EQUAL_INT(4001, entry->header->flow_marker);
-    
+
     /* Check redirect info - should have both IPv4 and IPv6 entries */
     TEST_ASSERT_NOT_NULL(entry->fqdn_redirect);
     TEST_ASSERT_TRUE(entry->fqdn_redirect->redirect);
-    
+
     /* Verify IPv4 redirect - should be in redirect_ips[0] */
     char ipv4_expected[256];
     snprintf(ipv4_expected, sizeof(ipv4_expected), "A-203.0.113.42");
     TEST_ASSERT_EQUAL_STRING(ipv4_expected, entry->fqdn_redirect->redirect_ips[0]);
-    
+
     /* Verify IPv6 redirect - should be in redirect_ips[1] */
     char ipv6_expected[256];
     snprintf(ipv6_expected, sizeof(ipv6_expected), "AAAA-2001:db8::42");
     TEST_ASSERT_EQUAL_STRING(ipv6_expected, entry->fqdn_redirect->redirect_ips[1]);
-    
+
     gk_clear_bulk_responses(&reply);
 
     FREE(gk_pb_reply.bulk_reply->reply_fqdn[0]->redirect->redirect_ipv6.data);
@@ -2242,28 +2242,28 @@ void test_fqdn_redirect_ipv6_only(void)
     char *fqdn = "ipv6.only.example.com";
     struct in6_addr ipv6_addr;
     uint8_t ipv6_bytes[16];
-    
+
     memset(&gk_pb_reply, 0, sizeof(gk_pb_reply));
-    
+
     gk_pb_reply.bulk_reply = CALLOC(1, sizeof(Gatekeeper__Southbound__V1__GatekeeperBulkReply));
     TEST_ASSERT_NOT_NULL(gk_pb_reply.bulk_reply);
-    
+
     /* Prepare the FQDN entry */
     gk_pb_reply.bulk_reply->n_reply_fqdn = 1;
-    gk_pb_reply.bulk_reply->reply_fqdn = 
-        CALLOC(gk_pb_reply.bulk_reply->n_reply_fqdn, 
+    gk_pb_reply.bulk_reply->reply_fqdn =
+        CALLOC(gk_pb_reply.bulk_reply->n_reply_fqdn,
                sizeof(Gatekeeper__Southbound__V1__GatekeeperFqdnReply *));
     TEST_ASSERT_NOT_NULL(gk_pb_reply.bulk_reply->reply_fqdn);
-    
+
     gk_pb_reply.bulk_reply->reply_fqdn[0] =
         CALLOC(1, sizeof(Gatekeeper__Southbound__V1__GatekeeperFqdnReply));
     TEST_ASSERT_NOT_NULL(gk_pb_reply.bulk_reply->reply_fqdn[0]);
-    
+
     gk_pb_reply.bulk_reply->reply_fqdn[0]->query_name = STRDUP(fqdn);
-    gk_pb_reply.bulk_reply->reply_fqdn[0]->header = 
+    gk_pb_reply.bulk_reply->reply_fqdn[0]->header =
         CALLOC(1, sizeof(Gatekeeper__Southbound__V1__GatekeeperCommonReply));
     TEST_ASSERT_NOT_NULL(gk_pb_reply.bulk_reply->reply_fqdn[0]->header);
-    
+
     gk_pb_reply.bulk_reply->reply_fqdn[0]->header->action =
         GATEKEEPER__SOUTHBOUND__V1__GATEKEEPER_ACTION__GATEKEEPER_ACTION_REDIRECT;
     gk_pb_reply.bulk_reply->reply_fqdn[0]->header->category_id = 456;
@@ -2271,27 +2271,27 @@ void test_fqdn_redirect_ipv6_only(void)
     gk_pb_reply.bulk_reply->reply_fqdn[0]->header->ttl = 1200;
     gk_pb_reply.bulk_reply->reply_fqdn[0]->header->flow_marker = 4002;
     gk_pb_reply.bulk_reply->reply_fqdn[0]->header->policy = STRDUP("ipv6_only_redirect_policy");
-    
+
     memcpy(device_id_data, g_test_mac.addr, sizeof(g_test_mac.addr));
-    gk_pb_reply.bulk_reply->reply_fqdn[0]->header->device_id = 
+    gk_pb_reply.bulk_reply->reply_fqdn[0]->header->device_id =
         create_protobuf_c_binary_data(device_id_data, sizeof(device_id_data));
-    
+
     /* Create FQDN redirect with only IPv6 address */
-    gk_pb_reply.bulk_reply->reply_fqdn[0]->redirect = 
+    gk_pb_reply.bulk_reply->reply_fqdn[0]->redirect =
         CALLOC(1, sizeof(Gatekeeper__Southbound__V1__GatekeeperFqdnRedirectReply));
     TEST_ASSERT_NOT_NULL(gk_pb_reply.bulk_reply->reply_fqdn[0]->redirect);
-    
+
     gatekeeper__southbound__v1__gatekeeper_fqdn_redirect_reply__init(
         gk_pb_reply.bulk_reply->reply_fqdn[0]->redirect);
-        
+
     /* Set only redirect IPv6 address, no IPv4 */
     inet_pton(AF_INET6, "2001:db8::1:2:3:4", &ipv6_addr);
     memcpy(ipv6_bytes, &ipv6_addr, sizeof(ipv6_bytes));
-    gk_pb_reply.bulk_reply->reply_fqdn[0]->redirect->redirect_ipv6 = 
+    gk_pb_reply.bulk_reply->reply_fqdn[0]->redirect->redirect_ipv6 =
         create_protobuf_c_binary_data(ipv6_bytes, sizeof(ipv6_bytes));
-    
+
     reply.type = FSM_BULK_REQ;
-    
+
     bool result = gk_parse_reply(&reply, &gk_pb_reply);
     TEST_ASSERT_TRUE(result);
 
@@ -2316,13 +2316,13 @@ void test_fqdn_redirect_ipv6_only(void)
     char ipv6_expected[256];
     snprintf(ipv6_expected, sizeof(ipv6_expected), "AAAA-2001:db8::1:2:3:4");
     TEST_ASSERT_EQUAL_STRING(ipv6_expected, entry->fqdn_redirect->redirect_ips[0]);
-    
+
     /* The second slot should be empty */
     TEST_ASSERT_EQUAL_STRING("", entry->fqdn_redirect->redirect_ips[1]);
-    
+
     /* Clean up */
     gk_clear_bulk_responses(&reply);
-    
+
     /* Clean up protobuf structures */
     FREE(gk_pb_reply.bulk_reply->reply_fqdn[0]->redirect->redirect_ipv6.data);
     FREE(gk_pb_reply.bulk_reply->reply_fqdn[0]->redirect);

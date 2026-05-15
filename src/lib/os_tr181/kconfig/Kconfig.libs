@@ -1,0 +1,33 @@
+menu "OS TR181 LIB"
+
+    config OS_TR181_LIB
+        bool "os_tr181 lib Support"
+        default y
+        help
+            Select to include os_tr181 lib
+
+    if OS_TR181_LIB
+        choice
+            prompt "os_tr181 default backend"
+            default OS_TR181_LIB_NULL
+
+            config OS_TR181_LIB_NULL
+                bool "NULL"
+                help
+                    An empty (null/stub) implementation
+
+            config OS_TR181_LIB_AMX
+                bool "PRPL/Ambiorix"
+                help
+                    PRPL/Ambiorix backend for tr181
+
+            config OS_TR181_LIB_CCSP
+                bool "RDKB/CCSP"
+                help
+                    RDKB/CCSP backend for tr181
+        endchoice
+    endif
+
+endmenu
+
+

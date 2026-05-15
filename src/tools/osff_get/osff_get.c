@@ -84,7 +84,7 @@ int main(int argc, char *argv[])
     argc -= optind;
     argv += optind;
 
-    log_open("osff_get", LOG_OPEN_DEFAULT);
+    log_open("osff_get", LOG_OPEN_DEFAULT | LOG_OPEN_STDOUT);
 
     if (debug)
     {

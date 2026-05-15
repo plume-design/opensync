@@ -48,6 +48,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "os_backtrace.h"
 #include "json_util.h"
 #include "target.h"
+#include "manager_watchdog.h"
 #include "fsm.h"
 #include "fsm_oms.h"
 #include "nf_utils.h"
@@ -98,6 +99,9 @@ int main(int argc, char ** argv)
 
     /* Register to dynamic severity updates */
     log_register_dynamic_severity(loop);
+
+    /* Initialize manager watchdog */
+    manager_watchdog_init(loop, CONFIG_MANAGER_WATCHDOG_TIMEOUT_SEC);
 
     fsm_init_mgr(loop);
     fsm_init_mem_monitor();

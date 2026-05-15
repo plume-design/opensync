@@ -836,7 +836,7 @@ ipthreat_dpi_process_message(struct ipthreat_dpi_session *ds_session)
     }
 
     fsm_policy_set_supported_feature(policy_request, FSM_PROXIMITY_FEATURE);
-    
+
     policy_reply = fsm_ipthreat_create_reply(&request_args);
     if (policy_reply == NULL)
     {

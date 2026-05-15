@@ -106,6 +106,7 @@ logpull_run()
             find "$TARB_TMPDIR" -type f | xargs $CONFIG_TARGET_PATH_TOOLS/pwdmask -o _MASKED_ -- >&2 ||
             {
                 loge "PWD masking failed"
+                rm -rf "$TARB_TMPDIR"
                 return 1
             }
             logi "repacking $TARB_TMPDIR back to $f"

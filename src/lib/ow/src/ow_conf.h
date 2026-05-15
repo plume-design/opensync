@@ -51,6 +51,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <osw_types.h>
 #include <osw_drv.h>
+#include "ow_conf_rsno.h"
 #include <ds_dlist.h>
 
 struct ow_conf_observer;
@@ -79,6 +80,7 @@ void ow_conf_ap_vlan_set_enabled(const bool *enable);
 
 void ow_conf_phy_unset(const char *phy_name);
 void ow_conf_phy_set_enabled(const char *phy_name, const bool *enabled);
+void ow_conf_phy_set_ap_atf_enabled(const char *phy_name, const bool *enabled);
 void ow_conf_phy_set_tx_chainmask(const char *phy_name, const int *tx_chainmask);
 void ow_conf_phy_set_thermal_tx_chainmask(const char *phy_name, const int *tx_chainmask);
 void ow_conf_phy_set_tx_power_dbm(const char *phy_name, const int *tx_power_dbm);
@@ -92,13 +94,16 @@ void ow_conf_phy_set_ap_channel(const char *phy_name, const struct osw_channel *
 
 bool ow_conf_phy_is_set(const char *phy_name);
 const bool *ow_conf_phy_get_enabled(const char *phy_name);
+const bool *ow_conf_phy_get_ap_atf_enabled(const char *phy_name);
 const int *ow_conf_phy_get_tx_chainmask(const char *phy_name);
 const struct osw_channel *ow_conf_phy_get_ap_channel(const char *phy_name);
+const enum osw_zero_wait_dfs *ow_conf_phy_get_ap_zero_wait_dfs(const char *phy_name);
 void ow_conf_phy_set_ap_supp_rates(const char *phy_name, const uint16_t *supp_rates);
 void ow_conf_phy_set_ap_basic_rates(const char *phy_name, const uint16_t *basic_rates);
 void ow_conf_phy_set_ap_beacon_rate(const char *phy_name, const enum osw_rate_legacy *beacon_rate);
 void ow_conf_phy_set_ap_mcast_rate(const char *phy_name, const enum osw_rate_legacy *mcast_rate);
 void ow_conf_phy_set_ap_mgmt_rate(const char *phy_name, const enum osw_rate_legacy *mgmt_rate);
+void ow_conf_phy_set_ap_zero_wait_dfs(const char *phy_name, const enum osw_zero_wait_dfs *zero_wait_dfs);
 
 void ow_conf_vif_clear(const char *vif_name);
 void ow_conf_vif_unset(const char *vif_name);
@@ -167,6 +172,10 @@ void ow_conf_vif_set_ap_ft_pmk_r1_push(const char *vif_name, const bool *ft_pmk_
 void ow_conf_vif_set_ap_ft_psk_generate_local(const char *vif_name, const bool *ft_psk_generate_local);
 void ow_conf_vif_set_ap_ft_pmk_r0_key_lifetime_sec(const char *vif_name, const int *ft_pmk_r0_key_lifetime_sec);
 void ow_conf_vif_set_ap_ft_pmk_r1_max_key_lifetime_sec(const char *vif_name, const int *ft_pmk_r1_max_key_lifetime_sec);
+void ow_conf_vif_set_ap_proxy_arp(const char *vif_name, const bool *proxy_arp);
+void ow_conf_vif_set_ap_dgaf_disable(const char *vif_name, const bool *dgaf_disable);
+void ow_conf_vif_set_ap_airtime_precedence(const char *vif_name, const enum osw_airtime_precedence *airtime_precedence);
+void ow_conf_vif_set_ap_rsno_mode(const char *vif_name, const ow_conf_rsno_mode_t *rsno_mode);
 
 void ow_conf_vif_set_ap_psk(const char *vif_name, int key_id, const char *str);
 void ow_conf_vif_set_sta_net(const char *vif_name,

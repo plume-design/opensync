@@ -604,7 +604,7 @@ bool cm2_osn_is_ipv6_global_link(const char *ifname, const char *ipv6_addr)
     }
 
     if (osn_ip6_addr_type(&addr) != OSN_IP6_ADDR_GLOBAL) {
-        LOGI("%s: Not a global IPv6 address: %s", ifname, ipv6_addr);
+        LOGD("%s: Not a global IPv6 address: %s", ifname, ipv6_addr);
         return false;
     }
 
@@ -622,7 +622,7 @@ bool cm2_osn_is_ipv6_ULA_link(const char *ifname, const char *ipv6_addr)
     }
 
     if (osn_ip6_addr_type(&addr) != OSN_IP6_ADDR_LOCAL_UNIQUE) {
-        LOGI("%s: Not an ULA IPv6 address: %s", ifname, ipv6_addr);
+        LOGD("%s: Not an ULA IPv6 address: %s", ifname, ipv6_addr);
         return false;
     }
 

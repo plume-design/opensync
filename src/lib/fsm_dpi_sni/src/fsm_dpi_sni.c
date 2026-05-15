@@ -42,6 +42,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 static struct fsm_dpi_sni_cache cache_mgr =
 {
     .initialized = false,
+    .app_decision_local = false,
 };
 
 struct fsm_dpi_sni_cache *
@@ -49,6 +50,7 @@ fsm_dpi_sni_get_mgr(void)
 {
     return &cache_mgr;
 }
+
 
 /**
  * @brief session initialization entry point
@@ -63,12 +65,15 @@ int
 fsm_dpi_sni_init(struct fsm_session *session)
 {
     struct fsm_dpi_plugin_client_ops *client_ops;
+    struct fsm_dpi_sni_cache *cache;
     int ret;
 
     /* Initialize generic client */
     ret = fsm_dpi_client_init(session);
     if (ret != 0) return ret;
 
+    cache = fsm_dpi_sni_get_mgr();
+    cache->initialized = true;
     /* Set the fsm session */
     session->ops.update = fsm_dpi_sni_update;
     session->ops.periodic = fsm_dpi_sni_periodic;
@@ -109,6 +114,35 @@ fsm_dpi_sni_exit(struct fsm_session *session)
     fsm_dpi_client_exit(session);
 }
 
+
+static void fsm_dpi_sni_get_app_decision(struct fsm_session *session)
+{
+    struct fsm_session_ops *dpi_client_session_ops;
+    struct fsm_dpi_sni_cache *cache;
+    char *app_policy_decision = NULL;
+
+    cache = fsm_dpi_sni_get_mgr();
+    if (!cache->initialized) return;
+
+    dpi_client_session_ops = &session->ops;
+
+    if (dpi_client_session_ops->get_config) app_policy_decision = dpi_client_session_ops->get_config(session, "app_policy_decision");
+    if (app_policy_decision != NULL)
+    {
+        if (strcmp(app_policy_decision, "local") == 0)
+        {
+            LOGT("%s: App policy decision is local.", __func__);
+            cache->app_decision_local = true;
+        }
+        else if (strcmp(app_policy_decision, "cloud") == 0)
+        {
+            LOGT("%s: App policy decision is cloud.", __func__);
+            cache->app_decision_local = false;
+        }
+    }
+}
+
+
 /**
  * @brief update routine
  *
@@ -117,9 +151,16 @@ fsm_dpi_sni_exit(struct fsm_session *session)
 void
 fsm_dpi_sni_update(struct fsm_session *session)
 {
+    struct fsm_dpi_sni_cache *cache;
+
+    cache = fsm_dpi_sni_get_mgr();
+    if (!cache->initialized) return;
+
     /* Generic config first */
     fsm_dpi_client_update(session);
 
+    /* Get app policy decision */
+    fsm_dpi_sni_get_app_decision(session);
     /* SNI specific entries */
     LOGD("%s: Updating SNI config", __func__);
 }
@@ -151,6 +192,7 @@ fsm_dpi_sni_periodic(struct fsm_session *session)
     }
 }
 
+
 /**
  * @brief process a flow attribute
  *
@@ -168,6 +210,7 @@ fsm_dpi_sni_process_attr(struct fsm_session *session, const char *attr,
     struct net_md_stats_accumulator *acc;
     struct fsm_request_args request_args;
     struct net_md_flow_info info;
+    struct fsm_dpi_sni_cache *cache;
     char val[length+1];
     int request_type;
     int action;
@@ -175,9 +218,26 @@ fsm_dpi_sni_process_attr(struct fsm_session *session, const char *attr,
 
     if (pkt_info == NULL) return FSM_DPI_IGNORED;
 
+    cache = fsm_dpi_sni_get_mgr();
+    if (!cache->initialized) return FSM_DPI_IGNORED;
+
+    fsm_dpi_sni_get_app_decision(session);
+    pkt_info->app_decision_local = cache->app_decision_local;
     acc = pkt_info->acc;
     if (acc == NULL) return FSM_DPI_IGNORED;
 
+    request_type = dpi_sni_get_req_type(attr);
+    if (pkt_info->app_decision_local && request_type == FSM_APP_REQ)
+    {
+        LOGT("%s: App policy decision is local and attr is tag, skipping gatekeeper check", __func__);
+        return FSM_DPI_IGNORED;
+    }
+
+    if (!pkt_info->app_decision_local && request_type == FSM_TRAFFIC_CLASS_REQ)
+    {
+        LOGT("%s: App policy decision is cloud and attr is traffic_class, skipping gatekeeper check", __func__);
+        return FSM_DPI_IGNORED;
+    }
     /* Process the generic part (e.g., logging, include, exclude lists) */
     action = fsm_dpi_client_process_attr(session, attr, type, length, value, pkt_info);
     if (action == FSM_DPI_IGNORED) goto out;
@@ -198,8 +258,6 @@ fsm_dpi_sni_process_attr(struct fsm_session *session, const char *attr,
     MEMZERO(info);
     rc = net_md_get_flow_info(acc, &info);
     if (!rc) goto out;
-
-    request_type = dpi_sni_get_req_type(attr);
 
     if (request_type == FSM_UNKNOWN_REQ_TYPE)
     {

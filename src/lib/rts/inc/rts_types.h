@@ -49,7 +49,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 /* A handle is required for scanning.
  *
- * The integration MUST ensure that a handle is not shared among threads 
+ * The integration MUST ensure that a handle is not shared among threads
  * unless access is protected with a mutex.
  */
 typedef struct rts_handle *rts_handle_t;

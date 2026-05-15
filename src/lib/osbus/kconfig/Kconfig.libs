@@ -20,6 +20,13 @@ menu "OSBUS Configuration"
         help
             Select to include RBUS Support
 
+    config OSBUS_MSG_AMXC
+        bool "OSBUS MSG to AMXC variant conversion support"
+        depends on OSBUS_LIB
+        default n
+        help
+            Select to include OSBUS MSG to AMXC variant conversion support
+
     if OSBUS_LIB
         choice
             prompt "OSBUS default bus"

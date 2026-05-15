@@ -353,22 +353,17 @@ void fsm_dpi_dhcp_relay_process_dhcpv4_message(struct dhcp_relay_session *d_sess
         popt += optlen;
     }
 
-    /* Because of the way Openflow rules are specified, this plugin should receive only
-     * the DHCP packets sent by the clients(DISCOVER, REQUEST and RELEASE). Among these,
-     * option82 should be inserted only for DISCOVER and REQUEST packets */
-    if (msg_type == DHCP_MSG_DISCOVER || msg_type == DHCP_MSG_REQUEST)
+    /* Insert option82 if not already present */
+    if (!dhcp_relay_check_option82(d_session))
     {
-        if (!dhcp_relay_check_option82(d_session))
-        {
-            LOGT("%s: option 82 absent, adding it", __func__);
-            /* Insert Relay Options */
-            relay_options_len = dhcp_relay_insert_dhcpv4_options(net_parser, popt);
-            dhcp_relay_update_headers(net_parser, popt, relay_options_len);
-        }
-        else
-        {
-            LOGT("%s: DHCP message type '%d' already contains option82", __func__, msg_type);
-        }
+        LOGT("%s: option 82 absent, adding it", __func__);
+        /* Insert Relay Options */
+        relay_options_len = dhcp_relay_insert_dhcpv4_options(net_parser, popt);
+        dhcp_relay_update_headers(net_parser, popt, relay_options_len);
+    }
+    else
+    {
+        LOGT("%s: DHCP message type '%d' already contains option82", __func__, msg_type);
     }
 
     LOGT("%s: relay_options_len is '%hhu'", __func__, relay_options_len);

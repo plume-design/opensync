@@ -366,7 +366,6 @@ bool dm_manager_stop_all(char *except_mgrs)
     struct schema_Node_Services *manager;
     struct dm_manager *dm;
     struct dm_manager *dm_tmp;
-    struct dm_manager *mgr_ptr;
     int count;
     char *start;
     char *end;
@@ -461,12 +460,8 @@ bool dm_manager_stop_all(char *except_mgrs)
             dm_manager_stop(dm);
         }
 
-        mgr_ptr = dm;
-        if (mgr_ptr != NULL)
-        {
-            FREE(mgr_ptr);
-            mgr_ptr = NULL;
-        }
+        ds_tree_remove(&dm_manager_list, dm);
+        FREE(dm);
 
     }
 

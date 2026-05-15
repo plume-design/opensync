@@ -68,7 +68,7 @@ static char *getifname(char *ifname, size_t len)
 		rc = sscanf(buf, "%16s %X %X %X %d %d %d %X %d %d %d\n",
 			   name, &dest, &gw, &flags, &cnt, &use, &metric,
 			   &mask, &mtu, &win, &irtt);
-			
+
 		if (rc < 10 || !(flags & 1)) /* IFF_UP */
 			continue;
 

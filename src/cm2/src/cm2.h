@@ -29,7 +29,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "schema.h"
 #include "ev.h"
-#ifdef CONFIG_LIBEVX_USE_CARES
+#ifdef CONFIG_CM2_USE_CARES
 #include "evx.h"
 #endif
 #include "target.h"
@@ -100,7 +100,7 @@ typedef enum
 #define CM2_HOSTNAME_MAX 256
 #define CM2_PROTO_MAX 6
 
-#ifdef CONFIG_LIBEVX_USE_CARES
+#ifdef CONFIG_CM2_USE_CARES
 typedef enum
 {
     CM2_ARES_R_NOT_STARTED,
@@ -134,7 +134,7 @@ typedef struct
     char proto[CM2_PROTO_MAX];
     char hostname[CM2_HOSTNAME_MAX];
     int  port;
-#ifndef CONFIG_LIBEVX_USE_CARES
+#ifndef CONFIG_CM2_USE_CARES
     struct addrinfo *ai_list;
     struct addrinfo *ai_curr;
 #else
@@ -244,7 +244,7 @@ typedef struct
     cm2_main_link_t    link;
     bool               ntp_check;
     struct ev_loop     *loop;
-#ifdef CONFIG_LIBEVX_USE_CARES
+#ifdef CONFIG_CM2_USE_CARES
     struct evx_ares   eares;
 #endif
     bool               have_manager;
@@ -293,6 +293,7 @@ void cm2_trigger_update(cm2_reason_e reason);
 char* cm2_dest_name(cm2_dest_e dest);
 char* cm2_curr_dest_name(void);
 bool cm2_enable_gw_offline(void);
+bool cm2_cancel_gw_offline(void);
 void cm2_trigger_restart_managers(void);
 void cm2_set_dst_type(cm2_dest_e dst);
 
@@ -325,7 +326,9 @@ bool cm2_ovsdb_connection_update_loop_state(const char *if_name, cm2_par_state_t
 bool cm2_ovsdb_WiFi_Inet_State_is_ip(const char *if_name);
 void cm2_ovsdb_connection_clean_link_counters(char *if_name);
 bool cm2_ovsdb_validate_bridge_port_conf(char *bname, char *pname);
-bool cm2_ovsdb_is_ipv6_global_link(const char *if_name);
+bool cm2_ovsdb_has_ipv6_routable_addr(const char *if_name);
+bool cm2_ovsdb_is_ipv6_ip_unnumbered(const char *if_name);
+bool cm2_ovsdb_has_ipv6_default_route(const char *if_name);
 void cm2_ovsdb_set_dhcp_client(const char *if_name, bool enabled);
 bool cm2_ovsdb_is_gw_offline_enabled(void);
 bool cm2_ovsdb_is_gw_offline_ready(void);
@@ -363,11 +366,11 @@ void cm2_clear_addr(cm2_addr_t *addr);
 bool cm2_parse_resource(cm2_addr_t *addr, cm2_dest_e dest);
 bool cm2_set_addr(cm2_dest_e dest, char *resource);
 bool cm2_is_addr_resolved(const cm2_addr_t *addr);
-#ifndef CONFIG_LIBEVX_USE_CARES
+#ifndef CONFIG_CM2_USE_CARES
 int  cm2_getaddrinfo(char *hostname, struct addrinfo **res, char *msg);
 struct addrinfo* cm2_get_next_addrinfo(cm2_addr_t *addr);
 #endif
-#ifdef CONFIG_LIBEVX_USE_CARES
+#ifdef CONFIG_CM2_USE_CARES
 int cm2_start_cares(void);
 void cm2_stop_cares(void);
 #else

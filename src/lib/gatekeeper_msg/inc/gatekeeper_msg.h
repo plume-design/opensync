@@ -27,20 +27,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifndef GATEKEEPER_MSG_H_INCLUDED
 #define GATEKEEPER_MSG_H_INCLUDED
 
+#include "gatekeeper_bulk_msg.h"
 #include "network_metadata_report.h"
 #include "gatekeeper_ecurl.h"
 #include "gatekeeper.pb-c.h"
 #include "os_types.h"
-
-
-/* Entry type definitions for gk_device2app_repl */
-#define GK_ENTRY_TYPE_APP     1
-#define GK_ENTRY_TYPE_IPV4    2
-#define GK_ENTRY_TYPE_IPV6    3
-#define GK_ENTRY_TYPE_URL     4
-#define GK_ENTRY_TYPE_FQDN     5
-#define GK_ENTRY_TYPE_HOST     6
-#define GK_ENTRY_TYPE_SNI     7
 
 /**
  * @brief Container of protobuf serialization output
@@ -125,6 +116,7 @@ struct gk_app_request
 {
     struct gk_req_header *header;
     char *appname;
+    char *traffic_class;
 };
 
 /**
@@ -136,19 +128,11 @@ struct gk_ip_flow_request
     struct net_md_stats_accumulator *acc;
 };
 
-
-struct gk_device2app_req {
-    struct gk_req_header *header;
-    size_t n_apps;             /* Number of apps in the array */
-    char **apps;
-};
-
 struct gk_bulk_request {
     size_t n_devices;   /* Num of mac_app structs */
     int req_type;
     struct gk_device2app_req **devices;
 };
-
 /**
  * @brief union of specific requests
  */
@@ -172,55 +156,6 @@ struct gk_request
 {
     int type;
     union gk_data_req req;
-};
-
-
-struct gk_reply_header
-{
-    uint32_t request_id;
-    char *dev_id;
-    int action;
-    uint32_t ttl;
-    char *policy;
-    uint32_t category_id;
-    uint32_t confidence_level;
-    uint32_t flow_marker;
-    char *network_id;
-};
-
-
-struct gk_device2app_repl
-{
-    struct gk_reply_header *header;
-    char *app_name;
-    char *url;
-    char *fqdn;
-    char *http_host;          /* For GK_ENTRY_TYPE_HOST */
-    char *https_sni;          /* For GK_ENTRY_TYPE_SNI */
-    uint32_t ipv4_addr;
-    struct fqdn_redirect_s *fqdn_redirect;
-    struct {
-        void *data;                  /* IPv6 address data */
-        size_t len;                  /* IPv6 address length */
-    } ipv6_addr;
-    int type;
-};
-
-struct gk_bulk_reply
-{
-    size_t n_devices;
-    struct gk_device2app_repl **devices;
-};
-
-union gk_data_reply
-{
-    struct gk_bulk_reply bulk_reply;
-};
-
-struct gk_reply
-{
-    int type;
-    union gk_data_reply data_reply;
 };
 
 /**
@@ -247,6 +182,33 @@ gk_free_packed_buffer(struct gk_packed_buffer *buffer);
 int
 gk_get_fsm_action(Gatekeeper__Southbound__V1__GatekeeperCommonReply *header);
 
-Gatekeeper__Southbound__V1__GatekeeperBulkReply *gk_cache_to_bulk_reply(void);
+Gatekeeper__Southbound__V1__GatekeeperAppReq *
+gk_set_pb_app_req(struct gk_app_request *app_req);
+
+void
+gk_free_app_req(Gatekeeper__Southbound__V1__GatekeeperAppReq *app_req);
+
+Gatekeeper__Southbound__V1__GatekeeperFqdnReq *
+gk_set_pb_fqdn_req(struct gk_fqdn_request *fqdn_req);
+
+Gatekeeper__Southbound__V1__GatekeeperHttpsSniReq *
+gk_set_pb_sni_req(struct gk_sni_request *sni_req);
+
+Gatekeeper__Southbound__V1__GatekeeperHttpHostReq *
+gk_set_pb_host_req(struct gk_host_request *host_req);
+
+Gatekeeper__Southbound__V1__GatekeeperHttpUrlReq *
+gk_set_pb_url_req(struct gk_url_request *url_req);
+
+bool
+gk_set_pb_ip_req(Gatekeeper__Southbound__V1__GatekeeperReq *gk_req_pb,
+                 struct gk_ip_request *gk_ip_req);
+
+bool
+gk_set_pb_ip_flow_req(Gatekeeper__Southbound__V1__GatekeeperReq *gk_req_pb,
+                      struct gk_ip_flow_request *gk_ip_flow_req);
+
+void
+gk_free_pb_request(Gatekeeper__Southbound__V1__GatekeeperReq *pb);
 
 #endif /* GATEKEEPER_MSG_H_INCLUDED */

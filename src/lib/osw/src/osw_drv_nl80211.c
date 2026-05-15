@@ -84,6 +84,7 @@ struct osw_drv_nl80211 {
     struct ds_dlist hooks;
     struct rq q_request_config;
     unsigned int stats_mask;
+    bool rsno_supported;
 };
 
 struct osw_drv_nl80211_phy {
@@ -1609,6 +1610,35 @@ osw_drv_nl80211_sta_create(struct osw_drv_nl80211 *m,
     return sta;
 }
 
+static bool
+osw_drv_nl80211_guess_rsno_supported(void)
+{
+    /* There's no dedicated interface to interrogate the
+     * wireless stack if RSNO is supported.
+     *
+     * The best that can be done is to check if hostapd
+     * and wpa_supplicant binaries contain the keyword
+     * that is strictly tied to RSNO. Both need to
+     * support it for RSNO to be usable end-to-end.
+     *
+     * The driver itself still may need _some_ changes to
+     * have this work though. That can't be checked
+     * reliably. Checking for internal symbol names is
+     * probably not a good idea.
+     */
+    const char *keyword = "rsn_override_key_mgmt_2";
+
+    const char *hostapd_binary_path = strexa("which", "hostapd");
+    if (WARN_ON(hostapd_binary_path == NULL)) return false;
+    const char *hostapd_found = strexa("grep", "-qF", keyword, hostapd_binary_path);
+
+    const char *wpas_binary_path = strexa("which", "wpa_supplicant");
+    if (WARN_ON(wpas_binary_path == NULL)) return false;
+    const char *wpas_found = strexa("grep", "-qF", keyword, wpas_binary_path);
+
+    return (hostapd_found != NULL) && (wpas_found != NULL);
+}
+
 static void
 osw_drv_nl80211_phy_state_report_cb(struct rq *q,
                                     void *priv)
@@ -1642,6 +1672,8 @@ osw_drv_nl80211_phy_state_report_cb(struct rq *q,
         }
         FREE(mac_str);
     }
+
+    state->rsno_supported = m->rsno_supported;
 
     CALL_HOOKS(m, fix_phy_state_fn, phy_name, state);
 
@@ -2993,6 +3025,9 @@ osw_drv_nl80211_init(struct osw_drv_nl80211 *m)
     nl_ev_set_conn(m->nl_ev, m->nl_conn);
     nl_80211_set_ready_fn(m->nl_80211, osw_drv_nl80211_nl_ready_cb, m);
     nl_80211_set_conn(m->nl_80211, m->nl_conn);
+
+    m->rsno_supported = osw_drv_nl80211_guess_rsno_supported();
+    LOGD(LOG_PREFIX("rsno_supported: %d", m->rsno_supported));
 
     /* FIXME: ADd _fini() and _stop() */
 }

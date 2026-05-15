@@ -290,6 +290,25 @@ ow_ovsdb_acl_policy_from_str(const char *type)
     return OSW_ACL_NONE;
 }
 
+static ow_conf_rsno_mode_t
+ow_ovsdb_rsno_mode_from_cstr(const char *s)
+{
+    if (strcmp(s, SCHEMA_CONSTS_RSNO_DISABLED) == 0) {
+        return OW_CONF_RSNO_MODE_DISABLED;
+    }
+
+    if (strcmp(s, SCHEMA_CONSTS_RSNO_WPA3_COMPAT) == 0) {
+        return OW_CONF_RSNO_MODE_WPA3_COMPAT;
+    }
+
+    if (strcmp(s, SCHEMA_CONSTS_RSNO_WPA3_COMPAT_TRANS) == 0) {
+        return OW_CONF_RSNO_MODE_WPA3_COMPAT_TRANSITION;
+    }
+
+    WARN_ON(1);
+    return OW_CONF_RSNO_MODE_DISABLED;
+}
+
 enum ow_ovsdb_min_hw_mode {
     OW_OVSDB_MIN_HW_MODE_UNSPEC,
     OW_OVSDB_MIN_HW_MODE_11B,
@@ -455,6 +474,57 @@ ow_ovsdb_ap_multi_ap_from_cstr(const char *str,
     }
     else {
         WARN_ON(1);
+    }
+}
+
+
+static enum osw_airtime_precedence ow_ovsdb_ap_airtime_precedence_from_cstr(const char *str)
+{
+    if (strcmp(str, SCHEMA_CONSTS_AIRTIME_PRECEDENCE_HIGH) == 0) {
+        return OSW_AIRTIME_PRECEDENCE_HIGH;
+    }
+    else if (strcmp(str, SCHEMA_CONSTS_AIRTIME_PRECEDENCE_MEDIUM) == 0) {
+        return OSW_AIRTIME_PRECEDENCE_MEDIUM;
+    }
+    else if (strcmp(str, SCHEMA_CONSTS_AIRTIME_PRECEDENCE_LOW) == 0) {
+        return OSW_AIRTIME_PRECEDENCE_LOW;
+    }
+    else {
+        return OSW_AIRTIME_PRECEDENCE_UNSUPPORTED;
+    }
+}
+
+static const char* ow_ovsdb_ap_airtime_precedence_to_cstr(const enum osw_airtime_precedence p)
+{
+    switch (p) {
+        case OSW_AIRTIME_PRECEDENCE_HIGH:
+            return SCHEMA_CONSTS_AIRTIME_PRECEDENCE_HIGH;
+        case OSW_AIRTIME_PRECEDENCE_MEDIUM:
+            return SCHEMA_CONSTS_AIRTIME_PRECEDENCE_MEDIUM;
+        case OSW_AIRTIME_PRECEDENCE_LOW:
+            return SCHEMA_CONSTS_AIRTIME_PRECEDENCE_LOW;
+        case OSW_AIRTIME_PRECEDENCE_DISABLED:
+            return NULL;
+        case OSW_AIRTIME_PRECEDENCE_UNSUPPORTED:
+            return NULL;
+    }
+    return NULL;
+}
+
+static enum osw_zero_wait_dfs
+ow_ovsdb_zero_wait_dfs_from_cstr(const char *str)
+{
+    if (strcmp(str, SCHEMA_CONSTS_ZERO_WAIT_DFS_DISABLE) == 0) {
+        return OSW_ZERO_WAIT_DFS_DISABLE;
+    }
+    else if (strcmp(str, SCHEMA_CONSTS_ZERO_WAIT_DFS_ENABLE) == 0) {
+        return OSW_ZERO_WAIT_DFS_ENABLE;
+    }
+    else if (strcmp(str, SCHEMA_CONSTS_ZERO_WAIT_DFS_PRECAC) == 0) {
+        return OSW_ZERO_WAIT_DFS_PRECAC;
+    }
+    else {
+        return OSW_ZERO_WAIT_DFS_UNSET;
     }
 }
 
@@ -1171,6 +1241,7 @@ ow_ovsdb_phystate_to_schema(struct ow_ovsdb_phy *owo_phy,
     SCHEMA_SET_STR(schema->mac, mac_str);
     SCHEMA_SET_INT(schema->tx_chainmask, phy->drv_state->tx_chainmask);
     SCHEMA_SET_BOOL(schema->enabled, phy->drv_state->enabled);
+    SCHEMA_SET_BOOL(schema->atf_enabled, phy->drv_state->atf_enabled);
     ow_ovsdb_phystate_fill_bcn_int(schema, phy);
     ow_ovsdb_phystate_fill_channel(owo_phy, schema, phy);
     ow_ovsdb_phystate_fill_tx_power(schema, phy);
@@ -1590,6 +1661,8 @@ ow_ovsdb_vifstate_to_schema(struct schema_Wifi_VIF_State *schema,
             SCHEMA_SET_BOOL(schema->ft_over_ds, ap->ft_over_ds);
             SCHEMA_SET_BOOL(schema->ft_pmk_r1_push, ap->ft_pmk_r1_push);
             SCHEMA_SET_BOOL(schema->ft_psk_generate_local, ap->ft_psk_generate_local);
+            SCHEMA_SET_BOOL(schema->proxy_arp, ap->proxy_arp);
+            SCHEMA_SET_BOOL(schema->dgaf_disable, ap->dgaf_disable);
             SCHEMA_SET_INT(schema->ft_pmk_r0_key_lifetime_sec, ap->ft_pmk_r0_key_lifetime_sec);
             SCHEMA_SET_INT(schema->ft_pmk_r1_max_key_lifetime_sec, ap->ft_pmk_r1_max_key_lifetime_sec);
             /* oce parameter is 'hidden' from OVSDB and for this reason
@@ -1610,6 +1683,15 @@ ow_ovsdb_vifstate_to_schema(struct schema_Wifi_VIF_State *schema,
             /* FIXME - passpoint is being read from config, not state in state report! */
             const char *passpoint_ref = ow_conf_vif_get_ap_passpoint_ref(vif->vif_name);
             if (passpoint_ref != NULL) SCHEMA_SET_UUID (schema->passpoint_config, passpoint_ref);
+
+            {
+                const char *str = ow_ovsdb_ap_airtime_precedence_to_cstr(ap->airtime_precedence);
+                if (ap->airtime_precedence == OSW_AIRTIME_PRECEDENCE_UNSUPPORTED || str == NULL) {
+                    SCHEMA_UNSET_FIELD(schema->airtime_precedence);
+                } else {
+                    SCHEMA_SET_STR(schema->airtime_precedence, str);
+                }
+            }
 
             {
                 const enum osw_acl_policy acl_policy = ow_ovsdb_ap_get_acl_policy(ap, vconf);
@@ -1636,6 +1718,10 @@ ow_ovsdb_vifstate_to_schema(struct schema_Wifi_VIF_State *schema,
             ow_ovsdb_vifstate_fill_min_hw_mode(schema, vconf, &ap->mode, band);
             ow_ovsdb_vifstate_fill_mld(schema, &ap->mld);
             ow_ovsdb_vifstate_fill_ft_encr_key(schema, ap);
+
+            if (vconf != NULL && vconf->rsno_exists) {
+                SCHEMA_SET_STR(schema->rsno, vconf->rsno);
+            }
             break;
         case OSW_VIF_AP_VLAN:
             SCHEMA_SET_STR(schema->mode, "ap_vlan");
@@ -3082,6 +3168,16 @@ ow_ovsdb_rconf_to_ow_conf(const struct schema_Wifi_Radio_Config *rconf,
         }
     }
 
+    if (is_new == true || rconf->zero_wait_dfs_changed == true) {
+        if (rconf->zero_wait_dfs_exists == true) {
+            enum osw_zero_wait_dfs zwd = ow_ovsdb_zero_wait_dfs_from_cstr(rconf->zero_wait_dfs);
+            ow_conf_phy_set_ap_zero_wait_dfs(rconf->if_name, &zwd);
+        }
+        else {
+            ow_conf_phy_set_ap_zero_wait_dfs(rconf->if_name, NULL);
+        }
+    }
+
     if (is_new == true ||
             rconf->center_freq0_chan_changed == true ||
             rconf->channel_changed == true ||
@@ -3240,6 +3336,15 @@ ow_ovsdb_rconf_to_ow_conf(const struct schema_Wifi_Radio_Config *rconf,
                                         : OSW_RATE_UNSPEC;
         WARN_ON(rconf->mgmt_rate_exists && rate == OSW_RATE_UNSPEC);
         ow_conf_phy_set_ap_mgmt_rate(rconf->if_name, rate == OSW_RATE_UNSPEC ? NULL : &rate);
+    }
+
+    if (is_new == true || rconf->atf_enabled_changed == true) {
+        if (rconf->atf_enabled_exists == true) {
+            ow_conf_phy_set_ap_atf_enabled(rconf->if_name, &rconf->atf_enabled);
+        }
+        else {
+            ow_conf_phy_set_ap_atf_enabled(rconf->if_name, NULL);
+        }
     }
 }
 
@@ -3766,6 +3871,46 @@ ow_ovsdb_vconf_to_ow_conf_ap(const struct schema_Wifi_VIF_Config *vconf,
             ow_conf_vif_set_ap_ft_encr_key(vconf->if_name, &x);
         } else {
             ow_conf_vif_set_ap_ft_encr_key(vconf->if_name, NULL);
+        }
+    }
+
+    if (is_new == true || vconf->proxy_arp_changed == true) {
+        if (vconf->proxy_arp_exists == true) {
+            const bool x = vconf->proxy_arp;
+            ow_conf_vif_set_ap_proxy_arp(vconf->if_name, &x);
+        }
+        else {
+            ow_conf_vif_set_ap_proxy_arp(vconf->if_name, NULL);
+        }
+    }
+
+    if (is_new == true || vconf->dgaf_disable_changed == true) {
+        if (vconf->dgaf_disable_exists == true) {
+            const bool x = vconf->dgaf_disable;
+            ow_conf_vif_set_ap_dgaf_disable(vconf->if_name, &x);
+        }
+        else {
+            ow_conf_vif_set_ap_dgaf_disable(vconf->if_name, NULL);
+        }
+    }
+
+    if (is_new == true || vconf->airtime_precedence_changed == true) {
+        if (vconf->airtime_precedence_exists == true) {
+            const enum osw_airtime_precedence x = ow_ovsdb_ap_airtime_precedence_from_cstr(vconf->airtime_precedence);
+            ow_conf_vif_set_ap_airtime_precedence(vconf->if_name, &x);
+        }
+        else {
+            ow_conf_vif_set_ap_airtime_precedence(vconf->if_name, NULL);
+        }
+    }
+
+    if (is_new == true || vconf->rsno_changed == true) {
+        if (vconf->rsno_exists == true) {
+            const ow_conf_rsno_mode_t rsno_mode = ow_ovsdb_rsno_mode_from_cstr(vconf->rsno);
+            ow_conf_vif_set_ap_rsno_mode(vconf->if_name, &rsno_mode);
+        }
+        else {
+            ow_conf_vif_set_ap_rsno_mode(vconf->if_name, NULL);
         }
     }
 

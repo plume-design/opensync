@@ -45,6 +45,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "evext.h"
 
 #include "target.h"
+#include "manager_watchdog.h"
 #include "om.h"
 
 /*****************************************************************************/
@@ -77,6 +78,9 @@ int main( int argc, char **argv )
     LOGN( "Starting OM (Openflow manager)" );
 
     log_severity_set( om_log_severity );
+
+    // Initialize manager watchdog
+    manager_watchdog_init(ev_loop, CONFIG_MANAGER_WATCHDOG_TIMEOUT_SEC);
 
     // Enable backtrace support
     backtrace_init();

@@ -31,13 +31,19 @@ enum DscpType {
     MISSING = 1; // was requested, but unavailable, eg. not an IP
 }
 
+message Percentile {
+    required uint32 p_val   = 1;
+    required uint32 p_ms    = 2;
+}
+
 message Sample {
-    optional uint64 timestamp_ms    = 1;
-    optional uint32 min_ms          = 2;
-    optional uint32 max_ms          = 3;
-    optional uint32 avg_ms          = 4;
-    optional uint32 last_ms         = 5;
-    optional uint32 num_pkts        = 6;
+    optional uint64     timestamp_ms        = 1;
+    optional uint32     min_ms              = 2;
+    optional uint32     max_ms              = 3;
+    optional uint32     avg_ms              = 4;
+    optional uint32     last_ms             = 5;
+    optional uint32     num_pkts            = 6;
+    repeated Percentile percentiles         = 7;
 }
 
 message Host {

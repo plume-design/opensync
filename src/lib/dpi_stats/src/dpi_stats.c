@@ -96,6 +96,21 @@ static void dpi_stats_clear_trace_stats(ds_tree_t *tree)
 }
 
 static void
+dpi_stats_clear_conntrack_err_counters(ds_tree_t *tree)
+{
+    struct conntrack_err_counters *entry, *remove;
+
+    entry = ds_tree_head(tree);
+    while (entry != NULL)
+    {
+        remove = entry;
+        entry = ds_tree_next(tree, entry);
+        ds_tree_remove(tree, remove);
+        FREE(remove);
+    }
+}
+
+static void
 dpi_stats_free_pcap_report(Interfaces__DpiStats__PcapStatsCounters *pb)
 {
     if (pb == NULL) return;
@@ -451,6 +466,9 @@ dpi_stats_set_pb_report(struct dpi_stats_report *report)
     /* Set the plugin name */
     pb->plugin = report->plugin;
 
+    /* Set the timestamp */
+    pb->timestamp = report->timestamp;
+
     /* Set the dpi counters */
     pb->counters = dpi_stats_set_counters(report);
 
@@ -505,6 +523,9 @@ dpi_stats_set_fn_stats_report(struct dpi_stats_report *report)
 
     /* Set the plugin name */
     pb->plugin = report->plugin;
+
+    /* Set the timestamp */
+    pb->timestamp = report->timestamp;
 
     /* set the function tracer stats */
     pb->n_call_stats = g_dpi_stats.num_fns;
@@ -777,6 +798,64 @@ dpi_stats_store_nfq_err_cnt(int queue_num)
     FREE(report);
 }
 
+void
+dpi_stats_store_conntrack_errs(int error_no)
+{
+    struct conntrack_err_counters *err_counter;
+    ds_tree_t *err_counters;
+
+    if (!g_dpi_stats.initialized) dpi_stats_init_record();
+
+    err_counters = &g_dpi_stats.conntrack_err_counters;
+
+    /* Look for existing error counter with same error number */
+    err_counter = ds_tree_find(err_counters, &error_no);
+    if (err_counter)
+    {
+        /* Error already exists, increment count */
+        err_counter->count++;
+        return;
+    }
+
+
+    /* If not found, create a new error counter entry */
+    err_counter = CALLOC(1, sizeof(struct conntrack_err_counters));
+    err_counter->error_no = error_no;
+    err_counter->count = 1;
+
+    ds_tree_insert(err_counters, err_counter, &err_counter->error_no);
+}
+
+void
+dpi_stats_log_conntrack_errs(void)
+{
+    struct conntrack_err_counters *err_counter;
+    ds_tree_t *err_counters;
+    bool found_errors = false;
+
+    if (!g_dpi_stats.initialized) return;
+
+    err_counters = &g_dpi_stats.conntrack_err_counters;
+
+    /* Iterate through all conntrack error counters */
+    ds_tree_foreach(err_counters, err_counter)
+    {
+        if (!found_errors)
+        {
+            LOGI("%s: Conntrack Errors:", __func__);
+            found_errors = true;
+        }
+
+        LOGI("%s:   errno: %d (%s), count: %" PRIu64,
+             __func__, err_counter->error_no, strerror(err_counter->error_no), err_counter->count);
+    }
+
+    if (!found_errors)
+    {
+        LOGI("%s: No conntrack errors", __func__);
+    }
+}
+
 
 /**
  * @brief stores the call trace stats in the tree
@@ -980,6 +1059,7 @@ dpi_stats_init_record(void)
     ds_tree_init(&g_dpi_stats.nfq_stats, ds_int_cmp, struct nfq_stats_counters, nfq_node);
     ds_tree_init(&g_dpi_stats.pcap_stats, ds_str_cmp, struct pcap_stats_counters, pcap_node);
     ds_tree_init(&g_dpi_stats.fn_tracer_stats, ds_str_cmp, struct fn_tracer_stats, fn_stats_node);
+    ds_tree_init(&g_dpi_stats.conntrack_err_counters, ds_int_cmp, struct conntrack_err_counters, conn_err_node);
 
     g_dpi_stats.initialized = true;
 }
@@ -990,16 +1070,19 @@ dpi_stats_cleanup_record(void)
     ds_tree_t *nfqs;
     ds_tree_t *pcaps;
     ds_tree_t *fns;
+    ds_tree_t *err_counters;
 
     if (!g_dpi_stats.initialized) return;
 
     nfqs = &g_dpi_stats.nfq_stats;
     pcaps = &g_dpi_stats.pcap_stats;
     fns = &g_dpi_stats.fn_tracer_stats;
+    err_counters = &g_dpi_stats.conntrack_err_counters;
 
     dpi_stats_clear_nfq_counters(nfqs);
     dpi_stats_clear_pcap_counters(pcaps);
     dpi_stats_clear_trace_stats(fns);
+    dpi_stats_clear_conntrack_err_counters(err_counters);
     g_dpi_stats.initialized = false;
 }
 
@@ -1044,3 +1127,4 @@ int dpi_stats_get_call_trace_stats_count(void)
 
     return g_dpi_stats.num_fns;
 }
+

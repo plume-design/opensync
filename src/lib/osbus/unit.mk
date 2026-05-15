@@ -39,6 +39,7 @@ UNIT_SRC += $(if $(CONFIG_OSBUS_UBUS), src/osbus_ubus.c)
 UNIT_SRC += $(if $(CONFIG_OSBUS_UBUS), src/osbus_msg_ubus.c)
 UNIT_SRC += $(if $(CONFIG_OSBUS_RBUS), src/osbus_rbus.c)
 UNIT_SRC += $(if $(CONFIG_OSBUS_RBUS), src/osbus_msg_rbus.c)
+UNIT_SRC += $(if $(CONFIG_OSBUS_MSG_AMXC), src/osbus_msg_amxc.c)
 
 UNIT_CFLAGS := -I$(UNIT_PATH)/inc
 
@@ -54,6 +55,12 @@ RBUS_INCLUDE_DIRS := $(wildcard $(patsubst %,%/rbus,$(_SDK_INCLUDE_DIRS)))
 RBUS_INCLUDE_DIRS += $(wildcard $(patsubst %,%/rtmessage,$(_SDK_INCLUDE_DIRS)))
 UNIT_CFLAGS += $(patsubst %,-I%,$(RBUS_INCLUDE_DIRS))
 UNIT_LDFLAGS += -lrbus -lrbuscore -lmsgpackc -lrtMessage -lcjson
+endif
+
+#### amxc
+ifeq ($(CONFIG_OSBUS_MSG_AMXC),y)
+#UNIT_LDFLAGS += -lamxc -lamxb -lamxp -lamxd
+UNIT_LDFLAGS += -lamxc
 endif
 
 UNIT_EXPORT_CFLAGS := $(UNIT_CFLAGS)

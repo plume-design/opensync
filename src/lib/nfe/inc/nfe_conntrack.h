@@ -61,7 +61,7 @@ struct nfe_conntrack {
     struct nfe_hash_bucket bucket[0];
 };
 
-struct nfe_conn *nfe_conntrack_lookup_hash(struct nfe_conntrack *conntrack, 
+struct nfe_conn *nfe_conntrack_lookup_hash(struct nfe_conntrack *conntrack,
     const struct nfe_tuple *tuple, uint32_t hash);
 
 struct nfe_conn *nfe_conntrack_lookup(struct nfe_conntrack *conntrack,

@@ -29,6 +29,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <log.h>
 #include <memutil.h>
 #include <ovsdb_table.h>
+#include <ovsdb_sync.h>
 
 #include <osw_mld_vif.h>
 #include <osw_timer.h>
@@ -159,8 +160,25 @@ static void ow_ovsdb_mld_onboard_mld_set_template(
     SCHEMA_SET_STR(mld->template->if_name, mld->mld_if_name);
 }
 
+static bool ow_ovsdb_mld_onboard_link_is_in_bridge(const char *if_name)
+{
+    if (if_name == NULL) return false;
+    const char *col = SCHEMA_COLUMN(Wifi_VIF_Config, if_name);
+    json_t *cond = ovsdb_tran_cond(OCLM_STR, col, OFUNC_EQ, if_name);
+    json_t *vifs = ovsdb_sync_select_where(SCHEMA_TABLE(Wifi_VIF_Config), cond);
+    json_t *first_vif = json_array_get(vifs, 0);
+    json_t *bridge = json_object_get(first_vif, SCHEMA_COLUMN(Wifi_VIF_Config, bridge));
+    const char *bridge_str = json_string_value(bridge);
+    const bool single_match = json_array_size(vifs) == 1;
+    const bool has_bridge = single_match && strlen(bridge_str ?: "") > 0;
+    json_decref(vifs);
+    WARN_ON(!single_match);
+    return has_bridge;
+}
+
 static void ow_ovsdb_mld_onboard_link_try_set_template(struct ow_ovsdb_mld_onboard_link *l)
 {
+    if (!strcmp(l->link_if_name, l->mld->mld_if_name)) return;
     const char *col = SCHEMA_COLUMN(Wifi_Inet_Config, if_name);
     json_t *cond = ovsdb_tran_cond(OCLM_STR, col, OFUNC_EQ, l->link_if_name);
     struct schema_Wifi_Inet_Config row;
@@ -170,6 +188,14 @@ static void ow_ovsdb_mld_onboard_link_try_set_template(struct ow_ovsdb_mld_onboa
     {
         ow_ovsdb_mld_onboard_mld_set_template(l->mld, &row);
         if (osw_etc_get("OW_OVSDB_MLD_ONBOARD_NO_DEL")) return;
+        if (osw_etc_get("OW_OVSDB_MLD_ONBOARD_NO_DEL_BRIDGED"))
+        {
+            if (ow_ovsdb_mld_onboard_link_is_in_bridge(l->link_if_name))
+            {
+                LOGN(LOG_PREFIX_LINK(l, "skipping deletion, interface is bridged"));
+                return;
+            }
+        }
         LOGN(LOG_PREFIX_LINK(l, "removing"));
         const int count = ovsdb_table_delete(&m->table, &row);
         WARN_ON(count != 1);

@@ -50,6 +50,12 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "osbus_rbus.h"
 #include "osbus_msg_rbus.h"
 
+#ifdef RBUS_ADVISORY_EXPRESSION_ID
+// breaking api changes were introduced in newer versions of rbus
+#include <rbus_message.h>
+#define RBUS_NEW_API
+#endif
+
 #define MODULE_ID LOG_MODULE_ID_OSBUS
 
 static int g_ev_pipe[2] = { -1, -1 };
@@ -1047,11 +1053,20 @@ bool osbus_rbus_topic_listen(
     if (!path_str) goto out;
     tinfo = _osbus_topic_handler_new(handle, path_str, topic_handler_fn);
     tinfo->user_data = user_data;
+#ifdef RBUS_NEW_API
+    rc = rbusMessage_AddListener(
+            rbus_handle,
+            path_str,
+            _osbus_rbus_topic_receive_message,
+            tinfo,
+            0);
+#else
     rc = rbusMessage_AddListener(
             rbus_handle,
             path_str,
             _osbus_rbus_topic_receive_message,
             tinfo);
+#endif
     if (rc != RBUS_ERROR_SUCCESS) {
         osbus_rbus_error_set_and_log(handle, rc, "rbusMessage_AddListener", path_str);
         goto out;
@@ -1089,9 +1104,16 @@ bool osbus_rbus_topic_unlisten(
         LOGE("%s: %s fn mismatch %p %p", __func__, path_str, topic_handler_fn, tinfo->topic_handler_fn);
         goto out;
     }
+#ifdef RBUS_NEW_API
+    rc = rbusMessage_RemoveListener(
+            rbus_handle,
+            path_str,
+            0);
+#else
     rc = rbusMessage_RemoveListener(
             rbus_handle,
             path_str);
+#endif
     if (rc != RBUS_ERROR_SUCCESS) {
         osbus_rbus_error_set_and_log(handle, rc, "rbusMessage_RemoveListener", path_str);
         goto out;

@@ -350,8 +350,10 @@ static void ow_mld_redir_mld_set_reported_addr(ow_mld_redir_mld_t *mld, const st
 
 static void ow_mld_redir_mld_update_reported_addr(ow_mld_redir_mld_t *mld)
 {
+    const struct osw_hwaddr *addr;
     os_macaddr_t mac;
-    const struct osw_hwaddr *addr = osw_hwaddr_from_cptr_unchecked(mac.addr);
+    MEMZERO(mac);
+    addr = osw_hwaddr_from_cptr_unchecked(mac.addr);
     if (WARN_ON(os_nif_macaddr_get(mld->mld_name, &mac) == false)) return;
     ow_mld_redir_mld_set_reported_addr(mld, addr);
 }

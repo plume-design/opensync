@@ -79,6 +79,24 @@ if OSN_LINUX_ENABLED
                 default "/sbin/udhcpc"
                 help
                     Full path to the udhcpc binary.
+
+            config OSN_UDHCPC_DISCOVER_RETRIES
+                int "Number of discover packets to send (-t)"
+                default 3
+                help
+                    Send up to N discover packets before giving up.
+
+            config OSN_UDHCPC_RETRY_PAUSE
+                int "Pause between retried packets in seconds (-T)"
+                default 5
+                help
+                    Pause N seconds between retried discover and request packets.
+
+            config OSN_UDHCPC_FAIL_RETRY_DELAY
+                int "Seconds to wait after failing to get a lease (-A)"
+                default 15
+                help
+                    Wait N seconds after failing to get a lease before trying again.
         endif
 
     menuconfig OSN_DNSMASQ
@@ -187,15 +205,31 @@ if OSN_LINUX_ENABLED
                     received, but no IA_NA received, to help with connectivity.
 
                     Defined configuration options are:
-                      - "NONE": No special logic for this case.
-                      - "RAND_ADDRESS": Generate a random /128 address from the
-                        prefix and assign it to the interface.
-                      - "IP_UNNUMBERED": Generate a ::1/64 address from the prefix and
-                        assign it to the LAN interface.
+                      - "IP_UNNUMBERED": Generate a random /64 address from the prefix
+                        and assign it to the LAN interface.
 
-                        IP unnumbered is a technique where a network interface can use an
-                        IP address without configuring a unique IP address on that interface.
-                        Instead, the interface borrows the IP address from another interface.
+                        Normally, a /64 address from the prefix on the LAN interface would be
+                        assigned later by the controller during IPv6 LAN-side provisioning. However,
+                        if the node does not receive any IA_NA on the uplink, then in IP unnumbered
+                        mode an address from the LAN prefix is assigned early by OpenSync so that
+                        internet connectivity can be established in the first place. Since this is a
+                        globally routable IPv6 address, even if it is assigned on the LAN side, the
+                        node can still use that address to connect to the internet and eventually to
+                        the controller.
+
+                      - "RAND_ADDRESS": Generate a random /128 address from the prefix
+                        and assign it to the uplink interface.
+
+                        This method is not fully technically correct, as the prefix received through
+                        DHCPv6-PD is intended for the LAN side, but here a random /128 address is
+                        generated from the prefix and assigned to the uplink interface, however it
+                        works. This approach was originally implemented as a workaround until
+                        IP unnumbered mode was fully supported by all OpenSync components and
+                        eventually the controller.
+
+                        The recommended mode is "IP_UNNUMBERED", but if you experience any issues
+                        with it, you can try "RAND_ADDRESS".
+
         endif
 
     menuconfig OSN_DNSMASQ6
@@ -316,12 +350,46 @@ if OSN_LINUX_ENABLED
         help
             VLAN support uses the iproute2 package to create VLAN interfaces
 
-    config OSN_LINUX_QOS
+    menuconfig OSN_LINUX_QOS
         bool "Linux QoS"
         default y
         help
             QoS management via the tc/qdisc framework. This option implements
             the lnx_qos API and enables the "Linux" QoS backend (osn_qos).
+
+    if OSN_BACKEND_QOS_LINUX && OSN_BACKEND_TC_LINUX
+        menuconfig OSN_LINUX_QOS_PRECONFIG
+        bool "Enable QoS preconfiguration"
+        default n
+        help
+            Enable or disable QoS preconfiguration. If enabled a custom defined script
+            can be called before OpenSync configures or reconfigures QoS for an interface.
+
+        if OSN_LINUX_QOS_PRECONFIG
+            config OSN_LINUX_QOS_PREHOOK_SCRIPT
+            string "Linux QoS preconfig script"
+            default ""
+            help
+                Path to a shell script to be executed before any OpenSync QoS
+                (tc, qdisc, ...) config is applied or reapplied for an interface.
+                The script is called with one argument, the interface name.
+                The script is expected to do both a "reset": clean any existing
+                qdiscs or tc-filter config for an interface. And also an "initial set":
+                for instance add ingress/egress initial qdisc base config. Any such
+                initial qdisc/tc-filter base config must be compatible with any possible
+                further qdisc/tc-filter config controller is expected to later push on top.
+
+            config OSN_LINUX_QOS_QDISCS_EGRESS_ROOT_HANDLE
+            string "qdisc egress root handle"
+            default "1:"
+            help
+                If needed, you can define a custom egress root handle, if not using the canonical "1:"
+                in your preconfig script. This is needed so that in case it is different then
+                the default, OpenSync will know for instance where to install additional egress
+                tc-filter rules that may be later pushed by the controller.
+
+        endif
+    endif
 
     menuconfig OSN_ADAPTIVE_QOS_CAKE_AUTORATE
         bool "OpenSync Adaptive QoS support with cake-autorate"

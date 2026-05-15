@@ -77,6 +77,6 @@ enum dm_cli_status
     DM_CLI_DONE_ERR,
 };
 
-int dm_cli(int argc, char *argv[], log_severity_t *log_severity);
+int dm_cli(int argc, char *argv[]);
 
 #endif /* DM_H_INCLUDED */

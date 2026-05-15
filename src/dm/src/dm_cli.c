@@ -126,9 +126,9 @@ static int dm_cli_help()
 /**
  * dm_cli - handles DM command line arguments
  */
-int dm_cli(int argc, char *argv[], log_severity_t *log_severity)
+int dm_cli(int argc, char *argv[])
 {
-
+    log_severity_t   dm_log_severity = LOG_SEVERITY_INFO;
     int opt;
     int verbose = 0;
     bool stop_all = false;
@@ -163,9 +163,15 @@ int dm_cli(int argc, char *argv[], log_severity_t *log_severity)
                  * other managers that use os_opt_get().
                  */
                 verbose += 1;
-                *log_severity = (verbose == 0) ? LOG_SEVERITY_INFO :
-                                (verbose == 1) ? LOG_SEVERITY_DEBUG :
-                                                 LOG_SEVERITY_TRACE;
+                dm_log_severity = (verbose == 0) ? LOG_SEVERITY_INFO :
+                               (verbose == 1) ? LOG_SEVERITY_DEBUG :
+                                                LOG_SEVERITY_TRACE;
+
+                /* Realistically not the place to set it, but given that there is code
+                 * executed as part of argument parsing that is the only way to actually
+                 * have some logs and verbosity for cli commands */
+                log_severity_set(dm_log_severity);
+
                 /* This options allows DM to run as a daemon */
                 break;
             case 'i':
@@ -182,7 +188,6 @@ int dm_cli(int argc, char *argv[], log_severity_t *log_severity)
                 if (!stop_all && !except)
                 {
                     no_reboot = true;
-                    target_log_open("DM_CLI_NO_REBOOT", 0);
                     break;
                 }
                 dm_cli_help();

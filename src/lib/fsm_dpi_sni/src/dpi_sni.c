@@ -67,6 +67,10 @@ static const struct dpi_sni_req_type
     {
         .req_str_type = "tag",
         .req_type = FSM_APP_REQ,
+    },
+    {
+        .req_str_type = "traffic_class",
+        .req_type = FSM_TRAFFIC_CLASS_REQ,
     }
 };
 

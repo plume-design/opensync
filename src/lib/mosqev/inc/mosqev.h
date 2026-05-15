@@ -101,6 +101,8 @@ struct mosqev
     char              *me_ciphers;
     int                me_cert_reqs;
     mosqev_pwd_cbk_t  *me_pw_callback;
+    char               me_tls_hostname[HOST_NAME_MAX]; /* FQDN to verify in peer cert (connect-by-IP support) */
+    SSL_CTX           *me_ssl_ctx;                     /* Custom SSL_CTX carrying the FQDN verify param */
 };
 
 
@@ -120,6 +122,8 @@ extern bool mosqev_tls_set(mosqev_t *self, const char *cafile,
 
 extern bool mosqev_tls_opts_set(mosqev_t *self, int cert_reqs,
         const char *tls_version, const char *ciphers);
+
+extern bool mosqev_tls_hostname_set(mosqev_t *self, const char *hostname);
 
 extern bool mosqev_publish(mosqev_t *self, int *mid, const char *topic,
         size_t msglen, void *msg, int qos, bool retain);

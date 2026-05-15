@@ -33,6 +33,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "osn_adaptive_qos.h"
 
 #include "memutil.h"
+#include "execsh.h"
+#include "const.h"
+#include "kconfig.h"
 
 static void callback_IP_Interface(
         ovsdb_update_monitor_t *mon,
@@ -395,6 +398,32 @@ bool qosm_qos_config_apply(const ovs_uuid_t *uuid, bool *qos_qdisc_cfg_exists)
         return true; // Nothing to do
     }
     LOG(INFO, "qosm: QoS: %s: %s: Reconfiguring QoS for interface", ipi->ipi_ifname, uuid->uuid);
+
+#ifdef CONFIG_OSN_LINUX_QOS_PRECONFIG
+    /* Before anything else, apply any system QoS prehook config: */
+    if (strlen(CONFIG_OSN_LINUX_QOS_PREHOOK_SCRIPT) != 0)
+    {
+        LOG(NOTICE, "qosm: %s: Running system prehook script: %s", ipi->ipi_ifname, CONFIG_OSN_LINUX_QOS_PREHOOK_SCRIPT);
+
+        char shell_cmd[C_MAXPATH_LEN];
+        snprintf(
+                shell_cmd,
+                sizeof(shell_cmd),
+                "%s %s",
+                CONFIG_OSN_LINUX_QOS_PREHOOK_SCRIPT,
+                ipi->ipi_ifname
+                );
+
+        if (execsh_log(LOG_SEVERITY_INFO, shell_cmd) != 0)
+        {
+            LOG(ERROR, "qosm: %s: Failed to execute prehook script: %s", ipi->ipi_ifname, CONFIG_OSN_LINUX_QOS_PREHOOK_SCRIPT);
+        }
+    }
+    else
+    {
+        LOG(ERROR, "qosm: %s: QoS prehook script undefined (zero string length)", ipi->ipi_ifname);
+    }
+#endif
 
     // If this interface has QoS applied from before, delete the old config first:
     if (ipi->ipi_qos != NULL)

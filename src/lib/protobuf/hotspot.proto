@@ -1,0 +1,88 @@
+// Copyright (c) 2015, Plume Design Inc. All rights reserved.
+// 
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
+//    1. Redistributions of source code must retain the above copyright
+//       notice, this list of conditions and the following disclaimer.
+//    2. Redistributions in binary form must reproduce the above copyright
+//       notice, this list of conditions and the following disclaimer in the
+//       documentation and/or other materials provided with the distribution.
+//    3. Neither the name of the Plume Design Inc. nor the
+//       names of its contributors may be used to endorse or promote products
+//       derived from this software without specific prior written permission.
+// 
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+// ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+// WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL Plume Design Inc. BE LIABLE FOR ANY
+// DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+// (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+// LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+// ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+// (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+// SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+syntax = "proto2";
+
+package hotspot;
+
+message LinkSnr {
+    required bytes link_address = 1; /* Link MAC address */
+    required bytes bssid = 2;
+    required uint32 snr = 3; /* RSSI for the link */
+    optional uint32 primary_channel_frequency_mhz = 4;
+}
+
+message AssocSnapshot {
+    repeated LinkSnr link_snr = 1; /* List of link SNRs for the association */
+    optional uint32 dot11_mbo_cell_state = 2; /* dot11 MBO cell state for the association */
+}
+
+enum BtmSummary {
+    NOT_SENT = 0; /* BTM request was not sent */
+    SENT_BUT_NO_RESPONSE = 1; /* BTM request was sent but no response was received */
+    SENT_AND_GOT_RESPONSE = 2; /* BTM request was sent and response was received */
+}
+
+enum SteerResult {
+    UNKNOWN = 0; /* Unknown reason for the cancellation of the steer event */
+    PREEMPTED_BY_SOFT_STEER = 1; /* Soft steer event started */
+    PREEMPTED_BY_HARD_STEER = 2; /* Hard steer event started */
+    PREEMPTED_BY_LINK_IS_GOOD = 3; /* Link is good, no need to steer */
+    STA_IS_DISCONNECTED = 4; /* STA is disconnected, no need to steer */
+    STA_REMAINED_CONNECTED = 5;
+}
+
+message HardSteerEvent {
+    required uint64 started_on_ms = 1;
+    required AssocSnapshot assoc_on_start = 2; /* Association snapshot when the hard steer event started */
+    required BtmSummary btm_summary = 3; /* BTM summary for the hard steer event */
+    optional uint32 dot11_btm_response = 4; /* Optional dot11 BTM response code, if btm_summary==SEND_AND_GOT_RESPONSE */
+    optional uint64 disconnected_after_ms = 5;
+    optional SteerResult steer_result = 6;
+    required bool deauth_sent = 7; /* Whether a deauth was sent for the hard steer event */
+}
+
+message SoftSteerEvent {
+    required uint64 started_on_ms                  = 1; /* Timestamp when the soft steer event started */
+    required AssocSnapshot assoc_on_start = 2; /* Association snapshot when the soft steer event started */
+    required BtmSummary btm_summary = 3; /* BTM summary for the soft steer event */
+    optional uint32 dot11_btm_response = 4; /* Optional dot11 BTM response code, if btm_summary==SEND_AND_GOT_RESPONSE */
+    optional uint64 disconnected_after_ms = 5; /* Optional timestamp when the client was disconnected after the soft steer event */
+    optional SteerResult steer_result = 6;
+}
+
+message ClientEvent {
+    optional SoftSteerEvent soft_steer_event = 1; /* Soft steer event */
+    optional HardSteerEvent hard_steer_event = 2; /* Hard steer event */
+}
+
+message ClientTelemetry {
+    required bytes mac_address = 1; /* Client MAC address or MLD address */
+    repeated ClientEvent events = 2; /* List of events for the client */
+}
+
+message HotspotMessage {
+    required string          node_id = 1;
+    repeated ClientTelemetry client_telemetry = 2;
+}

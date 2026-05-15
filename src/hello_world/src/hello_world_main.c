@@ -33,6 +33,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ovsdb.h"       // OVSDB helpers
 #include "target.h"      // target API
 #include "hello_world.h" // module header
+#include "manager_watchdog.h" // manager watchdog library
 
 /* Default log severity */
 static log_severity_t  log_severity = LOG_SEVERITY_INFO;
@@ -62,6 +63,9 @@ int main(int argc, char ** argv)
 
     // Enable runtime severity updates
     log_register_dynamic_severity(loop);
+
+    /* Init the manager watchdog which will crash the process if it gets stuck */
+    manager_watchdog_init(loop, CONFIG_MANAGER_WATCHDOG_TIMEOUT_SEC);
 
     // Install crash handlers that dump the stack to the log file
     backtrace_init();

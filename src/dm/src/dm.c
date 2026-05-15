@@ -62,7 +62,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 extern struct ev_io     wovsdb;
 
-static log_severity_t   dm_log_severity = LOG_SEVERITY_INFO;
 
 /******************************************************************************
  *  PROTECTED definitions
@@ -93,8 +92,11 @@ int main (int argc, char ** argv)
 {
     struct ev_loop *loop;
 
+    target_log_open("DM", 0);
+    LOG(NOTICE, "Starting diagnostic manager - DM");
+
     // Parse command-line arguments
-    int dm_cli_status = dm_cli(argc, argv, &dm_log_severity);
+    int dm_cli_status = dm_cli(argc, argv);
     if (dm_cli_status == DM_CLI_DONE_OK)
     {
         return 0;
@@ -103,12 +105,6 @@ int main (int argc, char ** argv)
     {
         return 1;
     }
-
-    /* Log all errors, warnings, etc. */
-    target_log_open("DM", 0);
-    LOG(NOTICE, "Starting diagnostic manager - DM");
-    /* set application global log level */
-    log_severity_set(dm_log_severity);
 
     backtrace_init();
 
@@ -119,6 +115,7 @@ int main (int argc, char ** argv)
              "(Can't initialize loop)");
         return 1;
     }
+
     json_memdbg_init(loop);
 
     /* start monitoring DM */

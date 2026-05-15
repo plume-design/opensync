@@ -42,6 +42,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "osn_inet.h"
 #include "udhcp_client.h"
 
+#define XSTR(x) #x
+#define STR(x)  XSTR(x)
+
 static daemon_atexit_fn_t udhcp_client_atexit;
 /*
  * The option file is created by the udhcpc script and contains
@@ -252,9 +255,10 @@ bool udhcp_client_start(udhcp_client_t *self)
     daemon_arg_add(&self->uc_proc, "-i", self->uc_ifname);              /* Interface to listen on */
     daemon_arg_add(&self->uc_proc, "-f");                               /* Run in foreground */
     daemon_arg_add(&self->uc_proc, "-p", pidfile);                      /* PID file path */
-    daemon_arg_add(&self->uc_proc, "-s", CONFIG_INSTALL_PREFIX"/bin/udhcpc.sh");   /* DHCP client script */
-    daemon_arg_add(&self->uc_proc, "-t", "60");                         /* Send up to N discover packets */
-    daemon_arg_add(&self->uc_proc, "-T", "1");                          /* Pause between packets */
+    daemon_arg_add(&self->uc_proc, "-s", CONFIG_INSTALL_PREFIX"/bin/udhcpc.sh");    /* DHCP client script */
+    daemon_arg_add(&self->uc_proc, "-t", STR(CONFIG_OSN_UDHCPC_DISCOVER_RETRIES));  /* Send up to N discover packets */
+    daemon_arg_add(&self->uc_proc, "-T", STR(CONFIG_OSN_UDHCPC_RETRY_PAUSE));       /* Pause between retried packets */
+    daemon_arg_add(&self->uc_proc, "-A", STR(CONFIG_OSN_UDHCPC_FAIL_RETRY_DELAY));  /* Wait after failing to get a lease */
     daemon_arg_add(&self->uc_proc, "-S");                               /* Log to syslog too */
 #ifndef CONFIG_UDHCPC_OPTIONS_USE_CLIENTID
     daemon_arg_add(&self->uc_proc, "-C");                               /* Do not send MAC as client id */
