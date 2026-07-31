@@ -29,6 +29,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdio.h>
 #include <string.h>
 #include <strings.h>
+#include <unistd.h>
 #include <curl/curl.h>
 #include <jansson.h>
 
@@ -82,13 +83,19 @@ static bool v6plus_api_curl_fetch(
         return false;
     }
 
-    rc &= curl_easy_setopt(curl, CURLOPT_URL, cfg->vp_endpoint_url);
-    rc &= curl_easy_setopt(curl, CURLOPT_IPRESOLVE, opt_ipresolve);
-    rc &= curl_easy_setopt(curl, CURLOPT_SSLVERSION, CURL_SSLVERSION_TLSv1_2);
-    rc &= curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curl_write_cb);
-    rc &= curl_easy_setopt(curl, CURLOPT_WRITEDATA, curl_buf);
-    rc &= curl_easy_setopt(curl, CURLOPT_ERRORBUFFER, errbuf);
-    rc &= curl_easy_setopt(curl, CURLOPT_TIMEOUT, 4L);
+    rc |= curl_easy_setopt(curl, CURLOPT_URL, cfg->vp_endpoint_url);
+    rc |= curl_easy_setopt(curl, CURLOPT_IPRESOLVE, opt_ipresolve);
+    rc |= curl_easy_setopt(curl, CURLOPT_SSLVERSION, CURL_SSLVERSION_TLSv1_2);
+    rc |= curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curl_write_cb);
+    rc |= curl_easy_setopt(curl, CURLOPT_WRITEDATA, curl_buf);
+    rc |= curl_easy_setopt(curl, CURLOPT_ERRORBUFFER, errbuf);
+    rc |= curl_easy_setopt(curl, CURLOPT_TIMEOUT, 4L);
+
+    /* Set the certificate authority file */
+    if (access(target_opensync_ca_filename(), F_OK) == 0)
+    {
+        rc |= curl_easy_setopt(curl, CURLOPT_CAINFO, target_opensync_ca_filename());
+    }
 
     if (rc != CURLE_OK)
     {

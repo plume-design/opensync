@@ -1202,6 +1202,21 @@ enum wano_ppline_state wano_ppline_state_IDLE(
                 return (active ? wano_ppline_PLUGIN_SCHED : wano_ppline_START);
             }
 
+            /*
+             * Stop udhcpc (and any other DHCP client) during the backoff
+             * period. Without this, ip_assign_scheme remains "dhcp" and
+             * udhcpc keeps sending DHCP DISCOVER packets throughout the entire
+             * backoff window, defeating the purpose of the exponential
+             * backoff. ABORT already does this correctly; IDLE must too.
+             */
+            if (!active && !WANO_INET_CONFIG_UPDATE(
+                        self->wpl_ifname,
+                        .ip_assign_scheme = "none",
+                        .nat = WANO_TRI_FALSE))
+            {
+                LOG(WARN, "wano: %s: Error disabling DHCP in IDLE backoff.", self->wpl_ifname);
+            }
+
             /* Calculate retry timer */
             retries = (self->wpl_retries < WANO_PPLINE_RETRY_MAX) ? self->wpl_retries : WANO_PPLINE_RETRY_MAX;
             maxtime = WANO_PPLINE_RETRY_TIME << retries;

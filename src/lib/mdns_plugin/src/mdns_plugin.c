@@ -522,6 +522,12 @@ mdns_plugin_init(struct fsm_session *session)
     session->ops.exit = mdns_plugin_exit;
     session->handler_ctxt = md_session;
 
+    if (IS_NULL_PTR(session->p_ops))
+    {
+        LOGE("%s: session->p_ops is NULL, cannot init mdns", __func__);
+        goto err_plugin;
+    }
+
     /* Set the handler ops */
     parser_ops = &session->p_ops->parser_ops;
     parser_ops->handler = mdns_plugin_handler;
@@ -534,7 +540,7 @@ mdns_plugin_init(struct fsm_session *session)
 
     /* Start the daemon */
     pctxt = mgr->ctxt;
-    if (!pctxt)
+    if (IS_NULL_PTR(pctxt))
     {
         LOGE("%s: mdnsd context is NULL", __func__);
         goto err_plugin;
@@ -587,6 +593,6 @@ mdns_plugin_init(struct fsm_session *session)
     return 0;
 
 err_plugin:
-    FREE(md_session);
+    mdns_delete_session(session);
     return -1;
 }

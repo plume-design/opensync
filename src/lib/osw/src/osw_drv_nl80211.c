@@ -144,6 +144,7 @@ struct osw_drv_nl80211_sta {
     bool authorized_set;
     struct osw_hostap_bss_sta hostap_info;
     struct osw_drv_sta_state state;
+    struct osw_hwaddr mld_addr;
     struct rq q_req;
     struct nl_cmd_task task_nl_get_sta;
     struct osw_timer delete_expiry;
@@ -1348,6 +1349,44 @@ osw_drv_nl80211_sta_state_get_sta_resp_cb(struct nl_cmd *cmd,
     state->connected = true;
 }
 
+/* For every STA on this driver that points at `mld_addr` as its MLD
+* address, schedule a state re-report. Used by the AP-MLD's hostapd
+* ctrl callbacks to fan out invalidations to the per-link sibling
+* records that inherit hostap-derived fields (pmf/akm/cipher/key_id)
+* from the MLD record's hostap_info during their state report.
+*
+* The MLD record's hostap_info must already reflect the latest event
+* by the time this is called — sibling structs re-read it asynchronously
+* when the scheduled state report runs.
+*/
+static void
+osw_drv_nl80211_invalidate_sta_mld_links(struct osw_drv_nl80211 *m,
+                                         const struct osw_hwaddr *mld_addr)
+{
+    struct osw_drv_nl80211_sta *iter;
+    ds_tree_foreach(&m->stas, iter) {
+        /* Invalidate when link matches with MLD and sta has no hostap data */
+        if (iter->hostap == true) continue;
+        const bool known_link = osw_hwaddr_is_equal(&iter->mld_addr, mld_addr);
+        if (known_link) {
+            osw_drv_report_sta_changed(m->drv, iter->id.phy_name.buf, iter->id.vif_name.buf, &iter->id.sta_addr);
+        }
+    }
+}
+
+static void
+osw_drv_nl80211_sta_set_mld_addr(struct osw_drv_nl80211_sta *sta,
+                                 const struct osw_hwaddr *mld_addr)
+{
+    const bool changed = (osw_hwaddr_is_equal(&sta->mld_addr, mld_addr) == false);
+    if (!changed) return;
+
+    struct osw_hwaddr old_mld_addr = sta->mld_addr;
+    sta->mld_addr = *mld_addr;
+    osw_drv_nl80211_invalidate_sta_mld_links(sta->m, &old_mld_addr);
+    osw_drv_nl80211_invalidate_sta_mld_links(sta->m, &sta->mld_addr);
+}
+
 static void
 osw_drv_nl80211_sta_state_report_cb(struct rq *q,
                                     void *priv)
@@ -1379,6 +1418,26 @@ osw_drv_nl80211_sta_state_report_cb(struct rq *q,
     }
 
     CALL_HOOKS(m, fix_sta_state_fn, phy_name, vif_name, sta_addr, state);
+
+    /* Inherit security fields if hostap events are delivered only on
+     * AP-MLD's primary VAP
+     */
+    const bool is_mlo = (osw_hwaddr_is_zero(&state->mld_addr) == false);
+    if (sta->hostap == false && is_mlo) {
+        struct osw_drv_nl80211_sta *iter;
+        ds_tree_foreach(&m->stas, iter) {
+            if (iter == sta) continue;
+            if (iter->hostap == false) continue;
+            if (osw_hwaddr_is_equal(&iter->id.sta_addr, &state->mld_addr) == false) continue;
+            state->pmf             = iter->hostap_info.pmf;
+            state->akm             = iter->hostap_info.akm;
+            state->pairwise_cipher = iter->hostap_info.pairwise_cipher;
+            state->key_id          = iter->hostap_info.key_id;
+            break;
+        }
+    }
+
+    osw_drv_nl80211_sta_set_mld_addr(sta, &state->mld_addr);
 
     if (drv != NULL) osw_drv_report_sta_state(drv, phy_name, vif_name, sta_addr, state);
     osw_drv_sta_state_report_free(state);
@@ -1626,15 +1685,16 @@ osw_drv_nl80211_guess_rsno_supported(void)
      * reliably. Checking for internal symbol names is
      * probably not a good idea.
      */
-    const char *keyword = "rsn_override_key_mgmt_2";
+    const char *keyword_hostapd = "rsn_override_key_mgmt_2";
+    const char *keyword_wpas = "rsn_overriding";
 
     const char *hostapd_binary_path = strexa("which", "hostapd");
     if (WARN_ON(hostapd_binary_path == NULL)) return false;
-    const char *hostapd_found = strexa("grep", "-qF", keyword, hostapd_binary_path);
+    const char *hostapd_found = strexa("grep", "-qF", keyword_hostapd, hostapd_binary_path);
 
     const char *wpas_binary_path = strexa("which", "wpa_supplicant");
     if (WARN_ON(wpas_binary_path == NULL)) return false;
-    const char *wpas_found = strexa("grep", "-qF", keyword, wpas_binary_path);
+    const char *wpas_found = strexa("grep", "-qF", keyword_wpas, wpas_binary_path);
 
     return (hostapd_found != NULL) && (wpas_found != NULL);
 }
@@ -2566,6 +2626,7 @@ osw_drv_nl80211_vif_hostap_sta_connected_cb(const struct osw_hostap_bss_sta *inf
     }
 
     osw_drv_report_sta_changed(drv, phy_name, vif_name, sta_addr);
+    osw_drv_nl80211_invalidate_sta_mld_links(m, sta_addr);
 }
 
 static void
@@ -2598,6 +2659,7 @@ osw_drv_nl80211_vif_hostap_sta_changed_cb(const struct osw_hostap_bss_sta *info,
     }
 
     osw_drv_report_sta_changed(drv, phy_name, vif_name, sta_addr);
+    osw_drv_nl80211_invalidate_sta_mld_links(m, sta_addr);
 }
 
 static void
@@ -2624,6 +2686,7 @@ osw_drv_nl80211_vif_hostap_sta_disconnected_cb(const struct osw_hostap_bss_sta *
     osw_drv_nl80211_sta_fini_hostap(sta);
     osw_drv_nl80211_sta_maybe_free(sta);
     osw_drv_report_sta_changed(drv, phy_name, vif_name, sta_addr);
+    osw_drv_nl80211_invalidate_sta_mld_links(m, sta_addr);
 }
 
 static void

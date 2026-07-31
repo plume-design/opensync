@@ -104,6 +104,15 @@ static bool     ovsdb_json_show_result_output(json_t *jrows, json_t *columns);
 static int      systemvp(const char *file, char *argv[]);
 bool ovsdb_json_get_result_rows(json_t *jobj, json_t **jrows);
 
+static void ovsh_prepend_comment(json_t *jparam, const char *op)
+{
+    char comment[64];
+    snprintf(comment, sizeof(comment), "ovsh - %s", op);
+    json_t *jcomment = json_pack("{s:s, s:s}", "op", "comment", "comment", comment);
+    if (jcomment != NULL)
+        json_array_insert_new(jparam, 1, jcomment);
+}
+
 /*
  * ===========================================================================
  *  OVSH entry points
@@ -511,6 +520,8 @@ bool ovsh_mutate(char *table, json_t *where, json_t *mutations)
         return false;
     }
 
+    ovsh_prepend_comment(jparam, "mutate");
+
     json_t *jres = ovsdb_json_exec("transact", jparam);
     if (!ovsdb_json_error(jres))
     {
@@ -615,6 +626,8 @@ bool ovsh_insert(char *table, json_t *where, int coln, char *colv[], json_t *par
         }
     }
 
+    ovsh_prepend_comment(jparam, "insert");
+
     json_t *jres = ovsdb_json_exec("transact", jparam);
     if (!ovsdb_json_error(jres))
     {
@@ -680,6 +693,8 @@ bool ovsh_update(char *table, json_t *where, int coln, char *colv[])
         DEBUG("Error creating JSON-RPC parameters (UPDATE).");
         return false;
     }
+
+    ovsh_prepend_comment(jparam, "update");
 
     json_t *jres = ovsdb_json_exec("transact", jparam);
     if (!ovsdb_json_error(jres))
@@ -839,6 +854,8 @@ bool ovsh_delete(char *table, json_t *where, int coln, char *colv[])
         DEBUG("Error creating JSON-RPC parameters (DELETE).");
         return false;
     }
+
+    ovsh_prepend_comment(jparam, "delete");
 
     json_t *jres = ovsdb_json_exec("transact", jparam);
     if (!ovsdb_json_error(jres))
@@ -1592,8 +1609,13 @@ bool ovsdb_json_error(json_t *jobj)
         return false;
     }
 
-    /* Use the first object in the array */
-    jres = json_array_get(jres, 0);
+    /* The actual operation result is always the last element (index 0 if no comment
+     * op was prepended, index 1 if one was). */
+    jres = json_array_get(jres, json_array_size(jres) - 1);
+    if (jres == NULL)
+    {
+        return true;
+    }
 
     json_t *jerror = json_object_get(jres, "error");
     if (jerror == NULL)
@@ -1635,11 +1657,12 @@ bool ovsdb_json_show_count(json_t *jobj)
         return false;
     }
 
-    /* Use the first object in the array */
-    jres = json_array_get(jres, 0);
+    /* The actual operation result is always the last element (index 0 if no comment
+     * op was prepended, index 1 if one was). */
+    jres = json_array_get(jres, json_array_size(jres) - 1);
     if (jres == NULL)
     {
-        fprintf(stderr, "Error: Result object is an empty array.");
+        fprintf(stderr, "Error: Expected \"count\" object in response.");
         return false;
     }
 
@@ -1686,18 +1709,19 @@ bool ovsdb_json_show_uuid(json_t *jobj, json_t **a_juuid)
         return false;
     }
 
-    /* Use the first object in the array */
-    jres = json_array_get(jres, 0);
+    /* The actual operation result is always the last element (index 0 if no comment
+     * op was prepended, index 1 if one was). */
+    jres = json_array_get(jres, json_array_size(jres) - 1);
     if (jres == NULL)
     {
-        fprintf(stderr, "Error: Result object is an empty array.");
+        fprintf(stderr, "Error: Expected \"uuid\" object in response.");
         return false;
     }
 
     json_t *juuid = json_object_get(jres, "uuid");
     if (juuid == NULL)
     {
-        fprintf(stderr, "Error: Expected \"count\" object in response.");
+        fprintf(stderr, "Error: Expected \"uuid\" object in response.");
         return false;
     }
 

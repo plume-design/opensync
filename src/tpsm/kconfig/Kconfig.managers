@@ -31,11 +31,19 @@ if MANAGER_TPSM
                 string "Optional command to set process priority of speedtest"
                 default "$(INSTALL_PREFIX)/bin/runprio.sh"
 
-            config IPERF_BIN_ARGUMENTS
-                string "Additional iperf binary arguments"
-                default "-P16 -Z -O2"
+            config IPERF_CLIENT_BIN_ARGUMENTS
+                string "Additional iperf client binary arguments"
+                default "-Z -O2"
                 help
-                    "These are mutable -> will be overridden by the cloud config"
+                    "Client-only arguments passed to the iperf3 binary when running as a client. These are mutable -> will be overridden by the cloud config"
+
+            config IPERF_DEFAULT_PARALLEL
+                int "Default number of parallel iperf streams"
+                default 16
+                help
+                    Sets the -P value used when st_parallel is not configured.
+                    Also used to scale the per-stream -b limit to match the total
+                    configured bandwidth.
 
             config IPERF_PARAM
                 string "Additional parameters for iperf"

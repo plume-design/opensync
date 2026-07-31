@@ -87,6 +87,8 @@ fsm_dpi_mdns_get_services(void)
     struct dpi_mdns_resp_client *mgr;
 
     mgr = fsm_dpi_mdns_get_mgr();
+
+    if (IS_NULL_PTR(mgr)) return NULL;
     return &mgr->services;
 }
 

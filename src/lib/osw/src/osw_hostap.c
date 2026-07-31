@@ -1310,10 +1310,12 @@ osw_hostap_bss_hapd_init(struct hostap_ev_ctrl *ghapd,
     snprintf(cmd_remove, sizeof(cmd_remove),
              "REMOVE %s",
              vif_name);
+    const char *log_level = osw_etc_get("OSW_HOSTAP_LOG_LEVEL") ?: "INFO";
+    const char *log_level_cmd = strfmta("LOG_LEVEL %s", log_level);
 
     hostap_rq_task_init(&hapd->task_add, ghapd->txq, ""); /* set in update_add_task */
     hostap_rq_task_init(&hapd->task_remove, ghapd->txq, cmd_remove);
-    hostap_rq_task_init(&hapd->task_log_level, hapd->ctrl.txq, "LOG_LEVEL INFO");
+    hostap_rq_task_init(&hapd->task_log_level, hapd->ctrl.txq, log_level_cmd);
     hostap_rq_task_init(&hapd->task_init_bssid, hapd->ctrl.txq, "STATUS");
     hostap_rq_task_init(&hapd->task_init_neigh, hapd->ctrl.txq, ""); /* set in bssid_cb */
     hostap_rq_task_init(&hapd->task_reload_psk, hapd->ctrl.txq, "RELOAD_WPA_PSK");
@@ -1625,11 +1627,13 @@ osw_hostap_bss_wpas_init(struct hostap_ev_ctrl *gwpas,
     snprintf(cmd_remove, sizeof(cmd_remove),
              "INTERFACE_REMOVE %s",
              vif_name);
+    const char *log_level = osw_etc_get("OSW_HOSTAP_LOG_LEVEL") ?: "INFO";
+    const char *log_level_cmd = strfmta("LOG_LEVEL %s", log_level);
 
     osw_hostap_bss_wpas_init_add(gwpas, wpas, phy_name, vif_name);
 
     hostap_rq_task_init(&wpas->task_remove, gwpas->txq, cmd_remove);
-    hostap_rq_task_init(&wpas->task_log_level, wpas->ctrl.txq, "LOG_LEVEL INFO");
+    hostap_rq_task_init(&wpas->task_log_level, wpas->ctrl.txq, log_level_cmd);
     hostap_rq_task_init(&wpas->task_reconfigure, wpas->ctrl.txq, "RECONFIGURE");
     hostap_rq_task_init(&wpas->task_reassociate, wpas->ctrl.txq, "REASSOCIATE");
     hostap_rq_task_init(&wpas->task_disconnect, wpas->ctrl.txq, "DISCONNECT");
@@ -1941,7 +1945,9 @@ osw_hostap_set_conf_ap(struct osw_hostap *hostap,
                           || dvif->u.ap.beacon_interval_tu_changed
                           || dvif->u.ap.ssid_hidden_changed
                           || dvif->u.ap.isolated_changed
-                          || dvif->u.ap.mcast2ucast_changed
+                          /* mcast2ucast is not written to hostapd.conf (see osw_hostap_conf.c),
+                           * so it must not trigger hostapd BSS restart.
+                           */
                           || dvif->u.ap.mode_changed
                           || dvif->u.ap.ssid_changed
                           || dvif->u.ap.wpa_changed

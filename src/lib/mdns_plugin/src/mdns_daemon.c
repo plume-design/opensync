@@ -130,6 +130,8 @@ mdnsd_remove_record(struct mdnsd_service *service)
     mdns_record_t *r;
     struct mdns_plugin_mgr *mgr = mdns_get_mgr();
     struct mdnsd_context   *pctxt  = mgr->ctxt;
+
+    if (IS_NULL_PTR(pctxt)) return;
     char   hlocal[256] = {0};
 
     snprintf(hlocal, sizeof(hlocal), "%s.%s.local.", service->name, service->type);
@@ -192,6 +194,9 @@ mdnsd_update_record(struct mdnsd_service *service)
 {
     struct mdns_plugin_mgr *mgr = mdns_get_mgr();
     struct mdnsd_context   *pctxt = mgr->ctxt;
+
+    if (IS_NULL_PTR(pctxt)) return false;
+
     char hlocal[256] = {0};
     mdns_record_t *r;
     unsigned char *packet;
@@ -249,6 +254,9 @@ mdnsd_timer_cb(EV_P_ struct ev_timer *w, int revents)
 {
     struct mdns_plugin_mgr *mgr = mdns_get_mgr();
     struct mdnsd_context *pctxt = mgr->ctxt;
+
+    if (IS_NULL_PTR(pctxt)) return;
+
     struct timeval       *tv = &pctxt->sleep_tv;
     int    rc;
 

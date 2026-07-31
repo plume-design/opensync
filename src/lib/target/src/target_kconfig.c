@@ -137,7 +137,7 @@ bool target_device_restart_managers_helper(const char *calling_func)
     }
     else {
         pid_t pid;
-        char *argv[] = {NULL} ;
+        char *argv[] = {CONFIG_TARGET_RESTART_SCRIPT_CMD, NULL};
 
         LOGI("FATAL condition triggered by %s, restarting managers...", calling_func);
         os_backtrace_dump_manager_restart(calling_func);

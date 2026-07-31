@@ -54,6 +54,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 /* can't be on the stack */
 static ovsdb_update_monitor_t st_monitor;
 static bool st_in_progress = false; /* prevent multiple speedtests simultaneous run */
+static struct tpsm_st_plugin *st_active_plugin = NULL;
 
 void tpsm_stupdate_cb(ovsdb_update_monitor_t *self)
 {
@@ -84,7 +85,11 @@ void tpsm_stupdate_cb(ovsdb_update_monitor_t *self)
             plugin = tpsm_st_plugin_find(speedtest_config.test_type);
             if (plugin)
             {
-                plugin->st_run(&speedtest_config);
+                st_active_plugin = plugin;
+                if (!plugin->st_run(&speedtest_config))
+                {
+                    st_active_plugin = NULL;
+                }
             }
             else
             {
@@ -96,6 +101,10 @@ void tpsm_stupdate_cb(ovsdb_update_monitor_t *self)
         case OVSDB_UPDATE_DEL:
             /* Reset configuration */
             LOG(INFO, "Cloud cleared Wifi_Speedtest_Config table");
+            if (st_in_progress && st_active_plugin != NULL && st_active_plugin->st_stop != NULL)
+            {
+                st_active_plugin->st_stop();
+            }
             break;
 
         default:
@@ -134,9 +143,14 @@ void tpsm_st_in_progress_set(bool value)
 {
     st_in_progress = value;
     if (false == st_in_progress)
+    {
+        st_active_plugin = NULL;
         LOG(DEBUG, "Speedtest ready");
+    }
     else
+    {
         LOG(DEBUG, "Speedtest in progress");
+    }
 }
 
 /*

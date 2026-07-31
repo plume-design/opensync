@@ -43,6 +43,7 @@ struct tpsm_st_plugin_iter;
 typedef struct tpsm_st_plugin tpsm_st_plugin_t;
 typedef struct tpsm_st_plugin_iter tpsm_st_plugin_iter_t;
 typedef bool tpsm_st_run_fn_t(struct schema_Wifi_Speedtest_Config *st_config);
+typedef void tpsm_st_stop_fn_t(void);
 
 /**
  * speedtest plugin
@@ -50,9 +51,10 @@ typedef bool tpsm_st_run_fn_t(struct schema_Wifi_Speedtest_Config *st_config);
  */
 struct tpsm_st_plugin
 {
-    const char *const st_name;      /**< speed test type name */
-    tpsm_st_run_fn_t *const st_run; /**< run function */
-    ds_tree_node_t _st_node;        /* Internal: r/b tree node structure */
+    const char *const st_name;        /**< speed test type name */
+    tpsm_st_run_fn_t *const st_run;   /**< run function */
+    tpsm_st_stop_fn_t *const st_stop; /**< optional: stop/teardown an in-progress test (may be NULL) */
+    ds_tree_node_t _st_node;          /* Internal: r/b tree node structure */
 };
 
 /**

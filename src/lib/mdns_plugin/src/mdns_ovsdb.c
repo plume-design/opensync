@@ -93,6 +93,8 @@ ds_tree_t *
 mdnsd_get_services(void)
 {
     struct mdns_plugin_mgr *mgr = mdns_get_mgr();
+
+    if (IS_NULL_PTR(mgr->ctxt)) return NULL;
     return &mgr->ctxt->services;
 }
 
