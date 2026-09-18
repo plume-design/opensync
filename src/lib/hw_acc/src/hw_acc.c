@@ -30,12 +30,12 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "hw_acc.h"
 
-bool hw_acc_flush(struct hw_acc_flush_flow_t *flow)
+bool hw_acc_flush_flow_per_tuple(struct hw_acc_flush_flow_t *flow)
 {
     return true;
 }
 
-bool hw_acc_flush_flow_per_device(int devid)
+bool hw_acc_flush_flow_per_connection(struct hw_acc_flush_flow_t *flow)
 {
     return true;
 }

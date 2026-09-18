@@ -233,6 +233,7 @@ bool inet_base_init(inet_base_t *self, const char *ifname)
     self->inet.in_dhcpc_option_set_fn           = inet_base_dhcpc_option_set;
     self->inet.in_dhcpc_option_get_fn           = inet_base_dhcpc_option_get;
     self->inet.in_dhcpc_option_notify_fn        = inet_base_dhcpc_option_notify;
+    self->inet.in_dhcpc_route_table_set_fn      = inet_base_dhcpc_route_table_set;
     self->inet.in_dhcp_renew_set_fn             = inet_base_dhcp_renew_set;
     self->inet.in_dhcps_enable_fn               = inet_base_dhcps_enable;
     self->inet.in_dhcps_lease_set_fn            = inet_base_dhcps_lease_set;
@@ -1198,6 +1199,25 @@ bool inet_base_dhcpc_option_set(inet_t *super, enum osn_dhcp_option opt, const c
         LOG(ERR, "inet_base: %s: Error setting option: %d:%s", self->inet.in_ifname, opt, value);
         return false;
     }
+
+    /* Restart the DHCP client if necessary */
+    return inet_unit_restart(self->in_units, INET_BASE_SCHEME_DHCP, false);
+}
+
+bool inet_base_dhcpc_route_table_set(inet_t *super, uint32_t table)
+{
+    inet_base_t *self = (void *)super;
+
+    /* No change required */
+    if (self->in_dhcpc_route_table == table) return true;
+
+    if (!osn_dhcp_client_route_table_set(self->in_dhcpc, table))
+    {
+        LOG(ERR, "inet_base: %s: Error setting DHCP client route table: %u", self->inet.in_ifname, table);
+        return false;
+    }
+
+    self->in_dhcpc_route_table = table;
 
     /* Restart the DHCP client if necessary */
     return inet_unit_restart(self->in_units, INET_BASE_SCHEME_DHCP, false);

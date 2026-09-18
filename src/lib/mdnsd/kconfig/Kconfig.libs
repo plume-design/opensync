@@ -1,5 +1,6 @@
 menuconfig LIB_FSM_MDNSD
     bool "Enables Opensync FSM mDNSD library"
+    depends on MANAGER_FSM
     default y
     help
        N/A

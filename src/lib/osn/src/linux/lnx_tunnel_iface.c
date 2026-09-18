@@ -99,6 +99,11 @@ static const char lnx_tunnel_iface_ip6tnl_create[] = _S(
  * $4 - remote endpoint IP address
  * $5 - key (optional)
  * $6 - physical device to use for tunnel endpoint communication (optional)
+ *
+ * Explicit ttl 64 is set because IPv4 GRE tunnels default to "ttl inherit", which copies
+ * the TTL from the encapsulated header: packets with hop limit 1 (DHCPv6, MLD, IGMP) and
+ * VLAN tagged frames (wrong TTL copied => 0) are then discarded by the first router.
+ * For IPv6 GRE the option maps onto hoplimit, where 64 is already the default.
  */
 static const char lnx_tunnel_iface_gre_create[] = _S(
     if [ -n "$5" ]; then
@@ -111,7 +116,7 @@ static const char lnx_tunnel_iface_gre_create[] = _S(
     else
         opt_dev="";
     fi;
-    ip link add "$1" type "$2" local "$3" remote "$4" $opt_key $opt_dev;
+    ip link add "$1" type "$2" local "$3" remote "$4" $opt_key $opt_dev ttl 64;
 );
 
 /*

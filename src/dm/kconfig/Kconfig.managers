@@ -45,4 +45,8 @@ if MANAGER_DM
         help
             The number of times the DM_DEFAULT_MAX_MEMORY limit must be exceeded
             before DM takes any action.
+
+    comment "Manager crash backoff via MANAGER_<MGR>_CFG"
+    comment "  Append ;crash_count_max=N;crash_count_period=S;crash_recovery=/path"
+    comment "  to each manager startup string. See manager Kconfig help."
 endif

@@ -30,6 +30,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdbool.h>
 
 #include "wano.h"
+#include "wano_wan.h"
 #include "const.h"
 #include "ds_dlist.h"
 
@@ -69,5 +70,14 @@ bool wano_wan_ovsdb_init();
 bool wano_dns_probe_init(void);
 void wano_dns_probe_fini(void);
 bool wano_dns_probe_run(const char *ifname);
+
+/*
+ * ===========================================================================
+ *  WANO STA module -- dynamic STA VIF pipeline management
+ * ===========================================================================
+ */
+bool wano_sta_init(void);
+void wano_sta_config_update(const char *policy_uuid, int wan_priority, const struct wano_wan_config_sta *sta_cfg);
+void wano_sta_config_remove(const char *policy_uuid);
 
 #endif /* WANO_INTERNAL_H_INCLUDED */

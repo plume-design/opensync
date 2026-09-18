@@ -38,6 +38,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "os.h"
 #include "log.h"
 #include "memutil.h"
+#include "kconfig.h"
 
 #include "osn_inet.h"
 #include "udhcp_client.h"
@@ -227,6 +228,21 @@ static void set_env_variables(udhcp_client_t *self)
 
     // export options file path for the script
     (void)setenv("OPTS_FILE", self->uc_opt_path, 1);
+
+    // export the routing table for default routes; unset when using the main table
+    if (self->uc_route_table != 0)
+    {
+        char table[C_INT32_LEN];
+        (void)snprintf(table, sizeof(table), "%u", self->uc_route_table);
+        if (0 != setenv("DHCP_ROUTE_TABLE", table, 1))
+        {
+            LOG(WARN, "dhcp_client: setting env variable DHCP_ROUTE_TABLE failed.");
+        }
+    }
+    else
+    {
+        (void)unsetenv("DHCP_ROUTE_TABLE");
+    }
 }
 
 bool udhcp_client_start(udhcp_client_t *self)
@@ -257,7 +273,12 @@ bool udhcp_client_start(udhcp_client_t *self)
     daemon_arg_add(&self->uc_proc, "-p", pidfile);                      /* PID file path */
     daemon_arg_add(&self->uc_proc, "-s", CONFIG_INSTALL_PREFIX"/bin/udhcpc.sh");    /* DHCP client script */
     daemon_arg_add(&self->uc_proc, "-t", STR(CONFIG_OSN_UDHCPC_DISCOVER_RETRIES));  /* Send up to N discover packets */
-    daemon_arg_add(&self->uc_proc, "-T", STR(CONFIG_OSN_UDHCPC_RETRY_PAUSE));       /* Pause between retried packets */
+    /* Skip -T when OSN_UDHCPC_RFC_2131_BACKOFF is set so a patched udhcpc
+     * can use RFC 2131 §4.1 exponential backoff for DHCP DISCOVER retransmissions. */
+    if (!kconfig_enabled(CONFIG_OSN_UDHCPC_RFC_2131_BACKOFF))
+    {
+        daemon_arg_add(&self->uc_proc, "-T", STR(CONFIG_OSN_UDHCPC_RETRY_PAUSE));   /* Pause between retried packets */
+    }
     daemon_arg_add(&self->uc_proc, "-A", STR(CONFIG_OSN_UDHCPC_FAIL_RETRY_DELAY));  /* Wait after failing to get a lease */
     daemon_arg_add(&self->uc_proc, "-S");                               /* Log to syslog too */
 #ifndef CONFIG_UDHCPC_OPTIONS_USE_CLIENTID
@@ -374,6 +395,15 @@ bool udhcp_client_stop(udhcp_client_t *self)
 
     self->uc_started = false;
 
+    return true;
+}
+
+/**
+ * Set the routing table for routes installed by the DHCP client script, 0 = main table
+ */
+bool udhcp_client_route_table_set(udhcp_client_t *self, uint32_t table)
+{
+    self->uc_route_table = table;
     return true;
 }
 

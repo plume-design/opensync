@@ -707,17 +707,6 @@ hapd_util_hapd_wpa_to_osw(const char *wpa,
     return true;
 }
 
-static bool
-hapd_util_macaddr_acl_to_osw(const char *acl,
-                            int *output_acl)
-{
-    if (acl == NULL || output_acl == NULL)
-        return false;
-
-    *output_acl = atoi(acl);
-    return true;
-}
-
 static void
 osw_hostap_conf_osw_vif_config_to_base(const struct osw_drv_vif_config *vconf,
                                        struct osw_hostap_conf_ap_config *conf)
@@ -1936,7 +1925,6 @@ osw_hostap_conf_fill_ap_state_acl(const struct osw_hostap_conf_ap_state_bufs *bu
 {
     const char *accept_acl = bufs->show_accept_acl;
     const char *deny_acl = bufs->show_deny_acl;
-    const char *get_config = bufs->get_config;
     struct osw_drv_vif_state_ap *ap = &vstate->u.ap;
     struct osw_hwaddr_list *acl_list;
     struct osw_hwaddr * acl;
@@ -1944,14 +1932,6 @@ osw_hostap_conf_fill_ap_state_acl(const struct osw_hostap_conf_ap_state_bufs *bu
     char *cpy_accept_acl = NULL;
     char *line;
     bool ok;
-    int  macaddr_acl = 0;
-
-    STATE_GET_BY_FN(macaddr_acl, get_config, "macaddr_acl", hapd_util_macaddr_acl_to_osw);
-
-    if (macaddr_acl == 0)
-        ap->acl_policy = OSW_ACL_DENY_LIST;
-    else
-        ap->acl_policy = OSW_ACL_ALLOW_LIST;
 
     if (deny_acl != NULL && strlen(deny_acl) > 0) {
         cpy_deny_acl = STRDUP(deny_acl);

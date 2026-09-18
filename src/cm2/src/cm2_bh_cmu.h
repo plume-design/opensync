@@ -82,4 +82,10 @@ void cm2_bh_cmu_WIC(
         const struct schema_Wifi_Inet_Config *old_row,
         const struct schema_Wifi_Inet_Config *new_row);
 
+void cm2_bh_cmu_NC(
+        cm2_bh_cmu_t *m,
+        ovsdb_update_monitor_t *mon,
+        const struct schema_Node_Config *old_row,
+        const struct schema_Node_Config *new_row);
+
 #endif /* CM2_BH_CMU_H_INCLUDED */

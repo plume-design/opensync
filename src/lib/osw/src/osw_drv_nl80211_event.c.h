@@ -26,30 +26,57 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 /* This file groups event processing related helpers */
 
+#include "nl_80211.h"
+
+static struct osw_drv_nl80211_vif *
+osw_drv_nl80211_tb_to_vif(struct osw_drv *drv,
+                          struct nlattr *tb[])
+{
+    struct osw_drv_nl80211 *m = osw_drv_get_priv(drv);
+    struct nl_80211 *nl = m->nl_80211;
+    struct nl_80211_sub *nl_sub = m->nl_80211_sub;
+    const struct nl_80211_vif *vif = nl_80211_vif_by_nla(nl, tb);
+    struct nlattr *nl_ifname = tb[NL80211_ATTR_IFNAME];
+    const char *ifname = (nl_ifname != NULL) ? nla_get_string(nl_ifname) : NULL;
+    if (vif != NULL) return nl_80211_sub_vif_get_priv(nl_sub, vif);
+    if (ifname != NULL) return ds_tree_find(&m->vifs_by_name, ifname);
+    return NULL;
+}
+
+static struct osw_drv_nl80211_phy *
+osw_drv_nl80211_tb_to_phy(struct osw_drv *drv,
+                          struct nlattr *tb[])
+{
+    struct osw_drv_nl80211_vif *vif = osw_drv_nl80211_tb_to_vif(drv, tb);
+    struct osw_drv_nl80211 *m = osw_drv_get_priv(drv);
+    struct nl_80211 *nl = m->nl_80211;
+    struct nl_80211_sub *nl_sub = m->nl_80211_sub;
+    struct nlattr *nl_wiphy_name = tb[NL80211_ATTR_WIPHY_NAME];
+    const char *wiphy_name = (nl_wiphy_name != NULL) ? nla_get_string(nl_wiphy_name) : NULL;
+    const struct nl_80211_phy *phy = nl_80211_phy_by_nla(nl, tb) ?:
+                                     nl_80211_phy_by_name(nl, wiphy_name);
+    struct osw_drv_nl80211_phy_sub *sub = phy ? nl_80211_sub_phy_get_priv(nl_sub, phy) : NULL;
+    struct osw_drv_nl80211_phy *phy_singular = sub && ds_tree_len(&sub->phys_by_index) == 1
+        ? ds_tree_head(&sub->phys_by_index)
+        : NULL;
+    return osw_drv_nl80211_phy_from_vif(vif) ?: phy_singular;
+}
+
 static const char *
 osw_drv_nl80211_tb_to_phy_name(struct osw_drv *drv,
                                struct nlattr *tb[])
 {
-    struct osw_drv_nl80211 *m = osw_drv_get_priv(drv);
-    struct nl_80211 *nl = m->nl_80211;
-    const struct nl_80211_phy *phy = nl_80211_phy_by_nla(nl, tb);
-    if (phy != NULL) return phy->name;
-    struct nlattr *wiphy_name = tb[NL80211_ATTR_WIPHY_NAME];
-    if (wiphy_name != NULL) return nla_get_string(wiphy_name);
-    return NULL;
+    struct osw_drv_nl80211_phy *phy = osw_drv_nl80211_tb_to_phy(drv, tb);
+    if (phy == NULL) return NULL;
+    return phy->phy_name;
 }
 
 static const char *
 osw_drv_nl80211_tb_to_vif_name(struct osw_drv *drv,
                                struct nlattr *tb[])
 {
-    struct osw_drv_nl80211 *m = osw_drv_get_priv(drv);
-    struct nl_80211 *nl = m->nl_80211;
-    const struct nl_80211_vif *vif = nl_80211_vif_by_nla(nl, tb);
-    if (vif != NULL) return vif->name;
-    struct nlattr *ifname = tb[NL80211_ATTR_IFNAME];
-    if (ifname != NULL) return nla_get_string(ifname);
-    return NULL;
+    struct osw_drv_nl80211_vif *vif = osw_drv_nl80211_tb_to_vif(drv, tb);
+    return vif != NULL ? vif->vif_name : NULL;
 }
 
 static void

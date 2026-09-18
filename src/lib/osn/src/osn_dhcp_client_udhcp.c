@@ -108,6 +108,11 @@ bool osn_dhcp_client_vendorclass_set(osn_dhcp_client_t *self, const char *vendor
     return false;
 }
 
+bool osn_dhcp_client_route_table_set(osn_dhcp_client_t *self, uint32_t table)
+{
+    return udhcp_client_route_table_set(&self->dc_udhcp, table);
+}
+
 bool osn_dhcp_client_state_get(osn_dhcp_client_t *self, bool *enabled)
 {
     return udhcp_client_state_get(&self->dc_udhcp, enabled);

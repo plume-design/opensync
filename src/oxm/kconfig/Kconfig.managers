@@ -1,0 +1,27 @@
+menuconfig MANAGER_OXM
+    bool "OVSDB Translator (OXM)"
+    depends on OS_TR181_LIB && !OS_TR181_LIB_NULL
+    default y
+    help
+        This option enables the OVSDB Translator (OXM) manager which projects
+        OVSDB into TR-181 data model and back.
+
+        This allows integrating legacy Opensync systems that were exclusively
+        designed to operate over OVSDB, with the new TR-181 based data model.
+
+        By enabling this manager, you can ensure that your existing OVSDB-based
+        configurations and operations continue to function seamlessly while
+        transitioning to the TR-181 data model.
+
+        If unsure, select 'y'.
+
+    config MANAGER_OXM_CFG
+        depends on MANAGER_OXM
+        string "Startup configuration"
+        default "oxm;true;needs_plan_b=false;max_memory=100000"
+        help
+            This option allows you to specify the startup configuration for the
+            OVSDB Translator (OXM) manager.
+            Optional crash backoff keys (;-separated key=value):
+            crash_count_max, crash_count_period, crash_recovery.
+            crash_count_max=0 disables. Ignored when needs_plan_b=true.

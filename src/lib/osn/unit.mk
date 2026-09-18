@@ -196,4 +196,3 @@ UNIT_EXPORT_LDFLAGS := $(UNIT_LDFLAGS)
 UNIT_DEPS += src/lib/log
 UNIT_DEPS += src/lib/kconfig
 UNIT_DEPS += src/lib/schema
-UNIT_DEPS += src/lib/neigh_table

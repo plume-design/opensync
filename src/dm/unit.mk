@@ -69,6 +69,7 @@ UNIT_DEPS += src/lib/schema
 UNIT_DEPS += src/lib/mosqev
 UNIT_DEPS += src/lib/tailf
 UNIT_DEPS += src/lib/target
+UNIT_DEPS += src/lib/execsh
 UNIT_DEPS += src/lib/const
 UNIT_DEPS += src/lib/module
 UNIT_DEPS += src/lib/evx

@@ -488,6 +488,50 @@ util_ndisc6_cmd(const char *ipstr, const char *ifname)
     return ret;
 }
 
+/* Lookup the default route via ifname in all routing tables. */
+static bool
+util_get_router_ipv4_any_table(const char *ifname, struct in_addr *dest)
+{
+    char cmd[128];
+    char line[128];
+    bool retval = false;
+    FILE *f1;
+
+    if (!is_input_shell_safe(ifname)) return false;
+
+    snprintf(cmd, sizeof(cmd),
+             "ip -4 route show default dev %s table all | "
+             "awk '$1 == \"default\" && $2 == \"via\" {print $3; exit}'",
+             ifname);
+
+    f1 = popen(cmd, "r");
+    if (!f1) {
+        LOGE("%s: Failed to get ipv4 route info", ifname);
+        return false;
+    }
+
+    if (fgets(line, sizeof(line), f1) == NULL) {
+        LOGD("%s: No router IPv4 found in any routing table", ifname);
+        goto done;
+    }
+
+    while (strlen(line) > 0 && (line[strlen(line)-1] == '\r' || line[strlen(line)-1] == '\n')) {
+        line[strlen(line)-1] = '\0';
+    }
+
+    if (inet_pton(AF_INET, line, dest) != 1) {
+        LOGW("%s: Failed to parse router IPv4 address (%s)", ifname, line);
+        goto done;
+    }
+
+    LOGD("%s: Found router IPv4 %s (ip route show table all)", ifname, inet_ntoa(*dest));
+    retval = true;
+
+done:
+    pclose(f1);
+    return retval;
+}
+
 static bool
 util_get_router_ipv4(const char *ifname, struct in_addr *dest)
 {
@@ -535,6 +579,14 @@ util_get_router_ipv4(const char *ifname, struct in_addr *dest)
     }
     else {
         LOGE("Failed to get router IPv4, unable to open %s", PROC_NET_ROUTE);
+    }
+
+    /* /proc/net/route is a legacy interface and covers the main
+     * routing table only. If we didn't find a default route there,
+     * try to find it in any routing table to cover policy routing cases.
+     */
+    if (rc == false) {
+        rc = util_get_router_ipv4_any_table(ifname, dest);
     }
 
     return rc;

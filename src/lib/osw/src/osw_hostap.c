@@ -54,6 +54,13 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <osw_wpas_conf.h> // FIXME
 #include <osw_etc.h>
 
+enum osw_hostap_bss_acl_policy {
+    OSW_HOSTAP_ACL_UNSPEC,
+    OSW_HOSTAP_ACL_NONE,
+    OSW_HOSTAP_ACL_DENY,
+    OSW_HOSTAP_ACL_ALLOW,
+};
+
 struct osw_hostap {
     struct ds_tree bsses;
     struct ds_dlist hooks;
@@ -78,6 +85,7 @@ struct osw_hostap_bss_hapd {
     struct osw_neigh bssid_neigh;
     struct osw_ssid ssid;
     struct hostap_txq_req *bssid_neigh_req;
+    enum osw_hostap_bss_acl_policy last_acl_policy;
 
     struct osw_hostap_conf_ap_config conf;
     char path_config[4096];
@@ -433,9 +441,9 @@ osw_hostap_bss_cmd_warn_on_fail(struct rq_task *task,
     }
 }
 
-static void
-osw_hostap_bss_cmd_warn_on_err(struct rq_task *task,
-                               void *priv)
+static bool
+osw_hostap_bss_cmd_warn_on_err_expr(struct rq_task *task,
+                                    void *priv)
 {
     struct hostap_rq_task *t = container_of(task, struct hostap_rq_task, task);
 
@@ -460,8 +468,35 @@ osw_hostap_bss_cmd_warn_on_err(struct rq_task *task,
         }
         else {
             LOGD(LOG_PREFIX_TASK(t, "ok"));
+            return true;
         }
     }
+    return false;
+}
+
+static void
+osw_hostap_bss_cmd_warn_on_err(struct rq_task *task,
+                               void *priv)
+{
+    osw_hostap_bss_cmd_warn_on_err_expr(task, priv);
+}
+
+static void
+osw_hostap_bss_acl_policy_accept_set(struct rq_task *task, void *priv)
+{
+    struct hostap_rq_task *t = container_of(task, struct hostap_rq_task, task);
+    struct osw_hostap_bss_hapd *hapd = container_of(t, struct osw_hostap_bss_hapd, task_set_accept_acl_policy);
+    const bool ok = osw_hostap_bss_cmd_warn_on_err_expr(task, priv);
+    hapd->last_acl_policy = ok ? OSW_HOSTAP_ACL_ALLOW : OSW_HOSTAP_ACL_UNSPEC;
+}
+
+static void
+osw_hostap_bss_acl_policy_deny_set(struct rq_task *task, void *priv)
+{
+    struct hostap_rq_task *t = container_of(task, struct hostap_rq_task, task);
+    struct osw_hostap_bss_hapd *hapd = container_of(t, struct osw_hostap_bss_hapd, task_set_deny_acl_policy);
+    const bool ok = osw_hostap_bss_cmd_warn_on_err_expr(task, priv);
+    hapd->last_acl_policy = ok ? OSW_HOSTAP_ACL_DENY : OSW_HOSTAP_ACL_UNSPEC;
 }
 
 static void
@@ -924,6 +959,28 @@ osw_hostap_bss_hapd_prep_state_task(struct osw_hostap_bss_hapd *hapd)
 }
 
 static void
+osw_hostap_bss_hapd_fill_acl_policy(struct osw_hostap_bss_hapd *hapd,
+                                    struct osw_drv_vif_state *state)
+{
+    if (hapd->acl_by_hostap == false) return;
+
+    switch (hapd->last_acl_policy) {
+        case OSW_HOSTAP_ACL_ALLOW:
+            state->u.ap.acl_policy = OSW_ACL_ALLOW_LIST;
+            break;
+        case OSW_HOSTAP_ACL_DENY:
+            state->u.ap.acl_policy = OSW_ACL_DENY_LIST;
+            break;
+        case OSW_HOSTAP_ACL_NONE:
+            state->u.ap.acl_policy = OSW_ACL_NONE;
+            break;
+        case OSW_HOSTAP_ACL_UNSPEC:
+            state->u.ap.acl_policy = OSW_ACL_NONE;
+            break;
+    }
+}
+
+static void
 osw_hostap_bss_hapd_fill_state(struct osw_hostap_bss_hapd *hapd,
                                struct osw_drv_vif_state *state)
 {
@@ -949,6 +1006,7 @@ osw_hostap_bss_hapd_fill_state(struct osw_hostap_bss_hapd *hapd,
     };
 
     osw_hostap_conf_fill_ap_state(&bufs, state);
+    osw_hostap_bss_hapd_fill_acl_policy(hapd, state);
 
     FREE(config);
     FREE(psk_file);
@@ -1354,8 +1412,8 @@ osw_hostap_bss_hapd_init(struct hostap_ev_ctrl *ghapd,
     hapd->task_csa.task.completed_fn = osw_hostap_bss_cmd_warn_on_err;
     hapd->task_clear_accept_acl.task.completed_fn = osw_hostap_bss_cmd_warn_on_err;
     hapd->task_clear_deny_acl.task.completed_fn = osw_hostap_bss_cmd_warn_on_err;
-    hapd->task_set_accept_acl_policy.task.completed_fn = osw_hostap_bss_cmd_warn_on_err;
-    hapd->task_set_deny_acl_policy.task.completed_fn = osw_hostap_bss_cmd_warn_on_err;
+    hapd->task_set_accept_acl_policy.task.completed_fn = osw_hostap_bss_acl_policy_accept_set;
+    hapd->task_set_deny_acl_policy.task.completed_fn = osw_hostap_bss_acl_policy_deny_set;
     hapd->task_get_accept_acl_list.task.completed_fn = osw_hostap_bss_cmd_warn_on_err;
     hapd->task_get_deny_acl_list.task.completed_fn = osw_hostap_bss_cmd_warn_on_err;
     hapd->task_get_rxkhs.task.completed_fn = osw_hostap_bss_cmd_warn_on_fail;
@@ -1877,6 +1935,28 @@ osw_hostap_set_conf_ap_neigh(struct osw_hostap_bss_hapd *hapd,
     hapd->ssid = dvif->u.ap.ssid;
 }
 
+static bool
+osw_hostap_channel_needs_cac(const char *phy_name,
+                             const struct osw_channel *c)
+{
+    const struct osw_state_phy_info *phy_info = osw_state_phy_lookup(phy_name);
+    if (phy_info == NULL) return false;
+
+    const struct osw_drv_phy_state *phy_state = phy_info->drv_state;
+    const struct osw_channel_state *cs = phy_state->channel_states;
+    const size_t n_cs = phy_state->n_channel_states;
+
+    const bool cac_is_needed = osw_cs_chan_intersects_state(cs, n_cs, c, OSW_CHANNEL_DFS_CAC_POSSIBLE);
+    if (!cac_is_needed) return false;
+
+    const bool in_progress = osw_cs_chan_intersects_state(cs, n_cs, c, OSW_CHANNEL_DFS_CAC_IN_PROGRESS);
+    if (in_progress) {
+        LOGI(LOG_PREFIX_PHY(phy_name, "channel "OSW_CHANNEL_FMT" is already partially in progress, but partially not, so treating it as needing CAC", OSW_CHANNEL_ARG(c)));
+    }
+
+    return true;
+}
+
 static struct rq_task *
 osw_hostap_set_conf_ap(struct osw_hostap *hostap,
                        struct osw_drv_conf *drv_conf,
@@ -1936,10 +2016,19 @@ osw_hostap_set_conf_ap(struct osw_hostap *hostap,
     const bool want_running = dvif->enabled && want_ap;
     const bool sae_psk_changed = dvif->u.ap.psk_list_changed
                               && dvif->u.ap.wpa.akm_sae;
+    const bool cac_is_needed = want_running
+                            && dvif->u.ap.channel_changed
+                            && osw_hostap_channel_needs_cac(phy_name, &dvif->u.ap.channel);
+    const bool csa_not_possible = is_running
+                               && want_running
+                               && dvif->u.ap.channel_changed
+                               && cac_is_needed
+                               && hapd->csa_by_hostap;
     const bool invalidated = dvif->enabled_changed
                           || sae_psk_changed
                           || (dvif->u.ap.channel_changed == true &&
-                              dvif->u.ap.csa_required == false)
+                              (dvif->u.ap.csa_required == false ||
+                               csa_not_possible == true))
                           || dvif->u.ap.bridge_if_name_changed
                           || dvif->u.ap.nas_identifier_changed
                           || dvif->u.ap.beacon_interval_tu_changed
@@ -1980,8 +2069,12 @@ osw_hostap_set_conf_ap(struct osw_hostap *hostap,
     const bool do_wps_cancel = is_running
                             && dvif->u.ap.wps_pbc == false
                             && dvif->u.ap.wps_pbc_changed == true;
-    const bool do_csa = is_running && want_running &&
-                     dvif->u.ap.channel_changed && dvif->u.ap.csa_required && hapd->csa_by_hostap;
+    const bool do_csa = is_running
+                     && want_running
+                     && dvif->u.ap.channel_changed
+                     && dvif->u.ap.csa_required
+                     && hapd->csa_by_hostap
+                     && !cac_is_needed;
 
     const bool do_acl = want_running && (dvif->u.ap.acl_changed || dvif->u.ap.acl_policy_changed) &&
                      hapd->acl_by_hostap;
@@ -2117,9 +2210,11 @@ osw_hostap_set_conf_sta(struct osw_hostap *hostap,
     const bool want_sta = (dvif->vif_type == OSW_VIF_STA);
     const bool want_running = dvif->enabled && want_sta;
     const bool nop = (dvif->u.sta.operation == OSW_DRV_VIF_CONFIG_STA_NOP)
-                  && (dvif->enabled_changed == false);
+                  && (dvif->enabled_changed == false)
+                  && (dvif->u.sta.allow_roam_channels_changed == false);
     const bool invalidated = dvif->enabled_changed
-                          || dvif->u.sta.network_changed;
+                          || dvif->u.sta.network_changed
+                          || dvif->u.sta.allow_roam_channels_changed;
     const bool bridging_changed = (strncmp(conf->bridge_if_name.buf,
                                            wpas->bridge_if_name.buf,
                                            sizeof(wpas->bridge_if_name.buf)) != 0);

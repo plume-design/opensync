@@ -35,13 +35,19 @@ UNIT_TYPE := LIB
 
 UNIT_SRC += src/os_tr181_common.c
 UNIT_SRC += src/os_tr181_val.c
+UNIT_SRC += src/os_tr181_val_json.c
+UNIT_SRC += src/os_tr181_internal.c
+UNIT_SRC += src/os_tr181_libev.c
 UNIT_SRC += $(if $(CONFIG_OS_TR181_LIB_NULL), src/os_tr181_null.c)
 UNIT_SRC += $(if $(CONFIG_OS_TR181_LIB_CCSP), src/os_tr181_ccsp.c)
+UNIT_SRC += $(if $(CONFIG_OS_TR181_LIB_CCSP), src/os_tr181_val_rbus.c)
 UNIT_SRC += $(if $(CONFIG_OS_TR181_LIB_AMX),  src/os_tr181_ambiorix.c)
+UNIT_SRC += $(if $(CONFIG_OS_TR181_LIB_AMX),  src/os_tr181_val_amxc.c)
 
 UNIT_CFLAGS := -I$(UNIT_PATH)/inc
+UNIT_LDFLAGS += -ljansson
+UNIT_LDFLAGS += -lev
 
-ifeq ($(TARGET),native)
 #### CCSP
 ifeq ($(CONFIG_OS_TR181_LIB_CCSP),y)
 UNIT_CFLAGS += -I/usr/local/include/dbus-1.0 -I/usr/local/lib/dbus-1.0/include
@@ -50,12 +56,30 @@ UNIT_LDFLAGS += -Wl,-rpath=/usr/local/lib -lccsp_common -ldbus-1 -lsafec-3.5 -lr
 endif
 #### Ambiorix
 ifeq ($(CONFIG_OS_TR181_LIB_AMX),y)
-UNIT_LDFLAGS += -lamxc -lamxb -lamxp -lamxd
+UNIT_LDFLAGS += -lamxc -lamxb -lamxp -lamxd -lamxo
+
+# auto-detect if write_once is supported by the amxd library
+FLAG_WRITE_ONCE_C = src/os_tr181_amx_test_write_once.c
+FLAG_WRITE_ONCE_MK = $(UNIT_BUILD)/flag_write_once.mk
+ifeq ($(wildcard $(FLAG_WRITE_ONCE_MK)),)
+$(info $(UNIT_NAME) write_once check $(shell \
+	mkdir -p $$(dirname $(UNIT_BUILD)/$(FLAG_WRITE_ONCE_C)) && \
+	$(CC) \
+		$(UNIT_CFLAGS) \
+		-c -o $(UNIT_BUILD)/$(FLAG_WRITE_ONCE_C).o \
+		$(UNIT_PATH)/$(FLAG_WRITE_ONCE_C) \
+	&& printf "UNIT_CFLAGS += %s" "-DAMXD_HAS_WRITE_ONCE=1" > $(FLAG_WRITE_ONCE_MK) \
+	|| printf "# write_once param not available" > $(FLAG_WRITE_ONCE_MK); \
+	cat $(FLAG_WRITE_ONCE_MK); \
+))
 endif
+include $(FLAG_WRITE_ONCE_MK)
+
 endif
 
 UNIT_EXPORT_CFLAGS := $(UNIT_CFLAGS)
 UNIT_EXPORT_LDFLAGS := $(UNIT_LDFLAGS)
 
+UNIT_DEPS += src/lib/common
 UNIT_DEPS += src/lib/log
 

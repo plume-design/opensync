@@ -48,8 +48,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "network_zone_internals.h"
 
 
-static char tag_marker[2] = "${";
-static char gtag_marker[2] = "$[";
+static char tag_marker[2] = {'$', '{'};
+static char gtag_marker[2] = {'$', '['};
 
 
 static struct network_zone_mgr zone_mgr =

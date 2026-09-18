@@ -265,6 +265,8 @@ struct osw_drv_vif_config_sta {
     enum osw_drv_vif_config_sta_operation operation;
     struct osw_drv_vif_sta_network *network;
     bool network_changed;
+    enum osw_drv_channel_roaming allow_roam_channels;
+    bool allow_roam_channels_changed;
 };
 
 struct osw_drv_vif_config {
@@ -279,6 +281,11 @@ struct osw_drv_vif_config {
 
     int tx_power_dbm;
     bool tx_power_dbm_changed;
+
+    int tx_power_percent;
+    int tx_power_db_limit;
+    bool tx_power_db_limit_valid;
+    bool tx_power_changed;
 
     union {
         struct osw_drv_vif_config_ap ap;
@@ -379,6 +386,11 @@ struct osw_drv_vif_state_sta {
      */
     struct osw_drv_vif_sta_network *network;
 
+    /* Whether the driver currently allows the STA to
+     * (re)associate on channels other than the configured one.
+     */
+    enum osw_drv_channel_roaming allow_roam_channels;
+
     struct osw_drv_mld_state mld;
 };
 
@@ -388,6 +400,9 @@ struct osw_drv_vif_state {
     enum osw_vif_type vif_type;
     struct osw_hwaddr mac_addr;
     int tx_power_dbm;
+    int tx_power_percent;
+    int tx_power_db_limit;
+    bool tx_power_db_limit_valid;
 
     union {
         struct osw_drv_vif_state_ap ap;

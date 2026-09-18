@@ -15,3 +15,6 @@ menuconfig MANAGER_HELLOWORLD
         default "hello_world;false"
         help
             Hello World startup configuration
+            Optional crash backoff keys (;-separated key=value):
+            crash_count_max, crash_count_period, crash_recovery.
+            crash_count_max=0 disables. Ignored when needs_plan_b=true.

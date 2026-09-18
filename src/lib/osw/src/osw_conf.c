@@ -98,6 +98,9 @@ osw_conf_build_vif_cb(const struct osw_state_vif_info *info,
     vif->enabled = osw_conf_vif_status_to_conf(info->drv_state->status);
     vif->vif_type = info->drv_state->vif_type;
     vif->tx_power_dbm = info->drv_state->tx_power_dbm;
+    vif->tx_power_percent = info->drv_state->tx_power_percent;
+    vif->tx_power_db_limit = info->drv_state->tx_power_db_limit;
+    vif->tx_power_db_limit_valid = info->drv_state->tx_power_db_limit_valid;
     switch (vif->vif_type) {
         case OSW_VIF_UNDEFINED:
             assert(0); /* driver bug, FIXME: dont use assert, be gentler and free memory */
@@ -196,6 +199,7 @@ osw_conf_build_vif_cb(const struct osw_state_vif_info *info,
             break;
         case OSW_VIF_STA:
             ds_dlist_init(&vif->u.sta.net_list, struct osw_conf_net, node);
+            vif->u.sta.allow_roam_channels = info->drv_state->u.sta.allow_roam_channels;
             for (snet = info->drv_state->u.sta.network; snet != NULL; snet = snet->next) {
                 struct osw_conf_net *cnet = CALLOC(1, sizeof(*cnet));
                 memcpy(&cnet->ssid, &snet->ssid, sizeof(snet->ssid));
@@ -724,6 +728,9 @@ osw_conf_clone_vif(struct osw_conf_vif *src, struct osw_conf_phy *phy)
     vif->enabled = src->enabled;
     vif->vif_type = src->vif_type;
     vif->tx_power_dbm = src->tx_power_dbm;
+    vif->tx_power_percent = src->tx_power_percent;
+    vif->tx_power_db_limit = src->tx_power_db_limit;
+    vif->tx_power_db_limit_valid = src->tx_power_db_limit_valid;
 
     switch (vif->vif_type) {
         case OSW_VIF_UNDEFINED:
@@ -780,6 +787,7 @@ osw_conf_clone_vif(struct osw_conf_vif *src, struct osw_conf_phy *phy)
             break;
         case OSW_VIF_STA:
             osw_conf_clone_vif_net_list(&src->u.sta.net_list, &vif->u.sta.net_list);
+            vif->u.sta.allow_roam_channels = src->u.sta.allow_roam_channels;
             break;
     }
 
@@ -1189,6 +1197,9 @@ static int osw_conf_cmp_vif(struct osw_conf_vif *a, struct osw_conf_vif *b)
     osw_str_compare(r, a->vif_name, b->vif_name);
     osw_int_compare(r, a->vif_type, b->vif_type);
     osw_int_compare(r, a->tx_power_dbm, b->tx_power_dbm);
+    osw_int_compare(r, a->tx_power_percent, b->tx_power_percent);
+    osw_int_compare(r, a->tx_power_db_limit, b->tx_power_db_limit);
+    osw_int_compare(r, a->tx_power_db_limit_valid, b->tx_power_db_limit_valid);
     osw_mem_compare(r, &a->mac_addr, &b->mac_addr);
 
      switch (a->vif_type) {
@@ -1279,6 +1290,7 @@ static int osw_conf_cmp_vif(struct osw_conf_vif *a, struct osw_conf_vif *b)
         case OSW_VIF_STA:
             r = osw_conf_cmp_vif_net_list(&a->u.sta.net_list, &b->u.sta.net_list);
             if (r != 0) return r;
+            osw_int_compare(r, a->u.sta.allow_roam_channels, b->u.sta.allow_roam_channels);
     }
 
     return 0;

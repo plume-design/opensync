@@ -37,7 +37,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "osn_cell_esim.h"
 
 #include "log.h"
-#include "neigh_table.h"
 
 /*
  * ===========================================================================

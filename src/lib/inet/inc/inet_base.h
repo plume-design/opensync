@@ -112,6 +112,8 @@ struct __inet_base
     /* DHCP client class */
     osn_dhcp_client_t      *in_dhcpc;
     uint32_t               dhcp_renew;
+    /* Routing table for DHCP client installed default routes, 0 = main table */
+    uint32_t               in_dhcpc_route_table;
     inet_dhcpc_option_notify_fn_t*
                            in_dhcpc_option_fn;
 
@@ -306,6 +308,7 @@ extern bool inet_base_dhcpc_option_request(inet_t *super, enum osn_dhcp_option o
 extern bool inet_base_dhcpc_option_set(inet_t *super, enum osn_dhcp_option opt, const char *value);
 extern bool inet_base_dhcpc_option_get(inet_t *super, enum osn_dhcp_option opt, bool *req, const char **value);
 extern bool inet_base_dhcpc_option_notify(inet_t *super, inet_dhcpc_option_notify_fn_t *fn);
+extern bool inet_base_dhcpc_route_table_set(inet_t *super, uint32_t table);
 extern bool inet_base_dhcp_renew_set(inet_t *super, uint32_t dhcp_renew);
 
 /*

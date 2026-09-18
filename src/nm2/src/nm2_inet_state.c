@@ -265,6 +265,8 @@ void nm2_inet_state_to_schema(
     pstate->vlan_egress_qos_map_exists = piface->if_cache.vlan_egress_qos_map_exists;
     NM2_IFACE_INET_CONFIG_COPY(pstate->parent_ifname, piface->if_cache.parent_ifname);
     pstate->parent_ifname_exists = piface->if_cache.parent_ifname_exists;
+    NM2_IFACE_INET_CONFIG_COPY(pstate->dhcp_route_table, piface->if_cache.dhcp_route_table);
+    pstate->dhcp_route_table_exists = piface->if_cache.dhcp_route_table_exists;
 
 
     /* Unsupported fields, for now */

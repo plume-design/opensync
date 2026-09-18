@@ -52,7 +52,7 @@ if OSN_LINUX_ENABLED
             "Linux IPv6" backend (osn_ip6).
 
     config OSN_SKIP_ACCEL
-        string
+        string "SKIP-ACCEL mechanism"
         default "SKIPLOG" if PLATFORM_IS_BCM
         default "skipaccel"
         help
@@ -80,17 +80,40 @@ if OSN_LINUX_ENABLED
                 help
                     Full path to the udhcpc binary.
 
+            config OSN_UDHCPC_RFC_2131_BACKOFF
+                bool "Use RFC 2131 §4.1 exponential backoff for DISCOVER retransmissions"
+                default n
+                help
+                    When enabled, the -T (retry pause) argument is omitted so that
+                    udhcpc falls back to its compiled-in retransmission timing for
+                    DISCOVER packets. On a busybox udhcpc patched with RFC 2131
+                    §4.1 exponential backoff support (4 -> 8 -> 16 -> 32 -> 64s),
+                    this yields the standards-compliant backoff curve
+
+                    REQUIRES a patched udhcpc. On a stock/unpatched udhcpc this knob simply
+                    falls back to the busybox compile-time default (constant 3s
+                    retry interval), which is NOT RFC 2131 compliant. Leave this
+                    off (default) unless you know your platform's udhcpc is patched.
+
             config OSN_UDHCPC_DISCOVER_RETRIES
                 int "Number of discover packets to send (-t)"
+                default 60 if OSN_UDHCPC_RFC_2131_BACKOFF
                 default 3
                 help
-                    Send up to N discover packets before giving up.
+                    Send up to N discover packets before giving up. The default is
+                    tuned to the active retry strategy: 60 retries when RFC 2131
+                    backoff is enabled (~60 min total with the 4->8->16->32->64s curve),
+                    3 retries otherwise (~15s with the -T 5 linear pause).
 
             config OSN_UDHCPC_RETRY_PAUSE
                 int "Pause between retried packets in seconds (-T)"
                 default 5
                 help
                     Pause N seconds between retried discover and request packets.
+
+                    Note: only used when OSN_UDHCPC_RFC_2131_BACKOFF is disabled.
+                    With RFC 2131 backoff enabled, -T is omitted and this value
+                    has no effect.
 
             config OSN_UDHCPC_FAIL_RETRY_DELAY
                 int "Seconds to wait after failing to get a lease (-A)"

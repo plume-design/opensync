@@ -139,6 +139,15 @@ struct osw_drv_nl80211_hook_ops {
 typedef struct nl_80211 *
 osw_drv_nl80211_get_nl_80211_fn_t(struct osw_drv_nl80211_ops *ops);
 
+typedef const struct nl_80211_phy *
+osw_drv_nl80211_get_phy_info_fn_t(struct osw_drv_nl80211_ops *ops,
+                                  const char *phy_name,
+                                  int *radio_index);
+
+typedef const char *
+osw_drv_nl80211_get_phy_name_from_vif_name_fn(struct osw_drv_nl80211_ops *ops,
+                                              const char *vif_name);
+
 typedef struct osw_drv_nl80211_hook *
 osw_drv_nl80211_add_hook_ops_fn_t(struct osw_drv_nl80211_ops *ops,
                                   const struct osw_drv_nl80211_hook_ops *hook_ops,
@@ -150,6 +159,8 @@ osw_drv_nl80211_del_hook_fn_t(struct osw_drv_nl80211_ops *ops,
 
 struct osw_drv_nl80211_ops {
     osw_drv_nl80211_get_nl_80211_fn_t *get_nl_80211_fn;
+    osw_drv_nl80211_get_phy_info_fn_t *get_phy_info_fn;
+    osw_drv_nl80211_get_phy_name_from_vif_name_fn *get_phy_name_from_vif_name_fn;
     osw_drv_nl80211_add_hook_ops_fn_t *add_hook_ops_fn;
     osw_drv_nl80211_del_hook_fn_t *del_hook_fn;
 };

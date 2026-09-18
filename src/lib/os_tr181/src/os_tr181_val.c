@@ -43,18 +43,302 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "log.h"
 
 /* ========================================================================
+ * Type Validation
+ * ======================================================================== */
+
+bool os_val_is_value_type(os_tr181_param_type_t type)
+{
+    switch (type)
+    {
+        /* Simple types (used for both paths and values) */
+        case OS_TR181_TYPE_NONE:
+        case OS_TR181_TYPE_STRING:
+        case OS_TR181_TYPE_INT:
+        case OS_TR181_TYPE_UINT:
+        case OS_TR181_TYPE_INT64:
+        case OS_TR181_TYPE_UINT64:
+        case OS_TR181_TYPE_BOOL:
+        case OS_TR181_TYPE_DOUBLE:
+        case OS_TR181_TYPE_DATETIME:
+        case OS_TR181_TYPE_BASE64:
+        /* Value-only types (structured runtime data) */
+        case OS_TR181_TYPE_DICT:
+        case OS_TR181_TYPE_LIST:
+            return true;
+
+        /* Path-only types (describe TR-181 tree structure) */
+        case OS_TR181_TYPE_OBJECT:
+        case OS_TR181_TYPE_TABLE:
+        case OS_TR181_TYPE_INSTANCE:
+        case OS_TR181_TYPE_METHOD:
+        case OS_TR181_TYPE_EVENT:
+        case OS_TR181_TYPE_PROPERTY:
+            return false;
+    }
+
+    /* Unknown type - should not happen */
+    return false;
+}
+
+bool os_val_is_container_type(os_tr181_param_type_t type)
+{
+    return type == OS_TR181_TYPE_DICT || type == OS_TR181_TYPE_LIST;
+}
+
+bool os_val_is_scalar_type(os_tr181_param_type_t type)
+{
+    return os_val_is_value_type(type) && !os_val_is_container_type(type) && (type != OS_TR181_TYPE_NONE);
+}
+
+/* ========================================================================
+ * Internal Container Structures (not exposed in header)
+ * ======================================================================== */
+
+/* Dictionary entry - linked list node */
+struct dict_entry
+{
+    char *key;               /* Key string (owned, allocated) */
+    os_tr181_val_t *value;   /* Value (owned, allocated) */
+    struct dict_entry *next; /* Next entry in chain */
+};
+
+/* List entry - linked list node */
+struct list_entry
+{
+    os_tr181_val_t *value;   /* Value (owned, allocated) */
+    struct list_entry *next; /* Next entry in chain */
+};
+
+/* Container holds either dict or list data */
+struct os_val_container_s
+{
+    struct dict_entry *dict; /* Head of dict chain (NULL if LIST type) */
+    struct list_entry *list; /* Head of list chain (NULL if DICT type) */
+    size_t count;            /* Number of entries (cached for performance) */
+};
+
+/* ========================================================================
+ * Internal Container Helper Functions
+ * ======================================================================== */
+
+/* Free dictionary chain recursively */
+static void free_dict_chain(struct dict_entry *entry)
+{
+    while (entry)
+    {
+        struct dict_entry *next = entry->next;
+        free(entry->key);
+        os_val_delete(entry->value);
+        free(entry);
+        entry = next;
+    }
+}
+
+/* Free list chain recursively */
+static void free_list_chain(struct list_entry *entry)
+{
+    while (entry)
+    {
+        struct list_entry *next = entry->next;
+        os_val_delete(entry->value);
+        free(entry);
+        entry = next;
+    }
+}
+
+/* Free container and all its contents */
+static void free_container(os_val_container_t *container)
+{
+    if (!container)
+    {
+        return;
+    }
+
+    if (container->dict)
+    {
+        free_dict_chain(container->dict);
+    }
+    if (container->list)
+    {
+        free_list_chain(container->list);
+    }
+
+    free(container);
+}
+
+/* Deep copy dictionary chain */
+static struct dict_entry *copy_dict_chain(const struct dict_entry *src)
+{
+    if (!src)
+    {
+        return NULL;
+    }
+
+    struct dict_entry *head = NULL;
+    struct dict_entry *tail = NULL;
+
+    while (src)
+    {
+        struct dict_entry *entry = malloc(sizeof(*entry));
+        if (!entry)
+        {
+            free_dict_chain(head);
+            return NULL;
+        }
+
+        entry->key = strdup(src->key);
+        if (!entry->key)
+        {
+            free(entry);
+            free_dict_chain(head);
+            return NULL;
+        }
+
+        entry->value = os_val_new();
+        if (!entry->value)
+        {
+            free(entry->key);
+            free(entry);
+            free_dict_chain(head);
+            return NULL;
+        }
+
+        if (os_val_copy(entry->value, src->value) != OS_TR181_SUCCESS)
+        {
+            os_val_delete(entry->value);
+            free(entry->key);
+            free(entry);
+            free_dict_chain(head);
+            return NULL;
+        }
+
+        entry->next = NULL;
+
+        if (!head)
+        {
+            head = entry;
+            tail = entry;
+        }
+        else
+        {
+            tail->next = entry;
+            tail = entry;
+        }
+
+        src = src->next;
+    }
+
+    return head;
+}
+
+/* Deep copy list chain */
+static struct list_entry *copy_list_chain(const struct list_entry *src)
+{
+    if (!src)
+    {
+        return NULL;
+    }
+
+    struct list_entry *head = NULL;
+    struct list_entry *tail = NULL;
+
+    while (src)
+    {
+        struct list_entry *entry = malloc(sizeof(*entry));
+        if (!entry)
+        {
+            free_list_chain(head);
+            return NULL;
+        }
+
+        entry->value = os_val_new();
+        if (!entry->value)
+        {
+            free(entry);
+            free_list_chain(head);
+            return NULL;
+        }
+
+        if (os_val_copy(entry->value, src->value) != OS_TR181_SUCCESS)
+        {
+            os_val_delete(entry->value);
+            free(entry);
+            free_list_chain(head);
+            return NULL;
+        }
+
+        entry->next = NULL;
+
+        if (!head)
+        {
+            head = entry;
+            tail = entry;
+        }
+        else
+        {
+            tail->next = entry;
+            tail = entry;
+        }
+
+        src = src->next;
+    }
+
+    return head;
+}
+
+/* Deep copy container (used by os_val_copy) */
+static os_val_container_t *copy_container(const os_val_container_t *src)
+{
+    if (!src)
+    {
+        return NULL;
+    }
+
+    os_val_container_t *dst = malloc(sizeof(os_val_container_t));
+    if (!dst)
+    {
+        return NULL;
+    }
+
+    memset(dst, 0, sizeof(*dst));
+    dst->count = src->count;
+
+    if (src->dict)
+    {
+        dst->dict = copy_dict_chain(src->dict);
+        if (!dst->dict)
+        {
+            free(dst);
+            return NULL;
+        }
+    }
+
+    if (src->list)
+    {
+        dst->list = copy_list_chain(src->list);
+        if (!dst->list)
+        {
+            free_container(dst);
+            return NULL;
+        }
+    }
+
+    return dst;
+}
+
+/* ========================================================================
  * Construction Functions
  * ======================================================================== */
 
 os_tr181_val_t os_val_str_ref(const char *s)
 {
-    return (os_tr181_val_t){.type = OS_TR181_TYPE_STRING, .str = (char *)s, .alloc = false};
+    return (os_tr181_val_t){.type = OS_TR181_TYPE_STRING, .str = (char *)s, .str_alloc = false};
 }
 
 os_tr181_val_t os_val_str_dup(const char *s)
 {
     char *dup = s ? strdup(s) : NULL;
-    return (os_tr181_val_t){.type = OS_TR181_TYPE_STRING, .str = dup, .alloc = (dup != NULL)};
+    return (os_tr181_val_t){.type = OS_TR181_TYPE_STRING, .str = dup, .str_alloc = (dup != NULL)};
 }
 
 /* ========================================================================
@@ -78,9 +362,15 @@ void os_val_free(os_tr181_val_t *v)
     }
 
     /* Free string if allocated */
-    if (v->alloc && v->str)
+    if (v->str_alloc && v->str)
     {
         free(v->str);
+    }
+
+    /* Free container if present (recursive for DICT/LIST) */
+    if (v->container)
+    {
+        free_container(v->container);
     }
 
     /* Reset to NONE */
@@ -105,25 +395,38 @@ os_tr181_error_t os_val_copy(os_tr181_val_t *dst, const os_tr181_val_t *src)
     /* Handle string duplication */
     if (src->str)
     {
-        if (src->alloc)
+        if (src->str_alloc)
         {
             dst->str = strdup(src->str);
             if (!dst->str)
             {
                 return OS_TR181_ERROR;
             }
-            dst->alloc = true;
+            dst->str_alloc = true;
         }
         else
         {
             dst->str = src->str; /* Borrow pointer */
-            dst->alloc = false;
+            dst->str_alloc = false;
         }
     }
     else
     {
         dst->str = NULL;
-        dst->alloc = false;
+        dst->str_alloc = false;
+    }
+
+    /* Handle container deep copy */
+    dst->container = copy_container(src->container);
+    if (src->container && !dst->container)
+    {
+        /* Container copy failed */
+        if (dst->str_alloc)
+        {
+            free(dst->str);
+        }
+        memset(dst, 0, sizeof(*dst));
+        return OS_TR181_ERROR;
     }
 
     return OS_TR181_SUCCESS;
@@ -145,6 +448,68 @@ void os_val_move(os_tr181_val_t *dst, os_tr181_val_t *src)
     /* Reset source */
     memset(src, 0, sizeof(*src));
     src->type = OS_TR181_TYPE_NONE;
+}
+
+os_tr181_val_t *os_val_new(void)
+{
+    os_tr181_val_t *v = malloc(sizeof(os_tr181_val_t));
+    if (v)
+    {
+        os_val_init(v);
+    }
+    return v;
+}
+
+void os_val_delete(os_tr181_val_t *v)
+{
+    if (v)
+    {
+        os_val_free(v);
+        free(v);
+    }
+}
+
+void os_val_init_type(os_tr181_val_t *v, os_tr181_param_type_t type)
+{
+    if (!v)
+    {
+        return;
+    }
+
+    /* Validate type is appropriate for values */
+    if (!os_val_is_value_type(type))
+    {
+        LOGE("Invalid value type: %d (path-only types not allowed)", type);
+        type = OS_TR181_TYPE_NONE; /* Initialize as NONE instead */
+    }
+
+    /* Initialize without freeing (assumes v is uninitialized) */
+    os_val_init(v);
+    v->type = type;
+
+    /* For container types, allocate empty container */
+    if (os_val_is_container_type(type))
+    {
+        v->container = calloc(1, sizeof(os_val_container_t));
+        /* If allocation fails, type stays as requested but container is NULL */
+        /* Operations will check and handle this */
+    }
+}
+
+void os_val_set_type(os_tr181_val_t *v, os_tr181_param_type_t type)
+{
+    os_val_free(v);
+    os_val_init_type(v, type);
+}
+
+os_tr181_val_t *os_val_new_type(os_tr181_param_type_t type)
+{
+    os_tr181_val_t *v = os_val_new();
+    if (v)
+    {
+        os_val_init_type(v, type);
+    }
+    return v;
 }
 
 /* ========================================================================
@@ -249,7 +614,7 @@ os_tr181_error_t os_val_set_str_dup(os_tr181_val_t *v, const char *s)
     {
         return OS_TR181_ERROR;
     }
-    v->alloc = true;
+    v->str_alloc = true;
     return OS_TR181_SUCCESS;
 }
 
@@ -263,7 +628,7 @@ os_tr181_error_t os_val_set_str_ref(os_tr181_val_t *v, const char *s)
     os_val_free(v);
     v->type = OS_TR181_TYPE_STRING;
     v->str = (char *)s; /* Borrow pointer */
-    v->alloc = false;
+    v->str_alloc = false;
     return OS_TR181_SUCCESS;
 }
 
@@ -887,7 +1252,16 @@ os_tr181_error_t os_val_to_str(const os_tr181_val_t *v, char **str)
             break;
         }
 
-        default:
+        /* Complex types not supported - use JSON conversion */
+        case OS_TR181_TYPE_NONE:
+        case OS_TR181_TYPE_LIST:
+        case OS_TR181_TYPE_DICT:
+        case OS_TR181_TYPE_OBJECT:
+        case OS_TR181_TYPE_TABLE:
+        case OS_TR181_TYPE_INSTANCE:
+        case OS_TR181_TYPE_METHOD:
+        case OS_TR181_TYPE_EVENT:
+        case OS_TR181_TYPE_PROPERTY:
             return OS_TR181_ERROR_INVALID;
     }
 
@@ -1083,7 +1457,606 @@ os_tr181_error_t os_val_from_str(os_tr181_val_t *v, const char *str, os_tr181_pa
             return os_val_set_datetime(v, ts);
         }
 
-        default:
+        /* Complex types not supported - use JSON conversion */
+        case OS_TR181_TYPE_NONE:
+        case OS_TR181_TYPE_LIST:
+        case OS_TR181_TYPE_DICT:
+        case OS_TR181_TYPE_OBJECT:
+        case OS_TR181_TYPE_TABLE:
+        case OS_TR181_TYPE_INSTANCE:
+        case OS_TR181_TYPE_METHOD:
+        case OS_TR181_TYPE_EVENT:
+        case OS_TR181_TYPE_PROPERTY:
             return OS_TR181_ERROR_INVALID;
     }
+
+    /* Unreachable - all cases return */
+    return OS_TR181_ERROR_INVALID;
+}
+
+/* ========================================================================
+ * Dictionary Operations
+ * ======================================================================== */
+
+/* Internal helper: Find dictionary entry by key */
+static struct dict_entry *find_dict_entry(const os_val_container_t *container, const char *key)
+{
+    if (!container || !key)
+    {
+        return NULL;
+    }
+
+    struct dict_entry *entry = container->dict;
+    while (entry)
+    {
+        if (strcmp(entry->key, key) == 0)
+        {
+            return entry;
+        }
+        entry = entry->next;
+    }
+    return NULL;
+}
+
+void os_val_set_dict(os_tr181_val_t *val)
+{
+    if (!val)
+    {
+        return;
+    }
+
+    os_val_free(val);
+    val->type = OS_TR181_TYPE_DICT;
+    val->container = calloc(1, sizeof(os_val_container_t));
+}
+
+os_tr181_error_t os_val_dict_set(os_tr181_val_t *dict, const char *key, const os_tr181_val_t *value)
+{
+    if (!dict || dict->type != OS_TR181_TYPE_DICT || !key || !*key || !value)
+    {
+        return OS_TR181_ERROR_INVALID;
+    }
+
+    if (!dict->container)
+    {
+        dict->container = calloc(1, sizeof(os_val_container_t));
+        if (!dict->container)
+        {
+            return OS_TR181_ERROR;
+        }
+    }
+
+    /* Check if key already exists */
+    struct dict_entry *entry = find_dict_entry(dict->container, key);
+    if (entry)
+    {
+        /* Update existing entry */
+        os_tr181_val_t *new_value = os_val_new();
+        if (!new_value)
+        {
+            return OS_TR181_ERROR;
+        }
+        if (os_val_copy(new_value, value) != OS_TR181_SUCCESS)
+        {
+            os_val_delete(new_value);
+            return OS_TR181_ERROR;
+        }
+        /* Free old value */
+        os_val_delete(entry->value);
+        entry->value = new_value;
+        return OS_TR181_SUCCESS;
+    }
+
+    /* Create new entry */
+    entry = malloc(sizeof(struct dict_entry));
+    if (!entry)
+    {
+        return OS_TR181_ERROR;
+    }
+
+    entry->key = strdup(key);
+    if (!entry->key)
+    {
+        free(entry);
+        return OS_TR181_ERROR;
+    }
+
+    entry->value = os_val_new();
+    if (!entry->value)
+    {
+        free(entry->key);
+        free(entry);
+        return OS_TR181_ERROR;
+    }
+
+    if (os_val_copy(entry->value, value) != OS_TR181_SUCCESS)
+    {
+        os_val_delete(entry->value);
+        free(entry->key);
+        free(entry);
+        return OS_TR181_ERROR;
+    }
+
+    /* Add to head of list */
+    entry->next = dict->container->dict;
+    dict->container->dict = entry;
+    dict->container->count++;
+
+    return OS_TR181_SUCCESS;
+}
+
+const os_tr181_val_t *os_val_dict_get(const os_tr181_val_t *dict, const char *key)
+{
+    if (!dict || dict->type != OS_TR181_TYPE_DICT || !key || !dict->container)
+    {
+        return NULL;
+    }
+
+    struct dict_entry *entry = find_dict_entry(dict->container, key);
+    return entry ? entry->value : NULL;
+}
+
+bool os_val_dict_has_key(const os_tr181_val_t *dict, const char *key)
+{
+    return os_val_dict_get(dict, key) != NULL;
+}
+
+os_tr181_error_t os_val_dict_remove(os_tr181_val_t *dict, const char *key)
+{
+    if (!dict || dict->type != OS_TR181_TYPE_DICT || !key || !dict->container)
+    {
+        return OS_TR181_ERROR_INVALID;
+    }
+
+    struct dict_entry **prev = &dict->container->dict;
+    struct dict_entry *entry = dict->container->dict;
+
+    while (entry)
+    {
+        if (strcmp(entry->key, key) == 0)
+        {
+            /* Remove from chain */
+            *prev = entry->next;
+            dict->container->count--;
+
+            /* Free entry */
+            free(entry->key);
+            os_val_delete(entry->value);
+            free(entry);
+
+            return OS_TR181_SUCCESS;
+        }
+        prev = &entry->next;
+        entry = entry->next;
+    }
+
+    return OS_TR181_ERROR_NOT_FOUND;
+}
+
+size_t os_val_dict_size(const os_tr181_val_t *dict)
+{
+    if (!dict || dict->type != OS_TR181_TYPE_DICT || !dict->container)
+    {
+        return 0;
+    }
+    return dict->container->count;
+}
+
+os_tr181_error_t os_val_dict_get_keys(const os_tr181_val_t *dict, const char **keys, size_t capacity, size_t *count)
+{
+    if (!dict || dict->type != OS_TR181_TYPE_DICT || !keys || !count)
+    {
+        return OS_TR181_ERROR_INVALID;
+    }
+
+    *count = 0;
+
+    if (!dict->container || dict->container->count == 0)
+    {
+        return OS_TR181_SUCCESS;
+    }
+
+    /* Check if capacity is sufficient */
+    if (capacity < dict->container->count)
+    {
+        return OS_TR181_ERROR_INVALID;
+    }
+
+    /* Fill keys array */
+    struct dict_entry *entry = dict->container->dict;
+    size_t i = 0;
+    while (entry && i < dict->container->count)
+    {
+        keys[i] = entry->key; /* Point to internal key (read-only) */
+        i++;
+        entry = entry->next;
+    }
+
+    *count = i;
+    return OS_TR181_SUCCESS;
+}
+
+/* Dictionary convenience functions */
+
+const char *os_val_dict_get_string_or(const os_tr181_val_t *dict, const char *key, const char *default_val)
+{
+    return os_val_get_str_or(os_val_dict_get(dict, key), default_val);
+}
+
+int32_t os_val_dict_get_int_or(const os_tr181_val_t *dict, const char *key, int32_t default_val)
+{
+    return os_val_get_int_or(os_val_dict_get(dict, key), default_val);
+}
+
+uint32_t os_val_dict_get_uint_or(const os_tr181_val_t *dict, const char *key, uint32_t default_val)
+{
+    return os_val_get_uint_or(os_val_dict_get(dict, key), default_val);
+}
+
+bool os_val_dict_get_bool_or(const os_tr181_val_t *dict, const char *key, bool default_val)
+{
+    return os_val_get_bool_or(os_val_dict_get(dict, key), default_val);
+}
+
+double os_val_dict_get_double_or(const os_tr181_val_t *dict, const char *key, double default_val)
+{
+    return os_val_get_double_or(os_val_dict_get(dict, key), default_val);
+}
+
+os_tr181_error_t os_val_dict_set_string(os_tr181_val_t *dict, const char *key, const char *value)
+{
+    /* Temporary reference - safe because os_val_dict_set makes deep copy */
+    os_tr181_val_t v = OS_VAL_STR_REF(value);
+    return os_val_dict_set(dict, key, &v);
+}
+
+os_tr181_error_t os_val_dict_set_int(os_tr181_val_t *dict, const char *key, int32_t value)
+{
+    os_tr181_val_t v = OS_VAL_INT(value);
+    return os_val_dict_set(dict, key, &v);
+}
+
+os_tr181_error_t os_val_dict_set_uint(os_tr181_val_t *dict, const char *key, uint32_t value)
+{
+    os_tr181_val_t v = OS_VAL_UINT(value);
+    return os_val_dict_set(dict, key, &v);
+}
+
+os_tr181_error_t os_val_dict_set_bool(os_tr181_val_t *dict, const char *key, bool value)
+{
+    os_tr181_val_t v = OS_VAL_BOOL(value);
+    return os_val_dict_set(dict, key, &v);
+}
+
+os_tr181_error_t os_val_dict_set_double(os_tr181_val_t *dict, const char *key, double value)
+{
+    os_tr181_val_t v = OS_VAL_DOUBLE(value);
+    return os_val_dict_set(dict, key, &v);
+}
+
+/* ========================================================================
+ * List Operations
+ * ======================================================================== */
+
+void os_val_set_list(os_tr181_val_t *val)
+{
+    if (!val)
+    {
+        return;
+    }
+
+    os_val_free(val);
+    val->type = OS_TR181_TYPE_LIST;
+    val->container = calloc(1, sizeof(os_val_container_t));
+}
+
+os_tr181_error_t os_val_list_append(os_tr181_val_t *list, const os_tr181_val_t *value)
+{
+    if (!list || list->type != OS_TR181_TYPE_LIST || !value)
+    {
+        return OS_TR181_ERROR_INVALID;
+    }
+
+    if (!list->container)
+    {
+        list->container = calloc(1, sizeof(os_val_container_t));
+        if (!list->container)
+        {
+            return OS_TR181_ERROR;
+        }
+    }
+
+    /* Create new entry */
+    struct list_entry *entry = malloc(sizeof(struct list_entry));
+    if (!entry)
+    {
+        return OS_TR181_ERROR;
+    }
+
+    entry->value = os_val_new();
+    if (!entry->value)
+    {
+        free(entry);
+        return OS_TR181_ERROR;
+    }
+
+    if (os_val_copy(entry->value, value) != OS_TR181_SUCCESS)
+    {
+        os_val_delete(entry->value);
+        free(entry);
+        return OS_TR181_ERROR;
+    }
+
+    entry->next = NULL;
+
+    /* Append to end of list */
+    if (!list->container->list)
+    {
+        list->container->list = entry;
+    }
+    else
+    {
+        struct list_entry *tail = list->container->list;
+        while (tail->next)
+        {
+            tail = tail->next;
+        }
+        tail->next = entry;
+    }
+
+    list->container->count++;
+    return OS_TR181_SUCCESS;
+}
+
+const os_tr181_val_t *os_val_list_get(const os_tr181_val_t *list, size_t index)
+{
+    if (!list || list->type != OS_TR181_TYPE_LIST || !list->container)
+    {
+        return NULL;
+    }
+
+    if (index >= list->container->count)
+    {
+        return NULL;
+    }
+
+    struct list_entry *entry = list->container->list;
+    for (size_t i = 0; i < index && entry; i++)
+    {
+        entry = entry->next;
+    }
+
+    return entry ? entry->value : NULL;
+}
+
+os_tr181_error_t os_val_list_set(os_tr181_val_t *list, size_t index, const os_tr181_val_t *value)
+{
+    if (!list || list->type != OS_TR181_TYPE_LIST || !value || !list->container)
+    {
+        return OS_TR181_ERROR_INVALID;
+    }
+
+    if (index >= list->container->count)
+    {
+        return OS_TR181_ERROR_INVALID;
+    }
+
+    struct list_entry *entry = list->container->list;
+    for (size_t i = 0; i < index && entry; i++)
+    {
+        entry = entry->next;
+    }
+
+    if (!entry)
+    {
+        return OS_TR181_ERROR_INVALID;
+    }
+
+    /* Replace value */
+    os_tr181_val_t *new_value = os_val_new();
+    if (!new_value)
+    {
+        return OS_TR181_ERROR;
+    }
+
+    if (os_val_copy(new_value, value) != OS_TR181_SUCCESS)
+    {
+        os_val_delete(new_value);
+        return OS_TR181_ERROR;
+    }
+
+    /* Free old value */
+    os_val_delete(entry->value);
+
+    entry->value = new_value;
+    return OS_TR181_SUCCESS;
+}
+
+size_t os_val_list_size(const os_tr181_val_t *list)
+{
+    if (!list || list->type != OS_TR181_TYPE_LIST || !list->container)
+    {
+        return 0;
+    }
+    return list->container->count;
+}
+
+os_tr181_error_t os_val_list_remove(os_tr181_val_t *list, size_t index)
+{
+    if (!list || list->type != OS_TR181_TYPE_LIST || !list->container)
+    {
+        return OS_TR181_ERROR_INVALID;
+    }
+
+    if (index >= list->container->count)
+    {
+        return OS_TR181_ERROR_INVALID;
+    }
+
+    struct list_entry **prev = &list->container->list;
+    struct list_entry *entry = list->container->list;
+
+    for (size_t i = 0; i < index && entry; i++)
+    {
+        prev = &entry->next;
+        entry = entry->next;
+    }
+
+    if (!entry)
+    {
+        return OS_TR181_ERROR_INVALID;
+    }
+
+    /* Remove from chain */
+    *prev = entry->next;
+    list->container->count--;
+
+    /* Free entry */
+    os_val_delete(entry->value);
+    free(entry);
+
+    return OS_TR181_SUCCESS;
+}
+
+/* List convenience functions */
+
+os_tr181_error_t os_val_list_append_string(os_tr181_val_t *list, const char *value)
+{
+    /* Temporary reference - safe because os_val_list_append makes deep copy */
+    os_tr181_val_t v = OS_VAL_STR_REF(value);
+    return os_val_list_append(list, &v);
+}
+
+os_tr181_error_t os_val_list_append_int(os_tr181_val_t *list, int32_t value)
+{
+    os_tr181_val_t v = OS_VAL_INT(value);
+    return os_val_list_append(list, &v);
+}
+
+os_tr181_error_t os_val_list_append_uint(os_tr181_val_t *list, uint32_t value)
+{
+    os_tr181_val_t v = OS_VAL_UINT(value);
+    return os_val_list_append(list, &v);
+}
+
+os_tr181_error_t os_val_list_append_bool(os_tr181_val_t *list, bool value)
+{
+    os_tr181_val_t v = OS_VAL_BOOL(value);
+    return os_val_list_append(list, &v);
+}
+
+os_tr181_error_t os_val_list_append_double(os_tr181_val_t *list, double value)
+{
+    os_tr181_val_t v = OS_VAL_DOUBLE(value);
+    return os_val_list_append(list, &v);
+}
+
+/* ========================================================================
+ * Iterator Implementation
+ * ======================================================================== */
+
+os_tr181_val_t *os_val_iter_init(os_val_iter_t *iter, os_tr181_val_t *container)
+{
+    if (!iter || !container || !container->container)
+    {
+        if (iter) *iter = (os_val_iter_t){0};
+        return NULL;
+    }
+
+    iter->container = container;
+    iter->prev_node = NULL;
+
+    if (container->type == OS_TR181_TYPE_DICT)
+    {
+        struct dict_entry *first = container->container->dict;
+        iter->current = first;
+        iter->next_node = first ? first->next : NULL;
+        return first ? first->value : NULL;
+    }
+    else if (container->type == OS_TR181_TYPE_LIST)
+    {
+        struct list_entry *first = container->container->list;
+        iter->current = first;
+        iter->next_node = first ? first->next : NULL;
+        return first ? first->value : NULL;
+    }
+
+    *iter = (os_val_iter_t){0};
+    return NULL;
+}
+
+os_tr181_val_t *os_val_iter_next(os_val_iter_t *iter)
+{
+    if (!iter || !iter->next_node)
+    {
+        if (iter) iter->current = NULL;
+        return NULL;
+    }
+
+    /* If current was deleted it will be NULL — keep prev_node as is.
+     * Otherwise advance prev to current before overwriting current. */
+    if (iter->current) iter->prev_node = iter->current;
+
+    if (iter->container->type == OS_TR181_TYPE_DICT)
+    {
+        struct dict_entry *entry = (struct dict_entry *)iter->next_node;
+        iter->current = entry;
+        iter->next_node = entry->next;
+        return entry->value;
+    }
+    else
+    {
+        struct list_entry *entry = (struct list_entry *)iter->next_node;
+        iter->current = entry;
+        iter->next_node = entry->next;
+        return entry->value;
+    }
+}
+
+const char *os_val_iter_key(const os_val_iter_t *iter)
+{
+    if (!iter || !iter->current || !iter->container || iter->container->type != OS_TR181_TYPE_DICT)
+    {
+        return NULL;
+    }
+    return ((struct dict_entry *)iter->current)->key;
+}
+
+void os_val_iter_delete(os_val_iter_t *iter)
+{
+    if (!iter || !iter->current || !iter->container || !iter->container->container) return;
+
+    os_tr181_val_t *container = iter->container;
+
+    if (container->type == OS_TR181_TYPE_DICT)
+    {
+        struct dict_entry *entry = (struct dict_entry *)iter->current;
+
+        if (iter->prev_node)
+            ((struct dict_entry *)iter->prev_node)->next = entry->next;
+        else
+            container->container->dict = entry->next;
+
+        container->container->count--;
+        free(entry->key);
+        os_val_delete(entry->value);
+        free(entry);
+    }
+    else if (container->type == OS_TR181_TYPE_LIST)
+    {
+        struct list_entry *entry = (struct list_entry *)iter->current;
+
+        if (iter->prev_node)
+            ((struct list_entry *)iter->prev_node)->next = entry->next;
+        else
+            container->container->list = entry->next;
+
+        container->container->count--;
+        os_val_delete(entry->value);
+        free(entry);
+    }
+
+    /* next_node remains valid — os_val_iter_next() will use it.
+     * prev_node stays as is — still the correct predecessor for the next element. */
+    iter->current = NULL;
 }

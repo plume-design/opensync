@@ -241,6 +241,12 @@ int main(int argc, char *argv[])
         return 1;
     }
 
+    // Initialize STA module (dynamic STA VIF pipelines)
+    if (!wano_sta_init())
+    {
+        LOG(WARN, "wano: Error initializing STA module.");
+    }
+
     // Initialize WAN configuration
     if (!wano_wan_ovsdb_init())
     {

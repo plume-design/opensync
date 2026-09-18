@@ -25,6 +25,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 #include <inttypes.h>
+#include <strings.h>
 #include <jansson.h>
 
 #include "ds_tree.h"
@@ -37,6 +38,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "wano.h"
 #include "wano_wan.h"
+#include "wano_internal.h"
 
 struct wano_wan_config_cache
 {
@@ -284,15 +286,15 @@ bool wano_wan_is_last_config(const wano_wan_t *ww)
 }
 
 /*
- * Return true if the current priority group contains a VLAN config but no
- * other connection-type config (DHCP, PPPoE, static_ipv4). In that case DHCP
- * is implied and should always be attempted on the VLAN interface, even if
- * this is not the last (lowest) priority config.
+ * Return true if the current priority group contains a VLAN or STA config but
+ * no other connection-type config (DHCP, PPPoE, static_ipv4). In that case
+ * DHCP is implied and should always be attempted on the resulting interface,
+ * even if this is not the last (lowest) priority config.
  */
-bool wano_wan_vlan_implies_dhcp(const wano_wan_t *ww)
+bool wano_wan_implies_dhcp(const wano_wan_t *ww)
 {
     struct wano_wan_config_cache *wcc;
-    bool have_vlan = false;
+    bool have_implier = false;
 
     if (ww == NULL) return false;
 
@@ -303,7 +305,8 @@ bool wano_wan_vlan_implies_dhcp(const wano_wan_t *ww)
         switch (wcc->wcc_wan_config.wc_type)
         {
             case WC_TYPE_VLAN:
-                have_vlan = true;
+            case WC_TYPE_STA:
+                have_implier = true;
                 break;
 
             case WC_TYPE_DHCP:
@@ -313,7 +316,7 @@ bool wano_wan_vlan_implies_dhcp(const wano_wan_t *ww)
         }
     }
 
-    return have_vlan;
+    return have_implier;
 }
 
 bool wano_wan_config_get(wano_wan_t *ww, enum wano_wan_config_type type, struct wano_wan_config *wc_out)
@@ -328,6 +331,40 @@ bool wano_wan_config_get(wano_wan_t *ww, enum wano_wan_config_type type, struct 
 
     wcc = ds_tree_find(&g_wano_wan_config_list, &wc_key);
     if (wcc == NULL) return false;
+
+    /*
+     * Interface binding filter:
+     * - Dynamic pipelines (STA): skip configs without explicit binding
+     * - All pipelines: skip configs bound to a different interface
+     * - "all" binding: matches any pipeline
+     */
+    const char *bind_ifname = wcc->wcc_wan_config.wc_bind_ifname;
+    const char *bind_iftype = wcc->wcc_wan_config.wc_bind_iftype;
+    bool has_binding = (bind_ifname[0] != '\0' || bind_iftype[0] != '\0');
+
+    /* Dynamic pipelines require explicit binding (or "all") */
+    if (ww->ww_dynamic && !has_binding)
+    {
+        return false;
+    }
+
+    /* Check if_name binding */
+    if (bind_ifname[0] != '\0'
+            && strcmp(bind_ifname, "all") != 0
+            && ww->ww_ifname[0] != '\0'
+            && strcmp(bind_ifname, ww->ww_ifname) != 0)
+    {
+        return false;
+    }
+
+    /* Check if_type binding */
+    if (bind_iftype[0] != '\0'
+            && strcmp(bind_iftype, "all") != 0
+            && ww->ww_iftype[0] != '\0'
+            && strcmp(bind_iftype, ww->ww_iftype) != 0)
+    {
+        return false;
+    }
 
     *wc_out = wcc->wcc_wan_config;
 
@@ -440,6 +477,11 @@ bool wano_wan_status_update(enum wano_wan_config_type type, int64_t priority)
 
         case WC_TYPE_DHCP:
             typestr = "dhcp";
+            break;
+
+        case WC_TYPE_STA:
+            typestr = "sta";
+            break;
     }
 
     where = ovsdb_where_multi(
@@ -672,10 +714,63 @@ bool wano_wan_config_from_schema(struct wano_wan_config *wc, struct schema_WAN_C
     {
         wc->wc_type = WC_TYPE_DHCP;
     }
+    else if (strcmp(schema->type, "sta") == 0)
+    {
+        const char *ssid;
+        const char *key;
+        const char *encryption;
+
+        ssid = wano_wan_config_other_config_get(schema, "ssid");
+        if (ssid == NULL || ssid[0] == '\0')
+        {
+            LOG(ERR, "wan_config: STA config is missing the required `ssid` setting.");
+            return false;
+        }
+
+        key = wano_wan_config_other_config_get(schema, "key");
+        encryption = wano_wan_config_other_config_get(schema, "encryption");
+        const char *sta_ifname = wano_wan_config_other_config_get(schema, "if_name");
+
+        const char *connectivity_check = wano_wan_config_other_config_get(schema, "connectivity_check");
+        const char *inet_role = wano_wan_config_other_config_get(schema, "inet_role");
+        const char *test_connection = wano_wan_config_other_config_get(schema, "test_connection");
+
+        wc->wc_type = WC_TYPE_STA;
+        STRSCPY(wc->wc_type_sta.wc_ssid, ssid);
+        if (key != NULL) STRSCPY(wc->wc_type_sta.wc_key, key);
+        if (encryption != NULL) STRSCPY(wc->wc_type_sta.wc_encryption, encryption);
+        if (sta_ifname != NULL) STRSCPY(wc->wc_type_sta.wc_ifname, sta_ifname);
+        if (connectivity_check != NULL) STRSCPY(wc->wc_type_sta.wc_connectivity_check, connectivity_check);
+        if (inet_role != NULL) STRSCPY(wc->wc_type_sta.wc_inet_role, inet_role);
+        wc->wc_type_sta.wc_test_connection = (test_connection != NULL) && (strcmp(test_connection, "true") == 0);
+
+        const char *scan_timeout_str = wano_wan_config_other_config_get(schema, "sta_scan_timeout");
+        if (scan_timeout_str != NULL)
+        {
+            int t = atoi(scan_timeout_str);
+            if (t >= 0)
+            {
+                wc->wc_type_sta.wc_scan_timeout_exists = true;
+                wc->wc_type_sta.wc_scan_timeout = t;
+            }
+            else
+            {
+                LOG(WARN, "wan_config: Invalid sta_scan_timeout=%d, ignoring.", t);
+            }
+        }
+    }
     else
     {
         LOG(ERR, "wan_config: Unknown WAN type: %s", schema->type);
         return false;
+    }
+
+    /* Parse optional interface binding from other_config */
+    {
+        const char *bind_ifname = wano_wan_config_other_config_get(schema, "if_name");
+        const char *bind_iftype = wano_wan_config_other_config_get(schema, "if_type");
+        if (bind_ifname != NULL) STRSCPY(wc->wc_bind_ifname, bind_ifname);
+        if (bind_iftype != NULL) STRSCPY(wc->wc_bind_iftype, bind_iftype);
     }
 
     return true;
@@ -707,6 +802,15 @@ bool wano_wan_config_schema_set(struct schema_WAN_Config *schema)
     ds_tree_insert(&g_wano_wan_config_list, wcc, &wcc->wcc_wan_config);
     ds_tree_insert(&g_wano_wan_config_cache, wcc, wcc->wcc_uuid.uuid);
 
+    /* Notify STA module on type=sta config changes */
+    if (wcc->wcc_wan_config.wc_type == WC_TYPE_STA)
+    {
+        wano_sta_config_update(
+                wcc->wcc_uuid.uuid,
+                wcc->wcc_wan_config.wc_priority,
+                &wcc->wcc_wan_config.wc_type_sta);
+    }
+
     return true;
 }
 
@@ -718,6 +822,12 @@ bool wano_wan_config_schema_del(struct schema_WAN_Config *schema)
     if (wcc == NULL)
     {
         return false;
+    }
+
+    /* Notify STA module on type=sta config removal */
+    if (wcc->wcc_wan_config.wc_type == WC_TYPE_STA)
+    {
+        wano_sta_config_remove(wcc->wcc_uuid.uuid);
     }
 
     ds_tree_remove(&g_wano_wan_config_list, wcc);

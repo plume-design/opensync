@@ -11,6 +11,9 @@ if MANAGER_CM
         default "cm;true;needs_plan_b=true;max_memory=20000"
         help
             Manager startup options
+            Optional crash backoff keys (;-separated key=value):
+            crash_count_max, crash_count_period, crash_recovery.
+            crash_count_max=0 disables. Ignored when needs_plan_b=true.
 
     config CM2_USE_WAN_LINK_MANAGEMENT
         bool "Use CM to manage WAN links"

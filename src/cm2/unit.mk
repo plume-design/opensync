@@ -39,6 +39,7 @@ UNIT_SRC    += src/cm2_ovsdb.c
 UNIT_SRC    += src/cm2_event.c
 ifeq ($(CONFIG_CM2_USE_CARES),y)
 UNIT_SRC    += src/cm2_resolve_ares.c
+UNIT_CFLAGS += -DCARES_NO_DEPRECATED
 else
 UNIT_SRC    += src/cm2_resolve_sync.c
 endif
@@ -49,6 +50,7 @@ UNIT_SRC    += src/cm2_bh_dhcp.c
 UNIT_SRC    += src/cm2_bh_gre.c
 UNIT_SRC    += src/cm2_bh_cmu.c
 UNIT_SRC    += src/cm2_bh_mlo.c
+UNIT_SRC    += src/cm2_connectivity_check.c
 
 UNIT_CFLAGS += -I$(UNIT_PATH)/inc
 UNIT_CFLAGS += -I$(TOP_DIR)/src/lib/common/inc/

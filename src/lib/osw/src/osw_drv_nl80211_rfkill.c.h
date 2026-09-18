@@ -31,14 +31,14 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define RFKILL_STATE_BLOCKED_HARD 2
 
 static bool
-rfkill_get(const char *phy_name, const char *type)
+rfkill_get(const char *wiphy_name, const char *type)
 {
     char pattern[PATH_MAX];
-    snprintf(pattern, sizeof(pattern), "/sys/class/ieee80211/%s/rfkill*/%s", phy_name, type);
+    snprintf(pattern, sizeof(pattern), "/sys/class/ieee80211/%s/rfkill*/%s", wiphy_name, type);
 
     glob_t g = {0};
     glob(pattern, 0, NULL, &g);
-    LOGT("%s: %s+%s: glob: '%s'", __func__, phy_name, type, pattern);
+    LOGT("%s: %s+%s: glob: '%s'", __func__, wiphy_name, type, pattern);
 
     bool blocked = false;
     size_t i;
@@ -55,13 +55,13 @@ rfkill_get(const char *phy_name, const char *type)
 }
 
 static bool
-rfkill_get_phy_enabled(const char *phy_name)
+rfkill_get_phy_enabled(const char *wiphy_name)
 {
-    const bool soft_blocked = rfkill_get(phy_name, "soft");
-    const bool hard_blocked = rfkill_get(phy_name, "hard");
+    const bool soft_blocked = rfkill_get(wiphy_name, "soft");
+    const bool hard_blocked = rfkill_get(wiphy_name, "hard");
     const bool enabled = (soft_blocked == false)
                       && (hard_blocked == false);
     LOGT("%s: %s: soft=%d hard=%d enabled=%d",
-         __func__, phy_name, soft_blocked, hard_blocked, enabled);
+         __func__, wiphy_name, soft_blocked, hard_blocked, enabled);
     return enabled;
 }

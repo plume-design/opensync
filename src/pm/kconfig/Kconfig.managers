@@ -10,6 +10,9 @@ if MANAGER_PM
         default "pm;true"
         help
             Startup configuration
+            Optional crash backoff keys (;-separated key=value):
+            crash_count_max, crash_count_period, crash_recovery.
+            crash_count_max=0 disables. Ignored when needs_plan_b=true.
 
     config PM_ENABLE_CLIENT_FREEZE
         bool "Enable support for client freeze"
@@ -28,13 +31,21 @@ if MANAGER_PM
         bool "Enable ErP low-power mode"
         default n
         help
-           Enable ErP low-power mode when no clients have been connected for more than 20 minutes
+            Enable ErP low-power mode when no clients have been connected for more than 20 minutes
         if PM_ENABLE_ERP_MODE
             config PM_ERP_TIMEOUT
                 int "ERP timeout in seconds when no clients are connected"
                 default 1180
                 help
                     After a timeout when no clients are connected, the device enters ERP mode.
+            config PM_ERP_FAN_RPM_MIN
+                int "Minimal fan RPM when device is in ERP mode"
+                default 0
+                help
+                    Power consumption is positively correlated with chip temperature. When the device
+                    is in ERP mode, a slightly increased fan RPM can help reduce both temperature and
+                    power consumption. The default value is 0, which means the fan follows the thermal
+                    table; otherwise, in ERP mode, the fan is set to at least the minimum RPM.
             config PM_ERP_CFG_TOOL
                 string "Path to the WiFi configuration tool"
                 help

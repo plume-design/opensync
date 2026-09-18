@@ -28,6 +28,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 /* nlattr */
 
+#include "nl80211_copy.h"
 static bool
 nla_u32_equal(struct nlattr *tb[], int attr, uint32_t value)
 {
@@ -224,12 +225,15 @@ nla_freq_to_osw_chan_state(struct osw_channel_state **cs,
     struct nlattr *nl_radar = tb_freq[NL80211_FREQUENCY_ATTR_RADAR];
     struct nlattr *nl_dfs = tb_freq[NL80211_FREQUENCY_ATTR_DFS_STATE];
     struct nlattr *nl_disabled = tb_freq[NL80211_FREQUENCY_ATTR_DISABLED];
+    struct nlattr *nl_max_tx_power = tb_freq[NL80211_FREQUENCY_ATTR_MAX_TX_POWER];
 
     const uint32_t mhz = nl_mhz ? nla_get_u32(nl_mhz) : 0;
     const bool radar = nl_radar != NULL;
     const enum nl80211_dfs_state dfs_default = radar ? NL80211_DFS_USABLE : NL80211_DFS_AVAILABLE;
     const enum nl80211_dfs_state dfs = nl_dfs ? nla_get_u32(nl_dfs) : dfs_default;
     const bool disabled = (nl_disabled != NULL);
+    /* NL80211_FREQUENCY_ATTR_MAX_TX_POWER is in mBm (dBm * 100). */
+    const int max_tx_power_dbm = nl_max_tx_power ? ((int)nla_get_u32(nl_max_tx_power) / 100) : 0;
 
     if (disabled) return;
 
@@ -248,6 +252,8 @@ nla_freq_to_osw_chan_state(struct osw_channel_state **cs,
     last->channel.control_freq_mhz = mhz;
     last->channel.center_freq0_mhz = mhz;
     last->dfs_state = osw_dfs;
+    last->max_tx_power_dbm = max_tx_power_dbm;
+    last->max_tx_power_dbm_valid = (nl_max_tx_power != NULL);
 
     /* FIXME: Figure out how to infer remaining NOL time for
      * a given channel.
@@ -274,6 +280,78 @@ nla_band_to_osw_chan_states(struct osw_channel_state **cs,
             int rem_freq;
             nla_for_each_nested(nl_freq, nl_freqs, rem_freq) {
                 nla_freq_to_osw_chan_state(cs, n_cs, nl_freq);
+            }
+        }
+    }
+}
+
+static void
+nla_radios_get_info(struct nlattr *nl_radios,
+                    int radio_index,
+                    struct osw_drv_nl80211_freq_range **ranges,
+                    size_t *n_ranges,
+                    unsigned int *antenna_mask)
+{
+    if (nl_radios == NULL) return;
+
+    FREE(*ranges);
+    *ranges = NULL;
+    *n_ranges = 0;
+    *antenna_mask = 0;
+
+    struct nlattr *nl_radio;
+    int radio_index_i = 0;
+    int rem_radio;
+    nla_for_each_nested(nl_radio, nl_radios, rem_radio) {
+        const bool radio_index_match = (radio_index_i == radio_index);
+        radio_index_i++;
+        if (radio_index_match == false) continue;
+
+        struct nlattr *tb_range[NL80211_WIPHY_RADIO_FREQ_ATTR_MAX+1] = {0};
+        struct nlattr *nl_prop;
+        int rem_prop;
+        nla_for_each_nested(nl_prop, nl_radio, rem_prop) {
+            switch (nla_type(nl_prop)) {
+                case NL80211_WIPHY_RADIO_ATTR_ANTENNA_MASK:
+                    {
+                        const uint32_t mask = nla_get_u32(nl_prop);
+                        *antenna_mask = mask;
+                    }
+                    break;
+                case NL80211_WIPHY_RADIO_ATTR_FREQ_RANGE:
+                    {
+                        nla_parse_nested(tb_range, NL80211_WIPHY_RADIO_FREQ_ATTR_MAX, nl_prop, NULL);
+                        struct nlattr *nl_start = tb_range[NL80211_WIPHY_RADIO_FREQ_ATTR_START];
+                        struct nlattr *nl_end = tb_range[NL80211_WIPHY_RADIO_FREQ_ATTR_END];
+                        if (WARN_ON(nl_start == NULL)) continue;
+                        if (WARN_ON(nl_end == NULL)) continue;
+
+                        const uint32_t start_khz = nla_get_u32(nl_start);
+                        const uint32_t end_khz = nla_get_u32(nl_end);
+                        const uint32_t start_mhz = start_khz / 1000;
+                        const uint32_t end_mhz = end_khz / 1000;
+
+                        const size_t idx = (*n_ranges)++;
+                        const size_t elem_size = sizeof(**ranges);
+                        const size_t bytes = *n_ranges * elem_size;
+                        *ranges = REALLOC(*ranges, bytes);
+
+                        /* `uint32_t` are guaranteed to fit in `int` here
+                         * because these values are a result of division by
+                         * 1000. Even 60GHz (the highest frequency Wi-Fi is
+                         * known to operate today) is only 60_000_000 kHz and
+                         * that fits even *before* division. This is absurdly
+                         * defensive:
+                         */
+                        WARN_ON(start_mhz > INT_MAX);
+                        WARN_ON(end_mhz > INT_MAX);
+
+                        (*ranges)[idx].start_mhz = start_mhz;
+                        (*ranges)[idx].end_mhz = end_mhz;
+                    }
+                    break;
+                default:
+                    continue;
             }
         }
     }
@@ -373,12 +451,17 @@ nla_vif_to_osw_vif_state_sta(struct nlattr *tb[],
 
 static void
 nla_fill_tx_chainmask(int *chainmask,
+                      unsigned int *allowed_chainmask,
                       struct nlattr *tb[])
 {
     const uint32_t txca = nla_get_u32_or(tb, NL80211_ATTR_WIPHY_ANTENNA_AVAIL_TX, 0);
     const uint32_t rxca = nla_get_u32_or(tb, NL80211_ATTR_WIPHY_ANTENNA_AVAIL_RX, 0);
     const uint32_t txc = nla_get_u32_or(tb, NL80211_ATTR_WIPHY_ANTENNA_TX, 0);
     const uint32_t rxc = nla_get_u32_or(tb, NL80211_ATTR_WIPHY_ANTENNA_RX, 0);
+
+    *allowed_chainmask = 0;
+    if (txca) *allowed_chainmask |= txca;
+    if (rxca) *allowed_chainmask |= rxca;
 
     if (*chainmask) return;
 

@@ -28,8 +28,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <net/ethernet.h>
+#include <netinet/icmp6.h>
 #include <netinet/in.h>
 #include <netinet/ip.h>
+#include <netinet/ip6.h>
 #include <netinet/udp.h>
 #include <unistd.h>
 #include <signal.h>
@@ -55,8 +57,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 /** PCAP Snapshot length */
 #define WANP_ETHCLIENT_PCAP_SNAPLEN     512
-/** PCAP rule for sniffing DHCP packets */
-#define WANP_ETHCLIENT_PCAP_FILTER      "inbound and udp and (port bootpc or port bootps)"
+/** PCAP rule for sniffing DHCPv4 client packets and IPv6 Router Solicitations */
+#define WANP_ETHCLIENT_PCAP_FILTER      \
+        "inbound and (udp and (port bootpc or port bootps) or (icmp6 and icmp6[0] == 133))"
 /* Ethernet re-injection interface */
 #define WANP_ETHCLIENT_INJECT_IF        CONFIG_TARGET_LAN_BRIDGE_NAME".ethc"
 
@@ -131,6 +134,16 @@ static bool wanp_ethclient_pcap_open(struct wanp_ethclient *self);
 static bool wanp_ethclient_pcap_close(struct wanp_ethclient *self);
 static void wanp_ethclient_pcap_evio_fn(struct ev_loop *loop, ev_io *w, int revent);
 static void wanp_ethclient_pcap_fn(u_char *data, const struct pcap_pkthdr *h, const u_char *pkt);
+static void wanp_ethclient_pcap_fn_ipv4(
+        struct wanp_ethclient *self,
+        const u_char *pkt,
+        const u_char *pkt_l2,
+        const u_char *pend);
+static void wanp_ethclient_pcap_fn_ipv6(
+        struct wanp_ethclient *self,
+        const u_char *pkt,
+        const u_char *pkt_l2,
+        const u_char *pend);
 static void wanp_ethclient_handle_detected(struct wanp_ethclient *self);
 static bool wanp_ethclient_inject(const char *ifname);
 static void wanp_ethclient_inject_add(const char *ifname, const u_char *pkt, ssize_t pkt_len);
@@ -141,7 +154,8 @@ static bool wanp_ethclient_mac_learning_delete(const char *ifname);
 
 static void wanp_ethclient_dhcp_process(
         struct wanp_ethclient *self,
-        uint8_t dhcp_type,
+        const uint8_t *dhcp_type,
+        const uint8_t *icmp6_type,
         bool is_os_node,
         osn_mac_addr_t *client_mac,
         const u_char *pkt_l2,
@@ -411,16 +425,7 @@ void wanp_ethclient_pcap_fn(u_char *data, const struct pcap_pkthdr *h, const u_c
     struct wanp_ethclient *self = (void *)data;
     const u_char *pend = pkt + h->caplen;
     const u_char *pkt_l2;
-
-    uint8_t dhcp_msg_type = 0;
-    bool dhcp_osync_swver = false;
-    bool dhcp_osync_profile = false;
-    bool dhcp_osync_serial_opt = false;
-    osn_mac_addr_t dhcp_client_mac = OSN_MAC_ADDR_INIT;
-
-    /*
-     * Parse the DHCP packet
-     */
+    uint16_t ethertype;
 
     /* Figure out the L2 offset */
     if (pcap_datalink(self->ec_pcap) == DLT_LINUX_SLL)
@@ -431,7 +436,6 @@ void wanp_ethclient_pcap_fn(u_char *data, const struct pcap_pkthdr *h, const u_c
     /* Save the L2 packet for later */
     pkt_l2 = pkt;
 
-    /* Skip ethernet header -- it's guaranteed to be IPv4 by the PCAP rules */
     if (pkt + sizeof(struct ethhdr) > pend)
     {
         LOG(DEBUG, "ethclient: %s: dhcp: Error parsing ethernet header.",
@@ -439,7 +443,35 @@ void wanp_ethclient_pcap_fn(u_char *data, const struct pcap_pkthdr *h, const u_c
         return;
     }
 
+    ethertype = ntohs(((const struct ethhdr *)pkt)->h_proto);
     pkt += sizeof(struct ethhdr);
+
+    if (ethertype == ETH_P_IPV6)
+    {
+        wanp_ethclient_pcap_fn_ipv6(self, pkt, pkt_l2, pend);
+    }
+    else
+    {
+        wanp_ethclient_pcap_fn_ipv4(self, pkt, pkt_l2, pend);
+    }
+}
+
+/*
+ * Parse a DHCPv4 packet, starting right after the ethernet header, and pass
+ * the result on to wanp_ethclient_dhcp_process().
+ */
+static void wanp_ethclient_pcap_fn_ipv4(
+        struct wanp_ethclient *self,
+        const u_char *pkt,
+        const u_char *pkt_l2,
+        const u_char *pend)
+{
+    uint8_t dhcp_msg_type = 0;
+    bool dhcp_osync_swver = false;
+    bool dhcp_osync_profile = false;
+    bool dhcp_osync_serial_opt = false;
+    osn_mac_addr_t dhcp_client_mac = OSN_MAC_ADDR_INIT;
+
     if (pkt + sizeof(struct ip) > pend)
     {
         LOG(DEBUG, "ethclient: %s: dhcp: Error parsing IPv4 header.",
@@ -534,7 +566,67 @@ void wanp_ethclient_pcap_fn(u_char *data, const struct pcap_pkthdr *h, const u_c
     }
 
     bool is_os_node = dhcp_osync_swver && dhcp_osync_profile && dhcp_osync_serial_opt;
-    wanp_ethclient_dhcp_process(self, dhcp_msg_type, is_os_node, &dhcp_client_mac, pkt_l2, pend - pkt_l2);
+
+    wanp_ethclient_dhcp_process(self, &dhcp_msg_type, NULL, is_os_node, &dhcp_client_mac, pkt_l2, pend - pkt_l2);
+}
+
+/*
+ * Parse an IPv6 packet, starting right after the ethernet header, looking for
+ * an inbound Router Solicitation (RS). Pass the results on to wanp_ethclient_dhcp_process
+ */
+static void wanp_ethclient_pcap_fn_ipv6(
+        struct wanp_ethclient *self,
+        const u_char *pkt,
+        const u_char *pkt_l2,
+        const u_char *pend)
+{
+    osn_mac_addr_t ipv6_client_mac = OSN_MAC_ADDR_INIT;
+
+    if (pkt + sizeof(struct ip6_hdr) > pend)
+    {
+        LOG(DEBUG, "ethclient: %s: ipv6-rs: Error parsing IPv6 header.",
+                self->ec_handle.wh_ifname);
+        return;
+    }
+
+    struct ip6_hdr ip6h;
+    memcpy(&ip6h, pkt, sizeof(ip6h));
+    pkt += sizeof(struct ip6_hdr);
+
+    /* Extension headers are not expected for a LAN client's Router Solicitation; bail if present */
+    if (ip6h.ip6_nxt != IPPROTO_ICMPV6)
+    {
+        LOG(DEBUG, "ethclient: %s: ipv6-rs: Unexpected IPv6 next-header %d.",
+                self->ec_handle.wh_ifname, ip6h.ip6_nxt);
+        return;
+    }
+
+    if (pkt + sizeof(struct icmp6_hdr) > pend)
+    {
+        LOG(DEBUG, "ethclient: %s: ipv6-rs: Error parsing ICMPv6 header.",
+                self->ec_handle.wh_ifname);
+        return;
+    }
+
+    struct icmp6_hdr icmp6h;
+    memcpy(&icmp6h, pkt, sizeof(icmp6h));
+
+    if (icmp6h.icmp6_type != ND_ROUTER_SOLICIT)
+    {
+        LOG(DEBUG, "ethclient: %s: ipv6-rs: Unexpected ICMPv6 type %d.",
+                self->ec_handle.wh_ifname, icmp6h.icmp6_type);
+        return;
+    }
+
+    memcpy(ipv6_client_mac.ma_addr,
+            ((const struct ethhdr *)pkt_l2)->h_source,
+            sizeof(ipv6_client_mac.ma_addr));
+
+    LOG(INFO, "ethclient: %s: ipv6-rs: Received IPv6 Router Solicitation from "PRI_osn_mac_addr,
+            self->ec_handle.wh_ifname,
+            FMT_osn_mac_addr(ipv6_client_mac));
+
+    wanp_ethclient_dhcp_process(self, NULL, &icmp6h.icmp6_type, false, &ipv6_client_mac, pkt_l2, pend - pkt_l2);
 }
 
 /*
@@ -595,17 +687,29 @@ void wanp_ethclient_handle_detected(struct wanp_ethclient *self)
 
 void wanp_ethclient_dhcp_process(
         struct wanp_ethclient *self,
-        uint8_t dhcp_type,
+        const uint8_t *dhcp_type,
+        const uint8_t *icmp6_type,
         bool is_os_node,
         osn_mac_addr_t *client_mac,
         const u_char *pkt_l2,
         ssize_t pkt_len)
 {
-    LOG(INFO, "ethclient: %s: Received DHCP packet: type=%d, is_os_node=%d, mac="PRI_osn_mac_addr,
-            self->ec_handle.wh_ifname,
-            dhcp_type,
-            is_os_node,
-            FMT_osn_mac_addr(*client_mac));
+    if (dhcp_type != NULL)
+    {
+        LOG(INFO, "ethclient: %s: Received DHCP packet: type=%d, is_os_node=%d, mac="PRI_osn_mac_addr,
+                self->ec_handle.wh_ifname,
+                *dhcp_type,
+                is_os_node,
+                FMT_osn_mac_addr(*client_mac));
+    }
+    else
+    {
+        LOG(INFO, "ethclient: %s: Received ICMPv6 packet: type=%d, is_os_node=%d, mac="PRI_osn_mac_addr,
+                self->ec_handle.wh_ifname,
+                *icmp6_type,
+                is_os_node,
+                FMT_osn_mac_addr(*client_mac));
+    }
 
     /* Check if the client is an OpenSync device */
     if (is_os_node)
@@ -625,10 +729,12 @@ void wanp_ethclient_dhcp_process(
     }
 
     /*
-     * If the message type is not DISCOVER or REQUEST, it means there's a
-     * DHCP server on the network.
+     * If this isn't a "client starting configuration" message, it means
+     * there's a DHCP server on the network. A Router Solicitation always
+     * counts (it's an unconditional "client starting up" signal); a DHCPv4
+     * message only counts if it's a DISCOVER or REQUEST.
      */
-    if (dhcp_type != DHCP_TYPE_DISCOVER && dhcp_type != DHCP_TYPE_REQUEST)
+    if (dhcp_type != NULL && *dhcp_type != DHCP_TYPE_DISCOVER && *dhcp_type != DHCP_TYPE_REQUEST)
     {
         LOG(NOTICE, "ethclient: %s: Non-DISCOVER/REQUEST DHCP message detected.",
                 self->ec_handle.wh_ifname);

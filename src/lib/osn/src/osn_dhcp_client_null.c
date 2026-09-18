@@ -101,6 +101,14 @@ bool osn_dhcp_client_vendorclass_set(osn_dhcp_client_t *self, const char *vendor
     return true;
 }
 
+bool osn_dhcp_client_route_table_set(osn_dhcp_client_t *self, uint32_t table)
+{
+    (void)self;
+    (void)table;
+
+    return true;
+}
+
 bool osn_dhcp_client_state_get(osn_dhcp_client_t *self, bool *enabled)
 {
     (void)self;

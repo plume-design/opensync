@@ -10,6 +10,9 @@ menuconfig MANAGER_NM
         default "nm;true;needs_plan_b=true;max_memory=20000"
         help
             Network Manager startup configuration
+            Optional crash backoff keys (;-separated key=value):
+            crash_count_max, crash_count_period, crash_recovery.
+            crash_count_max=0 disables. Ignored when needs_plan_b=true.
 
     config MANAGER_NM_MCAST_EXCEPTIONS
         depends on MANAGER_NM

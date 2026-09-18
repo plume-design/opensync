@@ -52,7 +52,9 @@ osw_wpas_util_fill_global_block(struct osw_drv_vif_config_sta *sta,
 {
     /* FIXME - this hardcodes ctrl path! Get it from the caller instead */
     OSW_HOSTAP_CONF_SET_BUF(conf->ctrl_interface, "/var/run/wpa_supplicant");
-    OSW_HOSTAP_CONF_SET_VAL(conf->scan_cur_freq, true);
+
+    const bool scan_cur_freq = (sta->allow_roam_channels != OSW_DRV_CHANNEL_ROAM_ALLOWED);
+    OSW_HOSTAP_CONF_SET_VAL(conf->scan_cur_freq, scan_cur_freq);
 
     /* Enable HnP and H2E PWE mechanisms */
     OSW_HOSTAP_CONF_SET_VAL(conf->sae_pwe, 2);
@@ -583,6 +585,19 @@ osw_wpas_util_fill_link_details(const struct osw_hostap_conf_sta_state_bufs *buf
     osw_wpas_util_get_psk_from_config_id(config, id, connected, &link->psk);
 }
 
+static void
+osw_wpas_util_fill_roam_policy(const struct osw_hostap_conf_sta_state_bufs *bufs,
+                               struct osw_drv_vif_state *vstate)
+{
+    struct osw_drv_vif_state_sta *sta = &vstate->u.sta;
+    const char *config = bufs->config;
+    const char *v = (config != NULL) ? ini_geta(config, "scan_cur_freq") : NULL;
+
+    sta->allow_roam_channels = (v == NULL || atoi(v) == 0)
+                             ? OSW_DRV_CHANNEL_ROAM_ALLOWED
+                             : OSW_DRV_CHANNEL_ROAM_DISALLOWED;
+}
+
 void
 osw_hostap_conf_fill_sta_state(const struct osw_hostap_conf_sta_state_bufs *bufs,
                                struct osw_drv_vif_state *vstate)
@@ -592,6 +607,9 @@ osw_hostap_conf_fill_sta_state(const struct osw_hostap_conf_sta_state_bufs *bufs
 
     /* fill in configured networks from list_networks and config */
     osw_wpas_util_fill_network_list(bufs, vstate);
+
+    /* fill in sta_allow_roam_channels */
+    osw_wpas_util_fill_roam_policy(bufs, vstate);
 }
 
 /* Unit test inclusion */

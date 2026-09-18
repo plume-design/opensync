@@ -35,7 +35,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "cellm_mgr.h"
 #include "log.h"
-#include "neigh_table.h"
 
 char *cellm_state_info[] = {
     "CELLM_STATE_UNKNOWN",

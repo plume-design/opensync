@@ -270,6 +270,7 @@ ow_steer_bm_client_set_btm_params(const struct osw_hwaddr *sta_addr,
         }
         else if (strcmp(key, "bssids") == 0) {
             ow_steer_bm_btm_params_set_bssids(btm_params, value);
+            continue;
         }
         else if (strcmp(key, "disassoc_imminent") == 0) {
             const bool b = (atoi(value) == 0)

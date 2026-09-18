@@ -43,6 +43,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <os_types.h>
 #include <netlink/attr.h>
+#include <nl_conn.h>
 
 struct nl_80211;
 struct nl_80211_subscription;
@@ -50,12 +51,36 @@ struct nl_80211_subscription;
 struct nl_80211_phy {
     const char *name;
     uint32_t wiphy;
+
+    /*  0 = plain old wiphy
+     *  1 = multi-radio single-wiphy, but with just 1 band
+     * >1 = multi-radio single-wiphy with multiple bands
+     *
+     * The difference between 0 and 1 is subtle. The
+     * difference can show up when dealing with vif
+     * radio_mask.
+     */
+    uint32_t num_radios;
 };
 
 struct nl_80211_vif {
     const char *name;
     uint32_t ifindex;
     uint32_t wiphy;
+
+    /* A bitmask representing on which radios/bands the
+     * interface is bound to on single-wiphy multi-radio
+     * systems.
+     *
+     *  0 = not bound to any radio. This is valid on
+     *      multi-radio systems and means the interface is not
+     *      limited in any way, and can use any of the
+     *      radios/bands
+     *
+     * !0 = bits representing which radios/band the vif is
+     *      limited to operate within
+     */
+    uint32_t radio_mask;
 };
 
 struct nl_80211_sta {

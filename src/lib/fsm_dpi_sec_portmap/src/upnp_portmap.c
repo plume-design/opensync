@@ -124,6 +124,14 @@ upnp_portmap_fetch_all(struct fsm_session *session)
     return ret;
 }
 
+#if MINIUPNPC_API_VERSION < 18
+#define UPNP_GetValidIGD_shim(devlist, urls, data, lanaddr, lanaddrlen) \
+    UPNP_GetValidIGD(devlist, urls, data, lanaddr, lanaddrlen)
+#else
+#define UPNP_GetValidIGD_shim(devlist, urls, data, lanaddr, lanaddrlen) \
+    UPNP_GetValidIGD(devlist, urls, data, lanaddr, lanaddrlen, NULL, 0)
+#endif
+
 ///////////////////////////////////////////
 // UPnP port mapping related stuff
 ///////////////////////////////////////////
@@ -190,7 +198,7 @@ upnp_portmap_mapped_init(struct fsm_dpi_sec_portmap_session *upnp_session)
         }
     }
 
-    retval = UPNP_GetValidIGD(mainIGD, &urls, &data, lanaddr, sizeof(lanaddr));
+    retval = UPNP_GetValidIGD_shim(mainIGD, &urls, &data, lanaddr, sizeof(lanaddr));
 
     /* Need to work on the return value here... 1 and 2 are OK... -1, 0 and 3 are not */
     if (retval != 1 && retval != 2)

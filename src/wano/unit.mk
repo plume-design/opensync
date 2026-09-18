@@ -43,9 +43,12 @@ UNIT_SRC += src/wano_ovs_port.c
 UNIT_SRC += src/wano_plugin.c
 UNIT_SRC += src/wano_ppline.c
 UNIT_SRC += src/wano_wan.c
+UNIT_SRC += src/wano_sta.c
+UNIT_SRC += src/wano_sta_ppline.c
 
 UNIT_CFLAGS += -I$(UNIT_PATH)/src
 UNIT_CFLAGS += -I$(UNIT_PATH)/inc
+UNIT_CFLAGS += -DCARES_NO_DEPRECATED
 
 UNIT_EXPORT_LDFLAGS += -lcares
 UNIT_LDFLAGS += -lcares

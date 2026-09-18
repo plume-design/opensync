@@ -47,7 +47,8 @@ enum wano_wan_config_type
     WC_TYPE_PPPOE,
     WC_TYPE_VLAN,
     WC_TYPE_STATIC_IPV4,
-    WC_TYPE_DHCP
+    WC_TYPE_DHCP,
+    WC_TYPE_STA
 };
 
 struct wano_wan_config_pppoe
@@ -71,6 +72,26 @@ struct wano_wan_config_static_ipv4
     osn_ip_addr_t       wc_secondary_dns;   /**< Secondary DNS */
 };
 
+struct wano_wan_config_sta
+{
+    char    wc_ssid[36 + 1];                /**< SSID */
+    char    wc_key[128 + 1];                /**< PSK / passphrase */
+    char    wc_encryption[32];              /**< Encryption type (e.g., "WPA-PSK", "SAE") */
+    char    wc_ifname[C_IFNAME_LEN];        /**< Restrict to this VIF only (empty = all) */
+    char    wc_connectivity_check[C_IFNAME_LEN]; /**< Connectivity_Check row name for conditional
+                                                      mode (empty = unconditional) */
+    char    wc_inet_role[64 + 1];           /**< Wifi_Inet_Config:role to set verbatim on the STA
+                                                 uplink interface (empty = not set) */
+    bool    wc_test_connection;             /**< True if this policy only tests the STA uplink
+                                                 (status is reported, but we never switch to it) */
+    bool    wc_scan_timeout_exists;         /**< True when sta_scan_timeout key is present in policy */
+    int     wc_scan_timeout;                /**< Cascade timeout in seconds: how long this policy
+                                                 gets to associate before it's marked failed and
+                                                 the next-best sibling is tried. 0 = no cascade
+                                                 (stays attached forever; supplicant retries on
+                                                 its own). */
+};
+
 /*
  * Structure representing single WAN configuration entry
  */
@@ -79,11 +100,14 @@ struct wano_wan_config
     bool                        wc_enable;          /**< True whether configuration enabled */
     int                         wc_priority;        /**< Configuration prirority, higher wins */
     enum wano_wan_config_type   wc_type;            /**< WAN configuration type */
+    char                        wc_bind_ifname[C_IFNAME_LEN]; /**< Bind to interface name (empty = all) */
+    char                        wc_bind_iftype[16]; /**< Bind to interface type (empty = all) */
     union
     {
         struct wano_wan_config_pppoe        wc_type_pppoe;
         struct wano_wan_config_vlan         wc_type_vlan;
         struct wano_wan_config_static_ipv4  wc_type_static_ipv4;
+        struct wano_wan_config_sta          wc_type_sta;
     };
 };
 
@@ -99,6 +123,9 @@ struct wano_wan
     int                 ww_rollover;                    /**< Rollover count */
     ds_tree_t           ww_status_list;                 /**< List of WAN statuses */
     ds_dlist_node_t     ww_dnode;                       /**< Linked list node */
+    char                ww_ifname[C_IFNAME_LEN];        /**< Pipeline interface name */
+    char                ww_iftype[32];                  /**< Pipeline interface type */
+    bool                ww_dynamic;                     /**< True if created dynamically (STA) */
 };
 
 typedef struct wano_wan wano_wan_t;
@@ -145,11 +172,11 @@ void wano_wan_next(wano_wan_t *ww);
 bool wano_wan_is_last_config(const wano_wan_t *ww);
 
 /*
- * Return true if the current priority group has a VLAN config but no
+ * Return true if the current priority group has a VLAN or STA config but no
  * explicit DHCP/PPPoE/static_ipv4 config at the same priority, implying
- * that DHCP should be attempted unconditionally on the VLAN interface.
+ * that DHCP should be attempted unconditionally on the resulting interface.
  */
-bool wano_wan_vlan_implies_dhcp(const wano_wan_t *ww);
+bool wano_wan_implies_dhcp(const wano_wan_t *ww);
 
 /*
  * Signal whether WAN processing for the current WAN object has been stopped.

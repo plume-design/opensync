@@ -1,6 +1,7 @@
 menu "libdns_cache Configuration"
     config LIBDNS_CACHE
         bool "Library for per device-ip lookup actions cache"
+        depends on MANAGER_FSM
         default y
         help
             Enable support for caching per device per ip lookup actions cache

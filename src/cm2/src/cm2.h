@@ -330,6 +330,7 @@ bool cm2_ovsdb_has_ipv6_routable_addr(const char *if_name);
 bool cm2_ovsdb_is_ipv6_ip_unnumbered(const char *if_name);
 bool cm2_ovsdb_has_ipv6_default_route(const char *if_name);
 void cm2_ovsdb_set_dhcp_client(const char *if_name, bool enabled);
+bool cm2_ovsdb_is_sta_uplink(const char *if_name);
 bool cm2_ovsdb_is_gw_offline_enabled(void);
 bool cm2_ovsdb_is_gw_offline_ready(void);
 bool cm2_ovsdb_is_gw_offline_active(void);

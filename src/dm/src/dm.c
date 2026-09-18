@@ -167,7 +167,7 @@ int main (int argc, char ** argv)
     /* Stop all modules */
     module_fini();
 
-    dm_hook_close(loop);
+    dm_hook_close();
 
     LOGN("Exiting DM");
 

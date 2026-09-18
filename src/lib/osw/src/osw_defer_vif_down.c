@@ -49,6 +49,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
     rule->grace_period_seconds, \
     rule->num_stations, \
     ## __VA_ARGS__)
+#define LOG_PREFIX_VIF(vif_name, fmt, ...) \
+    LOG_PREFIX(                                 \
+            "vif: %s: " fmt,                    \
+            (vif_name) ?: "",                   \
+            ##__VA_ARGS__)
 
 struct osw_defer_vif_down_rule {
     struct ds_tree_node node;
@@ -522,6 +527,10 @@ osw_defer_vif_down_get_remaining_nsec(osw_defer_vif_down_t *m,
     if (m == NULL) return 0;
     if (vif_name == NULL) return 0;
     struct osw_defer_vif_down_rule *r = ds_tree_find(&m->rules, vif_name);
+    if (r == NULL) {
+        LOGT(LOG_PREFIX_VIF(vif_name, "get_remaining_nsec: no rule"));
+        return 0;
+    }
     const uint64_t now_nsec = osw_time_mono_clk();
     struct osw_timer *t = &r->grace_period_timer;
     if (osw_timer_is_armed(t) == false) return 0;

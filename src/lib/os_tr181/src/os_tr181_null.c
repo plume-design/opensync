@@ -38,16 +38,24 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 struct os_tr181_handle_s
 {
     int dummy;
+    /* Event loop integration */
+    os_tr181_fd_change_callback_t fd_change_cb; /* FD change notification callback */
+    void *fd_change_user_data;                  /* User data for FD change callback */
+    void *loop_ctx;                             /* Event loop context (struct os_tr181_libev_context*) */
 };
 
-os_tr181_error_t os_tr181_init(os_tr181_handle_t **handle)
+os_tr181_error_t os_tr181_init_ex(os_tr181_handle_t **handle, const char *component_name)
 {
-    (void)handle; /* unused */
+    (void)handle;         /* unused */
+    (void)component_name; /* unused */
     return OS_TR181_ERROR_NOT_IMPLEMENTED;
 }
 
 void os_tr181_close(os_tr181_handle_t *handle)
 {
+    /* Detach from event loop if attached */
+    os_tr181_detach_loop(handle);
+
     (void)handle; /* unused */
 }
 
@@ -70,15 +78,15 @@ os_tr181_error_t os_tr181_set_val(os_tr181_handle_t *handle, const char *param_n
 os_tr181_error_t os_tr181_list(
         os_tr181_handle_t *handle,
         const char *path,
-        bool recursive,
+        uint32_t flags,
         os_tr181_param_info_t **params,
         int *count)
 {
-    (void)handle;    /* unused */
-    (void)path;      /* unused */
-    (void)recursive; /* unused */
-    (void)params;    /* unused */
-    (void)count;     /* unused */
+    (void)handle; /* unused */
+    (void)path;   /* unused */
+    (void)flags;  /* unused */
+    (void)params; /* unused */
+    (void)count;  /* unused */
     return OS_TR181_ERROR_NOT_IMPLEMENTED;
 }
 
@@ -110,13 +118,6 @@ os_tr181_error_t os_tr181_unsubscribe(os_tr181_handle_t *handle, os_tr181_sub_ha
     return OS_TR181_ERROR_NOT_IMPLEMENTED;
 }
 
-os_tr181_error_t os_tr181_wait_event(os_tr181_handle_t *handle, int timeout_ms)
-{
-    (void)handle;     /* unused */
-    (void)timeout_ms; /* unused */
-    return OS_TR181_ERROR_NOT_IMPLEMENTED;
-}
-
 os_tr181_error_t os_tr181_register_object(os_tr181_handle_t *handle, const char *object_path)
 {
     (void)handle;      /* unused */
@@ -128,7 +129,7 @@ os_tr181_error_t os_tr181_register_parameter(
         os_tr181_handle_t *handle,
         const char *param_path,
         os_tr181_param_type_t type,
-        int writable,
+        uint32_t access_flags,
         os_tr181_get_cb_t get_callback,
         os_tr181_set_cb_t set_callback,
         void *user_data)
@@ -136,7 +137,7 @@ os_tr181_error_t os_tr181_register_parameter(
     (void)handle;       /* unused */
     (void)param_path;   /* unused */
     (void)type;         /* unused */
-    (void)writable;     /* unused */
+    (void)access_flags; /* unused */
     (void)get_callback; /* unused */
     (void)set_callback; /* unused */
     (void)user_data;    /* unused */
@@ -155,6 +156,42 @@ os_tr181_error_t os_tr181_register_table(
     (void)add_callback; /* unused */
     (void)del_callback; /* unused */
     (void)user_data;    /* unused */
+    return OS_TR181_ERROR_NOT_IMPLEMENTED;
+}
+
+os_tr181_error_t os_tr181_register_method(
+        os_tr181_handle_t *handle,
+        const char *path,
+        os_tr181_method_cb_t method_cb,
+        void *user_data,
+        const os_tr181_param_schema_t *params,
+        unsigned int flags)
+{
+    (void)handle;
+    (void)path;
+    (void)method_cb;
+    (void)user_data;
+    (void)params;
+    (void)flags;
+    return OS_TR181_ERROR_NOT_IMPLEMENTED;
+}
+
+os_tr181_error_t os_tr181_register_event(
+        os_tr181_handle_t *handle,
+        const char *path,
+        const os_tr181_param_schema_t *params)
+{
+    (void)handle; /* unused */
+    (void)path;   /* unused */
+    (void)params; /* unused */
+    return OS_TR181_ERROR_NOT_IMPLEMENTED;
+}
+
+os_tr181_error_t os_tr181_emit_event(os_tr181_handle_t *handle, const char *path, const os_tr181_val_t *data)
+{
+    (void)handle; /* unused */
+    (void)path;   /* unused */
+    (void)data;   /* unused */
     return OS_TR181_ERROR_NOT_IMPLEMENTED;
 }
 
@@ -184,10 +221,19 @@ os_tr181_error_t os_tr181_process_requests(os_tr181_handle_t *handle, int timeou
     return OS_TR181_ERROR_NOT_IMPLEMENTED;
 }
 
-os_tr181_error_t os_tr181_add_instance(os_tr181_handle_t *handle, const char *object_path, int *instance_number)
+os_tr181_error_t os_tr181_add_instance_ex(
+        os_tr181_handle_t *handle,
+        const char *object_path,
+        uint32_t index,
+        const char *alias_value,
+        const os_tr181_val_t *values,
+        int *instance_number)
 {
     (void)handle;          /* unused */
     (void)object_path;     /* unused */
+    (void)index;           /* unused */
+    (void)alias_value;     /* unused */
+    (void)values;          /* unused */
     (void)instance_number; /* unused */
     return OS_TR181_ERROR_NOT_IMPLEMENTED;
 }
@@ -212,6 +258,21 @@ os_tr181_error_t os_tr181_delete_instance(os_tr181_handle_t *handle, const char 
     return OS_TR181_ERROR_NOT_IMPLEMENTED;
 }
 
+os_tr181_error_t os_tr181_invoke(
+        os_tr181_handle_t *handle,
+        const char *path,
+        const os_tr181_val_t *args,
+        os_tr181_val_t *result,
+        uint32_t timeout_sec)
+{
+    (void)handle;      /* unused */
+    (void)path;        /* unused */
+    (void)args;        /* unused */
+    (void)result;      /* unused */
+    (void)timeout_sec; /* unused */
+    return OS_TR181_ERROR_NOT_IMPLEMENTED;
+}
+
 os_tr181_error_t os_tr181_get_instances(
         os_tr181_handle_t *handle,
         const char *object_path,
@@ -228,4 +289,101 @@ os_tr181_error_t os_tr181_get_instances(
 const char *os_tr181_get_backend_name(void)
 {
     return "null";
+}
+
+/* ========================================================================
+ * Async Method Invocation Stubs
+ * ======================================================================== */
+
+os_tr181_error_t os_tr181_invoke_async(
+        os_tr181_handle_t *handle,
+        const char *method,
+        const os_tr181_val_t *args,
+        os_tr181_async_cb_t callback,
+        void *priv,
+        int timeout_sec,
+        os_tr181_async_request_t **req)
+{
+    (void)handle;      /* unused */
+    (void)method;      /* unused */
+    (void)args;        /* unused */
+    (void)callback;    /* unused */
+    (void)priv;        /* unused */
+    (void)timeout_sec; /* unused */
+    (void)req;         /* unused */
+    return OS_TR181_ERROR_NOT_IMPLEMENTED;
+}
+
+os_tr181_error_t os_tr181_invoke_async_cancel(os_tr181_async_request_t *req)
+{
+    (void)req; /* unused */
+    return OS_TR181_ERROR_NOT_IMPLEMENTED;
+}
+
+os_tr181_error_t os_tr181_method_respond(
+        os_tr181_async_method_ctx_t *async_ctx,
+        os_tr181_error_t error,
+        os_tr181_val_t *result)
+{
+    (void)async_ctx; /* unused */
+    (void)error;     /* unused */
+    (void)result;    /* unused */
+    return OS_TR181_ERROR_NOT_IMPLEMENTED;
+}
+
+/* ========================================================================
+ * Event Loop Integration API - NULL Backend (Stubs)
+ * ======================================================================== */
+
+os_tr181_error_t os_tr181_register_fd_change_callback(
+        os_tr181_handle_t *handle,
+        os_tr181_fd_change_callback_t callback,
+        void *user_data)
+{
+    if (!handle)
+    {
+        return OS_TR181_ERROR_INVALID;
+    }
+
+    handle->fd_change_cb = callback;
+    handle->fd_change_user_data = user_data;
+
+    return OS_TR181_SUCCESS;
+}
+
+os_tr181_error_t os_tr181_get_fds(os_tr181_handle_t *handle, int *fds, size_t max_fds, size_t *num_fds)
+{
+    (void)handle;
+    (void)fds;
+    (void)max_fds;
+
+    if (num_fds)
+    {
+        *num_fds = 0;
+    }
+
+    return OS_TR181_SUCCESS;
+}
+
+int os_tr181_get_poll_timeout(os_tr181_handle_t *handle)
+{
+    (void)handle;
+    return -1;
+}
+
+/* ========================================================================
+ * Event Loop Context Accessors (for os_tr181_libev.c)
+ * ======================================================================== */
+
+void *os_tr181_get_loop_ctx(os_tr181_handle_t *handle)
+{
+    return handle ? handle->loop_ctx : NULL;
+}
+
+void os_tr181_set_loop_ctx(os_tr181_handle_t *handle, void *ctx)
+{
+    if (handle)
+    {
+        handle->loop_ctx = ctx;
+    }
 }

@@ -3262,7 +3262,9 @@ osw_drv_phy_state_is_channels_changed(const struct osw_drv_phy *phy)
         if (found == true) {
             const bool dfs_changed = (os->dfs_state != ns->dfs_state);
             const bool nol_changed = (os->dfs_nol_remaining_seconds != ns->dfs_nol_remaining_seconds);
-            const bool cs_changed = dfs_changed || nol_changed;
+            const bool max_tx_power_changed = (os->max_tx_power_dbm != ns->max_tx_power_dbm)
+                                           || (os->max_tx_power_dbm_valid != ns->max_tx_power_dbm_valid);
+            const bool cs_changed = dfs_changed || nol_changed || max_tx_power_changed;
             changed |= cs_changed;
             if (cs_changed == true) {
                 LOGI("osw: drv: %s: channel "OSW_CHANNEL_FMT": "OSW_CHAN_STATE_FMT" -> "OSW_CHAN_STATE_FMT,

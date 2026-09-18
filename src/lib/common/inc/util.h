@@ -124,7 +124,7 @@ bool parse_uri(char *uri, char *proto, size_t proto_size, char *host, size_t hos
         A; \
     })
 #else
-#define ASSERT_ARRAY(A) A
+#define ASSERT_ARRAY(A) ({ (void)A; A; })
 #endif
 
 #define SPRINTF(dest, ...) snprintf(ASSERT_ARRAY(dest), sizeof(dest), ##__VA_ARGS__)

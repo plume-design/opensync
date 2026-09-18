@@ -1,0 +1,20 @@
+#!/bin/sh
+
+OBUSPA_DB="/etc/obuspa.db"
+USPPA_DB="/nvram/usp-pa.db"
+
+USP_BIN=$(which obuspa)
+if [ -x "${USP_BIN}" ]; then
+	USP_DB="${OBUSPA_DB}"
+else
+	USP_BIN=$(which UspPa)
+	[ -x "${USP_BIN}" ] && USP_DB="${USPPA_DB}"
+fi
+
+if [ -f "${USP_DB}" ] && [ -x "${USP_BIN}" ]; then
+	exec "$USP_BIN" -f "$USP_DB" -c "$@"
+else
+	[ -x "${USP_BIN}" ] || echo "Error: no binary found on: ${USP_BIN}"
+	[ -f "${USP_DB}" ] || echo "Error: no DB found on: ${USP_DB}"
+	exit 1
+fi

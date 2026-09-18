@@ -28,6 +28,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define OSN_DHCP_H_INCLUDED
 
 #include <stdbool.h>
+#include <stdint.h>
 
 #include "const.h"
 
@@ -160,6 +161,12 @@ bool osn_dhcp_client_opt_notify_set(osn_dhcp_client_t *self, osn_dhcp_client_opt
 bool osn_dhcp_client_error_fn_set(osn_dhcp_client_t *self, osn_dhcp_client_error_fn_t *fn);
 /** Set the vendor class */
 bool osn_dhcp_client_vendorclass_set(osn_dhcp_client_t *self, const char *vendorspec);
+/**
+ * Set the routing table into which the DHCP client installs the received
+ * default routes; 0 (the default) means the main routing table. Any policy
+ * routing rules referencing the table must be configured separately.
+ */
+bool osn_dhcp_client_route_table_set(osn_dhcp_client_t *self, uint32_t table);
 /** Get the current active state of the DHCP client */
 bool osn_dhcp_client_state_get(osn_dhcp_client_t *self, bool *enabled);
 /** Set user data */

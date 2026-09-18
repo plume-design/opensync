@@ -38,7 +38,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "os.h"
 #include "qm_conn.h"
 #include "dppline.h"
-#include "network_metadata.h"
 #include "lte_info.h"
 #include "cellm_mgr.h"
 

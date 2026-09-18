@@ -295,7 +295,7 @@ bool fw_nat_start(inet_fw_t *self)
         LOG(INFO, "fw: %s: Installing NAT rules.", self->fw_ifname);
 
         retval &= nfm_rule_add(
-                NFM_ID(self->fw_ifname, "ipv4", "nat"),
+                NFM_ID(self->fw_ifname, "ipv4", "nat.bridge-bypass"),
                 100,
                 "ipv4",
                 "nat",
@@ -303,7 +303,7 @@ bool fw_nat_start(inet_fw_t *self)
                 NFM_RULE("-o", self->fw_ifname, "-m", "physdev", "--physdev-is-bridged"),
                 "ACCEPT");
         retval &= nfm_rule_add(
-                NFM_ID(self->fw_ifname, "ipv4", "nat"),
+                NFM_ID(self->fw_ifname, "ipv4", "nat.masquerade"),
                 100,
                 "ipv4",
                 "nat",
@@ -391,7 +391,8 @@ bool fw_nat_stop(inet_fw_t *self)
     LOG(INFO, "fw: %s: Flushing NAT/LAN related rules.", self->fw_ifname);
 
     /* Flush out NAT rules */
-    retval &= nfm_rule_del(NFM_ID(self->fw_ifname, "ipv4", "nat"));
+    retval &= nfm_rule_del(NFM_ID(self->fw_ifname, "ipv4", "nat.bridge-bypass"));
+    retval &= nfm_rule_del(NFM_ID(self->fw_ifname, "ipv4", "nat.masquerade"));
 
     retval &= nfm_rule_del(NFM_ID(self->fw_ifname, "ipv4", "mssclamp"));
     retval &= nfm_rule_del(NFM_ID(self->fw_ifname, "ipv6", "mssclamp"));

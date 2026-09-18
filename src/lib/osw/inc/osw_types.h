@@ -51,6 +51,15 @@ enum osw_vif_status {
     OSW_VIF_BROKEN,
 };
 
+/* Whether STA is allowed to (re)associate on channels
+ * other than the configured one.
+ */
+enum osw_drv_channel_roaming {
+    OSW_DRV_CHANNEL_ROAM_DISALLOWED = 0,
+    OSW_DRV_CHANNEL_ROAM_ALLOWED,
+    OSW_DRV_CHANNEL_ROAM_UNSPECIFIED,
+};
+
 void
 osw_vif_status_set(enum osw_vif_status *status,
                    enum osw_vif_status new_status);
@@ -247,6 +256,12 @@ enum osw_zero_wait_dfs {
     OSW_ZERO_WAIT_DFS_PRECAC,
 };
 
+enum osw_tx_power_mode {
+    OSW_TX_POWER_MODE_DBM,
+    OSW_TX_POWER_MODE_DB,
+    OSW_TX_POWER_MODE_PERCENT,
+};
+
 struct osw_reg_domain {
     char ccode[3]; /* 2-letter ISO name, \0-terminated */
     int iso3166_num;
@@ -307,12 +322,21 @@ struct osw_channel_state {
     struct osw_channel channel;
     enum osw_channel_state_dfs dfs_state;
     int dfs_nol_remaining_seconds;
+    int max_tx_power_dbm;
+    bool max_tx_power_dbm_valid;
 };
 
-#define OSW_CHAN_STATE_FMT "%s %ds"
+#define OSW_CHAN_STATE_FMT "%s %ds%s"
 #define OSW_CHAN_STATE_ARG(x) \
     osw_channel_dfs_state_to_str((x)->dfs_state), \
-    (x)->dfs_nol_remaining_seconds
+    (x)->dfs_nol_remaining_seconds, \
+    ({ \
+        char buf[32] = {0}; \
+        if ((x)->max_tx_power_dbm_valid) { \
+            snprintf(buf, sizeof(buf), " %ddBm", (x)->max_tx_power_dbm); \
+        } \
+        strdupa(buf); \
+    })
 
 #define OSW_HWADDR_LEN 6
 #define OSW_HWADDR_FMT "%02hhx:%02hhx:%02hhx:%02hhx:%02hhx:%02hhx"
@@ -941,6 +965,14 @@ osw_airtime_precedence_to_str(const enum osw_airtime_precedence p);
 
 const char *
 osw_zero_wait_dfs_to_str(const enum osw_zero_wait_dfs zwd);
+
+const char *
+osw_tx_power_mode_to_cstr(const enum osw_tx_power_mode m);
+
+int
+osw_tx_power_resolve_dbm(const enum osw_tx_power_mode mode,
+                         const int value,
+                         const int max_tx_power_dbm);
 
 void
 osw_wpa_to_str(char *out, size_t len, const struct osw_wpa *wpa);

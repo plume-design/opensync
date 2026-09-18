@@ -214,10 +214,22 @@ ow_steer_executor_action_btm_req_create_params(struct ow_steer_executor_action_b
         }
 
         struct osw_btm_req_neigh *btm_neighbor = &btm_req_params.neigh[neigh_i];
+        const uint8_t chan_num = osw_freq_to_chan(channel->control_freq_mhz);
+
+        /* Best-effort downgrade to the 20MHz op_class variant, mirroring the RRM
+         * neighbor emission in confsync (osw_confsync_neigh_op_class_20mhz()).
+         * Wide op_classes are not forward-compatible and drivers may override
+         * them; the channel + bssid are the real pointer to the candidate, the
+         * op_class width is advisory. The original op_class is used when the
+         * conversion is not possible. */
+        uint8_t op_class_20mhz = *op_class;
+        if (*op_class > 0 && chan_num > 0)
+            WARN_ON(osw_op_class_to_20mhz(*op_class, chan_num, &op_class_20mhz) == false);
+
         memcpy(&btm_neighbor->bssid, bssid, sizeof(*bssid));
-        btm_neighbor->op_class = *op_class;
+        btm_neighbor->op_class = op_class_20mhz;
         btm_neighbor->btmpreference = btmpreference;
-        btm_neighbor->channel = osw_freq_to_chan(channel->control_freq_mhz);
+        btm_neighbor->channel = chan_num;
         btm_neighbor->bssid_info = OW_STEER_BM_BTM_DEFAULT_NEIGH_BSS_INFO;
         ow_steer_executor_action_btm_params_set_disassoc_imminent(
                 btm_action,

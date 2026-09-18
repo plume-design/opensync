@@ -171,6 +171,8 @@ struct nm2_iface
         uint8_t                     vlan_egress_qos_map[NM2_IFACE_INET_CONFIG_SZ(vlan_egress_qos_map)];
         bool                        parent_ifname_exists;
         uint8_t                     parent_ifname[NM2_IFACE_INET_CONFIG_SZ(parent_ifname)];
+        bool                        dhcp_route_table_exists;
+        int64_t                     dhcp_route_table;
     }
     if_cache;
 };

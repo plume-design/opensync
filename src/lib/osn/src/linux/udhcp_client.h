@@ -48,6 +48,7 @@ struct udhcp_client
     char                                uc_ifname[C_IFNAME_LEN];
     bool                                uc_started;
     daemon_t                            uc_proc;
+    uint32_t                            uc_route_table;             /* Routing table for received routes, 0 = main */
     uint8_t                             uc_option_req[C_SET_LEN(DHCP_OPTION_MAX, uint8_t)];
     char                               *uc_option_set[DHCP_OPTION_MAX];
     char                                uc_opt_path[C_MAXPATH_LEN]; /* Option file path */
@@ -62,6 +63,7 @@ bool udhcp_client_fini(udhcp_client_t *self);
 bool udhcp_client_start(udhcp_client_t *self);
 bool udhcp_client_renew(udhcp_client_t *self);
 bool udhcp_client_stop(udhcp_client_t *self);
+bool udhcp_client_route_table_set(udhcp_client_t *self, uint32_t table);
 bool udhcp_client_opt_request(udhcp_client_t *self, enum osn_dhcp_option opt, bool request);
 bool udhcp_client_opt_set(udhcp_client_t *self, enum osn_dhcp_option opt, const char *val);
 bool udhcp_client_opt_get(udhcp_client_t *self, enum osn_dhcp_option opt, bool *request, const char **value);

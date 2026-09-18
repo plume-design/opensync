@@ -7,9 +7,12 @@ menuconfig MANAGER_FSM
     config MANAGER_FSM_CFG
         depends on MANAGER_FSM
         string "FSM Startup configuration"
-        default "fsm;true;always_restart=true;restart_delay=-1;max_memory=160000"
+        default "fsm;true;always_restart=true;restart_delay=-1;max_memory=160000;crash_count_max=3;crash_count_period=60"
         help
             Flow Service Manager startup configuration
+            Optional crash backoff keys (;-separated key=value):
+            crash_count_max, crash_count_period, crash_recovery.
+            crash_count_max=0 disables. Ignored when needs_plan_b=true.
 
     config FSM_PCAP_SNAPLEN
         depends on MANAGER_FSM

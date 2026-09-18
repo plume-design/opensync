@@ -50,6 +50,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "kconfig.h"
 #include "cm2.h"
 #include "cm2_uplink_event.h"
+#include "cm2_connectivity_check.h"
 #include "manager_watchdog.h"
 
 /******************************************************************************/
@@ -175,6 +176,7 @@ int main(int argc, char ** argv)
         cm2_update_uplinks_init(loop);
     }
 
+    cm2_connectivity_check_init();
     cm2_stability_init(loop);
     cm2_uplink_event_init();
 
@@ -194,6 +196,7 @@ int main(int argc, char ** argv)
         cm2_update_uplinks_close(loop);
     }
 
+    cm2_connectivity_check_close();
     cm2_stability_close(loop);
     cm2_uplink_event_close();
     cm2_event_close(loop);

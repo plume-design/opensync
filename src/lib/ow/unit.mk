@@ -92,6 +92,8 @@ UNIT_SRC += src/ow_radar_next_channel.c
 UNIT_SRC += src/ow_mld_redir.c
 UNIT_SRC += src/ow_mld_redir_sta.c
 UNIT_SRC += src/ow_hs_mqtt.c
+UNIT_SRC += src/ow_steer_bm_mlo.c
+UNIT_SRC += src/ow_ovsdb_steer_bm_mlo.c
 
 UNIT_EXPORT_CFLAGS += -I$(UNIT_PATH)/inc
 UNIT_CFLAGS += -I$(UNIT_PATH)/inc

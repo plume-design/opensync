@@ -1,29 +1,4 @@
 #!/bin/sh
-
-# Copyright (c) 2015, Plume Design Inc. All rights reserved.
-# 
-# Redistribution and use in source and binary forms, with or without
-# modification, are permitted provided that the following conditions are met:
-#    1. Redistributions of source code must retain the above copyright
-#       notice, this list of conditions and the following disclaimer.
-#    2. Redistributions in binary form must reproduce the above copyright
-#       notice, this list of conditions and the following disclaimer in the
-#       documentation and/or other materials provided with the distribution.
-#    3. Neither the name of the Plume Design Inc. nor the
-#       names of its contributors may be used to endorse or promote products
-#       derived from this software without specific prior written permission.
-# 
-# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
-# ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
-# WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-# DISCLAIMED. IN NO EVENT SHALL Plume Design Inc. BE LIABLE FOR ANY
-# DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
-# (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
-# LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
-# ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-# SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
 # {# jinja-parse #}
 INSTALL_PREFIX="{{INSTALL_PREFIX}}"
 
@@ -37,6 +12,10 @@ set_dns=${action_set_dns:-true}
 set_routes=${action_set_routes:-false}
 set_staticroutes=${action_set_staticroutes:-false}
 set_msstaticroutes=${action_set_msstaticroutes:-false}
+
+# routing table for default routes
+# optional: if empty, install default routes into main routing table
+route_table=${DHCP_ROUTE_TABLE:-}
 
 # TODO: This hack shall be removed when DHCP requested options are used by cloud
 is_link_local()
@@ -136,7 +115,7 @@ setup_interface()
 
             local valid_gw=""
             for i in $router ; do
-                route_default_add "$interface" "$i"
+                route_default_add "$interface" "$i" "$route_table"
                 valid_gw="${valid_gw:+$valid_gw|}$i"
             done
         }
@@ -159,7 +138,7 @@ case "$1" in
         deconfig)
             echo "$interface: flushing ipv4 addr"
             ip -4 addr flush dev "$interface"
-            route_default_flush "$interface"
+            route_default_flush "$interface" "$route_table"
             [ -w "$OPTS_FILE" ] && rm -f "$OPTS_FILE"
         ;;
         renew)
@@ -167,7 +146,7 @@ case "$1" in
         ;;
         bound)
             ip -4 addr flush dev "$interface"
-            route_default_flush "$interface"
+            route_default_flush "$interface" "$route_table"
             [ -w "$OPTS_FILE" ] && rm -f "$OPTS_FILE"
             setup_interface ifup
         ;;

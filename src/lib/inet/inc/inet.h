@@ -279,6 +279,8 @@ struct __inet
     bool        (*in_dhcpc_option_set_fn)(inet_t *self, enum osn_dhcp_option opt, const char *value);
     bool        (*in_dhcpc_option_get_fn)(inet_t *self, enum osn_dhcp_option opt, bool *request, const char **value);
     bool        (*in_dhcpc_option_notify_fn)(inet_t *self, inet_dhcpc_option_notify_fn_t *fn);
+    /* Routing table for DHCP client installed default routes, 0 = main table */
+    bool        (*in_dhcpc_route_table_set_fn)(inet_t *self, uint32_t table);
 
     /* True if DHCP server should be enabled on this interface */
     bool        (*in_dhcps_enable_fn)(inet_t *self, bool enabled);
@@ -649,6 +651,13 @@ static inline bool inet_dhcpc_option_notify(inet_t *self, inet_dhcpc_option_noti
     if (self->in_dhcpc_option_notify_fn == NULL) return false;
 
     return self->in_dhcpc_option_notify_fn(self, fn);
+}
+
+static inline bool inet_dhcpc_route_table_set(inet_t *self, uint32_t table)
+{
+    if (self->in_dhcpc_route_table_set_fn == NULL) return false;
+
+    return self->in_dhcpc_route_table_set_fn(self, table);
 }
 
 static inline bool inet_dhcps_enable(inet_t *self, bool enabled)

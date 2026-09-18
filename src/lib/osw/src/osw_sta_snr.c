@@ -33,6 +33,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <osw_sta_snr.h>
 #include <osw_tlv.h>
 #include <osw_stats.h>
+#include <osw_state.h>
 #include <osw_time.h>
 #include <osw_timer.h>
 #include <osw_stats_defs.h>
@@ -63,17 +64,24 @@ struct osw_sta_snr
 {
     ds_tree_t obs;
     struct osw_stats_subscriber *sub;
+    struct osw_state_observer state_obs;
     bool stats;
 };
 
 struct osw_sta_snr_params
 {
     struct osw_hwaddr sta_addr;
+    struct osw_hwaddr mld_addr;
     char *vif_name;
     struct osw_hwaddr vif_addr;
     int ageout_sec;
     osw_sta_snr_notify_fn_t *notify_fn;
     void *notify_fn_priv;
+    size_t log_capacity;
+    bool source_data_rx;
+    bool source_probe_rx;
+    osw_sta_snr_log_flushed_fn_t *log_flushed_fn;
+    void *log_flushed_fn_priv;
 };
 
 struct osw_sta_snr_ema
@@ -91,11 +99,12 @@ struct osw_sta_snr_observer
     osw_sta_snr_ema_t e;
     struct osw_timer ageout;
     uint8_t reported_snr_db;
-    /* FIXME: This could maintain a cache of last-seen SNR
-     * with an ageout timer to allow observers to get
-     * immediate SNR notification without needing to wait
-     * for next statistics report (that may not even come).
-     */
+    uint8_t *log;
+    size_t log_capacity;
+    size_t log_head;
+    bool log_full;
+    struct osw_channel last_channel;
+    bool has_channel;
 };
 
 static void osw_sta_snr_ema_init(struct osw_sta_snr_ema *e)
@@ -136,12 +145,14 @@ static void osw_sta_snr_init(osw_sta_snr_t *m)
 static void osw_sta_snr_attach(osw_sta_snr_t *m)
 {
     OSW_MODULE_LOAD(osw_stats);
+    OSW_MODULE_LOAD(osw_state);
     m->stats = true;
 }
 
 static void osw_sta_snr_observer_notify(osw_sta_snr_observer_t *obs, const uint8_t *snr_db)
 {
     const osw_sta_snr_params_t *p = obs->params;
+    if (p->notify_fn == NULL) return;
     const char *snr_str = snr_db ? strfmta("%hhu dB", *snr_db) : "aged out";
     LOGT(LOG_PREFIX_OBS(obs, "snr: %s", snr_str));
     p->notify_fn(p->notify_fn_priv, snr_db);
@@ -161,8 +172,42 @@ static void osw_sta_snr_observer_ageout_arm(osw_sta_snr_observer_t *obs)
     osw_timer_arm_at_nsec(&obs->ageout, at);
 }
 
-static void osw_sta_snr_observer_feed(osw_sta_snr_observer_t *obs, uint8_t snr_db)
+static void osw_sta_snr_observer_log_push(osw_sta_snr_observer_t *obs, uint8_t snr_db)
 {
+    if (obs->log == NULL) return;
+    obs->log[obs->log_head] = snr_db;
+    obs->log_head = (obs->log_head + 1) % obs->log_capacity;
+    if (obs->log_head == 0) obs->log_full = true;
+}
+
+static void osw_sta_snr_observer_log_reset(osw_sta_snr_observer_t *obs)
+{
+    obs->log_head = 0;
+    obs->log_full = false;
+}
+
+static void osw_sta_snr_observer_flush_log(osw_sta_snr_observer_t *obs)
+{
+    const osw_sta_snr_params_t *p = obs->params;
+    if (obs->log == NULL) return;
+    if (obs->log_head == 0 && obs->log_full == false) return;
+    LOGT(LOG_PREFIX_OBS(obs, "log flushed (channel change)"));
+    if (p->log_flushed_fn != NULL) p->log_flushed_fn(p->log_flushed_fn_priv);
+    osw_sta_snr_observer_log_reset(obs);
+}
+
+static void osw_sta_snr_observer_feed(osw_sta_snr_observer_t *obs, uint8_t snr_db, const struct osw_channel *ch)
+{
+    if (ch != NULL)
+    {
+        if (obs->has_channel && osw_channel_is_equal(&obs->last_channel, ch) == false)
+        {
+            osw_sta_snr_observer_flush_log(obs);
+        }
+        obs->last_channel = *ch;
+        obs->has_channel = true;
+    }
+
     const bool first_report = osw_sta_snr_ema_is_empty(&obs->e);
     const float smoothed_snr_db = osw_sta_snr_ema_feed(&obs->e, snr_db, clock_mono_ms());
     const uint8_t smoothed_snr_db_u8 = smoothed_snr_db;
@@ -171,7 +216,37 @@ static void osw_sta_snr_observer_feed(osw_sta_snr_observer_t *obs, uint8_t snr_d
         obs->reported_snr_db = smoothed_snr_db_u8;
         osw_sta_snr_observer_notify(obs, &obs->reported_snr_db);
     }
+    osw_sta_snr_observer_log_push(obs, snr_db);
     osw_sta_snr_observer_ageout_arm(obs);
+}
+
+static bool osw_sta_snr_observer_match(
+        const osw_sta_snr_observer_t *obs,
+        const struct osw_hwaddr *sta_addr,
+        const char *vif_name,
+        const struct osw_hwaddr *vif_addr)
+{
+    const osw_sta_snr_params_t *p = obs->params;
+    const bool sta_match = osw_hwaddr_is_equal(&p->sta_addr, sta_addr);
+    const bool mld_match = osw_hwaddr_is_zero(&p->mld_addr) == false && osw_hwaddr_is_equal(&p->mld_addr, sta_addr);
+    if (sta_match == false && mld_match == false) return false;
+    const bool vif_wildcard = (p->vif_name == NULL && osw_hwaddr_is_zero(&p->vif_addr));
+    if (vif_wildcard) return true;
+    if (vif_name != NULL && p->vif_name != NULL && strcmp(p->vif_name, vif_name) == 0) return true;
+    if (vif_addr != NULL && osw_hwaddr_is_zero(vif_addr) == false && osw_hwaddr_is_equal(&p->vif_addr, vif_addr))
+        return true;
+    return false;
+}
+
+static const struct osw_channel *osw_sta_snr_vif_channel(const struct osw_hwaddr *vif_addr)
+{
+    if (vif_addr == NULL) return NULL;
+    if (osw_hwaddr_is_zero(vif_addr)) return NULL;
+    const struct osw_state_vif_info *vi = osw_state_vif_lookup_by_mac_addr(vif_addr);
+    if (vi == NULL) return NULL;
+    if (vi->drv_state == NULL) return NULL;
+    if (vi->drv_state->vif_type != OSW_VIF_AP) return NULL;
+    return &vi->drv_state->u.ap.channel;
 }
 
 static void osw_sta_snr_stats_report_cb(
@@ -205,20 +280,41 @@ static void osw_sta_snr_stats_report_cb(
 
     if (WARN_ON(snr_db > UINT8_MAX)) snr_db = UINT8_MAX;
 
+    const struct osw_channel *ch = osw_sta_snr_vif_channel(vif_addr);
+
     osw_sta_snr_observer_t *obs;
     ds_tree_foreach (&m->obs, obs)
     {
-        const osw_sta_snr_params_t *p = obs->params;
-        const bool sta_addr_match = osw_hwaddr_is_equal(&p->sta_addr, sta_addr);
-        const bool vif_wildcard = (p->vif_name == NULL);
-        const bool vif_name_match = vif_name ? (p->vif_name != NULL && strcmp(p->vif_name, vif_name) == 0) : false;
-        const bool vif_addr_match = osw_hwaddr_is_zero(vif_addr) ? false : osw_hwaddr_is_equal(&p->vif_addr, vif_addr);
-        const bool vif_match = vif_name_match || vif_addr_match;
+        if (obs->params->source_data_rx == false) continue;
+        if (osw_sta_snr_observer_match(obs, sta_addr, vif_name, vif_addr) == false) continue;
+        osw_sta_snr_observer_feed(obs, snr_db, ch);
+    }
+}
 
-        if (sta_addr_match && (vif_wildcard || vif_match))
-        {
-            osw_sta_snr_observer_feed(obs, snr_db);
-        }
+static void osw_sta_snr_probe_cb(
+        struct osw_state_observer *self,
+        const struct osw_state_vif_info *vif,
+        const struct osw_drv_report_vif_probe_req *probe_req)
+{
+    if (vif == NULL) return;
+    if (probe_req == NULL) return;
+    if (vif->drv_state == NULL) return;
+
+    osw_sta_snr_t *m = container_of(self, struct osw_sta_snr, state_obs);
+    const struct osw_hwaddr *sta_addr = &probe_req->sta_addr;
+    const struct osw_hwaddr *vif_addr = &vif->drv_state->mac_addr;
+    const unsigned int snr = probe_req->snr;
+    if (WARN_ON(snr > UINT8_MAX)) return;
+
+    const struct osw_channel *ch = NULL;
+    if (vif->drv_state->vif_type == OSW_VIF_AP) ch = &vif->drv_state->u.ap.channel;
+
+    osw_sta_snr_observer_t *obs;
+    ds_tree_foreach (&m->obs, obs)
+    {
+        if (obs->params->source_probe_rx == false) continue;
+        if (osw_sta_snr_observer_match(obs, sta_addr, vif->vif_name, vif_addr) == false) continue;
+        osw_sta_snr_observer_feed(obs, (uint8_t)snr, ch);
     }
 }
 
@@ -248,6 +344,7 @@ static void osw_sta_snr_stop(osw_sta_snr_t *m)
 osw_sta_snr_params_t *osw_sta_snr_params_alloc(void)
 {
     osw_sta_snr_params_t *p = CALLOC(1, sizeof(*p));
+    p->source_data_rx = true;
     return p;
 }
 
@@ -262,6 +359,12 @@ void osw_sta_snr_params_set_sta_addr(osw_sta_snr_params_t *p, const struct osw_h
 {
     if (p == NULL) return;
     p->sta_addr = *(sta_addr ?: osw_hwaddr_zero());
+}
+
+void osw_sta_snr_params_set_mld_addr(osw_sta_snr_params_t *p, const struct osw_hwaddr *mld_addr)
+{
+    if (p == NULL) return;
+    p->mld_addr = *(mld_addr ?: osw_hwaddr_zero());
 }
 
 void osw_sta_snr_params_set_vif_name(osw_sta_snr_params_t *p, const char *vif_name)
@@ -290,10 +393,35 @@ void osw_sta_snr_params_set_notify_fn(osw_sta_snr_params_t *p, osw_sta_snr_notif
     p->notify_fn_priv = priv;
 }
 
+void osw_sta_snr_params_set_log_capacity(osw_sta_snr_params_t *p, size_t capacity)
+{
+    if (p == NULL) return;
+    p->log_capacity = capacity;
+}
+
+void osw_sta_snr_params_set_source_data_rx(osw_sta_snr_params_t *p, bool enable)
+{
+    if (p == NULL) return;
+    p->source_data_rx = enable;
+}
+
+void osw_sta_snr_params_set_source_probe_rx(osw_sta_snr_params_t *p, bool enable)
+{
+    if (p == NULL) return;
+    p->source_probe_rx = enable;
+}
+
+void osw_sta_snr_params_set_log_flushed_fn(osw_sta_snr_params_t *p, osw_sta_snr_log_flushed_fn_t *fn, void *priv)
+{
+    if (p == NULL) return;
+    p->log_flushed_fn = fn;
+    p->log_flushed_fn_priv = priv;
+}
+
 osw_sta_snr_observer_t *osw_sta_snr_observer_alloc(osw_sta_snr_t *m, osw_sta_snr_params_t *p)
 {
     if (WARN_ON(p == NULL)) goto err;
-    if (WARN_ON(p->notify_fn == NULL)) goto err;
+    if (WARN_ON(p->notify_fn == NULL && p->log_capacity == 0)) goto err;
     if (m == NULL) goto err;
 
     osw_sta_snr_observer_t *obs = CALLOC(1, sizeof(*obs));
@@ -301,6 +429,11 @@ osw_sta_snr_observer_t *osw_sta_snr_observer_alloc(osw_sta_snr_t *m, osw_sta_snr
     obs->m = m;
     osw_timer_init(&obs->ageout, osw_sta_snr_observer_ageout_cb);
     osw_sta_snr_ema_init(&obs->e);
+    if (p->log_capacity > 0)
+    {
+        obs->log_capacity = p->log_capacity;
+        obs->log = CALLOC(p->log_capacity, sizeof(uint8_t));
+    }
     ds_tree_insert(&m->obs, obs, obs);
     osw_sta_snr_start(m);
     LOGD(LOG_PREFIX_OBS(obs, "allocated"));
@@ -318,6 +451,33 @@ const uint8_t *osw_sta_snr_observer_get_last(osw_sta_snr_observer_t *obs)
     return &obs->reported_snr_db;
 }
 
+const uint8_t *osw_sta_snr_observer_get_log(osw_sta_snr_observer_t *obs)
+{
+    if (obs == NULL) return NULL;
+    return obs->log;
+}
+
+size_t osw_sta_snr_observer_get_log_size(osw_sta_snr_observer_t *obs)
+{
+    if (obs == NULL) return 0;
+    if (obs->log == NULL) return 0;
+    if (obs->log_full) return obs->log_capacity;
+    return obs->log_head;
+}
+
+void osw_sta_snr_observer_reset_log(osw_sta_snr_observer_t *obs)
+{
+    if (obs == NULL) return;
+    osw_sta_snr_observer_log_reset(obs);
+}
+
+const struct osw_channel *osw_sta_snr_observer_get_channel(osw_sta_snr_observer_t *obs)
+{
+    if (obs == NULL) return NULL;
+    if (obs->has_channel == false) return NULL;
+    return &obs->last_channel;
+}
+
 void osw_sta_snr_observer_drop(osw_sta_snr_observer_t *obs)
 {
     if (obs == NULL) return;
@@ -328,6 +488,7 @@ void osw_sta_snr_observer_drop(osw_sta_snr_observer_t *obs)
     osw_sta_snr_params_drop(obs->params);
     osw_timer_disarm(&obs->ageout);
     ds_tree_remove(&m->obs, obs);
+    FREE(obs->log);
     FREE(obs);
 
     osw_sta_snr_stop(m);
@@ -338,5 +499,8 @@ OSW_MODULE(osw_sta_snr)
     static osw_sta_snr_t m;
     osw_sta_snr_init(&m);
     osw_sta_snr_attach(&m);
+    m.state_obs.name = "osw_sta_snr";
+    m.state_obs.vif_probe_req_fn = osw_sta_snr_probe_cb;
+    osw_state_register_observer(&m.state_obs);
     return &m;
 }

@@ -100,7 +100,7 @@ static int brctl_mac_learn_aging_time_get(void)
     int ret = CONFIG_MANAGER_NM_PROBE_ETH_CLIENTS_PERIOD_DEFAULT * 2;
     char path[C_MAXPATH_LEN] = {0};
     snprintf(path, C_MAXPATH_LEN, "/sys/class/net/%s/bridge/ageing_time", CONFIG_TARGET_LAN_BRIDGE_NAME);
-    char *ageing_time_str = file_geta(path);
+    const char *ageing_time_str = file_geta(path) ?: "-1";
     int ageing_time = atoi(ageing_time_str);
     if (ageing_time <= 0)
     {

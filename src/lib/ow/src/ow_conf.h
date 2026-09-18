@@ -83,7 +83,9 @@ void ow_conf_phy_set_enabled(const char *phy_name, const bool *enabled);
 void ow_conf_phy_set_ap_atf_enabled(const char *phy_name, const bool *enabled);
 void ow_conf_phy_set_tx_chainmask(const char *phy_name, const int *tx_chainmask);
 void ow_conf_phy_set_thermal_tx_chainmask(const char *phy_name, const int *tx_chainmask);
-void ow_conf_phy_set_tx_power_dbm(const char *phy_name, const int *tx_power_dbm);
+void ow_conf_phy_set_tx_power_dbm(const char *phy_name, const int *dbm);
+void ow_conf_phy_set_tx_power_percent(const char *phy_name, const int *percent);
+void ow_conf_phy_set_tx_power_limit_by_db(const char *phy_name, const int *db);
 void ow_conf_phy_set_ap_wmm_enabled(const char *phy_name, const bool *enabled);
 void ow_conf_phy_set_ap_ht_enabled(const char *phy_name, const bool *enabled);
 void ow_conf_phy_set_ap_vht_enabled(const char *phy_name, const bool *enabled);
@@ -104,6 +106,8 @@ void ow_conf_phy_set_ap_beacon_rate(const char *phy_name, const enum osw_rate_le
 void ow_conf_phy_set_ap_mcast_rate(const char *phy_name, const enum osw_rate_legacy *mcast_rate);
 void ow_conf_phy_set_ap_mgmt_rate(const char *phy_name, const enum osw_rate_legacy *mgmt_rate);
 void ow_conf_phy_set_ap_zero_wait_dfs(const char *phy_name, const enum osw_zero_wait_dfs *zero_wait_dfs);
+void ow_conf_phy_set_allow_sta_roam_channels(const char *phy_name, const bool *allow);
+const bool *ow_conf_phy_get_allow_sta_roam_channels(const char *phy_name);
 
 void ow_conf_vif_clear(const char *vif_name);
 void ow_conf_vif_unset(const char *vif_name);

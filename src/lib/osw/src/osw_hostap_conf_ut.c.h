@@ -296,7 +296,7 @@ static struct osw_drv_conf g_drv_conf = {
             .tx_chainmask = 0x15,
             .radar = OSW_RADAR_DETECT_ENABLED,
             .reg_domain = {
-                .ccode = "US\0",
+                .ccode = "US",
                 .revision = 644,
                 .dfs = OSW_REG_DFS_ETSI
             },

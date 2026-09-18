@@ -1,7 +1,7 @@
 {
   "name": "Open_vSwitch",
-  "version": "7.11.426",
-  "cksum": "2743806155 368428",
+  "version": "7.11.435",
+  "cksum": "454058995 373238",
   "tables": {
     "AWLAN_Node": {
       "columns": {
@@ -957,6 +957,17 @@
             "max": 64
           }
         },
+        "dhcp_route_table": {
+          "type": {
+            "key": {
+              "type": "integer",
+              "minInteger": 0,
+              "maxInteger": 4294967295
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
         "upnp_mode": {
           "type": {
             "key": {
@@ -1244,6 +1255,17 @@
                   "static"
                 ]
               ]
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "dhcp_route_table": {
+          "type": {
+            "key": {
+              "type": "integer",
+              "minInteger": 0,
+              "maxInteger": 4294967295
             },
             "min": 0,
             "max": 1
@@ -1787,6 +1809,47 @@
       "maxRows": 256
     },
 
+    "Wifi_Channels": {
+      "columns": {
+        "if_name": {
+          "type": {
+            "key": {
+              "type": "string"
+            }
+          }
+        },
+        "channel": {
+          "type": {
+            "key": {
+              "type": "integer",
+              "minInteger": 1,
+              "maxInteger": 233
+            }
+          }
+        },
+        "op_class": {
+          "type": {
+            "key": {
+              "type": "integer",
+              "minInteger": 0,
+              "maxInteger": 255
+            }
+          }
+        },
+        "max_tx_power_dbm": {
+          "type": {
+            "key": {
+              "type": "integer",
+              "minInteger": -127,
+              "maxInteger": 127
+            }
+          }
+        }
+      },
+      "isRoot": true,
+      "maxRows": 256
+    },
+
     "Wifi_Radio_Config": {
       "columns": {
         "if_name": {
@@ -2027,6 +2090,23 @@
             "max": 1
           }
         },
+        "tx_power_mode": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "dbm",
+                  "db",
+                  "percent"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
         "bcn_int": {
           "type": {
             "key": {
@@ -2223,6 +2303,15 @@
               ]
             },
             "min": 0,
+            "max": 1
+          }
+        },
+        "allow_sta_roam_channels": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            },
+            "min": 1,
             "max": 1
           }
         }
@@ -2729,6 +2818,15 @@
             },
             "min": 0,
             "max": 150
+          }
+        },
+        "allow_sta_roam_channels": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            },
+            "min": 0,
+            "max": 1
           }
         }
       },
@@ -11563,7 +11661,8 @@
                             [
                                 "enabled",
                                 "disabled",
-                                "error"
+                                "error",
+                                "backoff"
                             ]
                         ]
                     },
@@ -11576,7 +11675,7 @@
                     "key": "string",
                     "value": {
                         "type": "string",
-                        "maxLength": 64
+                        "maxLength": 256
                     },
                     "min": 0,
                     "max": "unlimited"
@@ -13653,7 +13752,8 @@
                   "dhcp",
                   "pppoe",
                   "vlan",
-                  "static_ipv4"
+                  "static_ipv4",
+                  "sta"
                 ]
               ]
             },
@@ -13697,6 +13797,15 @@
             },
             "min": 0,
             "max": 1
+          },
+          "ephemeral": true
+        },
+        "other_status": {
+          "type": {
+            "key": "string",
+            "value": "string",
+            "min": 0,
+            "max": "unlimited"
           },
           "ephemeral": true
         }
@@ -16778,6 +16887,127 @@
        },
        "isRoot": true,
        "maxRows": 1
+    },
+    "Connectivity_Check": {
+      "columns": {
+        "name": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 63
+            },
+            "min": 1,
+            "max": 1
+          }
+        },
+        "enable": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            }
+          }
+        },
+        "os_persist": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            }
+          }
+        },
+        "if_name": {
+          "type": {
+            "key": {
+              "type": "string"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "target": {
+          "type": {
+            "key": {
+              "type": "string",
+              "maxLength": 128
+            }
+          }
+        },
+        "type": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "icmp",
+                  "dns",
+                  "tcp",
+                  "udp",
+                  "http",
+                  "https",
+                  "ntp",
+                  "radius"
+                ]
+              ]
+            },
+            "min": 1,
+            "max": 1
+          }
+        },
+        "interval": {
+          "type": {
+            "key": {
+              "type": "integer",
+              "minInteger": 0
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "timeout": {
+          "type": {
+            "key": {
+              "type": "integer",
+              "minInteger": 0
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "other_config": {
+          "type": {
+            "key": "string",
+            "value": "string",
+            "min": 0,
+            "max": "unlimited"
+          }
+        },
+        "status": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "ok",
+                  "nok",
+                  "na",
+                  "error"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": 1
+          },
+          "ephemeral": true
+        }
+      },
+      "isRoot": true,
+      "indexes": [
+        [
+          "name"
+        ]
+      ]
     }
   }
 }

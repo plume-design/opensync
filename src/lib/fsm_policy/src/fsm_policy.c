@@ -58,8 +58,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "dns_cache.h"
 #include "memutil.h"
 
-static char tag_marker[2] = "${";
-static char gtag_marker[2] = "$[";
+static char tag_marker[2] = {'$', '{'};
+static char gtag_marker[2] = {'$', '['};
 
 const char * const redirect_prefix[] =
 {

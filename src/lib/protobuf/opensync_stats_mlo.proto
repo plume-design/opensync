@@ -1,0 +1,243 @@
+// Copyright (c) 2015, Plume Design Inc. All rights reserved.
+// 
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
+//    1. Redistributions of source code must retain the above copyright
+//       notice, this list of conditions and the following disclaimer.
+//    2. Redistributions in binary form must reproduce the above copyright
+//       notice, this list of conditions and the following disclaimer in the
+//       documentation and/or other materials provided with the distribution.
+//    3. Neither the name of the Plume Design Inc. nor the
+//       names of its contributors may be used to endorse or promote products
+//       derived from this software without specific prior written permission.
+// 
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+// ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+// WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL Plume Design Inc. BE LIABLE FOR ANY
+// DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+// (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+// LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+// ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+// (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+// SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+syntax = "proto2";
+package sts.bs_mlo;
+
+// ── Enums ────────────────────────────────────────────────────────────────────
+
+enum RadioBandType {
+    BAND2G  = 0;
+    BAND5G  = 1;
+    BAND5GL = 2;
+    BAND5GU = 3;
+    BAND6G  = 4;
+}
+
+// Combined steering action type — covers BTM, Kick, and Steering subtypes.
+// Not all fields of SteeringActionEvent are meaningful for every subtype;
+// see per-field comments for applicability.
+enum SteeringActionType {
+    // BTM subtypes
+    CLIENT_BS_BTM            = 0;
+    CLIENT_STICKY_BTM        = 1;
+    CLIENT_BTM               = 2;
+    CLIENT_BTM_STATUS        = 3;
+    CLIENT_BS_BTM_RETRY      = 4;
+    CLIENT_STICKY_BTM_RETRY  = 5;
+    CLIENT_BTM_RETRY         = 6;
+    // Kick subtypes
+    CLIENT_KICKED            = 7;
+    CLIENT_BS_KICK           = 8;
+    CLIENT_STICKY_KICK       = 9;
+    CLIENT_SPECULATIVE_KICK  = 10;
+    CLIENT_DIRECTED_KICK     = 11;
+    CLIENT_GHOST_DEVICE_KICK = 12;
+    // Steering subtypes
+    BAND_STEERING_ATTEMPT    = 13;
+    CLIENT_STEERING_ATTEMPT  = 14;
+    CLIENT_STEERING_STARTED  = 15;
+    CLIENT_STEERING_DISABLED = 16;
+    CLIENT_STEERING_EXPIRED  = 17;
+    CLIENT_STEERING_FAILED   = 18;
+    AUTH_BLOCK               = 19;
+}
+
+enum MiscSubType {
+    BACKOFF            = 0;
+    ACTIVITY           = 1;
+    OVERRUN            = 2;
+    CLIENT_RRM_BCN_RPT = 3;
+}
+
+enum SignalInfoSource {
+    PROBE_REQUEST = 1;  // Observed from a probe request frame
+    DATA_PACKET   = 2;  // Observed from data traffic
+}
+
+enum DisconnectSource {
+    LOCAL  = 0;  // Disconnect initiated by the AP
+    REMOTE = 1;  // Disconnect initiated by the client
+}
+
+// ── Signal quality ────────────────────────────────────────────────────────────
+
+// Aggregated RSSI statistics over a reporting window.
+// sample_count is optional; consumers must treat absence as "not collected".
+// p5–p95 are optional — emit only when the window is long enough to be
+// statistically meaningful.
+message SignalInfo {
+    required float   rssi_avg_dbm = 1;
+    required float   rssi_min_dbm = 2;
+    required float   rssi_max_dbm = 3;
+    optional uint32  sample_count = 4;
+    optional float   rssi_p5      = 5;
+    optional float   rssi_p25     = 6;
+    optional float   rssi_p50     = 7;
+    optional float   rssi_p75     = 8;
+    optional float   rssi_p95     = 9;
+}
+
+// ── Link identity ─────────────────────────────────────────────────────────────
+
+// Identifies a single radio link within an association.
+// link_id is the actual 802.11be Link ID (optional; absent until sourced from
+// the FW/driver). Correlate links across events by (bssid, sta_mac).
+// sta_mac is the per-link STA MAC (per-STA profile MAC in MLO).
+// LinkInfo is identity-only — no capability or signal fields live here.
+message LinkInfo {
+    optional uint32        link_id        = 1;
+    required RadioBandType band           = 2;
+    required string        bssid          = 3;  // Per-link AP BSSID
+    required string        sta_mac        = 4;  // Per-link STA MAC
+    optional uint32        channel_number = 5;
+}
+
+// ── Per-link capabilities ─────────────────────────────────────────────────────
+
+// Top-level per-link capability container (top-level container pattern).
+// Wraps LinkInfo alongside link-level RF capability fields.
+// wifi_standard: 4=802.11n, 5=802.11ac, 6=802.11ax, 7=802.11be
+message LinkCapability {
+    required LinkInfo link          = 1;
+    optional uint32   max_chwidth   = 2;
+    optional uint32   max_streams   = 3;
+    optional uint32   phy_mode      = 4;
+    optional uint32   max_mcs       = 5;
+    optional uint32   max_txpower   = 6;
+    optional uint32   wifi_standard = 7;
+}
+
+// ── Per-link signal report ────────────────────────────────────────────────────
+
+// Per-link signal observation container (top-level container pattern).
+// Wraps LinkInfo alongside aggregated RSSI statistics for that link.
+// Mirrors the LinkCapability pattern: link identity + link-scoped data.
+message LinkSignalReport {
+    required LinkInfo   link   = 1;
+    required SignalInfo signal = 2;
+}
+
+// ── Association-level capabilities (standalone event) ─────────────────────────
+
+// Reports capabilities scoped to the MLD association as a whole.
+// Emitted as its own BSClient event, independent of ConnectEvent.
+// is_BTM_supported and band_cap_6G are association-level (global to the MLD).
+// assoc_ies is the raw IE blob from the MLD association frame (association-level).
+// Per-link RF capability detail is in links[i].
+// See Pending Issue #1 for open question on FW vs stream_line_main parsing.
+message ClientCapabilities {
+    optional bool            is_BTM_supported = 1;
+    optional bool            band_cap_6G      = 2;
+    optional bytes           assoc_ies        = 3;
+    repeated LinkCapability  links            = 4;
+}
+
+// ── Signal report event ───────────────────────────────────────────────────────
+
+// Unified signal observation event for probe requests and data traffic.
+// Covers all active links in one event using repeated LinkSignalReport.
+// The [bssid, band, channel_number, source] tuple in each LinkSignalReport
+// keys the observation. period_ms documents the aggregation window length.
+// See Pending Issues #5–#7 for open implementation questions.
+message SignalReportEvent {
+    required SignalInfoSource  source    = 1;
+    repeated LinkSignalReport  links     = 2;
+    optional uint32            period_ms = 3;
+}
+
+// ── Connect / Disconnect events ───────────────────────────────────────────────
+
+message ConnectEvent {
+    repeated LinkInfo  assoc_links = 1;
+    optional bool      is_mlo      = 2;
+}
+
+// deauth_reason and disassoc_reason carry IEEE 802.11 reason codes;
+// at most one should be set per event (best-effort).
+// last_links is a final per-link snapshot; best-effort, may be absent.
+message DisconnectEvent {
+    repeated LinkInfo         last_links      = 1;
+    optional bool             is_mlo          = 2;
+    optional DisconnectSource source          = 3;
+    optional uint32           deauth_reason   = 4;
+    optional uint32           disassoc_reason = 5;
+}
+
+// ── Unified steering action event ─────────────────────────────────────────────
+
+// Unifies BTM, Kick, and Steering into a single event differentiated by type.
+// Field applicability by subtype family:
+//   allow_acl         — BTM and Kick subtypes
+//   target_bssids     — BTM subtypes only
+//   btm_response_code — BTM subtypes only
+//   acl_bssids        — BTM subtypes only (BSSIDs in ACL block list at BTM time)
+// Fields not applicable to a given subtype should be left unpopulated.
+message SteeringActionEvent {
+    repeated LinkInfo           assoc_links       = 1;
+    optional bool               is_mlo            = 2;
+    optional SteeringActionType type              = 3;
+    optional bool               allow_acl         = 4;
+    repeated string             target_bssids     = 5;
+    optional uint32             btm_response_code = 6;
+    repeated string             acl_bssids        = 7;
+}
+
+message MiscEvent {
+    repeated LinkInfo    assoc_links = 1;
+    optional bool        is_mlo      = 2;
+    optional MiscSubType type        = 3;
+}
+
+// ── Top-level structure ───────────────────────────────────────────────────────
+
+// BSClient carries the identity of a client and exactly one optional event
+// (proto2 optional-as-enum / tagged union pattern).
+// assoc_address: Non-MLO = STA MAC; MLO = MLD MAC address.
+// Per-link STA MACs are in each LinkInfo.sta_mac.
+// Exactly one event field must be set. FW is responsible for this invariant.
+message BSClient {
+    required string              assoc_address   = 1;
+
+    optional ConnectEvent        connect         = 2;
+    optional ClientCapabilities  capabilities    = 3;
+    optional DisconnectEvent     disconnect      = 4;
+    optional SteeringActionEvent steering_action = 5;
+    optional MiscEvent           misc            = 6;
+    optional SignalReportEvent   signal_report   = 7;
+}
+
+// timestamp_utc_ms is the absolute UTC event time.
+// For SignalReportEvent, this marks the end of the aggregation window.
+message BSEvent {
+    required uint64    timestamp_utc_ms = 1;
+    required BSClient  client           = 2;
+}
+
+// Flat ordered stream of timestamped events. No per-client grouping.
+// Consumers group by assoc_address as needed. Offline-friendly by design.
+message BSReportV2 {
+    required string  nodeID = 1;
+    repeated BSEvent events = 2;
+}

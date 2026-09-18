@@ -377,7 +377,7 @@ int strcmp_len(char *a, size_t alen, char *b, size_t blen)
     return strncmp(a, b, alen);
 }
 
-static char base64_table[64] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+static char base64_table[65] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
 /**
  * base64 encode @p input_sz bytes from @p input and store the result to out

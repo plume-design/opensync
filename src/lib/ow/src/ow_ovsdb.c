@@ -46,6 +46,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ow_ovsdb_cconf.h"
 #include "ow_ovsdb_stats.h"
 #include "ow_ovsdb_hs.h"
+#include "ow_ovsdb_steer_bm_mlo.h"
 #include "ow_mld_redir.h"
 #include <ovsdb.h>
 #include <ovsdb_table.h>
@@ -58,6 +59,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define OW_OVSDB_VIF_FLAG_SEEN 0x01
 #define OW_OVSDB_CM_NEEDS_PORT_STATE_BLIP 1
 #define OW_OVSDB_PHY_LAST_CHANNEL_EXPIRE_SEC 5
+#define OW_OVSDB_BCN_INT_TU_OVERRIDE_ENV "OW_OVSDB_BCN_INT_TU_OVERRIDE"
 
 /* FIXME: This will likely need legacy workarounds, eg. to not add
  * objects to State tables unless they are in Config table first,
@@ -70,6 +72,7 @@ static ovsdb_table_t table_Wifi_VIF_Config;
 static ovsdb_table_t table_Wifi_VIF_State;
 static ovsdb_table_t table_Wifi_VIF_Neighbors;
 static ovsdb_table_t table_Wifi_Associated_Clients;
+static ovsdb_table_t table_Wifi_Channels;
 static ovsdb_table_t table_Openflow_Tag;
 static ovsdb_table_t table_RADIUS;
 static ovsdb_table_t table_Passpoint_Config;
@@ -609,6 +612,23 @@ ow_ovsdb_phystate_fill_bcn_int(struct schema_Wifi_Radio_State *schema,
                            &bcn_int);
     if (bcn_int > 0)
         SCHEMA_SET_INT(schema->bcn_int, bcn_int);
+}
+
+static void
+ow_ovsdb_phystate_fill_bcn_int_override(struct schema_Wifi_Radio_State *schema,
+                                        const struct schema_Wifi_Radio_Config *rconf,
+                                        const struct osw_state_phy_info *phy)
+{
+
+    if (rconf == NULL) return;
+
+    const char *override = osw_etc_get(OW_OVSDB_BCN_INT_TU_OVERRIDE_ENV);
+    if (override == NULL) return;
+
+    /* Report the intended-configured value to satisfy the
+     * cloud controllers strict config-state sync checks.
+     */
+    SCHEMA_CPY_INT(schema->bcn_int, rconf->bcn_int);
 }
 
 static void
@@ -1227,6 +1247,7 @@ ow_ovsdb_phystate_to_schema(struct ow_ovsdb_phy *owo_phy,
         }
 
         SCHEMA_CPY_INT(schema->thermal_tx_chainmask, rconf->thermal_tx_chainmask);
+        SCHEMA_CPY_INT(schema->allow_sta_roam_channels, rconf->allow_sta_roam_channels);
     }
 
     snprintf(mac_str, sizeof(mac_str), "%02x:%02x:%02x:%02x:%02x:%02x",
@@ -1243,6 +1264,7 @@ ow_ovsdb_phystate_to_schema(struct ow_ovsdb_phy *owo_phy,
     SCHEMA_SET_BOOL(schema->enabled, phy->drv_state->enabled);
     SCHEMA_SET_BOOL(schema->atf_enabled, phy->drv_state->atf_enabled);
     ow_ovsdb_phystate_fill_bcn_int(schema, phy);
+    ow_ovsdb_phystate_fill_bcn_int_override(schema, rconf, phy);
     ow_ovsdb_phystate_fill_channel(owo_phy, schema, phy);
     ow_ovsdb_phystate_fill_tx_power(schema, phy);
     ow_ovsdb_phystate_fill_hwmode(schema, freq_band, phy);
@@ -1875,6 +1897,94 @@ ow_ovsdb_phy_sync_vifs(struct ow_ovsdb_phy *phy)
     }
 }
 
+/* This removes Wifi_Channels rows for phy_name whose _uuid
+ * is NOT in uuid_array.
+ *
+ * Or, in other words, it keeps rows matching uuid_array and
+ * deletes the rest, for a given phy_name.
+ */
+static void
+ow_ovsdb_phy_remove_channels_other_than(const char *phy_name,
+                                        json_t *uuid_array)
+{
+    json_t *delete_where = json_array();
+
+    const char *col_if_name = SCHEMA_COLUMN(Wifi_Channels, if_name);
+    json_t *cond = ovsdb_tran_cond_single(col_if_name, OFUNC_EQ, phy_name);
+    json_array_append_new(delete_where, cond);
+
+    size_t i;
+    json_t *uuid;
+    json_array_foreach(uuid_array, i, uuid)
+    {
+        const char *col_uuid = "_uuid";
+        json_incref(uuid);
+        json_t *cond = ovsdb_tran_cond_single_json(col_uuid, OFUNC_NEQ, uuid);
+        json_array_append_new(delete_where, cond);
+    }
+
+    ovsdb_table_delete_where(&table_Wifi_Channels, delete_where);
+}
+
+static void
+ow_ovsdb_phy_sync_channels(const char *phy_name,
+                           const struct osw_state_phy_info *info)
+{
+    /* Strategy is to keep Wifi_Channels in sync with channel_states[] with
+     * minimal row churn. For each valid channel we upsert one row by
+     * its natural key (if_name, channel, op_class) and stash the
+     * resulting _uuid. After the loop, a single delete sweeps every
+     * row for this phy whose _uuid is NOT in the stash - so unchanged
+     * rows stay put and only orphans get removed.
+     */
+    json_t *touched = json_array();
+
+    if (info != NULL) {
+        const struct osw_channel_state *arr = info->drv_state->channel_states;
+        const size_t n = info->drv_state->n_channel_states;
+
+        for (size_t i = 0; i < n; i++) {
+            const struct osw_channel_state *cs = &arr[i];
+            if (WARN_ON(cs->max_tx_power_dbm_valid == false)) continue;
+
+            const int chan_num = ow_ovsdb_freq_to_chan(cs->channel.control_freq_mhz);
+            if (WARN_ON(chan_num <= 0)) continue;
+
+            uint8_t op_class = 0;
+            if (WARN_ON(osw_channel_to_op_class(&cs->channel, &op_class) == false))
+                continue;
+
+            struct schema_Wifi_Channels row;
+            memset(&row, 0, sizeof(row));
+            SCHEMA_SET_STR(row.if_name, phy_name);
+            SCHEMA_SET_INT(row.channel, chan_num);
+            SCHEMA_SET_INT(row.op_class, op_class);
+            SCHEMA_SET_INT(row.max_tx_power_dbm, cs->max_tx_power_dbm);
+
+            /* This uniquely identifies a Wifi_Channels row, so the upsert
+             * either updates the existing row or inserts a fresh one.
+             */
+            json_t *upsert_where = json_array();
+            json_array_append_new(upsert_where, ovsdb_tran_cond_single(
+                SCHEMA_COLUMN(Wifi_Channels, if_name), OFUNC_EQ, phy_name));
+            json_array_append_new(upsert_where, ovsdb_tran_cond_single_json(
+                SCHEMA_COLUMN(Wifi_Channels, channel), OFUNC_EQ, json_integer(chan_num)));
+            json_array_append_new(upsert_where, ovsdb_tran_cond_single_json(
+                SCHEMA_COLUMN(Wifi_Channels, op_class), OFUNC_EQ, json_integer(op_class)));
+
+            const bool upsert = ovsdb_table_upsert_where(&table_Wifi_Channels,
+                                                    upsert_where, &row, true);
+            if (WARN_ON(upsert == false)) continue;
+
+            /* Build and append the 2-element JSON array ["uuid", "<u>"] */
+            json_array_append_new(touched, ovsdb_tran_uuid_json(row._uuid.uuid));
+        }
+    }
+
+    ow_ovsdb_phy_remove_channels_other_than(phy_name, touched);
+    json_decref(touched);
+}
+
 static bool
 ow_ovsdb_phy_sync(struct ow_ovsdb_phy *phy)
 {
@@ -1886,6 +1996,7 @@ ow_ovsdb_phy_sync(struct ow_ovsdb_phy *phy)
         LOGI("ow: ovsdb: phy: %s: deleting", phy->phy_name);
 
         ovsdb_table_delete(&table_Wifi_Radio_State, &phy->state_cur);
+        ow_ovsdb_phy_sync_channels(phy->phy_name, NULL);
         memset(&phy->state_cur, 0, sizeof(phy->state_cur));
         return true;
     }
@@ -1902,6 +2013,7 @@ ow_ovsdb_phy_sync(struct ow_ovsdb_phy *phy)
             return false;
 
         phy->state_cur = phy->state_new;
+        ow_ovsdb_phy_sync_channels(phy->phy_name, phy->info);
         ow_ovsdb_phy_sync_vifs(phy);
         return true;
     }
@@ -3150,9 +3262,27 @@ ow_ovsdb_rconf_to_ow_conf(const struct schema_Wifi_Radio_Config *rconf,
         }
     }
 
-    if (is_new == true || rconf->tx_power_changed == true) {
+    if (is_new == true ||
+        rconf->tx_power_changed == true ||
+        rconf->tx_power_mode_changed == true) {
         if (rconf->tx_power_exists == true) {
-            ow_conf_phy_set_tx_power_dbm(rconf->if_name, &rconf->tx_power);
+            const char *mode = rconf->tx_power_mode_exists
+                             ? rconf->tx_power_mode
+                             : SCHEMA_CONSTS_TX_POWER_MODE_DBM;
+            if (strcmp(mode, SCHEMA_CONSTS_TX_POWER_MODE_PERCENT) == 0) {
+                ow_conf_phy_set_tx_power_percent(rconf->if_name, &rconf->tx_power);
+            }
+            else if (strcmp(mode, SCHEMA_CONSTS_TX_POWER_MODE_DB) == 0) {
+                ow_conf_phy_set_tx_power_limit_by_db(rconf->if_name, &rconf->tx_power);
+            }
+            else {
+                ow_conf_phy_set_tx_power_dbm(rconf->if_name, &rconf->tx_power);
+            }
+        }
+        else if (rconf->tx_power_mode_exists == true) {
+            LOGW("ow: ovsdb: %s: tx_power_mode set without tx_power value, clearing",
+                 rconf->if_name);
+            ow_conf_phy_set_tx_power_dbm(rconf->if_name, NULL);
         }
         else {
             ow_conf_phy_set_tx_power_dbm(rconf->if_name, NULL);
@@ -3226,7 +3356,14 @@ ow_ovsdb_rconf_to_ow_conf(const struct schema_Wifi_Radio_Config *rconf,
 
     if (is_new == true || rconf->bcn_int_changed == true) {
         if (rconf->bcn_int_exists == true) {
-            ow_conf_phy_set_ap_beacon_interval_tu(rconf->if_name, &rconf->bcn_int);
+            const char *override = osw_etc_get(OW_OVSDB_BCN_INT_TU_OVERRIDE_ENV);
+            if (override != NULL) {
+                const int bcn_int = atoi(override);
+                ow_conf_phy_set_ap_beacon_interval_tu(rconf->if_name, &bcn_int);
+            }
+            else {
+                ow_conf_phy_set_ap_beacon_interval_tu(rconf->if_name, &rconf->bcn_int);
+            }
         }
         else {
             ow_conf_phy_set_ap_beacon_interval_tu(rconf->if_name, NULL);
@@ -3344,6 +3481,15 @@ ow_ovsdb_rconf_to_ow_conf(const struct schema_Wifi_Radio_Config *rconf,
         }
         else {
             ow_conf_phy_set_ap_atf_enabled(rconf->if_name, NULL);
+        }
+    }
+
+    if (is_new == true || rconf->allow_sta_roam_channels_changed == true) {
+        if (rconf->allow_sta_roam_channels_exists == true) {
+            ow_conf_phy_set_allow_sta_roam_channels(rconf->if_name, &rconf->allow_sta_roam_channels);
+        }
+        else {
+            ow_conf_phy_set_allow_sta_roam_channels(rconf->if_name, NULL);
         }
     }
 }
@@ -4462,6 +4608,7 @@ ow_ovsdb_flush(void)
     ovsdb_table_delete_where(&table_Wifi_Associated_Clients, NULL);
     ovsdb_table_delete_where(&table_Wifi_Radio_State, NULL);
     ovsdb_table_delete_where(&table_Wifi_VIF_State, NULL);
+    ovsdb_table_delete_where(&table_Wifi_Channels, NULL);
 }
 
 static void
@@ -4540,6 +4687,7 @@ ow_ovsdb_retry_cb(EV_P_ ev_timer *arg, int events)
     ow_ovsdb_cconf_init(&table_Wifi_Radio_Config, &table_Wifi_VIF_Config);
     ow_ovsdb_stats_init();
     ow_ovsdb_hs_start(OSW_MODULE_LOAD(ow_ovsdb_hs));
+    ow_ovsdb_steer_bm_mlo_start(OSW_MODULE_LOAD(ow_ovsdb_steer_bm_mlo));
     g_ow_ovsdb.steering = ow_ovsdb_steer_create();
     ow_ovsdb_flush();
     osw_state_register_observer(&g_ow_ovsdb_osw_state_obs);
@@ -4563,6 +4711,7 @@ ow_ovsdb_init(void)
     OVSDB_TABLE_INIT(Passpoint_Config, hessid);
     OVSDB_TABLE_INIT(Passpoint_OSU_Providers, osu_server_uri);
     OVSDB_TABLE_INIT(Wifi_Associated_Clients, mac);
+    OVSDB_TABLE_INIT_NO_KEY(Wifi_Channels);
     OVSDB_TABLE_INIT(Openflow_Tag, name);
     OVSDB_TABLE_INIT(RADIUS, name);
 
@@ -4678,6 +4827,7 @@ ow_ovsdb_ut_init(void)
     ovsdb_table_delete_where(&table_Wifi_Radio_State, NULL);
     ovsdb_table_delete_where(&table_Wifi_VIF_State, NULL);
     ovsdb_table_delete_where(&table_Wifi_Associated_Clients, NULL);
+    ovsdb_table_delete_where(&table_Wifi_Channels, NULL);
     ovsdb_table_delete_where(&table_Openflow_Tag, NULL);
     ow_ovsdb_ut_run();
 }

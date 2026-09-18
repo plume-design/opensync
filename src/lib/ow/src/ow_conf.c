@@ -62,7 +62,8 @@ struct ow_conf_phy {
     bool *ap_eht_enabled;
     bool *ap_atf_enabled;
     int *tx_chainmask;
-    int *tx_power_dbm;
+    int *tx_power_value;
+    enum osw_tx_power_mode *tx_power_mode;
     int *thermal_tx_chainmask;
     int *ap_beacon_interval_tu;
     uint16_t *ap_supp_rates;
@@ -72,6 +73,7 @@ struct ow_conf_phy {
     enum osw_rate_legacy *ap_mgmt_rate;
     struct osw_channel *ap_channel;
     enum osw_zero_wait_dfs *ap_zero_wait_dfs;
+    bool *allow_sta_roam_channels;
 };
 
 struct ow_conf_vif {
@@ -382,7 +384,7 @@ ow_conf_conf_mutate_phy(struct ow_conf *self,
 }
 
 /* TODO:
- * Add unit tests to cover all cases 
+ * Add unit tests to cover all cases
  */
 static void
 ow_conf_conf_mutate_airtime_precedence(struct ow_conf_phy *ow_phy,
@@ -779,6 +781,87 @@ ow_conf_conf_mutate_dgaf_disable(struct ow_conf *self,
     *dgaf_disable = *(passpoint->hs20_enabled);
 }
 
+static int
+ow_conf_get_max_tx_power_dbm(const char *phy_name,
+                              const struct osw_conf_vif *osw_vif)
+{
+    const struct osw_state_phy_info *phy_info = osw_state_phy_lookup(phy_name);
+    if (phy_info == NULL) return 0;
+    if (phy_info->drv_state == NULL) return 0;
+
+    const struct osw_drv_phy_state *pstate = phy_info->drv_state;
+    const int freq = (osw_vif->vif_type == OSW_VIF_AP)
+                   ? osw_vif->u.ap.channel.control_freq_mhz
+                   : 0;
+    if (freq == 0) return 0;
+
+    for (size_t i = 0; i < pstate->n_channel_states; i++) {
+        const struct osw_channel_state *cs = &pstate->channel_states[i];
+        if (cs->channel.control_freq_mhz == freq && cs->max_tx_power_dbm_valid) {
+            return cs->max_tx_power_dbm;
+        }
+    }
+    return 0;
+}
+
+static void
+ow_conf_mutate_tx_power(const struct ow_conf_phy *ow_phy,
+                         const char *phy_name,
+                         struct osw_conf_vif *osw_vif)
+{
+    if (ow_phy->tx_power_value == NULL) return;
+
+    const enum osw_tx_power_mode mode = ow_phy->tx_power_mode
+                                      ? *ow_phy->tx_power_mode
+                                      : OSW_TX_POWER_MODE_DBM;
+    const int value = *ow_phy->tx_power_value;
+
+    /* dbm is an absolute target and applies to any vif type (including STA).
+     * percent/db are relative to the per-channel regulatory maximum, which is
+     * only meaningful for an AP vif with a configured channel. */
+    if (mode != OSW_TX_POWER_MODE_DBM && osw_vif->vif_type != OSW_VIF_AP) {
+        LOGD("ow: conf: %s/%s: tx_power mode=%s: percent/db requires an AP vif, skipping",
+             phy_name, osw_vif->vif_name, osw_tx_power_mode_to_cstr(mode));
+        return;
+    }
+
+    const int max_dbm = ow_conf_get_max_tx_power_dbm(phy_name, osw_vif);
+
+    switch (mode) {
+        case OSW_TX_POWER_MODE_DBM:
+            osw_vif->tx_power_dbm = value;
+            osw_vif->tx_power_percent = 0;
+            osw_vif->tx_power_db_limit = 0;
+            osw_vif->tx_power_db_limit_valid = false;
+            break;
+        case OSW_TX_POWER_MODE_PERCENT:
+            osw_vif->tx_power_percent = value;
+            osw_vif->tx_power_db_limit = 0;
+            osw_vif->tx_power_db_limit_valid = false;
+            osw_vif->tx_power_dbm = (max_dbm > 0)
+                                  ? osw_tx_power_resolve_dbm(OSW_TX_POWER_MODE_PERCENT,
+                                                              value, max_dbm)
+                                  : 0;
+            break;
+        case OSW_TX_POWER_MODE_DB:
+            osw_vif->tx_power_db_limit = value;
+            osw_vif->tx_power_db_limit_valid = true;
+            osw_vif->tx_power_percent = 0;
+            osw_vif->tx_power_dbm = (max_dbm > 0)
+                                  ? osw_tx_power_resolve_dbm(OSW_TX_POWER_MODE_DB,
+                                                              value, max_dbm)
+                                  : 0;
+            break;
+    }
+
+    if (mode != OSW_TX_POWER_MODE_DBM && max_dbm <= 0) {
+        LOGW("ow: conf: %s/%s: tx_power mode=%s value=%d:"
+             " cannot resolve dbm without max_tx_power_dbm",
+             phy_name, osw_vif->vif_name,
+             osw_tx_power_mode_to_cstr(mode), value);
+    }
+}
+
 static void
 ow_conf_conf_mutate_vif_ap(struct ow_conf *self,
                            struct ow_conf_phy *ow_phy,
@@ -794,7 +877,11 @@ ow_conf_conf_mutate_vif_ap(struct ow_conf *self,
         if (ow_phy->ap_he_enabled != NULL) osw_vif->u.ap.mode.he_enabled = *ow_phy->ap_he_enabled;
         if (ow_phy->ap_eht_enabled != NULL) osw_vif->u.ap.mode.eht_enabled = *ow_phy->ap_eht_enabled;
         if (ow_phy->ap_beacon_interval_tu != NULL) osw_vif->u.ap.beacon_interval_tu = *ow_phy->ap_beacon_interval_tu;
-        if (ow_phy->ap_channel != NULL) osw_vif->u.ap.channel = *ow_phy->ap_channel;
+
+        /* When STA is allowed to roam across channels, the AP's channel is left untouched */
+        const bool sta_roam_channels = (ow_phy->allow_sta_roam_channels != NULL)
+                                    && (*ow_phy->allow_sta_roam_channels == true);
+        if (ow_phy->ap_channel != NULL && sta_roam_channels == false) osw_vif->u.ap.channel = *ow_phy->ap_channel;
         if (ow_phy->ap_supp_rates != NULL) osw_vif->u.ap.mode.supported_rates = *ow_phy->ap_supp_rates;
         if (ow_phy->ap_basic_rates != NULL) osw_vif->u.ap.mode.basic_rates = *ow_phy->ap_basic_rates;
         if (ow_phy->ap_beacon_rate != NULL) {
@@ -804,7 +891,7 @@ ow_conf_conf_mutate_vif_ap(struct ow_conf *self,
 
         if (ow_phy->ap_mcast_rate != NULL) osw_vif->u.ap.mode.mcast_rate = *ow_phy->ap_mcast_rate;
         if (ow_phy->ap_mgmt_rate != NULL) osw_vif->u.ap.mode.mgmt_rate = *ow_phy->ap_mgmt_rate;
-        if (ow_phy->tx_power_dbm != NULL) osw_vif->tx_power_dbm = *ow_phy->tx_power_dbm;
+        ow_conf_mutate_tx_power(ow_phy, osw_vif->phy->phy_name, osw_vif);
         ow_conf_conf_mutate_airtime_precedence(ow_phy, ow_vif, osw_vif);
     }
     if (ow_vif->ap_channel != NULL) osw_vif->u.ap.channel = *ow_vif->ap_channel;
@@ -919,7 +1006,15 @@ ow_conf_conf_mutate_vif_sta(struct ow_conf_phy *ow_phy,
     struct ow_conf_net *net;
 
     if (ow_phy != NULL) {
-        if (ow_phy->tx_power_dbm != NULL) osw_vif->tx_power_dbm = *ow_phy->tx_power_dbm;
+        ow_conf_mutate_tx_power(ow_phy, osw_vif->phy->phy_name, osw_vif);
+
+        /* When unset, the STA keeps the allow_sta_roam_channels inherited
+         * from the driver state, which may be UNSPECIFIED. */
+        if (ow_phy->allow_sta_roam_channels != NULL) {
+            osw_vif->u.sta.allow_roam_channels = *ow_phy->allow_sta_roam_channels
+                                               ? OSW_DRV_CHANNEL_ROAM_ALLOWED
+                                               : OSW_DRV_CHANNEL_ROAM_DISALLOWED;
+        }
     }
 
     if (ow_vif->tx_power_dbm != NULL) osw_vif->tx_power_dbm = *ow_vif->tx_power_dbm;
@@ -1218,7 +1313,8 @@ ow_conf_phy_unset(const char *phy_name)
     FREE(phy->ap_he_enabled);
     FREE(phy->ap_eht_enabled);
     FREE(phy->tx_chainmask);
-    FREE(phy->tx_power_dbm);
+    FREE(phy->tx_power_value);
+    FREE(phy->tx_power_mode);
     FREE(phy->thermal_tx_chainmask);
     FREE(phy->ap_beacon_interval_tu);
     FREE(phy->ap_channel);
@@ -1228,6 +1324,7 @@ ow_conf_phy_unset(const char *phy_name)
     FREE(phy->ap_mcast_rate);
     FREE(phy->ap_mgmt_rate);
     FREE(phy->ap_zero_wait_dfs);
+    FREE(phy->allow_sta_roam_channels);
     FREE(phy);
 }
 
@@ -2149,8 +2246,6 @@ ow_conf_vif_flush_sta_net(const char *vif_name)
 #define ARG_phy_enabled(x) x
 #define FMT_phy_tx_chainmask "0x%04x"
 #define ARG_phy_tx_chainmask(x) x
-#define FMT_phy_tx_power_dbm "%d"
-#define ARG_phy_tx_power_dbm(x) x
 #define FMT_phy_thermal_tx_chainmask "0x%04x"
 #define ARG_phy_thermal_tx_chainmask(x) x
 #define FMT_phy_ap_wmm_enabled "%d"
@@ -2181,6 +2276,8 @@ ow_conf_vif_flush_sta_net(const char *vif_name)
 #define ARG_phy_ap_channel(x) OSW_CHANNEL_ARG(&(x))
 #define FMT_phy_ap_atf_enabled "%d"
 #define ARG_phy_ap_atf_enabled(x) x
+#define FMT_phy_allow_sta_roam_channels "%d"
+#define ARG_phy_allow_sta_roam_channels(x) x
 
 #define FMT_vif_enabled "%d"
 #define ARG_vif_enabled(x) x
@@ -2400,9 +2497,88 @@ DEFINE_PASSPOINT_FIELD(anqp_domain_id);
 DEFINE_PASSPOINT_FIELD(pps_mo_id);
 DEFINE_PASSPOINT_FIELD(t_c_timestamp);
 
+static void
+ow_conf_phy_set_tx_power_raw(const char *phy_name,
+                              const enum osw_tx_power_mode *mode,
+                              const int *value)
+{
+    osw_thread_sanity_check();
+    struct ow_conf_phy *phy = ow_conf_phy_get(&g_ow_conf, phy_name);
+    const bool value_changed = (phy->tx_power_value == NULL && value != NULL)
+                            || (phy->tx_power_value != NULL && value == NULL)
+                            || (phy->tx_power_value != NULL && value != NULL
+                                && *phy->tx_power_value != *value);
+    const bool mode_changed = (phy->tx_power_mode == NULL && mode != NULL)
+                           || (phy->tx_power_mode != NULL && mode == NULL)
+                           || (phy->tx_power_mode != NULL && mode != NULL
+                               && *phy->tx_power_mode != *mode);
+    const bool changed = value_changed || mode_changed;
+
+    if (changed) {
+        LOGI("ow: conf: %s: tx_power: mode=%s value=%d -> mode=%s value=%d",
+             phy_name,
+             phy->tx_power_mode ? osw_tx_power_mode_to_cstr(*phy->tx_power_mode) : "unset",
+             phy->tx_power_value ? *phy->tx_power_value : 0,
+             mode ? osw_tx_power_mode_to_cstr(*mode) : "unset",
+             value ? *value : 0);
+    }
+
+    FREE(phy->tx_power_value);
+    phy->tx_power_value = NULL;
+    FREE(phy->tx_power_mode);
+    phy->tx_power_mode = NULL;
+
+    if (value != NULL) {
+        phy->tx_power_value = MEMNDUP(value, sizeof(*value));
+    }
+    if (mode != NULL) {
+        phy->tx_power_mode = MEMNDUP(mode, sizeof(*mode));
+    }
+
+    if (changed) {
+        osw_conf_invalidate(&g_ow_conf.conf_mutator);
+        ow_conf_phy_notify_changed(phy_name);
+    }
+}
+
+void
+ow_conf_phy_set_tx_power_dbm(const char *phy_name, const int *dbm)
+{
+    if (dbm != NULL) {
+        const enum osw_tx_power_mode mode = OSW_TX_POWER_MODE_DBM;
+        ow_conf_phy_set_tx_power_raw(phy_name, &mode, dbm);
+    }
+    else {
+        ow_conf_phy_set_tx_power_raw(phy_name, NULL, NULL);
+    }
+}
+
+void
+ow_conf_phy_set_tx_power_percent(const char *phy_name, const int *percent)
+{
+    if (percent != NULL) {
+        const enum osw_tx_power_mode mode = OSW_TX_POWER_MODE_PERCENT;
+        ow_conf_phy_set_tx_power_raw(phy_name, &mode, percent);
+    }
+    else {
+        ow_conf_phy_set_tx_power_raw(phy_name, NULL, NULL);
+    }
+}
+
+void
+ow_conf_phy_set_tx_power_limit_by_db(const char *phy_name, const int *db)
+{
+    if (db != NULL) {
+        const enum osw_tx_power_mode mode = OSW_TX_POWER_MODE_DB;
+        ow_conf_phy_set_tx_power_raw(phy_name, &mode, db);
+    }
+    else {
+        ow_conf_phy_set_tx_power_raw(phy_name, NULL, NULL);
+    }
+}
+
 DEFINE_PHY_FIELD(enabled);
 DEFINE_PHY_FIELD(tx_chainmask);
-DEFINE_PHY_FIELD(tx_power_dbm);
 DEFINE_PHY_FIELD(thermal_tx_chainmask);
 DEFINE_PHY_FIELD(ap_wmm_enabled);
 DEFINE_PHY_FIELD(ap_ht_enabled);
@@ -2418,6 +2594,7 @@ DEFINE_PHY_FIELD(ap_mcast_rate);
 DEFINE_PHY_FIELD(ap_mgmt_rate);
 DEFINE_PHY_FIELD(ap_zero_wait_dfs);
 DEFINE_PHY_FIELD(ap_atf_enabled);
+DEFINE_PHY_FIELD(allow_sta_roam_channels);
 
 DEFINE_VIF_FIELD(type);
 DEFINE_VIF_FIELD(enabled);
@@ -2930,6 +3107,7 @@ OSW_MODULE(ow_conf)
 
 DEFINE_PHY_FIELD_UT(enabled, bool, FIELD_EQ, true, false, true);
 DEFINE_PHY_FIELD_UT(tx_chainmask, int, FIELD_EQ, 1, 2, 3, 1, 0);
+DEFINE_PHY_FIELD_UT(allow_sta_roam_channels, bool, FIELD_EQ, true, false, true);
 DEFINE_VIF_FIELD_UT(enabled, bool, FIELD_EQ, true, false, true);
 DEFINE_VIF_FIELD_UT(type, enum osw_vif_type, FIELD_EQ, OSW_VIF_UNDEFINED, OSW_VIF_AP, OSW_VIF_AP_VLAN, OSW_VIF_STA);
 DEFINE_VIF_FIELD_UT(ap_channel, struct osw_channel, FIELD_MEM_EQ,

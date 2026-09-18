@@ -24,7 +24,9 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+#ifndef _GNU_SOURCE
 #define _GNU_SOURCE
+#endif
 
 /* libc */
 #include <inttypes.h>
@@ -35,8 +37,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <netlink/attr.h>
 #include <netlink/genl/genl.h>
 #include <netlink/genl/ctrl.h>
-#include <linux/nl80211.h>
 #include <linux/if_ether.h>
+#include "nl80211_copy.h"
 
 /* opensync */
 #include <memutil.h>
@@ -105,6 +107,7 @@ nl_80211_cmd_dump_wiphy_send(struct nl_80211 *nl,
 {
     struct nl_msg *msg = nlmsg_alloc();
     nl_80211_put_cmd__(nl, msg, NLM_F_DUMP, NL80211_CMD_GET_WIPHY);
+    nl_80211_put_wiphy(nl, msg);
     nl_cmd_set_name(cmd, "dump wiphy");
     nl_cmd_set_msg(cmd, msg);
 }
@@ -205,6 +208,7 @@ nl_80211_sub_free_priv_all(struct ds_tree *root)
 static void
 nl_80211_map_phy_set(struct nl_80211_map *map,
                      uint32_t wiphy,
+                     const uint32_t num_radios,
                      const char *phy_name)
 {
     struct nl_80211_phy_priv *phy = ds_tree_find(&map->phy_by_wiphy, &wiphy);
@@ -214,6 +218,7 @@ nl_80211_map_phy_set(struct nl_80211_map *map,
     if (phy == NULL) {
         phy = CALLOC(1, sizeof(*phy));
         phy->pub.wiphy = wiphy;
+        phy->pub.num_radios = num_radios;
         phy->pub.name = STRDUP(phy_name);
         ds_tree_init(&phy->sub_privs, ds_void_cmp, struct nl_80211_sub_priv, node);
         ds_tree_insert(&map->phy_by_wiphy, phy, &phy->pub.wiphy);
@@ -221,6 +226,18 @@ nl_80211_map_phy_set(struct nl_80211_map *map,
         NL_80211_SUB_NOTIFY(map, phy_added_fn, &phy->pub);
     }
     else if (phy_name != NULL) {
+        /* SAFETY
+         *
+         * While the nl80211 interface does technically
+         * allow this to occur, in practice internal
+         * cfg80211 machinery does not. No point in handling
+         * the impossible. Just assert to uphold the
+         * invariant that the number of radios doesn't
+         * change for a given phy. This should restart the
+         * process instead of running undefined behavior.
+         */
+        assert(num_radios == 0 || num_radios == phy->pub.num_radios);
+
         if (strcmp(phy->pub.name, phy_name) != 0) {
             char *old_name = (char *)phy->pub.name;
             char *new_name = STRDUP(phy_name);
@@ -389,6 +406,7 @@ static void
 nl_80211_map_vif_set(struct nl_80211_map *map,
                      uint32_t ifindex,
                      uint32_t wiphy,
+                     uint32_t radio_mask,
                      const char *vif_name)
 {
     struct nl_80211_vif_priv *vif = ds_tree_find(&map->vif_by_ifindex, &ifindex);
@@ -401,6 +419,7 @@ nl_80211_map_vif_set(struct nl_80211_map *map,
         vif->nl_80211 = nl;
         vif->pub.wiphy = wiphy;
         vif->pub.ifindex = ifindex;
+        vif->pub.radio_mask = radio_mask;
         vif->pub.name = STRDUP(vif_name);
         nl_80211_vif_dump_stations(nl, vif);
         ds_tree_init(&vif->sub_privs, ds_void_cmp, struct nl_80211_sub_priv, node);
@@ -410,6 +429,20 @@ nl_80211_map_vif_set(struct nl_80211_map *map,
     }
     else if (vif_name != NULL) {
         assert(vif->pub.wiphy == wiphy);
+
+        /* FIXME: It would be perhaps somewhat better to
+         *        have a vif_changed_fn? But maybe that's
+         *        overkill. High-level expectation is that
+         *        radio_mask shouldn't really be changing
+         *        often. Firing a vif_removed_fn +
+         *        vif_added_fn seems good enough for seldom
+         *        updates like this.
+         */
+        if (vif->pub.radio_mask != radio_mask) {
+            NL_80211_SUB_NOTIFY(map, vif_removed_fn, &vif->pub);
+            vif->pub.radio_mask = radio_mask;
+            NL_80211_SUB_NOTIFY(map, vif_added_fn, &vif->pub);
+        }
 
         if (strcmp(vif->pub.name, vif_name) != 0) {
             char *old_name = (char *)vif->pub.name;
@@ -435,6 +468,40 @@ nl_80211_map_vif_set(struct nl_80211_map *map,
     }
 }
 
+static struct nlattr *
+nl_80211_map_wiphy_find_radios(struct nl_80211_map *map)
+{
+    struct nlattr *tb[NL80211_ATTR_MAX + 1];
+    struct nla_policy policy[NL80211_ATTR_MAX + 1] = {
+        [NL80211_ATTR_WIPHY_RADIOS] = { .type = NLA_NESTED },
+    };
+    size_t i;
+    for (i = 0; i < map->n_accumulated_wiphy_msgs; i++) {
+        struct nl_msg *msg = map->accumulated_wiphy_msgs[i];
+        const int err = genlmsg_parse(nlmsg_hdr(msg), 0, tb, NL80211_ATTR_MAX, policy);
+        struct nlattr *radios = tb[NL80211_ATTR_WIPHY_RADIOS];
+        if (WARN_ON(err)) continue;
+        if (radios == NULL) continue;
+        return radios;
+    }
+    return NULL;
+}
+
+static uint32_t
+nl_80211_map_wiphy_count_radios(struct nlattr *radios)
+{
+    size_t num_radios = 0;
+    if (radios != NULL) {
+        struct nlattr *radio;
+        int rem;
+        nla_for_each_nested(radio, radios, rem) {
+            num_radios++;
+        }
+    }
+
+    return num_radios;
+}
+
 static void
 nl_80211_map_wiphy(struct nl_80211_map *map,
                    struct nl_msg *msg)
@@ -447,11 +514,13 @@ nl_80211_map_wiphy(struct nl_80211_map *map,
     const int err = genlmsg_parse(nlmsg_hdr(msg), 0, tb, NL80211_ATTR_MAX, policy);
     struct nlattr *wiphy = tb[NL80211_ATTR_WIPHY];
     struct nlattr *wiphy_name = tb[NL80211_ATTR_WIPHY_NAME];
+    struct nlattr *radios = nl_80211_map_wiphy_find_radios(map);
     if (WARN_ON(err)) return;
     if (WARN_ON(wiphy == NULL)) return;
     if (WARN_ON(wiphy_name == NULL)) return;
 
     const uint32_t wiphy_u32 = nla_get_u32(wiphy);
+    const uint32_t num_radios = nl_80211_map_wiphy_count_radios(radios);
     const char *wiphy_str = nla_get_string(wiphy_name);
     const uint8_t cmd = genlmsg_hdr(nlmsg_hdr(msg))->cmd;
 
@@ -460,12 +529,12 @@ nl_80211_map_wiphy(struct nl_80211_map *map,
         case NL80211_CMD_NEW_WIPHY:
             LOGD("nl: 80211: map: phy#%"PRIu32"/%s: updating",
                  wiphy_u32, wiphy_str);
-            nl_80211_map_phy_set(map, wiphy_u32, wiphy_str);
+            nl_80211_map_phy_set(map, wiphy_u32, num_radios, wiphy_str);
             break;
         case NL80211_CMD_DEL_WIPHY:
             LOGD("nl: 80211: map: phy#%"PRIu32"/%s: removing",
                  wiphy_u32, wiphy_str);
-            nl_80211_map_phy_set(map, wiphy_u32, NULL);
+            nl_80211_map_phy_set(map, wiphy_u32, 0, NULL);
             break;
     }
 }
@@ -479,11 +548,13 @@ nl_80211_map_interface(struct nl_80211_map *map,
         [NL80211_ATTR_WIPHY] = { .type = NLA_U32 },
         [NL80211_ATTR_IFINDEX] = { .type = NLA_U32 },
         [NL80211_ATTR_IFNAME] = { .type = NLA_STRING },
+        [NL80211_ATTR_VIF_RADIO_MASK] = { .type = NLA_U32 },
     };
     const int err = genlmsg_parse(nlmsg_hdr(msg), 0, tb, NL80211_ATTR_MAX, policy);
     struct nlattr *wiphy = tb[NL80211_ATTR_WIPHY];
     struct nlattr *ifindex = tb[NL80211_ATTR_IFINDEX];
     struct nlattr *ifname = tb[NL80211_ATTR_IFNAME];
+    struct nlattr *radio_mask = tb[NL80211_ATTR_VIF_RADIO_MASK];
     if (WARN_ON(err)) return;
     if (ifindex == NULL) return; /* non-netdev, likely p2p-dev; ignore silently */
     if (WARN_ON(wiphy == NULL)) return;
@@ -491,6 +562,7 @@ nl_80211_map_interface(struct nl_80211_map *map,
 
     const uint32_t wiphy_u32 = nla_get_u32(wiphy);
     const uint32_t ifindex_u32 = nla_get_u32(ifindex);
+    const uint32_t radio_mask_u32 = radio_mask != NULL ? nla_get_u32(radio_mask) : 1;
     const char *ifname_str = nla_get_string(ifname);
     const uint8_t cmd = genlmsg_hdr(nlmsg_hdr(msg))->cmd;
 
@@ -499,14 +571,84 @@ nl_80211_map_interface(struct nl_80211_map *map,
         case NL80211_CMD_NEW_INTERFACE:
             LOGD("nl: 80211: map: phy#%"PRIu32"/netdev#%"PRIu32"/%s: updating",
                  wiphy_u32, ifindex_u32, ifname_str);
-            nl_80211_map_vif_set(map, ifindex_u32, wiphy_u32, ifname_str);
+            nl_80211_map_vif_set(map, ifindex_u32, wiphy_u32, radio_mask_u32, ifname_str);
             break;
         case NL80211_CMD_DEL_INTERFACE:
             LOGD("nl: 80211: map: phy#%"PRIu32"/netdev#%"PRIu32"/%s: removing",
                  wiphy_u32, ifindex_u32, ifname_str);
-            nl_80211_map_vif_set(map, ifindex_u32, 0, NULL);
+            nl_80211_map_vif_set(map, ifindex_u32, 0, 0, NULL);
             break;
     }
+}
+
+static void
+nl_80211_map_wiphy_accumulated_flush(struct nl_80211_map *map)
+{
+    size_t i;
+    for (i = 0; i < map->n_accumulated_wiphy_msgs; i++) {
+        struct nl_msg *msg = map->accumulated_wiphy_msgs[i];
+        nlmsg_free(msg);
+    }
+    FREE(map->accumulated_wiphy_msgs);
+    map->accumulated_wiphy_msgs = NULL;
+    map->n_accumulated_wiphy_msgs = 0;
+    map->accumulated_wiphy = 0;
+}
+
+static void
+nl_80211_map_wiphy_accumulated_release(struct nl_80211_map *map)
+{
+    if (map->accumulated_wiphy_msgs == NULL) return;
+    if (map->n_accumulated_wiphy_msgs == 0) return;
+
+    struct nl_msg *first_msg = map->accumulated_wiphy_msgs[0];
+    nl_80211_map_wiphy(map, first_msg);
+    nl_80211_map_wiphy_accumulated_flush(map);
+}
+
+static void
+nl_80211_map_wiphy_accumulated_add(struct nl_80211_map *map,
+                                   struct nl_msg *msg)
+{
+    struct nlattr *tb[NL80211_ATTR_MAX + 1];
+    struct nla_policy policy[NL80211_ATTR_MAX + 1] = {
+        [NL80211_ATTR_WIPHY] = { .type = NLA_U32 },
+    };
+    const int err = genlmsg_parse(nlmsg_hdr(msg), 0, tb, NL80211_ATTR_MAX, policy);
+    struct nlattr *wiphy = tb[NL80211_ATTR_WIPHY];
+    if (WARN_ON(err)) return;
+    if (WARN_ON(wiphy == NULL)) return;
+
+    /* When NL80211_PROTOCOL_FEATURE_SPLIT_WIPHY_DUMP is
+     * supported and NL80211_ATTR_SPLIT_WIPHY_DUMP is set,
+     * the kernel will send multiple messages for each
+     * wiphy.
+     *
+     * Each message has identical wiphy identifiers (notably
+     * NL80211_ATTR_WIPHY), but other attributes (supported
+     * bands/channels, interface combinations, etc) are
+     * split across messages.
+     *
+     * There's no clear marking of the last message of a
+     * given wiphy, so the boundary is implied: when wiphy
+     * identifier changes, or when entire dump command
+     * finishes.
+     */
+
+    const uint32_t wiphy_u32 = nla_get_u32(wiphy);
+    const bool store_not_empty = (map->accumulated_wiphy_msgs != NULL && map->n_accumulated_wiphy_msgs > 0);
+    const bool different_wiphy = (wiphy_u32 != map->accumulated_wiphy);
+    const bool release_previous_wiphy = (store_not_empty && different_wiphy);
+    if (release_previous_wiphy) {
+        nl_80211_map_wiphy_accumulated_release(map);
+    }
+
+    map->accumulated_wiphy = wiphy_u32;
+    nlmsg_get(msg);
+    map->n_accumulated_wiphy_msgs++;
+    const size_t new_size = map->n_accumulated_wiphy_msgs * sizeof(*map->accumulated_wiphy_msgs);
+    map->accumulated_wiphy_msgs = REALLOC(map->accumulated_wiphy_msgs, new_size);
+    map->accumulated_wiphy_msgs[map->n_accumulated_wiphy_msgs - 1] = msg;
 }
 
 static void
@@ -515,7 +657,7 @@ nl_80211_cmd_dump_wiphy_response_cb(struct nl_cmd *cmd,
                                     void *priv)
 {
     struct nl_80211_map *map = priv;
-    nl_80211_map_wiphy(map, msg);
+    nl_80211_map_wiphy_accumulated_add(map, msg);
 }
 
 static void
@@ -523,6 +665,8 @@ nl_80211_cmd_dump_wiphy_completed_cb(struct nl_cmd *cmd,
                                      void *priv)
 {
     struct nl_80211 *nl_80211 = priv;
+    struct nl_80211_map *map = &nl_80211->map;
+    nl_80211_map_wiphy_accumulated_release(map);
     nl_80211_notify_ready_try(nl_80211);
 }
 
@@ -634,7 +778,7 @@ nl_80211_map_phy_flush(struct nl_80211_map *map)
 {
     struct nl_80211_phy_priv *phy;
     while ((phy = ds_tree_head(&map->phy_by_wiphy)) != NULL) {
-        nl_80211_map_phy_set(map, phy->pub.wiphy, NULL);
+        nl_80211_map_phy_set(map, phy->pub.wiphy, 0, NULL);
     }
 }
 
@@ -643,7 +787,7 @@ nl_80211_map_vif_flush(struct nl_80211_map *map)
 {
     struct nl_80211_vif_priv *vif;
     while ((vif = ds_tree_head(&map->vif_by_ifindex)) != NULL) {
-        nl_80211_map_vif_set(map, vif->pub.ifindex, 0, NULL);
+        nl_80211_map_vif_set(map, vif->pub.ifindex, 0, 0, NULL);
     }
 }
 
@@ -662,6 +806,7 @@ nl_80211_map_sta_flush(struct nl_80211_map *map)
 static void
 nl_80211_map_flush(struct nl_80211_map *map)
 {
+    nl_80211_map_wiphy_accumulated_flush(map);
     nl_80211_map_sta_flush(map);
     nl_80211_map_vif_flush(map);
     nl_80211_map_phy_flush(map);

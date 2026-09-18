@@ -99,6 +99,7 @@ bool cm2_uplink_event_is_wan_iface(const char *if_name_check)
 #define CM2_PM_GW_OFFLINE_STATUS_READY  "ready"
 #define CM2_PM_GW_OFFLINE_STATUS_ACTIVE "active"
 
+#define CM2_DEFAULT_L_PRI_STA_UPLINK     24   /* L3 STA VIF uplink priority */
 #define CM2_DEFAULT_L_PRI_PPPOE          23
 #define CM2_DEFAULT_L_PRI_VLAN           22
 #define CM2_DEFAULT_L_PRI_ETH            21
@@ -112,8 +113,7 @@ bool cm2_uplink_event_is_wan_iface(const char *if_name_check)
 #define CM2_DEFAULT_RANDOM_BACKOFF_LOWER 30
 #define CM2_DEFAULT_RANDOM_BACKOFF_UPPER 60
 
-static
-bool cm2_ovsdb_connection_remove_uplink(char *if_name);
+static bool cm2_ovsdb_connection_remove_uplink(char *if_name);
 
 static ovsdb_table_t table_Open_vSwitch;
 static ovsdb_table_t table_Manager;
@@ -410,6 +410,15 @@ static int cm2_util_set_defined_priority(char *if_name, const char *if_type) {
         priority = CM2_DEFAULT_L_PRI_VLAN;
     else if (!strcmp(if_type, ETH_TYPE_NAME))
         priority = CM2_DEFAULT_L_PRI_ETH;
+    else if (!strcmp(if_type, VIF_TYPE_NAME)
+                && cm2_ovsdb_is_sta_uplink(if_name))
+    {
+        /* WANO-managed active STA L3 uplink gets the dedicated priority,
+         * regular backhaul VIFs get the normal wifi priority. */
+        priority = CM2_DEFAULT_L_PRI_STA_UPLINK;
+
+        LOGI("%s configured as STA routed WAN uplink, set priority=%d", if_name, priority);
+    }
     else if (cm2_is_wifi_type(if_type))
         priority = cm2_util_get_wifi_priority(if_name, if_type);
     else if (!strcmp(if_type, LTE_TYPE_NAME))
@@ -1467,6 +1476,47 @@ cm2_ovsdb_set_gw_offline_config(bool gw_offline)
         return false;
     }
     return true;
+}
+
+/* Is this interface currently configured as STA routed WAN uplink? */
+bool cm2_ovsdb_is_sta_uplink(const char *if_name)
+{
+    struct schema_WAN_Config wan_config;
+    pjs_errmsg_t perr;
+    json_t *rows;
+    json_t *row;
+    size_t ii;
+    bool match = false;
+
+    if (if_name == NULL)
+        return false;
+
+    /* All WAN_Config STA-backup policies. */
+    rows = ovsdb_sync_select(SCHEMA_TABLE(WAN_Config), SCHEMA_COLUMN(WAN_Config, type), "sta");
+    json_array_foreach(rows, ii, row)
+    {
+        if (!schema_WAN_Config_from_json(&wan_config, row, true, perr))
+            continue;
+
+        /* Check for any active (attached) STA policies: */
+        const char *value = SCHEMA_KEY_VAL_NULL(wan_config.other_status, "sta_uplink_active");
+        if (value == NULL)
+            continue;
+
+        /* Active uplink interface is the last ':'-separated field. */
+        const char *uplink = strrchr(value, ':');
+        if (uplink == NULL)
+            continue;
+        uplink++;
+
+        if (strcmp(uplink, if_name) == 0)
+        {
+            match = true;
+            break;
+        }
+    }
+    json_decref(rows);
+    return match;
 }
 
 static bool
@@ -2836,6 +2886,15 @@ void callback_Wifi_Inet_Config(ovsdb_update_monitor_t *mon,
     cm2_bh_cmu_WIC(g_state.bh_cmu, mon, old_row, inet_config);
 }
 
+void callback_Node_Config(ovsdb_update_monitor_t *mon,
+                          struct schema_Node_Config *old_row,
+                          struct schema_Node_Config *node_config)
+{
+    LOGD("%s mon_type = %d", __func__, mon->mon_type);
+
+    cm2_bh_cmu_NC(g_state.bh_cmu, mon, old_row, node_config);
+}
+
 void callback_Wifi_Inet_State(ovsdb_update_monitor_t *mon,
                               struct schema_Wifi_Inet_State *old_row,
                               struct schema_Wifi_Inet_State *inet_state)
@@ -2996,6 +3055,18 @@ void cm2_ovsdb_set_default_wan_bridge(char *if_name, char *if_type)
     if (cm2_is_wan_bridge()) {
         cm2_ovsdb_connection_update_bridge_state(if_name, CM2_WAN_BRIDGE_NAME);
     } else if (cm2_is_wifi_type(if_type)) {
+        /*
+         * Don't bridge VIF interfaces that are configured as routed WAN uplinks.
+         * In that case WANO manages L3 directly and bridging to LAN would break
+         * routing.
+         */
+        bool sta_wan = cm2_ovsdb_is_sta_uplink(if_name);
+        if (sta_wan)
+        {
+            LOGI("%s is configured as STA L3 uplink, skipping bridge", if_name);
+            return;
+        }
+
         cm2_ovsdb_connection_update_bridge_state(if_name, CONFIG_TARGET_LAN_BRIDGE_NAME);
     }
 }
@@ -3547,11 +3618,11 @@ int cm2_ovsdb_init(void)
     OVSDB_TABLE_INIT_NO_KEY(IP_Interface);
     OVSDB_TABLE_INIT_NO_KEY(IPv6_Address);
     OVSDB_TABLE_INIT_NO_KEY(DHCPv6_Client);
+    OVSDB_TABLE_INIT_NO_KEY(Wifi_Route_Config);
     OVSDB_TABLE_INIT_NO_KEY(Wifi_Route_State);
     OVSDB_TABLE_INIT_NO_KEY(Wifi_Route6_State);
     OVSDB_TABLE_INIT_NO_KEY(Node_Config);
     OVSDB_TABLE_INIT_NO_KEY(Node_State);
-    OVSDB_TABLE_INIT_NO_KEY(Wifi_Route_Config);
     OVSDB_TABLE_INIT_NO_KEY(Tunnel_Interface);
 
     // Initialize OVSDB monitor callbacks
@@ -3564,6 +3635,7 @@ int cm2_ovsdb_init(void)
         OVSDB_TABLE_MONITOR(Wifi_Inet_Config, false);
         OVSDB_TABLE_MONITOR(Bridge, false);
         OVSDB_TABLE_MONITOR(Wifi_Route_State, false);
+        OVSDB_TABLE_MONITOR(Node_Config, false);
     }
     OVSDB_TABLE_MONITOR(Connection_Manager_Uplink, false);
     OVSDB_TABLE_MONITOR(Wifi_Inet_State, false);

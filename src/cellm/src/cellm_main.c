@@ -36,7 +36,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ovsdb.h"
 #include "target.h"
 #include "manager_watchdog.h"
-#include "network_metadata.h"
 
 #include "cellm_mgr.h"
 

@@ -1,0 +1,80 @@
+/*
+Copyright (c) 2015, Plume Design Inc. All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+   1. Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+   2. Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+   3. Neither the name of the Plume Design Inc. nor the
+      names of its contributors may be used to endorse or promote products
+      derived from this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL Plume Design Inc. BE LIABLE FOR ANY
+DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+*/
+
+#ifndef OX_TABLE_INSTANCE_H_INCLUDED
+#define OX_TABLE_INSTANCE_H_INCLUDED
+
+#include <ox_types.h>
+
+void ox_table_instance_set_uuid(ox_table_instance_t *table_instance, const char *uuid);
+
+void ox_table_instance_set_path(ox_table_instance_t *table_instance, const char *path);
+
+void ox_table_instance_set_parent(ox_table_instance_t *table_instance, ox_table_instance_t *parent);
+
+void ox_table_instance_free(ox_table_instance_t *table_instance);
+
+// FIXME: this does not belong here, move to ox_table.h
+json_t *ox_table_instance_xlate_from_ovsdb(
+        json_t *value_borrowed,
+        const ox_route_param_t *route,
+        const ox_table_instance_t *table_instance);
+
+json_t *ox_table_instance_param_get_value(
+        json_t *row_borrowed,
+        const ox_route_param_t *route,
+        const ox_table_instance_t *table_instance);
+
+os_tr181_error_t ox_table_instance_param_get(
+        os_tr181_val_t *tr181_value,
+        const char *param_path,
+        const ox_route_param_t *route,
+        const ox_table_instance_t *table_instance);
+
+os_tr181_error_t ox_table_instance_param_set(
+        const os_tr181_val_t *tr181_value,
+        const char *param_path,
+        const ox_route_param_t *route,
+        const ox_table_instance_t *table_instance);
+
+os_tr181_error_t ox_table_instance_add(ox_table_instance_t *table_instance, const os_tr181_val_t *initial_values);
+
+os_tr181_error_t ox_table_instance_del(ox_table_instance_t *table_instance);
+
+os_tr181_error_t ox_table_instance_add_reject_external(
+        ox_table_instance_t *table_instance,
+        const os_tr181_val_t *initial_values);
+
+os_tr181_error_t ox_table_instance_del_reject_external(ox_table_instance_t *table_instance);
+
+ox_table_instance_t *ox_table_instance_get(
+        ox_table_ctx_t *table_ctx,
+        const char *param_path, /* eg. "Device.WiFi.SSID.1." */
+        const char *uuid);
+
+bool ox_table_instance_sibling_row_exists(ox_table_instance_t *table_instance);
+
+#endif /* OX_TABLE_INSTANCE_H_INCLUDED */

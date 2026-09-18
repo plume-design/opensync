@@ -71,6 +71,13 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 #define OSW_CONFSYNC_ENABLE_PERIOD_SEC 10
 
+/* After radar detection we want to give time to hostapd/driver
+ * to settle down reported state, so we defer any change to the
+ * requested configuration. Most notably, we don't need cac_bugged
+ * too early and we don't want dfs_chan_clip CSA too early.
+ */
+#define OSW_CONFSYNC_RADAR_PERIOD_SEC 5
+
 #define LOG_PREFIX(fmt, ...) "osw: confsync: " fmt, ## __VA_ARGS__
 #define LOG_PREFIX_DEFER(defer, fmt, ...) \
     LOG_PREFIX("defer: %s%s%s: " fmt, \
@@ -116,6 +123,7 @@ struct osw_confsync_phy {
     struct ds_tree_node node;
     struct osw_timer cac_timeout;
     struct osw_timer mbss_timeout;
+    struct osw_timer radar_timeout;
 };
 
 struct osw_confsync_arg {
@@ -131,6 +139,7 @@ struct osw_confsync_arg {
     bool cac_planned;
     bool cac_ongoing;
     bool mbss_ongoing;
+    bool radar_ongoing;
     bool debug;
 };
 
@@ -300,48 +309,48 @@ osw_confsync_build_phy_debug(const struct osw_drv_phy_config *cmd,
     bool notified = false;
 
     if (cmd->enabled_changed) {
-        LOGI("osw: confsync: %s: enabled: %d -> %d",
-             phy, state->enabled, conf->enabled);
+        LOGI(LOG_PREFIX("%s: enabled: %d -> %d",
+             phy, state->enabled, conf->enabled));
         notified = true;
     }
 
     if (cmd->atf_enabled_changed) {
-        LOGI("osw: confsync: %s: atf_enabled: %d -> %d",
-             phy, state->atf_enabled, conf->atf_enabled);
+        LOGI(LOG_PREFIX("%s: atf_enabled: %d -> %d",
+             phy, state->atf_enabled, conf->atf_enabled));
         notified = true;
     }
 
     if (cmd->tx_chainmask_changed) {
-        LOGI("osw: confsync: %s: tx_chainmask: 0x%04x -> 0x%04x",
-             phy, state->tx_chainmask, conf->tx_chainmask);
+        LOGI(LOG_PREFIX("%s: tx_chainmask: 0x%04x -> 0x%04x",
+             phy, state->tx_chainmask, conf->tx_chainmask));
         notified = true;
     }
 
     if (cmd->radar_next_channel_changed) {
-        LOGI("osw: confsync: %s: radar_next_channel_changed: "OSW_CHANNEL_FMT" -> "OSW_CHANNEL_FMT,
+        LOGI(LOG_PREFIX("%s: radar_next_channel_changed: "OSW_CHANNEL_FMT" -> "OSW_CHANNEL_FMT,
              phy,
              OSW_CHANNEL_ARG(&(state->radar_next_channel)),
-             OSW_CHANNEL_ARG(&(conf->radar_next_channel)));
+             OSW_CHANNEL_ARG(&(conf->radar_next_channel))));
         notified = true;
     }
 
     if (cmd->radar_changed) {
         const char *from = osw_radar_to_str(state->radar);
         const char *to = osw_radar_to_str(conf->radar);
-        LOGI("osw: confsync: %s: radar: %s -> %s", phy, from, to);
+        LOGI(LOG_PREFIX("%s: radar: %s -> %s", phy, from, to));
         notified = true;
     }
 
     if (cmd->reg_domain_changed) {
-        LOGI("osw: confsync: %s: radar: "OSW_REG_DOMAIN_FMT" -> "OSW_REG_DOMAIN_FMT,
+        LOGI(LOG_PREFIX("%s: reg_domain: "OSW_REG_DOMAIN_FMT" -> "OSW_REG_DOMAIN_FMT,
              phy,
              OSW_REG_DOMAIN_ARG(&state->reg_domain),
-             OSW_REG_DOMAIN_ARG(&conf->reg_domain));
+             OSW_REG_DOMAIN_ARG(&conf->reg_domain)));
         notified = true;
     }
 
     if (cmd->changed && !notified) {
-        LOGW("osw: confsync: %s: changed, but missing specific attribute printout", phy);
+        LOGW(LOG_PREFIX("%s: changed, but missing specific attribute printout", phy));
     }
 }
 
@@ -358,10 +367,10 @@ osw_confsync_debug_passpoint_list(const char *phy, const char *vif,
           : cmd_len;
 
     for (i = 0; i < len; i++) {
-        LOGI("osw: confsync: %s/%s: passpoint_config: %s[%zu] \'%s\' -> \'%s\'",
+        LOGI(LOG_PREFIX("%s/%s: passpoint_config: %s[%zu] \'%s\' -> \'%s\'",
              phy, vif, name, i,
              (state_len > i) ? state[i] : "",
-             (cmd_len > i) ? cmd[i] : "");
+             (cmd_len > i) ? cmd[i] : ""));
     }
 }
 
@@ -379,10 +388,10 @@ osw_confsync_debug_passpoint_list_int(const char *phy, const char *vif,
           : cmd_len;
 
     for (i = 0; i < len; i++) {
-        LOGI("osw: confsync: %s/%s: passpoint_config: %s[%zu] \'%d\' -> \'%d\'",
+        LOGI(LOG_PREFIX("%s/%s: passpoint_config: %s[%zu] \'%d\' -> \'%d\'",
              phy, vif, name, i,
              (state_len > i) ? state[i] : 0,
-             (cmd_len > i) ? cmd[i] : 0);
+             (cmd_len > i) ? cmd[i] : 0));
     }
 }
 
@@ -399,10 +408,10 @@ osw_confsync_build_vif_ap_neigh_ft_debug(const char *phy,
         const struct osw_conf_neigh_ft *ti = ds_tree_find((struct ds_tree *)to, &fi->bssid);
         const bool removed = (ti == NULL);
         if (removed) {
-            LOGI("osw: confsync: %s/%s: neigh_ft: "OSW_NEIGH_FT_FMT": removed",
+            LOGI(LOG_PREFIX("%s/%s: neigh_ft: "OSW_NEIGH_FT_FMT": removed",
                  phy,
                  vif,
-                 OSW_NEIGH_FT_ARG(fi));
+                 OSW_NEIGH_FT_ARG(fi)));
         }
     }
 
@@ -413,17 +422,17 @@ osw_confsync_build_vif_ap_neigh_ft_debug(const char *phy,
         const bool changed = (fi != NULL)
                           && (osw_neigh_ft_cmp(fi, &ti->neigh_ft) != 0);
         if (added) {
-            LOGI("osw: confsync: %s/%s: neigh_ft: "OSW_NEIGH_FT_FMT": added",
+            LOGI(LOG_PREFIX("%s/%s: neigh_ft: "OSW_NEIGH_FT_FMT": added",
                  phy,
                  vif,
-                 OSW_NEIGH_FT_ARG(&ti->neigh_ft));
+                 OSW_NEIGH_FT_ARG(&ti->neigh_ft)));
         }
         if (changed) {
-            LOGI("osw: confsync: %s/%s: neigh_ft: "OSW_NEIGH_FT_FMT" -> "OSW_NEIGH_FT_FMT,
+            LOGI(LOG_PREFIX("%s/%s: neigh_ft: "OSW_NEIGH_FT_FMT" -> "OSW_NEIGH_FT_FMT,
                  phy,
                  vif,
                  OSW_NEIGH_FT_ARG(fi),
-                 OSW_NEIGH_FT_ARG(&ti->neigh_ft));
+                 OSW_NEIGH_FT_ARG(&ti->neigh_ft)));
         }
     }
 }
@@ -438,137 +447,137 @@ osw_confsync_build_vif_ap_debug(const char *phy,
 {
     if (cmd->bridge_if_name_changed) {
         const int max = ARRAY_SIZE(conf->bridge_if_name.buf);
-        LOGI("osw: confsync: %s/%s: bridge_if_name: '%.*s' -> '%.*s'",
+        LOGI(LOG_PREFIX("%s/%s: bridge_if_name: '%.*s' -> '%.*s'",
              phy, vif,
              max, state->bridge_if_name.buf,
-             max, conf->bridge_if_name.buf);
+             max, conf->bridge_if_name.buf));
         *notified = true;
     }
 
     if (cmd->nas_identifier_changed) {
         const int max = ARRAY_SIZE(conf->nas_identifier.buf);
-        LOGI("osw: confsync: %s/%s: nas_identifier: '%.*s' -> '%.*s'",
+        LOGI(LOG_PREFIX("%s/%s: nas_identifier: '%.*s' -> '%.*s'",
              phy, vif,
              max, state->nas_identifier.buf,
-             max, conf->nas_identifier.buf);
+             max, conf->nas_identifier.buf));
         *notified = true;
     }
 
     if (cmd->beacon_interval_tu_changed) {
-        LOGI("osw: confsync: %s/%s: beacon_interval_tu: %d -> %d",
-             phy, vif, state->beacon_interval_tu, conf->beacon_interval_tu);
+        LOGI(LOG_PREFIX("%s/%s: beacon_interval_tu: %d -> %d",
+             phy, vif, state->beacon_interval_tu, conf->beacon_interval_tu));
         *notified = true;
     }
 
     if (cmd->isolated_changed) {
         // FIXME: isolate vs isolated
-        LOGI("osw: confsync: %s/%s: isolate: %d -> %d",
-             phy, vif, state->isolated, conf->isolated);
+        LOGI(LOG_PREFIX("%s/%s: isolate: %d -> %d",
+             phy, vif, state->isolated, conf->isolated));
         *notified = true;
     }
 
     if (cmd->ssid_hidden_changed) {
-        LOGI("osw: confsync: %s/%s: ssid_hidden: %d -> %d",
-             phy, vif, state->ssid_hidden, conf->ssid_hidden);
+        LOGI(LOG_PREFIX("%s/%s: ssid_hidden: %d -> %d",
+             phy, vif, state->ssid_hidden, conf->ssid_hidden));
         *notified = true;
     }
 
     if (cmd->mbo_changed) {
-        LOGI("osw: confsync: %s/%s: mbo: %d -> %d",
-             phy, vif, state->mbo, conf->mbo);
+        LOGI(LOG_PREFIX("%s/%s: mbo: %d -> %d",
+             phy, vif, state->mbo, conf->mbo));
         *notified = true;
     }
 
     if (cmd->oce_changed) {
-        LOGI("osw: confsync: %s/%s: oce: %d -> %d",
-             phy, vif, state->oce, conf->oce);
+        LOGI(LOG_PREFIX("%s/%s: oce: %d -> %d",
+             phy, vif, state->oce, conf->oce));
         *notified = true;
     }
 
     if (cmd->oce_min_rssi_dbm_changed) {
-        LOGI("osw: confsync: %s/%s: oce_min_rssi_dbm: %d -> %d",
-             phy, vif, state->oce_min_rssi_dbm, conf->oce_min_rssi_dbm);
+        LOGI(LOG_PREFIX("%s/%s: oce_min_rssi_dbm: %d -> %d",
+             phy, vif, state->oce_min_rssi_dbm, conf->oce_min_rssi_dbm));
         *notified = true;
     }
 
     if (cmd->oce_min_rssi_enable_changed) {
-        LOGI("osw: confsync: %s/%s: oce_min_rssi_enable: %d -> %d",
-             phy, vif, state->oce_min_rssi_enable, conf->oce_min_rssi_enable);
+        LOGI(LOG_PREFIX("%s/%s: oce_min_rssi_enable: %d -> %d",
+             phy, vif, state->oce_min_rssi_enable, conf->oce_min_rssi_enable));
         *notified = true;
     }
 
     if (cmd->oce_retry_delay_sec_changed) {
-        LOGI("osw: confsync: %s/%s: oce_retry_delay_sec: %d -> %d",
-             phy, vif, state->oce_retry_delay_sec, conf->oce_retry_delay_sec);
+        LOGI(LOG_PREFIX("%s/%s: oce_retry_delay_sec: %d -> %d",
+             phy, vif, state->oce_retry_delay_sec, conf->oce_retry_delay_sec));
         *notified = true;
     }
 
     if (cmd->max_sta_changed) {
-        LOGI("osw: confsync: %s/%s: max_sta: %d -> %d",
-             phy, vif, state->max_sta, conf->max_sta);
+        LOGI(LOG_PREFIX("%s/%s: max_sta: %d -> %d",
+             phy, vif, state->max_sta, conf->max_sta));
         *notified = true;
     }
 
     if (cmd->proxy_arp_changed) {
-        LOGI("osw: confsync: %s/%s: proxy_arp: %d -> %d",
-             phy, vif, state->proxy_arp, conf->proxy_arp);
+        LOGI(LOG_PREFIX("%s/%s: proxy_arp: %d -> %d",
+             phy, vif, state->proxy_arp, conf->proxy_arp));
         *notified = true;
     }
 
     if (cmd->dgaf_disable_changed) {
-        LOGI("osw: confsync: %s/%s: dgaf_disable: %d -> %d",
-             phy, vif, state->dgaf_disable, conf->dgaf_disable);
+        LOGI(LOG_PREFIX("%s/%s: dgaf_disable: %d -> %d",
+             phy, vif, state->dgaf_disable, conf->dgaf_disable));
         *notified = true;
     }
 
     if (cmd->rsn_override_1_changed) {
-        LOGI("osw: confsync: %s/%s: rsn_override_1: "OSW_RSN_OVERRIDE_FMT" -> "OSW_RSN_OVERRIDE_FMT,
+        LOGI(LOG_PREFIX("%s/%s: rsn_override_1: "OSW_RSN_OVERRIDE_FMT" -> "OSW_RSN_OVERRIDE_FMT,
              phy, vif,
              OSW_RSN_OVERRIDE_ARG(&state->rsn_override_1),
-             OSW_RSN_OVERRIDE_ARG(&conf->rsn_override_1));
+             OSW_RSN_OVERRIDE_ARG(&conf->rsn_override_1)));
         *notified = true;
     }
 
     if (cmd->rsn_override_2_changed) {
-        LOGI("osw: confsync: %s/%s: rsn_override_2: "OSW_RSN_OVERRIDE_FMT" -> "OSW_RSN_OVERRIDE_FMT,
+        LOGI(LOG_PREFIX("%s/%s: rsn_override_2: "OSW_RSN_OVERRIDE_FMT" -> "OSW_RSN_OVERRIDE_FMT,
              phy, vif,
              OSW_RSN_OVERRIDE_ARG(&state->rsn_override_2),
-             OSW_RSN_OVERRIDE_ARG(&conf->rsn_override_2));
+             OSW_RSN_OVERRIDE_ARG(&conf->rsn_override_2)));
         *notified = true;
     }
 
     if (cmd->rsn_override_omit_rsnxe_changed) {
-        LOGI("osw: confsync: %s/%s: rsn_override_omit_rsnxe: %d -> %d",
-             phy, vif, state->rsn_override_omit_rsnxe, conf->rsn_override_omit_rsnxe);
+        LOGI(LOG_PREFIX("%s/%s: rsn_override_omit_rsnxe: %d -> %d",
+             phy, vif, state->rsn_override_omit_rsnxe, conf->rsn_override_omit_rsnxe));
         *notified = true;
     }
 
     if (cmd->airtime_precedence_changed) {
-        LOGI("osw: confsync: %s/%s: airtime_precedence: %s -> %s",
+        LOGI(LOG_PREFIX("%s/%s: airtime_precedence: %s -> %s",
              phy,
              vif,
              osw_airtime_precedence_to_str(state->airtime_precedence),
-             osw_airtime_precedence_to_str(conf->airtime_precedence));
+             osw_airtime_precedence_to_str(conf->airtime_precedence)));
         *notified = true;
     }
 
     if (cmd->mcast2ucast_changed) {
-        LOGI("osw: confsync: %s/%s: mcast2ucast: %d -> %d",
-             phy, vif, state->mcast2ucast, conf->mcast2ucast);
+        LOGI(LOG_PREFIX("%s/%s: mcast2ucast: %d -> %d",
+             phy, vif, state->mcast2ucast, conf->mcast2ucast));
         *notified = true;
     }
 
     if (cmd->wps_pbc_changed) {
-        LOGI("osw: confsync: %s/%s: wps_pbc: %d -> %d",
-             phy, vif, state->wps_pbc, conf->wps_pbc);
+        LOGI(LOG_PREFIX("%s/%s: wps_pbc: %d -> %d",
+             phy, vif, state->wps_pbc, conf->wps_pbc));
         *notified = true;
     }
 
     if (cmd->multi_ap_changed) {
         char *from = osw_multi_ap_into_str(&state->multi_ap);
         char *to = osw_multi_ap_into_str(&conf->multi_ap);
-        LOGI("osw: confsync: %s/%s: multi_ap: %s -> %s",
-             phy, vif, from, to);
+        LOGI(LOG_PREFIX("%s/%s: multi_ap: %s -> %s",
+             phy, vif, from, to));
         FREE(from);
         FREE(to);
         *notified = true;
@@ -577,10 +586,10 @@ osw_confsync_build_vif_ap_debug(const char *phy,
     if (cmd->channel_changed) {
         struct osw_channel s = state->channel;
         struct osw_channel c = conf->channel;
-        LOGI("osw: confsync: %s/%s: channel: "OSW_CHANNEL_FMT" -> "OSW_CHANNEL_FMT,
+        LOGI(LOG_PREFIX("%s/%s: channel: "OSW_CHANNEL_FMT" -> "OSW_CHANNEL_FMT,
              phy, vif,
              OSW_CHANNEL_ARG(&s),
-             OSW_CHANNEL_ARG(&c));
+             OSW_CHANNEL_ARG(&c)));
         *notified = true;
     }
 
@@ -589,22 +598,22 @@ osw_confsync_build_vif_ap_debug(const char *phy,
         char to[128];
         osw_ap_mode_to_str(from, sizeof(from), &state->mode);
         osw_ap_mode_to_str(to, sizeof(to), &conf->mode);
-        LOGI("osw: confsync: %s/%s: mode: %s -> %s", phy, vif, from, to);
+        LOGI(LOG_PREFIX("%s/%s: mode: %s -> %s", phy, vif, from, to));
         *notified = true;
     }
 
     if (cmd->acl_policy_changed) {
         const char *from = osw_acl_policy_to_str(state->acl_policy);
         const char *to = osw_acl_policy_to_str(conf->acl_policy);
-        LOGI("osw: confsync: %s/%s: acl policy: %s -> %s", phy, vif, from, to);
+        LOGI(LOG_PREFIX("%s/%s: acl policy: %s -> %s", phy, vif, from, to));
         *notified = true;
     }
 
     if (cmd->ssid_changed) {
-        LOGI("osw: confsync: %s/%s: ssid: "OSW_SSID_FMT" -> "OSW_SSID_FMT,
+        LOGI(LOG_PREFIX("%s/%s: ssid: "OSW_SSID_FMT" -> "OSW_SSID_FMT,
              phy, vif,
              OSW_SSID_ARG(&state->ssid),
-             OSW_SSID_ARG(&conf->ssid));
+             OSW_SSID_ARG(&conf->ssid)));
         *notified = true;
     }
 
@@ -613,7 +622,7 @@ osw_confsync_build_vif_ap_debug(const char *phy,
         char to[128];
         osw_wpa_to_str(from, sizeof(from), &state->wpa);
         osw_wpa_to_str(to, sizeof(to), &conf->wpa);
-        LOGI("osw: confsync: %s/%s: wpa: %s -> %s", phy, vif, from, to);
+        LOGI(LOG_PREFIX("%s/%s: wpa: %s -> %s", phy, vif, from, to));
         *notified = true;
     }
 
@@ -622,14 +631,14 @@ osw_confsync_build_vif_ap_debug(const char *phy,
 
         for (i = 0; i < cmd->acl_add.count; i++) {
             const struct osw_hwaddr *mac = &cmd->acl_add.list[i];
-            LOGI("osw: confsync: %s/%s: acl: adding: "OSW_HWADDR_FMT,
-                 phy, vif, OSW_HWADDR_ARG(mac));
+            LOGI(LOG_PREFIX("%s/%s: acl: adding: "OSW_HWADDR_FMT,
+                 phy, vif, OSW_HWADDR_ARG(mac)));
         }
 
         for (i = 0; i < cmd->acl_del.count; i++) {
             const struct osw_hwaddr *mac = &cmd->acl_del.list[i];
-            LOGI("osw: confsync: %s/%s: acl: removing: "OSW_HWADDR_FMT,
-                 phy, vif, OSW_HWADDR_ARG(mac));
+            LOGI(LOG_PREFIX("%s/%s: acl: removing: "OSW_HWADDR_FMT,
+                 phy, vif, OSW_HWADDR_ARG(mac)));
         }
 
         *notified = true;
@@ -640,7 +649,7 @@ osw_confsync_build_vif_ap_debug(const char *phy,
         char to[1024];
         osw_ap_psk_list_to_str(from, sizeof(from), &state->psk_list);
         osw_conf_ap_psk_tree_to_str(to, sizeof(to), &conf->psk_tree);
-        LOGI("osw: confsync: %s/%s: psk: %s -> %s", phy, vif, from, to);
+        LOGI(LOG_PREFIX("%s/%s: psk: %s -> %s", phy, vif, from, to));
         *notified = true;
     }
 
@@ -655,10 +664,10 @@ osw_confsync_build_vif_ap_debug(const char *phy,
         osw_neigh_list_to_str(del, sizeof(del), &cmd->neigh_del_list);
         osw_neigh_list_to_str(from, sizeof(from), &state->neigh_list);
         osw_conf_neigh_tree_to_str(to, sizeof(to), &conf->neigh_tree);
-        LOGI("osw: confsync: %s/%s: neigh: %s -> %s", phy, vif, from, to);
-        if (strlen(add) > 0) LOGI("osw: confsync: %s/%s: neigh: add: %s", phy, vif, add);
-        if (strlen(mod) > 0) LOGI("osw: confsync: %s/%s: neigh: mod: %s", phy, vif, mod);
-        if (strlen(del) > 0) LOGI("osw: confsync: %s/%s: neigh: del: %s", phy, vif, del);
+        LOGI(LOG_PREFIX("%s/%s: neigh: %s -> %s", phy, vif, from, to));
+        if (strlen(add) > 0) LOGI(LOG_PREFIX("%s/%s: neigh: add: %s", phy, vif, add));
+        if (strlen(mod) > 0) LOGI(LOG_PREFIX("%s/%s: neigh: mod: %s", phy, vif, mod));
+        if (strlen(del) > 0) LOGI(LOG_PREFIX("%s/%s: neigh: del: %s", phy, vif, del));
         *notified = true;
     }
 
@@ -675,30 +684,30 @@ osw_confsync_build_vif_ap_debug(const char *phy,
         char to[1024];
         osw_wps_cred_list_to_str(from, sizeof(from), &state->wps_cred_list);
         osw_conf_ap_wps_cred_list_to_str(to, sizeof(to), &conf->wps_cred_list);
-        LOGI("osw: confsync: %s/%s: wps_cred_list: %s -> %s",
+        LOGI(LOG_PREFIX("%s/%s: wps_cred_list: %s -> %s",
               phy,
               vif,
               from,
-              to);
+              to));
     }
 
     if (cmd->mbss_mode_changed) {
         const char *from = osw_mbss_vif_ap_mode_to_str(state->mbss_mode);
         const char *to = osw_mbss_vif_ap_mode_to_str(conf->mbss_mode);
-        LOGI("osw: confsync: %s/%s: mbss_mode: %s -> %s",
+        LOGI(LOG_PREFIX("%s/%s: mbss_mode: %s -> %s",
               phy,
               vif,
               from,
-              to);
+              to));
         *notified = true;
     }
 
     if (cmd->mbss_group_changed) {
-        LOGI("osw: confsync: %s/%s: mbss_group: %d -> %d",
+        LOGI(LOG_PREFIX("%s/%s: mbss_group: %d -> %d",
               phy,
               vif,
               state->mbss_group,
-              conf->mbss_group);
+              conf->mbss_group));
         *notified = true;
     }
 
@@ -707,8 +716,8 @@ osw_confsync_build_vif_ap_debug(const char *phy,
         char to[512];
         osw_radius_list_to_str(from, sizeof(from), &state->radius_list);
         osw_radius_list_to_str(to, sizeof(to), &cmd->radius_list);
-        LOGI("osw: confsync: %s/%s: radius_list: %s -> %s",
-             phy, vif, from, to);
+        LOGI(LOG_PREFIX("%s/%s: radius_list: %s -> %s",
+             phy, vif, from, to));
         *notified = true;
     }
 
@@ -717,60 +726,60 @@ osw_confsync_build_vif_ap_debug(const char *phy,
         char to[512];
         osw_radius_list_to_str(from, sizeof(from), &state->acct_list);
         osw_radius_list_to_str(to, sizeof(to), &cmd->acct_list);
-        LOGI("osw: confsync: %s/%s: acct_list: %s -> %s",
-             phy, vif, from, to);
+        LOGI(LOG_PREFIX("%s/%s: acct_list: %s -> %s",
+             phy, vif, from, to));
         *notified = true;
     }
 
     if (cmd->passpoint_changed) {
         if (!osw_hwaddr_is_equal(&state->passpoint.hessid, &cmd->passpoint.hessid))
-            LOGI("osw: confsync: %s/%s: passpoint_config: hessid \'"OSW_HWADDR_FMT"\' -> \'"OSW_HWADDR_FMT"\'",
-             phy, vif, OSW_HWADDR_ARG(&state->passpoint.hessid), OSW_HWADDR_ARG(&cmd->passpoint.hessid));
+            LOGI(LOG_PREFIX("%s/%s: passpoint_config: hessid \'"OSW_HWADDR_FMT"\' -> \'"OSW_HWADDR_FMT"\'",
+             phy, vif, OSW_HWADDR_ARG(&state->passpoint.hessid), OSW_HWADDR_ARG(&cmd->passpoint.hessid)));
         if (state->passpoint.hs20_enabled != cmd->passpoint.hs20_enabled)
-            LOGI("osw: confsync: %s/%s: passpoint_config: hs20 \'%d\' -> \'%d\'",
-             phy, vif, state->passpoint.hs20_enabled, cmd->passpoint.hs20_enabled);
+            LOGI(LOG_PREFIX("%s/%s: passpoint_config: hs20 \'%d\' -> \'%d\'",
+             phy, vif, state->passpoint.hs20_enabled, cmd->passpoint.hs20_enabled));
         if (state->passpoint.adv_wan_status != cmd->passpoint.adv_wan_status)
-            LOGI("osw: confsync: %s/%s: passpoint_config: adv_wan_status \'%d\' -> \'%d\'",
-             phy, vif, state->passpoint.adv_wan_status, cmd->passpoint.adv_wan_status);
+            LOGI(LOG_PREFIX("%s/%s: passpoint_config: adv_wan_status \'%d\' -> \'%d\'",
+             phy, vif, state->passpoint.adv_wan_status, cmd->passpoint.adv_wan_status));
         if (state->passpoint.adv_wan_symmetric != cmd->passpoint.adv_wan_symmetric)
-            LOGI("osw: confsync: %s/%s: passpoint_config: adv_wan_symmetric \'%d\' -> \'%d\'",
-             phy, vif, state->passpoint.adv_wan_symmetric, cmd->passpoint.adv_wan_symmetric);
+            LOGI(LOG_PREFIX("%s/%s: passpoint_config: adv_wan_symmetric \'%d\' -> \'%d\'",
+             phy, vif, state->passpoint.adv_wan_symmetric, cmd->passpoint.adv_wan_symmetric));
         if (state->passpoint.adv_wan_at_capacity != cmd->passpoint.adv_wan_at_capacity)
-            LOGI("osw: confsync: %s/%s: passpoint_config: adv_wan_at_capacity \'%d\' -> \'%d\'",
-             phy, vif, state->passpoint.adv_wan_at_capacity, cmd->passpoint.adv_wan_at_capacity);
+            LOGI(LOG_PREFIX("%s/%s: passpoint_config: adv_wan_at_capacity \'%d\' -> \'%d\'",
+             phy, vif, state->passpoint.adv_wan_at_capacity, cmd->passpoint.adv_wan_at_capacity));
         if (state->passpoint.osen != cmd->passpoint.osen)
-            LOGI("osw: confsync: %s/%s: passpoint_config: osen \'%d\' -> \'%d\'",
-             phy, vif, state->passpoint.osen, cmd->passpoint.osen);
+            LOGI(LOG_PREFIX("%s/%s: passpoint_config: osen \'%d\' -> \'%d\'",
+             phy, vif, state->passpoint.osen, cmd->passpoint.osen));
         if (state->passpoint.asra != cmd->passpoint.asra)
-            LOGI("osw: confsync: %s/%s: passpoint_config: asra \'%d\' -> \'%d\'",
-             phy, vif, state->passpoint.asra, cmd->passpoint.asra);
+            LOGI(LOG_PREFIX("%s/%s: passpoint_config: asra \'%d\' -> \'%d\'",
+             phy, vif, state->passpoint.asra, cmd->passpoint.asra));
         if (state->passpoint.ant != cmd->passpoint.ant)
-            LOGI("osw: confsync: %s/%s: passpoint_config: ant \'%d\' -> \'%d\'",
-             phy, vif, state->passpoint.ant, cmd->passpoint.ant);
+            LOGI(LOG_PREFIX("%s/%s: passpoint_config: ant \'%d\' -> \'%d\'",
+             phy, vif, state->passpoint.ant, cmd->passpoint.ant));
         if (state->passpoint.venue_group != cmd->passpoint.venue_group)
-            LOGI("osw: confsync: %s/%s: passpoint_config: venue_group \'%d\' -> \'%d\'",
-             phy, vif, state->passpoint.venue_group, cmd->passpoint.venue_group);
+            LOGI(LOG_PREFIX("%s/%s: passpoint_config: venue_group \'%d\' -> \'%d\'",
+             phy, vif, state->passpoint.venue_group, cmd->passpoint.venue_group));
         if (state->passpoint.venue_type != cmd->passpoint.venue_type)
-            LOGI("osw: confsync: %s/%s: passpoint_config: venue_type \'%d\' -> \'%d\'",
-             phy, vif, state->passpoint.venue_type, cmd->passpoint.venue_type);
+            LOGI(LOG_PREFIX("%s/%s: passpoint_config: venue_type \'%d\' -> \'%d\'",
+             phy, vif, state->passpoint.venue_type, cmd->passpoint.venue_type));
         if (state->passpoint.anqp_domain_id != cmd->passpoint.anqp_domain_id)
-            LOGI("osw: confsync: %s/%s: passpoint_config: anqp_domain_id \'%d\' -> \'%d\'",
-             phy, vif, state->passpoint.anqp_domain_id, cmd->passpoint.anqp_domain_id);
+            LOGI(LOG_PREFIX("%s/%s: passpoint_config: anqp_domain_id \'%d\' -> \'%d\'",
+             phy, vif, state->passpoint.anqp_domain_id, cmd->passpoint.anqp_domain_id));
         if (state->passpoint.pps_mo_id != cmd->passpoint.pps_mo_id)
-            LOGI("osw: confsync: %s/%s: passpoint_config: pps_mo_id \'%d\' -> \'%d\'",
-             phy, vif, state->passpoint.pps_mo_id, cmd->passpoint.pps_mo_id);
+            LOGI(LOG_PREFIX("%s/%s: passpoint_config: pps_mo_id \'%d\' -> \'%d\'",
+             phy, vif, state->passpoint.pps_mo_id, cmd->passpoint.pps_mo_id));
         if (state->passpoint.t_c_timestamp != cmd->passpoint.t_c_timestamp)
-            LOGI("osw: confsync: %s/%s: passpoint_config: t_c_timestamp \'%d\' -> \'%d\'",
-             phy, vif, state->passpoint.t_c_timestamp, cmd->passpoint.t_c_timestamp);
+            LOGI(LOG_PREFIX("%s/%s: passpoint_config: t_c_timestamp \'%d\' -> \'%d\'",
+             phy, vif, state->passpoint.t_c_timestamp, cmd->passpoint.t_c_timestamp));
         if (osw_ssid_cmp(&state->passpoint.osu_ssid, &cmd->passpoint.osu_ssid) != 0)
-            LOGI("osw: confsync: %s/%s: passpoint_config: osu_ssid \'%s\' -> \'%s\'",
-             phy, vif, state->passpoint.osu_ssid.buf, cmd->passpoint.osu_ssid.buf);
+            LOGI(LOG_PREFIX("%s/%s: passpoint_config: osu_ssid \'%s\' -> \'%s\'",
+             phy, vif, state->passpoint.osu_ssid.buf, cmd->passpoint.osu_ssid.buf));
         if (STRSCMP(state->passpoint.t_c_filename, cmd->passpoint.t_c_filename) != 0)
-            LOGI("osw: confsync: %s/%s: passpoint_config: t_c_filename \'%s\' -> \'%s\'",
-             phy, vif, state->passpoint.t_c_filename, cmd->passpoint.t_c_filename);
+            LOGI(LOG_PREFIX("%s/%s: passpoint_config: t_c_filename \'%s\' -> \'%s\'",
+             phy, vif, state->passpoint.t_c_filename, cmd->passpoint.t_c_filename));
         if (STRSCMP(state->passpoint.anqp_elem, cmd->passpoint.anqp_elem) != 0)
-            LOGI("osw: confsync: %s/%s: passpoint_config: anqp_elem \'%s\' -> \'%s\'",
-             phy, vif, state->passpoint.anqp_elem, cmd->passpoint.anqp_elem);
+            LOGI(LOG_PREFIX("%s/%s: passpoint_config: anqp_elem \'%s\' -> \'%s\'",
+             phy, vif, state->passpoint.anqp_elem, cmd->passpoint.anqp_elem));
         /* TODO debug lists */
         osw_confsync_debug_passpoint_list(phy, vif, state->passpoint.domain_list, state->passpoint.domain_list_len,
                                           cmd->passpoint.domain_list, cmd->passpoint.domain_list_len,
@@ -802,46 +811,46 @@ osw_confsync_build_vif_ap_debug(const char *phy,
     }
 
     if (cmd->ft_encr_key_changed) {
-        LOGI("osw: confsync: %s/%s: ft_encr_key: "OSW_FT_ENCR_KEY_FMT" -> "OSW_FT_ENCR_KEY_FMT,
+        LOGI(LOG_PREFIX("%s/%s: ft_encr_key: "OSW_FT_ENCR_KEY_FMT" -> "OSW_FT_ENCR_KEY_FMT,
              phy, vif,
              OSW_FT_ENCR_KEY_ARG(&state->ft_encr_key),
-             OSW_FT_ENCR_KEY_ARG(&conf->ft_encr_key));
+             OSW_FT_ENCR_KEY_ARG(&conf->ft_encr_key)));
         *notified = true;
     }
 
     if (cmd->ft_over_ds_changed) {
-        LOGI("osw: confsync: %s/%s: ft_over_ds: %d -> %d",
-             phy, vif, state->ft_over_ds, conf->ft_over_ds);
+        LOGI(LOG_PREFIX("%s/%s: ft_over_ds: %d -> %d",
+             phy, vif, state->ft_over_ds, conf->ft_over_ds));
         *notified = true;
     }
 
     if (cmd->ft_pmk_r1_push_changed) {
-        LOGI("osw: confsync: %s/%s: ft_pmk_r1_push: %d -> %d",
-             phy, vif, state->ft_pmk_r1_push, conf->ft_pmk_r1_push);
+        LOGI(LOG_PREFIX("%s/%s: ft_pmk_r1_push: %d -> %d",
+             phy, vif, state->ft_pmk_r1_push, conf->ft_pmk_r1_push));
         *notified = true;
     }
 
     if (cmd->ft_psk_generate_local_changed) {
-        LOGI("osw: confsync: %s/%s: ft_psk_generate_local: %d -> %d",
-             phy, vif, state->ft_psk_generate_local, conf->ft_psk_generate_local);
+        LOGI(LOG_PREFIX("%s/%s: ft_psk_generate_local: %d -> %d",
+             phy, vif, state->ft_psk_generate_local, conf->ft_psk_generate_local));
         *notified = true;
     }
 
     if (cmd->ft_pmk_r0_key_lifetime_sec_changed) {
-        LOGI("osw: confsync: %s/%s: ft_pmk_r0_key_lifetime_sec: %d -> %d",
-             phy, vif, state->ft_pmk_r0_key_lifetime_sec, conf->ft_pmk_r0_key_lifetime_sec);
+        LOGI(LOG_PREFIX("%s/%s: ft_pmk_r0_key_lifetime_sec: %d -> %d",
+             phy, vif, state->ft_pmk_r0_key_lifetime_sec, conf->ft_pmk_r0_key_lifetime_sec));
         *notified = true;
     }
 
     if (cmd->ft_pmk_r1_max_key_lifetime_sec_changed) {
-        LOGI("osw: confsync: %s/%s: ft_pmk_r1_max_key_lifetime_sec: %d -> %d",
-             phy, vif, state->ft_pmk_r1_max_key_lifetime_sec, conf->ft_pmk_r1_max_key_lifetime_sec);
+        LOGI(LOG_PREFIX("%s/%s: ft_pmk_r1_max_key_lifetime_sec: %d -> %d",
+             phy, vif, state->ft_pmk_r1_max_key_lifetime_sec, conf->ft_pmk_r1_max_key_lifetime_sec));
         *notified = true;
     }
 
     if (cmd->ft_mobility_domain_changed) {
-        LOGI("osw: confsync: %s/%s: ft_mobility_domain: %d -> %d",
-             phy, vif, state->ft_mobility_domain, conf->ft_mobility_domain);
+        LOGI(LOG_PREFIX("%s/%s: ft_mobility_domain: %d -> %d",
+             phy, vif, state->ft_mobility_domain, conf->ft_mobility_domain));
         *notified = true;
     }
 }
@@ -913,12 +922,12 @@ osw_confsync_build_vif_sta_debug(const char *phy,
         char to[1024];
         osw_confsync_net_to_str(from, sizeof(from), state->network);
         osw_confsync_net_to_str(to, sizeof(to), cmd->network);
-        LOGI("osw: confsync: %s/%s: net list: %s -> %s", phy, vif, from, to);
+        LOGI(LOG_PREFIX("%s/%s: net list: %s -> %s", phy, vif, from, to));
         *notified = true;
     }
 
     if (op_str != NULL) {
-        LOGI("osw: confsync: %s/%s: op: %s", phy, vif, op_str);
+        LOGI(LOG_PREFIX("%s/%s: op: %s", phy, vif, op_str));
         *notified = true;
     }
 }
@@ -940,14 +949,23 @@ osw_confsync_build_vif_debug(const struct osw_drv_vif_config *cmd,
     if (cmd->vif_type_changed) {
         const char *from = osw_vif_type_to_str(state->vif_type);
         const char *to = osw_vif_type_to_str(conf->vif_type);
-        LOGI("osw: confsync: %s/%s: vif_type: %s -> %s",
-             phy, vif, from, to);
+        LOGI(LOG_PREFIX("%s/%s: vif_type: %s -> %s",
+             phy, vif, from, to));
         notified = true;
     }
 
-    if (cmd->tx_power_dbm_changed) {
-        LOGI("osw: confsync: %s/%s: tx_power_dbm: %d -> %d",
-             phy, vif, state->tx_power_dbm, conf->tx_power_dbm);
+    if (cmd->tx_power_changed) {
+        LOGI(LOG_PREFIX("%s/%s: tx_power:"
+             " dbm: %d -> %d,"
+             " percent: %d -> %d,"
+             " db_limit: %d(%s) -> %d(%s)",
+             phy, vif,
+             state->tx_power_dbm, conf->tx_power_dbm,
+             state->tx_power_percent, conf->tx_power_percent,
+             state->tx_power_db_limit,
+             state->tx_power_db_limit_valid ? "valid" : "n/a",
+             conf->tx_power_db_limit,
+             conf->tx_power_db_limit_valid ? "valid" : "n/a"));
         notified = true;
     }
 
@@ -975,7 +993,7 @@ osw_confsync_build_vif_debug(const struct osw_drv_vif_config *cmd,
     }
 
     if (cmd->changed && !notified) {
-        LOGI("osw: confsync: %s/%s: changed", phy, vif);
+        LOGI(LOG_PREFIX("%s/%s: changed", phy, vif));
     }
 }
 
@@ -1116,6 +1134,56 @@ osw_confsync_vif_ap_radius_list_changed(struct ds_dlist *a, const struct osw_rad
     return false;
 }
 
+/* Best-effort reduction of a neighbor's op_class to its 20MHz variant. The
+ * conversion is channel-aware: it maps each (op_class, primary channel) to the
+ * canonical 20MHz op_class of that specific sub-band (eg. ch 36-48 -> 115,
+ * ch 100-116 -> 121, 6GHz ch 1 -> 131). Returns the original op_class when the
+ * conversion is not possible. */
+static uint8_t
+osw_confsync_neigh_op_class_20mhz(const struct osw_neigh *n)
+{
+    uint8_t op_class = n->op_class;
+    if (n->op_class > 0 && n->channel > 0)
+        WARN_ON(osw_op_class_to_20mhz(n->op_class, n->channel, &op_class) == false);
+    return op_class;
+}
+
+/* Opportunistically emit neighbors with the 20MHz op_class variant. This is
+ * applied to the driver-bound lists only; ow_conf keeps the real op_class so
+ * other consumers (eg. steering) still see the actual channel width. Drivers
+ * are free to override it based on local conditions - the drift detection
+ * tolerates that as long as the primary stays the same. */
+static void
+osw_confsync_neigh_list_downgrade(struct osw_neigh_list *list)
+{
+    size_t i;
+    for (i = 0; i < list->count; i++)
+        list->list[i].op_class = osw_confsync_neigh_op_class_20mhz(&list->list[i]);
+}
+
+/* Two neighbors are considered in-sync when they point at the same primary.
+ * Only the primary is enforced - the channel plus the op_class reduced to its
+ * 20MHz variant - because the remaining fields are advisory and drivers may
+ * legitimately recompute them from the real BSS, which would otherwise show up
+ * as a permanent drift and re-apply loop:
+ *  - op_class width (eg. BCM rewrites a 320MHz op_class to 160MHz); it must
+ *    still resolve to the same primary channel / band,
+ *  - bssid_info capability bits (reachability/security/HT/VHT/... ); the
+ *    substantive FT config is tracked separately in the neigh_ft tree.
+ * The reduced op_class encodes the band + sub-band while the channel pins the
+ * exact primary within it - both are needed, eg. 2.4GHz ch 1 (op_class 81) and
+ * 6GHz ch 1 (op_class 131) share the channel number but are different
+ * neighbors, and op_class 121 alone spans ch 100-116. bssid is already matched
+ * by the caller (the neighbor tree is keyed by it). */
+static bool
+osw_confsync_neigh_in_sync(const struct osw_neigh *a, const struct osw_neigh *b)
+{
+    if (a->channel != b->channel) return false;
+    if (a->phy_type != b->phy_type) return false;
+    if (osw_confsync_neigh_op_class_20mhz(a) != osw_confsync_neigh_op_class_20mhz(b)) return false;
+    return true;
+}
+
 static bool
 osw_confsync_vif_ap_neigh_tree_changed(struct ds_tree *a, const struct osw_neigh_list *b)
 {
@@ -1129,10 +1197,7 @@ osw_confsync_vif_ap_neigh_tree_changed(struct ds_tree *a, const struct osw_neigh
         const struct osw_neigh *p = &b->list[i];
         const struct osw_conf_neigh *q = ds_tree_find(a, p);
         if (q == NULL) return true;
-        if (p->bssid_info != q->neigh.bssid_info) return true;
-        if (p->op_class != q->neigh.op_class) return true;
-        if (p->channel != q->neigh.channel) return true;
-        if (p->phy_type != q->neigh.phy_type) return true;
+        if (osw_confsync_neigh_in_sync(p, &q->neigh) == false) return true;
     }
 
     return false;
@@ -1377,10 +1442,10 @@ osw_confsync_vif_ap_mark_changed(struct osw_drv_vif_config *dvif,
              * at INFO so it's visible when it happens.
              */
             const char *vif_name = cvif->vif_name;
-            LOGI("osw: confsync: %s: csa impossible due to cac (running=%d bugged=%d)",
+            LOGI(LOG_PREFIX("%s: csa impossible due to cac (running=%d bugged=%d)",
                  vif_name,
                  cac_running,
-                 cac_bugged);
+                 cac_bugged));
         }
 
         dvif->u.ap.csa_required = csa_eligible && !(cac_running || cac_bugged);
@@ -1446,7 +1511,7 @@ osw_confsync_vif_ap_neigh_filter_del(struct osw_neigh_list *output,
         const struct osw_neigh *cn = ccn ? &ccn->neigh : NULL;
 
         const bool missing_in_conf = (cn == NULL);
-        const bool modified = (cn != NULL && (memcmp(sn, cn, sizeof(*sn)) != 0));
+        const bool modified = (cn != NULL && osw_confsync_neigh_in_sync(sn, cn) == false);
         enum osw_confsync_vif_ap_neigh_action action;
         const struct osw_neigh *n = sn;
 
@@ -1487,7 +1552,7 @@ osw_confsync_vif_ap_neigh_filter_add(struct osw_neigh_list *output,
         }
 
         const bool missing_in_state = (sn == NULL);
-        const bool modified = (sn != NULL && (memcmp(sn, cn, sizeof(*sn)) != 0));
+        const bool modified = (sn != NULL && osw_confsync_neigh_in_sync(sn, cn) == false);
         enum osw_confsync_vif_ap_neigh_action action;
 
         if (missing_in_state) {
@@ -1655,6 +1720,7 @@ osw_confsync_build_drv_conf_vif_ap(struct osw_drv_vif_config *dvif,
 
         dvif->u.ap.neigh_list.list = neighs;
         dvif->u.ap.neigh_list.count = n;
+        osw_confsync_neigh_list_downgrade(&dvif->u.ap.neigh_list);
     }
     {
         struct osw_neigh_ft *neighs_ft;
@@ -1765,6 +1831,10 @@ osw_confsync_build_drv_conf_vif_ap(struct osw_drv_vif_config *dvif,
                                          &cvif->u.ap.neigh_tree,
                                          &svif->u.ap.neigh_list,
                                          OSW_CONFSYNC_VIF_AP_NEIGH_DEL);
+
+        /* neigh_del_list only carries the bssid to remove, so it is left as-is. */
+        osw_confsync_neigh_list_downgrade(&dvif->u.ap.neigh_add_list);
+        osw_confsync_neigh_list_downgrade(&dvif->u.ap.neigh_mod_list);
     }
 }
 
@@ -1803,8 +1873,8 @@ osw_confsync_build_drv_conf_vif_sta_op(struct osw_drv_vif_config *dvif,
                     }
                 case OSW_DRV_VIF_STATE_STA_LINK_DISCONNECTED:
                     if (channel_changed) {
-                        LOGI("osw: confsync: %s: postponing connect (from disconnected) due to channel change",
-                             dvif->vif_name);
+                        LOGI(LOG_PREFIX("%s: postponing connect (from disconnected) due to channel change",
+                             dvif->vif_name));
                         /* This is intentionally doing DISCONNECT
                          * instead of NOP in order to allow the tandem
                          * MLO re-connect.
@@ -2050,9 +2120,16 @@ osw_confsync_build_drv_conf_vif_sta(struct osw_drv_vif_config *dvif,
     dsta->network = osw_confsync_build_drv_conf_vif_sta_net_list(csta);
     dsta->network_changed = osw_confsync_vif_sta_net_list_changed(ssta, dsta);
     dsta->network_changed &= allow_changed;
+
+    /* CHANNEL_ROAM_UNSPECIFIED config means: leave it as is */
+    dsta->allow_roam_channels = csta->allow_roam_channels;
+    dsta->allow_roam_channels_changed = (csta->allow_roam_channels != OSW_DRV_CHANNEL_ROAM_UNSPECIFIED)
+                                            && (ssta->allow_roam_channels != csta->allow_roam_channels);
+    dsta->allow_roam_channels_changed &= allow_changed;
     dsta->operation = osw_confsync_build_drv_conf_vif_sta_op(dvif, svif, channel_changed, dsta->network_changed);
 
     dvif->changed |= dsta->network_changed;
+    dvif->changed |= dsta->allow_roam_channels_changed;
     dvif->changed |= (dsta->operation != OSW_DRV_VIF_CONFIG_STA_NOP);
     dvif->changed &= allow_changed;
 }
@@ -2105,7 +2182,7 @@ osw_confsync_mbss_start(struct osw_confsync *cs,
     const bool already_started = osw_timer_is_armed(&cs_phy->mbss_timeout);
     if (already_started) return;
 
-    LOGD("osw: confsync: %s: mbss: started", phy_name);
+    LOGD(LOG_PREFIX("%s: mbss: started", phy_name));
     const uint64_t expire_at = osw_time_mono_clk()
                              + OSW_TIME_SEC(OSW_CONFSYNC_ENABLE_PERIOD_SEC);
     osw_timer_arm_at_nsec(&cs_phy->mbss_timeout, expire_at);
@@ -2118,10 +2195,68 @@ osw_confsync_mbss_reset(struct osw_confsync *cs)
     ds_tree_foreach(&cs->phys, cs_phy) {
         if (osw_timer_is_armed(&cs_phy->mbss_timeout)) {
             const char *phy_name = cs_phy->phy_name;
-            LOGD("osw: confsync: %s: mbss: disarmed", phy_name);
+            LOGD(LOG_PREFIX("%s: mbss: disarmed", phy_name));
             osw_timer_disarm(&cs_phy->mbss_timeout);
         }
     }
+}
+
+static void
+osw_confsync_radar_backoff_start(struct osw_confsync *cs,
+                         const char *phy_name)
+{
+    struct osw_confsync_phy *cs_phy = ds_tree_find(&cs->phys, phy_name);
+    if (cs_phy == NULL) {
+        cs_phy = osw_confsync_phy_new(cs, phy_name);
+    }
+
+    const uint64_t expire_at = osw_time_mono_clk()
+                             + OSW_TIME_SEC(OSW_CONFSYNC_RADAR_PERIOD_SEC);
+    osw_timer_arm_at_nsec(&cs_phy->radar_timeout, expire_at);
+    LOGN(LOG_PREFIX("%s: radar: deferring for %d s",
+         phy_name, OSW_CONFSYNC_RADAR_PERIOD_SEC));
+}
+
+static bool
+osw_confsync_tx_power_unresolved(const struct osw_conf_vif *cvif)
+{
+    return (cvif->tx_power_dbm == 0)
+        && (cvif->tx_power_percent > 0 || cvif->tx_power_db_limit_valid);
+}
+
+static bool
+osw_confsync_tx_power_changed(const struct osw_conf_vif *cvif,
+                              const struct osw_drv_vif_state *svif)
+{
+    if (cvif->tx_power_percent == 100)
+        return (svif->tx_power_percent != 100);
+
+    if (osw_confsync_tx_power_unresolved(cvif))
+        return false;
+
+    /* The vif is currently running unrestricted (driver reports auto), but the
+     * desired config is a concrete limit. Force a reconfiguration so the driver
+     * leaves auto mode, even when the requested dBm happens to equal the current
+     * auto-selected level. */
+    if (svif->tx_power_percent == 100)
+        return true;
+
+    return (cvif->tx_power_dbm != svif->tx_power_dbm);
+}
+
+static void
+osw_confsync_build_drv_conf_vif_tx_power(const struct osw_conf_vif *cvif,
+                                         const struct osw_drv_vif_state *svif,
+                                         struct osw_drv_vif_config *dvif)
+{
+    const bool changed = osw_confsync_tx_power_changed(cvif, svif);
+
+    dvif->changed |= (dvif->tx_power_dbm_changed = changed);
+    dvif->changed |= (dvif->tx_power_changed = changed);
+    dvif->tx_power_dbm = cvif->tx_power_dbm;
+    dvif->tx_power_percent = cvif->tx_power_percent;
+    dvif->tx_power_db_limit = cvif->tx_power_db_limit;
+    dvif->tx_power_db_limit_valid = cvif->tx_power_db_limit_valid;
 }
 
 static void
@@ -2164,6 +2299,7 @@ osw_confsync_build_drv_conf_vif(struct osw_confsync_arg *arg,
                    || arg->mbss_ongoing
                    || arg->cac_ongoing
                    || arg->cac_planned
+                   || arg->radar_ongoing
                    || deferred;
 
     dvif->changed = false;
@@ -2171,19 +2307,26 @@ osw_confsync_build_drv_conf_vif(struct osw_confsync_arg *arg,
         const bool enabled_changed = osw_confsync_vif_enabled_changed(svif->status, dvif->enabled);
         dvif->changed |= (dvif->enabled_changed = enabled_changed);
         dvif->changed |= (dvif->vif_type_changed = (cvif->vif_type != svif->vif_type));
-        dvif->changed |= (dvif->tx_power_dbm_changed = cvif->tx_power_dbm != svif->tx_power_dbm);
+
+        osw_confsync_build_drv_conf_vif_tx_power(cvif, svif, dvif);
     }
 
     if (arg->cac_planned) {
-        LOGD("osw: confsync: %s/%s: skipping because another vif is planned to do cac",
+        LOGD(LOG_PREFIX("%s/%s: skipping because another vif is planned to do cac",
                 cvif->phy->phy_name,
-                cvif->vif_name);
+                cvif->vif_name));
     }
 
     if (arg->cac_ongoing) {
-        LOGD("osw: confsync: %s/%s: skipping because phy is already doing cac",
+        LOGD(LOG_PREFIX("%s/%s: skipping because phy is already doing cac",
                 cvif->phy->phy_name,
-                cvif->vif_name);
+                cvif->vif_name));
+    }
+
+    if (arg->radar_ongoing) {
+        LOGD(LOG_PREFIX("%s/%s: skipping because phy radar defer is ongoing",
+                cvif->phy->phy_name,
+                cvif->vif_name));
     }
 
     switch (cvif->vif_type) {
@@ -2209,11 +2352,11 @@ osw_confsync_build_drv_conf_vif(struct osw_confsync_arg *arg,
     }
 
     if (dvif->enabled_changed) {
-        LOGI("osw: confsync: %s/%s: enabled: %s -> %s",
+        LOGI(LOG_PREFIX("%s/%s: enabled: %s -> %s",
              cvif->phy->phy_name,
              cvif->vif_name,
              osw_vif_status_into_cstr(svif->status),
-             dvif->enabled ? "enabled" : "disabled");
+             dvif->enabled ? "enabled" : "disabled"));
     }
 
     if (skip) {
@@ -2318,6 +2461,14 @@ osw_confsync_mbss_is_ongoing(struct osw_confsync *cs,
     return (cs_phy != NULL) && osw_timer_is_armed(&cs_phy->mbss_timeout);
 }
 
+static bool
+osw_confsync_radar_is_ongoing(struct osw_confsync *cs,
+                              const char *phy_name)
+{
+    struct osw_confsync_phy *cs_phy = ds_tree_find(&cs->phys, phy_name);
+    return (cs_phy != NULL) && osw_timer_is_armed(&cs_phy->radar_timeout);
+}
+
 static void
 osw_confsync_build_drv_conf_phy_cb(const struct osw_state_phy_info *phy,
                                    void *priv)
@@ -2330,6 +2481,7 @@ osw_confsync_build_drv_conf_phy_cb(const struct osw_state_phy_info *phy,
     arg->cac_planned = false;
     arg->channel_changed = false;
     arg->mbss_ongoing = osw_confsync_mbss_is_ongoing(arg->confsync, phy->phy_name);
+    arg->radar_ongoing = osw_confsync_radar_is_ongoing(arg->confsync, phy->phy_name);
     arg->cac_ongoing = (osw_confsync_cac_is_ongoing(phy) == true)
                     && (osw_confsync_cac_is_timed_out(arg->confsync, phy) == false);
     assert(arg->cphy != NULL);
@@ -2416,12 +2568,12 @@ osw_confsync_build_mld_sta_tandem_op(struct osw_confsync_arg *arg)
 
             if (vif->u.sta.operation != op) {
                 const char *phy_name = phy->phy_name;
-                LOGI("osw: confsync: "OSW_HWADDR_FMT": %s/%s: op: override: %s -> %s",
+                LOGI(LOG_PREFIX(OSW_HWADDR_FMT": %s/%s: op: override: %s -> %s",
                      OSW_HWADDR_ARG(mld_addr),
                      phy_name,
                      vif_name,
                      osw_confsync_sta_op_to_str(vif->u.sta.operation) ?: "",
-                     osw_confsync_sta_op_to_str(op) ?: "");
+                     osw_confsync_sta_op_to_str(op) ?: ""));
                 vif->u.sta.operation = op;
             }
 
@@ -2446,12 +2598,12 @@ osw_confsync_build_mld_sta_tandem_op(struct osw_confsync_arg *arg)
 
                     if (other_vif->u.sta.operation != op) {
                         const char *other_phy_name = other_phy->phy_name;
-                        LOGI("osw: confsync: "OSW_HWADDR_FMT": %s/%s: op: override: %s -> %s",
+                        LOGI(LOG_PREFIX(OSW_HWADDR_FMT": %s/%s: op: override: %s -> %s",
                              OSW_HWADDR_ARG(mld_addr),
                              other_phy_name,
                              other_vif_name,
                              osw_confsync_sta_op_to_str(other_vif->u.sta.operation) ?: "",
-                             osw_confsync_sta_op_to_str(op) ?: "");
+                             osw_confsync_sta_op_to_str(op) ?: ""));
                         other_vif->u.sta.operation = op;
                     }
                 }
@@ -2492,7 +2644,7 @@ osw_confsync_set_state(struct osw_confsync *cs, enum osw_confsync_state s)
         case OSW_CONFSYNC_IDLE:
             osw_confsync_defer_flush(cs);
             osw_confsync_mbss_reset(cs);
-            if (cs->settled == false) LOGN("osw: confsync: settled");
+            if (cs->settled == false) LOGN(LOG_PREFIX("settled"));
             cs->settled = true;
             ev_timer_stop(EV_DEFAULT_ &cs->retry);
             ev_idle_stop(EV_DEFAULT_ &cs->work);
@@ -2510,7 +2662,7 @@ osw_confsync_set_state(struct osw_confsync *cs, enum osw_confsync_state s)
             ev_idle_start(EV_DEFAULT_ &cs->work);
             break;
         case OSW_CONFSYNC_WAITING:
-            if (cs->settled == true) LOGN("osw: confsync: unsettled");
+            if (cs->settled == true) LOGN(LOG_PREFIX("unsettled"));
             cs->settled = false;
             ev_idle_stop(EV_DEFAULT_ &cs->work);
             ev_timer_stop(EV_DEFAULT_ &cs->deadline);
@@ -2552,7 +2704,7 @@ osw_confsync_conf_is_synced(struct osw_confsync *cs)
 static void
 osw_confsync_work(struct osw_confsync *cs)
 {
-    LOGD("osw: confsync: work");
+    LOGD(LOG_PREFIX("work"));
 
     switch (cs->state) {
         case OSW_CONFSYNC_IDLE:
@@ -2562,12 +2714,12 @@ osw_confsync_work(struct osw_confsync *cs)
                 const bool debug = true;
                 struct ds_tree *phy_tree = cs->build_conf();
                 if (osw_conf_is_equal(cs->last_phy_tree, phy_tree) == true) {
-                    LOGI("osw: confsync: last config request is same as previous -> moving to state verifying");
+                    LOGI(LOG_PREFIX("last config request is same as previous -> moving to state verifying"));
                     osw_conf_free(phy_tree);
                     osw_confsync_set_state(cs, OSW_CONFSYNC_VERIFYING);
                     break;
                 }
-                LOGT("osw: confsync: current conf differs than last requested config");
+                LOGT(LOG_PREFIX("current conf differs than last requested config"));
                 osw_conf_free(cs->last_phy_tree);
                 cs->last_phy_tree = phy_tree;
 
@@ -2620,7 +2772,7 @@ static void
 osw_confsync_deadline_cb(EV_P_  ev_timer *arg, int events)
 {
     struct osw_confsync *cs = container_of(arg, struct osw_confsync, deadline);
-    LOGN("osw: confsync: work deadline reached, ignoring non-idle mainloop");
+    LOGN(LOG_PREFIX("work deadline reached, ignoring non-idle mainloop"));
     osw_confsync_work(cs);
 }
 
@@ -2649,6 +2801,17 @@ osw_confsync_state_changed(struct osw_confsync *cs)
 }
 
 static void
+osw_confsync_phy_gc(struct osw_confsync_phy *phy)
+{
+    if (osw_timer_is_armed(&phy->cac_timeout)) return;
+    if (osw_timer_is_armed(&phy->mbss_timeout)) return;
+    if (osw_timer_is_armed(&phy->radar_timeout)) return;
+    ds_tree_remove(&phy->cs->phys, phy);
+    FREE(phy->phy_name);
+    FREE(phy);
+}
+
+static void
 osw_confsync_conf_changed(struct osw_confsync *cs)
 {
     osw_confsync_set_state(cs, OSW_CONFSYNC_REQUESTING);
@@ -2660,8 +2823,9 @@ osw_confsync_cac_timeout_cb(struct osw_timer *t)
     struct osw_confsync_phy *phy = container_of(t, typeof(*phy), cac_timeout);
     const char *phy_name = phy->phy_name;
 
-    LOGN("osw: confsync: %s: cac: timed out", phy_name);
+    LOGN(LOG_PREFIX("%s: cac: timed out", phy_name));
     osw_confsync_state_changed(phy->cs);
+    osw_confsync_phy_gc(phy);
 }
 
 static void
@@ -2670,8 +2834,19 @@ osw_confsync_mbss_timeout_cb(struct osw_timer *t)
     struct osw_confsync_phy *phy = container_of(t, typeof(*phy), mbss_timeout);
     const char *phy_name = phy->phy_name;
 
-    LOGD("osw: confsync: %s: mbss: timed out", phy_name);
+    LOGD(LOG_PREFIX("%s: mbss: timed out", phy_name));
     osw_confsync_state_changed(phy->cs);
+}
+
+static void
+osw_confsync_radar_timeout_cb(struct osw_timer *t)
+{
+    struct osw_confsync_phy *phy = container_of(t, typeof(*phy), radar_timeout);
+    const char *phy_name = phy->phy_name;
+
+    LOGN(LOG_PREFIX("%s: radar: timed out", phy_name));
+    osw_confsync_state_changed(phy->cs);
+    osw_confsync_phy_gc(phy);
 }
 
 static uint64_t
@@ -2695,16 +2870,6 @@ osw_confsync_cac_get_time(const struct osw_state_phy_info *phy)
     return max;
 }
 
-static void
-osw_confsync_phy_gc(struct osw_confsync_phy *phy)
-{
-    if (osw_timer_is_armed(&phy->cac_timeout)) return;
-    if (osw_timer_is_armed(&phy->mbss_timeout)) return;
-    ds_tree_remove(&phy->cs->phys, phy);
-    FREE(phy->phy_name);
-    FREE(phy);
-}
-
 static struct osw_confsync_phy *
 osw_confsync_phy_new(struct osw_confsync *cs,
                      const char *phy_name)
@@ -2715,6 +2880,7 @@ osw_confsync_phy_new(struct osw_confsync *cs,
     ds_tree_insert(&cs->phys, cs_phy, cs_phy->phy_name);
     osw_timer_init(&cs_phy->cac_timeout, osw_confsync_cac_timeout_cb);
     osw_timer_init(&cs_phy->mbss_timeout, osw_confsync_mbss_timeout_cb);
+    osw_timer_init(&cs_phy->radar_timeout, osw_confsync_radar_timeout_cb);
     return cs_phy;
 }
 
@@ -2733,10 +2899,10 @@ osw_confsync_cac_update(struct osw_confsync *cs,
         if (cs_phy != NULL) {
             if (osw_timer_is_armed(&cs_phy->cac_timeout)) {
                 osw_timer_disarm(&cs_phy->cac_timeout);
-                LOGI("osw: confsync: %s: cac: completed", phy_name);
+                LOGI(LOG_PREFIX("%s: cac: completed", phy_name));
             }
             else {
-                LOGN("osw: confsync: %s: cac: completed after timeout", phy_name);
+                LOGN(LOG_PREFIX("%s: cac: completed after timeout", phy_name));
             }
             osw_confsync_phy_gc(cs_phy);
         }
@@ -2745,27 +2911,27 @@ osw_confsync_cac_update(struct osw_confsync *cs,
         cs_phy = osw_confsync_phy_new(cs, phy_name);
         osw_timer_arm_at_nsec(&cs_phy->cac_timeout, at);
 
-        LOGN("osw: confsync: %s: cac: started: %"PRIu64" seconds",
-             phy_name, sec);
+        LOGN(LOG_PREFIX("%s: cac: started: %"PRIu64" seconds",
+             phy_name, sec));
     }
     else if (osw_timer_is_armed(&cs_phy->cac_timeout) == false) {
         osw_timer_arm_at_nsec(&cs_phy->cac_timeout, at);
 
-        LOGN("osw: confsync: %s: cac: started: %"PRIu64" seconds (but previous cac hasn't finished!)",
-             phy_name, sec);
+        LOGN(LOG_PREFIX("%s: cac: started: %"PRIu64" seconds (but previous cac hasn't finished!)",
+             phy_name, sec));
     }
 }
 
 static void
 osw_confsync_state_busy_cb(struct osw_state_observer *o)
 {
-    LOGD("osw: confsync: state: busy");
+    LOGD(LOG_PREFIX("state: busy"));
 }
 
 static void
 osw_confsync_state_idle_cb(struct osw_state_observer *o)
 {
-    LOGD("osw: confsync: state: idle");
+    LOGD(LOG_PREFIX("state: idle"));
 }
 
 static void
@@ -2773,7 +2939,7 @@ osw_confsync_state_phy_added_cb(struct osw_state_observer *o,
                                 const struct osw_state_phy_info *phy)
 {
     struct osw_confsync *cs = container_of(o, struct osw_confsync, state_obs);
-    LOGD("osw: confsync: state: %s: added", phy->phy_name);
+    LOGD(LOG_PREFIX("state: %s: added", phy->phy_name));
     osw_confsync_cac_update(cs, phy);
     /* This, and other cases of conf_changed() called for
      * state observer is intentional. When entities
@@ -2790,7 +2956,7 @@ osw_confsync_state_phy_changed_cb(struct osw_state_observer *o,
                                   const struct osw_state_phy_info *phy)
 {
     struct osw_confsync *cs = container_of(o, struct osw_confsync, state_obs);
-    LOGD("osw: confsync: state: %s: changed", phy->phy_name);
+    LOGD(LOG_PREFIX("state: %s: changed", phy->phy_name));
     osw_confsync_cac_update(cs, phy);
     osw_confsync_state_changed(cs);
 }
@@ -2800,7 +2966,7 @@ osw_confsync_state_phy_removed_cb(struct osw_state_observer *o,
                                   const struct osw_state_phy_info *phy)
 {
     struct osw_confsync *cs = container_of(o, struct osw_confsync, state_obs);
-    LOGD("osw: confsync: state: %s: removed", phy->phy_name);
+    LOGD(LOG_PREFIX("state: %s: removed", phy->phy_name));
     osw_confsync_cac_update(cs, phy);
     osw_confsync_conf_changed(cs);
 }
@@ -2810,7 +2976,7 @@ osw_confsync_state_vif_added_cb(struct osw_state_observer *o,
                                 const struct osw_state_vif_info *vif)
 {
     struct osw_confsync *cs = container_of(o, struct osw_confsync, state_obs);
-    LOGD("osw: confsync: state: %s/%s: added", vif->phy->phy_name, vif->vif_name);
+    LOGD(LOG_PREFIX("state: %s/%s: added", vif->phy->phy_name, vif->vif_name));
     osw_confsync_defer_vif_enable_stop(cs, vif);
     osw_confsync_conf_changed(cs);
 }
@@ -2820,9 +2986,22 @@ osw_confsync_state_vif_changed_cb(struct osw_state_observer *o,
                                   const struct osw_state_vif_info *vif)
 {
     struct osw_confsync *cs = container_of(o, struct osw_confsync, state_obs);
-    LOGD("osw: confsync: state: %s/%s: changed", vif->phy->phy_name, vif->vif_name);
+    LOGD(LOG_PREFIX("state: %s/%s: changed", vif->phy->phy_name, vif->vif_name));
     osw_confsync_defer_vif_enable_stop(cs, vif);
     osw_confsync_state_changed(cs);
+}
+
+static void
+osw_confsync_state_vif_radar_detected_cb(struct osw_state_observer *o,
+                                         const struct osw_state_vif_info *vif,
+                                         const struct osw_channel *channel)
+{
+    struct osw_confsync *cs = container_of(o, struct osw_confsync, state_obs);
+    LOGN(LOG_PREFIX("state: %s/%s: radar detected on "OSW_CHANNEL_FMT,
+         vif->phy->phy_name,
+         vif->vif_name,
+         OSW_CHANNEL_ARG(channel)));
+    osw_confsync_radar_backoff_start(cs, vif->phy->phy_name);
 }
 
 static void
@@ -2830,7 +3009,7 @@ osw_confsync_state_vif_removed_cb(struct osw_state_observer *o,
                                   const struct osw_state_vif_info *vif)
 {
     struct osw_confsync *cs = container_of(o, struct osw_confsync, state_obs);
-    LOGD("osw: confsync: state: %s/%s: removed", vif->phy->phy_name, vif->vif_name);
+    LOGD(LOG_PREFIX("state: %s/%s: removed", vif->phy->phy_name, vif->vif_name));
     osw_confsync_defer_vif_enable_stop(cs, vif);
     osw_confsync_conf_changed(cs);
 }
@@ -2845,7 +3024,7 @@ osw_confsync_conf_mutated_cb(struct osw_conf_observer *o)
 static void osw_confsync_phy_tree_timeout_cb(EV_P_  ev_timer *arg, int events)
 {
     struct osw_confsync *cs = container_of(arg, struct osw_confsync, last_phy_tree_timeout);
-    LOGT("osw: confsync: last phy tree timer expired, flusing last phy_tree");
+    LOGT(LOG_PREFIX("last phy tree timer expired, flusing last phy_tree"));
     osw_conf_free(cs->last_phy_tree);
     cs->last_phy_tree = NULL;
     ev_timer_stop(EV_DEFAULT_ &cs->last_phy_tree_timeout);
@@ -2865,6 +3044,7 @@ osw_confsync_init(struct osw_confsync *cs)
         .phy_removed_fn = osw_confsync_state_phy_removed_cb,
         .vif_added_fn = osw_confsync_state_vif_added_cb,
         .vif_changed_fn = osw_confsync_state_vif_changed_cb,
+        .vif_radar_detected_fn = osw_confsync_state_vif_radar_detected_cb,
         .vif_removed_fn = osw_confsync_state_vif_removed_cb,
     };
     const struct osw_conf_observer conf_obs = {

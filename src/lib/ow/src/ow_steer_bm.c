@@ -37,6 +37,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <dpp_types.h>
 #include <dpp_bs_client.h>
 #include <dppline.h>
+#include "ow_steer_bm_mlo.h"
 #include <osw_types.h>
 #include <osw_conf.h>
 #include <osw_time.h>
@@ -307,6 +308,7 @@ struct ow_steer_bm_sta_link {
     struct ds_tree_node node;
     struct osw_hwaddr bssid;
     struct osw_hwaddr addr;
+    bool bps_activity;
 };
 
 struct ow_steer_bm_btm_params {
@@ -398,6 +400,7 @@ static struct osw_state_observer g_state_observer = {
 static struct osw_stats_subscriber *g_stats_subscriber;
 static struct osw_timer g_work_timer;
 static struct osw_timer g_stats_timer;
+static ow_steer_bm_mlo_t *g_ow_steer_bm_mlo;
 
 static bool
 ow_steer_bm_vif_is_ready(const struct ow_steer_bm_vif *vif);
@@ -471,6 +474,13 @@ ow_steer_bm_get_client_vif_stats(const struct osw_hwaddr *addr,
 
 static struct ow_steer_bm_event_stats*
 ow_steer_bm_get_new_client_event_stats(struct ow_steer_bm_vif_stats *vif_stats);
+
+static void
+ow_steer_bm_mlo_hook_misc(const struct osw_hwaddr *sta_addr,
+                          dpp_bs_client_event_type_t subtype);
+
+static const struct osw_state_vif_info *
+ow_steer_bm_sta_link_get_vif_info(const struct ow_steer_bm_sta_link *link);
 
 #define OW_STEER_BM_SCHEDULE_WORK                                                                       \
     do {                                                                                                \
@@ -983,6 +993,266 @@ ow_steer_bm_stats_set_connect(const struct osw_hwaddr *sta_addr,
     client_event_stats->set_rssi_later = true;
 }
 
+static bool
+ow_steer_bm_assoc_req_is_band_capable(const struct osw_assoc_req_info *info,
+                                      const enum osw_band band)
+{
+    ASSERT(info != NULL, "");
+
+    if (info->op_class_cnt != 0) {
+        unsigned int i;
+        for (i = 0; i < info->op_class_cnt; i++) {
+            const unsigned int op_class = info->op_class_list[i];
+            enum osw_band curr_band;
+            curr_band = osw_op_class_to_band(op_class);
+            if (curr_band == OSW_BAND_UNDEFINED) {
+                LOGN(LOG_PREFIX("could not convert op_class number"
+                     " to band, op_class: %d",
+                     op_class));
+                continue;
+            }
+            if (curr_band == band) return true;
+        }
+        return false;
+    }
+
+    if (info->channel_cnt != 0) {
+        unsigned int i;
+        for (i = 0; i < info->channel_cnt; i++) {
+            struct osw_channel osw_chan;
+            const unsigned int chan = info->channel_list[i];
+            const bool ok = osw_channel_from_channel_num_width(info->channel_list[i],
+                                                               OSW_CHANNEL_20MHZ,
+                                                               &osw_chan);
+            if (ok == false) {
+                LOGN(LOG_PREFIX("could not convert channel number"
+                     " to 20MHz osw_channel, channel: %d",
+                     chan));
+                continue;
+            }
+            enum osw_band curr_band = osw_channel_to_band(&osw_chan);
+
+            /* The Supported Channels Element _cannot_
+             * represent 6GHz channels. The spec requires
+             * 6GHz clients to use Operating Classes
+             * Element. This prevents mis-reporting some 5GHz
+             * channels as 6GHz channels.
+             */
+            if (curr_band == OSW_BAND_6GHZ) continue;
+
+            if (curr_band == band) return true;
+        }
+        return false;
+    }
+
+    LOGN(LOG_PREFIX("assoc_req_is_band_capable: no channels nor op_classes in assoc request"));
+    return false;
+}
+
+static radio_type_t
+ow_steer_bm_vif_to_radio_type(const struct ow_steer_bm_vif *vif)
+{
+    bool is_2g = false;
+    bool is_5gl = false;
+    bool is_5gu = false;
+    bool is_6g = false;
+    bool is_unspec = false;
+
+    if (WARN_ON(vif == NULL)) return RADIO_TYPE_NONE;
+    if (WARN_ON(vif->vif_info->phy == NULL)) return RADIO_TYPE_NONE;
+    if (WARN_ON(vif->vif_info->phy->drv_state == NULL)) return RADIO_TYPE_NONE;
+    const struct osw_drv_phy_state *phy_drv_state = vif->vif_info->phy->drv_state;
+
+    size_t i;
+    for (i = 0; i < phy_drv_state->n_channel_states; i++) {
+        const int b2ch1 = 2412;
+        const int b2ch13 = 2472;
+        const int b2ch14 = 2484;
+        const int b5ch36 = 5180;
+        const int b5ch96 = 5480;
+        const int b5ch100 = 5500;
+        const int b5ch177 = 5885;
+        const int b6ch1 = 5955;
+        const int b6ch2 = 5935;
+        const int b6ch233 = 7115;
+        const int mhz = phy_drv_state->channel_states[i].channel.control_freq_mhz;
+
+        if ((mhz >= b2ch1 && mhz <= b2ch13) || mhz == b2ch14) is_2g = true;
+        else if (mhz >= b5ch36 && mhz <= b5ch96) is_5gl = true;
+        else if (mhz >= b5ch100 && mhz <= b5ch177) is_5gu = true;
+        else if ((mhz >= b6ch1 && mhz <= b6ch233) || mhz == b6ch2) is_6g = true;
+        else is_unspec = true;
+    }
+
+    bool is_5g = false;
+    if (is_5gl && is_5gu) {
+        is_5gl = false;
+        is_5gu = false;
+        is_5g = true;
+    }
+
+    radio_type_t radio_type = RADIO_TYPE_NONE;
+    const int band_flags_cnt = (is_2g + is_5gl + is_5gu + is_5g + is_6g + is_unspec);
+    if (band_flags_cnt == 1) {
+        if (is_2g) radio_type = RADIO_TYPE_2G;
+        if (is_5gl) radio_type = RADIO_TYPE_5GL;
+        if (is_5gu) radio_type = RADIO_TYPE_5GU;
+        if (is_5g) radio_type = RADIO_TYPE_5G;
+        if (is_6g) radio_type = RADIO_TYPE_6G;
+        if (is_unspec) radio_type = RADIO_TYPE_NONE;
+    }
+    else LOGE(LOG_PREFIX("vif: %s: incoherent available channels", vif->vif_name.buf));
+
+    return radio_type;
+}
+
+/* Map ow_steer_bm's dppline event type onto the producer's steering vocabulary.
+ * ow_steer_bm owns dppline; the producer stays dppline-free. Returns false for
+ * event types that are not steering actions. */
+static bool
+ow_steer_bm_mlo_map_steering(dpp_bs_client_event_type_t t,
+                             ow_steer_bm_mlo_steering_type_e *out)
+{
+    switch (t) {
+        case CLIENT_BS_BTM:            *out = OW_STEER_BM_MLO_STEERING_CLIENT_BS_BTM; return true;
+        case CLIENT_STICKY_BTM:        *out = OW_STEER_BM_MLO_STEERING_CLIENT_STICKY_BTM; return true;
+        case CLIENT_BTM:               *out = OW_STEER_BM_MLO_STEERING_CLIENT_BTM; return true;
+        case CLIENT_BTM_STATUS:        *out = OW_STEER_BM_MLO_STEERING_CLIENT_BTM_STATUS; return true;
+        case CLIENT_BS_BTM_RETRY:      *out = OW_STEER_BM_MLO_STEERING_CLIENT_BS_BTM_RETRY; return true;
+        case CLIENT_STICKY_BTM_RETRY:  *out = OW_STEER_BM_MLO_STEERING_CLIENT_STICKY_BTM_RETRY; return true;
+        case CLIENT_BTM_RETRY:         *out = OW_STEER_BM_MLO_STEERING_CLIENT_BTM_RETRY; return true;
+        case CLIENT_KICKED:            *out = OW_STEER_BM_MLO_STEERING_CLIENT_KICKED; return true;
+        case CLIENT_BS_KICK:           *out = OW_STEER_BM_MLO_STEERING_CLIENT_BS_KICK; return true;
+        case CLIENT_STICKY_KICK:       *out = OW_STEER_BM_MLO_STEERING_CLIENT_STICKY_KICK; return true;
+        case CLIENT_SPECULATIVE_KICK:  *out = OW_STEER_BM_MLO_STEERING_CLIENT_SPECULATIVE_KICK; return true;
+        case CLIENT_DIRECTED_KICK:     *out = OW_STEER_BM_MLO_STEERING_CLIENT_DIRECTED_KICK; return true;
+        case CLIENT_GHOST_DEVICE_KICK: *out = OW_STEER_BM_MLO_STEERING_CLIENT_GHOST_DEVICE_KICK; return true;
+        case BAND_STEERING_ATTEMPT:    *out = OW_STEER_BM_MLO_STEERING_BAND_STEERING_ATTEMPT; return true;
+        case CLIENT_STEERING_ATTEMPT:  *out = OW_STEER_BM_MLO_STEERING_CLIENT_STEERING_ATTEMPT; return true;
+        case CLIENT_STEERING_STARTED:  *out = OW_STEER_BM_MLO_STEERING_CLIENT_STEERING_STARTED; return true;
+        case CLIENT_STEERING_DISABLED: *out = OW_STEER_BM_MLO_STEERING_CLIENT_STEERING_DISABLED; return true;
+        case CLIENT_STEERING_EXPIRED:  *out = OW_STEER_BM_MLO_STEERING_CLIENT_STEERING_EXPIRED; return true;
+        case CLIENT_STEERING_FAILED:   *out = OW_STEER_BM_MLO_STEERING_CLIENT_STEERING_FAILED; return true;
+        case AUTH_BLOCK:               *out = OW_STEER_BM_MLO_STEERING_AUTH_BLOCK; return true;
+        case PROBE:
+        case CONNECT:
+        case DISCONNECT:
+        case BACKOFF:
+        case ACTIVITY:
+        case OVERRUN:
+        case CLIENT_CAPABILITIES:
+        case CLIENT_RRM_BCN_RPT:
+        case MAX_EVENTS:
+            return false;
+    }
+    return false;
+}
+
+static bool
+ow_steer_bm_mlo_map_misc(dpp_bs_client_event_type_t t,
+                         ow_steer_bm_mlo_misc_type_e *out)
+{
+    switch (t) {
+        case BACKOFF:            *out = OW_STEER_BM_MLO_MISC_BACKOFF; return true;
+        case ACTIVITY:           *out = OW_STEER_BM_MLO_MISC_ACTIVITY; return true;
+        case OVERRUN:
+        case CLIENT_RRM_BCN_RPT:
+        case PROBE:
+        case CONNECT:
+        case DISCONNECT:
+        case BAND_STEERING_ATTEMPT:
+        case CLIENT_STEERING_ATTEMPT:
+        case CLIENT_STEERING_STARTED:
+        case CLIENT_STEERING_DISABLED:
+        case CLIENT_STEERING_EXPIRED:
+        case CLIENT_STEERING_FAILED:
+        case AUTH_BLOCK:
+        case CLIENT_KICKED:
+        case CLIENT_BS_BTM:
+        case CLIENT_STICKY_BTM:
+        case CLIENT_BTM:
+        case CLIENT_CAPABILITIES:
+        case CLIENT_BS_BTM_RETRY:
+        case CLIENT_STICKY_BTM_RETRY:
+        case CLIENT_BTM_RETRY:
+        case CLIENT_BS_KICK:
+        case CLIENT_STICKY_KICK:
+        case CLIENT_SPECULATIVE_KICK:
+        case CLIENT_DIRECTED_KICK:
+        case CLIENT_GHOST_DEVICE_KICK:
+        case CLIENT_BTM_STATUS:
+        case MAX_EVENTS:
+            return false;
+    }
+    return false;
+}
+
+/* Feed an internal steering decision to the BSReportV2 producer. These events
+ * are not observable through osw_sta_assoc, so they are pushed as thin semantic
+ * hooks. The producer reports the association's active links itself. */
+static void
+ow_steer_bm_mlo_hook_steering(const struct osw_hwaddr *sta_addr,
+                              enum ow_steer_bm_kick_source kick_source,
+                              dpp_bs_client_event_type_t subtype,
+                              uint32_t btm_status)
+{
+    if (g_ow_steer_bm_mlo == NULL || sta_addr == NULL) return;
+
+    ow_steer_bm_mlo_steering_params_t p;
+    MEMZERO(p);
+    if (ow_steer_bm_mlo_map_steering(subtype, &p.type) == false) return;
+    /* btm_status carries the BTM response code, which is only meaningful for the
+     * CLIENT_BTM_STATUS event. Gate on the subtype (not the value) so a
+     * legitimate response code of 0 ("accepted") is still reported. */
+    p.btm_response_code_valid = (subtype == CLIENT_BTM_STATUS);
+    p.btm_response_code = btm_status;
+
+    struct ow_steer_bm_client *client = ds_tree_find(&g_client_tree, sta_addr);
+    if (client != NULL)
+    {
+        if (client->allow_acl.cur != NULL)
+        {
+            p.allow_acl_valid = true;
+            p.allow_acl = *client->allow_acl.cur;
+        }
+        const struct ow_steer_bm_btm_params *btm_params = NULL;
+        switch (kick_source)
+        {
+            case OW_STEER_BM_KICK_SOURCE_STEERING: btm_params = client->steering_btm_params; break;
+            case OW_STEER_BM_KICK_SOURCE_STICKY:   btm_params = client->sticky_btm_params;   break;
+            case OW_STEER_BM_KICK_SOURCE_FORCE:    btm_params = client->sc_btm_params;        break;
+            default: break;
+        }
+        /* FIXME: target_bssids here are the configured candidate BSSIDs from
+         * btm_params:
+         *   - band/local steering (lwm/hwm, BAND_STEERING_ATTEMPT) has no
+         *     bssid_list, so those events carry no targets.
+         *   - for BTM/kick this is what was requested, not what osw_btm
+         *     actually put into the transmitted frame.
+         * v2 would be better served by the actual list osw_btm used, which needs
+         * osw_btm to be extended to expose it (future work). */
+        if (btm_params != NULL && btm_params->bssid_list.count > 0)
+        {
+            p.target_bssids = btm_params->bssid_list.list;
+            p.n_target_bssids = btm_params->bssid_list.count;
+        }
+    }
+
+    ow_steer_bm_mlo_report_steering(g_ow_steer_bm_mlo, sta_addr, &p);
+}
+
+static void
+ow_steer_bm_mlo_hook_misc(const struct osw_hwaddr *sta_addr,
+                          dpp_bs_client_event_type_t subtype)
+{
+    if (g_ow_steer_bm_mlo == NULL || sta_addr == NULL) return;
+
+    ow_steer_bm_mlo_misc_type_e type;
+    if (ow_steer_bm_mlo_map_misc(subtype, &type) == false) return;
+
+    ow_steer_bm_mlo_report_misc(g_ow_steer_bm_mlo, sta_addr, type);
+}
+
 static void
 ow_steer_bm_stats_set_disconnect(const struct osw_hwaddr *sta_addr,
                                  const char *vif_name,
@@ -1128,6 +1398,13 @@ ow_steer_bm_stats_set_client_btm(const struct osw_hwaddr *sta_addr,
          OSW_HWADDR_ARG(sta_addr),
          vif_name,
          event_name));
+
+    /* Mirror this BTM/Kick into the MLO v2 stream (single-link action event).
+     * sta_addr here is the configured Band_Steering_Clients MAC = MLD MAC for
+     * MLO, which is exactly what g_client_tree is keyed by — no sta walk needed. */
+    ow_steer_bm_mlo_hook_steering(sta_addr, kick_source,
+                                  client_event_stats->type,
+                                  client_event_stats->btm_status);
 }
 
 struct ow_steer_bm_stats_set_client_capabilities_params {
@@ -1273,7 +1550,10 @@ ow_steer_bm_stats_set_client_backoff(const struct osw_hwaddr *sta_addr,
     client_event_stats->type = BACKOFF;
     client_event_stats->backoff_enabled = backoff_enabled;
     client_event_stats->backoff_period = backoff_period;
+
+    ow_steer_bm_mlo_hook_misc(sta_addr, BACKOFF);
 }
+
 
 static void
 ow_steer_bm_stats_set_client_band_steering_attempt(const struct osw_hwaddr *sta_addr,
@@ -1287,6 +1567,12 @@ ow_steer_bm_stats_set_client_band_steering_attempt(const struct osw_hwaddr *sta_
     if (client_event_stats == NULL) return;
 
     client_event_stats->type = BAND_STEERING_ATTEMPT;
+
+    /* BAND_STEERING_ATTEMPT is a Steering subtype in the new proto. No BTM
+     * params / status apply — caller passes kick_source=INVALID, btm_status=0. */
+    ow_steer_bm_mlo_hook_steering(sta_addr,
+                                  OW_STEER_BM_KICK_SOURCE_INVALID,
+                                  BAND_STEERING_ATTEMPT, 0);
 }
 
 static void
@@ -2204,62 +2490,6 @@ ow_steer_bm_sta_rrm_free(struct ow_steer_bm_sta_rrm *rrm)
     }
 
     FREE(rrm);
-}
-
-static bool
-ow_steer_bm_assoc_req_is_band_capable(const struct osw_assoc_req_info *info,
-                                      const enum osw_band band)
-{
-    ASSERT(info != NULL, "");
-
-    if (info->op_class_cnt != 0) {
-        unsigned int i;
-        for (i = 0; i < info->op_class_cnt; i++) {
-            const unsigned int op_class = info->op_class_list[i];
-            enum osw_band curr_band;
-            curr_band = osw_op_class_to_band(op_class);
-            if (curr_band == OSW_BAND_UNDEFINED) {
-                LOGN(LOG_PREFIX("could not convert op_class number"
-                     " to band, op_class: %d",
-                     op_class));
-                continue;
-            }
-            if (curr_band == band) return true;
-        }
-        return false;
-    }
-
-    if (info->channel_cnt != 0) {
-        unsigned int i;
-        for (i = 0; i < info->channel_cnt; i++) {
-            struct osw_channel osw_chan;
-            const unsigned int chan = info->channel_list[i];
-            const bool ok = osw_channel_from_channel_num_width(info->channel_list[i],
-                                                               OSW_CHANNEL_20MHZ,
-                                                               &osw_chan);
-            if (ok == false) {
-                LOGN(LOG_PREFIX("could not convert channel number"
-                     " to 20MHz osw_channel, channel: %d",
-                     chan));
-                continue;
-            }
-            enum osw_band curr_band = osw_channel_to_band(&osw_chan);
-
-            /* The Supported Channels Element _cannot_
-             * represent 6GHz channels. The spec requires
-             * 6GHz clients to use Operating Classes
-             * Element. This prevents mis-reporting some 5GHz
-             * channels as 6GHz channels.
-             */
-            if (curr_band == OSW_BAND_6GHZ) continue;
-
-            if (curr_band == band) return true;
-        }
-        return false;
-    }
-
-    LOGN(LOG_PREFIX("assoc_req_is_band_capable: no channels nor op_classes in assoc request"));
-    return false;
 }
 
 static int
@@ -4106,6 +4336,8 @@ ow_steer_bm_client_free(struct ow_steer_bm_client *client)
 {
     ASSERT(client != NULL, "");
 
+    ow_steer_bm_mlo_client_untrack(g_ow_steer_bm_mlo, &client->addr);
+
     OW_STEER_BM_MEM_ATTR_FREE(client, hwm);
     OW_STEER_BM_MEM_ATTR_FREE(client, lwm);
     OW_STEER_BM_MEM_ATTR_FREE(client, bottom_lwm);
@@ -4454,6 +4686,7 @@ ow_steer_bm_snr_obs_report_cb(void *priv,
 
     struct ow_steer_bm_sta_link *link = (struct ow_steer_bm_sta_link *)priv;
     struct ow_steer_bm_sta *sta = link != NULL ? link->sta : NULL;
+
     if (sta && sta->is_mlo) return;
 
     LOGT(LOG_WITH_PREFIX(sta, "snr_obs: client: "OSW_HWADDR_FMT" snr: %d update",
@@ -4513,16 +4746,30 @@ ow_steer_bm_state_obs_vif_probe_cb(struct osw_state_observer *self,
 
 static void
 ow_steer_bm_recalc_sta_bitrate(struct ow_steer_bm_sta *sta,
+                               const struct osw_hwaddr *sta_addr,
                                const char *vif_name,
                                const uint64_t data_rx,
                                const uint64_t data_tx)
 {
-    uint64_t data_bits = (data_rx + data_tx) * 8;
-    uint64_t bitrate = data_bits / OW_STEER_BM_BITRATE_STATS_INTERVAL;
-    bool activity = false;
+    const uint64_t data_bits = (data_rx + data_tx) * 8;
+    const uint64_t bitrate = data_bits / OW_STEER_BM_BITRATE_STATS_INTERVAL;
+    const bool link_active = (bitrate > OW_STEER_BM_DEFAULT_BITRATE_THRESHOLD);
 
-    if (bitrate > OW_STEER_BM_DEFAULT_BITRATE_THRESHOLD) activity = true;
-    else activity = false;
+    struct ow_steer_bm_sta_link *link;
+    ds_tree_foreach(&sta->links, link) {
+        if (osw_hwaddr_cmp(&link->addr, sta_addr) == 0) {
+            link->bps_activity = link_active;
+            break;
+        }
+    }
+
+    bool activity = false;
+    ds_tree_foreach(&sta->links, link) {
+        if (link->bps_activity) {
+            activity = true;
+            break;
+        }
+    }
 
     if (activity != sta->bps_activity)
         ow_steer_bm_stats_set_client_activity(&sta->addr,
@@ -4565,72 +4812,25 @@ ow_steer_bm_stats_report_cb(enum osw_stats_id id,
         const uint64_t data_tx = tb[OSW_STATS_STA_TX_BYTES_64] != NULL ? osw_tlv_get_u64(tb[OSW_STATS_STA_TX_BYTES_64]) : 0;
 
         ds_dlist_foreach(&g_sta_list, sta) {
-            if (osw_hwaddr_cmp(&sta->addr, sta_addr) != 0)
-                continue;
+            if (osw_hwaddr_cmp(&sta->addr, sta_addr) != 0) {
+                struct ow_steer_bm_sta_link *link;
+                bool found = false;
+                ds_tree_foreach(&sta->links, link) {
+                    if (osw_hwaddr_cmp(&link->addr, sta_addr) == 0) {
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) continue;
+            }
 
             ow_steer_bm_recalc_sta_bitrate(sta,
+                                           sta_addr,
                                            vif_name,
                                            data_rx,
                                            data_tx);
         }
     }
-}
-
-static radio_type_t
-ow_steer_bm_vif_to_radio_type(const struct ow_steer_bm_vif *vif)
-{
-    bool is_2g = false;
-    bool is_5gl = false;
-    bool is_5gu = false;
-    bool is_6g = false;
-    bool is_unspec = false;
-
-    if (WARN_ON(vif == NULL)) return RADIO_TYPE_NONE;
-    if (WARN_ON(vif->vif_info->phy == NULL)) return RADIO_TYPE_NONE;
-    if (WARN_ON(vif->vif_info->phy->drv_state == NULL)) return RADIO_TYPE_NONE;
-    const struct osw_drv_phy_state *phy_drv_state = vif->vif_info->phy->drv_state;
-
-    size_t i;
-    for (i = 0; i < phy_drv_state->n_channel_states; i++) {
-        const int b2ch1 = 2412;
-        const int b2ch13 = 2472;
-        const int b2ch14 = 2484;
-        const int b5ch36 = 5180;
-        const int b5ch96 = 5480;
-        const int b5ch100 = 5500;
-        const int b5ch177 = 5885;
-        const int b6ch1 = 5955;
-        const int b6ch2 = 5935;
-        const int b6ch233 = 7115;
-        const int mhz = phy_drv_state->channel_states[i].channel.control_freq_mhz;
-
-        if ((mhz >= b2ch1 && mhz <= b2ch13) || mhz == b2ch14) is_2g = true;
-        else if (mhz >= b5ch36 && mhz <= b5ch96) is_5gl = true;
-        else if (mhz >= b5ch100 && mhz <= b5ch177) is_5gu = true;
-        else if ((mhz >= b6ch1 && mhz <= b6ch233) || mhz == b6ch2) is_6g = true;
-        else is_unspec = true;
-    }
-
-    bool is_5g = false;
-    if (is_5gl && is_5gu) {
-        is_5gl = false;
-        is_5gu = false;
-        is_5g = true;
-    }
-
-    radio_type_t radio_type = RADIO_TYPE_NONE;
-    const int band_flags_cnt = (is_2g + is_5gl + is_5gu + is_5g + is_6g + is_unspec);
-    if (band_flags_cnt == 1) {
-        if (is_2g) radio_type = RADIO_TYPE_2G;
-        if (is_5gl) radio_type = RADIO_TYPE_5GL;
-        if (is_5gu) radio_type = RADIO_TYPE_5GU;
-        if (is_5g) radio_type = RADIO_TYPE_5G;
-        if (is_6g) radio_type = RADIO_TYPE_6G;
-        if (is_unspec) radio_type = RADIO_TYPE_NONE;
-    }
-    else LOGE(LOG_PREFIX("vif: %s: incoherent available channels", vif->vif_name.buf));
-
-    return radio_type;
 }
 
 static int
@@ -4953,6 +5153,7 @@ static void
 ow_steer_bm_init(void)
 {
     g_ow_steer_bm_sta_assoc_obs = ow_steer_bm_sta_assoc_obs_alloc();
+    g_ow_steer_bm_mlo = ow_steer_bm_mlo_load();
     osw_state_register_observer(&g_state_observer);
     ow_steer_bm_register_stats_subscriber(g_stats_subscriber);
     g_bss_provider = osw_bss_map_register_provider();
@@ -5348,7 +5549,7 @@ ow_steer_bm_sigusr1_dump_stas(void)
 
         const char *group_id = sta->group != NULL ? sta->group->id: NULL;
         osw_diag_pipe_writef(pipe, LOG_PREFIX("    group:"));
-        osw_diag_pipe_writef(pipe, LOG_PREFIX("      id: %s", group_id));
+        osw_diag_pipe_writef(pipe, LOG_PREFIX("      id: %s", group_id ?: "(nil)"));
     }
     osw_diag_pipe_close(pipe);
 }
@@ -5974,6 +6175,8 @@ ow_steer_bm_get_client(const uint8_t *addr)
 
     LOGD(LOG_PREFIX("client: "OSW_HWADDR_FMT": added", OSW_HWADDR_ARG(&client->addr)));
 
+    ow_steer_bm_mlo_client_track(g_ow_steer_bm_mlo, &client->addr);
+
     OW_STEER_BM_SCHEDULE_WORK;
     ow_steer_bm_client_notify_added(client);
 
@@ -6313,6 +6516,7 @@ OSW_MODULE(ow_steer_bm)
     OSW_MODULE_LOAD(osw_bss_map);
     OSW_MODULE_LOAD(osw_rrm_meas);
     OSW_MODULE_LOAD(ow_steer);
+    OSW_MODULE_LOAD(ow_steer_bm_mlo);
 
     ow_steer_bm_init();
 

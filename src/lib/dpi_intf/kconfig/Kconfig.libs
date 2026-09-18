@@ -1,5 +1,6 @@
 menuconfig LIB_DPI_INTF
     bool "Enables the management of network interfaces for the DPI framework"
+        depends on MANAGER_FSM
         default y
         help
             N/A

@@ -226,7 +226,7 @@ check_connection(void)
     curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 1L);
 
     /* don't write output to stdout */
-    curl_easy_setopt(curl, CURLOPT_NOBODY, 1);
+    curl_easy_setopt(curl, CURLOPT_NOBODY, 1L);
 
     /* Perform the request */
     response = curl_easy_perform(curl);

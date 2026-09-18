@@ -94,8 +94,14 @@ endif
 # $(1) = source rootfs base dir
 define rootfs_prepare_dir
 	echo "$(call color_install,prepare) rootfs $(call color_profile,$(1)) -> $(BUILD_ROOTFS_DIR)"; \
-	(cd $(1) && tar cf - --exclude=.keep .) | (cd $(BUILD_ROOTFS_DIR) && tar xf - $(TARV) $(ROOTFS_TAR_TRANSFORM)); \
-	build/templates.py --process-rootfs $(BUILD_ROOTFS_DIR); \
+	tar c -f- -C$(1) --exclude=.keep . | ( \
+		rm -rf $(BUILD_ROOTFS_DIR)/tmp-templates && \
+		mkdir -p $(BUILD_ROOTFS_DIR)/tmp-templates && \
+		tar x -f- -C$(BUILD_ROOTFS_DIR)/tmp-templates $(TARV) $(ROOTFS_TAR_TRANSFORM) && \
+		build/templates.py --process-rootfs $(BUILD_ROOTFS_DIR)/tmp-templates && \
+		tar c -f- -C$(BUILD_ROOTFS_DIR)/tmp-templates $(TARV) . | tar x -f- -C$(BUILD_ROOTFS_DIR) $(TARV) && \
+		rm -rf $(BUILD_ROOTFS_DIR)/tmp-templates \
+	); \
 
 endef
 

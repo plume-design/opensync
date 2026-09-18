@@ -10,4 +10,7 @@ if MANAGER_PSM
         default "psm;true"
         help
             Persistent Storage Manager configuration
+            Optional crash backoff keys (;-separated key=value):
+            crash_count_max, crash_count_period, crash_recovery.
+            crash_count_max=0 disables. Ignored when needs_plan_b=true.
 endif

@@ -1,3 +1,29 @@
+if OSN_BACKEND_FW_EBTABLES_THIN
+    comment "ebtables thin options"
+
+    config OSN_FW_EBTABLES_THIN_ATOMIC
+        bool "ebtables thin: atomic apply"
+        default n
+        help
+            Apply ebtables rule changes atomically using ebtables
+            --atomic-file / --atomic-save / --atomic-commit so that the
+            managed chains are never momentarily empty during a
+            reconfiguration. Without this, the thin backend flushes each
+            managed chain and only re-adds its rules afterwards, leaving a
+            brief window in which client-isolation rules (e.g. the DROP in
+            INET_ONLY) are absent and LAN-to-LAN traffic can leak.
+
+            Uses --atomic-save (not --atomic-init) to snapshot the current
+            kernel table before modifications, preserving rules managed by
+            other subsystems (e.g. SWAN).
+
+            This requires legacy ebtables (the --atomic-* options and the
+            EBTABLES_ATOMIC_FILE environment variable). On ebtables-nft,
+            which does not implement atomic-file, a one-time runtime probe
+            detects the lack of support and falls back to the non-atomic
+            apply automatically.
+endif
+
 if OSN_BACKEND_FW_EBTABLES_FULL
     comment "ebtables full options"
     menu "Default ebtables Policy"

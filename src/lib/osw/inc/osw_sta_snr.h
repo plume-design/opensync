@@ -27,6 +27,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifndef OSW_STA_SNR_H_INCLUDED
 #define OSW_STA_SNR_H_INCLUDED
 
+#include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 #include <osw_module.h>
@@ -40,17 +42,27 @@ typedef struct osw_sta_snr osw_sta_snr_t;
 typedef struct osw_sta_snr_params osw_sta_snr_params_t;
 typedef struct osw_sta_snr_observer osw_sta_snr_observer_t;
 typedef void osw_sta_snr_notify_fn_t(void *priv, const uint8_t *snr_db);
+typedef void osw_sta_snr_log_flushed_fn_t(void *priv);
 
 osw_sta_snr_params_t *osw_sta_snr_params_alloc(void);
 void osw_sta_snr_params_drop(osw_sta_snr_params_t *p);
 void osw_sta_snr_params_set_sta_addr(osw_sta_snr_params_t *p, const struct osw_hwaddr *sta_addr);
+void osw_sta_snr_params_set_mld_addr(osw_sta_snr_params_t *p, const struct osw_hwaddr *mld_addr);
 void osw_sta_snr_params_set_vif_name(osw_sta_snr_params_t *p, const char *vif_name);
 void osw_sta_snr_params_set_vif_addr(osw_sta_snr_params_t *p, const struct osw_hwaddr *vif_addr);
 void osw_sta_snr_params_set_ageout_sec(osw_sta_snr_params_t *p, unsigned int seconds);
 void osw_sta_snr_params_set_notify_fn(osw_sta_snr_params_t *p, osw_sta_snr_notify_fn_t *fn, void *priv);
+void osw_sta_snr_params_set_log_capacity(osw_sta_snr_params_t *p, size_t capacity);
+void osw_sta_snr_params_set_source_data_rx(osw_sta_snr_params_t *p, bool enable);
+void osw_sta_snr_params_set_source_probe_rx(osw_sta_snr_params_t *p, bool enable);
+void osw_sta_snr_params_set_log_flushed_fn(osw_sta_snr_params_t *p, osw_sta_snr_log_flushed_fn_t *fn, void *priv);
 
 osw_sta_snr_observer_t *osw_sta_snr_observer_alloc(osw_sta_snr_t *m, osw_sta_snr_params_t *p);
 const uint8_t *osw_sta_snr_observer_get_last(osw_sta_snr_observer_t *obs);
+const uint8_t *osw_sta_snr_observer_get_log(osw_sta_snr_observer_t *obs);
+size_t osw_sta_snr_observer_get_log_size(osw_sta_snr_observer_t *obs);
+void osw_sta_snr_observer_reset_log(osw_sta_snr_observer_t *obs);
+const struct osw_channel *osw_sta_snr_observer_get_channel(osw_sta_snr_observer_t *obs);
 void osw_sta_snr_observer_drop(osw_sta_snr_observer_t *obs);
 
 static inline osw_sta_snr_t *osw_sta_snr_load(void)

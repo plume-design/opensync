@@ -63,6 +63,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <osn_netif.h>
 
 #include "nl80211_copy.h"
+#include "osw_types.h"
 
 /* FIXME: osw_drv: make get_*_ list async */
 
@@ -80,6 +81,8 @@ struct osw_drv_nl80211 {
     struct nl_80211 *nl_80211;
     struct nl_ev *nl_ev;
     struct nl_80211_sub *nl_80211_sub;
+    struct ds_tree phys_by_name;
+    struct ds_tree vifs_by_name;
     struct ds_tree stas;
     struct ds_dlist hooks;
     struct rq q_request_config;
@@ -87,8 +90,25 @@ struct osw_drv_nl80211 {
     bool rsno_supported;
 };
 
+struct osw_drv_nl80211_phy_sub {
+    struct ds_tree phys_by_index;
+    unsigned int combined_antenna_mask;
+};
+
+struct osw_drv_nl80211_freq_range {
+    int start_mhz;
+    int end_mhz;
+};
+
 struct osw_drv_nl80211_phy {
     struct osw_drv_nl80211 *m;
+    struct ds_tree_node node_by_name;
+    struct ds_tree_node node_by_index;
+    char *phy_name;
+    int radio_index;
+    unsigned int antenna_mask;
+    struct osw_drv_nl80211_freq_range *freq_ranges;
+    size_t n_freq_ranges;
     const struct nl_80211_phy *info;
     struct osw_drv_phy_state state;
     struct nl_cmd_task task_nl_set_antenna;
@@ -104,6 +124,8 @@ struct osw_drv_nl80211_phy {
 
 struct osw_drv_nl80211_vif {
     struct osw_drv_nl80211 *m;
+    struct ds_tree_node node_by_name;
+    char *vif_name;
     const struct nl_80211_vif *info;
     struct osw_timer push_frame_tx_timer;
     struct nl_cmd *push_frame_tx_cmd;
@@ -125,6 +147,7 @@ struct osw_drv_nl80211_vif {
     } state_bits;
     struct osw_hostap_bss *hostap_bss;
     osn_netif_t *netif;
+    bool tx_power_auto;
 };
 
 struct osw_drv_nl80211_sta_id {
@@ -150,11 +173,6 @@ struct osw_drv_nl80211_sta {
     struct osw_timer delete_expiry;
     struct rq q_delete;
     struct rq q_deauth;
-};
-
-struct osw_drv_nl80211_stats {
-    struct osw_drv_nl80211 *m;
-    unsigned int mask;
 };
 
 struct osw_drv_nl80211_hook {
@@ -195,6 +213,7 @@ struct osw_drv_nl80211_hook {
     } while (0)
 
 #define LOG_PREFIX(fmt, ...) "osw: drv: nl80211: " fmt, ##__VA_ARGS__
+#define LOG_PREFIX_WIPHY(wiphy, fmt, ...) LOG_PREFIX("wiphy: %s: " fmt,  wiphy, ##__VA_ARGS__)
 #define LOG_PREFIX_PHY(phy, fmt, ...) LOG_PREFIX("%s: " fmt,  phy, ##__VA_ARGS__)
 #define LOG_PREFIX_VIF(phy, vif, fmt, ...) LOG_PREFIX_PHY(phy, "%s: " fmt, vif, ##__VA_ARGS__)
 #define LOG_PREFIX_STA(phy, vif, sta, fmt, ...) LOG_PREFIX_VIF(phy, vif, OSW_HWADDR_FMT": " fmt, OSW_HWADDR_ARG(sta), ##__VA_ARGS__)
@@ -240,12 +259,33 @@ osw_drv_nl80211_phy_lookup(struct osw_drv *drv,
 {
     if (osw_drv_nl80211_phy_is_ignored(phy_name)) return NULL;
     struct osw_drv_nl80211 *m = osw_drv_get_priv(drv);
-    struct nl_80211 *nl = m->nl_80211;
-    struct nl_80211_sub *sub = m->nl_80211_sub;
-    const struct nl_80211_phy *nlphy = nl_80211_phy_by_name(nl, phy_name);
-    if (nlphy == NULL) return NULL;
-    struct osw_drv_nl80211_phy *phy = nl_80211_sub_phy_get_priv(sub, nlphy);
-    return phy;
+    return ds_tree_find(&m->phys_by_name, phy_name);
+}
+
+static struct osw_drv_nl80211_phy *
+osw_drv_nl80211_phy_from_vif(const struct osw_drv_nl80211_vif *vif)
+{
+    if (vif == NULL) return NULL;
+    struct osw_drv_nl80211 *m = vif->m;
+    const struct nl_80211_phy *nl_phy = nl_80211_phy_by_wiphy(m->nl_80211, vif->info->wiphy);
+    if (nl_phy == NULL) return NULL;
+    struct osw_drv_nl80211_phy_sub *nl_phy_sub = nl_80211_sub_phy_get_priv(m->nl_80211_sub, nl_phy);
+    if (nl_phy_sub == NULL) return NULL;
+    const int radio_mask = vif->info->radio_mask;
+    const int num_bits = __builtin_popcount(radio_mask);
+    const int has_no_bits = num_bits == 0;
+    const int has_one_bit = num_bits == 1;
+    const int radio_index = __builtin_ffs(radio_mask) - 1;
+    if (has_one_bit) {
+        return ds_tree_find(&nl_phy_sub->phys_by_index, &radio_index);
+    }
+    else if (has_no_bits && ds_tree_len(&nl_phy_sub->phys_by_index) == 1) {
+         return ds_tree_head(&nl_phy_sub->phys_by_index);
+    }
+    else {
+        WARN_ON(1);
+        return NULL;
+    }
 }
 
 static struct osw_drv_nl80211_vif *
@@ -289,24 +329,20 @@ osw_drv_nl80211_scan_complete(struct osw_drv_nl80211_vif *vif,
         nl_cmd_free(vif->scan_cmd);
         vif->scan_cmd = NULL;
     }
-    
 
     struct osw_timer *timer = &vif->scan_timeout;
     osw_timer_disarm(timer);
 
     struct osw_drv_nl80211 *m = vif->m;
     struct osw_drv *drv = m->drv;
-    struct nl_80211 *nl = m->nl_80211;
-    const struct nl_80211_vif *vif_info = vif->info;
-    const uint32_t wiphy = vif_info->wiphy;
-    const struct nl_80211_phy *phy_info = nl_80211_phy_by_wiphy(nl, wiphy);
-    const char *vif_name = vif_info ? vif_info->name : NULL;
-    const char *phy_name = phy_info ? phy_info->name : NULL;
+    const struct osw_drv_nl80211_phy *phy = osw_drv_nl80211_phy_from_vif(vif);
+    const char *phy_name = phy ? phy->phy_name : NULL;
+    const char *vif_name = vif ? vif->vif_name : NULL;
     WARN_ON(vif_name == NULL);
     WARN_ON(phy_name == NULL);
     struct rq *q = &vif->q_stats;
     struct rq_task *dump_scan = &vif->task_nl_dump_scan_stats.task;
-    
+
     switch (reason) {
         case OSW_DRV_SCAN_DONE:
             LOGD(LOG_PREFIX_VIF(phy_name ?: "", vif_name ?: "", "scan done"));
@@ -350,38 +386,16 @@ osw_drv_nl80211_init_cb(struct osw_drv *drv)
 }
 
 static void
-osw_rrv_nl80211_get_phy_list_each_cb(const struct nl_80211_phy *phy,
-                                     void *priv)
-{
-    if (osw_drv_nl80211_phy_is_ignored(phy->name)) return;
-
-    void **args = priv;
-    osw_drv_report_phy_fn_t *fn = args[0];
-    void *fn_priv = args[1];
-    fn(phy->name, fn_priv);
-}
-
-static void
 osw_drv_nl80211_get_phy_list_cb(struct osw_drv *drv,
                                 osw_drv_report_phy_fn_t *report_phy_fn,
                                 void *fn_priv)
 {
     struct osw_drv_nl80211 *m = osw_drv_get_priv(drv);
-    struct nl_80211 *nl = m->nl_80211;
-    void *args[] = { report_phy_fn, fn_priv };
-    nl_80211_phy_each(nl, osw_rrv_nl80211_get_phy_list_each_cb, args);
-}
-
-static void
-osw_drv_nl80211_get_vif_list_each_cb(const struct nl_80211_vif *vif,
-                                     void *priv)
-{
-    if (osw_drv_nl80211_vif_is_ignored(vif->name)) return;
-
-    void **args = priv;
-    osw_drv_report_vif_fn_t *fn = args[0];
-    void *fn_priv = args[1];
-    fn(vif->name, fn_priv);
+    struct osw_drv_nl80211_phy *phy;
+    ds_tree_foreach(&m->phys_by_name, phy) {
+        if (osw_drv_nl80211_phy_is_ignored(phy->phy_name)) continue;
+        report_phy_fn(phy->phy_name, fn_priv);
+    }
 }
 
 static void
@@ -391,11 +405,18 @@ osw_drv_nl80211_get_vif_list_cb(struct osw_drv *drv,
                                 void *fn_priv)
 {
     struct osw_drv_nl80211 *m = osw_drv_get_priv(drv);
-    struct nl_80211 *nl = m->nl_80211;
-    const struct nl_80211_phy *phy = nl_80211_phy_by_name(nl, phy_name);
+    struct osw_drv_nl80211_phy *phy = osw_drv_nl80211_phy_lookup(drv, phy_name);
     if (phy == NULL) return;
-    void *args[] = { report_vif_fn, fn_priv };
-    nl_80211_vif_each(nl, &phy->wiphy, osw_drv_nl80211_get_vif_list_each_cb, args);
+
+    struct osw_drv_nl80211_vif *vif;
+    ds_tree_foreach(&m->vifs_by_name, vif) {
+        struct osw_drv_nl80211_phy *vif_phy = osw_drv_nl80211_phy_from_vif(vif);
+        const bool wrong_phy = (vif_phy == NULL) || (vif_phy != phy);
+        if (wrong_phy) continue;
+        if (osw_drv_nl80211_vif_is_ignored(vif->vif_name)) continue;
+        report_vif_fn(vif->vif_name, fn_priv);
+    }
+
     CALL_HOOKS(m, get_vif_list_fn, phy_name, report_vif_fn, fn_priv);
 }
 
@@ -439,6 +460,11 @@ osw_drv_nl80211_request_phy_state_cb(struct osw_drv *drv,
     }
 
     LOGD(LOG_PREFIX_PHY(phy_name, "requesting state"));
+
+    FREE(phy->freq_ranges);
+    phy->freq_ranges = NULL;
+    phy->n_freq_ranges = 0;
+    phy->antenna_mask = 0;
 
     rq_stop(q);
     rq_kill(q);
@@ -516,6 +542,42 @@ osw_drv_nl80211_request_sta_state_cb(struct osw_drv *drv,
     if (q->empty == true && q->empty_fn != NULL) q->empty_fn(q, q->priv);
 }
 
+static unsigned int
+osw_drv_nl80211_phy_calc_combined_chainmask(struct osw_drv_nl80211_phy *phy,
+                                            struct osw_drv_conf *conf)
+{
+    const struct nl_80211_phy *info = phy->info;
+    struct osw_drv_nl80211_phy_sub *sub = nl_80211_sub_phy_get_priv(phy->m->nl_80211_sub, info);
+    unsigned int chainmask = 0;
+    struct osw_drv_nl80211_phy *phy_i;
+    ds_tree_foreach(&sub->phys_by_index, phy_i) {
+        int i;
+        const int n = conf->n_phy_list;
+        for (i = 0; i < n; i++) {
+            const struct osw_drv_phy_config *phy_i_conf = &conf->phy_list[i];
+            const bool matches_phy = strcmp(phy_i_conf->phy_name, phy_i->phy_name) == 0;
+            if (matches_phy) {
+                chainmask |= phy_i_conf->tx_chainmask;
+                if (phy_i->antenna_mask != 0) {
+                    const bool mask_out_of_range = (phy_i_conf->tx_chainmask & ~phy_i->antenna_mask) != 0;
+                    if (mask_out_of_range) {
+                        LOGI(LOG_PREFIX_PHY(phy_i->phy_name, "configured tx_chainmask 0x%x has bits outside of antenna mask 0x%x, fix your config",
+                             phy_i_conf->tx_chainmask,
+                             phy_i->antenna_mask));
+                    }
+                }
+            }
+        }
+    }
+    const bool mask_out_of_range = (chainmask & ~sub->combined_antenna_mask) != 0;
+    if (mask_out_of_range) {
+        LOGI(LOG_PREFIX_PHY(phy->phy_name, "combined tx_chainmask 0x%x has bits outside of combined antenna mask 0x%x, fix your config",
+             chainmask,
+             sub->combined_antenna_mask));
+    }
+    return chainmask;
+}
+
 static struct rq_task *
 osw_drv_nl80211_phy_prep_set_antenna(struct osw_drv_nl80211_phy *phy,
                                      unsigned int tx_chainmask,
@@ -532,7 +594,7 @@ osw_drv_nl80211_phy_prep_set_antenna(struct osw_drv_nl80211_phy *phy,
     struct nl_msg *msg = nl_80211_alloc_set_phy_antenna(nl, wiphy, tx_chainmask, rx_chainmask);
     nl_cmd_task_init(&phy->task_nl_set_antenna, cmd, msg);
 
-    const char *phy_name = info->name;
+    const char *phy_name = phy->phy_name;
     nl_cmd_set_name(cmd, strfmta(LOG_PREFIX_PHY(phy_name, "set antenna: %x/%x", tx_chainmask, rx_chainmask)));
 
     return &phy->task_nl_set_antenna.task;
@@ -540,6 +602,7 @@ osw_drv_nl80211_phy_prep_set_antenna(struct osw_drv_nl80211_phy *phy,
 
 static void
 osw_drv_nl80211_request_config_phy(struct osw_drv *drv,
+                                   struct osw_drv_conf *conf,
                                    struct osw_drv_phy_config *phy)
 {
     const char *phy_name = phy->phy_name;
@@ -549,9 +612,15 @@ osw_drv_nl80211_request_config_phy(struct osw_drv *drv,
     if (m_phy == NULL) return;
 
     if (phy->tx_chainmask_changed) {
+        /* FIXME: When multiple single-wiphy radios have their antenna mask
+         * changed the command will be issued more than once with the same
+         * value. This is harmless but somewhat silly. This could be optimized
+         * if the task is moved to the sub structure.
+         */
+        const unsigned int combined_chainmask = osw_drv_nl80211_phy_calc_combined_chainmask(m_phy, conf);
         struct rq_task *set_antenna = osw_drv_nl80211_phy_prep_set_antenna(m_phy,
-                                                                           phy->tx_chainmask,
-                                                                           phy->tx_chainmask);
+                                                                           combined_chainmask,
+                                                                           combined_chainmask);
         rq_add_task(q, set_antenna);
     }
 }
@@ -589,13 +658,11 @@ osw_drv_nl80211_vif_tx_power_changed_cb(struct rq_task *task, void *priv)
     struct osw_drv_nl80211_vif *vif = priv;
     struct osw_drv_nl80211 *m = vif->m;
     struct osw_drv *drv = m->drv;
-    struct nl_80211 *nl = m->nl_80211;
-    const struct nl_80211_vif *info = vif->info;
-    const char *vif_name = info->name;
-    const uint32_t wiphy = info->wiphy;
-    const struct nl_80211_phy *phy_info = nl_80211_phy_by_wiphy(nl, wiphy);
-    if (WARN_ON(phy_info == NULL)) return;
-    const char *phy_name = phy_info->name;
+    const struct osw_drv_nl80211_phy *phy = osw_drv_nl80211_phy_from_vif(vif);
+    if (WARN_ON(phy == NULL)) return;
+
+    const char *phy_name = phy->phy_name;
+    const char *vif_name = vif->vif_name;
 
     LOGD(LOG_PREFIX_VIF(phy_name, vif_name, "vif: tx_power changed"));
     if (drv == NULL) return;
@@ -623,10 +690,9 @@ osw_drv_nl80211_vif_prep_set_power(struct osw_drv_nl80211_vif *vif,
                        : nl_80211_alloc_set_vif_power_fixed(nl, ifindex, mbm);
     nl_cmd_task_init(&vif->task_nl_set_power, cmd, msg);
 
-    const char *vif_name = info->name;
-    const uint32_t wiphy = info->wiphy;
-    const struct nl_80211_phy *phy_info = nl_80211_phy_by_wiphy(nl, wiphy);
-    const char *phy_name = phy_info ? phy_info->name : NULL;
+    const struct osw_drv_nl80211_phy *phy = osw_drv_nl80211_phy_from_vif(vif);
+    const char *phy_name = phy ? phy->phy_name : NULL;
+    const char *vif_name = vif->vif_name;
     nl_cmd_set_name(cmd, strfmta(LOG_PREFIX_VIF(phy_name ?: "", vif_name, "set power: %ddBm", dbm)));
 
     vif->task_nl_set_power.task.completed_fn = osw_drv_nl80211_vif_tx_power_changed_cb;
@@ -642,7 +708,7 @@ osw_drv_nl80211_request_config_base(struct osw_drv *drv,
     size_t i;
     for (i = 0; i < conf->n_phy_list; i++) {
         struct osw_drv_phy_config *phy = &conf->phy_list[i];
-        osw_drv_nl80211_request_config_phy(drv, phy);
+        osw_drv_nl80211_request_config_phy(drv, conf, phy);
         size_t j;
         for (j = 0; j < phy->vif_list.count; j++) {
             struct osw_drv_vif_config *vif = &phy->vif_list.list[j];
@@ -673,14 +739,19 @@ osw_drv_nl80211_request_config_base(struct osw_drv *drv,
                         break;
                 }
             }
-            if (vif->tx_power_dbm_changed) {
+            if (vif->tx_power_changed) {
                 struct osw_drv_nl80211 *m = osw_drv_get_priv(drv);
                 struct rq *q = &m->q_request_config;
                 struct osw_drv_nl80211_vif *m_vif = osw_drv_nl80211_vif_lookup(drv, vif_name);
+                const bool use_auto = (vif->tx_power_percent == 100);
+                const int power_dbm = use_auto ? 0 : vif->tx_power_dbm;
                 struct rq_task *set_power = osw_drv_nl80211_vif_prep_set_power(m_vif,
-                                                                               vif->tx_power_dbm);
+                                                                               power_dbm);
                 if (set_power != NULL) {
                     rq_add_task(q, set_power);
+                }
+                if (m_vif != NULL) {
+                    m_vif->tx_power_auto = use_auto;
                 }
             }
         }
@@ -854,32 +925,27 @@ osw_drv_nl80211_get_dump_sta_impl_type(const char *phy_name) {
 }
 
 static void
-osw_drv_nl80211_request_stats_bss_vif(const struct nl_80211_vif *nlvif,
-                                      void *priv)
+osw_drv_nl80211_request_stats_bss_vif(struct osw_drv_nl80211_vif *vif,
+                                      unsigned int stats_mask)
 {
-    if (osw_drv_nl80211_vif_is_ignored(nlvif->name)) return;
-
-    struct osw_drv_nl80211_stats *stats = priv;
-    struct osw_drv_nl80211 *m = stats->m;
-    struct nl_80211_sub *sub = m->nl_80211_sub;
-    struct nl_80211 *nl = m->nl_80211;
-    const uint32_t wiphy = nlvif->wiphy;
-    const struct nl_80211_phy *nlphy = nl_80211_phy_by_wiphy(nl, wiphy);
-    struct osw_drv_nl80211_phy *phy = nl_80211_sub_phy_get_priv(sub, nlphy);
-    if (phy == NULL) return;
-    struct osw_drv_nl80211_vif *vif = nl_80211_sub_vif_get_priv(sub, nlvif);
     if (vif == NULL) return;
+
+    const char *vif_name = vif->vif_name;
+    if (osw_drv_nl80211_vif_is_ignored(vif_name)) return;
+
+    struct osw_drv_nl80211_phy *phy = osw_drv_nl80211_phy_from_vif(vif);
+    if (phy == NULL) return;
 
     struct rq *q = &vif->q_stats;
     struct rq_task *dump_scan = &vif->task_nl_dump_scan_stats.task;
 
-    if (stats->mask & (1 << OSW_STATS_BSS_SCAN)) {
+    if (stats_mask & (1 << OSW_STATS_BSS_SCAN)) {
         rq_task_kill(dump_scan);
         rq_add_task(q, dump_scan);
     }
 
     if (phy->dump_survey_impl_type != OSW_DRV_NL80211_DUMP_SURVEY_IMPL_NONE) {
-        if (stats->mask & (1 << OSW_STATS_CHAN)) {
+        if (stats_mask & (1 << OSW_STATS_CHAN)) {
             struct rq_task *dump_survey = &vif->task_nl_dump_survey_stats.task;
             rq_task_kill(dump_survey);
             rq_add_task(q, dump_survey);
@@ -887,7 +953,7 @@ osw_drv_nl80211_request_stats_bss_vif(const struct nl_80211_vif *nlvif,
     }
 
     if (phy->dump_sta_impl_type != OSW_DRV_NL80211_DUMP_STA_IMPL_NONE) {
-        if (stats->mask & (1 << OSW_STATS_STA)) {
+        if (stats_mask & (1 << OSW_STATS_STA)) {
             struct rq_task *dump_sta = &vif->task_nl_dump_sta_stats.task;
             rq_task_kill(dump_sta);
             rq_add_task(q, dump_sta);
@@ -896,41 +962,17 @@ osw_drv_nl80211_request_stats_bss_vif(const struct nl_80211_vif *nlvif,
 }
 
 static void
-osw_drv_nl80211_request_stats_bss_phy(const struct nl_80211_phy *nlphy,
-                                      void *priv)
-{
-    if (osw_drv_nl80211_phy_is_ignored(nlphy->name)) return;
-
-    struct osw_drv_nl80211_stats *stats = priv;
-    struct osw_drv_nl80211 *m = stats->m;
-    struct nl_80211 *nl = m->nl_80211;
-    struct nl_80211_sub *sub = m->nl_80211_sub;
-    struct osw_drv_nl80211_phy *phy = nl_80211_sub_phy_get_priv(sub, nlphy);
-
-    if (phy == NULL) return;
-
-    nl_80211_vif_each(nl,
-                      &nlphy->wiphy,
-                      osw_drv_nl80211_request_stats_bss_vif,
-                      stats);
-}
-
-static void
 osw_drv_nl80211_request_stats_cb(struct osw_drv *drv,
                                  unsigned int stats_mask)
 {
     struct osw_drv_nl80211 *m = osw_drv_get_priv(drv);
-    struct osw_drv_nl80211_stats stats = {
-        .m = m,
-        .mask = stats_mask,
-    };
-    struct nl_80211 *nl = m->nl_80211;
 
     CALL_HOOKS(m, pre_request_stats_fn, stats_mask);
 
-    nl_80211_phy_each(nl,
-                      osw_drv_nl80211_request_stats_bss_phy,
-                      &stats);
+    struct osw_drv_nl80211_vif *vif;
+    ds_tree_foreach(&m->vifs_by_name, vif) {
+        osw_drv_nl80211_request_stats_bss_vif(vif, stats_mask);
+    }
 
     // needs detections/variants:
     //  - accumulating (ath9k)
@@ -977,7 +1019,7 @@ osw_drv_nl80211_scan_build_msg_roc(struct nl_80211 *nl,
     err |= nla_put_u32(msg, NL80211_ATTR_WIPHY_FREQ, freq);
     err |= nla_put_u32(msg, NL80211_ATTR_DURATION, duration);
 
-    const char *vif_name = vif_info->name;
+    const char *vif_name = vif->vif_name;
     LOGT(LOG_PREFIX_VIF("", vif_name, "using remain on channel for scan"));
     WARN_ON(err != 0);
     return msg;
@@ -1081,10 +1123,9 @@ osw_drv_nl80211_scan_setup(struct osw_drv_nl80211_vif *vif,
     nl_cmd_completed_fn_t *done_cb = osw_drv_nl80211_scan_done_cb;
     nl_cmd_set_completed_fn(cmd, done_cb, vif);
 
-    const char *vif_name = vif->info->name;
-    const uint32_t wiphy = vif->info->wiphy;
-    const struct nl_80211_phy *phy_info = nl_80211_phy_by_wiphy(nl, wiphy);
-    const char *phy_name = phy_info ? phy_info->name : NULL;
+    const struct osw_drv_nl80211_phy *phy = osw_drv_nl80211_phy_from_vif(vif);
+    const char *phy_name = phy ? phy->phy_name : NULL;
+    const char *vif_name = vif->vif_name;
     nl_cmd_set_name(cmd, strfmta(LOG_PREFIX_VIF(phy_name ?: "", vif_name, "scan")));
 
     vif->scan_cmd = cmd;
@@ -1116,12 +1157,9 @@ osw_drv_nl80211_push_frame_tx_complete(struct osw_drv_nl80211_vif *vif,
                                        const bool timed_out)
 {
     struct osw_drv_nl80211 *m = vif->m;
-    const struct nl_80211_vif *vif_info = vif->info;
-    const char *vif_name = vif_info->name;
-    const uint32_t wiphy = vif_info->wiphy;
-    struct nl_80211 *nl = m->nl_80211;
-    const struct nl_80211_phy *phy_info = nl_80211_phy_by_wiphy(nl, wiphy);
-    const char *phy_name = phy_info ? phy_info->name : "";
+    const struct osw_drv_nl80211_phy *phy = osw_drv_nl80211_phy_from_vif(vif);
+    const char *phy_name = phy ? phy->phy_name : "";
+    const char *vif_name = vif->vif_name;
 
     struct nl_cmd *cmd = vif->push_frame_tx_cmd;
     vif->push_frame_tx_cmd = NULL;
@@ -1132,7 +1170,7 @@ osw_drv_nl80211_push_frame_tx_complete(struct osw_drv_nl80211_vif *vif,
     const bool completed = nl_cmd_is_completed(cmd);
     const bool failed = nl_cmd_is_failed(cmd);
 
-    WARN_ON(phy_info == NULL);
+    WARN_ON(phy == NULL);
     LOGD(LOG_PREFIX_VIF(phy_name, vif_name, "push_frame_tx: done"));
 
     struct osw_drv *drv = m->drv;
@@ -1462,10 +1500,10 @@ osw_drv_nl80211_sta_init_nl(struct osw_drv_nl80211_sta *sta,
 
     const struct osw_hwaddr *sta_addr = mac;
     const struct nl_80211_vif *vif_info = nl_80211_vif_by_ifindex(nl, ifindex);
-    const char *vif_name = vif_info ? vif_info->name : NULL;
-    const uint32_t wiphy = vif_info->wiphy;
-    const struct nl_80211_phy *phy_info = nl_80211_phy_by_wiphy(nl, wiphy);
-    const char *phy_name = phy_info ? phy_info->name : "";
+    const struct osw_drv_nl80211_vif *vif = nl_80211_sub_vif_get_priv(m->nl_80211_sub, vif_info);
+    const struct osw_drv_nl80211_phy *phy = osw_drv_nl80211_phy_from_vif(vif);
+    const char *vif_name = vif ? vif->vif_name : NULL;
+    const char *phy_name = phy ? phy->phy_name : "";
     nl_cmd_set_name(cmd, strfmta(LOG_PREFIX_STA(phy_name ?: "", vif_name ?: "", sta_addr, "get station")));
 }
 
@@ -1699,6 +1737,69 @@ osw_drv_nl80211_guess_rsno_supported(void)
     return (hostapd_found != NULL) && (wpas_found != NULL);
 }
 
+static bool
+osw_drv_nl80211_within_freq_range(const struct osw_drv_nl80211_freq_range *fr, int freq_mhz)
+{
+    return (freq_mhz >= fr->start_mhz) && (freq_mhz <= fr->end_mhz);
+}
+
+static bool
+osw_drv_nl80211_channel_in_range(const int control_freq_mhz,
+                                 const struct osw_drv_nl80211_freq_range *fr)
+{
+    const int left_edge_mhz = control_freq_mhz - 10;
+    const int right_edge_mhz = control_freq_mhz + 10;
+    return osw_drv_nl80211_within_freq_range(fr, left_edge_mhz)
+        || osw_drv_nl80211_within_freq_range(fr, right_edge_mhz);
+}
+
+static bool
+osw_drv_nl80211_channel_in_phy(const int control_freq_mhz,
+                               const struct osw_drv_nl80211_phy *phy)
+{
+    if (phy->n_freq_ranges == 0) {
+        return true;
+    }
+
+    size_t i;
+    for (i = 0; i < phy->n_freq_ranges; i++) {
+        const struct osw_drv_nl80211_freq_range *fr = &phy->freq_ranges[i];
+        if (osw_drv_nl80211_channel_in_range(control_freq_mhz, fr)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static void
+osw_drv_nl80211_phy_remove_invalid_channel_states(struct osw_drv_nl80211_phy *phy)
+{
+    size_t i;
+    for (i = 0; i < phy->state.n_channel_states; i++) {
+        struct osw_channel_state *cs = &phy->state.channel_states[i];
+        const struct osw_channel *c = &cs->channel;
+        const int control_freq_mhz = c->control_freq_mhz;
+        const bool valid = osw_drv_nl80211_channel_in_phy(control_freq_mhz, phy);
+        const bool remove_it = !valid;
+        if (remove_it) {
+            const size_t remaining_entries = phy->state.n_channel_states - i - 1;
+            memmove(cs, cs + 1, remaining_entries * sizeof(*cs));
+            phy->state.n_channel_states--;
+            i--;
+        }
+    }
+}
+
+static void
+osw_drv_nl80211_phy_dump_freq_ranges(struct osw_drv_nl80211_phy *phy)
+{
+    size_t i;
+    for (i = 0; i < phy->n_freq_ranges; i++) {
+        const struct osw_drv_nl80211_freq_range *fr = &phy->freq_ranges[i];
+        LOGT(LOG_PREFIX_PHY(phy->phy_name, "frequency range: %d MHz - %d MHz"), fr->start_mhz, fr->end_mhz);
+    }
+}
+
 static void
 osw_drv_nl80211_phy_state_report_cb(struct rq *q,
                                     void *priv)
@@ -1708,10 +1809,10 @@ osw_drv_nl80211_phy_state_report_cb(struct rq *q,
     struct osw_drv_nl80211 *m = phy->m;
     struct osw_drv *drv = m->drv;
     struct osw_drv_phy_state *state = &phy->state;
-    const struct nl_80211_phy *info = phy->info;
-    const char *phy_name = info->name;
+    const char *phy_name = phy->phy_name;
+    const char *wiphy_name = phy->info->name;
 
-    state->enabled = rfkill_get_phy_enabled(phy_name);
+    state->enabled = rfkill_get_phy_enabled(wiphy_name);
 
     /* Some drivers don't fill up cfg80211
      * structures properly and in consequence end
@@ -1735,6 +1836,9 @@ osw_drv_nl80211_phy_state_report_cb(struct rq *q,
 
     state->rsno_supported = m->rsno_supported;
 
+    osw_drv_nl80211_phy_dump_freq_ranges(phy);
+    osw_drv_nl80211_phy_remove_invalid_channel_states(phy);
+
     CALL_HOOKS(m, fix_phy_state_fn, phy_name, state);
 
     LOGD(LOG_PREFIX_PHY(phy_name, "reporting state"));
@@ -1750,6 +1854,7 @@ osw_drv_nl80211_phy_state_get_wiphy_resp_cb(struct nl_cmd *cmd,
     struct osw_drv_nl80211_phy *phy = priv;
     struct osw_drv_phy_state *state = &phy->state;
     const struct nl_80211_phy *info = phy->info;
+    struct osw_drv_nl80211_phy_sub *sub = nl_80211_sub_phy_get_priv(phy->m->nl_80211_sub, info);
     const uint32_t wiphy = info->wiphy;
 
     struct nlattr *tb[NL80211_ATTR_MAX + 1];
@@ -1758,13 +1863,22 @@ osw_drv_nl80211_phy_state_get_wiphy_resp_cb(struct nl_cmd *cmd,
     if (err) return;
     if (nla_wiphy_equal(tb, wiphy) == false) return;
 
-    nla_fill_tx_chainmask(&state->tx_chainmask, tb);
+    nla_fill_tx_chainmask(&state->tx_chainmask, &sub->combined_antenna_mask, tb);
     nla_fill_radar_detect(&state->radar, tb);
     state->exists = true;
     nla_mac_to_osw_hwaddr(tb[NL80211_ATTR_MAC], &state->mac_addr);
     nla_band_to_osw_chan_states(&state->channel_states,
                                 &state->n_channel_states,
                                 tb[NL80211_ATTR_WIPHY_BANDS]);
+    nla_radios_get_info(tb[NL80211_ATTR_WIPHY_RADIOS],
+                        phy->radio_index,
+                        &phy->freq_ranges,
+                        &phy->n_freq_ranges,
+                        &phy->antenna_mask);
+
+    if (phy->antenna_mask != 0) {
+        state->tx_chainmask = phy->antenna_mask;
+    }
 }
 
 static void
@@ -1784,17 +1898,61 @@ osw_drv_nl80211_phy_state_get_reg_resp_cb(struct nl_cmd *cmd,
     nla_fill_reg_domain(state->reg_domain.ccode, tb, wiphy);
 }
 
-static void
-osw_drv_nl80211_phy_added_cb(const struct nl_80211_phy *info,
-                             void *priv)
+static char *
+osw_drv_nl80211_phy_name_get(const struct nl_80211_phy *info, int radio_index)
 {
-    if (osw_drv_nl80211_phy_is_ignored(info->name)) return;
+    if (radio_index == 0) {
+        return STRDUP(info->name);
+    }
 
-    struct osw_drv_nl80211 *m = priv;
-    struct osw_drv_nl80211_phy *phy = nl_80211_sub_phy_get_priv(m->nl_80211_sub, info);
-    const char *phy_name = info->name;
+    char *wiphy_name_base = strdupa(info->name);
+    char *first_digit = strpbrk(wiphy_name_base, "0123456789");
+    const int wiphy_base_number = atoi(first_digit ?: "0");
+    if (first_digit != NULL) {
+        *first_digit = '\0';
+    }
+
+    const int phy_index = wiphy_base_number + radio_index;
+    char *phy_name = strfmt("%s%d", wiphy_name_base, phy_index);
+    return phy_name;
+}
+
+static struct osw_drv_nl80211_phy *
+osw_drv_nl80211_alloc(struct osw_drv_nl80211 *m,
+                      const struct nl_80211_phy *info,
+                      const int radio_index)
+{
+    const char *wiphy_name = info->name;
+    struct osw_drv_nl80211_phy_sub *sub = nl_80211_sub_phy_get_priv(m->nl_80211_sub, info);
+    struct osw_drv_nl80211_phy *phy = CALLOC(1, sizeof(*phy));
+    phy->phy_name = osw_drv_nl80211_phy_name_get(info, radio_index);
+    phy->radio_index = radio_index;
     phy->info = info;
     phy->m = m;
+
+    LOGI(LOG_PREFIX_WIPHY(wiphy_name, "derived %s for radio index %d"), phy->phy_name, radio_index);
+
+    /* This can really only happen if there's o single-wiphy multi-radio
+     * systems where multiple wiphys exist leading to indexing clash.
+     *
+     * The solution to that is at the integrator level: make sure the wiphy
+     * names are apart from each other based on their radio count.
+     *
+     * For example, if phy0 has 2 radios, and phy1 has 3 radios, then:
+     *
+     *  phy0 stays as phy0
+     *    radio_index=0 -> phy0
+     *    radio_index=1 -> phy1
+     *
+     *  phy1 should be renamed to phy2 by the integrator
+     *    radio_index=0 -> phy2
+     *    radio_index=1 -> phy3
+     *    radio_index=2 -> phy4
+     */
+    const bool phy_name_already_exists = ds_tree_find(&m->phys_by_name, phy->phy_name) != NULL;
+    assert(phy_name_already_exists == false);
+
+    const char *phy_name = phy->phy_name;
     phy->phy_group_impl_type = osw_drv_nl80211_get_phy_group_impl_type(phy_name);
     phy->csa_impl_type = osw_drv_nl80211_get_csa_impl_type(phy_name);
     phy->acl_impl_type = osw_drv_nl80211_get_acl_impl_type(phy_name);
@@ -1831,36 +1989,45 @@ osw_drv_nl80211_phy_added_cb(const struct nl_80211_phy *info,
     }
 
     LOGI(LOG_PREFIX_PHY(phy_name, "added"));
+    ds_tree_insert(&m->phys_by_name, phy, phy->phy_name);
+    ds_tree_insert(&sub->phys_by_index, phy, &phy->radio_index);
+    return phy;
 }
 
 static void
-osw_drv_nl80211_phy_renamed_cb(const struct nl_80211_phy *info,
-                               const char *old_name,
-                               const char *new_name,
-                               void *priv)
+osw_drv_nl80211_phy_added_cb(const struct nl_80211_phy *info,
+                             void *priv)
 {
-    if (osw_drv_nl80211_phy_is_ignored(info->name)) return;
-
     struct osw_drv_nl80211 *m = priv;
-    struct osw_drv *drv = m->drv;
 
-    if (drv == NULL) return;
+    struct osw_drv_nl80211_phy_sub *sub = nl_80211_sub_phy_get_priv(m->nl_80211_sub, info);
+    ds_tree_init(&sub->phys_by_index, ds_int_cmp, struct osw_drv_nl80211_phy, node_by_index);
+    const char *wiphy_name = info->name;
 
-    LOGI(LOG_PREFIX_PHY(old_name, "renamed to %s", new_name));
-    osw_drv_report_phy_changed(drv, old_name);
-    osw_drv_report_phy_changed(drv, new_name);
+    LOGI(LOG_PREFIX_WIPHY(wiphy_name, "has %d radio(s)"), info->num_radios);
+
+    /* Even if this is a regular non-single-wiphy we still need at least one
+     * osw_drv_nl80211_phy instance to represent the phy itself, hence the
+     * default of 1.
+     */
+    const int num_radios = info->num_radios ?: 1;
+    int i;
+    for (i = 0; i < num_radios; i++) {
+        struct osw_drv_nl80211_phy *phy = osw_drv_nl80211_alloc(m, info, i);
+        if (osw_drv_nl80211_phy_is_ignored(phy->phy_name)) continue;
+        osw_drv_report_phy_changed(m->drv, phy->phy_name);
+    }
 }
 
 static void
-osw_drv_nl80211_phy_removed_cb(const struct nl_80211_phy *info,
-                               void *priv)
+osw_drv_nl80211_phy_drop(struct osw_drv_nl80211_phy *phy)
 {
-    if (osw_drv_nl80211_phy_is_ignored(info->name)) return;
+    if (phy == NULL) return;
 
-    struct osw_drv_nl80211 *m = priv;
+    const char *phy_name = phy->phy_name;
+    struct osw_drv_nl80211 *m = phy->m;
+    struct osw_drv_nl80211_phy_sub *sub = nl_80211_sub_phy_get_priv(m->nl_80211_sub, phy->info);
     struct osw_drv *drv = m->drv;
-    struct osw_drv_nl80211_phy *phy = nl_80211_sub_phy_get_priv(m->nl_80211_sub, info);
-    const char *phy_name = info->name;
 
     nl_cmd_task_fini(&phy->task_nl_set_antenna);
 
@@ -1870,10 +2037,44 @@ osw_drv_nl80211_phy_removed_cb(const struct nl_80211_phy *info,
     nl_cmd_task_fini(&phy->task_nl_get_wiphy);
     nl_cmd_task_fini(&phy->task_nl_get_reg);
 
-    osw_drv_phy_state_report_free(&phy->state);
-    osw_drv_report_phy_state(drv, phy_name, &phy->state);
+    if (!osw_drv_nl80211_phy_is_ignored(phy_name)) {
+        osw_drv_phy_state_report_free(&phy->state);
+        osw_drv_report_phy_state(drv, phy_name, &phy->state);
+    }
 
     LOGI(LOG_PREFIX_PHY(phy_name, "removed"));
+
+    ds_tree_remove(&m->phys_by_name, phy);
+    ds_tree_remove(&sub->phys_by_index, phy);
+
+    FREE(phy->freq_ranges);
+    FREE(phy->phy_name);
+    FREE(phy);
+}
+
+static void
+osw_drv_nl80211_phy_removed_cb(const struct nl_80211_phy *info,
+                               void *priv)
+{
+    struct osw_drv_nl80211 *m = priv;
+    struct osw_drv_nl80211_phy_sub *sub = nl_80211_sub_phy_get_priv(m->nl_80211_sub, info);
+    struct osw_drv_nl80211_phy *phy;
+
+    while ((phy = ds_tree_head(&sub->phys_by_index)) != NULL) {
+        osw_drv_nl80211_phy_drop(phy);
+    }
+}
+
+static void
+osw_drv_nl80211_phy_renamed_cb(const struct nl_80211_phy *info,
+                               const char *old_name,
+                               const char *new_name,
+                               void *priv)
+{
+    LOGI(LOG_PREFIX_PHY(old_name, "renamed to %s", new_name));
+
+    osw_drv_nl80211_phy_removed_cb(info, priv);
+    osw_drv_nl80211_phy_added_cb(info, priv);
 }
 
 static void
@@ -1945,13 +2146,12 @@ osw_drv_nl80211_vif_state_dump_scan_stats_resp_cb(struct nl_cmd *cmd,
     struct osw_drv_nl80211_vif *vif = priv;
     struct osw_drv_nl80211 *m = vif->m;
     struct osw_drv *drv = m->drv;
-    struct nl_80211 *nl = m->nl_80211;
 
     struct nlattr *tb[NL80211_ATTR_MAX + 1];
     const int err = genlmsg_parse(nlmsg_hdr(msg), 0, tb, NL80211_ATTR_MAX, NULL);
     if (err) return;
 
-    const struct nl_80211_phy *phy = nl_80211_phy_by_nla(nl, tb);
+    const struct osw_drv_nl80211_phy *phy = osw_drv_nl80211_phy_from_vif(vif);
     if (phy == NULL) return;
 
     struct nlattr *bss = tb[NL80211_ATTR_BSS];
@@ -1969,7 +2169,7 @@ osw_drv_nl80211_vif_state_dump_scan_stats_resp_cb(struct nl_cmd *cmd,
     struct nlattr *nla_freq = tb_bss[NL80211_BSS_FREQUENCY];
     struct nlattr *nla_signal = tb_bss[NL80211_BSS_SIGNAL_MBM];
     struct nlattr *nla_ies = tb_bss[NL80211_BSS_INFORMATION_ELEMENTS];
-    const char *phy_name = phy->name;
+    const char *phy_name = phy->phy_name;
     if (nla_bssid == NULL) {
         LOGW(LOG_PREFIX_PHY(phy_name, "stats: driver reported bss with empty bssid"));
         return;
@@ -1981,6 +2181,25 @@ osw_drv_nl80211_vif_state_dump_scan_stats_resp_cb(struct nl_cmd *cmd,
     const int32_t rssi_dbm = mdbm / 100;
     const int32_t noise_dbm = osw_channel_nf_20mhz_fixup(0);
     const uint32_t snr_db = (rssi_dbm >= noise_dbm ? (rssi_dbm - noise_dbm) : 0);
+
+    /* Single-wiphy multi-radio systems will report _all_ bands' BSSes because
+     * there's only a single wiphy (rdev) under the hood.
+     *
+     * Opensync was designed around phy=radio=band mapping so to keep things
+     * backward compatible and work smoothly weed out scan results that don't
+     * belong to the phy's radios.
+     *
+     * The frequency ranges are only present for single-wiphy multi-radio
+     * systems, hence a direct check via osw_drv_nl80211_channel_in_phy().
+     *
+     * FIXME: The logic will now still run scan dumps per "radio", but all of
+     * them will report the same BSS set. This could be optimized.
+     */
+    const bool other_radio = !osw_drv_nl80211_channel_in_phy(freq_mhz, phy);
+    if (other_radio) {
+        LOGT(LOG_PREFIX_PHY(phy_name, "stats: bss: skipping scan result on other radio %uMHz"), freq_mhz);
+        return;
+    }
 
     struct osw_tlv t;
     MEMZERO(t);
@@ -2016,27 +2235,21 @@ osw_drv_nl80211_vif_state_dump_survey_stats_resp_cb(struct nl_cmd *cmd,
     struct osw_drv_nl80211_vif *drv_nl80211_vif = priv;
     struct osw_drv_nl80211 *m = drv_nl80211_vif->m;
     struct osw_drv *drv = m->drv;
-    struct nl_80211 *nl = m->nl_80211;
 
     struct nlattr *tb[NL80211_ATTR_MAX + 1];
     const int err = genlmsg_parse(nlmsg_hdr(msg), 0, tb, NL80211_ATTR_MAX, NULL);
     if (err) return;
 
-    const struct nl_80211_phy *phy = nl_80211_phy_by_nla(nl, tb);
-    if (phy == NULL) return;
-    const char *phy_name = phy->name;
-
-    const struct nl_80211_vif *vif = nl_80211_vif_by_nla(nl, tb);
-    if (vif == NULL) return;
-    const char *vif_name = vif->name;
-
-    LOGT(LOG_PREFIX_VIF(phy_name, vif_name, "stats: survey"));
-
-    struct osw_drv_nl80211_phy *drv_nl80211_phy = nl_80211_sub_phy_get_priv(m->nl_80211_sub, phy);
+    struct osw_drv_nl80211_phy *drv_nl80211_phy = osw_drv_nl80211_phy_from_vif(drv_nl80211_vif);
+    if (drv_nl80211_phy == NULL) return;
     WARN_ON(drv_nl80211_phy->dump_survey_impl_type == OSW_DRV_NL80211_DUMP_SURVEY_IMPL_NONE);
 
     struct nlattr *survey = tb[NL80211_ATTR_SURVEY_INFO];
     if (survey == NULL) return;
+
+    const char *phy_name = drv_nl80211_phy->phy_name;
+    const char *vif_name = drv_nl80211_vif->vif_name;
+    LOGT(LOG_PREFIX_VIF(phy_name, vif_name, "stats: survey"));
 
     static struct nla_policy survey_policy[NL80211_SURVEY_INFO_MAX + 1] = {
         [NL80211_SURVEY_INFO_FREQUENCY] = { .type = NLA_U32 },
@@ -2126,23 +2339,19 @@ osw_drv_nl80211_vif_state_dump_sta_stats_resp_cb(struct nl_cmd *cmd,
     struct osw_drv_nl80211_vif *drv_nl80211_vif = priv;
     struct osw_drv_nl80211 *m = drv_nl80211_vif->m;
     struct osw_drv *drv = m->drv;
-    struct nl_80211 *nl = m->nl_80211;
 
     struct nlattr *tb[NL80211_ATTR_MAX + 1];
     const int err = genlmsg_parse(nlmsg_hdr(msg), 0, tb, NL80211_ATTR_MAX, NULL);
     if (err) return;
 
-    const struct nl_80211_phy *phy = nl_80211_phy_by_nla(nl, tb);
+    const struct osw_drv_nl80211_phy *phy = osw_drv_nl80211_phy_from_vif(drv_nl80211_vif);
     if (phy == NULL) return;
-    const char *phy_name = phy->name;
-
-    const struct nl_80211_vif *vif = nl_80211_vif_by_nla(nl, tb);
-    if (vif == NULL) return;
-    const char *vif_name = vif->name;
+    const char *phy_name = phy->phy_name;
+    const char *vif_name = drv_nl80211_vif->vif_name;
 
     LOGT(LOG_PREFIX_VIF(phy_name, vif_name, "stats: sta"));
 
-    struct osw_drv_nl80211_phy *drv_nl80211_phy = nl_80211_sub_phy_get_priv(m->nl_80211_sub, phy);
+    struct osw_drv_nl80211_phy *drv_nl80211_phy = osw_drv_nl80211_phy_from_vif(drv_nl80211_vif);
     WARN_ON(drv_nl80211_phy->dump_sta_impl_type == OSW_DRV_NL80211_DUMP_STA_IMPL_NONE);
 
     struct nlattr *sta = tb[NL80211_ATTR_STA_INFO];
@@ -2296,8 +2505,7 @@ osw_drv_nl80211_vif_mark_enabled(const char *vif_name,
 static void
 osw_drv_nl80211_vif_state_report_finalize(struct osw_drv_nl80211_vif *vif)
 {
-    const struct nl_80211_vif *info = vif->info;
-    const char *vif_name = info->name;
+    const char *vif_name = vif->vif_name;
     struct osw_drv_vif_state *state = &vif->state;
     struct osw_drv_vif_state_sta_link *link = &state->u.sta.link;
     const bool *connected = &vif->state_bits.connected;
@@ -2316,6 +2524,15 @@ osw_drv_nl80211_vif_state_report_finalize(struct osw_drv_nl80211_vif *vif)
     os_nif_exists((char *)vif_name, &state->exists);
     osw_drv_nl80211_vif_mark_enabled(vif_name, state);
     osw_hostap_bss_fill_state(vif->hostap_bss, state);
+
+    /* percent==100 requests a "no power limit" and is applied via the driver's
+     * automatic tx power selection. The netlink tx power level
+     * then reflects the hardware maximum, which may not be equal to
+     * the per-channel regulatory maximum.
+     * Report that the vif is running unrestricted so confsync can settle on that intent
+     * rather than on an exact dBm value.
+     */
+    state->tx_power_percent = vif->tx_power_auto ? 100 : 0;
 }
 
 static void
@@ -2328,6 +2545,9 @@ osw_drv_nl80211_vif_state_sanitize_tx_power_dbm(const char *phy_name,
                             "state: tx_power_dbm override %d -> to 0: vif is disabled",
                             state->tx_power_dbm));
         state->tx_power_dbm = 0;
+        state->tx_power_percent = 0;
+        state->tx_power_db_limit = 0;
+        state->tx_power_db_limit_valid = false;
     }
 
     const int max = 50;
@@ -2336,6 +2556,9 @@ osw_drv_nl80211_vif_state_sanitize_tx_power_dbm(const char *phy_name,
                             "state: tx_power_dbm override %d -> to 0: reported >= %d",
                             state->tx_power_dbm, max));
         state->tx_power_dbm = 0;
+        state->tx_power_percent = 0;
+        state->tx_power_db_limit = 0;
+        state->tx_power_db_limit_valid = false;
     }
 }
 
@@ -2348,13 +2571,10 @@ osw_drv_nl80211_vif_state_report_cb(struct rq *q,
     struct osw_drv_nl80211 *m = vif->m;
     struct osw_drv *drv = m->drv;
     struct osw_drv_vif_state *state = &vif->state;
-    struct nl_80211 *nl = m->nl_80211;
-    const struct nl_80211_vif *info = vif->info;
-    const char *vif_name = info->name;
-    const uint32_t wiphy = info->wiphy;
-    const struct nl_80211_phy *phy_info = nl_80211_phy_by_wiphy(nl, wiphy);
-    if (WARN_ON(phy_info == NULL)) return;
-    const char *phy_name = phy_info->name;
+    const struct osw_drv_nl80211_phy *phy = osw_drv_nl80211_phy_from_vif(vif);
+    if (WARN_ON(phy == NULL)) return;
+    const char *phy_name = phy->phy_name;
+    const char *vif_name = vif->vif_name;
 
     osw_drv_nl80211_vif_state_report_finalize(vif);
 
@@ -2377,13 +2597,10 @@ osw_drv_nl80211_vif_hostap_event_cb(const char *msg,
     struct osw_drv *drv = m->drv;
     if (drv == NULL) return;
 
-    struct nl_80211 *nl = m->nl_80211;
-    const struct nl_80211_vif *info = vif->info;
-    const char *vif_name = info->name;
-    const uint32_t wiphy = info->wiphy;
-    const struct nl_80211_phy *phy_info = nl_80211_phy_by_wiphy(nl, wiphy);
-    if (WARN_ON(phy_info == NULL)) return;
-    const char *phy_name = phy_info->name;
+    const struct osw_drv_nl80211_phy *phy = osw_drv_nl80211_phy_from_vif(vif);
+    if (WARN_ON(phy == NULL)) return;
+    const char *phy_name = phy->phy_name;
+    const char *vif_name = vif->vif_name;
 
     char buf[1024];
     STRSCPY_WARN(buf, msg);
@@ -2550,6 +2767,13 @@ osw_drv_nl80211_vif_hostap_event_cb(const char *msg,
         osw_drv_report_phy_changed(drv, phy_name);
         osw_drv_report_vif_changed(drv, phy_name, vif_name);
     }
+    else if (strcmp(event_name, "NL80211-CMD-FRAME") == 0) {
+        /* This isn't a standard hostapd event, but one that comes from some
+         * patches on some platforms. It's useful to log them in debug, but
+         * definitely not in info because they can spam a lot.
+         */
+        LOGD(LOG_PREFIX_VIF(phy_name, vif_name, "hostap event: %s (len=%zu)", msg, msg_len));
+    }
     else {
         LOGI(LOG_PREFIX_VIF(phy_name, vif_name, "hostap event: %s (len=%zu)", msg, msg_len));
     }
@@ -2561,13 +2785,10 @@ osw_drv_nl80211_vif_hostap_bss_changed_cb(void *priv)
     struct osw_drv_nl80211_vif *vif = priv;
     struct osw_drv_nl80211 *m = vif->m;
     struct osw_drv *drv = m->drv;
-    struct nl_80211 *nl = m->nl_80211;
-    const struct nl_80211_vif *info = vif->info;
-    const char *vif_name = info->name;
-    const uint32_t wiphy = info->wiphy;
-    const struct nl_80211_phy *phy_info = nl_80211_phy_by_wiphy(nl, wiphy);
-    if (WARN_ON(phy_info == NULL)) return;
-    const char *phy_name = phy_info->name;
+    const struct osw_drv_nl80211_phy *phy = osw_drv_nl80211_phy_from_vif(vif);
+    if (WARN_ON(phy == NULL)) return;
+    const char *phy_name = phy->phy_name;
+    const char *vif_name = vif->vif_name;
 
     LOGD(LOG_PREFIX_VIF(phy_name, vif_name, "hostap: bss changed"));
     if (drv == NULL) return;
@@ -2581,13 +2802,10 @@ osw_drv_nl80211_vif_hostap_config_applied_cb(void *priv)
     struct osw_drv_nl80211_vif *vif = priv;
     struct osw_drv_nl80211 *m = vif->m;
     struct osw_drv *drv = m->drv;
-    struct nl_80211 *nl = m->nl_80211;
-    const struct nl_80211_vif *info = vif->info;
-    const char *vif_name = info->name;
-    const uint32_t wiphy = info->wiphy;
-    const struct nl_80211_phy *phy_info = nl_80211_phy_by_wiphy(nl, wiphy);
-    if (WARN_ON(phy_info == NULL)) return;
-    const char *phy_name = phy_info->name;
+    const struct osw_drv_nl80211_phy *phy = osw_drv_nl80211_phy_from_vif(vif);
+    if (WARN_ON(phy == NULL)) return;
+    const char *phy_name = phy->phy_name;
+    const char *vif_name = vif->vif_name;
 
     LOGD(LOG_PREFIX_VIF(phy_name, vif_name, "hostap config completed"));
     if (drv == NULL) return;
@@ -2605,16 +2823,12 @@ osw_drv_nl80211_vif_hostap_sta_connected_cb(const struct osw_hostap_bss_sta *inf
     const struct osw_hwaddr *sta_addr = &info->addr;
 
     struct osw_drv_nl80211_vif *vif = priv;
-    const struct nl_80211_vif *vif_info = vif->info;
-    const char *vif_name = vif_info->name;
-
     struct osw_drv_nl80211 *m = vif->m;
     struct osw_drv *drv = m->drv;
-    struct nl_80211 *nl = m->nl_80211;
-    const uint32_t wiphy = vif_info->wiphy;
-    const struct nl_80211_phy *phy_info = nl_80211_phy_by_wiphy(nl, wiphy);
-    if (WARN_ON(phy_info == NULL)) return;
-    const char *phy_name = phy_info->name;
+    const struct osw_drv_nl80211_phy *phy = osw_drv_nl80211_phy_from_vif(vif);
+    if (WARN_ON(phy == NULL)) return;
+    const char *phy_name = phy->phy_name;
+    const char *vif_name = vif->vif_name;
 
     struct osw_drv_nl80211_sta *sta = osw_drv_nl80211_sta_lookup(m, phy_name, vif_name, sta_addr)
                                    ?: osw_drv_nl80211_sta_create(m, phy_name, vif_name, sta_addr);
@@ -2636,16 +2850,12 @@ osw_drv_nl80211_vif_hostap_sta_changed_cb(const struct osw_hostap_bss_sta *info,
     const struct osw_hwaddr *sta_addr = &info->addr;
 
     struct osw_drv_nl80211_vif *vif = priv;
-    const struct nl_80211_vif *vif_info = vif->info;
-    const char *vif_name = vif_info->name;
-
     struct osw_drv_nl80211 *m = vif->m;
     struct osw_drv *drv = m->drv;
-    struct nl_80211 *nl = m->nl_80211;
-    const uint32_t wiphy = vif_info->wiphy;
-    const struct nl_80211_phy *phy_info = nl_80211_phy_by_wiphy(nl, wiphy);
-    if (WARN_ON(phy_info == NULL)) return;
-    const char *phy_name = phy_info->name;
+    const struct osw_drv_nl80211_phy *phy = osw_drv_nl80211_phy_from_vif(vif);
+    if (WARN_ON(phy == NULL)) return;
+    const char *phy_name = phy->phy_name;
+    const char *vif_name = vif->vif_name;
 
     struct osw_drv_nl80211_sta *sta = osw_drv_nl80211_sta_lookup(m, phy_name, vif_name, sta_addr);
     if (WARN_ON(sta == NULL)) return;
@@ -2669,16 +2879,12 @@ osw_drv_nl80211_vif_hostap_sta_disconnected_cb(const struct osw_hostap_bss_sta *
     const struct osw_hwaddr *sta_addr = &info->addr;
 
     struct osw_drv_nl80211_vif *vif = priv;
-    const struct nl_80211_vif *vif_info = vif->info;
-    const char *vif_name = vif_info->name;
-
     struct osw_drv_nl80211 *m = vif->m;
     struct osw_drv *drv = m->drv;
-    struct nl_80211 *nl = m->nl_80211;
-    const uint32_t wiphy = vif_info->wiphy;
-    const struct nl_80211_phy *phy_info = nl_80211_phy_by_wiphy(nl, wiphy);
-    if (WARN_ON(phy_info == NULL)) return;
-    const char *phy_name = phy_info->name;
+    const struct osw_drv_nl80211_phy *phy = osw_drv_nl80211_phy_from_vif(vif);
+    if (WARN_ON(phy == NULL)) return;
+    const char *phy_name = phy->phy_name;
+    const char *vif_name = vif->vif_name;
 
     struct osw_drv_nl80211_sta *sta = osw_drv_nl80211_sta_lookup(m, phy_name, vif_name, sta_addr);
     if (WARN_ON(sta == NULL)) return;
@@ -2696,34 +2902,66 @@ osw_drv_nl80211_vif_netif_cb(osn_netif_t *netif,
     struct osw_drv_nl80211_vif *vif = osn_netif_data_get(netif);
     struct osw_drv_nl80211 *m = vif->m;
     struct osw_drv *drv = m->drv;
-    struct nl_80211 *nl = m->nl_80211;
-    const uint32_t wiphy = vif->info->wiphy;
-    const struct nl_80211_phy *phy_info = nl_80211_phy_by_wiphy(nl, wiphy);
-    if (phy_info == NULL) return;
-    const char *phy_name = phy_info->name;
-    const char *vif_name = vif->info->name;
+    const struct osw_drv_nl80211_phy *phy = osw_drv_nl80211_phy_from_vif(vif);
+    if (phy == NULL) return;
+    const char *phy_name = phy->phy_name;
+    const char *vif_name = vif->vif_name;
 
     osw_drv_report_vif_changed(drv, phy_name, vif_name);
+}
+
+static char *
+osw_drv_nl80211_vif_name_get(const struct nl_80211_vif *info)
+{
+    return STRDUP(info->name);
 }
 
 static void
 osw_drv_nl80211_vif_added_cb(const struct nl_80211_vif *info,
                              void *priv)
 {
-    if (osw_drv_nl80211_vif_is_ignored(info->name)) return;
-
     struct osw_drv_nl80211 *m = priv;
+    struct osw_drv *drv = m->drv;
     struct osw_drv_nl80211_vif *vif = nl_80211_sub_vif_get_priv(m->nl_80211_sub, info);
-    struct osw_hostap *hostap = m->hostap;
-    struct nl_80211 *nl = m->nl_80211;
-    const char *vif_name = info->name;
-    const uint32_t wiphy = info->wiphy;
-    const struct nl_80211_phy *phy_info = nl_80211_phy_by_wiphy(nl, wiphy);
-    struct osw_drv_nl80211_phy *drv_nl80211_phy = nl_80211_sub_phy_get_priv(m->nl_80211_sub, phy_info);
-    const char *phy_name = phy_info ? phy_info->name : "unknown";
-
+    FREE(vif->vif_name);
+    vif->vif_name = osw_drv_nl80211_vif_name_get(info);
     vif->info = info;
     vif->m = m;
+
+    if (osw_drv_nl80211_vif_is_ignored(vif->vif_name)) return;
+
+    /* Sanity check. There's a bunch of assumptions in the code that vif_name
+     * is a unique identifier. Assert and abort if this is not upheld.
+     */
+    const bool vif_name_already_exists = ds_tree_find(&m->vifs_by_name, vif->vif_name) != NULL;
+    assert(vif_name_already_exists == false);
+
+    ds_tree_insert(&m->vifs_by_name, vif, vif->vif_name);
+
+    struct osw_hostap *hostap = m->hostap;
+    struct osw_drv_nl80211_phy *drv_nl80211_phy = osw_drv_nl80211_phy_from_vif(vif);
+    assert(drv_nl80211_phy != NULL);
+
+    /* WARNING
+     *
+     * Single-wiphy multi-radio systems are currently limited to non-MLO
+     * operation, and are expected to have their interface arranged with
+     * radio_mask in a way, that radio_mask is always non-zero and contains a
+     * single non-zero bit set to.
+     *
+     * Failing to adhere to that (at integration level) would result in
+     * undefined behavior. As such, bail out as quickly. The integration (iw
+     * interface add) needs to be adjusted.
+     */
+    const bool wiphy_is_single_radio = drv_nl80211_phy->info->num_radios <= 1;
+    const bool wiphy_is_multi_radio = drv_nl80211_phy->info->num_radios > 1;
+    const int vif_num_radio_bits = __builtin_popcount(info->radio_mask);
+    const bool vif_is_single_radio = (vif_num_radio_bits == 1);
+    assert((wiphy_is_single_radio) ||
+           (wiphy_is_multi_radio && vif_is_single_radio));
+
+    const char *vif_name = vif->vif_name;
+    const char *phy_name = drv_nl80211_phy->phy_name;
 
     vif->netif = osn_netif_new(vif_name);
     osn_netif_data_set(vif->netif, vif);
@@ -2831,22 +3069,27 @@ osw_drv_nl80211_vif_added_cb(const struct nl_80211_vif *info,
     osw_timer_init(timer, osw_drv_nl80211_push_frame_tx_timer_cb);
 
     LOGI(LOG_PREFIX_VIF(phy_name, vif_name, "added"));
+    osw_drv_report_vif_changed(drv, phy_name, vif_name);
 }
 
 static void
 osw_drv_nl80211_vif_removed_cb(const struct nl_80211_vif *info,
                                void *priv)
 {
-    if (osw_drv_nl80211_vif_is_ignored(info->name)) return;
-
     struct osw_drv_nl80211 *m = priv;
     struct osw_drv *drv = m->drv;
     struct osw_drv_nl80211_vif *vif = nl_80211_sub_vif_get_priv(m->nl_80211_sub, info);
-    struct nl_80211 *nl = m->nl_80211;
-    const char *vif_name = info->name;
-    const uint32_t wiphy = info->wiphy;
-    const struct nl_80211_phy *phy_info = nl_80211_phy_by_wiphy(nl, wiphy);
-    const char *phy_name = phy_info ? phy_info->name : "unknown";
+    const struct osw_drv_nl80211_phy *phy = osw_drv_nl80211_phy_from_vif(vif);
+    const char *phy_name = phy ? phy->phy_name : "unknown";
+    const char *vif_name = vif->vif_name;
+
+    if (osw_drv_nl80211_vif_is_ignored(vif->vif_name)) {
+        FREE(vif->vif_name);
+        vif->vif_name = NULL;
+        return;
+    }
+
+    ds_tree_remove(&m->vifs_by_name, vif);
 
     osw_drv_nl80211_scan_complete(vif, OSW_DRV_SCAN_ABORTED);
 
@@ -2876,6 +3119,8 @@ osw_drv_nl80211_vif_removed_cb(const struct nl_80211_vif *info,
     osn_netif_del(vif->netif);
 
     LOGI(LOG_PREFIX_VIF(phy_name, vif_name, "removed"));
+    FREE(vif->vif_name);
+    vif->vif_name = NULL;
 }
 
 static void
@@ -2888,13 +3133,12 @@ osw_drv_nl80211_sta_added_cb(const struct nl_80211_sta *info,
     const struct osw_hwaddr *sta_addr = (const void *)info->addr.addr;
     const uint32_t ifindex = info->ifindex;
     const struct nl_80211_vif *vif_info = nl_80211_vif_by_ifindex(nl, ifindex);
-    const char *vif_name = vif_info ? vif_info->name : NULL;
-    if (WARN_ON(vif_name == NULL)) return;
-
-    const uint32_t wiphy = vif_info->wiphy;
-    const struct nl_80211_phy *phy_info = nl_80211_phy_by_wiphy(nl, wiphy);
-    const char *phy_name = phy_info ? phy_info->name : NULL;
-    if (WARN_ON(phy_name == NULL)) return;
+    const struct osw_drv_nl80211_vif *vif = nl_80211_sub_vif_get_priv(m->nl_80211_sub, vif_info);
+    const struct osw_drv_nl80211_phy *phy = osw_drv_nl80211_phy_from_vif(vif);
+    if (WARN_ON(vif == NULL)) return;
+    if (WARN_ON(phy == NULL)) return;
+    const char *phy_name = phy->phy_name;
+    const char *vif_name = vif->vif_name;
 
     struct osw_drv_nl80211_sta *sta = osw_drv_nl80211_sta_lookup(m, phy_name, vif_name, sta_addr)
                                    ?: osw_drv_nl80211_sta_create(m, phy_name, vif_name, sta_addr);
@@ -2912,13 +3156,12 @@ osw_drv_nl80211_sta_removed_cb(const struct nl_80211_sta *info,
     const struct osw_hwaddr *sta_addr = (const void *)info->addr.addr;
     const uint32_t ifindex = info->ifindex;
     const struct nl_80211_vif *vif_info = nl_80211_vif_by_ifindex(nl, ifindex);
-    const char *vif_name = vif_info ? vif_info->name : NULL;
-    if (WARN_ON(vif_name == NULL)) return;
-
-    const uint32_t wiphy = vif_info->wiphy;
-    const struct nl_80211_phy *phy_info = nl_80211_phy_by_wiphy(nl, wiphy);
-    const char *phy_name = phy_info ? phy_info->name : NULL;
-    if (WARN_ON(phy_name == NULL)) return;
+    const struct osw_drv_nl80211_vif *vif = nl_80211_sub_vif_get_priv(m->nl_80211_sub, vif_info);
+    const struct osw_drv_nl80211_phy *phy = osw_drv_nl80211_phy_from_vif(vif);
+    if (WARN_ON(vif == NULL)) return;
+    if (WARN_ON(phy == NULL)) return;
+    const char *phy_name = phy->phy_name;
+    const char *vif_name = vif->vif_name;
 
     struct osw_drv_nl80211_sta *sta = osw_drv_nl80211_sta_lookup(m, phy_name, vif_name, sta_addr);
     if (WARN_ON(sta == NULL)) return;
@@ -2980,6 +3223,39 @@ osw_drv_nl80211_op_get_nl_80211_cb(struct osw_drv_nl80211_ops *ops)
 {
     struct osw_drv_nl80211 *m = ops_to_mod(ops);
     return m->nl_80211;
+}
+
+static const struct nl_80211_phy *
+osw_drv_nl80211_op_get_phy_info_fn(struct osw_drv_nl80211_ops *ops,
+                                  const char *phy_name,
+                                  int *radio_index)
+{
+    struct osw_drv_nl80211 *m = ops_to_mod(ops);
+    struct osw_drv_nl80211_phy *phy = ds_tree_find(&m->phys_by_name, phy_name);
+    if (phy == NULL) return NULL;
+
+    const struct nl_80211_phy *info = phy->info;
+
+    if (radio_index != NULL) {
+        *radio_index = -1;
+        if (info->num_radios > 1) {
+            *radio_index = phy->radio_index;
+        }
+    }
+
+    return info;
+}
+
+static const char *
+osw_drv_nl80211_op_get_phy_name_from_vif_name_fn(struct osw_drv_nl80211_ops *ops,
+                                                 const char *vif_name)
+{
+    struct osw_drv_nl80211 *m = ops_to_mod(ops);
+    struct osw_drv_nl80211_vif *vif = ds_tree_find(&m->vifs_by_name, vif_name);
+    if (vif == NULL) return NULL;
+    struct osw_drv_nl80211_phy *phy = osw_drv_nl80211_phy_from_vif(vif);
+    if (phy == NULL) return NULL;
+    return phy->phy_name;
 }
 
 static struct osw_drv_nl80211_hook *
@@ -3048,6 +3324,8 @@ osw_drv_nl80211_init(struct osw_drv_nl80211 *m)
     };
     const struct osw_drv_nl80211_ops mod_ops = {
         .get_nl_80211_fn = osw_drv_nl80211_op_get_nl_80211_cb,
+        .get_phy_info_fn = osw_drv_nl80211_op_get_phy_info_fn,
+        .get_phy_name_from_vif_name_fn = osw_drv_nl80211_op_get_phy_name_from_vif_name_fn,
         .add_hook_ops_fn = osw_drv_nl80211_op_add_hook_ops_cb,
         .del_hook_fn = osw_drv_nl80211_op_del_hook_cb,
     };
@@ -3059,12 +3337,14 @@ osw_drv_nl80211_init(struct osw_drv_nl80211 *m)
         .vif_removed_fn = osw_drv_nl80211_vif_removed_cb,
         .sta_added_fn = osw_drv_nl80211_sta_added_cb,
         .sta_removed_fn = osw_drv_nl80211_sta_removed_cb,
-        .priv_phy_size = sizeof(struct osw_drv_nl80211_phy),
+        .priv_phy_size = sizeof(struct osw_drv_nl80211_phy_sub),
         .priv_vif_size = sizeof(struct osw_drv_nl80211_vif),
         .priv_sta_size = sizeof(struct osw_drv_nl80211_sta),
     };
 
     ds_tree_init(&m->stas, osw_drv_nl80211_sta_id_cmp, struct osw_drv_nl80211_sta, node);
+    ds_tree_init(&m->phys_by_name, ds_str_cmp, struct osw_drv_nl80211_phy, node_by_name);
+    ds_tree_init(&m->vifs_by_name, ds_str_cmp, struct osw_drv_nl80211_vif, node_by_name);
     ds_dlist_init(&m->hooks, struct osw_drv_nl80211_hook, node);
     rq_init(&m->q_request_config, EV_DEFAULT);
 

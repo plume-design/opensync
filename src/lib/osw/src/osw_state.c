@@ -285,20 +285,41 @@ osw_state_vif_get_list(osw_state_report_vif_fn_t fn,
 }
 
 static void
+osw_state_sta_get_list_on_vif(osw_state_report_sta_fn_t fn,
+                              struct osw_drv_vif *vif,
+                              void *priv)
+{
+    struct osw_drv_sta *sta;
+
+    if (vif == NULL) return;
+    if (vif->cur_state.exists == false) return;
+
+    ds_tree_foreach(&vif->sta_tree, sta)
+        if (sta->cur_state.connected == true)
+            fn(&sta->pub, priv);
+}
+
+static void
 osw_state_sta_get_list_on_phy(osw_state_report_sta_fn_t fn,
                               struct osw_drv_phy *phy,
                               const char *vif_name,
                               void *priv)
 {
     struct osw_drv_vif *vif;
-    struct osw_drv_sta *sta;
 
-    if (phy->cur_state.exists == true)
-        if ((vif = ds_tree_find(&phy->vif_tree, vif_name)) != NULL)
-            if (vif->cur_state.exists == true)
-                ds_tree_foreach(&vif->sta_tree, sta)
-                    if (sta->cur_state.connected == true)
-                        fn(&sta->pub, priv);
+    if (phy->cur_state.exists == false)
+        return;
+
+    /* NULL vif_name means "all vifs on this phy". This mirrors how
+     * osw_state_sta_get_list() treats a NULL phy_name as "all phys".
+     */
+    if (vif_name == NULL) {
+        ds_tree_foreach(&phy->vif_tree, vif)
+            osw_state_sta_get_list_on_vif(fn, vif, priv);
+    }
+    else {
+        osw_state_sta_get_list_on_vif(fn, ds_tree_find(&phy->vif_tree, vif_name), priv);
+    }
 }
 
 static void

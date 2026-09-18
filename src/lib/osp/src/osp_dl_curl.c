@@ -54,15 +54,15 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define MODULE_ID LOG_MODULE_ID_COMMON
 
 /* Speed limit in bytes/s */
-#define OSP_DL_CURL_LOW_SPEED_LIMIT     128
+#define OSP_DL_CURL_LOW_SPEED_LIMIT     128L
 /*
  * If the transfer is below LOW_SPEED_LIMIT for this amount of seconds,
  * abort the connection
  */
-#define OSP_DL_CURL_LOW_SPEED_TIME      30
+#define OSP_DL_CURL_LOW_SPEED_TIME      30L
 
 /* Connection timeout in seconds */
-#define OSP_DL_CURL_CONNECT_TIMEOUT     30
+#define OSP_DL_CURL_CONNECT_TIMEOUT     30L
 
 struct osp_dl_curl;
 
@@ -658,7 +658,7 @@ CURL *osp_dl_curl_get_handle(struct osp_dl_curl *dc, const char *url)
      *
      * A workaround for this (according to cURL documentation) is to build cURL with c-ares support.
      */
-    rc = curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 0);
+    rc = curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 0L);
     if (rc != CURLE_OK)
     {
         LOG(ERR, "curl[%jd]: Unable to set the NOSIGNAL option: %s",

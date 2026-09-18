@@ -55,7 +55,7 @@ bool target_om_hook(target_om_hook_t hook, const char *openflow_rule)
             }
 
             if (!flushed_mac) {
-                hw_acc_flush_all_flows(NULL);
+                hw_acc_flush_all_flows();
             }
 
             break;

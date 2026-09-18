@@ -38,7 +38,7 @@ static struct osw_drv_conf g_drv_conf = {
             .tx_chainmask = 0x15,
             .radar = OSW_RADAR_DETECT_ENABLED,
             .reg_domain = {
-                .ccode = "US\0",
+                .ccode = "US",
                 .revision = 644,
                 .dfs = OSW_REG_DFS_ETSI
             },
@@ -52,6 +52,8 @@ static struct osw_drv_conf g_drv_conf = {
                         .u.sta = {
                             .operation = OSW_DRV_VIF_CONFIG_STA_CONNECT,
                             .network_changed = false,
+                            .allow_roam_channels = OSW_DRV_CHANNEL_ROAM_DISALLOWED,
+                            .allow_roam_channels_changed = false,
                             .network = (struct osw_drv_vif_sta_network[]) {
                                 {
                                     .ssid = {
@@ -178,6 +180,41 @@ OSW_UT(osw_wpas_conf_generate_sta_config_ut)
     OSW_UT_EVAL(strstr(conf, "\tpsk=\"hello\""));
     OSW_UT_EVAL(strstr(conf, "\tbssid=01:02:03:04:05:06"));
     OSW_UT_EVAL(strstr(conf, "\tpriority=42"));
+}
+
+OSW_UT(osw_wpas_conf_generate_sta_config_roam_channels_ut)
+{
+    struct osw_drv_conf *drv_conf = template_config_copy();
+    struct osw_hostap_conf_sta_config sta_conf;
+    MEMZERO(sta_conf);
+    char *conf = sta_conf.conf_buf;
+    struct osw_drv_vif_config_sta *sta = &drv_conf->phy_list[0].vif_list.list[0].u.sta;
+
+    sta->allow_roam_channels = OSW_DRV_CHANNEL_ROAM_DISALLOWED;
+    osw_hostap_conf_fill_sta_config(drv_conf,
+                                    "phy0",
+                                    "vif0.10_sta",
+                                    &sta_conf);
+    osw_hostap_conf_generate_sta_config_bufs(&sta_conf);
+    OSW_UT_EVAL(strstr(conf, "scan_cur_freq=1"));
+
+    sta->allow_roam_channels = OSW_DRV_CHANNEL_ROAM_ALLOWED;
+    osw_hostap_conf_fill_sta_config(drv_conf,
+                                    "phy0",
+                                    "vif0.10_sta",
+                                    &sta_conf);
+    osw_hostap_conf_generate_sta_config_bufs(&sta_conf);
+    OSW_UT_EVAL(strstr(conf, "scan_cur_freq=0"));
+
+    sta->allow_roam_channels = OSW_DRV_CHANNEL_ROAM_UNSPECIFIED;
+    osw_hostap_conf_fill_sta_config(drv_conf,
+                                    "phy0",
+                                    "vif0.10_sta",
+                                    &sta_conf);
+    osw_hostap_conf_generate_sta_config_bufs(&sta_conf);
+    OSW_UT_EVAL(strstr(conf, "scan_cur_freq=1"));
+
+    template_config_free(drv_conf);
 }
 
 OSW_UT(osw_wpas_conf_generate_sta_config_psk_ut)
@@ -349,6 +386,32 @@ OSW_UT(osw_wpas_conf_generate_sta_state_link_ut)
     OSW_UT_EVAL(link->wpa.akm_sae == true);
     OSW_UT_EVAL(link->wpa.akm_ft_psk == false);
     OSW_UT_EVAL(link->wpa.akm_ft_sae == false);
+    OSW_UT_EVAL(vstate->u.sta.allow_roam_channels == OSW_DRV_CHANNEL_ROAM_ALLOWED);
+}
+
+OSW_UT(osw_wpas_conf_generate_sta_state_roam_channels_ut)
+{
+    struct osw_hostap_conf_sta_state_bufs bufs = {0};
+    struct osw_drv_vif_state *vstate;
+
+    vstate = CALLOC(1, sizeof(*vstate));
+    bufs.config = "scan_cur_freq=0\n";
+    osw_hostap_conf_fill_sta_state(&bufs, vstate);
+    OSW_UT_EVAL(vstate->u.sta.allow_roam_channels == OSW_DRV_CHANNEL_ROAM_ALLOWED);
+    FREE(vstate);
+
+    vstate = CALLOC(1, sizeof(*vstate));
+    bufs.config = "scan_cur_freq=1\n";
+    osw_hostap_conf_fill_sta_state(&bufs, vstate);
+    OSW_UT_EVAL(vstate->u.sta.allow_roam_channels == OSW_DRV_CHANNEL_ROAM_DISALLOWED);
+    FREE(vstate);
+
+    /* absent scan_cur_freq - wpa_supplicant defaults to 0 */
+    vstate = CALLOC(1, sizeof(*vstate));
+    bufs.config = "#bridge=\n";
+    osw_hostap_conf_fill_sta_state(&bufs, vstate);
+    OSW_UT_EVAL(vstate->u.sta.allow_roam_channels == OSW_DRV_CHANNEL_ROAM_ALLOWED);
+    FREE(vstate);
 }
 
 OSW_UT(osw_wpas_conf_generate_sta_state_ssid_ut)

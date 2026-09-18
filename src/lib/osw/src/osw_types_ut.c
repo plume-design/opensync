@@ -236,6 +236,12 @@ OSW_UT(osw_op_class_to_20mhz)
     OSW_UT_EVAL(op_class_20_mhz == 125);
     OSW_UT_EVAL(osw_op_class_to_20mhz(131, 193, &op_class_20_mhz) == true);
     OSW_UT_EVAL(op_class_20_mhz == 131);
+    /* 5GHz 80MHz -> 20MHz (eg. Wifi_VIF_Neighbors op_class 128 ch 44) */
+    OSW_UT_EVAL(osw_op_class_to_20mhz(128, 44, &op_class_20_mhz) == true);
+    OSW_UT_EVAL(op_class_20_mhz == 115);
+    /* 6GHz 320MHz -> 20MHz (eg. Wifi_VIF_Neighbors op_class 137 ch 37) */
+    OSW_UT_EVAL(osw_op_class_to_20mhz(137, 37, &op_class_20_mhz) == true);
+    OSW_UT_EVAL(op_class_20_mhz == 131);
     /* TODO Add UTs for remaining op_classes*/
 
     /* Invalid input */
@@ -597,4 +603,48 @@ OSW_UT(osw_op_class_to_band)
     OSW_UT_EVAL(osw_op_class_to_band(81) == OSW_BAND_2GHZ);
     OSW_UT_EVAL(osw_op_class_to_band(123) == OSW_BAND_5GHZ);
     OSW_UT_EVAL(osw_op_class_to_band(134) == OSW_BAND_6GHZ);
+}
+
+OSW_UT(osw_tx_power_mode_cstr)
+{
+    OSW_UT_EVAL(strcmp(osw_tx_power_mode_to_cstr(OSW_TX_POWER_MODE_DBM), "dbm") == 0);
+    OSW_UT_EVAL(strcmp(osw_tx_power_mode_to_cstr(OSW_TX_POWER_MODE_DB), "db") == 0);
+    OSW_UT_EVAL(strcmp(osw_tx_power_mode_to_cstr(OSW_TX_POWER_MODE_PERCENT), "percent") == 0);
+}
+
+OSW_UT(osw_tx_power_resolve_dbm_percent_boundaries)
+{
+    /* Exercise the percent->db backoff through the public resolver:
+     * resolve(PERCENT, v, max) == max - percent_to_db(v). */
+    const int max = 30;
+
+    /* Clamped ends: >=100% => -0dB, <=0% => -30dB. */
+    OSW_UT_EVAL(osw_tx_power_resolve_dbm(OSW_TX_POWER_MODE_PERCENT, 100, max) == max);
+    OSW_UT_EVAL(osw_tx_power_resolve_dbm(OSW_TX_POWER_MODE_PERCENT, 150, max) == max);
+    OSW_UT_EVAL(osw_tx_power_resolve_dbm(OSW_TX_POWER_MODE_PERCENT, 0, max) == max - 30);
+    OSW_UT_EVAL(osw_tx_power_resolve_dbm(OSW_TX_POWER_MODE_PERCENT, -5, max) == max - 30);
+
+    /* 10*log10(100/percent), rounded. */
+    OSW_UT_EVAL(osw_tx_power_resolve_dbm(OSW_TX_POWER_MODE_PERCENT, 50, max) == max - 3);  /* ~3.01 */
+    OSW_UT_EVAL(osw_tx_power_resolve_dbm(OSW_TX_POWER_MODE_PERCENT, 25, max) == max - 6);  /* ~6.02 */
+    OSW_UT_EVAL(osw_tx_power_resolve_dbm(OSW_TX_POWER_MODE_PERCENT, 10, max) == max - 10);
+    OSW_UT_EVAL(osw_tx_power_resolve_dbm(OSW_TX_POWER_MODE_PERCENT, 1, max) == max - 20);
+}
+
+OSW_UT(osw_tx_power_resolve_dbm_modes)
+{
+    const int max = 23;
+
+    /* DBM: value is returned verbatim, max is irrelevant. */
+    OSW_UT_EVAL(osw_tx_power_resolve_dbm(OSW_TX_POWER_MODE_DBM, 10, max) == 10);
+    OSW_UT_EVAL(osw_tx_power_resolve_dbm(OSW_TX_POWER_MODE_DBM, 10, 0) == 10);
+
+    /* DB: relative offset below the max (may resolve at/below 0). */
+    OSW_UT_EVAL(osw_tx_power_resolve_dbm(OSW_TX_POWER_MODE_DB, 0, max) == max);
+    OSW_UT_EVAL(osw_tx_power_resolve_dbm(OSW_TX_POWER_MODE_DB, 3, max) == max - 3);
+    OSW_UT_EVAL(osw_tx_power_resolve_dbm(OSW_TX_POWER_MODE_DB, 30, max) == max - 30);
+
+    /* PERCENT: 100% resolves to the max, lower percentages back off. */
+    OSW_UT_EVAL(osw_tx_power_resolve_dbm(OSW_TX_POWER_MODE_PERCENT, 100, max) == max);
+    OSW_UT_EVAL(osw_tx_power_resolve_dbm(OSW_TX_POWER_MODE_PERCENT, 50, max) == max - 3);
 }

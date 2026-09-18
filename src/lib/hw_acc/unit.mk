@@ -31,7 +31,14 @@
 UNIT_NAME := hw_acc
 UNIT_TYPE := LIB
 
-UNIT_CFLAGS += -I$(UNIT_PATH)/inc
-UNIT_EXPORT_CFLAGS := -I$(UNIT_PATH)/inc
-
 UNIT_SRC += src/hw_acc.c
+UNIT_SRC += src/hw_acc_helpers.c
+
+UNIT_CFLAGS += -I$(UNIT_PATH)/inc
+
+UNIT_LDFLAGS += -lmnl
+
+UNIT_EXPORT_CFLAGS := $(UNIT_CFLAGS)
+UNIT_EXPORT_LDFLAGS := $(UNIT_LDFLAGS)
+
+UNIT_DEPS += src/lib/log

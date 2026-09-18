@@ -38,11 +38,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <errno.h>
 #include <time.h>
 
-#include "log.h"               // logging routines
-#include "json_util.h"         // json routines
-#include "os.h"                // OS helpers
-#include "target.h"            // target API
-#include "network_metadata.h"  // network metadata API
+#include "log.h"        // logging routines
+#include "json_util.h"  // json routines
+#include "os.h"         // OS helpers
+#include "target.h"     // target API
 
 #include "cellm_mgr.h"
 

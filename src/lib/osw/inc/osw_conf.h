@@ -119,6 +119,7 @@ struct osw_conf_net {
 
 struct osw_conf_vif_sta {
     struct ds_dlist net_list;
+    enum osw_drv_channel_roaming allow_roam_channels;
 };
 
 struct osw_conf_vif {
@@ -129,6 +130,9 @@ struct osw_conf_vif {
     bool enabled;
     enum osw_vif_type vif_type;
     int tx_power_dbm;
+    int tx_power_percent;
+    int tx_power_db_limit;
+    bool tx_power_db_limit_valid;
     union {
         struct osw_conf_vif_ap ap;
         struct osw_conf_vif_sta sta;

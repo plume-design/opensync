@@ -115,10 +115,27 @@ Note-1: the wait for re-connect back to same manager addr because
 #define CM2_NO_TIMEOUT                  -1
 #define CM2_DEFAULT_TIMEOUT             60  // 1 min
 #define CM2_FAST_RECONNECT_TIMEOUT      20
+/*
+ * LINK_SEL must outlast one WANO plug-in attempt so CM does not preempt
+ * provisioning. Under DHCP backoff, derive it from the plug-in timeout (+20s
+ * margin) so the two cannot drift; otherwise keep the original 120s.
+ */
+#if defined(CONFIG_MANAGER_WANO_SUPPORT_EXP_BACKOFF_DHCP)
+#define CM2_ONBOARD_LINK_SEL_TIMEOUT    (CONFIG_MANAGER_WANO_PLUGIN_TIMEOUT + 20)
+#else
 #define CM2_ONBOARD_LINK_SEL_TIMEOUT    120
+#endif
 #define CM2_RESOLVE_TIMEOUT             180
 #define CM2_CONNECT_TIMEOUT             30
-#define CM2_TRY_CONNECT_TIMEOUT         10
+/*
+ * When WAN interface is managed by 3rdparty code and OpenSync manages only the OVSDB connection, 
+ * then the recommended retry connection must be extended to atleast 30s.
+ */
+#ifdef CONFIG_TARGET_ENABLE_WAN_LINK_SELECTION
+    #define CM2_TRY_CONNECT_TIMEOUT         10
+#else
+    #define CM2_TRY_CONNECT_TIMEOUT         30
+#endif
 
 #define CM2_MAX_DISCONNECTS             10
 #define CM2_STABLE_PERIOD               300 // 5 min

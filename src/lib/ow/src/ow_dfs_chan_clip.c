@@ -383,6 +383,49 @@ ow_dfs_chan_clip_vif_any(const struct osw_channel_state *channel_states,
     return false;
 }
 
+static void
+ow_dfs_chan_clip_sta_count_cb(const struct osw_state_sta_info *sta, void *priv)
+{
+    size_t *n = priv;
+    if (sta == NULL) return;
+    (*n)++;
+}
+
+static bool
+ow_dfs_chan_clip_narrowing_permissible(const struct osw_channel_state *channel_states,
+                                       size_t n_channel_states,
+                                       const struct osw_channel *c,
+                                       bool zero_wait_dfs,
+                                       size_t n_assoc)
+{
+    if (zero_wait_dfs) return true;
+    if (n_assoc == 0) return true;
+    if (c->center_freq0_mhz == 0) return true;
+
+    const bool some_segments_are_nol =
+        osw_cs_chan_intersects_state(channel_states,
+                                     n_channel_states,
+                                     c,
+                                     OSW_CHANNEL_DFS_NOL);
+    if (some_segments_are_nol == false) return true;
+
+    struct osw_channel primary = *c;
+    primary.width = OSW_CHANNEL_20MHZ;
+    primary.center_freq0_mhz = primary.control_freq_mhz;
+
+    const bool primary_needs_cac =
+        osw_cs_chan_intersects_state(channel_states,
+                                     n_channel_states,
+                                     &primary,
+                                     OSW_CHANNEL_DFS_CAC_POSSIBLE)
+     || osw_cs_chan_intersects_state(channel_states,
+                                     n_channel_states,
+                                     &primary,
+                                     OSW_CHANNEL_DFS_CAC_IN_PROGRESS);
+
+    return !primary_needs_cac;
+}
+
 static enum ow_dfs_chan_clip_result
 ow_dfs_chan_clip_vif_chan(struct ow_dfs_chan_clip *m,
                           const struct osw_channel_state *channel_states,
@@ -391,7 +434,9 @@ ow_dfs_chan_clip_vif_chan(struct ow_dfs_chan_clip *m,
                           struct osw_channel *c,
                           bool *enabled,
                           bool puncture,
-                          const bool postponed)
+                          const bool postponed,
+                          bool zero_wait_dfs,
+                          size_t n_assoc)
 {
     bool narrowed = false;
     bool punctured = false;
@@ -416,7 +461,13 @@ ow_dfs_chan_clip_vif_chan(struct ow_dfs_chan_clip *m,
         postponed_states[i].dfs_state = OSW_CHANNEL_NON_DFS;
     }
 
-    usable = ow_dfs_chan_clip_vif_try_narrow(channel_states,
+    const bool permit_narrow = ow_dfs_chan_clip_narrowing_permissible(channel_states,
+                                                                      n_channel_states,
+                                                                      c,
+                                                                      zero_wait_dfs,
+                                                                      n_assoc);
+    usable = permit_narrow
+          && ow_dfs_chan_clip_vif_try_narrow(channel_states,
                                              n_channel_states,
                                              c,
                                              puncture,
@@ -650,6 +701,10 @@ ow_dfs_chan_clip_vif(struct ow_dfs_chan_clip *m,
                                       ? &vif_state->u.ap.channel
                                       : NULL;
     const bool is_postponed = ow_dfs_chan_clip_phy_is_postponed(m, phy_name);
+    const bool zero_wait_dfs = (phy->zero_wait_dfs == OSW_ZERO_WAIT_DFS_ENABLE)
+                            || (phy->zero_wait_dfs == OSW_ZERO_WAIT_DFS_PRECAC);
+    size_t n_assoc = 0;
+    osw_state_sta_get_list(ow_dfs_chan_clip_sta_count_cb, phy_name, NULL, &n_assoc);
     *new_channel = vif->u.ap.channel;
     *orig_channel = vif->u.ap.channel;
     bool enabled = vif->enabled;
@@ -661,7 +716,9 @@ ow_dfs_chan_clip_vif(struct ow_dfs_chan_clip *m,
                                                                           new_channel,
                                                                           &enabled,
                                                                           puncture,
-                                                                          is_postponed);
+                                                                          is_postponed,
+                                                                          zero_wait_dfs,
+                                                                          n_assoc);
     if (apply) {
         vif->u.ap.channel = *new_channel;
         vif->enabled = enabled;
@@ -862,7 +919,9 @@ ow_dfs_chan_clip_vif_test(struct ow_dfs_chan_clip *m,
                                                                        c,
                                                                        enabled,
                                                                        puncture,
-                                                                       postponed);
+                                                                       postponed,
+                                                                       false /* zero_wait_dfs */,
+                                                                       0 /* n_assoc */);
     ow_dfs_chan_clip_vif_log(m, "", "", &orig_c, c, res);
     return res;
 }
@@ -1079,6 +1138,61 @@ OSW_UT(nol)
     assert(c.control_freq_mhz == ch116ht40.control_freq_mhz);
     assert(c.center_freq0_mhz == ch116ht40.center_freq0_mhz);
     assert(c.width == ch116ht40.width);
+}
+
+OSW_UT(disruptive_narrow)
+{
+    struct ow_dfs_chan_clip m;
+    const struct osw_channel ch36 = { .control_freq_mhz = 5180, .center_freq0_mhz = 5180 };
+    const struct osw_channel ch40 = { .control_freq_mhz = 5200, .center_freq0_mhz = 5200 };
+    const struct osw_channel ch44 = { .control_freq_mhz = 5220, .center_freq0_mhz = 5220 };
+    const struct osw_channel ch48 = { .control_freq_mhz = 5240, .center_freq0_mhz = 5240 };
+    const struct osw_channel ch132 = { .control_freq_mhz = 5660, .center_freq0_mhz = 5660 };
+    const struct osw_channel ch136 = { .control_freq_mhz = 5680, .center_freq0_mhz = 5680 };
+    const struct osw_channel ch140 = { .control_freq_mhz = 5700, .center_freq0_mhz = 5700 };
+    const struct osw_channel ch144 = { .control_freq_mhz = 5720, .center_freq0_mhz = 5720 };
+    const struct osw_channel ch132ht80 = {
+        .control_freq_mhz = 5660,
+        .center_freq0_mhz = 5690,
+        .width = OSW_CHANNEL_80MHZ,
+    };
+    const struct osw_channel ch36ht80 = {
+        .control_freq_mhz = 5180,
+        .center_freq0_mhz = 5210,
+        .width = OSW_CHANNEL_80MHZ,
+    };
+    const struct osw_channel_state cs_radar_ht80[] = {
+        { .channel = ch36, .dfs_state = OSW_CHANNEL_NON_DFS },
+        { .channel = ch40, .dfs_state = OSW_CHANNEL_NON_DFS },
+        { .channel = ch44, .dfs_state = OSW_CHANNEL_NON_DFS },
+        { .channel = ch48, .dfs_state = OSW_CHANNEL_NON_DFS },
+        { .channel = ch132, .dfs_state = OSW_CHANNEL_DFS_CAC_POSSIBLE },
+        { .channel = ch136, .dfs_state = OSW_CHANNEL_DFS_NOL },
+        { .channel = ch140, .dfs_state = OSW_CHANNEL_DFS_NOL },
+        { .channel = ch144, .dfs_state = OSW_CHANNEL_DFS_CAC_POSSIBLE },
+    };
+    struct osw_channel c;
+    bool enabled;
+
+    ow_dfs_chan_clip_init(&m);
+
+    c = ch132ht80;
+    enabled = true;
+    assert(ow_dfs_chan_clip_vif_chan(&m, cs_radar_ht80, ARRAY_SIZE(cs_radar_ht80),
+                                     &ch36ht80, &c, &enabled, false, false,
+                                     false /* zero_wait_dfs */, 1 /* n_assoc */)
+        == OW_DFS_CHAN_INHERITED_STATE);
+    assert(c.control_freq_mhz == ch36ht80.control_freq_mhz);
+    assert(c.width == ch36ht80.width);
+
+    c = ch132ht80;
+    enabled = true;
+    assert(ow_dfs_chan_clip_vif_chan(&m, cs_radar_ht80, ARRAY_SIZE(cs_radar_ht80),
+                                     &ch36ht80, &c, &enabled, false, false,
+                                     true /* zero_wait_dfs */, 1 /* n_assoc */)
+        == OW_DFS_CHAN_NARROWED);
+    assert(c.control_freq_mhz == ch132.control_freq_mhz);
+    assert(c.width == OSW_CHANNEL_20MHZ);
 }
 
 OSW_MODULE(ow_dfs_chan_clip)

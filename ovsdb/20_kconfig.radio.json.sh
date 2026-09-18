@@ -44,13 +44,17 @@ fi
 cat <<OVS
 [
     "Open_vSwitch",
-$(echo "$bhaul_multi" | tr ': ' ' \n' | while read ssid psk
+$(for i in $CONFIG_OVSDB_BOOTSTRAP_WIFI_STA_LIST
+do
+phy=$(echo "$i" | cut -d: -f1)
+vif=$(echo "$i" | cut -d: -f2)
+echo "$bhaul_multi" | tr ': ' ' \n' | while read ssid psk
 do
 cat <<CRED
 {
     "op": "insert",
     "table": "Wifi_Credential_Config",
-    "uuid-name": "cred_$(echo "$ssid $psk" | md5sum | awk '{print $1}')",
+    "uuid-name": "cred_$(echo "$phy $vif $ssid $psk" | md5sum | awk '{print $1}')",
     "row": {
         "onboard_type": "gre",
         "ssid": "$ssid",
@@ -62,11 +66,7 @@ cat <<CRED
     }
 },
 CRED
-done)
-$(for i in $CONFIG_OVSDB_BOOTSTRAP_WIFI_STA_LIST
-do
-phy=$(echo "$i" | cut -d: -f1)
-vif=$(echo "$i" | cut -d: -f2)
+done
 cat <<VIF
 {
     "op": "insert",
@@ -86,7 +86,7 @@ cat <<VIF
         "credential_configs": ["set", [
 $(echo "$bhaul_multi" | tr ': ' ' \n' | while read ssid psk
 do
-    printf ',["named-uuid", "cred_%s"]\n' "$(echo "$ssid $psk" | md5sum | awk '{print $1}')"
+    printf ',["named-uuid", "cred_%s"]\n' "$(echo "$phy $vif $ssid $psk" | md5sum | awk '{print $1}')"
 done | dd bs=1 skip=1 2>/dev/null)
         ]]
     }

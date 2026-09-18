@@ -100,7 +100,7 @@ bool wano_dns_probe_run(const char *ifname)
 
     if (!wano_dns_probe_servers_get(&sl))
     {
-        LOGW("dns_probe: Unable to retrieve DNS server list, skipping DNS probe.");
+        LOG(INFO, "dns_probe: Unable to retrieve DNS server list, skipping DNS probe.");
         return true;
     }
 

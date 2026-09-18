@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  OpenSync TR181 vendor extensions
+
+  Extends the standard TR181 data model with OpenSync-specific parameters.
+  Supplied to gen_dm_tr181_schema.py alongside the standard XML to produce
+  a merged schema.
+
+  Naming convention: X_OPENSYNC_<ParameterName>
+-->
+<document xmlns="urn:broadband-forum-org:cwmp:datamodel-1-15">
+  <model name="Device:2.20" xmlns:dm="urn:broadband-forum-org:cwmp:datamodel-1-15">
+
+    <!--
+      Device.DeviceInfo.FirmwareImage.{i}. extensions
+    -->
+    <object name="Device.DeviceInfo.FirmwareImage.{i}." access="readOnly"
+        minEntries="0" maxEntries="unbounded">
+      <description>
+        OpenSync extensions to the standard FirmwareImage instance object.
+      </description>
+
+      <parameter name="X_OPENSYNC_DecryptionPassword" access="readWrite">
+        <description>
+          Password used to decrypt an encrypted firmware image during download.
+          An empty string indicates no decryption is required.
+        </description>
+        <syntax>
+          <string>
+            <size maxLength="256"/>
+          </string>
+        </syntax>
+      </parameter>
+
+    </object>
+
+  </model>
+</document>

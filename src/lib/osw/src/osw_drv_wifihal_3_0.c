@@ -638,7 +638,7 @@ sta_connect_cb(INT ap_index, wifi_associated_dev_t *dev)
     const struct osw_hwaddr *addr = (const void *)dev->cli_MACAddress;
     char *vif_name = ap_index_to_vif_name(&g_priv, ap_index);
     LOGI("osw: drv: wifihal: %s: " OSW_HWADDR_FMT ": connected: rssi=%d snr=%d",
-         vif_name, OSW_HWADDR_ARG(addr), dev->cli_RSSI, dev->cli_SNR);
+         vif_name ?: "", OSW_HWADDR_ARG(addr), dev->cli_RSSI, dev->cli_SNR);
     FREE(vif_name);
     return sta_touch(&g_priv, ap_index, addr);
 }
@@ -651,7 +651,7 @@ sta_disconnect_cb(INT ap_index, char *mac, INT event_type)
     sscanf(mac, OSW_HWADDR_FMT, OSW_HWADDR_SARG(&addr));
     /* FIXME: Store event_type */
     LOGI("osw: drv: wifihal: %s: " OSW_HWADDR_FMT ": disconnected: type=%d",
-         vif_name, OSW_HWADDR_ARG(&addr), event_type);
+         vif_name ?: "", OSW_HWADDR_ARG(&addr), event_type);
     FREE(vif_name);
     return sta_touch(&g_priv, ap_index, &addr);
 }
@@ -663,7 +663,7 @@ sta_deauth_cb(int ap_index, char *mac, int reason)
     char *vif_name = ap_index_to_vif_name(&g_priv, ap_index);
     sscanf(mac, OSW_HWADDR_FMT, OSW_HWADDR_SARG(&addr));
     LOGI("osw: drv: wifihal: %s: " OSW_HWADDR_FMT ": deauthenticated: reason=%d",
-         vif_name, OSW_HWADDR_ARG(&addr), reason);
+         vif_name ?: "", OSW_HWADDR_ARG(&addr), reason);
     FREE(vif_name);
     /* FIXME: Store reason */
     return sta_touch(&g_priv, ap_index, &addr);

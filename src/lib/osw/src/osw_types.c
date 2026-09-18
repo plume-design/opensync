@@ -25,6 +25,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 #include <stdint.h>
+#include <math.h>
 #include <ev.h>
 #include <osw_types.h>
 #include <osw_ut.h>
@@ -343,6 +344,41 @@ osw_zero_wait_dfs_to_str(const enum osw_zero_wait_dfs zwd)
         case OSW_ZERO_WAIT_DFS_PRECAC: return "precac";
     }
     return "";
+}
+
+const char *
+osw_tx_power_mode_to_cstr(const enum osw_tx_power_mode m)
+{
+    switch (m) {
+        case OSW_TX_POWER_MODE_DBM: return "dbm";
+        case OSW_TX_POWER_MODE_DB: return "db";
+        case OSW_TX_POWER_MODE_PERCENT: return "percent";
+    }
+    return "";
+}
+
+static int
+osw_tx_power_percent_to_db(const int percent)
+{
+    if (percent >= 100) return 0;
+    if (percent <= 0) return 30;
+    return lround(10.0 * log10(100.0 / percent));
+}
+
+int
+osw_tx_power_resolve_dbm(const enum osw_tx_power_mode mode,
+                         const int value,
+                         const int max_tx_power_dbm)
+{
+    switch (mode) {
+        case OSW_TX_POWER_MODE_PERCENT:
+            return max_tx_power_dbm - osw_tx_power_percent_to_db(value);
+        case OSW_TX_POWER_MODE_DB:
+            return max_tx_power_dbm - value;
+        case OSW_TX_POWER_MODE_DBM:
+        default:
+            return value;
+    }
 }
 
 void

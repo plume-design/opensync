@@ -126,8 +126,20 @@ const char *os_tr181_type_to_string(os_tr181_param_type_t type)
             return "base64";
         case OS_TR181_TYPE_OBJECT:
             return "object";
+        case OS_TR181_TYPE_TABLE:
+            return "table";
         case OS_TR181_TYPE_INSTANCE:
             return "instance";
+        case OS_TR181_TYPE_METHOD:
+            return "method";
+        case OS_TR181_TYPE_EVENT:
+            return "event";
+        case OS_TR181_TYPE_PROPERTY:
+            return "property";
+        case OS_TR181_TYPE_DICT:
+            return "dict";
+        case OS_TR181_TYPE_LIST:
+            return "list";
         default:
             return "unknown";
     }
@@ -234,7 +246,7 @@ void os_tr181_sort_instances(int *instance_numbers, int count)
     qsort(instance_numbers, count, sizeof(int), compare_ints);
 }
 
-os_tr181_error_t os_tr181_parse_instance(const char *path)
+int os_tr181_parse_instance(const char *path)
 {
     const char *p;
     int last_instance = -1;
@@ -268,7 +280,7 @@ os_tr181_error_t os_tr181_parse_instance(const char *path)
     return last_instance;
 }
 
-os_tr181_error_t os_tr181_parse_instances(const char *path, int *indices, int max_count)
+int os_tr181_parse_instances(const char *path, int *indices, int max_count)
 {
     const char *p;
     int count = 0;
@@ -300,4 +312,14 @@ os_tr181_error_t os_tr181_parse_instances(const char *path, int *indices, int ma
     }
 
     return count;
+}
+
+os_tr181_error_t os_tr181_init(os_tr181_handle_t **handle)
+{
+    return os_tr181_init_ex(handle, NULL);
+}
+
+os_tr181_error_t os_tr181_add_instance(os_tr181_handle_t *handle, const char *object_path, int *instance_number)
+{
+    return os_tr181_add_instance_ex(handle, object_path, 0, NULL, NULL, instance_number);
 }

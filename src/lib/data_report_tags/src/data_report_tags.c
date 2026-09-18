@@ -48,8 +48,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "data_report_tags_internals.h"
 
 
-static char tag_marker[2] = "${";
-static char gtag_marker[2] = "$[";
+static char tag_marker[2] = {'$', '{'};
+static char gtag_marker[2] = {'$', '['};
 
 static struct data_report_tags_mgr drt_mgr =
 {

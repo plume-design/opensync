@@ -41,7 +41,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 bool init_managers();
 bool init_statem();
 
-bool dm_hook_init();
+bool dm_hook_init(struct ev_loop *loop);
 bool dm_hook_close();
 void dm_st_in_progress_set(bool value);
 bool dm_st_in_progress_get();
@@ -58,14 +58,34 @@ bool dm_no_reboot_list();
 /**
  * Register a new manager
  *
- * @param[in]   path            Path to manager (can be a full path)
- * @param[in]   plan_b          True whether manager requires plan B
- * @param[in]   restart         True if manager should be always restarted, even
- *                              when killed by signals that usually do not
- *                              trigger a restart
- * @param[in]   restart_timer   Restart timer in seconds or 0 to use default
+ * @param[in]   path                Path to manager (can be a full path)
+ * @param[in]   plan_b              True whether manager requires plan B
+ * @param[in]   always_restart      True if manager should be always restarted, even
+ *                                  when killed by signals that usually do not
+ *                                  trigger a restart
+ * @param[in]   restart_timer       Restart timer in seconds or 0 to use default
+ * @param[in]   memmax              Soft PSS memory limit in kB; -1 disables
+ * @param[in]   memmax_cnt          Consecutive PSS-over-limit samples before a
+ *                                  memory-crash report is triggered
+ * @param[in]   crash_count_max     Crashes before entering backoff; 0 disables
+ *                                  (ignored when plan_b is true)
+ * @param[in]   crash_count_period  Crash counting window in seconds; 0 counts
+ *                                  for the DM lifetime, >0 uses a sliding
+ *                                  window (larger crash_count_max values are
+ *                                  capped to the timestamp buffer size)
+ * @param[in]   crash_recovery      Absolute path to recovery script/binary run
+ *                                  on backoff entry, or NULL/empty for none
  */
-bool dm_manager_register(const char *path, bool plan_b, bool always_restart, int restart_timer, int memmax, int memmax_cnt);
+bool dm_manager_register(
+        const char *path,
+        bool plan_b,
+        bool always_restart,
+        int restart_timer,
+        int memmax,
+        int memmax_cnt,
+        int crash_count_max,
+        int crash_count_period,
+        const char *crash_recovery);
 
 /*
  * DM cli

@@ -1,5 +1,6 @@
 menuconfig LIB_FSM_UTILS
     bool "Enables the FSM utilities library"
+        depends on MANAGER_FSM
         default y
         help
             Enable the FSM utilities library

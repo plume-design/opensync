@@ -209,7 +209,7 @@ static void osw_confsync_watchdog_threshold_check(struct osw_confsync_watchdog *
         LOGW(LOG_PREFIX(
                 "confsync was unsettled at least %f%% of time in last %d s",
                 OSW_CONFSYNC_WATCHDOG_PERCENTAGE_THRESHOLD * 100,
-                OSW_CONFSYNC_WATCHDOG_MAX_INTERVALS_SUM_SEC * 100));
+                OSW_CONFSYNC_WATCHDOG_MAX_INTERVALS_SUM_SEC));
         if (m->fatal_fn != NULL) m->fatal_fn(m->fatal_priv);
     }
 }

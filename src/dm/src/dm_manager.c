@@ -37,6 +37,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <fcntl.h>
 #include <libgen.h>
 #include <limits.h>
+#include <time.h>
 
 #include "os.h"
 #include "log.h"
@@ -48,6 +49,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ds_tree.h"
 #include "ovsdb_table.h"
 #include "memutil.h"
+#include "execsh.h"
 
 #include "dm.h"
 
@@ -66,6 +68,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define TM_OUT_SLOW     (60)
 #define TM_CHKMEM       (30)
 
+/* Max sliding-window crash timestamps per manager */
+#define DM_CRASH_TS_MAX     64
+#define LOG_CRASH_BACKOFF(fmt, ...) "crash_backoff: " fmt, ##__VA_ARGS__
+
 struct dm_manager
 {
     char                dm_name[64];                /* Manager name */
@@ -77,6 +83,13 @@ struct dm_manager
     int                 dm_mem_max_cnt;             /* Max memory exceed counter limit */
     int                 dm_mem_highest;             /* Higest memory in kB */
     int                 dm_mem_exceed_cnt;          /* Memory limit exceeded counter */
+    int                 dm_crash_count_max;         /* Max crashes; 0=off */
+    int                 dm_crash_count_period;      /* Window sec; 0=lifetime */
+    char                dm_crash_recovery[C_MAXPATH_LEN]; /* Recovery script */
+    int                 dm_crash_count;             /* Lifetime crash counter */
+    time_t              dm_crash_ts[DM_CRASH_TS_MAX]; /* Sliding timestamps */
+    int                 dm_crash_ts_len;
+    bool                dm_backoff;                 /* Backoff; no restart */
     ds_tree_node_t      dm_tnode;                   /* Linked list node */
     pid_t               dm_pid;                     /* Manager process ID or <0 if not started */
     bool                dm_enable;                  /* True if enabled */
@@ -123,13 +136,25 @@ static bool dm_manager_update(
         bool always_restart,
         int restart_timer,
         int memmax,
-        int memmax_cnt);
+        int memmax_cnt,
+        int crash_count_max,
+        int crash_count_period,
+        const char *crash_recovery);
 
 static void dm_manager_kill(struct dm_manager *dm);
 static bool dm_manager_start(struct dm_manager *dm);
 static bool dm_manager_stop(struct dm_manager *dm);
 static bool dm_manager_exec(struct dm_manager *dm);
 static bool ignore_signal(int status);
+static void dm_manager_crash_config_set(
+        struct dm_manager *dm,
+        int crash_count_max,
+        int crash_count_period,
+        const char *crash_recovery);
+static bool dm_manager_crash_record(struct dm_manager *dm);
+static void dm_manager_enter_backoff(struct dm_manager *dm);
+static void dm_manager_run_recovery(struct dm_manager *dm);
+static void dm_manager_recovery_execsh_fn(execsh_async_t *esa, int exit_status);
 
 void callback_Node_Services(
         ovsdb_update_monitor_t *mon,
@@ -229,7 +254,10 @@ bool dm_manager_register(
         bool restart,
         int restart_delay,
         int memmax,
-        int memmax_cnt)
+        int memmax_cnt,
+        int crash_count_max,
+        int crash_count_period,
+        const char *crash_recovery)
 {
     const char *name;
     struct dm_manager *dm;
@@ -263,6 +291,11 @@ bool dm_manager_register(
     dm->dm_mem_max_cnt = memmax_cnt;
     dm->dm_mem_highest = 0;
     dm->dm_mem_exceed_cnt = 0;
+    dm_manager_crash_config_set(
+            dm,
+            crash_count_max,
+            crash_count_period,
+            crash_recovery);
 
     ds_tree_insert(&dm_manager_list, dm, (char *)dm->dm_name);
 
@@ -282,7 +315,10 @@ bool dm_manager_update(
         bool restart_always,
         int restart_delay,
         int memmax,
-        int memmax_cnt)
+        int memmax_cnt,
+        int crash_count_max,
+        int crash_count_period,
+        const char *crash_recovery)
 {
    const  char *name;
     struct dm_manager *dm;
@@ -302,6 +338,11 @@ bool dm_manager_update(
     dm->dm_enable = enable;
     dm->dm_mem_max = memmax;
     dm->dm_mem_max_cnt = memmax_cnt;
+    dm_manager_crash_config_set(
+            dm,
+            crash_count_max,
+            crash_count_period,
+            crash_recovery);
 
     if (enable)
     {
@@ -515,6 +556,14 @@ bool dm_manager_start(struct dm_manager *dm)
 
     /* Manager is disabled, nothing to do */
     if (!dm->dm_enable) return true;
+
+    /* Backoff blocks restart until OpenSync or the system is restarted. */
+    if (dm->dm_backoff)
+    {
+        LOG(NOTICE, LOG_CRASH_BACKOFF("Manager %s in backoff, not starting.",
+                dm->dm_name));
+        return true;
+    }
 
     if (dm->dm_pid >= 0)
     {
@@ -886,6 +935,15 @@ void dm_manager_child_fn(struct ev_loop *loop, ev_child *w, int revents)
     /* ignore managers stop due to user actions                 */
     if (!ignore_signal(w->rstatus) || dm->dm_restart_always)
     {
+        /* Enter backoff instead of restarting. */
+        if (!dm->dm_plan_b &&
+            dm->dm_crash_count_max > 0 &&
+            dm_manager_crash_record(dm))
+        {
+            dm_manager_enter_backoff(dm);
+            return;
+        }
+
         LOG(NOTICE, "Manager '%s' terminated, signal: %d, restarting in %d seconds.",
                     dm->dm_name,
                     WTERMSIG(w->rstatus),
@@ -934,6 +992,240 @@ const char *dm_manager_basename(const char *name)
     return (pname != NULL ? ++pname : name);
 }
 
+static void dm_manager_crash_config_set(
+        struct dm_manager *dm,
+        int crash_count_max,
+        int crash_count_period,
+        const char *crash_recovery)
+{
+    /* Plan B managers use full OpenSync restart; backoff is disabled. */
+    if (dm->dm_plan_b)
+    {
+        crash_count_max = 0;
+    }
+
+    /* Reject invalid thresholds; negative period would otherwise take the
+     * sliding-window path (period != 0) without the DM_CRASH_TS_MAX cap. */
+    if (crash_count_max < 0)
+    {
+        LOG(WARN, LOG_CRASH_BACKOFF(
+                "Manager '%s': crash_count_max=%d is invalid, using 0.",
+                dm->dm_name, crash_count_max));
+        crash_count_max = 0;
+    }
+    if (crash_count_period < 0)
+    {
+        LOG(WARN, LOG_CRASH_BACKOFF(
+                "Manager '%s': crash_count_period=%d is invalid, using 0.",
+                dm->dm_name, crash_count_period));
+        crash_count_period = 0;
+    }
+
+    /* Sliding window stores at most DM_CRASH_TS_MAX timestamps. */
+    if (crash_count_period > 0 && crash_count_max > DM_CRASH_TS_MAX)
+    {
+        LOG(WARN, LOG_CRASH_BACKOFF(
+                "Manager '%s': crash_count_max=%d exceeds %d, capping.",
+                dm->dm_name, crash_count_max, DM_CRASH_TS_MAX));
+        crash_count_max = DM_CRASH_TS_MAX;
+    }
+
+    /* Threshold or window change clears accumulated crash counts. */
+    if (crash_count_max != dm->dm_crash_count_max ||
+        crash_count_period != dm->dm_crash_count_period)
+    {
+        dm->dm_crash_ts_len = 0;
+        dm->dm_crash_count = 0;
+    }
+
+    /* Apply backoff thresholds. */
+    dm->dm_crash_count_max = crash_count_max;
+    dm->dm_crash_count_period = crash_count_period;
+
+    /* Optional recovery script run when backoff is entered. */
+    if (!IS_NULL_PTR(crash_recovery))
+    {
+        STRSCPY(dm->dm_crash_recovery, crash_recovery);
+    }
+    else
+    {
+        dm->dm_crash_recovery[0] = '\0';
+    }
+}
+
+/*
+ * Record one signal-path crash for this manager.
+ *
+ * Called from dm_manager_child_fn when a crash signal (or a user signal with
+ * always_restart) would normally trigger dm_manager_restart(). Increments the
+ * crash counter and returns true when crash_count_max is reached so the caller
+ * can enter backoff instead of restarting.
+ *
+ * Two counting modes (crash_count_period from other_config):
+ *   0  - lifetime: dm_crash_count never expires until OpenSync restarts
+ *   >0 - sliding window: only crashes within the last N seconds count
+ */
+static bool dm_manager_crash_record(struct dm_manager *dm)
+{
+    time_t now;
+    int i;
+    int j;
+
+    /* Backoff disabled when crash_count_max is 0. */
+    if (dm->dm_crash_count_max <= 0)
+    {
+        return false;
+    }
+
+    now = time(NULL);
+
+    /* Lifetime mode: simple counter, no window expiry. */
+    if (dm->dm_crash_count_period == 0)
+    {
+        dm->dm_crash_count++;
+        LOG(NOTICE, LOG_CRASH_BACKOFF("Manager '%s' crash count: %d/%d",
+                dm->dm_name,
+                dm->dm_crash_count,
+                dm->dm_crash_count_max));
+        return dm->dm_crash_count >= dm->dm_crash_count_max;
+    }
+
+    /* Sliding window: drop timestamps older than crash_count_period. */
+    j = 0;
+    for (i = 0; i < dm->dm_crash_ts_len; i++)
+    {
+        if ((now - dm->dm_crash_ts[i]) <= dm->dm_crash_count_period)
+        {
+            dm->dm_crash_ts[j++] = dm->dm_crash_ts[i];
+        }
+    }
+    dm->dm_crash_ts_len = j;
+
+    /* Append this crash and compare count to crash_count_max. */
+    if (dm->dm_crash_ts_len >= DM_CRASH_TS_MAX)
+    {
+        memmove(dm->dm_crash_ts,
+                dm->dm_crash_ts + 1,
+                sizeof(dm->dm_crash_ts[0]) * (DM_CRASH_TS_MAX - 1));
+        dm->dm_crash_ts_len = DM_CRASH_TS_MAX - 1;
+    }
+    dm->dm_crash_ts[dm->dm_crash_ts_len++] = now;
+
+    LOG(NOTICE, LOG_CRASH_BACKOFF(
+            "Manager '%s' crash count: %d/%d (window %d s)",
+            dm->dm_name,
+            dm->dm_crash_ts_len,
+            dm->dm_crash_count_max,
+            dm->dm_crash_count_period));
+
+    return dm->dm_crash_ts_len >= dm->dm_crash_count_max;
+}
+
+static void dm_manager_run_recovery(struct dm_manager *dm)
+{
+    static execsh_async_t recovery_execsh = { .esa_running = false };
+
+    const char *cmd = dm->dm_crash_recovery;
+
+    if (cmd[0] != '/')
+    {
+        if (cmd[0] != '\0')
+        {
+            LOG(ERR, LOG_CRASH_BACKOFF(
+                "crash_recovery must be an absolute path for manager '%s': %s",
+                dm->dm_name,
+                cmd));
+        }
+        return;
+    }
+
+    if (access(cmd, X_OK) != 0)
+    {
+        LOG(ERR, LOG_CRASH_BACKOFF(
+                "crash_recovery not found or not executable for '%s': %s",
+                dm->dm_name,
+                cmd));
+        return;
+    }
+
+    if (recovery_execsh.esa_running)
+    {
+        LOG(WARN, LOG_CRASH_BACKOFF(
+            "crash_recovery already running, skipping manager '%s': %s",
+            dm->dm_name,
+            cmd));
+        return;
+    }
+
+    LOG(NOTICE, LOG_CRASH_BACKOFF(
+        "Running crash_recovery for manager '%s': %s",
+        dm->dm_name,
+        cmd));
+
+    execsh_async_init(&recovery_execsh, dm_manager_recovery_execsh_fn);
+    if (execsh_async_start(&recovery_execsh, _S("$1" "$2"), cmd, dm->dm_name) < 0)
+    {
+        LOG(ERR, LOG_CRASH_BACKOFF(
+            "Failed to start crash_recovery for '%s': %s",
+            dm->dm_name,
+            cmd));
+    }
+}
+
+static void dm_manager_recovery_execsh_fn(execsh_async_t *esa, int exit_status)
+{
+    execsh_async_stop(esa);
+
+    if (exit_status)
+    {
+        LOG(ERR, LOG_CRASH_BACKOFF("crash_recovery script failed: %d",
+                exit_status));
+    }
+    else
+    {
+        LOG(NOTICE, LOG_CRASH_BACKOFF("crash_recovery script completed"));
+    }
+}
+
+static void dm_manager_enter_backoff(struct dm_manager *dm)
+{
+    LOG(EMERG, LOG_CRASH_BACKOFF(
+            "Manager '%s' entered backoff after %d crashes.",
+            dm->dm_name,
+            dm->dm_crash_count_max));
+
+    dm->dm_backoff = true;
+    dm_manager_run_recovery(dm);
+
+    {
+        struct schema_Node_Services row;
+
+        memset(&row, 0, sizeof(row));
+
+        row.service_exists = true;
+        STRSCPY(row.service, dm->dm_name);
+        row.status_exists = true;
+        STRSCPY(row.status, "backoff");
+
+        char *filter[] =
+        {
+            "+",
+            SCHEMA_COLUMN(Node_Services, status),
+            NULL
+        };
+
+        LOG(INFO, LOG_CRASH_BACKOFF(
+            "Node_Service update: service=%s status=backoff",
+            dm->dm_name));
+        if (!ovsdb_table_update_f(&table_Node_Services, &row, filter))
+        {
+            LOG(ERR, LOG_CRASH_BACKOFF(
+                "Error updating Node_Services status: %s = backoff",
+                dm->dm_name));
+        }
+    }
+}
+
 /*
  * ===========================================================================
  *  OVSDB
@@ -956,6 +1248,9 @@ void callback_Node_Services(
     bool retval = false;
     int memmax = CONFIG_DM_DEFAULT_MAX_MEMORY;
     int memmax_cnt = CONFIG_DM_DEFAULT_MAX_MEMORY_CNT;
+    int crash_count_max = 0;
+    int crash_count_period = 0;
+    char crash_recovery[C_MAXPATH_LEN] = { 0 };
 
     /* Deletions not yet supported */
     if (mon->mon_type == OVSDB_UPDATE_DEL)
@@ -977,6 +1272,18 @@ void callback_Node_Services(
         if (strcmp(old->other_config_keys[ii], "max_memory_cnt") == 0)
         {
             memmax_cnt = atoi(old->other_config[ii]);
+        }
+        if (strcmp(old->other_config_keys[ii], "crash_count_max") == 0)
+        {
+            crash_count_max = atoi(old->other_config[ii]);
+        }
+        if (strcmp(old->other_config_keys[ii], "crash_count_period") == 0)
+        {
+            crash_count_period = atoi(old->other_config[ii]);
+        }
+        if (strcmp(old->other_config_keys[ii], "crash_recovery") == 0)
+        {
+            STRSCPY(crash_recovery, old->other_config[ii]);
         }
     }
 
@@ -1003,24 +1310,60 @@ void callback_Node_Services(
         {
             memmax_cnt = atoi(new->other_config[ii]);
         }
+        else if (strcmp(new->other_config_keys[ii], "crash_count_max") == 0)
+        {
+            crash_count_max = atoi(new->other_config[ii]);
+        }
+        else if (strcmp(new->other_config_keys[ii], "crash_count_period") == 0)
+        {
+            crash_count_period = atoi(new->other_config[ii]);
+        }
+        else if (strcmp(new->other_config_keys[ii], "crash_recovery") == 0)
+        {
+            STRSCPY(crash_recovery, new->other_config[ii]);
+        }
     }
 
     enable = new->enable_exists && new->enable;
 
-    LOG(INFO, "Registering/updating[%d] manager: name=%s enable=%s needs_plan_b=%s always_restart=%s restart_delay=%d",
+    LOG(INFO,
+        "Registering/updating[%d] manager: name=%s enable=%s "
+        "needs_plan_b=%s always_restart=%s restart_delay=%d "
+        "crash_count_max=%d crash_count_period=%d",
             old != NULL,
             new->service,
             enable ? "true" : "false",
             plan_b ? "true" : "false",
             restart_always ? "true" : "false",
-            restart_delay);
+            restart_delay,
+            plan_b ? 0 : crash_count_max,
+            plan_b ? 0 : crash_count_period);
 
     if (mon->mon_type == OVSDB_UPDATE_NEW)
     {
-        (void)dm_manager_register(new->service, plan_b, restart_always, restart_delay, memmax, memmax_cnt);
+        (void)dm_manager_register(
+                new->service,
+                plan_b,
+                restart_always,
+                restart_delay,
+                memmax,
+                memmax_cnt,
+                crash_count_max,
+                crash_count_period,
+                crash_recovery);
     }
 
-    if (!dm_manager_update(new->service, enable, plan_b, restart_always, restart_delay, memmax, memmax_cnt))
+    if (!dm_manager_update(
+                new->service,
+                enable,
+                plan_b,
+                restart_always,
+                restart_delay,
+                memmax,
+                memmax_cnt,
+                crash_count_max,
+                crash_count_period,
+                crash_recovery))
     {
         goto error;
     }

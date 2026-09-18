@@ -131,6 +131,10 @@ static bool nm2_inet_dhcp_renew_set(
         struct nm2_iface *piface,
         const struct schema_Wifi_Inet_Config *iconf);
 
+static bool nm2_inet_dhcp_route_table_set(
+        struct nm2_iface *piface,
+        const struct schema_Wifi_Inet_Config *iconf);
+
 static void nm2_inet_copy(
         struct nm2_iface *piface,
         const struct schema_Wifi_Inet_Config *pconfig);
@@ -198,6 +202,7 @@ bool nm2_inet_config_set(struct nm2_iface *piface, struct schema_Wifi_Inet_Confi
     retval &= nm2_inet_vlan_egress_qos_map_set(piface, iconf);
     retval &= nm2_inet_credential_set(piface, iconf);
     retval &= nm2_inet_dhcp_renew_set(piface, iconf);
+    retval &= nm2_inet_dhcp_route_table_set(piface, iconf);
 
     return retval;
 }
@@ -1012,6 +1017,46 @@ bool nm2_inet_dhcp_renew_set(
 }
 
 /*
+ * Apply the routing table for DHCP client installed default routes.
+ * An unset column or 0 selects the main routing table.
+ */
+bool nm2_inet_dhcp_route_table_set(
+        struct nm2_iface *piface,
+        const struct schema_Wifi_Inet_Config *iconf)
+{
+    uint32_t table = 0;
+
+    if (iconf->dhcp_route_table_exists)
+    {
+        int64_t val = iconf->dhcp_route_table;
+
+        /* Reserved routing tables: 253 (default), 254 (main), 255 (local) */
+        if (val < 0 || val > UINT32_MAX || (val >= 253 && val <= 255))
+        {
+            LOG(ERR, "inet_config: %s (%s): Invalid dhcp_route_table: %lld",
+                    piface->if_name,
+                    nm2_iftype_tostr(piface->if_type),
+                    (long long)val);
+            return false;
+        }
+
+        table = (uint32_t)val;
+    }
+
+    if (!inet_dhcpc_route_table_set(piface->if_inet, table))
+    {
+        LOG(WARN, "inet_config: %s (%s): Error setting DHCP route table %u.",
+                piface->if_name,
+                nm2_iftype_tostr(piface->if_type),
+                table);
+
+        return false;
+    }
+
+    return true;
+}
+
+/*
  * Some fields must be cached for later retrieval; these are typically used
  * for populating the Wifi_Inet_State and Wifi_Master_State tables.
  *
@@ -1042,6 +1087,8 @@ void nm2_inet_copy(
     NM2_IFACE_INET_CONFIG_COPY(piface->if_cache.vlan_egress_qos_map, iconf->vlan_egress_qos_map);
     piface->if_cache.parent_ifname_exists = iconf->parent_ifname_exists;
     NM2_IFACE_INET_CONFIG_COPY(piface->if_cache.parent_ifname, iconf->parent_ifname);
+    piface->if_cache.dhcp_route_table_exists = iconf->dhcp_route_table_exists;
+    NM2_IFACE_INET_CONFIG_COPY(piface->if_cache.dhcp_route_table, iconf->dhcp_route_table);
 }
 
 

@@ -41,6 +41,12 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define CM2_BH_CMU_BACKOFF_SEC  3.0
 #define CM2_BH_CMU_DEADLINE_SEC 3.0
 
+/* Node_Config/Node_State knobs for requesting
+ * CM BH CMU disable and reporting status. Unset means enabled. */
+#define CM2_BH_CMU_NODE_MODULE       "CM"
+#define CM2_BH_CMU_NODE_CFG_DISABLE  "bh_cmu_disable"
+#define CM2_BH_CMU_NODE_STATE_STATUS "bh_cmu_disable_status"
+
 #define LOG_PREFIX(m, fmt, ...) "cm2: bh: cmu: " fmt, ##__VA_ARGS__
 
 #define LOG_PREFIX_VIF(vif, fmt, ...)             \
@@ -94,6 +100,8 @@ struct cm2_bh_cmu_gre
     char *parent_name;
     bool work;
     bool need_delete;
+    bool enabled;
+    bool owned;
 
     struct
     {
@@ -116,6 +124,10 @@ struct cm2_bh_cmu_vif
     char *vif_name;
     bool work;
     bool need_delete;
+    bool enabled;
+    /* The CMU row belongs to this module. Rows appearing while
+     * not enabled belong to an external entity and are left alone. */
+    bool owned;
 
     struct
     {
@@ -135,7 +147,110 @@ struct cm2_bh_cmu
     ds_tree_t vifs;
     ds_tree_t gres;
     ds_tree_t gres_by_parent;
+    ev_idle recalc;
+    bool enabled;
+    bool reported_enabled;
+    bool idle;
 };
+
+static bool cm2_bh_cmu_node_config_enabled_get(void)
+{
+    json_t *where = ovsdb_where_multi(
+            ovsdb_where_simple(SCHEMA_COLUMN(Node_Config, module), CM2_BH_CMU_NODE_MODULE),
+            ovsdb_where_simple(SCHEMA_COLUMN(Node_Config, key), CM2_BH_CMU_NODE_CFG_DISABLE),
+            NULL);
+    json_t *rows = ovsdb_sync_select_where(SCHEMA_TABLE(Node_Config), where);
+    const char *value = json_string_value(json_object_get(json_array_get(rows, 0), SCHEMA_COLUMN(Node_Config, value)));
+    const bool disable = (value != NULL) && (strcmp(value, "true") == 0);
+    json_decref(rows);
+    return (disable == false);
+}
+
+static void cm2_bh_cmu_report_enabled(cm2_bh_cmu_t *m)
+{
+    const bool disabled = (m->enabled == false);
+    json_t *where = ovsdb_where_multi(
+            ovsdb_where_simple(SCHEMA_COLUMN(Node_State, module), CM2_BH_CMU_NODE_MODULE),
+            ovsdb_where_simple(SCHEMA_COLUMN(Node_State, key), CM2_BH_CMU_NODE_STATE_STATUS),
+            NULL);
+    json_t *row = json_pack(
+            "{s:s, s:s, s:s}",
+            SCHEMA_COLUMN(Node_State, module),
+            CM2_BH_CMU_NODE_MODULE,
+            SCHEMA_COLUMN(Node_State, key),
+            CM2_BH_CMU_NODE_STATE_STATUS,
+            SCHEMA_COLUMN(Node_State, value),
+            disabled ? "true" : "false");
+    const bool ok = ovsdb_sync_upsert_where(SCHEMA_TABLE(Node_State), where, row, NULL);
+    WARN_ON(ok == false);
+    m->reported_enabled = m->enabled;
+    LOGN(LOG_PREFIX(m, "reported %s: %s", CM2_BH_CMU_NODE_STATE_STATUS, BOOL_CSTR(disabled)));
+}
+
+static bool cm2_bh_cmu_vif_is_idle(const cm2_bh_cmu_vif_t *vif)
+{
+    if (vif->work) return false;
+    if (ev_is_active(&vif->recalc)) return false;
+    if (ev_is_active(&vif->deadline)) return false;
+    if (ev_is_active(&vif->backoff)) return false;
+    return true;
+}
+
+static bool cm2_bh_cmu_gre_is_idle(const cm2_bh_cmu_gre_t *gre)
+{
+    if (gre->work) return false;
+    if (ev_is_active(&gre->recalc)) return false;
+    if (ev_is_active(&gre->deadline)) return false;
+    if (ev_is_active(&gre->backoff)) return false;
+    return true;
+}
+
+static bool cm2_bh_cmu_is_idle(cm2_bh_cmu_t *m)
+{
+    cm2_bh_cmu_gre_t *gre;
+    ds_tree_foreach (&m->gres, gre)
+    {
+        if (cm2_bh_cmu_gre_is_idle(gre) == false) return false;
+    }
+    cm2_bh_cmu_vif_t *vif;
+    ds_tree_foreach (&m->vifs, vif)
+    {
+        if (cm2_bh_cmu_vif_is_idle(vif) == false) return false;
+    }
+    return true;
+}
+
+static void cm2_bh_cmu_recalc(cm2_bh_cmu_t *m)
+{
+    if (m->idle == false) return;
+    if (m->enabled == m->reported_enabled) return;
+    cm2_bh_cmu_report_enabled(m);
+}
+
+static void cm2_bh_cmu_recalc_cb(struct ev_loop *l, ev_idle *i, int mask)
+{
+    ev_idle_stop(l, i);
+    cm2_bh_cmu_t *m = i->data;
+    cm2_bh_cmu_recalc(m);
+}
+
+static void cm2_bh_cmu_schedule(cm2_bh_cmu_t *m)
+{
+    ev_idle_start(m->loop, &m->recalc);
+}
+
+static void cm2_bh_cmu_set_idle(cm2_bh_cmu_t *m, bool idle)
+{
+    if (m->idle == idle) return;
+    LOGI(LOG_PREFIX(m, "idle: %s -> %s", BOOL_CSTR(m->idle), BOOL_CSTR(idle)));
+    m->idle = idle;
+    cm2_bh_cmu_schedule(m);
+}
+
+static void cm2_bh_cmu_update_idle(cm2_bh_cmu_t *m)
+{
+    cm2_bh_cmu_set_idle(m, cm2_bh_cmu_is_idle(m));
+}
 
 static bool cm2_bh_cmu_wms_active_to_need_delete(bool active)
 {
@@ -166,6 +281,7 @@ static void cm2_bh_cmu_gre_schedule(cm2_bh_cmu_gre_t *gre)
     if (gre == NULL) return;
     gre->work = true;
     cm2_bh_cmu_gre_recalc_arm(gre);
+    cm2_bh_cmu_update_idle(gre->m);
 }
 
 static void cm2_bh_cmu_vif_deadline_arm(cm2_bh_cmu_vif_t *vif)
@@ -186,6 +302,7 @@ static void cm2_bh_cmu_vif_schedule(cm2_bh_cmu_vif_t *vif)
 {
     vif->work = true;
     cm2_bh_cmu_vif_recalc_arm(vif);
+    cm2_bh_cmu_update_idle(vif->m);
 }
 
 static void cm2_bh_cmu_vif_set_need_delete(cm2_bh_cmu_vif_t *vif, bool v)
@@ -266,6 +383,39 @@ static void cm2_bh_cmu_flush(cm2_bh_cmu_t *m)
     cm2_bh_cmu_flush_type(m, SCHEMA_CONSTS_IF_TYPE_VIF);
 }
 
+static void cm2_bh_cmu_vif_set_enabled(cm2_bh_cmu_vif_t *vif, bool v)
+{
+    if (vif == NULL) return;
+    if (vif->enabled == v) return;
+    LOGI(LOG_PREFIX_VIF(vif, "enabled: %s -> %s", BOOL_CSTR(vif->enabled), BOOL_CSTR(v)));
+    vif->enabled = v;
+    cm2_bh_cmu_vif_schedule(vif);
+}
+
+static void cm2_bh_cmu_gre_set_enabled(cm2_bh_cmu_gre_t *gre, bool v)
+{
+    if (gre == NULL) return;
+    if (gre->enabled == v) return;
+    LOGI(LOG_PREFIX_GRE(gre, "enabled: %s -> %s", BOOL_CSTR(gre->enabled), BOOL_CSTR(v)));
+    gre->enabled = v;
+    cm2_bh_cmu_gre_schedule(gre);
+}
+
+static void cm2_bh_cmu_set_enabled(cm2_bh_cmu_t *m, bool v)
+{
+    cm2_bh_cmu_gre_t *gre;
+    ds_tree_foreach (&m->gres, gre)
+        cm2_bh_cmu_gre_set_enabled(gre, v);
+    cm2_bh_cmu_vif_t *vif;
+    ds_tree_foreach (&m->vifs, vif)
+        cm2_bh_cmu_vif_set_enabled(vif, v);
+
+    if (m->enabled == v) return;
+    LOGN(LOG_PREFIX(m, "enabled: %s -> %s", BOOL_CSTR(m->enabled), BOOL_CSTR(v)));
+    m->enabled = v;
+    cm2_bh_cmu_schedule(m);
+}
+
 void cm2_bh_cmu_vif_report_wvs_sta(cm2_bh_cmu_vif_t *vif, bool v)
 {
     if (vif == NULL) return;
@@ -332,7 +482,7 @@ static void cm2_bh_cmu_vif_report_cmu_has_l3(cm2_bh_cmu_vif_t *vif, bool v)
 
 static bool cm2_bh_cmu_vif_derive_cmu_exists(cm2_bh_cmu_vif_t *vif)
 {
-    return vif->report.wvs_sta && vif->report.wvs_4addr && (vif->report.wvs_mld == false);
+    return vif->report.wvs_sta && vif->report.wvs_4addr && (vif->report.wvs_mld == false) && vif->enabled;
 }
 
 static bool cm2_bh_cmu_vif_derive_has_l2(cm2_bh_cmu_vif_t *vif)
@@ -361,6 +511,16 @@ static void cm2_bh_cmu_vif_recalc(cm2_bh_cmu_vif_t *vif)
     const bool l2_changed = (has_l2 != vif->report.cmu_has_l2);
     const bool l3_changed = (has_l3 != vif->report.cmu_has_l3);
 
+    /* When enabled every CMU row for this if_name is ours to manage.
+     * When not enabled, ownership is only kept until the row is gone,
+     * so the disable transition can clean up, but rows inserted by an
+     * external entity afterwards are never touched.
+     */
+    if (vif->report.cmu_exists == false)
+        vif->owned = false;
+    else if (vif->enabled)
+        vif->owned = true;
+
     if (cmu_changed && cmu_exists)
     {
         LOGI(LOG_PREFIX_VIF(vif, "inserting"));
@@ -368,11 +528,12 @@ static void cm2_bh_cmu_vif_recalc(cm2_bh_cmu_vif_t *vif)
         const bool ok = cm2_bh_cmu_insert(vif->vif_name, SCHEMA_CONSTS_IF_TYPE_VIF, has_l2, has_l3);
         if (ok)
         {
+            vif->owned = true;
             cm2_bh_cmu_vif_report_cmu_exists(vif, true);
         }
     }
 
-    if (vif->report.cmu_exists)
+    if (vif->report.cmu_exists && vif->owned)
     {
         if (l2_changed)
         {
@@ -387,10 +548,11 @@ static void cm2_bh_cmu_vif_recalc(cm2_bh_cmu_vif_t *vif)
         }
     }
 
-    if ((cmu_changed && (cmu_exists == false)) || (vif->report.cmu_exists && vif->need_delete))
+    if (vif->owned && ((cmu_changed && (cmu_exists == false)) || (vif->report.cmu_exists && vif->need_delete)))
     {
         LOGI(LOG_PREFIX_VIF(vif, "deleting"));
         vif->need_delete = false;
+        vif->owned = false;
         cm2_bh_cmu_delete(vif->vif_name);
         cm2_bh_cmu_vif_schedule(vif);
     }
@@ -402,6 +564,7 @@ static void cm2_bh_cmu_vif_recalc_cb(struct ev_loop *l, ev_idle *i, int mask)
     cm2_bh_cmu_vif_t *vif = i->data;
     ev_timer_stop(vif->m->loop, &vif->deadline);
     cm2_bh_cmu_vif_recalc(vif);
+    cm2_bh_cmu_update_idle(vif->m);
 }
 
 static void cm2_bh_cmu_vif_deadline_cb(struct ev_loop *l, ev_timer *t, int mask)
@@ -479,7 +642,7 @@ static void cm2_bh_cmu_gre_report_cmu_has_l3(cm2_bh_cmu_gre_t *gre, bool v)
 
 static bool cm2_bh_cmu_gre_derive_cmu_exists(cm2_bh_cmu_gre_t *gre)
 {
-    return gre->report.wic_exists;
+    return gre->report.wic_exists && gre->enabled;
 }
 
 static bool cm2_bh_cmu_gre_derive_has_l2(cm2_bh_cmu_gre_t *gre)
@@ -508,6 +671,12 @@ static void cm2_bh_cmu_gre_recalc(cm2_bh_cmu_gre_t *gre)
     const bool l2_changed = (has_l2 != gre->report.cmu_has_l2);
     const bool l3_changed = (has_l3 != gre->report.cmu_has_l3);
 
+    /* See the ownership comment in cm2_bh_cmu_vif_recalc(). */
+    if (gre->report.cmu_exists == false)
+        gre->owned = false;
+    else if (gre->enabled)
+        gre->owned = true;
+
     if (cmu_changed && cmu_exists)
     {
         LOGI(LOG_PREFIX_GRE(gre, "inserting"));
@@ -515,11 +684,12 @@ static void cm2_bh_cmu_gre_recalc(cm2_bh_cmu_gre_t *gre)
         const bool ok = cm2_bh_cmu_insert(gre->gre_name, SCHEMA_CONSTS_IF_TYPE_GRE, has_l2, has_l3);
         if (ok)
         {
+            gre->owned = true;
             cm2_bh_cmu_gre_report_cmu_exists(gre, true);
         }
     }
 
-    if (gre->report.cmu_exists)
+    if (gre->report.cmu_exists && gre->owned)
     {
         if (l2_changed)
         {
@@ -534,9 +704,10 @@ static void cm2_bh_cmu_gre_recalc(cm2_bh_cmu_gre_t *gre)
         }
     }
 
-    if ((cmu_changed && (cmu_exists == false)) || (gre->report.cmu_exists && gre->need_delete))
+    if (gre->owned && ((cmu_changed && (cmu_exists == false)) || (gre->report.cmu_exists && gre->need_delete)))
     {
         gre->need_delete = false;
+        gre->owned = false;
         LOGI(LOG_PREFIX_GRE(gre, "deleting"));
         cm2_bh_cmu_delete(gre->gre_name);
         cm2_bh_cmu_gre_schedule(gre);
@@ -549,6 +720,7 @@ static void cm2_bh_cmu_gre_recalc_cb(struct ev_loop *l, ev_idle *i, int mask)
     cm2_bh_cmu_gre_t *gre = i->data;
     ev_timer_stop(gre->m->loop, &gre->deadline);
     cm2_bh_cmu_gre_recalc(gre);
+    cm2_bh_cmu_update_idle(gre->m);
 }
 
 static void cm2_bh_cmu_gre_deadline_cb(struct ev_loop *l, ev_timer *t, int mask)
@@ -681,17 +853,35 @@ void cm2_bh_cmu_WIC(
     }
 }
 
+void cm2_bh_cmu_NC(
+        cm2_bh_cmu_t *m,
+        ovsdb_update_monitor_t *mon,
+        const struct schema_Node_Config *old_row,
+        const struct schema_Node_Config *new_row)
+{
+    if (m == NULL) return;
+    if (mon->mon_type == OVSDB_UPDATE_DEL) new_row = NULL;
+    const char *module = CM2_OVS_COL(mon, old_row->module, new_row->module);
+    const char *key = CM2_OVS_COL(mon, old_row->key, new_row->key);
+    if (strcmp_null(module, CM2_BH_CMU_NODE_MODULE) != 0) return;
+    if (strcmp_null(key, CM2_BH_CMU_NODE_CFG_DISABLE) != 0) return;
+
+    cm2_bh_cmu_set_enabled(m, cm2_bh_cmu_node_config_enabled_get());
+}
+
 void cm2_bh_cmu_vif_drop(cm2_bh_cmu_vif_t *vif)
 {
     if (vif == NULL) return;
     LOGI(LOG_PREFIX_VIF(vif, "dropping"));
-    cm2_bh_cmu_delete(vif->vif_name);
+    cm2_bh_cmu_t *m = vif->m;
+    if (vif->owned) cm2_bh_cmu_delete(vif->vif_name);
     ev_idle_stop(vif->m->loop, &vif->recalc);
     ev_timer_stop(vif->m->loop, &vif->deadline);
     ev_timer_stop(vif->m->loop, &vif->backoff);
     ds_tree_remove(&vif->m->vifs, vif);
     FREE(vif->vif_name);
     FREE(vif);
+    cm2_bh_cmu_update_idle(m);
 }
 
 cm2_bh_cmu_vif_t *cm2_bh_cmu_vif_alloc(cm2_bh_cmu_t *m, const char *vif_name)
@@ -709,6 +899,7 @@ cm2_bh_cmu_vif_t *cm2_bh_cmu_vif_alloc(cm2_bh_cmu_t *m, const char *vif_name)
     vif->backoff.data = vif;
     vif->deadline.data = vif;
     vif->m = m;
+    vif->enabled = m->enabled;
     vif->vif_name = STRDUP(vif_name);
     ds_tree_insert(&m->vifs, vif, vif->vif_name);
     LOGI(LOG_PREFIX_VIF(vif, "allocated"));
@@ -723,7 +914,8 @@ void cm2_bh_cmu_gre_drop(cm2_bh_cmu_gre_t *gre)
 {
     if (gre == NULL) return;
     LOGI(LOG_PREFIX_GRE(gre, "dropping"));
-    cm2_bh_cmu_delete(gre->gre_name);
+    cm2_bh_cmu_t *m = gre->m;
+    if (gre->owned) cm2_bh_cmu_delete(gre->gre_name);
     ev_idle_stop(gre->m->loop, &gre->recalc);
     ev_timer_stop(gre->m->loop, &gre->backoff);
     ev_timer_stop(gre->m->loop, &gre->deadline);
@@ -732,6 +924,7 @@ void cm2_bh_cmu_gre_drop(cm2_bh_cmu_gre_t *gre)
     FREE(gre->parent_name);
     FREE(gre->gre_name);
     FREE(gre);
+    cm2_bh_cmu_update_idle(m);
 }
 
 cm2_bh_cmu_gre_t *cm2_bh_cmu_gre_alloc(cm2_bh_cmu_t *m, const char *gre_name, const char *parent_name)
@@ -752,6 +945,7 @@ cm2_bh_cmu_gre_t *cm2_bh_cmu_gre_alloc(cm2_bh_cmu_t *m, const char *gre_name, co
     gre->backoff.data = gre;
     gre->deadline.data = gre;
     gre->m = m;
+    gre->enabled = m->enabled;
     gre->gre_name = STRDUP(gre_name);
     gre->parent_name = STRDUP(parent_name);
     ds_tree_insert(&m->gres, gre, gre->gre_name);
@@ -771,8 +965,14 @@ cm2_bh_cmu_t *cm2_bh_cmu_alloc(void)
     ds_tree_init(&m->vifs, ds_str_cmp, cm2_bh_cmu_vif_t, node);
     ds_tree_init(&m->gres, ds_str_cmp, cm2_bh_cmu_gre_t, node);
     ds_tree_init(&m->gres_by_parent, ds_str_cmp, cm2_bh_cmu_gre_t, node_by_parent);
+    ev_idle_init(&m->recalc, cm2_bh_cmu_recalc_cb);
+    m->recalc.data = m;
+    m->idle = true;
     LOGI(LOG_PREFIX(m, "allocated"));
-    cm2_bh_cmu_flush(m);
+
+    m->enabled = cm2_bh_cmu_node_config_enabled_get();
+    if (m->enabled) cm2_bh_cmu_flush(m);
+    cm2_bh_cmu_report_enabled(m);
     return m;
 }
 
@@ -818,6 +1018,7 @@ void cm2_bh_cmu_drop(cm2_bh_cmu_t *m)
     LOGI(LOG_PREFIX(m, "dropping"));
     cm2_bh_cmu_drop_gres(m);
     cm2_bh_cmu_drop_vifs(m);
+    ev_idle_stop(m->loop, &m->recalc);
     FREE(m);
 }
 

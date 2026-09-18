@@ -134,6 +134,13 @@ static unsigned int pm_tbl_get_fanrpm(struct osp_tm_ctx *ctx, unsigned int state
         fan_rpm = 0;
     }
 
+#ifdef CONFIG_PM_ENABLE_ERP_MODE
+    if (pm_erp_is_active() && (fan_rpm < (CONFIG_PM_ERP_FAN_RPM_MIN))) {
+        LOGD("TM: ERP active, clamping fan RPM from %u to %d", fan_rpm, (CONFIG_PM_ERP_FAN_RPM_MIN));
+        fan_rpm = CONFIG_PM_ERP_FAN_RPM_MIN;
+    }
+#endif /* CONFIG_PM_ENABLE_ERP_MODE */
+
     return fan_rpm;
 }
 

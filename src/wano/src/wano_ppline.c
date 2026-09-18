@@ -176,6 +176,8 @@ void wano_ppline_fini(wano_ppline_t *self)
     self->wpl_init = false;
     ds_dlist_remove(&g_wano_ppline_list, self);
 
+    ev_timer_stop(EV_DEFAULT, &self->wpl_retry_timer);
+
     wano_ovs_port_event_stop(&self->wpl_ovs_port_event);
     wano_connmgr_uplink_event_stop(&self->wpl_cmu_event);
     wano_inet_state_event_fini(&self->wpl_inet_state_event);
@@ -234,6 +236,8 @@ void wano_ppline_restart_all(void)
 void wano_ppline_wan_set(wano_ppline_t *wpl, wano_wan_t *wan)
 {
     wpl->wpl_wan = wan;
+    STRSCPY(wan->ww_ifname, wpl->wpl_ifname);
+    STRSCPY(wan->ww_iftype, wpl->wpl_iftype);
 }
 
 wano_wan_t *wano_ppline_wan_get(wano_ppline_t *wpl)
@@ -959,10 +963,14 @@ enum wano_ppline_state wano_ppline_state_IF_CARRIER(
 
             self->wpl_carrier_exception = true;
 
-            if (!WANO_CONNMGR_UPLINK_UPDATE(self->wpl_ifname, .has_L2 = WANO_TRI_TRUE))
             {
-                LOG(WARN, "wano: %s: Error updating Connection_Manager_Uplinkg talbe (has_L2 = true).",
-                        self->wpl_ifname);
+                char if_type[32] = {0};
+                wano_ppline_map_iftype(self->wpl_iftype, if_type, sizeof(if_type));
+                if (!WANO_CONNMGR_UPLINK_UPDATE(self->wpl_ifname, .if_type = if_type, .has_L2 = WANO_TRI_TRUE))
+                {
+                    LOG(WARN, "wano: %s: Error updating Connection_Manager_Uplink table (has_L2 = true).",
+                            self->wpl_ifname);
+                }
             }
 
             LOG(INFO, "wano: %s: Carrier detected.", self->wpl_ifname);

@@ -28,6 +28,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define NL_80211_I_H_INCLUDED
 
 #include <ds_tree.h>
+#include <ds_dlist.h>
+#include <nl_80211.h>
 
 struct nl_80211_sub_priv {
     struct ds_tree *root;
@@ -74,6 +76,9 @@ struct nl_80211_map {
     struct ds_dlist subs;
     struct nl_cmd *cmd_dump_wiphy;
     struct nl_cmd *cmd_dump_interface;
+    struct nl_msg **accumulated_wiphy_msgs;
+    size_t n_accumulated_wiphy_msgs;
+    uint32_t accumulated_wiphy;
 };
 
 struct nl_80211_sub {
