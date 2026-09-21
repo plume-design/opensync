@@ -108,6 +108,7 @@ const char* log_get_name()
 }
 
 static void _log_sink_severity_set_default(log_sink_t sink);
+static FILE* tmp_log_file = NULL;
 
 /**
  * Severity per-module
@@ -188,6 +189,12 @@ bool log_open(char *name, int flags)
 
     traceback_enabled = logger_traceback_new(&logger_traceback);
     log_register_logger(&logger_traceback);
+
+    if (access("/nvram/opensync_tmp_logging", R_OK) == 0) {
+        char fn[64];
+        sprintf(fn, "/tmp/opensync.%s.log", name);
+        tmp_log_file = fopen(fn, "w+");
+    }
 
     return true;
 }
@@ -428,6 +435,10 @@ void log_close()
 {
     LOG_MODULE_MESSAGE(NOTICE, LOG_MODULE_ID_COMMON, "log functionality closed");
     log_enabled = false;
+    if (tmp_log_file) {
+        fclose(tmp_log_file);
+        tmp_log_file = NULL;
+    }
 }
 
 static bool log_any_sink_match(log_severity_t sev, log_module_t module)
@@ -576,6 +587,12 @@ void mlog(log_severity_t sev,
     msg.lm_tag = se_tag;
     msg.lm_timestamp = timestr;
     msg.lm_text = buff;
+
+    if (tmp_log_file) {
+        fprintf(tmp_log_file, "%d %d %s %s %s %s\n", 
+            msg.lm_severity, msg.lm_module, msg.lm_module_name, 
+            msg.lm_tag, msg.lm_timestamp, msg.lm_text);
+    }
 
     /* Feed messages to the registered loggers */
     logger_t *plog;
