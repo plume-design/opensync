@@ -366,6 +366,43 @@ osw_hostap_util_sta_state_to_osw(const char *wpa_state,
 }
 
 bool
+osw_hostap_util_sta_state_to_conn(const char *wpa_state,
+                                  enum osw_drv_vif_state_sta_conn_status *status)
+{
+    if (wpa_state == NULL || status == NULL)
+        return false;
+
+    if (strcmp(wpa_state, "SCANNING") == 0) {
+        *status = OSW_DRV_VIF_STATE_STA_CONN_SCANNING;
+        return true;
+    }
+
+    if ((strcmp(wpa_state, "AUTHENTICATING") == 0) ||
+        (strcmp(wpa_state, "ASSOCIATING") == 0) ||
+        (strcmp(wpa_state, "ASSOCIATED") == 0) ||
+        (strcmp(wpa_state, "MLO_WAIT") == 0) ||
+        (strcmp(wpa_state, "4WAY_HANDSHAKE") == 0) ||
+        (strcmp(wpa_state, "GROUP_HANDSHAKE") == 0) ) {
+        *status = OSW_DRV_VIF_STATE_STA_CONN_CONNECTING;
+        return true;
+    }
+
+    if (strcmp(wpa_state, "COMPLETED") == 0) {
+        *status = OSW_DRV_VIF_STATE_STA_CONN_CONNECTED;
+        return true;
+    }
+
+    if ((strcmp(wpa_state, "DISCONNECTED") == 0) ||
+        (strcmp(wpa_state, "INACTIVE") == 0) ||
+        (strcmp(wpa_state, "INTERFACE_DISABLED") == 0) ) {
+        *status = OSW_DRV_VIF_STATE_STA_CONN_DISCONNECTED;
+        return true;
+    }
+
+    return false;
+}
+
+bool
 osw_hostap_util_ieee80211w_to_osw(const char *ieee80211w,
                                   struct osw_wpa *osw_wpa)
 {

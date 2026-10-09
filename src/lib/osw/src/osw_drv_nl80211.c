@@ -2503,6 +2503,29 @@ osw_drv_nl80211_vif_mark_enabled(const char *vif_name,
 }
 
 static void
+osw_drv_nl80211_vif_sta_conn_failure_report(struct osw_drv_nl80211_vif *vif,
+                                            enum osw_drv_vif_sta_conn_failure_kind kind,
+                                            uint16_t code,
+                                            bool local,
+                                            const char *detail)
+{
+    struct osw_drv_nl80211 *m = vif->m;
+    struct osw_drv *drv = m->drv;
+    const struct osw_drv_nl80211_phy *phy = osw_drv_nl80211_phy_from_vif(vif);
+    if (drv == NULL) return;
+    if (WARN_ON(phy == NULL)) return;
+
+    struct osw_drv_vif_sta_conn_failure failure;
+    MEMZERO(failure);
+    failure.kind = kind;
+    failure.code = code;
+    failure.local = local;
+    if (detail != NULL) STRSCPY(failure.detail, detail);
+
+    osw_drv_report_vif_sta_conn_failure(drv, phy->phy_name, vif->vif_name, &failure);
+}
+
+static void
 osw_drv_nl80211_vif_state_report_finalize(struct osw_drv_nl80211_vif *vif)
 {
     const char *vif_name = vif->vif_name;
@@ -2524,6 +2547,15 @@ osw_drv_nl80211_vif_state_report_finalize(struct osw_drv_nl80211_vif *vif)
     os_nif_exists((char *)vif_name, &state->exists);
     osw_drv_nl80211_vif_mark_enabled(vif_name, state);
     osw_hostap_bss_fill_state(vif->hostap_bss, state);
+
+    if (state->vif_type == OSW_VIF_STA) {
+        /* Keep conn_status consistent when nl80211 knows the link is
+         * up but the wpa_supplicant STATUS poll was unavailable.
+         */
+        if (link->status == OSW_DRV_VIF_STATE_STA_LINK_CONNECTED) {
+            link->conn_status = OSW_DRV_VIF_STATE_STA_CONN_CONNECTED;
+        }
+    }
 
     /* percent==100 requests a "no power limit" and is applied via the driver's
      * automatic tx power selection. The netlink tx power level
@@ -2735,7 +2767,112 @@ osw_drv_nl80211_vif_hostap_event_cb(const char *msg,
         osw_drv_report_vif_changed(drv, phy_name, vif_name);
     }
     else if (strcmp(event_name, "CTRL-EVENT-DISCONNECTED") == 0) {
+        /* CTRL-EVENT-DISCONNECTED bssid=xx:xx:xx:xx:xx:xx reason=15 locally_generated=1 */
+        uint16_t code = 0;
+        bool local = false;
+        char *token;
+        while ((token = strsep(&p, " ")) != NULL) {
+            const char *k = strsep(&token, "=");
+            if (k == NULL) continue;
+            const char *v = strsep(&token, " ");
+            if (v == NULL) continue;
+
+            if (strcmp(k, "reason") == 0) {
+                code = atoi(v);
+            }
+            else if (strcmp(k, "locally_generated") == 0) {
+                local = (atoi(v) == 1);
+            }
+        }
+        osw_drv_nl80211_vif_sta_conn_failure_report(vif, OSW_DRV_VIF_STA_CONN_FAILURE_DISCONNECTED, code, local, NULL);
+        osw_drv_report_vif_changed(drv, phy_name, vif_name);
+    }
+    else if (strcmp(event_name, "CTRL-EVENT-NETWORK-NOT-FOUND") == 0) {
+        LOGI(LOG_PREFIX_VIF(phy_name, vif_name, "hostap event: %s (len=%zu)", msg, msg_len));
+        osw_drv_nl80211_vif_sta_conn_failure_report(vif, OSW_DRV_VIF_STA_CONN_FAILURE_SSID_NOT_FOUND, 0, false, NULL);
         if (drv == NULL) return;
+        osw_drv_report_vif_changed(drv, phy_name, vif_name);
+    }
+    else if (strcmp(event_name, "CTRL-EVENT-SSID-TEMP-DISABLED") == 0) {
+        /* CTRL-EVENT-SSID-TEMP-DISABLED id=0 ssid="foo" auth_failures=1 duration=10 reason=WRONG_KEY */
+
+        LOGI(LOG_PREFIX_VIF(phy_name, vif_name, "hostap event: %s (len=%zu)", msg, msg_len));
+        const char *reason = "";
+        char *token;
+        while ((token = strsep(&p, " ")) != NULL) {
+            const char *k = strsep(&token, "=");
+            if (k == NULL) continue;
+            const char *v = strsep(&token, " ");
+            if (v == NULL) continue;
+
+            if (strcmp(k, "reason") == 0) {
+                reason = v;
+            }
+        }
+
+        if ((strcmp(reason, "WRONG_KEY") == 0) ||
+            (strcmp(reason, "AUTH_FAILED") == 0)) {
+            osw_drv_nl80211_vif_sta_conn_failure_report(vif, OSW_DRV_VIF_STA_CONN_FAILURE_WRONG_KEY, 0, false, NULL);
+        }
+        else {
+            const char *detail = (strcmp(reason, "NO_PSK_AVAILABLE") == 0) ? "no_psk"
+                               : (strcmp(reason, "CONN_FAILED") == 0) ? "conn_failed"
+                               : reason;
+            osw_drv_nl80211_vif_sta_conn_failure_report(vif, OSW_DRV_VIF_STA_CONN_FAILURE_GENERAL_ERR, 0, false, detail);
+        }
+        osw_drv_report_vif_changed(drv, phy_name, vif_name);
+    }
+    else if (strcmp(event_name, "CTRL-EVENT-ASSOC-REJECT") == 0) {
+        /* CTRL-EVENT-ASSOC-REJECT bssid=xx:xx:xx:xx:xx:xx status_code=17 */
+        LOGI(LOG_PREFIX_VIF(phy_name, vif_name, "hostap event: %s (len=%zu)", msg, msg_len));
+        uint16_t code = 0;
+        char *token;
+        while ((token = strsep(&p, " ")) != NULL) {
+            const char *k = strsep(&token, "=");
+            if (k == NULL) continue;
+            const char *v = strsep(&token, " ");
+            if (v == NULL) continue;
+
+            if (strcmp(k, "status_code") == 0) {
+                code = atoi(v);
+            }
+        }
+        osw_drv_nl80211_vif_sta_conn_failure_report(vif, OSW_DRV_VIF_STA_CONN_FAILURE_ASSOC_REJECT, code, false, NULL);
+        osw_drv_report_vif_changed(drv, phy_name, vif_name);
+    }
+    else if (strcmp(event_name, "CTRL-EVENT-AUTH-REJECT") == 0) {
+        /* CTRL-EVENT-AUTH-REJECT xx:xx:xx:xx:xx:xx auth_type=3 auth_transaction=2 status_code=1 */
+        LOGI(LOG_PREFIX_VIF(phy_name, vif_name, "hostap event: %s (len=%zu)", msg, msg_len));
+        uint16_t code = 0;
+        int auth_type = -1;
+        char *token;
+        while ((token = strsep(&p, " ")) != NULL) {
+            const char *k = strsep(&token, "=");
+            if (k == NULL) continue;
+            const char *v = strsep(&token, " ");
+            if (v == NULL) continue;
+
+            if (strcmp(k, "status_code") == 0) {
+                code = atoi(v);
+            }
+            else if (strcmp(k, "auth_type") == 0) {
+                auth_type = atoi(v);
+            }
+        }
+
+        /* An AP rejecting SAE authentication: in practice,
+         * that means the password did not match. */
+        const bool sae = (auth_type == 3);
+        osw_drv_nl80211_vif_sta_conn_failure_report(vif,
+                                                    sae ? OSW_DRV_VIF_STA_CONN_FAILURE_WRONG_KEY
+                                                        : OSW_DRV_VIF_STA_CONN_FAILURE_AUTH_REJECT,
+                                                    code, false, NULL);
+
+        osw_drv_report_vif_changed(drv, phy_name, vif_name);
+    }
+    else if (strcmp(event_name, "CTRL-EVENT-SCAN-FAILED") == 0) {
+        LOGI(LOG_PREFIX_VIF(phy_name, vif_name, "hostap event: %s (len=%zu)", msg, msg_len));
+        osw_drv_nl80211_vif_sta_conn_failure_report(vif, OSW_DRV_VIF_STA_CONN_FAILURE_GENERAL_ERR, 0, false, "scan_failed");
         osw_drv_report_vif_changed(drv, phy_name, vif_name);
     }
     else if (strcmp(event_name, "WPS-AP-AVAILABLE") == 0) {

@@ -50,6 +50,7 @@ UNIT_EXPORT_LDFLAGS += $(if ($CONFIG_OSP_DL_CURL),-lcurl -lssl)
 
 ifeq ($(CONFIG_OSP_REBOOT_PSTORE),y)
 UNIT_SRC += src/osp_reboot_pstore.c
+UNIT_SRC += src/osp_reboot_platform_null.c
 UNIT_DEPS += src/lib/execsh
 endif
 

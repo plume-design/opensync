@@ -1357,17 +1357,9 @@ static const struct osw_state_observer g_ow_stats_conf_sta_obs = {
     .sta_disconnected_fn = ow_stats_conf_sta_disconnected_cb,
 };
 
-static double
-ow_stats_conf_entry_get_scan_offset(const struct ow_stats_conf_entry *e)
+static unsigned int
+ow_stats_conf_entry_get_scan_slot(const struct ow_stats_conf_entry *e)
 {
-    /* Purpose of these offsets is to stagger scan requests
-     * from across different PHYs to reduce packet loss and
-     * stalls in the data path.
-     *
-     * FIXME: This could be smarter at allocating offsets
-     * automatically based on runtime configuration. However
-     * this is good enough for now.
-     */
     switch (e->params.radio_type) {
         case OW_STATS_CONF_RADIO_TYPE_UNSPEC: return 0;
         case OW_STATS_CONF_RADIO_TYPE_2G: return 1;
@@ -1377,6 +1369,23 @@ ow_stats_conf_entry_get_scan_offset(const struct ow_stats_conf_entry *e)
         case OW_STATS_CONF_RADIO_TYPE_6G: return 4;
     }
     return 0;
+}
+
+static double
+ow_stats_conf_entry_get_scan_offset(const struct ow_stats_conf_entry *e,
+                                    const double interval)
+{
+    /* Purpose of these offsets is to stagger scan requests
+     * from across different PHYs to reduce packet loss and
+     * stalls in the data path.
+     *
+     * Slots are 1s apart. Intervals shorter than n_slots
+     * seconds use interval/n_slots spacing instead, otherwise
+     * slots would wrap around the interval and collide.
+     */
+    const double n_slots = 5;
+    const double step = MIN(1.0, interval / n_slots);
+    return ow_stats_conf_entry_get_scan_slot(e) * step;
 }
 
 static enum osw_band
@@ -1594,7 +1603,7 @@ ow_stats_conf_entry_start_scan(struct ow_stats_conf_entry *e,
     const struct ow_stats_conf_band *b = ow_stats_conf_get_radio_type(c, type);
     const char *phy_name = b ? b->phy_name : NULL;
     struct ow_stats_conf_phy *phy = phy_name ? ds_tree_find(&c->phys, phy_name) : NULL;
-    const double offset = interval - ow_stats_conf_entry_get_scan_offset(e);
+    const double offset = interval - ow_stats_conf_entry_get_scan_offset(e, interval);
     const unsigned int dwell = e->params.dwell_time_msec;
     const enum osw_band band = ow_stats_conf_radio_to_band(e->params.radio_type);
     const size_t n_channels = e->params.n_channels;

@@ -59,7 +59,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define WANP_ETHCLIENT_PCAP_SNAPLEN     512
 /** PCAP rule for sniffing DHCPv4 client packets and IPv6 Router Solicitations */
 #define WANP_ETHCLIENT_PCAP_FILTER      \
-        "inbound and (udp and (port bootpc or port bootps) or (icmp6 and icmp6[0] == 133))"
+        "inbound and (udp and (port bootpc or port bootps) or (icmp6 and ip6[40] == 133))"
 /* Ethernet re-injection interface */
 #define WANP_ETHCLIENT_INJECT_IF        CONFIG_TARGET_LAN_BRIDGE_NAME".ethc"
 

@@ -252,6 +252,7 @@ struct osw_drv_vif_sta_network {
     struct osw_drv_vif_sta_network *next;
     bool multi_ap;
     int priority;
+    bool open;
 };
 
 enum osw_drv_vif_config_sta_operation {
@@ -356,8 +357,45 @@ enum osw_drv_vif_state_sta_link_status {
     OSW_DRV_VIF_STATE_STA_LINK_DISCONNECTED,
 };
 
+/* Pollable STA link progress (state). */
+enum osw_drv_vif_state_sta_conn_status {
+    OSW_DRV_VIF_STATE_STA_CONN_UNSPEC,
+    OSW_DRV_VIF_STATE_STA_CONN_SCANNING,
+    OSW_DRV_VIF_STATE_STA_CONN_CONNECTING,
+    OSW_DRV_VIF_STATE_STA_CONN_CONNECTED,
+    OSW_DRV_VIF_STATE_STA_CONN_DISCONNECTED,
+};
+
+/* STA connection failure kinds. */
+enum osw_drv_vif_sta_conn_failure_kind {
+    OSW_DRV_VIF_STA_CONN_FAILURE_GENERAL_ERR,
+    OSW_DRV_VIF_STA_CONN_FAILURE_SSID_NOT_FOUND,
+    OSW_DRV_VIF_STA_CONN_FAILURE_WRONG_KEY,
+    OSW_DRV_VIF_STA_CONN_FAILURE_AUTH_REJECT,
+    OSW_DRV_VIF_STA_CONN_FAILURE_ASSOC_REJECT,
+    OSW_DRV_VIF_STA_CONN_FAILURE_DISCONNECTED,
+};
+
+/* A STA connection failure event, reported as it is observed. */
+struct osw_drv_vif_sta_conn_failure {
+    enum osw_drv_vif_sta_conn_failure_kind kind;
+
+    /* - IEEE 802.11 Status Code for auth/assoc rejects
+     * - IEEE 802.11 Reason Code for disconnects.
+     * - 0 means no code.
+     */
+    uint16_t code;
+
+    /* Disconnect generated locally, not by the AP. */
+    bool local;
+
+    /* Extra qualifier for GENERAL_ERR, eg. "no_psk". */
+    char detail[16];
+};
+
 struct osw_drv_vif_state_sta_link {
     enum osw_drv_vif_state_sta_link_status status;
+    enum osw_drv_vif_state_sta_conn_status conn_status;
     struct osw_ifname bridge_if_name;
     struct osw_channel channel;
     struct osw_hwaddr bssid;
@@ -650,6 +688,12 @@ osw_drv_report_vif_probe_req(struct osw_drv *drv,
                              const char *vif_name,
                              const struct osw_drv_report_vif_probe_req *probe_req);
 
+void
+osw_drv_report_vif_sta_conn_failure(struct osw_drv *drv,
+                                    const char *phy_name,
+                                    const char *vif_name,
+                                    const struct osw_drv_vif_sta_conn_failure *failure);
+
 struct osw_drv_vif_frame_rx {
     const uint8_t *data;
     size_t len;
@@ -804,6 +848,12 @@ osw_drv_sta_state_report_free(struct osw_drv_sta_state *state);
 
 const char *
 osw_drv_vif_state_sta_link_status_to_cstr(enum osw_drv_vif_state_sta_link_status s);
+
+const char *
+osw_drv_vif_state_sta_conn_status_to_cstr(enum osw_drv_vif_state_sta_conn_status s);
+
+const char *
+osw_drv_vif_sta_conn_failure_kind_to_cstr(enum osw_drv_vif_sta_conn_failure_kind kind);
 
 const struct osw_channel *
 osw_drv_vif_get_channel(const struct osw_drv_vif_state *state);

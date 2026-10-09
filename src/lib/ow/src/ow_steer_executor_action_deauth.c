@@ -32,6 +32,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <osw_state.h>
 #include <osw_conf.h>
 #include <osw_mux.h>
+#include <osw_sta_assoc.h>
 #include <osw_drv_mediator.h>
 #include <osw_time.h>
 #include <osw_timer.h>
@@ -46,9 +47,17 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 struct ow_steer_executor_action_deauth {
     struct ow_steer_executor_action *base;
-    struct osw_drv_frame_tx_desc *tx_desc;
     struct osw_timer delay_timer;
     float delay_seconds;
+    ds_tree_t tx;
+    osw_sta_assoc_observer_t *assoc_obs;
+};
+
+struct ow_steer_executor_action_deauth_tx {
+    struct ow_steer_executor_action_deauth *deauth_action;
+    ds_tree_node_t node;
+    struct osw_hwaddr sta_addr;
+    struct osw_drv_frame_tx_desc *tx_desc;
 };
 
 void
@@ -94,10 +103,26 @@ ow_steer_executor_action_deauth_call_fn(struct ow_steer_executor_action *action,
 }
 
 static void
-ow_steer_executor_action_deauth_tx_free(struct ow_steer_executor_action_deauth *deauth_action)
+ow_steer_executor_action_deauth_tx_drop(struct ow_steer_executor_action_deauth_tx *tx)
 {
-    osw_drv_frame_tx_desc_free(deauth_action->tx_desc);
-    deauth_action->tx_desc = NULL;
+    if (tx == NULL) return;
+
+    if (tx->deauth_action != NULL) {
+        ds_tree_remove(&tx->deauth_action->tx, tx);
+        tx->deauth_action = NULL;
+    }
+
+    osw_drv_frame_tx_desc_free_no_result(tx->tx_desc);
+    FREE(tx);
+}
+
+static void
+ow_steer_executor_action_deauth_tx_drop_all(struct ow_steer_executor_action_deauth *deauth_action)
+{
+    struct ow_steer_executor_action_deauth_tx *tx;
+    while ((tx = ds_tree_head(&deauth_action->tx)) != NULL) {
+        ow_steer_executor_action_deauth_tx_drop(tx);
+    }
 }
 
 static void
@@ -105,30 +130,33 @@ ow_steer_executor_action_deauth_tx_done_cb(struct osw_drv_frame_tx_desc *desc,
                                            enum osw_frame_tx_result result,
                                            void *priv)
 {
-    struct ow_steer_executor_action_deauth *deauth_action = priv;
+    struct ow_steer_executor_action_deauth_tx *tx = priv;
+    struct ow_steer_executor_action_deauth *deauth_action = tx->deauth_action;
 
-    switch (result) {
-        case OSW_FRAME_TX_RESULT_SUBMITTED:
-            LOGI("%s submitted deauth", ow_steer_executor_action_get_prefix(deauth_action->base));
-            break;
-        case OSW_FRAME_TX_RESULT_FAILED:
-            LOGI("%s failed to deauth", ow_steer_executor_action_get_prefix(deauth_action->base));
-            break;
-        case OSW_FRAME_TX_RESULT_DROPPED:
-            LOGI("%s dropped deauth", ow_steer_executor_action_get_prefix(deauth_action->base));
-            break;
+    if (deauth_action != NULL) {
+        switch (result) {
+            case OSW_FRAME_TX_RESULT_SUBMITTED:
+                LOGI("%s submitted deauth", ow_steer_executor_action_get_prefix(deauth_action->base));
+                break;
+            case OSW_FRAME_TX_RESULT_FAILED:
+                LOGI("%s failed to deauth", ow_steer_executor_action_get_prefix(deauth_action->base));
+                break;
+            case OSW_FRAME_TX_RESULT_DROPPED:
+                LOGI("%s dropped deauth", ow_steer_executor_action_get_prefix(deauth_action->base));
+                break;
+        }
     }
 
-    ow_steer_executor_action_deauth_tx_free(deauth_action);
+    ow_steer_executor_action_deauth_tx_drop(tx);
 }
 
 static struct osw_drv_frame_tx_desc *
-ow_steer_executor_action_deauth_tx_spawn(struct ow_steer_executor_action_deauth *deauth_action,
-                                         const struct osw_hwaddr *bssid,
-                                         const struct osw_hwaddr *sta_addr,
-                                         const uint16_t reason_code)
+ow_steer_executor_action_deauth_tx_desc_alloc(struct ow_steer_executor_action_deauth_tx *tx,
+                                              const struct osw_hwaddr *bssid,
+                                              const struct osw_hwaddr *sta_addr,
+                                              const uint16_t reason_code)
 {
-    struct osw_drv_frame_tx_desc *tx_desc = osw_drv_frame_tx_desc_new(ow_steer_executor_action_deauth_tx_done_cb, deauth_action);
+    struct osw_drv_frame_tx_desc *tx_desc = osw_drv_frame_tx_desc_new(ow_steer_executor_action_deauth_tx_done_cb, tx);
     const struct osw_drv_dot11_frame frame = {
         .header = {
             .frame_control = htole16(DOT11_FRAME_CTRL_SUBTYPE_DEAUTH),
@@ -158,42 +186,104 @@ ow_steer_executor_action_deauth_tx_push(struct ow_steer_executor_action_deauth *
                                         const struct osw_hwaddr *sta_addr,
                                         const uint16_t reason_code)
 {
-    /* Try generic tx submission path */
-    if (deauth_action->tx_desc != NULL) {
-        LOGI("%s overrun deauth", ow_steer_executor_action_get_prefix(deauth_action->base));
-        ow_steer_executor_action_deauth_tx_free(deauth_action);
+    struct ow_steer_executor_action_deauth_tx *tx = ds_tree_find(&deauth_action->tx, sta_addr);
+    if (tx != NULL) {
+        LOGI("%s deauth already in flight for "OSW_HWADDR_FMT", retrying", ow_steer_executor_action_get_prefix(deauth_action->base), OSW_HWADDR_ARG(sta_addr));
+        ow_steer_executor_action_deauth_tx_drop(tx);
     }
 
-    deauth_action->tx_desc = ow_steer_executor_action_deauth_tx_spawn(deauth_action, bssid, sta_addr, reason_code);
-    osw_mux_frame_tx_schedule(phy_name, vif_name, deauth_action->tx_desc);
+    tx = CALLOC(1, sizeof(*tx));
+    tx->deauth_action = deauth_action;
+    tx->sta_addr = *sta_addr;
+    tx->tx_desc = ow_steer_executor_action_deauth_tx_desc_alloc(tx, bssid, sta_addr, reason_code);
+    ds_tree_insert(&deauth_action->tx, tx, &tx->sta_addr);
+    WARN_ON(osw_mux_frame_tx_schedule(phy_name, vif_name, tx->tx_desc) == false);
 }
 
 static void
-ow_steer_executor_action_deauth_delay_timer_cb(struct osw_timer *timer)
+ow_steer_executor_action_deauth_addr(struct ow_steer_executor_action_deauth *deauth_action,
+                                     const char *phy_name,
+                                     const char *vif_name,
+                                     const struct osw_hwaddr *sta_addr,
+                                     const struct osw_hwaddr *bssid,
+                                     const uint16_t reason_code)
 {
-    struct ow_steer_executor_action_deauth *deauth_action = container_of(timer, struct ow_steer_executor_action_deauth, delay_timer);
-    const struct osw_hwaddr *sta_addr = ow_steer_executor_action_get_sta_addr(deauth_action->base);
-    const struct osw_state_sta_info *sta_info = osw_state_sta_lookup_newest(sta_addr);
-    if (WARN_ON(sta_info == NULL))
-        return;
-    if (WARN_ON(sta_info->vif == NULL))
-        return;
-    if (WARN_ON(sta_info->vif->phy == NULL))
-        return;
+    LOGD("%s deauth "OSW_HWADDR_FMT" on "OSW_HWADDR_FMT" reason %u",
+         ow_steer_executor_action_get_prefix(deauth_action->base),
+         OSW_HWADDR_ARG(sta_addr),
+         OSW_HWADDR_ARG(bssid),
+         reason_code);
 
-    const char *phy_name = sta_info->vif->phy->phy_name;
-    const char *vif_name = sta_info->vif->vif_name;
-    const struct osw_hwaddr *bssid = &sta_info->vif->drv_state->mac_addr;
-    const uint16_t rc_unspec = 1;
-
-    const bool deauth_success = osw_mux_request_sta_deauth(phy_name, vif_name, sta_addr, DOT11_DEAUTH_REASON_CODE_UNSPECIFIED);
+    const bool deauth_success = osw_mux_request_sta_deauth(phy_name, vif_name, sta_addr, reason_code);
     if (deauth_success == true) {
         LOGI("%s issued deauth", ow_steer_executor_action_get_prefix(deauth_action->base));
         return;
     }
 
     /* try using generic tx submission */
-    ow_steer_executor_action_deauth_tx_push(deauth_action, phy_name, vif_name, bssid, sta_addr, rc_unspec);
+    ow_steer_executor_action_deauth_tx_push(deauth_action, phy_name, vif_name, bssid, sta_addr, reason_code);
+}
+
+static void
+ow_steer_executor_action_deauth_link(struct ow_steer_executor_action_deauth *deauth_action,
+                                     const osw_sta_assoc_link_t *link,
+                                     const struct osw_hwaddr *addr_override,
+                                     const uint16_t reason_code)
+{
+    if (WARN_ON(link == NULL)) return;
+    const struct osw_hwaddr *bssid = &link->local_sta_addr;
+    const struct osw_state_vif_info *vif = osw_state_vif_lookup_by_mac_addr(bssid);
+    if (WARN_ON(vif == NULL)) return;
+    if (WARN_ON(vif->phy == NULL)) return;
+
+    const char *phy_name = vif->phy->phy_name;
+    const char *vif_name = vif->vif_name;
+    const struct osw_hwaddr *sta_addr = addr_override ?: &link->remote_sta_addr;
+    ow_steer_executor_action_deauth_addr(deauth_action, phy_name, vif_name, sta_addr, bssid, reason_code);
+}
+
+static void
+ow_steer_executor_action_deauth_delay_timer_cb(struct osw_timer *timer)
+{
+    struct ow_steer_executor_action_deauth *deauth_action = container_of(timer, struct ow_steer_executor_action_deauth, delay_timer);
+    const osw_sta_assoc_entry_t *assoc_entry = osw_sta_assoc_observer_get_entry(deauth_action->assoc_obs);
+    const osw_sta_assoc_links_t *active_links = osw_sta_assoc_entry_get_active_links(assoc_entry);
+    if (WARN_ON(active_links == NULL)) return;
+    if (WARN_ON(active_links->count == 0)) return;
+
+    /* This tries to be as defensive as possible anticipating underlying
+     * drivers that may behave slightly differently. Deauthing multiple
+     * variants gives better chance of actually deauthenticating.
+     */
+
+    const uint16_t reason_code = DOT11_DEAUTH_REASON_CODE_UNSPECIFIED;
+    size_t i;
+    for (i = 0; i < active_links->count; i++) {
+        const osw_sta_assoc_link_t *link = &active_links->links[i];
+        ow_steer_executor_action_deauth_link(deauth_action, link, NULL, reason_code);
+    }
+
+    const bool is_mlo = osw_sta_assoc_entry_is_mlo(assoc_entry);
+    if (is_mlo == true) {
+        const struct osw_hwaddr *entry_addr = osw_sta_assoc_entry_get_addr(assoc_entry);
+        const bool mld_addr_is_link_addr = (osw_sta_assoc_links_lookup(active_links, NULL, entry_addr) != NULL);
+        const osw_sta_assoc_link_t *first_link = &active_links->links[0];
+        /* No need to send another deauth for the MLD address if it matches one
+         * of the link addresses. These were handled already.
+         */
+        if (mld_addr_is_link_addr == false) {
+            ow_steer_executor_action_deauth_link(deauth_action, first_link, entry_addr, reason_code);
+        }
+    }
+}
+
+static osw_sta_assoc_observer_t *
+ow_steer_executor_action_deauth_assoc_observer(const struct osw_hwaddr *sta_addr)
+{
+    osw_sta_assoc_t *m_sta_assoc = OSW_MODULE_LOAD(osw_sta_assoc);
+    struct osw_sta_assoc_observer_params *params = osw_sta_assoc_observer_params_alloc();
+    osw_sta_assoc_observer_params_set_addr(params, sta_addr);
+    return osw_sta_assoc_observer_alloc(m_sta_assoc, params);
 }
 
 struct ow_steer_executor_action_deauth*
@@ -210,7 +300,9 @@ ow_steer_executor_action_deauth_create(const struct osw_hwaddr *sta_addr,
     struct ow_steer_executor_action_deauth *deauth_action = CALLOC(1, sizeof(*deauth_action));
     osw_timer_init(&deauth_action->delay_timer, ow_steer_executor_action_deauth_delay_timer_cb);
     deauth_action->base = ow_steer_executor_action_create("deauth", sta_addr, &ops, mediator, log_prefix, deauth_action);
+    deauth_action->assoc_obs = ow_steer_executor_action_deauth_assoc_observer(sta_addr);
     ow_steer_executor_action_deauth_set_delay_sec(deauth_action, OW_STEER_EXECUTOR_ACTION_DEAUTH_DELAY_SEC);
+    ds_tree_init(&deauth_action->tx, (ds_key_cmp_t *)osw_hwaddr_cmp, struct ow_steer_executor_action_deauth_tx, node);
 
     return deauth_action;
 }
@@ -220,7 +312,8 @@ ow_steer_executor_action_deauth_free(struct ow_steer_executor_action_deauth *dea
 {
     ASSERT(deauth_action != NULL, "");
     osw_timer_disarm(&deauth_action->delay_timer);
-    ow_steer_executor_action_deauth_tx_free(deauth_action);
+    osw_sta_assoc_observer_drop(deauth_action->assoc_obs);
+    ow_steer_executor_action_deauth_tx_drop_all(deauth_action);
     ow_steer_executor_action_free(deauth_action->base);
     FREE(deauth_action);
 }
@@ -234,10 +327,10 @@ ow_steer_executor_action_deauth_get_base(struct ow_steer_executor_action_deauth 
 
 OSW_UT(ow_steer_executor_action_deauth_tx_frame)
 {
-    struct ow_steer_executor_action_deauth ctx = {0};
+    struct ow_steer_executor_action_deauth_tx *ctx = CALLOC(1, sizeof(*ctx));
     const struct osw_hwaddr one = { .octet = {1} };
     const struct osw_hwaddr two = { .octet = {2} };
-    struct osw_drv_frame_tx_desc *tx_desc = ow_steer_executor_action_deauth_tx_spawn(&ctx, &one, &two, 3);
+    struct osw_drv_frame_tx_desc *tx_desc = ow_steer_executor_action_deauth_tx_desc_alloc(ctx, &one, &two, 3);
     const uint8_t expected[] = {
         0xC0, 0x00,
         0x00, 0x00,

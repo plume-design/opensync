@@ -897,6 +897,9 @@ osw_confsync_net_to_str(char *buf, size_t len,
         if (net->multi_ap) {
             csnprintf(&buf, &len, " map");
         }
+        if (net->open) {
+            csnprintf(&buf, &len, " open");
+        }
          if (net->priority) {
             csnprintf(&buf, &len, " p:%d", net->priority);
         }
@@ -1929,6 +1932,10 @@ osw_confsync_build_drv_conf_vif_sta_op(struct osw_drv_vif_config *dvif,
         const bool crypto_match = (ccmp || tkip || ccmp256 || gcmp || gcmp256)
                                && (wpa || rsn)
                                && (psk || sae || sae_ext);
+        const bool link_open = (ssta->link.wpa.wpa == false)
+                            && (ssta->link.wpa.rsn == false);
+        const bool open_match = dnet->open && link_open;
+
         /* PMF needs reconnection on these events:
          * ┌───────────────┬───────────┬─────────────┐
          * │ Network block │ STA state │    Action   │
@@ -1953,7 +1960,7 @@ osw_confsync_build_drv_conf_vif_sta_op(struct osw_drv_vif_config *dvif,
         const bool net_match = (bssid_valid == true && bssid_match == true)
                             || (bssid_valid == false && ssid_match == true);
         const bool match = net_match
-                        && crypto_match
+                        && (crypto_match || open_match)
                         && multi_ap_match
                         && bridge_match
                         && pmf_match;
@@ -2035,13 +2042,14 @@ osw_confsync_net_is_identical(const struct osw_drv_vif_sta_network *a,
                                       bridge_max_len) == 0);
     const bool same_psk = strcmp(a->psk.str, b->psk.str) == 0;
     const bool same_priority = a->priority == b->priority;
+    const bool same_open = a->open == b->open;
     struct osw_wpa wpa1 = a->wpa;
     struct osw_wpa wpa2 = b->wpa;
     wpa1.group_rekey_seconds = 0;
     wpa2.group_rekey_seconds = 0;
     const bool same_wpa = memcmp(&wpa1, &wpa2, sizeof(wpa1)) == 0;
 
-    return same_bssid && same_ssid && same_psk && same_wpa && same_multi_ap && same_bridge && same_priority;
+    return same_bssid && same_ssid && same_psk && same_wpa && same_multi_ap && same_bridge && same_priority && same_open;
 }
 
 static bool
@@ -2095,6 +2103,7 @@ osw_confsync_build_drv_conf_vif_sta_net_list(struct osw_conf_vif_sta *csta)
         dnet->next = first;
         dnet->multi_ap = cnet->multi_ap;
         dnet->priority = cnet->priority;
+        dnet->open = cnet->open;
         memcpy(&dnet->bridge_if_name, &cnet->bridge_if_name, sizeof(cnet->bridge_if_name));
         memcpy(&dnet->ssid, &cnet->ssid, sizeof(cnet->ssid));
         memcpy(&dnet->bssid, &cnet->bssid, sizeof(cnet->bssid));

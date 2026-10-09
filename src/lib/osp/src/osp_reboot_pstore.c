@@ -41,6 +41,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "log.h"
 #include "osp_reboot.h"
+#include "osp_reboot_platform.h"
 #include "const.h"
 #include "execsh.h"
 #include "kconfig.h"
@@ -227,6 +228,16 @@ bool osp_unit_reboot_get(enum osp_reboot_type *type, char *reason, ssize_t reaso
                 {
                     strscpy(reason, "Power cycle.", reason_sz);
                 }
+
+                /*
+                 * Give the platform a chance to refine the classification: a
+                 * hardware watchdog may have reset the SoC without leaving any
+                 * trace in pstore. The hook only overrides *type/reason when it
+                 * can determine the reset reason, otherwise, the previous
+                 * reason stands.
+                 */
+                if (!osp_reboot_platform_check(type, reason, reason_sz))
+                    LOG(ERR, "osp_reboot: Failed to check platform-specific reboot status");
 	    }
         }
 
@@ -246,6 +257,16 @@ bool osp_unit_reboot_get(enum osp_reboot_type *type, char *reason, ssize_t reaso
      */
     *type = OSP_REBOOT_COLD_BOOT;
     strscpy(reason, "Power up.", reason_sz);
+
+    /*
+     * Give the platform a chance to refine the classification: a
+     * hardware watchdog may have reset the SoC without leaving any
+     * trace in pstore. The hook only overrides *type/reason when it
+     * can determine the reset reason, otherwise, the previous
+     * reason stands.
+     */
+    if (!osp_reboot_platform_check(type, reason, reason_sz))
+        LOG(ERR, "osp_reboot: Failed to check platform-specific reboot status");
 
     /* Write the cache file */
     retval = true;

@@ -48,6 +48,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ow_ovsdb_hs.h"
 #include "ow_ovsdb_steer_bm_mlo.h"
 #include "ow_mld_redir.h"
+#include "ow_sta_conn.h"
 #include <ovsdb.h>
 #include <ovsdb_table.h>
 #include <ovsdb_cache.h>
@@ -90,6 +91,8 @@ struct ow_ovsdb {
     ow_ovsdb_mld_onboard_t *mld_onboard;
     ow_mld_redir_t *ow_mld_redir;
     ow_mld_redir_observer_t *mld_redir_obs;
+    ow_sta_conn_t *ow_sta_conn;
+    ow_sta_conn_observer_t *sta_conn_obs;
     bool idle;
 };
 
@@ -1627,6 +1630,68 @@ ow_ovsdb_vistate_get_link_status(struct ow_ovsdb *m,
     return vsta->link.status;
 }
 
+/* Set Wifi_VIF_State::state based on the STA link status progress and
+*  failure cause.
+*
+*  Format is "<status>[:<detail>]", eg. "connected", "scanning", "wrong_key",
+*  "assoc_reject:17", "disconnected:15:local", "general_err:no_psk".
+*
+*  Reject codes are IEEE 802.11 Status Codes, disconnect codes are
+*  IEEE 802.11 Reason Codes.
+*/
+static void
+ow_ovsdb_vifstate_fill_sta_state(struct ow_ovsdb *m,
+                                 struct schema_Wifi_VIF_State *schema,
+                                 const char *vif_name,
+                                 const struct osw_drv_vif_state_sta_link *link)
+{
+    const bool connected = (link->status == OSW_DRV_VIF_STATE_STA_LINK_CONNECTED);
+    const struct osw_drv_vif_sta_conn_failure *f = connected
+                                                 ? NULL
+                                                 : ow_sta_conn_get_failure(m->ow_sta_conn, vif_name);
+    if (f != NULL) {
+        const char *kind = osw_drv_vif_sta_conn_failure_kind_to_cstr(f->kind);
+        switch (f->kind) {
+            case OSW_DRV_VIF_STA_CONN_FAILURE_SSID_NOT_FOUND:
+            case OSW_DRV_VIF_STA_CONN_FAILURE_WRONG_KEY:
+                SCHEMA_SET_STR(schema->state, kind);
+                return;
+            case OSW_DRV_VIF_STA_CONN_FAILURE_AUTH_REJECT:
+            case OSW_DRV_VIF_STA_CONN_FAILURE_ASSOC_REJECT:
+                SCHEMA_SET_STR(schema->state, strfmta("%s:%u", kind, f->code));
+                return;
+            case OSW_DRV_VIF_STA_CONN_FAILURE_DISCONNECTED:
+                if (f->code != 0) {
+                    SCHEMA_SET_STR(schema->state, strfmta("%s:%u%s", kind, f->code, f->local ? ":local" : ""));
+                }
+                else {
+                    SCHEMA_SET_STR(schema->state, kind);
+                }
+                return;
+            case OSW_DRV_VIF_STA_CONN_FAILURE_GENERAL_ERR:
+                if (f->detail[0] != '\0') {
+                    SCHEMA_SET_STR(schema->state, strfmta("%s:%s", kind, f->detail));
+                }
+                else {
+                    SCHEMA_SET_STR(schema->state, kind);
+                }
+                return;
+        }
+        return;
+    }
+
+    switch (link->conn_status) {
+        case OSW_DRV_VIF_STATE_STA_CONN_UNSPEC:
+            return;
+        case OSW_DRV_VIF_STATE_STA_CONN_SCANNING:
+        case OSW_DRV_VIF_STATE_STA_CONN_CONNECTING:
+        case OSW_DRV_VIF_STATE_STA_CONN_CONNECTED:
+        case OSW_DRV_VIF_STATE_STA_CONN_DISCONNECTED:
+            SCHEMA_SET_STR(schema->state, osw_drv_vif_state_sta_conn_status_to_cstr(link->conn_status));
+            return;
+    }
+}
+
 static void
 ow_ovsdb_vifstate_to_schema(struct schema_Wifi_VIF_State *schema,
                             const struct schema_Wifi_VIF_Config *vconf,
@@ -1758,6 +1823,9 @@ ow_ovsdb_vifstate_to_schema(struct schema_Wifi_VIF_State *schema,
             break;
         case OSW_VIF_STA:
             SCHEMA_SET_STR(schema->mode, "sta");
+
+            ow_ovsdb_vifstate_fill_sta_state(m, schema, vif->vif_name, &vsta->link);
+
             switch (ow_ovsdb_vistate_get_link_status(m, vif->vif_name, vsta)) {
                 case OSW_DRV_VIF_STATE_STA_LINK_CONNECTED:
                     SCHEMA_SET_STR(schema->ssid, vsta->link.ssid.buf);
@@ -4243,7 +4311,7 @@ ow_ovsdb_vconf_to_ow_conf_sta(const struct schema_Wifi_VIF_Config *vconf,
 
         /* FIXME: Optimize to not overwrite it all the time */
         ow_conf_vif_flush_sta_net(vconf->if_name);
-        ow_conf_vif_set_sta_net(vconf->if_name, &ssid, &bssid, &psk, &wpa, &bridge, &multi_ap, NULL);
+        ow_conf_vif_set_sta_net(vconf->if_name, &ssid, &bssid, &psk, &wpa, &bridge, &multi_ap, NULL, NULL);
     }
     else {
         ow_ovsdb_cconf_sched();
@@ -4665,6 +4733,24 @@ ow_ovsdb_mld_redir_reattach(struct ow_ovsdb *m)
 }
 
 static void
+ow_ovsdb_sta_conn_changed_cb(void *priv, const char *vif_name)
+{
+    struct ow_ovsdb *m = priv;
+    struct ow_ovsdb_vif *vif = ds_tree_find(&m->vif_tree, vif_name);
+    ow_ovsdb_vif_work_sched(vif);
+}
+
+static void
+ow_ovsdb_sta_conn_reattach(struct ow_ovsdb *m)
+{
+    m->ow_sta_conn = OSW_MODULE_LOAD(ow_sta_conn);
+    ow_sta_conn_observer_drop(m->sta_conn_obs);
+    m->sta_conn_obs = ow_sta_conn_observer_alloc(m->ow_sta_conn,
+                                                 ow_ovsdb_sta_conn_changed_cb,
+                                                 m);
+}
+
+static void
 ow_ovsdb_retry_cb(EV_P_ ev_timer *arg, int events)
 {
     if (ovsdb_init_loop(EV_A_ "OW") == false) {
@@ -4680,6 +4766,7 @@ ow_ovsdb_retry_cb(EV_P_ ev_timer *arg, int events)
     OVSDB_CACHE_MONITOR(Passpoint_Config, true);
 
     ow_ovsdb_mld_redir_reattach(&g_ow_ovsdb);
+    ow_ovsdb_sta_conn_reattach(&g_ow_ovsdb);
     ow_ovsdb_mld_onboard_drop(g_ow_ovsdb.mld_onboard);
     g_ow_ovsdb.mld_onboard = ow_ovsdb_mld_onboard_alloc();
     ow_ovsdb_ms_init(&g_ow_ovsdb.ms, OW_OVSDB_CM_NEEDS_PORT_STATE_BLIP);

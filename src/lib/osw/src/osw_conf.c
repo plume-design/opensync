@@ -209,6 +209,7 @@ osw_conf_build_vif_cb(const struct osw_state_vif_info *info,
                 memcpy(&cnet->bridge_if_name, &snet->bridge_if_name, sizeof(snet->bridge_if_name));
                 cnet->multi_ap = snet->multi_ap;
                 cnet->priority = snet->priority;
+                cnet->open = snet->open;
                 ds_dlist_insert_tail(&vif->u.sta.net_list, cnet);
             }
             break;
@@ -710,6 +711,7 @@ osw_conf_clone_vif_net_list(struct ds_dlist *src, struct ds_dlist *dst)
         memcpy(&cnet->bridge_if_name, &src_cnet->bridge_if_name, sizeof(cnet->bridge_if_name));
         cnet->multi_ap = src_cnet->multi_ap;
         cnet->priority = src_cnet->priority;
+        cnet->open = src_cnet->open;
         ds_dlist_insert_tail(dst, cnet);
     }
 }
@@ -1051,6 +1053,7 @@ static int osw_conf_cmp_vif_net(struct osw_conf_net *a, struct osw_conf_net *b)
     osw_str_compare(r, a->bridge_if_name.buf, b->bridge_if_name.buf);
     osw_int_compare(r, a->multi_ap, b->multi_ap);
     osw_int_compare(r, a->priority, b->priority);
+    osw_int_compare(r, a->open, b->open);
     return 0;
 }
 

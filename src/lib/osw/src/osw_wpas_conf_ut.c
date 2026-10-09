@@ -312,6 +312,62 @@ OSW_UT(osw_wpas_conf_generate_sta_config_ssid_ut)
     template_config_free(drv_conf);
 }
 
+OSW_UT(osw_wpas_conf_generate_sta_config_open_ut)
+{
+    struct osw_drv_conf *drv_conf = template_config_copy();
+    struct osw_hostap_conf_sta_config sta_conf;
+    MEMZERO(sta_conf);
+    char *conf = sta_conf.conf_buf;
+    struct osw_drv_vif_sta_network *net = &drv_conf->phy_list[0].vif_list.list[0].u.sta.network[0];
+
+    /* Open only: no WPA/RSN, no key */
+    MEMZERO(net->psk);
+    MEMZERO(net->wpa);
+    net->open = true;
+    osw_hostap_conf_fill_sta_config(drv_conf,
+                                    "phy0",
+                                    "vif0.10_sta",
+                                    &sta_conf);
+    osw_hostap_conf_generate_sta_config_bufs(&sta_conf);
+    OSW_UT_EVAL(strstr(conf, "\tkey_mgmt=NONE \n"));
+    OSW_UT_EVAL(strstr(conf, "\tieee80211w=0\n"));
+    OSW_UT_EVAL(strstr(conf, "psk=") == NULL);
+    OSW_UT_EVAL(strstr(conf, "sae_password=") == NULL);
+    OSW_UT_EVAL(strstr(conf, "proto=") == NULL);
+    OSW_UT_EVAL(strstr(conf, "pairwise=") == NULL);
+
+    /* Open allowed alongside PSK */
+    net->wpa = (struct osw_wpa) {
+        .rsn = true,
+        .akm_psk = true,
+        .pairwise_ccmp = true,
+    };
+    STRSCPY_WARN(net->psk.str, "12345678");
+    osw_hostap_conf_fill_sta_config(drv_conf,
+                                    "phy0",
+                                    "vif0.10_sta",
+                                    &sta_conf);
+    osw_hostap_conf_generate_sta_config_bufs(&sta_conf);
+    OSW_UT_EVAL(strstr(conf, "\tkey_mgmt=WPA-PSK NONE \n"));
+    OSW_UT_EVAL(strstr(conf, "\tproto=RSN \n"));
+    OSW_UT_EVAL(strstr(conf, "\tpairwise=CCMP \n"));
+    OSW_UT_EVAL(strstr(conf, "\tpsk=\"12345678\"\n"));
+
+    /* No security specified: check that we don't generate invalid wpa_s config */
+    MEMZERO(net->psk);
+    MEMZERO(net->wpa);
+    net->open = false;
+    osw_hostap_conf_fill_sta_config(drv_conf,
+                                    "phy0",
+                                    "vif0.10_sta",
+                                    &sta_conf);
+    osw_hostap_conf_generate_sta_config_bufs(&sta_conf);
+    OSW_UT_EVAL(strstr(conf, "key_mgmt=") == NULL);
+    OSW_UT_EVAL(strstr(conf, "psk=") == NULL);
+
+    template_config_free(drv_conf);
+}
+
 OSW_UT(osw_wpas_conf_generate_sta_state_link_ut)
 {
     struct osw_hostap_conf_sta_state_bufs bufs = {0};
@@ -387,6 +443,56 @@ OSW_UT(osw_wpas_conf_generate_sta_state_link_ut)
     OSW_UT_EVAL(link->wpa.akm_ft_psk == false);
     OSW_UT_EVAL(link->wpa.akm_ft_sae == false);
     OSW_UT_EVAL(vstate->u.sta.allow_roam_channels == OSW_DRV_CHANNEL_ROAM_ALLOWED);
+}
+
+OSW_UT(osw_wpas_conf_generate_sta_state_open_ut)
+{
+    struct osw_hostap_conf_sta_state_bufs bufs = {0};
+    struct osw_drv_vif_state *vstate;
+    struct osw_drv_vif_state_sta_link *link;
+    struct osw_drv_vif_sta_network *network;
+    struct osw_wpa no_wpa;
+
+    MEMZERO(no_wpa);
+
+    const char *config = "ctrl_interface=/var/run/wpa_supplicant-wifi0\n"
+                         "network={\n"
+                         "        id_str=\"id_0\"\n"
+                         "        scan_ssid=1\n"
+                         "        ssid=\"foo_open\"\n"
+                         "        key_mgmt=NONE\n"
+                         "        ieee80211w=0\n"
+                         "        multi_ap_backhaul_sta=0\n"
+                         "}\n";
+
+    const char *status = "bssid=a1:a2:a3:a4:a5:a6\n"
+                         "freq=2437\n"
+                         "ssid=foo_open\n"
+                         "id_str=id_0\n"
+                         "mode=station\n"
+                         "pairwise_cipher=NONE\n"
+                         "group_cipher=NONE\n"
+                         "key_mgmt=NONE\n"
+                         "pmf=0\n"
+                         "wpa_state=COMPLETED\n";
+
+    vstate = CALLOC(1, sizeof(*vstate));
+    bufs.config = config;
+    bufs.status = status;
+    osw_hostap_conf_fill_sta_state(&bufs, vstate);
+    link = &vstate->u.sta.link;
+    network = vstate->u.sta.network;
+    OSW_UT_EVAL(link->status == OSW_DRV_VIF_STATE_STA_LINK_CONNECTED);
+    /* open link: no WPA/RSN at all */
+    OSW_UT_EVAL(memcmp(&link->wpa, &no_wpa, sizeof(no_wpa)) == 0);
+    OSW_UT_EVAL(strlen(link->psk.str) == 0);
+    OSW_UT_EVAL(network != NULL);
+    OSW_UT_EVAL(network->next == NULL);
+    OSW_UT_EVAL(network->open == true);
+    OSW_UT_EVAL(memcmp(&network->wpa, &no_wpa, sizeof(no_wpa)) == 0);
+    OSW_UT_EVAL(strlen(network->psk.str) == 0);
+    FREE(network);
+    FREE(vstate);
 }
 
 OSW_UT(osw_wpas_conf_generate_sta_state_roam_channels_ut)
@@ -516,6 +622,42 @@ OSW_UT(osw_wpas_conf_generate_sta_state_status_ut)
     bufs.status = "wpa_state=UNKNOWN\n";
     osw_hostap_conf_fill_sta_state(&bufs, vstate);
     OSW_UT_EVAL(link->status == OSW_DRV_VIF_STATE_STA_LINK_UNKNOWN);
+}
+
+OSW_UT(osw_wpas_conf_generate_sta_state_conn_ut)
+{
+    struct osw_hostap_conf_sta_state_bufs bufs = {0};
+    struct osw_drv_vif_state *vstate;
+    struct osw_drv_vif_state_sta_link *link;
+
+    vstate = CALLOC(1, sizeof(struct osw_drv_vif_state));
+    link = &vstate->u.sta.link;
+
+    bufs.status = "wpa_state=COMPLETED\n";
+    osw_hostap_conf_fill_sta_state(&bufs, vstate);
+    OSW_UT_EVAL(link->conn_status == OSW_DRV_VIF_STATE_STA_CONN_CONNECTED);
+
+    bufs.status = "wpa_state=SCANNING\n";
+    osw_hostap_conf_fill_sta_state(&bufs, vstate);
+    OSW_UT_EVAL(link->conn_status == OSW_DRV_VIF_STATE_STA_CONN_SCANNING);
+
+    bufs.status = "wpa_state=AUTHENTICATING\n";
+    osw_hostap_conf_fill_sta_state(&bufs, vstate);
+    OSW_UT_EVAL(link->conn_status == OSW_DRV_VIF_STATE_STA_CONN_CONNECTING);
+
+    bufs.status = "wpa_state=4WAY_HANDSHAKE\n";
+    osw_hostap_conf_fill_sta_state(&bufs, vstate);
+    OSW_UT_EVAL(link->conn_status == OSW_DRV_VIF_STATE_STA_CONN_CONNECTING);
+
+    bufs.status = "wpa_state=DISCONNECTED\n";
+    osw_hostap_conf_fill_sta_state(&bufs, vstate);
+    OSW_UT_EVAL(link->conn_status == OSW_DRV_VIF_STATE_STA_CONN_DISCONNECTED);
+
+    bufs.status = "wpa_state=INACTIVE\n";
+    osw_hostap_conf_fill_sta_state(&bufs, vstate);
+    OSW_UT_EVAL(link->conn_status == OSW_DRV_VIF_STATE_STA_CONN_DISCONNECTED);
+
+    FREE(vstate);
 }
 
 OSW_UT(osw_wpas_conf_generate_sta_state_list_networks_ut)

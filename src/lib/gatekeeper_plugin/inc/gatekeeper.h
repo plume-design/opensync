@@ -44,6 +44,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define GK_PERIODIC_INTERVAL 120
 #define GK_UNCATEGORIZED_ID 15
 #define GK_CURL_TIMEOUT      (2*60)
+#define GK_LATENCY_THRESHOLD_MS  350
+#define GK_LATENCY_FAILURE_LIMIT 3
 
 
 struct gk_req_ids
@@ -113,6 +115,8 @@ struct gatekeeper_offline
     time_t check_offline;
     bool provider_offline;
     uint32_t connection_failures;
+    long latency_threshold;
+    uint32_t latency_failures;
 };
 
 
@@ -311,6 +315,9 @@ gk_lookup_using_multi_curl(struct fsm_policy_req* req);
 long
 fsm_gk_update_latencies(struct fsm_gk_session *gk_session,
                         struct timespec *start, struct timespec *end);
+
+void
+gk_check_latency_backoff(struct fsm_gk_session *gk_session, long latency);
 
 void
 gk_update_uncategorized_count(struct fsm_gk_session *fsm_gk_session,

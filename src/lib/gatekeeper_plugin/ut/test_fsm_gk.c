@@ -1749,6 +1749,56 @@ test_uncategory_count(void)
 }
 
 void
+test_latency_backoff(void)
+{
+    struct fsm_gk_session *fsm_gk_session;
+    struct gatekeeper_offline *offline;
+    struct fsm_session *session;
+
+    LOGN("**** starting test %s ***** ", __func__);
+    session = &g_sessions[0];
+    fsm_gk_session = gatekeeper_lookup_session(session);
+    TEST_ASSERT_NOT_NULL(fsm_gk_session);
+
+    offline = &fsm_gk_session->gk_offline;
+    offline->latency_threshold = 350;
+    offline->latency_failures = 0;
+    offline->provider_offline = false;
+
+    /* lookups within the threshold do not trigger the backoff */
+    gk_check_latency_backoff(fsm_gk_session, 100);
+    TEST_ASSERT_FALSE(offline->provider_offline);
+    TEST_ASSERT_EQUAL_UINT(0, offline->latency_failures);
+
+    /* 2 consecutive slow lookups do not trigger the backoff */
+    gk_check_latency_backoff(fsm_gk_session, 400);
+    gk_check_latency_backoff(fsm_gk_session, 500);
+    TEST_ASSERT_FALSE(offline->provider_offline);
+    TEST_ASSERT_EQUAL_UINT(2, offline->latency_failures);
+
+    /* a lookup within the threshold resets the failure counter */
+    gk_check_latency_backoff(fsm_gk_session, 300);
+    TEST_ASSERT_FALSE(offline->provider_offline);
+    TEST_ASSERT_EQUAL_UINT(0, offline->latency_failures);
+
+    /* 3 consecutive slow lookups trigger the backoff */
+    gk_check_latency_backoff(fsm_gk_session, 400);
+    gk_check_latency_backoff(fsm_gk_session, 500);
+    gk_check_latency_backoff(fsm_gk_session, 600);
+    TEST_ASSERT_TRUE(offline->provider_offline);
+    TEST_ASSERT_EQUAL_UINT(0, offline->latency_failures);
+
+    /* a zero threshold disables the latency backoff */
+    offline->provider_offline = false;
+    offline->latency_threshold = 0;
+    gk_check_latency_backoff(fsm_gk_session, 10000);
+    gk_check_latency_backoff(fsm_gk_session, 10000);
+    gk_check_latency_backoff(fsm_gk_session, 10000);
+    TEST_ASSERT_FALSE(offline->provider_offline);
+    TEST_ASSERT_EQUAL_UINT(0, offline->latency_failures);
+}
+
+void
 test_cache_entry_report(void)
 {
     struct fsm_gk_session *fsm_gk_session;
@@ -2192,6 +2242,7 @@ run_test_fsm_gk(void)
 
     ut_setUp_tearDown(__func__, main_setUp, main_tearDown);
 
+    RUN_TEST(test_latency_backoff);
     RUN_TEST(test_curl_multi);
     RUN_TEST(test_curl_fqdn);
     RUN_TEST(test_curl_url);

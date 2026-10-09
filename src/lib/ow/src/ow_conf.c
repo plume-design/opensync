@@ -176,6 +176,7 @@ struct ow_conf_net {
     struct osw_ifname bridge_if_name;
     bool multi_ap;
     int priority;
+    bool open;
 };
 
 struct ow_conf_acl {
@@ -1037,6 +1038,7 @@ ow_conf_conf_mutate_vif_sta(struct ow_conf_phy *ow_phy,
         memcpy(&n->bridge_if_name, &net->bridge_if_name, sizeof(n->bridge_if_name));
         n->multi_ap = net->multi_ap;
         n->priority = net->priority;
+        n->open = net->open;
         ds_dlist_insert_tail(list, n);
     }
 }
@@ -2109,7 +2111,8 @@ ow_conf_vif_set_sta_net(const char *vif_name,
                         const struct osw_wpa *wpa,
                         const struct osw_ifname *bridge_if_name,
                         const bool *multi_ap,
-                        const int *priority)
+                        const int *priority,
+                        const bool *open)
 {
     struct ow_conf *self = &g_ow_conf;
     struct ow_conf_vif *vif = ow_conf_vif_get(self, vif_name);
@@ -2129,12 +2132,14 @@ ow_conf_vif_set_sta_net(const char *vif_name,
         const struct osw_ifname prev_bridge_if_name = net->bridge_if_name;
         const bool prev_multi_ap = net->multi_ap;
         const int prev_priority = net->priority;
+        const bool prev_open = net->open;
 
         memset(&net->psk, 0, sizeof(net->psk));
         if (psk != NULL) memcpy(&net->psk, psk, sizeof(*psk));
         if (bridge_if_name != NULL) memcpy(&net->bridge_if_name, bridge_if_name, sizeof(*bridge_if_name));
         if (multi_ap != NULL) net->multi_ap = *multi_ap;
         if (priority != NULL) net->priority = *priority;
+        if (open != NULL) net->open = *open;
         memcpy(&net->wpa, wpa, sizeof(*wpa));
         net->bridge_if_name.buf[sizeof(net->bridge_if_name.buf) - 1] = '\0';
 
@@ -2143,6 +2148,7 @@ ow_conf_vif_set_sta_net(const char *vif_name,
         const bool bridge_changed = (memcmp(&prev_bridge_if_name, &net->bridge_if_name, sizeof(prev_bridge_if_name)) != 0);
         const bool multi_ap_changed = (prev_multi_ap != net->multi_ap);
         const bool priority_changed = (prev_priority != net->priority);
+        const bool open_changed = (prev_open != net->open);
 
         if (psk_changed) {
             const size_t old_len = strnlen(prev_psk.str, sizeof(prev_psk.str));
@@ -2188,6 +2194,13 @@ ow_conf_vif_set_sta_net(const char *vif_name,
                  prev_priority,
                  net->priority);
         }
+        if (open_changed) {
+            LOGI("ow: conf: %s: net: " OSW_SSID_FMT": open=%d -> %d",
+                 vif_name,
+                 OSW_SSID_ARG(&net->ssid),
+                 prev_open,
+                 net->open);
+        }
 
     }
 
@@ -2210,7 +2223,7 @@ ow_conf_vif_flush_sta_net(const char *vif_name)
     struct ow_conf_net *net;
 
     while ((net = ds_tree_head(&vif->sta_net_tree)) != NULL)
-        ow_conf_vif_set_sta_net(vif_name, &net->ssid, &net->bssid, NULL, NULL, NULL, NULL, &net->priority);
+        ow_conf_vif_set_sta_net(vif_name, &net->ssid, &net->bssid, NULL, NULL, NULL, NULL, &net->priority, NULL);
 }
 
 

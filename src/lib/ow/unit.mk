@@ -40,6 +40,7 @@ UNIT_SRC += src/ow_conf_rsno.c
 UNIT_SRC += src/ow_conf_barrier.c
 UNIT_SRC += src/ow_frm_inject_file.c
 UNIT_SRC += $(if $(wildcard $(PKG_CONFIG_SYSROOT_DIR)/usr/include/ccsp)$(wildcard $(UNIT_PATH)/inc/ccsp),src/ow_webconfig.c,)
+UNIT_SRC += src/ow_sta_conn.c
 UNIT_SRC += src/ow_ovsdb.c
 UNIT_SRC += src/ow_ovsdb_ms.c
 UNIT_SRC += src/ow_ovsdb_cconf.c
@@ -98,6 +99,7 @@ UNIT_SRC += src/ow_ovsdb_steer_bm_mlo.c
 UNIT_EXPORT_CFLAGS += -I$(UNIT_PATH)/inc
 UNIT_CFLAGS += -I$(UNIT_PATH)/inc
 UNIT_CFLAGS += -D_GNU_SOURCE
+UNIT_LDFLAGS += -lz
 UNIT_DEPS += src/lib/osw
 
 # ow_drv_target (to be removed eventually):

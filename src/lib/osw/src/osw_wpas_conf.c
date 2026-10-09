@@ -60,6 +60,19 @@ osw_wpas_util_fill_global_block(struct osw_drv_vif_config_sta *sta,
     OSW_HOSTAP_CONF_SET_VAL(conf->sae_pwe, 2);
 }
 
+static bool
+osw_wpas_util_key_mgmt_has_none(const char *key_mgmt)
+{
+    char *input = strdupa(key_mgmt);
+    char *cursor = input;
+    char *token;
+
+    while ((token = strsep(&cursor, " \t")) != NULL) {
+        if (strcmp(token, "NONE") == 0) return true;
+    }
+    return false;
+}
+
 static void
 osw_wpas_util_fill_network_block(struct osw_drv_vif_sta_network *network,
                                  struct osw_hostap_conf_sta_network_config *conf)
@@ -73,7 +86,9 @@ osw_wpas_util_fill_network_block(struct osw_drv_vif_sta_network *network,
     enum osw_hostap_conf_pmf pmf = osw_hostap_conf_pmf_from_osw(&network->wpa);
     /* FIXME - conversion assumes null-terminated ssid! */
     OSW_HOSTAP_CONF_SET_BUF_Q_LEN(conf->ssid, network->ssid.buf, network->ssid.len);
-    OSW_HOSTAP_CONF_SET_BUF_Q(conf->psk, network->psk.str);
+    if (strlen(network->psk.str) > 0) {
+        OSW_HOSTAP_CONF_SET_BUF_Q(conf->psk, network->psk.str);
+    }
     OSW_HOSTAP_CONF_SET_VAL(conf->multi_ap_backhaul_sta, network->multi_ap ? 1 : 0);
     OSW_HOSTAP_CONF_SET_VAL(conf->ieee80211w, pmf);
     OSW_HOSTAP_CONF_SET_VAL(conf->scan_ssid, true);
@@ -89,19 +104,30 @@ osw_wpas_util_fill_network_block(struct osw_drv_vif_sta_network *network,
 
     const char *proto = osw_hostap_conf_proto_from_osw(&network->wpa);
     if (proto != NULL) {
-        OSW_HOSTAP_CONF_SET_BUF(conf->proto, proto);
+        if (strlen(proto) > 0) {
+            OSW_HOSTAP_CONF_SET_BUF(conf->proto, proto);
+        }
         FREE(proto);
     }
 
-    const char *key_mgmt = osw_hostap_conf_wpa_key_mgmt_from_osw(&network->wpa);
-    if (key_mgmt != NULL) {
+    char key_mgmt[OSW_HOSTAP_CONF_WPA_KEY_MGMT_MAX_LEN] = {0};
+    const char *wpa_key_mgmt = osw_hostap_conf_wpa_key_mgmt_from_osw(&network->wpa);
+    if (wpa_key_mgmt != NULL) {
+        STRSCAT(key_mgmt, wpa_key_mgmt);
+        FREE(wpa_key_mgmt);
+    }
+    if (network->open) {
+        STRSCAT(key_mgmt, "NONE ");
+    }
+    if (strlen(key_mgmt) > 0) {
         OSW_HOSTAP_CONF_SET_BUF(conf->key_mgmt, key_mgmt);
-        FREE(key_mgmt);
     }
 
     const char *pairwise = osw_hostap_conf_pairwise_from_osw(&network->wpa);
     if (pairwise != NULL) {
-        OSW_HOSTAP_CONF_SET_BUF(conf->pairwise, pairwise);
+        if (strlen(pairwise) > 0) {
+            OSW_HOSTAP_CONF_SET_BUF(conf->pairwise, pairwise);
+        }
         FREE(pairwise);
     }
 }
@@ -151,6 +177,7 @@ osw_wpas_util_parse_network_block(const char *network,
             }
             if (strcmp(k, "key_mgmt") == 0) {
                 osw_hostap_util_wpa_key_mgmt_to_osw(v, &drv_network->wpa);
+                drv_network->open = osw_wpas_util_key_mgmt_has_none(v);
             }
             if (strcmp(k, "ieee80211w") == 0) {
                 osw_hostap_util_ieee80211w_to_osw(v, &drv_network->wpa);
@@ -561,6 +588,7 @@ osw_wpas_util_fill_link_details(const struct osw_hostap_conf_sta_state_bufs *buf
 
     STRSCPY_WARN(link->bridge_if_name.buf, bufs->bridge_if_name ?: "");
     STATE_GET_BY_FN(link->status, status, "wpa_state", osw_hostap_util_sta_state_to_osw);
+    STATE_GET_BY_FN(link->conn_status, status, "wpa_state", osw_hostap_util_sta_state_to_conn);
     STATE_GET_BY_FN(link->channel, status, "freq", osw_hostap_util_sta_freq_to_channel);
     STATE_GET_BY_FN(link->bssid, status, "bssid", osw_hwaddr_from_cstr);
     STATE_GET_BY_FN(link->ssid, status, "ssid", osw_hostap_util_ssid_to_osw);

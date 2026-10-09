@@ -1096,6 +1096,24 @@ fsm_session_get_network_id(struct fsm_session *session, os_macaddr_t *mac)
 }
 
 
+/**
+ * @brief Node_State update routine provided to the session
+ *
+ * Upserts the given key/value pair in Node_State under the fsm module
+ * @param session the fsm session requesting the update
+ * @param key the Node_State key
+ * @param value the Node_State value
+ */
+static void
+fsm_session_set_node_state(struct fsm_session *session,
+                           const char *key, const char *value)
+{
+    (void)session;
+
+    fsm_set_node_state(FSM_NODE_MODULE, key, value);
+}
+
+
 void
 fsm_set_session_ops(struct fsm_session *session)
 {
@@ -1113,6 +1131,7 @@ fsm_set_session_ops(struct fsm_session *session)
     session->ops.get_network_id = fsm_session_get_network_id;
     session->ops.monitor_object = fsm_register_object_to_monitor;
     session->ops.unmonitor_object = fsm_unregister_object_to_monitor;
+    session->ops.set_node_state = fsm_session_set_node_state;
 }
 
 
@@ -1528,6 +1547,9 @@ fsm_set_node_state(const char *module, const char *key, const char *value)
     where = json_array();
 
     cond = ovsdb_tran_cond_single("module", OFUNC_EQ, (char *)module);
+    json_array_append_new(where, cond);
+
+    cond = ovsdb_tran_cond_single("key", OFUNC_EQ, (char *)key);
     json_array_append_new(where, cond);
 
     MEMZERO(node_state);

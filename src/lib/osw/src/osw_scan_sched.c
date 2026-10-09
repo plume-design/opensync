@@ -101,7 +101,10 @@ osw_scan_sched_timer_set(struct osw_scan_sched *ss)
             const double interval = ss->interval_seconds;
             const double offset = ss->offset_seconds;
             const double now = OSW_TIME_TO_DBL(osw_time_mono_clk());
-            const double at = osw_periodic_get_next(interval, offset, now);
+            double at = osw_periodic_get_next(interval, offset, now);
+
+            /* Make sure we never arm the timer in the past aka immediately */
+            if (WARN_ON(at <= now)) at = now + interval;
             LOGD(LOG_PREFIX(ss, "arming in %lf seconds", (at - now)));
             osw_timer_arm_at_nsec(timer, OSW_TIME_SEC(at));
         }

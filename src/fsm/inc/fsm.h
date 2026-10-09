@@ -121,6 +121,10 @@ struct fsm_session_ops
 
     /* notify of dpi connetion to free.*/
     void (*dpi_free_conn_ctxt)(struct net_md_stats_accumulator *);
+
+    /* Set a fsm key/value pair in Node_State. Provided to the plugin */
+    void (*set_node_state)(struct fsm_session *, const char *key,
+                           const char *value);
 };
 
 

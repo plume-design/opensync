@@ -24,6 +24,7 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+#include <errno.h>
 #include <stdlib.h>
 #include <stddef.h>
 #include <time.h>
@@ -797,6 +798,80 @@ gk_add_policy_to_cache(struct fsm_policy_req *req, struct fsm_policy_reply *poli
 }
 
 /**
+ * @brief advertises the gatekeeper backoff state in Node_State
+ *
+ * @param gk_session the gatekeeper session
+ * @param active true when entering backoff mode, false when leaving it
+ */
+static void
+gk_set_backoff_state(struct fsm_gk_session *gk_session, bool active)
+{
+    struct fsm_session *session;
+
+    session = gk_session->session;
+    if (session == NULL) return;
+    if (session->ops.set_node_state == NULL) return;
+
+    session->ops.set_node_state(session, "gatekeeper_backoff",
+                                active ? "true" : "false");
+}
+
+/**
+ * @brief triggers the backoff mode on sustained gatekeeper latency
+ *
+ * The gatekeeper service may be reachable and yet fail to operate properly,
+ * due to internal or upstream issues. Consecutive lookups exceeding the
+ * latency threshold move the session into the existing backoff mode.
+ *
+ * @param gk_session the session holding the backoff state
+ * @param latency the latency of the last lookup, in milliseconds
+ */
+void
+gk_check_latency_backoff(struct fsm_gk_session *gk_session, long latency)
+{
+    struct gatekeeper_offline *offline;
+    long threshold;
+
+    offline = &gk_session->gk_offline;
+
+    /* a zero or negative threshold disables the latency based backoff */
+    threshold = offline->latency_threshold;
+    if (threshold <= 0)
+    {
+        offline->latency_failures = 0;
+        return;
+    }
+
+    /* lookup completed within the threshold, reset the failure counter */
+    if (latency <= threshold)
+    {
+        offline->latency_failures = 0;
+        return;
+    }
+
+    /* lookup exceeded the threshold, count it as a latency failure */
+    offline->latency_failures++;
+
+    /* wait for consecutive latency failures before backing off */
+    if (offline->latency_failures < GK_LATENCY_FAILURE_LIMIT) return;
+
+    LOGI("%s(): %u consecutive lookups above %ld ms (last one %ld ms), backing off for %jd seconds",
+         __func__,
+         offline->latency_failures,
+         threshold,
+         latency,
+         (intmax_t)offline->check_offline);
+
+    /* enter backoff mode, gatekeeper access is suspended for check_offline seconds */
+    offline->provider_offline = true;
+    offline->offline_ts = time(NULL);
+    gk_set_backoff_state(gk_session, true);
+
+    /* restart the count for the next round of lookups */
+    offline->latency_failures = 0;
+}
+
+/**
  * @brief compute the latency indicators for a given request
  *
  * @param gk_session the session holding the latency indicators
@@ -1064,6 +1139,7 @@ gatekeeper_get_verdict(struct fsm_policy_req *req,
             return false;
         }
         offline->provider_offline = false;
+        gk_set_backoff_state(fsm_gk_session, false);
     }
 
     server_info = &fsm_gk_session->gk_server_info;
@@ -1125,6 +1201,7 @@ gatekeeper_get_verdict(struct fsm_policy_req *req,
             {
                 offline->provider_offline = true;
                 offline->offline_ts = time(NULL);
+                gk_set_backoff_state(fsm_gk_session, true);
             }
 
             /* increment connection failure count for connection errors */
@@ -1139,6 +1216,9 @@ gatekeeper_get_verdict(struct fsm_policy_req *req,
         /* update stats for processing the request */
         lookup_latency = fsm_gk_update_latencies(fsm_gk_session, &start, &end);
         LOGT("%s(): cloud lookup latency for '%s' is %ld ms", __func__, req->url, lookup_latency);
+
+        /* start backoff timer on consecutive lookups above the latency threshold */
+        gk_check_latency_backoff(fsm_gk_session, lookup_latency);
     }
 
     gk_add_policy_to_cache(req, policy_reply);
@@ -1558,6 +1638,9 @@ gatekeeper_module_init(struct fsm_session *session)
 
     fsm_gk_session->gk_offline.check_offline = 30;
     fsm_gk_session->gk_offline.provider_offline = false;
+
+    /* advertise the initial backoff state, clears any stale value from a previous run */
+    gk_set_backoff_state(fsm_gk_session, false);
     fsm_gk_session->cname_offline.check_offline = 30;
     fsm_gk_session->cname_offline.cname_offline = false;
 
@@ -1849,12 +1932,14 @@ gatekeeper_update(struct fsm_session *session)
     struct fsm_gk_session *fsm_gk_session;
     struct gk_server_info *server_info;
     char *hs_report_interval;
+    char *latency_threshold;
     char *hs_report_topic;
     char *mcurl_config;
     long interval;
+    char *endptr;
     int val;
 
-    LOGT("%s(): gatekeeper configuration udated, reading new config", __func__);
+    LOGT("%s(): gatekeeper configuration updated, reading new config", __func__);
 
     fsm_gk_session = (struct fsm_gk_session *)session->handler_ctxt;
     if (!fsm_gk_session) return;
@@ -1918,6 +2003,25 @@ gatekeeper_update(struct fsm_session *session)
     hs_report_topic = session->ops.get_config(session,
                                               "wc_hero_stats_topic");
     fsm_gk_session->hero_stats_report_topic = hs_report_topic;
+
+    /* Latency based backoff configuration, zero disables it */
+    fsm_gk_session->gk_offline.latency_threshold = (long)GK_LATENCY_THRESHOLD_MS;
+    latency_threshold = session->ops.get_config(session,
+                                                "gk_latency_threshold");
+    if (latency_threshold != NULL)
+    {
+        errno = 0;
+        interval = strtol(latency_threshold, &endptr, 10);
+        if (errno != 0 || endptr == latency_threshold || *endptr != '\0' || interval < 0)
+        {
+            LOGW("%s(): invalid gk_latency_threshold '%s', using default %d ms",
+                 __func__, latency_threshold, GK_LATENCY_THRESHOLD_MS);
+        }
+        else
+        {
+            fsm_gk_session->gk_offline.latency_threshold = interval;
+        }
+    }
 
     /* As long as the GK cache is not persisted, there are no chance a flush
      * rule will have any impact at startup.
@@ -2179,7 +2283,7 @@ static void gk_dump_bulk_response(struct gk_reply *reply)
             inet_ntop(AF_INET, &addr, ipv4_str, sizeof(ipv4_str));
             LOGT("  IPv4: %s", ipv4_str);
         }
-        
+
         if (device->ipv6_addr.data && device->ipv6_addr.len > 0)
         {
             inet_ntop(AF_INET6, device->ipv6_addr.data, ipv6_str, sizeof(ipv6_str));
@@ -2221,7 +2325,7 @@ bool gk_bulk_lookup(struct fsm_session *session, struct gk_request *req, struct 
         LOGT("%s(): creating new curl handler", __func__);
         gk_curl_easy_init(&fsm_gk_session->ecurl);
     }
-    
+
     /* Set the URL - for bulk requests, use the base server URL */
     if (fsm_gk_session->gk_server_info.server_url != NULL)
     {

@@ -24,42 +24,26 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef OSW_DRV_MEDIATOR_H
-#define OSW_DRV_MEDIATOR_H
-
-struct osw_drv_frame_tx_desc*
-osw_drv_frame_tx_desc_new(osw_drv_frame_tx_result_fn_t *result_fn,
-                          void *caller_priv);
-
-/* This can result in calling the provided result_fn
- * callback meaning it can re-enter in callers free(). Be
- * careful.
+/*
+ * ===========================================================================
+ *  Default (null) platform reboot-reason hook.
+ *
+ *  The generic reboot backend has no platform-specific way to classify an
+ *  otherwise-undetermined reset (no REBOOT line logged, no crash dump), so
+ *  this default implementation always reports "no platform reason" and lets
+ *  the generic backend fall back to its power-cycle / cold-boot default.
+ *
+ *  Platform layers override this file via their osp override.mk - see
+ *  osp_reboot_platform.h.
+ * ===========================================================================
  */
-void
-osw_drv_frame_tx_desc_free(struct osw_drv_frame_tx_desc *desc);
+#include "osp_reboot_platform.h"
 
-/* This is a non-reentrant variant of
- * osw_drv_frame_tx_desc_free() that is safer to use, but
- * does not fire the result_fn. The caller needs to make
- * sure to explicitly handle whatever finalization would
- * happen on normal tx_desc completion.
- */
-void
-osw_drv_frame_tx_desc_free_no_result(struct osw_drv_frame_tx_desc *desc);
+bool osp_reboot_platform_check(enum osp_reboot_type *type, char *reason, ssize_t reason_sz)
+{
+    (void)type;
+    (void)reason;
+    (void)reason_sz;
 
-void
-osw_drv_frame_tx_desc_cancel(struct osw_drv_frame_tx_desc *desc);
-
-bool
-osw_drv_frame_tx_desc_is_scheduled(const struct osw_drv_frame_tx_desc *desc);
-
-void
-osw_drv_frame_tx_desc_set_channel(struct osw_drv_frame_tx_desc *desc,
-                                  const struct osw_channel *channel);
-
-void
-osw_drv_frame_tx_desc_set_frame(struct osw_drv_frame_tx_desc *desc,
-                                const uint8_t *data,
-                                size_t data_len);
-
-#endif /* OSW_DRV_MEDIATOR_H */
+    return true;
+}

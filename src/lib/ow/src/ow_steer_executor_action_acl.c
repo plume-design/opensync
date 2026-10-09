@@ -167,8 +167,12 @@ ow_steer_executor_action_acl_conf_mutate_fn(struct ow_steer_executor_action *act
                                             const struct ow_steer_candidate_list *candidate_list,
                                             struct ds_tree *phy_tree)
 {
+    struct ow_steer_executor_action_acl *acl_action = ow_steer_executor_action_get_priv(action);
     const struct osw_hwaddr *sta_addr = ow_steer_executor_action_get_sta_addr(action);
     struct osw_conf_phy* phy;
+
+    if (acl_action->enabled == false)
+        return;
 
     ds_tree_foreach(phy_tree, phy) {
         struct osw_conf_vif* vif;

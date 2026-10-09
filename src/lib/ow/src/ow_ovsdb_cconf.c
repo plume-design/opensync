@@ -83,39 +83,42 @@ ow_ovsdb_cconf_apply_on_vif(const struct schema_Wifi_Radio_Config *rconf,
 
         /* FIXME: Wifi_Credential_Config doesn't support new
          * style wpa_key_mgmt etc.  columns like
-         * Wifi_VIF_Config does now. It was always implied
-         * that Wifi_Credential_Config entries are
-         * wpa2-only, hence hardocding it for the time being
-         * until Wifi_Credential_Config gets a revamp to
-         * allow expressing, eg. SAE, or DPP.
+         * Wifi_VIF_Config does now. Security is inferred
+         * from the key only, until Wifi_Credential_Config
+         * gets a revamp to allow expressing, eg. DPP.
+         *
+         * Empty (or missing) key: open network, no WPA/RSN.
          */
-        wpa.rsn = true;
-        wpa.pairwise_ccmp = true;
-        wpa.akm_psk = true;
+        const bool open = (strlen(pass) == 0);
+        if (open == false) {
+            wpa.rsn = true;
+            wpa.pairwise_ccmp = true;
+            wpa.akm_psk = true;
 
-        /* Technically there's nothing wrong in allowing
-         * WPA3-Transition mode. This actually makes it
-         * possible for 6GHz to be used during onboarding.
-         * 6GHz requires SAE and PMF.
-         */
-        wpa.akm_sae = true;
-        wpa.pmf = OSW_PMF_OPTIONAL;
+            /* Technically there's nothing wrong in allowing
+             * WPA3-Transition mode. This actually makes it
+             * possible for 6GHz to be used during onboarding.
+             * 6GHz requires SAE and PMF.
+             */
+            wpa.akm_sae = true;
+            wpa.pmf = OSW_PMF_OPTIONAL;
 
-        /* EHT (and MLO) requires a different SAE AKM and
-         * additional ciphers.
-         */
-        if (strcmp(rconf->hw_mode, "11be") == 0) {
-            wpa.akm_sae_ext = true;
-            wpa.pairwise_gcmp = true;
-            wpa.pairwise_gcmp256 = true;
-            wpa.beacon_protection = true;
+            /* EHT (and MLO) requires a different SAE AKM and
+             * additional ciphers.
+             */
+            if (strcmp(rconf->hw_mode, "11be") == 0) {
+                wpa.akm_sae_ext = true;
+                wpa.pairwise_gcmp = true;
+                wpa.pairwise_gcmp256 = true;
+                wpa.beacon_protection = true;
+            }
         }
 
         STRSCPY_WARN(psk.str, pass);
         STRSCPY_WARN(ssid.buf, c->ssid);
         ssid.len = strlen(ssid.buf);
 
-        ow_conf_vif_set_sta_net(vif_name, &ssid, &bssid, &psk, &wpa, multi_ap ? &bridge : NULL, &multi_ap, &priority);
+        ow_conf_vif_set_sta_net(vif_name, &ssid, &bssid, &psk, &wpa, multi_ap ? &bridge : NULL, &multi_ap, &priority, &open);
     }
 }
 

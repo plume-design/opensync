@@ -24,42 +24,28 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef OSW_DRV_MEDIATOR_H
-#define OSW_DRV_MEDIATOR_H
+#ifndef OW_STA_CONN_H_INCLUDED
+#define OW_STA_CONN_H_INCLUDED
 
-struct osw_drv_frame_tx_desc*
-osw_drv_frame_tx_desc_new(osw_drv_frame_tx_result_fn_t *result_fn,
-                          void *caller_priv);
+#include <osw_drv.h>
 
-/* This can result in calling the provided result_fn
- * callback meaning it can re-enter in callers free(). Be
- * careful.
+/* Tracks STA VIF connection failures reported by drivers and
+ * summarizes them into a single most-conclusive failure cause per
+ * connection attempt window. A window ends when the link connects
+ * or the configured network (list) changes.
  */
-void
-osw_drv_frame_tx_desc_free(struct osw_drv_frame_tx_desc *desc);
 
-/* This is a non-reentrant variant of
- * osw_drv_frame_tx_desc_free() that is safer to use, but
- * does not fire the result_fn. The caller needs to make
- * sure to explicitly handle whatever finalization would
- * happen on normal tx_desc completion.
+typedef struct ow_sta_conn ow_sta_conn_t;
+typedef struct ow_sta_conn_observer ow_sta_conn_observer_t;
+
+typedef void ow_sta_conn_changed_fn_t(void *priv, const char *vif_name);
+
+ow_sta_conn_observer_t *ow_sta_conn_observer_alloc(ow_sta_conn_t *m, ow_sta_conn_changed_fn_t *fn, void *priv);
+void ow_sta_conn_observer_drop(ow_sta_conn_observer_t *o);
+
+/* Most conclusive failure of the current connection attempt window.
+ * NULL when there is none, eg. the link is connected.
  */
-void
-osw_drv_frame_tx_desc_free_no_result(struct osw_drv_frame_tx_desc *desc);
+const struct osw_drv_vif_sta_conn_failure *ow_sta_conn_get_failure(ow_sta_conn_t *m, const char *vif_name);
 
-void
-osw_drv_frame_tx_desc_cancel(struct osw_drv_frame_tx_desc *desc);
-
-bool
-osw_drv_frame_tx_desc_is_scheduled(const struct osw_drv_frame_tx_desc *desc);
-
-void
-osw_drv_frame_tx_desc_set_channel(struct osw_drv_frame_tx_desc *desc,
-                                  const struct osw_channel *channel);
-
-void
-osw_drv_frame_tx_desc_set_frame(struct osw_drv_frame_tx_desc *desc,
-                                const uint8_t *data,
-                                size_t data_len);
-
-#endif /* OSW_DRV_MEDIATOR_H */
+#endif /* OW_STA_CONN_H_INCLUDED */

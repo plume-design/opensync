@@ -163,6 +163,12 @@ struct wano_sta_policy
     /* Last connection status achieved by this policy */
     enum wano_sta_status sp_last_status;
 
+    /* When sp_last_status is WANO_STA_STATUS_ERR_WIFI, this field may contain
+     * the detail WiFi failure reason, if it is available
+     * (verbatim copied from Wifi_VIF_State::state).
+     */
+    char sp_last_wifi_err[64];
+
     ds_tree_node_t sp_tnode;
 };
 
@@ -206,6 +212,7 @@ static ev_timer g_sta_scan_timer;
 static wano_sta_ppline_event_cb_fn_t wano_sta_ppline_event_cb;
 static void wano_sta_apply_timer_fn(struct ev_loop *loop, ev_timer *w, int revent);
 static void wano_sta_scan_timer_fn(struct ev_loop *loop, ev_timer *w, int revent);
+static void wano_sta_on_scan_timeout_expire_or_failure(void);
 static void wano_sta_schedule_apply(void);
 static void callback_Wifi_VIF_State(
         ovsdb_update_monitor_t *mon,
@@ -1157,14 +1164,6 @@ static bool wano_sta_policy_attach(struct wano_sta_policy *sp)
     }
     vif->vs_configured = true;
 
-    /* If this is a fresh policy attach cycle (we are not mid-rotation trying
-     * different STAs then reset the last status. */
-    if (sp->sp_rotation_idx == 0 && sp->sp_last_status != WANO_STA_STATUS_UNKNOWN)
-    {
-        sp->sp_last_status = WANO_STA_STATUS_UNKNOWN;
-        wano_sta_policy_last_status_set(sp);
-    }
-
     sp->sp_attached = true;
     return true;
 }
@@ -1227,6 +1226,10 @@ static void wano_sta_policy_detach(struct wano_sta_policy *sp)
 
     /* Clear the STA uplink status in OVSDB (policy no longer active/attached). */
     wano_sta_policy_active_status_set(sp, NULL, NULL, NULL);
+
+    /* Reset STA association state: */
+    g_sta_any_associated = false;
+    g_sta_currently_associated = false;
 
     sp->sp_attached = false;
 }
@@ -1386,8 +1389,7 @@ static void wano_sta_teardown(void)
     /* Clear all credential configurations as well. */
     wano_sta_clear_credentials_config();
 
-    /* Reset association state — next attach cycle waits for a fresh
-     * association before starting pipelines. */
+    /* Reset association state: */
     g_sta_any_associated = false;
     g_sta_currently_associated = false;
 
@@ -1408,8 +1410,7 @@ static void wano_sta_teardown(void)
 
 /*
  * Scan window timer callback -- fires when the STA did not associate (or a
- * previously-associated link did not recover) within the scan window. Drives
- * sequential rotation to the next STA candidate and the multi-policy cascade.
+ * previously-associated link did not recover) within the scan window.
  */
 static void wano_sta_scan_timer_fn(struct ev_loop *loop, ev_timer *w, int revent)
 {
@@ -1419,8 +1420,28 @@ static void wano_sta_scan_timer_fn(struct ev_loop *loop, ev_timer *w, int revent
 
     LOG(INFO, "wano_sta: Scan window expired");
 
+    struct wano_sta_policy *attached_policy = wano_sta_attached_policy();
+    if (attached_policy != NULL && attached_policy->sp_last_status == WANO_STA_STATUS_UNKNOWN)
+    {
+        attached_policy->sp_last_status = WANO_STA_STATUS_ERR_WIFI;
+        attached_policy->sp_last_wifi_err[0] = '\0';
+        wano_sta_policy_last_status_set(attached_policy);
+    }
+
+    wano_sta_on_scan_timeout_expire_or_failure();
+}
+
+/*
+ * To be called when the current STA VIF connection attempt has ended without an
+ * association (either scan window timeout expired or a WiFi error occurred).
+ *
+ * Drives sequential rotation to the next STA candidate and the multi-policy
+ * cascade.
+ */
+static void wano_sta_on_scan_timeout_expire_or_failure(void)
+{
     /* Two cases
-     *   (a) Initial scan window expired without ever associating.
+     *   (a) Initial scan window expired (or WiFi failure) without ever associating.
      *   (b) Post-association recovery: We WERE associated this cycle
      *       (g_sta_any_associated) but the link went away
      *       (g_sta_currently_associated is false) and did not recover within
@@ -1450,14 +1471,10 @@ static void wano_sta_scan_timer_fn(struct ev_loop *loop, ev_timer *w, int revent
         {
             if (!sp->sp_attached) continue;
 
-            /* sp now points at the attached policy (for which the scan timer has expired) */
+            /* sp now points at the attached policy (for which the link attempt failed) */
 
-            /* Either we never associated or we lost association and did not
-             * recover: a WiFi error. We cannot yet distinguish the specific
-             * WiFi error (wrong key, SSID not found, ...) so report the
-             * general one. */
-            sp->sp_last_status = WANO_STA_STATUS_ERR_WIFI;
-            wano_sta_policy_last_status_set(sp);
+            /* Either we never associated (with a known error or timeout) or we lost association
+             * and did not recover: a WiFi connect error. */
 
             /* The currently attached policy:
              *  - No pinned VIF: Do sequential rotation to the next STA VIF candidate, if any
@@ -1468,10 +1485,11 @@ static void wano_sta_scan_timer_fn(struct ev_loop *loop, ev_timer *w, int revent
                 const char *next_link = g_sta_list[sp->sp_rotation_idx + 1].vif;
 
                 LOG(NOTICE,
-                    "wano_sta: %s (ssid=%s): No association on %s within scan window, rotating to %s",
+                    "wano_sta: %s (ssid=%s): No association on %s (%s), rotating to %s",
                     sp->sp_uuid,
                     sp->sp_ssid,
                     cur_link,
+                    sp->sp_last_wifi_err[0] != '\0' ? sp->sp_last_wifi_err : "scan window expired",
                     next_link);
 
                 /* We will detach this policy first as detaching means we disable/deconfigure
@@ -1599,6 +1617,17 @@ static void wano_sta_apply_timer_fn(struct ev_loop *loop, ev_timer *w, int reven
     wano_sta_apply();
 }
 
+/* Determine whether the given Wifi_VIF_State::state represents a failure. */
+static bool wano_sta_vif_state_is_failure(const char *state)
+{
+    if (state == NULL || state[0] == '\0') return false;
+    if (strcmp(state, "scanning") == 0) return false;
+    if (strcmp(state, "connecting") == 0) return false;
+    if (strcmp(state, "connected") == 0) return false;
+    if (strcmp(state, "disconnected") == 0) return false;
+    return true;
+}
+
 /* Wifi_VIF_State monitor callback. */
 static void callback_Wifi_VIF_State(
         ovsdb_update_monitor_t *mon,
@@ -1672,13 +1701,30 @@ static void callback_Wifi_VIF_State(
                 const double timer_s = (double)wano_sta_scan_timeout_get();
 
                 LOG(NOTICE,
-                    "wano_sta: %s: Disassociated — re-arming scan timer (%.0fs) for rotation if no recovery",
+                    "wano_sta: %s: Disassociated -- re-arming scan timer (%.0fs) for rotation if no recovery",
                     new->if_name,
                     timer_s);
 
                 ev_timer_stop(EV_DEFAULT, &g_sta_scan_timer);
                 ev_timer_set(&g_sta_scan_timer, timer_s, 0.0);
                 ev_timer_start(EV_DEFAULT, &g_sta_scan_timer);
+            }
+
+            /* Wifi connection failure for the current STA VIF detected via Wifi_VIF_State::state: */
+            if (attached_policy != NULL && new->state_exists && wano_sta_vif_state_is_failure(new->state)
+                && ovsdb_update_changed(mon, SCHEMA_COLUMN(Wifi_VIF_State, state)))
+            {
+                const char *cur_link = wano_sta_policy_current_link(attached_policy);
+
+                if (cur_link != NULL && strcmp(cur_link, new->if_name) == 0)
+                {
+                    LOG(NOTICE, "wano_sta: %s: WiFi failure: %s", new->if_name, new->state);
+
+                    /* Report the detail WiFi failure reason in OVSDB: */
+                    attached_policy->sp_last_status = WANO_STA_STATUS_ERR_WIFI;
+                    STRSCPY(attached_policy->sp_last_wifi_err, new->state);
+                    wano_sta_policy_last_status_set(attached_policy);
+                }
             }
         }
 
@@ -1794,6 +1840,11 @@ static void wano_sta_policy_last_status_set(struct wano_sta_policy *sp)
     json_t *mutations;
     json_t *result;
     int count;
+
+    if (sp->sp_last_status == WANO_STA_STATUS_ERR_WIFI && sp->sp_last_wifi_err[0] != '\0')
+    {
+        status_str = sp->sp_last_wifi_err; /* Detail WiFi error reason available */
+    }
 
     mutations = json_array();
 
@@ -1937,6 +1988,7 @@ void wano_sta_config_update(const char *policy_uuid, int wan_priority, const str
     if (changed && sp->sp_last_status != WANO_STA_STATUS_UNKNOWN)
     {
         sp->sp_last_status = WANO_STA_STATUS_UNKNOWN;
+        sp->sp_last_wifi_err[0] = '\0';
         wano_sta_policy_last_status_set(sp);
     }
 
@@ -2007,7 +2059,7 @@ bool wano_sta_init(void)
     ev_timer_init(&g_sta_scan_timer, wano_sta_scan_timer_fn, 0.0, 0.0);
 
     /* Wifi_VIF_State monitoring */
-    OVSDB_TABLE_MONITOR_F(Wifi_VIF_State, C_VPACK("+", "if_name", "mode", "enabled", "mld_if_name", "parent"));
+    OVSDB_TABLE_MONITOR_F(Wifi_VIF_State, C_VPACK("+", "if_name", "mode", "enabled", "mld_if_name", "parent", "state"));
 
     /* Connectivity_Check status monitoring */
     OVSDB_TABLE_MONITOR_F(Connectivity_Check, C_VPACK("+", "name", "status"));

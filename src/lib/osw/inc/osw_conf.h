@@ -115,6 +115,7 @@ struct osw_conf_net {
     struct osw_ifname bridge_if_name;
     bool multi_ap;
     int priority;
+    bool open;
 };
 
 struct osw_conf_vif_sta {

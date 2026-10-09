@@ -2090,6 +2090,7 @@ osw_drv_vif_state_is_changed_sta(const struct osw_drv_vif *vif)
     const bool changed_mld_addr = (osw_hwaddr_is_equal(&o->mld.addr, &n->mld.addr) == false);
     const bool changed_mld_if_name = (strcmp(o->mld.if_name.buf, n->mld.if_name.buf) != 0);
     const bool changed_status = o->link.status != n->link.status;
+    const bool changed_conn = (o->link.conn_status != n->link.conn_status);
     const bool changed_ssid = osw_ssid_cmp(&o->link.ssid, &n->link.ssid);
     const bool changed_bssid = osw_hwaddr_cmp(&o->link.bssid, &n->link.bssid);
     const bool changed_psk = strcmp(o->link.psk.str, n->link.psk.str) != 0;
@@ -2102,6 +2103,13 @@ osw_drv_vif_state_is_changed_sta(const struct osw_drv_vif *vif)
         const char *from = osw_drv_vif_link_status_to_str(o->link.status);
         const char *to = osw_drv_vif_link_status_to_str(n->link.status);
         LOGN("osw: drv: %s/%s: link %s -> %s", phy_name, vif_name, from, to);
+    }
+
+    if (changed_conn == true) {
+        LOGI("osw: drv: %s/%s: link: conn: %s -> %s",
+             phy_name, vif_name,
+             osw_drv_vif_state_sta_conn_status_to_cstr(o->link.conn_status),
+             osw_drv_vif_state_sta_conn_status_to_cstr(n->link.conn_status));
     }
 
     if (changed_ssid == true) {
@@ -2180,6 +2188,7 @@ osw_drv_vif_state_is_changed_sta(const struct osw_drv_vif *vif)
                        | changed_mld_if_name
                        | changed_networks
                        | changed_status
+                       | changed_conn
                        | changed_ssid
                        | changed_bssid
                        | changed_psk
@@ -2717,7 +2726,7 @@ osw_drv_vif_dump_sta(struct osw_drv_vif *vif)
         struct osw_drv_vif_sta_network *sta_net = sta->network;
         while (sta_net != NULL) {
             osw_wpa_to_str(wpa_str, sizeof(wpa_str), &sta_net->wpa);
-            LOGI("osw: drv: %s/%s/%s: sta: net: bridge_if_name: %s bssid: "OSW_HWADDR_FMT" ssid: "OSW_SSID_FMT" psk: len=%zu wpa: %s multi_ap: %d priority: %d",
+            LOGI("osw: drv: %s/%s/%s: sta: net: bridge_if_name: %s bssid: "OSW_HWADDR_FMT" ssid: "OSW_SSID_FMT" psk: len=%zu wpa: %s multi_ap: %d priority: %d open: %d",
                  vif->phy->drv->ops->name,
                  vif->phy->phy_name,
                  vif->vif_name,
@@ -2727,7 +2736,8 @@ osw_drv_vif_dump_sta(struct osw_drv_vif *vif)
                  strnlen(sta_net->psk.str, sizeof(sta_net->psk.str)),
                  wpa_str,
                  sta_net->multi_ap,
-                 sta_net->priority);
+                 sta_net->priority,
+                 sta_net->open);
             sta_net = sta_net->next;
         }
     }
@@ -4391,6 +4401,27 @@ osw_drv_report_vif_probe_req(struct osw_drv *drv,
     OSW_STATE_NOTIFY(vif_probe_req_fn, &vif->pub, probe_req);
 }
 
+void
+osw_drv_report_vif_sta_conn_failure(struct osw_drv *drv,
+                                    const char *phy_name,
+                                    const char *vif_name,
+                                    const struct osw_drv_vif_sta_conn_failure *failure)
+{
+    struct osw_drv_vif *vif = osw_drv_vif_from_report(drv, phy_name, vif_name);
+    if (WARN_ON(vif == NULL)) return;
+    if (vif->cur_state.exists == false) return;
+
+    LOGI("osw: drv: %s/%s: sta: conn failure: %s code=%u%s%s%s",
+         phy_name, vif_name,
+         osw_drv_vif_sta_conn_failure_kind_to_cstr(failure->kind),
+         failure->code,
+         failure->local ? " local" : "",
+         failure->detail[0] != '\0' ? " " : "",
+         failure->detail);
+
+    OSW_STATE_NOTIFY(vif_sta_conn_failure_fn, &vif->pub, failure);
+}
+
 static void
 osw_drv_process_vif_frame_rx_internal_probe_req(struct osw_drv *drv,
                                                 const char *phy_name,
@@ -4810,6 +4841,16 @@ osw_drv_frame_tx_desc_free(struct osw_drv_frame_tx_desc *desc)
 }
 
 void
+osw_drv_frame_tx_desc_free_no_result(struct osw_drv_frame_tx_desc *desc)
+{
+    if (desc == NULL)
+        return;
+
+    desc->result_fn = NULL;
+    osw_drv_frame_tx_desc_free(desc);
+}
+
+void
 osw_drv_frame_tx_desc_cancel(struct osw_drv_frame_tx_desc *desc)
 {
     assert(desc != NULL);
@@ -5029,6 +5070,33 @@ const char *osw_drv_vif_state_sta_link_status_to_cstr(enum osw_drv_vif_state_sta
         case OSW_DRV_VIF_STATE_STA_LINK_CONNECTED: return "connected";
         case OSW_DRV_VIF_STATE_STA_LINK_CONNECTING: return "connecting";
         case OSW_DRV_VIF_STATE_STA_LINK_DISCONNECTED: return "disconnected";
+    }
+    WARN_ON(1);
+    return "unexpected";
+}
+
+const char *osw_drv_vif_state_sta_conn_status_to_cstr(enum osw_drv_vif_state_sta_conn_status s)
+{
+    switch (s) {
+        case OSW_DRV_VIF_STATE_STA_CONN_UNSPEC: return "unspec";
+        case OSW_DRV_VIF_STATE_STA_CONN_SCANNING: return "scanning";
+        case OSW_DRV_VIF_STATE_STA_CONN_CONNECTING: return "connecting";
+        case OSW_DRV_VIF_STATE_STA_CONN_CONNECTED: return "connected";
+        case OSW_DRV_VIF_STATE_STA_CONN_DISCONNECTED: return "disconnected";
+    }
+    WARN_ON(1);
+    return "unexpected";
+}
+
+const char *osw_drv_vif_sta_conn_failure_kind_to_cstr(enum osw_drv_vif_sta_conn_failure_kind kind)
+{
+    switch (kind) {
+        case OSW_DRV_VIF_STA_CONN_FAILURE_GENERAL_ERR: return "general_err";
+        case OSW_DRV_VIF_STA_CONN_FAILURE_SSID_NOT_FOUND: return "ssid_not_found";
+        case OSW_DRV_VIF_STA_CONN_FAILURE_WRONG_KEY: return "wrong_key";
+        case OSW_DRV_VIF_STA_CONN_FAILURE_AUTH_REJECT: return "auth_reject";
+        case OSW_DRV_VIF_STA_CONN_FAILURE_ASSOC_REJECT: return "assoc_reject";
+        case OSW_DRV_VIF_STA_CONN_FAILURE_DISCONNECTED: return "disconnected";
     }
     WARN_ON(1);
     return "unexpected";

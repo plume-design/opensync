@@ -1471,8 +1471,14 @@ osw_periodic_get_next(const double interval_seconds,
                       const double now)
 {
     if (interval_seconds <= 0) return 0;
-    if (fabs(offset_seconds) >= interval_seconds) return 0;
-    return ((floor(now / interval_seconds) + 1) * interval_seconds) + offset_seconds;
+
+    /* Make sure any offset (even negative or beyond the interval)
+     * maps to [0, interval). And that we never return 0. */
+    double offset = fmod(offset_seconds, interval_seconds);
+    if (offset < 0) offset += interval_seconds;
+
+    const double periods = floor((now - offset) / interval_seconds) + 1;
+    return (periods * interval_seconds) + offset;
 }
 
 void *buf_pull(void **buf, ssize_t *remaining, ssize_t how_much)

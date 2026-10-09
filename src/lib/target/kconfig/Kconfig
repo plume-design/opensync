@@ -202,4 +202,14 @@ config TARGET_IMC
     help
         Select this option to enable communication between the FSM and FCM managers
 
+config TARGET_OM_HOOK_NF_CT_FLUSH
+    bool "Evict conntrack entries on NAT firewall rule changes"
+    default n
+    help
+        In addition to the existing hardware-accelerated flow flush, also
+        evict the kernel conntrack entries for a changed NAT (port-forward) rule,
+        matched by protocol and port. This targets only the affected
+        connection instead of flushing the whole conntrack table, which
+        would also drop NAT state for unrelated connections.
+
 endmenu

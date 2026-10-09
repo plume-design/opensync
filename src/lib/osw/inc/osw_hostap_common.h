@@ -319,6 +319,9 @@ bool
 osw_hostap_util_sta_state_to_osw(const char *wpa_state,
                                  enum osw_drv_vif_state_sta_link_status *status);
 bool
+osw_hostap_util_sta_state_to_conn(const char *wpa_state,
+                                  enum osw_drv_vif_state_sta_conn_status *status);
+bool
 osw_hostap_util_key_mgmt_to_osw(const char *key_mgmt,
                                 struct osw_wpa *wpa);
 bool
