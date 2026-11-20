@@ -118,7 +118,7 @@ ow_ovsdb_cconf_apply_on_vif(const struct schema_Wifi_Radio_Config *rconf,
         STRSCPY_WARN(ssid.buf, c->ssid);
         ssid.len = strlen(ssid.buf);
 
-        ow_conf_vif_set_sta_net(vif_name, &ssid, &bssid, &psk, &wpa, multi_ap ? &bridge : NULL, &multi_ap, &priority, &open);
+        ow_conf_vif_set_sta_net(vif_name, &ssid, &bssid, &psk, &wpa, multi_ap ? &bridge : NULL, &multi_ap, &priority);
     }
 }
 

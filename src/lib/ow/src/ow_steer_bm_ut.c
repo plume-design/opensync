@@ -1291,6 +1291,196 @@ OSW_UT(ow_steer_bm_stats_force_kick)
     OSW_UT_EVAL(client_event_stats->type == CLIENT_BTM_RETRY);
 }
 
+OSW_UT(ow_steer_bm_stats_force_kick_no_vif)
+{
+    OSW_MODULE_LOAD(ow_steer_bm);
+    osw_ut_time_init();
+    osw_timer_disarm(&g_stats_timer);
+
+    const struct osw_hwaddr sta_addr = { .octet = { 0xBA, 0xDC, 0x0D, 0xEB, 0xAD, 0xC1 }, };
+    const struct osw_hwaddr bssid = { .octet = { 0xCA, 0xFE, 0xCA, 0xFE, 0xF0, 0x0E }, };
+    const char *group_id = "00000000-0000-0000-0000-000000000000";
+    const char *vif_name = "vif_0";
+    struct ow_steer_bm_group *group = ow_steer_bm_get_group(group_id);
+    OSW_UT_EVAL(group != NULL);
+    struct ow_steer_bm_vif *vif = ow_steer_bm_group_get_vif(group, vif_name);
+    OSW_UT_EVAL(vif != NULL);
+    struct ow_steer_bm_client *client = ow_steer_bm_get_client(sta_addr.octet);
+    OSW_UT_EVAL(client != NULL);
+    struct osw_drv_vif_state drv_vif_state = {
+        .mac_addr = bssid,
+    };
+    struct osw_state_vif_info vif_info = {
+        .vif_name = vif_name,
+        .drv_state = &drv_vif_state,
+    };
+    ow_steer_bm_vif_set_vif_info(vif, &vif_info);
+    struct ow_steer_bm_sta *bm_sta;
+    ds_dlist_foreach(&g_sta_list, bm_sta) {
+        if (memcmp(&bm_sta->addr, &sta_addr, OSW_HWADDR_LEN) == 0) break;
+    }
+    OSW_UT_EVAL(bm_sta != NULL);
+
+    struct ow_steer_policy *force_kick_policy_base = ow_steer_policy_force_kick_get_base(bm_sta->force_kick_policy);
+    OSW_UT_EVAL(force_kick_policy_base != NULL);
+
+    ow_steer_bm_policy_mediator_trigger_executor_cb(force_kick_policy_base,
+                                                    bm_sta);
+
+    /* first try, vif unknown (eg. MLO client with distinct MLD address) */
+    ow_steer_bm_sta_kick_state_send_btm_event(bm_sta, NULL);
+
+    OSW_UT_EVAL(bm_sta->kick_state_mon.btm_send_cnt == 1);
+    OSW_UT_EVAL(ds_tree_find(&client->stats_tree, vif_name) == NULL);
+
+    /* retry, vif known */
+    ow_steer_bm_sta_kick_state_send_btm_event(bm_sta, vif_name);
+
+    OSW_UT_EVAL(bm_sta->kick_state_mon.btm_send_cnt == 2);
+    struct ow_steer_bm_vif_stats *client_vif_stats = ds_tree_find(&client->stats_tree, vif_name);
+    OSW_UT_EVAL(client_vif_stats != NULL);
+    OSW_UT_EVAL(client_vif_stats->event_stats_count == 1);
+    OSW_UT_EVAL(client_vif_stats->event_stats[0].type == CLIENT_BTM_RETRY);
+}
+
+OSW_UT(ow_steer_bm_stats_directed_kick)
+{
+    OSW_MODULE_LOAD(ow_steer_bm);
+    osw_ut_time_init();
+    osw_timer_disarm(&g_stats_timer);
+
+    const struct osw_hwaddr sta_addr = { .octet = { 0xBA, 0xDC, 0x0D, 0xEB, 0xAD, 0xC2 }, };
+    const struct osw_hwaddr bssid = { .octet = { 0xCA, 0xFE, 0xCA, 0xFE, 0xF0, 0x0F }, };
+    const char *group_id = "00000000-0000-0000-0000-000000000000";
+    const char *vif_name = "vif_0";
+    struct ow_steer_bm_group *group = ow_steer_bm_get_group(group_id);
+    OSW_UT_EVAL(group != NULL);
+    struct ow_steer_bm_vif *vif = ow_steer_bm_group_get_vif(group, vif_name);
+    OSW_UT_EVAL(vif != NULL);
+    struct ow_steer_bm_client *client = ow_steer_bm_get_client(sta_addr.octet);
+    OSW_UT_EVAL(client != NULL);
+    struct osw_drv_vif_state drv_vif_state = {
+        .mac_addr = bssid,
+    };
+    struct osw_state_vif_info vif_info = {
+        .vif_name = vif_name,
+        .drv_state = &drv_vif_state,
+    };
+    ow_steer_bm_vif_set_vif_info(vif, &vif_info);
+    struct ow_steer_bm_sta *bm_sta;
+    ds_dlist_foreach(&g_sta_list, bm_sta) {
+        if (memcmp(&bm_sta->addr, &sta_addr, OSW_HWADDR_LEN) == 0) break;
+    }
+    OSW_UT_EVAL(bm_sta != NULL);
+    OSW_UT_EVAL(bm_sta->active_policy == NULL);
+
+    /* non-policy BTM, not reported */
+    ow_steer_bm_sta_kick_state_send_btm_event(bm_sta, vif_name);
+    OSW_UT_EVAL(ds_tree_find(&client->stats_tree, vif_name) == NULL);
+    ow_steer_bm_sta_kick_state_reset(bm_sta);
+
+    /* directed kick, legacy stats untouched */
+    bm_sta->kick_state_mon.directed_trig = true;
+    OSW_UT_EVAL(ow_steer_bm_sta_kick_state_get_kick_type(&bm_sta->kick_state_mon) == OW_STEER_BM_KICK_SOURCE_DIRECTED);
+    ow_steer_bm_sta_kick_state_send_btm_event(bm_sta, vif_name);
+    OSW_UT_EVAL(bm_sta->kick_state_mon.btm_send_cnt == 1);
+    OSW_UT_EVAL(ds_tree_find(&client->stats_tree, vif_name) == NULL);
+
+    ow_steer_bm_sta_kick_state_send_btm_event(bm_sta, NULL);
+    OSW_UT_EVAL(bm_sta->kick_state_mon.btm_send_cnt == 2);
+    OSW_UT_EVAL(ds_tree_find(&client->stats_tree, vif_name) == NULL);
+
+    /* clearing client steering drops the directed kick state */
+    ow_steer_bm_sta_clear_client_steering(bm_sta);
+    OSW_UT_EVAL(bm_sta->kick_state_mon.directed_trig == false);
+    OSW_UT_EVAL(bm_sta->kick_state_mon.btm_send_cnt == 0);
+}
+
+OSW_UT(ow_steer_bm_stats_directed_kick_sticky_overlap)
+{
+    OSW_MODULE_LOAD(ow_steer_bm);
+    osw_ut_time_init();
+    osw_timer_disarm(&g_stats_timer);
+
+    const struct osw_hwaddr sta_addr = { .octet = { 0xBA, 0xDC, 0x0D, 0xEB, 0xAD, 0xC3 }, };
+    const struct osw_hwaddr bssid = { .octet = { 0xCA, 0xFE, 0xCA, 0xFE, 0xF0, 0x10 }, };
+    const char *group_id = "00000000-0000-0000-0000-000000000000";
+    const char *vif_name = "vif_0";
+    struct ow_steer_bm_group *group = ow_steer_bm_get_group(group_id);
+    OSW_UT_EVAL(group != NULL);
+    struct ow_steer_bm_vif *vif = ow_steer_bm_group_get_vif(group, vif_name);
+    OSW_UT_EVAL(vif != NULL);
+    struct ow_steer_bm_client *client = ow_steer_bm_get_client(sta_addr.octet);
+    OSW_UT_EVAL(client != NULL);
+    struct osw_drv_vif_state drv_vif_state = {
+        .mac_addr = bssid,
+    };
+    struct osw_state_vif_info vif_info = {
+        .vif_name = vif_name,
+        .drv_state = &drv_vif_state,
+    };
+    ow_steer_bm_vif_set_vif_info(vif, &vif_info);
+    struct ow_steer_bm_sta *bm_sta;
+    ds_dlist_foreach(&g_sta_list, bm_sta) {
+        if (memcmp(&bm_sta->addr, &sta_addr, OSW_HWADDR_LEN) == 0) break;
+    }
+    OSW_UT_EVAL(bm_sta != NULL);
+
+    struct ow_steer_policy *sticky_kick_policy_base = ow_steer_policy_snr_xing_get_base(bm_sta->lwm_xing_policy);
+    OSW_UT_EVAL(sticky_kick_policy_base != NULL);
+
+    /* sticky kick during a directed kick keeps its policy source */
+    bm_sta->kick_state_mon.directed_trig = true;
+    ow_steer_bm_policy_mediator_trigger_executor_cb(sticky_kick_policy_base,
+                                                    bm_sta);
+    OSW_UT_EVAL(ow_steer_bm_sta_kick_state_get_kick_type(&bm_sta->kick_state_mon) == OW_STEER_BM_KICK_SOURCE_STICKY);
+    ow_steer_bm_sta_kick_state_send_btm_event(bm_sta, vif_name);
+
+    struct ow_steer_bm_vif_stats *client_vif_stats = ds_tree_find(&client->stats_tree, vif_name);
+    OSW_UT_EVAL(client_vif_stats != NULL);
+    OSW_UT_EVAL(client_vif_stats->event_stats_count == 1);
+    OSW_UT_EVAL(client_vif_stats->sticky_kick_cnt == 1);
+    OSW_UT_EVAL(client_vif_stats->event_stats[0].type == CLIENT_STICKY_BTM);
+
+    /* dismissing the sticky kick leaves the directed kick reportable */
+    ow_steer_bm_policy_mediator_dismiss_executor_cb(sticky_kick_policy_base,
+                                                    bm_sta);
+    OSW_UT_EVAL(bm_sta->active_policy == NULL);
+    OSW_UT_EVAL(bm_sta->kick_state_mon.directed_trig == true);
+    OSW_UT_EVAL(ow_steer_bm_sta_kick_state_get_kick_type(&bm_sta->kick_state_mon) == OW_STEER_BM_KICK_SOURCE_DIRECTED);
+    ow_steer_bm_sta_kick_state_send_btm_event(bm_sta, vif_name);
+    OSW_UT_EVAL(bm_sta->kick_state_mon.btm_send_cnt == 1);
+    OSW_UT_EVAL(client_vif_stats->event_stats_count == 1);
+
+    ow_steer_bm_sta_clear_client_steering(bm_sta);
+    OSW_UT_EVAL(bm_sta->kick_state_mon.directed_trig == false);
+    OSW_UT_EVAL(bm_sta->kick_state_mon.btm_send_cnt == 0);
+}
+
+OSW_UT(ow_steer_bm_stats_force_kick_btm_event_type)
+{
+    dpp_bs_client_event_type_t type;
+
+    OSW_UT_EVAL(ow_steer_bm_kick_source_to_btm_event(OW_STEER_BM_KICK_SOURCE_STEERING, false, &type) == true);
+    OSW_UT_EVAL(type == CLIENT_BS_BTM);
+    OSW_UT_EVAL(ow_steer_bm_kick_source_to_btm_event(OW_STEER_BM_KICK_SOURCE_STEERING, true, &type) == true);
+    OSW_UT_EVAL(type == CLIENT_BS_BTM_RETRY);
+    OSW_UT_EVAL(ow_steer_bm_kick_source_to_btm_event(OW_STEER_BM_KICK_SOURCE_STICKY, false, &type) == true);
+    OSW_UT_EVAL(type == CLIENT_STICKY_BTM);
+    OSW_UT_EVAL(ow_steer_bm_kick_source_to_btm_event(OW_STEER_BM_KICK_SOURCE_STICKY, true, &type) == true);
+    OSW_UT_EVAL(type == CLIENT_STICKY_BTM_RETRY);
+    OSW_UT_EVAL(ow_steer_bm_kick_source_to_btm_event(OW_STEER_BM_KICK_SOURCE_FORCE, false, &type) == true);
+    OSW_UT_EVAL(type == CLIENT_BTM);
+    OSW_UT_EVAL(ow_steer_bm_kick_source_to_btm_event(OW_STEER_BM_KICK_SOURCE_FORCE, true, &type) == true);
+    OSW_UT_EVAL(type == CLIENT_BTM_RETRY);
+    OSW_UT_EVAL(ow_steer_bm_kick_source_to_btm_event(OW_STEER_BM_KICK_SOURCE_DIRECTED, false, &type) == true);
+    OSW_UT_EVAL(type == CLIENT_BTM);
+    OSW_UT_EVAL(ow_steer_bm_kick_source_to_btm_event(OW_STEER_BM_KICK_SOURCE_DIRECTED, true, &type) == true);
+    OSW_UT_EVAL(type == CLIENT_BTM_RETRY);
+    OSW_UT_EVAL(ow_steer_bm_kick_source_to_btm_event(OW_STEER_BM_KICK_SOURCE_NON_POLICY, false, &type) == false);
+    OSW_UT_EVAL(ow_steer_bm_kick_source_to_btm_event(OW_STEER_BM_KICK_SOURCE_INVALID, true, &type) == false);
+}
+
 OSW_UT(ow_steer_bm_stats_sticky_kick_2g)
 {
     OSW_MODULE_LOAD(ow_steer_bm);

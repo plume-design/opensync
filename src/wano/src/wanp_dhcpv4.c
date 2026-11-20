@@ -24,6 +24,7 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+#include "kconfig.h"
 #include "log.h"
 #include "memutil.h"
 #include "module.h"
@@ -57,6 +58,7 @@ static struct wano_plugin wanp_dhcpv4 = WANO_PLUGIN_INIT(
         "dhcpv4",
         100,
         WANO_PLUGIN_MASK_IPV4,
+        CONFIG_MANAGER_WANO_PLUGIN_DHCP_TIMEOUT,
         wanp_dhcpv4_init,
         wanp_dhcpv4_run,
         wanp_dhcpv4_fini);

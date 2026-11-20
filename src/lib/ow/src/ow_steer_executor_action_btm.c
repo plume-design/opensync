@@ -90,15 +90,9 @@ ow_steer_executor_action_btm_set_disassoc_imminent(struct ow_steer_executor_acti
 }
 
 static uint64_t
-ow_steer_executor_action_btm_get_beacon_interval(struct ow_steer_executor_action_btm *btm_action)
+ow_steer_executor_action_btm_get_beacon_interval(const struct osw_hwaddr *bssid)
 {
-    const struct osw_hwaddr *sta_addr = ow_steer_executor_action_get_sta_addr(btm_action->base);
-    if (sta_addr == NULL) return 0;
-
-    const struct osw_state_sta_info *sta_info = osw_state_sta_lookup_newest(sta_addr);
-    if (sta_info == NULL) return 0;
-
-    const struct osw_state_vif_info *vif_info = sta_info->vif;
+    const struct osw_state_vif_info *vif_info = osw_state_vif_lookup_by_mac_addr(bssid);
     if (vif_info == NULL) return 0;
 
     switch (vif_info->drv_state->vif_type) {
@@ -118,9 +112,10 @@ ow_steer_executor_action_btm_get_beacon_interval(struct ow_steer_executor_action
 
 static uint16_t
 ow_steer_executor_action_btm_get_disassoc_timer(struct ow_steer_executor_action_btm *btm_action,
+                                                const struct osw_hwaddr *bssid,
                                                 double remaining_nsec)
 {
-    const uint64_t beacon_interval_tu = ow_steer_executor_action_btm_get_beacon_interval(btm_action);
+    const uint64_t beacon_interval_tu = ow_steer_executor_action_btm_get_beacon_interval(bssid);
     if (beacon_interval_tu == 0) return 0;
 
     const uint64_t beacon_interval_usec = 1024 * beacon_interval_tu;
@@ -151,7 +146,7 @@ ow_steer_executor_action_btm_params_set_disassoc_imminent(struct ow_steer_execut
                                         ? *action->disassoc_imminent
                                         : OW_STEER_EXECUTOR_ACTION_BTM_DISASSOC_IMMINENT;
     const bool disassoc_imm_from_defer = (remaining_nsec > 0);
-    const uint16_t disassoc_tm_from_defer = ow_steer_executor_action_btm_get_disassoc_timer(action, remaining_nsec);
+    const uint16_t disassoc_tm_from_defer = ow_steer_executor_action_btm_get_disassoc_timer(action, bssid, remaining_nsec);
     const uint16_t disassoc_tm_from_default = OW_STEER_EXECUTOR_ACTION_BTM_DISASSOC_TIMER;
 
     *disassoc_imminent = disassoc_imm_from_defer || disassoc_imm_from_action;

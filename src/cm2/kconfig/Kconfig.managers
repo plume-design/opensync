@@ -169,6 +169,15 @@ if MANAGER_CM
                 The reason of usage is protection against resolving library hanged or ovsdb-server.
                 Value 0 means threshold disabled
 
+    config CM2_GW_OFFLINE_BOOT_APPLY
+        bool "Trigger GW Offline immediately on first boot"
+        depends on PM_GW_OFFLINE_CFG
+        default n
+        help
+            When set, CM triggers GW Offline mode in PM immediately on first
+            boot if the used uplink is ethernet and GW Offline configuration
+            is ready instead of waiting for CM2_GW_OFFLINE_TIMEOUT.
+
     menuconfig CM2_USE_STABILITY_CHECK
         bool "Use stability checking"
         default y

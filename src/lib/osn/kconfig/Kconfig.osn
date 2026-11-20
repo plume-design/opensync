@@ -97,12 +97,13 @@ if OSN_LINUX_ENABLED
 
             config OSN_UDHCPC_DISCOVER_RETRIES
                 int "Number of discover packets to send (-t)"
-                default 60 if OSN_UDHCPC_RFC_2131_BACKOFF
+                default 0 if OSN_UDHCPC_RFC_2131_BACKOFF
                 default 3
                 help
-                    Send up to N discover packets before giving up. The default is
-                    tuned to the active retry strategy: 60 retries when RFC 2131
-                    backoff is enabled (~60 min total with the 4->8->16->32->64s curve),
+                    Send up to N discover packets before giving up. 0 means retry
+                    forever. The default is tuned to the active retry strategy:
+                    retry forever when RFC 2131 backoff is enabled with the
+                    4->8->16->32->64s curve,
                     3 retries otherwise (~15s with the -T 5 linear pause).
 
             config OSN_UDHCPC_RETRY_PAUSE

@@ -87,9 +87,7 @@ struct wano_wan_config_sta
     bool    wc_scan_timeout_exists;         /**< True when sta_scan_timeout key is present in policy */
     int     wc_scan_timeout;                /**< Cascade timeout in seconds: how long this policy
                                                  gets to associate before it's marked failed and
-                                                 the next-best sibling is tried. 0 = no cascade
-                                                 (stays attached forever; supplicant retries on
-                                                 its own). */
+                                                 the next-best sibling is tried. Must be > 0. */
 };
 
 /*

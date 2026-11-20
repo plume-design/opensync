@@ -381,6 +381,28 @@ osw_tx_power_resolve_dbm(const enum osw_tx_power_mode mode,
     }
 }
 
+/* Convert an applied power and channel max to a representative percentage.
+ * The forward conversion rounds to whole dB, so the original configured
+ * percentage cannot always be recovered exactly.
+ * percent = 100 * 10^((dbm - max)/10), clamped to [0, 100].
+ * Both dbm and max may be zero or negative; "unknown max" handling is left to
+ * callers that track validity separately (max_tx_power_dbm_valid).
+ */
+int
+osw_tx_power_dbm_to_percent(const int dbm,
+                            const int max_tx_power_dbm)
+{
+    const double db = (double)dbm - (double)max_tx_power_dbm;
+    if (db >= 0) return 100;
+
+    const double percent = 100.0 * pow(10.0, db / 10.0);
+    const int percent_rounded = (int)lround(percent);
+    if (WARN_ON(percent_rounded < 0)) return 0;
+    if (WARN_ON(percent_rounded > 100)) return 100;
+
+    return percent_rounded;
+}
+
 void
 osw_wpa_to_str(char *out, size_t len, const struct osw_wpa *wpa)
 {
@@ -792,11 +814,11 @@ osw_channel_20mhz_segments(const struct osw_channel *c,
                                                                 4,
                                                                 segments,
                                                                 segments_len);
+                if (n == 0) return 0;
                 const size_t m = osw_channel_20mhz_segments_raw(cpy.center_freq1_mhz,
                                                                 4,
-                                                                segments,
-                                                                segments_len);
-                if (n == 0) return 0;
+                                                                segments + n,
+                                                                segments_len - n);
                 if (m == 0) return 0;
                 return n + m;
             }
@@ -1697,6 +1719,54 @@ osw_cs_chan_is_valid(const struct osw_channel_state *channel_states,
     return true;
 }
 
+/*
+ * osw_cs_chan_get_max_tx_power_dbm
+ *
+ * Returns the effective per-channel max tx power (dBm) for operating at c,
+ * which may be wider than 20 MHz. It is the minimum of the regulatory maximum
+ * across all non-punctured 20 MHz segments that make up c. The most
+ * restrictive subchannel governs. Returns false if c has no segments, or any
+ * required segment is missing from channel_states or lacks a valid max.
+ */
+bool
+osw_cs_chan_get_max_tx_power_dbm(const struct osw_channel_state *channel_states,
+                                 size_t n_channel_states,
+                                 const struct osw_channel *c,
+                                 int *max_dbm_out)
+{
+    ASSERT(c->center_freq0_mhz != 0, "");
+
+    int freqs[16];
+    size_t n_freqs = osw_channel_20mhz_segments(c, freqs, ARRAY_SIZE(freqs));
+
+    int result = 0;
+    bool found = false;
+    while (n_freqs > 0) {
+        const uint16_t puncture_bit = (1 << (n_freqs - 1));
+        const bool punctured = ((c->puncture_bitmap & puncture_bit) != 0);
+        const bool not_punctured = (punctured == false);
+        if (not_punctured) {
+            size_t i;
+            for (i = 0; i < n_channel_states; i++) {
+                const struct osw_channel_state *cs = &channel_states[i];
+                if (cs->channel.control_freq_mhz != freqs[n_freqs - 1]) continue;
+                if (cs->max_tx_power_dbm_valid == false) return false;
+                if (found == false || cs->max_tx_power_dbm < result)
+                    result = cs->max_tx_power_dbm;
+                found = true;
+                break;
+            }
+            const bool not_found = (i == n_channel_states);
+            if (not_found) return false;
+        }
+        n_freqs--;
+    }
+
+    if (found == false) return false;
+    *max_dbm_out = result;
+    return true;
+}
+
 bool
 osw_cs_chan_is_usable(const struct osw_channel_state *cs,
                       size_t n_cs,
@@ -2540,6 +2610,15 @@ osw_wpa_is_sae(const struct osw_wpa *wpa)
     if (wpa->akm_ft_sae) return true;
     if (wpa->akm_ft_sae_ext) return true;
     return false;
+}
+
+bool
+osw_wpa_is_open(const struct osw_wpa *wpa)
+{
+    if (wpa == NULL) return false;
+    if (wpa->wpa) return false;
+    if (wpa->rsn) return false;
+    return true;
 }
 
 uint32_t

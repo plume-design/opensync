@@ -236,6 +236,7 @@ enum ow_steer_bm_kick_source {
     OW_STEER_BM_KICK_SOURCE_STEERING,
     OW_STEER_BM_KICK_SOURCE_STICKY,
     OW_STEER_BM_KICK_SOURCE_FORCE,
+    OW_STEER_BM_KICK_SOURCE_DIRECTED,
     OW_STEER_BM_KICK_SOURCE_NON_POLICY,
     OW_STEER_BM_KICK_SOURCE_INVALID
 };
@@ -244,6 +245,7 @@ struct ow_steer_bm_kick_state_monitor {
     bool force_trig;
     bool steering_trig;
     bool sticky_trig;
+    bool directed_trig;
     unsigned int btm_send_cnt;
 };
 
@@ -1221,6 +1223,7 @@ ow_steer_bm_mlo_hook_steering(const struct osw_hwaddr *sta_addr,
             case OW_STEER_BM_KICK_SOURCE_STEERING: btm_params = client->steering_btm_params; break;
             case OW_STEER_BM_KICK_SOURCE_STICKY:   btm_params = client->sticky_btm_params;   break;
             case OW_STEER_BM_KICK_SOURCE_FORCE:    btm_params = client->sc_btm_params;        break;
+            case OW_STEER_BM_KICK_SOURCE_DIRECTED: btm_params = client->sc_btm_params;        break;
             default: break;
         }
         /* FIXME: target_bssids here are the configured candidate BSSIDs from
@@ -1398,13 +1401,29 @@ ow_steer_bm_stats_set_client_btm(const struct osw_hwaddr *sta_addr,
          OSW_HWADDR_ARG(sta_addr),
          vif_name,
          event_name));
+}
 
-    /* Mirror this BTM/Kick into the MLO v2 stream (single-link action event).
-     * sta_addr here is the configured Band_Steering_Clients MAC = MLD MAC for
-     * MLO, which is exactly what g_client_tree is keyed by — no sta walk needed. */
-    ow_steer_bm_mlo_hook_steering(sta_addr, kick_source,
-                                  client_event_stats->type,
-                                  client_event_stats->btm_status);
+static bool
+ow_steer_bm_kick_source_to_btm_event(const enum ow_steer_bm_kick_source kick_source,
+                                     const bool retry,
+                                     dpp_bs_client_event_type_t *type)
+{
+    switch (kick_source) {
+        case OW_STEER_BM_KICK_SOURCE_STEERING:
+            *type = retry ? CLIENT_BS_BTM_RETRY : CLIENT_BS_BTM;
+            return true;
+        case OW_STEER_BM_KICK_SOURCE_STICKY:
+            *type = retry ? CLIENT_STICKY_BTM_RETRY : CLIENT_STICKY_BTM;
+            return true;
+        case OW_STEER_BM_KICK_SOURCE_FORCE:
+        case OW_STEER_BM_KICK_SOURCE_DIRECTED:
+            *type = retry ? CLIENT_BTM_RETRY : CLIENT_BTM;
+            return true;
+        case OW_STEER_BM_KICK_SOURCE_NON_POLICY:
+        case OW_STEER_BM_KICK_SOURCE_INVALID:
+            return false;
+    }
+    return false;
 }
 
 struct ow_steer_bm_stats_set_client_capabilities_params {
@@ -1705,6 +1724,8 @@ ow_steer_bm_sta_kick_state_source_to_str(const enum ow_steer_bm_kick_source kick
             return "OW_STEER_BM_KICK_SOURCE_STICKY";
         case OW_STEER_BM_KICK_SOURCE_FORCE:
             return "OW_STEER_BM_KICK_SOURCE_FORCE";
+        case OW_STEER_BM_KICK_SOURCE_DIRECTED:
+            return "OW_STEER_BM_KICK_SOURCE_DIRECTED";
         case OW_STEER_BM_KICK_SOURCE_INVALID:
             return "OW_STEER_BM_KICK_SOURCE_INVALID";
         case OW_STEER_BM_KICK_SOURCE_NON_POLICY:
@@ -1719,10 +1740,12 @@ ow_steer_bm_sta_kick_state_get_kick_type(struct ow_steer_bm_kick_state_monitor *
     LOGD(LOG_PREFIX("kick_state_monitor: trying to determine kick source,"
          " force_trig: "OSW_BOOL_FMT
          " steering_trig: "OSW_BOOL_FMT
-         " sticky_trig: "OSW_BOOL_FMT,
+         " sticky_trig: "OSW_BOOL_FMT
+         " directed_trig: "OSW_BOOL_FMT,
          OSW_BOOL_ARG(kick_state_mon->force_trig),
          OSW_BOOL_ARG(kick_state_mon->steering_trig),
-         OSW_BOOL_ARG(kick_state_mon->sticky_trig)));
+         OSW_BOOL_ARG(kick_state_mon->sticky_trig),
+         OSW_BOOL_ARG(kick_state_mon->directed_trig)));
 
     const bool force_trig = (kick_state_mon->force_trig == true) &&
                             (kick_state_mon->steering_trig == false) &&
@@ -1733,18 +1756,25 @@ ow_steer_bm_sta_kick_state_get_kick_type(struct ow_steer_bm_kick_state_monitor *
     const bool sticky_trig = (kick_state_mon->force_trig == false) &&
                              (kick_state_mon->steering_trig == false) &&
                              (kick_state_mon->sticky_trig == true);
+    const bool directed_trig = (kick_state_mon->force_trig == false) &&
+                               (kick_state_mon->steering_trig == false) &&
+                               (kick_state_mon->sticky_trig == false) &&
+                               (kick_state_mon->directed_trig == true);
     const bool non_policy_trig = (force_trig == false) &&
                                  (steering_trig == false) &&
-                                 (sticky_trig == false);
+                                 (sticky_trig == false) &&
+                                 (directed_trig == false);
 
     LOGT(LOG_PREFIX("kick_state_monitor: final triggers, "
          " force_trig: "OSW_BOOL_FMT
          " steering_trig: "OSW_BOOL_FMT
          " sticky_trig: "OSW_BOOL_FMT
+         " directed_trig: "OSW_BOOL_FMT
          " non_policy_trig: "OSW_BOOL_FMT,
          OSW_BOOL_ARG(force_trig),
          OSW_BOOL_ARG(steering_trig),
          OSW_BOOL_ARG(sticky_trig),
+         OSW_BOOL_ARG(directed_trig),
          OSW_BOOL_ARG(non_policy_trig)));
 
     enum ow_steer_bm_kick_source kick_source = OW_STEER_BM_KICK_SOURCE_INVALID;
@@ -1754,6 +1784,8 @@ ow_steer_bm_sta_kick_state_get_kick_type(struct ow_steer_bm_kick_state_monitor *
         kick_source = OW_STEER_BM_KICK_SOURCE_STEERING;
     else if (sticky_trig == true)
         kick_source = OW_STEER_BM_KICK_SOURCE_STICKY;
+    else if (directed_trig == true)
+        kick_source = OW_STEER_BM_KICK_SOURCE_DIRECTED;
     else if (non_policy_trig == true)
         kick_source = OW_STEER_BM_KICK_SOURCE_NON_POLICY;
     else
@@ -1766,6 +1798,9 @@ ow_steer_bm_sta_kick_state_get_kick_type(struct ow_steer_bm_kick_state_monitor *
     return kick_source;
 }
 
+/* vif_name may be NULL, in which case only the MLO v2
+ * report is updated.
+ */
 static void
 ow_steer_bm_sta_kick_state_send_btm_event(struct ow_steer_bm_sta *sta,
                                           const char* vif_name)
@@ -1775,17 +1810,26 @@ ow_steer_bm_sta_kick_state_send_btm_event(struct ow_steer_bm_sta *sta,
     struct ow_steer_bm_kick_state_monitor *kick_state_mon = &sta->kick_state_mon;
     kick_state_mon->btm_send_cnt++;
 
-    if (sta->active_policy == NULL)
+    if (sta->active_policy == NULL && kick_state_mon->directed_trig == false)
         return;
 
     LOGD(LOG_WITH_PREFIX(sta, "kick_state_monitor: send_btm_event"));
 
     const bool retry = (kick_state_mon->btm_send_cnt > 1);
     enum ow_steer_bm_kick_source kick_source = ow_steer_bm_sta_kick_state_get_kick_type(kick_state_mon);
-    ow_steer_bm_stats_set_client_btm(&sta->addr,
-                                     vif_name,
-                                     kick_source,
-                                     retry);
+
+    if (vif_name != NULL && kick_source != OW_STEER_BM_KICK_SOURCE_DIRECTED) {
+        ow_steer_bm_stats_set_client_btm(&sta->addr,
+                                         vif_name,
+                                         kick_source,
+                                         retry);
+    }
+
+    dpp_bs_client_event_type_t type;
+    const bool reportable = ow_steer_bm_kick_source_to_btm_event(kick_source, retry, &type);
+    if (reportable == false) return;
+
+    ow_steer_bm_mlo_hook_steering(&sta->addr, kick_source, type, 0);
 }
 
 static void
@@ -2581,6 +2625,7 @@ ow_steer_bm_sta_state_sta_link_del_stats(struct ow_steer_bm_sta_link *link)
 
     ow_steer_bm_sta_kick_state_reset(sta);
     ow_steer_policy_bss_filter_set_config(sta->cs_kick_filter_policy, NULL);
+    sta->kick_state_mon.directed_trig = false;
 
     /* FIXME:Reason data is not available so fake it */
     const dpp_bs_client_disconnect_type_t disconnect_type = DEAUTH;
@@ -3325,7 +3370,14 @@ ow_steer_bm_sta_clear_client_steering(struct ow_steer_bm_sta *sta)
 
     ow_steer_policy_bss_filter_set_config(sta->cs_allow_filter_policy, NULL);
     ow_steer_policy_bss_filter_set_config(sta->cs_deny_filter_policy, NULL);
+    ow_steer_policy_bss_filter_set_config(sta->cs_kick_filter_policy, NULL);
     osw_timer_disarm(&sta->client_steering_timer);
+
+    if (sta->kick_state_mon.directed_trig == true) {
+        sta->kick_state_mon.directed_trig = false;
+        if (sta->active_policy == NULL)
+            sta->kick_state_mon.btm_send_cnt = 0;
+    }
 }
 
 static void
@@ -3650,6 +3702,7 @@ ow_steer_bm_sta_recalc(struct ow_steer_bm_sta *sta)
                             LOGN(LOG_WITH_PREFIX(sta, "issuing force directed kick to bssid: "OSW_HWADDR_FMT" using cs_kick_filter_policy",
                              OSW_HWADDR_ARG(&cs_kick_filter_policy_config->bssid_list[i])));
                         }
+                        sta->kick_state_mon.directed_trig = true;
                         ow_steer_policy_bss_filter_set_config(sta->cs_kick_filter_policy, cs_kick_filter_policy_config);
                     }
                     else {
@@ -5741,11 +5794,9 @@ ow_steer_bm_executor_action_mediator_data_sent_cb(struct ow_steer_executor_actio
         LOGD(LOG_PREFIX("btm action data sent, update kick state monitor"));
 
         const struct osw_state_sta_info *sta_info = osw_state_sta_lookup_newest(&sta->addr);
-        if (sta_info == NULL) return;
-        const struct osw_state_vif_info *vif_info = sta_info->vif;
-        if (vif_info == NULL) return;
-        ow_steer_bm_sta_kick_state_send_btm_event(sta,
-                                                  vif_info->vif_name);
+        const struct osw_state_vif_info *vif_info = (sta_info != NULL) ? sta_info->vif : NULL;
+        const char *vif_name = (vif_info != NULL) ? vif_info->vif_name : NULL;
+        ow_steer_bm_sta_kick_state_send_btm_event(sta, vif_name);
     }
 }
 

@@ -78,6 +78,7 @@ static struct wano_plugin wanp_static_ipv4 = WANO_PLUGIN_INIT(
         "static_ipv4",
         90,
         WANO_PLUGIN_MASK_IPV4,
+        CONFIG_MANAGER_WANO_PLUGIN_TIMEOUT,
         wanp_static_ipv4_init,
         wanp_static_ipv4_run,
         wanp_static_ipv4_fini);

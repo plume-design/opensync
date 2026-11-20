@@ -189,8 +189,7 @@ void ow_conf_vif_set_sta_net(const char *vif_name,
                              const struct osw_wpa *wpa,
                              const struct osw_ifname *bridge_if_name,
                              const bool *multi_ap,
-                             const int *priority,
-                             const bool *open);
+                             const int *priority);
 void ow_conf_vif_add_ap_acl(const char *vif_name, const struct osw_hwaddr *addr);
 void ow_conf_vif_del_ap_acl(const char *vif_name, const struct osw_hwaddr *addr);
 void ow_conf_vif_set_ap_neigh(const char *vif_name,

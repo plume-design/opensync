@@ -117,11 +117,11 @@ Note-1: the wait for re-connect back to same manager addr because
 #define CM2_FAST_RECONNECT_TIMEOUT      20
 /*
  * LINK_SEL must outlast one WANO plug-in attempt so CM does not preempt
- * provisioning. Under DHCP backoff, derive it from the plug-in timeout (+20s
+ * provisioning. Under DHCP backoff, derive it from the DHCP plug-in timeout (+20s
  * margin) so the two cannot drift; otherwise keep the original 120s.
  */
 #if defined(CONFIG_MANAGER_WANO_SUPPORT_EXP_BACKOFF_DHCP)
-#define CM2_ONBOARD_LINK_SEL_TIMEOUT    (CONFIG_MANAGER_WANO_PLUGIN_TIMEOUT + 20)
+#define CM2_ONBOARD_LINK_SEL_TIMEOUT    (CONFIG_MANAGER_WANO_PLUGIN_DHCP_TIMEOUT + 20)
 #else
 #define CM2_ONBOARD_LINK_SEL_TIMEOUT    120
 #endif
@@ -143,6 +143,7 @@ Note-1: the wait for re-connect back to same manager addr because
 #define CM2_GW_SKIP_RESTART_TIMEOUT     86400 // 1 day
 
 #define CM2_GW_OFFLINE_TIMEOUT          180
+#define CM2_GW_OFFLINE_BOOT_TIMEOUT     0
 
 // state info
 #define CM2_STATE_DIR  "/tmp/opensync/"
@@ -404,6 +405,8 @@ static void cm2_gw_offline_start_cb(struct ev_loop *loop, ev_timer *t, int event
 
 bool cm2_enable_gw_offline()
 {
+    double timeout = CM2_GW_OFFLINE_TIMEOUT;
+
     if (cm2_is_wifi_type(g_state.link.if_type))
         return false;
 
@@ -423,8 +426,15 @@ bool cm2_enable_gw_offline()
         return false;
     }
 
+    if (kconfig_enabled(CONFIG_CM2_GW_OFFLINE_BOOT_APPLY)
+            && !g_state.connected_at_least_once) {
+        if (!g_state.link.is_used || !cm2_is_eth_type(g_state.link.if_type))
+            return false;
+        timeout = CM2_GW_OFFLINE_BOOT_TIMEOUT;
+    }
+
     if (!ev_is_active(&g_state.gw_offline_start)) {
-        ev_timer_set(&g_state.gw_offline_start, CM2_GW_OFFLINE_TIMEOUT, 0.0);
+        ev_timer_set(&g_state.gw_offline_start, timeout, 0.0);
         ev_timer_start(g_state.loop, &g_state.gw_offline_start);
         LOGI("GW offline starting timer");
     }

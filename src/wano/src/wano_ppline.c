@@ -1532,7 +1532,7 @@ enum wano_plugin_state wano_plugin_state_RUNNING(
     switch (action)
     {
         case wano_plugin_do_STATE_INIT:
-            ev_timer_init(&wpp->wpp_timeout, wano_ppline_plugin_timeout_fn, CONFIG_MANAGER_WANO_PLUGIN_TIMEOUT, 0.0);
+            ev_timer_init(&wpp->wpp_timeout, wano_ppline_plugin_timeout_fn, wpp->wpp_plugin->wanp_timeout, 0.0);
             ev_timer_start(EV_DEFAULT, &wpp->wpp_timeout);
             ev_async_start(EV_DEFAULT, &wpp->wpp_status_async);
             wano_plugin_run(wpp->wpp_handle);

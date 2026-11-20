@@ -64,6 +64,7 @@ static struct wano_plugin wanp_pppoe = WANO_PLUGIN_INIT(
         "pppoe",
         50,
         WANO_PLUGIN_MASK_IPV4 | WANO_PLUGIN_MASK_IPV6,
+        CONFIG_MANAGER_WANO_PLUGIN_TIMEOUT,
         wanp_pppoe_init,
         wanp_pppoe_run,
         wanp_pppoe_fini);

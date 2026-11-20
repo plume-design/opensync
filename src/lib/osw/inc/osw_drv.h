@@ -252,7 +252,6 @@ struct osw_drv_vif_sta_network {
     struct osw_drv_vif_sta_network *next;
     bool multi_ap;
     int priority;
-    bool open;
 };
 
 enum osw_drv_vif_config_sta_operation {

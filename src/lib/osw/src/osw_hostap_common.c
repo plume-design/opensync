@@ -195,6 +195,9 @@ osw_hostap_conf_wpa_key_mgmt_from_osw(const struct osw_wpa *wpa)
     if (wpa == NULL)
         return NULL;
 
+    if (osw_wpa_is_open(wpa))
+        return STRDUP("NONE");
+
     size_t len = OSW_HOSTAP_CONF_WPA_KEY_MGMT_MAX_LEN;
     size_t *plen = &len;
     char *wpa_key_mgmt = CALLOC(len, sizeof(char));
@@ -425,6 +428,7 @@ osw_hostap_util_wpa_key_mgmt_to_osw(const char *wpa_key_mgmt,
     char *input = strdupa(wpa_key_mgmt);
     char *cursor = input;
     char *token;
+    bool open = false;
 
     while ((token = strsep(&cursor, " \t")) != NULL) {
         /* alphabetical order for convenience */
@@ -445,7 +449,7 @@ osw_hostap_util_wpa_key_mgmt_to_osw(const char *wpa_key_mgmt,
 
         /* only wpa_supplicant */
         if (strcmp(token, "IEEE8021X") == 0)           osw_wpa->akm_eap = true;
-        if (strcmp(token, "NONE") == 0)                /* nop */ continue;
+        if (strcmp(token, "NONE") == 0)                open = true;
         if (strcmp(token, "WPA-NONE") == 0)            /* nop */ continue;
 
         /* not implemented
@@ -458,6 +462,10 @@ osw_hostap_util_wpa_key_mgmt_to_osw(const char *wpa_key_mgmt,
          * "OWE"
          * "WPS"
          */
+    }
+
+    if (open) {
+        WARN_ON(osw_wpa_is_open(osw_wpa) == false);
     }
 
     return true;

@@ -320,50 +320,20 @@ OSW_UT(osw_wpas_conf_generate_sta_config_open_ut)
     char *conf = sta_conf.conf_buf;
     struct osw_drv_vif_sta_network *net = &drv_conf->phy_list[0].vif_list.list[0].u.sta.network[0];
 
-    /* Open only: no WPA/RSN, no key */
+    /* No WPA/RSN, no key: open */
     MEMZERO(net->psk);
     MEMZERO(net->wpa);
-    net->open = true;
     osw_hostap_conf_fill_sta_config(drv_conf,
                                     "phy0",
                                     "vif0.10_sta",
                                     &sta_conf);
     osw_hostap_conf_generate_sta_config_bufs(&sta_conf);
-    OSW_UT_EVAL(strstr(conf, "\tkey_mgmt=NONE \n"));
+    OSW_UT_EVAL(strstr(conf, "\tkey_mgmt=NONE\n"));
     OSW_UT_EVAL(strstr(conf, "\tieee80211w=0\n"));
     OSW_UT_EVAL(strstr(conf, "psk=") == NULL);
     OSW_UT_EVAL(strstr(conf, "sae_password=") == NULL);
     OSW_UT_EVAL(strstr(conf, "proto=") == NULL);
     OSW_UT_EVAL(strstr(conf, "pairwise=") == NULL);
-
-    /* Open allowed alongside PSK */
-    net->wpa = (struct osw_wpa) {
-        .rsn = true,
-        .akm_psk = true,
-        .pairwise_ccmp = true,
-    };
-    STRSCPY_WARN(net->psk.str, "12345678");
-    osw_hostap_conf_fill_sta_config(drv_conf,
-                                    "phy0",
-                                    "vif0.10_sta",
-                                    &sta_conf);
-    osw_hostap_conf_generate_sta_config_bufs(&sta_conf);
-    OSW_UT_EVAL(strstr(conf, "\tkey_mgmt=WPA-PSK NONE \n"));
-    OSW_UT_EVAL(strstr(conf, "\tproto=RSN \n"));
-    OSW_UT_EVAL(strstr(conf, "\tpairwise=CCMP \n"));
-    OSW_UT_EVAL(strstr(conf, "\tpsk=\"12345678\"\n"));
-
-    /* No security specified: check that we don't generate invalid wpa_s config */
-    MEMZERO(net->psk);
-    MEMZERO(net->wpa);
-    net->open = false;
-    osw_hostap_conf_fill_sta_config(drv_conf,
-                                    "phy0",
-                                    "vif0.10_sta",
-                                    &sta_conf);
-    osw_hostap_conf_generate_sta_config_bufs(&sta_conf);
-    OSW_UT_EVAL(strstr(conf, "key_mgmt=") == NULL);
-    OSW_UT_EVAL(strstr(conf, "psk=") == NULL);
 
     template_config_free(drv_conf);
 }
@@ -451,9 +421,6 @@ OSW_UT(osw_wpas_conf_generate_sta_state_open_ut)
     struct osw_drv_vif_state *vstate;
     struct osw_drv_vif_state_sta_link *link;
     struct osw_drv_vif_sta_network *network;
-    struct osw_wpa no_wpa;
-
-    MEMZERO(no_wpa);
 
     const char *config = "ctrl_interface=/var/run/wpa_supplicant-wifi0\n"
                          "network={\n"
@@ -483,13 +450,11 @@ OSW_UT(osw_wpas_conf_generate_sta_state_open_ut)
     link = &vstate->u.sta.link;
     network = vstate->u.sta.network;
     OSW_UT_EVAL(link->status == OSW_DRV_VIF_STATE_STA_LINK_CONNECTED);
-    /* open link: no WPA/RSN at all */
-    OSW_UT_EVAL(memcmp(&link->wpa, &no_wpa, sizeof(no_wpa)) == 0);
+    OSW_UT_EVAL(osw_wpa_is_open(&link->wpa));
     OSW_UT_EVAL(strlen(link->psk.str) == 0);
     OSW_UT_EVAL(network != NULL);
     OSW_UT_EVAL(network->next == NULL);
-    OSW_UT_EVAL(network->open == true);
-    OSW_UT_EVAL(memcmp(&network->wpa, &no_wpa, sizeof(no_wpa)) == 0);
+    OSW_UT_EVAL(osw_wpa_is_open(&network->wpa));
     OSW_UT_EVAL(strlen(network->psk.str) == 0);
     FREE(network);
     FREE(vstate);

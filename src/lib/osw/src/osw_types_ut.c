@@ -648,3 +648,88 @@ OSW_UT(osw_tx_power_resolve_dbm_modes)
     OSW_UT_EVAL(osw_tx_power_resolve_dbm(OSW_TX_POWER_MODE_PERCENT, 100, max) == max);
     OSW_UT_EVAL(osw_tx_power_resolve_dbm(OSW_TX_POWER_MODE_PERCENT, 50, max) == max - 3);
 }
+
+OSW_UT(osw_tx_power_dbm_to_percent_boundaries)
+{
+    const int max = 30;
+
+    /* dbm >= max clamps to 100%, regardless of how far above. */
+    OSW_UT_EVAL(osw_tx_power_dbm_to_percent(max, max) == 100);
+    OSW_UT_EVAL(osw_tx_power_dbm_to_percent(max + 5, max) == 100);
+
+    /* percent = 100 * 10^((dbm - max)/10), rounded. */
+    OSW_UT_EVAL(osw_tx_power_dbm_to_percent(27, max) == 50);  /* -3 dB  -> ~50.1 */
+    OSW_UT_EVAL(osw_tx_power_dbm_to_percent(24, max) == 25);  /* -6 dB  -> ~25.1 */
+    OSW_UT_EVAL(osw_tx_power_dbm_to_percent(20, max) == 10);  /* -10 dB -> 10 */
+
+    /* Far below the max clamps to 0%. */
+    OSW_UT_EVAL(osw_tx_power_dbm_to_percent(-100, max) == 0);
+
+    /* max may be zero or negative; conversion still applies across the full
+     * range (unknown-max handling is the caller's responsibility). */
+    OSW_UT_EVAL(osw_tx_power_dbm_to_percent(0, 0) == 100);
+    OSW_UT_EVAL(osw_tx_power_dbm_to_percent(-10, 0) == 10);
+    OSW_UT_EVAL(osw_tx_power_dbm_to_percent(-20, 0) == 1);
+    OSW_UT_EVAL(osw_tx_power_dbm_to_percent(-15, -5) == 10);  /* -10 dB -> 10 */
+
+    /* The forward resolver rounds attenuation to whole dB, so the pair is only
+     * representative, not an exact inverse: 80% resolves to 29 dBm, which maps
+     * back to 79% rather than 80%. */
+    const int dbm_80 = osw_tx_power_resolve_dbm(OSW_TX_POWER_MODE_PERCENT, 80, max);
+    OSW_UT_EVAL(dbm_80 == 29);
+    OSW_UT_EVAL(osw_tx_power_dbm_to_percent(dbm_80, max) == 79);
+}
+
+OSW_UT(osw_cs_chan_get_max_tx_power_dbm_width)
+{
+    /* 80 MHz on channel 36: control 5180, center0 5210.
+     * 20 MHz segments: 5180, 5200, 5220, 5240. */
+    const struct osw_channel c80 = {
+        .width = OSW_CHANNEL_80MHZ,
+        .control_freq_mhz = 5180,
+        .center_freq0_mhz = 5210,
+    };
+    struct osw_channel_state states[] = {
+        { .channel = { .control_freq_mhz = 5180 }, .max_tx_power_dbm = 23, .max_tx_power_dbm_valid = true },
+        { .channel = { .control_freq_mhz = 5200 }, .max_tx_power_dbm = 20, .max_tx_power_dbm_valid = true },
+        { .channel = { .control_freq_mhz = 5220 }, .max_tx_power_dbm = 24, .max_tx_power_dbm_valid = true },
+        { .channel = { .control_freq_mhz = 5240 }, .max_tx_power_dbm = 22, .max_tx_power_dbm_valid = true },
+    };
+    const size_t n = ARRAY_SIZE(states);
+    int out = 0;
+
+    /* Effective max is the minimum across the 20 MHz segments. */
+    OSW_UT_EVAL(osw_cs_chan_get_max_tx_power_dbm(states, n, &c80, &out) == true);
+    OSW_UT_EVAL(out == 20);
+
+    /* Puncturing the segment that holds the minimum (5200 -> bit 1) raises the
+     * effective max to the next most restrictive segment. */
+    struct osw_channel c80_punctured = c80;
+    c80_punctured.puncture_bitmap = (1 << 1);
+    out = 0;
+    OSW_UT_EVAL(osw_cs_chan_get_max_tx_power_dbm(states, n, &c80_punctured, &out) == true);
+    OSW_UT_EVAL(out == 22);
+
+    /* A single invalid segment fails the whole lookup. */
+    struct osw_channel_state states_invalid[ARRAY_SIZE(states)];
+    memcpy(states_invalid, states, sizeof(states));
+    states_invalid[2].max_tx_power_dbm_valid = false;
+    out = 123;
+    OSW_UT_EVAL(osw_cs_chan_get_max_tx_power_dbm(states_invalid, n, &c80, &out) == false);
+    OSW_UT_EVAL(out == 123);  /* left untouched on failure */
+
+    /* A missing segment (only three of four present) fails the lookup. */
+    out = 123;
+    OSW_UT_EVAL(osw_cs_chan_get_max_tx_power_dbm(states, n - 1, &c80, &out) == false);
+    OSW_UT_EVAL(out == 123);
+
+    /* 20 MHz resolves to that single segment's max. */
+    const struct osw_channel c20 = {
+        .width = OSW_CHANNEL_20MHZ,
+        .control_freq_mhz = 5200,
+        .center_freq0_mhz = 5200,
+    };
+    out = 0;
+    OSW_UT_EVAL(osw_cs_chan_get_max_tx_power_dbm(states, n, &c20, &out) == true);
+    OSW_UT_EVAL(out == 20);
+}

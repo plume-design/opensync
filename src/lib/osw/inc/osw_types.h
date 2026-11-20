@@ -616,6 +616,7 @@ struct osw_wpa {
 
 bool osw_wpa_is_psk(const struct osw_wpa *wpa);
 bool osw_wpa_is_sae(const struct osw_wpa *wpa);
+bool osw_wpa_is_open(const struct osw_wpa *wpa);
 uint32_t osw_wpa_get_akm_bitmask(const struct osw_wpa *wpa);
 void osw_wpa_set_akm_bitmask(struct osw_wpa *wpa, uint32_t akm);
 uint32_t osw_wpa_get_pairwise_bitmask(const struct osw_wpa *wpa);
@@ -974,6 +975,10 @@ osw_tx_power_resolve_dbm(const enum osw_tx_power_mode mode,
                          const int value,
                          const int max_tx_power_dbm);
 
+int
+osw_tx_power_dbm_to_percent(const int dbm,
+                            const int max_tx_power_dbm);
+
 void
 osw_wpa_to_str(char *out, size_t len, const struct osw_wpa *wpa);
 
@@ -1208,6 +1213,12 @@ bool
 osw_cs_chan_is_valid(const struct osw_channel_state *channel_states,
                      size_t n_channel_states,
                      const struct osw_channel *c);
+
+bool
+osw_cs_chan_get_max_tx_power_dbm(const struct osw_channel_state *channel_states,
+                                 size_t n_channel_states,
+                                 const struct osw_channel *c,
+                                 int *max_dbm_out);
 
 bool
 osw_cs_chan_is_usable(const struct osw_channel_state *channel_states,

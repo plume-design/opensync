@@ -86,6 +86,7 @@ static struct wano_plugin wanp_dhcpv6 = WANO_PLUGIN_INIT(
         "dhcpv6",
         100,
         WANO_PLUGIN_MASK_IPV6,
+        CONFIG_MANAGER_WANO_PLUGIN_TIMEOUT,
         wanp_dhcpv6_init,
         wanp_dhcpv6_run,
         wanp_dhcpv6_fini);

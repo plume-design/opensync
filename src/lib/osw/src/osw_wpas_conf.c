@@ -60,19 +60,6 @@ osw_wpas_util_fill_global_block(struct osw_drv_vif_config_sta *sta,
     OSW_HOSTAP_CONF_SET_VAL(conf->sae_pwe, 2);
 }
 
-static bool
-osw_wpas_util_key_mgmt_has_none(const char *key_mgmt)
-{
-    char *input = strdupa(key_mgmt);
-    char *cursor = input;
-    char *token;
-
-    while ((token = strsep(&cursor, " \t")) != NULL) {
-        if (strcmp(token, "NONE") == 0) return true;
-    }
-    return false;
-}
-
 static void
 osw_wpas_util_fill_network_block(struct osw_drv_vif_sta_network *network,
                                  struct osw_hostap_conf_sta_network_config *conf)
@@ -110,17 +97,10 @@ osw_wpas_util_fill_network_block(struct osw_drv_vif_sta_network *network,
         FREE(proto);
     }
 
-    char key_mgmt[OSW_HOSTAP_CONF_WPA_KEY_MGMT_MAX_LEN] = {0};
-    const char *wpa_key_mgmt = osw_hostap_conf_wpa_key_mgmt_from_osw(&network->wpa);
-    if (wpa_key_mgmt != NULL) {
-        STRSCAT(key_mgmt, wpa_key_mgmt);
-        FREE(wpa_key_mgmt);
-    }
-    if (network->open) {
-        STRSCAT(key_mgmt, "NONE ");
-    }
-    if (strlen(key_mgmt) > 0) {
+    const char *key_mgmt = osw_hostap_conf_wpa_key_mgmt_from_osw(&network->wpa);
+    if (key_mgmt != NULL) {
         OSW_HOSTAP_CONF_SET_BUF(conf->key_mgmt, key_mgmt);
+        FREE(key_mgmt);
     }
 
     const char *pairwise = osw_hostap_conf_pairwise_from_osw(&network->wpa);
@@ -177,7 +157,6 @@ osw_wpas_util_parse_network_block(const char *network,
             }
             if (strcmp(k, "key_mgmt") == 0) {
                 osw_hostap_util_wpa_key_mgmt_to_osw(v, &drv_network->wpa);
-                drv_network->open = osw_wpas_util_key_mgmt_has_none(v);
             }
             if (strcmp(k, "ieee80211w") == 0) {
                 osw_hostap_util_ieee80211w_to_osw(v, &drv_network->wpa);

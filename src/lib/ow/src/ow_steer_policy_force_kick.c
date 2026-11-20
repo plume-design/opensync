@@ -29,9 +29,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <const.h>
 #include <util.h>
 #include <log.h>
+#include <os.h>
 #include <module.h>
 #include <osw_types.h>
 #include <osw_state.h>
+#include <osw_sta_assoc.h>
 #include <osw_time.h>
 #include <osw_timer.h>
 #include <osw_diag.h>
@@ -60,10 +62,10 @@ struct ow_steer_policy_force_kick {
     struct ow_steer_policy *base;
     struct ow_steer_policy_force_kick_config *next_config;
     struct ow_steer_policy_force_kick_config *config;
-    const struct osw_state_sta_info *sta_info;
     struct osw_timer reconf_timer;
     struct osw_timer enforce_timer;
-    struct osw_state_observer state_observer;
+    osw_sta_assoc_observer_t *assoc_obs;
+    osw_sta_assoc_links_t assoc_links;
 };
 
 static const char *g_policy_name = "force_kick";
@@ -102,102 +104,90 @@ ow_steer_policy_force_kick_recalc_cb(struct ow_steer_policy *policy,
     if (enforce_period == false)
         return;
 
-    if (WARN_ON(force_policy->sta_info == NULL)) {
-        ow_steer_policy_force_kick_reset(force_policy);
-        return;
-    }
+    const size_t n_links = force_policy->assoc_links.count;
+    const size_t n_candidates = ow_steer_candidate_list_get_length(candidate_list);
+    size_t n_candidates_associated = 0;
+    size_t n_candidates_associated_blocked = 0;
+    size_t n_candidates_associated_blockable = 0;
+    size_t n_candidates_unassociated_undecided = 0;
+    size_t n_candidates_unassociated_available = 0;
+    size_t i;
 
-    const struct osw_hwaddr *vif_bssid = &force_policy->sta_info->vif->drv_state->mac_addr;
-    struct ow_steer_candidate *blocked_candidate = ow_steer_candidate_list_lookup(candidate_list, vif_bssid);
-    const bool blocked_candidate_exists = blocked_candidate != NULL;
-    if (blocked_candidate_exists == false)
-        LOGI(LOG_WITH_POLICY_PREFIX(policy, "bssid: "OSW_HWADDR_FMT" preference: (nil), doesnt exist", OSW_HWADDR_ARG(vif_bssid)));
-
-    /* This is unlikely, but possible. For example if
-     * interface gets stopped _and_ sta disconnection report
-     * gets delayed it could get into a state where the
-     * local interface is no longer on the candidate list.
-     * This is currently not expected, and is hardening the
-     * code on best effort basis.
-     */
-    if (WARN_ON(blocked_candidate == NULL)) {
-        ow_steer_policy_force_kick_reset(force_policy);
-        return;
-    }
-
-    const enum ow_steer_candidate_preference blocked_candidate_pref = ow_steer_candidate_get_preference(blocked_candidate);
-    bool block_cancicdate_blockable = true;
-    if (blocked_candidate_exists == true) {
-        switch (blocked_candidate_pref) {
-            case OW_STEER_CANDIDATE_PREFERENCE_OUT_OF_SCOPE:
-            case OW_STEER_CANDIDATE_PREFERENCE_HARD_BLOCKED:
-            case OW_STEER_CANDIDATE_PREFERENCE_AVAILABLE:
-                block_cancicdate_blockable = false;
-                break;
-            case OW_STEER_CANDIDATE_PREFERENCE_SOFT_BLOCKED:
-            case OW_STEER_CANDIDATE_PREFERENCE_NONE:
-                block_cancicdate_blockable = true;
-                break;
-        }
-    }
-
-    bool any_available_candidates = false;
-    size_t i = 0;
-    for (i = 0; i < ow_steer_candidate_list_get_length(candidate_list); i++) {
-        struct ow_steer_candidate *candidate = ow_steer_candidate_list_get(candidate_list, i);
-        const enum ow_steer_candidate_preference candidate_pref = ow_steer_candidate_get_preference(candidate);
-
-        if (blocked_candidate == candidate)
-            continue;
-
-        switch (candidate_pref) {
-            case OW_STEER_CANDIDATE_PREFERENCE_OUT_OF_SCOPE:
-            case OW_STEER_CANDIDATE_PREFERENCE_HARD_BLOCKED:
-            case OW_STEER_CANDIDATE_PREFERENCE_SOFT_BLOCKED:
-                any_available_candidates = false;
-                break;
-            case OW_STEER_CANDIDATE_PREFERENCE_NONE:
-            case OW_STEER_CANDIDATE_PREFERENCE_AVAILABLE:
-                any_available_candidates = true;
-                break;
-        }
-
-        if (any_available_candidates == true)
-            break;
-    }
-
-    if (any_available_candidates == false)
-        LOGI(LOG_WITH_POLICY_PREFIX(policy, "no other candidates available"));
-
-    const bool continue_enforce = blocked_candidate_exists == true &&
-                                  block_cancicdate_blockable == true &&
-                                  any_available_candidates == true;
-    if (continue_enforce == false) {
-        ow_steer_policy_force_kick_reset(force_policy);
-        return;
-    }
-
-    for (i = 0; i < ow_steer_candidate_list_get_length(candidate_list); i++) {
+    for (i = 0; i < n_candidates; i++) {
         struct ow_steer_candidate *candidate = ow_steer_candidate_list_get(candidate_list, i);
         const struct osw_hwaddr *bssid = ow_steer_candidate_get_bssid(candidate);
-        const enum ow_steer_candidate_preference candidate_pref = ow_steer_candidate_get_preference(candidate);
-        const enum ow_steer_candidate_preference blocked_pref = OW_STEER_CANDIDATE_PREFERENCE_HARD_BLOCKED;
-        if (blocked_candidate != candidate)
-            continue;
+        const bool associated = osw_sta_assoc_links_lookup(&force_policy->assoc_links, bssid, NULL);
+        const enum ow_steer_candidate_preference pref = ow_steer_candidate_get_preference(candidate);
 
-        if (candidate_pref != OW_STEER_CANDIDATE_PREFERENCE_NONE) {
-            LOGD(LOG_WITH_POLICY_PREFIX(policy, "bssid: "OSW_HWADDR_FMT" preference: %s cannot be set, already set to: %s",
-                 OSW_HWADDR_ARG(bssid),
-                 ow_steer_candidate_preference_to_cstr(blocked_pref),
-                 ow_steer_candidate_preference_to_cstr(candidate_pref)));
-            continue;
+        n_candidates_associated += associated ? 1 : 0;
+
+        switch (pref) {
+            case OW_STEER_CANDIDATE_PREFERENCE_HARD_BLOCKED:
+                n_candidates_associated_blocked += associated ? 1 : 0;
+                break;
+            case OW_STEER_CANDIDATE_PREFERENCE_OUT_OF_SCOPE:
+                if (associated) {
+                    LOGW(LOG_WITH_POLICY_PREFIX(policy, "candidate "OSW_HWADDR_FMT" is out of scope, associated: %d"
+                         "; suspected high-level misconfiguration",
+                         OSW_HWADDR_ARG(bssid), associated));
+                }
+                break;
+            case OW_STEER_CANDIDATE_PREFERENCE_SOFT_BLOCKED:
+                if (associated) {
+                    LOGW(LOG_WITH_POLICY_PREFIX(policy, "candidate "OSW_HWADDR_FMT" is soft-blocked, associated: %d"
+                         "; suspected high-level misconfiguration",
+                         OSW_HWADDR_ARG(bssid), associated));
+                }
+                break;
+            case OW_STEER_CANDIDATE_PREFERENCE_NONE:
+                n_candidates_associated_blockable += associated ? 1 : 0;
+                n_candidates_unassociated_undecided += associated ? 0 : 1;
+                break;
+            case OW_STEER_CANDIDATE_PREFERENCE_AVAILABLE:
+                n_candidates_unassociated_available += associated ? 0 : 1;
+                break;
         }
+    }
+
+    const bool blocking_permissible =
+        (n_links == n_candidates_associated) &&
+        (n_candidates_associated == (n_candidates_associated_blockable + n_candidates_associated_blocked)) &&
+        ((n_candidates_unassociated_undecided + n_candidates_unassociated_available) > 0);
+
+    if (blocking_permissible == false) {
+        LOGI(LOG_WITH_POLICY_PREFIX(policy, "aborted force kick, blocking not permissible"
+             ": n_links: %zu"
+             ", n_candidates: %zu"
+             ", n_candidates_associated: %zu"
+             ", n_candidates_associated_blockable: %zu"
+             ", n_candidates_associated_blocked: %zu"
+             ", n_candidates_unassociated_undecided: %zu"
+             ", n_candidates_unassociated_available: %zu",
+             n_links,
+             n_candidates,
+             n_candidates_associated,
+             n_candidates_associated_blockable,
+             n_candidates_associated_blocked,
+             n_candidates_unassociated_undecided,
+             n_candidates_unassociated_available));
+        ow_steer_policy_force_kick_reset(force_policy);
+        return;
+    }
+
+    for (i = 0; i < n_links; i++) {
+        const osw_sta_assoc_link_t *link = &force_policy->assoc_links.links[i];
+        const struct osw_hwaddr *bssid = &link->local_sta_addr;
+        struct ow_steer_candidate *candidate = ow_steer_candidate_list_lookup(candidate_list, bssid);
+        if (WARN_ON(candidate == NULL)) continue;
+
+        /* This early `continue` avoids unnecessary sanity
+         * warning in ow_steer_candidate_set_preference() */
+        const enum ow_steer_candidate_preference pref = ow_steer_candidate_get_preference(candidate);
+        const bool hard_blocked_already = (pref == OW_STEER_CANDIDATE_PREFERENCE_HARD_BLOCKED);
+        if (hard_blocked_already == true) continue;
 
         const char *reason = ow_steer_policy_get_name(policy);
-        ow_steer_candidate_set_preference(candidate, reason, blocked_pref);
-
-        LOGD(LOG_WITH_POLICY_PREFIX(policy, "bssid: "OSW_HWADDR_FMT" preference: %s", OSW_HWADDR_ARG(bssid),
-             ow_steer_candidate_preference_to_cstr(ow_steer_candidate_get_preference(candidate))));
+        ow_steer_candidate_set_preference(candidate, reason, OW_STEER_CANDIDATE_PREFERENCE_HARD_BLOCKED);
     }
 }
 
@@ -220,53 +210,75 @@ ow_steer_policy_force_kick_sigusr1_dump_cb(osw_diag_pipe_t *pipe,
 }
 
 static void
+ow_steer_policy_force_kick_set_assoc_links(struct ow_steer_policy_force_kick *force_policy,
+                                           const osw_sta_assoc_links_t *assoc_links,
+                                           osw_sta_assoc_event_e ev)
+{
+    MEMZERO(force_policy->assoc_links);
+    if (assoc_links != NULL) {
+        force_policy->assoc_links = *assoc_links;
+    }
+
+    switch (ev) {
+        case OSW_STA_ASSOC_UNDEFINED:
+            break;
+        case OSW_STA_ASSOC_CONNECTED:
+            break;
+        case OSW_STA_ASSOC_RECONNECTED:
+            if (force_policy->config != NULL) {
+                ow_steer_policy_force_kick_reset(force_policy);
+            }
+            break;
+        case OSW_STA_ASSOC_DISCONNECTED:
+            if (force_policy->config != NULL) {
+                ow_steer_policy_force_kick_reset(force_policy);
+            }
+            break;
+    }
+}
+
+static void
+ow_steer_policy_force_kick_assoc_changed_cb(void *priv,
+                                            const osw_sta_assoc_entry_t *entry,
+                                            osw_sta_assoc_event_e ev)
+{
+    struct ow_steer_policy_force_kick *force_policy = priv;
+    const osw_sta_assoc_links_t *active_links = osw_sta_assoc_entry_get_active_links(entry);
+    ow_steer_policy_force_kick_set_assoc_links(force_policy, active_links, ev);
+}
+
+static osw_sta_assoc_observer_t *
+ow_steer_policy_force_kick_assoc_observer(struct ow_steer_policy_force_kick *force_policy,
+                                          const struct osw_hwaddr *sta_addr)
+{
+    osw_sta_assoc_t *m_sta_assoc = OSW_MODULE_LOAD(osw_sta_assoc);
+    struct osw_sta_assoc_observer_params *params = osw_sta_assoc_observer_params_alloc();
+    osw_sta_assoc_observer_params_set_addr(params, sta_addr);
+    osw_sta_assoc_observer_params_set_changed_fn(params, ow_steer_policy_force_kick_assoc_changed_cb, force_policy);
+    return osw_sta_assoc_observer_alloc(m_sta_assoc, params);
+}
+
+static void
 ow_steer_policy_force_kick_reconf_timer_cb(struct osw_timer *timer)
 {
     ASSERT(timer != NULL, "");
 
     struct ow_steer_policy_force_kick *force_policy = container_of(timer, struct ow_steer_policy_force_kick, reconf_timer);
 
-    bool unregister_observer = false;
-    bool register_observer = false;
-
-    if (force_policy->config == NULL && force_policy->next_config == NULL) {
-        /* nop */
-        return;
-    }
-    else if (force_policy->config == NULL && force_policy->next_config != NULL) {
-        LOGI(LOG_WITH_POLICY_PREFIX(force_policy->base, "config added"));
-        register_observer = true;
-    }
-    else if (force_policy->config != NULL && force_policy->next_config == NULL) {
-        LOGI(LOG_WITH_POLICY_PREFIX(force_policy->base, "config removed"));
-        unregister_observer = true;
-    }
-    else if (force_policy->config != NULL && force_policy->next_config != NULL) {
-        LOGI(LOG_WITH_POLICY_PREFIX(force_policy->base, "config changed"));
-        unregister_observer = true;
-        register_observer = true;
-    }
-    else {
-        ASSERT(false, "");
-    }
-
     FREE(force_policy->config);
     force_policy->config = NULL;
-    if (unregister_observer == true)
-        osw_state_unregister_observer(&force_policy->state_observer);
 
     force_policy->config = force_policy->next_config;
     force_policy->next_config = NULL;
-    if (register_observer == true) {
-        osw_state_register_observer(&force_policy->state_observer);
 
+    if (force_policy->config != NULL) {
         ow_steer_policy_trigger_executor(force_policy->base);
 
         const uint64_t enforce_period_nsec = osw_time_mono_clk() + OSW_TIME_SEC(OW_STEER_POLICY_FORCE_KICK_ENFORCE_PERIOD_SEC);
         osw_timer_arm_at_nsec(&force_policy->enforce_timer, enforce_period_nsec);
         LOGI(LOG_WITH_POLICY_PREFIX(force_policy->base, "enforce period started"));
 
-        if (force_policy->sta_info == NULL) {
+        if (force_policy->assoc_links.count == 0) {
             LOGI(LOG_WITH_POLICY_PREFIX(force_policy->base, "aborted force kick, sta disconnected"));
             ow_steer_policy_force_kick_reset(force_policy);
             return;
@@ -289,52 +301,6 @@ ow_steer_policy_force_kick_enforce_timer_cb(struct osw_timer *timer)
     ow_steer_policy_dismiss_executor(force_policy->base);
 }
 
-static void
-ow_steer_policy_force_kick_sta_connected_cb(struct osw_state_observer *observer,
-                                            const struct osw_state_sta_info *sta_info)
-{
-    struct ow_steer_policy_force_kick *force_policy = container_of(observer, struct ow_steer_policy_force_kick, state_observer);
-
-    const struct osw_hwaddr *policy_sta_addr = ow_steer_policy_get_sta_addr(force_policy->base);
-    if (osw_hwaddr_cmp(sta_info->mac_addr, policy_sta_addr) != 0)
-        return;
-
-    force_policy->sta_info = sta_info;
-
-    const struct ow_steer_policy_force_kick_config *config = force_policy->config;
-    const struct osw_hwaddr *vif_bssid = &sta_info->vif->drv_state->mac_addr;
-    if (config == NULL) {
-        LOGI(LOG_WITH_POLICY_PREFIX(force_policy->base, "sta connected to bssid: "OSW_HWADDR_FMT", (no conf)", OSW_HWADDR_ARG(vif_bssid)));
-    }
-    else {
-        LOGI(LOG_WITH_POLICY_PREFIX(force_policy->base, "sta connected from bssid: "OSW_HWADDR_FMT", (no conf)", OSW_HWADDR_ARG(vif_bssid)));
-    }
-}
-
-static void
-ow_steer_policy_force_kick_sta_disconnected_cb(struct osw_state_observer *observer,
-                                               const struct osw_state_sta_info *sta_info)
-{
-    struct ow_steer_policy_force_kick *force_policy = container_of(observer, struct ow_steer_policy_force_kick, state_observer);
-
-    const struct osw_hwaddr *policy_sta_addr = ow_steer_policy_get_sta_addr(force_policy->base);
-    if (osw_hwaddr_cmp(sta_info->mac_addr, policy_sta_addr) != 0)
-        return;
-
-    if (force_policy->sta_info == sta_info)
-        force_policy->sta_info = NULL;
-
-    const struct ow_steer_policy_force_kick_config *config = force_policy->config;
-    const struct osw_hwaddr *vif_bssid = &sta_info->vif->drv_state->mac_addr;
-    if (config == NULL) {
-        LOGI(LOG_WITH_POLICY_PREFIX(force_policy->base, "sta disconnected from bssid: "OSW_HWADDR_FMT", (no conf)", OSW_HWADDR_ARG(vif_bssid)));
-    }
-    else {
-        LOGI(LOG_WITH_POLICY_PREFIX(force_policy->base, "sta disconnected from bssid: "OSW_HWADDR_FMT, OSW_HWADDR_ARG(vif_bssid)));
-        ow_steer_policy_force_kick_reset(force_policy);
-    }
-}
-
 struct ow_steer_policy_force_kick*
 ow_steer_policy_force_kick_create(const struct osw_hwaddr *sta_addr,
                                   const struct ow_steer_policy_mediator *mediator,
@@ -347,18 +313,12 @@ ow_steer_policy_force_kick_create(const struct osw_hwaddr *sta_addr,
         .sigusr1_dump_fn = ow_steer_policy_force_kick_sigusr1_dump_cb,
         .recalc_fn = ow_steer_policy_force_kick_recalc_cb,
     };
-    const struct osw_state_observer state_observer = {
-        .name = g_policy_name,
-        .sta_connected_fn = ow_steer_policy_force_kick_sta_connected_cb,
-        .sta_disconnected_fn = ow_steer_policy_force_kick_sta_disconnected_cb,
-    };
-
     struct ow_steer_policy_force_kick *force_policy = CALLOC(1, sizeof(*force_policy));
     osw_timer_init(&force_policy->reconf_timer, ow_steer_policy_force_kick_reconf_timer_cb);
     osw_timer_init(&force_policy->enforce_timer, ow_steer_policy_force_kick_enforce_timer_cb);
-    memcpy(&force_policy->state_observer, &state_observer, sizeof(force_policy->state_observer));
 
     force_policy->base = ow_steer_policy_create(g_policy_name, sta_addr, &ops, mediator, log_prefix, force_policy);
+    force_policy->assoc_obs = ow_steer_policy_force_kick_assoc_observer(force_policy, sta_addr);
 
     return force_policy;
 }
@@ -369,16 +329,14 @@ ow_steer_policy_force_kick_free(struct ow_steer_policy_force_kick *force_policy)
     if (force_policy == NULL)
         return;
 
-    const bool unregister_observer = force_policy->config != NULL;
-
     ow_steer_policy_force_kick_reset(force_policy);
+    osw_sta_assoc_observer_drop(force_policy->assoc_obs);
+    force_policy->assoc_obs = NULL;
     osw_timer_disarm(&force_policy->reconf_timer);
     FREE(force_policy->next_config);
     force_policy->next_config = NULL;
     FREE(force_policy->config);
     force_policy->config = NULL;
-    if (unregister_observer == true)
-        osw_state_unregister_observer(&force_policy->state_observer);
     ow_steer_policy_free(force_policy->base);
     FREE(force_policy);
 }

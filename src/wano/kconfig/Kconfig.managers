@@ -37,41 +37,49 @@ if MANAGER_WANO
             finishes, defeating the purpose of the backoff.
 
             When enabled this raises:
-              - MANAGER_WANO_PLUGIN_TIMEOUT           25s  -> 125s
-              - MANAGER_WANO_PLUGIN_IMMEDIATE_TIMEOUT 300s -> 375s
+              - MANAGER_WANO_PLUGIN_DHCP_TIMEOUT      25s  -> 127s
+              - MANAGER_WANO_PLUGIN_IMMEDIATE_TIMEOUT 300s -> 86400s (24h)
 
-            WARNING: this knob changes the timeout for EVERY WANO plug-in, not
-            just DHCPv4. A longer probing timeout can significantly increase
-            onboarding time in several cases, e.g.:
-              - an invalid static-IP/VLAN WAN_Config takes ~125s (instead of
-                ~25s) to fail before WANO falls back to the next plug-in;
-              - with multiple prioritized WAN_Configs, each invalid one adds
-                ~125s before the next-prio config or pure-DHCP fallback is tried;
-              - a node meant to become a LEAF (not eth-connected) spends ~125s
-                instead of ~25s failing the WAN_Config / role-switch probe,
-                slowing LEAF onboarding and daisy-chaining.
+            The immediate-timeout is raised to 24h (effectively disabling
+            WANO's own pipeline backoff for the DHCP path). This is to keep the
+            whole exponential period consistent.
+
+            Only the DHCPv4 plug-in uses the longer timeout (also when it runs
+            on a VLAN interface). All other plug-ins (PPPoE, static IPv4,
+            DHCPv6) keep MANAGER_WANO_PLUGIN_TIMEOUT. A DHCPv4 probe that fails
+            (e.g. on a VLAN without a DHCP server) still takes ~127s (instead
+            of ~25s) before WANO moves on.
 
             Leave this off (default) unless the platform has a udhcpc patched
-            for RFC 2131 backoff (see OSN_UDHCPC_RFC_2131_BACKOFF) and the
-            slower failure/fallback path is acceptable. It defaults on only the when
-            OSN_UDHCPC_RFC_2131_BACKOFF is enabled.
+            for RFC 2131 backoff (see OSN_UDHCPC_RFC_2131_BACKOFF). It defaults
+            on only when OSN_UDHCPC_RFC_2131_BACKOFF is enabled.
 
     config MANAGER_WANO_PLUGIN_TIMEOUT
         int "WAN plug-in link probing timeout"
-        default 125 if MANAGER_WANO_SUPPORT_EXP_BACKOFF_DHCP
         default 25
         help
             If the WAN plug-in probing doesn't reach a conclusion in the amount
             of time defined by this option, it is terminated and WANO moves to
             the next plug-in in the list.
 
-            The 125s value (used only when MANAGER_WANO_SUPPORT_EXP_BACKOFF_DHCP
+            DHCP plug-ins use MANAGER_WANO_PLUGIN_DHCP_TIMEOUT instead.
+
+    config MANAGER_WANO_PLUGIN_DHCP_TIMEOUT
+        int "WAN DHCP plug-in link probing timeout"
+        default 127 if MANAGER_WANO_SUPPORT_EXP_BACKOFF_DHCP
+        default 25
+        help
+            Same as MANAGER_WANO_PLUGIN_TIMEOUT, but for the DHCPv4 plug-in
+            only.
+
+            The 127s value (used only when MANAGER_WANO_SUPPORT_EXP_BACKOFF_DHCP
             is set) covers the full RFC 2131 §4.1 DISCOVER backoff curve
-            (4 + 8 + 16 + 32 + 64 = 124s, rounded up to 125s).
+            (4 + 8 + 16 + 32 + 64 = 124s), plus a few extra seconds of margin
+            for jitter.
 
     config MANAGER_WANO_PLUGIN_IMMEDIATE_TIMEOUT
         int "WAN plug-in immediate timeout"
-        default 375 if MANAGER_WANO_SUPPORT_EXP_BACKOFF_DHCP
+        default 86400 if MANAGER_WANO_SUPPORT_EXP_BACKOFF_DHCP
         default 300
         help
             This is the amount of time that the pipeline is allowed to do an

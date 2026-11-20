@@ -167,6 +167,7 @@ static struct wano_plugin wanp_ethclient_module = WANO_PLUGIN_INIT(
         "ethclient",
         0,
         WANO_PLUGIN_MASK_ALL,
+        CONFIG_MANAGER_WANO_PLUGIN_TIMEOUT,
         wanp_ethclient_init,
         wanp_ethclient_run,
         wanp_ethclient_fini);

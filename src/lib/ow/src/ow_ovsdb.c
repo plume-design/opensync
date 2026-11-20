@@ -4311,7 +4311,7 @@ ow_ovsdb_vconf_to_ow_conf_sta(const struct schema_Wifi_VIF_Config *vconf,
 
         /* FIXME: Optimize to not overwrite it all the time */
         ow_conf_vif_flush_sta_net(vconf->if_name);
-        ow_conf_vif_set_sta_net(vconf->if_name, &ssid, &bssid, &psk, &wpa, &bridge, &multi_ap, NULL, NULL);
+        ow_conf_vif_set_sta_net(vconf->if_name, &ssid, &bssid, &psk, &wpa, &bridge, &multi_ap, NULL);
     }
     else {
         ow_ovsdb_cconf_sched();

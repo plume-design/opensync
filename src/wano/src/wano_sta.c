@@ -55,8 +55,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #define MODULE_ID LOG_MODULE_ID_MISC
 
-#define WANO_STA_MAX_VIFS             8
-#define WANO_STA_SCAN_TIMEOUT_DEFAULT 30
+#define WANO_STA_MAX_VIFS                          8
+#define WANO_STA_SCAN_TIMEOUT_DEFAULT              30
+#define WANO_STA_POST_ASSOC_RECOVERY_TIMEOUT       10
+#define WANO_STA_POST_ASSOC_RECOVERY_DELAY_PHASE_2 5
 
 /* =========================================================================
  * Per-STA VIF tracking (STA VIF and MLD bond interfaces)
@@ -72,6 +74,8 @@ struct wano_sta_vif
 
 static ds_tree_t g_wano_sta_vifs = DS_TREE_INIT(ds_str_cmp, struct wano_sta_vif, vs_tnode);
 
+/* A STA available on this device. With info on the corresponding radio,
+ * VIF name, band and band priority. */
 struct wano_sta_entry
 {
     char radio[C_IFNAME_LEN];
@@ -79,12 +83,6 @@ struct wano_sta_entry
     char band[8];
     int band_prio;
 };
-
-/* A list of STAs available on this device. With info on the corresponding radio,
- * VIF name, band and band priority. Initialized once at init.
- */
-static struct wano_sta_entry g_sta_list[WANO_STA_MAX_VIFS];
-static int g_sta_list_len = 0;
 
 /* =========================================================================
  * STA uplink connection status, reported into WAN_Config other_status
@@ -156,9 +154,20 @@ struct wano_sta_policy
      */
     bool sp_failed;
 
-    /* If no pinned VIF, this index points to the currently enabled STA in g_sta_list */
+    /* STAs available on this device, in the order this policy tries them:
+     * default band priority order, with the last associated STA moved to the head. */
+    struct wano_sta_entry sp_sta_list[WANO_STA_MAX_VIFS];
+    int sp_sta_list_len;
+
+    /* If no pinned VIF, this index points to the currently enabled STA in sp_sta_list */
     int sp_rotation_idx;
     bool sp_rotation_exhausted;
+
+    /* Have we ever associated this cycle? */
+    bool sp_any_associated;
+
+    /* Are we currently associated? */
+    bool sp_currently_associated;
 
     /* Last connection status achieved by this policy */
     enum wano_sta_status sp_last_status;
@@ -175,6 +184,10 @@ struct wano_sta_policy
 static ds_tree_t g_sta_policies = DS_TREE_INIT(ds_str_cmp, struct wano_sta_policy, sp_tnode);
 static bool g_sta_initialized = false;
 
+/* The policy queue: defines order in which the policies are to be tried. */
+static struct wano_sta_policy **g_sta_policy_queue = NULL;
+static int g_sta_policy_queue_len = 0;
+
 /* =========================================================================
  * Attach state machine
  *
@@ -188,12 +201,6 @@ typedef enum
 } wsta_state_t;
 
 static wsta_state_t g_sta_state = WSTA_S_IDLE;
-
-/* Have we ever associated this cycle? */
-static bool g_sta_any_associated = false;
-
-/* Are we currently associated? */
-static bool g_sta_currently_associated = false;
 
 /* =========================================================================
  * OVSDB tables
@@ -214,6 +221,7 @@ static void wano_sta_apply_timer_fn(struct ev_loop *loop, ev_timer *w, int reven
 static void wano_sta_scan_timer_fn(struct ev_loop *loop, ev_timer *w, int revent);
 static void wano_sta_on_scan_timeout_expire_or_failure(void);
 static void wano_sta_schedule_apply(void);
+static void wano_sta_schedule_apply_timeout(double timeout);
 static void callback_Wifi_VIF_State(
         ovsdb_update_monitor_t *mon,
         struct schema_Wifi_VIF_State *old,
@@ -338,88 +346,118 @@ static int wano_sta_entry_band_prio_cmp(const void *a, const void *b)
     return ea->band_prio - eb->band_prio;
 }
 
-/* Sort g_sta_list[] by freq_band priority (highest priority first). */
-static void wano_sta_sort_list_by_band(void)
+/* Sort sp->sp_sta_list[] by freq_band priority (highest priority first). */
+static void wano_sta_policy_sort_sta_list_by_band(struct wano_sta_policy *sp)
 {
+    struct wano_sta_entry *list = sp->sp_sta_list;
     int i;
 
-    if (g_sta_list_len <= 1) return;
+    if (sp->sp_sta_list_len <= 1) return;
 
     /* First, lookup freq_band for each STA, cache it in the entry, and map
      * it to a priority. */
-    for (i = 0; i < g_sta_list_len; i++)
+    for (i = 0; i < sp->sp_sta_list_len; i++)
     {
-        if (wano_sta_lookup_freq_band(g_sta_list[i].radio, g_sta_list[i].band, sizeof(g_sta_list[i].band)) < 0)
+        if (wano_sta_lookup_freq_band(list[i].radio, list[i].band, sizeof(list[i].band)) < 0)
         {
             LOG(WARN,
                 "wano_sta: %s (radio %s): freq_band missing — placing at rotation tail",
-                g_sta_list[i].vif,
-                g_sta_list[i].radio);  // not really expected to happen, but ok
-            g_sta_list[i].band_prio = 5;
+                list[i].vif,
+                list[i].radio);  // not really expected to happen, but ok
+            list[i].band_prio = 5;
         }
         else
         {
-            g_sta_list[i].band_prio = wano_sta_freq_band_priority(g_sta_list[i].band);
-            if (g_sta_list[i].band_prio == 5)
+            list[i].band_prio = wano_sta_freq_band_priority(list[i].band);
+            if (list[i].band_prio == 5)
             {
                 LOG(WARN,
                     "wano_sta: %s (radio %s): unrecognized freq_band '%s' — placing at rotation tail",
-                    g_sta_list[i].vif,
-                    g_sta_list[i].radio,
-                    g_sta_list[i].band);
+                    list[i].vif,
+                    list[i].radio,
+                    list[i].band);
             }
         }
     }
 
     /* Sort by band priority */
-    qsort(g_sta_list, g_sta_list_len, sizeof(g_sta_list[0]), wano_sta_entry_band_prio_cmp);
+    qsort(list, sp->sp_sta_list_len, sizeof(list[0]), wano_sta_entry_band_prio_cmp);
 
-    LOG(NOTICE, "wano_sta: sorted g_sta_list by freq_band priority:");
+    LOG(NOTICE, "wano_sta: %s: sorted STA list by freq_band priority:", sp->sp_uuid);
 
-    for (i = 0; i < g_sta_list_len; i++)
+    for (i = 0; i < sp->sp_sta_list_len; i++)
     {
         LOG(NOTICE,
             "wano_sta:   [%d] vif=%s radio=%s band=%s",
             i,
-            g_sta_list[i].vif,
-            g_sta_list[i].radio,
-            g_sta_list[i].band[0] ? g_sta_list[i].band : "?");
+            list[i].vif,
+            list[i].radio,
+            list[i].band[0] ? list[i].band : "?");
     }
 }
 
 /* =========================================================================
- * Parse CONFIG_OVSDB_BOOTSTRAP_WIFI_STA_LIST
+ * Init policy's STA list from CONFIG_OVSDB_BOOTSTRAP_WIFI_STA_LIST,
+ * in default (band priority) order.
  * Format: "wifi0:bhaul-sta-24 wifi1:bhaul-sta-60 wifi2:bhaul-sta-50"
  * ======================================================================= */
-static void wano_sta_parse_list(void)
+static void wano_sta_policy_sta_list_init(struct wano_sta_policy *sp)
 {
+    sp->sp_sta_list_len = 0;
+
 #ifdef CONFIG_OVSDB_BOOTSTRAP_WIFI_STA_LIST
     char buf[] = CONFIG_OVSDB_BOOTSTRAP_WIFI_STA_LIST;
     char *token;
     char *saveptr;
 
-    g_sta_list_len = 0;
-
     token = strtok_r(buf, " ", &saveptr);
-    while (token != NULL && g_sta_list_len < WANO_STA_MAX_VIFS)
+    while (token != NULL && sp->sp_sta_list_len < WANO_STA_MAX_VIFS)
     {
         char *colon = strchr(token, ':');
         if (colon != NULL)
         {
             *colon = '\0';
-            STRSCPY(g_sta_list[g_sta_list_len].radio, token);
-            STRSCPY(g_sta_list[g_sta_list_len].vif, colon + 1);
-            g_sta_list_len++;
+            STRSCPY(sp->sp_sta_list[sp->sp_sta_list_len].radio, token);
+            STRSCPY(sp->sp_sta_list[sp->sp_sta_list_len].vif, colon + 1);
+            sp->sp_sta_list_len++;
         }
         token = strtok_r(NULL, " ", &saveptr);
     }
 
-    LOG(INFO, "wano_sta: Parsed %d STA entries from bootstrap config", g_sta_list_len);
+    LOG(INFO, "wano_sta: %s: Parsed %d STA entries from bootstrap config", sp->sp_uuid, sp->sp_sta_list_len);
 #else
-    g_sta_list_len = 0;
-    LOG(INFO, "wano_sta: No STA list configured");
+    LOG(INFO, "wano_sta: %s: No STA list configured", sp->sp_uuid);
 #endif
-    wano_sta_sort_list_by_band();
+    wano_sta_policy_sort_sta_list_by_band(sp);
+}
+
+/* Find `vif` in policy's STA list. Returns NULL if not found. */
+static const struct wano_sta_entry *wano_sta_policy_sta_find(const struct wano_sta_policy *sp, const char *vif)
+{
+    int i;
+    for (i = 0; i < sp->sp_sta_list_len; i++)
+    {
+        if (strcmp(sp->sp_sta_list[i].vif, vif) == 0) return &sp->sp_sta_list[i];
+    }
+    return NULL;
+}
+
+/* Move the policy's current link to the head of its STA list, so the
+ * last associated STA is tried first on the next attempt. */
+static void wano_sta_policy_sta_promote(struct wano_sta_policy *sp, const char *vif)
+{
+    const int idx = sp->sp_rotation_idx;
+
+    if (sp->sp_ifname[0] != '\0') return; /* pinned VIF, no rotation */
+    if (idx <= 0 || idx >= sp->sp_sta_list_len) return;
+    if (strcmp(sp->sp_sta_list[idx].vif, vif) != 0) return; /* not the current link */
+
+    const struct wano_sta_entry entry = sp->sp_sta_list[idx];
+    memmove(&sp->sp_sta_list[1], &sp->sp_sta_list[0], idx * sizeof(sp->sp_sta_list[0]));
+    sp->sp_sta_list[0] = entry;
+    sp->sp_rotation_idx = 0; /* still points at the current link */
+
+    LOG(NOTICE, "wano_sta: %s: %s moved to head of STA list", sp->sp_uuid, vif);
 }
 
 /*
@@ -610,16 +648,10 @@ static int wano_sta_wanted_policy_count(void)
 
 static int wano_sta_scan_timeout_get(void)
 {
-    struct wano_sta_policy *sp;
-    int timeout = WANO_STA_SCAN_TIMEOUT_DEFAULT;
+    struct wano_sta_policy *sp = wano_sta_attached_policy();
 
-    ds_tree_foreach (&g_sta_policies, sp)
-    {
-        if (!sp->sp_attached) continue;
-        if (sp->sp_scan_timeout > timeout) timeout = sp->sp_scan_timeout;
-    }
-
-    return timeout;
+    if (sp == NULL || sp->sp_scan_timeout <= 0) return WANO_STA_SCAN_TIMEOUT_DEFAULT;
+    return sp->sp_scan_timeout;
 }
 
 /* Clears sp_failed on every policy and resets rotation index on all of them. */
@@ -684,19 +716,113 @@ static bool wano_sta_policy_outranks(const struct wano_sta_policy *a, const stru
     return strcmp(a->sp_uuid, b->sp_uuid) < 0; /* If equal priorities, compare by uuid only for determinism of choice */
 }
 
-/* Selects the next/current highest-priority eligible policy. */
+/* Policy queue order: a test connection always first, otherwise by priority. */
+static bool wano_sta_policy_queue_outranks(const struct wano_sta_policy *a, const struct wano_sta_policy *b)
+{
+    if (a->sp_test_connection != b->sp_test_connection) return a->sp_test_connection;
+    return wano_sta_policy_outranks(a, b);
+}
+
+/* qsort comparator for ordering the policy queue. */
+static int wano_sta_policy_queue_cmp(const void *a, const void *b)
+{
+    const struct wano_sta_policy *pa = *(struct wano_sta_policy *const *)a;
+    const struct wano_sta_policy *pb = *(struct wano_sta_policy *const *)b;
+
+    if (wano_sta_policy_queue_outranks(pa, pb)) return -1;
+    if (wano_sta_policy_queue_outranks(pb, pa)) return 1;
+    return 0;
+}
+
+/* Sort the policy queue by default initial order (any test connection first, then by priority) */
+static void wano_sta_policy_queue_sort(void)
+{
+    int i;
+
+    qsort(g_sta_policy_queue, g_sta_policy_queue_len, sizeof(g_sta_policy_queue[0]), wano_sta_policy_queue_cmp);
+
+    LOG(NOTICE, "wano_sta: sorted policy queue:");
+
+    for (i = 0; i < g_sta_policy_queue_len; i++)
+    {
+        LOG(NOTICE,
+            "wano_sta:   [%d] %s priority=%d ssid=%s%s",
+            i,
+            g_sta_policy_queue[i]->sp_uuid,
+            g_sta_policy_queue[i]->sp_wan_priority,
+            g_sta_policy_queue[i]->sp_ssid,
+            g_sta_policy_queue[i]->sp_test_connection ? " (test connection)" : "");
+    }
+}
+
+/* Insert `sp` by priority without re-sorting the rest. A test connection goes to the head. */
+static void wano_sta_policy_queue_insert(struct wano_sta_policy *sp)
+{
+    int idx = g_sta_policy_queue_len;
+
+    while (idx > 0 && !wano_sta_policy_queue_outranks(g_sta_policy_queue[idx - 1], sp))
+        idx--;
+
+    g_sta_policy_queue = REALLOC(g_sta_policy_queue, (g_sta_policy_queue_len + 1) * sizeof(g_sta_policy_queue[0]));
+    memmove(&g_sta_policy_queue[idx + 1],
+            &g_sta_policy_queue[idx],
+            (g_sta_policy_queue_len - idx) * sizeof(g_sta_policy_queue[0]));
+    g_sta_policy_queue[idx] = sp;
+    g_sta_policy_queue_len++;
+
+    LOG(NOTICE, "wano_sta: %s: inserted at [%d] of policy queue (priority=%d)", sp->sp_uuid, idx, sp->sp_wan_priority);
+}
+
+/* Index of `sp` in the policy queue, -1 if not found. */
+static int wano_sta_policy_queue_find(const struct wano_sta_policy *sp)
+{
+    int i;
+    for (i = 0; i < g_sta_policy_queue_len; i++)
+    {
+        if (g_sta_policy_queue[i] == sp) return i;
+    }
+    return -1;
+}
+
+static void wano_sta_policy_queue_remove(const struct wano_sta_policy *sp)
+{
+    const int idx = wano_sta_policy_queue_find(sp);
+    if (idx < 0) return;
+
+    memmove(&g_sta_policy_queue[idx],
+            &g_sta_policy_queue[idx + 1],
+            (g_sta_policy_queue_len - idx - 1) * sizeof(g_sta_policy_queue[0]));
+    g_sta_policy_queue_len--;
+}
+
+/* Move `sp` to the head of the policy queue, so it is tried first on the next failover.
+ * Any test connection in the queue will stay at the head. */
+static void wano_sta_policy_queue_promote(struct wano_sta_policy *sp)
+{
+    const int idx = wano_sta_policy_queue_find(sp);
+    int head = 0;
+
+    while (head < idx && g_sta_policy_queue[head]->sp_test_connection)
+        head++;
+    if (idx <= head) return;
+
+    memmove(&g_sta_policy_queue[head + 1], &g_sta_policy_queue[head], (idx - head) * sizeof(g_sta_policy_queue[0]));
+    g_sta_policy_queue[head] = sp;
+
+    LOG(NOTICE, "wano_sta: %s: moved to [%d] of policy queue", sp->sp_uuid, head);
+}
+
+/* Selects the next/current policy: the first eligible one in the policy queue. */
 static struct wano_sta_policy *wano_sta_selected_policy(void)
 {
-    struct wano_sta_policy *sp;
-    struct wano_sta_policy *sel = NULL;
+    int i;
 
-    ds_tree_foreach (&g_sta_policies, sp)
+    for (i = 0; i < g_sta_policy_queue_len; i++)
     {
-        if (!wano_sta_policy_is_eligible(sp)) continue;  // currently marked as failed or has Connectivity_Check=ok
-
-        if (sel == NULL || wano_sta_policy_outranks(sp, sel)) sel = sp;
+        /* Not eligible: currently marked as failed or has Connectivity_Check=ok */
+        if (wano_sta_policy_is_eligible(g_sta_policy_queue[i])) return g_sta_policy_queue[i];
     }
-    return sel;
+    return NULL;
 }
 
 /* Determines if the given policy should be attached right now.
@@ -757,30 +883,28 @@ static const char *wano_sta_selected_policy_get_ifname(void)
     return (sel != NULL) ? sel->sp_ifname : NULL;
 }
 
+/* Every policy's STA list holds all STAs available on this device. */
 static bool wano_sta_is_managed_vif(const char *if_name)
 {
-    int i;
-    for (i = 0; i < g_sta_list_len; i++)
+    struct wano_sta_policy *sp;
+
+    ds_tree_foreach (&g_sta_policies, sp)
     {
-        if (strcmp(g_sta_list[i].vif, if_name) == 0) return true;
+        if (wano_sta_policy_sta_find(sp, if_name) != NULL) return true;
     }
     return false;
 }
 
-/* Find the radio hosting `vif`. Returns NULL if `vif` is not in g_sta_list. */
-static const char *wano_sta_radio_for_vif(const char *vif)
+/* Find the radio hosting `vif`. Returns NULL if `vif` is not in policy's STA list. */
+static const char *wano_sta_radio_for_vif(const struct wano_sta_policy *sp, const char *vif)
 {
-    int i;
-    for (i = 0; i < g_sta_list_len; i++)
-    {
-        if (strcmp(g_sta_list[i].vif, vif) == 0) return g_sta_list[i].radio;
-    }
-    return NULL;
+    const struct wano_sta_entry *entry = wano_sta_policy_sta_find(sp, vif);
+    return (entry != NULL) ? entry->radio : NULL;
 }
 
 /* Returns the effective STA ifname for `sp`:
  *   - sp->sp_ifname when explicitly pinned (no rotation);
- *   - g_sta_list[sp->sp_rotation_idx].vif otherwise (sequential rotation).
+ *   - sp->sp_sta_list[sp->sp_rotation_idx].vif otherwise (sequential rotation).
  *
  * Returns NULL if no STAs available on this device.
  *
@@ -792,14 +916,14 @@ static const char *wano_sta_policy_current_link(const struct wano_sta_policy *sp
         return sp->sp_ifname;
     }
 
-    if (g_sta_list_len <= 0) return NULL;
+    if (sp->sp_sta_list_len <= 0) return NULL;
 
-    if (sp->sp_rotation_idx < 0 || sp->sp_rotation_idx >= g_sta_list_len)
+    if (sp->sp_rotation_idx < 0 || sp->sp_rotation_idx >= sp->sp_sta_list_len)
     {
-        return g_sta_list[0].vif;
+        return sp->sp_sta_list[0].vif;
     }
 
-    return g_sta_list[sp->sp_rotation_idx].vif;
+    return sp->sp_sta_list[sp->sp_rotation_idx].vif;
 }
 
 /* Determine the selected WANO policy and from that the current selected STA VIF */
@@ -807,8 +931,6 @@ static const char *wano_sta_compute_selected_sta(void)
 {
     const char *selected_ifname = wano_sta_selected_policy_get_ifname();
     if (selected_ifname != NULL && selected_ifname[0] != '\0') return selected_ifname;
-
-    if (g_sta_list_len <= 1) return NULL;
 
     struct wano_sta_policy *sp;
     struct wano_sta_policy *sel = NULL;
@@ -818,21 +940,22 @@ static const char *wano_sta_compute_selected_sta(void)
         if (sp->sp_ifname[0] != '\0') continue;
         if (sel == NULL || wano_sta_policy_outranks(sp, sel)) sel = sp;
     }
-    return (sel != NULL) ? wano_sta_policy_current_link(sel) : NULL;
+    return (sel != NULL && sel->sp_sta_list_len > 1) ? wano_sta_policy_current_link(sel) : NULL;
 }
 
 /* Determine the currently selected WANO policy. From that determine the
  * currently selected STA VIF. Then disable all other STA VIFs, except this one. */
 static void wano_sta_disable_unselected_stas(void)
 {
+    const struct wano_sta_policy *sel = wano_sta_selected_policy();
     const char *selected_sta = wano_sta_compute_selected_sta();
     int ii;
 
-    if (selected_sta == NULL) return;
+    if (sel == NULL || selected_sta == NULL) return;
 
-    for (ii = 0; ii < g_sta_list_len; ii++)
+    for (ii = 0; ii < sel->sp_sta_list_len; ii++)
     {
-        const char *vif = g_sta_list[ii].vif;
+        const char *vif = sel->sp_sta_list[ii].vif;
         if (strcmp(vif, selected_sta) == 0) continue;
 
         LOG(NOTICE, "wano_sta: Disabling non-selected STA VIF %s (selected_sta=%s)", vif, selected_sta);
@@ -1047,8 +1170,9 @@ static void wano_sta_start_pipelines(void)
 {
     struct wano_sta_vif *vif;
     ds_tree_iter_t iter;
+    const struct wano_sta_policy *sp = wano_sta_attached_policy();
 
-    if (!g_sta_currently_associated)
+    if (sp == NULL || !sp->sp_currently_associated)
     {
         LOG(INFO, "wano_sta: No associated STA yet, deferring pipeline start");
         return;
@@ -1124,7 +1248,7 @@ static bool wano_sta_policy_attach(struct wano_sta_policy *sp)
     const char *targetVIFname = wano_sta_policy_current_link(sp);
 
     /* Find the radio hosting the target VIF */
-    const char *radio = (targetVIFname != NULL) ? wano_sta_radio_for_vif(targetVIFname) : NULL;
+    const char *radio = (targetVIFname != NULL) ? wano_sta_radio_for_vif(sp, targetVIFname) : NULL;
     if (radio == NULL)
     {
         LOG(WARN, "wano_sta: %s: radio not found for the selected STA VIF for the selected policy", sp->sp_uuid);
@@ -1163,6 +1287,8 @@ static bool wano_sta_policy_attach(struct wano_sta_policy *sp)
         ds_tree_insert(&g_wano_sta_vifs, vif, vif->vs_ifname);
     }
     vif->vs_configured = true;
+
+    LOG(NOTICE, "wano_sta: %s: Policy with SSID '%s' attached, STA VIF = %s", sp->sp_uuid, sp->sp_ssid, targetVIFname);
 
     sp->sp_attached = true;
     return true;
@@ -1220,7 +1346,7 @@ static void wano_sta_policy_detach(struct wano_sta_policy *sp)
 
     if (ifname != NULL)
     {
-        const char *radio = wano_sta_radio_for_vif(ifname);
+        const char *radio = wano_sta_radio_for_vif(sp, ifname);
         if (radio != NULL) set_allow_sta_roam_channels(radio, false);
     }
 
@@ -1228,8 +1354,14 @@ static void wano_sta_policy_detach(struct wano_sta_policy *sp)
     wano_sta_policy_active_status_set(sp, NULL, NULL, NULL);
 
     /* Reset STA association state: */
-    g_sta_any_associated = false;
-    g_sta_currently_associated = false;
+    sp->sp_any_associated = false;
+    sp->sp_currently_associated = false;
+
+    LOG(NOTICE,
+        "wano_sta: %s: Policy with SSID '%s' detached, STA VIF = %s",
+        sp->sp_uuid,
+        sp->sp_ssid,
+        ifname != NULL ? ifname : "(none)");
 
     sp->sp_attached = false;
 }
@@ -1311,7 +1443,8 @@ static void wano_sta_apply_state_dispatch(void)
 {
     if (wano_sta_wanted_policy_count() <= 0) return;
 
-    if (g_sta_list_len == 0)
+    const struct wano_sta_policy *sel = wano_sta_selected_policy();
+    if (sel == NULL || sel->sp_sta_list_len == 0)
     {
         LOG(WARN, "wano_sta: No STA interfaces configured in bootstrap");
         return;
@@ -1389,11 +1522,7 @@ static void wano_sta_teardown(void)
     /* Clear all credential configurations as well. */
     wano_sta_clear_credentials_config();
 
-    /* Reset association state: */
-    g_sta_any_associated = false;
-    g_sta_currently_associated = false;
-
-    /* Reset per-policy cascade and rotation state */
+    /* Reset per-policy cascade, rotation and association state */
     {
         struct wano_sta_policy *sp;
         ds_tree_foreach (&g_sta_policies, sp)
@@ -1401,6 +1530,8 @@ static void wano_sta_teardown(void)
             sp->sp_failed = false;
             sp->sp_rotation_idx = 0;
             sp->sp_rotation_exhausted = false;
+            sp->sp_any_associated = false;
+            sp->sp_currently_associated = false;
         }
     }
 
@@ -1443,121 +1574,124 @@ static void wano_sta_on_scan_timeout_expire_or_failure(void)
     /* Two cases
      *   (a) Initial scan window expired (or WiFi failure) without ever associating.
      *   (b) Post-association recovery: We WERE associated this cycle
-     *       (g_sta_any_associated) but the link went away
-     *       (g_sta_currently_associated is false) and did not recover within
+     *       (sp_any_associated) but the link went away
+     *       (sp_currently_associated is false) and did not recover within
      *       the scan window.
      *
-     * Both are handled the same way: for each attached policy (normally only 1
-     * is attached), advance sequential rotation to the next link if possible;
-     * otherwise mark the policy failed and let the multi-policy cascade run. */
-    const bool initial_scan_failed = !g_sta_any_associated;
-    const bool post_assoc_recovery = g_sta_any_associated && !g_sta_currently_associated;
+     * (a): for the attached policy, advance sequential rotation to the next link
+     *      if possible; otherwise mark the policy failed and let the multi-policy
+     *      cascade run.
+     * (b): retry the same link once more after a full deconfigure; if that
+     *      fails too, it is handled as (a). */
+    struct wano_sta_policy *sp = wano_sta_attached_policy();
+    if (sp == NULL) return;
 
-    if (initial_scan_failed || post_assoc_recovery)
+    const bool initial_scan_failed = !sp->sp_any_associated;
+    const bool post_assoc_recovery = sp->sp_any_associated && !sp->sp_currently_associated;
+
+    if (!initial_scan_failed && !post_assoc_recovery) return; /* not expected, but ok */
+
+    double apply_delay = 0.0;
+
+    /* Post-assoc recovery failed: no rotation, retry the same STA VIF.
+     *  - Detach to deconfigure it (so underlying implementation, e.g., wpa_supplicant, can properly reset)
+     *  - Re-attach the policy after a small delay */
+    if (post_assoc_recovery)
     {
-        struct wano_sta_policy *sp;
-        bool any_advanced = false;
-        bool any_failed = false;
+        LOG(NOTICE,
+            "wano_sta: %s (ssid=%s): post-association disassoc unrecovered within scan window on %s -- "
+            "deconfiguring and retrying in %ds",
+            sp->sp_uuid,
+            sp->sp_ssid,
+            wano_sta_policy_current_link(sp) ?: "(none)",
+            WANO_STA_POST_ASSOC_RECOVERY_DELAY_PHASE_2);
 
-        /* Post-assoc recovery of the same STA failed as well: reset any_associated -- for the next rotation*/
-        if (post_assoc_recovery)
+        wano_sta_policy_detach(sp);
+        apply_delay = WANO_STA_POST_ASSOC_RECOVERY_DELAY_PHASE_2;
+    }
+    /* We never associated (with a known error or timeout): a WiFi connect error.
+     *
+     * The currently attached policy:
+     *  - No pinned VIF: Do sequential rotation to the next STA VIF candidate, if any
+     *  - pinned VIF: NO rotation - the policy fails in one shot */
+    else if (sp->sp_ifname[0] == '\0' && sp->sp_rotation_idx + 1 < sp->sp_sta_list_len)
+    {
+        const char *cur_link = sp->sp_sta_list[sp->sp_rotation_idx].vif;
+        const char *next_link = sp->sp_sta_list[sp->sp_rotation_idx + 1].vif;
+
+        LOG(NOTICE,
+            "wano_sta: %s (ssid=%s): No association on %s (%s), rotating to %s",
+            sp->sp_uuid,
+            sp->sp_ssid,
+            cur_link,
+            sp->sp_last_wifi_err[0] != '\0' ? sp->sp_last_wifi_err : "scan window expired",
+            next_link);
+
+        /* We will detach this policy first as detaching means we disable/deconfigure
+         * the previously configured underlying STA VIF */
+        wano_sta_policy_detach(sp);
+
+        /* Advance rotation index to the next STA VIF candidate. */
+        sp->sp_rotation_idx++;
+
+        /* Disable all but the currently selected STA VIF as determined
+         * by the just advanced rotation index */
+        wano_sta_disable_unselected_stas();
+    }
+    else
+    {
+        /* Out of rotation candidates (or pinned STA VIF) for this policy.
+         *
+         * Mark the policy failed, reset its rotation state, detach it.
+         *
+         * Let the multi-policy cascade move on to the next eligible policy.
+         */
+        sp->sp_rotation_exhausted = true;
+
+        LOG(NOTICE,
+            "wano_sta: %s (ssid=%s): no association on any link (priority=%d, ifname=%s) -- marking failed, "
+            "cascading",
+            sp->sp_uuid,
+            sp->sp_ssid,
+            sp->sp_wan_priority,
+            sp->sp_ifname[0] ? sp->sp_ifname : "(any)");
+
+        sp->sp_failed = true;
+        wano_sta_policy_detach(sp);
+        sp->sp_rotation_idx = 0;
+        sp->sp_rotation_exhausted = false;
+
+        /* If no eligible policy remains, reset all sp_failed flags so the
+         * cascade loops back to the highest priority. */
+        if (!wano_sta_any_eligible())
         {
+            const int n = wano_sta_reset_failed_all();
             LOG(NOTICE,
-                "wano_sta: post-association disassoc unrecovered within scan window -- restarting rotation cycle");
-            g_sta_any_associated = false;
-        }
-
-        ds_tree_foreach (&g_sta_policies, sp)
-        {
-            if (!sp->sp_attached) continue;
-
-            /* sp now points at the attached policy (for which the link attempt failed) */
-
-            /* Either we never associated (with a known error or timeout) or we lost association
-             * and did not recover: a WiFi connect error. */
-
-            /* The currently attached policy:
-             *  - No pinned VIF: Do sequential rotation to the next STA VIF candidate, if any
-             *  - pinned VIF: NO rotation - the policy fails in one shot */
-            if (sp->sp_ifname[0] == '\0' && sp->sp_rotation_idx + 1 < g_sta_list_len)
-            {
-                const char *cur_link = g_sta_list[sp->sp_rotation_idx].vif;
-                const char *next_link = g_sta_list[sp->sp_rotation_idx + 1].vif;
-
-                LOG(NOTICE,
-                    "wano_sta: %s (ssid=%s): No association on %s (%s), rotating to %s",
-                    sp->sp_uuid,
-                    sp->sp_ssid,
-                    cur_link,
-                    sp->sp_last_wifi_err[0] != '\0' ? sp->sp_last_wifi_err : "scan window expired",
-                    next_link);
-
-                /* We will detach this policy first as detaching means we disable/deconfigure
-                 * the previously configured underlying STA VIF */
-                wano_sta_policy_detach(sp);
-
-                /* Advance rotation index to the next STA VIF candidate. */
-                sp->sp_rotation_idx++;
-
-                /* Disable all but the currently selected STA VIF as determined
-                 * by the just advanced rotation index */
-                wano_sta_disable_unselected_stas();
-
-                any_advanced = true;
-                continue;
-            }
-
-            /* Out of rotation candidates (or pinned STA VIF) for this policy.
-             *
-             * Mark the policy failed, reset its rotation state, detach it.
-             *
-             * Let the multi-policy cascade move on to the next eligible policy.
-             */
-            sp->sp_rotation_exhausted = true;
-
-            LOG(NOTICE,
-                "wano_sta: %s (ssid=%s): no association on any link (priority=%d, ifname=%s) — marking failed, "
-                "cascading",
-                sp->sp_uuid,
-                sp->sp_ssid,
-                sp->sp_wan_priority,
-                sp->sp_ifname[0] ? sp->sp_ifname : "(any)");
-
-            sp->sp_failed = true;
-            wano_sta_policy_detach(sp);
-            sp->sp_rotation_idx = 0;
-            sp->sp_rotation_exhausted = false;
-
-            any_failed = true;
-        }
-
-        if (any_failed)
-        {
-            /* If no eligible policy remains, reset all sp_failed flags so the
-             * cascade loops back to the highest priority. */
-            if (!wano_sta_any_eligible())
-            {
-                const int n = wano_sta_reset_failed_all();
-                LOG(NOTICE,
-                    "wano_sta: cascade exhausted, reset %d sp_failed flag(s) — looping back to highest priority",
-                    n);
-            }
-        }
-
-        if (any_advanced || any_failed)
-        {
-            /* Schedule apply */
-            g_sta_state = WSTA_S_IDLE;
-            wano_sta_schedule_apply();
+                "wano_sta: cascade exhausted, reset %d sp_failed flag(s) — looping back to highest priority",
+                n);
         }
     }
+
+    /* Schedule apply */
+    g_sta_state = WSTA_S_IDLE;
+    wano_sta_schedule_apply_timeout(apply_delay);
+}
+
+/* Schedule WANO STA apply in `timeout` seconds */
+static void wano_sta_schedule_apply_timeout(double timeout)
+{
+    /* Never cut a pending delayed apply short (e.g. post-assoc phase 2 hold-off) */
+    if (ev_is_active(&g_sta_apply_timer) && ev_timer_remaining(EV_DEFAULT, &g_sta_apply_timer) >= timeout) return;
+
+    ev_timer_stop(EV_DEFAULT, &g_sta_apply_timer);
+    ev_timer_set(&g_sta_apply_timer, timeout, 0.0);
+    ev_timer_start(EV_DEFAULT, &g_sta_apply_timer);
 }
 
 /* Schedule WANO STA apply */
 static void wano_sta_schedule_apply(void)
 {
-    ev_timer_set(&g_sta_apply_timer, 0.0, 0.0);
-    ev_timer_start(EV_DEFAULT, &g_sta_apply_timer);
+    wano_sta_schedule_apply_timeout(0.0);
 }
 
 static void wano_sta_apply(void)
@@ -1678,8 +1812,18 @@ static void callback_Wifi_VIF_State(
                     wano_sta_policy_last_status_set(attached_policy);
                 }
 
-                g_sta_currently_associated = true;
-                g_sta_any_associated = true;
+                if (attached_policy != NULL)
+                {
+                    /* Try this STA first the next time this policy is attached. */
+                    wano_sta_policy_sta_promote(attached_policy, new->if_name);
+
+                    /* Try this policy first on the next failover. */
+                    wano_sta_policy_queue_promote(attached_policy);
+
+                    attached_policy->sp_currently_associated = true;
+                    attached_policy->sp_any_associated = true;
+                }
+
                 /* Associated -- stop the scan timer so we don't rotate away. */
                 ev_timer_stop(EV_DEFAULT, &g_sta_scan_timer);
                 wano_sta_schedule_apply();
@@ -1688,7 +1832,7 @@ static void callback_Wifi_VIF_State(
 
             /* We are NOT associated */
 
-            if (g_sta_currently_associated)
+            if (attached_policy != NULL && attached_policy->sp_currently_associated)
             {
                 /* We were associated via this STA, but later lost association and we are NOT associated at this point.
                  *
@@ -1696,9 +1840,9 @@ static void callback_Wifi_VIF_State(
                  * If it doesn't, the scan-timer callback will handle rotation/failure.
                  */
 
-                g_sta_currently_associated = false;
+                attached_policy->sp_currently_associated = false;
 
-                const double timer_s = (double)wano_sta_scan_timeout_get();
+                const double timer_s = (double)WANO_STA_POST_ASSOC_RECOVERY_TIMEOUT;
 
                 LOG(NOTICE,
                     "wano_sta: %s: Disassociated -- re-arming scan timer (%.0fs) for rotation if no recovery",
@@ -1894,6 +2038,7 @@ static struct wano_sta_policy *wano_sta_policy_get_or_add(const char *policy_uui
     sp = CALLOC(1, sizeof(*sp));
     STRSCPY(sp->sp_uuid, policy_uuid);
     sp->sp_scan_timeout = WANO_STA_SCAN_TIMEOUT_DEFAULT;
+    wano_sta_policy_sta_list_init(sp);
     ds_tree_insert(&g_sta_policies, sp, sp->sp_uuid);
     return sp;
 }
@@ -1958,6 +2103,7 @@ static void wano_sta_policy_set(
 
 static void wano_sta_policy_remove(struct wano_sta_policy *sp)
 {
+    wano_sta_policy_queue_remove(sp);
     ds_tree_remove(&g_sta_policies, sp);
     FREE(sp);
 }
@@ -1974,6 +2120,8 @@ void wano_sta_config_update(const char *policy_uuid, int wan_priority, const str
         return;
     }
 
+    const bool is_new = (wano_sta_policy_get(policy_uuid) == NULL);
+
     sp = wano_sta_policy_get_or_add(policy_uuid);
     if (sp == NULL) return;
 
@@ -1983,6 +2131,16 @@ void wano_sta_config_update(const char *policy_uuid, int wan_priority, const str
     const bool priority_changed = (sp->sp_wan_priority != wan_priority);
 
     wano_sta_policy_set(sp, wan_priority, sta_cfg, &changed);
+
+    /* Insert new policy into policy queue by priority. */
+    if (is_new)
+    {
+        wano_sta_policy_queue_insert(sp);
+    }
+    else if (priority_changed && !sp->sp_test_connection)
+    {
+        wano_sta_policy_queue_sort();
+    }
 
     /* Invalidate last status for this policy */
     if (changed && sp->sp_last_status != WANO_STA_STATUS_UNKNOWN)
@@ -2067,7 +2225,6 @@ bool wano_sta_init(void)
     /* CM backhaul CMU enable/disable init */
     wano_sta_cm_bh_cmu_init();
 
-    wano_sta_parse_list();
     g_sta_initialized = true;
 
     return true;

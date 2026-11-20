@@ -2726,7 +2726,7 @@ osw_drv_vif_dump_sta(struct osw_drv_vif *vif)
         struct osw_drv_vif_sta_network *sta_net = sta->network;
         while (sta_net != NULL) {
             osw_wpa_to_str(wpa_str, sizeof(wpa_str), &sta_net->wpa);
-            LOGI("osw: drv: %s/%s/%s: sta: net: bridge_if_name: %s bssid: "OSW_HWADDR_FMT" ssid: "OSW_SSID_FMT" psk: len=%zu wpa: %s multi_ap: %d priority: %d open: %d",
+            LOGI("osw: drv: %s/%s/%s: sta: net: bridge_if_name: %s bssid: "OSW_HWADDR_FMT" ssid: "OSW_SSID_FMT" psk: len=%zu wpa: %s multi_ap: %d priority: %d",
                  vif->phy->drv->ops->name,
                  vif->phy->phy_name,
                  vif->vif_name,
@@ -2736,8 +2736,7 @@ osw_drv_vif_dump_sta(struct osw_drv_vif *vif)
                  strnlen(sta_net->psk.str, sizeof(sta_net->psk.str)),
                  wpa_str,
                  sta_net->multi_ap,
-                 sta_net->priority,
-                 sta_net->open);
+                 sta_net->priority);
             sta_net = sta_net->next;
         }
     }

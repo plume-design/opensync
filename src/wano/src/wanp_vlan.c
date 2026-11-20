@@ -62,6 +62,7 @@ static struct wano_plugin wanp_vlan = WANO_PLUGIN_INIT(
         "vlan",
         40,
         WANO_PLUGIN_MASK_ALL,
+        CONFIG_MANAGER_WANO_PLUGIN_TIMEOUT,
         wanp_vlan_init,
         wanp_vlan_run,
         wanp_vlan_fini);

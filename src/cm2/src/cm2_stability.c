@@ -407,6 +407,7 @@ static bool cm2_connection_req_stability_process(const char *if_name,
     char                                    *muplink;
     bool                                    ret;
     int                                     counter;
+    int                                     router_counter = 0;
 
     if (!g_state.link.is_used) {
         LOGN("Waiting for new active link");
@@ -534,6 +535,10 @@ static bool cm2_connection_req_stability_process(const char *if_name,
             }
         }
 
+        /* Only set when the Router check runs, which is also the only case in
+         * which it is consulted below. 0 means the Router check passed. */
+        router_counter = counter;
+
         ret = cm2_ovsdb_connection_update_unreachable_router_counter(if_name, counter);
         if (!ret)
             LOGW("%s Failed update router counter in ovsdb table", __func__);
@@ -567,8 +572,20 @@ static bool cm2_connection_req_stability_process(const char *if_name,
                     cm2_uplink_event_add_event(time_real(), false, CM2_UPLINK_ALL_INTERNET);
                 }
             }
-            if (counter % (CONFIG_CM2_STABILITY_THRESH_INTERNET + 1) == 0)
-                   ropt |= (1 << CM2_RESTORE_MAIN_LINK);
+            /* Restart the main link only when the Router check is failing too.
+             * An upstream-only outage leaves the link, gateway and lease healthy,
+             * so a restart remediates nothing and just flaps carrier. Uplinks
+             * without a Router check (ex. LTE) are unaffected. */
+            if (counter % (CONFIG_CM2_STABILITY_THRESH_INTERNET + 1) == 0) {
+                if ((opts & ROUTER_CHECK) && router_counter == 0) {
+                    LOGN("%s: Internet unreachable (counter = %d) but Router is reachable, "
+                         "impairment appears to be upstream: skipping main link restart",
+                         if_name, counter);
+                }
+                else {
+                    ropt |= (1 << CM2_RESTORE_MAIN_LINK);
+                }
+            }
         }
         else
         {

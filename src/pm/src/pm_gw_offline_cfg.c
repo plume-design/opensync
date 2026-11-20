@@ -83,8 +83,12 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define PS_KEY_PORT_FRONTHAULS      "port_fronthauls"
 #define PS_KEY_INTF_FRONTHAULS      "interface_fronthauls"
 #define PS_KEY_NETFILTER            "netfilter"
+#define PS_KEY_WAN_CONFIG_STA       "wan_config_sta"
+#define PS_KEY_CONNECTIVITY_CHECK   "connectivity_check"
 
 #define PS_KEY_OFFLINE_CFG          KEY_OFFLINE_CFG
+
+#define WAN_CONFIG_TYPE_STA         "sta"
 
 #define TIMEOUT_NO_CFG_CHANGE      15
 #define DEBOUNCE_DHCP_OPTION       4
@@ -127,6 +131,8 @@ struct gw_offline_cfg
     json_t *port_fronthauls;
     json_t *interface_fronthauls;
     json_t *netfilter;
+    json_t *wan_config_sta;
+    json_t *connectivity_check;
 };
 
 enum gw_offline_stat
@@ -163,6 +169,26 @@ static ovsdb_table_t table_Bridge;
 static ovsdb_table_t table_Port;
 static ovsdb_table_t table_Interface;
 static ovsdb_table_t table_Netfilter;
+static ovsdb_table_t table_WAN_Config;
+
+/* WAN_Config columns monitored and saved for Internet Backup STA: */
+static char *wan_config_sta_columns[] = { "+",
+                                          SCHEMA_COLUMN(WAN_Config, enable),
+                                          SCHEMA_COLUMN(WAN_Config, type),
+                                          SCHEMA_COLUMN(WAN_Config, priority),
+                                          SCHEMA_COLUMN(WAN_Config, other_config),
+                                          NULL };
+
+/* Connectivity_Check columns saved and restored for Internet Backup STA: */
+static char *connectivity_check_columns[] = { "+",
+                                              SCHEMA_COLUMN(Connectivity_Check, name),
+                                              SCHEMA_COLUMN(Connectivity_Check, if_name),
+                                              SCHEMA_COLUMN(Connectivity_Check, enable),
+                                              SCHEMA_COLUMN(Connectivity_Check, target),
+                                              SCHEMA_COLUMN(Connectivity_Check, type),
+                                              SCHEMA_COLUMN(Connectivity_Check, interval),
+                                              SCHEMA_COLUMN(Connectivity_Check, timeout),
+                                              NULL };
 
 static ev_timer timeout_no_cfg_change;
 static ev_timer debounce_dco;
@@ -177,6 +203,7 @@ static enum gw_offline_stat gw_offline_stat;
 static bool gw_offline_ps_store(const char *ps_key, const json_t *config);
 static bool gw_offline_cfg_ps_store(const struct gw_offline_cfg *cfg);
 static bool gw_offline_ps_load(const char *ps_key, json_t **config);
+static bool gw_offline_ps_load_privacy(const char *ps_key, json_t **config);
 static bool gw_offline_cfg_ps_load(struct gw_offline_cfg *cfg);
 static bool gw_offline_ps_erase(void);
 
@@ -186,9 +213,10 @@ static bool gw_offline_cfg_ipv6_provision(const struct gw_offline_cfg *cfg);
 static bool gw_offline_cfg_home_restore_home_bridge(const struct gw_offline_cfg *cfg);
 
 static bool gw_offline_uplink_bridge_set(const struct gw_offline_cfg *cfg);
-static bool gw_offline_uplink_ifname_get(char *if_name_buf, size_t len);
+static bool gw_offline_ethuplink_ifname_get(char *if_name_buf, size_t len);
 static bool gw_offline_uplink_config_set_current(const struct gw_offline_cfg *cfg);
 static bool gw_offline_uplink_config_clear_previous(const char *if_name);
+static void gw_offline_internet_backup_sta_cc_update(const char *cc_if_name);
 
 static json_t *util_vif_get_mld_ifname(const char *vif_if_name);
 static bool util_array_has_json_with_if_name(const json_t *array, const char *if_name);
@@ -242,6 +270,8 @@ static void gw_offline_cfg_release(struct gw_offline_cfg *cfg)
     json_decref(cfg->port_fronthauls);
     json_decref(cfg->interface_fronthauls);
     json_decref(cfg->netfilter);
+    json_decref(cfg->wan_config_sta);
+    json_decref(cfg->connectivity_check);
 
     memset(cfg, 0, sizeof(*cfg));
 }
@@ -502,6 +532,19 @@ static void callback_Port(
     on_configuration_updated();
 }
 
+static void callback_WAN_Config(
+        ovsdb_update_monitor_t *mon,
+        struct schema_WAN_Config *old_rec,
+        struct schema_WAN_Config *config)
+{
+    /* Only type==sta rows are saved. */
+    if (strcmp(config->type, WAN_CONFIG_TYPE_STA) != 0)
+    {
+        return;
+    }
+    on_configuration_updated();
+}
+
 static void callback_Interface(
         ovsdb_update_monitor_t *mon,
         struct schema_Interface *old_rec,
@@ -540,6 +583,8 @@ static bool gw_offline_enable_cfg_mon()
     OVSDB_TABLE_MONITOR(Interface, true);
 
     OVSDB_TABLE_MONITOR(Netfilter, true);
+
+    OVSDB_TABLE_MONITOR_F(WAN_Config, wan_config_sta_columns);
 
     ev_timer_init(&timeout_no_cfg_change, on_timeout_cfg_no_change, TIMEOUT_NO_CFG_CHANGE, 0.0);
 
@@ -607,6 +652,7 @@ static void gw_offline_handle_uplink_change(
         struct schema_Connection_Manager_Uplink *old_rec,
         struct schema_Connection_Manager_Uplink *link)
 {
+    char uplink[C_IFNAME_LEN];
     bool rv;
 
     if (gw_offline_stat != status_active)  // Ignore if not in active gw_offline mode
@@ -640,6 +686,28 @@ static void gw_offline_handle_uplink_change(
                 LOG(ERR, "offline_cfg: Error clearing previous uplink config");
             }
         }
+    }
+
+    /* Select Internet Backup STA Connectivity_Check if_name: the new eth uplink,
+     * or as a fallback (e.g. we switched to STA) an eth link that just got L3
+     * (If multiple, the last one updated; not ideal, but should be good enough until
+     *  we possibly have a better design (possibility to attach multiple CC to
+     * one STA WAN policy). */
+    if (ovsdb_update_changed(mon, SCHEMA_COLUMN(Connection_Manager_Uplink, is_used))
+            && link->is_used_exists && link->is_used)
+    {
+        LOG(NOTICE, "offline_cfg: New eth uplink %s. Will update Internet Backup STA Connectivity_Check if_name=%s",
+                link->if_name, link->if_name);
+        gw_offline_internet_backup_sta_cc_update(link->if_name);
+    }
+    else if (ovsdb_update_changed(mon, SCHEMA_COLUMN(Connection_Manager_Uplink, has_L3))
+            && link->has_L3_exists && link->has_L3
+            && !gw_offline_ethuplink_ifname_get(uplink, sizeof(uplink)))
+    {
+        LOG(NOTICE, "offline_cfg: No eth uplink, but eth link %s got L3. "
+                "Will update Internet Backup STA Connectivity_Check if_name=%s",
+                link->if_name, link->if_name);
+        gw_offline_internet_backup_sta_cc_update(link->if_name);
     }
 }
 
@@ -1052,6 +1120,7 @@ void pm_gw_offline_init(void *data)
     OVSDB_TABLE_INIT(Interface, name);
 
     OVSDB_TABLE_INIT(Netfilter, name);
+    OVSDB_TABLE_INIT_NO_KEY(WAN_Config);
 
     // Always install Node_Config monitor, other monitors installed when enabled.
     OVSDB_TABLE_MONITOR(Node_Config, true);
@@ -1298,12 +1367,28 @@ static bool gw_offline_cfg_ps_store(const struct gw_offline_cfg *cfg)
         cfg_cache.netfilter = json_incref(cfg->netfilter);
     } else LOG(DEBUG, "offline_cfg: netfilter: cached==stored. Skipped storing.");
 
+    if (!json_equal(cfg->wan_config_sta, cfg_cache.wan_config_sta))
+    {
+        rv = gw_offline_ps_store(PS_KEY_WAN_CONFIG_STA, cfg->wan_config_sta);
+        if (!rv) goto exit;
+        json_decref(cfg_cache.wan_config_sta);
+        cfg_cache.wan_config_sta = json_incref(cfg->wan_config_sta);
+    } else LOG(DEBUG, "offline_cfg: wan_config_sta: cached==stored. Skipped storing.");
+
+    if (!json_equal(cfg->connectivity_check, cfg_cache.connectivity_check))
+    {
+        rv = gw_offline_ps_store(PS_KEY_CONNECTIVITY_CHECK, cfg->connectivity_check);
+        if (!rv) goto exit;
+        json_decref(cfg_cache.connectivity_check);
+        cfg_cache.connectivity_check = json_incref(cfg->connectivity_check);
+    } else LOG(DEBUG, "offline_cfg: connectivity_check: cached==stored. Skipped storing.");
+
     rv = true;
 exit:
     return rv;
 }
 
-static bool gw_offline_ps_load(const char *ps_key, json_t **config)
+static bool __gw_offline_ps_load(const char *ps_key, json_t **config, bool privacy)
 {
     ssize_t str_size;
     bool rv = false;
@@ -1340,13 +1425,14 @@ static bool gw_offline_ps_load(const char *ps_key, json_t **config)
         LOG(ERR, "offline_cfg: Error retrieving persistent %s key.", ps_key);
         goto exit;
     }
-    LOG(DEBUG, "offline_cfg: Loaded %s string from persistent storage. str=%s", ps_key, config_str);
+    LOG(DEBUG, "offline_cfg: Loaded %s string from persistent storage. str=%s",
+            ps_key, privacy ? "<hidden>" : config_str);
 
     /* Convert it to JSON */
     config_json = json_loads(config_str, 0, NULL);
     if (config_json == NULL)
     {
-        LOG(ERR, "offline_cfg: Error parsing JSON: %s", config_str);
+        LOG(ERR, "offline_cfg: Error parsing JSON: %s", privacy ? "<hidden>" : config_str);
         goto exit;
     }
     LOG(DEBUG, "offline_cfg: Loaded %s json from persistent storage %s.", ps_key, PS_STORE_GW_OFFLINE);
@@ -1358,6 +1444,17 @@ exit:
     if (ps != NULL) osp_ps_close(ps);
 
     return rv;
+}
+
+static bool gw_offline_ps_load(const char *ps_key, json_t **config)
+{
+    return __gw_offline_ps_load(ps_key, config, false);
+}
+
+/* Load config that may contain sensitive data (e.g. keys): its content is not logged. */
+static bool gw_offline_ps_load_privacy(const char *ps_key, json_t **config)
+{
+    return __gw_offline_ps_load(ps_key, config, true);
 }
 
 /* Load config from persistent storage. */
@@ -1464,6 +1561,16 @@ static bool gw_offline_cfg_ps_load(struct gw_offline_cfg *cfg)
     if (!rv) goto exit;
     json_decref(cfg_cache.netfilter);
     cfg_cache.netfilter = json_incref(cfg->netfilter);
+
+    rv = gw_offline_ps_load_privacy(PS_KEY_WAN_CONFIG_STA, &cfg->wan_config_sta);
+    if (!rv) goto exit;
+    json_decref(cfg_cache.wan_config_sta);
+    cfg_cache.wan_config_sta = json_incref(cfg->wan_config_sta);
+
+    rv = gw_offline_ps_load(PS_KEY_CONNECTIVITY_CHECK, &cfg->connectivity_check);
+    if (!rv) goto exit;
+    json_decref(cfg_cache.connectivity_check);
+    cfg_cache.connectivity_check = json_incref(cfg->connectivity_check);
 
 exit:
     return rv;
@@ -1989,6 +2096,152 @@ static bool util_array_has_json_with_if_name(const json_t *array, const char *if
     return false;
 }
 
+/* For an OVSDB map-type column, get the value associated with the specified key. */
+static const char *util_row_map_get(const json_t *row, const char *column, const char *key)
+{
+    json_t *map_entry;
+    json_t *map_array;
+    size_t index;
+
+    map_array = json_array_get(json_object_get(row, column), 1);
+
+    json_array_foreach(map_array, index, map_entry)
+    {
+        const char *map_key = json_string_value(json_array_get(map_entry, 0));
+        if (map_key != NULL && strcmp(map_key, key) == 0)
+        {
+            return json_string_value(json_array_get(map_entry, 1));
+        }
+    }
+    return NULL;
+}
+
+/* Mask WAN_Config other_config secrets. */
+static void util_wan_config_row_mask(json_t *row)
+{
+    json_t *map_entry;
+    json_t *map_array;
+    const char *map_key;
+    size_t index;
+
+    map_array = json_array_get(json_object_get(row, SCHEMA_COLUMN(WAN_Config, other_config)), 1);
+
+    json_array_foreach(map_array, index, map_entry)
+    {
+        map_key = json_string_value(json_array_get(map_entry, 0));
+        if (map_key != NULL && (strcmp(map_key, "key") == 0 || strcmp(map_key, "password") == 0))
+        {
+            json_array_set_new(map_entry, 1, json_string("********"));
+        }
+    }
+}
+
+/* Dump a WAN_Config row or array of rows for logging, with secrets masked. Returns a static buffer. */
+static const char *util_wan_config_dumps_masked(const json_t *json)
+{
+    json_t *masked;
+    json_t *row;
+    size_t index;
+    const char *str;
+
+    masked = json_deep_copy(json);
+    if (json_is_array(masked))
+    {
+        json_array_foreach(masked, index, row)
+        {
+            util_wan_config_row_mask(row);
+        }
+    }
+    else
+    {
+        util_wan_config_row_mask(masked);
+    }
+    str = json_dumps_static(masked, 0);
+    json_decref(masked);
+    return str;
+}
+
+/*
+ * Read Internet Backup STA config from OVSDB.
+ *  - WAN_Config type==sta rows (except test connections and rows
+ *    without Connectivity_Check) and Connectivity_Check rows referenced by them.
+ */
+static bool gw_offline_cfg_internet_backup_sta_read(struct gw_offline_cfg *cfg)
+{
+    const char *test_connection;
+    const char *cc_name;
+    json_t *wan_rows;
+    json_t *cc_rows;
+    json_t *row;
+    size_t index;
+    bool rv = true;
+
+    /* Initialize right away. On any failure, we then have empty configs
+     * which will overwrite any stale entries.  */
+    cfg->wan_config_sta = json_array();
+    cfg->connectivity_check = json_array();
+
+    wan_rows = ovsdb_sync_select_where2(
+            SCHEMA_TABLE(WAN_Config),
+            ovsdb_where_simple(SCHEMA_COLUMN(WAN_Config, type), WAN_CONFIG_TYPE_STA));
+    if (wan_rows == NULL)
+    {
+        LOG(ERR, "offline_cfg: Error selecting from WAN_Config -w type==%s", WAN_CONFIG_TYPE_STA);
+        return false;
+    }
+
+    json_array_foreach(wan_rows, index, row)
+    {
+        /* Do not care about test connections: */
+        test_connection = util_row_map_get(row, SCHEMA_COLUMN(WAN_Config, other_config), "test_connection");
+        if (test_connection != NULL && strcmp(test_connection, "true") == 0)
+        {
+            LOG(DEBUG, "offline_cfg: WAN_Config: Skipping test connection row: %s", util_wan_config_dumps_masked(row));
+            continue;
+        }
+
+        /* Not saving rows without Connectivity_Check, as they are not restored anyway: */
+        cc_name = util_row_map_get(row, SCHEMA_COLUMN(WAN_Config, other_config), "connectivity_check");
+        if (cc_name == NULL)
+        {
+            LOG(DEBUG, "offline_cfg: WAN_Config: Skipping row with no Connectivity_Check: %s",
+                    util_wan_config_dumps_masked(row));
+            continue;
+        }
+
+        /* Find that Connectivity_Check row by name, unless already read (shared by multiple WAN_Config rows) */
+        if (util_get_row_by_name(cfg->connectivity_check, cc_name) == NULL)
+        {
+            cc_rows = ovsdb_sync_select(
+                    SCHEMA_TABLE(Connectivity_Check),
+                    SCHEMA_COLUMN(Connectivity_Check, name),
+                    cc_name);
+            if (json_array_size(cc_rows) != 1)
+            {
+                LOG(WARN, "offline_cfg: No Connectivity_Check row with name==%s. Not saving WAN_Config: row=%s",
+                        cc_name, util_wan_config_dumps_masked(row));
+                json_decref(cc_rows);
+                rv = false;
+                continue;
+            }
+            ovsdb_table_filter_row(json_array_get(cc_rows, 0), connectivity_check_columns);
+            json_array_append(cfg->connectivity_check, json_array_get(cc_rows, 0));
+            json_decref(cc_rows);
+        }
+
+        ovsdb_table_filter_row(row, wan_config_sta_columns);
+        json_array_append(cfg->wan_config_sta, row);
+    }
+
+    LOG(DEBUG, "offline_cfg: Internet backup STA config that will be saved: wan_config_sta=%s",
+            util_wan_config_dumps_masked(cfg->wan_config_sta));
+    LOG(DEBUG, "offline_cfg: Internet backup STA config that will be saved: connectivity_check=%s",
+            json_dumps_static(cfg->connectivity_check, 0));
+
+    json_decref(wan_rows);
+    return rv;
+}
+
 /* Read the current subset of OVSDB config. */
 static bool gw_offline_cfg_ovsdb_read(struct gw_offline_cfg *cfg)
 {
@@ -2048,7 +2301,7 @@ static bool gw_offline_cfg_ovsdb_read(struct gw_offline_cfg *cfg)
     }
 
     /* save certain uplink config from Wifi_Inet_Config */
-    if (gw_offline_uplink_ifname_get(uplink, sizeof(uplink)))
+    if (gw_offline_ethuplink_ifname_get(uplink, sizeof(uplink)))
     {
         /* Currently we remember the following uplink's settings: upnp_mode  */
         char *filter_columns[] = { "+", SCHEMA_COLUMN(Wifi_Inet_Config, upnp_mode), NULL };
@@ -2217,6 +2470,12 @@ static bool gw_offline_cfg_ovsdb_read(struct gw_offline_cfg *cfg)
         LOG(WARN, "offline_cfg: Failed obtaining Interface table config");
     }
 
+    /* Internet backup STA config (WAN_Config type==sta and Connectivity_Check): */
+    if (!gw_offline_cfg_internet_backup_sta_read(cfg))
+    {
+        LOG(WARN, "offline_cfg: Failed obtaining Internet Backup STA config");
+    }
+
     return true;
 exit_failure:
     gw_offline_cfg_release(cfg);
@@ -2232,7 +2491,7 @@ static bool gw_offline_uplink_config_set_current(const struct gw_offline_cfg *cf
     char uplink[C_IFNAME_LEN];
     int rc;
 
-    if (gw_offline_uplink_ifname_get(uplink, sizeof(uplink)))
+    if (gw_offline_ethuplink_ifname_get(uplink, sizeof(uplink)))
     {
         LOG(INFO, "offline_cfg: Uplink known=%s. Restore uplink settings.", uplink);
 
@@ -3086,8 +3345,188 @@ static bool gw_offline_cfg_ovsdb_apply(const struct gw_offline_cfg *cfg)
     return true;
 }
 
-/* Get uplink interface name */
-static bool gw_offline_uplink_ifname_get(char *if_name_buf, size_t len)
+/*
+ * Apply saved (already loaded) internet backup STA config to OVSDB:
+ * Connectivity_Check rows, then WAN_Config type==sta rows.
+ *
+ * A WAN_Config row is only restored if it references a Connectivity_Check
+ * that is restored too.
+ */
+static bool gw_offline_cfg_internet_backup_sta_load_and_apply(const struct gw_offline_cfg *cfg)
+{
+    char cc_if_name[C_IFNAME_LEN];
+    bool cc_if_name_known;
+    json_t *cc_restored = NULL;
+    size_t n_restored = 0;
+    const char *saved_if_name;
+    const char *if_name;
+    const char *cc_name;
+    const char *name;
+    json_t *cc_row;
+    json_t *row;
+    size_t index;
+    bool rv = false;
+    int rc;
+
+    if (cfg->wan_config_sta == NULL)
+    {
+        LOG(DEBUG, "offline_cfg: No saved Internet Backup STA config");
+        return true;
+    }
+
+    /* Delete any existing WAN_Config type==sta rows before applying saved ones
+     * (There shouldn't be any at this state, but hey)
+     */
+    rc = ovsdb_sync_delete_where(
+            SCHEMA_TABLE(WAN_Config),
+            ovsdb_where_simple(SCHEMA_COLUMN(WAN_Config, type), WAN_CONFIG_TYPE_STA));
+    if (rc == -1)
+    {
+        LOG(ERR, "offline_cfg: Error deleting WAN_Config -w type==%s", WAN_CONFIG_TYPE_STA);
+        return false;
+    }
+
+    /*
+     * Restore Connectivity_Check rows first, so they exist at the moment when
+     * WAN_Config type=sta is restored (as we don't fancy OVSDB transactions)
+     *
+     * For CC if_name use the eth uplink (CMU is_used==true) if known, otherwise fallback to the saved if_name.
+     */
+    cc_if_name_known = gw_offline_ethuplink_ifname_get(cc_if_name, sizeof(cc_if_name));
+
+    cc_restored = json_array();
+    json_array_foreach(cfg->connectivity_check, index, row)
+    {
+        name = json_string_value(json_object_get(row, SCHEMA_COLUMN(Connectivity_Check, name)));
+        if (name == NULL)
+        {
+            /* Should not really happen */
+            LOG(ERR, "offline_cfg: Unexpected: No name field in saved Connectivity_Check row JSON");
+            goto out;
+        }
+
+        saved_if_name = json_string_value(json_object_get(row, SCHEMA_COLUMN(Connectivity_Check, if_name)));
+        if_name = cc_if_name_known ? cc_if_name : saved_if_name;  /* fallback to saved */
+        if (if_name == NULL)
+        {
+            /* Just in case, should not really happen. */
+            LOG(WARN, "offline_cfg: No if_name known nor saved. Not restoring Connectivity_Check: row=%s",
+                    json_dumps_static(row, 0));
+            continue;
+        }
+
+        cc_row = json_deep_copy(row);
+        ovsdb_table_filter_row(cc_row, connectivity_check_columns);
+        json_object_set_new(cc_row, SCHEMA_COLUMN(Connectivity_Check, if_name), json_string(if_name));
+
+        LOG(INFO, "offline_cfg: Restoring Connectivity_Check: row=%s", json_dumps_static(cc_row, 0));
+        if (!ovsdb_sync_upsert(
+                SCHEMA_TABLE(Connectivity_Check),
+                SCHEMA_COLUMN(Connectivity_Check, name),
+                name,
+                cc_row,
+                NULL))
+        {
+            LOG(ERR, "offline_cfg: Error upserting into Connectivity_Check: row=%s", json_dumps_static(row, 0));
+            goto out;
+        }
+        json_array_append(cc_restored, row);
+    }
+
+    /* Restore WAN_Config type==sta rows */
+    json_array_foreach(cfg->wan_config_sta, index, row)
+    {
+        /* Restore only WAN_Config type==sta rows that have Connectivity_Check attached and
+         * we have restored the corresponding Connectivity_Check.
+         * This ensures we never configure an unconditional Internet Backup STA config
+         */
+        cc_name = util_row_map_get(row, SCHEMA_COLUMN(WAN_Config, other_config), "connectivity_check");
+        if (cc_name == NULL)
+        {
+            LOG(WARN, "offline_cfg: No Connectivity_Check attached. Not restoring WAN_Config: row=%s",
+                    util_wan_config_dumps_masked(row));
+            continue;
+        }
+        if (util_get_row_by_name(cc_restored, cc_name) == NULL)
+        {
+            LOG(WARN, "offline_cfg: Connectivity_Check %s not restored. Not restoring WAN_Config: row=%s",
+                    cc_name, util_wan_config_dumps_masked(row));
+            continue;
+        }
+
+        if (!ovsdb_sync_insert(SCHEMA_TABLE(WAN_Config), json_incref(row), NULL))
+        {
+            LOG(ERR, "offline_cfg: Error inserting into WAN_Config: row=%s", util_wan_config_dumps_masked(row));
+            goto out;
+        }
+        n_restored++;
+    }
+    LOG(INFO, "offline_cfg: Restored %zu of %zu saved WAN_Config type==%s row(s)",
+            n_restored, json_array_size(cfg->wan_config_sta), WAN_CONFIG_TYPE_STA);
+
+    rv = true;
+out:
+    json_decref(cc_restored);
+    return rv;
+}
+
+/*
+ * In active offline mode, update the if_name of Connectivity_Check rows
+ * referenced by configured WAN_Config type==sta rows to the specified cc_if_name.
+ */
+static void gw_offline_internet_backup_sta_cc_update(const char *cc_if_name)
+{
+    const char *cc_name;
+    const char *if_name;
+    json_t *wan_rows;
+    json_t *cc_rows;
+    json_t *row;
+    size_t index;
+
+    if (gw_offline_stat != status_active)
+        return;
+
+    /* WAN_Config type==sta rows configured: */
+    wan_rows = ovsdb_sync_select_where2(
+            SCHEMA_TABLE(WAN_Config),
+            ovsdb_where_simple(SCHEMA_COLUMN(WAN_Config, type), WAN_CONFIG_TYPE_STA));
+
+    json_array_foreach(wan_rows, index, row)
+    {
+        cc_name = util_row_map_get(row, SCHEMA_COLUMN(WAN_Config, other_config), "connectivity_check");
+        if (cc_name == NULL)
+            continue;
+
+        /* CC row attached to this WAN_Config type==sta row */
+        cc_rows = ovsdb_sync_select(SCHEMA_TABLE(Connectivity_Check), SCHEMA_COLUMN(Connectivity_Check, name), cc_name);
+        if (json_array_size(cc_rows) == 1)
+        {
+            if_name = json_string_value(
+                    json_object_get(json_array_get(cc_rows, 0), SCHEMA_COLUMN(Connectivity_Check, if_name)));
+
+            /* Update CC if_name if it differs from the desired cc_if_name */
+            if (if_name == NULL || strcmp(if_name, cc_if_name) != 0)
+            {
+                LOG(INFO, "offline_cfg: Connectivity_Check %s: Updating if_name: %s --> %s",
+                        cc_name, if_name != NULL ? if_name : "(none)", cc_if_name);
+
+                if (ovsdb_sync_update(
+                        SCHEMA_TABLE(Connectivity_Check),
+                        SCHEMA_COLUMN(Connectivity_Check, name),
+                        cc_name,
+                        json_pack("{ s : s }", SCHEMA_COLUMN(Connectivity_Check, if_name), cc_if_name)) != 1)
+                {
+                    LOG(ERR, "offline_cfg: Error updating Connectivity_Check %s if_name", cc_name);
+                }
+            }
+        }
+        json_decref(cc_rows);
+    }
+    json_decref(wan_rows);
+}
+
+/* Get ethernet uplink interface name. If there is any. */
+static bool gw_offline_ethuplink_ifname_get(char *if_name_buf, size_t len)
 {
     const char *if_name;
     json_t *json;
@@ -3164,7 +3603,7 @@ static bool gw_offline_uplink_bridge_set(const struct gw_offline_cfg *cfg)
         return false;
 
     // Determine uplink interface name:
-    if (!gw_offline_uplink_ifname_get(uplink, sizeof(uplink)))
+    if (!gw_offline_ethuplink_ifname_get(uplink, sizeof(uplink)))
     {
         LOG(WARN, "offline_cfg: Cannot determine GW's uplink interface");
         return false;
@@ -3313,6 +3752,12 @@ bool pm_gw_offline_load_and_apply_config()
     {
         /* Monitor DHCP_Option table. */
         gw_offline_monitor_dhcp_option();
+    }
+
+    /* Internet backup STA config. Not fatal: the rest of offline config is already applied. */
+    if (!gw_offline_cfg_internet_backup_sta_load_and_apply(&gw_cfg))
+    {
+        LOG(ERR, "offline_cfg: Error restoring internet backup STA config");
     }
 
     rv = true;

@@ -104,7 +104,7 @@ static ev_debounce g_wano_wan_block_deb;
 bool wano_wan_ovsdb_init(void)
 {
     OVSDB_TABLE_INIT_NO_KEY(WAN_Config);
-    if (!OVSDB_TABLE_MONITOR_F(WAN_Config, C_VPACK("-", "_version", "os_persist", "status")))
+    if (!OVSDB_TABLE_MONITOR_F(WAN_Config, C_VPACK("-", "_version", "os_persist", "status", "other_status")))
     {
         return false;
     }
@@ -748,7 +748,7 @@ bool wano_wan_config_from_schema(struct wano_wan_config *wc, struct schema_WAN_C
         if (scan_timeout_str != NULL)
         {
             int t = atoi(scan_timeout_str);
-            if (t >= 0)
+            if (t > 0)
             {
                 wc->wc_type_sta.wc_scan_timeout_exists = true;
                 wc->wc_type_sta.wc_scan_timeout = t;

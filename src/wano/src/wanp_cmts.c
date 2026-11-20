@@ -73,6 +73,7 @@ static struct wano_plugin wanp_cmts = WANO_PLUGIN_INIT(
         "cmts",
         100,
         WANO_PLUGIN_MASK_ALL,
+        CONFIG_MANAGER_WANO_PLUGIN_TIMEOUT,
         wanp_cmts_init,
         wanp_cmts_run,
         wanp_cmts_fini);

@@ -233,29 +233,24 @@ cportal_proxy_write_other_config(struct cportal *self)
     else
         fprintf(fconf, "port 8888\n");
 
-    if (self->url->domain_name &&
-        self->proxy_method == FORWARD)
+    if (self->url->domain_name)
     {
-        if (self->url->proto == PT_HTTPS)
-        {
-            fprintf(fconf, "upstream https %s:%s\n", self->url->domain_name,
-                     (self->url->port != NULL) ? self->url->port: "443");
-        }
-        else
-        {
-            fprintf(fconf, "upstream http %s:%s\n", self->url->domain_name,
-                    (self->url->port != NULL) ? self->url->port: "80");
-        }
-    }
-    else if (self->url->domain_name &&
-             self->proxy_method == REVERSE)
-    {
-        fprintf(fconf, "ReversePath \"/\" \"%s://%s:%s\"\n",
-                (self->url->proto == PT_HTTPS) ? "https" : "http",
-                 self->url->domain_name,
-                 (self->url->port) ? self->url->port : "http");
-    }
+        const char *const proto = (self->url->proto == PT_HTTPS) ? "https" : "http";
+        const char *const port = self->url->port ? self->url->port : ((self->url->proto == PT_HTTPS) ? "443" : "80");
 
+        if (self->proxy_method == FORWARD)
+        {
+            fprintf(fconf, "upstream %s %s:%s\n", proto, self->url->domain_name, port);
+        }
+        else if (self->proxy_method == REVERSE)
+        {
+            size_t port_len = strlen(port);
+            const char *const suffix = (port_len > 0 && port[port_len - 1] == '/') ? "" : "/";
+
+            /* tinyproxy appends the request path without adding a separator. */
+            fprintf(fconf, "ReversePath \"/\" \"%s://%s:%s%s\"\n", proto, self->url->domain_name, port, suffix);
+        }
+    }
     if (pconf.xtinyproxy_hdr)
         fprintf(fconf, "XTinyproxy %s\n",pconf.xtinyproxy_hdr);
 

@@ -176,7 +176,6 @@ struct ow_conf_net {
     struct osw_ifname bridge_if_name;
     bool multi_ap;
     int priority;
-    bool open;
 };
 
 struct ow_conf_acl {
@@ -782,27 +781,24 @@ ow_conf_conf_mutate_dgaf_disable(struct ow_conf *self,
     *dgaf_disable = *(passpoint->hs20_enabled);
 }
 
-static int
+static bool
 ow_conf_get_max_tx_power_dbm(const char *phy_name,
-                              const struct osw_conf_vif *osw_vif)
+                              const struct osw_conf_vif *osw_vif,
+                              int *max_tx_power_dbm)
 {
     const struct osw_state_phy_info *phy_info = osw_state_phy_lookup(phy_name);
-    if (phy_info == NULL) return 0;
-    if (phy_info->drv_state == NULL) return 0;
+    if (phy_info == NULL) return false;
+    if (phy_info->drv_state == NULL) return false;
 
     const struct osw_drv_phy_state *pstate = phy_info->drv_state;
-    const int freq = (osw_vif->vif_type == OSW_VIF_AP)
-                   ? osw_vif->u.ap.channel.control_freq_mhz
-                   : 0;
-    if (freq == 0) return 0;
+    const struct osw_channel *c = (osw_vif->vif_type == OSW_VIF_AP)
+                                ? &osw_vif->u.ap.channel
+                                : NULL;
+    if (c == NULL || c->control_freq_mhz == 0 || c->center_freq0_mhz == 0) return false;
 
-    for (size_t i = 0; i < pstate->n_channel_states; i++) {
-        const struct osw_channel_state *cs = &pstate->channel_states[i];
-        if (cs->channel.control_freq_mhz == freq && cs->max_tx_power_dbm_valid) {
-            return cs->max_tx_power_dbm;
-        }
-    }
-    return 0;
+    return osw_cs_chan_get_max_tx_power_dbm(pstate->channel_states,
+                                            pstate->n_channel_states,
+                                            c, max_tx_power_dbm);
 }
 
 static void
@@ -826,7 +822,8 @@ ow_conf_mutate_tx_power(const struct ow_conf_phy *ow_phy,
         return;
     }
 
-    const int max_dbm = ow_conf_get_max_tx_power_dbm(phy_name, osw_vif);
+    int max_dbm = 0;
+    const bool have_max = ow_conf_get_max_tx_power_dbm(phy_name, osw_vif, &max_dbm);
 
     switch (mode) {
         case OSW_TX_POWER_MODE_DBM:
@@ -839,7 +836,7 @@ ow_conf_mutate_tx_power(const struct ow_conf_phy *ow_phy,
             osw_vif->tx_power_percent = value;
             osw_vif->tx_power_db_limit = 0;
             osw_vif->tx_power_db_limit_valid = false;
-            osw_vif->tx_power_dbm = (max_dbm > 0)
+            osw_vif->tx_power_dbm = have_max
                                   ? osw_tx_power_resolve_dbm(OSW_TX_POWER_MODE_PERCENT,
                                                               value, max_dbm)
                                   : 0;
@@ -848,14 +845,14 @@ ow_conf_mutate_tx_power(const struct ow_conf_phy *ow_phy,
             osw_vif->tx_power_db_limit = value;
             osw_vif->tx_power_db_limit_valid = true;
             osw_vif->tx_power_percent = 0;
-            osw_vif->tx_power_dbm = (max_dbm > 0)
+            osw_vif->tx_power_dbm = have_max
                                   ? osw_tx_power_resolve_dbm(OSW_TX_POWER_MODE_DB,
                                                               value, max_dbm)
                                   : 0;
             break;
     }
 
-    if (mode != OSW_TX_POWER_MODE_DBM && max_dbm <= 0) {
+    if (mode != OSW_TX_POWER_MODE_DBM && have_max == false) {
         LOGW("ow: conf: %s/%s: tx_power mode=%s value=%d:"
              " cannot resolve dbm without max_tx_power_dbm",
              phy_name, osw_vif->vif_name,
@@ -1038,7 +1035,6 @@ ow_conf_conf_mutate_vif_sta(struct ow_conf_phy *ow_phy,
         memcpy(&n->bridge_if_name, &net->bridge_if_name, sizeof(n->bridge_if_name));
         n->multi_ap = net->multi_ap;
         n->priority = net->priority;
-        n->open = net->open;
         ds_dlist_insert_tail(list, n);
     }
 }
@@ -2111,8 +2107,7 @@ ow_conf_vif_set_sta_net(const char *vif_name,
                         const struct osw_wpa *wpa,
                         const struct osw_ifname *bridge_if_name,
                         const bool *multi_ap,
-                        const int *priority,
-                        const bool *open)
+                        const int *priority)
 {
     struct ow_conf *self = &g_ow_conf;
     struct ow_conf_vif *vif = ow_conf_vif_get(self, vif_name);
@@ -2132,14 +2127,12 @@ ow_conf_vif_set_sta_net(const char *vif_name,
         const struct osw_ifname prev_bridge_if_name = net->bridge_if_name;
         const bool prev_multi_ap = net->multi_ap;
         const int prev_priority = net->priority;
-        const bool prev_open = net->open;
 
         memset(&net->psk, 0, sizeof(net->psk));
         if (psk != NULL) memcpy(&net->psk, psk, sizeof(*psk));
         if (bridge_if_name != NULL) memcpy(&net->bridge_if_name, bridge_if_name, sizeof(*bridge_if_name));
         if (multi_ap != NULL) net->multi_ap = *multi_ap;
         if (priority != NULL) net->priority = *priority;
-        if (open != NULL) net->open = *open;
         memcpy(&net->wpa, wpa, sizeof(*wpa));
         net->bridge_if_name.buf[sizeof(net->bridge_if_name.buf) - 1] = '\0';
 
@@ -2148,7 +2141,6 @@ ow_conf_vif_set_sta_net(const char *vif_name,
         const bool bridge_changed = (memcmp(&prev_bridge_if_name, &net->bridge_if_name, sizeof(prev_bridge_if_name)) != 0);
         const bool multi_ap_changed = (prev_multi_ap != net->multi_ap);
         const bool priority_changed = (prev_priority != net->priority);
-        const bool open_changed = (prev_open != net->open);
 
         if (psk_changed) {
             const size_t old_len = strnlen(prev_psk.str, sizeof(prev_psk.str));
@@ -2194,13 +2186,6 @@ ow_conf_vif_set_sta_net(const char *vif_name,
                  prev_priority,
                  net->priority);
         }
-        if (open_changed) {
-            LOGI("ow: conf: %s: net: " OSW_SSID_FMT": open=%d -> %d",
-                 vif_name,
-                 OSW_SSID_ARG(&net->ssid),
-                 prev_open,
-                 net->open);
-        }
 
     }
 
@@ -2223,7 +2208,7 @@ ow_conf_vif_flush_sta_net(const char *vif_name)
     struct ow_conf_net *net;
 
     while ((net = ds_tree_head(&vif->sta_net_tree)) != NULL)
-        ow_conf_vif_set_sta_net(vif_name, &net->ssid, &net->bssid, NULL, NULL, NULL, NULL, &net->priority, NULL);
+        ow_conf_vif_set_sta_net(vif_name, &net->ssid, &net->bssid, NULL, NULL, NULL, NULL, &net->priority);
 }
 
 

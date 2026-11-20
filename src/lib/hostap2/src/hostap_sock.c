@@ -175,6 +175,18 @@ hostap_sock_open(struct hostap_sock *sock)
     }
     sock->fd = socket_err;
 
+    /* Don't let spawned processes inherit this socket. A long-lived
+     * descendant would otherwise keep it open after this process dies.
+     * This process may never DETACH (eg. on abort), so hostapd keeps
+     * sending events to a monitor that nobody reads. Since the socket is
+     * still open, the sends don't fail with ECONNREFUSED, and hostapd
+     * eventually blocks forever.
+     */
+    const int flags = fcntl(sock->fd, F_GETFD);
+    const int flags_with_cloexec = flags | FD_CLOEXEC;
+    const int setfd_err = fcntl(sock->fd, F_SETFD, flags_with_cloexec);
+    WARN_ON(setfd_err != 0);
+
     const int bind_err = hostap_sock_bind(sock);
     const bool bind_failed = (bind_err != 0);
     if (WARN_ON(bind_failed)) {

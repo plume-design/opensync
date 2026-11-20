@@ -93,6 +93,7 @@ struct wano_plugin
     const char * const                  wanp_name;          /**< Plug-in name */
     const double                        wanp_priority;      /**< Plug-in priority */
     const uint64_t                      wanp_mask;          /**< Plug-in exclusion mask */
+    const int                           wanp_timeout;       /**< Plug-in probing timeout (seconds) */
     wano_plugin_ops_init_fn_t * const   wanp_init;          /**< OPS: Init function */
     wano_plugin_ops_run_fn_t  * const   wanp_run;           /**< OPS: Run function */
     wano_plugin_ops_fini_fn_t * const   wanp_fini;          /**< OPS: Fini function */
@@ -122,12 +123,13 @@ struct wano_plugin_iter
 /**
  * Use this macro to initialize struct wano_plugin
  */
-#define WANO_PLUGIN_INIT(name, priority, mask, init_fn, run_fn, fini_fn)    \
+#define WANO_PLUGIN_INIT(name, priority, mask, timeout, init_fn, run_fn, fini_fn) \
 (struct wano_plugin)                                                        \
 {                                                                           \
     .wanp_name = (name),                                                    \
     .wanp_priority = (priority),                                            \
     .wanp_mask = (mask),                                                    \
+    .wanp_timeout = (timeout),                                              \
     .wanp_init = (init_fn),                                                 \
     .wanp_run = (run_fn),                                                   \
     .wanp_fini = (fini_fn),                                                 \
