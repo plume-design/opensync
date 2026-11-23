@@ -1052,14 +1052,14 @@ char *strexread_read(const char *prog,
     close(read_fd);
 
     int status;
-    int err;
+    int ret_pid;
     do {
-        err = waitpid(pid, &status, 0);
-        if (err == -1)
+        ret_pid = waitpid(pid, &status, 0);
+        if (ret_pid == -1)
             break;
     } while (!WIFEXITED(status) && !WIFSIGNALED(status));
 
-    LOGT("%s: err=%d status=%d output='%s'", ctx, err, status, p);
+    LOGT("%s: pid=%d status=%d output='%s'", ctx, ret_pid, status, p);
     if ((errno = (WIFEXITED(status) ? WEXITSTATUS(status) : -1)) == 0)
         return p;
     FREE(p);
